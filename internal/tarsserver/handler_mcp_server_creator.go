@@ -1,31 +1,43 @@
 package tarsserver
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/devlikebear/tars/internal/config"
+	"github.com/devlikebear/tars/internal/llm"
 	"github.com/devlikebear/tars/internal/mcp"
 	"github.com/rs/zerolog"
 )
 
 const mcpDirPlaceholder = "${MCP_DIR}"
+const mcpServerCreatorLLMSystemPrompt = "Create a runnable TARS MCP server draft. Return only a json object with name, description, language, use_case, tools, and assistant_message. language must be python or node. tools must be a concise array of MCP tool signatures with snake_case names, descriptions, and optional JSON-schema input_schema/output_schema. Do not include secrets or network-only assumptions."
 
 type mcpServerCreatorSubmitter func(context.Context, mcpServerCreatorSubmitRequest) (mcpServerCreatorSubmitResponse, error)
 
 type mcpServerCreatorDraftRequest struct {
-	Name        string                     `json:"name"`
-	Description string                     `json:"description"`
-	Language    string                     `json:"language"`
-	UseCase     string                     `json:"use_case"`
-	Tools       []mcpServerCreatorToolSpec `json:"tools,omitempty"`
+	Prompt       string                                `json:"prompt,omitempty"`
+	Conversation []mcpServerCreatorConversationMessage `json:"conversation,omitempty"`
+	UseLLM       *bool                                 `json:"use_llm,omitempty"`
+	Name         string                                `json:"name"`
+	Description  string                                `json:"description"`
+	Language     string                                `json:"language"`
+	UseCase      string                                `json:"use_case"`
+	Tools        []mcpServerCreatorToolSpec            `json:"tools,omitempty"`
+}
+
+type mcpServerCreatorConversationMessage struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
 }
 
 type mcpServerCreatorToolSpec struct {
@@ -41,13 +53,15 @@ type mcpServerCreatorFile struct {
 }
 
 type mcpServerCreatorDraftResponse struct {
-	Name        string                     `json:"name"`
-	Description string                     `json:"description"`
-	Language    string                     `json:"language"`
-	UseCase     string                     `json:"use_case"`
-	Tools       []mcpServerCreatorToolSpec `json:"tools"`
-	Files       []mcpServerCreatorFile     `json:"files"`
-	Warnings    []string                   `json:"warnings,omitempty"`
+	Name             string                     `json:"name"`
+	Description      string                     `json:"description"`
+	Language         string                     `json:"language"`
+	UseCase          string                     `json:"use_case"`
+	Tools            []mcpServerCreatorToolSpec `json:"tools"`
+	Files            []mcpServerCreatorFile     `json:"files"`
+	DraftSource      string                     `json:"draft_source,omitempty"`
+	AssistantMessage string                     `json:"assistant_message,omitempty"`
+	Warnings         []string                   `json:"warnings,omitempty"`
 }
 
 type mcpServerCreatorSaveResponse struct {
@@ -99,7 +113,20 @@ type mcpServerCreatorManifest struct {
 	Server        config.MCPServer `json:"server"`
 }
 
-func newMCPServerCreatorAPIHandler(workspaceDir string, logger zerolog.Logger, submitter mcpServerCreatorSubmitter) http.Handler {
+type mcpServerCreatorLLMDraft struct {
+	Name             string                     `json:"name"`
+	Description      string                     `json:"description"`
+	Language         string                     `json:"language"`
+	UseCase          string                     `json:"use_case"`
+	Tools            []mcpServerCreatorToolSpec `json:"tools,omitempty"`
+	AssistantMessage string                     `json:"assistant_message,omitempty"`
+}
+
+func newMCPServerCreatorAPIHandler(workspaceDir string, logger zerolog.Logger, submitter mcpServerCreatorSubmitter, routers ...llm.Router) http.Handler {
+	var router llm.Router
+	if len(routers) > 0 {
+		router = routers[0]
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/admin/mcp-servers/draft", func(w http.ResponseWriter, r *http.Request) {
 		if !requireMethod(w, r, http.MethodPost) {
@@ -109,7 +136,7 @@ func newMCPServerCreatorAPIHandler(workspaceDir string, logger zerolog.Logger, s
 		if !decodeJSONBody(w, r, &req) {
 			return
 		}
-		draft, err := buildMCPServerCreatorDraft(req)
+		draft, err := buildMCPServerCreatorDraft(r.Context(), router, req)
 		if err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 			return
@@ -183,7 +210,22 @@ func newMCPServerCreatorAPIHandler(workspaceDir string, logger zerolog.Logger, s
 	return mux
 }
 
-func buildMCPServerCreatorDraft(req mcpServerCreatorDraftRequest) (mcpServerCreatorDraftResponse, error) {
+func buildMCPServerCreatorDraft(ctx context.Context, router llm.Router, req mcpServerCreatorDraftRequest) (mcpServerCreatorDraftResponse, error) {
+	resolved, source, assistant, warnings, err := resolveMCPServerCreatorDraftRequest(ctx, router, req)
+	if err != nil {
+		return mcpServerCreatorDraftResponse{}, err
+	}
+	draft, err := buildMCPServerCreatorDraftFromResolved(resolved)
+	if err != nil {
+		return mcpServerCreatorDraftResponse{}, err
+	}
+	draft.DraftSource = source
+	draft.AssistantMessage = assistant
+	draft.Warnings = append(draft.Warnings, warnings...)
+	return draft, nil
+}
+
+func buildMCPServerCreatorDraftFromResolved(req mcpServerCreatorDraftRequest) (mcpServerCreatorDraftResponse, error) {
 	name := strings.TrimSpace(req.Name)
 	if err := validateSkillCreatorName(name); err != nil {
 		return mcpServerCreatorDraftResponse{}, err
@@ -216,6 +258,184 @@ func buildMCPServerCreatorDraft(req mcpServerCreatorDraftRequest) (mcpServerCrea
 	}, nil
 }
 
+func resolveMCPServerCreatorDraftRequest(ctx context.Context, router llm.Router, req mcpServerCreatorDraftRequest) (mcpServerCreatorDraftRequest, string, string, []string, error) {
+	prompt := naturalMCPServerCreatorPrompt(req)
+	useLLM := req.UseLLM == nil || *req.UseLLM
+	if prompt != "" && useLLM && router != nil {
+		llmDraft, err := draftMCPServerCreatorWithLLM(ctx, router, req, prompt)
+		if err == nil {
+			return mergeMCPServerCreatorLLMDraft(req, llmDraft, prompt), "llm", strings.TrimSpace(llmDraft.AssistantMessage), nil, nil
+		}
+		resolved := heuristicMCPServerCreatorDraftRequest(req, prompt)
+		return resolved, "heuristic", "", []string{"LLM draft failed; generated a local draft instead: " + err.Error()}, nil
+	}
+	if prompt != "" {
+		warnings := []string{}
+		if useLLM && router == nil {
+			warnings = append(warnings, "LLM is not configured; generated a local draft instead.")
+		}
+		return heuristicMCPServerCreatorDraftRequest(req, prompt), "heuristic", "", warnings, nil
+	}
+	return req, "template", "", nil, nil
+}
+
+func draftMCPServerCreatorWithLLM(ctx context.Context, router llm.Router, req mcpServerCreatorDraftRequest, prompt string) (mcpServerCreatorLLMDraft, error) {
+	client, _, err := router.ClientFor(llm.RoleAgentRuntimePlanner)
+	if err != nil {
+		return mcpServerCreatorLLMDraft{}, err
+	}
+	payload := map[string]any{
+		"request":             prompt,
+		"conversation":        normalizeMCPServerCreatorConversation(req.Conversation),
+		"name_hint":           strings.TrimSpace(req.Name),
+		"description_hint":    strings.TrimSpace(req.Description),
+		"language_hint":       strings.TrimSpace(req.Language),
+		"use_case_hint":       strings.TrimSpace(req.UseCase),
+		"tool_signature_hint": req.Tools,
+		"supported_languages": []string{"python", "node"},
+		"response_format":     "json",
+	}
+	raw, _ := json.Marshal(payload)
+	messages := []llm.ChatMessage{
+		{Role: "system", Content: mcpServerCreatorLLMSystemPrompt},
+		{Role: "user", Content: string(raw)},
+	}
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	resp, err := client.Chat(ctx, messages, llm.ChatOptions{
+		ResponseFormat: &llm.ResponseFormat{Type: llm.ResponseFormatJSONObject},
+	})
+	if err != nil {
+		return mcpServerCreatorLLMDraft{}, err
+	}
+	var draft mcpServerCreatorLLMDraft
+	if err := json.Unmarshal([]byte(strings.TrimSpace(resp.Message.Content)), &draft); err != nil {
+		return mcpServerCreatorLLMDraft{}, fmt.Errorf("decode llm draft: %w", err)
+	}
+	return draft, nil
+}
+
+func mergeMCPServerCreatorLLMDraft(req mcpServerCreatorDraftRequest, llmDraft mcpServerCreatorLLMDraft, prompt string) mcpServerCreatorDraftRequest {
+	out := req
+	out.Prompt = prompt
+	if strings.TrimSpace(llmDraft.Name) != "" {
+		out.Name = strings.TrimSpace(llmDraft.Name)
+		if err := validateSkillCreatorName(out.Name); err != nil {
+			out.Name = deriveMCPServerCreatorName(out.Name + " " + prompt)
+		}
+	}
+	if strings.TrimSpace(llmDraft.Description) != "" {
+		out.Description = strings.TrimSpace(llmDraft.Description)
+	}
+	if strings.TrimSpace(llmDraft.Language) != "" {
+		out.Language = strings.TrimSpace(llmDraft.Language)
+	}
+	if strings.TrimSpace(llmDraft.UseCase) != "" {
+		out.UseCase = strings.TrimSpace(llmDraft.UseCase)
+	}
+	if len(llmDraft.Tools) > 0 {
+		out.Tools = llmDraft.Tools
+	}
+	return heuristicMCPServerCreatorDraftRequest(out, prompt)
+}
+
+func heuristicMCPServerCreatorDraftRequest(req mcpServerCreatorDraftRequest, prompt string) mcpServerCreatorDraftRequest {
+	out := req
+	if strings.TrimSpace(out.Name) == "" {
+		out.Name = deriveMCPServerCreatorName(prompt)
+	}
+	if strings.TrimSpace(out.Description) == "" {
+		out.Description = deriveMCPServerCreatorDescription(prompt)
+	}
+	if strings.TrimSpace(out.UseCase) == "" {
+		out.UseCase = prompt
+	}
+	if strings.TrimSpace(out.Language) == "" {
+		out.Language = "python"
+	}
+	return out
+}
+
+func naturalMCPServerCreatorPrompt(req mcpServerCreatorDraftRequest) string {
+	if prompt := strings.TrimSpace(req.Prompt); prompt != "" {
+		return prompt
+	}
+	parts := make([]string, 0, len(req.Conversation))
+	for _, msg := range normalizeMCPServerCreatorConversation(req.Conversation) {
+		parts = append(parts, msg.Role+": "+msg.Content)
+	}
+	return strings.TrimSpace(strings.Join(parts, "\n"))
+}
+
+func normalizeMCPServerCreatorConversation(messages []mcpServerCreatorConversationMessage) []mcpServerCreatorConversationMessage {
+	out := make([]mcpServerCreatorConversationMessage, 0, len(messages))
+	for _, msg := range messages {
+		role := strings.ToLower(strings.TrimSpace(msg.Role))
+		if role != "user" && role != "assistant" {
+			continue
+		}
+		content := strings.TrimSpace(msg.Content)
+		if content == "" {
+			continue
+		}
+		out = append(out, mcpServerCreatorConversationMessage{Role: role, Content: content})
+	}
+	return out
+}
+
+func deriveMCPServerCreatorName(prompt string) string {
+	lower := strings.ToLower(strings.TrimSpace(prompt))
+	var b strings.Builder
+	lastDash := false
+	for _, r := range lower {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+			b.WriteRune(r)
+			lastDash = false
+		case r == '-' || r == '_' || r == ' ' || r == '\t' || r == '\n':
+			if !lastDash {
+				b.WriteByte('-')
+				lastDash = true
+			}
+		}
+		if b.Len() >= 48 {
+			break
+		}
+	}
+	name := strings.Trim(b.String(), "-")
+	if name == "" {
+		name = "custom-mcp-server"
+	}
+	if !strings.Contains(name, "mcp") && len(name) <= 44 {
+		name += "-mcp"
+	}
+	name = strings.Trim(name, "-")
+	if err := validateSkillCreatorName(name); err != nil {
+		return "custom-mcp-server"
+	}
+	return name
+}
+
+func deriveMCPServerCreatorDescription(prompt string) string {
+	fragment := sentenceFragment(prompt)
+	fragment = truncateRunes(fragment, 140)
+	if fragment == "" {
+		return "Generated MCP server."
+	}
+	return "Generated MCP server for " + fragment + "."
+}
+
+func truncateRunes(value string, limit int) string {
+	if limit <= 0 {
+		return ""
+	}
+	runes := []rune(value)
+	if len(runes) <= limit {
+		return strings.TrimSpace(value)
+	}
+	return strings.TrimSpace(string(runes[:limit]))
+}
+
 func saveMCPServerCreatorDraft(workspaceDir string, draft mcpServerCreatorDraftResponse) (mcpServerCreatorSaveResponse, error) {
 	if strings.TrimSpace(workspaceDir) == "" {
 		return mcpServerCreatorSaveResponse{}, fmt.Errorf("workspace directory is required")
@@ -236,6 +456,7 @@ func testMCPServerCreatorDraft(ctx context.Context, workspaceDir string, draft m
 	if strings.TrimSpace(workspaceDir) == "" {
 		return mcpServerCreatorTestResponse{}, fmt.Errorf("workspace directory is required")
 	}
+	start := time.Now()
 	cleanFiles, err := cleanMCPServerCreatorDraftFiles(draft)
 	if err != nil {
 		return mcpServerCreatorTestResponse{}, err
@@ -252,6 +473,29 @@ func testMCPServerCreatorDraft(ctx context.Context, workspaceDir string, draft m
 	if _, err := writeMCPServerCreatorDraftFiles(targetDir, cleanFiles); err != nil {
 		return mcpServerCreatorTestResponse{}, err
 	}
+	toolTrail := []mcpServerCreatorToolTrail{}
+	var stdout string
+	var stderr string
+	setupCtx, setupCancel := context.WithTimeout(ctx, 60*time.Second)
+	setupTrail, setupStdout, setupStderr, setupErr := setupMCPServerCreatorSandboxDependencies(setupCtx, targetDir, cleanFiles)
+	setupCancel()
+	toolTrail = append(toolTrail, setupTrail...)
+	stdout = setupStdout
+	stderr = setupStderr
+	if setupErr != nil {
+		duration := time.Since(start)
+		return mcpServerCreatorTestResponse{
+			Success:     false,
+			ExitCode:    1,
+			Stdout:      stdout,
+			Stderr:      setupErr.Error() + stderrSuffix(stderr),
+			SandboxPath: sandboxPath,
+			SessionKind: "worker",
+			Hidden:      true,
+			DurationMS:  duration.Milliseconds(),
+			ToolTrail:   toolTrail,
+		}, nil
+	}
 	server, err := loadMCPServerCreatorManifest(targetDir, cleanFiles, draft.Name)
 	if err != nil {
 		return mcpServerCreatorTestResponse{}, err
@@ -259,14 +503,12 @@ func testMCPServerCreatorDraft(ctx context.Context, workspaceDir string, draft m
 
 	runCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	start := time.Now()
 	client := mcp.NewClient([]config.MCPServer{server})
 	client.SetCommandAllowlist([]string{server.Command})
 	defer client.Close()
 
 	status := "pass"
 	exitCode := 0
-	var stderr string
 	tools, listErr := client.ListTools(runCtx)
 	if listErr != nil {
 		status = "fail"
@@ -275,7 +517,7 @@ func testMCPServerCreatorDraft(ctx context.Context, workspaceDir string, draft m
 			status = "timeout"
 			exitCode = -1
 		}
-		stderr = listErr.Error()
+		stderr = strings.TrimSpace(strings.Join(nonEmptyStrings(stderr, listErr.Error()), "\n"))
 	}
 	toolNames := make([]string, 0, len(tools))
 	for _, tool := range tools {
@@ -295,14 +537,23 @@ func testMCPServerCreatorDraft(ctx context.Context, workspaceDir string, draft m
 				status = "timeout"
 				exitCode = -1
 			}
-			stderr = callErr.Error()
+			stderr = strings.TrimSpace(strings.Join(nonEmptyStrings(stderr, callErr.Error()), "\n"))
 		}
 	}
 	duration := time.Since(start)
 	success := status == "pass"
+	toolTrail = append(toolTrail, mcpServerCreatorToolTrail{
+		Tool:       "mcp_stdio",
+		Command:    mcpServerCreatorCommandString(server),
+		Cwd:        targetDir,
+		Status:     status,
+		ExitCode:   exitCode,
+		DurationMS: duration.Milliseconds(),
+	})
 	return mcpServerCreatorTestResponse{
 		Success:       success,
 		ExitCode:      exitCode,
+		Stdout:        stdout,
 		Stderr:        stderr,
 		Tools:         toolNames,
 		CallResult:    callResult,
@@ -311,17 +562,77 @@ func testMCPServerCreatorDraft(ctx context.Context, workspaceDir string, draft m
 		SessionKind:   "worker",
 		Hidden:        true,
 		DurationMS:    duration.Milliseconds(),
-		ToolTrail: []mcpServerCreatorToolTrail{
-			{
-				Tool:       "mcp_stdio",
-				Command:    mcpServerCreatorCommandString(server),
-				Cwd:        targetDir,
-				Status:     status,
-				ExitCode:   exitCode,
-				DurationMS: duration.Milliseconds(),
-			},
-		},
+		ToolTrail:     toolTrail,
 	}, nil
+}
+
+func setupMCPServerCreatorSandboxDependencies(ctx context.Context, targetDir string, files []mcpServerCreatorFile) ([]mcpServerCreatorToolTrail, string, string, error) {
+	if !mcpServerCreatorHasFile(files, "package.json") {
+		return nil, "", "", nil
+	}
+	start := time.Now()
+	cmd := exec.CommandContext(ctx, "npm", "install", "--no-audit", "--no-fund", "--package-lock=false", "--loglevel=error")
+	cmd.Dir = targetDir
+	cmd.Env = append(os.Environ(), "npm_config_update_notifier=false")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	status := "pass"
+	exitCode := 0
+	if err != nil {
+		status = "fail"
+		exitCode = 1
+		if ctx.Err() == context.DeadlineExceeded {
+			status = "timeout"
+			exitCode = -1
+		} else if exitErr, ok := err.(*exec.ExitError); ok {
+			exitCode = exitErr.ExitCode()
+		}
+	}
+	trail := []mcpServerCreatorToolTrail{
+		{
+			Tool:       "npm_install",
+			Command:    "npm install --no-audit --no-fund --package-lock=false --loglevel=error",
+			Cwd:        targetDir,
+			Status:     status,
+			ExitCode:   exitCode,
+			DurationMS: time.Since(start).Milliseconds(),
+		},
+	}
+	if err != nil {
+		return trail, stdout.String(), stderr.String(), fmt.Errorf("npm install failed: %w", err)
+	}
+	return trail, stdout.String(), stderr.String(), nil
+}
+
+func mcpServerCreatorHasFile(files []mcpServerCreatorFile, path string) bool {
+	for _, file := range files {
+		if file.Path == path {
+			return true
+		}
+	}
+	return false
+}
+
+func stderrSuffix(stderr string) string {
+	stderr = strings.TrimSpace(stderr)
+	if stderr == "" {
+		return ""
+	}
+	return "\n" + stderr
+}
+
+func nonEmptyStrings(values ...string) []string {
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			out = append(out, value)
+		}
+	}
+	return out
 }
 
 func cleanMCPServerCreatorDraftFiles(draft mcpServerCreatorDraftResponse) ([]mcpServerCreatorFile, error) {

@@ -875,6 +875,7 @@ func recordSessionToolConfigSignal(tracker *usage.Tracker, sessionID string, con
 		"tools_custom":    boolDimension(config.ToolsCustom),
 		"skills_custom":   boolDimension(config.SkillsCustom),
 		"commands_custom": boolDimension(config.CommandsCustom),
+		"mcp_custom":      boolDimension(config.MCPCustom),
 	}
 	if len(config.ToolsEnabled) > 0 {
 		dimensions["tools_enabled_count"] = fmt.Sprintf("%d", len(config.ToolsEnabled))

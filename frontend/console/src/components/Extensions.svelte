@@ -5,14 +5,15 @@
     getHubInstalled,
     getHubSkillContent,
     getSkillDetail,
+    getExtensionsHealth,
     getDisabledExtensions,
     setExtensionDisabled,
+    repairExtension,
     APIRequestError,
     hubInstall,
     hubUninstall,
     hubUpdate,
     listSkills,
-    listPlugins,
     listMCPServers,
     reloadExtensions,
   } from '../lib/api'
@@ -23,10 +24,12 @@
   import type {
     HubRegistry,
     HubRegistryEntry,
-    HubInstalledItem,
+    HubInstalled,
     SkillDef,
-    PluginDef,
     MCPServerStatus,
+    ExtensionHealthItem,
+    ExtensionHealthResponse,
+    ExtensionHealthStatus,
     SkillCreatorSaveResponse,
     MCPServerCreatorSaveResponse,
     SkillSandboxReport,
@@ -49,17 +52,16 @@
 
   // Installed tab
   let skills: SkillDef[] = $state([])
-  let plugins: PluginDef[] = $state([])
   let mcpServers: MCPServerStatus[] = $state([])
-  let installed: { skills: HubInstalledItem[]; plugins: HubInstalledItem[]; mcps: HubInstalledItem[] } = $state({ skills: [], plugins: [], mcps: [] })
+  let installed: HubInstalled = $state({ skills: [], plugins: [], mcps: [] })
   let disabledSkills: Set<string> = $state(new Set())
-  let disabledPlugins: Set<string> = $state(new Set())
   let disabledMCPs: Set<string> = $state(new Set())
+  let extensionHealth: ExtensionHealthResponse | null = $state(null)
   let reloading = $state(false)
   let updating = $state(false)
+  let diagnosing = $state(false)
   let togglingItem = $state('')
-  let installedPluginsOpen = $state(false)
-  let hubPluginsOpen = $state(false)
+  let repairingItem = $state('')
   let skillCreatorOpen = $state(false)
   let mcpCreatorOpen = $state(false)
 
@@ -91,6 +93,30 @@
   function sandboxTitle(report: SkillSandboxReport): string {
     const name = report.package_name || report.skill_name || 'package'
     return report.package_type ? `${report.package_type} ${name}` : name
+  }
+
+  function healthItem(kind: 'skill' | 'mcp', name: string): ExtensionHealthItem | null {
+    const list = kind === 'skill' ? extensionHealth?.skills : extensionHealth?.mcp_servers
+    return list?.find((item) => item.name.toLowerCase() === name.toLowerCase()) ?? null
+  }
+
+  function healthLabel(status: ExtensionHealthStatus): string {
+    if (status === 'pass') return $t.extensions.healthPass
+    if (status === 'warn') return $t.extensions.healthWarn
+    if (status === 'fail') return $t.extensions.healthFail
+    return $t.extensions.healthUnknown
+  }
+
+  function healthBadgeClass(item: ExtensionHealthItem | null): string {
+    if (!item) return 'badge badge-default'
+    if (item.status === 'pass') return 'badge badge-success'
+    if (item.status === 'fail') return 'badge badge-error'
+    if (item.status === 'warn') return 'badge badge-warning'
+    return 'badge badge-default'
+  }
+
+  function healthDetailVisible(item: ExtensionHealthItem | null): boolean {
+    return Boolean(item?.checks?.length && item.status !== 'pass')
   }
 
   type QualitySignal = { label: string; value: string; title?: string }
@@ -183,32 +209,27 @@
     loading = true
     error = ''
     try {
-      const [s, p, m, inst, dis] = await Promise.all([listSkills(), listPlugins(), listMCPServers(), getHubInstalled(), getDisabledExtensions()])
+      const [s, m, inst, dis] = await Promise.all([listSkills(), listMCPServers(), getHubInstalled(), getDisabledExtensions()])
       skills = s
-      plugins = p
       mcpServers = m
       installed = inst
       // Hub DB items (can be uninstalled via hub)
       const hubNames = new Set<string>()
       for (const i of inst.skills) hubNames.add('skill:' + i.name)
-      for (const i of inst.plugins) hubNames.add('plugin:' + i.name)
       for (const i of inst.mcps) hubNames.add('mcp:' + i.name)
       hubInstalledNames = hubNames
 
       // All loaded names (hub + runtime) for "Installed" badge in Hub tab
       const names = new Set(hubNames)
       for (const sk of s) names.add('skill:' + sk.name)
-      for (const pl of p) names.add('plugin:' + (pl.id || pl.name))
       for (const mc of m) names.add('mcp:' + mc.name)
       installedNames = names
       disabledSkills = new Set((dis.skills ?? []).map((n: string) => n.toLowerCase()))
-      disabledPlugins = new Set((dis.plugins ?? []).map((n: string) => n.toLowerCase()))
       disabledMCPs = new Set((dis.mcp_servers ?? []).map((n: string) => n.toLowerCase()))
 
       // Track installed versions for update detection
       const versions = new Map<string, string>()
       for (const i of inst.skills) versions.set('skill:' + i.name, i.version || '')
-      for (const i of inst.plugins) versions.set('plugin:' + i.name, i.version || '')
       for (const i of inst.mcps) versions.set('mcp:' + i.name, i.version || '')
       installedVersions = versions
     } catch (e) {
@@ -226,13 +247,12 @@
       registry = {
         version: raw.version ?? 0,
         skills: raw.skills ?? [],
-        plugins: raw.plugins ?? [],
+        plugins: [],
         mcp_servers: raw.mcp_servers ?? [],
       }
       // Track registry versions for update detection
       const regVers = new Map<string, string>()
       for (const e of registry.skills) regVers.set('skill:' + e.name, e.version || '')
-      for (const e of registry.plugins) regVers.set('plugin:' + e.name, e.version || '')
       for (const e of registry.mcp_servers) regVers.set('mcp:' + e.name, e.version || '')
       registryVersions = regVers
     } catch (e) {
@@ -294,7 +314,6 @@
   function isDisabledExt(kind: string, name: string): boolean {
     const key = name.toLowerCase()
     if (kind === 'skill') return disabledSkills.has(key)
-    if (kind === 'plugin') return disabledPlugins.has(key)
     if (kind === 'mcp') return disabledMCPs.has(key)
     return false
   }
@@ -330,6 +349,36 @@
     }
   }
 
+  async function handleRunDiagnostics() {
+    diagnosing = true
+    error = ''
+    success = ''
+    try {
+      extensionHealth = await getExtensionsHealth()
+      success = $t.extensions.diagnosticsSuccess(extensionHealth.skills.length, extensionHealth.mcp_servers.length)
+    } catch (e) {
+      error = e instanceof Error ? e.message : $t.extensions.diagnosticsFailed
+    } finally {
+      diagnosing = false
+    }
+  }
+
+  async function handleRepair(kind: 'skill' | 'mcp', name: string) {
+    repairingItem = kind + ':' + name
+    error = ''
+    success = ''
+    try {
+      await repairExtension(kind, name)
+      success = $t.extensions.repairSuccess(name)
+      await loadInstalled()
+      extensionHealth = await getExtensionsHealth()
+    } catch (e) {
+      error = e instanceof Error ? e.message : $t.extensions.repairFailed
+    } finally {
+      repairingItem = ''
+    }
+  }
+
   async function handleSkillCreated(result: SkillCreatorSaveResponse) {
     success = $t.extensions.skillCreatedSuccess(result.path)
     skillCreatorOpen = false
@@ -339,6 +388,7 @@
   async function handleMCPServerCreated(result: MCPServerCreatorSaveResponse) {
     success = $t.extensions.mcpCreatedSuccess(result.path)
     mcpCreatorOpen = false
+    await reloadExtensions()
     await loadInstalled()
   }
 
@@ -348,7 +398,7 @@
     success = ''
     try {
       const result = await hubUpdate()
-      const total = (result.updated_skills?.length ?? 0) + (result.updated_plugins?.length ?? 0)
+      const total = result.updated_skills?.length ?? 0
       success = total > 0 ? $t.extensions.updatedTotal(total) : $t.extensions.everythingUpToDate
       await loadInstalled()
     } catch (e) {
@@ -444,6 +494,9 @@
       <button class="btn btn-ghost btn-sm" onclick={() => { mcpCreatorOpen = true }}>
         {$t.extensions.createMCP}
       </button>
+      <button class="btn btn-ghost btn-sm" disabled={diagnosing} onclick={handleRunDiagnostics}>
+        {diagnosing ? $t.extensions.diagnosing : $t.extensions.diagnose}
+      </button>
       <button class="btn btn-ghost btn-sm" disabled={reloading} onclick={handleReload}>
         {reloading ? $t.extensions.reloading : $t.extensions.reload}
       </button>
@@ -483,9 +536,19 @@
                     <div class="ext-meta">
                       {#if s.source}<span class="badge badge-default">{s.source}</span>{/if}
                       {#if s.user_invocable}<span class="badge badge-accent" title="User can invoke this skill from chat">{skillSlashLabel(s)}</span>{/if}
+                      {#if healthItem('skill', s.name)}
+                        <span class={healthBadgeClass(healthItem('skill', s.name))} title={healthItem('skill', s.name)?.summary || ''}>
+                          {healthLabel(healthItem('skill', s.name)?.status || 'unknown')}
+                        </span>
+                      {/if}
                     </div>
                   </div>
                   <div class="ext-item-actions">
+                    {#if healthItem('skill', s.name)?.repairable}
+                      <button class="btn btn-warning btn-sm" disabled={repairingItem === 'skill:' + s.name} onclick={() => handleRepair('skill', s.name)}>
+                        {repairingItem === 'skill:' + s.name ? $t.extensions.repairing : $t.extensions.repair}
+                      </button>
+                    {/if}
                     <button class="toggle-switch" class:on={!isDisabledExt('skill', s.name)} disabled={togglingItem === 'skill:' + s.name} onclick={() => handleToggle('skill', s.name)}>{isDisabledExt('skill', s.name) ? $t.extensions.off : $t.extensions.on}</button>
                     {#if hasUpdate('skill', s.name)}
                       <button class="btn btn-warning btn-sm" disabled={busyItem === 'skill:' + s.name} onclick={() => handleInstall('skill', s.name)} title={$t.extensions.updateTooltip(registryVersion('skill', s.name))}>
@@ -497,6 +560,20 @@
                     {/if}
                   </div>
                 </div>
+                {#if healthDetailVisible(healthItem('skill', s.name))}
+                  <div class="health-detail">
+                    {#each healthItem('skill', s.name)?.checks ?? [] as check}
+                      <div class="health-check" class:failed={check.status === 'fail'} class:warn={check.status === 'warn' || check.status === 'unknown'}>
+                        <span class={check.status === 'pass' ? 'badge badge-success' : check.status === 'fail' ? 'badge badge-error' : 'badge badge-warning'}>{healthLabel(check.status)}</span>
+                        <div class="health-check-body">
+                          <strong>{check.name}</strong>
+                          {#if check.message}<span>{check.message}</span>{/if}
+                          {#if check.detail}<code>{check.detail}</code>{/if}
+                        </div>
+                      </div>
+                    {/each}
+                  </div>
+                {/if}
                 {#if isDetailOpen('skill', s.name, 'installed')}
                   <div class="ext-detail">
                     {#if detailLoading}<div class="ext-detail-loading">{$t.extensions.detailLoading}</div>
@@ -510,71 +587,6 @@
                 {/if}
               </div>
             {/each}
-          </div>
-        {/if}
-      </section>
-
-      <!-- Plugins -->
-      <section class="card ext-section">
-        <div class="card-header">
-          <button
-            class="section-toggle"
-            type="button"
-            aria-expanded={installedPluginsOpen}
-            aria-controls="installed-plugins-panel"
-            onclick={() => { installedPluginsOpen = !installedPluginsOpen }}
-          >
-            <span class="detail-chevron" class:open={installedPluginsOpen}>{'\u25b8'}</span>
-            <span class="section-heading">
-              <span class="card-title-group">
-                <span class="card-title">{$t.extensions.pluginsTitle}</span>
-                <span class="badge badge-warning" title={$t.extensions.pluginsDeprecatedTooltip}>{$t.extensions.pluginsDeprecated}</span>
-                <span class="badge badge-default" title={$t.extensions.pluginsAdvancedTooltip}>{$t.extensions.pluginsAdvancedLegacy}</span>
-              </span>
-              <span class="section-definition">{$t.extensions.pluginsDefinition}</span>
-            </span>
-          </button>
-          <span class="badge badge-default">{plugins.length}</span>
-        </div>
-        <div class="plugin-policy-note">
-          {$t.extensions.pluginsPolicyNote}
-        </div>
-        {#if installedPluginsOpen}
-          <div id="installed-plugins-panel">
-            {#if plugins.length === 0}
-              <div class="empty-state"><p>{$t.extensions.noPlugins}</p></div>
-            {:else}
-              <div class="ext-list">
-                {#each plugins as p}
-                  <div class="ext-item">
-                    <div class="ext-item-info">
-                      <strong>{p.name || p.id}</strong>
-                      <span class="ext-desc">{p.description || '\u2014'}</span>
-                      {#if p.version}<span class="ext-meta-tag">v{p.version}</span>{/if}
-                    </div>
-                    <div class="ext-item-actions">
-                      <button
-                        class="toggle-switch"
-                        class:on={!isDisabledExt('plugin', p.id || p.name)}
-                        disabled={togglingItem === 'plugin:' + (p.id || p.name)}
-                        title={isDisabledExt('plugin', p.id || p.name) ? $t.extensions.enable : $t.extensions.disable}
-                        onclick={() => handleToggle('plugin', p.id || p.name)}
-                      >{isDisabledExt('plugin', p.id || p.name) ? $t.extensions.off : $t.extensions.on}</button>
-                      {#if hasUpdate('plugin', p.id || p.name)}
-                        <button class="btn btn-warning btn-sm" disabled={busyItem === 'plugin:' + (p.id || p.name)} onclick={() => handleInstall('plugin', p.id || p.name)} title={$t.extensions.updateTooltip(registryVersion('plugin', p.id || p.name))}>
-                          {busyItem === 'plugin:' + (p.id || p.name) ? $t.extensions.updateBusy : $t.extensions.update}
-                        </button>
-                      {/if}
-                      {#if isHubInstalled('plugin', p.id || p.name)}
-                        <button class="btn btn-danger btn-sm" disabled={busyItem === 'plugin:' + (p.id || p.name)} onclick={() => handleUninstall('plugin', p.id || p.name)}>
-                          {busyItem === 'plugin:' + (p.id || p.name) ? $t.extensions.updateBusy : $t.extensions.uninstall}
-                        </button>
-                      {/if}
-                    </div>
-                  </div>
-                {/each}
-              </div>
-            {/if}
           </div>
         {/if}
       </section>
@@ -593,34 +605,64 @@
         {:else}
           <div class="ext-list">
             {#each mcpServers as m}
-              <div class="ext-item">
-                <div class="ext-item-info">
-                  <strong>{m.name}</strong>
-                  <div class="ext-meta">
-                    {#if m.transport}<span class="badge badge-default">{m.transport}</span>{/if}
-                    {#if m.source}<span class="ext-meta-tag">{m.source}</span>{/if}
-                    {#if m.tools_count}<span class="ext-meta-tag">{$t.extensions.toolsCount(m.tools_count)}</span>{/if}
+              <div class="ext-item-wrapper">
+                <div class="ext-item">
+                  <div class="ext-item-info">
+                    <strong>{m.name}</strong>
+                    <div class="ext-meta">
+                      {#if m.transport}<span class="badge badge-default">{m.transport}</span>{/if}
+                      {#if m.source}<span class="ext-meta-tag">{m.source}</span>{/if}
+                      {#if m.connected !== undefined}
+                        <span class={m.connected ? 'badge badge-success' : 'badge badge-error'}>{m.connected ? $t.extensions.connected : $t.extensions.disconnected}</span>
+                      {/if}
+                      {#if m.tool_count}<span class="ext-meta-tag">{$t.extensions.toolsCount(m.tool_count)}</span>{/if}
+                      {#if healthItem('mcp', m.name)}
+                        <span class={healthBadgeClass(healthItem('mcp', m.name))} title={healthItem('mcp', m.name)?.summary || ''}>
+                          {healthLabel(healthItem('mcp', m.name)?.status || 'unknown')}
+                        </span>
+                      {/if}
+                      {#if m.error}<span class="ext-error">{m.error}</span>{/if}
+                    </div>
+                  </div>
+                  <div class="ext-item-actions">
+                    {#if healthItem('mcp', m.name)?.repairable}
+                      <button class="btn btn-warning btn-sm" disabled={repairingItem === 'mcp:' + m.name} onclick={() => handleRepair('mcp', m.name)}>
+                        {repairingItem === 'mcp:' + m.name ? $t.extensions.repairing : $t.extensions.repair}
+                      </button>
+                    {/if}
+                    <button
+                      class="toggle-switch"
+                      class:on={!isDisabledExt('mcp', m.name)}
+                      disabled={togglingItem === 'mcp:' + m.name}
+                      title={isDisabledExt('mcp', m.name) ? $t.extensions.enable : $t.extensions.disable}
+                      onclick={() => handleToggle('mcp', m.name)}
+                    >{isDisabledExt('mcp', m.name) ? $t.extensions.off : $t.extensions.on}</button>
+                    {#if hasUpdate('mcp', m.name)}
+                      <button class="btn btn-warning btn-sm" disabled={busyItem === 'mcp:' + m.name} onclick={() => handleInstall('mcp', m.name)} title={$t.extensions.updateTooltip(registryVersion('mcp', m.name))}>
+                        {busyItem === 'mcp:' + m.name ? $t.extensions.updateBusy : $t.extensions.update}
+                      </button>
+                    {/if}
+                    {#if isHubInstalled('mcp', m.name)}
+                      <button class="btn btn-danger btn-sm" disabled={busyItem === 'mcp:' + m.name} onclick={() => handleUninstall('mcp', m.name)}>
+                        {busyItem === 'mcp:' + m.name ? $t.extensions.updateBusy : $t.extensions.uninstall}
+                      </button>
+                    {/if}
                   </div>
                 </div>
-                <div class="ext-item-actions">
-                  <button
-                    class="toggle-switch"
-                    class:on={!isDisabledExt('mcp', m.name)}
-                    disabled={togglingItem === 'mcp:' + m.name}
-                    title={isDisabledExt('mcp', m.name) ? $t.extensions.enable : $t.extensions.disable}
-                    onclick={() => handleToggle('mcp', m.name)}
-                  >{isDisabledExt('mcp', m.name) ? $t.extensions.off : $t.extensions.on}</button>
-                  {#if hasUpdate('mcp', m.name)}
-                    <button class="btn btn-warning btn-sm" disabled={busyItem === 'mcp:' + m.name} onclick={() => handleInstall('mcp', m.name)} title={$t.extensions.updateTooltip(registryVersion('mcp', m.name))}>
-                      {busyItem === 'mcp:' + m.name ? $t.extensions.updateBusy : $t.extensions.update}
-                    </button>
-                  {/if}
-                  {#if isHubInstalled('mcp', m.name)}
-                    <button class="btn btn-danger btn-sm" disabled={busyItem === 'mcp:' + m.name} onclick={() => handleUninstall('mcp', m.name)}>
-                      {busyItem === 'mcp:' + m.name ? $t.extensions.updateBusy : $t.extensions.uninstall}
-                    </button>
-                  {/if}
-                </div>
+                {#if healthDetailVisible(healthItem('mcp', m.name))}
+                  <div class="health-detail">
+                    {#each healthItem('mcp', m.name)?.checks ?? [] as check}
+                      <div class="health-check" class:failed={check.status === 'fail'} class:warn={check.status === 'warn' || check.status === 'unknown'}>
+                        <span class={check.status === 'pass' ? 'badge badge-success' : check.status === 'fail' ? 'badge badge-error' : 'badge badge-warning'}>{healthLabel(check.status)}</span>
+                        <div class="health-check-body">
+                          <strong>{check.name}</strong>
+                          {#if check.message}<span>{check.message}</span>{/if}
+                          {#if check.detail}<code>{check.detail}</code>{/if}
+                        </div>
+                      </div>
+                    {/each}
+                  </div>
+                {/if}
               </div>
             {/each}
           </div>
@@ -682,65 +724,6 @@
             </div>
           {/each}
         </div>
-      </section>
-
-      <!-- Hub Plugins -->
-      <section class="card ext-section">
-        <div class="card-header">
-          <button
-            class="section-toggle"
-            type="button"
-            aria-expanded={hubPluginsOpen}
-            aria-controls="hub-plugins-panel"
-            onclick={() => { hubPluginsOpen = !hubPluginsOpen }}
-          >
-            <span class="detail-chevron" class:open={hubPluginsOpen}>{'\u25b8'}</span>
-            <span class="section-heading">
-              <span class="card-title-group">
-                <span class="card-title">{$t.extensions.pluginsTitle}</span>
-                <span class="badge badge-warning" title={$t.extensions.pluginsDeprecatedTooltip}>{$t.extensions.pluginsDeprecated}</span>
-                <span class="badge badge-default" title={$t.extensions.pluginsAdvancedTooltip}>{$t.extensions.pluginsAdvancedLegacy}</span>
-              </span>
-              <span class="section-definition">{$t.extensions.pluginsDefinition}</span>
-            </span>
-          </button>
-          <span class="badge badge-default">{$t.extensions.available(registry.plugins.length)}</span>
-        </div>
-        <div class="plugin-policy-note">
-          {$t.extensions.pluginsPolicyNote}
-        </div>
-        {#if hubPluginsOpen}
-          <div id="hub-plugins-panel" class="ext-list">
-            {#each registry.plugins as entry}
-              <div class="ext-item">
-                <div class="ext-item-info">
-                  <div class="ext-item-top">
-                    <strong>{entry.name}</strong>
-                    <span class="ext-version">{$t.extensions.versionPrefix(entry.version)}</span>
-                  </div>
-                  <span class="ext-desc">{entry.description}</span>
-                  {#if entry.tags?.length}
-                    <div class="ext-tags">
-                      {#each entry.tags as tag}<span class="ext-tag">{tag}</span>{/each}
-                    </div>
-                  {/if}
-                  {@render renderQuality(entry)}
-                </div>
-                {#if hasUpdate('plugin', entry.name)}
-                  <button class="btn btn-warning btn-sm" disabled={busyItem === 'plugin:' + entry.name} onclick={() => handleInstall('plugin', entry.name)}>
-                    {busyItem === 'plugin:' + entry.name ? $t.extensions.updating : $t.extensions.update}
-                  </button>
-                {:else if isInstalled('plugin', entry.name)}
-                  <span class="badge badge-success">{$t.extensions.installed}</span>
-                {:else}
-                  <button class="btn btn-primary btn-sm" disabled={busyItem === 'plugin:' + entry.name} onclick={() => handleInstall('plugin', entry.name)}>
-                    {busyItem === 'plugin:' + entry.name ? $t.extensions.installing : $t.extensions.install}
-                  </button>
-                {/if}
-              </div>
-            {/each}
-          </div>
-        {/if}
       </section>
 
       <!-- Hub MCP Servers -->
@@ -902,33 +885,9 @@
     color: var(--text-secondary);
   }
 
-  .section-toggle {
-    display: flex;
-    align-items: flex-start;
-    gap: var(--space-2);
-    min-width: 0;
-    padding: 0;
-    border: none;
-    background: transparent;
-    color: inherit;
-    cursor: pointer;
-  }
-  .section-toggle:hover .card-title { color: var(--primary); }
-  .section-toggle .detail-chevron { margin-top: 2px; }
   .section-heading { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; }
   .section-definition { color: var(--text-secondary); font-size: var(--text-xs); font-weight: 400; line-height: 1.4; }
-  .card-title-group { display: flex; align-items: center; gap: var(--space-2); min-width: 0; flex-wrap: wrap; }
   .ext-section { margin-bottom: var(--space-2); }
-  .plugin-policy-note {
-    margin: calc(-1 * var(--space-2)) 0 var(--space-3);
-    padding: var(--space-2) var(--space-3);
-    border: 1px solid var(--warning-muted);
-    border-radius: var(--radius-md);
-    background: rgba(224, 145, 69, 0.08);
-    color: var(--text-secondary);
-    font-size: var(--text-xs);
-    line-height: 1.45;
-  }
   .ext-list { display: flex; flex-direction: column; }
 
   .ext-item {
@@ -952,6 +911,15 @@
   .ext-version { font-family: var(--font-mono); font-size: 10px; color: var(--text-ghost); }
   .ext-meta { display: flex; gap: var(--space-1); flex-wrap: wrap; margin-top: 2px; }
   .ext-meta-tag { font-family: var(--font-mono); font-size: 10px; color: var(--text-ghost); }
+  .ext-error {
+    max-width: 520px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--red);
+    font-family: var(--font-mono);
+    font-size: 10px;
+  }
 
   .ext-item-actions { display: flex; align-items: center; gap: var(--space-2); flex-shrink: 0; }
 
@@ -1001,6 +969,51 @@
   .ext-md :global(pre) { background: var(--surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: var(--space-2); overflow-x: auto; margin: var(--space-2) 0; font-family: var(--font-mono); font-size: var(--text-xs); }
   .ext-md :global(pre code) { background: none; padding: 0; }
   .ext-md :global(strong) { font-weight: 600; color: var(--text-primary); }
+
+  .health-detail {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-4) var(--space-3);
+    background: var(--surface-base);
+    border-top: 1px solid var(--border-subtle);
+  }
+  .health-check {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: var(--space-2);
+    align-items: flex-start;
+    padding: var(--space-2);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    background: rgba(255, 255, 255, 0.025);
+  }
+  .health-check.failed { border-color: rgba(248, 113, 113, 0.28); }
+  .health-check.warn { border-color: rgba(251, 191, 36, 0.24); }
+  .health-check-body {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+    color: var(--text-secondary);
+    font-size: var(--text-xs);
+  }
+  .health-check-body strong {
+    color: var(--text-primary);
+    font-family: var(--font-display);
+    font-size: var(--text-xs);
+  }
+  .health-check-body code {
+    width: fit-content;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
+    background: rgba(255, 255, 255, 0.06);
+    padding: 2px 5px;
+    border-radius: var(--radius-sm);
+  }
 
   .ext-tags { display: flex; gap: var(--space-1); flex-wrap: wrap; margin-top: 2px; }
   .ext-tag {

@@ -37,6 +37,7 @@ type SessionToolConfig struct {
 	CommandsEnabled  []string `json:"commands_enabled,omitempty"`
 	CommandsCustom   bool     `json:"commands_custom,omitempty"`
 	MCPEnabled       []string `json:"mcp_enabled,omitempty"`
+	MCPCustom        bool     `json:"mcp_custom,omitempty"`
 }
 
 type SessionAutomationConsent struct {
@@ -1164,6 +1165,7 @@ func cloneSessionToolConfig(config *SessionToolConfig) *SessionToolConfig {
 		CommandsEnabled:  append([]string(nil), config.CommandsEnabled...),
 		CommandsCustom:   config.CommandsCustom,
 		MCPEnabled:       append([]string(nil), config.MCPEnabled...),
+		MCPCustom:        config.MCPCustom,
 	}
 }
 

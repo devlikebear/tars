@@ -1025,20 +1025,47 @@ export type SkillDef = {
 
 export type CommandDef = SkillDef
 
-export type PluginDef = {
-  id: string
-  name: string
-  description?: string
-  version?: string
-  available?: boolean
-}
-
 export type MCPServerStatus = {
   name: string
+  command?: string
+  url?: string
   transport?: string
-  status?: string
   source?: string
-  tools_count?: number
+  auth_mode?: string
+  connected?: boolean
+  tool_count?: number
+  error?: string
+}
+
+export type ExtensionHealthStatus = 'pass' | 'warn' | 'fail' | 'unknown'
+
+export type ExtensionHealthCheck = {
+  name: string
+  status: ExtensionHealthStatus
+  message?: string
+  detail?: string
+}
+
+export type ExtensionHealthItem = {
+  kind: 'skill' | 'mcp' | string
+  name: string
+  status: ExtensionHealthStatus
+  summary?: string
+  repairable?: boolean
+  checks?: ExtensionHealthCheck[]
+}
+
+export type ExtensionHealthResponse = {
+  skills: ExtensionHealthItem[]
+  mcp_servers: ExtensionHealthItem[]
+}
+
+export type ExtensionRepairResponse = {
+  repaired: boolean
+  kind: string
+  name: string
+  actions?: ExtensionHealthCheck[]
+  reloaded?: boolean
 }
 
 export type SkillCreatorFile = {
@@ -1158,11 +1185,19 @@ export type MCPServerCreatorFile = {
   content: string
 }
 
+export type MCPServerCreatorConversationMessage = {
+  role: 'user' | 'assistant'
+  content: string
+}
+
 export type MCPServerCreatorDraftRequest = {
-  name: string
-  description: string
+  prompt?: string
+  conversation?: MCPServerCreatorConversationMessage[]
+  use_llm?: boolean
+  name?: string
+  description?: string
   language: 'python' | 'node'
-  use_case: string
+  use_case?: string
   tools?: MCPServerCreatorToolSpec[]
 }
 
@@ -1173,6 +1208,8 @@ export type MCPServerCreatorDraftResponse = {
   use_case: string
   tools: MCPServerCreatorToolSpec[]
   files: MCPServerCreatorFile[]
+  draft_source?: string
+  assistant_message?: string
   warnings?: string[]
 }
 
@@ -1562,6 +1599,7 @@ export type SessionEffectiveConfig = {
       commands_enabled?: string[]
       commands_custom?: boolean
       mcp_enabled?: string[]
+      mcp_custom?: boolean
     }
     prompt_override: string
     mcp_servers_extra?: Array<{ name: string; command: string; args?: string[]; env?: Record<string, string> }>

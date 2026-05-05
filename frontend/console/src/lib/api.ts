@@ -26,6 +26,8 @@ import type {
   AgentRuntimeSubagentRecommendationsResponse,
   AgentRuntimeSubagentsResponse,
   HubRegistry,
+  ExtensionHealthResponse,
+  ExtensionRepairResponse,
   MCPServerStatus,
   MemoryAsset,
   MemoryCandidateAction,
@@ -37,7 +39,6 @@ import type {
   MemorySearchResult,
   SyspromptFile,
   SyspromptPreview,
-  PluginDef,
   SkillDef,
   CreateCronJobRequest,
   CronJob,
@@ -770,6 +771,7 @@ export type SessionToolConfig = {
   commands_enabled?: string[]
   commands_custom?: boolean
   mcp_enabled?: string[]
+  mcp_custom?: boolean
 }
 
 export async function getSessionConfig(sessionId: string): Promise<SessionToolConfig> {
@@ -1108,12 +1110,20 @@ export async function listSkills(sessionId?: string): Promise<SkillDef[]> {
   return requestJSON<SkillDef[]>(`/v1/skills${qs ? `?${qs}` : ''}`)
 }
 
-export async function listPlugins(): Promise<PluginDef[]> {
-  return requestJSON<PluginDef[]>('/v1/plugins')
-}
-
 export async function listMCPServers(): Promise<MCPServerStatus[]> {
   return requestJSON<MCPServerStatus[]>('/v1/mcp/servers')
+}
+
+export async function getExtensionsHealth(): Promise<ExtensionHealthResponse> {
+  return requestJSON<ExtensionHealthResponse>('/v1/runtime/extensions/health')
+}
+
+export async function repairExtension(kind: string, name: string): Promise<ExtensionRepairResponse> {
+  return requestJSON<ExtensionRepairResponse>('/v1/runtime/extensions/repair', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ kind, name }),
+  })
 }
 
 export async function getDisabledExtensions(): Promise<{ skills: string[]; plugins: string[]; mcp_servers: string[] }> {

@@ -532,12 +532,12 @@ func buildAPIMux(
 	compactHandler := newCompactAPIHandler(cfg.WorkspaceDir, sessionStore, deps.llmRouter, logger)
 	cronHandler := newCronAPIHandlerWithRunnerAndResolver(cronStoreResolver, cronRunner, logger)
 	mcpHandler := newMCPAPIHandler(mcpClient, logger)
-	extensionsHandler := newExtensionsAPIHandlerWithSessionStore(extensionsManager, logger, func() (bool, int) {
+	extensionsHandler := newExtensionsAPIHandlerWithHealth(extensionsManager, logger, func() (bool, int) {
 		if agentRuntime == nil {
 			return false, 0
 		}
 		return true, refreshAgentRuntimeExecutors("extensions_reload")
-	}, sessionStore)
+	}, sessionStore, extensionHealthOptions{MCPProvider: mcpClient, WorkspaceDir: cfg.WorkspaceDir})
 	agentRunsHandler := newAgentRunsAPIHandlerWithInflightLimit(agentRuntime, logger, cfg.APIMaxInflightAgentRuns)
 	agentSubagentsHandler := newAgentRuntimeSubagentsAPIHandler(agentRuntime, cfg, func() {
 		_ = refreshAgentRuntimeExecutors("agentruntime_subagents_update")
@@ -590,7 +590,7 @@ func buildAPIMux(
 	skillhubHandler := newSkillhubAPIHandler(hubInstaller, extensionsManager, logger)
 	skillCreatorHandler := newSkillCreatorAPIHandler(cfg.WorkspaceDir, logger, nil)
 	skillExtractionHandler := newSkillExtractionAPIHandler(cfg.WorkspaceDir, sessionStore, deps.llmRouter, logger)
-	mcpCreatorHandler := newMCPServerCreatorAPIHandler(cfg.WorkspaceDir, logger, nil)
+	mcpCreatorHandler := newMCPServerCreatorAPIHandler(cfg.WorkspaceDir, logger, nil, deps.llmRouter)
 	gitHandler := newGitAPIHandler(cfg.WorkspaceDir, sessionStore, opsManager, logger)
 	eventsHandler := newEventsAPIHandler(broker, notificationStore, logger)
 	resolvedConfigPath := config.ResolveConfigPath(opts.ConfigPath)
@@ -751,6 +751,8 @@ func registerAPIRoutes(mux *http.ServeMux, handlers apiRouteHandlers) {
 	mux.Handle("/v1/plugins", handlers.extensions)
 	mux.Handle("/v1/runtime/extensions/reload", handlers.extensions)
 	mux.Handle("/v1/runtime/extensions/disabled", handlers.extensions)
+	mux.Handle("/v1/runtime/extensions/health", handlers.extensions)
+	mux.Handle("/v1/runtime/extensions/repair", handlers.extensions)
 	mux.Handle("/v1/agentruntime/agents", handlers.agentRuns)
 	mux.Handle("/v1/agentruntime/runs", handlers.agentRuns)
 	mux.Handle("/v1/agentruntime/runs/", handlers.agentRuns)

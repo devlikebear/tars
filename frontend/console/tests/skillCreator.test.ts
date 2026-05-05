@@ -8,7 +8,7 @@ const apiSource = readFileSync(new URL('../src/lib/api.ts', import.meta.url), 'u
 test('Extensions wires a Skill Creator wizard into the installed Skills section', () => {
   assert.match(extensionsSource, /import SkillCreator from '\.\/SkillCreator\.svelte'/)
   assert.match(extensionsSource, /let skillCreatorOpen = \$state\(false\)/)
-  assert.match(extensionsSource, /\+ Create Skill/)
+  assert.match(extensionsSource, /\{\$t\.extensions\.createSkill\}/)
   assert.match(extensionsSource, /<SkillCreator/)
   assert.match(extensionsSource, /onsaved={handleSkillCreated}/)
 })
@@ -31,4 +31,14 @@ test('Skill Creator component exposes sandbox test controls and output', () => {
   assert.match(source, /testResult/)
   assert.match(source, /stdout/i)
   assert.match(source, /Tool Trail/)
+})
+
+test('Skill Creator modal keeps long forms usable inside the viewport', () => {
+  const source = readFileSync(new URL('../src/components/SkillCreator.svelte', import.meta.url), 'utf8')
+  assert.match(source, /class="creator-body"/)
+  assert.match(source, /class="creator-form-panel"/)
+  assert.match(source, /class="creator-preview-panel"/)
+  assert.match(source, /\.creator-modal\s*\{[\s\S]*height: min\(760px, calc\(100vh - var\(--space-8\) \* 2\)\)/)
+  assert.match(source, /\.creator-form\s*\{[\s\S]*overflow-y: auto/)
+  assert.match(source, /\.creator-actions\s*\{[\s\S]*position: sticky/)
 })

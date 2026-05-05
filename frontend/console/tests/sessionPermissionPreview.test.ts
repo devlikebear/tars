@@ -70,3 +70,13 @@ test('permission preview reports affected skills and MCP servers', () => {
   assert.match(preview.summary, /1 command/)
   assert.match(preview.summary, /1 MCP/)
 })
+
+test('permission preview treats mcp_custom empty allowlist as all MCP disabled', () => {
+  const preview = buildSessionPermissionPreview({}, { mcp_custom: true, mcp_enabled: [] }, {
+    tools,
+    mcpServers: ['github', 'notion'],
+  })
+
+  assert.deepEqual(preview.lostMCPServers, ['github', 'notion'])
+  assert.match(preview.summary, /2 MCP servers disabled/)
+})

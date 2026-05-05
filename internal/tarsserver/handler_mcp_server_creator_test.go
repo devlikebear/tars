@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/devlikebear/tars/internal/llm"
 	"github.com/rs/zerolog"
 )
 
@@ -60,6 +61,83 @@ func TestMCPServerCreatorAPI_DraftAndSaveLocal(t *testing.T) {
 	}
 }
 
+func TestMCPServerCreatorAPI_DraftsFromNaturalLanguageWithLLM(t *testing.T) {
+	workspaceDir := filepath.Join(t.TempDir(), "workspace")
+	router, clients, err := llm.NewFakeRouter(llm.TierStandard, map[llm.Role]llm.Tier{
+		llm.RoleAgentRuntimePlanner: llm.TierStandard,
+	})
+	if err != nil {
+		t.Fatalf("fake router: %v", err)
+	}
+	clients[llm.TierStandard].ChatResponse = llm.ChatResponse{
+		Message: llm.ChatMessage{Role: "assistant", Content: `{
+			"name": "hello-world",
+			"description": "Respond to friendly hello requests.",
+			"language": "node",
+			"use_case": "When called, reply with a friendly Korean greeting.",
+			"tools": [
+				{"name": "say_hello", "description": "Return a friendly Korean greeting."}
+			],
+			"assistant_message": "Node MCP draft is ready for stdio validation."
+		}`},
+	}
+	handler := newMCPServerCreatorAPIHandler(workspaceDir, zerolog.New(ioDiscard{}), nil, router)
+
+	draftRec := postJSON(t, handler, "/v1/admin/mcp-servers/draft", map[string]any{
+		"prompt":   "hello world MCP 서버를 만들어줘. 호출하면 안녕이라고 응답하게 해줘.",
+		"language": "node",
+	})
+	if draftRec.Code != http.StatusOK {
+		t.Fatalf("expected draft 200, got %d body=%q", draftRec.Code, draftRec.Body.String())
+	}
+
+	var draft mcpServerCreatorDraftResponse
+	if err := json.Unmarshal(draftRec.Body.Bytes(), &draft); err != nil {
+		t.Fatalf("decode draft: %v", err)
+	}
+	if clients[llm.TierStandard].ChatCalls != 1 {
+		t.Fatalf("expected one LLM chat call, got %d", clients[llm.TierStandard].ChatCalls)
+	}
+	if draft.Name != "hello-world" || draft.Language != "node" || draft.DraftSource != "llm" {
+		t.Fatalf("unexpected LLM draft metadata: %+v", draft)
+	}
+	if draft.AssistantMessage == "" {
+		t.Fatalf("expected assistant message in LLM draft response")
+	}
+	if len(draft.Tools) != 1 || draft.Tools[0].Name != "say_hello" {
+		t.Fatalf("expected LLM tool signature, got %+v", draft.Tools)
+	}
+	if !mcpDraftContainsFile(draft.Files, "server.mjs", "await server.connect(new StdioServerTransport())") {
+		t.Fatalf("expected runnable Node stdio server, files=%+v", draft.Files)
+	}
+}
+
+func TestMCPServerCreatorAPI_DraftsFromNaturalLanguageHeuristicWithoutName(t *testing.T) {
+	handler := newMCPServerCreatorAPIHandler(filepath.Join(t.TempDir(), "workspace"), zerolog.New(ioDiscard{}), nil)
+
+	draftRec := postJSON(t, handler, "/v1/admin/mcp-servers/draft", map[string]any{
+		"prompt":  "Expose a get time tool that returns the current local time as JSON.",
+		"use_llm": false,
+	})
+	if draftRec.Code != http.StatusOK {
+		t.Fatalf("expected draft 200, got %d body=%q", draftRec.Code, draftRec.Body.String())
+	}
+
+	var draft mcpServerCreatorDraftResponse
+	if err := json.Unmarshal(draftRec.Body.Bytes(), &draft); err != nil {
+		t.Fatalf("decode draft: %v", err)
+	}
+	if draft.Name == "" || draft.Description == "" || draft.UseCase == "" {
+		t.Fatalf("expected prompt-derived metadata, got %+v", draft)
+	}
+	if draft.DraftSource != "heuristic" {
+		t.Fatalf("expected heuristic source, got %q", draft.DraftSource)
+	}
+	if len(draft.Tools) == 0 || draft.Tools[0].Name == "" {
+		t.Fatalf("expected prompt-derived tool signature, got %+v", draft.Tools)
+	}
+}
+
 func TestMCPServerCreatorAPI_RejectsUnsafeNamesAndPaths(t *testing.T) {
 	handler := newMCPServerCreatorAPIHandler(filepath.Join(t.TempDir(), "workspace"), zerolog.New(ioDiscard{}), nil)
 
@@ -82,6 +160,40 @@ func TestMCPServerCreatorAPI_RejectsUnsafeNamesAndPaths(t *testing.T) {
 	})
 	if badSave.Code != http.StatusBadRequest {
 		t.Fatalf("expected unsafe file path to fail, got %d body=%q", badSave.Code, badSave.Body.String())
+	}
+}
+
+func TestMCPServerCreatorAPI_TestBootstrapsNodeDependenciesBeforeStdio(t *testing.T) {
+	workspaceDir := filepath.Join(t.TempDir(), "workspace")
+	handler := newMCPServerCreatorAPIHandler(workspaceDir, zerolog.New(ioDiscard{}), nil)
+
+	draft := mcpServerCreatorDraftResponse{
+		Name:        "node-probe",
+		Description: "Probe node MCP server.",
+		Language:    "node",
+		UseCase:     "echo probe",
+		Tools: []mcpServerCreatorToolSpec{
+			{Name: "echo", Description: "Echo request", InputSchema: defaultMCPInputSchema(), OutputSchema: defaultMCPOutputSchema()},
+		},
+		Files: []mcpServerCreatorFile{
+			{Path: "package.json", Content: `{"type":"module","dependencies":{}}`},
+			{Path: "tars.mcp.json", Content: `{"schema_version":1,"server":{"name":"node-probe","command":"node","args":["${MCP_DIR}/server.mjs"]}}`},
+			{Path: "server.mjs", Content: nodeRawMCPProbeServer()},
+		},
+	}
+	rec := postJSON(t, handler, "/v1/admin/mcp-servers/test", draft)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected test 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+	var result mcpServerCreatorTestResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil {
+		t.Fatalf("decode test response: %v", err)
+	}
+	if !result.Success {
+		t.Fatalf("expected successful stdio validation, got %+v", result)
+	}
+	if len(result.ToolTrail) < 2 || result.ToolTrail[0].Tool != "npm_install" || result.ToolTrail[1].Tool != "mcp_stdio" {
+		t.Fatalf("expected npm dependency bootstrap before stdio validation, got %+v", result.ToolTrail)
 	}
 }
 
@@ -183,4 +295,46 @@ func mcpCreatorContainsString(values []string, want string) bool {
 		}
 	}
 	return false
+}
+
+func nodeRawMCPProbeServer() string {
+	return `#!/usr/bin/env node
+import process from 'node:process'
+
+let buffer = Buffer.alloc(0)
+
+function send(id, result) {
+  const body = Buffer.from(JSON.stringify({ jsonrpc: '2.0', id, result }))
+  process.stdout.write('Content-Length: ' + body.length + '\r\n\r\n')
+  process.stdout.write(body)
+}
+
+function handle(message) {
+  if (message.method === 'notifications/initialized') return
+  if (message.method === 'initialize') {
+    send(message.id, { protocolVersion: '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'node-probe', version: '0.1.0' } })
+  } else if (message.method === 'tools/list') {
+    send(message.id, { tools: [{ name: 'echo', description: 'Echo request', inputSchema: { type: 'object', properties: { request: { type: 'string' } }, required: ['request'] } }] })
+  } else if (message.method === 'tools/call') {
+    send(message.id, { content: [{ type: 'text', text: 'node-call:' + message.params.arguments.request }], isError: false })
+  }
+}
+
+process.stdin.on('data', chunk => {
+  buffer = Buffer.concat([buffer, chunk])
+  while (true) {
+    const split = buffer.indexOf('\r\n\r\n')
+    if (split === -1) break
+    const headers = buffer.slice(0, split).toString()
+    const match = headers.match(/Content-Length:\s*(\d+)/i)
+    if (!match) process.exit(1)
+    const size = Number(match[1])
+    const start = split + 4
+    if (buffer.length < start + size) break
+    const raw = buffer.slice(start, start + size).toString()
+    buffer = buffer.slice(start + size)
+    handle(JSON.parse(raw))
+  }
+})
+`
 }

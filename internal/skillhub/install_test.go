@@ -43,6 +43,47 @@ func TestInstallAndList(t *testing.T) {
 	}
 }
 
+func TestInstallLegacySkillWithoutRegistryFiles(t *testing.T) {
+	files := map[string][]byte{
+		"/skills/novelist/SKILL.md": []byte("---\nname: novelist\n---\n# Novelist\n"),
+	}
+	index := RegistryIndex{
+		Version: 3,
+		Skills: []RegistryEntry{
+			{
+				Name:          "novelist",
+				Description:   "Creative writing guide",
+				Version:       "0.6.0",
+				Author:        "devlikebear",
+				Tags:          []string{"creative", "writing"},
+				Path:          "skills/novelist",
+				UserInvocable: true,
+			},
+		},
+	}
+	srv := newRegistryServer(t, index, files)
+	defer srv.Close()
+
+	tmpDir := t.TempDir()
+	inst := &Installer{
+		WorkspaceDir: tmpDir,
+		Registry: &Registry{
+			RegistryURL:  srv.URL + "/registry.json",
+			SkillBaseURL: srv.URL,
+			HTTPClient:   srv.Client(),
+		},
+	}
+
+	if _, err := inst.Install(context.Background(), "novelist"); err != nil {
+		t.Fatalf("Install legacy skill without files: %v", err)
+	}
+
+	skillFile := filepath.Join(tmpDir, "skills", "novelist", "SKILL.md")
+	if _, err := os.Stat(skillFile); err != nil {
+		t.Fatalf("legacy skill file not found: %v", err)
+	}
+}
+
 func TestUninstall(t *testing.T) {
 	srv := newTestServer(t)
 	defer srv.Close()

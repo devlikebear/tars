@@ -27,3 +27,12 @@ test('Session config can reload session skills and commands separately', () => {
   assert.match(panelSource, /source-session/)
   assert.match(panelSource, /source-command/)
 })
+
+test('Session config surfaces MCP servers as configurable chat entries', () => {
+  assert.match(panelSource, /mcpServers = toolsResp\.mcp_servers \?\? \[\]/)
+  assert.match(panelSource, /activeTab: 'tools' \| 'skills' \| 'commands' \| 'mcp' \| 'automation' \| 'style'/)
+  assert.match(panelSource, /activeTab === 'mcp'/)
+  assert.match(panelSource, /toggleMCP/)
+  assert.match(panelSource, /mcp_custom = true/)
+  assert.match(panelSource, /mcp_enabled = \[\.\.\.mcpEnabledSet\]/)
+})

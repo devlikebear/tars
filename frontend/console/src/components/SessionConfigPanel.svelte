@@ -42,7 +42,7 @@
   let styleDraft: SessionStyleValues = $state({ directness: 70, humor: 20, caution: 60, autonomy: 40 })
   let loading = $state(true)
   let filterText = $state('')
-  let activeTab: 'tools' | 'skills' | 'commands' | 'automation' | 'style' = $state('tools')
+  let activeTab: 'tools' | 'skills' | 'commands' | 'mcp' | 'automation' | 'style' = $state('tools')
   let automationSaving = $state(false)
   let styleSaving = $state(false)
   type SkillSourceFilter = 'all' | 'global' | 'session' | 'enabled' | 'disabled'
@@ -54,9 +54,11 @@
   let denyGroupsSet: Set<string> = $state(new Set())
   let skillsEnabledSet: Set<string> = $state(new Set())
   let commandsEnabledSet: Set<string> = $state(new Set())
+  let mcpEnabledSet: Set<string> = $state(new Set())
   let useCustomConfig = $state(false)
   let useCustomSkills = $state(false)
   let useCustomCommands = $state(false)
+  let useCustomMCP = $state(false)
 
   // Effective-config snapshot (Phase 3 backend) — drives source badges
   // on tools/skills items so the user can see when a value comes from
@@ -97,6 +99,14 @@
     if (!effectiveConfig) return 'base'
     if (effectiveConfig.effective.tool_config.commands_enabled?.includes(name)) {
       return effectiveConfig.sources['tool_config.commands_enabled'] ?? 'base'
+    }
+    return 'base'
+  }
+
+  function sourceForMCPList(name: string): EffectiveConfigSource {
+    if (!effectiveConfig) return 'base'
+    if (effectiveConfig.effective.tool_config.mcp_custom || effectiveConfig.effective.tool_config.mcp_enabled?.includes(name)) {
+      return effectiveConfig.sources['tool_config.mcp_enabled'] ?? effectiveConfig.sources['tool_config.mcp_custom'] ?? 'base'
     }
     return 'base'
   }
@@ -257,7 +267,7 @@
         config = configResp
       }
 
-      applyConfigState(config, tools, skills, commands)
+      applyConfigState(config, tools, skills, commands, mcpServers)
       pendingConfig = null
       pendingPreview = null
     } catch {
@@ -266,7 +276,13 @@
     loading = false
   }
 
-  function applyConfigState(nextConfig: SessionToolConfig, availableTools = tools, availableSkills = skills, availableCommands = commands) {
+  function applyConfigState(
+    nextConfig: SessionToolConfig,
+    availableTools = tools,
+    availableSkills = skills,
+    availableCommands = commands,
+    availableMCPServers = mcpServers,
+  ) {
     if (nextConfig.tools_custom || Array.isArray(nextConfig.tools_enabled)) {
       useCustomConfig = true
       enabledSet = new Set(nextConfig.tools_enabled ?? [])
@@ -292,6 +308,14 @@
     } else {
       useCustomCommands = false
       commandsEnabledSet = new Set(availableCommands)
+    }
+
+    if (nextConfig.mcp_custom || Array.isArray(nextConfig.mcp_enabled)) {
+      useCustomMCP = true
+      mcpEnabledSet = new Set(nextConfig.mcp_enabled ?? [])
+    } else {
+      useCustomMCP = false
+      mcpEnabledSet = new Set(availableMCPServers)
     }
   }
 
@@ -328,6 +352,11 @@
   function isCommandEnabled(name: string): boolean {
     if (!useCustomCommands) return true
     return commandsEnabledSet.has(name)
+  }
+
+  function isMCPEnabled(name: string): boolean {
+    if (!useCustomMCP) return true
+    return mcpEnabledSet.has(name)
   }
 
   function toggleAllowGroup(name: string) {
@@ -386,6 +415,22 @@
     queueConfigPreview()
   }
 
+  function toggleMCP(name: string) {
+    if (isMCPEnabled(name)) {
+      if (!useCustomMCP) {
+        useCustomMCP = true
+        mcpEnabledSet = new Set(mcpServers.filter((server) => server !== name))
+      } else {
+        mcpEnabledSet.delete(name)
+        mcpEnabledSet = new Set(mcpEnabledSet)
+      }
+    } else {
+      mcpEnabledSet.add(name)
+      mcpEnabledSet = new Set(mcpEnabledSet)
+    }
+    queueConfigPreview()
+  }
+
   function toggleAllTools() {
     if (useCustomConfig) {
       useCustomConfig = false
@@ -421,6 +466,17 @@
     queueConfigPreview()
   }
 
+  function toggleAllMCP() {
+    if (useCustomMCP) {
+      useCustomMCP = false
+      mcpEnabledSet = new Set(mcpServers)
+    } else {
+      useCustomMCP = true
+      mcpEnabledSet = new Set()
+    }
+    queueConfigPreview()
+  }
+
   function draftConfigFromState(): SessionToolConfig {
     const newConfig: SessionToolConfig = {}
     if (useCustomConfig) {
@@ -444,8 +500,9 @@
       newConfig.commands_custom = true
       newConfig.commands_enabled = [...commandsEnabledSet]
     }
-    if (Array.isArray(config.mcp_enabled)) {
-      newConfig.mcp_enabled = [...config.mcp_enabled]
+    if (useCustomMCP) {
+      newConfig.mcp_custom = true
+      newConfig.mcp_enabled = [...mcpEnabledSet]
     }
     return newConfig
   }
@@ -485,7 +542,7 @@
   function cancelPendingConfig() {
     pendingConfig = null
     pendingPreview = null
-    applyConfigState(config)
+    applyConfigState(config, tools, skills, commands, mcpServers)
   }
 
   function hasPermissionPreviewChanges(preview: SessionPermissionPreview): boolean {
@@ -637,6 +694,9 @@
         (command.slash ?? '').toLowerCase().includes(query)
     })
   )
+  let filteredMCPServers = $derived(
+    mcpServers.filter((server) => !filterText || server.toLowerCase().includes(filterText.toLowerCase()))
+  )
   let stylePreview = $derived(buildSessionStylePreview({ ...styleResponse, effective: styleDraft }))
 
   $effect(() => {
@@ -665,6 +725,9 @@
       <button class="config-tab" class:active={activeTab === 'commands'} onclick={() => activeTab = 'commands'}>
         Commands ({commands.length})
       </button>
+      <button class="config-tab" class:active={activeTab === 'mcp'} onclick={() => activeTab = 'mcp'}>
+        MCP ({mcpServers.length})
+      </button>
       <button class="config-tab" class:active={activeTab === 'automation'} onclick={() => activeTab = 'automation'}>
         Automation
       </button>
@@ -673,7 +736,7 @@
       </button>
     </div>
 
-    {#if activeTab === 'tools' || activeTab === 'skills' || activeTab === 'commands'}
+    {#if activeTab === 'tools' || activeTab === 'skills' || activeTab === 'commands' || activeTab === 'mcp'}
       <div class="config-filter">
         <input type="text" bind:value={filterText} placeholder="Filter..." class="config-filter-input" />
         <button class="config-reload" type="button" disabled={loading} onclick={() => { void load() }}>Reload</button>
@@ -837,6 +900,31 @@
           </label>
         {/each}
       </div>
+    {:else if activeTab === 'mcp'}
+      <div class="config-actions">
+        <label class="config-toggle">
+          <input type="checkbox" checked={!useCustomMCP} onchange={toggleAllMCP} />
+          <span>All MCP servers</span>
+        </label>
+        <span class="config-count">{useCustomMCP ? mcpEnabledSet.size : mcpServers.length} active</span>
+      </div>
+      {#if mcpServers.length === 0}
+        <div class="config-empty">No MCP servers available.</div>
+      {:else}
+        <div class="config-list">
+          {#each filteredMCPServers as server}
+            {@const mcpSrc = sourceForMCPList(server)}
+            <label class="config-item">
+              <input type="checkbox" checked={isMCPEnabled(server)} onchange={() => toggleMCP(server)} />
+              <span class="item-name">{server}</span>
+              <span class="skill-origin-badge source-mcp" title="MCP server">MCP</span>
+              {#if mcpSrc !== 'base'}
+                <span class="source-badge source-{mcpSrc}" title={sourceBadgeTitle[mcpSrc]}>{sourceBadgeLabel[mcpSrc]}</span>
+              {/if}
+            </label>
+          {/each}
+        </div>
+      {/if}
     {:else if activeTab === 'automation'}
       <div class="automation-list">
         <label class="automation-item">
@@ -991,11 +1079,12 @@
 
   .config-tabs {
     display: flex;
+    overflow-x: auto;
     border-bottom: 1px solid var(--border-subtle);
   }
 
   .config-tab {
-    flex: 1;
+    flex: 0 0 auto;
     padding: var(--space-2);
     background: none;
     border: none;
@@ -1003,6 +1092,7 @@
     color: var(--text-ghost);
     font-family: var(--font-mono);
     font-size: var(--text-xs);
+    white-space: nowrap;
     cursor: pointer;
     transition: all var(--duration-fast);
   }
@@ -1333,6 +1423,19 @@
     color: rgb(34, 197, 94);
     border: 1px solid rgba(34, 197, 94, 0.35);
     background: rgba(34, 197, 94, 0.1);
+  }
+
+  .skill-origin-badge.source-mcp {
+    color: rgb(96, 165, 250);
+    border: 1px solid rgba(96, 165, 250, 0.35);
+    background: rgba(96, 165, 250, 0.1);
+  }
+
+  .config-empty {
+    padding: var(--space-3);
+    color: var(--text-ghost);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
   }
 
   /* Source badge — shows where the effective value came from when it

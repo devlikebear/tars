@@ -1,11 +1,14 @@
 package tarsserver
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	"github.com/devlikebear/tars/internal/config"
+	"github.com/devlikebear/tars/internal/extensions"
 	"github.com/devlikebear/tars/internal/llm"
 	"github.com/devlikebear/tars/internal/memory"
 	"github.com/devlikebear/tars/internal/session"
@@ -82,5 +85,56 @@ func TestChatAPIHandler_ToolsEndpointIncludesWorkspaceEditingBuiltins(t *testing
 	}
 	if groups["memory"] != "memory" {
 		t.Fatalf("expected memory to be tagged as memory, got %+v", groups)
+	}
+}
+
+func TestChatAPIHandler_ToolsEndpointIncludesMCPServers(t *testing.T) {
+	root := t.TempDir()
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+
+	manager, err := extensions.NewManager(extensions.Options{
+		WorkspaceDir: root,
+		MCPBaseServers: []config.MCPServer{
+			{Name: "echo", Command: "node", Args: []string{"server.mjs"}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("new extensions manager: %v", err)
+	}
+	if err := manager.Reload(context.Background()); err != nil {
+		t.Fatalf("reload extensions manager: %v", err)
+	}
+
+	tooling := defaultChatToolingOptions()
+	tooling.Extensions = manager
+	handler := newChatAPIHandlerWithRuntimeConfig(
+		root,
+		session.NewStore(root),
+		&mockLLMClient{},
+		nil,
+		zerolog.Nop(),
+		4,
+		nil,
+		"",
+		tooling,
+	)
+	req := httptest.NewRequest(http.MethodGet, "/v1/chat/tools", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected tools endpoint 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+
+	var payload struct {
+		MCPServers []string `json:"mcp_servers"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if !containsString(payload.MCPServers, "echo") {
+		t.Fatalf("expected echo mcp server in /v1/chat/tools, got %+v", payload.MCPServers)
 	}
 }

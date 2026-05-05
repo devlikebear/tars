@@ -4,8 +4,10 @@ import (
 	"context"
 	"strings"
 
+	"github.com/devlikebear/tars/internal/config"
 	"github.com/devlikebear/tars/internal/extensions"
 	"github.com/devlikebear/tars/internal/llm"
+	"github.com/devlikebear/tars/internal/mcp"
 	"github.com/devlikebear/tars/internal/serverauth"
 	"github.com/devlikebear/tars/internal/session"
 	"github.com/devlikebear/tars/internal/skill"
@@ -137,7 +139,13 @@ func resolveSessionToolPolicy(names []string, config session.SessionToolConfig, 
 		UseAllowTools:  useAllowTools,
 		UseAllowGroups: len(config.ToolsAllowGroups) > 0,
 	}
-	return policy.Resolve(names, source)
+	resolved := policy.Resolve(names, source)
+	if config.MCPCustom || len(config.MCPEnabled) > 0 {
+		var blocked map[string]tool.BlockedToolError
+		resolved.Allowed, blocked = filterMCPToolNamesForSession(resolved.Allowed, config, source)
+		mergeBlockedToolErrors(resolved.Blocked, blocked)
+	}
+	return resolved
 }
 
 func applySessionSkillConfig(skills []skill.Definition, config session.SessionToolConfig) []skill.Definition {
@@ -192,12 +200,82 @@ func applySessionCommandConfig(commands []skill.Definition, config session.Sessi
 	return filtered
 }
 
+func applySessionMCPConfig(servers []config.MCPServer, toolConfig session.SessionToolConfig) []config.MCPServer {
+	if !toolConfig.MCPCustom && len(toolConfig.MCPEnabled) == 0 {
+		return append([]config.MCPServer(nil), servers...)
+	}
+	allowed := map[string]struct{}{}
+	for _, name := range toolConfig.MCPEnabled {
+		normalized := strings.TrimSpace(strings.ToLower(name))
+		if normalized == "" {
+			continue
+		}
+		allowed[normalized] = struct{}{}
+	}
+	filtered := make([]config.MCPServer, 0, len(servers))
+	for _, server := range servers {
+		normalized := strings.TrimSpace(strings.ToLower(server.Name))
+		if normalized == "" {
+			continue
+		}
+		if _, ok := allowed[normalized]; !ok {
+			continue
+		}
+		filtered = append(filtered, server)
+	}
+	return filtered
+}
+
+func filterMCPToolNamesForSession(names []string, config session.SessionToolConfig, source string) ([]string, map[string]tool.BlockedToolError) {
+	allowedPrefixes := map[string]struct{}{}
+	for _, serverName := range config.MCPEnabled {
+		serverName = strings.TrimSpace(serverName)
+		if serverName == "" {
+			continue
+		}
+		allowedPrefixes[mcpToolPrefix(serverName)] = struct{}{}
+	}
+	allowed := make([]string, 0, len(names))
+	blocked := map[string]tool.BlockedToolError{}
+	for _, name := range names {
+		canonical := tool.CanonicalToolName(name)
+		if !strings.HasPrefix(canonical, "mcp.") {
+			allowed = append(allowed, name)
+			continue
+		}
+		if hasMCPToolPrefix(canonical, allowedPrefixes) {
+			allowed = append(allowed, name)
+			continue
+		}
+		blocked[canonical] = tool.BlockedToolError{
+			Tool:   canonical,
+			Rule:   "mcp_allow",
+			Source: source,
+		}
+	}
+	return allowed, blocked
+}
+
+func mcpToolPrefix(serverName string) string {
+	return strings.TrimSuffix(mcp.MCPToolName(serverName, "x"), "x")
+}
+
+func hasMCPToolPrefix(name string, prefixes map[string]struct{}) bool {
+	for prefix := range prefixes {
+		if strings.HasPrefix(name, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
 func filterExtensionsSnapshotForSession(snapshot extensions.Snapshot, sessionConfig ...session.SessionToolConfig) extensions.Snapshot {
 	if len(sessionConfig) == 0 {
 		return snapshot
 	}
 	out := snapshot
 	out.Skills = applySessionSkillConfig(snapshot.Skills, sessionConfig[0])
+	out.MCPServers = applySessionMCPConfig(snapshot.MCPServers, sessionConfig[0])
 	out.SkillPrompt = skill.FormatAvailableSkills(out.Skills)
 	return out
 }

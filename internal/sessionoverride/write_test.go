@@ -79,3 +79,32 @@ func TestWriteLocalToolConfigClearsEmptyToolConfig(t *testing.T) {
 		t.Fatalf("expected prompt_override to be preserved, got %s", string(raw))
 	}
 }
+
+func TestWriteLocalToolConfigKeepsEmptyMCPCustomAllowlist(t *testing.T) {
+	cwd := t.TempDir()
+
+	if err := WriteLocalToolConfig(cwd, session.SessionToolConfig{MCPCustom: true}); err != nil {
+		t.Fatalf("write mcp custom config: %v", err)
+	}
+
+	_, local, diags, err := Load(cwd)
+	if err != nil {
+		t.Fatalf("load local config: %v", err)
+	}
+	if len(diags) != 0 {
+		t.Fatalf("unexpected diagnostics: %+v", diags)
+	}
+	if local == nil || local.ToolConfig == nil || !local.ToolConfig.MCPCustom {
+		t.Fatalf("expected local mcp_custom to be preserved, got %+v", local)
+	}
+	eff, sources := Merge(session.SessionToolConfig{MCPEnabled: []string{"base-fs"}}, "", nil, local)
+	if !eff.ToolConfig.MCPCustom {
+		t.Fatalf("expected effective mcp_custom")
+	}
+	if len(eff.ToolConfig.MCPEnabled) != 0 {
+		t.Fatalf("expected empty custom MCP allowlist to clear inherited servers, got %+v", eff.ToolConfig.MCPEnabled)
+	}
+	if sources["tool_config.mcp_enabled"] != SourceLocal {
+		t.Fatalf("expected mcp_enabled source to be local, got %q", sources["tool_config.mcp_enabled"])
+	}
+}

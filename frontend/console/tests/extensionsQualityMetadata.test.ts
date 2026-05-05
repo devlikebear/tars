@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs'
 
 const typesSource = readFileSync(new URL('../src/lib/types.ts', import.meta.url), 'utf8')
 const extensionsSource = readFileSync(new URL('../src/components/Extensions.svelte', import.meta.url), 'utf8')
+const enSource = readFileSync(new URL('../src/i18n/en.ts', import.meta.url), 'utf8')
 
 test('Hub registry entries expose quality metadata fields', () => {
   assert.match(typesSource, /export type HubQualityMetadata/)
@@ -22,8 +23,8 @@ test('Extensions renders quality score and install-time trust signals', () => {
   assert.match(extensionsSource, /function qualitySignals\(entry: HubRegistryEntry\)/)
   assert.match(extensionsSource, /quality-score/)
   assert.match(extensionsSource, /quality-signals/)
-  assert.match(extensionsSource, /Tests passing/)
-  assert.match(extensionsSource, /Companion CLI/)
-  assert.match(extensionsSource, /Required tools/)
-  assert.match(extensionsSource, /Permissions/)
+  assert.match(enSource, /Tests passing/)
+  assert.match(enSource, /Companion CLI/)
+  assert.match(enSource, /Required tools/)
+  assert.match(enSource, /Permissions/)
 })

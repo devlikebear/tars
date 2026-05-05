@@ -196,6 +196,7 @@ func TestMerge_ExercisesAllToolConfigSubfields(t *testing.T) {
 			CommandsEnabled:  []string{"cmd2"},
 			CommandsCustom:   true,
 			MCPEnabled:       []string{"web"},
+			MCPCustom:        true,
 		},
 		Presence: map[string]bool{
 			"tool_config.tools_enabled":      true,
@@ -207,6 +208,7 @@ func TestMerge_ExercisesAllToolConfigSubfields(t *testing.T) {
 			"tool_config.commands_enabled":   true,
 			"tool_config.commands_custom":    true,
 			"tool_config.mcp_enabled":        true,
+			"tool_config.mcp_custom":         true,
 		},
 	}
 
@@ -228,12 +230,15 @@ func TestMerge_ExercisesAllToolConfigSubfields(t *testing.T) {
 	checkUnion("ToolsDenyGroups", eff.ToolConfig.ToolsDenyGroups, []string{"shell", "net"})
 	checkUnion("SkillsEnabled", eff.ToolConfig.SkillsEnabled, []string{"s1", "s2"})
 	checkUnion("CommandsEnabled", eff.ToolConfig.CommandsEnabled, []string{"cmd1", "cmd2"})
-	checkUnion("MCPEnabled", eff.ToolConfig.MCPEnabled, []string{"fs", "web"})
+	checkUnion("MCPEnabled", eff.ToolConfig.MCPEnabled, []string{"web"})
 	if !eff.ToolConfig.SkillsCustom {
 		t.Fatalf("SkillsCustom should be true from shared")
 	}
 	if !eff.ToolConfig.CommandsCustom {
 		t.Fatalf("CommandsCustom should be true from shared")
+	}
+	if !eff.ToolConfig.MCPCustom {
+		t.Fatalf("MCPCustom should be true from shared")
 	}
 	for _, p := range []string{
 		"tool_config.tools_enabled",
@@ -245,6 +250,7 @@ func TestMerge_ExercisesAllToolConfigSubfields(t *testing.T) {
 		"tool_config.commands_enabled",
 		"tool_config.commands_custom",
 		"tool_config.mcp_enabled",
+		"tool_config.mcp_custom",
 	} {
 		if sources[p] != SourceShared {
 			t.Fatalf("source %q should be shared, got %q", p, sources[p])

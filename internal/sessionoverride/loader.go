@@ -208,6 +208,8 @@ func decodeToolConfigField(tc *session.SessionToolConfig, key string, raw json.R
 		return json.Unmarshal(raw, &tc.CommandsCustom)
 	case "mcp_enabled":
 		return json.Unmarshal(raw, &tc.MCPEnabled)
+	case "mcp_custom":
+		return json.Unmarshal(raw, &tc.MCPCustom)
 	}
 	return fmt.Errorf("internal: missing decoder for tool_config.%s", key)
 }
