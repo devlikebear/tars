@@ -232,7 +232,7 @@ func TestInitReset_PortInheritsFromExistingPlist(t *testing.T) {
     <string>/usr/local/bin/tars</string>
     <string>serve</string>
     <string>--config</string>
-    <string>/Users/x/.tars/config/config.yaml</string>
+    <string>/tmp/tars-config.yaml</string>
     <string>--api-addr</string>
     <string>127.0.0.1:43187</string>
   </array>
