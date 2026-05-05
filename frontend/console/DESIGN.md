@@ -313,6 +313,10 @@ The default container. `surface` background, `border-subtle` outline, `lg` round
 
 Cards are the primary chunking device. When you want users to perceive "these things go together", put them in a card. When you don't, leave them on `surface-base`.
 
+### CWD chip (chat session header)
+
+Sits next to the session-health badge in `.session-title-row`. Mirrors the badge dimensions (3px / `space-2` padding, `radius-sm`) so the row stays balanced. The active path renders in **`primary` (amber)** with `font-mono`, prefixed by the dimmed label `cwd`. Click toggles a `position: absolute` dropdown anchored to the chip's right edge, listing every eligible cwd; the active row also reads in amber with a small bullet marker. Disabled state uses `opacity 0.7` while a transition is in flight. The chip is hidden until the session has loaded (no eligible-cwd payload → no chip), so empty states never show a phantom widget.
+
 ### Input fields
 
 Text inputs and textareas share a single visual: `surface-inset` background, `border-default` outline, `body-md` text. On focus the border switches to `primary`. There is no fill change on focus — the accent border carries the affordance.

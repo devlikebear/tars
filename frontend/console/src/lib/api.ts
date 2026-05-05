@@ -86,6 +86,7 @@ import type {
   GitStatus,
   GitWorktreesResponse,
   SessionWorkDirs,
+  SessionCwd,
   UsageToday,
   LogsResponse,
   AnalyticsResponse,
@@ -626,6 +627,18 @@ export async function updateSessionWorkDirs(sessionId: string, data: { work_dirs
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
+  })
+}
+
+export async function getSessionCwd(sessionId: string): Promise<SessionCwd> {
+  return requestJSON<SessionCwd>(`/v1/admin/sessions/${encodeURIComponent(sessionId)}/cwd`)
+}
+
+export async function setSessionCwd(sessionId: string, current: string): Promise<void> {
+  await requestJSON(`/v1/admin/sessions/${encodeURIComponent(sessionId)}/cwd`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ current }),
   })
 }
 

@@ -1523,6 +1523,11 @@ export type SessionWorkDirs = {
   current_dir: string
 }
 
+export type SessionCwd = {
+  current: string
+  eligible: string[]
+}
+
 export type TelegramPairingEntry = {
   code: string
   user_id: number
