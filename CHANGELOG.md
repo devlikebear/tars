@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.167] - 2026-05-05
+
+### Added
+
+- **Console — source badges in the Session Config panel** — Phase 6 of the `.tars/` epic. Each tool and skill in the Session Config Tools / Skills tabs now shows a tiny `shared` (amber) or `local` (grey) badge when its effective value was contributed by `<active_cwd>/.tars/settings.json` or `.tars/settings.local.json` respectively; rows whose value comes from the session base render no badge so the panel stays quiet for plain sessions. Hovering a badge reveals the full file path via `title`. The panel reads the new effective-config sources map from Phase 3's `GET /v1/admin/sessions/{id}/effective-config`. **Note**: the existing toggle behaviour still writes to the session base (`tool_config`); a true 4th-layer "user override" that takes priority over `.tars/settings.local.json` (so that flipping a shared-injected tool actually disables it) is intentionally deferred to a follow-up issue — this PR is the visualization half. Closes [#709](https://github.com/devlikebear/tars/issues/709) (visualization scope); refs Epic [#703](https://github.com/devlikebear/tars/issues/703).
+
 ## [0.31.166] - 2026-05-05
 
 ### Added
