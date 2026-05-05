@@ -55,7 +55,7 @@ RELEASE_STAGE_DIR ?= $(DIST_DIR)/release-$(RELEASE_GOOS)-$(RELEASE_GOARCH)
 .PHONY: help \
 	test test-v test-one test-nocache test-race test-cover \
 	build build-bins release-asset clean tidy fmt vet lint \
-	console-install console-build \
+	ensure-console-assets console-install console-build \
 	browser-install \
 	install install-server install-assistant uninstall uninstall-server uninstall-assistant reinstall \
 	restart restart-server restart-assistant reload-config reload-server-config reload-assistant-config \
@@ -142,13 +142,24 @@ test-race:
 test-cover:
 	$(GO) test -coverprofile=$(COVER_OUT) $(PKG)
 
-build:
+build: ensure-console-assets
 	mkdir -p $(BIN_DIR)
 	CGO_LDFLAGS="$(CGO_LDFLAGS_EXTRA)" $(GO) build -ldflags "$(GO_LDFLAGS)" -o $(BIN_DIR)/tars ./cmd/tars
 
-build-bins:
+build-bins: ensure-console-assets
 	mkdir -p $(BIN_DIR)
 	CGO_LDFLAGS="$(CGO_LDFLAGS_EXTRA)" $(GO) build -ldflags "$(GO_LDFLAGS)" -o $(BIN_DIR)/tars ./cmd/tars
+
+# ensure-console-assets bootstraps the embedded Svelte console only
+# when the dist/ directory is empty (e.g. fresh clone, dev build).
+# Once assets exist subsequent `make build` calls are Go-only and
+# stay fast. To force a rebuild after editing Svelte sources, run
+# `make console-build` explicitly.
+ensure-console-assets:
+	@if [ ! -f internal/tarsserver/consoleassets/dist/index.html ]; then \
+		echo "console assets missing — running console-build (this only happens once)"; \
+		$(MAKE) console-build; \
+	fi
 
 console-install:
 	cd frontend/console && npm install

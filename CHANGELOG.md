@@ -6,6 +6,21 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.174] - 2026-05-05
+
+### Changed
+
+- **`tars init` migration is now opt-in via `--migrate`** (#719) — auto-migration was a Phase 1 hold-over from the old init that surprised users running `tars init` from a directory containing one of the scanned-for legacy paths (e.g. the TARS source repo's `config/default.yaml`). The default is now a fresh wizard skeleton; if a legacy file is present we print a discovery hint pointing at `--migrate`. The flag also gives a clear error when no legacy is found, and is mutually exclusive with `--force` (which writes a fresh skeleton).
+- **Migration no longer scaffolds a duplicate workspace.** The migrated config carries an authoritative `workspace_dir`; touching the default `~/.tars/workspace` would (a) fail when bundled plugins aren't on disk (dev binaries) and (b) leave the running server pointing at the wrong workspace. Init now skips `ensureStarterWorkspaceLayout` on the migration path and reads the migrated workspace_dir to pass into the server starter.
+- **`updateMigratedWorkspaceDir` patches nested `runtime.workspace_dir`.** Most legacy configs put workspace_dir under `runtime:`. The patcher used to look only at the top-level key, so nested relative paths went unfixed AND the function added a stray top-level entry pointing at the default — both keys then flattened to the same field, leaving the resolved value to coin-flip iteration order.
+- **`make build` auto-builds the embedded console assets when missing.** A fresh clone followed by `make build` produced a binary that served the "TARS Console build required" placeholder because `make build` was Go-only and the `internal/tarsserver/consoleassets/dist/` directory was empty. The new `ensure-console-assets` Make target runs `console-build` only when `dist/index.html` is missing — once present, subsequent builds stay Go-only and fast.
+- **`ensureStarterWorkspaceLayout` treats a missing bundled-plugins dir as soft.** Bundled plugins seed the workspace's `plugins/` dir but the system boots without them. Returning an error from this code path made `tars init` unusable on dev binaries built outside a release tree. Production builds (where the bundled plugins live next to the binary via `assetpath` resolution) are unaffected.
+- **`tars init` rejects unknown positional args.** Adding `cobra.NoArgs` so `tars init reset` (subcommand lands in phase 2) errors loudly with `unknown command "reset" for "tars init"` instead of silently re-running the orchestrator.
+
+### Fixed
+
+- **`tars` (no args) probes `/v1/healthz` before opening the browser.** Previously the no-args invocation fired the OS browser at `127.0.0.1:43180/console` regardless of whether a server was running, leaving fresh installs with a confusing connection-refused page. The probe has a 1.5 s timeout; if the server is unreachable we print the onboarding hint (covering `tars init`, `tars service start`, `tars serve`, and `TARS_SERVER_URL` for non-default ports) and exit with an error instead of opening the browser.
+
 ## [0.31.173] - 2026-05-05
 
 ### Fixed

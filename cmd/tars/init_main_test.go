@@ -111,10 +111,10 @@ func TestRootCommand_InitRefusesToOverwriteExistingConfig(t *testing.T) {
 func TestRootCommand_InitMigratesLegacyConfig(t *testing.T) {
 	fakeHome := t.TempDir()
 	t.Setenv("HOME", fakeHome)
-	// Migration now flows into ensureStarterWorkspaceLayout (which
-	// installs bundled plugins), so the workspace scaffolder needs a
-	// real bundled-plugins source even on this migration path.
-	t.Setenv("TARS_PLUGINS_BUNDLED_DIR", writeBundledPluginSource(t))
+	// Migration must not require the bundled plugins dir — the
+	// migrated workspace already has its own layout. Setting an empty
+	// value forces the resolver to fail if init tries to scaffold.
+	t.Setenv("TARS_PLUGINS_BUNDLED_DIR", filepath.Join(t.TempDir(), "no-such-bundled-plugins"))
 
 	// Create legacy config in CWD.
 	legacyDir := t.TempDir()
@@ -134,7 +134,7 @@ func TestRootCommand_InitMigratesLegacyConfig(t *testing.T) {
 
 	var stdout strings.Builder
 	cmd := newRootCommand(strings.NewReader(""), &stdout, io.Discard)
-	cmd.SetArgs([]string{"init", "--no-server", "--no-browser"})
+	cmd.SetArgs([]string{"init", "--migrate", "--no-server", "--no-browser"})
 
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("init command: %v", err)
@@ -171,6 +171,100 @@ func TestRootCommand_InitMigratesLegacyConfig(t *testing.T) {
 
 	// Original should still exist.
 	assertPathExists(t, legacyConfig)
+}
+
+func TestUpdateMigratedWorkspaceDir_PatchesNestedRuntimeKey(t *testing.T) {
+	// Regression: most legacy configs put workspace_dir under a
+	// `runtime:` block. The patcher used to look only at the top-level
+	// key, so a nested relative path went unfixed AND the function
+	// added a stray top-level entry pointing at the default
+	// (~/.tars/workspace). Both keys flatten to the same field, so
+	// the result was a coin-flip between the user's real workspace
+	// and an empty default.
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.yaml")
+	src := "runtime:\n    workspace_dir: ./workspace\nmode: standalone\n"
+	if err := os.WriteFile(configPath, []byte(src), 0o644); err != nil {
+		t.Fatalf("write src: %v", err)
+	}
+
+	if err := updateMigratedWorkspaceDir(configPath, "/should/not/be/used"); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+
+	out, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	cwd, _ := os.Getwd()
+	wantAbs, _ := filepath.Abs(filepath.Join(cwd, "workspace"))
+	if !strings.Contains(string(out), "workspace_dir: "+wantAbs) {
+		t.Fatalf("expected nested workspace_dir absolutized to %q, got:\n%s", wantAbs, string(out))
+	}
+	// Must NOT add a stray top-level entry.
+	if strings.Contains(string(out), "\nworkspace_dir: ") {
+		// Allow runtime nesting (4-space indent before the colon) by
+		// being strict about no top-level entry.
+		t.Fatalf("expected no top-level workspace_dir, got:\n%s", string(out))
+	}
+}
+
+func TestUpdateMigratedWorkspaceDir_PatchesTopLevelKey(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.yaml")
+	src := "workspace_dir: ./workspace\nmode: standalone\n"
+	if err := os.WriteFile(configPath, []byte(src), 0o644); err != nil {
+		t.Fatalf("write src: %v", err)
+	}
+
+	if err := updateMigratedWorkspaceDir(configPath, "/should/not/be/used"); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+
+	out, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	cwd, _ := os.Getwd()
+	wantAbs, _ := filepath.Abs(filepath.Join(cwd, "workspace"))
+	if !strings.Contains(string(out), "workspace_dir: "+wantAbs) {
+		t.Fatalf("expected top-level workspace_dir absolutized to %q, got:\n%s", wantAbs, string(out))
+	}
+}
+
+func TestUpdateMigratedWorkspaceDir_NoOpWhenAlreadyAbsolute(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.yaml")
+	src := "runtime:\n    workspace_dir: /already/absolute\n"
+	if err := os.WriteFile(configPath, []byte(src), 0o644); err != nil {
+		t.Fatalf("write src: %v", err)
+	}
+
+	if err := updateMigratedWorkspaceDir(configPath, "/should/not/be/used"); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+
+	out, _ := os.ReadFile(configPath)
+	if string(out) != src {
+		t.Fatalf("expected file unchanged, got:\n%s", string(out))
+	}
+}
+
+func TestUpdateMigratedWorkspaceDir_AddsDefaultWhenMissing(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(configPath, []byte("mode: standalone\n"), 0o644); err != nil {
+		t.Fatalf("write src: %v", err)
+	}
+
+	if err := updateMigratedWorkspaceDir(configPath, "/default/workspace"); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+
+	out, _ := os.ReadFile(configPath)
+	if !strings.Contains(string(out), "workspace_dir: /default/workspace") {
+		t.Fatalf("expected default workspace_dir added, got:\n%s", string(out))
+	}
 }
 
 func TestUpdateMigratedWorkspaceDirReportsWriteFailure(t *testing.T) {

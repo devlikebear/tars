@@ -30,6 +30,7 @@ type initOptions struct {
 	noServer     bool
 	noBrowser    bool
 	force        bool
+	migrate      bool
 }
 
 type initMoveOptions struct {
@@ -81,6 +82,10 @@ func newInitCommand(stdout, stderr io.Writer) *cobra.Command {
 			"workspace, starts the server (LaunchAgent on macOS by " +
 			"default; detached `tars serve` otherwise), waits for it to " +
 			"become healthy, and opens the setup wizard in your browser.",
+		// Reject unknown positional args so e.g. `tars init reset`
+		// (subcommand not yet implemented; lands in Phase 2) errors
+		// loudly instead of silently re-running the orchestrator.
+		Args:         cobra.NoArgs,
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return initRunner(cmd.Context(), opts, stdout, stderr)
@@ -92,6 +97,7 @@ func newInitCommand(stdout, stderr io.Writer) *cobra.Command {
 	cmd.Flags().BoolVar(&opts.noServer, "no-server", opts.noServer, "skip starting the server (write config only)")
 	cmd.Flags().BoolVar(&opts.noBrowser, "no-browser", opts.noBrowser, "skip opening the browser to the setup wizard")
 	cmd.Flags().BoolVar(&opts.force, "force", opts.force, "overwrite an existing config and re-run onboarding")
+	cmd.Flags().BoolVar(&opts.migrate, "migrate", opts.migrate, "import a legacy config (workspace/config/tars.config.yaml or config/{default,standalone}.yaml) instead of writing a fresh wizard skeleton")
 
 	moveCmd := newInitMoveCommand(stdout, stderr)
 	cmd.AddCommand(moveCmd)
@@ -132,18 +138,35 @@ func runInitCommand(ctx context.Context, opts initOptions, stdout, stderr io.Wri
 		return fmt.Errorf("config already exists: %s (pass --force to overwrite, or run `tars init reset`)", configPath)
 	}
 
-	// Try to migrate legacy config if found and we don't already have
-	// one. --force always writes a fresh wizard skeleton, so it skips
-	// the migration probe.
+	if opts.force && opts.migrate {
+		return fmt.Errorf("--force and --migrate are mutually exclusive: --force writes a fresh wizard skeleton, --migrate imports a legacy config")
+	}
+
+	// Migration is now an explicit opt-in (--migrate). The probe used
+	// to be automatic on every fresh init, but that surprised users
+	// who happened to run `tars init` from a directory with one of
+	// the scanned-for legacy paths (e.g. the TARS source repo, where
+	// config/default.yaml is checked in). When migration is opt-in we
+	// can still help users discover it: detect a legacy config and
+	// print a hint pointing at --migrate, then proceed with the
+	// fresh wizard skeleton.
 	migrated := false
-	if !configExists && !opts.force {
-		if ok, legacyPath := tryMigrateLegacyConfig(configPath, stdout); ok {
-			if err := updateMigratedWorkspaceDir(configPath, workspaceAbs); err != nil {
-				return fmt.Errorf("update migrated workspace_dir: %w", err)
-			}
-			migrated = true
-			_, _ = fmt.Fprintf(stdout, "migrated legacy config\n  from: %s\n  to:   %s\n\n", legacyPath, configPath)
-			_, _ = fmt.Fprintf(stdout, "the original file has been kept. you can remove it manually:\n  rm %s\n\n", legacyPath)
+	switch {
+	case opts.migrate:
+		legacyPath, ok := findLegacyConfig()
+		if !ok {
+			return fmt.Errorf("--migrate: no legacy config found relative to %s (looked for %s)", mustGetwd(), strings.Join(legacyConfigCandidates(), ", "))
+		}
+		if err := importLegacyConfig(configPath, legacyPath, stdout); err != nil {
+			return err
+		}
+		if err := updateMigratedWorkspaceDir(configPath, workspaceAbs); err != nil {
+			return fmt.Errorf("update migrated workspace_dir: %w", err)
+		}
+		migrated = true
+	case !configExists:
+		if legacyPath, ok := findLegacyConfig(); ok {
+			_, _ = fmt.Fprintf(stdout, "note: detected possible legacy config at %s\n      run `tars init --migrate` to import it instead of starting fresh\n\n", legacyPath)
 		}
 	}
 
@@ -152,22 +175,35 @@ func runInitCommand(ctx context.Context, opts initOptions, stdout, stderr io.Wri
 		return fmt.Errorf("pick api addr: %w", err)
 	}
 
-	if err := ensureStarterWorkspaceLayout(workspaceAbs, defaultStarterBundledPluginsDir()); err != nil {
-		return err
-	}
-	// Migrated configs already carry the user's settings (LLM creds,
-	// custom auth, etc.). Don't overwrite them with the wizard
-	// skeleton — that would silently destroy a working setup.
+	// For fresh installs we scaffold the workspace and write the
+	// wizard skeleton config. Migrated installs already have a
+	// populated workspace (referenced by the migrated workspace_dir)
+	// and an authoritative config — touching either would either
+	// duplicate the workspace at the default path (~/.tars/workspace)
+	// or destroy the user's existing settings.
 	if !migrated {
+		if err := ensureStarterWorkspaceLayout(workspaceAbs, defaultStarterBundledPluginsDir()); err != nil {
+			return err
+		}
 		if err := writeOnboardingConfigFile(workspaceAbs, apiAddr, configPath); err != nil {
 			return err
 		}
 	}
 
+	// Resolve the workspace path the started server will actually see.
+	// For migrated installs this is the value baked into the migrated
+	// config; for fresh installs it is the value we just wrote.
+	runtimeWorkspace := workspaceAbs
 	if migrated {
-		_, _ = fmt.Fprintf(stdout, "starting server with migrated config\nworkspace: %s\nconfig: %s\napi addr: %s\n\n", workspaceAbs, configPath, apiAddr)
+		if cfg, loadErr := config.Load(configPath); loadErr == nil && strings.TrimSpace(cfg.WorkspaceDir) != "" {
+			runtimeWorkspace = cfg.WorkspaceDir
+		}
+	}
+
+	if migrated {
+		_, _ = fmt.Fprintf(stdout, "starting server with migrated config\nworkspace: %s\nconfig: %s\napi addr: %s\n\n", runtimeWorkspace, configPath, apiAddr)
 	} else {
-		_, _ = fmt.Fprintf(stdout, "initialized TARS workspace\nworkspace: %s\nconfig: %s\napi addr: %s\n\n", workspaceAbs, configPath, apiAddr)
+		_, _ = fmt.Fprintf(stdout, "initialized TARS workspace\nworkspace: %s\nconfig: %s\napi addr: %s\n\n", runtimeWorkspace, configPath, apiAddr)
 	}
 
 	if opts.noServer {
@@ -179,7 +215,7 @@ func runInitCommand(ctx context.Context, opts initOptions, stdout, stderr io.Wri
 	startRes, err := initServerStarter(ctx, initStartParams{
 		apiAddr:      apiAddr,
 		configPath:   configPath,
-		workspaceDir: workspaceAbs,
+		workspaceDir: runtimeWorkspace,
 		useService:   useService,
 	}, stdout, stderr)
 	if err != nil {
@@ -352,41 +388,78 @@ agentruntime:
 `+"\n", workspaceDir, apiAddr))
 }
 
-// tryMigrateLegacyConfig checks for legacy config locations and copies to the
-// fixed config path. Returns true and the source path if migration occurred.
-func tryMigrateLegacyConfig(fixedPath string, stdout io.Writer) (bool, string) {
-	legacyCandidates := []string{
+// legacyConfigCandidates returns the cwd-relative paths the legacy
+// migration probe scans, in priority order.
+func legacyConfigCandidates() []string {
+	return []string{
 		"workspace/config/tars.config.yaml",
 		"config/default.yaml",
 		"config/standalone.yaml", // pre-rename layout, kept for upgrade migrations
 	}
-	for _, candidate := range legacyCandidates {
+}
+
+// findLegacyConfig probes the candidate paths and returns the first
+// existing legacy config (resolved to absolute) without copying it.
+// Used both by the explicit --migrate flow (then importLegacyConfig
+// runs) and by the discovery hint that prints when the user runs
+// `tars init` without --migrate.
+func findLegacyConfig() (string, bool) {
+	for _, candidate := range legacyConfigCandidates() {
 		abs, err := filepath.Abs(candidate)
 		if err != nil {
 			continue
 		}
-		if _, err := os.Stat(abs); err != nil {
+		if info, err := os.Stat(abs); err != nil || info.IsDir() {
 			continue
 		}
-		data, err := os.ReadFile(abs)
-		if err != nil {
-			continue
-		}
-		if err := os.MkdirAll(filepath.Dir(fixedPath), 0o755); err != nil {
-			_, _ = fmt.Fprintf(stdout, "warning: failed to create config dir: %v\n", err)
-			return false, ""
-		}
-		if err := os.WriteFile(fixedPath, data, 0o644); err != nil {
-			_, _ = fmt.Fprintf(stdout, "warning: failed to write migrated config: %v\n", err)
-			return false, ""
-		}
-		return true, abs
+		return abs, true
 	}
-	return false, ""
+	return "", false
 }
 
-// updateMigratedWorkspaceDir reads the migrated config and converts a relative
-// workspace_dir to an absolute path.
+// importLegacyConfig copies the legacy file at legacyPath to the
+// fixed config path and prints the migration banner. Caller is
+// responsible for any post-import patching (workspace_dir, etc.).
+func importLegacyConfig(fixedPath, legacyPath string, stdout io.Writer) error {
+	data, err := os.ReadFile(legacyPath)
+	if err != nil {
+		return fmt.Errorf("read legacy config %s: %w", legacyPath, err)
+	}
+	if err := os.MkdirAll(filepath.Dir(fixedPath), 0o755); err != nil {
+		return fmt.Errorf("create config dir: %w", err)
+	}
+	if err := os.WriteFile(fixedPath, data, 0o644); err != nil {
+		return fmt.Errorf("write migrated config: %w", err)
+	}
+	_, _ = fmt.Fprintf(stdout, "migrated legacy config\n  from: %s\n  to:   %s\n\n", legacyPath, fixedPath)
+	_, _ = fmt.Fprintf(stdout, "the original file has been kept. you can remove it manually:\n  rm %s\n\n", legacyPath)
+	return nil
+}
+
+// mustGetwd returns the current working directory or "." on error,
+// for inclusion in user-facing diagnostics. Never returns an error.
+func mustGetwd() string {
+	wd, err := os.Getwd()
+	if err != nil {
+		return "."
+	}
+	return wd
+}
+
+// updateMigratedWorkspaceDir absolutizes the workspace_dir in the
+// migrated config so the relative paths used by the legacy launcher
+// (`./workspace`) keep pointing at the same on-disk location after
+// the binary moves into ~/.tars. It accepts both layouts the loader
+// understands: top-level `workspace_dir:` and the nested
+// `runtime.workspace_dir:` form (the canonical post-flatten key is
+// the same; see internal/config/yaml.go's `runtime` root alias).
+//
+// Behavior:
+//   - nested runtime.workspace_dir present and relative → absolutize in place
+//   - top-level workspace_dir present and relative → absolutize in place
+//   - neither present → add a top-level entry pointing at defaultWorkspace
+//   - already absolute → no-op (avoids creating a duplicate entry that
+//     could lose to / clobber the user's actual setting after flatten)
 func updateMigratedWorkspaceDir(configPath, defaultWorkspace string) error {
 	raw, err := os.ReadFile(configPath)
 	if err != nil {
@@ -396,19 +469,54 @@ func updateMigratedWorkspaceDir(configPath, defaultWorkspace string) error {
 	if err := yaml.Unmarshal(raw, &parsed); err != nil {
 		return fmt.Errorf("parse config: %w", err)
 	}
-	wsRaw, ok := parsed["workspace_dir"]
+
 	changed := false
-	if !ok {
-		parsed["workspace_dir"] = defaultWorkspace
-		changed = true
-	} else if ws, ok := wsRaw.(string); ok && !filepath.IsAbs(ws) {
-		abs, err := filepath.Abs(ws)
-		if err != nil {
-			return fmt.Errorf("resolve workspace_dir: %w", err)
+
+	// Try nested runtime.workspace_dir first — that's the form the
+	// post-rename starter config uses, and the form most legacy
+	// configs ended up with after the runtime/automation regroup.
+	if runtimeRaw, ok := parsed["runtime"]; ok {
+		if runtimeMap, ok := runtimeRaw.(map[string]any); ok {
+			if wsRaw, ok := runtimeMap["workspace_dir"]; ok {
+				if ws, ok := wsRaw.(string); ok && !filepath.IsAbs(ws) {
+					abs, err := filepath.Abs(ws)
+					if err != nil {
+						return fmt.Errorf("resolve runtime.workspace_dir: %w", err)
+					}
+					runtimeMap["workspace_dir"] = abs
+					parsed["runtime"] = runtimeMap
+					changed = true
+				}
+				if changed {
+					goto write
+				}
+				// Already absolute — nothing to patch.
+				return nil
+			}
 		}
-		parsed["workspace_dir"] = abs
-		changed = true
 	}
+
+	// Fall back to top-level workspace_dir.
+	if wsRaw, ok := parsed["workspace_dir"]; ok {
+		if ws, ok := wsRaw.(string); ok && !filepath.IsAbs(ws) {
+			abs, err := filepath.Abs(ws)
+			if err != nil {
+				return fmt.Errorf("resolve workspace_dir: %w", err)
+			}
+			parsed["workspace_dir"] = abs
+			changed = true
+			goto write
+		}
+		// Already absolute — nothing to patch.
+		return nil
+	}
+
+	// Nothing on disk — bootstrap with the default. Use top-level so
+	// it's discoverable in either tree shape.
+	parsed["workspace_dir"] = defaultWorkspace
+	changed = true
+
+write:
 	if !changed {
 		return nil
 	}
@@ -547,6 +655,16 @@ func resolveConfigPath(raw, _ string) (string, error) {
 func ensureStarterWorkspaceLayout(workspaceAbs string, bundledPluginsDir string) error {
 	if err := memory.EnsureWorkspace(workspaceAbs); err != nil {
 		return fmt.Errorf("ensure workspace: %w", err)
+	}
+	// Bundled plugins seed the workspace's plugins/ dir but are not
+	// strictly required — the system boots without them and the user
+	// can install plugins later. When the bundled dir cannot be
+	// resolved (the assetpath probe didn't find it next to the exe,
+	// in cwd, or in source-tree fallbacks) treat that as a soft
+	// condition rather than a hard failure. This keeps `tars init`
+	// usable for dev binaries built outside a release tree.
+	if _, ok := assetpath.ResolveExistingDir(bundledPluginsDir); !ok {
+		return nil
 	}
 	if _, err := installStarterWorkspacePlugins(workspaceAbs, bundledPluginsDir); err != nil {
 		return fmt.Errorf("install bundled workspace plugins: %w", err)
