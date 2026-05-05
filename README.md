@@ -1,9 +1,9 @@
 <p align="center">
-  <img src="docs/brand/tars-icon.png" alt="TARS" width="160" />
+  <img src="docs/brand/tars-icon.png" alt="TARS" width="144" />
 </p>
 
 <p align="center">
-  <img src="docs/brand/tars-logo.png" alt="TARS — local AI agent runtime" width="520" />
+  <img src="docs/brand/tars-logo.png" alt="TARS — local AI agent runtime" width="500" />
 </p>
 
 # TARS

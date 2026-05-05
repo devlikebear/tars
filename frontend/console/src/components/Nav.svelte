@@ -103,7 +103,9 @@
 <nav class="nav" style={navOpen ? 'transform: translateX(0)' : undefined} aria-label={$t.nav.mainNavigation}>
   <div class="nav-brand">
     <button type="button" class="nav-logo" onclick={(e: MouseEvent) => handleClick(e, '/console')}>
-      <img class="nav-logo-mark" src="/console/tars-icon.png" alt="" width="28" height="28" />
+      <span class="nav-logo-frame" aria-hidden="true">
+        <img class="nav-logo-mark" src="/console/tars-icon.png" alt="" width="28" height="28" />
+      </span>
       <span class="nav-logo-text">TARS</span>
     </button>
     <button type="button" class="nav-close-btn" aria-label="Close navigation" onclick={handleClose}>✕</button>
@@ -168,12 +170,25 @@
     background: var(--surface-elevated);
   }
 
+  .nav-logo-frame {
+    width: 34px;
+    height: 34px;
+    padding: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-md);
+    border: 1px solid rgba(224, 145, 69, 0.28);
+    background: rgba(224, 145, 69, 0.16);
+    box-sizing: border-box;
+    flex-shrink: 0;
+  }
+
   .nav-logo-mark {
     width: 28px;
     height: 28px;
-    border-radius: var(--radius-md);
-    object-fit: cover;
-    flex-shrink: 0;
+    object-fit: contain;
+    filter: brightness(1.35) contrast(1.05);
   }
 
   .nav-logo-text {

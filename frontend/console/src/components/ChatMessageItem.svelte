@@ -91,7 +91,12 @@
   {/if}
 {:else}
   <div class="chat-msg chat-{message.role}">
-    <span class="chat-role">{$t.chat.message.roles[message.role as keyof typeof $t.chat.message.roles] ?? message.role}</span>
+    <div class="chat-message-heading">
+      {#if message.role === 'assistant'}
+        <img class="chat-avatar" src="/console/tars-avatar.png" alt="" width="22" height="22" />
+      {/if}
+      <span class="chat-role">{$t.chat.message.roles[message.role as keyof typeof $t.chat.message.roles] ?? message.role}</span>
+    </div>
     {#if message.role === 'assistant'}
       {#if !message.text && streamingStatus}
         <div class="chat-text">
@@ -262,8 +267,27 @@
     font-size: var(--text-xs);
     font-weight: 500;
     color: var(--text-tertiary);
-    margin-bottom: var(--space-1);
     display: block;
+  }
+
+  .chat-message-heading {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin-bottom: var(--space-1);
+    min-height: 22px;
+  }
+
+  .chat-avatar {
+    width: 24px;
+    height: 24px;
+    padding: 2px;
+    border: 1px solid rgba(224, 145, 69, 0.16);
+    border-radius: var(--radius-sm);
+    background: rgba(224, 145, 69, 0.08);
+    box-sizing: border-box;
+    object-fit: contain;
+    flex-shrink: 0;
   }
 
   .chat-msg-footer {
