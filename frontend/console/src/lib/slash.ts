@@ -117,6 +117,13 @@ const BUILTIN_SLASH_COMMANDS: SlashCommandCandidate[] = [
     title: 'Extract Skill',
     description: 'Open reusable skill candidates for the current session.',
   },
+  {
+    kind: 'builtin',
+    id: 'cwd',
+    command: 'cwd',
+    title: 'Active CWD',
+    description: 'Show or switch the active working directory: /cwd | /cwd list | /cwd <path>.',
+  },
 ]
 
 export function builtinSlashCommandId(command: string): string {

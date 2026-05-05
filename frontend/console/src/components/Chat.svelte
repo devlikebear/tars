@@ -4,12 +4,13 @@
     getEventsHistory, getPulseStatus,
     getSession, createSession, renameSession, deleteSession, compactSession, getSessionHistory,
     getSessionTasks, listChatTools, getSessionConfig, updateSessionConfig,
+    getSessionCwd, setSessionCwd,
     type SessionToolConfig,
   } from '../lib/api'
   import { t } from '../i18n'
   import { emptyTaskProgressSummary, planProgressPercent, summarizeTasks, type TaskProgressSummary } from '../lib/tasks'
   import { buildSessionHealthReport, emptySessionHealthReport, type SessionHealthAction, type SessionHealthInput, type SessionHealthReport } from '../lib/sessionHealth'
-  import type { ChatTierRecommendationRequest, PulseSnapshot, NotificationMessage, Session, SessionMessage, SessionTasks } from '../lib/types'
+  import type { ChatTierRecommendationRequest, PulseSnapshot, NotificationMessage, Session, SessionCwd, SessionMessage, SessionTasks } from '../lib/types'
   import type { Artifact } from '../lib/artifacts'
   import SessionSidebar from './SessionSidebar.svelte'
   import ChatPanel from './ChatPanel.svelte'
@@ -70,6 +71,13 @@
       if (sid) loadSelectedSession(sid)
     }
   })
+
+  // Session active-cwd HUD: cwdState mirrors GET /cwd; cwdDropdownOpen
+  // controls a tiny popover anchored to the chip; cwdBusy guards
+  // concurrent transitions while a PUT is in flight.
+  let cwdState: SessionCwd | null = $state(null)
+  let cwdDropdownOpen = $state(false)
+  let cwdBusy = $state(false)
 
   // Session action state
   let renaming = $state(false)
@@ -325,6 +333,50 @@
     try {
       selectedSession = await getSession(id)
     } catch { /* ignore */ }
+    void refreshCwdState(id)
+  }
+
+  async function refreshCwdState(id: string | null) {
+    if (!id) {
+      cwdState = null
+      return
+    }
+    try {
+      cwdState = await getSessionCwd(id)
+    } catch {
+      cwdState = null
+    }
+  }
+
+  function shortCwdLabel(path: string): string {
+    if (!path) return ''
+    const home = '/Users/'
+    if (path.startsWith(home)) {
+      const trimmed = path.slice(home.length)
+      const slash = trimmed.indexOf('/')
+      const tail = slash >= 0 ? trimmed.slice(slash) : ''
+      return `~${tail}`
+    }
+    return path
+  }
+
+  async function transitionCwd(target: string) {
+    if (!selectedSessionId) {
+      showFeedback('Select a session first')
+      return
+    }
+    if (cwdBusy) return
+    cwdBusy = true
+    try {
+      await setSessionCwd(selectedSessionId, target)
+      cwdDropdownOpen = false
+      await refreshCwdState(selectedSessionId)
+      showFeedback(`cwd → ${shortCwdLabel(target)}`)
+    } catch (err) {
+      showFeedback(`cwd transition failed: ${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      cwdBusy = false
+    }
   }
 
   function handleSelectSession(session: Session) {
@@ -670,6 +722,25 @@
         }
         openPanel('skillExtraction')
         return
+      case 'cwd':
+        if (!selectedSessionId) {
+          showFeedback('Select a session first')
+          return
+        }
+        if (args === '' || args.toLowerCase() === 'list') {
+          await refreshCwdState(selectedSessionId)
+          if (!cwdState) {
+            showFeedback('cwd: no eligible directories')
+            return
+          }
+          const eligible = cwdState.eligible.length
+            ? cwdState.eligible.map((p, i) => `  ${i + 1}. ${shortCwdLabel(p)}${p === cwdState!.current ? ' (active)' : ''}`).join('\n')
+            : '  (none)'
+          showFeedback(`cwd active: ${shortCwdLabel(cwdState.current)}\n${eligible}`)
+          return
+        }
+        await transitionCwd(args)
+        return
     }
   }
 
@@ -928,6 +999,37 @@
               <span>{$t.chat.session.healthBadge}</span>
               <strong>{sessionHealth.badgeLabel}</strong>
             </button>
+            {#if cwdState}
+              <div class="cwd-hud">
+                <button
+                  type="button"
+                  class="cwd-chip"
+                  title={cwdState.current}
+                  disabled={cwdBusy}
+                  onclick={() => { cwdDropdownOpen = !cwdDropdownOpen }}
+                >
+                  <span class="cwd-chip-label">cwd</span>
+                  <strong>{shortCwdLabel(cwdState.current)}</strong>
+                </button>
+                {#if cwdDropdownOpen}
+                  <div class="cwd-dropdown" role="menu">
+                    {#each cwdState.eligible as path (path)}
+                      <button
+                        type="button"
+                        class="cwd-dropdown-item"
+                        class:active={path === cwdState.current}
+                        disabled={cwdBusy}
+                        title={path}
+                        onclick={() => transitionCwd(path)}
+                      >
+                        {shortCwdLabel(path)}
+                        {#if path === cwdState.current}<span class="cwd-active-marker">●</span>{/if}
+                      </button>
+                    {/each}
+                  </div>
+                {/if}
+              </div>
+            {/if}
           </div>
           <div class="session-actions">
             {#if !isMainSession()}
@@ -1358,6 +1460,105 @@
   .session-health-badge.health-critical {
     border-color: color-mix(in srgb, var(--error) 50%, var(--border-subtle));
     color: var(--error);
+  }
+
+  /* Active-cwd HUD: chip mirrors the health badge dimensions so the
+     header row stays balanced; dropdown is absolutely positioned so it
+     doesn't shift the rest of the row when opened. */
+  .cwd-hud {
+    position: relative;
+    display: inline-flex;
+    flex-shrink: 0;
+  }
+
+  .cwd-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    max-width: 240px;
+    padding: 3px var(--space-2);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    background: var(--surface-base);
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: var(--text-xs);
+    font-family: var(--font-mono);
+    transition:
+      background var(--duration-fast) var(--ease-out),
+      border-color var(--duration-fast) var(--ease-out);
+  }
+
+  .cwd-chip:hover:not(:disabled) {
+    border-color: var(--primary);
+    background: var(--surface-elevated);
+  }
+
+  .cwd-chip:disabled {
+    cursor: progress;
+    opacity: 0.7;
+  }
+
+  .cwd-chip-label {
+    color: var(--text-tertiary);
+    font-family: var(--font-display);
+  }
+
+  .cwd-chip strong {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--primary);
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .cwd-dropdown {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    z-index: 50;
+    display: flex;
+    flex-direction: column;
+    min-width: 220px;
+    max-width: 360px;
+    padding: var(--space-1);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-md);
+    background: var(--surface-elevated);
+    box-shadow: var(--shadow-md, 0 4px 12px rgba(0, 0, 0, 0.25));
+  }
+
+  .cwd-dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-1) var(--space-2);
+    border: none;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-primary);
+    cursor: pointer;
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .cwd-dropdown-item:hover:not(:disabled) {
+    background: var(--surface-base);
+  }
+
+  .cwd-dropdown-item.active {
+    color: var(--primary);
+  }
+
+  .cwd-active-marker {
+    margin-left: auto;
+    color: var(--primary);
+    font-size: var(--text-xs);
   }
 
   .new-chat-title {

@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.166] - 2026-05-05
+
+### Added
+
+- **Console — active-cwd HUD chip + `/cwd` slash command** — Phase 5 of the `.tars/` epic. The chat session header now shows an amber `cwd ~/path` chip next to the health badge that, on click, opens a dropdown listing every eligible directory (artifact dir + registered work_dirs) for the session and lets the user transition with one click. A new `/cwd` builtin slash command echoes the current cwd plus the eligible list (`/cwd` or `/cwd list`) or transitions to a path (`/cwd <path>`), surfacing backend errors via the existing feedback toast. Adds typed API helpers `getSessionCwd` / `setSessionCwd`, a new `SessionCwd` type, and DESIGN.md notes for the chip + dropdown styling. Closes [#708](https://github.com/devlikebear/tars/issues/708); refs Epic [#703](https://github.com/devlikebear/tars/issues/703).
+
 ## [0.31.165] - 2026-05-05
 
 ### Added
