@@ -6,6 +6,14 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.172] - 2026-05-05
+
+### Added
+
+- **`tars init` is now an onboarding orchestrator** (#719 phase 1) — first install used to leave users staring at a `connection refused` page (`tars` opens the browser to a hard-coded `127.0.0.1:43180/console`, but no server is running yet). The new `tars init`: (1) auto-picks a free port from `43180..43199` (or `--port`/`--api-addr` if provided), (2) writes a wizard-driven skeleton `~/.tars/config/config.yaml` (workspace_dir + auth fields, no LLM section so `NeedsSetup=true` triggers the wizard), (3) starts the server (LaunchAgent on macOS by default; detached `tars serve` on other OSes or with `--no-server`), (4) polls `/v1/healthz` until ready, and (5) opens the setup wizard in the default browser. New flags: `--port`, `--api-addr`, `--no-server`, `--no-browser`, `--force`. Re-onboarding via `tars init reset` lands in phase 2. On non-default ports the output prints the `TARS_SERVER_URL=http://...` export the user needs for other CLI commands.
+- **`tars onboard` alias** — same flag set and runner as `tars init`; exists for discoverability so users typing the more obvious verb land in the same orchestrator.
+- **`tars service install --api-addr` / `--allow-needs-setup`** — `--api-addr` bakes `serve --api-addr <addr>` into the LaunchAgent's `ProgramArguments`, so a non-default port survives launchd restarts. `--allow-needs-setup` lets `service install` complete while the LLM section is still empty (the legitimate state during onboarding before the user finishes the wizard); the doctor gate still blocks any non-LLM failure (workspace missing, broken YAML, etc.) so we don't paper over real problems.
+
 ## [0.31.171] - 2026-05-05
 
 ### Changed
