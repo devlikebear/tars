@@ -98,6 +98,12 @@
       <span class="chat-role">{$t.chat.message.roles[message.role as keyof typeof $t.chat.message.roles] ?? message.role}</span>
     </div>
     {#if message.role === 'assistant'}
+      {#if message.reasoningText}
+        <details class="chat-reasoning" open={!message.text}>
+          <summary class="chat-reasoning-summary">{$t.chat.message.reasoningSummaryWithChars(message.reasoningText.length)}</summary>
+          <pre class="chat-reasoning-body">{message.reasoningText}</pre>
+        </details>
+      {/if}
       {#if !message.text && streamingStatus}
         <div class="chat-text">
           <ChatStreamingStatus
@@ -327,5 +333,42 @@
     padding: 1px 6px;
     border-radius: var(--radius-sm);
     margin-right: auto;
+  }
+
+  .chat-reasoning {
+    margin: 0 0 var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    border: 1px dashed var(--border-subtle);
+    border-radius: var(--radius-sm);
+    background: rgba(224, 145, 69, 0.04);
+  }
+
+  .chat-reasoning-summary {
+    cursor: pointer;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-secondary);
+    list-style: none;
+  }
+  .chat-reasoning-summary::-webkit-details-marker { display: none; }
+  .chat-reasoning-summary::before {
+    content: '\25B8';
+    display: inline-block;
+    margin-right: var(--space-2);
+    transition: transform var(--duration-fast);
+  }
+  .chat-reasoning[open] > .chat-reasoning-summary::before {
+    transform: rotate(90deg);
+  }
+
+  .chat-reasoning-body {
+    margin: var(--space-2) 0 0;
+    white-space: pre-wrap;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 1.5;
+    color: var(--text-tertiary);
+    max-height: 360px;
+    overflow: auto;
   }
 </style>

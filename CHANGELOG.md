@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.178] - 2026-05-05
+
+### Added
+
+- **Streaming reasoning content to the console** — providers that expose a separate chain-of-thought channel (kimi `reasoning_content`, Anthropic `thinking_delta`, OpenAI Responses reasoning summaries) now stream that text to the console in real time instead of being silently buffered. Previously, when a model spent time emitting only reasoning tokens, the chat showed just the "LLM 추론중" HUD with no body text — and any reasoning that was buffered ended up dropped on the floor. A new provider-agnostic `OnReasoningDelta` callback in `internal/llm` flows through the agent loop into a new `reasoning_delta` SSE event, which `ChatMessageItem` renders as a collapsible "추론 / Reasoning" panel above the assistant message.
+
 ## [0.31.177] - 2026-05-05
 
 ### Changed

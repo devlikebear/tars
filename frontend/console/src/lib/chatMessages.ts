@@ -3,6 +3,7 @@ export type ChatMessage = {
   sourceMessageId?: string
   role: 'user' | 'assistant' | 'system' | 'error' | 'tool'
   text: string
+  reasoningText?: string
   toolName?: string
   toolCallId?: string
   toolArgs?: string

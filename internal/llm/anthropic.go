@@ -76,7 +76,7 @@ func (c *AnthropicClient) Chat(ctx context.Context, messages []ChatMessage, opts
 	defer resp.Body.Close()
 
 	if streaming {
-		return c.chatStreamingResponse(resp.Body, opts.OnDelta)
+		return c.chatStreamingResponse(resp.Body, opts.OnDelta, opts.OnReasoningDelta)
 	}
 	return c.chatNonStreamingResponse(resp.Body)
 }
@@ -179,14 +179,16 @@ func (c *AnthropicClient) chatNonStreamingResponse(body io.Reader) (ChatResponse
 	}, nil
 }
 
-func (c *AnthropicClient) chatStreamingResponse(body io.Reader, onDelta func(text string)) (ChatResponse, error) {
+func (c *AnthropicClient) chatStreamingResponse(body io.Reader, onDelta func(text string), onReasoningDelta func(text string)) (ChatResponse, error) {
 	var (
 		response         ChatResponse
 		eventType        string
 		builder          strings.Builder
+		reasoningBuilder strings.Builder
 		stopReason       string
 		toolCallsByIndex = map[int]ToolCall{}
 		toolInputByIndex = map[int]string{}
+		thinkingByIndex  = map[int]bool{}
 	)
 
 	scanner := createSSEScanner(body)
@@ -228,6 +230,16 @@ func (c *AnthropicClient) chatStreamingResponse(body io.Reader, onDelta func(tex
 				builder.WriteString(parsed.ContentBlock.Text)
 				zlog.Debug().Str("provider", "anthropic").Int("delta_len", len(parsed.ContentBlock.Text)).Str("delta", truncateForLog(parsed.ContentBlock.Text, 4000)).Msg("llm stream delta")
 				onDelta(parsed.ContentBlock.Text)
+			case "thinking":
+				thinkingByIndex[parsed.Index] = true
+				if parsed.ContentBlock.Thinking == "" {
+					continue
+				}
+				reasoningBuilder.WriteString(parsed.ContentBlock.Thinking)
+				zlog.Debug().Str("provider", "anthropic").Int("delta_len", len(parsed.ContentBlock.Thinking)).Str("delta", truncateForLog(parsed.ContentBlock.Thinking, 4000)).Msg("llm stream reasoning delta")
+				if onReasoningDelta != nil {
+					onReasoningDelta(parsed.ContentBlock.Thinking)
+				}
 			case "tool_use":
 				prev := toolCallsByIndex[parsed.Index]
 				if id := strings.TrimSpace(parsed.ContentBlock.ID); id != "" {
@@ -245,7 +257,9 @@ func (c *AnthropicClient) chatStreamingResponse(body io.Reader, onDelta func(tex
 			var parsed struct {
 				Index int `json:"index"`
 				Delta struct {
+					Type        string `json:"type"`
 					Text        string `json:"text"`
+					Thinking    string `json:"thinking"`
 					PartialJSON string `json:"partial_json"`
 				} `json:"delta"`
 			}
@@ -257,7 +271,17 @@ func (c *AnthropicClient) chatStreamingResponse(body io.Reader, onDelta func(tex
 				zlog.Debug().Str("provider", "anthropic").Int("delta_len", len(parsed.Delta.Text)).Str("delta", truncateForLog(parsed.Delta.Text, 4000)).Msg("llm stream delta")
 				onDelta(parsed.Delta.Text)
 			}
-			if parsed.Delta.PartialJSON != "" {
+			if parsed.Delta.Thinking != "" || parsed.Delta.Type == "thinking_delta" {
+				thinkingText := parsed.Delta.Thinking
+				if thinkingText != "" {
+					reasoningBuilder.WriteString(thinkingText)
+					zlog.Debug().Str("provider", "anthropic").Int("delta_len", len(thinkingText)).Str("delta", truncateForLog(thinkingText, 4000)).Msg("llm stream reasoning delta")
+					if onReasoningDelta != nil {
+						onReasoningDelta(thinkingText)
+					}
+				}
+			}
+			if parsed.Delta.PartialJSON != "" && !thinkingByIndex[parsed.Index] {
 				prev := toolCallsByIndex[parsed.Index]
 				prev.Arguments += parsed.Delta.PartialJSON
 				toolCallsByIndex[parsed.Index] = prev
@@ -323,9 +347,10 @@ func (c *AnthropicClient) chatStreamingResponse(body io.Reader, onDelta func(tex
 	toolCalls := orderedToolCalls(toolCallsByIndex)
 
 	response.Message = ChatMessage{
-		Role:      "assistant",
-		Content:   builder.String(),
-		ToolCalls: toolCalls,
+		Role:             "assistant",
+		Content:          builder.String(),
+		ToolCalls:        toolCalls,
+		ReasoningContent: reasoningBuilder.String(),
 	}
 	response.StopReason = stopReason
 	zlog.Debug().
@@ -340,11 +365,12 @@ func (c *AnthropicClient) chatStreamingResponse(body io.Reader, onDelta func(tex
 }
 
 type anthropicContentBlock struct {
-	Type  string          `json:"type"`
-	Text  string          `json:"text,omitempty"`
-	ID    string          `json:"id,omitempty"`
-	Name  string          `json:"name,omitempty"`
-	Input json.RawMessage `json:"input,omitempty"`
+	Type     string          `json:"type"`
+	Text     string          `json:"text,omitempty"`
+	Thinking string          `json:"thinking,omitempty"`
+	ID       string          `json:"id,omitempty"`
+	Name     string          `json:"name,omitempty"`
+	Input    json.RawMessage `json:"input,omitempty"`
 }
 
 type anthropicWireMessage struct {

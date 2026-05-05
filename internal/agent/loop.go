@@ -63,13 +63,14 @@ func NewLoop(client llm.Client, registry *tool.Registry, hooks ...Hook) *Loop {
 }
 
 type RunOptions struct {
-	MaxIterations  int
-	OnDelta        func(text string)
-	Tools          []llm.ToolSchema
-	BlockedTools   map[string]tool.BlockedToolError
-	ToolChoice     *llm.ToolChoice
-	ResponseFormat *llm.ResponseFormat
-	AutoExpandOnce bool
+	MaxIterations    int
+	OnDelta          func(text string)
+	OnReasoningDelta func(text string)
+	Tools            []llm.ToolSchema
+	BlockedTools     map[string]tool.BlockedToolError
+	ToolChoice       *llm.ToolChoice
+	ResponseFormat   *llm.ResponseFormat
+	AutoExpandOnce   bool
 }
 
 func (l *Loop) Run(ctx context.Context, initial []llm.ChatMessage, opts RunOptions) (llm.ChatResponse, error) {
@@ -91,10 +92,11 @@ func (l *Loop) Run(ctx context.Context, initial []llm.ChatMessage, opts RunOptio
 	for i := 0; i < maxIters; i++ {
 		l.emit(ctx, Event{Type: EventBeforeLLM, Iteration: i + 1, MessageCount: len(messages)})
 		resp, err := l.client.Chat(ctx, messages, llm.ChatOptions{
-			OnDelta:        opts.OnDelta,
-			Tools:          llmTools,
-			ToolChoice:     opts.ToolChoice,
-			ResponseFormat: opts.ResponseFormat,
+			OnDelta:          opts.OnDelta,
+			OnReasoningDelta: opts.OnReasoningDelta,
+			Tools:            llmTools,
+			ToolChoice:       opts.ToolChoice,
+			ResponseFormat:   opts.ResponseFormat,
 		})
 		if err != nil {
 			l.emit(ctx, Event{Type: EventLoopError, Iteration: i + 1, Err: err})
@@ -259,9 +261,10 @@ func (l *Loop) Run(ctx context.Context, initial []llm.ChatMessage, opts RunOptio
 	finalIter := maxIters + 1
 	l.emit(ctx, Event{Type: EventBeforeLLM, Iteration: finalIter, MessageCount: len(messages)})
 	finalResp, finalErr := l.client.Chat(ctx, messages, llm.ChatOptions{
-		OnDelta:    opts.OnDelta,
-		Tools:      nil,
-		ToolChoice: llm.ToolChoiceNone(),
+		OnDelta:          opts.OnDelta,
+		OnReasoningDelta: opts.OnReasoningDelta,
+		Tools:            nil,
+		ToolChoice:       llm.ToolChoiceNone(),
 	})
 	if finalErr == nil {
 		l.emit(ctx, Event{Type: EventAfterLLM, Iteration: finalIter, MessageCount: len(messages)})

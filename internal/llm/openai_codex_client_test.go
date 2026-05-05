@@ -460,6 +460,59 @@ func TestOpenAICodexClient_StreamEvents_ParsesLifecycle(t *testing.T) {
 	}
 }
 
+func TestOpenAICodexClient_StreamReasoningSummary(t *testing.T) {
+	sse := strings.Join([]string{
+		`data: {"type":"response.reasoning_summary_text.delta","delta":"Plan: "}`,
+		`data: {"type":"response.reasoning_summary_text.delta","delta":"do it"}`,
+		`data: {"type":"response.output_text.delta","delta":"Done"}`,
+		`data: {"type":"response.completed","response":{"status":"completed","usage":{"input_tokens":2,"output_tokens":1}}}`,
+		`data: [DONE]`,
+	}, "\n\n") + "\n\n"
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte(sse))
+	}))
+	defer srv.Close()
+
+	client, err := newOpenAICodexClientWithConfig(
+		srv.URL,
+		"gpt-5.3-codex",
+		"oauth",
+		"openai-codex",
+		"",
+		DefaultClientConfig(),
+		func() (auth.CodexCredential, error) {
+			return auth.CodexCredential{AccessToken: "token-1"}, nil
+		},
+		func(context.Context, auth.CodexCredential) (auth.CodexCredential, error) {
+			t.Fatal("refresh should not be called")
+			return auth.CodexCredential{}, nil
+		},
+	)
+	if err != nil {
+		t.Fatalf("new codex client: %v", err)
+	}
+
+	var content, reasoning strings.Builder
+	resp, err := client.Chat(context.Background(), []ChatMessage{{Role: "user", Content: "hi"}}, ChatOptions{
+		OnDelta:          func(s string) { content.WriteString(s) },
+		OnReasoningDelta: func(s string) { reasoning.WriteString(s) },
+	})
+	if err != nil {
+		t.Fatalf("chat: %v", err)
+	}
+	if got, want := content.String(), "Done"; got != want {
+		t.Fatalf("content stream got %q want %q", got, want)
+	}
+	if got, want := reasoning.String(), "Plan: do it"; got != want {
+		t.Fatalf("reasoning stream got %q want %q", got, want)
+	}
+	if resp.Message.ReasoningContent != "Plan: do it" {
+		t.Fatalf("ReasoningContent buffer got %q", resp.Message.ReasoningContent)
+	}
+}
+
 func TestOpenAICodexClient_ToolCallStream_ParsesToolCall(t *testing.T) {
 	sse := strings.Join([]string{
 		`data: {"type":"response.output_item.done","item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"exec","arguments":"{\"command\":\"pwd\"}"}}`,
