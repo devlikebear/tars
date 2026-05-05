@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.165] - 2026-05-05
+
+### Added
+
+- **Session-cwd skill + command discovery** — Phase 4 of the `.tars/` epic. Chat sessions now expose any skills under `<active_cwd>/.tars/skills/` (each with the standard `SKILL.md` shape) on top of the bundled / user / workspace tiers, with cwd-local entries winning conflicts via the new `skill.SourceSessionCwd` source. A sibling `<active_cwd>/.tars/commands/<name>.md` directory provides "alias" commands: each file's `target_skill:` frontmatter resolves to an existing skill in the snapshot, and the alias is registered with the file's basename as both `Name` and `Slash` so `/<name>` invokes the underlying skill (description override is honoured; missing or invalid targets surface as snapshot diagnostics rather than failing the chat turn). Both the live chat run and the `/v1/chat/context` preview consult the augmented snapshot, so `tool_config.skills_enabled` filtering already works against cwd-local skills with no extra wiring. Closes [#707](https://github.com/devlikebear/tars/issues/707); refs Epic [#703](https://github.com/devlikebear/tars/issues/703).
+
 ## [0.31.164] - 2026-05-05
 
 ### Added

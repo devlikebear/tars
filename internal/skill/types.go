@@ -6,6 +6,12 @@ const (
 	SourceWorkspace Source = "workspace"
 	SourceUser      Source = "user"
 	SourceBundled   Source = "bundled"
+	// SourceSessionCwd identifies skills (and command aliases) discovered
+	// under `<active_cwd>/.tars/skills/` and `<active_cwd>/.tars/commands/`.
+	// In the loader's last-write-wins ordering this source is appended
+	// after all others, so a cwd-local skill with the same name as a
+	// bundled or user skill always wins.
+	SourceSessionCwd Source = "session_cwd"
 )
 
 type Definition struct {

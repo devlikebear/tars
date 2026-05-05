@@ -22,6 +22,10 @@ type Frontmatter struct {
 	WakePhases              []string
 	Tags                    []string
 	SmokeTests              []string
+	// TargetSkill is set on `.tars/commands/<name>.md` alias files; empty
+	// on regular SKILL.md entries. The commands loader uses it to resolve
+	// the underlying skill whose behavior the alias should reuse.
+	TargetSkill string
 }
 
 func ParseFrontmatter(raw string) (Frontmatter, string, error) {
@@ -147,6 +151,8 @@ func parseFrontmatterBlock(raw string) (Frontmatter, error) {
 			meta.Tags = parseFrontmatterListValue(v)
 		case "smoke_tests":
 			meta.SmokeTests = parseFrontmatterListValue(v)
+		case "target_skill":
+			meta.TargetSkill = v
 		}
 	}
 	flushList()

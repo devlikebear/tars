@@ -1220,6 +1220,7 @@ func newChatAPIHandlerWithRuntimeConfig(
 		if tooling.Extensions != nil {
 			extSnapshot = tooling.Extensions.Snapshot()
 		}
+		extSnapshot = augmentSnapshotWithCwdSkills(extSnapshot, sess.CurrentDir)
 		var sessionToolConfigs []session.SessionToolConfig
 		effTC, effPrompt, present := effectiveSessionView(tooling.OverrideService, sess)
 		if present {
