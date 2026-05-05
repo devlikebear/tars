@@ -4,6 +4,7 @@
     getSessionStyle,
     listChatTools,
     getSessionConfig,
+    getSessionEffectiveConfig,
     updateSessionAutomationConsent,
     updateSessionConfig,
     updateSessionStyle,
@@ -12,7 +13,7 @@
   } from '../lib/api'
   import { buildSessionPermissionPreview, type SessionPermissionPreview } from '../lib/sessionPermissionPreview'
   import { buildSessionStylePreview, sessionStylePayload } from '../lib/sessionStyle'
-  import type { SessionAutomationConsent, SessionStyleResponse, SessionStyleValues } from '../lib/types'
+  import type { EffectiveConfigSource, SessionAutomationConsent, SessionEffectiveConfig, SessionStyleResponse, SessionStyleValues } from '../lib/types'
 
   interface Props {
     sessionId: string
@@ -48,6 +49,41 @@
   let skillsEnabledSet: Set<string> = $state(new Set())
   let useCustomConfig = $state(false)
   let useCustomSkills = $state(false)
+
+  // Effective-config snapshot (Phase 3 backend) — drives source badges
+  // on tools/skills items so the user can see when a value comes from
+  // a `.tars/settings*.json` file rather than the session base.
+  let effectiveConfig: SessionEffectiveConfig | null = $state(null)
+  const sourceBadgeLabel: Record<EffectiveConfigSource, string> = {
+    base: 'session',
+    shared: 'shared',
+    local: 'local',
+  }
+  const sourceBadgeTitle: Record<EffectiveConfigSource, string> = {
+    base: 'sessions.json',
+    shared: '.tars/settings.json',
+    local: '.tars/settings.local.json',
+  }
+
+  function sourceForToolList(name: string): EffectiveConfigSource {
+    if (!effectiveConfig) return 'base'
+    const tc = effectiveConfig.effective.tool_config
+    if (tc.tools_enabled?.includes(name)) {
+      return effectiveConfig.sources['tool_config.tools_enabled'] ?? 'base'
+    }
+    if (tc.tools_disabled?.includes(name)) {
+      return effectiveConfig.sources['tool_config.tools_disabled'] ?? 'base'
+    }
+    return 'base'
+  }
+
+  function sourceForSkillList(name: string): EffectiveConfigSource {
+    if (!effectiveConfig) return 'base'
+    if (effectiveConfig.effective.tool_config.skills_enabled?.includes(name)) {
+      return effectiveConfig.sources['tool_config.skills_enabled'] ?? 'base'
+    }
+    return 'base'
+  }
 
   type AutomationToggleKey = 'auto_resume' | 'git_mutations' | 'autonomous_mutations'
   const defaultAutoResumeMinutes = 30
@@ -90,6 +126,18 @@
       automationConsent = automationResp
       styleResponse = styleResp
       styleDraft = { ...styleResp.effective }
+
+      // Best-effort: failure to load effective config (e.g. service not
+      // wired in old tests) just disables the source badges.
+      if (sessionId) {
+        try {
+          effectiveConfig = await getSessionEffectiveConfig(sessionId)
+        } catch {
+          effectiveConfig = null
+        }
+      } else {
+        effectiveConfig = null
+      }
 
       applyConfigState(config, tools, skills)
       pendingConfig = null
@@ -518,6 +566,7 @@
       </div>
       <div class="config-list">
         {#each filteredTools as t}
+          {@const toolSrc = sourceForToolList(t.name)}
           <label class="config-item" class:high-risk={t.high_risk}>
             <input type="checkbox" checked={isToolEnabled(t.name)} onchange={() => toggleTool(t.name)} />
             <span class="item-name">{t.name}</span>
@@ -526,6 +575,9 @@
             {/if}
             {#if t.high_risk}
               <span class="badge badge-warning" style="font-size:9px;padding:0 4px;">risk</span>
+            {/if}
+            {#if toolSrc !== 'base'}
+              <span class="source-badge source-{toolSrc}" title={sourceBadgeTitle[toolSrc]}>{sourceBadgeLabel[toolSrc]}</span>
             {/if}
           </label>
         {/each}
@@ -540,9 +592,13 @@
       </div>
       <div class="config-list">
         {#each filteredSkills as s}
+          {@const skillSrc = sourceForSkillList(s)}
           <label class="config-item">
             <input type="checkbox" checked={isSkillEnabled(s)} onchange={() => toggleSkill(s)} />
             <span class="item-name">{s}</span>
+            {#if skillSrc !== 'base'}
+              <span class="source-badge source-{skillSrc}" title={sourceBadgeTitle[skillSrc]}>{sourceBadgeLabel[skillSrc]}</span>
+            {/if}
           </label>
         {/each}
       </div>
@@ -959,6 +1015,32 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  /* Source badge — shows where the effective value came from when it
+     was contributed by `.tars/settings.json` (shared) or
+     `.tars/settings.local.json` (local). The base / sessions.json case
+     renders no badge so the row stays quiet for plain sessions. */
+  .source-badge {
+    margin-left: auto;
+    padding: 0 5px;
+    border-radius: var(--radius-sm);
+    font-size: 9px;
+    font-family: var(--font-display);
+    line-height: 14px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    cursor: help;
+  }
+  .source-badge.source-shared {
+    color: var(--primary);
+    background: color-mix(in srgb, var(--primary) 14%, transparent);
+    border: 1px solid color-mix(in srgb, var(--primary) 35%, transparent);
+  }
+  .source-badge.source-local {
+    color: var(--text-primary);
+    background: color-mix(in srgb, var(--text-primary) 10%, transparent);
+    border: 1px solid color-mix(in srgb, var(--text-primary) 25%, transparent);
   }
 
   .automation-list {

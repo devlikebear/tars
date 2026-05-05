@@ -87,6 +87,7 @@ import type {
   GitWorktreesResponse,
   SessionWorkDirs,
   SessionCwd,
+  SessionEffectiveConfig,
   UsageToday,
   LogsResponse,
   AnalyticsResponse,
@@ -640,6 +641,12 @@ export async function setSessionCwd(sessionId: string, current: string): Promise
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ current }),
   })
+}
+
+export async function getSessionEffectiveConfig(sessionId: string): Promise<SessionEffectiveConfig> {
+  return requestJSON<SessionEffectiveConfig>(
+    `/v1/admin/sessions/${encodeURIComponent(sessionId)}/effective-config`,
+  )
 }
 
 export type OpenTerminalResult = {

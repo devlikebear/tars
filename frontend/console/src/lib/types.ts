@@ -1528,6 +1528,37 @@ export type SessionCwd = {
   eligible: string[]
 }
 
+export type EffectiveConfigSource = 'base' | 'shared' | 'local'
+
+export type SessionEffectiveConfigDiagnostic = {
+  path: string
+  severity: 'warn' | 'error'
+  message: string
+  file: string
+}
+
+export type SessionEffectiveConfig = {
+  session_id: string
+  cwd: string
+  effective: {
+    tool_config: {
+      tools_enabled?: string[]
+      tools_custom?: boolean
+      tools_disabled?: string[]
+      tools_allow_groups?: string[]
+      tools_deny_groups?: string[]
+      skills_enabled?: string[]
+      skills_custom?: boolean
+      mcp_enabled?: string[]
+    }
+    prompt_override: string
+    mcp_servers_extra?: Array<{ name: string; command: string; args?: string[]; env?: Record<string, string> }>
+    model_tier_override?: string
+  }
+  sources: Record<string, EffectiveConfigSource>
+  diagnostics?: SessionEffectiveConfigDiagnostic[]
+}
+
 export type TelegramPairingEntry = {
   code: string
   user_id: number

@@ -317,6 +317,10 @@ Cards are the primary chunking device. When you want users to perceive "these th
 
 Sits next to the session-health badge in `.session-title-row`. Mirrors the badge dimensions (3px / `space-2` padding, `radius-sm`) so the row stays balanced. The active path renders in **`primary` (amber)** with `font-mono`, prefixed by the dimmed label `cwd`. Click toggles a `position: absolute` dropdown anchored to the chip's right edge, listing every eligible cwd; the active row also reads in amber with a small bullet marker. Disabled state uses `opacity 0.7` while a transition is in flight. The chip is hidden until the session has loaded (no eligible-cwd payload → no chip), so empty states never show a phantom widget.
 
+### Source badges (Session Config panel)
+
+Tools and skills that the session inherited from a `.tars/settings*.json` override file are tagged with a tiny `source-badge` chip on the right side of `.config-item`. The badge uses 9px display-font caps with 4–5px padding so it fits inside the existing config row without breaking layout. **`shared`** entries (from `.tars/settings.json`, the team-shared file) render in amber so the user immediately spots project-level overrides; **`local`** entries (from `.tars/settings.local.json`, the per-user gitignored file) use a neutral grey to avoid implying parity with shared. Items whose value comes from the session base (`sessions.json`) render no badge — keeping the row visually quiet for the common case. Hovering a badge reveals the full file path the override came from via the native `title` attribute.
+
 ### Input fields
 
 Text inputs and textareas share a single visual: `surface-inset` background, `border-default` outline, `body-md` text. On focus the border switches to `primary`. There is no fill change on focus — the accent border carries the affordance.
