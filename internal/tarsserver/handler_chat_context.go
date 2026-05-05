@@ -116,6 +116,9 @@ func buildSessionChatRunState(
 	if deps.tooling.Extensions != nil {
 		extSnapshot = deps.tooling.Extensions.Snapshot()
 	}
+	if sessErr == nil {
+		extSnapshot = augmentSnapshotWithCwdSkills(extSnapshot, sess.CurrentDir)
+	}
 	var sessionToolConfigs []session.SessionToolConfig
 	effectivePromptOverride := ""
 	if sessErr == nil {
