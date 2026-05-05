@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.168] - 2026-05-05
+
+### Documentation
+
+- **`.tars/` session-scoped overrides — full reference in CLAUDE.md + README** — Phase 7 closes Epic [#703](https://github.com/devlikebear/tars/issues/703). Adds a single authoritative section to `CLAUDE.md` covering the active-cwd model, the merge order (`sessions.json ← .tars/settings.json ← .tars/settings.local.json`), the allow-list / block-list, where overrides take effect (chat prompt, tool gating, skill discovery, Session Config badges), and the known follow-up gaps (no UI override layer yet, badges only on Tools/Skills tabs, no `tars init local` scaffolding command). README's Extensibility section gains a one-paragraph pointer so newcomers know the feature exists. Closes [#710](https://github.com/devlikebear/tars/issues/710).
+
 ## [0.31.167] - 2026-05-05
 
 ### Added

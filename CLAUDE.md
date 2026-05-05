@@ -104,6 +104,48 @@ Frontend wizard (`Onboarding.svelte`): 4 steps — Provider → Tiers → Review
 `App.svelte` force-pushes `/console/onboarding` when `needs_setup=true`.
 Re-entry via `?reentry=1`: prefills form, masks api_key, adds [Save only] option.
 
+## Session-scoped overrides (`.tars/` in active cwd)
+
+세션 채팅의 active cwd 아래 `.tars/` 디렉터리가 있으면 그 세션 한정으로 설정·스킬·커맨드를 추가/오버라이드할 수 있다. 모든 세션이 아니라 active cwd로 진입한 세션만 영향받는다.
+
+**Active cwd 모델** (Phase 1)
+- 후보 cwd = 세션 아티팩트 디렉터리 ∪ `Session.WorkDirs[]`
+- active cwd = `Session.CurrentDir` (없으면 아티팩트로 fallback)
+- 채팅 헤더 amber `cwd ~/path` 칩으로 표시·전환 (`/cwd`, `/cwd list`, `/cwd <path>`)
+- `GET/PUT /v1/admin/sessions/{id}/cwd` — 후보 외 경로는 400
+
+**디렉터리 구조** (`<active_cwd>/.tars/`)
+```
+.tars/
+  settings.json          # 팀 공유 (커밋 권장)
+  settings.local.json    # 개인 (gitignore 권장)
+  skills/<name>/SKILL.md # 빌트인과 머지, cwd 우선
+  commands/<name>.md     # skill 별칭 (target_skill: <기존스킬>)
+```
+
+**머지 우선순위 (낮음 → 높음)** — `internal/sessionoverride.Merge`
+```
+sessions.json (세션 base)
+  ← <cwd>/.tars/settings.json       [shared 배지, amber]
+  ← <cwd>/.tars/settings.local.json [local 배지, grey]
+```
+- 슬라이스 필드(`tools_enabled`, `mcp_enabled` 등)는 union+dedup
+- 스칼라/맵 필드는 last-write-wins, `mcp_servers_extra`는 Name 키로 머지
+- 결과는 `GET /v1/admin/sessions/{id}/effective-config`에서 `{effective, sources, diagnostics}`로 노출, `Service.Resolve`가 (cwd, mtime) 키로 캐시
+
+**허용 필드** — `tool_config`, `prompt_override`, `mcp_servers_extra`, `model_tier_override`. 차단 필드(`llm_providers`, `api_key`, `auth*`, `hooks`, `server_command`)는 로드 시 drop + error diagnostic — 절대 자격증명/임의 바이너리 등록을 settings 파일에 허용하지 않는다.
+
+**적용 지점**
+- 채팅 시스템 프롬프트: `effectiveSessionView` 헬퍼가 `prompt_override`를 머지된 값으로 교체 (`handler_chat_context.go`, `handler_chat.go` 양쪽)
+- 도구 게이팅: `filterExtensionsSnapshotForSession`에 머지된 `tool_config` 전달
+- 스킬: `augmentSnapshotWithCwdSkills`가 `<cwd>/.tars/skills/`와 `<cwd>/.tars/commands/`를 chat snapshot에 추가, cwd 우선
+- 콘솔 Session Config 패널의 Tools/Skills 탭: 항목별 `shared`/`local` 배지로 출처 표시
+
+**현재 한계 (follow-up 예정)**
+- UI 토글은 여전히 base에 기록 — `.tars/`에서 켜진 항목을 UI로 끌 수 없다 (4번째 user-override 레이어 미도입)
+- Automation/Style 탭에는 배지 없음 (Tools/Skills만 1차)
+- `tars init local` 같은 `.tars/` 스캐폴딩 명령 없음
+
 ## Marketing Site
 
 별도 레포 `tars-site` → Cloudflare Pages → https://tars.marvin-42.com/
