@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.173] - 2026-05-05
+
+### Fixed
+
+- **`tars init` migration short-circuited the orchestrator** (#719) — when `tars init` found a legacy config at `workspace/config/tars.config.yaml` (or other legacy locations), it migrated the file and returned early, skipping the new server-start + browser-open flow. Users upgrading from the pre-0.31.172 layout would see "migrated legacy config" and an inert prompt — `tars` then opened the browser at `127.0.0.1:43180/console` against a server that wasn't running. Migration now flows through the orchestrator: it preserves the migrated payload (no overwrite — would silently destroy LLM creds), still picks a port, ensures the workspace, starts the server, polls `/v1/healthz`, and opens the wizard. The migration banner is followed by `starting server with migrated config`. `--force` keeps overriding everything with a fresh wizard skeleton (now also skips the migration probe, so it cannot accidentally pick up a legacy file).
+
 ## [0.31.172] - 2026-05-05
 
 ### Added
