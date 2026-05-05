@@ -20,6 +20,7 @@ import (
 	"github.com/devlikebear/tars/internal/prompt"
 	"github.com/devlikebear/tars/internal/secrets"
 	"github.com/devlikebear/tars/internal/session"
+	"github.com/devlikebear/tars/internal/sessionoverride"
 	"github.com/devlikebear/tars/internal/skill"
 	"github.com/devlikebear/tars/internal/tool"
 	"github.com/devlikebear/tars/internal/usage"
@@ -900,6 +901,10 @@ type chatToolingOptions struct {
 	// be tuned without forking the prompt source.
 	PlanClarifyMode string
 	StyleDefaults   sessionStyleValues
+	// OverrideService resolves session-cwd .tars/settings*.json overrides
+	// into an EffectiveConfig used for tool gating and prompt override.
+	// nil disables overrides (chat falls back to raw session fields).
+	OverrideService *sessionoverride.Service
 }
 
 type chatCompactionOptions struct {
@@ -1216,8 +1221,9 @@ func newChatAPIHandlerWithRuntimeConfig(
 			extSnapshot = tooling.Extensions.Snapshot()
 		}
 		var sessionToolConfigs []session.SessionToolConfig
-		if sess.ToolConfig != nil {
-			sessionToolConfigs = append(sessionToolConfigs, *sess.ToolConfig)
+		effTC, effPrompt, present := effectiveSessionView(tooling.OverrideService, sess)
+		if present {
+			sessionToolConfigs = append(sessionToolConfigs, effTC)
 		}
 		extSnapshot = filterExtensionsSnapshotForSession(extSnapshot, sessionToolConfigs...)
 		// Build PathPolicy from session work_dirs for context preview
@@ -1237,8 +1243,8 @@ func newChatAPIHandlerWithRuntimeConfig(
 			return
 		}
 		systemPrompt := contextDetails.SystemPrompt
-		if strings.TrimSpace(sess.PromptOverride) != "" {
-			systemPrompt += "\n\n## Session Prompt Override\n" + strings.TrimSpace(sess.PromptOverride) + "\n"
+		if strings.TrimSpace(effPrompt) != "" {
+			systemPrompt += "\n\n## Session Prompt Override\n" + strings.TrimSpace(effPrompt) + "\n"
 		}
 		style := effectiveSessionStyle(tooling.StyleDefaults, sess.StyleControl)
 		systemPrompt += formatSessionStylePrompt(style, sess.AutomationConsent)

@@ -22,6 +22,7 @@ import (
 	"github.com/devlikebear/tars/internal/ops"
 	"github.com/devlikebear/tars/internal/pulse"
 	"github.com/devlikebear/tars/internal/reflection"
+	"github.com/devlikebear/tars/internal/sessionoverride"
 	"github.com/devlikebear/tars/internal/skillhub"
 	"github.com/devlikebear/tars/internal/tool"
 	"github.com/devlikebear/tars/internal/usage"
@@ -389,6 +390,8 @@ func buildAPIMux(
 		sessionStyleDefaultsFromConfig(cfg),
 	)
 	chatTooling.OpsManager = opsManager
+	overrideService := sessionoverride.NewService(sessionStore)
+	chatTooling.OverrideService = overrideService
 	chatTooling.AutomationToolsForWorkspace = func(workspaceID string) []tool.Tool {
 		resolvedStore, err := cronStoreResolver.Resolve(defaultWorkspaceID)
 		if err != nil {
@@ -513,7 +516,7 @@ func buildAPIMux(
 		chatTooling,
 		chatTools...,
 	)
-	sessionHandler := newSessionAPIHandlerWithNotifier(sessionStore, logger, deps.usageTracker, sessionStyleDefaultsFromConfig(cfg), dispatcher.Emit)
+	sessionHandler := newSessionAPIHandlerFull(sessionStore, logger, deps.usageTracker, sessionStyleDefaultsFromConfig(cfg), dispatcher.Emit, overrideService)
 	consoleHandler, err := newConsoleHandler(logger)
 	if err != nil {
 		return nil, err

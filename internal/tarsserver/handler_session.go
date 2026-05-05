@@ -16,6 +16,7 @@ import (
 	"github.com/devlikebear/tars/internal/memory"
 	"github.com/devlikebear/tars/internal/serverauth"
 	"github.com/devlikebear/tars/internal/session"
+	"github.com/devlikebear/tars/internal/sessionoverride"
 	"github.com/devlikebear/tars/internal/tool"
 	"github.com/devlikebear/tars/internal/usage"
 	"github.com/rs/zerolog"
@@ -39,6 +40,10 @@ func newSessionAPIHandlerWithUsageAndStyleDefaults(store *session.Store, logger 
 }
 
 func newSessionAPIHandlerWithNotifier(store *session.Store, logger zerolog.Logger, usageTracker *usage.Tracker, styleDefaults sessionStyleValues, notify sessionNotifier) http.Handler {
+	return newSessionAPIHandlerFull(store, logger, usageTracker, styleDefaults, notify, nil)
+}
+
+func newSessionAPIHandlerFull(store *session.Store, logger zerolog.Logger, usageTracker *usage.Tracker, styleDefaults sessionStyleValues, notify sessionNotifier, overrideService *sessionoverride.Service) http.Handler {
 	mux := http.NewServeMux()
 	styleDefaults = effectiveSessionStyle(styleDefaults, nil)
 	baseWorkspaceDir := ""
@@ -771,6 +776,11 @@ func newSessionAPIHandlerWithNotifier(store *session.Store, logger zerolog.Logge
 					}
 					return
 				}
+				// Drop any cached effective-config so the next /effective-config
+				// (or chat turn) reloads against the new cwd's settings files.
+				if overrideService != nil {
+					overrideService.Invalidate(sessionID)
+				}
 				if notify != nil {
 					evt := newNotificationEvent(
 						"session",
@@ -783,6 +793,37 @@ func newSessionAPIHandlerWithNotifier(store *session.Store, logger zerolog.Logge
 				}
 				writeJSON(w, http.StatusOK, map[string]string{"ok": "true"})
 			}
+		case len(pathParts) == 2 && pathParts[1] == "effective-config":
+			if !requireMethod(w, r, http.MethodGet) {
+				return
+			}
+			if overrideService == nil {
+				writeJSON(w, http.StatusServiceUnavailable, map[string]string{
+					"error": "effective-config service is not configured",
+				})
+				return
+			}
+			res, changed, err := overrideService.Resolve(sessionID)
+			if err != nil {
+				switch {
+				case errors.Is(err, session.ErrSessionNotFound):
+					writeJSON(w, http.StatusNotFound, map[string]string{"error": "session not found"})
+				default:
+					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+				}
+				return
+			}
+			if changed && notify != nil {
+				evt := newNotificationEvent(
+					"session",
+					"info",
+					"Effective config refreshed",
+					"",
+				)
+				evt.SessionID = sessionID
+				notify(r.Context(), evt)
+			}
+			writeJSON(w, http.StatusOK, res)
 		default:
 			http.NotFound(w, r)
 		}
