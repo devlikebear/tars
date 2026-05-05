@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.164] - 2026-05-05
+
+### Added
+
+- **Effective-config service + API + chat-turn integration** — Phase 3 of the `.tars/` epic. New `sessionoverride.Service` resolves a session's `EffectiveConfig` (sessions.json base ← `.tars/settings.json` ← `.tars/settings.local.json`) with a per-session cache keyed by (active cwd, settings file mtimes); cache entries reload automatically when files change and are dropped explicitly when the cwd transitions. Exposes `GET /v1/admin/sessions/{id}/effective-config` returning `{effective, sources, diagnostics}` and emits a `session` SSE notification when a resolution actually changes (so the frontend HUD and Phase 4's skill registry can refresh). The chat turn now consults the service via the new `effectiveSessionView` helper before assembling tool gating and the system prompt — both `handler_chat_context.go` (preview) and `handler_chat.go` (live runs) honour `prompt_override` and `tool_config` from the settings files in addition to the raw session fields, while gracefully falling back when the service is nil. Closes [#706](https://github.com/devlikebear/tars/issues/706); refs Epic [#703](https://github.com/devlikebear/tars/issues/703).
+
 ## [0.31.163] - 2026-05-05
 
 ### Added

@@ -117,8 +117,13 @@ func buildSessionChatRunState(
 		extSnapshot = deps.tooling.Extensions.Snapshot()
 	}
 	var sessionToolConfigs []session.SessionToolConfig
-	if sessErr == nil && sess.ToolConfig != nil {
-		sessionToolConfigs = append(sessionToolConfigs, *sess.ToolConfig)
+	effectivePromptOverride := ""
+	if sessErr == nil {
+		effTC, effPrompt, present := effectiveSessionView(deps.tooling.OverrideService, sess)
+		if present {
+			sessionToolConfigs = append(sessionToolConfigs, effTC)
+		}
+		effectivePromptOverride = effPrompt
 	}
 	extSnapshot = filterExtensionsSnapshotForSession(extSnapshot, sessionToolConfigs...)
 	resolvedSkill := resolveSkillSelection(userMessage, deps.tooling.Extensions, requestWorkspaceDir, sessionID, sessionToolConfigs...)
@@ -141,8 +146,8 @@ func buildSessionChatRunState(
 		Str("tool_choice", toolChoice.String()).
 		Msg("chat context assembled")
 
-	if sessErr == nil && strings.TrimSpace(sess.PromptOverride) != "" {
-		systemPrompt += "\n\n## Session Prompt Override\n" + strings.TrimSpace(sess.PromptOverride) + "\n"
+	if sessErr == nil && strings.TrimSpace(effectivePromptOverride) != "" {
+		systemPrompt += "\n\n## Session Prompt Override\n" + strings.TrimSpace(effectivePromptOverride) + "\n"
 	}
 	sessionStyle := effectiveSessionStyle(deps.tooling.StyleDefaults, nil)
 	if sessErr == nil {
