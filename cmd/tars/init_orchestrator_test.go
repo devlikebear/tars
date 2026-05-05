@@ -378,10 +378,9 @@ func TestInit_MigrationFlowsIntoOrchestrator(t *testing.T) {
 }
 
 func TestInit_RejectsUnknownPositionalArgs(t *testing.T) {
-	// Regression: `tars init reset` used to silently re-run init
-	// because cobra accepts arbitrary positional args by default. The
-	// `reset` subcommand lands in phase 2; until then, unknown
-	// positional args must error loudly so the user notices.
+	// Typos like `tars init relay` (not a real subcommand) used to
+	// silently re-run init because cobra accepts arbitrary positional
+	// args by default. With cobra.NoArgs they must error loudly.
 	fakeHome := t.TempDir()
 	t.Setenv("HOME", fakeHome)
 	t.Setenv("TARS_PLUGINS_BUNDLED_DIR", writeBundledPluginSource(t))
@@ -391,14 +390,14 @@ func TestInit_RejectsUnknownPositionalArgs(t *testing.T) {
 
 	var stdout strings.Builder
 	cmd := newRootCommand(strings.NewReader(""), &stdout, io.Discard)
-	cmd.SetArgs([]string{"init", "reset", "--no-server", "--no-browser"})
+	cmd.SetArgs([]string{"init", "definitely-not-a-real-subcommand", "--no-server", "--no-browser"})
 
 	err := cmd.Execute()
 	if err == nil {
 		t.Fatal("expected error for unknown positional arg")
 	}
-	if !strings.Contains(err.Error(), "unknown command") || !strings.Contains(err.Error(), "reset") {
-		t.Fatalf("expected 'unknown command \"reset\"' error, got: %v", err)
+	if !strings.Contains(err.Error(), "unknown command") {
+		t.Fatalf("expected 'unknown command' error, got: %v", err)
 	}
 	if len(state.startCalls) != 0 {
 		t.Fatalf("expected no orchestration when args are rejected, got %d start calls", len(state.startCalls))

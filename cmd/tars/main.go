@@ -43,6 +43,11 @@ func newRootCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
 			return consoleCommandRunner(cmd.Context(), stdout, stderr, clientOpts)
 		},
 	}
+	// Wire stdin so subcommands using cmd.InOrStdin() (e.g. `tars init
+	// reset`'s confirmation prompt) read from the caller-supplied
+	// reader rather than os.Stdin. Without this, programmatic invokers
+	// (tests, scripted automation) couldn't pipe answers in.
+	cmd.SetIn(stdin)
 	bindClientFlags(cmd, &clientOpts)
 	cmd.Flags().BoolVar(&showVersion, "version", false, "print version and exit")
 	cmd.AddCommand(newInitCommand(stdout, stderr))
