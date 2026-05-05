@@ -132,15 +132,18 @@ func runInitCommand(ctx context.Context, opts initOptions, stdout, stderr io.Wri
 		return fmt.Errorf("config already exists: %s (pass --force to overwrite, or run `tars init reset`)", configPath)
 	}
 
-	// Try to migrate legacy config if found and we don't already have one.
-	if !configExists {
-		if migrated, legacyPath := tryMigrateLegacyConfig(configPath, stdout); migrated {
+	// Try to migrate legacy config if found and we don't already have
+	// one. --force always writes a fresh wizard skeleton, so it skips
+	// the migration probe.
+	migrated := false
+	if !configExists && !opts.force {
+		if ok, legacyPath := tryMigrateLegacyConfig(configPath, stdout); ok {
 			if err := updateMigratedWorkspaceDir(configPath, workspaceAbs); err != nil {
 				return fmt.Errorf("update migrated workspace_dir: %w", err)
 			}
+			migrated = true
 			_, _ = fmt.Fprintf(stdout, "migrated legacy config\n  from: %s\n  to:   %s\n\n", legacyPath, configPath)
 			_, _ = fmt.Fprintf(stdout, "the original file has been kept. you can remove it manually:\n  rm %s\n\n", legacyPath)
-			return nil
 		}
 	}
 
@@ -152,11 +155,20 @@ func runInitCommand(ctx context.Context, opts initOptions, stdout, stderr io.Wri
 	if err := ensureStarterWorkspaceLayout(workspaceAbs, defaultStarterBundledPluginsDir()); err != nil {
 		return err
 	}
-	if err := writeOnboardingConfigFile(workspaceAbs, apiAddr, configPath); err != nil {
-		return err
+	// Migrated configs already carry the user's settings (LLM creds,
+	// custom auth, etc.). Don't overwrite them with the wizard
+	// skeleton — that would silently destroy a working setup.
+	if !migrated {
+		if err := writeOnboardingConfigFile(workspaceAbs, apiAddr, configPath); err != nil {
+			return err
+		}
 	}
 
-	_, _ = fmt.Fprintf(stdout, "initialized TARS workspace\nworkspace: %s\nconfig: %s\napi addr: %s\n\n", workspaceAbs, configPath, apiAddr)
+	if migrated {
+		_, _ = fmt.Fprintf(stdout, "starting server with migrated config\nworkspace: %s\nconfig: %s\napi addr: %s\n\n", workspaceAbs, configPath, apiAddr)
+	} else {
+		_, _ = fmt.Fprintf(stdout, "initialized TARS workspace\nworkspace: %s\nconfig: %s\napi addr: %s\n\n", workspaceAbs, configPath, apiAddr)
+	}
 
 	if opts.noServer {
 		_, _ = fmt.Fprintf(stdout, "skipped server start (--no-server)\nNext:\n  tars serve --api-addr %s\n  tars service install --api-addr %s --allow-needs-setup && tars service start\n", apiAddr, apiAddr)
