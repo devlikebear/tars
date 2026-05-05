@@ -20,7 +20,10 @@ func TestRootCommand_InitCreatesStarterWorkspace(t *testing.T) {
 	workspaceDir := filepath.Join(t.TempDir(), "starter-workspace")
 	var stdout strings.Builder
 	cmd := newRootCommand(strings.NewReader(""), &stdout, io.Discard)
-	cmd.SetArgs([]string{"init", "--workspace-dir", workspaceDir})
+	// --no-server / --no-browser keeps this test focused on file
+	// scaffolding; orchestration behavior is covered by the dedicated
+	// orchestrator tests below.
+	cmd.SetArgs([]string{"init", "--workspace-dir", workspaceDir, "--no-server", "--no-browser"})
 
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("init command: %v", err)
@@ -53,16 +56,18 @@ func TestRootCommand_InitCreatesStarterWorkspace(t *testing.T) {
 	if !strings.Contains(configText, "agentruntime:\n  enabled: true") {
 		t.Fatalf("expected starter agent runtime to be enabled, got:\n%s", configText)
 	}
-	if !strings.Contains(configText, "${OPENAI_API_KEY}") {
-		t.Fatalf("expected OPENAI_API_KEY placeholder in config, got:\n%s", configText)
+	// Skeleton intentionally has no llm_providers — that triggers the
+	// setup wizard the orchestrator opens in the browser.
+	if strings.Contains(configText, "\nllm_providers:") || strings.Contains(configText, "\nproviders:") {
+		t.Fatalf("expected no llm providers in skeleton config, got:\n%s", configText)
 	}
 
 	out := stdout.String()
-	if !strings.Contains(out, "OPENAI_API_KEY") {
-		t.Fatalf("expected BYOK guidance in output, got:\n%s", out)
+	if !strings.Contains(out, "api addr:") {
+		t.Fatalf("expected api addr in output, got:\n%s", out)
 	}
-	if !strings.Contains(out, "tars serve") {
-		t.Fatalf("expected next-step serve command in output, got:\n%s", out)
+	if !strings.Contains(out, "skipped server start") {
+		t.Fatalf("expected skipped-server hint in output, got:\n%s", out)
 	}
 }
 
@@ -81,7 +86,7 @@ func TestRootCommand_InitRefusesToOverwriteExistingConfig(t *testing.T) {
 	workspaceDir := filepath.Join(t.TempDir(), "starter-workspace")
 	var stdout strings.Builder
 	cmd := newRootCommand(strings.NewReader(""), &stdout, io.Discard)
-	cmd.SetArgs([]string{"init", "--workspace-dir", workspaceDir})
+	cmd.SetArgs([]string{"init", "--workspace-dir", workspaceDir, "--no-server", "--no-browser"})
 
 	err := cmd.Execute()
 	if err == nil {
@@ -89,6 +94,9 @@ func TestRootCommand_InitRefusesToOverwriteExistingConfig(t *testing.T) {
 	}
 	if !strings.Contains(strings.ToLower(err.Error()), "already exists") {
 		t.Fatalf("expected already exists error, got %v", err)
+	}
+	if !strings.Contains(strings.ToLower(err.Error()), "--force") {
+		t.Fatalf("expected --force hint in error, got %v", err)
 	}
 
 	data, readErr := os.ReadFile(configPath)
@@ -122,7 +130,7 @@ func TestRootCommand_InitMigratesLegacyConfig(t *testing.T) {
 
 	var stdout strings.Builder
 	cmd := newRootCommand(strings.NewReader(""), &stdout, io.Discard)
-	cmd.SetArgs([]string{"init"})
+	cmd.SetArgs([]string{"init", "--no-server", "--no-browser"})
 
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("init command: %v", err)
@@ -177,7 +185,7 @@ func TestRootCommand_InitMoveWorkspace(t *testing.T) {
 	workspaceDir := filepath.Join(t.TempDir(), "orig-workspace")
 	var stdout strings.Builder
 	cmd := newRootCommand(strings.NewReader(""), &stdout, io.Discard)
-	cmd.SetArgs([]string{"init", "--workspace-dir", workspaceDir})
+	cmd.SetArgs([]string{"init", "--workspace-dir", workspaceDir, "--no-server", "--no-browser"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("init command: %v", err)
 	}

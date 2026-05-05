@@ -28,8 +28,10 @@ type serviceOptions struct {
 	stderrLog       string
 	launchctlDomain string
 	launchPath      string
+	apiAddr         string // optional: bake --api-addr into ProgramArguments
 	keepAlive       bool
 	runAtLoad       bool
+	skipLLMChecks   bool // onboarding: allow install when config is in setup-only mode
 }
 
 type launchctlStatus struct {
@@ -79,6 +81,8 @@ func newServiceCommand(stdout, stderr io.Writer) *cobra.Command {
 	installCmd.Flags().BoolVar(&opts.keepAlive, "keep-alive", opts.keepAlive, "set KeepAlive in the LaunchAgent plist")
 	installCmd.Flags().BoolVar(&opts.runAtLoad, "run-at-load", opts.runAtLoad, "set RunAtLoad in the LaunchAgent plist")
 	installCmd.Flags().StringVar(&opts.launchPath, "launch-path", opts.launchPath, "PATH value injected into launchd")
+	installCmd.Flags().StringVar(&opts.apiAddr, "api-addr", opts.apiAddr, "bake --api-addr 127.0.0.1:<port> into ProgramArguments")
+	installCmd.Flags().BoolVar(&opts.skipLLMChecks, "allow-needs-setup", opts.skipLLMChecks, "skip LLM doctor checks; required when installing before completing the wizard")
 
 	startCmd := &cobra.Command{
 		Use:          "start",
@@ -144,68 +148,30 @@ func runServiceCommand(ctx context.Context, opts serviceOptions, stdout, _ io.Wr
 
 	switch strings.TrimSpace(opts.action) {
 	case "install":
-		configPath := config.FixedConfigPath()
-		cfg, err := config.Load(configPath)
+		params := serviceInstallParams{
+			label:         label,
+			plistPath:     plistPath,
+			stdoutLog:     stdoutLog,
+			stderrLog:     stderrLog,
+			domain:        domain,
+			launchPath:    opts.launchPath,
+			apiAddr:       opts.apiAddr,
+			keepAlive:     opts.keepAlive,
+			runAtLoad:     opts.runAtLoad,
+			skipLLMChecks: opts.skipLLMChecks,
+		}
+		summary, err := installLaunchAgent(params, stdout)
 		if err != nil {
-			return fmt.Errorf("load config %s: %w", configPath, err)
+			return err
 		}
-		workspaceAbs, err := resolveWorkspaceDir(cfg.WorkspaceDir)
-		if err != nil {
-			return fmt.Errorf("resolve workspace dir: %w", err)
-		}
-		report, reportErr := buildDoctorReport(doctorOptions{
-			workspaceDir: workspaceAbs,
-			configPath:   configPath,
-		})
-		if reportErr != nil {
-			renderDoctorReport(stdout, report)
-			return fmt.Errorf("service install requires a healthy local setup")
-		}
-
-		exe, err := serviceExecutablePath()
-		if err != nil {
-			return fmt.Errorf("resolve executable: %w", err)
-		}
-		if err := os.MkdirAll(filepath.Dir(stdoutLog), 0o755); err != nil {
-			return fmt.Errorf("create stdout log dir: %w", err)
-		}
-		if err := os.MkdirAll(filepath.Dir(stderrLog), 0o755); err != nil {
-			return fmt.Errorf("create stderr log dir: %w", err)
-		}
-		content := launchagent.BuildPlist(launchagent.Config{
-			Label:            label,
-			DefaultLabel:     launchagent.DefaultServerLabel,
-			ProgramArguments: []string{exe, "serve", "--config", configPath},
-			WorkingDirectory: workspaceAbs,
-			StdoutPath:       stdoutLog,
-			StderrPath:       stderrLog,
-			KeepAlive:        opts.keepAlive,
-			RunAtLoad:        opts.runAtLoad,
-			Environment: map[string]string{
-				"PATH":                       strings.TrimSpace(firstNonEmpty(opts.launchPath, defaultServiceLaunchPath)),
-				launchagent.ServiceLabelEnv:  label,
-				launchagent.ServiceDomainEnv: domain,
-			},
-		})
-		if err := launchagent.Install(plistPath, content); err != nil {
-			return fmt.Errorf("write launchagent plist: %w", err)
-		}
-		_, _ = fmt.Fprintf(stdout, "service installed\nlabel: %s\nplist: %s\nconfig: %s\nworkspace: %s\nstdout log: %s\nstderr log: %s\nnext: tars service start\n", label, plistPath, configPath, workspaceAbs, stdoutLog, stderrLog)
+		_, _ = fmt.Fprint(stdout, summary)
 		return nil
 	case "start":
-		if exists, err := pathExists(plistPath); err != nil {
-			return fmt.Errorf("stat plist path: %w", err)
-		} else if !exists {
-			return fmt.Errorf("service plist not found: %s", plistPath)
+		summary, err := startLaunchAgent(ctx, label, plistPath, domain)
+		if err != nil {
+			return err
 		}
-		_, _ = serviceLaunchctlRun(ctx, "bootout", domain, plistPath)
-		if out, err := serviceLaunchctlRun(ctx, "bootstrap", domain, plistPath); err != nil {
-			return fmt.Errorf("launchctl bootstrap failed: %w: %s", err, strings.TrimSpace(out))
-		}
-		if out, err := serviceLaunchctlRun(ctx, "kickstart", "-k", domain+"/"+label); err != nil {
-			return fmt.Errorf("launchctl kickstart failed: %w: %s", err, strings.TrimSpace(out))
-		}
-		_, _ = fmt.Fprintf(stdout, "service started\nlabel: %s\ndomain: %s\nplist: %s\n", label, domain, plistPath)
+		_, _ = fmt.Fprint(stdout, summary)
 		return nil
 	case "stop":
 		out, err := serviceLaunchctlRun(ctx, "bootout", domain, plistPath)
@@ -224,6 +190,140 @@ func runServiceCommand(ctx context.Context, opts serviceOptions, stdout, _ io.Wr
 	default:
 		return fmt.Errorf("unsupported service action: %s", strings.TrimSpace(opts.action))
 	}
+}
+
+// serviceInstallParams captures everything installLaunchAgent needs to
+// write a LaunchAgent plist. The fields mirror serviceOptions but use
+// pre-resolved (absolute) paths so the helper has no defaulting logic.
+type serviceInstallParams struct {
+	label         string
+	plistPath     string
+	stdoutLog     string
+	stderrLog     string
+	domain        string
+	launchPath    string
+	apiAddr       string
+	keepAlive     bool
+	runAtLoad     bool
+	skipLLMChecks bool
+}
+
+// installLaunchAgent loads the fixed config, optionally runs the
+// doctor gate (unless skipLLMChecks is set and the config is in
+// setup-only mode), and writes the LaunchAgent plist. Returns a
+// human-readable summary the caller can print. Used by both the
+// `tars service install` cobra command and the `tars init` orchestrator.
+func installLaunchAgent(params serviceInstallParams, doctorOut io.Writer) (string, error) {
+	configPath := config.FixedConfigPath()
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		return "", fmt.Errorf("load config %s: %w", configPath, err)
+	}
+	workspaceAbs, err := resolveWorkspaceDir(cfg.WorkspaceDir)
+	if err != nil {
+		return "", fmt.Errorf("resolve workspace dir: %w", err)
+	}
+
+	report, reportErr := buildDoctorReport(doctorOptions{
+		workspaceDir: workspaceAbs,
+		configPath:   configPath,
+	})
+	if reportErr != nil {
+		// Setup-only mode (no LLM yet) is a legitimate state during
+		// onboarding. When the caller opts in, ignore failures whose
+		// only cause is the missing LLM configuration.
+		if params.skipLLMChecks && config.NeedsSetup(cfg) && doctorReportOnlyLLMFailures(report) {
+			// Print the report so the user still sees what was skipped.
+			renderDoctorReport(doctorOut, report)
+		} else {
+			renderDoctorReport(doctorOut, report)
+			return "", fmt.Errorf("service install requires a healthy local setup")
+		}
+	}
+
+	exe, err := serviceExecutablePath()
+	if err != nil {
+		return "", fmt.Errorf("resolve executable: %w", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(params.stdoutLog), 0o755); err != nil {
+		return "", fmt.Errorf("create stdout log dir: %w", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(params.stderrLog), 0o755); err != nil {
+		return "", fmt.Errorf("create stderr log dir: %w", err)
+	}
+
+	args := []string{exe, "serve", "--config", configPath}
+	if addr := strings.TrimSpace(params.apiAddr); addr != "" {
+		args = append(args, "--api-addr", addr)
+	}
+
+	content := launchagent.BuildPlist(launchagent.Config{
+		Label:            params.label,
+		DefaultLabel:     launchagent.DefaultServerLabel,
+		ProgramArguments: args,
+		WorkingDirectory: workspaceAbs,
+		StdoutPath:       params.stdoutLog,
+		StderrPath:       params.stderrLog,
+		KeepAlive:        params.keepAlive,
+		RunAtLoad:        params.runAtLoad,
+		Environment: map[string]string{
+			"PATH":                       strings.TrimSpace(firstNonEmpty(params.launchPath, defaultServiceLaunchPath)),
+			launchagent.ServiceLabelEnv:  params.label,
+			launchagent.ServiceDomainEnv: params.domain,
+		},
+	})
+	if err := launchagent.Install(params.plistPath, content); err != nil {
+		return "", fmt.Errorf("write launchagent plist: %w", err)
+	}
+
+	addrLine := ""
+	if addr := strings.TrimSpace(params.apiAddr); addr != "" {
+		addrLine = fmt.Sprintf("api addr: %s\n", addr)
+	}
+	return fmt.Sprintf("service installed\nlabel: %s\nplist: %s\nconfig: %s\nworkspace: %s\n%sstdout log: %s\nstderr log: %s\nnext: tars service start\n",
+		params.label, params.plistPath, configPath, workspaceAbs, addrLine, params.stdoutLog, params.stderrLog), nil
+}
+
+// startLaunchAgent loads then kickstarts the named service. Mirrors
+// the inline logic of `case "start"` so `tars init` can call it
+// without going through the cobra command. Returns a summary string
+// the caller can print.
+func startLaunchAgent(ctx context.Context, label, plistPath, domain string) (string, error) {
+	if exists, err := pathExists(plistPath); err != nil {
+		return "", fmt.Errorf("stat plist path: %w", err)
+	} else if !exists {
+		return "", fmt.Errorf("service plist not found: %s", plistPath)
+	}
+	_, _ = serviceLaunchctlRun(ctx, "bootout", domain, plistPath)
+	if out, err := serviceLaunchctlRun(ctx, "bootstrap", domain, plistPath); err != nil {
+		return "", fmt.Errorf("launchctl bootstrap failed: %w: %s", err, strings.TrimSpace(out))
+	}
+	if out, err := serviceLaunchctlRun(ctx, "kickstart", "-k", domain+"/"+label); err != nil {
+		return "", fmt.Errorf("launchctl kickstart failed: %w: %s", err, strings.TrimSpace(out))
+	}
+	return fmt.Sprintf("service started\nlabel: %s\ndomain: %s\nplist: %s\n", label, domain, plistPath), nil
+}
+
+// doctorReportOnlyLLMFailures returns true when every failing check
+// in the report is LLM-related (credentials or runtime). The
+// installLaunchAgent skipLLMChecks gate uses this to ensure the
+// onboarding bypass does not mask other genuine failures (workspace
+// missing, config invalid, etc.).
+func doctorReportOnlyLLMFailures(report doctorReport) bool {
+	hasFailure := false
+	for _, check := range report.checks {
+		if check.status != "fail" {
+			continue
+		}
+		hasFailure = true
+		switch check.name {
+		case "llm credentials", "llm runtime":
+			continue
+		default:
+			return false
+		}
+	}
+	return hasFailure
 }
 
 func defaultedServicePlistPath(raw, label string) (string, error) {

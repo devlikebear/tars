@@ -203,6 +203,65 @@ func TestRootCommand_ServiceStatusReportsInstalledButNotLoaded(t *testing.T) {
 	restore()
 }
 
+func TestRootCommand_ServiceInstall_AllowNeedsSetupBypassesLLMDoctor(t *testing.T) {
+	fakeHome := t.TempDir()
+	t.Setenv("HOME", fakeHome)
+	clearDoctorEnv(t)
+
+	// Run init WITHOUT appending the LLM block — config stays in
+	// setup-only state. Without --allow-needs-setup the install must
+	// fail; with it, install must succeed and bake --api-addr.
+	bundledPluginsDir := writeBundledPluginSource(t)
+	t.Setenv("TARS_PLUGINS_BUNDLED_DIR", bundledPluginsDir)
+	workspaceDir := filepath.Join(t.TempDir(), "ws")
+	var initOut strings.Builder
+	initCmd := newRootCommand(strings.NewReader(""), &initOut, io.Discard)
+	initCmd.SetArgs([]string{"init", "--workspace-dir", workspaceDir, "--no-server", "--no-browser"})
+	if err := initCmd.Execute(); err != nil {
+		t.Fatalf("init: %v", err)
+	}
+
+	restore := overrideServiceTestHooks(t)
+	defer restore()
+	serviceRuntimeGOOS = "darwin"
+	serviceExecutablePath = func() (string, error) { return "/usr/local/bin/tars", nil }
+
+	plistPath := filepath.Join(t.TempDir(), "io.tars.server.plist")
+
+	// First attempt — no allow flag, should fail at LLM check.
+	failCmd := newRootCommand(strings.NewReader(""), io.Discard, io.Discard)
+	failCmd.SetArgs([]string{
+		"service", "install",
+		"--plist-path", plistPath,
+	})
+	if err := failCmd.Execute(); err == nil {
+		t.Fatal("expected service install to fail without --allow-needs-setup when config is wizard-pending")
+	}
+
+	// Second attempt — with --allow-needs-setup and --api-addr, must succeed.
+	var ok strings.Builder
+	okCmd := newRootCommand(strings.NewReader(""), &ok, io.Discard)
+	okCmd.SetArgs([]string{
+		"service", "install",
+		"--plist-path", plistPath,
+		"--allow-needs-setup",
+		"--api-addr", "127.0.0.1:43185",
+	})
+	if err := okCmd.Execute(); err != nil {
+		t.Fatalf("service install --allow-needs-setup: %v", err)
+	}
+	data, err := os.ReadFile(plistPath)
+	if err != nil {
+		t.Fatalf("read plist: %v", err)
+	}
+	plist := string(data)
+	for _, token := range []string{"--api-addr", "127.0.0.1:43185"} {
+		if !strings.Contains(plist, token) {
+			t.Fatalf("expected plist to bake %q, got:\n%s", token, plist)
+		}
+	}
+}
+
 func TestRootCommand_ServiceInstallWritesLaunchdIdentityEnvironment(t *testing.T) {
 	fakeHome := t.TempDir()
 	t.Setenv("HOME", fakeHome)
@@ -258,9 +317,52 @@ func runInitForTest(t *testing.T, workspaceDir string) {
 
 	var stdout strings.Builder
 	cmd := newRootCommand(strings.NewReader(""), &stdout, io.Discard)
-	cmd.SetArgs([]string{"init", "--workspace-dir", workspaceDir})
+	// --no-server keeps init's orchestrator from trying to spawn an
+	// actual server; service tests that need a running server stub
+	// the launchd hooks themselves.
+	cmd.SetArgs([]string{"init", "--workspace-dir", workspaceDir, "--no-server", "--no-browser"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("init command: %v", err)
+	}
+	// init writes a wizard-driven skeleton (no LLM section). Service
+	// install tests below need a config doctor would consider healthy,
+	// so append the minimal LLM block users would normally save through
+	// the wizard.
+	appendTestLLMConfig(t)
+}
+
+// appendTestLLMConfig writes a complete llm_providers + llm_tiers block
+// to the fixed config so doctor's LLM checks pass during service tests.
+// Mirrors what the onboarding wizard PATCHes after the user submits.
+func appendTestLLMConfig(t *testing.T) {
+	t.Helper()
+	llmYAML := `
+llm_providers:
+  default:
+    kind: openai
+    auth_mode: api-key
+    base_url: https://api.openai.com/v1
+    api_key: ${OPENAI_API_KEY}
+llm_tiers:
+  heavy:
+    provider: default
+    model: gpt-4o-mini
+  standard:
+    provider: default
+    model: gpt-4o-mini
+  light:
+    provider: default
+    model: gpt-4o-mini
+llm_default_tier: standard
+`
+	cfgPath := config.FixedConfigPath()
+	f, err := os.OpenFile(cfgPath, os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		t.Fatalf("open config for append: %v", err)
+	}
+	defer func() { _ = f.Close() }()
+	if _, err := f.WriteString(llmYAML); err != nil {
+		t.Fatalf("append llm yaml: %v", err)
 	}
 }
 

@@ -88,10 +88,13 @@ func TestRootCommand_DoctorPassesWhenStarterWorkspaceAndBYOKPresent(t *testing.T
 	workspaceDir := filepath.Join(t.TempDir(), "doctor-workspace")
 	var initStdout strings.Builder
 	initCmd := newRootCommand(strings.NewReader(""), &initStdout, io.Discard)
-	initCmd.SetArgs([]string{"init", "--workspace-dir", workspaceDir})
+	initCmd.SetArgs([]string{"init", "--workspace-dir", workspaceDir, "--no-server", "--no-browser"})
 	if err := initCmd.Execute(); err != nil {
 		t.Fatalf("init command: %v", err)
 	}
+	// init writes a wizard-driven skeleton; mirror what the wizard
+	// PATCHes so doctor sees a complete LLM configuration.
+	appendTestLLMConfig(t)
 
 	var doctorStdout strings.Builder
 	doctorCmd := newRootCommand(strings.NewReader(""), &doctorStdout, io.Discard)
@@ -119,10 +122,11 @@ func TestRootCommand_DoctorFixRestoresBundledWorkspacePlugin(t *testing.T) {
 	workspaceDir := filepath.Join(t.TempDir(), "doctor-workspace")
 	var initStdout strings.Builder
 	initCmd := newRootCommand(strings.NewReader(""), &initStdout, io.Discard)
-	initCmd.SetArgs([]string{"init", "--workspace-dir", workspaceDir})
+	initCmd.SetArgs([]string{"init", "--workspace-dir", workspaceDir, "--no-server", "--no-browser"})
 	if err := initCmd.Execute(); err != nil {
 		t.Fatalf("init command: %v", err)
 	}
+	appendTestLLMConfig(t)
 
 	workspaceAbs, err := filepath.Abs(workspaceDir)
 	if err != nil {
@@ -153,7 +157,7 @@ func TestRootCommand_DoctorFailsWhenClaudeCodeCLIIsMissing(t *testing.T) {
 	workspaceDir := filepath.Join(t.TempDir(), "doctor-workspace")
 	var initStdout strings.Builder
 	initCmd := newRootCommand(strings.NewReader(""), &initStdout, io.Discard)
-	initCmd.SetArgs([]string{"init", "--workspace-dir", workspaceDir})
+	initCmd.SetArgs([]string{"init", "--workspace-dir", workspaceDir, "--no-server", "--no-browser"})
 	if err := initCmd.Execute(); err != nil {
 		t.Fatalf("init command: %v", err)
 	}
@@ -211,7 +215,7 @@ func TestRootCommand_DoctorFailsWhenAgentRuntimeDefaultAgentUsesMissingWorkspace
 	workspaceDir := filepath.Join(t.TempDir(), "doctor-workspace")
 	var initStdout strings.Builder
 	initCmd := newRootCommand(strings.NewReader(""), &initStdout, io.Discard)
-	initCmd.SetArgs([]string{"init", "--workspace-dir", workspaceDir})
+	initCmd.SetArgs([]string{"init", "--workspace-dir", workspaceDir, "--no-server", "--no-browser"})
 	if err := initCmd.Execute(); err != nil {
 		t.Fatalf("init command: %v", err)
 	}
@@ -263,7 +267,7 @@ func TestRootCommand_DoctorFailsWhenSemanticMemoryProviderIsUnsupported(t *testi
 	workspaceDir := filepath.Join(t.TempDir(), "doctor-workspace")
 	var initStdout strings.Builder
 	initCmd := newRootCommand(strings.NewReader(""), &initStdout, io.Discard)
-	initCmd.SetArgs([]string{"init", "--workspace-dir", workspaceDir})
+	initCmd.SetArgs([]string{"init", "--workspace-dir", workspaceDir, "--no-server", "--no-browser"})
 	if err := initCmd.Execute(); err != nil {
 		t.Fatalf("init command: %v", err)
 	}
