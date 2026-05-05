@@ -577,6 +577,41 @@ func newSessionAPIHandlerFull(store *session.Store, logger zerolog.Logger, usage
 				recordSessionToolConfigSignal(usageTracker, sessionID, config)
 				writeJSON(w, http.StatusOK, map[string]string{"ok": "true"})
 			}
+		case len(pathParts) == 2 && pathParts[1] == "local-config":
+			if !requireMethod(w, r, http.MethodPatch) {
+				return
+			}
+			if _, err := reqStore.Get(sessionID); err != nil {
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "session not found"})
+				return
+			}
+			currentDir, err := reqStore.GetCurrentDir(sessionID)
+			if err != nil {
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+				return
+			}
+			var config session.SessionToolConfig
+			if !decodeJSONBody(w, r, &config) {
+				return
+			}
+			if err := sessionoverride.WriteLocalToolConfig(currentDir, config); err != nil {
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+				return
+			}
+			if overrideService != nil {
+				overrideService.Invalidate(sessionID)
+			}
+			recordSessionToolConfigSignal(usageTracker, sessionID, config)
+			if overrideService == nil {
+				writeJSON(w, http.StatusOK, map[string]string{"ok": "true"})
+				return
+			}
+			res, _, err := overrideService.Resolve(sessionID)
+			if err != nil {
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+				return
+			}
+			writeJSON(w, http.StatusOK, res)
 		case len(pathParts) == 2 && pathParts[1] == "automation-consent":
 			if !requireMethod(w, r, http.MethodGet, http.MethodPatch) {
 				return
@@ -837,8 +872,9 @@ func recordSessionToolConfigSignal(tracker *usage.Tracker, sessionID string, con
 		return
 	}
 	dimensions := map[string]string{
-		"tools_custom":  boolDimension(config.ToolsCustom),
-		"skills_custom": boolDimension(config.SkillsCustom),
+		"tools_custom":    boolDimension(config.ToolsCustom),
+		"skills_custom":   boolDimension(config.SkillsCustom),
+		"commands_custom": boolDimension(config.CommandsCustom),
 	}
 	if len(config.ToolsEnabled) > 0 {
 		dimensions["tools_enabled_count"] = fmt.Sprintf("%d", len(config.ToolsEnabled))
@@ -854,6 +890,9 @@ func recordSessionToolConfigSignal(tracker *usage.Tracker, sessionID string, con
 	}
 	if len(config.SkillsEnabled) > 0 {
 		dimensions["skills_enabled_count"] = fmt.Sprintf("%d", len(config.SkillsEnabled))
+	}
+	if len(config.CommandsEnabled) > 0 {
+		dimensions["commands_enabled_count"] = fmt.Sprintf("%d", len(config.CommandsEnabled))
 	}
 	if len(config.MCPEnabled) > 0 {
 		dimensions["mcp_enabled_count"] = fmt.Sprintf("%d", len(config.MCPEnabled))

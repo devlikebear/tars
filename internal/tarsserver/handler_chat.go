@@ -183,6 +183,20 @@ func buildContextFromResult(
 	}
 }
 
+func appendInvokedCommandPrompt(systemPrompt, workspaceDir string, command *skill.Definition) string {
+	if command == nil {
+		return systemPrompt
+	}
+	readPath := skillRuntimeReadPathForPrompt(workspaceDir, command.RuntimePath)
+	systemPrompt += "\n## Invoked Command\n"
+	systemPrompt += fmt.Sprintf(
+		"User invoked /%s.\nBefore responding, call read_file on path %q to load this command.\nCommands are explicit-only and should not be used unless the user invokes them.\n",
+		strings.TrimSpace(command.Name),
+		readPath,
+	)
+	return systemPrompt
+}
+
 func skillPromptForChatContext(workspaceDir string, extSnapshot extensions.Snapshot) string {
 	if len(extSnapshot.Skills) == 0 {
 		return strings.TrimSpace(extSnapshot.SkillPrompt)
@@ -598,6 +612,10 @@ func resolveInvokedSkill(message string, manager *extensions.Manager) *skill.Def
 	if manager == nil {
 		return nil
 	}
+	return resolveInvokedSkillFromSnapshot(message, manager.Snapshot())
+}
+
+func resolveInvokedSkillFromSnapshot(message string, snapshot extensions.Snapshot) *skill.Definition {
 	trimmed := strings.TrimSpace(message)
 	if trimmed == "" || !strings.HasPrefix(trimmed, "/") {
 		return nil
@@ -610,12 +628,7 @@ func resolveInvokedSkill(message string, manager *extensions.Manager) *skill.Def
 	if strings.TrimSpace(name) == "" || strings.Contains(name, "/") {
 		return nil
 	}
-	s, ok := manager.FindSkill(name)
-	if !ok || !s.UserInvocable {
-		return nil
-	}
-	copySkill := s
-	return &copySkill
+	return findInvocableSkillInSnapshot(snapshot, name)
 }
 
 func resolveSkillForMessage(message string, manager *extensions.Manager, workspaceDir, sessionID string) *skill.Definition {
@@ -628,8 +641,21 @@ type skillSelection struct {
 	Reason     string
 }
 
+type commandSelection struct {
+	Definition *skill.Definition
+	Reason     string
+}
+
 func resolveSkillSelection(message string, manager *extensions.Manager, workspaceDir, sessionID string, sessionConfig ...session.SessionToolConfig) skillSelection {
-	if invoked := resolveInvokedSkill(message, manager); invoked != nil {
+	snapshot := extensions.Snapshot{}
+	if manager != nil {
+		snapshot = manager.Snapshot()
+	}
+	return resolveSkillSelectionFromSnapshot(message, snapshot, workspaceDir, sessionID, sessionConfig...)
+}
+
+func resolveSkillSelectionFromSnapshot(message string, snapshot extensions.Snapshot, workspaceDir, sessionID string, sessionConfig ...session.SessionToolConfig) skillSelection {
+	if invoked := resolveInvokedSkillFromSnapshot(message, snapshot); invoked != nil {
 		if len(sessionConfig) > 0 {
 			filtered := applySessionSkillConfig([]skill.Definition{*invoked}, sessionConfig[0])
 			if len(filtered) == 0 {
@@ -638,7 +664,7 @@ func resolveSkillSelection(message string, manager *extensions.Manager, workspac
 		}
 		return skillSelection{Definition: invoked, Reason: "explicit_command"}
 	}
-	projectStart := findProjectStartSkill(manager)
+	projectStart := findProjectStartSkillInSnapshot(snapshot)
 	if projectStart == nil {
 		return skillSelection{}
 	}
@@ -654,17 +680,81 @@ func resolveSkillSelection(message string, manager *extensions.Manager, workspac
 	return skillSelection{}
 }
 
+func resolveCommandSelectionFromDefinitions(message string, commands []skill.Definition, sessionConfig ...session.SessionToolConfig) commandSelection {
+	snapshot := extensions.Snapshot{Skills: commands}
+	invoked := resolveInvokedSkillFromSnapshot(message, snapshot)
+	if invoked == nil {
+		return commandSelection{}
+	}
+	if len(sessionConfig) > 0 {
+		filtered := applySessionCommandConfig([]skill.Definition{*invoked}, sessionConfig[0])
+		if len(filtered) == 0 {
+			return commandSelection{}
+		}
+	}
+	return commandSelection{Definition: invoked, Reason: "explicit_command"}
+}
+
 func findProjectStartSkill(manager *extensions.Manager) *skill.Definition {
 	if manager == nil {
 		return nil
 	}
+	return findProjectStartSkillInSnapshot(manager.Snapshot())
+}
+
+func findProjectStartSkillInSnapshot(snapshot extensions.Snapshot) *skill.Definition {
 	for _, name := range []string{"project-start", "project_start"} {
-		if skillDef, ok := manager.FindSkill(name); ok {
-			copySkill := skillDef
+		if skillDef := findSkillInSnapshot(snapshot, name); skillDef != nil {
+			return skillDef
+		}
+	}
+	return nil
+}
+
+func findInvocableSkillInSnapshot(snapshot extensions.Snapshot, name string) *skill.Definition {
+	def := findSkillInSnapshot(snapshot, name)
+	if def == nil || !def.UserInvocable {
+		return nil
+	}
+	return def
+}
+
+func findSkillInSnapshot(snapshot extensions.Snapshot, name string) *skill.Definition {
+	key := normalizeSkillLookupKey(name)
+	if key == "" {
+		return nil
+	}
+	for _, def := range snapshot.Skills {
+		if skillDefinitionMatchesLookup(def, key) {
+			copySkill := def
 			return &copySkill
 		}
 	}
 	return nil
+}
+
+func normalizeSkillLookupKey(name string) string {
+	key := strings.TrimSpace(name)
+	key = strings.TrimPrefix(key, "/")
+	return strings.ToLower(strings.TrimSpace(key))
+}
+
+func skillDefinitionMatchesLookup(def skill.Definition, key string) bool {
+	if key == "" {
+		return false
+	}
+	if normalizeSkillLookupKey(def.Name) == key {
+		return true
+	}
+	if normalizeSkillLookupKey(def.Slash) == key {
+		return true
+	}
+	for _, alias := range def.Aliases {
+		if normalizeSkillLookupKey(alias) == key {
+			return true
+		}
+	}
+	return false
 }
 
 func hasActiveProjectBrief(_, _ string) bool {
@@ -1119,15 +1209,33 @@ func newChatAPIHandlerWithRuntimeConfig(
 		}
 		// Include skills and MCP info if available
 		type chatToolsResponse struct {
-			Tools  []toolInfo `json:"tools"`
-			Skills []string   `json:"skills,omitempty"`
-			MCP    []string   `json:"mcp_servers,omitempty"`
+			Tools    []toolInfo         `json:"tools"`
+			Skills   []string           `json:"skills,omitempty"`
+			Commands []skill.Definition `json:"commands,omitempty"`
+			MCP      []string           `json:"mcp_servers,omitempty"`
 		}
 		resp := chatToolsResponse{Tools: tools}
 		if tooling.Extensions != nil {
 			snap := tooling.Extensions.Snapshot()
+			if sessionID := strings.TrimSpace(r.URL.Query().Get("session_id")); sessionID != "" {
+				if sess, err := reqStore.Get(sessionID); err == nil {
+					snap = augmentSnapshotWithCwdSkills(snap, sess.CurrentDir)
+					commands, commandDiags := loadSessionCwdCommands(sess.CurrentDir)
+					snap.Diagnostics = append(snap.Diagnostics, commandDiags...)
+					resp.Commands = commands
+				}
+			}
 			for _, sk := range snap.Skills {
 				resp.Skills = append(resp.Skills, sk.Name)
+			}
+		} else if sessionID := strings.TrimSpace(r.URL.Query().Get("session_id")); sessionID != "" {
+			if sess, err := reqStore.Get(sessionID); err == nil {
+				snap := augmentSnapshotWithCwdSkills(extensions.Snapshot{}, sess.CurrentDir)
+				commands, _ := loadSessionCwdCommands(sess.CurrentDir)
+				resp.Commands = commands
+				for _, sk := range snap.Skills {
+					resp.Skills = append(resp.Skills, sk.Name)
+				}
 			}
 		}
 		writeJSON(w, http.StatusOK, resp)
@@ -1221,12 +1329,17 @@ func newChatAPIHandlerWithRuntimeConfig(
 			extSnapshot = tooling.Extensions.Snapshot()
 		}
 		extSnapshot = augmentSnapshotWithCwdSkills(extSnapshot, sess.CurrentDir)
+		commands, commandDiags := loadSessionCwdCommands(sess.CurrentDir)
+		extSnapshot.Diagnostics = append(extSnapshot.Diagnostics, commandDiags...)
 		var sessionToolConfigs []session.SessionToolConfig
 		effTC, effPrompt, present := effectiveSessionView(tooling.OverrideService, sess)
 		if present {
 			sessionToolConfigs = append(sessionToolConfigs, effTC)
 		}
 		extSnapshot = filterExtensionsSnapshotForSession(extSnapshot, sessionToolConfigs...)
+		if len(sessionToolConfigs) > 0 {
+			commands = applySessionCommandConfig(commands, sessionToolConfigs[0])
+		}
 		// Build PathPolicy from session work_dirs for context preview
 		var previewPolicy tool.PathPolicy
 		if len(sess.WorkDirs) > 0 {
@@ -1279,6 +1392,8 @@ func newChatAPIHandlerWithRuntimeConfig(
 			"tool_names":                      toolNamesFromSchemas(injectedSchemas),
 			"skill_count":                     len(extSnapshot.Skills),
 			"skill_names":                     skillNamesFromDefinitions(extSnapshot.Skills),
+			"command_count":                   len(commands),
+			"command_names":                   skillNamesFromDefinitions(commands),
 			"memory_count":                    contextDetails.RelevantMemoryCount,
 			"memory_tokens":                   contextDetails.RelevantMemoryTokens,
 			"compaction_trigger_tokens":       tooling.Compaction.TriggerTokens,

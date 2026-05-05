@@ -24,7 +24,7 @@ func TestLoadCommandAliases_MissingDirIsNoop(t *testing.T) {
 	}
 }
 
-func TestLoadCommandAliases_ClonesTargetSkill(t *testing.T) {
+func TestLoadCommandAliases_LoadsLegacyTargetSkillFileAsStandaloneCommand(t *testing.T) {
 	available := []Definition{
 		{
 			Name:        "refactor",
@@ -50,70 +50,98 @@ ignored body
 		t.Fatalf("unexpected diagnostics: %+v", diags)
 	}
 	if len(defs) != 1 {
-		t.Fatalf("expected 1 alias, got %d", len(defs))
+		t.Fatalf("expected 1 command, got %d", len(defs))
 	}
 	d := defs[0]
 	if d.Name != "tidy" || d.Slash != "tidy" {
-		t.Fatalf("alias name/slash mismatch: %+v", d)
+		t.Fatalf("command name/slash mismatch: %+v", d)
 	}
 	if d.Source != SourceSessionCwd {
-		t.Fatalf("alias source should be SourceSessionCwd, got %q", d.Source)
+		t.Fatalf("command source should be SourceSessionCwd, got %q", d.Source)
 	}
 	if d.Description != "tidy up code style" {
-		t.Fatalf("description should be the alias-provided one, got %q", d.Description)
+		t.Fatalf("description should come from the command file, got %q", d.Description)
 	}
-	if d.Content != "do the thing" {
-		t.Fatalf("alias should inherit target content, got %q", d.Content)
+	if d.Content != "ignored body" {
+		t.Fatalf("command should use its own body, got %q", d.Content)
 	}
 	if len(d.Aliases) != 0 {
-		t.Fatalf("alias should not carry the target's aliases (%+v)", d.Aliases)
+		t.Fatalf("command should not carry the target's aliases (%+v)", d.Aliases)
 	}
 }
 
-func TestLoadCommandAliases_InheritsDescriptionWhenOmitted(t *testing.T) {
+func TestLoadCommandAliases_InfersDescriptionWhenOmitted(t *testing.T) {
 	available := []Definition{{Name: "refactor", Description: "the refactor skill", Content: "x"}}
 	dir := filepath.Join(t.TempDir(), "commands")
-	writeAliasFile(t, dir, "rf.md", "---\ntarget_skill: refactor\n---\n")
+	writeAliasFile(t, dir, "rf.md", "---\ntarget_skill: refactor\n---\nRefactor only the files mentioned by the user.")
 
 	defs, diags := LoadCommandAliases(dir, available)
 	if len(diags) != 0 {
 		t.Fatalf("diags: %+v", diags)
 	}
-	if len(defs) != 1 || defs[0].Description != "the refactor skill" {
-		t.Fatalf("alias should inherit description, got %+v", defs)
+	if len(defs) != 1 || !strings.Contains(defs[0].Description, "Refactor only") {
+		t.Fatalf("command should infer description from its own body, got %+v", defs)
 	}
 }
 
-func TestLoadCommandAliases_MissingTargetSkill(t *testing.T) {
+func TestLoadCommandAliases_IgnoresMissingLegacyTargetSkill(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "commands")
-	writeAliasFile(t, dir, "orphan.md", "---\ntarget_skill: nonexistent\n---\n")
+	writeAliasFile(t, dir, "orphan.md", "---\ntarget_skill: nonexistent\n---\nUse this command body.")
 
 	defs, diags := LoadCommandAliases(dir, []Definition{{Name: "other"}})
-	if len(defs) != 0 {
-		t.Fatalf("expected no defs, got %+v", defs)
+	if len(diags) != 0 {
+		t.Fatalf("expected no diagnostics for legacy target_skill, got %+v", diags)
 	}
-	if len(diags) != 1 || !strings.Contains(diags[0].Message, "not found") {
-		t.Fatalf("expected single 'not found' diagnostic, got %+v", diags)
+	if len(defs) != 1 || defs[0].Name != "orphan" || !strings.Contains(defs[0].Content, "Use this command body") {
+		t.Fatalf("expected standalone command, got defs=%+v diags=%+v", defs, diags)
 	}
 }
 
-func TestLoadCommandAliases_RequiresTargetSkillFrontmatter(t *testing.T) {
+func TestLoadCommandAliases_LoadsStandaloneCommandWithoutTargetSkill(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "commands")
-	writeAliasFile(t, dir, "broken.md", "---\ndescription: missing target\n---\n")
+	writeAliasFile(t, dir, "메모.md", `---
+description: save an explicit memory note
+recommended_tools:
+  - memory
+---
+
+# /메모
+
+Save the text after the slash command.
+`)
 
 	defs, diags := LoadCommandAliases(dir, nil)
-	if len(defs) != 0 {
-		t.Fatalf("expected no defs, got %+v", defs)
+	if len(diags) != 0 {
+		t.Fatalf("unexpected diagnostics: %+v", diags)
 	}
-	if len(diags) != 1 || !strings.Contains(diags[0].Message, "target_skill") {
-		t.Fatalf("expected diagnostic about missing target_skill, got %+v", diags)
+	if len(defs) != 1 {
+		t.Fatalf("expected 1 standalone command, got %+v", defs)
+	}
+	d := defs[0]
+	if d.Name != "메모" || d.Slash != "메모" {
+		t.Fatalf("standalone command name/slash mismatch: %+v", d)
+	}
+	if d.Description != "save an explicit memory note" {
+		t.Fatalf("description mismatch: %+v", d)
+	}
+	if d.Source != SourceSessionCwd || !d.UserInvocable {
+		t.Fatalf("expected session user-invocable command, got %+v", d)
+	}
+	if d.RuntimePath == "" || d.FilePath == "" {
+		t.Fatalf("expected command paths to be set, got %+v", d)
+	}
+	if len(d.RecommendedTools) != 1 || d.RecommendedTools[0] != "memory" {
+		t.Fatalf("recommended tools mismatch: %+v", d.RecommendedTools)
+	}
+	if !strings.Contains(d.Content, "Save the text") {
+		t.Fatalf("expected command body content, got %q", d.Content)
 	}
 }
 
 func TestLoadCommandAliases_NonMarkdownFilesIgnored(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "commands")
 	writeAliasFile(t, dir, "README", "this is not a command file")
-	writeAliasFile(t, dir, "ok.md", "---\ntarget_skill: refactor\n---\n")
+	writeAliasFile(t, dir, "ok.md", "---\ndescription: ok command\n---\nRun ok.")
 
 	defs, _ := LoadCommandAliases(dir, []Definition{{Name: "refactor", Content: "x"}})
 	if len(defs) != 1 || defs[0].Name != "ok" {

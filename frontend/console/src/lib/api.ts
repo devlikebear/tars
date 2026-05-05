@@ -9,6 +9,7 @@ import type {
   CleanupPlan,
   ConfigFile,
   ConfigSchema,
+  CommandDef,
   HealthzResponse,
   ProvidersAPIInfo,
   ProviderModelsInfo,
@@ -766,6 +767,8 @@ export type SessionToolConfig = {
   tools_deny_groups?: string[]
   skills_enabled?: string[]
   skills_custom?: boolean
+  commands_enabled?: string[]
+  commands_custom?: boolean
   mcp_enabled?: string[]
 }
 
@@ -775,6 +778,17 @@ export async function getSessionConfig(sessionId: string): Promise<SessionToolCo
 
 export async function updateSessionConfig(sessionId: string, config: SessionToolConfig): Promise<void> {
   await requestJSON(`/v1/admin/sessions/${encodeURIComponent(sessionId)}/config`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(config),
+  })
+}
+
+export async function updateSessionLocalConfig(
+  sessionId: string,
+  config: SessionToolConfig,
+): Promise<SessionEffectiveConfig> {
+  return requestJSON<SessionEffectiveConfig>(`/v1/admin/sessions/${encodeURIComponent(sessionId)}/local-config`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(config),
@@ -821,11 +835,15 @@ export type ChatToolInfo = {
 export type ChatToolsResponse = {
   tools: ChatToolInfo[]
   skills?: string[]
+  commands?: CommandDef[]
   mcp_servers?: string[]
 }
 
-export async function listChatTools(): Promise<ChatToolsResponse> {
-  return requestJSON<ChatToolsResponse>('/v1/chat/tools')
+export async function listChatTools(sessionId?: string): Promise<ChatToolsResponse> {
+  const params = new URLSearchParams()
+  if (sessionId?.trim()) params.set('session_id', sessionId.trim())
+  const qs = params.toString()
+  return requestJSON<ChatToolsResponse>(`/v1/chat/tools${qs ? `?${qs}` : ''}`)
 }
 
 // --- Chat Context ---
@@ -840,6 +858,8 @@ export type ChatContextInfo = {
   tool_names: string[]
   skill_count?: number
   skill_names?: string[]
+  command_count?: number
+  command_names?: string[]
   memory_count: number
   memory_tokens: number
   compaction_trigger_tokens?: number
@@ -849,6 +869,8 @@ export type ChatContextInfo = {
   used_tool_names?: string[]
   selected_skill_name?: string
   selected_skill_reason?: string
+  selected_command_name?: string
+  selected_command_reason?: string
   mentioned_path_count?: number
   mentioned_paths?: string[]
   mentioned_subagent_count?: number
@@ -1079,8 +1101,11 @@ export async function hubUpdate(): Promise<{ updated_skills: string[]; updated_p
   return requestJSON<{ updated_skills: string[]; updated_plugins: string[] }>('/v1/hub/update', { method: 'POST' })
 }
 
-export async function listSkills(): Promise<SkillDef[]> {
-  return requestJSON<SkillDef[]>('/v1/skills')
+export async function listSkills(sessionId?: string): Promise<SkillDef[]> {
+  const params = new URLSearchParams()
+  if (sessionId?.trim()) params.set('session_id', sessionId.trim())
+  const qs = params.toString()
+  return requestJSON<SkillDef[]>(`/v1/skills${qs ? `?${qs}` : ''}`)
 }
 
 export async function listPlugins(): Promise<PluginDef[]> {

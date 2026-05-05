@@ -41,24 +41,32 @@ test('permission preview reports affected skills and MCP servers', () => {
   const before: SessionToolConfig = {
     skills_custom: true,
     skills_enabled: ['daily-briefing'],
+    commands_custom: true,
+    commands_enabled: ['memo'],
     mcp_enabled: ['github'],
   }
   const after: SessionToolConfig = {
     skills_custom: true,
     skills_enabled: ['release-helper'],
+    commands_custom: true,
+    commands_enabled: ['summarize'],
     mcp_enabled: ['github', 'notion'],
   }
 
   const preview = buildSessionPermissionPreview(before, after, {
     tools,
     skills: ['daily-briefing', 'release-helper'],
+    commands: ['memo', 'summarize'],
     mcpServers: ['github', 'notion'],
   })
 
   assert.equal(preview.risk, 'medium')
   assert.deepEqual(preview.gainedSkills, ['release-helper'])
   assert.deepEqual(preview.lostSkills, ['daily-briefing'])
+  assert.deepEqual(preview.gainedCommands, ['summarize'])
+  assert.deepEqual(preview.lostCommands, ['memo'])
   assert.deepEqual(preview.gainedMCPServers, ['notion'])
   assert.match(preview.summary, /1 skill/)
+  assert.match(preview.summary, /1 command/)
   assert.match(preview.summary, /1 MCP/)
 })

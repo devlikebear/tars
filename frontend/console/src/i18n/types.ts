@@ -445,6 +445,7 @@ export type Translations = {
       filesTooltip: string
       filesCount: (count: number) => string
       config: string
+      configTooltip: string
       context: string
       contextTooltip: string
       prompt: string

@@ -63,6 +63,7 @@ func TestChatAPIHandler_ToolsEndpointIncludesWorkspaceEditingBuiltins(t *testing
 		"read_file",
 		"write_file",
 		"edit_file",
+		"project_skill",
 		"workspace",
 		"memory",
 		"subagents_plan",
@@ -75,6 +76,9 @@ func TestChatAPIHandler_ToolsEndpointIncludesWorkspaceEditingBuiltins(t *testing
 	}
 	if groups["read_file"] != "files" {
 		t.Fatalf("expected read_file to be tagged as files, got %+v", groups)
+	}
+	if groups["project_skill"] != "files" {
+		t.Fatalf("expected project_skill to be tagged as files, got %+v", groups)
 	}
 	if groups["memory"] != "memory" {
 		t.Fatalf("expected memory to be tagged as memory, got %+v", groups)

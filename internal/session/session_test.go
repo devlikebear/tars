@@ -97,11 +97,13 @@ func TestStoreForkFromMessageCopiesTranscriptPrefixAndState(t *testing.T) {
 		t.Fatalf("create parent: %v", err)
 	}
 	if err := store.SetToolConfig(parent.ID, &SessionToolConfig{
-		ToolsCustom:   true,
-		ToolsEnabled:  []string{"bash"},
-		SkillsCustom:  true,
-		SkillsEnabled: []string{"planner"},
-		MCPEnabled:    []string{"filesystem"},
+		ToolsCustom:     true,
+		ToolsEnabled:    []string{"bash"},
+		SkillsCustom:    true,
+		SkillsEnabled:   []string{"planner"},
+		CommandsCustom:  true,
+		CommandsEnabled: []string{"memo"},
+		MCPEnabled:      []string{"filesystem"},
 	}); err != nil {
 		t.Fatalf("set tool config: %v", err)
 	}
@@ -511,6 +513,8 @@ func TestStoreSetToolConfig_RoundTripsGroupFields(t *testing.T) {
 		ToolsDisabled:    []string{"exec"},
 		ToolsAllowGroups: []string{"files", "web"},
 		ToolsDenyGroups:  []string{"shell"},
+		CommandsCustom:   true,
+		CommandsEnabled:  []string{"memo"},
 	}
 	if err := store.SetToolConfig(sess.ID, config); err != nil {
 		t.Fatalf("set tool config: %v", err)

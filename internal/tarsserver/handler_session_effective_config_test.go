@@ -149,3 +149,45 @@ func TestEffectiveConfigAPI_CwdPutInvalidatesCache(t *testing.T) {
 		t.Fatalf("resolution cwd mismatch: got %q want suffix projects/alpha", res.Cwd)
 	}
 }
+
+func TestSessionLocalConfigAPI_WritesSettingsLocalAndReturnsEffectiveConfig(t *testing.T) {
+	root := t.TempDir()
+	store := session.NewStore(root)
+	sess, err := store.Create("chat")
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	svc := sessionoverride.NewService(store)
+	handler := newSessionAPIHandlerFull(store, zerolog.New(io.Discard), nil, sessionStyleValues{}, nil, svc)
+
+	body := `{"tools_custom":true,"tools_enabled":["read_file"],"skills_custom":true,"skills_enabled":["cwd-only"]}`
+	req := httptest.NewRequest(http.MethodPatch, "/v1/admin/sessions/"+sess.ID+"/local-config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Tars-Debug-Auth-Role", "admin")
+	req.RemoteAddr = "127.0.0.1:1"
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+
+	localPath := filepath.Join(sess.CurrentDir, ".tars", "settings.local.json")
+	raw, err := os.ReadFile(localPath)
+	if err != nil {
+		t.Fatalf("read local settings: %v", err)
+	}
+	if !strings.Contains(string(raw), `"tool_config"`) || !strings.Contains(string(raw), `"cwd-only"`) {
+		t.Fatalf("settings.local.json missing tool_config: %s", string(raw))
+	}
+
+	var payload sessionoverride.Resolution
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload.Sources["tool_config.skills_enabled"] != sessionoverride.SourceLocal {
+		t.Fatalf("expected skills_enabled source local, got %+v", payload.Sources)
+	}
+	if !payload.Effective.ToolConfig.SkillsCustom || len(payload.Effective.ToolConfig.SkillsEnabled) != 1 || payload.Effective.ToolConfig.SkillsEnabled[0] != "cwd-only" {
+		t.Fatalf("effective skill config mismatch: %+v", payload.Effective.ToolConfig)
+	}
+}

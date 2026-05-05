@@ -685,6 +685,8 @@ export type ChatEvent = {
   tool_names?: string[]
   skill_count?: number
   skill_names?: string[]
+  command_count?: number
+  command_names?: string[]
   memory_count?: number
   memory_tokens?: number
   compaction_trigger_tokens?: number
@@ -699,6 +701,10 @@ export type ChatEvent = {
   used_tool_names?: string[]
   selected_skill_name?: string
   selected_skill_reason?: string
+  command_name?: string
+  command_reason?: string
+  selected_command_name?: string
+  selected_command_reason?: string
   mentioned_path_count?: number
   mentioned_paths?: string[]
   mentioned_subagent_count?: number
@@ -1011,9 +1017,13 @@ export type SkillDef = {
   slash?: string
   aliases?: string[]
   source?: string
+  file_path?: string
+  runtime_path?: string
   user_invocable?: boolean
   available?: boolean
 }
+
+export type CommandDef = SkillDef
 
 export type PluginDef = {
   id: string
@@ -1549,6 +1559,8 @@ export type SessionEffectiveConfig = {
       tools_deny_groups?: string[]
       skills_enabled?: string[]
       skills_custom?: boolean
+      commands_enabled?: string[]
+      commands_custom?: boolean
       mcp_enabled?: string[]
     }
     prompt_override: string

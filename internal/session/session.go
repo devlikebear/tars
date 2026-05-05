@@ -34,6 +34,8 @@ type SessionToolConfig struct {
 	ToolsDenyGroups  []string `json:"tools_deny_groups,omitempty"`
 	SkillsEnabled    []string `json:"skills_enabled,omitempty"`
 	SkillsCustom     bool     `json:"skills_custom,omitempty"`
+	CommandsEnabled  []string `json:"commands_enabled,omitempty"`
+	CommandsCustom   bool     `json:"commands_custom,omitempty"`
 	MCPEnabled       []string `json:"mcp_enabled,omitempty"`
 }
 
@@ -1159,6 +1161,8 @@ func cloneSessionToolConfig(config *SessionToolConfig) *SessionToolConfig {
 		ToolsDenyGroups:  append([]string(nil), config.ToolsDenyGroups...),
 		SkillsEnabled:    append([]string(nil), config.SkillsEnabled...),
 		SkillsCustom:     config.SkillsCustom,
+		CommandsEnabled:  append([]string(nil), config.CommandsEnabled...),
+		CommandsCustom:   config.CommandsCustom,
 		MCPEnabled:       append([]string(nil), config.MCPEnabled...),
 	}
 }

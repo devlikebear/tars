@@ -22,9 +22,8 @@ type Frontmatter struct {
 	WakePhases              []string
 	Tags                    []string
 	SmokeTests              []string
-	// TargetSkill is set on `.tars/commands/<name>.md` alias files; empty
-	// on regular SKILL.md entries. The commands loader uses it to resolve
-	// the underlying skill whose behavior the alias should reuse.
+	// TargetSkill is a legacy command frontmatter field retained for
+	// compatibility while command files are loaded as standalone prompts.
 	TargetSkill string
 }
 

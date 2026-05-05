@@ -77,6 +77,13 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
+func shouldHideFilePanelEntry(name string) bool {
+	if name == "node_modules" {
+		return true
+	}
+	return strings.HasPrefix(name, ".") && name != ".tars"
+}
+
 func truncateWorkspacePreviewText(value string, limit int) (string, bool) {
 	if limit <= 0 || len(value) <= limit {
 		return value, false
@@ -272,7 +279,7 @@ func newWorkspaceFilesHandler(workspaceDir string, logger zerolog.Logger) http.H
 			files := make([]fileEntry, 0, len(entries))
 			for _, e := range entries {
 				name := e.Name()
-				if strings.HasPrefix(name, ".") || name == "node_modules" {
+				if shouldHideFilePanelEntry(name) {
 					continue
 				}
 				fe := fileEntry{

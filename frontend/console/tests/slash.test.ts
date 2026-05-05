@@ -7,7 +7,7 @@ import {
   findActiveSlashTrigger,
   parseLeadingSlashCommand,
 } from '../src/lib/slash.ts'
-import type { SkillDef } from '../src/lib/types.ts'
+import type { CommandDef, SkillDef } from '../src/lib/types.ts'
 
 const skills: SkillDef[] = [
   {
@@ -31,6 +31,15 @@ const skills: SkillDef[] = [
   },
 ]
 
+const commands: CommandDef[] = [
+  {
+    name: '메모',
+    description: 'Save a session note.',
+    source: 'session_cwd',
+    user_invocable: true,
+  },
+]
+
 test('findActiveSlashTrigger detects a leading slash command token', () => {
   assert.deepEqual(findActiveSlashTrigger('/sou', 4), {
     start: 0,
@@ -41,6 +50,11 @@ test('findActiveSlashTrigger detects a leading slash command token', () => {
     start: 2,
     end: 6,
     query: 'rev',
+  })
+  assert.deepEqual(findActiveSlashTrigger('/메모', 3), {
+    start: 0,
+    end: 3,
+    query: '메모',
   })
 })
 
@@ -55,6 +69,14 @@ test('buildSlashCandidates merges built-ins and user invocable skills', () => {
   assert.deepEqual(candidates.map((c) => `${c.kind}:${c.command}:${c.skillName ?? c.id}`), [
     'skill:rev:review',
     'skill:code-review:review',
+  ])
+})
+
+test('buildSlashCandidates includes explicit session commands separately from skills', () => {
+  const candidates = buildSlashCandidates('메', skills, commands)
+
+  assert.deepEqual(candidates.map((c) => `${c.kind}:${c.command}:${c.skillName ?? c.id}`), [
+    'command:메모:메모',
   ])
 })
 
@@ -84,6 +106,10 @@ test('parseLeadingSlashCommand returns command and argument text', () => {
   assert.deepEqual(parseLeadingSlashCommand('/review inspect this'), {
     command: 'review',
     args: 'inspect this',
+  })
+  assert.deepEqual(parseLeadingSlashCommand('/메모 회의 내용 저장'), {
+    command: '메모',
+    args: '회의 내용 저장',
   })
   assert.equal(parseLeadingSlashCommand('please /review this'), null)
 })

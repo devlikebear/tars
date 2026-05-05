@@ -1,8 +1,8 @@
 <script lang="ts">
   import { onMount, onDestroy, tick } from 'svelte'
   import { t } from '../i18n'
-  import { streamChat, cancelChat, getSessionHistory, renameSession, streamEvents, listChatFileMentions, listAgentRuntimeSubagents, listSkills, forkSessionFromMessage } from '../lib/api'
-  import type { AgentRuntimeSubagent, ChatAttachment, ChatEvent, ChatTier, ChatTierRecommendationRequest, Session, SessionMessage, SkillDef } from '../lib/types'
+  import { streamChat, cancelChat, getSessionHistory, renameSession, streamEvents, listChatFileMentions, listAgentRuntimeSubagents, listSkills, listChatTools, getSessionEffectiveConfig, forkSessionFromMessage } from '../lib/api'
+  import type { AgentRuntimeSubagent, ChatAttachment, ChatEvent, ChatTier, ChatTierRecommendationRequest, CommandDef, Session, SessionMessage, SkillDef } from '../lib/types'
   import { extractArtifact, extractArtifactsFromHistory, mergeArtifact, type Artifact } from '../lib/artifacts'
   import { buildTierRecommendation, tierRecommendationPayload, type TierRecommendation } from '../lib/tierRecommendation'
   import {
@@ -41,6 +41,8 @@
       tool_names?: string[]
       skill_count?: number
       skill_names?: string[]
+      command_count?: number
+      command_names?: string[]
       memory_count?: number
       memory_tokens?: number
       compaction_trigger_tokens?: number
@@ -50,6 +52,8 @@
       used_tool_names?: string[]
       selected_skill_name?: string
       selected_skill_reason?: string
+      selected_command_name?: string
+      selected_command_reason?: string
       mentioned_path_count?: number
       mentioned_paths?: string[]
       mentioned_subagent_count?: number
@@ -110,6 +114,8 @@
     tool_names?: string[]
     skill_count?: number
     skill_names?: string[]
+    command_count?: number
+    command_names?: string[]
     memory_count?: number
     memory_tokens?: number
     compaction_trigger_tokens?: number
@@ -119,6 +125,8 @@
     used_tool_names?: string[]
     selected_skill_name?: string
     selected_skill_reason?: string
+    selected_command_name?: string
+    selected_command_reason?: string
     mentioned_path_count?: number
     mentioned_paths?: string[]
     mentioned_subagent_count?: number
@@ -260,6 +268,8 @@
           : t('도구 결과 반영 중', 'Applying tool result')
       case 'skill_selected':
         return skillName ? (isEn ? `${skillName} skill selected` : `${skillName} skill 선택`) : (msg || t('skill 선택', 'Skill selected'))
+      case 'command_selected':
+        return msg || t('명령 선택', 'Command selected')
       case 'compaction':
         return `${t('대화 압축 중', 'Compacting conversation')}${msg ? ` · ${msg}` : ''}`
       case 'slash':
@@ -347,6 +357,7 @@
     if (!resolved || resolved === chatSessionId) return
     chatSessionId = resolved
     onSessionReady?.(resolved)
+    void reloadSlashSkillsAndCandidates()
   }
 
   function handleChatEvent(event: ChatEvent, assistantId: string) {
@@ -402,6 +413,9 @@
             }
 
             onToolComplete?.(event.tool_name || '')
+            if ((event.tool_name || '').trim() === 'project_skill') {
+              void reloadSlashSkillsAndCandidates()
+            }
           }
         } else if (event.phase === 'skill_selected' && event.skill_name) {
           publishContextInfo({
@@ -417,6 +431,22 @@
           const aIdx = chatMessages.findIndex((m) => m.id === assistantId)
           if (aIdx >= 0) {
             chatMessages.splice(aIdx, 0, skillMsg)
+            chatMessages = [...chatMessages]
+          }
+        } else if (event.phase === 'command_selected' && event.command_name) {
+          publishContextInfo({
+            ...contextInfo,
+            selected_command_name: event.command_name,
+            selected_command_reason: event.command_reason,
+          })
+          const commandMsg: ChatMessage = {
+            id: `command-${Date.now()}`,
+            role: 'system',
+            text: `command selected: ${event.command_name}`,
+          }
+          const aIdx = chatMessages.findIndex((m) => m.id === assistantId)
+          if (aIdx >= 0) {
+            chatMessages.splice(aIdx, 0, commandMsg)
             chatMessages = [...chatMessages]
           }
         }
@@ -466,9 +496,13 @@
           tool_names: event.tool_names,
           skill_count: event.skill_count,
           skill_names: event.skill_names,
+          command_count: event.command_count,
+          command_names: event.command_names,
           used_tool_names: event.used_tool_names ?? contextInfo.used_tool_names ?? [],
           selected_skill_name: event.selected_skill_name ?? contextInfo.selected_skill_name,
           selected_skill_reason: event.selected_skill_reason ?? contextInfo.selected_skill_reason,
+          selected_command_name: event.selected_command_name ?? contextInfo.selected_command_name,
+          selected_command_reason: event.selected_command_reason ?? contextInfo.selected_command_reason,
           mentioned_path_count: event.mentioned_path_count ?? contextInfo.mentioned_path_count,
           mentioned_paths: event.mentioned_paths ?? contextInfo.mentioned_paths,
           mentioned_subagent_count: event.mentioned_subagent_count ?? contextInfo.mentioned_subagent_count,
@@ -545,6 +579,7 @@
   let mentionSubagents: AgentRuntimeSubagent[] = $state([])
   let activeSelectedMentions = $derived(filterSelectedMentionsForMessage(selectedMentions, chatInput))
   let slashSkills: SkillDef[] = $state([])
+  let slashCommands: CommandDef[] = $state([])
   let slashOpen = $state(false)
   let slashCandidates: SlashCommandCandidate[] = $state([])
   let slashActiveIndex = $state(0)
@@ -566,12 +601,36 @@
     activeSlashTrigger = null
   }
 
+  function activeChatSessionId(): string {
+    return (chatSessionId || sessionId || '').trim()
+  }
+
   async function loadSlashSkills() {
     try {
-      slashSkills = await listSkills()
+      const sessionIdForSlash = activeChatSessionId() || undefined
+      const [skills, toolsResp, effectiveResp] = await Promise.all([
+        listSkills(sessionIdForSlash),
+        listChatTools(sessionIdForSlash),
+        sessionIdForSlash ? getSessionEffectiveConfig(sessionIdForSlash).catch(() => null) : Promise.resolve(null),
+      ])
+      const toolConfig = effectiveResp?.effective.tool_config
+      slashSkills = filterSlashDefs(skills, toolConfig?.skills_custom, toolConfig?.skills_enabled)
+      slashCommands = filterSlashDefs(toolsResp.commands ?? [], toolConfig?.commands_custom, toolConfig?.commands_enabled)
     } catch {
       slashSkills = []
+      slashCommands = []
     }
+  }
+
+  function filterSlashDefs<T extends { name: string }>(defs: T[], custom?: boolean, enabled?: string[]): T[] {
+    if (!custom && !Array.isArray(enabled)) return defs
+    const allowed = new Set((enabled ?? []).map((name) => name.trim().toLowerCase()).filter(Boolean))
+    return defs.filter((def) => allowed.has(def.name.trim().toLowerCase()))
+  }
+
+  async function reloadSlashSkillsAndCandidates() {
+    await loadSlashSkills()
+    await refreshSlashCandidates()
   }
 
   async function loadMentionSubagents() {
@@ -592,7 +651,7 @@
       return
     }
     const seq = ++slashRequestSeq
-    const candidates = buildSlashCandidates(trigger.query, slashSkills)
+    const candidates = buildSlashCandidates(trigger.query, slashSkills, slashCommands)
     if (seq !== slashRequestSeq) return
     slashCandidates = candidates
     slashActiveIndex = 0

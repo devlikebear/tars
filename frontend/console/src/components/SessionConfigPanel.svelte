@@ -3,17 +3,18 @@
     getSessionAutomationConsent,
     getSessionStyle,
     listChatTools,
+    listSkills,
     getSessionConfig,
     getSessionEffectiveConfig,
     updateSessionAutomationConsent,
-    updateSessionConfig,
+    updateSessionLocalConfig,
     updateSessionStyle,
     type ChatToolInfo,
     type SessionToolConfig,
   } from '../lib/api'
   import { buildSessionPermissionPreview, type SessionPermissionPreview } from '../lib/sessionPermissionPreview'
   import { buildSessionStylePreview, sessionStylePayload } from '../lib/sessionStyle'
-  import type { EffectiveConfigSource, SessionAutomationConsent, SessionEffectiveConfig, SessionStyleResponse, SessionStyleValues } from '../lib/types'
+  import type { CommandDef, EffectiveConfigSource, SessionAutomationConsent, SessionEffectiveConfig, SessionStyleResponse, SessionStyleValues, SkillDef } from '../lib/types'
 
   interface Props {
     sessionId: string
@@ -25,6 +26,9 @@
 
   let tools: ChatToolInfo[] = $state([])
   let skills: string[] = $state([])
+  let skillDefs: SkillDef[] = $state([])
+  let commands: string[] = $state([])
+  let commandDefs: CommandDef[] = $state([])
   let mcpServers: string[] = $state([])
   let config: SessionToolConfig = $state({})
   let pendingConfig: SessionToolConfig | null = $state(null)
@@ -38,17 +42,21 @@
   let styleDraft: SessionStyleValues = $state({ directness: 70, humor: 20, caution: 60, autonomy: 40 })
   let loading = $state(true)
   let filterText = $state('')
-  let activeTab: 'tools' | 'skills' | 'automation' | 'style' = $state('tools')
+  let activeTab: 'tools' | 'skills' | 'commands' | 'automation' | 'style' = $state('tools')
   let automationSaving = $state(false)
   let styleSaving = $state(false)
+  type SkillSourceFilter = 'all' | 'global' | 'session' | 'enabled' | 'disabled'
+  let skillSourceFilter: SkillSourceFilter = $state('all')
 
   let enabledSet: Set<string> = $state(new Set())
   let disabledSet: Set<string> = $state(new Set())
   let allowGroupsSet: Set<string> = $state(new Set())
   let denyGroupsSet: Set<string> = $state(new Set())
   let skillsEnabledSet: Set<string> = $state(new Set())
+  let commandsEnabledSet: Set<string> = $state(new Set())
   let useCustomConfig = $state(false)
   let useCustomSkills = $state(false)
+  let useCustomCommands = $state(false)
 
   // Effective-config snapshot (Phase 3 backend) — drives source badges
   // on tools/skills items so the user can see when a value comes from
@@ -85,6 +93,14 @@
     return 'base'
   }
 
+  function sourceForCommandList(name: string): EffectiveConfigSource {
+    if (!effectiveConfig) return 'base'
+    if (effectiveConfig.effective.tool_config.commands_enabled?.includes(name)) {
+      return effectiveConfig.sources['tool_config.commands_enabled'] ?? 'base'
+    }
+    return 'base'
+  }
+
   type AutomationToggleKey = 'auto_resume' | 'git_mutations' | 'autonomous_mutations'
   const defaultAutoResumeMinutes = 30
   const autoResumeModes = [
@@ -103,12 +119,108 @@
     medium: 'Medium risk',
     high: 'High risk',
   }
+  const skillSourceFilters: Array<{ id: SkillSourceFilter; label: string }> = [
+    { id: 'all', label: 'All' },
+    { id: 'global', label: 'Global' },
+    { id: 'session', label: 'Session only' },
+    { id: 'enabled', label: 'Enabled' },
+    { id: 'disabled', label: 'Disabled' },
+  ]
+
+  function normalizeSkillDefs(defs: SkillDef[], names: string[]): SkillDef[] {
+    const out: SkillDef[] = []
+    const seen = new Set<string>()
+    for (const def of defs) {
+      const name = def.name?.trim()
+      if (!name) continue
+      const key = name.toLowerCase()
+      if (seen.has(key)) continue
+      seen.add(key)
+      out.push({ ...def, name })
+    }
+    for (const rawName of names) {
+      const name = rawName.trim()
+      if (!name) continue
+      const key = name.toLowerCase()
+      if (seen.has(key)) continue
+      seen.add(key)
+      out.push({ name, description: '', user_invocable: true })
+    }
+    return out
+  }
+
+  function isCommandSkill(skill: SkillDef): boolean {
+    const path = skill.file_path ?? ''
+    return path.includes('/.tars/commands/') || path.includes('\\.tars\\commands\\')
+  }
+
+  function normalizeCommandDefs(defs: CommandDef[]): CommandDef[] {
+    const out: CommandDef[] = []
+    const seen = new Set<string>()
+    for (const def of defs) {
+      const name = def.name?.trim()
+      if (!name) continue
+      const key = name.toLowerCase()
+      if (seen.has(key)) continue
+      seen.add(key)
+      out.push({ ...def, name })
+    }
+    return out
+  }
+
+  function isSessionSkill(skill: SkillDef): boolean {
+    return skill.source === 'session_cwd'
+  }
+
+  function skillOriginClass(skill: SkillDef): 'global' | 'session' | 'command' {
+    if (isCommandSkill(skill)) return 'command'
+    if (isSessionSkill(skill)) return 'session'
+    return 'global'
+  }
+
+  function skillOriginLabel(skill: SkillDef): string {
+    switch (skillOriginClass(skill)) {
+      case 'command':
+        return 'Command'
+      case 'session':
+        return 'Session'
+      default:
+        return 'Global'
+    }
+  }
+
+  function skillOriginTitle(skill: SkillDef): string {
+    if (isCommandSkill(skill)) return '.tars/commands'
+    if (isSessionSkill(skill)) return '.tars/skills'
+    return skill.source || 'global skill source'
+  }
+
+  function skillSlashLabel(skill: SkillDef): string {
+    const slash = (skill.slash || skill.name || '').replace(/^\/+/, '').trim()
+    return slash ? `/${slash}` : ''
+  }
+
+  function matchesSkillSourceFilter(skill: SkillDef): boolean {
+    switch (skillSourceFilter) {
+      case 'global':
+        return !isSessionSkill(skill)
+      case 'session':
+        return isSessionSkill(skill) && !isCommandSkill(skill)
+      case 'enabled':
+        return isSkillEnabled(skill.name)
+      case 'disabled':
+        return !isSkillEnabled(skill.name)
+      default:
+        return true
+    }
+  }
 
   async function load() {
     loading = true
     try {
-      const [toolsResp, configResp, automationResp, styleResp] = await Promise.all([
-        listChatTools(),
+      const [toolsResp, skillResp, configResp, automationResp, styleResp] = await Promise.all([
+        listChatTools(sessionId || undefined),
+        listSkills(sessionId || undefined),
         sessionId ? getSessionConfig(sessionId) : Promise.resolve({} as SessionToolConfig),
         sessionId ? getSessionAutomationConsent(sessionId) : Promise.resolve({} as SessionAutomationConsent),
         sessionId
@@ -120,7 +232,10 @@
             } as SessionStyleResponse),
       ])
       tools = toolsResp.tools
-      skills = toolsResp.skills ?? []
+      skillDefs = normalizeSkillDefs(skillResp, toolsResp.skills ?? [])
+      skills = skillDefs.map((skill) => skill.name)
+      commandDefs = normalizeCommandDefs(toolsResp.commands ?? [])
+      commands = commandDefs.map((command) => command.name)
       mcpServers = toolsResp.mcp_servers ?? []
       config = configResp
       automationConsent = automationResp
@@ -132,14 +247,17 @@
       if (sessionId) {
         try {
           effectiveConfig = await getSessionEffectiveConfig(sessionId)
+          config = effectiveConfig.effective.tool_config
         } catch {
           effectiveConfig = null
+          config = configResp
         }
       } else {
         effectiveConfig = null
+        config = configResp
       }
 
-      applyConfigState(config, tools, skills)
+      applyConfigState(config, tools, skills, commands)
       pendingConfig = null
       pendingPreview = null
     } catch {
@@ -148,7 +266,7 @@
     loading = false
   }
 
-  function applyConfigState(nextConfig: SessionToolConfig, availableTools = tools, availableSkills = skills) {
+  function applyConfigState(nextConfig: SessionToolConfig, availableTools = tools, availableSkills = skills, availableCommands = commands) {
     if (nextConfig.tools_custom || Array.isArray(nextConfig.tools_enabled)) {
       useCustomConfig = true
       enabledSet = new Set(nextConfig.tools_enabled ?? [])
@@ -166,6 +284,14 @@
     } else {
       useCustomSkills = false
       skillsEnabledSet = new Set(availableSkills)
+    }
+
+    if (nextConfig.commands_custom || Array.isArray(nextConfig.commands_enabled)) {
+      useCustomCommands = true
+      commandsEnabledSet = new Set(nextConfig.commands_enabled ?? [])
+    } else {
+      useCustomCommands = false
+      commandsEnabledSet = new Set(availableCommands)
     }
   }
 
@@ -197,6 +323,11 @@
   function isSkillEnabled(name: string): boolean {
     if (!useCustomSkills) return true
     return skillsEnabledSet.has(name)
+  }
+
+  function isCommandEnabled(name: string): boolean {
+    if (!useCustomCommands) return true
+    return commandsEnabledSet.has(name)
   }
 
   function toggleAllowGroup(name: string) {
@@ -239,6 +370,22 @@
     queueConfigPreview()
   }
 
+  function toggleCommand(name: string) {
+    if (isCommandEnabled(name)) {
+      if (!useCustomCommands) {
+        useCustomCommands = true
+        commandsEnabledSet = new Set(commands.filter((command) => command !== name))
+      } else {
+        commandsEnabledSet.delete(name)
+        commandsEnabledSet = new Set(commandsEnabledSet)
+      }
+    } else {
+      commandsEnabledSet.add(name)
+      commandsEnabledSet = new Set(commandsEnabledSet)
+    }
+    queueConfigPreview()
+  }
+
   function toggleAllTools() {
     if (useCustomConfig) {
       useCustomConfig = false
@@ -263,6 +410,17 @@
     queueConfigPreview()
   }
 
+  function toggleAllCommands() {
+    if (useCustomCommands) {
+      useCustomCommands = false
+      commandsEnabledSet = new Set(commands)
+    } else {
+      useCustomCommands = true
+      commandsEnabledSet = new Set()
+    }
+    queueConfigPreview()
+  }
+
   function draftConfigFromState(): SessionToolConfig {
     const newConfig: SessionToolConfig = {}
     if (useCustomConfig) {
@@ -282,6 +440,10 @@
       newConfig.skills_custom = true
       newConfig.skills_enabled = [...skillsEnabledSet]
     }
+    if (useCustomCommands) {
+      newConfig.commands_custom = true
+      newConfig.commands_enabled = [...commandsEnabledSet]
+    }
     if (Array.isArray(config.mcp_enabled)) {
       newConfig.mcp_enabled = [...config.mcp_enabled]
     }
@@ -294,6 +456,7 @@
     const preview = buildSessionPermissionPreview(config, nextConfig, {
       tools,
       skills,
+      commands,
       mcpServers,
     })
     if (!hasPermissionPreviewChanges(preview)) {
@@ -309,8 +472,8 @@
     if (!sessionId || !pendingConfig) return
     const nextConfig = pendingConfig
     try {
-      await updateSessionConfig(sessionId, nextConfig)
-      config = nextConfig
+      effectiveConfig = await updateSessionLocalConfig(sessionId, nextConfig)
+      config = effectiveConfig.effective.tool_config
       pendingConfig = null
       pendingPreview = null
       onChange?.()
@@ -333,6 +496,8 @@
       preview.lostGroups,
       preview.gainedSkills,
       preview.lostSkills,
+      preview.gainedCommands,
+      preview.lostCommands,
       preview.gainedMCPServers,
       preview.lostMCPServers,
     ].some((items) => items.length > 0)
@@ -346,6 +511,8 @@
       { label: 'Groups disabled', items: preview.lostGroups },
       { label: 'Skills enabled', items: preview.gainedSkills },
       { label: 'Skills disabled', items: preview.lostSkills },
+      { label: 'Commands enabled', items: preview.gainedCommands },
+      { label: 'Commands disabled', items: preview.lostCommands },
       { label: 'MCP enabled', items: preview.gainedMCPServers },
       { label: 'MCP disabled', items: preview.lostMCPServers },
     ].filter((row) => row.items.length > 0)
@@ -451,8 +618,24 @@
   let toolGroups = $derived(
     [...new Set(tools.map((t) => t.group).filter((group): group is string => Boolean(group)))].sort()
   )
-  let filteredSkills = $derived(
-    skills.filter((s) => !filterText || s.toLowerCase().includes(filterText.toLowerCase()))
+  let filteredSkillDefs = $derived(
+    skillDefs.filter((skill) => {
+      const query = filterText.toLowerCase()
+      const matchesText = !query ||
+        skill.name.toLowerCase().includes(query) ||
+        (skill.description ?? '').toLowerCase().includes(query) ||
+        (skill.slash ?? '').toLowerCase().includes(query)
+      return matchesText && matchesSkillSourceFilter(skill)
+    })
+  )
+  let filteredCommandDefs = $derived(
+    commandDefs.filter((command) => {
+      const query = filterText.toLowerCase()
+      return !query ||
+        command.name.toLowerCase().includes(query) ||
+        (command.description ?? '').toLowerCase().includes(query) ||
+        (command.slash ?? '').toLowerCase().includes(query)
+    })
   )
   let stylePreview = $derived(buildSessionStylePreview({ ...styleResponse, effective: styleDraft }))
 
@@ -479,6 +662,9 @@
       <button class="config-tab" class:active={activeTab === 'skills'} onclick={() => activeTab = 'skills'}>
         Skills ({skills.length})
       </button>
+      <button class="config-tab" class:active={activeTab === 'commands'} onclick={() => activeTab = 'commands'}>
+        Commands ({commands.length})
+      </button>
       <button class="config-tab" class:active={activeTab === 'automation'} onclick={() => activeTab = 'automation'}>
         Automation
       </button>
@@ -487,9 +673,25 @@
       </button>
     </div>
 
-    {#if activeTab === 'tools' || activeTab === 'skills'}
+    {#if activeTab === 'tools' || activeTab === 'skills' || activeTab === 'commands'}
       <div class="config-filter">
         <input type="text" bind:value={filterText} placeholder="Filter..." class="config-filter-input" />
+        <button class="config-reload" type="button" disabled={loading} onclick={() => { void load() }}>Reload</button>
+      </div>
+    {/if}
+
+    {#if activeTab === 'skills'}
+      <div class="config-source-filters" aria-label="Skill source filters">
+        {#each skillSourceFilters as filter}
+          <button
+            class="source-filter"
+            class:active={skillSourceFilter === filter.id}
+            type="button"
+            onclick={() => skillSourceFilter = filter.id}
+          >
+            {filter.label}
+          </button>
+        {/each}
       </div>
     {/if}
 
@@ -591,13 +793,46 @@
         <span class="config-count">{useCustomSkills ? skillsEnabledSet.size : skills.length} active</span>
       </div>
       <div class="config-list">
-        {#each filteredSkills as s}
+        {#each filteredSkillDefs as skill}
+          {@const s = skill.name}
           {@const skillSrc = sourceForSkillList(s)}
+          {@const originClass = skillOriginClass(skill)}
           <label class="config-item">
             <input type="checkbox" checked={isSkillEnabled(s)} onchange={() => toggleSkill(s)} />
             <span class="item-name">{s}</span>
+            {#if skillSlashLabel(skill)}
+              <span class="skill-slash">{skillSlashLabel(skill)}</span>
+            {/if}
+            <span class="skill-origin-badge source-{originClass}" title={skillOriginTitle(skill)}>
+              {skillOriginLabel(skill)}
+            </span>
             {#if skillSrc !== 'base'}
               <span class="source-badge source-{skillSrc}" title={sourceBadgeTitle[skillSrc]}>{sourceBadgeLabel[skillSrc]}</span>
+            {/if}
+          </label>
+        {/each}
+      </div>
+    {:else if activeTab === 'commands'}
+      <div class="config-actions">
+        <label class="config-toggle">
+          <input type="checkbox" checked={!useCustomCommands} onchange={toggleAllCommands} />
+          <span>All commands</span>
+        </label>
+        <span class="config-count">{useCustomCommands ? commandsEnabledSet.size : commands.length} active</span>
+      </div>
+      <div class="config-list">
+        {#each filteredCommandDefs as command}
+          {@const c = command.name}
+          {@const commandSrc = sourceForCommandList(c)}
+          <label class="config-item">
+            <input type="checkbox" checked={isCommandEnabled(c)} onchange={() => toggleCommand(c)} />
+            <span class="item-name">{c}</span>
+            {#if skillSlashLabel(command)}
+              <span class="skill-slash">{skillSlashLabel(command)}</span>
+            {/if}
+            <span class="skill-origin-badge source-command" title=".tars/commands">Command</span>
+            {#if commandSrc !== 'base'}
+              <span class="source-badge source-{commandSrc}" title={sourceBadgeTitle[commandSrc]}>{sourceBadgeLabel[commandSrc]}</span>
             {/if}
           </label>
         {/each}
@@ -778,6 +1013,9 @@
   .config-tab:hover { color: var(--text-primary); }
 
   .config-filter {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: var(--space-2);
     padding: var(--space-2) var(--space-3);
   }
 
@@ -790,6 +1028,46 @@
     color: var(--text-primary);
     font-family: var(--font-mono);
     font-size: var(--text-xs);
+  }
+
+  .config-reload {
+    padding: 0 var(--space-2);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    background: var(--surface-base);
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    cursor: pointer;
+  }
+
+  .config-reload:hover {
+    border-color: var(--primary);
+    color: var(--primary);
+  }
+
+  .config-source-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1);
+    padding: 0 var(--space-3) var(--space-2);
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .source-filter {
+    padding: 2px 6px;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    background: var(--surface-base);
+    color: var(--text-ghost);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    cursor: pointer;
+  }
+
+  .source-filter.active {
+    border-color: var(--primary);
+    color: var(--primary);
   }
 
   .permission-preview {
@@ -1017,6 +1295,46 @@
     white-space: nowrap;
   }
 
+  .skill-slash {
+    margin-left: auto;
+    color: var(--text-ghost);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 80px;
+  }
+
+  .skill-origin-badge {
+    padding: 0 5px;
+    border-radius: var(--radius-sm);
+    font-family: var(--font-display);
+    font-size: 9px;
+    line-height: 14px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  .skill-origin-badge.source-global {
+    color: var(--text-ghost);
+    border: 1px solid var(--border-subtle);
+    background: var(--surface-base);
+  }
+
+  .skill-origin-badge.source-session {
+    color: var(--primary);
+    border: 1px solid color-mix(in srgb, var(--primary) 35%, transparent);
+    background: color-mix(in srgb, var(--primary) 12%, transparent);
+  }
+
+  .skill-origin-badge.source-command {
+    color: rgb(34, 197, 94);
+    border: 1px solid rgba(34, 197, 94, 0.35);
+    background: rgba(34, 197, 94, 0.1);
+  }
+
   /* Source badge — shows where the effective value came from when it
      was contributed by `.tars/settings.json` (shared) or
      `.tars/settings.local.json` (local). The base / sessions.json case
@@ -1031,6 +1349,9 @@
     letter-spacing: 0.04em;
     text-transform: uppercase;
     cursor: help;
+  }
+  .skill-origin-badge + .source-badge {
+    margin-left: 0;
   }
   .source-badge.source-shared {
     color: var(--primary);

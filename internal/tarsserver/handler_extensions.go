@@ -8,6 +8,7 @@ import (
 	"github.com/devlikebear/tars/internal/extensions"
 	"github.com/devlikebear/tars/internal/mcp"
 	"github.com/devlikebear/tars/internal/plugin"
+	"github.com/devlikebear/tars/internal/session"
 	"github.com/devlikebear/tars/internal/skill"
 	"github.com/rs/zerolog"
 )
@@ -62,16 +63,29 @@ type extensionsProvider interface {
 }
 
 func newExtensionsAPIHandler(provider extensionsProvider, logger zerolog.Logger, afterReload func() (bool, int)) http.Handler {
+	return newExtensionsAPIHandlerWithSessionStore(provider, logger, afterReload, nil)
+}
+
+func newExtensionsAPIHandlerWithSessionStore(provider extensionsProvider, logger zerolog.Logger, afterReload func() (bool, int), store *session.Store) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/skills", func(w http.ResponseWriter, r *http.Request) {
 		if !requireMethod(w, r, http.MethodGet) {
 			return
 		}
-		if provider == nil {
-			writeJSON(w, http.StatusOK, []skill.Definition{})
-			return
+		snapshot := extensions.Snapshot{}
+		if provider != nil {
+			snapshot = provider.Snapshot()
 		}
-		snapshot := provider.Snapshot()
+		if store != nil {
+			if sessionID := strings.TrimSpace(r.URL.Query().Get("session_id")); sessionID != "" {
+				sess, err := store.Get(sessionID)
+				if err != nil {
+					writeJSON(w, http.StatusNotFound, map[string]string{"error": "session not found"})
+					return
+				}
+				snapshot = augmentSnapshotWithCwdSkills(snapshot, sess.CurrentDir)
+			}
+		}
 		skills := snapshot.Skills
 		if skills == nil {
 			skills = []skill.Definition{}

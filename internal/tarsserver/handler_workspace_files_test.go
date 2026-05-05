@@ -211,6 +211,46 @@ func TestWorkspaceFilesHandler_AllowsExplicitFilesystemRootPreview(t *testing.T)
 	}
 }
 
+func TestWorkspaceFilesHandler_ListIncludesTarsDirectory(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+	artifactsRoot := filepath.Join(root, "artifacts")
+	for _, name := range []string{".tars", ".git", "node_modules", "visible"} {
+		if err := os.MkdirAll(filepath.Join(artifactsRoot, name), 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", name, err)
+		}
+	}
+
+	handler := newWorkspaceFilesHandler(root, zerolog.New(io.Discard))
+	req := httptest.NewRequest(http.MethodGet, "/?path=.&root="+url.QueryEscape(artifactsRoot), nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+
+	var got struct {
+		Files []fileEntry `json:"files"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	names := map[string]bool{}
+	for _, file := range got.Files {
+		names[file.Name] = true
+	}
+	if !names[".tars"] || !names["visible"] {
+		t.Fatalf("expected .tars and visible directories, got %+v", got.Files)
+	}
+	for _, hidden := range []string{".git", "node_modules"} {
+		if names[hidden] {
+			t.Fatalf("did not expect hidden directory %s in %+v", hidden, got.Files)
+		}
+	}
+}
+
 func TestWorkspaceFilesHandler_RejectsTraversalOutsideRoot(t *testing.T) {
 	workspace := filepath.Join(t.TempDir(), "workspace")
 	if err := memory.EnsureWorkspace(workspace); err != nil {

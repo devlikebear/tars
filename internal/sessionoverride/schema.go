@@ -92,6 +92,8 @@ var AllowedToolConfigFields = map[string]struct{}{
 	"tools_deny_groups":  {},
 	"skills_enabled":     {},
 	"skills_custom":      {},
+	"commands_enabled":   {},
+	"commands_custom":    {},
 	"mcp_enabled":        {},
 }
 
@@ -109,6 +111,8 @@ func AllPaths() []string {
 		"tool_config.tools_deny_groups",
 		"tool_config.skills_enabled",
 		"tool_config.skills_custom",
+		"tool_config.commands_enabled",
+		"tool_config.commands_custom",
 		"tool_config.mcp_enabled",
 	}
 }

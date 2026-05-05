@@ -984,6 +984,72 @@ func TestExtensionsAPI_ListAndReload(t *testing.T) {
 	}
 }
 
+func TestExtensionsAPI_ListSkillsExcludesSessionCwdCommands(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+	store := session.NewStore(root)
+	sess, err := store.Create("chat")
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	provider := &mockExtensionsProvider{
+		snapshot: extensions.Snapshot{
+			Skills: []skill.Definition{
+				{Name: "review", Description: "base review skill", Content: "review body", UserInvocable: true},
+			},
+		},
+	}
+	commandsDir := filepath.Join(sess.CurrentDir, ".tars", "commands")
+	if err := os.MkdirAll(commandsDir, 0o755); err != nil {
+		t.Fatalf("mkdir commands: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(commandsDir, "quick-review.md"), []byte(`---
+target_skill: review
+description: cwd command
+---
+Run a quick review as an explicit command.
+`), 0o600); err != nil {
+		t.Fatalf("write command: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(commandsDir, "메모.md"), []byte(`---
+description: standalone command
+---
+
+# /메모
+
+Save a memory note.
+`), 0o600); err != nil {
+		t.Fatalf("write standalone command: %v", err)
+	}
+
+	handler := newExtensionsAPIHandlerWithSessionStore(provider, zerolog.New(io.Discard), nil, store)
+	req := httptest.NewRequest(http.MethodGet, "/v1/skills?session_id="+sess.ID, nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for skills, got %d body=%q", rec.Code, rec.Body.String())
+	}
+	var payload []skill.Definition
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode skills payload: %v", err)
+	}
+	foundReview := false
+	for _, s := range payload {
+		if s.Name == "review" {
+			foundReview = true
+		}
+		if s.Name == "quick-review" || s.Name == "메모" {
+			t.Fatalf("did not expect command %q in skills payload: %+v", s.Name, payload)
+		}
+	}
+	if !foundReview {
+		t.Fatalf("expected provider skill review to remain, got %+v", payload)
+	}
+}
+
 func TestExtensionsAPI_ReloadCallsAgentRuntimeRefreshHook(t *testing.T) {
 	provider := &mockExtensionsProvider{
 		snapshot: extensions.Snapshot{Version: 7},

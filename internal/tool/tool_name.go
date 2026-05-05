@@ -11,9 +11,12 @@ var toolNameAliases = map[string]string{
 	"execute_shell": "exec",
 
 	// file I/O aliases (short → canonical)
-	"read":  "read_file",
-	"write": "write_file",
-	"edit":  "edit_file",
+	"read":                  "read_file",
+	"write":                 "write_file",
+	"edit":                  "edit_file",
+	"skill_create":          "project_skill",
+	"slash_command_create":  "project_skill",
+	"project_command_write": "project_skill",
 
 	// memory aliases → memory aggregator
 	"knowledge":     "memory",
@@ -82,7 +85,7 @@ func IsHighRiskToolName(name string) bool {
 		return false
 	}
 	switch canonical {
-	case "exec", "process", "write_file", "edit_file", "apply_patch", "workspace":
+	case "exec", "process", "write_file", "edit_file", "apply_patch", "workspace", "project_skill":
 		return true
 	}
 	return strings.HasPrefix(canonical, "write_") || strings.HasPrefix(canonical, "edit_")

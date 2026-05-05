@@ -13,6 +13,44 @@ import (
 	"github.com/rs/zerolog"
 )
 
+func TestFilesystemBrowseHandler_IncludesTarsDirectory(t *testing.T) {
+	root := t.TempDir()
+	for _, name := range []string{".tars", ".git", "node_modules", "visible"} {
+		if err := os.MkdirAll(filepath.Join(root, name), 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", name, err)
+		}
+	}
+
+	handler := newFilesystemBrowseHandler(zerolog.New(io.Discard))
+	req := httptest.NewRequest(http.MethodGet, "/v1/filesystem/browse?path="+filepath.ToSlash(root), nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+
+	var got struct {
+		Entries []struct {
+			Name string `json:"name"`
+		} `json:"entries"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	names := map[string]bool{}
+	for _, entry := range got.Entries {
+		names[entry.Name] = true
+	}
+	if !names[".tars"] || !names["visible"] {
+		t.Fatalf("expected .tars and visible directories, got %+v", got.Entries)
+	}
+	for _, hidden := range []string{".git", "node_modules"} {
+		if names[hidden] {
+			t.Fatalf("did not expect hidden directory %s in %+v", hidden, got.Entries)
+		}
+	}
+}
+
 func TestFilesystemBrowseHandler_CreatesDirectory(t *testing.T) {
 	root := t.TempDir()
 	parentDir := filepath.Join(root, "projects")

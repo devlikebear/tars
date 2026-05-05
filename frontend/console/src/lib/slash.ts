@@ -1,6 +1,6 @@
-import type { SkillDef } from './types'
+import type { CommandDef, SkillDef } from './types'
 
-export type SlashCandidateKind = 'builtin' | 'skill'
+export type SlashCandidateKind = 'builtin' | 'skill' | 'command'
 
 export type SlashCommandCandidate = {
   kind: SlashCandidateKind
@@ -140,10 +140,10 @@ export function findActiveSlashTrigger(value: string, caret = value.length): Act
 
   const token = beforeCaret.slice(firstNonSpace + 1)
   if (/\s/.test(token)) return null
-  if (!/^[\w.-]*$/.test(token)) return null
+  if (token.includes('/')) return null
 
   const afterCaret = value.slice(safeCaret)
-  const rest = afterCaret.match(/^[\w.-]*/)
+  const rest = afterCaret.match(/^[^\s/]*/)
   const tokenEnd = safeCaret + (rest?.[0]?.length ?? 0)
   return { start: firstNonSpace, end: tokenEnd, query: token }
 }
@@ -151,7 +151,7 @@ export function findActiveSlashTrigger(value: string, caret = value.length): Act
 export function parseLeadingSlashCommand(value: string): ParsedSlashCommand | null {
   const trimmed = value.trimStart()
   if (!trimmed.startsWith('/')) return null
-  const match = trimmed.match(/^\/([\w.-]+)(?:\s+([\s\S]*))?$/)
+  const match = trimmed.match(/^\/([^\s/]+)(?:\s+([\s\S]*))?$/)
   if (!match) return null
   return {
     command: normalizeSlashCommand(match[1]),
@@ -159,11 +159,12 @@ export function parseLeadingSlashCommand(value: string): ParsedSlashCommand | nu
   }
 }
 
-export function buildSlashCandidates(query: string, skills: SkillDef[] = []): SlashCommandCandidate[] {
+export function buildSlashCandidates(query: string, skills: SkillDef[] = [], commands: CommandDef[] = []): SlashCommandCandidate[] {
   const normalizedQuery = normalizeSlashCommand(query)
   const reserved = new Set(BUILTIN_SLASH_COMMANDS.map((candidate) => candidate.command))
   const candidates = [
     ...BUILTIN_SLASH_COMMANDS,
+    ...commandSlashCandidates(commands, reserved),
     ...skillSlashCandidates(skills, reserved),
   ]
 
@@ -188,6 +189,32 @@ export function applySlashCandidate(
     value: nextValue,
     caret: trigger.start + insertText.length + needsSpace.length,
   }
+}
+
+function commandSlashCandidates(commands: CommandDef[], reserved: Set<string>): SlashCommandCandidate[] {
+  const out: SlashCommandCandidate[] = []
+  const seen = new Set<string>()
+  for (const commandDef of commands) {
+    if (commandDef.user_invocable === false) continue
+    const name = normalizeSlashCommand(commandDef.name)
+    if (!name) continue
+    const primary = normalizeSlashCommand(commandDef.slash || commandDef.name)
+    const commands = uniqueCommands([primary, ...(commandDef.aliases ?? [])])
+    for (const command of commands) {
+      if (!command || reserved.has(command) || seen.has(command)) continue
+      seen.add(command)
+      out.push({
+        kind: 'command',
+        command,
+        title: `/${command}`,
+        description: commandDef.description || 'No description provided.',
+        source: commandDef.source,
+        skillName: commandDef.name,
+        aliasOf: command === primary ? undefined : primary,
+      })
+    }
+  }
+  return out
 }
 
 function skillSlashCandidates(skills: SkillDef[], reserved: Set<string>): SlashCommandCandidate[] {
@@ -262,5 +289,7 @@ function normalizeSlashCommand(value: string | undefined): string {
 }
 
 function kindRank(kind: SlashCandidateKind): number {
-  return kind === 'builtin' ? 0 : 1
+  if (kind === 'builtin') return 0
+  if (kind === 'command') return 1
+  return 2
 }
