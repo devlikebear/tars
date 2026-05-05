@@ -38,8 +38,8 @@ export function buildSessionPermissionPreview(
   const afterSkills = effectiveNamedSet(after.skills_custom, after.skills_enabled, catalog.skills ?? [])
   const beforeCommands = effectiveNamedSet(before.commands_custom, before.commands_enabled, catalog.commands ?? [])
   const afterCommands = effectiveNamedSet(after.commands_custom, after.commands_enabled, catalog.commands ?? [])
-  const beforeMCP = effectiveNamedSet(Array.isArray(before.mcp_enabled), before.mcp_enabled, catalog.mcpServers ?? [])
-  const afterMCP = effectiveNamedSet(Array.isArray(after.mcp_enabled), after.mcp_enabled, catalog.mcpServers ?? [])
+  const beforeMCP = effectiveNamedSet(before.mcp_custom || Array.isArray(before.mcp_enabled), before.mcp_enabled, catalog.mcpServers ?? [])
+  const afterMCP = effectiveNamedSet(after.mcp_custom || Array.isArray(after.mcp_enabled), after.mcp_enabled, catalog.mcpServers ?? [])
 
   const gainedTools = diffSet(afterTools, beforeTools)
   const lostTools = diffSet(beforeTools, afterTools)

@@ -159,122 +159,126 @@
       <div class="message message-success">{message}</div>
     {/if}
 
-    <div class="creator-grid">
-      <form class="creator-form" onsubmit={(event) => { event.preventDefault(); void generateDraft() }}>
-        <label>
-          <span>Name</span>
-          <input bind:value={name} placeholder="docker-log-shipper" autocomplete="off" />
-        </label>
-        <label>
-          <span>Description</span>
-          <input bind:value={description} placeholder="Collect recent Docker ERROR logs" />
-        </label>
-        <label>
-          <span>Category</span>
-          <input bind:value={category} placeholder="system" />
-        </label>
+    <div class="creator-body">
+      <section class="creator-form-panel">
+        <form class="creator-form" onsubmit={(event) => { event.preventDefault(); void generateDraft() }}>
+          <label>
+            <span>Name</span>
+            <input bind:value={name} placeholder="docker-log-shipper" autocomplete="off" />
+          </label>
+          <label>
+            <span>Description</span>
+            <input bind:value={description} placeholder="Collect recent Docker ERROR logs" />
+          </label>
+          <label>
+            <span>Category</span>
+            <input bind:value={category} placeholder="system" />
+          </label>
 
-        <div class="field-group">
-          <span>Language</span>
-          <div class="segmented">
-            {#each languages as option}
-              <button type="button" class:active={language === option.value} onclick={() => { language = option.value }}>{option.label}</button>
-            {/each}
-          </div>
-        </div>
-
-        <div class="field-group">
-          <span>Layout</span>
-          <div class="segmented">
-            {#each layouts as option}
-              <button type="button" class:active={layout === option.value} onclick={() => { layout = option.value }}>{option.label}</button>
-            {/each}
-          </div>
-        </div>
-
-        <label>
-          <span>Use Case</span>
-          <textarea bind:value={useCase} rows="4" placeholder="Extract ERROR logs from Docker containers and send them to Slack."></textarea>
-        </label>
-
-        <div class="field-group">
-          <span>Recommended Tools</span>
-          <div class="tool-row">
-            {#each toolOptions as tool}
-              <label class="tool-check">
-                <input type="checkbox" checked={parseTools().includes(tool)} onchange={(event) => setTool(tool, event.currentTarget.checked)} />
-                <span>{tool}</span>
-              </label>
-            {/each}
-          </div>
-          <input bind:value={toolText} placeholder="bash, web_fetch" />
-        </div>
-
-        <div class="creator-actions">
-          <button class="btn btn-primary btn-sm" type="submit" disabled={busy}>
-            {busy ? 'Drafting...' : 'Draft'}
-          </button>
-          <button class="btn btn-ghost btn-sm" type="button" disabled={!draft || saving} onclick={saveDraft}>
-            {saving ? 'Saving...' : 'Save Local'}
-          </button>
-          <button class="btn btn-ghost btn-sm" type="button" disabled={!draft || testing} onclick={runSandboxTest}>
-            {testing ? 'Testing...' : 'Test'}
-          </button>
-          <button class="btn btn-ghost btn-sm" type="button" disabled={!draft || submitting} onclick={submitDraft}>
-            {submitting ? 'Preparing...' : 'Submit Draft PR'}
-          </button>
-        </div>
-      </form>
-
-      <div class="creator-preview">
-        <div class="preview-tabs">
-          {#if files.length === 0}
-            <span class="preview-empty">No draft yet</span>
-          {:else}
-            {#each files as file}
-              <button type="button" class:active={selectedFilePath === file.path} onclick={() => { selectedFilePath = file.path }}>
-                {file.path}
-              </button>
-            {/each}
-          {/if}
-        </div>
-        {#if selectedFile}
-          <textarea
-            class="preview-editor"
-            value={selectedFile.content}
-            oninput={(event) => updateSelectedFile(event.currentTarget.value)}
-            spellcheck="false"
-          ></textarea>
-        {:else}
-          <div class="preview-placeholder">Draft output appears here.</div>
-        {/if}
-        {#if testResult}
-          <div class="test-result" class:failed={!testResult.success}>
-            <div class="test-summary">
-              <span class="badge {testResult.success ? 'badge-success' : 'badge-error'}">{testResult.success ? 'pass' : 'fail'}</span>
-              <span>exit {testResult.exit_code}</span>
-              <span>{testResult.duration_ms}ms</span>
-              <span>{testResult.session_kind}{testResult.hidden ? ' hidden' : ''}</span>
-            </div>
-            <div class="test-output-grid">
-              <div class="test-output">
-                <span>stdout</span>
-                <pre>{testResult.stdout || '(empty)'}</pre>
-              </div>
-              <div class="test-output">
-                <span>stderr</span>
-                <pre>{testResult.stderr || '(empty)'}</pre>
-              </div>
-            </div>
-            <div class="tool-trail">
-              <span class="trail-title">Tool Trail</span>
-              {#each testResult.tool_trail as item}
-                <code>{item.tool}: {item.command}</code>
+          <div class="field-group">
+            <span>Language</span>
+            <div class="segmented">
+              {#each languages as option}
+                <button type="button" class:active={language === option.value} onclick={() => { language = option.value }}>{option.label}</button>
               {/each}
             </div>
           </div>
-        {/if}
-      </div>
+
+          <div class="field-group">
+            <span>Layout</span>
+            <div class="segmented">
+              {#each layouts as option}
+                <button type="button" class:active={layout === option.value} onclick={() => { layout = option.value }}>{option.label}</button>
+              {/each}
+            </div>
+          </div>
+
+          <label>
+            <span>Use Case</span>
+            <textarea bind:value={useCase} rows="4" placeholder="Extract ERROR logs from Docker containers and send them to Slack."></textarea>
+          </label>
+
+          <div class="field-group">
+            <span>Recommended Tools</span>
+            <div class="tool-row">
+              {#each toolOptions as tool}
+                <label class="tool-check">
+                  <input type="checkbox" checked={parseTools().includes(tool)} onchange={(event) => setTool(tool, event.currentTarget.checked)} />
+                  <span>{tool}</span>
+                </label>
+              {/each}
+            </div>
+            <input bind:value={toolText} placeholder="bash, web_fetch" />
+          </div>
+
+          <div class="creator-actions">
+            <button class="btn btn-primary btn-sm" type="submit" disabled={busy}>
+              {busy ? 'Drafting...' : 'Draft'}
+            </button>
+            <button class="btn btn-ghost btn-sm" type="button" disabled={!draft || saving} onclick={saveDraft}>
+              {saving ? 'Saving...' : 'Save Local'}
+            </button>
+            <button class="btn btn-ghost btn-sm" type="button" disabled={!draft || testing} onclick={runSandboxTest}>
+              {testing ? 'Testing...' : 'Test'}
+            </button>
+            <button class="btn btn-ghost btn-sm" type="button" disabled={!draft || submitting} onclick={submitDraft}>
+              {submitting ? 'Preparing...' : 'Submit Draft PR'}
+            </button>
+          </div>
+        </form>
+      </section>
+
+      <section class="creator-preview-panel">
+        <div class="creator-preview">
+          <div class="preview-tabs">
+            {#if files.length === 0}
+              <span class="preview-empty">No draft yet</span>
+            {:else}
+              {#each files as file}
+                <button type="button" class:active={selectedFilePath === file.path} onclick={() => { selectedFilePath = file.path }}>
+                  {file.path}
+                </button>
+              {/each}
+            {/if}
+          </div>
+          {#if selectedFile}
+            <textarea
+              class="preview-editor"
+              value={selectedFile.content}
+              oninput={(event) => updateSelectedFile(event.currentTarget.value)}
+              spellcheck="false"
+            ></textarea>
+          {:else}
+            <div class="preview-placeholder">Draft output appears here.</div>
+          {/if}
+          {#if testResult}
+            <div class="test-result" class:failed={!testResult.success}>
+              <div class="test-summary">
+                <span class="badge {testResult.success ? 'badge-success' : 'badge-error'}">{testResult.success ? 'pass' : 'fail'}</span>
+                <span>exit {testResult.exit_code}</span>
+                <span>{testResult.duration_ms}ms</span>
+                <span>{testResult.session_kind}{testResult.hidden ? ' hidden' : ''}</span>
+              </div>
+              <div class="test-output-grid">
+                <div class="test-output">
+                  <span>stdout</span>
+                  <pre>{testResult.stdout || '(empty)'}</pre>
+                </div>
+                <div class="test-output">
+                  <span>stderr</span>
+                  <pre>{testResult.stderr || '(empty)'}</pre>
+                </div>
+              </div>
+              <div class="tool-trail">
+                <span class="trail-title">Tool Trail</span>
+                {#each testResult.tool_trail as item}
+                  <code>{item.tool}: {item.command}</code>
+                {/each}
+              </div>
+            </div>
+          {/if}
+        </div>
+      </section>
     </div>
   </div>
 </div>
@@ -285,7 +289,7 @@
     inset: 0;
     z-index: 50;
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     justify-content: center;
     padding: var(--space-8) var(--space-4);
     background: rgba(10, 10, 10, 0.62);
@@ -294,6 +298,7 @@
 
   .creator-modal {
     width: min(1080px, 100%);
+    height: min(760px, calc(100vh - var(--space-8) * 2));
     max-height: calc(100vh - var(--space-8) * 2);
     display: flex;
     flex-direction: column;
@@ -335,20 +340,40 @@
   }
   .creator-close:hover { color: var(--text-primary); }
 
-  .creator-grid {
+  .creator-body {
+    flex: 1;
     min-height: 0;
     display: grid;
-    grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+    grid-template-columns: minmax(300px, 380px) minmax(420px, 1fr);
     gap: var(--space-4);
+    overflow: hidden;
+  }
+
+  .creator-form-panel,
+  .creator-preview-panel {
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
     overflow: hidden;
   }
 
   .creator-form,
   .creator-preview {
+    flex: 1;
     min-height: 0;
     display: flex;
     flex-direction: column;
     gap: var(--space-3);
+  }
+
+  .creator-form {
+    overflow-y: auto;
+    padding-right: var(--space-1);
+  }
+
+  .creator-preview {
+    overflow: hidden;
   }
 
   label,
@@ -419,9 +444,13 @@
   }
 
   .creator-actions {
+    position: sticky;
+    bottom: 0;
     display: flex;
     flex-wrap: wrap;
     gap: var(--space-2);
+    padding-top: var(--space-2);
+    background: var(--surface-elevated);
   }
 
   .preview-tabs {
@@ -440,7 +469,7 @@
 
   .preview-editor,
   .preview-placeholder {
-    min-height: 320px;
+    min-height: 0;
     flex: 1;
   }
 
@@ -521,9 +550,12 @@
   .message-success { background: rgba(60, 180, 100, 0.15); color: var(--green); border: 1px solid rgba(60, 180, 100, 0.3); }
 
   @media (max-width: 860px) {
-    .creator-backdrop { padding: var(--space-3); }
-    .creator-modal { max-height: none; }
-    .creator-grid { grid-template-columns: 1fr; overflow: visible; }
+    .creator-backdrop { align-items: flex-start; padding: var(--space-3); }
+    .creator-modal { height: auto; max-height: none; }
+    .creator-body { grid-template-columns: 1fr; overflow: visible; }
+    .creator-form-panel,
+    .creator-preview-panel { overflow: visible; }
+    .creator-form { overflow: visible; padding-right: 0; }
     .test-output-grid { grid-template-columns: 1fr; }
     .preview-editor,
     .preview-placeholder { min-height: 300px; }

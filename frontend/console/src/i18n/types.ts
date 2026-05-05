@@ -1161,6 +1161,10 @@ export type Translations = {
     sandboxChecksSummary: (passed: number, total: number) => string
     createSkill: string
     createMCP: string
+    diagnose: string
+    diagnosing: string
+    repair: string
+    repairing: string
     reload: string
     reloading: string
     updateAll: string
@@ -1216,6 +1220,16 @@ export type Translations = {
     toggleFailed: string
     reloadFailed: string
     updateFailed: string
+    diagnosticsFailed: string
+    repairFailed: string
+    diagnosticsSuccess: (skills: number, mcps: number) => string
+    repairSuccess: (name: string) => string
+    healthPass: string
+    healthWarn: string
+    healthFail: string
+    healthUnknown: string
+    connected: string
+    disconnected: string
     installSuccess: (kind: string, name: string, sandbox: string, plugin: string) => string
     sandboxSuffix: (summary: string) => string
     requiresPluginSuffix: (plugin: string) => string

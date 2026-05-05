@@ -6,6 +6,16 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.180] - 2026-05-05
+
+### Added
+
+- **Extensions diagnostics and MCP repair** (#729) — the Extensions console can now run installed extension diagnostics for loaded skills and MCP servers, showing status badges plus per-check detail for missing skill files, required binaries/env vars, MCP manifest state, connection failures, and tool counts. Workspace MCP servers with a local `requirements.txt` or `package.json` can be repaired in place from the page; Python repairs install dependencies into `.python`, patch `tars.mcp.json` with `PYTHONPATH=${MCP_DIR}/.python`, and reload extensions afterward.
+
+### Fixed
+
+- **MCP server status display** — the console now reads the backend's `tool_count`, `connected`, and `error` MCP status fields directly, so disconnected servers surface their actual failure instead of appearing as an enabled-but-empty row.
+
 ## [0.31.179] - 2026-05-05
 
 ### Added

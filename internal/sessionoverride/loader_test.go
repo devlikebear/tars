@@ -215,6 +215,7 @@ func TestLoad_AllToolConfigSubfields(t *testing.T) {
 			"commands_enabled": ["c1"],
 			"commands_custom": true,
 			"mcp_enabled": ["fs"],
+			"mcp_custom": true,
 			"tools_custom": true
 		}
 	}`)
@@ -233,7 +234,7 @@ func TestLoad_AllToolConfigSubfields(t *testing.T) {
 		!reflect.DeepEqual(tc.SkillsEnabled, []string{"s1"}) ||
 		!reflect.DeepEqual(tc.CommandsEnabled, []string{"c1"}) ||
 		!reflect.DeepEqual(tc.MCPEnabled, []string{"fs"}) ||
-		!tc.ToolsCustom || !tc.SkillsCustom || !tc.CommandsCustom {
+		!tc.ToolsCustom || !tc.SkillsCustom || !tc.CommandsCustom || !tc.MCPCustom {
 		t.Fatalf("subfields mismatch: %+v", tc)
 	}
 	for _, key := range []string{
@@ -241,7 +242,7 @@ func TestLoad_AllToolConfigSubfields(t *testing.T) {
 		"tool_config.tools_allow_groups", "tool_config.tools_deny_groups",
 		"tool_config.skills_enabled", "tool_config.skills_custom",
 		"tool_config.commands_enabled", "tool_config.commands_custom",
-		"tool_config.mcp_enabled", "tool_config.tools_custom",
+		"tool_config.mcp_enabled", "tool_config.mcp_custom", "tool_config.tools_custom",
 	} {
 		if !shared.Presence[key] {
 			t.Fatalf("missing presence for %q", key)

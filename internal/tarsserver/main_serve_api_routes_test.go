@@ -75,6 +75,8 @@ func TestRegisterAPIRoutes_RegistersCoreRoutes(t *testing.T) {
 		"/v1/plugins",
 		"/v1/runtime/extensions/reload",
 		"/v1/runtime/extensions/disabled",
+		"/v1/runtime/extensions/health",
+		"/v1/runtime/extensions/repair",
 		"/v1/agentruntime/agents",
 		"/v1/agentruntime/runs",
 		"/v1/agentruntime/runs/run-1",

@@ -11,6 +11,8 @@ import "github.com/devlikebear/tars/internal/session"
 //   - Slice fields inside tool_config (tools_enabled, tools_disabled,
 //     tools_allow_groups, tools_deny_groups, skills_enabled, mcp_enabled):
 //     union of every layer's values, dedup'd, preserving first-seen order.
+//   - mcp_custom makes that layer's mcp_enabled list replace earlier MCP
+//     allowlists, so an explicit empty local list can disable MCP for a session.
 //   - mcp_servers_extra: merged by Name, later layers replacing earlier
 //     entries with the same name; new names append.
 func Merge(base session.SessionToolConfig, basePrompt string, shared, local *Override) (EffectiveConfig, map[string]Source) {
@@ -82,7 +84,11 @@ func applyToolConfigLayer(dst *session.SessionToolConfig, o *Override, src Sourc
 		sources["tool_config.commands_enabled"] = src
 	}
 	if o.Presence["tool_config.mcp_enabled"] {
-		dst.MCPEnabled = unionDedup(dst.MCPEnabled, o.ToolConfig.MCPEnabled)
+		if o.ToolConfig.MCPCustom {
+			dst.MCPEnabled = unionDedup(nil, o.ToolConfig.MCPEnabled)
+		} else {
+			dst.MCPEnabled = unionDedup(dst.MCPEnabled, o.ToolConfig.MCPEnabled)
+		}
 		sources["tool_config.mcp_enabled"] = src
 	}
 	if o.Presence["tool_config.tools_custom"] {
@@ -96,6 +102,14 @@ func applyToolConfigLayer(dst *session.SessionToolConfig, o *Override, src Sourc
 	if o.Presence["tool_config.commands_custom"] {
 		dst.CommandsCustom = o.ToolConfig.CommandsCustom
 		sources["tool_config.commands_custom"] = src
+	}
+	if o.Presence["tool_config.mcp_custom"] {
+		dst.MCPCustom = o.ToolConfig.MCPCustom
+		sources["tool_config.mcp_custom"] = src
+		if o.ToolConfig.MCPCustom && !o.Presence["tool_config.mcp_enabled"] {
+			dst.MCPEnabled = nil
+			sources["tool_config.mcp_enabled"] = src
+		}
 	}
 }
 

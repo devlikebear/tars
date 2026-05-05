@@ -222,10 +222,12 @@ func (m *Manager) Reload(ctx context.Context) error {
 		}
 	}
 	hubMCPServers, hubDiagnostics := skillhub.LoadInstalledMCPServers(m.opts.WorkspaceDir)
+	workspaceMCPServers, workspaceMCPDiagnostics := skillhub.LoadWorkspaceMCPServers(m.opts.WorkspaceDir)
 	mcpServers, mcpDiagnostics := mergeMCPServers(
 		mcpServerGroup{label: "config", servers: m.opts.MCPBaseServers},
 		mcpServerGroup{label: "plugin", servers: pluginMCPServers},
 		mcpServerGroup{label: "hub", servers: hubMCPServers},
+		mcpServerGroup{label: "workspace", servers: workspaceMCPServers},
 	)
 	mcpTools := make([]tool.Tool, 0)
 	if m.opts.MCPRuntime != nil {
@@ -283,7 +285,7 @@ func (m *Manager) Reload(ctx context.Context) error {
 		mcpServers = filtered
 	}
 
-	diagnostics := make([]string, 0, len(skills.Diagnostics)+len(plugins.Diagnostics)+len(hubDiagnostics)+len(mcpDiagnostics))
+	diagnostics := make([]string, 0, len(skills.Diagnostics)+len(plugins.Diagnostics)+len(hubDiagnostics)+len(workspaceMCPDiagnostics)+len(mcpDiagnostics))
 	for _, d := range skills.Diagnostics {
 		diagnostics = append(diagnostics, formatDiagnostic(d.Path, d.Message))
 	}
@@ -291,6 +293,7 @@ func (m *Manager) Reload(ctx context.Context) error {
 		diagnostics = append(diagnostics, formatDiagnostic(d.Path, d.Message))
 	}
 	diagnostics = append(diagnostics, hubDiagnostics...)
+	diagnostics = append(diagnostics, workspaceMCPDiagnostics...)
 	diagnostics = append(diagnostics, mcpDiagnostics...)
 
 	nextVersion := m.version.Add(1)

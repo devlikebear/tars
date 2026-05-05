@@ -396,6 +396,13 @@ func (inst *Installer) addPluginToDB(plugin InstalledPlugin) error {
 }
 
 func (inst *Installer) downloadSkillFiles(ctx context.Context, entry *RegistryEntry) (map[string][]byte, error) {
+	if len(entry.Files) == 0 {
+		content, err := inst.Registry.FetchFile(ctx, entry, skillManifest)
+		if err != nil {
+			return nil, fmt.Errorf("fetch legacy skill manifest for %q: %w", entry.Name, err)
+		}
+		return map[string][]byte{skillManifest: content}, nil
+	}
 	return inst.downloadVerifiedHubFiles(entry.Name, "skill", entry.Files, skillManifest, func(relPath string) ([]byte, error) {
 		return inst.Registry.FetchFile(ctx, entry, relPath)
 	})

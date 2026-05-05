@@ -95,6 +95,7 @@ var AllowedToolConfigFields = map[string]struct{}{
 	"commands_enabled":   {},
 	"commands_custom":    {},
 	"mcp_enabled":        {},
+	"mcp_custom":         {},
 }
 
 // AllPaths enumerates every leaf override path the merger tracks in its
@@ -114,6 +115,7 @@ func AllPaths() []string {
 		"tool_config.commands_enabled",
 		"tool_config.commands_custom",
 		"tool_config.mcp_enabled",
+		"tool_config.mcp_custom",
 	}
 }
 

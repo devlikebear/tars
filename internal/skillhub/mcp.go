@@ -8,6 +8,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/devlikebear/tars/internal/config"
@@ -196,6 +197,60 @@ func LoadInstalledMCPServers(workspaceDir string) ([]config.MCPServer, []string)
 		servers = append(servers, expandMCPServer(manifest.Server, installed.Dir))
 	}
 	return servers, diagnostics
+}
+
+func LoadWorkspaceMCPServers(workspaceDir string) ([]config.MCPServer, []string) {
+	rootDir := filepath.Join(workspaceDir, hubMCPDir)
+	entries, err := os.ReadDir(rootDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, []string{fmt.Sprintf("%s: %v", rootDir, err)}
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].Name() < entries[j].Name()
+	})
+
+	managedDirs := map[string]bool{}
+	inst := NewInstaller(workspaceDir)
+	if db, err := inst.loadDB(); err == nil {
+		for _, installed := range db.MCPs {
+			managedDirs[cleanMCPDirKey(installed.Dir)] = true
+		}
+	}
+
+	servers := make([]config.MCPServer, 0)
+	diagnostics := make([]string, 0)
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		dir := filepath.Join(rootDir, entry.Name())
+		if managedDirs[cleanMCPDirKey(dir)] {
+			continue
+		}
+		manifestPath := filepath.Join(dir, defaultMCPManifest)
+		data, err := os.ReadFile(manifestPath)
+		if err != nil {
+			diagnostics = append(diagnostics, fmt.Sprintf("%s: %v", manifestPath, err))
+			continue
+		}
+		manifest, err := parseMCPManifest(data, entry.Name())
+		if err != nil {
+			diagnostics = append(diagnostics, fmt.Sprintf("%s: %v", manifestPath, err))
+			continue
+		}
+		servers = append(servers, expandMCPServer(manifest.Server, dir))
+	}
+	return servers, diagnostics
+}
+
+func cleanMCPDirKey(dir string) string {
+	if abs, err := filepath.Abs(dir); err == nil {
+		dir = abs
+	}
+	return filepath.Clean(dir)
 }
 
 func (installed InstalledMCP) manifestPath() string {

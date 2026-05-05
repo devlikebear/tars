@@ -51,6 +51,7 @@ func isEmptyToolConfig(config session.SessionToolConfig) bool {
 	return !config.ToolsCustom &&
 		!config.SkillsCustom &&
 		!config.CommandsCustom &&
+		!config.MCPCustom &&
 		len(config.ToolsEnabled) == 0 &&
 		len(config.ToolsDisabled) == 0 &&
 		len(config.ToolsAllowGroups) == 0 &&

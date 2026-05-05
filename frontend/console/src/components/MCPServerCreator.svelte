@@ -1,6 +1,7 @@
 <script lang="ts">
   import { draftMCPServer, saveLocalMCPServer, submitMCPServerDraftPR, testMCPServerDraft } from '../lib/api'
   import type {
+    MCPServerCreatorConversationMessage,
     MCPServerCreatorDraftResponse,
     MCPServerCreatorFile,
     MCPServerCreatorSaveResponse,
@@ -17,6 +18,9 @@
 
   let { onclose, onsaved }: Props = $props()
 
+  let naturalPrompt = $state('')
+  let useLLM = $state(true)
+  let conversation: MCPServerCreatorConversationMessage[] = $state([])
   let name = $state('')
   let description = $state('')
   let language: Language = $state('python')
@@ -28,6 +32,7 @@
   let saving = $state(false)
   let testing = $state(false)
   let submitting = $state(false)
+  let draftAttempted = $state(false)
   let error = $state('')
   let message = $state('')
   let testResult: MCPServerCreatorTestResponse | null = $state(null)
@@ -42,14 +47,22 @@
 
   let files: MCPServerCreatorFile[] = $derived.by(() => draft ? draft.files : [])
   let selectedFile: MCPServerCreatorFile | undefined = $derived.by(() => files.find((file: MCPServerCreatorFile) => file.path === selectedFilePath) ?? files[0])
-  let draftBlockedReason: string = $derived(validateDraftInput())
+  let draftBlockedReason: string = $derived.by(() => validateDraftInput())
+  let showDraftHint: boolean = $derived.by(() => {
+    if (!draftBlockedReason) return false
+    if (draftAttempted) return true
+    return name.trim() !== '' && draftBlockedReason !== 'Name is required.'
+  })
 
   function validateDraftInput(): string {
+    if (naturalPrompt.trim()) return ''
     const trimmedName = name.trim()
     if (!trimmedName) return 'Name is required.'
     if (!draftNamePattern.test(trimmedName)) {
       return 'Name must be kebab-case using lowercase letters, numbers, and dashes.'
     }
+    if (!description.trim()) return 'Description is required.'
+    if (!useCase.trim()) return 'Use case is required.'
     return ''
   }
 
@@ -66,7 +79,21 @@
     })).filter((tool) => tool.name)
   }
 
+  function appendConversation(role: 'user' | 'assistant', content: string): MCPServerCreatorConversationMessage[] {
+    const trimmed = content.trim()
+    if (!trimmed) return conversation
+    conversation = [...conversation, { role, content: trimmed }]
+    return conversation
+  }
+
+  function draftStatusMessage(draft: MCPServerCreatorDraftResponse): string {
+    const source = draft.draft_source ? `${draft.draft_source} draft ready.` : 'Draft ready.'
+    const warnings = draft.warnings?.length ? ` ${draft.warnings.join(' ')}` : ''
+    return `${source}${warnings}`
+  }
+
   async function generateDraft() {
+    draftAttempted = true
     const blockReason = validateDraftInput()
     if (blockReason) {
       error = blockReason
@@ -78,17 +105,31 @@
     message = ''
     try {
       const tools = parseToolSpecs()
+      const requestConversation = naturalPrompt.trim()
+        ? appendConversation('user', naturalPrompt.trim())
+        : conversation
       draft = await draftMCPServer({
+        prompt: naturalPrompt.trim(),
+        conversation: requestConversation,
+        use_llm: useLLM,
         name: name.trim(),
         description: description.trim(),
         language,
         use_case: useCase.trim(),
         ...(tools.length ? { tools } : {}),
       })
+      name = draft.name
+      description = draft.description
+      language = draft.language
+      useCase = draft.use_case
       selectedFilePath = draft.files[0]?.path ?? 'tars.mcp.json'
       toolsJSON = JSON.stringify(draft.tools, null, 2)
       testResult = null
-      message = draft.warnings?.length ? draft.warnings.join(' ') : 'Draft ready.'
+      if (draft.assistant_message) {
+        appendConversation('assistant', draft.assistant_message)
+      }
+      naturalPrompt = ''
+      message = draftStatusMessage(draft)
     } catch (e) {
       error = e instanceof Error ? e.message : 'Failed to draft MCP server'
     } finally {
@@ -130,7 +171,11 @@
     testResult = null
     try {
       testResult = await testMCPServerDraft(draft)
-      message = testResult.success ? 'stdio validation passed.' : 'stdio validation failed.'
+      if (testResult.success) {
+        message = 'stdio validation passed.'
+      } else {
+        error = 'stdio validation failed.'
+      }
     } catch (e) {
       error = e instanceof Error ? e.message : 'Failed to test MCP server'
     } finally {
@@ -171,120 +216,151 @@
       <div class="message message-success">{message}</div>
     {/if}
 
-    <div class="creator-grid">
-      <form class="creator-form" onsubmit={(event) => { event.preventDefault(); void generateDraft() }}>
-        <label>
-          <span>Name</span>
-          <input
-            bind:value={name}
-            placeholder="safe-time"
-            autocomplete="off"
-            aria-invalid={draftBlockedReason ? 'true' : 'false'}
-            aria-describedby="mcp-creator-name-hint"
-          />
-          {#if draftBlockedReason}
-            <small id="mcp-creator-name-hint" class="field-hint">{draftBlockedReason}</small>
-          {/if}
-        </label>
-        <label>
-          <span>Description</span>
-          <input bind:value={description} placeholder="Expose safe local time utilities" />
-        </label>
+    <div class="creator-body">
+      <section class="creator-form-panel">
+        <form class="creator-form" onsubmit={(event) => { event.preventDefault(); void generateDraft() }}>
+          <label class="prompt-field">
+            <span>Builder Prompt</span>
+            <textarea
+              bind:value={naturalPrompt}
+              rows="4"
+              placeholder="예: 로컬 시간을 안전한 JSON으로 반환하는 get_time MCP 서버를 만들어줘."
+            ></textarea>
+          </label>
 
-        <div class="field-group">
-          <span>Language</span>
-          <div class="segmented">
-            {#each languages as option}
-              <button type="button" class:active={language === option.value} onclick={() => { language = option.value }}>{option.label}</button>
-            {/each}
+          <div class="builder-options">
+            <label class="toggle-row">
+              <input type="checkbox" bind:checked={useLLM} />
+              <span>Generate with LLM</span>
+            </label>
           </div>
-        </div>
 
-        <label>
-          <span>Use Case</span>
-          <textarea bind:value={useCase} rows="4" placeholder="Return the current local time in a safe structured format."></textarea>
-        </label>
+          {#if conversation.length}
+            <div class="conversation-log" aria-label="MCP builder conversation">
+              {#each conversation as item}
+                <div class="conversation-item {item.role}">
+                  <span>{item.role}</span>
+                  <p>{item.content}</p>
+                </div>
+              {/each}
+            </div>
+          {/if}
 
-        <label>
-          <span>Tool Signatures</span>
-          <textarea
-            bind:value={toolsJSON}
-            rows="7"
-            spellcheck="false"
-            placeholder={toolPlaceholder}
-          ></textarea>
-        </label>
+          <label>
+            <span>Name</span>
+            <input
+              bind:value={name}
+              placeholder="safe-time"
+              autocomplete="off"
+              aria-invalid={showDraftHint ? 'true' : 'false'}
+              aria-describedby={showDraftHint ? 'mcp-creator-name-hint' : undefined}
+            />
+            {#if showDraftHint}
+              <small id="mcp-creator-name-hint" class="field-hint">{draftBlockedReason}</small>
+            {/if}
+          </label>
+          <label>
+            <span>Description</span>
+            <input bind:value={description} placeholder="Expose safe local time utilities" />
+          </label>
 
-        <div class="creator-actions">
-          <button class="btn btn-primary btn-sm" type="submit" disabled={busy || draftBlockedReason.length > 0} title={draftBlockedReason || undefined}>
-            {busy ? 'Drafting...' : 'Draft'}
-          </button>
-          <button class="btn btn-ghost btn-sm" type="button" disabled={!draft || saving} onclick={saveDraft}>
-            {saving ? 'Saving...' : 'Save Local'}
-          </button>
-          <button class="btn btn-ghost btn-sm" type="button" disabled={!draft || testing} onclick={runStdioValidation}>
-            {testing ? 'Testing...' : 'Test stdio'}
-          </button>
-          <button class="btn btn-ghost btn-sm" type="button" disabled={!draft || submitting} onclick={submitDraft}>
-            {submitting ? 'Preparing...' : 'Submit Draft PR'}
-          </button>
-        </div>
-      </form>
+          <div class="field-group">
+            <span>Language</span>
+            <div class="segmented">
+              {#each languages as option}
+                <button type="button" class:active={language === option.value} onclick={() => { language = option.value }}>{option.label}</button>
+              {/each}
+            </div>
+          </div>
 
-      <div class="creator-preview">
-        <div class="preview-tabs">
-          {#if files.length === 0}
-            <span class="preview-empty">No draft yet</span>
+          <label>
+            <span>Use Case</span>
+            <textarea bind:value={useCase} rows="4" placeholder="Return the current local time in a safe structured format."></textarea>
+          </label>
+
+          <label>
+            <span>Tool Signatures</span>
+            <textarea
+              bind:value={toolsJSON}
+              rows="7"
+              spellcheck="false"
+              placeholder={toolPlaceholder}
+            ></textarea>
+          </label>
+
+          <div class="creator-actions">
+            <button class="btn btn-primary btn-sm" type="submit" disabled={busy}>
+              {busy ? 'Drafting...' : useLLM ? 'Generate with LLM' : 'Draft'}
+            </button>
+            <button class="btn btn-ghost btn-sm" type="button" disabled={!draft || saving} onclick={saveDraft}>
+              {saving ? 'Saving...' : 'Save Local'}
+            </button>
+            <button class="btn btn-ghost btn-sm" type="button" disabled={!draft || testing} onclick={runStdioValidation}>
+              {testing ? 'Testing...' : 'Test stdio'}
+            </button>
+            <button class="btn btn-ghost btn-sm" type="button" disabled={!draft || submitting} onclick={submitDraft}>
+              {submitting ? 'Preparing...' : 'Submit Draft PR'}
+            </button>
+          </div>
+        </form>
+      </section>
+
+      <section class="creator-preview-panel">
+        <div class="creator-preview">
+          <div class="preview-tabs">
+            {#if files.length === 0}
+              <span class="preview-empty">No draft yet</span>
+            {:else}
+              {#each files as file}
+                <button type="button" class:active={selectedFilePath === file.path} onclick={() => { selectedFilePath = file.path }}>
+                  {file.path}
+                </button>
+              {/each}
+            {/if}
+          </div>
+          {#if selectedFile}
+            <textarea
+              class="preview-editor"
+              value={selectedFile.content}
+              oninput={(event) => updateSelectedFile(event.currentTarget.value)}
+              spellcheck="false"
+            ></textarea>
           {:else}
-            {#each files as file}
-              <button type="button" class:active={selectedFilePath === file.path} onclick={() => { selectedFilePath = file.path }}>
-                {file.path}
-              </button>
-            {/each}
+            <div class="preview-placeholder">Draft output appears here.</div>
+          {/if}
+          {#if testResult}
+            <div class="test-result" class:failed={!testResult.success}>
+              <div class="test-summary">
+                <span class="badge {testResult.success ? 'badge-success' : 'badge-error'}">{testResult.success ? 'pass' : 'fail'}</span>
+                <span>exit {testResult.exit_code}</span>
+                <span>{testResult.duration_ms}ms</span>
+                <span>{testResult.session_kind}{testResult.hidden ? ' hidden' : ''}</span>
+              </div>
+              <div class="protocol-row">
+                {#each (testResult.protocol_steps.length ? testResult.protocol_steps : stdioProbeSteps) as step}
+                  <code>{step}</code>
+                {/each}
+              </div>
+              <div class="test-output-grid">
+                <div class="test-output">
+                  <span>Tools</span>
+                  <pre>{testResult.tools.length ? testResult.tools.join('\n') : '(none)'}</pre>
+                </div>
+                <div class="test-output">
+                  <span>Call Result</span>
+                  <pre>{testResult.call_result || testResult.stderr || '(empty)'}</pre>
+                </div>
+              </div>
+              <div class="tool-trail">
+                <span class="trail-title">Tool Trail</span>
+                {#each testResult.tool_trail as item}
+                  <code>{item.tool}: {item.command}</code>
+                {/each}
+              </div>
+            </div>
           {/if}
         </div>
-        {#if selectedFile}
-          <textarea
-            class="preview-editor"
-            value={selectedFile.content}
-            oninput={(event) => updateSelectedFile(event.currentTarget.value)}
-            spellcheck="false"
-          ></textarea>
-        {:else}
-          <div class="preview-placeholder">Draft output appears here.</div>
-        {/if}
-        {#if testResult}
-          <div class="test-result" class:failed={!testResult.success}>
-            <div class="test-summary">
-              <span class="badge {testResult.success ? 'badge-success' : 'badge-error'}">{testResult.success ? 'pass' : 'fail'}</span>
-              <span>exit {testResult.exit_code}</span>
-              <span>{testResult.duration_ms}ms</span>
-              <span>{testResult.session_kind}{testResult.hidden ? ' hidden' : ''}</span>
-            </div>
-            <div class="protocol-row">
-              {#each (testResult.protocol_steps.length ? testResult.protocol_steps : stdioProbeSteps) as step}
-                <code>{step}</code>
-              {/each}
-            </div>
-            <div class="test-output-grid">
-              <div class="test-output">
-                <span>Tools</span>
-                <pre>{testResult.tools.length ? testResult.tools.join('\n') : '(none)'}</pre>
-              </div>
-              <div class="test-output">
-                <span>Call Result</span>
-                <pre>{testResult.call_result || testResult.stderr || '(empty)'}</pre>
-              </div>
-            </div>
-            <div class="tool-trail">
-              <span class="trail-title">Tool Trail</span>
-              {#each testResult.tool_trail as item}
-                <code>{item.tool}: {item.command}</code>
-              {/each}
-            </div>
-          </div>
-        {/if}
-      </div>
+      </section>
     </div>
   </div>
 </div>
@@ -295,7 +371,7 @@
     inset: 0;
     z-index: 50;
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     justify-content: center;
     padding: var(--space-8) var(--space-4);
     background: rgba(10, 10, 10, 0.62);
@@ -304,6 +380,7 @@
 
   .creator-modal {
     width: min(1080px, 100%);
+    height: min(760px, calc(100vh - var(--space-8) * 2));
     max-height: calc(100vh - var(--space-8) * 2);
     display: flex;
     flex-direction: column;
@@ -345,20 +422,40 @@
   }
   .creator-close:hover { color: var(--text-primary); }
 
-  .creator-grid {
+  .creator-body {
+    flex: 1;
     min-height: 0;
     display: grid;
-    grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+    grid-template-columns: minmax(300px, 380px) minmax(420px, 1fr);
     gap: var(--space-4);
+    overflow: hidden;
+  }
+
+  .creator-form-panel,
+  .creator-preview-panel {
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
     overflow: hidden;
   }
 
   .creator-form,
   .creator-preview {
+    flex: 1;
     min-height: 0;
     display: flex;
     flex-direction: column;
     gap: var(--space-3);
+  }
+
+  .creator-form {
+    overflow-y: auto;
+    padding-right: var(--space-1);
+  }
+
+  .creator-preview {
+    overflow: hidden;
   }
 
   label,
@@ -368,6 +465,66 @@
     gap: var(--space-1);
     color: var(--text-secondary);
     font-size: var(--text-xs);
+  }
+
+  .prompt-field textarea {
+    min-height: 108px;
+  }
+
+  .builder-options {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+  }
+
+  .toggle-row {
+    flex-direction: row;
+    align-items: center;
+    gap: var(--space-2);
+    color: var(--text-primary);
+  }
+
+  .toggle-row input {
+    width: auto;
+    accent-color: var(--primary);
+  }
+
+  .conversation-log {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    max-height: 160px;
+    overflow: auto;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    padding: var(--space-2);
+    background: rgba(255, 255, 255, 0.02);
+  }
+
+  .conversation-item {
+    display: grid;
+    grid-template-columns: 64px 1fr;
+    gap: var(--space-2);
+    align-items: start;
+  }
+
+  .conversation-item span {
+    color: var(--text-tertiary);
+    font-size: var(--text-xs);
+    text-transform: uppercase;
+  }
+
+  .conversation-item p {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: var(--text-xs);
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+  }
+
+  .conversation-item.assistant p {
+    color: var(--text-primary);
   }
 
   input,
@@ -419,9 +576,13 @@
   }
 
   .creator-actions {
+    position: sticky;
+    bottom: 0;
     display: flex;
     flex-wrap: wrap;
     gap: var(--space-2);
+    padding-top: var(--space-2);
+    background: var(--surface-elevated);
   }
 
   .preview-tabs {
@@ -440,7 +601,7 @@
 
   .preview-editor,
   .preview-placeholder {
-    min-height: 320px;
+    min-height: 0;
     flex: 1;
   }
 
@@ -529,9 +690,12 @@
   .message-success { background: rgba(60, 180, 100, 0.15); color: var(--green); border: 1px solid rgba(60, 180, 100, 0.3); }
 
   @media (max-width: 860px) {
-    .creator-backdrop { padding: var(--space-3); }
-    .creator-modal { max-height: none; }
-    .creator-grid { grid-template-columns: 1fr; overflow: visible; }
+    .creator-backdrop { align-items: flex-start; padding: var(--space-3); }
+    .creator-modal { height: auto; max-height: none; }
+    .creator-body { grid-template-columns: 1fr; overflow: visible; }
+    .creator-form-panel,
+    .creator-preview-panel { overflow: visible; }
+    .creator-form { overflow: visible; padding-right: 0; }
     .test-output-grid { grid-template-columns: 1fr; }
     .preview-editor,
     .preview-placeholder { min-height: 300px; }

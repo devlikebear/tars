@@ -274,6 +274,51 @@ name: copy-fail
 	}
 }
 
+func TestManagerReload_IncludesWorkspaceMCPServerDrafts(t *testing.T) {
+	root := t.TempDir()
+	workspaceDir := filepath.Join(root, "workspace")
+	echoDir := filepath.Join(workspaceDir, "mcp-servers", "echo")
+	writeFile(t, filepath.Join(echoDir, "tars.mcp.json"), `{
+  "schema_version": 1,
+  "server": {
+    "name": "echo",
+    "command": "python3",
+    "args": ["${MCP_DIR}/server.py"],
+    "transport": "stdio"
+  }
+}`)
+	writeFile(t, filepath.Join(echoDir, "server.py"), `print("ready")`)
+
+	mcpRuntime := &stubMCPRuntime{}
+	manager, err := NewManager(Options{
+		WorkspaceDir:   workspaceDir,
+		SkillsEnabled:  false,
+		PluginsEnabled: false,
+		MCPRuntime:     mcpRuntime,
+	})
+	if err != nil {
+		t.Fatalf("new manager: %v", err)
+	}
+	if err := manager.Reload(context.Background()); err != nil {
+		t.Fatalf("reload manager: %v", err)
+	}
+
+	snapshot := manager.Snapshot()
+	if len(snapshot.MCPServers) != 1 {
+		t.Fatalf("expected workspace mcp draft to be loaded, got %+v", snapshot.MCPServers)
+	}
+	got := snapshot.MCPServers[0]
+	if got.Name != "echo" || got.Source != "workspace" {
+		t.Fatalf("expected echo workspace mcp server, got %+v", got)
+	}
+	if len(got.Args) != 1 || !strings.HasPrefix(got.Args[0], echoDir) {
+		t.Fatalf("expected MCP_DIR placeholder to expand to draft dir, got %+v", got.Args)
+	}
+	if len(mcpRuntime.lastServers) != 1 || mcpRuntime.lastServers[0].Name != "echo" {
+		t.Fatalf("expected runtime to receive workspace draft mcp server, got %+v", mcpRuntime.lastServers)
+	}
+}
+
 func TestManagerReload_ReturnsDisabledStateLoadError(t *testing.T) {
 	root := t.TempDir()
 	workspaceDir := filepath.Join(root, "workspace")

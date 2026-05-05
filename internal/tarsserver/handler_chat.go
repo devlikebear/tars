@@ -1228,6 +1228,11 @@ func newChatAPIHandlerWithRuntimeConfig(
 			for _, sk := range snap.Skills {
 				resp.Skills = append(resp.Skills, sk.Name)
 			}
+			for _, server := range snap.MCPServers {
+				if name := strings.TrimSpace(server.Name); name != "" {
+					resp.MCP = append(resp.MCP, name)
+				}
+			}
 		} else if sessionID := strings.TrimSpace(r.URL.Query().Get("session_id")); sessionID != "" {
 			if sess, err := reqStore.Get(sessionID); err == nil {
 				snap := augmentSnapshotWithCwdSkills(extensions.Snapshot{}, sess.CurrentDir)
