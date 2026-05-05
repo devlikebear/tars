@@ -3,6 +3,7 @@ package tarsserver
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -20,6 +21,11 @@ import (
 	"github.com/rs/zerolog"
 )
 
+// sessionNotifier is invoked for SSE notifications emitted from session
+// handlers (currently only the active-cwd transition). nil is allowed and
+// disables notifications.
+type sessionNotifier func(context.Context, notificationEvent)
+
 func newSessionAPIHandler(store *session.Store, logger zerolog.Logger) http.Handler {
 	return newSessionAPIHandlerWithUsage(store, logger, nil)
 }
@@ -29,6 +35,10 @@ func newSessionAPIHandlerWithUsage(store *session.Store, logger zerolog.Logger, 
 }
 
 func newSessionAPIHandlerWithUsageAndStyleDefaults(store *session.Store, logger zerolog.Logger, usageTracker *usage.Tracker, styleDefaults sessionStyleValues) http.Handler {
+	return newSessionAPIHandlerWithNotifier(store, logger, usageTracker, styleDefaults, nil)
+}
+
+func newSessionAPIHandlerWithNotifier(store *session.Store, logger zerolog.Logger, usageTracker *usage.Tracker, styleDefaults sessionStyleValues, notify sessionNotifier) http.Handler {
 	mux := http.NewServeMux()
 	styleDefaults = effectiveSessionStyle(styleDefaults, nil)
 	baseWorkspaceDir := ""
@@ -713,6 +723,63 @@ func newSessionAPIHandlerWithUsageAndStyleDefaults(store *session.Store, logger 
 				if err := reqStore.SetWorkDirs(sessionID, req.WorkDirs, req.CurrentDir); err != nil {
 					writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 					return
+				}
+				writeJSON(w, http.StatusOK, map[string]string{"ok": "true"})
+			}
+		case len(pathParts) == 2 && pathParts[1] == "cwd":
+			if !requireMethod(w, r, http.MethodGet, http.MethodPut) {
+				return
+			}
+			switch r.Method {
+			case http.MethodGet:
+				current, err := reqStore.GetCurrentDir(sessionID)
+				if err != nil {
+					if errors.Is(err, session.ErrSessionNotFound) {
+						writeJSON(w, http.StatusNotFound, map[string]string{"error": "session not found"})
+						return
+					}
+					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+					return
+				}
+				eligible, err := reqStore.EligibleCwds(sessionID)
+				if err != nil {
+					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+					return
+				}
+				if eligible == nil {
+					eligible = []string{}
+				}
+				writeJSON(w, http.StatusOK, map[string]any{
+					"current":  current,
+					"eligible": eligible,
+				})
+			case http.MethodPut:
+				var req struct {
+					Current string `json:"current"`
+				}
+				if !decodeJSONBody(w, r, &req) {
+					return
+				}
+				if err := reqStore.SetCurrentDir(sessionID, req.Current); err != nil {
+					switch {
+					case errors.Is(err, session.ErrSessionNotFound):
+						writeJSON(w, http.StatusNotFound, map[string]string{"error": "session not found"})
+					case errors.Is(err, session.ErrCwdNotEligible):
+						writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+					default:
+						writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+					}
+					return
+				}
+				if notify != nil {
+					evt := newNotificationEvent(
+						"session",
+						"info",
+						"Active cwd changed",
+						strings.TrimSpace(req.Current),
+					)
+					evt.SessionID = sessionID
+					notify(r.Context(), evt)
 				}
 				writeJSON(w, http.StatusOK, map[string]string{"ok": "true"})
 			}

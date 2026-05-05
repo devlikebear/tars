@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.162] - 2026-05-05
+
+### Added
+
+- **Session active-cwd transition API** — chat sessions can now switch their active working directory among the candidate set (artifact dir + registered `work_dirs`) via `GET /v1/admin/sessions/{id}/cwd` and `PUT /v1/admin/sessions/{id}/cwd`. The server returns the current dir alongside the eligible list, validates membership before persisting, and emits a `session` SSE notification on success so subscribers can refresh derived state. New `session.Store` helpers (`EligibleCwds`, `GetCurrentDir`) plus exported sentinels (`ErrSessionNotFound`, `ErrCwdNotEligible`) make the contract explicit. Foundation for the broader `.tars/` session-scoped overrides epic ([#703](https://github.com/devlikebear/tars/issues/703)); this PR closes [#704](https://github.com/devlikebear/tars/issues/704).
+
 ## [0.31.161] - 2026-05-04
 
 ### Fixed
