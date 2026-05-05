@@ -19,7 +19,7 @@ var legacyKeyMigrations = map[string]string{
 	// Flat LLM fields replaced by llm_providers + llm_tiers
 	"llm_provider":         "use llm_providers with a named provider entry",
 	"llm_auth_mode":        "set auth_mode inside the provider entry under llm_providers",
-	"llm_oauth_provider":   "set oauth_provider inside the provider entry under llm_providers",
+	"llm_oauth_provider":   "no longer configurable — derived automatically from provider kind",
 	"llm_base_url":         "set base_url inside the provider entry under llm_providers",
 	"llm_api_key":          "set api_key inside the provider entry under llm_providers",
 	"llm_model":            "set model inside a tier binding under llm_tiers",

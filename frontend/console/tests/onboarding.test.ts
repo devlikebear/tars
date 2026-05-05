@@ -199,7 +199,6 @@ test('buildConfigPayload never emits oauth_provider — backend infers from kind
   form.provider.alias = 'codex'
   form.provider.kind = 'openai-codex'
   form.provider.auth_mode = 'oauth'
-  form.provider.oauth_provider = 'should-be-ignored-by-payload'
   for (const tier of ['heavy', 'standard', 'light'] as const) {
     form.tiers[tier].provider = 'codex'
     form.tiers[tier].model = 'gpt-5.4'

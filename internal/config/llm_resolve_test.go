@@ -8,11 +8,9 @@ import (
 func TestResolveLLMTier_TableCases(t *testing.T) {
 	// Shared pool fixtures reused across cases.
 	codex := LLMProviderSettings{
-		Kind:          "openai-codex",
-		AuthMode:      "oauth",
-		OAuthProvider: "openai-codex",
-		BaseURL:       "https://chatgpt.com/backend-api",
-		ServiceTier:   "priority",
+		Kind:     "openai-codex",
+		AuthMode: "oauth",
+		BaseURL:  "https://chatgpt.com/backend-api",
 	}
 	anthropic := LLMProviderSettings{
 		Kind:     "anthropic",
@@ -96,7 +94,8 @@ func TestResolveLLMTier_TableCases(t *testing.T) {
 		},
 
 		// ------------------------------------------------------------------
-		// 3. 같은 provider, tier마다 다른 model — credential은 자동 공유
+		// 3. 같은 provider, tier마다 다른 model — credential은 자동 공유.
+		//    OAuthProvider derives from Kind when AuthMode is oauth.
 		// ------------------------------------------------------------------
 		{
 			name: "same provider different model per tier (standard)",
@@ -117,30 +116,29 @@ func TestResolveLLMTier_TableCases(t *testing.T) {
 				Tier:            "standard",
 				Kind:            "openai-codex",
 				AuthMode:        "oauth",
-				OAuthProvider:   "openai-codex",
+				OAuthProvider:   "openai-codex", // derived from Kind
 				BaseURL:         "https://chatgpt.com/backend-api",
 				Model:           "gpt-5.4",
 				ReasoningEffort: "medium",
-				ServiceTier:     "priority", // inherited from provider default
 				ProviderAlias:   "codex",
 			},
 		},
 
 		// ------------------------------------------------------------------
-		// 4. ServiceTier binding override beats provider default
+		// 4. ServiceTier comes from the tier binding (no provider-level fallback)
 		// ------------------------------------------------------------------
 		{
-			name: "binding ServiceTier overrides provider default",
+			name: "binding ServiceTier flows through to resolved tier",
 			cfg: Config{
 				LLMConfig: LLMConfig{
 					LLMProviders: map[string]LLMProviderSettings{
-						"codex": codex, // provider default: priority
+						"codex": codex,
 					},
 					LLMTiers: map[string]LLMTierBinding{
 						"heavy": {
 							Provider:    "codex",
 							Model:       "gpt-5.4",
-							ServiceTier: "flex", // binding override
+							ServiceTier: "flex",
 						},
 					},
 				},

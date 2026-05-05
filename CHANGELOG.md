@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.31.171] - 2026-05-05
+
+### Changed
+
+- **LLM provider config — drop redundant `oauth_provider` and provider-level `service_tier`** — both fields were noise in the provider editor: `oauth_provider` is fully derivable from `kind` (the kind→token-source map already lives in `internal/llmdefaults/`), and `service_tier` belongs on the per-tier binding, not the credential entry. The console's provider editor (Quick Start + Fields) and the onboarding wizard payload now omit both, the `LLMProviderSettings` struct loses both fields, and `ResolveLLMTier` derives `OAuthProvider` from kind only when `auth_mode=oauth`. The API Key input now hides automatically when `auth_mode != "api-key"`, removing the dead field that previously rendered for `oauth` and `cli` providers. Old `oauth_provider:` keys in YAML are silently dropped on load.
+
 ## [0.31.170] - 2026-05-05
 
 ### Changed

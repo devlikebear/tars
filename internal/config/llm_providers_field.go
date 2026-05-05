@@ -33,12 +33,10 @@ func parseLLMProvidersJSON(raw string, fallback map[string]LLMProviderSettings) 
 			continue
 		}
 		out[alias] = LLMProviderSettings{
-			Kind:          os.ExpandEnv(strings.TrimSpace(p.Kind)),
-			AuthMode:      os.ExpandEnv(strings.TrimSpace(p.AuthMode)),
-			OAuthProvider: os.ExpandEnv(strings.TrimSpace(p.OAuthProvider)),
-			BaseURL:       os.ExpandEnv(strings.TrimSpace(p.BaseURL)),
-			APIKey:        os.ExpandEnv(strings.TrimSpace(p.APIKey)),
-			ServiceTier:   os.ExpandEnv(strings.TrimSpace(p.ServiceTier)),
+			Kind:     os.ExpandEnv(strings.TrimSpace(p.Kind)),
+			AuthMode: os.ExpandEnv(strings.TrimSpace(p.AuthMode)),
+			BaseURL:  os.ExpandEnv(strings.TrimSpace(p.BaseURL)),
+			APIKey:   os.ExpandEnv(strings.TrimSpace(p.APIKey)),
 		}
 	}
 	if len(out) == 0 {

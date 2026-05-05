@@ -48,30 +48,24 @@ export type LLMProviderDraft = {
   alias: string
   kind: string
   auth_mode: string
-  oauth_provider: string
   base_url: string
   api_key: string
-  service_tier: string
 }
 
 export type LLMProviderDraftField =
   | 'alias'
   | 'kind'
   | 'auth_mode'
-  | 'oauth_provider'
   | 'base_url'
   | 'api_key'
-  | 'service_tier'
 
 export type LLMProviderDraftErrors = Record<string, Partial<Record<LLMProviderDraftField, string>>>
 
 export type LLMProviderSettingsValue = {
   kind: string
   auth_mode: string
-  oauth_provider: string
   base_url: string
   api_key: string
-  service_tier: string
 }
 
 export type LLMProvidersBuildResult =
@@ -90,7 +84,9 @@ export const LLM_PROVIDER_KINDS = [
 
 export const LLM_PROVIDER_AUTH_MODES = ['api-key', 'oauth', 'cli'] as const
 
-export const LLM_PROVIDER_SERVICE_TIERS = ['', 'auto', 'default', 'flex', 'priority'] as const
+// Tier-binding service_tier choices. Provider-level service_tier is no
+// longer exposed — the per-tier value flows through to the provider API.
+export const LLM_TIER_SERVICE_TIERS = ['', 'auto', 'default', 'flex', 'priority'] as const
 
 const API_KEY_MASK_PATTERNS = [/^\*+$/, /^[*•]+$/, /\*{3,}/]
 
@@ -274,10 +270,8 @@ export function makeLLMProviderDrafts(value: unknown): LLMProviderDraft[] {
         alias,
         kind: readString(provider, 'kind'),
         auth_mode: readString(provider, 'auth_mode', 'authMode'),
-        oauth_provider: readString(provider, 'oauth_provider', 'oauthProvider'),
         base_url: readString(provider, 'base_url', 'baseURL'),
         api_key: readString(provider, 'api_key', 'apiKey'),
-        service_tier: readString(provider, 'service_tier', 'serviceTier'),
       }
     })
 }
@@ -299,10 +293,8 @@ export function buildLLMProvidersFromDrafts(drafts: LLMProviderDraft[]): LLMProv
     const alias = draft.alias.trim()
     const kind = draft.kind.trim()
     const authMode = draft.auth_mode.trim()
-    const oauthProvider = draft.oauth_provider.trim()
     const baseURL = draft.base_url.trim()
     const apiKey = draft.api_key
-    const serviceTier = draft.service_tier.trim()
 
     if (!alias) {
       rowErrors.alias = 'Provider alias is required.'
@@ -321,10 +313,8 @@ export function buildLLMProvidersFromDrafts(drafts: LLMProviderDraft[]): LLMProv
     value[alias] = {
       kind,
       auth_mode: authMode,
-      oauth_provider: oauthProvider,
       base_url: baseURL,
       api_key: apiKey,
-      service_tier: serviceTier,
     }
   })
 

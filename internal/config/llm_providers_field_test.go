@@ -15,9 +15,7 @@ func TestParseLLMProvidersJSON_ValidInput(t *testing.T) {
 		"codex": {
 			"kind": "openai-codex",
 			"auth_mode": "oauth",
-			"oauth_provider": "openai-codex",
-			"base_url": "https://chatgpt.com/backend-api",
-			"service_tier": "priority"
+			"base_url": "https://chatgpt.com/backend-api"
 		},
 		"anthropic_direct": {
 			"kind": "anthropic",
@@ -44,9 +42,6 @@ func TestParseLLMProvidersJSON_ValidInput(t *testing.T) {
 	}
 	if codex.BaseURL != "https://chatgpt.com/backend-api" {
 		t.Errorf("codex.BaseURL = %q, want https://chatgpt.com/backend-api", codex.BaseURL)
-	}
-	if codex.ServiceTier != "priority" {
-		t.Errorf("codex.ServiceTier = %q, want priority", codex.ServiceTier)
 	}
 
 	anthro, ok := got["anthropic_direct"]
@@ -311,7 +306,6 @@ llm_providers:
   codex:
     kind: openai-codex
     auth_mode: oauth
-    oauth_provider: openai-codex
     base_url: https://chatgpt.com/backend-api
   anthropic_direct:
     kind: anthropic

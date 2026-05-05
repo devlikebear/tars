@@ -293,7 +293,7 @@ llm_tiers:
 	}
 
 	t.Setenv("TARS_WORKSPACE_DIR", "./env-workspace")
-	t.Setenv("TARS_LLM_PROVIDERS_JSON", `{"env_prov":{"kind":"openai","auth_mode":"oauth","oauth_provider":"claude-code","base_url":"http://localhost:7000/v1","api_key":"env-key"}}`)
+	t.Setenv("TARS_LLM_PROVIDERS_JSON", `{"env_prov":{"kind":"openai","auth_mode":"oauth","base_url":"http://localhost:7000/v1","api_key":"env-key"}}`)
 	t.Setenv("TARS_LLM_TIERS_JSON", `{"heavy":{"provider":"env_prov","model":"env-model","reasoning_effort":"veryhigh","thinking_budget":4096,"service_tier":"priority"},"standard":{"provider":"env_prov","model":"env-model"},"light":{"provider":"env_prov","model":"env-model"}}`)
 
 	cfg, err := Load(path)
@@ -312,7 +312,7 @@ llm_tiers:
 	if !ok {
 		t.Fatalf("expected env_prov from env, got %+v", cfg.LLMProviders)
 	}
-	if envProv.Kind != "openai" || envProv.AuthMode != "oauth" || envProv.OAuthProvider != "claude-code" {
+	if envProv.Kind != "openai" || envProv.AuthMode != "oauth" {
 		t.Fatalf("env_prov fields mismatch: %+v", envProv)
 	}
 	// Env tier binding knobs are normalized by applyLLMPoolDefaults.
@@ -503,25 +503,45 @@ func TestLoad_LLMPoolKindDefaults_OpenAICodex(t *testing.T) {
 	if p.AuthMode != "oauth" {
 		t.Errorf("expected api-key→oauth promotion when no key present, got %q", p.AuthMode)
 	}
-	if p.OAuthProvider != "openai-codex" {
-		t.Errorf("expected OAuthProvider openai-codex, got %q", p.OAuthProvider)
+}
+
+func TestResolveLLMTier_GeminiOAuthDerivesProvider(t *testing.T) {
+	cfg := &Config{
+		LLMConfig: LLMConfig{
+			LLMProviders: map[string]LLMProviderSettings{
+				"p": {Kind: "gemini", AuthMode: "oauth"},
+			},
+			LLMTiers: map[string]LLMTierBinding{
+				"standard": {Provider: "p", Model: "gemini-2.5-flash"},
+			},
+		},
+	}
+	resolved, err := ResolveLLMTier(cfg, "standard")
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if resolved.OAuthProvider != "google-antigravity" {
+		t.Fatalf("expected derived OAuthProvider google-antigravity, got %q", resolved.OAuthProvider)
 	}
 }
 
-func TestLoad_LLMPoolGeminiOAuthDefaultsOAuthProvider(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "config.yaml")
-	content := "llm_providers:\n  p: {kind: gemini, auth_mode: oauth}\n"
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-		t.Fatalf("write config: %v", err)
+func TestResolveLLMTier_APIKeyModeOmitsOAuthProvider(t *testing.T) {
+	cfg := &Config{
+		LLMConfig: LLMConfig{
+			LLMProviders: map[string]LLMProviderSettings{
+				"p": {Kind: "anthropic", AuthMode: "api-key", APIKey: "x"},
+			},
+			LLMTiers: map[string]LLMTierBinding{
+				"standard": {Provider: "p", Model: "claude-sonnet-4-6"},
+			},
+		},
 	}
-
-	cfg, err := Load(path)
+	resolved, err := ResolveLLMTier(cfg, "standard")
 	if err != nil {
-		t.Fatalf("load: %v", err)
+		t.Fatalf("resolve: %v", err)
 	}
-	if got := cfg.LLMProviders["p"].OAuthProvider; got != "google-antigravity" {
-		t.Fatalf("expected gemini oauth provider default google-antigravity, got %q", got)
+	if resolved.OAuthProvider != "" {
+		t.Fatalf("expected empty OAuthProvider for api-key mode, got %q", resolved.OAuthProvider)
 	}
 }
 

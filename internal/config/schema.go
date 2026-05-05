@@ -528,17 +528,11 @@ func sparseProvidersMap(providers map[string]LLMProviderSettings) map[string]map
 		if p.AuthMode != "" {
 			m["auth_mode"] = p.AuthMode
 		}
-		if p.OAuthProvider != "" {
-			m["oauth_provider"] = p.OAuthProvider
-		}
 		if p.BaseURL != "" {
 			m["base_url"] = p.BaseURL
 		}
 		if p.APIKey != "" {
 			m["api_key"] = p.APIKey
-		}
-		if p.ServiceTier != "" {
-			m["service_tier"] = p.ServiceTier
 		}
 		out[alias] = m
 	}
