@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { resolveRoute } from '../src/lib/router.ts'
+import { aggregatePlanStatusCount, filterPlansBySummaryCard } from '../src/lib/plans.ts'
 
 const appSource = readFileSync(new URL('../src/App.svelte', import.meta.url), 'utf8')
 const navSource = readFileSync(new URL('../src/components/Nav.svelte', import.meta.url), 'utf8')
@@ -29,5 +30,48 @@ test('Plans page wires the global active plans API and session navigation', () =
   assert.match(plansSource, /getGlobalPlans/)
   assert.match(plansSource, /progressPercent/)
   assert.match(plansSource, /\/console\/chat\?session=/)
-  assert.match(plansSource, /No active plans/)
+  assert.match(plansSource, /\$t\.plans\.emptyTitle/)
+})
+
+test('Plans summary cards filter sessions by task status counts', () => {
+  const items = [
+    {
+      session: { id: 'active' },
+      tasks: [
+        { id: 'a-1', title: 'running', status: 'in_progress' },
+        { id: 'a-2', title: 'queued', status: 'pending' },
+      ],
+      summary: { total: 2, in_progress: 1, pending: 1, completed: 0 },
+    },
+    {
+      session: { id: 'done' },
+      tasks: [
+        { id: 'd-1', title: 'finished', status: 'completed' },
+      ],
+      summary: { total: 1, in_progress: 0, pending: 0, completed: 1 },
+    },
+    {
+      session: { id: 'fallback' },
+      tasks: [
+        { id: 'f-1', title: 'finished without summary', status: 'completed' },
+      ],
+      summary: {},
+    },
+  ]
+
+  assert.equal(aggregatePlanStatusCount(items, 'completed'), 2)
+  assert.deepEqual(filterPlansBySummaryCard(items, 'all').map((item) => item.session.id), ['active', 'done', 'fallback'])
+  assert.deepEqual(filterPlansBySummaryCard(items, 'in_progress').map((item) => item.session.id), ['active'])
+  assert.deepEqual(filterPlansBySummaryCard(items, 'pending').map((item) => item.session.id), ['active'])
+  assert.deepEqual(filterPlansBySummaryCard(items, 'completed').map((item) => item.session.id), ['done', 'fallback'])
+})
+
+test('Plans page makes aggregate cards clickable status filters', () => {
+  const plansSource = readFileSync(new URL('../src/components/Plans.svelte', import.meta.url), 'utf8')
+  assert.match(plansSource, /activeSummaryFilter/)
+  assert.match(plansSource, /filterPlansBySummaryCard/)
+  assert.match(plansSource, /aggregatePlanStatusCount/)
+  assert.match(plansSource, /onclick=\{\(\) => setSummaryFilter\(card\.filter\)\}/)
+  assert.match(plansSource, /aria-pressed=\{activeSummaryFilter === card\.filter\}/)
+  assert.match(plansSource, /\{#each filteredPlans as item/)
 })

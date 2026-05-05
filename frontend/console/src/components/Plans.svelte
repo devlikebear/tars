@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import { getGlobalPlans } from '../lib/api'
+  import { aggregatePlanStatusCount, filterPlansBySummaryCard, type PlanSummaryFilter } from '../lib/plans'
   import type { GlobalPlanItem } from '../lib/types'
   import { t } from '../i18n'
 
@@ -12,6 +13,21 @@
   let plans: GlobalPlanItem[] = $state([])
   let loading = $state(true)
   let error = $state('')
+  let activeSummaryFilter = $state<PlanSummaryFilter>('all')
+
+  type SummaryCard = {
+    filter: PlanSummaryFilter
+    label: string
+    count: number
+  }
+
+  let filteredPlans = $derived(filterPlansBySummaryCard(plans, activeSummaryFilter))
+  let summaryCards = $derived.by((): SummaryCard[] => [
+    { filter: 'all', label: $t.plans.activePlans, count: plans.length },
+    { filter: 'in_progress', label: $t.plans.inProgress, count: aggregatePlanStatusCount(plans, 'in_progress') },
+    { filter: 'pending', label: $t.plans.pending, count: aggregatePlanStatusCount(plans, 'pending') },
+    { filter: 'completed', label: $t.plans.completed, count: aggregatePlanStatusCount(plans, 'completed') },
+  ])
 
   async function load() {
     loading = true
@@ -57,6 +73,10 @@
     onNavigate(`/console/chat?session=${encodeURIComponent(sessionId)}`)
   }
 
+  function setSummaryFilter(filter: PlanSummaryFilter) {
+    activeSummaryFilter = filter === activeSummaryFilter || filter === 'all' ? 'all' : filter
+  }
+
   onMount(() => {
     void load()
   })
@@ -85,26 +105,22 @@
     </section>
   {:else}
     <section class="plans-summary" aria-label={$t.plans.summaryAriaLabel}>
-      <div class="summary-card card">
-        <span>{$t.plans.activePlans}</span>
-        <strong>{plans.length}</strong>
-      </div>
-      <div class="summary-card card">
-        <span>{$t.plans.inProgress}</span>
-        <strong>{plans.reduce((total, item) => total + (item.summary?.in_progress ?? 0), 0)}</strong>
-      </div>
-      <div class="summary-card card">
-        <span>{$t.plans.pending}</span>
-        <strong>{plans.reduce((total, item) => total + (item.summary?.pending ?? 0), 0)}</strong>
-      </div>
-      <div class="summary-card card">
-        <span>{$t.plans.completed}</span>
-        <strong>{plans.reduce((total, item) => total + (item.summary?.completed ?? 0), 0)}</strong>
-      </div>
+      {#each summaryCards as card (card.filter)}
+        <button
+          class="summary-card card"
+          class:active={activeSummaryFilter === card.filter}
+          type="button"
+          aria-pressed={activeSummaryFilter === card.filter}
+          onclick={() => setSummaryFilter(card.filter)}
+        >
+          <span>{card.label}</span>
+          <strong>{card.count}</strong>
+        </button>
+      {/each}
     </section>
 
     <section class="plan-grid" aria-label={$t.plans.plansAriaLabel}>
-      {#each plans as item (item.session.id)}
+      {#each filteredPlans as item (item.session.id)}
         {@const percent = progressPercent(item)}
         <button class="plan-card card" type="button" onclick={() => openSession(item.session.id)}>
           <span class="card-topline">
@@ -173,6 +189,30 @@
     flex-direction: column;
     justify-content: center;
     gap: var(--space-1);
+    width: 100%;
+    border-color: var(--border-subtle);
+    color: inherit;
+    cursor: pointer;
+    font: inherit;
+    text-align: left;
+    transition:
+      background-color var(--duration-fast) var(--ease-out),
+      border-color var(--duration-fast) var(--ease-out);
+  }
+
+  .summary-card:hover,
+  .summary-card.active {
+    border-color: var(--primary);
+    background: var(--surface-elevated);
+  }
+
+  .summary-card.active {
+    box-shadow: inset 0 0 0 1px var(--primary);
+  }
+
+  .summary-card:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
   }
 
   .summary-card span {
