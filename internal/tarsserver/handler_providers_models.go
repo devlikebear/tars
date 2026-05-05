@@ -11,6 +11,7 @@ import (
 
 	"github.com/devlikebear/tars/internal/config"
 	"github.com/devlikebear/tars/internal/llm"
+	"github.com/devlikebear/tars/internal/llmdefaults"
 	"github.com/rs/zerolog"
 )
 
@@ -262,14 +263,19 @@ func (s *providerModelsService) resolveProvider(providerAlias string) (config.Re
 		return config.ResolvedLLMTier{}, fmt.Errorf("provider %q has empty kind", alias)
 	}
 
+	authMode := normalizeAuthMode(provider.AuthMode)
+	oauthProvider := ""
+	if authMode == "oauth" {
+		oauthProvider = strings.ToLower(strings.TrimSpace(llmdefaults.OAuthProvider(kind)))
+	}
+
 	return config.ResolvedLLMTier{
 		Kind:          kind,
-		AuthMode:      normalizeAuthMode(provider.AuthMode),
-		OAuthProvider: strings.TrimSpace(provider.OAuthProvider),
+		AuthMode:      authMode,
+		OAuthProvider: oauthProvider,
 		BaseURL:       normalizeBaseURL(provider.BaseURL),
 		APIKey:        strings.TrimSpace(provider.APIKey),
 		Model:         strings.TrimSpace(s.currentModelForProviderAlias(alias)),
-		ServiceTier:   strings.TrimSpace(provider.ServiceTier),
 		ProviderAlias: alias,
 	}, nil
 }

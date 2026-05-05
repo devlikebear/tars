@@ -334,15 +334,18 @@ func resolveProviderOverrideClient(cfg config.Config, workspaceDir string, track
 	if model == "" {
 		return providerOverrideClient{}, fmt.Errorf("provider override model is required")
 	}
+	tierServiceTier := ""
+	if binding, ok := cfg.LLMTiers[resolvedTier]; ok {
+		tierServiceTier = strings.TrimSpace(binding.ServiceTier)
+	}
 	client, err := llm.NewProvider(llm.ProviderOptions{
-		Provider:      strings.TrimSpace(provider.Kind),
-		AuthMode:      strings.TrimSpace(provider.AuthMode),
-		OAuthProvider: strings.TrimSpace(provider.OAuthProvider),
-		BaseURL:       strings.TrimSpace(provider.BaseURL),
-		WorkDir:       workspaceDir,
-		Model:         model,
-		APIKey:        strings.TrimSpace(provider.APIKey),
-		ServiceTier:   strings.TrimSpace(provider.ServiceTier),
+		Provider:    strings.TrimSpace(provider.Kind),
+		AuthMode:    strings.TrimSpace(provider.AuthMode),
+		BaseURL:     strings.TrimSpace(provider.BaseURL),
+		WorkDir:     workspaceDir,
+		Model:       model,
+		APIKey:      strings.TrimSpace(provider.APIKey),
+		ServiceTier: tierServiceTier,
 	})
 	if err != nil {
 		return providerOverrideClient{}, err

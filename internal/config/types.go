@@ -107,25 +107,23 @@ type LLMConfig struct {
 // error for unknown kinds, keeping the config package free of an
 // internal/llm import.
 //
-// ServiceTier is the provider-level default applied when a tier binding
-// does not set its own. Tier-level ServiceTier (LLMTierBinding) takes
-// precedence when non-empty; see ResolveLLMTier for the merge order.
+// OAuth token source (formerly the user-facing oauth_provider field) is
+// derived internally from Kind via llmdefaults.OAuthProvider — there is
+// no per-config override. ServiceTier is set per tier binding only
+// (LLMTierBinding.ServiceTier) — there is no provider-level default.
 type LLMProviderSettings struct {
-	Kind          string `json:"kind"           yaml:"kind"`
-	AuthMode      string `json:"auth_mode"      yaml:"auth_mode"`
-	OAuthProvider string `json:"oauth_provider" yaml:"oauth_provider"`
-	BaseURL       string `json:"base_url"       yaml:"base_url"`
-	APIKey        string `json:"api_key"        yaml:"api_key"`
-	ServiceTier   string `json:"service_tier"   yaml:"service_tier"`
+	Kind     string `json:"kind"      yaml:"kind"`
+	AuthMode string `json:"auth_mode" yaml:"auth_mode"`
+	BaseURL  string `json:"base_url"  yaml:"base_url"`
+	APIKey   string `json:"api_key"   yaml:"api_key"`
 }
 
 // LLMTierBinding binds a tier to a provider alias + concrete model +
 // per-call knobs. Provider must be a key in cfg.LLMProviders — the
 // resolver rejects unknown aliases with a loud error.
 //
-// ServiceTier here overrides the provider-level default when non-empty.
-// ReasoningEffort and ThinkingBudget are pure per-tier values (providers
-// do not set them at the pool level).
+// ReasoningEffort, ThinkingBudget, and ServiceTier are per-tier knobs;
+// they are not configurable at the provider level.
 type LLMTierBinding struct {
 	Provider        string `json:"provider"         yaml:"provider"`
 	Model           string `json:"model"            yaml:"model"`

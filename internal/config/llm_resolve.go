@@ -3,6 +3,8 @@ package config
 import (
 	"fmt"
 	"strings"
+
+	"github.com/devlikebear/tars/internal/llmdefaults"
 )
 
 // ResolvedLLMTier is the flat, final view of one tier's effective LLM
@@ -13,13 +15,17 @@ import (
 // ProviderAlias records which pool entry served this tier so that
 // tars doctor and startup logs can show provenance (e.g.
 // "heavy → codex / gpt-5.4").
+//
+// OAuthProvider is derived from Kind via llmdefaults.OAuthProvider when
+// AuthMode is "oauth"; it is not user-configurable. ServiceTier comes
+// from the tier binding only — there is no provider-level fallback.
 type ResolvedLLMTier struct {
 	Tier string
 
 	// From the referenced provider pool entry
 	Kind          string
 	AuthMode      string
-	OAuthProvider string
+	OAuthProvider string // derived from Kind, see llmdefaults.OAuthProvider
 	BaseURL       string
 	APIKey        string
 
@@ -27,9 +33,7 @@ type ResolvedLLMTier struct {
 	Model           string
 	ReasoningEffort string
 	ThinkingBudget  int
-
-	// ServiceTier: binding override when set, otherwise provider default
-	ServiceTier string
+	ServiceTier     string
 
 	// Provenance — alias of the provider pool entry that served this tier
 	ProviderAlias string
@@ -86,23 +90,23 @@ func ResolveLLMTier(cfg *Config, tier string) (ResolvedLLMTier, error) {
 		return ResolvedLLMTier{}, fmt.Errorf("tier %q binding has empty model", tierNorm)
 	}
 
-	// ServiceTier: binding override wins over provider default
-	serviceTier := strings.TrimSpace(binding.ServiceTier)
-	if serviceTier == "" {
-		serviceTier = strings.TrimSpace(provider.ServiceTier)
+	authMode := strings.ToLower(strings.TrimSpace(provider.AuthMode))
+	oauthProvider := ""
+	if authMode == "oauth" {
+		oauthProvider = strings.ToLower(strings.TrimSpace(llmdefaults.OAuthProvider(kind)))
 	}
 
 	return ResolvedLLMTier{
 		Tier:            tierNorm,
 		Kind:            kind,
-		AuthMode:        strings.ToLower(strings.TrimSpace(provider.AuthMode)),
-		OAuthProvider:   strings.ToLower(strings.TrimSpace(provider.OAuthProvider)),
+		AuthMode:        authMode,
+		OAuthProvider:   oauthProvider,
 		BaseURL:         strings.TrimSpace(provider.BaseURL),
 		APIKey:          strings.TrimSpace(provider.APIKey),
 		Model:           model,
 		ReasoningEffort: strings.TrimSpace(binding.ReasoningEffort),
 		ThinkingBudget:  binding.ThinkingBudget,
-		ServiceTier:     serviceTier,
+		ServiceTier:     strings.TrimSpace(binding.ServiceTier),
 		ProviderAlias:   alias,
 	}, nil
 }

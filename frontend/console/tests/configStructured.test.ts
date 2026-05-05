@@ -103,10 +103,8 @@ test('makeLLMProviderDrafts converts provider settings into editable rows', () =
     codex: {
       kind: 'openai-codex',
       auth_mode: 'oauth',
-      oauth_provider: 'openai-codex',
       base_url: 'https://chatgpt.com/backend-api',
       api_key: '',
-      service_tier: 'priority',
     },
     anthropic: { kind: 'anthropic', api_key: 'sk-abc' },
   })
@@ -115,15 +113,13 @@ test('makeLLMProviderDrafts converts provider settings into editable rows', () =
   assert.equal(drafts[0].kind, 'anthropic')
   assert.equal(drafts[0].api_key, 'sk-abc')
   assert.equal(drafts[1].auth_mode, 'oauth')
-  assert.equal(drafts[1].service_tier, 'priority')
-  assert.equal(drafts[1].oauth_provider, 'openai-codex')
 })
 
 test('buildLLMProvidersFromDrafts validates required fields and uniqueness', () => {
   const invalid = buildLLMProvidersFromDrafts([
-    { id: 'a', originalAlias: 'codex', alias: '', kind: 'openai-codex', auth_mode: 'oauth', oauth_provider: '', base_url: '', api_key: '', service_tier: '' },
-    { id: 'b', originalAlias: 'dup', alias: 'shared', kind: '', auth_mode: '', oauth_provider: '', base_url: '', api_key: '', service_tier: '' },
-    { id: 'c', originalAlias: 'dup2', alias: 'shared', kind: 'anthropic', auth_mode: '', oauth_provider: '', base_url: '', api_key: '', service_tier: '' },
+    { id: 'a', originalAlias: 'codex', alias: '', kind: 'openai-codex', auth_mode: 'oauth', base_url: '', api_key: '' },
+    { id: 'b', originalAlias: 'dup', alias: 'shared', kind: '', auth_mode: '', base_url: '', api_key: '' },
+    { id: 'c', originalAlias: 'dup2', alias: 'shared', kind: 'anthropic', auth_mode: '', base_url: '', api_key: '' },
   ])
 
   assert.equal(invalid.ok, false)
@@ -143,10 +139,8 @@ test('buildLLMProvidersFromDrafts serializes provider drafts into settings map',
       alias: ' codex ',
       kind: ' openai-codex ',
       auth_mode: 'oauth',
-      oauth_provider: 'openai-codex',
       base_url: 'https://chatgpt.com/backend-api',
       api_key: 'cx-token',
-      service_tier: 'priority',
     },
     {
       id: 'anth',
@@ -154,10 +148,8 @@ test('buildLLMProvidersFromDrafts serializes provider drafts into settings map',
       alias: 'anthropic',
       kind: 'anthropic',
       auth_mode: 'api-key',
-      oauth_provider: '',
       base_url: '',
       api_key: '',
-      service_tier: '',
     },
   ])
 
@@ -167,18 +159,14 @@ test('buildLLMProvidersFromDrafts serializes provider drafts into settings map',
       codex: {
         kind: 'openai-codex',
         auth_mode: 'oauth',
-        oauth_provider: 'openai-codex',
         base_url: 'https://chatgpt.com/backend-api',
         api_key: 'cx-token',
-        service_tier: 'priority',
       },
       anthropic: {
         kind: 'anthropic',
         auth_mode: 'api-key',
-        oauth_provider: '',
         base_url: '',
         api_key: '',
-        service_tier: '',
       },
     })
   }

@@ -286,7 +286,9 @@ func applyAgentRuntimeDefaults(cfg *Config, defaults Config) {
 //   - BaseURL defaults to the canonical endpoint for the Kind
 //   - APIKey defaults to the conventional env var for the Kind
 //     when the user did not set one explicitly
-//   - OAuthProvider defaults when AuthMode is oauth
+//
+// OAuth token source is derived from Kind at resolution time via
+// llmdefaults.OAuthProvider — see ResolveLLMTier.
 //
 // For each tier binding:
 //   - ReasoningEffort is normalized (aliases like "med" → "medium")
@@ -303,10 +305,8 @@ func applyLLMPoolDefaults(cfg *Config) {
 	for alias, p := range cfg.LLMProviders {
 		p.Kind = strings.ToLower(strings.TrimSpace(p.Kind))
 		p.AuthMode = strings.ToLower(strings.TrimSpace(p.AuthMode))
-		p.OAuthProvider = strings.ToLower(strings.TrimSpace(p.OAuthProvider))
 		p.BaseURL = strings.TrimSpace(p.BaseURL)
 		p.APIKey = strings.TrimSpace(p.APIKey)
-		p.ServiceTier = normalizeLLMServiceTier(p.ServiceTier)
 
 		defaults, ok := llmdefaults.ForKind(p.Kind)
 		if p.AuthMode == "" {
@@ -323,16 +323,10 @@ func applyLLMPoolDefaults(cfg *Config) {
 			if p.APIKey == "" {
 				p.APIKey = llmdefaults.APIKeyFromEnv(defaults)
 			}
-			if p.AuthMode == "oauth" && p.OAuthProvider == "" {
-				p.OAuthProvider = defaults.OAuthProvider
-			}
 			// Preserve the existing behavior for providers that cannot satisfy
 			// explicit api-key mode without a key.
 			if p.AuthMode == "api-key" && p.APIKey == "" && defaults.AuthModeWhenAPIKeyAbsent != "" {
 				p.AuthMode = defaults.AuthModeWhenAPIKeyAbsent
-				if p.AuthMode == "oauth" && p.OAuthProvider == "" {
-					p.OAuthProvider = defaults.OAuthProvider
-				}
 			}
 		}
 

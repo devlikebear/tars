@@ -16,7 +16,7 @@
   import {
     LLM_PROVIDER_AUTH_MODES,
     LLM_PROVIDER_KINDS,
-    LLM_PROVIDER_SERVICE_TIERS,
+    LLM_TIER_SERVICE_TIERS,
     buildLLMProvidersFromDrafts,
     buildLLMTiersFromDrafts,
     configValuesEqual,
@@ -566,8 +566,10 @@
           if (!validModes.includes(updated.auth_mode as AuthMode)) {
             updated.auth_mode = suggestedAuthModeForKind(nextKind)
           }
-          updated.oauth_provider = ''
         }
+      }
+      if (field === 'auth_mode' && value !== 'api-key') {
+        updated.api_key = ''
       }
       return updated
     })
@@ -645,10 +647,8 @@
       alias,
       kind: '',
       auth_mode: '',
-      oauth_provider: '',
       base_url: '',
       api_key: '',
-      service_tier: '',
     }
   }
 
@@ -681,8 +681,8 @@
     return ['', ...[...choices].sort()]
   }
 
-  function providerServiceTierChoices(current: string): string[] {
-    const choices = new Set<string>(LLM_PROVIDER_SERVICE_TIERS.filter(Boolean) as string[])
+  function tierServiceTierChoices(current: string): string[] {
+    const choices = new Set<string>(LLM_TIER_SERVICE_TIERS.filter(Boolean) as string[])
     const value = current.trim()
     if (value) choices.add(value)
     return ['', ...[...choices].sort()]
@@ -1353,24 +1353,6 @@
                       {/each}
                     </select>
                   </label>
-                  <label class="tier-field">
-                    <span>OAuth Provider</span>
-                    <input
-                      value={draft.oauth_provider}
-                      oninput={(event) => updateProviderDraft(draft.id, 'oauth_provider', inputValue(event))}
-                    />
-                  </label>
-                  <label class="tier-field">
-                    <span>Service Tier</span>
-                    <select
-                      value={draft.service_tier}
-                      onchange={(event) => updateProviderDraft(draft.id, 'service_tier', inputValue(event))}
-                    >
-                      {#each providerServiceTierChoices(draft.service_tier) as tier}
-                        <option value={tier}>{tier || 'default'}</option>
-                      {/each}
-                    </select>
-                  </label>
                   <label class="tier-field provider-field-wide">
                     <span>Base URL</span>
                     <input
@@ -1378,22 +1360,24 @@
                       oninput={(event) => updateProviderDraft(draft.id, 'base_url', inputValue(event))}
                     />
                   </label>
-                  <label class="tier-field provider-field-wide">
-                    <span>API Key</span>
-                    <div class="provider-secret">
-                      <input
-                        type={providerSecretReveal[draft.id] ? 'text' : 'password'}
-                        autocomplete="off"
-                        value={draft.api_key}
-                        oninput={(event) => updateProviderDraft(draft.id, 'api_key', inputValue(event))}
-                      />
-                      <button
-                        type="button"
-                        class="btn btn-ghost btn-sm provider-secret-toggle"
-                        onclick={() => toggleProviderSecret(draft.id)}
-                      >{providerSecretReveal[draft.id] ? 'Hide' : 'Show'}</button>
-                    </div>
-                  </label>
+                  {#if draft.auth_mode === 'api-key'}
+                    <label class="tier-field provider-field-wide">
+                      <span>API Key</span>
+                      <div class="provider-secret">
+                        <input
+                          type={providerSecretReveal[draft.id] ? 'text' : 'password'}
+                          autocomplete="off"
+                          value={draft.api_key}
+                          oninput={(event) => updateProviderDraft(draft.id, 'api_key', inputValue(event))}
+                        />
+                        <button
+                          type="button"
+                          class="btn btn-ghost btn-sm provider-secret-toggle"
+                          onclick={() => toggleProviderSecret(draft.id)}
+                        >{providerSecretReveal[draft.id] ? 'Hide' : 'Show'}</button>
+                      </div>
+                    </label>
+                  {/if}
                 </div>
               </div>
             {/each}
@@ -1514,10 +1498,14 @@
                 </label>
                 <label class="tier-field tier-field-service">
                   <span>Service Tier</span>
-                  <input
+                  <select
                     value={draft.service_tier}
-                    oninput={(event) => updateTierDraft(draft.id, 'service_tier', inputValue(event))}
-                  />
+                    onchange={(event) => updateTierDraft(draft.id, 'service_tier', inputValue(event))}
+                  >
+                    {#each tierServiceTierChoices(draft.service_tier) as tier}
+                      <option value={tier}>{tier || 'default'}</option>
+                    {/each}
+                  </select>
                 </label>
                 <button class="btn btn-ghost btn-sm tier-remove" disabled={tierDrafts.length <= 1} onclick={() => removeTierDraft(draft.id)}>Remove</button>
               </div>

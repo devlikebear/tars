@@ -32,7 +32,6 @@ export type OnboardingProvider = {
   auth_mode: AuthMode
   api_key: string
   base_url: string
-  oauth_provider?: string
   // keepExistingApiKey is true on the re-entry path when the wizard
   // has prefilled a masked api_key from the server. Saving with this
   // flag set drops api_key from the patch payload so the existing
@@ -258,12 +257,6 @@ export function buildConfigPayload(
   if (form.provider.base_url.trim() !== '') {
     provider.base_url = form.provider.base_url.trim()
   }
-  // oauth_provider is intentionally omitted from the payload. The
-  // backend's providerAuthConfig (internal/llm/provider.go) auto-fills
-  // it from the per-kind defaults in internal/llmdefaults/. Asking the
-  // user a second time made the kind selection feel redundant; if a
-  // pre-existing oauth_provider value is on disk PatchYAML preserves
-  // it because we never write the key.
 
   const tiers: Record<string, Record<string, unknown>> = {}
   for (const tier of requiredTiers) {
@@ -411,7 +404,6 @@ export function providerFromConfigValues(
     auth_mode: (String(entry.auth_mode ?? 'api-key') as AuthMode) || 'api-key',
     api_key: apiKey,
     base_url: String(entry.base_url ?? ''),
-    oauth_provider: entry.oauth_provider ? String(entry.oauth_provider) : undefined,
     keepExistingApiKey: apiKey.trim() !== '',
     previousAlias: alias,
   }

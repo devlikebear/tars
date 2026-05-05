@@ -6,6 +6,7 @@ import (
 
 	"github.com/devlikebear/tars/internal/config"
 	"github.com/devlikebear/tars/internal/llm"
+	"github.com/devlikebear/tars/internal/llmdefaults"
 )
 
 func ResolveOverride(cfg *config.Config, tier string, override *ProviderOverride, overrideSource string) (config.ResolvedLLMTier, PromptExecutionMetadata, error) {
@@ -57,13 +58,14 @@ func ResolveOverride(cfg *config.Config, tier string, override *ProviderOverride
 	resolved.ProviderAlias = alias
 	resolved.Kind = strings.ToLower(strings.TrimSpace(provider.Kind))
 	resolved.AuthMode = strings.ToLower(strings.TrimSpace(provider.AuthMode))
-	resolved.OAuthProvider = strings.ToLower(strings.TrimSpace(provider.OAuthProvider))
+	if resolved.AuthMode == "oauth" {
+		resolved.OAuthProvider = strings.ToLower(strings.TrimSpace(llmdefaults.OAuthProvider(resolved.Kind)))
+	} else {
+		resolved.OAuthProvider = ""
+	}
 	resolved.BaseURL = strings.TrimSpace(provider.BaseURL)
 	resolved.APIKey = strings.TrimSpace(provider.APIKey)
 	resolved.Model = model
-	if serviceTier := strings.TrimSpace(provider.ServiceTier); serviceTier != "" {
-		resolved.ServiceTier = serviceTier
-	}
 	if resolved.APIKey == "" && resolved.AuthMode == "api-key" {
 		return config.ResolvedLLMTier{}, PromptExecutionMetadata{}, fmt.Errorf("override failed: provider alias %q missing api_key", alias)
 	}

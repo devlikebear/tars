@@ -16,9 +16,7 @@ llm:
     codex:
       kind: openai-codex
       auth_mode: oauth
-      oauth_provider: openai-codex
       base_url: https://chatgpt.com/backend-api
-      service_tier: priority
     minimax:
       kind: anthropic
       auth_mode: api-key
@@ -35,10 +33,12 @@ llm:
       provider: codex
       model: gpt-5.4
       reasoning_effort: high
+      service_tier: priority
     standard:
       provider: codex
       model: gpt-5.4
       reasoning_effort: medium
+      service_tier: priority
     light:
       provider: minimax
       model: MiniMax-M2.7
