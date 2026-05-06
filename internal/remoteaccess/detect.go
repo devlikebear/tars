@@ -73,11 +73,7 @@ func Detect(ctx context.Context, opts Options) (Status, error) {
 		return status, nil
 	}
 
-	configOut, configErrOut, err := opts.Runner.Run(ctx, opts.Binary, "serve", "get-config", "--all")
-	if err != nil {
-		return status, commandError("tailscale serve get-config --all", configErrOut, err)
-	}
-	serve, err := parseServeConfig(configOut, opts.HTTPSPort, opts.TargetURL)
+	serve, err := detectServeConfig(ctx, opts)
 	if err != nil {
 		return status, err
 	}
@@ -85,6 +81,20 @@ func Detect(ctx context.Context, opts Options) (Status, error) {
 	status.ServePort = serve.port
 	status.OwnedByTARS = serve.owned
 	return status, nil
+}
+
+func detectServeConfig(ctx context.Context, opts Options) (serveConfigStatus, error) {
+	statusOut, statusErrOut, err := opts.Runner.Run(ctx, opts.Binary, "serve", "status", "--json")
+	if err == nil {
+		return parseServeConfig(statusOut, opts.HTTPSPort, opts.TargetURL)
+	}
+	statusErr := commandError("tailscale serve status --json", statusErrOut, err)
+
+	configOut, configErrOut, configErr := opts.Runner.Run(ctx, opts.Binary, "serve", "get-config", "--all")
+	if configErr != nil {
+		return serveConfigStatus{}, fmt.Errorf("%v; fallback %v", statusErr, commandError("tailscale serve get-config --all", configErrOut, configErr))
+	}
+	return parseServeConfig(configOut, opts.HTTPSPort, opts.TargetURL)
 }
 
 func Enable(ctx context.Context, opts Options) error {
