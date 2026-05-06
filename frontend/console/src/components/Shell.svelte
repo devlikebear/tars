@@ -10,6 +10,7 @@
     unreadCount?: number
     needsSetup?: boolean
     authRole?: string
+    zenActive?: boolean
     onNavigate: (path: string) => void
     onUnreadChange?: (count: number) => void
     onLogout?: () => void
@@ -22,6 +23,7 @@
     unreadCount = 0,
     needsSetup = false,
     authRole = '',
+    zenActive = false,
     onNavigate,
     onUnreadChange,
     onLogout,
@@ -48,22 +50,24 @@
   }
 </script>
 
-<div class="shell" class:setup-only={needsSetup}>
-  {#if !needsSetup}
+<div class="shell" class:setup-only={needsSetup} class:zen-active={zenActive}>
+  {#if !needsSetup && !zenActive}
     <Nav {currentPath} {authRole} onNavigate={handleNavigate} {navOpen} onClose={closeNav} />
     {#if navOpen}
       <div class="nav-overlay" role="presentation" onclick={closeNav}></div>
     {/if}
   {/if}
-  <div class="shell-main" class:no-nav={needsSetup}>
-    <Header {serverHealth} {unreadCount} {onUnreadChange} {onNavigate} {navOpen} {authRole} {onLogout} onToggleNav={toggleNav} />
+  <div class="shell-main" class:no-nav={needsSetup || zenActive}>
+    {#if !zenActive}
+      <Header {serverHealth} {unreadCount} {onUnreadChange} {onNavigate} {navOpen} {authRole} {onLogout} onToggleNav={toggleNav} />
+    {/if}
     {#if needsSetup}
       <div class="setup-only-banner" role="alert">
         <strong>{$t.shell.setupOnlyKicker}</strong>
         <span>{$t.shell.setupOnlyBody}</span>
       </div>
     {/if}
-    <main class="shell-content">
+    <main class="shell-content" class:zen={zenActive}>
       {@render children()}
     </main>
   </div>
@@ -112,6 +116,10 @@
     flex-direction: column;
     padding: var(--space-6);
     width: 100%;
+  }
+
+  .shell-content.zen {
+    padding: 0;
   }
 
   .nav-overlay {

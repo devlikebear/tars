@@ -22,6 +22,7 @@
   import { resolveRoute, type Route } from './lib/router'
   import { APIRequestError, getAuthWhoami, getEventsHistory, getHealthz, logoutAuth, streamEvents } from './lib/api'
   import type { AuthWhoamiResponse } from './lib/types'
+  import { isZenShortcut, zenMode } from './lib/zenMode.svelte'
 
   let currentPath = $state('/console')
   let route = $state<Route>({ view: 'home' })
@@ -34,6 +35,7 @@
   let loginRequired = $state(false)
   let stopGlobalStream: (() => void) | null = null
   let authRole = $derived(authInfo?.auth_role ?? '')
+  let zenActive = $derived(zenMode.active && route.view === 'chat' && !needsSetup && !loginRequired)
 
   function navigate(path: string) {
     if (path === currentPath) return
@@ -127,16 +129,36 @@
     navigate('/console')
   }
 
+  function onGlobalKeydown(event: KeyboardEvent) {
+    if (route.view !== 'chat' || needsSetup || loginRequired) return
+    if (isZenShortcut(event)) {
+      event.preventDefault()
+      zenMode.toggle()
+      return
+    }
+    if (event.key === 'Escape' && zenMode.active) {
+      const target = event.target as HTMLElement | null
+      const tag = target?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || target?.isContentEditable) return
+      event.preventDefault()
+      zenMode.set(false)
+    }
+  }
+
   onMount(() => {
     syncFromBrowser()
     const onPopState = () => syncFromBrowser()
     window.addEventListener('popstate', onPopState)
+    window.addEventListener('keydown', onGlobalKeydown)
 
     void checkSetupAndMaybeRedirect()
       .then(refreshAuth)
       .then(loadConsoleNotifications)
 
-    return () => window.removeEventListener('popstate', onPopState)
+    return () => {
+      window.removeEventListener('popstate', onPopState)
+      window.removeEventListener('keydown', onGlobalKeydown)
+    }
   })
 
   onDestroy(() => {
@@ -155,6 +177,7 @@
     {unreadCount}
     {needsSetup}
     {authRole}
+    {zenActive}
     onNavigate={navigate}
     onUnreadChange={(count) => { unreadCount = count }}
     onLogout={handleLogout}

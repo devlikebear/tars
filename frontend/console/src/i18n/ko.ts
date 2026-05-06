@@ -488,6 +488,10 @@ export const ko = {
         extractSkillTooltip: '이 세션에서 재사용 가능한 스킬 추출',
         delete: '삭제',
         confirmDelete: '확인?',
+        zenEnter: '집중',
+        zenEnterTooltip: '집중 모드 시작 (Ctrl/Cmd + .)',
+        zenExit: '집중 해제',
+        zenExitTooltip: '집중 모드 종료 (Esc 또는 Ctrl/Cmd + .)',
       },
     },
     planStrip: {
