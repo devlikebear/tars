@@ -39,6 +39,7 @@
     type DockPanelDefinition,
     type DockZone,
   } from '../lib/dock/layout'
+  import { zenMode } from '../lib/zenMode.svelte'
 
   interface Props {
     sessionId?: string
@@ -1038,16 +1039,28 @@
             {/if}
           </div>
           <div class="session-actions">
-            {#if !isMainSession()}
-              <button class="btn btn-ghost btn-sm" disabled={actionBusy} onclick={startRename}>{$t.chat.session.actions.rename}</button>
-              <button class="btn btn-ghost btn-sm" disabled={actionBusy} onclick={handleAutoTitle} title={$t.chat.session.actions.aiTitleTooltip}>{$t.chat.session.actions.aiTitle}</button>
+            {#if !zenMode.active}
+              {#if !isMainSession()}
+                <button class="btn btn-ghost btn-sm" disabled={actionBusy} onclick={startRename}>{$t.chat.session.actions.rename}</button>
+                <button class="btn btn-ghost btn-sm" disabled={actionBusy} onclick={handleAutoTitle} title={$t.chat.session.actions.aiTitleTooltip}>{$t.chat.session.actions.aiTitle}</button>
+              {/if}
+              <button class="btn btn-ghost btn-sm" disabled={actionBusy} onclick={handleCompact} title={$t.chat.session.actions.compactTooltip}>{$t.chat.session.actions.compact}</button>
+              <span class="session-actions-sep"></span>
+              <button class="btn btn-ghost btn-sm" onclick={handleCopyChat} title={$t.chat.session.actions.copyAllTooltip}>{$t.chat.session.actions.copyAll}</button>
+              <button class="btn btn-ghost btn-sm" onclick={handleDownloadChat} title={$t.chat.session.actions.downloadTooltip}>{$t.chat.session.actions.download}</button>
+              <button class="btn btn-ghost btn-sm" disabled={actionBusy} onclick={() => openPanel('skillExtraction')} title={$t.chat.session.actions.extractSkillTooltip}>{$t.chat.session.actions.extractSkill}</button>
             {/if}
-            <button class="btn btn-ghost btn-sm" disabled={actionBusy} onclick={handleCompact} title={$t.chat.session.actions.compactTooltip}>{$t.chat.session.actions.compact}</button>
-            <span class="session-actions-sep"></span>
-            <button class="btn btn-ghost btn-sm" onclick={handleCopyChat} title={$t.chat.session.actions.copyAllTooltip}>{$t.chat.session.actions.copyAll}</button>
-            <button class="btn btn-ghost btn-sm" onclick={handleDownloadChat} title={$t.chat.session.actions.downloadTooltip}>{$t.chat.session.actions.download}</button>
-            <button class="btn btn-ghost btn-sm" disabled={actionBusy} onclick={() => openPanel('skillExtraction')} title={$t.chat.session.actions.extractSkillTooltip}>{$t.chat.session.actions.extractSkill}</button>
-            {#if !isMainSession()}
+            <button
+              type="button"
+              class="btn btn-ghost btn-sm zen-toggle"
+              class:active={zenMode.active}
+              aria-pressed={zenMode.active}
+              onclick={() => zenMode.toggle()}
+              title={zenMode.active ? $t.chat.session.actions.zenExitTooltip : $t.chat.session.actions.zenEnterTooltip}
+            >
+              {zenMode.active ? $t.chat.session.actions.zenExit : $t.chat.session.actions.zenEnter}
+            </button>
+            {#if !zenMode.active && !isMainSession()}
               <span class="session-actions-sep"></span>
               <button class="btn btn-danger btn-sm" disabled={actionBusy} onclick={handleDelete}>
                 {deleteConfirm ? $t.chat.session.actions.confirmDelete : $t.chat.session.actions.delete}
@@ -1058,6 +1071,18 @@
       {:else}
         <div class="session-header">
           <h3 class="session-title new-chat-title">{$t.chat.session.newChat}</h3>
+          <div class="session-actions">
+            <button
+              type="button"
+              class="btn btn-ghost btn-sm zen-toggle"
+              class:active={zenMode.active}
+              aria-pressed={zenMode.active}
+              onclick={() => zenMode.toggle()}
+              title={zenMode.active ? $t.chat.session.actions.zenExitTooltip : $t.chat.session.actions.zenEnterTooltip}
+            >
+              {zenMode.active ? $t.chat.session.actions.zenExit : $t.chat.session.actions.zenEnter}
+            </button>
+          </div>
         </div>
       {/if}
 
@@ -1595,6 +1620,11 @@
     height: 16px;
     background: var(--border-subtle);
     margin: 0 var(--space-1);
+  }
+
+  .zen-toggle.active {
+    color: var(--primary);
+    border-color: var(--primary);
   }
 
   .plan-progress-strip {

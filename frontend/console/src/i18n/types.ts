@@ -487,6 +487,10 @@ export type Translations = {
         extractSkillTooltip: string
         delete: string
         confirmDelete: string
+        zenEnter: string
+        zenEnterTooltip: string
+        zenExit: string
+        zenExitTooltip: string
       }
     }
     planStrip: {

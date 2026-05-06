@@ -488,6 +488,10 @@ export const en = {
         extractSkillTooltip: 'Extract reusable skills from this session',
         delete: 'Delete',
         confirmDelete: 'Confirm?',
+        zenEnter: 'Zen',
+        zenEnterTooltip: 'Enter focus mode (Ctrl/Cmd + .)',
+        zenExit: 'Exit Zen',
+        zenExitTooltip: 'Exit focus mode (Esc or Ctrl/Cmd + .)',
       },
     },
     planStrip: {

@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.32.2] - 2026-05-07
+
+### Added
+
+- **Chat Zen mode** — collapse the navigation sidebar and global header into a focus-only chat layout. Toggle from the chat header (Zen / Exit Zen button), with `Ctrl/Cmd + .` to enter or exit and `Esc` to exit. State persists across reloads via localStorage and only takes visual effect on the chat route. Improves usability on mobile where chrome consumed most of the viewport. Closes #741.
+
 ## [0.32.1] - 2026-05-06
 
 ### Fixed
