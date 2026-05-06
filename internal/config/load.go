@@ -27,6 +27,24 @@ func Load(path string) (Config, error) {
 	return cfg, nil
 }
 
+// LoadFile resolves settings from defaults + YAML only, intentionally skipping
+// environment overrides. Use this for editing the config file itself; Load is
+// still the runtime path where env vars have highest precedence.
+func LoadFile(path string) (Config, error) {
+	cfg := Default()
+
+	if path != "" {
+		fileCfg, err := loadYAML(path)
+		if err != nil {
+			return Config{}, err
+		}
+		merge(&cfg, fileCfg)
+	}
+
+	applyDefaults(&cfg)
+	return cfg, nil
+}
+
 // LoadRaw reads the raw content of the config file at the given path.
 func LoadRaw(path string) ([]byte, error) {
 	if path == "" {

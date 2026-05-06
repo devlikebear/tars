@@ -72,29 +72,59 @@ func newConfigAPIHandler(configPath string, cfg config.Config, workspaceDir stri
 }
 
 type configSchemaResponse struct {
-	Path      string             `json:"path"`
-	UpdatedAt string             `json:"updated_at,omitempty"`
-	Fields    []config.FieldMeta `json:"fields"`
-	Values    map[string]any     `json:"values"`
+	Path            string                            `json:"path"`
+	UpdatedAt       string                            `json:"updated_at,omitempty"`
+	Fields          []config.FieldMeta                `json:"fields"`
+	Values          map[string]any                    `json:"values"`
+	EffectiveValues map[string]any                    `json:"effective_values,omitempty"`
+	EnvOverrides    map[string]config.EnvOverrideMeta `json:"env_overrides,omitempty"`
 }
 
 func handleGetConfigSchema(w http.ResponseWriter, configPath string, cfg config.Config, workspaceDir string) {
 	activeCfg := cfg
+	effectiveCfg := cfg
 	if strings.TrimSpace(configPath) != "" {
-		loaded, err := config.Load(configPath)
+		loaded, err := config.LoadFile(configPath)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			return
 		}
 		activeCfg = loaded
+		effectiveLoaded, err := config.Load(configPath)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+		effectiveCfg = effectiveLoaded
 		if strings.TrimSpace(workspaceDir) != "" {
 			activeCfg.WorkspaceDir = workspaceDir
+			effectiveCfg.WorkspaceDir = workspaceDir
 		}
 	}
 	values := config.ConfigToMap(activeCfg)
+	effectiveValues := config.ConfigToMap(effectiveCfg)
 
 	// Mask sensitive values
 	schema := config.Schema()
+	maskSensitiveConfigValues(schema, values)
+	maskSensitiveConfigValues(schema, effectiveValues)
+
+	updatedAt := ""
+	if info, err := os.Stat(configPath); err == nil {
+		updatedAt = info.ModTime().UTC().Format(time.RFC3339)
+	}
+
+	writeJSON(w, http.StatusOK, configSchemaResponse{
+		Path:            configPath,
+		UpdatedAt:       updatedAt,
+		Fields:          schema,
+		Values:          values,
+		EffectiveValues: effectiveValues,
+		EnvOverrides:    config.ActiveEnvOverrides(),
+	})
+}
+
+func maskSensitiveConfigValues(schema []config.FieldMeta, values map[string]any) {
 	sensitiveKeys := map[string]bool{}
 	for _, f := range schema {
 		if f.Sensitive {
@@ -108,18 +138,6 @@ func handleGetConfigSchema(w http.ResponseWriter, configPath string, cfg config.
 			}
 		}
 	}
-
-	updatedAt := ""
-	if info, err := os.Stat(configPath); err == nil {
-		updatedAt = info.ModTime().UTC().Format(time.RFC3339)
-	}
-
-	writeJSON(w, http.StatusOK, configSchemaResponse{
-		Path:      configPath,
-		UpdatedAt: updatedAt,
-		Fields:    schema,
-		Values:    values,
-	})
 }
 
 func maskString(s string) string {

@@ -46,6 +46,7 @@ const (
 	defaultDashboardAuthMode                   = "inherit"
 	defaultAPIMaxInflightChat                  = 2
 	defaultAPIMaxInflightAgentRuns             = 4
+	defaultRemoteAccessTailscaleServeHTTPSPort = 443
 	defaultMemoryEmbedProvider                 = "gemini"
 	defaultMemoryEmbedModel                    = "gemini-embedding-2-preview"
 	defaultMemoryEmbedDimensions               = 768
@@ -104,6 +105,9 @@ func defaultConfigValues() Config {
 			DashboardAuthMode:       defaultDashboardAuthMode,
 			APIMaxInflightChat:      defaultAPIMaxInflightChat,
 			APIMaxInflightAgentRuns: defaultAPIMaxInflightAgentRuns,
+		},
+		RemoteAccessConfig: RemoteAccessConfig{
+			RemoteAccessTailscaleServeHTTPSPort: defaultRemoteAccessTailscaleServeHTTPSPort,
 		},
 		// LLMConfig: left empty here. Defaults live in applyLLMPoolDefaults
 		// (base_url / api_key / auth_mode auto-fill per Kind) and the

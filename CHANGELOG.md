@@ -6,6 +6,19 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.32.0] - 2026-05-06
+
+### Added
+
+- **Secure Tailscale remote access** — Settings and onboarding now include a Remote Access control for exposing the local console through a TARS-owned `tailscale serve` HTTPS target while keeping TARS bound to loopback. The backend adds Tailscale detection, preflight checks, desired-state config, startup/shutdown reconciliation, and `tars remote status|enable|disable|url` CLI commands.
+- **Browser login with admin/user roles** — the console now supports password login, pairing-code login, session cookies, logout, and password management for separate `admin` and `user` roles. Remote/mobile sessions default to the user role and admin surfaces stay hidden or blocked.
+- **Endpoint role policy for browser sessions** — API auth now distinguishes bearer tokens from browser sessions, gives bearer auth priority, applies a fail-closed user allowlist, blocks cross-site mutating browser requests, and prevents Tailscale Serve loopback traffic from bypassing auth accidentally.
+- **Environment override visibility in Settings** — the config editor now separates YAML file values from effective runtime values and shows when environment variables such as `TARS_API_AUTH_MODE` are overriding the saved file.
+
+### Changed
+
+- **Config schema reads editable file state** — Settings now reloads config schema values from the YAML file without environment overrides, so saving `api_auth_mode: required` no longer appears to revert to `off` when the dev server was launched with `TARS_API_AUTH_MODE=off`.
+
 ## [0.31.180] - 2026-05-05
 
 ### Added

@@ -62,6 +62,11 @@ type APIConfig struct {
 	APIMaxInflightAgentRuns   int
 }
 
+type RemoteAccessConfig struct {
+	RemoteAccessTailscaleServeEnabled   bool
+	RemoteAccessTailscaleServeHTTPSPort int
+}
+
 // LLMConfig holds the named provider pool + tier bindings that together
 // describe every LLM endpoint TARS will call. See
 // docs/plans/llm-provider-pool.md for the schema rationale.
@@ -289,6 +294,7 @@ type ExtensionConfig struct {
 type Config struct {
 	RuntimeConfig
 	APIConfig
+	RemoteAccessConfig
 	LLMConfig
 	MemoryConfig
 	UsageConfig

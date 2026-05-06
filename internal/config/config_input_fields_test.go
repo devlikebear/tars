@@ -13,6 +13,8 @@ func TestConfigInputFieldsCarryPreferredYAMLPaths(t *testing.T) {
 		{key: "memory_embed_base_url", path: "memory.embed.base_url"},
 		{key: "usage_daily_token_budget", path: "usage.limits.daily_tokens"},
 		{key: "pulse_allowed_autofixes_json", path: "automation.pulse.allowed_autofixes"},
+		{key: "remote_access_tailscale_serve_enabled", path: "remote_access.tailscale_serve.enabled"},
+		{key: "remote_access_tailscale_serve_https_port", path: "remote_access.tailscale_serve.https_port"},
 	}
 
 	for _, tt := range tests {

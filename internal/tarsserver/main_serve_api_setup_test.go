@@ -23,6 +23,7 @@ func TestRegisterSetupOnlyRoutes_ServesAllowedEndpoints(t *testing.T) {
 		setup:           stub,
 		config:          stub,
 		auth:            stub,
+		remoteAccess:    stub,
 		events:          stub,
 		console:         stub,
 		providersModels: stub,
@@ -36,6 +37,13 @@ func TestRegisterSetupOnlyRoutes_ServesAllowedEndpoints(t *testing.T) {
 		"/v1/admin/config/schema",
 		"/v1/admin/restart",
 		"/v1/auth/whoami",
+		"/v1/auth/login",
+		"/v1/auth/pairing-login",
+		"/v1/auth/logout",
+		"/v1/auth/users/user/password",
+		"/v1/admin/remote-access/status",
+		"/v1/admin/remote-access/enable",
+		"/v1/admin/remote-access/disable",
 		"/v1/providers",
 		"/v1/models",
 		"/v1/events/stream",
@@ -57,10 +65,11 @@ func TestRegisterSetupOnlyRoutes_ServesAllowedEndpoints(t *testing.T) {
 func TestRegisterSetupOnlyRoutes_FallbackOnUnknownV1(t *testing.T) {
 	mux := http.NewServeMux()
 	registerSetupOnlyRoutes(mux, setupOnlyHandlers{
-		healthz: noContentHandler(),
-		setup:   noContentHandler(),
-		config:  noContentHandler(),
-		auth:    noContentHandler(),
+		healthz:      noContentHandler(),
+		setup:        noContentHandler(),
+		config:       noContentHandler(),
+		auth:         noContentHandler(),
+		remoteAccess: noContentHandler(),
 	})
 
 	for _, path := range []string{"/v1/chat", "/v1/agentruntime/runs", "/v1/sessions", "/v1/cron/jobs", "/v1/pulse/status"} {

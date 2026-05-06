@@ -659,6 +659,8 @@ export type CleanupApplyResult = {
 
 export type APIErrorPayload = {
   error?: string
+  code?: string
+  checks?: unknown
   sandbox_report?: SkillSandboxReport
 }
 
@@ -1269,11 +1271,17 @@ export type ConfigFieldMeta = {
   options?: string[]
 }
 
+export type ConfigEnvOverride = {
+  env_key: string
+}
+
 export type ConfigSchema = {
   path: string
   updated_at?: string
   fields: ConfigFieldMeta[]
   values: Record<string, unknown>
+  effective_values?: Record<string, unknown>
+  env_overrides?: Record<string, ConfigEnvOverride>
 }
 
 export type ProviderModelsInfo = {
@@ -1303,6 +1311,59 @@ export type ProvidersAPIInfo = {
   auth_mode: string
   providers: ProviderAPIStatus[]
   pool: ProviderPoolEntry[]
+}
+
+// --- Browser auth / remote access ---
+
+export type AuthWhoamiResponse = {
+  authenticated: boolean
+  auth_role: '' | 'admin' | 'user' | string
+  is_admin: boolean
+  auth_mode: string
+  admin_configured?: boolean
+  user_configured?: boolean
+}
+
+export type AuthLoginRequest = {
+  username?: 'admin' | 'user'
+  role?: 'admin' | 'user'
+  password: string
+}
+
+export type AuthPairingLoginRequest = {
+  code: string
+}
+
+export type RemoteAccessStatus = {
+  Installed?: boolean
+  LoggedIn?: boolean
+  HostName?: string
+  TailnetURL?: string
+  ServeActive?: boolean
+  ServePort?: number
+  OwnedByTARS?: boolean
+  installed?: boolean
+  logged_in?: boolean
+  host_name?: string
+  tailnet_url?: string
+  serve_active?: boolean
+  serve_port?: number
+  owned_by_tars?: boolean
+}
+
+export type RemoteAccessCheck = {
+  key: string
+  ok: boolean
+  message: string
+}
+
+export type RemoteAccessResponse = {
+  desired_enabled: boolean
+  desired_https_port: number
+  target_url: string
+  url?: string
+  status: RemoteAccessStatus
+  checks: RemoteAccessCheck[]
 }
 
 // --- Onboarding (Phase 1+2 backend, Phase 3 wizard) ---

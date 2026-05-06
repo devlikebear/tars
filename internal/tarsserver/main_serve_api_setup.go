@@ -28,7 +28,12 @@ func buildSetupOnlyAPIMux(opts *options, deps runtimeDeps, nowFn func() time.Tim
 	healthzHandler := newHealthzAPIHandler(nowFn, dashboardAuthHealthzStatus(cfg), func() bool { return config.NeedsSetup(cfg) })
 	setupHandler := newSetupAPIHandler(opts.ConfigPath, cfg, logger)
 	configHandler := newConfigAPIHandler(opts.ConfigPath, cfg, cfg.WorkspaceDir, logger)
-	authHandler := newAuthAPIHandler(cfg.APIAuthMode)
+	authHandler := newAuthAPIHandler(cfg.APIAuthMode, cfg.WorkspaceDir)
+	remoteAccessHandler := newRemoteAccessAPIHandler(remoteAccessHandlerOptions{
+		Config:     cfg,
+		ConfigPath: opts.ConfigPath,
+		Logger:     logger,
+	})
 	// providers/models picker — wired even in setup-only so the Step 2
 	// "Refresh from provider" button can call /v1/models with the user's
 	// just-typed credentials. The cache lives in the workspace dir; the
@@ -46,6 +51,7 @@ func buildSetupOnlyAPIMux(opts *options, deps runtimeDeps, nowFn func() time.Tim
 		setup:           setupHandler,
 		config:          configHandler,
 		auth:            authHandler,
+		remoteAccess:    remoteAccessHandler,
 		console:         consoleHandler,
 		providersModels: providersModelsHandler,
 		// events handler intentionally omitted for now — the SPA falls back
@@ -76,6 +82,7 @@ type setupOnlyHandlers struct {
 	setup           http.Handler
 	config          http.Handler // serves /v1/admin/config{,/values,/schema} and /v1/admin/restart
 	auth            http.Handler
+	remoteAccess    http.Handler
 	events          http.Handler // optional — SSE keepalive so the SPA stays connected
 	console         http.Handler
 	providersModels http.Handler // optional — /v1/providers + /v1/models for the wizard model picker
@@ -93,6 +100,15 @@ func registerSetupOnlyRoutes(mux *http.ServeMux, handlers setupOnlyHandlers) {
 	mux.Handle("/v1/admin/config/schema", handlers.config)
 	mux.Handle("/v1/admin/restart", handlers.config)
 	mux.Handle("/v1/auth/whoami", handlers.auth)
+	mux.Handle("/v1/auth/login", handlers.auth)
+	mux.Handle("/v1/auth/pairing-login", handlers.auth)
+	mux.Handle("/v1/auth/logout", handlers.auth)
+	mux.Handle("/v1/auth/users/", handlers.auth)
+	if handlers.remoteAccess != nil {
+		mux.Handle("/v1/admin/remote-access/status", handlers.remoteAccess)
+		mux.Handle("/v1/admin/remote-access/enable", handlers.remoteAccess)
+		mux.Handle("/v1/admin/remote-access/disable", handlers.remoteAccess)
+	}
 	if handlers.providersModels != nil {
 		mux.Handle("/v1/providers", handlers.providersModels)
 		mux.Handle("/v1/models", handlers.providersModels)

@@ -35,6 +35,8 @@ var configInputFields = []configInputField{
 	boolField("api_allow_insecure_local_auth", []string{"API_ALLOW_INSECURE_LOCAL_AUTH", "TARS_API_ALLOW_INSECURE_LOCAL_AUTH"}, func(cfg *Config) *bool { return &cfg.APIAllowInsecureLocalAuth }),
 	withYAMLPath(intField("api_max_inflight_chat", []string{"API_MAX_INFLIGHT_CHAT", "TARS_API_MAX_INFLIGHT_CHAT"}, func(cfg *Config) *int { return &cfg.APIMaxInflightChat }, parsePositiveInt), "api.max_inflight.chat"),
 	withYAMLPath(intField("api_max_inflight_agent_runs", []string{"API_MAX_INFLIGHT_AGENT_RUNS", "TARS_API_MAX_INFLIGHT_AGENT_RUNS"}, func(cfg *Config) *int { return &cfg.APIMaxInflightAgentRuns }, parsePositiveInt), "api.max_inflight.agent_runs"),
+	withYAMLPath(boolField("remote_access_tailscale_serve_enabled", []string{"REMOTE_ACCESS_TAILSCALE_SERVE_ENABLED", "TARS_REMOTE_ACCESS_TAILSCALE_SERVE_ENABLED"}, func(cfg *Config) *bool { return &cfg.RemoteAccessTailscaleServeEnabled }), "remote_access.tailscale_serve.enabled"),
+	withYAMLPath(intField("remote_access_tailscale_serve_https_port", []string{"REMOTE_ACCESS_TAILSCALE_SERVE_HTTPS_PORT", "TARS_REMOTE_ACCESS_TAILSCALE_SERVE_HTTPS_PORT"}, func(cfg *Config) *int { return &cfg.RemoteAccessTailscaleServeHTTPSPort }, parsePositiveInt), "remote_access.tailscale_serve.https_port"),
 	// Named provider pool + tier bindings. See docs/plans/llm-provider-pool.md
 	// and internal/config/llm_resolve.go.
 	withYAMLPath(llmProvidersField("llm_providers", []string{"LLM_PROVIDERS_JSON", "TARS_LLM_PROVIDERS_JSON"}), "llm.providers"),
@@ -180,6 +182,20 @@ func mergeConfigInputFields(dst *Config, src Config, fields []configInputField) 
 	}
 }
 
+type EnvOverrideMeta struct {
+	EnvKey string `json:"env_key"`
+}
+
+func ActiveEnvOverrides() map[string]EnvOverrideMeta {
+	overrides := map[string]EnvOverrideMeta{}
+	for _, field := range configInputFields {
+		if key, _, ok := firstDefinedEnvKey(field.envKeys); ok {
+			overrides[field.yamlKey] = EnvOverrideMeta{EnvKey: key}
+		}
+	}
+	return overrides
+}
+
 func configInputFieldByYAMLKey(key string) (configInputField, bool) {
 	field, ok := configInputFieldsByYAMLKey[strings.TrimSpace(strings.ToLower(key))]
 	return field, ok
@@ -191,12 +207,20 @@ func withYAMLPath(field configInputField, path string) configInputField {
 }
 
 func firstDefinedEnv(keys []string) string {
+	_, value, ok := firstDefinedEnvKey(keys)
+	if !ok {
+		return ""
+	}
+	return value
+}
+
+func firstDefinedEnvKey(keys []string) (string, string, bool) {
 	for _, key := range keys {
 		if value := os.Getenv(key); value != "" {
-			return value
+			return key, value, true
 		}
 	}
-	return ""
+	return "", "", false
 }
 
 func stringField(yamlKey string, envKeys []string, accessor func(*Config) *string, normalize func(string) string) configInputField {

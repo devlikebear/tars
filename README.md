@@ -167,6 +167,25 @@ Multi-channel I/O beyond the web console:
 - **Webhooks** — Inbound HTTP triggers for external integrations
 - **Assistant** — macOS popup and voice helpers that share the core `~/.tars/workspace` default unless overridden
 - **Local** — Direct API calls for scripts and automation
+- **Remote Access** — Tailscale Serve can publish the loopback-only console over tailnet HTTPS with a TARS-owned target, while browser sessions use admin/user password auth and remote/mobile logins stay user-scoped.
+
+### Remote Access
+
+TARS can expose the local console to your phone or another trusted device through Tailscale without binding the server to `0.0.0.0`.
+
+```bash
+# Create or rotate console passwords
+tars auth init
+tars auth passwd admin
+tars auth passwd user
+
+# Publish the loopback console through Tailscale Serve
+tars remote status
+tars remote enable
+tars remote url
+```
+
+Remote Access requires `api_auth_mode: required`, configured admin/user passwords, and a logged-in Tailscale client. The Settings page shows both the saved YAML value and the effective runtime value when environment variables override config, so a local dev launch such as `TARS_API_AUTH_MODE=off` is visible before enabling remote access.
 
 ### Extensibility
 
@@ -211,7 +230,7 @@ tars serve
 tars
 ```
 
-On first run, if `~/.tars/config/config.yaml` has no `llm_providers` / `llm_tiers`, the server boots in **setup-only mode**: only the wizard endpoints + `/console` are active and `tars api serving on … (setup-only mode)` is printed to stdout. Open `http://127.0.0.1:43180/console`, the SPA detects `needs_setup=true` from `/v1/healthz`, and walks you through three steps: pick a provider (kind + alias + api_key), bind heavy/standard/light tiers to a model, then save & restart. The wizard is also re-runnable later from the Settings page (`/console/config` → "설정 마법사 다시 실행 →") if you need to swap providers or tweak tier bindings.
+On first run, if `~/.tars/config/config.yaml` has no `llm_providers` / `llm_tiers`, the server boots in **setup-only mode**: only the wizard endpoints + `/console` are active and `tars api serving on … (setup-only mode)` is printed to stdout. Open `http://127.0.0.1:43180/console`, the SPA detects `needs_setup=true` from `/v1/healthz`, and walks you through provider setup, heavy/standard/light tier binding, optional Tailscale Remote Access, then save & restart. The wizard is also re-runnable later from the Settings page (`/console/config` → "설정 마법사 다시 실행 →") if you need to swap providers, tweak tier bindings, or enable remote access later.
 
 To skip the wizard and edit by hand, set credentials directly and validate:
 

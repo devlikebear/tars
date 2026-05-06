@@ -18,9 +18,11 @@ const (
 	ModeExternalRequired = "external-required"
 	ModeRequired         = "required"
 
-	DefaultWorkspaceHeader = "Tars-Workspace-Id"
-	debugWorkspaceHeader   = "Tars-Debug-Workspace-Id"
-	debugRoleHeader        = "Tars-Debug-Auth-Role"
+	DefaultWorkspaceHeader          = "Tars-Workspace-Id"
+	DefaultBrowserSessionCookieName = "tars_session"
+	TailscaleUserLoginHeader        = "Tailscale-User-Login"
+	debugWorkspaceHeader            = "Tars-Debug-Workspace-Id"
+	debugRoleHeader                 = "Tars-Debug-Auth-Role"
 )
 
 type Options struct {
@@ -35,6 +37,8 @@ type Options struct {
 	SkipPaths                     []string
 	LoopbackSkipPaths             []string
 	AdminPaths                    []string
+	BrowserSessionCookieName      string
+	BrowserSessionRoleResolver    func(sessionID string) (string, bool)
 }
 
 type pathMatcher struct {
@@ -51,6 +55,8 @@ type compiledOptions struct {
 	requireWorkspaceForAuthorized bool
 	userWorkspaceAllowlist        map[string]struct{}
 	adminWorkspaceAllowlist       map[string]struct{}
+	browserSessionCookieName      string
+	browserSessionRoleResolver    func(sessionID string) (string, bool)
 	logger                        zerolog.Logger
 	hasLegacyToken                bool
 	hasUserToken                  bool
@@ -70,6 +76,7 @@ type requestRequirement struct {
 
 type workspaceIDKey struct{}
 type roleKey struct{}
+type authSourceKey struct{}
 
 const (
 	RoleUser  = "user"
@@ -123,6 +130,14 @@ func RoleFromRequest(r *http.Request) string {
 	return strings.TrimSpace(r.Header.Get(debugRoleHeader))
 }
 
+func AuthSourceFromRequest(r *http.Request) string {
+	if r == nil {
+		return ""
+	}
+	value, _ := r.Context().Value(authSourceKey{}).(string)
+	return strings.TrimSpace(value)
+}
+
 func NormalizeMode(raw string) string {
 	mode := strings.TrimSpace(strings.ToLower(raw))
 	switch mode {
@@ -141,6 +156,10 @@ func compileOptions(opts Options, logOut io.Writer) compiledOptions {
 	if logOut == nil {
 		logOut = io.Discard
 	}
+	browserSessionCookieName := strings.TrimSpace(opts.BrowserSessionCookieName)
+	if browserSessionCookieName == "" {
+		browserSessionCookieName = DefaultBrowserSessionCookieName
+	}
 
 	token := strings.TrimSpace(opts.BearerToken)
 	userToken := strings.TrimSpace(opts.UserToken)
@@ -158,6 +177,8 @@ func compileOptions(opts Options, logOut io.Writer) compiledOptions {
 		requireWorkspaceForAuthorized: opts.RequireWorkspaceForAuthorized,
 		userWorkspaceAllowlist:        toWorkspaceAllowlist(opts.UserWorkspaceAllowlist),
 		adminWorkspaceAllowlist:       toWorkspaceAllowlist(opts.AdminWorkspaceAllowlist),
+		browserSessionCookieName:      browserSessionCookieName,
+		browserSessionRoleResolver:    opts.BrowserSessionRoleResolver,
 		logger:                        zerolog.New(logOut).With().Str("component", "serverauth").Logger(),
 		hasLegacyToken:                hasLegacyToken,
 		hasUserToken:                  hasUserToken,
@@ -185,21 +206,35 @@ func NewMiddleware(opts Options, logOut io.Writer) func(http.Handler) http.Handl
 				return
 			}
 
-			if requirement.tokenNeeded && !compiled.anyTokenConfigured {
-				compiled.logger.Warn().Str("path", r.URL.Path).Msg("api auth enabled but token is empty; rejecting request")
-				w.Header().Set("WWW-Authenticate", "Bearer")
-				writeJSONError(w, http.StatusUnauthorized, "unauthorized", "unauthorized")
-				return
-			}
-
 			_, hasBearer := parseBearerToken(r.Header.Get("Authorization"))
-			role := compiled.resolveRole(r.Header.Get("Authorization"))
+			role := ""
+			authSource := ""
+			if hasBearer {
+				role = compiled.resolveRole(r.Header.Get("Authorization"))
+				if requirement.tokenNeeded && role == "" {
+					w.Header().Set("WWW-Authenticate", "Bearer")
+					writeJSONError(w, http.StatusUnauthorized, "unauthorized", "unauthorized")
+					return
+				}
+				if role != "" {
+					authSource = "bearer"
+				}
+			} else {
+				role = compiled.resolveBrowserSessionRole(req)
+				if role != "" {
+					authSource = "browser_session"
+				}
+			}
 			if requirement.tokenNeeded && role == "" {
+				if !compiled.anyTokenConfigured && compiled.browserSessionRoleResolver == nil {
+					compiled.logger.Warn().Str("path", r.URL.Path).Msg("api auth enabled but token is empty; rejecting request")
+				}
 				w.Header().Set("WWW-Authenticate", "Bearer")
 				writeJSONError(w, http.StatusUnauthorized, "unauthorized", "unauthorized")
 				return
 			}
 			req = withRole(req, role)
+			req = withAuthSource(req, authSource)
 			req = withDebugRoleHeader(req, role)
 			if compiled.requireWorkspaceForAuthorized && strings.TrimSpace(role) != "" {
 				if strings.TrimSpace(WorkspaceIDFromContext(req.Context())) == "" {
@@ -215,13 +250,22 @@ func NewMiddleware(opts Options, logOut io.Writer) func(http.Handler) http.Handl
 				writeJSONError(w, http.StatusForbidden, "forbidden", "forbidden")
 				return
 			}
-			if requirement.isAdminPath && role != RoleAdmin {
+			browserUserAllowed := authSource == "browser_session" && role == RoleUser && EndpointAllowsRole(r.Method, r.URL.Path, role)
+			if authSource == "browser_session" && role == RoleUser && !browserUserAllowed {
+				writeJSONError(w, http.StatusForbidden, "forbidden", "forbidden")
+				return
+			}
+			if requirement.isAdminPath && role != RoleAdmin && !browserUserAllowed {
 				writeJSONError(w, http.StatusForbidden, "forbidden", "forbidden")
 				return
 			}
 			if requirement.requireToken && hasBearer && role == "" {
 				w.Header().Set("WWW-Authenticate", "Bearer")
 				writeJSONError(w, http.StatusUnauthorized, "unauthorized", "unauthorized")
+				return
+			}
+			if authSource == "browser_session" && isMutatingMethod(r.Method) && !secFetchSiteAllowsMutation(r) {
+				writeJSONError(w, http.StatusForbidden, "csrf_failed", "same-origin browser request required")
 				return
 			}
 			next.ServeHTTP(w, req)
@@ -270,11 +314,12 @@ func (c compiledOptions) requirementForRequest(r *http.Request) requestRequireme
 	if c.skipPaths.match(r.URL.Path) {
 		return requestRequirement{skip: true}
 	}
-	if c.loopbackSkipPaths.match(r.URL.Path) && isLoopbackRemoteAddr(r.RemoteAddr) {
+	trustedLoopback := isTrustedLoopbackRequest(r)
+	if c.loopbackSkipPaths.match(r.URL.Path) && trustedLoopback {
 		return requestRequirement{skip: true}
 	}
 	requireToken := c.mode == ModeRequired
-	if c.mode == ModeExternalRequired && !isLoopbackRemoteAddr(r.RemoteAddr) {
+	if c.mode == ModeExternalRequired && !trustedLoopback {
 		requireToken = true
 	}
 	isAdminPath := c.adminPaths.match(r.URL.Path)
@@ -301,6 +346,32 @@ func (c compiledOptions) resolveRole(authHeader string) string {
 	)
 }
 
+func (c compiledOptions) resolveBrowserSessionRole(r *http.Request) string {
+	if r == nil || c.browserSessionRoleResolver == nil {
+		return ""
+	}
+	cookie, err := r.Cookie(c.browserSessionCookieName)
+	if err != nil || cookie == nil {
+		return ""
+	}
+	sessionID := strings.TrimSpace(cookie.Value)
+	if sessionID == "" {
+		return ""
+	}
+	role, ok := c.browserSessionRoleResolver(sessionID)
+	if !ok {
+		return ""
+	}
+	switch strings.TrimSpace(strings.ToLower(role)) {
+	case RoleAdmin:
+		return RoleAdmin
+	case RoleUser:
+		return RoleUser
+	default:
+		return ""
+	}
+}
+
 func writeJSONError(w http.ResponseWriter, status int, code, message string) {
 	if strings.TrimSpace(code) == "" {
 		code = strings.ToLower(strings.ReplaceAll(http.StatusText(status), " ", "_"))
@@ -314,6 +385,27 @@ func writeJSONError(w http.ResponseWriter, status int, code, message string) {
 		"error": message,
 		"code":  code,
 	})
+}
+
+func isMutatingMethod(method string) bool {
+	switch strings.ToUpper(strings.TrimSpace(method)) {
+	case http.MethodGet, http.MethodHead, http.MethodOptions, http.MethodTrace:
+		return false
+	default:
+		return true
+	}
+}
+
+func secFetchSiteAllowsMutation(r *http.Request) bool {
+	if r == nil {
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(r.Header.Get("Sec-Fetch-Site"))) {
+	case "same-origin", "none":
+		return true
+	default:
+		return false
+	}
 }
 
 func withWorkspaceID(r *http.Request, headerName string) *http.Request {
@@ -336,6 +428,18 @@ func withRole(r *http.Request, role string) *http.Request {
 		return r
 	}
 	ctx := context.WithValue(r.Context(), roleKey{}, strings.TrimSpace(role))
+	return r.WithContext(ctx)
+}
+
+func withAuthSource(r *http.Request, source string) *http.Request {
+	if r == nil {
+		return nil
+	}
+	trimmed := strings.TrimSpace(source)
+	if trimmed == "" {
+		return r
+	}
+	ctx := context.WithValue(r.Context(), authSourceKey{}, trimmed)
 	return r.WithContext(ctx)
 }
 
@@ -423,6 +527,20 @@ func isWorkspaceAllowed(allowlist map[string]struct{}, workspaceID string) bool 
 	}
 	_, ok := allowlist[strings.TrimSpace(workspaceID)]
 	return ok
+}
+
+func HasTailscaleIdentityHeader(r *http.Request) bool {
+	if r == nil {
+		return false
+	}
+	return strings.TrimSpace(r.Header.Get(TailscaleUserLoginHeader)) != ""
+}
+
+func isTrustedLoopbackRequest(r *http.Request) bool {
+	if r == nil {
+		return false
+	}
+	return isLoopbackRemoteAddr(r.RemoteAddr) && !HasTailscaleIdentityHeader(r)
 }
 
 func isLoopbackRemoteAddr(remoteAddr string) bool {

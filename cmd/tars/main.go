@@ -59,6 +59,8 @@ func newRootCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
 	cmd.AddCommand(newHealthCommand(stdout, stderr))
 	cmd.AddCommand(newCronCommand(stdout, stderr))
 	cmd.AddCommand(newApproveCommand(stdout, stderr))
+	cmd.AddCommand(newAuthCommand(stdin, stdout, stderr))
+	cmd.AddCommand(newRemoteCommand(stdout, stderr))
 	cmd.AddCommand(newAssistantCommand(stdout, stderr))
 	cmd.AddCommand(newSkillCommand(stdout, stderr))
 	cmd.AddCommand(newPluginCommand(stdout, stderr))

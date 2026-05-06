@@ -17,9 +17,11 @@
   import Reflection from './components/Reflection.svelte'
   import Channels from './components/Channels.svelte'
   import Onboarding from './components/Onboarding.svelte'
+  import Login from './components/Login.svelte'
   import AgentRuntimeRunView from './components/AgentRuntimeRunView.svelte'
   import { resolveRoute, type Route } from './lib/router'
-  import { getEventsHistory, getHealthz, streamEvents } from './lib/api'
+  import { APIRequestError, getAuthWhoami, getEventsHistory, getHealthz, logoutAuth, streamEvents } from './lib/api'
+  import type { AuthWhoamiResponse } from './lib/types'
 
   let currentPath = $state('/console')
   let route = $state<Route>({ view: 'home' })
@@ -27,7 +29,11 @@
   let needsSetup = $state(false)
   let unreadCount = $state(0)
   let aiPrompt = $state('')
+  let authLoading = $state(true)
+  let authInfo = $state<AuthWhoamiResponse | null>(null)
+  let loginRequired = $state(false)
   let stopGlobalStream: (() => void) | null = null
+  let authRole = $derived(authInfo?.auth_role ?? '')
 
   function navigate(path: string) {
     if (path === currentPath) return
@@ -47,6 +53,7 @@
   }
 
   function startGlobalStream() {
+    if (needsSetup || loginRequired) return
     stopGlobalStream?.()
     stopGlobalStream = streamEvents(
       () => {
@@ -73,8 +80,50 @@
     }
   }
 
+  async function refreshAuth() {
+    authLoading = true
+    try {
+      authInfo = await getAuthWhoami()
+      loginRequired = authInfo.auth_mode === 'required' && !authInfo.authenticated
+    } catch (err) {
+      authInfo = null
+      loginRequired = err instanceof APIRequestError && err.status === 401
+    } finally {
+      authLoading = false
+    }
+  }
+
+  async function loadConsoleNotifications() {
+    if (needsSetup || loginRequired) return
+    getEventsHistory(1)
+      .then((h) => { unreadCount = h.unread_count ?? 0 })
+      .catch(() => {})
+    startGlobalStream()
+  }
+
   function handleOnboardingComplete() {
     needsSetup = false
+    navigate('/console')
+    void refreshAuth().then(loadConsoleNotifications)
+  }
+
+  function handleLogin(auth: AuthWhoamiResponse) {
+    authInfo = auth
+    loginRequired = false
+    void loadConsoleNotifications()
+  }
+
+  async function handleLogout() {
+    try {
+      await logoutAuth()
+    } catch {
+      // Cookie may already be invalid; local UI state still needs to reset.
+    }
+    stopGlobalStream?.()
+    stopGlobalStream = null
+    authInfo = null
+    loginRequired = true
+    unreadCount = 0
     navigate('/console')
   }
 
@@ -84,12 +133,8 @@
     window.addEventListener('popstate', onPopState)
 
     void checkSetupAndMaybeRedirect()
-
-    getEventsHistory(1)
-      .then((h) => { unreadCount = h.unread_count ?? 0 })
-      .catch(() => {})
-
-    startGlobalStream()
+      .then(refreshAuth)
+      .then(loadConsoleNotifications)
 
     return () => window.removeEventListener('popstate', onPopState)
   })
@@ -99,49 +144,70 @@
   })
 </script>
 
-<Shell
-  {currentPath}
-  {serverHealth}
-  {unreadCount}
-  {needsSetup}
-  onNavigate={navigate}
-  onUnreadChange={(count) => { unreadCount = count }}
->
-  {#if route.view === 'onboarding'}
-    <Onboarding onComplete={handleOnboardingComplete} reentry={route.reentry === true} />
-  {:else if route.view === 'home'}
-    <Home onNavigate={navigate} />
-  {:else if route.view === 'chat'}
-    {#key aiPrompt}
-      <Chat sessionId={route.sessionId} onNavigate={navigate} initialPrompt={aiPrompt} />
-    {/key}
-  {:else if route.view === 'session-lineage'}
-    <SessionLineageGraph onNavigate={navigate} />
-  {:else if route.view === 'tasks'}
-    <Plans onNavigate={navigate} />
-  {:else if route.view === 'agentruntime'}
-    <AgentRuntimeRunView runId={route.runId} tab={route.tab} onNavigate={navigate} />
-  {:else if route.view === 'memory'}
-    <MemoryCenter onAskAI={navigateWithPrompt} />
-  {:else if route.view === 'sysprompt'}
-    <SyspromptCenter />
-  {:else if route.view === 'ops'}
-    <Ops />
-  {:else if route.view === 'cron'}
-    <Cron />
-  {:else if route.view === 'logs'}
-    <Logs />
-  {:else if route.view === 'analytics'}
-    <Analytics />
-  {:else if route.view === 'config'}
-    <Config onNavigate={navigate} />
-  {:else if route.view === 'pulse'}
-    <Pulse onNavigate={navigate} />
-  {:else if route.view === 'reflection'}
-    <Reflection />
-  {:else if route.view === 'extensions'}
-    <Extensions />
-  {:else if route.view === 'channels'}
-    <Channels />
-  {/if}
-</Shell>
+{#if authLoading && !needsSetup}
+  <div class="app-loading">Connecting to TARS...</div>
+{:else if loginRequired && !(needsSetup && route.view === 'onboarding')}
+  <Login onLogin={handleLogin} />
+{:else}
+  <Shell
+    {currentPath}
+    {serverHealth}
+    {unreadCount}
+    {needsSetup}
+    {authRole}
+    onNavigate={navigate}
+    onUnreadChange={(count) => { unreadCount = count }}
+    onLogout={handleLogout}
+  >
+    {#if route.view === 'onboarding'}
+      <Onboarding onComplete={handleOnboardingComplete} reentry={route.reentry === true} />
+    {:else if route.view === 'home'}
+      <Home onNavigate={navigate} />
+    {:else if route.view === 'chat'}
+      {#key aiPrompt}
+        <Chat sessionId={route.sessionId} onNavigate={navigate} initialPrompt={aiPrompt} />
+      {/key}
+    {:else if route.view === 'session-lineage'}
+      <SessionLineageGraph onNavigate={navigate} />
+    {:else if route.view === 'tasks'}
+      <Plans onNavigate={navigate} />
+    {:else if route.view === 'agentruntime'}
+      <AgentRuntimeRunView runId={route.runId} tab={route.tab} onNavigate={navigate} />
+    {:else if route.view === 'memory'}
+      <MemoryCenter onAskAI={navigateWithPrompt} />
+    {:else if route.view === 'sysprompt'}
+      <SyspromptCenter />
+    {:else if route.view === 'ops' && authRole !== 'user'}
+      <Ops />
+    {:else if route.view === 'cron' && authRole !== 'user'}
+      <Cron />
+    {:else if route.view === 'logs' && authRole !== 'user'}
+      <Logs />
+    {:else if route.view === 'analytics' && authRole !== 'user'}
+      <Analytics />
+    {:else if route.view === 'config' && authRole !== 'user'}
+      <Config onNavigate={navigate} />
+    {:else if route.view === 'pulse' && authRole !== 'user'}
+      <Pulse onNavigate={navigate} />
+    {:else if route.view === 'reflection' && authRole !== 'user'}
+      <Reflection />
+    {:else if route.view === 'extensions' && authRole !== 'user'}
+      <Extensions />
+    {:else if route.view === 'channels' && authRole !== 'user'}
+      <Channels />
+    {:else}
+      <Home onNavigate={navigate} />
+    {/if}
+  </Shell>
+{/if}
+
+<style>
+  .app-loading {
+    min-height: 100vh;
+    display: grid;
+    place-items: center;
+    color: var(--text-secondary);
+    background: var(--surface-base);
+    font-family: var(--font-display);
+  }
+</style>

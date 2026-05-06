@@ -93,16 +93,22 @@ import type {
   UsageToday,
   LogsResponse,
   AnalyticsResponse,
+  AuthLoginRequest,
+  AuthPairingLoginRequest,
+  AuthWhoamiResponse,
   TelegramPairingsResponse,
   TelegramAllowedUser,
+  RemoteAccessResponse,
 } from './types'
 
 export class APIRequestError extends Error {
+  status: number
   payload?: APIErrorPayload
 
-  constructor(message: string, payload?: APIErrorPayload) {
+  constructor(message: string, status: number, payload?: APIErrorPayload) {
     super(message)
     this.name = 'APIRequestError'
+    this.status = status
     this.payload = payload
   }
 
@@ -132,7 +138,7 @@ async function requestJSON<T>(input: string, init?: RequestInit): Promise<T> {
     } catch {
       // ignore non-JSON error bodies
     }
-    throw new APIRequestError(message, payload)
+    throw new APIRequestError(message, response.status, payload)
   }
 
   if (response.status === 204) {
@@ -211,6 +217,38 @@ export async function getSetupStatus(): Promise<SetupStatusResponse> {
 
 export async function getServerStatus(): Promise<{ version: string }> {
   return requestJSON<{ version: string }>('/v1/status')
+}
+
+export async function getAuthWhoami(): Promise<AuthWhoamiResponse> {
+  return requestJSON<AuthWhoamiResponse>('/v1/auth/whoami')
+}
+
+export async function loginAuth(payload: AuthLoginRequest): Promise<AuthWhoamiResponse> {
+  return requestJSON<AuthWhoamiResponse>('/v1/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function loginWithPairingCode(payload: AuthPairingLoginRequest): Promise<AuthWhoamiResponse> {
+  return requestJSON<AuthWhoamiResponse>('/v1/auth/pairing-login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function logoutAuth(): Promise<void> {
+  await requestJSON<{ ok: boolean }>('/v1/auth/logout', { method: 'POST' })
+}
+
+export async function changeBrowserPassword(role: 'admin' | 'user', payload: { current_password?: string; new_password: string }): Promise<void> {
+  await requestJSON<{ ok: boolean }>(`/v1/auth/users/${encodeURIComponent(role)}/password`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
 }
 
 export async function getTodayUsage(): Promise<UsageToday> {
@@ -466,7 +504,7 @@ export function streamAgentRuntimeRunEvents(
 	onError?: (message: string) => void,
 	onOpen?: () => void,
 ): () => void {
-	const stream = new EventSource(`/v1/agentruntime/runs/${encodeURIComponent(runId)}/events`)
+	const stream = new EventSource(`/v1/agentruntime/runs/${encodeURIComponent(runId)}/events`, { withCredentials: true })
 	stream.onopen = () => {
 		onOpen?.()
 	}
@@ -1051,6 +1089,26 @@ export async function patchConfigValues(updates: Record<string, unknown>): Promi
   })
 }
 
+export async function getRemoteAccessStatus(): Promise<RemoteAccessResponse> {
+  return requestJSON<RemoteAccessResponse>('/v1/admin/remote-access/status')
+}
+
+export async function enableRemoteAccess(httpsPort?: number): Promise<RemoteAccessResponse> {
+  return requestJSON<RemoteAccessResponse>('/v1/admin/remote-access/enable', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(httpsPort ? { https_port: httpsPort } : {}),
+  })
+}
+
+export async function disableRemoteAccess(httpsPort?: number): Promise<RemoteAccessResponse> {
+  return requestJSON<RemoteAccessResponse>('/v1/admin/remote-access/disable', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(httpsPort ? { https_port: httpsPort } : {}),
+  })
+}
+
 // --- Channels / Telegram ---
 
 export async function getTelegramPairings(): Promise<TelegramPairingsResponse> {
@@ -1284,7 +1342,7 @@ function ensureStream() {
     sharedStream = null
   }
   const wasOpenedBefore = hasOpenedOnce
-  sharedStream = new EventSource('/v1/events/stream')
+  sharedStream = new EventSource('/v1/events/stream', { withCredentials: true })
   sharedStream.onopen = () => {
     clearReconnectTimer()
     reconnectAttempt = 0

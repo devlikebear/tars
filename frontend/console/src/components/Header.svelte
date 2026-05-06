@@ -11,6 +11,8 @@
     onNavigate?: (path: string) => void
     navOpen?: boolean
     onToggleNav?: () => void
+    authRole?: string
+    onLogout?: () => void
   }
 
   let {
@@ -20,6 +22,8 @@
     onNavigate,
     navOpen = false,
     onToggleNav,
+    authRole = '',
+    onLogout,
   }: Props = $props()
 
   let panelOpen = $state(false)
@@ -204,6 +208,15 @@
       <span class="header-indicator-label">{serverHealth === 'ok' ? $t.common.states.connected : $t.common.states.disconnected}</span>
     </div>
 
+    {#if authRole}
+      <div class="auth-chip">
+        <span>{authRole}</span>
+        {#if onLogout}
+          <button type="button" onclick={onLogout}>Sign out</button>
+        {/if}
+      </div>
+    {/if}
+
     <!-- Notification badge + panel -->
     <div class="header-notif-wrapper">
       <button class="header-badge-btn" class:has-unread={unreadCount > 0} onclick={togglePanel} title={$t.header.notifications}>
@@ -386,6 +399,33 @@
   .header-indicator-label {
     font-size: var(--text-xs);
     color: var(--text-tertiary);
+  }
+
+  .auth-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    height: 30px;
+    padding: 0 var(--space-2);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    background: var(--surface-inset);
+    color: var(--text-secondary);
+    font-size: var(--text-xs);
+    text-transform: uppercase;
+  }
+
+  .auth-chip button {
+    border: 0;
+    background: transparent;
+    color: var(--primary-text);
+    cursor: pointer;
+    text-transform: none;
+    font-size: var(--text-xs);
+  }
+
+  .auth-chip button:hover {
+    color: var(--primary);
   }
 
   /* ── Notification badge button ──────────── */

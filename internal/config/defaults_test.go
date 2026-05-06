@@ -198,6 +198,12 @@ func TestLoad_DefaultOnly(t *testing.T) {
 	if cfg.CronRunHistoryLimit != 200 {
 		t.Fatalf("expected default CronRunHistoryLimit 200, got %d", cfg.CronRunHistoryLimit)
 	}
+	if cfg.RemoteAccessTailscaleServeEnabled {
+		t.Fatalf("expected remote access disabled by default")
+	}
+	if cfg.RemoteAccessTailscaleServeHTTPSPort != 443 {
+		t.Fatalf("expected remote access https port 443, got %d", cfg.RemoteAccessTailscaleServeHTTPSPort)
+	}
 	if !cfg.NotifyWhenNoClients {
 		t.Fatalf("expected NotifyWhenNoClients=true by default")
 	}
@@ -208,6 +214,10 @@ func TestLoad_YAMLOverridesDefault(t *testing.T) {
 	path := filepath.Join(dir, "config.yaml")
 	content := `
 workspace_dir: ./tenant-workspace
+remote_access:
+  tailscale_serve:
+    enabled: true
+    https_port: 9443
 llm_providers:
   primary:
     kind: openai
@@ -240,6 +250,12 @@ usage:
 
 	if cfg.WorkspaceDir != "./tenant-workspace" {
 		t.Fatalf("expected WorkspaceDir ./tenant-workspace, got %q", cfg.WorkspaceDir)
+	}
+	if !cfg.RemoteAccessTailscaleServeEnabled {
+		t.Fatalf("expected remote access tailscale serve enabled")
+	}
+	if cfg.RemoteAccessTailscaleServeHTTPSPort != 9443 {
+		t.Fatalf("expected remote access tailscale serve https port 9443, got %d", cfg.RemoteAccessTailscaleServeHTTPSPort)
 	}
 	primary, ok := cfg.LLMProviders["primary"]
 	if !ok {

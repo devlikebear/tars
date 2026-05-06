@@ -94,11 +94,17 @@ func newSessionAPIHandlerFull(store *session.Store, logger zerolog.Logger, usage
 		return strings.TrimSpace(mainSession.ID), nil
 	}
 	requireAdmin := func(w http.ResponseWriter, r *http.Request) bool {
-		if strings.TrimSpace(serverauth.RoleFromRequest(r)) != serverauth.RoleAdmin {
-			writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
-			return false
+		role := strings.TrimSpace(serverauth.RoleFromRequest(r))
+		if role == serverauth.RoleAdmin {
+			return true
 		}
-		return true
+		if role == serverauth.RoleUser &&
+			serverauth.AuthSourceFromRequest(r) == "browser_session" &&
+			serverauth.EndpointAllowsRole(r.Method, r.URL.Path, role) {
+			return true
+		}
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		return false
 	}
 
 	mux.HandleFunc("/v1/sessions", func(w http.ResponseWriter, r *http.Request) {

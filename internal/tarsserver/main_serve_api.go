@@ -22,6 +22,7 @@ import (
 	"github.com/devlikebear/tars/internal/ops"
 	"github.com/devlikebear/tars/internal/pulse"
 	"github.com/devlikebear/tars/internal/reflection"
+	"github.com/devlikebear/tars/internal/remoteaccess"
 	"github.com/devlikebear/tars/internal/sessionoverride"
 	"github.com/devlikebear/tars/internal/skillhub"
 	"github.com/devlikebear/tars/internal/tool"
@@ -42,6 +43,8 @@ type serveAPIRuntime struct {
 	pulseRuntime            *pulse.Runtime
 	reflectionRuntime       *reflection.Runtime
 	telegramPoller          *telegramUpdatePoller
+	remoteAccessRunner      remoteaccess.Runner
+	remoteAccessTargetURL   string
 }
 
 type apiRouteHandlers struct {
@@ -56,6 +59,7 @@ type apiRouteHandlers struct {
 	ops             http.Handler
 	status          http.Handler
 	auth            http.Handler
+	remoteAccess    http.Handler
 	healthz         http.Handler
 	setup           http.Handler
 	providersModels http.Handler
@@ -525,7 +529,13 @@ func buildAPIMux(
 	logsHandler := newLogsAPIHandler(cfg.WorkspaceDir, normalizeRuntimeLogFilePath(buildLoggerConfig(opts, cfg).FilePath), logger)
 	opsHandler := newOpsAPIHandler(opsManager, logger, dispatcher.Emit, sessionStore)
 	statusHandler := newStatusAPIHandler(cfg.WorkspaceDir, sessionStore, mainSessionID, logger)
-	authHandler := newAuthAPIHandler(cfg.APIAuthMode)
+	authHandler := newAuthAPIHandler(cfg.APIAuthMode, cfg.WorkspaceDir)
+	resolvedConfigPath := config.ResolveConfigPath(opts.ConfigPath)
+	remoteAccessHandler := newRemoteAccessAPIHandler(remoteAccessHandlerOptions{
+		Config:     cfg,
+		ConfigPath: resolvedConfigPath,
+		Logger:     logger,
+	})
 	healthzHandler := newHealthzAPIHandler(nowFn, dashboardAuthHealthzStatus(cfg), func() bool { return config.NeedsSetup(cfg) })
 	setupHandler := newSetupAPIHandler(opts.ConfigPath, cfg, logger)
 	providersModelsHandler := newProvidersModelsAPIHandler(providerModelsService, logger)
@@ -593,7 +603,6 @@ func buildAPIMux(
 	mcpCreatorHandler := newMCPServerCreatorAPIHandler(cfg.WorkspaceDir, logger, nil, deps.llmRouter)
 	gitHandler := newGitAPIHandler(cfg.WorkspaceDir, sessionStore, opsManager, logger)
 	eventsHandler := newEventsAPIHandler(broker, notificationStore, logger)
-	resolvedConfigPath := config.ResolveConfigPath(opts.ConfigPath)
 	configHandler := newConfigAPIHandler(resolvedConfigPath, cfg, cfg.WorkspaceDir, logger)
 	filesystemHandler := newFilesystemBrowseHandler(logger)
 	workspaceFilesHandler := newWorkspaceFilesHandler(cfg.WorkspaceDir, logger)
@@ -611,6 +620,7 @@ func buildAPIMux(
 		ops:             opsHandler,
 		status:          statusHandler,
 		auth:            authHandler,
+		remoteAccess:    remoteAccessHandler,
 		healthz:         healthzHandler,
 		setup:           setupHandler,
 		providersModels: providersModelsHandler,
@@ -662,6 +672,8 @@ func buildAPIMux(
 		pulseRuntime:            pulseSetup.Runtime,
 		reflectionRuntime:       reflectionSetup.Runtime,
 		telegramPoller:          telegramPoller,
+		remoteAccessRunner:      remoteaccess.ExecRunner{},
+		remoteAccessTargetURL:   remoteaccess.DefaultTargetURL,
 	}, nil
 }
 
@@ -737,6 +749,15 @@ func registerAPIRoutes(mux *http.ServeMux, handlers apiRouteHandlers) {
 	mux.Handle("/v1/ops/automation-audit", handlers.ops)
 	mux.Handle("/v1/status", handlers.status)
 	mux.Handle("/v1/auth/whoami", handlers.auth)
+	mux.Handle("/v1/auth/login", handlers.auth)
+	mux.Handle("/v1/auth/pairing-login", handlers.auth)
+	mux.Handle("/v1/auth/logout", handlers.auth)
+	mux.Handle("/v1/auth/users/", handlers.auth)
+	if handlers.remoteAccess != nil {
+		mux.Handle("/v1/admin/remote-access/status", handlers.remoteAccess)
+		mux.Handle("/v1/admin/remote-access/enable", handlers.remoteAccess)
+		mux.Handle("/v1/admin/remote-access/disable", handlers.remoteAccess)
+	}
 	mux.Handle("/v1/healthz", handlers.healthz)
 	mux.Handle("/v1/setup/status", handlers.setup)
 	mux.Handle("/v1/providers", handlers.providersModels)
@@ -813,6 +834,8 @@ func startBackgrounds(ctx context.Context, runtime *serveAPIRuntime, logger zero
 	}
 	cfg := runtime.cfg
 
+	reconcileRemoteAccessOnStart(ctx, runtime, logger)
+
 	if runtime.agentRuntime != nil {
 		runtime.agentRuntime.SetAgentsWatchEnabled(false)
 	}
@@ -867,6 +890,29 @@ func startBackgrounds(ctx context.Context, runtime *serveAPIRuntime, logger zero
 	return nil
 }
 
+func reconcileRemoteAccessOnStart(ctx context.Context, runtime *serveAPIRuntime, logger zerolog.Logger) {
+	if runtime == nil || !runtime.cfg.RemoteAccessTailscaleServeEnabled {
+		return
+	}
+	reconcileCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	if err := remoteaccess.Reconcile(reconcileCtx, remoteaccess.Desired{
+		Enabled:   true,
+		HTTPSPort: runtime.cfg.RemoteAccessTailscaleServeHTTPSPort,
+		TargetURL: remoteAccessTargetURL(runtime),
+	}, remoteaccess.Options{
+		Runner:    remoteAccessRunner(runtime),
+		HTTPSPort: runtime.cfg.RemoteAccessTailscaleServeHTTPSPort,
+		TargetURL: remoteAccessTargetURL(runtime),
+	}); err != nil {
+		logger.Warn().Err(err).Msg("remote access reconcile failed")
+		return
+	}
+	logger.Info().
+		Int("https_port", effectiveRemoteAccessPort(runtime.cfg.RemoteAccessTailscaleServeHTTPSPort)).
+		Msg("remote access reconciled")
+}
+
 func shutdownRuntime(ctx context.Context, runtime *serveAPIRuntime) {
 	if runtime == nil {
 		return
@@ -886,7 +932,37 @@ func shutdownRuntime(ctx context.Context, runtime *serveAPIRuntime) {
 	if runtime.agentRuntime != nil {
 		_ = runtime.agentRuntime.Close(ctx)
 	}
+	if runtime.cfg.RemoteAccessTailscaleServeEnabled {
+		// Shutdown should continue even if Tailscale was logged out or the
+		// Serve target was already removed outside TARS.
+		_ = remoteaccess.Disable(ctx, remoteaccess.Options{
+			Runner:    remoteAccessRunner(runtime),
+			HTTPSPort: runtime.cfg.RemoteAccessTailscaleServeHTTPSPort,
+			TargetURL: remoteAccessTargetURL(runtime),
+		})
+	}
 	if runtime.server != nil {
 		_ = runtime.server.Shutdown(ctx)
 	}
+}
+
+func remoteAccessRunner(runtime *serveAPIRuntime) remoteaccess.Runner {
+	if runtime != nil && runtime.remoteAccessRunner != nil {
+		return runtime.remoteAccessRunner
+	}
+	return remoteaccess.ExecRunner{}
+}
+
+func remoteAccessTargetURL(runtime *serveAPIRuntime) string {
+	if runtime != nil && strings.TrimSpace(runtime.remoteAccessTargetURL) != "" {
+		return strings.TrimSpace(runtime.remoteAccessTargetURL)
+	}
+	return remoteaccess.DefaultTargetURL
+}
+
+func effectiveRemoteAccessPort(port int) int {
+	if port > 0 {
+		return port
+	}
+	return remoteaccess.DefaultHTTPSPort
 }

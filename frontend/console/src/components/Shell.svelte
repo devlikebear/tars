@@ -9,8 +9,10 @@
     serverHealth?: string
     unreadCount?: number
     needsSetup?: boolean
+    authRole?: string
     onNavigate: (path: string) => void
     onUnreadChange?: (count: number) => void
+    onLogout?: () => void
     children: Snippet
   }
 
@@ -19,8 +21,10 @@
     serverHealth = 'ok',
     unreadCount = 0,
     needsSetup = false,
+    authRole = '',
     onNavigate,
     onUnreadChange,
+    onLogout,
     children,
   }: Props = $props()
 
@@ -46,13 +50,13 @@
 
 <div class="shell" class:setup-only={needsSetup}>
   {#if !needsSetup}
-    <Nav {currentPath} onNavigate={handleNavigate} {navOpen} onClose={closeNav} />
+    <Nav {currentPath} {authRole} onNavigate={handleNavigate} {navOpen} onClose={closeNav} />
     {#if navOpen}
       <div class="nav-overlay" role="presentation" onclick={closeNav}></div>
     {/if}
   {/if}
   <div class="shell-main" class:no-nav={needsSetup}>
-    <Header {serverHealth} {unreadCount} {onUnreadChange} {onNavigate} {navOpen} onToggleNav={toggleNav} />
+    <Header {serverHealth} {unreadCount} {onUnreadChange} {onNavigate} {navOpen} {authRole} {onLogout} onToggleNav={toggleNav} />
     {#if needsSetup}
       <div class="setup-only-banner" role="alert">
         <strong>{$t.shell.setupOnlyKicker}</strong>
