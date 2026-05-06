@@ -61,6 +61,10 @@ func Schema() []FieldMeta {
 		f("api_max_inflight_chat", "API", "int", "Max Inflight Chat", "Maximum concurrent chat requests"),
 		f("api_max_inflight_agent_runs", "API", "int", "Max Inflight Agent Runs", "Maximum concurrent agent run requests"),
 
+		// ── Remote Access ────────────────────────
+		f("remote_access_tailscale_serve_enabled", "Remote Access", "bool", "Tailscale Serve Enabled", "Expose the local console through a TARS-owned Tailscale Serve target"),
+		f("remote_access_tailscale_serve_https_port", "Remote Access", "int", "Tailscale Serve HTTPS Port", "HTTPS port Tailscale Serve should publish inside the tailnet"),
+
 		// ── LLM ──────────────────────────────────
 		fjson("llm_providers", "LLM", "Providers", "Named provider pool keyed by alias. Each entry defines kind/auth/base_url/api_key at the provider level."),
 		fjson("llm_tiers", "LLM", "Tiers", "Tier bindings keyed by heavy/standard/light (or custom tiers). Each entry binds provider/model/reasoning settings."),
@@ -262,6 +266,11 @@ func extractValue(yamlKey string, cfg Config) any {
 		return cfg.APIMaxInflightChat
 	case "api_max_inflight_agent_runs":
 		return cfg.APIMaxInflightAgentRuns
+	// Remote Access
+	case "remote_access_tailscale_serve_enabled":
+		return cfg.RemoteAccessTailscaleServeEnabled
+	case "remote_access_tailscale_serve_https_port":
+		return cfg.RemoteAccessTailscaleServeHTTPSPort
 	// LLM
 	case "llm_providers":
 		return sparseProvidersMap(cfg.LLMProviders)

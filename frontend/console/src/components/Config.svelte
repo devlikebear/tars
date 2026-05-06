@@ -42,8 +42,9 @@
     type AuthMode,
     type ProviderKind,
   } from '../lib/onboarding'
-  import type { ConfigFieldMeta, ConfigSchema, ProvidersAPIInfo } from '../lib/types'
+  import type { ConfigEnvOverride, ConfigFieldMeta, ConfigSchema, ProvidersAPIInfo } from '../lib/types'
   import ConfigPendingChanges from './ConfigPendingChanges.svelte'
+  import RemoteAccessCard from './RemoteAccessCard.svelte'
   import { t } from '../i18n'
 
   type ViewMode = 'quick' | 'form' | 'yaml'
@@ -57,6 +58,8 @@
   let schemaUpdatedAt = $state('')
   let schema: ConfigFieldMeta[] = $state([])
   let values: Record<string, unknown> = $state({})
+  let effectiveValues: Record<string, unknown> = $state({})
+  let envOverrides: Record<string, ConfigEnvOverride> = $state({})
   let yamlContent = $state('')
   let originalYaml = $state('')
   let loading = $state(true)
@@ -201,6 +204,8 @@
       schemaUpdatedAt = schemaResp.updated_at || ''
       schema = schemaResp.fields
       values = schemaResp.values
+      effectiveValues = schemaResp.effective_values || {}
+      envOverrides = schemaResp.env_overrides || {}
       yamlContent = rawResp.content
       originalYaml = rawResp.content
       dirtyFields = {}
@@ -323,6 +328,36 @@
     return stringifyConfigValue(field.default_value)
   }
 
+  function envOverrideFor(field: ConfigFieldMeta): ConfigEnvOverride | null {
+    return envOverrides[field.key] || null
+  }
+
+  function effectiveValueFor(field: ConfigFieldMeta): unknown {
+    if (!Object.prototype.hasOwnProperty.call(effectiveValues, field.key)) return getDisplayValue(field)
+    return effectiveValues[field.key]
+  }
+
+  function effectiveValueSummary(field: ConfigFieldMeta): string {
+    const value = effectiveValueFor(field)
+    if (field.sensitive && typeof value === 'string' && value.length > 0) {
+      return value.includes('*') ? value : '********'
+    }
+    return stringifyConfigValue(value)
+  }
+
+  function envOverrideTitle(field: ConfigFieldMeta): string {
+    const override = envOverrideFor(field)
+    const active = effectiveValueSummary(field)
+    if (!override) return ''
+    return configValuesEqual(effectiveValueFor(field), getDisplayValue(field))
+      ? `${override.env_key} is set and controls the runtime value.`
+      : `${override.env_key} is set. Runtime value is ${active}; YAML/editor value is ${formatValue(field)}.`
+  }
+
+  function envOverrideDiffers(field: ConfigFieldMeta): boolean {
+    return !!envOverrideFor(field) && !configValuesEqual(effectiveValueFor(field), getDisplayValue(field))
+  }
+
   async function testLLMConnection() {
     llmTestBusy = true
     llmTestResult = ''
@@ -354,6 +389,8 @@
       const [schemaResp, rawResp] = await Promise.all([getConfigSchema(), getConfig()])
       schemaUpdatedAt = schemaResp.updated_at || ''
       values = schemaResp.values
+      effectiveValues = schemaResp.effective_values || {}
+      envOverrides = schemaResp.env_overrides || {}
       yamlContent = rawResp.content
       originalYaml = rawResp.content
     } catch (e) {
@@ -383,6 +420,8 @@
       const schemaResp = await getConfigSchema()
       schemaUpdatedAt = schemaResp.updated_at || ''
       values = schemaResp.values
+      effectiveValues = schemaResp.effective_values || {}
+      envOverrides = schemaResp.env_overrides || {}
     } catch (e) {
       error = e instanceof Error ? e.message : 'Failed to save config'
     } finally {
@@ -1005,6 +1044,8 @@
     </div>
   {/if}
 
+  <RemoteAccessCard />
+
   {#if loading}
     <div class="loading">{$t.config.loading}</div>
   {:else if !configPath}
@@ -1036,6 +1077,7 @@
           {#each quickStartItems as item}
             {@const field = item.field}
             {@const metaBadges = buildConfigMetaBadges(field, item.value, item.dirty, schemaUpdatedAt)}
+            {@const envOverride = envOverrideFor(field)}
             <div class="quick-start-card" class:quick-attention={item.status.kind === 'attention'}>
               <div class="quick-start-card-main">
                 <div class="quick-start-title-row">
@@ -1052,6 +1094,14 @@
                     {#each metaBadges as badge}
                       <span class={`field-meta-badge badge-${badge.tone}`} title={badge.title}>{badge.label}</span>
                     {/each}
+                  </div>
+                {/if}
+                {#if envOverride}
+                  <div class="field-meta-badges" aria-label={`${field.label} environment override`}>
+                    <span class="field-meta-badge badge-env" title={envOverrideTitle(field)}>ENV {envOverride.env_key}</span>
+                    {#if envOverrideDiffers(field)}
+                      <span class="field-meta-badge badge-env-active" title={envOverrideTitle(field)}>Active: {effectiveValueSummary(field)}</span>
+                    {/if}
                   </div>
                 {/if}
               </div>
@@ -1170,6 +1220,7 @@
               <div class="section-body">
                 {#each section.fields as field}
                   {@const metaBadges = buildConfigMetaBadges(field, getDisplayValue(field), isDirty(field.key), schemaUpdatedAt)}
+                  {@const envOverride = envOverrideFor(field)}
                   <div class="field-row" class:field-dirty={isDirty(field.key)}>
                     <div class="field-info">
                       <span class="field-label">{field.label}</span>
@@ -1180,6 +1231,14 @@
                           {#each metaBadges as badge}
                             <span class={`field-meta-badge badge-${badge.tone}`} title={badge.title}>{badge.label}</span>
                           {/each}
+                        </div>
+                      {/if}
+                      {#if envOverride}
+                        <div class="field-meta-badges" aria-label={`${field.label} environment override`}>
+                          <span class="field-meta-badge badge-env" title={envOverrideTitle(field)}>ENV {envOverride.env_key}</span>
+                          {#if envOverrideDiffers(field)}
+                            <span class="field-meta-badge badge-env-active" title={envOverrideTitle(field)}>Active: {effectiveValueSummary(field)}</span>
+                          {/if}
                         </div>
                       {/if}
                     </div>
@@ -1942,6 +2001,16 @@
     border-color: rgba(120, 120, 160, 0.28);
     color: var(--text-secondary);
     background: rgba(120, 120, 160, 0.08);
+  }
+  .field-meta-badge.badge-env {
+    border-color: rgba(90, 135, 220, 0.34);
+    color: #8fb5ff;
+    background: rgba(90, 135, 220, 0.1);
+  }
+  .field-meta-badge.badge-env-active {
+    border-color: rgba(224, 145, 69, 0.42);
+    color: var(--primary);
+    background: rgba(224, 145, 69, 0.11);
   }
 
   .field-value { flex-shrink: 0; max-width: 300px; text-align: right; display: flex; align-items: center; }

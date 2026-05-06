@@ -33,6 +33,7 @@
   import OnboardingReview from './onboarding/OnboardingReview.svelte'
   import OnboardingComplete from './onboarding/OnboardingComplete.svelte'
   import OnboardingRestart from './onboarding/OnboardingRestart.svelte'
+  import RemoteAccessCard from './RemoteAccessCard.svelte'
 
   interface Props {
     onComplete?: () => void
@@ -49,6 +50,7 @@
     | 'tools'
     | 'integrations'
     | 'channels'
+    | 'remote'
     | 'review'
     | 'restarting'
     | 'complete'
@@ -115,6 +117,7 @@
           target === 'tools' ||
           target === 'integrations' ||
           target === 'channels' ||
+          target === 'remote' ||
           target === 'review'
         ) {
           mode = 'full'
@@ -129,8 +132,8 @@
   // are rendered separately and not tracked in stepOrder.
   let stepOrder = $derived<SectionId[]>(
     mode === 'quick'
-      ? ['provider', 'tiers', 'review']
-      : ['provider', 'tiers', 'tools', 'integrations', 'channels', 'review'],
+      ? ['provider', 'tiers', 'remote', 'review']
+      : ['provider', 'tiers', 'tools', 'integrations', 'channels', 'remote', 'review'],
   )
 
   let stepLabels = $derived<Record<SectionId, string>>({
@@ -139,6 +142,7 @@
     tools: $t.onboarding.steps.tools,
     integrations: $t.onboarding.steps.integrations,
     channels: $t.onboarding.steps.channels,
+    remote: 'Remote',
     review: $t.onboarding.steps.review,
     restarting: $t.onboarding.steps.restart,
     complete: $t.onboarding.steps.saved,
@@ -159,7 +163,7 @@
   function advanceFromTiers() {
     stepErrors = validateTiersStep(form, allKnownAliases)
     if (stepErrors.length > 0) return
-    step = mode === 'full' ? 'tools' : 'review'
+    step = mode === 'full' ? 'tools' : 'remote'
   }
 
   // saveOptionalSection patches just the keys for a given section and
@@ -356,9 +360,17 @@
       bind:form
       errors={stepErrors}
       onBack={() => backToSection('integrations')}
-      onNext={() => saveOptionalSection('channels', 'review')}
-      onSkip={() => skipOptionalSection('review')}
+      onNext={() => saveOptionalSection('channels', 'remote')}
+      onSkip={() => skipOptionalSection('remote')}
     />
+  {:else if step === 'remote'}
+    <div class="onboarding-step">
+      <RemoteAccessCard compact />
+      <div class="onboarding-actions">
+        <button type="button" class="btn btn-ghost" onclick={() => backToSection(mode === 'full' ? 'channels' : 'tiers')}>Back</button>
+        <button type="button" class="btn btn-primary" onclick={() => backToSection('review')}>Continue</button>
+      </div>
+    </div>
   {:else if step === 'review'}
     <OnboardingReview
       {form}
@@ -366,7 +378,7 @@
       {mode}
       {setupStatus}
       {saveError}
-      onBack={() => backToSection(mode === 'full' ? 'channels' : 'tiers')}
+      onBack={() => backToSection('remote')}
       onSave={handleSave}
     />
   {:else if step === 'complete'}

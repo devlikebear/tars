@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -142,6 +143,57 @@ func TestMiddleware_LoopbackSkipPaths_SkipOnlyAppliesToLoopbackRequests(t *testi
 	}
 }
 
+func TestMiddleware_TailscaleIdentityDisablesLoopbackSkipPaths(t *testing.T) {
+	mw := NewMiddleware(Options{
+		Mode:              ModeRequired,
+		BearerToken:       "dev-token",
+		LoopbackSkipPaths: []string{"/console/*"},
+	}, io.Discard)
+	h := mw(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/console/", nil)
+	req.RemoteAddr = "127.0.0.1:1234"
+	req.Header.Set("Tailscale-User-Login", "user@example.com")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for Tailscale loopback dashboard request without token, got %d body=%q", rec.Code, rec.Body.String())
+	}
+}
+
+func TestMiddleware_TailscaleIdentityRequiresTokenInExternalRequiredMode(t *testing.T) {
+	mw := NewMiddleware(Options{
+		Mode:        ModeExternalRequired,
+		BearerToken: "dev-token",
+	}, io.Discard)
+	h := mw(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/admin/config", nil)
+	req.RemoteAddr = "127.0.0.1:1234"
+	req.Header.Set("Tailscale-User-Login", "user@example.com")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for Tailscale loopback API request without token, got %d body=%q", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/v1/admin/config", nil)
+	req.RemoteAddr = "127.0.0.1:1234"
+	req.Header.Set("Tailscale-User-Login", "user@example.com")
+	req.Header.Set("Authorization", "Bearer dev-token")
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("expected 204 for Tailscale loopback API request with token, got %d body=%q", rec.Code, rec.Body.String())
+	}
+}
+
 func TestMiddleware_SetsWorkspaceIDFromHeader(t *testing.T) {
 	mw := NewMiddleware(Options{
 		Mode:            ModeOff,
@@ -222,6 +274,156 @@ func TestMiddleware_AdminPathAllowsAdminToken(t *testing.T) {
 	}
 	if got := rec.Body.String(); got != RoleAdmin {
 		t.Fatalf("expected role admin, got %q", got)
+	}
+}
+
+func TestMiddleware_SessionCookieAllowsRequiredModeWithoutBearerTokens(t *testing.T) {
+	mw := NewMiddleware(Options{
+		Mode: ModeRequired,
+		BrowserSessionRoleResolver: func(sessionID string) (string, bool) {
+			if sessionID == "sess-user" {
+				return RoleUser, true
+			}
+			return "", false
+		},
+	}, io.Discard)
+	h := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(RoleFromContext(r.Context())))
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/status", nil)
+	req.RemoteAddr = "192.0.2.44:5555"
+	req.AddCookie(&http.Cookie{Name: DefaultBrowserSessionCookieName, Value: "sess-user"})
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for valid browser session cookie, got %d body=%q", rec.Code, rec.Body.String())
+	}
+	if got := rec.Body.String(); got != RoleUser {
+		t.Fatalf("expected role user from cookie, got %q", got)
+	}
+}
+
+func TestMiddleware_BearerWinsOverSessionCookie(t *testing.T) {
+	mw := NewMiddleware(Options{
+		Mode:       ModeRequired,
+		UserToken:  "user-token",
+		AdminToken: "admin-token",
+		AdminPaths: []string{"/v1/admin/*"},
+		BrowserSessionRoleResolver: func(sessionID string) (string, bool) {
+			if sessionID == "sess-user" {
+				return RoleUser, true
+			}
+			return "", false
+		},
+	}, io.Discard)
+	h := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(RoleFromContext(r.Context())))
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/admin/config", nil)
+	req.RemoteAddr = "192.0.2.44:5555"
+	req.Header.Set("Authorization", "Bearer admin-token")
+	req.AddCookie(&http.Cookie{Name: DefaultBrowserSessionCookieName, Value: "sess-user"})
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for admin bearer token despite user cookie, got %d body=%q", rec.Code, rec.Body.String())
+	}
+	if got := rec.Body.String(); got != RoleAdmin {
+		t.Fatalf("expected bearer role admin to win, got %q", got)
+	}
+}
+
+func TestMiddleware_InvalidBearerDoesNotFallBackToSessionCookie(t *testing.T) {
+	mw := NewMiddleware(Options{
+		Mode:      ModeRequired,
+		UserToken: "user-token",
+		BrowserSessionRoleResolver: func(sessionID string) (string, bool) {
+			if sessionID == "sess-user" {
+				return RoleUser, true
+			}
+			return "", false
+		},
+	}, io.Discard)
+	h := mw(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/status", nil)
+	req.RemoteAddr = "192.0.2.44:5555"
+	req.Header.Set("Authorization", "Bearer wrong-token")
+	req.AddCookie(&http.Cookie{Name: DefaultBrowserSessionCookieName, Value: "sess-user"})
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for invalid bearer even with valid cookie, got %d body=%q", rec.Code, rec.Body.String())
+	}
+}
+
+func TestMiddleware_BrowserUserSessionUsesEndpointAllowlist(t *testing.T) {
+	mw := NewMiddleware(Options{
+		Mode: ModeRequired,
+		BrowserSessionRoleResolver: func(sessionID string) (string, bool) {
+			if sessionID == "sess-user" {
+				return RoleUser, true
+			}
+			return "", false
+		},
+	}, io.Discard)
+	h := mw(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
+	allowedReq := httptest.NewRequest(http.MethodPost, "/v1/chat", nil)
+	allowedReq.RemoteAddr = "192.0.2.44:5555"
+	allowedReq.Header.Set("Sec-Fetch-Site", "same-origin")
+	allowedReq.AddCookie(&http.Cookie{Name: DefaultBrowserSessionCookieName, Value: "sess-user"})
+	allowedRec := httptest.NewRecorder()
+	h.ServeHTTP(allowedRec, allowedReq)
+	if allowedRec.Code != http.StatusNoContent {
+		t.Fatalf("expected browser user to access allowlisted chat path, got %d body=%q", allowedRec.Code, allowedRec.Body.String())
+	}
+
+	blockedReq := httptest.NewRequest(http.MethodGet, "/v1/admin/config", nil)
+	blockedReq.RemoteAddr = "192.0.2.44:5555"
+	blockedReq.AddCookie(&http.Cookie{Name: DefaultBrowserSessionCookieName, Value: "sess-user"})
+	blockedRec := httptest.NewRecorder()
+	h.ServeHTTP(blockedRec, blockedReq)
+	if blockedRec.Code != http.StatusForbidden {
+		t.Fatalf("expected browser user to be forbidden from admin config, got %d body=%q", blockedRec.Code, blockedRec.Body.String())
+	}
+}
+
+func TestMiddleware_BrowserSessionMutationsRequireSameOriginFetch(t *testing.T) {
+	mw := NewMiddleware(Options{
+		Mode: ModeRequired,
+		BrowserSessionRoleResolver: func(sessionID string) (string, bool) {
+			if sessionID == "sess-user" {
+				return RoleUser, true
+			}
+			return "", false
+		},
+	}, io.Discard)
+	h := mw(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat", nil)
+	req.RemoteAddr = "192.0.2.44:5555"
+	req.Header.Set("Sec-Fetch-Site", "cross-site")
+	req.AddCookie(&http.Cookie{Name: DefaultBrowserSessionCookieName, Value: "sess-user"})
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected cross-site browser mutation to be forbidden, got %d body=%q", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "csrf_failed") {
+		t.Fatalf("expected csrf failure code, got %q", rec.Body.String())
 	}
 }
 

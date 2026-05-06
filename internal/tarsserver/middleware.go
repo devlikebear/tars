@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/devlikebear/tars/internal/config"
+	"github.com/devlikebear/tars/internal/consoleauth"
 	"github.com/devlikebear/tars/internal/serverauth"
 	"github.com/rs/zerolog"
 )
@@ -26,12 +27,24 @@ func applyAPIMiddleware(cfg config.Config, logger zerolog.Logger, next http.Hand
 		SkipPaths:                     apiAuthSkipPaths(cfg),
 		LoopbackSkipPaths:             dashboardLoopbackSkipPaths(cfg),
 		AdminPaths:                    apiAdminPaths(),
+		BrowserSessionRoleResolver:    browserSessionRoleResolver(cfg.WorkspaceDir),
 	}, authLog)
 	return requestDebugMiddleware(logger, auth(withDefaultWorkspaceBinding(next)))
 }
 
+func browserSessionRoleResolver(workspaceDir string) func(sessionID string) (string, bool) {
+	store := consoleauth.NewStore(workspaceDir)
+	return func(sessionID string) (string, bool) {
+		session, ok, err := store.ValidateSession(sessionID)
+		if err != nil || !ok {
+			return "", false
+		}
+		return session.Role, true
+	}
+}
+
 func apiAuthSkipPaths(cfg config.Config) []string {
-	return []string{"/v1/healthz", "/v1/setup/status", "/", "/console", "/console/", "/console/*"}
+	return []string{"/v1/healthz", "/v1/setup/status", "/v1/auth/login", "/v1/auth/pairing-login", "/", "/console", "/console/", "/console/*"}
 }
 
 func apiAdminPaths() []string {

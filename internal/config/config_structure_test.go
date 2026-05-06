@@ -12,6 +12,7 @@ func TestConfig_UsesFocusedEmbeddedGroups(t *testing.T) {
 	wantEmbedded := []string{
 		"RuntimeConfig",
 		"APIConfig",
+		"RemoteAccessConfig",
 		"LLMConfig",
 		"MemoryConfig",
 		"UsageConfig",

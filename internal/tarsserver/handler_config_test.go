@@ -90,6 +90,52 @@ llm:
 	}
 }
 
+func TestConfigAPI_SchemaValuesIgnoreEnvOverrides(t *testing.T) {
+	t.Setenv("TARS_API_AUTH_MODE", "off")
+
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(configPath, []byte(`
+api:
+  auth_mode: required
+`), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if cfg.APIAuthMode != "off" {
+		t.Fatalf("test setup expected env override to be effective, got %q", cfg.APIAuthMode)
+	}
+
+	h := newConfigAPIHandler(configPath, cfg, filepath.Join(dir, "workspace"), zerolog.Nop())
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/admin/config/schema", nil)
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected schema 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var payload configSchemaResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode schema: %v", err)
+	}
+	if got := payload.Values["api_auth_mode"]; got != "required" {
+		t.Fatalf("expected editable schema value to come from YAML, got %#v", got)
+	}
+	if got := payload.EffectiveValues["api_auth_mode"]; got != "off" {
+		t.Fatalf("expected effective schema value to include env override, got %#v", got)
+	}
+	override, ok := payload.EnvOverrides["api_auth_mode"]
+	if !ok {
+		t.Fatalf("expected api_auth_mode env override metadata, got %#v", payload.EnvOverrides)
+	}
+	if override.EnvKey != "TARS_API_AUTH_MODE" {
+		t.Fatalf("expected override env key TARS_API_AUTH_MODE, got %q", override.EnvKey)
+	}
+}
+
 func TestConfigAPI_ResetWorkspaceReportsPartialFailures(t *testing.T) {
 	if os.Getuid() == 0 {
 		t.Skip("permission-based removal failure is not reliable as root")

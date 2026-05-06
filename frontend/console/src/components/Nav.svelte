@@ -21,12 +21,13 @@
 
   interface Props {
     currentPath: string
+    authRole?: string
     onNavigate: (path: string) => void
     navOpen?: boolean
     onClose?: () => void
   }
 
-  let { currentPath, onNavigate, navOpen = false, onClose }: Props = $props()
+  let { currentPath, authRole = '', onNavigate, navOpen = false, onClose }: Props = $props()
   let version = $state('')
 
   onMount(async () => {
@@ -71,6 +72,22 @@
     },
   ]
 
+  const userVisibleItems = new Set<NavItemId>([
+    'chat',
+    'lineage',
+    'plans',
+    'memory',
+    'sysprompt',
+    'agentruntime',
+  ])
+
+  let visibleGroups = $derived.by(() => {
+    if (authRole !== 'user') return groups
+    return groups
+      .map((group) => ({ ...group, items: group.items.filter((item) => userVisibleItems.has(item.id)) }))
+      .filter((group) => group.items.length > 0)
+  })
+
   function isActive(itemPath: string, current: string): boolean {
     if (itemPath === '/console/chat') {
       return current.startsWith('/console/chat') || (current.startsWith('/console/sessions') && !current.startsWith('/console/sessions/graph'))
@@ -112,7 +129,7 @@
   </div>
 
   <div class="nav-items">
-    {#each groups as group}
+    {#each visibleGroups as group}
       <section class="nav-group" aria-label={`${groupLabel(group.id)} ${$t.nav.navigationSuffix}`}>
         <div class="nav-group-label">{groupLabel(group.id)}</div>
         {#each group.items as item}

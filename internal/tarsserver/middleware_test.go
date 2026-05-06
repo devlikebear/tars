@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/devlikebear/tars/internal/config"
+	"github.com/devlikebear/tars/internal/consoleauth"
 	"github.com/devlikebear/tars/internal/memory"
 	"github.com/devlikebear/tars/internal/serverauth"
 	"github.com/devlikebear/tars/internal/session"
@@ -84,6 +85,103 @@ func TestApplyAPIMiddleware_AllowsExternalWithTokenAndBindsDefaultWorkspace(t *t
 	}
 	if got := strings.TrimSpace(rec.Body.String()); got != defaultWorkspaceID {
 		t.Fatalf("expected workspace id %q, got %q", defaultWorkspaceID, got)
+	}
+}
+
+func TestApplyAPIMiddleware_AllowsBrowserSessionCookie(t *testing.T) {
+	workspace := t.TempDir()
+	session, err := consoleauth.NewStore(workspace).CreateSession(consoleauth.RoleUser, "iphone safari", time.Hour)
+	if err != nil {
+		t.Fatalf("create browser session: %v", err)
+	}
+	cfg := config.Config{
+		RuntimeConfig: config.RuntimeConfig{WorkspaceDir: workspace},
+		APIConfig:     config.APIConfig{APIAuthMode: "required"},
+	}
+	h := applyAPIMiddleware(cfg, zerolog.New(io.Discard), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(serverauth.RoleFromContext(r.Context())))
+	}), io.Discard)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/status", nil)
+	req.RemoteAddr = "192.0.2.10:5555"
+	req.AddCookie(&http.Cookie{Name: serverauth.DefaultBrowserSessionCookieName, Value: session.ID})
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for browser session cookie, got %d body=%q", rec.Code, rec.Body.String())
+	}
+	if got := strings.TrimSpace(rec.Body.String()); got != serverauth.RoleUser {
+		t.Fatalf("expected role user, got %q", got)
+	}
+}
+
+func TestApplyAPIMiddleware_BrowserUserPolicyOverridesAdminPrefixOnlyForAllowlist(t *testing.T) {
+	workspace := t.TempDir()
+	session, err := consoleauth.NewStore(workspace).CreateSession(consoleauth.RoleUser, "iphone safari", time.Hour)
+	if err != nil {
+		t.Fatalf("create browser session: %v", err)
+	}
+	cfg := config.Config{
+		RuntimeConfig: config.RuntimeConfig{WorkspaceDir: workspace},
+		APIConfig:     config.APIConfig{APIAuthMode: "required"},
+	}
+	h := applyAPIMiddleware(cfg, zerolog.New(io.Discard), http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}), io.Discard)
+
+	allowedReq := httptest.NewRequest(http.MethodGet, "/v1/admin/sessions/main/history", nil)
+	allowedReq.RemoteAddr = "192.0.2.10:5555"
+	allowedReq.AddCookie(&http.Cookie{Name: serverauth.DefaultBrowserSessionCookieName, Value: session.ID})
+	allowedRec := httptest.NewRecorder()
+	h.ServeHTTP(allowedRec, allowedReq)
+	if allowedRec.Code != http.StatusNoContent {
+		t.Fatalf("expected browser user session exception through admin prefix, got %d body=%q", allowedRec.Code, allowedRec.Body.String())
+	}
+
+	blockedReq := httptest.NewRequest(http.MethodGet, "/v1/admin/config", nil)
+	blockedReq.RemoteAddr = "192.0.2.10:5555"
+	blockedReq.AddCookie(&http.Cookie{Name: serverauth.DefaultBrowserSessionCookieName, Value: session.ID})
+	blockedRec := httptest.NewRecorder()
+	h.ServeHTTP(blockedRec, blockedReq)
+	if blockedRec.Code != http.StatusForbidden {
+		t.Fatalf("expected browser user config request to be forbidden, got %d body=%q", blockedRec.Code, blockedRec.Body.String())
+	}
+}
+
+func TestApplyAPIMiddleware_BrowserUserSessionPolicyReachesSessionHandler(t *testing.T) {
+	workspace := t.TempDir()
+	browserSession, err := consoleauth.NewStore(workspace).CreateSession(consoleauth.RoleUser, "iphone safari", time.Hour)
+	if err != nil {
+		t.Fatalf("create browser session: %v", err)
+	}
+	store := session.NewStore(workspace)
+	sess, err := store.Create("mobile chat")
+	if err != nil {
+		t.Fatalf("create chat session: %v", err)
+	}
+	cfg := config.Config{
+		RuntimeConfig: config.RuntimeConfig{WorkspaceDir: workspace},
+		APIConfig:     config.APIConfig{APIAuthMode: "required"},
+	}
+	h := applyAPIMiddleware(cfg, zerolog.New(io.Discard), newSessionAPIHandler(store, zerolog.New(io.Discard)), io.Discard)
+
+	allowedReq := httptest.NewRequest(http.MethodGet, "/v1/admin/sessions/"+sess.ID+"/history", nil)
+	allowedReq.RemoteAddr = "192.0.2.10:5555"
+	allowedReq.AddCookie(&http.Cookie{Name: serverauth.DefaultBrowserSessionCookieName, Value: browserSession.ID})
+	allowedRec := httptest.NewRecorder()
+	h.ServeHTTP(allowedRec, allowedReq)
+	if allowedRec.Code != http.StatusOK {
+		t.Fatalf("expected browser user to reach session handler allowlist, got %d body=%q", allowedRec.Code, allowedRec.Body.String())
+	}
+
+	blockedReq := httptest.NewRequest(http.MethodPatch, "/v1/admin/sessions/"+sess.ID+"/config", strings.NewReader(`{"tools_custom":true}`))
+	blockedReq.RemoteAddr = "192.0.2.10:5555"
+	blockedReq.AddCookie(&http.Cookie{Name: serverauth.DefaultBrowserSessionCookieName, Value: browserSession.ID})
+	blockedRec := httptest.NewRecorder()
+	h.ServeHTTP(blockedRec, blockedReq)
+	if blockedRec.Code != http.StatusForbidden {
+		t.Fatalf("expected browser user config mutation to remain forbidden, got %d body=%q", blockedRec.Code, blockedRec.Body.String())
 	}
 }
 
