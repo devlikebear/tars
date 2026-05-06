@@ -21,8 +21,8 @@ func TestRemoteAccessAPI_EnablePreflightRequiresAuthAndPasswords(t *testing.T) {
 	workspace := t.TempDir()
 	configPath := filepath.Join(t.TempDir(), "config.yaml")
 	runner := newRemoteAccessTestRunner(map[string]string{
-		"tailscale status --json":          `{"BackendState":"Running","Self":{"HostName":"mac","DNSName":"mac.tail.ts.net."}}`,
-		"tailscale serve get-config --all": `{}`,
+		"tailscale status --json":       `{"BackendState":"Running","Self":{"HostName":"mac","DNSName":"mac.tail.ts.net."}}`,
+		"tailscale serve status --json": `{}`,
 	})
 	handler := newRemoteAccessAPIHandler(remoteAccessHandlerOptions{
 		Config: config.Config{
@@ -73,7 +73,7 @@ func TestRemoteAccessAPI_EnableStartsServeAndPersistsDesiredState(t *testing.T) 
 	}
 	runner := newRemoteAccessTestRunner(map[string]string{
 		"tailscale status --json":                                 `{"BackendState":"Running","Self":{"HostName":"mac","DNSName":"mac.tail.ts.net."}}`,
-		"tailscale serve get-config --all":                        `{}`,
+		"tailscale serve status --json":                           `{}`,
 		"tailscale serve --https=443 --bg http://127.0.0.1:43180": ``,
 	})
 	handler := newRemoteAccessAPIHandler(remoteAccessHandlerOptions{
@@ -116,7 +116,7 @@ func TestRemoteAccessAPI_DisableClearsDesiredStateWithoutTouchingNonOwnedTarget(
 	}
 	runner := newRemoteAccessTestRunner(map[string]string{
 		"tailscale status --json": `{"BackendState":"Running","Self":{"HostName":"mac","DNSName":"mac.tail.ts.net."}}`,
-		"tailscale serve get-config --all": `{
+		"tailscale serve status --json": `{
 			"Web": {"mac.tail.ts.net:443": {"Handlers": {"/": {"Proxy": "http://127.0.0.1:3000"}}}}
 		}`,
 	})
@@ -156,7 +156,7 @@ func TestRemoteAccessAPI_DisableClearsDesiredStateWithoutTouchingNonOwnedTarget(
 func TestRemoteAccessReconcileOnStartUsesDesiredConfig(t *testing.T) {
 	runner := newRemoteAccessTestRunner(map[string]string{
 		"tailscale status --json":                                 `{"BackendState":"Running","Self":{"HostName":"mac","DNSName":"mac.tail.ts.net."}}`,
-		"tailscale serve get-config --all":                        `{}`,
+		"tailscale serve status --json":                           `{}`,
 		"tailscale serve --https=443 --bg http://127.0.0.1:43180": ``,
 	})
 	runtime := &serveAPIRuntime{

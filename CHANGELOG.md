@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.32.1] - 2026-05-06
+
+### Fixed
+
+- **Tailscale Serve status detection** — `tars remote status`, Settings, and startup reconciliation now read `tailscale serve status --json` before falling back to `get-config --all`, fixing false idle/off states on Tailscale versions where `get-config --all` can return only a sparse version payload while HTTPS serving is active.
+
 ## [0.32.0] - 2026-05-06
 
 ### Added
