@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.32.5] - 2026-05-08
+
+### Changed
+
+- **Console route code-splitting** — heavy console pages and chat subpanels now load through memoized dynamic imports, keeping the first console route bundle small while loading Chat, Config, Agent Runtime, Mermaid/Markdown-heavy panels, and terminal WebGL support only when needed. The production build no longer emits the previous chunk-size warning. Closes #745.
+
 ## [0.32.4] - 2026-05-08
 
 ### Fixed

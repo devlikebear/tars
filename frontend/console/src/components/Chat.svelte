@@ -12,9 +12,8 @@
   import { buildSessionHealthReport, emptySessionHealthReport, type SessionHealthAction, type SessionHealthInput, type SessionHealthReport } from '../lib/sessionHealth'
   import type { ChatTierRecommendationRequest, PulseSnapshot, NotificationMessage, Session, SessionCwd, SessionMessage, SessionTasks } from '../lib/types'
   import type { Artifact } from '../lib/artifacts'
+  import { loadChatComponent } from '../lib/chatComponents'
   import SessionSidebar from './SessionSidebar.svelte'
-  import ChatPanel from './ChatPanel.svelte'
-  import ArtifactPanel from './ArtifactPanel.svelte'
   import SessionConfigPanel from './SessionConfigPanel.svelte'
   import ContextMonitor from './ContextMonitor.svelte'
   import PromptEditor from './PromptEditor.svelte'
@@ -25,7 +24,6 @@
   import SessionCronPanel from './SessionCronPanel.svelte'
   import SessionHealthPanel from './SessionHealthPanel.svelte'
   import DockPanelFrame from './DockPanelFrame.svelte'
-  import TerminalTabs from './TerminalTabs.svelte'
   import {
     closeDockPanel,
     createDockLayout,
@@ -192,6 +190,11 @@
   )
 
   let sidebarRef: SessionSidebar | undefined = $state()
+  type ChatPanelHandle = {
+    sendMessageText: (text: string) => Promise<void>
+    clearThread: () => void
+    exportAsMarkdown: () => string
+  }
   let actionFeedback = $state('')
   let feedbackTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -532,7 +535,7 @@
     return selectedSession?.kind === 'main'
   }
 
-  let chatPanelRef: ChatPanel | undefined = $state()
+  let chatPanelRef: ChatPanelHandle | undefined = $state()
   let tasksPanelRef: { load: () => void } | undefined = $state()
   let artifactPanelRef: { refresh: () => void; openArtifactPath: (path: string) => Promise<void> } | undefined = $state()
 
@@ -903,13 +906,20 @@
           onNewSession={handleNewSession}
         />
       {:else if panelID === 'artifacts'}
-        <ArtifactPanel
-          bind:this={artifactPanelRef}
-          artifacts={chatArtifacts}
-          sessionId={selectedSessionId || ''}
-          onClose={() => closePanel(panelID)}
-          onOpenIntegratedTerminal={openIntegratedTerminalDock}
-        />
+        {#await loadChatComponent('artifact-panel')}
+          <div class="dock-empty">Loading...</div>
+        {:then module}
+          {@const ArtifactPanelRoute = module.default}
+          <ArtifactPanelRoute
+            bind:this={artifactPanelRef}
+            artifacts={chatArtifacts}
+            sessionId={selectedSessionId || ''}
+            onClose={() => closePanel(panelID)}
+            onOpenIntegratedTerminal={openIntegratedTerminalDock}
+          />
+        {:catch}
+          <div class="dock-empty">{$t.chat.panels.dockEmpty}</div>
+        {/await}
       {:else if panelID === 'config' && selectedSessionId}
         <SessionConfigPanel
           sessionId={selectedSessionId ?? ''}
@@ -1118,30 +1128,37 @@
       {/if}
 
       {#key chatKey}
-        <ChatPanel
-          bind:this={chatPanelRef}
-          sessionId={selectedSessionId || undefined}
-          {initialPrompt}
-          onSessionChange={handleSessionChange}
-          onArtifactsChange={handleArtifactsChange}
-          onContextInfo={(info) => {
-            chatContextInfo = info
-            rebuildSessionHealth(info)
-          }}
-          onToolComplete={handleToolComplete}
-          onTasksChanged={handleTasksChanged}
-          onSlashCommand={handleSlashCommand}
-          onDraftChange={(draft) => { chatDraft = draft }}
-          onSessionForked={handleSessionForked}
-          onSessionReady={(id) => {
-            if (!selectedSessionId) {
-              selectedSessionId = id
-              void loadSelectedSession(id)
-              sidebarRef?.load()
-            }
-          }}
-          onArtifactOpen={handleArtifactOpen}
-        />
+        {#await loadChatComponent('chat-panel')}
+          <div class="chat-panel-loading">Loading...</div>
+        {:then module}
+          {@const ChatPanelRoute = module.default}
+          <ChatPanelRoute
+            bind:this={chatPanelRef}
+            sessionId={selectedSessionId || undefined}
+            {initialPrompt}
+            onSessionChange={handleSessionChange}
+            onArtifactsChange={handleArtifactsChange}
+            onContextInfo={(info: typeof chatContextInfo) => {
+              chatContextInfo = info
+              rebuildSessionHealth(info)
+            }}
+            onToolComplete={handleToolComplete}
+            onTasksChanged={handleTasksChanged}
+            onSlashCommand={handleSlashCommand}
+            onDraftChange={(draft: string) => { chatDraft = draft }}
+            onSessionForked={handleSessionForked}
+            onSessionReady={(id: string) => {
+              if (!selectedSessionId) {
+                selectedSessionId = id
+                void loadSelectedSession(id)
+                sidebarRef?.load()
+              }
+            }}
+            onArtifactOpen={handleArtifactOpen}
+          />
+        {:catch}
+          <div class="chat-panel-loading">Could not load chat panel.</div>
+        {/await}
       {/key}
     </main>
 
@@ -1181,14 +1198,21 @@
           onDock={(nextZone) => dockPanel('terminal', nextZone)}
           onClose={() => closePanel('terminal')}
         >
-          <TerminalTabs
-            sessionId={terminalDockSessionId}
-            tabs={terminalDockTabs}
-            activeId={terminalDockActiveId}
-            onActivate={(id) => { terminalDockActiveId = id }}
-            onCloseTab={closeTerminalTab}
-            onAddTab={addTerminalTab}
-          />
+          {#await loadChatComponent('terminal-tabs')}
+            <div class="dock-empty">Loading...</div>
+          {:then module}
+            {@const TerminalTabsRoute = module.default}
+            <TerminalTabsRoute
+              sessionId={terminalDockSessionId}
+              tabs={terminalDockTabs}
+              activeId={terminalDockActiveId}
+              onActivate={(id: string) => { terminalDockActiveId = id }}
+              onCloseTab={closeTerminalTab}
+              onAddTab={addTerminalTab}
+            />
+          {:catch}
+            <div class="dock-empty">{$t.chat.panels.dockEmpty}</div>
+          {/await}
         </DockPanelFrame>
       </section>
     {/if}
@@ -1203,6 +1227,14 @@
     background: color-mix(in srgb, var(--primary) 10%, transparent);
     border-bottom: 1px solid color-mix(in srgb, var(--primary) 25%, transparent);
     text-align: center;
+  }
+  .chat-panel-loading {
+    flex: 1;
+    min-height: 260px;
+    display: grid;
+    place-items: center;
+    color: var(--text-secondary);
+    font-family: var(--font-display);
   }
   .chat-page {
     display: flex;
