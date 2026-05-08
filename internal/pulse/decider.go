@@ -106,7 +106,7 @@ func (d *Decider) Decide(ctx context.Context, signals []Signal) (Decision, error
 		return Decision{}, fmt.Errorf("decide called with no signals")
 	}
 
-	client, _, err := d.router.ClientFor(llm.RolePulseDecider)
+	client, resolution, err := d.router.ClientFor(llm.RolePulseDecider)
 	if err != nil {
 		return Decision{}, fmt.Errorf("pulse router resolve: %w", err)
 	}
@@ -116,10 +116,14 @@ func (d *Decider) Decide(ctx context.Context, signals []Signal) (Decision, error
 		{Role: "system", Content: pulseSystemPrompt},
 		{Role: "user", Content: prompt},
 	}
-	resp, err := client.Chat(ctx, messages, llm.ChatOptions{
+	opts := llm.ChatOptions{
 		Tools:      []llm.ToolSchema{PulseDecideToolSchema()},
 		ToolChoice: llm.ToolChoiceRequired(),
-	})
+	}
+	if strings.EqualFold(strings.TrimSpace(resolution.Provider), "openai-codex") {
+		opts.OnDelta = func(string) {}
+	}
+	resp, err := client.Chat(ctx, messages, opts)
 	if err != nil {
 		return Decision{}, fmt.Errorf("pulse llm chat: %w", err)
 	}

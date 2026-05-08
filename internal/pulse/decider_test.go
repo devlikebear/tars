@@ -34,7 +34,12 @@ func (f *fakeLLMClient) Chat(ctx context.Context, messages []llm.ChatMessage, op
 // where every tier and role resolves to that client. Used by pulse tests
 // that exercise Decider logic without caring about tier routing.
 func routerForClient(client llm.Client) llm.Router {
+	return routerForClientWithProvider(client, "fake")
+}
+
+func routerForClientWithProvider(client llm.Client, provider string) llm.Router {
 	entry := llm.TierEntry{Client: client, Provider: "fake", Model: "fake-model"}
+	entry.Provider = provider
 	router, err := llm.NewRouter(llm.RouterConfig{
 		Tiers: map[llm.Tier]llm.TierEntry{
 			llm.TierHeavy:    entry,
@@ -94,6 +99,25 @@ func TestDecider_SuccessNotify(t *testing.T) {
 	}
 	if len(client.lastOpts.Tools) != 1 || client.lastOpts.Tools[0].Function.Name != "pulse_decide" {
 		t.Errorf("tools not wired correctly: %+v", client.lastOpts.Tools)
+	}
+	if client.lastOpts.OnDelta != nil {
+		t.Fatal("expected non-Codex pulse decider call to remain non-streaming")
+	}
+}
+
+func TestDecider_OpenAICodexUsesStreamingOption(t *testing.T) {
+	client := &fakeLLMClient{
+		resp: makeToolCall(`{"action":"notify","severity":"warn","title":"Manual review","summary":"needs attention"}`),
+	}
+	d := NewDecider(routerForClientWithProvider(client, "openai-codex"), DeciderPolicy{MinSeverity: SeverityWarn})
+	_, err := d.Decide(context.Background(), []Signal{
+		{Kind: SignalKindStalledChat, Severity: SeverityWarn, Summary: "chat stalled"},
+	})
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	if client.lastOpts.OnDelta == nil {
+		t.Fatal("expected OpenAI Codex pulse decider call to request streaming")
 	}
 }
 

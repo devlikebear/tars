@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.32.3] - 2026-05-08
+
+### Fixed
+
+- **Pulse decider OpenAI Codex routing** — Pulse classifier calls now request streaming on `openai-codex` tiers immediately, avoiding the recurring non-stream `400: Stream must be set to true` retry path and reducing watchdog tick noise. Closes #743.
+
 ## [0.32.2] - 2026-05-07
 
 ### Added
