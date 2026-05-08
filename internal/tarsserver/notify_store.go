@@ -7,11 +7,13 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 )
 
 const (
 	notificationHistoryMax          = 1000
 	defaultNotificationHistoryLimit = 100
+	pulseNotificationCoalesceWindow = 30 * time.Minute
 )
 
 type notificationStore struct {
@@ -35,6 +37,11 @@ type notificationReadView struct {
 	UnreadCount int
 }
 
+type notificationAppendResult struct {
+	Event     notificationEvent
+	Coalesced bool
+}
+
 func newNotificationStore(path string, max int) (*notificationStore, error) {
 	trimmedPath := strings.TrimSpace(path)
 	if trimmedPath == "" {
@@ -55,9 +62,16 @@ func newNotificationStore(path string, max int) (*notificationStore, error) {
 	return store, nil
 }
 
-func (s *notificationStore) append(evt notificationEvent) (notificationEvent, error) {
+func (s *notificationStore) append(evt notificationEvent) (notificationAppendResult, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	if merged, ok := s.coalescePulseNotificationLocked(evt); ok {
+		if err := s.persist(); err != nil {
+			return notificationAppendResult{}, err
+		}
+		return notificationAppendResult{Event: merged, Coalesced: true}, nil
+	}
 
 	s.nextID++
 	evt.ID = s.nextID
@@ -68,9 +82,52 @@ func (s *notificationStore) append(evt notificationEvent) (notificationEvent, er
 	// Keep immediate persistence for crash-safe durability. If event volume grows,
 	// this can be optimized with a debounced/batched flush strategy.
 	if err := s.persist(); err != nil {
-		return notificationEvent{}, err
+		return notificationAppendResult{}, err
 	}
-	return evt, nil
+	return notificationAppendResult{Event: evt}, nil
+}
+
+func (s *notificationStore) coalescePulseNotificationLocked(evt notificationEvent) (notificationEvent, bool) {
+	if !isPulseNotification(evt) {
+		return notificationEvent{}, false
+	}
+	evtTime, ok := notificationEventTime(evt)
+	if !ok {
+		return notificationEvent{}, false
+	}
+	key := pulseNotificationCoalesceKey(evt)
+	if key == "" {
+		return notificationEvent{}, false
+	}
+	for i := len(s.items) - 1; i >= 0; i-- {
+		current := s.items[i]
+		if pulseNotificationCoalesceKey(current) != key {
+			continue
+		}
+		currentTime, ok := notificationEventTime(current)
+		if !ok {
+			return notificationEvent{}, false
+		}
+		if evtTime.Before(currentTime) || evtTime.Sub(currentTime) > pulseNotificationCoalesceWindow {
+			return notificationEvent{}, false
+		}
+		merged := current
+		if merged.Occurrences <= 0 {
+			merged.Occurrences = 1
+		}
+		merged.Occurrences++
+		merged.Message = strings.TrimSpace(evt.Message)
+		merged.Timestamp = strings.TrimSpace(evt.Timestamp)
+		merged.LastSeen = strings.TrimSpace(evt.Timestamp)
+		merged.Type = notificationEventType
+		s.items[i] = merged
+		if i != len(s.items)-1 {
+			copy(s.items[i:], s.items[i+1:])
+			s.items[len(s.items)-1] = merged
+		}
+		return merged, true
+	}
+	return notificationEvent{}, false
 }
 
 func (s *notificationStore) history(role string, limit int) (notificationHistoryView, error) {
@@ -209,10 +266,82 @@ func (s *notificationStore) persist() error {
 }
 
 func (s *notificationStore) lastIDLocked() int64 {
-	if len(s.items) == 0 {
-		return 0
+	var last int64
+	for _, item := range s.items {
+		if item.ID > last {
+			last = item.ID
+		}
 	}
-	return s.items[len(s.items)-1].ID
+	return last
+}
+
+func isPulseNotification(evt notificationEvent) bool {
+	return strings.EqualFold(strings.TrimSpace(evt.Category), "pulse")
+}
+
+func pulseNotificationCoalesceKey(evt notificationEvent) string {
+	if !isPulseNotification(evt) {
+		return ""
+	}
+	family := pulseNotificationFamilyKey(evt)
+	parts := []string{
+		strings.ToLower(strings.TrimSpace(evt.Category)),
+		strings.ToLower(strings.TrimSpace(evt.Severity)),
+		family,
+		strings.TrimSpace(evt.SessionID),
+		strings.TrimSpace(evt.JobID),
+		strings.TrimSpace(evt.OpenPath),
+	}
+	if parts[2] == "" {
+		return ""
+	}
+	return strings.Join(parts, "\x00")
+}
+
+func pulseNotificationFamilyKey(evt notificationEvent) string {
+	title := strings.ToLower(strings.TrimSpace(evt.Title))
+	message := strings.ToLower(strings.TrimSpace(evt.Message))
+	text := title + " " + message
+	if strings.Contains(text, "chat") {
+		if strings.Contains(text, "stalled") ||
+			strings.Contains(text, "halted") ||
+			strings.Contains(text, "failed") ||
+			strings.Contains(text, "auto-resume") ||
+			strings.Contains(text, "auto-retry") {
+			return "chat_attention"
+		}
+	}
+	if strings.Contains(text, "cron") {
+		return "cron"
+	}
+	if strings.Contains(text, "disk") {
+		return "disk"
+	}
+	if strings.Contains(text, "telegram") || strings.Contains(text, "delivery") {
+		return "delivery"
+	}
+	if strings.Contains(text, "reflection") {
+		return "reflection"
+	}
+	if strings.Contains(text, "agent") || strings.Contains(text, "run") || strings.Contains(text, "stuck") {
+		return "agent_runtime"
+	}
+	return title
+}
+
+func notificationEventTime(evt notificationEvent) (time.Time, bool) {
+	raw := strings.TrimSpace(evt.LastSeen)
+	if raw == "" {
+		raw = strings.TrimSpace(evt.Timestamp)
+	}
+	if raw == "" {
+		return time.Time{}, false
+	}
+	ts, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return ts, true
 }
 
 func normalizeNotificationRoleKey(raw string) string {

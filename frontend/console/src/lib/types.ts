@@ -218,6 +218,9 @@ export type NotificationMessage = {
   title: string
   message: string
   timestamp: string
+  occurrences?: number
+  last_seen?: string
+  coalesced?: boolean
   job_id?: string
   session_id?: string
   open_path?: string

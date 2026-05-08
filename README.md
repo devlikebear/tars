@@ -145,7 +145,7 @@ Each system role (chat, pulse, reflection, compaction, agent runtime agents) map
 
 Two isolated surfaces run independently from user chat:
 
-- **Pulse** — 1-minute watchdog scanning cron failures, stuck runs, stalled chats, disk pressure, Telegram delivery health, and reflection status. LLM classifier picks `ignore` / `notify` / `autofix`. The Console renders recent signals as incident cards with likely cause, evidence, recommended action, safe navigation, and re-check controls. Autofixes are whitelisted in config, and stalled-chat continuation requires per-session auto-resume consent.
+- **Pulse** — 1-minute watchdog scanning cron failures, stuck runs, stalled chats, disk pressure, Telegram delivery health, and reflection status. LLM classifier picks `ignore` / `notify` / `autofix`. The Console renders recent signals as incident cards with likely cause, evidence, recommended action, safe navigation, and re-check controls, while repeated chat-attention notifications are grouped with occurrence counts instead of inflating unread rows. Autofixes are whitelisted in config, and stalled-chat continuation requires per-session auto-resume consent.
 - **Reflection** — Nightly batch (default 02:00–05:00) running memory reflection (Memory Inbox candidate extraction) and stale empty-session pruning.
 
 Both use the `light` tier by default and have no access to user-facing tools (enforced at compile time via `RegistryScope`).

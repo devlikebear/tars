@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.32.4] - 2026-05-08
+
+### Fixed
+
+- **Pulse notification dedupe** — repeated Pulse chat-attention notifications now coalesce by signal family for 30 minutes, updating occurrence counts and the latest timestamp instead of adding duplicate unread rows. Severity changes and different Pulse families still create visible notifications. Closes #744.
+
 ## [0.32.3] - 2026-05-08
 
 ### Fixed
