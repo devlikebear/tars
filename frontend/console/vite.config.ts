@@ -8,6 +8,8 @@ export default defineConfig({
   build: {
     outDir: '../../internal/tarsserver/consoleassets/dist',
     emptyOutDir: false,
+    // Route splitting leaves Mermaid's lazy parser just above Vite's 500 kB default.
+    chunkSizeWarningLimit: 550,
   },
   server: {
     host: '127.0.0.1',

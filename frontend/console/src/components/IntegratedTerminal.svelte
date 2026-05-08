@@ -5,7 +5,7 @@
   import { WebLinksAddon } from '@xterm/addon-web-links'
   import { SearchAddon, type ISearchOptions } from '@xterm/addon-search'
   import { Unicode11Addon } from '@xterm/addon-unicode11'
-  import { WebglAddon } from '@xterm/addon-webgl'
+  import type { WebglAddon as WebglAddonType } from '@xterm/addon-webgl'
   import { SerializeAddon } from '@xterm/addon-serialize'
   import '@xterm/xterm/css/xterm.css'
   import { terminalWebSocketURL } from '../lib/api'
@@ -111,7 +111,7 @@
   let fitAddon: FitAddon | null = null
   let searchAddon: SearchAddon | null = null
   let serializeAddon: SerializeAddon | null = null
-  let webglAddon: WebglAddon | null = null
+  let webglAddon: WebglAddonType | null = null
   let socket: WebSocket | null = null
   let resizeObserver: ResizeObserver | null = null
   let bellTimer: ReturnType<typeof setTimeout> | null = null
@@ -525,17 +525,21 @@
       // pane may have just transitioned from display:none → flex) leaves
       // the canvas with stale size and produces a blank terminal even
       // though the buffer is being written to.
-      try {
-        const addon = new WebglAddon()
-        addon.onContextLoss(() => {
-          addon.dispose()
-          webglAddon = null
+      void import('@xterm/addon-webgl')
+        .then(({ WebglAddon }) => {
+          if (!terminal) return
+          const addon = new WebglAddon()
+          addon.onContextLoss(() => {
+            addon.dispose()
+            webglAddon = null
+          })
+          terminal.loadAddon(addon)
+          webglAddon = addon
+          terminal.refresh(0, terminal.rows - 1)
         })
-        terminal?.loadAddon(addon)
-        webglAddon = addon
-      } catch {
-        // WebGL unavailable — fall back to default DOM renderer.
-      }
+        .catch(() => {
+          // WebGL unavailable — fall back to default DOM renderer.
+        })
       // Force a redraw so any output already buffered actually paints.
       if (terminal) terminal.refresh(0, terminal.rows - 1)
       connect()

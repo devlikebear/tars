@@ -44,6 +44,7 @@ The name comes from the TARS in *Interstellar* — practical, direct, dependable
 The primary interface. Browser-based console at `http://127.0.0.1:43180/console`.
 
 - Multi-session chat with full LLM tool-calling loops and transcript snippet matches in session search
+- The console lazy-loads heavier routes and chat subpanels so the Mission Control first load stays small while Chat, Config, Agent Runtime, Mermaid/Markdown previews, and terminal rendering load on demand
 - Session lineage metadata and stable transcript message IDs power message-level chat forks: hover a persisted user or assistant message, choose "Fork from here", and continue in a child session that reuses setup, plan state, tool policy, prompt override, and workspace roots through that point
 - The Console Lineage page renders root and forked sessions as a git-log-style tree with fork point previews, click-through navigation back into chat, and reviewable fork insight promotion into Memory Inbox without mutating the parent transcript
 - Tool calls render as collapsible rows with live elapsed time, compact argument previews, and automatic error expansion

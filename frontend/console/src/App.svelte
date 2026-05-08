@@ -2,24 +2,10 @@
   import { onMount, onDestroy } from 'svelte'
   import Shell from './components/Shell.svelte'
   import Home from './components/Home.svelte'
-  import Chat from './components/Chat.svelte'
-  import SessionLineageGraph from './components/SessionLineageGraph.svelte'
-  import Plans from './components/Plans.svelte'
-  import MemoryCenter from './components/MemoryCenter.svelte'
-  import SyspromptCenter from './components/SyspromptCenter.svelte'
-  import Ops from './components/Ops.svelte'
-  import Cron from './components/Cron.svelte'
-  import Logs from './components/Logs.svelte'
-  import Analytics from './components/Analytics.svelte'
-  import Config from './components/Config.svelte'
-  import Extensions from './components/Extensions.svelte'
-  import Pulse from './components/Pulse.svelte'
-  import Reflection from './components/Reflection.svelte'
-  import Channels from './components/Channels.svelte'
   import Onboarding from './components/Onboarding.svelte'
   import Login from './components/Login.svelte'
-  import AgentRuntimeRunView from './components/AgentRuntimeRunView.svelte'
   import { resolveRoute, type Route } from './lib/router'
+  import { loadRouteComponent } from './lib/routeComponents'
   import { APIRequestError, getAuthWhoami, getEventsHistory, getHealthz, logoutAuth, streamEvents } from './lib/api'
   import type { AuthWhoamiResponse } from './lib/types'
   import { isZenShortcut, zenMode } from './lib/zenMode.svelte'
@@ -187,37 +173,142 @@
     {:else if route.view === 'home'}
       <Home onNavigate={navigate} />
     {:else if route.view === 'chat'}
-      {#key aiPrompt}
-        <Chat sessionId={route.sessionId} onNavigate={navigate} initialPrompt={aiPrompt} />
-      {/key}
+      {#await loadRouteComponent('chat')}
+        <div class="route-loading">Loading...</div>
+      {:then module}
+        {@const ChatRoute = module.default}
+        {#key aiPrompt}
+          <ChatRoute sessionId={route.sessionId} onNavigate={navigate} initialPrompt={aiPrompt} />
+        {/key}
+      {:catch}
+        <div class="route-error">Could not load console page.</div>
+      {/await}
     {:else if route.view === 'session-lineage'}
-      <SessionLineageGraph onNavigate={navigate} />
+      {#await loadRouteComponent('session-lineage')}
+        <div class="route-loading">Loading...</div>
+      {:then module}
+        {@const SessionLineageRoute = module.default}
+        <SessionLineageRoute onNavigate={navigate} />
+      {:catch}
+        <div class="route-error">Could not load console page.</div>
+      {/await}
     {:else if route.view === 'tasks'}
-      <Plans onNavigate={navigate} />
+      {#await loadRouteComponent('tasks')}
+        <div class="route-loading">Loading...</div>
+      {:then module}
+        {@const PlansRoute = module.default}
+        <PlansRoute onNavigate={navigate} />
+      {:catch}
+        <div class="route-error">Could not load console page.</div>
+      {/await}
     {:else if route.view === 'agentruntime'}
-      <AgentRuntimeRunView runId={route.runId} tab={route.tab} onNavigate={navigate} />
+      {#await loadRouteComponent('agentruntime')}
+        <div class="route-loading">Loading...</div>
+      {:then module}
+        {@const AgentRuntimeRoute = module.default}
+        <AgentRuntimeRoute runId={route.runId} tab={route.tab} onNavigate={navigate} />
+      {:catch}
+        <div class="route-error">Could not load console page.</div>
+      {/await}
     {:else if route.view === 'memory'}
-      <MemoryCenter onAskAI={navigateWithPrompt} />
+      {#await loadRouteComponent('memory')}
+        <div class="route-loading">Loading...</div>
+      {:then module}
+        {@const MemoryRoute = module.default}
+        <MemoryRoute onAskAI={navigateWithPrompt} />
+      {:catch}
+        <div class="route-error">Could not load console page.</div>
+      {/await}
     {:else if route.view === 'sysprompt'}
-      <SyspromptCenter />
+      {#await loadRouteComponent('sysprompt')}
+        <div class="route-loading">Loading...</div>
+      {:then module}
+        {@const SyspromptRoute = module.default}
+        <SyspromptRoute />
+      {:catch}
+        <div class="route-error">Could not load console page.</div>
+      {/await}
     {:else if route.view === 'ops' && authRole !== 'user'}
-      <Ops />
+      {#await loadRouteComponent('ops')}
+        <div class="route-loading">Loading...</div>
+      {:then module}
+        {@const OpsRoute = module.default}
+        <OpsRoute />
+      {:catch}
+        <div class="route-error">Could not load console page.</div>
+      {/await}
     {:else if route.view === 'cron' && authRole !== 'user'}
-      <Cron />
+      {#await loadRouteComponent('cron')}
+        <div class="route-loading">Loading...</div>
+      {:then module}
+        {@const CronRoute = module.default}
+        <CronRoute />
+      {:catch}
+        <div class="route-error">Could not load console page.</div>
+      {/await}
     {:else if route.view === 'logs' && authRole !== 'user'}
-      <Logs />
+      {#await loadRouteComponent('logs')}
+        <div class="route-loading">Loading...</div>
+      {:then module}
+        {@const LogsRoute = module.default}
+        <LogsRoute />
+      {:catch}
+        <div class="route-error">Could not load console page.</div>
+      {/await}
     {:else if route.view === 'analytics' && authRole !== 'user'}
-      <Analytics />
+      {#await loadRouteComponent('analytics')}
+        <div class="route-loading">Loading...</div>
+      {:then module}
+        {@const AnalyticsRoute = module.default}
+        <AnalyticsRoute />
+      {:catch}
+        <div class="route-error">Could not load console page.</div>
+      {/await}
     {:else if route.view === 'config' && authRole !== 'user'}
-      <Config onNavigate={navigate} />
+      {#await loadRouteComponent('config')}
+        <div class="route-loading">Loading...</div>
+      {:then module}
+        {@const ConfigRoute = module.default}
+        <ConfigRoute onNavigate={navigate} />
+      {:catch}
+        <div class="route-error">Could not load console page.</div>
+      {/await}
     {:else if route.view === 'pulse' && authRole !== 'user'}
-      <Pulse onNavigate={navigate} />
+      {#await loadRouteComponent('pulse')}
+        <div class="route-loading">Loading...</div>
+      {:then module}
+        {@const PulseRoute = module.default}
+        <PulseRoute onNavigate={navigate} />
+      {:catch}
+        <div class="route-error">Could not load console page.</div>
+      {/await}
     {:else if route.view === 'reflection' && authRole !== 'user'}
-      <Reflection />
+      {#await loadRouteComponent('reflection')}
+        <div class="route-loading">Loading...</div>
+      {:then module}
+        {@const ReflectionRoute = module.default}
+        <ReflectionRoute />
+      {:catch}
+        <div class="route-error">Could not load console page.</div>
+      {/await}
     {:else if route.view === 'extensions' && authRole !== 'user'}
-      <Extensions />
+      {#await loadRouteComponent('extensions')}
+        <div class="route-loading">Loading...</div>
+      {:then module}
+        {@const ExtensionsRoute = module.default}
+        <ExtensionsRoute />
+      {:catch}
+        <div class="route-error">Could not load console page.</div>
+      {/await}
     {:else if route.view === 'channels' && authRole !== 'user'}
-      <Channels />
+      {#await loadRouteComponent('channels')}
+        <div class="route-loading">Loading...</div>
+      {:then module}
+        {@const ChannelsRoute = module.default}
+        <ChannelsRoute />
+      {:catch}
+        <div class="route-error">Could not load console page.</div>
+      {/await}
     {:else}
       <Home onNavigate={navigate} />
     {/if}
@@ -232,5 +323,18 @@
     color: var(--text-secondary);
     background: var(--surface-base);
     font-family: var(--font-display);
+  }
+
+  .route-loading,
+  .route-error {
+    min-height: min(420px, calc(100vh - 180px));
+    display: grid;
+    place-items: center;
+    color: var(--text-secondary);
+    font-family: var(--font-display);
+  }
+
+  .route-error {
+    color: var(--danger);
   }
 </style>
