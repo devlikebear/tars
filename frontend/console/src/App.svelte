@@ -58,8 +58,8 @@
     if (needsSetup || loginRequired) return
     stopGlobalStream?.()
     stopGlobalStream = streamEvents(
-      () => {
-        unreadCount++
+      (event) => {
+        if (!event.coalesced) unreadCount++
       },
       () => {
         serverHealth = 'disconnected'

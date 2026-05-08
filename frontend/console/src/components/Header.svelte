@@ -38,8 +38,8 @@
   let filteredNotifs = $derived.by(() => {
     // Sort newest first
     const sorted = [...notifications].sort((a, b) => {
-      const ta = new Date(a.timestamp).getTime()
-      const tb = new Date(b.timestamp).getTime()
+      const ta = new Date(notificationTimestamp(a)).getTime()
+      const tb = new Date(notificationTimestamp(b)).getTime()
       return tb - ta
     })
     if (notifFilter === 'unread') return sorted.filter((n) => (n.id ?? 0) > readCursor)
@@ -60,6 +60,10 @@
     if (diff < 3_600_000) return $t.header.time.minutesAgo(Math.floor(diff / 60_000))
     if (diff < 86_400_000) return $t.header.time.hoursAgo(Math.floor(diff / 3_600_000))
     return new Intl.DateTimeFormat($locale, { dateStyle: 'short', timeStyle: 'short' }).format(date)
+  }
+
+  function notificationTimestamp(item: NotificationMessage): string {
+    return item.last_seen?.trim() || item.timestamp
   }
 
   function severityClass(severity: string): string {
@@ -254,11 +258,14 @@
                   <div class="notif-item-top">
                     <span class="notif-cat-icon">{categoryIcon(item.category)}</span>
                     <strong class="notif-title">{item.title}</strong>
-                    <span class="notif-time">{fmt(item.timestamp)}</span>
+                    <span class="notif-time">{fmt(notificationTimestamp(item))}</span>
                   </div>
                   <p class="notif-message">{item.message}</p>
                   <div class="notif-meta">
                     <span class="badge badge-default">{item.category}</span>
+                    {#if (item.occurrences ?? 0) > 1}
+                      <span class="badge badge-default">x{item.occurrences}</span>
+                    {/if}
                   </div>
                 </div>
               {/each}

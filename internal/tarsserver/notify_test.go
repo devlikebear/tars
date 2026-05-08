@@ -87,6 +87,34 @@ func TestNotificationDispatcher_RetriesDesktopNotifyOnFailure(t *testing.T) {
 	}
 }
 
+func TestNotificationDispatcher_SuppressesDesktopNotifyForCoalescedPulse(t *testing.T) {
+	store, err := newNotificationStore(t.TempDir()+"/notifications.json", 1000)
+	if err != nil {
+		t.Fatalf("newNotificationStore: %v", err)
+	}
+	fake := &fakeDesktopNotifier{}
+	dispatcher := newNotificationDispatcher(nil, fake, true, zerolog.New(io.Discard))
+	dispatcher.store = store
+
+	first := newNotificationEvent("pulse", "warn", "Chat sessions need attention", "3 sessions are stalled")
+	first.Timestamp = "2026-05-08T13:00:00Z"
+	dispatcher.Emit(context.Background(), first)
+	duplicate := newNotificationEvent("pulse", "warn", "Chat sessions need attention", "4 sessions are stalled")
+	duplicate.Timestamp = "2026-05-08T13:01:00Z"
+	dispatcher.Emit(context.Background(), duplicate)
+
+	if len(fake.calls) != 1 {
+		t.Fatalf("expected duplicate pulse desktop notify to be suppressed, got %d calls", len(fake.calls))
+	}
+	view, err := store.history("user", 100)
+	if err != nil {
+		t.Fatalf("history: %v", err)
+	}
+	if len(view.Items) != 1 || view.Items[0].Occurrences != 2 {
+		t.Fatalf("expected grouped pulse notification, got %+v", view.Items)
+	}
+}
+
 func TestEventStreamHandler_StreamsPublishedNotification(t *testing.T) {
 	broker := newEventBroker()
 	handler := newEventStreamHandler(broker, zerolog.New(io.Discard))

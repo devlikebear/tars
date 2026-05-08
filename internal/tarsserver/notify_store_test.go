@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/rs/zerolog"
 )
@@ -21,12 +22,12 @@ func TestNotificationStore_AppendAndRestore(t *testing.T) {
 	}
 
 	for i := 0; i < 1005; i++ {
-		evt, err := store.append(newNotificationEvent("cron", "info", "title", "msg"))
+		result, err := store.append(newNotificationEvent("cron", "info", "title", "msg"))
 		if err != nil {
 			t.Fatalf("append: %v", err)
 		}
-		if evt.ID != int64(i+1) {
-			t.Fatalf("expected id=%d, got %d", i+1, evt.ID)
+		if result.Event.ID != int64(i+1) {
+			t.Fatalf("expected id=%d, got %d", i+1, result.Event.ID)
 		}
 	}
 
@@ -118,6 +119,75 @@ func TestNotificationStore_HistoryUnreadCountUsesAllRetainedItems(t *testing.T) 
 	}
 	if view.UnreadCount != 3 {
 		t.Fatalf("expected unread_count to include all retained items, got %d", view.UnreadCount)
+	}
+}
+
+func TestNotificationStore_CoalescesRepeatedPulseNotifications(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "notifications.json")
+	store, err := newNotificationStore(path, 1000)
+	if err != nil {
+		t.Fatalf("newNotificationStore: %v", err)
+	}
+
+	base := time.Date(2026, 5, 8, 13, 0, 0, 0, time.UTC)
+	first := newNotificationEvent("pulse", "warn", "Chat sessions need attention", "3 sessions are stalled")
+	first.Timestamp = base.Format(time.RFC3339)
+	firstResult, err := store.append(first)
+	if err != nil {
+		t.Fatalf("append first: %v", err)
+	}
+	if firstResult.Coalesced {
+		t.Fatal("first pulse notification should not coalesce")
+	}
+
+	duplicate := newNotificationEvent("pulse", "warn", "Chat sessions stalled or failed without auto-resume", "4 halted chats need review")
+	duplicate.Timestamp = base.Add(time.Minute).Format(time.RFC3339)
+	duplicateResult, err := store.append(duplicate)
+	if err != nil {
+		t.Fatalf("append duplicate: %v", err)
+	}
+	if !duplicateResult.Coalesced {
+		t.Fatal("repeated pulse notification should coalesce")
+	}
+	if duplicateResult.Event.ID != firstResult.Event.ID {
+		t.Fatalf("coalesced event id = %d, want %d", duplicateResult.Event.ID, firstResult.Event.ID)
+	}
+	if duplicateResult.Event.Occurrences != 2 {
+		t.Fatalf("occurrences = %d, want 2", duplicateResult.Event.Occurrences)
+	}
+	if duplicateResult.Event.Message != "4 halted chats need review" {
+		t.Fatalf("expected latest message to win, got %q", duplicateResult.Event.Message)
+	}
+
+	view, err := store.history("user", 100)
+	if err != nil {
+		t.Fatalf("history: %v", err)
+	}
+	if len(view.Items) != 1 {
+		t.Fatalf("expected one grouped item, got %d", len(view.Items))
+	}
+	if view.UnreadCount != 1 {
+		t.Fatalf("grouped duplicate should count as one unread item, got %d", view.UnreadCount)
+	}
+
+	escalated := newNotificationEvent("pulse", "error", "Chat sessions need attention", "severity changed")
+	escalated.Timestamp = base.Add(2 * time.Minute).Format(time.RFC3339)
+	escalatedResult, err := store.append(escalated)
+	if err != nil {
+		t.Fatalf("append escalated: %v", err)
+	}
+	if escalatedResult.Coalesced {
+		t.Fatal("severity changes must remain visible as a new notification")
+	}
+
+	later := newNotificationEvent("pulse", "warn", "Chat sessions need attention", "still stalled later")
+	later.Timestamp = base.Add(32 * time.Minute).Format(time.RFC3339)
+	laterResult, err := store.append(later)
+	if err != nil {
+		t.Fatalf("append later: %v", err)
+	}
+	if laterResult.Coalesced {
+		t.Fatal("duplicates outside the coalesce window should create a new reminder")
 	}
 }
 

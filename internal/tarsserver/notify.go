@@ -22,16 +22,19 @@ const notificationEventType = "notification"
 const keepaliveEventType = "keepalive"
 
 type notificationEvent struct {
-	ID        int64  `json:"id,omitempty"`
-	Type      string `json:"type"`
-	Category  string `json:"category"`
-	Severity  string `json:"severity"`
-	Title     string `json:"title"`
-	Message   string `json:"message"`
-	Timestamp string `json:"timestamp"`
-	JobID     string `json:"job_id,omitempty"`
-	SessionID string `json:"session_id,omitempty"`
-	OpenPath  string `json:"open_path,omitempty"`
+	ID          int64  `json:"id,omitempty"`
+	Type        string `json:"type"`
+	Category    string `json:"category"`
+	Severity    string `json:"severity"`
+	Title       string `json:"title"`
+	Message     string `json:"message"`
+	Timestamp   string `json:"timestamp"`
+	Occurrences int    `json:"occurrences,omitempty"`
+	LastSeen    string `json:"last_seen,omitempty"`
+	Coalesced   bool   `json:"coalesced,omitempty"`
+	JobID       string `json:"job_id,omitempty"`
+	SessionID   string `json:"session_id,omitempty"`
+	OpenPath    string `json:"open_path,omitempty"`
 }
 
 func newNotificationEvent(category, severity, title, message string) notificationEvent {
@@ -237,16 +240,22 @@ func (d *notificationDispatcher) Emit(ctx context.Context, evt notificationEvent
 	if strings.TrimSpace(evt.Timestamp) == "" {
 		evt.Timestamp = time.Now().UTC().Format(time.RFC3339)
 	}
+	coalesced := false
 	if d.store != nil {
 		stored, err := d.store.append(evt)
 		if err != nil {
 			d.logger.Debug().Err(err).Msg("notification persistence failed; continuing without persistence")
 		} else {
-			evt = stored
+			evt = stored.Event
+			coalesced = stored.Coalesced
+			evt.Coalesced = coalesced
 		}
 	}
 	if d.broker != nil {
 		d.broker.publish(evt)
+	}
+	if coalesced {
+		return
 	}
 	if !d.notifyWhenNoSubscribers || d.notifier == nil {
 		return

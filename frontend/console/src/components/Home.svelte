@@ -119,6 +119,10 @@
     return new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short' }).format(date)
   }
 
+  function notificationTimestamp(item: NotificationMessage): string {
+    return item.last_seen?.trim() || item.timestamp
+  }
+
   function compact(value?: string, max = 110): string {
     const text = value?.trim()
     if (!text) return '-'
@@ -325,7 +329,7 @@
     stopStream?.()
     stopStream = streamEvents((event) => {
       notifications = [event, ...notifications.filter((item) => item.id !== event.id)].slice(0, 10)
-      unreadCount++
+      if (!event.coalesced) unreadCount++
       if (event.category === 'pulse') {
         void getPulseStatus().then((snapshot) => { pulse = snapshot }).catch(() => {})
         void getReflectionStatus().then((snapshot) => { reflection = snapshot }).catch(() => {})
@@ -542,9 +546,12 @@
                 <span class="notification-top">
                   <strong>{item.title}</strong>
                   <span class="badge badge-default">{item.severity || item.category}</span>
+                  {#if (item.occurrences ?? 0) > 1}
+                    <span class="badge badge-default">x{item.occurrences}</span>
+                  {/if}
                 </span>
                 <span class="notification-message">{compact(item.message, 140)}</span>
-                <span class="session-meta">{fmt(item.timestamp)}</span>
+                <span class="session-meta">{fmt(notificationTimestamp(item))}</span>
               </button>
             {/each}
           </div>
