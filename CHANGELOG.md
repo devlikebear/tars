@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.32.10] - 2026-05-09
+
+### Fixed
+
+- **AI delete candidates for trivial archives** — recently archived empty or greeting-only sessions can now reach AI delete analysis, while recently archived substantive sessions remain protected by the 24-hour grace period. Closes #771.
+
 ## [0.32.9] - 2026-05-09
 
 ### Fixed

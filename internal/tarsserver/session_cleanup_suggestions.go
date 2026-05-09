@@ -8,6 +8,7 @@ import (
 	"math"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/devlikebear/tars/internal/llm"
 	"github.com/devlikebear/tars/internal/session"
@@ -20,6 +21,7 @@ const (
 	maxSessionCleanupLimit            = 20
 	maxSessionCleanupCandidatesForLLM = 30
 	sessionCleanupRecentProtection    = 24 * time.Hour
+	sessionCleanupTrivialProtection   = 30 * time.Minute
 )
 
 var errInvalidSessionCleanupMode = errors.New("mode must be archive or delete")
@@ -251,18 +253,25 @@ func buildSessionCleanupCandidate(store *session.Store, sess session.Session, mo
 		return sessionCleanupCandidate{}, false, ""
 	}
 
+	summary, warning := sessionCleanupTranscriptSummary(store, sess.ID)
+
 	switch mode {
 	case sessionCleanupModeArchive:
 		if archived || age < sessionCleanupRecentProtection {
 			return sessionCleanupCandidate{}, false, ""
 		}
 	case sessionCleanupModeDelete:
-		if !archived || sess.ArchivedAt == nil || now.Sub(sess.ArchivedAt.UTC()) < sessionCleanupRecentProtection {
+		if !archived || sess.ArchivedAt == nil {
 			return sessionCleanupCandidate{}, false, ""
+		}
+		archivedAge := now.Sub(sess.ArchivedAt.UTC())
+		if archivedAge < sessionCleanupRecentProtection {
+			if archivedAge < sessionCleanupTrivialProtection || !isTrivialSessionCleanupTranscript(sess.Title, summary) {
+				return sessionCleanupCandidate{}, false, warning
+			}
 		}
 	}
 
-	summary, warning := sessionCleanupTranscriptSummary(store, sess.ID)
 	candidate := sessionCleanupCandidate{
 		SessionID:     sess.ID,
 		Title:         firstNonEmpty(strings.TrimSpace(sess.Title), sess.ID),
@@ -417,6 +426,55 @@ func cleanupSnippet(value string, limit int) string {
 		return strings.TrimSpace(string(runes[:limit]))
 	}
 	return strings.TrimSpace(string(runes[:limit-3])) + "..."
+}
+
+func isTrivialSessionCleanupTranscript(title string, summary sessionCleanupTranscript) bool {
+	if summary.messageCount == 0 {
+		return true
+	}
+	if summary.messageCount > 2 {
+		return false
+	}
+	if isCleanupGreeting(summary.firstUser) || isCleanupGreeting(summary.lastUser) {
+		return true
+	}
+	if isGenericCleanupTitle(title) && summary.messageCount == 1 && cleanupTextRuneLen(summary.firstUser) <= 24 {
+		return true
+	}
+	return false
+}
+
+func isGenericCleanupTitle(title string) bool {
+	switch strings.ToLower(strings.TrimSpace(title)) {
+	case "", "new chat", "untitled", "chat", "새 대화":
+		return true
+	default:
+		return false
+	}
+}
+
+func isCleanupGreeting(value string) bool {
+	compact := compactCleanupText(value)
+	switch compact {
+	case "hi", "hello", "hey", "안녕", "안녕하세요", "하이", "ㅎㅇ":
+		return true
+	default:
+		return false
+	}
+}
+
+func compactCleanupText(value string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(strings.TrimSpace(value)) {
+		if unicode.IsLetter(r) || unicode.IsNumber(r) {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+func cleanupTextRuneLen(value string) int {
+	return len([]rune(strings.TrimSpace(value)))
 }
 
 func clampConfidence(value float64) float64 {
