@@ -48,11 +48,23 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            frontend/console/package-lock.json
 
       - name: Install browser runtime dependencies
         run: npm ci
+
+      - name: Check frontend console
+        run: cd frontend/console && npm ci
+
+      - name: Run frontend console checks
+        run: cd frontend/console && npm run check
+
+      - name: Run frontend console tests
+        run: cd frontend/console && npm run test:ci
 
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
@@ -87,6 +99,22 @@ jobs:
         uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/console/package-lock.json
+
+      - name: Check frontend console
+        run: cd frontend/console && npm ci
+
+      - name: Run frontend console checks
+        run: cd frontend/console && npm run check
+
+      - name: Run frontend console tests
+        run: cd frontend/console && npm run test:ci
 
       - name: Lint changed Go code
         env:

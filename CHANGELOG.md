@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.32.12] - 2026-05-09
+
+### Changed
+
+- **PR CI static-analysis hardening** — pull requests now run Svelte console type checks plus a stable frontend CI test slice, while `make lint-diff` adds `errcheck` and `staticcheck` only for newly changed Go lines so existing lint debt does not block unrelated work. Closes #775.
+
 ## [0.32.11] - 2026-05-09
 
 ### Added

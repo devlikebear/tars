@@ -61,7 +61,7 @@ RELEASE_STAGE_DIR ?= $(DIST_DIR)/release-$(RELEASE_GOOS)-$(RELEASE_GOARCH)
 .PHONY: help \
 	test test-v test-one test-nocache test-race test-cover test-cover-check test-diff test-cover-diff \
 	build build-bins release-asset clean tidy fmt vet lint \
-	lint-diff \
+	lint-diff ci-static-analysis-check \
 	ensure-console-assets console-install console-build \
 	browser-install \
 	install install-server install-assistant uninstall uninstall-server uninstall-assistant reinstall \
@@ -114,7 +114,8 @@ help:
 	@echo "  make fmt           - go fmt ./..."
 	@echo "  make vet           - go vet ./..."
 	@echo "  make lint          - golangci-lint ./... (includes revive)"
-	@echo "  make lint-diff     - golangci-lint only new issues since DIFF_BASE"
+	@echo "  make lint-diff     - golangci-lint only new issues since DIFF_BASE (adds errcheck/staticcheck)"
+	@echo "  make ci-static-analysis-check - verify CI static-analysis guardrails"
 	@echo "  make tidy          - go mod tidy"
 	@echo "  make clean         - remove build artifacts"
 	@echo ""
@@ -380,7 +381,10 @@ lint:
 lint-diff:
 	@base="$${DIFF_BASE:-$$(./scripts/diff_base.sh)}"; \
 	echo "Running golangci-lint for new issues since $${base}"; \
-	$(GOLANGCI_LINT) run --new-from-rev="$${base}" ./...
+	$(GOLANGCI_LINT) run --enable=errcheck --enable=staticcheck --new-from-rev="$${base}" ./...
+
+ci-static-analysis-check:
+	./scripts/verify_ci_static_analysis.sh
 
 tidy:
 	$(GO) mod tidy
