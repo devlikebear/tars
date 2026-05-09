@@ -1466,6 +1466,24 @@ export type TaskEvidence = {
   created_at?: string
 }
 
+export type TaskVerificationResult = {
+  command: string
+  status: 'passed' | 'failed' | string
+  exit_code: number
+  timed_out?: boolean
+  evidence_id: string
+  summary?: string
+}
+
+export type TaskVerificationResponse = {
+  ok: boolean
+  task_id: string
+  results: TaskVerificationResult[]
+  plan?: SessionPlan
+  contract?: TaskContract
+  summary?: Record<string, number>
+}
+
 export type SessionTask = {
   id: string
   title: string

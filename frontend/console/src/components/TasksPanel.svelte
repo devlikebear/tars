@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import { t } from '../i18n'
-  import { getSessionPlanArchive, getSessionTasks, executeTasksAction, cancelChat } from '../lib/api'
+  import { getSessionPlanArchive, getSessionTasks, executeTasksAction, cancelChat, runTaskVerification } from '../lib/api'
   import { planProgressPercent, summarizeTasks } from '../lib/tasks'
   import type { PlanArchiveItem, SessionTask, SessionTasks, TaskContract, TaskEvidence } from '../lib/types'
 
@@ -36,6 +36,7 @@
   let contractSaving = $state(false)
   let contractSaved = $state('')
   let contractError = $state('')
+  let verificationRunning = $state(false)
 
   // Aggregated evidence across all tasks — surfaced under the Evidence tab.
   let aggregatedEvidence = $derived<Array<TaskEvidence & { task_title: string; task_id: string }>>(
@@ -91,6 +92,26 @@
       contractError = err instanceof Error ? err.message : 'Save failed'
     } finally {
       contractSaving = false
+    }
+  }
+
+  async function runContractVerification() {
+    verificationRunning = true
+    contractError = ''
+    contractSaved = ''
+    try {
+      const result = await runTaskVerification(sessionId)
+      data = await getSessionTasks(sessionId)
+      loadContractDraft(data)
+      const count = result.results.length
+      contractSaved = result.ok
+        ? `Verification passed (${count})`
+        : `Verification failed (${count})`
+      activeTab = 'evidence'
+    } catch (err) {
+      contractError = err instanceof Error ? err.message : 'Verification failed'
+    } finally {
+      verificationRunning = false
     }
   }
   let archiveItems: PlanArchiveItem[] = $state([])
@@ -773,6 +794,14 @@
         </button>
         <button class="btn btn-ghost btn-sm" type="button" disabled={contractSaving || contractStatus === 'approved'} onclick={() => saveContract(true)}>
           {contractStatus === 'approved' ? 'Approved' : 'Approve Contract'}
+        </button>
+        <button
+          class="btn btn-ghost btn-sm"
+          type="button"
+          disabled={contractSaving || verificationRunning || contractStatus !== 'approved' || splitLines(contractVerificationCommands).length === 0 || taskList.length === 0}
+          onclick={runContractVerification}
+        >
+          {verificationRunning ? 'Running...' : 'Run Verification'}
         </button>
       </div>
     {/if}

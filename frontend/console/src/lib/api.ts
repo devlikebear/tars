@@ -80,6 +80,7 @@ import type {
   SessionTasks,
   TaskContract,
   TaskEvidence,
+  TaskVerificationResponse,
   GitBranchesResponse,
   GitCommitDetail,
   GitDiff,
@@ -569,6 +570,17 @@ export async function executeTasksAction(
   payload: Record<string, unknown>,
 ): Promise<unknown> {
   return requestJSON(`/v1/admin/sessions/${encodeURIComponent(sessionId)}/tasks`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function runTaskVerification(
+  sessionId: string,
+  payload: { task_id?: string; timeout_ms?: number } = {},
+): Promise<TaskVerificationResponse> {
+  return requestJSON<TaskVerificationResponse>(`/v1/admin/sessions/${encodeURIComponent(sessionId)}/tasks/verify`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
