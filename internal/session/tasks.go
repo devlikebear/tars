@@ -167,12 +167,13 @@ type SessionTasks struct {
 }
 
 type SessionWithPlanTasks struct {
-	Session   Session        `json:"session"`
-	Plan      *Plan          `json:"plan,omitempty"`
-	Contract  *TaskContract  `json:"contract,omitempty"`
-	Tasks     []Task         `json:"tasks"`
-	Summary   map[string]int `json:"summary"`
-	UpdatedAt time.Time      `json:"updated_at"`
+	Session        Session        `json:"session"`
+	Plan           *Plan          `json:"plan,omitempty"`
+	Contract       *TaskContract  `json:"contract,omitempty"`
+	Tasks          []Task         `json:"tasks"`
+	Summary        map[string]int `json:"summary"`
+	UpdatedAt      time.Time      `json:"updated_at"`
+	StaleCompleted bool           `json:"stale_completed"`
 }
 
 // MarshalJSON keeps the API contract stable by always emitting tasks as an array.
@@ -237,13 +238,15 @@ func (s *Store) ListSessionsWithPlans(includeHidden bool, activeOnly bool) ([]Se
 		if activeOnly && !isActivePlan(tasks.Plan) {
 			continue
 		}
+		summary := TaskSummary(tasks.Tasks)
 		items = append(items, SessionWithPlanTasks{
-			Session:   sess,
-			Plan:      tasks.Plan,
-			Contract:  tasks.Contract,
-			Tasks:     tasks.Tasks,
-			Summary:   TaskSummary(tasks.Tasks),
-			UpdatedAt: planTasksUpdatedAt(sess, tasks),
+			Session:        sess,
+			Plan:           tasks.Plan,
+			Contract:       tasks.Contract,
+			Tasks:          tasks.Tasks,
+			Summary:        summary,
+			UpdatedAt:      planTasksUpdatedAt(sess, tasks),
+			StaleCompleted: isStaleCompletedPlan(tasks.Plan, summary),
 		})
 	}
 	sort.SliceStable(items, func(i, j int) bool {
@@ -566,6 +569,20 @@ func isActivePlan(plan *Plan) bool {
 	default:
 		return true
 	}
+}
+
+func isStaleCompletedPlan(plan *Plan, summary map[string]int) bool {
+	if !isActivePlan(plan) {
+		return false
+	}
+	total := summary["total"]
+	if total <= 0 {
+		return false
+	}
+	if summary["pending"] > 0 || summary["in_progress"] > 0 {
+		return false
+	}
+	return summary["completed"]+summary["cancelled"] >= total
 }
 
 // ArchiveSummary returns a human-readable summary of the plan and tasks for memory archival.

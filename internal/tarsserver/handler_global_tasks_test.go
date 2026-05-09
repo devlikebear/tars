@@ -22,6 +22,10 @@ func TestGlobalTasksAPIListsActivePlans(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create newer session: %v", err)
 	}
+	stale, err := store.Create("Stale session")
+	if err != nil {
+		t.Fatalf("create stale session: %v", err)
+	}
 	done, err := store.Create("Done session")
 	if err != nil {
 		t.Fatalf("create done session: %v", err)
@@ -43,6 +47,15 @@ func TestGlobalTasksAPIListsActivePlans(t *testing.T) {
 		Tasks:    []session.Task{{ID: "1", Title: "Active", Status: "in_progress"}},
 	}); err != nil {
 		t.Fatalf("save newer tasks: %v", err)
+	}
+	if err := store.SaveTasks(stale.ID, session.SessionTasks{
+		Plan: &session.Plan{Goal: "Stale goal", Status: session.PlanStatusExecuting, CreatedAt: base.Format(time.RFC3339), UpdatedAt: base.Add(30 * time.Minute).Format(time.RFC3339)},
+		Tasks: []session.Task{
+			{ID: "1", Title: "Done", Status: "completed"},
+			{ID: "2", Title: "Cancelled", Status: "cancelled"},
+		},
+	}); err != nil {
+		t.Fatalf("save stale tasks: %v", err)
 	}
 	if err := store.SaveTasks(done.ID, session.SessionTasks{
 		Plan:  &session.Plan{Goal: "Done goal", Status: session.PlanStatusCompleted, CreatedAt: base.Format(time.RFC3339), UpdatedAt: base.Add(2 * time.Hour).Format(time.RFC3339)},
@@ -68,13 +81,14 @@ func TestGlobalTasksAPIListsActivePlans(t *testing.T) {
 			Tasks     []session.Task        `json:"tasks"`
 			Summary   map[string]int        `json:"summary"`
 			UpdatedAt string                `json:"updated_at"`
+			Stale     bool                  `json:"stale_completed"`
 		} `json:"items"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
 		t.Fatalf("decode global tasks response: %v", err)
 	}
-	if payload.Count != 2 || len(payload.Items) != 2 {
-		t.Fatalf("expected two active plan items, got %+v", payload)
+	if payload.Count != 3 || len(payload.Items) != 3 {
+		t.Fatalf("expected three active plan items, got %+v", payload)
 	}
 	if payload.Items[0].Session.ID != newer.ID || payload.Items[0].Plan.Goal != "Newer goal" {
 		t.Fatalf("expected newest active plan first, got %+v", payload.Items)
@@ -82,8 +96,11 @@ func TestGlobalTasksAPIListsActivePlans(t *testing.T) {
 	if payload.Items[0].Contract == nil || payload.Items[0].Contract.DoneCriteria[0] != "criteria" {
 		t.Fatalf("expected contract in global task item, got %+v", payload.Items[0].Contract)
 	}
-	if payload.Items[1].Summary["pending"] != 1 || payload.Items[1].Summary["completed"] != 1 {
-		t.Fatalf("expected task summary counts, got %+v", payload.Items[1])
+	if payload.Items[1].Session.ID != stale.ID || !payload.Items[1].Stale {
+		t.Fatalf("expected stale completed active plan signal, got %+v", payload.Items[1])
+	}
+	if payload.Items[2].Summary["pending"] != 1 || payload.Items[2].Summary["completed"] != 1 || payload.Items[2].Stale {
+		t.Fatalf("expected task summary counts without stale signal, got %+v", payload.Items[2])
 	}
 	if payload.Items[0].UpdatedAt != base.Add(time.Hour).Format(time.RFC3339) {
 		t.Fatalf("expected updated_at from plan updated_at, got %+v", payload.Items[0])

@@ -28,6 +28,7 @@
     SessionTasks,
     SyspromptFile,
   } from '../lib/types'
+  import { isStaleCompletedPlan } from '../lib/plans'
   import { t } from '../i18n'
 
   interface Props {
@@ -420,13 +421,19 @@
           <div class="work-list">
             {#each recentPlans as item}
               {@const percent = planProgressPercent(item)}
-              <button type="button" class="work-row" onclick={() => openPlanSession(item.session.id)}>
+              {@const staleCompleted = isStaleCompletedPlan(item)}
+              <button type="button" class="work-row" class:ready-to-close={staleCompleted} onclick={() => openPlanSession(item.session.id)}>
                 <span class="work-topline">
                   <strong>{compact(item.plan.goal, 120)}</strong>
-                  <span class="badge badge-default">{item.plan.status ?? $t.home.plans.executing}</span>
+                  <span class="badge" class:badge-default={!staleCompleted} class:badge-warning={staleCompleted}>
+                    {staleCompleted ? $t.plans.readyToClose : (item.plan.status ?? $t.home.plans.executing)}
+                  </span>
                 </span>
                 <span class="mini-progress" aria-label={`${percent}% complete`}><span style={`width: ${percent}%`}></span></span>
                 <span class="work-meta">{planFinishedCount(item)}/{item.summary?.total ?? item.tasks.length} {$t.home.plans.doneSuffix} · {item.summary?.in_progress ?? 0} {$t.home.plans.activeSuffix} · {$t.home.plans.updated} {relativeTime(item.updated_at)}</span>
+                {#if staleCompleted}
+                  <span class="work-meta attention">{$t.plans.readyToCloseHint}</span>
+                {/if}
               </button>
             {/each}
           </div>
@@ -779,6 +786,19 @@
 
   .notification-row:disabled {
     cursor: default;
+  }
+
+  .work-row.ready-to-close {
+    border-color: color-mix(in srgb, var(--warning) 36%, var(--border-subtle));
+    background: color-mix(in srgb, var(--warning) 6%, var(--surface-card));
+  }
+
+  .work-row.ready-to-close:hover {
+    border-color: var(--warning);
+  }
+
+  .work-meta.attention {
+    color: var(--warning);
   }
 
   .session-title,

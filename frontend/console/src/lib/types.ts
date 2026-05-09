@@ -1608,6 +1608,7 @@ export type GlobalPlanItem = {
   tasks: SessionTask[]
   summary: Record<string, number>
   updated_at: string
+  stale_completed?: boolean
 }
 
 export type GlobalPlansResponse = {
