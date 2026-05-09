@@ -64,6 +64,9 @@ export const ko = {
       unread: '읽지 않은 알림이 없습니다',
       read: '읽은 알림이 없습니다',
     },
+    auth: {
+      signOut: '로그아웃',
+    },
     locale: {
       label: '언어',
       en: 'EN',

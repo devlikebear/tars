@@ -368,13 +368,14 @@
           </button>
           <div class="session-actions">
             {#if !isMainSession(session)}
-              <button class="act-btn" title={$t.sessions.actions.rename} onclick={(e) => { e.stopPropagation(); startRename(session) }}>&#9998;</button>
-              <button class="act-btn" title={$t.sessions.actions.autoTitle} disabled={actionBusy === session.id} onclick={(e) => { e.stopPropagation(); handleGenerateTitle(session) }}>&#9733;</button>
+              <button class="act-btn" aria-label={$t.sessions.actions.rename} title={$t.sessions.actions.rename} onclick={(e) => { e.stopPropagation(); startRename(session) }}>&#9998;</button>
+              <button class="act-btn" aria-label={$t.sessions.actions.autoTitle} title={$t.sessions.actions.autoTitle} disabled={actionBusy === session.id} onclick={(e) => { e.stopPropagation(); handleGenerateTitle(session) }}>&#9733;</button>
             {/if}
-            <button class="act-btn" title={$t.sessions.actions.compact} disabled={actionBusy === session.id} onclick={(e) => { e.stopPropagation(); handleCompact(session.id) }}>&#8858;</button>
+            <button class="act-btn" aria-label={$t.sessions.actions.compact} title={$t.sessions.actions.compact} disabled={actionBusy === session.id} onclick={(e) => { e.stopPropagation(); handleCompact(session.id) }}>&#8858;</button>
             {#if !isMainSession(session)}
               <button
                 class="act-btn act-btn-danger"
+                aria-label={deleteConfirmId === session.id ? $t.sessions.actions.confirm : $t.sessions.actions.delete}
                 title={deleteConfirmId === session.id ? $t.sessions.actions.confirm : $t.sessions.actions.delete}
                 disabled={actionBusy === session.id}
                 onclick={(e) => { e.stopPropagation(); requestDelete(session.id) }}
