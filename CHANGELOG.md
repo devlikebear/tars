@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.32.17] - 2026-05-09
+
+### Fixed
+
+- **Workspace file path handling** — file panel reads, directory listings, directory creation, and directory renames now resolve requests to root-local paths and execute through Go's `os.Root` API instead of reusing validated absolute paths, tightening traversal and symlink escape protection for the SonarCloud blocker finding. Closes #780.
+
 ## [0.32.16] - 2026-05-09
 
 ### Fixed

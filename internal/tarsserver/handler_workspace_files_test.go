@@ -31,6 +31,15 @@ type workspaceFilePreviewResponse struct {
 	Message     string `json:"message,omitempty"`
 }
 
+func newWorkspaceFilesTestHandler(t *testing.T) (string, string, http.Handler) {
+	t.Helper()
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+	return root, filepath.Join(root, "artifacts"), newWorkspaceFilesHandler(root, zerolog.New(io.Discard))
+}
+
 func TestWorkspaceFilesHandler_ReadsMarkdownPreview(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "workspace")
 	if err := memory.EnsureWorkspace(root); err != nil {
@@ -293,6 +302,66 @@ func TestWorkspaceFilesHandler_RejectsSymlinkOutsideRoot(t *testing.T) {
 	}
 }
 
+func TestResolveWorkspaceFilesRootPath_ReducesAbsolutePathToRootLocalName(t *testing.T) {
+	root := t.TempDir()
+	insidePath := filepath.Join(root, "reports", "summary.md")
+	if err := os.MkdirAll(filepath.Dir(insidePath), 0o755); err != nil {
+		t.Fatalf("mkdir inside parent: %v", err)
+	}
+	if err := os.WriteFile(insidePath, []byte("hello"), 0o644); err != nil {
+		t.Fatalf("write inside file: %v", err)
+	}
+
+	cleanPath, rootPath, err := resolveWorkspaceFilesRootPath(root, insidePath, "")
+	if err != nil {
+		t.Fatalf("resolve inside absolute path: %v", err)
+	}
+	if cleanPath != filepath.Clean(insidePath) {
+		t.Fatalf("expected clean display path %q, got %q", filepath.Clean(insidePath), cleanPath)
+	}
+	if rootPath != filepath.Join("reports", "summary.md") {
+		t.Fatalf("expected root-local path, got %q", rootPath)
+	}
+
+	outsidePath := filepath.Join(t.TempDir(), "secret.md")
+	if err := os.WriteFile(outsidePath, []byte("secret"), 0o644); err != nil {
+		t.Fatalf("write outside file: %v", err)
+	}
+	if _, _, err := resolveWorkspaceFilesRootPath(root, outsidePath, ""); err == nil {
+		t.Fatalf("expected outside absolute path to be rejected")
+	}
+}
+
+func TestWorkspaceFilesHandler_UsesRootRelativeFileAccess(t *testing.T) {
+	source, err := os.ReadFile("handler_workspace_files.go")
+	if err != nil {
+		t.Fatalf("read handler source: %v", err)
+	}
+	for _, forbidden := range []string{
+		"os.Stat(absPath)",
+		"os.ReadFile(absPath)",
+		"os.ReadDir(absPath)",
+		"os.Mkdir(targetAbs",
+		"os.Rename(absPath",
+	} {
+		if strings.Contains(string(source), forbidden) {
+			t.Fatalf("workspace files handler should use root-relative access, found %q", forbidden)
+		}
+	}
+}
+
+func TestWorkspaceFilesHandler_ReturnsNotFoundWhenRootIsMissing(t *testing.T) {
+	_, _, handler := newWorkspaceFilesTestHandler(t)
+	missingRoot := filepath.Join(t.TempDir(), "missing-root")
+
+	req := httptest.NewRequest(http.MethodGet, "/?path=.&root="+url.QueryEscape(missingRoot), nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d body=%q", rec.Code, rec.Body.String())
+	}
+}
+
 func TestWorkspaceFilesHandler_CreatesDirectory(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "workspace")
 	if err := memory.EnsureWorkspace(root); err != nil {
@@ -314,6 +383,49 @@ func TestWorkspaceFilesHandler_CreatesDirectory(t *testing.T) {
 		t.Fatalf("expected created directory: %v", err)
 	} else if !info.IsDir() {
 		t.Fatalf("expected reports to be a directory")
+	}
+}
+
+func TestWorkspaceFilesHandler_CreateRejectsMissingParentDirectory(t *testing.T) {
+	_, artifactsRoot, handler := newWorkspaceFilesTestHandler(t)
+
+	body := strings.NewReader(`{"parent_path":"missing","name":"reports"}`)
+	req := httptest.NewRequest(http.MethodPost, "/?root="+url.QueryEscape(artifactsRoot), body)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d body=%q", rec.Code, rec.Body.String())
+	}
+}
+
+func TestWorkspaceFilesHandler_CreateRejectsFileParentPath(t *testing.T) {
+	_, artifactsRoot, handler := newWorkspaceFilesTestHandler(t)
+	if err := os.WriteFile(filepath.Join(artifactsRoot, "note.md"), []byte("hello"), 0o644); err != nil {
+		t.Fatalf("write note: %v", err)
+	}
+
+	body := strings.NewReader(`{"parent_path":"note.md","name":"reports"}`)
+	req := httptest.NewRequest(http.MethodPost, "/?root="+url.QueryEscape(artifactsRoot), body)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d body=%q", rec.Code, rec.Body.String())
+	}
+}
+
+func TestWorkspaceFilesHandler_CreateReturnsNotFoundWhenRootIsMissing(t *testing.T) {
+	_, _, handler := newWorkspaceFilesTestHandler(t)
+	missingRoot := filepath.Join(t.TempDir(), "missing-root")
+
+	body := strings.NewReader(`{"parent_path":".","name":"reports"}`)
+	req := httptest.NewRequest(http.MethodPost, "/?root="+url.QueryEscape(missingRoot), body)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d body=%q", rec.Code, rec.Body.String())
 	}
 }
 
@@ -344,5 +456,32 @@ func TestWorkspaceFilesHandler_RenamesDirectory(t *testing.T) {
 		t.Fatalf("expected renamed directory: %v", err)
 	} else if !info.IsDir() {
 		t.Fatalf("expected weekly to be a directory")
+	}
+}
+
+func TestWorkspaceFilesHandler_RenameRejectsRootDirectory(t *testing.T) {
+	_, artifactsRoot, handler := newWorkspaceFilesTestHandler(t)
+
+	body := strings.NewReader(`{"path":".","new_name":"renamed"}`)
+	req := httptest.NewRequest(http.MethodPatch, "/?root="+url.QueryEscape(artifactsRoot), body)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d body=%q", rec.Code, rec.Body.String())
+	}
+}
+
+func TestWorkspaceFilesHandler_RenameReturnsNotFoundWhenRootIsMissing(t *testing.T) {
+	_, _, handler := newWorkspaceFilesTestHandler(t)
+	missingRoot := filepath.Join(t.TempDir(), "missing-root")
+
+	body := strings.NewReader(`{"path":"reports","new_name":"weekly"}`)
+	req := httptest.NewRequest(http.MethodPatch, "/?root="+url.QueryEscape(missingRoot), body)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d body=%q", rec.Code, rec.Body.String())
 	}
 }
