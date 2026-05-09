@@ -186,30 +186,10 @@ func (s *Scanner) scanFailedChats(ctx context.Context, now time.Time) *Signal {
 		return nil
 	}
 	primary := candidates[0]
-	canAutoResume := false
-	for _, candidate := range candidates {
-		if candidate.CanAutoResume {
-			canAutoResume = true
-			break
-		}
-	}
-	details := map[string]any{
-		"failed_count":        len(candidates),
-		"session_id":          primary.SessionID,
-		"session_title":       primary.Title,
-		"last_message_id":     primary.LastMessageID,
-		"age_minutes":         primary.AgeMinutes,
-		"failure_kind":        primary.FailureKind,
-		"failing_tool":        primary.FailingToolName,
-		"can_auto_resume":     primary.CanAutoResume,
-		"auto_resume_enabled": primary.AutoResumeEnabled,
-		"block_reason":        primary.BlockReason,
-		"autofix_candidate":   autofix.AutoResumeFailedChatName,
-		"sessions":            candidates,
-	}
-	if canAutoResume {
-		details["has_auto_resume_candidate"] = true
-	}
+	details := newChatSignalDetails("failed_count", candidates, autofix.AutoResumeFailedChatName, map[string]any{
+		"failure_kind": primary.FailureKind,
+		"failing_tool": primary.FailingToolName,
+	})
 	return &Signal{
 		Kind:     SignalKindFailedChat,
 		Severity: SeverityWarn,

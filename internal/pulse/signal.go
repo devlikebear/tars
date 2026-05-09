@@ -186,29 +186,9 @@ func (s *Scanner) scanStalledChats(ctx context.Context, now time.Time) *Signal {
 		return nil
 	}
 	primary := candidates[0]
-	canAutoResume := false
-	for _, candidate := range candidates {
-		if candidate.CanAutoResume {
-			canAutoResume = true
-			break
-		}
-	}
-	details := map[string]any{
-		"stalled_count":       len(candidates),
-		"session_id":          primary.SessionID,
-		"session_title":       primary.Title,
-		"last_message_id":     primary.LastMessageID,
-		"age_minutes":         primary.AgeMinutes,
-		"can_auto_resume":     primary.CanAutoResume,
-		"auto_resume_enabled": primary.AutoResumeEnabled,
-		"resume_mode":         primary.ResumeMode,
-		"block_reason":        primary.BlockReason,
-		"autofix_candidate":   autofix.AutoContinueChatName,
-		"sessions":            candidates,
-	}
-	if canAutoResume {
-		details["has_auto_resume_candidate"] = true
-	}
+	details := newChatSignalDetails("stalled_count", candidates, autofix.AutoContinueChatName, map[string]any{
+		"resume_mode": primary.ResumeMode,
+	})
 	return &Signal{
 		Kind:     SignalKindStalledChat,
 		Severity: SeverityWarn,
