@@ -33,3 +33,37 @@ Run the local guard before changing the workflow:
 ```bash
 make codeql-workflow-check
 ```
+
+## SonarCloud Evaluation
+
+`.github/workflows/sonarcloud.yml` is an optional evaluation workflow. It runs
+on pull requests, pushes to `main`, and manual dispatch, but it exits
+successfully with a notice until the repository has all required configuration:
+
+```bash
+gh secret set SONAR_TOKEN --repo devlikebear/tars
+gh variable set SONAR_PROJECT_KEY --repo devlikebear/tars --body '<sonar-project-key>'
+gh variable set SONAR_ORGANIZATION --repo devlikebear/tars --body '<sonar-organization>'
+```
+
+Once configured, the workflow generates Go coverage with `make test-cover` and
+uploads it through `sonar.go.coverage.reportPaths=coverage.out`.
+
+Frontend LCOV coverage is intentionally deferred because the console currently
+uses Node's built-in test runner and has no stable `lcov.info` producing command.
+Svelte-specific correctness remains anchored in `svelte-check` and the stable
+frontend CI test slice in `.github/workflows/ci.yml`.
+
+The SonarCloud scan is deliberately non-blocking while the baseline is
+evaluated:
+
+- the workflow does not wait for the Sonar quality gate
+- the scanner step uses `continue-on-error: true`
+- the check should not be configured as a required merge gate until the first
+  baseline is reviewed and the quality gate policy is agreed
+
+Run the local guard before changing the workflow:
+
+```bash
+make sonarcloud-workflow-check
+```
