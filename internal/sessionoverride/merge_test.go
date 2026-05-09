@@ -97,6 +97,124 @@ func TestMerge_SliceUnionDedup_AcrossLayers(t *testing.T) {
 	}
 }
 
+func TestMerge_CustomAllowlistsReplaceInheritedProjectSettings(t *testing.T) {
+	base := session.SessionToolConfig{
+		ToolsEnabled:    []string{"base-tool"},
+		SkillsEnabled:   []string{"base-skill"},
+		CommandsEnabled: []string{"base-command"},
+		MCPEnabled:      []string{"base-mcp"},
+	}
+	shared := &Override{
+		ToolConfig: &session.SessionToolConfig{
+			ToolsEnabled:    []string{"shared-tool"},
+			SkillsEnabled:   []string{"shared-skill"},
+			CommandsEnabled: []string{"shared-command"},
+			MCPEnabled:      []string{"shared-mcp"},
+		},
+		Presence: map[string]bool{
+			"tool_config.tools_enabled":    true,
+			"tool_config.skills_enabled":   true,
+			"tool_config.commands_enabled": true,
+			"tool_config.mcp_enabled":      true,
+		},
+	}
+	local := &Override{
+		ToolConfig: &session.SessionToolConfig{
+			ToolsCustom:     true,
+			ToolsEnabled:    []string{"local-tool"},
+			SkillsCustom:    true,
+			SkillsEnabled:   []string{"local-skill"},
+			CommandsCustom:  true,
+			CommandsEnabled: []string{"local-command"},
+			MCPCustom:       true,
+			MCPEnabled:      []string{"local-mcp"},
+		},
+		Presence: map[string]bool{
+			"tool_config.tools_custom":     true,
+			"tool_config.tools_enabled":    true,
+			"tool_config.skills_custom":    true,
+			"tool_config.skills_enabled":   true,
+			"tool_config.commands_custom":  true,
+			"tool_config.commands_enabled": true,
+			"tool_config.mcp_custom":       true,
+			"tool_config.mcp_enabled":      true,
+		},
+	}
+
+	eff, sources := Merge(base, "", shared, local)
+
+	if !reflect.DeepEqual(eff.ToolConfig.ToolsEnabled, []string{"local-tool"}) {
+		t.Fatalf("local tools_custom should replace inherited tools, got %+v", eff.ToolConfig.ToolsEnabled)
+	}
+	if !reflect.DeepEqual(eff.ToolConfig.SkillsEnabled, []string{"local-skill"}) {
+		t.Fatalf("local skills_custom should replace inherited skills, got %+v", eff.ToolConfig.SkillsEnabled)
+	}
+	if !reflect.DeepEqual(eff.ToolConfig.CommandsEnabled, []string{"local-command"}) {
+		t.Fatalf("local commands_custom should replace inherited commands, got %+v", eff.ToolConfig.CommandsEnabled)
+	}
+	if !reflect.DeepEqual(eff.ToolConfig.MCPEnabled, []string{"local-mcp"}) {
+		t.Fatalf("local mcp_custom should replace inherited MCP entries, got %+v", eff.ToolConfig.MCPEnabled)
+	}
+	for _, path := range []string{
+		"tool_config.tools_enabled",
+		"tool_config.skills_enabled",
+		"tool_config.commands_enabled",
+		"tool_config.mcp_enabled",
+	} {
+		if sources[path] != SourceLocal {
+			t.Fatalf("source for %s should be local, got %q", path, sources[path])
+		}
+	}
+}
+
+func TestMerge_CustomFlagsClearOmittedAllowlists(t *testing.T) {
+	base := session.SessionToolConfig{
+		ToolsEnabled:    []string{"base-tool"},
+		SkillsEnabled:   []string{"base-skill"},
+		CommandsEnabled: []string{"base-command"},
+		MCPEnabled:      []string{"base-mcp"},
+	}
+	local := &Override{
+		ToolConfig: &session.SessionToolConfig{
+			ToolsCustom:    true,
+			SkillsCustom:   true,
+			CommandsCustom: true,
+			MCPCustom:      true,
+		},
+		Presence: map[string]bool{
+			"tool_config.tools_custom":    true,
+			"tool_config.skills_custom":   true,
+			"tool_config.commands_custom": true,
+			"tool_config.mcp_custom":      true,
+		},
+	}
+
+	eff, sources := Merge(base, "", nil, local)
+
+	if len(eff.ToolConfig.ToolsEnabled) != 0 {
+		t.Fatalf("tools_custom without tools_enabled should clear inherited tools, got %+v", eff.ToolConfig.ToolsEnabled)
+	}
+	if len(eff.ToolConfig.SkillsEnabled) != 0 {
+		t.Fatalf("skills_custom without skills_enabled should clear inherited skills, got %+v", eff.ToolConfig.SkillsEnabled)
+	}
+	if len(eff.ToolConfig.CommandsEnabled) != 0 {
+		t.Fatalf("commands_custom without commands_enabled should clear inherited commands, got %+v", eff.ToolConfig.CommandsEnabled)
+	}
+	if len(eff.ToolConfig.MCPEnabled) != 0 {
+		t.Fatalf("mcp_custom without mcp_enabled should clear inherited MCP, got %+v", eff.ToolConfig.MCPEnabled)
+	}
+	for _, path := range []string{
+		"tool_config.tools_enabled",
+		"tool_config.skills_enabled",
+		"tool_config.commands_enabled",
+		"tool_config.mcp_enabled",
+	} {
+		if sources[path] != SourceLocal {
+			t.Fatalf("source for %s should be local, got %q", path, sources[path])
+		}
+	}
+}
+
 func TestMerge_BoolReplaceSemantics(t *testing.T) {
 	base := session.SessionToolConfig{ToolsCustom: false}
 	shared := &Override{
@@ -228,8 +346,8 @@ func TestMerge_ExercisesAllToolConfigSubfields(t *testing.T) {
 	checkUnion("ToolsDisabled", eff.ToolConfig.ToolsDisabled, []string{"b", "d"})
 	checkUnion("ToolsAllowGroups", eff.ToolConfig.ToolsAllowGroups, []string{"files", "web"})
 	checkUnion("ToolsDenyGroups", eff.ToolConfig.ToolsDenyGroups, []string{"shell", "net"})
-	checkUnion("SkillsEnabled", eff.ToolConfig.SkillsEnabled, []string{"s1", "s2"})
-	checkUnion("CommandsEnabled", eff.ToolConfig.CommandsEnabled, []string{"cmd1", "cmd2"})
+	checkUnion("SkillsEnabled", eff.ToolConfig.SkillsEnabled, []string{"s2"})
+	checkUnion("CommandsEnabled", eff.ToolConfig.CommandsEnabled, []string{"cmd2"})
 	checkUnion("MCPEnabled", eff.ToolConfig.MCPEnabled, []string{"web"})
 	if !eff.ToolConfig.SkillsCustom {
 		t.Fatalf("SkillsCustom should be true from shared")

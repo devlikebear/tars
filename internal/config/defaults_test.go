@@ -209,6 +209,26 @@ func TestLoad_DefaultOnly(t *testing.T) {
 	}
 }
 
+func TestLoad_DefaultPulseAutofixesKeepCleanupBehindApproval(t *testing.T) {
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("load defaults: %v", err)
+	}
+
+	allowed := map[string]bool{}
+	for _, name := range cfg.PulseAllowedAutofixes {
+		allowed[name] = true
+	}
+	for _, name := range []string{"compress_old_logs", "auto_continue_chat"} {
+		if !allowed[name] {
+			t.Fatalf("expected default Pulse autofix %q to stay allowed, got %+v", name, cfg.PulseAllowedAutofixes)
+		}
+	}
+	if allowed["cleanup_stale_tmp"] {
+		t.Fatalf("cleanup_stale_tmp should require explicit config/approval, got default allowlist %+v", cfg.PulseAllowedAutofixes)
+	}
+}
+
 func TestLoad_YAMLOverridesDefault(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")

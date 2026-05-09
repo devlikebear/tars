@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/devlikebear/tars/internal/session"
@@ -106,5 +107,148 @@ func TestWriteLocalToolConfigKeepsEmptyMCPCustomAllowlist(t *testing.T) {
 	}
 	if sources["tool_config.mcp_enabled"] != SourceLocal {
 		t.Fatalf("expected mcp_enabled source to be local, got %q", sources["tool_config.mcp_enabled"])
+	}
+}
+
+func TestScaffoldLocalCreatesProjectTarsLayout(t *testing.T) {
+	cwd := t.TempDir()
+
+	result, err := ScaffoldLocal(cwd, false)
+	if err != nil {
+		t.Fatalf("scaffold local: %v", err)
+	}
+
+	for _, path := range []string{
+		result.SettingsPath,
+		result.LocalSettingsPath,
+		result.SkillsDir,
+		result.CommandsDir,
+		result.GitignorePath,
+	} {
+		assertPathExists(t, path)
+	}
+
+	rawShared, err := os.ReadFile(result.SettingsPath)
+	if err != nil {
+		t.Fatalf("read shared settings: %v", err)
+	}
+	var shared Override
+	if err := json.Unmarshal(rawShared, &shared); err != nil {
+		t.Fatalf("decode shared settings: %v", err)
+	}
+	if shared.ToolConfig == nil {
+		t.Fatalf("expected shared settings to include tool_config, got %s", string(rawShared))
+	}
+
+	rawGitignore, err := os.ReadFile(result.GitignorePath)
+	if err != nil {
+		t.Fatalf("read .gitignore: %v", err)
+	}
+	if !strings.Contains(string(rawGitignore), localSettingsName) {
+		t.Fatalf("expected .tars/.gitignore to ignore %s, got %s", localSettingsName, string(rawGitignore))
+	}
+
+	second, err := ScaffoldLocal(cwd, false)
+	if err != nil {
+		t.Fatalf("scaffold local second time: %v", err)
+	}
+	if len(second.Created) != 0 {
+		t.Fatalf("expected idempotent second run to create nothing, got %+v", second.Created)
+	}
+}
+
+func TestScaffoldLocalRejectsBlankCWD(t *testing.T) {
+	if _, err := ScaffoldLocal(" \t ", false); err == nil {
+		t.Fatal("expected blank cwd to fail")
+	}
+}
+
+func TestScaffoldLocalPreservesExistingFilesAndCanForceOverwrite(t *testing.T) {
+	cwd := t.TempDir()
+	tarsDir := filepath.Join(cwd, ".tars")
+	if err := os.MkdirAll(filepath.Join(tarsDir, "skills"), 0o755); err != nil {
+		t.Fatalf("mkdir skills: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(tarsDir, "commands"), 0o755); err != nil {
+		t.Fatalf("mkdir commands: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(tarsDir, "settings.json"), []byte(`{"prompt_override":"keep"}`), 0o644); err != nil {
+		t.Fatalf("write settings: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(tarsDir, "settings.local.json"), []byte(`{"prompt_override":"local"}`), 0o644); err != nil {
+		t.Fatalf("write local settings: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(tarsDir, ".gitignore"), []byte("notes"), 0o644); err != nil {
+		t.Fatalf("write gitignore: %v", err)
+	}
+
+	result, err := ScaffoldLocal(cwd, false)
+	if err != nil {
+		t.Fatalf("scaffold existing local: %v", err)
+	}
+	if len(result.Created) != 1 || result.Created[0] != result.GitignorePath {
+		t.Fatalf("expected only .gitignore append to be reported as created, got %+v", result.Created)
+	}
+	rawShared, err := os.ReadFile(result.SettingsPath)
+	if err != nil {
+		t.Fatalf("read shared settings: %v", err)
+	}
+	if string(rawShared) != `{"prompt_override":"keep"}` {
+		t.Fatalf("expected existing shared settings preserved, got %s", string(rawShared))
+	}
+	rawGitignore, err := os.ReadFile(result.GitignorePath)
+	if err != nil {
+		t.Fatalf("read gitignore: %v", err)
+	}
+	if string(rawGitignore) != "notes\nsettings.local.json\n" {
+		t.Fatalf("expected local settings appended to .gitignore, got %q", string(rawGitignore))
+	}
+
+	forced, err := ScaffoldLocal(cwd, true)
+	if err != nil {
+		t.Fatalf("force scaffold local: %v", err)
+	}
+	rawShared, err = os.ReadFile(forced.SettingsPath)
+	if err != nil {
+		t.Fatalf("read forced shared settings: %v", err)
+	}
+	if !strings.Contains(string(rawShared), `"tool_config": {}`) {
+		t.Fatalf("expected forced scaffold to rewrite shared settings, got %s", string(rawShared))
+	}
+}
+
+func TestScaffoldLocalReportsPathConflicts(t *testing.T) {
+	cwd := t.TempDir()
+	tarsDir := filepath.Join(cwd, ".tars")
+	if err := os.MkdirAll(tarsDir, 0o755); err != nil {
+		t.Fatalf("mkdir .tars: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(tarsDir, "skills"), []byte("not a dir"), 0o644); err != nil {
+		t.Fatalf("write skills file: %v", err)
+	}
+	if _, err := ScaffoldLocal(cwd, false); err == nil {
+		t.Fatal("expected skills file conflict to fail")
+	}
+
+	cwd = t.TempDir()
+	tarsDir = filepath.Join(cwd, ".tars")
+	if err := os.MkdirAll(filepath.Join(tarsDir, "skills"), 0o755); err != nil {
+		t.Fatalf("mkdir skills: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(tarsDir, "commands"), 0o755); err != nil {
+		t.Fatalf("mkdir commands: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(tarsDir, "settings.json"), 0o755); err != nil {
+		t.Fatalf("mkdir settings conflict: %v", err)
+	}
+	if _, err := ScaffoldLocal(cwd, false); err == nil {
+		t.Fatal("expected settings directory conflict to fail")
+	}
+}
+
+func assertPathExists(t *testing.T, path string) {
+	t.Helper()
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("expected path to exist %s: %v", path, err)
 	}
 }

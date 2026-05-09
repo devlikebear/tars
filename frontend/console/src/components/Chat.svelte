@@ -10,6 +10,7 @@
   import { t } from '../i18n'
   import { emptyTaskProgressSummary, planProgressPercent, summarizeTasks, type TaskProgressSummary } from '../lib/tasks'
   import { buildSessionHealthReport, emptySessionHealthReport, type SessionHealthAction, type SessionHealthInput, type SessionHealthReport } from '../lib/sessionHealth'
+  import { buildWorkbenchActions, type WorkbenchAction } from '../lib/workbenchActions'
   import type { ChatTierRecommendationRequest, PulseSnapshot, NotificationMessage, Session, SessionCwd, SessionMessage, SessionTasks } from '../lib/types'
   import type { Artifact } from '../lib/artifacts'
   import { loadChatComponent } from '../lib/chatComponents'
@@ -536,7 +537,7 @@
   }
 
   let chatPanelRef: ChatPanelHandle | undefined = $state()
-  let tasksPanelRef: { load: () => void } | undefined = $state()
+  let tasksPanelRef: { load: () => void; openEvidence: () => Promise<void> } | undefined = $state()
   let artifactPanelRef: { refresh: () => void; openArtifactPath: (path: string) => Promise<void> } | undefined = $state()
 
   type TasksSummary = TaskProgressSummary & {
@@ -545,6 +546,11 @@
   let tasksSummary: TasksSummary = $state(emptyTaskProgressSummary())
   let planStripProgress = $derived(planProgressPercent(tasksSummary))
   let hasPlanStrip = $derived(!!tasksSummary.plan_goal?.trim())
+  let workbenchActions = $derived(buildWorkbenchActions({
+    sessionId: selectedSessionId,
+    hasPlan: hasPlanStrip,
+    activeTaskTitle: tasksSummary.active_task_title,
+  }))
   let sessionHealth: SessionHealthReport = $state(emptySessionHealthReport())
   let sessionHealthLoading = $state(false)
   let sessionHealthRequest = 0
@@ -566,6 +572,24 @@
   function handleTasksChanged(summary: TasksSummary) {
     tasksSummary = summary
     void refreshSessionHealth()
+  }
+
+  async function handleWorkbenchAction(action: WorkbenchAction) {
+    if (action.id === 'agentruntime') {
+      onNavigate('/console/agentruntime')
+      return
+    }
+    if (action.id === 'git') {
+      openPanel('git')
+      return
+    }
+    if (action.id === 'evidence') {
+      openPanel('tasks')
+      await tick()
+      await tasksPanelRef?.openEvidence()
+      return
+    }
+    openPanel('tasks')
   }
 
   function rebuildSessionHealth(contextInfo = chatContextInfo) {
@@ -1125,6 +1149,21 @@
             <span class="plan-strip-count">{$t.chat.planStrip.tasksSuffix(tasksSummary.completed, tasksSummary.total)}</span>
           </span>
         </button>
+      {/if}
+
+      {#if workbenchActions.length > 0}
+        <div class="workbench-action-strip" aria-label="Workbench actions">
+          {#each workbenchActions as action}
+            <button
+              type="button"
+              class="workbench-action"
+              onclick={() => { void handleWorkbenchAction(action) }}
+              title={action.title}
+            >
+              {action.label}
+            </button>
+          {/each}
+        </div>
       {/if}
 
       {#key chatKey}
@@ -1772,6 +1811,37 @@
     min-width: 56px;
     font-family: var(--font-mono);
     text-align: right;
+  }
+
+  .workbench-action-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    width: calc(100% - var(--space-8));
+    margin: calc(-1 * var(--space-2)) var(--space-4) var(--space-3);
+  }
+
+  .workbench-action {
+    min-height: 30px;
+    padding: 0 var(--space-3);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    background: var(--surface-raised);
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-family: var(--font-display);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    transition:
+      background var(--duration-fast) var(--ease-out),
+      border-color var(--duration-fast) var(--ease-out),
+      color var(--duration-fast) var(--ease-out);
+  }
+
+  .workbench-action:hover {
+    border-color: var(--primary);
+    background: color-mix(in srgb, var(--primary) 7%, var(--surface-raised));
+    color: var(--text-primary);
   }
 
   @media (max-width: 900px) {

@@ -9,10 +9,13 @@ import "github.com/devlikebear/tars/internal/session"
 // Semantics:
 //   - String / scalar fields: replaced by the highest layer that set them.
 //   - Slice fields inside tool_config (tools_enabled, tools_disabled,
-//     tools_allow_groups, tools_deny_groups, skills_enabled, mcp_enabled):
+//     tools_allow_groups, tools_deny_groups, skills_enabled, commands_enabled,
+//     mcp_enabled):
 //     union of every layer's values, dedup'd, preserving first-seen order.
-//   - mcp_custom makes that layer's mcp_enabled list replace earlier MCP
-//     allowlists, so an explicit empty local list can disable MCP for a session.
+//   - tools_custom, skills_custom, commands_custom, and mcp_custom make that
+//     layer's corresponding allowlist replace earlier entries. If the custom
+//     flag is explicitly true and the allowlist is omitted, inherited entries
+//     are cleared.
 //   - mcp_servers_extra: merged by Name, later layers replacing earlier
 //     entries with the same name; new names append.
 func Merge(base session.SessionToolConfig, basePrompt string, shared, local *Override) (EffectiveConfig, map[string]Source) {
@@ -59,8 +62,16 @@ func applyLayer(eff *EffectiveConfig, o *Override, src Source, sources map[strin
 }
 
 func applyToolConfigLayer(dst *session.SessionToolConfig, o *Override, src Source, sources map[string]Source) {
+	toolsCustom := o.Presence["tool_config.tools_custom"] && o.ToolConfig.ToolsCustom
+	skillsCustom := o.Presence["tool_config.skills_custom"] && o.ToolConfig.SkillsCustom
+	commandsCustom := o.Presence["tool_config.commands_custom"] && o.ToolConfig.CommandsCustom
+	mcpCustom := o.Presence["tool_config.mcp_custom"] && o.ToolConfig.MCPCustom
+
 	if o.Presence["tool_config.tools_enabled"] {
-		dst.ToolsEnabled = unionDedup(dst.ToolsEnabled, o.ToolConfig.ToolsEnabled)
+		dst.ToolsEnabled = mergeAllowlist(dst.ToolsEnabled, o.ToolConfig.ToolsEnabled, toolsCustom)
+		sources["tool_config.tools_enabled"] = src
+	} else if toolsCustom {
+		dst.ToolsEnabled = nil
 		sources["tool_config.tools_enabled"] = src
 	}
 	if o.Presence["tool_config.tools_disabled"] {
@@ -76,19 +87,24 @@ func applyToolConfigLayer(dst *session.SessionToolConfig, o *Override, src Sourc
 		sources["tool_config.tools_deny_groups"] = src
 	}
 	if o.Presence["tool_config.skills_enabled"] {
-		dst.SkillsEnabled = unionDedup(dst.SkillsEnabled, o.ToolConfig.SkillsEnabled)
+		dst.SkillsEnabled = mergeAllowlist(dst.SkillsEnabled, o.ToolConfig.SkillsEnabled, skillsCustom)
+		sources["tool_config.skills_enabled"] = src
+	} else if skillsCustom {
+		dst.SkillsEnabled = nil
 		sources["tool_config.skills_enabled"] = src
 	}
 	if o.Presence["tool_config.commands_enabled"] {
-		dst.CommandsEnabled = unionDedup(dst.CommandsEnabled, o.ToolConfig.CommandsEnabled)
+		dst.CommandsEnabled = mergeAllowlist(dst.CommandsEnabled, o.ToolConfig.CommandsEnabled, commandsCustom)
+		sources["tool_config.commands_enabled"] = src
+	} else if commandsCustom {
+		dst.CommandsEnabled = nil
 		sources["tool_config.commands_enabled"] = src
 	}
 	if o.Presence["tool_config.mcp_enabled"] {
-		if o.ToolConfig.MCPCustom {
-			dst.MCPEnabled = unionDedup(nil, o.ToolConfig.MCPEnabled)
-		} else {
-			dst.MCPEnabled = unionDedup(dst.MCPEnabled, o.ToolConfig.MCPEnabled)
-		}
+		dst.MCPEnabled = mergeAllowlist(dst.MCPEnabled, o.ToolConfig.MCPEnabled, mcpCustom)
+		sources["tool_config.mcp_enabled"] = src
+	} else if mcpCustom {
+		dst.MCPEnabled = nil
 		sources["tool_config.mcp_enabled"] = src
 	}
 	if o.Presence["tool_config.tools_custom"] {
@@ -106,11 +122,14 @@ func applyToolConfigLayer(dst *session.SessionToolConfig, o *Override, src Sourc
 	if o.Presence["tool_config.mcp_custom"] {
 		dst.MCPCustom = o.ToolConfig.MCPCustom
 		sources["tool_config.mcp_custom"] = src
-		if o.ToolConfig.MCPCustom && !o.Presence["tool_config.mcp_enabled"] {
-			dst.MCPEnabled = nil
-			sources["tool_config.mcp_enabled"] = src
-		}
 	}
+}
+
+func mergeAllowlist(prev, next []string, replace bool) []string {
+	if replace {
+		return unionDedup(nil, next)
+	}
+	return unionDedup(prev, next)
 }
 
 // unionDedup returns a new slice containing every element from a and b in

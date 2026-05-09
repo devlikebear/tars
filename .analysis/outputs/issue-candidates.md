@@ -4,13 +4,13 @@
 
 ## High
 
-### #410 KB Wiki removal residue
+### #410 KB Wiki removal residue (resolved)
 
-KB Wiki user-facing surface는 제거됐지만 bootstrap template, workspace initializer, `/v1/memory/kb/*` route 잔여물이 남아 있다. README/tutorials에서는 더 이상 기능으로 광고하지 않도록 정리했다.
+KB Wiki user-facing surface, bootstrap template, workspace initializer, `/v1/memory/kb/*` route 잔여물은 현재 코드와 테스트 기준으로 제거됐다. Fresh workspace는 `memory/wiki`를 만들지 않고, legacy 파일은 보존만 한다.
 
-### #414 Agent Runtime route/client/docs canonicalization
+### #414 Agent Runtime route/client/docs canonicalization (resolved)
 
-Run API는 `/v1/agentruntime/runs`가 canonical이어야 하지만 `/v1/agent/runs` alias와 `/v1/agent/agents` list endpoint가 남아 있다. 외부 client와 docs를 한 방향으로 정리해야 한다.
+Run API는 `/v1/agentruntime/*`만 canonical이다. `/v1/agent/runs`, `/v1/agent/runs/{id}`, `/v1/agent/agents` alias는 route registration과 handler mux에서 제거됐고 docs도 canonical path 기준으로 정리했다.
 
 ## Medium
 

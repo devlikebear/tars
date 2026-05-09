@@ -19,6 +19,7 @@ import (
 	"github.com/devlikebear/tars/internal/memory"
 	"github.com/devlikebear/tars/internal/onboarding"
 	"github.com/devlikebear/tars/internal/plugin"
+	"github.com/devlikebear/tars/internal/sessionoverride"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )
@@ -36,6 +37,11 @@ type initOptions struct {
 type initMoveOptions struct {
 	to        string
 	noRestart bool
+}
+
+type initLocalOptions struct {
+	cwd   string
+	force bool
 }
 
 // initStartParams describes what the orchestrator wants the server
@@ -102,6 +108,7 @@ func newInitCommand(stdout, stderr io.Writer) *cobra.Command {
 
 	cmd.AddCommand(newInitMoveCommand(stdout, stderr))
 	cmd.AddCommand(newInitResetCommand(stdout, stderr))
+	cmd.AddCommand(newInitLocalCommand(stdout, stderr))
 	return cmd
 }
 
@@ -118,6 +125,29 @@ func newInitMoveCommand(stdout, stderr io.Writer) *cobra.Command {
 	cmd.Flags().StringVar(&moveOpts.to, "to", "", "target directory for the workspace (required)")
 	cmd.Flags().BoolVar(&moveOpts.noRestart, "no-restart", moveOpts.noRestart, "skip stopping/restarting the LaunchAgent service after the move (config is patched but the running server keeps the old workspace until you restart it manually)")
 	_ = cmd.MarkFlagRequired("to")
+	return cmd
+}
+
+func newInitLocalCommand(stdout, stderr io.Writer) *cobra.Command {
+	opts := initLocalOptions{cwd: "."}
+	cmd := &cobra.Command{
+		Use:          "local",
+		Short:        "Scaffold project-local .tars overrides in the current directory",
+		SilenceUsage: true,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			result, err := sessionoverride.ScaffoldLocal(opts.cwd, opts.force)
+			if err != nil {
+				return err
+			}
+			_, _ = fmt.Fprintf(stdout, "initialized project-local .tars\ncwd: %s\nshared: %s\nlocal: %s\nskills: %s\ncommands: %s\n", result.CWD, result.SettingsPath, result.LocalSettingsPath, result.SkillsDir, result.CommandsDir)
+			if len(result.Existing) > 0 {
+				_, _ = fmt.Fprintf(stdout, "existing: %d\n", len(result.Existing))
+			}
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&opts.cwd, "cwd", opts.cwd, "project directory to scaffold")
+	cmd.Flags().BoolVar(&opts.force, "force", opts.force, "overwrite existing .tars settings scaffold files")
 	return cmd
 }
 

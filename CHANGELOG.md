@@ -6,6 +6,17 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.32.11] - 2026-05-09
+
+### Added
+
+- **Operator ergonomics sprint** — active Chat plans now expose one-click workbench actions for Tasks, Evidence, Agent Runtime, and Git Inspector. Project directories can also run `tars init local --cwd <path>` to scaffold `.tars/settings.json`, `.tars/settings.local.json`, `.tars/skills/`, `.tars/commands/`, and a local `.tars/.gitignore`.
+
+### Changed
+
+- **Project-local override control** — `.tars` layers that set `tools_custom`, `skills_custom`, `commands_custom`, or `mcp_custom` now replace the inherited allowlist for that surface, so local Console toggles can actually narrow shared project settings.
+- **Pulse and legacy route cleanup** — `cleanup_stale_tmp` is no longer in the default Pulse autofix allowlist, keeping cleanup-like remediation opt-in, and the legacy `/v1/agent/*` Agent Runtime aliases have been retired in favor of `/v1/agentruntime/*`. Closes #758, #759, #760, #761.
+
 ## [0.32.10] - 2026-05-09
 
 ### Fixed
