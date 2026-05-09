@@ -94,6 +94,7 @@ export const en = {
       session: 'session',
       main: 'main',
       worker: 'worker',
+      archived: 'archived',
     },
     sort: {
       recent: 'Recent',
@@ -123,13 +124,24 @@ export const en = {
     actions: {
       rename: 'Rename',
       autoTitle: 'Auto title',
+      pin: 'Pin',
+      unpin: 'Unpin',
+      archive: 'Archive',
+      restore: 'Restore',
       compact: 'Compact',
       delete: 'Delete',
       confirm: 'Confirm',
     },
+    cleanup: {
+      title: 'Cleanup',
+      count: (count) => `${count} suggested`,
+      archiveSuggested: (count) => `Archive ${count}`,
+    },
     errors: {
       loadFailed: 'Failed to load sessions',
       deleteFailed: 'Delete failed',
+      archiveFailed: 'Archive failed',
+      pinFailed: 'Pin failed',
       compactFailed: 'Compact failed',
       compactSuccess: (count, percent) => `Compacted ${count} msgs (${percent}% saved)`,
       nothingToCompact: 'Nothing to compact',

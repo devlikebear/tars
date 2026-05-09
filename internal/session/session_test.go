@@ -1,9 +1,11 @@
 package session
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 )
@@ -293,6 +295,78 @@ func TestStoreDelete(t *testing.T) {
 	_, err = store.Get(s.ID)
 	if err == nil {
 		t.Fatal("expected error getting deleted session")
+	}
+}
+
+func TestStoreArchiveAndPinSession(t *testing.T) {
+	dir := t.TempDir()
+	store := NewStore(dir)
+
+	sess, err := store.Create("organize me")
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	transcriptPath := store.TranscriptPath(sess.ID)
+	if err := AppendMessage(transcriptPath, Message{Role: "user", Content: "keep this transcript"}); err != nil {
+		t.Fatalf("append transcript: %v", err)
+	}
+
+	pinned, err := store.SetPinned(sess.ID, true)
+	if err != nil {
+		t.Fatalf("pin: %v", err)
+	}
+	if pinned.PinnedAt == nil {
+		t.Fatalf("expected pinned_at to be set, got %+v", pinned)
+	}
+
+	archived, err := store.SetArchived(sess.ID, true)
+	if err != nil {
+		t.Fatalf("archive: %v", err)
+	}
+	if archived.ArchivedAt == nil {
+		t.Fatalf("expected archived_at to be set, got %+v", archived)
+	}
+	if archived.PinnedAt != nil {
+		t.Fatalf("expected archive to clear pinned_at, got %+v", archived)
+	}
+	if _, err := os.Stat(transcriptPath); err != nil {
+		t.Fatalf("expected archive to preserve transcript: %v", err)
+	}
+
+	restored, err := store.SetArchived(sess.ID, false)
+	if err != nil {
+		t.Fatalf("restore: %v", err)
+	}
+	if restored.ArchivedAt != nil {
+		t.Fatalf("expected restore to clear archived_at, got %+v", restored)
+	}
+
+	rePinned, err := store.SetPinned(sess.ID, true)
+	if err != nil {
+		t.Fatalf("re-pin: %v", err)
+	}
+	if rePinned.PinnedAt == nil {
+		t.Fatalf("expected pinned_at after re-pin, got %+v", rePinned)
+	}
+	unpinned, err := store.SetPinned(sess.ID, false)
+	if err != nil {
+		t.Fatalf("unpin: %v", err)
+	}
+	if unpinned.PinnedAt != nil {
+		t.Fatalf("expected unpin to clear pinned_at, got %+v", unpinned)
+	}
+
+	_, err = store.SetPinned("missing", true)
+	if !errors.Is(err, ErrSessionNotFound) {
+		t.Fatalf("expected ErrSessionNotFound for missing session, got %v", err)
+	}
+
+	if err := os.WriteFile(store.indexPath(), []byte("{"), 0o644); err != nil {
+		t.Fatalf("corrupt index: %v", err)
+	}
+	_, err = store.SetArchived(sess.ID, true)
+	if err == nil || !strings.Contains(err.Error(), "load sessions index") {
+		t.Fatalf("expected load index error, got %v", err)
 	}
 }
 

@@ -591,6 +591,8 @@ export type Session = {
   fork_reason?: string
   automation_consent?: SessionAutomationConsent
   style_control?: SessionStyleControl
+  archived_at?: string
+  pinned_at?: string
   created_at: string
   updated_at: string
 }

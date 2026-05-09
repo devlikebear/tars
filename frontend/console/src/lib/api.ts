@@ -347,9 +347,14 @@ export async function listAutomationAudit(limit = 50, sessionId = ''): Promise<A
   return requestJSON<AutomationAuditListResponse>(`/v1/ops/automation-audit${suffix ? `?${suffix}` : ''}`)
 }
 
-export async function listSessions(includeHidden = false): Promise<Session[]> {
-  const params = includeHidden ? '?hidden=1' : ''
-  return requestJSON<Session[]>(`/v1/admin/sessions${params}`)
+export type SessionArchiveMode = 'active' | 'include' | 'only'
+
+export async function listSessions(includeHidden = false, archivedMode: SessionArchiveMode = 'active'): Promise<Session[]> {
+  const params = new URLSearchParams()
+  if (includeHidden) params.set('hidden', '1')
+  if (archivedMode !== 'active') params.set('archived', archivedMode)
+  const query = params.toString()
+  return requestJSON<Session[]>(`/v1/admin/sessions${query ? `?${query}` : ''}`)
 }
 
 export async function createSession(title?: string): Promise<Session> {
@@ -393,6 +398,22 @@ export async function renameSession(sessionId: string, title: string): Promise<v
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ title }),
+  })
+}
+
+export async function setSessionArchived(sessionId: string, archived: boolean): Promise<Session> {
+  return requestJSON<Session>(`/v1/admin/sessions/${encodeURIComponent(sessionId)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ archived }),
+  })
+}
+
+export async function setSessionPinned(sessionId: string, pinned: boolean): Promise<Session> {
+  return requestJSON<Session>(`/v1/admin/sessions/${encodeURIComponent(sessionId)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pinned }),
   })
 }
 
