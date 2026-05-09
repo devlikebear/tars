@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.32.19] - 2026-05-09
+
+### Fixed
+
+- **Private runtime state permissions** — memory and skill extraction inboxes, ops approvals/events, and usage limit files now persist with owner-only file permissions, while auth cookie tests and inline rationale document the intentional local HTTP versus HTTPS/Tailscale `Secure` behavior. Closes #782.
+
 ## [0.32.18] - 2026-05-09
 
 ### Fixed

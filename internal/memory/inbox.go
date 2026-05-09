@@ -97,7 +97,7 @@ func AppendInboxCandidateIfNew(ctx context.Context, root string, backend Backend
 	candidate.Similar, candidate.Conflicts = buildCandidateHints(ctx, backendForInbox(root, backend), candidate)
 
 	path := memoryInboxPath(root)
-	file, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	file, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
 		return MemoryCandidate{}, false, fmt.Errorf("open memory inbox: %w", err)
 	}
@@ -110,6 +110,7 @@ func AppendInboxCandidateIfNew(ctx context.Context, root string, backend Backend
 	if _, err := file.WriteString(string(encoded) + "\n"); err != nil {
 		return MemoryCandidate{}, false, fmt.Errorf("append memory candidate: %w", err)
 	}
+	_ = os.Chmod(path, 0o600)
 	return candidate, true, nil
 }
 
@@ -240,7 +241,6 @@ func writeMemoryCandidates(root string, candidates []MemoryCandidate) error {
 	if err := atomicwrite.Write(path, []byte(b.String())); err != nil {
 		return err
 	}
-	_ = os.Chmod(path, 0o644)
 	return nil
 }
 

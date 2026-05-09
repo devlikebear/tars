@@ -359,7 +359,6 @@ func writeExtractionCandidates(root string, candidates []ExtractionCandidate) er
 	if err := atomicwrite.Write(path, []byte(b.String())); err != nil {
 		return err
 	}
-	_ = os.Chmod(path, 0o644)
 	return nil
 }
 

@@ -64,6 +64,7 @@ func TestExtractionInboxAppendListAndReview(t *testing.T) {
 	if !addedNew || len(added) != 1 || added[0].ID == "" {
 		t.Fatalf("expected one new candidate with id, got added=%v items=%+v", addedNew, added)
 	}
+	requireExtractionFileMode(t, ExtractionInboxPath(root), 0o600)
 	if _, duplicateNew, err := AppendExtractionCandidatesIfNew(root, []ExtractionCandidate{candidate}); err != nil || duplicateNew {
 		t.Fatalf("expected duplicate candidate to be skipped, added=%v err=%v", duplicateNew, err)
 	}
@@ -89,5 +90,17 @@ func TestExtractionInboxAppendListAndReview(t *testing.T) {
 	}
 	if _, err := os.Stat(ExtractionInboxPath(root)); err != nil {
 		t.Fatalf("expected extraction inbox file: %v", err)
+	}
+	requireExtractionFileMode(t, ExtractionInboxPath(root), 0o600)
+}
+
+func requireExtractionFileMode(t *testing.T, path string, want os.FileMode) {
+	t.Helper()
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat %s: %v", path, err)
+	}
+	if got := info.Mode().Perm(); got != want {
+		t.Fatalf("expected %s mode %04o, got %04o", path, want, got)
 	}
 }
