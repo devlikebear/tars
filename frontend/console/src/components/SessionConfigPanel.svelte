@@ -14,6 +14,7 @@
   } from '../lib/api'
   import { buildSessionPermissionPreview, type SessionPermissionPreview } from '../lib/sessionPermissionPreview'
   import { buildSessionStylePreview, sessionStylePayload } from '../lib/sessionStyle'
+  import { sortStrings } from '../lib/sort'
   import type { CommandDef, EffectiveConfigSource, SessionAutomationConsent, SessionEffectiveConfig, SessionStyleResponse, SessionStyleValues, SkillDef } from '../lib/types'
 
   interface Props {
@@ -673,7 +674,7 @@
     tools.filter((t) => !filterText || t.name.toLowerCase().includes(filterText.toLowerCase()))
   )
   let toolGroups = $derived(
-    [...new Set(tools.map((t) => t.group).filter((group): group is string => Boolean(group)))].sort()
+    sortStrings(new Set(tools.map((t) => t.group).filter((group): group is string => Boolean(group))))
   )
   let filteredSkillDefs = $derived(
     skillDefs.filter((skill) => {

@@ -1,4 +1,5 @@
 import type { ChatToolInfo, SessionToolConfig } from './api'
+import { sortStrings } from './sort.js'
 
 export type PermissionRisk = 'low' | 'medium' | 'high'
 
@@ -135,7 +136,7 @@ function capabilitiesForTools(names: string[], tools: ChatToolInfo[]): string[] 
     if (lower.includes('git')) capabilities.add('git')
     if (lower.includes('web') || lower.includes('network') || lower.includes('telegram')) capabilities.add('network')
   }
-  return [...capabilities].sort()
+  return sortStrings(capabilities)
 }
 
 function determineRisk(

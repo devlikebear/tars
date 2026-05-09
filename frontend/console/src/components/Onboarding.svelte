@@ -22,6 +22,7 @@
     type OptionalSection,
     type WizardMode,
   } from '../lib/onboarding'
+  import { sortStrings } from '../lib/sort'
   import type { SetupStatusResponse } from '../lib/types'
   import { t } from '../i18n'
 
@@ -68,7 +69,7 @@
   let configValues = $state<Record<string, unknown>>({})
   let existingAliases = $derived(allAliasesFromConfigValues(configValues))
   let allKnownAliases = $derived(
-    [...new Set([...existingAliases, form.provider.alias.trim()].filter(Boolean))].sort(),
+    sortStrings(new Set([...existingAliases, form.provider.alias.trim()].filter(Boolean))),
   )
   let setupStatus = $state<SetupStatusResponse | null>(null)
   let stepErrors = $state<string[]>([])

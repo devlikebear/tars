@@ -25,13 +25,14 @@ import {
   validateTiersStep,
   validateToolsStep,
 } from '../src/lib/onboarding.ts'
+import { sortStrings } from '../src/lib/sort.js'
 
 test('emptyOnboardingForm returns blank state with all 3 tier slots', () => {
   const form = emptyOnboardingForm()
   assert.equal(form.provider.alias, '')
   assert.equal(form.provider.kind, '')
   assert.equal(form.provider.auth_mode, 'api-key')
-  assert.deepEqual(Object.keys(form.tiers).sort(), ['heavy', 'light', 'standard'])
+  assert.deepEqual(sortStrings(Object.keys(form.tiers)), ['heavy', 'light', 'standard'])
 })
 
 test('validateProviderStep flags missing alias / kind / api_key', () => {

@@ -1,3 +1,5 @@
+import { sortStrings } from './sort.js'
+
 export type ConfigDisplaySummary = {
   kind: 'empty' | 'scalar' | 'array' | 'object'
   text: string
@@ -108,7 +110,7 @@ export function formatConfigDisplayValue(value: unknown): ConfigDisplaySummary {
     }
   }
   if (typeof value === 'object') {
-    const keys = Object.keys(value as Record<string, unknown>).sort()
+    const keys = sortStrings(Object.keys(value as Record<string, unknown>))
     return {
       kind: 'object',
       text: `${keys.length} ${keys.length === 1 ? 'key' : 'keys'}`,
@@ -163,8 +165,7 @@ export function configValuesEqual(a: unknown, b: unknown): boolean {
 export function makeLLMTierDrafts(value: unknown): LLMTierDraft[] {
   const record = asRecord(value)
   if (!record) return []
-  return Object.keys(record)
-    .sort()
+  return sortStrings(Object.keys(record))
     .map((name, index) => {
       const binding = asRecord(record[name]) || {}
       return {
@@ -183,10 +184,7 @@ export function makeLLMTierDrafts(value: unknown): LLMTierDraft[] {
 export function extractLLMProviderAliases(value: unknown): string[] {
   const record = asRecord(value)
   if (!record) return []
-  return Object.keys(record)
-    .map((alias) => alias.trim())
-    .filter(Boolean)
-    .sort()
+  return sortStrings(Object.keys(record).map((alias) => alias.trim()).filter(Boolean))
 }
 
 export function buildLLMTiersFromDrafts(drafts: LLMTierDraft[], providerAliases: string[]): LLMTiersBuildResult {
@@ -260,8 +258,7 @@ export function buildLLMTiersFromDrafts(drafts: LLMTierDraft[], providerAliases:
 export function makeLLMProviderDrafts(value: unknown): LLMProviderDraft[] {
   const record = asRecord(value)
   if (!record) return []
-  return Object.keys(record)
-    .sort()
+  return sortStrings(Object.keys(record))
     .map((alias, index) => {
       const provider = asRecord(record[alias]) || {}
       return {
@@ -341,7 +338,7 @@ function sortStable(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(sortStable)
   if (!value || typeof value !== 'object') return value
   const out: Record<string, unknown> = {}
-  for (const key of Object.keys(value as Record<string, unknown>).sort()) {
+  for (const key of sortStrings(Object.keys(value as Record<string, unknown>))) {
     out[key] = sortStable((value as Record<string, unknown>)[key])
   }
   return out

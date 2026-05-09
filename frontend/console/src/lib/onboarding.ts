@@ -5,6 +5,8 @@
 // /v1/admin/config/values endpoint. Validation and payload shaping
 // live here so the wizard component can stay declarative.
 
+import { sortStrings } from './sort.js'
+
 export type ProviderKind =
   | 'anthropic'
   | 'openai'
@@ -385,7 +387,7 @@ export function suggestedAuthModeForKind(kind: ProviderKind | ''): AuthMode {
 // in re-entry mode and the tier provider dropdowns.
 export function allAliasesFromConfigValues(values: Record<string, unknown>): string[] {
   const providers = (values?.llm_providers ?? {}) as Record<string, unknown>
-  return Object.keys(providers).sort()
+  return sortStrings(Object.keys(providers))
 }
 
 // providerFromConfigValues extracts the OnboardingProvider fields for a
