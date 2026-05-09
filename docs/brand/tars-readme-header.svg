@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="220" viewBox="0 0 760 220" role="img" aria-labelledby="title desc">
+  <title id="title">TARS README header</title>
+  <desc id="desc">TARS icon aligned horizontally with the TARS wordmark and local AI agent runtime tagline.</desc>
+  <defs>
+    <linearGradient id="wordmark" x1="208" x2="700" y1="50" y2="148" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#101418"/>
+      <stop offset="0.58" stop-color="#20252a"/>
+      <stop offset="1" stop-color="#48423c"/>
+    </linearGradient>
+  </defs>
+  <image href="tars-icon.png" x="58" y="50" width="120" height="120" preserveAspectRatio="xMidYMid meet"/>
+  <g font-family="Avenir Next, Outfit, Helvetica Neue, Arial, sans-serif">
+    <text x="216" y="134" fill="url(#wordmark)" font-size="118" font-weight="800" letter-spacing="0">TARS</text>
+    <text x="224" y="180" fill="#e09145" font-size="27" font-weight="600" letter-spacing="2.5">LOCAL AI AGENT RUNTIME</text>
+  </g>
+</svg>

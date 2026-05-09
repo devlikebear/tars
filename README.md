@@ -1,10 +1,8 @@
 <div align="center">
   <p>
-    <img src="docs/brand/tars-icon.png" alt="TARS icon" width="88" />
-    &nbsp;&nbsp;&nbsp;
     <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="docs/brand/tars-logo-dark.png" />
-      <img src="docs/brand/tars-logo.png" alt="TARS — local AI agent runtime" width="390" />
+      <source media="(prefers-color-scheme: dark)" srcset="docs/brand/tars-readme-header-dark.png" />
+      <img src="docs/brand/tars-readme-header.png" alt="TARS — local AI agent runtime" width="560" />
     </picture>
   </p>
   <p>
