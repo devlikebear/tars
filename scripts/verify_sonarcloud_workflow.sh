@@ -30,6 +30,7 @@ forbid_pattern() {
 }
 
 require_pattern "$WORKFLOW" 'SonarSource/sonarqube-scan-action@v7' 'official SonarQube scan action v7'
+require_pattern "$WORKFLOW" 'pull-requests: read' 'job-scoped pull request read permission'
 require_pattern "$WORKFLOW" 'SONAR_TOKEN' 'SONAR_TOKEN secret wiring'
 require_pattern "$WORKFLOW" 'SONAR_PROJECT_KEY' 'SONAR_PROJECT_KEY variable wiring'
 require_pattern "$WORKFLOW" 'SONAR_ORGANIZATION' 'SONAR_ORGANIZATION variable wiring'

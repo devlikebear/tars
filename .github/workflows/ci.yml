@@ -14,6 +14,9 @@ on:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
+permissions:
+  contents: read
+
 jobs:
   security:
     runs-on: ubuntu-latest
@@ -31,11 +34,8 @@ jobs:
       - name: Install ripgrep
         run: sudo apt-get update && sudo apt-get install -y ripgrep
 
-      - name: Install gitleaks
-        run: go install github.com/zricethezav/gitleaks/v8@latest
-
       - name: Run security scan
-        run: PATH="$(go env GOPATH)/bin:$PATH" make security-scan
+        run: make security-scan
 
   test:
     if: github.event_name == 'push'
@@ -55,10 +55,10 @@ jobs:
             frontend/console/package-lock.json
 
       - name: Install browser runtime dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Check frontend console
-        run: cd frontend/console && npm ci
+        run: cd frontend/console && npm ci --ignore-scripts
 
       - name: Run frontend console checks
         run: cd frontend/console && npm run check
@@ -108,7 +108,7 @@ jobs:
           cache-dependency-path: frontend/console/package-lock.json
 
       - name: Check frontend console
-        run: cd frontend/console && npm ci
+        run: cd frontend/console && npm ci --ignore-scripts
 
       - name: Run frontend console checks
         run: cd frontend/console && npm run check

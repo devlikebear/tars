@@ -4,13 +4,8 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${ROOT_DIR}"
 
-if ! command -v gitleaks >/dev/null 2>&1; then
-  echo "[security-scan] gitleaks not found. Install: brew install gitleaks" >&2
-  exit 2
-fi
-
 echo "[security-scan] running gitleaks"
-gitleaks detect --source . --no-banner --redact
+go -C tools tool github.com/zricethezav/gitleaks/v8 detect --source .. --no-banner --redact
 
 echo "[security-scan] checking tracked files for absolute local paths"
 set +e
