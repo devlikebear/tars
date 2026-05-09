@@ -151,11 +151,14 @@ export function findActiveSlashTrigger(value: string, caret = value.length): Act
 export function parseLeadingSlashCommand(value: string): ParsedSlashCommand | null {
   const trimmed = value.trimStart()
   if (!trimmed.startsWith('/')) return null
-  const match = trimmed.match(/^\/([^\s/]+)(?:\s+([\s\S]*))?$/)
-  if (!match) return null
+  const body = trimmed.slice(1)
+  const firstArg = firstSlashCommandWhitespace(body)
+  const rawCommand = firstArg < 0 ? body : body.slice(0, firstArg)
+  if (!rawCommand || rawCommand.includes('/')) return null
+
   return {
-    command: normalizeSlashCommand(match[1]),
-    args: (match[2] ?? '').trim(),
+    command: normalizeSlashCommand(rawCommand),
+    args: (firstArg < 0 ? '' : body.slice(firstArg)).trim(),
   }
 }
 
@@ -286,6 +289,17 @@ function fuzzyIncludes(value: string, query: string): boolean {
 
 function normalizeSlashCommand(value: string | undefined): string {
   return (value ?? '').trim().replace(/^\/+/, '').toLowerCase()
+}
+
+function firstSlashCommandWhitespace(value: string): number {
+  for (let i = 0; i < value.length; i++) {
+    if (isSlashCommandWhitespace(value.charCodeAt(i))) return i
+  }
+  return -1
+}
+
+function isSlashCommandWhitespace(code: number): boolean {
+  return code === 9 || code === 10 || code === 11 || code === 12 || code === 13 || code === 32 || code === 160
 }
 
 function kindRank(kind: SlashCandidateKind): number {

@@ -571,7 +571,7 @@ func setupMCPServerCreatorSandboxDependencies(ctx context.Context, targetDir str
 		return nil, "", "", nil
 	}
 	start := time.Now()
-	cmd := exec.CommandContext(ctx, "npm", "install", "--no-audit", "--no-fund", "--package-lock=false", "--loglevel=error")
+	cmd := exec.CommandContext(ctx, "npm", "install", "--no-audit", "--no-fund", "--package-lock=false", "--loglevel=error") // NOSONAR: npm is intentionally resolved from the operator's Node toolchain PATH inside a generated sandbox.
 	cmd.Dir = targetDir
 	cmd.Env = append(os.Environ(), "npm_config_update_notifier=false")
 	var stdout bytes.Buffer

@@ -7,7 +7,7 @@ import (
 )
 
 func processCount() (int, error) {
-	out, err := exec.Command("ps", "-A", "-o", "pid=").Output()
+	out, err := exec.Command("/bin/ps", "-A", "-o", "pid=").Output()
 	if err != nil {
 		return 0, err
 	}

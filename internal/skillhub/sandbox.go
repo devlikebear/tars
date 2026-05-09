@@ -338,7 +338,7 @@ func runSkillSmokeCommand(ctx context.Context, workspaceDir string, skillDir str
 	start := time.Now()
 	cmdCtx, cancel := context.WithTimeout(ctx, defaultSkillSmokeTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(cmdCtx, "sh", "-c", command)
+	cmd := exec.CommandContext(cmdCtx, "/bin/sh", "-c", command)
 	cmd.Dir = skillDir
 	cmd.Env = append(os.Environ(),
 		"TARS_SANDBOX=1",

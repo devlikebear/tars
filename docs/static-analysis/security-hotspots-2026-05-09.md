@@ -1,0 +1,58 @@
+# SonarCloud Security Hotspot Review - 2026-05-09
+
+Issue: #783
+
+Snapshot reviewed: 2026-05-09 08:13 UTC
+
+This review covers the 20 SonarCloud security hotspots that were in `TO_REVIEW`
+state for `devlikebear_tars`. The PR resolves the actionable cases in code and
+documents the intentionally safe cases so future SonarCloud reviews have the same
+rationale without relying on tribal knowledge.
+
+## Summary
+
+| Theme | Count | Decision |
+| --- | ---: | --- |
+| `typescript:S5852` full-input slash-command regex | 1 | Fixed with a linear parser and regression test. |
+| `typescript:S5332` HTTP URL literal in route parsing | 1 | Fixed by using an HTTPS parse-only base URL. |
+| `githubactions:S7637` floating GitHub Action tags | 2 | Fixed by pinning actions to full tag commit SHAs and guardrail scripts. |
+| `go:S4036` command lookup through `PATH` | 16 | Fixed where system paths are stable; documented or constrained where PATH is an intentional extension point. |
+
+## TypeScript Hotspots
+
+| Path | Rule | Decision | Rationale |
+| --- | --- | --- | --- |
+| `frontend/console/src/lib/slash.ts` | `typescript:S5852` | Fixed | `parseLeadingSlashCommand` no longer uses a full-input regular expression. It now scans for the first whitespace byte and preserves multiline arguments. `frontend/console/tests/slash.test.ts` locks the behavior and checks that the vulnerable parser shape is absent. |
+| `frontend/console/src/lib/router.ts` | `typescript:S5332` | Fixed | `resolveRoute` uses `https://tars.local` only as a base for `new URL` parsing. No network request is made, but the literal is now HTTPS to avoid normalizing an insecure URL in static analysis. |
+
+## GitHub Actions Hotspots
+
+| Path | Rule | Decision | Rationale |
+| --- | --- | --- | --- |
+| `.github/workflows/ci.yml` | `githubactions:S7637` | Fixed | `codecov/codecov-action` is pinned to commit `57e3a136b779b570ffcdbf80b3bdc90e7fab3de2`, the current `v6` tag target at review time. `make github-actions-hardening-check` now rejects the floating `@v6` tag. |
+| `.github/workflows/sonarcloud.yml` | `githubactions:S7637` | Fixed | `SonarSource/sonarqube-scan-action` is pinned to commit `c7ee0f9df90b7aa20e8dcf9695dcfe2e7da5b4f2`, the current `v7` tag target at review time. Both `make sonarcloud-workflow-check` and `make github-actions-hardening-check` enforce the pin. |
+
+## Go PATH Hotspots
+
+| Path | Command | Decision | Rationale |
+| --- | --- | --- | --- |
+| `cmd/tars/assistant_main.go` | `launchctl unload`, `launchctl load` | Fixed | LaunchAgent management is macOS-only and now calls `/bin/launchctl` directly. Arguments are fixed except for the generated plist path. |
+| `cmd/tars/service_main.go` | `launchctl` | Fixed | Service control now calls `/bin/launchctl` directly. |
+| `internal/tarsserver/handler_config.go` | `launchctl` | Fixed | Restart flow now calls `/bin/launchctl` directly through the existing helper. |
+| `internal/agentruntime/runtime_diff_timeline.go` | `git diff` | Fixed | Diff timeline generation now calls `/usr/bin/git` directly with fixed subcommands and validated workspace paths. |
+| `internal/git/client.go` | `git` | Fixed | Repository inspection now calls `/usr/bin/git` directly, and `runGit` rejects unsupported subcommands, global options, empty working directories, and NUL-containing arguments before execution. |
+| `internal/assistant/popup_darwin.go` | `osascript` | Fixed | macOS assistant popups now call `/usr/bin/osascript` directly with quoted AppleScript strings. |
+| `internal/tarsserver/notify.go` | `osascript` | Fixed | macOS fallback notifications now call `/usr/bin/osascript` directly. |
+| `internal/ops/manager_system.go` | `ps` | Fixed | Process counting now calls `/bin/ps` directly with fixed flags. |
+| `internal/skillhub/sandbox.go` | `sh -c` | Fixed | Skill smoke tests now call `/bin/sh`; the command text remains an explicit skill manifest smoke command and runs with sandbox environment variables. |
+| `internal/tarsserver/notify.go` | `sh -lc` | Fixed | Custom notification commands now call `/bin/sh`; this is an operator-configured extension hook and receives data through environment variables. |
+| `internal/tool/apply_patch.go` | `patch` | Fixed | Patch application now calls `/usr/bin/patch` directly after rejecting absolute paths and workspace escapes in the patch file list. |
+| `internal/tarsserver/handler_mcp_server_creator.go` | `npm install` | Safe, documented | MCP server sandbox dependency installation intentionally resolves `npm` from the operator's Node toolchain PATH. The command runs in a generated target directory, disables audit/fund/package-lock writes, and is annotated with `NOSONAR` plus rationale. |
+| `internal/tarsserver/notify.go` | `terminal-notifier` | Safe, constrained | Optional macOS notification support still discovers `terminal-notifier` from PATH because users commonly install it through Homebrew. The resolved absolute path is passed to `exec.CommandContext`, and arguments are generated by TARS rather than shell-expanded. |
+| `internal/tarsserver/notify.go` | `notify-send` | Safe, constrained | Optional Linux notification support discovers `notify-send` from PATH, then executes the resolved path with fixed title/message arguments and no shell expansion. |
+
+## Local Verification
+
+- `node --experimental-strip-types --test tests/slash.test.ts tests/homeDashboardRoute.test.ts`
+- `make sonarcloud-workflow-check`
+- `make github-actions-hardening-check`

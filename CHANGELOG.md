@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.32.20] - 2026-05-09
+
+### Fixed
+
+- **SonarCloud security hotspot triage** — slash command parsing now avoids a full-input regex, console route parsing uses an HTTPS base URL, GitHub Actions references are pinned to full commit SHAs, and command execution hotspots now use fixed system paths or documented safe PATH resolution. Closes #783.
+
 ## [0.32.19] - 2026-05-09
 
 ### Fixed

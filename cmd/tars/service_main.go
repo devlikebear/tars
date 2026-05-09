@@ -422,7 +422,7 @@ func errorString(err error) string {
 }
 
 func runLaunchctl(ctx context.Context, args ...string) (string, error) {
-	cmd := exec.CommandContext(ctx, "launchctl", args...)
+	cmd := exec.CommandContext(ctx, "/bin/launchctl", args...)
 	out, err := cmd.CombinedOutput()
 	return strings.TrimSpace(string(out)), err
 }

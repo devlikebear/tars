@@ -29,7 +29,8 @@ forbid_pattern() {
   fi
 }
 
-require_pattern "$WORKFLOW" 'SonarSource/sonarqube-scan-action@v7' 'official SonarQube scan action v7'
+require_pattern "$WORKFLOW" 'SonarSource/sonarqube-scan-action@c7ee0f9df90b7aa20e8dcf9695dcfe2e7da5b4f2' 'official SonarQube scan action v7 pinned to a full commit SHA'
+forbid_pattern "$WORKFLOW" 'SonarSource/sonarqube-scan-action@v7' 'floating SonarQube scan action tag'
 require_pattern "$WORKFLOW" 'pull-requests: read' 'job-scoped pull request read permission'
 require_pattern "$WORKFLOW" 'SONAR_TOKEN' 'SONAR_TOKEN secret wiring'
 require_pattern "$WORKFLOW" 'SONAR_PROJECT_KEY' 'SONAR_PROJECT_KEY variable wiring'

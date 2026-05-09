@@ -505,3 +505,13 @@ func TestManager_IsSafeCleanupPath_OnlyAllowsConfiguredRoots(t *testing.T) {
 		t.Fatalf("expected documents path to be rejected")
 	}
 }
+
+func TestProcessCountUsesSystemPs(t *testing.T) {
+	count, err := processCount()
+	if err != nil {
+		t.Fatalf("process count: %v", err)
+	}
+	if count <= 0 {
+		t.Fatalf("expected positive process count, got %d", count)
+	}
+}

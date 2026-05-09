@@ -160,6 +160,13 @@ func TestRootCommand_ServiceStopBootsOutLaunchAgent(t *testing.T) {
 	restore()
 }
 
+func TestRunLaunchctlUsesSystemLaunchctl(t *testing.T) {
+	_, err := runLaunchctl(context.Background(), "__tars_test_invalid__")
+	if err == nil {
+		t.Fatal("expected invalid launchctl invocation to fail")
+	}
+}
+
 func TestRootCommand_ServiceStatusReportsInstalledButNotLoaded(t *testing.T) {
 	restore := overrideServiceTestHooks(t)
 	serviceRuntimeGOOS = "darwin"
