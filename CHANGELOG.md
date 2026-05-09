@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.32.14] - 2026-05-09
+
+### Added
+
+- **SonarCloud evaluation workflow** — added an optional, non-blocking SonarCloud GitHub Actions workflow with documented `SONAR_TOKEN`, `SONAR_PROJECT_KEY`, and `SONAR_ORGANIZATION` setup. Go coverage is wired through `coverage.out`, while frontend LCOV coverage is intentionally deferred until the Svelte console has a stable LCOV-producing test command. Closes #776.
+
 ## [0.32.13] - 2026-05-09
 
 ### Added

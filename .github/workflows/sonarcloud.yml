@@ -1,0 +1,88 @@
+name: sonarcloud
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  sonarcloud:
+    name: SonarCloud evaluation
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      SONAR_PROJECT_KEY: ${{ vars.SONAR_PROJECT_KEY }}
+      SONAR_ORGANIZATION: ${{ vars.SONAR_ORGANIZATION }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Check SonarCloud configuration
+        id: sonar-config
+        shell: bash
+        run: |
+          missing=()
+          if [ -z "${SONAR_TOKEN:-}" ]; then missing+=("SONAR_TOKEN secret"); fi
+          if [ -z "${SONAR_PROJECT_KEY:-}" ]; then missing+=("SONAR_PROJECT_KEY variable"); fi
+          if [ -z "${SONAR_ORGANIZATION:-}" ]; then missing+=("SONAR_ORGANIZATION variable"); fi
+
+          if [ "${#missing[@]}" -gt 0 ]; then
+            printf 'configured=false\n' >> "$GITHUB_OUTPUT"
+            {
+              printf '### SonarCloud skipped\n\n'
+              printf 'Missing repository configuration:\n'
+              printf -- '- %s\n' "${missing[@]}"
+              printf '\nSee `docs/static-analysis.md` before enabling merge-blocking quality gates.\n'
+            } >> "$GITHUB_STEP_SUMMARY"
+            printf '::notice title=SonarCloud skipped::Missing %s\n' "$(IFS=', '; printf '%s' "${missing[*]}")"
+            exit 0
+          fi
+
+          printf 'configured=true\n' >> "$GITHUB_OUTPUT"
+
+      - name: Set up Go
+        if: steps.sonar-config.outputs.configured == 'true'
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Generate Go coverage
+        if: steps.sonar-config.outputs.configured == 'true'
+        run: make test-cover
+
+      - name: Run SonarCloud scan
+        id: sonar-scan
+        if: steps.sonar-config.outputs.configured == 'true'
+        uses: SonarSource/sonarqube-scan-action@v7
+        continue-on-error: true
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          args: >
+            -Dsonar.projectKey=${{ env.SONAR_PROJECT_KEY }}
+            -Dsonar.organization=${{ env.SONAR_ORGANIZATION }}
+            -Dsonar.qualitygate.wait=false
+
+      - name: Report non-blocking SonarCloud result
+        if: steps.sonar-config.outputs.configured == 'true' && steps.sonar-scan.outcome == 'failure'
+        run: |
+          {
+            printf '### SonarCloud scan failed in non-blocking mode\n\n'
+            printf 'The scan is intentionally non-blocking while the baseline and quality gate are evaluated.\n'
+          } >> "$GITHUB_STEP_SUMMARY"
+          printf '::warning title=SonarCloud non-blocking::Scan failed; keeping the evaluation workflow non-blocking.\n'

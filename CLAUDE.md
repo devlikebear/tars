@@ -11,6 +11,7 @@ make test-diff            # PR preflight: changed Go packages + coverage check
 make test-cover-diff      # PR preflight: changed-line coverage >= DIFF_COVER_MIN
 make ci-static-analysis-check # PR preflight: CI static-analysis guardrails
 make codeql-workflow-check # PR preflight: CodeQL code-scanning workflow guardrails
+make sonarcloud-workflow-check # PR preflight: SonarCloud evaluation workflow guardrails
 make test-one TEST_NAME=TestFoo PKG=./internal/tarsserver/
 make test-race / make test-cover
 make fmt / make vet / make lint / make tidy / make security-scan
@@ -168,6 +169,11 @@ TARS 기능 변경 시 홈페이지 콘텐츠도 갱신 필요 (매 변경마다
 1. **Analyze (go)** — CodeQL autobuild + analysis for Go source
 2. **Analyze (javascript-typescript)** — buildless CodeQL analysis for Svelte/TypeScript/JavaScript
 3. **Analyze (actions)** — buildless CodeQL analysis for GitHub Actions workflows
+
+`.github/workflows/sonarcloud.yml`:
+1. **Check SonarCloud configuration** — skip cleanly unless `SONAR_TOKEN`, `SONAR_PROJECT_KEY`, and `SONAR_ORGANIZATION` are configured
+2. **Generate Go coverage** — when configured, run `make test-cover` and publish `coverage.out`
+3. **Run SonarCloud scan** — non-blocking evaluation mode; do not make this a required merge gate until the baseline and quality gate policy are reviewed
 
 See `docs/static-analysis.md` for the static-analysis layering and local workflow guards.
 
