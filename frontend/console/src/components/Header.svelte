@@ -216,7 +216,7 @@
       <div class="auth-chip">
         <span>{authRole}</span>
         {#if onLogout}
-          <button type="button" onclick={onLogout}>Sign out</button>
+          <button type="button" onclick={onLogout}>{$t.header.auth.signOut}</button>
         {/if}
       </div>
     {/if}

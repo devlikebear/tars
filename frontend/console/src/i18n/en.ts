@@ -64,6 +64,9 @@ export const en = {
       unread: 'No unread notifications',
       read: 'No read notifications',
     },
+    auth: {
+      signOut: 'Sign out',
+    },
     locale: {
       label: 'Language',
       en: 'EN',

@@ -64,6 +64,9 @@ export type Translations = {
       unread: string
       read: string
     }
+    auth: {
+      signOut: string
+    }
     locale: {
       label: string
       en: string
