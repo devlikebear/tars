@@ -399,6 +399,7 @@ func TestManager_UpdateApprovalStatus_SetsReviewedAtAndPersists(t *testing.T) {
 	if !items[0].UpdatedAt.Equal(fixedNow) {
 		t.Fatalf("expected updated_at %s, got %s", fixedNow, items[0].UpdatedAt)
 	}
+	requireOpsFileMode(t, mgr.approvalsPath, 0o600)
 }
 
 func runOpsGit(t *testing.T, dir string, args ...string) {
@@ -468,6 +469,17 @@ func TestManager_SaveApprovalsPreservesExistingFileWhenAtomicTempCannotBeCreated
 	}
 	if string(got) != string(original) {
 		t.Fatalf("expected original approvals to be preserved, got %q", got)
+	}
+}
+
+func requireOpsFileMode(t *testing.T, path string, want os.FileMode) {
+	t.Helper()
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat %s: %v", path, err)
+	}
+	if got := info.Mode().Perm(); got != want {
+		t.Fatalf("expected %s mode %04o, got %04o", path, want, got)
 	}
 }
 

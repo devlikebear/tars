@@ -2,6 +2,7 @@ package memory
 
 import (
 	"context"
+	"os"
 	"testing"
 	"time"
 )
@@ -37,6 +38,7 @@ func TestAppendInboxCandidateAndReviewActions(t *testing.T) {
 	if !added || candidate.ID == "" || candidate.Status != MemoryCandidateStatusPending {
 		t.Fatalf("expected pending candidate, got added=%v candidate=%+v", added, candidate)
 	}
+	requireMemoryFileMode(t, memoryInboxPath(root), 0o600)
 
 	duplicate, added, err := AppendInboxCandidateIfNew(ctx, root, backend, candidate)
 	if err != nil {
@@ -70,6 +72,7 @@ func TestAppendInboxCandidateAndReviewActions(t *testing.T) {
 	if len(candidates) != 1 || candidates[0].ID != candidate.ID {
 		t.Fatalf("expected approved candidate in list, got %+v", candidates)
 	}
+	requireMemoryFileMode(t, memoryInboxPath(root), 0o600)
 }
 
 func TestInboxCandidateHintsSimilarAndConflictingExperiences(t *testing.T) {
@@ -127,5 +130,16 @@ func TestInboxCandidateHintsSimilarAndConflictingExperiences(t *testing.T) {
 	}
 	if merged.Status != MemoryCandidateStatusMerged || merged.MergedInto == "" {
 		t.Fatalf("expected merged candidate with target, got %+v", merged)
+	}
+}
+
+func requireMemoryFileMode(t *testing.T, path string, want os.FileMode) {
+	t.Helper()
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat %s: %v", path, err)
+	}
+	if got := info.Mode().Perm(); got != want {
+		t.Fatalf("expected %s mode %04o, got %04o", path, want, got)
 	}
 }

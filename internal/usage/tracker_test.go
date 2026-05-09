@@ -231,6 +231,19 @@ func TestTracker_CheckLimitStatusPrefersWeekWhenDailyDisabled(t *testing.T) {
 	}
 }
 
+func TestTracker_UpdateLimitsWritesPrivateFile(t *testing.T) {
+	tracker, err := NewTracker(t.TempDir(), TrackerOptions{})
+	if err != nil {
+		t.Fatalf("new tracker: %v", err)
+	}
+
+	if _, err := tracker.UpdateLimits(Limits{DailyUSD: 3, Mode: "hard"}); err != nil {
+		t.Fatalf("update limits: %v", err)
+	}
+
+	requireUsageFileMode(t, tracker.limitsPath, 0o600)
+}
+
 func TestTracker_UpdateLimitsPreservesExistingFileAndMemoryWhenAtomicTempCannotBeCreated(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Skip("root bypasses permission checks")
@@ -272,5 +285,16 @@ func TestTracker_UpdateLimitsPreservesExistingFileAndMemoryWhenAtomicTempCannotB
 	limits := tracker.Limits()
 	if limits.DailyUSD != 1 || limits.WeeklyUSD != 2 || limits.Mode != "soft" {
 		t.Fatalf("expected in-memory limits to remain unchanged, got %+v", limits)
+	}
+}
+
+func requireUsageFileMode(t *testing.T, path string, want os.FileMode) {
+	t.Helper()
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat %s: %v", path, err)
+	}
+	if got := info.Mode().Perm(); got != want {
+		t.Fatalf("expected %s mode %04o, got %04o", path, want, got)
 	}
 }

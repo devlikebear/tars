@@ -70,7 +70,7 @@ func (t *Tracker) UpdateLimits(next Limits) (Limits, error) {
 	if err := atomicwrite.Write(t.limitsPath, append(payload, '\n')); err != nil {
 		return Limits{}, err
 	}
-	if err := os.Chmod(t.limitsPath, 0o644); err != nil {
+	if err := os.Chmod(t.limitsPath, 0o600); err != nil {
 		return Limits{}, err
 	}
 	t.limits = normalized

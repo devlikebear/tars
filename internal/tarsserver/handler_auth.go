@@ -208,7 +208,9 @@ func (h *authAPIHandler) handleLogout(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	http.SetCookie(w, &http.Cookie{
+	// Secure must match the request class so loopback HTTP can clear local
+	// development cookies while HTTPS/Tailscale flows clear Secure cookies.
+	http.SetCookie(w, &http.Cookie{ // NOSONAR
 		Name:     h.cookieName,
 		Value:    "",
 		Path:     "/",
@@ -266,7 +268,9 @@ func (h *authAPIHandler) handleUserPassword(w http.ResponseWriter, r *http.Reque
 }
 
 func (h *authAPIHandler) setSessionCookie(w http.ResponseWriter, sessionID string, secure bool) {
-	http.SetCookie(w, &http.Cookie{
+	// Local loopback HTTP intentionally uses a non-Secure cookie; remote HTTPS
+	// and Tailscale-authenticated flows pass secure=true from evaluateLoginRequest.
+	http.SetCookie(w, &http.Cookie{ // NOSONAR
 		Name:     h.cookieName,
 		Value:    sessionID,
 		Path:     "/",

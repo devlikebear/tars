@@ -1,6 +1,7 @@
 package tarsserver
 
 import (
+	"crypto/tls"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -227,8 +228,37 @@ func TestAuthLogoutAPI_RevokeSessionAndClearsCookie(t *testing.T) {
 	if cookie == nil || cookie.MaxAge >= 0 {
 		t.Fatalf("expected clearing cookie, got %+v", cookie)
 	}
+	if cookie.Secure {
+		t.Fatalf("loopback logout clearing cookie must not be Secure")
+	}
 	if _, ok, err := store.ValidateSession(session.ID); err != nil || ok {
 		t.Fatalf("expected revoked session, ok=%v err=%v", ok, err)
+	}
+}
+
+func TestAuthLogoutAPI_ClearsSecureCookieForHTTPSRequest(t *testing.T) {
+	workspace := t.TempDir()
+	store := consoleauth.NewStore(workspace)
+	session, err := store.CreateSession(consoleauth.RoleUser, "safari", time.Hour)
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	handler := newAuthAPIHandler("required", workspace)
+	req := httptest.NewRequest(http.MethodPost, "/v1/auth/logout", nil)
+	req.Host = "example.com"
+	req.RemoteAddr = "192.0.2.10:5555"
+	req.TLS = &tls.ConnectionState{}
+	req.AddCookie(&http.Cookie{Name: serverauth.DefaultBrowserSessionCookieName, Value: session.ID})
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+	cookie := findCookie(rec.Result().Cookies(), serverauth.DefaultBrowserSessionCookieName)
+	if cookie == nil || cookie.MaxAge >= 0 || !cookie.Secure {
+		t.Fatalf("expected Secure clearing cookie for HTTPS logout, got %+v", cookie)
 	}
 }
 

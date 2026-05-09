@@ -84,7 +84,7 @@ func sortApprovalsNewestFirst(items []Approval) {
 }
 
 func (m *Manager) loadApprovalsLocked() ([]Approval, error) {
-	if err := os.MkdirAll(filepath.Dir(m.approvalsPath), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(m.approvalsPath), 0o700); err != nil {
 		return nil, err
 	}
 	raw, err := os.ReadFile(m.approvalsPath)
@@ -109,7 +109,7 @@ func (m *Manager) loadApprovalsLocked() ([]Approval, error) {
 }
 
 func (m *Manager) saveApprovalsLocked(items []Approval) error {
-	if err := os.MkdirAll(filepath.Dir(m.approvalsPath), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(m.approvalsPath), 0o700); err != nil {
 		return err
 	}
 	payload, err := json.MarshalIndent(items, "", "  ")
@@ -119,16 +119,16 @@ func (m *Manager) saveApprovalsLocked(items []Approval) error {
 	if err := atomicwrite.Write(m.approvalsPath, payload); err != nil {
 		return err
 	}
-	return os.Chmod(m.approvalsPath, 0o644)
+	return os.Chmod(m.approvalsPath, 0o600)
 }
 
 func (m *Manager) appendEventLocked(eventType string, payload map[string]any) error {
-	if err := os.MkdirAll(m.eventsDir, 0o755); err != nil {
+	if err := os.MkdirAll(m.eventsDir, 0o700); err != nil {
 		return err
 	}
 	now := m.nowFn().UTC()
 	path := filepath.Join(m.eventsDir, now.Format("2006-01-02")+".jsonl")
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		return err
 	}
