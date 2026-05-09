@@ -47,6 +47,7 @@ Run these locally before merging:
 
 ```bash
 make ci-static-analysis-check
+make codeql-workflow-check
 make lint-diff
 make test-cover-diff
 make test
@@ -58,7 +59,7 @@ cd frontend/console && npm run check && npm run test:ci
 
 - [ ] Problem and scope are clearly described
 - [ ] Tests added or updated for behavior changes
-- [ ] `make ci-static-analysis-check`, `make lint-diff`, and `make test-cover-diff` pass
+- [ ] `make ci-static-analysis-check`, `make codeql-workflow-check`, `make lint-diff`, and `make test-cover-diff` pass
 - [ ] `make test` passes
 - [ ] `cd frontend/console && npm run check && npm run test:ci` passes
 - [ ] `make security-scan` passes

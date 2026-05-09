@@ -61,7 +61,7 @@ RELEASE_STAGE_DIR ?= $(DIST_DIR)/release-$(RELEASE_GOOS)-$(RELEASE_GOARCH)
 .PHONY: help \
 	test test-v test-one test-nocache test-race test-cover test-cover-check test-diff test-cover-diff \
 	build build-bins release-asset clean tidy fmt vet lint \
-	lint-diff ci-static-analysis-check \
+	lint-diff ci-static-analysis-check codeql-workflow-check \
 	ensure-console-assets console-install console-build \
 	browser-install \
 	install install-server install-assistant uninstall uninstall-server uninstall-assistant reinstall \
@@ -116,6 +116,7 @@ help:
 	@echo "  make lint          - golangci-lint ./... (includes revive)"
 	@echo "  make lint-diff     - golangci-lint only new issues since DIFF_BASE (adds errcheck/staticcheck)"
 	@echo "  make ci-static-analysis-check - verify CI static-analysis guardrails"
+	@echo "  make codeql-workflow-check - verify CodeQL code-scanning workflow guardrails"
 	@echo "  make tidy          - go mod tidy"
 	@echo "  make clean         - remove build artifacts"
 	@echo ""
@@ -385,6 +386,9 @@ lint-diff:
 
 ci-static-analysis-check:
 	./scripts/verify_ci_static_analysis.sh
+
+codeql-workflow-check:
+	./scripts/verify_codeql_workflow.sh
 
 tidy:
 	$(GO) mod tidy
