@@ -178,6 +178,64 @@ func resolveWorkspaceFilesPath(rootDir, rawPath, defaultPath string) (string, st
 	return cleanPath, absPath, nil
 }
 
+func resolveWorkspaceFilesRootPath(rootDir, rawPath, defaultPath string) (string, string, error) {
+	cleanPath, absPath, err := resolveWorkspaceFilesPath(rootDir, rawPath, defaultPath)
+	if err != nil {
+		return "", "", err
+	}
+	rootCanonical := canonicalWorkspacePath(rootDir)
+	pathCanonical := canonicalWorkspacePath(absPath)
+	rootPath, err := filepath.Rel(rootCanonical, pathCanonical)
+	if err != nil {
+		return "", "", fmt.Errorf("invalid path")
+	}
+	if rootPath == "." {
+		return cleanPath, ".", nil
+	}
+	if !filepath.IsLocal(rootPath) {
+		return "", "", fmt.Errorf("invalid path")
+	}
+	return cleanPath, rootPath, nil
+}
+
+func openWorkspaceFilesRoot(w http.ResponseWriter, rootDir string, notFoundMessage string) (*os.Root, bool) {
+	rootFS, err := os.OpenRoot(rootDir)
+	if err == nil {
+		return rootFS, true
+	}
+	status := http.StatusInternalServerError
+	message := err.Error()
+	if os.IsNotExist(err) {
+		status = http.StatusNotFound
+		message = notFoundMessage
+	}
+	writeJSON(w, status, map[string]string{"error": message})
+	return nil, false
+}
+
+func resolveWorkspaceFilesRootEntry(w http.ResponseWriter, rootDir, rawPath, defaultPath, notFoundMessage string) (string, string, *os.Root, os.FileInfo, bool) {
+	cleanPath, rootPath, err := resolveWorkspaceFilesRootPath(rootDir, rawPath, defaultPath)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return "", "", nil, nil, false
+	}
+	rootFS, ok := openWorkspaceFilesRoot(w, rootDir, notFoundMessage)
+	if !ok {
+		return "", "", nil, nil, false
+	}
+	info, err := rootFS.Stat(rootPath)
+	if err == nil {
+		return cleanPath, rootPath, rootFS, info, true
+	}
+	_ = rootFS.Close()
+	if os.IsNotExist(err) {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": notFoundMessage})
+		return "", "", nil, nil, false
+	}
+	writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	return "", "", nil, nil, false
+}
+
 func validateWorkspaceDirectoryName(name string) error {
 	trimmed := strings.TrimSpace(name)
 	if trimmed == "" {
@@ -209,32 +267,22 @@ func newWorkspaceFilesHandler(workspaceDir string, logger zerolog.Logger) http.H
 		switch r.Method {
 		case http.MethodGet:
 			relPath := strings.TrimSpace(r.URL.Query().Get("path"))
-			cleanPath, absPath, err := resolveWorkspaceFilesPath(rootDir, relPath, ".")
-			if err != nil {
-				writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			cleanPath, rootPath, rootFS, info, ok := resolveWorkspaceFilesRootEntry(w, rootDir, relPath, ".", "not found")
+			if !ok {
 				return
 			}
-
-			info, err := os.Stat(absPath)
-			if err != nil {
-				if os.IsNotExist(err) {
-					writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
-					return
-				}
-				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
-				return
-			}
+			defer func() { _ = rootFS.Close() }()
 
 			if !info.IsDir() {
-				raw, err := os.ReadFile(absPath)
+				raw, err := rootFS.ReadFile(rootPath)
 				if err != nil {
 					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 					return
 				}
-				kind, mimeType, isBinary := workspaceFileKind(absPath, raw)
+				kind, mimeType, isBinary := workspaceFileKind(cleanPath, raw)
 				payload := map[string]any{
-					"path":       relPath,
-					"name":       filepath.Base(absPath),
+					"path":       cleanPath,
+					"name":       filepath.Base(cleanPath),
 					"size":       info.Size(),
 					"updated_at": info.ModTime().UTC().Format(time.RFC3339),
 					"kind":       kind,
@@ -270,7 +318,13 @@ func newWorkspaceFilesHandler(workspaceDir string, logger zerolog.Logger) http.H
 				return
 			}
 
-			entries, err := os.ReadDir(absPath)
+			dir, err := rootFS.Open(rootPath)
+			if err != nil {
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+				return
+			}
+			defer func() { _ = dir.Close() }()
+			entries, err := dir.ReadDir(-1)
 			if err != nil {
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 				return
@@ -315,37 +369,25 @@ func newWorkspaceFilesHandler(workspaceDir string, logger zerolog.Logger) http.H
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 				return
 			}
-			parentPath, parentAbs, err := resolveWorkspaceFilesPath(rootDir, req.ParentPath, ".")
-			if err != nil {
-				writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			parentPath, parentRootPath, rootFS, info, ok := resolveWorkspaceFilesRootEntry(w, rootDir, req.ParentPath, ".", "parent directory not found")
+			if !ok {
 				return
 			}
-			info, err := os.Stat(parentAbs)
-			if err != nil {
-				if os.IsNotExist(err) {
-					writeJSON(w, http.StatusNotFound, map[string]string{"error": "parent directory not found"})
-					return
-				}
-				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
-				return
-			}
+			defer func() { _ = rootFS.Close() }()
+
 			if !info.IsDir() {
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "parent path is not a directory"})
 				return
 			}
-			targetAbs := filepath.Join(parentAbs, req.Name)
-			if !workspacePathWithinRoot(rootDir, targetAbs) {
-				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid path"})
-				return
-			}
-			if _, err := os.Stat(targetAbs); err == nil {
+			targetRootPath := filepath.Join(parentRootPath, req.Name)
+			if _, err := rootFS.Stat(targetRootPath); err == nil {
 				writeJSON(w, http.StatusConflict, map[string]string{"error": "directory already exists"})
 				return
 			} else if !os.IsNotExist(err) {
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 				return
 			}
-			if err := os.Mkdir(targetAbs, 0o755); err != nil {
+			if err := rootFS.Mkdir(targetRootPath, 0o755); err != nil {
 				if os.IsExist(err) {
 					writeJSON(w, http.StatusConflict, map[string]string{"error": "directory already exists"})
 					return
@@ -370,18 +412,14 @@ func newWorkspaceFilesHandler(workspaceDir string, logger zerolog.Logger) http.H
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 				return
 			}
-			cleanPath, absPath, err := resolveWorkspaceFilesPath(rootDir, req.Path, "")
-			if err != nil {
-				writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			cleanPath, rootPath, rootFS, info, ok := resolveWorkspaceFilesRootEntry(w, rootDir, req.Path, "", "directory not found")
+			if !ok {
 				return
 			}
-			info, err := os.Stat(absPath)
-			if err != nil {
-				if os.IsNotExist(err) {
-					writeJSON(w, http.StatusNotFound, map[string]string{"error": "directory not found"})
-					return
-				}
-				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			defer func() { _ = rootFS.Close() }()
+
+			if rootPath == "." {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid path"})
 				return
 			}
 			if !info.IsDir() {
@@ -389,21 +427,17 @@ func newWorkspaceFilesHandler(workspaceDir string, logger zerolog.Logger) http.H
 				return
 			}
 			parentPath := filepath.Dir(cleanPath)
-			targetAbs := filepath.Join(filepath.Dir(absPath), req.NewName)
-			if !workspacePathWithinRoot(rootDir, targetAbs) {
-				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid path"})
-				return
-			}
+			targetRootPath := filepath.Join(filepath.Dir(rootPath), req.NewName)
 			targetPath := workspaceChildPath(parentPath, req.NewName)
-			if filepath.Clean(targetAbs) != filepath.Clean(absPath) {
-				if _, err := os.Stat(targetAbs); err == nil {
+			if filepath.Clean(targetRootPath) != filepath.Clean(rootPath) {
+				if _, err := rootFS.Stat(targetRootPath); err == nil {
 					writeJSON(w, http.StatusConflict, map[string]string{"error": "directory already exists"})
 					return
 				} else if !os.IsNotExist(err) {
 					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 					return
 				}
-				if err := os.Rename(absPath, targetAbs); err != nil {
+				if err := rootFS.Rename(rootPath, targetRootPath); err != nil {
 					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 					return
 				}
