@@ -1,7 +1,8 @@
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte'
-  import { listSessions, deleteSession, compactSession, renameSession, getSessionHistory, runMemorySearch } from '../lib/api'
+  import { listSessions, deleteSession, compactSession, renameSession, getSessionHistory, runMemorySearch, setSessionArchived, setSessionPinned } from '../lib/api'
   import { highlightTerms } from '../lib/markdown'
+  import { cleanupCandidateSessions, isArchived, isPinned, organizeSessions, sessionKind, type SessionKindFilter, type SessionSortMode } from '../lib/sessionOrganization'
   import { t } from '../i18n'
   import type { MemorySearchMatch, Session } from '../lib/types'
 
@@ -23,8 +24,8 @@
   let error = $state('')
 
   let searchQuery = $state('')
-  let sortBy: 'updated' | 'name' = $state('updated')
-  let filterKind: 'all' | 'session' | 'main' | 'worker' = $state('all')
+  let sortBy: SessionSortMode = $state('updated')
+  let filterKind: SessionKindFilter = $state('all')
 
   let renamingId: string | null = $state(null)
   let renameValue = $state('')
@@ -34,9 +35,11 @@
   let transcriptSearchLoading = $state(false)
   let transcriptSearchError = $state('')
   let sessionSearchSnippets: Record<string, SessionSearchSnippet[]> = $state({})
+  const sessionFilters = ['all', 'session', 'main', 'worker', 'archived'] as const
   const maxSnippetsPerSession = 3
   let transcriptSearchTimer: ReturnType<typeof setTimeout> | null = null
   let transcriptSearchToken = 0
+  let cleanupSuggestions = $derived(cleanupCandidateSessions(sessions))
 
   function relativeTime(value?: string): string {
     if (!value?.trim()) return ''
@@ -49,12 +52,6 @@
     if (seconds < 3600) return labels.minutesAgo(Math.floor(seconds / 60))
     if (seconds < 86400) return labels.hoursAgo(Math.floor(seconds / 3600))
     return labels.daysAgo(Math.floor(seconds / 86400))
-  }
-
-  function sessionKind(session: Session): string {
-    if (session.kind === 'main') return 'main'
-    if (session.hidden) return 'worker'
-    return 'session'
   }
 
   function kindBadge(session: Session): string {
@@ -70,24 +67,12 @@
   }
 
   function filteredSessions(): Session[] {
-    let result = sessions
-    if (filterKind !== 'all') {
-      result = result.filter((s) => sessionKind(s) === filterKind)
-    }
-    const q = searchQuery.trim().toLowerCase()
-    if (q) {
-      result = result.filter((s) =>
-        (s.title || '').toLowerCase().includes(q) ||
-        s.id.toLowerCase().includes(q) ||
-        (sessionSearchSnippets[s.id]?.length ?? 0) > 0
-      )
-    }
-    if (sortBy === 'name') {
-      result = [...result].sort((a, b) => (a.title || a.id).localeCompare(b.title || b.id))
-    } else {
-      result = [...result].sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
-    }
-    return result
+    return organizeSessions(sessions, {
+      filterKind,
+      sortBy,
+      query: searchQuery,
+      hasTranscriptMatch: (id) => (sessionSearchSnippets[id]?.length ?? 0) > 0,
+    })
   }
 
   function sessionIdFromSearchSource(source: string): string {
@@ -183,7 +168,7 @@
     loading = true
     error = ''
     try {
-      sessions = await listSessions(true)
+      sessions = await listSessions(true, 'include')
     } catch (err) {
       error = err instanceof Error ? err.message : $t.sessions.errors.loadFailed
     } finally {
@@ -224,6 +209,49 @@
       await load()
     } catch (e) {
       actionError = e instanceof Error ? e.message : $t.sessions.errors.deleteFailed
+    } finally {
+      actionBusy = ''
+    }
+  }
+
+  async function handleSetArchived(id: string, archived: boolean) {
+    actionBusy = id
+    actionError = ''
+    try {
+      await setSessionArchived(id, archived)
+      if (archived && selectedSessionId === id) onNewSession()
+      await load()
+    } catch (e) {
+      actionError = e instanceof Error ? e.message : $t.sessions.errors.archiveFailed
+    } finally {
+      actionBusy = ''
+    }
+  }
+
+  async function handleSetPinned(id: string, pinned: boolean) {
+    actionBusy = id
+    actionError = ''
+    try {
+      await setSessionPinned(id, pinned)
+      await load()
+    } catch (e) {
+      actionError = e instanceof Error ? e.message : $t.sessions.errors.pinFailed
+    } finally {
+      actionBusy = ''
+    }
+  }
+
+  async function handleArchiveCleanupCandidates() {
+    const candidates = cleanupSuggestions
+    if (candidates.length === 0) return
+    actionBusy = 'cleanup'
+    actionError = ''
+    try {
+      await Promise.all(candidates.map((session) => setSessionArchived(session.id, true)))
+      if (selectedSessionId && candidates.some((session) => session.id === selectedSessionId)) onNewSession()
+      await load()
+    } catch (e) {
+      actionError = e instanceof Error ? e.message : $t.sessions.errors.archiveFailed
     } finally {
       actionBusy = ''
     }
@@ -300,11 +328,11 @@
   <input type="text" class="sidebar-search" placeholder={$t.sessions.sidebarSearchPlaceholder} bind:value={searchQuery} />
 
   <div class="sidebar-filters">
-    {#each ['all', 'session', 'main', 'worker'] as kind}
+    {#each sessionFilters as kind}
       <button
         class="filter-btn"
         class:active={filterKind === kind}
-        onclick={() => { filterKind = kind as typeof filterKind }}
+        onclick={() => { filterKind = kind }}
       >{$t.sessions.filters[kind as keyof typeof $t.sessions.filters]}</button>
     {/each}
     <div class="sort-btns">
@@ -321,6 +349,19 @@
   {/if}
   {#if transcriptSearchError}
     <div class="error-banner" style="margin:var(--space-2);font-size:var(--text-xs)">{transcriptSearchError}</div>
+  {/if}
+
+  {#if cleanupSuggestions.length > 0 && (filterKind === 'all' || filterKind === 'session') && !searchQuery.trim()}
+    <section class="cleanup-panel" aria-label={$t.sessions.cleanup.title}>
+      <div class="cleanup-head">
+        <span>{$t.sessions.cleanup.title}</span>
+        <strong>{$t.sessions.cleanup.count(cleanupSuggestions.length)}</strong>
+      </div>
+      <div class="cleanup-preview">{cleanupSuggestions.slice(0, 3).map((session) => session.title || session.id.slice(0, 12)).join(' · ')}</div>
+      <button class="cleanup-action" type="button" disabled={actionBusy === 'cleanup'} onclick={handleArchiveCleanupCandidates}>
+        {$t.sessions.cleanup.archiveSuggested(cleanupSuggestions.length)}
+      </button>
+    </section>
   {/if}
 
   <div class="session-list">
@@ -353,6 +394,9 @@
             {/if}
             <div class="session-meta">
               <span class="badge {kindBadge(session)}" style="font-size:9px;padding:1px 5px">{$t.sessions.filters[sessionKind(session) as keyof typeof $t.sessions.filters] ?? sessionKind(session)}</span>
+              {#if isArchived(session)}
+                <span class="badge badge-default" style="font-size:9px;padding:1px 5px">{$t.sessions.filters.archived}</span>
+              {/if}
               <span class="session-time">{relativeTime(session.updated_at)}</span>
             </div>
             {#if snippetsForSession(session.id).length > 0}
@@ -368,11 +412,13 @@
           </button>
           <div class="session-actions">
             {#if !isMainSession(session)}
+              <button class="act-btn" class:active={isPinned(session)} aria-label={isPinned(session) ? $t.sessions.actions.unpin : $t.sessions.actions.pin} title={isPinned(session) ? $t.sessions.actions.unpin : $t.sessions.actions.pin} disabled={actionBusy === session.id} onclick={(e) => { e.stopPropagation(); handleSetPinned(session.id, !isPinned(session)) }}>{isPinned(session) ? '★' : '☆'}</button>
               <button class="act-btn" aria-label={$t.sessions.actions.rename} title={$t.sessions.actions.rename} onclick={(e) => { e.stopPropagation(); startRename(session) }}>&#9998;</button>
-              <button class="act-btn" aria-label={$t.sessions.actions.autoTitle} title={$t.sessions.actions.autoTitle} disabled={actionBusy === session.id} onclick={(e) => { e.stopPropagation(); handleGenerateTitle(session) }}>&#9733;</button>
+              <button class="act-btn" aria-label={$t.sessions.actions.autoTitle} title={$t.sessions.actions.autoTitle} disabled={actionBusy === session.id} onclick={(e) => { e.stopPropagation(); handleGenerateTitle(session) }}>A</button>
             {/if}
             <button class="act-btn" aria-label={$t.sessions.actions.compact} title={$t.sessions.actions.compact} disabled={actionBusy === session.id} onclick={(e) => { e.stopPropagation(); handleCompact(session.id) }}>&#8858;</button>
             {#if !isMainSession(session)}
+              <button class="act-btn" aria-label={isArchived(session) ? $t.sessions.actions.restore : $t.sessions.actions.archive} title={isArchived(session) ? $t.sessions.actions.restore : $t.sessions.actions.archive} disabled={actionBusy === session.id} onclick={(e) => { e.stopPropagation(); handleSetArchived(session.id, !isArchived(session)) }}>{isArchived(session) ? '⤴' : '⤓'}</button>
               <button
                 class="act-btn act-btn-danger"
                 aria-label={deleteConfirmId === session.id ? $t.sessions.actions.confirm : $t.sessions.actions.delete}
@@ -447,6 +493,56 @@
     display: flex;
     flex-direction: column;
     gap: 1px;
+  }
+
+  .cleanup-panel {
+    display: grid;
+    gap: var(--space-1);
+    padding: var(--space-2);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    background: var(--surface-inset);
+  }
+
+  .cleanup-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    color: var(--text-secondary);
+    font-size: 10px;
+    font-family: var(--font-mono);
+    text-transform: uppercase;
+  }
+
+  .cleanup-head strong {
+    color: var(--primary);
+    font-weight: 600;
+  }
+
+  .cleanup-preview {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--text-ghost);
+    font-size: 10px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .cleanup-action {
+    justify-self: start;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 10px;
+    padding: 2px 6px;
+  }
+
+  .cleanup-action:hover {
+    border-color: var(--primary-muted);
+    color: var(--primary);
   }
 
   .sidebar-loading, .sidebar-empty {
@@ -567,6 +663,7 @@
     line-height: 1;
   }
   .act-btn:hover { color: var(--primary); background: rgba(255,255,255,0.04); }
+  .act-btn.active { color: var(--primary); }
   .act-btn-danger:hover { color: var(--error); }
 
   .rename-input {

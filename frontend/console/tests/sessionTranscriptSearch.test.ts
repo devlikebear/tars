@@ -57,5 +57,5 @@ test('Chat transcript messages can fork a new session from their persisted messa
   assert.match(chatPanelSource, /handleForkMessage/)
   assert.match(chatPanelSource, /sourceMessageId:\s*msg\.id/)
   assert.match(chatMessageItemSource, /onForkMessage/)
-  assert.match(chatMessageItemSource, /Fork from here/)
+  assert.match(chatMessageItemSource, /forkFromHere/)
 })

@@ -185,6 +185,8 @@ type Session struct {
 	PromptOverride      string                    `json:"prompt_override,omitempty"`
 	WorkDirs            []string                  `json:"work_dirs,omitempty"`
 	CurrentDir          string                    `json:"current_dir,omitempty"`
+	ArchivedAt          *time.Time                `json:"archived_at,omitempty"`
+	PinnedAt            *time.Time                `json:"pinned_at,omitempty"`
 	CreatedAt           time.Time                 `json:"created_at"`
 	UpdatedAt           time.Time                 `json:"updated_at"`
 }
@@ -842,6 +844,51 @@ func (s *Store) SetTitle(id string, title string) error {
 	sess.UpdatedAt = time.Now().UTC()
 	index[id] = sess
 	return s.saveIndex(index)
+}
+
+func (s *Store) SetArchived(id string, archived bool) (Session, error) {
+	return s.updateOrganization(id, func(sess *Session, now time.Time) {
+		if archived {
+			archivedAt := now
+			sess.ArchivedAt = &archivedAt
+			sess.PinnedAt = nil
+		} else {
+			sess.ArchivedAt = nil
+		}
+	})
+}
+
+func (s *Store) SetPinned(id string, pinned bool) (Session, error) {
+	return s.updateOrganization(id, func(sess *Session, now time.Time) {
+		if pinned {
+			pinnedAt := now
+			sess.PinnedAt = &pinnedAt
+			sess.ArchivedAt = nil
+		} else {
+			sess.PinnedAt = nil
+		}
+	})
+}
+
+func (s *Store) updateOrganization(id string, apply func(*Session, time.Time)) (Session, error) {
+	unlock := lockPath(s.indexPath())
+	defer unlock()
+	index, err := s.loadIndex()
+	if err != nil {
+		return Session{}, err
+	}
+	sess, ok := index[id]
+	if !ok {
+		return Session{}, ErrSessionNotFound
+	}
+	now := time.Now().UTC()
+	apply(&sess, now)
+	sess.UpdatedAt = now
+	index[id] = sess
+	if err := s.saveIndex(index); err != nil {
+		return Session{}, err
+	}
+	return sess, nil
 }
 
 // SetToolConfig updates the per-session tool configuration.

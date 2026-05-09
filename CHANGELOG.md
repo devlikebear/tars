@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.32.7] - 2026-05-09
+
+### Added
+
+- **Console session organization** — chat session lists now support non-destructive archive/restore, pinned sessions, an Archived filter, and cleanup suggestions for stale or generic sessions. Archived sessions keep their transcripts and pinned sessions are excluded from cleanup suggestions. Closes #763, #764, #765.
+
 ## [0.32.6] - 2026-05-09
 
 ### Added

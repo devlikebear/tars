@@ -266,6 +266,7 @@ func newSessionAPIHandlerFull(store *session.Store, logger zerolog.Logger, usage
 		switch r.Method {
 		case http.MethodGet:
 			includeHidden := strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("hidden")), "1") || strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("hidden")), "true")
+			archivedMode := strings.TrimSpace(r.URL.Query().Get("archived"))
 			var sessions []session.Session
 			if includeHidden {
 				sessions, err = reqStore.ListAll()
@@ -277,6 +278,7 @@ func newSessionAPIHandlerFull(store *session.Store, logger zerolog.Logger, usage
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "list sessions failed"})
 				return
 			}
+			sessions = filterSessionsByArchivedMode(sessions, archivedMode)
 			writeJSON(w, http.StatusOK, sessions)
 		case http.MethodPost:
 			var req struct {
@@ -459,16 +461,48 @@ func newSessionAPIHandlerFull(store *session.Store, logger zerolog.Logger, usage
 				writeJSON(w, http.StatusOK, sess)
 			case http.MethodPatch:
 				var req struct {
-					Title string `json:"title"`
+					Title    *string `json:"title,omitempty"`
+					Archived *bool   `json:"archived,omitempty"`
+					Pinned   *bool   `json:"pinned,omitempty"`
 				}
 				if !decodeJSONBody(w, r, &req) {
 					return
 				}
-				if err := reqStore.SetTitle(sessionID, req.Title); err != nil {
-					writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
-					return
+				var updated session.Session
+				var err error
+				if req.Title != nil {
+					if err := reqStore.SetTitle(sessionID, *req.Title); err != nil {
+						writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+						return
+					}
+					updated, err = reqStore.Get(sessionID)
+					if err != nil {
+						writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+						return
+					}
 				}
-				writeJSON(w, http.StatusOK, map[string]string{"ok": "true"})
+				if req.Archived != nil {
+					updated, err = reqStore.SetArchived(sessionID, *req.Archived)
+					if err != nil {
+						writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+						return
+					}
+				}
+				if req.Pinned != nil {
+					updated, err = reqStore.SetPinned(sessionID, *req.Pinned)
+					if err != nil {
+						writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+						return
+					}
+				}
+				if updated.ID == "" {
+					updated, err = reqStore.Get(sessionID)
+					if err != nil {
+						writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+						return
+					}
+				}
+				writeJSON(w, http.StatusOK, updated)
 			case http.MethodDelete:
 				if err := reqStore.Delete(sessionID); err != nil {
 					logger.Error().Err(err).Str("session_id", sessionID).Msg("delete session failed")
@@ -942,6 +976,30 @@ func isTruthyQuery(value string) bool {
 func isFalsyQuery(value string) bool {
 	value = strings.ToLower(strings.TrimSpace(value))
 	return value == "0" || value == "false" || value == "no"
+}
+
+func filterSessionsByArchivedMode(sessions []session.Session, mode string) []session.Session {
+	mode = strings.ToLower(strings.TrimSpace(mode))
+	switch mode {
+	case "include", "all", "1", "true":
+		return sessions
+	case "only", "archived":
+		out := make([]session.Session, 0, len(sessions))
+		for _, sess := range sessions {
+			if sess.ArchivedAt != nil {
+				out = append(out, sess)
+			}
+		}
+		return out
+	default:
+		out := make([]session.Session, 0, len(sessions))
+		for _, sess := range sessions {
+			if sess.ArchivedAt == nil {
+				out = append(out, sess)
+			}
+		}
+		return out
+	}
 }
 
 func listGlobalPlanTaskItems(store *session.Store, includeHidden bool, activeOnly bool) ([]globalPlanTaskItem, error) {

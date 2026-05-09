@@ -94,6 +94,7 @@ export type Translations = {
       session: string
       main: string
       worker: string
+      archived: string
     }
     sort: {
       recent: string
@@ -123,13 +124,24 @@ export type Translations = {
     actions: {
       rename: string
       autoTitle: string
+      pin: string
+      unpin: string
+      archive: string
+      restore: string
       compact: string
       delete: string
       confirm: string
     }
+    cleanup: {
+      title: string
+      count: (count: number) => string
+      archiveSuggested: (count: number) => string
+    }
     errors: {
       loadFailed: string
       deleteFailed: string
+      archiveFailed: string
+      pinFailed: string
       compactFailed: string
       compactSuccess: (count: number, percent: number) => string
       nothingToCompact: string

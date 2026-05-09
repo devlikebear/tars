@@ -94,6 +94,7 @@ export const ko = {
       session: '세션',
       main: '메인',
       worker: '워커',
+      archived: '보관',
     },
     sort: {
       recent: '최근순',
@@ -123,13 +124,24 @@ export const ko = {
     actions: {
       rename: '이름 변경',
       autoTitle: '자동 제목',
+      pin: '고정',
+      unpin: '고정 해제',
+      archive: '보관',
+      restore: '복원',
       compact: '압축',
       delete: '삭제',
       confirm: '확인',
     },
+    cleanup: {
+      title: '정리',
+      count: (count) => `${count}개 제안`,
+      archiveSuggested: (count) => `${count}개 보관`,
+    },
     errors: {
       loadFailed: '세션을 불러오지 못했습니다',
       deleteFailed: '삭제 실패',
+      archiveFailed: '보관 실패',
+      pinFailed: '고정 실패',
       compactFailed: '압축 실패',
       compactSuccess: (count, percent) => `메시지 ${count}건 압축 완료 (${percent}% 절감)`,
       nothingToCompact: '압축할 항목이 없습니다',
