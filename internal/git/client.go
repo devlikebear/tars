@@ -13,6 +13,27 @@ import (
 
 var ErrNotRepository = errors.New("not a git repository")
 
+var allowedGitSubcommands = map[string]struct{}{
+	"add":              {},
+	"branch":           {},
+	"check-ref-format": {},
+	"checkout":         {},
+	"clean":            {},
+	"commit":           {},
+	"diff":             {},
+	"diff-tree":        {},
+	"fetch":            {},
+	"for-each-ref":     {},
+	"log":              {},
+	"remote":           {},
+	"restore":          {},
+	"rev-parse":        {},
+	"show":             {},
+	"status":           {},
+	"switch":           {},
+	"worktree":         {},
+}
+
 type Client struct{}
 
 type Remote struct {
@@ -544,13 +565,39 @@ func isUntrackedPath(ctx context.Context, root string, path string) bool {
 }
 
 func runGit(ctx context.Context, startDir string, args ...string) ([]byte, error) {
+	if err := validateGitInvocation(startDir, args); err != nil {
+		return nil, err
+	}
 	cmdArgs := append([]string{"-C", startDir}, args...)
-	cmd := exec.CommandContext(ctx, "git", cmdArgs...)
+	cmd := exec.CommandContext(ctx, "/usr/bin/git")
+	cmd.Args = append([]string{"/usr/bin/git"}, cmdArgs...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return out, fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(string(out)))
 	}
 	return out, nil
+}
+
+func validateGitInvocation(startDir string, args []string) error {
+	if strings.TrimSpace(startDir) == "" {
+		return fmt.Errorf("git start directory is required")
+	}
+	if len(args) == 0 {
+		return fmt.Errorf("git subcommand is required")
+	}
+	subcommand := strings.TrimSpace(args[0])
+	if subcommand == "" || strings.HasPrefix(subcommand, "-") {
+		return fmt.Errorf("unsupported git subcommand: %q", args[0])
+	}
+	if _, ok := allowedGitSubcommands[subcommand]; !ok {
+		return fmt.Errorf("unsupported git subcommand: %s", subcommand)
+	}
+	for _, arg := range args {
+		if strings.ContainsRune(arg, '\x00') {
+			return fmt.Errorf("git argument contains NUL byte")
+		}
+	}
+	return nil
 }
 
 func optionalGitString(ctx context.Context, root string, args ...string) string {

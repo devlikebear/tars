@@ -36,7 +36,11 @@ type assistantOptions struct {
 	installLoad     bool
 }
 
-var assistantRunner = runAssistantCommand
+var (
+	assistantRunner       = runAssistantCommand
+	assistantRuntimeGOOS  = runtime.GOOS
+	assistantLaunchctlRun = runAssistantLaunchctl
+)
 
 func defaultAssistantOptions() assistantOptions {
 	serverURL := strings.TrimSpace(os.Getenv("TARS_SERVER_URL"))
@@ -193,7 +197,7 @@ func runAssistantCommand(ctx context.Context, opts assistantOptions, stdout, std
 		}
 		return nil
 	case "install-launchagent":
-		if runtime.GOOS != "darwin" {
+		if assistantRuntimeGOOS != "darwin" {
 			return fmt.Errorf("install-launchagent is only supported on macOS")
 		}
 		exe, err := os.Executable()
@@ -250,8 +254,8 @@ func runAssistantCommand(ctx context.Context, opts assistantOptions, stdout, std
 			return err
 		}
 		if opts.installLoad {
-			_ = exec.CommandContext(ctx, "launchctl", "unload", plistPath).Run()
-			if out, err := exec.CommandContext(ctx, "launchctl", "load", plistPath).CombinedOutput(); err != nil {
+			_, _ = assistantLaunchctlRun(ctx, "unload", plistPath)
+			if out, err := assistantLaunchctlRun(ctx, "load", plistPath); err != nil {
 				return fmt.Errorf("launchctl load failed: %w: %s", err, strings.TrimSpace(string(out)))
 			}
 		}
@@ -260,6 +264,10 @@ func runAssistantCommand(ctx context.Context, opts assistantOptions, stdout, std
 	default:
 		return fmt.Errorf("unsupported assistant action: %s", strings.TrimSpace(opts.action))
 	}
+}
+
+func runAssistantLaunchctl(ctx context.Context, args ...string) ([]byte, error) {
+	return exec.CommandContext(ctx, "/bin/launchctl", args...).CombinedOutput()
 }
 
 func filepathJoinHome(rel string) string {

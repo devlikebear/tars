@@ -1,5 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 
 import {
   applySlashCandidate,
@@ -8,6 +9,8 @@ import {
   parseLeadingSlashCommand,
 } from '../src/lib/slash.ts'
 import type { CommandDef, SkillDef } from '../src/lib/types.ts'
+
+const slashSource = readFileSync(new URL('../src/lib/slash.ts', import.meta.url), 'utf8')
 
 const skills: SkillDef[] = [
   {
@@ -112,4 +115,18 @@ test('parseLeadingSlashCommand returns command and argument text', () => {
     args: '회의 내용 저장',
   })
   assert.equal(parseLeadingSlashCommand('please /review this'), null)
+})
+
+test('parseLeadingSlashCommand accepts multiline args without a full-input regex', () => {
+  assert.deepEqual(parseLeadingSlashCommand('/review first line\nsecond line'), {
+    command: 'review',
+    args: 'first line\nsecond line',
+  })
+  assert.deepEqual(parseLeadingSlashCommand('/review\tinspect this'), {
+    command: 'review',
+    args: 'inspect this',
+  })
+  assert.equal(parseLeadingSlashCommand('/'), null)
+  assert.equal(parseLeadingSlashCommand('/bad/name args'), null)
+  assert.doesNotMatch(slashSource, /trimmed\.match\(/)
 })

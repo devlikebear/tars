@@ -267,7 +267,7 @@ func gitNoIndexPatch(repoRoot string, path string) (string, bool) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "git", "-C", repoRoot, "diff", "--no-index", "--", os.DevNull, absPath)
+	cmd := exec.CommandContext(ctx, "/usr/bin/git", "-C", repoRoot, "diff", "--no-index", "--", os.DevNull, absPath)
 	out, err := cmd.CombinedOutput()
 	if len(out) == 0 {
 		return "", false
@@ -284,7 +284,7 @@ func gitNoIndexPatch(repoRoot string, path string) (string, bool) {
 func gitOutput(workspaceDir string, args ...string) (string, bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", workspaceDir}, args...)...)
+	cmd := exec.CommandContext(ctx, "/usr/bin/git", append([]string{"-C", workspaceDir}, args...)...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return "", false

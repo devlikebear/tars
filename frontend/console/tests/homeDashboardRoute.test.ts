@@ -14,6 +14,8 @@ test('/console resolves to Home while Chat stays on /console/chat', () => {
   assert.deepEqual(resolveRoute('/console/'), { view: 'home' })
   assert.deepEqual(resolveRoute('/console/chat'), { view: 'chat' })
   assert.deepEqual(resolveRoute('/console/chat/session-1'), { view: 'chat', sessionId: 'session-1' })
+  assert.deepEqual(resolveRoute('/console/chat?session=session-1'), { view: 'chat', sessionId: 'session-1' })
+  assert.doesNotMatch(readFileSync(new URL('../src/lib/router.ts', import.meta.url), 'utf8'), /http:\/\/tars\.local/)
 })
 
 test('App renders Home for the console entry route', () => {

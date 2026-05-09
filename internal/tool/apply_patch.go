@@ -70,7 +70,7 @@ func NewApplyPatchTool(workspaceDir string, enabled bool) Tool {
 			if input.DryRun {
 				args = append(args, "--dry-run")
 			}
-			cmd := exec.CommandContext(ctx, "patch", args...)
+			cmd := exec.CommandContext(ctx, "/usr/bin/patch", args...)
 			cmd.Dir = workspaceDir
 			cmd.Stdin = strings.NewReader(input.Patch)
 			var stdout bytes.Buffer

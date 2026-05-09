@@ -88,6 +88,20 @@ func TestRuntimeCapturesGitDiffTimelineForShellStyleChanges(t *testing.T) {
 	}
 }
 
+func TestGitNoIndexPatchCapturesUntrackedFile(t *testing.T) {
+	repo := t.TempDir()
+	runGit(t, repo, "init")
+	writeFile(t, filepath.Join(repo, "notes.md"), "new\n")
+
+	patch, ok := gitNoIndexPatch(repo, "notes.md")
+	if !ok {
+		t.Fatalf("expected no-index patch for untracked file")
+	}
+	if !strings.Contains(patch, "+new") {
+		t.Fatalf("expected patch to contain added content, got:\n%s", patch)
+	}
+}
+
 func runGit(t *testing.T, dir string, args ...string) {
 	t.Helper()
 	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)

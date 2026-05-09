@@ -67,7 +67,7 @@ end tell`, quoteAppleScript("TARS assistant error"), quoteAppleScript(popupPrevi
 }
 
 func runAppleScript(ctx context.Context, script string) (string, error) {
-	cmd := exec.CommandContext(ctx, "osascript", "-e", strings.TrimSpace(script))
+	cmd := exec.CommandContext(ctx, "/usr/bin/osascript", "-e", strings.TrimSpace(script))
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return "", fmt.Errorf("osascript failed: %w: %s", err, strings.TrimSpace(string(out)))

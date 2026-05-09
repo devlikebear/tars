@@ -3,6 +3,7 @@
 package assistant
 
 import (
+	"context"
 	"strings"
 	"testing"
 )
@@ -33,5 +34,15 @@ func TestBuildResultDialogScriptEscapesRawMessageOnce(t *testing.T) {
 		if !strings.Contains(script, want) {
 			t.Fatalf("expected script to contain %q, got:\n%s", want, script)
 		}
+	}
+}
+
+func TestRunAppleScriptUsesSystemOsascript(t *testing.T) {
+	out, err := runAppleScript(context.Background(), `return "ok"`)
+	if err != nil {
+		t.Fatalf("run apple script: %v", err)
+	}
+	if out != "ok" {
+		t.Fatalf("expected ok, got %q", out)
 	}
 }

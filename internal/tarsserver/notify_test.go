@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -218,4 +220,64 @@ func TestBuildTerminalNotifierArgs_UsesSenderWithoutClickAction(t *testing.T) {
 	if !strings.Contains(joined, "-sender com.apple.Terminal") {
 		t.Fatalf("expected sender without click action, got %+v", args)
 	}
+}
+
+func TestCommandNotifier_RunsConfiguredCommandThroughSystemShell(t *testing.T) {
+	notifier := newCommandNotifier("test \"$TARS_NOTIFY_TITLE\" = Cron", zerolog.New(io.Discard))
+	err := notifier.Notify(context.Background(), newNotificationEvent("cron", "info", "Cron", "done"))
+	if err != nil {
+		t.Fatalf("notify command: %v", err)
+	}
+}
+
+func TestCommandNotifier_NotifyAutoUsesTerminalNotifierPath(t *testing.T) {
+	prependFakeExecutable(t, "terminal-notifier", "#!/bin/sh\nexit 0\n")
+
+	notifier := newCommandNotifier("", zerolog.New(io.Discard)).(*commandNotifier)
+	err := notifier.notifyAutoForGOOS(context.Background(), newNotificationEvent("cron", "info", "Cron", "done"), "darwin")
+	if err != nil {
+		t.Fatalf("notify auto darwin terminal-notifier: %v", err)
+	}
+}
+
+func TestCommandNotifier_NotifyAutoFallsBackToOsascriptPath(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("PATH", dir)
+	scriptPath := writeExecutable(t, dir, "osascript", "#!/bin/sh\nexit 0\n")
+	original := notificationAppleScriptPath
+	notificationAppleScriptPath = scriptPath
+	t.Cleanup(func() { notificationAppleScriptPath = original })
+
+	notifier := newCommandNotifier("", zerolog.New(io.Discard)).(*commandNotifier)
+	err := notifier.notifyAutoForGOOS(context.Background(), newNotificationEvent("cron", "info", "Cron", "done"), "darwin")
+	if err != nil {
+		t.Fatalf("notify auto darwin osascript: %v", err)
+	}
+}
+
+func TestCommandNotifier_NotifyAutoUsesNotifySendPath(t *testing.T) {
+	prependFakeExecutable(t, "notify-send", "#!/bin/sh\nexit 0\n")
+
+	notifier := newCommandNotifier("", zerolog.New(io.Discard)).(*commandNotifier)
+	err := notifier.notifyAutoForGOOS(context.Background(), newNotificationEvent("cron", "info", "Cron", "done"), "linux")
+	if err != nil {
+		t.Fatalf("notify auto linux: %v", err)
+	}
+}
+
+func prependFakeExecutable(t *testing.T, name string, content string) string {
+	t.Helper()
+	dir := t.TempDir()
+	path := writeExecutable(t, dir, name, content)
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	return path
+}
+
+func writeExecutable(t *testing.T, dir string, name string, content string) string {
+	t.Helper()
+	path := filepath.Join(dir, name)
+	if err := os.WriteFile(path, []byte(content), 0o755); err != nil {
+		t.Fatalf("write fake executable: %v", err)
+	}
+	return path
 }

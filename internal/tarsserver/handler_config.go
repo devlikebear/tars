@@ -255,7 +255,7 @@ func launchdServiceIdentity() (string, string) {
 }
 
 func runRestartLaunchctl(args ...string) (string, error) {
-	out, err := exec.Command("launchctl", args...).CombinedOutput()
+	out, err := exec.Command("/bin/launchctl", args...).CombinedOutput()
 	return strings.TrimSpace(string(out)), err
 }
 

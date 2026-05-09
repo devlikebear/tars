@@ -90,6 +90,13 @@ llm:
 	}
 }
 
+func TestRunRestartLaunchctlUsesSystemLaunchctl(t *testing.T) {
+	_, err := runRestartLaunchctl("__tars_test_invalid__")
+	if err == nil {
+		t.Fatal("expected invalid launchctl invocation to fail")
+	}
+}
+
 func TestConfigAPI_SchemaValuesIgnoreEnvOverrides(t *testing.T) {
 	t.Setenv("TARS_API_AUTH_MODE", "off")
 

@@ -25,7 +25,7 @@ export function resolveRoute(pathname: string): Route {
   let sessionQuery = ''
   let reentryQuery = false
   try {
-    const url = new URL(path, 'http://tars.local')
+    const url = new URL(path, 'https://tars.local')
     path = url.pathname
     sessionQuery = url.searchParams.get('session')?.trim() ?? ''
     const reentryRaw = url.searchParams.get('reentry')?.trim().toLowerCase() ?? ''

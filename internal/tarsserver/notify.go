@@ -21,6 +21,8 @@ import (
 const notificationEventType = "notification"
 const keepaliveEventType = "keepalive"
 
+var notificationAppleScriptPath = "/usr/bin/osascript"
+
 type notificationEvent struct {
 	ID          int64  `json:"id,omitempty"`
 	Type        string `json:"type"`
@@ -123,7 +125,7 @@ func (n *commandNotifier) Notify(ctx context.Context, evt notificationEvent) err
 		return nil
 	}
 	if n.command != "" {
-		cmd := exec.CommandContext(ctx, "sh", "-lc", n.command)
+		cmd := exec.CommandContext(ctx, "/bin/sh", "-lc", n.command)
 		cmd.Env = append(os.Environ(),
 			"TARS_NOTIFY_TITLE="+title,
 			"TARS_NOTIFY_MESSAGE="+message,
@@ -140,25 +142,27 @@ func (n *commandNotifier) Notify(ctx context.Context, evt notificationEvent) err
 }
 
 func (n *commandNotifier) notifyAuto(ctx context.Context, evt notificationEvent) error {
+	return n.notifyAutoForGOOS(ctx, evt, runtime.GOOS)
+}
+
+func (n *commandNotifier) notifyAutoForGOOS(ctx context.Context, evt notificationEvent, goos string) error {
 	title := strings.TrimSpace(evt.Title)
 	message := strings.TrimSpace(evt.Message)
-	switch runtime.GOOS {
+	switch goos {
 	case "darwin":
-		if _, err := exec.LookPath("terminal-notifier"); err == nil {
-			return exec.CommandContext(ctx, "terminal-notifier", buildTerminalNotifierArgs(evt)...).Run()
-		}
-		if _, err := exec.LookPath("osascript"); err != nil {
-			return err
+		if notifierPath, err := exec.LookPath("terminal-notifier"); err == nil {
+			return exec.CommandContext(ctx, notifierPath, buildTerminalNotifierArgs(evt)...).Run()
 		}
 		script := fmt.Sprintf("display notification %q with title %q", message, title)
-		return exec.CommandContext(ctx, "osascript", "-e", script).Run()
+		return exec.CommandContext(ctx, notificationAppleScriptPath, "-e", script).Run()
 	case "linux":
-		if _, err := exec.LookPath("notify-send"); err != nil {
+		notifySendPath, err := exec.LookPath("notify-send")
+		if err != nil {
 			return err
 		}
-		return exec.CommandContext(ctx, "notify-send", title, message).Run()
+		return exec.CommandContext(ctx, notifySendPath, title, message).Run()
 	default:
-		return fmt.Errorf("desktop notification is not supported on %s", runtime.GOOS)
+		return fmt.Errorf("desktop notification is not supported on %s", goos)
 	}
 }
 

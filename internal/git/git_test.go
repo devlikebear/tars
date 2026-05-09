@@ -80,6 +80,21 @@ func TestClientStatusAndDiffAreReadOnly(t *testing.T) {
 	}
 }
 
+func TestRunGitRejectsUnsupportedSubcommands(t *testing.T) {
+	for _, args := range [][]string{
+		{"-c", "core.sshCommand=sh"},
+		{"clone", "https://example.test/repo.git"},
+		{"status", "bad\x00arg"},
+	} {
+		if _, err := runGit(context.Background(), t.TempDir(), args...); err == nil {
+			t.Fatalf("expected runGit to reject args %#v", args)
+		}
+	}
+	if _, err := runGit(context.Background(), "", "status"); err == nil {
+		t.Fatal("expected runGit to reject empty start directory")
+	}
+}
+
 func TestClientMutationsStageCommitAndSwitch(t *testing.T) {
 	repo := t.TempDir()
 	runGitCmd(t, repo, "init", "-b", "main")
