@@ -100,6 +100,8 @@ import type {
   TelegramPairingsResponse,
   TelegramAllowedUser,
   RemoteAccessResponse,
+  SessionCleanupMode,
+  SessionCleanupSuggestionResponse,
 } from './types'
 
 export class APIRequestError extends Error {
@@ -414,6 +416,14 @@ export async function setSessionPinned(sessionId: string, pinned: boolean): Prom
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ pinned }),
+  })
+}
+
+export async function recommendSessionCleanup(request: { mode: SessionCleanupMode; limit?: number }): Promise<SessionCleanupSuggestionResponse> {
+  return requestJSON<SessionCleanupSuggestionResponse>('/v1/admin/sessions/cleanup-suggestions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
   })
 }
 

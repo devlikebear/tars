@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.32.8] - 2026-05-09
+
+### Added
+
+- **AI-assisted session cleanup** — Console Chat can ask the light-tier `session_cleanup` LLM role to review eligible regular sessions and propose user-reviewed archive candidates from the active list or delete candidates from the archived list. Pinned, main, worker, recent, and active-plan sessions stay protected, and delete suggestions are limited to already archived sessions. Closes #767.
+
 ## [0.32.7] - 2026-05-09
 
 ### Added

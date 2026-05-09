@@ -11,6 +11,7 @@ func TestAllRolesContainsExpected(t *testing.T) {
 		RoleReflectionMemory,
 		RoleReflectionKB,
 		RolePulseDecider,
+		RoleSessionCleanup,
 		RoleAgentRuntimeDefault,
 		RoleAgentRuntimePlanner,
 	}
@@ -41,6 +42,9 @@ func TestParseRole(t *testing.T) {
 	}
 	if _, ok := ParseRole("  Pulse_Decider  "); !ok {
 		t.Error("ParseRole should be case-insensitive and trimmed")
+	}
+	if _, ok := ParseRole("session_cleanup"); !ok {
+		t.Error("ParseRole(session_cleanup) failed")
 	}
 	if _, ok := ParseRole(""); ok {
 		t.Error("ParseRole(empty) should fail")

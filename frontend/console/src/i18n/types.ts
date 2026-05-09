@@ -137,11 +137,25 @@ export type Translations = {
       count: (count: number) => string
       archiveSuggested: (count: number) => string
     }
+    aiCleanup: {
+      archiveTitle: string
+      deleteTitle: string
+      analyzeArchive: string
+      analyzeDelete: string
+      analyzing: string
+      applyArchive: (count: number) => string
+      applyDelete: (count: number) => string
+      confirmDelete: (count: number) => string
+      empty: string
+      confidence: (confidence: number) => string
+      source: (count: number, excluded: number) => string
+    }
     errors: {
       loadFailed: string
       deleteFailed: string
       archiveFailed: string
       pinFailed: string
+      aiCleanupFailed: string
       compactFailed: string
       compactSuccess: (count: number, percent: number) => string
       nothingToCompact: string

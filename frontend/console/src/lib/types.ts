@@ -597,6 +597,32 @@ export type Session = {
   updated_at: string
 }
 
+export type SessionCleanupMode = 'archive' | 'delete'
+
+export type SessionCleanupSuggestion = {
+  session_id: string
+  title: string
+  action: SessionCleanupMode
+  confidence: number
+  reason: string
+  updated_at?: string
+  archived_at?: string
+}
+
+export type SessionCleanupSuggestionResponse = {
+  mode: SessionCleanupMode
+  action: SessionCleanupMode
+  source: string
+  llm_tier?: string
+  llm_provider?: string
+  llm_model?: string
+  suggestions: SessionCleanupSuggestion[]
+  count: number
+  analyzed_count: number
+  excluded_count: number
+  warnings?: string[]
+}
+
 export type ForkPromotionCandidate = {
   id: string
   session_id: string
