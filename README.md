@@ -303,6 +303,15 @@ For development with hot-reload:
 make dev-console    # Vite (5173) + Go API (43180), open http://127.0.0.1:43180/console
 ```
 
+For pull-request preflight checks:
+
+```bash
+make ci-static-analysis-check
+make lint-diff
+make test-cover-diff
+cd frontend/console && npm run check && npm run test:ci
+```
+
 ## Documentation
 
 - [Project homepage](https://tars.marvin-42.com)

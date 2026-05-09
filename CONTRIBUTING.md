@@ -46,15 +46,21 @@ Release metadata rules:
 Run these locally before merging:
 
 ```bash
+make ci-static-analysis-check
+make lint-diff
+make test-cover-diff
 make test
 make security-scan
+cd frontend/console && npm run check && npm run test:ci
 ```
 
 ## Pull Request Checklist
 
 - [ ] Problem and scope are clearly described
 - [ ] Tests added or updated for behavior changes
+- [ ] `make ci-static-analysis-check`, `make lint-diff`, and `make test-cover-diff` pass
 - [ ] `make test` passes
+- [ ] `cd frontend/console && npm run check && npm run test:ci` passes
 - [ ] `make security-scan` passes
 - [ ] `CHANGELOG.md` and docs are updated when needed
 - [ ] Release PRs update `VERSION.txt` and `CHANGELOG.md` together

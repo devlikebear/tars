@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "test": "node --experimental-strip-types --test tests/*.test.ts",
+    "test:ci": "node --experimental-strip-types --test tests/consoleDevProxy.test.ts tests/plansPage.test.ts tests/notificationCoalesce.test.ts tests/routeCodeSplit.test.ts",
     "build": "vite build",
     "preview": "vite preview",
     "check": "svelte-check --tsconfig ./tsconfig.app.json && tsc -p tsconfig.node.json"
