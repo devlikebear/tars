@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.32.18] - 2026-05-09
+
+### Fixed
+
+- **GitHub Actions install hardening** — CI and release workflows now use lockfile-enforcing npm installs with package lifecycle scripts disabled where builds do not require them, pin the gitleaks installer to a concrete version, and scope workflow permissions to read-only defaults or the release publish job that needs write access. Closes #781.
+
 ## [0.32.17] - 2026-05-09
 
 ### Fixed

@@ -11,12 +11,11 @@ on:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
-permissions:
-  contents: write
-
 jobs:
   prepare-release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     outputs:
       version: ${{ steps.release.outputs.version }}
       tag_name: ${{ steps.release.outputs.tag_name }}
@@ -74,6 +73,8 @@ jobs:
   build-assets:
     needs: prepare-release
     runs-on: macos-14
+    permissions:
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -81,10 +82,10 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 24
 
       - name: Build console assets
-        run: make console-install console-build
+        run: make console-build
 
       - name: Set up Go
         uses: actions/setup-go@v6
@@ -124,6 +125,8 @@ jobs:
       - prepare-release
       - build-assets
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     outputs:
       version: ${{ steps.checksums.outputs.version }}
       arm64_sha: ${{ steps.checksums.outputs.arm64_sha }}
@@ -172,6 +175,8 @@ jobs:
   update-homebrew:
     needs: publish-release
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Checkout TARS repository
         uses: actions/checkout@v6

@@ -61,7 +61,7 @@ RELEASE_STAGE_DIR ?= $(DIST_DIR)/release-$(RELEASE_GOOS)-$(RELEASE_GOARCH)
 .PHONY: help \
 	test test-v test-one test-nocache test-race test-cover test-cover-check test-diff test-cover-diff \
 	build build-bins release-asset clean tidy fmt vet lint \
-	lint-diff ci-static-analysis-check codeql-workflow-check sonarcloud-workflow-check \
+	lint-diff ci-static-analysis-check github-actions-hardening-check codeql-workflow-check sonarcloud-workflow-check \
 	ensure-console-assets console-install console-build \
 	browser-install \
 	install install-server install-assistant uninstall uninstall-server uninstall-assistant reinstall \
@@ -98,9 +98,9 @@ help:
 	@echo "  make build         - go build ./..."
 	@echo "  make build-bins    - build cmd binaries to $(BIN_DIR)"
 	@echo "  make release-asset - build a versioned release archive to $(DIST_DIR)"
-	@echo "  make console-install - npm install in frontend/console"
+	@echo "  make console-install - npm ci in frontend/console"
 	@echo "  make console-build - build the embedded Svelte console assets"
-	@echo "  make browser-install - npm install + playwright chromium install"
+	@echo "  make browser-install - npm ci + playwright chromium install"
 	@echo "  make install       - build $(TARS_BIN) and (re)install io.tars.server + io.tars.assistant launch agents"
 	@echo "  make uninstall     - stop and remove io.tars.server + io.tars.assistant launch agents"
 	@echo "  make reinstall     - uninstall then install launch agents"
@@ -116,6 +116,7 @@ help:
 	@echo "  make lint          - golangci-lint ./... (includes revive)"
 	@echo "  make lint-diff     - golangci-lint only new issues since DIFF_BASE (adds errcheck/staticcheck)"
 	@echo "  make ci-static-analysis-check - verify CI static-analysis guardrails"
+	@echo "  make github-actions-hardening-check - verify GitHub Actions security hardening guardrails"
 	@echo "  make codeql-workflow-check - verify CodeQL code-scanning workflow guardrails"
 	@echo "  make sonarcloud-workflow-check - verify SonarCloud evaluation workflow guardrails"
 	@echo "  make tidy          - go mod tidy"
@@ -188,7 +189,7 @@ ensure-console-assets:
 	fi
 
 console-install:
-	cd frontend/console && npm install
+	cd frontend/console && npm ci --ignore-scripts
 
 console-build: console-install
 	cd frontend/console && npm run build
@@ -203,7 +204,7 @@ release-asset: console-build
 	tar -C "$(RELEASE_STAGE_DIR)" -czf "$(DIST_DIR)/$(RELEASE_ARCHIVE_NAME)" tars share
 
 browser-install:
-	npm install
+	npm ci --ignore-scripts
 	npx playwright install chromium
 
 install: install-server install-assistant
@@ -387,6 +388,9 @@ lint-diff:
 
 ci-static-analysis-check:
 	./scripts/verify_ci_static_analysis.sh
+
+github-actions-hardening-check:
+	./scripts/verify_github_actions_hardening.sh
 
 codeql-workflow-check:
 	./scripts/verify_codeql_workflow.sh
