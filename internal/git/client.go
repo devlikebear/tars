@@ -13,25 +13,48 @@ import (
 
 var ErrNotRepository = errors.New("not a git repository")
 
+const (
+	gitSubcommandAdd            = "add"
+	gitSubcommandBranch         = "branch"
+	gitSubcommandCheckRefFormat = "check-ref-format"
+	gitSubcommandCheckout       = "checkout"
+	gitSubcommandClean          = "clean"
+	gitSubcommandCommit         = "commit"
+	gitSubcommandDiff           = "diff"
+	gitSubcommandDiffTree       = "diff-tree"
+	gitSubcommandFetch          = "fetch"
+	gitSubcommandForEachRef     = "for-each-ref"
+	gitSubcommandLog            = "log"
+	gitSubcommandRemote         = "remote"
+	gitSubcommandRestore        = "restore"
+	gitSubcommandRevParse       = "rev-parse"
+	gitSubcommandShow           = "show"
+	gitSubcommandStatus         = "status"
+	gitSubcommandSwitch         = "switch"
+	gitSubcommandWorktree       = "worktree"
+
+	gitOptionBranch = "--branch"
+)
+
 var allowedGitSubcommands = map[string]struct{}{
-	"add":              {},
-	"branch":           {},
-	"check-ref-format": {},
-	"checkout":         {},
-	"clean":            {},
-	"commit":           {},
-	"diff":             {},
-	"diff-tree":        {},
-	"fetch":            {},
-	"for-each-ref":     {},
-	"log":              {},
-	"remote":           {},
-	"restore":          {},
-	"rev-parse":        {},
-	"show":             {},
-	"status":           {},
-	"switch":           {},
-	"worktree":         {},
+	gitSubcommandAdd:            {},
+	gitSubcommandBranch:         {},
+	gitSubcommandCheckRefFormat: {},
+	gitSubcommandCheckout:       {},
+	gitSubcommandClean:          {},
+	gitSubcommandCommit:         {},
+	gitSubcommandDiff:           {},
+	gitSubcommandDiffTree:       {},
+	gitSubcommandFetch:          {},
+	gitSubcommandForEachRef:     {},
+	gitSubcommandLog:            {},
+	gitSubcommandRemote:         {},
+	gitSubcommandRestore:        {},
+	gitSubcommandRevParse:       {},
+	gitSubcommandShow:           {},
+	gitSubcommandStatus:         {},
+	gitSubcommandSwitch:         {},
+	gitSubcommandWorktree:       {},
 }
 
 type Client struct{}
@@ -197,7 +220,7 @@ func (c *Client) RepositoryRoot(ctx context.Context, startDir string) (string, e
 	if err != nil {
 		return "", err
 	}
-	out, err := runGit(ctx, startDir, "rev-parse", "--show-toplevel")
+	out, err := runGit(ctx, startDir, gitSubcommandRevParse, "--show-toplevel")
 	if err != nil {
 		return "", ErrNotRepository
 	}
@@ -214,12 +237,12 @@ func (c *Client) Status(ctx context.Context, startDir string) (Status, error) {
 		return Status{}, err
 	}
 	status := Status{IsGit: true, Root: root}
-	status.Branch = optionalGitString(ctx, root, "branch", "--show-current")
-	status.Head = optionalGitString(ctx, root, "rev-parse", "--short", "HEAD")
-	status.Upstream = optionalGitString(ctx, root, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}")
-	status.Remotes = parseRemotes(optionalGitString(ctx, root, "remote", "-v"))
+	status.Branch = optionalGitString(ctx, root, gitSubcommandBranch, "--show-current")
+	status.Head = optionalGitString(ctx, root, gitSubcommandRevParse, "--short", "HEAD")
+	status.Upstream = optionalGitString(ctx, root, gitSubcommandRevParse, "--abbrev-ref", "--symbolic-full-name", "@{u}")
+	status.Remotes = parseRemotes(optionalGitString(ctx, root, gitSubcommandRemote, "-v"))
 
-	out, err := runGit(ctx, root, "status", "--porcelain=v1", "-z", "-uall")
+	out, err := runGit(ctx, root, gitSubcommandStatus, "--porcelain=v1", "-z", "-uall")
 	if err != nil {
 		return Status{}, err
 	}
@@ -236,12 +259,12 @@ func (c *Client) Diff(ctx context.Context, opts DiffOptions) (Diff, error) {
 	hash := strings.TrimSpace(opts.Hash)
 	var args []string
 	if hash != "" {
-		args = []string{"show", "--no-ext-diff", "--format=", hash}
+		args = []string{gitSubcommandShow, "--no-ext-diff", "--format=", hash}
 		if path != "" {
 			args = append(args, "--", path)
 		}
 	} else {
-		args = []string{"diff", "--no-ext-diff"}
+		args = []string{gitSubcommandDiff, "--no-ext-diff"}
 		if opts.Staged {
 			args = append(args, "--cached")
 		}
@@ -267,7 +290,7 @@ func (c *Client) Log(ctx context.Context, startDir string, limit int) (Log, erro
 	if limit > 100 {
 		limit = 100
 	}
-	out, err := runGit(ctx, root, "log", "--format=%H%x00%h%x00%an%x00%aI%x00%s", "-n", strconv.Itoa(limit))
+	out, err := runGit(ctx, root, gitSubcommandLog, "--format=%H%x00%h%x00%an%x00%aI%x00%s", "-n", strconv.Itoa(limit))
 	if err != nil {
 		if strings.Contains(err.Error(), "does not have any commits") || strings.Contains(err.Error(), "current branch") {
 			return Log{IsGit: true, Root: root, Commits: []Commit{}}, nil
@@ -282,7 +305,7 @@ func (c *Client) Branches(ctx context.Context, startDir string) (Branches, error
 	if err != nil {
 		return Branches{}, err
 	}
-	out, err := runGit(ctx, root, "for-each-ref", "--format=%(refname:short)%00%(HEAD)%00%(upstream:short)%00%(refname)%00%(objectname:short)", "refs/heads", "refs/remotes")
+	out, err := runGit(ctx, root, gitSubcommandForEachRef, "--format=%(refname:short)%00%(HEAD)%00%(upstream:short)%00%(refname)%00%(objectname:short)", "refs/heads", "refs/remotes")
 	if err != nil {
 		return Branches{}, err
 	}
@@ -298,12 +321,12 @@ func (c *Client) CommitDetail(ctx context.Context, startDir, hash string) (Commi
 	if hash == "" {
 		return CommitDetail{}, fmt.Errorf("hash is required")
 	}
-	resolved, err := runGit(ctx, root, "rev-parse", "--verify", hash+"^{commit}")
+	resolved, err := runGit(ctx, root, gitSubcommandRevParse, "--verify", hash+"^{commit}")
 	if err != nil {
 		return CommitDetail{}, fmt.Errorf("invalid commit hash: %s", hash)
 	}
 	fullHash := strings.TrimSpace(string(resolved))
-	metaOut, err := runGit(ctx, root, "show", "--no-patch", "--format=%H%x00%h%x00%an%x00%ae%x00%aI%x00%P%x00%s%x1e%b", fullHash)
+	metaOut, err := runGit(ctx, root, gitSubcommandShow, "--no-patch", "--format=%H%x00%h%x00%an%x00%ae%x00%aI%x00%P%x00%s%x1e%b", fullHash)
 	if err != nil {
 		return CommitDetail{}, err
 	}
@@ -326,7 +349,7 @@ func (c *Client) Worktrees(ctx context.Context, startDir string) (Worktrees, err
 	if err != nil {
 		return Worktrees{}, err
 	}
-	out, err := runGit(ctx, root, "worktree", "list", "--porcelain", "-z")
+	out, err := runGit(ctx, root, gitSubcommandWorktree, "list", "--porcelain", "-z")
 	if err != nil {
 		return Worktrees{}, err
 	}
@@ -352,7 +375,7 @@ func (c *Client) Mutate(ctx context.Context, opts MutationOptions) (MutationResu
 		if err != nil {
 			return MutationResult{}, err
 		}
-		if _, err := runGit(ctx, root, "add", "--", path); err != nil {
+		if _, err := runGit(ctx, root, gitSubcommandAdd, "--", path); err != nil {
 			return MutationResult{}, err
 		}
 		result.Path = path
@@ -362,7 +385,7 @@ func (c *Client) Mutate(ctx context.Context, opts MutationOptions) (MutationResu
 		if err != nil {
 			return MutationResult{}, err
 		}
-		if _, err := runGit(ctx, root, "restore", "--staged", "--", path); err != nil {
+		if _, err := runGit(ctx, root, gitSubcommandRestore, "--staged", "--", path); err != nil {
 			return MutationResult{}, err
 		}
 		result.Path = path
@@ -373,10 +396,10 @@ func (c *Client) Mutate(ctx context.Context, opts MutationOptions) (MutationResu
 			return MutationResult{}, err
 		}
 		if isUntrackedPath(ctx, root, path) {
-			if _, err := runGit(ctx, root, "clean", "-f", "--", path); err != nil {
+			if _, err := runGit(ctx, root, gitSubcommandClean, "-f", "--", path); err != nil {
 				return MutationResult{}, err
 			}
-		} else if _, err := runGit(ctx, root, "restore", "--worktree", "--", path); err != nil {
+		} else if _, err := runGit(ctx, root, gitSubcommandRestore, "--worktree", "--", path); err != nil {
 			return MutationResult{}, err
 		}
 		result.Path = path
@@ -387,7 +410,7 @@ func (c *Client) Mutate(ctx context.Context, opts MutationOptions) (MutationResu
 		if message == "" {
 			return MutationResult{}, fmt.Errorf("commit message is required")
 		}
-		out, err := runGit(ctx, root, "commit", "-m", message)
+		out, err := runGit(ctx, root, gitSubcommandCommit, "-m", message)
 		if err != nil {
 			return MutationResult{}, err
 		}
@@ -398,10 +421,10 @@ func (c *Client) Mutate(ctx context.Context, opts MutationOptions) (MutationResu
 		if branch == "" {
 			return MutationResult{}, fmt.Errorf("branch is required")
 		}
-		if _, err := runGit(ctx, root, "check-ref-format", "--branch", branch); err != nil {
+		if _, err := runGit(ctx, root, gitSubcommandCheckRefFormat, gitOptionBranch, branch); err != nil {
 			return MutationResult{}, err
 		}
-		out, err := runGit(ctx, root, "switch", "--", branch)
+		out, err := runGit(ctx, root, gitSubcommandSwitch, "--", branch)
 		if err != nil {
 			return MutationResult{}, err
 		}
@@ -416,13 +439,13 @@ func (c *Client) Mutate(ctx context.Context, opts MutationOptions) (MutationResu
 		if hash == "" {
 			return MutationResult{}, fmt.Errorf("hash is required")
 		}
-		if _, err := runGit(ctx, root, "rev-parse", "--verify", hash+"^{commit}"); err != nil {
+		if _, err := runGit(ctx, root, gitSubcommandRevParse, "--verify", hash+"^{commit}"); err != nil {
 			return MutationResult{}, fmt.Errorf("invalid commit hash: %s", hash)
 		}
 		newBranch := strings.TrimSpace(opts.NewBranch)
-		args := []string{"checkout"}
+		args := []string{gitSubcommandCheckout}
 		if newBranch != "" {
-			if _, err := runGit(ctx, root, "check-ref-format", "--branch", newBranch); err != nil {
+			if _, err := runGit(ctx, root, gitSubcommandCheckRefFormat, gitOptionBranch, newBranch); err != nil {
 				return MutationResult{}, err
 			}
 			args = append(args, "-b", newBranch, hash)
@@ -452,9 +475,9 @@ func (c *Client) Mutate(ctx context.Context, opts MutationOptions) (MutationResu
 		}
 		branch := strings.TrimSpace(opts.Branch)
 		newBranch := strings.TrimSpace(opts.NewBranch)
-		args := []string{"worktree", "add"}
+		args := []string{gitSubcommandWorktree, "add"}
 		if newBranch != "" {
-			if _, err := runGit(ctx, root, "check-ref-format", "--branch", newBranch); err != nil {
+			if _, err := runGit(ctx, root, gitSubcommandCheckRefFormat, gitOptionBranch, newBranch); err != nil {
 				return MutationResult{}, err
 			}
 			args = append(args, "-b", newBranch, wtPath)
@@ -484,7 +507,7 @@ func (c *Client) Mutate(ctx context.Context, opts MutationOptions) (MutationResu
 		if err != nil {
 			return MutationResult{}, err
 		}
-		out, err := runGit(ctx, root, "worktree", "remove", "--", wtPath)
+		out, err := runGit(ctx, root, gitSubcommandWorktree, "remove", "--", wtPath)
 		if err != nil {
 			return MutationResult{}, err
 		}
@@ -496,7 +519,7 @@ func (c *Client) Mutate(ctx context.Context, opts MutationOptions) (MutationResu
 		}
 		result.Output = output
 	case MutationFetch:
-		out, err := runGit(ctx, root, "fetch", "--all", "--prune")
+		out, err := runGit(ctx, root, gitSubcommandFetch, "--all", "--prune")
 		if err != nil {
 			return MutationResult{}, err
 		}
@@ -551,7 +574,7 @@ func normalizeWorktreePath(path string) (string, error) {
 }
 
 func isUntrackedPath(ctx context.Context, root string, path string) bool {
-	out, err := runGit(ctx, root, "status", "--porcelain=v1", "-z", "--", path)
+	out, err := runGit(ctx, root, gitSubcommandStatus, "--porcelain=v1", "-z", "--", path)
 	if err != nil {
 		return false
 	}
@@ -777,11 +800,11 @@ func parseCommitMeta(raw string) (CommitDetail, error) {
 }
 
 func commitFiles(ctx context.Context, root, hash string) ([]CommitFile, error) {
-	nameStatusOut, err := runGit(ctx, root, "diff-tree", "--no-commit-id", "--name-status", "--root", "-r", "-z", hash)
+	nameStatusOut, err := runGit(ctx, root, gitSubcommandDiffTree, "--no-commit-id", "--name-status", "--root", "-r", "-z", hash)
 	if err != nil {
 		return nil, err
 	}
-	numstatOut, err := runGit(ctx, root, "diff-tree", "--no-commit-id", "--numstat", "--root", "-r", "-z", hash)
+	numstatOut, err := runGit(ctx, root, gitSubcommandDiffTree, "--no-commit-id", "--numstat", "--root", "-r", "-z", hash)
 	if err != nil {
 		return nil, err
 	}
