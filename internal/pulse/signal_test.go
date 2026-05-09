@@ -313,6 +313,40 @@ func TestScanner_StalledChatHighRiskQuestionOnlyNotifies(t *testing.T) {
 	}
 }
 
+func TestClassifyStalledChatCandidateUsesDefaultConsentSettings(t *testing.T) {
+	now := time.Date(2026, 5, 1, 10, 0, 0, 0, time.UTC)
+	lastAssistantAt := now.Add(-45 * time.Minute)
+	candidate, ok := classifyStalledChatCandidate(session.Session{
+		ID:        "sess_default",
+		Title:     "Default consent",
+		UpdatedAt: now.Add(-40 * time.Minute),
+	}, session.Message{
+		ID:        "msg_question",
+		Role:      "assistant",
+		Content:   "Should I continue with the default option?",
+		Timestamp: lastAssistantAt,
+	}, now)
+
+	if !ok {
+		t.Fatalf("expected stalled-chat candidate")
+	}
+	if candidate.AutoResumeAfterMinutes != session.DefaultAutoResumeAfterMinutes {
+		t.Fatalf("auto resume threshold = %d, want %d", candidate.AutoResumeAfterMinutes, session.DefaultAutoResumeAfterMinutes)
+	}
+	if candidate.AutoResumeEnabled {
+		t.Fatalf("auto resume should default to disabled")
+	}
+	if candidate.CanAutoResume {
+		t.Fatalf("candidate should not auto-resume without explicit consent")
+	}
+	if candidate.ResumeMode != session.AutoResumeModeRecordAssumptionAndProceed {
+		t.Fatalf("resume mode = %q", candidate.ResumeMode)
+	}
+	if !candidate.LastAssistantAt.Equal(lastAssistantAt) {
+		t.Fatalf("last assistant at = %s, want %s", candidate.LastAssistantAt, lastAssistantAt)
+	}
+}
+
 // --- disk ---
 
 func TestScanner_DiskWarn(t *testing.T) {

@@ -211,71 +211,95 @@ func DetectStalledChatCandidates(ctx context.Context, source ChatSessionSource, 
 	}
 	var candidates []StalledChatCandidate
 	for _, sess := range sessions {
-		if err := ctx.Err(); err != nil {
+		candidate, ok, err := detectStalledChatCandidate(ctx, source, sess, now)
+		if err != nil {
 			return candidates, err
 		}
-		tasks, err := source.GetTasks(sess.ID)
-		if err != nil {
-			zlog.Logger.Debug().Err(err).Str("session_id", sess.ID).Msg("pulse: skip stalled-chat task read failure")
-			continue
+		if ok {
+			candidates = append(candidates, candidate)
 		}
-		if !hasActiveSessionWork(tasks) {
-			continue
-		}
-		messages, err := session.ReadMessages(source.TranscriptPath(sess.ID))
-		if err != nil {
-			zlog.Logger.Debug().Err(err).Str("session_id", sess.ID).Msg("pulse: skip stalled-chat transcript read failure")
-			continue
-		}
-		msg, ok := latestConversationalMessage(messages)
-		if !ok || msg.Role != "assistant" {
-			continue
-		}
-		content := strings.TrimSpace(msg.Content)
-		if !looksLikeWaitingQuestion(content) {
-			continue
-		}
-		lastAt := msg.Timestamp.UTC()
-		if lastAt.IsZero() {
-			lastAt = sess.UpdatedAt.UTC()
-		}
-		consent := sess.AutomationConsent
-		afterMinutes := session.DefaultAutoResumeAfterMinutes
-		autoResumeEnabled := false
-		modes := []string{session.AutoResumeModeRecordAssumptionAndProceed}
-		if consent != nil {
-			afterMinutes = consent.EffectiveAutoResumeAfterMinutes()
-			autoResumeEnabled = consent.AllowsAutoResume()
-			modes = consent.EffectiveAllowedResumeModes()
-		}
-		if now.Sub(lastAt) < time.Duration(afterMinutes)*time.Minute {
-			continue
-		}
-		blockReason := ""
-		if isHighRiskQuestion(content) {
-			blockReason = "high_risk_question"
-		}
-		resumeMode := ""
-		if len(modes) > 0 {
-			resumeMode = modes[0]
-		}
-		canAutoResume := autoResumeEnabled && blockReason == "" && resumeMode != ""
-		candidates = append(candidates, StalledChatCandidate{
-			SessionID:              sess.ID,
-			Title:                  sess.Title,
-			LastMessageID:          msg.ID,
-			LastAssistantAt:        lastAt,
-			AgeMinutes:             int(now.Sub(lastAt).Minutes()),
-			AutoResumeEnabled:      autoResumeEnabled,
-			AutoResumeAfterMinutes: afterMinutes,
-			AllowedResumeModes:     modes,
-			ResumeMode:             resumeMode,
-			CanAutoResume:          canAutoResume,
-			BlockReason:            blockReason,
-			QuestionPreview:        trimPulsePreview(content, 180),
-		})
 	}
 	return candidates, nil
+}
+
+func detectStalledChatCandidate(ctx context.Context, source ChatSessionSource, sess session.Session, now time.Time) (StalledChatCandidate, bool, error) {
+	if err := ctx.Err(); err != nil {
+		return StalledChatCandidate{}, false, err
+	}
+	tasks, err := source.GetTasks(sess.ID)
+	if err != nil {
+		zlog.Logger.Debug().Err(err).Str("session_id", sess.ID).Msg("pulse: skip stalled-chat task read failure")
+		return StalledChatCandidate{}, false, nil
+	}
+	if !hasActiveSessionWork(tasks) {
+		return StalledChatCandidate{}, false, nil
+	}
+	messages, err := session.ReadMessages(source.TranscriptPath(sess.ID))
+	if err != nil {
+		zlog.Logger.Debug().Err(err).Str("session_id", sess.ID).Msg("pulse: skip stalled-chat transcript read failure")
+		return StalledChatCandidate{}, false, nil
+	}
+	msg, ok := latestConversationalMessage(messages)
+	if !ok || msg.Role != "assistant" {
+		return StalledChatCandidate{}, false, nil
+	}
+	candidate, ok := classifyStalledChatCandidate(sess, msg, now)
+	return candidate, ok, nil
+}
+
+func classifyStalledChatCandidate(sess session.Session, msg session.Message, now time.Time) (StalledChatCandidate, bool) {
+	content := strings.TrimSpace(msg.Content)
+	if !looksLikeWaitingQuestion(content) {
+		return StalledChatCandidate{}, false
+	}
+	lastAt := msg.Timestamp.UTC()
+	if lastAt.IsZero() {
+		lastAt = sess.UpdatedAt.UTC()
+	}
+	afterMinutes, autoResumeEnabled, modes := stalledChatConsentSettings(sess)
+	if now.Sub(lastAt) < time.Duration(afterMinutes)*time.Minute {
+		return StalledChatCandidate{}, false
+	}
+	blockReason := ""
+	if isHighRiskQuestion(content) {
+		blockReason = "high_risk_question"
+	}
+	resumeMode := firstResumeMode(modes)
+	canAutoResume := autoResumeEnabled && blockReason == "" && resumeMode != ""
+	return StalledChatCandidate{
+		SessionID:              sess.ID,
+		Title:                  sess.Title,
+		LastMessageID:          msg.ID,
+		LastAssistantAt:        lastAt,
+		AgeMinutes:             int(now.Sub(lastAt).Minutes()),
+		AutoResumeEnabled:      autoResumeEnabled,
+		AutoResumeAfterMinutes: afterMinutes,
+		AllowedResumeModes:     modes,
+		ResumeMode:             resumeMode,
+		CanAutoResume:          canAutoResume,
+		BlockReason:            blockReason,
+		QuestionPreview:        trimPulsePreview(content, 180),
+	}, true
+}
+
+func stalledChatConsentSettings(sess session.Session) (int, bool, []string) {
+	consent := sess.AutomationConsent
+	afterMinutes := session.DefaultAutoResumeAfterMinutes
+	autoResumeEnabled := false
+	modes := []string{session.AutoResumeModeRecordAssumptionAndProceed}
+	if consent != nil {
+		afterMinutes = consent.EffectiveAutoResumeAfterMinutes()
+		autoResumeEnabled = consent.AllowsAutoResume()
+		modes = consent.EffectiveAllowedResumeModes()
+	}
+	return afterMinutes, autoResumeEnabled, modes
+}
+
+func firstResumeMode(modes []string) string {
+	if len(modes) == 0 {
+		return ""
+	}
+	return modes[0]
 }
 
 func hasActiveSessionWork(tasks session.SessionTasks) bool {
