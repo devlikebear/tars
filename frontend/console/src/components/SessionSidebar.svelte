@@ -1,10 +1,10 @@
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte'
-  import { listSessions, deleteSession, compactSession, renameSession, getSessionHistory, runMemorySearch, setSessionArchived, setSessionPinned } from '../lib/api'
+  import { listSessions, deleteSession, compactSession, renameSession, getSessionHistory, runMemorySearch, setSessionArchived, setSessionPinned, recommendSessionCleanup } from '../lib/api'
   import { highlightTerms } from '../lib/markdown'
   import { cleanupCandidateSessions, isArchived, isPinned, organizeSessions, sessionKind, type SessionKindFilter, type SessionSortMode } from '../lib/sessionOrganization'
   import { t } from '../i18n'
-  import type { MemorySearchMatch, Session } from '../lib/types'
+  import type { MemorySearchMatch, Session, SessionCleanupMode, SessionCleanupSuggestion, SessionCleanupSuggestionResponse } from '../lib/types'
 
   type SessionSearchSnippet = {
     date: string
@@ -24,8 +24,8 @@
   let error = $state('')
 
   let searchQuery = $state('')
-  let sortBy: SessionSortMode = $state('updated')
-  let filterKind: SessionKindFilter = $state('all')
+  let sortBy = $state<SessionSortMode>('updated')
+  let filterKind = $state<SessionKindFilter>('all')
 
   let renamingId: string | null = $state(null)
   let renameValue = $state('')
@@ -35,11 +35,19 @@
   let transcriptSearchLoading = $state(false)
   let transcriptSearchError = $state('')
   let sessionSearchSnippets: Record<string, SessionSearchSnippet[]> = $state({})
+  let aiCleanupResponse = $state<SessionCleanupSuggestionResponse | null>(null)
+  let aiCleanupSelected = $state<Record<string, boolean>>({})
+  let aiDeleteConfirm = $state(false)
   const sessionFilters = ['all', 'session', 'main', 'worker', 'archived'] as const
   const maxSnippetsPerSession = 3
   let transcriptSearchTimer: ReturnType<typeof setTimeout> | null = null
   let transcriptSearchToken = 0
   let cleanupSuggestions = $derived(cleanupCandidateSessions(sessions))
+  let aiCleanupMode = $derived(sessionCleanupModeForFilter(filterKind))
+  let aiCleanupSuggestions = $derived(sessionCleanupSuggestionsForMode(aiCleanupResponse, aiCleanupMode))
+  let showAICleanupPanel = $derived(
+    (filterKind === 'all' || filterKind === 'session' || filterKind === 'archived') && !searchQuery.trim(),
+  )
 
   function relativeTime(value?: string): string {
     if (!value?.trim()) return ''
@@ -52,6 +60,18 @@
     if (seconds < 3600) return labels.minutesAgo(Math.floor(seconds / 60))
     if (seconds < 86400) return labels.hoursAgo(Math.floor(seconds / 3600))
     return labels.daysAgo(Math.floor(seconds / 86400))
+  }
+
+  function sessionCleanupModeForFilter(kind: SessionKindFilter): SessionCleanupMode {
+    return kind === 'archived' ? 'delete' : 'archive'
+  }
+
+  function sessionCleanupSuggestionsForMode(
+    response: SessionCleanupSuggestionResponse | null,
+    mode: SessionCleanupMode,
+  ): SessionCleanupSuggestion[] {
+    if (!response || response.mode !== mode) return []
+    return response.suggestions
   }
 
   function kindBadge(session: Session): string {
@@ -257,6 +277,66 @@
     }
   }
 
+  function selectedAISuggestions(): SessionCleanupSuggestion[] {
+    return aiCleanupSuggestions.filter((suggestion) => aiCleanupSelected[suggestion.session_id] !== false)
+  }
+
+  async function handleAnalyzeSessionCleanup() {
+    actionBusy = 'ai-cleanup'
+    actionError = ''
+    aiDeleteConfirm = false
+    try {
+      const response = await recommendSessionCleanup({ mode: aiCleanupMode, limit: 8 })
+      aiCleanupResponse = response
+      const selected: Record<string, boolean> = {}
+      for (const suggestion of response.suggestions) {
+        selected[suggestion.session_id] = true
+      }
+      aiCleanupSelected = selected
+    } catch (e) {
+      actionError = e instanceof Error ? e.message : $t.sessions.errors.aiCleanupFailed
+      aiCleanupResponse = null
+      aiCleanupSelected = {}
+    } finally {
+      actionBusy = ''
+    }
+  }
+
+  async function handleApplyAISuggestions() {
+    const suggestions = selectedAISuggestions()
+    if (suggestions.length === 0) return
+    if (aiCleanupMode === 'delete' && !aiDeleteConfirm) {
+      aiDeleteConfirm = true
+      return
+    }
+    actionBusy = 'ai-cleanup'
+    actionError = ''
+    try {
+      if (aiCleanupMode === 'archive') {
+        await Promise.all(suggestions.map((suggestion) => setSessionArchived(suggestion.session_id, true)))
+      } else {
+        await Promise.all(suggestions.map((suggestion) => deleteSession(suggestion.session_id)))
+      }
+      if (selectedSessionId && suggestions.some((suggestion) => suggestion.session_id === selectedSessionId)) onNewSession()
+      aiCleanupResponse = null
+      aiCleanupSelected = {}
+      aiDeleteConfirm = false
+      await load()
+    } catch (e) {
+      actionError = e instanceof Error ? e.message : $t.sessions.errors.aiCleanupFailed
+    } finally {
+      actionBusy = ''
+    }
+  }
+
+  function toggleAISuggestion(sessionID: string) {
+    aiCleanupSelected = {
+      ...aiCleanupSelected,
+      [sessionID]: aiCleanupSelected[sessionID] === false,
+    }
+    aiDeleteConfirm = false
+  }
+
   async function handleCompact(id: string) {
     actionBusy = id
     actionError = ''
@@ -316,6 +396,14 @@
   $effect(() => {
     scheduleTranscriptSearch(searchQuery)
   })
+
+  $effect(() => {
+    aiCleanupMode
+    searchQuery.trim()
+    aiCleanupResponse = null
+    aiCleanupSelected = {}
+    aiDeleteConfirm = false
+  })
 </script>
 
 <div class="sidebar">
@@ -361,6 +449,57 @@
       <button class="cleanup-action" type="button" disabled={actionBusy === 'cleanup'} onclick={handleArchiveCleanupCandidates}>
         {$t.sessions.cleanup.archiveSuggested(cleanupSuggestions.length)}
       </button>
+    </section>
+  {/if}
+
+  {#if showAICleanupPanel}
+    <section class="ai-cleanup-panel" aria-label={aiCleanupMode === 'delete' ? $t.sessions.aiCleanup.deleteTitle : $t.sessions.aiCleanup.archiveTitle}>
+      <div class="cleanup-head">
+        <span>{aiCleanupMode === 'delete' ? $t.sessions.aiCleanup.deleteTitle : $t.sessions.aiCleanup.archiveTitle}</span>
+        {#if aiCleanupResponse}
+          <strong>{$t.sessions.aiCleanup.source(aiCleanupResponse.analyzed_count, aiCleanupResponse.excluded_count)}</strong>
+        {/if}
+      </div>
+      <button class="cleanup-action" type="button" disabled={actionBusy === 'ai-cleanup'} onclick={handleAnalyzeSessionCleanup}>
+        {actionBusy === 'ai-cleanup' ? $t.sessions.aiCleanup.analyzing : aiCleanupMode === 'delete' ? $t.sessions.aiCleanup.analyzeDelete : $t.sessions.aiCleanup.analyzeArchive}
+      </button>
+      {#if aiCleanupResponse}
+        {#if aiCleanupSuggestions.length === 0}
+          <div class="cleanup-preview">{$t.sessions.aiCleanup.empty}</div>
+        {:else}
+          <div class="ai-suggestion-list">
+            {#each aiCleanupSuggestions as suggestion}
+              <label class="ai-suggestion-row">
+                <input
+                  type="checkbox"
+                  checked={aiCleanupSelected[suggestion.session_id] !== false}
+                  onchange={() => toggleAISuggestion(suggestion.session_id)}
+                />
+                <span class="ai-suggestion-copy">
+                  <strong>{suggestion.title || suggestion.session_id.slice(0, 12)}</strong>
+                  <span>{suggestion.reason}</span>
+                </span>
+                <span class="ai-confidence">{$t.sessions.aiCleanup.confidence(suggestion.confidence)}</span>
+              </label>
+            {/each}
+          </div>
+          <button
+            class="cleanup-action"
+            class:ai-delete-confirm={aiCleanupMode === 'delete' && aiDeleteConfirm}
+            type="button"
+            disabled={actionBusy === 'ai-cleanup' || selectedAISuggestions().length === 0}
+            onclick={handleApplyAISuggestions}
+          >
+            {#if aiCleanupMode === 'delete' && aiDeleteConfirm}
+              {$t.sessions.aiCleanup.confirmDelete(selectedAISuggestions().length)}
+            {:else if aiCleanupMode === 'delete'}
+              {$t.sessions.aiCleanup.applyDelete(selectedAISuggestions().length)}
+            {:else}
+              {$t.sessions.aiCleanup.applyArchive(selectedAISuggestions().length)}
+            {/if}
+          </button>
+        {/if}
+      {/if}
     </section>
   {/if}
 
@@ -502,6 +641,68 @@
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-sm);
     background: var(--surface-inset);
+  }
+
+  .ai-cleanup-panel {
+    display: grid;
+    gap: var(--space-1);
+    padding: var(--space-2);
+    border: 1px solid rgba(224, 145, 69, 0.22);
+    border-radius: var(--radius-sm);
+    background: rgba(224, 145, 69, 0.05);
+  }
+
+  .ai-suggestion-list {
+    display: grid;
+    gap: 3px;
+  }
+
+  .ai-suggestion-row {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: var(--space-1);
+    align-items: start;
+    color: var(--text-secondary);
+    font-size: 10px;
+  }
+
+  .ai-suggestion-row input {
+    margin-top: 2px;
+  }
+
+  .ai-suggestion-copy {
+    display: grid;
+    gap: 1px;
+    min-width: 0;
+  }
+
+  .ai-suggestion-copy strong {
+    overflow: hidden;
+    color: var(--text-primary);
+    font-size: 10px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .ai-suggestion-copy span {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    color: var(--text-tertiary);
+    line-height: 1.25;
+  }
+
+  .ai-confidence {
+    color: var(--primary);
+    font-family: var(--font-mono);
+    font-size: 9px;
+  }
+
+  .ai-delete-confirm {
+    border-color: var(--error);
+    color: var(--error);
   }
 
   .cleanup-head {

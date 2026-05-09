@@ -44,6 +44,10 @@ func newSessionAPIHandlerWithNotifier(store *session.Store, logger zerolog.Logge
 }
 
 func newSessionAPIHandlerFull(store *session.Store, logger zerolog.Logger, usageTracker *usage.Tracker, styleDefaults sessionStyleValues, notify sessionNotifier, overrideService *sessionoverride.Service) http.Handler {
+	return newSessionAPIHandlerFullWithLLM(store, logger, usageTracker, styleDefaults, notify, overrideService, nil)
+}
+
+func newSessionAPIHandlerFullWithLLM(store *session.Store, logger zerolog.Logger, usageTracker *usage.Tracker, styleDefaults sessionStyleValues, notify sessionNotifier, overrideService *sessionoverride.Service, llmRouter llm.Router) http.Handler {
 	mux := http.NewServeMux()
 	styleDefaults = effectiveSessionStyle(styleDefaults, nil)
 	baseWorkspaceDir := ""
@@ -298,6 +302,40 @@ func newSessionAPIHandlerFull(store *session.Store, logger zerolog.Logger, usage
 			}
 			writeJSON(w, http.StatusCreated, sess)
 		}
+	})
+
+	mux.HandleFunc("/v1/admin/sessions/cleanup-suggestions", func(w http.ResponseWriter, r *http.Request) {
+		if !requireAdmin(w, r) {
+			return
+		}
+		if !requireMethod(w, r, http.MethodPost) {
+			return
+		}
+		if llmRouter == nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "llm router is not configured"})
+			return
+		}
+		reqStore, err := resolveStore(r)
+		if err != nil {
+			logger.Error().Err(err).Msg("resolve workspace session store failed")
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "resolve workspace failed"})
+			return
+		}
+		var req sessionCleanupSuggestionRequest
+		if !decodeOptionalJSONBody(w, r, &req) {
+			return
+		}
+		resp, err := buildSessionCleanupSuggestions(r.Context(), reqStore, llmRouter, req, time.Now().UTC())
+		if err != nil {
+			if errors.Is(err, errInvalidSessionCleanupMode) {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+				return
+			}
+			logger.Error().Err(err).Msg("session cleanup suggestions failed")
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "session cleanup suggestions failed"})
+			return
+		}
+		writeJSON(w, http.StatusOK, resp)
 	})
 
 	mux.HandleFunc("/v1/admin/tasks", func(w http.ResponseWriter, r *http.Request) {

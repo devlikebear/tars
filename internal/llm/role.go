@@ -37,6 +37,10 @@ const (
 	// RolePulseDecider is the pulse watchdog classifier. Light by default.
 	RolePulseDecider Role = "pulse_decider"
 
+	// RoleSessionCleanup analyzes compact session metadata and transcript
+	// snippets for user-reviewed archive/delete cleanup suggestions.
+	RoleSessionCleanup Role = "session_cleanup"
+
 	// RoleAgentRuntimeDefault is the default executor role for agent runtime agents
 	// that do not declare a tier explicitly. Standard by default.
 	RoleAgentRuntimeDefault Role = "agentruntime_default"
@@ -56,6 +60,7 @@ func AllRoles() []Role {
 		RoleReflectionMemory,
 		RoleReflectionKB,
 		RolePulseDecider,
+		RoleSessionCleanup,
 		RoleAgentRuntimeDefault,
 		RoleAgentRuntimePlanner,
 	}
