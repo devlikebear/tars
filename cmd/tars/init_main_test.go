@@ -72,6 +72,51 @@ func TestRootCommand_InitCreatesStarterWorkspace(t *testing.T) {
 	}
 }
 
+func TestRootCommand_InitLocalScaffoldsProjectTarsDir(t *testing.T) {
+	projectDir := t.TempDir()
+
+	var stdout strings.Builder
+	cmd := newRootCommand(strings.NewReader(""), &stdout, io.Discard)
+	cmd.SetArgs([]string{"init", "local", "--cwd", projectDir})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("init local: %v", err)
+	}
+
+	assertPathExists(t, filepath.Join(projectDir, ".tars", "settings.json"))
+	assertPathExists(t, filepath.Join(projectDir, ".tars", "settings.local.json"))
+	assertPathExists(t, filepath.Join(projectDir, ".tars", "skills"))
+	assertPathExists(t, filepath.Join(projectDir, ".tars", "commands"))
+	assertPathExists(t, filepath.Join(projectDir, ".tars", ".gitignore"))
+
+	out := stdout.String()
+	if !strings.Contains(out, "initialized project-local .tars") {
+		t.Fatalf("expected init-local success output, got:\n%s", out)
+	}
+	if !strings.Contains(out, projectDir) {
+		t.Fatalf("expected output to include project dir, got:\n%s", out)
+	}
+
+	cmd = newRootCommand(strings.NewReader(""), &stdout, io.Discard)
+	cmd.SetArgs([]string{"init", "local", "--cwd", projectDir})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("init local second run: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "existing:") {
+		t.Fatalf("expected idempotent second run to report existing paths, got:\n%s", stdout.String())
+	}
+}
+
+func TestRootCommand_InitLocalReportsScaffoldErrors(t *testing.T) {
+	var stdout strings.Builder
+	cmd := newRootCommand(strings.NewReader(""), &stdout, io.Discard)
+	cmd.SetArgs([]string{"init", "local", "--cwd", " \t "})
+
+	if err := cmd.Execute(); err == nil {
+		t.Fatal("expected blank cwd to fail")
+	}
+}
+
 func TestRootCommand_InitRefusesToOverwriteExistingConfig(t *testing.T) {
 	fakeHome := t.TempDir()
 	t.Setenv("HOME", fakeHome)

@@ -24,25 +24,6 @@ func newAgentRunsAPIHandlerWithInflightLimit(runtime *agentruntime.Runtime, logg
 		}
 		handleAgentList(w, runtime)
 	})
-	mux.HandleFunc("/v1/agent/agents", func(w http.ResponseWriter, r *http.Request) {
-		if !requireMethod(w, r, http.MethodGet) {
-			return
-		}
-		handleAgentList(w, runtime)
-	})
-	mux.HandleFunc("/v1/agent/runs", func(w http.ResponseWriter, r *http.Request) {
-		if !requireMethod(w, r, http.MethodGet, http.MethodPost) {
-			return
-		}
-		if r.Method == http.MethodPost {
-			handleAgentRunSpawn(w, r, runtime, inflight)
-			return
-		}
-		handleAgentRunList(w, r, runtime)
-	})
-	mux.HandleFunc("/v1/agent/runs/", func(w http.ResponseWriter, r *http.Request) {
-		handleAgentRunByID(w, r, runtime, logger)
-	})
 	mux.HandleFunc("/v1/agentruntime/runs", func(w http.ResponseWriter, r *http.Request) {
 		if !requireMethod(w, r, http.MethodGet, http.MethodPost) {
 			return
@@ -392,7 +373,6 @@ func writeSSEData(w http.ResponseWriter, payload any) error {
 
 func parseAgentRunPath(path string) (runID string, action string, ok bool) {
 	trimmed := strings.TrimSpace(path)
-	trimmed = strings.TrimPrefix(trimmed, "/v1/agent/runs/")
 	trimmed = strings.TrimPrefix(trimmed, "/v1/agentruntime/runs/")
 	if trimmed == "" {
 		return "", "", false

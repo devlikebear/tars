@@ -6,7 +6,7 @@ Date: 2026-05-01
 
 ## Context
 
-The current Approvals surface is intentionally narrow. A manual cleanup plan can be created from the console or CLI, reviewed by a human, and then applied through the same ops API. Pulse autofix currently bypasses this queue for the small set of deterministic low-risk actions in its allowlist. Session-scoped `auto_continue_chat` is also allowlisted, but only after explicit session consent and only for bounded stalled-chat resume modes.
+The current Approvals surface is intentionally narrow. A manual cleanup plan can be created from the console or CLI, reviewed by a human, and then applied through the same ops API. Pulse autofix currently bypasses this queue only for the small set of deterministic low-risk actions in its allowlist; cleanup-like actions such as `cleanup_stale_tmp` are not enabled by default and must be explicitly opted into. Session-scoped `auto_continue_chat` is allowlisted, but only after explicit session consent and only for bounded stalled-chat resume modes.
 
 That makes Approvals look quiet today, but it is still the right boundary for destructive or high-blast-radius operations that should not run as fully automatic autofix.
 

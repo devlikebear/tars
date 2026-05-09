@@ -162,6 +162,11 @@
     }
   }
 
+  export function openEvidence() {
+    activeTab = 'evidence'
+    return load()
+  }
+
   async function runAction(payload: Record<string, unknown>) {
     actionBusy = true
     actionError = ''

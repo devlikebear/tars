@@ -87,9 +87,6 @@ func TestRegisterAPIRoutes_RegistersCoreRoutes(t *testing.T) {
 		"/v1/agentruntime/agents",
 		"/v1/agentruntime/runs",
 		"/v1/agentruntime/runs/run-1",
-		"/v1/agent/agents",
-		"/v1/agent/runs",
-		"/v1/agent/runs/run-1",
 		"/v1/agentruntime/subagents",
 		"/v1/agentruntime/subagents/researcher",
 		"/v1/agentruntime/status",
@@ -181,6 +178,27 @@ func TestRegisterAPIRoutes_RootFallbackKeepsUnknownPathsNotFound(t *testing.T) {
 
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d body=%q", rec.Code, rec.Body.String())
+	}
+}
+
+func TestRegisterAPIRoutes_DoesNotRegisterLegacyAgentRoutes(t *testing.T) {
+	mux := http.NewServeMux()
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
+	registerAPIRoutes(mux, testAPIRouteHandlers(handler, handler))
+
+	for _, path := range []string{
+		"/v1/agent/agents",
+		"/v1/agent/runs",
+		"/v1/agent/runs/run-1",
+	} {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		mux.ServeHTTP(rec, req)
+		if rec.Code != http.StatusNotFound {
+			t.Fatalf("expected legacy Agent route %s to be unregistered, got %d", path, rec.Code)
+		}
 	}
 }
 

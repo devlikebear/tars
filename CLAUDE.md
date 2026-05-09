@@ -125,6 +125,7 @@ Re-entry via `?reentry=1`: prefills form, masks api_key, adds [Save only] option
   skills/<name>/SKILL.md # 빌트인과 머지, cwd 우선
   commands/<name>.md     # skill 별칭 (target_skill: <기존스킬>)
 ```
+스캐폴딩: `tars init local --cwd <active_cwd>`가 위 구조와 `.tars/.gitignore`를 생성한다.
 
 **머지 우선순위 (낮음 → 높음)** — `internal/sessionoverride.Merge`
 ```
@@ -132,7 +133,8 @@ sessions.json (세션 base)
   ← <cwd>/.tars/settings.json       [shared 배지, amber]
   ← <cwd>/.tars/settings.local.json [local 배지, grey]
 ```
-- 슬라이스 필드(`tools_enabled`, `mcp_enabled` 등)는 union+dedup
+- 슬라이스 필드(`tools_enabled`, `mcp_enabled` 등)는 기본 union+dedup
+- 단, 해당 레이어가 `tools_custom`, `skills_custom`, `commands_custom`, `mcp_custom`을 `true`로 명시하면 해당 allowlist는 이전 레이어를 대체한다. allowlist를 비우면 상속 항목도 비워진다.
 - 스칼라/맵 필드는 last-write-wins, `mcp_servers_extra`는 Name 키로 머지
 - 결과는 `GET /v1/admin/sessions/{id}/effective-config`에서 `{effective, sources, diagnostics}`로 노출, `Service.Resolve`가 (cwd, mtime) 키로 캐시
 
@@ -145,9 +147,7 @@ sessions.json (세션 base)
 - 콘솔 Session Config 패널의 Tools/Skills 탭: 항목별 `shared`/`local` 배지로 출처 표시
 
 **현재 한계 (follow-up 예정)**
-- UI 토글은 여전히 base에 기록 — `.tars/`에서 켜진 항목을 UI로 끌 수 없다 (4번째 user-override 레이어 미도입)
 - Automation/Style 탭에는 배지 없음 (Tools/Skills만 1차)
-- `tars init local` 같은 `.tars/` 스캐폴딩 명령 없음
 
 ## Marketing Site
 

@@ -260,7 +260,7 @@ func TestAgentRunsAPIHandler_AgentsList(t *testing.T) {
 	}
 }
 
-func TestAgentRunsAPIHandler_LegacyAgentRoutesRemainAliases(t *testing.T) {
+func TestAgentRunsAPIHandler_LegacyAgentRoutesAreRetired(t *testing.T) {
 	runtime := newTestAgentRuntime(t)
 	run, err := runtime.Spawn(context.Background(), agentruntime.SpawnRequest{Prompt: "legacy alias"})
 	if err != nil {
@@ -272,8 +272,8 @@ func TestAgentRunsAPIHandler_LegacyAgentRoutesRemainAliases(t *testing.T) {
 		rec := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodGet, path, nil)
 		h.ServeHTTP(rec, req)
-		if rec.Code != http.StatusOK {
-			t.Fatalf("expected legacy route %s to return 200, got %d body=%s", path, rec.Code, rec.Body.String())
+		if rec.Code != http.StatusNotFound {
+			t.Fatalf("expected legacy route %s to return 404, got %d body=%s", path, rec.Code, rec.Body.String())
 		}
 	}
 

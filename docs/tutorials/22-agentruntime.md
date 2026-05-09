@@ -63,7 +63,7 @@ Handler (HTTP API)
     └── POST /v1/agentruntime/runs/{id}/cancel ← Cancel
 ```
 
-`/v1/agent/agents`, `/v1/agent/runs`, `/v1/agent/runs/{id}`는 호환성을 위한 legacy alias입니다. 신규 문서와 외부 클라이언트는 `/v1/agentruntime/*`를 우선 사용합니다.
+Legacy `/v1/agent/agents`, `/v1/agent/runs`, `/v1/agent/runs/{id}` aliases are retired. External clients should use `/v1/agentruntime/*`.
 
 ## 실습
 

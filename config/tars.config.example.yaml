@@ -110,8 +110,9 @@ automation:
     min_severity: warn
     allowed_autofixes:
       - compress_old_logs
-      - cleanup_stale_tmp
       - auto_continue_chat
+      # cleanup_stale_tmp is available only when explicitly added here;
+      # cleanup-like changes should normally flow through Approvals.
     notify_telegram: false
     notify_session_events: true
     cron_failure_threshold: 3
