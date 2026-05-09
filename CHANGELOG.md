@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.32.15] - 2026-05-09
+
+### Fixed
+
+- **Remote MCP HTTP Accept headers** — streamable HTTP requests now advertise SSE responses only when that transport path can consume them, while plain JSON RPC posts keep an `application/json` Accept header. This removes the duplicated conditional flagged by SonarCloud without broadening legacy MCP request negotiation. Closes #785.
+
 ## [0.32.14] - 2026-05-09
 
 ### Added

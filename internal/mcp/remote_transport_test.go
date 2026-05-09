@@ -80,6 +80,135 @@ func TestListTools_StreamableHTTP_UsesBearerAuthAndSessionHeader(t *testing.T) {
 	}
 }
 
+func TestDoHTTPRPC_UsesSSEAcceptOnlyWhenRequested(t *testing.T) {
+	var accepts []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		accepts = append(accepts, r.Header.Get("Accept"))
+		var req rpcRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		writeJSONResponse(t, w, rpcResponse{
+			JSONRPC: "2.0",
+			ID:      req.ID,
+			Result:  json.RawMessage(`{}`),
+		})
+	}))
+	defer srv.Close()
+
+	client := NewClient(nil)
+	ps := &pooledSession{
+		server:     ServerConfig{Name: "remote-http", URL: srv.URL},
+		httpClient: srv.Client(),
+	}
+	req := rpcRequest{JSONRPC: "2.0", ID: 1, Method: "tools/list"}
+	if _, err := client.doHTTPRPC(context.Background(), ps, srv.URL, req, true); err != nil {
+		t.Fatalf("streamable http rpc: %v", err)
+	}
+	req.ID = 2
+	if _, err := client.doHTTPRPC(context.Background(), ps, srv.URL, req, false); err != nil {
+		t.Fatalf("plain http rpc: %v", err)
+	}
+
+	if len(accepts) != 2 {
+		t.Fatalf("expected two requests, got accepts=%v", accepts)
+	}
+	if accepts[0] != "application/json, text/event-stream" {
+		t.Fatalf("expected streamable request to accept SSE, got %q", accepts[0])
+	}
+	if accepts[1] != "application/json" {
+		t.Fatalf("expected plain request to accept JSON only, got %q", accepts[1])
+	}
+}
+
+func TestBuildTools_StreamableHTTPExecutesRemoteTool(t *testing.T) {
+	var (
+		mu        sync.Mutex
+		acceptBy  = map[string]string{}
+		callParam map[string]any
+	)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req rpcRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		mu.Lock()
+		acceptBy[req.Method] = r.Header.Get("Accept")
+		if req.Method == "tools/call" {
+			if params, ok := req.Params.(map[string]any); ok {
+				callParam = params
+			}
+		}
+		mu.Unlock()
+
+		switch req.Method {
+		case "initialize":
+			w.Header().Set("Mcp-Session-Id", "sess-build-tools")
+			writeJSONResponse(t, w, rpcResponse{
+				JSONRPC: "2.0",
+				ID:      req.ID,
+				Result:  json.RawMessage(`{"capabilities":{}}`),
+			})
+		case "notifications/initialized":
+			w.WriteHeader(http.StatusAccepted)
+		case "tools/list":
+			writeJSONResponse(t, w, rpcResponse{
+				JSONRPC: "2.0",
+				ID:      req.ID,
+				Result: json.RawMessage(`{
+				  "tools":[
+				    {"name":"echo","description":"Echo a value","inputSchema":{"type":"object","properties":{"value":{"type":"string"}}}}
+				  ]
+				}`),
+			})
+		case "tools/call":
+			writeJSONResponse(t, w, rpcResponse{
+				JSONRPC: "2.0",
+				ID:      req.ID,
+				Result:  json.RawMessage(`{"content":[{"type":"text","text":"called"}],"isError":false}`),
+			})
+		default:
+			t.Fatalf("unexpected method: %s", req.Method)
+		}
+	}))
+	defer srv.Close()
+
+	client := NewClient([]ServerConfig{{
+		Name:      "remote-http",
+		Transport: "streamable_http",
+		URL:       srv.URL,
+	}})
+
+	tools, err := client.BuildTools(context.Background())
+	if err != nil {
+		t.Fatalf("build tools: %v", err)
+	}
+	if len(tools) != 1 || tools[0].Name != "mcp.remote-http.echo" {
+		t.Fatalf("unexpected tools: %+v", tools)
+	}
+	result, err := tools[0].Execute(context.Background(), json.RawMessage(`{"value":"hi"}`))
+	if err != nil {
+		t.Fatalf("execute remote tool: %v", err)
+	}
+	if result.IsError || len(result.Content) != 1 || result.Content[0].Text != "called" {
+		t.Fatalf("unexpected tool result: %+v", result)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if acceptBy["notifications/initialized"] != "application/json" {
+		t.Fatalf("expected notification to accept JSON only, got %q", acceptBy["notifications/initialized"])
+	}
+	for _, method := range []string{"initialize", "tools/list", "tools/call"} {
+		if acceptBy[method] != "application/json, text/event-stream" {
+			t.Fatalf("expected %s to accept SSE responses, got %q", method, acceptBy[method])
+		}
+	}
+	if callParam["name"] != "echo" {
+		t.Fatalf("expected tool call name echo, got params=%v", callParam)
+	}
+}
+
 func TestListTools_WebSocket_UsesOAuthAuthHeader(t *testing.T) {
 	t.Setenv("CLAUDE_CODE_OAUTH_TOKEN", "oauth-secret")
 	upgrader := websocket.Upgrader{}

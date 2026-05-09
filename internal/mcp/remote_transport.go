@@ -108,11 +108,11 @@ func (c *Client) doHTTPRPC(ctx context.Context, ps *pooledSession, endpoint stri
 		return nil, fmt.Errorf("build http rpc request: %w", err)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
+	accept := "application/json"
 	if acceptSSE {
-		httpReq.Header.Set("Accept", "application/json, text/event-stream")
-	} else {
-		httpReq.Header.Set("Accept", "application/json, text/event-stream")
+		accept += ", text/event-stream"
 	}
+	httpReq.Header.Set("Accept", accept)
 	if ps.sessionID != "" {
 		httpReq.Header.Set("Mcp-Session-Id", ps.sessionID)
 	}
