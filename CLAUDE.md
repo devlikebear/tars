@@ -6,9 +6,12 @@
 make build                # Go binary → bin/tars (ALWAYS Makefile, never go build)
 make console-build        # Svelte frontend assets (includes npm install)
 make test                 # go test ./...
+make lint-diff            # PR preflight: golangci-lint new issues since DIFF_BASE
+make test-diff            # PR preflight: changed Go packages + coverage check
+make test-cover-diff      # PR preflight: changed-line coverage >= DIFF_COVER_MIN
 make test-one TEST_NAME=TestFoo PKG=./internal/tarsserver/
 make test-race / make test-cover
-make fmt / make vet / make tidy / make security-scan
+make fmt / make vet / make lint / make tidy / make security-scan
 make dev-serve            # production-like (requires console-build first)
 make dev-console          # Vite (5173) + Go API (43180), auth off → http://127.0.0.1:43180/console
 cd frontend/console && npm run check   # svelte-check + tsc
@@ -155,6 +158,7 @@ TARS 기능 변경 시 홈페이지 콘텐츠도 갱신 필요 (매 변경마다
 
 `.github/workflows/ci.yml`:
 1. **security** — gitleaks + ripgrep secrets scan
-2. **test** — Node 20 → Playwright → Go test + coverage → Codecov
+2. **pr-diff** — pull requests run `make lint-diff` and `make test-cover-diff` against the PR base SHA
+3. **test** — pushes to main run Node 20 → Playwright → Go test + coverage threshold → Codecov
 
 `release-on-version-bump.yml` — triggered by `VERSION.txt` change on main. Builds console before binary.
