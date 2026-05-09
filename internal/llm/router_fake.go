@@ -20,6 +20,8 @@ type FakeClient struct {
 	AskCalls int
 	// ChatCalls counts invocations of Chat.
 	ChatCalls int
+	// LastChatOptions records the most recent Chat options.
+	LastChatOptions ChatOptions
 }
 
 // Ask implements llm.Client.
@@ -32,8 +34,9 @@ func (f *FakeClient) Ask(_ context.Context, prompt string) (string, error) {
 }
 
 // Chat implements llm.Client.
-func (f *FakeClient) Chat(_ context.Context, _ []ChatMessage, _ ChatOptions) (ChatResponse, error) {
+func (f *FakeClient) Chat(_ context.Context, _ []ChatMessage, opts ChatOptions) (ChatResponse, error) {
 	f.ChatCalls++
+	f.LastChatOptions = opts
 	if f.ChatResponse.Message.Role != "" || f.ChatResponse.Message.Content != "" {
 		return f.ChatResponse, nil
 	}

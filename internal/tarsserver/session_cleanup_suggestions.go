@@ -345,9 +345,8 @@ func requestSessionCleanupLLM(ctx context.Context, client llm.Client, mode strin
 			Content: userPrompt,
 		},
 	}, llm.ChatOptions{
-		OnDelta:         func(string) {},
-		ResponseFormat:  sessionCleanupResponseFormat(),
-		ReasoningEffort: "minimal",
+		OnDelta:        func(string) {},
+		ResponseFormat: sessionCleanupResponseFormat(),
 	})
 	if err != nil {
 		return "", err

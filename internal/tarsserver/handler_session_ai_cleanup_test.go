@@ -77,6 +77,12 @@ func TestSessionCleanupSuggestionsAPIArchiveModeUsesLLMAndSafetyRules(t *testing
 	if clients[llm.TierLight].ChatCalls != 1 {
 		t.Fatalf("expected cleanup role to use light LLM once, got %d calls", clients[llm.TierLight].ChatCalls)
 	}
+	if clients[llm.TierLight].LastChatOptions.ReasoningEffort != "" {
+		t.Fatalf("expected cleanup request to use configured tier reasoning effort, got override %q", clients[llm.TierLight].LastChatOptions.ReasoningEffort)
+	}
+	if clients[llm.TierLight].LastChatOptions.OnDelta == nil {
+		t.Fatal("expected cleanup request to keep streaming-compatible OnDelta callback")
+	}
 	if resp.Mode != "archive" || resp.Action != "archive" {
 		t.Fatalf("expected archive mode/action, got %+v", resp)
 	}
