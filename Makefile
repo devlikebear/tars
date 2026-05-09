@@ -12,6 +12,12 @@ TEST_NAME ?=
 HEARTBEAT_INTERVAL ?= 30s
 MAX_HEARTBEATS ?= 0
 COVER_OUT ?= coverage.out
+COVER_OUT_DIFF ?= coverage.diff.out
+COVER_MIN ?= 60
+DIFF_COVER_MIN ?= 80
+DIFF_HEAD ?=
+GOLANGCI_LINT_VERSION ?= v2.12.2
+GOLANGCI_LINT ?= $(GO) run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
 TARS_CONFIG ?= ./workspace/config/tars.config.yaml
 ROOT_DIR := $(abspath .)
 TARS_BIN := $(abspath $(BIN_DIR)/tars)
@@ -53,8 +59,9 @@ RELEASE_STAGE_DIR ?= $(DIST_DIR)/release-$(RELEASE_GOOS)-$(RELEASE_GOARCH)
 .DEFAULT_GOAL := help
 
 .PHONY: help \
-	test test-v test-one test-nocache test-race test-cover \
+	test test-v test-one test-nocache test-race test-cover test-cover-check test-diff test-cover-diff \
 	build build-bins release-asset clean tidy fmt vet lint \
+	lint-diff \
 	ensure-console-assets console-install console-build \
 	browser-install \
 	install install-server install-assistant uninstall uninstall-server uninstall-assistant reinstall \
@@ -71,6 +78,7 @@ help:
 	@echo ""
 	@echo "Common vars:"
 	@echo "  PKG=./... TEST_NAME=TestRun_ChatMessage CHAT_MSG='hello'"
+	@echo "  DIFF_BASE=<sha> DIFF_HEAD=<sha> COVER_MIN=$(COVER_MIN) DIFF_COVER_MIN=$(DIFF_COVER_MIN)"
 	@echo "  WORKSPACE_DIR=./workspace API_ADDR=127.0.0.1:43180 SERVER_URL=http://127.0.0.1:43180"
 	@echo "  TARS_CONFIG=./config/default.yaml ASSISTANT_API_TOKEN=... LAUNCH_PATH=$(LAUNCH_PATH)"
 	@echo "  ASSISTANT_WHISPER_LANGUAGE=$(ASSISTANT_WHISPER_LANGUAGE) (derived from locale; override with VAR=value)"
@@ -82,6 +90,9 @@ help:
 	@echo "  make test-nocache  - disable go test cache"
 	@echo "  make test-race     - run race detector"
 	@echo "  make test-cover    - write coverage to $(COVER_OUT)"
+	@echo "  make test-cover-check - require total coverage >= COVER_MIN ($(COVER_MIN)%)"
+	@echo "  make test-diff     - test changed Go packages + coverage check against DIFF_BASE"
+	@echo "  make test-cover-diff - require changed-line coverage >= DIFF_COVER_MIN ($(DIFF_COVER_MIN)%)"
 	@echo ""
 	@echo "Build/quality targets:"
 	@echo "  make build         - go build ./..."
@@ -102,7 +113,8 @@ help:
 	@echo "  make logs-assistant-err - tail assistant stderr log"
 	@echo "  make fmt           - go fmt ./..."
 	@echo "  make vet           - go vet ./..."
-	@echo "  make lint          - alias of vet for quality checks"
+	@echo "  make lint          - golangci-lint ./... (includes revive)"
+	@echo "  make lint-diff     - golangci-lint only new issues since DIFF_BASE"
 	@echo "  make tidy          - go mod tidy"
 	@echo "  make clean         - remove build artifacts"
 	@echo ""
@@ -141,6 +153,17 @@ test-race:
 
 test-cover:
 	$(GO) test -coverprofile=$(COVER_OUT) $(PKG)
+
+test-cover-check:
+	$(GO) test -coverprofile=$(COVER_OUT) $(PKG)
+	GO="$(GO)" ./scripts/check_coverage.sh "$(COVER_OUT)" "$(COVER_MIN)"
+
+test-diff:
+	GO="$(GO)" DIFF_HEAD="$(DIFF_HEAD)" COVER_OUT="$(COVER_OUT_DIFF)" COVER_MIN="$(COVER_MIN)" ./scripts/go_test_diff.sh
+
+test-cover-diff:
+	GO="$(GO)" DIFF_HEAD="$(DIFF_HEAD)" COVER_OUT="$(COVER_OUT_DIFF)" COVER_MIN="" ./scripts/go_test_diff.sh
+	GO="$(GO)" DIFF_HEAD="$(DIFF_HEAD)" ./scripts/check_diff_coverage.sh "$(COVER_OUT_DIFF)" "$(DIFF_COVER_MIN)"
 
 build: ensure-console-assets
 	mkdir -p $(BIN_DIR)
@@ -351,12 +374,18 @@ fmt:
 vet:
 	$(GO) vet ./...
 
-lint: vet
+lint:
+	$(GOLANGCI_LINT) run ./...
+
+lint-diff:
+	@base="$${DIFF_BASE:-$$(./scripts/diff_base.sh)}"; \
+	echo "Running golangci-lint for new issues since $${base}"; \
+	$(GOLANGCI_LINT) run --new-from-rev="$${base}" ./...
 
 tidy:
 	$(GO) mod tidy
 
 clean:
-	rm -rf $(BIN_DIR) $(COVER_OUT)
+	rm -rf $(BIN_DIR) $(COVER_OUT) $(COVER_OUT_DIFF)
 
 run-serve: dev-serve

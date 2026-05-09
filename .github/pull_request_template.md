@@ -10,6 +10,8 @@
 
 ## Validation
 
+- [ ] `make lint-diff`
+- [ ] `make test-cover-diff`
 - [ ] `make test`
 - [ ] `make security-scan`
 - [ ] Additional manual verification, if needed
