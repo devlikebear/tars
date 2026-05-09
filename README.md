@@ -10,6 +10,7 @@
 
 [![Website](https://img.shields.io/badge/website-tars.marvin--42.com-e09145?style=flat)](https://tars.marvin-42.com)
 [![CI](https://github.com/devlikebear/tars/actions/workflows/ci.yml/badge.svg)](https://github.com/devlikebear/tars/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/devlikebear/tars/actions/workflows/codeql.yml/badge.svg)](https://github.com/devlikebear/tars/actions/workflows/codeql.yml)
 [![codecov](https://codecov.io/gh/devlikebear/tars/graph/badge.svg)](https://codecov.io/gh/devlikebear/tars)
 [![Go](https://img.shields.io/github/go-mod/go-version/devlikebear/tars)](go.mod)
 [![Release](https://img.shields.io/github/v/release/devlikebear/tars)](https://github.com/devlikebear/tars/releases)

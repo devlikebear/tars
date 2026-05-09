@@ -10,6 +10,7 @@ make lint-diff            # PR preflight: golangci-lint new issues since DIFF_BA
 make test-diff            # PR preflight: changed Go packages + coverage check
 make test-cover-diff      # PR preflight: changed-line coverage >= DIFF_COVER_MIN
 make ci-static-analysis-check # PR preflight: CI static-analysis guardrails
+make codeql-workflow-check # PR preflight: CodeQL code-scanning workflow guardrails
 make test-one TEST_NAME=TestFoo PKG=./internal/tarsserver/
 make test-race / make test-cover
 make fmt / make vet / make lint / make tidy / make security-scan
@@ -162,5 +163,12 @@ TARS 기능 변경 시 홈페이지 콘텐츠도 갱신 필요 (매 변경마다
 1. **security** — gitleaks + ripgrep secrets scan
 2. **pr-diff** — pull requests run Svelte console checks, `npm run test:ci`, `make lint-diff` (with new-line `errcheck`/`staticcheck`), and `make test-cover-diff` against the PR base SHA
 3. **test** — pushes to main run Node 24 → frontend console checks/test slice → Playwright → Go test + coverage threshold → Codecov
+
+`.github/workflows/codeql.yml`:
+1. **Analyze (go)** — CodeQL autobuild + analysis for Go source
+2. **Analyze (javascript-typescript)** — buildless CodeQL analysis for Svelte/TypeScript/JavaScript
+3. **Analyze (actions)** — buildless CodeQL analysis for GitHub Actions workflows
+
+See `docs/static-analysis.md` for the static-analysis layering and local workflow guards.
 
 `release-on-version-bump.yml` — triggered by `VERSION.txt` change on main. Builds console before binary.

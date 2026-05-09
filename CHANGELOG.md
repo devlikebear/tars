@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.32.13] - 2026-05-09
+
+### Added
+
+- **CodeQL code scanning** — pull requests, pushes to `main`, and a weekly schedule now run CodeQL for Go, Svelte/TypeScript/JavaScript, and GitHub Actions workflows, publishing alerts through GitHub code scanning without duplicating the existing test and coverage jobs. Closes #774.
+
 ## [0.32.12] - 2026-05-09
 
 ### Changed
