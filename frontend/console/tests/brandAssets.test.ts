@@ -35,6 +35,8 @@ test('brand PNG assets have expected dimensions and alpha channel', () => {
 test('README and console surfaces reference the refreshed TARS brand assets', () => {
   assert.match(readmeSource, /<div align="center">/)
   assert.match(readmeSource, /<picture>/)
+  assert.match(readmeSource, /<img src="docs\/brand\/tars-icon\.png" alt="TARS icon" width="88" \/>\s*&nbsp;&nbsp;&nbsp;\s*<picture>/)
+  assert.doesNotMatch(readmeSource, /<h1>TARS<\/h1>/)
   assert.match(readmeSource, /docs\/brand\/tars-logo-dark\.png/)
   assert.match(readmeSource, /docs\/brand\/tars-icon\.png/)
   assert.match(readmeSource, /docs\/brand\/tars-logo\.png/)

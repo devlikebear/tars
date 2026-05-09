@@ -1,12 +1,12 @@
 <div align="center">
   <p>
-    <img src="docs/brand/tars-icon.png" alt="TARS" width="112" />
+    <img src="docs/brand/tars-icon.png" alt="TARS icon" width="88" />
+    &nbsp;&nbsp;&nbsp;
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="docs/brand/tars-logo-dark.png" />
+      <img src="docs/brand/tars-logo.png" alt="TARS — local AI agent runtime" width="390" />
+    </picture>
   </p>
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/tars-logo-dark.png" />
-    <img src="docs/brand/tars-logo.png" alt="TARS — local AI agent runtime" width="500" />
-  </picture>
-  <h1>TARS</h1>
   <p>
     <a href="https://tars.marvin-42.com"><img src="https://img.shields.io/badge/website-tars.marvin--42.com-e09145?style=flat" alt="Website" /></a>
     <a href="https://github.com/devlikebear/tars/actions/workflows/ci.yml"><img src="https://github.com/devlikebear/tars/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
