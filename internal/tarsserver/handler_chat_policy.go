@@ -23,12 +23,13 @@ func buildChatToolRegistry(
 	history []session.Message,
 	deps chatHandlerDeps,
 ) *tool.Registry {
-	registry := newBaseToolRegistryWithProcess(requestWorkspaceDir, policy, deps.tooling.ProcessManager, deps.tooling.MemorySemanticConfig)
-
-	// Standalone tools
-	if deps.tooling.UsageTracker != nil {
-		registry.Register(tool.NewUsageReportTool(deps.tooling.UsageTracker))
-	}
+	registry := newBaseToolRegistryWithProcessAndUsage(
+		requestWorkspaceDir,
+		policy,
+		deps.tooling.ProcessManager,
+		deps.tooling.UsageTracker,
+		deps.tooling.MemorySemanticConfig,
+	)
 
 	// Tasks aggregator (session-scoped plan + tasks)
 	registry.Register(tool.NewTasksTool(reqStore, requestWorkspaceDir, func() string { return sessionID }))

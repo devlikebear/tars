@@ -46,6 +46,16 @@ func newBaseToolRegistry(workspaceDir string) *tool.Registry {
 }
 
 func newBaseToolRegistryWithProcess(workspaceDir string, policy tool.PathPolicy, processManager *tool.ProcessManager, semanticCfg ...memory.SemanticConfig) *tool.Registry {
+	return newBaseToolRegistryWithProcessAndUsage(workspaceDir, policy, processManager, nil, semanticCfg...)
+}
+
+func newBaseToolRegistryWithProcessAndUsage(
+	workspaceDir string,
+	policy tool.PathPolicy,
+	processManager *tool.ProcessManager,
+	usageTracker *usage.Tracker,
+	semanticCfg ...memory.SemanticConfig,
+) *tool.Registry {
 	registry := tool.NewRegistryWithScope(tool.RegistryScopeUser)
 	semantic := firstSemanticConfig(semanticCfg...)
 	backend := buildMemoryBackend(workspaceDir, semantic, memoryBackendFile)
@@ -55,7 +65,12 @@ func newBaseToolRegistryWithProcess(workspaceDir string, policy tool.PathPolicy,
 	registry.Register(tool.NewWorkspaceTool(workspaceDir))
 
 	// Standalone tools
-	if usageTracker, err := usage.NewTracker(workspaceDir, usage.TrackerOptions{}); err == nil {
+	if usageTracker == nil {
+		if tracker, err := usage.NewTracker(workspaceDir, usage.TrackerOptions{}); err == nil {
+			usageTracker = tracker
+		}
+	}
+	if usageTracker != nil {
 		registry.Register(tool.NewUsageReportTool(usageTracker))
 	}
 
@@ -244,7 +259,7 @@ func newAgentPromptRunnerWithToolsAndMemory(
 
 		profile := agentPromptProfileForLabel(label)
 		systemPrompt := buildAgentSystemPrompt(targetWorkspaceDir, profile, semanticCfg)
-		baseRegistry := newBaseToolRegistryWithProcess(targetWorkspaceDir, tool.SingleDirPolicy(targetWorkspaceDir), nil, semanticCfg)
+		baseRegistry := newBaseToolRegistryWithProcessAndUsage(targetWorkspaceDir, tool.SingleDirPolicy(targetWorkspaceDir), nil, tracker, semanticCfg)
 		for _, extra := range extraTools {
 			if strings.TrimSpace(extra.Name) == "" {
 				continue
