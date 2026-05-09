@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.32.9] - 2026-05-09
+
+### Fixed
+
+- **AI session cleanup on OpenAI Codex** — session cleanup suggestions now preserve the configured tier reasoning effort instead of forcing `minimal`, fixing `gpt-5.5` requests that reject that value. Closes #769.
+
 ## [0.32.8] - 2026-05-09
 
 ### Added
