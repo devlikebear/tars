@@ -1,17 +1,21 @@
 package extensions
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/devlikebear/tars/internal/config"
 	"github.com/devlikebear/tars/internal/skill"
 	"github.com/devlikebear/tars/internal/tool"
+	"github.com/rs/zerolog"
+	zlog "github.com/rs/zerolog/log"
 )
 
 func TestManagerReload_AggregatesSkillsPluginsAndMCP(t *testing.T) {
@@ -181,6 +185,102 @@ func TestManagerWatch_BumpsVersionOnSkillChange(t *testing.T) {
 		time.Sleep(30 * time.Millisecond)
 	}
 	t.Fatalf("expected snapshot version to increase after file update (before=%d after=%d)", before, manager.Snapshot().Version)
+}
+
+func TestManagerReload_LogsStartupStepDurations(t *testing.T) {
+	root := t.TempDir()
+	workspaceDir := filepath.Join(root, "workspace")
+	mcpRuntime := &stubMCPRuntime{}
+	manager, err := NewManager(Options{
+		WorkspaceDir: workspaceDir,
+		MCPBaseServers: []config.MCPServer{
+			{Name: "base-fs", Command: "base-cmd"},
+		},
+		MCPRuntime: mcpRuntime,
+	})
+	if err != nil {
+		t.Fatalf("new manager: %v", err)
+	}
+
+	var logs bytes.Buffer
+	prevLogger := zlog.Logger
+	zlog.Logger = zerolog.New(&logs).Level(zerolog.DebugLevel)
+	t.Cleanup(func() {
+		zlog.Logger = prevLogger
+	})
+
+	if err := manager.Reload(context.Background()); err != nil {
+		t.Fatalf("reload manager: %v", err)
+	}
+
+	content := logs.String()
+	for _, want := range []string{
+		`"step":"extensions_reload"`,
+		`"step":"extensions_mcp_tools_build"`,
+		`"duration_ms":`,
+		`"message":"extensions startup step started"`,
+		`"message":"extensions startup step completed"`,
+	} {
+		if !strings.Contains(content, want) {
+			t.Fatalf("expected log %s in:\n%s", want, content)
+		}
+	}
+}
+
+func TestManagerStart_DefersMCPToolsBuild(t *testing.T) {
+	root := t.TempDir()
+	workspaceDir := filepath.Join(root, "workspace")
+	buildStarted := make(chan struct{})
+	unblockBuild := make(chan struct{})
+	mcpRuntime := &stubMCPRuntime{
+		buildStarted: buildStarted,
+		unblock:      unblockBuild,
+		tools: []tool.Tool{
+			{
+				Name:        "mcp.base-fs.read_file",
+				Description: "read file",
+				Parameters:  json.RawMessage(`{"type":"object","properties":{}}`),
+			},
+		},
+	}
+	manager, err := NewManager(Options{
+		WorkspaceDir: workspaceDir,
+		MCPBaseServers: []config.MCPServer{
+			{Name: "base-fs", Command: "base-cmd"},
+		},
+		MCPRuntime: mcpRuntime,
+	})
+	if err != nil {
+		t.Fatalf("new manager: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	startedAt := time.Now()
+	if err := manager.Start(ctx); err != nil {
+		t.Fatalf("start manager: %v", err)
+	}
+	if elapsed := time.Since(startedAt); elapsed > 100*time.Millisecond {
+		t.Fatalf("expected Start to return before MCP tools build completes, elapsed=%s", elapsed)
+	}
+	select {
+	case <-buildStarted:
+	case <-time.After(time.Second):
+		t.Fatal("expected async MCP tools build to start")
+	}
+	if got := len(manager.ChatTools()); got != 0 {
+		t.Fatalf("expected no MCP chat tools before async build completes, got %d", got)
+	}
+
+	close(unblockBuild)
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		if got := len(manager.ChatTools()); got == 1 {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("expected async MCP tools to be published, got %d", len(manager.ChatTools()))
 }
 
 func TestManagerReload_SkipsUnavailableSkillsFromSnapshotAndPrompt(t *testing.T) {
@@ -404,15 +504,30 @@ func TestManagerReload_SkipsUnavailablePluginsAndAnnotatesMCPSource(t *testing.T
 }
 
 type stubMCPRuntime struct {
-	lastServers []config.MCPServer
-	tools       []tool.Tool
+	lastServers      []config.MCPServer
+	tools            []tool.Tool
+	buildStarted     chan struct{}
+	buildStartedOnce sync.Once
+	unblock          <-chan struct{}
 }
 
 func (s *stubMCPRuntime) SetServers(servers []config.MCPServer) {
 	s.lastServers = append([]config.MCPServer(nil), servers...)
 }
 
-func (s *stubMCPRuntime) BuildTools(_ context.Context) ([]tool.Tool, error) {
+func (s *stubMCPRuntime) BuildTools(ctx context.Context) ([]tool.Tool, error) {
+	if s.buildStarted != nil {
+		s.buildStartedOnce.Do(func() {
+			close(s.buildStarted)
+		})
+	}
+	if s.unblock != nil {
+		select {
+		case <-s.unblock:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
 	return append([]tool.Tool(nil), s.tools...), nil
 }
 

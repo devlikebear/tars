@@ -111,42 +111,57 @@ func (m *Manager) SetDisabled(ctx context.Context, kind, name string, disabled b
 }
 
 func (m *Manager) Start(ctx context.Context) error {
-	if err := m.Reload(ctx); err != nil {
+	finishStart := beginExtensionsStartupStep("extensions_start")
+	if err := m.reload(ctx, reloadOptions{AsyncMCPTools: true}); err != nil {
+		finishStart(err)
 		return err
 	}
 
-	// Run on_start lifecycle hooks (non-fatal)
-	m.mu.RLock()
-	plugins := append([]plugin.Definition(nil), m.snapshot.Plugins...)
-	m.mu.RUnlock()
-	if diags := runLifecycleHooks(ctx, plugins, "on_start", 0, m.opts.LifecycleToolResolver); len(diags) > 0 {
-		m.mu.Lock()
-		m.snapshot.Diagnostics = append(m.snapshot.Diagnostics, diags...)
-		m.mu.Unlock()
-	}
-
-	if !m.opts.WatchSkills && !m.opts.WatchPlugins {
-		return nil
-	}
-	watcher, err := fsnotify.NewWatcher()
-	if err != nil {
-		return fmt.Errorf("create extension watcher: %w", err)
-	}
-
-	dirs := m.watchDirs()
-	for _, dir := range dirs {
-		if err := addWatchRecursive(watcher, dir); err != nil {
-			_ = watcher.Close()
-			return err
+	if err := runExtensionsStartupStep("extensions_on_start_hooks", func() error {
+		// Run on_start lifecycle hooks (non-fatal)
+		m.mu.RLock()
+		plugins := append([]plugin.Definition(nil), m.snapshot.Plugins...)
+		m.mu.RUnlock()
+		if diags := runLifecycleHooks(ctx, plugins, "on_start", 0, m.opts.LifecycleToolResolver); len(diags) > 0 {
+			m.mu.Lock()
+			m.snapshot.Diagnostics = append(m.snapshot.Diagnostics, diags...)
+			m.mu.Unlock()
 		}
+		return nil
+	}); err != nil {
+		finishStart(err)
+		return err
 	}
 
-	watchCtx, cancel := context.WithCancel(ctx)
-	m.watcherMu.Lock()
-	m.watcher = watcher
-	m.stopWatch = cancel
-	m.watcherMu.Unlock()
-	go m.watchLoop(watchCtx, watcher)
+	if err := runExtensionsStartupStep("extensions_watcher_setup", func() error {
+		if !m.opts.WatchSkills && !m.opts.WatchPlugins {
+			return nil
+		}
+		watcher, err := fsnotify.NewWatcher()
+		if err != nil {
+			return fmt.Errorf("create extension watcher: %w", err)
+		}
+
+		dirs := m.watchDirs()
+		for _, dir := range dirs {
+			if err := addWatchRecursive(watcher, dir); err != nil {
+				_ = watcher.Close()
+				return err
+			}
+		}
+
+		watchCtx, cancel := context.WithCancel(ctx)
+		m.watcherMu.Lock()
+		m.watcher = watcher
+		m.stopWatch = cancel
+		m.watcherMu.Unlock()
+		go m.watchLoop(watchCtx, watcher)
+		return nil
+	}); err != nil {
+		finishStart(err)
+		return err
+	}
+	finishStart(nil)
 	return nil
 }
 
@@ -170,33 +185,53 @@ func (m *Manager) Close() {
 }
 
 func (m *Manager) Reload(ctx context.Context) error {
+	return m.reload(ctx, reloadOptions{})
+}
+
+type reloadOptions struct {
+	AsyncMCPTools bool
+}
+
+func (m *Manager) reload(ctx context.Context, opts reloadOptions) error {
+	finishReload := beginExtensionsStartupStep("extensions_reload")
+	failReload := func(err error) error {
+		finishReload(err)
+		return err
+	}
+
 	plugins := plugin.Snapshot{}
 	var err error
 	if m.opts.PluginsEnabled {
-		plugins, err = plugin.Load(plugin.LoadOptions{
-			Sources:      toPluginSources(m.opts.PluginSources),
-			Availability: plugin.AvailabilityOptions{},
-		})
-		if err != nil {
+		if err := runExtensionsStartupStep("extensions_plugin_load", func() error {
+			plugins, err = plugin.Load(plugin.LoadOptions{
+				Sources:      toPluginSources(m.opts.PluginSources),
+				Availability: plugin.AvailabilityOptions{},
+			})
 			return err
+		}); err != nil {
+			return failReload(err)
 		}
 	}
 
 	skills := skill.Snapshot{}
 	if m.opts.SkillsEnabled {
-		skillSources := mergeSkillSources(m.opts.SkillSources, plugins.Plugins, plugins.SkillDirs)
-		skills, err = skill.Load(skill.LoadOptions{
-			Sources: skillSources,
-			Availability: skill.AvailabilityOptions{
-				InstalledPlugins: pluginIDs(plugins.Plugins),
-			},
-		})
-		if err != nil {
+		if err := runExtensionsStartupStep("extensions_skill_load", func() error {
+			skillSources := mergeSkillSources(m.opts.SkillSources, plugins.Plugins, plugins.SkillDirs)
+			skills, err = skill.Load(skill.LoadOptions{
+				Sources: skillSources,
+				Availability: skill.AvailabilityOptions{
+					InstalledPlugins: pluginIDs(plugins.Plugins),
+				},
+			})
 			return err
+		}); err != nil {
+			return failReload(err)
 		}
-		skills, err = skill.MirrorToWorkspace(m.opts.WorkspaceDir, skills)
-		if err != nil {
+		if err := runExtensionsStartupStep("extensions_skill_mirror", func() error {
+			skills, err = skill.MirrorToWorkspace(m.opts.WorkspaceDir, skills)
 			return err
+		}); err != nil {
+			return failReload(err)
 		}
 	}
 
@@ -221,29 +256,53 @@ func (m *Manager) Reload(ctx context.Context) error {
 				Msg("extensions: plugin-declared MCP servers enabled; verify each plugin source is trusted")
 		}
 	}
-	hubMCPServers, hubDiagnostics := skillhub.LoadInstalledMCPServers(m.opts.WorkspaceDir)
-	workspaceMCPServers, workspaceMCPDiagnostics := skillhub.LoadWorkspaceMCPServers(m.opts.WorkspaceDir)
-	mcpServers, mcpDiagnostics := mergeMCPServers(
-		mcpServerGroup{label: "config", servers: m.opts.MCPBaseServers},
-		mcpServerGroup{label: "plugin", servers: pluginMCPServers},
-		mcpServerGroup{label: "hub", servers: hubMCPServers},
-		mcpServerGroup{label: "workspace", servers: workspaceMCPServers},
-	)
+	var hubMCPServers []config.MCPServer
+	var hubDiagnostics []string
+	var workspaceMCPServers []config.MCPServer
+	var workspaceMCPDiagnostics []string
+	var mcpServers []config.MCPServer
+	var mcpDiagnostics []string
+	if err := runExtensionsStartupStep("extensions_mcp_servers_load", func() error {
+		hubMCPServers, hubDiagnostics = skillhub.LoadInstalledMCPServers(m.opts.WorkspaceDir)
+		workspaceMCPServers, workspaceMCPDiagnostics = skillhub.LoadWorkspaceMCPServers(m.opts.WorkspaceDir)
+		mcpServers, mcpDiagnostics = mergeMCPServers(
+			mcpServerGroup{label: "config", servers: m.opts.MCPBaseServers},
+			mcpServerGroup{label: "plugin", servers: pluginMCPServers},
+			mcpServerGroup{label: "hub", servers: hubMCPServers},
+			mcpServerGroup{label: "workspace", servers: workspaceMCPServers},
+		)
+		return nil
+	}); err != nil {
+		return failReload(err)
+	}
 	mcpTools := make([]tool.Tool, 0)
+	mcpToolsPending := false
 	if m.opts.MCPRuntime != nil {
 		m.opts.MCPRuntime.SetServers(mcpServers)
-		mcpTools, err = m.opts.MCPRuntime.BuildTools(ctx)
-		if err != nil {
-			// MCP server failures should not block startup; record diagnostic and continue.
-			mcpDiagnostics = append(mcpDiagnostics, fmt.Sprintf("mcp tools build failed: %v", err))
-			mcpTools = nil
+		if opts.AsyncMCPTools {
+			mcpToolsPending = true
+			zlog.Logger.Debug().
+				Int("mcp_servers", len(mcpServers)).
+				Msg("extensions mcp tools build deferred")
+		} else {
+			finishMCPTools := beginExtensionsStartupStep("extensions_mcp_tools_build")
+			mcpTools, err = m.opts.MCPRuntime.BuildTools(ctx)
+			finishMCPTools(err)
+			if err != nil {
+				// MCP server failures should not block startup; record diagnostic and continue.
+				mcpDiagnostics = append(mcpDiagnostics, fmt.Sprintf("mcp tools build failed: %v", err))
+				mcpTools = nil
+			}
 		}
 	}
 
 	// Filter out user-disabled extensions
-	disabled, err := m.disabledStore.Load()
-	if err != nil {
+	var disabled DisabledSet
+	if err := runExtensionsStartupStep("extensions_disabled_load", func() error {
+		disabled, err = m.disabledStore.Load()
 		return err
+	}); err != nil {
+		return failReload(err)
 	}
 	{
 		filtered := make([]skill.Definition, 0, len(skills.Skills))
@@ -307,18 +366,89 @@ func (m *Manager) Reload(ctx context.Context) error {
 	}
 
 	// Collect tool provider tools (stub — Phase 2 will implement actual providers)
-	providerTools, providerDiags := m.collectToolProviderTools(ctx, plugins.Plugins)
+	var providerTools []tool.Tool
+	var providerDiags []string
+	if err := runExtensionsStartupStep("extensions_tool_provider_collect", func() error {
+		providerTools, providerDiags = m.collectToolProviderTools(ctx, plugins.Plugins)
+		return nil
+	}); err != nil {
+		return failReload(err)
+	}
 	if len(providerDiags) > 0 {
 		nextSnapshot.Diagnostics = append(nextSnapshot.Diagnostics, providerDiags...)
 	}
 
-	m.mu.Lock()
-	m.snapshot = nextSnapshot
-	allTools := append([]tool.Tool(nil), mcpTools...)
-	allTools = append(allTools, providerTools...)
-	m.chatTools = allTools
-	m.mu.Unlock()
+	if err := runExtensionsStartupStep("extensions_snapshot_publish", func() error {
+		m.mu.Lock()
+		m.snapshot = nextSnapshot
+		allTools := append([]tool.Tool(nil), mcpTools...)
+		allTools = append(allTools, providerTools...)
+		m.chatTools = allTools
+		m.mu.Unlock()
+		return nil
+	}); err != nil {
+		return failReload(err)
+	}
+	if mcpToolsPending {
+		m.buildMCPToolsAsync(ctx, nextSnapshot.Version, providerTools)
+	}
+	finishReload(nil)
 	return nil
+}
+
+func (m *Manager) buildMCPToolsAsync(ctx context.Context, snapshotVersion int64, providerTools []tool.Tool) {
+	if m == nil || m.opts.MCPRuntime == nil {
+		return
+	}
+	providerTools = append([]tool.Tool(nil), providerTools...)
+	go func() {
+		finishMCPTools := beginExtensionsStartupStep("extensions_mcp_tools_build_async")
+		mcpTools, err := m.opts.MCPRuntime.BuildTools(ctx)
+		finishMCPTools(err)
+		if err != nil && ctx.Err() != nil {
+			return
+		}
+
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		if m.snapshot.Version != snapshotVersion {
+			return
+		}
+		m.snapshot.Version = m.version.Add(1)
+		if err != nil {
+			m.snapshot.Diagnostics = append(m.snapshot.Diagnostics, fmt.Sprintf("mcp tools build failed: %v", err))
+			m.chatTools = append([]tool.Tool(nil), providerTools...)
+			return
+		}
+		allTools := append([]tool.Tool(nil), mcpTools...)
+		allTools = append(allTools, providerTools...)
+		m.chatTools = allTools
+		zlog.Logger.Info().
+			Int("mcp_tools", len(mcpTools)).
+			Msg("extensions mcp tools ready")
+	}()
+}
+
+func runExtensionsStartupStep(step string, fn func() error) error {
+	finish := beginExtensionsStartupStep(step)
+	err := fn()
+	finish(err)
+	return err
+}
+
+func beginExtensionsStartupStep(step string) func(error) {
+	startedAt := time.Now()
+	zlog.Logger.Debug().Str("step", step).Msg("extensions startup step started")
+	return func(err error) {
+		event := zlog.Logger.Debug().
+			Str("step", step).
+			Int64("duration_ms", time.Since(startedAt).Milliseconds())
+		if err != nil {
+			event.Err(err).Msg("extensions startup step failed")
+			return
+		}
+		event.Msg("extensions startup step completed")
+	}
 }
 
 func (m *Manager) Snapshot() Snapshot {

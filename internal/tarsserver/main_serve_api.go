@@ -829,65 +829,140 @@ func registerAPIRoutes(mux *http.ServeMux, handlers apiRouteHandlers) {
 }
 
 func startBackgrounds(ctx context.Context, runtime *serveAPIRuntime, logger zerolog.Logger) error {
+	finishStartup := beginBackgroundStartupStep(logger, "start_backgrounds")
 	if runtime == nil {
-		return fmt.Errorf("serve runtime is required")
+		err := fmt.Errorf("serve runtime is required")
+		finishStartup(err)
+		return err
 	}
 	cfg := runtime.cfg
 
-	reconcileRemoteAccessOnStart(ctx, runtime, logger)
-
-	if runtime.agentRuntime != nil {
-		runtime.agentRuntime.SetAgentsWatchEnabled(false)
-	}
-	if cfg.AgentRuntimeEnabled && cfg.AgentRuntimeAgentsWatch && runtime.agentRuntime != nil && runtime.agentRuntimeAgentsWatch != nil {
-		started, watchErr := runtime.agentRuntimeAgentsWatch.Start(ctx)
-		if watchErr != nil {
-			logger.Warn().Err(watchErr).Msg("agent runtime agents watcher start failed")
-		}
-		runtime.agentRuntime.SetAgentsWatchEnabled(started)
-		if started {
-			logger.Info().Int("debounce_ms", cfg.AgentRuntimeAgentsWatchDebounceMS).Msg("agent runtime agents watcher started")
-		} else {
-			logger.Debug().Msg("agent runtime agents watcher skipped (workspace agents dir not found)")
-		}
+	if err := runBackgroundStartupStep(logger, "remote_access_reconcile", func() error {
+		reconcileRemoteAccessOnStart(ctx, runtime, logger)
+		return nil
+	}); err != nil {
+		finishStartup(err)
+		return err
 	}
 
-	if runtime.extensionsManager != nil {
-		if err := runtime.extensionsManager.Start(ctx); err != nil {
-			return err
+	if err := runBackgroundStartupStep(logger, "agent_runtime_agents_watch", func() error {
+		if runtime.agentRuntime != nil {
+			runtime.agentRuntime.SetAgentsWatchEnabled(false)
 		}
-	}
-	if runtime.cronManager != nil {
-		go func() {
-			if err := runtime.cronManager.Start(ctx); err != nil {
-				logger.Error().Err(err).Msg("cron manager stopped with error")
+		if cfg.AgentRuntimeEnabled && cfg.AgentRuntimeAgentsWatch && runtime.agentRuntime != nil && runtime.agentRuntimeAgentsWatch != nil {
+			started, watchErr := runtime.agentRuntimeAgentsWatch.Start(ctx)
+			if watchErr != nil {
+				logger.Warn().Err(watchErr).Msg("agent runtime agents watcher start failed")
 			}
-		}()
-	}
-	if runtime.pulseRuntime != nil {
-		runtime.pulseRuntime.Start(ctx)
-	}
-	if runtime.reflectionRuntime != nil {
-		runtime.reflectionRuntime.Start(ctx)
-	}
-	if runtime.watchdogManager != nil {
-		go func() {
-			if err := runtime.watchdogManager.Start(ctx); err != nil {
-				logger.Error().Err(err).Msg("watchdog manager stopped with error")
+			runtime.agentRuntime.SetAgentsWatchEnabled(started)
+			if started {
+				logger.Info().Int("debounce_ms", cfg.AgentRuntimeAgentsWatchDebounceMS).Msg("agent runtime agents watcher started")
+			} else {
+				logger.Debug().Msg("agent runtime agents watcher skipped (workspace agents dir not found)")
 			}
-		}()
-	}
-	if cfg.ChannelsTelegramEnabled && cfg.ChannelsTelegramPollingEnabled {
-		if runtime.telegramPoller == nil {
-			logger.Debug().Msg("telegram polling skipped (token or handler is not configured)")
-		} else {
-			go runtime.telegramPoller.Run(ctx)
-			logger.Info().
-				Str("dm_policy", normalizeTelegramDMPolicy(cfg.ChannelsTelegramDMPolicy)).
-				Msg("telegram polling started")
 		}
+		return nil
+	}); err != nil {
+		finishStartup(err)
+		return err
 	}
+
+	if err := runBackgroundStartupStep(logger, "extensions_manager", func() error {
+		if runtime.extensionsManager != nil {
+			if err := runtime.extensionsManager.Start(ctx); err != nil {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
+		finishStartup(err)
+		return err
+	}
+	if err := runBackgroundStartupStep(logger, "cron_manager", func() error {
+		if runtime.cronManager != nil {
+			go func() {
+				if err := runtime.cronManager.Start(ctx); err != nil {
+					logger.Error().Err(err).Msg("cron manager stopped with error")
+				}
+			}()
+		}
+		return nil
+	}); err != nil {
+		finishStartup(err)
+		return err
+	}
+	if err := runBackgroundStartupStep(logger, "pulse_runtime", func() error {
+		if runtime.pulseRuntime != nil {
+			runtime.pulseRuntime.Start(ctx)
+		}
+		return nil
+	}); err != nil {
+		finishStartup(err)
+		return err
+	}
+	if err := runBackgroundStartupStep(logger, "reflection_runtime", func() error {
+		if runtime.reflectionRuntime != nil {
+			runtime.reflectionRuntime.Start(ctx)
+		}
+		return nil
+	}); err != nil {
+		finishStartup(err)
+		return err
+	}
+	if err := runBackgroundStartupStep(logger, "watchdog_manager", func() error {
+		if runtime.watchdogManager != nil {
+			go func() {
+				if err := runtime.watchdogManager.Start(ctx); err != nil {
+					logger.Error().Err(err).Msg("watchdog manager stopped with error")
+				}
+			}()
+		}
+		return nil
+	}); err != nil {
+		finishStartup(err)
+		return err
+	}
+	if err := runBackgroundStartupStep(logger, "telegram_polling", func() error {
+		if cfg.ChannelsTelegramEnabled && cfg.ChannelsTelegramPollingEnabled {
+			if runtime.telegramPoller == nil {
+				logger.Debug().Msg("telegram polling skipped (token or handler is not configured)")
+			} else {
+				go runtime.telegramPoller.Run(ctx)
+				logger.Info().
+					Str("dm_policy", normalizeTelegramDMPolicy(cfg.ChannelsTelegramDMPolicy)).
+					Msg("telegram polling started")
+			}
+		}
+		return nil
+	}); err != nil {
+		finishStartup(err)
+		return err
+	}
+	finishStartup(nil)
 	return nil
+}
+
+func runBackgroundStartupStep(logger zerolog.Logger, step string, fn func() error) error {
+	finish := beginBackgroundStartupStep(logger, step)
+	err := fn()
+	finish(err)
+	return err
+}
+
+func beginBackgroundStartupStep(logger zerolog.Logger, step string) func(error) {
+	startedAt := time.Now()
+	logger.Debug().Str("step", step).Msg("background startup step started")
+	return func(err error) {
+		duration := time.Since(startedAt)
+		event := logger.Debug().
+			Str("step", step).
+			Int64("duration_ms", duration.Milliseconds())
+		if err != nil {
+			event.Err(err).Msg("background startup step failed")
+			return
+		}
+		event.Msg("background startup step completed")
+	}
 }
 
 func reconcileRemoteAccessOnStart(ctx context.Context, runtime *serveAPIRuntime, logger zerolog.Logger) {
