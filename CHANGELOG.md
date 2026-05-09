@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.32.6] - 2026-05-09
+
+### Added
+
+- **Task contract verification runner** — approved task contracts can now run their `verification_commands` from the Console Tasks panel through a bounded admin/session endpoint. Each command result is stored as task evidence with pass/fail status, exit code, and output summary so verification survives reloads, compaction injection, and plan archives. Closes #757.
+
 ## [0.32.5] - 2026-05-08
 
 ### Changed

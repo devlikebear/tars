@@ -52,6 +52,7 @@ The primary interface. Browser-based console at `http://127.0.0.1:43180/console`
 - `/` command autocomplete for built-in chat actions and explicit user-invocable skill selection
 - First-turn tier recommendation suggests heavy, standard, or light before the first expensive chat call; accepting or overriding it routes that turn through the chosen tier and records the outcome for later usage analysis
 - `/config` opens advanced per-session tool, skill, automation consent, and TARS style controls when a selected session needs explicit overrides; permission changes show a deterministic risk/impact preview before saving
+- The Tasks panel keeps plan contracts, done criteria, expected artifacts, and verification commands together; once a contract is approved, its verification commands can run from the Console and attach pass/fail evidence to the task record
 - Session Health badge and dockable recommendation panel flag long context, stale plans, broad permissions, noisy prior memory, and idle sessions with direct actions for compacting, task review, config trimming, prior-context review, or skill extraction
 - Prior Context preview panel showing the exact memory section, source badges, and token budget for the current draft
 - Chat panels share a Dock Manager: Sessions and tool panels, including the Git Inspector, can move between left, right, bottom, and fullscreen zones, with drag-resized dimensions persisted in the browser

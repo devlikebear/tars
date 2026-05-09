@@ -705,6 +705,11 @@ func newSessionAPIHandlerFull(store *session.Store, logger zerolog.Logger, usage
 				}
 				writeJSON(w, http.StatusOK, map[string]string{"ok": "true"})
 			}
+		case len(pathParts) == 3 && pathParts[1] == "tasks" && pathParts[2] == "verify":
+			if !requireMethod(w, r, http.MethodPost) {
+				return
+			}
+			handleSessionTaskVerification(w, r, reqStore, sessionID)
 		case len(pathParts) == 2 && pathParts[1] == "tasks":
 			if !requireMethod(w, r, http.MethodGet, http.MethodPost) {
 				return
