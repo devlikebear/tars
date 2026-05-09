@@ -1,7 +1,13 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import { getGlobalPlans } from '../lib/api'
-  import { aggregatePlanStatusCount, filterPlansBySummaryCard, type PlanSummaryFilter } from '../lib/plans'
+  import {
+    aggregatePlanStatusCount,
+    aggregateStaleCompletedPlanCount,
+    filterPlansBySummaryCard,
+    isStaleCompletedPlan,
+    type PlanSummaryFilter,
+  } from '../lib/plans'
   import type { GlobalPlanItem } from '../lib/types'
   import { t } from '../i18n'
 
@@ -27,6 +33,7 @@
     { filter: 'in_progress', label: $t.plans.inProgress, count: aggregatePlanStatusCount(plans, 'in_progress') },
     { filter: 'pending', label: $t.plans.pending, count: aggregatePlanStatusCount(plans, 'pending') },
     { filter: 'completed', label: $t.plans.completed, count: aggregatePlanStatusCount(plans, 'completed') },
+    { filter: 'ready_to_close', label: $t.plans.readyToClose, count: aggregateStaleCompletedPlanCount(plans) },
   ])
 
   async function load() {
@@ -122,14 +129,17 @@
     <section class="plan-grid" aria-label={$t.plans.plansAriaLabel}>
       {#each filteredPlans as item (item.session.id)}
         {@const percent = progressPercent(item)}
-        <button class="plan-card card" type="button" onclick={() => openSession(item.session.id)}>
+        {@const staleCompleted = isStaleCompletedPlan(item)}
+        <button class="plan-card card" class:ready-to-close={staleCompleted} type="button" onclick={() => openSession(item.session.id)}>
           <span class="card-topline">
             <span class="session-title">{item.session.title}</span>
-            <span class="badge badge-default">{sessionKind(item)}</span>
+            <span class="badge" class:badge-default={!staleCompleted} class:badge-warning={staleCompleted}>
+              {staleCompleted ? $t.plans.readyToClose : sessionKind(item)}
+            </span>
           </span>
           <strong class="plan-goal">{item.plan.goal}</strong>
           <span class="plan-meta">
-            <span>{item.plan.status ?? $t.plans.statusFallback}</span>
+            <span>{staleCompleted ? $t.plans.readyToCloseHint : (item.plan.status ?? $t.plans.statusFallback)}</span>
             <span>{$t.plans.updatedAt(formatTime(item.updated_at))}</span>
           </span>
           <span class="progress-track" aria-label={$t.plans.progressAria(percent)}>
@@ -140,6 +150,7 @@
             <span>{$t.plans.activeSuffix(item.summary?.in_progress ?? 0)}</span>
             <span>{$t.plans.pendingSuffix(item.summary?.pending ?? 0)}</span>
           </span>
+          <span class="plan-action">{staleCompleted ? $t.plans.resolvePlan : $t.plans.openPlan}</span>
         </button>
       {/each}
     </section>
@@ -255,6 +266,15 @@
     transform: translateY(-1px);
   }
 
+  .plan-card.ready-to-close {
+    border-color: color-mix(in srgb, var(--warning) 38%, var(--border-subtle));
+    background: color-mix(in srgb, var(--warning) 7%, var(--surface-card));
+  }
+
+  .plan-card.ready-to-close:hover {
+    border-color: var(--warning);
+  }
+
   .card-topline,
   .plan-meta,
   .plan-stats {
@@ -311,6 +331,21 @@
     height: 100%;
     border-radius: inherit;
     background: var(--primary);
+  }
+
+  .ready-to-close .progress-fill {
+    background: var(--warning);
+  }
+
+  .plan-action {
+    align-self: flex-start;
+    color: var(--primary);
+    font-size: var(--text-xs);
+    font-weight: 700;
+  }
+
+  .ready-to-close .plan-action {
+    color: var(--warning);
   }
 
   .plans-empty {

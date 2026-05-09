@@ -1377,6 +1377,10 @@ export type Translations = {
     inProgress: string
     pending: string
     completed: string
+    readyToClose: string
+    readyToCloseHint: string
+    openPlan: string
+    resolvePlan: string
     statusFallback: string
     updatedAt: (time: string) => string
     progressAria: (percent: number) => string
