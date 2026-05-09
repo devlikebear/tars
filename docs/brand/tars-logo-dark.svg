@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="620" height="220" viewBox="0 0 620 220" role="img" aria-labelledby="title desc">
+  <title id="title">TARS logo for dark backgrounds</title>
+  <desc id="desc">Light TARS wordmark with local AI agent runtime tagline for dark theme surfaces.</desc>
+  <defs>
+    <linearGradient id="wordmark" x1="36" x2="560" y1="50" y2="148" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f5f0e8"/>
+      <stop offset="0.58" stop-color="#d9d3cb"/>
+      <stop offset="1" stop-color="#9f9286"/>
+    </linearGradient>
+  </defs>
+  <g font-family="Avenir Next, Outfit, Helvetica Neue, Arial, sans-serif">
+    <text x="36" y="142" fill="url(#wordmark)" font-size="132" font-weight="800" letter-spacing="0">TARS</text>
+    <text x="44" y="192" fill="#f0a04f" font-size="30" font-weight="600" letter-spacing="2.8">LOCAL AI AGENT RUNTIME</text>
+  </g>
+</svg>

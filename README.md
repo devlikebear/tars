@@ -1,23 +1,23 @@
-<p align="center">
-  <img src="docs/brand/tars-icon.png" alt="TARS" width="144" />
-</p>
-
-<p align="center">
-  <img src="docs/brand/tars-logo.png" alt="TARS — local AI agent runtime" width="500" />
-</p>
-
-# TARS
-
-[![Website](https://img.shields.io/badge/website-tars.marvin--42.com-e09145?style=flat)](https://tars.marvin-42.com)
-[![CI](https://github.com/devlikebear/tars/actions/workflows/ci.yml/badge.svg)](https://github.com/devlikebear/tars/actions/workflows/ci.yml)
-[![CodeQL](https://github.com/devlikebear/tars/actions/workflows/codeql.yml/badge.svg)](https://github.com/devlikebear/tars/actions/workflows/codeql.yml)
-[![codecov](https://codecov.io/gh/devlikebear/tars/graph/badge.svg)](https://codecov.io/gh/devlikebear/tars)
-[![Go](https://img.shields.io/github/go-mod/go-version/devlikebear/tars)](go.mod)
-[![Release](https://img.shields.io/github/v/release/devlikebear/tars)](https://github.com/devlikebear/tars/releases)
-
-> **Homepage:** https://tars.marvin-42.com — project overview, features, and quickstart.
-
-**TARS is a local AI agent runtime that runs on your machine, under your control.**
+<div align="center">
+  <p>
+    <img src="docs/brand/tars-icon.png" alt="TARS" width="112" />
+  </p>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/tars-logo-dark.png" />
+    <img src="docs/brand/tars-logo.png" alt="TARS — local AI agent runtime" width="500" />
+  </picture>
+  <h1>TARS</h1>
+  <p>
+    <a href="https://tars.marvin-42.com"><img src="https://img.shields.io/badge/website-tars.marvin--42.com-e09145?style=flat" alt="Website" /></a>
+    <a href="https://github.com/devlikebear/tars/actions/workflows/ci.yml"><img src="https://github.com/devlikebear/tars/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
+    <a href="https://github.com/devlikebear/tars/actions/workflows/codeql.yml"><img src="https://github.com/devlikebear/tars/actions/workflows/codeql.yml/badge.svg" alt="CodeQL" /></a>
+    <a href="https://codecov.io/gh/devlikebear/tars"><img src="https://codecov.io/gh/devlikebear/tars/graph/badge.svg" alt="codecov" /></a>
+    <a href="go.mod"><img src="https://img.shields.io/github/go-mod/go-version/devlikebear/tars" alt="Go" /></a>
+    <a href="https://github.com/devlikebear/tars/releases"><img src="https://img.shields.io/github/v/release/devlikebear/tars" alt="Release" /></a>
+  </p>
+  <p><strong>TARS is a local AI agent runtime that runs on your machine, under your control.</strong></p>
+  <p><strong>Homepage:</strong> <a href="https://tars.marvin-42.com">tars.marvin-42.com</a> — project overview, features, and quickstart.</p>
+</div>
 
 TARS runs as a single Go binary on your machine. From the browser console you can directly inspect and control its work — chat with dockable Git Inspector and tool panels, message-level session forks, an Agent Runtime page with list/tree/Gantt/Flow views, Memory Inbox review, scheduled jobs, a background watchdog, and nightly reflection. Everything is configurable via YAML and extensible via skills, plugins, and MCP servers. Telegram and webhook channels are available when you're away from the browser.
 

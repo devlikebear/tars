@@ -195,8 +195,11 @@
     align-items: center;
     justify-content: center;
     border-radius: var(--radius-md);
-    border: 1px solid rgba(224, 145, 69, 0.28);
-    background: rgba(224, 145, 69, 0.16);
+    border: 1px solid rgba(255, 211, 170, 0.36);
+    background:
+      linear-gradient(145deg, rgba(224, 145, 69, 0.38), rgba(255, 211, 170, 0.16)),
+      var(--surface-elevated);
+    box-shadow: 0 0 0 2px rgba(255, 211, 170, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.16);
     box-sizing: border-box;
     flex-shrink: 0;
   }
@@ -205,7 +208,7 @@
     width: 28px;
     height: 28px;
     object-fit: contain;
-    filter: brightness(1.35) contrast(1.05);
+    filter: brightness(1.55) contrast(1.16) saturate(1.08);
   }
 
   .nav-logo-text {
