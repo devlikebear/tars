@@ -153,6 +153,138 @@ func TestSessionCleanupSuggestionsAPIDeleteModeOnlyReturnsArchivedSessions(t *te
 	}
 }
 
+func TestSessionCleanupSuggestionsAPIDeleteModeAnalyzesRecentGreetingOnlyArchives(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+	store := session.NewStore(root)
+	greeting := mustCreateCleanupSession(t, store, "안녕?")
+	substantive := mustCreateCleanupSession(t, store, "릴리스 체크")
+	if _, err := store.SetArchived(greeting.ID, true); err != nil {
+		t.Fatalf("archive greeting: %v", err)
+	}
+	if _, err := store.SetArchived(substantive.ID, true); err != nil {
+		t.Fatalf("archive substantive: %v", err)
+	}
+	recent := time.Now().UTC().Add(-50 * time.Minute)
+	rewriteSessionIndexForCleanupTest(t, root, func(index map[string]session.Session) {
+		for id, sess := range index {
+			sess.CreatedAt = recent
+			sess.UpdatedAt = recent
+			archivedAt := recent
+			sess.ArchivedAt = &archivedAt
+			index[id] = sess
+		}
+	})
+	if err := session.AppendMessage(store.TranscriptPath(greeting.ID), session.Message{Role: "user", Content: "안녕?"}); err != nil {
+		t.Fatalf("append greeting user: %v", err)
+	}
+	if err := session.AppendMessage(store.TranscriptPath(greeting.ID), session.Message{Role: "assistant", Content: "안녕하세요. 무엇을 도와드릴까요?"}); err != nil {
+		t.Fatalf("append greeting assistant: %v", err)
+	}
+	if err := session.AppendMessage(store.TranscriptPath(substantive.ID), session.Message{Role: "user", Content: "v0.32.9 릴리스 검증 결과와 Homebrew tap 상태를 비교해줘"}); err != nil {
+		t.Fatalf("append substantive user: %v", err)
+	}
+	if err := session.AppendMessage(store.TranscriptPath(substantive.ID), session.Message{Role: "assistant", Content: "릴리스 검증 결과를 정리했습니다."}); err != nil {
+		t.Fatalf("append substantive assistant: %v", err)
+	}
+
+	router, clients, err := llm.NewFakeRouter(llm.TierStandard, map[llm.Role]llm.Tier{
+		llm.RoleSessionCleanup: llm.TierLight,
+	})
+	if err != nil {
+		t.Fatalf("fake router: %v", err)
+	}
+	clients[llm.TierLight].ChatResponse = llm.ChatResponse{Message: llm.ChatMessage{Role: "assistant", Content: fmt.Sprintf(`{
+		"suggestions": [
+			{"session_id": %q, "action": "delete", "confidence": 0.9, "reason": "Greeting-only archived conversation."},
+			{"session_id": %q, "action": "delete", "confidence": 0.9, "reason": "Recently archived substantive work must stay protected."}
+		]
+	}`, greeting.ID, substantive.ID)}}
+
+	handler := newSessionAPIHandlerFullWithLLM(store, zerolog.Nop(), nil, sessionStyleValues{}, nil, nil, router)
+	var resp sessionCleanupSuggestionResponse
+	postSessionCleanupSuggestionsForTest(t, handler, `{"mode":"delete","limit":5}`, &resp)
+
+	if resp.AnalyzedCount != 1 {
+		t.Fatalf("expected only the greeting archive to be analyzed, got %+v", resp)
+	}
+	if resp.Count != 1 || len(resp.Suggestions) != 1 {
+		t.Fatalf("expected one greeting delete suggestion, got %+v", resp)
+	}
+	if resp.Suggestions[0].SessionID != greeting.ID {
+		t.Fatalf("expected greeting suggestion, got %+v", resp.Suggestions[0])
+	}
+	if resp.ExcludedCount < 1 {
+		t.Fatalf("expected substantive recent archive to stay protected, got %+v", resp)
+	}
+}
+
+func TestSessionCleanupTrivialTranscriptClassification(t *testing.T) {
+	tests := []struct {
+		name    string
+		title   string
+		summary sessionCleanupTranscript
+		want    bool
+	}{
+		{
+			name:  "empty session is trivial",
+			title: "New Chat",
+			want:  true,
+		},
+		{
+			name:  "greeting punctuation is trivial",
+			title: "안녕?",
+			summary: sessionCleanupTranscript{
+				messageCount: 2,
+				firstUser:    "안녕?",
+			},
+			want: true,
+		},
+		{
+			name:  "generic title with one tiny user message is trivial",
+			title: "chat",
+			summary: sessionCleanupTranscript{
+				messageCount: 1,
+				firstUser:    "test",
+			},
+			want: true,
+		},
+		{
+			name:  "three messages are not trivial",
+			title: "안녕?",
+			summary: sessionCleanupTranscript{
+				messageCount: 3,
+				firstUser:    "안녕?",
+			},
+			want: false,
+		},
+		{
+			name:  "substantive recent archive is not trivial",
+			title: "릴리스 체크",
+			summary: sessionCleanupTranscript{
+				messageCount: 2,
+				firstUser:    "v0.32.9 릴리스 검증 결과와 Homebrew tap 상태를 비교해줘",
+			},
+			want: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isTrivialSessionCleanupTranscript(tt.title, tt.summary); got != tt.want {
+				t.Fatalf("isTrivialSessionCleanupTranscript()=%v want %v", got, tt.want)
+			}
+		})
+	}
+	if compactCleanupText(" 안녕?! ") != "안녕" {
+		t.Fatalf("expected punctuation-stripped greeting, got %q", compactCleanupText(" 안녕?! "))
+	}
+	if cleanupTextRuneLen(" 안녕? ") != 3 {
+		t.Fatalf("expected trimmed rune length 3, got %d", cleanupTextRuneLen(" 안녕? "))
+	}
+}
+
 func TestSessionCleanupSuggestionsAPIRequiresLLMRouter(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "workspace")
 	if err := memory.EnsureWorkspace(root); err != nil {
