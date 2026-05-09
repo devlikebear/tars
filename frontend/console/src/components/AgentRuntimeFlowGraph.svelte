@@ -13,6 +13,7 @@
     type AgentRuntimeFlowNode,
     type AgentRuntimeStatusKind,
   } from '../lib/agentruntime-graph'
+  import { sortStrings } from '../lib/sort'
   import type { AgentRuntimeRun } from '../lib/types'
 
   interface Props {
@@ -49,7 +50,7 @@
   }
 
   function uniqueOptions(values: string[]): string[] {
-    return [...new Set(values.map((value) => value.trim()).filter(Boolean))].sort()
+    return sortStrings(new Set(values.map((value) => value.trim()).filter(Boolean)))
   }
 </script>
 

@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.32.16] - 2026-05-09
+
+### Fixed
+
+- **Deterministic console string sorting** — frontend config, onboarding, session permission, and related option lists now use explicit string comparators instead of argument-free `.sort()` calls, resolving SonarCloud's ambiguous sorting findings and guarding against regressions with a focused test. Closes #784.
+
 ## [0.32.15] - 2026-05-09
 
 ### Fixed

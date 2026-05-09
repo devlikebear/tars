@@ -11,6 +11,7 @@ import {
   serializeDockLayout,
   type DockPanelDefinition,
 } from '../src/lib/dock/layout.ts'
+import { sortStrings } from '../src/lib/sort.js'
 
 const panels: DockPanelDefinition[] = [
   { id: 'sessions', title: 'Sessions', defaultZone: 'left', closeable: false },
@@ -100,7 +101,7 @@ test('dock layout serializes only stable placement, active, and size data', () =
   const layout = moveDockPanel(openDockPanel(createDockLayout(panels), panels, 'files'), panels, 'files', 'fullscreen')
   const serialized = serializeDockLayout(layout)
 
-  assert.deepEqual(Object.keys(serialized).sort(), ['active', 'placements', 'sizes'])
+  assert.deepEqual(sortStrings(Object.keys(serialized)), ['active', 'placements', 'sizes'])
   assert.equal(serialized.placements.files, 'fullscreen')
   assert.equal(serialized.active.fullscreen, 'files')
 })

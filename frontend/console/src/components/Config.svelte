@@ -42,6 +42,7 @@
     type AuthMode,
     type ProviderKind,
   } from '../lib/onboarding'
+  import { sortStrings } from '../lib/sort'
   import type { ConfigEnvOverride, ConfigFieldMeta, ConfigSchema, ProvidersAPIInfo } from '../lib/types'
   import ConfigPendingChanges from './ConfigPendingChanges.svelte'
   import RemoteAccessCard from './RemoteAccessCard.svelte'
@@ -710,21 +711,21 @@
     const choices = new Set<string>(LLM_PROVIDER_KINDS)
     const value = current.trim()
     if (value) choices.add(value)
-    return [...choices].sort()
+    return sortStrings(choices)
   }
 
   function providerAuthModeChoices(current: string): string[] {
     const choices = new Set<string>(LLM_PROVIDER_AUTH_MODES)
     const value = current.trim()
     if (value) choices.add(value)
-    return ['', ...[...choices].sort()]
+    return ['', ...sortStrings(choices)]
   }
 
   function tierServiceTierChoices(current: string): string[] {
     const choices = new Set<string>(LLM_TIER_SERVICE_TIERS.filter(Boolean) as string[])
     const value = current.trim()
     if (value) choices.add(value)
-    return ['', ...[...choices].sort()]
+    return ['', ...sortStrings(choices)]
   }
 
   function toggleProviderSecret(id: string) {
@@ -863,7 +864,7 @@
       const info = await getProviderModels(alias)
       const warning = typeof info.warning === 'string' ? info.warning.trim() : ''
       const models = Array.isArray(info.models) ? info.models : []
-      const deduped = [...new Set(models.map((model) => String(model).trim()).filter(Boolean))].sort()
+      const deduped = sortStrings(new Set(models.map((model) => String(model).trim()).filter(Boolean)))
       tierModelOptionsByProvider = { ...tierModelOptionsByProvider, [alias]: deduped }
       tierModelLoadErrorByProvider = { ...tierModelLoadErrorByProvider, [alias]: warning }
     } catch (error) {
@@ -985,7 +986,7 @@
     const choices = new Set(tierProviderOptions)
     const value = current.trim()
     if (value) choices.add(value)
-    return [...choices].sort()
+    return sortStrings(choices)
   }
 
   function tierReasoningChoices(current: string): string[] {
