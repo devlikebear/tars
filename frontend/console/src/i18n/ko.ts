@@ -121,6 +121,11 @@ export const ko = {
       hoursAgo: (n) => `${n}시간 전`,
       daysAgo: (n) => `${n}일 전`,
     },
+    groups: {
+      pinned: '고정',
+      recent: '최근',
+      older: '이전',
+    },
     actions: {
       rename: '이름 변경',
       autoTitle: '자동 제목',
@@ -131,6 +136,7 @@ export const ko = {
       compact: '압축',
       delete: '삭제',
       confirm: '확인',
+      more: '더보기',
     },
     cleanup: {
       title: '정리',

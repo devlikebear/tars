@@ -121,6 +121,11 @@ export type Translations = {
       hoursAgo: (n: number) => string
       daysAgo: (n: number) => string
     }
+    groups: {
+      pinned: string
+      recent: string
+      older: string
+    }
     actions: {
       rename: string
       autoTitle: string
@@ -131,6 +136,7 @@ export type Translations = {
       compact: string
       delete: string
       confirm: string
+      more: string
     }
     cleanup: {
       title: string

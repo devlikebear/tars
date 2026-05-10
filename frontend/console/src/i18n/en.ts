@@ -121,6 +121,11 @@ export const en = {
       hoursAgo: (n) => `${n}h ago`,
       daysAgo: (n) => `${n}d ago`,
     },
+    groups: {
+      pinned: 'Pinned',
+      recent: 'Recent',
+      older: 'Older',
+    },
     actions: {
       rename: 'Rename',
       autoTitle: 'Auto title',
@@ -131,6 +136,7 @@ export const en = {
       compact: 'Compact',
       delete: 'Delete',
       confirm: 'Confirm',
+      more: 'More actions',
     },
     cleanup: {
       title: 'Cleanup',
