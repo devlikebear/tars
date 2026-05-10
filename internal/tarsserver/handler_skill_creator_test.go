@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/devlikebear/tars/internal/extensions"
+	"github.com/devlikebear/tars/internal/skill"
 	"github.com/rs/zerolog"
 )
 
@@ -443,6 +445,114 @@ func TestSkillCreatorAPI_WorkspaceCRUD_PutEmptyContent(t *testing.T) {
 	handler.ServeHTTP(rec, req)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("PUT with empty content expected 400, got %d body=%q", rec.Code, rec.Body.String())
+	}
+}
+
+// TestSkillCreatorAPI_WorkspaceCRUD_RenamedSkill covers the case where the
+// SKILL.md frontmatter `name` was changed but the source directory under
+// workspace/skills/ still has the original name. The admin UI lists the
+// skill by its frontmatter name and calls /v1/admin/skills/<frontmatter-name>;
+// the handler must resolve to the actual on-disk file via the snapshot.
+func TestSkillCreatorAPI_WorkspaceCRUD_RenamedSkill(t *testing.T) {
+	workspaceDir := t.TempDir()
+	const sourceDirName = "claude-code-cli"
+	const newName = "claude-code-cli2"
+
+	skillDir := filepath.Join(workspaceDir, "skills", sourceDirName)
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatalf("setup skill dir: %v", err)
+	}
+	skillFile := filepath.Join(skillDir, "SKILL.md")
+	original := "---\nname: " + newName + "\ndescription: Renamed\n---\n# Body\n"
+	if err := os.WriteFile(skillFile, []byte(original), 0o644); err != nil {
+		t.Fatalf("setup skill file: %v", err)
+	}
+
+	provider := &mockExtensionsProvider{
+		snapshot: extensions.Snapshot{
+			Skills: []skill.Definition{
+				// Different name — must be skipped (covers the name-mismatch continue).
+				{Name: "other-skill", Source: skill.SourceWorkspace, FilePath: filepath.Join(workspaceDir, "skills", "other-skill", "SKILL.md")},
+				// Same name but bundled — must be skipped (covers the source-mismatch continue).
+				{Name: newName, Source: skill.SourceBundled, FilePath: filepath.Join(workspaceDir, "skills", "ignored", "SKILL.md")},
+				// Same name, workspace, but blank FilePath — must be skipped (covers the empty-path continue).
+				{Name: newName, Source: skill.SourceWorkspace, FilePath: ""},
+				// The real entry — its on-disk path must win.
+				{Name: newName, Source: skill.SourceWorkspace, FilePath: skillFile},
+			},
+		},
+	}
+	handler := newSkillCreatorAPIHandler(workspaceDir, zerolog.New(ioDiscard{}), nil, provider)
+
+	// GET via the new (frontmatter) name must succeed and return the source file's content.
+	req := httptest.NewRequest(http.MethodGet, "/v1/admin/skills/"+newName, nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET expected 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+	var getResp map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &getResp); err != nil {
+		t.Fatalf("decode get response: %v", err)
+	}
+	if getResp["path"] != skillFile {
+		t.Fatalf("expected path=%q, got %q", skillFile, getResp["path"])
+	}
+	if !strings.Contains(getResp["content"], "name: "+newName) {
+		t.Fatalf("expected content to come from source dir, got %q", getResp["content"])
+	}
+
+	// PUT via the new name must update the original source file (not create a new directory).
+	updated := "---\nname: " + newName + "\ndescription: Updated body\n---\n# After update\n"
+	putBody, _ := json.Marshal(map[string]string{"content": updated})
+	putReq := httptest.NewRequest(http.MethodPut, "/v1/admin/skills/"+newName, bytes.NewReader(putBody))
+	putReq.Header.Set("Content-Type", "application/json")
+	putRec := httptest.NewRecorder()
+	handler.ServeHTTP(putRec, putReq)
+	if putRec.Code != http.StatusOK {
+		t.Fatalf("PUT expected 200, got %d body=%q", putRec.Code, putRec.Body.String())
+	}
+	got, err := os.ReadFile(skillFile)
+	if err != nil {
+		t.Fatalf("read updated file: %v", err)
+	}
+	if !strings.Contains(string(got), "Updated body") {
+		t.Fatalf("expected source file to be updated, got %q", string(got))
+	}
+	// A new directory under the new name must not have been created.
+	if _, err := os.Stat(filepath.Join(workspaceDir, "skills", newName)); !os.IsNotExist(err) {
+		t.Fatalf("expected no directory at workspace/skills/%s, got err=%v", newName, err)
+	}
+}
+
+// TestResolveWorkspaceSkillPaths_RejectsTraversal ensures a malicious or
+// stale snapshot pointing outside <workspace>/skills/ falls back to the
+// legacy <workspace>/skills/<name>/ layout instead of operating on the
+// out-of-tree path.
+func TestResolveWorkspaceSkillPaths_RejectsTraversal(t *testing.T) {
+	workspaceDir := t.TempDir()
+	outside := filepath.Join(t.TempDir(), "evil", "SKILL.md")
+	if err := os.MkdirAll(filepath.Dir(outside), 0o755); err != nil {
+		t.Fatalf("setup outside dir: %v", err)
+	}
+	if err := os.WriteFile(outside, []byte("# Evil\n"), 0o644); err != nil {
+		t.Fatalf("setup outside file: %v", err)
+	}
+
+	provider := &mockExtensionsProvider{
+		snapshot: extensions.Snapshot{
+			Skills: []skill.Definition{{
+				Name:     "evil",
+				Source:   skill.SourceWorkspace,
+				FilePath: outside,
+			}},
+		},
+	}
+	dir, file := resolveWorkspaceSkillPaths(provider, workspaceDir, "evil")
+	wantDir := filepath.Join(workspaceDir, "skills", "evil")
+	wantFile := filepath.Join(wantDir, "SKILL.md")
+	if dir != wantDir || file != wantFile {
+		t.Fatalf("expected fallback to %q / %q, got %q / %q", wantDir, wantFile, dir, file)
 	}
 }
 
