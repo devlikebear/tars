@@ -417,10 +417,8 @@ func (s *Store) ListRuns(id string, limit int) ([]RunRecord, error) {
 	if err != nil {
 		return nil, err
 	}
-	if limit <= 0 {
-		limit = 50
-	}
-	filtered := make([]RunRecord, 0, min(limit, len(runs)))
+	limit = clampRunListLimit(limit, len(runs))
+	filtered := make([]RunRecord, 0, limit)
 	for i := len(runs) - 1; i >= 0; i-- {
 		filtered = append(filtered, runs[i])
 		if len(filtered) >= limit {
@@ -428,6 +426,19 @@ func (s *Store) ListRuns(id string, limit int) ([]RunRecord, error) {
 		}
 	}
 	return filtered, nil
+}
+
+func clampRunListLimit(limit int, available int) int {
+	if limit <= 0 {
+		limit = 50
+	}
+	if available < 0 {
+		available = 0
+	}
+	if limit > available {
+		return available
+	}
+	return limit
 }
 
 func (s *Store) TryStartRun(id string) bool {

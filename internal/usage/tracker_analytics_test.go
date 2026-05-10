@@ -133,3 +133,28 @@ func TestTracker_AnalyticsReturnsZeroFilledEmptyDays(t *testing.T) {
 		t.Fatalf("unexpected non-empty analytics: %+v", analytics)
 	}
 }
+
+func TestClampAnalyticsDaysBounds(t *testing.T) {
+	tests := []struct {
+		name string
+		days int
+		want int
+	}{
+		{name: "negative defaults to seven", days: -1, want: 7},
+		{name: "zero defaults to seven", days: 0, want: 7},
+		{name: "huge defaults to seven", days: int(^uint(0) >> 1), want: 7},
+		{name: "thirty accepted", days: 30, want: 30},
+		{name: "ninety accepted", days: 90, want: 90},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := clampAnalyticsDays(tt.days); got != tt.want {
+				t.Fatalf("clampAnalyticsDays(%d) = %d, want %d", tt.days, got, tt.want)
+			}
+			if got := normalizeAnalyticsDays(tt.days); got != tt.want {
+				t.Fatalf("normalizeAnalyticsDays(%d) = %d, want %d", tt.days, got, tt.want)
+			}
+		})
+	}
+}
+

@@ -34,6 +34,15 @@ type terminalOpenResult struct {
 
 type terminalOpenFunc func(context.Context, string) (terminalOpenResult, error)
 
+const (
+	defaultTerminalCols = 80
+	defaultTerminalRows = 24
+	minTerminalCols     = 20
+	minTerminalRows     = 5
+	maxTerminalCols     = 500
+	maxTerminalRows     = 200
+)
+
 type terminalSize struct {
 	Cols int `json:"cols,omitempty"`
 	Rows int `json:"rows,omitempty"`
@@ -272,25 +281,28 @@ func terminalSizeFromRequest(r *http.Request) terminalSize {
 }
 
 func normalizeTerminalSize(cols int, rows int) terminalSize {
-	if cols <= 0 {
-		cols = 80
+	return terminalSize{
+		Cols: clampTerminalDimension(cols, defaultTerminalCols, minTerminalCols, maxTerminalCols),
+		Rows: clampTerminalDimension(rows, defaultTerminalRows, minTerminalRows, maxTerminalRows),
 	}
-	if rows <= 0 {
-		rows = 24
+}
+
+func clampTerminalDimension(value int, fallback int, minValue int, maxValue int) int {
+	if value <= 0 {
+		value = fallback
 	}
-	if cols < 20 {
-		cols = 20
+	if value < minValue {
+		return minValue
 	}
-	if rows < 5 {
-		rows = 5
+	if value > maxValue {
+		return maxValue
 	}
-	if cols > 500 {
-		cols = 500
-	}
-	if rows > 200 {
-		rows = 200
-	}
-	return terminalSize{Cols: cols, Rows: rows}
+	return value
+}
+
+func terminalWinsize(size terminalSize) *pty.Winsize {
+	normalized := normalizeTerminalSize(size.Cols, size.Rows)
+	return &pty.Winsize{Cols: uint16(normalized.Cols), Rows: uint16(normalized.Rows)}
 }
 
 func serveTerminalWebSocket(w http.ResponseWriter, r *http.Request, term terminalSession, cwd string, size terminalSize, logger zerolog.Logger) {
@@ -417,7 +429,7 @@ func startPTYTerminalSession(ctx context.Context, cwd string, size terminalSize)
 	cmd := exec.CommandContext(ctx, shell)
 	cmd.Dir = cwd
 	cmd.Env = append(os.Environ(), "TERM=xterm-256color", "COLORTERM=truecolor")
-	winSize := &pty.Winsize{Cols: uint16(size.Cols), Rows: uint16(size.Rows)}
+	winSize := terminalWinsize(size)
 	file, err := pty.StartWithSize(cmd, winSize)
 	if err != nil {
 		return nil, err
@@ -443,7 +455,7 @@ func (s *ptyTerminalSession) Write(p []byte) (int, error) {
 }
 
 func (s *ptyTerminalSession) Resize(size terminalSize) error {
-	return pty.Setsize(s.file, &pty.Winsize{Cols: uint16(size.Cols), Rows: uint16(size.Rows)})
+	return pty.Setsize(s.file, terminalWinsize(size))
 }
 
 func (s *ptyTerminalSession) Close() error {

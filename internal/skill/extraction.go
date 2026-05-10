@@ -132,6 +132,8 @@ var extractionTopics = []extractionTopic{
 	},
 }
 
+const maxExtractionCandidates = 5
+
 var extractionSkillCuePattern = regexp.MustCompile(`(?i)\b(skill|workflow|repeatable|reusable|template|automation|자동화|반복|재사용|워크플로우|스킬)\b`)
 
 func DetectExtractionCandidates(sess session.Session, messages []session.Message, opts ExtractionOptions) []ExtractionCandidate {
@@ -139,10 +141,7 @@ func DetectExtractionCandidates(sess session.Session, messages []session.Message
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
-	limit := opts.MaxCandidates
-	if limit <= 0 || limit > 5 {
-		limit = 5
-	}
+	limit := clampExtractionCandidateLimit(opts.MaxCandidates)
 	if len(messages) == 0 {
 		return []ExtractionCandidate{}
 	}
@@ -189,6 +188,13 @@ func DetectExtractionCandidates(sess session.Session, messages []session.Message
 		}
 	}
 	return candidates
+}
+
+func clampExtractionCandidateLimit(limit int) int {
+	if limit <= 0 || limit > maxExtractionCandidates {
+		return maxExtractionCandidates
+	}
+	return limit
 }
 
 func AppendExtractionCandidatesIfNew(root string, candidates []ExtractionCandidate) ([]ExtractionCandidate, bool, error) {
