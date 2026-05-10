@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.32.27] - 2026-05-10
+
+### Added
+
+- **Surface OpenAI Codex subscription quota in admin API** — `OpenAICodexClient` now parses the `x-codex-*` rate-limit headers (primary 5h-window and secondary weekly window: `used_percent`, `window_minutes`, `reset_after_seconds`) returned on every `/codex/responses` call and caches the latest snapshot per client. New endpoint `GET /v1/admin/llm/codex/usage` returns one entry per LLM tier with the resolved provider/model and the most recent snapshot, letting operators see remaining Codex quota without leaving the console (OpenAI does not expose a subscription-quota REST API). `TrackedClient` adds a passthrough so router-wrapped clients still satisfy the new `llm.CodexRateLimitSource` interface, and any unknown `x-codex-*` header is preserved verbatim in `raw_headers` so the surface is forward-compatible when OpenAI ships new fields. Authorization mirrors `/v1/admin/usage/today` (admin role required when auth mode is on). Console UI integration is a follow-up.
+
 ## [0.32.26] - 2026-05-10
 
 ### Changed
