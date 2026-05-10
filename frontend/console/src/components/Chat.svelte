@@ -1,12 +1,14 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte'
   import {
+    getCodexUsage,
     getEventsHistory, getPulseStatus,
     getSession, createSession, renameSession, deleteSession, compactSession, getSessionHistory,
     getSessionTasks, listChatTools, getSessionEffectiveConfig, updateSessionLocalConfig,
     getSessionCwd, setSessionCwd,
     type SessionToolConfig,
   } from '../lib/api'
+  import { formatCodexStatusLines } from '../lib/codexStatus'
   import { t } from '../i18n'
   import { emptyTaskProgressSummary, planProgressPercent, summarizeTasks, type TaskProgressSummary } from '../lib/tasks'
   import { buildSessionHealthReport, emptySessionHealthReport, type SessionHealthAction, type SessionHealthInput, type SessionHealthReport } from '../lib/sessionHealth'
@@ -759,6 +761,16 @@
         }
         openPanel('skillExtraction')
         return
+      case 'status': {
+        try {
+          const res = await getCodexUsage()
+          const lines = formatCodexStatusLines(res.tiers ?? [])
+          showFeedback(lines.join('\n'), 10_000)
+        } catch (err) {
+          showFeedback(`status: ${err instanceof Error ? err.message : 'failed to load codex quota'}`)
+        }
+        return
+      }
       case 'cwd':
         if (!selectedSessionId) {
           showFeedback('Select a session first')
