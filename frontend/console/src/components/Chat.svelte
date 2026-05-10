@@ -1152,7 +1152,7 @@
       {/if}
 
       {#if actionFeedback}
-        <div class="action-feedback">{actionFeedback}</div>
+        <div class="action-feedback" class:multiline={actionFeedback.includes('\n')}>{actionFeedback}</div>
       {/if}
 
       {#if hasPlanStrip}
@@ -1297,6 +1297,12 @@
     background: color-mix(in srgb, var(--primary) 10%, transparent);
     border-bottom: 1px solid color-mix(in srgb, var(--primary) 25%, transparent);
     text-align: center;
+  }
+  .action-feedback.multiline {
+    white-space: pre-wrap;
+    text-align: left;
+    font-family: var(--font-mono), ui-monospace, monospace;
+    line-height: 1.5;
   }
   .chat-panel-loading {
     flex: 1;
