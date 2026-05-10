@@ -15,7 +15,7 @@ import (
 
 func TestSkillCreatorAPI_DraftAndSaveLocal(t *testing.T) {
 	workspaceDir := filepath.Join(t.TempDir(), "workspace")
-	handler := newSkillCreatorAPIHandler(workspaceDir, zerolog.New(ioDiscard{}), nil)
+	handler := newSkillCreatorAPIHandler(workspaceDir, zerolog.New(ioDiscard{}), nil, nil)
 
 	reqBody := map[string]any{
 		"name":              "docker-log-shipper",
@@ -75,7 +75,7 @@ func TestSkillCreatorAPI_DraftAndSaveLocal(t *testing.T) {
 }
 
 func TestSkillCreatorAPI_RejectsUnsafeNamesAndPaths(t *testing.T) {
-	handler := newSkillCreatorAPIHandler(filepath.Join(t.TempDir(), "workspace"), zerolog.New(ioDiscard{}), nil)
+	handler := newSkillCreatorAPIHandler(filepath.Join(t.TempDir(), "workspace"), zerolog.New(ioDiscard{}), nil, nil)
 
 	badDraft := postJSON(t, handler, "/v1/admin/skills/draft", map[string]any{
 		"name":        "../escape",
@@ -102,7 +102,7 @@ func TestSkillCreatorAPI_RejectsUnsafeNamesAndPaths(t *testing.T) {
 
 func TestSkillCreatorAPI_TestRunsCompanionCLIInSandbox(t *testing.T) {
 	workspaceDir := filepath.Join(t.TempDir(), "workspace")
-	handler := newSkillCreatorAPIHandler(workspaceDir, zerolog.New(ioDiscard{}), nil)
+	handler := newSkillCreatorAPIHandler(workspaceDir, zerolog.New(ioDiscard{}), nil, nil)
 
 	draft := skillCreatorDraftResponse{
 		Name:        "probe-skill",

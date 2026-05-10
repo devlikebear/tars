@@ -1255,6 +1255,8 @@ export type Translations = {
     updateFailed: string
     diagnosticsFailed: string
     repairFailed: string
+    skillDeleteFailed: string
+    skillUpdateFailed: string
     diagnosticsSuccess: (skills: number, mcps: number) => string
     repairSuccess: (name: string) => string
     healthPass: string
@@ -1271,6 +1273,11 @@ export type Translations = {
     enabledLabel: string
     disabledLabel: string
     reloadSuccess: (skills: number, plugins: number, mcps: number) => string
+    editSkill: string
+    deleteSkill: string
+    skillDeleteConfirm: (name: string) => string
+    skillDeletedSuccess: (name: string) => string
+    skillUpdatedSuccess: (name: string) => string
     skillCreatedSuccess: (path: string) => string
     mcpCreatedSuccess: (path: string) => string
     updatedTotal: (n: number) => string

@@ -33,7 +33,7 @@ func TestSkillExtractionAPIExtractsAndApprovesDraft(t *testing.T) {
 		t.Fatalf("write transcript: %v", err)
 	}
 
-	handler := newSkillExtractionAPIHandler(workspace, store, nil, zerolog.New(io.Discard))
+	handler := newSkillExtractionAPIHandler(workspace, store, nil, zerolog.New(io.Discard), nil)
 	extractReq := httptest.NewRequest(http.MethodPost, "/v1/admin/skills/extractions/extract", strings.NewReader(`{"session_id":"`+sess.ID+`"}`))
 	extractReq.Header.Set("Content-Type", "application/json")
 	extractRec := httptest.NewRecorder()
