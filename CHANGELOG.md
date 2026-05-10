@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.32.24] - 2026-05-10
+
+### Fixed
+
+- **Workspace skill edit survives a frontmatter rename** — `GET/PUT/DELETE /v1/admin/skills/<name>` now resolves the on-disk SKILL.md via the extensions snapshot when the URL name matches a workspace-source skill. Previously the handler assumed `<name>` was also the source directory name; renaming a skill via its frontmatter (e.g. `claude-code-cli` → `claude-code-cli2`) would 404 on subsequent edits because the source directory still kept the original name. The resolved path is confined to `<workspace>/skills/` to prevent traversal via a stale snapshot, and creating a brand-new skill (PUT to a not-yet-known name) still falls back to `<workspace>/skills/<name>/SKILL.md`.
+
 ## [0.32.23] - 2026-05-10
 
 ### Added

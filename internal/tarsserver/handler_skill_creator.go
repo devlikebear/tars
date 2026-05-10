@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/devlikebear/tars/internal/skill"
 	"github.com/rs/zerolog"
 )
 
@@ -136,8 +137,7 @@ func newSkillCreatorAPIHandler(workspaceDir string, logger zerolog.Logger, submi
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 			return
 		}
-		skillDir := filepath.Join(workspaceDir, "skills", name)
-		skillFile := filepath.Join(skillDir, "SKILL.md")
+		skillDir, skillFile := resolveWorkspaceSkillPaths(provider, workspaceDir, name)
 		switch r.Method {
 		case http.MethodGet:
 			content, err := os.ReadFile(skillFile)
@@ -433,6 +433,49 @@ func validateSkillCreatorName(name string) error {
 		return fmt.Errorf("name must be kebab-case using lowercase letters, numbers, and dashes")
 	}
 	return nil
+}
+
+// resolveWorkspaceSkillPaths returns the on-disk directory and SKILL.md path
+// to use for a workspace skill addressed by `name` in the admin edit API.
+//
+// The admin UI lists skills by their frontmatter `name`, but the source
+// directory under `<workspace>/skills/` is whatever the user originally named
+// it on disk. After renaming the frontmatter (e.g. `claude-code-cli` →
+// `claude-code-cli2`) the two diverge, and a naive `<workspace>/skills/<name>/`
+// lookup 404s. So when the extensions snapshot has a workspace-source skill
+// matching `name`, we use its actual `FilePath`. We still confine the result
+// to `<workspace>/skills/` to prevent path traversal via a malicious snapshot.
+//
+// When no snapshot match is found we fall back to `<workspace>/skills/<name>/`,
+// which is what newly created skills (PUT to a not-yet-existing name) need.
+func resolveWorkspaceSkillPaths(provider extensionsProvider, workspaceDir, name string) (string, string) {
+	legacyDir := filepath.Join(workspaceDir, "skills", name)
+	legacyFile := filepath.Join(legacyDir, "SKILL.md")
+	if provider == nil {
+		return legacyDir, legacyFile
+	}
+	skillsRoot, err := filepath.Abs(filepath.Join(workspaceDir, "skills"))
+	if err != nil {
+		return legacyDir, legacyFile
+	}
+	for _, def := range provider.Snapshot().Skills {
+		if def.Name != name || def.Source != skill.SourceWorkspace {
+			continue
+		}
+		if strings.TrimSpace(def.FilePath) == "" {
+			continue
+		}
+		absPath, err := filepath.Abs(def.FilePath)
+		if err != nil {
+			continue
+		}
+		rel, err := filepath.Rel(skillsRoot, absPath)
+		if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			continue
+		}
+		return filepath.Dir(absPath), absPath
+	}
+	return legacyDir, legacyFile
 }
 
 func normalizeSkillCreatorLanguage(language string) (string, error) {
