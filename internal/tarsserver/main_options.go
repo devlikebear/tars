@@ -53,6 +53,8 @@ const memoryToolSystemRule = `
 - Only ONE task should be in_progress at a time. Mark completed immediately when done.
 - When setting a new plan, the previous plan and tasks are automatically archived to memory.
 - Use tasks(action=list) to review current progress. Use tasks(action=clear) to reset when done.
+- Do NOT end your turn with a status report ("이제 다음 단계로 갈게", "Now I'll move on to X") while pending or in_progress tasks remain. End the turn only when (a) the next step needs user input you cannot reasonably infer, (b) you hit a blocker that requires a decision, or (c) all tasks are completed/cancelled. Otherwise, continue invoking the next concrete tool call in the same turn until the next task is complete.
+- A short progress note is fine, but it must be paired in the same turn with the actual tool call that advances the next step. Replace "I will now do X" with doing X.
 
 ## Runtime Tool Policy
 - For session management, use session(action=list|history|send|spawn|runs|agents|status).

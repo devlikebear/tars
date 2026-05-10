@@ -6,6 +6,13 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.32.25] - 2026-05-10
+
+### Changed
+
+- **Chat renders multi-round assistant bubbles in chronological order** — when the model produces "text → tool → more text → another tool → final text" within a single turn, the console now keeps each text segment in its own bubble next to the surrounding tool calls, instead of collapsing every intermediate sentence into a single bubble that floats below all tool cards. `ChatPanel.handleChatEvent` tracks the streaming assistant id by reference and pushes a fresh placeholder whenever a `before_tool_call` arrives after the current bubble has already streamed text/reasoning content; empty placeholders still receive a tool spliced before them, preserving the existing one-shot tool-then-text flow.
+- **Stop ending turns mid-task with status reports** — the chat system prompt's Task Management Policy gains an explicit rule: while pending or in_progress tasks remain, do not end the turn with a "이제 다음 단계로 갈게" / "Now I'll move on to X" status message; pair every "I will do X" with the actual tool call that does X, in the same turn. The model may still stop the turn when the next step needs user input it cannot reasonably infer, hits a blocker, or the plan is complete.
+
 ## [0.32.24] - 2026-05-10
 
 ### Fixed

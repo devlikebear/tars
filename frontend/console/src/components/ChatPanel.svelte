@@ -360,7 +360,7 @@
     void reloadSlashSkillsAndCandidates()
   }
 
-  function handleChatEvent(event: ChatEvent, assistantId: string) {
+  function handleChatEvent(event: ChatEvent, assistantRef: { id: string }) {
     syncSessionId(event.session_id)
 
     switch (event.type) {
@@ -377,10 +377,29 @@
             toolDone: false,
             toolStartedAt: Date.now(),
           }
-          const aIdx = chatMessages.findIndex((m) => m.id === assistantId)
+          const aIdx = chatMessages.findIndex((m) => m.id === assistantRef.id)
           if (aIdx >= 0) {
-            chatMessages.splice(aIdx, 0, toolMsg)
-            chatMessages = [...chatMessages]
+            const placeholder = chatMessages[aIdx]
+            const hasContent =
+              (placeholder.text?.trim() || '').length > 0 ||
+              (placeholder.reasoningText?.trim() || '').length > 0
+            if (hasContent) {
+              // Freeze the current bubble, append tool after it, and start a
+              // new placeholder so subsequent text streams into a fresh bubble.
+              // This preserves the chronological "text -> tool -> text" order
+              // instead of collapsing all intermediate text into one final bubble.
+              const newId = `assistant-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+              chatMessages = [
+                ...chatMessages.slice(0, aIdx + 1),
+                toolMsg,
+                { id: newId, role: 'assistant', text: '' },
+                ...chatMessages.slice(aIdx + 1),
+              ]
+              assistantRef.id = newId
+            } else {
+              chatMessages.splice(aIdx, 0, toolMsg)
+              chatMessages = [...chatMessages]
+            }
             void scrollToBottom()
           }
         } else if (event.phase === 'after_tool_call' && event.tool_call_id) {
@@ -431,7 +450,7 @@
             role: 'system',
             text: `skill selected: ${event.skill_name}`,
           }
-          const aIdx = chatMessages.findIndex((m) => m.id === assistantId)
+          const aIdx = chatMessages.findIndex((m) => m.id === assistantRef.id)
           if (aIdx >= 0) {
             chatMessages.splice(aIdx, 0, skillMsg)
             chatMessages = [...chatMessages]
@@ -447,7 +466,7 @@
             role: 'system',
             text: `command selected: ${event.command_name}`,
           }
-          const aIdx = chatMessages.findIndex((m) => m.id === assistantId)
+          const aIdx = chatMessages.findIndex((m) => m.id === assistantRef.id)
           if (aIdx >= 0) {
             chatMessages.splice(aIdx, 0, commandMsg)
             chatMessages = [...chatMessages]
@@ -463,7 +482,7 @@
       case 'delta': {
         const chunk = event.text ?? ''
         if (!chunk) break
-        const idx = chatMessages.findIndex((m) => m.id === assistantId)
+        const idx = chatMessages.findIndex((m) => m.id === assistantRef.id)
         if (idx >= 0) {
           chatMessages[idx] = { ...chatMessages[idx], text: chatMessages[idx].text + chunk }
           chatMessages = [...chatMessages]
@@ -474,7 +493,7 @@
       case 'reasoning_delta': {
         const chunk = event.text ?? ''
         if (!chunk) break
-        const idx = chatMessages.findIndex((m) => m.id === assistantId)
+        const idx = chatMessages.findIndex((m) => m.id === assistantRef.id)
         if (idx >= 0) {
           const prev = chatMessages[idx].reasoningText ?? ''
           chatMessages[idx] = { ...chatMessages[idx], reasoningText: prev + chunk }
@@ -564,7 +583,7 @@
         stopChatStatusTicker()
         // Attach usage to assistant message
         if (event.usage) {
-          const aIdx = chatMessages.findIndex((m) => m.id === assistantId)
+          const aIdx = chatMessages.findIndex((m) => m.id === assistantRef.id)
           if (aIdx >= 0) {
             chatMessages[aIdx] = { ...chatMessages[aIdx], usage: event.usage }
             chatMessages = [...chatMessages]
@@ -866,11 +885,11 @@
       ? ` [${currentFiles.map((f) => f.name).join(', ')}]`
       : ''
     const userId = `user-${Date.now()}`
-    const assistantId = `assistant-${Date.now()}`
+    const assistantRef = { id: `assistant-${Date.now()}` }
     chatMessages = [
       ...chatMessages,
       { id: userId, role: 'user', text: message + fileLabel },
-      { id: assistantId, role: 'assistant', text: '' },
+      { id: assistantRef.id, role: 'assistant', text: '' },
     ]
     void scrollToBottom()
     const ac = new AbortController()
@@ -893,7 +912,7 @@
           })),
           tier_recommendation: tierRecommendation,
         },
-        (event) => handleChatEvent(event, assistantId),
+        (event) => handleChatEvent(event, assistantRef),
         ac.signal,
       )
     } catch (err) {
