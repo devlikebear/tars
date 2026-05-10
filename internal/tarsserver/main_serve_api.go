@@ -81,6 +81,7 @@ type apiRouteHandlers struct {
 	filesystem      http.Handler
 	workspaceFiles  http.Handler
 	terminal        http.Handler
+	codexUsage      http.Handler
 }
 
 func runServeAPICommand(
@@ -610,6 +611,7 @@ func buildAPIMux(
 	workspaceFilesHandler := newWorkspaceFilesHandler(cfg.WorkspaceDir, logger)
 	terminalHandler := newTerminalAPIHandler(cfg.WorkspaceDir, sessionStore, logger)
 	memoryHandler := newMemoryAPIHandler(cfg.WorkspaceDir, buildMemoryBackend(cfg.WorkspaceDir, semanticMemoryConfigFromConfig(cfg), cfg.MemoryBackend), logger)
+	codexUsageHandler := newCodexRateLimitAPIHandler(deps.llmRouter, cfg.APIAuthMode)
 	registerAPIRoutes(mux, apiRouteHandlers{
 		pulse:           pulseSetup.Handler,
 		reflection:      reflectionSetup.Handler,
@@ -644,6 +646,7 @@ func buildAPIMux(
 		filesystem:      filesystemHandler,
 		workspaceFiles:  workspaceFilesHandler,
 		terminal:        terminalHandler,
+		codexUsage:      codexUsageHandler,
 	})
 
 	server := &http.Server{
@@ -742,6 +745,7 @@ func registerAPIRoutes(mux *http.ServeMux, handlers apiRouteHandlers) {
 	mux.Handle("/v1/usage/limits", handlers.usage)
 	mux.Handle("/v1/admin/usage/today", handlers.usage)
 	mux.Handle("/v1/admin/analytics", handlers.usage)
+	mux.Handle("/v1/admin/llm/codex/usage", handlers.codexUsage)
 	mux.Handle("/v1/admin/logs", handlers.logs)
 	mux.Handle("/v1/ops/status", handlers.ops)
 	mux.Handle("/v1/ops/cleanup/plan", handlers.ops)

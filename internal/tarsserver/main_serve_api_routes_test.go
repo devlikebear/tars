@@ -52,6 +52,7 @@ func TestRegisterAPIRoutes_RegistersCoreRoutes(t *testing.T) {
 		"/v1/usage/limits",
 		"/v1/admin/usage/today",
 		"/v1/admin/analytics",
+		"/v1/admin/llm/codex/usage",
 		"/v1/admin/logs",
 		"/v1/ops/status",
 		"/v1/ops/cleanup/plan",
@@ -237,6 +238,7 @@ func testAPIRouteHandlers(handler, consoleHandler http.Handler) apiRouteHandlers
 		filesystem:      handler,
 		workspaceFiles:  handler,
 		terminal:        handler,
+		codexUsage:      handler,
 	}
 }
 

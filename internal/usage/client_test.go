@@ -11,6 +11,54 @@ import (
 	zlog "github.com/rs/zerolog/log"
 )
 
+type fakeCodexClient struct {
+	llm.FakeClient
+	snap CodexSnap
+}
+
+type CodexSnap struct {
+	llm.CodexRateLimitSnapshot
+	present bool
+}
+
+func (f *fakeCodexClient) LastCodexRateLimit() (llm.CodexRateLimitSnapshot, bool) {
+	return f.snap.CodexRateLimitSnapshot, f.snap.present
+}
+
+func TestTrackedClient_LastCodexRateLimit_Passthrough(t *testing.T) {
+	primary := &llm.CodexRateLimitWindow{UsedPercent: 50, WindowMinutes: 300}
+	inner := &fakeCodexClient{
+		FakeClient: llm.FakeClient{Label: "standard"},
+		snap: CodexSnap{
+			CodexRateLimitSnapshot: llm.CodexRateLimitSnapshot{Primary: primary},
+			present:                true,
+		},
+	}
+	tracked := NewTrackedClient(inner, nil, "openai-codex", "gpt-5.3-codex", llm.TierStandard)
+
+	got, ok := tracked.LastCodexRateLimit()
+	if !ok {
+		t.Fatal("expected snapshot to be present")
+	}
+	if got.Primary == nil || got.Primary.UsedPercent != 50 {
+		t.Errorf("primary mismatch: %+v", got.Primary)
+	}
+}
+
+func TestTrackedClient_LastCodexRateLimit_NonCodexInner(t *testing.T) {
+	tracked := NewTrackedClient(&llm.FakeClient{Label: "x"}, nil, "anthropic", "claude", llm.TierHeavy)
+	if _, ok := tracked.LastCodexRateLimit(); ok {
+		t.Error("expected ok=false when inner does not implement CodexRateLimitSource")
+	}
+}
+
+func TestTrackedClient_LastCodexRateLimit_NilSafe(t *testing.T) {
+	var tracked *TrackedClient
+	if _, ok := tracked.LastCodexRateLimit(); ok {
+		t.Error("expected ok=false on nil receiver")
+	}
+}
+
 func TestTrackedClient_LogsSelectionMetadata(t *testing.T) {
 	var buf bytes.Buffer
 	prev := zlog.Logger

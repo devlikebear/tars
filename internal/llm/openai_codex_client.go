@@ -42,6 +42,7 @@ type OpenAICodexClient struct {
 
 	mu               sync.RWMutex
 	overrideCred     *auth.CodexCredential
+	lastRateLimit    *CodexRateLimitSnapshot
 	validatedOnStart bool
 }
 
@@ -198,6 +199,9 @@ func (c *OpenAICodexClient) chatWithCredential(
 	if err != nil {
 		return ChatResponse{}, err
 	}
+	if snap := parseCodexRateLimitHeaders(resp.Header); snap != nil {
+		c.setLastRateLimit(snap)
+	}
 
 	if (resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden) &&
 		allowRefreshRetry &&
@@ -287,6 +291,28 @@ func (c *OpenAICodexClient) setOverrideCredential(cred auth.CodexCredential) {
 	defer c.mu.Unlock()
 	copy := cred
 	c.overrideCred = &copy
+}
+
+// LastCodexRateLimit returns the most recent rate-limit snapshot observed
+// from `/codex/responses` response headers, if any. Implements
+// CodexRateLimitSource.
+func (c *OpenAICodexClient) LastCodexRateLimit() (CodexRateLimitSnapshot, bool) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if c.lastRateLimit == nil {
+		return CodexRateLimitSnapshot{}, false
+	}
+	return *c.lastRateLimit, true
+}
+
+func (c *OpenAICodexClient) setLastRateLimit(snap *CodexRateLimitSnapshot) {
+	if snap == nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	copy := *snap
+	c.lastRateLimit = &copy
 }
 
 func (c *OpenAICodexClient) defaultResolveCredential() (auth.CodexCredential, error) {
