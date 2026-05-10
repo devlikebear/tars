@@ -72,7 +72,7 @@ func (t *Tracker) Analytics(days int) (Analytics, error) {
 	if t == nil {
 		return Analytics{}, fmt.Errorf("usage tracker is nil")
 	}
-	days = normalizeAnalyticsDays(days)
+	days = clampAnalyticsDays(days)
 	now := t.nowFn().UTC()
 	start := dayStartUTC(now).AddDate(0, 0, -(days - 1))
 
@@ -116,6 +116,10 @@ func (t *Tracker) Analytics(days int) (Analytics, error) {
 }
 
 func normalizeAnalyticsDays(days int) int {
+	return clampAnalyticsDays(days)
+}
+
+func clampAnalyticsDays(days int) int {
 	switch days {
 	case 30, 90:
 		return days

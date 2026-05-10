@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"os"
 	"os/exec"
@@ -33,6 +34,15 @@ type terminalOpenResult struct {
 }
 
 type terminalOpenFunc func(context.Context, string) (terminalOpenResult, error)
+
+const (
+	defaultTerminalCols = 80
+	defaultTerminalRows = 24
+	minTerminalCols     = 20
+	minTerminalRows     = 5
+	maxTerminalCols     = 500
+	maxTerminalRows     = 200
+)
 
 type terminalSize struct {
 	Cols int `json:"cols,omitempty"`
@@ -266,31 +276,55 @@ func terminalSizeFromRequest(r *http.Request) terminalSize {
 	if r == nil {
 		return normalizeTerminalSize(0, 0)
 	}
-	cols, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("cols")))
-	rows, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("rows")))
+	var cols int
+	if parsedCols, err := strconv.ParseUint(strings.TrimSpace(r.URL.Query().Get("cols")), 10, 16); err == nil {
+		cols = int(parsedCols)
+	}
+	var rows int
+	if parsedRows, err := strconv.ParseUint(strings.TrimSpace(r.URL.Query().Get("rows")), 10, 16); err == nil {
+		rows = int(parsedRows)
+	}
 	return normalizeTerminalSize(cols, rows)
 }
 
 func normalizeTerminalSize(cols int, rows int) terminalSize {
-	if cols <= 0 {
-		cols = 80
+	return terminalSize{
+		Cols: clampTerminalDimension(cols, defaultTerminalCols, minTerminalCols, maxTerminalCols),
+		Rows: clampTerminalDimension(rows, defaultTerminalRows, minTerminalRows, maxTerminalRows),
 	}
-	if rows <= 0 {
-		rows = 24
+}
+
+func clampTerminalDimension(value int, fallback int, minValue int, maxValue int) int {
+	if value <= 0 {
+		value = fallback
 	}
-	if cols < 20 {
-		cols = 20
+	if value < minValue {
+		return minValue
 	}
-	if rows < 5 {
-		rows = 5
+	if value > maxValue {
+		return maxValue
 	}
-	if cols > 500 {
-		cols = 500
+	return value
+}
+
+func terminalWinsize(size terminalSize) *pty.Winsize {
+	normalized := normalizeTerminalSize(size.Cols, size.Rows)
+
+	cols := normalized.Cols
+	if cols < 0 {
+		cols = 0
+	} else if cols > math.MaxUint16 {
+		cols = math.MaxUint16
 	}
-	if rows > 200 {
-		rows = 200
+
+	rows := normalized.Rows
+	if rows < 0 {
+		rows = 0
+	} else if rows > math.MaxUint16 {
+		rows = math.MaxUint16
 	}
-	return terminalSize{Cols: cols, Rows: rows}
+
+	return &pty.Winsize{Cols: uint16(cols), Rows: uint16(rows)}
 }
 
 func serveTerminalWebSocket(w http.ResponseWriter, r *http.Request, term terminalSession, cwd string, size terminalSize, logger zerolog.Logger) {
@@ -417,7 +451,7 @@ func startPTYTerminalSession(ctx context.Context, cwd string, size terminalSize)
 	cmd := exec.CommandContext(ctx, shell)
 	cmd.Dir = cwd
 	cmd.Env = append(os.Environ(), "TERM=xterm-256color", "COLORTERM=truecolor")
-	winSize := &pty.Winsize{Cols: uint16(size.Cols), Rows: uint16(size.Rows)}
+	winSize := terminalWinsize(size)
 	file, err := pty.StartWithSize(cmd, winSize)
 	if err != nil {
 		return nil, err
@@ -443,7 +477,7 @@ func (s *ptyTerminalSession) Write(p []byte) (int, error) {
 }
 
 func (s *ptyTerminalSession) Resize(size terminalSize) error {
-	return pty.Setsize(s.file, &pty.Winsize{Cols: uint16(size.Cols), Rows: uint16(size.Rows)})
+	return pty.Setsize(s.file, terminalWinsize(size))
 }
 
 func (s *ptyTerminalSession) Close() error {

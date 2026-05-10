@@ -387,6 +387,49 @@ func TestStore_RunHistoryPrunesPerJobLimit(t *testing.T) {
 	}
 }
 
+
+func TestStore_ListRunsClampsLimitBounds(t *testing.T) {
+	root := t.TempDir()
+	store := NewStore(root)
+	job, err := store.CreateWithOptions(CreateInput{
+		Prompt:    "bounded history",
+		Schedule:  "every:1m",
+		Enabled:   true,
+		HasEnable: true,
+	})
+	if err != nil {
+		t.Fatalf("create job: %v", err)
+	}
+	base := time.Date(2026, 2, 17, 10, 0, 0, 0, time.UTC)
+	for i := 0; i < 3; i++ {
+		if _, err := store.MarkRunResult(job.ID, base.Add(time.Duration(i)*time.Minute), "ok", nil); err != nil {
+			t.Fatalf("mark run %d: %v", i, err)
+		}
+	}
+
+	tests := []struct {
+		name  string
+		limit int
+		want  int
+	}{
+		{name: "negative defaults and clamps to available", limit: -1, want: 3},
+		{name: "zero defaults and clamps to available", limit: 0, want: 3},
+		{name: "huge clamps to available", limit: int(^uint(0) >> 1), want: 3},
+		{name: "max accepted unchanged", limit: 2, want: 2},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runs, err := store.ListRuns(job.ID, tt.limit)
+			if err != nil {
+				t.Fatalf("list runs: %v", err)
+			}
+			if len(runs) != tt.want {
+				t.Fatalf("ListRuns limit %d returned %d runs, want %d", tt.limit, len(runs), tt.want)
+			}
+		})
+	}
+}
+
 func TestStore_TryStartRunGuardsConcurrentExecution(t *testing.T) {
 	root := t.TempDir()
 	store := NewStore(root)

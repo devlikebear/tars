@@ -24,6 +24,34 @@ import (
 	"github.com/rs/zerolog"
 )
 
+func TestNormalizeTerminalSizeClampsBounds(t *testing.T) {
+	maxInt := int(^uint(0) >> 1)
+	tests := []struct {
+		name string
+		cols int
+		rows int
+		want terminalSize
+	}{
+		{name: "negative uses defaults", cols: -1, rows: -1, want: terminalSize{Cols: defaultTerminalCols, Rows: defaultTerminalRows}},
+		{name: "zero uses defaults", cols: 0, rows: 0, want: terminalSize{Cols: defaultTerminalCols, Rows: defaultTerminalRows}},
+		{name: "below minimum clamps up", cols: 1, rows: 1, want: terminalSize{Cols: minTerminalCols, Rows: minTerminalRows}},
+		{name: "huge clamps down", cols: maxInt, rows: maxInt, want: terminalSize{Cols: maxTerminalCols, Rows: maxTerminalRows}},
+		{name: "max accepted unchanged", cols: maxTerminalCols, rows: maxTerminalRows, want: terminalSize{Cols: maxTerminalCols, Rows: maxTerminalRows}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := normalizeTerminalSize(tt.cols, tt.rows)
+			if got != tt.want {
+				t.Fatalf("normalizeTerminalSize(%d, %d) = %+v, want %+v", tt.cols, tt.rows, got, tt.want)
+			}
+			winSize := terminalWinsize(terminalSize{Cols: tt.cols, Rows: tt.rows})
+			if winSize.Cols != uint16(tt.want.Cols) || winSize.Rows != uint16(tt.want.Rows) {
+				t.Fatalf("terminalWinsize(%d, %d) = cols=%d rows=%d, want cols=%d rows=%d", tt.cols, tt.rows, winSize.Cols, winSize.Rows, tt.want.Cols, tt.want.Rows)
+			}
+		})
+	}
+}
+
 func TestTerminalAPI_OpenUsesSessionCurrentDir(t *testing.T) {
 	root, store, sess := newTerminalTestSession(t)
 	projectDir := testCanonicalPath(t, filepath.Join(root, "projects", "demo"))

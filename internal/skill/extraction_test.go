@@ -104,3 +104,25 @@ func requireExtractionFileMode(t *testing.T, path string, want os.FileMode) {
 		t.Fatalf("expected %s mode %04o, got %04o", path, want, got)
 	}
 }
+
+func TestClampExtractionCandidateLimitBounds(t *testing.T) {
+	tests := []struct {
+		name  string
+		limit int
+		want  int
+	}{
+		{name: "negative defaults to max", limit: -1, want: maxExtractionCandidates},
+		{name: "zero defaults to max", limit: 0, want: maxExtractionCandidates},
+		{name: "huge clamps to max", limit: int(^uint(0) >> 1), want: maxExtractionCandidates},
+		{name: "max accepted unchanged", limit: maxExtractionCandidates, want: maxExtractionCandidates},
+		{name: "below max accepted unchanged", limit: 2, want: 2},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := clampExtractionCandidateLimit(tt.limit); got != tt.want {
+				t.Fatalf("clampExtractionCandidateLimit(%d) = %d, want %d", tt.limit, got, tt.want)
+			}
+		})
+	}
+}
+
