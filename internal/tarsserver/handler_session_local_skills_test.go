@@ -108,6 +108,8 @@ func TestLocalSkillsList_ReturnsItemsAndCollisions(t *testing.T) {
 
 	writeSessionLocalSkill(t, cwd, "alpha", "body")
 	writeSessionLocalSkill(t, cwd, "beta", "body")
+	// Commands under .tars/commands/ are intentionally not surfaced by
+	// the v1 inbox API — confirm one is created but not returned.
 	writeSessionLocalCommand(t, cwd, "deploy", "command body")
 	writeWorkspaceSkill(t, root, "alpha", "existing")
 
@@ -122,8 +124,13 @@ func TestLocalSkillsList_ReturnsItemsAndCollisions(t *testing.T) {
 	if !strings.HasSuffix(resp.Cwd, filepath.Join("projects", "alpha")) {
 		t.Fatalf("expected cwd ending with projects/alpha, got %q", resp.Cwd)
 	}
-	if resp.Counts.Skills != 2 || resp.Counts.Commands != 1 {
+	if resp.Counts.Skills != 2 || resp.Counts.Commands != 0 {
 		t.Fatalf("unexpected counts: %+v", resp.Counts)
+	}
+	for _, item := range resp.Items {
+		if item.Kind == "command" {
+			t.Fatalf("commands should not be surfaced in v1 inbox: %+v", item)
+		}
 	}
 	var alpha, beta *localSkillItem
 	for i := range resp.Items {

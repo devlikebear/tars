@@ -55,54 +55,33 @@ type localSkillPromoteResponse struct {
 	Failed   []localSkillPromoteOutcome `json:"failed"`
 }
 
-// listLocalSkills enumerates `<cwd>/.tars/skills/` and `<cwd>/.tars/commands/`
-// and reports collision against the workspace skills root.
+// listLocalSkills enumerates `<cwd>/.tars/skills/` and reports collision
+// against the workspace skills root. Commands under `.tars/commands/`
+// are intentionally not surfaced in v1; they remain visible in the
+// Session Config panel and are not promotable.
 func listLocalSkills(cwd, workspaceSkillsRoot string) []localSkillItem {
 	out := make([]localSkillItem, 0)
 	if strings.TrimSpace(cwd) == "" {
 		return out
 	}
-	// cwd comes from session.GetCurrentDir which only stores eligible
-	// directories, but Clean defensively to satisfy static analysis.
-	cwd = filepath.Clean(cwd)
-	if !filepath.IsAbs(cwd) {
+	skillsRoot := filepath.Join(filepath.Clean(cwd), ".tars", "skills")
+	snapshot, err := skill.Load(skill.LoadOptions{
+		Sources: []skill.SourceDir{{Source: skill.SourceSessionCwd, Dir: skillsRoot}},
+	})
+	if err != nil {
 		return out
 	}
-	skillsRoot := filepath.Join(cwd, ".tars", "skills")
-	if snapshot, err := skill.Load(skill.LoadOptions{
-		Sources: []skill.SourceDir{{Source: skill.SourceSessionCwd, Dir: skillsRoot}},
-	}); err == nil {
-		for _, def := range snapshot.Skills {
-			out = append(out, localSkillItem{
-				Name:                  def.Name,
-				Slash:                 def.Slash,
-				Description:           def.Description,
-				Kind:                  "skill",
-				FilePath:              def.FilePath,
-				HasWorkspaceCollision: workspaceSkillExists(workspaceSkillsRoot, def.Name),
-			})
-		}
-	}
-	commandsRoot := filepath.Join(cwd, ".tars", "commands")
-	if entries, err := os.ReadDir(commandsRoot); err == nil {
-		for _, entry := range entries {
-			name := entry.Name()
-			if entry.IsDir() || !strings.HasSuffix(strings.ToLower(name), ".md") {
-				continue
-			}
-			base := strings.TrimSuffix(name, filepath.Ext(name))
-			out = append(out, localSkillItem{
-				Name:     base,
-				Slash:    base,
-				Kind:     "command",
-				FilePath: filepath.Join(commandsRoot, name),
-			})
-		}
+	for _, def := range snapshot.Skills {
+		out = append(out, localSkillItem{
+			Name:                  def.Name,
+			Slash:                 def.Slash,
+			Description:           def.Description,
+			Kind:                  "skill",
+			FilePath:              def.FilePath,
+			HasWorkspaceCollision: workspaceSkillExists(workspaceSkillsRoot, def.Name),
+		})
 	}
 	sort.Slice(out, func(i, j int) bool {
-		if out[i].Kind != out[j].Kind {
-			return out[i].Kind < out[j].Kind
-		}
 		return strings.ToLower(out[i].Name) < strings.ToLower(out[j].Name)
 	})
 	return out

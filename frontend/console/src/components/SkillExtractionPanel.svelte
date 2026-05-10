@@ -46,7 +46,7 @@
   let pendingPromoteNames: string[] = $state([])
 
   let pendingExtracted = $derived(candidates.filter((candidate) => candidate.status === 'pending').length)
-  let pendingLocal = $derived(localSkills.filter((item) => item.kind === 'skill').length)
+  let pendingLocal = $derived(localSkills.length)
 
   function fmtDate(value?: string): string {
     if (!value) return ''
