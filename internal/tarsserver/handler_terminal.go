@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"os"
 	"os/exec"
@@ -308,7 +309,22 @@ func clampTerminalDimension(value int, fallback int, minValue int, maxValue int)
 
 func terminalWinsize(size terminalSize) *pty.Winsize {
 	normalized := normalizeTerminalSize(size.Cols, size.Rows)
-	return &pty.Winsize{Cols: uint16(normalized.Cols), Rows: uint16(normalized.Rows)}
+
+	cols := normalized.Cols
+	if cols < 0 {
+		cols = 0
+	} else if cols > math.MaxUint16 {
+		cols = math.MaxUint16
+	}
+
+	rows := normalized.Rows
+	if rows < 0 {
+		rows = 0
+	} else if rows > math.MaxUint16 {
+		rows = math.MaxUint16
+	}
+
+	return &pty.Winsize{Cols: uint16(cols), Rows: uint16(rows)}
 }
 
 func serveTerminalWebSocket(w http.ResponseWriter, r *http.Request, term terminalSession, cwd string, size terminalSize, logger zerolog.Logger) {
