@@ -140,6 +140,112 @@ func TestSkillCreatorAPI_TestRunsCompanionCLIInSandbox(t *testing.T) {
 	}
 }
 
+func TestSkillCreatorAPI_WorkspaceCRUD(t *testing.T) {
+	workspaceDir := t.TempDir()
+	handler := newSkillCreatorAPIHandler(workspaceDir, zerolog.New(ioDiscard{}), nil, nil)
+
+	const skillName = "my-test-skill"
+	skillDir := filepath.Join(workspaceDir, "skills", skillName)
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatalf("setup skill dir: %v", err)
+	}
+	initialContent := "---\nname: my-test-skill\ndescription: Test skill\n---\n# Test\n"
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(initialContent), 0o644); err != nil {
+		t.Fatalf("setup skill file: %v", err)
+	}
+
+	// GET — fetch content
+	req := httptest.NewRequest(http.MethodGet, "/v1/admin/skills/"+skillName, nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET expected 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+	var getResp map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &getResp); err != nil {
+		t.Fatalf("decode get response: %v", err)
+	}
+	if getResp["name"] != skillName {
+		t.Fatalf("expected name=%q, got %q", skillName, getResp["name"])
+	}
+	if !strings.Contains(getResp["content"], "Test skill") {
+		t.Fatalf("expected content to contain 'Test skill', got %q", getResp["content"])
+	}
+
+	// PUT — update content
+	updatedContent := "---\nname: my-test-skill\ndescription: Updated skill\n---\n# Updated\n"
+	putBody, _ := json.Marshal(map[string]string{"content": updatedContent})
+	putReq := httptest.NewRequest(http.MethodPut, "/v1/admin/skills/"+skillName, bytes.NewReader(putBody))
+	putReq.Header.Set("Content-Type", "application/json")
+	putRec := httptest.NewRecorder()
+	handler.ServeHTTP(putRec, putReq)
+	if putRec.Code != http.StatusOK {
+		t.Fatalf("PUT expected 200, got %d body=%q", putRec.Code, putRec.Body.String())
+	}
+	data, err := os.ReadFile(filepath.Join(skillDir, "SKILL.md"))
+	if err != nil {
+		t.Fatalf("read updated skill: %v", err)
+	}
+	if !strings.Contains(string(data), "Updated skill") {
+		t.Fatalf("expected updated content, got %q", string(data))
+	}
+
+	// DELETE — remove skill directory
+	delReq := httptest.NewRequest(http.MethodDelete, "/v1/admin/skills/"+skillName, nil)
+	delRec := httptest.NewRecorder()
+	handler.ServeHTTP(delRec, delReq)
+	if delRec.Code != http.StatusOK {
+		t.Fatalf("DELETE expected 200, got %d body=%q", delRec.Code, delRec.Body.String())
+	}
+	if _, err := os.Stat(skillDir); !os.IsNotExist(err) {
+		t.Fatalf("expected skill directory to be removed")
+	}
+
+	// GET after delete → 404
+	req404 := httptest.NewRequest(http.MethodGet, "/v1/admin/skills/"+skillName, nil)
+	rec404 := httptest.NewRecorder()
+	handler.ServeHTTP(rec404, req404)
+	if rec404.Code != http.StatusNotFound {
+		t.Fatalf("GET after delete expected 404, got %d", rec404.Code)
+	}
+
+	// DELETE non-existent → 404
+	delReq2 := httptest.NewRequest(http.MethodDelete, "/v1/admin/skills/"+skillName, nil)
+	delRec2 := httptest.NewRecorder()
+	handler.ServeHTTP(delRec2, delReq2)
+	if delRec2.Code != http.StatusNotFound {
+		t.Fatalf("DELETE non-existent expected 404, got %d", delRec2.Code)
+	}
+}
+
+func TestSkillCreatorAPI_WorkspaceCRUD_InvalidName(t *testing.T) {
+	handler := newSkillCreatorAPIHandler(t.TempDir(), zerolog.New(ioDiscard{}), nil, nil)
+
+	// Names with uppercase or underscore fail validateSkillCreatorName.
+	for _, method := range []string{http.MethodGet, http.MethodPut, http.MethodDelete} {
+		req := httptest.NewRequest(method, "/v1/admin/skills/Invalid_Name", nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("%s with invalid name expected 400, got %d", method, rec.Code)
+		}
+	}
+}
+
+func TestSkillCreatorAPI_WorkspaceCRUD_PutEmptyContent(t *testing.T) {
+	workspaceDir := t.TempDir()
+	handler := newSkillCreatorAPIHandler(workspaceDir, zerolog.New(ioDiscard{}), nil, nil)
+
+	putBody, _ := json.Marshal(map[string]string{"content": "   "})
+	req := httptest.NewRequest(http.MethodPut, "/v1/admin/skills/some-skill", bytes.NewReader(putBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("PUT with empty content expected 400, got %d body=%q", rec.Code, rec.Body.String())
+	}
+}
+
 func postJSON(t *testing.T, handler http.Handler, path string, body any) *httptest.ResponseRecorder {
 	t.Helper()
 	data, err := json.Marshal(body)
