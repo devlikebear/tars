@@ -276,23 +276,21 @@ func TestBuildResult_PrioritizesHigherOrderStaticSections(t *testing.T) {
 	}
 
 	// Floor must stay above the hardcoded header (Current time + Response
-	// Formatting + Planning). The Planning section grew with CON-052 +
-	// CON-053 + CON-054 to ~340 tokens, so the older 460-token cap no
-	// longer leaves room for any workspace bootstrap content. 700 keeps
-	// the prioritization assertion meaningful (USER fits, IDENTITY/TOOLS
-	// get clamped) without the test doubling as an upper-bound on the
-	// header itself.
+	// Formatting + Planning + Long-running Commands). Each addition to
+	// the always-on header forces a bump here; 850 accommodates the
+	// post-Phase-2 layout while still keeping the prioritization
+	// assertion meaningful (USER fits, IDENTITY/TOOLS get clamped).
 	result := BuildResultFor(BuildOptions{
 		WorkspaceDir:       root,
-		StaticBudgetTokens: 700,
-		TotalBudgetTokens:  700,
+		StaticBudgetTokens: 850,
+		TotalBudgetTokens:  850,
 	})
 
 	if !strings.Contains(result.Prompt, files["USER.md"][:120]) {
 		t.Fatalf("expected user section to survive tight budget, got %q", result.Prompt)
 	}
-	if result.TotalTokens > 700 {
-		t.Fatalf("expected total tokens <= 700, got %d", result.TotalTokens)
+	if result.TotalTokens > 850 {
+		t.Fatalf("expected total tokens <= 850, got %d", result.TotalTokens)
 	}
 }
 
@@ -307,22 +305,22 @@ func TestBuildResult_ClampsRelevantMemoryToRemainingTotalBudget(t *testing.T) {
 
 	// Budget here is a stress test for the clamping logic, not a target
 	// for production. The total floor must accommodate the hardcoded
-	// header (Current time + Response Formatting + Planning ≈ ~280 tokens)
-	// plus the static USER section, otherwise relevant memory has nothing
-	// left to clamp. 700 keeps the assertion meaningful while leaving
-	// headroom for any future hardcoded-header tweaks.
+	// header (Current time + Response Formatting + Planning + Long-running
+	// Commands ≈ ~430 tokens) plus the static USER section, otherwise
+	// relevant memory has nothing left to clamp. 850 keeps the assertion
+	// meaningful with headroom for future header tweaks.
 	result := BuildResultFor(BuildOptions{
 		WorkspaceDir:         root,
 		Query:                "what coffee do i prefer?",
 		StaticBudgetTokens:   460,
 		RelevantBudgetTokens: 80,
-		TotalBudgetTokens:    700,
+		TotalBudgetTokens:    1000,
 	})
 
-	if result.TotalTokens > 700 {
-		t.Fatalf("expected total tokens <= 700, got %d", result.TotalTokens)
+	if result.TotalTokens > 1000 {
+		t.Fatalf("expected total tokens <= 1000, got %d", result.TotalTokens)
 	}
-	if result.RelevantTokens > 0 && result.StaticTokens+result.RelevantTokens > 700 {
+	if result.RelevantTokens > 0 && result.StaticTokens+result.RelevantTokens > 1000 {
 		t.Fatalf("expected relevant memory to fit remaining budget, got static=%d relevant=%d", result.StaticTokens, result.RelevantTokens)
 	}
 }

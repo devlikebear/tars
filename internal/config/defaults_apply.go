@@ -75,6 +75,9 @@ func applyCoreDefaults(cfg *Config, defaults Config) {
 	if cfg.ToolsExecMaxTimeoutMS <= 0 {
 		cfg.ToolsExecMaxTimeoutMS = defaults.ToolsExecMaxTimeoutMS
 	}
+	if cfg.ToolsProcessMaxTimeoutMS <= 0 {
+		cfg.ToolsProcessMaxTimeoutMS = defaults.ToolsProcessMaxTimeoutMS
+	}
 	if cfg.UsageLimitDailyUSD <= 0 {
 		cfg.UsageLimitDailyUSD = defaults.UsageLimitDailyUSD
 	}

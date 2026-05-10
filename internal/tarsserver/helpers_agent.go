@@ -44,9 +44,12 @@ func agentPromptTelemetryFromContext(ctx context.Context) *agentPromptTelemetry 
 // baseToolRegistryOptions tunes optional knobs used by the base tool
 // registry. The zero value reproduces legacy defaults.
 type baseToolRegistryOptions struct {
-	// ExecMaxTimeoutMS caps the per-call timeout the exec tool can
-	// honour. 0 → tool package default (5 min).
+	// ExecMaxTimeoutMS caps the per-call timeout for foreground exec
+	// calls. 0 → tool package default (5 min).
 	ExecMaxTimeoutMS int
+	// ExecMaxBackgroundTimeoutMS caps background (process-managed)
+	// commands. 0 → tool package default (30 min).
+	ExecMaxBackgroundTimeoutMS int
 }
 
 func newBaseToolRegistry(workspaceDir string) *tool.Registry {
@@ -102,7 +105,10 @@ func newBaseToolRegistryWithOptions(
 	registry.Register(tool.NewGlobToolWithPolicy(policy))
 
 	// Exec / process
-	execOpts := tool.ExecToolOptions{MaxTimeoutMS: opts.ExecMaxTimeoutMS}
+	execOpts := tool.ExecToolOptions{
+		MaxTimeoutMS:           opts.ExecMaxTimeoutMS,
+		MaxBackgroundTimeoutMS: opts.ExecMaxBackgroundTimeoutMS,
+	}
 	if processManager != nil {
 		registry.Register(tool.NewProcessTool(processManager))
 		registry.Register(tool.NewExecToolWithOptions(policy, processManager, execOpts))

@@ -17,14 +17,16 @@ type processResponse struct {
 
 func NewProcessTool(manager *ProcessManager) Tool {
 	return Tool{
-		Name:        "process",
-		Description: "Manage background exec sessions (list/poll/log/write/kill/clear/remove).",
+		Name: "process",
+		Description: "Manage background exec sessions. Actions: list, poll, log, wait (block until exit), write, kill, clear, remove. " +
+			"Pair with exec background:true for long-running commands like gh pr checks --watch or make build: spawn -> process wait.",
 		Parameters: json.RawMessage(`{
   "type":"object",
   "properties":{
-    "action":{"type":"string","enum":["list","poll","log","write","kill","clear","remove"]},
+    "action":{"type":"string","enum":["list","poll","log","wait","write","kill","clear","remove"]},
     "session_id":{"type":"string"},
-    "chars":{"type":"string"}
+    "chars":{"type":"string","description":"For action=write only — characters to send to the process stdin."},
+    "timeout_ms":{"type":"integer","minimum":100,"maximum":1800000,"description":"For action=wait only — block up to this many ms (default 1800000 = 30min)."}
   },
   "required":["action"],
   "additionalProperties":false
@@ -37,6 +39,7 @@ func NewProcessTool(manager *ProcessManager) Tool {
 				Action    string `json:"action"`
 				SessionID string `json:"session_id,omitempty"`
 				Chars     string `json:"chars,omitempty"`
+				TimeoutMS int    `json:"timeout_ms,omitempty"`
 			}
 			if err := json.Unmarshal(params, &input); err != nil {
 				return JSONTextResult(processResponse{Message: fmt.Sprintf("invalid arguments: %v", err)}, true), nil
@@ -55,6 +58,12 @@ func NewProcessTool(manager *ProcessManager) Tool {
 				s, err := manager.Log(input.SessionID)
 				if err != nil {
 					return JSONTextResult(processResponse{Action: action, Message: err.Error()}, true), nil
+				}
+				return JSONTextResult(processResponse{Action: action, Session: &s}, false), nil
+			case "wait":
+				s, _, err := manager.Wait(ctx, input.SessionID, input.TimeoutMS)
+				if err != nil {
+					return JSONTextResult(processResponse{Action: action, Session: &s, Message: err.Error()}, true), nil
 				}
 				return JSONTextResult(processResponse{Action: action, Session: &s}, false), nil
 			case "write":
@@ -78,7 +87,7 @@ func NewProcessTool(manager *ProcessManager) Tool {
 				removed := manager.ClearDone()
 				return JSONTextResult(processResponse{Action: action, Removed: removed}, false), nil
 			default:
-				return JSONTextResult(processResponse{Message: "action is required and must be one of: list,poll,log,write,kill,clear,remove"}, true), nil
+				return JSONTextResult(processResponse{Message: "action is required and must be one of: list,poll,log,wait,write,kill,clear,remove"}, true), nil
 			}
 		},
 	}

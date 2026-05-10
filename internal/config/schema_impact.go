@@ -267,6 +267,9 @@ var configFieldImpactHints = map[string][]string{
 	"tools_exec_max_timeout_ms": {
 		"Raising the cap lets long-running commands (builds, CI waits, installs) complete without being killed; lowering it tightens the upper bound on shell hangs.",
 	},
+	"tools_process_max_timeout_ms": {
+		"Raising this lets background commands (exec background:true) and the process wait action survive longer-running watchers (CI, deployments). Lowering it bounds runaway background processes.",
+	},
 	"tools_web_fetch_allow_private_hosts": {
 		"Allowing private hosts expands the network surface available to web fetch tools.",
 	},

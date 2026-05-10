@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.32.22] - 2026-05-10
+
+### Changed
+
+- **Background-by-default for long-running commands** — the `process` tool gains a `wait` action that blocks server-side until the spawned process exits (or `timeout_ms` lapses, default 30 min), eliminating the polling loops that used to burn agent loop iterations. Background process timeouts move to a separate cap (`tools.process.max_timeout_ms`, default 30 min) so watchers like `gh pr checks --watch` can survive 20+ minutes without being killed by the foreground exec cap. Stdout/stderr buffers are bounded to a rolling 64 KB tail to prevent runaway memory on very long-running watchers. The system prompt now includes a "Long-running Commands" section that tells the LLM to prefer `exec background:true` + `process wait` over blocking foreground `exec` for builds, installs, CI watchers, and dev servers.
+
 ## [0.32.21] - 2026-05-10
 
 ### Changed

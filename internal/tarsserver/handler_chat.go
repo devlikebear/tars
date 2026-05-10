@@ -989,6 +989,10 @@ type chatToolingOptions struct {
 	// ExecMaxTimeoutMS forwards config.ToolsExecMaxTimeoutMS into the
 	// per-call cap on the exec tool. 0 falls back to the tool default.
 	ExecMaxTimeoutMS int
+	// ExecMaxBackgroundTimeoutMS forwards
+	// config.ToolsProcessMaxTimeoutMS into the per-call cap on
+	// background (process-managed) commands.
+	ExecMaxBackgroundTimeoutMS int
 	// PlanClarifyMode forwards config.PlanClarifyMode into the prompt
 	// builder so the Planning section's clarifying-questions stance can
 	// be tuned without forking the prompt source.

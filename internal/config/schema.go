@@ -145,6 +145,7 @@ func Schema() []FieldMeta {
 		f("tools_web_search_perplexity_base_url", "Tools", "string", "Perplexity Base URL", "Override URL for the Perplexity chat completions API"),
 		f("tools_web_search_cache_ttl_seconds", "Tools", "int", "Search Cache TTL", "Cache duration for search results in seconds"),
 		f("tools_exec_max_timeout_ms", "Tools", "int", "Exec Max Timeout (ms)", "Upper bound on per-call exec tool timeout (ms). Long-running commands like builds and CI waits use this cap."),
+		f("tools_process_max_timeout_ms", "Tools", "int", "Process Max Timeout (ms)", "Upper bound on per-call timeout for background commands (exec background:true) and the process tool's wait action."),
 		f("tools_web_fetch_allow_private_hosts", "Tools", "bool", "Allow Private Hosts", "Allow fetching from private/internal hosts"),
 		f("tools_web_fetch_private_host_allowlist_json", "Tools", "string_list", "Private Host Allowlist", "Explicit private hosts allowed for web fetch requests"),
 		f("tools_apply_patch_enabled", "Tools", "bool", "Apply Patch", "Enable apply-patch tool"),
@@ -411,6 +412,8 @@ func extractValue(yamlKey string, cfg Config) any {
 		return cfg.ToolsWebSearchCacheTTLSeconds
 	case "tools_exec_max_timeout_ms":
 		return cfg.ToolsExecMaxTimeoutMS
+	case "tools_process_max_timeout_ms":
+		return cfg.ToolsProcessMaxTimeoutMS
 	case "tools_web_fetch_private_host_allowlist_json":
 		return append([]string(nil), cfg.ToolsWebFetchPrivateHostAllowlist...)
 	case "tools_web_fetch_allow_private_hosts":
