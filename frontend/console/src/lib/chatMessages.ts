@@ -1,3 +1,8 @@
+export type ToolOutputLine = {
+  stream: 'stdout' | 'stderr' | string
+  text: string
+}
+
 export type ChatMessage = {
   id: string
   sourceMessageId?: string
@@ -12,6 +17,9 @@ export type ChatMessage = {
   toolIsError?: boolean
   toolStartedAt?: number
   toolFinishedAt?: number
+  // Streaming stdout/stderr lines emitted while the tool runs.
+  // Currently populated by exec via SSE `tool_output_line` events.
+  toolOutputLines?: ToolOutputLine[]
   usage?: {
     input_tokens: number
     output_tokens: number

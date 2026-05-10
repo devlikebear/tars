@@ -72,6 +72,9 @@ func applyCoreDefaults(cfg *Config, defaults Config) {
 	if cfg.AgentMaxIterations <= 0 {
 		cfg.AgentMaxIterations = defaults.AgentMaxIterations
 	}
+	if cfg.ToolsExecMaxTimeoutMS <= 0 {
+		cfg.ToolsExecMaxTimeoutMS = defaults.ToolsExecMaxTimeoutMS
+	}
 	if cfg.UsageLimitDailyUSD <= 0 {
 		cfg.UsageLimitDailyUSD = defaults.UsageLimitDailyUSD
 	}

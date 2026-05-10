@@ -821,3 +821,113 @@ func TestLoop_Run_FinalizesWithoutToolsWhenMaxIterationsReached(t *testing.T) {
 		t.Fatalf("expected finalization tool_choice=none, got %q", client.seenToolChoice[2])
 	}
 }
+
+type testRecordingEmitter struct {
+	events []testEmittedLine
+}
+
+type testEmittedLine struct {
+	toolCallID string
+	stream     string
+	text       string
+}
+
+func (r *testRecordingEmitter) EmitToolLine(toolCallID, stream, text string) {
+	r.events = append(r.events, testEmittedLine{toolCallID, stream, text})
+}
+
+// TestLoop_BindsLineEmitterToToolCallID verifies that when a chat-level
+// LineEmitter is in the loop ctx, the per-call ToolOutputStreamer the
+// tool sees is bound to the active tool_call_id.
+func TestLoop_BindsLineEmitterToToolCallID(t *testing.T) {
+	reg := tool.NewRegistry()
+	var seenStreamer tool.ToolOutputStreamer
+	reg.Register(tool.Tool{
+		Name:        "ctx_probe",
+		Description: "captures streamer from ctx",
+		Parameters:  json.RawMessage(`{"type":"object"}`),
+		Execute: func(ctx context.Context, _ json.RawMessage) (tool.Result, error) {
+			seenStreamer = tool.ToolOutputStreamerFromContext(ctx)
+			if seenStreamer != nil {
+				seenStreamer.EmitLine(tool.StreamStdout, "from-tool")
+			}
+			return tool.JSONTextResult(map[string]string{"ok": "1"}, false), nil
+		},
+	})
+
+	client := &scriptedLLMClient{
+		responses: []llm.ChatResponse{
+			{Message: llm.ChatMessage{Role: "assistant", ToolCalls: []llm.ToolCall{{ID: "abc-42", Name: "ctx_probe", Arguments: "{}"}}}},
+			{Message: llm.ChatMessage{Role: "assistant", Content: "done"}},
+		},
+	}
+
+	rec := &testRecordingEmitter{}
+	ctx := tool.WithLineEmitter(context.Background(), rec)
+	loop := NewLoop(client, reg)
+
+	_, err := loop.Run(ctx, []llm.ChatMessage{{Role: "user", Content: "go"}}, RunOptions{
+		Tools: []llm.ToolSchema{{
+			Type: "function",
+			Function: llm.ToolFunctionSchema{
+				Name:       "ctx_probe",
+				Parameters: json.RawMessage(`{"type":"object"}`),
+			},
+		}},
+		ToolChoice: llm.ToolChoiceAuto(),
+	})
+	if err != nil {
+		t.Fatalf("loop run: %v", err)
+	}
+	if seenStreamer == nil {
+		t.Fatalf("expected tool to receive a ToolOutputStreamer from ctx")
+	}
+	if len(rec.events) != 1 {
+		t.Fatalf("expected 1 streamed line via emitter, got %d", len(rec.events))
+	}
+	if rec.events[0].toolCallID != "abc-42" {
+		t.Fatalf("expected toolCallID=abc-42, got %q", rec.events[0].toolCallID)
+	}
+	if rec.events[0].text != "from-tool" || rec.events[0].stream != tool.StreamStdout {
+		t.Fatalf("unexpected event %+v", rec.events[0])
+	}
+}
+
+func TestLoop_NoEmitterMeansNoStreamerInToolCtx(t *testing.T) {
+	reg := tool.NewRegistry()
+	var seenStreamer tool.ToolOutputStreamer
+	reg.Register(tool.Tool{
+		Name:        "ctx_probe",
+		Description: "captures streamer from ctx",
+		Parameters:  json.RawMessage(`{"type":"object"}`),
+		Execute: func(ctx context.Context, _ json.RawMessage) (tool.Result, error) {
+			seenStreamer = tool.ToolOutputStreamerFromContext(ctx)
+			return tool.JSONTextResult(map[string]string{"ok": "1"}, false), nil
+		},
+	})
+
+	client := &scriptedLLMClient{
+		responses: []llm.ChatResponse{
+			{Message: llm.ChatMessage{Role: "assistant", ToolCalls: []llm.ToolCall{{ID: "x", Name: "ctx_probe", Arguments: "{}"}}}},
+			{Message: llm.ChatMessage{Role: "assistant", Content: "done"}},
+		},
+	}
+
+	loop := NewLoop(client, reg)
+	_, err := loop.Run(context.Background(), []llm.ChatMessage{{Role: "user", Content: "go"}}, RunOptions{
+		Tools: []llm.ToolSchema{{
+			Type: "function",
+			Function: llm.ToolFunctionSchema{
+				Name:       "ctx_probe",
+				Parameters: json.RawMessage(`{"type":"object"}`),
+			},
+		}},
+		ToolChoice: llm.ToolChoiceAuto(),
+	})
+	if err != nil {
+		t.Fatalf("loop run: %v", err)
+	}
+	if seenStreamer != nil {
+		t.Fatalf("expected no streamer when no emitter in ctx, got %v", seenStreamer)
+	}
+}

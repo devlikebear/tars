@@ -63,8 +63,8 @@ func (m *ProcessManager) Start(ctx context.Context, workspaceDir, commandLine st
 	if timeoutMS < minExecTimeoutMS {
 		timeoutMS = minExecTimeoutMS
 	}
-	if timeoutMS > maxExecTimeoutMS {
-		timeoutMS = maxExecTimeoutMS
+	if timeoutMS > defaultExecMaxTimeoutMS {
+		timeoutMS = defaultExecMaxTimeoutMS
 	}
 	runCtx, cancel := context.WithTimeout(ctx, time.Duration(timeoutMS)*time.Millisecond)
 	cmd := exec.CommandContext(runCtx, fields[0], fields[1:]...)

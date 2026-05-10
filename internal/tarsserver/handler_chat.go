@@ -986,6 +986,9 @@ type chatToolingOptions struct {
 	UsageTracker                *usage.Tracker
 	OpsManager                  *ops.Manager
 	Compaction                  chatCompactionOptions
+	// ExecMaxTimeoutMS forwards config.ToolsExecMaxTimeoutMS into the
+	// per-call cap on the exec tool. 0 falls back to the tool default.
+	ExecMaxTimeoutMS int
 	// PlanClarifyMode forwards config.PlanClarifyMode into the prompt
 	// builder so the Planning section's clarifying-questions stance can
 	// be tuned without forking the prompt source.

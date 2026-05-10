@@ -123,6 +123,29 @@ func (s *chatStreamWriter) error(err error) {
 	s.send(map[string]string{"type": "error", "error": msg})
 }
 
+// toolOutputLine forwards a single line streamed by a running tool (e.g.
+// exec stdout/stderr). Non-empty lines are tagged with the tool_call_id
+// the agent loop bound at invocation time so the console can group lines
+// under the right tool call entry.
+func (s *chatStreamWriter) toolOutputLine(toolCallID, stream, text string) {
+	if s == nil {
+		return
+	}
+	s.send(map[string]string{
+		"type":         "tool_output_line",
+		"session_id":   s.sessionID,
+		"tool_call_id": strings.TrimSpace(toolCallID),
+		"stream":       strings.TrimSpace(stream),
+		"text":         text,
+	})
+}
+
+// EmitToolLine implements tool.LineEmitter so the chat handler can plug
+// the stream writer directly into the agent loop via context.
+func (s *chatStreamWriter) EmitToolLine(toolCallID, stream, text string) {
+	s.toolOutputLine(toolCallID, stream, text)
+}
+
 func (s *chatStreamWriter) memoryRecall(count int) {
 	s.send(map[string]any{
 		"type":         "memory_recall",

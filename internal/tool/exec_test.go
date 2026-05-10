@@ -115,6 +115,80 @@ func TestExecTool_RejectsNonStringCommand(t *testing.T) {
 	}
 }
 
+func TestExecTool_MaxTimeoutOptionClampsRequest(t *testing.T) {
+	root := t.TempDir()
+	tl := NewExecToolWithOptions(SingleDirPolicy(root), nil, ExecToolOptions{MaxTimeoutMS: 200})
+
+	// Request 5s but factory caps at 200ms; sleep 1s should hit the cap.
+	result, err := tl.Execute(context.Background(), json.RawMessage(`{"command":"sleep 1","timeout_ms":5000}`))
+	if err != nil {
+		t.Fatalf("execute exec tool: %v", err)
+	}
+	var body execResponse
+	if err := json.Unmarshal([]byte(result.Text()), &body); err != nil {
+		t.Fatalf("decode result: %v", err)
+	}
+	if !body.TimedOut {
+		t.Fatalf("expected timeout because cap shrinks to 200ms, got %+v", body)
+	}
+	if body.DurationMS > 1500 {
+		t.Fatalf("expected duration capped near 200ms, got %dms", body.DurationMS)
+	}
+}
+
+func TestExecTool_StreamsStdoutLinesViaContext(t *testing.T) {
+	root := t.TempDir()
+	tl := NewExecTool(root)
+
+	rec := &recordingEmitter{}
+	streamer := BindLineEmitter(rec, "call-1")
+	ctx := WithToolOutputStreamer(context.Background(), streamer)
+
+	result, err := tl.Execute(ctx, json.RawMessage(`{"command":"printf line-a\\nline-b\\nline-c\\n","timeout_ms":2000}`))
+	if err != nil {
+		t.Fatalf("execute exec tool: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("expected success, got %s", result.Text())
+	}
+	if len(rec.events) != 3 {
+		t.Fatalf("expected 3 streamed lines, got %d: %+v", len(rec.events), rec.events)
+	}
+	for i, want := range []string{"line-a", "line-b", "line-c"} {
+		if rec.events[i].toolCallID != "call-1" || rec.events[i].stream != StreamStdout || rec.events[i].text != want {
+			t.Fatalf("event %d mismatch: %+v (want %s)", i, rec.events[i], want)
+		}
+	}
+}
+
+func TestExecTool_StreamsStderrSeparately(t *testing.T) {
+	root := t.TempDir()
+	tl := NewExecTool(root)
+
+	rec := &recordingEmitter{}
+	streamer := BindLineEmitter(rec, "call-2")
+	ctx := WithToolOutputStreamer(context.Background(), streamer)
+
+	// `ls` against a non-existent path reliably writes to stderr without
+	// needing shell quoting (which strings.Fields would mangle).
+	result, err := tl.Execute(ctx, json.RawMessage(`{"command":"ls /nonexistent-path-for-test","timeout_ms":2000}`))
+	if err != nil {
+		t.Fatalf("execute exec tool: %v", err)
+	}
+	if !result.IsError {
+		t.Fatalf("expected non-zero exit, got %s", result.Text())
+	}
+	var sawStderr bool
+	for _, ev := range rec.events {
+		if ev.stream == StreamStderr && ev.text != "" {
+			sawStderr = true
+		}
+	}
+	if !sawStderr {
+		t.Fatalf("expected at least one stderr event, got %+v", rec.events)
+	}
+}
+
 func TestExecTool_EmptyCommandIncludesHint(t *testing.T) {
 	root := t.TempDir()
 	tl := NewExecTool(root)

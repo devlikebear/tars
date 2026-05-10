@@ -55,7 +55,8 @@ const (
 	defaultUsageLimitMonthlyUSD                = 150.0
 	defaultUsageDailyTokenBudget               = 0
 	defaultUsageLimitMode                      = "soft"
-	defaultAgentMaxIterations                  = 8
+	defaultAgentMaxIterations                  = 20
+	defaultExecMaxTimeoutMS                    = 300000
 	defaultCronRunHistoryLimit                 = 200
 	defaultAssistantHotkey                     = "Ctrl+Option+Space"
 	defaultAssistantWhisperBin                 = "whisper-cli"
@@ -182,6 +183,7 @@ func defaultConfigValues() Config {
 			ToolsWebSearchPerplexityModel:   defaultPerplexityModel,
 			ToolsWebSearchPerplexityBaseURL: defaultPerplexityBaseURL,
 			ToolsWebSearchCacheTTLSeconds:   defaultToolsWebSearchCacheTTLSeconds,
+			ToolsExecMaxTimeoutMS:           defaultExecMaxTimeoutMS,
 		},
 		AgentRuntimeConfig: AgentRuntimeConfig{
 			AgentRuntimeAgentsWatch:                   true,

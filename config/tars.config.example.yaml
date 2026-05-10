@@ -100,7 +100,10 @@ usage:
 
 automation:
   agent:
-    max_iterations: 8
+    # Max tool-call iterations the chat agent loop runs before forcing a
+    # final response. Bump this for multi-step workflows that chain many
+    # exec/edit/test calls (e.g. github-flow style implementations).
+    max_iterations: 20
   pulse:
     enabled: true
     interval: 1m
@@ -155,6 +158,12 @@ compaction:
 tools:
   default_set: standard
   allow_high_risk_user: false
+  exec:
+    # Upper bound on a single exec tool invocation, in milliseconds. The
+    # LLM can pass a smaller `timeout_ms` per call but values above this
+    # are clamped. Raise this for builds, installs, and CI waits; lower
+    # it to tighten the maximum wall time a single shell command can run.
+    max_timeout_ms: 300000
   web_search:
     enabled: false
     provider: brave

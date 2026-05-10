@@ -85,6 +85,8 @@ func inferPreferredYAMLPathForKey(key string) string {
 		return "tools.default_set"
 	case key == "tools_allow_high_risk_user":
 		return "tools.allow_high_risk_user"
+	case key == "tools_exec_max_timeout_ms":
+		return "tools.exec.max_timeout_ms"
 	case strings.HasPrefix(key, "tools_") && strings.HasSuffix(key, "_enabled"):
 		name := strings.TrimSuffix(strings.TrimPrefix(key, "tools_"), "_enabled")
 		return "tools." + name + ".enabled"

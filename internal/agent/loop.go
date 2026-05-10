@@ -21,7 +21,7 @@ const (
 	EventAfterTool          EventType = "after_tool_call"
 	EventLoopEnd            EventType = "loop_end"
 	EventLoopError          EventType = "error"
-	DefaultMaxLoopIters               = 8
+	DefaultMaxLoopIters               = 20
 	repeatedToolCallLimit             = 3
 	autoExecCommandFallback           = "pwd"
 )
@@ -192,7 +192,13 @@ func (l *Loop) Run(ctx context.Context, initial []llm.ChatMessage, opts RunOptio
 				params = json.RawMessage(`{}`)
 			}
 
-			result, err := tl.Execute(ctx, params)
+			callCtx := ctx
+			if emitter := tool.LineEmitterFromContext(ctx); emitter != nil {
+				if streamer := tool.BindLineEmitter(emitter, call.ID); streamer != nil {
+					callCtx = tool.WithToolOutputStreamer(ctx, streamer)
+				}
+			}
+			result, err := tl.Execute(callCtx, params)
 			if err != nil {
 				l.emit(ctx, Event{
 					Type:       EventLoopError,

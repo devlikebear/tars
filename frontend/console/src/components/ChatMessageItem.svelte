@@ -80,6 +80,13 @@
             <pre class="tool-detail-value"><code>{argsJSON}</code></pre>
           </div>
         {/if}
+        {#if message.toolOutputLines && message.toolOutputLines.length > 0}
+          <details class="tool-detail tool-output" open={!message.toolDone}>
+            <summary class="tool-detail-label">output ({message.toolOutputLines.length})</summary>
+            <pre class="tool-output-body"><code>{#each message.toolOutputLines as line, i (i)}<span class={line.stream === 'stderr' ? 'tool-output-stderr' : 'tool-output-stdout'}>{line.text}</span>
+{/each}</code></pre>
+          </details>
+        {/if}
         {#if resultJSON}
           <div class="tool-detail">
             <span class="tool-detail-label">result</span>
@@ -266,6 +273,39 @@
     border-radius: var(--radius-sm);
     max-height: 160px;
     overflow-y: auto;
+  }
+
+  .tool-output {
+    grid-column: 1 / -1;
+    display: block;
+  }
+
+  .tool-output > .tool-detail-label {
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .tool-output-body {
+    margin: var(--space-1) 0 0 0;
+    font-family: var(--font-mono);
+    color: var(--text-secondary);
+    white-space: pre-wrap;
+    word-break: break-all;
+    font-size: var(--text-xs);
+    line-height: 1.55;
+    background: var(--surface-inset);
+    padding: var(--space-2);
+    border-radius: var(--radius-sm);
+    max-height: 240px;
+    overflow-y: auto;
+  }
+
+  .tool-output-stderr {
+    color: var(--accent-warn, #e07b53);
+  }
+
+  .tool-output-stdout {
+    color: inherit;
   }
 
   .chat-role {

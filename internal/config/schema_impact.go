@@ -264,6 +264,9 @@ var configFieldImpactHints = map[string][]string{
 	"tools_web_search_cache_ttl_seconds": {
 		"Changing cache TTL affects search freshness and repeated request volume.",
 	},
+	"tools_exec_max_timeout_ms": {
+		"Raising the cap lets long-running commands (builds, CI waits, installs) complete without being killed; lowering it tightens the upper bound on shell hangs.",
+	},
 	"tools_web_fetch_allow_private_hosts": {
 		"Allowing private hosts expands the network surface available to web fetch tools.",
 	},

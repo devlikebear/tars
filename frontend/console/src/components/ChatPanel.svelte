@@ -483,6 +483,27 @@
         }
         break
       }
+      case 'tool_output_line': {
+        // Streamed stdout/stderr line from a running tool (currently exec).
+        // Append to the matching tool message so the user sees progress
+        // instead of a 30-second-silent freeze.
+        const callId = event.tool_call_id
+        if (!callId) break
+        const idx = chatMessages.findIndex((m) => m.toolCallId === callId)
+        if (idx >= 0) {
+          const prev = chatMessages[idx].toolOutputLines ?? []
+          chatMessages[idx] = {
+            ...chatMessages[idx],
+            toolOutputLines: [
+              ...prev,
+              { stream: event.stream || 'stdout', text: event.text ?? '' },
+            ],
+          }
+          chatMessages = [...chatMessages]
+          void scrollToBottom()
+        }
+        break
+      }
       case 'context_info':
         publishContextInfo({
           ...contextInfo,

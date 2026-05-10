@@ -227,6 +227,12 @@ type ToolConfig struct {
 	ToolsApplyPatchEnabled            bool
 	ToolsMessageEnabled               bool
 	ToolsAgentRuntimeEnabled          bool
+	// ToolsExecMaxTimeoutMS caps the per-call timeout the LLM can pass to
+	// the exec tool. Long-running commands (`make build`, `gh pr checks
+	// --watch`, `npm install`) need more than the historical 30s default;
+	// raise this to give them headroom while still preventing infinite
+	// hangs. 0 falls back to defaults.go.
+	ToolsExecMaxTimeoutMS int
 }
 
 type AgentRuntimeConfig struct {

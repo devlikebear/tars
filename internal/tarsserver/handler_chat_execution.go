@@ -57,6 +57,7 @@ func executeChatLoop(
 	}
 	loop, toolCallRecords := setupAgentLoop(chatClient, state.registry, state.sessionID, len(state.history), deps.tooling.UsageTracker, deps.logger, stream.status, afterToolHook)
 	ctx = tool.WithCurrentSessionInfo(ctx, state.sessionID, state.sessionKind)
+	ctx = tool.WithLineEmitter(ctx, stream)
 
 	deps.logger.Debug().Str("session_id", state.sessionID).Int("messages", len(state.llmMessages)).Msg("llm chat call start")
 	chatResp, err := loop.Run(ctx, state.llmMessages, agent.RunOptions{

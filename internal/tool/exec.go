@@ -1,21 +1,24 @@
 package tool
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os/exec"
 	"strings"
+	"sync"
 	"time"
 )
 
 const (
-	defaultExecTimeoutMS = 5000
-	minExecTimeoutMS     = 100
-	maxExecTimeoutMS     = 30000
-	maxExecOutputBytes   = 8192
-	missingCommandHint   = `command is required; provide JSON like {"command":"pwd"}`
+	defaultExecTimeoutMS    = 5000
+	minExecTimeoutMS        = 100
+	defaultExecMaxTimeoutMS = 300000 // 5 minutes
+	maxExecOutputBytes      = 8192
+	missingCommandHint      = `command is required; provide JSON like {"command":"pwd"}`
 )
 
 var blockedExecCommands = map[string]struct{}{
@@ -30,6 +33,17 @@ var blockedExecCommands = map[string]struct{}{
 	"fdisk":    {},
 	"kill":     {},
 	"killall":  {},
+}
+
+// ExecToolOptions tunes the exec tool factory. The zero value picks safe
+// defaults so callers (especially tests) can omit fields they don't care
+// about.
+type ExecToolOptions struct {
+	// MaxTimeoutMS caps the per-call timeout the LLM can request. 0 →
+	// defaultExecMaxTimeoutMS (5 minutes). Long-running commands like
+	// builds and `gh pr checks --watch` benefit from raising this, while
+	// short-running skills can leave it at the default.
+	MaxTimeoutMS int
 }
 
 type execResponse struct {
@@ -53,19 +67,33 @@ func NewExecToolWithManager(workspaceDir string, manager *ProcessManager) Tool {
 }
 
 func NewExecToolWithPolicy(policy PathPolicy, manager *ProcessManager) Tool {
-	return Tool{
-		Name:        "exec",
-		Description: "Run a shell command in workspace with timeout and safety restrictions.",
-		Parameters: json.RawMessage(`{
+	return NewExecToolWithOptions(policy, manager, ExecToolOptions{})
+}
+
+// NewExecToolWithOptions exposes the timeout knob so chat handlers can
+// raise the per-call cap from runtime config.
+func NewExecToolWithOptions(policy PathPolicy, manager *ProcessManager, opts ExecToolOptions) Tool {
+	maxTimeoutMS := opts.MaxTimeoutMS
+	if maxTimeoutMS <= 0 {
+		maxTimeoutMS = defaultExecMaxTimeoutMS
+	}
+	if maxTimeoutMS < minExecTimeoutMS {
+		maxTimeoutMS = minExecTimeoutMS
+	}
+	parameters := json.RawMessage(fmt.Sprintf(`{
   "type":"object",
   "properties":{
     "command":{"type":"string","description":"Command and arguments, e.g. ls -la"},
-    "timeout_ms":{"type":"integer","minimum":100,"maximum":30000,"default":5000},
+    "timeout_ms":{"type":"integer","minimum":%d,"maximum":%d,"default":%d},
     "background":{"type":"boolean","default":false}
   },
   "required":["command"],
   "additionalProperties":false
-}`),
+}`, minExecTimeoutMS, maxTimeoutMS, defaultExecTimeoutMS))
+	return Tool{
+		Name:        "exec",
+		Description: "Run a shell command in workspace with timeout and safety restrictions.",
+		Parameters:  parameters,
 		Execute: func(ctx context.Context, params json.RawMessage) (Result, error) {
 			commandLine, timeoutMS, background, err := parseExecInput(params)
 			if err != nil {
@@ -91,8 +119,8 @@ func NewExecToolWithPolicy(policy PathPolicy, manager *ProcessManager) Tool {
 			if timeoutMS < minExecTimeoutMS {
 				timeoutMS = minExecTimeoutMS
 			}
-			if timeoutMS > maxExecTimeoutMS {
-				timeoutMS = maxExecTimeoutMS
+			if timeoutMS > maxTimeoutMS {
+				timeoutMS = maxTimeoutMS
 			}
 			if background {
 				if manager == nil {
@@ -117,20 +145,36 @@ func NewExecToolWithPolicy(policy PathPolicy, manager *ProcessManager) Tool {
 			cmd := exec.CommandContext(runCtx, command, fields[1:]...)
 			cmd.Dir = policy.PrimaryDir
 
-			var stdout bytes.Buffer
-			var stderr bytes.Buffer
-			cmd.Stdout = &stdout
-			cmd.Stderr = &stderr
+			stdoutPipe, err := cmd.StdoutPipe()
+			if err != nil {
+				return execErrorResult(commandLine, fmt.Sprintf("stdout pipe: %v", err), -1, "", "", 0, false), nil
+			}
+			stderrPipe, err := cmd.StderrPipe()
+			if err != nil {
+				return execErrorResult(commandLine, fmt.Sprintf("stderr pipe: %v", err), -1, "", "", 0, false), nil
+			}
 
 			start := time.Now()
-			err = cmd.Run()
+			if err := cmd.Start(); err != nil {
+				return execErrorResult(commandLine, err.Error(), -1, "", "", 0, false), nil
+			}
+
+			streamer := ToolOutputStreamerFromContext(ctx)
+			var stdout, stderr bytes.Buffer
+			var wg sync.WaitGroup
+			wg.Add(2)
+			go scanAndCapture(stdoutPipe, &stdout, streamer, StreamStdout, &wg)
+			go scanAndCapture(stderrPipe, &stderr, streamer, StreamStderr, &wg)
+
+			runErr := cmd.Wait()
+			wg.Wait()
 			durationMS := time.Since(start).Milliseconds()
 			timedOut := runCtx.Err() == context.DeadlineExceeded
 
 			stdoutText := trimOutput(stdout.String(), maxExecOutputBytes)
 			stderrText := trimOutput(stderr.String(), maxExecOutputBytes)
 
-			if err == nil {
+			if runErr == nil {
 				return JSONTextResult(execResponse{
 					Command:    commandLine,
 					ExitCode:   0,
@@ -141,16 +185,36 @@ func NewExecToolWithPolicy(policy PathPolicy, manager *ProcessManager) Tool {
 			}
 
 			exitCode := -1
-			if exitErr, ok := err.(*exec.ExitError); ok {
+			if exitErr, ok := runErr.(*exec.ExitError); ok {
 				exitCode = exitErr.ExitCode()
 			}
 
-			message := err.Error()
+			message := runErr.Error()
 			if timedOut {
 				message = fmt.Sprintf("command timed out after %dms", timeoutMS)
 			}
 			return execErrorResult(commandLine, message, exitCode, stdoutText, stderrText, durationMS, timedOut), nil
 		},
+	}
+}
+
+// scanAndCapture reads lines from a tool's stdout/stderr pipe,
+// simultaneously buffering them into `dst` (for the final result) and
+// fanning each line out to `streamer` (for live SSE delivery).
+func scanAndCapture(reader io.Reader, dst *bytes.Buffer, streamer ToolOutputStreamer, stream string, wg *sync.WaitGroup) {
+	defer wg.Done()
+	if reader == nil {
+		return
+	}
+	scanner := bufio.NewScanner(reader)
+	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
+	for scanner.Scan() {
+		line := scanner.Text()
+		dst.WriteString(line)
+		dst.WriteByte('\n')
+		if streamer != nil {
+			streamer.EmitLine(stream, line)
+		}
 	}
 }
 
