@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.32.21] - 2026-05-10
+
+### Changed
+
+- **exec tool live streaming + raised limits** — exec stdout/stderr now stream line-by-line through SSE `tool_output_line` events, so the chat UI no longer freezes for the duration of a long-running command. The exec timeout cap moves from a hard-coded 30s to a configurable `tools.exec.max_timeout_ms` (default 5 minutes), and the chat agent loop's `automation.agent.max_iterations` default rises from 8 to 20 so multi-step workflows like github-flow have headroom. The console renders streamed lines in a collapsible panel under each tool call with stderr highlighted.
+
 ## [0.32.20] - 2026-05-09
 
 ### Fixed

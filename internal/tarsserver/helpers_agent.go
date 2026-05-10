@@ -41,6 +41,14 @@ func agentPromptTelemetryFromContext(ctx context.Context) *agentPromptTelemetry 
 	return telemetry
 }
 
+// baseToolRegistryOptions tunes optional knobs used by the base tool
+// registry. The zero value reproduces legacy defaults.
+type baseToolRegistryOptions struct {
+	// ExecMaxTimeoutMS caps the per-call timeout the exec tool can
+	// honour. 0 → tool package default (5 min).
+	ExecMaxTimeoutMS int
+}
+
 func newBaseToolRegistry(workspaceDir string) *tool.Registry {
 	return newBaseToolRegistryWithProcess(workspaceDir, tool.SingleDirPolicy(workspaceDir), nil)
 }
@@ -54,6 +62,17 @@ func newBaseToolRegistryWithProcessAndUsage(
 	policy tool.PathPolicy,
 	processManager *tool.ProcessManager,
 	usageTracker *usage.Tracker,
+	semanticCfg ...memory.SemanticConfig,
+) *tool.Registry {
+	return newBaseToolRegistryWithOptions(workspaceDir, policy, processManager, usageTracker, baseToolRegistryOptions{}, semanticCfg...)
+}
+
+func newBaseToolRegistryWithOptions(
+	workspaceDir string,
+	policy tool.PathPolicy,
+	processManager *tool.ProcessManager,
+	usageTracker *usage.Tracker,
+	opts baseToolRegistryOptions,
 	semanticCfg ...memory.SemanticConfig,
 ) *tool.Registry {
 	registry := tool.NewRegistryWithScope(tool.RegistryScopeUser)
@@ -83,11 +102,12 @@ func newBaseToolRegistryWithProcessAndUsage(
 	registry.Register(tool.NewGlobToolWithPolicy(policy))
 
 	// Exec / process
+	execOpts := tool.ExecToolOptions{MaxTimeoutMS: opts.ExecMaxTimeoutMS}
 	if processManager != nil {
 		registry.Register(tool.NewProcessTool(processManager))
-		registry.Register(tool.NewExecToolWithPolicy(policy, processManager))
+		registry.Register(tool.NewExecToolWithOptions(policy, processManager, execOpts))
 	} else {
-		registry.Register(tool.NewExecToolWithPolicy(policy, nil))
+		registry.Register(tool.NewExecToolWithOptions(policy, nil, execOpts))
 	}
 	return registry
 }

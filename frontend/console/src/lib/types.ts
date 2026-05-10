@@ -708,6 +708,9 @@ export type ChatEvent = {
   tool_args_preview?: string
   tool_result_preview?: string
   tool_is_error?: boolean
+  // tool_output_line — streamed stdout/stderr lines from running tools
+  // (currently emitted by exec). One event per line.
+  stream?: string
   skill_name?: string
   skill_reason?: string
   // context_info fields

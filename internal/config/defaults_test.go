@@ -192,8 +192,11 @@ func TestLoad_DefaultOnly(t *testing.T) {
 	if cfg.MemoryEmbedDimensions != 768 {
 		t.Fatalf("expected MemoryEmbedDimensions 768, got %d", cfg.MemoryEmbedDimensions)
 	}
-	if cfg.AgentMaxIterations != 8 {
-		t.Fatalf("expected default AgentMaxIterations 8, got %d", cfg.AgentMaxIterations)
+	if cfg.AgentMaxIterations != 20 {
+		t.Fatalf("expected default AgentMaxIterations 20, got %d", cfg.AgentMaxIterations)
+	}
+	if cfg.ToolsExecMaxTimeoutMS != 300000 {
+		t.Fatalf("expected default ToolsExecMaxTimeoutMS 300000, got %d", cfg.ToolsExecMaxTimeoutMS)
 	}
 	if cfg.CronRunHistoryLimit != 200 {
 		t.Fatalf("expected default CronRunHistoryLimit 200, got %d", cfg.CronRunHistoryLimit)

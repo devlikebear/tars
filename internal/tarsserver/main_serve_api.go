@@ -394,6 +394,7 @@ func buildAPIMux(
 		sessionStyleDefaultsFromConfig(cfg),
 	)
 	chatTooling.OpsManager = opsManager
+	chatTooling.ExecMaxTimeoutMS = cfg.ToolsExecMaxTimeoutMS
 	overrideService := sessionoverride.NewService(sessionStore)
 	chatTooling.OverrideService = overrideService
 	chatTooling.AutomationToolsForWorkspace = func(workspaceID string) []tool.Tool {

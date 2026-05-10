@@ -23,11 +23,12 @@ func buildChatToolRegistry(
 	history []session.Message,
 	deps chatHandlerDeps,
 ) *tool.Registry {
-	registry := newBaseToolRegistryWithProcessAndUsage(
+	registry := newBaseToolRegistryWithOptions(
 		requestWorkspaceDir,
 		policy,
 		deps.tooling.ProcessManager,
 		deps.tooling.UsageTracker,
+		baseToolRegistryOptions{ExecMaxTimeoutMS: deps.tooling.ExecMaxTimeoutMS},
 		deps.tooling.MemorySemanticConfig,
 	)
 
