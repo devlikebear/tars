@@ -139,6 +139,64 @@ func TestAuthLoginAPI_LocalSetsInsecureCookie(t *testing.T) {
 	}
 }
 
+func TestAuthLoginAPI_RemoteHTTPSSetsSecureCookie(t *testing.T) {
+	workspace := t.TempDir()
+	store := consoleauth.NewStore(workspace)
+	if err := store.SetPassword(consoleauth.RoleUser, "user secret"); err != nil {
+		t.Fatalf("set user password: %v", err)
+	}
+	handler := newAuthAPIHandler("required", workspace)
+	req := httptest.NewRequest(http.MethodPost, "/v1/auth/login", strings.NewReader(`{"username":"user","password":"user secret"}`))
+	req.Host = "example.com"
+	req.RemoteAddr = "192.0.2.10:5555"
+	req.TLS = &tls.ConnectionState{}
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+	cookie := findCookie(rec.Result().Cookies(), serverauth.DefaultBrowserSessionCookieName)
+	if cookie == nil {
+		t.Fatalf("expected session cookie")
+	}
+	if !cookie.Secure {
+		t.Fatalf("remote HTTPS login cookie must be Secure, got %+v", cookie)
+	}
+	if !cookie.HttpOnly || cookie.SameSite != http.SameSiteLaxMode || cookie.Path != "/" {
+		t.Fatalf("unexpected cookie attributes: %+v", cookie)
+	}
+	if _, ok, err := store.ValidateSession(cookie.Value); err != nil || !ok {
+		t.Fatalf("expected created session to validate, ok=%v err=%v", ok, err)
+	}
+}
+
+func TestAuthLoginAPI_TailscaleHTTPSSetsSecureCookie(t *testing.T) {
+	workspace := t.TempDir()
+	store := consoleauth.NewStore(workspace)
+	if err := store.SetPassword(consoleauth.RoleUser, "user secret"); err != nil {
+		t.Fatalf("set user password: %v", err)
+	}
+	handler := newAuthAPIHandler("required", workspace)
+	req := httptest.NewRequest(http.MethodPost, "/v1/auth/login", strings.NewReader(`{"username":"user","password":"user secret"}`))
+	req.Host = "macbook.tailnet.ts.net"
+	req.RemoteAddr = "100.64.0.5:5555"
+	req.TLS = &tls.ConnectionState{}
+	req.Header.Set(serverauth.TailscaleUserLoginHeader, "user@example.com")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+	cookie := findCookie(rec.Result().Cookies(), serverauth.DefaultBrowserSessionCookieName)
+	if cookie == nil || !cookie.Secure {
+		t.Fatalf("expected secure Tailscale HTTPS session cookie, got %+v", cookie)
+	}
+}
+
 func TestAuthLoginAPI_TailscaleSetsSecureCookieAndRejectsAdmin(t *testing.T) {
 	workspace := t.TempDir()
 	store := consoleauth.NewStore(workspace)
@@ -175,6 +233,39 @@ func TestAuthLoginAPI_TailscaleSetsSecureCookieAndRejectsAdmin(t *testing.T) {
 	}
 	if findCookie(rec.Result().Cookies(), serverauth.DefaultBrowserSessionCookieName) != nil {
 		t.Fatalf("remote admin rejection must not set a session cookie")
+	}
+}
+
+func TestAuthPairingLoginAPI_LoopbackHTTPSetsInsecureCookie(t *testing.T) {
+	workspace := t.TempDir()
+	store := consoleauth.NewStore(workspace)
+	code, err := store.CreatePairingCode(consoleauth.RoleUser, time.Minute)
+	if err != nil {
+		t.Fatalf("create pairing code: %v", err)
+	}
+	handler := newAuthAPIHandler("required", workspace)
+	req := httptest.NewRequest(http.MethodPost, "/v1/auth/pairing-login", strings.NewReader(`{"code":"`+code.Code+`"}`))
+	req.Host = "127.0.0.1:43180"
+	req.RemoteAddr = "127.0.0.1:1234"
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+	cookie := findCookie(rec.Result().Cookies(), serverauth.DefaultBrowserSessionCookieName)
+	if cookie == nil {
+		t.Fatalf("expected session cookie")
+	}
+	if cookie.Secure {
+		t.Fatalf("loopback pairing login cookie must not be Secure, got %+v", cookie)
+	}
+	if !cookie.HttpOnly || cookie.SameSite != http.SameSiteLaxMode || cookie.Path != "/" {
+		t.Fatalf("unexpected cookie attributes: %+v", cookie)
+	}
+	if _, ok, err := store.ValidateSession(cookie.Value); err != nil || !ok {
+		t.Fatalf("expected created session to validate, ok=%v err=%v", ok, err)
 	}
 }
 
@@ -259,6 +350,36 @@ func TestAuthLogoutAPI_ClearsSecureCookieForHTTPSRequest(t *testing.T) {
 	cookie := findCookie(rec.Result().Cookies(), serverauth.DefaultBrowserSessionCookieName)
 	if cookie == nil || cookie.MaxAge >= 0 || !cookie.Secure {
 		t.Fatalf("expected Secure clearing cookie for HTTPS logout, got %+v", cookie)
+	}
+}
+
+func TestAuthLogoutAPI_ClearsSecureCookieForTailscaleHTTPSRequest(t *testing.T) {
+	workspace := t.TempDir()
+	store := consoleauth.NewStore(workspace)
+	session, err := store.CreateSession(consoleauth.RoleUser, "safari", time.Hour)
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	handler := newAuthAPIHandler("required", workspace)
+	req := httptest.NewRequest(http.MethodPost, "/v1/auth/logout", nil)
+	req.Host = "macbook.tailnet.ts.net"
+	req.RemoteAddr = "100.64.0.5:5555"
+	req.TLS = &tls.ConnectionState{}
+	req.Header.Set(serverauth.TailscaleUserLoginHeader, "user@example.com")
+	req.AddCookie(&http.Cookie{Name: serverauth.DefaultBrowserSessionCookieName, Value: session.ID})
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+	cookie := findCookie(rec.Result().Cookies(), serverauth.DefaultBrowserSessionCookieName)
+	if cookie == nil || cookie.MaxAge >= 0 || !cookie.Secure {
+		t.Fatalf("expected Secure clearing cookie for Tailscale HTTPS logout, got %+v", cookie)
+	}
+	if _, ok, err := store.ValidateSession(session.ID); err != nil || ok {
+		t.Fatalf("expected revoked session, ok=%v err=%v", ok, err)
 	}
 }
 
