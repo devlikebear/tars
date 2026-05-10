@@ -84,6 +84,7 @@
   let renameValue = $state('')
   let actionBusy = $state(false)
   let deleteConfirm = $state(false)
+  let sessionMenuOpen = $state(false)
 
   // Docked panel state
   let chatArtifacts: Artifact[] = $state([])
@@ -458,6 +459,10 @@
     if (!selectedSession || selectedSession.kind === 'main') return
     renaming = true
     renameValue = selectedSession.title || selectedSession.id.slice(0, 12)
+  }
+
+  function closeSessionMenu() {
+    sessionMenuOpen = false
   }
 
   async function commitRename() {
@@ -1073,17 +1078,6 @@
             {/if}
           </div>
           <div class="session-actions">
-            {#if !zenMode.active}
-              {#if !isMainSession()}
-                <button class="btn btn-ghost btn-sm" disabled={actionBusy} onclick={startRename}>{$t.chat.session.actions.rename}</button>
-                <button class="btn btn-ghost btn-sm" disabled={actionBusy} onclick={handleAutoTitle} title={$t.chat.session.actions.aiTitleTooltip}>{$t.chat.session.actions.aiTitle}</button>
-              {/if}
-              <button class="btn btn-ghost btn-sm" disabled={actionBusy} onclick={handleCompact} title={$t.chat.session.actions.compactTooltip}>{$t.chat.session.actions.compact}</button>
-              <span class="session-actions-sep"></span>
-              <button class="btn btn-ghost btn-sm" onclick={handleCopyChat} title={$t.chat.session.actions.copyAllTooltip}>{$t.chat.session.actions.copyAll}</button>
-              <button class="btn btn-ghost btn-sm" onclick={handleDownloadChat} title={$t.chat.session.actions.downloadTooltip}>{$t.chat.session.actions.download}</button>
-              <button class="btn btn-ghost btn-sm" disabled={actionBusy} onclick={() => openPanel('skillExtraction')} title={$t.chat.session.actions.extractSkillTooltip}>{$t.chat.session.actions.extractSkill}</button>
-            {/if}
             <button
               type="button"
               class="btn btn-ghost btn-sm zen-toggle"
@@ -1094,11 +1088,36 @@
             >
               {zenMode.active ? $t.chat.session.actions.zenExit : $t.chat.session.actions.zenEnter}
             </button>
-            {#if !zenMode.active && !isMainSession()}
-              <span class="session-actions-sep"></span>
-              <button class="btn btn-danger btn-sm" disabled={actionBusy} onclick={handleDelete}>
-                {deleteConfirm ? $t.chat.session.actions.confirmDelete : $t.chat.session.actions.delete}
-              </button>
+            {#if !zenMode.active}
+              <div class="session-menu">
+                <button
+                  type="button"
+                  class="btn btn-ghost btn-sm session-menu-trigger"
+                  aria-haspopup="menu"
+                  aria-expanded={sessionMenuOpen}
+                  onclick={() => { sessionMenuOpen = !sessionMenuOpen }}
+                >
+                  {$t.sessions.actions.more}
+                </button>
+                {#if sessionMenuOpen}
+                  <div class="session-menu-popover" role="menu">
+                    {#if !isMainSession()}
+                      <button type="button" role="menuitem" disabled={actionBusy} onclick={() => { closeSessionMenu(); startRename() }}>{$t.chat.session.actions.rename}</button>
+                      <button type="button" role="menuitem" disabled={actionBusy} onclick={() => { closeSessionMenu(); void handleAutoTitle() }} title={$t.chat.session.actions.aiTitleTooltip}>{$t.chat.session.actions.aiTitle}</button>
+                    {/if}
+                    <button type="button" role="menuitem" disabled={actionBusy} onclick={() => { closeSessionMenu(); void handleCompact() }} title={$t.chat.session.actions.compactTooltip}>{$t.chat.session.actions.compact}</button>
+                    <button type="button" role="menuitem" onclick={() => { closeSessionMenu(); void handleCopyChat() }} title={$t.chat.session.actions.copyAllTooltip}>{$t.chat.session.actions.copyAll}</button>
+                    <button type="button" role="menuitem" onclick={() => { closeSessionMenu(); handleDownloadChat() }} title={$t.chat.session.actions.downloadTooltip}>{$t.chat.session.actions.download}</button>
+                    <button type="button" role="menuitem" disabled={actionBusy} onclick={() => { closeSessionMenu(); openPanel('skillExtraction') }} title={$t.chat.session.actions.extractSkillTooltip}>{$t.chat.session.actions.extractSkill}</button>
+                    {#if !isMainSession()}
+                      <span class="session-menu-divider"></span>
+                      <button type="button" role="menuitem" class="danger" disabled={actionBusy} onclick={() => { closeSessionMenu(); void handleDelete() }}>
+                        {deleteConfirm ? $t.chat.session.actions.confirmDelete : $t.chat.session.actions.delete}
+                      </button>
+                    {/if}
+                  </div>
+                {/if}
+              </div>
             {/if}
           </div>
         </div>
@@ -1490,9 +1509,10 @@
     align-items: center;
     justify-content: space-between;
     gap: var(--space-3);
-    padding: var(--space-3) var(--space-4);
+    padding: var(--space-3) var(--space-4) var(--space-2);
     flex-shrink: 0;
     min-height: 44px;
+    border-bottom: 1px solid color-mix(in srgb, var(--border-subtle) 72%, transparent);
   }
 
   .session-title-row {
@@ -1504,8 +1524,9 @@
   }
 
   .session-title {
-    flex: 1;
-    min-width: 0;
+    flex: 0 1 auto;
+    min-width: 80px;
+    max-width: min(36vw, 420px);
     font-family: var(--font-display);
     font-size: var(--text-base);
     font-weight: 500;
@@ -1686,11 +1707,64 @@
     flex-shrink: 0;
   }
 
-  .session-actions-sep {
-    width: 1px;
-    height: 16px;
+  .session-menu {
+    position: relative;
+    display: inline-flex;
+  }
+
+  .session-menu-trigger {
+    min-width: 64px;
+  }
+
+  .session-menu-popover {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    z-index: 55;
+    display: flex;
+    flex-direction: column;
+    min-width: 190px;
+    padding: var(--space-1);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-md);
+    background: var(--surface-elevated);
+    box-shadow: var(--shadow-md, 0 12px 28px rgba(0, 0, 0, 0.28));
+  }
+
+  .session-menu-popover button {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    min-height: 30px;
+    padding: var(--space-1) var(--space-2);
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-family: var(--font-display);
+    font-size: var(--text-xs);
+    text-align: left;
+  }
+
+  .session-menu-popover button:hover:not(:disabled) {
+    background: var(--surface-base);
+    color: var(--text-primary);
+  }
+
+  .session-menu-popover button:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+  }
+
+  .session-menu-popover button.danger {
+    color: var(--error);
+  }
+
+  .session-menu-divider {
+    height: 1px;
+    margin: var(--space-1) 0;
     background: var(--border-subtle);
-    margin: 0 var(--space-1);
   }
 
   .zen-toggle.active {
@@ -1704,12 +1778,12 @@
     justify-content: space-between;
     gap: var(--space-3);
     width: calc(100% - var(--space-8));
-    min-height: 42px;
-    margin: 0 var(--space-4) var(--space-3);
-    padding: var(--space-2) var(--space-3);
-    border: 1px solid var(--border-subtle);
+    min-height: 36px;
+    margin: var(--space-2) var(--space-4) var(--space-2);
+    padding: var(--space-1) var(--space-3);
+    border: 1px solid color-mix(in srgb, var(--border-subtle) 78%, transparent);
     border-radius: var(--radius-md);
-    background: var(--surface);
+    background: color-mix(in srgb, var(--surface) 70%, transparent);
     color: var(--text-primary);
     cursor: pointer;
     text-align: left;
@@ -1816,18 +1890,18 @@
   .workbench-action-strip {
     display: flex;
     flex-wrap: wrap;
-    gap: var(--space-2);
+    gap: var(--space-1);
     width: calc(100% - var(--space-8));
-    margin: calc(-1 * var(--space-2)) var(--space-4) var(--space-3);
+    margin: 0 var(--space-4) var(--space-2);
   }
 
   .workbench-action {
-    min-height: 30px;
-    padding: 0 var(--space-3);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-sm);
-    background: var(--surface-raised);
-    color: var(--text-secondary);
+    min-height: 26px;
+    padding: 0 var(--space-2);
+    border: 1px solid color-mix(in srgb, var(--border-subtle) 76%, transparent);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--text-tertiary);
     cursor: pointer;
     font-family: var(--font-display);
     font-size: var(--text-xs);
@@ -1897,13 +1971,19 @@
       align-items: flex-start;
     }
     .session-title-row {
-      flex-basis: 100%;
+      flex-basis: 1px;
       min-width: 0;
     }
+    .session-title {
+      max-width: none;
+    }
     .session-actions {
-      flex-wrap: wrap;
-      flex-basis: 100%;
-      justify-content: flex-start;
+      flex-wrap: nowrap;
+      justify-content: flex-end;
+    }
+    .session-menu-popover {
+      right: 0;
+      max-width: calc(100vw - var(--space-6));
     }
     .plan-progress-strip {
       align-items: flex-start;
