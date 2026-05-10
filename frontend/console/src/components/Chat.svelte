@@ -559,12 +559,12 @@
 
   function handleToolComplete(toolName: string) {
     const taskTools = ['tasks']
-    const fileTools = ['write_file', 'edit_file', 'exec', 'list_dir', 'read_file']
+    const fileTools = ['write_file', 'edit_file', 'exec', 'list_dir', 'read_file', 'apply_patch']
 
     if (taskTools.includes(toolName)) {
       tasksPanelRef?.load()
     }
-    if (fileTools.includes(toolName) && isPanelOpen('artifacts')) {
+    if (fileTools.includes(toolName)) {
       artifactPanelRef?.refresh()
     }
   }

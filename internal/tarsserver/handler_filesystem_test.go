@@ -13,9 +13,9 @@ import (
 	"github.com/rs/zerolog"
 )
 
-func TestFilesystemBrowseHandler_IncludesTarsDirectory(t *testing.T) {
+func TestFilesystemBrowseHandler_ShowsDotFilesHidesNodeModules(t *testing.T) {
 	root := t.TempDir()
-	for _, name := range []string{".tars", ".git", "node_modules", "visible"} {
+	for _, name := range []string{".tars", ".git", ".env", "node_modules", "visible"} {
 		if err := os.MkdirAll(filepath.Join(root, name), 0o755); err != nil {
 			t.Fatalf("mkdir %s: %v", name, err)
 		}
@@ -41,13 +41,13 @@ func TestFilesystemBrowseHandler_IncludesTarsDirectory(t *testing.T) {
 	for _, entry := range got.Entries {
 		names[entry.Name] = true
 	}
-	if !names[".tars"] || !names["visible"] {
-		t.Fatalf("expected .tars and visible directories, got %+v", got.Entries)
-	}
-	for _, hidden := range []string{".git", "node_modules"} {
-		if names[hidden] {
-			t.Fatalf("did not expect hidden directory %s in %+v", hidden, got.Entries)
+	for _, visible := range []string{".tars", ".git", ".env", "visible"} {
+		if !names[visible] {
+			t.Fatalf("expected %s to be visible, got %+v", visible, got.Entries)
 		}
+	}
+	if names["node_modules"] {
+		t.Fatalf("did not expect node_modules in %+v", got.Entries)
 	}
 }
 

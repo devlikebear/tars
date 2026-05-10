@@ -413,6 +413,9 @@
             }
 
             onToolComplete?.(event.tool_name || '')
+            if (mentionOpen) {
+              void refreshMentionCandidates()
+            }
             if ((event.tool_name || '').trim() === 'project_skill') {
               void reloadSlashSkillsAndCandidates()
             }
