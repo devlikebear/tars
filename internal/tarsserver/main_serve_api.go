@@ -522,7 +522,7 @@ func buildAPIMux(
 		chatTooling,
 		chatTools...,
 	)
-	sessionHandler := newSessionAPIHandlerFullWithLLM(sessionStore, logger, deps.usageTracker, sessionStyleDefaultsFromConfig(cfg), dispatcher.Emit, overrideService, deps.llmRouter)
+	sessionHandler := newSessionAPIHandlerFullWithLocalSkills(sessionStore, logger, deps.usageTracker, sessionStyleDefaultsFromConfig(cfg), dispatcher.Emit, overrideService, deps.llmRouter, localSkillsHandlerDeps{provider: extensionsManager, workspaceDir: cfg.WorkspaceDir})
 	consoleHandler, err := newConsoleHandler(logger)
 	if err != nil {
 		return nil, err

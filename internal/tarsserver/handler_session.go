@@ -48,6 +48,10 @@ func newSessionAPIHandlerFull(store *session.Store, logger zerolog.Logger, usage
 }
 
 func newSessionAPIHandlerFullWithLLM(store *session.Store, logger zerolog.Logger, usageTracker *usage.Tracker, styleDefaults sessionStyleValues, notify sessionNotifier, overrideService *sessionoverride.Service, llmRouter llm.Router) http.Handler {
+	return newSessionAPIHandlerFullWithLocalSkills(store, logger, usageTracker, styleDefaults, notify, overrideService, llmRouter, localSkillsHandlerDeps{})
+}
+
+func newSessionAPIHandlerFullWithLocalSkills(store *session.Store, logger zerolog.Logger, usageTracker *usage.Tracker, styleDefaults sessionStyleValues, notify sessionNotifier, overrideService *sessionoverride.Service, llmRouter llm.Router, localSkills localSkillsHandlerDeps) http.Handler {
 	mux := http.NewServeMux()
 	styleDefaults = effectiveSessionStyle(styleDefaults, nil)
 	baseWorkspaceDir := ""
@@ -942,6 +946,11 @@ func newSessionAPIHandlerFullWithLLM(store *session.Store, logger zerolog.Logger
 				notify(r.Context(), evt)
 			}
 			writeJSON(w, http.StatusOK, res)
+		case len(pathParts) >= 2 && pathParts[1] == "local-skills":
+			if handleLocalSkillsDispatch(w, r, reqStore, sessionID, pathParts, localSkills, logger) {
+				return
+			}
+			http.NotFound(w, r)
 		default:
 			http.NotFound(w, r)
 		}

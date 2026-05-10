@@ -52,6 +52,8 @@ var defaultEndpointPolicyRules = []EndpointPolicyRule{
 	userRule([]string{http.MethodGet}, "/v1/admin/sessions/:id/config", "session config read"),
 	userRule([]string{http.MethodGet}, "/v1/admin/sessions/:id/effective-config", "effective session config read"),
 	userRule([]string{http.MethodGet, http.MethodPut}, "/v1/admin/sessions/:id/cwd", "active cwd switch among eligible directories"),
+	userRule([]string{http.MethodGet}, "/v1/admin/sessions/:id/local-skills", "session-local skill listing"),
+	userRule([]string{http.MethodPost}, "/v1/admin/sessions/:id/local-skills/promote", "promote session-local skills to workspace"),
 	userRule([]string{http.MethodGet}, "/v1/admin/sessions/:id/workdirs", "eligible workdir read"),
 	userRule([]string{http.MethodGet, http.MethodPut}, "/v1/admin/sessions/:id/prompt", "session prompt override"),
 	userRule([]string{http.MethodGet}, "/v1/admin/sessions/:id/automation-consent", "automation consent read"),

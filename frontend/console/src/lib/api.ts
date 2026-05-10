@@ -71,6 +71,9 @@ import type {
   SkillExtractionCandidateStatus,
   SkillExtractionListResponse,
   SkillExtractionReviewResponse,
+  SessionLocalSkillListResponse,
+  SessionLocalSkillPromoteRequest,
+  SessionLocalSkillPromoteResponse,
   MCPServerCreatorDraftRequest,
   MCPServerCreatorDraftResponse,
   MCPServerCreatorSaveResponse,
@@ -1321,6 +1324,24 @@ export async function reviewSkillExtractionCandidate(id: string, action: SkillEx
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ id, action }),
   })
+}
+
+export async function listSessionLocalSkills(sessionId: string): Promise<SessionLocalSkillListResponse> {
+  return requestJSON<SessionLocalSkillListResponse>(`/v1/admin/sessions/${encodeURIComponent(sessionId)}/local-skills`)
+}
+
+export async function promoteSessionLocalSkills(
+  sessionId: string,
+  payload: SessionLocalSkillPromoteRequest,
+): Promise<SessionLocalSkillPromoteResponse> {
+  return requestJSON<SessionLocalSkillPromoteResponse>(
+    `/v1/admin/sessions/${encodeURIComponent(sessionId)}/local-skills/promote`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    },
+  )
 }
 
 export async function draftMCPServer(payload: MCPServerCreatorDraftRequest): Promise<MCPServerCreatorDraftResponse> {

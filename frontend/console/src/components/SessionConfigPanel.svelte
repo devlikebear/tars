@@ -6,6 +6,7 @@
     listSkills,
     getSessionConfig,
     getSessionEffectiveConfig,
+    promoteSessionLocalSkills,
     updateSessionAutomationConsent,
     updateSessionLocalConfig,
     updateSessionStyle,
@@ -710,6 +711,36 @@
   )
   let stylePreview = $derived(buildSessionStylePreview({ ...styleResponse, effective: styleDraft }))
 
+  let promotingSkill = $state('')
+  let promoteMessage = $state('')
+
+  async function promoteSessionSkill(name: string) {
+    if (!sessionId || promotingSkill) return
+    promotingSkill = name
+    promoteMessage = ''
+    try {
+      const res = await promoteSessionLocalSkills(sessionId, {
+        items: [{ name }],
+        mode: 'copy',
+        on_conflict: 'rename',
+      })
+      const promoted = res.promoted?.[0]
+      if (promoted) {
+        const target = promoted.target_name ?? name
+        promoteMessage = promoted.action === 'renamed'
+          ? `Promoted as ${target} (renamed)`
+          : `Promoted to shared workspace`
+        onChange?.()
+      } else if (res.failed?.[0]?.error) {
+        promoteMessage = `Promote failed: ${res.failed[0].error}`
+      }
+    } catch (err) {
+      promoteMessage = err instanceof Error ? err.message : 'Promote failed'
+    } finally {
+      promotingSkill = ''
+    }
+  }
+
   $effect(() => {
     if (sessionId) void load()
   })
@@ -880,12 +911,26 @@
             <span class="skill-origin-badge source-{originClass}" title={skillOriginTitle(skill)}>
               {skillOriginLabel(skill)}
             </span>
+            {#if originClass === 'session'}
+              <button
+                class="skill-promote-btn"
+                type="button"
+                title="Promote this session-local skill to the shared workspace (copy, auto-rename on collision)"
+                disabled={promotingSkill === s}
+                onclick={(e) => { e.preventDefault(); void promoteSessionSkill(s) }}
+              >
+                {promotingSkill === s ? '...' : '↑ Promote'}
+              </button>
+            {/if}
             {#if skillSrc !== 'base'}
               <span class="source-badge source-{skillSrc}" title={sourceBadgeTitle[skillSrc]}>{sourceBadgeLabel[skillSrc]}</span>
             {/if}
           </label>
         {/each}
       </div>
+      {#if promoteMessage}
+        <div class="skill-promote-message">{promoteMessage}</div>
+      {/if}
     {:else if activeTab === 'commands'}
       <div class="config-actions">
         <label class="config-toggle">
@@ -1442,6 +1487,39 @@
     color: rgb(96, 165, 250);
     border: 1px solid rgba(96, 165, 250, 0.35);
     background: rgba(96, 165, 250, 0.1);
+  }
+
+  .skill-promote-btn {
+    margin-left: var(--space-1);
+    padding: 0 6px;
+    height: 20px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(224, 145, 69, 0.35);
+    background: rgba(224, 145, 69, 0.08);
+    color: var(--accent-amber, #e09145);
+    font-size: 10px;
+    font-family: var(--font-display);
+    cursor: pointer;
+    line-height: 18px;
+  }
+
+  .skill-promote-btn:hover:not(:disabled) {
+    background: rgba(224, 145, 69, 0.16);
+  }
+
+  .skill-promote-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .skill-promote-message {
+    margin-top: var(--space-2);
+    padding: var(--space-1) var(--space-2);
+    border: 1px solid rgba(224, 145, 69, 0.25);
+    background: rgba(224, 145, 69, 0.08);
+    color: var(--accent-amber, #e09145);
+    border-radius: var(--radius-sm);
+    font-size: var(--text-xs);
   }
 
   .config-empty {
