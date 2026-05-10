@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.32.26] - 2026-05-10
+
+### Changed
+
+- **Tasks panel uses a 3-row task card** — each task in the chat-side Tasks tab now stacks as title row → status badge + actions row → details row (description + evidence list/form). The previous single-flex-row layout squeezed long titles and descriptions into a narrow column when the tasks panel sat in the right sidebar, producing a noisy column-of-one-character text. The evidence card inside the body row also gets a saner head (title + type badge wrap together) and a dedicated footer that right-aligns the Remove Evidence button so long summaries no longer push the action into the body text.
+
 ## [0.32.25] - 2026-05-10
 
 ### Changed

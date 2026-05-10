@@ -640,78 +640,88 @@
       <div class="tasks-list">
         {#each taskList as task (task.id)}
           <div class="task-card" class:completed={task.status === 'completed'} class:cancelled={task.status === 'cancelled'} class:active={task.status === 'in_progress'}>
-            <span class="task-status-icon">{statusIcon(task.status)}</span>
-            <div class="task-content">
+            <div class="task-row task-row-header">
+              <span class="task-status-icon">{statusIcon(task.status)}</span>
               <span class="task-title">{task.title}</span>
-              {#if task.description}
-                <span class="task-desc">{task.description}</span>
-              {/if}
-              {#if evidenceForTask(task).length > 0}
-                <div class="task-evidence-list" aria-label={`Evidence for ${task.title}`}>
-                  {#each evidenceForTask(task) as evidence (evidence.id)}
-                    <article class="task-evidence-card">
-                      <div class="task-evidence-head">
-                        <span>{evidenceLabel(evidence)}</span>
-                        <span class="evidence-type">{evidenceTypeLabel(evidence.type)}</span>
-                      </div>
-                      {#if evidence.summary}
-                        <p>{evidence.summary}</p>
-                      {/if}
-                      {#if evidenceMeta(evidence)}
-                        <small>{evidenceMeta(evidence)}</small>
-                      {/if}
-                      {#if evidence.url}
-                        <a href={evidence.url} target="_blank" rel="noreferrer">{evidence.url}</a>
-                      {/if}
-                      <button
-                        class="btn btn-ghost btn-sm evidence-remove-btn"
-                        type="button"
-                        disabled={actionBusy}
-                        onclick={() => removeEvidence(task.id, evidence.id)}
-                      >
-                        Remove Evidence
-                      </button>
-                    </article>
-                  {/each}
-                </div>
-              {/if}
-              {#if evidenceDraftTaskId === task.id}
-                <div class="evidence-form">
-                  <select bind:value={evidenceType} disabled={actionBusy} aria-label="Evidence type">
-                    {#each evidenceTypeOptions as option}
-                      <option value={option.value}>{option.label}</option>
-                    {/each}
-                  </select>
-                  <input bind:value={evidenceTitle} disabled={actionBusy} placeholder="Evidence title" />
-                  <textarea bind:value={evidenceSummary} disabled={actionBusy} rows="2" placeholder="Short summary"></textarea>
-                  <input bind:value={evidenceCommand} disabled={actionBusy} placeholder="Command or release tag" />
-                  <input bind:value={evidenceURL} disabled={actionBusy} placeholder="URL or image path" />
-                  <div class="evidence-actions">
-                    <button class="btn btn-primary btn-sm" type="button" disabled={actionBusy} onclick={() => saveEvidence(task.id)}>
-                      {actionBusy ? 'Saving...' : 'Attach Evidence'}
-                    </button>
-                    <button class="btn btn-ghost btn-sm" type="button" disabled={actionBusy} onclick={cancelEvidence}>Cancel</button>
-                  </div>
-                </div>
-              {/if}
             </div>
-            <span class="badge {statusClass(task.status)}">{task.status.replace('_', ' ')}</span>
-            <button
-              class="btn btn-ghost btn-sm evidence-add-btn"
-              type="button"
-              disabled={actionBusy}
-              onclick={() => startEvidence(task.id)}
-            >
-              + Evidence
-            </button>
-            {#if (planStatus === 'executing' || planStatus === 'paused') && (task.status === 'pending' || task.status === 'in_progress')}
-              <button
-                class="btn btn-ghost btn-sm task-skip-btn"
-                type="button"
-                disabled={actionBusy}
-                title={$t.tasks.skipTask}
-                onclick={() => handleSkipTask(task.id, task.title)}
-              >{'⏭'}</button>
+            <div class="task-row task-row-meta">
+              <span class="badge {statusClass(task.status)}">{task.status.replace('_', ' ')}</span>
+              <div class="task-meta-actions">
+                <button
+                  class="btn btn-ghost btn-sm evidence-add-btn"
+                  type="button"
+                  disabled={actionBusy}
+                  onclick={() => startEvidence(task.id)}
+                >
+                  + Evidence
+                </button>
+                {#if (planStatus === 'executing' || planStatus === 'paused') && (task.status === 'pending' || task.status === 'in_progress')}
+                  <button
+                    class="btn btn-ghost btn-sm task-skip-btn"
+                    type="button"
+                    disabled={actionBusy}
+                    title={$t.tasks.skipTask}
+                    onclick={() => handleSkipTask(task.id, task.title)}
+                  >{'⏭'}</button>
+                {/if}
+              </div>
+            </div>
+            {#if task.description || evidenceForTask(task).length > 0 || evidenceDraftTaskId === task.id}
+              <div class="task-row task-row-body">
+                {#if task.description}
+                  <span class="task-desc">{task.description}</span>
+                {/if}
+                {#if evidenceForTask(task).length > 0}
+                  <div class="task-evidence-list" aria-label={`Evidence for ${task.title}`}>
+                    {#each evidenceForTask(task) as evidence (evidence.id)}
+                      <article class="task-evidence-card">
+                        <div class="task-evidence-head">
+                          <span class="task-evidence-title">{evidenceLabel(evidence)}</span>
+                          <span class="evidence-type">{evidenceTypeLabel(evidence.type)}</span>
+                        </div>
+                        {#if evidence.summary}
+                          <p>{evidence.summary}</p>
+                        {/if}
+                        {#if evidenceMeta(evidence)}
+                          <small>{evidenceMeta(evidence)}</small>
+                        {/if}
+                        {#if evidence.url}
+                          <a href={evidence.url} target="_blank" rel="noreferrer">{evidence.url}</a>
+                        {/if}
+                        <div class="task-evidence-foot">
+                          <button
+                            class="btn btn-ghost btn-sm evidence-remove-btn"
+                            type="button"
+                            disabled={actionBusy}
+                            onclick={() => removeEvidence(task.id, evidence.id)}
+                          >
+                            Remove Evidence
+                          </button>
+                        </div>
+                      </article>
+                    {/each}
+                  </div>
+                {/if}
+                {#if evidenceDraftTaskId === task.id}
+                  <div class="evidence-form">
+                    <select bind:value={evidenceType} disabled={actionBusy} aria-label="Evidence type">
+                      {#each evidenceTypeOptions as option}
+                        <option value={option.value}>{option.label}</option>
+                      {/each}
+                    </select>
+                    <input bind:value={evidenceTitle} disabled={actionBusy} placeholder="Evidence title" />
+                    <textarea bind:value={evidenceSummary} disabled={actionBusy} rows="2" placeholder="Short summary"></textarea>
+                    <input bind:value={evidenceCommand} disabled={actionBusy} placeholder="Command or release tag" />
+                    <input bind:value={evidenceURL} disabled={actionBusy} placeholder="URL or image path" />
+                    <div class="evidence-actions">
+                      <button class="btn btn-primary btn-sm" type="button" disabled={actionBusy} onclick={() => saveEvidence(task.id)}>
+                        {actionBusy ? 'Saving...' : 'Attach Evidence'}
+                      </button>
+                      <button class="btn btn-ghost btn-sm" type="button" disabled={actionBusy} onclick={cancelEvidence}>Cancel</button>
+                    </div>
+                  </div>
+                {/if}
+              </div>
             {/if}
           </div>
         {/each}
@@ -1275,7 +1285,7 @@
 
   .task-card {
     display: flex;
-    align-items: flex-start;
+    flex-direction: column;
     gap: var(--space-2);
     padding: var(--space-3);
     border: 1px solid var(--border-subtle);
@@ -1297,6 +1307,36 @@
     opacity: 0.4;
   }
 
+  .task-row {
+    min-width: 0;
+  }
+
+  .task-row-header {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-2);
+  }
+
+  .task-row-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+  }
+
+  .task-meta-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1);
+  }
+
+  .task-row-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
   .task-status-icon {
     flex-shrink: 0;
     width: 18px;
@@ -1309,24 +1349,22 @@
   .task-card.completed .task-status-icon { color: var(--success); }
   .task-card.cancelled .task-status-icon { color: var(--text-tertiary); }
 
-  .task-content {
+  .task-title {
     flex: 1;
     min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-
-  .task-title {
     font-size: var(--text-sm);
     color: var(--text-primary);
     line-height: 1.4;
+    overflow-wrap: anywhere;
+    word-break: break-word;
   }
 
   .task-desc {
     font-size: var(--text-xs);
     color: var(--text-secondary);
-    line-height: 1.4;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
   }
 
   .task-evidence-list {
@@ -1345,7 +1383,13 @@
     padding: var(--space-2);
   }
 
-  .task-evidence-head,
+  .task-evidence-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-1) var(--space-2);
+  }
+
   .evidence-actions {
     display: flex;
     align-items: center;
@@ -1354,10 +1398,20 @@
     flex-wrap: wrap;
   }
 
-  .task-evidence-head span:first-child {
+  .task-evidence-title {
+    flex: 1;
+    min-width: 0;
     color: var(--text-primary);
     font-size: var(--text-xs);
     font-weight: 600;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  .task-evidence-foot {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: var(--space-1);
   }
 
   .evidence-type {
