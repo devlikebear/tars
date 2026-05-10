@@ -132,7 +132,7 @@ func (h *authAPIHandler) handleLogin(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create session", "code": "session_create_failed"})
 		return
 	}
-	h.setSessionCookie(w, session.ID, gate.CookieSecure)
+	h.writeSessionCookie(w, session.ID, gate.CookieSecure)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"authenticated": true,
 		"auth_role":     role,
@@ -189,7 +189,7 @@ func (h *authAPIHandler) handlePairingLogin(w http.ResponseWriter, r *http.Reque
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create session", "code": "session_create_failed"})
 		return
 	}
-	h.setSessionCookie(w, session.ID, gate.CookieSecure)
+	h.writeSessionCookie(w, session.ID, gate.CookieSecure)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"authenticated": true,
 		"auth_role":     consoleauth.RoleUser,
@@ -210,15 +210,7 @@ func (h *authAPIHandler) handleLogout(w http.ResponseWriter, r *http.Request) {
 	}
 	// Secure must match the request class so loopback HTTP can clear local
 	// development cookies while HTTPS/Tailscale flows clear Secure cookies.
-	http.SetCookie(w, &http.Cookie{ // NOSONAR
-		Name:     h.cookieName,
-		Value:    "",
-		Path:     "/",
-		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
-		Secure:   shouldClearSecureCookie(r),
-		MaxAge:   -1,
-	})
+	h.writeClearSessionCookie(w, shouldClearSecureCookie(r))
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
@@ -267,17 +259,64 @@ func (h *authAPIHandler) handleUserPassword(w http.ResponseWriter, r *http.Reque
 	})
 }
 
-func (h *authAPIHandler) setSessionCookie(w http.ResponseWriter, sessionID string, secure bool) {
-	// Local loopback HTTP intentionally uses a non-Secure cookie; remote HTTPS
-	// and Tailscale-authenticated flows pass secure=true from evaluateLoginRequest.
-	http.SetCookie(w, &http.Cookie{ // NOSONAR
+// writeSessionCookie emits the browser session cookie, branching on the request
+// class decided by evaluateLoginRequest so each call site of http.SetCookie has a
+// literal Secure value that CodeQL/Sonar can reason about. The non-Secure branch
+// is reachable only when evaluateLoginRequest classified the request as local
+// loopback (127.0.0.1 / localhost / ::1); remote HTTPS and Tailscale-authenticated
+// flows always take the Secure: true branch.
+func (h *authAPIHandler) writeSessionCookie(w http.ResponseWriter, sessionID string, secure bool) {
+	if secure {
+		http.SetCookie(w, &http.Cookie{
+			Name:     h.cookieName,
+			Value:    sessionID,
+			Path:     "/",
+			HttpOnly: true,
+			SameSite: http.SameSiteLaxMode,
+			Secure:   true,
+			MaxAge:   h.cookieMaxAge,
+		})
+		return
+	}
+	// Loopback-only fallback. evaluateLoginRequest gates this branch so a
+	// non-Secure cookie cannot escape 127.0.0.1/localhost/::1; insecure non-local
+	// HTTP is rejected with 403 before we ever reach this code path.
+	http.SetCookie(w, &http.Cookie{ // NOSONAR -- gated to loopback by evaluateLoginRequest
 		Name:     h.cookieName,
 		Value:    sessionID,
 		Path:     "/",
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
-		Secure:   secure,
+		Secure:   false,
 		MaxAge:   h.cookieMaxAge,
+	})
+}
+
+// writeClearSessionCookie mirrors writeSessionCookie for the logout path. The
+// Secure attribute on a clearing cookie must match the original cookie or the
+// browser silently keeps the stale cookie around, so we still need the loopback
+// branch — but each branch carries an explicit Secure literal.
+func (h *authAPIHandler) writeClearSessionCookie(w http.ResponseWriter, secure bool) {
+	if secure {
+		http.SetCookie(w, &http.Cookie{
+			Name:     h.cookieName,
+			Value:    "",
+			Path:     "/",
+			HttpOnly: true,
+			SameSite: http.SameSiteLaxMode,
+			Secure:   true,
+			MaxAge:   -1,
+		})
+		return
+	}
+	http.SetCookie(w, &http.Cookie{ // NOSONAR -- clears the loopback-only cookie set by writeSessionCookie
+		Name:     h.cookieName,
+		Value:    "",
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		Secure:   false,
+		MaxAge:   -1,
 	})
 }
 
