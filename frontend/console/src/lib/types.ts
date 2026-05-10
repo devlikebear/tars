@@ -1209,6 +1209,50 @@ export type SkillExtractionReviewResponse = {
   saved?: SkillCreatorSaveResponse
 }
 
+export type SessionLocalSkillKind = 'skill' | 'command'
+
+export type SessionLocalSkillItem = {
+  name: string
+  slash?: string
+  description?: string
+  kind: SessionLocalSkillKind
+  file_path: string
+  has_workspace_collision: boolean
+}
+
+export type SessionLocalSkillListResponse = {
+  cwd: string
+  items: SessionLocalSkillItem[]
+  counts: {
+    skills: number
+    commands: number
+  }
+}
+
+export type SessionLocalSkillPromoteMode = 'copy' | 'move'
+export type SessionLocalSkillPromoteConflict = 'rename' | 'overwrite' | 'abort'
+export type SessionLocalSkillPromoteAction = 'created' | 'overwritten' | 'renamed'
+
+export type SessionLocalSkillPromoteOutcome = {
+  requested_name: string
+  target_name?: string
+  target_path?: string
+  action?: SessionLocalSkillPromoteAction
+  source_deleted?: boolean
+  error?: string
+}
+
+export type SessionLocalSkillPromoteRequest = {
+  items: { name: string }[]
+  mode: SessionLocalSkillPromoteMode
+  on_conflict: SessionLocalSkillPromoteConflict
+}
+
+export type SessionLocalSkillPromoteResponse = {
+  promoted: SessionLocalSkillPromoteOutcome[]
+  failed: SessionLocalSkillPromoteOutcome[]
+}
+
 export type MCPServerCreatorToolSpec = {
   name: string
   description: string
