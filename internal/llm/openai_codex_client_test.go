@@ -12,6 +12,63 @@ import (
 	"github.com/devlikebear/tars/internal/auth"
 )
 
+func TestOpenAICodexClient_RateLimitObserverFiresOnEachSnapshot(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("x-codex-primary-used-percent", "12")
+		_, _ = w.Write([]byte("data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"usage\":{}}}\n\n"))
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	defer srv.Close()
+
+	client, err := newOpenAICodexClientWithConfig(
+		srv.URL, "gpt-5.3-codex", "oauth", "openai-codex", "",
+		DefaultClientConfig(),
+		func() (auth.CodexCredential, error) { return auth.CodexCredential{AccessToken: "tok"}, nil },
+		func(context.Context, auth.CodexCredential) (auth.CodexCredential, error) {
+			return auth.CodexCredential{}, nil
+		},
+	)
+	if err != nil {
+		t.Fatalf("new codex client: %v", err)
+	}
+
+	var got []float64
+	client.SetRateLimitObserver(func(snap CodexRateLimitSnapshot) {
+		if snap.Primary != nil {
+			got = append(got, snap.Primary.UsedPercent)
+		}
+	})
+
+	for i := 0; i < 3; i++ {
+		if _, err := client.Chat(context.Background(), []ChatMessage{{Role: "user", Content: "hi"}}, ChatOptions{
+			OnDelta: func(string) {},
+		}); err != nil {
+			t.Fatalf("chat %d: %v", i, err)
+		}
+	}
+
+	if len(got) != 3 {
+		t.Fatalf("expected 3 observer calls, got %d (%v)", len(got), got)
+	}
+	for _, v := range got {
+		if v != 12 {
+			t.Errorf("observer payload: got %v, want 12", v)
+		}
+	}
+
+	client.SetRateLimitObserver(nil)
+	got = nil
+	if _, err := client.Chat(context.Background(), []ChatMessage{{Role: "user", Content: "hi"}}, ChatOptions{
+		OnDelta: func(string) {},
+	}); err != nil {
+		t.Fatalf("chat after clear: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("expected no observer calls after nil-clear, got %v", got)
+	}
+}
+
 func TestOpenAICodexClient_CapturesRateLimitHeaders(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")

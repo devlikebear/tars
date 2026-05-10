@@ -89,6 +89,16 @@ func (c *TrackedClient) Chat(ctx context.Context, messages []llm.ChatMessage, op
 	return resp, nil
 }
 
+// Inner returns the wrapped llm.Client. Lets server-side wiring unwrap the
+// concrete provider client (e.g. OpenAICodexClient) when it needs to attach
+// provider-specific callbacks like rate-limit observers.
+func (c *TrackedClient) Inner() llm.Client {
+	if c == nil {
+		return nil
+	}
+	return c.inner
+}
+
 // LastCodexRateLimit forwards to the inner client when it implements
 // llm.CodexRateLimitSource. Lets admin handlers fish a Codex rate-limit
 // snapshot out of the router without unwrapping the TrackedClient manually.
