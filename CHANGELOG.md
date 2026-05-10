@@ -6,6 +6,16 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.32.29] - 2026-05-10
+
+### Added
+
+- **`/status` slash command in chat** — typing `/status` (or selecting it from the slash popover) prints the current Codex subscription quota in the chat feedback bar, one line per `openai-codex` tier with primary/weekly used_percent and reset countdown. Saves a context switch when you want a quick check without leaving the conversation. Feedback duration extended to 10s so you have time to read the multi-line summary.
+
+### Changed
+
+- **Codex Quota card moved from Ops to Analytics** — the card now lives at `/console/analytics`, slotted between the summary grid and the token-spend chart, where it sits naturally with the other usage/spend metrics. `/console/ops` keeps its focus on operational actions (approvals, automation audit). The 60s polling, SSE refresh on `codex_quota` events, and warn/critical row tints all carry over unchanged.
+
 ## [0.32.28] - 2026-05-10
 
 ### Added

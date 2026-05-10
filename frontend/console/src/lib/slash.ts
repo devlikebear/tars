@@ -34,6 +34,13 @@ const BUILTIN_SLASH_COMMANDS: SlashCommandCandidate[] = [
   },
   {
     kind: 'builtin',
+    id: 'status',
+    command: 'status',
+    title: 'Status',
+    description: 'Show the current Codex subscription quota inline.',
+  },
+  {
+    kind: 'builtin',
     id: 'compact',
     command: 'compact',
     title: 'Compact',

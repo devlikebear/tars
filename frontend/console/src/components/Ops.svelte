@@ -2,14 +2,12 @@
   import { onMount, onDestroy } from 'svelte'
   import {
     createCleanupPlan,
-    getCodexUsage,
     listAutomationAudit,
     listApprovals,
     reviewApproval,
     streamEvents,
   } from '../lib/api'
-  import type { Approval, AutomationAuditEntry, CodexUsageTier } from '../lib/types'
-  import { formatResetCountdown } from '../lib/formatDuration'
+  import type { Approval, AutomationAuditEntry } from '../lib/types'
   import { t } from '../i18n'
 
   type ApprovalGuideStep = {
@@ -41,10 +39,6 @@
   let planCreating = $state(false)
   let auditEntries: AutomationAuditEntry[] = $state([])
   let auditLoading = $state(false)
-  let codexTiers: CodexUsageTier[] = $state([])
-  let codexLoading = $state(false)
-  let codexError = $state('')
-  let codexTimer: ReturnType<typeof setInterval> | null = null
   let stopStream: (() => void) | null = null
 
   function fmt(value?: string): string {
@@ -118,26 +112,6 @@
     }
   }
 
-  async function refreshCodexUsage() {
-    codexLoading = true
-    try {
-      const res = await getCodexUsage()
-      codexTiers = (res.tiers ?? []).filter((tier) => (tier.provider ?? '').toLowerCase() === 'openai-codex')
-      codexError = ''
-    } catch (err) {
-      codexError = err instanceof Error ? err.message : 'failed to load codex quota'
-    } finally {
-      codexLoading = false
-    }
-  }
-
-  function bandClass(usedPercent: number | undefined): string {
-    if (usedPercent === undefined) return ''
-    if (usedPercent >= 95) return 'codex-row-critical'
-    if (usedPercent >= 90) return 'codex-row-warn'
-    return ''
-  }
-
   async function refreshAudit() {
     auditLoading = true
     try {
@@ -165,16 +139,11 @@
 
   onMount(() => {
     void load()
-    void refreshCodexUsage()
-    codexTimer = setInterval(() => { void refreshCodexUsage() }, 60_000)
     stopStream = streamEvents(
       (event) => {
         if (event.category === 'ops') {
           void listApprovals().then((list) => { approvals = list })
           void refreshAudit()
-        }
-        if (event.category === 'codex_quota') {
-          void refreshCodexUsage()
         }
       },
     )
@@ -182,10 +151,6 @@
 
   onDestroy(() => {
     stopStream?.()
-    if (codexTimer !== null) {
-      clearInterval(codexTimer)
-      codexTimer = null
-    }
   })
 </script>
 
@@ -339,59 +304,6 @@
         </div>
       {/if}
     </section>
-    {#if codexTiers.length > 0 || codexLoading || codexError}
-      <section class="card codex-quota-section">
-        <div class="card-header">
-          <span class="card-title">Codex subscription quota</span>
-          <div class="card-header-actions">
-            <button type="button" class="btn btn-ghost btn-sm" disabled={codexLoading} onclick={() => { void refreshCodexUsage() }}>
-              {codexLoading ? 'Refreshing…' : 'Refresh'}
-            </button>
-          </div>
-        </div>
-        {#if codexError}
-          <div class="error-banner">{codexError}</div>
-        {/if}
-        {#if codexTiers.length === 0 && !codexLoading && !codexError}
-          <div class="ops-loading">No openai-codex tiers configured.</div>
-        {:else}
-          <div class="codex-list">
-            {#each codexTiers as tier}
-              <div class="codex-tier {bandClass(tier.snapshot?.primary?.used_percent)}">
-                <div class="codex-tier-head">
-                  <span class="codex-tier-label">{tier.tier}</span>
-                  <span class="codex-tier-meta">{tier.provider ?? ''}{tier.model ? ` · ${tier.model}` : ''}</span>
-                </div>
-                {#if !tier.snapshot}
-                  <div class="codex-tier-empty">Awaiting first request…</div>
-                {:else}
-                  <div class="codex-windows">
-                    {#if tier.snapshot.primary}
-                      <div class="codex-window {bandClass(tier.snapshot.primary.used_percent)}">
-                        <span class="codex-window-label">5h window</span>
-                        <span class="codex-window-pct">{tier.snapshot.primary.used_percent.toFixed(1)}%</span>
-                        {#if tier.snapshot.primary.reset_after_seconds !== undefined}
-                          <span class="codex-window-reset">resets in {formatResetCountdown(tier.snapshot.primary.reset_after_seconds)}</span>
-                        {/if}
-                      </div>
-                    {/if}
-                    {#if tier.snapshot.secondary}
-                      <div class="codex-window {bandClass(tier.snapshot.secondary.used_percent)}">
-                        <span class="codex-window-label">weekly</span>
-                        <span class="codex-window-pct">{tier.snapshot.secondary.used_percent.toFixed(1)}%</span>
-                        {#if tier.snapshot.secondary.reset_after_seconds !== undefined}
-                          <span class="codex-window-reset">resets in {formatResetCountdown(tier.snapshot.secondary.reset_after_seconds)}</span>
-                        {/if}
-                      </div>
-                    {/if}
-                  </div>
-                {/if}
-              </div>
-            {/each}
-          </div>
-        {/if}
-      </section>
-    {/if}
 
     <section class="card audit-section">
       <div class="card-header">
@@ -772,100 +684,4 @@
     }
   }
 
-  .codex-quota-section {
-    margin-bottom: var(--space-6);
-  }
-
-  .codex-list {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-3);
-  }
-
-  .codex-tier {
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-md);
-    padding: var(--space-3) var(--space-4);
-    background: var(--surface);
-    transition: border-color var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out);
-  }
-
-  .codex-tier.codex-row-warn {
-    border-color: var(--warning);
-    background: var(--warning-muted);
-  }
-
-  .codex-tier.codex-row-critical {
-    border-color: var(--danger, #ef4444);
-    background: rgba(239, 68, 68, 0.1);
-  }
-
-  .codex-tier-head {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: var(--space-3);
-    margin-bottom: var(--space-2);
-  }
-
-  .codex-tier-label {
-    font-weight: 600;
-    text-transform: uppercase;
-    font-size: var(--text-xs);
-    letter-spacing: 0.04em;
-    color: var(--primary-text);
-  }
-
-  .codex-tier-meta {
-    color: var(--text-tertiary);
-    font-size: var(--text-xs);
-    font-family: var(--font-mono);
-  }
-
-  .codex-tier-empty {
-    color: var(--text-tertiary);
-    font-style: italic;
-    font-size: var(--text-sm);
-  }
-
-  .codex-windows {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-    gap: var(--space-3);
-  }
-
-  .codex-window {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    padding: var(--space-2) var(--space-3);
-    border-radius: var(--radius-sm);
-    background: var(--surface-subtle, rgba(255, 255, 255, 0.03));
-  }
-
-  .codex-window.codex-row-warn {
-    background: var(--warning-muted);
-  }
-
-  .codex-window.codex-row-critical {
-    background: rgba(239, 68, 68, 0.18);
-  }
-
-  .codex-window-label {
-    font-size: var(--text-xs);
-    color: var(--text-tertiary);
-    text-transform: uppercase;
-    letter-spacing: 0.03em;
-  }
-
-  .codex-window-pct {
-    font-size: var(--text-lg);
-    font-weight: 600;
-    font-family: var(--font-mono);
-  }
-
-  .codex-window-reset {
-    font-size: var(--text-xs);
-    color: var(--text-secondary);
-  }
 </style>
