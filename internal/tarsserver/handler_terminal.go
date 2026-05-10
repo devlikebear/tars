@@ -275,8 +275,14 @@ func terminalSizeFromRequest(r *http.Request) terminalSize {
 	if r == nil {
 		return normalizeTerminalSize(0, 0)
 	}
-	cols, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("cols")))
-	rows, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("rows")))
+	var cols int
+	if parsedCols, err := strconv.ParseUint(strings.TrimSpace(r.URL.Query().Get("cols")), 10, 16); err == nil {
+		cols = int(parsedCols)
+	}
+	var rows int
+	if parsedRows, err := strconv.ParseUint(strings.TrimSpace(r.URL.Query().Get("rows")), 10, 16); err == nil {
+		rows = int(parsedRows)
+	}
 	return normalizeTerminalSize(cols, rows)
 }
 
