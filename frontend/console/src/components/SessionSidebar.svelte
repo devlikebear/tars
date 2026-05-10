@@ -2,7 +2,7 @@
   import { onDestroy, onMount } from 'svelte'
   import { listSessions, deleteSession, compactSession, renameSession, getSessionHistory, runMemorySearch, setSessionArchived, setSessionPinned, recommendSessionCleanup } from '../lib/api'
   import { highlightTerms } from '../lib/markdown'
-  import { cleanupCandidateSessions, isArchived, isPinned, organizeSessions, sessionKind, type SessionKindFilter, type SessionSortMode } from '../lib/sessionOrganization'
+  import { cleanupCandidateSessions, groupSessions, isArchived, isPinned, organizeSessions, sessionKind, type SessionGroup, type SessionKindFilter, type SessionSortMode } from '../lib/sessionOrganization'
   import { t } from '../i18n'
   import type { MemorySearchMatch, Session, SessionCleanupMode, SessionCleanupSuggestion, SessionCleanupSuggestionResponse } from '../lib/types'
 
@@ -38,6 +38,9 @@
   let aiCleanupResponse = $state<SessionCleanupSuggestionResponse | null>(null)
   let aiCleanupSelected = $state<Record<string, boolean>>({})
   let aiDeleteConfirm = $state(false)
+  let openMoreMenuId: string | null = $state(null)
+  let moreMenuPos = $state({ top: 0, right: 0 })
+
   const sessionFilters = ['all', 'session', 'main', 'worker', 'archived'] as const
   const maxSnippetsPerSession = 3
   let transcriptSearchTimer: ReturnType<typeof setTimeout> | null = null
@@ -47,6 +50,13 @@
   let aiCleanupSuggestions = $derived(sessionCleanupSuggestionsForMode(aiCleanupResponse, aiCleanupMode))
   let showAICleanupPanel = $derived(
     (filterKind === 'all' || filterKind === 'session' || filterKind === 'archived') && !searchQuery.trim(),
+  )
+
+  let sessionGroups = $derived(
+    groupSessions(
+      filteredSessions(),
+      { useGroups: filterKind !== 'archived' && !searchQuery.trim() },
+    )
   )
 
   function relativeTime(value?: string): string {
@@ -223,6 +233,7 @@
     actionBusy = id
     actionError = ''
     deleteConfirmId = null
+    openMoreMenuId = null
     try {
       await deleteSession(id)
       if (selectedSessionId === id) onNewSession()
@@ -384,6 +395,23 @@
     }
   }
 
+  function toggleMoreMenu(id: string, e: MouseEvent) {
+    e.stopPropagation()
+    if (openMoreMenuId === id) {
+      openMoreMenuId = null
+      deleteConfirmId = null
+      return
+    }
+    const btn = e.currentTarget as HTMLElement
+    const rect = btn.getBoundingClientRect()
+    moreMenuPos = { top: rect.bottom + 4, right: window.innerWidth - rect.right }
+    openMoreMenuId = id
+  }
+
+  function groupLabel(group: SessionGroup): string {
+    return $t.sessions.groups[group.key]
+  }
+
   onMount(() => { void load() })
 
   onDestroy(() => {
@@ -403,6 +431,17 @@
     aiCleanupResponse = null
     aiCleanupSelected = {}
     aiDeleteConfirm = false
+  })
+
+  $effect(() => {
+    function handleGlobalClick() {
+      if (openMoreMenuId !== null) {
+        openMoreMenuId = null
+        deleteConfirmId = null
+      }
+    }
+    document.addEventListener('click', handleGlobalClick)
+    return () => document.removeEventListener('click', handleGlobalClick)
   })
 </script>
 
@@ -424,7 +463,7 @@
       >{$t.sessions.filters[kind as keyof typeof $t.sessions.filters]}</button>
     {/each}
     <div class="sort-btns">
-      <button class="filter-btn" class:active={sortBy === 'updated'} onclick={() => { sortBy = 'updated' }} title={$t.sessions.sort.recentTitle}>{'\u2193'}</button>
+      <button class="filter-btn" class:active={sortBy === 'updated'} onclick={() => { sortBy = 'updated' }} title={$t.sessions.sort.recentTitle}>{'↓'}</button>
       <button class="filter-btn" class:active={sortBy === 'name'} onclick={() => { sortBy = 'name' }} title={$t.sessions.sort.nameTitle}>A</button>
     </div>
   </div>
@@ -440,134 +479,200 @@
   {/if}
 
   {#if cleanupSuggestions.length > 0 && (filterKind === 'all' || filterKind === 'session') && !searchQuery.trim()}
-    <section class="cleanup-panel" aria-label={$t.sessions.cleanup.title}>
-      <div class="cleanup-head">
-        <span>{$t.sessions.cleanup.title}</span>
-        <strong>{$t.sessions.cleanup.count(cleanupSuggestions.length)}</strong>
+    <details class="cleanup-panel">
+      <summary class="cleanup-summary" aria-label={$t.sessions.cleanup.title}>
+        <span class="cleanup-summary-title">{$t.sessions.cleanup.title}</span>
+        <strong class="cleanup-summary-count">{$t.sessions.cleanup.count(cleanupSuggestions.length)}</strong>
+        <span class="cleanup-chevron">›</span>
+      </summary>
+      <div class="cleanup-body">
+        <div class="cleanup-preview">{cleanupSuggestions.slice(0, 3).map((session) => session.title || session.id.slice(0, 12)).join(' · ')}</div>
+        <button class="cleanup-action" type="button" disabled={actionBusy === 'cleanup'} onclick={handleArchiveCleanupCandidates}>
+          {$t.sessions.cleanup.archiveSuggested(cleanupSuggestions.length)}
+        </button>
       </div>
-      <div class="cleanup-preview">{cleanupSuggestions.slice(0, 3).map((session) => session.title || session.id.slice(0, 12)).join(' · ')}</div>
-      <button class="cleanup-action" type="button" disabled={actionBusy === 'cleanup'} onclick={handleArchiveCleanupCandidates}>
-        {$t.sessions.cleanup.archiveSuggested(cleanupSuggestions.length)}
-      </button>
-    </section>
+    </details>
   {/if}
 
   {#if showAICleanupPanel}
-    <section class="ai-cleanup-panel" aria-label={aiCleanupMode === 'delete' ? $t.sessions.aiCleanup.deleteTitle : $t.sessions.aiCleanup.archiveTitle}>
-      <div class="cleanup-head">
-        <span>{aiCleanupMode === 'delete' ? $t.sessions.aiCleanup.deleteTitle : $t.sessions.aiCleanup.archiveTitle}</span>
+    <details class="cleanup-panel cleanup-panel-ai">
+      <summary class="cleanup-summary" aria-label={aiCleanupMode === 'delete' ? $t.sessions.aiCleanup.deleteTitle : $t.sessions.aiCleanup.archiveTitle}>
+        <span class="cleanup-summary-title">{aiCleanupMode === 'delete' ? $t.sessions.aiCleanup.deleteTitle : $t.sessions.aiCleanup.archiveTitle}</span>
         {#if aiCleanupResponse}
-          <strong>{$t.sessions.aiCleanup.source(aiCleanupResponse.analyzed_count, aiCleanupResponse.excluded_count)}</strong>
+          <strong class="cleanup-summary-count">{$t.sessions.aiCleanup.source(aiCleanupResponse.analyzed_count, aiCleanupResponse.excluded_count)}</strong>
+        {/if}
+        <span class="cleanup-chevron">›</span>
+      </summary>
+      <div class="cleanup-body">
+        <button class="cleanup-action" type="button" disabled={actionBusy === 'ai-cleanup'} onclick={handleAnalyzeSessionCleanup}>
+          {actionBusy === 'ai-cleanup' ? $t.sessions.aiCleanup.analyzing : aiCleanupMode === 'delete' ? $t.sessions.aiCleanup.analyzeDelete : $t.sessions.aiCleanup.analyzeArchive}
+        </button>
+        {#if aiCleanupResponse}
+          {#if aiCleanupSuggestions.length === 0}
+            <div class="cleanup-preview">{$t.sessions.aiCleanup.empty}</div>
+          {:else}
+            <div class="ai-suggestion-list">
+              {#each aiCleanupSuggestions as suggestion}
+                <label class="ai-suggestion-row">
+                  <input
+                    type="checkbox"
+                    checked={aiCleanupSelected[suggestion.session_id] !== false}
+                    onchange={() => toggleAISuggestion(suggestion.session_id)}
+                  />
+                  <span class="ai-suggestion-copy">
+                    <strong>{suggestion.title || suggestion.session_id.slice(0, 12)}</strong>
+                    <span>{suggestion.reason}</span>
+                  </span>
+                  <span class="ai-confidence">{$t.sessions.aiCleanup.confidence(suggestion.confidence)}</span>
+                </label>
+              {/each}
+            </div>
+            <button
+              class="cleanup-action"
+              class:ai-delete-confirm={aiCleanupMode === 'delete' && aiDeleteConfirm}
+              type="button"
+              disabled={actionBusy === 'ai-cleanup' || selectedAISuggestions().length === 0}
+              onclick={handleApplyAISuggestions}
+            >
+              {#if aiCleanupMode === 'delete' && aiDeleteConfirm}
+                {$t.sessions.aiCleanup.confirmDelete(selectedAISuggestions().length)}
+              {:else if aiCleanupMode === 'delete'}
+                {$t.sessions.aiCleanup.applyDelete(selectedAISuggestions().length)}
+              {:else}
+                {$t.sessions.aiCleanup.applyArchive(selectedAISuggestions().length)}
+              {/if}
+            </button>
+          {/if}
         {/if}
       </div>
-      <button class="cleanup-action" type="button" disabled={actionBusy === 'ai-cleanup'} onclick={handleAnalyzeSessionCleanup}>
-        {actionBusy === 'ai-cleanup' ? $t.sessions.aiCleanup.analyzing : aiCleanupMode === 'delete' ? $t.sessions.aiCleanup.analyzeDelete : $t.sessions.aiCleanup.analyzeArchive}
-      </button>
-      {#if aiCleanupResponse}
-        {#if aiCleanupSuggestions.length === 0}
-          <div class="cleanup-preview">{$t.sessions.aiCleanup.empty}</div>
-        {:else}
-          <div class="ai-suggestion-list">
-            {#each aiCleanupSuggestions as suggestion}
-              <label class="ai-suggestion-row">
-                <input
-                  type="checkbox"
-                  checked={aiCleanupSelected[suggestion.session_id] !== false}
-                  onchange={() => toggleAISuggestion(suggestion.session_id)}
-                />
-                <span class="ai-suggestion-copy">
-                  <strong>{suggestion.title || suggestion.session_id.slice(0, 12)}</strong>
-                  <span>{suggestion.reason}</span>
-                </span>
-                <span class="ai-confidence">{$t.sessions.aiCleanup.confidence(suggestion.confidence)}</span>
-              </label>
-            {/each}
-          </div>
-          <button
-            class="cleanup-action"
-            class:ai-delete-confirm={aiCleanupMode === 'delete' && aiDeleteConfirm}
-            type="button"
-            disabled={actionBusy === 'ai-cleanup' || selectedAISuggestions().length === 0}
-            onclick={handleApplyAISuggestions}
-          >
-            {#if aiCleanupMode === 'delete' && aiDeleteConfirm}
-              {$t.sessions.aiCleanup.confirmDelete(selectedAISuggestions().length)}
-            {:else if aiCleanupMode === 'delete'}
-              {$t.sessions.aiCleanup.applyDelete(selectedAISuggestions().length)}
-            {:else}
-              {$t.sessions.aiCleanup.applyArchive(selectedAISuggestions().length)}
-            {/if}
-          </button>
-        {/if}
-      {/if}
-    </section>
+    </details>
   {/if}
 
   <div class="session-list">
     {#if loading}
       <div class="sidebar-loading">{$t.sessions.sidebarLoading}</div>
-    {:else if transcriptSearchLoading && filteredSessions().length === 0}
-      <div class="sidebar-loading">{$t.sessions.sidebarSearchingTranscripts}</div>
     {:else if filteredSessions().length === 0}
-      <div class="sidebar-empty">{searchQuery || filterKind !== 'all' ? $t.sessions.sidebarNoMatches : $t.sessions.sidebarEmpty}</div>
+      {#if transcriptSearchLoading}
+        <div class="sidebar-loading">{$t.sessions.sidebarSearchingTranscripts}</div>
+      {:else}
+        <div class="sidebar-empty">{searchQuery || filterKind !== 'all' ? $t.sessions.sidebarNoMatches : $t.sessions.sidebarEmpty}</div>
+      {/if}
     {:else}
-      {#each filteredSessions() as session}
-        <div class="session-item" class:active={selectedSessionId === session.id}>
-          <button
-            type="button"
-            class="session-btn"
-            onclick={() => onSelect(session)}
-          >
-            {#if renamingId === session.id}
-              <!-- svelte-ignore a11y_autofocus -->
-              <input
-                class="rename-input"
-                bind:value={renameValue}
-                autofocus
-                onkeydown={(e) => { if (e.key === 'Enter') commitRename(); if (e.key === 'Escape') { renamingId = null } }}
-                onblur={() => commitRename()}
-                onclick={(e) => e.stopPropagation()}
-              />
-            {:else}
-              <span class="session-title">{session.title || session.id.slice(0, 12)}</span>
-            {/if}
-            <div class="session-meta">
-              <span class="badge {kindBadge(session)}" style="font-size:9px;padding:1px 5px">{$t.sessions.filters[sessionKind(session) as keyof typeof $t.sessions.filters] ?? sessionKind(session)}</span>
-              {#if isArchived(session)}
-                <span class="badge badge-default" style="font-size:9px;padding:1px 5px">{$t.sessions.filters.archived}</span>
+      {#if transcriptSearchLoading}
+        <div class="sidebar-searching-hint">{$t.sessions.sidebarSearchingTranscripts}</div>
+      {/if}
+      {#each sessionGroups as group}
+        {#if sessionGroups.length > 1}
+          <div class="session-group-label">{groupLabel(group)}</div>
+        {/if}
+        {#each group.sessions as session}
+          <div class="session-item" class:active={selectedSessionId === session.id}>
+            <button
+              type="button"
+              class="session-btn"
+              onclick={() => onSelect(session)}
+            >
+              {#if renamingId === session.id}
+                <!-- svelte-ignore a11y_autofocus -->
+                <input
+                  class="rename-input"
+                  bind:value={renameValue}
+                  autofocus
+                  onkeydown={(e) => { if (e.key === 'Enter') commitRename(); if (e.key === 'Escape') { renamingId = null } }}
+                  onblur={() => commitRename()}
+                  onclick={(e) => e.stopPropagation()}
+                />
+              {:else}
+                <span class="session-title">{session.title || session.id.slice(0, 12)}</span>
               {/if}
-              <span class="session-time">{relativeTime(session.updated_at)}</span>
+              <div class="session-meta">
+                <span class="badge {kindBadge(session)}" style="font-size:9px;padding:1px 5px">{$t.sessions.filters[sessionKind(session) as keyof typeof $t.sessions.filters] ?? sessionKind(session)}</span>
+                {#if isArchived(session)}
+                  <span class="badge badge-default" style="font-size:9px;padding:1px 5px">{$t.sessions.filters.archived}</span>
+                {/if}
+                {#if isPinned(session)}
+                  <span class="session-pin-indicator" title={$t.sessions.actions.unpin} aria-label={$t.sessions.actions.unpin}>★</span>
+                {/if}
+                <span class="session-time">{relativeTime(session.updated_at)}</span>
+              </div>
+              {#if snippetsForSession(session.id).length > 0}
+                <div class="sidebar-snippet-list" aria-label={$t.sessions.transcriptMatches}>
+                  {#each snippetsForSession(session.id) as match}
+                    <div class="sidebar-snippet">
+                      <span class="sidebar-snippet-date">{match.date || $t.sessions.snippetFallbackKind}</span>
+                      <span class="sidebar-snippet-text">{@html highlightSearchSnippet(match.snippet)}</span>
+                    </div>
+                  {/each}
+                </div>
+              {/if}
+            </button>
+
+            <div class="session-actions">
+              {#if !isMainSession(session)}
+                <button
+                  class="act-btn"
+                  class:active={isPinned(session)}
+                  aria-label={isPinned(session) ? $t.sessions.actions.unpin : $t.sessions.actions.pin}
+                  title={isPinned(session) ? $t.sessions.actions.unpin : $t.sessions.actions.pin}
+                  disabled={actionBusy === session.id}
+                  onclick={(e) => { e.stopPropagation(); handleSetPinned(session.id, !isPinned(session)) }}
+                >{isPinned(session) ? '★' : '☆'}</button>
+              {/if}
+              <button
+                class="act-btn more-btn"
+                aria-label={$t.sessions.actions.more}
+                title={$t.sessions.actions.more}
+                onclick={(e) => toggleMoreMenu(session.id, e)}
+              >⋯</button>
             </div>
-            {#if snippetsForSession(session.id).length > 0}
-              <div class="sidebar-snippet-list" aria-label={$t.sessions.transcriptMatches}>
-                {#each snippetsForSession(session.id) as match}
-                  <div class="sidebar-snippet">
-                    <span class="sidebar-snippet-date">{match.date || $t.sessions.snippetFallbackKind}</span>
-                    <span class="sidebar-snippet-text">{@html highlightSearchSnippet(match.snippet)}</span>
-                  </div>
-                {/each}
+
+            {#if openMoreMenuId === session.id}
+              <div
+                class="session-more-menu"
+                role="menu"
+                tabindex="-1"
+                style="top:{moreMenuPos.top}px;right:{moreMenuPos.right}px"
+                onclick={(e) => e.stopPropagation()}
+                onkeydown={(e) => e.stopPropagation()}
+              >
+                {#if !isMainSession(session)}
+                  <button
+                    role="menuitem"
+                    class="more-menu-item"
+                    onclick={(e) => { e.stopPropagation(); openMoreMenuId = null; startRename(session) }}
+                  >{$t.sessions.actions.rename}</button>
+                  <button
+                    role="menuitem"
+                    class="more-menu-item"
+                    disabled={actionBusy === session.id}
+                    onclick={(e) => { e.stopPropagation(); openMoreMenuId = null; void handleGenerateTitle(session) }}
+                  >{$t.sessions.actions.autoTitle}</button>
+                {/if}
+                <button
+                  role="menuitem"
+                  class="more-menu-item"
+                  disabled={actionBusy === session.id}
+                  onclick={(e) => { e.stopPropagation(); openMoreMenuId = null; void handleCompact(session.id) }}
+                >{$t.sessions.actions.compact}</button>
+                {#if !isMainSession(session)}
+                  <button
+                    role="menuitem"
+                    class="more-menu-item"
+                    disabled={actionBusy === session.id}
+                    onclick={(e) => { e.stopPropagation(); openMoreMenuId = null; void handleSetArchived(session.id, !isArchived(session)) }}
+                  >{isArchived(session) ? $t.sessions.actions.restore : $t.sessions.actions.archive}</button>
+                  <div class="more-menu-divider" role="separator"></div>
+                  <button
+                    role="menuitem"
+                    class="more-menu-item more-menu-item-danger"
+                    disabled={actionBusy === session.id}
+                    onclick={(e) => { e.stopPropagation(); requestDelete(session.id) }}
+                  >{deleteConfirmId === session.id ? $t.sessions.actions.confirm : $t.sessions.actions.delete}</button>
+                {/if}
               </div>
             {/if}
-          </button>
-          <div class="session-actions">
-            {#if !isMainSession(session)}
-              <button class="act-btn" class:active={isPinned(session)} aria-label={isPinned(session) ? $t.sessions.actions.unpin : $t.sessions.actions.pin} title={isPinned(session) ? $t.sessions.actions.unpin : $t.sessions.actions.pin} disabled={actionBusy === session.id} onclick={(e) => { e.stopPropagation(); handleSetPinned(session.id, !isPinned(session)) }}>{isPinned(session) ? '★' : '☆'}</button>
-              <button class="act-btn" aria-label={$t.sessions.actions.rename} title={$t.sessions.actions.rename} onclick={(e) => { e.stopPropagation(); startRename(session) }}>&#9998;</button>
-              <button class="act-btn" aria-label={$t.sessions.actions.autoTitle} title={$t.sessions.actions.autoTitle} disabled={actionBusy === session.id} onclick={(e) => { e.stopPropagation(); handleGenerateTitle(session) }}>A</button>
-            {/if}
-            <button class="act-btn" aria-label={$t.sessions.actions.compact} title={$t.sessions.actions.compact} disabled={actionBusy === session.id} onclick={(e) => { e.stopPropagation(); handleCompact(session.id) }}>&#8858;</button>
-            {#if !isMainSession(session)}
-              <button class="act-btn" aria-label={isArchived(session) ? $t.sessions.actions.restore : $t.sessions.actions.archive} title={isArchived(session) ? $t.sessions.actions.restore : $t.sessions.actions.archive} disabled={actionBusy === session.id} onclick={(e) => { e.stopPropagation(); handleSetArchived(session.id, !isArchived(session)) }}>{isArchived(session) ? '⤴' : '⤓'}</button>
-              <button
-                class="act-btn act-btn-danger"
-                aria-label={deleteConfirmId === session.id ? $t.sessions.actions.confirm : $t.sessions.actions.delete}
-                title={deleteConfirmId === session.id ? $t.sessions.actions.confirm : $t.sessions.actions.delete}
-                disabled={actionBusy === session.id}
-                onclick={(e) => { e.stopPropagation(); requestDelete(session.id) }}
-              >{deleteConfirmId === session.id ? '!!' : '\u00d7'}</button>
-            {/if}
           </div>
-        </div>
+        {/each}
       {/each}
     {/if}
   </div>
@@ -626,30 +731,58 @@
     gap: 2px;
   }
 
-  .session-list {
-    flex: 1;
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-    gap: 1px;
-  }
-
+  /* Cleanup panels */
   .cleanup-panel {
-    display: grid;
-    gap: var(--space-1);
-    padding: var(--space-2);
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-sm);
     background: var(--surface-inset);
   }
 
-  .ai-cleanup-panel {
+  .cleanup-panel-ai {
+    border-color: rgba(224, 145, 69, 0.22);
+    background: rgba(224, 145, 69, 0.05);
+  }
+
+  .cleanup-summary {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding: 5px var(--space-2);
+    cursor: pointer;
+    list-style: none;
+    user-select: none;
+    color: var(--text-secondary);
+    font-size: 10px;
+    font-family: var(--font-mono);
+    text-transform: uppercase;
+  }
+  .cleanup-summary::-webkit-details-marker { display: none; }
+  .cleanup-summary:hover { color: var(--text-primary); }
+
+  .cleanup-summary-title {
+    flex: 1;
+  }
+
+  .cleanup-summary-count {
+    color: var(--primary);
+    font-weight: 600;
+  }
+
+  .cleanup-chevron {
+    color: var(--text-ghost);
+    font-size: 12px;
+    transition: transform var(--duration-fast);
+    display: inline-block;
+  }
+
+  details[open] .cleanup-chevron {
+    transform: rotate(90deg);
+  }
+
+  .cleanup-body {
     display: grid;
     gap: var(--space-1);
-    padding: var(--space-2);
-    border: 1px solid rgba(224, 145, 69, 0.22);
-    border-radius: var(--radius-sm);
-    background: rgba(224, 145, 69, 0.05);
+    padding: 0 var(--space-2) var(--space-2);
   }
 
   .ai-suggestion-list {
@@ -705,22 +838,6 @@
     color: var(--error);
   }
 
-  .cleanup-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-2);
-    color: var(--text-secondary);
-    font-size: 10px;
-    font-family: var(--font-mono);
-    text-transform: uppercase;
-  }
-
-  .cleanup-head strong {
-    color: var(--primary);
-    font-weight: 600;
-  }
-
   .cleanup-preview {
     min-width: 0;
     overflow: hidden;
@@ -746,6 +863,15 @@
     color: var(--primary);
   }
 
+  /* Session list */
+  .session-list {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+
   .sidebar-loading, .sidebar-empty {
     padding: var(--space-4);
     text-align: center;
@@ -753,7 +879,27 @@
     font-size: var(--text-xs);
   }
 
+  .sidebar-searching-hint {
+    padding: 3px var(--space-2) 2px;
+    font-size: 10px;
+    color: var(--text-ghost);
+    font-family: var(--font-mono);
+    font-style: italic;
+  }
+
+  /* Group labels */
+  .session-group-label {
+    padding: 6px var(--space-2) 2px;
+    font-size: 9px;
+    font-family: var(--font-mono);
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-ghost);
+  }
+
   .session-item {
+    position: relative;
     display: flex;
     align-items: stretch;
     border-radius: var(--radius-sm);
@@ -792,12 +938,20 @@
   .session-meta {
     display: flex;
     align-items: center;
-    gap: var(--space-2);
+    gap: var(--space-1);
+    flex-wrap: nowrap;
   }
 
   .session-time {
     font-size: 10px;
     color: var(--text-ghost);
+    margin-left: auto;
+  }
+
+  .session-pin-indicator {
+    font-size: 10px;
+    color: var(--primary);
+    line-height: 1;
   }
 
   .sidebar-snippet-list {
@@ -840,6 +994,7 @@
     color: var(--text-primary);
   }
 
+  /* Action area: pin + more button */
   .session-actions {
     display: flex;
     flex-direction: column;
@@ -849,7 +1004,8 @@
     opacity: 0;
     transition: opacity var(--duration-fast);
   }
-  .session-item:hover .session-actions {
+  .session-item:hover .session-actions,
+  .session-item:focus-within .session-actions {
     opacity: 1;
   }
 
@@ -865,7 +1021,59 @@
   }
   .act-btn:hover { color: var(--primary); background: rgba(255,255,255,0.04); }
   .act-btn.active { color: var(--primary); }
-  .act-btn-danger:hover { color: var(--error); }
+
+  .more-btn {
+    letter-spacing: 0.05em;
+  }
+
+  /* More menu dropdown */
+  .session-more-menu {
+    position: fixed;
+    z-index: 200;
+    min-width: 130px;
+    background: var(--surface-elevated);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-md);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+    padding: 3px 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .more-menu-item {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: var(--text-xs);
+    font-family: var(--font-body);
+    padding: 5px var(--space-2);
+    text-align: left;
+    white-space: nowrap;
+    transition: background var(--duration-fast), color var(--duration-fast);
+  }
+  .more-menu-item:hover:not(:disabled) {
+    background: var(--surface-hover);
+    color: var(--text-primary);
+  }
+  .more-menu-item:disabled {
+    color: var(--text-ghost);
+    cursor: not-allowed;
+  }
+
+  .more-menu-item-danger {
+    color: var(--text-secondary);
+  }
+  .more-menu-item-danger:hover:not(:disabled) {
+    color: var(--error);
+    background: var(--error-muted);
+  }
+
+  .more-menu-divider {
+    height: 1px;
+    background: var(--border-subtle);
+    margin: 2px 0;
+  }
 
   .rename-input {
     flex: 1;

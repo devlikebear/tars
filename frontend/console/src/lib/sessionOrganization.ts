@@ -2,6 +2,12 @@ import type { Session } from './types'
 
 export type SessionKindFilter = 'all' | 'session' | 'main' | 'worker' | 'archived'
 export type SessionSortMode = 'updated' | 'name'
+export type SessionGroupKey = 'pinned' | 'recent' | 'older'
+
+export type SessionGroup = {
+  key: SessionGroupKey
+  sessions: Session[]
+}
 
 export function sessionKind(session: Session): 'session' | 'main' | 'worker' {
   if (session.kind === 'main') return 'main'
@@ -57,6 +63,42 @@ export function organizeSessions(
   })
 
   return result
+}
+
+const RECENT_MS = 7 * 24 * 60 * 60 * 1000
+
+export function groupSessions(
+  organized: Session[],
+  options: { useGroups: boolean },
+  now = new Date(),
+): SessionGroup[] {
+  if (!options.useGroups || organized.length === 0) {
+    return organized.length > 0 ? [{ key: 'older', sessions: organized }] : []
+  }
+
+  const nowMs = now.getTime()
+  const pinned: Session[] = []
+  const recent: Session[] = []
+  const older: Session[] = []
+
+  for (const session of organized) {
+    if (isPinned(session)) {
+      pinned.push(session)
+    } else {
+      const ts = timestamp(session.updated_at)
+      if (ts > 0 && nowMs - ts < RECENT_MS) {
+        recent.push(session)
+      } else {
+        older.push(session)
+      }
+    }
+  }
+
+  const groups: SessionGroup[] = []
+  if (pinned.length > 0) groups.push({ key: 'pinned', sessions: pinned })
+  if (recent.length > 0) groups.push({ key: 'recent', sessions: recent })
+  if (older.length > 0) groups.push({ key: 'older', sessions: older })
+  return groups
 }
 
 export function cleanupCandidateSessions(sessions: Session[], now = new Date(), limit = 8): Session[] {
