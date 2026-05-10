@@ -78,10 +78,7 @@ func firstNonEmpty(values ...string) string {
 }
 
 func shouldHideFilePanelEntry(name string) bool {
-	if name == "node_modules" {
-		return true
-	}
-	return strings.HasPrefix(name, ".") && name != ".tars"
+	return name == "node_modules"
 }
 
 func truncateWorkspacePreviewText(value string, limit int) (string, bool) {

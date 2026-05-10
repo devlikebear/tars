@@ -74,6 +74,111 @@ func TestChatFileMentionCandidatesUseSessionCurrentDir(t *testing.T) {
 	}
 }
 
+func TestChatFileMentionCandidatesShowTarsDir(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+	projectDir := filepath.Join(root, "project")
+	tarsDir := filepath.Join(projectDir, ".tars", "skills")
+	if err := os.MkdirAll(tarsDir, 0o755); err != nil {
+		t.Fatalf("mkdir .tars/skills: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(tarsDir, "SKILL.md"), []byte("# Skill"), 0o644); err != nil {
+		t.Fatalf("write SKILL.md: %v", err)
+	}
+
+	store := session.NewStore(root)
+	sess, err := store.Create("tars dir mention test")
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	if err := store.SetWorkDirs(sess.ID, []string{projectDir}, projectDir); err != nil {
+		t.Fatalf("set work dirs: %v", err)
+	}
+
+	handler := newChatAPIHandler(root, store, &mockLLMClient{}, zerolog.New(io.Discard))
+	req := httptest.NewRequest(http.MethodGet, "/v1/chat/mentions/files?session_id="+url.QueryEscape(sess.ID)+"&q=.tars", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+
+	var got chatFileMentionCandidatesResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(got.Candidates) == 0 {
+		t.Fatal("expected .tars directory to appear in mention candidates, got none")
+	}
+	found := false
+	for _, c := range got.Candidates {
+		if c.Path == ".tars" && c.Kind == "directory" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf(".tars directory not found in candidates: %+v", got.Candidates)
+	}
+}
+
+func TestChatFileMentionCandidatesRecursiveSearch(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+	projectDir := filepath.Join(root, "project")
+	deepDir := filepath.Join(projectDir, "a", "b", "c")
+	if err := os.MkdirAll(deepDir, 0o755); err != nil {
+		t.Fatalf("mkdir deep: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(deepDir, "deep.md"), []byte("deep"), 0o644); err != nil {
+		t.Fatalf("write deep.md: %v", err)
+	}
+	// node_modules should not be walked
+	nodeDir := filepath.Join(projectDir, "node_modules")
+	if err := os.MkdirAll(nodeDir, 0o755); err != nil {
+		t.Fatalf("mkdir node_modules: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(nodeDir, "deep.md"), []byte("hidden"), 0o644); err != nil {
+		t.Fatalf("write node_modules deep.md: %v", err)
+	}
+
+	store := session.NewStore(root)
+	sess, err := store.Create("recursive mention test")
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	if err := store.SetWorkDirs(sess.ID, []string{projectDir}, projectDir); err != nil {
+		t.Fatalf("set work dirs: %v", err)
+	}
+
+	handler := newChatAPIHandler(root, store, &mockLLMClient{}, zerolog.New(io.Discard))
+	req := httptest.NewRequest(http.MethodGet, "/v1/chat/mentions/files?session_id="+url.QueryEscape(sess.ID)+"&q=deep", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+
+	var got chatFileMentionCandidatesResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(got.Candidates) != 1 {
+		t.Fatalf("expected exactly one candidate (deep.md), got %+v", got.Candidates)
+	}
+	c := got.Candidates[0]
+	if c.Name != "deep.md" || c.Path != "a/b/c/deep.md" {
+		t.Fatalf("unexpected candidate: %+v", c)
+	}
+	if c.Token != "@a/b/c/deep.md" {
+		t.Fatalf("unexpected token: %q", c.Token)
+	}
+}
+
 func TestChatFileMentionCandidatesRejectTraversal(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "workspace")
 	if err := memory.EnsureWorkspace(root); err != nil {

@@ -3,6 +3,7 @@ package tarsserver
 import (
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -142,6 +143,13 @@ func listChatFileMentionCandidates(roots []chatFileMentionRoot, rawQuery string,
 	if limit <= 0 {
 		limit = chatMentionDefaultLimit
 	}
+	// Recursive search when the query is a plain name (no path separator).
+	// Path-based queries (containing "/") use the directory listing below.
+	trimmedQuery := strings.TrimPrefix(strings.TrimSpace(rawQuery), "@")
+	isPathQuery := strings.Contains(trimmedQuery, "/")
+	if !isPathQuery && prefix != "" {
+		return listChatFileMentionCandidatesRecursive(roots, prefix, limit)
+	}
 	prefix = strings.ToLower(prefix)
 	candidates := make([]chatFileMentionCandidate, 0, limit)
 	for _, root := range roots {
@@ -239,7 +247,70 @@ func splitChatMentionQuery(rawQuery string) (parentPath string, prefix string, e
 }
 
 func shouldHideWorkspaceEntry(name string) bool {
-	return strings.HasPrefix(name, ".") || name == "node_modules"
+	return name == "node_modules"
+}
+
+// listChatFileMentionCandidatesRecursive walks each root recursively and returns
+// entries whose names start with prefix (case-insensitive). Hidden entries and
+// node_modules are skipped as with the directory listing path.
+func listChatFileMentionCandidatesRecursive(roots []chatFileMentionRoot, prefix string, limit int) ([]chatFileMentionCandidate, error) {
+	lowerPrefix := strings.ToLower(prefix)
+	candidates := make([]chatFileMentionCandidate, 0, limit)
+	for _, root := range roots {
+		walkErr := filepath.WalkDir(root.Dir, func(path string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return nil
+			}
+			name := d.Name()
+			if shouldHideWorkspaceEntry(name) {
+				if d.IsDir() {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			if path == root.Dir {
+				return nil
+			}
+			if !strings.HasPrefix(strings.ToLower(name), lowerPrefix) {
+				return nil
+			}
+			rel, relErr := filepath.Rel(root.Dir, path)
+			if relErr != nil {
+				return nil
+			}
+			rel = filepath.ToSlash(rel)
+			kind := "file"
+			token := "@" + rel
+			if d.IsDir() {
+				kind = "directory"
+				token += "/"
+			}
+			candidate := chatFileMentionCandidate{
+				Kind:      kind,
+				Name:      name,
+				Path:      rel,
+				Root:      root.Dir,
+				RootLabel: root.Label,
+				Token:     token,
+			}
+			if info, infoErr := d.Info(); infoErr == nil {
+				candidate.Size = info.Size()
+				candidate.UpdatedAt = info.ModTime().UTC().Format(time.RFC3339)
+			}
+			candidates = append(candidates, candidate)
+			if len(candidates) >= limit {
+				return fs.SkipAll
+			}
+			return nil
+		})
+		if walkErr != nil {
+			return nil, walkErr
+		}
+		if len(candidates) >= limit {
+			break
+		}
+	}
+	return candidates, nil
 }
 
 func chatMentionsToContentBlocks(store *session.Store, workspaceDir string, sessionID string, mentions []chatFileMentionRequest) ([]llm.ContentBlock, []string, error) {

@@ -492,7 +492,7 @@
   }
 
   export function refresh() {
-    void browseDir(currentPath)
+    void loadWorkDirs().then(() => browseDir(currentPath))
   }
 
   export async function openArtifactPath(path: string) {

@@ -62,3 +62,6 @@ node_modules/
 # Local-only working docs (plans, code reviews) — kept on disk, not tracked
 docs/plans/
 docs/code-review/
+
+# for tars
+.tars/

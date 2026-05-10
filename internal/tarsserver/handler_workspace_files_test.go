@@ -220,13 +220,13 @@ func TestWorkspaceFilesHandler_AllowsExplicitFilesystemRootPreview(t *testing.T)
 	}
 }
 
-func TestWorkspaceFilesHandler_ListIncludesTarsDirectory(t *testing.T) {
+func TestWorkspaceFilesHandler_ListShowsDotFilesHidesNodeModules(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "workspace")
 	if err := memory.EnsureWorkspace(root); err != nil {
 		t.Fatalf("ensure workspace: %v", err)
 	}
 	artifactsRoot := filepath.Join(root, "artifacts")
-	for _, name := range []string{".tars", ".git", "node_modules", "visible"} {
+	for _, name := range []string{".tars", ".git", ".env", "node_modules", "visible"} {
 		if err := os.MkdirAll(filepath.Join(artifactsRoot, name), 0o755); err != nil {
 			t.Fatalf("mkdir %s: %v", name, err)
 		}
@@ -250,13 +250,13 @@ func TestWorkspaceFilesHandler_ListIncludesTarsDirectory(t *testing.T) {
 	for _, file := range got.Files {
 		names[file.Name] = true
 	}
-	if !names[".tars"] || !names["visible"] {
-		t.Fatalf("expected .tars and visible directories, got %+v", got.Files)
-	}
-	for _, hidden := range []string{".git", "node_modules"} {
-		if names[hidden] {
-			t.Fatalf("did not expect hidden directory %s in %+v", hidden, got.Files)
+	for _, visible := range []string{".tars", ".git", ".env", "visible"} {
+		if !names[visible] {
+			t.Fatalf("expected %s to be visible, got %+v", visible, got.Files)
 		}
+	}
+	if names["node_modules"] {
+		t.Fatalf("did not expect node_modules in %+v", got.Files)
 	}
 }
 
