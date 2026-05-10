@@ -57,6 +57,7 @@ const (
 	defaultUsageLimitMode                      = "soft"
 	defaultAgentMaxIterations                  = 20
 	defaultExecMaxTimeoutMS                    = 300000
+	defaultProcessMaxTimeoutMSConfig           = 1800000
 	defaultCronRunHistoryLimit                 = 200
 	defaultAssistantHotkey                     = "Ctrl+Option+Space"
 	defaultAssistantWhisperBin                 = "whisper-cli"
@@ -184,6 +185,7 @@ func defaultConfigValues() Config {
 			ToolsWebSearchPerplexityBaseURL: defaultPerplexityBaseURL,
 			ToolsWebSearchCacheTTLSeconds:   defaultToolsWebSearchCacheTTLSeconds,
 			ToolsExecMaxTimeoutMS:           defaultExecMaxTimeoutMS,
+			ToolsProcessMaxTimeoutMS:        defaultProcessMaxTimeoutMSConfig,
 		},
 		AgentRuntimeConfig: AgentRuntimeConfig{
 			AgentRuntimeAgentsWatch:                   true,

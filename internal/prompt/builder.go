@@ -118,6 +118,13 @@ func BuildResultFor(opts BuildOptions) BuildResult {
 		b.WriteString("\n")
 	}
 
+	b.WriteString("## Long-running Commands\n\n")
+	b.WriteString("For shell commands you expect to run longer than ~30s — builds, dependency installs, test suites, CI watchers like `gh pr checks --watch`, dev servers, deploys — DO NOT block the chat with foreground `exec`. Instead:\n\n")
+	b.WriteString("1. Spawn with `exec` and `background:true` (returns a `session_id` immediately).\n")
+	b.WriteString("2. Call the `process` tool's `wait` action with that `session_id` and a generous `timeout_ms`. This blocks server-side until the process exits, returning final stdout/stderr/exit_code in a single tool call — no polling loop needed.\n")
+	b.WriteString("3. If the wait times out (`wait_timed_out:true`), decide: call `process wait` again with a longer timeout, `process log` to peek at output, or `process kill` to abort.\n\n")
+	b.WriteString("Foreground `exec` is fine for fast commands (git status, ls, simple greps). Reach for `background:true` + `process wait` whenever the command might genuinely take more than half a minute.\n\n")
+
 	totalBudgetTokens := opts.TotalBudgetTokens
 	if totalBudgetTokens <= 0 {
 		totalBudgetTokens = defaultTotalBudgetTokens

@@ -39,11 +39,15 @@ var blockedExecCommands = map[string]struct{}{
 // defaults so callers (especially tests) can omit fields they don't care
 // about.
 type ExecToolOptions struct {
-	// MaxTimeoutMS caps the per-call timeout the LLM can request. 0 →
-	// defaultExecMaxTimeoutMS (5 minutes). Long-running commands like
-	// builds and `gh pr checks --watch` benefit from raising this, while
-	// short-running skills can leave it at the default.
+	// MaxTimeoutMS caps the per-call timeout for synchronous (foreground)
+	// exec calls. 0 → defaultExecMaxTimeoutMS (5 minutes).
 	MaxTimeoutMS int
+	// MaxBackgroundTimeoutMS caps the per-call timeout for async
+	// (background:true) calls dispatched through the ProcessManager. 0 →
+	// defaultProcessMaxTimeoutMS (30 minutes). Watchers like
+	// `gh pr checks --watch` and long builds run here, so this cap is
+	// independently larger than MaxTimeoutMS.
+	MaxBackgroundTimeoutMS int
 }
 
 type execResponse struct {
@@ -70,8 +74,10 @@ func NewExecToolWithPolicy(policy PathPolicy, manager *ProcessManager) Tool {
 	return NewExecToolWithOptions(policy, manager, ExecToolOptions{})
 }
 
-// NewExecToolWithOptions exposes the timeout knob so chat handlers can
-// raise the per-call cap from runtime config.
+// NewExecToolWithOptions exposes the timeout knobs so chat handlers can
+// raise per-call caps from runtime config. Foreground and background
+// caps are independent: foreground stays modest (default 5min) while
+// background tolerates long watchers (default 30min).
 func NewExecToolWithOptions(policy PathPolicy, manager *ProcessManager, opts ExecToolOptions) Tool {
 	maxTimeoutMS := opts.MaxTimeoutMS
 	if maxTimeoutMS <= 0 {
@@ -80,19 +86,26 @@ func NewExecToolWithOptions(policy PathPolicy, manager *ProcessManager, opts Exe
 	if maxTimeoutMS < minExecTimeoutMS {
 		maxTimeoutMS = minExecTimeoutMS
 	}
+	maxBackgroundTimeoutMS := opts.MaxBackgroundTimeoutMS
+	if maxBackgroundTimeoutMS <= 0 {
+		maxBackgroundTimeoutMS = defaultProcessMaxTimeoutMS
+	}
+	if maxBackgroundTimeoutMS < minExecTimeoutMS {
+		maxBackgroundTimeoutMS = minExecTimeoutMS
+	}
 	parameters := json.RawMessage(fmt.Sprintf(`{
   "type":"object",
   "properties":{
     "command":{"type":"string","description":"Command and arguments, e.g. ls -la"},
-    "timeout_ms":{"type":"integer","minimum":%d,"maximum":%d,"default":%d},
-    "background":{"type":"boolean","default":false}
+    "timeout_ms":{"type":"integer","minimum":%d,"maximum":%d,"default":%d,"description":"Per-call timeout in ms. Capped to %d for foreground calls and %d when background=true."},
+    "background":{"type":"boolean","default":false,"description":"When true, returns a session_id immediately and runs the command in the background. Pair with the process tool's wait action for long-running commands like builds, installs, and gh pr checks --watch."}
   },
   "required":["command"],
   "additionalProperties":false
-}`, minExecTimeoutMS, maxTimeoutMS, defaultExecTimeoutMS))
+}`, minExecTimeoutMS, maxBackgroundTimeoutMS, defaultExecTimeoutMS, maxTimeoutMS, maxBackgroundTimeoutMS))
 	return Tool{
 		Name:        "exec",
-		Description: "Run a shell command in workspace with timeout and safety restrictions.",
+		Description: "Run a shell command in workspace with timeout and safety restrictions. For commands expected to run longer than ~30s (builds, installs, CI watchers), set background:true and use the `process` tool's `wait` action instead of blocking the chat.",
 		Parameters:  parameters,
 		Execute: func(ctx context.Context, params json.RawMessage) (Result, error) {
 			commandLine, timeoutMS, background, err := parseExecInput(params)
@@ -119,8 +132,12 @@ func NewExecToolWithOptions(policy PathPolicy, manager *ProcessManager, opts Exe
 			if timeoutMS < minExecTimeoutMS {
 				timeoutMS = minExecTimeoutMS
 			}
-			if timeoutMS > maxTimeoutMS {
-				timeoutMS = maxTimeoutMS
+			cap := maxTimeoutMS
+			if background {
+				cap = maxBackgroundTimeoutMS
+			}
+			if timeoutMS > cap {
+				timeoutMS = cap
 			}
 			if background {
 				if manager == nil {

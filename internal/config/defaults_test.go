@@ -198,6 +198,9 @@ func TestLoad_DefaultOnly(t *testing.T) {
 	if cfg.ToolsExecMaxTimeoutMS != 300000 {
 		t.Fatalf("expected default ToolsExecMaxTimeoutMS 300000, got %d", cfg.ToolsExecMaxTimeoutMS)
 	}
+	if cfg.ToolsProcessMaxTimeoutMS != 1800000 {
+		t.Fatalf("expected default ToolsProcessMaxTimeoutMS 1800000, got %d", cfg.ToolsProcessMaxTimeoutMS)
+	}
 	if cfg.CronRunHistoryLimit != 200 {
 		t.Fatalf("expected default CronRunHistoryLimit 200, got %d", cfg.CronRunHistoryLimit)
 	}

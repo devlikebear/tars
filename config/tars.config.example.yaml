@@ -164,6 +164,12 @@ tools:
     # are clamped. Raise this for builds, installs, and CI waits; lower
     # it to tighten the maximum wall time a single shell command can run.
     max_timeout_ms: 300000
+  process:
+    # Upper bound on background commands (exec with background:true) and
+    # on the per-call timeout the process tool's `wait` action will honor.
+    # Independent of tools.exec.max_timeout_ms so long-running watchers
+    # like `gh pr checks --watch` can run for tens of minutes.
+    max_timeout_ms: 1800000
   web_search:
     enabled: false
     provider: brave

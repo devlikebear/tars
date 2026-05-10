@@ -233,6 +233,12 @@ type ToolConfig struct {
 	// raise this to give them headroom while still preventing infinite
 	// hangs. 0 falls back to defaults.go.
 	ToolsExecMaxTimeoutMS int
+	// ToolsProcessMaxTimeoutMS caps background (process-managed)
+	// commands started via `exec background:true`, plus the per-call
+	// timeout for the `process` tool's `wait` action. Independent of the
+	// foreground cap so watchers like `gh pr checks --watch` can run for
+	// tens of minutes. 0 falls back to defaults.go.
+	ToolsProcessMaxTimeoutMS int
 }
 
 type AgentRuntimeConfig struct {
