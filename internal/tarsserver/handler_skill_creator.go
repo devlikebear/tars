@@ -88,7 +88,7 @@ type skillCreatorSubmitResponse struct {
 	Commands  []string `json:"commands,omitempty"`
 }
 
-func newSkillCreatorAPIHandler(workspaceDir string, logger zerolog.Logger, submitter skillCreatorSubmitter) http.Handler {
+func newSkillCreatorAPIHandler(workspaceDir string, logger zerolog.Logger, submitter skillCreatorSubmitter, provider extensionsProvider) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/admin/skills/draft", func(w http.ResponseWriter, r *http.Request) {
 		if !requireMethod(w, r, http.MethodPost) {
@@ -119,7 +119,79 @@ func newSkillCreatorAPIHandler(workspaceDir string, logger zerolog.Logger, submi
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 			return
 		}
+		if provider != nil {
+			if reloadErr := provider.Reload(r.Context()); reloadErr != nil {
+				logger.Warn().Err(reloadErr).Str("skill", draft.Name).Msg("reload extensions after skill save failed")
+			}
+		}
 		writeJSON(w, http.StatusOK, saved)
+	})
+	mux.HandleFunc("/v1/admin/skills/", func(w http.ResponseWriter, r *http.Request) {
+		name := strings.TrimSpace(strings.TrimPrefix(r.URL.Path, "/v1/admin/skills/"))
+		if name == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "skill name is required"})
+			return
+		}
+		if err := validateSkillCreatorName(name); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		skillDir := filepath.Join(workspaceDir, "skills", name)
+		skillFile := filepath.Join(skillDir, "SKILL.md")
+		switch r.Method {
+		case http.MethodGet:
+			content, err := os.ReadFile(skillFile)
+			if err != nil {
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "skill not found"})
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]string{"name": name, "content": string(content), "path": skillFile})
+		case http.MethodPut:
+			var req struct {
+				Content string `json:"content"`
+			}
+			if !decodeJSONBody(w, r, &req) {
+				return
+			}
+			if strings.TrimSpace(req.Content) == "" {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "content is required"})
+				return
+			}
+			if err := os.MkdirAll(skillDir, 0o755); err != nil {
+				logger.Error().Err(err).Str("skill", name).Msg("create skill directory failed")
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to update skill"})
+				return
+			}
+			if err := os.WriteFile(skillFile, []byte(req.Content), 0o644); err != nil {
+				logger.Error().Err(err).Str("skill", name).Msg("write skill file failed")
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to update skill"})
+				return
+			}
+			if provider != nil {
+				if reloadErr := provider.Reload(r.Context()); reloadErr != nil {
+					logger.Warn().Err(reloadErr).Str("skill", name).Msg("reload extensions after skill update failed")
+				}
+			}
+			writeJSON(w, http.StatusOK, map[string]string{"name": name, "path": skillFile})
+		case http.MethodDelete:
+			if _, err := os.Stat(skillDir); os.IsNotExist(err) {
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "skill not found"})
+				return
+			}
+			if err := os.RemoveAll(skillDir); err != nil {
+				logger.Error().Err(err).Str("skill", name).Msg("delete skill directory failed")
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to delete skill"})
+				return
+			}
+			if provider != nil {
+				if reloadErr := provider.Reload(r.Context()); reloadErr != nil {
+					logger.Warn().Err(reloadErr).Str("skill", name).Msg("reload extensions after skill delete failed")
+				}
+			}
+			writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+		default:
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
 	})
 	mux.HandleFunc("/v1/admin/skills/test", func(w http.ResponseWriter, r *http.Request) {
 		if !requireMethod(w, r, http.MethodPost) {

@@ -16,6 +16,9 @@
     listSkills,
     listMCPServers,
     reloadExtensions,
+    getWorkspaceSkillContent,
+    updateWorkspaceSkill,
+    deleteWorkspaceSkill,
   } from '../lib/api'
   import { renderMarkdown } from '../lib/markdown'
   import SkillCreator from './SkillCreator.svelte'
@@ -64,6 +67,12 @@
   let repairingItem = $state('')
   let skillCreatorOpen = $state(false)
   let mcpCreatorOpen = $state(false)
+
+  // Skill edit state
+  let editingSkill: SkillDef | null = $state(null)
+  let editContent = $state('')
+  let editSaving = $state(false)
+  let deletingItem = $state('')
 
   // Version tracking for update detection
   let installedVersions: Map<string, string> = $state(new Map())
@@ -385,6 +394,52 @@
     await loadInstalled()
   }
 
+  async function handleEditSkill(s: SkillDef) {
+    error = ''
+    success = ''
+    try {
+      const result = await getWorkspaceSkillContent(s.name)
+      editingSkill = s
+      editContent = result.content
+    } catch (e) {
+      error = e instanceof Error ? e.message : $t.extensions.skillUpdateFailed
+    }
+  }
+
+  async function handleSaveEdit() {
+    if (!editingSkill) return
+    editSaving = true
+    error = ''
+    success = ''
+    try {
+      await updateWorkspaceSkill(editingSkill.name, editContent)
+      success = $t.extensions.skillUpdatedSuccess(editingSkill.name)
+      editingSkill = null
+      editContent = ''
+      await loadInstalled()
+    } catch (e) {
+      error = e instanceof Error ? e.message : $t.extensions.skillUpdateFailed
+    } finally {
+      editSaving = false
+    }
+  }
+
+  async function handleDeleteSkill(s: SkillDef) {
+    if (!confirm($t.extensions.skillDeleteConfirm(s.name))) return
+    deletingItem = s.name
+    error = ''
+    success = ''
+    try {
+      await deleteWorkspaceSkill(s.name)
+      success = $t.extensions.skillDeletedSuccess(s.name)
+      await loadInstalled()
+    } catch (e) {
+      error = e instanceof Error ? e.message : $t.extensions.skillDeleteFailed
+    } finally {
+      deletingItem = ''
+    }
+  }
+
   async function handleMCPServerCreated(result: MCPServerCreatorSaveResponse) {
     success = $t.extensions.mcpCreatedSuccess(result.path)
     mcpCreatorOpen = false
@@ -558,8 +613,21 @@
                     {#if isHubInstalled('skill', s.name)}
                       <button class="btn btn-danger btn-sm" disabled={busyItem === 'skill:' + s.name} onclick={() => handleUninstall('skill', s.name)}>{busyItem === 'skill:' + s.name ? $t.extensions.updateBusy : $t.extensions.uninstall}</button>
                     {/if}
+                    {#if s.source === 'workspace'}
+                      <button class="btn btn-ghost btn-sm" onclick={() => handleEditSkill(s)}>{$t.extensions.editSkill}</button>
+                      <button class="btn btn-danger btn-sm" disabled={deletingItem === s.name} onclick={() => handleDeleteSkill(s)}>{$t.extensions.deleteSkill}</button>
+                    {/if}
                   </div>
                 </div>
+                {#if editingSkill?.name === s.name}
+                  <div class="skill-edit-panel">
+                    <textarea class="skill-edit-textarea" bind:value={editContent} rows={20}></textarea>
+                    <div class="skill-edit-actions">
+                      <button class="btn btn-primary btn-sm" disabled={editSaving} onclick={handleSaveEdit}>{editSaving ? 'Saving...' : 'Save'}</button>
+                      <button class="btn btn-ghost btn-sm" onclick={() => { editingSkill = null; editContent = '' }}>Cancel</button>
+                    </div>
+                  </div>
+                {/if}
                 {#if healthDetailVisible(healthItem('skill', s.name))}
                   <div class="health-detail">
                     {#each healthItem('skill', s.name)?.checks ?? [] as check}
@@ -954,6 +1022,9 @@
   .ext-name-btn:hover strong { color: var(--primary); }
   .detail-chevron { font-size: 10px; color: var(--text-ghost); transition: transform var(--duration-fast) var(--ease-out); display: inline-block; }
   .detail-chevron.open { transform: rotate(90deg); }
+  .skill-edit-panel { padding: var(--space-3) var(--space-4); background: var(--surface-base); border-top: 1px solid var(--border-subtle); display: flex; flex-direction: column; gap: var(--space-2); }
+  .skill-edit-textarea { width: 100%; font-family: var(--font-mono); font-size: var(--text-xs); background: var(--surface); color: var(--text-primary); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: var(--space-2); resize: vertical; }
+  .skill-edit-actions { display: flex; gap: var(--space-2); }
   .ext-detail { padding: var(--space-3) var(--space-4); background: var(--surface-base); border-top: 1px solid var(--border-subtle); }
   .ext-detail-loading { color: var(--text-tertiary); font-size: var(--text-xs); }
   .ext-detail-meta { display: flex; flex-wrap: wrap; gap: var(--space-3); margin-bottom: var(--space-3); padding-bottom: var(--space-2); border-bottom: 1px solid var(--border-subtle); font-size: var(--text-xs); color: var(--text-secondary); }

@@ -28,7 +28,7 @@ type skillExtractionReviewResponse struct {
 	Saved     skillCreatorSaveResponse  `json:"saved,omitempty"`
 }
 
-func newSkillExtractionAPIHandler(workspaceDir string, store *session.Store, router llm.Router, logger zerolog.Logger) http.Handler {
+func newSkillExtractionAPIHandler(workspaceDir string, store *session.Store, router llm.Router, logger zerolog.Logger, provider extensionsProvider) http.Handler {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/v1/admin/skills/extractions", func(w http.ResponseWriter, r *http.Request) {
@@ -100,6 +100,11 @@ func newSkillExtractionAPIHandler(workspaceDir string, store *session.Store, rou
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 				return
 			}
+			if provider != nil {
+				if reloadErr := provider.Reload(r.Context()); reloadErr != nil {
+					logger.Warn().Err(reloadErr).Str("skill", draft.Name).Msg("reload extensions after skill approval failed")
+				}
+			}
 			writeJSON(w, http.StatusOK, skillExtractionReviewResponse{Candidate: candidate, Draft: draft, Saved: saved})
 			return
 		}
@@ -167,37 +172,8 @@ func approveSkillExtractionCandidate(workspaceDir string, candidateID string) (s
 	return reviewed, draft, saved, nil
 }
 
-func addExtractionProvenanceToSkillDraft(files []skillCreatorFile, candidate skill.ExtractionCandidate) []skillCreatorFile {
-	next := append([]skillCreatorFile(nil), files...)
-	for i := range next {
-		if next[i].Path != "SKILL.md" {
-			continue
-		}
-		var b strings.Builder
-		b.WriteString(strings.TrimRight(next[i].Content, "\n"))
-		b.WriteString("\n\n## Provenance\n\n")
-		b.WriteString("- Source session: " + strings.TrimSpace(candidate.SourceSession) + "\n")
-		if strings.TrimSpace(candidate.MessageRange) != "" {
-			b.WriteString("- Message range: " + strings.TrimSpace(candidate.MessageRange) + "\n")
-		}
-		if candidate.RepeatedCount > 0 {
-			b.WriteString(fmt.Sprintf("- Evidence count: %d\n", candidate.RepeatedCount))
-		}
-		if len(candidate.Evidence) > 0 {
-			b.WriteString("\n## Evidence\n\n")
-			for _, evidence := range candidate.Evidence {
-				b.WriteString("- ")
-				if evidence.Role != "" {
-					b.WriteString(evidence.Role + ": ")
-				}
-				b.WriteString(strings.TrimSpace(evidence.Snippet))
-				b.WriteByte('\n')
-			}
-		}
-		next[i].Content = b.String()
-		return next
-	}
-	return next
+func addExtractionProvenanceToSkillDraft(files []skillCreatorFile, _ skill.ExtractionCandidate) []skillCreatorFile {
+	return append([]skillCreatorFile(nil), files...)
 }
 
 func uniqueSkillDraftName(workspaceDir string, requested string) string {

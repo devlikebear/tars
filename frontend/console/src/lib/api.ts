@@ -1267,6 +1267,24 @@ export async function saveLocalSkill(draft: SkillCreatorDraftResponse): Promise<
   })
 }
 
+export async function getWorkspaceSkillContent(name: string): Promise<{ name: string; content: string; path: string }> {
+  return requestJSON<{ name: string; content: string; path: string }>(`/v1/admin/skills/${encodeURIComponent(name)}`)
+}
+
+export async function updateWorkspaceSkill(name: string, content: string): Promise<{ name: string; path: string }> {
+  return requestJSON<{ name: string; path: string }>(`/v1/admin/skills/${encodeURIComponent(name)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content }),
+  })
+}
+
+export async function deleteWorkspaceSkill(name: string): Promise<{ ok: boolean }> {
+  return requestJSON<{ ok: boolean }>(`/v1/admin/skills/${encodeURIComponent(name)}`, {
+    method: 'DELETE',
+  })
+}
+
 export async function testSkillDraft(draft: SkillCreatorDraftResponse): Promise<SkillCreatorTestResponse> {
   return requestJSON<SkillCreatorTestResponse>('/v1/admin/skills/test', {
     method: 'POST',

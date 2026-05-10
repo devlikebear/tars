@@ -2,6 +2,7 @@ package tarsserver
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -33,7 +34,7 @@ func TestSkillExtractionAPIExtractsAndApprovesDraft(t *testing.T) {
 		t.Fatalf("write transcript: %v", err)
 	}
 
-	handler := newSkillExtractionAPIHandler(workspace, store, nil, zerolog.New(io.Discard))
+	handler := newSkillExtractionAPIHandler(workspace, store, nil, zerolog.New(io.Discard), nil)
 	extractReq := httptest.NewRequest(http.MethodPost, "/v1/admin/skills/extractions/extract", strings.NewReader(`{"session_id":"`+sess.ID+`"}`))
 	extractReq.Header.Set("Content-Type", "application/json")
 	extractRec := httptest.NewRecorder()
@@ -79,6 +80,146 @@ func TestSkillExtractionAPIExtractsAndApprovesDraft(t *testing.T) {
 	}
 	if !strings.Contains(string(raw), "github-release-flow") || !strings.Contains(string(raw), "recommended_tools") {
 		t.Fatalf("unexpected saved skill content: %s", raw)
+	}
+}
+
+func TestSkillExtractionApproveReloadErrorIsWarningOnly(t *testing.T) {
+	workspace := t.TempDir()
+	store := session.NewStore(workspace)
+	sess, err := store.Create("warn-test")
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	now := time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)
+	messages := []session.Message{
+		{ID: "m1", Role: "user", Content: "Repeatable GitHub PR workflow each time we ship features.", Timestamp: now},
+		{ID: "m2", Role: "assistant", Content: "I will run the release steps and verify.", Timestamp: now.Add(time.Minute)},
+	}
+	if err := session.RewriteMessages(store.TranscriptPath(sess.ID), messages); err != nil {
+		t.Fatalf("write transcript: %v", err)
+	}
+
+	provider := &mockExtensionsProvider{reloadErr: fmt.Errorf("simulated reload failure")}
+	handler := newSkillExtractionAPIHandler(workspace, store, nil, zerolog.New(io.Discard), provider)
+
+	extractReq := httptest.NewRequest(http.MethodPost, "/v1/admin/skills/extractions/extract", strings.NewReader(`{"session_id":"`+sess.ID+`"}`))
+	extractReq.Header.Set("Content-Type", "application/json")
+	extractRec := httptest.NewRecorder()
+	handler.ServeHTTP(extractRec, extractReq)
+	var extracted struct {
+		Candidates []skill.ExtractionCandidate `json:"candidates"`
+	}
+	if err := json.Unmarshal(extractRec.Body.Bytes(), &extracted); err != nil || len(extracted.Candidates) == 0 {
+		t.Fatalf("extract failed: %v candidates=%+v", err, extracted.Candidates)
+	}
+
+	reviewReq := httptest.NewRequest(http.MethodPost, "/v1/admin/skills/extractions/review",
+		strings.NewReader(`{"id":"`+extracted.Candidates[0].ID+`","action":"approve"}`))
+	reviewReq.Header.Set("Content-Type", "application/json")
+	reviewRec := httptest.NewRecorder()
+	handler.ServeHTTP(reviewRec, reviewReq)
+	// reload failure is a warning; the response should still be 200
+	if reviewRec.Code != http.StatusOK {
+		t.Fatalf("approve with failing reload expected 200, got %d body=%q", reviewRec.Code, reviewRec.Body.String())
+	}
+}
+
+func TestSkillExtractionApproveTriggersReload(t *testing.T) {
+	workspace := t.TempDir()
+	store := session.NewStore(workspace)
+	sess, err := store.Create("release")
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	now := time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)
+	messages := []session.Message{
+		{ID: "m1", Role: "user", Content: "Repeatable GitHub release workflow with PR, CI, merge, Homebrew verification.", Timestamp: now},
+		{ID: "m2", Role: "assistant", Content: "I'll run the GitHub release steps and verify Homebrew.", Timestamp: now.Add(time.Minute)},
+	}
+	if err := session.RewriteMessages(store.TranscriptPath(sess.ID), messages); err != nil {
+		t.Fatalf("write transcript: %v", err)
+	}
+
+	provider := &mockExtensionsProvider{}
+	handler := newSkillExtractionAPIHandler(workspace, store, nil, zerolog.New(io.Discard), provider)
+
+	extractReq := httptest.NewRequest(http.MethodPost, "/v1/admin/skills/extractions/extract", strings.NewReader(`{"session_id":"`+sess.ID+`"}`))
+	extractReq.Header.Set("Content-Type", "application/json")
+	extractRec := httptest.NewRecorder()
+	handler.ServeHTTP(extractRec, extractReq)
+	if extractRec.Code != http.StatusOK {
+		t.Fatalf("extract expected 200, got %d", extractRec.Code)
+	}
+	var extracted struct {
+		Candidates []skill.ExtractionCandidate `json:"candidates"`
+	}
+	if err := json.Unmarshal(extractRec.Body.Bytes(), &extracted); err != nil || len(extracted.Candidates) == 0 {
+		t.Fatalf("extract failed: %v, candidates=%+v", err, extracted.Candidates)
+	}
+
+	reviewReq := httptest.NewRequest(http.MethodPost, "/v1/admin/skills/extractions/review",
+		strings.NewReader(`{"id":"`+extracted.Candidates[0].ID+`","action":"approve"}`))
+	reviewReq.Header.Set("Content-Type", "application/json")
+	reviewRec := httptest.NewRecorder()
+	handler.ServeHTTP(reviewRec, reviewReq)
+	if reviewRec.Code != http.StatusOK {
+		t.Fatalf("approve expected 200, got %d body=%q", reviewRec.Code, reviewRec.Body.String())
+	}
+	if provider.reloadCount == 0 {
+		t.Fatal("expected provider.Reload() to be called after skill approval")
+	}
+}
+
+func TestSkillExtractionApprovedSkillHasNoEvidenceSection(t *testing.T) {
+	workspace := t.TempDir()
+	store := session.NewStore(workspace)
+	sess, err := store.Create("evidence-test")
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	now := time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)
+	messages := []session.Message{
+		{ID: "m1", Role: "user", Content: "Run the repeatable deploy workflow each time we push.", Timestamp: now},
+		{ID: "m2", Role: "assistant", Content: "I will deploy and verify.", Timestamp: now.Add(time.Minute)},
+	}
+	if err := session.RewriteMessages(store.TranscriptPath(sess.ID), messages); err != nil {
+		t.Fatalf("write transcript: %v", err)
+	}
+
+	handler := newSkillExtractionAPIHandler(workspace, store, nil, zerolog.New(io.Discard), nil)
+
+	extractReq := httptest.NewRequest(http.MethodPost, "/v1/admin/skills/extractions/extract", strings.NewReader(`{"session_id":"`+sess.ID+`"}`))
+	extractReq.Header.Set("Content-Type", "application/json")
+	extractRec := httptest.NewRecorder()
+	handler.ServeHTTP(extractRec, extractReq)
+	var extracted struct {
+		Candidates []skill.ExtractionCandidate `json:"candidates"`
+	}
+	if err := json.Unmarshal(extractRec.Body.Bytes(), &extracted); err != nil || len(extracted.Candidates) == 0 {
+		t.Fatalf("extract failed: %v candidates=%+v", err, extracted.Candidates)
+	}
+
+	reviewReq := httptest.NewRequest(http.MethodPost, "/v1/admin/skills/extractions/review",
+		strings.NewReader(`{"id":"`+extracted.Candidates[0].ID+`","action":"approve"}`))
+	reviewReq.Header.Set("Content-Type", "application/json")
+	reviewRec := httptest.NewRecorder()
+	handler.ServeHTTP(reviewRec, reviewReq)
+	if reviewRec.Code != http.StatusOK {
+		t.Fatalf("approve expected 200, got %d body=%q", reviewRec.Code, reviewRec.Body.String())
+	}
+	var reviewed struct {
+		Candidate skill.ExtractionCandidate `json:"candidate"`
+	}
+	if err := json.Unmarshal(reviewRec.Body.Bytes(), &reviewed); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	skillFile := filepath.Join(workspace, "skills", reviewed.Candidate.DraftName, "SKILL.md")
+	content, err := os.ReadFile(skillFile)
+	if err != nil {
+		t.Fatalf("read skill file: %v", err)
+	}
+	if strings.Contains(string(content), "## Evidence") || strings.Contains(string(content), "## Provenance") {
+		t.Fatalf("extracted SKILL.md must not contain Evidence or Provenance sections, got:\n%s", content)
 	}
 }
 

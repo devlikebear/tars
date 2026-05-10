@@ -3,6 +3,7 @@ package tarsserver
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -15,7 +16,7 @@ import (
 
 func TestSkillCreatorAPI_DraftAndSaveLocal(t *testing.T) {
 	workspaceDir := filepath.Join(t.TempDir(), "workspace")
-	handler := newSkillCreatorAPIHandler(workspaceDir, zerolog.New(ioDiscard{}), nil)
+	handler := newSkillCreatorAPIHandler(workspaceDir, zerolog.New(ioDiscard{}), nil, nil)
 
 	reqBody := map[string]any{
 		"name":              "docker-log-shipper",
@@ -75,7 +76,7 @@ func TestSkillCreatorAPI_DraftAndSaveLocal(t *testing.T) {
 }
 
 func TestSkillCreatorAPI_RejectsUnsafeNamesAndPaths(t *testing.T) {
-	handler := newSkillCreatorAPIHandler(filepath.Join(t.TempDir(), "workspace"), zerolog.New(ioDiscard{}), nil)
+	handler := newSkillCreatorAPIHandler(filepath.Join(t.TempDir(), "workspace"), zerolog.New(ioDiscard{}), nil, nil)
 
 	badDraft := postJSON(t, handler, "/v1/admin/skills/draft", map[string]any{
 		"name":        "../escape",
@@ -102,7 +103,7 @@ func TestSkillCreatorAPI_RejectsUnsafeNamesAndPaths(t *testing.T) {
 
 func TestSkillCreatorAPI_TestRunsCompanionCLIInSandbox(t *testing.T) {
 	workspaceDir := filepath.Join(t.TempDir(), "workspace")
-	handler := newSkillCreatorAPIHandler(workspaceDir, zerolog.New(ioDiscard{}), nil)
+	handler := newSkillCreatorAPIHandler(workspaceDir, zerolog.New(ioDiscard{}), nil, nil)
 
 	draft := skillCreatorDraftResponse{
 		Name:        "probe-skill",
@@ -137,6 +138,311 @@ func TestSkillCreatorAPI_TestRunsCompanionCLIInSandbox(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(workspaceDir, "skills", "probe-skill")); !os.IsNotExist(err) {
 		t.Fatalf("sandbox test should not write into workspace/skills, err=%v", err)
+	}
+}
+
+func TestSkillCreatorAPI_SaveLocalTriggersReload(t *testing.T) {
+	workspaceDir := filepath.Join(t.TempDir(), "workspace")
+	provider := &mockExtensionsProvider{}
+	handler := newSkillCreatorAPIHandler(workspaceDir, zerolog.New(ioDiscard{}), nil, provider)
+
+	draft := skillCreatorDraftResponse{
+		Name:        "reload-test-skill",
+		Description: "Test reload trigger",
+		Language:    "shell",
+		Layout:      "single_file",
+		UseCase:     "test",
+		Files: []skillCreatorFile{
+			{Path: "SKILL.md", Content: "---\nname: reload-test-skill\ndescription: Test reload trigger\n---\n# Test\n"},
+			{Path: "reload-test-skill.sh", Content: "#!/bin/bash\necho test\n"},
+		},
+	}
+	rec := postJSON(t, handler, "/v1/admin/skills/save-local", draft)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("save-local expected 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+	if provider.reloadCount == 0 {
+		t.Fatal("expected provider.Reload() to be called after save-local")
+	}
+}
+
+func TestSkillCreatorAPI_WorkspaceCRUD_WithReload(t *testing.T) {
+	workspaceDir := t.TempDir()
+	provider := &mockExtensionsProvider{}
+	handler := newSkillCreatorAPIHandler(workspaceDir, zerolog.New(ioDiscard{}), nil, provider)
+
+	const skillName = "reload-crud-skill"
+	skillDir := filepath.Join(workspaceDir, "skills", skillName)
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("# Test\n"), 0o644); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+
+	// PUT triggers reload
+	provider.reloadCount = 0
+	putBody, _ := json.Marshal(map[string]string{"content": "---\nname: reload-crud-skill\n---\n# Updated\n"})
+	putReq := httptest.NewRequest(http.MethodPut, "/v1/admin/skills/"+skillName, bytes.NewReader(putBody))
+	putReq.Header.Set("Content-Type", "application/json")
+	putRec := httptest.NewRecorder()
+	handler.ServeHTTP(putRec, putReq)
+	if putRec.Code != http.StatusOK {
+		t.Fatalf("PUT expected 200, got %d", putRec.Code)
+	}
+	if provider.reloadCount == 0 {
+		t.Fatal("expected reload after PUT")
+	}
+
+	// DELETE triggers reload
+	provider.reloadCount = 0
+	delReq := httptest.NewRequest(http.MethodDelete, "/v1/admin/skills/"+skillName, nil)
+	delRec := httptest.NewRecorder()
+	handler.ServeHTTP(delRec, delReq)
+	if delRec.Code != http.StatusOK {
+		t.Fatalf("DELETE expected 200, got %d", delRec.Code)
+	}
+	if provider.reloadCount == 0 {
+		t.Fatal("expected reload after DELETE")
+	}
+}
+
+func TestSkillCreatorAPI_WorkspaceCRUD(t *testing.T) {
+	workspaceDir := t.TempDir()
+	handler := newSkillCreatorAPIHandler(workspaceDir, zerolog.New(ioDiscard{}), nil, nil)
+
+	const skillName = "my-test-skill"
+	skillDir := filepath.Join(workspaceDir, "skills", skillName)
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatalf("setup skill dir: %v", err)
+	}
+	initialContent := "---\nname: my-test-skill\ndescription: Test skill\n---\n# Test\n"
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(initialContent), 0o644); err != nil {
+		t.Fatalf("setup skill file: %v", err)
+	}
+
+	// GET — fetch content
+	req := httptest.NewRequest(http.MethodGet, "/v1/admin/skills/"+skillName, nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET expected 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+	var getResp map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &getResp); err != nil {
+		t.Fatalf("decode get response: %v", err)
+	}
+	if getResp["name"] != skillName {
+		t.Fatalf("expected name=%q, got %q", skillName, getResp["name"])
+	}
+	if !strings.Contains(getResp["content"], "Test skill") {
+		t.Fatalf("expected content to contain 'Test skill', got %q", getResp["content"])
+	}
+
+	// PUT — update content
+	updatedContent := "---\nname: my-test-skill\ndescription: Updated skill\n---\n# Updated\n"
+	putBody, _ := json.Marshal(map[string]string{"content": updatedContent})
+	putReq := httptest.NewRequest(http.MethodPut, "/v1/admin/skills/"+skillName, bytes.NewReader(putBody))
+	putReq.Header.Set("Content-Type", "application/json")
+	putRec := httptest.NewRecorder()
+	handler.ServeHTTP(putRec, putReq)
+	if putRec.Code != http.StatusOK {
+		t.Fatalf("PUT expected 200, got %d body=%q", putRec.Code, putRec.Body.String())
+	}
+	data, err := os.ReadFile(filepath.Join(skillDir, "SKILL.md"))
+	if err != nil {
+		t.Fatalf("read updated skill: %v", err)
+	}
+	if !strings.Contains(string(data), "Updated skill") {
+		t.Fatalf("expected updated content, got %q", string(data))
+	}
+
+	// DELETE — remove skill directory
+	delReq := httptest.NewRequest(http.MethodDelete, "/v1/admin/skills/"+skillName, nil)
+	delRec := httptest.NewRecorder()
+	handler.ServeHTTP(delRec, delReq)
+	if delRec.Code != http.StatusOK {
+		t.Fatalf("DELETE expected 200, got %d body=%q", delRec.Code, delRec.Body.String())
+	}
+	if _, err := os.Stat(skillDir); !os.IsNotExist(err) {
+		t.Fatalf("expected skill directory to be removed")
+	}
+
+	// GET after delete → 404
+	req404 := httptest.NewRequest(http.MethodGet, "/v1/admin/skills/"+skillName, nil)
+	rec404 := httptest.NewRecorder()
+	handler.ServeHTTP(rec404, req404)
+	if rec404.Code != http.StatusNotFound {
+		t.Fatalf("GET after delete expected 404, got %d", rec404.Code)
+	}
+
+	// DELETE non-existent → 404
+	delReq2 := httptest.NewRequest(http.MethodDelete, "/v1/admin/skills/"+skillName, nil)
+	delRec2 := httptest.NewRecorder()
+	handler.ServeHTTP(delRec2, delReq2)
+	if delRec2.Code != http.StatusNotFound {
+		t.Fatalf("DELETE non-existent expected 404, got %d", delRec2.Code)
+	}
+}
+
+func TestSkillCreatorAPI_WorkspaceCRUD_EmptyName(t *testing.T) {
+	handler := newSkillCreatorAPIHandler(t.TempDir(), zerolog.New(ioDiscard{}), nil, nil)
+	for _, method := range []string{http.MethodGet, http.MethodPut, http.MethodDelete} {
+		req := httptest.NewRequest(method, "/v1/admin/skills/", nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("%s with empty name expected 400, got %d", method, rec.Code)
+		}
+	}
+}
+
+func TestSkillCreatorAPI_WorkspaceCRUD_MethodNotAllowed(t *testing.T) {
+	workspaceDir := t.TempDir()
+	handler := newSkillCreatorAPIHandler(workspaceDir, zerolog.New(ioDiscard{}), nil, nil)
+
+	const skillName = "method-check-skill"
+	skillDir := filepath.Join(workspaceDir, "skills", skillName)
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("# Test\n"), 0o644); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPatch, "/v1/admin/skills/"+skillName, nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("PATCH expected 405, got %d", rec.Code)
+	}
+}
+
+func TestSkillCreatorAPI_WorkspaceCRUD_ReloadErrorIsWarningOnly(t *testing.T) {
+	workspaceDir := t.TempDir()
+	provider := &mockExtensionsProvider{reloadErr: fmt.Errorf("simulated reload failure")}
+	handler := newSkillCreatorAPIHandler(workspaceDir, zerolog.New(ioDiscard{}), nil, provider)
+
+	const skillName = "reload-warn-skill"
+	skillDir := filepath.Join(workspaceDir, "skills", skillName)
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("# Test\n"), 0o644); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+
+	// PUT with failing reload — should still return 200
+	putBody, _ := json.Marshal(map[string]string{"content": "---\nname: reload-warn-skill\n---\n# Warn\n"})
+	putReq := httptest.NewRequest(http.MethodPut, "/v1/admin/skills/"+skillName, bytes.NewReader(putBody))
+	putReq.Header.Set("Content-Type", "application/json")
+	putRec := httptest.NewRecorder()
+	handler.ServeHTTP(putRec, putReq)
+	if putRec.Code != http.StatusOK {
+		t.Fatalf("PUT with failing reload expected 200, got %d", putRec.Code)
+	}
+
+	// DELETE with failing reload — should still return 200
+	delReq := httptest.NewRequest(http.MethodDelete, "/v1/admin/skills/"+skillName, nil)
+	delRec := httptest.NewRecorder()
+	handler.ServeHTTP(delRec, delReq)
+	if delRec.Code != http.StatusOK {
+		t.Fatalf("DELETE with failing reload expected 200, got %d", delRec.Code)
+	}
+}
+
+func TestSkillCreatorAPI_SaveLocalReloadErrorIsWarningOnly(t *testing.T) {
+	workspaceDir := filepath.Join(t.TempDir(), "workspace")
+	provider := &mockExtensionsProvider{reloadErr: fmt.Errorf("simulated reload failure")}
+	handler := newSkillCreatorAPIHandler(workspaceDir, zerolog.New(ioDiscard{}), nil, provider)
+
+	draft := skillCreatorDraftResponse{
+		Name:        "reload-warn-save",
+		Description: "Test",
+		Language:    "shell",
+		Layout:      "single_file",
+		UseCase:     "test",
+		Files: []skillCreatorFile{
+			{Path: "SKILL.md", Content: "---\nname: reload-warn-save\ndescription: Test\n---\n# Test\n"},
+			{Path: "reload-warn-save.sh", Content: "#!/bin/bash\necho test\n"},
+		},
+	}
+	rec := postJSON(t, handler, "/v1/admin/skills/save-local", draft)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("save-local with failing reload expected 200, got %d", rec.Code)
+	}
+}
+
+func TestSkillCreatorAPI_WorkspaceCRUD_PutMkdirAllFailure(t *testing.T) {
+	workspaceDir := t.TempDir()
+	handler := newSkillCreatorAPIHandler(workspaceDir, zerolog.New(ioDiscard{}), nil, nil)
+
+	const skillName = "mkdirall-fail-skill"
+	// Create a FILE at the skillDir path to block os.MkdirAll
+	skillsDir := filepath.Join(workspaceDir, "skills")
+	if err := os.MkdirAll(skillsDir, 0o755); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(skillsDir, skillName), []byte("I am a file"), 0o644); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+
+	putBody, _ := json.Marshal(map[string]string{"content": "# Test"})
+	req := httptest.NewRequest(http.MethodPut, "/v1/admin/skills/"+skillName, bytes.NewReader(putBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("PUT expected 500 when skillDir is a file, got %d", rec.Code)
+	}
+}
+
+func TestSkillCreatorAPI_WorkspaceCRUD_PutWriteFileFailure(t *testing.T) {
+	workspaceDir := t.TempDir()
+	handler := newSkillCreatorAPIHandler(workspaceDir, zerolog.New(ioDiscard{}), nil, nil)
+
+	const skillName = "writefile-fail-skill"
+	// Create SKILL.md as a directory (not a file) to cause os.WriteFile to fail
+	skillMDAsDir := filepath.Join(workspaceDir, "skills", skillName, "SKILL.md")
+	if err := os.MkdirAll(skillMDAsDir, 0o755); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+
+	putBody, _ := json.Marshal(map[string]string{"content": "# Test"})
+	req := httptest.NewRequest(http.MethodPut, "/v1/admin/skills/"+skillName, bytes.NewReader(putBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("PUT expected 500 when SKILL.md is a directory, got %d", rec.Code)
+	}
+}
+
+func TestSkillCreatorAPI_WorkspaceCRUD_InvalidName(t *testing.T) {
+	handler := newSkillCreatorAPIHandler(t.TempDir(), zerolog.New(ioDiscard{}), nil, nil)
+
+	// Names with uppercase or underscore fail validateSkillCreatorName.
+	for _, method := range []string{http.MethodGet, http.MethodPut, http.MethodDelete} {
+		req := httptest.NewRequest(method, "/v1/admin/skills/Invalid_Name", nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("%s with invalid name expected 400, got %d", method, rec.Code)
+		}
+	}
+}
+
+func TestSkillCreatorAPI_WorkspaceCRUD_PutEmptyContent(t *testing.T) {
+	workspaceDir := t.TempDir()
+	handler := newSkillCreatorAPIHandler(workspaceDir, zerolog.New(ioDiscard{}), nil, nil)
+
+	putBody, _ := json.Marshal(map[string]string{"content": "   "})
+	req := httptest.NewRequest(http.MethodPut, "/v1/admin/skills/some-skill", bytes.NewReader(putBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("PUT with empty content expected 400, got %d body=%q", rec.Code, rec.Body.String())
 	}
 }
 
