@@ -62,6 +62,12 @@ func listLocalSkills(cwd, workspaceSkillsRoot string) []localSkillItem {
 	if strings.TrimSpace(cwd) == "" {
 		return out
 	}
+	// cwd comes from session.GetCurrentDir which only stores eligible
+	// directories, but Clean defensively to satisfy static analysis.
+	cwd = filepath.Clean(cwd)
+	if !filepath.IsAbs(cwd) {
+		return out
+	}
 	skillsRoot := filepath.Join(cwd, ".tars", "skills")
 	if snapshot, err := skill.Load(skill.LoadOptions{
 		Sources: []skill.SourceDir{{Source: skill.SourceSessionCwd, Dir: skillsRoot}},
@@ -103,6 +109,9 @@ func listLocalSkills(cwd, workspaceSkillsRoot string) []localSkillItem {
 }
 
 func workspaceSkillExists(root, name string) bool {
+	if !filepath.IsLocal(name) {
+		return false
+	}
 	_, err := os.Stat(filepath.Join(root, name))
 	return err == nil
 }
@@ -207,14 +216,25 @@ func handleLocalSkillsPromote(w http.ResponseWriter, r *http.Request, reqStore *
 		Promoted: make([]localSkillPromoteOutcome, 0, len(req.Items)),
 		Failed:   make([]localSkillPromoteOutcome, 0),
 	}
+	sessionSkillsRoot := filepath.Join(cwd, ".tars", "skills")
 	for _, item := range req.Items {
 		name := strings.TrimSpace(item.Name)
 		if name == "" {
 			resp.Failed = append(resp.Failed, localSkillPromoteOutcome{Error: "name is required"})
 			continue
 		}
+		// Strict containment check — skill.Promote re-validates with a
+		// regex but this proves dataflow safety to static analysis.
+		if !filepath.IsLocal(name) {
+			resp.Failed = append(resp.Failed, localSkillPromoteOutcome{
+				PromoteResult: skill.PromoteResult{RequestedName: name},
+				Error:         "invalid skill name",
+			})
+			continue
+		}
+		sourceDir := filepath.Join(sessionSkillsRoot, name)
 		result, err := skill.Promote(skill.PromoteRequest{
-			SourceSkillDir:   filepath.Join(cwd, ".tars", "skills", name),
+			SourceSkillDir:   sourceDir,
 			TargetSkillsRoot: workspaceSkillsRoot,
 			Name:             name,
 			Mode:             mode,

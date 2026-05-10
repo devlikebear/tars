@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -41,6 +42,30 @@ const (
 // skill of the same name already exists.
 var ErrPromoteConflict = errors.New("workspace skill already exists")
 
+// promoteNamePattern restricts skill names to a narrow lexical set that
+// can never collapse into a path traversal. This is defense-in-depth on
+// top of the IsLocal + Rel checks in safeJoinUnder.
+var promoteNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$`)
+
+// safeJoinUnder joins root and name, returning an error unless the result
+// stays strictly under root. The defensive checks are redundant with the
+// regex/IsLocal validation above but explicitly satisfy static-analysis
+// dataflow rules (CodeQL go/path-injection).
+func safeJoinUnder(root, name string) (string, error) {
+	if !filepath.IsLocal(name) {
+		return "", fmt.Errorf("invalid skill name (not local): %q", name)
+	}
+	joined := filepath.Join(root, name)
+	rel, err := filepath.Rel(root, joined)
+	if err != nil {
+		return "", fmt.Errorf("invalid skill path: %w", err)
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("skill path escapes root: %q", name)
+	}
+	return joined, nil
+}
+
 // PromoteRequest copies a session-local skill directory into the
 // shared workspace skills root.
 type PromoteRequest struct {
@@ -75,7 +100,7 @@ func Promote(req PromoteRequest) (PromoteResult, error) {
 	if name == "" {
 		return PromoteResult{}, fmt.Errorf("name is required")
 	}
-	if strings.ContainsAny(name, `/\`) || name == "." || name == ".." || strings.Contains(name, "..") {
+	if !promoteNamePattern.MatchString(name) {
 		return PromoteResult{}, fmt.Errorf("invalid skill name: %q", name)
 	}
 
@@ -95,6 +120,9 @@ func Promote(req PromoteRequest) (PromoteResult, error) {
 		return PromoteResult{}, fmt.Errorf("invalid conflict policy: %q", req.OnConflict)
 	}
 
+	source = filepath.Clean(source)
+	root = filepath.Clean(root)
+
 	srcInfo, err := os.Stat(source)
 	if err != nil {
 		return PromoteResult{}, fmt.Errorf("read source: %w", err)
@@ -102,7 +130,11 @@ func Promote(req PromoteRequest) (PromoteResult, error) {
 	if !srcInfo.IsDir() {
 		return PromoteResult{}, fmt.Errorf("source is not a directory: %s", source)
 	}
-	if _, err := os.Stat(filepath.Join(source, "SKILL.md")); err != nil {
+	skillFile, err := safeJoinUnder(source, "SKILL.md")
+	if err != nil {
+		return PromoteResult{}, err
+	}
+	if _, err := os.Stat(skillFile); err != nil {
 		return PromoteResult{}, fmt.Errorf("source skill missing SKILL.md: %w", err)
 	}
 
@@ -110,7 +142,10 @@ func Promote(req PromoteRequest) (PromoteResult, error) {
 	if err != nil {
 		return PromoteResult{}, err
 	}
-	targetPath := filepath.Join(root, targetName)
+	targetPath, err := safeJoinUnder(root, targetName)
+	if err != nil {
+		return PromoteResult{}, err
+	}
 
 	if action == PromoteActionOverwritten {
 		if err := os.RemoveAll(targetPath); err != nil {
@@ -138,11 +173,25 @@ func Promote(req PromoteRequest) (PromoteResult, error) {
 }
 
 func resolvePromoteTargetName(root, name string, policy PromoteConflictPolicy) (string, PromoteAction, error) {
-	if _, err := os.Stat(filepath.Join(root, name)); err != nil {
-		if os.IsNotExist(err) {
-			return name, PromoteActionCreated, nil
+	statTarget := func(candidate string) (bool, error) {
+		joined, err := safeJoinUnder(root, candidate)
+		if err != nil {
+			return false, err
 		}
-		return "", "", fmt.Errorf("stat target: %w", err)
+		if _, err := os.Stat(joined); err != nil {
+			if os.IsNotExist(err) {
+				return false, nil
+			}
+			return false, fmt.Errorf("stat target: %w", err)
+		}
+		return true, nil
+	}
+	exists, err := statTarget(name)
+	if err != nil {
+		return "", "", err
+	}
+	if !exists {
+		return name, PromoteActionCreated, nil
 	}
 	switch policy {
 	case PromoteOnConflictOverwrite:
@@ -152,11 +201,15 @@ func resolvePromoteTargetName(root, name string, policy PromoteConflictPolicy) (
 	case PromoteOnConflictRename:
 		for i := 2; i < 1000; i++ {
 			candidate := fmt.Sprintf("%s-%d", name, i)
-			if _, err := os.Stat(filepath.Join(root, candidate)); err != nil {
-				if os.IsNotExist(err) {
-					return candidate, PromoteActionRenamed, nil
-				}
-				return "", "", fmt.Errorf("stat target candidate: %w", err)
+			if !promoteNamePattern.MatchString(candidate) {
+				return "", "", fmt.Errorf("rename candidate failed validation: %q", candidate)
+			}
+			candidateExists, err := statTarget(candidate)
+			if err != nil {
+				return "", "", err
+			}
+			if !candidateExists {
+				return candidate, PromoteActionRenamed, nil
 			}
 		}
 		return "", "", fmt.Errorf("exhausted rename suffixes for %q", name)
@@ -166,6 +219,8 @@ func resolvePromoteTargetName(root, name string, policy PromoteConflictPolicy) (
 }
 
 func copyDirContents(srcDir, dstDir string) error {
+	srcDir = filepath.Clean(srcDir)
+	dstDir = filepath.Clean(dstDir)
 	if err := os.MkdirAll(dstDir, 0o755); err != nil {
 		return fmt.Errorf("create target dir: %w", err)
 	}
@@ -180,7 +235,10 @@ func copyDirContents(srcDir, dstDir string) error {
 		if rel == "." {
 			return nil
 		}
-		target := filepath.Join(dstDir, rel)
+		target, err := safeJoinUnder(dstDir, rel)
+		if err != nil {
+			return err
+		}
 		if d.IsDir() {
 			return os.MkdirAll(target, 0o755)
 		}
