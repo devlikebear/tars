@@ -32,7 +32,7 @@ func TestPromoteCopyCreatesTarget(t *testing.T) {
 	srcDir := writeSkillSource(t, src, "alpha", "---\nname: alpha\n---\nbody\n")
 
 	res, err := skill.Promote(skill.PromoteRequest{
-		SourceSkillDir:   srcDir,
+		SourceSkillsRoot: filepath.Dir(srcDir),
 		TargetSkillsRoot: target,
 		Name:             "alpha",
 		Mode:             skill.PromoteModeCopy,
@@ -65,7 +65,7 @@ func TestPromoteMoveDeletesSource(t *testing.T) {
 	srcDir := writeSkillSource(t, src, "beta", "---\nname: beta\n---\nbody\n")
 
 	res, err := skill.Promote(skill.PromoteRequest{
-		SourceSkillDir:   srcDir,
+		SourceSkillsRoot: filepath.Dir(srcDir),
 		TargetSkillsRoot: target,
 		Name:             "beta",
 		Mode:             skill.PromoteModeMove,
@@ -94,7 +94,7 @@ func TestPromoteRenameOnConflict(t *testing.T) {
 	srcDir := writeSkillSource(t, src, "gamma", "fresh")
 
 	res, err := skill.Promote(skill.PromoteRequest{
-		SourceSkillDir:   srcDir,
+		SourceSkillsRoot: filepath.Dir(srcDir),
 		TargetSkillsRoot: target,
 		Name:             "gamma",
 		Mode:             skill.PromoteModeCopy,
@@ -133,7 +133,7 @@ func TestPromoteOverwriteReplacesTarget(t *testing.T) {
 	srcDir := writeSkillSource(t, src, "delta", "new")
 
 	res, err := skill.Promote(skill.PromoteRequest{
-		SourceSkillDir:   srcDir,
+		SourceSkillsRoot: filepath.Dir(srcDir),
 		TargetSkillsRoot: target,
 		Name:             "delta",
 		Mode:             skill.PromoteModeCopy,
@@ -162,7 +162,7 @@ func TestPromoteAbortOnConflict(t *testing.T) {
 	srcDir := writeSkillSource(t, src, "epsilon", "fresh")
 
 	_, err := skill.Promote(skill.PromoteRequest{
-		SourceSkillDir:   srcDir,
+		SourceSkillsRoot: filepath.Dir(srcDir),
 		TargetSkillsRoot: target,
 		Name:             "epsilon",
 		Mode:             skill.PromoteModeCopy,
@@ -190,7 +190,7 @@ func TestPromoteCopiesNestedFiles(t *testing.T) {
 	}
 
 	if _, err := skill.Promote(skill.PromoteRequest{
-		SourceSkillDir:   srcDir,
+		SourceSkillsRoot: filepath.Dir(srcDir),
 		TargetSkillsRoot: target,
 		Name:             "zeta",
 		Mode:             skill.PromoteModeCopy,
@@ -209,7 +209,7 @@ func TestPromoteRejectsInvalidName(t *testing.T) {
 	cases := []string{"", "..", "../oops", "with/slash", "."}
 	for _, name := range cases {
 		_, err := skill.Promote(skill.PromoteRequest{
-			SourceSkillDir:   srcDir,
+			SourceSkillsRoot: filepath.Dir(srcDir),
 			TargetSkillsRoot: filepath.Join(tmp, "target"),
 			Name:             name,
 		})
@@ -226,7 +226,7 @@ func TestPromoteRejectsMissingSkillFile(t *testing.T) {
 		t.Fatalf("mkdir: %v", err)
 	}
 	_, err := skill.Promote(skill.PromoteRequest{
-		SourceSkillDir:   srcDir,
+		SourceSkillsRoot: filepath.Dir(srcDir),
 		TargetSkillsRoot: filepath.Join(tmp, "target"),
 		Name:             "broken",
 	})
@@ -241,9 +241,9 @@ func TestPromoteRejectsEmptyFields(t *testing.T) {
 		req  skill.PromoteRequest
 		want string
 	}{
-		{"empty source", skill.PromoteRequest{TargetSkillsRoot: "/tmp", Name: "x"}, "source skill"},
-		{"empty target", skill.PromoteRequest{SourceSkillDir: "/tmp/src", Name: "x"}, "target skills"},
-		{"empty name", skill.PromoteRequest{SourceSkillDir: "/tmp/src", TargetSkillsRoot: "/tmp"}, "name is required"},
+		{"empty source", skill.PromoteRequest{TargetSkillsRoot: "/tmp", Name: "x"}, "source skills"},
+		{"empty target", skill.PromoteRequest{SourceSkillsRoot: "/tmp/src", Name: "x"}, "target skills"},
+		{"empty name", skill.PromoteRequest{SourceSkillsRoot: "/tmp/src", TargetSkillsRoot: "/tmp"}, "name is required"},
 	}
 	for _, tc := range cases {
 		_, err := skill.Promote(tc.req)
@@ -257,7 +257,7 @@ func TestPromoteRejectsInvalidMode(t *testing.T) {
 	tmp := t.TempDir()
 	srcDir := writeSkillSource(t, filepath.Join(tmp, "src"), "alpha", "x")
 	_, err := skill.Promote(skill.PromoteRequest{
-		SourceSkillDir:   srcDir,
+		SourceSkillsRoot: filepath.Dir(srcDir),
 		TargetSkillsRoot: filepath.Join(tmp, "target"),
 		Name:             "alpha",
 		Mode:             "invalid-mode",
@@ -271,7 +271,7 @@ func TestPromoteRejectsInvalidConflictPolicy(t *testing.T) {
 	tmp := t.TempDir()
 	srcDir := writeSkillSource(t, filepath.Join(tmp, "src"), "alpha", "x")
 	_, err := skill.Promote(skill.PromoteRequest{
-		SourceSkillDir:   srcDir,
+		SourceSkillsRoot: filepath.Dir(srcDir),
 		TargetSkillsRoot: filepath.Join(tmp, "target"),
 		Name:             "alpha",
 		OnConflict:       "panic",
@@ -283,17 +283,18 @@ func TestPromoteRejectsInvalidConflictPolicy(t *testing.T) {
 
 func TestPromoteRejectsSourceFile(t *testing.T) {
 	tmp := t.TempDir()
-	srcFile := filepath.Join(tmp, "src", "file.md")
-	if err := os.MkdirAll(filepath.Dir(srcFile), 0o755); err != nil {
+	sourceRoot := filepath.Join(tmp, "src")
+	if err := os.MkdirAll(sourceRoot, 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
-	if err := os.WriteFile(srcFile, []byte("x"), 0o644); err != nil {
+	// Create a regular file at the would-be skill dir location.
+	if err := os.WriteFile(filepath.Join(sourceRoot, "alpha"), []byte("x"), 0o644); err != nil {
 		t.Fatalf("write: %v", err)
 	}
 	_, err := skill.Promote(skill.PromoteRequest{
-		SourceSkillDir:   srcFile,
+		SourceSkillsRoot: sourceRoot,
 		TargetSkillsRoot: filepath.Join(tmp, "target"),
-		Name:             "x",
+		Name:             "alpha",
 	})
 	if err == nil || !strings.Contains(err.Error(), "not a directory") {
 		t.Fatalf("expected not a directory error, got %v", err)
@@ -303,9 +304,9 @@ func TestPromoteRejectsSourceFile(t *testing.T) {
 func TestPromoteRejectsMissingSourceDir(t *testing.T) {
 	tmp := t.TempDir()
 	_, err := skill.Promote(skill.PromoteRequest{
-		SourceSkillDir:   filepath.Join(tmp, "missing"),
+		SourceSkillsRoot: filepath.Join(tmp, "missing"),
 		TargetSkillsRoot: filepath.Join(tmp, "target"),
-		Name:             "x",
+		Name:             "alpha",
 	})
 	if err == nil || !strings.Contains(err.Error(), "read source") {
 		t.Fatalf("expected read source error, got %v", err)
@@ -317,7 +318,7 @@ func TestPromoteAppliesDefaults(t *testing.T) {
 	srcDir := writeSkillSource(t, filepath.Join(tmp, "src"), "alpha", "body")
 	target := filepath.Join(tmp, "target")
 	res, err := skill.Promote(skill.PromoteRequest{
-		SourceSkillDir:   srcDir,
+		SourceSkillsRoot: filepath.Dir(srcDir),
 		TargetSkillsRoot: target,
 		Name:             "alpha",
 		// Mode and OnConflict empty — defaults to copy + rename.
@@ -344,7 +345,7 @@ func TestPromoteRejectsSymlinkInSource(t *testing.T) {
 		t.Skipf("symlinks unsupported on this filesystem: %v", err)
 	}
 	_, err := skill.Promote(skill.PromoteRequest{
-		SourceSkillDir:   srcDir,
+		SourceSkillsRoot: filepath.Dir(srcDir),
 		TargetSkillsRoot: filepath.Join(tmp, "target"),
 		Name:             "alpha",
 	})

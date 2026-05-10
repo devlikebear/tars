@@ -67,9 +67,12 @@ func safeJoinUnder(root, name string) (string, error) {
 }
 
 // PromoteRequest copies a session-local skill directory into the
-// shared workspace skills root.
+// shared workspace skills root. The on-disk source is computed as
+// safeJoinUnder(SourceSkillsRoot, Name) — the caller does not get to
+// supply the full source path, which prevents path-traversal attacks
+// from flowing through `Name` into filesystem operations.
 type PromoteRequest struct {
-	SourceSkillDir   string // <cwd>/.tars/skills/<name>
+	SourceSkillsRoot string // <cwd>/.tars/skills
 	TargetSkillsRoot string // ${workspaceDir}/skills
 	Name             string
 	Mode             PromoteMode
@@ -88,11 +91,11 @@ type PromoteResult struct {
 // Promote copies (or moves) a session-local skill directory into the
 // workspace skills root, applying the requested conflict policy.
 func Promote(req PromoteRequest) (PromoteResult, error) {
-	source := strings.TrimSpace(req.SourceSkillDir)
+	sourceRoot := strings.TrimSpace(req.SourceSkillsRoot)
 	root := strings.TrimSpace(req.TargetSkillsRoot)
 	name := strings.TrimSpace(req.Name)
-	if source == "" {
-		return PromoteResult{}, fmt.Errorf("source skill directory is required")
+	if sourceRoot == "" {
+		return PromoteResult{}, fmt.Errorf("source skills root is required")
 	}
 	if root == "" {
 		return PromoteResult{}, fmt.Errorf("target skills root is required")
@@ -120,9 +123,15 @@ func Promote(req PromoteRequest) (PromoteResult, error) {
 		return PromoteResult{}, fmt.Errorf("invalid conflict policy: %q", req.OnConflict)
 	}
 
-	source = filepath.Clean(source)
+	sourceRoot = filepath.Clean(sourceRoot)
 	root = filepath.Clean(root)
 
+	// `name` is the only attacker-influenced path component; it has already
+	// been validated by the regex and is re-checked by safeJoinUnder.
+	source, err := safeJoinUnder(sourceRoot, name)
+	if err != nil {
+		return PromoteResult{}, err
+	}
 	srcInfo, err := os.Stat(source)
 	if err != nil {
 		return PromoteResult{}, fmt.Errorf("read source: %w", err)

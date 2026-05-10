@@ -223,18 +223,8 @@ func handleLocalSkillsPromote(w http.ResponseWriter, r *http.Request, reqStore *
 			resp.Failed = append(resp.Failed, localSkillPromoteOutcome{Error: "name is required"})
 			continue
 		}
-		// Strict containment check — skill.Promote re-validates with a
-		// regex but this proves dataflow safety to static analysis.
-		if !filepath.IsLocal(name) {
-			resp.Failed = append(resp.Failed, localSkillPromoteOutcome{
-				PromoteResult: skill.PromoteResult{RequestedName: name},
-				Error:         "invalid skill name",
-			})
-			continue
-		}
-		sourceDir := filepath.Join(sessionSkillsRoot, name)
 		result, err := skill.Promote(skill.PromoteRequest{
-			SourceSkillDir:   sourceDir,
+			SourceSkillsRoot: sessionSkillsRoot,
 			TargetSkillsRoot: workspaceSkillsRoot,
 			Name:             name,
 			Mode:             mode,
