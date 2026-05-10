@@ -321,8 +321,18 @@
   }
 
   function isToolEnabled(name: string): boolean {
+    const group = tools.find((t) => t.name === name)?.group
+    if (group && denyGroupsSet.has(group)) return false
+    if (allowGroupsSet.size > 0 && (!group || !allowGroupsSet.has(group))) return false
     if (!useCustomConfig) return !disabledSet.has(name)
     return enabledSet.has(name) && !disabledSet.has(name)
+  }
+
+  function isToolGroupControlled(name: string): boolean {
+    const group = tools.find((t) => t.name === name)?.group
+    if (group && denyGroupsSet.has(group)) return true
+    if (allowGroupsSet.size > 0 && (!group || !allowGroupsSet.has(group))) return true
+    return false
   }
 
   function toggleTool(name: string) {
@@ -828,13 +838,13 @@
           <input type="checkbox" checked={!useCustomConfig} onchange={toggleAllTools} />
           <span>All tools</span>
         </label>
-        <span class="config-count">{useCustomConfig ? enabledSet.size : tools.length - disabledSet.size} active</span>
+        <span class="config-count">{tools.filter((t) => isToolEnabled(t.name)).length} active</span>
       </div>
       <div class="config-list">
         {#each filteredTools as t}
           {@const toolSrc = sourceForToolList(t.name)}
           <label class="config-item" class:high-risk={t.high_risk}>
-            <input type="checkbox" checked={isToolEnabled(t.name)} onchange={() => toggleTool(t.name)} />
+            <input type="checkbox" checked={isToolEnabled(t.name)} disabled={isToolGroupControlled(t.name)} onchange={() => toggleTool(t.name)} />
             <span class="item-name">{t.name}</span>
             {#if t.group}
               <span class="badge badge-neutral" style="font-size:9px;padding:0 4px;">{t.group}</span>
@@ -1376,6 +1386,8 @@
   .config-item:hover { background: rgba(255, 255, 255, 0.03); }
 
   .config-item.high-risk { border-left: 2px solid rgba(248, 113, 113, 0.3); }
+
+  .config-list input[type='checkbox']:disabled + .item-name { opacity: 0.4; }
 
   .item-name {
     font-family: var(--font-mono);
