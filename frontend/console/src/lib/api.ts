@@ -95,6 +95,7 @@ import type {
   SessionCwd,
   SessionEffectiveConfig,
   UsageToday,
+  CodexUsageResponse,
   LogsResponse,
   AnalyticsResponse,
   AuthLoginRequest,
@@ -259,6 +260,10 @@ export async function changeBrowserPassword(role: 'admin' | 'user', payload: { c
 
 export async function getTodayUsage(): Promise<UsageToday> {
   return requestJSON<UsageToday>('/v1/admin/usage/today')
+}
+
+export async function getCodexUsage(): Promise<CodexUsageResponse> {
+  return requestJSON<CodexUsageResponse>('/v1/admin/llm/codex/usage')
 }
 
 export type LogsQuery = {

@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.32.28] - 2026-05-10
+
+### Added
+
+- **Codex subscription quota visible in Ops + threshold alerts** — `/console/ops` gains a "Codex subscription quota" card listing every `openai-codex` tier with its primary (5h) and weekly windows (`used_percent` + reset countdown). The card polls `/v1/admin/llm/codex/usage` every 60s and refreshes immediately when an SSE `codex_quota` event arrives. Backend gains a `codexThresholdWatcher` that observes every parsed `x-codex-*` snapshot and emits one notification when `used_percent` crosses 90 (`severity=warn`) and another at 95 (`severity=error`); recovery is silent so users aren't spammed when usage drains naturally between requests. Primary/weekly windows and tiers are tracked independently. The notifications flow through the existing dispatcher, so the chat header inbox surfaces them without any additional UI work. Window rows in the Ops card tint amber at warn and red at critical so the state is visible at a glance.
+
 ## [0.32.27] - 2026-05-10
 
 ### Added

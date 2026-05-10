@@ -199,6 +199,7 @@ func buildAPIMux(
 	attachUsageWarningNotifier(deps.llmRouter, func(ctx context.Context, message string) {
 		dispatcher.Emit(ctx, newNotificationEvent("usage", "warn", "Usage limit warning", message))
 	})
+	attachCodexThresholdWatcher(deps.llmRouter, dispatcher)
 	telegramPairings, err := newTelegramPairingStore(telegramPairingStorePath(cfg), nowFn)
 	if err != nil {
 		return nil, err

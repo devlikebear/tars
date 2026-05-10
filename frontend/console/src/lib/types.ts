@@ -1789,3 +1789,27 @@ export type TelegramPairingsResponse = {
   pending: TelegramPairingEntry[]
   allowed: TelegramAllowedUser[]
 }
+
+export type CodexRateLimitWindow = {
+  used_percent: number
+  window_minutes?: number
+  reset_after_seconds?: number
+}
+
+export type CodexRateLimitSnapshot = {
+  primary?: CodexRateLimitWindow
+  secondary?: CodexRateLimitWindow
+  raw_headers?: Record<string, string>
+  captured_at: string
+}
+
+export type CodexUsageTier = {
+  tier: string
+  provider?: string
+  model?: string
+  snapshot?: CodexRateLimitSnapshot
+}
+
+export type CodexUsageResponse = {
+  tiers: CodexUsageTier[]
+}

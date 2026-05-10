@@ -40,10 +40,11 @@ type OpenAICodexClient struct {
 	resolveCredential codexCredentialResolver
 	refreshCredential codexCredentialRefresher
 
-	mu               sync.RWMutex
-	overrideCred     *auth.CodexCredential
-	lastRateLimit    *CodexRateLimitSnapshot
-	validatedOnStart bool
+	mu                sync.RWMutex
+	overrideCred      *auth.CodexCredential
+	lastRateLimit     *CodexRateLimitSnapshot
+	rateLimitObserver func(CodexRateLimitSnapshot)
+	validatedOnStart  bool
 }
 
 func NewOpenAICodexClient(baseURL, model, authMode, oauthProvider, apiKey string) (*OpenAICodexClient, error) {
@@ -310,9 +311,24 @@ func (c *OpenAICodexClient) setLastRateLimit(snap *CodexRateLimitSnapshot) {
 		return
 	}
 	c.mu.Lock()
-	defer c.mu.Unlock()
 	copy := *snap
 	c.lastRateLimit = &copy
+	observer := c.rateLimitObserver
+	c.mu.Unlock()
+	if observer != nil {
+		observer(copy)
+	}
+}
+
+// SetRateLimitObserver registers a callback invoked once per parsed
+// `x-codex-*` snapshot. Wired by the server at startup so that an external
+// watcher (e.g. SSE notification dispatcher) can react to threshold
+// crossings without the client having to know about server concerns.
+// Passing nil clears the observer.
+func (c *OpenAICodexClient) SetRateLimitObserver(fn func(CodexRateLimitSnapshot)) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.rateLimitObserver = fn
 }
 
 func (c *OpenAICodexClient) defaultResolveCredential() (auth.CodexCredential, error) {
