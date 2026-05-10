@@ -12,6 +12,67 @@ import (
 	"github.com/devlikebear/tars/internal/auth"
 )
 
+func TestOpenAICodexClient_CapturesRateLimitHeaders(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("x-codex-primary-used-percent", "37.5")
+		w.Header().Set("x-codex-primary-window-minutes", "300")
+		w.Header().Set("x-codex-primary-reset-after-seconds", "1200")
+		w.Header().Set("x-codex-secondary-used-percent", "8")
+		w.Header().Set("x-codex-secondary-window-minutes", "10080")
+		w.Header().Set("x-codex-credits-remaining", "9001")
+		_, _ = w.Write([]byte("data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}}\n\n"))
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	defer srv.Close()
+
+	client, err := newOpenAICodexClientWithConfig(
+		srv.URL,
+		"gpt-5.3-codex",
+		"oauth",
+		"openai-codex",
+		"",
+		DefaultClientConfig(),
+		func() (auth.CodexCredential, error) {
+			return auth.CodexCredential{AccessToken: "tok"}, nil
+		},
+		func(context.Context, auth.CodexCredential) (auth.CodexCredential, error) {
+			t.Fatal("refresh should not be called")
+			return auth.CodexCredential{}, nil
+		},
+	)
+	if err != nil {
+		t.Fatalf("new codex client: %v", err)
+	}
+
+	if _, ok := client.LastCodexRateLimit(); ok {
+		t.Fatal("expected no snapshot before any request")
+	}
+
+	if _, err := client.Chat(context.Background(), []ChatMessage{{Role: "user", Content: "hi"}}, ChatOptions{
+		OnDelta: func(string) {},
+	}); err != nil {
+		t.Fatalf("chat: %v", err)
+	}
+
+	snap, ok := client.LastCodexRateLimit()
+	if !ok {
+		t.Fatal("expected snapshot after request")
+	}
+	if snap.Primary == nil || snap.Primary.UsedPercent != 37.5 || snap.Primary.WindowMinutes != 300 {
+		t.Errorf("primary: %+v", snap.Primary)
+	}
+	if snap.Secondary == nil || snap.Secondary.UsedPercent != 8 || snap.Secondary.WindowMinutes != 10080 {
+		t.Errorf("secondary: %+v", snap.Secondary)
+	}
+	if got := snap.RawHeaders["x-codex-credits-remaining"]; got != "9001" {
+		t.Errorf("raw credits-remaining: got %q, want 9001", got)
+	}
+
+	// Sanity: client also satisfies the CodexRateLimitSource interface.
+	var _ CodexRateLimitSource = client
+}
+
 func TestOpenAICodexClient_Headers_SetsRequired(t *testing.T) {
 	var gotAuth, gotBeta, gotOriginator, gotAccept, gotAccountID, gotPath string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -89,6 +89,20 @@ func (c *TrackedClient) Chat(ctx context.Context, messages []llm.ChatMessage, op
 	return resp, nil
 }
 
+// LastCodexRateLimit forwards to the inner client when it implements
+// llm.CodexRateLimitSource. Lets admin handlers fish a Codex rate-limit
+// snapshot out of the router without unwrapping the TrackedClient manually.
+func (c *TrackedClient) LastCodexRateLimit() (llm.CodexRateLimitSnapshot, bool) {
+	if c == nil || c.inner == nil {
+		return llm.CodexRateLimitSnapshot{}, false
+	}
+	src, ok := c.inner.(llm.CodexRateLimitSource)
+	if !ok {
+		return llm.CodexRateLimitSnapshot{}, false
+	}
+	return src.LastCodexRateLimit()
+}
+
 func (c *TrackedClient) logSelection(ctx context.Context) {
 	if c == nil {
 		return
