@@ -309,6 +309,8 @@ func (h *authAPIHandler) writeClearSessionCookie(w http.ResponseWriter, secure b
 		})
 		return
 	}
+
+	// codeql[go/cookie-secure-not-set] -- This only clears the loopback-only HTTP cookie emitted above; Secure=false must match that cookie so browsers actually delete it.
 	http.SetCookie(w, &http.Cookie{ // NOSONAR -- clears the loopback-only cookie set by writeSessionCookie
 		Name:     h.cookieName,
 		Value:    "",
