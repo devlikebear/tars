@@ -201,8 +201,23 @@
                 <div class="codex-windows">
                   {#if tier.snapshot.primary}
                     <div class="codex-window {bandClass(tier.snapshot.primary.used_percent)}">
-                      <span class="codex-window-label">5h window</span>
-                      <span class="codex-window-pct">{tier.snapshot.primary.used_percent.toFixed(1)}%</span>
+                      <div class="codex-window-row">
+                        <span class="codex-window-label">5h window</span>
+                        <span class="codex-window-pct">{tier.snapshot.primary.used_percent.toFixed(1)}%</span>
+                      </div>
+                      <div
+                        class="codex-window-bar"
+                        role="progressbar"
+                        aria-valuenow={Math.max(0, Math.min(100, tier.snapshot.primary.used_percent))}
+                        aria-valuemin="0"
+                        aria-valuemax="100"
+                        aria-label="Primary 5h window usage"
+                      >
+                        <div
+                          class="codex-window-bar-fill"
+                          style="width: {Math.max(0, Math.min(100, tier.snapshot.primary.used_percent))}%"
+                        ></div>
+                      </div>
                       {#if tier.snapshot.primary.reset_after_seconds !== undefined}
                         <span class="codex-window-reset">resets in {formatResetCountdown(tier.snapshot.primary.reset_after_seconds)}</span>
                       {/if}
@@ -210,8 +225,23 @@
                   {/if}
                   {#if tier.snapshot.secondary}
                     <div class="codex-window {bandClass(tier.snapshot.secondary.used_percent)}">
-                      <span class="codex-window-label">weekly</span>
-                      <span class="codex-window-pct">{tier.snapshot.secondary.used_percent.toFixed(1)}%</span>
+                      <div class="codex-window-row">
+                        <span class="codex-window-label">weekly</span>
+                        <span class="codex-window-pct">{tier.snapshot.secondary.used_percent.toFixed(1)}%</span>
+                      </div>
+                      <div
+                        class="codex-window-bar"
+                        role="progressbar"
+                        aria-valuenow={Math.max(0, Math.min(100, tier.snapshot.secondary.used_percent))}
+                        aria-valuemin="0"
+                        aria-valuemax="100"
+                        aria-label="Weekly window usage"
+                      >
+                        <div
+                          class="codex-window-bar-fill"
+                          style="width: {Math.max(0, Math.min(100, tier.snapshot.secondary.used_percent))}%"
+                        ></div>
+                      </div>
                       {#if tier.snapshot.secondary.reset_after_seconds !== undefined}
                         <span class="codex-window-reset">resets in {formatResetCountdown(tier.snapshot.secondary.reset_after_seconds)}</span>
                       {/if}
@@ -621,7 +651,7 @@
   .codex-window {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: var(--space-1);
     padding: var(--space-2) var(--space-3);
     border-radius: var(--radius-sm);
     background: var(--surface-subtle, rgba(255, 255, 255, 0.03));
@@ -635,6 +665,13 @@
     background: rgba(239, 68, 68, 0.18);
   }
 
+  .codex-window-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-2);
+  }
+
   .codex-window-label {
     font-size: var(--text-xs);
     color: var(--text-tertiary);
@@ -643,9 +680,31 @@
   }
 
   .codex-window-pct {
-    font-size: var(--text-lg);
+    font-size: var(--text-base);
     font-weight: 600;
     font-family: var(--font-mono);
+  }
+
+  .codex-window-bar {
+    height: 6px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--text-primary, #ffffff) 8%, transparent);
+    overflow: hidden;
+  }
+
+  .codex-window-bar-fill {
+    height: 100%;
+    background: var(--primary);
+    border-radius: inherit;
+    transition: width var(--duration-normal, 200ms) var(--ease-out, ease-out);
+  }
+
+  .codex-window.codex-row-warn .codex-window-bar-fill {
+    background: var(--warning);
+  }
+
+  .codex-window.codex-row-critical .codex-window-bar-fill {
+    background: var(--danger, #ef4444);
   }
 
   .codex-window-reset {

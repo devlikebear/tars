@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.32.30] - 2026-05-10
+
+### Changed
+
+- **Codex quota gets visual progress bars** — `/status` now prints a 10-cell ASCII bar (`██░░░░░░░░`) per window so usage is readable at a glance, with the window total length added to the reset countdown (e.g. `(resets 3h 45m / 5h)`). The chat feedback bar preserves newlines and switches to a monospace, left-aligned layout when the message contains line breaks, so multi-line `/status` output renders cleanly instead of being squashed into one wrapped paragraph (single-line feedbacks like `Chat view cleared` still show centered in the default font). The Analytics page Codex Quota card replaces the static percentage with a horizontal progress bar that tints amber/red in the warn/critical bands.
+
 ## [0.32.29] - 2026-05-10
 
 ### Added
