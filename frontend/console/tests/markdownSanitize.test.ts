@@ -38,7 +38,7 @@ test('renderMarkdown removes inline event handlers', () => {
   const html = renderMarkdown('<a href="https://example.com" onclick="alert(1)">click</a>')
   assert.equal(html.includes('onclick'), false)
   assert.equal(html.includes('alert(1)'), false)
-  assert.ok(html.includes('https://example.com'))
+  assert.match(html, /href="https:\/\/example\.com"/)
 })
 
 test('renderMarkdown rejects javascript: links from markdown', () => {
