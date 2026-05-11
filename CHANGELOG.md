@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.32.35] - 2026-05-11
+
+### Security
+
+- **Audit local-state path construction** (#806) — Documented and pinned the trust boundary for the app-owned state writers that CodeQL `go/path-injection` flagged (atomicwrite, cron run files, session transcripts/tasks, sessionoverride loader, skill/command loaders). The path in every flagged `os.*` call is `filepath.Join(<app-owned root>, <id-or-name>, ...)`, where the id-or-name is either server-generated (`generateID` produces 16-char hex; `newJobID` produces `job_` + 8-byte hex), index-checked before the call (e.g. `session.Store.Delete` short-circuits if the id is not already in the on-disk index), or constrained to a kebab-case/allowlist pattern (skill/command names). Two new audit test files (`internal/atomicwrite/local_state_audit_test.go`, `internal/session/local_state_audit_test.go`) make that boundary explicit and exercise the round-trip + traversal-id no-op cases. The 18 alerts (#16–#33) flagging `os.*` calls downstream of these constructors are dismissed as false positives with evidence pointing at the audit files.
+
 ## [0.32.34] - 2026-05-11
 
 ### Security
