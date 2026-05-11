@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.32.40] - 2026-05-12
+
+### Security
+
+- **Pin MCP HTTP RPC destination to validated origin** — Replaced `assertSameOriginAsServerURL` with `pinEndpointToServerOrigin`, which returns a `*url.URL` whose Scheme and Host are copied from the pre-validated `ps.serverURL` rather than from the caller-supplied endpoint string. `doHTTPRPC` now reassigns `httpReq.URL` to that pinned URL after `http.NewRequestWithContext` so the destination of `httpClient.Do` is structurally anchored to validated config, even though `http.NewRequestWithContext` itself re-parses from a string. Added boundary coverage in `TestPinEndpointToServerOrigin` (origin pin, scheme/host rejection, query/fragment passthrough, aliasing guard). CodeQL alert #11 (critical, `go/request-forgery`) is dismissed as a false positive after merge — the URL must derive from admin-configured MCP server config, so CodeQL's taint analysis flags this by design even though `pinEndpointToServerOrigin` structurally anchors Scheme/Host to validated config.
+
 ## [0.32.39] - 2026-05-12
 
 ### Security

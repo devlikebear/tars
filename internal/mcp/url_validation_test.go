@@ -107,20 +107,51 @@ func TestResolveLegacySSEPostURL_RejectsCrossOrigin(t *testing.T) {
 	}
 }
 
-func TestAssertSameOriginAsServerURL(t *testing.T) {
+func TestPinEndpointToServerOrigin(t *testing.T) {
 	parsed, err := url.Parse("https://mcp.example.com/v1/sse")
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
 	ps := &pooledSession{serverURL: parsed}
-	if err := assertSameOriginAsServerURL(ps, "https://mcp.example.com/v1/messages"); err != nil {
+
+	pinned, err := pinEndpointToServerOrigin(ps, "https://mcp.example.com/v1/messages?token=abc#frag")
+	if err != nil {
 		t.Fatalf("same origin should pass: %v", err)
 	}
-	if err := assertSameOriginAsServerURL(ps, "https://attacker.example.net/path"); err == nil {
+	if pinned.Scheme != "https" || pinned.Host != "mcp.example.com" {
+		t.Fatalf("pinned origin should match server url, got %s://%s", pinned.Scheme, pinned.Host)
+	}
+	if pinned.Path != "/v1/messages" {
+		t.Fatalf("pinned path should be carried over from endpoint, got %s", pinned.Path)
+	}
+	if pinned.RawQuery != "token=abc" {
+		t.Fatalf("pinned query should be carried over, got %s", pinned.RawQuery)
+	}
+	if pinned.Fragment != "frag" {
+		t.Fatalf("pinned fragment should be carried over, got %s", pinned.Fragment)
+	}
+
+	// Scheme and host MUST come from ps.serverURL, never from the endpoint string.
+	// If an attacker controls the endpoint string and supplies a different origin,
+	// pinEndpointToServerOrigin must reject — not silently rewrite — because that
+	// would mask a misconfiguration. Verify both the rejection and that the pinned
+	// pointer is distinct from ps.serverURL so callers can't accidentally mutate
+	// the canonical session URL through the returned value.
+	if pinned == ps.serverURL {
+		t.Fatalf("pinned URL must be a separate value to prevent aliasing the session URL")
+	}
+
+	if _, err := pinEndpointToServerOrigin(ps, "https://attacker.example.net/path"); err == nil {
 		t.Fatalf("expected rejection for different host")
 	}
-	if err := assertSameOriginAsServerURL(&pooledSession{}, "https://mcp.example.com/x"); err == nil {
+	if _, err := pinEndpointToServerOrigin(ps, "http://mcp.example.com/v1/messages"); err == nil {
+		t.Fatalf("expected rejection for different scheme")
+	}
+	if _, err := pinEndpointToServerOrigin(&pooledSession{}, "https://mcp.example.com/x"); err == nil {
 		t.Fatalf("expected error when session has no validated url")
+	}
+	if _, err := pinEndpointToServerOrigin(nil, "https://mcp.example.com/x"); err == nil {
+		t.Fatalf("expected error when session is nil")
 	}
 }
 
