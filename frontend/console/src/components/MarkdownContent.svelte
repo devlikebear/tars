@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { renderMarkdown } from '../lib/markdown'
+  import { renderMarkdown, readEncodedAttr } from '../lib/markdown'
   import type { Artifact } from '../lib/artifacts'
 
   interface Props {
@@ -156,7 +156,7 @@
     // Copy buttons
     for (const btn of containerEl.querySelectorAll<HTMLButtonElement>('.code-copy')) {
       on(btn, 'click', () => {
-        const code = btn.getAttribute('data-code') || ''
+        const code = readEncodedAttr(btn.getAttribute('data-code'))
         navigator.clipboard.writeText(code).then(() => {
           const original = btn.textContent
           btn.textContent = 'Copied!'
@@ -251,7 +251,7 @@
     const freshBlocks = containerEl.querySelectorAll<HTMLDivElement>('.mermaid-block:not([data-rendered])')
     for (let i = 0; i < freshBlocks.length; i++) {
       const block = freshBlocks[i]
-      const graph = block.getAttribute('data-graph')
+      const graph = readEncodedAttr(block.getAttribute('data-graph'))
       if (!graph) continue
       const previewEl = block.querySelector<HTMLElement>('[data-mermaid-preview]')
       if (!previewEl) continue
