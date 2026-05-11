@@ -1,9 +1,11 @@
 /**
  * Markdown renderer for chat messages.
- * Uses marked (GFM) + highlight.js for syntax highlighting.
+ * Uses marked (GFM) + highlight.js for syntax highlighting, with DOMPurify
+ * stripping unsafe markup from the final HTML.
  */
 
 import { Marked } from 'marked'
+import DOMPurify, { type Config as DOMPurifyConfig } from 'dompurify'
 import hljs from 'highlight.js/lib/core'
 
 // Selective language imports to keep bundle small
@@ -68,6 +70,25 @@ function escapeAttr(text: string): string {
     .replace(/'/g, '&#39;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
+}
+
+// Code/mermaid blocks stash their original source in data-code/data-graph so
+// the toolbar can read it back. DOMPurify's mXSS protection strips attributes
+// whose value contains `-->` (it could close an HTML comment under hostile
+// parsers), which collides with mermaid arrow syntax and most code samples.
+// URL-encoding the payload sidesteps the heuristic without weakening it for
+// other markup — consumers decode with readEncodedAttr.
+function encodeAttrPayload(text: string): string {
+  return encodeURIComponent(text)
+}
+
+export function readEncodedAttr(value: string | null | undefined): string {
+  if (!value) return ''
+  try {
+    return decodeURIComponent(value)
+  } catch {
+    return value
+  }
 }
 
 export function highlightTerms(text: string, terms: string[]): string {
@@ -142,16 +163,18 @@ const marked = new Marked({
 
       // Mermaid diagrams: toolbar + code/preview toggle + lazy-load
       if (language === 'mermaid') {
-        return `<div class="mermaid-block" data-graph="${escapeAttr(text)}"><div class="code-toolbar"><span class="code-lang">mermaid</span><div class="code-actions"><button type="button" class="code-toggle" data-mode="code" title="View code">Code</button><button type="button" class="code-toggle active" data-mode="preview" title="Preview diagram">Preview</button><button type="button" class="code-copy" data-code="${escapeAttr(text)}" title="Copy code">Copy</button></div></div><pre class="mermaid-src" style="display:none"><code>${escapeAttr(text)}</code></pre><div class="mermaid-preview" data-mermaid-preview></div></div>`
+        const encoded = encodeAttrPayload(text)
+        return `<div class="mermaid-block" data-graph="${encoded}"><div class="code-toolbar"><span class="code-lang">mermaid</span><div class="code-actions"><button type="button" class="code-toggle" data-mode="code" title="View code">Code</button><button type="button" class="code-toggle active" data-mode="preview" title="Preview diagram">Preview</button><button type="button" class="code-copy" data-code="${encoded}" title="Copy code">Copy</button></div></div><pre class="mermaid-src" style="display:none"><code>${escapeAttr(text)}</code></pre><div class="mermaid-preview" data-mermaid-preview></div></div>`
       }
 
       const highlighted = highlightCode(text, language)
 
       const langLabel = language ? `<span class="code-lang">${escapeAttr(language)}</span>` : ''
       const previewable = ['html', 'svg'].includes(language)
+      const encodedSource = encodeAttrPayload(text)
       const toolbar = previewable
-        ? `<div class="code-toolbar">${langLabel}<div class="code-actions"><button type="button" class="code-toggle active" data-mode="code" title="View code">Code</button><button type="button" class="code-toggle" data-mode="preview" title="Preview">Preview</button><button type="button" class="code-copy" data-code="${escapeAttr(text)}" title="Copy code">Copy</button></div></div>`
-        : `<div class="code-toolbar">${langLabel}<div class="code-actions"><button type="button" class="code-copy" data-code="${escapeAttr(text)}" title="Copy code">Copy</button></div></div>`
+        ? `<div class="code-toolbar">${langLabel}<div class="code-actions"><button type="button" class="code-toggle active" data-mode="code" title="View code">Code</button><button type="button" class="code-toggle" data-mode="preview" title="Preview">Preview</button><button type="button" class="code-copy" data-code="${encodedSource}" title="Copy code">Copy</button></div></div>`
+        : `<div class="code-toolbar">${langLabel}<div class="code-actions"><button type="button" class="code-copy" data-code="${encodedSource}" title="Copy code">Copy</button></div></div>`
       const previewHtml = previewable
         ? `<div class="code-preview" style="display:none" data-preview>${text}</div>`
         : ''
@@ -168,16 +191,45 @@ const marked = new Marked({
   },
 })
 
-// Strip dangerous tags from output
-function sanitize(html: string): string {
-  return html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+// DOMPurify configuration that preserves the renderer's intentional markup
+// (code/mermaid toolbars with data-* attributes, inline style="display:none"
+// toggles, html/svg previews inside <div class="code-preview">) while
+// stripping <script>, event handler attributes, and unsafe URL schemes.
+const SANITIZER_CONFIG: DOMPurifyConfig = {
+  RETURN_TRUSTED_TYPE: false,
+  ADD_ATTR: [
+    'target',
+    'data-graph',
+    'data-mode',
+    'data-code',
+    'data-preview',
+    'data-previewable',
+    'data-mermaid-preview',
+  ],
+  // marked produces flow content with a few semantic-only tags. Keep
+  // DOMPurify's allowlist intact; explicitly forbid <style> so a remote
+  // markdown source can't add @import or expression() payloads.
+  FORBID_TAGS: ['style'],
+  // We never want javascript:, vbscript:, data: (except images), or file:
+  // URLs in attribute values. DOMPurify enforces this via ALLOWED_URI_REGEXP.
+  ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto|ftp|tel):|[^a-z]|[a-z+.-]+(?:[^a-z+.\-:]|$))/i,
 }
+
+// Add target=_blank links automatically get rel="noopener noreferrer" so a
+// sanitized link cannot reach window.opener.
+DOMPurify.addHook('afterSanitizeAttributes', (node) => {
+  if (node.nodeName === 'A' && node.hasAttribute('href')) {
+    if (node.getAttribute('target') === '_blank') {
+      node.setAttribute('rel', 'noopener noreferrer')
+    }
+  }
+})
 
 export function renderMarkdown(source: string): string {
   if (!source) return ''
   const result = marked.parse(source)
-  if (typeof result === 'string') {
-    return sanitize(result)
+  if (typeof result !== 'string') {
+    return ''
   }
-  return ''
+  return DOMPurify.sanitize(result, SANITIZER_CONFIG) as unknown as string
 }

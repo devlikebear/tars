@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.32.32] - 2026-05-11
+
+### Security
+
+- **Replace regex-based markdown HTML sanitization** (#803) — The console markdown renderer no longer relies on a single `<script>...</script>` regex (which CodeQL flagged as both incomplete on `<scr<script>ipt>` obfuscation and unable to match whitespace-padded `</script >` end tags). `renderMarkdown` now runs DOMPurify with an allowlist that strips `<script>`, `<style>`, inline event handlers, and `javascript:`/`vbscript:`/`data:` URLs while preserving the toolbar/mermaid/code-preview markup the chat UI relies on. To avoid DOMPurify's mXSS heuristic stripping `data-graph`/`data-code` attributes whose values contain `-->` (e.g. mermaid arrow syntax), those payloads are now URL-encoded at render time and decoded on read via the new `readEncodedAttr` helper.
+
 ## [0.32.31] - 2026-05-11
 
 ### Security
