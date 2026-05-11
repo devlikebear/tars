@@ -292,6 +292,13 @@ func isValidAgentRuntimeAgentName(name string) bool {
 	if trimmed == "" {
 		return false
 	}
+	// Reject names that are purely dots ("..", "...", etc.). `.` is allowed
+	// as part of a name (e.g. "github.com"), but a name made of nothing but
+	// dots would let filepath.Join collapse `<workspace>/agents/<name>/...`
+	// outside the agents/ directory.
+	if strings.Trim(trimmed, ".") == "" {
+		return false
+	}
 	for _, ch := range trimmed {
 		if (ch >= 'a' && ch <= 'z') ||
 			(ch >= 'A' && ch <= 'Z') ||

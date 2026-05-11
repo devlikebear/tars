@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.32.34] - 2026-05-11
+
+### Security
+
+- **Document and pin console/admin local-path API boundary** (#805) — `isValidAgentRuntimeAgentName` now rejects all-dot names ("..", "...", ...) so a subagent draft cannot save to `<workspace>/agents/../AGENT.md` (it still allows "." inside a name, e.g. `release.candidate`). Extracted `assertFilesystemBrowsePathShape` from the `/v1/filesystem/browse` GET handler so the absolute-path contract is reusable and testable, and added `internal/tarsserver/local_path_audit_test.go` to assert: (1) every local-path-touching handler (`/v1/admin/*`, `/v1/terminal/*`, agent runtime reload/restart, runtime extensions reload) sits behind `apiAdminPaths`; (2) `validateWorkspaceDirectoryName` rejects traversal, separators, and dot-only names; (3) `isValidAgentRuntimeAgentName` rejects dot-only and separator-bearing inputs; (4) `cleanSkillCreatorFilePath` rejects absolute paths and parent-escaping traversal while normalizing safe interior `..`; (5) `validateSkillCreatorName` enforces kebab-case. The 23 CodeQL `go/path-injection` alerts (#34–#56) flagging `os.*` calls downstream of these validators are dismissed as false positives with evidence pointing at this test file.
+
 ## [0.32.33] - 2026-05-11
 
 ### Security

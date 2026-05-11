@@ -1,6 +1,7 @@
 package tarsserver
 
 import (
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -10,11 +11,32 @@ import (
 	"github.com/rs/zerolog"
 )
 
+// assertFilesystemBrowsePathShape validates that a raw filesystem-browse path
+// query is either empty (falls back to home) or an absolute path. This is the
+// documented entrypoint sanitizer for the local directory enumeration surface;
+// the os.Stat/os.ReadDir calls in newFilesystemBrowseHandler always run on a
+// path that has been through this check.
+func assertFilesystemBrowsePathShape(raw string) error {
+	candidate := strings.TrimSpace(raw)
+	if candidate == "" {
+		return nil
+	}
+	if !filepath.IsAbs(candidate) {
+		return fmt.Errorf("path must be absolute")
+	}
+	return nil
+}
+
 func newFilesystemBrowseHandler(logger zerolog.Logger) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
-			dirPath := strings.TrimSpace(r.URL.Query().Get("path"))
+			rawPath := r.URL.Query().Get("path")
+			if err := assertFilesystemBrowsePathShape(rawPath); err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+				return
+			}
+			dirPath := strings.TrimSpace(rawPath)
 			if dirPath == "" {
 				home, err := os.UserHomeDir()
 				if err != nil {
@@ -22,11 +44,6 @@ func newFilesystemBrowseHandler(logger zerolog.Logger) http.Handler {
 					return
 				}
 				dirPath = home
-			}
-
-			if !filepath.IsAbs(dirPath) {
-				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "path must be absolute"})
-				return
 			}
 
 			info, err := os.Stat(dirPath)
