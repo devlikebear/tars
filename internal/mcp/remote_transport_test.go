@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync"
 	"testing"
@@ -97,8 +98,13 @@ func TestDoHTTPRPC_UsesSSEAcceptOnlyWhenRequested(t *testing.T) {
 	defer srv.Close()
 
 	client := NewClient(nil)
+	parsed, err := url.Parse(srv.URL)
+	if err != nil {
+		t.Fatalf("parse server url: %v", err)
+	}
 	ps := &pooledSession{
 		server:     ServerConfig{Name: "remote-http", URL: srv.URL},
+		serverURL:  parsed,
 		httpClient: srv.Client(),
 	}
 	req := rpcRequest{JSONRPC: "2.0", ID: 1, Method: "tools/list"}

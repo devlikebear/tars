@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -59,6 +60,7 @@ type pooledSession struct {
 	reader      *bufio.Reader
 	httpClient  *http.Client
 	sessionID   string
+	serverURL   *url.URL
 	sseBody     io.ReadCloser
 	sseReader   *bufio.Reader
 	ssePostURL  string
@@ -244,15 +246,36 @@ func (c *Client) getOrStartSession(ctx context.Context, server ServerConfig) (*p
 	}
 	switch transport {
 	case config.MCPTransportStreamableHTTP, config.MCPTransportSSE:
+		parsedURL, err := validateRemoteMCPURL(transport, server.URL)
+		if err != nil {
+			return nil, fmt.Errorf("mcp server %q: %w", server.Name, err)
+		}
+		ps.serverURL = parsedURL
 		ps.httpClient = &http.Client{}
 	case config.MCPTransportWebSocket:
-		conn, err := c.dialWebSocket(ctx, server)
+		parsedURL, err := validateRemoteMCPURL(transport, server.URL)
+		if err != nil {
+			return nil, fmt.Errorf("mcp server %q: %w", server.Name, err)
+		}
+		ps.serverURL = parsedURL
+		conn, err := c.dialWebSocket(ctx, server, parsedURL)
 		if err != nil {
 			return nil, err
 		}
 		ps.wsConn = conn
 	default:
-		cmd := exec.Command(server.Command, server.Args...)
+		allowlistSnapshot := make(map[string]struct{}, len(c.allowlist))
+		for command := range c.allowlist {
+			allowlistSnapshot[command] = struct{}{}
+		}
+		if !isCommandAllowed(server.Command, allowlistSnapshot) {
+			return nil, fmt.Errorf("mcp server %q command %q is blocked by mcp_command_allowlist_json", server.Name, strings.TrimSpace(server.Command))
+		}
+		resolvedCommand, err := exec.LookPath(strings.TrimSpace(server.Command))
+		if err != nil {
+			return nil, fmt.Errorf("resolve mcp server command %q: %w", server.Command, err)
+		}
+		cmd := exec.Command(resolvedCommand, server.Args...)
 		cmd.Stderr = io.Discard
 		stdin, err := cmd.StdinPipe()
 		if err != nil {
