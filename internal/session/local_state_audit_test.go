@@ -23,7 +23,7 @@ func TestGenerateID_HexOnly(t *testing.T) {
 			t.Fatalf("expected 16-char hex id, got %q (%d chars)", id, len(id))
 		}
 		for _, ch := range id {
-			if !((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f')) {
+			if (ch < '0' || ch > '9') && (ch < 'a' || ch > 'f') {
 				t.Fatalf("non-hex character %q in id %q", ch, id)
 			}
 		}
@@ -46,7 +46,7 @@ func TestStore_Delete_TraversalIDIsNoOp(t *testing.T) {
 	if err := os.WriteFile(outsideAbs, []byte("\n"), 0o644); err != nil {
 		t.Fatalf("seed outside file: %v", err)
 	}
-	defer os.Remove(outsideAbs)
+	t.Cleanup(func() { _ = os.Remove(outsideAbs) })
 
 	// "../ghost" is not in the index; Delete must do nothing.
 	if err := store.Delete("../ghost"); err != nil {
