@@ -527,8 +527,10 @@ func TestSkillCreatorAPI_WorkspaceCRUD_RenamedSkill(t *testing.T) {
 
 // TestResolveWorkspaceSkillPaths_RejectsTraversal ensures a malicious or
 // stale snapshot pointing outside <workspace>/skills/ falls back to the
-// legacy <workspace>/skills/<name>/ layout instead of operating on the
-// out-of-tree path.
+// `<workspace>/skills/<name>/` layout instead of operating on the
+// out-of-tree path. The resolver must always return absolute paths that
+// resolve under the validated skills root, never the attacker-controlled
+// FilePath from the snapshot.
 func TestResolveWorkspaceSkillPaths_RejectsTraversal(t *testing.T) {
 	workspaceDir := t.TempDir()
 	outside := filepath.Join(t.TempDir(), "evil", "SKILL.md")
@@ -548,11 +550,44 @@ func TestResolveWorkspaceSkillPaths_RejectsTraversal(t *testing.T) {
 			}},
 		},
 	}
-	dir, file := resolveWorkspaceSkillPaths(provider, workspaceDir, "evil")
-	wantDir := filepath.Join(workspaceDir, "skills", "evil")
+	dir, file, err := resolveWorkspaceSkillPaths(provider, workspaceDir, "evil")
+	if err != nil {
+		t.Fatalf("expected fallback to succeed, got err=%v", err)
+	}
+	skillsRoot, _ := filepath.Abs(filepath.Join(workspaceDir, "skills"))
+	wantDir := filepath.Join(skillsRoot, "evil")
 	wantFile := filepath.Join(wantDir, "SKILL.md")
 	if dir != wantDir || file != wantFile {
 		t.Fatalf("expected fallback to %q / %q, got %q / %q", wantDir, wantFile, dir, file)
+	}
+	if !strings.HasPrefix(dir, skillsRoot+string(filepath.Separator)) {
+		t.Fatalf("returned dir %q escapes skills root %q", dir, skillsRoot)
+	}
+}
+
+// TestResolveWorkspaceSkillPaths_RejectsInvalidName ensures any name that
+// would let an attacker reach outside <workspace>/skills/ via the resolver's
+// fallback path is rejected with an error rather than silently producing a
+// path. The HTTP handlers must propagate this error to a 400 — the path
+// MUST NOT reach any os.* call.
+func TestResolveWorkspaceSkillPaths_RejectsInvalidName(t *testing.T) {
+	workspaceDir := t.TempDir()
+	for _, bad := range []string{
+		"",
+		"..",
+		"../escape",
+		"foo/bar",
+		"foo\\bar",
+		"Foo",     // uppercase not allowed
+		"foo_bar", // underscore not allowed
+		strings.Repeat("a", 200),
+	} {
+		bad := bad
+		t.Run(bad, func(t *testing.T) {
+			if _, _, err := resolveWorkspaceSkillPaths(nil, workspaceDir, bad); err == nil {
+				t.Fatalf("expected rejection for name %q", bad)
+			}
+		})
 	}
 }
 
