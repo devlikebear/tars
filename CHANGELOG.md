@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.32.33] - 2026-05-11
+
+### Security
+
+- **Pin workspace file-tool path containment** (#804) — Added `internal/tool/workspace_path_test.go` to document and exercise the shared sanitizer boundary every workspace file tool (`read_file`, `write_file`, `edit_file`, `list_dir`, `project_skill`) routes through: `resolvePathWithPolicy`/`resolveWritePathWithPolicy` for the policy entrypoints, and `resolveWorkspacePath`/`resolveWorkspaceWritePath` for the workspace-anchored variants. Regression cases cover `..` traversal, absolute paths outside every `AllowedDir`, symlink escape on read, symlinked-ancestor escape on write, missing nested write targets, workspace-root-prefixed inputs, and the `policyRelativePath` display helper. The 13 CodeQL `go/path-injection` alerts (#67–#82) flagging `os.*` calls downstream of these sanitizers are now dismissed as false positives with evidence pointing at this test file.
+
 ## [0.32.32] - 2026-05-11
 
 ### Security
