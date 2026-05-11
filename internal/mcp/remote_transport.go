@@ -99,6 +99,9 @@ func (c *Client) notifyWebSocket(ctx context.Context, sess *session, req rpcRequ
 }
 
 func (c *Client) doHTTPRPC(ctx context.Context, ps *pooledSession, endpoint string, req rpcRequest, acceptSSE bool) (*rpcResponse, error) {
+	if err := assertSameOriginAsServerURL(ps, endpoint); err != nil {
+		return nil, err
+	}
 	payload, err := json.Marshal(req)
 	if err != nil {
 		return nil, fmt.Errorf("marshal rpc request: %w", err)
@@ -163,7 +166,10 @@ func (c *Client) ensureLegacySSEStream(ctx context.Context, ps *pooledSession) e
 	if ps.sseReader != nil && ps.sseBody != nil && ps.ssePostURL != "" {
 		return nil
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, ps.server.URL, nil)
+	if ps.serverURL == nil {
+		return fmt.Errorf("legacy sse session has no validated server url")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, ps.serverURL.String(), nil)
 	if err != nil {
 		return fmt.Errorf("build sse connect request: %w", err)
 	}
@@ -183,7 +189,6 @@ func (c *Client) ensureLegacySSEStream(ctx context.Context, ps *pooledSession) e
 		return fmt.Errorf("legacy sse connect status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 	reader := bufio.NewReader(resp.Body)
-	baseURL, _ := url.Parse(ps.server.URL)
 	for {
 		event, err := readSSEEvent(reader)
 		if err != nil {
@@ -191,7 +196,7 @@ func (c *Client) ensureLegacySSEStream(ctx context.Context, ps *pooledSession) e
 			return err
 		}
 		if strings.EqualFold(strings.TrimSpace(event.Event), "endpoint") {
-			postURL, err := resolveEndpointURL(baseURL, event.Data)
+			postURL, err := resolveLegacySSEPostURL(ps.serverURL, event.Data)
 			if err != nil {
 				_ = resp.Body.Close()
 				return err
@@ -292,28 +297,37 @@ func readSSEEvent(reader *bufio.Reader) (sseEvent, error) {
 	}
 }
 
-func resolveEndpointURL(base *url.URL, raw string) (string, error) {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return "", fmt.Errorf("legacy sse endpoint event missing data")
+// assertSameOriginAsServerURL guards http rpc requests against being sent to an
+// origin that differs from the configured (and pre-validated) MCP server URL.
+//
+// The endpoint argument is either ps.serverURL.String() or a pooledSession field
+// derived from it (ps.ssePostURL, which resolveLegacySSEPostURL already
+// constrains to the same origin). Re-validating here keeps the http.Client.Do
+// call site protected even if a future caller passes an unvetted string.
+func assertSameOriginAsServerURL(ps *pooledSession, endpoint string) error {
+	if ps == nil || ps.serverURL == nil {
+		return fmt.Errorf("mcp session has no validated server url")
 	}
-	endpoint, err := url.Parse(raw)
+	parsed, err := url.Parse(strings.TrimSpace(endpoint))
 	if err != nil {
-		return "", fmt.Errorf("parse legacy sse endpoint: %w", err)
+		return fmt.Errorf("parse mcp rpc endpoint: %w", err)
 	}
-	if base == nil {
-		return endpoint.String(), nil
+	if !strings.EqualFold(parsed.Scheme, ps.serverURL.Scheme) || !strings.EqualFold(parsed.Host, ps.serverURL.Host) {
+		return fmt.Errorf("mcp rpc endpoint %s://%s is outside the configured origin %s://%s", parsed.Scheme, parsed.Host, ps.serverURL.Scheme, ps.serverURL.Host)
 	}
-	return base.ResolveReference(endpoint).String(), nil
+	return nil
 }
 
-func (c *Client) dialWebSocket(ctx context.Context, server ServerConfig) (*websocket.Conn, error) {
+func (c *Client) dialWebSocket(ctx context.Context, server ServerConfig, parsedURL *url.URL) (*websocket.Conn, error) {
+	if parsedURL == nil {
+		return nil, fmt.Errorf("dial websocket mcp server %s: missing validated url", server.Name)
+	}
 	headers, err := authHeadersForServer(server)
 	if err != nil {
 		return nil, err
 	}
 	dialer := websocket.Dialer{}
-	conn, _, err := dialer.DialContext(ctx, server.URL, headers)
+	conn, _, err := dialer.DialContext(ctx, parsedURL.String(), headers)
 	if err != nil {
 		return nil, fmt.Errorf("dial websocket mcp server %s: %w", server.Name, err)
 	}

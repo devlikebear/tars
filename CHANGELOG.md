@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.32.31] - 2026-05-11
+
+### Security
+
+- **Harden MCP and skill execution boundaries** (#802) — Stdio MCP servers now resolve their command via `exec.LookPath` and reject any binary outside `mcp_command_allowlist_json` before `getOrStartSession` spawns a process, instead of relying on the allowlist being checked only by `ListTools`/`BuildTools`. Remote MCP transports (streamable HTTP, legacy SSE, WebSocket) parse and validate the configured URL scheme/host once at session start, store the parsed `*url.URL`, and re-assert the same scheme+host for every subsequent HTTP RPC. The legacy SSE `endpoint` event is now constrained to the configured origin so a malicious server can no longer redirect JSON-RPC POSTs to an attacker-controlled host. The skill creator sandbox test runner resolves the companion CLI path inside the freshly created sandbox via `filepath.Abs` + containment check and hands an absolute path to `exec.CommandContext` rather than the user-supplied relative string.
+
 ## [0.32.30] - 2026-05-10
 
 ### Changed

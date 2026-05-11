@@ -319,11 +319,20 @@ func testSkillCreatorDraft(ctx context.Context, workspaceDir string, draft skill
 	if err != nil {
 		return skillCreatorTestResponse{}, err
 	}
+	// cleanSkillCreatorFilePath already rejected traversal, and the file was
+	// written inside the freshly created sandbox targetDir. Resolve to an
+	// absolute path here and assert containment so the executable handed to
+	// exec.CommandContext is anchored inside the sandbox rather than reused
+	// from the user-controlled relative string.
+	absCLIPath, err := resolveSkillCreatorCLIExecutable(targetDir, cliPath)
+	if err != nil {
+		return skillCreatorTestResponse{}, err
+	}
 	runCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
 	command := "." + "/" + cliPath
-	cmd := exec.CommandContext(runCtx, command, strings.TrimSpace(draft.UseCase))
+	cmd := exec.CommandContext(runCtx, absCLIPath, strings.TrimSpace(draft.UseCase))
 	cmd.Dir = targetDir
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
@@ -426,6 +435,41 @@ func findSkillCreatorCLIPath(files []skillCreatorFile) (string, error) {
 		}
 	}
 	return "", fmt.Errorf("no executable companion CLI file found")
+}
+
+// resolveSkillCreatorCLIExecutable returns the absolute path of the companion
+// CLI inside the freshly created sandbox, after confirming the resolved path
+// is contained within sandboxDir and the file actually exists. This is the
+// canonical sanitizer for `exec.CommandContext` in testSkillCreatorDraft —
+// callers should never hand the user-controlled relative path directly to
+// exec.
+func resolveSkillCreatorCLIExecutable(sandboxDir, cliPath string) (string, error) {
+	if !isSkillCreatorExecutable(cliPath) {
+		return "", fmt.Errorf("companion cli %q has an unsupported extension", cliPath)
+	}
+	absSandbox, err := filepath.Abs(sandboxDir)
+	if err != nil {
+		return "", fmt.Errorf("resolve sandbox path: %w", err)
+	}
+	absCLI, err := filepath.Abs(filepath.Join(absSandbox, cliPath))
+	if err != nil {
+		return "", fmt.Errorf("resolve companion cli path: %w", err)
+	}
+	rel, err := filepath.Rel(absSandbox, absCLI)
+	if err != nil {
+		return "", fmt.Errorf("companion cli is outside the sandbox: %w", err)
+	}
+	if rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("companion cli %q escapes the sandbox", cliPath)
+	}
+	info, err := os.Stat(absCLI)
+	if err != nil {
+		return "", fmt.Errorf("stat companion cli %q: %w", cliPath, err)
+	}
+	if info.IsDir() || !info.Mode().IsRegular() {
+		return "", fmt.Errorf("companion cli %q is not a regular file", cliPath)
+	}
+	return absCLI, nil
 }
 
 func validateSkillCreatorName(name string) error {

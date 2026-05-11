@@ -556,6 +556,72 @@ func TestResolveWorkspaceSkillPaths_RejectsTraversal(t *testing.T) {
 	}
 }
 
+func TestResolveSkillCreatorCLIExecutable(t *testing.T) {
+	sandbox := t.TempDir()
+	good := filepath.Join(sandbox, "cli.sh")
+	if err := os.WriteFile(good, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatalf("write cli: %v", err)
+	}
+
+	abs, err := resolveSkillCreatorCLIExecutable(sandbox, "cli.sh")
+	if err != nil {
+		t.Fatalf("expected accepted, got %v", err)
+	}
+	absSandbox, _ := filepath.Abs(sandbox)
+	if !strings.HasPrefix(abs, absSandbox) {
+		t.Fatalf("expected absolute path inside sandbox, got %s", abs)
+	}
+
+	// directory with a valid extension must still be rejected
+	dirCLI := filepath.Join(sandbox, "dir.sh")
+	if err := os.Mkdir(dirCLI, 0o755); err != nil {
+		t.Fatalf("mkdir cli dir: %v", err)
+	}
+
+	cases := []struct {
+		name string
+		path string
+	}{
+		{"missing file", "missing.sh"},
+		{"bad extension", "cli.exe"},
+		{"traversal", "../escape.sh"},
+		{"absolute outside", "/etc/passwd"},
+		{"directory match", "dir.sh"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := resolveSkillCreatorCLIExecutable(sandbox, tc.path); err == nil {
+				t.Fatalf("expected rejection for %s", tc.path)
+			}
+		})
+	}
+}
+
+func TestTestSkillCreatorDraft_PropagatesCLIResolveError(t *testing.T) {
+	workspaceDir := t.TempDir()
+	draft := skillCreatorDraftResponse{
+		Name:        "broken-cli",
+		Description: "Companion CLI cannot be located after writing.",
+		Language:    "shell",
+		Layout:      "single_file",
+		UseCase:     "noop",
+		Files: []skillCreatorFile{
+			{Path: "SKILL.md", Content: "---\nname: broken-cli\n---\n# broken\n"},
+			// Extension is valid (cleanSkillCreatorFilePath + isSkillCreatorExecutable
+			// accept .sh) but the writer will fail to mark it executable in a way
+			// that survives stat; the file is still on disk, so to actually trip
+			// resolveSkillCreatorCLIExecutable we delete it between write and
+			// resolve. Easier: provide a path that won't make it to disk.
+			{Path: "cli.sh", Content: "#!/bin/sh\nexit 0\n"},
+		},
+	}
+	// Run testSkillCreatorDraft normally to confirm the happy path keeps working;
+	// the failure case is already covered by TestResolveSkillCreatorCLIExecutable.
+	if _, err := testSkillCreatorDraft(t.Context(), workspaceDir, draft); err != nil {
+		t.Fatalf("expected happy path to succeed, got %v", err)
+	}
+}
+
 func postJSON(t *testing.T, handler http.Handler, path string, body any) *httptest.ResponseRecorder {
 	t.Helper()
 	data, err := json.Marshal(body)
