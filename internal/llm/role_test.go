@@ -14,6 +14,7 @@ func TestAllRolesContainsExpected(t *testing.T) {
 		RoleSessionCleanup,
 		RoleAgentRuntimeDefault,
 		RoleAgentRuntimePlanner,
+		RoleGoalJudge,
 	}
 	if len(roles) != len(want) {
 		t.Fatalf("AllRoles length = %d, want %d", len(roles), len(want))

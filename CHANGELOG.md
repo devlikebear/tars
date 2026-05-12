@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.32.41] - 2026-05-12
+
+### Added
+
+- **`/goal` session-goal feature** — New `/goal <description>` slash command, REST API (`GET|PUT|DELETE /v1/admin/sessions/{id}/goal`), and goal-aware agent loop. When a main session has an active `SessionGoal`, the chat handler appends the goal to the system prompt and runs an independent judge LLM (role `goal_judge`, defaults to the standard tier) at the end of each turn: a `satisfied` verdict clears the goal automatically; a `not satisfied` verdict triggers up to `max_auto_continues` (default 3) auto-continue iterations before the goal is marked `exhausted`. Frontend additions: an amber `goal: …` chip in the chat session header (next to the cwd chip), an `onGoalEvent` SSE channel (`goal_event`: `auto_continue` / `satisfied` / `exhausted` / `judge_error`), and `getSessionGoal`/`setSessionGoal`/`clearSessionGoal` API clients. The judge fails open: any error or unparseable verdict stops the auto-continue loop without marking the goal satisfied, so a judge outage can never accidentally clear a real goal.
+
 ## [0.32.40] - 2026-05-12
 
 ### Security

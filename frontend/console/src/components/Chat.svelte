@@ -6,6 +6,7 @@
     getSession, createSession, renameSession, deleteSession, compactSession, getSessionHistory,
     getSessionTasks, listChatTools, getSessionEffectiveConfig, updateSessionLocalConfig,
     getSessionCwd, setSessionCwd,
+    getSessionGoal, setSessionGoal, clearSessionGoal,
     type SessionToolConfig,
   } from '../lib/api'
   import { formatCodexStatusLines } from '../lib/codexStatus'
@@ -13,7 +14,7 @@
   import { emptyTaskProgressSummary, planProgressPercent, summarizeTasks, type TaskProgressSummary } from '../lib/tasks'
   import { buildSessionHealthReport, emptySessionHealthReport, type SessionHealthAction, type SessionHealthInput, type SessionHealthReport } from '../lib/sessionHealth'
   import { buildWorkbenchActions, type WorkbenchAction } from '../lib/workbenchActions'
-  import type { ChatTierRecommendationRequest, PulseSnapshot, NotificationMessage, Session, SessionCwd, SessionMessage, SessionTasks } from '../lib/types'
+  import type { ChatTierRecommendationRequest, PulseSnapshot, NotificationMessage, Session, SessionCwd, SessionGoal, SessionMessage, SessionTasks } from '../lib/types'
   import type { Artifact } from '../lib/artifacts'
   import { loadChatComponent } from '../lib/chatComponents'
   import SessionSidebar from './SessionSidebar.svelte'
@@ -80,6 +81,10 @@
   let cwdState: SessionCwd | null = $state(null)
   let cwdDropdownOpen = $state(false)
   let cwdBusy = $state(false)
+
+  // Session goal HUD: mirrors GET /goal. Updated by `/goal …` slash commands
+  // and by `goal_event` SSE messages emitted from the chat loop.
+  let sessionGoal: SessionGoal | null = $state(null)
 
   // Session action state
   let renaming = $state(false)
@@ -346,6 +351,20 @@
       selectedSession = await getSession(id)
     } catch { /* ignore */ }
     void refreshCwdState(id)
+    void refreshSessionGoal(id)
+  }
+
+  async function refreshSessionGoal(id: string | null) {
+    if (!id) {
+      sessionGoal = null
+      return
+    }
+    try {
+      const resp = await getSessionGoal(id)
+      sessionGoal = resp.goal
+    } catch {
+      sessionGoal = null
+    }
   }
 
   async function refreshCwdState(id: string | null) {
@@ -358,6 +377,12 @@
     } catch {
       cwdState = null
     }
+  }
+
+  function shortGoalLabel(description: string): string {
+    const trimmed = description.trim()
+    if (trimmed.length <= 40) return trimmed
+    return trimmed.slice(0, 37).trimEnd() + '…'
   }
 
   function shortCwdLabel(path: string): string {
@@ -790,6 +815,49 @@
         }
         await transitionCwd(args)
         return
+      case 'goal':
+        if (!selectedSessionId) {
+          showFeedback('Select a session first')
+          return
+        }
+        await handleGoalSlashCommand(args)
+        return
+    }
+  }
+
+  async function handleGoalSlashCommand(args: string) {
+    if (!selectedSessionId) return
+    const trimmed = args.trim()
+    const lower = trimmed.toLowerCase()
+    try {
+      if (trimmed === '' || lower === 'status' || lower === 'show') {
+        const resp = await getSessionGoal(selectedSessionId)
+        sessionGoal = resp.goal
+        if (!resp.goal) {
+          showFeedback('goal: (none) — usage: /goal <description> | /goal clear')
+          return
+        }
+        const remaining = Math.max(resp.goal.max_auto_continues - resp.goal.auto_continue_count, 0)
+        showFeedback(
+          `goal [${resp.goal.status}]: ${resp.goal.description}\n  auto-continues remaining: ${remaining}/${resp.goal.max_auto_continues}`,
+        )
+        return
+      }
+      if (lower === 'clear' || lower === 'cancel') {
+        const resp = await clearSessionGoal(selectedSessionId)
+        sessionGoal = resp.goal
+        showFeedback('goal cleared')
+        return
+      }
+      const resp = await setSessionGoal(selectedSessionId, trimmed)
+      sessionGoal = resp.goal
+      if (resp.goal) {
+        showFeedback(`goal set: ${resp.goal.description}`)
+      } else {
+        showFeedback('goal cleared (empty description)')
+      }
+    } catch (err) {
+      showFeedback(`goal: ${err instanceof Error ? err.message : 'failed'}`)
     }
   }
 
@@ -1057,6 +1125,20 @@
               <span>{$t.chat.session.healthBadge}</span>
               <strong>{sessionHealth.badgeLabel}</strong>
             </button>
+            {#if sessionGoal}
+              <button
+                type="button"
+                class="goal-chip"
+                class:satisfied={sessionGoal.status === 'satisfied'}
+                class:exhausted={sessionGoal.status === 'exhausted'}
+                title={`goal [${sessionGoal.status}]: ${sessionGoal.description}\nauto-continues used: ${sessionGoal.auto_continue_count}/${sessionGoal.max_auto_continues}`}
+                onclick={() => void handleGoalSlashCommand('status')}
+              >
+                <span class="goal-chip-label">goal</span>
+                <strong>{shortGoalLabel(sessionGoal.description)}</strong>
+                <span class="goal-chip-counter">{sessionGoal.auto_continue_count}/{sessionGoal.max_auto_continues}</span>
+              </button>
+            {/if}
             {#if cwdState}
               <div class="cwd-hud">
                 <button
@@ -1214,6 +1296,18 @@
             }}
             onToolComplete={handleToolComplete}
             onTasksChanged={handleTasksChanged}
+            onGoalEvent={(event: { phase: string; reason?: string; goal: SessionGoal | null }) => {
+              sessionGoal = event.goal
+              if (event.phase === 'satisfied') {
+                showFeedback(`goal satisfied${event.reason ? `: ${event.reason}` : ''}`)
+              } else if (event.phase === 'exhausted') {
+                showFeedback(`goal auto-continue budget exhausted${event.reason ? ` (last: ${event.reason})` : ''}`)
+              } else if (event.phase === 'auto_continue' && event.goal) {
+                showFeedback(`goal auto-continue ${event.goal.auto_continue_count}/${event.goal.max_auto_continues}`)
+              } else if (event.phase === 'judge_error') {
+                showFeedback(`goal judge error: ${event.reason ?? 'unknown'}`)
+              }
+            }}
             onSlashCommand={handleSlashCommand}
             onDraftChange={(draft: string) => { chatDraft = draft }}
             onSessionForked={handleSessionForked}
@@ -1601,6 +1695,61 @@
   .session-health-badge.health-critical {
     border-color: color-mix(in srgb, var(--error) 50%, var(--border-subtle));
     color: var(--error);
+  }
+
+  /* Session goal chip — same dimensions as the cwd chip, but tinted amber
+     by default to flag that an autonomous goal is steering the session.
+     Switches to muted styling when the goal is satisfied or exhausted. */
+  .goal-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    max-width: 280px;
+    padding: 3px var(--space-2);
+    border: 1px solid color-mix(in srgb, var(--primary) 55%, var(--border-subtle));
+    border-radius: var(--radius-sm);
+    background: color-mix(in srgb, var(--primary) 14%, var(--surface-base));
+    color: var(--primary);
+    cursor: pointer;
+    font-size: var(--text-xs);
+    font-family: var(--font-mono);
+    transition:
+      background var(--duration-fast) var(--ease-out),
+      border-color var(--duration-fast) var(--ease-out);
+  }
+
+  .goal-chip:hover {
+    background: color-mix(in srgb, var(--primary) 22%, var(--surface-base));
+  }
+
+  .goal-chip-label {
+    color: color-mix(in srgb, var(--primary) 75%, var(--text-tertiary));
+    font-family: var(--font-display);
+  }
+
+  .goal-chip strong {
+    min-width: 0;
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .goal-chip-counter {
+    color: color-mix(in srgb, var(--primary) 70%, var(--text-tertiary));
+    font-size: 10px;
+  }
+
+  .goal-chip.satisfied {
+    border-color: var(--border-subtle);
+    background: var(--surface-base);
+    color: var(--text-tertiary);
+  }
+
+  .goal-chip.exhausted {
+    border-color: color-mix(in srgb, var(--warning, var(--primary)) 50%, var(--border-subtle));
+    background: color-mix(in srgb, var(--warning, var(--primary)) 10%, var(--surface-base));
+    color: var(--warning, var(--primary));
   }
 
   /* Active-cwd HUD: chip mirrors the health badge dimensions so the

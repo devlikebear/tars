@@ -951,6 +951,8 @@ func newSessionAPIHandlerFullWithLocalSkills(store *session.Store, logger zerolo
 				return
 			}
 			http.NotFound(w, r)
+		case len(pathParts) == 2 && pathParts[1] == "goal":
+			handleSessionGoal(w, r, reqStore, sessionID)
 		default:
 			http.NotFound(w, r)
 		}

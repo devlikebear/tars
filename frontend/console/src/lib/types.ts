@@ -579,6 +579,17 @@ export type SessionStyleResponse = {
   preview: string[]
 }
 
+export type SessionGoalStatus = 'active' | 'satisfied' | 'exhausted'
+
+export type SessionGoal = {
+  description: string
+  created_at: string
+  max_auto_continues: number
+  auto_continue_count: number
+  last_judged_at?: string
+  status: SessionGoalStatus
+}
+
 export type Session = {
   id: string
   title: string
@@ -593,6 +604,7 @@ export type Session = {
   style_control?: SessionStyleControl
   archived_at?: string
   pinned_at?: string
+  goal?: SessionGoal | null
   created_at: string
   updated_at: string
 }
@@ -755,6 +767,10 @@ export type ChatEvent = {
   task_completed?: number
   task_cancelled?: number
   plan_goal?: string
+  // goal_event fields — emitted by the chat goal hook to keep the session
+  // goal chip in sync (auto_continue/satisfied/exhausted/judge_error/cleared).
+  reason?: string
+  goal?: SessionGoal | null
   // done event usage
   usage?: {
     input_tokens: number

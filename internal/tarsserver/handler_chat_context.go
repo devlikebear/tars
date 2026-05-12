@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -43,6 +44,7 @@ type chatRunState struct {
 	llmResolution         llm.TierResolution
 	tierRecommendation    chatTierRecommendationState
 	sessionStyle          sessionStyleValues
+	sessionGoal           *session.SessionGoal
 }
 
 func decodeChatRequestPayload(w http.ResponseWriter, r *http.Request) (chatRequestPayload, bool) {
@@ -174,6 +176,11 @@ func buildSessionChatRunState(
 		sessionStyle = effectiveSessionStyle(deps.tooling.StyleDefaults, sess.StyleControl)
 		systemPrompt += formatSessionStylePrompt(sessionStyle, sess.AutomationConsent)
 	}
+	var sessionGoal *session.SessionGoal
+	if sessErr == nil && sess.Goal.IsActive() {
+		sessionGoal = sess.Goal
+		systemPrompt += formatSessionGoalPrompt(sessionGoal)
+	}
 	if hint := formatChatSubagentMentionHint(subagentMentions); hint != "" {
 		systemPrompt += hint
 	}
@@ -213,7 +220,33 @@ func buildSessionChatRunState(
 		llmResolution:         llmResolution,
 		tierRecommendation:    tierRecommendation,
 		sessionStyle:          sessionStyle,
+		sessionGoal:           sessionGoal,
 	}, nil
+}
+
+// formatSessionGoalPrompt produces the system-prompt section that surfaces
+// the active session goal to the LLM. Returns an empty string when goal is
+// nil so callers can use it unconditionally.
+func formatSessionGoalPrompt(goal *session.SessionGoal) string {
+	if !goal.IsActive() {
+		return ""
+	}
+	budget := goal.MaxAutoContinues - goal.AutoContinueCount
+	if budget < 0 {
+		budget = 0
+	}
+	var b strings.Builder
+	b.WriteString("\n\n## Active Session Goal\n")
+	b.WriteString(strings.TrimSpace(goal.Description))
+	b.WriteString("\n\nKeep working toward this goal across turns without waiting for the user. ")
+	b.WriteString("Once you are confident it is satisfied, say so plainly in your final reply — an independent judge will verify and clear the goal. ")
+	b.WriteString("If the goal is not yet satisfied, continue making concrete progress on the next step rather than asking for confirmation.\n")
+	b.WriteString("Auto-continue budget remaining: ")
+	b.WriteString(strconv.Itoa(budget))
+	b.WriteString("/")
+	b.WriteString(strconv.Itoa(goal.MaxAutoContinues))
+	b.WriteString("\n")
+	return b.String()
 }
 
 func prepareChatRunState(r *http.Request, req chatRequestPayload, deps chatHandlerDeps) (chatRunState, int, string, error) {

@@ -60,11 +60,13 @@ func executeChatLoop(
 	ctx = tool.WithLineEmitter(ctx, stream)
 
 	deps.logger.Debug().Str("session_id", state.sessionID).Int("messages", len(state.llmMessages)).Msg("llm chat call start")
+	onTurnEnd := buildGoalAwareTurnEndHook(deps, state, stream)
 	chatResp, err := loop.Run(ctx, state.llmMessages, agent.RunOptions{
 		MaxIterations: deps.maxIters,
 		Tools:         state.injectedSchemas,
 		BlockedTools:  state.blockedTools,
 		ToolChoice:    state.toolChoice,
+		OnTurnEnd:     onTurnEnd,
 		OnDelta: func(text string) {
 			if text == "" {
 				return

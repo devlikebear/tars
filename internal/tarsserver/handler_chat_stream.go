@@ -174,6 +174,24 @@ func (s *chatStreamWriter) tasksChanged(st session.SessionTasks) {
 	s.send(payload)
 }
 
+// goalEvent broadcasts a session-goal state change (auto-continue tick,
+// satisfied, exhausted, or cleared) so the console can update the goal chip
+// without polling the admin API.
+func (s *chatStreamWriter) goalEvent(phase, reason string, goal *session.SessionGoal) {
+	payload := map[string]any{
+		"type":       "goal_event",
+		"session_id": s.sessionID,
+		"phase":      phase,
+	}
+	if strings.TrimSpace(reason) != "" {
+		payload["reason"] = reason
+	}
+	if goal != nil {
+		payload["goal"] = goal
+	}
+	s.send(payload)
+}
+
 func (s *chatStreamWriter) cancelled() {
 	s.send(map[string]string{
 		"type":       "cancelled",

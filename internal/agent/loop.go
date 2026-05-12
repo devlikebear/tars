@@ -71,6 +71,13 @@ type RunOptions struct {
 	ToolChoice       *llm.ToolChoice
 	ResponseFormat   *llm.ResponseFormat
 	AutoExpandOnce   bool
+	// OnTurnEnd is invoked when the LLM produces a turn with zero tool calls
+	// (i.e. the natural stopping point). It can request another iteration by
+	// returning a non-empty `injectInput` string, which will be appended as a
+	// user-role message and the loop will continue. Returning an empty
+	// `injectInput` lets the loop terminate as usual. Returning an error
+	// aborts the loop.
+	OnTurnEnd func(ctx context.Context, lastResp llm.ChatResponse) (injectInput string, err error)
 }
 
 func (l *Loop) Run(ctx context.Context, initial []llm.ChatMessage, opts RunOptions) (llm.ChatResponse, error) {
@@ -106,6 +113,20 @@ func (l *Loop) Run(ctx context.Context, initial []llm.ChatMessage, opts RunOptio
 
 		messages = append(messages, resp.Message)
 		if len(resp.Message.ToolCalls) == 0 {
+			if opts.OnTurnEnd != nil {
+				injectInput, hookErr := opts.OnTurnEnd(ctx, resp)
+				if hookErr != nil {
+					l.emit(ctx, Event{Type: EventLoopError, Iteration: i + 1, Err: hookErr})
+					return llm.ChatResponse{}, hookErr
+				}
+				if strings.TrimSpace(injectInput) != "" {
+					messages = append(messages, llm.ChatMessage{
+						Role:    "user",
+						Content: injectInput,
+					})
+					continue
+				}
+			}
 			l.emit(ctx, Event{Type: EventLoopEnd, Iteration: i + 1, MessageCount: len(messages)})
 			return resp, nil
 		}

@@ -94,6 +94,7 @@ import type {
   SessionWorkDirs,
   SessionCwd,
   SessionEffectiveConfig,
+  SessionGoal,
   UsageToday,
   CodexUsageResponse,
   LogsResponse,
@@ -732,6 +733,38 @@ export async function setSessionCwd(sessionId: string, current: string): Promise
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ current }),
   })
+}
+
+export async function getSessionGoal(sessionId: string): Promise<{ goal: SessionGoal | null }> {
+  return requestJSON<{ goal: SessionGoal | null }>(
+    `/v1/admin/sessions/${encodeURIComponent(sessionId)}/goal`,
+  )
+}
+
+export async function setSessionGoal(
+  sessionId: string,
+  description: string,
+  maxAutoContinues?: number,
+): Promise<{ goal: SessionGoal | null }> {
+  const body: Record<string, unknown> = { description }
+  if (typeof maxAutoContinues === 'number' && maxAutoContinues > 0) {
+    body.max_auto_continues = maxAutoContinues
+  }
+  return requestJSON<{ goal: SessionGoal | null }>(
+    `/v1/admin/sessions/${encodeURIComponent(sessionId)}/goal`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    },
+  )
+}
+
+export async function clearSessionGoal(sessionId: string): Promise<{ goal: SessionGoal | null }> {
+  return requestJSON<{ goal: SessionGoal | null }>(
+    `/v1/admin/sessions/${encodeURIComponent(sessionId)}/goal`,
+    { method: 'DELETE' },
+  )
 }
 
 export async function getSessionEffectiveConfig(sessionId: string): Promise<SessionEffectiveConfig> {
