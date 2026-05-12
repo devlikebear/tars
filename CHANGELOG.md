@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.32.39] - 2026-05-12
+
+### Security
+
+- **Pin loopback-only cookie boundary** — Added `internal/tarsserver/handler_auth_loopback_cookie_test.go` to document and pin the trust boundary for the two intentional `Secure: false` cookie writes (`writeSessionCookie`/`writeClearSessionCookie` loopback branches). The audit asserts (1) every loopback Host literal (`127.0.0.1`, `localhost`, `[::1]`, with and without ports, case-insensitive) is the only configuration where `evaluateLoginRequest` returns `CookieSecure: false`, and (2) every non-loopback Host — public IP/DNS, RFC1918, Tailscale `.ts.net`, with or without TLS — must either be rejected outright or be granted `CookieSecure: true`. `shouldClearSecureCookie` is also verified to mirror the login decision so a logout cookie cannot strand a Secure session cookie on the user. The two CodeQL `go/cookie-secure-not-set` alerts (#100, #101) flagging the loopback fallback are dismissed as false positives with evidence pointing at this audit file.
+
 ## [0.32.38] - 2026-05-12
 
 ### Security
