@@ -72,7 +72,7 @@ func (t *Tracker) Analytics(days int) (Analytics, error) {
 	if t == nil {
 		return Analytics{}, fmt.Errorf("usage tracker is nil")
 	}
-	days = clampAnalyticsDays(days)
+	days = capAnalyticsDays(clampAnalyticsDays(days))
 	now := t.nowFn().UTC()
 	start := dayStartUTC(now).AddDate(0, 0, -(days - 1))
 
@@ -117,6 +117,28 @@ func (t *Tracker) Analytics(days int) (Analytics, error) {
 
 func normalizeAnalyticsDays(days int) int {
 	return clampAnalyticsDays(days)
+}
+
+// analyticsDaysHardCap is the maximum window length we ever materialize a
+// per-day accumulator slice for. clampAnalyticsDays already constrains the
+// admin/console-facing surface to one of {7, 30, 90}; this constant exists so
+// the `make([]..., 0, days)` in Analytics() has a verifiable static upper bound
+// even if a future caller forgets to call clampAnalyticsDays first.
+const analyticsDaysHardCap = 90
+
+// capAnalyticsDays is the last barrier between any int that reaches Analytics()
+// and the make([]*analyticsDailyAccumulator, 0, days) allocation. CodeQL
+// `go/uncontrolled-allocation-size` cannot prove clampAnalyticsDays's switch
+// is a sanitizer, so this helper exposes an explicit upper-bound check the
+// rule (and reviewers) can see. Negative and zero values also fall back to the
+// hard cap rather than producing a degenerate zero-length window, mirroring
+// the "always show *something*" contract clampAnalyticsDays already follows
+// for the admin-facing inputs.
+func capAnalyticsDays(days int) int {
+	if days < 1 || days > analyticsDaysHardCap {
+		return analyticsDaysHardCap
+	}
+	return days
 }
 
 func clampAnalyticsDays(days int) int {

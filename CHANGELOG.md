@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.32.38] - 2026-05-12
+
+### Security
+
+- **Pin static upper bound on analytics window allocation** — `Tracker.Analytics` now routes `days` through `capAnalyticsDays(clampAnalyticsDays(days))` immediately before `make([]*analyticsDailyAccumulator, 0, days)`. `clampAnalyticsDays` already returns one of {7, 30, 90}, but CodeQL `go/uncontrolled-allocation-size` cannot prove the switch is a sanitizer; `capAnalyticsDays` exposes the literal `analyticsDaysHardCap = 90` upper bound the rule (and reviewers) can see, and falls back to the cap for any out-of-range input. `TestCapAnalyticsDays` exercises both branches directly and asserts the cap is a no-op for every value `clampAnalyticsDays` can return. Resolves CodeQL alert #85 (high, `go/uncontrolled-allocation-size`).
+
 ## [0.32.37] - 2026-05-12
 
 ### Security
