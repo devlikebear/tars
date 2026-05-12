@@ -158,3 +158,46 @@ func TestClampAnalyticsDaysBounds(t *testing.T) {
 	}
 }
 
+// TestCapAnalyticsDays pins the static upper bound on the per-day
+// accumulator slice allocation in Analytics(). CodeQL's
+// `go/uncontrolled-allocation-size` rule needs to see a literal int bound
+// flowing into make()'s capacity argument; if a future change ever lets a
+// non-clamped `days` slip through, capAnalyticsDays is the last barrier.
+func TestCapAnalyticsDays(t *testing.T) {
+	if analyticsDaysHardCap != 90 {
+		t.Fatalf("analyticsDaysHardCap drifted from 90 (current upper option in clampAnalyticsDays) to %d", analyticsDaysHardCap)
+	}
+	tests := []struct {
+		name string
+		days int
+		want int
+	}{
+		{name: "negative falls back to hard cap", days: -1, want: analyticsDaysHardCap},
+		{name: "zero falls back to hard cap", days: 0, want: analyticsDaysHardCap},
+		{name: "one passes through", days: 1, want: 1},
+		{name: "clamp output 7 passes through", days: 7, want: 7},
+		{name: "clamp output 30 passes through", days: 30, want: 30},
+		{name: "exactly hard cap passes through", days: 90, want: 90},
+		{name: "above hard cap is capped", days: 91, want: analyticsDaysHardCap},
+		{name: "huge int is capped", days: int(^uint(0) >> 1), want: analyticsDaysHardCap},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := capAnalyticsDays(tt.days); got != tt.want {
+				t.Fatalf("capAnalyticsDays(%d) = %d, want %d", tt.days, got, tt.want)
+			}
+		})
+	}
+	// Every value clampAnalyticsDays can return must satisfy the hard cap so
+	// the cap is a no-op for the in-spec path, not an unintended truncation.
+	for _, candidate := range []int{-1, 0, 1, 7, 30, 90, 1 << 30} {
+		clamped := clampAnalyticsDays(candidate)
+		if clamped < 1 || clamped > analyticsDaysHardCap {
+			t.Fatalf("clampAnalyticsDays(%d)=%d violates [1,%d]", candidate, clamped, analyticsDaysHardCap)
+		}
+		if got := capAnalyticsDays(clamped); got != clamped {
+			t.Fatalf("capAnalyticsDays(clampAnalyticsDays(%d))=%d should be no-op, want %d", candidate, got, clamped)
+		}
+	}
+}
+
