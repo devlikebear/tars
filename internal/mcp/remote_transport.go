@@ -99,17 +99,22 @@ func (c *Client) notifyWebSocket(ctx context.Context, sess *session, req rpcRequ
 }
 
 func (c *Client) doHTTPRPC(ctx context.Context, ps *pooledSession, endpoint string, req rpcRequest, acceptSSE bool) (*rpcResponse, error) {
-	if err := assertSameOriginAsServerURL(ps, endpoint); err != nil {
+	pinned, err := pinEndpointToServerOrigin(ps, endpoint)
+	if err != nil {
 		return nil, err
 	}
 	payload, err := json.Marshal(req)
 	if err != nil {
 		return nil, fmt.Errorf("marshal rpc request: %w", err)
 	}
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(payload))
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, pinned.String(), bytes.NewReader(payload))
 	if err != nil {
 		return nil, fmt.Errorf("build http rpc request: %w", err)
 	}
+	// Re-pin the request URL to the *url.URL whose Scheme and Host originate from
+	// the validated ps.serverURL. http.NewRequestWithContext re-parses the string,
+	// which strips the dataflow link CodeQL needs to clear go/request-forgery.
+	httpReq.URL = pinned
 	httpReq.Header.Set("Content-Type", "application/json")
 	accept := "application/json"
 	if acceptSSE {
@@ -297,25 +302,35 @@ func readSSEEvent(reader *bufio.Reader) (sseEvent, error) {
 	}
 }
 
-// assertSameOriginAsServerURL guards http rpc requests against being sent to an
+// pinEndpointToServerOrigin guards http rpc requests against being sent to an
 // origin that differs from the configured (and pre-validated) MCP server URL.
 //
 // The endpoint argument is either ps.serverURL.String() or a pooledSession field
 // derived from it (ps.ssePostURL, which resolveLegacySSEPostURL already
-// constrains to the same origin). Re-validating here keeps the http.Client.Do
-// call site protected even if a future caller passes an unvetted string.
-func assertSameOriginAsServerURL(ps *pooledSession, endpoint string) error {
+// constrains to the same origin). After verifying the parsed endpoint shares
+// origin with ps.serverURL, this returns a *url.URL whose Scheme and Host are
+// copied from ps.serverURL — never from the endpoint string. Callers MUST use
+// the returned URL (not the original endpoint string) so the http.Client.Do
+// destination is structurally anchored to validated config rather than to
+// whatever an upstream caller passed in.
+func pinEndpointToServerOrigin(ps *pooledSession, endpoint string) (*url.URL, error) {
 	if ps == nil || ps.serverURL == nil {
-		return fmt.Errorf("mcp session has no validated server url")
+		return nil, fmt.Errorf("mcp session has no validated server url")
 	}
 	parsed, err := url.Parse(strings.TrimSpace(endpoint))
 	if err != nil {
-		return fmt.Errorf("parse mcp rpc endpoint: %w", err)
+		return nil, fmt.Errorf("parse mcp rpc endpoint: %w", err)
 	}
 	if !strings.EqualFold(parsed.Scheme, ps.serverURL.Scheme) || !strings.EqualFold(parsed.Host, ps.serverURL.Host) {
-		return fmt.Errorf("mcp rpc endpoint %s://%s is outside the configured origin %s://%s", parsed.Scheme, parsed.Host, ps.serverURL.Scheme, ps.serverURL.Host)
+		return nil, fmt.Errorf("mcp rpc endpoint %s://%s is outside the configured origin %s://%s", parsed.Scheme, parsed.Host, ps.serverURL.Scheme, ps.serverURL.Host)
 	}
-	return nil
+	pinned := *ps.serverURL
+	pinned.Path = parsed.Path
+	pinned.RawPath = parsed.RawPath
+	pinned.RawQuery = parsed.RawQuery
+	pinned.Fragment = parsed.Fragment
+	pinned.RawFragment = parsed.RawFragment
+	return &pinned, nil
 }
 
 func (c *Client) dialWebSocket(ctx context.Context, server ServerConfig, parsedURL *url.URL) (*websocket.Conn, error) {
