@@ -953,6 +953,8 @@ func newSessionAPIHandlerFullWithLocalSkills(store *session.Store, logger zerolo
 			http.NotFound(w, r)
 		case len(pathParts) == 2 && pathParts[1] == "goal":
 			handleSessionGoal(w, r, reqStore, sessionID)
+		case len(pathParts) == 2 && pathParts[1] == "critic":
+			handleSessionCritic(w, r, reqStore, sessionID)
 		default:
 			http.NotFound(w, r)
 		}

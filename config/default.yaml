@@ -59,6 +59,7 @@ llm:
     session_cleanup: light
     agentruntime_default: standard
     agentruntime_planner: heavy
+    critic: standard
 
 automation:
   agent:

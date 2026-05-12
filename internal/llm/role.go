@@ -53,6 +53,13 @@ const (
 	// satisfied after the latest assistant turn. Light by default — a fast
 	// model is preferable for quick yes/no judgments.
 	RoleGoalJudge Role = "goal_judge"
+
+	// RoleCritic reviews a freshly-proposed or just-completed plan and
+	// returns concrete improvement feedback or an "acceptable" verdict. Used
+	// by the session-level critic agent loop (up to N iterations per plan
+	// transition). Standard by default — needs enough capability to spot
+	// non-trivial gaps but does not require heavy reasoning.
+	RoleCritic Role = "critic"
 )
 
 // AllRoles returns the exhaustive list of roles in canonical order.
@@ -69,6 +76,7 @@ func AllRoles() []Role {
 		RoleAgentRuntimeDefault,
 		RoleAgentRuntimePlanner,
 		RoleGoalJudge,
+		RoleCritic,
 	}
 }
 

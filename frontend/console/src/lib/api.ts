@@ -95,6 +95,7 @@ import type {
   SessionCwd,
   SessionEffectiveConfig,
   SessionGoal,
+  SessionCritic,
   UsageToday,
   CodexUsageResponse,
   LogsResponse,
@@ -763,6 +764,42 @@ export async function setSessionGoal(
 export async function clearSessionGoal(sessionId: string): Promise<{ goal: SessionGoal | null }> {
   return requestJSON<{ goal: SessionGoal | null }>(
     `/v1/admin/sessions/${encodeURIComponent(sessionId)}/goal`,
+    { method: 'DELETE' },
+  )
+}
+
+export async function getSessionCritic(
+  sessionId: string,
+): Promise<{ critic: SessionCritic | null }> {
+  return requestJSON<{ critic: SessionCritic | null }>(
+    `/v1/admin/sessions/${encodeURIComponent(sessionId)}/critic`,
+  )
+}
+
+export async function setSessionCritic(
+  sessionId: string,
+  enabled: boolean,
+  maxIterations?: number,
+): Promise<{ critic: SessionCritic | null }> {
+  const body: Record<string, unknown> = { enabled }
+  if (typeof maxIterations === 'number' && maxIterations > 0) {
+    body.max_iterations = maxIterations
+  }
+  return requestJSON<{ critic: SessionCritic | null }>(
+    `/v1/admin/sessions/${encodeURIComponent(sessionId)}/critic`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    },
+  )
+}
+
+export async function clearSessionCritic(
+  sessionId: string,
+): Promise<{ critic: SessionCritic | null }> {
+  return requestJSON<{ critic: SessionCritic | null }>(
+    `/v1/admin/sessions/${encodeURIComponent(sessionId)}/critic`,
     { method: 'DELETE' },
   )
 }

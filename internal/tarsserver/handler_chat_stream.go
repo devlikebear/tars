@@ -174,6 +174,25 @@ func (s *chatStreamWriter) tasksChanged(st session.SessionTasks) {
 	s.send(payload)
 }
 
+// criticEvent broadcasts a session-critic state change after a plan
+// transition: started a review, emitted feedback, accepted the plan, or
+// exhausted the iteration budget. Mirrors goalEvent so the console renders
+// it through the same SSE pipeline.
+func (s *chatStreamWriter) criticEvent(phase, reason string, critic *session.SessionCritic) {
+	payload := map[string]any{
+		"type":       "critic_event",
+		"session_id": s.sessionID,
+		"phase":      phase,
+	}
+	if strings.TrimSpace(reason) != "" {
+		payload["reason"] = reason
+	}
+	if critic != nil {
+		payload["critic"] = critic
+	}
+	s.send(payload)
+}
+
 // goalEvent broadcasts a session-goal state change (auto-continue tick,
 // satisfied, exhausted, or cleared) so the console can update the goal chip
 // without polling the admin API.

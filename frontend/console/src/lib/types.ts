@@ -590,6 +590,19 @@ export type SessionGoal = {
   status: SessionGoalStatus
 }
 
+export type SessionCriticStatus = 'idle' | 'reviewing' | 'satisfied' | 'exhausted'
+
+export type SessionCritic = {
+  enabled: boolean
+  max_iterations?: number
+  current_iteration?: number
+  status?: SessionCriticStatus
+  last_feedback?: string
+  last_trigger?: string
+  last_reviewed_plan_sig?: string
+  updated_at?: string
+}
+
 export type Session = {
   id: string
   title: string
@@ -605,6 +618,7 @@ export type Session = {
   archived_at?: string
   pinned_at?: string
   goal?: SessionGoal | null
+  critic?: SessionCritic | null
   created_at: string
   updated_at: string
 }
