@@ -6,6 +6,18 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.32.37] - 2026-05-12
+
+### Security
+
+- **Force containment on workspace skill admin paths** — `resolveWorkspaceSkillPaths` now returns `(dir, file string, err error)` and rejects any name that fails `validateSkillCreatorName` *before* building a path. Both the snapshot-match branch and the `<workspace>/skills/<name>/` fallback share one `confine()` helper that resolves an absolute `<workspace>/skills/` root and checks `filepath.Rel` does not escape it. The admin `/v1/admin/skills/{name}` handler propagates resolver errors to a 400 so the skill name can never reach `os.ReadFile`/`MkdirAll`/`WriteFile`/`Stat`/`RemoveAll` without crossing the explicit containment barrier. Added `TestResolveWorkspaceSkillPaths_RejectsInvalidName` (covers empty, `..`, traversal, slashes, mixed-case, underscore, oversize) and updated `TestResolveWorkspaceSkillPaths_RejectsTraversal` to assert the returned paths are always anchored under the absolute skills root. Resolves CodeQL `go/path-injection` alerts #89, #90, #91, #92, #93 (high).
+
+## [0.32.36] - 2026-05-12
+
+### Security
+
+- **Pin MCP HTTP RPC destination to validated origin** (#831) — Replaced `assertSameOriginAsServerURL` with `pinEndpointToServerOrigin`, which returns a `*url.URL` whose Scheme and Host are copied from the pre-validated `ps.serverURL` rather than from the caller-supplied endpoint string. `doHTTPRPC` now reassigns `httpReq.URL` to that pinned URL after `http.NewRequestWithContext` so the destination of `httpClient.Do` is structurally anchored to validated config, even though `http.NewRequestWithContext` itself re-parses from a string. This resolves CodeQL `go/request-forgery` alert #11 (critical) and added boundary coverage in `TestPinEndpointToServerOrigin` (origin pin, scheme/host rejection, query/fragment passthrough, aliasing guard).
+
 ## [0.32.35] - 2026-05-11
 
 ### Security

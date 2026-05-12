@@ -137,7 +137,12 @@ func newSkillCreatorAPIHandler(workspaceDir string, logger zerolog.Logger, submi
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 			return
 		}
-		skillDir, skillFile := resolveWorkspaceSkillPaths(provider, workspaceDir, name)
+		skillDir, skillFile, err := resolveWorkspaceSkillPaths(provider, workspaceDir, name)
+		if err != nil {
+			logger.Warn().Err(err).Str("skill", name).Msg("resolve workspace skill paths rejected")
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid skill path"})
+			return
+		}
 		switch r.Method {
 		case http.MethodGet:
 			content, err := os.ReadFile(skillFile)
@@ -487,39 +492,64 @@ func validateSkillCreatorName(name string) error {
 // it on disk. After renaming the frontmatter (e.g. `claude-code-cli` →
 // `claude-code-cli2`) the two diverge, and a naive `<workspace>/skills/<name>/`
 // lookup 404s. So when the extensions snapshot has a workspace-source skill
-// matching `name`, we use its actual `FilePath`. We still confine the result
-// to `<workspace>/skills/` to prevent path traversal via a malicious snapshot.
+// matching `name`, we use its actual `FilePath`.
 //
-// When no snapshot match is found we fall back to `<workspace>/skills/<name>/`,
-// which is what newly created skills (PUT to a not-yet-existing name) need.
-func resolveWorkspaceSkillPaths(provider extensionsProvider, workspaceDir, name string) (string, string) {
-	legacyDir := filepath.Join(workspaceDir, "skills", name)
-	legacyFile := filepath.Join(legacyDir, "SKILL.md")
-	if provider == nil {
-		return legacyDir, legacyFile
+// In both the snapshot-match path and the `<workspace>/skills/<name>/` fallback,
+// the returned directory and file are required to resolve under the absolute
+// `<workspace>/skills/` root. The containment check is rerun on every call so
+// CodeQL `go/path-injection` can see a single explicit barrier between the
+// caller-supplied `name` and the `os.*` operations that consume these paths.
+// Callers MUST check `err` and bail before touching the filesystem; this is
+// why callers cannot accept the legacy two-value form.
+func resolveWorkspaceSkillPaths(provider extensionsProvider, workspaceDir, name string) (string, string, error) {
+	cleanName := strings.TrimSpace(name)
+	if err := validateSkillCreatorName(cleanName); err != nil {
+		return "", "", err
 	}
 	skillsRoot, err := filepath.Abs(filepath.Join(workspaceDir, "skills"))
 	if err != nil {
-		return legacyDir, legacyFile
+		return "", "", fmt.Errorf("resolve skills root: %w", err)
 	}
-	for _, def := range provider.Snapshot().Skills {
-		if def.Name != name || def.Source != skill.SourceWorkspace {
-			continue
+	confine := func(absDir, absFile string) (string, string, error) {
+		relDir, err := filepath.Rel(skillsRoot, absDir)
+		if err != nil || relDir == "." || relDir == ".." || strings.HasPrefix(relDir, ".."+string(filepath.Separator)) {
+			return "", "", fmt.Errorf("skill path %q escapes %q", absDir, skillsRoot)
 		}
-		if strings.TrimSpace(def.FilePath) == "" {
-			continue
+		relFile, err := filepath.Rel(skillsRoot, absFile)
+		if err != nil || relFile == "." || relFile == ".." || strings.HasPrefix(relFile, ".."+string(filepath.Separator)) {
+			return "", "", fmt.Errorf("skill file %q escapes %q", absFile, skillsRoot)
 		}
-		absPath, err := filepath.Abs(def.FilePath)
-		if err != nil {
-			continue
-		}
-		rel, err := filepath.Rel(skillsRoot, absPath)
-		if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-			continue
-		}
-		return filepath.Dir(absPath), absPath
+		return absDir, absFile, nil
 	}
-	return legacyDir, legacyFile
+
+	if provider != nil {
+		for _, def := range provider.Snapshot().Skills {
+			if def.Name != cleanName || def.Source != skill.SourceWorkspace {
+				continue
+			}
+			if strings.TrimSpace(def.FilePath) == "" {
+				continue
+			}
+			absPath, err := filepath.Abs(def.FilePath)
+			if err != nil {
+				continue
+			}
+			dir, file, err := confine(filepath.Dir(absPath), absPath)
+			if err != nil {
+				continue
+			}
+			return dir, file, nil
+		}
+	}
+
+	// Fallback for newly created skills (PUT to a not-yet-existing name).
+	// `cleanName` has already passed validateSkillCreatorName (kebab-case,
+	// no separators, no traversal), and we still re-confine the joined path
+	// to skillsRoot so a future relaxation of the name pattern cannot
+	// silently break this boundary.
+	absDir := filepath.Join(skillsRoot, cleanName)
+	absFile := filepath.Join(absDir, "SKILL.md")
+	return confine(absDir, absFile)
 }
 
 func normalizeSkillCreatorLanguage(language string) (string, error) {
