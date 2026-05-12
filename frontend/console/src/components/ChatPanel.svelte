@@ -2,7 +2,7 @@
   import { onMount, onDestroy, tick } from 'svelte'
   import { t } from '../i18n'
   import { streamChat, cancelChat, getSessionHistory, renameSession, streamEvents, listChatFileMentions, listAgentRuntimeSubagents, listSkills, listChatTools, getSessionEffectiveConfig, forkSessionFromMessage } from '../lib/api'
-  import type { AgentRuntimeSubagent, ChatAttachment, ChatEvent, ChatTier, ChatTierRecommendationRequest, CommandDef, Session, SessionMessage, SkillDef } from '../lib/types'
+  import type { AgentRuntimeSubagent, ChatAttachment, ChatEvent, ChatTier, ChatTierRecommendationRequest, CommandDef, Session, SessionGoal, SessionMessage, SkillDef } from '../lib/types'
   import { extractArtifact, extractArtifactsFromHistory, mergeArtifact, type Artifact } from '../lib/artifacts'
   import { buildTierRecommendation, tierRecommendationPayload, type TierRecommendation } from '../lib/tierRecommendation'
   import {
@@ -68,6 +68,13 @@
     onSlashCommand?: (command: string, args: string) => void | Promise<void>
     onDraftChange?: (draft: string) => void
     onSessionForked?: (session: Session) => void
+    onGoalEvent?: (event: GoalEventInfo) => void
+  }
+
+  type GoalEventInfo = {
+    phase: string
+    reason?: string
+    goal: SessionGoal | null
   }
 
   type TasksSummary = {
@@ -79,7 +86,7 @@
     plan_goal?: string
   }
 
-  let { sessionId, initialPrompt, autoSend, onSessionChange, onArtifactsChange, onContextInfo, onToolComplete, onSessionReady, onArtifactOpen, onTasksChanged, onSlashCommand, onDraftChange, onSessionForked }: Props = $props()
+  let { sessionId, initialPrompt, autoSend, onSessionChange, onArtifactsChange, onContextInfo, onToolComplete, onSessionReady, onArtifactOpen, onTasksChanged, onSlashCommand, onDraftChange, onSessionForked, onGoalEvent }: Props = $props()
 
   let artifacts: Artifact[] = $state([])
 
@@ -575,6 +582,13 @@
           completed: event.task_completed ?? 0,
           cancelled: event.task_cancelled ?? 0,
           plan_goal: event.plan_goal,
+        })
+        break
+      case 'goal_event':
+        onGoalEvent?.({
+          phase: typeof event.phase === 'string' ? event.phase : '',
+          reason: typeof event.reason === 'string' ? event.reason : undefined,
+          goal: (event.goal ?? null) as SessionGoal | null,
         })
         break
       case 'done': {

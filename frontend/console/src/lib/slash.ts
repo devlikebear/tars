@@ -131,6 +131,13 @@ const BUILTIN_SLASH_COMMANDS: SlashCommandCandidate[] = [
     title: 'Active CWD',
     description: 'Show or switch the active working directory: /cwd | /cwd list | /cwd <path>.',
   },
+  {
+    kind: 'builtin',
+    id: 'goal',
+    command: 'goal',
+    title: 'Session Goal',
+    description: 'Set/clear an autonomous session goal: /goal <description> | /goal clear | /goal status.',
+  },
 ]
 
 export function builtinSlashCommandId(command: string): string {

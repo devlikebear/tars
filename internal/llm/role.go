@@ -48,6 +48,11 @@ const (
 	// RoleAgentRuntimePlanner is reserved for planner-style agents that benefit
 	// from heavy reasoning.
 	RoleAgentRuntimePlanner Role = "agentruntime_planner"
+
+	// RoleGoalJudge classifies whether a session's active goal has been
+	// satisfied after the latest assistant turn. Light by default — a fast
+	// model is preferable for quick yes/no judgments.
+	RoleGoalJudge Role = "goal_judge"
 )
 
 // AllRoles returns the exhaustive list of roles in canonical order.
@@ -63,6 +68,7 @@ func AllRoles() []Role {
 		RoleSessionCleanup,
 		RoleAgentRuntimeDefault,
 		RoleAgentRuntimePlanner,
+		RoleGoalJudge,
 	}
 }
 

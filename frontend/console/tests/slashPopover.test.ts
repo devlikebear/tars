@@ -19,8 +19,10 @@ test('slash registry includes first-pass composer commands', () => {
   assert.ok(commands.includes('tasks'))
   assert.ok(commands.includes('sysprompt'))
   assert.ok(commands.includes('config'))
+  assert.ok(commands.includes('goal'))
   assert.equal(builtinSlashCommandId('clear'), 'clear')
   assert.equal(builtinSlashCommandId('skill'), 'skill')
+  assert.equal(builtinSlashCommandId('goal'), 'goal')
   assert.deepEqual(parseLeadingSlashCommand('/memory search token budget'), {
     command: 'memory',
     args: 'search token budget',

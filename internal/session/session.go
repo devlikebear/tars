@@ -58,6 +58,69 @@ type SessionStyleControl struct {
 	UpdatedAt  *time.Time `json:"updated_at,omitempty"`
 }
 
+// Session goal status values.
+const (
+	SessionGoalStatusActive    = "active"
+	SessionGoalStatusSatisfied = "satisfied"
+	SessionGoalStatusExhausted = "exhausted"
+
+	DefaultGoalMaxAutoContinues = 3
+	MaxGoalMaxAutoContinues     = 20
+	MaxGoalDescriptionLen       = 2000
+)
+
+// SessionGoal captures a single active goal for a chat session. When set, the
+// chat handler appends the goal to the system prompt and runs an independent
+// judge LLM after each turn; if the judge says "not satisfied" the loop may
+// auto-continue up to MaxAutoContinues times.
+type SessionGoal struct {
+	Description       string     `json:"description"`
+	CreatedAt         time.Time  `json:"created_at"`
+	MaxAutoContinues  int        `json:"max_auto_continues"`
+	AutoContinueCount int        `json:"auto_continue_count"`
+	LastJudgedAt      *time.Time `json:"last_judged_at,omitempty"`
+	Status            string     `json:"status"`
+}
+
+// NormalizeGoal trims and clamps fields, defaulting status/max where unset.
+// Returns nil when the description is empty (treated as "no goal").
+func NormalizeGoal(goal *SessionGoal) *SessionGoal {
+	if goal == nil {
+		return nil
+	}
+	desc := strings.TrimSpace(goal.Description)
+	if desc == "" {
+		return nil
+	}
+	if len(desc) > MaxGoalDescriptionLen {
+		desc = desc[:MaxGoalDescriptionLen]
+	}
+	next := *goal
+	next.Description = desc
+	if next.MaxAutoContinues <= 0 {
+		next.MaxAutoContinues = DefaultGoalMaxAutoContinues
+	}
+	if next.MaxAutoContinues > MaxGoalMaxAutoContinues {
+		next.MaxAutoContinues = MaxGoalMaxAutoContinues
+	}
+	if next.AutoContinueCount < 0 {
+		next.AutoContinueCount = 0
+	}
+	switch strings.TrimSpace(next.Status) {
+	case SessionGoalStatusActive, SessionGoalStatusSatisfied, SessionGoalStatusExhausted:
+		next.Status = strings.TrimSpace(next.Status)
+	default:
+		next.Status = SessionGoalStatusActive
+	}
+	return &next
+}
+
+// IsActive reports whether the goal is in the active state and should be
+// surfaced to the LLM / agent loop.
+func (g *SessionGoal) IsActive() bool {
+	return g != nil && g.Status == SessionGoalStatusActive
+}
+
 func (c *SessionAutomationConsent) AllowsAutonomousMutation() bool {
 	return c != nil && c.AutonomousMutations
 }
@@ -187,6 +250,7 @@ type Session struct {
 	CurrentDir          string                    `json:"current_dir,omitempty"`
 	ArchivedAt          *time.Time                `json:"archived_at,omitempty"`
 	PinnedAt            *time.Time                `json:"pinned_at,omitempty"`
+	Goal                *SessionGoal              `json:"goal,omitempty"`
 	CreatedAt           time.Time                 `json:"created_at"`
 	UpdatedAt           time.Time                 `json:"updated_at"`
 }
@@ -975,6 +1039,102 @@ func (s *Store) SetPromptOverride(id string, override string) error {
 	sess.UpdatedAt = time.Now().UTC()
 	index[id] = sess
 	return s.saveIndex(index)
+}
+
+// ErrSessionKindUnsupported is returned by goal mutations when the session
+// kind does not permit a goal (currently only "main" kind sessions support
+// goals).
+var ErrSessionKindUnsupported = errors.New("session: kind does not support goals")
+
+// SetGoal replaces the session's active goal. Only "main" sessions are
+// permitted. Passing nil or a goal with empty description clears it.
+func (s *Store) SetGoal(id string, goal *SessionGoal) (Session, error) {
+	unlock := lockPath(s.indexPath())
+	defer unlock()
+	index, err := s.loadIndex()
+	if err != nil {
+		return Session{}, err
+	}
+	sess, ok := index[id]
+	if !ok {
+		return Session{}, ErrSessionNotFound
+	}
+	if strings.TrimSpace(sess.Kind) != "main" {
+		return Session{}, ErrSessionKindUnsupported
+	}
+	now := time.Now().UTC()
+	normalized := NormalizeGoal(goal)
+	if normalized == nil {
+		sess.Goal = nil
+	} else {
+		if normalized.CreatedAt.IsZero() {
+			normalized.CreatedAt = now
+		}
+		sess.Goal = normalized
+	}
+	sess.UpdatedAt = now
+	index[id] = sess
+	if err := s.saveIndex(index); err != nil {
+		return Session{}, err
+	}
+	return sess, nil
+}
+
+// ClearGoal removes the session's goal regardless of status. Safe to call when
+// no goal is set.
+func (s *Store) ClearGoal(id string) (Session, error) {
+	unlock := lockPath(s.indexPath())
+	defer unlock()
+	index, err := s.loadIndex()
+	if err != nil {
+		return Session{}, err
+	}
+	sess, ok := index[id]
+	if !ok {
+		return Session{}, ErrSessionNotFound
+	}
+	if sess.Goal != nil {
+		sess.Goal = nil
+		sess.UpdatedAt = time.Now().UTC()
+		index[id] = sess
+		if err := s.saveIndex(index); err != nil {
+			return Session{}, err
+		}
+	}
+	return sess, nil
+}
+
+// UpdateGoalProgress applies a mutation to the session's goal (e.g. to bump
+// AutoContinueCount or change Status). If the mutator returns nil the goal is
+// cleared. If no goal is present the call is a no-op.
+func (s *Store) UpdateGoalProgress(id string, mutate func(*SessionGoal) *SessionGoal) (Session, error) {
+	unlock := lockPath(s.indexPath())
+	defer unlock()
+	index, err := s.loadIndex()
+	if err != nil {
+		return Session{}, err
+	}
+	sess, ok := index[id]
+	if !ok {
+		return Session{}, ErrSessionNotFound
+	}
+	if sess.Goal == nil {
+		return sess, nil
+	}
+	current := *sess.Goal
+	next := mutate(&current)
+	now := time.Now().UTC()
+	if next == nil {
+		sess.Goal = nil
+	} else {
+		sess.Goal = NormalizeGoal(next)
+	}
+	sess.UpdatedAt = now
+	index[id] = sess
+	if err := s.saveIndex(index); err != nil {
+		return Session{}, err
+	}
+	return sess, nil
 }
 
 func (s *Store) SetLastCompactionMode(id string, mode string) error {
