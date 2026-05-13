@@ -29,13 +29,22 @@ type InstalledDB struct {
 type Installer struct {
 	WorkspaceDir string
 	Registry     *Registry
+	// Sources routes skill operations to the appropriate HubSource. The
+	// built-in tars-hub source is registered by NewInstaller; external
+	// hubs are added in later phases.
+	Sources *SourceRegistry
 }
 
-// NewInstaller creates an installer for the given workspace.
+// NewInstaller creates an installer for the given workspace. It registers the
+// built-in tars-hub source by default so existing call sites keep working.
 func NewInstaller(workspaceDir string) *Installer {
+	reg := NewRegistry()
+	sources := NewSourceRegistry()
+	_ = sources.Register(&TarsHubSource{Registry: reg})
 	return &Installer{
 		WorkspaceDir: workspaceDir,
-		Registry:     NewRegistry(),
+		Registry:     reg,
+		Sources:      sources,
 	}
 }
 
@@ -45,9 +54,11 @@ type InstallResult struct {
 	Sandbox        SandboxReport `json:"sandbox_report"`
 }
 
-// Install downloads and installs a skill from the registry.
-func (inst *Installer) Install(ctx context.Context, name string) (*InstallResult, error) {
-	entry, err := inst.Registry.FindByName(ctx, name)
+// Install downloads and installs a skill. The ref may be a bare name (any
+// registered source is searched) or a "<source>:<name>" pair (e.g. "openclaw:foo").
+func (inst *Installer) Install(ctx context.Context, ref string) (*InstallResult, error) {
+	sourceID, bareName := ResolveSkillRef(ref)
+	src, entry, err := inst.resolveSkillSource(ctx, sourceID, bareName)
 	if err != nil {
 		return nil, err
 	}
@@ -70,7 +81,7 @@ func (inst *Installer) Install(ctx context.Context, name string) (*InstallResult
 	if err := inst.addToDB(InstalledSkill{
 		Name:    entry.Name,
 		Version: entry.Version,
-		Source:  "tars-hub",
+		Source:  src.ID(),
 		Dir:     skillDir,
 	}); err != nil {
 		return nil, err
@@ -84,6 +95,81 @@ func (inst *Installer) Install(ctx context.Context, name string) (*InstallResult
 		}
 	}
 	return result, nil
+}
+
+// ensureSources lazily initializes the source registry when an Installer was
+// constructed without one (older tests, hand-built call sites). The default
+// registry has just the built-in tars-hub source, backed by inst.Registry so
+// the existing Registry pointer keeps controlling fetch URLs.
+func (inst *Installer) ensureSources() *SourceRegistry {
+	if inst.Sources != nil {
+		return inst.Sources
+	}
+	reg := inst.Registry
+	if reg == nil {
+		reg = NewRegistry()
+		inst.Registry = reg
+	}
+	sources := NewSourceRegistry()
+	_ = sources.Register(&TarsHubSource{Registry: reg})
+	inst.Sources = sources
+	return sources
+}
+
+// resolveSkillSource picks the HubSource to use for a skill ref.
+//
+// If sourceID is non-empty, the source must be registered; otherwise an error
+// is returned listing the known source IDs. With an empty sourceID, every
+// registered source is queried by exact name and the single hit wins. Zero
+// hits returns a not-found error; multiple hits return an ambiguity error
+// that lists each source.
+func (inst *Installer) resolveSkillSource(ctx context.Context, sourceID, bareName string) (HubSource, *RegistryEntry, error) {
+	sources := inst.ensureSources()
+	if sourceID != "" {
+		src, ok := sources.Get(sourceID)
+		if !ok {
+			return nil, nil, fmt.Errorf("hub source %q is not registered (known: %s)",
+				sourceID, strings.Join(sources.IDs(), ", "))
+		}
+		entry, err := src.FindSkillByName(ctx, bareName)
+		if err != nil {
+			return nil, nil, err
+		}
+		return src, entry, nil
+	}
+
+	type hit struct {
+		src   HubSource
+		entry *RegistryEntry
+	}
+	var hits []hit
+	var firstErr error
+	for _, src := range sources.List() {
+		entry, err := src.FindSkillByName(ctx, bareName)
+		if err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		hits = append(hits, hit{src: src, entry: entry})
+	}
+	switch len(hits) {
+	case 0:
+		if firstErr != nil {
+			return nil, nil, firstErr
+		}
+		return nil, nil, fmt.Errorf("skill %q not found in any registered hub", bareName)
+	case 1:
+		return hits[0].src, hits[0].entry, nil
+	default:
+		ids := make([]string, 0, len(hits))
+		for _, h := range hits {
+			ids = append(ids, h.src.ID())
+		}
+		return nil, nil, fmt.Errorf("skill %q is ambiguous; available in: %s (use <source>:%s to pick one)",
+			bareName, strings.Join(ids, ", "), bareName)
+	}
 }
 
 // Uninstall removes an installed skill.
@@ -180,6 +266,23 @@ func (inst *Installer) loadDB() (*InstalledDB, error) {
 	var db InstalledDB
 	if err := json.Unmarshal(data, &db); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", installedDBFile, err)
+	}
+	// Backfill legacy rows that were written before the HubSource refactor:
+	// an empty Source means the row came from the built-in tars-hub.
+	for i := range db.Skills {
+		if strings.TrimSpace(db.Skills[i].Source) == "" {
+			db.Skills[i].Source = DefaultSourceID
+		}
+	}
+	for i := range db.Plugins {
+		if strings.TrimSpace(db.Plugins[i].Source) == "" {
+			db.Plugins[i].Source = DefaultSourceID
+		}
+	}
+	for i := range db.MCPs {
+		if strings.TrimSpace(db.MCPs[i].Source) == "" {
+			db.MCPs[i].Source = DefaultSourceID
+		}
 	}
 	return &db, nil
 }
