@@ -56,12 +56,17 @@ func NewInstaller(workspaceDir string) *Installer {
 type InstallResult struct {
 	RequiresPlugin string        `json:"requires_plugin,omitempty"` // non-empty if the skill depends on a plugin
 	Sandbox        SandboxReport `json:"sandbox_report"`
+	// DryRunPreview is populated when InstallOptions.DryRun was true. In
+	// that case the workspace is untouched and Sandbox is the zero value.
+	DryRunPreview *DryRunResult `json:"dry_run_preview,omitempty"`
 }
 
 // ConfirmFn lets the caller approve or reject an external-hub install
 // after downloading + converting (but before materialize). Returning false
-// without an error aborts the install cleanly.
-type ConfirmFn func(*InstallPreview) (bool, error)
+// without an error aborts the install cleanly. The preview is the same
+// struct PreviewInstall and OnPreview surface, so the CLI can render once
+// and decide once with the same data.
+type ConfirmFn func(*DryRunResult) (bool, error)
 
 // InstallOptions controls how (and whether) Installer.InstallWithOptions
 // asks the caller for confirmation before materializing an external-hub
@@ -69,27 +74,21 @@ type ConfirmFn func(*InstallPreview) (bool, error)
 type InstallOptions struct {
 	// Yes auto-approves the install (Confirm is ignored). Used by `--yes`.
 	Yes bool
-	// Confirm receives a preview when an external-hub skill is about to be
-	// materialized. Called only for non-tars-hub sources. If nil and Yes is
-	// false, InstallWithOptions errors out instead of materializing.
+	// Confirm receives the dry-run preview when an external-hub skill is
+	// about to be materialized. Called only for non-tars-hub sources. If
+	// nil and Yes is false, InstallWithOptions errors out instead of
+	// materializing.
 	Confirm ConfirmFn
-}
-
-// InstallPreview is the payload Confirm receives. It is intentionally a
-// subset of the future Phase 3 dry-run result: enough for a yes/no prompt
-// without committing to the full preview schema yet.
-type InstallPreview struct {
-	SourceID  string
-	Entry     *RegistryEntry
-	TargetDir string
-	// FilePaths is sorted for stable rendering. The full file map is held
-	// in memory by the installer; Confirm only sees the path list.
-	FilePaths []string
-	// AdapterWarnings are human-readable notes produced during conversion
-	// (e.g. openclaw install blocks skipped).
-	AdapterWarnings []string
-	// AttributionPresent is true when an ATTRIBUTION.md will be written.
-	AttributionPresent bool
+	// DryRun runs everything Install would do up to but not including
+	// sandbox + materialize. The returned InstallResult has DryRunPreview
+	// set and a zero Sandbox report; the workspace is left untouched.
+	DryRun bool
+	// OnPreview receives the DryRunResult once it is built, regardless of
+	// whether DryRun is set. Used by the CLI to render the preview before
+	// the confirmation prompt. Called exactly once per install attempt and
+	// only for non-tars-hub sources (the built-in hub keeps the legacy
+	// no-preview flow).
+	OnPreview func(*DryRunResult)
 }
 
 // ErrInstallAborted is returned when ConfirmFn declines an install.
@@ -110,6 +109,10 @@ func (inst *Installer) Install(ctx context.Context, ref string) (*InstallResult,
 // tars-hub source keeps the legacy flow (no prompt, no preview); external
 // hubs route through the converter / license fetcher, expose adapter
 // warnings, and only materialize after explicit approval (Yes or Confirm).
+//
+// When opts.DryRun is true the function downloads + converts, surfaces the
+// preview through OnPreview, and returns early without touching disk. This
+// is the contract the CLI's `--dry-run` flag relies on.
 func (inst *Installer) InstallWithOptions(ctx context.Context, ref string, opts InstallOptions) (*InstallResult, error) {
 	sourceID, bareName := ResolveSkillRef(ref)
 	src, entry, err := inst.resolveSkillSource(ctx, sourceID, bareName)
@@ -117,44 +120,55 @@ func (inst *Installer) InstallWithOptions(ctx context.Context, ref string, opts 
 		return nil, err
 	}
 
-	files, warnings, err := inst.downloadSkillFilesFromSource(ctx, src, entry)
+	// Built-in tars-hub bypass: no preview, no prompt. Preserves the
+	// pre-federation flow that direct callers (cron, automated installs)
+	// already depend on.
+	if src.ID() == DefaultSourceID && !opts.DryRun {
+		return inst.installTarsHub(ctx, src, entry)
+	}
+
+	preview, err := inst.buildPreviewFromSource(ctx, ref, src, entry)
 	if err != nil {
 		return nil, err
 	}
+	if opts.OnPreview != nil {
+		opts.OnPreview(preview)
+	}
+	if opts.DryRun {
+		return &InstallResult{DryRunPreview: preview}, nil
+	}
 
-	skillDir := inst.skillDir(entry.Name)
-	if src.ID() != DefaultSourceID {
-		preview := &InstallPreview{
-			SourceID:           src.ID(),
-			Entry:              entry,
-			TargetDir:          skillDir,
-			FilePaths:          sortedFilePaths(files),
-			AdapterWarnings:    warnings,
-			AttributionPresent: hasAttribution(files),
+	if !opts.Yes {
+		if opts.Confirm == nil {
+			return nil, fmt.Errorf("skillhub: external-hub install requires confirmation; pass --yes, --dry-run, or supply a Confirm callback")
 		}
-		if !opts.Yes {
-			if opts.Confirm == nil {
-				return nil, fmt.Errorf("skillhub: external-hub install requires confirmation; pass --yes or supply a Confirm callback")
-			}
-			ok, err := opts.Confirm(preview)
-			if err != nil {
-				return nil, err
-			}
-			if !ok {
-				return nil, ErrInstallAborted
-			}
+		ok, err := opts.Confirm(preview)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			return nil, ErrInstallAborted
 		}
 	}
 
+	// Re-download to materialize: buildPreviewFromSource already paid the
+	// fetch cost once, so reuse those bytes by calling the same download
+	// helper again is wasteful. Instead, run the materialize path from the
+	// preview's files. We keep the bytes around in the preview because
+	// re-fetching could yield different content (commit advanced between
+	// preview and materialize), and the user just approved the *preview*.
+	files, err := inst.filesFromPreview(ctx, src, entry, preview)
+	if err != nil {
+		return nil, err
+	}
 	sandboxReport, err := inst.runSkillInstallSandbox(ctx, entry, files)
 	if err != nil {
 		return nil, err
 	}
-
+	skillDir := inst.skillDir(entry.Name)
 	if err := materializePackageFiles(skillDir, files); err != nil {
 		return nil, err
 	}
-
 	if err := inst.addToDB(InstalledSkill{
 		Name:    entry.Name,
 		Version: entry.Version,
@@ -163,14 +177,66 @@ func (inst *Installer) InstallWithOptions(ctx context.Context, ref string, opts 
 	}); err != nil {
 		return nil, err
 	}
-
-	result := &InstallResult{Sandbox: sandboxReport}
-	if entry.RequiresPlugin != "" {
-		if !inst.isPluginInstalled(entry.RequiresPlugin) {
-			result.RequiresPlugin = entry.RequiresPlugin
-		}
+	result := &InstallResult{Sandbox: sandboxReport, DryRunPreview: preview}
+	if entry.RequiresPlugin != "" && !inst.isPluginInstalled(entry.RequiresPlugin) {
+		result.RequiresPlugin = entry.RequiresPlugin
 	}
 	return result, nil
+}
+
+// installTarsHub is the original Install flow for the built-in source —
+// no preview, no confirm, materialize directly. Kept separate so the
+// external-hub path can stay focused.
+func (inst *Installer) installTarsHub(ctx context.Context, src HubSource, entry *RegistryEntry) (*InstallResult, error) {
+	files, _, err := inst.downloadSkillFilesFromSource(ctx, src, entry)
+	if err != nil {
+		return nil, err
+	}
+	sandboxReport, err := inst.runSkillInstallSandbox(ctx, entry, files)
+	if err != nil {
+		return nil, err
+	}
+	skillDir := inst.skillDir(entry.Name)
+	if err := materializePackageFiles(skillDir, files); err != nil {
+		return nil, err
+	}
+	if err := inst.addToDB(InstalledSkill{
+		Name:    entry.Name,
+		Version: entry.Version,
+		Source:  src.ID(),
+		Dir:     skillDir,
+	}); err != nil {
+		return nil, err
+	}
+	result := &InstallResult{Sandbox: sandboxReport}
+	if entry.RequiresPlugin != "" && !inst.isPluginInstalled(entry.RequiresPlugin) {
+		result.RequiresPlugin = entry.RequiresPlugin
+	}
+	return result, nil
+}
+
+// filesFromPreview re-runs the source-aware download to obtain the file
+// bodies. The preview only carries SHA256s; re-downloading is the
+// simplest correct path and matches what the user just approved (the
+// caller's mental model is "the install runs immediately after confirm").
+func (inst *Installer) filesFromPreview(ctx context.Context, src HubSource, entry *RegistryEntry, preview *DryRunResult) (map[string][]byte, error) {
+	files, _, err := inst.downloadSkillFilesFromSource(ctx, src, entry)
+	if err != nil {
+		return nil, err
+	}
+	// Verify the second download matches what the user approved. A
+	// post-approval mismatch is rare (commits between preview and
+	// confirm) but worth surfacing.
+	for _, fp := range preview.Files {
+		body, ok := files[fp.Path]
+		if !ok {
+			return nil, fmt.Errorf("post-confirm fetch dropped file %q", fp.Path)
+		}
+		if got := computeSHA256Hex(body); got != fp.SHA256 {
+			return nil, fmt.Errorf("post-confirm content for %q changed: expected sha256 %s, got %s", fp.Path, fp.SHA256, got)
+		}
+	}
+	return files, nil
 }
 
 func sortedFilePaths(files map[string][]byte) []string {

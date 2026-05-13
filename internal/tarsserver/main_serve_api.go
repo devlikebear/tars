@@ -25,6 +25,7 @@ import (
 	"github.com/devlikebear/tars/internal/remoteaccess"
 	"github.com/devlikebear/tars/internal/sessionoverride"
 	"github.com/devlikebear/tars/internal/skillhub"
+	"github.com/devlikebear/tars/internal/skillhub/sources/openclaw"
 	"github.com/devlikebear/tars/internal/tool"
 	"github.com/devlikebear/tars/internal/usage"
 	"github.com/rs/zerolog"
@@ -601,6 +602,7 @@ func buildAPIMux(
 		logger,
 	)
 	hubInstaller := skillhub.NewInstaller(cfg.WorkspaceDir)
+	_ = hubInstaller.Sources.Register(openclaw.New())
 	skillhubHandler := newSkillhubAPIHandler(hubInstaller, extensionsManager, logger)
 	skillCreatorHandler := newSkillCreatorAPIHandler(cfg.WorkspaceDir, logger, nil, extensionsManager)
 	skillExtractionHandler := newSkillExtractionAPIHandler(cfg.WorkspaceDir, sessionStore, deps.llmRouter, logger, extensionsManager)

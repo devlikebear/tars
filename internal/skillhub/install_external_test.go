@@ -55,9 +55,9 @@ func TestInstallWithOptions_ExternalHub_PromptApproved(t *testing.T) {
 	src := newExternalStub()
 	inst := newInstallerWithSource(t, src)
 
-	var previewSeen *InstallPreview
+	var previewSeen *DryRunResult
 	result, err := inst.InstallWithOptions(context.Background(), "demo:foo", InstallOptions{
-		Confirm: func(p *InstallPreview) (bool, error) {
+		Confirm: func(p *DryRunResult) (bool, error) {
 			previewSeen = p
 			return true, nil
 		},
@@ -74,8 +74,8 @@ func TestInstallWithOptions_ExternalHub_PromptApproved(t *testing.T) {
 	if previewSeen.SourceID != "demo" {
 		t.Errorf("preview source = %q, want demo", previewSeen.SourceID)
 	}
-	if !previewSeen.AttributionPresent {
-		t.Errorf("preview should advertise ATTRIBUTION.md")
+	if previewSeen.LicenseSource != AttributionFilename {
+		t.Errorf("preview should advertise ATTRIBUTION.md, got license_source=%q", previewSeen.LicenseSource)
 	}
 	if len(previewSeen.AdapterWarnings) != 1 {
 		t.Errorf("expected 1 warning, got %v", previewSeen.AdapterWarnings)
@@ -107,7 +107,7 @@ func TestInstallWithOptions_ExternalHub_PromptRejected(t *testing.T) {
 	inst := newInstallerWithSource(t, src)
 
 	_, err := inst.InstallWithOptions(context.Background(), "demo:foo", InstallOptions{
-		Confirm: func(*InstallPreview) (bool, error) { return false, nil },
+		Confirm: func(*DryRunResult) (bool, error) { return false, nil },
 	})
 	if !errors.Is(err, ErrInstallAborted) {
 		t.Fatalf("expected ErrInstallAborted, got %v", err)

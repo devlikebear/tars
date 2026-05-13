@@ -201,6 +201,130 @@ func TestSkillInstall_ExternalHubRefusesWithoutConfirmation(t *testing.T) {
 	}
 }
 
+func TestSkillInstall_DryRunTextSkipsMaterialize(t *testing.T) {
+	apiURL, rawURL, cleanup := newMockOpenclawServers(t)
+	defer cleanup()
+	workspace := t.TempDir()
+	factory := installerFactoryWithOpenclaw(apiURL, rawURL)
+
+	var stdout, stderr bytes.Buffer
+	cmd := newSkillCommandWithFactory(&stdout, &stderr, factory)
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+	cmd.SetArgs([]string{"install", "github", "--from", "openclaw", "--dry-run", "--workspace-dir", workspace})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("install --dry-run: %v", err)
+	}
+	out := stdout.String()
+	for _, want := range []string{"Install preview", "github", "openclaw", "Dry run: no files were written"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("dry-run output missing %q\n---\n%s", want, out)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(workspace, "skills", "github")); !os.IsNotExist(err) {
+		t.Errorf("workspace should be untouched after --dry-run, stat err = %v", err)
+	}
+}
+
+func TestSkillInstall_DryRunJSONFormat(t *testing.T) {
+	apiURL, rawURL, cleanup := newMockOpenclawServers(t)
+	defer cleanup()
+	workspace := t.TempDir()
+	factory := installerFactoryWithOpenclaw(apiURL, rawURL)
+
+	var stdout, stderr bytes.Buffer
+	cmd := newSkillCommandWithFactory(&stdout, &stderr, factory)
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+	cmd.SetArgs([]string{"install", "github", "--from", "openclaw", "--dry-run", "--format", "json", "--workspace-dir", workspace})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("install --dry-run --format json: %v", err)
+	}
+	if !strings.Contains(stdout.String(), `"source_id": "openclaw"`) {
+		t.Errorf("JSON output missing expected key: %s", stdout.String())
+	}
+}
+
+func TestSkillInstall_RejectsUnknownFormat(t *testing.T) {
+	apiURL, rawURL, cleanup := newMockOpenclawServers(t)
+	defer cleanup()
+	factory := installerFactoryWithOpenclaw(apiURL, rawURL)
+
+	var stdout, stderr bytes.Buffer
+	cmd := newSkillCommandWithFactory(&stdout, &stderr, factory)
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+	cmd.SetArgs([]string{"install", "github", "--from", "openclaw", "--dry-run", "--format", "yaml", "--workspace-dir", t.TempDir()})
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "--format must be text or json") {
+		t.Errorf("expected unknown-format error, got %v", err)
+	}
+}
+
+func TestRenderDryRunText_IncludesEverything(t *testing.T) {
+	p := &skillhub.DryRunResult{
+		SourceID:     "openclaw",
+		OriginalName: "github",
+		OriginalPath: "skills/github",
+		TargetDir:    "/tmp/ws/skills/github",
+		ConvertedSkill: skillhub.SkillPreview{
+			Name:          "github",
+			Description:   "Use gh",
+			Version:       "0.0.0",
+			Author:        "openclaw",
+			Tags:          []string{"github", "gh"},
+			UserInvocable: true,
+		},
+		Files: []skillhub.FilePreview{
+			{Path: "SKILL.md", Size: 100, SHA256: "deadbeef" + strings.Repeat("0", 56)},
+			{Path: "ATTRIBUTION.md", Size: 200, SHA256: "cafebabe" + strings.Repeat("0", 56), ExpectedSHA256: "different" + strings.Repeat("0", 55)},
+		},
+		AdapterWarnings:  []string{"install block skipped: brew install gh"},
+		ChecksumWarnings: []string{"checksum mismatch for ATTRIBUTION.md"},
+		LicenseLabel:     "MIT",
+		LicenseSource:    "ATTRIBUTION.md",
+	}
+	var buf bytes.Buffer
+	renderDryRunText(&buf, p, true)
+	out := buf.String()
+	for _, want := range []string{
+		"openclaw",
+		"Skill      : github",
+		"License    : MIT",
+		"Converted frontmatter:",
+		"description : Use gh",
+		"version     : 0.0.0",
+		"author      : openclaw",
+		"tags        : [github, gh]",
+		"Adapter warnings:",
+		"install block skipped",
+		"Checksum warnings:",
+		"checksum mismatch",
+		"ATTRIBUTION.md will be created",
+		"Dry run: no files were written",
+		"⚠ checksum mismatch",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("rendered output missing %q\n---\n%s", want, out)
+		}
+	}
+}
+
+func TestShortHash(t *testing.T) {
+	cases := []struct {
+		in, want string
+	}{
+		{"", ""},
+		{"abc", "abc"},
+		{"deadbeefcafebabe", "deadbeefcafe"},
+	}
+	for _, tt := range cases {
+		if got := shortHash(tt.in); got != tt.want {
+			t.Errorf("shortHash(%q) = %q, want %q", tt.in, got, tt.want)
+		}
+	}
+}
+
 // TestSkillCobra_AllSubcommandsExercise drives the real newSkillCommand
 // (cobra wiring + every callback) with a factory pointed at httptest
 // servers. It covers search/install/list/info/uninstall in one pass so the
