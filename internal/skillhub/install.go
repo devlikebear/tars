@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -35,8 +36,11 @@ type Installer struct {
 	Sources *SourceRegistry
 }
 
-// NewInstaller creates an installer for the given workspace. It registers the
-// built-in tars-hub source by default so existing call sites keep working.
+// NewInstaller creates an installer for the given workspace. It registers
+// the built-in tars-hub source so existing call sites and tests keep
+// working without modification. External hubs (openclaw, hermes, anthropic)
+// are wired by the caller — see cmd/tars and internal/tarsserver — so the
+// skillhub package does not import its own subpackages.
 func NewInstaller(workspaceDir string) *Installer {
 	reg := NewRegistry()
 	sources := NewSourceRegistry()
@@ -54,18 +58,92 @@ type InstallResult struct {
 	Sandbox        SandboxReport `json:"sandbox_report"`
 }
 
+// ConfirmFn lets the caller approve or reject an external-hub install
+// after downloading + converting (but before materialize). Returning false
+// without an error aborts the install cleanly.
+type ConfirmFn func(*InstallPreview) (bool, error)
+
+// InstallOptions controls how (and whether) Installer.InstallWithOptions
+// asks the caller for confirmation before materializing an external-hub
+// skill. Empty InstallOptions preserves the legacy Install behaviour.
+type InstallOptions struct {
+	// Yes auto-approves the install (Confirm is ignored). Used by `--yes`.
+	Yes bool
+	// Confirm receives a preview when an external-hub skill is about to be
+	// materialized. Called only for non-tars-hub sources. If nil and Yes is
+	// false, InstallWithOptions errors out instead of materializing.
+	Confirm ConfirmFn
+}
+
+// InstallPreview is the payload Confirm receives. It is intentionally a
+// subset of the future Phase 3 dry-run result: enough for a yes/no prompt
+// without committing to the full preview schema yet.
+type InstallPreview struct {
+	SourceID  string
+	Entry     *RegistryEntry
+	TargetDir string
+	// FilePaths is sorted for stable rendering. The full file map is held
+	// in memory by the installer; Confirm only sees the path list.
+	FilePaths []string
+	// AdapterWarnings are human-readable notes produced during conversion
+	// (e.g. openclaw install blocks skipped).
+	AdapterWarnings []string
+	// AttributionPresent is true when an ATTRIBUTION.md will be written.
+	AttributionPresent bool
+}
+
+// ErrInstallAborted is returned when ConfirmFn declines an install.
+var ErrInstallAborted = fmt.Errorf("skillhub: install aborted by user")
+
 // Install downloads and installs a skill. The ref may be a bare name (any
 // registered source is searched) or a "<source>:<name>" pair (e.g. "openclaw:foo").
+//
+// This is the legacy entry point: external-hub installs without explicit
+// confirmation use the auto-approve path (Yes: true) to preserve existing
+// callers that have no way to surface a prompt. CLI install grows a real
+// prompt via InstallWithOptions.
 func (inst *Installer) Install(ctx context.Context, ref string) (*InstallResult, error) {
+	return inst.InstallWithOptions(ctx, ref, InstallOptions{Yes: true})
+}
+
+// InstallWithOptions is the source-aware install entry point. The built-in
+// tars-hub source keeps the legacy flow (no prompt, no preview); external
+// hubs route through the converter / license fetcher, expose adapter
+// warnings, and only materialize after explicit approval (Yes or Confirm).
+func (inst *Installer) InstallWithOptions(ctx context.Context, ref string, opts InstallOptions) (*InstallResult, error) {
 	sourceID, bareName := ResolveSkillRef(ref)
 	src, entry, err := inst.resolveSkillSource(ctx, sourceID, bareName)
 	if err != nil {
 		return nil, err
 	}
 
-	files, err := inst.downloadSkillFiles(ctx, entry)
+	files, warnings, err := inst.downloadSkillFilesFromSource(ctx, src, entry)
 	if err != nil {
 		return nil, err
+	}
+
+	skillDir := inst.skillDir(entry.Name)
+	if src.ID() != DefaultSourceID {
+		preview := &InstallPreview{
+			SourceID:           src.ID(),
+			Entry:              entry,
+			TargetDir:          skillDir,
+			FilePaths:          sortedFilePaths(files),
+			AdapterWarnings:    warnings,
+			AttributionPresent: hasAttribution(files),
+		}
+		if !opts.Yes {
+			if opts.Confirm == nil {
+				return nil, fmt.Errorf("skillhub: external-hub install requires confirmation; pass --yes or supply a Confirm callback")
+			}
+			ok, err := opts.Confirm(preview)
+			if err != nil {
+				return nil, err
+			}
+			if !ok {
+				return nil, ErrInstallAborted
+			}
+		}
 	}
 
 	sandboxReport, err := inst.runSkillInstallSandbox(ctx, entry, files)
@@ -73,7 +151,6 @@ func (inst *Installer) Install(ctx context.Context, ref string) (*InstallResult,
 		return nil, err
 	}
 
-	skillDir := inst.skillDir(entry.Name)
 	if err := materializePackageFiles(skillDir, files); err != nil {
 		return nil, err
 	}
@@ -89,12 +166,25 @@ func (inst *Installer) Install(ctx context.Context, ref string) (*InstallResult,
 
 	result := &InstallResult{Sandbox: sandboxReport}
 	if entry.RequiresPlugin != "" {
-		// Check if the required plugin is already installed.
 		if !inst.isPluginInstalled(entry.RequiresPlugin) {
 			result.RequiresPlugin = entry.RequiresPlugin
 		}
 	}
 	return result, nil
+}
+
+func sortedFilePaths(files map[string][]byte) []string {
+	out := make([]string, 0, len(files))
+	for p := range files {
+		out = append(out, p)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func hasAttribution(files map[string][]byte) bool {
+	_, ok := files[AttributionFilename]
+	return ok
 }
 
 // ensureSources lazily initializes the source registry when an Installer was
@@ -509,6 +599,100 @@ func (inst *Installer) downloadSkillFiles(ctx context.Context, entry *RegistryEn
 	return inst.downloadVerifiedHubFiles(entry.Name, "skill", entry.Files, skillManifest, func(relPath string) ([]byte, error) {
 		return inst.Registry.FetchFile(ctx, entry, relPath)
 	})
+}
+
+// downloadSkillFilesFromSource routes skill download through the appropriate
+// HubSource. Built-in tars-hub keeps the existing manifest-with-sha256 path;
+// external hubs (CompanionFileLister implementers) discover files at fetch
+// time and optionally apply a content converter and an ATTRIBUTION.md.
+//
+// Returns the file map ready for materialize plus a list of human-readable
+// adapter warnings collected during conversion (e.g. install blocks skipped).
+func (inst *Installer) downloadSkillFilesFromSource(ctx context.Context, src HubSource, entry *RegistryEntry) (map[string][]byte, []string, error) {
+	if src == nil {
+		return nil, nil, fmt.Errorf("downloadSkillFilesFromSource: source is nil")
+	}
+	// tars-hub keeps the original path so existing manifests with sha256
+	// verification stay in effect.
+	if src.ID() == DefaultSourceID {
+		files, err := inst.downloadSkillFiles(ctx, entry)
+		return files, nil, err
+	}
+	return inst.downloadExternalSkillFiles(ctx, src, entry)
+}
+
+// downloadExternalSkillFiles handles the "no pre-declared manifest" path:
+// fetch SKILL.md, optionally convert frontmatter, discover companion files,
+// fetch each, and emit ATTRIBUTION.md from the source's LicenseFetcher.
+func (inst *Installer) downloadExternalSkillFiles(ctx context.Context, src HubSource, entry *RegistryEntry) (map[string][]byte, []string, error) {
+	rawManifest, err := src.FetchSkillContent(ctx, entry)
+	if err != nil {
+		return nil, nil, fmt.Errorf("fetch %s SKILL.md for %q: %w", src.ID(), entry.Name, err)
+	}
+
+	files := make(map[string][]byte, 4)
+	manifest := rawManifest
+	var warnings []string
+
+	if converter, ok := src.(SkillContentConverter); ok {
+		converted, convertWarnings, err := converter.ConvertSkillContent(entry, rawManifest)
+		if err != nil {
+			return nil, nil, fmt.Errorf("convert %s SKILL.md for %q: %w", src.ID(), entry.Name, err)
+		}
+		manifest = converted
+		warnings = append(warnings, convertWarnings...)
+	}
+	files[skillManifest] = manifest
+
+	if lister, ok := src.(CompanionFileLister); ok {
+		paths, err := lister.ListCompanionFiles(ctx, entry)
+		if err != nil {
+			return nil, nil, fmt.Errorf("list %s companion files for %q: %w", src.ID(), entry.Name, err)
+		}
+		for _, rel := range paths {
+			rel = strings.TrimSpace(rel)
+			if rel == "" || rel == skillManifest {
+				continue
+			}
+			body, err := src.FetchSkillFile(ctx, entry, rel)
+			if err != nil {
+				return nil, nil, fmt.Errorf("fetch %s companion %q for %q: %w", src.ID(), rel, entry.Name, err)
+			}
+			files[rel] = body
+		}
+	}
+
+	if licenser, ok := src.(LicenseFetcher); ok {
+		body, label, err := licenser.FetchLicense(ctx, entry)
+		if err != nil {
+			return nil, nil, fmt.Errorf("fetch %s license for %q: %w", src.ID(), entry.Name, err)
+		}
+		attribution, err := BuildAttribution(AttributionInput{
+			SourceID:       src.ID(),
+			OriginalName:   entry.Name,
+			OriginalURL:    entry.Path,
+			OriginalAuthor: entry.Author,
+			LicenseLabel:   label,
+			LicenseBody:    body,
+		})
+		if err != nil {
+			return nil, nil, fmt.Errorf("build %s attribution for %q: %w", src.ID(), entry.Name, err)
+		}
+		files[AttributionFilename] = attribution
+	}
+
+	return files, warnings, nil
+}
+
+// SkillFileChecksums computes sha256 hashes for every file in the map.
+// Used by the dry-run preview (Phase 3) and exposed here so the openclaw
+// adapter does not need to duplicate the helper.
+func SkillFileChecksums(files map[string][]byte) map[string]string {
+	out := make(map[string]string, len(files))
+	for path, body := range files {
+		out[path] = computeSHA256Hex(body)
+	}
+	return out
 }
 
 func (inst *Installer) downloadPluginFiles(ctx context.Context, entry *PluginEntry) (map[string][]byte, error) {

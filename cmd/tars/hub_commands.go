@@ -10,6 +10,14 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// HubInstallOptions carries the install-time flag values into the
+// hubResourceSpec.Install callback so each resource (skill / plugin / mcp)
+// can implement its own external-hub flow.
+type HubInstallOptions struct {
+	From string // --from <hub-id>; empty means "any registered source"
+	Yes  bool   // --yes auto-approves external-hub installs
+}
+
 // hubResourceSpec describes a hub-managed resource type (skill, plugin, or MCP
 // server) and the callbacks needed to wire the standard search/install/
 // uninstall/list/update/info subcommand tree.
@@ -22,12 +30,12 @@ type hubResourceSpec struct {
 	PluralNoun string
 
 	// Operation callbacks. Each receives the standard context/writer/args.
-	Search    func(ctx context.Context, stdout io.Writer, query string) error
-	Install   func(ctx context.Context, stdout, stderr io.Writer, workspaceDir, name string) error
+	Search    func(ctx context.Context, stdout io.Writer, query, from string) error
+	Install   func(ctx context.Context, stdout, stderr io.Writer, workspaceDir, name string, opts HubInstallOptions) error
 	Uninstall func(stdout, stderr io.Writer, workspaceDir, name string) error
 	List      func(stdout io.Writer, workspaceDir string) error
 	Update    func(ctx context.Context, stdout, stderr io.Writer, workspaceDir string) error
-	Info      func(ctx context.Context, stdout io.Writer, name string) error
+	Info      func(ctx context.Context, stdout io.Writer, name, from string) error
 }
 
 // newHubResourceCommand builds the full search/install/uninstall/list/update/
@@ -39,18 +47,21 @@ func newHubResourceCommand(spec hubResourceSpec, stdout, stderr io.Writer) *cobr
 	}
 	pluralNoun := spec.plural()
 
-	cmd.AddCommand(&cobra.Command{
+	searchCmd := &cobra.Command{
 		Use:   "search [query]",
 		Short: fmt.Sprintf("Search the %s registry", spec.Noun),
 		Args:  cobra.MaximumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			query := ""
-			if len(args) > 0 {
-				query = args[0]
-			}
-			return spec.Search(cmd.Context(), stdout, query)
-		},
-	})
+	}
+	var searchFrom string
+	searchCmd.Flags().StringVar(&searchFrom, "from", "", "restrict to a specific hub source (e.g. openclaw)")
+	searchCmd.RunE = func(cmd *cobra.Command, args []string) error {
+		query := ""
+		if len(args) > 0 {
+			query = args[0]
+		}
+		return spec.Search(cmd.Context(), stdout, query, searchFrom)
+	}
+	cmd.AddCommand(searchCmd)
 
 	installCmd := &cobra.Command{
 		Use:   "install <name>",
@@ -58,13 +69,20 @@ func newHubResourceCommand(spec hubResourceSpec, stdout, stderr io.Writer) *cobr
 		Args:  cobra.ExactArgs(1),
 	}
 	var installWorkspaceDir string
+	var installFrom string
+	var installYes bool
 	installCmd.Flags().StringVar(&installWorkspaceDir, "workspace-dir", defaultWorkspaceDir(), "workspace directory")
+	installCmd.Flags().StringVar(&installFrom, "from", "", "install from a specific hub source (e.g. openclaw)")
+	installCmd.Flags().BoolVarP(&installYes, "yes", "y", false, "auto-approve external-hub installs (skip the confirmation prompt)")
 	installCmd.RunE = func(cmd *cobra.Command, args []string) error {
 		dir, err := resolveWorkspaceDir(installWorkspaceDir)
 		if err != nil {
 			return err
 		}
-		return spec.Install(cmd.Context(), stdout, stderr, dir, args[0])
+		return spec.Install(cmd.Context(), stdout, stderr, dir, args[0], HubInstallOptions{
+			From: installFrom,
+			Yes:  installYes,
+		})
 	}
 	cmd.AddCommand(installCmd)
 
@@ -114,14 +132,17 @@ func newHubResourceCommand(spec hubResourceSpec, stdout, stderr io.Writer) *cobr
 	}
 	cmd.AddCommand(updateCmd)
 
-	cmd.AddCommand(&cobra.Command{
+	infoCmd := &cobra.Command{
 		Use:   "info <name>",
 		Short: fmt.Sprintf("Show detailed info about a %s in the registry", spec.Noun),
 		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return spec.Info(cmd.Context(), stdout, args[0])
-		},
-	})
+	}
+	var infoFrom string
+	infoCmd.Flags().StringVar(&infoFrom, "from", "", "look up in a specific hub source (e.g. openclaw)")
+	infoCmd.RunE = func(cmd *cobra.Command, args []string) error {
+		return spec.Info(cmd.Context(), stdout, args[0], infoFrom)
+	}
+	cmd.AddCommand(infoCmd)
 
 	return cmd
 }

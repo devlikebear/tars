@@ -17,7 +17,7 @@ func newPluginCommand(stdout, stderr io.Writer) *cobra.Command {
 		Noun:       "plugin",
 		PluralNoun: "plugins",
 
-		Search: func(ctx context.Context, stdout io.Writer, query string) error {
+		Search: func(ctx context.Context, stdout io.Writer, query, _ string) error {
 			reg := skillhub.NewRegistry()
 			results, err := reg.SearchPlugins(ctx, query)
 			if err != nil {
@@ -38,7 +38,7 @@ func newPluginCommand(stdout, stderr io.Writer) *cobra.Command {
 			return nil
 		},
 
-		Install: func(ctx context.Context, stdout, _ io.Writer, workspaceDir, name string) error {
+		Install: func(ctx context.Context, stdout, _ io.Writer, workspaceDir, name string, _ HubInstallOptions) error {
 			inst := skillhub.NewInstaller(workspaceDir)
 			if _, err := inst.InstallPlugin(ctx, name); err != nil {
 				return fmt.Errorf("install plugin %q: %w", name, err)
@@ -83,7 +83,7 @@ func newPluginCommand(stdout, stderr io.Writer) *cobra.Command {
 			return err
 		},
 
-		Info: func(ctx context.Context, stdout io.Writer, name string) error {
+		Info: func(ctx context.Context, stdout io.Writer, name, _ string) error {
 			reg := skillhub.NewRegistry()
 			entry, err := reg.FindPluginByName(ctx, name)
 			if err != nil {

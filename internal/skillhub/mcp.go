@@ -111,12 +111,16 @@ func verifyFileChecksum(content []byte, expected string) error {
 	if expected == "" {
 		return fmt.Errorf("sha256 checksum is required")
 	}
-	sum := sha256.Sum256(content)
-	actual := hex.EncodeToString(sum[:])
+	actual := computeSHA256Hex(content)
 	if actual != expected {
 		return fmt.Errorf("checksum mismatch: expected %s got %s", expected, actual)
 	}
 	return nil
+}
+
+func computeSHA256Hex(content []byte) string {
+	sum := sha256.Sum256(content)
+	return hex.EncodeToString(sum[:])
 }
 
 func materializePackageFiles(dstDir string, files map[string][]byte) error {

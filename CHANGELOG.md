@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.32.44] - 2026-05-13
+
+### Added
+
+- **openclaw skill import (skill hub federation Phase 2)** — `tars skill install --from openclaw <name>` now pulls a skill from the openclaw repo, converts its JSON-in-YAML frontmatter into TARS format, materializes both the rewritten `SKILL.md` and an `ATTRIBUTION.md` (MIT, with the original copyright and license body fetched from the openclaw LICENSE), and records the install with `source: "openclaw"` in `skillhub.json`. The CLI gains `--from <hub>` (search / install / info) and `--yes` (install), and external-hub installs route through a new `Installer.InstallWithOptions` that asks for explicit approval via a `ConfirmFn` callback before materializing files — non-interactive shells without `--yes` get a clear error. openclaw `install[]` blocks (brew / apt / npm package-manager hooks) are surfaced as `metadata.adapter_warnings.install_blocks_skipped` in the converted SKILL.md and printed in the preview but never executed. Internally, `HubSource` now has three optional capability interfaces (`SkillContentConverter`, `LicenseFetcher`, `CompanionFileLister`); the openclaw adapter implements all three and lives in `internal/skillhub/sources/openclaw/`. The wiring (which external sources auto-register with `NewInstaller`) lives in `cmd/tars/skill_installer.go` so the `skillhub` package does not import its own subpackages. hermes and Anthropic adapters land in Phase 4.
+
 ## [0.32.43] - 2026-05-13
 
 ### Added
