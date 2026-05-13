@@ -89,7 +89,7 @@ func TestSessionCriticAPI_PutGetDeleteRoundTrip(t *testing.T) {
 	}
 }
 
-func TestSessionCriticAPI_RejectsWorkerSession(t *testing.T) {
+func TestSessionCriticAPI_AcceptsWorkerSession(t *testing.T) {
 	root := t.TempDir()
 	store := session.NewStore(root)
 	worker, err := store.EnsureWorker("p1")
@@ -98,9 +98,18 @@ func TestSessionCriticAPI_RejectsWorkerSession(t *testing.T) {
 	}
 	handler := newSessionAPIHandler(store, zerolog.New(io.Discard))
 
-	rec := adminCriticRequest(t, handler, http.MethodPut, worker.ID, `{"enabled":true}`)
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400 for worker session, got %d body=%q", rec.Code, rec.Body.String())
+	rec := adminCriticRequest(t, handler, http.MethodPut, worker.ID, `{"enabled":true,"max_iterations":2}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for worker session, got %d body=%q", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		Critic *session.SessionCritic `json:"critic"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !resp.Critic.IsEnabled() || resp.Critic.MaxIterations != 2 {
+		t.Fatalf("unexpected worker critic: %+v", resp.Critic)
 	}
 }
 

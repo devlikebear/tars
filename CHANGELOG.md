@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.32.49] - 2026-05-13
+
+### Changed
+
+- **Critic agent now works in every session kind (PR-1 of 3)** — Removed the `main`-only guard from `Store.SetCritic` so the `/v1/admin/sessions/{id}/critic` API can attach a reviewer to worker, subagent, or forked sessions. New worker sessions created via `EnsureWorker` inherit the main session's critic config (Enabled + MaxIterations only — runtime fields reset to idle). Subagent sessions spawned through the agent runtime also copy their `ParentSessionID`'s critic at creation. The 400 "only main sessions support a critic agent" response from `PUT /v1/admin/sessions/{id}/critic` is gone; worker-kind PUTs now return 200 with the stored config. New `session.InheritCriticConfig` helper covers the config-only clone (disabled sources still yield nil so we never register a stub). This is purely the data-model change; the assistant-turn trigger and async execution model land in follow-up PRs.
+
 ## [0.32.48] - 2026-05-13
 
 ### Docs
