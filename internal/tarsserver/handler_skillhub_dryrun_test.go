@@ -103,3 +103,144 @@ func TestSkillhubInstall_RejectsEmptyName(t *testing.T) {
 		t.Errorf("status = %d, want 400", rec.Code)
 	}
 }
+
+// TestSkillhubSources_ReturnsRegisteredAdapters drives the new
+// /v1/hub/sources endpoint and verifies the response shape the console
+// consumes.
+func TestSkillhubSources_ReturnsRegisteredAdapters(t *testing.T) {
+	workspace := t.TempDir()
+	inst := skillhub.NewInstaller(workspace)
+	if err := inst.Sources.Register(hubStubSource{}); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+
+	handler := newSkillhubAPIHandler(inst, nil, zerolog.Nop())
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/hub/sources", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body = %s", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		Sources []map[string]any `json:"sources"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(resp.Sources) != 2 { // tars-hub (built-in) + demo
+		t.Fatalf("expected 2 sources, got %d: %v", len(resp.Sources), resp.Sources)
+	}
+	for _, s := range resp.Sources {
+		switch s["id"] {
+		case "tars-hub":
+			if s["default"] != true {
+				t.Errorf("tars-hub should be default=true: %v", s)
+			}
+		case "demo":
+			if s["external"] != true {
+				t.Errorf("demo should be external=true: %v", s)
+			}
+		}
+	}
+}
+
+// TestSkillhubSkills_FederatedSearch verifies that /v1/hub/skills returns
+// SkillSearchResult entries and respects the optional source filter.
+func TestSkillhubSkills_FederatedSearch(t *testing.T) {
+	workspace := t.TempDir()
+	inst := skillhub.NewInstaller(workspace)
+	if err := inst.Sources.Register(hubStubSource{}); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+
+	handler := newSkillhubAPIHandler(inst, nil, zerolog.Nop())
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/hub/skills", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), `"SourceID":"demo"`) {
+		t.Errorf("response missing demo source entry: %s", rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/v1/hub/skills?source=demo&q=foo", nil)
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), `"SourceID":"demo"`) {
+		t.Errorf("filtered response missing demo entry: %s", rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/v1/hub/skills?source=nope", nil)
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for unknown source, got %d", rec.Code)
+	}
+}
+
+func TestSkillhubSources_NilInstaller(t *testing.T) {
+	handler := newSkillhubAPIHandler(nil, nil, zerolog.Nop())
+	req := httptest.NewRequest(http.MethodGet, "/v1/hub/sources", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Errorf("status = %d, want 200", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), `"sources":[]`) {
+		t.Errorf("expected empty sources list, got %s", rec.Body.String())
+	}
+}
+
+func TestSkillhubSkills_NilInstaller(t *testing.T) {
+	handler := newSkillhubAPIHandler(nil, nil, zerolog.Nop())
+	req := httptest.NewRequest(http.MethodGet, "/v1/hub/skills", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Errorf("status = %d, want 200", rec.Code)
+	}
+}
+
+func TestSkillhubSources_RejectsNonGET(t *testing.T) {
+	inst := skillhub.NewInstaller(t.TempDir())
+	handler := newSkillhubAPIHandler(inst, nil, zerolog.Nop())
+	req := httptest.NewRequest(http.MethodPost, "/v1/hub/sources", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code == http.StatusOK {
+		t.Errorf("POST should not return 200")
+	}
+}
+
+func TestSkillhubSkills_RejectsNonGET(t *testing.T) {
+	inst := skillhub.NewInstaller(t.TempDir())
+	handler := newSkillhubAPIHandler(inst, nil, zerolog.Nop())
+	req := httptest.NewRequest(http.MethodDelete, "/v1/hub/skills", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code == http.StatusOK {
+		t.Errorf("DELETE should not return 200")
+	}
+}
+
+func TestHubSourceLabel(t *testing.T) {
+	cases := map[string]string{
+		"tars-hub":  "TARS Hub",
+		"openclaw":  "openclaw",
+		"hermes":    "hermes-agent",
+		"anthropic": "Anthropic skills",
+		"custom":    "custom",
+	}
+	for id, want := range cases {
+		if got := hubSourceLabel(id); got != want {
+			t.Errorf("hubSourceLabel(%q) = %q, want %q", id, got, want)
+		}
+	}
+}

@@ -1255,6 +1255,24 @@ export type Translations = {
     failedLoadExtensions: string
     failedFetchRegistry: string
     installFailed: string
+    hubSourceLabel: string
+    hubSourceAll: string
+    dryRunTitle: string
+    dryRunSource: string
+    dryRunSkill: string
+    dryRunOriginURL: string
+    dryRunOriginPath: string
+    dryRunTargetDir: string
+    dryRunLicense: string
+    dryRunConvertedFrontmatter: string
+    dryRunFiles: (count: number) => string
+    dryRunAdapterWarnings: string
+    dryRunChecksumWarnings: string
+    dryRunChecksumMismatch: string
+    dryRunAttribution: (label: string) => string
+    dryRunAttributionNote: string
+    dryRunCancel: string
+    dryRunConfirm: string
     uninstallFailed: string
     toggleFailed: string
     reloadFailed: string

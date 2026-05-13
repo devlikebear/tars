@@ -14,8 +14,11 @@ import type {
   ProvidersAPIInfo,
   ProviderModelsInfo,
   SetupStatusResponse,
+  HubDryRunResult,
   HubInstallResponse,
   HubInstalled,
+  HubSkillSearchResult,
+  HubSource,
   AgentRuntimeRun,
   AgentRuntimeRunEvent,
   AgentRuntimeProviderOverride,
@@ -1262,12 +1265,48 @@ export async function getHubInstalled(): Promise<HubInstalled> {
   return requestJSON<HubInstalled>('/v1/hub/installed')
 }
 
-export async function hubInstall(type: string, name: string): Promise<HubInstallResponse> {
+export async function hubInstall(
+  type: string,
+  name: string,
+  opts: { source?: string; yes?: boolean; dry_run?: boolean } = {},
+): Promise<HubInstallResponse> {
   return requestJSON<HubInstallResponse>('/v1/hub/install', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ type, name }),
+    body: JSON.stringify({
+      type,
+      name,
+      source: opts.source,
+      yes: opts.yes,
+      dry_run: opts.dry_run,
+    }),
   })
+}
+
+export async function getHubSources(): Promise<HubSource[]> {
+  const data = await requestJSON<{ sources: HubSource[] }>('/v1/hub/sources')
+  return data.sources ?? []
+}
+
+export async function searchHubSkills(
+  opts: { q?: string; source?: string } = {},
+): Promise<HubSkillSearchResult[]> {
+  const params = new URLSearchParams()
+  if (opts.q?.trim()) params.set('q', opts.q.trim())
+  if (opts.source?.trim()) params.set('source', opts.source.trim())
+  const qs = params.toString()
+  const data = await requestJSON<{ skills: HubSkillSearchResult[] }>(
+    `/v1/hub/skills${qs ? `?${qs}` : ''}`,
+  )
+  return data.skills ?? []
+}
+
+export async function previewHubInstall(
+  name: string,
+  source: string,
+): Promise<HubDryRunResult | null> {
+  const resp = await hubInstall('skill', name, { source, dry_run: true })
+  return resp.preview ?? null
 }
 
 export async function hubUninstall(type: string, name: string): Promise<void> {
