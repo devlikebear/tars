@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.32.48] - 2026-05-13
+
+### Docs
+
+- **Skill hub federation documentation pass** — Refreshed `docs/tutorials/14-skill-hub.md` with a Hub Federation section covering the four registered sources (`tars-hub` / `openclaw` / `hermes` / `anthropic`), the optional capability interfaces (`SkillContentConverter`, `LicenseFetcher`, `CompanionFileLister`), the external-hub install flow with `PreviewInstall` and post-confirm sha256 drift detection, license compliance automation (MIT/Apache-2.0 ATTRIBUTION.md + Proprietary block), and CLI usage examples. `docs/plugins.md` gains a short "External Hubs" subsection under "Installing From The Hub" with the same `--from <hub>` cheatsheet. `README.md` Extensibility section now lists external hubs as a first-class entry with links to the upstream repos. `GETTING_STARTED.md` Section 10 adds an "Installing from external hubs" block walking through `--dry-run`, `--format json`, `--yes`, and the Proprietary block. No code or behaviour changes; documentation only.
+
 ## [0.32.47] - 2026-05-13
 
 ### Added
