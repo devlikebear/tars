@@ -5,6 +5,8 @@ import (
 	"io"
 
 	"github.com/devlikebear/tars/internal/skillhub"
+	"github.com/devlikebear/tars/internal/skillhub/sources/anthropic"
+	"github.com/devlikebear/tars/internal/skillhub/sources/hermes"
 	"github.com/devlikebear/tars/internal/skillhub/sources/openclaw"
 )
 
@@ -32,5 +34,7 @@ func fprint(w io.Writer, a ...any) {
 func newSkillInstaller(workspaceDir string) *skillhub.Installer {
 	inst := skillhub.NewInstaller(workspaceDir)
 	_ = inst.Sources.Register(openclaw.New())
+	_ = inst.Sources.Register(hermes.New())
+	_ = inst.Sources.Register(anthropic.New())
 	return inst
 }

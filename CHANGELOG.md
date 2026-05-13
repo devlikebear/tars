@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.32.46] - 2026-05-13
+
+### Added
+
+- **hermes + Anthropic skill hub adapters (skill hub federation Phase 4)** — `tars skill install --from hermes <name>` and `--from anthropic <name>` now pull skills from `NousResearch/hermes-agent` and `anthropics/skills` respectively. The hermes adapter handles the two-level directory layout (`skills/<category>/<name>/SKILL.md`) by indexing the repo via a single recursive GitHub Trees API call and surfaces an ambiguous-name error if the same `<name>` appears in multiple categories. `metadata.hermes.tags` becomes the TARS `tags` field; `metadata.hermes.related_skills` and any other hermes-specific keys are preserved under `metadata.adapter_origin.hermes`. The Anthropic adapter handles the flat `skills/<name>/` layout and a **per-skill `LICENSE.txt`** (anthropics/skills has no repo-level LICENSE). Apache-2.0 skills materialize an ATTRIBUTION.md with a NOTICE section; the proprietary `docx`/`pdf`/`pptx`/`xlsx` skills are detected by `DetectLicenseLabel` and **refused** at the attribution layer with a clear error — TARS does not import source-available content. Both adapters auto-register in `cmd/tars/skill_installer.go` and `internal/tarsserver/main_serve_api.go`, so `tars skill search` (no `--from`) now spans all four hubs in one query.
+
 ## [0.32.45] - 2026-05-13
 
 ### Added
