@@ -198,6 +198,20 @@ tars mcp update
 
 Hub-installed skills go into `workspace/skills/`, plugins into `workspace/plugins/`, and MCP packages into `workspace/mcp-servers/`. Install and update commands track state in `workspace/skillhub.json` and report updated, skipped, and failed entries separately.
 
+### External Hubs (skill federation)
+
+`tars skill` accepts a `--from <hub>` flag to pull skills from external repos in addition to the built-in `tars-hub`. External-hub installs always download to a preview first, generate an `ATTRIBUTION.md` alongside the skill, and refuse to materialize source-available content.
+
+```bash
+tars skill search github                         # federated search across all hubs
+tars skill search --from hermes auth             # restrict to one hub
+tars skill install --from openclaw github --yes  # external install (auto-approve)
+tars skill install --from anthropic skill-creator --dry-run --format json
+tars skill install --from anthropic docx --yes   # → blocked: proprietary
+```
+
+Built-in support today: `tars-hub`, `openclaw` (steipete/openclaw), `hermes` (NousResearch/hermes-agent), `anthropic` (anthropics/skills). The console Extensions page exposes the same flow through a hub-source dropdown plus a dry-run modal showing the converted frontmatter, per-file sha256, adapter warnings, and the ATTRIBUTION notice before any file is written. Implementation lives under `internal/skillhub/sources/<id>/`; see `docs/tutorials/14-skill-hub.md` for the architecture.
+
 ## Hub MCP Package Manifest
 
 Standalone MCP packages use `tars.mcp.json`:

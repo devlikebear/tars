@@ -192,6 +192,27 @@ tars plugin install <name>
 
 Prefer a skill plus companion CLI for domain-specific workflows. Plugins are still supported for packaging skills and optional MCP server declarations, but plugin-declared MCP servers only activate when `extensions.plugins.allow_mcp_servers` is explicitly enabled.
 
+### Installing from external hubs
+
+`tars skill` federates across the built-in `tars-hub` plus three external MIT-compatible hubs (`openclaw`, `hermes`, `anthropic`). Use `--from <hub>` to install from a specific source; external installs always preview first and generate an `ATTRIBUTION.md` carrying the upstream license body.
+
+```bash
+# Search across every registered hub
+tars skill search github
+
+# Preview an external-hub install without writing files
+tars skill install github --from openclaw --dry-run
+tars skill install skill-creator --from anthropic --dry-run --format json
+
+# Materialize after reviewing the preview
+tars skill install github --from openclaw --yes
+
+# Source-available skills (Anthropic's docx/pdf/pptx/xlsx) are refused
+tars skill install docx --from anthropic --yes  # → "refusing to materialize a proprietary skill"
+```
+
+The console Extensions page exposes the same flow through a hub-source dropdown above the Hub Skills list and a dry-run modal that shows the converted frontmatter, per-file sha256, adapter warnings, and the ATTRIBUTION notice before any file is written.
+
 ## Development Setup
 
 For live frontend development with hot-reload:
