@@ -17,7 +17,7 @@ func newMCPCommand(stdout, stderr io.Writer) *cobra.Command {
 		Noun:       "MCP server",
 		PluralNoun: "MCP servers",
 
-		Search: func(ctx context.Context, stdout io.Writer, query string) error {
+		Search: func(ctx context.Context, stdout io.Writer, query, _ string) error {
 			reg := skillhub.NewRegistry()
 			results, err := reg.SearchMCPServers(ctx, query)
 			if err != nil {
@@ -38,7 +38,7 @@ func newMCPCommand(stdout, stderr io.Writer) *cobra.Command {
 			return nil
 		},
 
-		Install: func(ctx context.Context, stdout, _ io.Writer, workspaceDir, name string) error {
+		Install: func(ctx context.Context, stdout, _ io.Writer, workspaceDir, name string, _ HubInstallOptions) error {
 			inst := skillhub.NewInstaller(workspaceDir)
 			if _, err := inst.InstallMCP(ctx, name); err != nil {
 				return fmt.Errorf("install mcp server %q: %w", name, err)
@@ -83,7 +83,7 @@ func newMCPCommand(stdout, stderr io.Writer) *cobra.Command {
 			return err
 		},
 
-		Info: func(ctx context.Context, stdout io.Writer, name string) error {
+		Info: func(ctx context.Context, stdout io.Writer, name, _ string) error {
 			reg := skillhub.NewRegistry()
 			entry, err := reg.FindMCPByName(ctx, name)
 			if err != nil {

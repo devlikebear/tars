@@ -1,25 +1,36 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 
 	"github.com/devlikebear/tars/internal/skillhub"
 	"github.com/spf13/cobra"
 )
 
+// skillInstallerFactory builds an Installer for a given workspace dir.
+// Tests inject their own factory so the hub source can be pointed at
+// httptest servers; production code uses newSkillInstaller.
+type skillInstallerFactory func(workspaceDir string) *skillhub.Installer
+
 func newSkillCommand(stdout, stderr io.Writer) *cobra.Command {
+	return newSkillCommandWithFactory(stdout, stderr, newSkillInstaller)
+}
+
+func newSkillCommandWithFactory(stdout, stderr io.Writer, factory skillInstallerFactory) *cobra.Command {
 	return newHubResourceCommand(hubResourceSpec{
 		Use:        "skill",
-		Short:      "Manage skills from the TARS Hub",
+		Short:      "Manage skills from the TARS Hub or external skill hubs",
 		Noun:       "skill",
 		PluralNoun: "skills",
 
-		Search: func(ctx context.Context, stdout io.Writer, query string) error {
-			reg := skillhub.NewRegistry()
-			results, err := reg.Search(ctx, query)
+		Search: func(ctx context.Context, stdout io.Writer, query, from string) error {
+			inst := factory("")
+			results, err := inst.SearchAllSkills(ctx, query, from)
 			if err != nil {
 				return fmt.Errorf("search failed: %w", err)
 			}
@@ -27,7 +38,8 @@ func newSkillCommand(stdout, stderr io.Writer) *cobra.Command {
 				fmt.Fprintln(stdout, "No skills found.")
 				return nil
 			}
-			for _, entry := range results {
+			for _, r := range results {
+				entry := r.Entry
 				invocable := ""
 				if entry.UserInvocable {
 					invocable = " [invocable]"
@@ -36,27 +48,71 @@ func newSkillCommand(stdout, stderr io.Writer) *cobra.Command {
 				if len(entry.Tags) > 0 {
 					tags = " (" + strings.Join(entry.Tags, ", ") + ")"
 				}
-				fmt.Fprintf(stdout, "  %s@%s%s%s\n    %s\n", entry.Name, entry.Version, invocable, tags, entry.Description)
+				fprintf(stdout, "  [%s] %s@%s%s%s\n    %s\n",
+					r.SourceID, entry.Name, entry.Version, invocable, tags, entry.Description)
 			}
-			fmt.Fprintf(stdout, "\n%d skill(s) found.\n", len(results))
+			fprintf(stdout, "\n%d skill(s) found.\n", len(results))
 			return nil
 		},
 
-		Install: func(ctx context.Context, stdout, stderr io.Writer, workspaceDir, name string) error {
-			inst := skillhub.NewInstaller(workspaceDir)
-			result, err := inst.Install(ctx, name)
-			if err != nil {
-				return fmt.Errorf("install %q: %w", name, err)
+		Install: func(ctx context.Context, stdout, stderr io.Writer, workspaceDir, name string, opts HubInstallOptions) error {
+			inst := factory(workspaceDir)
+			ref := buildSkillRef(opts.From, name)
+
+			confirm := func(p *skillhub.InstallPreview) (bool, error) {
+				if !stdinIsTerminal() {
+					return false, fmt.Errorf("non-interactive shell cannot confirm external-hub install of %q; re-run with --yes", p.Entry.Name)
+				}
+				fprintf(stdout, "\n────────── Install preview ──────────\n")
+				fprintf(stdout, "Source     : %s\n", p.SourceID)
+				fprintf(stdout, "Skill      : %s\n", p.Entry.Name)
+				if u := strings.TrimSpace(p.Entry.Path); u != "" {
+					fprintf(stdout, "Source path: %s\n", u)
+				}
+				fprintf(stdout, "Target dir : %s\n", p.TargetDir)
+				fprintf(stdout, "Files (%d):\n", len(p.FilePaths))
+				for _, fp := range p.FilePaths {
+					fprintf(stdout, "  - %s\n", fp)
+				}
+				if len(p.AdapterWarnings) > 0 {
+					fprintln(stdout, "Adapter warnings:")
+					for _, w := range p.AdapterWarnings {
+						fprintf(stdout, "  ! %s\n", w)
+					}
+				}
+				if p.AttributionPresent {
+					fprintln(stdout, "ATTRIBUTION.md will be created.")
+				}
+				fprint(stdout, "\nProceed with install? [y/N] ")
+				reader := bufio.NewReader(os.Stdin)
+				resp, err := reader.ReadString('\n')
+				if err != nil && err != io.EOF {
+					return false, err
+				}
+				resp = strings.TrimSpace(strings.ToLower(resp))
+				return resp == "y" || resp == "yes", nil
 			}
-			fmt.Fprintf(stdout, "Installed skill %q to %s/skills/%s\n", name, workspaceDir, name)
+
+			result, err := inst.InstallWithOptions(ctx, ref, skillhub.InstallOptions{
+				Yes:     opts.Yes,
+				Confirm: confirm,
+			})
+			if err != nil {
+				if err == skillhub.ErrInstallAborted {
+					fprintln(stderr, "Install aborted.")
+					return nil
+				}
+				return fmt.Errorf("install %q: %w", ref, err)
+			}
+			fprintf(stdout, "Installed skill %q to %s/skills/%s\n", name, workspaceDir, name)
 			if result.RequiresPlugin != "" {
-				fmt.Fprintf(stderr, "⚠ This skill requires plugin %q. Install it with: tars plugin install %s\n", result.RequiresPlugin, result.RequiresPlugin)
+				fprintf(stderr, "⚠ This skill requires plugin %q. Install it with: tars plugin install %s\n", result.RequiresPlugin, result.RequiresPlugin)
 			}
 			return nil
 		},
 
 		Uninstall: func(stdout, _ io.Writer, workspaceDir, name string) error {
-			inst := skillhub.NewInstaller(workspaceDir)
+			inst := factory(workspaceDir)
 			if err := inst.Uninstall(name); err != nil {
 				return fmt.Errorf("uninstall %q: %w", name, err)
 			}
@@ -65,7 +121,7 @@ func newSkillCommand(stdout, stderr io.Writer) *cobra.Command {
 		},
 
 		List: func(stdout io.Writer, workspaceDir string) error {
-			inst := skillhub.NewInstaller(workspaceDir)
+			inst := factory(workspaceDir)
 			skills, err := inst.List()
 			if err != nil {
 				return err
@@ -82,7 +138,7 @@ func newSkillCommand(stdout, stderr io.Writer) *cobra.Command {
 		},
 
 		Update: func(ctx context.Context, stdout, _ io.Writer, workspaceDir string) error {
-			inst := skillhub.NewInstaller(workspaceDir)
+			inst := factory(workspaceDir)
 			result, err := inst.Update(ctx)
 			if err != nil && hubUpdateResultEmpty(result) {
 				return err
@@ -91,24 +147,48 @@ func newSkillCommand(stdout, stderr io.Writer) *cobra.Command {
 			return err
 		},
 
-		Info: func(ctx context.Context, stdout io.Writer, name string) error {
-			reg := skillhub.NewRegistry()
-			entry, err := reg.FindByName(ctx, name)
+		Info: func(ctx context.Context, stdout io.Writer, name, from string) error {
+			inst := factory("")
+			ref := buildSkillRef(from, name)
+			entry, sourceID, err := inst.LookupSkill(ctx, ref)
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(stdout, "Name:        %s\n", entry.Name)
-			fmt.Fprintf(stdout, "Version:     %s\n", entry.Version)
-			fmt.Fprintf(stdout, "Author:      %s\n", entry.Author)
-			fmt.Fprintf(stdout, "Description: %s\n", entry.Description)
-			fmt.Fprintf(stdout, "Invocable:   %v\n", entry.UserInvocable)
+			fprintf(stdout, "Source:      %s\n", sourceID)
+			fprintf(stdout, "Name:        %s\n", entry.Name)
+			fprintf(stdout, "Version:     %s\n", entry.Version)
+			fprintf(stdout, "Author:      %s\n", entry.Author)
+			fprintf(stdout, "Description: %s\n", entry.Description)
+			fprintf(stdout, "Invocable:   %v\n", entry.UserInvocable)
 			if len(entry.Tags) > 0 {
-				fmt.Fprintf(stdout, "Tags:        %s\n", strings.Join(entry.Tags, ", "))
+				fprintf(stdout, "Tags:        %s\n", strings.Join(entry.Tags, ", "))
 			}
 			if entry.RequiresPlugin != "" {
-				fmt.Fprintf(stdout, "Plugin:      %s\n", entry.RequiresPlugin)
+				fprintf(stdout, "Plugin:      %s\n", entry.RequiresPlugin)
 			}
 			return nil
 		},
 	}, stdout, stderr)
+}
+
+// buildSkillRef combines an optional `--from` flag and a bare name into the
+// "<source>:<name>" ref the installer understands. If from is empty the
+// name is returned as-is so `tars-hub:foo` calls keep working.
+func buildSkillRef(from, name string) string {
+	from = strings.TrimSpace(from)
+	if from == "" {
+		return name
+	}
+	return from + ":" + strings.TrimSpace(name)
+}
+
+// stdinIsTerminal reports whether stdin is attached to a real terminal.
+// Used to refuse external-hub installs from non-interactive shells when
+// `--yes` was not passed.
+func stdinIsTerminal() bool {
+	fi, err := os.Stdin.Stat()
+	if err != nil {
+		return false
+	}
+	return (fi.Mode() & os.ModeCharDevice) != 0
 }
