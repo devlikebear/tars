@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.32.42] - 2026-05-12
+
+### Added
+
+- **Critic agent for plan transitions** — New session-scoped critic mode that auto-reviews the main LLM's freshly proposed or just-completed plans. Toggled per main session via `PUT /v1/admin/sessions/{id}/critic` (`{enabled, max_iterations}`) and the **Critic agent** entry in the chat **Session config → Automation** panel. When enabled, `buildChatTurnEndHook` runs the critic before the goal judge: on `plan_proposed` / `plan_completed` status transitions it calls the new `RoleCritic` LLM (defaults to the standard tier) and, if the verdict is not acceptable, injects concrete feedback as a system-tone message so the chat loop auto-iterates up to `max_iterations` rounds (default 3, hard-capped at 5). When the reviewer accepts the plan or the budget is exhausted, the chain falls through to the existing `/goal` judge — so critic and goal can coexist without stacking auto-continue verdicts in a single turn. New SSE event `critic_event` (`started` / `feedback` / `satisfied` / `exhausted` / `judge_error`) lets the console surface progress without polling. Critic state (`current_iteration`, `last_feedback`, `last_reviewed_plan_sig`) is persisted on the session so a concurrent admin clear or transcript edit takes effect on the next turn. Like the goal judge, the reviewer fails open: any parse/network error stops the cycle without marking the plan acceptable.
+
 ## [0.32.41] - 2026-05-12
 
 ### Added

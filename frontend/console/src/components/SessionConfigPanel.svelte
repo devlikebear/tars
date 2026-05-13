@@ -1,12 +1,15 @@
 <script lang="ts">
   import {
+    clearSessionCritic,
     getSessionAutomationConsent,
+    getSessionCritic,
     getSessionStyle,
     listChatTools,
     listSkills,
     getSessionConfig,
     getSessionEffectiveConfig,
     promoteSessionLocalSkills,
+    setSessionCritic,
     updateSessionAutomationConsent,
     updateSessionLocalConfig,
     updateSessionStyle,
@@ -16,7 +19,7 @@
   import { buildSessionPermissionPreview, type SessionPermissionPreview } from '../lib/sessionPermissionPreview'
   import { buildSessionStylePreview, sessionStylePayload } from '../lib/sessionStyle'
   import { sortStrings } from '../lib/sort'
-  import type { CommandDef, EffectiveConfigSource, SessionAutomationConsent, SessionEffectiveConfig, SessionStyleResponse, SessionStyleValues, SkillDef } from '../lib/types'
+  import type { CommandDef, EffectiveConfigSource, SessionAutomationConsent, SessionCritic, SessionEffectiveConfig, SessionStyleResponse, SessionStyleValues, SkillDef } from '../lib/types'
 
   interface Props {
     sessionId: string
@@ -36,6 +39,8 @@
   let pendingConfig: SessionToolConfig | null = $state(null)
   let pendingPreview: SessionPermissionPreview | null = $state(null)
   let automationConsent: SessionAutomationConsent = $state({})
+  let critic: SessionCritic | null = $state(null)
+  let criticSaving = $state(false)
   let styleResponse: SessionStyleResponse = $state({
     effective: { directness: 70, humor: 20, caution: 60, autonomy: 40 },
     defaults: { directness: 70, humor: 20, caution: 60, autonomy: 40 },
@@ -230,7 +235,7 @@
   async function load() {
     loading = true
     try {
-      const [toolsResp, skillResp, configResp, automationResp, styleResp] = await Promise.all([
+      const [toolsResp, skillResp, configResp, automationResp, styleResp, criticResp] = await Promise.all([
         listChatTools(sessionId || undefined),
         listSkills(sessionId || undefined),
         sessionId ? getSessionConfig(sessionId) : Promise.resolve({} as SessionToolConfig),
@@ -242,6 +247,9 @@
               defaults: { directness: 70, humor: 20, caution: 60, autonomy: 40 },
               preview: [],
             } as SessionStyleResponse),
+        sessionId
+          ? getSessionCritic(sessionId).catch(() => ({ critic: null }))
+          : Promise.resolve({ critic: null as SessionCritic | null }),
       ])
       tools = toolsResp.tools
       skillDefs = normalizeSkillDefs(skillResp, toolsResp.skills ?? [])
@@ -253,6 +261,7 @@
       automationConsent = automationResp
       styleResponse = styleResp
       styleDraft = { ...styleResp.effective }
+      critic = criticResp.critic ?? null
 
       // Best-effort: failure to load effective config (e.g. service not
       // wired in old tests) just disables the source badges.
@@ -585,6 +594,42 @@
       { label: 'MCP enabled', items: preview.gainedMCPServers },
       { label: 'MCP disabled', items: preview.lostMCPServers },
     ].filter((row) => row.items.length > 0)
+  }
+
+  async function toggleCriticEnabled() {
+    if (!sessionId || criticSaving) return
+    criticSaving = true
+    try {
+      const willEnable = !critic?.enabled
+      if (willEnable) {
+        const resp = await setSessionCritic(sessionId, true, critic?.max_iterations || undefined)
+        critic = resp.critic
+      } else {
+        const resp = await clearSessionCritic(sessionId)
+        critic = resp.critic
+      }
+      onChange?.()
+    } catch {
+      void load()
+    } finally {
+      criticSaving = false
+    }
+  }
+
+  async function setCriticMaxIterations(value: string) {
+    if (!sessionId || criticSaving) return
+    const parsed = Number.parseInt(value, 10)
+    if (Number.isNaN(parsed) || parsed < 1) return
+    criticSaving = true
+    try {
+      const resp = await setSessionCritic(sessionId, !!critic?.enabled, parsed)
+      critic = resp.critic
+      onChange?.()
+    } catch {
+      void load()
+    } finally {
+      criticSaving = false
+    }
   }
 
   async function saveAutomationConsent(next: SessionAutomationConsent) {
@@ -1050,6 +1095,47 @@
         </label>
         {#if automationConsent.updated_at}
           <div class="automation-updated">Updated {new Date(automationConsent.updated_at).toLocaleString()}</div>
+        {/if}
+
+        <div class="automation-section-divider"></div>
+        <label class="automation-item">
+          <input
+            type="checkbox"
+            checked={!!critic?.enabled}
+            disabled={criticSaving}
+            onchange={() => { void toggleCriticEnabled() }}
+          />
+          <span>
+            <strong>Critic agent</strong>
+            <small>Plan review · auto-iterate</small>
+          </span>
+        </label>
+        {#if critic?.enabled}
+          <div class="automation-subgrid">
+            <label class="automation-field">
+              <span>Max review rounds</span>
+              <input
+                type="number"
+                min="1"
+                max="5"
+                value={critic?.max_iterations ?? 3}
+                disabled={criticSaving}
+                onchange={(event) => { void setCriticMaxIterations((event.currentTarget as HTMLInputElement).value) }}
+              />
+              <small>per plan transition</small>
+            </label>
+            {#if critic?.status && critic.status !== 'idle'}
+              <div class="automation-modes">
+                <span>Status: <strong>{critic.status}</strong></span>
+                {#if typeof critic.current_iteration === 'number'}
+                  <span>· round {critic.current_iteration}/{critic.max_iterations ?? 3}</span>
+                {/if}
+              </div>
+            {/if}
+          </div>
+        {/if}
+        {#if critic?.updated_at}
+          <div class="automation-updated">Critic updated {new Date(critic.updated_at).toLocaleString()}</div>
         {/if}
       </div>
     {:else if activeTab === 'style'}
@@ -1599,6 +1685,12 @@
 
   .automation-item-danger {
     border-left: 2px solid rgba(248, 113, 113, 0.35);
+  }
+
+  .automation-section-divider {
+    height: 1px;
+    margin: var(--space-2) 0;
+    background: var(--border-subtle);
   }
 
   .automation-subgrid {

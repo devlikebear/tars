@@ -251,6 +251,7 @@ type Session struct {
 	ArchivedAt          *time.Time                `json:"archived_at,omitempty"`
 	PinnedAt            *time.Time                `json:"pinned_at,omitempty"`
 	Goal                *SessionGoal              `json:"goal,omitempty"`
+	Critic              *SessionCritic            `json:"critic,omitempty"`
 	CreatedAt           time.Time                 `json:"created_at"`
 	UpdatedAt           time.Time                 `json:"updated_at"`
 }
@@ -457,6 +458,20 @@ func applySessionLineageDefaults(sess Session) (Session, bool) {
 			updatedAt := sess.StyleControl.UpdatedAt.UTC()
 			if !updatedAt.Equal(*sess.StyleControl.UpdatedAt) {
 				sess.StyleControl.UpdatedAt = &updatedAt
+				changed = true
+			}
+		}
+	}
+	if sess.Critic != nil {
+		normalized := NormalizeCritic(sess.Critic)
+		if !criticEqual(sess.Critic, normalized) {
+			sess.Critic = normalized
+			changed = true
+		}
+		if sess.Critic != nil && sess.Critic.UpdatedAt != nil {
+			updatedAt := sess.Critic.UpdatedAt.UTC()
+			if !updatedAt.Equal(*sess.Critic.UpdatedAt) {
+				sess.Critic.UpdatedAt = &updatedAt
 				changed = true
 			}
 		}
@@ -1100,6 +1115,74 @@ func (s *Store) ClearGoal(id string) (Session, error) {
 		if err := s.saveIndex(index); err != nil {
 			return Session{}, err
 		}
+	}
+	return sess, nil
+}
+
+// SetCritic replaces the session's critic configuration. Only "main" sessions
+// are permitted (matching the SetGoal policy — critic relies on a single
+// plan-transition stream and worker sessions have no user-visible plan). A
+// nil critic clears the configuration entirely.
+func (s *Store) SetCritic(id string, critic *SessionCritic) (Session, error) {
+	unlock := lockPath(s.indexPath())
+	defer unlock()
+	index, err := s.loadIndex()
+	if err != nil {
+		return Session{}, err
+	}
+	sess, ok := index[id]
+	if !ok {
+		return Session{}, ErrSessionNotFound
+	}
+	if strings.TrimSpace(sess.Kind) != "main" {
+		return Session{}, ErrSessionKindUnsupported
+	}
+	now := time.Now().UTC()
+	if critic == nil {
+		sess.Critic = nil
+	} else {
+		next := *critic
+		next.UpdatedAt = &now
+		sess.Critic = NormalizeCritic(&next)
+	}
+	sess.UpdatedAt = now
+	index[id] = sess
+	if err := s.saveIndex(index); err != nil {
+		return Session{}, err
+	}
+	return sess, nil
+}
+
+// UpdateCriticProgress applies a mutation to the session's critic state. The
+// mutator may return nil to clear runtime state (typically only useful in
+// tests). A no-op when no critic config is present.
+func (s *Store) UpdateCriticProgress(id string, mutate func(*SessionCritic) *SessionCritic) (Session, error) {
+	unlock := lockPath(s.indexPath())
+	defer unlock()
+	index, err := s.loadIndex()
+	if err != nil {
+		return Session{}, err
+	}
+	sess, ok := index[id]
+	if !ok {
+		return Session{}, ErrSessionNotFound
+	}
+	if sess.Critic == nil {
+		return sess, nil
+	}
+	current := *sess.Critic
+	next := mutate(&current)
+	now := time.Now().UTC()
+	if next == nil {
+		sess.Critic = nil
+	} else {
+		next.UpdatedAt = &now
+		sess.Critic = NormalizeCritic(next)
+	}
+	sess.UpdatedAt = now
+	index[id] = sess
+	if err := s.saveIndex(index); err != nil {
+		return Session{}, err
 	}
 	return sess, nil
 }

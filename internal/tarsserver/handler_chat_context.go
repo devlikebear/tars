@@ -45,6 +45,7 @@ type chatRunState struct {
 	tierRecommendation    chatTierRecommendationState
 	sessionStyle          sessionStyleValues
 	sessionGoal           *session.SessionGoal
+	sessionCritic         *session.SessionCritic
 }
 
 func decodeChatRequestPayload(w http.ResponseWriter, r *http.Request) (chatRequestPayload, bool) {
@@ -181,6 +182,11 @@ func buildSessionChatRunState(
 		sessionGoal = sess.Goal
 		systemPrompt += formatSessionGoalPrompt(sessionGoal)
 	}
+	var sessionCritic *session.SessionCritic
+	if sessErr == nil && sess.Critic.IsEnabled() {
+		sessionCritic = sess.Critic
+		systemPrompt += formatSessionCriticPrompt(sessionCritic)
+	}
 	if hint := formatChatSubagentMentionHint(subagentMentions); hint != "" {
 		systemPrompt += hint
 	}
@@ -221,6 +227,7 @@ func buildSessionChatRunState(
 		tierRecommendation:    tierRecommendation,
 		sessionStyle:          sessionStyle,
 		sessionGoal:           sessionGoal,
+		sessionCritic:         sessionCritic,
 	}, nil
 }
 
