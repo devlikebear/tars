@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.32.47] - 2026-05-13
+
+### Added
+
+- **Console hub selector + dry-run modal (skill hub federation Phase 5)** — Extensions page now drives external-hub installs through the same federation layer as the CLI. New backend endpoints `GET /v1/hub/sources` (lists every registered HubSource with a human-readable label) and `GET /v1/hub/skills?source=&q=` (federated skill search across all sources) power a hub selector dropdown above the Hub Skills list and a per-card source badge (`tars-hub` / `openclaw` / `hermes` / `anthropic`). External-hub installs open a new `DryRunModal.svelte` showing the converted frontmatter, every file with size and short sha256, adapter warnings (e.g. openclaw install-block skips), checksum mismatches, and the ATTRIBUTION.md notice; only after the user clicks Install does the materialize call go out (`yes: true`). `Installer.Update` now routes each installed skill back to its recorded HubSource (tars-hub keeps version-string compare, external hubs always re-download and let sha256 drift handling decide). `ensureSources` refreshes the built-in tars-hub adapter when callers swap `inst.Registry` mid-flight, preserving the pre-federation regression test. ko/en i18n keys cover every new label.
+
 ## [0.32.46] - 2026-05-13
 
 ### Added

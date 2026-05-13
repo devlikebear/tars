@@ -48,6 +48,24 @@ func errorString(err error) string {
 	return err.Error()
 }
 
+// hubSourceLabel returns the human-readable label for a HubSource ID. The
+// console uses this when rendering the source selector. Unknown IDs are
+// shown verbatim so future hubs work without server changes.
+func hubSourceLabel(id string) string {
+	switch id {
+	case "tars-hub":
+		return "TARS Hub"
+	case "openclaw":
+		return "openclaw"
+	case "hermes":
+		return "hermes-agent"
+	case "anthropic":
+		return "Anthropic skills"
+	default:
+		return id
+	}
+}
+
 func newSkillhubAPIHandler(
 	installer *skillhub.Installer,
 	extensions extensionsProvider,
@@ -71,6 +89,54 @@ func newSkillhubAPIHandler(
 			return
 		}
 		writeJSON(w, http.StatusOK, index)
+	})
+
+	// GET /v1/hub/sources — list every registered HubSource
+	mux.HandleFunc("/v1/hub/sources", func(w http.ResponseWriter, r *http.Request) {
+		if !requireMethod(w, r, http.MethodGet) {
+			return
+		}
+		if installer == nil || installer.Sources == nil {
+			writeJSON(w, http.StatusOK, map[string]any{"sources": []any{}})
+			return
+		}
+		out := make([]map[string]any, 0, installer.Sources.Len())
+		for _, src := range installer.Sources.List() {
+			id := src.ID()
+			out = append(out, map[string]any{
+				"id":       id,
+				"label":    hubSourceLabel(id),
+				"default":  id == skillhub.DefaultSourceID,
+				"external": id != skillhub.DefaultSourceID,
+			})
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"sources": out})
+	})
+
+	// GET /v1/hub/skills — federated skill search across registered sources
+	// Query params:
+	//   q       — substring filter (case-insensitive)
+	//   source  — restrict to a single HubSource ID
+	mux.HandleFunc("/v1/hub/skills", func(w http.ResponseWriter, r *http.Request) {
+		if !requireMethod(w, r, http.MethodGet) {
+			return
+		}
+		if installer == nil {
+			writeJSON(w, http.StatusOK, map[string]any{"skills": []any{}})
+			return
+		}
+		query := strings.TrimSpace(r.URL.Query().Get("q"))
+		source := strings.TrimSpace(r.URL.Query().Get("source"))
+		results, err := installer.SearchAllSkills(r.Context(), query, source)
+		if err != nil {
+			logger.Error().Err(err).Msg("federated skill search failed")
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		if results == nil {
+			results = []skillhub.SkillSearchResult{}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"skills": results})
 	})
 
 	// GET /v1/hub/installed — list locally installed hub packages

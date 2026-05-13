@@ -1059,8 +1059,56 @@ export type HubInstallResponse = {
   ok: string
   type: string
   name: string
+  dry_run?: boolean
   requires_plugin?: string
   sandbox_report?: SkillSandboxReport
+  preview?: HubDryRunResult
+}
+
+export type HubSource = {
+  id: string
+  label: string
+  default?: boolean
+  external?: boolean
+}
+
+export type HubSkillSearchResult = {
+  SourceID?: string
+  source_id?: string
+  Entry?: HubRegistryEntry
+  entry?: HubRegistryEntry
+}
+
+export type HubSkillPreview = {
+  name: string
+  description: string
+  author?: string
+  version?: string
+  tags?: string[]
+  user_invocable?: boolean
+}
+
+export type HubFilePreview = {
+  path: string
+  size: number
+  sha256: string
+  expected_sha256?: string
+}
+
+export type HubDryRunResult = {
+  source_id: string
+  ref?: string
+  original_name: string
+  original_path?: string
+  original_url?: string
+  commit_sha?: string
+  target_dir: string
+  converted_skill: HubSkillPreview
+  files: HubFilePreview[]
+  adapter_warnings?: string[]
+  license_label?: string
+  license_source?: string
+  checksum_warnings?: string[]
 }
 
 export type HubInstalledItem = {

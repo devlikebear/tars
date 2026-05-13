@@ -257,8 +257,13 @@ func hasAttribution(files map[string][]byte) bool {
 // constructed without one (older tests, hand-built call sites). The default
 // registry has just the built-in tars-hub source, backed by inst.Registry so
 // the existing Registry pointer keeps controlling fetch URLs.
+//
+// If Sources already exists but its tars-hub source points at a stale
+// Registry (legacy callers swap inst.Registry between calls), the entry is
+// rebuilt so the source follows the current Registry pointer.
 func (inst *Installer) ensureSources() *SourceRegistry {
 	if inst.Sources != nil {
+		inst.syncDefaultSource()
 		return inst.Sources
 	}
 	reg := inst.Registry
@@ -270,6 +275,29 @@ func (inst *Installer) ensureSources() *SourceRegistry {
 	_ = sources.Register(&TarsHubSource{Registry: reg})
 	inst.Sources = sources
 	return sources
+}
+
+// syncDefaultSource refreshes the built-in tars-hub source to follow the
+// current inst.Registry pointer. Legacy tests construct an Installer with
+// Sources but then replace inst.Registry mid-test (e.g. swapping in a
+// tampered httptest server); without this sync the tars-hub source would
+// keep talking to the old server.
+func (inst *Installer) syncDefaultSource() {
+	if inst.Sources == nil || inst.Registry == nil {
+		return
+	}
+	existing, ok := inst.Sources.Get(DefaultSourceID)
+	if !ok {
+		return
+	}
+	tarsHub, ok := existing.(*TarsHubSource)
+	if !ok {
+		return
+	}
+	if tarsHub.Registry == inst.Registry {
+		return
+	}
+	tarsHub.Registry = inst.Registry
 }
 
 // resolveSkillSource picks the HubSource to use for a skill ref.
@@ -364,7 +392,11 @@ func (inst *Installer) List() ([]InstalledSkill, error) {
 	return db.Skills, nil
 }
 
-// Update re-installs all installed skills with the latest version.
+// Update re-installs all installed skills with the latest version,
+// routing each row to its recorded HubSource. External hubs (where the
+// upstream `version` field is often a placeholder) compare the freshly
+// computed SKILL.md sha256 against the stored manifest sha256 to decide
+// whether anything changed.
 func (inst *Installer) Update(ctx context.Context) (UpdateResult, error) {
 	db, err := inst.loadDB()
 	if err != nil {
@@ -373,18 +405,31 @@ func (inst *Installer) Update(ctx context.Context) (UpdateResult, error) {
 		}
 		return UpdateResult{}, err
 	}
+	sources := inst.ensureSources()
 	var result UpdateResult
 	for i, skill := range db.Skills {
-		entry, err := inst.Registry.FindByName(ctx, skill.Name)
+		sourceID := strings.TrimSpace(skill.Source)
+		if sourceID == "" {
+			sourceID = DefaultSourceID
+		}
+		src, ok := sources.Get(sourceID)
+		if !ok {
+			result.Skipped = append(result.Skipped, UpdateDiagnostic{
+				Name:   skill.Name,
+				Reason: fmt.Sprintf("source %q is no longer registered", sourceID),
+			})
+			continue
+		}
+		entry, err := src.FindSkillByName(ctx, skill.Name)
 		if err != nil {
 			result.Skipped = append(result.Skipped, UpdateDiagnostic{Name: skill.Name, Err: err})
 			continue
 		}
-		if entry.Version == skill.Version {
+		if sourceID == DefaultSourceID && entry.Version == skill.Version {
 			result.Skipped = append(result.Skipped, UpdateDiagnostic{Name: skill.Name, Reason: "up to date"})
 			continue
 		}
-		files, err := inst.downloadSkillFiles(ctx, entry)
+		files, _, err := inst.downloadSkillFilesFromSource(ctx, src, entry)
 		if err != nil {
 			updateErr := fmt.Errorf("update skill %q: %w", skill.Name, err)
 			result.Failed = append(result.Failed, UpdateDiagnostic{Name: skill.Name, Err: err})

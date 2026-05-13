@@ -813,6 +813,8 @@ func registerAPIRoutes(mux *http.ServeMux, handlers apiRouteHandlers) {
 	mux.Handle("/v1/admin/reset/workspace", handlers.config)
 	mux.Handle("/v1/admin/restart", handlers.config)
 	mux.Handle("/v1/hub/registry", handlers.skillhub)
+	mux.Handle("/v1/hub/sources", handlers.skillhub)
+	mux.Handle("/v1/hub/skills", handlers.skillhub)
 	mux.Handle("/v1/hub/installed", handlers.skillhub)
 	mux.Handle("/v1/hub/install", handlers.skillhub)
 	mux.Handle("/v1/hub/uninstall", handlers.skillhub)

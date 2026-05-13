@@ -3,6 +3,7 @@
   import {
     getHubRegistry,
     getHubInstalled,
+    getHubSources,
     getHubSkillContent,
     getSkillDetail,
     getExtensionsHealth,
@@ -15,7 +16,9 @@
     hubUpdate,
     listSkills,
     listMCPServers,
+    previewHubInstall,
     reloadExtensions,
+    searchHubSkills,
     getWorkspaceSkillContent,
     updateWorkspaceSkill,
     deleteWorkspaceSkill,
@@ -25,9 +28,11 @@
   import MCPServerCreator from './MCPServerCreator.svelte'
   import { t } from '../i18n'
   import type {
+    HubDryRunResult,
     HubRegistry,
     HubRegistryEntry,
     HubInstalled,
+    HubSource,
     SkillDef,
     MCPServerStatus,
     ExtensionHealthItem,
@@ -37,6 +42,7 @@
     MCPServerCreatorSaveResponse,
     SkillSandboxReport,
   } from '../lib/types'
+  import DryRunModal from './DryRunModal.svelte'
 
   type Tab = 'hub' | 'installed'
 
@@ -52,6 +58,19 @@
   let hubInstalledNames: Set<string> = $state(new Set()) // hub DB only (can uninstall)
   let hubLoading = $state(false)
   let busyItem = $state('')
+
+  // Federated skill search across all registered hub sources. The
+  // entries on the right keep the existing HubRegistryEntry shape so the
+  // render block reuses the same fields; sourceIDs tracks which hub each
+  // entry belongs to so we can show a badge and route install correctly.
+  let hubSources: HubSource[] = $state([])
+  let selectedHubSource: string = $state('') // empty = all sources
+  let federatedSkills: { sourceID: string; entry: HubRegistryEntry }[] = $state([])
+
+  // Dry-run modal state.
+  let dryRunPreview: HubDryRunResult | null = $state(null)
+  let dryRunSource: string = $state('')
+  let dryRunLoading = $state(false)
 
   // Installed tab
   let skills: SkillDef[] = $state([])
@@ -252,14 +271,25 @@
     hubLoading = true
     error = ''
     try {
-      const raw = await getHubRegistry()
+      const [raw, sources] = await Promise.all([getHubRegistry(), getHubSources()])
       registry = {
         version: raw.version ?? 0,
         skills: raw.skills ?? [],
         plugins: [],
         mcp_servers: raw.mcp_servers ?? [],
       }
-      // Track registry versions for update detection
+      hubSources = sources
+      // Federated skill search across all registered sources. The hub
+      // tab renders this list (filtered by selectedHubSource) instead
+      // of registry.skills so external hubs show up next to tars-hub.
+      const results = await searchHubSkills({})
+      federatedSkills = results
+        .map((r) => ({
+          sourceID: (r.source_id || r.SourceID || '') as string,
+          entry: (r.entry || r.Entry) as HubRegistryEntry,
+        }))
+        .filter((r) => r.entry && r.sourceID)
+      // Track registry versions for update detection (tars-hub only).
       const regVers = new Map<string, string>()
       for (const e of registry.skills) regVers.set('skill:' + e.name, e.version || '')
       for (const e of registry.mcp_servers) regVers.set('mcp:' + e.name, e.version || '')
@@ -271,6 +301,47 @@
     }
   }
 
+  function filteredFederatedSkills() {
+    if (!selectedHubSource) return federatedSkills
+    return federatedSkills.filter((r) => r.sourceID === selectedHubSource)
+  }
+
+  function hubSourceLabel(id: string): string {
+    const found = hubSources.find((s) => s.id === id)
+    return found?.label ?? id
+  }
+
+  // For external-hub skills, ask the installer for a dry-run preview and
+  // surface it through DryRunModal so the user reviews files, checksums,
+  // and adapter warnings before materialize.
+  async function startExternalInstall(sourceID: string, name: string) {
+    dryRunLoading = true
+    error = ''
+    dryRunPreview = null
+    dryRunSource = sourceID
+    try {
+      dryRunPreview = await previewHubInstall(name, sourceID)
+    } catch (e) {
+      error = e instanceof Error ? e.message : $t.extensions.installFailed
+      dryRunSource = ''
+    } finally {
+      dryRunLoading = false
+    }
+  }
+
+  function cancelDryRun() {
+    dryRunPreview = null
+    dryRunSource = ''
+  }
+
+  async function confirmDryRun() {
+    if (!dryRunPreview) return
+    const name = dryRunPreview.original_name
+    const sourceID = dryRunSource
+    cancelDryRun()
+    await handleInstall('skill', name, sourceID)
+  }
+
   function isInstalled(type: string, name: string): boolean {
     return installedNames.has(type + ':' + name)
   }
@@ -279,13 +350,18 @@
     return hubInstalledNames.has(type + ':' + name)
   }
 
-  async function handleInstall(type: string, name: string) {
+  async function handleInstall(type: string, name: string, sourceID: string = '') {
     busyItem = type + ':' + name
     error = ''
     success = ''
     skillSandboxReport = null
     try {
-      const result = await hubInstall(type, name)
+      const opts: { source?: string; yes?: boolean } = {}
+      if (sourceID) {
+        opts.source = sourceID
+        opts.yes = true // console-driven external installs are explicit
+      }
+      const result = await hubInstall(type, name, opts)
       skillSandboxReport = result.sandbox_report ?? null
       installedNames = new Set([...installedNames, type + ':' + name])
       const sandboxText = result.sandbox_report ? $t.extensions.sandboxSuffix(sandboxSummary(result.sandbox_report)) : ''
@@ -752,10 +828,24 @@
             <span class="card-title">{$t.extensions.skillsTitle}</span>
             <span class="section-definition">{$t.extensions.skillsDefinition}</span>
           </div>
-          <span class="badge badge-default">{$t.extensions.available(registry.skills.length)}</span>
+          <span class="badge badge-default">{$t.extensions.available(filteredFederatedSkills().length)}</span>
         </div>
+        {#if hubSources.length > 1}
+          <div class="ext-source-filter">
+            <label class="ext-source-label" for="hub-source-select">{$t.extensions.hubSourceLabel}</label>
+            <select id="hub-source-select" class="ext-source-select" bind:value={selectedHubSource}>
+              <option value="">{$t.extensions.hubSourceAll}</option>
+              {#each hubSources as src}
+                <option value={src.id}>{src.label}</option>
+              {/each}
+            </select>
+          </div>
+        {/if}
         <div class="ext-list">
-          {#each registry.skills as entry}
+          {#each filteredFederatedSkills() as item (item.sourceID + ':' + item.entry.name)}
+            {@const entry = item.entry}
+            {@const sid = item.sourceID}
+            {@const isExternal = sid !== 'tars-hub'}
             <div class="ext-item-wrapper">
               <div class="ext-item">
                 <div class="ext-item-info">
@@ -764,6 +854,7 @@
                       <strong>{entry.name}</strong>
                       <span class="detail-chevron" class:open={isDetailOpen('skill', entry.name, 'hub')}>{'\u25b8'}</span>
                     </button>
+                    <span class="ext-source-badge" class:ext-source-badge-external={isExternal}>{hubSourceLabel(sid)}</span>
                     <span class="ext-version">{$t.extensions.versionPrefix(entry.version)}</span>
                     {#if entry.author}<span class="ext-meta-tag">{$t.extensions.byAuthor(entry.author)}</span>{/if}
                   </div>
@@ -774,13 +865,15 @@
                   {@render renderQuality(entry)}
                 </div>
                 {#if hasUpdate('skill', entry.name)}
-                  <button class="btn btn-warning btn-sm" disabled={busyItem === 'skill:' + entry.name} onclick={() => handleInstall('skill', entry.name)}>
+                  <button class="btn btn-warning btn-sm" disabled={busyItem === 'skill:' + entry.name} onclick={() => isExternal ? startExternalInstall(sid, entry.name) : handleInstall('skill', entry.name)}>
                     {busyItem === 'skill:' + entry.name ? $t.extensions.updating : $t.extensions.update}
                   </button>
                 {:else if isInstalled('skill', entry.name)}
                   <span class="badge badge-success">{$t.extensions.installed}</span>
                 {:else}
-                  <button class="btn btn-primary btn-sm" disabled={busyItem === 'skill:' + entry.name} onclick={() => handleInstall('skill', entry.name)}>{busyItem === 'skill:' + entry.name ? $t.extensions.installing : $t.extensions.install}</button>
+                  <button class="btn btn-primary btn-sm" disabled={busyItem === 'skill:' + entry.name || dryRunLoading} onclick={() => isExternal ? startExternalInstall(sid, entry.name) : handleInstall('skill', entry.name)}>
+                    {busyItem === 'skill:' + entry.name ? $t.extensions.installing : $t.extensions.install}
+                  </button>
                 {/if}
               </div>
               {#if isDetailOpen('skill', entry.name, 'hub')}
@@ -842,6 +935,9 @@
   {/if}
   {#if mcpCreatorOpen}
     <MCPServerCreator onclose={() => { mcpCreatorOpen = false }} onsaved={handleMCPServerCreated} />
+  {/if}
+  {#if dryRunPreview}
+    <DryRunModal preview={dryRunPreview} oncancel={cancelDryRun} onconfirm={confirmDryRun} />
   {/if}
 </div>
 
@@ -957,6 +1053,46 @@
   .section-definition { color: var(--text-secondary); font-size: var(--text-xs); font-weight: 400; line-height: 1.4; }
   .ext-section { margin-bottom: var(--space-2); }
   .ext-list { display: flex; flex-direction: column; }
+
+  .ext-source-filter {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-4);
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  .ext-source-label {
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
+    font-family: var(--font-display);
+  }
+  .ext-source-select {
+    flex: 1;
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-primary);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    padding: 2px var(--space-2);
+    font-size: var(--text-xs);
+    font-family: var(--font-mono);
+  }
+  .ext-source-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 1px 6px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-subtle);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-tertiary);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.5px;
+  }
+  .ext-source-badge-external {
+    border-color: rgba(224, 145, 69, 0.4);
+    color: #e09145;
+    background: rgba(224, 145, 69, 0.08);
+  }
 
   .ext-item {
     display: flex;
