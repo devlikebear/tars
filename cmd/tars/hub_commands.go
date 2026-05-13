@@ -14,8 +14,10 @@ import (
 // hubResourceSpec.Install callback so each resource (skill / plugin / mcp)
 // can implement its own external-hub flow.
 type HubInstallOptions struct {
-	From string // --from <hub-id>; empty means "any registered source"
-	Yes  bool   // --yes auto-approves external-hub installs
+	From   string // --from <hub-id>; empty means "any registered source"
+	Yes    bool   // --yes auto-approves external-hub installs
+	DryRun bool   // --dry-run downloads + converts + previews; never materializes
+	Format string // --format "text"|"json"; default "text"
 }
 
 // hubResourceSpec describes a hub-managed resource type (skill, plugin, or MCP
@@ -71,17 +73,23 @@ func newHubResourceCommand(spec hubResourceSpec, stdout, stderr io.Writer) *cobr
 	var installWorkspaceDir string
 	var installFrom string
 	var installYes bool
+	var installDryRun bool
+	var installFormat string
 	installCmd.Flags().StringVar(&installWorkspaceDir, "workspace-dir", defaultWorkspaceDir(), "workspace directory")
 	installCmd.Flags().StringVar(&installFrom, "from", "", "install from a specific hub source (e.g. openclaw)")
 	installCmd.Flags().BoolVarP(&installYes, "yes", "y", false, "auto-approve external-hub installs (skip the confirmation prompt)")
+	installCmd.Flags().BoolVar(&installDryRun, "dry-run", false, "download + convert and print the preview; never materialize files")
+	installCmd.Flags().StringVar(&installFormat, "format", "text", `output format for the install preview: "text" or "json"`)
 	installCmd.RunE = func(cmd *cobra.Command, args []string) error {
 		dir, err := resolveWorkspaceDir(installWorkspaceDir)
 		if err != nil {
 			return err
 		}
 		return spec.Install(cmd.Context(), stdout, stderr, dir, args[0], HubInstallOptions{
-			From: installFrom,
-			Yes:  installYes,
+			From:   installFrom,
+			Yes:    installYes,
+			DryRun: installDryRun,
+			Format: installFormat,
 		})
 	}
 	cmd.AddCommand(installCmd)

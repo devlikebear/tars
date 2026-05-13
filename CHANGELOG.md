@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.32.45] - 2026-05-13
+
+### Added
+
+- **External-hub install dry-run (skill hub federation Phase 3)** — `tars skill install --dry-run [--format text|json]` now downloads + converts a skill from an external hub, prints a structured preview (source, target dir, converted frontmatter, per-file sha256 + size, adapter warnings, license label, ATTRIBUTION presence) and returns without touching the workspace. Non-interactive shells (pipes, `< /dev/null`, CI) without `--yes` or `--dry-run` are now refused up front with a clear message — previously they fell through to a confirm prompt that always aborted on EOF. TTY detection switched from `os.Stdin.Stat()` (which misclassifies `/dev/null` as interactive because it is a character device) to `github.com/mattn/go-isatty`. Internally `Installer.PreviewInstall(ctx, ref)` builds the new `DryRunResult` (source, original URL, converted skill snapshot, per-file `FilePreview` with computed and expected sha256, adapter warnings, license label, checksum-drift warnings); `Installer.InstallWithOptions` gained `DryRun bool` and `OnPreview func(*DryRunResult)` hooks, and the legacy `Install(ctx, ref)` keeps working unchanged by delegating with auto-approve. A post-confirm content-drift detector re-fetches before materialize and refuses to write files whose sha256 changed between preview and confirm. HTTP API: `POST /v1/hub/install` accepts `source`, `yes`, `dry_run` fields; dry-run responses include the preview JSON. Server's hub installer now auto-registers the openclaw source so the console (Phase 5) can drive external installs without separate wiring.
+
 ## [0.32.44] - 2026-05-13
 
 ### Added

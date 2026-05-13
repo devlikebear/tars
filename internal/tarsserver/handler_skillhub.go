@@ -111,8 +111,11 @@ func newSkillhubAPIHandler(
 			return
 		}
 		var req struct {
-			Type string `json:"type"` // "skill", "plugin", "mcp"
-			Name string `json:"name"`
+			Type   string `json:"type"` // "skill", "plugin", "mcp"
+			Name   string `json:"name"`
+			Source string `json:"source,omitempty"` // optional "openclaw"/"hermes"/"anthropic"
+			Yes    bool   `json:"yes,omitempty"`    // auto-approve external-hub installs
+			DryRun bool   `json:"dry_run,omitempty"`
 		}
 		if !decodeJSONBody(w, r, &req) {
 			return
@@ -127,7 +130,14 @@ func newSkillhubAPIHandler(
 		var installResult *skillhub.InstallResult
 		switch strings.TrimSpace(req.Type) {
 		case "skill":
-			installResult, installErr = installer.Install(r.Context(), name)
+			ref := name
+			if s := strings.TrimSpace(req.Source); s != "" {
+				ref = s + ":" + name
+			}
+			installResult, installErr = installer.InstallWithOptions(r.Context(), ref, skillhub.InstallOptions{
+				Yes:    req.Yes || req.DryRun, // dry-run doesn't materialize so no confirm needed
+				DryRun: req.DryRun,
+			})
 		case "plugin":
 			installResult, installErr = installer.InstallPlugin(r.Context(), name)
 		case "mcp":
@@ -147,17 +157,20 @@ func newSkillhubAPIHandler(
 			return
 		}
 
-		// Auto-reload extensions after install
-		if extensions != nil {
+		// Auto-reload extensions after a real install (skip on dry-run).
+		if extensions != nil && !req.DryRun {
 			_ = extensions.Reload(r.Context())
 		}
 
-		logger.Info().Str("type", req.Type).Str("name", name).Msg("hub package installed")
-		payload := map[string]any{"ok": "true", "type": req.Type, "name": name}
+		logger.Info().Str("type", req.Type).Str("name", name).Bool("dry_run", req.DryRun).Msg("hub install handled")
+		payload := map[string]any{"ok": "true", "type": req.Type, "name": name, "dry_run": req.DryRun}
 		if installResult != nil {
 			payload["sandbox_report"] = installResult.Sandbox
 			if installResult.RequiresPlugin != "" {
 				payload["requires_plugin"] = installResult.RequiresPlugin
+			}
+			if installResult.DryRunPreview != nil {
+				payload["preview"] = installResult.DryRunPreview
 			}
 		}
 		writeJSON(w, http.StatusOK, payload)
