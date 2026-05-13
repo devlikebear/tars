@@ -9,8 +9,9 @@ import (
 
 // handleSessionCritic serves /v1/admin/sessions/{id}/critic — GET, PUT, DELETE.
 // PUT body: {"enabled": bool, "max_iterations": N?}. DELETE clears the entire
-// critic configuration. GET returns {"critic": SessionCritic|null}. Only
-// main-kind sessions are permitted to carry a critic.
+// critic configuration. GET returns {"critic": SessionCritic|null}. All
+// session kinds may carry a critic; worker/subagent sessions typically inherit
+// from their parent at creation time but the API stays open per session.
 func handleSessionCritic(w http.ResponseWriter, r *http.Request, reqStore *session.Store, sessionID string) {
 	if !requireMethod(w, r, http.MethodGet, http.MethodPut, http.MethodDelete) {
 		return
@@ -44,14 +45,11 @@ func handleSessionCritic(w http.ResponseWriter, r *http.Request, reqStore *sessi
 		}
 		updated, err := reqStore.SetCritic(sessionID, critic)
 		if err != nil {
-			switch {
-			case errors.Is(err, session.ErrSessionNotFound):
+			if errors.Is(err, session.ErrSessionNotFound) {
 				writeJSON(w, http.StatusNotFound, map[string]string{"error": "session not found"})
-			case errors.Is(err, session.ErrSessionKindUnsupported):
-				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "only main sessions support a critic agent"})
-			default:
-				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+				return
 			}
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"critic": updated.Critic})

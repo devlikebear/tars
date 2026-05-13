@@ -70,6 +70,7 @@ func resolveSpawnSessionID(sessionStore *session.Store, req SpawnRequest, info A
 			if err != nil {
 				return "", fmt.Errorf("create session: %w", err)
 			}
+			inheritCriticFromParent(sessionStore, strings.TrimSpace(req.ParentSessionID), s.ID)
 			return s.ID, nil
 		}
 		title := strings.TrimSpace(req.Title)
@@ -80,6 +81,7 @@ func resolveSpawnSessionID(sessionStore *session.Store, req SpawnRequest, info A
 		if err != nil {
 			return "", fmt.Errorf("create session: %w", err)
 		}
+		inheritCriticFromParent(sessionStore, strings.TrimSpace(req.ParentSessionID), s.ID)
 		return s.ID, nil
 	}
 	if _, err := sessionStore.Get(sessionID); err != nil {
@@ -126,6 +128,25 @@ func (r *Runtime) newAcceptedRunState(
 		UpdatedAt:                 now.Format(time.RFC3339),
 	}
 	return runCtx, &runState{run: run, req: req, executor: executor, cancel: cancel, done: make(chan struct{})}
+}
+
+// inheritCriticFromParent copies the parent session's critic configuration
+// onto a freshly-spawned child session so subagents inherit the user's choice
+// without a separate API call. Best-effort: missing parent or store errors are
+// ignored — the child simply starts with no critic configured.
+func inheritCriticFromParent(sessionStore *session.Store, parentID, childID string) {
+	if parentID == "" || childID == "" {
+		return
+	}
+	parent, err := sessionStore.Get(parentID)
+	if err != nil {
+		return
+	}
+	inherited := session.InheritCriticConfig(parent.Critic)
+	if inherited == nil {
+		return
+	}
+	_, _ = sessionStore.SetCritic(childID, inherited)
 }
 
 func resolveRunTier(requestTier string, executorTier string) string {

@@ -662,6 +662,7 @@ func (s *Store) ForkFromMessage(parentID string, messageID string, opts ForkOpti
 		ForkReason:          strings.TrimSpace(opts.Reason),
 		ToolConfig:          cloneSessionToolConfig(parent.ToolConfig),
 		StyleControl:        cloneSessionStyleControl(parent.StyleControl),
+		Critic:              InheritCriticConfig(parent.Critic),
 		LastCompactionMode:  parent.LastCompactionMode,
 		PromptOverride:      parent.PromptOverride,
 		WorkDirs:            forkWorkDirs(parent, s.sessionArtifactDir(parent.ID)),
@@ -803,6 +804,17 @@ func (s *Store) ensureNamedSession(title string, kind string, hidden bool) (Sess
 		Hidden:    hidden,
 		CreatedAt: now,
 		UpdatedAt: now,
+	}
+	// Worker sessions inherit the main session's critic config so a user who
+	// toggles critic once in main automatically gets reviews on background
+	// worker turns too. Runtime state is reset by InheritCriticConfig.
+	if trimmedKind != "main" {
+		for _, sess := range index {
+			if strings.TrimSpace(sess.Kind) == "main" {
+				created.Critic = InheritCriticConfig(sess.Critic)
+				break
+			}
+		}
 	}
 	for {
 		id, err := generateID()
@@ -1119,10 +1131,10 @@ func (s *Store) ClearGoal(id string) (Session, error) {
 	return sess, nil
 }
 
-// SetCritic replaces the session's critic configuration. Only "main" sessions
-// are permitted (matching the SetGoal policy — critic relies on a single
-// plan-transition stream and worker sessions have no user-visible plan). A
-// nil critic clears the configuration entirely.
+// SetCritic replaces the session's critic configuration. Any session kind is
+// permitted — worker/subagent sessions still benefit from review on the
+// assistant_turn trigger even when no user-visible plan exists. A nil critic
+// clears the configuration entirely.
 func (s *Store) SetCritic(id string, critic *SessionCritic) (Session, error) {
 	unlock := lockPath(s.indexPath())
 	defer unlock()
@@ -1133,9 +1145,6 @@ func (s *Store) SetCritic(id string, critic *SessionCritic) (Session, error) {
 	sess, ok := index[id]
 	if !ok {
 		return Session{}, ErrSessionNotFound
-	}
-	if strings.TrimSpace(sess.Kind) != "main" {
-		return Session{}, ErrSessionKindUnsupported
 	}
 	now := time.Now().UTC()
 	if critic == nil {

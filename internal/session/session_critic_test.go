@@ -108,14 +108,96 @@ func TestCriticEqual(t *testing.T) {
 	}
 }
 
-func TestStoreSetCritic_RequiresMainKind(t *testing.T) {
+func TestStoreSetCritic_AllowsAnyKind(t *testing.T) {
 	store := NewStore(t.TempDir())
 	worker, err := store.EnsureWorker("p1")
 	if err != nil {
 		t.Fatalf("ensure worker: %v", err)
 	}
-	if _, err := store.SetCritic(worker.ID, &SessionCritic{Enabled: true}); err == nil {
-		t.Fatal("expected ErrSessionKindUnsupported for worker session")
+	updated, err := store.SetCritic(worker.ID, &SessionCritic{Enabled: true, MaxIterations: 2})
+	if err != nil {
+		t.Fatalf("worker SetCritic should succeed, got: %v", err)
+	}
+	if !updated.Critic.IsEnabled() || updated.Critic.MaxIterations != 2 {
+		t.Fatalf("worker critic not persisted: %+v", updated.Critic)
+	}
+
+	created, err := store.Create("regular")
+	if err != nil {
+		t.Fatalf("create regular: %v", err)
+	}
+	if _, err := store.SetCritic(created.ID, &SessionCritic{Enabled: true}); err != nil {
+		t.Fatalf("regular SetCritic should succeed: %v", err)
+	}
+}
+
+func TestInheritCriticConfig(t *testing.T) {
+	if c := InheritCriticConfig(nil); c != nil {
+		t.Fatalf("nil source should yield nil, got %+v", c)
+	}
+	if c := InheritCriticConfig(&SessionCritic{Enabled: false, MaxIterations: 5}); c != nil {
+		t.Fatalf("disabled source should yield nil, got %+v", c)
+	}
+	src := &SessionCritic{
+		Enabled:             true,
+		MaxIterations:       4,
+		CurrentIteration:    3,
+		Status:              SessionCriticStatusReviewing,
+		LastFeedback:        "- gap",
+		LastTrigger:         "plan_proposed",
+		LastReviewedPlanSig: "sig-1",
+	}
+	got := InheritCriticConfig(src)
+	if got == nil {
+		t.Fatal("expected non-nil inherited critic")
+	}
+	if !got.Enabled || got.MaxIterations != 4 {
+		t.Fatalf("config fields not copied: %+v", got)
+	}
+	if got.CurrentIteration != 0 || got.LastFeedback != "" ||
+		got.LastTrigger != "" || got.LastReviewedPlanSig != "" {
+		t.Fatalf("runtime state should be reset: %+v", got)
+	}
+	if got.Status != SessionCriticStatusIdle {
+		t.Fatalf("Status should reset to idle, got %q", got.Status)
+	}
+}
+
+func TestEnsureWorker_InheritsMainCritic(t *testing.T) {
+	store := NewStore(t.TempDir())
+	main, err := store.EnsureMain()
+	if err != nil {
+		t.Fatalf("ensure main: %v", err)
+	}
+	if _, err := store.SetCritic(main.ID, &SessionCritic{Enabled: true, MaxIterations: 4}); err != nil {
+		t.Fatalf("set main critic: %v", err)
+	}
+	worker, err := store.EnsureWorker("proj-1")
+	if err != nil {
+		t.Fatalf("ensure worker: %v", err)
+	}
+	if !worker.Critic.IsEnabled() {
+		t.Fatalf("worker should inherit enabled critic, got %+v", worker.Critic)
+	}
+	if worker.Critic.MaxIterations != 4 {
+		t.Fatalf("worker MaxIterations = %d, want 4", worker.Critic.MaxIterations)
+	}
+	if worker.Critic.Status != SessionCriticStatusIdle {
+		t.Fatalf("worker critic status = %q, want idle", worker.Critic.Status)
+	}
+}
+
+func TestEnsureWorker_NoInheritWhenMainDisabled(t *testing.T) {
+	store := NewStore(t.TempDir())
+	if _, err := store.EnsureMain(); err != nil {
+		t.Fatalf("ensure main: %v", err)
+	}
+	worker, err := store.EnsureWorker("proj-1")
+	if err != nil {
+		t.Fatalf("ensure worker: %v", err)
+	}
+	if worker.Critic != nil {
+		t.Fatalf("expected nil critic when main has none, got %+v", worker.Critic)
 	}
 }
 

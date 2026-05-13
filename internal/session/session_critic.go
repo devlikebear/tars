@@ -113,6 +113,21 @@ func NormalizeCritic(c *SessionCritic) *SessionCritic {
 	return &next
 }
 
+// InheritCriticConfig returns a fresh SessionCritic that carries the
+// user-tunable fields (Enabled, MaxIterations) from source while resetting all
+// runtime state to "idle". Returns nil when source is nil or disabled so a
+// disabled parent does not register a stub on the child.
+func InheritCriticConfig(source *SessionCritic) *SessionCritic {
+	if source == nil || !source.Enabled {
+		return nil
+	}
+	return &SessionCritic{
+		Enabled:       source.Enabled,
+		MaxIterations: source.MaxIterations,
+		Status:        SessionCriticStatusIdle,
+	}
+}
+
 func criticEqual(a, b *SessionCritic) bool {
 	if a == nil || b == nil {
 		return a == b
