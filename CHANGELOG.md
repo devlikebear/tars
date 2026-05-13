@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.32.43] - 2026-05-13
+
+### Added
+
+- **Skill hub federation foundation (Phase 1)** — Introduced a `HubSource` interface and `SourceRegistry` in `internal/skillhub/` so the installer can route skill operations through pluggable hub adapters instead of the hard-coded `tars-hub` registry. The built-in tars-hub registry is now exposed as `TarsHubSource`, which `NewInstaller` registers by default so existing call sites and tests keep working. `Installer.Install` now accepts both bare names and `<source>:<name>` refs (via `ResolveSkillRef`), records the resolved source ID on `InstalledSkill.Source` instead of a hard-coded string, and raises an explicit ambiguity error when more than one registered source advertises the same name. Legacy `skillhub.json` rows with an empty `Source` are migrated to `tars-hub` at load time. No external hub adapters land in this phase — the openclaw / hermes / Anthropic adapters arrive in Phase 2 and Phase 4 of the federation work.
+
 ## [0.32.42] - 2026-05-12
 
 ### Added

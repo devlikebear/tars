@@ -110,11 +110,14 @@ type QualityMetadata struct {
 	InstallCount  int      `json:"install_count,omitempty"`
 }
 
-// InstalledSkill tracks a skill that has been installed locally.
+// InstalledSkill tracks a skill that has been installed locally. Source is
+// the HubSource ID the skill was fetched from (e.g. "tars-hub", "openclaw",
+// "hermes", "anthropic"). Legacy rows with an empty Source are migrated to
+// DefaultSourceID at load time.
 type InstalledSkill struct {
 	Name    string `json:"name"`
 	Version string `json:"version"`
-	Source  string `json:"source"` // "tars-hub" or "openclaw"
+	Source  string `json:"source"`
 	Dir     string `json:"dir"`
 }
 
