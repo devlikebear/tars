@@ -150,6 +150,28 @@ type ChatOptions struct {
 	// back here on subsequent turns. Providers that don't support resume
 	// ignore the field silently.
 	ResumeSessionID string
+	// ClaudeCodeMCPServers, when non-empty, asks the claude-code-cli provider
+	// to materialize a Claude Code MCP config file (`{"mcpServers": {...}}`)
+	// for the duration of one Chat call and pass it via `--mcp-config`. Other
+	// providers ignore this field. Callers translate TARS' own MCPServer
+	// configuration into this provider-agnostic shape outside the llm
+	// package so internal/llm stays decoupled from internal/config.
+	ClaudeCodeMCPServers []ClaudeCodeMCPServer
+}
+
+// ClaudeCodeMCPServer is the minimal subset of an MCP server config that
+// Claude Code understands when it receives `--mcp-config`. It covers both
+// stdio servers (Command + Args + Env) and remote servers (URL + Headers).
+// Transport selects the shape: "stdio" (default when Command is set) or
+// "http"/"sse" for remote servers.
+type ClaudeCodeMCPServer struct {
+	Name      string
+	Transport string
+	Command   string
+	Args      []string
+	Env       map[string]string
+	URL       string
+	Headers   map[string]string
 }
 
 type ChatResponse struct {

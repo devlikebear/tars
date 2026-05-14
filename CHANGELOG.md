@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.32.59] - 2026-05-14
+
+### Added
+
+- **claude-code-cli provider: `--mcp-config` 주입 capability (Epic #857 Phase 3a)** — `internal/llm.ChatOptions`에 새 슬라이스 필드 `ClaudeCodeMCPServers []ClaudeCodeMCPServer`를 추가하고, 새 타입 `ClaudeCodeMCPServer{Name, Transport, Command, Args, Env, URL, Headers}`로 stdio/http/sse MCP 서버를 표현한다. 호출 시 `internal/llm/claude_code_cli.go`의 `Chat`이 이 슬라이스를 받으면 새 헬퍼 `writeClaudeCodeMCPConfigFile`로 Claude Code가 이해하는 포맷 `{"mcpServers": {<name>: {type, command|url, args|headers, env|...}}}`을 임시 파일(`os.CreateTemp("", "tars-claude-mcp-*.json")`)에 직렬화하고, `--mcp-config <path>`를 argv에 끼운 뒤 호출이 끝나면 `defer cleanup()`으로 즉시 삭제한다. transport 분기는 lower-case된 값으로 판단: `"http"` 또는 `"sse"`면 type/url/headers 셋업, 그 외(빈 값 포함)는 stdio로 떨어져 command/args/env를 채운다. 빈 `Name` 엔트리는 silently skip — invalid한 `{"mcpServers": {"": ...}}` JSON이 만들어지는 걸 방지한다. 모든 엔트리가 skip되거나 슬라이스가 nil이면 `--mcp-config` 플래그 자체를 생략해 claude에 빈 config 파일을 넘기지 않는다. 이 변경은 capability surface 추가일 뿐 다른 provider는 슬라이스를 silently ignore하며 기본 호출(nil 슬라이스)은 종전과 100% 동일하게 동작한다. `internal/llm/claude_code_cli_test.go`에 두 회귀 케이스를 추가했다: `TestClaudeCodeCLIClientChat_MCPConfigPathPassedWhenServersProvided`는 stdio(`fs`, command="/usr/bin/mcp-fs") + http(`remote`, url="https://mcp.example.com/sse") 서버를 함께 넘기고, 셸 스크립트 stub이 `--mcp-config` 값으로 가리키는 임시 파일 내용을 별도 캡처 경로로 cat한 뒤 테스트가 그 JSON을 unmarshal해 두 엔트리의 type/command/url을 검증한다. 또한 임시 파일이 Chat 리턴 후 cleanup 되어 `os.Stat`이 `IsNotExist`를 반환하는지 확인해 누수가 없음을 잠근다. `TestClaudeCodeCLIClientChat_MCPConfigSkippedWhenEmpty`는 nil 슬라이스와 모두 빈 이름인 슬라이스 두 케이스 모두에서 `--mcp-config`가 argv에 들어가지 않음을 확인한다. 핸들러 통합(`handler_chat_execution`에서 `cfg.MCPServers` + session-scoped `mcp_servers_extra`를 이 슬라이스로 변환해 `agent.RunOptions`를 통해 `ChatOptions`까지 흘리는 작업) + skills/commands 미러 + `--settings` 마운트는 모두 Phase 3b 별 PR로 분리해 리뷰 단위가 작게 유지된다 — 이 PR은 LLM provider 측 capability 노출만 다룬다.
+
 ## [0.32.58] - 2026-05-14
 
 ### Added
