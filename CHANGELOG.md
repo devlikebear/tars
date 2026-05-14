@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.32.58] - 2026-05-14
+
+### Added
+
+- **세션 단위 claude-code-cli `--resume` 자동 연결 (Epic #857 Phase 2b)** — Phase 2a에서 노출한 `llm.ChatOptions.ResumeSessionID` capability를 실제 TARS 채팅 루프에 연결한다. 세 레이어가 동시에 변경된다. (1) `internal/session/session.go`의 `Session` 구조체에 새 필드 `UpstreamSessionID string` (`json:"upstream_session_id,omitempty"`)를 추가하고, 이를 `WorkDirs`/`CurrentDir` 다음 자리에 배치해 cwd 모델과 의미적으로 인접하게 둔다. 새 `Store.SetUpstreamSessionID(id, upstreamID)` 헬퍼는 `SetCurrentDir`와 동일한 인덱스 락 패턴을 사용하며, 값이 동일하면 no-op로 종료해 매 턴마다 `UpdatedAt`이 불필요하게 갱신되지 않도록 한다. 빈 문자열을 넘기면 명시적 reset이 되고, 알 수 없는 세션 id는 `ErrSessionNotFound`로 응답한다. (2) `internal/agent/loop.go`의 `RunOptions`에 `ResumeSessionID string`를 추가하고, `Loop.Run`이 그 값을 첫 iteration의 `ChatOptions.ResumeSessionID`로 시드한 뒤 매 이터레이션 응답에서 `resp.SessionID`를 읽어 `activeResumeID`를 갱신한다 — 이 덕분에 fresh 세션으로 시작한 경우(iter 1에서 caller intent가 비어 있고 provider가 새 id를 발급)에도 iter 2 이후로는 같은 업스트림 세션에 부착된다. (3) `internal/tarsserver/handler_chat_execution.go`의 `executeChatLoop`가 `loop.Run` 호출 직전 `state.store.Get`으로 현재 세션의 `UpstreamSessionID`를 읽어 `RunOptions.ResumeSessionID`로 넘기고, 호출 직후 응답의 `chatResp.SessionID`가 비어 있지 않고 직전 값과 다를 때만 `SetUpstreamSessionID`로 다시 디스크에 저장한다 — persist 실패는 debug 레벨로 로깅하고 계속 진행한다 (다음 턴이 fresh로 시작될 뿐 사용자 흐름을 막지 않는다). 결과적으로 사용자가 동일 TARS 세션에서 두 번째 메시지를 보내면 claude-code-cli provider는 `--resume <stored_id>` + 마지막 user 메시지만 들고 호출되어 시스템 프롬프트/이전 트랜스크립트를 재과금하지 않는다. 다른 LLM provider는 `ResumeSessionID`를 silently ignore하므로 무영향. 회귀 픽스처 4종이 추가됐다: `TestStoreSetUpstreamSessionID_PersistsAndRoundTrips`(공백 trim + read-back), `TestStoreSetUpstreamSessionID_NoBumpWhenUnchanged`(동일값 set 시 UpdatedAt 보존), `TestStoreSetUpstreamSessionID_UnknownSession`(sentinel 에러), 그리고 `internal/agent/loop_test.go`의 `scriptedLLMClient`에 `seenResumeIDs` 추적 필드를 더하고 `TestLoop_Run_ThreadsResumeSessionID`(빈 caller intent → iter 1 빈 string → 응답 SessionID 채택 → iter 2 "upstream-fresh-1")와 `TestLoop_Run_HonorsCallerResumeSessionID`(caller가 "carried"를 넘기면 iter 1이 그대로 받음)로 두 갈래 시나리오를 잠갔다. Phase 2의 비용 절감 목표(시스템 프롬프트 재과금 회피)와 Anthropic 6/15 Agent SDK 크레딧 정책 대응이 이 PR로 사용자 표면까지 도달한다.
+
 ## [0.32.57] - 2026-05-14
 
 ### Added

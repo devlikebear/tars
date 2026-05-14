@@ -78,6 +78,12 @@ type RunOptions struct {
 	// `injectInput` lets the loop terminate as usual. Returning an error
 	// aborts the loop.
 	OnTurnEnd func(ctx context.Context, lastResp llm.ChatResponse) (injectInput string, err error)
+	// ResumeSessionID seeds the first iteration's ChatOptions.ResumeSessionID
+	// so resumable providers (claude-code-cli) continue an existing upstream
+	// session rather than starting a new one. Subsequent iterations
+	// auto-update from the previous response's SessionID so the whole loop
+	// stays attached to the same upstream session.
+	ResumeSessionID string
 }
 
 func (l *Loop) Run(ctx context.Context, initial []llm.ChatMessage, opts RunOptions) (llm.ChatResponse, error) {
@@ -96,6 +102,12 @@ func (l *Loop) Run(ctx context.Context, initial []llm.ChatMessage, opts RunOptio
 	execAutoCorrectUsed := false
 	l.emit(ctx, Event{Type: EventLoopStart, MessageCount: len(messages)})
 
+	// activeResumeID threads the upstream session handle through each
+	// iteration. Starts from caller intent, then follows whatever the
+	// provider returns so we stay attached to the same session even when the
+	// provider mints a fresh ID on the first (fresh) call.
+	activeResumeID := strings.TrimSpace(opts.ResumeSessionID)
+
 	for i := 0; i < maxIters; i++ {
 		l.emit(ctx, Event{Type: EventBeforeLLM, Iteration: i + 1, MessageCount: len(messages)})
 		resp, err := l.client.Chat(ctx, messages, llm.ChatOptions{
@@ -104,12 +116,17 @@ func (l *Loop) Run(ctx context.Context, initial []llm.ChatMessage, opts RunOptio
 			Tools:            llmTools,
 			ToolChoice:       opts.ToolChoice,
 			ResponseFormat:   opts.ResponseFormat,
+			ResumeSessionID:  activeResumeID,
 		})
 		if err != nil {
 			l.emit(ctx, Event{Type: EventLoopError, Iteration: i + 1, Err: err})
 			return llm.ChatResponse{}, err
 		}
 		l.emit(ctx, Event{Type: EventAfterLLM, Iteration: i + 1, MessageCount: len(messages)})
+
+		if sid := strings.TrimSpace(resp.SessionID); sid != "" {
+			activeResumeID = sid
+		}
 
 		messages = append(messages, resp.Message)
 		if len(resp.Message.ToolCalls) == 0 {
