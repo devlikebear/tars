@@ -600,6 +600,11 @@ export type SessionCritic = {
   last_feedback?: string
   last_trigger?: string
   last_reviewed_plan_sig?: string
+  last_reviewed_turn_sig?: string
+  pending_feedback?: string
+  pending_feedback_trigger?: string
+  pending_feedback_round?: number
+  pending_feedback_at?: string
   updated_at?: string
 }
 
