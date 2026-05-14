@@ -61,12 +61,23 @@ func executeChatLoop(
 
 	deps.logger.Debug().Str("session_id", state.sessionID).Int("messages", len(state.llmMessages)).Msg("llm chat call start")
 	onTurnEnd := buildChatTurnEndHook(deps, state, stream)
+
+	// Resume the upstream provider session (claude-code-cli only today) when
+	// one was captured on a previous turn so we don't replay history.
+	resumeID := ""
+	if state.store != nil {
+		if priorSess, lookupErr := state.store.Get(state.sessionID); lookupErr == nil {
+			resumeID = strings.TrimSpace(priorSess.UpstreamSessionID)
+		}
+	}
+
 	chatResp, err := loop.Run(ctx, state.llmMessages, agent.RunOptions{
-		MaxIterations: deps.maxIters,
-		Tools:         state.injectedSchemas,
-		BlockedTools:  state.blockedTools,
-		ToolChoice:    state.toolChoice,
-		OnTurnEnd:     onTurnEnd,
+		MaxIterations:   deps.maxIters,
+		Tools:           state.injectedSchemas,
+		BlockedTools:    state.blockedTools,
+		ToolChoice:      state.toolChoice,
+		OnTurnEnd:       onTurnEnd,
+		ResumeSessionID: resumeID,
 		OnDelta: func(text string) {
 			if text == "" {
 				return
@@ -102,6 +113,16 @@ func executeChatLoop(
 		deps.logger.Debug().Str("session_id", state.sessionID).Err(err).Msg("llm chat call failed")
 		return llm.ChatResponse{}, false, nil, err
 	}
+	if state.store != nil {
+		if upstream := strings.TrimSpace(chatResp.SessionID); upstream != "" && upstream != resumeID {
+			if persistErr := state.store.SetUpstreamSessionID(state.sessionID, upstream); persistErr != nil {
+				// Non-fatal: the next turn will just start a fresh upstream
+				// session instead of resuming. Log and continue.
+				deps.logger.Debug().Str("session_id", state.sessionID).Str("upstream_session_id", upstream).Err(persistErr).Msg("persist upstream session id failed")
+			}
+		}
+	}
+
 	deps.logger.Debug().
 		Str("session_id", state.sessionID).
 		Int("assistant_len", len(chatResp.Message.Content)).

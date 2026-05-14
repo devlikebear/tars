@@ -18,6 +18,7 @@ type scriptedLLMClient struct {
 	seenInputs     [][]llm.ChatMessage
 	seenToolCounts []int
 	seenToolChoice []string
+	seenResumeIDs  []string
 }
 
 func (c *scriptedLLMClient) Ask(ctx context.Context, prompt string) (string, error) {
@@ -32,6 +33,7 @@ func (c *scriptedLLMClient) Chat(ctx context.Context, messages []llm.ChatMessage
 	c.seenInputs = append(c.seenInputs, copyMsgs)
 	c.seenToolCounts = append(c.seenToolCounts, len(opts.Tools))
 	c.seenToolChoice = append(c.seenToolChoice, opts.ToolChoice.String())
+	c.seenResumeIDs = append(c.seenResumeIDs, opts.ResumeSessionID)
 	resp := c.responses[c.callIndex]
 	c.callIndex++
 	return resp, nil
@@ -929,5 +931,85 @@ func TestLoop_NoEmitterMeansNoStreamerInToolCtx(t *testing.T) {
 	}
 	if seenStreamer != nil {
 		t.Fatalf("expected no streamer when no emitter in ctx, got %v", seenStreamer)
+	}
+}
+
+// TestLoop_Run_ThreadsResumeSessionID verifies that:
+//   - The first iteration receives ChatOptions.ResumeSessionID = caller intent.
+//   - When the provider returns a SessionID on the response, subsequent
+//     iterations adopt it (covers the fresh-session case: caller had no ID,
+//     provider mints one, iter 2 onwards resumes that fresh session).
+func TestLoop_Run_ThreadsResumeSessionID(t *testing.T) {
+	reg := tool.NewRegistry()
+	reg.Register(tool.NewSessionStatusTool(func(_ context.Context) (tool.SessionStatus, error) {
+		return tool.SessionStatus{SessionID: "tars-sess", HistoryMessages: 0}, nil
+	}))
+
+	client := &scriptedLLMClient{
+		responses: []llm.ChatResponse{
+			{
+				// Iter 1: provider mints a fresh upstream session id.
+				SessionID: "upstream-fresh-1",
+				Message: llm.ChatMessage{
+					Role: "assistant",
+					ToolCalls: []llm.ToolCall{
+						{ID: "call_1", Name: "session_status", Arguments: "{}"},
+					},
+				},
+			},
+			{
+				// Iter 2: provider returns the same id (resumed).
+				SessionID: "upstream-fresh-1",
+				Message:   llm.ChatMessage{Role: "assistant", Content: "done"},
+			},
+		},
+	}
+	loop := NewLoop(client, reg)
+	_, err := loop.Run(context.Background(), []llm.ChatMessage{{Role: "user", Content: "go"}}, RunOptions{
+		Tools: []llm.ToolSchema{{
+			Type: "function",
+			Function: llm.ToolFunctionSchema{
+				Name:       "session_status",
+				Parameters: json.RawMessage(`{"type":"object"}`),
+			},
+		}},
+		ToolChoice: llm.ToolChoiceAuto(),
+		// Caller passes empty — this is a brand-new TARS session.
+	})
+	if err != nil {
+		t.Fatalf("loop run: %v", err)
+	}
+	if len(client.seenResumeIDs) != 2 {
+		t.Fatalf("expected 2 chat calls, got %d", len(client.seenResumeIDs))
+	}
+	if client.seenResumeIDs[0] != "" {
+		t.Fatalf("iter 1 should see empty resume id (fresh session), got %q", client.seenResumeIDs[0])
+	}
+	if client.seenResumeIDs[1] != "upstream-fresh-1" {
+		t.Fatalf("iter 2 should adopt upstream id from iter 1 response, got %q", client.seenResumeIDs[1])
+	}
+}
+
+// TestLoop_Run_HonorsCallerResumeSessionID verifies that when the caller seeds
+// a ResumeSessionID, iter 1 receives it (the resume case across user turns).
+func TestLoop_Run_HonorsCallerResumeSessionID(t *testing.T) {
+	reg := tool.NewRegistry()
+	client := &scriptedLLMClient{
+		responses: []llm.ChatResponse{
+			{
+				SessionID: "carried",
+				Message:   llm.ChatMessage{Role: "assistant", Content: "ack"},
+			},
+		},
+	}
+	loop := NewLoop(client, reg)
+	_, err := loop.Run(context.Background(), []llm.ChatMessage{{Role: "user", Content: "second turn"}}, RunOptions{
+		ResumeSessionID: "carried",
+	})
+	if err != nil {
+		t.Fatalf("loop run: %v", err)
+	}
+	if len(client.seenResumeIDs) != 1 || client.seenResumeIDs[0] != "carried" {
+		t.Fatalf("expected iter 1 to receive caller resume id 'carried', got %v", client.seenResumeIDs)
 	}
 }

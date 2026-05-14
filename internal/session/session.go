@@ -248,6 +248,12 @@ type Session struct {
 	PromptOverride      string                    `json:"prompt_override,omitempty"`
 	WorkDirs            []string                  `json:"work_dirs,omitempty"`
 	CurrentDir          string                    `json:"current_dir,omitempty"`
+	// UpstreamSessionID is an opaque handle exposed by certain LLM providers
+	// (currently only claude-code-cli) that lets a follow-up turn resume the
+	// remote session instead of replaying the full transcript. Empty for
+	// stateless providers or fresh sessions. Persisted so the next turn can
+	// pass it back via llm.ChatOptions.ResumeSessionID.
+	UpstreamSessionID   string                    `json:"upstream_session_id,omitempty"`
 	ArchivedAt          *time.Time                `json:"archived_at,omitempty"`
 	PinnedAt            *time.Time                `json:"pinned_at,omitempty"`
 	Goal                *SessionGoal              `json:"goal,omitempty"`
@@ -1314,6 +1320,35 @@ func (s *Store) SetWorkDirs(id string, dirs []string, currentDir string) error {
 	if err != nil {
 		return err
 	}
+	sess.UpdatedAt = time.Now().UTC()
+	index[id] = sess
+	return s.saveIndex(index)
+}
+
+// SetUpstreamSessionID records the opaque upstream handle returned by a
+// provider that supports resumable sessions (currently only claude-code-cli).
+// Passing an empty string clears the field. No-op when the value is unchanged
+// so we don't bump UpdatedAt on every turn.
+func (s *Store) SetUpstreamSessionID(id string, upstreamID string) error {
+	unlock := lockPath(s.indexPath())
+	defer unlock()
+	index, err := s.loadIndex()
+	if err != nil {
+		return err
+	}
+	sess, ok := index[id]
+	if !ok {
+		return ErrSessionNotFound
+	}
+	sess, _, err = s.applySessionDefaults(sess)
+	if err != nil {
+		return err
+	}
+	trimmed := strings.TrimSpace(upstreamID)
+	if sess.UpstreamSessionID == trimmed {
+		return nil
+	}
+	sess.UpstreamSessionID = trimmed
 	sess.UpdatedAt = time.Now().UTC()
 	index[id] = sess
 	return s.saveIndex(index)
