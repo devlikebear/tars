@@ -149,6 +149,10 @@ type ChatResponse struct {
 	Message    ChatMessage
 	Usage      Usage
 	StopReason string
+	// SessionID is set by providers that expose a resumable upstream session
+	// (currently only claude-code-cli via stream-json). Empty for stateless
+	// providers.
+	SessionID string
 }
 
 type ClientConfig struct {

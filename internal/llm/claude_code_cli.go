@@ -119,9 +119,11 @@ func parseClaudeCodeCLIStream(stdout io.Reader, opts ChatOptions) (ChatResponse,
 
 	var (
 		assistantText strings.Builder
+		toolCalls     []ToolCall
 		resultText    string
 		usage         Usage
 		stopReason    string
+		sessionID     string
 	)
 
 	for scanner.Scan() {
@@ -135,19 +137,25 @@ func parseClaudeCodeCLIStream(stdout io.Reader, opts ChatOptions) (ChatResponse,
 			return ChatResponse{}, newProviderError(claudeCodeCLIProviderLabel, "parse", fmt.Errorf("decode stream event: %w", err))
 		}
 
+		if sid := strings.TrimSpace(asString(payload["session_id"])); sid != "" {
+			sessionID = sid
+		}
+
 		switch strings.TrimSpace(asString(payload["type"])) {
+		case "system":
+			// session_id already captured above; nothing else to do for init.
 		case "assistant":
-			text := extractClaudeCodeAssistantText(payload)
-			if text == "" {
-				continue
+			text, calls := extractClaudeCodeAssistantBlocks(payload)
+			if text != "" {
+				if assistantText.Len() > 0 {
+					assistantText.WriteString("\n")
+				}
+				assistantText.WriteString(text)
+				if opts.OnDelta != nil {
+					opts.OnDelta(text)
+				}
 			}
-			if assistantText.Len() > 0 {
-				assistantText.WriteString("\n")
-			}
-			assistantText.WriteString(text)
-			if opts.OnDelta != nil {
-				opts.OnDelta(text)
-			}
+			toolCalls = append(toolCalls, calls...)
 		case "result":
 			stopReason = strings.TrimSpace(asString(payload["stop_reason"]))
 			usage = extractClaudeCodeUsage(payload["usage"])
@@ -168,11 +176,13 @@ func parseClaudeCodeCLIStream(stdout io.Reader, opts ChatOptions) (ChatResponse,
 	}
 	return ChatResponse{
 		Message: ChatMessage{
-			Role:    "assistant",
-			Content: content,
+			Role:      "assistant",
+			Content:   content,
+			ToolCalls: toolCalls,
 		},
 		Usage:      usage,
 		StopReason: stopReason,
+		SessionID:  sessionID,
 	}, nil
 }
 
@@ -224,27 +234,47 @@ func buildClaudeCodeCLIPrompt(messages []ChatMessage) string {
 	return strings.TrimSpace(builder.String())
 }
 
-func extractClaudeCodeAssistantText(payload map[string]any) string {
+// extractClaudeCodeAssistantBlocks splits an assistant stream-json event into
+// its concatenated text and any tool_use blocks. tool_use input is preserved
+// as a JSON-encoded argument string so TARS callers can route it the same way
+// they handle ToolCall.Arguments from other providers.
+func extractClaudeCodeAssistantBlocks(payload map[string]any) (string, []ToolCall) {
 	message, ok := payload["message"].(map[string]any)
 	if !ok {
-		return ""
+		return "", nil
 	}
 	blocks, ok := message["content"].([]any)
 	if !ok {
-		return ""
+		return "", nil
 	}
-	var builder strings.Builder
+	var (
+		text  strings.Builder
+		calls []ToolCall
+	)
 	for _, raw := range blocks {
 		block, ok := raw.(map[string]any)
 		if !ok {
 			continue
 		}
-		if strings.TrimSpace(asString(block["type"])) != "text" {
-			continue
+		switch strings.TrimSpace(asString(block["type"])) {
+		case "text":
+			text.WriteString(asString(block["text"]))
+		case "tool_use":
+			call := ToolCall{
+				ID:   strings.TrimSpace(asString(block["id"])),
+				Name: strings.TrimSpace(asString(block["name"])),
+			}
+			if input, ok := block["input"]; ok && input != nil {
+				if encoded, err := json.Marshal(input); err == nil {
+					call.Arguments = string(encoded)
+				}
+			}
+			if call.Name != "" {
+				calls = append(calls, call)
+			}
 		}
-		builder.WriteString(asString(block["text"]))
 	}
-	return builder.String()
+	return text.String(), calls
 }
 
 func extractClaudeCodeUsage(raw any) Usage {

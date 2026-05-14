@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.32.56] - 2026-05-14
+
+### Added
+
+- **claude-code-cli provider: tool_use 파싱 + session_id 캡처 (Epic #857 Phase 1)** — `internal/llm/claude_code_cli.go`의 `parseClaudeCodeCLIStream`이 그동안 stream-json의 `assistant.message.content[]` 안에 들어오는 `tool_use` 블록을 통째로 버리고 `text` 블록만 추출하던 동작을 고친다. 새 `extractClaudeCodeAssistantBlocks` 헬퍼는 같은 콘텐츠 배열을 한 번 순회하며 `text`는 누적 builder로, `tool_use`는 `ToolCall{ID, Name, Arguments}` 슬라이스로 분리한다. `input` 필드는 `json.Marshal`로 JSON 문자열화해 `ToolCall.Arguments`에 저장 — 다른 provider(anthropic native, openai 등)가 이미 사용하는 직렬화 형태와 동일하므로 `internal/agentruntime`/`internal/tool` 쪽 라우팅은 무수정으로 받는다. 파서는 또한 어느 이벤트든 최상위 `session_id` 키가 보이면 캡처하므로(`system.init` → `result` 순서로 두 번 들어와도 동일 ID로 수렴) Anthropic이 6/15부터 공식 허용하는 Agent SDK / `claude -p` 호환 흐름의 첫 단계인 "세션 핸들 확보"가 이루어진다. 새로 추가된 `SessionID` 필드는 `internal/llm.ChatResponse`에 노출되어(다른 provider는 빈 문자열 유지) Phase 2의 `--resume <session_id>` 멀티턴 호출이 이 값을 그대로 받아쓸 예정. 회귀 방지를 위해 `internal/llm/claude_code_cli_test.go`에 두 케이스를 추가했다: `TestClaudeCodeCLIClientChat_CapturesSessionInit`은 `result` 이벤트가 도착하기 전에 `system.init`에서 session_id가 캡처되는지 검증하고, `TestClaudeCodeCLIClientChat_ParsesToolUse`는 한 응답 안에 텍스트 + tool_use + tool_result + 후속 텍스트가 섞인 stream-json 픽스처를 셸 스크립트 stub으로 흘려보내 `ChatResponse.Message.ToolCalls`에 `Read` 호출이 `/tmp/a.txt` 인자와 함께 들어오고 최종 텍스트는 두 assistant 턴이 합쳐진 형태로 노출되는지 확인한다. 기존 `TestClaudeCodeCLIClientChat_ParsesStreamJSON`에도 `resp.SessionID == "sess-1"` 단언을 추가해 단일 턴 케이스에서도 동일 동작을 잠근다. 파싱 외 동작(플래그, working dir, system prompt 빌더, transcript 텍스트 직렬화)은 의도적으로 손대지 않았다 — `--input-format stream-json` 입력 모드 전환, `--resume` 사용, MCP/skills/settings 마운트, permission 모드 매핑은 모두 후속 페이즈에서 독립 PR로 들어간다.
+
 ## [0.32.55] - 2026-05-14
 
 ### Fixed
