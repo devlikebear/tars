@@ -92,6 +92,39 @@ func TestConsoleHandler_ServesBuiltAssetsForConsoleRoutes(t *testing.T) {
 	}
 }
 
+func TestConsoleHandler_ServesPWAManifestWithCorrectContentType(t *testing.T) {
+	manifestBody := `{"name":"TARS Console","start_url":"/console/"}`
+	handler := newConsoleStaticHandler(zerolog.New(io.Discard), fstest.MapFS{
+		"index.html":            &fstest.MapFile{Data: []byte("<!doctype html>")},
+		"manifest.webmanifest":  &fstest.MapFile{Data: []byte(manifestBody)},
+		"pwa-icon-192.png":      &fstest.MapFile{Data: []byte("\x89PNG\r\n")},
+	}, true)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/console/manifest.webmanifest", nil)
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+	if got := rec.Header().Get("Content-Type"); got != "application/manifest+json" {
+		t.Fatalf("expected application/manifest+json, got %q", got)
+	}
+	if body := rec.Body.String(); body != manifestBody {
+		t.Fatalf("expected manifest body to be served verbatim, got %q", body)
+	}
+
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/console/pwa-icon-192.png", nil)
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for icon, got %d", rec.Code)
+	}
+	if got := rec.Header().Get("Content-Type"); !strings.Contains(got, "image/png") {
+		t.Fatalf("expected image/png content type for icon, got %q", got)
+	}
+}
+
 func TestConsoleHandler_RedirectsBareConsolePath(t *testing.T) {
 	handler := newConsoleStaticHandler(zerolog.New(io.Discard), fstest.MapFS{
 		"index.html": &fstest.MapFile{Data: []byte("<!doctype html><div id=\"app\">console</div>")},

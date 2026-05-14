@@ -138,6 +138,9 @@ func serveConsoleAsset(w http.ResponseWriter, root fs.FS, assetPath string) {
 	if strings.HasSuffix(cleanPath, ".html") {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	}
+	if strings.HasSuffix(cleanPath, ".webmanifest") {
+		w.Header().Set("Content-Type", "application/manifest+json")
+	}
 	_, _ = w.Write(content)
 }
 

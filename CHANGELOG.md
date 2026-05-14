@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.32.53] - 2026-05-14
+
+### Added
+
+- **Console: PWA-first install surface (#850 Phase 1)** — TARS Console is now installable as a desktop-style PWA. New `frontend/console/public/manifest.webmanifest` declares `name`/`short_name`/`id`/`start_url` rooted at `/console/`, `display: standalone` with `window-controls-overlay` override, `theme_color`/`background_color` matching the dark theme (`#141414`), and a four-entry icon set (`pwa-icon-192.png`, `pwa-icon-512.png`, `pwa-maskable-192.png`, `pwa-maskable-512.png`) generated from `docs/brand/tars-icon.png` with a 10% safe-zone padded variant for maskable purpose. `frontend/console/index.html` adds `<link rel="manifest">`, `<link rel="apple-touch-icon">` (180×180), `<meta name="theme-color">`, and `apple-mobile-web-app-*` meta tags so iOS/macOS Safari "Dock에 추가" picks up the correct title/icon. Server side, `serveConsoleAsset` in `internal/tarsserver/console.go` now sets `Content-Type: application/manifest+json` for `.webmanifest` (Go's mime registry returns the wrong type by default). New `docs/console-install.md` documents the four access paths (browser, PWA/Add to Dock, CLI, LaunchAgent service) with per-browser install instructions for Chrome/Edge/Brave/Arc/Safari and notes Firefox's lack of desktop PWA support. No backend behavior change; the existing `/console/*` static handler serves the new assets directly.
+
 ## [0.32.52] - 2026-05-14
 
 ### Changed
