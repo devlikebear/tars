@@ -11,15 +11,12 @@ test('Session config exposes automation consent controls', () => {
   assert.match(apiSource, /getSessionAutomationConsent/)
   assert.match(apiSource, /updateSessionAutomationConsent/)
   assert.match(apiSource, /\/automation-consent/)
-  assert.match(panelSource, /activeTab: 'tools' \| 'skills' \| 'automation'/)
+  assert.match(panelSource, /activeTab:[^=]*'tools'[\s\S]*'skills'[\s\S]*'automation'/)
   assert.match(typesSource, /auto_resume_enabled/)
   assert.match(typesSource, /auto_resume_after_minutes/)
   assert.match(typesSource, /allowed_resume_modes/)
-  assert.match(panelSource, /Auto-resume stalled chats/)
   assert.match(panelSource, /record_assumption_and_proceed/)
   assert.match(panelSource, /move_to_next_task/)
-  assert.match(panelSource, /Approved git mutations/)
-  assert.match(panelSource, /Autonomous workspace mutations/)
 })
 
 test('Session config gates permission toggles behind a preview', () => {

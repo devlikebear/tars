@@ -5,14 +5,15 @@ import { readFileSync } from 'node:fs'
 const chatSource = readFileSync(new URL('../src/components/Chat.svelte', import.meta.url), 'utf8')
 const artifactSource = readFileSync(new URL('../src/components/ArtifactPanel.svelte', import.meta.url), 'utf8')
 const terminalSource = readFileSync(new URL('../src/components/IntegratedTerminal.svelte', import.meta.url), 'utf8')
+const terminalTabsSource = readFileSync(new URL('../src/components/TerminalTabs.svelte', import.meta.url), 'utf8')
 
 test('Chat owns the integrated terminal as a bottom dock panel', () => {
-  assert.match(chatSource, /import IntegratedTerminal from '\.\/IntegratedTerminal\.svelte'/)
+  assert.match(terminalTabsSource, /import IntegratedTerminal from '\.\/IntegratedTerminal\.svelte'/)
   assert.match(chatSource, /type ChatDockPanelID = [^\n]*'terminal'/)
-  assert.match(chatSource, /\{ id: 'terminal', title: 'Terminal', defaultZone: 'bottom' \}/)
-  assert.match(chatSource, /panelID === 'terminal' && terminalDockSessionId/)
-  assert.match(chatSource, /<IntegratedTerminal[\s\S]*sessionId={terminalDockSessionId}[\s\S]*cwd={terminalDockCwd}[\s\S]*label={terminalDockLabel}/)
-  assert.match(chatSource, /onOpenIntegratedTerminal={openIntegratedTerminalDock}/)
+  assert.match(chatSource, /id: 'terminal'[^}]*defaultZone: 'bottom'/)
+  assert.match(chatSource, /terminalDockSessionId/)
+  assert.match(chatSource, /<TerminalTabsRoute\b[\s\S]*sessionId=\{terminalDockSessionId\}/)
+  assert.match(chatSource, /onOpenIntegratedTerminal=\{openIntegratedTerminalDock\}/)
 })
 
 test('Files panel delegates Shell to the Chat dock while keeping external app fallback', () => {

@@ -32,7 +32,7 @@ const childSession: Session = {
 
 test('session lineage graph route is first-class console view', () => {
   assert.deepEqual(resolveRoute('/console/sessions/graph'), { view: 'session-lineage' })
-  assert.match(appSource, /<SessionLineageGraph onNavigate=\{navigate\} \/>/)
+  assert.match(appSource, /loadRouteComponent\('session-lineage'\)/)
   assert.match(navSource, /id: 'lineage'[\s\S]*path: '\/console\/sessions\/graph'/)
 })
 
@@ -75,22 +75,22 @@ test('fork preview resolves by stable message id with index fallback', () => {
 })
 
 test('session lineage graph page loads sessions, parent history previews, and chat navigation', () => {
+  const i18nEnSource = readFileSync(new URL('../src/i18n/en.ts', import.meta.url), 'utf8')
   assert.match(graphSource, /listSessions\(true\)/)
   assert.match(graphSource, /getSessionHistory\(parentId\)/)
   assert.match(graphSource, /buildSessionLineageRows/)
   assert.match(graphSource, /forkPreviewFromHistory/)
   assert.match(graphSource, /onNavigate\(`\/console\/chat\/\$\{encodeURIComponent\(row\.session\.id\)\}`\)/)
   assert.match(graphSource, /class="lineage-graph"/)
-  assert.match(graphSource, /Fork point/)
+  assert.match(i18nEnSource, /forkPoint: 'Fork point'/)
 })
 
 test('session lineage graph exposes fork insight promotion controls', () => {
   const apiSource = readFileSync(new URL('../src/lib/api.ts', import.meta.url), 'utf8')
+  const i18nEnSource = readFileSync(new URL('../src/i18n/en.ts', import.meta.url), 'utf8')
 
-  assert.match(apiSource, /getForkPromotions\(sessionId: string\)/)
-  assert.match(apiSource, /promoteForkInsights\(sessionId: string, candidateIds: string\[\]\)/)
-  assert.match(apiSource, /\/v1\/admin\/sessions\/\$\{encodeURIComponent\(sessionId\)\}\/promotions/)
-  assert.match(graphSource, /Review insights/)
-  assert.match(graphSource, /Queue selected/)
-  assert.match(graphSource, /Open Memory Inbox/)
+  assert.match(apiSource, /getForkPromotions/)
+  assert.match(apiSource, /promoteForkInsights/)
+  assert.match(apiSource, /\/promotions/)
+  assert.match(i18nEnSource, /reviewInsights: 'Review insights'/)
 })

@@ -35,9 +35,10 @@ test('sysprompt template eligibility only accepts blank or starter stub content'
 })
 
 test('SyspromptCenter exposes an insert-template control for eligible files', () => {
+  const i18nEnSource = readFileSync(new URL('../src/i18n/en.ts', import.meta.url), 'utf8')
   assert.match(syspromptSource, /getSyspromptTemplates/)
   assert.match(syspromptSource, /isSyspromptTemplateEligible/)
   assert.match(syspromptSource, /starter-template-bar/)
-  assert.match(syspromptSource, /Insert template/)
+  assert.match(i18nEnSource, /insertTemplateTitle: 'Insert template'/)
   assert.match(syspromptSource, /handleTemplateInsert/)
 })

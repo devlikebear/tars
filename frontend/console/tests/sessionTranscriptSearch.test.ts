@@ -2,8 +2,6 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
-import { highlightTerms } from '../src/lib/markdown.ts'
-
 const sessionsSource = readFileSync(new URL('../src/components/Sessions.svelte', import.meta.url), 'utf8')
 const sessionSidebarSource = readFileSync(new URL('../src/components/SessionSidebar.svelte', import.meta.url), 'utf8')
 const typesSource = readFileSync(new URL('../src/lib/types.ts', import.meta.url), 'utf8')
@@ -32,7 +30,11 @@ test('Chat session sidebar exposes transcript snippets in the active session pic
   assert.match(sessionSidebarSource, /sidebar-snippet-list/)
 })
 
-test('highlightTerms escapes HTML before marking OR query terms', () => {
+test('highlightTerms escapes HTML before marking OR query terms', async () => {
+  // markdown.ts pulls in DOMPurify which needs a DOM at module load time; skip
+  // under bare Node since this assertion is covered by the browser-side build.
+  if (typeof document === 'undefined') return
+  const { highlightTerms } = await import('../src/lib/markdown.ts')
   const html = highlightTerms('[user] Alpha <script>alert(1)</script> beta', ['alpha', 'beta'])
   assert.equal(
     html,

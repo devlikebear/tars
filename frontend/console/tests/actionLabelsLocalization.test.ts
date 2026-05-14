@@ -16,8 +16,9 @@ test('Header auth actions are localized', () => {
 })
 
 test('Session sidebar icon action buttons have explicit accessible labels', () => {
-  assert.match(sessionSidebarSource, /aria-label=\{\$t\.sessions\.actions\.rename\}/)
-  assert.match(sessionSidebarSource, /aria-label=\{\$t\.sessions\.actions\.autoTitle\}/)
-  assert.match(sessionSidebarSource, /aria-label=\{\$t\.sessions\.actions\.compact\}/)
-  assert.match(sessionSidebarSource, /aria-label=\{deleteConfirmId === session\.id \? \$t\.sessions\.actions\.confirm : \$t\.sessions\.actions\.delete\}/)
+  assert.match(sessionSidebarSource, /aria-label=\{\$t\.sessions\.actions\.more\}/)
+  assert.match(sessionSidebarSource, /\$t\.sessions\.actions\.rename/)
+  assert.match(sessionSidebarSource, /\$t\.sessions\.actions\.autoTitle/)
+  assert.match(sessionSidebarSource, /\$t\.sessions\.actions\.compact/)
+  assert.match(sessionSidebarSource, /deleteConfirmId === session\.id \? \$t\.sessions\.actions\.confirm : \$t\.sessions\.actions\.delete/)
 })
