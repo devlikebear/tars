@@ -96,6 +96,12 @@ func (c *ClaudeCodeCLIClient) Chat(ctx context.Context, messages []ChatMessage, 
 	} else {
 		args = append(args, "--no-session-persistence")
 	}
+	if mcpPath, cleanup, err := writeClaudeCodeMCPConfigFile(opts.ClaudeCodeMCPServers); err != nil {
+		return ChatResponse{}, newProviderError(claudeCodeCLIProviderLabel, "request", fmt.Errorf("mcp config: %w", err))
+	} else if mcpPath != "" {
+		defer cleanup()
+		args = append(args, "--mcp-config", mcpPath)
+	}
 	if systemPrompt := buildClaudeCodeCLISystemPrompt(messages); systemPrompt != "" {
 		args = append(args, "--system-prompt", systemPrompt)
 	}
@@ -216,6 +222,74 @@ func buildClaudeCodeCLISystemPrompt(messages []ChatMessage) string {
 		}
 	}
 	return strings.Join(parts, "\n\n")
+}
+
+// writeClaudeCodeMCPConfigFile materializes a Claude Code-shaped MCP config
+// (`{"mcpServers": {name: {...}}}`) into a temp file and returns its path
+// plus a cleanup function. Returns an empty path when servers is empty —
+// callers should skip the --mcp-config flag in that case.
+//
+// stdio servers: type/command/args/env
+// remote servers: type/url/headers ("http" or "sse" transport)
+//
+// Entries with empty Name are silently skipped; this avoids producing an
+// invalid JSON object with an empty key.
+func writeClaudeCodeMCPConfigFile(servers []ClaudeCodeMCPServer) (string, func(), error) {
+	entries := make(map[string]map[string]any, len(servers))
+	for _, srv := range servers {
+		name := strings.TrimSpace(srv.Name)
+		if name == "" {
+			continue
+		}
+		entry := map[string]any{}
+		transport := strings.ToLower(strings.TrimSpace(srv.Transport))
+		switch transport {
+		case "http", "sse":
+			entry["type"] = transport
+			if url := strings.TrimSpace(srv.URL); url != "" {
+				entry["url"] = url
+			}
+			if len(srv.Headers) > 0 {
+				entry["headers"] = srv.Headers
+			}
+		default:
+			entry["type"] = "stdio"
+			if cmd := strings.TrimSpace(srv.Command); cmd != "" {
+				entry["command"] = cmd
+			}
+			if len(srv.Args) > 0 {
+				entry["args"] = srv.Args
+			}
+			if len(srv.Env) > 0 {
+				entry["env"] = srv.Env
+			}
+		}
+		entries[name] = entry
+	}
+	if len(entries) == 0 {
+		return "", func() {}, nil
+	}
+	payload := map[string]any{"mcpServers": entries}
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		return "", func() {}, fmt.Errorf("encode mcp config: %w", err)
+	}
+	f, err := os.CreateTemp("", "tars-claude-mcp-*.json")
+	if err != nil {
+		return "", func() {}, fmt.Errorf("create temp file: %w", err)
+	}
+	path := f.Name()
+	cleanup := func() { _ = os.Remove(path) }
+	if _, err := f.Write(encoded); err != nil {
+		_ = f.Close()
+		cleanup()
+		return "", func() {}, fmt.Errorf("write temp file: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		cleanup()
+		return "", func() {}, fmt.Errorf("close temp file: %w", err)
+	}
+	return path, cleanup, nil
 }
 
 // extractLatestUserMessage returns the trimmed Content of the final user

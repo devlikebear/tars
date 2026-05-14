@@ -2,6 +2,7 @@ package llm
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -270,6 +271,187 @@ printf '%s\n' '{"type":"result","subtype":"success","is_error":false,"stop_reaso
 	if strings.Contains(string(args), "--resume") {
 		t.Fatalf("expected no --resume in fresh-session args, got:\n%s", args)
 	}
+}
+
+// TestClaudeCodeCLIClientChat_MCPConfigPathPassedWhenServersProvided verifies
+// that ChatOptions.ClaudeCodeMCPServers triggers --mcp-config <path> with a
+// materialized JSON file containing the Claude Code-shaped mcpServers map.
+// Both stdio and remote (http) shapes are covered. The temp file lives only
+// for the duration of one Chat call and is cleaned up afterwards.
+func TestClaudeCodeCLIClientChat_MCPConfigPathPassedWhenServersProvided(t *testing.T) {
+	dir := t.TempDir()
+	argsPath := filepath.Join(dir, "claude-args.txt")
+	// The stub copies the mcp config file content into a side file so the
+	// test can inspect it after the cli process exits and the deferred
+	// cleanup removes the temp file.
+	mcpCapturePath := filepath.Join(dir, "captured-mcp.json")
+	scriptPath := filepath.Join(dir, "claude")
+	script := strings.TrimSpace(`#!/bin/sh
+printf '%s\n' "$@" > `+shellQuote(argsPath)+`
+mcp_path=""
+i=0
+for arg in "$@"; do
+  i=$((i+1))
+  if [ "$arg" = "--mcp-config" ]; then
+    eval "mcp_path=\${$((i+1))}"
+    break
+  fi
+done
+if [ -n "$mcp_path" ] && [ -f "$mcp_path" ]; then
+  cat "$mcp_path" > `+shellQuote(mcpCapturePath)+`
+fi
+printf '%s\n' '{"type":"assistant","message":{"model":"sonnet","content":[{"type":"text","text":"ok"}]}}'
+printf '%s\n' '{"type":"result","subtype":"success","is_error":false,"stop_reason":"end_turn","usage":{"input_tokens":1,"output_tokens":1},"result":"ok"}'
+`) + "\n"
+	if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("write cli stub: %v", err)
+	}
+	t.Setenv("CLAUDE_CODE_CLI_PATH", scriptPath)
+
+	client, err := NewProvider(ProviderOptions{
+		Provider: "claude-code-cli",
+		Model:    "sonnet",
+		WorkDir:  dir,
+	})
+	if err != nil {
+		t.Fatalf("new provider: %v", err)
+	}
+
+	_, err = client.Chat(context.Background(), []ChatMessage{
+		{Role: "user", Content: "hi"},
+	}, ChatOptions{
+		ClaudeCodeMCPServers: []ClaudeCodeMCPServer{
+			{
+				Name:    "fs",
+				Command: "/usr/bin/mcp-fs",
+				Args:    []string{"--root", "/tmp"},
+				Env:     map[string]string{"DEBUG": "1"},
+			},
+			{
+				Name:      "remote",
+				Transport: "http",
+				URL:       "https://mcp.example.com/sse",
+				Headers:   map[string]string{"Authorization": "Bearer x"},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("chat: %v", err)
+	}
+
+	argsData, err := os.ReadFile(argsPath)
+	if err != nil {
+		t.Fatalf("read args: %v", err)
+	}
+	args := string(argsData)
+	if !strings.Contains(args, "--mcp-config") {
+		t.Fatalf("expected --mcp-config in args, got:\n%s", args)
+	}
+
+	// Verify the file content was a well-formed Claude Code mcp config with
+	// our two servers.
+	captured, err := os.ReadFile(mcpCapturePath)
+	if err != nil {
+		t.Fatalf("read captured mcp config: %v", err)
+	}
+	var payload struct {
+		MCPServers map[string]map[string]any `json:"mcpServers"`
+	}
+	if err := json.Unmarshal(captured, &payload); err != nil {
+		t.Fatalf("decode mcp config: %v\npayload=%s", err, captured)
+	}
+	fs, ok := payload.MCPServers["fs"]
+	if !ok {
+		t.Fatalf("expected fs server in mcp config, got: %s", captured)
+	}
+	if fs["type"] != "stdio" {
+		t.Fatalf("fs server should be stdio, got: %v", fs["type"])
+	}
+	if fs["command"] != "/usr/bin/mcp-fs" {
+		t.Fatalf("fs command: %v", fs["command"])
+	}
+	rem, ok := payload.MCPServers["remote"]
+	if !ok {
+		t.Fatalf("expected remote server in mcp config, got: %s", captured)
+	}
+	if rem["type"] != "http" {
+		t.Fatalf("remote server should be http, got: %v", rem["type"])
+	}
+	if rem["url"] != "https://mcp.example.com/sse" {
+		t.Fatalf("remote url: %v", rem["url"])
+	}
+
+	// Temp file should be cleaned up after Chat returns.
+	mcpPathFromArgs := extractFlagValue(args, "--mcp-config")
+	if mcpPathFromArgs == "" {
+		t.Fatalf("could not find --mcp-config value in args:\n%s", args)
+	}
+	if _, err := os.Stat(mcpPathFromArgs); !os.IsNotExist(err) {
+		t.Fatalf("mcp config temp file %q should be removed after Chat, got err=%v", mcpPathFromArgs, err)
+	}
+}
+
+// TestClaudeCodeCLIClientChat_MCPConfigSkippedWhenEmpty verifies that an empty
+// or all-skipped MCPServers slice produces NO --mcp-config flag so we don't
+// pass an empty config file to claude.
+func TestClaudeCodeCLIClientChat_MCPConfigSkippedWhenEmpty(t *testing.T) {
+	dir := t.TempDir()
+	argsPath := filepath.Join(dir, "claude-args.txt")
+	scriptPath := filepath.Join(dir, "claude")
+	script := strings.TrimSpace(`#!/bin/sh
+printf '%s\n' "$@" > `+shellQuote(argsPath)+`
+printf '%s\n' '{"type":"assistant","message":{"model":"sonnet","content":[{"type":"text","text":"ok"}]}}'
+printf '%s\n' '{"type":"result","subtype":"success","is_error":false,"stop_reason":"end_turn","usage":{"input_tokens":1,"output_tokens":1},"result":"ok"}'
+`) + "\n"
+	if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("write cli stub: %v", err)
+	}
+	t.Setenv("CLAUDE_CODE_CLI_PATH", scriptPath)
+
+	client, err := NewProvider(ProviderOptions{
+		Provider: "claude-code-cli",
+		Model:    "sonnet",
+		WorkDir:  dir,
+	})
+	if err != nil {
+		t.Fatalf("new provider: %v", err)
+	}
+
+	// Case 1: nil slice — no flag.
+	if _, err := client.Chat(context.Background(), []ChatMessage{
+		{Role: "user", Content: "hi"},
+	}, ChatOptions{}); err != nil {
+		t.Fatalf("chat: %v", err)
+	}
+	args, _ := os.ReadFile(argsPath)
+	if strings.Contains(string(args), "--mcp-config") {
+		t.Fatalf("expected no --mcp-config flag when servers nil, got:\n%s", args)
+	}
+
+	// Case 2: all entries have empty Name — should be skipped, no flag.
+	if _, err := client.Chat(context.Background(), []ChatMessage{
+		{Role: "user", Content: "hi"},
+	}, ChatOptions{
+		ClaudeCodeMCPServers: []ClaudeCodeMCPServer{{Name: "", Command: "x"}, {Name: "   ", URL: "y"}},
+	}); err != nil {
+		t.Fatalf("chat: %v", err)
+	}
+	args, _ = os.ReadFile(argsPath)
+	if strings.Contains(string(args), "--mcp-config") {
+		t.Fatalf("expected no --mcp-config flag when all entries are empty-named, got:\n%s", args)
+	}
+}
+
+// extractFlagValue scans newline-separated argv (as written by the stub) for
+// the value immediately following the given flag. Returns "" if absent.
+func extractFlagValue(args, flag string) string {
+	lines := strings.Split(args, "\n")
+	for i, ln := range lines {
+		if ln == flag && i+1 < len(lines) {
+			return lines[i+1]
+		}
+	}
+	return ""
 }
 
 func shellQuote(value string) string {
