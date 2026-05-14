@@ -19,7 +19,7 @@ test('Header renders a daily token budget chip backed by the usage today API', (
   assert.match(headerSource, /budget-chip/)
   assert.match(headerSource, /usageToday\.level === 'error'/)
   assert.match(headerSource, /\/console\/analytics\?focus=today/)
-  assert.match(shellSource, /<Header \{serverHealth\} \{unreadCount\} \{onUnreadChange\} \{onNavigate\} \/>/)
+  assert.match(shellSource, /<Header\b[^>]*\{serverHealth\}[^>]*\{unreadCount\}[^>]*\{onUnreadChange\}[^>]*\{onNavigate\}[^>]*\/>/)
 })
 
 test('Header budget labels are localized', () => {
