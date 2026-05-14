@@ -258,6 +258,28 @@ func buildLLMMessagesWithBlocks(systemPrompt string, history []session.Message, 
 	return llmMessages
 }
 
+// insertSystemMessageBeforeUser inserts an extra system-role message
+// immediately before the final user message in msgs. If no user message is
+// found (defensive) the system message is appended to the end. The original
+// slice header is not mutated; a new slice is returned.
+func insertSystemMessageBeforeUser(msgs []llm.ChatMessage, content string) []llm.ChatMessage {
+	if strings.TrimSpace(content) == "" {
+		return msgs
+	}
+	insertAt := len(msgs)
+	for i := len(msgs) - 1; i >= 0; i-- {
+		if strings.EqualFold(strings.TrimSpace(msgs[i].Role), "user") {
+			insertAt = i
+			break
+		}
+	}
+	out := make([]llm.ChatMessage, 0, len(msgs)+1)
+	out = append(out, msgs[:insertAt]...)
+	out = append(out, llm.ChatMessage{Role: "system", Content: content})
+	out = append(out, msgs[insertAt:]...)
+	return out
+}
+
 type toolReplayRecord struct {
 	id      string
 	name    string

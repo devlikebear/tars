@@ -4,8 +4,44 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/devlikebear/tars/internal/llm"
 	"github.com/devlikebear/tars/internal/session"
 )
+
+func TestInsertSystemMessageBeforeUser_InsertsBeforeLastUser(t *testing.T) {
+	msgs := []llm.ChatMessage{
+		{Role: "system", Content: "sys"},
+		{Role: "user", Content: "first"},
+		{Role: "assistant", Content: "reply"},
+		{Role: "user", Content: "second"},
+	}
+	out := insertSystemMessageBeforeUser(msgs, "queued feedback")
+	if len(out) != 5 {
+		t.Fatalf("expected 5 messages, got %d", len(out))
+	}
+	if out[3].Role != "system" || out[3].Content != "queued feedback" {
+		t.Fatalf("expected system feedback at index 3, got %+v", out[3])
+	}
+	if out[4].Role != "user" || out[4].Content != "second" {
+		t.Fatalf("expected last user preserved at index 4, got %+v", out[4])
+	}
+}
+
+func TestInsertSystemMessageBeforeUser_EmptyContentNoOp(t *testing.T) {
+	msgs := []llm.ChatMessage{{Role: "user", Content: "hi"}}
+	out := insertSystemMessageBeforeUser(msgs, "")
+	if len(out) != 1 {
+		t.Fatalf("expected no-op, got %+v", out)
+	}
+}
+
+func TestInsertSystemMessageBeforeUser_NoUserAppendsToEnd(t *testing.T) {
+	msgs := []llm.ChatMessage{{Role: "system", Content: "sys"}}
+	out := insertSystemMessageBeforeUser(msgs, "feedback")
+	if len(out) != 2 || out[1].Role != "system" {
+		t.Fatalf("expected append at end, got %+v", out)
+	}
+}
 
 func TestBuildLLMMessagesWithBlocks_PropagatesToolCallMetadataFromHistory(t *testing.T) {
 	msgs := buildLLMMessagesWithBlocks("system prompt", []session.Message{
@@ -68,10 +104,10 @@ func TestBuildLLMMessagesWithBlocks_SkipsToolMessagesWithoutToolCallID(t *testin
 func TestBuildLLMMessagesWithBlocks_DropsTrailingToolWithoutMatchingAssistant(t *testing.T) {
 	msgs := buildLLMMessagesWithBlocks("system prompt", []session.Message{
 		{
-			Role:      "tool",
-			Content:   `{"count":1}`,
-			ToolName:  "read_file",
-			ToolArgs:  `{"path":"README.md"}`,
+			Role:       "tool",
+			Content:    `{"count":1}`,
+			ToolName:   "read_file",
+			ToolArgs:   `{"path":"README.md"}`,
 			ToolCallID: "call_123",
 		},
 	}, "what now", nil)

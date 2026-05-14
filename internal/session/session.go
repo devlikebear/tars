@@ -1196,6 +1196,56 @@ func (s *Store) UpdateCriticProgress(id string, mutate func(*SessionCritic) *Ses
 	return sess, nil
 }
 
+// PendingCriticFeedback is the structured payload returned by
+// TakePendingCriticFeedback: the raw feedback string, the trigger that
+// produced it, and the round number recorded when it was queued.
+type PendingCriticFeedback struct {
+	Feedback string
+	Trigger  string
+	Round    int
+	QueuedAt *time.Time
+}
+
+// TakePendingCriticFeedback atomically reads and clears the pending feedback
+// on the session's critic. Returns an empty PendingCriticFeedback when no
+// critic is configured or no feedback is queued. Used by the chat handler to
+// drain the async reviewer's output into the next user turn.
+func (s *Store) TakePendingCriticFeedback(id string) (PendingCriticFeedback, error) {
+	unlock := lockPath(s.indexPath())
+	defer unlock()
+	index, err := s.loadIndex()
+	if err != nil {
+		return PendingCriticFeedback{}, err
+	}
+	sess, ok := index[id]
+	if !ok {
+		return PendingCriticFeedback{}, ErrSessionNotFound
+	}
+	if sess.Critic == nil || strings.TrimSpace(sess.Critic.PendingFeedback) == "" {
+		return PendingCriticFeedback{}, nil
+	}
+	taken := PendingCriticFeedback{
+		Feedback: sess.Critic.PendingFeedback,
+		Trigger:  sess.Critic.PendingFeedbackTrigger,
+		Round:    sess.Critic.PendingFeedbackRound,
+		QueuedAt: sess.Critic.PendingFeedbackAt,
+	}
+	now := time.Now().UTC()
+	next := *sess.Critic
+	next.PendingFeedback = ""
+	next.PendingFeedbackTrigger = ""
+	next.PendingFeedbackRound = 0
+	next.PendingFeedbackAt = nil
+	next.UpdatedAt = &now
+	sess.Critic = NormalizeCritic(&next)
+	sess.UpdatedAt = now
+	index[id] = sess
+	if err := s.saveIndex(index); err != nil {
+		return PendingCriticFeedback{}, err
+	}
+	return taken, nil
+}
+
 // UpdateGoalProgress applies a mutation to the session's goal (e.g. to bump
 // AutoContinueCount or change Status). If the mutator returns nil the goal is
 // cleared. If no goal is present the call is a no-op.

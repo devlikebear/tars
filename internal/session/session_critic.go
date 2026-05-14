@@ -42,14 +42,24 @@ const (
 //     hook sets Status = "exhausted" and stops issuing feedback until the
 //     next plan transition.
 type SessionCritic struct {
-	Enabled             bool       `json:"enabled"`
-	MaxIterations       int        `json:"max_iterations,omitempty"`
-	CurrentIteration    int        `json:"current_iteration,omitempty"`
-	Status              string     `json:"status,omitempty"`
-	LastFeedback        string     `json:"last_feedback,omitempty"`
-	LastTrigger         string     `json:"last_trigger,omitempty"`
-	LastReviewedPlanSig string     `json:"last_reviewed_plan_sig,omitempty"`
-	UpdatedAt           *time.Time `json:"updated_at,omitempty"`
+	Enabled             bool   `json:"enabled"`
+	MaxIterations       int    `json:"max_iterations,omitempty"`
+	CurrentIteration    int    `json:"current_iteration,omitempty"`
+	Status              string `json:"status,omitempty"`
+	LastFeedback        string `json:"last_feedback,omitempty"`
+	LastTrigger         string `json:"last_trigger,omitempty"`
+	LastReviewedPlanSig string `json:"last_reviewed_plan_sig,omitempty"`
+	// LastReviewedTurnSig tracks the assistant_turn signature already reviewed
+	// so we don't queue duplicate feedback if the same response is re-evaluated.
+	LastReviewedTurnSig string `json:"last_reviewed_turn_sig,omitempty"`
+	// PendingFeedback holds critic output produced by the async reviewer that
+	// has not yet been delivered to the main LLM. It is consumed (and cleared)
+	// when the next user turn builds its prompt.
+	PendingFeedback        string     `json:"pending_feedback,omitempty"`
+	PendingFeedbackTrigger string     `json:"pending_feedback_trigger,omitempty"`
+	PendingFeedbackRound   int        `json:"pending_feedback_round,omitempty"`
+	PendingFeedbackAt      *time.Time `json:"pending_feedback_at,omitempty"`
+	UpdatedAt              *time.Time `json:"updated_at,omitempty"`
 }
 
 // IsEnabled reports whether the critic agent should run for this session.
@@ -105,11 +115,28 @@ func NormalizeCritic(c *SessionCritic) *SessionCritic {
 	}
 	next.LastTrigger = strings.TrimSpace(next.LastTrigger)
 	next.LastReviewedPlanSig = strings.TrimSpace(next.LastReviewedPlanSig)
+	next.LastReviewedTurnSig = strings.TrimSpace(next.LastReviewedTurnSig)
 	feedback := strings.TrimSpace(next.LastFeedback)
 	if len(feedback) > MaxCriticFeedbackLen {
 		feedback = feedback[:MaxCriticFeedbackLen]
 	}
 	next.LastFeedback = feedback
+	pending := strings.TrimSpace(next.PendingFeedback)
+	if len(pending) > MaxCriticFeedbackLen {
+		pending = pending[:MaxCriticFeedbackLen]
+	}
+	next.PendingFeedback = pending
+	next.PendingFeedbackTrigger = strings.TrimSpace(next.PendingFeedbackTrigger)
+	if next.PendingFeedbackRound < 0 {
+		next.PendingFeedbackRound = 0
+	}
+	if next.PendingFeedback == "" {
+		// Keep the cleared state coherent: a missing body means trigger/round/at
+		// must also be empty so consumers don't see stale metadata.
+		next.PendingFeedbackTrigger = ""
+		next.PendingFeedbackRound = 0
+		next.PendingFeedbackAt = nil
+	}
 	return &next
 }
 
@@ -138,13 +165,23 @@ func criticEqual(a, b *SessionCritic) bool {
 		a.Status != b.Status ||
 		a.LastFeedback != b.LastFeedback ||
 		a.LastTrigger != b.LastTrigger ||
-		a.LastReviewedPlanSig != b.LastReviewedPlanSig {
+		a.LastReviewedPlanSig != b.LastReviewedPlanSig ||
+		a.LastReviewedTurnSig != b.LastReviewedTurnSig ||
+		a.PendingFeedback != b.PendingFeedback ||
+		a.PendingFeedbackTrigger != b.PendingFeedbackTrigger ||
+		a.PendingFeedbackRound != b.PendingFeedbackRound {
 		return false
 	}
 	if (a.UpdatedAt == nil) != (b.UpdatedAt == nil) {
 		return false
 	}
 	if a.UpdatedAt != nil && !a.UpdatedAt.Equal(*b.UpdatedAt) {
+		return false
+	}
+	if (a.PendingFeedbackAt == nil) != (b.PendingFeedbackAt == nil) {
+		return false
+	}
+	if a.PendingFeedbackAt != nil && !a.PendingFeedbackAt.Equal(*b.PendingFeedbackAt) {
 		return false
 	}
 	return true

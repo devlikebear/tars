@@ -29,6 +29,12 @@ import (
 const (
 	TriggerPlanProposed  = "plan_proposed"
 	TriggerPlanCompleted = "plan_completed"
+	// TriggerAssistantTurn fires on every assistant turn that did not also
+	// cross a plan transition. Enables critic review for sessions (worker,
+	// subagent, or main without an active plan) where there is no plan to
+	// attach to. The reviewer inspects the last assistant response for
+	// general quality issues.
+	TriggerAssistantTurn = "assistant_turn"
 )
 
 // DefaultRecentMessageWindow is how many trailing chat messages the reviewer
@@ -81,12 +87,14 @@ const criticSystemPromptPlanCompleted = `You are a critical reviewer. The assist
 
 Reply with a single JSON object on one line and nothing else, matching: {"acceptable": <true|false>, "feedback": "<bulleted concrete improvements; empty string when acceptable>", "reason": "<one short sentence>"}`
 
+const criticSystemPromptAssistantTurn = `You are a critical reviewer. The assistant has just finished a turn responding to the user. Your job is to spot concrete quality issues a fresh pair of eyes would catch: logic errors, gaps in the user's actual request, unstated assumptions, missing verification, factual mistakes, or a response that misses what the user asked. Be specific — generic praise or vague concerns are not useful. Skip stylistic nitpicks. If the response is solid and addresses the user's request as-is, mark it acceptable.
+
+Reply with a single JSON object on one line and nothing else, matching: {"acceptable": <true|false>, "feedback": "<bulleted concrete improvements; empty string when acceptable>", "reason": "<one short sentence>"}`
+
 // Review runs the LLM call. Non-nil error → caller should treat as fail-open
-// (skip injection this turn, no state mutation).
+// (skip injection this turn, no state mutation). Plan may be nil only when
+// trigger == TriggerAssistantTurn; plan triggers still require a non-nil plan.
 func (r *LLMReviewer) Review(ctx context.Context, trigger string, plan *session.Plan, tasks []session.Task, recent []llm.ChatMessage) (Verdict, error) {
-	if plan == nil {
-		return Verdict{}, errors.New("critic: plan is nil")
-	}
 	if r == nil || r.router == nil {
 		return Verdict{}, errors.New("critic: router not configured")
 	}
@@ -94,9 +102,17 @@ func (r *LLMReviewer) Review(ctx context.Context, trigger string, plan *session.
 	var sysPrompt string
 	switch trigger {
 	case TriggerPlanProposed:
+		if plan == nil {
+			return Verdict{}, errors.New("critic: plan is nil for plan_proposed trigger")
+		}
 		sysPrompt = criticSystemPromptPlanProposed
 	case TriggerPlanCompleted:
+		if plan == nil {
+			return Verdict{}, errors.New("critic: plan is nil for plan_completed trigger")
+		}
 		sysPrompt = criticSystemPromptPlanCompleted
+	case TriggerAssistantTurn:
+		sysPrompt = criticSystemPromptAssistantTurn
 	default:
 		return Verdict{}, fmt.Errorf("critic: unknown trigger %q", trigger)
 	}
@@ -159,17 +175,20 @@ func buildUserPayload(trigger string, plan *session.Plan, tasks []session.Task, 
 	var b strings.Builder
 	b.WriteString("Trigger: ")
 	b.WriteString(trigger)
-	b.WriteString("\n\nPlan goal:\n")
-	b.WriteString(strings.TrimSpace(plan.Goal))
-	b.WriteString("\n")
-	if constraints := strings.TrimSpace(plan.Constraints); constraints != "" {
-		b.WriteString("Constraints: ")
-		b.WriteString(constraints)
-		b.WriteString("\n")
-	}
-	b.WriteString("Plan status: ")
-	b.WriteString(strings.TrimSpace(plan.Status))
 	b.WriteString("\n\n")
+	if plan != nil {
+		b.WriteString("Plan goal:\n")
+		b.WriteString(strings.TrimSpace(plan.Goal))
+		b.WriteString("\n")
+		if constraints := strings.TrimSpace(plan.Constraints); constraints != "" {
+			b.WriteString("Constraints: ")
+			b.WriteString(constraints)
+			b.WriteString("\n")
+		}
+		b.WriteString("Plan status: ")
+		b.WriteString(strings.TrimSpace(plan.Status))
+		b.WriteString("\n\n")
+	}
 
 	if len(tasks) > 0 {
 		b.WriteString("Tasks:\n")
