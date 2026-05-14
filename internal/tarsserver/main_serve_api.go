@@ -401,6 +401,7 @@ func buildAPIMux(
 	chatTooling.OpsManager = opsManager
 	chatTooling.ExecMaxTimeoutMS = cfg.ToolsExecMaxTimeoutMS
 	chatTooling.ExecMaxBackgroundTimeoutMS = cfg.ToolsProcessMaxTimeoutMS
+	chatTooling.ClaudeCodeCLIPermissionMode = strings.TrimSpace(cfg.ClaudeCodeCLIPermissionMode)
 	overrideService := sessionoverride.NewService(sessionStore)
 	chatTooling.OverrideService = overrideService
 	chatTooling.AutomationToolsForWorkspace = func(workspaceID string) []tool.Tool {

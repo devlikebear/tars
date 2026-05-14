@@ -454,6 +454,82 @@ func extractFlagValue(args, flag string) string {
 	return ""
 }
 
+// TestResolveClaudeCodePermissionMode verifies the recognized-values whitelist
+// and the auto fallback for empty/unknown input.
+func TestResolveClaudeCodePermissionMode(t *testing.T) {
+	cases := []struct {
+		in   string
+		want string
+	}{
+		{"", "auto"},
+		{"auto", "auto"},
+		{"acceptEdits", "acceptEdits"},
+		{"plan", "plan"},
+		{"bypassPermissions", "bypassPermissions"},
+		{"  plan  ", "plan"}, // whitespace trimmed
+		{"unknown", "auto"},  // unknown → fallback
+		{"PLAN", "auto"},     // case-sensitive: unknown
+	}
+	for _, tc := range cases {
+		got := resolveClaudeCodePermissionMode(tc.in)
+		if got != tc.want {
+			t.Errorf("resolveClaudeCodePermissionMode(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
+// TestClaudeCodeCLIClientChat_PermissionModePropagatesAndFallsBack verifies
+// that ChatOptions.ClaudeCodePermissionMode is reflected in --permission-mode
+// and that an unknown value silently degrades to auto.
+func TestClaudeCodeCLIClientChat_PermissionModePropagatesAndFallsBack(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"empty fallback", "", "auto"},
+		{"valid acceptEdits", "acceptEdits", "acceptEdits"},
+		{"valid plan", "plan", "plan"},
+		{"valid bypass", "bypassPermissions", "bypassPermissions"},
+		{"unknown fallback", "Aggressive", "auto"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			argsPath := filepath.Join(dir, "claude-args.txt")
+			scriptPath := filepath.Join(dir, "claude")
+			script := strings.TrimSpace(`#!/bin/sh
+printf '%s\n' "$@" > `+shellQuote(argsPath)+`
+printf '%s\n' '{"type":"assistant","message":{"model":"sonnet","content":[{"type":"text","text":"ok"}]}}'
+printf '%s\n' '{"type":"result","subtype":"success","is_error":false,"stop_reason":"end_turn","usage":{"input_tokens":1,"output_tokens":1},"result":"ok"}'
+`) + "\n"
+			if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
+				t.Fatalf("write cli stub: %v", err)
+			}
+			t.Setenv("CLAUDE_CODE_CLI_PATH", scriptPath)
+
+			client, err := NewProvider(ProviderOptions{
+				Provider: "claude-code-cli",
+				Model:    "sonnet",
+				WorkDir:  dir,
+			})
+			if err != nil {
+				t.Fatalf("new provider: %v", err)
+			}
+			if _, err := client.Chat(context.Background(), []ChatMessage{
+				{Role: "user", Content: "go"},
+			}, ChatOptions{ClaudeCodePermissionMode: tc.in}); err != nil {
+				t.Fatalf("chat: %v", err)
+			}
+			args, _ := os.ReadFile(argsPath)
+			got := extractFlagValue(string(args), "--permission-mode")
+			if got != tc.want {
+				t.Fatalf("permission-mode argv: got %q, want %q\nargs:\n%s", got, tc.want, args)
+			}
+		})
+	}
+}
+
 func shellQuote(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
 }

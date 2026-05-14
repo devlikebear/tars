@@ -85,7 +85,7 @@ func (c *ClaudeCodeCLIClient) Chat(ctx context.Context, messages []ChatMessage, 
 		"-p",
 		"--output-format", "stream-json",
 		"--verbose",
-		"--permission-mode", "auto",
+		"--permission-mode", resolveClaudeCodePermissionMode(opts.ClaudeCodePermissionMode),
 		"--model", c.model,
 		"--add-dir", c.workDir,
 	}
@@ -222,6 +222,21 @@ func buildClaudeCodeCLISystemPrompt(messages []ChatMessage) string {
 		}
 	}
 	return strings.Join(parts, "\n\n")
+}
+
+// resolveClaudeCodePermissionMode validates the caller-supplied permission
+// mode against Claude Code's recognized values and falls back to "auto" for
+// empty or unknown input. Keeping the fallback inside the provider means the
+// provider stays usable even if a caller wires through a value Claude Code
+// adds (or removes) in a future release: invalid input degrades gracefully
+// instead of failing the whole turn.
+func resolveClaudeCodePermissionMode(raw string) string {
+	switch strings.TrimSpace(raw) {
+	case "acceptEdits", "plan", "bypassPermissions", "auto":
+		return strings.TrimSpace(raw)
+	default:
+		return "auto"
+	}
 }
 
 // writeClaudeCodeMCPConfigFile materializes a Claude Code-shaped MCP config

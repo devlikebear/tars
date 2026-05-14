@@ -43,6 +43,7 @@ var configInputFields = []configInputField{
 	withYAMLPath(llmTiersField("llm_tiers", []string{"LLM_TIERS_JSON", "TARS_LLM_TIERS_JSON"}), "llm.tiers"),
 	withYAMLPath(stringField("llm_default_tier", []string{"LLM_DEFAULT_TIER", "TARS_LLM_DEFAULT_TIER"}, func(cfg *Config) *string { return &cfg.LLMDefaultTier }, lowerTrimmedString), "llm.default_tier"),
 	withYAMLPath(llmRoleDefaultsField("llm_role_defaults", []string{"LLM_ROLE_DEFAULTS_JSON", "TARS_LLM_ROLE_DEFAULTS_JSON"}), "llm.role_defaults"),
+	withYAMLPath(stringField("claude_code_cli_permission_mode", []string{"CLAUDE_CODE_CLI_PERMISSION_MODE", "TARS_CLAUDE_CODE_CLI_PERMISSION_MODE"}, func(cfg *Config) *string { return &cfg.ClaudeCodeCLIPermissionMode }, strings.TrimSpace), "llm.claude_code_cli.permission_mode"),
 	stringField("memory_backend", []string{"MEMORY_BACKEND", "TARS_MEMORY_BACKEND"}, func(cfg *Config) *string { return &cfg.MemoryBackend }, lowerTrimmedString),
 	boolField("memory_semantic_enabled", []string{"MEMORY_SEMANTIC_ENABLED", "TARS_MEMORY_SEMANTIC_ENABLED"}, func(cfg *Config) *bool { return &cfg.MemorySemanticEnabled }),
 	stringField("memory_embed_provider", []string{"MEMORY_EMBED_PROVIDER", "TARS_MEMORY_EMBED_PROVIDER"}, func(cfg *Config) *string { return &cfg.MemoryEmbedProvider }, lowerTrimmedString),
