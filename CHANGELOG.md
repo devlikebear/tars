@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.32.57] - 2026-05-14
+
+### Added
+
+- **claude-code-cli provider: `--resume <session_id>` 지원 (Epic #857 Phase 2a)** — `internal/llm.ChatOptions`에 새 필드 `ResumeSessionID`를 추가하고, `internal/llm/claude_code_cli.go`의 `Chat`이 이 값을 받으면 두 가지 동작을 동시에 토글한다: (1) 인자에 `--resume <id>`를 끼우고 그 대신 `--no-session-persistence` 플래그를 빼서 Claude Code 측 저장된 세션 트랜스크립트가 실제로 로드될 수 있게 하고, (2) 새 헬퍼 `extractLatestUserMessage`로 마지막 user 메시지의 Content만 prompt 인자로 넘긴다. 풀 transcript 텍스트 빌더(`buildClaudeCodeCLIPrompt`의 "Continue the conversation below…" / `USER:` / `ASSISTANT:` 직렬화)는 resume 모드에서 의도적으로 우회 — 업스트림 세션이 이미 같은 히스토리를 들고 있어 재전송 시 토큰 중복 과금과 컨텍스트 혼선이 발생한다. ResumeSessionID가 비어 있는 (default) 호출은 종전과 100% 동일하게 동작하므로 기존 호출자에게는 무영향 변경. Anthropic이 6/15부터 공식 허용하는 Agent SDK / `claude -p` 흐름의 핵심 비용 절감 메커니즘(다음 턴에서 system prompt를 다시 보내지 않고 세션 핸들만 넘기는 것)이 provider 레이어에서 이제 가능. `internal/llm/claude_code_cli_test.go`에 두 회귀 케이스를 추가했다: `TestClaudeCodeCLIClientChat_ResumeSessionPassesFlagAndSlimsPrompt`는 4-turn 트랜스크립트(system + user + assistant + user)를 ResumeSessionID="sess-abc"와 함께 호출해 셸 스크립트 stub으로 capture한 argv가 `--resume sess-abc`를 포함하고 `--no-session-persistence`가 빠졌으며 "follow-up please"만 들어가고 옛 transcript 흔적("USER:", "ASSISTANT:", "old turn 1", "Continue the conversation below")이 전혀 포함되지 않음을 검증하고, `TestClaudeCodeCLIClientChat_FreshSessionKeepsNoSessionPersistence`는 ResumeSessionID 미지정 시 `--no-session-persistence`가 유지되고 `--resume`이 없는지 잠근다. 세션 ID를 TARS `session.Session`에 매핑·저장하고 `handler_chat`이 그 값을 자동으로 ChatOptions에 넘기는 통합 작업(Phase 2b)은 별 PR로 들어간다 — 이 PR은 LLM 레이어의 capability 노출만 다룬다.
+
 ## [0.32.56] - 2026-05-14
 
 ### Added

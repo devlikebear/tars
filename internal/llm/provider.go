@@ -143,6 +143,13 @@ type ChatOptions struct {
 	ThinkingBudget int
 	// ServiceTier controls provider-side latency tier when supported.
 	ServiceTier string
+	// ResumeSessionID, when non-empty, asks providers that expose a resumable
+	// upstream session (currently only claude-code-cli) to continue that
+	// session instead of replaying the full transcript. The caller is
+	// expected to read ChatResponse.SessionID on the first turn and feed it
+	// back here on subsequent turns. Providers that don't support resume
+	// ignore the field silently.
+	ResumeSessionID string
 }
 
 type ChatResponse struct {

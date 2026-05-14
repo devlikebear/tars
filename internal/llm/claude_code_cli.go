@@ -67,7 +67,16 @@ func (c *ClaudeCodeCLIClient) Chat(ctx context.Context, messages []ChatMessage, 
 	if c == nil {
 		return ChatResponse{}, fmt.Errorf("%s client is not configured", claudeCodeCLIProviderLabel)
 	}
-	prompt := buildClaudeCodeCLIPrompt(messages)
+	resumeID := strings.TrimSpace(opts.ResumeSessionID)
+	var prompt string
+	if resumeID != "" {
+		// Claude Code already holds the prior context under <session_id>;
+		// passing the full transcript again would double up tokens and may
+		// confuse the saved state. Send only the latest user turn.
+		prompt = extractLatestUserMessage(messages)
+	} else {
+		prompt = buildClaudeCodeCLIPrompt(messages)
+	}
 	if prompt == "" {
 		return ChatResponse{}, fmt.Errorf("%s prompt is empty", claudeCodeCLIProviderLabel)
 	}
@@ -79,7 +88,13 @@ func (c *ClaudeCodeCLIClient) Chat(ctx context.Context, messages []ChatMessage, 
 		"--permission-mode", "auto",
 		"--model", c.model,
 		"--add-dir", c.workDir,
-		"--no-session-persistence",
+	}
+	if resumeID != "" {
+		// --resume requires session-persistence to be enabled so Claude Code
+		// can actually load the saved transcript from disk.
+		args = append(args, "--resume", resumeID)
+	} else {
+		args = append(args, "--no-session-persistence")
 	}
 	if systemPrompt := buildClaudeCodeCLISystemPrompt(messages); systemPrompt != "" {
 		args = append(args, "--system-prompt", systemPrompt)
@@ -201,6 +216,21 @@ func buildClaudeCodeCLISystemPrompt(messages []ChatMessage) string {
 		}
 	}
 	return strings.Join(parts, "\n\n")
+}
+
+// extractLatestUserMessage returns the trimmed Content of the final user
+// message in the slice. Used in resume mode to avoid re-sending history that
+// the upstream session already has.
+func extractLatestUserMessage(messages []ChatMessage) string {
+	for i := len(messages) - 1; i >= 0; i-- {
+		if strings.TrimSpace(strings.ToLower(messages[i].Role)) != "user" {
+			continue
+		}
+		if trimmed := strings.TrimSpace(messages[i].Content); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
 }
 
 func buildClaudeCodeCLIPrompt(messages []ChatMessage) string {
