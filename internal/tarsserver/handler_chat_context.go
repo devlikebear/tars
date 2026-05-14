@@ -46,6 +46,11 @@ type chatRunState struct {
 	sessionStyle          sessionStyleValues
 	sessionGoal           *session.SessionGoal
 	sessionCritic         *session.SessionCritic
+	// claudeCodeMCPServers is the session-effective MCP server list (global
+	// extensions ∪ session-scoped extras, filtered by session tool config)
+	// converted into the provider-agnostic shape consumed by
+	// claude-code-cli's --mcp-config injection. nil when no servers apply.
+	claudeCodeMCPServers []llm.ClaudeCodeMCPServer
 }
 
 func decodeChatRequestPayload(w http.ResponseWriter, r *http.Request) (chatRequestPayload, bool) {
@@ -243,6 +248,7 @@ func buildSessionChatRunState(
 		sessionStyle:          sessionStyle,
 		sessionGoal:           sessionGoal,
 		sessionCritic:         sessionCritic,
+		claudeCodeMCPServers:  toClaudeCodeMCPServers(extSnapshot.MCPServers),
 	}, nil
 }
 
