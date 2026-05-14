@@ -896,6 +896,29 @@ func setupAgentLoop(
 			if afterTool != nil {
 				afterTool(ctx, evt)
 			}
+		case agent.EventProviderTool:
+			// Upstream provider (claude-code-cli today) already executed the
+			// tool inside its own subprocess. We surface it to the chat
+			// stream so the console can show "Claude Code ran Bash(ls)" and
+			// to the persisted transcript so the audit trail survives the
+			// session — but we don't issue a usage signal (no TARS-side
+			// invocation occurred) and we don't fire the afterTool hook
+			// (that hook assumes TARS ran the tool).
+			sendStatus(
+				"provider_tool",
+				"upstream tool executed",
+				evt.ToolName,
+				evt.ToolCallID,
+				statusPreviewForTool(evt.ToolName, evt.ToolArgs, 180),
+				"",
+			)
+			*toolCalls = append(*toolCalls, ToolCallRecord{
+				ToolName:    evt.ToolName,
+				ToolCallID:  evt.ToolCallID,
+				ToolArgs:    statusPreviewForTool(evt.ToolName, evt.ToolArgs, 500),
+				ToolResult:  "(executed by upstream provider)",
+				ToolIsError: false,
+			})
 		case agent.EventLoopEnd:
 			sendStatus("loop_end", "agent loop completed", "", "", "", "")
 			logger.Debug().
