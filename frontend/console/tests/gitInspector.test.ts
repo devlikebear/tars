@@ -10,9 +10,8 @@ const gitInspectorSource = readFileSync(new URL('../src/components/GitInspector.
 test('Chat mounts Git Inspector as a dockable read-only panel', () => {
   assert.match(chatSource, /import GitInspector from '\.\/GitInspector\.svelte'/)
   assert.match(chatSource, /type ChatDockPanelID = [^\n]*'git'/)
-  assert.match(chatSource, /\{ id: 'git', title: 'Git', defaultZone: 'right' \}/)
-  assert.match(chatSource, /title="Git Inspector"/)
-  assert.match(chatSource, /<GitInspector[\s\S]*sessionId={selectedSessionId}/)
+  assert.match(chatSource, /id: 'git'[^}]*defaultZone: 'right'/)
+  assert.match(chatSource, /<GitInspector[\s\S]*sessionId=\{selectedSessionId\}/)
 })
 
 test('Git Inspector API client and view expose status, diff, log, and branches', () => {

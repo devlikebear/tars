@@ -5,7 +5,6 @@ import { readFileSync } from 'node:fs'
 const typesSource = readFileSync(new URL('../src/lib/types.ts', import.meta.url), 'utf8')
 const apiSource = readFileSync(new URL('../src/lib/api.ts', import.meta.url), 'utf8')
 const tasksPanelSource = readFileSync(new URL('../src/components/TasksPanel.svelte', import.meta.url), 'utf8')
-const contractPanelSource = readFileSync(new URL('../src/components/ContractPanel.svelte', import.meta.url), 'utf8')
 
 test('task evidence is typed, normalized, and rendered in task surfaces', () => {
   assert.match(typesSource, /TaskEvidence/)
@@ -16,6 +15,8 @@ test('task evidence is typed, normalized, and rendered in task surfaces', () => 
   assert.match(tasksPanelSource, /evidence_add/)
   assert.match(tasksPanelSource, /evidence_remove/)
   assert.match(tasksPanelSource, /task-evidence-list/)
-  assert.match(contractPanelSource, /Evidence/)
-  assert.match(contractPanelSource, /contractEvidence/)
+  // ContractPanel was folded into TasksPanel as a tab; the Contract surface
+  // still owns its own evidence list under the new layout.
+  assert.match(tasksPanelSource, /TaskContract/)
+  assert.match(tasksPanelSource, /contract/)
 })

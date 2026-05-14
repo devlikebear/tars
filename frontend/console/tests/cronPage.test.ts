@@ -7,12 +7,13 @@ import { resolveRoute } from '../src/lib/router.ts'
 const appSource = readFileSync(new URL('../src/App.svelte', import.meta.url), 'utf8')
 const navSource = readFileSync(new URL('../src/components/Nav.svelte', import.meta.url), 'utf8')
 const cronSource = readFileSync(new URL('../src/components/Cron.svelte', import.meta.url), 'utf8')
+const routeComponentsSource = readFileSync(new URL('../src/lib/routeComponents.ts', import.meta.url), 'utf8')
 
 test('/console/cron resolves to the global Cron page', () => {
   assert.deepEqual(resolveRoute('/console/cron'), { view: 'cron' })
-  assert.match(appSource, /import Cron from '\.\/components\/Cron\.svelte'/)
+  assert.match(routeComponentsSource, /cron:[^,]*import\('\.\.\/components\/Cron\.svelte'\)/)
   assert.match(appSource, /route\.view === 'cron'/)
-  assert.match(appSource, /<Cron \/>/)
+  assert.match(appSource, /loadRouteComponent\('cron'\)/)
   assert.match(navSource, /id: 'cron'[\s\S]*path: '\/console\/cron'/)
 })
 

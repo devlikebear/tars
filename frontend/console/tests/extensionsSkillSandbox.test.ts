@@ -11,7 +11,7 @@ test('Hub install API returns extension sandbox reports', () => {
   assert.match(typesSource, /package_type\?: 'skill' \| 'plugin' \| 'mcp'/)
   assert.match(typesSource, /sandbox_report\?: SkillSandboxReport/)
   assert.match(apiSource, /HubInstallResponse/)
-  assert.match(apiSource, /export async function hubInstall\(type: string, name: string\): Promise<HubInstallResponse>/)
+  assert.match(apiSource, /export async function hubInstall\(\s*type: string,\s*name: string,/)
 })
 
 test('API errors preserve sandbox report payloads for failed installs', () => {

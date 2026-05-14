@@ -8,12 +8,14 @@ const appSource = readFileSync(new URL('../src/App.svelte', import.meta.url), 'u
 const apiSource = readFileSync(new URL('../src/lib/api.ts', import.meta.url), 'utf8')
 const navSource = readFileSync(new URL('../src/components/Nav.svelte', import.meta.url), 'utf8')
 const analyticsSource = readFileSync(new URL('../src/components/Analytics.svelte', import.meta.url), 'utf8')
+const routeComponentsSource = readFileSync(new URL('../src/lib/routeComponents.ts', import.meta.url), 'utf8')
+const i18nEnSource = readFileSync(new URL('../src/i18n/en.ts', import.meta.url), 'utf8')
 
 test('/console/analytics resolves to the Analytics page', () => {
   assert.deepEqual(resolveRoute('/console/analytics'), { view: 'analytics' })
-  assert.match(appSource, /import Analytics from '\.\/components\/Analytics\.svelte'/)
+  assert.match(routeComponentsSource, /analytics:[^,]*import\('\.\.\/components\/Analytics\.svelte'\)/)
   assert.match(appSource, /route\.view === 'analytics'/)
-  assert.match(appSource, /<Analytics \/>/)
+  assert.match(appSource, /loadRouteComponent\('analytics'\)/)
   assert.match(navSource, /id: 'analytics'[\s\S]*path: '\/console\/analytics'/)
 })
 
@@ -29,5 +31,5 @@ test('Analytics page renders usage charts and tables', () => {
   assert.match(analyticsSource, /output-bar/)
   assert.match(analyticsSource, /models/)
   assert.match(analyticsSource, /skills/)
-  assert.match(analyticsSource, /No usage yet/)
+  assert.match(i18nEnSource, /emptyTitle: 'No usage yet'/)
 })

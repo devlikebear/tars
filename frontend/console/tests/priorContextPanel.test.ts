@@ -8,12 +8,14 @@ const apiSource = readFileSync(new URL('../src/lib/api.ts', import.meta.url), 'u
 const panelSource = readFileSync(new URL('../src/components/PriorContextPanel.svelte', import.meta.url), 'utf8')
 
 test('Chat surface exposes a Prior Context side panel wired to the draft message', () => {
+  const i18nEnSource = readFileSync(new URL('../src/i18n/en.ts', import.meta.url), 'utf8')
   assert.match(chatSource, /import PriorContextPanel from '\.\/PriorContextPanel\.svelte'/)
   assert.match(chatSource, /type ChatDockPanelID = [^\n]*'prior'/)
   assert.match(chatSource, /panelID === 'prior'/)
   assert.match(chatSource, /isPanelOpen\('prior'\)/)
-  assert.match(chatSource, />Prior</)
-  assert.match(chatSource, /<PriorContextPanel[\s\S]*draftQuery={chatDraft}/)
+  assert.match(chatSource, /\$t\.chat\.panels\.prior/)
+  assert.match(i18nEnSource, /prior: 'Prior'/)
+  assert.match(chatSource, /<PriorContextPanel[\s\S]*draftQuery=\{chatDraft\}/)
   assert.match(chatPanelSource, /onDraftChange\?: \(draft: string\) => void/)
   assert.match(chatPanelSource, /onDraftChange\?\.\(chatInput\)/)
 })
