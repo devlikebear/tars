@@ -14,11 +14,17 @@ import (
 type EventType string
 
 const (
-	EventLoopStart          EventType = "loop_start"
-	EventBeforeLLM          EventType = "before_llm"
-	EventAfterLLM           EventType = "after_llm"
-	EventBeforeTool         EventType = "before_tool_call"
-	EventAfterTool          EventType = "after_tool_call"
+	EventLoopStart  EventType = "loop_start"
+	EventBeforeLLM  EventType = "before_llm"
+	EventAfterLLM   EventType = "after_llm"
+	EventBeforeTool EventType = "before_tool_call"
+	EventAfterTool  EventType = "after_tool_call"
+	// EventProviderTool fires once for each tool the upstream provider
+	// already executed internally (currently only claude-code-cli). It
+	// surfaces audit data — ToolName, ToolCallID, ToolArgs — without
+	// triggering local execution. Observers (console, ops) treat it as a
+	// read-only signal of what the upstream agent did.
+	EventProviderTool       EventType = "provider_tool"
 	EventLoopEnd            EventType = "loop_end"
 	EventLoopError          EventType = "error"
 	DefaultMaxLoopIters               = 20
@@ -133,6 +139,20 @@ func (l *Loop) Run(ctx context.Context, initial []llm.ChatMessage, opts RunOptio
 			return llm.ChatResponse{}, err
 		}
 		l.emit(ctx, Event{Type: EventAfterLLM, Iteration: i + 1, MessageCount: len(messages)})
+
+		// Surface tools the upstream provider already executed (claude-code-cli
+		// runs Read/Edit/Bash/etc inside its own subprocess and reports them
+		// via stream-json tool_use blocks). These do NOT enter the tool
+		// execution branch below; they're observation-only audit signals.
+		for _, ptc := range resp.ProviderExecutedTools {
+			l.emit(ctx, Event{
+				Type:       EventProviderTool,
+				Iteration:  i + 1,
+				ToolName:   ptc.Name,
+				ToolCallID: ptc.ID,
+				ToolArgs:   ptc.Arguments,
+			})
+		}
 
 		if sid := strings.TrimSpace(resp.SessionID); sid != "" {
 			activeResumeID = sid

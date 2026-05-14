@@ -142,10 +142,18 @@ printf '%s\n' '{"type":"result","subtype":"success","is_error":false,"stop_reaso
 	if err != nil {
 		t.Fatalf("chat: %v", err)
 	}
-	if len(resp.Message.ToolCalls) != 1 {
-		t.Fatalf("expected 1 tool call, got %d: %+v", len(resp.Message.ToolCalls), resp.Message.ToolCalls)
+	// Claude Code self-executed the tool inside its subprocess; the audit
+	// trail lives on ProviderExecutedTools, NOT on Message.ToolCalls.
+	// Message.ToolCalls is reserved for "model wants TARS to execute this"
+	// semantics, which agent.Loop dispatches to its tool registry — surfacing
+	// claude's tools there would cause double-execution / blocked-tool errors.
+	if len(resp.Message.ToolCalls) != 0 {
+		t.Fatalf("expected Message.ToolCalls to be empty for claude-code-cli, got %+v", resp.Message.ToolCalls)
 	}
-	call := resp.Message.ToolCalls[0]
+	if len(resp.ProviderExecutedTools) != 1 {
+		t.Fatalf("expected 1 provider-executed tool, got %d: %+v", len(resp.ProviderExecutedTools), resp.ProviderExecutedTools)
+	}
+	call := resp.ProviderExecutedTools[0]
 	if call.ID != "toolu_01" {
 		t.Fatalf("tool call id: %q", call.ID)
 	}
