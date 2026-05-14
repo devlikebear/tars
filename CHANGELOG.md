@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.32.54] - 2026-05-14
+
+### Added
+
+- **Console: PWA shortcuts + topbar status pill (#850 Phase 2)** — Builds on the Phase 1 PWA shell with two thin desktop-style affordances. `manifest.webmanifest` now declares a `shortcuts` array with five entries (Chat → `/console/chat`, Sessions → `/console/sessions`, Ops → `/console/ops`, Pulse → `/console/pulse`, Reflection → `/console/reflection`), each carrying name/short_name/description/url and the existing 192px icon as a fallback. Installed PWAs surface these on right-click of the Dock/taskbar/launcher icon, so users can deep-link straight into the canonical routes without navigating from `/console/` home. New `frontend/console/src/components/StatusPill.svelte` replaces the old single connected/disconnected indicator in `Header.svelte` with an aggregated pill (`● ● ● · N`) showing one dot each for server / pulse / reflection plus an active visible-session count. The component polls `getPulseStatus`, `getReflectionStatus`, and `listSessions(false, 'active')` every 15s and derives a per-subsystem `ok | warn | error | idle` level using existing snapshot fields (pulse `last_err` / `last_tick_at` recency vs 5m staleness, reflection `consecutive_failures`). Clicking the pill opens a 280px popover with a clickable row per subsystem (Pulse → `/console/pulse`, Reflection → `/console/reflection`, Sessions → most-recent visible session's chat) and a footer with `Open Ops` + `Open active chat` buttons. The previous `header-indicator` markup and CSS are removed since the pill subsumes the connected/disconnected signal. No new endpoints are added; status is composed entirely from existing admin/session/pulse/reflection APIs. `docs/console-install.md` documents both surfaces. Source-grep tests in `frontend/console/tests/statusPill.test.ts` lock the wiring.
+
 ## [0.32.53] - 2026-05-14
 
 ### Added

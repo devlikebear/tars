@@ -3,6 +3,7 @@
   import { locale, locales, setLocale, t } from '../i18n'
   import { getEventsHistory, getTodayUsage, markEventsRead } from '../lib/api'
   import type { NotificationMessage, UsageToday } from '../lib/types'
+  import StatusPill from './StatusPill.svelte'
 
   interface Props {
     serverHealth?: string
@@ -207,10 +208,7 @@
       </button>
     {/if}
 
-    <div class="header-indicator" class:healthy={serverHealth === 'ok'}>
-      <span class="header-dot"></span>
-      <span class="header-indicator-label">{serverHealth === 'ok' ? $t.common.states.connected : $t.common.states.disconnected}</span>
-    </div>
+    <StatusPill {serverHealth} {onNavigate} />
 
     {#if authRole}
       <div class="auth-chip">
@@ -384,28 +382,6 @@
     font-family: var(--font-mono);
     font-size: var(--text-sm);
     color: var(--text-primary);
-  }
-
-  .header-indicator {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-
-  .header-dot {
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    background: var(--error);
-    flex-shrink: 0;
-  }
-  .header-indicator.healthy .header-dot {
-    background: var(--success);
-  }
-
-  .header-indicator-label {
-    font-size: var(--text-xs);
-    color: var(--text-tertiary);
   }
 
   .auth-chip {

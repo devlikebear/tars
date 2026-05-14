@@ -37,5 +37,42 @@
       "type": "image/png",
       "purpose": "maskable"
     }
+  ],
+  "shortcuts": [
+    {
+      "name": "Chat",
+      "short_name": "Chat",
+      "description": "Jump to the active chat session.",
+      "url": "/console/chat",
+      "icons": [{ "src": "pwa-icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Sessions",
+      "short_name": "Sessions",
+      "description": "Browse all chat sessions and lineage.",
+      "url": "/console/sessions",
+      "icons": [{ "src": "pwa-icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Ops",
+      "short_name": "Ops",
+      "description": "System health, approvals, and cleanup.",
+      "url": "/console/ops",
+      "icons": [{ "src": "pwa-icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Pulse",
+      "short_name": "Pulse",
+      "description": "Watchdog status, ticks, and alerts.",
+      "url": "/console/pulse",
+      "icons": [{ "src": "pwa-icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Reflection",
+      "short_name": "Reflection",
+      "description": "Nightly reflection runs and experience extraction.",
+      "url": "/console/reflection",
+      "icons": [{ "src": "pwa-icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    }
   ]
 }

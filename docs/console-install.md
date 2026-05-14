@@ -46,6 +46,18 @@ Firefox는 데스크톱 PWA 설치를 공식 지원하지 않습니다. 다른 �
 - 별도 창으로 열리며 `start_url`은 `/console/`입니다.
 - 백그라운드에서 `tars serve`가 실행 중이어야 합니다 (4번 참조).
 - TARS 업그레이드로 콘솔 자산이 갱신되면, 앱을 한 번 새로고침하면 최신 콘솔이 적용됩니다.
+- **앱 아이콘 우클릭(또는 길게 누르기)**으로 Chat / Sessions / Ops / Pulse / Reflection으로 바로 진입하는 **shortcuts** 메뉴가 뜹니다 (macOS Dock, Windows 작업표시줄, Linux 런처 공통).
+
+### 상태 칩 (topbar status pill)
+
+콘솔 우상단에는 **server · pulse · reflection · 활성 세션 수**를 한눈에 보여주는 작은 상태 칩이 있습니다.
+
+- 회색 점: idle / 데이터 없음
+- 초록색 점: 정상
+- 황색(amber) 점: 경고 (예: pulse tick이 5분 이상 지연되거나 reflection 1회 실패)
+- 빨간색 점: 오류 (서버 연결 끊김, pulse 오류, reflection 연속 실패)
+
+칩을 클릭하면 세부 상태 팝오버가 열리고, 각 행을 눌러 해당 페이지로 점프하거나 "Open active chat" 버튼으로 가장 최근 활성 세션의 채팅으로 바로 이동합니다.
 
 ## 3. CLI
 
