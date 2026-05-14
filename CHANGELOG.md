@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.32.50] - 2026-05-14
+
+### Changed
+
+- **Critic agent: assistant_turn trigger + async execution (PR-2 of 3)** — The reviewer is no longer gated on plan transitions. A new `critic.TriggerAssistantTurn` fires at the end of every assistant turn that did not also cross a `plan_proposed` / `plan_completed` transition, with a dedicated response-quality system prompt. Execution flips from blocking to background: `buildCriticAwareTurnEndHook` now spawns a goroutine via the package-level `criticAsyncRunner` (test-overridable) on a 2-minute timeout context decoupled from the originating chat request. Non-acceptable verdicts queue into new `SessionCritic.PendingFeedback` / `PendingFeedbackTrigger` / `PendingFeedbackRound` / `PendingFeedbackAt` fields, which `buildSessionChatRunState` drains via `Store.TakePendingCriticFeedback` at the start of the next user turn and inserts as a system-role message immediately before the user message (`insertSystemMessageBeforeUser`). The chained `buildChatTurnEndHook` no longer pre-empts the goal judge with a critic injection — both run, but the goal judge keeps its existing synchronous auto-continue contract while the critic side-channels through the pending queue. Iteration budgeting still applies to plan triggers; `assistant_turn` does not bump `CurrentIteration` and dedupes through `LastReviewedTurnSig` (SHA-1 of response content + tool-call ids) so repeated firings on the same response are no-ops. SSE events (`started` / `feedback` / `satisfied` / `judge_error` / `exhausted`) keep the same shape for the console.
+
 ## [0.32.49] - 2026-05-13
 
 ### Changed

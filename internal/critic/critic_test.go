@@ -100,10 +100,30 @@ func TestReview_UnknownTriggerErrors(t *testing.T) {
 	}
 }
 
-func TestReview_NilPlanErrors(t *testing.T) {
+func TestReview_AssistantTurnAllowsNilPlan(t *testing.T) {
+	r := NewLLMReviewer(&stubRouter{resp: `{"acceptable": false, "feedback": "- missed", "reason": "gap"}`}, "")
+	v, err := r.Review(context.Background(), TriggerAssistantTurn, nil, nil, []llm.ChatMessage{
+		{Role: "user", Content: "what's 2+2?"},
+		{Role: "assistant", Content: "5"},
+	})
+	if err != nil {
+		t.Fatalf("assistant_turn with nil plan should succeed, got: %v", err)
+	}
+	if v.Acceptable {
+		t.Fatalf("expected acceptable=false, got %+v", v)
+	}
+	if v.Feedback == "" {
+		t.Fatal("expected non-empty feedback")
+	}
+}
+
+func TestReview_PlanProposedStillRequiresPlan(t *testing.T) {
 	r := NewLLMReviewer(&stubRouter{resp: `{"acceptable": true}`}, "")
 	if _, err := r.Review(context.Background(), TriggerPlanProposed, nil, nil, nil); err == nil {
-		t.Fatal("expected error for nil plan")
+		t.Fatal("expected error: plan triggers still require a plan")
+	}
+	if _, err := r.Review(context.Background(), TriggerPlanCompleted, nil, nil, nil); err == nil {
+		t.Fatal("expected error: plan_completed still requires a plan")
 	}
 }
 

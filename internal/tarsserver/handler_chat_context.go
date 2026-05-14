@@ -192,6 +192,21 @@ func buildSessionChatRunState(
 	}
 
 	llmMessages := buildLLMMessagesWithBlocks(systemPrompt, history, userMessage, contentBlocks)
+	// Drain any pending critic feedback queued by the async reviewer on a
+	// previous turn. Injected as a system-role message right before the
+	// current user message so the LLM treats it as authoritative direction.
+	if sessionCritic.IsEnabled() {
+		if pending, perr := reqStore.TakePendingCriticFeedback(sessionID); perr == nil && strings.TrimSpace(pending.Feedback) != "" {
+			llmMessages = insertSystemMessageBeforeUser(llmMessages, pending.Feedback)
+			deps.logger.Debug().
+				Str("session_id", sessionID).
+				Str("critic_trigger", pending.Trigger).
+				Int("critic_round", pending.Round).
+				Msg("drained pending critic feedback into next turn")
+		} else if perr != nil {
+			deps.logger.Debug().Err(perr).Str("session_id", sessionID).Msg("drain pending critic feedback failed")
+		}
+	}
 	resolvedTools := resolveInjectedToolPolicy(registry, authRole, deps.tooling.ToolsAllowHighRiskUser, sessionToolConfigs...)
 	injectedSchemas := resolvedTools.Schemas
 	deps.logger.Debug().

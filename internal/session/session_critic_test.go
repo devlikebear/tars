@@ -274,3 +274,87 @@ func TestStoreUpdateCriticProgress_NoOpWhenNoCritic(t *testing.T) {
 		t.Fatalf("expected critic nil, got %+v", sess.Critic)
 	}
 }
+
+func TestTakePendingCriticFeedback_AtomicReadAndClear(t *testing.T) {
+	store := NewStore(t.TempDir())
+	main, err := store.EnsureMain()
+	if err != nil {
+		t.Fatalf("ensure main: %v", err)
+	}
+	if _, err := store.SetCritic(main.ID, &SessionCritic{Enabled: true, MaxIterations: 3}); err != nil {
+		t.Fatalf("set: %v", err)
+	}
+	now := time.Now().UTC()
+	if _, err := store.UpdateCriticProgress(main.ID, func(c *SessionCritic) *SessionCritic {
+		c.PendingFeedback = "queued body"
+		c.PendingFeedbackTrigger = "assistant_turn"
+		c.PendingFeedbackRound = 2
+		c.PendingFeedbackAt = &now
+		return c
+	}); err != nil {
+		t.Fatalf("queue: %v", err)
+	}
+
+	taken, err := store.TakePendingCriticFeedback(main.ID)
+	if err != nil {
+		t.Fatalf("take: %v", err)
+	}
+	if taken.Feedback != "queued body" {
+		t.Fatalf("Feedback = %q", taken.Feedback)
+	}
+	if taken.Trigger != "assistant_turn" {
+		t.Fatalf("Trigger = %q", taken.Trigger)
+	}
+	if taken.Round != 2 {
+		t.Fatalf("Round = %d", taken.Round)
+	}
+
+	// Second take should be empty (already drained).
+	again, err := store.TakePendingCriticFeedback(main.ID)
+	if err != nil {
+		t.Fatalf("take2: %v", err)
+	}
+	if again.Feedback != "" {
+		t.Fatalf("expected empty on second take, got %q", again.Feedback)
+	}
+
+	// Verify the persisted SessionCritic has no pending fields.
+	sess, err := store.Get(main.ID)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if sess.Critic.PendingFeedback != "" || sess.Critic.PendingFeedbackTrigger != "" ||
+		sess.Critic.PendingFeedbackRound != 0 || sess.Critic.PendingFeedbackAt != nil {
+		t.Fatalf("expected pending fields cleared, got %+v", sess.Critic)
+	}
+}
+
+func TestTakePendingCriticFeedback_NoCriticConfigured(t *testing.T) {
+	store := NewStore(t.TempDir())
+	main, err := store.EnsureMain()
+	if err != nil {
+		t.Fatalf("ensure main: %v", err)
+	}
+	// No SetCritic call → nil Critic → take should be no-op (empty result).
+	taken, err := store.TakePendingCriticFeedback(main.ID)
+	if err != nil {
+		t.Fatalf("take: %v", err)
+	}
+	if taken.Feedback != "" {
+		t.Fatalf("expected empty take, got %q", taken.Feedback)
+	}
+}
+
+func TestNormalizeCritic_ClearsPendingMetadataWhenBodyEmpty(t *testing.T) {
+	now := time.Now().UTC()
+	c := NormalizeCritic(&SessionCritic{
+		Enabled:                true,
+		PendingFeedback:        "",
+		PendingFeedbackTrigger: "assistant_turn",
+		PendingFeedbackRound:   3,
+		PendingFeedbackAt:      &now,
+	})
+	if c.PendingFeedbackTrigger != "" || c.PendingFeedbackRound != 0 || c.PendingFeedbackAt != nil {
+		t.Fatalf("expected pending metadata cleared, got %+v", c)
+	}
+}
