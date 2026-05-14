@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/devlikebear/tars/internal/config"
 )
@@ -325,6 +326,138 @@ func clearDoctorEnv(t *testing.T) {
 	} {
 		t.Setenv(key, "")
 	}
+}
+
+// TestCheckDoctorLLMRuntime_ClaudeCodeCLI exercises the
+// checkDoctorLLMRuntime function directly across the three branches the
+// auth/cutover code introduces. We can't easily monkey-patch
+// claudeCodeAgentSDKCutoverDate (it's a package-level var) so the
+// before-cutover path is verified via the current date (test runs before
+// 2026-06-15). The skipped runtime case (no claude-code-cli provider in
+// config) is also covered to lock the early-return.
+func TestCheckDoctorLLMRuntime_ClaudeCodeCLI(t *testing.T) {
+	// 1) No claude-code-cli provider configured → check skipped entirely,
+	// report stays empty.
+	t.Run("skipped when no claude-code-cli provider", func(t *testing.T) {
+		clearDoctorEnv(t)
+		var r doctorReport
+		checkDoctorLLMRuntime(&r, config.Config{
+			LLMConfig: config.LLMConfig{
+				LLMProviders: map[string]config.LLMProviderSettings{
+					"default": {Kind: "anthropic"},
+				},
+			},
+		})
+		for _, c := range r.checks {
+			if c.name == "llm runtime" {
+				t.Fatalf("expected no llm runtime check, got %+v", c)
+			}
+		}
+	})
+
+	// 2) claude-code-cli configured + binary missing → fail + install hint.
+	t.Run("fail when binary missing", func(t *testing.T) {
+		clearDoctorEnv(t)
+		// Point CLAUDE_CODE_CLI_PATH at a non-existent file so FindClaudeCodeCLIPath errors out.
+		t.Setenv("CLAUDE_CODE_CLI_PATH", filepath.Join(t.TempDir(), "no-such-claude"))
+		var r doctorReport
+		checkDoctorLLMRuntime(&r, config.Config{
+			LLMConfig: config.LLMConfig{
+				LLMProviders: map[string]config.LLMProviderSettings{
+					"default": {Kind: "claude-code-cli"},
+				},
+			},
+		})
+		found := false
+		for _, c := range r.checks {
+			if c.name == "llm runtime" && c.status == "fail" {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("expected llm runtime FAIL, got checks=%+v", r.checks)
+		}
+		if len(r.hints) == 0 {
+			t.Fatal("expected install hint")
+		}
+	})
+
+	// 3) claude-code-cli configured + binary present + subscription mode +
+	// pre-cutover → ok + auth=subscription in detail + cutover hint.
+	t.Run("ok with subscription cutover hint", func(t *testing.T) {
+		if time.Now().UTC().After(claudeCodeAgentSDKCutoverDate) {
+			t.Skip("post-cutover; hint suppressed by design")
+		}
+		clearDoctorEnv(t)
+		dir := t.TempDir()
+		fakeClaude := filepath.Join(dir, "claude")
+		if err := os.WriteFile(fakeClaude, []byte("#!/bin/sh\necho stub\n"), 0o755); err != nil {
+			t.Fatalf("write fake claude: %v", err)
+		}
+		t.Setenv("CLAUDE_CODE_CLI_PATH", fakeClaude)
+		var r doctorReport
+		checkDoctorLLMRuntime(&r, config.Config{
+			LLMConfig: config.LLMConfig{
+				LLMProviders: map[string]config.LLMProviderSettings{
+					"default": {Kind: "claude-code-cli"},
+				},
+			},
+		})
+		var runtimeCheck *doctorCheck
+		for i := range r.checks {
+			if r.checks[i].name == "llm runtime" {
+				runtimeCheck = &r.checks[i]
+			}
+		}
+		if runtimeCheck == nil || runtimeCheck.status != "ok" {
+			t.Fatalf("expected llm runtime ok, got %+v", r.checks)
+		}
+		if !strings.Contains(runtimeCheck.detail, "auth=subscription") {
+			t.Fatalf("expected auth=subscription in detail, got %q", runtimeCheck.detail)
+		}
+		hintFound := false
+		for _, h := range r.hints {
+			if strings.Contains(h, "2026-06-15") {
+				hintFound = true
+			}
+		}
+		if !hintFound {
+			t.Fatalf("expected 2026-06-15 cutover hint, got hints=%v", r.hints)
+		}
+	})
+
+	// 4) claude-code-cli + binary present + api_key mode → ok + auth=api_key
+	// in detail, NO cutover hint (api_key path is unaffected by the change).
+	t.Run("api_key mode suppresses cutover hint", func(t *testing.T) {
+		clearDoctorEnv(t)
+		t.Setenv("ANTHROPIC_API_KEY", "sk-xxx")
+		dir := t.TempDir()
+		fakeClaude := filepath.Join(dir, "claude")
+		if err := os.WriteFile(fakeClaude, []byte("#!/bin/sh\necho stub\n"), 0o755); err != nil {
+			t.Fatalf("write fake claude: %v", err)
+		}
+		t.Setenv("CLAUDE_CODE_CLI_PATH", fakeClaude)
+		var r doctorReport
+		checkDoctorLLMRuntime(&r, config.Config{
+			LLMConfig: config.LLMConfig{
+				LLMProviders: map[string]config.LLMProviderSettings{
+					"default": {Kind: "claude-code-cli"},
+				},
+			},
+		})
+		for _, c := range r.checks {
+			if c.name == "llm runtime" && c.status == "ok" {
+				if !strings.Contains(c.detail, "auth=api_key") {
+					t.Fatalf("expected auth=api_key in detail, got %q", c.detail)
+				}
+			}
+		}
+		for _, h := range r.hints {
+			if strings.Contains(h, "2026-06-15") {
+				t.Fatalf("api_key mode should not produce cutover hint, got %q", h)
+			}
+		}
+	})
 }
 
 // TestDetectClaudeCodeAuthMode verifies the env-var-based inference:
