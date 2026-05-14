@@ -6,6 +6,18 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.32.62] - 2026-05-14
+
+### Added
+
+- **`tars doctor`: claude-code-cli 인증 모드 표시 + 2026-06-15 cutover 안내 (Epic #857 Phase 5)** — `cmd/tars/doctor_main.go`의 `checkDoctorLLMRuntime`이 claude-code-cli 바이너리 존재 확인에 더해 인증 모드(`subscription` vs `api_key`)를 추론해 함께 표시하고, 구독 모드일 때만 2026-06-15 Anthropic 정책 변경(`claude -p` / Agent SDK 사용량이 별도 월 크레딧으로 이전)을 안내한다. 새 헬퍼 `detectClaudeCodeAuthMode`가 `ANTHROPIC_API_KEY`와 `CLAUDE_API_KEY` 두 환경 변수를 차례로 검사해 어느 하나라도 trimSpace 후 비어 있지 않으면 `"api_key"` + ` (env:<varname>)` detail을 반환하고, 둘 다 없으면 `"subscription"`을 반환한다. 의도적으로 `claude config get` 같은 외부 CLI 호출은 하지 않는다(doctor가 자식 프로세스에서 막히거나 binary가 stdin을 요구할 위험). cutover 안내는 새 상수 `claudeCodeAgentSDKCutoverDate = 2026-06-15 UTC`와 비교해 그 이전에만 출력 — 날짜를 지나면 자동으로 사라져 로그를 어지럽히지 않는다. 안내 본문에는 Pro $20 / Max5x $100 / Max20x $200 크레딧 정보와 [공식 헬프 페이지](https://support.claude.com/en/articles/15036540-use-the-claude-agent-sdk-with-your-claude-plan) 링크를 포함. 기존 doctor 출력 포맷(`claude-code-cli=<path>`)에 ` auth=<mode><detail>`이 덧붙어 한 줄에서 인증 모드를 즉시 확인 가능. `cmd/tars/doctor_main_test.go`의 `clearDoctorEnv`에 `CLAUDE_API_KEY`를 추가해 기존 테스트 환경 격리를 강화하고, 새 `TestDetectClaudeCodeAuthMode`로 네 시나리오(둘 다 unset, ANTHROPIC만, CLAUDE_API_KEY만, 공백만 있는 키 — 후자는 subscription으로 떨어져야 함)를 잠갔다.
+
+- **`tars.config.example.yaml`에 `llm.claude_code_cli.permission_mode` 추가 (Epic #857 Phase 5)** — Phase 4에서 노출한 새 설정 키를 reference config에 문서와 함께 추가한다. 허용되는 값(`auto`, `acceptEdits`, `plan`, `bypassPermissions`)과 빈 값/오타에 대한 graceful degrade 동작을 inline 주석으로 명시.
+
+- **`CLAUDE.md`의 "LLM Provider Pool" 섹션 하단에 claude-code-cli 운영 노트 (Epic #857 완료) 추가** — 5단계의 결과물(`--resume` 멀티턴 / MCP 자동 주입 / `permission_mode` 노출 / doctor cutover 안내)을 향후 작업자가 한눈에 파악할 수 있도록 짧은 불릿으로 요약하고, 다중 사용자 시나리오와 외부 OAuth 노출 금지에 대한 비목표를 다시 한 번 명시한다.
+
+이 PR로 Epic #857의 다섯 페이즈(tool_use 파싱 + session_id, `--resume` 멀티턴, MCP 마운트, permission_mode 설정, doctor + cutover + 문서)가 모두 완료된다. 후속 작업으로 남은 항목: `.claude/skills/` 미러, `--settings` 파일 주입, stream-json `tool_use` 이벤트 기반 동적 approval 게이팅, 콘솔 UI에 Agent SDK 크레딧 잔액 표시 — 모두 별도 이슈로 분기 권장.
+
 ## [0.32.61] - 2026-05-14
 
 ### Added
