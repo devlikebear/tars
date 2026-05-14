@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.32.52] - 2026-05-14
+
+### Changed
+
+- **tools/go.mod — bump security-scan dependencies** (replaces Dependabot #841) — Bumps `golang.org/x/crypto` 0.35.0 → 0.45.0, `github.com/ulikunitz/xz` 0.5.12 → 0.5.15 (addresses GHSA-jc7w-c686-c4v9), and `github.com/nwaples/rardecode/v2` 2.1.0 → 2.2.0. The original Dependabot PR failed `security` CI because rardecode/v2 v2.2.0's `ReadCloser` no longer satisfies the internal `rarReader` interface used by `github.com/mholt/archives` v0.1.2 (`missing method WriteTo`). Bundles a co-bump of `github.com/mholt/archives` 0.1.2 → 0.1.5 to restore compilation, which pulls forward the rest of the transitive tree (`brotli`, `klauspost/compress`, `sevenzip`, `lz4/v4`, `lzip-go`, `STARRY-S/zip`, `afero`, `mikelolasagasti/xz`, `minlz`, `golang.org/x/{sync,sys,text}`). No production code change — these only affect the `make security-scan` toolchain.
+
 ## [0.32.51] - 2026-05-14
 
 ### Changed
