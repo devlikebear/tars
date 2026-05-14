@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.32.64] - 2026-05-14
+
+### Added
+
+- **chat 콘솔이 claude-code-cli의 provider-executed tool을 실시간 surface (Epic #857 follow-up #1 마무리)** — #865로 `agent.EventProviderTool`을 noise 없이 발화하도록 분리했고, 본 PR은 그 신호를 `internal/tarsserver/handler_chat.go`의 `setupAgentLoop` 안 `logHook` switch에 새 case로 연결해 두 가지 결과를 만든다. (1) 채팅 SSE 스트림으로 `sendStatus("provider_tool", "upstream tool executed", evt.ToolName, evt.ToolCallID, statusPreviewForTool(...), "")`를 보내 콘솔이 매 stream-json `tool_use`마다 "Claude Code ran Bash(ls)" / "Claude Code ran Read(/etc/passwd)" 같은 inline 표시를 그릴 수 있게 한다 — 같은 헬퍼 `statusPreviewForTool`을 통해 길이 180으로 잘려서 보내므로 거대한 인자(예: 큰 grep 패턴)도 콘솔 레이아웃을 깨지 않는다. (2) 세션 transcript용 `ToolCallRecord`도 한 줄 append되며 `ToolResult: "(executed by upstream provider)"` placeholder가 들어가 후일 session 재현/감사 시 TARS-side 실행과 명확히 구분된다 — `ToolIsError: false`로 고정해 우발적 에러 카운트 부풀림 방지. EventBeforeTool/EventAfterTool 경로와 달리 `recordToolUsageSignal`(TARS 호출 카운트)나 `afterTool` 훅(예: tasks 패널 refresh)은 의도적으로 호출하지 않는다 — provider가 실행한 일에 TARS-side 카운터를 더하면 router/usage 통계가 더블 카운팅된다. 새 회귀 테스트 `TestSetupAgentLoop_ForwardsProviderToolEventToStreamAndTranscript`(별도 파일 `handler_chat_provider_tool_test.go`)는 미니 `providerToolStubClient`로 `ProviderExecutedTools: [Bash(ls)]`만 들고 한 번 응답하는 시나리오를 `setupAgentLoop` 실제 결과로 돌려 (i) `provider_tool` 스트림 이벤트가 정확한 ToolName/ToolCallID/ArgsPreview로 발화되는지, (ii) `*toolCalls`에 placeholder `(executed by upstream provider)` 레코드가 추가되는지, (iii) 같은 호출에 대해 `before_tool_call` / `after_tool_call`이 같이 발화하지 않는지 세 가지 invariant를 동시에 잠근다. 다른 provider(anthropic, openai 등)의 동작은 `ProviderExecutedTools`가 항상 비어 있어 영향 없음.
+
 ## [0.32.63] - 2026-05-14
 
 ### Fixed
