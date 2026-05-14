@@ -1019,7 +1019,12 @@ type chatToolingOptions struct {
 	// builder so the Planning section's clarifying-questions stance can
 	// be tuned without forking the prompt source.
 	PlanClarifyMode string
-	StyleDefaults   sessionStyleValues
+	// ClaudeCodeCLIPermissionMode forwards config.ClaudeCodeCLIPermissionMode
+	// into the chat loop so it can be passed as --permission-mode when the
+	// active tier uses the claude-code-cli provider. Empty falls back to
+	// "auto" inside the provider.
+	ClaudeCodeCLIPermissionMode string
+	StyleDefaults               sessionStyleValues
 	// OverrideService resolves session-cwd .tars/settings*.json overrides
 	// into an EffectiveConfig used for tool gating and prompt override.
 	// nil disables overrides (chat falls back to raw session fields).

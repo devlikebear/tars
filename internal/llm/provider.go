@@ -157,6 +157,12 @@ type ChatOptions struct {
 	// configuration into this provider-agnostic shape outside the llm
 	// package so internal/llm stays decoupled from internal/config.
 	ClaudeCodeMCPServers []ClaudeCodeMCPServer
+	// ClaudeCodePermissionMode selects the value passed to `--permission-mode`
+	// for the claude-code-cli provider. Recognized values: "auto" (default),
+	// "acceptEdits", "plan", "bypassPermissions". Empty or unknown values
+	// fall back to "auto" so the provider stays callable even when callers
+	// haven't been updated. Other providers ignore this field.
+	ClaudeCodePermissionMode string
 }
 
 // ClaudeCodeMCPServer is the minimal subset of an MCP server config that

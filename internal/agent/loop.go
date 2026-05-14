@@ -88,6 +88,10 @@ type RunOptions struct {
 	// the claude-code-cli provider can inject the same MCP server set per
 	// turn. Other providers ignore it.
 	ClaudeCodeMCPServers []llm.ClaudeCodeMCPServer
+	// ClaudeCodePermissionMode selects --permission-mode for the
+	// claude-code-cli provider. Forwarded as-is; invalid values fall back to
+	// "auto" inside the provider.
+	ClaudeCodePermissionMode string
 }
 
 func (l *Loop) Run(ctx context.Context, initial []llm.ChatMessage, opts RunOptions) (llm.ChatResponse, error) {
@@ -115,13 +119,14 @@ func (l *Loop) Run(ctx context.Context, initial []llm.ChatMessage, opts RunOptio
 	for i := 0; i < maxIters; i++ {
 		l.emit(ctx, Event{Type: EventBeforeLLM, Iteration: i + 1, MessageCount: len(messages)})
 		resp, err := l.client.Chat(ctx, messages, llm.ChatOptions{
-			OnDelta:              opts.OnDelta,
-			OnReasoningDelta:     opts.OnReasoningDelta,
-			Tools:                llmTools,
-			ToolChoice:           opts.ToolChoice,
-			ResponseFormat:       opts.ResponseFormat,
-			ResumeSessionID:      activeResumeID,
-			ClaudeCodeMCPServers: opts.ClaudeCodeMCPServers,
+			OnDelta:                  opts.OnDelta,
+			OnReasoningDelta:         opts.OnReasoningDelta,
+			Tools:                    llmTools,
+			ToolChoice:               opts.ToolChoice,
+			ResponseFormat:           opts.ResponseFormat,
+			ResumeSessionID:          activeResumeID,
+			ClaudeCodeMCPServers:     opts.ClaudeCodeMCPServers,
+			ClaudeCodePermissionMode: opts.ClaudeCodePermissionMode,
 		})
 		if err != nil {
 			l.emit(ctx, Event{Type: EventLoopError, Iteration: i + 1, Err: err})

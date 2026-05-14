@@ -98,6 +98,13 @@ type LLMConfig struct {
 	// validated at router build time via llm.ParseRole — this package
 	// does not import internal/llm.
 	LLMRoleDefaults map[string]string
+
+	// ClaudeCodeCLIPermissionMode selects the value passed to
+	// `claude -p --permission-mode` when the active tier uses the
+	// claude-code-cli provider. Allowed values: "auto" (default),
+	// "acceptEdits", "plan", "bypassPermissions". Empty/unknown values
+	// degrade to "auto" inside the provider. Other providers ignore this.
+	ClaudeCodeCLIPermissionMode string
 }
 
 // LLMProviderSettings is one entry in the named provider pool. It holds
