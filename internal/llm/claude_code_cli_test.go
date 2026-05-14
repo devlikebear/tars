@@ -163,6 +163,115 @@ printf '%s\n' '{"type":"result","subtype":"success","is_error":false,"stop_reaso
 	}
 }
 
+// TestClaudeCodeCLIClientChat_ResumeSessionPassesFlagAndSlimsPrompt verifies
+// that when ChatOptions.ResumeSessionID is set the provider:
+//   - passes --resume <session_id>
+//   - drops --no-session-persistence (otherwise --resume can't load the saved transcript)
+//   - sends only the latest user message, not the full transcript text builder
+func TestClaudeCodeCLIClientChat_ResumeSessionPassesFlagAndSlimsPrompt(t *testing.T) {
+	dir := t.TempDir()
+	argsPath := filepath.Join(dir, "claude-args.txt")
+	scriptPath := filepath.Join(dir, "claude")
+	script := strings.TrimSpace(`#!/bin/sh
+printf '%s\n' "$@" > `+shellQuote(argsPath)+`
+printf '%s\n' '{"type":"system","subtype":"init","session_id":"sess-resumed","data":{}}'
+printf '%s\n' '{"type":"assistant","message":{"model":"sonnet","content":[{"type":"text","text":"continuing"}]}}'
+printf '%s\n' '{"type":"result","subtype":"success","is_error":false,"stop_reason":"end_turn","usage":{"input_tokens":2,"output_tokens":1},"result":"continuing","session_id":"sess-resumed"}'
+`) + "\n"
+	if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("write cli stub: %v", err)
+	}
+	t.Setenv("CLAUDE_CODE_CLI_PATH", scriptPath)
+
+	client, err := NewProvider(ProviderOptions{
+		Provider: "claude-code-cli",
+		Model:    "sonnet",
+		WorkDir:  dir,
+	})
+	if err != nil {
+		t.Fatalf("new provider: %v", err)
+	}
+
+	resp, err := client.Chat(context.Background(), []ChatMessage{
+		{Role: "system", Content: "be brief"},
+		{Role: "user", Content: "old turn 1"},
+		{Role: "assistant", Content: "old reply 1"},
+		{Role: "user", Content: "follow-up please"},
+	}, ChatOptions{ResumeSessionID: "sess-abc"})
+	if err != nil {
+		t.Fatalf("chat: %v", err)
+	}
+	if resp.SessionID != "sess-resumed" {
+		t.Fatalf("expected session id sess-resumed, got %q", resp.SessionID)
+	}
+
+	argsData, err := os.ReadFile(argsPath)
+	if err != nil {
+		t.Fatalf("read args: %v", err)
+	}
+	args := string(argsData)
+
+	for _, want := range []string{"--resume", "sess-abc", "follow-up please"} {
+		if !strings.Contains(args, want) {
+			t.Fatalf("expected args to contain %q, got:\n%s", want, args)
+		}
+	}
+	if strings.Contains(args, "--no-session-persistence") {
+		t.Fatalf("--no-session-persistence must be dropped in resume mode, got:\n%s", args)
+	}
+	// Slim-prompt assertions: the historical transcript text builder output
+	// (uppercase ROLE labels, "Continue the conversation below…") must not be
+	// re-sent, since the upstream session already has it.
+	for _, forbidden := range []string{"Continue the conversation below", "USER:", "ASSISTANT:", "old turn 1", "old reply 1"} {
+		if strings.Contains(args, forbidden) {
+			t.Fatalf("resume mode should not re-send transcript fragment %q, got:\n%s", forbidden, args)
+		}
+	}
+}
+
+// TestClaudeCodeCLIClientChat_FreshSessionKeepsNoSessionPersistence verifies
+// that when ResumeSessionID is empty (default), the provider still passes
+// --no-session-persistence to avoid littering ~/.claude with throwaway
+// transcript files.
+func TestClaudeCodeCLIClientChat_FreshSessionKeepsNoSessionPersistence(t *testing.T) {
+	dir := t.TempDir()
+	argsPath := filepath.Join(dir, "claude-args.txt")
+	scriptPath := filepath.Join(dir, "claude")
+	script := strings.TrimSpace(`#!/bin/sh
+printf '%s\n' "$@" > `+shellQuote(argsPath)+`
+printf '%s\n' '{"type":"assistant","message":{"model":"sonnet","content":[{"type":"text","text":"hi"}]}}'
+printf '%s\n' '{"type":"result","subtype":"success","is_error":false,"stop_reason":"end_turn","usage":{"input_tokens":1,"output_tokens":1},"result":"hi"}'
+`) + "\n"
+	if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("write cli stub: %v", err)
+	}
+	t.Setenv("CLAUDE_CODE_CLI_PATH", scriptPath)
+
+	client, err := NewProvider(ProviderOptions{
+		Provider: "claude-code-cli",
+		Model:    "sonnet",
+		WorkDir:  dir,
+	})
+	if err != nil {
+		t.Fatalf("new provider: %v", err)
+	}
+	if _, err := client.Chat(context.Background(), []ChatMessage{
+		{Role: "user", Content: "hi"},
+	}, ChatOptions{}); err != nil {
+		t.Fatalf("chat: %v", err)
+	}
+	args, err := os.ReadFile(argsPath)
+	if err != nil {
+		t.Fatalf("read args: %v", err)
+	}
+	if !strings.Contains(string(args), "--no-session-persistence") {
+		t.Fatalf("expected --no-session-persistence in fresh-session args, got:\n%s", args)
+	}
+	if strings.Contains(string(args), "--resume") {
+		t.Fatalf("expected no --resume in fresh-session args, got:\n%s", args)
+	}
+}
+
 func shellQuote(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
 }
