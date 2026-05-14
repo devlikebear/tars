@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/devlikebear/tars/internal/config"
 	"github.com/devlikebear/tars/internal/llm"
@@ -275,7 +276,46 @@ func checkDoctorLLMRuntime(report *doctorReport, cfg config.Config) {
 		report.addHint("install Claude Code or set `CLAUDE_CODE_CLI_PATH` to the local `claude` binary")
 		return
 	}
-	report.add("ok", "llm runtime", fmt.Sprintf("claude-code-cli=%s", path))
+	authMode, authDetail := detectClaudeCodeAuthMode()
+	report.add("ok", "llm runtime", fmt.Sprintf("claude-code-cli=%s auth=%s%s", path, authMode, authDetail))
+
+	// 2026-06-15 Anthropic policy cutover: claude -p / Agent SDK usage on
+	// subscription plans starts drawing from a new monthly Agent SDK credit
+	// (Pro $20 / Max5x $100 / Max20x $200, no rollover) instead of the
+	// interactive plan limits. Surface this once so a user looking at
+	// `tars doctor` before the date knows their TARS chat traffic is about
+	// to change billing buckets. The hint auto-suppresses after the cutover.
+	if authMode == "subscription" && time.Now().UTC().Before(claudeCodeAgentSDKCutoverDate) {
+		report.addHint("note: 2026-06-15부터 Anthropic 구독 플랜의 `claude -p` / Agent SDK 사용량은 별도 월 크레딧(Pro $20 / Max5x $100 / Max20x $200, 롤오버 없음)에서 차감됩니다. TARS의 claude-code-cli provider도 그 크레딧을 소비하므로 잔액 모니터링을 권장. 자세히: https://support.claude.com/en/articles/15036540-use-the-claude-agent-sdk-with-your-claude-plan")
+	}
+}
+
+// claudeCodeAgentSDKCutoverDate is the day Anthropic moves claude -p /
+// Agent SDK usage on subscription plans onto the new monthly credit bucket.
+// The doctor hint auto-clears after this date so it doesn't haunt logs
+// forever.
+var claudeCodeAgentSDKCutoverDate = time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC)
+
+// detectClaudeCodeAuthMode returns a coarse identification of how the local
+// claude binary will authenticate against Anthropic. Returns:
+//
+//   - "api_key" + " (env:VARNAME)" detail when ANTHROPIC_API_KEY (or one of
+//     its known aliases) is present — calls bypass subscription quota
+//   - "subscription" + "" detail when no api key is in scope — calls draw
+//     from the user's Pro/Max plan (interactive limits today, Agent SDK
+//     credit from 2026-06-15)
+//
+// This is an inference, not a guarantee — claude itself decides per-call
+// which auth path to take. We deliberately do not exec `claude config get`
+// here: that would block doctor on a child process and surface UX issues if
+// the binary prompts for input.
+func detectClaudeCodeAuthMode() (mode string, detail string) {
+	for _, v := range []string{"ANTHROPIC_API_KEY", "CLAUDE_API_KEY"} {
+		if strings.TrimSpace(os.Getenv(v)) != "" {
+			return "api_key", fmt.Sprintf(" (env:%s)", v)
+		}
+	}
+	return "subscription", ""
 }
 
 func checkDoctorSemanticMemory(report *doctorReport, cfg config.Config, configPath string) {

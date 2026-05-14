@@ -321,7 +321,47 @@ func clearDoctorEnv(t *testing.T) {
 		"TARS_WORKSPACE_DIR",
 		"TARS_CONFIG",
 		"TARS_CONFIG_PATH",
+		"CLAUDE_API_KEY",
 	} {
 		t.Setenv(key, "")
 	}
+}
+
+// TestDetectClaudeCodeAuthMode verifies the env-var-based inference:
+// - both keys empty → "subscription"
+// - ANTHROPIC_API_KEY set → "api_key" with that env name in the detail
+// - CLAUDE_API_KEY set → "api_key" with that env name in the detail
+// - ANTHROPIC_API_KEY beats CLAUDE_API_KEY when both present (declaration order)
+func TestDetectClaudeCodeAuthMode(t *testing.T) {
+	t.Run("subscription when both unset", func(t *testing.T) {
+		clearDoctorEnv(t)
+		mode, detail := detectClaudeCodeAuthMode()
+		if mode != "subscription" || detail != "" {
+			t.Fatalf("expected subscription/empty detail, got %q/%q", mode, detail)
+		}
+	})
+	t.Run("api_key when ANTHROPIC_API_KEY set", func(t *testing.T) {
+		clearDoctorEnv(t)
+		t.Setenv("ANTHROPIC_API_KEY", "sk-xxx")
+		mode, detail := detectClaudeCodeAuthMode()
+		if mode != "api_key" || !strings.Contains(detail, "ANTHROPIC_API_KEY") {
+			t.Fatalf("expected api_key with ANTHROPIC_API_KEY detail, got %q/%q", mode, detail)
+		}
+	})
+	t.Run("api_key when CLAUDE_API_KEY set", func(t *testing.T) {
+		clearDoctorEnv(t)
+		t.Setenv("CLAUDE_API_KEY", "sk-yyy")
+		mode, detail := detectClaudeCodeAuthMode()
+		if mode != "api_key" || !strings.Contains(detail, "CLAUDE_API_KEY") {
+			t.Fatalf("expected api_key with CLAUDE_API_KEY detail, got %q/%q", mode, detail)
+		}
+	})
+	t.Run("subscription when api key is whitespace-only", func(t *testing.T) {
+		clearDoctorEnv(t)
+		t.Setenv("ANTHROPIC_API_KEY", "   ")
+		mode, _ := detectClaudeCodeAuthMode()
+		if mode != "subscription" {
+			t.Fatalf("whitespace-only api key should not flip mode, got %q", mode)
+		}
+	})
 }
