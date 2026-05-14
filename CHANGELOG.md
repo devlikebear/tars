@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.32.51] - 2026-05-14
+
+### Changed
+
+- **Console: surface async critic feedback + assistant_turn trigger (PR-3 of 3)** — `SessionConfigPanel.svelte` Automation tab now labels the Critic agent as "Every assistant turn · async background review" and the max-rounds helper clarifies the budget only applies to plan transitions (assistant turns are unbounded). The runtime status row now also surfaces `last_trigger`, and the iteration counter is hidden for `assistant_turn` triggers where it would always read 0. New amber-bordered "Pending feedback queued" card appears whenever `critic.pending_feedback` is non-empty (with trigger + round badge and the full feedback body) so users can see what the reviewer flagged before it drains into their next prompt. `SessionCritic` TypeScript type extended with `last_reviewed_turn_sig` / `pending_feedback` / `pending_feedback_trigger` / `pending_feedback_round` / `pending_feedback_at` to match the backend payload from PR-2. Pure presentational change; no new API calls.
+
 ## [0.32.50] - 2026-05-14
 
 ### Changed

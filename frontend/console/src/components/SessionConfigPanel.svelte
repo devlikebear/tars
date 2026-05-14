@@ -1107,7 +1107,7 @@
           />
           <span>
             <strong>Critic agent</strong>
-            <small>Plan review · auto-iterate</small>
+            <small>Every assistant turn · async background review</small>
           </span>
         </label>
         {#if critic?.enabled}
@@ -1122,14 +1122,27 @@
                 disabled={criticSaving}
                 onchange={(event) => { void setCriticMaxIterations((event.currentTarget as HTMLInputElement).value) }}
               />
-              <small>per plan transition</small>
+              <small>per plan transition (assistant turns are unbounded)</small>
             </label>
             {#if critic?.status && critic.status !== 'idle'}
               <div class="automation-modes">
                 <span>Status: <strong>{critic.status}</strong></span>
-                {#if typeof critic.current_iteration === 'number'}
+                {#if critic.last_trigger}
+                  <span>· trigger <strong>{critic.last_trigger}</strong></span>
+                {/if}
+                {#if (critic.last_trigger === 'plan_proposed' || critic.last_trigger === 'plan_completed') && typeof critic.current_iteration === 'number'}
                   <span>· round {critic.current_iteration}/{critic.max_iterations ?? 3}</span>
                 {/if}
+              </div>
+            {/if}
+            {#if critic?.pending_feedback}
+              <div class="critic-pending">
+                <strong>Pending feedback queued</strong>
+                {#if critic.pending_feedback_trigger}
+                  <small>({critic.pending_feedback_trigger}{critic.pending_feedback_round ? `, round ${critic.pending_feedback_round}` : ''})</small>
+                {/if}
+                <p>{critic.pending_feedback}</p>
+                <small class="critic-pending-hint">Drains automatically on your next message.</small>
               </div>
             {/if}
           </div>
@@ -1750,6 +1763,38 @@
     color: var(--text-tertiary);
     font-family: var(--font-mono);
     font-size: 10px;
+  }
+
+  .critic-pending {
+    display: grid;
+    gap: var(--space-1);
+    padding: var(--space-2);
+    border: 1px solid var(--accent-amber, #e09145);
+    border-radius: 6px;
+    background: rgba(224, 145, 69, 0.08);
+  }
+
+  .critic-pending strong {
+    color: var(--accent-amber, #e09145);
+    font-size: 12px;
+  }
+
+  .critic-pending small {
+    color: var(--text-secondary);
+    font-size: 11px;
+  }
+
+  .critic-pending p {
+    margin: 0;
+    color: var(--text-primary);
+    font-size: 12px;
+    line-height: 1.45;
+    white-space: pre-wrap;
+  }
+
+  .critic-pending-hint {
+    color: var(--text-tertiary);
+    font-style: italic;
   }
 
   .style-list {
