@@ -84,6 +84,10 @@ type RunOptions struct {
 	// auto-update from the previous response's SessionID so the whole loop
 	// stays attached to the same upstream session.
 	ResumeSessionID string
+	// ClaudeCodeMCPServers is forwarded to ChatOptions on every iteration so
+	// the claude-code-cli provider can inject the same MCP server set per
+	// turn. Other providers ignore it.
+	ClaudeCodeMCPServers []llm.ClaudeCodeMCPServer
 }
 
 func (l *Loop) Run(ctx context.Context, initial []llm.ChatMessage, opts RunOptions) (llm.ChatResponse, error) {
@@ -111,12 +115,13 @@ func (l *Loop) Run(ctx context.Context, initial []llm.ChatMessage, opts RunOptio
 	for i := 0; i < maxIters; i++ {
 		l.emit(ctx, Event{Type: EventBeforeLLM, Iteration: i + 1, MessageCount: len(messages)})
 		resp, err := l.client.Chat(ctx, messages, llm.ChatOptions{
-			OnDelta:          opts.OnDelta,
-			OnReasoningDelta: opts.OnReasoningDelta,
-			Tools:            llmTools,
-			ToolChoice:       opts.ToolChoice,
-			ResponseFormat:   opts.ResponseFormat,
-			ResumeSessionID:  activeResumeID,
+			OnDelta:              opts.OnDelta,
+			OnReasoningDelta:     opts.OnReasoningDelta,
+			Tools:                llmTools,
+			ToolChoice:           opts.ToolChoice,
+			ResponseFormat:       opts.ResponseFormat,
+			ResumeSessionID:      activeResumeID,
+			ClaudeCodeMCPServers: opts.ClaudeCodeMCPServers,
 		})
 		if err != nil {
 			l.emit(ctx, Event{Type: EventLoopError, Iteration: i + 1, Err: err})
