@@ -188,6 +188,15 @@ type ChatResponse struct {
 	// (currently only claude-code-cli via stream-json). Empty for stateless
 	// providers.
 	SessionID string
+	// ProviderExecutedTools enumerates tool invocations the upstream provider
+	// has *already* executed on its own (currently only claude-code-cli,
+	// which runs Read/Edit/Bash/Glob/etc internally and reports them as
+	// stream-json tool_use blocks). These are observation-only — callers
+	// must NOT route them through TARS' tool registry, since the work is
+	// already done and the names won't match. Message.ToolCalls retains the
+	// "model wants TARS to execute this" semantic and stays nil for
+	// self-executing providers.
+	ProviderExecutedTools []ToolCall
 }
 
 type ClientConfig struct {

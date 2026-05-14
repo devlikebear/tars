@@ -197,13 +197,18 @@ func parseClaudeCodeCLIStream(stdout io.Reader, opts ChatOptions) (ChatResponse,
 	}
 	return ChatResponse{
 		Message: ChatMessage{
-			Role:      "assistant",
+			Role: "assistant",
+			// Claude Code self-executed any tool_use blocks inside its own
+			// subprocess; surfacing them as Message.ToolCalls would make the
+			// agent loop re-dispatch them through TARS' registry. The audit
+			// trail lives on ProviderExecutedTools (below).
 			Content:   content,
-			ToolCalls: toolCalls,
+			ToolCalls: nil,
 		},
-		Usage:      usage,
-		StopReason: stopReason,
-		SessionID:  sessionID,
+		Usage:                 usage,
+		StopReason:            stopReason,
+		SessionID:             sessionID,
+		ProviderExecutedTools: toolCalls,
 	}, nil
 }
 

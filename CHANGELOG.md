@@ -6,6 +6,16 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.32.63] - 2026-05-14
+
+### Fixed
+
+- **claude-code-cli `tool_use` blocks no longer trigger double-execution via agent.Loop** — Phase 1 (#858)이 `parseClaudeCodeCLIStream`이 stream-json의 `tool_use` 블록을 `ChatResponse.Message.ToolCalls`에 직접 채워 넣도록 했는데, `internal/agent/loop.go`의 본문 루프는 `Message.ToolCalls`가 비어 있지 않으면 그 호출들을 *자기* tool registry로 dispatch하려 시도한다. Claude Code의 빌트인 도구 이름(`Read`/`Edit`/`Bash`/`Glob`)은 TARS registry에 등록된 적이 없어 매 턴 "blocked tool"로 떨어지거나, 운 나쁘게 이름이 겹치는 경우엔 동일 작업이 두 번 실행되는 잠재 회귀. `internal/llm.ChatResponse`에 새 필드 `ProviderExecutedTools []ToolCall`을 추가해 "provider가 이미 자체 실행한 도구의 감사 추적"이라는 의미를 `Message.ToolCalls`("모델이 TARS에게 실행을 요청한 도구")와 분리한다. claude-code-cli provider는 `Message.ToolCalls`를 `nil`로 유지하고 모든 tool_use 블록을 `ProviderExecutedTools`로 라우팅 — 다른 provider(anthropic, openai 등)는 영향 없음(`ProviderExecutedTools`는 항상 빈 값). 기존 Phase 1 회귀 테스트 `TestClaudeCodeCLIClientChat_ParsesToolUse`도 새 필드를 어서트하도록 갱신해 잘못된 contract가 다시 자라나지 않도록 잠갔다.
+
+### Added
+
+- **agent.Loop이 provider-executed tools를 audit 이벤트로 surface (Epic #857 follow-up #1)** — 새 이벤트 타입 `agent.EventProviderTool`이 `internal/agent/loop.go`의 const 블록에 추가됐고, `Loop.Run`이 매 iteration의 `Chat()` 호출 직후 `resp.ProviderExecutedTools` 슬라이스를 순회하며 항목당 한 번씩 `Event{Type: EventProviderTool, Iteration, ToolName, ToolCallID, ToolArgs}`을 emit한다. 이 이벤트는 `EventBeforeTool`/`EventAfterTool`처럼 실행을 trigger하지 않으며 — 이미 Claude Code 측에서 실행됐기 때문에 — 순수 read-only 신호로 콘솔 chat stream(`stream.status`)이나 ops audit 로그가 "Claude Code가 이번 턴에 Read `/etc/passwd` + Bash `ls`를 실행했음" 같은 투명성을 사용자에게 제공할 수 있다. 회귀 테스트 두 가지가 추가됐다. `TestLoop_Run_ProviderExecutedToolsDoNotTriggerLocalExecution`은 `Message.ToolCalls: nil` + `ProviderExecutedTools: [Read, Bash]` 상태의 응답을 빈 `allowedTools`로 Loop에 흘려보내 차단 에러 없이 정상 종료하고 한 번만 호출되는지를 확인한다. `TestLoop_Run_EmitsProviderToolEvent`는 동일 응답에 hook을 달아 `EventProviderTool` 이벤트가 정확히 하나 발화되고 ToolName/ToolCallID/ToolArgs 페이로드가 보존되는지 검증한다. 후속 PR에서 `handler_chat_execution.go`의 `setupAgentLoop`이 이 이벤트를 받아 chat stream으로 흘려 사용자가 콘솔에서 Claude Code의 도구 호출을 실시간 관측 가능하도록 만들 예정 — 이번 PR은 LLM/Loop 레이어의 contract 분리와 audit signal emission에 한정.
+
 ## [0.32.62] - 2026-05-14
 
 ### Added

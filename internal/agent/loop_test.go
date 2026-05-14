@@ -990,6 +990,96 @@ func TestLoop_Run_ThreadsResumeSessionID(t *testing.T) {
 	}
 }
 
+// TestLoop_Run_ProviderExecutedToolsDoNotTriggerLocalExecution verifies that
+// when the response carries tools the provider has already executed (e.g. the
+// claude-code-cli stream's tool_use blocks, which Claude Code itself ran
+// internally), the loop does NOT try to re-execute them through TARS' own
+// tool registry. Without this guarantee, a chat session using
+// claude-code-cli would surface a "tool not allowed" error on every turn
+// where Claude Code touched a file or ran bash, since Claude Code's tool
+// names ("Read", "Edit", "Bash") don't match TARS' registry. ToolCalls left
+// on Message keeps the "model wants TARS to execute this" semantic for other
+// providers; provider-executed tools live in a separate field and are
+// observation-only.
+func TestLoop_Run_ProviderExecutedToolsDoNotTriggerLocalExecution(t *testing.T) {
+	reg := tool.NewRegistry()
+	client := &scriptedLLMClient{
+		responses: []llm.ChatResponse{
+			{
+				Message: llm.ChatMessage{Role: "assistant", Content: "read it and done"},
+				// Mimics claude-code-cli stream: Claude already executed
+				// these tools internally, so the loop must NOT route them
+				// through TARS' tool registry.
+				ProviderExecutedTools: []llm.ToolCall{
+					{ID: "toolu_01", Name: "Read", Arguments: `{"file_path":"/tmp/a.txt"}`},
+					{ID: "toolu_02", Name: "Bash", Arguments: `{"command":"ls"}`},
+				},
+			},
+		},
+	}
+	loop := NewLoop(client, reg)
+	resp, err := loop.Run(context.Background(), []llm.ChatMessage{{Role: "user", Content: "read it"}}, RunOptions{
+		// Empty allowed tools — if the loop tried to dispatch Read/Bash
+		// locally, it would fall into the blocked-tool error path.
+	})
+	if err != nil {
+		t.Fatalf("loop should ignore provider-executed tools, got error: %v", err)
+	}
+	if resp.Message.Content != "read it and done" {
+		t.Fatalf("unexpected response content: %q", resp.Message.Content)
+	}
+	// Loop should have called the provider exactly once — no extra iterations.
+	if client.callIndex != 1 {
+		t.Fatalf("expected single chat call, got %d", client.callIndex)
+	}
+}
+
+// TestLoop_Run_EmitsProviderToolEvent verifies that provider-executed tools
+// surface as agent.Event entries so the chat handler / console / ops can
+// audit what the upstream agent actually did. Event type is
+// EventProviderTool, fired once per ProviderExecutedTools entry just before
+// EventAfterLLM so observers see them inline with the iteration that
+// produced them.
+func TestLoop_Run_EmitsProviderToolEvent(t *testing.T) {
+	reg := tool.NewRegistry()
+	client := &scriptedLLMClient{
+		responses: []llm.ChatResponse{
+			{
+				Message: llm.ChatMessage{Role: "assistant", Content: "ok"},
+				ProviderExecutedTools: []llm.ToolCall{
+					{ID: "toolu_01", Name: "Read", Arguments: `{"file_path":"/tmp/a.txt"}`},
+				},
+			},
+		},
+	}
+	events := []Event{}
+	loop := NewLoop(client, reg, HookFunc(func(_ context.Context, evt Event) {
+		events = append(events, evt)
+	}))
+	if _, err := loop.Run(context.Background(), []llm.ChatMessage{{Role: "user", Content: "go"}}, RunOptions{}); err != nil {
+		t.Fatalf("loop run: %v", err)
+	}
+	var providerToolEvts []Event
+	for _, evt := range events {
+		if evt.Type == EventProviderTool {
+			providerToolEvts = append(providerToolEvts, evt)
+		}
+	}
+	if len(providerToolEvts) != 1 {
+		t.Fatalf("expected 1 EventProviderTool, got %d (all events: %+v)", len(providerToolEvts), events)
+	}
+	got := providerToolEvts[0]
+	if got.ToolName != "Read" {
+		t.Fatalf("expected ToolName=Read, got %q", got.ToolName)
+	}
+	if got.ToolCallID != "toolu_01" {
+		t.Fatalf("expected ToolCallID=toolu_01, got %q", got.ToolCallID)
+	}
+	if got.ToolArgs == "" || !strings.Contains(got.ToolArgs, "/tmp/a.txt") {
+		t.Fatalf("expected ToolArgs to include /tmp/a.txt, got %q", got.ToolArgs)
+	}
+}
+
 // TestLoop_Run_HonorsCallerResumeSessionID verifies that when the caller seeds
 // a ResumeSessionID, iter 1 receives it (the resume case across user turns).
 func TestLoop_Run_HonorsCallerResumeSessionID(t *testing.T) {
