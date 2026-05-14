@@ -183,8 +183,14 @@ func NewExecToolWithOptions(policy PathPolicy, manager *ProcessManager, opts Exe
 			go scanAndCapture(stdoutPipe, &stdout, streamer, StreamStdout, &wg)
 			go scanAndCapture(stderrPipe, &stderr, streamer, StreamStderr, &wg)
 
-			runErr := cmd.Wait()
+			// Drain pipes before reaping the process. Scanner goroutines reach
+			// EOF naturally when the child closes its stdout/stderr on exit,
+			// so wg.Wait first guarantees every line is captured. Calling
+			// cmd.Wait first closes our read fds before the goroutines have
+			// scheduled on a CPU-saturated host, which dropped streamed
+			// output on busy CI runners.
 			wg.Wait()
+			runErr := cmd.Wait()
 			durationMS := time.Since(start).Milliseconds()
 			timedOut := runCtx.Err() == context.DeadlineExceeded
 

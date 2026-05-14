@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.32.55] - 2026-05-14
+
+### Fixed
+
+- **exec tool: drop streamed lines on CPU-saturated hosts** — `internal/tool/exec.go` ran `cmd.Wait()` before `wg.Wait()`. When the child process exited microseconds after `cmd.Start()` (typical for `printf` / `ls`) and Go's scheduler had not yet picked up the `scanAndCapture` goroutines (typical on CI runners where many packages run in parallel), `cmd.Wait()` returned first and closed our read fds before the scanner goroutines drained the pipes. The goroutines then woke up against a closed fd, `bufio.Scanner` saw immediate EOF, and zero events reached `ToolOutputStreamer` — even though the buffered output still made it into the final `stdout`/`stderr` strings (those reads happen before `cmd.Wait` closes the fds). Visible on saturated CI hosts (e.g. SonarCloud workflow on `ubuntu-latest`) as flaky `TestExecTool_StreamsStdoutLinesViaContext` / `TestExecTool_StreamsStderrSeparately` failures with `got 0 (events=[])`. Per the [`os/exec.Cmd.Wait`](https://pkg.go.dev/os/exec#Cmd.Wait) contract — *"it is incorrect to call Wait before all reads from the pipe have completed"* — the fix swaps the order: `wg.Wait()` first lets the scanner goroutines drain pipes naturally (they reach EOF when the child closes its stdout/stderr on exit), then `cmd.Wait()` reaps the process. New `TestExecTool_StreamsCaptureFastExitUnderContention` regression test forces `GOMAXPROCS=1` and runs the streaming exec 25 times in series; with the original code it fails 100% on the very first iteration with the same `got 0 (events=[])` message seen in CI, with the fix it stays green.
+
 ## [0.32.54] - 2026-05-14
 
 ### Added
