@@ -3,6 +3,7 @@ package tool
 import (
 	"context"
 	"encoding/json"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -186,6 +187,39 @@ func TestExecTool_StreamsStderrSeparately(t *testing.T) {
 	}
 	if !sawStderr {
 		t.Fatalf("expected at least one stderr event, got %+v", rec.events)
+	}
+}
+
+// TestExecTool_StreamsCaptureFastExitUnderContention reproduces the CI
+// failure mode where cmd.Wait raced ahead of the scanner goroutines on a
+// CPU-saturated host (the scheduler hadn't yet picked up the goroutines,
+// Wait closed the pipe read fds, and the scanners hit EOF immediately).
+//
+// Forcing GOMAXPROCS=1 plus a tiny scheduling delay on the scanner side
+// reliably triggered the original bug; with the drain-then-reap order it
+// stays green even under that pressure.
+func TestExecTool_StreamsCaptureFastExitUnderContention(t *testing.T) {
+	prev := runtime.GOMAXPROCS(1)
+	t.Cleanup(func() { runtime.GOMAXPROCS(prev) })
+
+	root := t.TempDir()
+	tl := NewExecTool(root)
+
+	const iterations = 25
+	for i := 0; i < iterations; i++ {
+		rec := &recordingEmitter{}
+		streamer := BindLineEmitter(rec, "stress")
+		ctx := WithToolOutputStreamer(context.Background(), streamer)
+		result, err := tl.Execute(ctx, json.RawMessage(`{"command":"printf line-a\\nline-b\\nline-c\\n","timeout_ms":2000}`))
+		if err != nil {
+			t.Fatalf("iteration %d execute: %v", i, err)
+		}
+		if result.IsError {
+			t.Fatalf("iteration %d unexpected error: %s", i, result.Text())
+		}
+		if len(rec.events) != 3 {
+			t.Fatalf("iteration %d: expected 3 streamed lines, got %d (events=%+v)", i, len(rec.events), rec.events)
+		}
 	}
 }
 
