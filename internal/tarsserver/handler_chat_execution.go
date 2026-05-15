@@ -69,10 +69,12 @@ func executeChatLoop(
 	// config value otherwise).
 	resumeID := ""
 	permissionMode := strings.TrimSpace(deps.tooling.ClaudeCodeCLIPermissionMode)
+	var permissionDeny []string
 	if state.store != nil {
 		if priorSess, lookupErr := state.store.Get(state.sessionID); lookupErr == nil {
 			resumeID = strings.TrimSpace(priorSess.UpstreamSessionID)
 			permissionMode = effectiveClaudeCodePermissionMode(deps.tooling.OverrideService, priorSess, permissionMode)
+			permissionDeny = effectiveClaudeCodePermissionDeny(deps.tooling.OverrideService, priorSess)
 		}
 	}
 
@@ -86,6 +88,7 @@ func executeChatLoop(
 		ClaudeCodeMCPServers:     state.claudeCodeMCPServers,
 		ClaudeCodePermissionMode: permissionMode,
 		ClaudeCodeSkills:         state.claudeCodeSkills,
+		ClaudeCodePermissionDeny: permissionDeny,
 		OnDelta: func(text string) {
 			if text == "" {
 				return

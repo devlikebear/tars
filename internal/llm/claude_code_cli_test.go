@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -701,4 +702,215 @@ printf '%s\n' '{"type":"result","subtype":"success","is_error":false,"stop_reaso
 
 func shellQuote(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
+}
+
+// TestWriteClaudeCodeSettingsFile asserts the converter's behavioral contract:
+// empty input yields no file, blank/duplicate rules are normalized away, and —
+// critically — the emitted JSON has *exactly* the two keys
+// `permissions` → `deny` and nothing else. The "adversarial" subtest feeds
+// rule strings that look like attempts to smuggle other settings keys and
+// proves they land inside the deny array as opaque strings, never as
+// top-level settings keys, because the function has no code path to emit
+// anything but a deny list.
+func TestWriteClaudeCodeSettingsFile(t *testing.T) {
+	t.Run("empty yields no file", func(t *testing.T) {
+		for _, in := range [][]string{nil, {}, {"", "   ", "\t"}} {
+			path, cleanup, err := writeClaudeCodeSettingsFile(in)
+			if err != nil {
+				t.Fatalf("unexpected error for %v: %v", in, err)
+			}
+			cleanup()
+			if path != "" {
+				t.Fatalf("expected empty path for %v, got %q", in, path)
+			}
+		}
+	})
+
+	t.Run("trims dedups and preserves order", func(t *testing.T) {
+		path, cleanup, err := writeClaudeCodeSettingsFile([]string{
+			"  Bash(rm:*)  ", "WebFetch", "Bash(rm:*)", "", "WebFetch", "Bash(git push:*)",
+		})
+		if err != nil {
+			t.Fatalf("write: %v", err)
+		}
+		defer cleanup()
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read settings file: %v", err)
+		}
+		var doc map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &doc); err != nil {
+			t.Fatalf("decode settings: %v\n%s", err, raw)
+		}
+		if len(doc) != 1 {
+			t.Fatalf("settings doc must have exactly one top-level key, got %d: %s", len(doc), raw)
+		}
+		perms, ok := doc["permissions"]
+		if !ok {
+			t.Fatalf("missing permissions key: %s", raw)
+		}
+		var permObj map[string]json.RawMessage
+		if err := json.Unmarshal(perms, &permObj); err != nil {
+			t.Fatalf("decode permissions: %v", err)
+		}
+		if len(permObj) != 1 {
+			t.Fatalf("permissions must have exactly one key (deny), got %d: %s", len(permObj), perms)
+		}
+		var deny []string
+		if err := json.Unmarshal(permObj["deny"], &deny); err != nil {
+			t.Fatalf("decode deny: %v", err)
+		}
+		want := []string{"Bash(rm:*)", "WebFetch", "Bash(git push:*)"}
+		if !reflect.DeepEqual(deny, want) {
+			t.Fatalf("deny mismatch:\n got %v\nwant %v", deny, want)
+		}
+	})
+
+	t.Run("adversarial keys stay inside deny array", func(t *testing.T) {
+		path, cleanup, err := writeClaudeCodeSettingsFile([]string{
+			`env`, `apiKeyHelper`, `hooks`, `{"env":{"ANTHROPIC_API_KEY":"x"}}`,
+		})
+		if err != nil {
+			t.Fatalf("write: %v", err)
+		}
+		defer cleanup()
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read: %v", err)
+		}
+		var doc map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &doc); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if _, leaked := doc["env"]; leaked {
+			t.Fatalf("env must never be a top-level settings key: %s", raw)
+		}
+		if _, leaked := doc["hooks"]; leaked {
+			t.Fatalf("hooks must never be a top-level settings key: %s", raw)
+		}
+		if _, leaked := doc["apiKeyHelper"]; leaked {
+			t.Fatalf("apiKeyHelper must never be a top-level settings key: %s", raw)
+		}
+		if len(doc) != 1 {
+			t.Fatalf("only permissions allowed at top level, got: %s", raw)
+		}
+	})
+}
+
+// TestClaudeCodeCLIClientChat_SettingsPassedWhenDenyProvided verifies that a
+// non-empty ClaudeCodePermissionDeny triggers `--settings <path>` with a
+// materialized {"permissions":{"deny":[...]}} file, and that the temp file is
+// cleaned up after the Chat call returns.
+func TestClaudeCodeCLIClientChat_SettingsPassedWhenDenyProvided(t *testing.T) {
+	dir := t.TempDir()
+	argsPath := filepath.Join(dir, "claude-args.txt")
+	settingsCapturePath := filepath.Join(dir, "captured-settings.json")
+	scriptPath := filepath.Join(dir, "claude")
+	script := strings.TrimSpace(`#!/bin/sh
+printf '%s\n' "$@" > `+shellQuote(argsPath)+`
+settings_path=""
+i=0
+for arg in "$@"; do
+  i=$((i+1))
+  if [ "$arg" = "--settings" ]; then
+    eval "settings_path=\${$((i+1))}"
+    break
+  fi
+done
+if [ -n "$settings_path" ] && [ -f "$settings_path" ]; then
+  cat "$settings_path" > `+shellQuote(settingsCapturePath)+`
+fi
+printf '%s\n' '{"type":"assistant","message":{"model":"sonnet","content":[{"type":"text","text":"ok"}]}}'
+printf '%s\n' '{"type":"result","subtype":"success","is_error":false,"stop_reason":"end_turn","usage":{"input_tokens":1,"output_tokens":1},"result":"ok"}'
+`) + "\n"
+	if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("write cli stub: %v", err)
+	}
+	t.Setenv("CLAUDE_CODE_CLI_PATH", scriptPath)
+
+	client, err := NewProvider(ProviderOptions{
+		Provider: "claude-code-cli",
+		Model:    "sonnet",
+		WorkDir:  dir,
+	})
+	if err != nil {
+		t.Fatalf("new provider: %v", err)
+	}
+
+	if _, err := client.Chat(context.Background(), []ChatMessage{
+		{Role: "user", Content: "hi"},
+	}, ChatOptions{
+		ClaudeCodePermissionDeny: []string{"Bash(rm:*)", "WebFetch"},
+	}); err != nil {
+		t.Fatalf("chat: %v", err)
+	}
+
+	argsData, err := os.ReadFile(argsPath)
+	if err != nil {
+		t.Fatalf("read args: %v", err)
+	}
+	args := string(argsData)
+	if !strings.Contains(args, "--settings") {
+		t.Fatalf("expected --settings in args, got:\n%s", args)
+	}
+
+	captured, err := os.ReadFile(settingsCapturePath)
+	if err != nil {
+		t.Fatalf("read captured settings: %v", err)
+	}
+	var payload struct {
+		Permissions struct {
+			Deny []string `json:"deny"`
+		} `json:"permissions"`
+	}
+	if err := json.Unmarshal(captured, &payload); err != nil {
+		t.Fatalf("decode settings: %v\n%s", err, captured)
+	}
+	if !reflect.DeepEqual(payload.Permissions.Deny, []string{"Bash(rm:*)", "WebFetch"}) {
+		t.Fatalf("deny mismatch: %v\n%s", payload.Permissions.Deny, captured)
+	}
+
+	settingsPathFromArgs := extractFlagValue(args, "--settings")
+	if settingsPathFromArgs == "" {
+		t.Fatalf("could not find --settings value in args:\n%s", args)
+	}
+	if _, err := os.Stat(settingsPathFromArgs); !os.IsNotExist(err) {
+		t.Fatalf("settings temp file %q should be removed after Chat, got err=%v", settingsPathFromArgs, err)
+	}
+}
+
+// TestClaudeCodeCLIClientChat_SettingsSkippedWhenEmpty verifies that a nil or
+// all-blank deny slice produces NO --settings flag.
+func TestClaudeCodeCLIClientChat_SettingsSkippedWhenEmpty(t *testing.T) {
+	dir := t.TempDir()
+	argsPath := filepath.Join(dir, "claude-args.txt")
+	scriptPath := filepath.Join(dir, "claude")
+	script := strings.TrimSpace(`#!/bin/sh
+printf '%s\n' "$@" > `+shellQuote(argsPath)+`
+printf '%s\n' '{"type":"assistant","message":{"model":"sonnet","content":[{"type":"text","text":"ok"}]}}'
+printf '%s\n' '{"type":"result","subtype":"success","is_error":false,"stop_reason":"end_turn","usage":{"input_tokens":1,"output_tokens":1},"result":"ok"}'
+`) + "\n"
+	if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("write cli stub: %v", err)
+	}
+	t.Setenv("CLAUDE_CODE_CLI_PATH", scriptPath)
+
+	client, err := NewProvider(ProviderOptions{
+		Provider: "claude-code-cli",
+		Model:    "sonnet",
+		WorkDir:  dir,
+	})
+	if err != nil {
+		t.Fatalf("new provider: %v", err)
+	}
+
+	if _, err := client.Chat(context.Background(), []ChatMessage{
+		{Role: "user", Content: "hi"},
+	}, ChatOptions{ClaudeCodePermissionDeny: []string{"", "   "}}); err != nil {
+		t.Fatalf("chat: %v", err)
+	}
+	args, _ := os.ReadFile(argsPath)
+	if strings.Contains(string(args), "--settings") {
+		t.Fatalf("expected no --settings flag when deny all-blank, got:\n%s", args)
+	}
 }

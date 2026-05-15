@@ -109,6 +109,12 @@ func (c *ClaudeCodeCLIClient) Chat(ctx context.Context, messages []ChatMessage, 
 		defer cleanup()
 		args = append(args, "--plugin-dir", pluginDir)
 	}
+	if settingsPath, cleanup, err := writeClaudeCodeSettingsFile(opts.ClaudeCodePermissionDeny); err != nil {
+		return ChatResponse{}, newProviderError(claudeCodeCLIProviderLabel, "request", fmt.Errorf("settings: %w", err))
+	} else if settingsPath != "" {
+		defer cleanup()
+		args = append(args, "--settings", settingsPath)
+	}
 	if systemPrompt := buildClaudeCodeCLISystemPrompt(messages); systemPrompt != "" {
 		args = append(args, "--system-prompt", systemPrompt)
 	}
@@ -302,6 +308,61 @@ func writeClaudeCodeMCPConfigFile(servers []ClaudeCodeMCPServer) (string, func()
 		return "", func() {}, fmt.Errorf("encode mcp config: %w", err)
 	}
 	f, err := os.CreateTemp("", "tars-claude-mcp-*.json")
+	if err != nil {
+		return "", func() {}, fmt.Errorf("create temp file: %w", err)
+	}
+	path := f.Name()
+	cleanup := func() { _ = os.Remove(path) }
+	if _, err := f.Write(encoded); err != nil {
+		_ = f.Close()
+		cleanup()
+		return "", func() {}, fmt.Errorf("write temp file: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		cleanup()
+		return "", func() {}, fmt.Errorf("close temp file: %w", err)
+	}
+	return path, cleanup, nil
+}
+
+// writeClaudeCodeSettingsFile materializes the smallest possible Claude Code
+// settings document — exactly `{"permissions":{"deny":[...]}}` — into a temp
+// file and returns its path plus a cleanup function. Returns an empty path
+// when there is no usable deny rule so the caller skips the --settings flag.
+//
+// This is intentionally NOT a generic settings passthrough. The function
+// accepts only a deny list and emits a fixed two-key shape; there is no code
+// path here that can write `env`, `hooks`, `apiKeyHelper`, `model`, or any
+// other key. That makes the credential / arbitrary-binary threat model a
+// schema-level guarantee rather than a runtime filter: even adversarial
+// session-override input can only ever add more deny rules (tightening what
+// Claude Code's self-executed tools may do), never widen authority.
+//
+// Entries are trimmed; blank entries are dropped and duplicates are removed
+// while preserving first-seen order so the emitted document is stable.
+func writeClaudeCodeSettingsFile(deny []string) (string, func(), error) {
+	seen := make(map[string]struct{}, len(deny))
+	rules := make([]string, 0, len(deny))
+	for _, d := range deny {
+		rule := strings.TrimSpace(d)
+		if rule == "" {
+			continue
+		}
+		if _, dup := seen[rule]; dup {
+			continue
+		}
+		seen[rule] = struct{}{}
+		rules = append(rules, rule)
+	}
+	if len(rules) == 0 {
+		return "", func() {}, nil
+	}
+	payload := map[string]any{"permissions": map[string]any{"deny": rules}}
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		return "", func() {}, fmt.Errorf("encode settings: %w", err)
+	}
+	f, err := os.CreateTemp("", "tars-claude-settings-*.json")
 	if err != nil {
 		return "", func() {}, fmt.Errorf("create temp file: %w", err)
 	}

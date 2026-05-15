@@ -97,6 +97,31 @@ func TestMerge_SliceUnionDedup_AcrossLayers(t *testing.T) {
 	}
 }
 
+// TestMerge_ClaudeCodeCLIPermissionDeny_UnionsAcrossLayers proves the
+// tightening-only contract: shared and local deny rules combine (dedup'd),
+// so a local override can add restrictions but the shared baseline survives.
+func TestMerge_ClaudeCodeCLIPermissionDeny_UnionsAcrossLayers(t *testing.T) {
+	shared := &Override{
+		ClaudeCodeCLIPermissionDeny: []string{"Bash(rm:*)", "WebFetch"},
+		Presence:                    map[string]bool{"claude_code_cli_permission_deny": true},
+	}
+	local := &Override{
+		ClaudeCodeCLIPermissionDeny: []string{"WebFetch", "Bash(git push:*)"},
+		Presence:                    map[string]bool{"claude_code_cli_permission_deny": true},
+	}
+
+	eff, sources := Merge(session.SessionToolConfig{}, "", shared, local)
+
+	want := []string{"Bash(rm:*)", "WebFetch", "Bash(git push:*)"}
+	if !reflect.DeepEqual(eff.ClaudeCodeCLIPermissionDeny, want) {
+		t.Fatalf("deny union mismatch:\n got %v\nwant %v", eff.ClaudeCodeCLIPermissionDeny, want)
+	}
+	if sources["claude_code_cli_permission_deny"] != SourceLocal {
+		t.Fatalf("source should be local (highest layer that touched it), got %q",
+			sources["claude_code_cli_permission_deny"])
+	}
+}
+
 func TestMerge_CustomAllowlistsReplaceInheritedProjectSettings(t *testing.T) {
 	base := session.SessionToolConfig{
 		ToolsEnabled:    []string{"base-tool"},

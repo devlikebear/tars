@@ -321,6 +321,26 @@ func TestLoad_ClaudeCodeCLIPermissionMode_RoundTrips(t *testing.T) {
 	}
 }
 
+// TestLoad_ClaudeCodeCLIPermissionDeny_RoundTrips verifies the deny rule list
+// parses into Override and is marked present so the merger unions it.
+func TestLoad_ClaudeCodeCLIPermissionDeny_RoundTrips(t *testing.T) {
+	cwd := t.TempDir()
+	writeSettings(t, cwd, "settings.json", `{"claude_code_cli_permission_deny":["Bash(rm:*)","WebFetch"]}`)
+	shared, _, diags, err := Load(cwd)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if len(diags) != 0 {
+		t.Fatalf("unexpected diagnostics: %+v", diags)
+	}
+	if shared == nil || !reflect.DeepEqual(shared.ClaudeCodeCLIPermissionDeny, []string{"Bash(rm:*)", "WebFetch"}) {
+		t.Fatalf("expected deny rules parsed, got %+v", shared)
+	}
+	if !shared.Presence["claude_code_cli_permission_deny"] {
+		t.Fatalf("presence should mark claude_code_cli_permission_deny, got %+v", shared.Presence)
+	}
+}
+
 func writeSettings(t *testing.T, cwd, name, body string) {
 	t.Helper()
 	dir := filepath.Join(cwd, ".tars")
