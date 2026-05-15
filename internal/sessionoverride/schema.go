@@ -45,15 +45,22 @@ type MCPServerExtra struct {
 // pointers / nilable so the merger can distinguish "explicitly set to the
 // zero value" from "not set at all".
 type Override struct {
-	ToolConfig                  *session.SessionToolConfig `json:"tool_config,omitempty"`
-	PromptOverride              *string                    `json:"prompt_override,omitempty"`
-	MCPServersExtra             []MCPServerExtra           `json:"mcp_servers_extra,omitempty"`
-	ModelTierOverride           *string                    `json:"model_tier_override,omitempty"`
+	ToolConfig        *session.SessionToolConfig `json:"tool_config,omitempty"`
+	PromptOverride    *string                    `json:"prompt_override,omitempty"`
+	MCPServersExtra   []MCPServerExtra           `json:"mcp_servers_extra,omitempty"`
+	ModelTierOverride *string                    `json:"model_tier_override,omitempty"`
 	// ClaudeCodeCLIPermissionMode overrides config.LLMConfig.ClaudeCodeCLIPermissionMode
 	// per-session. Same accepted values as the global setting
 	// (auto/acceptEdits/plan/bypassPermissions); the provider degrades empty
 	// or unknown input to "auto" so a typo doesn't elevate permissions.
-	ClaudeCodeCLIPermissionMode *string                    `json:"claude_code_cli_permission_mode,omitempty"`
+	ClaudeCodeCLIPermissionMode *string `json:"claude_code_cli_permission_mode,omitempty"`
+	// ClaudeCodeCLIPermissionDeny adds Claude Code permission deny rules
+	// (e.g. "Bash(rm:*)", "WebFetch") for the claude-code-cli provider.
+	// Layers union: every layer's rules are combined (tightening only — a
+	// deeper layer can add restrictions but never remove an inherited one).
+	// This is the only Claude Code settings.json knob TARS materializes; see
+	// llm.ChatOptions.ClaudeCodePermissionDeny for the threat-model rationale.
+	ClaudeCodeCLIPermissionDeny []string `json:"claude_code_cli_permission_deny,omitempty"`
 
 	// Presence records every override path the file explicitly touched.
 	// Keys are dotted paths (e.g. "tool_config.tools_enabled"); the loader
@@ -71,6 +78,7 @@ var AllowedTopLevelFields = map[string]struct{}{
 	"mcp_servers_extra":               {},
 	"model_tier_override":             {},
 	"claude_code_cli_permission_mode": {},
+	"claude_code_cli_permission_deny": {},
 }
 
 // BlockedTopLevelFields enumerates JSON keys that, if present, generate a
@@ -112,6 +120,7 @@ func AllPaths() []string {
 		"mcp_servers_extra",
 		"model_tier_override",
 		"claude_code_cli_permission_mode",
+		"claude_code_cli_permission_deny",
 		"tool_config.tools_enabled",
 		"tool_config.tools_custom",
 		"tool_config.tools_disabled",
@@ -152,4 +161,5 @@ type EffectiveConfig struct {
 	MCPServersExtra             []MCPServerExtra          `json:"mcp_servers_extra,omitempty"`
 	ModelTierOverride           string                    `json:"model_tier_override,omitempty"`
 	ClaudeCodeCLIPermissionMode string                    `json:"claude_code_cli_permission_mode,omitempty"`
+	ClaudeCodeCLIPermissionDeny []string                  `json:"claude_code_cli_permission_deny,omitempty"`
 }

@@ -102,6 +102,11 @@ type RunOptions struct {
 	// claude-code-cli provider materializes the same session skill catalog
 	// as a --plugin-dir per turn. Other providers ignore it.
 	ClaudeCodeSkills []llm.ClaudeCodeSkill
+	// ClaudeCodePermissionDeny is forwarded to ChatOptions on every iteration
+	// so the claude-code-cli provider materializes the same session-scoped
+	// permission deny rules as a --settings file per turn. Other providers
+	// ignore it.
+	ClaudeCodePermissionDeny []string
 }
 
 func (l *Loop) Run(ctx context.Context, initial []llm.ChatMessage, opts RunOptions) (llm.ChatResponse, error) {
@@ -138,6 +143,7 @@ func (l *Loop) Run(ctx context.Context, initial []llm.ChatMessage, opts RunOptio
 			ClaudeCodeMCPServers:     opts.ClaudeCodeMCPServers,
 			ClaudeCodePermissionMode: opts.ClaudeCodePermissionMode,
 			ClaudeCodeSkills:         opts.ClaudeCodeSkills,
+			ClaudeCodePermissionDeny: opts.ClaudeCodePermissionDeny,
 		})
 		if err != nil {
 			l.emit(ctx, Event{Type: EventLoopError, Iteration: i + 1, Err: err})

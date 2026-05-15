@@ -149,7 +149,7 @@ sessions.json (세션 base)
 - 스칼라/맵 필드는 last-write-wins, `mcp_servers_extra`는 Name 키로 머지
 - 결과는 `GET /v1/admin/sessions/{id}/effective-config`에서 `{effective, sources, diagnostics}`로 노출, `Service.Resolve`가 (cwd, mtime) 키로 캐시
 
-**허용 필드** — `tool_config`, `prompt_override`, `mcp_servers_extra`, `model_tier_override`. 차단 필드(`llm_providers`, `api_key`, `auth*`, `hooks`, `server_command`)는 로드 시 drop + error diagnostic — 절대 자격증명/임의 바이너리 등록을 settings 파일에 허용하지 않는다.
+**허용 필드** — `tool_config`, `prompt_override`, `mcp_servers_extra`, `model_tier_override`, `claude_code_cli_permission_mode`, `claude_code_cli_permission_deny`(Claude Code deny 규칙 리스트, 레이어 union = tightening-only → `--settings` 임시 파일로 마운트). 차단 필드(`llm_providers`, `api_key`, `auth*`, `hooks`, `server_command`)는 로드 시 drop + error diagnostic — 절대 자격증명/임의 바이너리 등록을 settings 파일에 허용하지 않는다.
 
 **적용 지점**
 - 채팅 시스템 프롬프트: `effectiveSessionView` 헬퍼가 `prompt_override`를 머지된 값으로 교체 (`handler_chat_context.go`, `handler_chat.go` 양쪽)

@@ -61,3 +61,20 @@ func effectiveClaudeCodePermissionMode(svc *sessionoverride.Service, sess sessio
 	}
 	return strings.TrimSpace(fallback)
 }
+
+// effectiveClaudeCodePermissionDeny resolves the merged per-session
+// `claude_code_cli_permission_deny` rule list from `.tars/settings*.json`.
+// There is no global config fallback by design: deny rules are a per-session
+// guardrail mechanism, and the merger already unions shared+local layers
+// (tightening-only). Returns nil when the override service is unavailable or
+// the session has no deny rules, in which case the provider skips --settings.
+func effectiveClaudeCodePermissionDeny(svc *sessionoverride.Service, sess session.Session) []string {
+	if svc == nil {
+		return nil
+	}
+	res, _, err := svc.Resolve(sess.ID)
+	if err != nil {
+		return nil
+	}
+	return res.Effective.ClaudeCodeCLIPermissionDeny
+}

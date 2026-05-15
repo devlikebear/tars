@@ -56,6 +56,13 @@ func applyLayer(eff *EffectiveConfig, o *Override, src Source, sources map[strin
 		eff.ClaudeCodeCLIPermissionMode = *o.ClaudeCodeCLIPermissionMode
 		sources["claude_code_cli_permission_mode"] = src
 	}
+	if o.Presence["claude_code_cli_permission_deny"] {
+		// Tightening-only: every layer's deny rules union together. A deeper
+		// layer can add restrictions but never drop an inherited one, so a
+		// shared baseline can't be silently relaxed by a local override.
+		eff.ClaudeCodeCLIPermissionDeny = unionDedup(eff.ClaudeCodeCLIPermissionDeny, o.ClaudeCodeCLIPermissionDeny)
+		sources["claude_code_cli_permission_deny"] = src
+	}
 	if o.Presence["mcp_servers_extra"] {
 		eff.MCPServersExtra = mergeMCPServers(eff.MCPServersExtra, o.MCPServersExtra)
 		sources["mcp_servers_extra"] = src

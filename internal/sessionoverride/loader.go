@@ -148,6 +148,15 @@ func assignTopLevel(o *Override, key string, raw json.RawMessage, file string) (
 		o.Presence["claude_code_cli_permission_mode"] = true
 		return nil, nil
 
+	case "claude_code_cli_permission_deny":
+		var rules []string
+		if err := json.Unmarshal(raw, &rules); err != nil {
+			return nil, err
+		}
+		o.ClaudeCodeCLIPermissionDeny = rules
+		o.Presence["claude_code_cli_permission_deny"] = true
+		return nil, nil
+
 	case "mcp_servers_extra":
 		var entries []MCPServerExtra
 		if err := json.Unmarshal(raw, &entries); err != nil {

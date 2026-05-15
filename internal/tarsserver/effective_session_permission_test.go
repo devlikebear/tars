@@ -3,6 +3,7 @@ package tarsserver
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"github.com/devlikebear/tars/internal/session"
@@ -56,6 +57,40 @@ func TestEffectiveClaudeCodePermissionMode_FallbackWhenNoOverride(t *testing.T) 
 	got := effectiveClaudeCodePermissionMode(svc, sess, "acceptEdits")
 	if got != "acceptEdits" {
 		t.Fatalf("expected fallback 'acceptEdits', got %q", got)
+	}
+}
+
+// TestEffectiveClaudeCodePermissionDeny_ResolvesFromOverride verifies the deny
+// rule list is read from `.tars/settings.json` and that a nil override service
+// yields nil (provider then skips --settings).
+func TestEffectiveClaudeCodePermissionDeny_ResolvesFromOverride(t *testing.T) {
+	root := t.TempDir()
+	store := session.NewStore(root)
+	sess, err := store.Create("chat")
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	cwd := sess.WorkDirs[0]
+	if err := os.MkdirAll(filepath.Join(cwd, ".tars"), 0o755); err != nil {
+		t.Fatalf("mkdir .tars: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(cwd, ".tars", "settings.json"), []byte(
+		`{"claude_code_cli_permission_deny":["Bash(rm:*)","WebFetch"]}`,
+	), 0o600); err != nil {
+		t.Fatalf("write settings: %v", err)
+	}
+	svc := sessionoverride.NewService(store)
+	reloaded, err := store.Get(sess.ID)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	got := effectiveClaudeCodePermissionDeny(svc, reloaded)
+	if !reflect.DeepEqual(got, []string{"Bash(rm:*)", "WebFetch"}) {
+		t.Fatalf("expected deny rules from override, got %v", got)
+	}
+
+	if got := effectiveClaudeCodePermissionDeny(nil, session.Session{}); got != nil {
+		t.Fatalf("expected nil when svc nil, got %v", got)
 	}
 }
 

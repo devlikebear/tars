@@ -172,6 +172,16 @@ type ChatOptions struct {
 	// shape outside the llm package so internal/llm stays decoupled from
 	// internal/skill.
 	ClaudeCodeSkills []ClaudeCodeSkill
+	// ClaudeCodePermissionDeny, when non-empty, materializes a minimal Claude
+	// Code settings file (`{"permissions":{"deny":[...]}}`) for the duration
+	// of one Chat call and passes it via `--settings`. Each entry is a Claude
+	// Code permission rule string (e.g. "Bash(rm:*)", "WebFetch"). This is the
+	// only thing TARS ever writes into a Claude Code settings file: the
+	// converter has no field for env / hooks / apiKeyHelper / model, so
+	// adversarial session-override input can only *tighten* what Claude Code's
+	// self-executed tools may do — it can never widen authority or smuggle
+	// credentials through this path. Other providers ignore this field.
+	ClaudeCodePermissionDeny []string
 }
 
 // ClaudeCodeSkill is the minimal shape needed to render one Claude Code
