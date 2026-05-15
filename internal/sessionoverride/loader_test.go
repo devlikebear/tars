@@ -300,6 +300,27 @@ func TestLoad_MCPServersExtra(t *testing.T) {
 	}
 }
 
+// TestLoad_ClaudeCodeCLIPermissionMode_RoundTrips verifies the new
+// claude_code_cli_permission_mode field parses into Override and lands on the
+// presence map so later layers can override it via local settings.
+func TestLoad_ClaudeCodeCLIPermissionMode_RoundTrips(t *testing.T) {
+	cwd := t.TempDir()
+	writeSettings(t, cwd, "settings.json", `{"claude_code_cli_permission_mode":"plan"}`)
+	shared, _, diags, err := Load(cwd)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if len(diags) != 0 {
+		t.Fatalf("unexpected diagnostics: %+v", diags)
+	}
+	if shared == nil || shared.ClaudeCodeCLIPermissionMode == nil || *shared.ClaudeCodeCLIPermissionMode != "plan" {
+		t.Fatalf("expected shared.ClaudeCodeCLIPermissionMode = plan, got %+v", shared)
+	}
+	if !shared.Presence["claude_code_cli_permission_mode"] {
+		t.Fatalf("presence should mark claude_code_cli_permission_mode, got %+v", shared.Presence)
+	}
+}
+
 func writeSettings(t *testing.T, cwd, name, body string) {
 	t.Helper()
 	dir := filepath.Join(cwd, ".tars")

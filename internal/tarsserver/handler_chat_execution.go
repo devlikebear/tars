@@ -63,11 +63,16 @@ func executeChatLoop(
 	onTurnEnd := buildChatTurnEndHook(deps, state, stream)
 
 	// Resume the upstream provider session (claude-code-cli only today) when
-	// one was captured on a previous turn so we don't replay history.
+	// one was captured on a previous turn so we don't replay history. Same
+	// load also lets us read the session-scoped claude-code-cli permission
+	// mode override from .tars/settings*.json (falls back to the global
+	// config value otherwise).
 	resumeID := ""
+	permissionMode := strings.TrimSpace(deps.tooling.ClaudeCodeCLIPermissionMode)
 	if state.store != nil {
 		if priorSess, lookupErr := state.store.Get(state.sessionID); lookupErr == nil {
 			resumeID = strings.TrimSpace(priorSess.UpstreamSessionID)
+			permissionMode = effectiveClaudeCodePermissionMode(deps.tooling.OverrideService, priorSess, permissionMode)
 		}
 	}
 
@@ -79,7 +84,7 @@ func executeChatLoop(
 		OnTurnEnd:                onTurnEnd,
 		ResumeSessionID:          resumeID,
 		ClaudeCodeMCPServers:     state.claudeCodeMCPServers,
-		ClaudeCodePermissionMode: deps.tooling.ClaudeCodeCLIPermissionMode,
+		ClaudeCodePermissionMode: permissionMode,
 		OnDelta: func(text string) {
 			if text == "" {
 				return

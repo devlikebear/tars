@@ -416,3 +416,53 @@ func TestMerge_NilOverridesAreNoop(t *testing.T) {
 		t.Fatalf("source should be base when no overrides given")
 	}
 }
+
+// TestMerge_ClaudeCodeCLIPermissionMode_LocalBeatsShared verifies the new
+// scalar field rides the same last-write-wins precedence as prompt_override.
+func TestMerge_ClaudeCodeCLIPermissionMode_LocalBeatsShared(t *testing.T) {
+	shared := &Override{
+		ClaudeCodeCLIPermissionMode: ptr("plan"),
+		Presence:                    map[string]bool{"claude_code_cli_permission_mode": true},
+	}
+	local := &Override{
+		ClaudeCodeCLIPermissionMode: ptr("acceptEdits"),
+		Presence:                    map[string]bool{"claude_code_cli_permission_mode": true},
+	}
+	eff, sources := Merge(session.SessionToolConfig{}, "", shared, local)
+	if eff.ClaudeCodeCLIPermissionMode != "acceptEdits" {
+		t.Fatalf("expected local 'acceptEdits' to win, got %q", eff.ClaudeCodeCLIPermissionMode)
+	}
+	if sources["claude_code_cli_permission_mode"] != SourceLocal {
+		t.Fatalf("source: got %q want local", sources["claude_code_cli_permission_mode"])
+	}
+}
+
+// TestMerge_ClaudeCodeCLIPermissionMode_OnlyShared confirms a shared-only
+// override is honored and its source attribution is correct.
+func TestMerge_ClaudeCodeCLIPermissionMode_OnlyShared(t *testing.T) {
+	shared := &Override{
+		ClaudeCodeCLIPermissionMode: ptr("plan"),
+		Presence:                    map[string]bool{"claude_code_cli_permission_mode": true},
+	}
+	eff, sources := Merge(session.SessionToolConfig{}, "", shared, nil)
+	if eff.ClaudeCodeCLIPermissionMode != "plan" {
+		t.Fatalf("expected 'plan' from shared, got %q", eff.ClaudeCodeCLIPermissionMode)
+	}
+	if sources["claude_code_cli_permission_mode"] != SourceShared {
+		t.Fatalf("source: got %q want shared", sources["claude_code_cli_permission_mode"])
+	}
+}
+
+// TestMerge_ClaudeCodeCLIPermissionMode_NoOverride_LeavesBlank verifies that
+// when no override sets the field, the merged value stays empty so the
+// handler falls back to the global config (which itself fallbacks to "auto"
+// in the provider).
+func TestMerge_ClaudeCodeCLIPermissionMode_NoOverride_LeavesBlank(t *testing.T) {
+	eff, sources := Merge(session.SessionToolConfig{}, "", nil, nil)
+	if eff.ClaudeCodeCLIPermissionMode != "" {
+		t.Fatalf("expected empty effective when no overrides, got %q", eff.ClaudeCodeCLIPermissionMode)
+	}
+	if sources["claude_code_cli_permission_mode"] != SourceBase {
+		t.Fatalf("source: got %q want base", sources["claude_code_cli_permission_mode"])
+	}
+}
