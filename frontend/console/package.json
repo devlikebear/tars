@@ -21,7 +21,7 @@
     "jsdom": "^26.1.0",
     "marked": "^17.0.5",
     "mermaid": "^11.15.0",
-    "svelte": "^5.53.12",
+    "svelte": "^5.55.7",
     "svelte-check": "^4.4.5",
     "typescript": "~5.9.3",
     "vite": "^8.0.1"
