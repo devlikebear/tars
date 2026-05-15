@@ -52,6 +52,10 @@ func applyLayer(eff *EffectiveConfig, o *Override, src Source, sources map[strin
 		eff.ModelTierOverride = *o.ModelTierOverride
 		sources["model_tier_override"] = src
 	}
+	if o.ClaudeCodeCLIPermissionMode != nil && o.Presence["claude_code_cli_permission_mode"] {
+		eff.ClaudeCodeCLIPermissionMode = *o.ClaudeCodeCLIPermissionMode
+		sources["claude_code_cli_permission_mode"] = src
+	}
 	if o.Presence["mcp_servers_extra"] {
 		eff.MCPServersExtra = mergeMCPServers(eff.MCPServersExtra, o.MCPServersExtra)
 		sources["mcp_servers_extra"] = src

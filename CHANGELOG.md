@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.32.65] - 2026-05-15
+
+### Added
+
+- **session-scoped `claude_code_cli_permission_mode` override (Epic #857 follow-up #4)** — `.tars/settings.json` / `.tars/settings.local.json`이 새 top-level 필드 `claude_code_cli_permission_mode`를 허용한다. 값은 글로벌 설정과 동일한 enum(`auto`/`acceptEdits`/`plan`/`bypassPermissions`)이며, 빈 값/오타는 claude-code-cli provider가 이미 `"auto"`로 안전 degradation. 변경된 4개 파일: (1) `internal/sessionoverride/schema.go`의 `Override` 구조체에 `ClaudeCodeCLIPermissionMode *string`을 추가하고 `AllowedTopLevelFields`/`AllPaths()`/`EffectiveConfig`에 모두 등록해 layer source 추적(`shared`/`local` 배지)이 다른 필드와 동일하게 동작한다. (2) `internal/sessionoverride/loader.go`의 `assignTopLevel`에 새 case가 추가돼 JSON 디코드 + presence 마킹 처리. (3) `internal/sessionoverride/merge.go`의 `applyLayer`에 last-write-wins 적용(shared < local). (4) 신규 헬퍼 `internal/tarsserver/effective_session.go`의 `effectiveClaudeCodePermissionMode(svc, sess, fallback)`이 세션을 resolve해 override가 비어 있지 않으면 그 값을, 아니면 caller가 넘긴 fallback(전역 config)을 반환한다. `internal/tarsserver/handler_chat_execution.go`의 `executeChatLoop`는 이미 `state.store.Get`으로 세션을 한 번 로드해 `UpstreamSessionID`(resume 용)를 읽고 있는데, 그 동일 위치에서 같은 `priorSess`를 이 헬퍼에 넘겨 한 번에 permission mode를 결정 — 추가 IO 없음. `agent.RunOptions.ClaudeCodePermissionMode`로 최종 값 전달, 다른 provider는 silently ignore. 결과: 사용자는 글로벌 `tars.config.yaml`에 `permission_mode: auto`를 두고도 특정 프로젝트의 `.tars/settings.json`에 `"claude_code_cli_permission_mode": "plan"`만 한 줄 추가하면 그 프로젝트 안에서만 plan-only(편집·실행 금지) 모드가 적용된다. 9개 회귀 케이스 추가: loader 1(round-trip + presence), merge 3(local-beats-shared / only-shared / no-override-leaves-blank), handler 4(override-wins / fallback / nil-service / whitespace-only-falls-back). 후속 작업으로 남은 Epic #857 follow-up은 #2(`--settings` 마운트)와 #3(`.claude/skills/` 미러)인데, 둘 다 Claude Code의 실제 discovery 동작 검증이 필요한 실험 단계 — 별도 GitHub 이슈로 분리해 설계 검증 후 진입 예정. #5(콘솔 Agent SDK 크레딧 잔액)는 Anthropic이 잔액 API를 공개할 때 즉시 가능.
+
 ## [0.32.64] - 2026-05-14
 
 ### Added

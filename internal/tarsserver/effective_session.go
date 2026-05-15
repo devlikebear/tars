@@ -1,6 +1,8 @@
 package tarsserver
 
 import (
+	"strings"
+
 	"github.com/devlikebear/tars/internal/session"
 	"github.com/devlikebear/tars/internal/sessionoverride"
 )
@@ -37,4 +39,25 @@ func effectiveSessionView(svc *sessionoverride.Service, sess session.Session) (s
 		}
 	}
 	return res.Effective.ToolConfig, res.Effective.PromptOverride, hasBase || hasOverride
+}
+
+// effectiveClaudeCodePermissionMode resolves the per-session
+// `.tars/settings*.json` value of `claude_code_cli_permission_mode` (if any)
+// and falls back to the global config value otherwise. Returns an empty
+// string only when both are empty; the claude-code-cli provider degrades
+// empty / unknown values to "auto" so an empty return is safe for callers.
+//
+// Trimmed whitespace inside the override file is treated as "not set" so a
+// user can deliberately clear a shared override locally by setting the value
+// to "   " in `.tars/settings.local.json` is NOT supported — explicit empty
+// strings (`""`) are honored as "not set" via the loader's omitempty path.
+func effectiveClaudeCodePermissionMode(svc *sessionoverride.Service, sess session.Session, fallback string) string {
+	if svc != nil {
+		if res, _, err := svc.Resolve(sess.ID); err == nil {
+			if v := strings.TrimSpace(res.Effective.ClaudeCodeCLIPermissionMode); v != "" {
+				return v
+			}
+		}
+	}
+	return strings.TrimSpace(fallback)
 }

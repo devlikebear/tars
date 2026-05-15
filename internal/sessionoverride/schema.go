@@ -45,10 +45,15 @@ type MCPServerExtra struct {
 // pointers / nilable so the merger can distinguish "explicitly set to the
 // zero value" from "not set at all".
 type Override struct {
-	ToolConfig        *session.SessionToolConfig `json:"tool_config,omitempty"`
-	PromptOverride    *string                    `json:"prompt_override,omitempty"`
-	MCPServersExtra   []MCPServerExtra           `json:"mcp_servers_extra,omitempty"`
-	ModelTierOverride *string                    `json:"model_tier_override,omitempty"`
+	ToolConfig                  *session.SessionToolConfig `json:"tool_config,omitempty"`
+	PromptOverride              *string                    `json:"prompt_override,omitempty"`
+	MCPServersExtra             []MCPServerExtra           `json:"mcp_servers_extra,omitempty"`
+	ModelTierOverride           *string                    `json:"model_tier_override,omitempty"`
+	// ClaudeCodeCLIPermissionMode overrides config.LLMConfig.ClaudeCodeCLIPermissionMode
+	// per-session. Same accepted values as the global setting
+	// (auto/acceptEdits/plan/bypassPermissions); the provider degrades empty
+	// or unknown input to "auto" so a typo doesn't elevate permissions.
+	ClaudeCodeCLIPermissionMode *string                    `json:"claude_code_cli_permission_mode,omitempty"`
 
 	// Presence records every override path the file explicitly touched.
 	// Keys are dotted paths (e.g. "tool_config.tools_enabled"); the loader
@@ -61,10 +66,11 @@ type Override struct {
 // a settings override file. Anything outside this set is dropped with a
 // diagnostic.
 var AllowedTopLevelFields = map[string]struct{}{
-	"tool_config":         {},
-	"prompt_override":     {},
-	"mcp_servers_extra":   {},
-	"model_tier_override": {},
+	"tool_config":                     {},
+	"prompt_override":                 {},
+	"mcp_servers_extra":               {},
+	"model_tier_override":             {},
+	"claude_code_cli_permission_mode": {},
 }
 
 // BlockedTopLevelFields enumerates JSON keys that, if present, generate a
@@ -105,6 +111,7 @@ func AllPaths() []string {
 		"prompt_override",
 		"mcp_servers_extra",
 		"model_tier_override",
+		"claude_code_cli_permission_mode",
 		"tool_config.tools_enabled",
 		"tool_config.tools_custom",
 		"tool_config.tools_disabled",
@@ -140,8 +147,9 @@ type Diagnostic struct {
 // EffectiveConfig is the merger output: a flattened, fully-resolved view of
 // what the chat turn / skill registry / etc. should use.
 type EffectiveConfig struct {
-	ToolConfig        session.SessionToolConfig `json:"tool_config"`
-	PromptOverride    string                    `json:"prompt_override"`
-	MCPServersExtra   []MCPServerExtra          `json:"mcp_servers_extra,omitempty"`
-	ModelTierOverride string                    `json:"model_tier_override,omitempty"`
+	ToolConfig                  session.SessionToolConfig `json:"tool_config"`
+	PromptOverride              string                    `json:"prompt_override"`
+	MCPServersExtra             []MCPServerExtra          `json:"mcp_servers_extra,omitempty"`
+	ModelTierOverride           string                    `json:"model_tier_override,omitempty"`
+	ClaudeCodeCLIPermissionMode string                    `json:"claude_code_cli_permission_mode,omitempty"`
 }
