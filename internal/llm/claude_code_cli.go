@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 )
 
@@ -101,6 +102,12 @@ func (c *ClaudeCodeCLIClient) Chat(ctx context.Context, messages []ChatMessage, 
 	} else if mcpPath != "" {
 		defer cleanup()
 		args = append(args, "--mcp-config", mcpPath)
+	}
+	if pluginDir, cleanup, err := writeClaudeCodeSkillsPluginDir(opts.ClaudeCodeSkills); err != nil {
+		return ChatResponse{}, newProviderError(claudeCodeCLIProviderLabel, "request", fmt.Errorf("skills plugin: %w", err))
+	} else if pluginDir != "" {
+		defer cleanup()
+		args = append(args, "--plugin-dir", pluginDir)
 	}
 	if systemPrompt := buildClaudeCodeCLISystemPrompt(messages); systemPrompt != "" {
 		args = append(args, "--system-prompt", systemPrompt)
@@ -310,6 +317,132 @@ func writeClaudeCodeMCPConfigFile(servers []ClaudeCodeMCPServer) (string, func()
 		return "", func() {}, fmt.Errorf("close temp file: %w", err)
 	}
 	return path, cleanup, nil
+}
+
+// claudeCodeSkillDirName sanitizes a TARS skill name into a Claude Code
+// plugin skill directory name: lowercase, only [a-z0-9-], collapsed dashes,
+// trimmed. Returns "" when nothing usable remains so the caller can skip the
+// entry rather than emit a malformed directory.
+func claudeCodeSkillDirName(name string) string {
+	var b strings.Builder
+	prevDash := false
+	for _, r := range strings.ToLower(strings.TrimSpace(name)) {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+			b.WriteRune(r)
+			prevDash = false
+		case r == '-' || r == '_' || r == ' ' || r == '.':
+			if !prevDash && b.Len() > 0 {
+				b.WriteByte('-')
+				prevDash = true
+			}
+		}
+	}
+	return strings.Trim(b.String(), "-")
+}
+
+// writeClaudeCodeSkillsPluginDir materializes the supplied skills into a
+// temporary Claude Code plugin directory and returns its path plus a cleanup
+// function. Returns an empty path when there are no usable skills so the
+// caller skips the --plugin-dir flag.
+//
+// Layout (verified against claude 2.1.142):
+//
+//	<tmp>/.claude-plugin/plugin.json     {"name":"tars-skills",...}
+//	<tmp>/skills/<dir>/SKILL.md          frontmatter(name,description) + body
+//
+// Claude Code loads this as a session-only plugin; the skills surface as
+// `tars-skills:<name>` in its slash-command / skill registry. Names that
+// sanitize to empty, or collide after sanitization, are skipped (first writer
+// wins) so we never emit a broken plugin.
+func writeClaudeCodeSkillsPluginDir(skills []ClaudeCodeSkill) (string, func(), error) {
+	type prepared struct {
+		dir         string
+		name        string
+		description string
+		content     string
+	}
+	var entries []prepared
+	seen := map[string]struct{}{}
+	for _, sk := range skills {
+		name := strings.TrimSpace(sk.Name)
+		if name == "" {
+			continue
+		}
+		dir := claudeCodeSkillDirName(name)
+		if dir == "" {
+			continue
+		}
+		if _, dup := seen[dir]; dup {
+			continue
+		}
+		seen[dir] = struct{}{}
+		entries = append(entries, prepared{
+			dir:         dir,
+			name:        name,
+			description: strings.TrimSpace(sk.Description),
+			content:     sk.Content,
+		})
+	}
+	if len(entries) == 0 {
+		return "", func() {}, nil
+	}
+
+	root, err := os.MkdirTemp("", "tars-claude-skills-*")
+	if err != nil {
+		return "", func() {}, fmt.Errorf("create temp dir: %w", err)
+	}
+	cleanup := func() { _ = os.RemoveAll(root) }
+
+	manifestDir := filepath.Join(root, ".claude-plugin")
+	if err := os.MkdirAll(manifestDir, 0o755); err != nil {
+		cleanup()
+		return "", func() {}, fmt.Errorf("mkdir manifest: %w", err)
+	}
+	manifest := map[string]any{
+		"name":        "tars-skills",
+		"version":     "0.0.1",
+		"description": "TARS session skill catalog (ephemeral, regenerated per call)",
+	}
+	manifestBytes, err := json.Marshal(manifest)
+	if err != nil {
+		cleanup()
+		return "", func() {}, fmt.Errorf("encode manifest: %w", err)
+	}
+	if err := os.WriteFile(filepath.Join(manifestDir, "plugin.json"), manifestBytes, 0o644); err != nil {
+		cleanup()
+		return "", func() {}, fmt.Errorf("write manifest: %w", err)
+	}
+
+	for _, e := range entries {
+		skillDir := filepath.Join(root, "skills", e.dir)
+		if err := os.MkdirAll(skillDir, 0o755); err != nil {
+			cleanup()
+			return "", func() {}, fmt.Errorf("mkdir skill %q: %w", e.dir, err)
+		}
+		var doc strings.Builder
+		doc.WriteString("---\n")
+		doc.WriteString("name: ")
+		doc.WriteString(e.name)
+		doc.WriteString("\n")
+		if e.description != "" {
+			doc.WriteString("description: ")
+			// Keep description single-line; YAML scalar safety for the few
+			// chars that would break a bare scalar.
+			doc.WriteString(strings.ReplaceAll(e.description, "\n", " "))
+			doc.WriteString("\n")
+		}
+		doc.WriteString("---\n\n")
+		doc.WriteString(e.content)
+		if !strings.HasSuffix(e.content, "\n") {
+			doc.WriteString("\n")
+		}
+		if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(doc.String()), 0o644); err != nil {
+			cleanup()
+			return "", func() {}, fmt.Errorf("write skill %q: %w", e.dir, err)
+		}
+	}
+	return root, cleanup, nil
 }
 
 // extractLatestUserMessage returns the trimmed Content of the final user

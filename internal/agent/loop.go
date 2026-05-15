@@ -98,6 +98,10 @@ type RunOptions struct {
 	// claude-code-cli provider. Forwarded as-is; invalid values fall back to
 	// "auto" inside the provider.
 	ClaudeCodePermissionMode string
+	// ClaudeCodeSkills is forwarded to ChatOptions on every iteration so the
+	// claude-code-cli provider materializes the same session skill catalog
+	// as a --plugin-dir per turn. Other providers ignore it.
+	ClaudeCodeSkills []llm.ClaudeCodeSkill
 }
 
 func (l *Loop) Run(ctx context.Context, initial []llm.ChatMessage, opts RunOptions) (llm.ChatResponse, error) {
@@ -133,6 +137,7 @@ func (l *Loop) Run(ctx context.Context, initial []llm.ChatMessage, opts RunOptio
 			ResumeSessionID:          activeResumeID,
 			ClaudeCodeMCPServers:     opts.ClaudeCodeMCPServers,
 			ClaudeCodePermissionMode: opts.ClaudeCodePermissionMode,
+			ClaudeCodeSkills:         opts.ClaudeCodeSkills,
 		})
 		if err != nil {
 			l.emit(ctx, Event{Type: EventLoopError, Iteration: i + 1, Err: err})

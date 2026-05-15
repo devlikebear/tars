@@ -538,6 +538,167 @@ printf '%s\n' '{"type":"result","subtype":"success","is_error":false,"stop_reaso
 	}
 }
 
+func TestClaudeCodeSkillDirName(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"github-flow", "github-flow"},
+		{"GitHub Flow", "github-flow"},
+		{"  tars_github.flow  ", "tars-github-flow"},
+		{"a---b", "a-b"},
+		{"메모", ""},
+		{"-- -- ", ""},
+		{"v2.config!!", "v2-config"},
+	}
+	for _, c := range cases {
+		if got := claudeCodeSkillDirName(c.in); got != c.want {
+			t.Errorf("claudeCodeSkillDirName(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+func TestWriteClaudeCodeSkillsPluginDir_StructureAndCleanup(t *testing.T) {
+	dir, cleanup, err := writeClaudeCodeSkillsPluginDir([]ClaudeCodeSkill{
+		{Name: "github-flow", Description: "release flow\nwith newline", Content: "Do the flow."},
+		{Name: "Bad Name", Description: "second", Content: "body two"},
+		{Name: "", Description: "skipped-empty-name"},
+		{Name: "메모", Description: "skipped-nonascii"},
+		{Name: "github-flow", Description: "dup dir, skipped"},
+	})
+	if err != nil {
+		t.Fatalf("write plugin dir: %v", err)
+	}
+	if dir == "" {
+		t.Fatal("expected non-empty dir for 2 usable skills")
+	}
+	defer cleanup()
+
+	manifestRaw, err := os.ReadFile(filepath.Join(dir, ".claude-plugin", "plugin.json"))
+	if err != nil {
+		t.Fatalf("read manifest: %v", err)
+	}
+	var manifest struct {
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal(manifestRaw, &manifest); err != nil {
+		t.Fatalf("manifest not valid json: %v", err)
+	}
+	if manifest.Name != "tars-skills" {
+		t.Fatalf("manifest name: got %q want tars-skills", manifest.Name)
+	}
+
+	gf, err := os.ReadFile(filepath.Join(dir, "skills", "github-flow", "SKILL.md"))
+	if err != nil {
+		t.Fatalf("read github-flow SKILL.md: %v", err)
+	}
+	gfStr := string(gf)
+	if !strings.Contains(gfStr, "name: github-flow") {
+		t.Fatalf("missing name frontmatter:\n%s", gfStr)
+	}
+	if !strings.Contains(gfStr, "description: release flow with newline") {
+		t.Fatalf("description newline not collapsed:\n%s", gfStr)
+	}
+	if !strings.Contains(gfStr, "Do the flow.") {
+		t.Fatalf("body missing:\n%s", gfStr)
+	}
+
+	if _, err := os.Stat(filepath.Join(dir, "skills", "bad-name", "SKILL.md")); err != nil {
+		t.Fatalf("expected bad-name skill dir: %v", err)
+	}
+
+	skillEntries, err := os.ReadDir(filepath.Join(dir, "skills"))
+	if err != nil {
+		t.Fatalf("read skills dir: %v", err)
+	}
+	if len(skillEntries) != 2 {
+		names := []string{}
+		for _, e := range skillEntries {
+			names = append(names, e.Name())
+		}
+		t.Fatalf("expected 2 skill dirs, got %d: %v", len(skillEntries), names)
+	}
+
+	cleanup()
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		t.Fatalf("cleanup should remove the plugin dir, stat err=%v", err)
+	}
+}
+
+func TestWriteClaudeCodeSkillsPluginDir_EmptyReturnsNoFlag(t *testing.T) {
+	dir, cleanup, err := writeClaudeCodeSkillsPluginDir(nil)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	defer cleanup()
+	if dir != "" {
+		t.Fatalf("expected empty dir for nil skills, got %q", dir)
+	}
+	dir2, cleanup2, err := writeClaudeCodeSkillsPluginDir([]ClaudeCodeSkill{{Name: ""}, {Name: "  "}, {Name: "메모"}})
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	defer cleanup2()
+	if dir2 != "" {
+		t.Fatalf("expected empty dir when all skills unusable, got %q", dir2)
+	}
+}
+
+func TestClaudeCodeCLIClientChat_SkillsPluginDirPassed(t *testing.T) {
+	dir := t.TempDir()
+	argsPath := filepath.Join(dir, "claude-args.txt")
+	skillCapture := filepath.Join(dir, "skill-capture.txt")
+	scriptPath := filepath.Join(dir, "claude")
+	script := strings.TrimSpace(`#!/bin/sh
+printf '%s\n' "$@" > `+shellQuote(argsPath)+`
+pdir=""
+i=0
+for arg in "$@"; do
+  i=$((i+1))
+  if [ "$arg" = "--plugin-dir" ]; then
+    eval "pdir=\${$((i+1))}"
+    break
+  fi
+done
+if [ -n "$pdir" ] && [ -f "$pdir/skills/probe/SKILL.md" ]; then
+  cat "$pdir/skills/probe/SKILL.md" > `+shellQuote(skillCapture)+`
+fi
+printf '%s\n' '{"type":"assistant","message":{"model":"sonnet","content":[{"type":"text","text":"ok"}]}}'
+printf '%s\n' '{"type":"result","subtype":"success","is_error":false,"stop_reason":"end_turn","usage":{"input_tokens":1,"output_tokens":1},"result":"ok"}'
+`) + "\n"
+	if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("write cli stub: %v", err)
+	}
+	t.Setenv("CLAUDE_CODE_CLI_PATH", scriptPath)
+
+	client, err := NewProvider(ProviderOptions{Provider: "claude-code-cli", Model: "sonnet", WorkDir: dir})
+	if err != nil {
+		t.Fatalf("new provider: %v", err)
+	}
+	if _, err := client.Chat(context.Background(), []ChatMessage{{Role: "user", Content: "hi"}}, ChatOptions{
+		ClaudeCodeSkills: []ClaudeCodeSkill{{Name: "probe", Description: "probe skill", Content: "probe body"}},
+	}); err != nil {
+		t.Fatalf("chat: %v", err)
+	}
+
+	args, _ := os.ReadFile(argsPath)
+	if !strings.Contains(string(args), "--plugin-dir") {
+		t.Fatalf("expected --plugin-dir in args:\n%s", args)
+	}
+	captured, err := os.ReadFile(skillCapture)
+	if err != nil {
+		t.Fatalf("skill file not materialized / not found by stub: %v", err)
+	}
+	if !strings.Contains(string(captured), "name: probe") || !strings.Contains(string(captured), "probe body") {
+		t.Fatalf("SKILL.md content unexpected:\n%s", captured)
+	}
+
+	pdir := extractFlagValue(string(args), "--plugin-dir")
+	if pdir == "" {
+		t.Fatalf("could not find --plugin-dir value in args:\n%s", args)
+	}
+	if _, err := os.Stat(pdir); !os.IsNotExist(err) {
+		t.Fatalf("plugin dir %q should be removed after Chat, stat err=%v", pdir, err)
+	}
+}
+
 func shellQuote(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
 }

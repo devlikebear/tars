@@ -51,6 +51,10 @@ type chatRunState struct {
 	// converted into the provider-agnostic shape consumed by
 	// claude-code-cli's --mcp-config injection. nil when no servers apply.
 	claudeCodeMCPServers []llm.ClaudeCodeMCPServer
+	// claudeCodeSkills is the session-effective skill catalog (same snapshot
+	// pipeline as the chat prompt) converted for claude-code-cli's
+	// --plugin-dir materialization. nil when no skills apply.
+	claudeCodeSkills []llm.ClaudeCodeSkill
 }
 
 func decodeChatRequestPayload(w http.ResponseWriter, r *http.Request) (chatRequestPayload, bool) {
@@ -249,6 +253,7 @@ func buildSessionChatRunState(
 		sessionGoal:           sessionGoal,
 		sessionCritic:         sessionCritic,
 		claudeCodeMCPServers:  toClaudeCodeMCPServers(extSnapshot.MCPServers),
+		claudeCodeSkills:      toClaudeCodeSkills(extSnapshot.Skills),
 	}, nil
 }
 
