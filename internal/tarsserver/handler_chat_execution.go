@@ -85,6 +85,7 @@ func executeChatLoop(
 		ResumeSessionID:          resumeID,
 		ClaudeCodeMCPServers:     state.claudeCodeMCPServers,
 		ClaudeCodePermissionMode: permissionMode,
+		ClaudeCodeSkills:         state.claudeCodeSkills,
 		OnDelta: func(text string) {
 			if text == "" {
 				return

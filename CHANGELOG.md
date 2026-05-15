@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.32.66] - 2026-05-15
+
+### Added
+
+- **claude-code-cli가 TARS 세션 skill 카탈로그를 `--plugin-dir`로 자동 노출 (Epic #857 follow-up #3)** — 로컬 `claude` 2.1.142로 discovery 동작을 실제 검증(#870 코멘트 기록): `--add-dir`는 file-read 권한만 줄 뿐 skill source가 아니며, 워크스페이스 오염 없는 공식 메커니즘은 **`--plugin-dir <path>`**(세션 한정, 반복 가능). 임시 디렉터리에 `.claude-plugin/plugin.json` + `skills/<name>/SKILL.md` 구조를 만들면 stream-json `system.init`의 `skills`/`slash_commands`에 `tars-skills:<name>`으로 등록되고 description frontmatter도 그대로 읽힘을 확인. 이를 구현으로 옮긴다. 신규: `internal/llm.ClaudeCodeSkill{Name,Description,Content}` 타입 + `ChatOptions.ClaudeCodeSkills` 필드. `internal/llm/claude_code_cli.go`에 `claudeCodeSkillDirName`(소문자화·`[a-z0-9-]`만 허용·대시 collapse·trim, 결과가 비면 skip) + `writeClaudeCodeSkillsPluginDir`(임시 plugin 디렉터리 materialize, name 고정 `tars-skills`, sanitize 후 중복 디렉터리는 first-writer-wins, frontmatter description은 개행을 공백으로 접어 단일 라인 보장, 본문 끝 개행 정규화) 헬퍼 추가. `Chat`은 `--mcp-config`와 동일 패턴으로 `--plugin-dir <tmp>` 인자를 끼우고 `defer cleanup()`(=`os.RemoveAll`)으로 호출 종료 시 디렉터리 제거 — skill 슬라이스가 비거나 전부 unusable이면 플래그 자체를 생략. `agent.RunOptions.ClaudeCodeSkills` + `Loop.Run`이 매 iteration `ChatOptions`로 forward(다른 provider는 silently ignore). 새 파일 `internal/tarsserver/claude_code_cli_skills.go`의 `toClaudeCodeSkills`가 세션-effective `extSnapshot.Skills`(chat 프롬프트와 동일한 snapshot 파이프라인 — `filterExtensionsSnapshotForSession` + `augmentSnapshotWithCwdSkills`로 이미 session tool_config 필터됨)를 변환하며 빈 Name 또는 빈 Content를 drop. `chatRunState.claudeCodeSkills` 필드 + `handler_chat_context.go`에서 채우고 `handler_chat_execution.go`의 `executeChatLoop`가 `RunOptions`로 넘긴다. 결과: claude-code-cli 세션 채팅에서 TARS 스킬을 워크스페이스 오염·잔여 임시파일 없이 호출 가능, 세션별 skill allowlist도 그대로 적용. 9개 회귀 케이스 추가 — provider: `TestClaudeCodeSkillDirName`(7 sanitize 케이스 포함 비ASCII/구분자-only→빈 문자열), `TestWriteClaudeCodeSkillsPluginDir_StructureAndCleanup`(manifest JSON 유효성, frontmatter+body 보존, description 개행 collapse, 빈/비ASCII/중복 skip → 정확히 2개, cleanup 후 디렉터리 부재), `TestWriteClaudeCodeSkillsPluginDir_EmptyReturnsNoFlag`, `TestClaudeCodeCLIClientChat_SkillsPluginDirPassed`(셸 stub이 `--plugin-dir` 경로의 SKILL.md를 cat·검증 + Chat 후 디렉터리 제거 확인); 변환: `TestToClaudeCodeSkills_FiltersAndMaps`/`_NilWhenEmptyOrAllFiltered`. 남은 follow-up: #869(`--settings`, 구체 use case 부재로 보류) / #871(콘솔 크레딧, Anthropic API 대기).
+
 ## [0.32.65] - 2026-05-15
 
 ### Added

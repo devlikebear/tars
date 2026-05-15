@@ -163,6 +163,24 @@ type ChatOptions struct {
 	// fall back to "auto" so the provider stays callable even when callers
 	// haven't been updated. Other providers ignore this field.
 	ClaudeCodePermissionMode string
+	// ClaudeCodeSkills, when non-empty, asks the claude-code-cli provider to
+	// materialize a session-only Claude Code plugin directory containing
+	// these skills and pass it via `--plugin-dir` for the duration of one
+	// Chat call. The skills surface as `tars-skills:<name>` in Claude Code's
+	// slash-command / skill registry. Other providers ignore this field.
+	// Callers translate TARS' own skill catalog into this provider-agnostic
+	// shape outside the llm package so internal/llm stays decoupled from
+	// internal/skill.
+	ClaudeCodeSkills []ClaudeCodeSkill
+}
+
+// ClaudeCodeSkill is the minimal shape needed to render one Claude Code
+// SKILL.md (frontmatter name + description, then the markdown body) inside a
+// session-scoped plugin directory.
+type ClaudeCodeSkill struct {
+	Name        string
+	Description string
+	Content     string
 }
 
 // ClaudeCodeMCPServer is the minimal subset of an MCP server config that
