@@ -2,12 +2,14 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import {
+  EMBODIMENT_PROVIDER_CAPABILITY_DETAILS,
   buildLLMProvidersFromDrafts,
   buildLLMTiersFromDrafts,
   buildEmbodimentProvidersFromDrafts,
   extractLLMProviderAliases,
   formatConfigDisplayValue,
   makeEmbodimentProviderDrafts,
+  makeEmbodimentProviderPresetDraft,
   makeLLMProviderDrafts,
   makeLLMTierDrafts,
   parseStructuredJSONEdit,
@@ -197,6 +199,41 @@ test('makeEmbodimentProviderDrafts converts provider descriptors into editable r
   assert.deepEqual(drafts[0].capabilities, ['hearing', 'speech'])
   assert.equal(drafts[0].salience_min_sound_level, '0.6')
   assert.equal(drafts[0].max_triggers_per_hour, '60')
+})
+
+test('makeEmbodimentProviderPresetDraft recommends Mac Host and StackChan defaults', () => {
+  const host = makeEmbodimentProviderPresetDraft('host', 'preset-host')
+  assert.equal(host.name, 'host')
+  assert.equal(host.transport, 'mcp')
+  assert.equal(host.endpoint, 'tars-stackchan-host')
+  assert.deepEqual(host.capabilities, ['hearing', 'speech'])
+  assert.equal(host.session_id, 'sess_main')
+  assert.equal(host.owner_only_directive, false)
+  assert.equal(host.trigger_observations, true)
+
+  const stackchan = makeEmbodimentProviderPresetDraft('stackchan', 'preset-stackchan')
+  assert.equal(stackchan.name, 'stackchan')
+  assert.equal(stackchan.transport, 'mcp')
+  assert.equal(stackchan.endpoint, 'tars-stackchan')
+  assert.deepEqual(stackchan.capabilities, ['vision', 'hearing', 'speech', 'expression', 'motion', 'led'])
+  assert.equal(stackchan.owner_only_directive, true)
+  assert.equal(stackchan.trigger_observations, false)
+
+  const duplicate = makeEmbodimentProviderPresetDraft('stackchan', 'preset-stackchan-2', ['stackchan'])
+  assert.equal(duplicate.name, 'stackchan2')
+  assert.equal(duplicate.endpoint, 'tars-stackchan')
+})
+
+test('embodiment capability metadata describes each known capability', () => {
+  const detailsByID = new Map(EMBODIMENT_PROVIDER_CAPABILITY_DETAILS.map((detail) => [detail.id, detail]))
+  for (const capability of ['vision', 'hearing', 'speech', 'expression', 'motion', 'led']) {
+    const detail = detailsByID.get(capability)
+    assert.ok(detail, `${capability} should have metadata`)
+    assert.ok(detail.label.length > 0)
+    assert.ok(detail.description.length > 0)
+  }
+  assert.equal(detailsByID.get('vision')?.group, 'perception')
+  assert.equal(detailsByID.get('speech')?.group, 'actuation')
 })
 
 test('buildEmbodimentProvidersFromDrafts validates and serializes provider rows', () => {

@@ -17,7 +17,8 @@
     LLM_PROVIDER_AUTH_MODES,
     LLM_PROVIDER_KINDS,
     LLM_TIER_SERVICE_TIERS,
-    EMBODIMENT_PROVIDER_CAPABILITIES,
+    EMBODIMENT_PROVIDER_CAPABILITY_DETAILS,
+    EMBODIMENT_PROVIDER_PRESETS,
     EMBODIMENT_PROVIDER_TRANSPORTS,
     buildEmbodimentProvidersFromDrafts,
     buildLLMProvidersFromDrafts,
@@ -26,15 +27,19 @@
     extractLLMProviderAliases,
     formatConfigDisplayValue,
     makeEmbodimentProviderDrafts,
+    makeEmbodimentProviderPresetDraft,
     makeLLMProviderDrafts,
     makeLLMTierDrafts,
     parseStructuredJSONEdit,
     prettyConfigJSON,
     stringifyConfigValue,
     type ConfigDisplaySummary,
+    type EmbodimentCapabilityGroup,
     type EmbodimentProviderDraft,
     type EmbodimentProviderDraftErrors,
     type EmbodimentProviderDraftField,
+    type EmbodimentProviderPreset,
+    type EmbodimentProviderPresetID,
     type LLMProviderDraft,
     type LLMProviderDraftErrors,
     type LLMProviderDraftField,
@@ -56,6 +61,33 @@
   import { t } from '../i18n'
 
   type ViewMode = 'quick' | 'form' | 'yaml'
+
+  const EMBODIMENT_FIELD_HINTS: Record<EmbodimentProviderDraftField, string> = {
+    name: 'Unique body provider name. Use host for Mac Host or stackchan for physical StackChan.',
+    enabled: 'Disabled providers stay in config but cannot trigger cognition or receive actions.',
+    transport: 'Use mcp for tars-stackchan servers. Use webhook only when Endpoint is a full POST URL.',
+    endpoint: 'For mcp, this must match an mcp.servers key such as tars-stackchan or tars-stackchan-host.',
+    capabilities: 'Only declare capabilities the provider can actually perform; unsupported actions are dropped.',
+    session_id: 'Session that receives autonomous embodied turns. sess_main is the normal default.',
+    agent: 'Optional agent override for embodied turns. Leave blank to use the default agent.',
+    owner_only_directive: 'When enabled, only owner audio can become a directive. Ambient or stranger input stays observational.',
+    salience_min_sound_level: 'Audio salience threshold from 0 to 1. 0.6 is a conservative default.',
+    min_trigger_interval: 'Debounce window between autonomous trigger turns for this provider, for example 30s.',
+    max_triggers_per_hour: 'Hourly cap for autonomous trigger turns. 60 is the default guardrail.',
+    trigger_observations: 'Allow non-directive observations to trigger turns. Useful for Mac Host when owner detection is unknown.',
+  }
+
+  const EMBODIMENT_CAPABILITY_GROUP_LABELS: Record<EmbodimentCapabilityGroup, string> = {
+    perception: 'Perception',
+    actuation: 'Actuation',
+  }
+
+  const EMBODIMENT_CAPABILITY_GROUP_HINTS: Record<EmbodimentCapabilityGroup, string> = {
+    perception: 'Inputs the provider can send into TARS as Percepts.',
+    actuation: 'Body actions TARS can send back to the provider.',
+  }
+
+  const EMBODIMENT_CAPABILITY_GROUPS: EmbodimentCapabilityGroup[] = ['perception', 'actuation']
 
   interface Props {
     onNavigate?: (path: string) => void
@@ -605,8 +637,14 @@
     embodimentProviderEditorErrors = {}
   }
 
-  function addEmbodimentProviderDraft() {
-    embodimentProviderDrafts = [...embodimentProviderDrafts, createEmbodimentProviderDraft(nextEmbodimentProviderName())]
+  function addEmbodimentProviderDraft(presetID: EmbodimentProviderPresetID = 'custom') {
+    embodimentProviderDraftSeq += 1
+    const id = `new-embodiment-provider-${embodimentProviderDraftSeq}`
+    const existingNames = embodimentProviderDrafts.map((draft) => draft.name)
+    embodimentProviderDrafts = [
+      ...embodimentProviderDrafts,
+      makeEmbodimentProviderPresetDraft(presetID, id, existingNames),
+    ]
   }
 
   function removeEmbodimentProviderDraft(id: string) {
@@ -659,42 +697,6 @@
     }
     dirtyFields = { ...dirtyFields }
     closeEmbodimentProviderEditor()
-  }
-
-  function createEmbodimentProviderDraft(name: string): EmbodimentProviderDraft {
-    embodimentProviderDraftSeq += 1
-    return {
-      id: `new-embodiment-provider-${embodimentProviderDraftSeq}`,
-      originalName: '',
-      name,
-      enabled: true,
-      transport: 'mcp',
-      endpoint: name === 'host' ? 'tars-stackchan-host' : name,
-      capabilities: name === 'stackchan'
-        ? ['vision', 'hearing', 'speech', 'expression', 'motion', 'led']
-        : ['vision', 'hearing', 'speech'],
-      session_id: 'sess_main',
-      agent: '',
-      owner_only_directive: true,
-      salience_min_sound_level: '0.6',
-      min_trigger_interval: '30s',
-      max_triggers_per_hour: '60',
-      trigger_observations: false,
-    }
-  }
-
-  function nextEmbodimentProviderName(): string {
-    const names = new Set(embodimentProviderDrafts.map((draft) => draft.name.trim()).filter(Boolean))
-    for (const candidate of ['host', 'stackchan']) {
-      if (!names.has(candidate)) return candidate
-    }
-    let idx = embodimentProviderDrafts.length + 1
-    let candidate = `provider${idx}`
-    while (names.has(candidate)) {
-      idx += 1
-      candidate = `provider${idx}`
-    }
-    return candidate
   }
 
   function embodimentProviderError(id: string, field: EmbodimentProviderDraftField): string {
@@ -1147,10 +1149,43 @@
     return ['', ...sortStrings(choices)]
   }
 
-  function embodimentCapabilityChoices(current: string[]): string[] {
-    const choices = new Set<string>(EMBODIMENT_PROVIDER_CAPABILITIES)
-    current.map((value) => value.trim()).filter(Boolean).forEach((value) => choices.add(value))
-    return sortStrings(choices)
+  function embodimentPresetCapabilityLabels(preset: EmbodimentProviderPreset): string {
+    return preset.capabilities.map(embodimentCapabilityLabel).join(', ')
+  }
+
+  function embodimentEndpointPlaceholder(draft: EmbodimentProviderDraft): string {
+    return draft.transport.trim().toLowerCase() === 'webhook'
+      ? 'http://127.0.0.1:43180/v1/embodiment/percept/host'
+      : 'tars-stackchan'
+  }
+
+  function embodimentCapabilityDetail(capability: string) {
+    const value = capability.trim().toLowerCase()
+    return EMBODIMENT_PROVIDER_CAPABILITY_DETAILS.find((detail) => detail.id === value) || {
+      id: value,
+      label: value || 'Custom',
+      group: 'actuation' as EmbodimentCapabilityGroup,
+      description: 'Custom provider capability preserved from config.',
+    }
+  }
+
+  function embodimentCapabilityLabel(capability: string): string {
+    return embodimentCapabilityDetail(capability).label
+  }
+
+  function embodimentCapabilityDescription(capability: string): string {
+    return embodimentCapabilityDetail(capability).description
+  }
+
+  function embodimentCapabilitiesForGroup(group: EmbodimentCapabilityGroup): string[] {
+    return EMBODIMENT_PROVIDER_CAPABILITY_DETAILS
+      .filter((detail) => detail.group === group)
+      .map((detail) => detail.id)
+  }
+
+  function customEmbodimentCapabilities(current: string[]): string[] {
+    const known = new Set(EMBODIMENT_PROVIDER_CAPABILITY_DETAILS.map((detail) => detail.id))
+    return sortStrings(current.map((value) => value.trim().toLowerCase()).filter((value) => value && !known.has(value)))
   }
 
   const sectionIcons: Record<string, string> = {
@@ -1518,24 +1553,50 @@
             </div>
             <button class="btn btn-ghost btn-sm" onclick={closeEmbodimentProviderEditor}>Cancel</button>
           </div>
-          <div class="tier-editor-toolbar">
-            <button class="btn btn-ghost btn-sm" onclick={addEmbodimentProviderDraft}>Add Provider</button>
+          <div class="tier-editor-toolbar embodiment-preset-toolbar" aria-label="Recommended body provider presets">
+            {#each EMBODIMENT_PROVIDER_PRESETS as preset}
+              <button
+                class={preset.id === 'custom' ? 'btn btn-ghost btn-sm' : 'btn btn-primary btn-sm'}
+                title={preset.tip}
+                onclick={() => addEmbodimentProviderDraft(preset.id)}
+              >
+                {preset.buttonLabel}
+              </button>
+            {/each}
           </div>
           <div class="tier-editor-list">
             {#if embodimentProviderDrafts.length === 0}
               <div class="embodiment-empty-state">
                 <span>No body providers configured.</span>
-                <button class="btn btn-primary btn-sm" onclick={addEmbodimentProviderDraft}>Add Provider</button>
+                <div class="embodiment-preset-grid">
+                  {#each EMBODIMENT_PROVIDER_PRESETS.filter((preset) => preset.id !== 'custom') as preset}
+                    <button
+                      type="button"
+                      class="embodiment-preset-card"
+                      title={preset.tip}
+                      onclick={() => addEmbodimentProviderDraft(preset.id)}
+                    >
+                      <strong>{preset.title}</strong>
+                      <span>{preset.name} -> {preset.endpoint}</span>
+                      <small>{embodimentPresetCapabilityLabels(preset)}</small>
+                    </button>
+                  {/each}
+                </div>
               </div>
             {/if}
             {#each embodimentProviderDrafts as draft (draft.id)}
               <div class="provider-card embodiment-provider-card">
                 <div class="provider-card-header">
                   <label class="tier-field tier-field-name">
-                    <span>Name</span>
+                    <span class="field-label-with-help">
+                      Name
+                      <span class="help-dot" title={EMBODIMENT_FIELD_HINTS.name}>?</span>
+                    </span>
                     <input
                       class:error={!!embodimentProviderError(draft.id, 'name')}
                       value={draft.name}
+                      placeholder="stackchan"
+                      title={EMBODIMENT_FIELD_HINTS.name}
                       oninput={(event) => updateEmbodimentProviderDraft(draft.id, 'name', inputValue(event))}
                     />
                     {#if embodimentProviderError(draft.id, 'name')}
@@ -1549,7 +1610,7 @@
                         checked={draft.enabled}
                         onchange={(event) => updateEmbodimentProviderDraft(draft.id, 'enabled', checkedValue(event))}
                       />
-                      <span>{draft.enabled ? 'Enabled' : 'Disabled'}</span>
+                      <span title={EMBODIMENT_FIELD_HINTS.enabled}>{draft.enabled ? 'Enabled' : 'Disabled'}</span>
                     </label>
                     <button class="btn btn-ghost btn-sm tier-remove" onclick={() => removeEmbodimentProviderDraft(draft.id)}>Remove</button>
                   </div>
@@ -1557,10 +1618,14 @@
 
                 <div class="provider-grid embodiment-provider-grid">
                   <label class="tier-field">
-                    <span>Transport</span>
+                    <span class="field-label-with-help">
+                      Transport
+                      <span class="help-dot" title={EMBODIMENT_FIELD_HINTS.transport}>?</span>
+                    </span>
                     <select
                       class:error={!!embodimentProviderError(draft.id, 'transport')}
                       value={draft.transport}
+                      title={EMBODIMENT_FIELD_HINTS.transport}
                       onchange={(event) => updateEmbodimentProviderDraft(draft.id, 'transport', inputValue(event))}
                     >
                       {#each embodimentTransportChoices(draft.transport) as transport}
@@ -1572,10 +1637,15 @@
                     {/if}
                   </label>
                   <label class="tier-field">
-                    <span>Endpoint</span>
+                    <span class="field-label-with-help">
+                      Endpoint
+                      <span class="help-dot" title={EMBODIMENT_FIELD_HINTS.endpoint}>?</span>
+                    </span>
                     <input
                       class:error={!!embodimentProviderError(draft.id, 'endpoint')}
                       value={draft.endpoint}
+                      placeholder={embodimentEndpointPlaceholder(draft)}
+                      title={EMBODIMENT_FIELD_HINTS.endpoint}
                       oninput={(event) => updateEmbodimentProviderDraft(draft.id, 'endpoint', inputValue(event))}
                     />
                     {#if embodimentProviderError(draft.id, 'endpoint')}
@@ -1583,34 +1653,53 @@
                     {/if}
                   </label>
                   <label class="tier-field">
-                    <span>Session</span>
+                    <span class="field-label-with-help">
+                      Session
+                      <span class="help-dot" title={EMBODIMENT_FIELD_HINTS.session_id}>?</span>
+                    </span>
                     <input
                       value={draft.session_id}
+                      placeholder="sess_main"
+                      title={EMBODIMENT_FIELD_HINTS.session_id}
                       oninput={(event) => updateEmbodimentProviderDraft(draft.id, 'session_id', inputValue(event))}
                     />
                   </label>
                   <label class="tier-field">
-                    <span>Agent</span>
+                    <span class="field-label-with-help">
+                      Agent
+                      <span class="help-dot" title={EMBODIMENT_FIELD_HINTS.agent}>?</span>
+                    </span>
                     <input
                       value={draft.agent}
+                      placeholder="optional"
+                      title={EMBODIMENT_FIELD_HINTS.agent}
                       oninput={(event) => updateEmbodimentProviderDraft(draft.id, 'agent', inputValue(event))}
                     />
                   </label>
                   <label class="tier-field">
-                    <span>Min Interval</span>
+                    <span class="field-label-with-help">
+                      Min Interval
+                      <span class="help-dot" title={EMBODIMENT_FIELD_HINTS.min_trigger_interval}>?</span>
+                    </span>
                     <input
                       value={draft.min_trigger_interval}
+                      placeholder="30s"
+                      title={EMBODIMENT_FIELD_HINTS.min_trigger_interval}
                       oninput={(event) => updateEmbodimentProviderDraft(draft.id, 'min_trigger_interval', inputValue(event))}
                     />
                   </label>
                   <label class="tier-field">
-                    <span>Max / Hour</span>
+                    <span class="field-label-with-help">
+                      Max / Hour
+                      <span class="help-dot" title={EMBODIMENT_FIELD_HINTS.max_triggers_per_hour}>?</span>
+                    </span>
                     <input
                       type="number"
                       min="0"
                       step="1"
                       class:error={!!embodimentProviderError(draft.id, 'max_triggers_per_hour')}
                       value={draft.max_triggers_per_hour}
+                      title={EMBODIMENT_FIELD_HINTS.max_triggers_per_hour}
                       oninput={(event) => updateEmbodimentProviderDraft(draft.id, 'max_triggers_per_hour', inputValue(event))}
                     />
                     {#if embodimentProviderError(draft.id, 'max_triggers_per_hour')}
@@ -1618,7 +1707,10 @@
                     {/if}
                   </label>
                   <label class="tier-field">
-                    <span>Salience</span>
+                    <span class="field-label-with-help">
+                      Salience
+                      <span class="help-dot" title={EMBODIMENT_FIELD_HINTS.salience_min_sound_level}>?</span>
+                    </span>
                     <input
                       type="number"
                       min="0"
@@ -1626,6 +1718,7 @@
                       step="0.1"
                       class:error={!!embodimentProviderError(draft.id, 'salience_min_sound_level')}
                       value={draft.salience_min_sound_level}
+                      title={EMBODIMENT_FIELD_HINTS.salience_min_sound_level}
                       oninput={(event) => updateEmbodimentProviderDraft(draft.id, 'salience_min_sound_level', inputValue(event))}
                     />
                     {#if embodimentProviderError(draft.id, 'salience_min_sound_level')}
@@ -1639,7 +1732,7 @@
                         checked={draft.owner_only_directive}
                         onchange={(event) => updateEmbodimentProviderDraft(draft.id, 'owner_only_directive', checkedValue(event))}
                       />
-                      <span>Owner-only directive</span>
+                      <span title={EMBODIMENT_FIELD_HINTS.owner_only_directive}>Owner-only directive</span>
                     </label>
                     <label class="embodiment-check">
                       <input
@@ -1647,22 +1740,57 @@
                         checked={draft.trigger_observations}
                         onchange={(event) => updateEmbodimentProviderDraft(draft.id, 'trigger_observations', checkedValue(event))}
                       />
-                      <span>Trigger observations</span>
+                      <span title={EMBODIMENT_FIELD_HINTS.trigger_observations}>Trigger observations</span>
                     </label>
                   </div>
                   <div class="tier-field provider-field-wide">
-                    <span>Capabilities</span>
-                    <div class="embodiment-capability-grid" class:error={!!embodimentProviderError(draft.id, 'capabilities')}>
-                      {#each embodimentCapabilityChoices(draft.capabilities) as capability}
-                        <label class="embodiment-check capability-check">
-                          <input
-                            type="checkbox"
-                            checked={draft.capabilities.includes(capability)}
-                            onchange={() => toggleEmbodimentCapability(draft.id, capability)}
-                          />
-                          <span>{capability}</span>
-                        </label>
+                    <span class="field-label-with-help">
+                      Capabilities
+                      <span class="help-dot" title={EMBODIMENT_FIELD_HINTS.capabilities}>?</span>
+                    </span>
+                    <div class="embodiment-capability-board" class:error={!!embodimentProviderError(draft.id, 'capabilities')}>
+                      {#each EMBODIMENT_CAPABILITY_GROUPS as group}
+                        <div class="capability-group">
+                          <div class="capability-group-title">
+                            {EMBODIMENT_CAPABILITY_GROUP_LABELS[group]}
+                            <span class="help-dot" title={EMBODIMENT_CAPABILITY_GROUP_HINTS[group]}>?</span>
+                          </div>
+                          <div class="capability-chip-grid">
+                            {#each embodimentCapabilitiesForGroup(group) as capability}
+                              <button
+                                type="button"
+                                class="capability-chip"
+                                class:selected={draft.capabilities.includes(capability)}
+                                aria-pressed={draft.capabilities.includes(capability)}
+                                title={embodimentCapabilityDescription(capability)}
+                                onclick={() => toggleEmbodimentCapability(draft.id, capability)}
+                              >
+                                <span class="capability-chip-label">{embodimentCapabilityLabel(capability)}</span>
+                                <small>{capability}</small>
+                              </button>
+                            {/each}
+                          </div>
+                        </div>
                       {/each}
+                      {#if customEmbodimentCapabilities(draft.capabilities).length > 0}
+                        <div class="capability-group">
+                          <div class="capability-group-title">Custom</div>
+                          <div class="capability-chip-grid">
+                            {#each customEmbodimentCapabilities(draft.capabilities) as capability}
+                              <button
+                                type="button"
+                                class="capability-chip selected"
+                                aria-pressed="true"
+                                title={embodimentCapabilityDescription(capability)}
+                                onclick={() => toggleEmbodimentCapability(draft.id, capability)}
+                              >
+                                <span class="capability-chip-label">{embodimentCapabilityLabel(capability)}</span>
+                                <small>{capability}</small>
+                              </button>
+                            {/each}
+                          </div>
+                        </div>
+                      {/if}
                     </div>
                     {#if embodimentProviderError(draft.id, 'capabilities')}
                       <small>{embodimentProviderError(draft.id, 'capabilities')}</small>
@@ -2759,6 +2887,12 @@
   .embodiment-provider-editor-modal {
     width: min(1040px, calc(100vw - var(--nav-width) - 32px));
   }
+  .embodiment-preset-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: var(--space-2);
+  }
   .embodiment-provider-card {
     gap: var(--space-3);
   }
@@ -2801,25 +2935,110 @@
   .embodiment-check input {
     accent-color: var(--primary);
   }
-  .embodiment-capability-grid {
+  .tier-field .field-label-with-help {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    color: var(--text-ghost);
+    letter-spacing: 0;
+  }
+  .tier-field .help-dot {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 15px;
+    height: 15px;
+    border: 1px solid var(--border-subtle);
+    border-radius: 50%;
+    color: var(--text-secondary);
+    background: var(--surface);
+    font-size: 10px;
+    line-height: 1;
+    text-transform: none;
+    letter-spacing: 0;
+    cursor: help;
+  }
+  .embodiment-capability-board {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: var(--space-2);
     padding: var(--space-2);
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-sm);
     background: var(--surface);
   }
-  .embodiment-capability-grid.error {
+  .embodiment-capability-board.error {
     border-color: var(--red);
     box-shadow: 0 0 0 1px rgba(220, 60, 60, 0.25);
   }
-  .capability-check {
-    min-height: 26px;
-    padding: 0 var(--space-2);
+  .capability-group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    min-width: 0;
+    padding: var(--space-2);
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-sm);
     background: var(--surface-base);
+  }
+  .capability-group-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    color: var(--text-secondary);
+    font-family: var(--font-display);
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0;
+  }
+  .capability-chip-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-2);
+  }
+  .capability-chip {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    min-width: 0;
+    min-height: 44px;
+    gap: 1px;
+    padding: var(--space-2);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    background: var(--surface);
+    cursor: pointer;
+    text-align: left;
+  }
+  .capability-chip:hover {
+    border-color: rgba(224, 145, 69, 0.45);
+    color: var(--text-primary);
+  }
+  .capability-chip.selected {
+    border-color: rgba(224, 145, 69, 0.72);
+    color: var(--text-primary);
+    background: rgba(224, 145, 69, 0.14);
+    box-shadow: inset 3px 0 0 var(--primary);
+  }
+  .tier-field .capability-chip-label {
+    color: inherit;
+    font-family: var(--font-display);
+    font-size: var(--text-xs);
+    font-weight: 700;
+    text-transform: none;
+    letter-spacing: 0;
+    line-height: 1.15;
+  }
+  .tier-field .capability-chip small {
+    color: var(--text-ghost);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    line-height: 1.1;
+    text-transform: none;
+    letter-spacing: 0;
   }
   .embodiment-empty-state {
     display: flex;
@@ -2831,6 +3050,47 @@
     border-radius: var(--radius-md);
     color: var(--text-secondary);
     background: var(--surface-base);
+  }
+  .embodiment-preset-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-2);
+    min-width: min(520px, 100%);
+  }
+  .embodiment-preset-card {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+    padding: var(--space-3);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    background: var(--surface);
+    cursor: pointer;
+    text-align: left;
+  }
+  .embodiment-preset-card:hover {
+    border-color: rgba(224, 145, 69, 0.45);
+    color: var(--text-primary);
+  }
+  .embodiment-preset-card strong {
+    color: var(--text-primary);
+    font-family: var(--font-display);
+    font-size: var(--text-sm);
+  }
+  .embodiment-preset-card span,
+  .embodiment-preset-card small {
+    overflow-wrap: anywhere;
+  }
+  .embodiment-preset-card span {
+    font-family: var(--font-mono);
+    font-size: 11px;
+  }
+  .embodiment-preset-card small {
+    color: var(--text-ghost);
+    font-size: 11px;
+    line-height: 1.25;
   }
 
   @media (max-width: 640px) {
@@ -2870,7 +3130,11 @@
       max-height: calc(100vh - 16px);
     }
     .embodiment-provider-grid,
-    .embodiment-capability-grid {
+    .embodiment-capability-board {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .embodiment-preset-grid,
+    .capability-chip-grid {
       grid-template-columns: minmax(0, 1fr);
     }
     .embodiment-card-actions,
