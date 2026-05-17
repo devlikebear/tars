@@ -174,6 +174,8 @@ Multi-channel I/O beyond the web console:
 
 TARS has a core `embodiment` subsystem for body providers. The shipped default is `enabled: false` with no providers, so existing chat/runtime behavior is unchanged and no LLM tools are registered. When enabled, known providers can post Percepts; owner audio becomes an autonomous directive turn, while ambient/stranger observations stay non-triggering by default. Cognition turns can emit structured `tars-body-action` blocks, which TARS routes back to the bound provider only when the provider declares the matching capability.
 
+In the Console, open Settings and use the Quick Start `Embodied Bot` and `Embodied Bot providers` cards to edit the same settings without switching to raw YAML. The providers card opens a structured form for transport, endpoint, trigger limits, owner gating, and capability toggles.
+
 ```yaml
 embodiment:
   enabled: true
