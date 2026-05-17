@@ -193,6 +193,10 @@ func Schema() []FieldMeta {
 		f("channels_telegram_polling_enabled", "Channels", "bool", "Telegram Polling", "Enable Telegram long-polling for updates"),
 		fs("telegram_bot_token", "Channels", "Telegram Bot Token", "Bot token from @BotFather", true),
 
+		// ── Embodiment ───────────────────────────
+		f("embodiment_enabled", "Embodiment", "bool", "Enabled", "Enable the dormant embodiment subsystem"),
+		fjson("embodiment_providers_json", "Embodiment", "Providers", "Body provider descriptors and declared capabilities"),
+
 		// ── Extensions ───────────────────────────
 		f("skills_enabled", "Extensions", "bool", "Skills Enabled", "Load and serve skill definitions"),
 		f("skills_watch", "Extensions", "bool", "Watch Skills", "Auto-reload skills when files change"),
@@ -501,6 +505,11 @@ func extractValue(yamlKey string, cfg Config) any {
 		return cfg.ChannelsTelegramPollingEnabled
 	case "telegram_bot_token":
 		return cfg.TelegramBotToken
+	// Embodiment
+	case "embodiment_enabled":
+		return cfg.Embodiment.Enabled
+	case "embodiment_providers_json":
+		return cloneEmbodimentProviders(cfg.Embodiment.Providers)
 	// Extensions
 	case "skills_enabled":
 		return cfg.SkillsEnabled

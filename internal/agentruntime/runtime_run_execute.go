@@ -122,14 +122,15 @@ func (r *Runtime) executeRunPrompt(ctx context.Context, state *runState, executo
 	})
 	metadata := PromptExecutionMetadata{}
 	resp, err := executor.Execute(execCtx, ExecuteRequest{
-		RunID:            state.run.ID,
-		WorkspaceID:      state.run.WorkspaceID,
-		SessionID:        state.run.SessionID,
-		Prompt:           state.run.Prompt,
-		AllowedTools:     allowedTools,
-		Tier:             state.run.Tier,
-		ProviderOverride: CloneProviderOverride(state.run.ProviderOverride),
-		Metadata:         &metadata,
+		RunID:              state.run.ID,
+		WorkspaceID:        state.run.WorkspaceID,
+		SessionID:          state.run.SessionID,
+		Prompt:             state.run.Prompt,
+		SystemPromptAppend: state.req.SystemPromptAppend,
+		AllowedTools:       allowedTools,
+		Tier:               state.run.Tier,
+		ProviderOverride:   CloneProviderOverride(state.run.ProviderOverride),
+		Metadata:           &metadata,
 	})
 	if err == nil && ctx.Err() == nil {
 		assistant := strings.TrimSpace(resp)

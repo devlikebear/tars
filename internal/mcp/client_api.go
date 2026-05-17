@@ -129,6 +129,10 @@ func (c *Client) BuildTools(ctx context.Context) ([]tool.Tool, error) {
 	return out, nil
 }
 
+func (c *Client) CallTool(ctx context.Context, serverName, toolName string, args map[string]any) (tool.Result, error) {
+	return c.callTool(ctx, serverName, toolName, args)
+}
+
 func (c *Client) listToolsForServer(ctx context.Context, server ServerConfig) ([]ToolInfo, error) {
 	var tools []ToolInfo
 	err := c.withPersistentSession(ctx, server, func(ctx context.Context, sess *session) error {

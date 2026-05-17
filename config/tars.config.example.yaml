@@ -159,6 +159,35 @@ assistant:
   ffmpeg_bin: ffmpeg
   tts_bin: say
 
+embodiment:
+  enabled: false
+  providers: []
+  # Provider examples. Capability values:
+  # vision, hearing, speech, expression, motion, led.
+  # MCP provider endpoints name the MCP server used for action egress.
+  #
+  # providers:
+  #   - name: stackchan
+  #     enabled: true
+  #     transport: mcp
+  #     endpoint: stackchan
+  #     capabilities: [vision, hearing, speech, expression, motion, led]
+  #     session_id: sess_main
+  #     owner_only_directive: true
+  #     salience_min_sound_level: 0.6
+  #     min_trigger_interval: 30s
+  #     max_triggers_per_hour: 60
+  #   - name: host
+  #     enabled: true
+  #     transport: webhook
+  #     endpoint: http://127.0.0.1:43180/v1/embodiment/percept/host
+  #     capabilities: [vision, hearing, speech]
+  #     session_id: sess_main
+  #     owner_only_directive: true
+  #     salience_min_sound_level: 0.6
+  #     min_trigger_interval: 30s
+  #     max_triggers_per_hour: 60
+
 compaction:
   trigger_tokens: 100000
   keep_recent_tokens: 12000

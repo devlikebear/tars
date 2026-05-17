@@ -3,10 +3,12 @@ package tarsserver
 import (
 	"bytes"
 	"context"
+	"io"
 	"strings"
 	"testing"
 
 	"github.com/devlikebear/tars/internal/config"
+	"github.com/devlikebear/tars/internal/embodiment"
 	"github.com/devlikebear/tars/internal/extensions"
 	"github.com/rs/zerolog"
 )
@@ -48,4 +50,32 @@ func TestStartBackgrounds_LogsStartupStepDurations(t *testing.T) {
 			t.Fatalf("expected log %s in:\n%s", want, content)
 		}
 	}
+}
+
+func TestStartBackgrounds_EmbodimentSubsystemLifecycle(t *testing.T) {
+	cfg := config.Config{
+		Embodiment: config.EmbodimentConfig{
+			Enabled: true,
+			Providers: []config.EmbodimentProviderConfig{{
+				Name:         "host",
+				Enabled:      true,
+				Transport:    "webhook",
+				Capabilities: []string{"hearing"},
+			}},
+		},
+	}
+	subsystem := embodiment.New(cfg.Embodiment, zerolog.New(io.Discard))
+	runtime := &serveAPIRuntime{
+		cfg:                 cfg,
+		embodimentSubsystem: subsystem,
+	}
+
+	if err := startBackgrounds(context.Background(), runtime, zerolog.New(io.Discard)); err != nil {
+		t.Fatalf("start backgrounds: %v", err)
+	}
+	if status := subsystem.Status(); !status.Enabled || len(status.Providers) != 1 {
+		t.Fatalf("expected started embodiment status, got %+v", status)
+	}
+
+	shutdownRuntime(context.Background(), runtime)
 }

@@ -285,6 +285,9 @@ func newAgentPromptRunnerWithToolsAndMemory(
 
 		profile := agentPromptProfileForLabel(label)
 		systemPrompt := buildAgentSystemPrompt(targetWorkspaceDir, profile, semanticCfg)
+		if appendBlock := agentruntime.SystemPromptAppendFromContext(ctx); appendBlock != "" {
+			systemPrompt += "\n" + appendBlock + "\n"
+		}
 		baseRegistry := newBaseToolRegistryWithProcessAndUsage(targetWorkspaceDir, tool.SingleDirPolicy(targetWorkspaceDir), nil, tracker, semanticCfg)
 		for _, extra := range extraTools {
 			if strings.TrimSpace(extra.Name) == "" {

@@ -170,6 +170,26 @@ Multi-channel I/O beyond the web console:
 - **Local** — Direct API calls for scripts and automation
 - **Remote Access** — Tailscale Serve can publish the loopback-only console over tailnet HTTPS with a TARS-owned target, while browser sessions use admin/user password auth and remote/mobile logins stay user-scoped.
 
+### Embodiment
+
+TARS has a core `embodiment` subsystem for body providers. The shipped default is `enabled: false` with no providers, so existing chat/runtime behavior is unchanged and no LLM tools are registered. When enabled, known providers can post Percepts; owner audio becomes an autonomous directive turn, while ambient/stranger observations stay non-triggering by default. Cognition turns can emit structured `tars-body-action` blocks, which TARS routes back to the bound provider only when the provider declares the matching capability.
+
+```yaml
+embodiment:
+  enabled: true
+  providers:
+    - name: host
+      enabled: true
+      transport: webhook
+      endpoint: http://127.0.0.1:43180/v1/embodiment/percept/host
+      capabilities: [hearing, speech]
+      session_id: sess_main
+      min_trigger_interval: 30s
+      max_triggers_per_hour: 60
+```
+
+Providers may also use the existing webhook inbox path `/v1/channels/webhook/inbound/{provider}`. TARS persists the Percept in the channel inbox first, then routes self-sensory Percepts through the embodiment gate and agent runtime. Body actions map to provider capabilities (`speak` → `speech`, `express` → `expression`, `move` → `motion`, `led` → `led`); unsupported capabilities are dropped gracefully instead of failing the cognition loop. MCP providers receive actions through their existing MCP server, so this does not add any built-in LLM tool surface.
+
 ### Remote Access
 
 TARS can expose the local console to your phone or another trusted device through Tailscale without binding the server to `0.0.0.0`.

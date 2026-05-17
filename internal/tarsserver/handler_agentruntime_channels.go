@@ -12,8 +12,14 @@ import (
 	"time"
 
 	"github.com/devlikebear/tars/internal/agentruntime"
+	"github.com/devlikebear/tars/internal/embodiment"
 	"github.com/rs/zerolog"
 )
+
+type embodimentIngress interface {
+	KnownProvider(provider string) bool
+	IngestPayload(ctx context.Context, provider string, payload map[string]any) (embodiment.IngestResult, error)
+}
 
 func newChannelsAPIHandler(runtime *agentruntime.Runtime, logger zerolog.Logger) http.Handler {
 	return newChannelsAPIHandlerWithTelegramSender(runtime, nil, logger)
@@ -21,6 +27,10 @@ func newChannelsAPIHandler(runtime *agentruntime.Runtime, logger zerolog.Logger)
 
 func newChannelsAPIHandlerWithTelegramSender(runtime *agentruntime.Runtime, sender telegramSender, logger zerolog.Logger) http.Handler {
 	return newChannelsAPIHandlerWithTelegramPairings(runtime, sender, nil, "pairing", false, logger)
+}
+
+func newChannelsAPIHandlerWithEmbodiment(runtime *agentruntime.Runtime, ingress embodimentIngress, logger zerolog.Logger) http.Handler {
+	return newChannelsAPIHandlerFull(runtime, nil, nil, "pairing", false, ingress, logger)
 }
 
 func newChannelsAPIHandlerWithTelegramPairings(
@@ -31,9 +41,21 @@ func newChannelsAPIHandlerWithTelegramPairings(
 	pollingEnabled bool,
 	logger zerolog.Logger,
 ) http.Handler {
+	return newChannelsAPIHandlerFull(runtime, sender, pairings, dmPolicy, pollingEnabled, nil, logger)
+}
+
+func newChannelsAPIHandlerFull(
+	runtime *agentruntime.Runtime,
+	sender telegramSender,
+	pairings *telegramPairingStore,
+	dmPolicy string,
+	pollingEnabled bool,
+	ingress embodimentIngress,
+	logger zerolog.Logger,
+) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/channels/webhook/inbound/", func(w http.ResponseWriter, r *http.Request) {
-		handleWebhookInbound(w, r, runtime, logger)
+		handleWebhookInbound(w, r, runtime, ingress, logger)
 	})
 	mux.HandleFunc("/v1/channels/telegram/webhook/", func(w http.ResponseWriter, r *http.Request) {
 		handleTelegramInbound(w, r, runtime, logger)
@@ -50,7 +72,7 @@ func newChannelsAPIHandlerWithTelegramPairings(
 	return mux
 }
 
-func handleWebhookInbound(w http.ResponseWriter, r *http.Request, runtime *agentruntime.Runtime, logger zerolog.Logger) {
+func handleWebhookInbound(w http.ResponseWriter, r *http.Request, runtime *agentruntime.Runtime, ingress embodimentIngress, logger zerolog.Logger) {
 	if !requireMethod(w, r, http.MethodPost) {
 		return
 	}
@@ -74,6 +96,7 @@ func handleWebhookInbound(w http.ResponseWriter, r *http.Request, runtime *agent
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
+	maybeIngestEmbodimentPayload(r.Context(), ingress, channelID, payload, logger)
 	writeJSON(w, http.StatusOK, msg)
 }
 
@@ -267,8 +290,14 @@ func extractInboundText(payload map[string]any) string {
 	if v := strings.TrimSpace(asString(payload["text"])); v != "" {
 		return v
 	}
+	if v := strings.TrimSpace(asString(payload["summary"])); v != "" {
+		return v
+	}
 	if msg, ok := payload["message"].(map[string]any); ok {
 		if v := strings.TrimSpace(asString(msg["text"])); v != "" {
+			return v
+		}
+		if v := strings.TrimSpace(asString(msg["summary"])); v != "" {
 			return v
 		}
 	}

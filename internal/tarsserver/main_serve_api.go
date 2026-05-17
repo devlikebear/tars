@@ -16,6 +16,7 @@ import (
 	"github.com/devlikebear/tars/internal/cli"
 	"github.com/devlikebear/tars/internal/config"
 	"github.com/devlikebear/tars/internal/cron"
+	"github.com/devlikebear/tars/internal/embodiment"
 	"github.com/devlikebear/tars/internal/extensions"
 	"github.com/devlikebear/tars/internal/llm"
 	"github.com/devlikebear/tars/internal/mcp"
@@ -43,6 +44,7 @@ type serveAPIRuntime struct {
 	agentRuntimeAgentsWatch *agentRuntimeAgentsWatcher
 	cronManager             *workspaceCronManager
 	watchdogManager         *workspaceWatchdogManager
+	embodimentSubsystem     *embodiment.Subsystem
 	pulseRuntime            *pulse.Runtime
 	reflectionRuntime       *reflection.Runtime
 	telegramPoller          *telegramUpdatePoller
@@ -74,6 +76,7 @@ type apiRouteHandlers struct {
 	agentSubagents  http.Handler
 	agentRuntime    http.Handler
 	channels        http.Handler
+	embodiment      http.Handler
 	events          http.Handler
 	config          http.Handler
 	skillhub        http.Handler
@@ -367,6 +370,13 @@ func buildAPIMux(
 		SessionStore: sessionStore,
 		Logger:       logger,
 	})
+	embodimentSubsystem := embodiment.NewWithOptions(cfg.Embodiment, logger, embodiment.Options{
+		Runtime:          agentRuntime,
+		DefaultSessionID: mainSessionID,
+		DefaultAgent:     strings.TrimSpace(cfg.AgentRuntimeDefaultAgent),
+		Now:              nowFn,
+		ActionDispatcher: embodiment.NewMCPTransport(mcpClient, logger),
+	})
 
 	var pulseSetup pulseSetup
 
@@ -596,14 +606,16 @@ func buildAPIMux(
 			telegramPairings.setLastUpdateID,
 		)
 	}
-	channelsHandler := newChannelsAPIHandlerWithTelegramPairings(
+	channelsHandler := newChannelsAPIHandlerFull(
 		agentRuntime,
 		telegramSender,
 		telegramPairings,
 		cfg.ChannelsTelegramDMPolicy,
 		cfg.ChannelsTelegramPollingEnabled,
+		embodimentSubsystem,
 		logger,
 	)
+	embodimentHandler := newEmbodimentAPIHandler(agentRuntime, embodimentSubsystem, logger)
 	hubInstaller := skillhub.NewInstaller(cfg.WorkspaceDir)
 	_ = hubInstaller.Sources.Register(openclaw.New())
 	_ = hubInstaller.Sources.Register(hermes.New())
@@ -644,6 +656,7 @@ func buildAPIMux(
 		agentSubagents:  agentSubagentsHandler,
 		agentRuntime:    agentRuntimeHandler,
 		channels:        channelsHandler,
+		embodiment:      embodimentHandler,
 		events:          eventsHandler,
 		config:          configHandler,
 		skillhub:        skillhubHandler,
@@ -682,6 +695,7 @@ func buildAPIMux(
 		agentRuntimeAgentsWatch: agentRuntimeAgentsWatch,
 		cronManager:             cronManager,
 		watchdogManager:         watchdogManager,
+		embodimentSubsystem:     embodimentSubsystem,
 		pulseRuntime:            pulseSetup.Runtime,
 		reflectionRuntime:       reflectionSetup.Runtime,
 		telegramPoller:          telegramPoller,
@@ -805,6 +819,8 @@ func registerAPIRoutes(mux *http.ServeMux, handlers apiRouteHandlers) {
 	mux.Handle("/v1/channels/telegram/send", handlers.channels)
 	mux.Handle("/v1/channels/telegram/pairings", handlers.channels)
 	mux.Handle("/v1/channels/telegram/pairings/", handlers.channels)
+	mux.Handle("/v1/embodiment/percept/", handlers.embodiment)
+	mux.Handle("/v1/embodiment/percepts/", handlers.embodiment)
 	mux.Handle("/v1/events/stream", handlers.events)
 	mux.Handle("/v1/events/history", handlers.events)
 	mux.Handle("/v1/events/read", handlers.events)
@@ -914,6 +930,15 @@ func startBackgrounds(ctx context.Context, runtime *serveAPIRuntime, logger zero
 		finishStartup(err)
 		return err
 	}
+	if err := runBackgroundStartupStep(logger, "embodiment_subsystem", func() error {
+		if runtime.embodimentSubsystem != nil {
+			return runtime.embodimentSubsystem.Start(ctx)
+		}
+		return nil
+	}); err != nil {
+		finishStartup(err)
+		return err
+	}
 	if err := runBackgroundStartupStep(logger, "reflection_runtime", func() error {
 		if runtime.reflectionRuntime != nil {
 			runtime.reflectionRuntime.Start(ctx)
@@ -1011,6 +1036,9 @@ func shutdownRuntime(ctx context.Context, runtime *serveAPIRuntime) {
 	}
 	if runtime.reflectionRuntime != nil {
 		runtime.reflectionRuntime.Stop()
+	}
+	if runtime.embodimentSubsystem != nil {
+		runtime.embodimentSubsystem.Stop()
 	}
 	if runtime.extensionsManager != nil {
 		runtime.extensionsManager.Close()

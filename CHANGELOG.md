@@ -6,6 +6,14 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.32.68] - 2026-05-17
+
+### Added
+
+- **Embodiment core scaffold (Phase 1)** — Adds the dormant `internal/embodiment` subsystem without changing chat/runtime behavior when no body provider is configured. The new provider-neutral contract defines body `Capability` values (`vision`, `hearing`, `speech`, `expression`, `motion`, `led`), `Percept`, `ProviderDescriptor`, and future `BodyAction` types, plus a thread-safe registry with duplicate-name rejection, enabled-provider filtering, and defensive capability copies. Runtime wiring starts no background work when `embodiment.enabled: false` or zero enabled providers are configured, and it registers no LLM tools. Config now accepts `embodiment.enabled` and `embodiment.providers` from YAML or `TARS_EMBODIMENT_ENABLED` / `TARS_EMBODIMENT_PROVIDERS_JSON`, and `tars doctor` reports `[ok] embodiment: disabled` by default or `enabled (providers: ...)` when configured. `config/default.yaml`, `config/tars.config.example.yaml`, and README document the disabled default plus stackchan/host provider examples.
+- **Embodiment perception → cognition (Phase 2 / #875)** — Adds typed Percept ingress through both the existing `/v1/channels/webhook/inbound/{provider}` path and the dedicated `/v1/embodiment/percept/{provider}` endpoint. Known enabled body providers still persist inbound Percepts as channel messages, then normalize them into self-sensory `Percept` values with owner, modality, salience, trigger, media reference, session, and raw payload metadata. A salience/owner gate maps owner audio to `directive`, leaves stranger/unknown/ambient inputs as `observation` by default, and applies debounce plus per-hour rate limiting. Directive Percepts trigger one agent runtime turn in the bound/default session with an embodied system prompt append; concurrent provider/session triggers are suppressed while a run is in flight. Non-embodiment webhooks keep their previous inbox-only behavior, and Phase 2 still does not add actuation routing or hardware/provider code.
+- **Embodiment actuation egress (Phase 3)** — Closes the mock perception→cognition→actuation loop without adding any built-in LLM tools. Embodied cognition responses may append a fenced `tars-body-action` JSON block, which is parsed into normalized `BodyAction` values (`speak`, `express`, `move`, `led`) and validated before routing. The action router maps actions to provider capabilities (`speech`, `expression`, `motion`, `led`) and gracefully drops unsupported or disabled-provider actions with info logging instead of failing the cognition loop. MCP-backed providers receive supported actions through their existing MCP server tools, with one retry on dispatch failure; speech-only mock coverage proves `speak` is delivered while `express` is dropped.
+
 ## [0.32.67] - 2026-05-15
 
 ### Added

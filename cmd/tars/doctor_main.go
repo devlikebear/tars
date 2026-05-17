@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -139,6 +140,7 @@ func buildDoctorReport(opts doctorOptions) (doctorReport, error) {
 		checkDoctorLLMCredentials(&report, cfg, configPath)
 		checkDoctorLLMRuntime(&report, cfg)
 		checkDoctorSemanticMemory(&report, cfg, configPath)
+		checkDoctorEmbodiment(&report, cfg)
 	}
 
 	if report.failureCount() > 0 {
@@ -341,6 +343,36 @@ func checkDoctorSemanticMemory(report *doctorReport, cfg config.Config, configPa
 		return
 	}
 	report.add("ok", "semantic memory", fmt.Sprintf("provider=%s model=%s", semanticCfg.EmbedProvider, semanticCfg.EmbedModel))
+}
+
+func checkDoctorEmbodiment(report *doctorReport, cfg config.Config) {
+	names := enabledEmbodimentProviderNames(cfg.Embodiment)
+	if !cfg.Embodiment.Enabled || len(names) == 0 {
+		report.add("ok", "embodiment", "disabled")
+		return
+	}
+	report.add("ok", "embodiment", fmt.Sprintf("enabled (providers: %s)", strings.Join(names, ", ")))
+}
+
+func enabledEmbodimentProviderNames(cfg config.EmbodimentConfig) []string {
+	names := make([]string, 0, len(cfg.Providers))
+	seen := map[string]struct{}{}
+	for _, provider := range cfg.Providers {
+		if !provider.Enabled {
+			continue
+		}
+		name := strings.TrimSpace(provider.Name)
+		if name == "" {
+			continue
+		}
+		if _, exists := seen[name]; exists {
+			continue
+		}
+		seen[name] = struct{}{}
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }
 
 func llmCredentialHint(provider, configPath string) string {
