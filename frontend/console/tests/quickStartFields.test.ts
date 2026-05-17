@@ -10,6 +10,7 @@ import {
 import type { ConfigFieldMeta } from '../src/lib/types.ts'
 
 const configSource = readFileSync(new URL('../src/components/Config.svelte', import.meta.url), 'utf8')
+const configStructuredSource = readFileSync(new URL('../src/lib/configStructured.ts', import.meta.url), 'utf8')
 const apiSource = readFileSync(new URL('../src/lib/api.ts', import.meta.url), 'utf8')
 
 function field(key: string, label = key, type = 'string'): ConfigFieldMeta {
@@ -100,4 +101,7 @@ test('Settings renders Quick Start tab and LLM connection action', () => {
   assert.match(configSource, /quick-start-grid/)
   assert.match(configSource, /Test connection/)
   assert.match(configSource, /openEmbodimentProviderEditor/)
+  assert.match(configSource, /EMBODIMENT_PROVIDER_PRESETS/)
+  assert.match(configStructuredSource, /Add StackChan/)
+  assert.match(configSource, /capability-chip/)
 })

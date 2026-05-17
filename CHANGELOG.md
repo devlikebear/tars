@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.32.70] - 2026-05-17
+
+### Fixed
+
+- **Console Settings: Embodied provider guidance (#880)** — The Embodied Bot providers editor now offers one-click `Mac Host`, `StackChan`, and `Custom` presets instead of making users guess provider names, MCP endpoints, and capability lists. The capability picker has been replaced with grouped perception/actuation chips with tooltips, and every provider field now exposes a short hint. The recommended defaults now match the `tars-stackchan` companion examples: physical StackChan uses MCP endpoint `tars-stackchan` with full body capabilities, while the Mac host companion uses `tars-stackchan-host` with hearing/speech, observation triggers, and owner gating disabled by default.
+
 ## [0.32.69] - 2026-05-17
 
 ### Fixed

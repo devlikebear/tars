@@ -174,23 +174,34 @@ Multi-channel I/O beyond the web console:
 
 TARS has a core `embodiment` subsystem for body providers. The shipped default is `enabled: false` with no providers, so existing chat/runtime behavior is unchanged and no LLM tools are registered. When enabled, known providers can post Percepts; owner audio becomes an autonomous directive turn, while ambient/stranger observations stay non-triggering by default. Cognition turns can emit structured `tars-body-action` blocks, which TARS routes back to the bound provider only when the provider declares the matching capability.
 
-In the Console, open Settings and use the Quick Start `Embodied Bot` and `Embodied Bot providers` cards to edit the same settings without switching to raw YAML. The providers card opens a structured form for transport, endpoint, trigger limits, owner gating, and capability toggles.
+In the Console, open Settings and use the Quick Start `Embodied Bot` and `Embodied Bot providers` cards to edit the same settings without switching to raw YAML. The providers card opens a structured form with `Mac Host`, `StackChan`, and `Custom` presets, field hints, and grouped capability toggles. For MCP providers, `endpoint` must match an `mcp.servers` key from the companion server config.
 
 ```yaml
 embodiment:
   enabled: true
   providers:
+    - name: stackchan
+      enabled: true
+      transport: mcp
+      endpoint: tars-stackchan
+      capabilities: [vision, hearing, speech, expression, motion, led]
+      session_id: sess_main
+      owner_only_directive: true
+      min_trigger_interval: 30s
+      max_triggers_per_hour: 60
     - name: host
       enabled: true
-      transport: webhook
-      endpoint: http://127.0.0.1:43180/v1/embodiment/percept/host
+      transport: mcp
+      endpoint: tars-stackchan-host
       capabilities: [hearing, speech]
       session_id: sess_main
+      owner_only_directive: false
+      trigger_observations: true
       min_trigger_interval: 30s
       max_triggers_per_hour: 60
 ```
 
-Providers may also use the existing webhook inbox path `/v1/channels/webhook/inbound/{provider}`. TARS persists the Percept in the channel inbox first, then routes self-sensory Percepts through the embodiment gate and agent runtime. Body actions map to provider capabilities (`speak` → `speech`, `express` → `expression`, `move` → `motion`, `led` → `led`); unsupported capabilities are dropped gracefully instead of failing the cognition loop. MCP providers receive actions through their existing MCP server, so this does not add any built-in LLM tool surface.
+Providers may also use the existing webhook inbox path `/v1/channels/webhook/inbound/{provider}` or the direct percept path `/v1/embodiment/percept/{provider}`. TARS persists the Percept in the channel inbox first, then routes self-sensory Percepts through the embodiment gate and agent runtime. Body actions map to provider capabilities (`speak` → `speech`, `express` → `expression`, `move` → `motion`, `led` → `led`); unsupported capabilities are dropped gracefully instead of failing the cognition loop. MCP providers receive actions through their existing MCP server, so this does not add any built-in LLM tool surface.
 
 ### Remote Access
 

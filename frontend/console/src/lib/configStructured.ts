@@ -141,6 +141,132 @@ export const LLM_PROVIDER_AUTH_MODES = ['api-key', 'oauth', 'cli'] as const
 export const EMBODIMENT_PROVIDER_TRANSPORTS = ['mcp', 'webhook'] as const
 export const EMBODIMENT_PROVIDER_CAPABILITIES = ['vision', 'hearing', 'speech', 'expression', 'motion', 'led'] as const
 
+export type EmbodimentCapabilityGroup = 'perception' | 'actuation'
+
+export type EmbodimentCapabilityDetail = {
+  id: string
+  label: string
+  group: EmbodimentCapabilityGroup
+  description: string
+}
+
+export const EMBODIMENT_PROVIDER_CAPABILITY_DETAILS: EmbodimentCapabilityDetail[] = [
+  {
+    id: 'vision',
+    label: 'Vision',
+    group: 'perception',
+    description: 'Provider can send camera snapshots or visual observations to TARS.',
+  },
+  {
+    id: 'hearing',
+    label: 'Hearing',
+    group: 'perception',
+    description: 'Provider can send microphone/audio Percepts to TARS.',
+  },
+  {
+    id: 'speech',
+    label: 'Speech',
+    group: 'actuation',
+    description: 'TARS may route speak actions back to this provider.',
+  },
+  {
+    id: 'expression',
+    label: 'Expression',
+    group: 'actuation',
+    description: 'TARS may route facial/emotion expression actions to this provider.',
+  },
+  {
+    id: 'motion',
+    label: 'Motion',
+    group: 'actuation',
+    description: 'TARS may route head or motion actions to this provider.',
+  },
+  {
+    id: 'led',
+    label: 'LED',
+    group: 'actuation',
+    description: 'TARS may route LED color or status-light actions to this provider.',
+  },
+]
+
+export type EmbodimentProviderPresetID = 'host' | 'stackchan' | 'custom'
+
+export type EmbodimentProviderPreset = {
+  id: EmbodimentProviderPresetID
+  title: string
+  buttonLabel: string
+  description: string
+  name: string
+  transport: string
+  endpoint: string
+  capabilities: string[]
+  session_id: string
+  agent: string
+  owner_only_directive: boolean
+  salience_min_sound_level: string
+  min_trigger_interval: string
+  max_triggers_per_hour: string
+  trigger_observations: boolean
+  tip: string
+}
+
+export const EMBODIMENT_PROVIDER_PRESETS: EmbodimentProviderPreset[] = [
+  {
+    id: 'host',
+    title: 'Mac Host',
+    buttonLabel: 'Add Mac Host',
+    description: 'Mac mic/camera companion with local speech output.',
+    name: 'host',
+    transport: 'mcp',
+    endpoint: 'tars-stackchan-host',
+    capabilities: ['hearing', 'speech'],
+    session_id: 'sess_main',
+    agent: '',
+    owner_only_directive: false,
+    salience_min_sound_level: '0.6',
+    min_trigger_interval: '30s',
+    max_triggers_per_hour: '60',
+    trigger_observations: true,
+    tip: 'Use with the tars-stackchan-host MCP server. Add Vision only when imagesnap or ffmpeg camera capture is available.',
+  },
+  {
+    id: 'stackchan',
+    title: 'StackChan',
+    buttonLabel: 'Add StackChan',
+    description: 'Physical Stack-chan body through the tars-stackchan MCP server.',
+    name: 'stackchan',
+    transport: 'mcp',
+    endpoint: 'tars-stackchan',
+    capabilities: ['vision', 'hearing', 'speech', 'expression', 'motion', 'led'],
+    session_id: 'sess_main',
+    agent: '',
+    owner_only_directive: true,
+    salience_min_sound_level: '0.6',
+    min_trigger_interval: '30s',
+    max_triggers_per_hour: '60',
+    trigger_observations: false,
+    tip: 'Use with the tars-stackchan MCP server. Uncheck Vision for audio-only firmware or when camera capture is disabled.',
+  },
+  {
+    id: 'custom',
+    title: 'Custom',
+    buttonLabel: 'Add Custom',
+    description: 'Start from a generic MCP provider and adjust every field.',
+    name: 'provider',
+    transport: 'mcp',
+    endpoint: 'provider',
+    capabilities: ['hearing', 'speech'],
+    session_id: 'sess_main',
+    agent: '',
+    owner_only_directive: true,
+    salience_min_sound_level: '0.6',
+    min_trigger_interval: '30s',
+    max_triggers_per_hour: '60',
+    trigger_observations: false,
+    tip: 'For MCP transport, Endpoint must match an mcp.servers key. For webhook transport, use the full inbound URL.',
+  },
+]
+
 // Tier-binding service_tier choices. Provider-level service_tier is no
 // longer exposed — the per-tier value flows through to the provider API.
 export const LLM_TIER_SERVICE_TIERS = ['', 'auto', 'default', 'flex', 'priority'] as const
@@ -405,6 +531,31 @@ export function makeEmbodimentProviderDrafts(value: unknown): EmbodimentProvider
     })
 }
 
+export function makeEmbodimentProviderPresetDraft(
+  presetID: EmbodimentProviderPresetID | string,
+  id: string,
+  existingNames: string[] = [],
+): EmbodimentProviderDraft {
+  const preset = EMBODIMENT_PROVIDER_PRESETS.find((item) => item.id === presetID) || EMBODIMENT_PROVIDER_PRESETS[2]
+  const name = uniqueEmbodimentProviderName(preset.name, existingNames)
+  return {
+    id,
+    originalName: '',
+    name,
+    enabled: true,
+    transport: preset.transport,
+    endpoint: preset.endpoint,
+    capabilities: [...preset.capabilities],
+    session_id: preset.session_id,
+    agent: preset.agent,
+    owner_only_directive: preset.owner_only_directive,
+    salience_min_sound_level: preset.salience_min_sound_level,
+    min_trigger_interval: preset.min_trigger_interval,
+    max_triggers_per_hour: preset.max_triggers_per_hour,
+    trigger_observations: preset.trigger_observations,
+  }
+}
+
 export function buildEmbodimentProvidersFromDrafts(drafts: EmbodimentProviderDraft[]): EmbodimentProvidersBuildResult {
   const trimmedNames = drafts.map((draft) => draft.name.trim())
   const nameCounts = new Map<string, number>()
@@ -545,6 +696,19 @@ function normalizeStringList(values: unknown[]): string[] {
     out.push(normalized)
   }
   return out
+}
+
+function uniqueEmbodimentProviderName(base: string, existingNames: string[]): string {
+  const normalized = new Set(existingNames.map((name) => name.trim()).filter(Boolean))
+  const fallback = base.trim() || 'provider'
+  if (!normalized.has(fallback)) return fallback
+  let index = 2
+  let candidate = `${fallback}${index}`
+  while (normalized.has(candidate)) {
+    index += 1
+    candidate = `${fallback}${index}`
+  }
+  return candidate
 }
 
 function readNumberString(record: Record<string, unknown>, key: string, fallbackKey?: string): string {
