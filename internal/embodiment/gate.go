@@ -7,10 +7,11 @@ import (
 )
 
 type GateConfig struct {
-	MinTriggerInterval  time.Duration
-	MaxTriggersPerHour  int
-	TriggerObservations bool
-	Now                 func() time.Time
+	MinTriggerInterval            time.Duration
+	MaxTriggersPerHour            int
+	TriggerObservations           bool
+	TriggerObservationsByProvider map[string]bool
+	Now                           func() time.Time
 }
 
 type Gate struct {
@@ -45,7 +46,7 @@ func (g *Gate) Decide(percept Percept) GateDecision {
 		mode = GateModeDirective
 		reason = GateReasonOwnerVoice
 		shouldTrigger = true
-	} else if g.cfg.TriggerObservations {
+	} else if g.triggerObservations(percept.Provider) {
 		shouldTrigger = true
 	}
 	if !shouldTrigger {
@@ -62,6 +63,16 @@ func (g *Gate) Decide(percept Percept) GateDecision {
 	}
 	g.recordLocked(key, now)
 	return GateDecision{Trigger: true, Mode: mode, Reason: reason}
+}
+
+func (g *Gate) triggerObservations(provider string) bool {
+	if g == nil {
+		return false
+	}
+	if len(g.cfg.TriggerObservationsByProvider) > 0 {
+		return g.cfg.TriggerObservationsByProvider[normalizeName(provider)]
+	}
+	return g.cfg.TriggerObservations
 }
 
 func (g *Gate) now() time.Time {
