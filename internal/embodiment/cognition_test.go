@@ -11,9 +11,10 @@ import (
 )
 
 type fakeCognitionRuntime struct {
-	mu     sync.Mutex
-	spawns []agentruntime.SpawnRequest
-	waitCh chan struct{}
+	mu      sync.Mutex
+	spawns  []agentruntime.SpawnRequest
+	waitCh  chan struct{}
+	waitRun agentruntime.Run
 }
 
 func (f *fakeCognitionRuntime) Spawn(_ context.Context, req agentruntime.SpawnRequest) (agentruntime.Run, error) {
@@ -26,6 +27,9 @@ func (f *fakeCognitionRuntime) Spawn(_ context.Context, req agentruntime.SpawnRe
 func (f *fakeCognitionRuntime) Wait(ctx context.Context, runID string) (agentruntime.Run, error) {
 	select {
 	case <-f.waitCh:
+		if f.waitRun.ID != "" {
+			return f.waitRun, nil
+		}
 		return agentruntime.Run{ID: runID, Status: agentruntime.RunStatusCompleted}, nil
 	case <-ctx.Done():
 		return agentruntime.Run{}, ctx.Err()

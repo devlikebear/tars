@@ -20,6 +20,10 @@ func BuildSystemPromptBlock(percept Percept, decision GateDecision) string {
 	if percept.Owner == OwnerOwner && decision.Mode == GateModeDirective {
 		parts = append(parts, "owner 발화는 사용자 키보드 지시와 동급의 directive로 취급하라.")
 	}
+	parts = append(parts,
+		"몸으로 응답해야 할 때만 마지막에 ```tars-body-action JSON fenced block을 추가하라.",
+		`형식: [{"kind":"speak","payload":{"text":"..."}}]. kind는 speak, express, move, led 중 하나다.`,
+	)
 	return strings.Join(parts, "\n")
 }
 
@@ -43,6 +47,7 @@ func BuildCognitionPrompt(percept Percept, decision GateDecision) string {
 	} else {
 		lines = append(lines, "Record this as an observation unless action is clearly needed.")
 	}
+	lines = append(lines, "If body output is useful, append a tars-body-action fenced JSON block with speak/express/move/led actions.")
 	return strings.Join(lines, "\n")
 }
 

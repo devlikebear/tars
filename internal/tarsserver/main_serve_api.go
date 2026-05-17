@@ -375,6 +375,7 @@ func buildAPIMux(
 		DefaultSessionID: mainSessionID,
 		DefaultAgent:     strings.TrimSpace(cfg.AgentRuntimeDefaultAgent),
 		Now:              nowFn,
+		ActionDispatcher: embodiment.NewMCPTransport(mcpClient, logger),
 	})
 
 	var pulseSetup pulseSetup

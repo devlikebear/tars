@@ -22,6 +22,7 @@ type Subsystem struct {
 	providers      map[string]config.EmbodimentProviderConfig
 	gate           *Gate
 	cognition      *Cognition
+	router         *Router
 	defaultSession string
 	defaultAgent   string
 
@@ -34,6 +35,7 @@ type Options struct {
 	DefaultSessionID string
 	DefaultAgent     string
 	Now              func() time.Time
+	ActionDispatcher ActionDispatcher
 }
 
 func New(cfg config.EmbodimentConfig, logger zerolog.Logger) *Subsystem {
@@ -50,9 +52,12 @@ func NewWithOptions(cfg config.EmbodimentConfig, logger zerolog.Logger, opts Opt
 		defaultAgent:   strings.TrimSpace(opts.DefaultAgent),
 	}
 	subsystem.gate = NewGate(defaultGateConfig(cfg, opts.Now))
+	subsystem.router = NewRouter(opts.ActionDispatcher, logger)
 	subsystem.cognition = NewCognition(opts.Runtime, CognitionConfig{
 		DefaultSessionID: subsystem.defaultSession,
 		DefaultAgent:     subsystem.defaultAgent,
+		ActionRouter:     subsystem.router,
+		ProviderResolver: subsystem.resolveProvider,
 	})
 	for _, provider := range cfg.Providers {
 		provider = config.NormalizeEmbodimentProviderForRuntime(provider)
@@ -64,6 +69,17 @@ func NewWithOptions(cfg config.EmbodimentConfig, logger zerolog.Logger, opts Opt
 		subsystem.providers[desc.Name] = provider
 	}
 	return subsystem
+}
+
+func (s *Subsystem) resolveProvider(provider string) (ProviderDescriptor, bool) {
+	if s == nil {
+		return ProviderDescriptor{}, false
+	}
+	desc, ok := s.registry.Get(provider)
+	if !ok || !desc.Enabled {
+		return ProviderDescriptor{}, false
+	}
+	return desc, true
 }
 
 func (s *Subsystem) Start(ctx context.Context) error {

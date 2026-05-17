@@ -14,10 +14,16 @@ type AgentRuntime interface {
 	Wait(context.Context, string) (agentruntime.Run, error)
 }
 
+type ActionRouter interface {
+	RouteAll(context.Context, []BodyAction, ProviderDescriptor) []RouteResult
+}
+
 type CognitionConfig struct {
 	DefaultSessionID string
 	DefaultAgent     string
 	WaitTimeout      time.Duration
+	ActionRouter     ActionRouter
+	ProviderResolver func(string) (ProviderDescriptor, bool)
 }
 
 type Cognition struct {
@@ -70,7 +76,7 @@ func (c *Cognition) Trigger(ctx context.Context, percept Percept, decision GateD
 	c.mu.Lock()
 	c.inFlight[key] = strings.TrimSpace(run.ID)
 	c.mu.Unlock()
-	go c.waitAndClear(key, run.ID)
+	go c.waitAndClear(key, run.ID, percept)
 	return CognitionResult{Triggered: true, RunID: run.ID, Reason: CognitionReasonTriggered}, nil
 }
 
@@ -84,15 +90,36 @@ func (c *Cognition) InFlight(provider, sessionID string) bool {
 	return ok
 }
 
-func (c *Cognition) waitAndClear(key, runID string) {
+func (c *Cognition) waitAndClear(key, runID string, percept Percept) {
 	timeout := c.cfg.WaitTimeout
 	if timeout <= 0 {
 		timeout = 30 * time.Minute
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	_, _ = c.runtime.Wait(ctx, runID)
+	run, err := c.runtime.Wait(ctx, runID)
+	if err == nil {
+		c.routeRunActions(ctx, percept, run.Response)
+	}
 	c.clearInFlight(key)
+}
+
+func (c *Cognition) routeRunActions(ctx context.Context, percept Percept, response string) {
+	if c == nil || c.cfg.ActionRouter == nil || strings.TrimSpace(response) == "" {
+		return
+	}
+	actions, err := ExtractBodyActions(response)
+	if err != nil || len(actions) == 0 {
+		return
+	}
+	if c.cfg.ProviderResolver == nil {
+		return
+	}
+	provider, ok := c.cfg.ProviderResolver(percept.Provider)
+	if !ok {
+		return
+	}
+	c.cfg.ActionRouter.RouteAll(ctx, actions, provider)
 }
 
 func (c *Cognition) clearInFlight(key string) {

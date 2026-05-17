@@ -162,8 +162,9 @@ assistant:
 embodiment:
   enabled: false
   providers: []
-  # Provider examples for future phases. Capability values:
+  # Provider examples. Capability values:
   # vision, hearing, speech, expression, motion, led.
+  # MCP provider endpoints name the MCP server used for action egress.
   #
   # providers:
   #   - name: stackchan

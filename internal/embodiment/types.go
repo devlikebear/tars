@@ -1,8 +1,7 @@
 // Package embodiment defines the provider-neutral body subsystem contract.
 //
-// Phase 1 intentionally keeps this package dormant: it models perceptions,
-// body capabilities, providers, and future actions without registering any
-// LLM tools or touching hardware-specific code.
+// It models perceptions, body capabilities, provider-neutral actions, and the
+// routing loop without registering LLM tools or touching hardware-specific code.
 package embodiment
 
 import "time"
@@ -79,6 +78,25 @@ type ProviderDescriptor struct {
 type BodyAction struct {
 	Kind    ActionKind
 	Payload map[string]any
+}
+
+const (
+	RouteReasonDelivered              = "delivered"
+	RouteReasonInvalidAction          = "invalid_action"
+	RouteReasonProviderDisabled       = "provider_disabled"
+	RouteReasonCapabilityNotSupported = "capability_not_supported"
+	RouteReasonNoDispatcher           = "no_dispatcher"
+	RouteReasonDispatchFailed         = "dispatch_failed"
+)
+
+type RouteResult struct {
+	Action             BodyAction `json:"action"`
+	Provider           string     `json:"provider,omitempty"`
+	RequiredCapability Capability `json:"required_capability,omitempty"`
+	Delivered          bool       `json:"delivered"`
+	Dropped            bool       `json:"dropped"`
+	Reason             string     `json:"reason,omitempty"`
+	Error              string     `json:"error,omitempty"`
 }
 
 type GateMode string

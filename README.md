@@ -172,7 +172,7 @@ Multi-channel I/O beyond the web console:
 
 ### Embodiment
 
-TARS has a core `embodiment` subsystem for body providers. The shipped default is `enabled: false` with no providers, so existing chat/runtime behavior is unchanged and no LLM tools are registered. When enabled, known providers can post Percepts; owner audio becomes an autonomous directive turn, while ambient/stranger observations stay non-triggering by default.
+TARS has a core `embodiment` subsystem for body providers. The shipped default is `enabled: false` with no providers, so existing chat/runtime behavior is unchanged and no LLM tools are registered. When enabled, known providers can post Percepts; owner audio becomes an autonomous directive turn, while ambient/stranger observations stay non-triggering by default. Cognition turns can emit structured `tars-body-action` blocks, which TARS routes back to the bound provider only when the provider declares the matching capability.
 
 ```yaml
 embodiment:
@@ -188,7 +188,7 @@ embodiment:
       max_triggers_per_hour: 60
 ```
 
-Providers may also use the existing webhook inbox path `/v1/channels/webhook/inbound/{provider}`. TARS persists the Percept in the channel inbox first, then routes self-sensory Percepts through the embodiment gate and agent runtime. Actuation routing and concrete stackchan/host provider implementations land in later phases.
+Providers may also use the existing webhook inbox path `/v1/channels/webhook/inbound/{provider}`. TARS persists the Percept in the channel inbox first, then routes self-sensory Percepts through the embodiment gate and agent runtime. Body actions map to provider capabilities (`speak` → `speech`, `express` → `expression`, `move` → `motion`, `led` → `led`); unsupported capabilities are dropped gracefully instead of failing the cognition loop. MCP providers receive actions through their existing MCP server, so this does not add any built-in LLM tool surface.
 
 ### Remote Access
 
