@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.32.69] - 2026-05-17
+
+### Fixed
+
+- **Console Settings: Embodied Bot quick-start controls (#878)** — The backend config schema already exposed `embodiment.enabled` and `embodiment.providers`, but the default Console Settings "Quick Start" view did not show them. Quick Start now includes `Embodied Bot` and `Embodied Bot providers` cards with the same restart/env-override metadata as other core runtime settings, while the full Fields tab remains unchanged.
+
 ## [0.32.68] - 2026-05-17
 
 ### Added

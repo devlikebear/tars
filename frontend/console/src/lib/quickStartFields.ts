@@ -7,6 +7,8 @@ export const quickStartFieldKeys = [
   'llm_default_tier',
   'workspace_dir',
   'telegram_bot_token',
+  'embodiment_enabled',
+  'embodiment_providers_json',
   'pulse_enabled',
   'reflection_enabled',
   'log_level',
@@ -75,6 +77,18 @@ export const quickStartDefinitions: QuickStartDefinition[] = [
     required: false,
   },
   {
+    key: 'embodiment_enabled',
+    title: 'Embodied Bot',
+    description: 'Enable perception and body-provider routing for Stack-chan or host devices.',
+    required: true,
+  },
+  {
+    key: 'embodiment_providers_json',
+    title: 'Embodied Bot providers',
+    description: 'Declare Stack-chan or host body providers and their capabilities.',
+    required: false,
+  },
+  {
     key: 'pulse_enabled',
     title: 'Pulse watchdog',
     description: 'Enable periodic workspace health checks.',
@@ -138,6 +152,8 @@ function validateQuickStartValue(definition: QuickStartDefinition, value: unknow
       return validateLLMProviders(value)
     case 'llm_tiers':
       return validateLLMTiers(value)
+    case 'embodiment_providers_json':
+      return validateEmbodimentProviders(value)
     case 'workspace_dir':
       return stringReady(value, 'workspace path configured', 'Set a workspace directory before saving runtime data.')
     case 'telegram_bot_token':
@@ -149,6 +165,20 @@ function validateQuickStartValue(definition: QuickStartDefinition, value: unknow
         ? { kind: 'ready', label: 'ready', message: 'Configured.' }
         : { kind: 'attention', label: 'needs value', message: 'Set a value before first run.' }
   }
+}
+
+function validateEmbodimentProviders(value: unknown): QuickStartStatus {
+  if (!Array.isArray(value)) {
+    return { kind: 'attention', label: 'invalid', message: 'Provider descriptors must be a list.' }
+  }
+  const missingName = value.some((entry) => {
+    const provider = asRecord(entry)
+    return !hasValue(provider?.name)
+  })
+  if (missingName) {
+    return { kind: 'attention', label: 'incomplete', message: 'Each body provider needs a name.' }
+  }
+  return { kind: 'ready', label: 'ready', message: `${value.length} body provider${value.length === 1 ? '' : 's'} configured.` }
 }
 
 function validateLLMProviders(value: unknown): QuickStartStatus {

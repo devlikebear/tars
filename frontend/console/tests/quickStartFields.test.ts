@@ -33,6 +33,8 @@ test('quick start field list is curated and ordered for onboarding', () => {
     'llm_default_tier',
     'workspace_dir',
     'telegram_bot_token',
+    'embodiment_enabled',
+    'embodiment_providers_json',
     'pulse_enabled',
     'reflection_enabled',
     'log_level',
@@ -48,6 +50,8 @@ test('quick start validation highlights required provider and workspace setup', 
     llm_tiers: { heavy: {}, standard: {} },
     llm_default_tier: 'standard',
     workspace_dir: '',
+    embodiment_enabled: false,
+    embodiment_providers_json: [],
     pulse_enabled: true,
     reflection_enabled: true,
     log_level: 'info',
@@ -61,7 +65,9 @@ test('quick start validation highlights required provider and workspace setup', 
   assert.equal(providers?.status.kind, 'attention')
   assert.match(providers?.status.message || '', /provider/i)
   assert.equal(workspace?.status.kind, 'attention')
-  assert.equal(quickStartProgress(items).total, 9)
+  assert.equal(items.find((item) => item.key === 'embodiment_enabled')?.status.kind, 'ready')
+  assert.equal(items.find((item) => item.key === 'embodiment_providers_json')?.status.kind, 'optional')
+  assert.equal(quickStartProgress(items).total, 10)
 })
 
 test('quick start accepts provider credentials and reports progress', () => {
@@ -73,6 +79,8 @@ test('quick start accepts provider credentials and reports progress', () => {
     llm_default_tier: 'standard',
     workspace_dir: './workspace',
     telegram_bot_token: '',
+    embodiment_enabled: true,
+    embodiment_providers_json: [{ name: 'host', transport: 'mcp' }],
     pulse_enabled: true,
     reflection_enabled: true,
     log_level: 'info',
@@ -81,7 +89,8 @@ test('quick start accepts provider credentials and reports progress', () => {
 
   const items = buildQuickStartItems(schema, values, {})
   assert.equal(items.find((item) => item.key === 'llm_providers')?.status.kind, 'ready')
-  assert.equal(quickStartProgress(items).ready, 9)
+  assert.equal(items.find((item) => item.key === 'embodiment_providers_json')?.status.kind, 'ready')
+  assert.equal(quickStartProgress(items).ready, 10)
 })
 
 test('Settings renders Quick Start tab and LLM connection action', () => {
