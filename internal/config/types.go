@@ -293,6 +293,21 @@ type ChannelConfig struct {
 	TelegramBotToken               string
 }
 
+type EmbodimentConfig struct {
+	Enabled   bool
+	Providers []EmbodimentProviderConfig
+}
+
+type EmbodimentProviderConfig struct {
+	Name                  string   `json:"name" yaml:"name"`
+	Enabled               bool     `json:"enabled" yaml:"enabled"`
+	Transport             string   `json:"transport" yaml:"transport"`
+	Endpoint              string   `json:"endpoint" yaml:"endpoint"`
+	Capabilities          []string `json:"capabilities" yaml:"capabilities"`
+	OwnerOnlyDirective    bool     `json:"owner_only_directive" yaml:"owner_only_directive"`
+	SalienceMinSoundLevel float64  `json:"salience_min_sound_level" yaml:"salience_min_sound_level"`
+}
+
 type ExtensionConfig struct {
 	SkillsEnabled          bool
 	SkillsWatch            bool
@@ -323,6 +338,7 @@ type Config struct {
 	ToolConfig
 	AgentRuntimeConfig
 	ChannelConfig
+	Embodiment EmbodimentConfig
 	ExtensionConfig
 }
 

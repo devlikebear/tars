@@ -16,6 +16,7 @@ import (
 	"github.com/devlikebear/tars/internal/cli"
 	"github.com/devlikebear/tars/internal/config"
 	"github.com/devlikebear/tars/internal/cron"
+	"github.com/devlikebear/tars/internal/embodiment"
 	"github.com/devlikebear/tars/internal/extensions"
 	"github.com/devlikebear/tars/internal/llm"
 	"github.com/devlikebear/tars/internal/mcp"
@@ -43,6 +44,7 @@ type serveAPIRuntime struct {
 	agentRuntimeAgentsWatch *agentRuntimeAgentsWatcher
 	cronManager             *workspaceCronManager
 	watchdogManager         *workspaceWatchdogManager
+	embodimentSubsystem     *embodiment.Subsystem
 	pulseRuntime            *pulse.Runtime
 	reflectionRuntime       *reflection.Runtime
 	telegramPoller          *telegramUpdatePoller
@@ -367,6 +369,7 @@ func buildAPIMux(
 		SessionStore: sessionStore,
 		Logger:       logger,
 	})
+	embodimentSubsystem := embodiment.New(cfg.Embodiment, logger)
 
 	var pulseSetup pulseSetup
 
@@ -682,6 +685,7 @@ func buildAPIMux(
 		agentRuntimeAgentsWatch: agentRuntimeAgentsWatch,
 		cronManager:             cronManager,
 		watchdogManager:         watchdogManager,
+		embodimentSubsystem:     embodimentSubsystem,
 		pulseRuntime:            pulseSetup.Runtime,
 		reflectionRuntime:       reflectionSetup.Runtime,
 		telegramPoller:          telegramPoller,
@@ -914,6 +918,15 @@ func startBackgrounds(ctx context.Context, runtime *serveAPIRuntime, logger zero
 		finishStartup(err)
 		return err
 	}
+	if err := runBackgroundStartupStep(logger, "embodiment_subsystem", func() error {
+		if runtime.embodimentSubsystem != nil {
+			return runtime.embodimentSubsystem.Start(ctx)
+		}
+		return nil
+	}); err != nil {
+		finishStartup(err)
+		return err
+	}
 	if err := runBackgroundStartupStep(logger, "reflection_runtime", func() error {
 		if runtime.reflectionRuntime != nil {
 			runtime.reflectionRuntime.Start(ctx)
@@ -1011,6 +1024,9 @@ func shutdownRuntime(ctx context.Context, runtime *serveAPIRuntime) {
 	}
 	if runtime.reflectionRuntime != nil {
 		runtime.reflectionRuntime.Stop()
+	}
+	if runtime.embodimentSubsystem != nil {
+		runtime.embodimentSubsystem.Stop()
 	}
 	if runtime.extensionsManager != nil {
 		runtime.extensionsManager.Close()

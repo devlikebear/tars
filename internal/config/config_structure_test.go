@@ -22,6 +22,7 @@ func TestConfig_UsesFocusedEmbeddedGroups(t *testing.T) {
 		"ToolConfig",
 		"AgentRuntimeConfig",
 		"ChannelConfig",
+		"Embodiment",
 		"ExtensionConfig",
 	}
 
@@ -33,6 +34,12 @@ func TestConfig_UsesFocusedEmbeddedGroups(t *testing.T) {
 		field := cfgType.Field(index)
 		if field.Name != name {
 			t.Fatalf("expected config field %d to be %q, got %q", index, name, field.Name)
+		}
+		if name == "Embodiment" {
+			if field.Anonymous {
+				t.Fatalf("expected %q to be named", name)
+			}
+			continue
 		}
 		if !field.Anonymous {
 			t.Fatalf("expected %q to be embedded", name)

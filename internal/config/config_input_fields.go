@@ -144,6 +144,8 @@ var configInputFields = []configInputField{
 	stringField("channels_telegram_dm_policy", []string{"CHANNELS_TELEGRAM_DM_POLICY", "TARS_CHANNELS_TELEGRAM_DM_POLICY"}, func(cfg *Config) *string { return &cfg.ChannelsTelegramDMPolicy }, lowerTrimmedString),
 	boolField("channels_telegram_polling_enabled", []string{"CHANNELS_TELEGRAM_POLLING_ENABLED", "TARS_CHANNELS_TELEGRAM_POLLING_ENABLED"}, func(cfg *Config) *bool { return &cfg.ChannelsTelegramPollingEnabled }),
 	stringField("telegram_bot_token", []string{"TELEGRAM_BOT_TOKEN", "TARS_TELEGRAM_BOT_TOKEN"}, func(cfg *Config) *string { return &cfg.TelegramBotToken }, strings.TrimSpace),
+	withYAMLPath(boolField("embodiment_enabled", []string{"EMBODIMENT_ENABLED", "TARS_EMBODIMENT_ENABLED"}, func(cfg *Config) *bool { return &cfg.Embodiment.Enabled }), "embodiment.enabled"),
+	withYAMLPath(embodimentProvidersField("embodiment_providers_json", []string{"EMBODIMENT_PROVIDERS_JSON", "TARS_EMBODIMENT_PROVIDERS_JSON"}), "embodiment.providers"),
 	boolField("tools_message_enabled", []string{"TOOLS_MESSAGE_ENABLED", "TARS_TOOLS_MESSAGE_ENABLED"}, func(cfg *Config) *bool { return &cfg.ToolsMessageEnabled }),
 	boolField("tools_agentruntime_enabled", []string{"TOOLS_AGENTRUNTIME_ENABLED", "TARS_TOOLS_AGENTRUNTIME_ENABLED"}, func(cfg *Config) *bool { return &cfg.ToolsAgentRuntimeEnabled }),
 	boolField("skills_enabled", []string{"SKILLS_ENABLED", "TARS_SKILLS_ENABLED"}, func(cfg *Config) *bool { return &cfg.SkillsEnabled }),

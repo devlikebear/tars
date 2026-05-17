@@ -242,3 +242,43 @@ func TestBuildAPIMux_RoutesToSetupOnlyWhenLLMNotReady(t *testing.T) {
 		t.Fatalf("expected needs_setup=true in setup-only mode, got body %s", rec.Body.String())
 	}
 }
+
+func TestBuildAPIMux_WiresEmbodimentSubsystem(t *testing.T) {
+	dir := t.TempDir()
+	cfg, err := config.Load("")
+	if err != nil {
+		t.Fatalf("load defaults: %v", err)
+	}
+	cfg.WorkspaceDir = filepath.Join(dir, "workspace")
+	cfg.APIAuthMode = "off"
+	cfg.APIAllowInsecureLocalAuth = true
+	cfg.Embodiment = config.EmbodimentConfig{
+		Enabled: true,
+		Providers: []config.EmbodimentProviderConfig{{
+			Name:         "host",
+			Enabled:      true,
+			Transport:    "webhook",
+			Capabilities: []string{"hearing", "speech"},
+		}},
+	}
+
+	logger := zerolog.New(io.Discard)
+	base, err := buildBaseDeps(&options{}, cfg, time.Now, logger)
+	if err != nil {
+		t.Fatalf("buildBaseDeps: %v", err)
+	}
+	base.LLMReady = true
+	base.llmRouter = &stubGoalRouter{client: &stubGoalClient{response: "ok"}}
+
+	opts := &options{APIAddr: "127.0.0.1:0", ConfigPath: ""}
+	apiRuntime, err := buildAPIMux(opts, base, time.Now, logger, io.Discard)
+	if err != nil {
+		t.Fatalf("buildAPIMux: %v", err)
+	}
+	if apiRuntime.embodimentSubsystem == nil {
+		t.Fatal("expected embodiment subsystem wired into api runtime")
+	}
+	if status := apiRuntime.embodimentSubsystem.Status(); !status.Enabled || len(status.Providers) != 1 {
+		t.Fatalf("unexpected embodiment status: %+v", status)
+	}
+}

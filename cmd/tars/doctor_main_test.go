@@ -460,6 +460,43 @@ func TestCheckDoctorLLMRuntime_ClaudeCodeCLI(t *testing.T) {
 	})
 }
 
+func TestCheckDoctorEmbodiment(t *testing.T) {
+	var disabled doctorReport
+	checkDoctorEmbodiment(&disabled, config.Config{})
+	if len(disabled.checks) != 1 {
+		t.Fatalf("checks = %+v", disabled.checks)
+	}
+	if disabled.checks[0].name != "embodiment" || disabled.checks[0].detail != "disabled" {
+		t.Fatalf("disabled embodiment check = %+v", disabled.checks[0])
+	}
+
+	var enabled doctorReport
+	checkDoctorEmbodiment(&enabled, config.Config{
+		Embodiment: config.EmbodimentConfig{
+			Enabled: true,
+			Providers: []config.EmbodimentProviderConfig{{
+				Name:    "host",
+				Enabled: true,
+			}, {
+				Name:    "disabled",
+				Enabled: false,
+			}, {
+				Name:    " ",
+				Enabled: true,
+			}, {
+				Name:    "host",
+				Enabled: true,
+			}},
+		},
+	})
+	if len(enabled.checks) != 1 {
+		t.Fatalf("checks = %+v", enabled.checks)
+	}
+	if enabled.checks[0].detail != "enabled (providers: host)" {
+		t.Fatalf("enabled embodiment check = %+v", enabled.checks[0])
+	}
+}
+
 // TestDetectClaudeCodeAuthMode verifies the env-var-based inference:
 // - both keys empty → "subscription"
 // - ANTHROPIC_API_KEY set → "api_key" with that env name in the detail

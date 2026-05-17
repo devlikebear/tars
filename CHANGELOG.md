@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.32.68] - 2026-05-17
+
+### Added
+
+- **Embodiment core scaffold (Phase 1)** — Adds the dormant `internal/embodiment` subsystem without changing chat/runtime behavior when no body provider is configured. The new provider-neutral contract defines body `Capability` values (`vision`, `hearing`, `speech`, `expression`, `motion`, `led`), `Percept`, `ProviderDescriptor`, and future `BodyAction` types, plus a thread-safe registry with duplicate-name rejection, enabled-provider filtering, and defensive capability copies. Runtime wiring is intentionally no-op: `tars serve` constructs and starts the subsystem next to existing background runtimes, but `embodiment.enabled: false` or zero enabled providers starts no goroutines and registers no LLM tools. Config now accepts `embodiment.enabled` and `embodiment.providers` from YAML or `TARS_EMBODIMENT_ENABLED` / `TARS_EMBODIMENT_PROVIDERS_JSON`, and `tars doctor` reports `[ok] embodiment: disabled` by default or `enabled (providers: ...)` when configured. `config/default.yaml`, `config/tars.config.example.yaml`, and README document the disabled default plus stackchan/host provider examples for later phases. This PR deliberately excludes perception ingress, cognition triggers, actuation routing, and hardware/provider code; those remain Phase 2+ work.
+
 ## [0.32.67] - 2026-05-15
 
 ### Added

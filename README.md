@@ -170,6 +170,23 @@ Multi-channel I/O beyond the web console:
 - **Local** — Direct API calls for scripts and automation
 - **Remote Access** — Tailscale Serve can publish the loopback-only console over tailnet HTTPS with a TARS-owned target, while browser sessions use admin/user password auth and remote/mobile logins stay user-scoped.
 
+### Embodiment
+
+TARS has a dormant core `embodiment` scaffold for future body providers. The shipped default is `enabled: false` with no providers, it does not register LLM tools, and Phase 1 remains a no-op beyond config and status reporting. A future provider declaration starts like this:
+
+```yaml
+embodiment:
+  enabled: true
+  providers:
+    - name: host
+      enabled: true
+      transport: webhook
+      endpoint: http://127.0.0.1:43180/v1/embodiment/percepts
+      capabilities: [hearing, speech]
+```
+
+Phase 1 only defines provider-neutral types, capability descriptors, config loading, lifecycle wiring, and `tars doctor` status. Perception ingress, autonomous cognition, actuation routing, and stackchan/host provider implementations land in later phases.
+
 ### Remote Access
 
 TARS can expose the local console to your phone or another trusted device through Tailscale without binding the server to `0.0.0.0`.

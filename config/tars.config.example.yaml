@@ -159,6 +159,28 @@ assistant:
   ffmpeg_bin: ffmpeg
   tts_bin: say
 
+embodiment:
+  enabled: false
+  providers: []
+  # Provider examples for future phases. Capability values:
+  # vision, hearing, speech, expression, motion, led.
+  #
+  # providers:
+  #   - name: stackchan
+  #     enabled: true
+  #     transport: mcp
+  #     endpoint: stackchan
+  #     capabilities: [vision, hearing, speech, expression, motion, led]
+  #     owner_only_directive: true
+  #     salience_min_sound_level: 0.6
+  #   - name: host
+  #     enabled: true
+  #     transport: webhook
+  #     endpoint: http://127.0.0.1:43180/v1/embodiment/percepts
+  #     capabilities: [vision, hearing, speech]
+  #     owner_only_directive: true
+  #     salience_min_sound_level: 0.6
+
 compaction:
   trigger_tokens: 100000
   keep_recent_tokens: 12000
