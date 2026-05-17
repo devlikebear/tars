@@ -74,6 +74,58 @@ export type LLMProvidersBuildResult =
   | { ok: true; value: Record<string, LLMProviderSettingsValue> }
   | { ok: false; errors: LLMProviderDraftErrors }
 
+export type EmbodimentProviderDraft = {
+  id: string
+  originalName: string
+  name: string
+  enabled: boolean
+  transport: string
+  endpoint: string
+  capabilities: string[]
+  session_id: string
+  agent: string
+  owner_only_directive: boolean
+  salience_min_sound_level: string
+  min_trigger_interval: string
+  max_triggers_per_hour: string
+  trigger_observations: boolean
+}
+
+export type EmbodimentProviderDraftField =
+  | 'name'
+  | 'enabled'
+  | 'transport'
+  | 'endpoint'
+  | 'capabilities'
+  | 'session_id'
+  | 'agent'
+  | 'owner_only_directive'
+  | 'salience_min_sound_level'
+  | 'min_trigger_interval'
+  | 'max_triggers_per_hour'
+  | 'trigger_observations'
+
+export type EmbodimentProviderDraftErrors = Record<string, Partial<Record<EmbodimentProviderDraftField, string>>>
+
+export type EmbodimentProviderSettingsValue = {
+  name: string
+  enabled: boolean
+  transport: string
+  endpoint: string
+  capabilities: string[]
+  session_id: string
+  agent: string
+  owner_only_directive: boolean
+  salience_min_sound_level: number
+  min_trigger_interval: string
+  max_triggers_per_hour: number
+  trigger_observations: boolean
+}
+
+export type EmbodimentProvidersBuildResult =
+  | { ok: true; value: EmbodimentProviderSettingsValue[] }
+  | { ok: false; errors: EmbodimentProviderDraftErrors }
+
 export const LLM_PROVIDER_KINDS = [
   'anthropic',
   'openai',
@@ -85,6 +137,9 @@ export const LLM_PROVIDER_KINDS = [
 ] as const
 
 export const LLM_PROVIDER_AUTH_MODES = ['api-key', 'oauth', 'cli'] as const
+
+export const EMBODIMENT_PROVIDER_TRANSPORTS = ['mcp', 'webhook'] as const
+export const EMBODIMENT_PROVIDER_CAPABILITIES = ['vision', 'hearing', 'speech', 'expression', 'motion', 'led'] as const
 
 // Tier-binding service_tier choices. Provider-level service_tier is no
 // longer exposed — the per-tier value flows through to the provider API.
@@ -321,6 +376,120 @@ export function buildLLMProvidersFromDrafts(drafts: LLMProviderDraft[]): LLMProv
   return { ok: true, value }
 }
 
+export function makeEmbodimentProviderDrafts(value: unknown): EmbodimentProviderDraft[] {
+  const providers = Array.isArray(value)
+    ? value
+    : Object.entries(asRecord(value) || {}).map(([name, provider]) => ({
+        ...(asRecord(provider) || {}),
+        name: readString(asRecord(provider) || {}, 'name') || name,
+      }))
+  return providers
+    .map((entry, index) => {
+      const provider = asRecord(entry) || {}
+      return {
+        id: `embodiment-provider-${index}-${readString(provider, 'name') || index}`,
+        originalName: readString(provider, 'name'),
+        name: readString(provider, 'name'),
+        enabled: readBool(provider, 'enabled'),
+        transport: readString(provider, 'transport'),
+        endpoint: readString(provider, 'endpoint'),
+        capabilities: readStringList(provider, 'capabilities'),
+        session_id: readString(provider, 'session_id', 'sessionID'),
+        agent: readString(provider, 'agent'),
+        owner_only_directive: readBool(provider, 'owner_only_directive', 'ownerOnlyDirective'),
+        salience_min_sound_level: readNumberString(provider, 'salience_min_sound_level', 'salienceMinSoundLevel'),
+        min_trigger_interval: readString(provider, 'min_trigger_interval', 'minTriggerInterval'),
+        max_triggers_per_hour: readNumberString(provider, 'max_triggers_per_hour', 'maxTriggersPerHour'),
+        trigger_observations: readBool(provider, 'trigger_observations', 'triggerObservations'),
+      }
+    })
+}
+
+export function buildEmbodimentProvidersFromDrafts(drafts: EmbodimentProviderDraft[]): EmbodimentProvidersBuildResult {
+  const trimmedNames = drafts.map((draft) => draft.name.trim())
+  const nameCounts = new Map<string, number>()
+  for (const name of trimmedNames) {
+    if (!name) continue
+    nameCounts.set(name, (nameCounts.get(name) || 0) + 1)
+  }
+
+  const errors: EmbodimentProviderDraftErrors = {}
+  const value: EmbodimentProviderSettingsValue[] = []
+
+  drafts.forEach((draft, index) => {
+    const rowErrors: Partial<Record<EmbodimentProviderDraftField, string>> = {}
+    const id = draft.id || `embodiment-provider-${index}`
+    const name = draft.name.trim()
+    const transport = draft.transport.trim().toLowerCase()
+    const endpoint = draft.endpoint.trim()
+    const capabilities = normalizeStringList(draft.capabilities)
+    const salienceText = draft.salience_min_sound_level.trim()
+    const maxTriggersText = draft.max_triggers_per_hour.trim()
+
+    if (!name) {
+      rowErrors.name = 'Provider name is required.'
+    } else if ((nameCounts.get(name) || 0) > 1) {
+      rowErrors.name = 'Provider name must be unique.'
+    }
+    if (!transport) {
+      rowErrors.transport = 'Transport is required.'
+    }
+    if (!endpoint) {
+      rowErrors.endpoint = 'Endpoint is required.'
+    }
+    if (capabilities.length === 0) {
+      rowErrors.capabilities = 'Choose at least one capability.'
+    }
+
+    let salience = 0
+    if (salienceText) {
+      salience = Number(salienceText)
+      if (!Number.isFinite(salience)) {
+        rowErrors.salience_min_sound_level = 'Salience threshold must be a number.'
+      } else if (salience < 0 || salience > 1) {
+        rowErrors.salience_min_sound_level = 'Salience threshold must be between 0 and 1.'
+      }
+    }
+
+    let maxTriggers = 0
+    if (maxTriggersText) {
+      if (!/^\d+$/.test(maxTriggersText)) {
+        rowErrors.max_triggers_per_hour = 'Max triggers must be 0 or greater.'
+      } else {
+        maxTriggers = Number(maxTriggersText)
+        if (!Number.isSafeInteger(maxTriggers)) {
+          rowErrors.max_triggers_per_hour = 'Max triggers must be a safe integer.'
+        }
+      }
+    }
+
+    if (Object.keys(rowErrors).length > 0) {
+      errors[id] = rowErrors
+      return
+    }
+
+    value.push({
+      name,
+      enabled: !!draft.enabled,
+      transport,
+      endpoint,
+      capabilities,
+      session_id: draft.session_id.trim(),
+      agent: draft.agent.trim(),
+      owner_only_directive: !!draft.owner_only_directive,
+      salience_min_sound_level: salience,
+      min_trigger_interval: draft.min_trigger_interval.trim(),
+      max_triggers_per_hour: maxTriggers,
+      trigger_observations: !!draft.trigger_observations,
+    })
+  })
+
+  if (Object.keys(errors).length > 0) {
+    return { ok: false, errors }
+  }
+  return { ok: true, value }
+}
+
 function previewValue(value: unknown): string {
   if (value === undefined || value === null) return 'null'
   if (typeof value === 'string') return value
@@ -352,6 +521,35 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 function readString(record: Record<string, unknown>, key: string, fallbackKey?: string): string {
   const value = record[key] ?? (fallbackKey ? record[fallbackKey] : undefined)
   if (value === undefined || value === null) return ''
+  return String(value)
+}
+
+function readBool(record: Record<string, unknown>, key: string, fallbackKey?: string): boolean {
+  const value = record[key] ?? (fallbackKey ? record[fallbackKey] : undefined)
+  return value === true
+}
+
+function readStringList(record: Record<string, unknown>, key: string): string[] {
+  const value = record[key]
+  if (!Array.isArray(value)) return []
+  return normalizeStringList(value)
+}
+
+function normalizeStringList(values: unknown[]): string[] {
+  const out: string[] = []
+  const seen = new Set<string>()
+  for (const value of values) {
+    const normalized = String(value).trim().toLowerCase()
+    if (!normalized || seen.has(normalized)) continue
+    seen.add(normalized)
+    out.push(normalized)
+  }
+  return out
+}
+
+function readNumberString(record: Record<string, unknown>, key: string, fallbackKey?: string): string {
+  const value = record[key] ?? (fallbackKey ? record[fallbackKey] : undefined)
+  if (value === undefined || value === null || value === '') return ''
   return String(value)
 }
 

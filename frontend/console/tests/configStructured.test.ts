@@ -4,8 +4,10 @@ import assert from 'node:assert/strict'
 import {
   buildLLMProvidersFromDrafts,
   buildLLMTiersFromDrafts,
+  buildEmbodimentProvidersFromDrafts,
   extractLLMProviderAliases,
   formatConfigDisplayValue,
+  makeEmbodimentProviderDrafts,
   makeLLMProviderDrafts,
   makeLLMTierDrafts,
   parseStructuredJSONEdit,
@@ -169,5 +171,131 @@ test('buildLLMProvidersFromDrafts serializes provider drafts into settings map',
         api_key: '',
       },
     })
+  }
+})
+
+test('makeEmbodimentProviderDrafts converts provider descriptors into editable rows', () => {
+  const drafts = makeEmbodimentProviderDrafts([
+    {
+      name: 'host',
+      enabled: true,
+      transport: 'webhook',
+      endpoint: 'http://127.0.0.1:43180/v1/embodiment/percept/host',
+      capabilities: ['hearing', 'speech'],
+      session_id: 'sess_main',
+      owner_only_directive: true,
+      salience_min_sound_level: 0.6,
+      min_trigger_interval: '30s',
+      max_triggers_per_hour: 60,
+      trigger_observations: false,
+    },
+  ])
+
+  assert.equal(drafts.length, 1)
+  assert.equal(drafts[0].name, 'host')
+  assert.equal(drafts[0].enabled, true)
+  assert.deepEqual(drafts[0].capabilities, ['hearing', 'speech'])
+  assert.equal(drafts[0].salience_min_sound_level, '0.6')
+  assert.equal(drafts[0].max_triggers_per_hour, '60')
+})
+
+test('buildEmbodimentProvidersFromDrafts validates and serializes provider rows', () => {
+  const invalid = buildEmbodimentProvidersFromDrafts([
+    {
+      id: 'a',
+      originalName: 'host',
+      name: '',
+      enabled: true,
+      transport: 'mcp',
+      endpoint: '',
+      capabilities: [],
+      session_id: '',
+      agent: '',
+      owner_only_directive: false,
+      salience_min_sound_level: 'loud',
+      min_trigger_interval: '',
+      max_triggers_per_hour: '-1',
+      trigger_observations: false,
+    },
+    {
+      id: 'b',
+      originalName: '',
+      name: 'host',
+      enabled: true,
+      transport: 'mcp',
+      endpoint: 'stackchan',
+      capabilities: ['speech'],
+      session_id: '',
+      agent: '',
+      owner_only_directive: false,
+      salience_min_sound_level: '',
+      min_trigger_interval: '',
+      max_triggers_per_hour: '',
+      trigger_observations: false,
+    },
+    {
+      id: 'c',
+      originalName: '',
+      name: 'host',
+      enabled: true,
+      transport: 'mcp',
+      endpoint: 'stackchan',
+      capabilities: ['speech'],
+      session_id: '',
+      agent: '',
+      owner_only_directive: false,
+      salience_min_sound_level: '',
+      min_trigger_interval: '',
+      max_triggers_per_hour: '',
+      trigger_observations: false,
+    },
+  ])
+
+  assert.equal(invalid.ok, false)
+  if (!invalid.ok) {
+    assert.match(invalid.errors.a.name, /required/)
+    assert.match(invalid.errors.a.endpoint, /required/)
+    assert.match(invalid.errors.a.capabilities, /capability/)
+    assert.match(invalid.errors.a.salience_min_sound_level, /number/)
+    assert.match(invalid.errors.a.max_triggers_per_hour, /0 or greater/)
+    assert.match(invalid.errors.b.name, /unique/)
+    assert.match(invalid.errors.c.name, /unique/)
+  }
+
+  const valid = buildEmbodimentProvidersFromDrafts([
+    {
+      id: 'host',
+      originalName: 'host',
+      name: ' host ',
+      enabled: true,
+      transport: 'webhook',
+      endpoint: ' http://127.0.0.1:43180/v1/embodiment/percept/host ',
+      capabilities: ['hearing', 'speech', 'hearing'],
+      session_id: ' sess_main ',
+      agent: 'worker',
+      owner_only_directive: true,
+      salience_min_sound_level: '0.6',
+      min_trigger_interval: '30s',
+      max_triggers_per_hour: '60',
+      trigger_observations: true,
+    },
+  ])
+
+  assert.equal(valid.ok, true)
+  if (valid.ok) {
+    assert.deepEqual(valid.value, [{
+      name: 'host',
+      enabled: true,
+      transport: 'webhook',
+      endpoint: 'http://127.0.0.1:43180/v1/embodiment/percept/host',
+      capabilities: ['hearing', 'speech'],
+      session_id: 'sess_main',
+      agent: 'worker',
+      owner_only_directive: true,
+      salience_min_sound_level: 0.6,
+      min_trigger_interval: '30s',
+      max_triggers_per_hour: 60,
+      trigger_observations: true,
+    }])
   }
 })

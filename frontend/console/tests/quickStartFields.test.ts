@@ -99,4 +99,5 @@ test('Settings renders Quick Start tab and LLM connection action', () => {
   assert.match(configSource, /Quick Start/)
   assert.match(configSource, /quick-start-grid/)
   assert.match(configSource, /Test connection/)
+  assert.match(configSource, /openEmbodimentProviderEditor/)
 })
