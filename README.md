@@ -172,7 +172,7 @@ Multi-channel I/O beyond the web console:
 
 ### Embodiment
 
-TARS has a dormant core `embodiment` scaffold for future body providers. The shipped default is `enabled: false` with no providers, it does not register LLM tools, and Phase 1 remains a no-op beyond config and status reporting. A future provider declaration starts like this:
+TARS has a core `embodiment` subsystem for body providers. The shipped default is `enabled: false` with no providers, so existing chat/runtime behavior is unchanged and no LLM tools are registered. When enabled, known providers can post Percepts; owner audio becomes an autonomous directive turn, while ambient/stranger observations stay non-triggering by default.
 
 ```yaml
 embodiment:
@@ -181,11 +181,14 @@ embodiment:
     - name: host
       enabled: true
       transport: webhook
-      endpoint: http://127.0.0.1:43180/v1/embodiment/percepts
+      endpoint: http://127.0.0.1:43180/v1/embodiment/percept/host
       capabilities: [hearing, speech]
+      session_id: sess_main
+      min_trigger_interval: 30s
+      max_triggers_per_hour: 60
 ```
 
-Phase 1 only defines provider-neutral types, capability descriptors, config loading, lifecycle wiring, and `tars doctor` status. Perception ingress, autonomous cognition, actuation routing, and stackchan/host provider implementations land in later phases.
+Providers may also use the existing webhook inbox path `/v1/channels/webhook/inbound/{provider}`. TARS persists the Percept in the channel inbox first, then routes self-sensory Percepts through the embodiment gate and agent runtime. Actuation routing and concrete stackchan/host provider implementations land in later phases.
 
 ### Remote Access
 

@@ -304,8 +304,13 @@ type EmbodimentProviderConfig struct {
 	Transport             string   `json:"transport" yaml:"transport"`
 	Endpoint              string   `json:"endpoint" yaml:"endpoint"`
 	Capabilities          []string `json:"capabilities" yaml:"capabilities"`
+	SessionID             string   `json:"session_id" yaml:"session_id"`
+	Agent                 string   `json:"agent" yaml:"agent"`
 	OwnerOnlyDirective    bool     `json:"owner_only_directive" yaml:"owner_only_directive"`
 	SalienceMinSoundLevel float64  `json:"salience_min_sound_level" yaml:"salience_min_sound_level"`
+	MinTriggerInterval    string   `json:"min_trigger_interval" yaml:"min_trigger_interval"`
+	MaxTriggersPerHour    int      `json:"max_triggers_per_hour" yaml:"max_triggers_per_hour"`
+	TriggerObservations   bool     `json:"trigger_observations" yaml:"trigger_observations"`
 }
 
 type ExtensionConfig struct {

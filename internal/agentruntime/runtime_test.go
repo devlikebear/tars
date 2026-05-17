@@ -68,6 +68,36 @@ func TestRuntimeSpawnAndWait(t *testing.T) {
 	}
 }
 
+func TestRuntimeSystemPromptAppendReachesPromptExecutor(t *testing.T) {
+	store := session.NewStore(t.TempDir())
+	var seenAppend string
+	rt := NewRuntime(RuntimeOptions{
+		Enabled:      true,
+		SessionStore: store,
+		RunPrompt: func(ctx context.Context, _ string, prompt string) (string, error) {
+			seenAppend = SystemPromptAppendFromContext(ctx)
+			return "echo: " + prompt, nil
+		},
+	})
+	t.Cleanup(func() { closeAgentRuntime(t, rt) })
+
+	run, err := rt.Spawn(context.Background(), SpawnRequest{
+		Prompt:             "hello",
+		SystemPromptAppend: "embodied context block",
+	})
+	if err != nil {
+		t.Fatalf("spawn: %v", err)
+	}
+	waitCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if _, err := rt.Wait(waitCtx, run.ID); err != nil {
+		t.Fatalf("wait: %v", err)
+	}
+	if seenAppend != "embodied context block" {
+		t.Fatalf("system prompt append = %q", seenAppend)
+	}
+}
+
 func TestRuntimeRestartFromCheckpointSpawnsDerivedRunWithOverrides(t *testing.T) {
 	store := session.NewStore(t.TempDir())
 	var callCount int

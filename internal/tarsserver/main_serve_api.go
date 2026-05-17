@@ -76,6 +76,7 @@ type apiRouteHandlers struct {
 	agentSubagents  http.Handler
 	agentRuntime    http.Handler
 	channels        http.Handler
+	embodiment      http.Handler
 	events          http.Handler
 	config          http.Handler
 	skillhub        http.Handler
@@ -369,7 +370,12 @@ func buildAPIMux(
 		SessionStore: sessionStore,
 		Logger:       logger,
 	})
-	embodimentSubsystem := embodiment.New(cfg.Embodiment, logger)
+	embodimentSubsystem := embodiment.NewWithOptions(cfg.Embodiment, logger, embodiment.Options{
+		Runtime:          agentRuntime,
+		DefaultSessionID: mainSessionID,
+		DefaultAgent:     strings.TrimSpace(cfg.AgentRuntimeDefaultAgent),
+		Now:              nowFn,
+	})
 
 	var pulseSetup pulseSetup
 
@@ -599,14 +605,16 @@ func buildAPIMux(
 			telegramPairings.setLastUpdateID,
 		)
 	}
-	channelsHandler := newChannelsAPIHandlerWithTelegramPairings(
+	channelsHandler := newChannelsAPIHandlerFull(
 		agentRuntime,
 		telegramSender,
 		telegramPairings,
 		cfg.ChannelsTelegramDMPolicy,
 		cfg.ChannelsTelegramPollingEnabled,
+		embodimentSubsystem,
 		logger,
 	)
+	embodimentHandler := newEmbodimentAPIHandler(agentRuntime, embodimentSubsystem, logger)
 	hubInstaller := skillhub.NewInstaller(cfg.WorkspaceDir)
 	_ = hubInstaller.Sources.Register(openclaw.New())
 	_ = hubInstaller.Sources.Register(hermes.New())
@@ -647,6 +655,7 @@ func buildAPIMux(
 		agentSubagents:  agentSubagentsHandler,
 		agentRuntime:    agentRuntimeHandler,
 		channels:        channelsHandler,
+		embodiment:      embodimentHandler,
 		events:          eventsHandler,
 		config:          configHandler,
 		skillhub:        skillhubHandler,
@@ -809,6 +818,8 @@ func registerAPIRoutes(mux *http.ServeMux, handlers apiRouteHandlers) {
 	mux.Handle("/v1/channels/telegram/send", handlers.channels)
 	mux.Handle("/v1/channels/telegram/pairings", handlers.channels)
 	mux.Handle("/v1/channels/telegram/pairings/", handlers.channels)
+	mux.Handle("/v1/embodiment/percept/", handlers.embodiment)
+	mux.Handle("/v1/embodiment/percepts/", handlers.embodiment)
 	mux.Handle("/v1/events/stream", handlers.events)
 	mux.Handle("/v1/events/history", handlers.events)
 	mux.Handle("/v1/events/read", handlers.events)

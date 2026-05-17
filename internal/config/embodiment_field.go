@@ -61,8 +61,15 @@ func normalizeEmbodimentProviderConfig(provider EmbodimentProviderConfig) Embodi
 	provider.Name = strings.TrimSpace(os.ExpandEnv(provider.Name))
 	provider.Transport = strings.TrimSpace(strings.ToLower(os.ExpandEnv(provider.Transport)))
 	provider.Endpoint = strings.TrimSpace(os.ExpandEnv(provider.Endpoint))
+	provider.SessionID = strings.TrimSpace(os.ExpandEnv(provider.SessionID))
+	provider.Agent = strings.TrimSpace(os.ExpandEnv(provider.Agent))
+	provider.MinTriggerInterval = strings.TrimSpace(os.ExpandEnv(provider.MinTriggerInterval))
 	provider.Capabilities = normalizeEmbodimentCapabilities(provider.Capabilities)
 	return provider
+}
+
+func NormalizeEmbodimentProviderForRuntime(provider EmbodimentProviderConfig) EmbodimentProviderConfig {
+	return normalizeEmbodimentProviderConfig(provider)
 }
 
 func normalizeEmbodimentCapabilities(values []string) []string {

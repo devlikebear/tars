@@ -217,6 +217,7 @@ type SpawnRequest struct {
 	TaskID                    string
 	Title                     string
 	Prompt                    string
+	SystemPromptAppend        string
 	Agent                     string
 	ParentRunID               string
 	RootRunID                 string

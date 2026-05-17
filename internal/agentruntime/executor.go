@@ -11,15 +11,16 @@ import (
 )
 
 type ExecuteRequest struct {
-	RunID            string
-	WorkspaceID      string
-	SessionID        string
-	Prompt           string
-	AllowedTools     []string
-	Tier             string
-	ProviderOverride *ProviderOverride
-	OverrideSource   string
-	Metadata         *PromptExecutionMetadata
+	RunID              string
+	WorkspaceID        string
+	SessionID          string
+	Prompt             string
+	SystemPromptAppend string
+	AllowedTools       []string
+	Tier               string
+	ProviderOverride   *ProviderOverride
+	OverrideSource     string
+	Metadata           *PromptExecutionMetadata
 }
 
 type AgentInfo struct {
@@ -202,6 +203,7 @@ func (e *PromptExecutor) Execute(ctx context.Context, req ExecuteRequest) (strin
 		overrideSource = "tier"
 	}
 	ctx = WithPromptExecution(ctx, override, overrideSource, req.Metadata)
+	ctx = WithSystemPromptAppend(ctx, req.SystemPromptAppend)
 	return e.runPrompt(ctx, runLabel, strings.TrimSpace(req.Prompt), allowed, strings.TrimSpace(req.Tier), override)
 }
 
