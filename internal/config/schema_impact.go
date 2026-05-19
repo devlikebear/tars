@@ -125,6 +125,9 @@ var configFieldImpactHints = map[string][]string{
 	"cron_run_history_limit": {
 		"Changing cron history retention affects Cron run evidence, troubleshooting, and workspace storage.",
 	},
+	"companion_enabled": {
+		"Changing this controls whether the Console renders the always-floating TARS companion.",
+	},
 	"pulse_enabled": {
 		"Disabling Pulse stops background watchdog detection for cron, disk, delivery, reflection, stalled chat, and stuck run signals.",
 	},

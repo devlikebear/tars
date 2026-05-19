@@ -1,13 +1,25 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte'
   import Shell from './components/Shell.svelte'
+  import CompanionPet from './components/CompanionPet.svelte'
   import Home from './components/Home.svelte'
   import Onboarding from './components/Onboarding.svelte'
   import Login from './components/Login.svelte'
   import { resolveRoute, type Route } from './lib/router'
   import { loadRouteComponent } from './lib/routeComponents'
-  import { APIRequestError, getAuthWhoami, getEventsHistory, getHealthz, logoutAuth, streamEvents } from './lib/api'
+  import { APIRequestError, getAuthWhoami, getConfigSchema, getEventsHistory, getHealthz, logoutAuth, streamEvents } from './lib/api'
   import type { AuthWhoamiResponse } from './lib/types'
+  import {
+    companionAskHandoffReaction,
+    companionEnabledFromConfigValues,
+    companionPromptForAsk,
+    companionReactionForStimulus,
+    companionReactionFromEvent,
+    shouldShowCompanion,
+    type CompanionReaction,
+    type CompanionStimulus,
+  } from './lib/companion'
+  import { locale } from './i18n'
   import { isZenShortcut, zenMode } from './lib/zenMode.svelte'
 
   let currentPath = $state('/console')
@@ -19,9 +31,13 @@
   let authLoading = $state(true)
   let authInfo = $state<AuthWhoamiResponse | null>(null)
   let loginRequired = $state(false)
+  let companionEnabled = $state(false)
+  let companionReaction = $state<CompanionReaction | null>(null)
   let stopGlobalStream: (() => void) | null = null
+  let companionReactionTimer: ReturnType<typeof setTimeout> | null = null
   let authRole = $derived(authInfo?.auth_role ?? '')
   let zenActive = $derived(zenMode.active && route.view === 'chat' && !needsSetup && !loginRequired)
+  let showCompanion = $derived(shouldShowCompanion({ enabled: companionEnabled, needsSetup, loginRequired, zenActive }))
 
   function navigate(path: string) {
     if (path === currentPath) return
@@ -46,6 +62,8 @@
     stopGlobalStream = streamEvents(
       (event) => {
         if (!event.coalesced) unreadCount++
+        const reaction = companionReactionFromEvent(event, $locale)
+        if (reaction) showCompanionReaction(reaction)
       },
       () => {
         serverHealth = 'disconnected'
@@ -54,6 +72,27 @@
         serverHealth = 'ok'
       },
     )
+  }
+
+  function showCompanionReaction(reaction: CompanionReaction) {
+    if (companionReactionTimer) {
+      clearTimeout(companionReactionTimer)
+      companionReactionTimer = null
+    }
+    companionReaction = reaction
+    companionReactionTimer = setTimeout(() => {
+      companionReaction = null
+      companionReactionTimer = null
+    }, 9000)
+  }
+
+  function handleCompanionStimulus(stimulus: CompanionStimulus) {
+    showCompanionReaction(companionReactionForStimulus(stimulus, route.view, $locale))
+  }
+
+  function handleCompanionAsk(prompt: string) {
+    showCompanionReaction(companionAskHandoffReaction($locale))
+    navigateWithPrompt(companionPromptForAsk(prompt, route.view, $locale))
   }
 
   async function checkSetupAndMaybeRedirect() {
@@ -83,10 +122,24 @@
 
   async function loadConsoleNotifications() {
     if (needsSetup || loginRequired) return
+    void loadCompanionSetting()
     getEventsHistory(1)
       .then((h) => { unreadCount = h.unread_count ?? 0 })
       .catch(() => {})
     startGlobalStream()
+  }
+
+  async function loadCompanionSetting() {
+    if (needsSetup || loginRequired) {
+      companionEnabled = false
+      return
+    }
+    try {
+      const config = await getConfigSchema()
+      companionEnabled = companionEnabledFromConfigValues(config.effective_values || config.values)
+    } catch {
+      companionEnabled = false
+    }
   }
 
   function handleOnboardingComplete() {
@@ -149,6 +202,7 @@
 
   onDestroy(() => {
     stopGlobalStream?.()
+    if (companionReactionTimer) clearTimeout(companionReactionTimer)
   })
 </script>
 
@@ -311,6 +365,9 @@
       {/await}
     {:else}
       <Home onNavigate={navigate} />
+    {/if}
+    {#if showCompanion}
+      <CompanionPet reaction={companionReaction} routeView={route.view} locale={$locale} onStimulus={handleCompanionStimulus} onAsk={handleCompanionAsk} />
     {/if}
   </Shell>
 {/if}

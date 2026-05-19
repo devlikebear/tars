@@ -141,6 +141,58 @@ func TestEmbodimentPerceptAPIIngestsAndPersists(t *testing.T) {
 	}
 }
 
+func TestEmbodimentPerceptAPIEmitsCompanionFeedbackEvent(t *testing.T) {
+	runtime := agentruntime.NewRuntime(agentruntime.RuntimeOptions{
+		Enabled:                true,
+		WorkspaceDir:           t.TempDir(),
+		ChannelsWebhookEnabled: true,
+	})
+	t.Cleanup(func() {
+		if err := runtime.Close(context.Background()); err != nil {
+			t.Fatalf("close runtime: %v", err)
+		}
+	})
+	ingress := &recordingEmbodimentIngress{
+		known: map[string]bool{"host": true},
+		result: embodiment.IngestResult{
+			Percept: embodiment.Percept{
+				ID:       "percept_audio_1",
+				Provider: "host",
+				Modality: embodiment.ModalityAudio,
+				Owner:    embodiment.OwnerOwner,
+				Summary:  "Owner asked a question.",
+			},
+			Decision:        embodiment.GateDecision{Trigger: true, Mode: embodiment.GateModeDirective},
+			CognitionResult: embodiment.CognitionResult{Triggered: true, RunID: "run_1"},
+		},
+	}
+	var events []notificationEvent
+	h := newEmbodimentAPIHandler(runtime, ingress, zerolog.New(io.Discard), func(_ context.Context, evt notificationEvent) {
+		events = append(events, evt)
+	})
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/embodiment/percept/host", strings.NewReader(`{
+		"x-embodiment": true,
+		"modality": "audio",
+		"owner": "owner",
+		"summary": "Owner asked a question."
+	}`))
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if len(events) != 1 {
+		t.Fatalf("expected one companion feedback event, got %+v", events)
+	}
+	if events[0].Category != "embodiment" || events[0].Severity != "info" {
+		t.Fatalf("unexpected event metadata: %+v", events[0])
+	}
+	if !strings.Contains(events[0].Title, "host") || !strings.Contains(events[0].Message, "Owner asked a question.") {
+		t.Fatalf("unexpected event content: %+v", events[0])
+	}
+}
+
 func TestEmbodimentPerceptAPITriggersAgentRuntimeForOwnerVoice(t *testing.T) {
 	store := session.NewStore(t.TempDir())
 	sess, err := store.Create("body")

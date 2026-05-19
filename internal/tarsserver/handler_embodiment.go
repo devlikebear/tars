@@ -10,17 +10,23 @@ import (
 	"github.com/rs/zerolog"
 )
 
-func newEmbodimentAPIHandler(runtime *agentruntime.Runtime, ingress embodimentIngress, logger zerolog.Logger) http.Handler {
+type embodimentFeedbackEmitter func(context.Context, notificationEvent)
+
+func newEmbodimentAPIHandler(runtime *agentruntime.Runtime, ingress embodimentIngress, logger zerolog.Logger, emitters ...embodimentFeedbackEmitter) http.Handler {
+	var emit embodimentFeedbackEmitter
+	if len(emitters) > 0 {
+		emit = emitters[0]
+	}
 	mux := http.NewServeMux()
 	handle := func(w http.ResponseWriter, r *http.Request) {
-		handleEmbodimentPercept(w, r, runtime, ingress, logger)
+		handleEmbodimentPercept(w, r, runtime, ingress, logger, emit)
 	}
 	mux.HandleFunc("/v1/embodiment/percept/", handle)
 	mux.HandleFunc("/v1/embodiment/percepts/", handle)
 	return mux
 }
 
-func handleEmbodimentPercept(w http.ResponseWriter, r *http.Request, runtime *agentruntime.Runtime, ingress embodimentIngress, logger zerolog.Logger) {
+func handleEmbodimentPercept(w http.ResponseWriter, r *http.Request, runtime *agentruntime.Runtime, ingress embodimentIngress, logger zerolog.Logger, emit embodimentFeedbackEmitter) {
 	if !requireMethod(w, r, http.MethodPost) {
 		return
 	}
@@ -49,6 +55,7 @@ func handleEmbodimentPercept(w http.ResponseWriter, r *http.Request, runtime *ag
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
+	emitEmbodimentCompanionFeedback(r.Context(), emit, result)
 	writeJSON(w, http.StatusOK, embodimentIngestResponse(result))
 }
 
@@ -82,4 +89,37 @@ func embodimentIngestResponse(result embodiment.IngestResult) map[string]any {
 		"cognition":  result.CognitionResult,
 	}
 	return out
+}
+
+func emitEmbodimentCompanionFeedback(ctx context.Context, emit embodimentFeedbackEmitter, result embodiment.IngestResult) {
+	if emit == nil {
+		return
+	}
+	percept := result.Percept
+	provider := strings.TrimSpace(percept.Provider)
+	if provider == "" {
+		provider = "body"
+	}
+	message := embodimentFeedbackMessage(percept)
+	if message == "" {
+		return
+	}
+	evt := newNotificationEvent("embodiment", "info", "Embodiment percept: "+provider, message)
+	evt.SessionID = strings.TrimSpace(percept.SessionID)
+	emit(ctx, evt)
+}
+
+func embodimentFeedbackMessage(percept embodiment.Percept) string {
+	summary := strings.TrimSpace(percept.Summary)
+	if summary == "" {
+		summary = "percept received"
+	}
+	prefix := strings.TrimSpace(strings.Join([]string{
+		string(percept.Modality),
+		string(percept.Owner),
+	}, " "))
+	if prefix == "" {
+		return summary
+	}
+	return prefix + ": " + summary
 }

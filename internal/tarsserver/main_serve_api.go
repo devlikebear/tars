@@ -615,7 +615,9 @@ func buildAPIMux(
 		embodimentSubsystem,
 		logger,
 	)
-	embodimentHandler := newEmbodimentAPIHandler(agentRuntime, embodimentSubsystem, logger)
+	embodimentHandler := newEmbodimentAPIHandler(agentRuntime, embodimentSubsystem, logger, func(_ context.Context, evt notificationEvent) {
+		broker.publish(evt)
+	})
 	hubInstaller := skillhub.NewInstaller(cfg.WorkspaceDir)
 	_ = hubInstaller.Sources.Register(openclaw.New())
 	_ = hubInstaller.Sources.Register(hermes.New())
