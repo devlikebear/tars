@@ -17,6 +17,9 @@ export type CompanionReaction = {
   detail?: string
 }
 
+type CompanionStimulusReactionKey = CompanionStimulus | 'suggest:pulse' | 'feedback:chat'
+type CompanionStimulusReactionFactory = (area: string) => CompanionReaction
+
 export type CompanionUiText = {
   actions: Record<CompanionStimulus, string>
   moods: Record<CompanionMood, string>
@@ -76,6 +79,63 @@ const companionText: Record<CompanionLocale, CompanionUiText> = {
   },
 }
 
+const companionStimulusReactions: Record<CompanionLocale, Record<CompanionStimulusReactionKey, CompanionStimulusReactionFactory>> = {
+  en: {
+    poke: (area) => ({
+      mood: 'spark',
+      message: `Awake. I am watching ${area} with you.`,
+      detail: 'Tap Suggest for a next move, or ask me directly.',
+    }),
+    suggest: (area) => ({
+      mood: 'focus',
+      message: `Next move: inspect the freshest signal in ${area}, then ask one narrow follow-up.`,
+      detail: 'Small prompts make the companion sharper.',
+    }),
+    'suggest:pulse': () => ({
+      mood: 'focus',
+      message: 'Pulse is already the signal board. Check the newest warn or error first.',
+      detail: 'Then decide whether the next move is observe, fix, or silence noise.',
+    }),
+    feedback: (area) => ({
+      mood: 'success',
+      message: `Feedback: ${area} looks ready for a focused checkpoint.`,
+      detail: 'Name the result you want and I will help compress it.',
+    }),
+    'feedback:chat': () => ({
+      mood: 'success',
+      message: 'Quick review: the chat loop is healthy when the next ask is specific and testable.',
+      detail: 'If it feels vague, ask me to turn it into a tiny checklist.',
+    }),
+  },
+  ko: {
+    poke: (area) => ({
+      mood: 'spark',
+      message: `여기 있어요. 지금 ${area} 화면을 같이 보고 있어요.`,
+      detail: '다음 수가 필요하면 제안, 상태 점검이 필요하면 피드백을 눌러요.',
+    }),
+    suggest: (area) => ({
+      mood: 'focus',
+      message: `다음 수: ${area}에서 가장 새 신호를 하나 고르고, 작은 질문 하나로 좁혀봐요.`,
+      detail: '짧고 구체적인 자극일수록 제가 더 선명하게 반응해요.',
+    }),
+    'suggest:pulse': () => ({
+      mood: 'focus',
+      message: '펄스는 이미 신호판이에요. 가장 최근 경고나 오류부터 볼게요.',
+      detail: '그 다음은 관찰, 수정, 소음 무시 중 하나로 좁히면 좋아요.',
+    }),
+    feedback: (area) => ({
+      mood: 'success',
+      message: `피드백: ${area}는 집중 체크포인트로 정리할 준비가 됐어요.`,
+      detail: '원하는 결과를 한 문장으로 말해주면 제가 압축해볼게요.',
+    }),
+    'feedback:chat': () => ({
+      mood: 'success',
+      message: '빠른 점검: 다음 요청이 구체적이고 검증 가능하면 채팅 루프가 건강해요.',
+      detail: '애매하면 작은 체크리스트로 바꿔달라고 말해줘요.',
+    }),
+  },
+}
+
 export function shouldShowCompanion(input: CompanionVisibilityInput): boolean {
   return !!input.enabled && !input.needsSetup && !input.loginRequired && !input.zenActive
 }
@@ -96,70 +156,7 @@ export function normalizeCompanionLocale(locale?: string | null): CompanionLocal
 export function companionReactionForStimulus(stimulus: CompanionStimulus, routeView?: string, locale?: string | null): CompanionReaction {
   const lang = normalizeCompanionLocale(locale)
   const area = companionAreaLabel(routeView, lang)
-  switch (stimulus) {
-    case 'poke':
-      return lang === 'ko'
-        ? {
-            mood: 'spark',
-            message: `여기 있어요. 지금 ${area} 화면을 같이 보고 있어요.`,
-            detail: '다음 수가 필요하면 제안, 상태 점검이 필요하면 피드백을 눌러요.',
-          }
-        : {
-            mood: 'spark',
-            message: `Awake. I am watching ${area} with you.`,
-            detail: 'Tap Suggest for a next move, or ask me directly.',
-          }
-    case 'suggest':
-      if (routeView === 'pulse') {
-        return lang === 'ko'
-          ? {
-              mood: 'focus',
-              message: '펄스는 이미 신호판이에요. 가장 최근 경고나 오류부터 볼게요.',
-              detail: '그 다음은 관찰, 수정, 소음 무시 중 하나로 좁히면 좋아요.',
-            }
-          : {
-              mood: 'focus',
-              message: 'Pulse is already the signal board. Check the newest warn or error first.',
-              detail: 'Then decide whether the next move is observe, fix, or silence noise.',
-            }
-      }
-      return lang === 'ko'
-        ? {
-            mood: 'focus',
-            message: `다음 수: ${area}에서 가장 새 신호를 하나 고르고, 작은 질문 하나로 좁혀봐요.`,
-            detail: '짧고 구체적인 자극일수록 제가 더 선명하게 반응해요.',
-          }
-        : {
-            mood: 'focus',
-            message: `Next move: inspect the freshest signal in ${area}, then ask one narrow follow-up.`,
-            detail: 'Small prompts make the companion sharper.',
-          }
-    case 'feedback':
-      if (routeView === 'chat') {
-        return lang === 'ko'
-          ? {
-              mood: 'success',
-              message: '빠른 점검: 다음 요청이 구체적이고 검증 가능하면 채팅 루프가 건강해요.',
-              detail: '애매하면 작은 체크리스트로 바꿔달라고 말해줘요.',
-            }
-          : {
-              mood: 'success',
-              message: 'Quick review: the chat loop is healthy when the next ask is specific and testable.',
-              detail: 'If it feels vague, ask me to turn it into a tiny checklist.',
-            }
-      }
-      return lang === 'ko'
-        ? {
-            mood: 'success',
-            message: `피드백: ${area}는 집중 체크포인트로 정리할 준비가 됐어요.`,
-            detail: '원하는 결과를 한 문장으로 말해주면 제가 압축해볼게요.',
-          }
-        : {
-            mood: 'success',
-            message: `Feedback: ${area} looks ready for a focused checkpoint.`,
-            detail: 'Name the result you want and I will help compress it.',
-          }
-  }
+  return companionStimulusReactions[lang][companionStimulusReactionKey(stimulus, routeView)](area)
 }
 
 export function companionReactionFromEvent(event: NotificationMessage, locale?: string | null): CompanionReaction | null {
@@ -257,8 +254,14 @@ function companionReactionFromEmbodimentMessage(title: string, message: string, 
 
 function stripEmbodimentPrefix(message: string): string {
   const trimmed = message.trim()
-  const [, rest] = trimmed.match(/^[a-z_ -]+:\s*(.+)$/i) || []
+  const [, rest] = /^[a-z_ -]+:\s*(.+)$/i.exec(trimmed) || []
   return clipText(rest || trimmed || 'percept received', 90)
+}
+
+function companionStimulusReactionKey(stimulus: CompanionStimulus, routeView?: string): CompanionStimulusReactionKey {
+  if (stimulus === 'suggest' && routeView === 'pulse') return 'suggest:pulse'
+  if (stimulus === 'feedback' && routeView === 'chat') return 'feedback:chat'
+  return stimulus
 }
 
 function companionAreaLabel(routeView?: string, locale: CompanionLocale = 'en'): string {
