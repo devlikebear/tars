@@ -254,14 +254,28 @@ function companionReactionFromEmbodimentMessage(title: string, message: string, 
 
 function stripEmbodimentPrefix(message: string): string {
   const trimmed = message.trim()
-  const [, rest] = /^[a-z_ -]+:\s*(.+)$/i.exec(trimmed) || []
-  return clipText(rest || trimmed || 'percept received', 90)
+  const colon = trimmed.indexOf(':')
+  if (colon > 0 && isEmbodimentMessagePrefix(trimmed.slice(0, colon))) {
+    return clipText(trimmed.slice(colon + 1).trim() || 'percept received', 90)
+  }
+  return clipText(trimmed || 'percept received', 90)
 }
 
 function companionStimulusReactionKey(stimulus: CompanionStimulus, routeView?: string): CompanionStimulusReactionKey {
   if (stimulus === 'suggest' && routeView === 'pulse') return 'suggest:pulse'
   if (stimulus === 'feedback' && routeView === 'chat') return 'feedback:chat'
   return stimulus
+}
+
+function isEmbodimentMessagePrefix(value: string): boolean {
+  for (let i = 0; i < value.length; i += 1) {
+    const code = value.charCodeAt(i)
+    const isUpper = code >= 65 && code <= 90
+    const isLower = code >= 97 && code <= 122
+    const isSeparator = code === 32 || code === 45 || code === 95
+    if (!isUpper && !isLower && !isSeparator) return false
+  }
+  return true
 }
 
 function companionAreaLabel(routeView?: string, locale: CompanionLocale = 'en'): string {
