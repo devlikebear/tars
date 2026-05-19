@@ -6,6 +6,17 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.32.71] - 2026-05-19
+
+### Added
+
+- **Console companion feedback (#882)** — Adds a default-on floating Console companion that can be toggled with `companion.enabled`, localized through the EN/KO Console locale, and poked for immediate route-aware `Poke`, `Suggest`, and `Feedback` reactions. The companion can hand a bounded context prompt into `/console/chat`, reacts to runtime notifications, and includes visible pressed/action feedback so manual stimuli are not hidden behind existing event bubbles.
+- **Embodiment percept companion signals (#882)** — Successful `/v1/embodiment/percept/{provider}` intake now publishes ephemeral live companion feedback events so camera and microphone providers can make the Console pet react to seen/heard body signals without turning those signals into desktop notifications.
+
+### Fixed
+
+- **Companion config toggle semantics (#882)** — Tracks explicit `companion.enabled` boolean values so YAML/env `false` reliably disables the default-on companion. Quick Start treats the companion as optional, so intentionally disabling it does not make onboarding incomplete.
+
 ## [0.32.70] - 2026-05-17
 
 ### Fixed

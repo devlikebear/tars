@@ -159,6 +159,11 @@ assistant:
   ffmpeg_bin: ffmpeg
   tts_bin: say
 
+companion:
+  # Shows the always-floating Console companion. It is visual-only in this
+  # version; proactive suggestion/speech loops stay separately gated.
+  enabled: true
+
 embodiment:
   enabled: false
   providers: []

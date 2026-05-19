@@ -121,3 +121,64 @@ func TestSubsystemIngestAmbientObservationDoesNotTrigger(t *testing.T) {
 	}
 	close(rt.waitCh)
 }
+
+func TestSubsystemTriggerObservationsAreProviderScoped(t *testing.T) {
+	rt := &fakeCognitionRuntime{waitCh: make(chan struct{})}
+	subsystem := NewWithOptions(config.EmbodimentConfig{
+		Enabled: true,
+		Providers: []config.EmbodimentProviderConfig{
+			{
+				Name:                "host",
+				Enabled:             true,
+				Transport:           "webhook",
+				Capabilities:        []string{"hearing"},
+				TriggerObservations: true,
+				MinTriggerInterval:  "0s",
+			},
+			{
+				Name:                "stackchan",
+				Enabled:             true,
+				Transport:           "webhook",
+				Capabilities:        []string{"hearing"},
+				TriggerObservations: false,
+				MinTriggerInterval:  "0s",
+			},
+		},
+	}, zerolog.New(io.Discard), Options{
+		Runtime:          rt,
+		DefaultSessionID: "sess_main",
+	})
+	defer close(rt.waitCh)
+
+	stackchanResult, err := subsystem.IngestPayload(context.Background(), "stackchan", map[string]any{
+		"x-embodiment": true,
+		"modality":     "audio",
+		"owner":        "stranger",
+		"summary":      "A stranger made a quiet noise.",
+	})
+	if err != nil {
+		t.Fatalf("IngestPayload stackchan: %v", err)
+	}
+	if stackchanResult.Decision.Trigger {
+		t.Fatalf("stackchan observation should not trigger, got %+v", stackchanResult.Decision)
+	}
+	if rt.spawnCount() != 0 {
+		t.Fatalf("stackchan observation spawned %d runs", rt.spawnCount())
+	}
+
+	hostResult, err := subsystem.IngestPayload(context.Background(), "host", map[string]any{
+		"x-embodiment": true,
+		"modality":     "audio",
+		"owner":        "unknown",
+		"summary":      "The host microphone heard speech.",
+	})
+	if err != nil {
+		t.Fatalf("IngestPayload host: %v", err)
+	}
+	if !hostResult.Decision.Trigger || !hostResult.CognitionResult.Triggered {
+		t.Fatalf("host observation should trigger, decision=%+v cognition=%+v", hostResult.Decision, hostResult.CognitionResult)
+	}
+	if rt.spawnCount() != 1 {
+		t.Fatalf("host observation spawned %d runs, want 1", rt.spawnCount())
+	}
+}

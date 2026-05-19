@@ -293,6 +293,11 @@ type ChannelConfig struct {
 	TelegramBotToken               string
 }
 
+type CompanionConfig struct {
+	Enabled    bool
+	enabledSet bool
+}
+
 type EmbodimentConfig struct {
 	Enabled   bool
 	Providers []EmbodimentProviderConfig
@@ -343,6 +348,7 @@ type Config struct {
 	ToolConfig
 	AgentRuntimeConfig
 	ChannelConfig
+	Companion  CompanionConfig
 	Embodiment EmbodimentConfig
 	ExtensionConfig
 }

@@ -186,6 +186,7 @@ func defaultGateConfig(cfg config.EmbodimentConfig, now func() time.Time) GateCo
 		MaxTriggersPerHour: 60,
 		Now:                now,
 	}
+	triggerObservationsByProvider := map[string]bool{}
 	for _, provider := range cfg.Providers {
 		if provider.MinTriggerInterval != "" {
 			if parsed, err := time.ParseDuration(provider.MinTriggerInterval); err == nil && parsed >= 0 {
@@ -195,9 +196,12 @@ func defaultGateConfig(cfg config.EmbodimentConfig, now func() time.Time) GateCo
 		if provider.MaxTriggersPerHour > 0 {
 			gateCfg.MaxTriggersPerHour = provider.MaxTriggersPerHour
 		}
-		if provider.TriggerObservations {
-			gateCfg.TriggerObservations = true
+		if name := normalizeName(provider.Name); name != "" {
+			triggerObservationsByProvider[name] = provider.TriggerObservations
 		}
+	}
+	if len(triggerObservationsByProvider) > 0 {
+		gateCfg.TriggerObservationsByProvider = triggerObservationsByProvider
 	}
 	return gateCfg
 }

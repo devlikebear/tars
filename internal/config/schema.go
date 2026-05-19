@@ -193,6 +193,9 @@ func Schema() []FieldMeta {
 		f("channels_telegram_polling_enabled", "Channels", "bool", "Telegram Polling", "Enable Telegram long-polling for updates"),
 		fs("telegram_bot_token", "Channels", "Telegram Bot Token", "Bot token from @BotFather", true),
 
+		// ── Companion ────────────────────────────
+		f("companion_enabled", "Companion", "bool", "Enabled", "Show the floating TARS companion in the Console"),
+
 		// ── Embodiment ───────────────────────────
 		f("embodiment_enabled", "Embodiment", "bool", "Enabled", "Enable the dormant embodiment subsystem"),
 		fjson("embodiment_providers_json", "Embodiment", "Providers", "Body provider descriptors and declared capabilities"),
@@ -505,6 +508,9 @@ func extractValue(yamlKey string, cfg Config) any {
 		return cfg.ChannelsTelegramPollingEnabled
 	case "telegram_bot_token":
 		return cfg.TelegramBotToken
+	// Companion
+	case "companion_enabled":
+		return cfg.Companion.Enabled
 	// Embodiment
 	case "embodiment_enabled":
 		return cfg.Embodiment.Enabled

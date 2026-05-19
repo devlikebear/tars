@@ -7,6 +7,7 @@ export const quickStartFieldKeys = [
   'llm_default_tier',
   'workspace_dir',
   'telegram_bot_token',
+  'companion_enabled',
   'embodiment_enabled',
   'embodiment_providers_json',
   'pulse_enabled',
@@ -74,6 +75,12 @@ export const quickStartDefinitions: QuickStartDefinition[] = [
     key: 'telegram_bot_token',
     title: 'Telegram bot token',
     description: 'Optional bot token for Telegram channel access and notifications.',
+    required: false,
+  },
+  {
+    key: 'companion_enabled',
+    title: 'Companion pet',
+    description: 'Show or hide the always-floating TARS companion in the Console.',
     required: false,
   },
   {

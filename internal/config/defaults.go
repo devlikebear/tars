@@ -214,6 +214,10 @@ func defaultConfigValues() Config {
 			ChannelsTelegramDMPolicy:       defaultChannelsTelegramDMPolicy,
 			ChannelsTelegramPollingEnabled: true,
 		},
+		Companion: CompanionConfig{
+			Enabled:    true,
+			enabledSet: true,
+		},
 		ExtensionConfig: ExtensionConfig{
 			SkillsEnabled:          true,
 			SkillsWatch:            true,

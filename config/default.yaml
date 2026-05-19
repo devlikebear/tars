@@ -65,6 +65,9 @@ automation:
   agent:
     max_iterations: 8
 
+companion:
+  enabled: true
+
 embodiment:
   enabled: false
   providers: []

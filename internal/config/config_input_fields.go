@@ -144,6 +144,7 @@ var configInputFields = []configInputField{
 	stringField("channels_telegram_dm_policy", []string{"CHANNELS_TELEGRAM_DM_POLICY", "TARS_CHANNELS_TELEGRAM_DM_POLICY"}, func(cfg *Config) *string { return &cfg.ChannelsTelegramDMPolicy }, lowerTrimmedString),
 	boolField("channels_telegram_polling_enabled", []string{"CHANNELS_TELEGRAM_POLLING_ENABLED", "TARS_CHANNELS_TELEGRAM_POLLING_ENABLED"}, func(cfg *Config) *bool { return &cfg.ChannelsTelegramPollingEnabled }),
 	stringField("telegram_bot_token", []string{"TELEGRAM_BOT_TOKEN", "TARS_TELEGRAM_BOT_TOKEN"}, func(cfg *Config) *string { return &cfg.TelegramBotToken }, strings.TrimSpace),
+	withYAMLPath(companionEnabledField("companion_enabled", []string{"COMPANION_ENABLED", "TARS_COMPANION_ENABLED"}), "companion.enabled"),
 	withYAMLPath(boolField("embodiment_enabled", []string{"EMBODIMENT_ENABLED", "TARS_EMBODIMENT_ENABLED"}, func(cfg *Config) *bool { return &cfg.Embodiment.Enabled }), "embodiment.enabled"),
 	withYAMLPath(embodimentProvidersField("embodiment_providers_json", []string{"EMBODIMENT_PROVIDERS_JSON", "TARS_EMBODIMENT_PROVIDERS_JSON"}), "embodiment.providers"),
 	boolField("tools_message_enabled", []string{"TOOLS_MESSAGE_ENABLED", "TARS_TOOLS_MESSAGE_ENABLED"}, func(cfg *Config) *bool { return &cfg.ToolsMessageEnabled }),
@@ -255,6 +256,23 @@ func boolField(yamlKey string, envKeys []string, accessor func(*Config) *bool) c
 		merge: func(dst *Config, src Config) {
 			if *accessor(&src) {
 				*accessor(dst) = true
+			}
+		},
+	}
+}
+
+func companionEnabledField(yamlKey string, envKeys []string) configInputField {
+	return configInputField{
+		yamlKey: yamlKey,
+		envKeys: envKeys,
+		apply: func(cfg *Config, raw string) {
+			cfg.Companion.Enabled = parseBool(raw, cfg.Companion.Enabled)
+			cfg.Companion.enabledSet = true
+		},
+		merge: func(dst *Config, src Config) {
+			if src.Companion.enabledSet {
+				dst.Companion.Enabled = src.Companion.Enabled
+				dst.Companion.enabledSet = true
 			}
 		},
 	}
