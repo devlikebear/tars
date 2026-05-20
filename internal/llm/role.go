@@ -37,6 +37,10 @@ const (
 	// RolePulseDecider is the pulse watchdog classifier. Light by default.
 	RolePulseDecider Role = "pulse_decider"
 
+	// RoleCompanionFeedback produces short console companion reactions after
+	// direct user stimuli. Light by default.
+	RoleCompanionFeedback Role = "companion_feedback"
+
 	// RoleSessionCleanup analyzes compact session metadata and transcript
 	// snippets for user-reviewed archive/delete cleanup suggestions.
 	RoleSessionCleanup Role = "session_cleanup"
@@ -72,6 +76,7 @@ func AllRoles() []Role {
 		RoleReflectionMemory,
 		RoleReflectionKB,
 		RolePulseDecider,
+		RoleCompanionFeedback,
 		RoleSessionCleanup,
 		RoleAgentRuntimeDefault,
 		RoleAgentRuntimePlanner,

@@ -25,7 +25,7 @@
   let feedbackTick = $state(0)
   let priorityTimer: ReturnType<typeof setTimeout> | null = null
   let labels = $derived(companionUiText(locale))
-  let activeReaction = $derived(manualPriority ? localReaction : reaction || localReaction)
+  let activeReaction = $derived((reaction && reaction !== dismissedReaction) ? reaction : localReaction)
   let eventReactionVisible = $derived(reaction !== null && reaction !== dismissedReaction)
   let bubbleVisible = $derived(open || eventReactionVisible || manualPriority)
 
@@ -41,7 +41,7 @@
 
   function trigger(stimulus: CompanionStimulus) {
     localReaction = companionReactionForStimulus(stimulus, routeView, locale)
-    dismissedReaction = null
+    if (reaction) dismissedReaction = reaction
     manualPriority = true
     activeAction = stimulus
     feedbackTick += 1

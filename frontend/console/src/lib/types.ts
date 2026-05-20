@@ -226,6 +226,24 @@ export type NotificationMessage = {
   open_path?: string
 }
 
+export type CompanionFeedbackStimulus = 'poke' | 'suggest' | 'feedback'
+export type CompanionFeedbackMood = 'idle' | 'spark' | 'focus' | 'warn' | 'error' | 'success'
+
+export type CompanionFeedbackRequest = {
+  stimulus: CompanionFeedbackStimulus
+  route_view?: string
+  locale?: string
+  fallback_message?: string
+  fallback_detail?: string
+}
+
+export type CompanionFeedbackResponse = {
+  mood: CompanionFeedbackMood
+  message: string
+  detail?: string
+  source: 'llm' | 'fallback'
+}
+
 export type ProviderOverride = {
   alias?: string
   model?: string

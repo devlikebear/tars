@@ -2083,6 +2083,7 @@ type mockLLMClient struct {
 	seenToolCounts  []int
 	seenTools       [][]string
 	seenToolChoices []string
+	seenReasoning   []string
 }
 
 func (m *mockLLMClient) Ask(ctx context.Context, prompt string) (string, error) {
@@ -2109,6 +2110,7 @@ func (m *mockLLMClient) Chat(ctx context.Context, messages []llm.ChatMessage, op
 	}
 	m.seenTools = append(m.seenTools, toolNames)
 	m.seenToolChoices = append(m.seenToolChoices, opts.ToolChoice.String())
+	m.seenReasoning = append(m.seenReasoning, opts.ReasoningEffort)
 
 	resp := m.response
 	if len(m.responses) > 0 {

@@ -20,8 +20,9 @@ func testRouterForClient(t *testing.T, client llm.Client) llm.Router {
 		},
 		DefaultTier: llm.TierLight,
 		RoleDefaults: map[llm.Role]llm.Tier{
-			llm.RoleContextCompactor: llm.TierLight,
-			llm.RoleChatMain:         llm.TierStandard,
+			llm.RoleCompanionFeedback: llm.TierLight,
+			llm.RoleContextCompactor:  llm.TierLight,
+			llm.RoleChatMain:          llm.TierStandard,
 		},
 	})
 	if err != nil {

@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
+import { requestCompanionFeedback } from '../src/lib/api.ts'
 import {
   companionAskHandoffReaction,
   companionPromptForAsk,
@@ -14,6 +15,7 @@ import {
 const appSource = readFileSync(new URL('../src/App.svelte', import.meta.url), 'utf8')
 const componentSource = readFileSync(new URL('../src/components/CompanionPet.svelte', import.meta.url), 'utf8')
 const helperSource = readFileSync(new URL('../src/lib/companion.ts', import.meta.url), 'utf8')
+const apiSource = readFileSync(new URL('../src/lib/api.ts', import.meta.url), 'utf8')
 
 test('companion visibility is bounded by config and setup/auth state', () => {
   assert.equal(shouldShowCompanion({ enabled: true, needsSetup: false, loginRequired: false, zenActive: false }), true)
@@ -29,6 +31,7 @@ test('console app wires the floating companion to config schema', () => {
   assert.match(helperSource, /companion_enabled/)
   assert.match(appSource, /shouldShowCompanion/)
   assert.match(appSource, /companionReactionFromEvent/)
+  assert.match(appSource, /requestCompanionFeedback/)
   assert.match(appSource, /onStimulus=\{handleCompanionStimulus\}/)
   assert.match(appSource, /onAsk=\{handleCompanionAsk\}/)
   assert.match(appSource, /locale=\{\$locale\}/)
@@ -40,6 +43,7 @@ test('companion pet is an interactive floating console presence', () => {
   assert.match(componentSource, /companion-bubble/)
   assert.match(componentSource, /manualPriority/)
   assert.match(componentSource, /activeAction/)
+  assert.match(componentSource, /reaction && reaction !== dismissedReaction/)
   assert.match(componentSource, /companion-feedback-strip/)
   assert.match(componentSource, /aria-pressed=\{activeAction === 'poke'\}/)
   assert.match(componentSource, /position:\s*fixed;/)
@@ -47,6 +51,41 @@ test('companion pet is an interactive floating console presence', () => {
   assert.match(componentSource, /right:\s*var\(--space-5\);/)
   assert.match(componentSource, /pointer-events:\s*auto;/)
   assert.match(componentSource, /@keyframes companionBlink/)
+})
+
+test('companion feedback uses the chat companion endpoint', async () => {
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    assert.equal(input, '/v1/chat/companion')
+    assert.equal(init?.method, 'POST')
+    const payload = JSON.parse(String(init?.body || '{}'))
+    assert.equal(payload.stimulus, 'feedback')
+    assert.equal(payload.route_view, 'chat')
+    assert.equal(payload.locale, 'ko')
+    assert.match(apiSource, /\/v1\/chat\/companion/)
+    return new Response(JSON.stringify({
+      mood: 'success',
+      message: 'LLM 피드백',
+      detail: '모델 응답',
+      source: 'llm',
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }) as typeof fetch
+  try {
+    const got = await requestCompanionFeedback({
+      stimulus: 'feedback',
+      route_view: 'chat',
+      locale: 'ko',
+      fallback_message: '로컬 피드백',
+      fallback_detail: 'fallback',
+    })
+    assert.equal(got.source, 'llm')
+    assert.equal(got.message, 'LLM 피드백')
+  } finally {
+    globalThis.fetch = originalFetch
+  }
 })
 
 test('companion creates short feedback from user stimuli and runtime events', () => {

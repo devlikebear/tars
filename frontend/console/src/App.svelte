@@ -7,7 +7,7 @@
   import Login from './components/Login.svelte'
   import { resolveRoute, type Route } from './lib/router'
   import { loadRouteComponent } from './lib/routeComponents'
-  import { APIRequestError, getAuthWhoami, getConfigSchema, getEventsHistory, getHealthz, logoutAuth, streamEvents } from './lib/api'
+  import { APIRequestError, getAuthWhoami, getConfigSchema, getEventsHistory, getHealthz, logoutAuth, requestCompanionFeedback, streamEvents } from './lib/api'
   import type { AuthWhoamiResponse } from './lib/types'
   import {
     companionAskHandoffReaction,
@@ -35,6 +35,7 @@
   let companionReaction = $state<CompanionReaction | null>(null)
   let stopGlobalStream: (() => void) | null = null
   let companionReactionTimer: ReturnType<typeof setTimeout> | null = null
+  let companionFeedbackRequestID = 0
   let authRole = $derived(authInfo?.auth_role ?? '')
   let zenActive = $derived(zenMode.active && route.view === 'chat' && !needsSetup && !loginRequired)
   let showCompanion = $derived(shouldShowCompanion({ enabled: companionEnabled, needsSetup, loginRequired, zenActive }))
@@ -86,11 +87,30 @@
     }, 9000)
   }
 
-  function handleCompanionStimulus(stimulus: CompanionStimulus) {
-    showCompanionReaction(companionReactionForStimulus(stimulus, route.view, $locale))
+  async function handleCompanionStimulus(stimulus: CompanionStimulus) {
+    const requestID = ++companionFeedbackRequestID
+    const fallback = companionReactionForStimulus(stimulus, route.view, $locale)
+    try {
+      const response = await requestCompanionFeedback({
+        stimulus,
+        route_view: route.view,
+        locale: $locale,
+        fallback_message: fallback.message,
+        fallback_detail: fallback.detail,
+      })
+      if (requestID !== companionFeedbackRequestID) return
+      showCompanionReaction({
+        mood: response.mood,
+        message: response.message || fallback.message,
+        detail: response.detail || fallback.detail,
+      })
+    } catch {
+      // The pet already showed the local fallback instantly; failed micro-feedback stays quiet.
+    }
   }
 
   function handleCompanionAsk(prompt: string) {
+    companionFeedbackRequestID += 1
     showCompanionReaction(companionAskHandoffReaction($locale))
     navigateWithPrompt(companionPromptForAsk(prompt, route.view, $locale))
   }

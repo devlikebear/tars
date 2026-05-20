@@ -5,6 +5,8 @@ import type {
   ChatEvent,
   ChatRequest,
   ChatTierRecommendationRequest,
+  CompanionFeedbackRequest,
+  CompanionFeedbackResponse,
   CleanupApplyResult,
   CleanupPlan,
   ConfigFile,
@@ -1008,6 +1010,14 @@ export async function listChatTools(sessionId?: string): Promise<ChatToolsRespon
   if (sessionId?.trim()) params.set('session_id', sessionId.trim())
   const qs = params.toString()
   return requestJSON<ChatToolsResponse>(`/v1/chat/tools${qs ? `?${qs}` : ''}`)
+}
+
+export async function requestCompanionFeedback(request: CompanionFeedbackRequest): Promise<CompanionFeedbackResponse> {
+  return requestJSON<CompanionFeedbackResponse>('/v1/chat/companion', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
+  })
 }
 
 // --- Chat Context ---

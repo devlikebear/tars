@@ -11,6 +11,7 @@ func TestAllRolesContainsExpected(t *testing.T) {
 		RoleReflectionMemory,
 		RoleReflectionKB,
 		RolePulseDecider,
+		RoleCompanionFeedback,
 		RoleSessionCleanup,
 		RoleAgentRuntimeDefault,
 		RoleAgentRuntimePlanner,
@@ -47,6 +48,9 @@ func TestParseRole(t *testing.T) {
 	}
 	if _, ok := ParseRole("session_cleanup"); !ok {
 		t.Error("ParseRole(session_cleanup) failed")
+	}
+	if _, ok := ParseRole("companion_feedback"); !ok {
+		t.Error("ParseRole(companion_feedback) failed")
 	}
 	if _, ok := ParseRole(""); ok {
 		t.Error("ParseRole(empty) should fail")

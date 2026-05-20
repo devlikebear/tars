@@ -74,6 +74,7 @@ llm:
     reflection_memory: light
     reflection_kb: light
     pulse_decider: light
+    companion_feedback: light
     session_cleanup: light
     agentruntime_default: standard
     agentruntime_planner: heavy
