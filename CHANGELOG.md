@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.32.72] - 2026-05-21
+
+### Added
+
+- **Public agent-building packages (#884, #885, #886)** — Adds additive public Go package entrypoints under `pkg/llm`, `pkg/tools`, `pkg/agentloop`, `pkg/memory`, `pkg/skill`, and `pkg/mcp` so lightweight agent apps can reuse TARS-tested LLM provider contracts, tool registries, the iterative tool-calling loop, durable memory helpers, `SKILL.md` loading, and MCP tool adaptation without importing `internal/*` directly. The first dogfood example lives in `examples/min-agent`, and `docs/public-agent-packages.md` documents the supported package boundaries plus the server/runtime surfaces that intentionally remain internal.
+
 ## [0.32.71] - 2026-05-19
 
 ### Added
