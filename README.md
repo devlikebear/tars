@@ -38,6 +38,14 @@ The name comes from the TARS in *Interstellar* — practical, direct, dependable
 
 ## Key Features
 
+### Public Agent Packages
+
+TARS can now be used as a small Go agent-building kit without running the TARS server. Public packages under `pkg/` expose the provider-normalized LLM contracts, tool registry, iterative agent loop, memory helpers, skill loader, and MCP client wrapper for lightweight apps that should reuse TARS-tested primitives instead of copying `internal/` code.
+
+- `pkg/llm`, `pkg/tools`, and `pkg/agentloop` are the core loop: provider client, registered tools, and tool-calling iterations.
+- `pkg/memory`, `pkg/skill`, and `pkg/mcp` expose the first helper surfaces for durable memory, `SKILL.md` loading, and MCP tool adaptation.
+- `examples/min-agent` shows the minimal no-network composition, while [docs/public-agent-packages.md](docs/public-agent-packages.md) documents package boundaries and what still intentionally remains internal.
+
 ### Chat + Memory
 
 The primary interface. Browser-based console at `http://127.0.0.1:43180/console`.
