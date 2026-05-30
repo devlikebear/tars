@@ -1,6 +1,7 @@
 package session_test
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -89,5 +90,16 @@ func TestExportedReadMessagesMissingFile(t *testing.T) {
 	}
 	if len(msgs) != 0 {
 		t.Fatalf("want 0 messages for missing file, got %d", len(msgs))
+	}
+}
+
+func TestExportedSessionNotFoundSentinel(t *testing.T) {
+	store := session.NewStore(t.TempDir())
+	_, err := store.Get("nonexistent-session-id")
+	if err == nil {
+		t.Fatal("expected error for unknown session id")
+	}
+	if !errors.Is(err, session.ErrSessionNotFound) {
+		t.Fatalf("expected ErrSessionNotFound, got %v", err)
 	}
 }
