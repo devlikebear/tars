@@ -2,7 +2,18 @@ package session
 
 import internal "github.com/devlikebear/tars/internal/session"
 
-// Types — aliases so external callers get the full method set / struct fields.
+// ErrSessionNotFound is returned when a session ID does not resolve to an
+// existing session.
+var ErrSessionNotFound = internal.ErrSessionNotFound
+
+// ErrCwdNotEligible is returned by SetCurrentDir when the supplied directory
+// is not under a configured work_dirs entry.
+var ErrCwdNotEligible = internal.ErrCwdNotEligible
+
+// ErrSessionKindUnsupported is returned by goal mutations when the session
+// kind does not support goals.
+var ErrSessionKindUnsupported = internal.ErrSessionKindUnsupported
+
 type Store = internal.Store
 type Session = internal.Session
 type Message = internal.Message

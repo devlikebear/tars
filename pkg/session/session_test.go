@@ -73,6 +73,13 @@ func TestExportedLoadHistoryTokenBudget(t *testing.T) {
 	if len(few) >= len(all) {
 		t.Fatalf("tiny budget should truncate: got %d (all=%d)", len(few), len(all))
 	}
+	snap, err := session.LoadHistorySnapshot(path, 100000)
+	if err != nil {
+		t.Fatalf("LoadHistorySnapshot: %v", err)
+	}
+	if len(snap.Messages) != 3 || snap.Tokens <= 0 {
+		t.Fatalf("snapshot = %+v", snap)
+	}
 }
 
 func TestExportedReadMessagesMissingFile(t *testing.T) {
