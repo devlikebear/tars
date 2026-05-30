@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.33.0] - 2026-05-30
+
+### Added
+
+- **Public chat-session package (`pkg/session`)** — Adds an additive public Go entrypoint `pkg/session` that thin-aliases `internal/session` so external agent apps can reuse TARS' file-backed chat-session and transcript persistence without importing `internal/*`. Exposes `Store`/`Session`/`Message`/`HistorySnapshot`, the `NewStore` constructor, the transcript helpers (`AppendMessage`, `ReadMessages`, `RewriteMessages`, `LoadHistory`, `LoadHistorySnapshot`, `EstimateMessageTokenCost`), and the `ErrSessionNotFound`/`ErrCwdNotEligible`/`ErrSessionKindUnsupported` sentinels. The on-disk format (`sessions/sessions.json` index plus one `sessions/{id}.jsonl` transcript per session) is unchanged and `internal/session` is untouched.
+
 ## [0.32.72] - 2026-05-21
 
 ### Added
