@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.33.2] - 2026-06-02
+
+### Fixed
+
+- **Model fetcher base-URL defaulting** — `ModelFetcher.FetchModels` now defaults the per-provider base URL (via `llmdefaults.ForKind`) just like `NewProvider`, so callers that pass only a provider id and API key (no custom endpoint) can list models. Previously an empty `BaseURL` failed with `invalid llm base url` for `gemini-native` and produced a malformed `/models` URL for OpenAI-compatible providers.
+
 ## [0.33.1] - 2026-06-02
 
 ### Added

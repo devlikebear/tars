@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/devlikebear/tars/internal/auth"
+	"github.com/devlikebear/tars/internal/llmdefaults"
 )
 
 const defaultOpenAICodexModelsURL = "https://api.openai.com/v1/models"
@@ -66,6 +67,11 @@ func newModelFetcherWithDeps(deps modelFetcherDeps) *modelFetcher {
 
 func (f *modelFetcher) FetchModels(ctx context.Context, opts ProviderOptions) ([]string, error) {
 	provider := strings.TrimSpace(strings.ToLower(opts.Provider))
+	// Default the base URL per provider, mirroring NewProvider, so callers that
+	// only know the provider id (no custom endpoint) can list models.
+	if defaults, ok := llmdefaults.ForKind(provider); ok {
+		opts.BaseURL = firstNonEmptyTrimmed(opts.BaseURL, defaults.BaseURL)
+	}
 	switch provider {
 	case "openai":
 		return f.fetchOpenAICompatibleModels(ctx, opts)
