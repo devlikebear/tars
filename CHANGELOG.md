@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.33.4] - 2026-06-03
+
+### Fixed
+
+- **`anthropic` provider base URL/model defaulting** — `NewProvider` now defaults the `anthropic` provider's base URL and model (via `llmdefaults`) like every other provider. Previously an empty base URL produced a relative `/v1/messages` request that failed with `unsupported protocol scheme`. With this, all built-in providers default their endpoint.
+
 ## [0.33.3] - 2026-06-03
 
 ### Fixed

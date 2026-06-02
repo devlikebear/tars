@@ -14,3 +14,23 @@ func TestNewProvider_OpenAIDefaultsBaseURLAndModel(t *testing.T) {
 		t.Fatal("expected a client")
 	}
 }
+
+// Same regression for anthropic: it errors at request time, not construction,
+// so assert the base URL is defaulted. Empty base URL produced a relative
+// "/v1/messages" → "unsupported protocol scheme".
+func TestNewProvider_AnthropicDefaultsBaseURLAndModel(t *testing.T) {
+	client, err := NewProvider(ProviderOptions{Provider: "anthropic", APIKey: "sk-ant-test"})
+	if err != nil {
+		t.Fatalf("NewProvider(anthropic): %v", err)
+	}
+	ac, ok := client.(*AnthropicClient)
+	if !ok {
+		t.Fatalf("expected *AnthropicClient, got %T", client)
+	}
+	if ac.baseURL != "https://api.anthropic.com" {
+		t.Fatalf("base url = %q, want https://api.anthropic.com", ac.baseURL)
+	}
+	if ac.model == "" {
+		t.Fatal("model should be defaulted")
+	}
+}

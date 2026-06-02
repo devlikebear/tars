@@ -341,7 +341,12 @@ func NewProvider(opts ProviderOptions) (Client, error) {
 		if config.MaxTokens <= 0 {
 			config.MaxTokens = 4096
 		}
-		return newAnthropicClientWithConfig(opts.BaseURL, token, opts.Model, config)
+		return newAnthropicClientWithConfig(
+			firstNonEmptyTrimmed(opts.BaseURL, llmdefaults.AnthropicBaseURL),
+			token,
+			firstNonEmptyTrimmed(opts.Model, llmdefaults.AnthropicModel),
+			config,
+		)
 	default:
 		return nil, fmt.Errorf("unsupported llm provider: %s", provider)
 	}
