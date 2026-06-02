@@ -36,6 +36,7 @@ type Client = internal.Client
 type ProviderOptions = internal.ProviderOptions
 type ProviderError = internal.ProviderError
 type ClaudeCodeCLIClient = internal.ClaudeCodeCLIClient
+type ModelFetcher = internal.ModelFetcher
 type Role = internal.Role
 
 const (
@@ -80,6 +81,8 @@ func ToolChoiceSpecific(name string) *ToolChoice { return internal.ToolChoiceSpe
 func DefaultClientConfig() ClientConfig { return internal.DefaultClientConfig() }
 
 func NewProvider(opts ProviderOptions) (Client, error) { return internal.NewProvider(opts) }
+
+func NewModelFetcher() ModelFetcher { return internal.NewModelFetcher() }
 
 func AllRoles() []Role { return internal.AllRoles() }
 
