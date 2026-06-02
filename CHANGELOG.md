@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.33.3] - 2026-06-03
+
+### Fixed
+
+- **`openai` provider base URL/model defaulting** — `NewProvider` now defaults the `openai` provider's base URL and model (via `llmdefaults`) like every other provider, so constructing a client with only a provider id + API key no longer fails with `openai base url is required`.
+
 ## [0.33.2] - 2026-06-02
 
 ### Fixed
