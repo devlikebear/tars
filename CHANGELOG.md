@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.33.1] - 2026-06-02
+
+### Added
+
+- **Public model fetcher (`pkg/llm.ModelFetcher`)** — Re-exports the existing `internal/llm` model-listing surface (`ModelFetcher` interface and `NewModelFetcher` constructor) from `pkg/llm` so embedding agent apps can list a provider's live models (OpenAI-compatible, Anthropic, Gemini-native, OpenAI Codex) without importing `internal/*`. Additive only; `internal/llm` is unchanged.
+
 ## [0.33.0] - 2026-05-30
 
 ### Added
