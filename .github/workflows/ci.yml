@@ -37,6 +37,20 @@ jobs:
       - name: Run security scan
         run: make security-scan
 
+  windows-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Cross-compile public packages for Windows
+        run: make windows-build-check
+
   test:
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
