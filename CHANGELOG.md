@@ -6,6 +6,21 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.34.0] - 2026-06-07
+
+### Added
+
+- **`claude-code-cli` invocation timeout** — each call is now bounded by `CLAUDE_CODE_CLI_TIMEOUT` (default 5m; accepts a Go duration like `300s`/`5m` or a bare integer treated as seconds). Previously the subprocess had no deadline — the 30s `HTTPTimeout` only applies to HTTP-based providers — so a hung or slow `claude` process blocked until some upstream client gave up.
+- **`claude-code-cli` transient-failure retry** — a failed invocation is retried once, but never on a timeout or cancellation (so an already-long wait is not doubled).
+
+### Changed
+
+- **`claude-code-cli` startup cost reduced ~1s/turn** — `claude` is now spawned with `DISABLE_AUTOUPDATER`, `DISABLE_TELEMETRY`, `DISABLE_ERROR_REPORTING`, and `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` injected as defaults (measured ~1.4s → ~0.38s of per-call startup). Values already set in the environment are preserved.
+
+### Fixed
+
+- **`claude-code-cli` timeout could hang on descendant processes** — `claude` is now run in its own process group and the whole group is killed on cancellation (with a `WaitDelay` backstop). Previously killing only the direct child left descendant stdio MCP servers holding the stdout pipe open, so the stream read blocked well past the deadline.
+
 ## [0.33.4] - 2026-06-03
 
 ### Fixed
