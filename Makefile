@@ -60,7 +60,7 @@ RELEASE_STAGE_DIR ?= $(DIST_DIR)/release-$(RELEASE_GOOS)-$(RELEASE_GOARCH)
 
 .PHONY: help \
 	test test-v test-one test-nocache test-race test-cover test-cover-check test-diff test-cover-diff \
-	build build-bins release-asset clean tidy fmt vet lint \
+	build build-bins windows-build-check release-asset clean tidy fmt vet lint \
 	lint-diff ci-static-analysis-check github-actions-hardening-check codeql-workflow-check sonarcloud-workflow-check \
 	ensure-console-assets console-install console-build \
 	browser-install \
@@ -176,6 +176,15 @@ build: ensure-console-assets
 build-bins: ensure-console-assets
 	mkdir -p $(BIN_DIR)
 	CGO_LDFLAGS="$(CGO_LDFLAGS_EXTRA)" $(GO) build -ldflags "$(GO_LDFLAGS)" -o $(BIN_DIR)/tars ./cmd/tars
+
+# windows-build-check cross-compiles the public packages that downstream
+# consumers import (e.g. linetta's desktop engine imports pkg/llm and
+# pkg/session and ships a Windows build). The full module is unix-only
+# (syscall use in internal/onboarding, internal/ops), so only ./pkg/... is
+# checked. This guards against unix-only code leaking into the public API,
+# which tars' own (Linux-only) test job would otherwise miss.
+windows-build-check:
+	GOOS=windows GOARCH=amd64 $(GO) build ./pkg/...
 
 # ensure-console-assets bootstraps the embedded Svelte console only
 # when the dist/ directory is empty (e.g. fresh clone, dev build).
