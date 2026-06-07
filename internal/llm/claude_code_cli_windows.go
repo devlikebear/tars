@@ -2,24 +2,15 @@
 
 package llm
 
-import (
-	"os/exec"
-	"strconv"
-)
+import "os/exec"
 
-// configureClaudeCodeCLIProcess kills the whole claude descendant tree on
-// context cancellation. Windows has no POSIX process groups, so instead of
-// Setpgid+kill(-pgid) we issue `taskkill /T` to terminate claude and the
-// descendants (e.g. stdio MCP servers) that would otherwise hold the stdout
-// pipe open and block the stream read past the deadline. WaitDelay bounds any
-// residual pipe wait.
+// configureClaudeCodeCLIProcess bounds the invocation on Windows via WaitDelay.
+// Windows has no POSIX process groups, so we rely on exec.CommandContext's
+// default cancel (which terminates claude) plus WaitDelay: if a descendant
+// (e.g. an stdio MCP server) outlives claude and keeps the stdout pipe open,
+// WaitDelay makes os/exec force-close the pipe so the stream read unblocks at
+// the deadline instead of hanging. Orphaned descendants then exit on their own
+// once their stdio breaks.
 func configureClaudeCodeCLIProcess(cmd *exec.Cmd) {
-	cmd.Cancel = func() error {
-		if cmd.Process == nil {
-			return nil
-		}
-		kill := exec.Command("taskkill", "/F", "/T", "/PID", strconv.Itoa(cmd.Process.Pid))
-		return kill.Run()
-	}
 	cmd.WaitDelay = claudeCodeCLIWaitDelay
 }
