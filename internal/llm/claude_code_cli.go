@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 )
 
@@ -25,6 +24,10 @@ const (
 	// agentic turns can legitimately run for tens of seconds to minutes, so
 	// the default is generous; operators tune it via CLAUDE_CODE_CLI_TIMEOUT.
 	defaultClaudeCodeCLITimeout = 5 * time.Minute
+	// claudeCodeCLIWaitDelay bounds how long Wait blocks on pipe I/O after the
+	// process is signaled on cancellation. Shared by the platform-specific
+	// process configuration (claude_code_cli_unix.go / _windows.go).
+	claudeCodeCLIWaitDelay = 5 * time.Second
 )
 
 // claudeCodeCLIPerfEnv holds low-risk environment toggles that cut Claude
@@ -153,19 +156,12 @@ func (c *ClaudeCodeCLIClient) Chat(ctx context.Context, messages []ChatMessage, 
 		cmd := exec.CommandContext(ctx, c.cliPath, args...)
 		cmd.Dir = c.workDir
 		cmd.Env = env
-		// Run claude in its own process group and, on context cancellation,
-		// kill the whole group. claude spawns descendants (e.g. stdio MCP
-		// servers) that inherit the stdout pipe; killing only the direct
-		// child leaves them holding the pipe open, so the stream read would
-		// block past the deadline. WaitDelay bounds any residual pipe wait.
-		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-		cmd.Cancel = func() error {
-			if cmd.Process == nil {
-				return nil
-			}
-			return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
-		}
-		cmd.WaitDelay = 5 * time.Second
+		// On context cancellation, kill the whole descendant tree, not just
+		// the direct child: claude spawns descendants (e.g. stdio MCP servers)
+		// that inherit the stdout pipe, and a surviving descendant holds it
+		// open so the stream read would block past the deadline. The mechanism
+		// is platform-specific (see claude_code_cli_unix.go / _windows.go).
+		configureClaudeCodeCLIProcess(cmd)
 		var stderr bytes.Buffer
 		cmd.Stderr = &stderr
 		stdout, err := cmd.StdoutPipe()
