@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.34.1] - 2026-06-07
+
+### Fixed
+
+- **`claude-code-cli` now cross-compiles for Windows** — v0.34.0's process-group kill used `syscall.Kill` and `syscall.SysProcAttr{Setpgid}`, which are unix-only, so consumers cross-compiling for Windows (e.g. the linetta desktop engine, which imports `pkg/llm`) failed to build. The cancellation/process-tree teardown is now behind a build-tagged helper: POSIX process group + `kill(-pgid)` on unix, `WaitDelay`-driven pipe close on Windows. Behavior on unix is unchanged.
+
 ## [0.34.0] - 2026-06-07
 
 ### Added
