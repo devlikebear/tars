@@ -10,14 +10,35 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"syscall"
+	"time"
 )
 
 const (
 	claudeCodeCLIProviderLabel = "claude-code-cli"
 	defaultClaudeCodeCLIModel  = "sonnet"
 	claudeCodeCLIPathEnv       = "CLAUDE_CODE_CLI_PATH"
+	claudeCodeCLITimeoutEnv    = "CLAUDE_CODE_CLI_TIMEOUT"
+	// defaultClaudeCodeCLITimeout bounds a single claude invocation. Real
+	// agentic turns can legitimately run for tens of seconds to minutes, so
+	// the default is generous; operators tune it via CLAUDE_CODE_CLI_TIMEOUT.
+	defaultClaudeCodeCLITimeout = 5 * time.Minute
 )
+
+// claudeCodeCLIPerfEnv holds low-risk environment toggles that cut Claude
+// Code's per-invocation startup cost (autoupdater check, telemetry, error
+// reporting, and other nonessential network traffic). Measured savings are
+// roughly ~1s per call. These are applied as defaults only: a value already
+// present in the inherited environment is left untouched so operators keep the
+// final say. Order is fixed for deterministic process environments.
+var claudeCodeCLIPerfEnv = []struct{ key, value string }{
+	{"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "1"},
+	{"DISABLE_AUTOUPDATER", "1"},
+	{"DISABLE_TELEMETRY", "1"},
+	{"DISABLE_ERROR_REPORTING", "1"},
+}
 
 type ClaudeCodeCLIClient struct {
 	cliPath string
@@ -120,31 +141,119 @@ func (c *ClaudeCodeCLIClient) Chat(ctx context.Context, messages []ChatMessage, 
 	}
 	args = append(args, prompt)
 
-	cmd := exec.CommandContext(ctx, c.cliPath, args...)
-	cmd.Dir = c.workDir
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return ChatResponse{}, newProviderError(claudeCodeCLIProviderLabel, "request", fmt.Errorf("stdout pipe: %w", err))
-	}
-	if err := cmd.Start(); err != nil {
-		return ChatResponse{}, newProviderError(claudeCodeCLIProviderLabel, "request", fmt.Errorf("start cli: %w", err))
+	// Bound the invocation so a hung or slow claude process fails predictably
+	// instead of blocking until some upstream client gives up.
+	timeout := parseClaudeCodeCLITimeout(os.Getenv(claudeCodeCLITimeoutEnv))
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	env := claudeCodeCLIEnv(os.Environ())
+
+	attempt := func() (ChatResponse, error) {
+		cmd := exec.CommandContext(ctx, c.cliPath, args...)
+		cmd.Dir = c.workDir
+		cmd.Env = env
+		// Run claude in its own process group and, on context cancellation,
+		// kill the whole group. claude spawns descendants (e.g. stdio MCP
+		// servers) that inherit the stdout pipe; killing only the direct
+		// child leaves them holding the pipe open, so the stream read would
+		// block past the deadline. WaitDelay bounds any residual pipe wait.
+		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+		cmd.Cancel = func() error {
+			if cmd.Process == nil {
+				return nil
+			}
+			return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		}
+		cmd.WaitDelay = 5 * time.Second
+		var stderr bytes.Buffer
+		cmd.Stderr = &stderr
+		stdout, err := cmd.StdoutPipe()
+		if err != nil {
+			return ChatResponse{}, newProviderError(claudeCodeCLIProviderLabel, "request", fmt.Errorf("stdout pipe: %w", err))
+		}
+		if err := cmd.Start(); err != nil {
+			return ChatResponse{}, newProviderError(claudeCodeCLIProviderLabel, "request", fmt.Errorf("start cli: %w", err))
+		}
+
+		resp, parseErr := parseClaudeCodeCLIStream(stdout, opts)
+		waitErr := cmd.Wait()
+		// A deadline kill surfaces as a process/stream error; report it as a
+		// timeout so callers (and the retry policy) can tell it apart from a
+		// transient crash.
+		if ctx.Err() == context.DeadlineExceeded {
+			return ChatResponse{}, newProviderError(claudeCodeCLIProviderLabel, "request", fmt.Errorf("cli timed out after %s", timeout))
+		}
+		if parseErr != nil {
+			return ChatResponse{}, parseErr
+		}
+		if waitErr != nil {
+			errText := strings.TrimSpace(stderr.String())
+			if errText != "" {
+				return ChatResponse{}, newProviderError(claudeCodeCLIProviderLabel, "request", fmt.Errorf("cli failed: %w: %s", waitErr, errText))
+			}
+			return ChatResponse{}, newProviderError(claudeCodeCLIProviderLabel, "request", fmt.Errorf("cli failed: %w", waitErr))
+		}
+		return resp, nil
 	}
 
-	resp, parseErr := parseClaudeCodeCLIStream(stdout, opts)
-	waitErr := cmd.Wait()
-	if parseErr != nil {
-		return ChatResponse{}, parseErr
+	return runClaudeCodeCLIWithRetry(ctx, attempt)
+}
+
+// runClaudeCodeCLIWithRetry runs attempt once and retries a single time on a
+// transient failure. A failure is NOT transient — and so is not retried —
+// when the context is done (a timeout or caller cancellation), to avoid
+// doubling an already-long wait.
+//
+// Caveat: in streaming mode a retried attempt re-emits deltas. Retries only
+// fire on a transient failure with the context still live, which is rare, so
+// this is accepted in exchange for recovering from one-off process crashes.
+func runClaudeCodeCLIWithRetry(ctx context.Context, attempt func() (ChatResponse, error)) (ChatResponse, error) {
+	resp, err := attempt()
+	if err == nil || ctx.Err() != nil {
+		return resp, err
 	}
-	if waitErr != nil {
-		errText := strings.TrimSpace(stderr.String())
-		if errText != "" {
-			return ChatResponse{}, newProviderError(claudeCodeCLIProviderLabel, "request", fmt.Errorf("cli failed: %w: %s", waitErr, errText))
+	return attempt()
+}
+
+// claudeCodeCLIEnv returns base augmented with the claudeCodeCLIPerfEnv
+// defaults for any key not already present in base. base is typically
+// os.Environ(); existing values win so callers can override the toggles.
+func claudeCodeCLIEnv(base []string) []string {
+	present := make(map[string]struct{}, len(base))
+	for _, kv := range base {
+		if i := strings.IndexByte(kv, '='); i > 0 {
+			present[kv[:i]] = struct{}{}
 		}
-		return ChatResponse{}, newProviderError(claudeCodeCLIProviderLabel, "request", fmt.Errorf("cli failed: %w", waitErr))
 	}
-	return resp, nil
+	out := append([]string(nil), base...)
+	for _, def := range claudeCodeCLIPerfEnv {
+		if _, ok := present[def.key]; ok {
+			continue
+		}
+		out = append(out, def.key+"="+def.value)
+	}
+	return out
+}
+
+// parseClaudeCodeCLITimeout interprets a CLAUDE_CODE_CLI_TIMEOUT value. It
+// accepts a Go duration string ("300s", "5m") or a bare integer treated as
+// seconds. Empty, zero, negative, or unparseable input yields the default.
+func parseClaudeCodeCLITimeout(raw string) time.Duration {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return defaultClaudeCodeCLITimeout
+	}
+	if d, err := time.ParseDuration(raw); err == nil {
+		if d > 0 {
+			return d
+		}
+		return defaultClaudeCodeCLITimeout
+	}
+	if secs, err := strconv.Atoi(raw); err == nil && secs > 0 {
+		return time.Duration(secs) * time.Second
+	}
+	return defaultClaudeCodeCLITimeout
 }
 
 func parseClaudeCodeCLIStream(stdout io.Reader, opts ChatOptions) (ChatResponse, error) {
