@@ -65,6 +65,26 @@ func TestDisabledStoreSaveWriteFailurePreservesExistingFile(t *testing.T) {
 	}
 }
 
+func TestDisabledStoreSaveUsesPrivateFileMode(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX file mode bits are not reliable on Windows")
+	}
+
+	workspaceDir := t.TempDir()
+	store := newDisabledStore(workspaceDir)
+	path := filepath.Join(workspaceDir, disabledFileName)
+	if err := store.Save(DisabledSet{Skills: []string{"keep"}}); err != nil {
+		t.Fatalf("save disabled state: %v", err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat disabled state: %v", err)
+	}
+	if got := info.Mode().Perm(); got != 0o600 {
+		t.Fatalf("disabled state mode = %v, want 0600", got)
+	}
+}
+
 func TestDisabledStoreSetDisabledKeepsConcurrentUpdates(t *testing.T) {
 	workspaceDir := t.TempDir()
 	store := newDisabledStore(workspaceDir)

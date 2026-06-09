@@ -56,8 +56,10 @@ func Write(path string, data []byte) error {
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("atomicwrite: close temp for %q: %w", path, err)
 	}
-	if err := replaceFile(tmpPath, path); err != nil {
-		return err
+	if err := os.Rename(tmpPath, path); err != nil {
+		if replaceErr := replaceAfterRenameError(tmpPath, path, err); replaceErr != nil {
+			return replaceErr
+		}
 	}
 	cleanup = false
 	return nil

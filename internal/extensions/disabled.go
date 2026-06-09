@@ -70,7 +70,7 @@ func (s *disabledStore) saveLocked(ds DisabledSet) error {
 	if err := atomicwrite.Write(s.path, append(data, '\n')); err != nil {
 		return err
 	}
-	return os.Chmod(s.path, 0o644)
+	return os.Chmod(s.path, 0o600)
 }
 
 // SetDisabled enables or disables a specific extension.

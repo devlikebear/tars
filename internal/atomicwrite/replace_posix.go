@@ -2,14 +2,8 @@
 
 package atomicwrite
 
-import (
-	"fmt"
-	"os"
-)
+import "fmt"
 
-func replaceFile(tmpPath string, path string) error {
-	if err := os.Rename(tmpPath, path); err != nil {
-		return fmt.Errorf("atomicwrite: rename %q -> %q: %w", tmpPath, path, err)
-	}
-	return nil
+func replaceAfterRenameError(tmpPath string, path string, renameErr error) error {
+	return fmt.Errorf("atomicwrite: rename %q -> %q: %w", tmpPath, path, renameErr)
 }
