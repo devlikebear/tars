@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+
+	"github.com/devlikebear/tars/internal/atomicwrite"
 )
 
 const disabledFileName = "extensions_disabled.json"
@@ -65,7 +67,10 @@ func (s *disabledStore) saveLocked(ds DisabledSet) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(s.path, append(data, '\n'), 0o644)
+	if err := atomicwrite.Write(s.path, append(data, '\n')); err != nil {
+		return err
+	}
+	return os.Chmod(s.path, 0o644)
 }
 
 // SetDisabled enables or disables a specific extension.

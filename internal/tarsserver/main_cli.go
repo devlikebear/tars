@@ -49,6 +49,60 @@ func logBootstrapError(logger zerolog.Logger, err error) {
 	logger.Error().Err(err).Msg("failed to initialize runtime dependencies")
 }
 
+func runServerRuntime(parentCtx context.Context, opts *options, cfg config.Config, stdout, stderr io.Writer, nowFn func() time.Time, logger zerolog.Logger) error {
+	if parentCtx == nil {
+		parentCtx = context.Background()
+	}
+	if opts == nil {
+		opts = &options{}
+	}
+	if nowFn == nil {
+		nowFn = time.Now
+	}
+	if opts.Verbose {
+		logger = logger.Level(zerolog.DebugLevel)
+		zlog.Logger = logger
+		logger.Debug().Msg("verbose logging enabled")
+	}
+
+	base, err := buildBaseDeps(opts, cfg, nowFn, logger)
+	if err != nil {
+		logBootstrapError(logger, err)
+		return &cli.ExitError{Code: 1, Err: err}
+	}
+
+	deps, err := buildLLMDeps(base, cfg, logger)
+	if err != nil {
+		if isRecoverableLLMInitError(err) {
+			logger.Warn().
+				Err(err).
+				Msg("llm init failed — entering setup-only mode (visit /console to complete setup)")
+			deps = base
+			deps.LLMReady = false
+		} else {
+			logBootstrapError(logger, err)
+			return &cli.ExitError{Code: 1, Err: err}
+		}
+	}
+
+	if opts.ConfigCheck {
+		if !deps.LLMReady {
+			msg := "tars config check requires setup — run tars serve and visit /console"
+			logger.Error().Str("workspace_dir", deps.cfg.WorkspaceDir).Msg(msg)
+			_, _ = fmt.Fprintln(stdout, msg)
+			return &cli.ExitError{Code: 1, Err: fmt.Errorf("%s", msg)}
+		}
+		logger.Info().
+			Str("workspace_dir", deps.cfg.WorkspaceDir).
+			Msg("tars config check passed")
+
+		_, _ = fmt.Fprintln(stdout, "tars config check passed")
+		return nil
+	}
+
+	return runServeAPICommand(parentCtx, opts, deps, nowFn, stdout, stderr, logger)
+}
+
 // newRootCmd builds the cobra command tree. The caller is expected to
 // have already loaded cfg and installed the runtime logger so the RunE
 // hook can focus on wiring the rest of the runtime.
@@ -63,53 +117,7 @@ func newRootCmd(opts *options, cfg config.Config, stdout, stderr io.Writer, nowF
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			parentCtx := cmd.Context()
-			if parentCtx == nil {
-				parentCtx = context.Background()
-			}
-			logger := zlog.Logger
-			if opts.Verbose {
-				logger = logger.Level(zerolog.DebugLevel)
-				zlog.Logger = logger
-				logger.Debug().Msg("verbose logging enabled")
-			}
-
-			base, err := buildBaseDeps(opts, cfg, nowFn, logger)
-			if err != nil {
-				logBootstrapError(logger, err)
-				return &cli.ExitError{Code: 1, Err: err}
-			}
-
-			deps, err := buildLLMDeps(base, cfg, logger)
-			if err != nil {
-				if isRecoverableLLMInitError(err) {
-					logger.Warn().
-						Err(err).
-						Msg("llm init failed — entering setup-only mode (visit /console to complete setup)")
-					deps = base
-					deps.LLMReady = false
-				} else {
-					logBootstrapError(logger, err)
-					return &cli.ExitError{Code: 1, Err: err}
-				}
-			}
-
-			if opts.ConfigCheck {
-				if !deps.LLMReady {
-					msg := "tars config check requires setup — run tars serve and visit /console"
-					logger.Error().Str("workspace_dir", deps.cfg.WorkspaceDir).Msg(msg)
-					fmt.Fprintln(stdout, msg)
-					return &cli.ExitError{Code: 1, Err: fmt.Errorf("%s", msg)}
-				}
-				logger.Info().
-					Str("workspace_dir", deps.cfg.WorkspaceDir).
-					Msg("tars config check passed")
-
-				fmt.Fprintln(stdout, "tars config check passed")
-				return nil
-			}
-
-			return runServeAPICommand(parentCtx, opts, deps, nowFn, stdout, stderr, logger)
+			return runServerRuntime(cmd.Context(), opts, cfg, stdout, stderr, nowFn, zlog.Logger)
 		},
 	}
 

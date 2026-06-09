@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -258,20 +257,18 @@ func readInitResetConfirmation(stdin io.Reader, stdout io.Writer) error {
 // present. Missing-service errors are swallowed (caller treats stop
 // failures as non-fatal).
 func stopExistingService(ctx context.Context, stdout io.Writer) error {
-	label := launchagent.DefaultServerLabel
-	plistPath, err := defaultedServicePlistPath("", label)
+	target, err := defaultServerServiceTarget()
 	if err != nil {
 		return err
 	}
-	if exists, _ := pathExists(plistPath); !exists {
+	if exists, _ := pathExists(target.plistPath); !exists {
 		return nil
 	}
-	domain := "gui/" + strconv.Itoa(serviceGetuid())
-	out, err := serviceLaunchctlRun(ctx, "bootout", domain, plistPath)
+	out, err := serviceLaunchctlRun(ctx, "bootout", target.domain, target.plistPath)
 	if err != nil && !looksLikeMissingLaunchctlService(out, err) {
 		return fmt.Errorf("launchctl bootout: %w: %s", err, strings.TrimSpace(out))
 	}
-	_, _ = fmt.Fprintf(stdout, "stopped existing service\n  label: %s\n  plist: %s\n\n", label, plistPath)
+	_, _ = fmt.Fprintf(stdout, "stopped existing service\n  label: %s\n  plist: %s\n\n", target.label, target.plistPath)
 	return nil
 }
 
@@ -279,35 +276,20 @@ func stopExistingService(ctx context.Context, stdout io.Writer) error {
 // `--api-addr <addr>` token in ProgramArguments and returns the addr.
 // Used by reset to keep the chosen port stable across re-installs.
 func readExistingAPIAddrFromPlist() (string, bool) {
-	plistPath, err := defaultedServicePlistPath("", launchagent.DefaultServerLabel)
+	target, err := defaultServerServiceTarget()
 	if err != nil {
 		return "", false
 	}
-	data, err := os.ReadFile(plistPath)
+	data, err := os.ReadFile(target.plistPath)
 	if err != nil {
 		return "", false
 	}
-	// The plist is XML — rather than parse the whole tree we walk the
-	// <string> elements in order looking for the literal "--api-addr"
-	// flag and grab the next <string> as its value. Mirrors how
-	// launchagent.BuildPlist emits ProgramArguments.
-	text := string(data)
-	const flag = "--api-addr"
-	idx := strings.Index(text, "<string>"+flag+"</string>")
-	if idx < 0 {
+	args, err := launchagent.ProgramArgumentsFromPlist(data)
+	if err != nil {
 		return "", false
 	}
-	tail := text[idx+len("<string>"+flag+"</string>"):]
-	open := strings.Index(tail, "<string>")
-	if open < 0 {
-		return "", false
-	}
-	close := strings.Index(tail[open+len("<string>"):], "</string>")
-	if close < 0 {
-		return "", false
-	}
-	addr := strings.TrimSpace(tail[open+len("<string>"):][:close])
-	if addr == "" {
+	addr, ok := launchagent.ArgumentValue(args, "--api-addr")
+	if !ok {
 		return "", false
 	}
 	return addr, true

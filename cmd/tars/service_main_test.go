@@ -10,7 +10,98 @@ import (
 	"testing"
 
 	"github.com/devlikebear/tars/internal/config"
+	"github.com/devlikebear/tars/internal/launchagent"
 )
+
+func TestResolveServiceTargetUsesSharedDefaults(t *testing.T) {
+	restore := overrideServiceTestHooks(t)
+	defer restore()
+
+	fakeHome := t.TempDir()
+	serviceUserHomeDir = func() (string, error) { return fakeHome, nil }
+	serviceGetuid = func() int { return 777 }
+
+	target, err := resolveServiceTarget(serviceOptions{})
+	if err != nil {
+		t.Fatalf("resolve service target: %v", err)
+	}
+
+	wantPlist := filepath.Join(fakeHome, "Library", "LaunchAgents", "io.tars.server.plist")
+	wantStdout := filepath.Join(fakeHome, filepath.FromSlash(defaultServiceStdoutLog))
+	wantStderr := filepath.Join(fakeHome, filepath.FromSlash(defaultServiceStderrLog))
+	if target.label != launchagent.DefaultServerLabel {
+		t.Fatalf("expected default label, got %+v", target)
+	}
+	if target.domain != "gui/777" {
+		t.Fatalf("expected default domain gui/777, got %+v", target)
+	}
+	if target.plistPath != wantPlist || target.stdoutLog != wantStdout || target.stderrLog != wantStderr {
+		t.Fatalf("unexpected service target paths: got %+v want plist=%s stdout=%s stderr=%s", target, wantPlist, wantStdout, wantStderr)
+	}
+}
+
+func TestResolveServiceTargetReturnsPlistPathError(t *testing.T) {
+	restore := overrideServiceTestHooks(t)
+	defer restore()
+
+	serviceUserHomeDir = func() (string, error) { return "", errors.New("home failed") }
+	if _, err := resolveServiceTarget(serviceOptions{}); err == nil || !strings.Contains(err.Error(), "home failed") {
+		t.Fatalf("expected home error, got %v", err)
+	}
+}
+
+func TestStartInitServiceUsesDefaultServiceTarget(t *testing.T) {
+	fakeHome := t.TempDir()
+	t.Setenv("HOME", fakeHome)
+	clearDoctorEnv(t)
+	t.Setenv("OPENAI_API_KEY", "test-openai-key")
+	t.Setenv("TARS_PLUGINS_BUNDLED_DIR", writeBundledPluginSource(t))
+
+	workspaceDir := filepath.Join(t.TempDir(), "ws")
+	runInitForTest(t, workspaceDir)
+
+	restore := overrideServiceTestHooks(t)
+	defer restore()
+	serviceExecutablePath = func() (string, error) { return "/usr/local/bin/tars", nil }
+	serviceGetuid = func() int { return 777 }
+
+	var calls [][]string
+	serviceLaunchctlRun = func(_ context.Context, args ...string) (string, error) {
+		calls = append(calls, append([]string{}, args...))
+		return "", nil
+	}
+
+	var stdout strings.Builder
+	result, err := startInitService(context.Background(), initStartParams{apiAddr: "127.0.0.1:43190"}, &stdout)
+	if err != nil {
+		t.Fatalf("start init service: %v", err)
+	}
+
+	wantPlist := filepath.Join(fakeHome, "Library", "LaunchAgents", "io.tars.server.plist")
+	wantLog := filepath.Join(fakeHome, filepath.FromSlash(defaultServiceStderrLog))
+	if result.mode != "service" || result.label != launchagent.DefaultServerLabel || result.logPath != wantLog {
+		t.Fatalf("unexpected result: %+v want log %s", result, wantLog)
+	}
+	if _, err := os.Stat(wantPlist); err != nil {
+		t.Fatalf("expected plist at %s: %v", wantPlist, err)
+	}
+	expected := [][]string{
+		{"bootout", "gui/777", wantPlist},
+		{"bootstrap", "gui/777", wantPlist},
+		{"kickstart", "-k", "gui/777/io.tars.server"},
+	}
+	if len(calls) != len(expected) {
+		t.Fatalf("expected %d launchctl calls, got %d: %#v", len(expected), len(calls), calls)
+	}
+	for i := range expected {
+		if strings.Join(calls[i], " ") != strings.Join(expected[i], " ") {
+			t.Fatalf("unexpected launchctl call %d: got %#v want %#v", i, calls[i], expected[i])
+		}
+	}
+	if !strings.Contains(stdout.String(), "service installed") || !strings.Contains(stdout.String(), "service started") {
+		t.Fatalf("expected install/start output, got:\n%s", stdout.String())
+	}
+}
 
 func TestRootCommand_ServiceInstallWritesLaunchAgentPlist(t *testing.T) {
 	fakeHome := t.TempDir()

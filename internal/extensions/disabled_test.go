@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"testing"
 )
@@ -26,6 +27,41 @@ func TestDisabledStoreSetDisabledReturnsLoadErrorAndPreservesFile(t *testing.T) 
 	}
 	if string(got) != string(corrupt) {
 		t.Fatalf("expected corrupt state to be preserved, got %q", got)
+	}
+}
+
+func TestDisabledStoreSaveWriteFailurePreservesExistingFile(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("directory permission failure is not reliable in this environment")
+	}
+
+	workspaceDir := t.TempDir()
+	store := newDisabledStore(workspaceDir)
+	path := filepath.Join(workspaceDir, disabledFileName)
+	if err := store.Save(DisabledSet{Skills: []string{"keep"}}); err != nil {
+		t.Fatalf("seed disabled state: %v", err)
+	}
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read seed disabled state: %v", err)
+	}
+
+	if err := os.Chmod(workspaceDir, 0o555); err != nil {
+		t.Fatalf("chmod workspace: %v", err)
+	}
+	defer func() {
+		_ = os.Chmod(workspaceDir, 0o755)
+	}()
+
+	if err := store.Save(DisabledSet{Skills: []string{"replace"}}); err == nil {
+		t.Fatalf("expected save failure")
+	}
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read disabled state after failed save: %v", err)
+	}
+	if string(after) != string(before) {
+		t.Fatalf("expected existing disabled state to be preserved, got %q want %q", after, before)
 	}
 }
 

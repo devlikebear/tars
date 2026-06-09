@@ -3,6 +3,7 @@ package tarsclient
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -254,7 +255,7 @@ func TestRuntimeClientEndpoints(t *testing.T) {
 	}
 }
 
-func TestRuntimeClientRequestText_UsesJSONErrorPayload(t *testing.T) {
+func TestRuntimeClientStatus_ReturnsPublicAPIErrorFromJSONPayload(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusForbidden)
@@ -270,6 +271,13 @@ func TestRuntimeClientRequestText_UsesJSONErrorPayload(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected status request error")
 	}
+	var apiErr *apiHTTPError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("expected public APIError, got %T %[1]v", err)
+	}
+	if apiErr.Code != "forbidden" || apiErr.Status != http.StatusForbidden {
+		t.Fatalf("unexpected APIError: %+v", apiErr)
+	}
 	msg := err.Error()
 	if !strings.Contains(msg, "forbidden") {
 		t.Fatalf("expected error to include code/message, got %q", msg)
@@ -279,7 +287,7 @@ func TestRuntimeClientRequestText_UsesJSONErrorPayload(t *testing.T) {
 	}
 }
 
-func TestRuntimeClientRequestText_FallbacksToPlainTextOnNonJSONError(t *testing.T) {
+func TestRuntimeClientStatus_ReturnsPublicAPIErrorFromPlainTextPayload(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "broken upstream", http.StatusBadGateway)
 	}))
@@ -289,6 +297,13 @@ func TestRuntimeClientRequestText_FallbacksToPlainTextOnNonJSONError(t *testing.
 	_, err := client.status(context.Background())
 	if err == nil {
 		t.Fatalf("expected status request error")
+	}
+	var apiErr *apiHTTPError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("expected public APIError, got %T %[1]v", err)
+	}
+	if apiErr.Status != http.StatusBadGateway {
+		t.Fatalf("unexpected APIError status: %+v", apiErr)
 	}
 	if !strings.Contains(err.Error(), "broken upstream") {
 		t.Fatalf("expected plain error body in message, got %q", err.Error())

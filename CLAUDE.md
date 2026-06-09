@@ -185,3 +185,8 @@ TARS 기능 변경 시 홈페이지 콘텐츠도 갱신 필요 (매 변경마다
 See `docs/static-analysis.md` for the static-analysis layering and local workflow guards.
 
 `release-on-version-bump.yml` — triggered by `VERSION.txt` change on main. Builds console before binary.
+
+## Codebase Analysis
+
+Architecture and module analysis available at `.analysis/AI_CONTEXT.md`.
+Read it first when you need to understand the project structure, dependencies, or key data flows.

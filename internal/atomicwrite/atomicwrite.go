@@ -26,10 +26,8 @@ import (
 // internal/tool/write_file.go for one such wrapper).
 //
 // Atomicity is provided by os.Rename, which is atomic on POSIX. On
-// Windows os.Rename can fail when the destination already exists;
-// callers targeting Windows should use the wrapper in
-// internal/tool/write_file.go which carries a remove-then-rename
-// fallback.
+// Windows, replacing an existing destination uses a platform fallback
+// after the temp file has been fully written, synced, and closed.
 func Write(path string, data []byte) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -58,8 +56,8 @@ func Write(path string, data []byte) error {
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("atomicwrite: close temp for %q: %w", path, err)
 	}
-	if err := os.Rename(tmpPath, path); err != nil {
-		return fmt.Errorf("atomicwrite: rename %q -> %q: %w", tmpPath, path, err)
+	if err := replaceFile(tmpPath, path); err != nil {
+		return err
 	}
 	cleanup = false
 	return nil

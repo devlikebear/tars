@@ -17,7 +17,14 @@
   <p><strong>Homepage:</strong> <a href="https://tars.marvin-42.com">tars.marvin-42.com</a> — project overview, features, and quickstart.</p>
 </div>
 
-TARS runs as a single Go binary on your machine. From the browser console you can directly inspect and control its work — chat with dockable Git Inspector and tool panels, message-level session forks, an Agent Runtime page with list/tree/Gantt/Flow views, Memory Inbox review, scheduled jobs, a background watchdog, and nightly reflection. Everything is configurable via YAML and extensible via skills, plugins, and MCP servers. Telegram and webhook channels are available when you're away from the browser.
+TARS is a local agent runtime for people who want an inspectable AI workbench without handing workspace control to a hosted service. It packages a browser console, API server, CLI, background jobs, memory, and extension system into one Go binary.
+
+The core promise is direct control:
+
+- Run agent chat, subagents, cron jobs, watchdog checks, and reflection on your own machine.
+- Inspect sessions, tool calls, memory candidates, run history, approvals, usage, logs, and config from the console.
+- Route work across heavy, standard, and light model tiers with role-level defaults and traceable runtime logs.
+- Extend behavior with skills, companion CLIs, plugins, MCP servers, Telegram, webhooks, and local APIs without bloating the default prompt.
 
 The name comes from the TARS in *Interstellar* — practical, direct, dependable when things get complicated. TARS aims for that. Not affiliated with the film; the name is borrowed.
 
@@ -40,7 +47,7 @@ The name comes from the TARS in *Interstellar* — practical, direct, dependable
 
 ### Public Agent Packages
 
-TARS can now be used as a small Go agent-building kit without running the TARS server. Public packages under `pkg/` expose the provider-normalized LLM contracts, tool registry, iterative agent loop, memory helpers, skill loader, and MCP client wrapper for lightweight apps that should reuse TARS-tested primitives instead of copying `internal/` code.
+Public packages under `pkg/` turn the runtime primitives into a small Go agent-building kit. Lightweight apps can reuse provider-normalized LLM contracts, the tool registry, the iterative agent loop, memory helpers, skill loading, and MCP adaptation without copying `internal/` code.
 
 - `pkg/llm`, `pkg/tools`, and `pkg/agentloop` are the core loop: provider client, registered tools, and tool-calling iterations.
 - `pkg/memory`, `pkg/skill`, and `pkg/mcp` expose the first helper surfaces for durable memory, `SKILL.md` loading, and MCP tool adaptation.
@@ -48,30 +55,16 @@ TARS can now be used as a small Go agent-building kit without running the TARS s
 
 ### Chat + Memory
 
-The primary interface. Browser-based console at `http://127.0.0.1:43180/console`.
+The primary interface is the browser console at `http://127.0.0.1:43180/console`.
 
-- Multi-session chat with full LLM tool-calling loops, transcript snippet matches in session search, pinned sessions, non-destructive archives, rule-based cleanup suggestions, and AI-reviewed archive/delete cleanup candidates
-- The console lazy-loads heavier routes and chat subpanels so the Mission Control first load stays small while Chat, Config, Agent Runtime, Mermaid/Markdown previews, and terminal rendering load on demand
-- Session lineage metadata and stable transcript message IDs power message-level chat forks: hover a persisted user or assistant message, choose "Fork from here", and continue in a child session that reuses setup, plan state, tool policy, prompt override, and workspace roots through that point
-- The Console Lineage page renders root and forked sessions as a git-log-style tree with fork point previews, click-through navigation back into chat, and reviewable fork insight promotion into Memory Inbox without mutating the parent transcript
-- Tool calls render as collapsible rows with live elapsed time, compact argument previews, and automatic error expansion
-- `@` file and directory mentions from the session Files roots for explicit context injection
-- `/` command autocomplete for built-in chat actions and explicit user-invocable skill selection
-- First-turn tier recommendation suggests heavy, standard, or light before the first expensive chat call; accepting or overriding it routes that turn through the chosen tier and records the outcome for later usage analysis
-- `/config` opens advanced per-session tool, skill, automation consent, and TARS style controls when a selected session needs explicit overrides; permission changes show a deterministic risk/impact preview before saving
-- The Tasks panel keeps plan contracts, done criteria, expected artifacts, and verification commands together; once a contract is approved, its verification commands can run from the Console and attach pass/fail evidence to the task record
-- Session Health badge and dockable recommendation panel flag long context, stale plans, broad permissions, noisy prior memory, and idle sessions with direct actions for compacting, task review, config trimming, prior-context review, or skill extraction
-- A floating Console companion is enabled by default and can be toggled with `companion.enabled`. It reacts to Poke, Suggest, Feedback, runtime signals, and embodiment percepts with locale-aware EN/KO feedback, then can hand a bounded companion prompt into Chat.
-- Prior Context preview panel showing the exact memory section, source badges, and token budget for the current draft
-- Chat panels share a Dock Manager: Sessions and tool panels, including the Git Inspector, can move between left, right, bottom, and fullscreen zones, with drag-resized dimensions persisted in the browser
-- Files workspaces launch the integrated shell in the bottom dock at the selected root or browsed subdirectory, while keeping a macOS Terminal fallback available
-- Workspace file previews use workspace storage by default, while selected filesystem roots are served through the explicit filesystem files API boundary
-- Durable memory: `MEMORY.md`, reviewed experiences, daily logs, semantic embeddings
-- Memory Inbox review queue for approving, rejecting, or merging reflection-derived memory candidates before they enter durable recall
-- Fresh workspaces omit legacy KB Wiki scaffolding while preserving any existing `memory/wiki` files
-- Editable memory assets plus Tool path and Prefetch path recall tests through the console/API
-- Structured transcript compaction preserving message identifiers and recent context
-- System prompt customization via `USER.md`, `IDENTITY.md`, `AGENTS.md`, `TOOLS.md`
+- Multi-session chat with tool-calling loops, session search, pins, archives, cleanup review, and message-level forks.
+- Dockable panels for sessions, files, terminal, Git inspection, tool calls, prior context, Tasks, Session Health, and session-specific policy.
+- Durable memory through `MEMORY.md`, reviewed experiences, daily logs, semantic search, structured compaction, and a Memory Inbox review queue.
+- Explicit context injection through `@` file/directory mentions, `/` command autocomplete, and user-invocable skills.
+- Configurable system prompts through `USER.md`, `IDENTITY.md`, `AGENTS.md`, and `TOOLS.md`.
+- A locale-aware companion surface for Poke, Suggest, Feedback, runtime signals, and bounded handoff into Chat.
+
+See [docs/console.md](docs/console.md) for the detailed console page and panel inventory.
 
 ### Sub-Agent Orchestration
 
@@ -113,7 +106,7 @@ Experimental consensus mode remains hidden from the default `subagents_run` sche
 
 Tier resolution priority: task `tier` > agent YAML `tier` > config default.
 
-The Console Agent Runtime page exposes `Runs | Subagents` tabs. Use `Runs` to filter execution history by status, time range, and prompt text, switch between list/tree/Gantt/Flow run views, pan and zoom an interactive Svelte Flow graph, jump back to the originating chat session, scan today/7d/plan cost totals, scrub timestamped run events with Replay, restart failed runs from prompt/failure checkpoints with optional agent, tier, model, or prompt adjustments, inspect each run's cost/token flow, review file attention for frequently read or edited workspace paths, and open the git diff timeline that attributes workspace file changes to the run, session, agent, and plan step that produced them. Use `Subagents` to inspect the active catalog, default/effective LLM tier, resolved provider/model, source file or command entry, tool policy, and recent run links. Workspace `AGENT.md` profiles can update their default tier, draft new subagents with an LLM-assisted builder, generate run-derived profile recommendations with preserved provenance, preview and approve LLM edits or recommendations, and archive inactive workspace profiles from this detail view.
+The Console Agent Runtime page keeps run history, run topology, replay, restart checkpoints, cost/token flow, file attention, git diff attribution, and subagent profile management in one operational surface. See [docs/console.md](docs/console.md) and [docs/tutorials/22-agentruntime.md](docs/tutorials/22-agentruntime.md) for details.
 
 ### 3-Tier Model Routing
 
@@ -149,7 +142,7 @@ llm:
     agentruntime_planner: heavy
 ```
 
-Each system role (chat, pulse, reflection, compaction, session cleanup, agent runtime agents) maps to a tier. Background surfaces default to `light`, keeping costs low. Console Chat also classifies the first user message before the first expensive call and can route that turn to heavy, standard, or light based on the accepted recommendation or user override. Session style controls add directness, humor, caution, and autonomy values to the chat prompt while keeping autonomy bounded by explicit consent and approval policy. If advanced staged subagent planning is explicitly enabled for a session, `llm_role_agentruntime_planner` is exercised by `subagents_plan`; TARS logs the resolved `role`, `tier`, `provider`, `model`, and `source` for chat and agent runtime LLM calls so tier selection is traceable in runtime logs. The Console Settings page includes a typed `llm.tiers` editor for adding, renaming, editing, and removing tier bindings without hand-editing JSON.
+System roles such as chat, pulse, reflection, compaction, cleanup, and agent runtime agents map to tiers. Background work defaults to `light`, Chat can recommend a tier before the first expensive turn, and runtime logs record the resolved `role`, `tier`, `provider`, `model`, and `source` for traceability. Console Settings includes a typed `llm.tiers` editor for tier bindings.
 
 ### Background Surfaces
 
@@ -293,29 +286,19 @@ For local console development, set `TARS_CONSOLE_DEV_URL=http://127.0.0.1:5173` 
 
 ## Console Pages
 
-The sidebar keeps Home on the TARS logo and groups the working pages into Work, Operate, and Setup.
-
-The sidebar footer keeps server, Pulse, Reflection, and active session status visible with 30-second refreshes and direct jumps to each detail page.
-
-Frontend API response types are maintained in the console source with the current contract policy documented in `docs/frontend-api-types.md`.
-
-The console header includes an EN/KO language toggle. The selected locale is stored in browser localStorage as `tars_console_locale`; first load falls back to `navigator.language` and then English.
-
-Set `usage.limits.daily_tokens` (or `usage_daily_token_budget`) to show a daily token budget chip in the console header. The chip uses UTC day boundaries, counts input plus output tokens, hides when set to `0`, and links to today's analytics focus once usage reaches the error threshold.
-
-The Chat header shows the active plan goal, completed/total task count, one-click workbench actions for Tasks/Evidence/Agent Runtime/Git, and a Session Health badge without opening side panels. First-turn Chat prompts can show a cost/quality tier recommendation card before the first LLM call, and the Context HUD shows the selected tier plus whether the recommendation was accepted or overridden. The dockable Chat Health panel recommends compacting, splitting/fork review, task cleanup, permission trimming, prior-context review, or skill extraction when the session becomes long, stale, over-permissive, noisy, or idle. The dockable Chat Contract panel keeps the active work contract explicit with goal, scope, done criteria, verification commands, expected artifacts, approval status, and attached verification evidence. The Chat Tasks panel keeps full plan progress visible, lets tests/logs/screenshots/PRs/releases be attached as task evidence, and includes a collapsible past-plan archive for the active session. The Chat Git Inspector panel detects the active session repository and shows branch, remotes, staged/unstaged files, log, branches, file diffs, and approved mutation controls for stage, unstage, discard, commit, and branch switch actions without leaving the console. The Chat Skill Inbox extracts reusable skill candidates from the active transcript, shows message-range evidence, and turns approved candidates into local skill drafts. Session Config includes a permission change preview for tool, group, skill, and MCP overrides, automation consent controls for stalled-chat auto-resume delay, allowed resume modes, approved git mutations, and autonomous workspace mutations, plus style sliders for directness, humor, caution, and consent-bounded autonomy. The global Plans page lists active plans across sessions, while global archive data is available through `/v1/admin/plans/archive` for future planning views.
+The sidebar groups the workbench into Home, Work, Operate, and Setup. The footer keeps server, Pulse, Reflection, and active session status visible with direct jumps to each detail page.
 
 | Group | Page | Path | Purpose |
 |-------|------|------|---------|
-| Home | Mission Control | `/console` | Live overview for Pulse, Reflection, active plans, Agent Runtime runs, Cron jobs, disk pressure, active sessions, recent notifications, recommended setup actions, and release/PR shortcuts |
-| Work | Chat | `/console/chat` | Interactive agent chat with first-turn cost/quality tier recommendation, tool calling, dockable Sessions and tool panels, pinned and archived session organization, rule-based cleanup suggestions plus AI-reviewed archive/delete candidates, session health recommendations, task contract review/approval, task evidence attachments, Git Inspector with approved mutation queueing, Skill Inbox extraction from the active transcript, message-level session forking, `@` file/directory/subagent mentions, `/` command popover for client commands and skills, transcript-snippet session search, parallel/compare subagent progress cards, Files workspace shell, Prior Context preview, and advanced `/config` session policy, style, and automation consent overrides |
-| Work | Lineage | `/console/sessions/graph` | Git-log-style session tree showing root sessions, forked children, fork point previews, direct navigation back into the selected chat, and fork insight promotion into Memory Inbox |
-| Work | Plans | `/console/tasks` | Review active plans across sessions with progress cards and jump directly into the owning chat session |
-| Work | Memory | `/console/memory` | Review extracted memory candidates before storage, edit stored knowledge assets with inline guidance, inspect fill/read metadata, and compare Tool path vs Prefetch path recall |
-| Work | System Prompt | `/console/sysprompt` | Edit USER.md, IDENTITY.md, AGENTS.md, TOOLS.md with starter templates, prompt impact metadata, preview, and a technical details toggle |
-| Work | Extensions | `/console/extensions` | Skills, hub quality score/trust signals, sandbox-tested hub installs for skills/plugins/MCP packages, installed skill/MCP diagnostics and MCP repair actions, local Skill Creator drafts/tests, local MCP Server Creator drafts/tests, plugins, MCP servers |
-| Operate | Agent Runtime | `/console/agentruntime` | Inspect subagent run history with filters, list/tree/Gantt/Flow views, originating session links, cost summaries, replay scrubber, per-run cost/token flow, file attention, git diff timeline, checkpoint restart controls, compare-mode run links, run-derived profile recommendations, and subagent tier management |
-| Operate | Approvals | `/console/approvals` | Review risky cleanup plans and approved Git mutations before TARS applies them, then inspect the Automation Audit log |
+| Home | Mission Control | `/console` | Live overview for health, plans, runs, jobs, sessions, notifications, and setup |
+| Work | Chat | `/console/chat` | Agent chat, tool calls, files, terminal, Git, tasks, session policy, and memory context |
+| Work | Lineage | `/console/sessions/graph` | Root/forked session tree with fork previews and chat navigation |
+| Work | Plans | `/console/tasks` | Active plans across sessions with progress and chat links |
+| Work | Memory | `/console/memory` | Review memory candidates, edit stored knowledge, and test recall paths |
+| Work | System Prompt | `/console/sysprompt` | Edit USER.md, IDENTITY.md, AGENTS.md, and TOOLS.md |
+| Work | Extensions | `/console/extensions` | Skills, plugins, MCP packages, hub installs, diagnostics, and local drafts |
+| Operate | Agent Runtime | `/console/agentruntime` | Run history, topology views, replay, restart, costs, file attention, and subagent profiles |
+| Operate | Approvals | `/console/approvals` | Review cleanup plans and approved Git mutations before apply |
 | Operate | Cron | `/console/cron` | Manage global scheduled jobs with delivery targets, pause/resume, run-now, delete, and run history |
 | Operate | Logs | `/console/logs` | Tail configured runtime logs with file, level, component, line-count, refresh, and auto-refresh controls |
 | Operate | Analytics | `/console/analytics` | Visualize usage totals, daily token bars, model cost rows, and tool or skill call counts |
@@ -323,7 +306,7 @@ The Chat header shows the active plan goal, completed/total task count, one-clic
 | Operate | Reflection | `/console/reflection` | Nightly batch status and run-now trigger |
 | Setup | Settings | `/console/config` | Quick Start onboarding plus structured object/array editing, typed LLM tier editing, subsystem-aware pending-change impact previews, and field metadata badges |
 
-Settings field metadata, subsystem impact hints, preferred YAML patch paths, and compatible nested YAML parsing are kept together in the config field registry so console schema and config file updates stay aligned. Pending changes also get a frontend fallback classifier so new fields still show the affected subsystem before save.
+Detailed console behavior, panel inventory, localization, usage budget chips, and frontend API type policy live in [docs/console.md](docs/console.md) and [docs/frontend-api-types.md](docs/frontend-api-types.md).
 
 ## Requirements
 
@@ -358,6 +341,7 @@ cd frontend/console && npm run check && npm run test:ci
 
 - [Project homepage](https://tars.marvin-42.com)
 - [Getting Started](GETTING_STARTED.md)
+- [Console Guide](docs/console.md)
 - [Plugin and MCP Packaging Guide](docs/plugins.md)
 - [Contributing](CONTRIBUTING.md)
 - [Changelog](CHANGELOG.md)
