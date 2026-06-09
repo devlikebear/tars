@@ -44,3 +44,88 @@ func TestPathForHomeUsesDefaultLabel(t *testing.T) {
 		t.Fatalf("expected %q, got %q", want, got)
 	}
 }
+
+func TestDefaultDomainForUID(t *testing.T) {
+	if got := DefaultDomainForUID(501); got != "gui/501" {
+		t.Fatalf("expected gui/501, got %q", got)
+	}
+}
+
+func TestProgramArgumentsFromPlistDecodesEscapedStrings(t *testing.T) {
+	plist := BuildPlist(Config{
+		Label: "io.tars.server",
+		ProgramArguments: []string{
+			"/usr/local/bin/tars",
+			"serve",
+			"--api-addr",
+			"127.0.0.1:43187",
+			"--note",
+			"a & b",
+		},
+	})
+	args, err := ProgramArgumentsFromPlist([]byte(plist))
+	if err != nil {
+		t.Fatalf("parse ProgramArguments: %v", err)
+	}
+	if got, ok := ArgumentValue(args, "--api-addr"); !ok || got != "127.0.0.1:43187" {
+		t.Fatalf("expected api addr, got %q ok=%v args=%#v", got, ok, args)
+	}
+	if got, ok := ArgumentValue(args, "--note"); !ok || got != "a & b" {
+		t.Fatalf("expected decoded note, got %q ok=%v args=%#v", got, ok, args)
+	}
+}
+
+func TestProgramArgumentsFromPlistMissingArrayReturnsEmpty(t *testing.T) {
+	args, err := ProgramArgumentsFromPlist([]byte(`<plist><dict><key>Label</key><string>io.tars.server</string></dict></plist>`))
+	if err != nil {
+		t.Fatalf("parse plist: %v", err)
+	}
+	if len(args) != 0 {
+		t.Fatalf("expected no args, got %#v", args)
+	}
+	if got, ok := ArgumentValue(args, "--api-addr"); ok {
+		t.Fatalf("expected missing value, got %q", got)
+	}
+}
+
+func TestProgramArgumentsFromPlistNonArrayValueReturnsEmpty(t *testing.T) {
+	args, err := ProgramArgumentsFromPlist([]byte(`<plist><dict><key>ProgramArguments</key><dict/></dict></plist>`))
+	if err != nil {
+		t.Fatalf("parse plist: %v", err)
+	}
+	if len(args) != 0 {
+		t.Fatalf("expected no args, got %#v", args)
+	}
+}
+
+func TestProgramArgumentsFromPlistReturnsKeyDecodeError(t *testing.T) {
+	_, err := ProgramArgumentsFromPlist([]byte(`<plist><dict><key>ProgramArguments`))
+	if err == nil {
+		t.Fatalf("expected malformed key error")
+	}
+}
+
+func TestProgramArgumentsFromPlistReturnsStringDecodeError(t *testing.T) {
+	_, err := ProgramArgumentsFromPlist([]byte(`<plist><dict><key>ProgramArguments</key><array><string>unterminated`))
+	if err == nil {
+		t.Fatalf("expected malformed string error")
+	}
+}
+
+func TestArgumentValueFlagWithoutValueReturnsFalse(t *testing.T) {
+	if got, ok := ArgumentValue([]string{"/usr/local/bin/tars", "serve", "--api-addr"}, "--api-addr"); ok {
+		t.Fatalf("expected no value, got %q", got)
+	}
+}
+
+func TestArgumentValueEmptyFlagReturnsFalse(t *testing.T) {
+	if got, ok := ArgumentValue([]string{"--api-addr", "127.0.0.1:43180"}, " "); ok {
+		t.Fatalf("expected empty flag to be ignored, got %q", got)
+	}
+}
+
+func TestArgumentValueEmptyValueReturnsFalse(t *testing.T) {
+	if got, ok := ArgumentValue([]string{"--api-addr", " "}, "--api-addr"); ok {
+		t.Fatalf("expected empty value to be ignored, got %q", got)
+	}
+}

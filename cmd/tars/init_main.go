@@ -9,13 +9,11 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/devlikebear/tars/internal/assetpath"
 	"github.com/devlikebear/tars/internal/config"
-	"github.com/devlikebear/tars/internal/launchagent"
 	"github.com/devlikebear/tars/internal/memory"
 	"github.com/devlikebear/tars/internal/onboarding"
 	"github.com/devlikebear/tars/internal/plugin"
@@ -316,21 +314,17 @@ func realInitServerStarter(ctx context.Context, params initStartParams, stdout, 
 }
 
 func startInitService(ctx context.Context, params initStartParams, stdout io.Writer) (initStartResult, error) {
-	label := launchagent.DefaultServerLabel
-	plistPath, err := defaultedServicePlistPath("", label)
+	target, err := defaultServerServiceTarget()
 	if err != nil {
 		return initStartResult{}, err
 	}
-	stdoutLog := defaultedServiceLogPath("", "Library/Logs/tars-server.out.log")
-	stderrLog := defaultedServiceLogPath("", "Library/Logs/tars-server.err.log")
-	domain := "gui/" + strconv.Itoa(serviceGetuid())
 
 	summary, err := installLaunchAgent(serviceInstallParams{
-		label:         label,
-		plistPath:     plistPath,
-		stdoutLog:     stdoutLog,
-		stderrLog:     stderrLog,
-		domain:        domain,
+		label:         target.label,
+		plistPath:     target.plistPath,
+		stdoutLog:     target.stdoutLog,
+		stderrLog:     target.stderrLog,
+		domain:        target.domain,
 		launchPath:    defaultServiceLaunchPath,
 		apiAddr:       params.apiAddr,
 		keepAlive:     true,
@@ -342,15 +336,15 @@ func startInitService(ctx context.Context, params initStartParams, stdout io.Wri
 	}
 	_, _ = fmt.Fprint(stdout, summary)
 
-	startSummary, err := startLaunchAgent(ctx, label, plistPath, domain)
+	startSummary, err := startLaunchAgent(ctx, target.label, target.plistPath, target.domain)
 	if err != nil {
 		return initStartResult{}, err
 	}
 	_, _ = fmt.Fprint(stdout, startSummary)
 	return initStartResult{
 		mode:    "service",
-		label:   label,
-		logPath: stderrLog,
+		label:   target.label,
+		logPath: target.stderrLog,
 	}, nil
 }
 
@@ -638,13 +632,11 @@ func runInitMoveCommand(ctx context.Context, opts initMoveOptions, stdout, stder
 	//    workspace_dir. The plist's --config / --api-addr stay the
 	//    same; only the workspace inside the config changed.
 	if willRestart {
-		label := launchagent.DefaultServerLabel
-		plistPath, err := defaultedServicePlistPath("", label)
+		target, err := defaultServerServiceTarget()
 		if err != nil {
 			return fmt.Errorf("resolve plist path: %w", err)
 		}
-		domain := "gui/" + strconv.Itoa(serviceGetuid())
-		summary, err := startLaunchAgent(ctx, label, plistPath, domain)
+		summary, err := startLaunchAgent(ctx, target.label, target.plistPath, target.domain)
 		if err != nil {
 			return fmt.Errorf("restart service after move: %w", err)
 		}
@@ -680,11 +672,11 @@ func runInitMoveCommand(ctx context.Context, opts initMoveOptions, stdout, stder
 // exists at its default path. Stat is read-only, so this is safe to
 // call during option parsing or before any mutation.
 func initMoveLaunchAgentPresent() bool {
-	plistPath, err := defaultedServicePlistPath("", launchagent.DefaultServerLabel)
+	target, err := defaultServerServiceTarget()
 	if err != nil {
 		return false
 	}
-	exists, _ := pathExists(plistPath)
+	exists, _ := pathExists(target.plistPath)
 	return exists
 }
 

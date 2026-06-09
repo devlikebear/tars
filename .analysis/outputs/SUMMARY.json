@@ -1,67 +1,14 @@
 {
-  "session_id": "analyze-20260426-tars-docs-refresh",
-  "mode": "analyze",
+  "session_id": "refactor-guide-20260609-074851",
+  "mode": "refactor-guide",
   "scope": ".",
   "status": "completed",
-  "commit": "708dd7482214d789258d73047e59519b5b5f54a4",
-  "visited_count": 12,
+  "commit": "6963b7afde90a4c33c2be5a20b91b27a398f5320",
+  "visited_count": 21,
   "frontier_count": 0,
-  "modules": [
-    {
-      "name": "agentruntime",
-      "file": "outputs/modules/agentruntime.md",
-      "summary": "`internal/agentruntime`은 비동기 run lifecycle, executor registry, workspace agent, channel message, persistence, run event stream을 관리한다."
-    },
-    {
-      "name": "cli-client",
-      "file": "outputs/modules/cli-client.md",
-      "summary": "`cmd/tars`는 Cobra 기반 얇은 진입점이다. root 명령은 콘솔을 열거나 `--message` one-shot chat을 실행하고, subcommand들은 대부분 `pkg/tarsclient`/`internal/tarsclient`를 통해 서버 API를 호출한다."
-    },
-    {
-      "name": "extensions",
-      "file": "outputs/modules/extensions.md",
-      "summary": "Skill, Plugin, MCP, Skill Hub는 core prompt/tool surface를 키우지 않고 기능을 on-demand로 불러오기 위한 확장 시스템이다."
-    },
-    {
-      "name": "frontend-console",
-      "file": "outputs/modules/frontend-console.md",
-      "summary": "`frontend/console`은 TARS의 주 UI다. Chat, Memory, System Prompt, Ops, Pulse, Reflection, Extensions, Config 화면을 제공한다."
-    },
-    {
-      "name": "memory",
-      "file": "outputs/modules/memory.md",
-      "summary": "`internal/memory`와 chat memory hook은 장기 기억, semantic search, daily log, experiences, compaction index를 다룬다."
-    },
-    {
-      "name": "system-surfaces",
-      "file": "outputs/modules/system-surfaces.md",
-      "summary": "Pulse, Reflection, Ops는 사용자 채팅과 분리된 system surface다. 이들은 LLM/tool registry를 사용자 surface와 섞지 않고, 좁은 Go interface를 통해 runtime 상태를 관찰하거나 운영 작업을 수행한다."
-    },
-    {
-      "name": "tarsserver",
-      "file": "outputs/modules/tarsserver.md",
-      "summary": "`internal/tarsserver`는 TARS runtime의 조립 지점이다. config, LLM router, session store, tool registry, cron, pulse, reflection, agent runtime, ops, console static serving을 하나의 HTTP mux로 묶는다."
-    }
-  ],
+  "modules": [],
   "outputs": [
-    "outputs/overview.md",
-    "outputs/architecture.md",
-    "outputs/technologies.md",
-    "outputs/glossary.md",
-    "outputs/tutorial.md",
-    "outputs/clone-coding.md",
-    "outputs/implementation-checklist.md",
-    "outputs/issue-candidates.md",
-    "outputs/module-map.json",
-    "outputs/dependency-graph.json",
-    "outputs/SUMMARY.json",
-    "outputs/modules/cli-client.md",
-    "outputs/modules/tarsserver.md",
-    "outputs/modules/agentruntime.md",
-    "outputs/modules/memory.md",
-    "outputs/modules/system-surfaces.md",
-    "outputs/modules/extensions.md",
-    "outputs/modules/frontend-console.md"
+    "refactor-tars.md"
   ],
-  "checkpoints_count": 1
+  "checkpoints_count": 3
 }

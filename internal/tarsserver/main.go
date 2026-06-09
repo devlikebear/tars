@@ -51,20 +51,24 @@ func Serve(ctx context.Context, serveOpts ServeOptions, stdout, stderr io.Writer
 	defer cleanup()
 	zlog.Logger = logger
 
-	cmd, _ := newRootCmd(opts, cfg, stdout, stderr, time.Now)
-	cmd.SetContext(ctx)
-	cmd.SetArgs([]string{})
-	if err := cmd.Execute(); err != nil {
-		var ex *cli.ExitError
-		if errors.As(err, &ex) {
-			if ex.Err != nil {
-				return ex.Err
-			}
-			return fmt.Errorf("serve exited with code %d", ex.Code)
-		}
-		return err
+	if err := runServerRuntime(ctx, opts, cfg, stdout, stderr, time.Now, logger); err != nil {
+		return normalizeServeError(err)
 	}
 	return nil
+}
+
+func normalizeServeError(err error) error {
+	if err == nil {
+		return nil
+	}
+	var ex *cli.ExitError
+	if errors.As(err, &ex) {
+		if ex.Err != nil {
+			return ex.Err
+		}
+		return fmt.Errorf("serve exited with code %d", ex.Code)
+	}
+	return err
 }
 
 // buildLoggerConfig merges CLI flags and config values into the final

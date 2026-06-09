@@ -1,10 +1,14 @@
 package launchagent
 
 import (
+	"bytes"
+	"encoding/xml"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -86,6 +90,10 @@ func DefaultPath(label string, defaultLabel string) (string, error) {
 	return PathForHome(home, label, defaultLabel), nil
 }
 
+func DefaultDomainForUID(uid int) string {
+	return "gui/" + strconv.Itoa(uid)
+}
+
 func Install(path string, content string) error {
 	target := strings.TrimSpace(path)
 	if target == "" {
@@ -107,6 +115,75 @@ func ResolveServiceIdentity(defaultLabel string, defaultDomain string) (string, 
 		domain = strings.TrimSpace(defaultDomain)
 	}
 	return label, domain
+}
+
+func ProgramArgumentsFromPlist(data []byte) ([]string, error) {
+	decoder := xml.NewDecoder(bytes.NewReader(data))
+	args := []string{}
+	wantProgramArguments := false
+	inProgramArguments := false
+
+	for {
+		token, err := decoder.Token()
+		if err == io.EOF {
+			return args, nil
+		}
+		if err != nil {
+			return nil, err
+		}
+		switch tok := token.(type) {
+		case xml.StartElement:
+			switch tok.Name.Local {
+			case "key":
+				var key string
+				if err := decoder.DecodeElement(&key, &tok); err != nil {
+					return nil, err
+				}
+				wantProgramArguments = strings.TrimSpace(key) == "ProgramArguments"
+			case "array":
+				if wantProgramArguments {
+					inProgramArguments = true
+					wantProgramArguments = false
+				}
+			case "string":
+				if !inProgramArguments {
+					wantProgramArguments = false
+					continue
+				}
+				var value string
+				if err := decoder.DecodeElement(&value, &tok); err != nil {
+					return nil, err
+				}
+				args = append(args, strings.TrimSpace(value))
+			default:
+				if wantProgramArguments {
+					wantProgramArguments = false
+				}
+			}
+		case xml.EndElement:
+			if tok.Name.Local == "array" && inProgramArguments {
+				return args, nil
+			}
+		}
+	}
+}
+
+func ArgumentValue(args []string, flag string) (string, bool) {
+	want := strings.TrimSpace(flag)
+	if want == "" {
+		return "", false
+	}
+	for i := 0; i < len(args)-1; i++ {
+		if strings.TrimSpace(args[i]) != want {
+			continue
+		}
+		value := strings.TrimSpace(args[i+1])
+		if value == "" {
+			return "", false
+		}
+		return value, true
+	}
+	return "", false
 }
 
 func writeEnvironment(b *strings.Builder, env map[string]string) {

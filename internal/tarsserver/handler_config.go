@@ -2,7 +2,6 @@ package tarsserver
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"os"
 	"os/exec"
@@ -250,7 +249,7 @@ func detectRunMode() string {
 func launchdServiceIdentity() (string, string) {
 	return launchagent.ResolveServiceIdentity(
 		launchagent.DefaultServerLabel,
-		fmt.Sprintf("gui/%d", restartGetuid()),
+		launchagent.DefaultDomainForUID(restartGetuid()),
 	)
 }
 

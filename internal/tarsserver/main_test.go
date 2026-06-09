@@ -220,6 +220,88 @@ func TestRun_DefaultConfig(t *testing.T) {
 	}
 }
 
+func TestServe_ConfigCheckRunsRuntimeDirectly(t *testing.T) {
+	isolateRunEnv(t)
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	writeConfigCheckConfig(t, configPath, "")
+	workspaceDir := filepath.Join(t.TempDir(), "workspace")
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+
+	err := Serve(context.Background(), ServeOptions{
+		ConfigPath:   configPath,
+		WorkspaceDir: workspaceDir,
+		ConfigCheck:  true,
+	}, stdout, stderr)
+	if err != nil {
+		t.Fatalf("serve config check: %v, stderr=%q", err, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "tars config check passed") {
+		t.Fatalf("unexpected stdout: %q", stdout.String())
+	}
+}
+
+func TestNormalizeServeError(t *testing.T) {
+	if err := normalizeServeError(nil); err != nil {
+		t.Fatalf("nil error should stay nil, got %v", err)
+	}
+	inner := errors.New("inner")
+	if got := normalizeServeError(&cli.ExitError{Code: 1, Err: inner}); !errors.Is(got, inner) {
+		t.Fatalf("expected inner error, got %v", got)
+	}
+	if got := normalizeServeError(&cli.ExitError{Code: 7}); got == nil || !strings.Contains(got.Error(), "serve exited with code 7") {
+		t.Fatalf("expected exit code error, got %v", got)
+	}
+	plain := errors.New("plain")
+	if got := normalizeServeError(plain); !errors.Is(got, plain) {
+		t.Fatalf("expected plain error, got %v", got)
+	}
+}
+
+func TestRunServerRuntimeDefaultsVerboseAndConfigCheck(t *testing.T) {
+	isolateRunEnv(t)
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	writeConfigCheckConfig(t, configPath, "")
+	workspaceDir := filepath.Join(t.TempDir(), "workspace")
+	opts := &options{
+		ConfigPath:   configPath,
+		WorkspaceDir: workspaceDir,
+		ConfigCheck:  true,
+		Verbose:      true,
+	}
+	applyOptionDefaults(opts)
+	cfg, err := loadConfigForServe(opts)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+
+	stdout := &bytes.Buffer{}
+	var nilCtx context.Context
+	err = runServerRuntime(nilCtx, opts, cfg, stdout, io.Discard, nil, zerolog.New(io.Discard))
+	if err != nil {
+		t.Fatalf("run server runtime: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "tars config check passed") {
+		t.Fatalf("unexpected stdout: %q", stdout.String())
+	}
+}
+
+func TestRunServerRuntimeRequiresOptions(t *testing.T) {
+	err := runServerRuntime(
+		context.Background(),
+		nil,
+		config.Config{APIConfig: config.APIConfig{APIAuthMode: "off"}},
+		io.Discard,
+		io.Discard,
+		time.Now,
+		zerolog.New(io.Discard),
+	)
+	var exitErr *cli.ExitError
+	if !errors.As(err, &exitErr) || exitErr.Err == nil {
+		t.Fatalf("expected cli exit error, got %T %[1]v", err)
+	}
+}
+
 func TestRun_LogFileWritesJSONLines(t *testing.T) {
 	isolateRunEnv(t)
 	configPath := filepath.Join(t.TempDir(), "config.yaml")

@@ -6,6 +6,16 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.34.2] - 2026-06-09
+
+### Changed
+
+- **Runtime cleanup and README structure (#893)** — Removes the dead internal CLI runtime transport so runtime commands use the public `pkg/tarsclient` error path, consolidates macOS LaunchAgent target defaults, parses plist `ProgramArguments` through XML, and routes `tarsserver.Serve` through a direct runtime bootstrap function instead of an internal Cobra command. The README now leads with the current value proposition and moves detailed console behavior into `docs/console.md`.
+
+### Fixed
+
+- **Disabled extension state persistence (#893)** — `extensions_disabled.json` writes now use the shared atomic persistence helper while preserving the existing corrupt-state behavior and file mode. The atomic writer also handles Windows replacement of existing state files after the temp file has been fully written, synced, and closed.
+
 ## [0.34.1] - 2026-06-07
 
 ### Fixed

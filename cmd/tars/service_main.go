@@ -8,7 +8,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"strconv"
 	"strings"
 
 	"github.com/devlikebear/tars/internal/config"
@@ -18,6 +17,8 @@ import (
 
 const (
 	defaultServiceLaunchPath = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+	defaultServiceStdoutLog  = "Library/Logs/tars-server.out.log"
+	defaultServiceStderrLog  = "Library/Logs/tars-server.err.log"
 )
 
 type serviceOptions struct {
@@ -41,6 +42,14 @@ type launchctlStatus struct {
 	detail string
 }
 
+type serviceTarget struct {
+	label     string
+	plistPath string
+	stdoutLog string
+	stderrLog string
+	domain    string
+}
+
 var (
 	serviceRunner         = runServiceCommand
 	serviceRuntimeGOOS    = runtime.GOOS
@@ -53,7 +62,7 @@ var (
 func defaultServiceOptions() serviceOptions {
 	return serviceOptions{
 		label:           launchagent.DefaultServerLabel,
-		launchctlDomain: "gui/" + strconv.Itoa(serviceGetuid()),
+		launchctlDomain: defaultServiceDomain(),
 		launchPath:      defaultServiceLaunchPath,
 		keepAlive:       true,
 		runAtLoad:       true,
@@ -132,28 +141,50 @@ func bindServiceFlags(cmd *cobra.Command, opts *serviceOptions) {
 	cmd.Flags().StringVar(&opts.launchctlDomain, "domain", opts.launchctlDomain, "launchctl domain (for example gui/501)")
 }
 
+func resolveServiceTarget(opts serviceOptions) (serviceTarget, error) {
+	label := strings.TrimSpace(firstNonEmpty(opts.label, launchagent.DefaultServerLabel))
+	plistPath, err := defaultedServicePlistPath(opts.plistPath, label)
+	if err != nil {
+		return serviceTarget{}, err
+	}
+	stdoutLog := defaultedServiceLogPath(opts.stdoutLog, defaultServiceStdoutLog)
+	stderrLog := defaultedServiceLogPath(opts.stderrLog, defaultServiceStderrLog)
+	domain := strings.TrimSpace(firstNonEmpty(opts.launchctlDomain, defaultServiceDomain()))
+	return serviceTarget{
+		label:     label,
+		plistPath: plistPath,
+		stdoutLog: stdoutLog,
+		stderrLog: stderrLog,
+		domain:    domain,
+	}, nil
+}
+
+func defaultServerServiceTarget() (serviceTarget, error) {
+	return resolveServiceTarget(serviceOptions{label: launchagent.DefaultServerLabel})
+}
+
+func defaultServiceDomain() string {
+	return launchagent.DefaultDomainForUID(serviceGetuid())
+}
+
 func runServiceCommand(ctx context.Context, opts serviceOptions, stdout, _ io.Writer) error {
 	if serviceRuntimeGOOS != "darwin" {
 		return fmt.Errorf("service commands are only supported on macOS")
 	}
 
-	label := strings.TrimSpace(firstNonEmpty(opts.label, launchagent.DefaultServerLabel))
-	plistPath, err := defaultedServicePlistPath(opts.plistPath, label)
+	target, err := resolveServiceTarget(opts)
 	if err != nil {
 		return err
 	}
-	stdoutLog := defaultedServiceLogPath(opts.stdoutLog, "Library/Logs/tars-server.out.log")
-	stderrLog := defaultedServiceLogPath(opts.stderrLog, "Library/Logs/tars-server.err.log")
-	domain := strings.TrimSpace(firstNonEmpty(opts.launchctlDomain, "gui/"+strconv.Itoa(serviceGetuid())))
 
 	switch strings.TrimSpace(opts.action) {
 	case "install":
 		params := serviceInstallParams{
-			label:         label,
-			plistPath:     plistPath,
-			stdoutLog:     stdoutLog,
-			stderrLog:     stderrLog,
-			domain:        domain,
+			label:         target.label,
+			plistPath:     target.plistPath,
+			stdoutLog:     target.stdoutLog,
+			stderrLog:     target.stderrLog,
+			domain:        target.domain,
 			launchPath:    opts.launchPath,
 			apiAddr:       opts.apiAddr,
 			keepAlive:     opts.keepAlive,
@@ -167,25 +198,25 @@ func runServiceCommand(ctx context.Context, opts serviceOptions, stdout, _ io.Wr
 		_, _ = fmt.Fprint(stdout, summary)
 		return nil
 	case "start":
-		summary, err := startLaunchAgent(ctx, label, plistPath, domain)
+		summary, err := startLaunchAgent(ctx, target.label, target.plistPath, target.domain)
 		if err != nil {
 			return err
 		}
 		_, _ = fmt.Fprint(stdout, summary)
 		return nil
 	case "stop":
-		out, err := serviceLaunchctlRun(ctx, "bootout", domain, plistPath)
+		out, err := serviceLaunchctlRun(ctx, "bootout", target.domain, target.plistPath)
 		if err != nil && !looksLikeMissingLaunchctlService(out, err) {
 			return fmt.Errorf("launchctl bootout failed: %w: %s", err, strings.TrimSpace(out))
 		}
-		_, _ = fmt.Fprintf(stdout, "service stopped\nlabel: %s\ndomain: %s\nplist: %s\n", label, domain, plistPath)
+		_, _ = fmt.Fprintf(stdout, "service stopped\nlabel: %s\ndomain: %s\nplist: %s\n", target.label, target.domain, target.plistPath)
 		return nil
 	case "status":
-		status, err := serviceStatus(ctx, label, plistPath, domain)
+		status, err := serviceStatus(ctx, target.label, target.plistPath, target.domain)
 		if err != nil {
 			return err
 		}
-		renderServiceStatus(stdout, label, plistPath, stdoutLog, stderrLog, status)
+		renderServiceStatus(stdout, target.label, target.plistPath, target.stdoutLog, target.stderrLog, status)
 		return nil
 	default:
 		return fmt.Errorf("unsupported service action: %s", strings.TrimSpace(opts.action))
