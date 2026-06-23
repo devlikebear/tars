@@ -117,6 +117,38 @@ func TestOpenAICompatibleChat_IncludesToolsAndParsesToolCalls(t *testing.T) {
 	}
 }
 
+func TestOpenAICompatibleChat_IncludesConfiguredMaxTokens(t *testing.T) {
+	var captured struct {
+		Model     string `json:"model"`
+		MaxTokens int    `json:"max_tokens"`
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/chat/completions" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		if err := json.NewDecoder(r.Body).Decode(&captured); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"ok"}}]}`))
+	}))
+	defer srv.Close()
+
+	client, err := newOpenAICompatibleClientWithConfig("openai", srv.URL+"/v1", "k", "gpt-test", ClientConfig{MaxTokens: 2048})
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+	if _, err := client.Chat(context.Background(), []ChatMessage{{Role: "user", Content: "hello"}}, ChatOptions{}); err != nil {
+		t.Fatalf("chat: %v", err)
+	}
+	if captured.Model != "gpt-test" {
+		t.Fatalf("model=%q, want gpt-test", captured.Model)
+	}
+	if captured.MaxTokens != 2048 {
+		t.Fatalf("max_tokens=%d, want 2048", captured.MaxTokens)
+	}
+}
+
 func TestOpenAICompatibleChat_KimiSkipsReasoningAndServiceTierWithTools(t *testing.T) {
 	type captured struct {
 		ReasoningEffort string          `json:"reasoning_effort"`
