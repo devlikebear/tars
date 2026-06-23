@@ -6,6 +6,16 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.34.3] - 2026-06-23
+
+### Fixed
+
+- **OpenAI-compatible max token limits (#896)** — `ProviderOptions.MaxTokens` now serializes into chat completion requests as `max_tokens`, so downstream apps can cap reserved output budget for OpenAI-compatible providers such as OpenRouter.
+
+### Security
+
+- **Console dependency maintenance (#895, #897)** — Updates the Console toolchain dependencies, including Vite 8.0.16 and DOMPurify 3.4.11.
+
 ## [0.34.2] - 2026-06-09
 
 ### Changed
