@@ -94,6 +94,9 @@ func (c *OpenAICompatibleClient) buildChatRequest(messages []ChatMessage, opts C
 		"model":    c.model,
 		"messages": toOpenAIWireMessages(messages, c.label == "kimi"),
 	}
+	if c.config.MaxTokens > 0 {
+		reqBody["max_tokens"] = c.config.MaxTokens
+	}
 	if c.label != "gemini" && !(c.label == "kimi" && len(opts.Tools) > 0) {
 		if effort := effectiveReasoningEffort(c.config, opts); effort != "" && effort != "none" {
 			reqBody["reasoning_effort"] = effort
