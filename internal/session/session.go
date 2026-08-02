@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/devlikebear/tars/internal/atomicwrite"
@@ -263,7 +264,9 @@ type Session struct {
 }
 
 type Store struct {
-	dir string
+	dir            string
+	tasksSavedMu   sync.RWMutex
+	tasksSavedHook func(sessionID string, tasks SessionTasks)
 }
 
 // ForkOptions controls how a child session is created from an existing
@@ -276,6 +279,31 @@ type ForkOptions struct {
 func NewStore(dir string) *Store {
 	return &Store{
 		dir: filepath.Join(dir, "sessions"),
+	}
+}
+
+// SetTasksSavedHook installs a best-effort observer that runs synchronously
+// after tasks.json has been replaced atomically. The observer cannot turn a
+// successful legacy save into a retryable error; callers that need error
+// reporting should log or persist it inside the hook.
+func (s *Store) SetTasksSavedHook(hook func(sessionID string, tasks SessionTasks)) {
+	if s == nil {
+		return
+	}
+	s.tasksSavedMu.Lock()
+	s.tasksSavedHook = hook
+	s.tasksSavedMu.Unlock()
+}
+
+func (s *Store) notifyTasksSaved(sessionID string, tasks SessionTasks) {
+	if s == nil {
+		return
+	}
+	s.tasksSavedMu.RLock()
+	hook := s.tasksSavedHook
+	s.tasksSavedMu.RUnlock()
+	if hook != nil {
+		hook(sessionID, tasks)
 	}
 }
 

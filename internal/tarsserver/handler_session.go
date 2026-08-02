@@ -64,6 +64,7 @@ func newSessionAPIHandlerWithWorkLedger(store *session.Store, ledger *workstore.
 func newSessionAPIHandlerFullWithLocalSkillsAndWorkLedger(store *session.Store, logger zerolog.Logger, usageTracker *usage.Tracker, styleDefaults sessionStyleValues, notify sessionNotifier, overrideService *sessionoverride.Service, llmRouter llm.Router, localSkills localSkillsHandlerDeps, workLedger *workstore.Store) http.Handler {
 	mux := http.NewServeMux()
 	styleDefaults = effectiveSessionStyle(styleDefaults, nil)
+	attachSessionTasksWorkLedgerSync(store, workLedger, defaultWorkspaceID, logger)
 	baseWorkspaceDir := ""
 	if store != nil {
 		baseWorkspaceDir = store.WorkspaceDir()
@@ -1011,13 +1012,20 @@ func syncSessionTasksToWorkLedger(ctx context.Context, ledger *workstore.Store, 
 	if ledger == nil || store == nil {
 		return nil
 	}
-	sess, err := store.Get(sessionID)
-	if err != nil {
-		return fmt.Errorf("read session for work ledger sync: %w", err)
-	}
 	tasks, err := store.GetTasks(sessionID)
 	if err != nil {
 		return fmt.Errorf("read tasks for work ledger sync: %w", err)
+	}
+	return syncSessionTasksSnapshotToWorkLedger(ctx, ledger, store, workspaceID, sessionID, tasks, "session-api")
+}
+
+func syncSessionTasksSnapshotToWorkLedger(ctx context.Context, ledger *workstore.Store, store *session.Store, workspaceID, sessionID string, tasks session.SessionTasks, actorID string) error {
+	if ledger == nil || store == nil {
+		return nil
+	}
+	sess, err := store.Get(sessionID)
+	if err != nil {
+		return fmt.Errorf("read session for work ledger sync: %w", err)
 	}
 	sessionJSON, err := json.Marshal(sess)
 	if err != nil {
@@ -1032,12 +1040,23 @@ func syncSessionTasksToWorkLedger(ctx context.Context, ledger *workstore.Store, 
 		SessionJSON: sessionJSON,
 		TasksJSON:   tasksJSON,
 		SourcePath:  filepath.Join(store.WorkspaceDir(), "sessions", sessionID+".tasks.json"),
-		ActorID:     "session-api",
+		ActorID:     strings.TrimSpace(actorID),
 	})
 	if err != nil {
 		return fmt.Errorf("import session tasks work ledger revision: %w", err)
 	}
 	return nil
+}
+
+func attachSessionTasksWorkLedgerSync(store *session.Store, ledger *workstore.Store, workspaceID string, logger zerolog.Logger) {
+	if store == nil || ledger == nil {
+		return
+	}
+	store.SetTasksSavedHook(func(sessionID string, tasks session.SessionTasks) {
+		if err := syncSessionTasksSnapshotToWorkLedger(context.Background(), ledger, store, workspaceID, sessionID, tasks, "session-store"); err != nil {
+			logger.Error().Err(err).Str("session_id", sessionID).Msg("synchronize saved session tasks to work ledger failed")
+		}
+	})
 }
 
 func recordSessionToolConfigSignal(tracker *usage.Tracker, sessionID string, config session.SessionToolConfig) {

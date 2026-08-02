@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/devlikebear/tars/internal/session"
+	"github.com/devlikebear/tars/internal/tool"
 	"github.com/devlikebear/tars/internal/workstore"
 	"github.com/rs/zerolog"
 )
@@ -213,6 +214,42 @@ func TestSessionTasksPOSTSynchronizesSuccessfulMutationToWorkLedger(t *testing.T
 	get := sessionTasksRequest(t, handler, http.MethodGet, sess.ID, "")
 	if get.Code != http.StatusOK || !strings.Contains(get.Body.String(), "Synchronized plan") {
 		t.Fatalf("GET synchronized tasks status=%d body=%s", get.Code, get.Body.String())
+	}
+}
+
+func TestTasksToolDirectSaveSynchronizesToWorkLedger(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	sessionStore := session.NewStore(root)
+	sess, err := sessionStore.EnsureMain()
+	if err != nil {
+		t.Fatalf("ensure main session: %v", err)
+	}
+	ledger := openWorkLedgerHandlerTestStore(t)
+	_ = newSessionAPIHandlerWithWorkLedger(sessionStore, ledger, zerolog.Nop())
+	tasksTool := tool.NewTasksTool(sessionStore, root, func() string { return sess.ID })
+
+	for _, payload := range []string{
+		`{"action":"plan_set","goal":"Tool-synchronized plan"}`,
+		`{"action":"add","title":"Persist tool mutation"}`,
+	} {
+		result, executeErr := tasksTool.Execute(context.Background(), json.RawMessage(payload))
+		if executeErr != nil || result.IsError {
+			t.Fatalf("execute tasks tool payload=%s result=%s err=%v", payload, result.Text(), executeErr)
+		}
+	}
+
+	projection, found, err := ledger.GetLegacySessionTasksProjection(context.Background(), defaultWorkspaceID, sess.ID)
+	if err != nil || !found {
+		t.Fatalf("get tool-synchronized projection found=%t err=%v", found, err)
+	}
+	var projected session.SessionTasks
+	if err := json.Unmarshal(projection, &projected); err != nil {
+		t.Fatalf("decode tool-synchronized projection: %v", err)
+	}
+	if projected.Plan == nil || projected.Plan.Goal != "Tool-synchronized plan" || len(projected.Tasks) != 1 || projected.Tasks[0].Title != "Persist tool mutation" {
+		t.Fatalf("tool-synchronized projection = %#v", projected)
 	}
 }
 

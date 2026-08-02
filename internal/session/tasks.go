@@ -211,13 +211,15 @@ func (s *Store) GetTasks(sessionID string) (SessionTasks, error) {
 
 // SaveTasks writes the tasks file for a session.
 func (s *Store) SaveTasks(sessionID string, tasks SessionTasks) error {
-	raw, err := json.MarshalIndent(normalizeSessionTasks(tasks), "", "  ")
+	normalized := normalizeSessionTasks(tasks)
+	raw, err := json.MarshalIndent(normalized, "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshal tasks: %w", err)
 	}
 	if err := atomicwrite.Write(s.tasksPath(sessionID), raw); err != nil {
 		return fmt.Errorf("write tasks: %w", err)
 	}
+	s.notifyTasksSaved(sessionID, normalized)
 	return nil
 }
 
