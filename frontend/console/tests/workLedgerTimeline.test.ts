@@ -178,6 +178,47 @@ test('Tasks panel loads and controls a session-scoped durable work ledger timeli
   assert.match(tasksPanelSource, /Resume step/)
 })
 
+test('work ledger timeline names reviewed capability lifecycle evidence', () => {
+  const base = {
+    work: {
+      schema_version: 1,
+      id: 'work-capability',
+      workspace_id: 'default',
+      kind: 'capability-improvement',
+      idempotency_key: 'capability:test',
+      title: 'Review capability',
+      contract: {},
+      metadata: {},
+      state: 'review',
+      priority: 0,
+      actor_id: 'self-improvement',
+      version: 1,
+      created_at: '2026-08-02T00:00:00Z',
+      updated_at: '2026-08-02T00:00:00Z',
+    },
+    steps: [], schedules: [], dependencies: [], attempts: [], proofs: [], artifacts: [], approvals: [],
+    events: [
+      { schema_version: 1, sequence: 1, id: 'e1', workspace_id: 'default', work_id: 'work-capability', type: 'capability.version_created', actor_id: 'self-improvement', payload: { capability_name: 'review-helper', version: 1, state: 'candidate' }, created_at: '2026-08-02T00:00:00Z' },
+      { schema_version: 1, sequence: 2, id: 'e2', workspace_id: 'default', work_id: 'work-capability', type: 'capability.evaluation_recorded', actor_id: 'capability-evaluator', payload: { stage: 'sandbox', status: 'passed' }, created_at: '2026-08-02T00:01:00Z' },
+      { schema_version: 1, sequence: 3, id: 'e3', workspace_id: 'default', work_id: 'work-capability', type: 'capability.transitioned', actor_id: 'operator', payload: { from_state: 'canary', to_state: 'promoted', reason: 'approved canary' }, created_at: '2026-08-02T00:02:00Z' },
+      { schema_version: 1, sequence: 4, id: 'e4', workspace_id: 'default', work_id: 'work-capability', type: 'capability.outcome_recorded', actor_id: 'scheduler', payload: { status: 'succeeded', verifier_status: 'passed' }, created_at: '2026-08-02T00:03:00Z' },
+      { schema_version: 1, sequence: 5, id: 'e5', workspace_id: 'default', work_id: 'work-capability', type: 'capability.regression_detected', actor_id: 'scheduler', payload: { status: 'failed', verifier_status: 'failed' }, created_at: '2026-08-02T00:04:00Z' },
+    ],
+  } satisfies WorkLedgerProjection
+
+  const entries = buildWorkLedgerTimeline(base)
+  assert.deepEqual(entries.map((entry) => entry.title), [
+    'Capability version created',
+    'Capability evaluation recorded',
+    'canary → promoted',
+    'Capability outcome recorded',
+    'Capability regression needs review',
+  ])
+  assert.equal(entries[1].detail, 'sandbox · passed')
+  assert.equal(entries[3].detail, 'succeeded · passed')
+  assert.equal(entries[4].detail, 'failed · failed')
+})
+
 test('durable work controls expose only safe operator actions', () => {
   const projection = {
     work: {

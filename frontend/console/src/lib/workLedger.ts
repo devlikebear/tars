@@ -131,6 +131,33 @@ function eventPresentation(event: WorkLedgerEvent, projection: WorkLedgerProject
       }
     case 'execution.worker_cancelled':
       return { title: 'Worker cancelled', detail: payloadString(event, 'worker') }
+    case 'capability.version_created': {
+      const version = payloadNumber(event, 'version')
+      return {
+        title: 'Capability version created',
+        detail: [payloadString(event, 'capability_name'), version == null ? '' : `v${version}`, payloadString(event, 'state')].filter(Boolean).join(' · '),
+      }
+    }
+    case 'capability.evaluation_recorded':
+      return {
+        title: 'Capability evaluation recorded',
+        detail: [payloadString(event, 'stage'), payloadString(event, 'status')].filter(Boolean).join(' · '),
+      }
+    case 'capability.transitioned':
+      return {
+        title: `${payloadString(event, 'from_state') || 'unknown'} → ${payloadString(event, 'to_state') || 'unknown'}`,
+        detail: payloadString(event, 'reason'),
+      }
+    case 'capability.outcome_recorded':
+      return {
+        title: 'Capability outcome recorded',
+        detail: [payloadString(event, 'status'), payloadString(event, 'verifier_status')].filter(Boolean).join(' · '),
+      }
+    case 'capability.regression_detected':
+      return {
+        title: 'Capability regression needs review',
+        detail: [payloadString(event, 'status'), payloadString(event, 'verifier_status')].filter(Boolean).join(' · '),
+      }
     default:
       return { title: event.type, detail: '' }
   }

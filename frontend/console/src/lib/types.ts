@@ -1296,9 +1296,109 @@ export type SkillCreatorSubmitResponse = {
 
 export type SkillExtractionCandidateStatus = 'pending' | 'approved' | 'rejected'
 
-export type SkillExtractionCandidateAction = 'approve' | 'reject'
+export type SkillExtractionCandidateAction = 'evaluate' | 'approve' | 'promote' | 'rollback' | 'reject'
+
+export type CapabilityState =
+  | 'candidate'
+  | 'draft'
+  | 'sandbox'
+  | 'offline_eval'
+  | 'shadow'
+  | 'approved'
+  | 'canary'
+  | 'promoted'
+  | 'rolled_back'
+  | 'rejected'
+
+export type CapabilityVersion = {
+  schema_version: number
+  id: string
+  workspace_id: string
+  work_id: string
+  candidate_id: string
+  capability_name: string
+  version: number
+  state: CapabilityState
+  content_digest: string
+  snapshot?: Record<string, unknown>
+  provenance?: Record<string, unknown>
+  permissions?: string[]
+  approval_id?: string
+  previous_version_id?: string
+  rollback_target_id?: string
+  rollout?: {
+    mode?: string
+    percent?: number
+    rollback?: string
+    review_required?: boolean
+    regression_detected?: boolean
+    regression_outcome_id?: string
+  }
+  actor_id: string
+  created_at: string
+  updated_at: string
+  promoted_at?: string
+  rolled_back_at?: string
+}
+
+export type EvaluationRun = {
+  schema_version: number
+  id: string
+  workspace_id: string
+  work_id: string
+  capability_version_id: string
+  idempotency_key: string
+  stage: 'sandbox' | 'offline' | 'shadow' | 'canary'
+  status: 'pending' | 'passed' | 'failed'
+  baseline_version_id?: string
+  metrics?: {
+    success_rate?: number
+    verification_rate?: number
+    cost_usd?: number
+    latency_ms?: number
+  }
+  delta?: {
+    success_rate?: number
+    verification_rate?: number
+    cost_usd?: number
+    latency_ms?: number
+  }
+  report?: {
+    content_diff?: string
+    permission_expansion?: string[]
+    error?: string
+  }
+  proof_id?: string
+  actor_id: string
+  created_at: string
+  updated_at: string
+}
+
+export type CapabilityOutcome = {
+  schema_version: number
+  id: string
+  workspace_id: string
+  capability_version_id: string
+  work_id: string
+  attempt_id?: string
+  idempotency_key: string
+  status: 'succeeded' | 'failed' | 'cancelled'
+  verifier_status: 'reported' | 'pending' | 'passed' | 'failed' | 'stale'
+  cost_usd: number
+  latency_ms: number
+  actor_id: string
+  created_at: string
+}
 
 export type SkillExtractionEvidence = {
+  message_id?: string
+  index: number
+  role: string
+  snippet: string
+}
+
+export type SkillExtractionSignal = {
+  kind: 'success' | 'failure' | 'dead_end' | 'user_correction'
   message_id?: string
   index: number
   role: string
@@ -1326,6 +1426,7 @@ export type SkillExtractionCandidate = {
   message_range?: string
   repeated_count?: number
   evidence?: SkillExtractionEvidence[]
+  signals?: SkillExtractionSignal[]
   provenance?: SkillExtractionProvenance
   created_at: string
   updated_at: string
@@ -1337,10 +1438,17 @@ export type SkillExtractionCandidate = {
 export type SkillExtractionListResponse = {
   count: number
   candidates: SkillExtractionCandidate[]
+  capabilities?: CapabilityVersion[]
+  evaluations?: EvaluationRun[]
+  outcomes?: CapabilityOutcome[]
 }
 
 export type SkillExtractionReviewResponse = {
   candidate: SkillExtractionCandidate
+  capability: CapabilityVersion
+  evaluations: EvaluationRun[]
+  outcomes?: CapabilityOutcome[]
+  diff?: string
   draft?: SkillCreatorDraftResponse
   saved?: SkillCreatorSaveResponse
 }
@@ -1947,6 +2055,9 @@ export type WorkLedgerProjection = {
   proofs: WorkLedgerProof[]
   artifacts: WorkLedgerArtifact[]
   approvals: WorkLedgerApproval[]
+  capability_versions?: CapabilityVersion[]
+  evaluation_runs?: EvaluationRun[]
+  capability_outcomes?: CapabilityOutcome[]
 }
 
 export type WorkLedgerWorksResponse = {

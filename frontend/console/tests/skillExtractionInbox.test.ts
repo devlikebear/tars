@@ -19,3 +19,18 @@ test('skill extraction inbox is wired into console chat', () => {
   assert.match(chatSource, /\$t\.chat\.session\.actions\.extractSkill/)
   assert.match(slashSource, /extract-skill/)
 })
+
+test('skill extraction inbox exposes reviewed capability lifecycle controls and evidence', () => {
+  assert.match(typesSource, /CapabilityState/)
+  assert.match(typesSource, /EvaluationRun/)
+  assert.match(typesSource, /CapabilityOutcome/)
+  assert.match(typesSource, /'evaluate' \| 'approve' \| 'promote' \| 'rollback' \| 'reject'/)
+  assert.match(panelSource, /Evaluate draft/)
+  assert.match(panelSource, /Approve canary/)
+  assert.match(panelSource, /Promote 100%/)
+  assert.match(panelSource, /Roll back/)
+  assert.match(panelSource, /Permission expansion/)
+  assert.match(panelSource, /Evaluation delta/)
+  assert.match(panelSource, /Observed Work outcomes/)
+  assert.doesNotMatch(panelSource, /Saved skill draft/)
+})
