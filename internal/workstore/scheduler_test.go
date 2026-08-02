@@ -2,7 +2,9 @@ package workstore
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
@@ -461,6 +463,101 @@ func TestSchedulerStopsAtBudgetBoundary(t *testing.T) {
 	}
 	if resolution.Disposition != StepDispositionReview || resolution.Step.State != WorkStateReview {
 		t.Fatalf("budget boundary resolution = %+v", resolution)
+	}
+}
+
+func TestSchedulerCompletionGateRejectsWorkerReportedAndSelfVerifiedSuccess(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := openTestStore(t, filepath.Join(t.TempDir(), "ledger.db"))
+
+	tests := []struct {
+		name        string
+		proofs      func(t *testing.T, work Work, step Step, claim StepClaim)
+		wantState   WorkState
+		wantOutcome StepDisposition
+	}{
+		{
+			name: "worker report only",
+			proofs: func(t *testing.T, work Work, step Step, claim StepClaim) {
+				t.Helper()
+				if _, err := store.CreateProof(ctx, CreateProofInput{
+					WorkspaceID: work.WorkspaceID, WorkID: work.ID, StepID: step.ID, AttemptID: claim.Attempt.ID,
+					IdempotencyKey: claim.Attempt.ID + ":reported", Kind: "test",
+					Status: ProofStatusReported, Origin: ProofOriginWorkerReport,
+					Summary: "worker says tests passed", ReporterID: "worker-1", ActorID: "worker-1",
+				}); err != nil {
+					t.Fatalf("create worker report: %v", err)
+				}
+			},
+			wantState: WorkStateReview, wantOutcome: StepDispositionReview,
+		},
+		{
+			name: "worker verifies itself",
+			proofs: func(t *testing.T, work Work, step Step, claim StepClaim) {
+				t.Helper()
+				if _, err := store.CreateProof(ctx, CreateProofInput{
+					WorkspaceID: work.WorkspaceID, WorkID: work.ID, StepID: step.ID, AttemptID: claim.Attempt.ID,
+					IdempotencyKey: claim.Attempt.ID + ":self", Kind: "test",
+					Status: ProofStatusPassed, Origin: ProofOriginIndependentVerifier,
+					Summary: "self verification", ReporterID: "worker-1", VerifierID: "worker-1",
+					Verifier: "command", EnvironmentJSON: json.RawMessage(`{"runner":"same-process"}`),
+					SubjectDigest: "sha256:self", Rationale: "claimed success", ActorID: "worker-1",
+				}); err != nil {
+					t.Fatalf("create self verification: %v", err)
+				}
+			},
+			wantState: WorkStateReview, wantOutcome: StepDispositionReview,
+		},
+		{
+			name: "independent verifier passes",
+			proofs: func(t *testing.T, work Work, step Step, claim StepClaim) {
+				t.Helper()
+				if _, err := store.CreateProof(ctx, CreateProofInput{
+					WorkspaceID: work.WorkspaceID, WorkID: work.ID, StepID: step.ID, AttemptID: claim.Attempt.ID,
+					IdempotencyKey: claim.Attempt.ID + ":independent", Kind: "test",
+					Status: ProofStatusPassed, Origin: ProofOriginIndependentVerifier,
+					Summary: "independent tests passed", ReporterID: "worker-1", VerifierID: "verifier-1",
+					Verifier: "command", EnvironmentJSON: json.RawMessage(`{"runner":"isolated-verifier"}`),
+					SubjectDigest: "sha256:verified", Rationale: "exit code 0", ActorID: "verifier-1",
+				}); err != nil {
+					t.Fatalf("create independent verification: %v", err)
+				}
+			},
+			wantState: WorkStateDone, wantOutcome: StepDispositionDone,
+		},
+	}
+
+	for index, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			work := mustCreateWork(t, store, "workspace-proof-gate", fmt.Sprintf("proof-gate-%d", index))
+			step := mustCreateScheduledStep(t, store, work, fmt.Sprintf("step-%d", index), 1)
+			if _, err := store.ConfigureStepSchedule(ctx, ConfigureStepScheduleInput{
+				WorkspaceID: work.WorkspaceID, WorkID: work.ID, StepID: step.ID,
+				Policy: StepSchedulePolicy{MaxAttempts: 1, EscalationState: WorkStateReview, Proof: StepProofPolicy{
+					Required: true, Requirements: []ProofRequirement{{Kind: "test", Verifier: "command"}},
+					FailureState: WorkStateReview,
+				}}, ActorID: "scheduler",
+			}); err != nil {
+				t.Fatalf("configure proof gate: %v", err)
+			}
+			if _, err := store.PromoteReadySteps(ctx, PromoteReadyStepsInput{WorkspaceID: work.WorkspaceID, WorkID: work.ID, ActorID: "scheduler"}); err != nil {
+				t.Fatalf("promote proof-gated step: %v", err)
+			}
+			claim := mustClaimStep(t, store, work, "worker-1", time.Minute)
+			test.proofs(t, work, step, claim)
+			resolution, err := store.CompleteStepAttempt(ctx, CompleteStepAttemptInput{
+				WorkspaceID: work.WorkspaceID, WorkID: work.ID, StepID: step.ID,
+				AttemptID: claim.Attempt.ID, WorkerID: "worker-1", Succeeded: true, ActorID: "scheduler",
+			})
+			if err != nil {
+				t.Fatalf("complete proof-gated step: %v", err)
+			}
+			if resolution.Step.State != test.wantState || resolution.Disposition != test.wantOutcome {
+				t.Fatalf("proof gate resolution = %+v, want state=%s disposition=%s", resolution, test.wantState, test.wantOutcome)
+			}
+		})
 	}
 }
 

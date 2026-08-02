@@ -909,7 +909,17 @@ func (s *Store) resolveStepClaimTx(ctx context.Context, tx *sql.Tx, input Comple
 	nextState := WorkStateDone
 	humanResume := false
 	blockedReason := ""
-	if !input.Succeeded {
+	if input.Succeeded && schedule.Policy.Proof.Required {
+		gate, gateErr := evaluateProofGateTx(ctx, tx, input.WorkspaceID, input.WorkID, input.StepID, input.AttemptID, schedule.Policy.Proof)
+		if gateErr != nil {
+			return StepResolution{}, gateErr
+		}
+		if !gate.Passed {
+			disposition = escalationDisposition(schedule.Policy.Proof.FailureState)
+			nextAction, nextState, humanResume = dispositionOutcome(disposition)
+			blockedReason = gate.Reason
+		}
+	} else if !input.Succeeded {
 		disposition = chooseFailureDisposition(schedule.Policy, schedule.CycleAttemptCount, consumedIterations, consumedTokens, consumedCost)
 		nextAction, nextState, humanResume = dispositionOutcome(disposition)
 		if humanResume {
@@ -1069,7 +1079,118 @@ func normalizeStepSchedulePolicy(policy StepSchedulePolicy) (StepSchedulePolicy,
 	if policy.EscalationState != WorkStateReview && policy.EscalationState != WorkStateBlocked {
 		return StepSchedulePolicy{}, fmt.Errorf("workstore: escalation state must be review or blocked")
 	}
+	if policy.Proof.MinIndependentPasses < 0 || policy.Proof.MaxLLMTokens < 0 || policy.Proof.MaxLLMCostUSD < 0 {
+		return StepSchedulePolicy{}, fmt.Errorf("workstore: proof policy budgets cannot be negative")
+	}
+	if policy.Proof.Required {
+		if policy.Proof.FailureState == "" {
+			policy.Proof.FailureState = WorkStateReview
+		}
+		if policy.Proof.FailureState != WorkStateReview && policy.Proof.FailureState != WorkStateBlocked {
+			return StepSchedulePolicy{}, fmt.Errorf("workstore: proof failure state must be review or blocked")
+		}
+		seenKinds := make(map[string]struct{}, len(policy.Proof.Requirements))
+		for index := range policy.Proof.Requirements {
+			requirement := &policy.Proof.Requirements[index]
+			requirement.Kind = strings.TrimSpace(requirement.Kind)
+			requirement.Verifier = strings.TrimSpace(requirement.Verifier)
+			requirement.Command = strings.TrimSpace(requirement.Command)
+			requirement.URL = strings.TrimSpace(requirement.URL)
+			if requirement.Kind == "" || requirement.Verifier == "" {
+				return StepSchedulePolicy{}, fmt.Errorf("workstore: proof requirements need kind and verifier")
+			}
+			if _, exists := seenKinds[requirement.Kind]; exists {
+				return StepSchedulePolicy{}, fmt.Errorf("workstore: proof requirement kind %q is duplicated", requirement.Kind)
+			}
+			seenKinds[requirement.Kind] = struct{}{}
+			if len(requirement.InputJSON) > 0 && !json.Valid(requirement.InputJSON) {
+				return StepSchedulePolicy{}, fmt.Errorf("workstore: proof requirement %q input is invalid JSON", requirement.Kind)
+			}
+			paths := make([]string, 0, len(requirement.Paths))
+			for _, path := range requirement.Paths {
+				if path = strings.TrimSpace(path); path != "" {
+					paths = append(paths, path)
+				}
+			}
+			requirement.Paths = paths
+		}
+		if policy.Proof.MinIndependentPasses == 0 {
+			policy.Proof.MinIndependentPasses = len(policy.Proof.Requirements)
+			if policy.Proof.MinIndependentPasses == 0 {
+				policy.Proof.MinIndependentPasses = 1
+			}
+		}
+		if policy.Proof.MinIndependentPasses < len(policy.Proof.Requirements) {
+			return StepSchedulePolicy{}, fmt.Errorf("workstore: minimum independent passes cannot be lower than required proof kinds")
+		}
+		if policy.Proof.AllowLLMFallback && (policy.Proof.MaxLLMTokens == 0 || policy.Proof.MaxLLMCostUSD == 0) {
+			return StepSchedulePolicy{}, fmt.Errorf("workstore: LLM proof fallback requires token and cost budgets")
+		}
+	}
 	return policy, nil
+}
+
+type proofGateEvaluation struct {
+	Passed bool
+	Reason string
+}
+
+func evaluateProofGateTx(ctx context.Context, tx *sql.Tx, workspaceID, workID, stepID, attemptID string, policy StepProofPolicy) (proofGateEvaluation, error) {
+	proofs, err := queryProofs(ctx, tx, workspaceID, workID)
+	if err != nil {
+		return proofGateEvaluation{}, err
+	}
+	passedByRequirement := make(map[string]bool, len(policy.Requirements))
+	failedByRequirement := make(map[string]ProofStatus, len(policy.Requirements))
+	independentPasses := 0
+	for _, proof := range proofs {
+		if proof.StepID != stepID || proof.AttemptID != attemptID || !proofHasIndependentProvenance(proof) {
+			continue
+		}
+		switch proof.Status {
+		case ProofStatusPassed:
+			independentPasses++
+			passedByRequirement[proofRequirementKey(proof.Kind, proof.Verifier)] = true
+		case ProofStatusFailed, ProofStatusStale:
+			failedByRequirement[proofRequirementKey(proof.Kind, proof.Verifier)] = proof.Status
+		}
+	}
+	for _, requirement := range policy.Requirements {
+		key := proofRequirementKey(requirement.Kind, requirement.Verifier)
+		if passedByRequirement[key] {
+			continue
+		}
+		if status := failedByRequirement[key]; status != "" {
+			return proofGateEvaluation{Reason: fmt.Sprintf("independent proof %q is %s", requirement.Kind, status)}, nil
+		}
+		return proofGateEvaluation{Reason: fmt.Sprintf("independent proof %q is pending or missing", requirement.Kind)}, nil
+	}
+	if independentPasses < policy.MinIndependentPasses {
+		return proofGateEvaluation{Reason: fmt.Sprintf("independent proof gate has %d/%d passes", independentPasses, policy.MinIndependentPasses)}, nil
+	}
+	return proofGateEvaluation{Passed: true}, nil
+}
+
+func proofRequirementKey(kind, verifier string) string {
+	return strings.TrimSpace(kind) + "\x00" + strings.TrimSpace(verifier)
+}
+
+func proofHasIndependentProvenance(proof Proof) bool {
+	if proof.Origin != ProofOriginIndependentVerifier || strings.TrimSpace(proof.ReporterID) == "" || strings.TrimSpace(proof.VerifierID) == "" || proof.ReporterID == proof.VerifierID || strings.TrimSpace(proof.SubjectDigest) == "" || strings.TrimSpace(proof.Rationale) == "" {
+		return false
+	}
+	var environment any
+	if len(proof.EnvironmentJSON) == 0 || json.Unmarshal(proof.EnvironmentJSON, &environment) != nil {
+		return false
+	}
+	switch value := environment.(type) {
+	case map[string]any:
+		return len(value) > 0
+	case []any:
+		return len(value) > 0
+	default:
+		return value != nil
+	}
 }
 
 func validateCompleteStepAttemptInput(input CompleteStepAttemptInput) error {

@@ -75,6 +75,133 @@ func TestSchedulerExecutesDAGAndCompletesWork(t *testing.T) {
 	}
 }
 
+func TestSchedulerRequiresIndependentProofBeforeCompletingStep(t *testing.T) {
+	t.Parallel()
+
+	store := openSchedulerTestStore(t)
+	executor := &fakeExecutor{adapter: "fake", execute: func(_ context.Context, _ Execution) (ExecutionResult, error) {
+		return ExecutionResult{Succeeded: true, OutputJSON: json.RawMessage(`{"worker":"success"}`)}, nil
+	}}
+	verifier := &fakeVerifier{
+		name: "deterministic", id: "verifier-1",
+		environment: json.RawMessage(`{"runner":"proof-process","workspace":"read-only-copy"}`),
+		verify: func(_ context.Context, request VerificationRequest) (VerificationResult, error) {
+			if request.Execution.Claim.Schedule.LeaseOwner != "worker-primary" || request.Requirement.Kind != "test" {
+				t.Fatalf("verification request = %+v", request)
+			}
+			return VerificationResult{
+				Status: workstore.ProofStatusPassed, Summary: "tests passed independently",
+				Rationale: "exit code 0", SubjectDigest: "sha256:verified-source",
+				ArtifactDigestsJSON: json.RawMessage(`["sha256:test-log"]`),
+			}, nil
+		},
+	}
+	scheduler, err := New(Options{
+		Store: store, WorkspaceID: "workspace-proof", WorkerID: "worker-primary", ActorID: "scheduler",
+		LeaseDuration: time.Minute, HeartbeatInterval: 10 * time.Millisecond, PollInterval: 5 * time.Millisecond,
+		MaxWorkers: 1, Executors: []Executor{executor}, Verifiers: []Verifier{verifier},
+	})
+	if err != nil {
+		t.Fatalf("new proof scheduler: %v", err)
+	}
+	t.Cleanup(scheduler.Close)
+	work, err := scheduler.Submit(context.Background(), SubmitInput{
+		WorkspaceID: "workspace-proof", IdempotencyKey: "proof", Title: "Proof",
+		Adapter: "fake", ActorID: "planner",
+		Steps: []StepSpec{{Key: "test", Title: "Test", Policy: workstore.StepSchedulePolicy{
+			MaxAttempts: 1, EscalationState: workstore.WorkStateReview,
+			Proof: workstore.StepProofPolicy{Required: true, FailureState: workstore.WorkStateReview,
+				Requirements: []workstore.ProofRequirement{{Kind: "test", Verifier: "deterministic", Command: "go test ./..."}}},
+		}}},
+	})
+	if err != nil {
+		t.Fatalf("submit proof-gated work: %v", err)
+	}
+	if claimed, err := scheduler.RunOnce(context.Background()); err != nil || claimed != 1 {
+		t.Fatalf("run proof-gated work claimed=%d err=%v", claimed, err)
+	}
+	projection, err := scheduler.Wait(context.Background(), work.ID)
+	if err != nil {
+		t.Fatalf("wait proof-gated work: %v", err)
+	}
+	if projection.Work.State != workstore.WorkStateDone || projection.Steps[0].State != workstore.WorkStateDone {
+		t.Fatalf("proof-gated projection = %+v", projection)
+	}
+	if len(projection.Proofs) != 2 {
+		t.Fatalf("proof count=%d want worker report and independent proof", len(projection.Proofs))
+	}
+	if projection.Proofs[0].Status != workstore.ProofStatusReported || projection.Proofs[0].Origin != workstore.ProofOriginWorkerReport {
+		t.Fatalf("worker report = %+v", projection.Proofs[0])
+	}
+	verified := projection.Proofs[1]
+	if verified.Status != workstore.ProofStatusPassed || verified.Origin != workstore.ProofOriginIndependentVerifier || verified.ReporterID != "worker-primary" || verified.VerifierID != "verifier-1" || string(verified.ArtifactDigestsJSON) != `["sha256:test-log"]` {
+		t.Fatalf("independent proof = %+v", verified)
+	}
+}
+
+func TestSchedulerRejectsVerifierWithWorkerIdentity(t *testing.T) {
+	t.Parallel()
+
+	store := openSchedulerTestStore(t)
+	_, err := New(Options{
+		Store: store, WorkspaceID: "workspace-proof-identity", WorkerID: "same-id", ActorID: "scheduler",
+		Executors: []Executor{&fakeExecutor{adapter: "fake"}},
+		Verifiers: []Verifier{&fakeVerifier{name: "deterministic", id: "same-id", environment: json.RawMessage(`{"runner":"same"}`)}},
+	})
+	if err == nil {
+		t.Fatal("scheduler accepted a verifier with the worker identity")
+	}
+}
+
+func TestSchedulerWorkerSuccessCannotOverrideFailedIndependentProof(t *testing.T) {
+	t.Parallel()
+
+	store := openSchedulerTestStore(t)
+	scheduler, err := New(Options{
+		Store: store, WorkspaceID: "workspace-proof-failed", WorkerID: "worker-primary", ActorID: "scheduler",
+		LeaseDuration: time.Minute, HeartbeatInterval: 10 * time.Millisecond, PollInterval: 5 * time.Millisecond,
+		MaxWorkers: 1,
+		Executors: []Executor{&fakeExecutor{adapter: "fake", execute: func(_ context.Context, _ Execution) (ExecutionResult, error) {
+			return ExecutionResult{Succeeded: true, OutputJSON: json.RawMessage(`{"worker":"success"}`)}, nil
+		}}},
+		Verifiers: []Verifier{&fakeVerifier{
+			name: "deterministic", id: "verifier-1",
+			environment: json.RawMessage(`{"runner":"proof-process"}`),
+			verify: func(_ context.Context, _ VerificationRequest) (VerificationResult, error) {
+				return VerificationResult{
+					Status: workstore.ProofStatusFailed, Summary: "tests failed",
+					Rationale: "exit code 1", SubjectDigest: "sha256:failed-source",
+				}, nil
+			},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("new failed-proof scheduler: %v", err)
+	}
+	t.Cleanup(scheduler.Close)
+	work, err := scheduler.Submit(context.Background(), SubmitInput{
+		WorkspaceID: "workspace-proof-failed", IdempotencyKey: "proof-failed", Title: "Proof failed",
+		Adapter: "fake", ActorID: "planner", Steps: []StepSpec{{Key: "test", Title: "Test", Policy: workstore.StepSchedulePolicy{
+			MaxAttempts: 1, EscalationState: workstore.WorkStateReview,
+			Proof: workstore.StepProofPolicy{Required: true, FailureState: workstore.WorkStateReview,
+				Requirements: []workstore.ProofRequirement{{Kind: "test", Verifier: "deterministic"}}},
+		}}},
+	})
+	if err != nil {
+		t.Fatalf("submit failed-proof work: %v", err)
+	}
+	if _, err := scheduler.RunOnce(context.Background()); err != nil {
+		t.Fatalf("run failed-proof work: %v", err)
+	}
+	projection, err := scheduler.Wait(context.Background(), work.ID)
+	if err != nil {
+		t.Fatalf("wait failed-proof work: %v", err)
+	}
+	if projection.Work.State != workstore.WorkStateReview || projection.Steps[0].State != workstore.WorkStateReview || projection.Attempts[0].Status != workstore.AttemptStatusSucceeded || projection.Proofs[1].Status != workstore.ProofStatusFailed {
+		t.Fatalf("failed-proof projection = %+v", projection)
+	}
+}
+
 func TestSchedulerRetriesThenRequestsReview(t *testing.T) {
 	t.Parallel()
 
@@ -250,6 +377,26 @@ type fakeExecutor struct {
 	adapter string
 	execute func(context.Context, Execution) (ExecutionResult, error)
 	recover func(context.Context, Execution) (ExecutionResult, bool, error)
+}
+
+type fakeVerifier struct {
+	name        string
+	id          string
+	environment json.RawMessage
+	verify      func(context.Context, VerificationRequest) (VerificationResult, error)
+}
+
+func (verifier *fakeVerifier) Name() string { return verifier.name }
+
+func (verifier *fakeVerifier) Identity() VerifierIdentity {
+	return VerifierIdentity{ID: verifier.id, EnvironmentJSON: verifier.environment}
+}
+
+func (verifier *fakeVerifier) Verify(ctx context.Context, request VerificationRequest) (VerificationResult, error) {
+	if verifier.verify == nil {
+		return VerificationResult{}, errors.New("unexpected verification")
+	}
+	return verifier.verify(ctx, request)
 }
 
 func (executor *fakeExecutor) Adapter() string { return executor.adapter }

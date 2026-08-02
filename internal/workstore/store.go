@@ -1253,6 +1253,20 @@ func (s *Store) TransitionProof(ctx context.Context, input TransitionProofInput)
 	if subjectDigest == "" {
 		subjectDigest = proof.SubjectDigest
 	}
+	inputJSON := proof.InputJSON
+	if len(input.InputJSON) > 0 {
+		inputJSON, err = normalizedJSON(input.InputJSON)
+		if err != nil {
+			return Proof{}, fmt.Errorf("workstore: proof transition input json: %w", err)
+		}
+	}
+	artifactDigestsJSON := proof.ArtifactDigestsJSON
+	if len(input.ArtifactDigestsJSON) > 0 {
+		artifactDigestsJSON, err = normalizedJSON(input.ArtifactDigestsJSON)
+		if err != nil {
+			return Proof{}, fmt.Errorf("workstore: proof transition artifact digests json: %w", err)
+		}
+	}
 	observedAt := input.ObservedAt
 	if observedAt == nil {
 		observedAt = proof.ObservedAt
@@ -1264,9 +1278,11 @@ func (s *Store) TransitionProof(ctx context.Context, input TransitionProofInput)
 	}
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE proofs
-		SET status = ?, subject_digest = ?, rationale = ?, actor_id = ?, observed_at = ?, updated_at = ?
+		SET status = ?, input_json = ?, artifact_digests_json = ?, subject_digest = ?,
+			rationale = ?, actor_id = ?, observed_at = ?, updated_at = ?
 		WHERE workspace_id = ? AND work_id = ? AND id = ? AND status = ?
-	`, input.ToStatus, subjectDigest, rationale, input.ActorID, nullableTime(observedAt), now.UnixMilli(),
+	`, input.ToStatus, inputJSON, artifactDigestsJSON, subjectDigest, rationale, input.ActorID,
+		nullableTime(observedAt), now.UnixMilli(),
 		input.WorkspaceID, input.WorkID, input.ProofID, input.ExpectedStatus); err != nil {
 		return Proof{}, fmt.Errorf("workstore: transition proof: %w", err)
 	}

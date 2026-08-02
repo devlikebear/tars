@@ -2,6 +2,7 @@ package workscheduler
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -24,6 +25,7 @@ type Scheduler struct {
 	pollInterval      time.Duration
 	maxWorkers        int
 	executors         map[string]Executor
+	verifiers         map[string]Verifier
 	onError           func(error)
 
 	ctx       context.Context
@@ -80,12 +82,34 @@ func New(opts Options) (*Scheduler, error) {
 	if len(executors) == 0 {
 		return nil, fmt.Errorf("workscheduler: at least one executor is required")
 	}
+	verifiers := make(map[string]Verifier, len(opts.Verifiers))
+	for _, verifier := range opts.Verifiers {
+		if verifier == nil {
+			return nil, fmt.Errorf("workscheduler: verifier is required")
+		}
+		name := strings.TrimSpace(verifier.Name())
+		identity := verifier.Identity()
+		identity.ID = strings.TrimSpace(identity.ID)
+		if name == "" || identity.ID == "" {
+			return nil, fmt.Errorf("workscheduler: verifier name and identity are required")
+		}
+		if identity.ID == workerID {
+			return nil, fmt.Errorf("workscheduler: verifier %q must use an identity separate from worker %q", name, workerID)
+		}
+		if !meaningfulJSON(identity.EnvironmentJSON) {
+			return nil, fmt.Errorf("workscheduler: verifier %q must declare its execution environment", name)
+		}
+		if _, exists := verifiers[name]; exists {
+			return nil, fmt.Errorf("workscheduler: duplicate verifier %q", name)
+		}
+		verifiers[name] = verifier
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Scheduler{
 		store: opts.Store, workspaceID: workspaceID, workerID: workerID, actorID: actorID,
 		leaseDuration: opts.LeaseDuration, heartbeatInterval: opts.HeartbeatInterval,
 		pollInterval: opts.PollInterval, maxWorkers: opts.MaxWorkers, executors: executors,
-		onError: opts.OnError, ctx: ctx, cancel: cancel, active: make(map[string]activeExecution),
+		onError: opts.OnError, verifiers: verifiers, ctx: ctx, cancel: cancel, active: make(map[string]activeExecution),
 	}, nil
 }
 
@@ -122,6 +146,9 @@ func (s *Scheduler) Submit(ctx context.Context, input SubmitInput) (workstore.Wo
 		return workstore.Work{}, fmt.Errorf("workscheduler: at least one step is required")
 	}
 	if err := validateStepSpecs(input.Steps); err != nil {
+		return workstore.Work{}, err
+	}
+	if err := s.validateProofVerifiers(input.Steps); err != nil {
 		return workstore.Work{}, err
 	}
 	metadataJSON, err := schedulerMetadata(input.MetadataJSON, input.Adapter)
@@ -516,9 +543,9 @@ func (s *Scheduler) startActive(
 		}()
 		result, found, err := run(execCtx, execution)
 		wasCanceled := execCtx.Err() != nil
-		cancel()
-		<-heartbeatDone
 		if !found {
+			cancel()
+			<-heartbeatDone
 			if _, reclaimErr := s.reclaimClaim(context.Background(), claim, "executor could not reconnect after restart"); reclaimErr != nil {
 				s.reportError(reclaimErr)
 			}
@@ -534,6 +561,8 @@ func (s *Scheduler) startActive(
 			}
 		}
 		if wasCanceled {
+			cancel()
+			<-heartbeatDone
 			releaseCtx, releaseCancel := context.WithTimeout(context.Background(), 5*time.Second)
 			_, releaseErr := s.store.ReleaseStepClaim(releaseCtx, workstore.ReleaseStepClaimInput{
 				WorkspaceID: claim.Step.WorkspaceID, WorkID: claim.Step.WorkID, StepID: claim.Step.ID,
@@ -546,6 +575,11 @@ func (s *Scheduler) startActive(
 			}
 			return
 		}
+		if result.Succeeded {
+			if proofErr := s.recordVerificationProofs(execCtx, execution, result); proofErr != nil {
+				s.reportError(proofErr)
+			}
+		}
 		completeCtx, completeCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		_, completeErr := s.store.CompleteStepAttempt(completeCtx, workstore.CompleteStepAttemptInput{
 			WorkspaceID: claim.Step.WorkspaceID, WorkID: claim.Step.WorkID, StepID: claim.Step.ID,
@@ -554,6 +588,8 @@ func (s *Scheduler) startActive(
 			Usage: result.Usage, ActorID: s.actorID,
 		})
 		completeCancel()
+		cancel()
+		<-heartbeatDone
 		if completeErr != nil && !errors.Is(completeErr, workstore.ErrClaimConflict) {
 			s.reportError(completeErr)
 		}
@@ -561,6 +597,105 @@ func (s *Scheduler) startActive(
 			s.reportError(reconcileErr)
 		}
 	}()
+}
+
+func (s *Scheduler) recordVerificationProofs(ctx context.Context, execution Execution, result ExecutionResult) error {
+	claim := execution.Claim
+	resultDigest := proofDigest(result.OutputJSON)
+	resultInput, _ := json.Marshal(map[string]any{"output_digest": resultDigest})
+	if _, err := s.store.CreateProof(ctx, workstore.CreateProofInput{
+		WorkspaceID: claim.Step.WorkspaceID, WorkID: claim.Step.WorkID,
+		StepID: claim.Step.ID, AttemptID: claim.Attempt.ID,
+		IdempotencyKey: claim.Attempt.ID + ":worker-report", CausationID: claim.Attempt.ID,
+		Kind: "worker-result", Status: workstore.ProofStatusReported,
+		Origin: workstore.ProofOriginWorkerReport, Summary: "worker reported successful execution",
+		ReporterID: claim.Schedule.LeaseOwner, InputJSON: resultInput,
+		SubjectDigest: resultDigest, ActorID: s.actorID,
+	}); err != nil {
+		return fmt.Errorf("workscheduler: record worker success report: %w", err)
+	}
+	if !claim.Schedule.Policy.Proof.Required {
+		return nil
+	}
+	for _, requirement := range claim.Schedule.Policy.Proof.Requirements {
+		verifier, ok := s.verifiers[requirement.Verifier]
+		if !ok {
+			return fmt.Errorf("workscheduler: verifier %q is not configured", requirement.Verifier)
+		}
+		identity := verifier.Identity()
+		requestInput, err := json.Marshal(map[string]any{
+			"requirement":          requirement,
+			"worker_output_digest": resultDigest,
+		})
+		if err != nil {
+			return fmt.Errorf("workscheduler: encode verification input: %w", err)
+		}
+		pending, err := s.store.CreateProof(ctx, workstore.CreateProofInput{
+			WorkspaceID: claim.Step.WorkspaceID, WorkID: claim.Step.WorkID,
+			StepID: claim.Step.ID, AttemptID: claim.Attempt.ID,
+			IdempotencyKey: claim.Attempt.ID + ":verification:" + requirement.Kind,
+			CausationID:    claim.Attempt.ID, Kind: requirement.Kind,
+			Status: workstore.ProofStatusPending, Origin: workstore.ProofOriginIndependentVerifier,
+			Summary: "independent verification pending", ReporterID: claim.Schedule.LeaseOwner,
+			VerifierID: strings.TrimSpace(identity.ID), Verifier: requirement.Verifier,
+			Command: requirement.Command, EnvironmentJSON: identity.EnvironmentJSON,
+			InputJSON: requestInput, SubjectDigest: resultDigest, ActorID: s.actorID,
+		})
+		if err != nil {
+			return fmt.Errorf("workscheduler: create pending proof %q: %w", requirement.Kind, err)
+		}
+		if pending.Status == workstore.ProofStatusPassed || pending.Status == workstore.ProofStatusFailed {
+			continue
+		}
+		if pending.Status == workstore.ProofStatusStale {
+			pending, err = s.store.TransitionProof(ctx, workstore.TransitionProofInput{
+				WorkspaceID: pending.WorkspaceID, WorkID: pending.WorkID, ProofID: pending.ID,
+				ExpectedStatus: workstore.ProofStatusStale, ToStatus: workstore.ProofStatusPending,
+				ActorID: s.actorID, Rationale: "reverification requested",
+			})
+			if err != nil {
+				return fmt.Errorf("workscheduler: reopen stale proof %q: %w", requirement.Kind, err)
+			}
+		}
+		verified, verifyErr := verifier.Verify(ctx, VerificationRequest{
+			Execution: execution, Result: result, Requirement: requirement,
+		})
+		if verified.Status == "" {
+			verified.Status = workstore.ProofStatusFailed
+		}
+		if verifyErr != nil {
+			verified.Status = workstore.ProofStatusFailed
+			if strings.TrimSpace(verified.Rationale) == "" {
+				verified.Rationale = verifyErr.Error()
+			}
+		}
+		if verified.Status == workstore.ProofStatusPending {
+			continue
+		}
+		if verified.Status != workstore.ProofStatusPassed && verified.Status != workstore.ProofStatusFailed {
+			verified.Status = workstore.ProofStatusFailed
+			verified.Rationale = "verifier returned an invalid terminal proof state"
+		}
+		if strings.TrimSpace(verified.SubjectDigest) == "" {
+			verified.SubjectDigest = resultDigest
+		}
+		if strings.TrimSpace(verified.Summary) == "" {
+			verified.Summary = "independent verification completed"
+		}
+		if strings.TrimSpace(verified.Rationale) == "" {
+			verified.Rationale = verified.Summary
+		}
+		if _, err := s.store.TransitionProof(ctx, workstore.TransitionProofInput{
+			WorkspaceID: pending.WorkspaceID, WorkID: pending.WorkID, ProofID: pending.ID,
+			ExpectedStatus: workstore.ProofStatusPending, ToStatus: verified.Status,
+			InputJSON: verified.InputJSON, ArtifactDigestsJSON: verified.ArtifactDigestsJSON,
+			SubjectDigest: verified.SubjectDigest, Rationale: verified.Rationale,
+			ActorID: identity.ID, ObservedAt: verified.ObservedAt,
+		}); err != nil {
+			return fmt.Errorf("workscheduler: finalize proof %q: %w", requirement.Kind, err)
+		}
+	}
+	return nil
 }
 
 func (s *Scheduler) heartbeat(ctx context.Context, claim workstore.StepClaim, cancel context.CancelFunc) {
@@ -763,6 +898,50 @@ func validateStepSpecs(steps []StepSpec) error {
 		}
 	}
 	return nil
+}
+
+func (s *Scheduler) validateProofVerifiers(steps []StepSpec) error {
+	for _, step := range steps {
+		if !step.Policy.Proof.Required {
+			continue
+		}
+		if len(step.Policy.Proof.Requirements) == 0 {
+			return fmt.Errorf("workscheduler: proof-gated step %q needs at least one verifier requirement", strings.TrimSpace(step.Key))
+		}
+		for _, requirement := range step.Policy.Proof.Requirements {
+			name := strings.TrimSpace(requirement.Verifier)
+			if _, ok := s.verifiers[name]; !ok {
+				return fmt.Errorf("workscheduler: proof-gated step %q requires unconfigured verifier %q", strings.TrimSpace(step.Key), name)
+			}
+		}
+	}
+	return nil
+}
+
+func meaningfulJSON(raw json.RawMessage) bool {
+	if len(raw) == 0 {
+		return false
+	}
+	var value any
+	if json.Unmarshal(raw, &value) != nil {
+		return false
+	}
+	switch typed := value.(type) {
+	case map[string]any:
+		return len(typed) > 0
+	case []any:
+		return len(typed) > 0
+	default:
+		return typed != nil
+	}
+}
+
+func proofDigest(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		raw = json.RawMessage(`{}`)
+	}
+	digest := sha256.Sum256(raw)
+	return fmt.Sprintf("sha256:%x", digest[:])
 }
 
 func (s *Scheduler) activeCount() int {

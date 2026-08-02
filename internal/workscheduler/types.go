@@ -49,6 +49,27 @@ type ExecutionResult struct {
 	Usage      workstore.StepAttemptUsage
 }
 
+type VerifierIdentity struct {
+	ID              string          `json:"id"`
+	EnvironmentJSON json.RawMessage `json:"environment"`
+}
+
+type VerificationRequest struct {
+	Execution   Execution                  `json:"execution"`
+	Result      ExecutionResult            `json:"result"`
+	Requirement workstore.ProofRequirement `json:"requirement"`
+}
+
+type VerificationResult struct {
+	Status              workstore.ProofStatus `json:"status"`
+	Summary             string                `json:"summary"`
+	Rationale           string                `json:"rationale"`
+	SubjectDigest       string                `json:"subject_digest"`
+	InputJSON           json.RawMessage       `json:"input"`
+	ArtifactDigestsJSON json.RawMessage       `json:"artifact_digests"`
+	ObservedAt          *time.Time            `json:"observed_at,omitempty"`
+}
+
 type Executor interface {
 	Adapter() string
 	Execute(context.Context, Execution) (ExecutionResult, error)
@@ -62,6 +83,12 @@ type CancelableExecutor interface {
 	Cancel(context.Context, Execution) error
 }
 
+type Verifier interface {
+	Name() string
+	Identity() VerifierIdentity
+	Verify(context.Context, VerificationRequest) (VerificationResult, error)
+}
+
 type Options struct {
 	Store             *workstore.Store
 	WorkspaceID       string
@@ -72,5 +99,6 @@ type Options struct {
 	PollInterval      time.Duration
 	MaxWorkers        int
 	Executors         []Executor
+	Verifiers         []Verifier
 	OnError           func(error)
 }

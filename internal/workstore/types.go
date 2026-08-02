@@ -136,14 +136,34 @@ const (
 )
 
 type StepSchedulePolicy struct {
-	MaxAttempts     int       `json:"max_attempts"`
-	RetryLimit      int       `json:"retry_limit"`
-	ReplanLimit     int       `json:"replan_limit"`
-	DecomposeLimit  int       `json:"decompose_limit"`
-	MaxIterations   int       `json:"max_iterations,omitempty"`
-	MaxTokens       int64     `json:"max_tokens,omitempty"`
-	MaxCostUSD      float64   `json:"max_cost_usd,omitempty"`
-	EscalationState WorkState `json:"escalation_state"`
+	MaxAttempts     int             `json:"max_attempts"`
+	RetryLimit      int             `json:"retry_limit"`
+	ReplanLimit     int             `json:"replan_limit"`
+	DecomposeLimit  int             `json:"decompose_limit"`
+	MaxIterations   int             `json:"max_iterations,omitempty"`
+	MaxTokens       int64           `json:"max_tokens,omitempty"`
+	MaxCostUSD      float64         `json:"max_cost_usd,omitempty"`
+	EscalationState WorkState       `json:"escalation_state"`
+	Proof           StepProofPolicy `json:"proof,omitempty"`
+}
+
+type ProofRequirement struct {
+	Kind      string          `json:"kind"`
+	Verifier  string          `json:"verifier"`
+	Command   string          `json:"command,omitempty"`
+	Paths     []string        `json:"paths,omitempty"`
+	URL       string          `json:"url,omitempty"`
+	InputJSON json.RawMessage `json:"input,omitempty"`
+}
+
+type StepProofPolicy struct {
+	Required             bool               `json:"required,omitempty"`
+	Requirements         []ProofRequirement `json:"requirements,omitempty"`
+	MinIndependentPasses int                `json:"min_independent_passes,omitempty"`
+	FailureState         WorkState          `json:"failure_state,omitempty"`
+	AllowLLMFallback     bool               `json:"allow_llm_fallback,omitempty"`
+	MaxLLMTokens         int64              `json:"max_llm_tokens,omitempty"`
+	MaxLLMCostUSD        float64            `json:"max_llm_cost_usd,omitempty"`
 }
 
 type StepSchedule struct {
@@ -581,15 +601,17 @@ type CreateProofInput struct {
 }
 
 type TransitionProofInput struct {
-	WorkspaceID    string
-	WorkID         string
-	ProofID        string
-	ExpectedStatus ProofStatus
-	ToStatus       ProofStatus
-	SubjectDigest  string
-	Rationale      string
-	ActorID        string
-	ObservedAt     *time.Time
+	WorkspaceID         string
+	WorkID              string
+	ProofID             string
+	ExpectedStatus      ProofStatus
+	ToStatus            ProofStatus
+	InputJSON           json.RawMessage
+	ArtifactDigestsJSON json.RawMessage
+	SubjectDigest       string
+	Rationale           string
+	ActorID             string
+	ObservedAt          *time.Time
 }
 
 type DetectStaleProofInput struct {
