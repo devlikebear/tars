@@ -306,6 +306,7 @@ export type AgentRuntimeRun = {
   restarted_from_checkpoint_id?: string
   restart_attempt?: number
   restart_reason?: string
+  recovery_mode?: AgentRuntimeRecoveryMode
   status: string
   accepted?: boolean
   response?: string
@@ -331,9 +332,25 @@ export type AgentRuntimeRun = {
 }
 
 export type AgentRuntimeRunCheckpoint = {
+  schema_version: number
   checkpoint_id: string
   run_id?: string
   kind: string
+  format: 'prompt_checkpoint_v0' | 'step_checkpoint_v1'
+  capability: 'retry_only' | 'replay' | 'resumable_step' | 'environment_rehydratable'
+  resumable: boolean
+  resume_reason: string
+  recovery_modes: AgentRuntimeRecoveryMode[]
+  recovery_approval_required?: boolean
+  recovery_approval_reason?: string
+  next_action?: string
+  state_refs?: AgentRuntimeCheckpointReference[]
+  tool_request_refs?: AgentRuntimeCheckpointReference[]
+  tool_result_refs?: AgentRuntimeCheckpointReference[]
+  effect_receipt_refs?: AgentRuntimeCheckpointReference[]
+  workspace_snapshot_refs?: AgentRuntimeCheckpointReference[]
+  environment_snapshot_refs?: AgentRuntimeCheckpointReference[]
+  continuation?: AgentRuntimeCheckpointContinuation
   label?: string
   status?: string
   agent?: string
@@ -343,6 +360,22 @@ export type AgentRuntimeRunCheckpoint = {
   allowed_tools?: string[]
   error?: string
   created_at?: string
+}
+
+export type AgentRuntimeRecoveryMode = 'retry_from_prompt' | 'replay_from_checkpoint' | 'resume_from_checkpoint'
+
+export type AgentRuntimeCheckpointReference = {
+  kind: string
+  id: string
+  digest?: string
+  uri?: string
+}
+
+export type AgentRuntimeCheckpointContinuation = {
+  kind: string
+  id: string
+  executor?: string
+  recorded_at?: string
 }
 
 export type AgentRuntimeRunEvent = {

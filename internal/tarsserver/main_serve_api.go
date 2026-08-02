@@ -321,6 +321,7 @@ func buildAPIMux(
 		SessionStore:                              sessionStore,
 		SessionStoreForWorkspace:                  sessionStoreResolver,
 		RunPrompt:                                 apiRunPrompt,
+		RunPromptCheckpointSupport:                agentruntime.ExecutorCheckpointSupport{Capability: agentruntime.CheckpointCapabilityResumableStep},
 		Executors:                                 nil,
 		DefaultAgent:                              strings.TrimSpace(cfg.AgentRuntimeDefaultAgent),
 		AgentRuntimeAgentsWatchEnabled:            false,
@@ -388,6 +389,7 @@ func buildAPIMux(
 	if err != nil {
 		return nil, err
 	}
+	agentRuntime.SetEffectReceiptStore(workLedger)
 
 	reflectionSetup := buildReflectionRuntime(reflectionSetupInputs{
 		Config:       cfg,

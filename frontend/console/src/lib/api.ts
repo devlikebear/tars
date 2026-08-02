@@ -22,6 +22,7 @@ import type {
   AgentRuntimeRun,
   AgentRuntimeRunEvent,
   AgentRuntimeProviderOverride,
+  AgentRuntimeRecoveryMode,
   AgentRuntimeSubagent,
   AgentRuntimeSubagentArchiveResponse,
   AgentRuntimeSubagentDraft,
@@ -479,6 +480,8 @@ export type AgentRuntimeRestartRequest = {
 	provider_override?: AgentRuntimeProviderOverride
 	prompt_adjustment?: string
 	title?: string
+	mode?: AgentRuntimeRecoveryMode
+	confirm_unsafe_recovery?: boolean
 }
 
 export async function restartAgentRuntimeRun(runId: string, payload: AgentRuntimeRestartRequest): Promise<AgentRuntimeRun> {

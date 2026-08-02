@@ -54,10 +54,11 @@ func (r *Runtime) applyExecutorsLocked(executors []AgentExecutor, requestedDefau
 	if r.opts.RunPrompt != nil {
 		if _, exists := r.executors["default"]; !exists {
 			if ex, err := NewPromptExecutorWithOptions(PromptExecutorOptions{
-				Name:        "default",
-				Description: "Default in-process agent loop",
-				Source:      "in-process",
-				Entry:       "llm-loop",
+				Name:              "default",
+				Description:       "Default in-process agent loop",
+				Source:            "in-process",
+				Entry:             "llm-loop",
+				CheckpointSupport: r.opts.RunPromptCheckpointSupport,
 				RunPrompt: func(ctx context.Context, runLabel string, prompt string, _ []string, _ string, _ *ProviderOverride) (string, error) {
 					return r.opts.RunPrompt(ctx, runLabel, prompt)
 				},
@@ -155,26 +156,28 @@ func (r *Runtime) Agents() []map[string]any {
 		info := executor.Info()
 		toolsAllow := append([]string{}, info.ToolsAllow...)
 		out = append(out, map[string]any{
-			"name":                 info.Name,
-			"description":          info.Description,
-			"enabled":              r.opts.Enabled && info.Enabled,
-			"kind":                 info.Kind,
-			"source":               info.Source,
-			"entry":                info.Entry,
-			"default":              info.Name == r.defaultAgent,
-			"policy_mode":          info.PolicyMode,
-			"tools_allow":          toolsAllow,
-			"tools_allow_count":    info.ToolsAllowCount,
-			"tools_deny":           append([]string{}, info.ToolsDeny...),
-			"tools_deny_count":     info.ToolsDenyCount,
-			"tools_risk_max":       info.ToolsRiskMax,
-			"tools_allow_groups":   append([]string{}, info.ToolsAllowGroups...),
-			"tools_deny_groups":    append([]string{}, info.ToolsDenyGroups...),
-			"tools_allow_patterns": append([]string{}, info.ToolsAllowPatterns...),
-			"session_routing_mode": normalizeSessionRoutingMode(info.SessionRoutingMode),
-			"session_fixed_id":     strings.TrimSpace(info.SessionFixedID),
-			"tier":                 strings.TrimSpace(info.Tier),
-			"provider_override":    CloneProviderOverride(info.ProviderOverride),
+			"name":                  info.Name,
+			"description":           info.Description,
+			"enabled":               r.opts.Enabled && info.Enabled,
+			"kind":                  info.Kind,
+			"source":                info.Source,
+			"entry":                 info.Entry,
+			"default":               info.Name == r.defaultAgent,
+			"policy_mode":           info.PolicyMode,
+			"tools_allow":           toolsAllow,
+			"tools_allow_count":     info.ToolsAllowCount,
+			"tools_deny":            append([]string{}, info.ToolsDeny...),
+			"tools_deny_count":      info.ToolsDenyCount,
+			"tools_risk_max":        info.ToolsRiskMax,
+			"tools_allow_groups":    append([]string{}, info.ToolsAllowGroups...),
+			"tools_deny_groups":     append([]string{}, info.ToolsDenyGroups...),
+			"tools_allow_patterns":  append([]string{}, info.ToolsAllowPatterns...),
+			"session_routing_mode":  normalizeSessionRoutingMode(info.SessionRoutingMode),
+			"session_fixed_id":      strings.TrimSpace(info.SessionFixedID),
+			"tier":                  strings.TrimSpace(info.Tier),
+			"provider_override":     CloneProviderOverride(info.ProviderOverride),
+			"checkpoint_capability": info.CheckpointCapability,
+			"checkpoint_limitation": info.CheckpointLimitation,
 		})
 	}
 	return out

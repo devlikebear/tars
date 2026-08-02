@@ -43,6 +43,7 @@ type Run struct {
 	RestartedFromCheckpointID string                   `json:"restarted_from_checkpoint_id,omitempty"`
 	RestartAttempt            int                      `json:"restart_attempt,omitempty"`
 	RestartReason             string                   `json:"restart_reason,omitempty"`
+	RecoveryMode              RecoveryMode             `json:"recovery_mode,omitempty"`
 	Status                    RunStatus                `json:"status"`
 	Accepted                  bool                     `json:"accepted"`
 	Response                  string                   `json:"response,omitempty"`
@@ -258,17 +259,21 @@ type SpawnRequest struct {
 	RestartedFromCheckpointID string
 	RestartAttempt            int
 	RestartReason             string
+	RecoveryMode              RecoveryMode
+	RecoveryPlan              *RecoveryExecutionPlan
 }
 
 type RestartRequest struct {
-	WorkspaceID      string
-	RunID            string
-	CheckpointID     string
-	Agent            string
-	Tier             string
-	ProviderOverride *ProviderOverride
-	PromptAdjustment string
-	Title            string
+	WorkspaceID           string
+	RunID                 string
+	CheckpointID          string
+	Agent                 string
+	Tier                  string
+	ProviderOverride      *ProviderOverride
+	PromptAdjustment      string
+	Title                 string
+	Mode                  RecoveryMode
+	ConfirmUnsafeRecovery bool
 }
 
 type ChannelMessage struct {
@@ -341,6 +346,7 @@ type RuntimeOptions struct {
 	SessionStore                              *session.Store
 	SessionStoreForWorkspace                  func(workspaceID string) *session.Store
 	RunPrompt                                 func(ctx context.Context, runLabel string, prompt string) (string, error)
+	RunPromptCheckpointSupport                ExecutorCheckpointSupport
 	Executors                                 []AgentExecutor
 	DefaultAgent                              string
 	AgentRuntimeAgentsWatchEnabled            bool

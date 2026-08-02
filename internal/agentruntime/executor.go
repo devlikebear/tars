@@ -21,28 +21,31 @@ type ExecuteRequest struct {
 	ProviderOverride   *ProviderOverride
 	OverrideSource     string
 	Metadata           *PromptExecutionMetadata
+	RecoveryPlan       *RecoveryExecutionPlan
 }
 
 type AgentInfo struct {
-	Name               string            `json:"name"`
-	Description        string            `json:"description,omitempty"`
-	Enabled            bool              `json:"enabled"`
-	Kind               string            `json:"kind,omitempty"`
-	Source             string            `json:"source,omitempty"`
-	Entry              string            `json:"entry,omitempty"`
-	PolicyMode         string            `json:"policy_mode"`
-	ToolsAllow         []string          `json:"tools_allow,omitempty"`
-	ToolsAllowCount    int               `json:"tools_allow_count"`
-	ToolsDeny          []string          `json:"tools_deny,omitempty"`
-	ToolsDenyCount     int               `json:"tools_deny_count"`
-	ToolsRiskMax       string            `json:"tools_risk_max,omitempty"`
-	ToolsAllowGroups   []string          `json:"tools_allow_groups,omitempty"`
-	ToolsDenyGroups    []string          `json:"tools_deny_groups,omitempty"`
-	ToolsAllowPatterns []string          `json:"tools_allow_patterns,omitempty"`
-	SessionRoutingMode string            `json:"session_routing_mode,omitempty"`
-	SessionFixedID     string            `json:"session_fixed_id,omitempty"`
-	Tier               string            `json:"tier,omitempty"`
-	ProviderOverride   *ProviderOverride `json:"provider_override,omitempty"`
+	Name                 string               `json:"name"`
+	Description          string               `json:"description,omitempty"`
+	Enabled              bool                 `json:"enabled"`
+	Kind                 string               `json:"kind,omitempty"`
+	Source               string               `json:"source,omitempty"`
+	Entry                string               `json:"entry,omitempty"`
+	PolicyMode           string               `json:"policy_mode"`
+	ToolsAllow           []string             `json:"tools_allow,omitempty"`
+	ToolsAllowCount      int                  `json:"tools_allow_count"`
+	ToolsDeny            []string             `json:"tools_deny,omitempty"`
+	ToolsDenyCount       int                  `json:"tools_deny_count"`
+	ToolsRiskMax         string               `json:"tools_risk_max,omitempty"`
+	ToolsAllowGroups     []string             `json:"tools_allow_groups,omitempty"`
+	ToolsDenyGroups      []string             `json:"tools_deny_groups,omitempty"`
+	ToolsAllowPatterns   []string             `json:"tools_allow_patterns,omitempty"`
+	SessionRoutingMode   string               `json:"session_routing_mode,omitempty"`
+	SessionFixedID       string               `json:"session_fixed_id,omitempty"`
+	Tier                 string               `json:"tier,omitempty"`
+	ProviderOverride     *ProviderOverride    `json:"provider_override,omitempty"`
+	CheckpointCapability CheckpointCapability `json:"checkpoint_capability"`
+	CheckpointLimitation string               `json:"checkpoint_limitation,omitempty"`
 }
 
 type AgentExecutor interface {
@@ -186,26 +189,29 @@ func (e *PromptExecutor) Info() AgentInfo {
 	if e == nil {
 		return AgentInfo{}
 	}
+	support := checkpointSupportForExecutor(e)
 	return AgentInfo{
-		Name:               e.name,
-		Description:        e.description,
-		Enabled:            true,
-		Kind:               e.kind,
-		Source:             e.source,
-		Entry:              e.entry,
-		PolicyMode:         normalizePolicyMode(e.policyMode),
-		ToolsAllow:         append([]string(nil), e.toolsAllow...),
-		ToolsAllowCount:    len(e.toolsAllow),
-		ToolsDeny:          append([]string(nil), e.toolsDeny...),
-		ToolsDenyCount:     len(e.toolsDeny),
-		ToolsRiskMax:       normalizeToolRiskMax(e.toolsRiskMax),
-		ToolsAllowGroups:   append([]string(nil), e.toolsAllowGroups...),
-		ToolsDenyGroups:    append([]string(nil), e.toolsDenyGroups...),
-		ToolsAllowPatterns: append([]string(nil), e.toolsAllowPatterns...),
-		SessionRoutingMode: normalizeSessionRoutingMode(e.sessionRoutingMode),
-		SessionFixedID:     strings.TrimSpace(e.sessionFixedID),
-		Tier:               strings.TrimSpace(e.tier),
-		ProviderOverride:   CloneProviderOverride(e.providerOverride),
+		Name:                 e.name,
+		Description:          e.description,
+		Enabled:              true,
+		Kind:                 e.kind,
+		Source:               e.source,
+		Entry:                e.entry,
+		PolicyMode:           normalizePolicyMode(e.policyMode),
+		ToolsAllow:           append([]string(nil), e.toolsAllow...),
+		ToolsAllowCount:      len(e.toolsAllow),
+		ToolsDeny:            append([]string(nil), e.toolsDeny...),
+		ToolsDenyCount:       len(e.toolsDeny),
+		ToolsRiskMax:         normalizeToolRiskMax(e.toolsRiskMax),
+		ToolsAllowGroups:     append([]string(nil), e.toolsAllowGroups...),
+		ToolsDenyGroups:      append([]string(nil), e.toolsDenyGroups...),
+		ToolsAllowPatterns:   append([]string(nil), e.toolsAllowPatterns...),
+		SessionRoutingMode:   normalizeSessionRoutingMode(e.sessionRoutingMode),
+		SessionFixedID:       strings.TrimSpace(e.sessionFixedID),
+		Tier:                 strings.TrimSpace(e.tier),
+		ProviderOverride:     CloneProviderOverride(e.providerOverride),
+		CheckpointCapability: support.Capability,
+		CheckpointLimitation: support.Limitation,
 	}
 }
 
@@ -235,6 +241,7 @@ func (e *PromptExecutor) Execute(ctx context.Context, req ExecuteRequest) (strin
 	}
 	ctx = WithPromptExecution(ctx, override, overrideSource, req.Metadata)
 	ctx = WithSystemPromptAppend(ctx, req.SystemPromptAppend)
+	ctx = WithRecoveryExecution(ctx, req.RecoveryPlan)
 	return e.runPrompt(ctx, runLabel, strings.TrimSpace(req.Prompt), allowed, strings.TrimSpace(req.Tier), override)
 }
 
@@ -326,16 +333,19 @@ func (e *CommandExecutor) Info() AgentInfo {
 	if e == nil {
 		return AgentInfo{}
 	}
+	support := checkpointSupportForExecutor(e)
 	return AgentInfo{
-		Name:            e.name,
-		Description:     e.description,
-		Enabled:         true,
-		Kind:            e.kind,
-		Source:          e.source,
-		Entry:           e.entry,
-		PolicyMode:      "full",
-		ToolsAllowCount: 0,
-		ToolsDenyCount:  0,
+		Name:                 e.name,
+		Description:          e.description,
+		Enabled:              true,
+		Kind:                 e.kind,
+		Source:               e.source,
+		Entry:                e.entry,
+		PolicyMode:           "full",
+		ToolsAllowCount:      0,
+		ToolsDenyCount:       0,
+		CheckpointCapability: support.Capability,
+		CheckpointLimitation: support.Limitation,
 	}
 }
 

@@ -33,6 +33,7 @@
     AgentRuntimeRun,
     AgentRuntimeRunCheckpoint,
     AgentRuntimeRunEvent,
+    AgentRuntimeRecoveryMode,
   } from '../lib/types'
 
   interface Props {
@@ -88,6 +89,8 @@
   let restartAlias = $state('')
   let restartModel = $state('')
   let restartPromptAdjustment = $state('')
+  let restartMode: AgentRuntimeRecoveryMode = $state('retry_from_prompt')
+  let confirmUnsafeRecovery = $state(false)
   let restartBusy = $state(false)
   let restartMessage = $state('')
   let stopStream: (() => void) | null = null
@@ -156,6 +159,11 @@
   let costFlowRuns = $derived.by<AgentRuntimeRun[]>(() => selectedRun ? [selectedRun] : [])
   let replayEvents = $derived.by<AgentRuntimeRunEvent[]>(() => events)
   let selectedRunCheckpoints = $derived.by<AgentRuntimeRunCheckpoint[]>(() => selectedRun?.checkpoints ?? [])
+  let selectedRestartCheckpoint = $derived.by<AgentRuntimeRunCheckpoint | null>(() => {
+    return selectedRunCheckpoints.find((checkpoint) => checkpoint.checkpoint_id === restartCheckpointID)
+      ?? selectedRunCheckpoints[selectedRunCheckpoints.length - 1]
+      ?? null
+  })
 
   async function loadRuns() {
     loading = true
@@ -417,7 +425,7 @@
   }
 
   function isRestartable(run: AgentRuntimeRun | null): boolean {
-    return run?.status === 'failed' && (run.checkpoints?.length ?? 0) > 0
+    return (run?.status === 'failed' || run?.status === 'canceled') && (run.checkpoints?.length ?? 0) > 0
   }
 
   function prepareRestartForm(run: AgentRuntimeRun | null) {
@@ -429,6 +437,8 @@
       restartAlias = ''
       restartModel = ''
       restartPromptAdjustment = ''
+      restartMode = 'retry_from_prompt'
+      confirmUnsafeRecovery = false
       return
     }
     const checkpoints = run?.checkpoints ?? []
@@ -439,12 +449,45 @@
     restartAlias = run?.provider_override?.alias ?? ''
     restartModel = run?.provider_override?.model ?? ''
     restartPromptAdjustment = ''
+    restartMode = preferredRecoveryMode(latest)
+    confirmUnsafeRecovery = false
   }
 
   function checkpointLabel(checkpoint: AgentRuntimeRunCheckpoint): string {
-    return [checkpoint.label || checkpoint.kind || checkpoint.checkpoint_id, fmtTime(checkpoint.created_at)]
+    return [checkpoint.label || checkpoint.kind || checkpoint.checkpoint_id, checkpoint.capability || 'retry_only', fmtTime(checkpoint.created_at)]
       .filter((item) => item && item !== '—')
       .join(' · ')
+  }
+
+  function selectedCheckpoint(): AgentRuntimeRunCheckpoint | null {
+    return selectedRunCheckpoints.find((checkpoint) => checkpoint.checkpoint_id === restartCheckpointID) ?? selectedRunCheckpoints.at(-1) ?? null
+  }
+
+  function recoveryModes(checkpoint: AgentRuntimeRunCheckpoint | null): AgentRuntimeRecoveryMode[] {
+    return checkpoint?.recovery_modes?.length ? checkpoint.recovery_modes : ['retry_from_prompt']
+  }
+
+  function preferredRecoveryMode(checkpoint: AgentRuntimeRunCheckpoint | null): AgentRuntimeRecoveryMode {
+    const modes = recoveryModes(checkpoint)
+    if (modes.includes('replay_from_checkpoint')) return 'replay_from_checkpoint'
+    if (modes.includes('resume_from_checkpoint')) return 'resume_from_checkpoint'
+    return 'retry_from_prompt'
+  }
+
+  function recoveryModeLabel(mode: AgentRuntimeRecoveryMode): string {
+    if (mode === 'replay_from_checkpoint') return 'Replay from checkpoint'
+    if (mode === 'resume_from_checkpoint') return 'Resume from checkpoint'
+    return 'Retry from prompt'
+  }
+
+  function handleRestartCheckpointChange() {
+    restartMode = preferredRecoveryMode(selectedCheckpoint())
+    confirmUnsafeRecovery = false
+  }
+
+  function recoveryActionLabel(): string {
+    if (restartBusy) return 'Starting...'
+    return recoveryModeLabel(restartMode)
   }
 
   async function restartSelectedRun() {
@@ -455,12 +498,17 @@
     try {
       const alias = restartAlias.trim()
       const model = restartModel.trim()
+      const checkpoint = selectedCheckpoint()
+      const availableModes = recoveryModes(checkpoint)
+      const mode = availableModes.includes(restartMode) ? restartMode : preferredRecoveryMode(checkpoint)
       const retry = await restartAgentRuntimeRun(selectedRun.run_id, {
         checkpoint_id: restartCheckpointID || undefined,
         agent: restartAgent.trim() || undefined,
         tier: restartTier.trim() || undefined,
         provider_override: alias || model ? { alias, model } : undefined,
         prompt_adjustment: restartPromptAdjustment.trim() || undefined,
+        mode,
+        confirm_unsafe_recovery: checkpoint?.recovery_approval_required ? confirmUnsafeRecovery : undefined,
       })
       restartMessage = `Started ${retry.run_id}`
       openRunDetail(retry.run_id)
@@ -1292,21 +1340,32 @@
           {#if selectedRun.restart_attempt}
             <div><span class="label">Attempt</span><span>#{selectedRun.restart_attempt}</span></div>
           {/if}
+          {#if selectedRun.recovery_mode}
+            <div><span class="label">Recovery Mode</span><span>{recoveryModeLabel(selectedRun.recovery_mode)}</span></div>
+          {/if}
         </div>
       </div>
 
       {#if isRestartable(selectedRun)}
-        <section class="detail-panel restart-panel" aria-label="Restart Run">
+        <section class="detail-panel restart-panel" aria-label="Recover Run">
           <div class="panel-title-row">
-            <h3>Restart</h3>
+            <h3>Recover</h3>
             <span>{selectedRunCheckpoints.length} checkpoints</span>
           </div>
           <div class="restart-grid">
             <label>
               <span>Checkpoint</span>
-              <select bind:value={restartCheckpointID}>
+              <select bind:value={restartCheckpointID} onchange={handleRestartCheckpointChange}>
                 {#each selectedRunCheckpoints as checkpoint}
                   <option value={checkpoint.checkpoint_id}>{checkpointLabel(checkpoint)}</option>
+                {/each}
+              </select>
+            </label>
+            <label>
+              <span>Recovery Mode</span>
+              <select bind:value={restartMode}>
+                {#each recoveryModes(selectedCheckpoint()) as mode}
+                  <option value={mode}>{recoveryModeLabel(mode)}</option>
                 {/each}
               </select>
             </label>
@@ -1331,9 +1390,28 @@
               <textarea bind:value={restartPromptAdjustment} rows="3" placeholder="Retry with a narrower assumption or alternate permission set."></textarea>
             </label>
           </div>
+          {#if selectedRestartCheckpoint}
+            <div class="checkpoint-safety" class:checkpoint-warning={selectedRestartCheckpoint.recovery_approval_required}>
+              <div>
+                <strong>{selectedRestartCheckpoint.format || 'prompt_checkpoint_v0'} · {selectedRestartCheckpoint.capability || 'retry_only'}</strong>
+                <span>{selectedRestartCheckpoint.resumable ? 'Resumable' : 'Not resumable'} · {selectedRestartCheckpoint.resume_reason || 'No resume metadata recorded.'}</span>
+              </div>
+              <div class="row-meta">
+                <span>{selectedRestartCheckpoint.tool_result_refs?.length ?? 0} tool results</span>
+                <span>{selectedRestartCheckpoint.effect_receipt_refs?.length ?? 0} effect receipts</span>
+                <span>next: {selectedRestartCheckpoint.next_action || 'retry_prompt'}</span>
+              </div>
+              {#if selectedRestartCheckpoint.recovery_approval_required}
+                <label class="unsafe-recovery-confirm">
+                  <input type="checkbox" bind:checked={confirmUnsafeRecovery} />
+                  <span>Human decision: continue despite an effect without a committed receipt. {selectedRestartCheckpoint.recovery_approval_reason || ''}</span>
+                </label>
+              {/if}
+            </div>
+          {/if}
           <div class="detail-actions">
-            <button class="btn btn-primary btn-sm" type="button" disabled={restartBusy} onclick={restartSelectedRun}>
-              {restartBusy ? 'Starting...' : 'Restart from Checkpoint'}
+            <button class="btn btn-primary btn-sm" type="button" disabled={restartBusy || Boolean(selectedCheckpoint()?.recovery_approval_required && !confirmUnsafeRecovery)} onclick={restartSelectedRun}>
+              {recoveryActionLabel()}
             </button>
             {#if restartMessage}<span class="row-meta">{restartMessage}</span>{/if}
           </div>
@@ -1604,8 +1682,15 @@
   .warning-list { display: flex; flex-direction: column; gap: var(--space-1); border: 1px solid rgba(224, 145, 69, 0.3); background: rgba(224, 145, 69, 0.08); border-radius: var(--radius-sm); padding: var(--space-2); color: var(--warning); font-size: var(--text-xs); }
   .detail-actions { display: flex; align-items: flex-end; justify-content: flex-end; gap: var(--space-2); flex-wrap: wrap; }
   .restart-panel { display: flex; flex-direction: column; gap: var(--space-3); }
-  .restart-grid { display: grid; grid-template-columns: minmax(180px, 1.2fr) repeat(4, minmax(120px, 0.7fr)); gap: var(--space-3); align-items: start; }
+  .restart-grid { display: grid; grid-template-columns: minmax(180px, 1.2fr) repeat(5, minmax(120px, 0.7fr)); gap: var(--space-3); align-items: start; }
   .restart-adjustment { grid-column: 1 / -1; }
+  .checkpoint-safety { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-raised); }
+  .checkpoint-safety > div:first-child { display: flex; flex-direction: column; gap: var(--space-1); }
+  .checkpoint-safety strong { font-family: var(--font-mono); font-size: 11px; color: var(--text); }
+  .checkpoint-safety span { color: var(--text-muted); }
+  .checkpoint-warning { border-color: var(--warning); background: color-mix(in srgb, var(--warning) 9%, var(--surface-raised)); }
+  .unsafe-recovery-confirm { display: flex; flex-direction: row; align-items: flex-start; gap: var(--space-2); color: var(--warning); font-family: var(--font-sans); font-size: 12px; text-transform: none; }
+  .unsafe-recovery-confirm input { margin-top: 2px; }
   .subagents-layout { display: grid; grid-template-columns: minmax(260px, 0.45fr) minmax(0, 1fr); gap: var(--space-3); align-items: start; }
   .subagents-list, .subagent-detail { min-width: 0; display: flex; flex-direction: column; gap: var(--space-3); }
   .subagents-list { border: 1px solid var(--border-subtle); background: var(--surface); border-radius: var(--radius-md); padding: var(--space-2); }

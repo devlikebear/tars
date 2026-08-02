@@ -119,6 +119,7 @@ func (r *Runtime) newAcceptedRunState(
 		RestartedFromCheckpointID: strings.TrimSpace(req.RestartedFromCheckpointID),
 		RestartAttempt:            req.RestartAttempt,
 		RestartReason:             strings.TrimSpace(req.RestartReason),
+		RecoveryMode:              req.RecoveryMode,
 		FlowID:                    strings.TrimSpace(req.FlowID),
 		StepID:                    strings.TrimSpace(req.StepID),
 		Tier:                      resolveRunTier(req.Tier, agentRuntimeAgentInfo(executor).Tier),
@@ -128,6 +129,9 @@ func (r *Runtime) newAcceptedRunState(
 		Accepted:                  true,
 		CreatedAt:                 now.Format(time.RFC3339),
 		UpdatedAt:                 now.Format(time.RFC3339),
+	}
+	if req.RecoveryPlan != nil {
+		run.ToolRequests, run.ToolResults, run.EffectReceipts = inheritedRecoveryRecords(req.RecoveryPlan)
 	}
 	return runCtx, &runState{run: run, req: req, executor: executor, cancel: cancel, done: make(chan struct{})}
 }

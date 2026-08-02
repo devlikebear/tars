@@ -2,6 +2,7 @@ package tarsserver
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -68,12 +69,14 @@ type agentRunSpawnRequest struct {
 }
 
 type agentRunRestartRequest struct {
-	CheckpointID     string                         `json:"checkpoint_id"`
-	Agent            string                         `json:"agent"`
-	Tier             string                         `json:"tier"`
-	ProviderOverride *agentruntime.ProviderOverride `json:"provider_override"`
-	PromptAdjustment string                         `json:"prompt_adjustment"`
-	Title            string                         `json:"title"`
+	CheckpointID          string                         `json:"checkpoint_id"`
+	Agent                 string                         `json:"agent"`
+	Tier                  string                         `json:"tier"`
+	ProviderOverride      *agentruntime.ProviderOverride `json:"provider_override"`
+	PromptAdjustment      string                         `json:"prompt_adjustment"`
+	Title                 string                         `json:"title"`
+	Mode                  agentruntime.RecoveryMode      `json:"mode"`
+	ConfirmUnsafeRecovery bool                           `json:"confirm_unsafe_recovery"`
 }
 
 func handleAgentRunSpawn(w http.ResponseWriter, r *http.Request, runtime *agentruntime.Runtime, inflight *inflightLimiter) {
@@ -180,6 +183,7 @@ func mergedAgentRuntimeRuns(r *http.Request, runtime *agentruntime.Runtime, ledg
 		if err := json.Unmarshal(projection, &run); err != nil {
 			return runs, fmt.Errorf("decode agent runtime work ledger projection: %w", err)
 		}
+		run = agentruntime.NormalizeRunCompatibility(run)
 		if _, exists := seen[run.ID]; exists {
 			continue
 		}
@@ -358,18 +362,20 @@ func handleAgentRunByID(w http.ResponseWriter, r *http.Request, runtime *agentru
 			return
 		}
 		run, err := runtime.RestartFromCheckpoint(r.Context(), agentruntime.RestartRequest{
-			WorkspaceID:      defaultWorkspaceID,
-			RunID:            runID,
-			CheckpointID:     req.CheckpointID,
-			Agent:            req.Agent,
-			Tier:             req.Tier,
-			ProviderOverride: req.ProviderOverride,
-			PromptAdjustment: req.PromptAdjustment,
-			Title:            req.Title,
+			WorkspaceID:           defaultWorkspaceID,
+			RunID:                 runID,
+			CheckpointID:          req.CheckpointID,
+			Agent:                 req.Agent,
+			Tier:                  req.Tier,
+			ProviderOverride:      req.ProviderOverride,
+			PromptAdjustment:      req.PromptAdjustment,
+			Title:                 req.Title,
+			Mode:                  req.Mode,
+			ConfirmUnsafeRecovery: req.ConfirmUnsafeRecovery,
 		})
 		if err != nil {
 			logger.Error().Err(err).Str("run_id", runID).Msg("restart run failed")
-			writeJSON(w, restartErrorStatus(err), map[string]string{"error": err.Error()})
+			writeJSON(w, restartErrorStatus(err), map[string]string{"error": err.Error(), "code": restartErrorCode(err)})
 			return
 		}
 		writeJSON(w, http.StatusAccepted, run)
@@ -404,6 +410,7 @@ func findAgentRuntimeRunProjection(r *http.Request, runtime *agentruntime.Runtim
 	if err := json.Unmarshal(projection, &run); err != nil {
 		return agentruntime.Run{}, false, fmt.Errorf("decode agent runtime work ledger projection: %w", err)
 	}
+	run = agentruntime.NormalizeRunCompatibility(run)
 	return run, true, nil
 }
 
@@ -491,5 +498,19 @@ func restartErrorStatus(err error) int {
 	if strings.Contains(lower, "not found") {
 		return http.StatusNotFound
 	}
+	if errors.Is(err, agentruntime.ErrRecoveryApprovalRequired) {
+		return http.StatusConflict
+	}
 	return http.StatusBadRequest
+}
+
+func restartErrorCode(err error) string {
+	switch {
+	case errors.Is(err, agentruntime.ErrRecoveryApprovalRequired):
+		return "recovery_approval_required"
+	case errors.Is(err, agentruntime.ErrRecoveryModeUnsupported):
+		return "recovery_mode_unsupported"
+	default:
+		return "restart_failed"
+	}
 }

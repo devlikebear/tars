@@ -310,7 +310,7 @@ func (executor *agentRuntimeWorkExecutor) Execute(ctx context.Context, execution
 		}
 	}
 	run, err := subagentFlowSpawn(executor.runtime, ctx, agentruntime.SpawnRequest{
-		WorkspaceID: execution.Work.WorkspaceID, TaskID: execution.Claim.Step.ID,
+		WorkspaceID: execution.Work.WorkspaceID, WorkID: execution.Work.ID, TaskID: execution.Claim.Step.ID,
 		Title: firstNonEmptyString(task.Title, task.ID), Prompt: prompt, Agent: contract.Agent,
 		ParentRunID: contract.ParentRunID, RootRunID: contract.RootRunID,
 		ParentSessionID: contract.ParentSessionID, Depth: contract.Depth,

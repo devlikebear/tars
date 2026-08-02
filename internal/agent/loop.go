@@ -92,6 +92,7 @@ type RunOptions struct {
 	BeforeTool       func(ctx context.Context, event Event) error
 	AfterTool        func(ctx context.Context, event Event) error
 	AfterLLM         func(ctx context.Context, event Event) error
+	ProviderTool     func(ctx context.Context, event Event) error
 	ReplayToolResult func(ctx context.Context, request ToolReplayRequest) (ToolReplayResult, bool)
 	// ResumeSessionID seeds the first iteration's ChatOptions.ResumeSessionID
 	// so resumable providers (claude-code-cli) continue an existing upstream
@@ -186,13 +187,21 @@ func (l *Loop) Run(ctx context.Context, initial []llm.ChatMessage, opts RunOptio
 		// via stream-json tool_use blocks). These do NOT enter the tool
 		// execution branch below; they're observation-only audit signals.
 		for _, ptc := range resp.ProviderExecutedTools {
-			l.emit(ctx, Event{
-				Type:       EventProviderTool,
-				Iteration:  i + 1,
-				ToolName:   ptc.Name,
-				ToolCallID: ptc.ID,
-				ToolArgs:   ptc.Arguments,
-			})
+			providerEvent := Event{
+				Type:            EventProviderTool,
+				Iteration:       i + 1,
+				ToolName:        ptc.Name,
+				ToolCallID:      ptc.ID,
+				ToolArgs:        ptc.Arguments,
+				ToolEffectClass: string(tool.RecoveryPolicyForTool(tool.Tool{Name: ptc.Name}).EffectClass),
+			}
+			if opts.ProviderTool != nil {
+				if hookErr := opts.ProviderTool(ctx, providerEvent); hookErr != nil {
+					l.emit(ctx, Event{Type: EventLoopError, Iteration: i + 1, ToolName: ptc.Name, ToolCallID: ptc.ID, Err: hookErr})
+					return llm.ChatResponse{}, hookErr
+				}
+			}
+			l.emit(ctx, providerEvent)
 		}
 
 		if sid := strings.TrimSpace(resp.SessionID); sid != "" {
@@ -423,7 +432,14 @@ func (l *Loop) Run(ctx context.Context, initial []llm.ChatMessage, opts RunOptio
 		ToolChoice:       llm.ToolChoiceNone(),
 	})
 	if finalErr == nil {
-		l.emit(ctx, Event{Type: EventAfterLLM, Iteration: finalIter, MessageCount: len(messages)})
+		afterLLMEvent := Event{Type: EventAfterLLM, Iteration: finalIter, MessageCount: len(messages), SessionID: strings.TrimSpace(finalResp.SessionID)}
+		if opts.AfterLLM != nil {
+			if hookErr := opts.AfterLLM(ctx, afterLLMEvent); hookErr != nil {
+				l.emit(ctx, Event{Type: EventLoopError, Iteration: finalIter, Err: hookErr})
+				return llm.ChatResponse{}, hookErr
+			}
+		}
+		l.emit(ctx, afterLLMEvent)
 		if strings.TrimSpace(finalResp.Message.Content) != "" || len(finalResp.Message.ToolCalls) == 0 {
 			messages = append(messages, finalResp.Message)
 			l.emit(ctx, Event{Type: EventLoopEnd, Iteration: finalIter, MessageCount: len(messages)})

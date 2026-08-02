@@ -2,15 +2,18 @@ package tarsserver
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/devlikebear/tars/internal/agentruntime"
 	"github.com/devlikebear/tars/internal/config"
 	"github.com/devlikebear/tars/internal/llm"
+	"github.com/devlikebear/tars/internal/tool"
 	"github.com/rs/zerolog"
 )
 
@@ -410,10 +413,165 @@ func TestNewAgentPromptRunnerWithTools_ForwardsFileToolCallsToRuntimeRecorder(t 
 	}
 }
 
+func TestNewAgentPromptRunnerWithTools_RecordsDurableToolBoundariesAndContinuation(t *testing.T) {
+	workspace := t.TempDir()
+	client := &captureToolsLLMClient{responses: []llm.ChatResponse{
+		{
+			SessionID: "provider-session-1",
+			Message: llm.ChatMessage{Role: "assistant", ToolCalls: []llm.ToolCall{{
+				ID: "tool-1", Name: "send_message", Arguments: `{"channel":"ops","text":"hello"}`,
+			}}},
+		},
+		{Message: llm.ChatMessage{Role: "assistant", Content: "done"}},
+	}}
+	executions := 0
+	extra := tool.Tool{
+		Name: "send_message", Description: "send",
+		Parameters: json.RawMessage(`{"type":"object"}`),
+		Recovery:   tool.ToolRecoveryPolicy{EffectClass: tool.ToolEffectUnsafe},
+		Execute: func(context.Context, json.RawMessage) (tool.Result, error) {
+			executions++
+			return tool.JSONTextResult(map[string]string{"message_id": "msg-1"}, false), nil
+		},
+	}
+	runner := newAgentPromptRunnerWithTools(config.Config{}, workspace, client, nil, 4, zerolog.New(io.Discard), extra)
+	var calls []agentruntime.RuntimeToolCall
+	ctx := agentruntime.WithRuntimeExecutionRecorder(context.Background(), func(call agentruntime.RuntimeToolCall) error {
+		calls = append(calls, call)
+		return nil
+	})
+	if _, err := runner(ctx, "spawn:run-1", "send", []string{"send_message"}, "", nil); err != nil {
+		t.Fatalf("run prompt: %v", err)
+	}
+	if executions != 1 {
+		t.Fatalf("tool executions: %d", executions)
+	}
+	var sawBefore, sawAfter, sawContinuation bool
+	for _, call := range calls {
+		switch call.Phase {
+		case agentruntime.RuntimeToolPhaseBefore:
+			sawBefore = call.ToolName == "send_message" && call.ToolEffectClass == "unsafe"
+		case agentruntime.RuntimeToolPhaseAfter:
+			sawAfter = call.ToolName == "send_message" && strings.Contains(call.ToolResult, "msg-1")
+		case agentruntime.RuntimeToolPhaseAfterLLM:
+			sawContinuation = sawContinuation || call.ContinuationID == "provider-session-1"
+		}
+	}
+	if !sawBefore || !sawAfter || !sawContinuation {
+		t.Fatalf("runtime execution calls: %+v", calls)
+	}
+}
+
+func TestNewAgentPromptRunnerWithTools_ReplaysRecordedResultWithoutExecutingTool(t *testing.T) {
+	client := &captureToolsLLMClient{responses: []llm.ChatResponse{
+		{Message: llm.ChatMessage{Role: "assistant", ToolCalls: []llm.ToolCall{{
+			ID: "tool-new", Name: "send_message", Arguments: `{"channel":"ops","text":"hello"}`,
+		}}}},
+		{Message: llm.ChatMessage{Role: "assistant", Content: "done"}},
+	}}
+	executions := 0
+	extra := tool.Tool{
+		Name: "send_message", Description: "send", Parameters: json.RawMessage(`{"type":"object"}`),
+		Recovery: tool.ToolRecoveryPolicy{EffectClass: tool.ToolEffectUnsafe},
+		Execute: func(context.Context, json.RawMessage) (tool.Result, error) {
+			executions++
+			return tool.JSONTextResult(map[string]string{"message_id": "duplicate"}, false), nil
+		},
+	}
+	runner := newAgentPromptRunnerWithTools(config.Config{}, t.TempDir(), client, nil, 4, zerolog.New(io.Discard), extra)
+	args := `{"channel":"ops","text":"hello"}`
+	ctx := agentruntime.WithRecoveryExecution(context.Background(), &agentruntime.RecoveryExecutionPlan{
+		Mode: agentruntime.RecoveryModeReplayFromCheckpoint,
+		ToolResults: []agentruntime.RecoveryToolResult{{
+			Signature: agentruntime.ToolCallSignature("send_message", args),
+			Result:    `{"message_id":"msg-original"}`, ReceiptID: "efx-original",
+		}},
+	})
+	if _, err := runner(ctx, "spawn:run-replay", "continue", []string{"send_message"}, "", nil); err != nil {
+		t.Fatalf("run replay prompt: %v", err)
+	}
+	if executions != 0 {
+		t.Fatalf("replay executed tool %d time(s)", executions)
+	}
+	if len(client.seenInputs) < 2 {
+		t.Fatalf("llm inputs: %+v", client.seenInputs)
+	}
+	messages := client.seenInputs[1]
+	if got := messages[len(messages)-1].Content; got != `{"message_id":"msg-original"}` {
+		t.Fatalf("replayed tool result: %q", got)
+	}
+}
+
+func TestNewAgentPromptRunnerWithTools_ConsumesRepeatedReplayResultsInOrder(t *testing.T) {
+	args := `{"channel":"ops","text":"hello"}`
+	client := &captureToolsLLMClient{responses: []llm.ChatResponse{
+		{Message: llm.ChatMessage{Role: "assistant", ToolCalls: []llm.ToolCall{
+			{ID: "tool-new-1", Name: "send_message", Arguments: args},
+			{ID: "tool-new-2", Name: "send_message", Arguments: args},
+		}}},
+		{Message: llm.ChatMessage{Role: "assistant", Content: "done"}},
+	}}
+	executions := 0
+	extra := tool.Tool{
+		Name: "send_message", Description: "send", Parameters: json.RawMessage(`{"type":"object"}`),
+		Recovery: tool.ToolRecoveryPolicy{EffectClass: tool.ToolEffectUnsafe},
+		Execute: func(context.Context, json.RawMessage) (tool.Result, error) {
+			executions++
+			return tool.JSONTextResult(map[string]string{"message_id": "duplicate"}, false), nil
+		},
+	}
+	runner := newAgentPromptRunnerWithTools(config.Config{}, t.TempDir(), client, nil, 4, zerolog.New(io.Discard), extra)
+	signature := agentruntime.ToolCallSignature("send_message", args)
+	ctx := agentruntime.WithRecoveryExecution(context.Background(), &agentruntime.RecoveryExecutionPlan{
+		Mode: agentruntime.RecoveryModeReplayFromCheckpoint,
+		ToolResults: []agentruntime.RecoveryToolResult{
+			{Signature: signature, Result: `{"message_id":"msg-original-1"}`, ReceiptID: "efx-1"},
+			{Signature: signature, Result: `{"message_id":"msg-original-2"}`, ReceiptID: "efx-2"},
+		},
+	})
+	if _, err := runner(ctx, "spawn:run-replay", "continue", []string{"send_message"}, "", nil); err != nil {
+		t.Fatalf("run replay prompt: %v", err)
+	}
+	if executions != 0 {
+		t.Fatalf("replay executed tool %d time(s)", executions)
+	}
+	if len(client.seenInputs) < 2 {
+		t.Fatalf("llm inputs: %+v", client.seenInputs)
+	}
+	var got []string
+	for _, message := range client.seenInputs[1] {
+		if message.Role == "tool" {
+			got = append(got, message.Content)
+		}
+	}
+	want := []string{`{"message_id":"msg-original-1"}`, `{"message_id":"msg-original-2"}`}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("replayed tool results = %v, want %v", got, want)
+	}
+}
+
+func TestNewAgentPromptRunnerWithTools_ResumesProviderContinuation(t *testing.T) {
+	client := &captureToolsLLMClient{responses: []llm.ChatResponse{{
+		Message: llm.ChatMessage{Role: "assistant", Content: "resumed"},
+	}}}
+	runner := newAgentPromptRunnerWithTools(config.Config{}, t.TempDir(), client, nil, 4, zerolog.New(io.Discard))
+	ctx := agentruntime.WithRecoveryExecution(context.Background(), &agentruntime.RecoveryExecutionPlan{
+		Mode: agentruntime.RecoveryModeResumeFromCheckpoint, ContinuationID: "provider-session-9",
+	})
+	if _, err := runner(ctx, "spawn:run-resume", "continue", nil, "", nil); err != nil {
+		t.Fatalf("resume prompt: %v", err)
+	}
+	if len(client.seenResumeIDs) == 0 || client.seenResumeIDs[0] != "provider-session-9" {
+		t.Fatalf("resume ids: %+v", client.seenResumeIDs)
+	}
+}
+
 type captureToolsLLMClient struct {
-	responses []llm.ChatResponse
-	seenTools [][]string
-	callCount int
+	responses     []llm.ChatResponse
+	seenTools     [][]string
+	seenInputs    [][]llm.ChatMessage
+	seenResumeIDs []string
+	callCount     int
 }
 
 func (c *captureToolsLLMClient) Ask(context.Context, string) (string, error) {
@@ -423,12 +581,14 @@ func (c *captureToolsLLMClient) Ask(context.Context, string) (string, error) {
 	return c.responses[0].Message.Content, nil
 }
 
-func (c *captureToolsLLMClient) Chat(_ context.Context, _ []llm.ChatMessage, opts llm.ChatOptions) (llm.ChatResponse, error) {
+func (c *captureToolsLLMClient) Chat(_ context.Context, messages []llm.ChatMessage, opts llm.ChatOptions) (llm.ChatResponse, error) {
 	names := make([]string, 0, len(opts.Tools))
 	for _, schema := range opts.Tools {
 		names = append(names, strings.TrimSpace(schema.Function.Name))
 	}
 	c.seenTools = append(c.seenTools, names)
+	c.seenInputs = append(c.seenInputs, append([]llm.ChatMessage(nil), messages...))
+	c.seenResumeIDs = append(c.seenResumeIDs, opts.ResumeSessionID)
 
 	if len(c.responses) == 0 {
 		return llm.ChatResponse{Message: llm.ChatMessage{Role: "assistant", Content: ""}}, nil

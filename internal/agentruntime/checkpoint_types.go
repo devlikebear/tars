@@ -1,6 +1,14 @@
 package agentruntime
 
-import "strings"
+import (
+	"errors"
+	"strings"
+)
+
+var (
+	ErrRecoveryApprovalRequired = errors.New("agent runtime: recovery approval required")
+	ErrRecoveryModeUnsupported  = errors.New("agent runtime: recovery mode unsupported")
+)
 
 const currentCheckpointSchemaVersion = 1
 
@@ -95,6 +103,15 @@ func checkpointRecoveryModes(capability CheckpointCapability, continuation *Chec
 	return modes
 }
 
+func recoveryModeSupported(checkpoint RunCheckpoint, mode RecoveryMode) bool {
+	for _, supported := range checkpoint.RecoveryModes {
+		if supported == mode {
+			return true
+		}
+	}
+	return false
+}
+
 func normalizeRunCheckpointCompatibility(run *Run) {
 	if run == nil {
 		return
@@ -126,4 +143,9 @@ func normalizeRunCheckpointCompatibility(run *Run) {
 			checkpoint.NextAction = "retry_prompt"
 		}
 	}
+}
+
+func NormalizeRunCompatibility(run Run) Run {
+	normalizeRunCheckpointCompatibility(&run)
+	return run
 }

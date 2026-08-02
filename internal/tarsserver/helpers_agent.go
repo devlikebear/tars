@@ -313,6 +313,8 @@ func newAgentPromptRunnerWithToolsAndMemory(
 			telemetry.ToolCount = len(tools)
 		}
 		runtimeToolRecorder := agentruntime.RuntimeToolCallRecorderFromContext(ctx)
+		runtimeExecutionRecorder := agentruntime.RuntimeExecutionRecorderFromContext(ctx)
+		recoveryPlan := agentruntime.RecoveryExecutionFromContext(ctx)
 		meta := usage.CallMeta{Source: "agent_run"}
 		lowerLabel := strings.ToLower(label)
 		if strings.HasPrefix(lowerLabel, "cron") {
@@ -323,6 +325,9 @@ func newAgentPromptRunnerWithToolsAndMemory(
 		}
 		ctx = usage.WithCallMeta(ctx, meta)
 		loop, _ := setupAgentLoop(runClient, registry, label, 0, tracker, logger, func(string, string, string, string, string, string, ...bool) {}, func(_ context.Context, evt agent.Event) {
+			if runtimeExecutionRecorder != nil {
+				return
+			}
 			if runtimeToolRecorder == nil {
 				return
 			}
@@ -333,17 +338,59 @@ func newAgentPromptRunnerWithToolsAndMemory(
 				ToolIsError: evt.ToolIsError,
 			})
 		})
+		runOptions := agent.RunOptions{
+			MaxIterations: resolveAgentMaxIterations(profile.maxIterations(maxIters)),
+			Tools:         tools,
+		}
+		if runtimeExecutionRecorder != nil {
+			runOptions.BeforeTool = func(_ context.Context, evt agent.Event) error {
+				return runtimeExecutionRecorder(runtimeToolCallFromAgentEvent(agentruntime.RuntimeToolPhaseBefore, evt))
+			}
+			runOptions.AfterTool = func(_ context.Context, evt agent.Event) error {
+				return runtimeExecutionRecorder(runtimeToolCallFromAgentEvent(agentruntime.RuntimeToolPhaseAfter, evt))
+			}
+			runOptions.AfterLLM = func(_ context.Context, evt agent.Event) error {
+				return runtimeExecutionRecorder(agentruntime.RuntimeToolCall{
+					Phase: agentruntime.RuntimeToolPhaseAfterLLM, Iteration: evt.Iteration,
+					ContinuationID: evt.SessionID,
+				})
+			}
+			runOptions.ProviderTool = func(_ context.Context, evt agent.Event) error {
+				return runtimeExecutionRecorder(runtimeToolCallFromAgentEvent(agentruntime.RuntimeToolPhaseProvider, evt))
+			}
+		}
+		if recoveryPlan != nil {
+			if recoveryPlan.Mode == agentruntime.RecoveryModeResumeFromCheckpoint {
+				runOptions.ResumeSessionID = strings.TrimSpace(recoveryPlan.ContinuationID)
+			}
+			if recoveryPlan.Mode == agentruntime.RecoveryModeReplayFromCheckpoint {
+				runOptions.ReplayToolResult = func(_ context.Context, request agent.ToolReplayRequest) (agent.ToolReplayResult, bool) {
+					result, ok := agentruntime.ConsumeRecoveryToolResult(recoveryPlan, request.ToolName, request.ToolArgs)
+					if !ok {
+						return agent.ToolReplayResult{}, false
+					}
+					return agent.ToolReplayResult{Result: result.Result, IsError: result.IsError, ReceiptID: result.ReceiptID}, true
+				}
+			}
+		}
 		resp, err := loop.Run(ctx, []llm.ChatMessage{
 			{Role: "system", Content: systemPrompt},
 			{Role: "user", Content: promptText},
-		}, agent.RunOptions{
-			MaxIterations: resolveAgentMaxIterations(profile.maxIterations(maxIters)),
-			Tools:         tools,
-		})
+		}, runOptions)
 		if err != nil {
 			return "", err
 		}
 		return strings.TrimSpace(resp.Message.Content), nil
+	}
+}
+
+func runtimeToolCallFromAgentEvent(phase agentruntime.RuntimeToolPhase, evt agent.Event) agentruntime.RuntimeToolCall {
+	return agentruntime.RuntimeToolCall{
+		Phase: phase, Iteration: evt.Iteration, ToolName: evt.ToolName,
+		ToolCallID: evt.ToolCallID, ToolArgs: evt.ToolArgs, ToolResult: evt.ToolResult,
+		ToolIsError: evt.ToolIsError, ToolEffectClass: evt.ToolEffectClass,
+		ToolIdempotencyKeyArgument: evt.ToolIdempotencyKeyArgument,
+		ToolReplayed:               evt.ToolReplayed, ToolReceiptID: evt.ToolReceiptID,
 	}
 }
 

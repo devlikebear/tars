@@ -134,6 +134,7 @@ func (r *Runtime) executeRunPrompt(ctx context.Context, state *runState, executo
 		Tier:               state.run.Tier,
 		ProviderOverride:   CloneProviderOverride(state.run.ProviderOverride),
 		Metadata:           &metadata,
+		RecoveryPlan:       cloneRecoveryExecutionPlan(state.req.RecoveryPlan),
 	})
 	if err == nil && ctx.Err() == nil {
 		assistant := strings.TrimSpace(resp)
