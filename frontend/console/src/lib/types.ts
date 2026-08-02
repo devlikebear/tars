@@ -2066,6 +2066,135 @@ export type WorkLedgerWorksResponse = {
   offset: number
 }
 
+export type RemoteWorkerState =
+  | 'registered'
+  | 'ready'
+  | 'leased'
+  | 'executing'
+  | 'disconnected'
+  | 'lost'
+  | 'draining'
+  | 'destroyed'
+
+export type RemotePlacementState =
+  | 'pending'
+  | 'provisioning'
+  | 'syncing'
+  | 'ready'
+  | 'executing'
+  | 'checkpointed'
+  | 'collecting'
+  | 'completed'
+  | 'failed'
+  | 'lost'
+  | 'reclaiming'
+  | 'rehydrating'
+  | 'destroyed'
+
+export type RemoteWorkerCapabilities = {
+  resume: boolean
+  streaming: boolean
+  checkpoints: boolean
+  egress_policy: boolean
+  resource_limits: boolean
+  artifact_scan: boolean
+}
+
+export type RemoteExecutionPolicy = {
+  egress: {
+    mode: 'deny' | 'allowlist'
+    allow_hosts?: string[]
+  }
+  limits: {
+    cpu_seconds: number
+    memory_mb: number
+    disk_mb: number
+    max_output_bytes: number
+  }
+}
+
+export type RemoteWorker = {
+  id: string
+  protocol_version: string
+  transport: string
+  state: RemoteWorkerState
+  capabilities: RemoteWorkerCapabilities
+  last_sequence: number
+  last_seen_at: string
+  lease_expires_at?: string
+  version: number
+}
+
+export type RemotePlacement = {
+  id: string
+  workspace_id: string
+  work_id: string
+  step_id: string
+  attempt_id: string
+  worker_id: string
+  environment_id?: string
+  state: RemotePlacementState
+  policy: RemoteExecutionPolicy
+  sync: {
+    mode: 'git' | 'directory'
+    source_owner: 'gateway' | 'worker'
+    workspace_owner: 'gateway' | 'worker'
+    artifact_owner: 'gateway' | 'worker'
+    manifest_digest?: string
+    file_count?: number
+    total_bytes?: number
+  }
+  checkpoint?: {
+    id: string
+    digest: string
+    created_at: string
+  }
+  lease_expires_at?: string
+  last_sequence: number
+  recovery_count: number
+  version: number
+  updated_at: string
+}
+
+export type RemoteControlEvent = {
+  id: string
+  type: string
+  entity: string
+  worker_id?: string
+  placement_id?: string
+  work_id?: string
+  step_id?: string
+  attempt_id?: string
+  sequence?: number
+  from_state?: string
+  to_state?: string
+  published: boolean
+  occurred_at: string
+}
+
+export type WorkerControlPlaneResponse = {
+  enabled: boolean
+  protocol_version: string
+  a2a: {
+    enabled: boolean
+    adapter: string
+    protocol_version: string
+  }
+  summary: {
+    workers: number
+    ready_workers: number
+    lost_workers: number
+    placements: number
+    active_placements: number
+    recovering_placements: number
+    recovery_count: number
+  }
+  workers: RemoteWorker[]
+  placements: RemotePlacement[]
+  events: RemoteControlEvent[]
+  updated_at?: string
+}
+
 export type GitRemote = {
   name: string
   fetch_url?: string

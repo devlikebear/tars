@@ -27,6 +27,14 @@ function payloadObjectString(event: WorkLedgerEvent, objectKey: string, key: str
   return typeof value === 'string' ? value.trim() : ''
 }
 
+function formatBytes(value?: number): string {
+  if (value == null || value < 0) return ''
+  if (value < 1024) return `${value} B`
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`
+  if (value < 1024 * 1024 * 1024) return `${(value / (1024 * 1024)).toFixed(1)} MB`
+  return `${(value / (1024 * 1024 * 1024)).toFixed(1)} GB`
+}
+
 function eventPresentation(event: WorkLedgerEvent, projection: WorkLedgerProjection): Pick<WorkLedgerTimelineEntry, 'title' | 'detail'> {
   switch (event.type) {
     case 'work.created':
@@ -131,6 +139,93 @@ function eventPresentation(event: WorkLedgerEvent, projection: WorkLedgerProject
       }
     case 'execution.worker_cancelled':
       return { title: 'Worker cancelled', detail: payloadString(event, 'worker') }
+    case 'worker.placement_created':
+      return {
+        title: 'Remote placement created',
+        detail: [payloadString(event, 'worker_id'), payloadString(event, 'placement_id')].filter(Boolean).join(' · '),
+      }
+    case 'worker.environment_provisioned':
+      return {
+        title: 'Remote environment provisioned',
+        detail: [payloadString(event, 'environment_id'), payloadString(event, 'worker_id')].filter(Boolean).join(' · '),
+      }
+    case 'worker.workspace_synced': {
+      const fileCount = payloadNumber(event, 'file_count')
+      const totalBytes = payloadNumber(event, 'total_bytes')
+      return {
+        title: 'Workspace synchronized',
+        detail: [
+          payloadString(event, 'mode'),
+          fileCount == null ? '' : `${fileCount} ${fileCount === 1 ? 'file' : 'files'}`,
+          formatBytes(totalBytes),
+          payloadString(event, 'digest'),
+        ].filter(Boolean).join(' · '),
+      }
+    }
+    case 'worker.lease_granted':
+      return {
+        title: 'Remote lease granted',
+        detail: [payloadString(event, 'worker_id'), payloadString(event, 'placement_id')].filter(Boolean).join(' · '),
+      }
+    case 'worker.heartbeat_observed':
+      return { title: 'Remote heartbeat observed', detail: payloadString(event, 'worker_id') }
+    case 'worker.execution_started':
+      return {
+        title: 'Remote execution started',
+        detail: [payloadString(event, 'worker_id'), payloadString(event, 'placement_id')].filter(Boolean).join(' · '),
+      }
+    case 'worker.stream_observed': {
+      const textBytes = payloadNumber(event, 'text_bytes')
+      return {
+        title: 'Remote stream observed',
+        detail: [payloadString(event, 'kind'), formatBytes(textBytes)].filter(Boolean).join(' · '),
+      }
+    }
+    case 'worker.checkpoint_recorded':
+      return {
+        title: 'Remote checkpoint recorded',
+        detail: [payloadString(event, 'checkpoint_id'), payloadString(event, 'digest')].filter(Boolean).join(' · '),
+      }
+    case 'worker.artifacts_collected': {
+      const artifactCount = payloadNumber(event, 'artifact_count')
+      return {
+        title: 'Remote artifacts collected',
+        detail: artifactCount == null ? '' : `${artifactCount} ${artifactCount === 1 ? 'artifact' : 'artifacts'}`,
+      }
+    }
+    case 'worker.placement_destroyed':
+      return { title: 'Remote placement destroyed', detail: payloadString(event, 'placement_id') }
+    case 'worker.lost':
+      return {
+        title: 'Remote worker lost',
+        detail: [payloadString(event, 'worker_id'), payloadString(event, 'placement_id')].filter(Boolean).join(' · '),
+      }
+    case 'worker.reclaimed':
+      return { title: 'Remote placement reclaimed', detail: payloadString(event, 'placement_id') }
+    case 'worker.rehydrated':
+      return {
+        title: 'Remote placement rehydrated',
+        detail: [payloadString(event, 'replacement_worker_id'), payloadString(event, 'placement_id')].filter(Boolean).join(' · '),
+      }
+    case 'a2a.task_submitted':
+      return {
+        title: 'A2A task submitted',
+        detail: [payloadString(event, 'task_id'), payloadString(event, 'protocol_version') ? `protocol ${payloadString(event, 'protocol_version')}` : ''].filter(Boolean).join(' · '),
+      }
+    case 'a2a.task_state_observed':
+      return {
+        title: 'A2A task state observed',
+        detail: [payloadString(event, 'task_id'), payloadString(event, 'state')].filter(Boolean).join(' · '),
+      }
+    case 'a2a.artifact_quarantined': {
+      const quarantined = payloadNumber(event, 'quarantined_parts')
+      return {
+        title: 'A2A artifact quarantined',
+        detail: [payloadString(event, 'task_id'), quarantined == null ? '' : `${quarantined} ${quarantined === 1 ? 'part' : 'parts'}`].filter(Boolean).join(' · '),
+      }
+    }
+    case 'a2a.task_canceled':
+      return { title: 'A2A task canceled', detail: payloadString(event, 'task_id') }
     case 'capability.version_created': {
       const version = payloadNumber(event, 'version')
       return {

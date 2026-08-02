@@ -111,7 +111,11 @@ release/PR shortcuts.
 Pulse is the watchdog surface for cron failures, stuck runs, stalled chats,
 disk pressure, delivery health, and reflection state. Reflection is the nightly
 batch surface for memory extraction and stale empty-session pruning. Cron,
-Approvals, Logs, and Analytics provide the rest of the operator loop.
+Approvals, Logs, and Analytics provide the rest of the operator loop. Approvals
+also contains the Remote Execution control-plane card: when enabled it shows a
+sanitized worker/placement summary, sync volume, resource and egress policy,
+checkpoints, recovery counts, A2A status, and recent state transitions without
+exposing worker endpoints or raw event payloads.
 
 ## Setup
 

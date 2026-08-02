@@ -58,21 +58,44 @@ func TestWorkLedgerSinkAuditsPlacementWithoutPersistingTaskToken(t *testing.T) {
 	if err := sink.Record(context.Background(), event); err != nil {
 		t.Fatalf("record duplicate worker event: %v", err)
 	}
+	checkpointEvent := ControlEvent{
+		ID: "placement-a:checkpoint:2", MessageID: "placement-a:checkpoint:2",
+		IdempotencyKey: "placement-a:checkpoint:2", Type: string(MessageCheckpoint), Entity: "placement",
+		WorkerID: "worker-a", PlacementID: "placement-a", WorkspaceID: work.WorkspaceID,
+		WorkID: work.ID, StepID: step.ID, AttemptID: attempt.ID, Sequence: 5,
+		FromState: string(PlacementStateExecuting), ToState: string(PlacementStateCheckpointed),
+		Payload: json.RawMessage(`{"checkpoint_id":"checkpoint-a","digest":"sha256:checkpoint","uri_digest":"sha256:uri","uri":"https://secret.example/snapshot"}`),
+	}
+	if err := sink.Record(context.Background(), checkpointEvent); err != nil {
+		t.Fatalf("record checkpoint event: %v", err)
+	}
 	projection, err := store.GetWorkProjection(context.Background(), work.WorkspaceID, work.ID)
 	if err != nil {
 		t.Fatalf("get work projection: %v", err)
 	}
 	count := 0
+	checkpointCount := 0
 	for _, item := range projection.Events {
-		if item.Type != workstore.EventTypeWorkerExecutionStarted {
-			continue
-		}
-		count++
-		if bytes.Contains(item.PayloadJSON, []byte("must-not-persist")) || bytes.Contains(item.PayloadJSON, []byte("task_token")) {
-			t.Fatalf("worker event persisted task token: %s", item.PayloadJSON)
+		switch item.Type {
+		case workstore.EventTypeWorkerExecutionStarted:
+			count++
+			if bytes.Contains(item.PayloadJSON, []byte("must-not-persist")) || bytes.Contains(item.PayloadJSON, []byte("task_token")) {
+				t.Fatalf("worker event persisted task token: %s", item.PayloadJSON)
+			}
+		case workstore.EventTypeWorkerCheckpointRecorded:
+			checkpointCount++
+			if bytes.Contains(item.PayloadJSON, []byte("secret.example")) || bytes.Contains(item.PayloadJSON, []byte(`"uri"`)) {
+				t.Fatalf("checkpoint event persisted raw URI: %s", item.PayloadJSON)
+			}
+			if !bytes.Contains(item.PayloadJSON, []byte(`"uri_digest":"sha256:uri"`)) {
+				t.Fatalf("checkpoint event omitted URI digest: %s", item.PayloadJSON)
+			}
 		}
 	}
 	if count != 1 {
 		t.Fatalf("worker execution event count=%d want 1", count)
+	}
+	if checkpointCount != 1 {
+		t.Fatalf("worker checkpoint event count=%d want 1", checkpointCount)
 	}
 }

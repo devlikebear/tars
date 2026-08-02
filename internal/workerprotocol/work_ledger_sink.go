@@ -127,7 +127,7 @@ func safeLedgerPayloadKeys(eventType string) []string {
 	case string(MessageStream):
 		return []string{"kind", "text_bytes", "payload_digest"}
 	case string(MessageCheckpoint):
-		return []string{"checkpoint_id", "digest", "uri"}
+		return []string{"checkpoint_id", "digest", "uri_digest"}
 	case string(MessageCollect):
 		return []string{"complete", "succeeded", "snapshot_digest", "artifact_count"}
 	case string(MessageRehydrate):

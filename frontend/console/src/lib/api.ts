@@ -116,6 +116,7 @@ import type {
   WorkLedgerProjection,
   WorkLedgerWork,
   WorkLedgerWorksResponse,
+  WorkerControlPlaneResponse,
 } from './types'
 
 export class APIRequestError extends Error {
@@ -329,6 +330,10 @@ export async function listCronRuns(jobId: string, limit = 5): Promise<CronRunRec
 
 export async function getOpsStatus(): Promise<OpsStatus> {
   return requestJSON<OpsStatus>('/v1/ops/status')
+}
+
+export async function getWorkerControlPlane(): Promise<WorkerControlPlaneResponse> {
+  return requestJSON<WorkerControlPlaneResponse>('/v1/admin/workers')
 }
 
 export async function createCleanupPlan(): Promise<CleanupPlan> {

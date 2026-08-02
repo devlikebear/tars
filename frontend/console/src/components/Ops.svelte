@@ -9,6 +9,7 @@
   } from '../lib/api'
   import type { Approval, AutomationAuditEntry } from '../lib/types'
   import { t } from '../i18n'
+  import RemoteWorkers from './RemoteWorkers.svelte'
 
   type ApprovalGuideStep = {
     title: string
@@ -168,6 +169,8 @@
   {#if error}
     <div class="error-banner">{error}</div>
   {/if}
+
+  <RemoteWorkers />
 
   {#if loading}
     <div class="ops-loading">{$t.ops.loading}</div>

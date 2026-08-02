@@ -828,6 +828,50 @@ export type Translations = {
     errorReview: string
     errorAudit: string
     errorCreate: string
+    workers: {
+      title: string
+      subtitle: string
+      ariaLabel: string
+      refresh: string
+      refreshing: string
+      loading: string
+      loadError: string
+      enabled: string
+      disabled: string
+      protocol: string
+      a2a: string
+      disabledTitle: string
+      disabledBody: string
+      workersTitle: string
+      noWorkers: string
+      placementsTitle: string
+      noPlacements: string
+      eventsTitle: string
+      noEvents: string
+      lastSeen: string
+      lease: string
+      capabilities: string
+      work: string
+      step: string
+      attempt: string
+      sync: string
+      checkpoint: string
+      recovery: string
+      egress: string
+      resources: string
+      updated: string
+      published: string
+      pendingPublish: string
+      summary: {
+        workers: string
+        ready: string
+        lost: string
+        placements: string
+        active: string
+        recovering: string
+        recoveries: string
+      }
+    }
   }
   reflection: {
     loading: string

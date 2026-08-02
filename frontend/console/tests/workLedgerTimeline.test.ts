@@ -219,6 +219,39 @@ test('work ledger timeline names reviewed capability lifecycle evidence', () => 
   assert.equal(entries[4].detail, 'failed · failed')
 })
 
+test('work ledger timeline explains remote worker and A2A lifecycle evidence', () => {
+  const projection = {
+    work: {
+      schema_version: 1, id: 'work-remote', workspace_id: 'default', kind: 'remote',
+      idempotency_key: 'remote:test', title: 'Run remotely', contract: {}, metadata: {},
+      state: 'running', priority: 0, actor_id: 'scheduler', version: 1,
+      created_at: '2026-08-02T00:00:00Z', updated_at: '2026-08-02T00:05:00Z',
+    },
+    steps: [], schedules: [], dependencies: [], attempts: [], proofs: [], artifacts: [], approvals: [],
+    events: [
+      { schema_version: 1, sequence: 1, id: 'e1', workspace_id: 'default', work_id: 'work-remote', type: 'worker.placement_created', actor_id: 'worker-control', payload: { worker_id: 'worker-a', placement_id: 'placement-a' }, created_at: '2026-08-02T00:01:00Z' },
+      { schema_version: 1, sequence: 2, id: 'e2', workspace_id: 'default', work_id: 'work-remote', type: 'worker.workspace_synced', actor_id: 'worker-control', payload: { mode: 'directory', file_count: 12, total_bytes: 2048, digest: 'sha256:abc' }, created_at: '2026-08-02T00:02:00Z' },
+      { schema_version: 1, sequence: 3, id: 'e3', workspace_id: 'default', work_id: 'work-remote', type: 'worker.lost', actor_id: 'worker-control', payload: { worker_id: 'worker-a', placement_id: 'placement-a' }, created_at: '2026-08-02T00:03:00Z' },
+      { schema_version: 1, sequence: 4, id: 'e4', workspace_id: 'default', work_id: 'work-remote', type: 'a2a.task_submitted', actor_id: 'a2a', payload: { task_id: 'task-a', protocol_version: '1.0' }, created_at: '2026-08-02T00:04:00Z' },
+      { schema_version: 1, sequence: 5, id: 'e5', workspace_id: 'default', work_id: 'work-remote', type: 'a2a.artifact_quarantined', actor_id: 'a2a', payload: { task_id: 'task-a', quarantined_parts: 2 }, created_at: '2026-08-02T00:05:00Z' },
+    ],
+  } satisfies WorkLedgerProjection
+
+  const entries = buildWorkLedgerTimeline(projection)
+  assert.deepEqual(entries.map((entry) => entry.title), [
+    'Remote placement created',
+    'Workspace synchronized',
+    'Remote worker lost',
+    'A2A task submitted',
+    'A2A artifact quarantined',
+  ])
+  assert.equal(entries[0].detail, 'worker-a · placement-a')
+  assert.equal(entries[1].detail, 'directory · 12 files · 2.0 KB · sha256:abc')
+  assert.equal(entries[2].detail, 'worker-a · placement-a')
+  assert.equal(entries[3].detail, 'task-a · protocol 1.0')
+  assert.equal(entries[4].detail, 'task-a · 2 parts')
+})
+
 test('durable work controls expose only safe operator actions', () => {
   const projection = {
     work: {
