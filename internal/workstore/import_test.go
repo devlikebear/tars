@@ -165,6 +165,135 @@ func TestImportLegacySessionPreservesRecordsAndIsIdempotent(t *testing.T) {
 	}
 }
 
+func TestImportLegacySessionRecoversAfterInterruptedCommitSequence(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "ledger.db")
+	idCalls := 0
+	interrupted, err := Open(ctx, path, Options{
+		NewID: func(prefix string) (string, error) {
+			idCalls++
+			if idCalls == 5 {
+				return "", fmt.Errorf("simulated process interruption")
+			}
+			return fmt.Sprintf("%s_interrupted_%d", prefix, idCalls), nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("open interrupted store: %v", err)
+	}
+	input := LegacySessionImportInput{
+		WorkspaceID: "workspace-crash",
+		SessionJSON: []byte(`{"id":"session-crash","title":"Recover import"}`),
+		TasksJSON: []byte(`{"plan":{"goal":"Converge after restart"},"tasks":[
+			{"id":"task-1","title":"First committed step","status":"completed"},
+			{"id":"task-2","title":"Resume remaining step","status":"pending"}
+		]}`),
+		SourcePath: "/legacy/session-crash.tasks.json",
+		ActorID:    "migration",
+	}
+	if _, err := interrupted.ImportLegacySession(ctx, input); err == nil {
+		t.Fatal("expected injected interruption to fail import")
+	}
+	partialWorks, err := interrupted.ListWorks(ctx, ListWorksFilter{WorkspaceID: input.WorkspaceID})
+	if err != nil || len(partialWorks) != 1 {
+		t.Fatalf("partial works=%d err=%v, want one committed work", len(partialWorks), err)
+	}
+	partialProjection, err := interrupted.GetWorkProjection(ctx, input.WorkspaceID, partialWorks[0].ID)
+	if err != nil || len(partialProjection.Steps) != 1 {
+		t.Fatalf("partial projection steps=%d err=%v, want one committed step", len(partialProjection.Steps), err)
+	}
+	partialMarkers, err := interrupted.ListImportMarkers(ctx, input.WorkspaceID)
+	if err != nil || len(partialMarkers) != 0 {
+		t.Fatalf("partial markers=%d err=%v, want no completed marker", len(partialMarkers), err)
+	}
+	if err := interrupted.Close(); err != nil {
+		t.Fatalf("close interrupted store: %v", err)
+	}
+
+	reopened, err := Open(ctx, path, Options{})
+	if err != nil {
+		t.Fatalf("reopen interrupted store: %v", err)
+	}
+	t.Cleanup(func() { _ = reopened.Close() })
+	result, err := reopened.ImportLegacySession(ctx, input)
+	if err != nil {
+		t.Fatalf("resume interrupted import: %v", err)
+	}
+	if result.AlreadyImported || len(result.WorkIDs) != 1 || result.WorkIDs[0] != partialWorks[0].ID {
+		t.Fatalf("resumed import result = %+v", result)
+	}
+	projection, err := reopened.GetWorkProjection(ctx, input.WorkspaceID, result.WorkIDs[0])
+	if err != nil {
+		t.Fatalf("get resumed projection: %v", err)
+	}
+	if len(projection.Steps) != 2 || projection.Steps[0].Title != "First committed step" || projection.Steps[1].Title != "Resume remaining step" {
+		t.Fatalf("resumed projection did not converge: %+v", projection.Steps)
+	}
+	works, err := reopened.ListWorks(ctx, ListWorksFilter{WorkspaceID: input.WorkspaceID})
+	if err != nil || len(works) != 1 {
+		t.Fatalf("resumed works=%d err=%v, want no duplicate", len(works), err)
+	}
+	markers, err := reopened.ListImportMarkers(ctx, input.WorkspaceID)
+	if err != nil || len(markers) != 1 || markers[0].Status != ImportStatusCompleted {
+		t.Fatalf("resumed markers=%+v err=%v", markers, err)
+	}
+	report, err := reopened.Doctor(ctx, input.WorkspaceID)
+	if err != nil || !report.Healthy {
+		t.Fatalf("doctor after resumed import healthy=%t issues=%+v err=%v", report.Healthy, report.Issues, err)
+	}
+}
+
+func FuzzImportLegacySessionCommitSafety(f *testing.F) {
+	f.Add(
+		[]byte(`{"id":"session-fuzz","title":"Valid seed"}`),
+		[]byte(`{"tasks":[{"id":"task-1","title":"Seed task","status":"pending"}]}`),
+	)
+	f.Add([]byte(`{`), []byte(`{"tasks":[]}`))
+	f.Add([]byte(`{"id":"session-fuzz"}`), []byte(`{"tasks":[`))
+
+	f.Fuzz(func(t *testing.T, sessionJSON, tasksJSON []byte) {
+		if len(sessionJSON) > 4096 || len(tasksJSON) > 8192 {
+			t.Skip()
+		}
+		ctx := context.Background()
+		store := openTestStore(t, filepath.Join(t.TempDir(), "ledger.db"))
+		input := LegacySessionImportInput{
+			WorkspaceID: "workspace-fuzz",
+			SessionJSON: sessionJSON,
+			TasksJSON:   tasksJSON,
+			ActorID:     "fuzzer",
+		}
+		result, importErr := store.ImportLegacySession(ctx, input)
+		works, listErr := store.ListWorks(ctx, ListWorksFilter{WorkspaceID: input.WorkspaceID})
+		if listErr != nil {
+			t.Fatalf("list works after fuzz import: %v", listErr)
+		}
+		markers, markerErr := store.ListImportMarkers(ctx, input.WorkspaceID)
+		if markerErr != nil {
+			t.Fatalf("list markers after fuzz import: %v", markerErr)
+		}
+		if importErr != nil {
+			if len(works) != 0 || len(markers) != 0 {
+				t.Fatalf("rejected fuzz input left partial state: works=%d markers=%d err=%v", len(works), len(markers), importErr)
+			}
+			return
+		}
+		if len(result.WorkIDs) != 1 || len(works) != 1 || len(markers) != 1 {
+			t.Fatalf("accepted fuzz input produced incoherent state: result=%+v works=%d markers=%d", result, len(works), len(markers))
+		}
+		replayed, replayErr := store.ImportLegacySession(ctx, input)
+		if replayErr != nil || !replayed.AlreadyImported || replayed.Marker.ID != result.Marker.ID {
+			t.Fatalf("accepted fuzz input did not replay idempotently: replay=%+v err=%v", replayed, replayErr)
+		}
+		report, doctorErr := store.Doctor(ctx, input.WorkspaceID)
+		if doctorErr != nil || !report.Healthy {
+			t.Fatalf("accepted fuzz input failed doctor: healthy=%t issues=%+v err=%v", report.Healthy, report.Issues, doctorErr)
+		}
+	})
+}
+
 func TestGetLegacySessionTasksProjectionReturnsLatestWorkspaceScopedRevision(t *testing.T) {
 	t.Parallel()
 
