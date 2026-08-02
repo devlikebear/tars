@@ -391,6 +391,64 @@ func TestQuarantineSourceCopiesWithoutDeletingOriginalAndIsIdempotent(t *testing
 	}
 }
 
+func TestQuarantineSourceReplayAcrossReopenKeepsCanonicalManifest(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	dir := t.TempDir()
+	databasePath := filepath.Join(dir, "ledger.db")
+	sourcePath := filepath.Join(dir, "broken-runtime.json")
+	if err := os.WriteFile(sourcePath, []byte(`{"runs":[`), 0o600); err != nil {
+		t.Fatalf("write corrupt source: %v", err)
+	}
+	firstStore, err := Open(ctx, databasePath, Options{})
+	if err != nil {
+		t.Fatalf("open first quarantine store: %v", err)
+	}
+	first, err := firstStore.QuarantineSource(ctx, QuarantineInput{
+		WorkspaceID: "workspace-a", SourceKind: ImportSourceAgentRuntime,
+		SourceID: "runs", SourcePath: sourcePath, QuarantineDir: filepath.Join(dir, "quarantine"),
+		Reason: "first decode failure", ActorID: "bootstrap-v1",
+	})
+	if err != nil {
+		t.Fatalf("first quarantine: %v", err)
+	}
+	manifestBefore, err := os.ReadFile(first.ManifestPath)
+	if err != nil {
+		t.Fatalf("read first manifest: %v", err)
+	}
+	if err := firstStore.Close(); err != nil {
+		t.Fatalf("close first quarantine store: %v", err)
+	}
+
+	reopened, err := Open(ctx, databasePath, Options{})
+	if err != nil {
+		t.Fatalf("reopen quarantine store: %v", err)
+	}
+	t.Cleanup(func() { _ = reopened.Close() })
+	replayed, err := reopened.QuarantineSource(ctx, QuarantineInput{
+		WorkspaceID: "workspace-a", SourceKind: ImportSourceAgentRuntime,
+		SourceID: "runs", SourcePath: sourcePath, QuarantineDir: filepath.Join(dir, "quarantine"),
+		Reason: "retry reported a more detailed decode failure", ActorID: "bootstrap-v2",
+	})
+	if err != nil {
+		t.Fatalf("replay quarantine after reopen: %v", err)
+	}
+	if !replayed.AlreadyQuarantined || replayed.Marker.ID != first.Marker.ID || replayed.ManifestPath != first.ManifestPath {
+		t.Fatalf("replayed quarantine = %#v, first = %#v", replayed, first)
+	}
+	if replayed.Reason != first.Reason || replayed.ActorID != first.ActorID {
+		t.Fatalf("replay did not keep canonical provenance: %#v", replayed)
+	}
+	manifestAfter, err := os.ReadFile(replayed.ManifestPath)
+	if err != nil {
+		t.Fatalf("read replayed manifest: %v", err)
+	}
+	if !bytes.Equal(manifestAfter, manifestBefore) {
+		t.Fatalf("replay changed canonical manifest:\nbefore=%s\nafter=%s", manifestBefore, manifestAfter)
+	}
+}
+
 func TestMaintenanceValidationAndFilesystemFailurePaths(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()

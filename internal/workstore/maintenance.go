@@ -414,10 +414,14 @@ func (s *Store) QuarantineSource(ctx context.Context, input QuarantineInput) (Qu
 		return QuarantineRecord{}, err
 	}
 	quarantinedAt := time.UnixMilli(s.now().UTC().UnixMilli()).UTC()
+	canonicalSourcePath := input.SourcePath
 	if found {
 		quarantinedAt = marker.ImportedAt
+		if strings.TrimSpace(marker.SourcePath) != "" {
+			canonicalSourcePath = marker.SourcePath
+		}
 	}
-	copyPath, manifestPath := quarantinePaths(input.QuarantineDir, input.SourcePath, digest, quarantinedAt)
+	copyPath, manifestPath := quarantinePaths(input.QuarantineDir, canonicalSourcePath, digest, quarantinedAt)
 	if err := os.MkdirAll(input.QuarantineDir, 0o700); err != nil {
 		return QuarantineRecord{}, fmt.Errorf("workstore: create quarantine directory: %w", err)
 	}
@@ -446,7 +450,10 @@ func (s *Store) QuarantineSource(ctx context.Context, input QuarantineInput) (Qu
 			}
 			found = true
 			quarantinedAt = marker.ImportedAt
-			canonicalCopy, canonicalManifest := quarantinePaths(input.QuarantineDir, input.SourcePath, digest, quarantinedAt)
+			if strings.TrimSpace(marker.SourcePath) != "" {
+				canonicalSourcePath = marker.SourcePath
+			}
+			canonicalCopy, canonicalManifest := quarantinePaths(input.QuarantineDir, canonicalSourcePath, digest, quarantinedAt)
 			if canonicalCopy != copyPath {
 				removeFile(copyPath)
 				copyPath, manifestPath = canonicalCopy, canonicalManifest
@@ -456,11 +463,21 @@ func (s *Store) QuarantineSource(ctx context.Context, input QuarantineInput) (Qu
 			}
 		}
 	}
+	recordReason := input.Reason
+	recordActorID := input.ActorID
+	if found {
+		if strings.TrimSpace(marker.ErrorText) != "" {
+			recordReason = marker.ErrorText
+		}
+		if strings.TrimSpace(marker.ActorID) != "" {
+			recordActorID = marker.ActorID
+		}
+	}
 	record := QuarantineRecord{
 		WorkspaceID: input.WorkspaceID, SourceKind: input.SourceKind,
-		SourceID: input.SourceID, SourcePath: input.SourcePath,
+		SourceID: input.SourceID, SourcePath: canonicalSourcePath,
 		QuarantinePath: copyPath, ManifestPath: manifestPath, Digest: digest,
-		SizeBytes: int64(len(raw)), Reason: input.Reason, ActorID: input.ActorID,
+		SizeBytes: int64(len(raw)), Reason: recordReason, ActorID: recordActorID,
 		QuarantinedAt: quarantinedAt, AlreadyQuarantined: found, Marker: marker,
 	}
 	manifestRecord := record
