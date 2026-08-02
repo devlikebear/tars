@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -232,6 +233,50 @@ func TestGetLegacySessionTasksProjectionRejectsInvalidInputsAndMetadata(t *testi
 	}
 	if _, _, err := store.GetLegacySessionTasksProjection(ctx, "workspace-a", "session-1"); err == nil {
 		t.Fatal("expected missing legacy tasks projection to fail")
+	}
+}
+
+func TestGetLegacySessionTasksProjectionUsesInsertionOrderWhenTimestampsTie(t *testing.T) {
+	t.Parallel()
+
+	var mu sync.Mutex
+	counts := map[string]int{}
+	store, err := Open(context.Background(), filepath.Join(t.TempDir(), "ledger.db"), Options{
+		Now: func() time.Time { return time.Date(2026, time.August, 2, 12, 0, 0, 0, time.UTC) },
+		NewID: func(prefix string) (string, error) {
+			mu.Lock()
+			defer mu.Unlock()
+			counts[prefix]++
+			if prefix == "wrk" {
+				if counts[prefix] == 1 {
+					return "wrk_z_older", nil
+				}
+				return "wrk_a_latest", nil
+			}
+			return fmt.Sprintf("%s_%d", prefix, counts[prefix]), nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("open work store: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	sessionJSON := []byte(`{"id":"session-tie","title":"Tied timestamp"}`)
+	older := []byte(`{"plan":{"goal":"Older"},"tasks":[]}`)
+	latest := []byte(`{"plan":{"goal":"Latest"},"tasks":[]}`)
+	for _, tasksJSON := range [][]byte{older, latest} {
+		if _, err := store.ImportLegacySession(context.Background(), LegacySessionImportInput{
+			WorkspaceID: "workspace-a", SessionJSON: sessionJSON, TasksJSON: tasksJSON, ActorID: "migration",
+		}); err != nil {
+			t.Fatalf("import tied revision: %v", err)
+		}
+	}
+
+	projection, found, err := store.GetLegacySessionTasksProjection(context.Background(), "workspace-a", "session-tie")
+	if err != nil || !found {
+		t.Fatalf("get tied latest projection found=%t err=%v", found, err)
+	}
+	if !jsonEqual(projection, latest) {
+		t.Fatalf("tied latest projection = %s, want %s", projection, latest)
 	}
 }
 

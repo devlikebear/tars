@@ -541,7 +541,6 @@ func buildAPIMux(
 		chatTooling,
 		chatTools...,
 	)
-	sessionHandler := newSessionAPIHandlerFullWithLocalSkills(sessionStore, logger, deps.usageTracker, sessionStyleDefaultsFromConfig(cfg), dispatcher.Emit, overrideService, deps.llmRouter, localSkillsHandlerDeps{provider: extensionsManager, workspaceDir: cfg.WorkspaceDir})
 	consoleHandler, err := newConsoleHandler(logger)
 	if err != nil {
 		return nil, err
@@ -645,6 +644,7 @@ func buildAPIMux(
 	if err != nil {
 		return nil, err
 	}
+	sessionHandler := newSessionAPIHandlerFullWithLocalSkillsAndWorkLedger(sessionStore, logger, deps.usageTracker, sessionStyleDefaultsFromConfig(cfg), dispatcher.Emit, overrideService, deps.llmRouter, localSkillsHandlerDeps{provider: extensionsManager, workspaceDir: cfg.WorkspaceDir}, workLedger)
 	workLedgerHandler := newWorkLedgerAPIHandler(workLedger, logger)
 	registerAPIRoutes(mux, apiRouteHandlers{
 		pulse:           pulseSetup.Handler,

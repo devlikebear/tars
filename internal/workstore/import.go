@@ -740,7 +740,7 @@ func getImportMarkerTx(ctx context.Context, tx *sql.Tx, workspaceID string, sour
 func (s *Store) findLatestSourceWork(ctx context.Context, workspaceID string, sourceKind ImportSourceKind, sourceID string) (Work, bool, error) {
 	work, err := scanWork(s.db.QueryRowContext(ctx, workSelect+`
 		WHERE workspace_id = ? AND source = ? AND source_id = ?
-		ORDER BY created_at DESC, id DESC LIMIT 1
+		ORDER BY created_at DESC, rowid DESC LIMIT 1
 	`, workspaceID, sourceKind, sourceID))
 	if errors.Is(err, sql.ErrNoRows) {
 		return Work{}, false, nil
