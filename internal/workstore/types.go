@@ -19,6 +19,7 @@ var (
 	ErrNoReadyStep       = errors.New("workstore: no ready step")
 	ErrClaimConflict     = errors.New("workstore: step claim conflict")
 	ErrClaimExpired      = errors.New("workstore: step claim expired")
+	ErrEffectConflict    = errors.New("workstore: effect receipt conflict")
 )
 
 type WorkState string
@@ -62,6 +63,13 @@ const (
 	ProofStatusInconclusive ProofStatus = "inconclusive"
 )
 
+type EffectReceiptStatus string
+
+const (
+	EffectReceiptStatusPending   EffectReceiptStatus = "pending"
+	EffectReceiptStatusCommitted EffectReceiptStatus = "committed"
+)
+
 type EventType string
 
 const (
@@ -88,6 +96,8 @@ const (
 	EventTypeStepBlocked            EventType = "step.blocked"
 	EventTypeStepResumed            EventType = "step.resumed"
 	EventTypeStepCancelled          EventType = "step.cancelled"
+	EventTypeEffectStarted          EventType = "effect.started"
+	EventTypeEffectCommitted        EventType = "effect.committed"
 )
 
 type StepExecutionAction string
@@ -401,15 +411,16 @@ type StepDependency struct {
 }
 
 type WorkProjection struct {
-	Work         Work             `json:"work"`
-	Steps        []Step           `json:"steps"`
-	Schedules    []StepSchedule   `json:"schedules"`
-	Dependencies []StepDependency `json:"dependencies"`
-	Attempts     []Attempt        `json:"attempts"`
-	Events       []Event          `json:"events"`
-	Proofs       []Proof          `json:"proofs"`
-	Artifacts    []Artifact       `json:"artifacts"`
-	Approvals    []Approval       `json:"approvals"`
+	Work           Work             `json:"work"`
+	Steps          []Step           `json:"steps"`
+	Schedules      []StepSchedule   `json:"schedules"`
+	Dependencies   []StepDependency `json:"dependencies"`
+	Attempts       []Attempt        `json:"attempts"`
+	Events         []Event          `json:"events"`
+	Proofs         []Proof          `json:"proofs"`
+	Artifacts      []Artifact       `json:"artifacts"`
+	Approvals      []Approval       `json:"approvals"`
+	EffectReceipts []EffectReceipt  `json:"effect_receipts"`
 }
 
 type ListWorksFilter struct {
@@ -533,4 +544,48 @@ type CreateProofInput struct {
 	Command        string
 	ArtifactID     string
 	ActorID        string
+}
+
+type EffectReceipt struct {
+	SchemaVersion     int                 `json:"schema_version"`
+	ID                string              `json:"id"`
+	WorkspaceID       string              `json:"workspace_id"`
+	WorkID            string              `json:"work_id"`
+	StepID            string              `json:"step_id,omitempty"`
+	AttemptID         string              `json:"attempt_id,omitempty"`
+	IdempotencyKey    string              `json:"idempotency_key"`
+	CausationID       string              `json:"causation_id,omitempty"`
+	EffectType        string              `json:"effect_type"`
+	Target            string              `json:"target,omitempty"`
+	RequestDigest     string              `json:"request_digest"`
+	Status            EffectReceiptStatus `json:"status"`
+	OutcomeJSON       json.RawMessage     `json:"outcome"`
+	ExternalReference string              `json:"external_reference,omitempty"`
+	ActorID           string              `json:"actor_id"`
+	CreatedAt         time.Time           `json:"created_at"`
+	UpdatedAt         time.Time           `json:"updated_at"`
+	CommittedAt       *time.Time          `json:"committed_at,omitempty"`
+}
+
+type BeginEffectReceiptInput struct {
+	WorkspaceID    string
+	WorkID         string
+	StepID         string
+	AttemptID      string
+	IdempotencyKey string
+	CausationID    string
+	EffectType     string
+	Target         string
+	RequestDigest  string
+	ActorID        string
+}
+
+type CommitEffectReceiptInput struct {
+	WorkspaceID       string
+	WorkID            string
+	IdempotencyKey    string
+	RequestDigest     string
+	OutcomeJSON       json.RawMessage
+	ExternalReference string
+	ActorID           string
 }

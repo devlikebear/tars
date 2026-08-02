@@ -20,7 +20,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const schemaVersion = 4
+const schemaVersion = 5
 
 type Options struct {
 	Now   func() time.Time
@@ -283,6 +283,34 @@ ALTER TABLE step_schedules
     ADD COLUMN cycle_attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (cycle_attempt_count >= 0);
 `
 
+const migrationV5 = `
+CREATE TABLE effect_receipts (
+    schema_version INTEGER NOT NULL,
+    id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL,
+    work_id TEXT NOT NULL REFERENCES works(id),
+    step_id TEXT REFERENCES steps(id),
+    attempt_id TEXT REFERENCES attempts(id),
+    idempotency_key TEXT NOT NULL,
+    causation_id TEXT NOT NULL DEFAULT '',
+    effect_type TEXT NOT NULL,
+    target TEXT NOT NULL DEFAULT '',
+    request_digest TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('pending','committed')),
+    outcome_json BLOB NOT NULL DEFAULT '{}',
+    external_reference TEXT NOT NULL DEFAULT '',
+    actor_id TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    committed_at INTEGER,
+    UNIQUE (workspace_id, idempotency_key)
+);
+CREATE INDEX idx_effect_receipts_workspace_work_created
+    ON effect_receipts (workspace_id, work_id, created_at);
+CREATE INDEX idx_effect_receipts_workspace_status_updated
+    ON effect_receipts (workspace_id, status, updated_at DESC);
+`
+
 var schemaMigrations = []struct {
 	version int
 	sql     string
@@ -291,6 +319,7 @@ var schemaMigrations = []struct {
 	{version: 2, sql: migrationV2},
 	{version: 3, sql: migrationV3},
 	{version: 4, sql: migrationV4},
+	{version: 5, sql: migrationV5},
 }
 
 func Open(ctx context.Context, path string, opts Options) (*Store, error) {
@@ -1118,6 +1147,9 @@ func (s *Store) GetWorkProjection(ctx context.Context, workspaceID, workID strin
 		return WorkProjection{}, err
 	}
 	if projection.Proofs, err = queryProofs(ctx, tx, workspaceID, workID); err != nil {
+		return WorkProjection{}, err
+	}
+	if projection.EffectReceipts, err = queryEffectReceipts(ctx, tx, workspaceID, workID); err != nil {
 		return WorkProjection{}, err
 	}
 	if err := tx.Commit(); err != nil {

@@ -160,6 +160,7 @@ func (exporter *jsonlExporter) writeProjection(projection WorkProjection) error 
 		func() error { return writeExportRecords(exporter, "approval", projection.Approvals) },
 		func() error { return writeExportRecords(exporter, "artifact", projection.Artifacts) },
 		func() error { return writeExportRecords(exporter, "proof", projection.Proofs) },
+		func() error { return writeExportRecords(exporter, "effect_receipt", projection.EffectReceipts) },
 	}
 	for _, write := range writers {
 		if err := write(); err != nil {
