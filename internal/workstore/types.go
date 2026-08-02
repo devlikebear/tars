@@ -16,6 +16,9 @@ var (
 	ErrInvalidTransition = errors.New("workstore: invalid state transition")
 	ErrDependencyCycle   = errors.New("workstore: dependency cycle")
 	ErrInvalidDependency = errors.New("workstore: invalid dependency")
+	ErrNoReadyStep       = errors.New("workstore: no ready step")
+	ErrClaimConflict     = errors.New("workstore: step claim conflict")
+	ErrClaimExpired      = errors.New("workstore: step claim expired")
 )
 
 type WorkState string
@@ -62,15 +65,161 @@ const (
 type EventType string
 
 const (
-	EventTypeWorkCreated         EventType = "work.created"
-	EventTypeWorkTransitioned    EventType = "work.transitioned"
-	EventTypeStepCreated         EventType = "step.created"
-	EventTypeStepDependencyAdded EventType = "step.dependency_added"
-	EventTypeAttemptCreated      EventType = "attempt.created"
-	EventTypeApprovalCreated     EventType = "approval.created"
-	EventTypeProofCreated        EventType = "proof.created"
-	EventTypeArtifactCreated     EventType = "artifact.created"
+	EventTypeWorkCreated            EventType = "work.created"
+	EventTypeWorkTransitioned       EventType = "work.transitioned"
+	EventTypeStepCreated            EventType = "step.created"
+	EventTypeStepDependencyAdded    EventType = "step.dependency_added"
+	EventTypeAttemptCreated         EventType = "attempt.created"
+	EventTypeApprovalCreated        EventType = "approval.created"
+	EventTypeProofCreated           EventType = "proof.created"
+	EventTypeArtifactCreated        EventType = "artifact.created"
+	EventTypeStepScheduleConfigured EventType = "step.schedule_configured"
+	EventTypeStepReady              EventType = "step.ready"
+	EventTypeStepClaimed            EventType = "step.claimed"
+	EventTypeStepHeartbeat          EventType = "step.heartbeat"
+	EventTypeAttemptCompleted       EventType = "attempt.completed"
+	EventTypeStepCompleted          EventType = "step.completed"
+	EventTypeStepRetryScheduled     EventType = "step.retry_scheduled"
+	EventTypeStepReplanScheduled    EventType = "step.replan_scheduled"
+	EventTypeStepDecomposeScheduled EventType = "step.decompose_scheduled"
+	EventTypeStepReclaimed          EventType = "step.reclaimed"
+	EventTypeStepReviewRequested    EventType = "step.review_requested"
+	EventTypeStepBlocked            EventType = "step.blocked"
+	EventTypeStepResumed            EventType = "step.resumed"
 )
+
+type StepExecutionAction string
+
+const (
+	StepExecutionActionExecute   StepExecutionAction = "execute"
+	StepExecutionActionRetry     StepExecutionAction = "retry"
+	StepExecutionActionReplan    StepExecutionAction = "replan"
+	StepExecutionActionDecompose StepExecutionAction = "decompose"
+)
+
+type StepDisposition string
+
+const (
+	StepDispositionDone      StepDisposition = "done"
+	StepDispositionRetry     StepDisposition = "retry"
+	StepDispositionReplan    StepDisposition = "replan"
+	StepDispositionDecompose StepDisposition = "decompose"
+	StepDispositionReview    StepDisposition = "review"
+	StepDispositionBlocked   StepDisposition = "blocked"
+)
+
+type StepSchedulePolicy struct {
+	MaxAttempts     int       `json:"max_attempts"`
+	RetryLimit      int       `json:"retry_limit"`
+	ReplanLimit     int       `json:"replan_limit"`
+	DecomposeLimit  int       `json:"decompose_limit"`
+	MaxIterations   int       `json:"max_iterations,omitempty"`
+	MaxTokens       int64     `json:"max_tokens,omitempty"`
+	MaxCostUSD      float64   `json:"max_cost_usd,omitempty"`
+	EscalationState WorkState `json:"escalation_state"`
+}
+
+type StepSchedule struct {
+	SchemaVersion       int                 `json:"schema_version"`
+	WorkspaceID         string              `json:"workspace_id"`
+	WorkID              string              `json:"work_id"`
+	StepID              string              `json:"step_id"`
+	Policy              StepSchedulePolicy  `json:"policy"`
+	LeaseOwner          string              `json:"lease_owner,omitempty"`
+	LeaseExpiresAt      *time.Time          `json:"lease_expires_at,omitempty"`
+	LastHeartbeatAt     *time.Time          `json:"last_heartbeat_at,omitempty"`
+	ActiveAttemptID     string              `json:"active_attempt_id,omitempty"`
+	AttemptCount        int                 `json:"attempt_count"`
+	CycleAttemptCount   int                 `json:"cycle_attempt_count"`
+	ConsumedIterations  int                 `json:"consumed_iterations"`
+	ConsumedTokens      int64               `json:"consumed_tokens"`
+	ConsumedCostUSD     float64             `json:"consumed_cost_usd"`
+	NextAction          StepExecutionAction `json:"next_action"`
+	LastDisposition     StepDisposition     `json:"last_disposition,omitempty"`
+	BlockedReason       string              `json:"blocked_reason,omitempty"`
+	HumanResumeRequired bool                `json:"human_resume_required"`
+	UpdatedAt           time.Time           `json:"updated_at"`
+}
+
+type ConfigureStepScheduleInput struct {
+	WorkspaceID string
+	WorkID      string
+	StepID      string
+	Policy      StepSchedulePolicy
+	ActorID     string
+}
+
+type PromoteReadyStepsInput struct {
+	WorkspaceID string
+	WorkID      string
+	ActorID     string
+}
+
+type ClaimReadyStepInput struct {
+	WorkspaceID   string
+	WorkID        string
+	WorkerID      string
+	Adapter       string
+	LeaseDuration time.Duration
+	ActorID       string
+}
+
+type StepClaim struct {
+	Step     Step         `json:"step"`
+	Attempt  Attempt      `json:"attempt"`
+	Schedule StepSchedule `json:"schedule"`
+}
+
+type HeartbeatStepClaimInput struct {
+	WorkspaceID   string
+	WorkID        string
+	StepID        string
+	AttemptID     string
+	WorkerID      string
+	LeaseDuration time.Duration
+	ActorID       string
+}
+
+type StepAttemptUsage struct {
+	Iterations int     `json:"iterations"`
+	Tokens     int64   `json:"tokens"`
+	CostUSD    float64 `json:"cost_usd"`
+}
+
+type CompleteStepAttemptInput struct {
+	WorkspaceID string
+	WorkID      string
+	StepID      string
+	AttemptID   string
+	WorkerID    string
+	Succeeded   bool
+	OutputJSON  json.RawMessage
+	ErrorText   string
+	Usage       StepAttemptUsage
+	ActorID     string
+}
+
+type StepResolution struct {
+	Step        Step            `json:"step"`
+	Attempt     Attempt         `json:"attempt"`
+	Schedule    StepSchedule    `json:"schedule"`
+	Disposition StepDisposition `json:"disposition"`
+}
+
+type ReclaimExpiredStepClaimsInput struct {
+	WorkspaceID string
+	WorkID      string
+	ActorID     string
+	Reason      string
+}
+
+type ResumeScheduledStepInput struct {
+	WorkspaceID string
+	WorkID      string
+	StepID      string
+	ActorID     string
+	Reason      string
+}
 
 type Work struct {
 	SchemaVersion  int             `json:"schema_version"`

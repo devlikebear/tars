@@ -20,7 +20,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const schemaVersion = 2
+const schemaVersion = 4
 
 type Options struct {
 	Now   func() time.Time
@@ -250,12 +250,47 @@ CREATE INDEX idx_import_markers_workspace_source
     ON import_markers (workspace_id, source_kind, source_id, imported_at DESC);
 `
 
+const migrationV3 = `
+CREATE TABLE step_schedules (
+    schema_version INTEGER NOT NULL,
+    workspace_id TEXT NOT NULL,
+    work_id TEXT NOT NULL REFERENCES works(id),
+    step_id TEXT PRIMARY KEY REFERENCES steps(id),
+    policy_json BLOB NOT NULL DEFAULT '{}',
+    lease_owner TEXT NOT NULL DEFAULT '',
+    lease_expires_at INTEGER,
+    last_heartbeat_at INTEGER,
+    active_attempt_id TEXT REFERENCES attempts(id),
+    attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
+    consumed_iterations INTEGER NOT NULL DEFAULT 0 CHECK (consumed_iterations >= 0),
+    consumed_tokens INTEGER NOT NULL DEFAULT 0 CHECK (consumed_tokens >= 0),
+    consumed_cost_usd REAL NOT NULL DEFAULT 0 CHECK (consumed_cost_usd >= 0),
+    next_action TEXT NOT NULL DEFAULT 'execute' CHECK (next_action IN ('execute','retry','replan','decompose')),
+    last_disposition TEXT NOT NULL DEFAULT '' CHECK (last_disposition IN ('','done','retry','replan','decompose','review','blocked')),
+    blocked_reason TEXT NOT NULL DEFAULT '',
+    human_resume_required INTEGER NOT NULL DEFAULT 0 CHECK (human_resume_required IN (0,1)),
+    updated_at INTEGER NOT NULL,
+    UNIQUE (workspace_id, work_id, step_id)
+);
+CREATE INDEX idx_step_schedules_workspace_lease
+    ON step_schedules (workspace_id, lease_expires_at, step_id);
+CREATE INDEX idx_step_schedules_workspace_work_action
+    ON step_schedules (workspace_id, work_id, next_action, step_id);
+`
+
+const migrationV4 = `
+ALTER TABLE step_schedules
+    ADD COLUMN cycle_attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (cycle_attempt_count >= 0);
+`
+
 var schemaMigrations = []struct {
 	version int
 	sql     string
 }{
 	{version: 1, sql: migrationV1},
 	{version: 2, sql: migrationV2},
+	{version: 3, sql: migrationV3},
+	{version: 4, sql: migrationV4},
 }
 
 func Open(ctx context.Context, path string, opts Options) (*Store, error) {
