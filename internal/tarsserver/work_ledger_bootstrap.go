@@ -40,6 +40,14 @@ func workLedgerQuarantineDir(workspaceDir string) string {
 	return filepath.Join(strings.TrimSpace(workspaceDir), "_shared", "work-ledger", "quarantine")
 }
 
+func bootstrapWorkLedgerIfEnabled(ctx context.Context, enabled bool, opts workLedgerBootstrapOptions) (*workstore.Store, workLedgerBootstrapReport, error) {
+	if !enabled {
+		opts.Logger.Info().Msg("work ledger disabled; using legacy session and agent runtime state")
+		return nil, workLedgerBootstrapReport{}, nil
+	}
+	return bootstrapWorkLedger(ctx, opts)
+}
+
 func bootstrapWorkLedger(ctx context.Context, opts workLedgerBootstrapOptions) (*workstore.Store, workLedgerBootstrapReport, error) {
 	workspaceDir := strings.TrimSpace(opts.WorkspaceDir)
 	if workspaceDir == "" {

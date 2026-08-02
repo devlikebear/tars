@@ -138,6 +138,7 @@ var configInputFields = []configInputField{
 	stringField("agentruntime_archive_dir", []string{"AGENTRUNTIME_ARCHIVE_DIR", "TARS_AGENTRUNTIME_ARCHIVE_DIR"}, func(cfg *Config) *string { return &cfg.AgentRuntimeArchiveDir }, strings.TrimSpace),
 	intField("agentruntime_archive_retention_days", []string{"AGENTRUNTIME_ARCHIVE_RETENTION_DAYS", "TARS_AGENTRUNTIME_ARCHIVE_RETENTION_DAYS"}, func(cfg *Config) *int { return &cfg.AgentRuntimeArchiveRetentionDays }, parsePositiveInt),
 	intField("agentruntime_archive_max_file_bytes", []string{"AGENTRUNTIME_ARCHIVE_MAX_FILE_BYTES", "TARS_AGENTRUNTIME_ARCHIVE_MAX_FILE_BYTES"}, func(cfg *Config) *int { return &cfg.AgentRuntimeArchiveMaxFileBytes }, parsePositiveInt),
+	withYAMLPath(workLedgerEnabledField("work_ledger_enabled", []string{"WORK_LEDGER_ENABLED", "TARS_WORK_LEDGER_ENABLED"}), "work_ledger.enabled"),
 	boolField("channels_local_enabled", []string{"CHANNELS_LOCAL_ENABLED", "TARS_CHANNELS_LOCAL_ENABLED"}, func(cfg *Config) *bool { return &cfg.ChannelsLocalEnabled }),
 	boolField("channels_webhook_enabled", []string{"CHANNELS_WEBHOOK_ENABLED", "TARS_CHANNELS_WEBHOOK_ENABLED"}, func(cfg *Config) *bool { return &cfg.ChannelsWebhookEnabled }),
 	boolField("channels_telegram_enabled", []string{"CHANNELS_TELEGRAM_ENABLED", "TARS_CHANNELS_TELEGRAM_ENABLED"}, func(cfg *Config) *bool { return &cfg.ChannelsTelegramEnabled }),
@@ -273,6 +274,23 @@ func companionEnabledField(yamlKey string, envKeys []string) configInputField {
 			if src.Companion.enabledSet {
 				dst.Companion.Enabled = src.Companion.Enabled
 				dst.Companion.enabledSet = true
+			}
+		},
+	}
+}
+
+func workLedgerEnabledField(yamlKey string, envKeys []string) configInputField {
+	return configInputField{
+		yamlKey: yamlKey,
+		envKeys: envKeys,
+		apply: func(cfg *Config, raw string) {
+			cfg.WorkLedger.Enabled = parseBool(raw, cfg.WorkLedger.Enabled)
+			cfg.WorkLedger.enabledSet = true
+		},
+		merge: func(dst *Config, src Config) {
+			if src.WorkLedger.enabledSet {
+				dst.WorkLedger.Enabled = src.WorkLedger.Enabled
+				dst.WorkLedger.enabledSet = true
 			}
 		},
 	}

@@ -648,7 +648,7 @@ func buildAPIMux(
 	terminalHandler := newTerminalAPIHandler(cfg.WorkspaceDir, sessionStore, logger)
 	memoryHandler := newMemoryAPIHandler(cfg.WorkspaceDir, buildMemoryBackend(cfg.WorkspaceDir, semanticMemoryConfigFromConfig(cfg), cfg.MemoryBackend), logger)
 	codexUsageHandler := newCodexRateLimitAPIHandler(deps.llmRouter, cfg.APIAuthMode)
-	workLedger, _, err = bootstrapWorkLedger(context.Background(), workLedgerBootstrapOptions{
+	workLedger, _, err = bootstrapWorkLedgerIfEnabled(context.Background(), cfg.WorkLedger.Enabled, workLedgerBootstrapOptions{
 		WorkspaceDir:               cfg.WorkspaceDir,
 		AgentRuntimePersistenceDir: cfg.AgentRuntimePersistenceDir,
 		Logger:                     logger,

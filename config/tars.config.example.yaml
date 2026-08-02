@@ -240,6 +240,12 @@ tools:
   agentruntime:
     enabled: false
 
+# Additive durable projection for sessions, tasks, attempts, and proofs.
+# Set false (or TARS_WORK_LEDGER_ENABLED=false) and restart to return to
+# untouched legacy session and Agent Runtime files without deleting SQLite.
+work_ledger:
+  enabled: true
+
 agentruntime:
   enabled: false
   default_agent: ""

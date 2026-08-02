@@ -210,6 +210,10 @@ func defaultConfigValues() Config {
 			AgentRuntimeArchiveRetentionDays:          defaultAgentRuntimeArchiveRetentionDays,
 			AgentRuntimeArchiveMaxFileBytes:           defaultAgentRuntimeArchiveMaxFileBytes,
 		},
+		WorkLedger: WorkLedgerConfig{
+			Enabled:    true,
+			enabledSet: true,
+		},
 		ChannelConfig: ChannelConfig{
 			ChannelsTelegramDMPolicy:       defaultChannelsTelegramDMPolicy,
 			ChannelsTelegramPollingEnabled: true,

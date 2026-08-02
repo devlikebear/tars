@@ -65,6 +65,9 @@ automation:
   agent:
     max_iterations: 8
 
+work_ledger:
+  enabled: true
+
 companion:
   enabled: true
 

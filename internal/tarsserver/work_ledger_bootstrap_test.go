@@ -10,6 +10,29 @@ import (
 	"github.com/rs/zerolog"
 )
 
+func TestBootstrapWorkLedgerCanBeDisabledWithoutTouchingStorage(t *testing.T) {
+	t.Parallel()
+
+	workspaceDir := t.TempDir()
+	store, report, err := bootstrapWorkLedgerIfEnabled(context.Background(), false, workLedgerBootstrapOptions{
+		WorkspaceDir: workspaceDir,
+		Logger:       zerolog.Nop(),
+	})
+	if err != nil {
+		t.Fatalf("disabled bootstrap: %v", err)
+	}
+	if store != nil {
+		_ = store.Close()
+		t.Fatal("disabled bootstrap returned a store")
+	}
+	if report.DatabasePath != "" {
+		t.Fatalf("disabled bootstrap report = %+v, want zero value", report)
+	}
+	if _, err := os.Stat(workLedgerDatabasePath(workspaceDir)); !os.IsNotExist(err) {
+		t.Fatalf("disabled bootstrap touched database path: %v", err)
+	}
+}
+
 func TestBootstrapWorkLedgerImportsLegacySourcesIdempotently(t *testing.T) {
 	t.Parallel()
 

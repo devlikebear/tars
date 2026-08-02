@@ -185,6 +185,9 @@ func Schema() []FieldMeta {
 		f("agentruntime_archive_retention_days", "Agent Runtime", "int", "Archive Retention (days)", "Days to retain archived runs"),
 		f("agentruntime_archive_max_file_bytes", "Agent Runtime", "int", "Archive Max File Bytes", "Maximum archive file size before rollover"),
 
+		// ── Work Ledger ──────────────────────────
+		f("work_ledger_enabled", "Work Ledger", "bool", "Enabled", "Enable the additive durable Work Ledger and its read-only projections"),
+
 		// ── Channels ─────────────────────────────
 		f("channels_local_enabled", "Channels", "bool", "Local Channel", "Enable local channel for CLI dispatch"),
 		f("channels_webhook_enabled", "Channels", "bool", "Webhook Channel", "Enable inbound webhook channel"),
@@ -495,6 +498,9 @@ func extractValue(yamlKey string, cfg Config) any {
 		return cfg.AgentRuntimeArchiveRetentionDays
 	case "agentruntime_archive_max_file_bytes":
 		return cfg.AgentRuntimeArchiveMaxFileBytes
+	// Work Ledger
+	case "work_ledger_enabled":
+		return cfg.WorkLedger.Enabled
 	// Channels
 	case "channels_local_enabled":
 		return cfg.ChannelsLocalEnabled

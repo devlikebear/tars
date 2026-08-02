@@ -278,6 +278,14 @@ type AgentRuntimeConfig struct {
 	AgentRuntimeArchiveMaxFileBytes           int
 }
 
+// WorkLedgerConfig controls the additive durable work projection. The
+// unexported presence bit lets an explicit YAML false override the enabled
+// default without changing the legacy bool-field merge behavior.
+type WorkLedgerConfig struct {
+	Enabled    bool
+	enabledSet bool
+}
+
 type AgentRuntimeTaskOverrideConfig struct {
 	Enabled        bool     `json:"enabled,omitempty" yaml:"enabled,omitempty"`
 	AllowedAliases []string `json:"allowed_aliases,omitempty" yaml:"allowed_aliases,omitempty"`
@@ -347,6 +355,7 @@ type Config struct {
 	CompactionConfig
 	ToolConfig
 	AgentRuntimeConfig
+	WorkLedger WorkLedgerConfig
 	ChannelConfig
 	Companion  CompanionConfig
 	Embodiment EmbodimentConfig
