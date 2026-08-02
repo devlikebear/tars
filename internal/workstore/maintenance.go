@@ -370,7 +370,7 @@ func (s *Store) Doctor(ctx context.Context, workspaceID string) (DoctorReport, e
 	report := DoctorReport{
 		WorkspaceID: workspaceID, SchemaVersion: schemaVersion,
 		CheckedAt: s.now().UTC(), Healthy: true,
-		Checks: make([]DoctorCheck, 0, 8), Issues: make([]DoctorIssue, 0),
+		Checks: make([]DoctorCheck, 0, 9), Issues: make([]DoctorIssue, 0),
 	}
 	addCheck := func(name string, err error) {
 		check := DoctorCheck{Name: name, OK: err == nil}
@@ -396,6 +396,9 @@ func (s *Store) Doctor(ctx context.Context, workspaceID string) (DoctorReport, e
 	scheduleIssues, err := s.doctorScheduleIssues(ctx, workspaceID)
 	report.Issues = append(report.Issues, scheduleIssues...)
 	addCheck("step_schedules", err)
+	effectIssues, err := s.doctorEffectReceiptIssues(ctx, workspaceID)
+	report.Issues = append(report.Issues, effectIssues...)
+	addCheck("effect_receipts", err)
 	importIssues, err := s.doctorImportIssues(ctx, workspaceID)
 	report.Issues = append(report.Issues, importIssues...)
 	addCheck("import_references", err)
@@ -529,6 +532,7 @@ func (s *Store) doctorJSONIssues(ctx context.Context, workspaceID string) ([]Doc
 		{"attempt", "output_json", "SELECT id, output_json FROM attempts WHERE workspace_id = ?"},
 		{"event", "payload_json", "SELECT id, payload_json FROM events WHERE workspace_id = ?"},
 		{"step_schedule", "policy_json", "SELECT step_id, policy_json FROM step_schedules WHERE workspace_id = ?"},
+		{"effect_receipt", "outcome_json", "SELECT id, outcome_json FROM effect_receipts WHERE workspace_id = ?"},
 		{"import_marker", "work_ids_json", "SELECT id, work_ids_json FROM import_markers WHERE workspace_id = ?"},
 	}
 	var issues []DoctorIssue
@@ -696,6 +700,57 @@ func (s *Store) doctorScheduleIssues(ctx context.Context, workspaceID string) ([
 	}
 	if err := rows.Err(); err != nil {
 		return issues, fmt.Errorf("workstore: doctor schedule iterate: %w", err)
+	}
+	return issues, nil
+}
+
+func (s *Store) doctorEffectReceiptIssues(ctx context.Context, workspaceID string) ([]DoctorIssue, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, status, created_at, updated_at, committed_at,
+			idempotency_key, effect_type, request_digest, actor_id
+		FROM effect_receipts
+		WHERE workspace_id = ?
+		ORDER BY id
+	`, workspaceID)
+	if err != nil {
+		return nil, fmt.Errorf("workstore: doctor effect receipt query: %w", err)
+	}
+	defer closeRows(rows)
+	var issues []DoctorIssue
+	for rows.Next() {
+		var id, status, idempotencyKey, effectType, requestDigest, actorID string
+		var createdAt, updatedAt int64
+		var committedAt sql.NullInt64
+		if err := rows.Scan(&id, &status, &createdAt, &updatedAt, &committedAt,
+			&idempotencyKey, &effectType, &requestDigest, &actorID); err != nil {
+			return issues, fmt.Errorf("workstore: doctor effect receipt scan: %w", err)
+		}
+		invalidState := status == string(EffectReceiptStatusPending) && committedAt.Valid ||
+			status == string(EffectReceiptStatusCommitted) && !committedAt.Valid ||
+			updatedAt < createdAt || committedAt.Valid && (committedAt.Int64 < createdAt || committedAt.Int64 > updatedAt)
+		if invalidState {
+			issues = append(issues, DoctorIssue{
+				Code: "invalid_effect_receipt_state", RecordType: "effect_receipt", RecordID: id,
+				Field: "committed_at", Detail: "effect status and lifecycle timestamps are inconsistent",
+			})
+		}
+		contracts := []struct{ field, value string }{
+			{field: "idempotency_key", value: idempotencyKey},
+			{field: "effect_type", value: effectType},
+			{field: "request_digest", value: requestDigest},
+			{field: "actor_id", value: actorID},
+		}
+		for _, contract := range contracts {
+			if strings.TrimSpace(contract.value) == "" {
+				issues = append(issues, DoctorIssue{
+					Code: "invalid_effect_receipt_contract", RecordType: "effect_receipt", RecordID: id,
+					Field: contract.field, Detail: "required effect receipt contract field is empty",
+				})
+			}
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return issues, fmt.Errorf("workstore: doctor effect receipt iterate: %w", err)
 	}
 	return issues, nil
 }

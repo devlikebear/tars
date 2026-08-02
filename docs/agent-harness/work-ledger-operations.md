@@ -68,7 +68,8 @@ reported digest and running `Store.Doctor`.
 
 Call `Store.ExportJSONL(ctx, workspaceID, destination)`. Records are written in
 a deterministic order as a header followed by Work, Step, dependency, Attempt,
-Event, Approval, Artifact, Proof, and import-marker envelopes. The final line
+Event, Approval, Artifact, Proof, effect-receipt, and import-marker envelopes.
+The final line
 contains a SHA-256 digest over every preceding line plus per-type record counts.
 
 The export is a portable audit artifact, not an in-place database replacement.
@@ -85,6 +86,8 @@ manual incident recovery. A healthy report requires:
 - stored JSON documents to decode;
 - terminal Work, Step, and Attempt records to have terminal timestamps;
 - the Step dependency graph to be acyclic; and
+- effect receipts to contain valid outcome JSON, required idempotency contract
+  fields, and timestamps consistent with pending or committed status; and
 - every Work ID referenced by an import marker to exist in that workspace.
 
 `Doctor` is read-only. It reports issue codes and record IDs but does not repair
@@ -165,7 +168,8 @@ restart, the scheduler reconnects a still-valid Agent Runtime attempt when the
 executor can identify it. Otherwise it releases or reclaims the lease and
 applies the recorded bounded policy. A Step never implies exactly-once external
 side effects; mutating-tool idempotency and effect receipts are a separate
-control-plane capability.
+control-plane capability. See [Agent Runtime checkpoint recovery](checkpoint-recovery.md)
+for the crash boundaries, human-decision path, and executor limitations.
 
 Operator APIs are workspace-scoped:
 

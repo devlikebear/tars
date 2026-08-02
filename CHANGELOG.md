@@ -10,6 +10,8 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 - **Opt-in durable scheduler and restart recovery (#904)** — Adds dependency-aware step promotion, atomic claims, leases, heartbeats, bounded retry/replan/decompose policies, reconnect-or-reclaim recovery, human review/resume, and request-independent wait/watch/cancel APIs. `subagents_orchestrate` returns a durable `work_id` when `work_ledger.scheduler.enabled` is explicitly enabled, while the legacy request-bound implementation remains the rollback path.
 - **Durable work Console controls (#904)** — The Tasks timeline now follows session-owned durable work through SSE, shows scheduler decisions and operator-attention reasons, and exposes confirmed work cancellation plus reasoned step resume without reconstructing the originating chat request.
+- **Versioned Agent Runtime recovery checkpoints (#907)** — Replaces prompt-only restart semantics with explicit retry, receipt-backed replay, and provider-session resume modes. Checkpoints declare capability and limitations, preserve legacy prompt snapshots as retry-only, carry durable Work correlation, and expose unsafe pending effects as a human decision in the API and Console.
+- **Durable tool effect receipts (#907)** — Records local mutating-tool requests before invocation and commits bounded results afterward, persists durable-run receipts in the Work Ledger, replays committed sibling results without repeating effects, and extends Work Ledger doctor checks for receipt JSON and lifecycle invariants.
 
 ## [0.34.4] - 2026-08-02
 

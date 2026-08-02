@@ -162,3 +162,48 @@ func TestEffectReceiptPendingStateSurvivesReopen(t *testing.T) {
 		t.Fatalf("pending receipt after reopen: %+v", got)
 	}
 }
+
+func TestDoctorReportsInvalidEffectReceiptStateAndOutcome(t *testing.T) {
+	ctx := context.Background()
+	store := openTestStore(t, t.TempDir()+"/work-ledger.db")
+	work := mustCreateWork(t, store, "workspace-a", "effect-doctor")
+	pending, err := store.BeginEffectReceipt(ctx, BeginEffectReceiptInput{
+		WorkspaceID: work.WorkspaceID, WorkID: work.ID, IdempotencyKey: "pending-effect",
+		EffectType: "external_message", RequestDigest: "digest-pending", ActorID: "worker",
+	})
+	if err != nil {
+		t.Fatalf("begin pending receipt: %v", err)
+	}
+	committed, err := store.BeginEffectReceipt(ctx, BeginEffectReceiptInput{
+		WorkspaceID: work.WorkspaceID, WorkID: work.ID, IdempotencyKey: "committed-effect",
+		EffectType: "workspace_write", RequestDigest: "digest-committed", ActorID: "worker",
+	})
+	if err != nil {
+		t.Fatalf("begin committed receipt: %v", err)
+	}
+	committed, err = store.CommitEffectReceipt(ctx, CommitEffectReceiptInput{
+		WorkspaceID: work.WorkspaceID, WorkID: work.ID, IdempotencyKey: committed.IdempotencyKey,
+		RequestDigest: committed.RequestDigest, OutcomeJSON: json.RawMessage(`{"ok":true}`), ActorID: "worker",
+	})
+	if err != nil {
+		t.Fatalf("commit receipt: %v", err)
+	}
+	if _, err := store.db.ExecContext(ctx, "UPDATE effect_receipts SET committed_at = created_at WHERE id = ?", pending.ID); err != nil {
+		t.Fatalf("corrupt pending receipt: %v", err)
+	}
+	if _, err := store.db.ExecContext(ctx, "UPDATE effect_receipts SET committed_at = NULL, outcome_json = '{' WHERE id = ?", committed.ID); err != nil {
+		t.Fatalf("corrupt committed receipt: %v", err)
+	}
+
+	report, err := store.Doctor(ctx, work.WorkspaceID)
+	if err != nil {
+		t.Fatalf("doctor effect receipts: %v", err)
+	}
+	if report.Healthy || !hasDoctorIssue(report, "invalid_json", "effect_receipt", committed.ID) {
+		t.Fatalf("doctor did not report invalid receipt outcome: %#v", report)
+	}
+	if !hasDoctorIssue(report, "invalid_effect_receipt_state", "effect_receipt", pending.ID) ||
+		!hasDoctorIssue(report, "invalid_effect_receipt_state", "effect_receipt", committed.ID) {
+		t.Fatalf("doctor did not report receipt timestamp invariants: %#v", report)
+	}
+}

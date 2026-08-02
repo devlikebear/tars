@@ -82,4 +82,4 @@ make agent-harness-eval \
 - Keep live-provider output outside CI and out of the repository unless a release review explicitly chooses to publish it.
 - Never include prompts, credentials, local absolute paths, or raw provider responses in committed reports.
 
-The strategic interpretation of the baseline is in the [2026-08-02 market scan](market-scan-2026-08-02.md). The storage decision for the next phase is in [ADR: Durable Work Ledger storage](../decisions/durable-work-ledger-storage.md).
+The strategic interpretation of the baseline is in the [2026-08-02 market scan](market-scan-2026-08-02.md). The storage decision for the next phase is in [ADR: Durable Work Ledger storage](../decisions/durable-work-ledger-storage.md). Operator behavior for versioned checkpoints, effect receipts, and the three recovery modes is documented in [Agent Runtime checkpoint recovery](checkpoint-recovery.md).
