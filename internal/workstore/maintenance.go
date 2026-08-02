@@ -161,6 +161,9 @@ func (exporter *jsonlExporter) writeProjection(projection WorkProjection) error 
 		func() error { return writeExportRecords(exporter, "artifact", projection.Artifacts) },
 		func() error { return writeExportRecords(exporter, "proof", projection.Proofs) },
 		func() error { return writeExportRecords(exporter, "effect_receipt", projection.EffectReceipts) },
+		func() error { return writeExportRecords(exporter, "capability_version", projection.CapabilityVersions) },
+		func() error { return writeExportRecords(exporter, "evaluation_run", projection.EvaluationRuns) },
+		func() error { return writeExportRecords(exporter, "capability_outcome", projection.CapabilityOutcomes) },
 	}
 	for _, write := range writers {
 		if err := write(); err != nil {
@@ -402,6 +405,9 @@ func (s *Store) Doctor(ctx context.Context, workspaceID string) (DoctorReport, e
 	proofIssues, err := s.doctorProofIssues(ctx, workspaceID)
 	report.Issues = append(report.Issues, proofIssues...)
 	addCheck("proofs", err)
+	capabilityIssues, err := s.doctorCapabilityIssues(ctx, workspaceID)
+	report.Issues = append(report.Issues, capabilityIssues...)
+	addCheck("capabilities", err)
 	importIssues, err := s.doctorImportIssues(ctx, workspaceID)
 	report.Issues = append(report.Issues, importIssues...)
 	addCheck("import_references", err)
@@ -540,6 +546,13 @@ func (s *Store) doctorJSONIssues(ctx context.Context, workspaceID string) ([]Doc
 		{"proof", "input_json", "SELECT id, input_json FROM proofs WHERE workspace_id = ?"},
 		{"proof", "artifact_digests_json", "SELECT id, artifact_digests_json FROM proofs WHERE workspace_id = ?"},
 		{"import_marker", "work_ids_json", "SELECT id, work_ids_json FROM import_markers WHERE workspace_id = ?"},
+		{"capability_version", "snapshot_json", "SELECT id, snapshot_json FROM capability_versions WHERE workspace_id = ?"},
+		{"capability_version", "provenance_json", "SELECT id, provenance_json FROM capability_versions WHERE workspace_id = ?"},
+		{"capability_version", "permissions_json", "SELECT id, permissions_json FROM capability_versions WHERE workspace_id = ?"},
+		{"capability_version", "rollout_json", "SELECT id, rollout_json FROM capability_versions WHERE workspace_id = ?"},
+		{"evaluation_run", "metrics_json", "SELECT id, metrics_json FROM evaluation_runs WHERE workspace_id = ?"},
+		{"evaluation_run", "delta_json", "SELECT id, delta_json FROM evaluation_runs WHERE workspace_id = ?"},
+		{"evaluation_run", "report_json", "SELECT id, report_json FROM evaluation_runs WHERE workspace_id = ?"},
 	}
 	var issues []DoctorIssue
 	for _, check := range checks {
@@ -798,6 +811,91 @@ func (s *Store) doctorProofIssues(ctx context.Context, workspaceID string) ([]Do
 		return issues, fmt.Errorf("workstore: doctor proof iterate: %w", err)
 	}
 	return issues, nil
+}
+
+func (s *Store) doctorCapabilityIssues(ctx context.Context, workspaceID string) ([]DoctorIssue, error) {
+	rows, err := s.db.QueryContext(ctx, capabilityVersionSelect+" WHERE workspace_id = ? ORDER BY id", workspaceID)
+	if err != nil {
+		return nil, fmt.Errorf("workstore: doctor capability query: %w", err)
+	}
+	defer closeRows(rows)
+	versions := make([]CapabilityVersion, 0)
+	for rows.Next() {
+		version, err := scanCapabilityVersion(rows)
+		if err != nil {
+			return nil, fmt.Errorf("workstore: doctor capability scan: %w", err)
+		}
+		versions = append(versions, version)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("workstore: doctor capability iterate: %w", err)
+	}
+	issues := make([]DoctorIssue, 0)
+	for _, version := range versions {
+		legacyPromoted := false
+		var provenance struct {
+			LegacyStatus string `json:"legacy_status"`
+		}
+		if json.Unmarshal(version.ProvenanceJSON, &provenance) == nil && provenance.LegacyStatus == "approved" {
+			legacyPromoted = true
+		}
+		if !legacyPromoted && (version.State == CapabilityStateApproved || version.State == CapabilityStateCanary || version.State == CapabilityStatePromoted) && version.ApprovalID == "" {
+			issues = append(issues, DoctorIssue{
+				Code: "capability_missing_approval", RecordType: "capability_version",
+				RecordID: version.ID, Field: "approval_id", Detail: "reviewed capability state requires linked human approval",
+			})
+		}
+		if version.State == CapabilityStatePromoted && version.PromotedAt == nil {
+			issues = append(issues, DoctorIssue{
+				Code: "capability_missing_promoted_at", RecordType: "capability_version",
+				RecordID: version.ID, Field: "promoted_at", Detail: "promoted capability is missing promotion timestamp",
+			})
+		}
+		if version.State == CapabilityStateRolledBack && version.RolledBackAt == nil {
+			issues = append(issues, DoctorIssue{
+				Code: "capability_missing_rolled_back_at", RecordType: "capability_version",
+				RecordID: version.ID, Field: "rolled_back_at", Detail: "rolled-back capability is missing rollback timestamp",
+			})
+		}
+		if legacyPromoted {
+			continue
+		}
+		requiredStages := requiredEvaluationStagesForState(version.State)
+		for _, stage := range requiredStages {
+			var status EvaluationStatus
+			err := s.db.QueryRowContext(ctx, `
+				SELECT status FROM evaluation_runs
+				WHERE workspace_id = ? AND capability_version_id = ? AND stage = ?
+				ORDER BY created_at DESC, id DESC LIMIT 1
+			`, workspaceID, version.ID, stage).Scan(&status)
+			if errors.Is(err, sql.ErrNoRows) || status != EvaluationStatusPassed {
+				issues = append(issues, DoctorIssue{
+					Code: "capability_missing_evaluation", RecordType: "capability_version",
+					RecordID: version.ID, Field: string(stage), Detail: "required capability evaluation is not passed",
+				})
+				continue
+			}
+			if err != nil {
+				return issues, fmt.Errorf("workstore: doctor capability evaluation query: %w", err)
+			}
+		}
+	}
+	return issues, nil
+}
+
+func requiredEvaluationStagesForState(state CapabilityState) []EvaluationStage {
+	switch state {
+	case CapabilityStateOfflineEval:
+		return []EvaluationStage{EvaluationStageSandbox}
+	case CapabilityStateShadow:
+		return []EvaluationStage{EvaluationStageSandbox, EvaluationStageOffline}
+	case CapabilityStateApproved:
+		return []EvaluationStage{EvaluationStageSandbox, EvaluationStageOffline, EvaluationStageShadow}
+	case CapabilityStateCanary, CapabilityStatePromoted:
+		return []EvaluationStage{EvaluationStageSandbox, EvaluationStageOffline, EvaluationStageShadow, EvaluationStageCanary}
+	default:
+		return nil
+	}
 }
 
 func (s *Store) doctorImportIssues(ctx context.Context, workspaceID string) ([]DoctorIssue, error) {

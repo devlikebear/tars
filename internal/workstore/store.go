@@ -20,7 +20,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const schemaVersion = 6
+const schemaVersion = 7
 
 type Options struct {
 	Now   func() time.Time
@@ -365,6 +365,85 @@ CREATE INDEX idx_proofs_workspace_step_status
     ON proofs (workspace_id, work_id, step_id, status, updated_at DESC);
 `
 
+const migrationV7 = `
+CREATE TABLE capability_versions (
+    schema_version INTEGER NOT NULL,
+    id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL,
+    work_id TEXT NOT NULL REFERENCES works(id),
+    candidate_id TEXT NOT NULL,
+    capability_name TEXT NOT NULL,
+    version INTEGER NOT NULL CHECK (version > 0),
+    state TEXT NOT NULL CHECK (state IN ('candidate','draft','sandbox','offline_eval','shadow','approved','canary','promoted','rolled_back','rejected')),
+    content_digest TEXT NOT NULL,
+    snapshot_json BLOB NOT NULL DEFAULT '{}',
+    provenance_json BLOB NOT NULL DEFAULT '{}',
+    permissions_json BLOB NOT NULL DEFAULT '[]',
+    approval_id TEXT REFERENCES approvals(id),
+    previous_version_id TEXT REFERENCES capability_versions(id),
+    rollback_target_id TEXT REFERENCES capability_versions(id),
+    rollout_json BLOB NOT NULL DEFAULT '{}',
+    actor_id TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    promoted_at INTEGER,
+    rolled_back_at INTEGER,
+    UNIQUE (workspace_id, candidate_id),
+    UNIQUE (workspace_id, capability_name, version)
+);
+CREATE INDEX idx_capability_versions_workspace_name_version
+    ON capability_versions (workspace_id, capability_name, version DESC);
+CREATE INDEX idx_capability_versions_workspace_state_updated
+    ON capability_versions (workspace_id, state, updated_at DESC);
+CREATE INDEX idx_capability_versions_workspace_work
+    ON capability_versions (workspace_id, work_id, updated_at DESC);
+
+CREATE TABLE evaluation_runs (
+    schema_version INTEGER NOT NULL,
+    id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL,
+    work_id TEXT NOT NULL REFERENCES works(id),
+    capability_version_id TEXT NOT NULL REFERENCES capability_versions(id),
+    idempotency_key TEXT NOT NULL,
+    stage TEXT NOT NULL CHECK (stage IN ('sandbox','offline','shadow','canary')),
+    status TEXT NOT NULL CHECK (status IN ('pending','passed','failed')),
+    baseline_version_id TEXT REFERENCES capability_versions(id),
+    metrics_json BLOB NOT NULL DEFAULT '{}',
+    delta_json BLOB NOT NULL DEFAULT '{}',
+    report_json BLOB NOT NULL DEFAULT '{}',
+    proof_id TEXT REFERENCES proofs(id),
+    actor_id TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    UNIQUE (workspace_id, capability_version_id, idempotency_key)
+);
+CREATE INDEX idx_evaluation_runs_workspace_version_stage
+    ON evaluation_runs (workspace_id, capability_version_id, stage, created_at DESC);
+CREATE INDEX idx_evaluation_runs_workspace_status_updated
+    ON evaluation_runs (workspace_id, status, updated_at DESC);
+
+CREATE TABLE capability_outcomes (
+    schema_version INTEGER NOT NULL,
+    id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL,
+    capability_version_id TEXT NOT NULL REFERENCES capability_versions(id),
+    work_id TEXT NOT NULL REFERENCES works(id),
+    attempt_id TEXT REFERENCES attempts(id),
+    idempotency_key TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('succeeded','failed','cancelled')),
+    verifier_status TEXT NOT NULL CHECK (verifier_status IN ('reported','pending','passed','failed','stale')),
+    cost_usd REAL NOT NULL DEFAULT 0 CHECK (cost_usd >= 0),
+    latency_ms INTEGER NOT NULL DEFAULT 0 CHECK (latency_ms >= 0),
+    actor_id TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    UNIQUE (workspace_id, capability_version_id, idempotency_key)
+);
+CREATE INDEX idx_capability_outcomes_workspace_version_created
+    ON capability_outcomes (workspace_id, capability_version_id, created_at DESC);
+CREATE INDEX idx_capability_outcomes_workspace_work
+    ON capability_outcomes (workspace_id, work_id, created_at DESC);
+`
+
 var schemaMigrations = []struct {
 	version int
 	sql     string
@@ -375,6 +454,7 @@ var schemaMigrations = []struct {
 	{version: 4, sql: migrationV4},
 	{version: 5, sql: migrationV5},
 	{version: 6, sql: migrationV6},
+	{version: 7, sql: migrationV7},
 }
 
 func Open(ctx context.Context, path string, opts Options) (*Store, error) {
@@ -975,6 +1055,14 @@ func (s *Store) CreateApproval(ctx context.Context, input CreateApprovalInput) (
 		return Approval{}, err
 	}
 	now := s.now().UTC()
+	reviewerID := strings.TrimSpace(input.ReviewerID)
+	var decidedAt any
+	if input.Status != ApprovalStatusPending {
+		if reviewerID == "" {
+			reviewerID = strings.TrimSpace(input.ActorID)
+		}
+		decidedAt = now.UnixMilli()
+	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return Approval{}, fmt.Errorf("workstore: begin create approval: %w", err)
@@ -987,13 +1075,13 @@ func (s *Store) CreateApproval(ctx context.Context, input CreateApprovalInput) (
 		INSERT INTO approvals (
 			schema_version, id, workspace_id, work_id, step_id, attempt_id,
 			idempotency_key, causation_id, authority, status, request, reason,
-			actor_id, expires_at, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			actor_id, reviewer_id, expires_at, decided_at, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (workspace_id, work_id, idempotency_key) DO NOTHING
 	`, recordSchemaVersion, id, input.WorkspaceID, input.WorkID, nullableString(input.StepID),
 		nullableString(input.AttemptID), input.IdempotencyKey, input.CausationID, input.Authority,
-		input.Status, input.Request, input.Reason, input.ActorID, nullableTime(input.ExpiresAt),
-		now.UnixMilli(), now.UnixMilli())
+		input.Status, input.Request, input.Reason, input.ActorID, reviewerID, nullableTime(input.ExpiresAt),
+		decidedAt, now.UnixMilli(), now.UnixMilli())
 	if err != nil {
 		return Approval{}, fmt.Errorf("workstore: insert approval: %w", err)
 	}
@@ -1377,6 +1465,15 @@ func (s *Store) GetWorkProjection(ctx context.Context, workspaceID, workID strin
 		return WorkProjection{}, err
 	}
 	if projection.EffectReceipts, err = queryEffectReceipts(ctx, tx, workspaceID, workID); err != nil {
+		return WorkProjection{}, err
+	}
+	if projection.CapabilityVersions, err = queryCapabilityVersions(ctx, tx, workspaceID, workID); err != nil {
+		return WorkProjection{}, err
+	}
+	if projection.EvaluationRuns, err = queryEvaluationRuns(ctx, tx, workspaceID, workID); err != nil {
+		return WorkProjection{}, err
+	}
+	if projection.CapabilityOutcomes, err = queryCapabilityOutcomes(ctx, tx, workspaceID, workID); err != nil {
 		return WorkProjection{}, err
 	}
 	if err := tx.Commit(); err != nil {

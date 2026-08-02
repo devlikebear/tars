@@ -20,6 +20,7 @@ var (
 	ErrClaimConflict     = errors.New("workstore: step claim conflict")
 	ErrClaimExpired      = errors.New("workstore: step claim expired")
 	ErrEffectConflict    = errors.New("workstore: effect receipt conflict")
+	ErrCapabilityGate    = errors.New("workstore: capability lifecycle gate not satisfied")
 )
 
 type WorkState string
@@ -84,6 +85,46 @@ const (
 	EffectReceiptStatusCommitted EffectReceiptStatus = "committed"
 )
 
+type CapabilityState string
+
+const (
+	CapabilityStateCandidate   CapabilityState = "candidate"
+	CapabilityStateDraft       CapabilityState = "draft"
+	CapabilityStateSandbox     CapabilityState = "sandbox"
+	CapabilityStateOfflineEval CapabilityState = "offline_eval"
+	CapabilityStateShadow      CapabilityState = "shadow"
+	CapabilityStateApproved    CapabilityState = "approved"
+	CapabilityStateCanary      CapabilityState = "canary"
+	CapabilityStatePromoted    CapabilityState = "promoted"
+	CapabilityStateRolledBack  CapabilityState = "rolled_back"
+	CapabilityStateRejected    CapabilityState = "rejected"
+)
+
+type EvaluationStage string
+
+const (
+	EvaluationStageSandbox EvaluationStage = "sandbox"
+	EvaluationStageOffline EvaluationStage = "offline"
+	EvaluationStageShadow  EvaluationStage = "shadow"
+	EvaluationStageCanary  EvaluationStage = "canary"
+)
+
+type EvaluationStatus string
+
+const (
+	EvaluationStatusPending EvaluationStatus = "pending"
+	EvaluationStatusPassed  EvaluationStatus = "passed"
+	EvaluationStatusFailed  EvaluationStatus = "failed"
+)
+
+type CapabilityOutcomeStatus string
+
+const (
+	CapabilityOutcomeSucceeded CapabilityOutcomeStatus = "succeeded"
+	CapabilityOutcomeFailed    CapabilityOutcomeStatus = "failed"
+	CapabilityOutcomeCancelled CapabilityOutcomeStatus = "cancelled"
+)
+
 type EventType string
 
 const (
@@ -124,6 +165,11 @@ const (
 	EventTypeExecutionEnvironmentDestroyed   EventType = "execution.environment_destroyed"
 	EventTypeExecutionRecoveryStarted        EventType = "execution.recovery_started"
 	EventTypeExecutionWorkerCancelled        EventType = "execution.worker_cancelled"
+	EventTypeCapabilityVersionCreated        EventType = "capability.version_created"
+	EventTypeCapabilityTransitioned          EventType = "capability.transitioned"
+	EventTypeCapabilityEvaluationRecorded    EventType = "capability.evaluation_recorded"
+	EventTypeCapabilityOutcomeRecorded       EventType = "capability.outcome_recorded"
+	EventTypeCapabilityRegressionDetected    EventType = "capability.regression_detected"
 )
 
 type StepExecutionAction string
@@ -479,16 +525,141 @@ type StepDependency struct {
 }
 
 type WorkProjection struct {
-	Work           Work             `json:"work"`
-	Steps          []Step           `json:"steps"`
-	Schedules      []StepSchedule   `json:"schedules"`
-	Dependencies   []StepDependency `json:"dependencies"`
-	Attempts       []Attempt        `json:"attempts"`
-	Events         []Event          `json:"events"`
-	Proofs         []Proof          `json:"proofs"`
-	Artifacts      []Artifact       `json:"artifacts"`
-	Approvals      []Approval       `json:"approvals"`
-	EffectReceipts []EffectReceipt  `json:"effect_receipts"`
+	Work               Work                `json:"work"`
+	Steps              []Step              `json:"steps"`
+	Schedules          []StepSchedule      `json:"schedules"`
+	Dependencies       []StepDependency    `json:"dependencies"`
+	Attempts           []Attempt           `json:"attempts"`
+	Events             []Event             `json:"events"`
+	Proofs             []Proof             `json:"proofs"`
+	Artifacts          []Artifact          `json:"artifacts"`
+	Approvals          []Approval          `json:"approvals"`
+	EffectReceipts     []EffectReceipt     `json:"effect_receipts"`
+	CapabilityVersions []CapabilityVersion `json:"capability_versions"`
+	EvaluationRuns     []EvaluationRun     `json:"evaluation_runs"`
+	CapabilityOutcomes []CapabilityOutcome `json:"capability_outcomes"`
+}
+
+type CapabilityVersion struct {
+	SchemaVersion     int             `json:"schema_version"`
+	ID                string          `json:"id"`
+	WorkspaceID       string          `json:"workspace_id"`
+	WorkID            string          `json:"work_id"`
+	CandidateID       string          `json:"candidate_id"`
+	CapabilityName    string          `json:"capability_name"`
+	Version           int             `json:"version"`
+	State             CapabilityState `json:"state"`
+	ContentDigest     string          `json:"content_digest"`
+	SnapshotJSON      json.RawMessage `json:"snapshot"`
+	ProvenanceJSON    json.RawMessage `json:"provenance"`
+	PermissionsJSON   json.RawMessage `json:"permissions"`
+	ApprovalID        string          `json:"approval_id,omitempty"`
+	PreviousVersionID string          `json:"previous_version_id,omitempty"`
+	RollbackTargetID  string          `json:"rollback_target_id,omitempty"`
+	RolloutJSON       json.RawMessage `json:"rollout"`
+	ActorID           string          `json:"actor_id"`
+	CreatedAt         time.Time       `json:"created_at"`
+	UpdatedAt         time.Time       `json:"updated_at"`
+	PromotedAt        *time.Time      `json:"promoted_at,omitempty"`
+	RolledBackAt      *time.Time      `json:"rolled_back_at,omitempty"`
+}
+
+type EvaluationRun struct {
+	SchemaVersion       int              `json:"schema_version"`
+	ID                  string           `json:"id"`
+	WorkspaceID         string           `json:"workspace_id"`
+	WorkID              string           `json:"work_id"`
+	CapabilityVersionID string           `json:"capability_version_id"`
+	IdempotencyKey      string           `json:"idempotency_key"`
+	Stage               EvaluationStage  `json:"stage"`
+	Status              EvaluationStatus `json:"status"`
+	BaselineVersionID   string           `json:"baseline_version_id,omitempty"`
+	MetricsJSON         json.RawMessage  `json:"metrics"`
+	DeltaJSON           json.RawMessage  `json:"delta"`
+	ReportJSON          json.RawMessage  `json:"report"`
+	ProofID             string           `json:"proof_id,omitempty"`
+	ActorID             string           `json:"actor_id"`
+	CreatedAt           time.Time        `json:"created_at"`
+	UpdatedAt           time.Time        `json:"updated_at"`
+}
+
+type CapabilityOutcome struct {
+	SchemaVersion       int                     `json:"schema_version"`
+	ID                  string                  `json:"id"`
+	WorkspaceID         string                  `json:"workspace_id"`
+	CapabilityVersionID string                  `json:"capability_version_id"`
+	WorkID              string                  `json:"work_id"`
+	AttemptID           string                  `json:"attempt_id,omitempty"`
+	IdempotencyKey      string                  `json:"idempotency_key"`
+	Status              CapabilityOutcomeStatus `json:"status"`
+	VerifierStatus      ProofStatus             `json:"verifier_status"`
+	CostUSD             float64                 `json:"cost_usd"`
+	LatencyMS           int64                   `json:"latency_ms"`
+	ActorID             string                  `json:"actor_id"`
+	CreatedAt           time.Time               `json:"created_at"`
+}
+
+type ListCapabilityVersionsFilter struct {
+	WorkspaceID    string
+	CapabilityName string
+	CandidateID    string
+	States         []CapabilityState
+	Limit          int
+}
+
+type CreateCapabilityVersionInput struct {
+	WorkspaceID      string
+	WorkID           string
+	CandidateID      string
+	CapabilityName   string
+	InitialState     CapabilityState
+	ContentDigest    string
+	SnapshotJSON     json.RawMessage
+	ProvenanceJSON   json.RawMessage
+	PermissionsJSON  json.RawMessage
+	RollbackTargetID string
+	RolloutJSON      json.RawMessage
+	ActorID          string
+}
+
+type TransitionCapabilityVersionInput struct {
+	WorkspaceID      string
+	VersionID        string
+	ExpectedState    CapabilityState
+	ToState          CapabilityState
+	ApprovalID       string
+	RollbackTargetID string
+	RolloutJSON      json.RawMessage
+	ActorID          string
+	Reason           string
+}
+
+type CreateEvaluationRunInput struct {
+	WorkspaceID         string
+	WorkID              string
+	CapabilityVersionID string
+	IdempotencyKey      string
+	Stage               EvaluationStage
+	Status              EvaluationStatus
+	BaselineVersionID   string
+	MetricsJSON         json.RawMessage
+	DeltaJSON           json.RawMessage
+	ReportJSON          json.RawMessage
+	ProofID             string
+	ActorID             string
+}
+
+type RecordCapabilityOutcomeInput struct {
+	WorkspaceID         string
+	CapabilityVersionID string
+	WorkID              string
+	AttemptID           string
+	IdempotencyKey      string
+	Status              CapabilityOutcomeStatus
+	VerifierStatus      ProofStatus
+	CostUSD             float64
+	LatencyMS           int64
+	ActorID             string
 }
 
 type ListWorksFilter struct {
@@ -579,6 +750,7 @@ type CreateApprovalInput struct {
 	Request        string
 	Reason         string
 	ActorID        string
+	ReviewerID     string
 	ExpiresAt      *time.Time
 }
 
