@@ -121,10 +121,11 @@ type HeartbeatPayload struct {
 }
 
 type ProvisionPayload struct {
-	EnvironmentID string          `json:"environment_id"`
-	RootDir       string          `json:"root_dir,omitempty"`
-	Manifest      json.RawMessage `json:"manifest,omitempty"`
-	Policy        ExecutionPolicy `json:"policy,omitempty"`
+	EnvironmentID string           `json:"environment_id"`
+	RootDir       string           `json:"root_dir,omitempty"`
+	Manifest      json.RawMessage  `json:"manifest,omitempty"`
+	Policy        ExecutionPolicy  `json:"policy,omitempty"`
+	Binding       TaskTokenBinding `json:"binding,omitempty"`
 }
 
 type SyncPayload struct {
@@ -163,10 +164,12 @@ type CollectPayload struct {
 	Succeeded      bool   `json:"succeeded,omitempty"`
 	SnapshotDigest string `json:"snapshot_digest,omitempty"`
 	ArtifactCount  int    `json:"artifact_count,omitempty"`
+	TaskToken      string `json:"task_token,omitempty"`
 }
 
 type DestroyPayload struct {
-	Reason string `json:"reason"`
+	Reason    string `json:"reason"`
+	TaskToken string `json:"task_token,omitempty"`
 }
 
 type LostPayload struct {

@@ -559,6 +559,19 @@ func sanitizedControlPayload(envelope Envelope) json.RawMessage {
 			"manifest_digest": manifestDigest, "policy": payload.Policy,
 		})
 		return raw
+	case MessageCollect:
+		var payload CollectPayload
+		_ = json.Unmarshal(envelope.Payload, &payload)
+		raw, _ := json.Marshal(map[string]any{
+			"complete": payload.Complete, "succeeded": payload.Succeeded,
+			"snapshot_digest": payload.SnapshotDigest, "artifact_count": payload.ArtifactCount,
+		})
+		return raw
+	case MessageDestroy:
+		var payload DestroyPayload
+		_ = json.Unmarshal(envelope.Payload, &payload)
+		raw, _ := json.Marshal(map[string]any{"reason": strings.TrimSpace(payload.Reason)})
+		return raw
 	default:
 		return append(json.RawMessage(nil), envelope.Payload...)
 	}
@@ -688,6 +701,7 @@ func decodePayload(raw json.RawMessage, target any) error {
 }
 
 func envelopeFingerprint(envelope Envelope) string {
+	payload := idempotencyPayload(envelope)
 	raw, _ := json.Marshal(struct {
 		ProtocolVersion string          `json:"protocol_version"`
 		Type            MessageType     `json:"type"`
@@ -695,7 +709,34 @@ func envelopeFingerprint(envelope Envelope) string {
 		PlacementID     string          `json:"placement_id"`
 		Sequence        int64           `json:"sequence"`
 		Payload         json.RawMessage `json:"payload"`
-	}{envelope.ProtocolVersion, envelope.Type, envelope.WorkerID, envelope.PlacementID, envelope.Sequence, envelope.Payload})
+	}{envelope.ProtocolVersion, envelope.Type, envelope.WorkerID, envelope.PlacementID, envelope.Sequence, payload})
 	digest := sha256.Sum256(raw)
 	return hex.EncodeToString(digest[:])
+}
+
+func idempotencyPayload(envelope Envelope) json.RawMessage {
+	switch envelope.Type {
+	case MessageExecute:
+		var payload ExecutePayload
+		if json.Unmarshal(envelope.Payload, &payload) == nil {
+			payload.TaskToken = ""
+			raw, _ := json.Marshal(payload)
+			return raw
+		}
+	case MessageCollect:
+		var payload CollectPayload
+		if json.Unmarshal(envelope.Payload, &payload) == nil {
+			payload.TaskToken = ""
+			raw, _ := json.Marshal(payload)
+			return raw
+		}
+	case MessageDestroy:
+		var payload DestroyPayload
+		if json.Unmarshal(envelope.Payload, &payload) == nil {
+			payload.TaskToken = ""
+			raw, _ := json.Marshal(payload)
+			return raw
+		}
+	}
+	return append(json.RawMessage(nil), envelope.Payload...)
 }

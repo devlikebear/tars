@@ -67,9 +67,9 @@ func TestControllerPersistsLifecycleAndPublishesEachMessageOnce(t *testing.T) {
 	apply(placementEnvelope(5, MessageStream, StreamPayload{Kind: "progress", Text: "halfway"}))
 	apply(placementEnvelope(6, MessageCheckpoint, CheckpointPayload{ID: "checkpoint-a", Digest: "sha256:checkpoint"}))
 	apply(placementEnvelope(7, MessageExecute, ExecutePayload{TaskToken: "task-token", Resume: true}))
-	apply(placementEnvelope(8, MessageCollect, CollectPayload{Complete: false}))
-	apply(placementEnvelope(9, MessageCollect, CollectPayload{Complete: true, Succeeded: true, SnapshotDigest: "sha256:result"}))
-	destroy := placementEnvelope(10, MessageDestroy, DestroyPayload{Reason: "completed"})
+	apply(placementEnvelope(8, MessageCollect, CollectPayload{Complete: false, TaskToken: "task-token"}))
+	apply(placementEnvelope(9, MessageCollect, CollectPayload{Complete: true, Succeeded: true, SnapshotDigest: "sha256:result", TaskToken: "task-token"}))
+	destroy := placementEnvelope(10, MessageDestroy, DestroyPayload{Reason: "completed", TaskToken: "task-token"})
 	result := apply(destroy)
 	if result.Duplicate {
 		t.Fatal("first destroy was marked duplicate")
