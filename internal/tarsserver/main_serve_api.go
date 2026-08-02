@@ -312,6 +312,7 @@ func buildAPIMux(
 	if err != nil {
 		return nil, err
 	}
+	var workLedger *workstore.Store
 	agentRuntime := agentruntime.NewRuntime(agentruntime.RuntimeOptions{
 		Enabled:                                   cfg.AgentRuntimeEnabled,
 		WorkspaceDir:                              cfg.WorkspaceDir,
@@ -362,7 +363,19 @@ func buildAPIMux(
 			return deps.usageTracker.EstimateCost(provider, model, llm.Usage{InputTokens: inputTokens, OutputTokens: outputTokens})
 		},
 		UsageTracker: deps.usageTracker,
-		Now:          nowFn,
+		OnRunsSnapshot: func(runs []agentruntime.Run) {
+			if err := syncAgentRuntimeRunsToWorkLedger(
+				context.Background(),
+				workLedger,
+				defaultWorkspaceID,
+				filepath.Join(strings.TrimSpace(cfg.AgentRuntimePersistenceDir), "runs.json"),
+				runs,
+				"agent-runtime",
+			); err != nil {
+				logger.Error().Err(err).Msg("synchronize agent runtime snapshot to work ledger failed")
+			}
+		},
+		Now: nowFn,
 	})
 	agentRuntimeForTelegram = agentRuntime
 
@@ -568,7 +581,6 @@ func buildAPIMux(
 		}
 		return true, refreshAgentRuntimeExecutors("extensions_reload")
 	}, sessionStore, extensionHealthOptions{MCPProvider: mcpClient, WorkspaceDir: cfg.WorkspaceDir})
-	agentRunsHandler := newAgentRunsAPIHandlerWithInflightLimit(agentRuntime, logger, cfg.APIMaxInflightAgentRuns)
 	agentSubagentsHandler := newAgentRuntimeSubagentsAPIHandler(agentRuntime, cfg, func() {
 		_ = refreshAgentRuntimeExecutors("agentruntime_subagents_update")
 	}, deps.llmRouter)
@@ -636,7 +648,7 @@ func buildAPIMux(
 	terminalHandler := newTerminalAPIHandler(cfg.WorkspaceDir, sessionStore, logger)
 	memoryHandler := newMemoryAPIHandler(cfg.WorkspaceDir, buildMemoryBackend(cfg.WorkspaceDir, semanticMemoryConfigFromConfig(cfg), cfg.MemoryBackend), logger)
 	codexUsageHandler := newCodexRateLimitAPIHandler(deps.llmRouter, cfg.APIAuthMode)
-	workLedger, _, err := bootstrapWorkLedger(context.Background(), workLedgerBootstrapOptions{
+	workLedger, _, err = bootstrapWorkLedger(context.Background(), workLedgerBootstrapOptions{
 		WorkspaceDir:               cfg.WorkspaceDir,
 		AgentRuntimePersistenceDir: cfg.AgentRuntimePersistenceDir,
 		Logger:                     logger,
@@ -644,6 +656,7 @@ func buildAPIMux(
 	if err != nil {
 		return nil, err
 	}
+	agentRunsHandler := newAgentRunsAPIHandlerWithWorkLedgerAndInflightLimit(agentRuntime, workLedger, logger, cfg.APIMaxInflightAgentRuns)
 	sessionHandler := newSessionAPIHandlerFullWithLocalSkillsAndWorkLedger(sessionStore, logger, deps.usageTracker, sessionStyleDefaultsFromConfig(cfg), dispatcher.Emit, overrideService, deps.llmRouter, localSkillsHandlerDeps{provider: extensionsManager, workspaceDir: cfg.WorkspaceDir}, workLedger)
 	workLedgerHandler := newWorkLedgerAPIHandler(workLedger, logger)
 	registerAPIRoutes(mux, apiRouteHandlers{
