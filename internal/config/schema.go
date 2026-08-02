@@ -187,6 +187,11 @@ func Schema() []FieldMeta {
 
 		// ── Work Ledger ──────────────────────────
 		f("work_ledger_enabled", "Work Ledger", "bool", "Enabled", "Enable the additive durable Work Ledger and its read-only projections"),
+		f("work_scheduler_enabled", "Work Scheduler", "bool", "Enabled", "Run durable Work Ledger steps independently of chat requests"),
+		f("work_scheduler_max_workers", "Work Scheduler", "int", "Max Workers", "Maximum concurrent durable step executions"),
+		f("work_scheduler_lease_seconds", "Work Scheduler", "int", "Lease Seconds", "Claim lease duration before an unresponsive worker can be reclaimed"),
+		f("work_scheduler_heartbeat_seconds", "Work Scheduler", "int", "Heartbeat Seconds", "Interval used to renew active step leases"),
+		f("work_scheduler_poll_milliseconds", "Work Scheduler", "int", "Poll Milliseconds", "Interval used to promote and claim ready steps"),
 
 		// ── Channels ─────────────────────────────
 		f("channels_local_enabled", "Channels", "bool", "Local Channel", "Enable local channel for CLI dispatch"),
@@ -501,6 +506,16 @@ func extractValue(yamlKey string, cfg Config) any {
 	// Work Ledger
 	case "work_ledger_enabled":
 		return cfg.WorkLedger.Enabled
+	case "work_scheduler_enabled":
+		return cfg.WorkLedger.SchedulerEnabled
+	case "work_scheduler_max_workers":
+		return cfg.WorkLedger.SchedulerMaxWorkers
+	case "work_scheduler_lease_seconds":
+		return cfg.WorkLedger.SchedulerLeaseSeconds
+	case "work_scheduler_heartbeat_seconds":
+		return cfg.WorkLedger.SchedulerHeartbeatSeconds
+	case "work_scheduler_poll_milliseconds":
+		return cfg.WorkLedger.SchedulerPollMilliseconds
 	// Channels
 	case "channels_local_enabled":
 		return cfg.ChannelsLocalEnabled

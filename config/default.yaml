@@ -67,6 +67,12 @@ automation:
 
 work_ledger:
   enabled: true
+  scheduler:
+    enabled: false
+    max_workers: 4
+    lease_seconds: 60
+    heartbeat_seconds: 20
+    poll_milliseconds: 250
 
 companion:
   enabled: true

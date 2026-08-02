@@ -35,10 +35,10 @@ The name comes from the TARS in *Interstellar* — practical, direct, dependable
 | **Release used** | Stable `v2026.7.1` | Stable `v0.19.1` (`v2026.7.30`) | `v0.34.4` (this release) |
 | **Packaging** | TypeScript Gateway plus web/native apps and plugins | Python agent/gateway plus TUI, web, and desktop surfaces | Go single binary with embedded browser console and CLI |
 | **Delegation / harnesses** | Native subagents, Codex runtime, and ACP-backed external harness sessions | Isolated `delegate_task` children, live transcripts, MoA, and coding-runtime adapters | Native Agent Runtime with model tiers, tool policy, depth limits, and experimental consensus |
-| **Durable async work** | Background-task ledger plus SQLite-backed automations | Durable Kanban/goals, delegated-result recovery, and delivery-obligation ledger | SQLite Work Ledger v1 with versioned work, steps, attempts, audit events, approvals, artifacts, proof, and compatibility projections |
-| **Restart behavior** | Persistent automation/task records; the latest beta adds broader crash recovery | Gateway auto-resume and durable delegation/delivery recovery | Completed history survives, but an active run is restored as canceled and needs operator action |
+| **Durable async work** | Background-task ledger plus SQLite-backed automations | Durable Kanban/goals, delegated-result recovery, and delivery-obligation ledger | SQLite Work Ledger plus an opt-in dependency scheduler with leases, retries, budgets, and operator escalation |
+| **Restart behavior** | Persistent automation/task records; the latest beta adds broader crash recovery | Gateway auto-resume and durable delegation/delivery recovery | Opt-in staged flows reconnect valid external attempts or reclaim leases; standalone Agent Runtime runs still restore as canceled |
 | **Proof of completion** | Completion handoff asks the parent to verify; task audit surfaces unhealthy work | Goal completion contracts and recorded verification evidence | Work Ledger proof/artifact records plus task command evidence; an independent verifier is not yet a universal completion gate |
-| **Scheduling** | Persistent Automations, cron alias, heartbeat monitors | Cron, blueprints, watchdog/no-agent jobs | Session-bound cron, Pulse watchdog, and nightly Reflection |
+| **Scheduling** | Persistent Automations, cron alias, heartbeat monitors | Cron, blueprints, watchdog/no-agent jobs | Session cron, Pulse, Reflection, and an opt-in durable dependency scheduler |
 | **Skills / learning** | Skills and plugin catalog | On-demand skills, `/learn`, background review, and Curator | On-demand skills, reviewed memory extraction, skill creation, and Skill Hub |
 
 Verified on **2026-08-02** from official project documentation and release pages. OpenClaw `v2026.7.2-beta.6` capabilities are treated as pre-release, not stable. See the [status-separated market scan](docs/agent-harness/market-scan-2026-08-02.md) and [reproducible evaluation baseline](docs/agent-harness/README.md) for sources, limitations, and the TARS evolution roadmap.
@@ -70,7 +70,9 @@ See [docs/console.md](docs/console.md) for the detailed console page and panel i
 
 TARS opens a local SQLite Work Ledger at `workspace/_shared/work-ledger/work-ledger.db`. Versioned Work, Step, Attempt, Event, Approval, Artifact, and Proof records use workspace-scoped idempotency keys and transactional state transitions. SQLite runs in WAL mode with foreign keys, full synchronous writes, checksummed migrations, and indexed read projections.
 
-During the v0.34.4 compatibility window, startup imports existing Session Goal/Plan/Task/Contract/Evidence and Agent Runtime `runs.json` records without deleting or rewriting those files. Session task saves and Agent Runtime snapshots append new ledger revisions; existing task/run API shapes read the latest projection with a legacy fallback. The Tasks panel exposes the resulting timeline as a read-only view while mutation APIs remain unchanged.
+During the compatibility window, startup imports existing Session Goal/Plan/Task/Contract/Evidence and Agent Runtime `runs.json` records without deleting or rewriting those files. Session task saves and Agent Runtime snapshots append new ledger revisions; existing task/run API shapes read the latest projection with a legacy fallback.
+
+The durable dependency scheduler is deliberately opt-in. Set `work_ledger.scheduler.enabled: true` only after Agent Runtime is configured, then restart. New `subagents_orchestrate` calls submit the complete DAG, return a `work_id`, and continue independently from the originating request. Atomic leases and heartbeats prevent duplicate valid claims; recovery reconnects supported Agent Runtime attempts or deterministically reclaims them into the configured retry, replan, decompose, review, or blocked policy. The Tasks timeline follows these events live and allows an operator to cancel work or resume a reviewed/blocked step with a durable reason.
 
 Set `work_ledger.enabled: false` (or `TARS_WORK_LEDGER_ENABLED=false`) and restart to stop ledger writes and return readers to the untouched legacy stores. The SQLite database is retained for inspection or recovery. See [Work Ledger operations](docs/agent-harness/work-ledger-operations.md) for backup, JSONL export, restore, doctor, quarantine, and preview rollback procedures.
 
@@ -107,8 +109,7 @@ Use compare mode when 2-3 safe subagents should inspect the same prompt independ
 
 In Console Chat, `subagents_run` renders as a progress card with running/completed/failed counts, elapsed time, compact task titles, and direct links to each Agent Runtime run once they are available. Compare-mode results add common findings, conflict candidates, sourced evidence snippets, and side-by-side output panes.
 
-Advanced staged-flow tools are available only when explicitly allowed for a session: `subagents_orchestrate` runs dependency-aware `parallel` / `sequential` steps, and `subagents_plan` uses the heavy-tier planner model to draft such a flow.
-When staged-flow tools run from chat, TARS mirrors the generated plan and live step lifecycle into the session Tasks panel so the right rail shows pending, in-progress, completed, and cancelled subagent work.
+Advanced staged-flow tools are available only when explicitly allowed for a session: `subagents_orchestrate` runs dependency-aware `parallel` / `sequential` steps, and `subagents_plan` uses the heavy-tier planner model to draft such a flow. With the durable scheduler enabled, orchestration is projected directly from the Work Ledger instead of independently mutating the legacy session task mirror. With it disabled, the existing request-bound implementation and task mirror remain available as the rollback path.
 
 Experimental consensus mode remains hidden from the default `subagents_run` schema unless `agentruntime.consensus.enabled` is explicitly set.
 

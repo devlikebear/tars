@@ -6,6 +6,11 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+### Added
+
+- **Opt-in durable scheduler and restart recovery (#904)** — Adds dependency-aware step promotion, atomic claims, leases, heartbeats, bounded retry/replan/decompose policies, reconnect-or-reclaim recovery, human review/resume, and request-independent wait/watch/cancel APIs. `subagents_orchestrate` returns a durable `work_id` when `work_ledger.scheduler.enabled` is explicitly enabled, while the legacy request-bound implementation remains the rollback path.
+- **Durable work Console controls (#904)** — The Tasks timeline now follows session-owned durable work through SSE, shows scheduler decisions and operator-attention reasons, and exposes confirmed work cancellation plus reasoned step resume without reconstructing the originating chat request.
+
 ## [0.34.4] - 2026-08-02
 
 ### Added

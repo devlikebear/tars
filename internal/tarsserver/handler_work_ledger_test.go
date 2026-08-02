@@ -1,14 +1,18 @@
 package tarsserver
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/devlikebear/tars/internal/serverauth"
+	"github.com/devlikebear/tars/internal/workscheduler"
 	"github.com/devlikebear/tars/internal/workstore"
 	"github.com/rs/zerolog"
 )
@@ -273,10 +277,163 @@ func TestNormalizeWorkProjectionSlicesProducesStableEmptyArrays(t *testing.T) {
 
 	projection := workstore.WorkProjection{}
 	normalizeWorkProjectionSlices(&projection)
-	if projection.Steps == nil || projection.Dependencies == nil || projection.Attempts == nil ||
+	if projection.Steps == nil || projection.Schedules == nil || projection.Dependencies == nil || projection.Attempts == nil ||
 		projection.Events == nil || projection.Proofs == nil || projection.Artifacts == nil || projection.Approvals == nil {
 		t.Fatalf("projection contains nil collection: %#v", projection)
 	}
+}
+
+func TestWorkLedgerAPIWaitWatchAndCancelDurableWork(t *testing.T) {
+	t.Parallel()
+
+	store := openWorkLedgerHandlerTestStore(t)
+	scheduler, err := workscheduler.New(workscheduler.Options{
+		Store: store, WorkspaceID: "workspace-a", WorkerID: "api-scheduler", ActorID: "api-scheduler",
+		LeaseDuration: time.Minute, HeartbeatInterval: 20 * time.Second,
+		PollInterval: time.Millisecond, MaxWorkers: 1,
+		Executors: []workscheduler.Executor{workLedgerHandlerTestExecutor{}},
+	})
+	if err != nil {
+		t.Fatalf("new API scheduler: %v", err)
+	}
+	t.Cleanup(scheduler.Close)
+	work, err := scheduler.Submit(context.Background(), workscheduler.SubmitInput{
+		WorkspaceID: "workspace-a", IdempotencyKey: "api-control", Title: "API control",
+		Adapter: "test", ActorID: "planner",
+		Steps: []workscheduler.StepSpec{{Key: "one", Title: "One", Policy: workstore.StepSchedulePolicy{MaxAttempts: 1, EscalationState: workstore.WorkStateReview}}},
+	})
+	if err != nil {
+		t.Fatalf("submit API-controlled work: %v", err)
+	}
+	handler := newWorkLedgerAPIHandler(store, zerolog.Nop(), scheduler)
+	timeoutRecorder := httptest.NewRecorder()
+	timeoutRequest := httptest.NewRequest(http.MethodGet, "/v1/work/works/"+work.ID+"/wait?timeout_ms=1", nil)
+	timeoutRequest = timeoutRequest.WithContext(serverauth.WithWorkspaceID(timeoutRequest.Context(), "workspace-a"))
+	handler.ServeHTTP(timeoutRecorder, timeoutRequest)
+	if timeoutRecorder.Code != http.StatusAccepted || !strings.Contains(timeoutRecorder.Body.String(), `"terminal":false`) {
+		t.Fatalf("wait timeout status=%d body=%s", timeoutRecorder.Code, timeoutRecorder.Body.String())
+	}
+
+	cancelRecorder := httptest.NewRecorder()
+	cancelRequest := httptest.NewRequest(http.MethodPost, "/v1/admin/work/works/"+work.ID+"/cancel", bytes.NewBufferString(`{"reason":"operator stopped it"}`))
+	cancelRequest = cancelRequest.WithContext(serverauth.WithWorkspaceID(cancelRequest.Context(), "workspace-a"))
+	handler.ServeHTTP(cancelRecorder, cancelRequest)
+	if cancelRecorder.Code != http.StatusOK {
+		t.Fatalf("cancel status=%d body=%s", cancelRecorder.Code, cancelRecorder.Body.String())
+	}
+
+	waitRecorder := httptest.NewRecorder()
+	waitRequest := httptest.NewRequest(http.MethodGet, "/v1/work/works/"+work.ID+"/wait?timeout_ms=100", nil)
+	waitRequest = waitRequest.WithContext(serverauth.WithWorkspaceID(waitRequest.Context(), "workspace-a"))
+	handler.ServeHTTP(waitRecorder, waitRequest)
+	if waitRecorder.Code != http.StatusOK || !strings.Contains(waitRecorder.Body.String(), `"state":"cancelled"`) {
+		t.Fatalf("wait status=%d body=%s", waitRecorder.Code, waitRecorder.Body.String())
+	}
+
+	watchRecorder := httptest.NewRecorder()
+	watchRequest := httptest.NewRequest(http.MethodGet, "/v1/work/works/"+work.ID+"/watch?after_sequence=0", nil)
+	watchRequest = watchRequest.WithContext(serverauth.WithWorkspaceID(watchRequest.Context(), "workspace-a"))
+	handler.ServeHTTP(watchRecorder, watchRequest)
+	if watchRecorder.Code != http.StatusOK || !strings.Contains(watchRecorder.Body.String(), "event: work_event") || !strings.Contains(watchRecorder.Body.String(), "step.cancelled") {
+		t.Fatalf("watch status=%d body=%s", watchRecorder.Code, watchRecorder.Body.String())
+	}
+}
+
+func TestWorkLedgerAPIResumesReviewedStep(t *testing.T) {
+	t.Parallel()
+
+	store := openWorkLedgerHandlerTestStore(t)
+	scheduler, err := workscheduler.New(workscheduler.Options{
+		Store: store, WorkspaceID: "workspace-a", WorkerID: "resume-scheduler", ActorID: "resume-scheduler",
+		LeaseDuration: time.Minute, HeartbeatInterval: 20 * time.Second,
+		PollInterval: time.Millisecond, MaxWorkers: 1,
+		Executors: []workscheduler.Executor{workLedgerHandlerTestExecutor{}},
+	})
+	if err != nil {
+		t.Fatalf("new resume scheduler: %v", err)
+	}
+	t.Cleanup(scheduler.Close)
+	work, err := scheduler.Submit(context.Background(), workscheduler.SubmitInput{
+		WorkspaceID: "workspace-a", IdempotencyKey: "api-resume", Title: "API resume",
+		Adapter: "test", ActorID: "planner",
+		Steps: []workscheduler.StepSpec{{Key: "one", Title: "One", Policy: workstore.StepSchedulePolicy{MaxAttempts: 1, EscalationState: workstore.WorkStateReview}}},
+	})
+	if err != nil {
+		t.Fatalf("submit reviewed work: %v", err)
+	}
+	if _, err := store.PromoteReadySteps(context.Background(), workstore.PromoteReadyStepsInput{WorkspaceID: "workspace-a", WorkID: work.ID, ActorID: "scheduler"}); err != nil {
+		t.Fatalf("promote reviewed step: %v", err)
+	}
+	claim, err := store.ClaimReadyStep(context.Background(), workstore.ClaimReadyStepInput{
+		WorkspaceID: "workspace-a", WorkID: work.ID, WorkerID: "failed-worker", Adapter: "test", ActorID: "scheduler",
+	})
+	if err != nil {
+		t.Fatalf("claim reviewed step: %v", err)
+	}
+	if _, err := store.CompleteStepAttempt(context.Background(), workstore.CompleteStepAttemptInput{
+		WorkspaceID: "workspace-a", WorkID: work.ID, StepID: claim.Step.ID,
+		AttemptID: claim.Attempt.ID, WorkerID: "failed-worker", Succeeded: false,
+		ErrorText: "needs operator", ActorID: "failed-worker",
+	}); err != nil {
+		t.Fatalf("fail reviewed step: %v", err)
+	}
+	work, err = store.GetWork(context.Background(), "workspace-a", work.ID)
+	if err != nil {
+		t.Fatalf("get reviewed work: %v", err)
+	}
+	if _, err := store.TransitionWork(context.Background(), workstore.TransitionWorkInput{
+		WorkspaceID: "workspace-a", WorkID: work.ID, ToState: workstore.WorkStateReview,
+		ExpectedVersion: work.Version, ActorID: "scheduler", Reason: "step needs review",
+	}); err != nil {
+		t.Fatalf("review parent work: %v", err)
+	}
+	handler := newWorkLedgerAPIHandler(store, zerolog.Nop(), scheduler)
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/v1/admin/work/works/"+work.ID+"/steps/"+claim.Step.ID+"/resume", bytes.NewBufferString(`{"reason":"operator approved"}`))
+	request = request.WithContext(serverauth.WithWorkspaceID(request.Context(), "workspace-a"))
+	handler.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("resume status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+	var projection workstore.WorkProjection
+	if err := json.Unmarshal(recorder.Body.Bytes(), &projection); err != nil {
+		t.Fatalf("decode resumed projection: %v", err)
+	}
+	if projection.Work.State != workstore.WorkStateRunning || projection.Steps[0].State != workstore.WorkStateReady || projection.Schedules[0].HumanResumeRequired {
+		t.Fatalf("resumed API projection = %+v", projection)
+	}
+}
+
+func TestWorkLedgerAPIRejectsSchedulerWorkspaceMismatch(t *testing.T) {
+	t.Parallel()
+
+	store := openWorkLedgerHandlerTestStore(t)
+	scheduler, err := workscheduler.New(workscheduler.Options{
+		Store: store, WorkspaceID: "workspace-a", WorkerID: "workspace-a-scheduler", ActorID: "workspace-a-scheduler",
+		LeaseDuration: time.Minute, HeartbeatInterval: 20 * time.Second,
+		PollInterval: time.Millisecond, MaxWorkers: 1,
+		Executors: []workscheduler.Executor{workLedgerHandlerTestExecutor{}},
+	})
+	if err != nil {
+		t.Fatalf("new workspace scheduler: %v", err)
+	}
+	t.Cleanup(scheduler.Close)
+	handler := newWorkLedgerAPIHandler(store, zerolog.Nop(), scheduler)
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/v1/work/works/work-from-b/wait?timeout_ms=1", nil)
+	request = request.WithContext(serverauth.WithWorkspaceID(request.Context(), "workspace-b"))
+	handler.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusServiceUnavailable || !strings.Contains(recorder.Body.String(), "workspace") {
+		t.Fatalf("workspace mismatch status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+}
+
+type workLedgerHandlerTestExecutor struct{}
+
+func (workLedgerHandlerTestExecutor) Adapter() string { return "test" }
+
+func (workLedgerHandlerTestExecutor) Execute(context.Context, workscheduler.Execution) (workscheduler.ExecutionResult, error) {
+	return workscheduler.ExecutionResult{Succeeded: true}, nil
 }
 
 func openWorkLedgerHandlerTestStore(t *testing.T) *workstore.Store {

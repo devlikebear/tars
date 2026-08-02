@@ -245,6 +245,13 @@ tools:
 # untouched legacy session and Agent Runtime files without deleting SQLite.
 work_ledger:
   enabled: true
+  # Durable scheduler can be rolled back independently without deleting the ledger.
+  scheduler:
+    enabled: false
+    max_workers: 4
+    lease_seconds: 60
+    heartbeat_seconds: 20
+    poll_milliseconds: 250
 
 agentruntime:
   enabled: false

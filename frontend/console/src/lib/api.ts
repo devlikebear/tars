@@ -111,6 +111,7 @@ import type {
   RemoteAccessResponse,
   SessionCleanupMode,
   SessionCleanupSuggestionResponse,
+  WorkLedgerEvent,
   WorkLedgerProjection,
   WorkLedgerWork,
   WorkLedgerWorksResponse,
@@ -592,17 +593,62 @@ export async function getSessionTasks(sessionId: string): Promise<SessionTasks> 
 }
 
 export async function getSessionWorkLedger(sessionId: string): Promise<WorkLedgerWork | null> {
-  const params = new URLSearchParams({
-    source: 'legacy-session',
-    source_id: sessionId,
-    limit: '1',
-  })
-  const data = await requestJSON<WorkLedgerWorksResponse>(`/v1/work/works?${params.toString()}`)
-  return data.works[0] ?? null
+  for (const source of ['session', 'legacy-session']) {
+    const params = new URLSearchParams({
+      source,
+      source_id: sessionId,
+      limit: '1',
+    })
+    const data = await requestJSON<WorkLedgerWorksResponse>(`/v1/work/works?${params.toString()}`)
+    if (data.works[0]) return data.works[0]
+  }
+  return null
 }
 
 export async function getWorkLedgerTimeline(workId: string): Promise<WorkLedgerProjection> {
   return requestJSON<WorkLedgerProjection>(`/v1/work/works/${encodeURIComponent(workId)}/timeline`)
+}
+
+export async function cancelWorkLedger(workId: string, reason: string): Promise<WorkLedgerProjection> {
+  return requestJSON<WorkLedgerProjection>(`/v1/admin/work/works/${encodeURIComponent(workId)}/cancel`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reason }),
+  })
+}
+
+export async function resumeWorkLedgerStep(workId: string, stepId: string, reason: string): Promise<WorkLedgerProjection> {
+  return requestJSON<WorkLedgerProjection>(
+    `/v1/admin/work/works/${encodeURIComponent(workId)}/steps/${encodeURIComponent(stepId)}/resume`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason }),
+    },
+  )
+}
+
+export function watchWorkLedger(
+  workId: string,
+  afterSequence: number,
+  onEvent: (event: WorkLedgerEvent) => void,
+  onError?: () => void,
+): () => void {
+  const params = new URLSearchParams({ after_sequence: String(Math.max(0, afterSequence)) })
+  const stream = new EventSource(
+    `/v1/work/works/${encodeURIComponent(workId)}/watch?${params.toString()}`,
+    { withCredentials: true },
+  )
+  stream.addEventListener('work_event', (message) => {
+    if (!(message instanceof MessageEvent) || !message.data) return
+    try {
+      onEvent(JSON.parse(message.data) as WorkLedgerEvent)
+    } catch {
+      onError?.()
+    }
+  })
+  stream.onerror = () => onError?.()
+  return () => stream.close()
 }
 
 export async function getGlobalPlans(active = true): Promise<GlobalPlansResponse> {

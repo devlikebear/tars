@@ -301,6 +301,10 @@ var configFieldImpactHints = map[string][]string{
 		"Disabling the Work Ledger stops new ledger writes and returns session task and Agent Runtime reads to legacy files after restart.",
 		"The existing SQLite database and legacy source files remain untouched for later recovery.",
 	},
+	"work_scheduler_enabled": {
+		"Disabling the Work Scheduler returns subagent orchestration to the legacy request-bound path after restart.",
+		"Existing Work Ledger records remain available and are not deleted.",
+	},
 	"agentruntime_default_agent": {
 		"Changing default agent affects which Agent Runtime profile handles unspecified tasks.",
 	},

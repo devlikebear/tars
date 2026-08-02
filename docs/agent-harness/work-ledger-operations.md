@@ -130,3 +130,57 @@ To restore a Work Ledger backup instead, restore it to a new path with
 replace the inactive ledger path only under an explicit operator recovery
 procedure, and then re-enable `work_ledger.enabled`. Never copy only a live
 `.db` file while its WAL may contain committed data.
+
+## Enable or roll back the durable scheduler
+
+The scheduler is disabled by default because enabling it allows accepted
+staged subagent work to continue after the originating chat or HTTP request
+ends. Enable it only with Agent Runtime configured:
+
+```yaml
+work_ledger:
+  enabled: true
+  scheduler:
+    enabled: true
+    max_workers: 4
+    lease_seconds: 60
+    heartbeat_seconds: 20
+    poll_milliseconds: 250
+```
+
+The heartbeat must be shorter than the lease. All numeric values must be
+positive. Explicit scheduler enablement fails startup when either Work Ledger
+or Agent Runtime is disabled, so the runtime cannot silently fall back while
+the operator believes durable execution is active. The equivalent environment
+variables are
+`TARS_WORK_SCHEDULER_ENABLED`, `TARS_WORK_SCHEDULER_MAX_WORKERS`,
+`TARS_WORK_SCHEDULER_LEASE_SECONDS`,
+`TARS_WORK_SCHEDULER_HEARTBEAT_SECONDS`, and
+`TARS_WORK_SCHEDULER_POLL_MILLISECONDS`.
+
+When enabled, `subagents_orchestrate` stores the entire dependency graph before
+moving its Work to `running`, returns `work_id` by default, and uses the
+request-bound response only when `wait_for_completion` is explicitly set. On
+restart, the scheduler reconnects a still-valid Agent Runtime attempt when the
+executor can identify it. Otherwise it releases or reclaims the lease and
+applies the recorded bounded policy. A Step never implies exactly-once external
+side effects; mutating-tool idempotency and effect receipts are a separate
+control-plane capability.
+
+Operator APIs are workspace-scoped:
+
+- `GET /v1/work/works/{work_id}/wait?timeout_ms=30000` waits for a terminal or
+  human-attention state and returns `202` with the current projection on timeout.
+- `GET /v1/work/works/{work_id}/watch?after_sequence=N` streams ordered
+  `work_event` SSE messages after the requested cursor.
+- `POST /v1/admin/work/works/{work_id}/cancel` requires JSON
+  `{"reason":"..."}` and cancels unfinished steps.
+- `POST /v1/admin/work/works/{work_id}/steps/{step_id}/resume` requires JSON
+  `{"reason":"..."}` and only resumes a durable human-attention step.
+
+To roll back execution without deleting history, set
+`work_ledger.scheduler.enabled: false` (or
+`TARS_WORK_SCHEDULER_ENABLED=false`) and restart. New orchestration requests use
+the legacy request-bound path; existing ledger records remain inspectable. Stop
+or cancel active work before the restart when immediate execution shutdown is
+required.

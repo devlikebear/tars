@@ -1,4 +1,4 @@
-import type { WorkLedgerEvent, WorkLedgerProjection } from './types.ts'
+import type { WorkLedgerEvent, WorkLedgerProjection, WorkLedgerStep } from './types.ts'
 
 export type WorkLedgerTimelineEntry = {
   id: string
@@ -54,6 +54,39 @@ function eventPresentation(event: WorkLedgerEvent, projection: WorkLedgerProject
       }
     case 'artifact.created':
       return { title: 'Artifact attached', detail: payloadString(event, 'kind') }
+    case 'step.schedule_configured':
+      return { title: 'Step schedule configured', detail: payloadString(event, 'next_action') }
+    case 'step.ready':
+      return { title: 'Step ready', detail: payloadString(event, 'reason') }
+    case 'step.claimed':
+      return {
+        title: 'Step claimed',
+        detail: [payloadString(event, 'worker_id'), payloadString(event, 'next_action')].filter(Boolean).join(' · '),
+      }
+    case 'step.heartbeat':
+      return { title: 'Lease renewed', detail: payloadString(event, 'worker_id') }
+    case 'attempt.completed':
+      return { title: 'Attempt completed', detail: payloadString(event, 'status') }
+    case 'step.completed':
+      return { title: 'Step completed', detail: '' }
+    case 'step.retry_scheduled':
+      return { title: 'Retry scheduled', detail: payloadString(event, 'reason') }
+    case 'step.replan_scheduled':
+      return { title: 'Replan scheduled', detail: payloadString(event, 'reason') }
+    case 'step.decompose_scheduled':
+      return { title: 'Decomposition scheduled', detail: payloadString(event, 'reason') }
+    case 'step.released':
+      return { title: 'Claim released', detail: payloadString(event, 'reason') }
+    case 'step.reclaimed':
+      return { title: 'Expired claim reclaimed', detail: payloadString(event, 'reason') }
+    case 'step.review_requested':
+      return { title: 'Operator review requested', detail: payloadString(event, 'reason') }
+    case 'step.blocked':
+      return { title: 'Step blocked', detail: payloadString(event, 'reason') }
+    case 'step.resumed':
+      return { title: 'Step resumed', detail: payloadString(event, 'reason') }
+    case 'step.cancelled':
+      return { title: 'Step cancelled', detail: payloadString(event, 'reason') }
     default:
       return { title: event.type, detail: '' }
   }
@@ -70,4 +103,23 @@ export function buildWorkLedgerTimeline(projection: WorkLedgerProjection): WorkL
       created_at: event.created_at,
       ...eventPresentation(event, projection),
     }))
+}
+
+export function latestWorkLedgerSequence(projection: WorkLedgerProjection): number {
+  return projection.events.reduce((latest, event) => Math.max(latest, event.sequence), 0)
+}
+
+export function workLedgerCanCancel(projection: WorkLedgerProjection): boolean {
+  return projection.work.state !== 'done' && projection.work.state !== 'cancelled'
+}
+
+export function resumableWorkLedgerSteps(projection: WorkLedgerProjection): WorkLedgerStep[] {
+  const resumableStepIDs = new Set(
+    projection.schedules
+      .filter((schedule) => schedule.human_resume_required)
+      .map((schedule) => schedule.step_id),
+  )
+  return projection.steps
+    .filter((step) => resumableStepIDs.has(step.id) && (step.state === 'review' || step.state === 'blocked'))
+    .sort((left, right) => left.position - right.position || left.id.localeCompare(right.id))
 }

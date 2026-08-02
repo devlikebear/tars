@@ -1,9 +1,25 @@
 <script lang="ts">
-  import { onMount } from 'svelte'
+  import { onDestroy, onMount } from 'svelte'
   import { t } from '../i18n'
-  import { getSessionPlanArchive, getSessionTasks, getSessionWorkLedger, getWorkLedgerTimeline, executeTasksAction, cancelChat, runTaskVerification } from '../lib/api'
+  import {
+    cancelChat,
+    cancelWorkLedger,
+    executeTasksAction,
+    getSessionPlanArchive,
+    getSessionTasks,
+    getSessionWorkLedger,
+    getWorkLedgerTimeline,
+    resumeWorkLedgerStep,
+    runTaskVerification,
+    watchWorkLedger,
+  } from '../lib/api'
   import { planProgressPercent, summarizeTasks } from '../lib/tasks'
-  import { buildWorkLedgerTimeline } from '../lib/workLedger'
+  import {
+    buildWorkLedgerTimeline,
+    latestWorkLedgerSequence,
+    resumableWorkLedgerSteps,
+    workLedgerCanCancel,
+  } from '../lib/workLedger'
   import type { PlanArchiveItem, SessionTask, SessionTasks, TaskContract, TaskEvidence, WorkLedgerProjection } from '../lib/types'
 
   type TabId = 'tasks' | 'contract' | 'evidence' | 'timeline'
@@ -24,7 +40,13 @@
   let timelineProjection = $state<WorkLedgerProjection | null>(null)
   let timelineLoading = $state(false)
   let timelineError = $state('')
+  let timelineControlBusy = $state(false)
+  let timelineLiveStatus = $state<'idle' | 'live' | 'reconnecting'>('idle')
+  let stopTimelineWatch: (() => void) | null = null
+  let timelineRefreshPending = false
   let timelineEntries = $derived(timelineProjection ? buildWorkLedgerTimeline(timelineProjection) : [])
+  let timelineCanCancel = $derived(timelineProjection ? workLedgerCanCancel(timelineProjection) : false)
+  let timelineResumableSteps = $derived(timelineProjection ? resumableWorkLedgerSteps(timelineProjection) : [])
 
   // Contract draft state — surfaced under the Contract tab. Mirrors what the
   // legacy standalone ContractPanel used to manage; the legacy panel was
@@ -65,8 +87,49 @@
       .filter(Boolean)
   }
 
+  function closeTimelineWatch() {
+    stopTimelineWatch?.()
+    stopTimelineWatch = null
+    timelineLiveStatus = 'idle'
+  }
+
+  function workStopsLiveWatch(projection: WorkLedgerProjection): boolean {
+    return projection.work.state === 'done' || projection.work.state === 'cancelled' ||
+      projection.work.state === 'review' || projection.work.state === 'blocked'
+  }
+
+  function startTimelineWatch(projection: WorkLedgerProjection) {
+    closeTimelineWatch()
+    if (workStopsLiveWatch(projection) || activeTab !== 'timeline') return
+    timelineLiveStatus = 'live'
+    stopTimelineWatch = watchWorkLedger(
+      projection.work.id,
+      latestWorkLedgerSequence(projection),
+      () => { void refreshTimelineProjection() },
+      () => { timelineLiveStatus = 'reconnecting' },
+    )
+  }
+
+  async function refreshTimelineProjection() {
+    const workID = timelineProjection?.work.id
+    if (!workID || timelineRefreshPending || activeTab !== 'timeline') return
+    timelineRefreshPending = true
+    try {
+      const projection = await getWorkLedgerTimeline(workID)
+      if (timelineProjection?.work.id !== workID || activeTab !== 'timeline') return
+      timelineProjection = projection
+      if (workStopsLiveWatch(projection)) closeTimelineWatch()
+      else timelineLiveStatus = 'live'
+    } catch {
+      timelineLiveStatus = 'reconnecting'
+    } finally {
+      timelineRefreshPending = false
+    }
+  }
+
   async function loadTimeline() {
     const requestedSessionId = sessionId
+    closeTimelineWatch()
     timelineLoading = true
     timelineError = ''
     timelineProjection = null
@@ -74,7 +137,10 @@
       const work = await getSessionWorkLedger(requestedSessionId)
       if (requestedSessionId !== sessionId || !work) return
       const projection = await getWorkLedgerTimeline(work.id)
-      if (requestedSessionId === sessionId) timelineProjection = projection
+      if (requestedSessionId === sessionId) {
+        timelineProjection = projection
+        startTimelineWatch(projection)
+      }
     } catch (err) {
       if (requestedSessionId === sessionId) {
         timelineError = err instanceof Error ? err.message : 'Failed to load work ledger timeline'
@@ -87,6 +153,40 @@
   function selectTab(tab: TabId) {
     activeTab = tab
     if (tab === 'timeline') void loadTimeline()
+    else closeTimelineWatch()
+  }
+
+  async function handleCancelDurableWork() {
+    const work = timelineProjection?.work
+    if (!work || !timelineCanCancel || !confirm(`Cancel durable work "${work.title}"?`)) return
+    timelineControlBusy = true
+    timelineError = ''
+    try {
+      timelineProjection = await cancelWorkLedger(work.id, 'Operator cancelled from Console')
+      closeTimelineWatch()
+    } catch (err) {
+      timelineError = err instanceof Error ? err.message : 'Failed to cancel durable work'
+    } finally {
+      timelineControlBusy = false
+    }
+  }
+
+  async function handleResumeDurableStep(stepId: string, title: string) {
+    const workID = timelineProjection?.work.id
+    if (!workID) return
+    const reason = prompt(`Why should "${title}" resume?`, 'Operator approved from Console')?.trim()
+    if (!reason) return
+    timelineControlBusy = true
+    timelineError = ''
+    try {
+      const projection = await resumeWorkLedgerStep(workID, stepId, reason)
+      timelineProjection = projection
+      startTimelineWatch(projection)
+    } catch (err) {
+      timelineError = err instanceof Error ? err.message : 'Failed to resume durable step'
+    } finally {
+      timelineControlBusy = false
+    }
   }
 
   function loadContractDraft(next: SessionTasks) {
@@ -485,10 +585,12 @@
   let progress = $derived(planProgressPercent(summary))
 
   onMount(() => { void load() })
+  onDestroy(closeTimelineWatch)
 
   // Reload when sessionId changes
   $effect(() => {
     void sessionId
+    closeTimelineWatch()
     timelineProjection = null
     timelineError = ''
     void load()
@@ -902,7 +1004,7 @@
       </div>
     {/if}
   {:else if activeTab === 'timeline'}
-    <section class="work-ledger-timeline" aria-label="Read-only work ledger timeline">
+    <section class="work-ledger-timeline" aria-label="Durable work ledger timeline">
       {#if timelineLoading}
         <div class="empty-state">Loading durable timeline...</div>
       {:else if timelineError}
@@ -918,15 +1020,53 @@
             <strong>{timelineProjection.work.title}</strong>
             <small>{timelineProjection.work.kind} · version {timelineProjection.work.version}</small>
           </div>
-          <span class="badge {workStateClass(timelineProjection.work.state)}">{timelineProjection.work.state}</span>
+          <div class="timeline-summary-actions">
+            {#if timelineLiveStatus !== 'idle'}
+              <span class="badge {timelineLiveStatus === 'live' ? 'badge-success' : 'badge-warning'}">
+                {timelineLiveStatus === 'live' ? 'Live' : 'Reconnecting'}
+              </span>
+            {/if}
+            <span class="badge {workStateClass(timelineProjection.work.state)}">{timelineProjection.work.state}</span>
+            {#if timelineCanCancel}
+              <button
+                class="btn btn-danger btn-sm"
+                type="button"
+                disabled={timelineControlBusy}
+                onclick={handleCancelDurableWork}
+              >Cancel work</button>
+            {/if}
+          </div>
         </header>
         <div class="timeline-counts" aria-label="Work ledger record counts">
           <span>{timelineProjection.steps.length} steps</span>
+          <span>{timelineProjection.schedules.length} schedules</span>
           <span>{timelineProjection.attempts.length} attempts</span>
           <span>{timelineProjection.proofs.length} proofs</span>
           <span>{timelineProjection.artifacts.length} artifacts</span>
           <span>{timelineProjection.approvals.length} approvals</span>
         </div>
+        {#if timelineResumableSteps.length > 0}
+          <section class="timeline-operator-attention" aria-label="Durable steps requiring operator attention">
+            <header>
+              <strong>Operator attention</strong>
+              <small>These steps exhausted their automatic recovery policy.</small>
+            </header>
+            {#each timelineResumableSteps as step (step.id)}
+              <article>
+                <div>
+                  <strong>{step.title}</strong>
+                  <small>{timelineProjection.schedules.find((schedule) => schedule.step_id === step.id)?.blocked_reason ?? step.state}</small>
+                </div>
+                <button
+                  class="btn btn-warning btn-sm"
+                  type="button"
+                  disabled={timelineControlBusy}
+                  onclick={() => handleResumeDurableStep(step.id, step.title)}
+                >Resume step</button>
+              </article>
+            {/each}
+          </section>
+        {/if}
         {#if timelineEntries.length === 0}
           <div class="empty-state">No durable events recorded.</div>
         {:else}
@@ -1123,6 +1263,14 @@
     gap: var(--space-1);
   }
 
+  .timeline-summary > .timeline-summary-actions {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--space-2);
+  }
+
   .timeline-summary strong {
     overflow: hidden;
     color: var(--text-primary);
@@ -1143,6 +1291,50 @@
     gap: var(--space-2);
     color: var(--text-secondary);
     font-size: var(--text-xs);
+  }
+
+  .timeline-operator-attention {
+    display: grid;
+    gap: var(--space-2);
+    padding: var(--space-3);
+    border: 1px solid color-mix(in srgb, var(--warning) 30%, var(--border-default));
+    border-radius: var(--radius-md);
+    background: var(--warning-muted);
+  }
+
+  .timeline-operator-attention > header,
+  .timeline-operator-attention > article {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+  }
+
+  .timeline-operator-attention > header,
+  .timeline-operator-attention > article > div {
+    min-width: 0;
+  }
+
+  .timeline-operator-attention > article {
+    padding-top: var(--space-2);
+    border-top: 1px solid color-mix(in srgb, var(--warning) 18%, var(--border-subtle));
+  }
+
+  .timeline-operator-attention strong,
+  .timeline-operator-attention small {
+    display: block;
+  }
+
+  .timeline-operator-attention strong {
+    color: var(--text-primary);
+    font-size: var(--text-sm);
+  }
+
+  .timeline-operator-attention small {
+    margin-top: var(--space-1);
+    color: var(--text-secondary);
+    font-size: var(--text-xs);
+    overflow-wrap: anywhere;
   }
 
   .timeline-events {

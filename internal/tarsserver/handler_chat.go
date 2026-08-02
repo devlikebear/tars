@@ -24,6 +24,7 @@ import (
 	"github.com/devlikebear/tars/internal/skill"
 	"github.com/devlikebear/tars/internal/tool"
 	"github.com/devlikebear/tars/internal/usage"
+	"github.com/devlikebear/tars/internal/workscheduler"
 	"github.com/rs/zerolog"
 )
 
@@ -1022,6 +1023,7 @@ type chatToolingOptions struct {
 	ProcessManager              *tool.ProcessManager
 	Extensions                  *extensions.Manager
 	AgentRuntime                *agentruntime.Runtime
+	WorkScheduler               *workscheduler.Scheduler
 	AutomationToolsForWorkspace func(workspaceID string) []tool.Tool
 	ToolsDefaultSet             string
 	ToolsAllowHighRiskUser      bool

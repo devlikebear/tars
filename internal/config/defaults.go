@@ -86,6 +86,10 @@ const (
 	defaultAgentRuntimeConsensusConcurrentRuns = 1
 	defaultAgentRuntimeArchiveRetentionDays    = 30
 	defaultAgentRuntimeArchiveMaxFileBytes     = 10485760
+	defaultWorkSchedulerMaxWorkers             = 4
+	defaultWorkSchedulerLeaseSeconds           = 60
+	defaultWorkSchedulerHeartbeatSeconds       = 20
+	defaultWorkSchedulerPollMilliseconds       = 250
 	defaultChannelsTelegramDMPolicy            = "pairing"
 	defaultSkillsBundledDir                    = "./skills"
 	defaultPluginsBundledDir                   = "./plugins"
@@ -211,8 +215,14 @@ func defaultConfigValues() Config {
 			AgentRuntimeArchiveMaxFileBytes:           defaultAgentRuntimeArchiveMaxFileBytes,
 		},
 		WorkLedger: WorkLedgerConfig{
-			Enabled:    true,
-			enabledSet: true,
+			Enabled:                   true,
+			SchedulerEnabled:          false,
+			SchedulerMaxWorkers:       defaultWorkSchedulerMaxWorkers,
+			SchedulerLeaseSeconds:     defaultWorkSchedulerLeaseSeconds,
+			SchedulerHeartbeatSeconds: defaultWorkSchedulerHeartbeatSeconds,
+			SchedulerPollMilliseconds: defaultWorkSchedulerPollMilliseconds,
+			enabledSet:                true,
+			schedulerEnabledSet:       true,
 		},
 		ChannelConfig: ChannelConfig{
 			ChannelsTelegramDMPolicy:       defaultChannelsTelegramDMPolicy,

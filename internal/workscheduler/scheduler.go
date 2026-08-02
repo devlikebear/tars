@@ -89,6 +89,14 @@ func New(opts Options) (*Scheduler, error) {
 	}, nil
 }
 
+// WorkspaceID identifies the isolation boundary owned by this scheduler.
+func (s *Scheduler) WorkspaceID() string {
+	if s == nil {
+		return ""
+	}
+	return s.workspaceID
+}
+
 func (s *Scheduler) Submit(ctx context.Context, input SubmitInput) (workstore.Work, error) {
 	if s == nil {
 		return workstore.Work{}, ErrClosed

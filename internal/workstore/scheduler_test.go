@@ -308,6 +308,129 @@ func TestSchedulerReopensActiveClaimAndReclaimsAfterExpiry(t *testing.T) {
 	}
 }
 
+func TestSchedulerTransitionBoundariesSurviveReopen(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	databasePath := filepath.Join(t.TempDir(), "ledger.db")
+	store, err := Open(ctx, databasePath, Options{})
+	if err != nil {
+		t.Fatalf("open transition-boundary store: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	reopen := func(boundary string) {
+		t.Helper()
+		if err := store.Close(); err != nil {
+			t.Fatalf("close after %s: %v", boundary, err)
+		}
+		store, err = Open(ctx, databasePath, Options{})
+		if err != nil {
+			t.Fatalf("reopen after %s: %v", boundary, err)
+		}
+	}
+
+	work := mustCreateWork(t, store, "workspace-boundaries", "scheduler-boundaries")
+	step := mustCreateScheduledStep(t, store, work, "boundary-step", 1)
+	if _, err := store.ConfigureStepSchedule(ctx, ConfigureStepScheduleInput{
+		WorkspaceID: work.WorkspaceID, WorkID: work.ID, StepID: step.ID,
+		Policy:  StepSchedulePolicy{MaxAttempts: 2, RetryLimit: 1, EscalationState: WorkStateReview},
+		ActorID: "scheduler",
+	}); err != nil {
+		t.Fatalf("configure boundary schedule: %v", err)
+	}
+	reopen("schedule configuration")
+	projection, err := store.GetWorkProjection(ctx, work.WorkspaceID, work.ID)
+	if err != nil || projection.Work.State != WorkStateRunning || projection.Steps[0].State != WorkStateTodo {
+		t.Fatalf("configured projection=%+v err=%v", projection, err)
+	}
+
+	if _, err := store.PromoteReadySteps(ctx, PromoteReadyStepsInput{
+		WorkspaceID: work.WorkspaceID, WorkID: work.ID, ActorID: "scheduler",
+	}); err != nil {
+		t.Fatalf("promote boundary step: %v", err)
+	}
+	reopen("ready promotion")
+	projection, err = store.GetWorkProjection(ctx, work.WorkspaceID, work.ID)
+	if err != nil || projection.Steps[0].State != WorkStateReady || len(projection.Attempts) != 0 {
+		t.Fatalf("ready projection=%+v err=%v", projection, err)
+	}
+
+	firstClaim := mustClaimStep(t, store, work, "boundary-worker", time.Minute)
+	reopen("atomic claim")
+	projection, err = store.GetWorkProjection(ctx, work.WorkspaceID, work.ID)
+	if err != nil || projection.Steps[0].State != WorkStateRunning || len(projection.Attempts) != 1 || projection.Attempts[0].Status != AttemptStatusRunning {
+		t.Fatalf("claimed projection=%+v err=%v", projection, err)
+	}
+	if _, err := store.HeartbeatStepClaim(ctx, HeartbeatStepClaimInput{
+		WorkspaceID: work.WorkspaceID, WorkID: work.ID, StepID: step.ID,
+		AttemptID: firstClaim.Attempt.ID, WorkerID: "boundary-worker",
+		LeaseDuration: time.Minute, ActorID: "boundary-worker",
+	}); err != nil {
+		t.Fatalf("heartbeat reopened claim: %v", err)
+	}
+	reopen("heartbeat")
+
+	firstResolution, err := store.CompleteStepAttempt(ctx, CompleteStepAttemptInput{
+		WorkspaceID: work.WorkspaceID, WorkID: work.ID, StepID: step.ID,
+		AttemptID: firstClaim.Attempt.ID, WorkerID: "boundary-worker",
+		Succeeded: false, ErrorText: "retry after restart", ActorID: "boundary-worker",
+	})
+	if err != nil || firstResolution.Disposition != StepDispositionRetry {
+		t.Fatalf("resolve first boundary attempt=%+v err=%v", firstResolution, err)
+	}
+	reopen("retry decision")
+	projection, err = store.GetWorkProjection(ctx, work.WorkspaceID, work.ID)
+	if err != nil || projection.Work.State != WorkStateRunning || projection.Steps[0].State != WorkStateReady || projection.Attempts[0].Status != AttemptStatusFailed {
+		t.Fatalf("retry projection=%+v err=%v", projection, err)
+	}
+
+	secondClaim := mustClaimStep(t, store, work, "boundary-worker-next", time.Minute)
+	reopen("retry claim")
+	if secondClaim.Attempt.Number != 2 {
+		t.Fatalf("retry attempt number=%d want=2", secondClaim.Attempt.Number)
+	}
+	secondResolution, err := store.CompleteStepAttempt(ctx, CompleteStepAttemptInput{
+		WorkspaceID: work.WorkspaceID, WorkID: work.ID, StepID: step.ID,
+		AttemptID: secondClaim.Attempt.ID, WorkerID: "boundary-worker-next",
+		Succeeded: true, ActorID: "boundary-worker-next",
+	})
+	if err != nil || secondResolution.Disposition != StepDispositionDone {
+		t.Fatalf("resolve second boundary attempt=%+v err=%v", secondResolution, err)
+	}
+	currentWork, err := store.GetWork(ctx, work.WorkspaceID, work.ID)
+	if err != nil {
+		t.Fatalf("get boundary work before completion: %v", err)
+	}
+	if _, err := store.TransitionWork(ctx, TransitionWorkInput{
+		WorkspaceID: work.WorkspaceID, WorkID: work.ID, ToState: WorkStateDone,
+		ExpectedVersion: currentWork.Version, ActorID: "scheduler", Reason: "all durable steps completed",
+	}); err != nil {
+		t.Fatalf("complete boundary work: %v", err)
+	}
+	reopen("terminal completion")
+
+	projection, err = store.GetWorkProjection(ctx, work.WorkspaceID, work.ID)
+	if err != nil {
+		t.Fatalf("get terminal boundary projection: %v", err)
+	}
+	if projection.Work.State != WorkStateDone || projection.Steps[0].State != WorkStateDone || len(projection.Attempts) != 2 || projection.Attempts[0].Status != AttemptStatusFailed || projection.Attempts[1].Status != AttemptStatusSucceeded {
+		t.Fatalf("terminal boundary projection=%+v", projection)
+	}
+	for index, event := range projection.Events {
+		if index > 0 && event.Sequence <= projection.Events[index-1].Sequence {
+			t.Fatalf("event sequence is not strictly ordered at %d: %+v", index, projection.Events)
+		}
+	}
+	for _, eventType := range []EventType{
+		EventTypeStepScheduleConfigured, EventTypeStepReady, EventTypeStepClaimed,
+		EventTypeStepHeartbeat, EventTypeStepRetryScheduled, EventTypeStepCompleted,
+	} {
+		if !hasEventType(projection.Events, eventType) {
+			t.Fatalf("reopened projection missing event %q: %+v", eventType, projection.Events)
+		}
+	}
+}
+
 func TestSchedulerStopsAtBudgetBoundary(t *testing.T) {
 	t.Parallel()
 

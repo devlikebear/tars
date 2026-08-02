@@ -1730,6 +1730,39 @@ export type WorkLedgerAttempt = {
   updated_at: string
 }
 
+export type WorkLedgerStepSchedulePolicy = {
+  max_attempts: number
+  retry_limit: number
+  replan_limit: number
+  decompose_limit: number
+  max_iterations?: number
+  max_tokens?: number
+  max_cost_usd?: number
+  escalation_state: 'review' | 'blocked'
+}
+
+export type WorkLedgerStepSchedule = {
+  schema_version: number
+  workspace_id: string
+  work_id: string
+  step_id: string
+  policy: WorkLedgerStepSchedulePolicy
+  lease_owner?: string
+  lease_expires_at?: string
+  last_heartbeat_at?: string
+  active_attempt_id?: string
+  attempt_count: number
+  cycle_attempt_count: number
+  consumed_iterations: number
+  consumed_tokens: number
+  consumed_cost_usd: number
+  next_action: 'execute' | 'retry' | 'replan' | 'decompose'
+  last_disposition?: 'done' | 'retry' | 'replan' | 'decompose' | 'review' | 'blocked'
+  blocked_reason?: string
+  human_resume_required: boolean
+  updated_at: string
+}
+
 export type WorkLedgerEvent = {
   schema_version: number
   sequence: number
@@ -1819,6 +1852,7 @@ export type WorkLedgerDependency = {
 export type WorkLedgerProjection = {
   work: WorkLedgerWork
   steps: WorkLedgerStep[]
+  schedules: WorkLedgerStepSchedule[]
   dependencies: WorkLedgerDependency[]
   attempts: WorkLedgerAttempt[]
   events: WorkLedgerEvent[]

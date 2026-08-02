@@ -17,18 +17,23 @@ var configYAMLRootAliases = map[string][]string{
 }
 
 var configYAMLPathAliases = map[string]string{
-	"api.dashboard.auth_mode":     "dashboard_auth_mode",
-	"channels.telegram.bot_token": "telegram_bot_token",
-	"dashboard.auth_mode":         "dashboard_auth_mode",
-	"agentruntime.agents.catalog": "agentruntime_agents_json",
-	"agentruntime.agents.list":    "agentruntime_agents_json",
-	"telegram.bot_token":          "telegram_bot_token",
-	"usage.limits.daily_usd":      "usage_limit_daily_usd",
-	"usage.limits.daily_tokens":   "usage_daily_token_budget",
-	"usage.limits.mode":           "usage_limit_mode",
-	"usage.limits.monthly_usd":    "usage_limit_monthly_usd",
-	"usage.limits.weekly_usd":     "usage_limit_weekly_usd",
-	"usage.price_overrides":       "usage_price_overrides_json",
+	"api.dashboard.auth_mode":                 "dashboard_auth_mode",
+	"channels.telegram.bot_token":             "telegram_bot_token",
+	"dashboard.auth_mode":                     "dashboard_auth_mode",
+	"agentruntime.agents.catalog":             "agentruntime_agents_json",
+	"agentruntime.agents.list":                "agentruntime_agents_json",
+	"telegram.bot_token":                      "telegram_bot_token",
+	"usage.limits.daily_usd":                  "usage_limit_daily_usd",
+	"usage.limits.daily_tokens":               "usage_daily_token_budget",
+	"usage.limits.mode":                       "usage_limit_mode",
+	"usage.limits.monthly_usd":                "usage_limit_monthly_usd",
+	"usage.limits.weekly_usd":                 "usage_limit_weekly_usd",
+	"usage.price_overrides":                   "usage_price_overrides_json",
+	"work_ledger.scheduler.enabled":           "work_scheduler_enabled",
+	"work_ledger.scheduler.heartbeat_seconds": "work_scheduler_heartbeat_seconds",
+	"work_ledger.scheduler.lease_seconds":     "work_scheduler_lease_seconds",
+	"work_ledger.scheduler.max_workers":       "work_scheduler_max_workers",
+	"work_ledger.scheduler.poll_milliseconds": "work_scheduler_poll_milliseconds",
 }
 
 func loadYAML(path string) (Config, error) {
