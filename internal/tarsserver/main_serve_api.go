@@ -31,6 +31,7 @@ import (
 	"github.com/devlikebear/tars/internal/skillhub/sources/openclaw"
 	"github.com/devlikebear/tars/internal/tool"
 	"github.com/devlikebear/tars/internal/usage"
+	"github.com/devlikebear/tars/internal/workstore"
 	"github.com/rs/zerolog"
 )
 
@@ -47,6 +48,7 @@ type serveAPIRuntime struct {
 	embodimentSubsystem     *embodiment.Subsystem
 	pulseRuntime            *pulse.Runtime
 	reflectionRuntime       *reflection.Runtime
+	workLedger              *workstore.Store
 	telegramPoller          *telegramUpdatePoller
 	remoteAccessRunner      remoteaccess.Runner
 	remoteAccessTargetURL   string
@@ -57,6 +59,7 @@ type apiRouteHandlers struct {
 	reflection      http.Handler
 	chat            http.Handler
 	sessions        http.Handler
+	work            http.Handler
 	memory          http.Handler
 	console         http.Handler
 	usage           http.Handler
@@ -634,11 +637,21 @@ func buildAPIMux(
 	terminalHandler := newTerminalAPIHandler(cfg.WorkspaceDir, sessionStore, logger)
 	memoryHandler := newMemoryAPIHandler(cfg.WorkspaceDir, buildMemoryBackend(cfg.WorkspaceDir, semanticMemoryConfigFromConfig(cfg), cfg.MemoryBackend), logger)
 	codexUsageHandler := newCodexRateLimitAPIHandler(deps.llmRouter, cfg.APIAuthMode)
+	workLedger, _, err := bootstrapWorkLedger(context.Background(), workLedgerBootstrapOptions{
+		WorkspaceDir:               cfg.WorkspaceDir,
+		AgentRuntimePersistenceDir: cfg.AgentRuntimePersistenceDir,
+		Logger:                     logger,
+	})
+	if err != nil {
+		return nil, err
+	}
+	workLedgerHandler := newWorkLedgerAPIHandler(workLedger, logger)
 	registerAPIRoutes(mux, apiRouteHandlers{
 		pulse:           pulseSetup.Handler,
 		reflection:      reflectionSetup.Handler,
 		chat:            chatHandler,
 		sessions:        sessionHandler,
+		work:            workLedgerHandler,
 		memory:          memoryHandler,
 		console:         consoleHandler,
 		usage:           usageHandler,
@@ -700,6 +713,7 @@ func buildAPIMux(
 		embodimentSubsystem:     embodimentSubsystem,
 		pulseRuntime:            pulseSetup.Runtime,
 		reflectionRuntime:       reflectionSetup.Runtime,
+		workLedger:              workLedger,
 		telegramPoller:          telegramPoller,
 		remoteAccessRunner:      remoteaccess.ExecRunner{},
 		remoteAccessTargetURL:   remoteaccess.DefaultTargetURL,
@@ -742,6 +756,9 @@ func registerAPIRoutes(mux *http.ServeMux, handlers apiRouteHandlers) {
 	mux.Handle("/v1/admin/sessions", handlers.sessions)
 	mux.Handle("/v1/admin/sessions/", handlers.sessions)
 	mux.Handle("/v1/admin/plans/archive", handlers.sessions)
+	mux.Handle("/v1/work/works", handlers.work)
+	mux.Handle("/v1/work/works/", handlers.work)
+	mux.Handle("/v1/work/legacy/sessions/", handlers.work)
 	mux.Handle("/v1/memory/assets", handlers.memory)
 	mux.Handle("/v1/memory/file", handlers.memory)
 	mux.Handle("/v1/memory/search", handlers.memory)
@@ -1062,6 +1079,9 @@ func shutdownRuntime(ctx context.Context, runtime *serveAPIRuntime) {
 	}
 	if runtime.server != nil {
 		_ = runtime.server.Shutdown(ctx)
+	}
+	if runtime.workLedger != nil {
+		_ = runtime.workLedger.Close()
 	}
 }
 

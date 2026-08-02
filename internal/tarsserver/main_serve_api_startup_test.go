@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/devlikebear/tars/internal/config"
 	"github.com/devlikebear/tars/internal/embodiment"
 	"github.com/devlikebear/tars/internal/extensions"
+	"github.com/devlikebear/tars/internal/workstore"
 	"github.com/rs/zerolog"
 )
 
@@ -78,4 +80,20 @@ func TestStartBackgrounds_EmbodimentSubsystemLifecycle(t *testing.T) {
 	}
 
 	shutdownRuntime(context.Background(), runtime)
+}
+
+func TestShutdownRuntimeClosesWorkLedger(t *testing.T) {
+	t.Parallel()
+
+	store, err := workstore.Open(context.Background(), filepath.Join(t.TempDir(), "work-ledger.db"), workstore.Options{})
+	if err != nil {
+		t.Fatalf("open work ledger: %v", err)
+	}
+	runtime := &serveAPIRuntime{workLedger: store}
+
+	shutdownRuntime(context.Background(), runtime)
+
+	if _, err := store.ListWorks(context.Background(), workstore.ListWorksFilter{WorkspaceID: defaultWorkspaceID}); err == nil {
+		t.Fatal("expected closed work ledger to reject reads")
+	}
 }
