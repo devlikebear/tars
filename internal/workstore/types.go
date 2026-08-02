@@ -183,6 +183,10 @@ const (
 	EventTypeWorkerLost                      EventType = "worker.lost"
 	EventTypeWorkerReclaimed                 EventType = "worker.reclaimed"
 	EventTypeWorkerRehydrated                EventType = "worker.rehydrated"
+	EventTypeA2ATaskSubmitted                EventType = "a2a.task_submitted"
+	EventTypeA2ATaskStateObserved            EventType = "a2a.task_state_observed"
+	EventTypeA2AArtifactQuarantined          EventType = "a2a.artifact_quarantined"
+	EventTypeA2ATaskCanceled                 EventType = "a2a.task_canceled"
 )
 
 type StepExecutionAction string

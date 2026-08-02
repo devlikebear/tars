@@ -92,7 +92,11 @@ func validExecutionEventType(eventType EventType) bool {
 		EventTypeWorkerPlacementDestroyed,
 		EventTypeWorkerLost,
 		EventTypeWorkerReclaimed,
-		EventTypeWorkerRehydrated:
+		EventTypeWorkerRehydrated,
+		EventTypeA2ATaskSubmitted,
+		EventTypeA2ATaskStateObserved,
+		EventTypeA2AArtifactQuarantined,
+		EventTypeA2ATaskCanceled:
 		return true
 	default:
 		return false
