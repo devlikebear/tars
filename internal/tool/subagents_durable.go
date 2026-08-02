@@ -93,7 +93,8 @@ func executeDurableSubagentFlow(ctx context.Context, runtime *agentruntime.Runti
 		Kind: "subagent_flow", Source: source, SourceID: sourceID,
 		CausationID: firstNonEmptyString(strings.TrimSpace(meta.RunID), flowID),
 		Title:       "Subagent flow " + flowID, Objective: fmt.Sprintf("Execute %d durable subagent tasks", len(stepSpecs)),
-		ContractJSON: contractJSON, Adapter: agentRuntimeWorkAdapter, ActorID: "subagents_orchestrate", Steps: stepSpecs,
+		ContractJSON: contractJSON, Adapter: agentRuntimeWorkAdapter, ActorID: "subagents_orchestrate",
+		CapabilityVersionIDs: meta.CapabilityVersionIDs, Steps: stepSpecs,
 	})
 	if err != nil {
 		return JSONTextResult(map[string]any{"message": err.Error()}, true), nil

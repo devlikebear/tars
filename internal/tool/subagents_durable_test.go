@@ -27,10 +27,13 @@ func TestDurableSubagentsOrchestrateReturnsWorkAndOutlivesRequest(t *testing.T) 
 		return "durable report", nil
 	})
 	ledger := openDurableToolLedger(t)
+	capability := createPromotedDurableToolCapability(t, ledger, "ws-durable", "research-helper")
 	scheduler := startDurableToolScheduler(t, ledger, "ws-durable", runtime)
 	mirrorConfig, sessionID, sessionStore := newSubagentTaskMirrorConfigForTest(t)
 	ctx, cancelRequest := context.WithCancel(serverauth.WithWorkspaceID(context.Background(), "ws-durable"))
-	ctx = usage.WithCallMeta(ctx, usage.CallMeta{Source: "chat", SessionID: sessionID})
+	ctx = usage.WithCallMeta(ctx, usage.CallMeta{
+		Source: "chat", SessionID: sessionID, CapabilityVersionIDs: []string{capability.ID},
+	})
 	tool := NewDurableSubagentsOrchestrateTool(runtime, scheduler, mirrorConfig)
 	result, err := tool.Execute(ctx, json.RawMessage(`{
 		"flow_id":"flow-durable",
@@ -90,6 +93,18 @@ func TestDurableSubagentsOrchestrateReturnsWorkAndOutlivesRequest(t *testing.T) 
 	if projection.Work.State != workstore.WorkStateDone || len(projection.Attempts) != 3 {
 		t.Fatalf("durable projection = %+v", projection)
 	}
+	outcomes, err := ledger.ListCapabilityOutcomes(context.Background(), capability.WorkspaceID, capability.ID)
+	if err != nil {
+		t.Fatalf("list durable capability outcomes: %v", err)
+	}
+	if len(outcomes) != 3 {
+		t.Fatalf("durable capability outcome count=%d want 3", len(outcomes))
+	}
+	for _, outcome := range outcomes {
+		if outcome.WorkID != accepted.WorkID || outcome.Status != workstore.CapabilityOutcomeSucceeded {
+			t.Fatalf("durable capability outcome = %+v", outcome)
+		}
+	}
 	legacyTasks, err := sessionStore.GetTasks(sessionID)
 	if err != nil {
 		t.Fatalf("get legacy task mirror: %v", err)
@@ -138,6 +153,29 @@ func openDurableToolLedger(t *testing.T) *workstore.Store {
 	}
 	t.Cleanup(func() { _ = store.Close() })
 	return store
+}
+
+func createPromotedDurableToolCapability(t *testing.T, store *workstore.Store, workspaceID, name string) workstore.CapabilityVersion {
+	t.Helper()
+	work, err := store.CreateWork(context.Background(), workstore.CreateWorkInput{
+		WorkspaceID: workspaceID, Kind: "capability_review", Source: "skill_inbox",
+		IdempotencyKey: "capability:" + name, Title: "Review " + name,
+		InitialState: workstore.WorkStateReview, ActorID: "tester",
+	})
+	if err != nil {
+		t.Fatalf("create durable capability work: %v", err)
+	}
+	version, err := store.CreateCapabilityVersion(context.Background(), workstore.CreateCapabilityVersionInput{
+		WorkspaceID: workspaceID, WorkID: work.ID, CandidateID: "candidate-" + name,
+		CapabilityName: name, InitialState: workstore.CapabilityStatePromoted,
+		ContentDigest: "sha256:" + name, SnapshotJSON: json.RawMessage(`{"files":[]}`),
+		ProvenanceJSON: json.RawMessage(`{"source":"test"}`), PermissionsJSON: json.RawMessage(`[]`),
+		ActorID: "tester",
+	})
+	if err != nil {
+		t.Fatalf("create durable promoted capability: %v", err)
+	}
+	return version
 }
 
 func startDurableToolScheduler(t *testing.T, ledger *workstore.Store, workspaceID string, agentRuntime *agentruntime.Runtime) *workscheduler.Scheduler {

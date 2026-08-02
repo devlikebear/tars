@@ -14,22 +14,35 @@ import (
 	"github.com/devlikebear/tars/internal/llm"
 	"github.com/devlikebear/tars/internal/session"
 	"github.com/devlikebear/tars/internal/skill"
+	"github.com/devlikebear/tars/internal/workstore"
 	"github.com/rs/zerolog"
 )
 
 type skillExtractionListResponse struct {
-	Count      int                         `json:"count"`
-	Candidates []skill.ExtractionCandidate `json:"candidates"`
+	Count        int                           `json:"count"`
+	Candidates   []skill.ExtractionCandidate   `json:"candidates"`
+	Capabilities []workstore.CapabilityVersion `json:"capabilities,omitempty"`
+	Evaluations  []workstore.EvaluationRun     `json:"evaluations,omitempty"`
+	Outcomes     []workstore.CapabilityOutcome `json:"outcomes,omitempty"`
 }
 
 type skillExtractionReviewResponse struct {
-	Candidate skill.ExtractionCandidate `json:"candidate"`
-	Draft     skillCreatorDraftResponse `json:"draft,omitempty"`
-	Saved     skillCreatorSaveResponse  `json:"saved,omitempty"`
+	Candidate   skill.ExtractionCandidate     `json:"candidate"`
+	Capability  workstore.CapabilityVersion   `json:"capability"`
+	Evaluations []workstore.EvaluationRun     `json:"evaluations"`
+	Outcomes    []workstore.CapabilityOutcome `json:"outcomes,omitempty"`
+	Draft       skillCreatorDraftResponse     `json:"draft,omitempty"`
+	Saved       skillCreatorSaveResponse      `json:"saved,omitempty"`
+	Diff        string                        `json:"diff,omitempty"`
 }
 
-func newSkillExtractionAPIHandler(workspaceDir string, store *session.Store, router llm.Router, logger zerolog.Logger, provider extensionsProvider) http.Handler {
+func newSkillExtractionAPIHandler(workspaceDir string, store *session.Store, router llm.Router, logger zerolog.Logger, provider extensionsProvider, ledgers ...*workstore.Store) http.Handler {
 	mux := http.NewServeMux()
+	var ledger *workstore.Store
+	if len(ledgers) > 0 {
+		ledger = ledgers[0]
+	}
+	lifecycle := newSkillCapabilityLifecycle(workspaceDir, ledger)
 
 	mux.HandleFunc("/v1/admin/skills/extractions", func(w http.ResponseWriter, r *http.Request) {
 		if !requireMethod(w, r, http.MethodGet) {
@@ -46,7 +59,28 @@ func newSkillExtractionAPIHandler(workspaceDir string, store *session.Store, rou
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "list skill extraction candidates failed"})
 			return
 		}
-		writeJSON(w, http.StatusOK, skillExtractionListResponse{Count: len(items), Candidates: items})
+		var capabilities []workstore.CapabilityVersion
+		if lifecycle != nil {
+			capabilities, err = lifecycle.SyncCandidates(r.Context(), items)
+			if err != nil {
+				logger.Error().Err(err).Msg("migrate skill extraction candidates to capability ledger failed")
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "migrate skill extraction candidates failed"})
+				return
+			}
+		}
+		evaluations, err := listCapabilityEvaluations(r.Context(), ledger, capabilities)
+		if err != nil {
+			logger.Error().Err(err).Msg("list capability evaluations failed")
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "list capability evaluations failed"})
+			return
+		}
+		outcomes, err := listCapabilityOutcomes(r.Context(), ledger, capabilities)
+		if err != nil {
+			logger.Error().Err(err).Msg("list capability outcomes failed")
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "list capability outcomes failed"})
+			return
+		}
+		writeJSON(w, http.StatusOK, skillExtractionListResponse{Count: len(items), Candidates: items, Capabilities: capabilities, Evaluations: evaluations, Outcomes: outcomes})
 	})
 
 	mux.HandleFunc("/v1/admin/skills/extractions/extract", func(w http.ResponseWriter, r *http.Request) {
@@ -78,7 +112,28 @@ func newSkillExtractionAPIHandler(workspaceDir string, store *session.Store, rou
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "append skill extraction candidates failed"})
 			return
 		}
-		writeJSON(w, http.StatusOK, skillExtractionListResponse{Count: len(items), Candidates: items})
+		var capabilities []workstore.CapabilityVersion
+		if lifecycle != nil {
+			capabilities, err = lifecycle.SyncCandidates(r.Context(), items)
+			if err != nil {
+				logger.Error().Err(err).Msg("create capability candidates failed")
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "create capability candidates failed"})
+				return
+			}
+		}
+		evaluations, err := listCapabilityEvaluations(r.Context(), ledger, capabilities)
+		if err != nil {
+			logger.Error().Err(err).Msg("list capability evaluations failed")
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "list capability evaluations failed"})
+			return
+		}
+		outcomes, err := listCapabilityOutcomes(r.Context(), ledger, capabilities)
+		if err != nil {
+			logger.Error().Err(err).Msg("list capability outcomes failed")
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "list capability outcomes failed"})
+			return
+		}
+		writeJSON(w, http.StatusOK, skillExtractionListResponse{Count: len(items), Candidates: items, Capabilities: capabilities, Evaluations: evaluations, Outcomes: outcomes})
 	})
 
 	mux.HandleFunc("/v1/admin/skills/extractions/review", func(w http.ResponseWriter, r *http.Request) {
@@ -92,28 +147,27 @@ func newSkillExtractionAPIHandler(workspaceDir string, store *session.Store, rou
 		if !decodeJSONBody(w, r, &req) {
 			return
 		}
-		action := skill.ExtractionCandidateAction(strings.ToLower(strings.TrimSpace(string(req.Action))))
-		if action == skill.ExtractionCandidateActionApprove {
-			candidate, draft, saved, err := approveSkillExtractionCandidate(workspaceDir, strings.TrimSpace(req.ID))
-			if err != nil {
-				logger.Error().Err(err).Str("candidate_id", strings.TrimSpace(req.ID)).Msg("approve skill extraction candidate failed")
-				writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
-				return
-			}
-			if provider != nil {
-				if reloadErr := provider.Reload(r.Context()); reloadErr != nil {
-					logger.Warn().Err(reloadErr).Str("skill", draft.Name).Msg("reload extensions after skill approval failed")
-				}
-			}
-			writeJSON(w, http.StatusOK, skillExtractionReviewResponse{Candidate: candidate, Draft: draft, Saved: saved})
+		action, ok := parseExtractionCandidateAction(req.Action)
+		if !ok {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid action"})
 			return
 		}
-		candidate, err := skill.ReviewExtractionCandidate(workspaceDir, strings.TrimSpace(req.ID), skill.ExtractionCandidateReview{Action: action})
+		if lifecycle == nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "reviewed self-improvement requires the Work Ledger"})
+			return
+		}
+		result, err := lifecycle.Apply(r.Context(), strings.TrimSpace(req.ID), action)
 		if err != nil {
+			logger.Error().Err(err).Str("candidate_id", strings.TrimSpace(req.ID)).Str("action", string(action)).Msg("apply skill capability lifecycle action failed")
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 			return
 		}
-		writeJSON(w, http.StatusOK, skillExtractionReviewResponse{Candidate: candidate})
+		if provider != nil && (action == skill.ExtractionCandidateActionPromote || action == skill.ExtractionCandidateActionRollback) {
+			if reloadErr := provider.Reload(r.Context()); reloadErr != nil {
+				logger.Warn().Err(reloadErr).Str("skill", result.Capability.CapabilityName).Msg("reload extensions after capability rollout failed")
+			}
+		}
+		writeJSON(w, http.StatusOK, skillExtractionReviewResponse(result))
 	})
 
 	return mux
@@ -138,42 +192,55 @@ func skillExtractionSession(store *session.Store, sessionID string) (session.Ses
 	return sess, messages, nil
 }
 
-func approveSkillExtractionCandidate(workspaceDir string, candidateID string) (skill.ExtractionCandidate, skillCreatorDraftResponse, skillCreatorSaveResponse, error) {
-	candidate, err := skill.FindExtractionCandidate(workspaceDir, candidateID)
-	if err != nil {
-		return skill.ExtractionCandidate{}, skillCreatorDraftResponse{}, skillCreatorSaveResponse{}, err
-	}
-	name := uniqueSkillDraftName(workspaceDir, candidate.Name)
-	draft, err := buildSkillCreatorDraft(skillCreatorDraftRequest{
-		Name:             name,
-		Description:      firstNonEmptyString(candidate.Summary, candidate.Trigger),
-		Category:         "session",
-		Language:         "shell",
-		Layout:           "single_file",
-		UseCase:          firstNonEmptyString(candidate.UseCase, candidate.Summary),
-		RecommendedTools: candidate.RecommendedTools,
-	})
-	if err != nil {
-		return skill.ExtractionCandidate{}, skillCreatorDraftResponse{}, skillCreatorSaveResponse{}, err
-	}
-	draft.Files = addExtractionProvenanceToSkillDraft(draft.Files, candidate)
-	saved, err := saveSkillCreatorDraft(workspaceDir, draft)
-	if err != nil {
-		return skill.ExtractionCandidate{}, skillCreatorDraftResponse{}, skillCreatorSaveResponse{}, err
-	}
-	reviewed, err := skill.ReviewExtractionCandidate(workspaceDir, candidate.ID, skill.ExtractionCandidateReview{
-		Action:    skill.ExtractionCandidateActionApprove,
-		DraftPath: saved.Path,
-		DraftName: draft.Name,
-	})
-	if err != nil {
-		return skill.ExtractionCandidate{}, skillCreatorDraftResponse{}, skillCreatorSaveResponse{}, err
-	}
-	return reviewed, draft, saved, nil
-}
-
 func addExtractionProvenanceToSkillDraft(files []skillCreatorFile, _ skill.ExtractionCandidate) []skillCreatorFile {
 	return append([]skillCreatorFile(nil), files...)
+}
+
+func parseExtractionCandidateAction(raw skill.ExtractionCandidateAction) (skill.ExtractionCandidateAction, bool) {
+	switch skill.ExtractionCandidateAction(strings.ToLower(strings.TrimSpace(string(raw)))) {
+	case skill.ExtractionCandidateActionEvaluate:
+		return skill.ExtractionCandidateActionEvaluate, true
+	case skill.ExtractionCandidateActionApprove:
+		return skill.ExtractionCandidateActionApprove, true
+	case skill.ExtractionCandidateActionPromote:
+		return skill.ExtractionCandidateActionPromote, true
+	case skill.ExtractionCandidateActionRollback:
+		return skill.ExtractionCandidateActionRollback, true
+	case skill.ExtractionCandidateActionReject:
+		return skill.ExtractionCandidateActionReject, true
+	default:
+		return "", false
+	}
+}
+
+func listCapabilityEvaluations(ctx context.Context, ledger *workstore.Store, versions []workstore.CapabilityVersion) ([]workstore.EvaluationRun, error) {
+	if ledger == nil || len(versions) == 0 {
+		return []workstore.EvaluationRun{}, nil
+	}
+	evaluations := make([]workstore.EvaluationRun, 0)
+	for _, version := range versions {
+		runs, err := ledger.ListEvaluationRuns(ctx, version.WorkspaceID, version.ID)
+		if err != nil {
+			return nil, err
+		}
+		evaluations = append(evaluations, runs...)
+	}
+	return evaluations, nil
+}
+
+func listCapabilityOutcomes(ctx context.Context, ledger *workstore.Store, versions []workstore.CapabilityVersion) ([]workstore.CapabilityOutcome, error) {
+	if ledger == nil || len(versions) == 0 {
+		return []workstore.CapabilityOutcome{}, nil
+	}
+	outcomes := make([]workstore.CapabilityOutcome, 0)
+	for _, version := range versions {
+		items, err := ledger.ListCapabilityOutcomes(ctx, version.WorkspaceID, version.ID)
+		if err != nil {
+			return nil, err
+		}
+		outcomes = append(outcomes, items...)
+	}
+	return outcomes, nil
 }
 
 func uniqueSkillDraftName(workspaceDir string, requested string) string {
@@ -289,6 +356,7 @@ func parseLLMSkillExtractionCandidates(sess session.Session, messages []session.
 	}
 	now := time.Now().UTC()
 	out := make([]skill.ExtractionCandidate, 0, len(payload.Candidates))
+	signals := skill.DetectExtractionSignals(messages)
 	for _, item := range payload.Candidates {
 		if strings.TrimSpace(item.Name) == "" || strings.TrimSpace(item.Summary) == "" {
 			continue
@@ -314,6 +382,7 @@ func parseLLMSkillExtractionCandidates(sess session.Session, messages []session.
 			MessageRange:     messageRange,
 			RepeatedCount:    repeatedCount,
 			Evidence:         evidence,
+			Signals:          signals,
 			CreatedAt:        now,
 			UpdatedAt:        now,
 			Provenance: skill.ExtractionProvenance{

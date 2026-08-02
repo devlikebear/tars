@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -72,6 +73,170 @@ func TestSchedulerExecutesDAGAndCompletesWork(t *testing.T) {
 	defer mu.Unlock()
 	if len(started) != 3 || started[2] != "c" {
 		t.Fatalf("DAG start order=%v want c last", started)
+	}
+}
+
+func TestSchedulerRecordsPromotedCapabilityOutcome(t *testing.T) {
+	t.Parallel()
+
+	store := openSchedulerTestStore(t)
+	capabilityWork, err := store.CreateWork(context.Background(), workstore.CreateWorkInput{
+		WorkspaceID: "workspace-capability", Kind: "capability_review", Source: "skill_inbox",
+		SourceID: "candidate-1", IdempotencyKey: "capability:review-helper:v1",
+		Title: "Review helper v1", InitialState: workstore.WorkStateReview, ActorID: "tester",
+	})
+	if err != nil {
+		t.Fatalf("create capability work: %v", err)
+	}
+	version, err := store.CreateCapabilityVersion(context.Background(), workstore.CreateCapabilityVersionInput{
+		WorkspaceID: capabilityWork.WorkspaceID, WorkID: capabilityWork.ID,
+		CandidateID: "candidate-1", CapabilityName: "review-helper",
+		InitialState: workstore.CapabilityStatePromoted, ContentDigest: "sha256:v1",
+		SnapshotJSON: json.RawMessage(`{"files":[]}`), ProvenanceJSON: json.RawMessage(`{"source":"test"}`),
+		PermissionsJSON: json.RawMessage(`[]`), RolloutJSON: json.RawMessage(`{"scope":"100%"}`),
+		ActorID: "tester",
+	})
+	if err != nil {
+		t.Fatalf("create promoted capability: %v", err)
+	}
+
+	executor := &fakeExecutor{adapter: "fake", execute: func(_ context.Context, _ Execution) (ExecutionResult, error) {
+		return ExecutionResult{
+			Succeeded: true, OutputJSON: json.RawMessage(`{"ok":true}`),
+			Usage: workstore.StepAttemptUsage{Iterations: 2, Tokens: 50, CostUSD: 0.125},
+		}, nil
+	}}
+	scheduler := newTestScheduler(t, store, "workspace-capability", executor, 1)
+	work, err := scheduler.Submit(context.Background(), SubmitInput{
+		WorkspaceID: "workspace-capability", IdempotencyKey: "uses-capability", Title: "Uses promoted capability",
+		Adapter: "fake", ActorID: "planner", CapabilityVersionIDs: []string{version.ID},
+		Steps: []StepSpec{{Key: "run", Title: "Run", Policy: oneAttemptPolicy()}},
+	})
+	if err != nil {
+		t.Fatalf("submit capability-linked work: %v", err)
+	}
+	if claimed, runErr := scheduler.RunOnce(context.Background()); runErr != nil || claimed != 1 {
+		t.Fatalf("run capability-linked work claimed=%d err=%v", claimed, runErr)
+	}
+	if _, err := scheduler.Wait(context.Background(), work.ID); err != nil {
+		t.Fatalf("wait capability-linked work: %v", err)
+	}
+
+	outcomes, err := store.ListCapabilityOutcomes(context.Background(), version.WorkspaceID, version.ID)
+	if err != nil {
+		t.Fatalf("list capability outcomes: %v", err)
+	}
+	if len(outcomes) != 1 {
+		t.Fatalf("capability outcome count=%d want 1", len(outcomes))
+	}
+	outcome := outcomes[0]
+	if outcome.WorkID != work.ID || outcome.AttemptID == "" || outcome.Status != workstore.CapabilityOutcomeSucceeded || outcome.VerifierStatus != workstore.ProofStatusReported || outcome.CostUSD != 0.125 || outcome.LatencyMS < 0 {
+		t.Fatalf("capability outcome = %+v", outcome)
+	}
+	var metadata struct {
+		Capabilities struct {
+			SchemaVersion int      `json:"schema_version"`
+			VersionIDs    []string `json:"version_ids"`
+		} `json:"capabilities"`
+	}
+	if err := json.Unmarshal(work.MetadataJSON, &metadata); err != nil {
+		t.Fatalf("decode capability metadata: %v", err)
+	}
+	if metadata.Capabilities.SchemaVersion != 1 || len(metadata.Capabilities.VersionIDs) != 1 || metadata.Capabilities.VersionIDs[0] != version.ID {
+		t.Fatalf("capability metadata = %+v", metadata.Capabilities)
+	}
+}
+
+func TestSchedulerRejectsUnpromotedCapabilityReference(t *testing.T) {
+	t.Parallel()
+
+	store := openSchedulerTestStore(t)
+	capabilityWork, err := store.CreateWork(context.Background(), workstore.CreateWorkInput{
+		WorkspaceID: "workspace-capability-gate", Kind: "capability_review",
+		IdempotencyKey: "capability:draft:v1", Title: "Draft capability", ActorID: "tester",
+	})
+	if err != nil {
+		t.Fatalf("create capability work: %v", err)
+	}
+	version, err := store.CreateCapabilityVersion(context.Background(), workstore.CreateCapabilityVersionInput{
+		WorkspaceID: capabilityWork.WorkspaceID, WorkID: capabilityWork.ID,
+		CandidateID: "candidate-draft", CapabilityName: "draft-helper", ContentDigest: "sha256:draft",
+		SnapshotJSON: json.RawMessage(`{"files":[]}`), ProvenanceJSON: json.RawMessage(`{"source":"test"}`),
+		PermissionsJSON: json.RawMessage(`[]`), ActorID: "tester",
+	})
+	if err != nil {
+		t.Fatalf("create draft capability: %v", err)
+	}
+	scheduler := newTestScheduler(t, store, "workspace-capability-gate", &fakeExecutor{adapter: "fake"}, 1)
+	_, err = scheduler.Submit(context.Background(), SubmitInput{
+		WorkspaceID: "workspace-capability-gate", IdempotencyKey: "uses-draft", Title: "Uses draft capability",
+		Adapter: "fake", ActorID: "planner", CapabilityVersionIDs: []string{version.ID},
+		Steps: []StepSpec{{Key: "run", Title: "Run", Policy: oneAttemptPolicy()}},
+	})
+	if err == nil || !strings.Contains(err.Error(), "is not promoted") {
+		t.Fatalf("submit unpromoted capability error=%v, want promotion gate", err)
+	}
+}
+
+func TestSchedulerCapabilityOutcomeCapturesFailedIndependentProof(t *testing.T) {
+	t.Parallel()
+
+	store := openSchedulerTestStore(t)
+	version := createPromotedSchedulerCapability(t, store, "workspace-capability-regression", "proof-helper")
+	scheduler, err := New(Options{
+		Store: store, WorkspaceID: version.WorkspaceID, WorkerID: "worker-primary", ActorID: "scheduler",
+		LeaseDuration: time.Minute, HeartbeatInterval: 10 * time.Millisecond, PollInterval: 5 * time.Millisecond,
+		MaxWorkers: 1,
+		Executors: []Executor{&fakeExecutor{adapter: "fake", execute: func(_ context.Context, _ Execution) (ExecutionResult, error) {
+			return ExecutionResult{Succeeded: true, OutputJSON: json.RawMessage(`{"worker":"success"}`)}, nil
+		}}},
+		Verifiers: []Verifier{&fakeVerifier{
+			name: "deterministic", id: "verifier-1", environment: json.RawMessage(`{"runner":"proof-process"}`),
+			verify: func(_ context.Context, _ VerificationRequest) (VerificationResult, error) {
+				return VerificationResult{Status: workstore.ProofStatusFailed, Summary: "tests failed", Rationale: "exit code 1", SubjectDigest: "sha256:failed"}, nil
+			},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("new capability proof scheduler: %v", err)
+	}
+	t.Cleanup(scheduler.Close)
+	work, err := scheduler.Submit(context.Background(), SubmitInput{
+		WorkspaceID: version.WorkspaceID, IdempotencyKey: "capability-proof-regression",
+		Title: "Capability proof regression", Adapter: "fake", ActorID: "planner",
+		CapabilityVersionIDs: []string{version.ID},
+		Steps: []StepSpec{{Key: "verify", Title: "Verify", Policy: workstore.StepSchedulePolicy{
+			MaxAttempts: 1, EscalationState: workstore.WorkStateReview,
+			Proof: workstore.StepProofPolicy{Required: true, FailureState: workstore.WorkStateReview,
+				Requirements: []workstore.ProofRequirement{{Kind: "test", Verifier: "deterministic"}}},
+		}}},
+	})
+	if err != nil {
+		t.Fatalf("submit capability proof work: %v", err)
+	}
+	if _, err := scheduler.RunOnce(context.Background()); err != nil {
+		t.Fatalf("run capability proof work: %v", err)
+	}
+	if _, err := scheduler.Wait(context.Background(), work.ID); err != nil {
+		t.Fatalf("wait capability proof work: %v", err)
+	}
+	outcomes, err := store.ListCapabilityOutcomes(context.Background(), version.WorkspaceID, version.ID)
+	if err != nil || len(outcomes) != 1 {
+		t.Fatalf("capability proof outcomes=%+v err=%v", outcomes, err)
+	}
+	if outcomes[0].Status != workstore.CapabilityOutcomeSucceeded || outcomes[0].VerifierStatus != workstore.ProofStatusFailed {
+		t.Fatalf("capability proof outcome = %+v", outcomes[0])
+	}
+	flagged, err := store.GetCapabilityVersion(context.Background(), version.WorkspaceID, version.ID)
+	if err != nil {
+		t.Fatalf("get regression-flagged capability: %v", err)
+	}
+	var rollout struct {
+		ReviewRequired     bool `json:"review_required"`
+		RegressionDetected bool `json:"regression_detected"`
+	}
+	if err := json.Unmarshal(flagged.RolloutJSON, &rollout); err != nil || !rollout.ReviewRequired || !rollout.RegressionDetected {
+		t.Fatalf("regression rollout=%+v err=%v", rollout, err)
 	}
 }
 
@@ -452,6 +617,29 @@ func openSchedulerTestStore(t *testing.T) *workstore.Store {
 	}
 	t.Cleanup(func() { _ = store.Close() })
 	return store
+}
+
+func createPromotedSchedulerCapability(t *testing.T, store *workstore.Store, workspaceID, name string) workstore.CapabilityVersion {
+	t.Helper()
+	work, err := store.CreateWork(context.Background(), workstore.CreateWorkInput{
+		WorkspaceID: workspaceID, Kind: "capability_review", Source: "skill_inbox",
+		IdempotencyKey: "capability:" + name, Title: "Review " + name,
+		InitialState: workstore.WorkStateReview, ActorID: "tester",
+	})
+	if err != nil {
+		t.Fatalf("create scheduler capability work: %v", err)
+	}
+	version, err := store.CreateCapabilityVersion(context.Background(), workstore.CreateCapabilityVersionInput{
+		WorkspaceID: workspaceID, WorkID: work.ID, CandidateID: "candidate-" + name,
+		CapabilityName: name, InitialState: workstore.CapabilityStatePromoted,
+		ContentDigest: "sha256:" + name, SnapshotJSON: json.RawMessage(`{"files":[]}`),
+		ProvenanceJSON: json.RawMessage(`{"source":"test"}`), PermissionsJSON: json.RawMessage(`[]`),
+		RolloutJSON: json.RawMessage(`{"mode":"full","percent":100}`), ActorID: "tester",
+	})
+	if err != nil {
+		t.Fatalf("create scheduler promoted capability: %v", err)
+	}
+	return version
 }
 
 func oneAttemptPolicy() workstore.StepSchedulePolicy {

@@ -448,6 +448,7 @@ func buildAPIMux(
 	chatTooling.ExecMaxBackgroundTimeoutMS = cfg.ToolsProcessMaxTimeoutMS
 	chatTooling.ClaudeCodeCLIPermissionMode = strings.TrimSpace(cfg.ClaudeCodeCLIPermissionMode)
 	chatTooling.WorkScheduler = workScheduler
+	chatTooling.WorkLedger = workLedger
 	overrideService := sessionoverride.NewService(sessionStore)
 	chatTooling.OverrideService = overrideService
 	chatTooling.AutomationToolsForWorkspace = func(workspaceID string) []tool.Tool {
@@ -664,7 +665,7 @@ func buildAPIMux(
 	_ = hubInstaller.Sources.Register(anthropic.New())
 	skillhubHandler := newSkillhubAPIHandler(hubInstaller, extensionsManager, logger)
 	skillCreatorHandler := newSkillCreatorAPIHandler(cfg.WorkspaceDir, logger, nil, extensionsManager)
-	skillExtractionHandler := newSkillExtractionAPIHandler(cfg.WorkspaceDir, sessionStore, deps.llmRouter, logger, extensionsManager)
+	skillExtractionHandler := newSkillExtractionAPIHandler(cfg.WorkspaceDir, sessionStore, deps.llmRouter, logger, extensionsManager, workLedger)
 	mcpCreatorHandler := newMCPServerCreatorAPIHandler(cfg.WorkspaceDir, logger, nil, deps.llmRouter)
 	gitHandler := newGitAPIHandler(cfg.WorkspaceDir, sessionStore, opsManager, logger)
 	eventsHandler := newEventsAPIHandler(broker, notificationStore, logger)

@@ -1,6 +1,7 @@
 package tarsserver
 
 import (
+	"context"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -14,6 +15,7 @@ import (
 	"github.com/devlikebear/tars/internal/session"
 	"github.com/devlikebear/tars/internal/skill"
 	"github.com/devlikebear/tars/internal/tool"
+	"github.com/devlikebear/tars/internal/workstore"
 )
 
 type chatRunState struct {
@@ -27,6 +29,7 @@ type chatRunState struct {
 	invokedCommand        *skill.Definition
 	invokedCommandReason  string
 	availableSkillNames   []string
+	capabilityVersionIDs  []string
 	availableCommandNames []string
 	transcriptPath        string
 	history               []session.Message
@@ -336,6 +339,11 @@ func prepareChatRunState(r *http.Request, req chatRequestPayload, deps chatHandl
 	state.compaction = compactionInfo
 	state.mentionedPaths = mentionedPaths
 	state.mentionedSubagents = subagentMentions
+	state.capabilityVersionIDs, err = resolvePromotedCapabilityVersionIDs(r.Context(), deps.tooling.WorkLedger, workspaceID, state.invokedSkill)
+	if err != nil {
+		deps.logger.Warn().Err(err).Str("workspace_id", workspaceID).Str("skill", skillNameOrEmpty(state.invokedSkill)).Msg("resolve promoted capability attribution failed")
+		state.capabilityVersionIDs = nil
+	}
 	if compactionInfo.Applied && strings.TrimSpace(compactionInfo.Mode) != "" {
 		if setErr := reqStore.SetLastCompactionMode(sessionID, compactionInfo.Mode); setErr != nil {
 			deps.logger.Warn().Err(setErr).Str("session_id", sessionID).Msg("persist last compaction mode failed")
@@ -349,4 +357,27 @@ func prepareChatRunState(r *http.Request, req chatRequestPayload, deps chatHandl
 	}
 
 	return state, 0, "", nil
+}
+
+func resolvePromotedCapabilityVersionIDs(ctx context.Context, ledger *workstore.Store, workspaceID string, invokedSkill *skill.Definition) ([]string, error) {
+	if ledger == nil || invokedSkill == nil || strings.TrimSpace(invokedSkill.Name) == "" {
+		return nil, nil
+	}
+	versions, err := ledger.ListCapabilityVersions(ctx, workstore.ListCapabilityVersionsFilter{
+		WorkspaceID: workspaceID, CapabilityName: strings.TrimSpace(invokedSkill.Name),
+		States: []workstore.CapabilityState{workstore.CapabilityStatePromoted}, Limit: 1000,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(versions) == 0 {
+		return nil, nil
+	}
+	latest := versions[0]
+	for _, version := range versions[1:] {
+		if version.Version > latest.Version {
+			latest = version
+		}
+	}
+	return []string{latest.ID}, nil
 }

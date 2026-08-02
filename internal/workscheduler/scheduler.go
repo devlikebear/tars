@@ -151,7 +151,11 @@ func (s *Scheduler) Submit(ctx context.Context, input SubmitInput) (workstore.Wo
 	if err := s.validateProofVerifiers(input.Steps); err != nil {
 		return workstore.Work{}, err
 	}
-	metadataJSON, err := schedulerMetadata(input.MetadataJSON, input.Adapter)
+	capabilityVersionIDs, err := s.validateCapabilityVersionIDs(ctx, input.WorkspaceID, input.CapabilityVersionIDs)
+	if err != nil {
+		return workstore.Work{}, err
+	}
+	metadataJSON, err := schedulerMetadata(input.MetadataJSON, input.Adapter, capabilityVersionIDs)
 	if err != nil {
 		return workstore.Work{}, err
 	}
@@ -541,7 +545,9 @@ func (s *Scheduler) startActive(
 			defer close(heartbeatDone)
 			s.heartbeat(execCtx, claim, cancel)
 		}()
+		executionStartedAt := time.Now()
 		result, found, err := run(execCtx, execution)
+		executionLatency := time.Since(executionStartedAt)
 		wasCanceled := execCtx.Err() != nil
 		if !found {
 			cancel()
@@ -573,10 +579,21 @@ func (s *Scheduler) startActive(
 			if releaseErr != nil && !errors.Is(releaseErr, workstore.ErrClaimConflict) && !errors.Is(releaseErr, workstore.ErrClaimExpired) {
 				s.reportError(releaseErr)
 			}
+			if releaseErr == nil {
+				outcomeCtx, outcomeCancel := context.WithTimeout(context.Background(), 5*time.Second)
+				if outcomeErr := s.recordCapabilityOutcomes(outcomeCtx, execution, workstore.CapabilityOutcomeCancelled, workstore.ProofStatusPending, result.Usage.CostUSD, executionLatency); outcomeErr != nil {
+					s.reportError(outcomeErr)
+				}
+				outcomeCancel()
+			}
 			return
 		}
+		verifierStatus := workstore.ProofStatusFailed
 		if result.Succeeded {
-			if proofErr := s.recordVerificationProofs(execCtx, execution, result); proofErr != nil {
+			var proofErr error
+			verifierStatus, proofErr = s.recordVerificationProofs(execCtx, execution, result)
+			if proofErr != nil {
+				verifierStatus = workstore.ProofStatusFailed
 				s.reportError(proofErr)
 			}
 		}
@@ -593,13 +610,24 @@ func (s *Scheduler) startActive(
 		if completeErr != nil && !errors.Is(completeErr, workstore.ErrClaimConflict) {
 			s.reportError(completeErr)
 		}
+		if completeErr == nil {
+			outcomeStatus := workstore.CapabilityOutcomeFailed
+			if result.Succeeded {
+				outcomeStatus = workstore.CapabilityOutcomeSucceeded
+			}
+			outcomeCtx, outcomeCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			if outcomeErr := s.recordCapabilityOutcomes(outcomeCtx, execution, outcomeStatus, verifierStatus, result.Usage.CostUSD, executionLatency); outcomeErr != nil {
+				s.reportError(outcomeErr)
+			}
+			outcomeCancel()
+		}
 		if reconcileErr := s.reconcileWork(context.Background(), work.ID); reconcileErr != nil {
 			s.reportError(reconcileErr)
 		}
 	}()
 }
 
-func (s *Scheduler) recordVerificationProofs(ctx context.Context, execution Execution, result ExecutionResult) error {
+func (s *Scheduler) recordVerificationProofs(ctx context.Context, execution Execution, result ExecutionResult) (workstore.ProofStatus, error) {
 	claim := execution.Claim
 	resultDigest := proofDigest(result.OutputJSON)
 	resultInput, _ := json.Marshal(map[string]any{"output_digest": resultDigest})
@@ -612,15 +640,19 @@ func (s *Scheduler) recordVerificationProofs(ctx context.Context, execution Exec
 		ReporterID: claim.Schedule.LeaseOwner, InputJSON: resultInput,
 		SubjectDigest: resultDigest, ActorID: s.actorID,
 	}); err != nil {
-		return fmt.Errorf("workscheduler: record worker success report: %w", err)
+		return workstore.ProofStatusFailed, fmt.Errorf("workscheduler: record worker success report: %w", err)
 	}
 	if !claim.Schedule.Policy.Proof.Required {
-		return nil
+		return workstore.ProofStatusReported, nil
+	}
+	status := workstore.ProofStatusPassed
+	if len(claim.Schedule.Policy.Proof.Requirements) == 0 {
+		status = workstore.ProofStatusPending
 	}
 	for _, requirement := range claim.Schedule.Policy.Proof.Requirements {
 		verifier, ok := s.verifiers[requirement.Verifier]
 		if !ok {
-			return fmt.Errorf("workscheduler: verifier %q is not configured", requirement.Verifier)
+			return workstore.ProofStatusFailed, fmt.Errorf("workscheduler: verifier %q is not configured", requirement.Verifier)
 		}
 		identity := verifier.Identity()
 		requestInput, err := json.Marshal(map[string]any{
@@ -628,7 +660,7 @@ func (s *Scheduler) recordVerificationProofs(ctx context.Context, execution Exec
 			"worker_output_digest": resultDigest,
 		})
 		if err != nil {
-			return fmt.Errorf("workscheduler: encode verification input: %w", err)
+			return workstore.ProofStatusFailed, fmt.Errorf("workscheduler: encode verification input: %w", err)
 		}
 		pending, err := s.store.CreateProof(ctx, workstore.CreateProofInput{
 			WorkspaceID: claim.Step.WorkspaceID, WorkID: claim.Step.WorkID,
@@ -642,9 +674,13 @@ func (s *Scheduler) recordVerificationProofs(ctx context.Context, execution Exec
 			InputJSON: requestInput, SubjectDigest: resultDigest, ActorID: s.actorID,
 		})
 		if err != nil {
-			return fmt.Errorf("workscheduler: create pending proof %q: %w", requirement.Kind, err)
+			return workstore.ProofStatusFailed, fmt.Errorf("workscheduler: create pending proof %q: %w", requirement.Kind, err)
 		}
-		if pending.Status == workstore.ProofStatusPassed || pending.Status == workstore.ProofStatusFailed {
+		if pending.Status == workstore.ProofStatusPassed {
+			continue
+		}
+		if pending.Status == workstore.ProofStatusFailed {
+			status = workstore.ProofStatusFailed
 			continue
 		}
 		if pending.Status == workstore.ProofStatusStale {
@@ -654,7 +690,7 @@ func (s *Scheduler) recordVerificationProofs(ctx context.Context, execution Exec
 				ActorID: s.actorID, Rationale: "reverification requested",
 			})
 			if err != nil {
-				return fmt.Errorf("workscheduler: reopen stale proof %q: %w", requirement.Kind, err)
+				return workstore.ProofStatusFailed, fmt.Errorf("workscheduler: reopen stale proof %q: %w", requirement.Kind, err)
 			}
 		}
 		verified, verifyErr := verifier.Verify(ctx, VerificationRequest{
@@ -683,6 +719,9 @@ func (s *Scheduler) recordVerificationProofs(ctx context.Context, execution Exec
 			}
 		}
 		if verified.Status == workstore.ProofStatusPending {
+			if status != workstore.ProofStatusFailed {
+				status = workstore.ProofStatusPending
+			}
 			if _, err := s.store.TransitionProof(ctx, workstore.TransitionProofInput{
 				WorkspaceID: pending.WorkspaceID, WorkID: pending.WorkID, ProofID: pending.ID,
 				ExpectedStatus: workstore.ProofStatusPending, ToStatus: workstore.ProofStatusPending,
@@ -691,7 +730,7 @@ func (s *Scheduler) recordVerificationProofs(ctx context.Context, execution Exec
 				SubjectDigest:       verified.SubjectDigest, Rationale: verified.Rationale,
 				ActorID: identity.ID, ObservedAt: verified.ObservedAt,
 			}); err != nil {
-				return fmt.Errorf("workscheduler: update pending proof %q: %w", requirement.Kind, err)
+				return workstore.ProofStatusFailed, fmt.Errorf("workscheduler: update pending proof %q: %w", requirement.Kind, err)
 			}
 			continue
 		}
@@ -715,10 +754,13 @@ func (s *Scheduler) recordVerificationProofs(ctx context.Context, execution Exec
 			SubjectDigest: verified.SubjectDigest, Rationale: verified.Rationale,
 			ActorID: identity.ID, ObservedAt: verified.ObservedAt,
 		}); err != nil {
-			return fmt.Errorf("workscheduler: finalize proof %q: %w", requirement.Kind, err)
+			return workstore.ProofStatusFailed, fmt.Errorf("workscheduler: finalize proof %q: %w", requirement.Kind, err)
+		}
+		if verified.Status == workstore.ProofStatusFailed {
+			status = workstore.ProofStatusFailed
 		}
 	}
-	return nil
+	return status, nil
 }
 
 func (s *Scheduler) heartbeat(ctx context.Context, claim workstore.StepClaim, cancel context.CancelFunc) {
@@ -884,7 +926,75 @@ func (s *Scheduler) executorForWork(work workstore.Work) (Executor, error) {
 	return executor, nil
 }
 
-func schedulerMetadata(raw json.RawMessage, adapter string) (json.RawMessage, error) {
+func (s *Scheduler) validateCapabilityVersionIDs(ctx context.Context, workspaceID string, raw []string) ([]string, error) {
+	if len(raw) == 0 {
+		return nil, nil
+	}
+	result := make([]string, 0, len(raw))
+	seen := make(map[string]struct{}, len(raw))
+	for _, candidate := range raw {
+		versionID := strings.TrimSpace(candidate)
+		if versionID == "" {
+			return nil, fmt.Errorf("workscheduler: capability version id is required")
+		}
+		if _, exists := seen[versionID]; exists {
+			continue
+		}
+		version, err := s.store.GetCapabilityVersion(ctx, workspaceID, versionID)
+		if err != nil {
+			return nil, fmt.Errorf("workscheduler: resolve capability version %q: %w", versionID, err)
+		}
+		if version.State != workstore.CapabilityStatePromoted {
+			return nil, fmt.Errorf("workscheduler: capability version %q is not promoted (state %s)", versionID, version.State)
+		}
+		seen[versionID] = struct{}{}
+		result = append(result, versionID)
+	}
+	return result, nil
+}
+
+func (s *Scheduler) recordCapabilityOutcomes(
+	ctx context.Context,
+	execution Execution,
+	status workstore.CapabilityOutcomeStatus,
+	verifierStatus workstore.ProofStatus,
+	costUSD float64,
+	latency time.Duration,
+) error {
+	versionIDs, err := capabilityVersionIDsFromMetadata(execution.Work.MetadataJSON)
+	if err != nil {
+		return err
+	}
+	for _, versionID := range versionIDs {
+		if _, err := s.store.RecordCapabilityOutcome(ctx, workstore.RecordCapabilityOutcomeInput{
+			WorkspaceID: execution.Work.WorkspaceID, CapabilityVersionID: versionID,
+			WorkID: execution.Work.ID, AttemptID: execution.Claim.Attempt.ID,
+			IdempotencyKey: "scheduler-attempt:" + execution.Claim.Attempt.ID,
+			Status:         status, VerifierStatus: verifierStatus, CostUSD: costUSD,
+			LatencyMS: latency.Milliseconds(), ActorID: s.actorID,
+		}); err != nil {
+			return fmt.Errorf("workscheduler: record capability %q outcome: %w", versionID, err)
+		}
+	}
+	return nil
+}
+
+func capabilityVersionIDsFromMetadata(raw json.RawMessage) ([]string, error) {
+	var metadata struct {
+		Capabilities struct {
+			VersionIDs []string `json:"version_ids"`
+		} `json:"capabilities"`
+	}
+	if len(raw) == 0 {
+		return nil, nil
+	}
+	if err := json.Unmarshal(raw, &metadata); err != nil {
+		return nil, fmt.Errorf("workscheduler: decode capability metadata: %w", err)
+	}
+	return metadata.Capabilities.VersionIDs, nil
+}
+
+func schedulerMetadata(raw json.RawMessage, adapter string, capabilityVersionIDs []string) (json.RawMessage, error) {
 	metadata := map[string]any{}
 	if len(raw) > 0 {
 		if err := json.Unmarshal(raw, &metadata); err != nil {
@@ -892,6 +1002,16 @@ func schedulerMetadata(raw json.RawMessage, adapter string) (json.RawMessage, er
 		}
 	}
 	metadata["scheduler"] = map[string]any{"adapter": strings.TrimSpace(adapter), "schema_version": 1}
+	if len(capabilityVersionIDs) > 0 {
+		metadata["capabilities"] = map[string]any{
+			"schema_version": 1,
+			"version_ids":    capabilityVersionIDs,
+		}
+	} else {
+		// Capability attribution must come through the typed, validated field;
+		// callers cannot forge it through arbitrary metadata JSON.
+		delete(metadata, "capabilities")
+	}
 	encoded, err := json.Marshal(metadata)
 	if err != nil {
 		return nil, fmt.Errorf("workscheduler: encode scheduler metadata: %w", err)

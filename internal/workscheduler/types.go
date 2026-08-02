@@ -34,7 +34,11 @@ type SubmitInput struct {
 	Priority       int
 	Adapter        string
 	ActorID        string
-	Steps          []StepSpec
+	// CapabilityVersionIDs attributes this Work to reviewed, promoted
+	// capability versions that influenced its execution. The scheduler
+	// validates the references and records an outcome for every attempt.
+	CapabilityVersionIDs []string
+	Steps                []StepSpec
 }
 
 type Execution struct {
