@@ -68,7 +68,8 @@ reported digest and running `Store.Doctor`.
 
 Call `Store.ExportJSONL(ctx, workspaceID, destination)`. Records are written in
 a deterministic order as a header followed by Work, Step, dependency, Attempt,
-Event, Approval, Artifact, Proof, effect-receipt, and import-marker envelopes.
+Event, Approval, Artifact, Proof, effect-receipt, CapabilityVersion,
+EvaluationRun, CapabilityOutcome, and import-marker envelopes.
 The final line
 contains a SHA-256 digest over every preceding line plus per-type record counts.
 
@@ -88,6 +89,9 @@ manual incident recovery. A healthy report requires:
 - the Step dependency graph to be acyclic; and
 - effect receipts to contain valid outcome JSON, required idempotency contract
   fields, and timestamps consistent with pending or committed status; and
+- capability snapshots, provenance, permissions, rollout policy, metrics,
+  deltas, and reports to contain valid JSON, with required passed evaluation
+  stages and human approval for reviewed canary/promoted versions; and
 - every Work ID referenced by an import marker to exist in that workspace.
 
 `Doctor` is read-only. It reports issue codes and record IDs but does not repair
