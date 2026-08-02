@@ -146,6 +146,43 @@ func TestCreateWorkIsIdempotentConcurrentAndWorkspaceScoped(t *testing.T) {
 	}
 }
 
+func TestListWorksFiltersIndexedSourceWithinWorkspace(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t, filepath.Join(t.TempDir(), "ledger.db"))
+	want, err := store.CreateWork(context.Background(), CreateWorkInput{
+		WorkspaceID: "workspace-a", Kind: "session", Source: "legacy-session", SourceID: "session-42",
+		IdempotencyKey: "wanted", Title: "Wanted revision", ActorID: "tester",
+	})
+	if err != nil {
+		t.Fatalf("create wanted source work: %v", err)
+	}
+	for _, input := range []CreateWorkInput{
+		{WorkspaceID: "workspace-a", Kind: "session", Source: "legacy-session", SourceID: "session-other", IdempotencyKey: "other-source-id", Title: "Other session", ActorID: "tester"},
+		{WorkspaceID: "workspace-a", Kind: "run", Source: "agentruntime", SourceID: "session-42", IdempotencyKey: "other-source", Title: "Other source", ActorID: "tester"},
+		{WorkspaceID: "workspace-b", Kind: "session", Source: "legacy-session", SourceID: "session-42", IdempotencyKey: "other-workspace", Title: "Other workspace", ActorID: "tester"},
+	} {
+		if _, err := store.CreateWork(context.Background(), input); err != nil {
+			t.Fatalf("create distractor work: %v", err)
+		}
+	}
+
+	works, err := store.ListWorks(context.Background(), ListWorksFilter{
+		WorkspaceID: "workspace-a",
+		Source:      "legacy-session",
+		SourceID:    "session-42",
+	})
+	if err != nil {
+		t.Fatalf("list source-filtered works: %v", err)
+	}
+	if len(works) != 1 || works[0].ID != want.ID {
+		t.Fatalf("source-filtered works = %#v, want %q", works, want.ID)
+	}
+	if _, err := store.ListWorks(context.Background(), ListWorksFilter{WorkspaceID: "workspace-a", SourceID: "session-42"}); err == nil {
+		t.Fatal("expected source_id without source to fail")
+	}
+}
+
 func TestTransitionWorkCommitsStateAndEventAtomically(t *testing.T) {
 	t.Parallel()
 

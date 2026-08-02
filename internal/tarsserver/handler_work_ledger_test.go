@@ -56,6 +56,48 @@ func TestWorkLedgerAPIListsFilteredWorkspaceWorks(t *testing.T) {
 	}
 }
 
+func TestWorkLedgerAPIListsWorksByIndexedSource(t *testing.T) {
+	t.Parallel()
+
+	store := openWorkLedgerHandlerTestStore(t)
+	want, err := store.CreateWork(context.Background(), workstore.CreateWorkInput{
+		WorkspaceID: defaultWorkspaceID, Kind: "session", Source: "legacy-session", SourceID: "session-42",
+		IdempotencyKey: "wanted", Title: "Wanted", ActorID: "tester",
+	})
+	if err != nil {
+		t.Fatalf("create wanted work: %v", err)
+	}
+	if _, err := store.CreateWork(context.Background(), workstore.CreateWorkInput{
+		WorkspaceID: defaultWorkspaceID, Kind: "session", Source: "legacy-session", SourceID: "session-other",
+		IdempotencyKey: "other", Title: "Other", ActorID: "tester",
+	}); err != nil {
+		t.Fatalf("create other work: %v", err)
+	}
+	handler := newWorkLedgerAPIHandler(store, zerolog.Nop())
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/work/works?source=legacy-session&source_id=session-42&limit=1", nil)
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("source-filtered list status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Works []workstore.Work `json:"works"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode source-filtered list: %v", err)
+	}
+	if len(body.Works) != 1 || body.Works[0].ID != want.ID {
+		t.Fatalf("source-filtered list = %#v", body.Works)
+	}
+
+	invalid := httptest.NewRecorder()
+	handler.ServeHTTP(invalid, httptest.NewRequest(http.MethodGet, "/v1/work/works?source_id=session-42", nil))
+	if invalid.Code != http.StatusBadRequest {
+		t.Fatalf("source_id-only list status = %d body=%s, want 400", invalid.Code, invalid.Body.String())
+	}
+}
+
 func TestWorkLedgerAPIReturnsReadOnlyTimelineProjection(t *testing.T) {
 	t.Parallel()
 

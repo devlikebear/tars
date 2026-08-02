@@ -45,6 +45,12 @@ func newWorkLedgerAPIHandler(store *workstore.Store, logger zerolog.Logger) http
 }
 
 func handleWorkLedgerList(w http.ResponseWriter, r *http.Request, store *workstore.Store, workspaceID string, logger zerolog.Logger) {
+	source := strings.TrimSpace(r.URL.Query().Get("source"))
+	sourceID := strings.TrimSpace(r.URL.Query().Get("source_id"))
+	if sourceID != "" && source == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "source is required when source_id is set"})
+		return
+	}
 	states, err := parseWorkLedgerStates(r.URL.Query())
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
@@ -57,6 +63,8 @@ func handleWorkLedgerList(w http.ResponseWriter, r *http.Request, store *worksto
 	}
 	works, err := store.ListWorks(r.Context(), workstore.ListWorksFilter{
 		WorkspaceID: workspaceID,
+		Source:      source,
+		SourceID:    sourceID,
 		States:      states,
 		Limit:       limit,
 		Offset:      offset,

@@ -234,6 +234,8 @@ type WorkProjection struct {
 
 type ListWorksFilter struct {
 	WorkspaceID string
+	Source      string
+	SourceID    string
 	States      []WorkState
 	Limit       int
 	Offset      int

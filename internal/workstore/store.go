@@ -481,6 +481,19 @@ func (s *Store) ListWorks(ctx context.Context, filter ListWorksFilter) ([]Work, 
 	}
 	query := workSelect + " WHERE workspace_id = ?"
 	args := []any{filter.WorkspaceID}
+	source := strings.TrimSpace(filter.Source)
+	sourceID := strings.TrimSpace(filter.SourceID)
+	if sourceID != "" && source == "" {
+		return nil, fmt.Errorf("workstore: source is required when source id is set")
+	}
+	if source != "" {
+		query += " AND source = ?"
+		args = append(args, source)
+		if sourceID != "" {
+			query += " AND source_id = ?"
+			args = append(args, sourceID)
+		}
+	}
 	if len(filter.States) > 0 {
 		placeholders := make([]string, 0, len(filter.States))
 		for _, state := range filter.States {
