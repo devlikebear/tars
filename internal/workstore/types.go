@@ -225,6 +225,16 @@ type ReclaimExpiredStepClaimsInput struct {
 	Reason      string
 }
 
+type ReclaimStepClaimInput struct {
+	WorkspaceID string
+	WorkID      string
+	StepID      string
+	AttemptID   string
+	WorkerID    string
+	ActorID     string
+	Reason      string
+}
+
 type ResumeScheduledStepInput struct {
 	WorkspaceID string
 	WorkID      string

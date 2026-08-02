@@ -341,6 +341,61 @@ func TestSchedulerStopsAtBudgetBoundary(t *testing.T) {
 	}
 }
 
+func TestSchedulerRequiresRunningParentWork(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := openTestStore(t, filepath.Join(t.TempDir(), "ledger.db"))
+	work, err := store.CreateWork(ctx, CreateWorkInput{
+		WorkspaceID: "workspace-parent-state", Kind: "task", IdempotencyKey: "parent-state",
+		Title: "parent-state", InitialState: WorkStateTodo, ActorID: "planner",
+	})
+	if err != nil {
+		t.Fatalf("create parent-state work: %v", err)
+	}
+	step, err := store.CreateStep(ctx, CreateStepInput{
+		WorkspaceID: work.WorkspaceID, WorkID: work.ID, IdempotencyKey: "parent-state-step",
+		Title: "parent-state-step", State: WorkStateTodo, Position: 1, ActorID: "planner",
+	})
+	if err != nil {
+		t.Fatalf("create parent-state step: %v", err)
+	}
+	if _, err := store.ConfigureStepSchedule(ctx, ConfigureStepScheduleInput{
+		WorkspaceID: work.WorkspaceID, WorkID: work.ID, StepID: step.ID,
+		Policy: StepSchedulePolicy{MaxAttempts: 1, EscalationState: WorkStateReview}, ActorID: "scheduler",
+	}); err != nil {
+		t.Fatalf("configure parent-state schedule: %v", err)
+	}
+	promoted, err := store.PromoteReadySteps(ctx, PromoteReadyStepsInput{WorkspaceID: work.WorkspaceID, WorkID: work.ID, ActorID: "scheduler"})
+	if err != nil {
+		t.Fatalf("promote while parent todo: %v", err)
+	}
+	if len(promoted) != 0 {
+		t.Fatalf("promoted with todo parent = %+v", promoted)
+	}
+	work, err = store.TransitionWork(ctx, TransitionWorkInput{
+		WorkspaceID: work.WorkspaceID, WorkID: work.ID, ToState: WorkStateRunning,
+		ExpectedVersion: work.Version, ActorID: "scheduler", Reason: "scheduler started",
+	})
+	if err != nil {
+		t.Fatalf("start parent work: %v", err)
+	}
+	if _, err := store.PromoteReadySteps(ctx, PromoteReadyStepsInput{WorkspaceID: work.WorkspaceID, WorkID: work.ID, ActorID: "scheduler"}); err != nil {
+		t.Fatalf("promote running parent: %v", err)
+	}
+	if _, err := store.TransitionWork(ctx, TransitionWorkInput{
+		WorkspaceID: work.WorkspaceID, WorkID: work.ID, ToState: WorkStateCancelled,
+		ExpectedVersion: work.Version, ActorID: "operator", Reason: "cancel parent",
+	}); err != nil {
+		t.Fatalf("cancel parent work: %v", err)
+	}
+	if _, err := store.ClaimReadyStep(ctx, ClaimReadyStepInput{
+		WorkspaceID: work.WorkspaceID, WorkID: work.ID, WorkerID: "worker", Adapter: "local", ActorID: "scheduler",
+	}); !errors.Is(err, ErrNoReadyStep) {
+		t.Fatalf("claim with cancelled parent error=%v want ErrNoReadyStep", err)
+	}
+}
+
 func TestSchedulerCompetingWorkersCannotShareClaim(t *testing.T) {
 	t.Parallel()
 
@@ -519,6 +574,7 @@ func TestSchedulerReclaimsAndEscalatesByBoundedPolicy(t *testing.T) {
 
 func mustCreateScheduledStep(t *testing.T, store *Store, work Work, key string, position int) Step {
 	t.Helper()
+	ensureScheduledWorkRunning(t, store, work)
 	step, err := store.CreateStep(context.Background(), CreateStepInput{
 		WorkspaceID:    work.WorkspaceID,
 		WorkID:         work.ID,
@@ -532,6 +588,32 @@ func mustCreateScheduledStep(t *testing.T, store *Store, work Work, key string, 
 		t.Fatalf("create scheduled step %s: %v", key, err)
 	}
 	return step
+}
+
+func ensureScheduledWorkRunning(t *testing.T, store *Store, work Work) {
+	t.Helper()
+	ctx := context.Background()
+	current, err := store.GetWork(ctx, work.WorkspaceID, work.ID)
+	if err != nil {
+		t.Fatalf("get scheduled work: %v", err)
+	}
+	if current.State == WorkStateTriage {
+		current, err = store.TransitionWork(ctx, TransitionWorkInput{
+			WorkspaceID: current.WorkspaceID, WorkID: current.ID, ToState: WorkStateTodo,
+			ExpectedVersion: current.Version, ActorID: "scheduler", Reason: "scheduler accepted work",
+		})
+		if err != nil {
+			t.Fatalf("accept scheduled work: %v", err)
+		}
+	}
+	if current.State == WorkStateTodo || current.State == WorkStateReady {
+		if _, err := store.TransitionWork(ctx, TransitionWorkInput{
+			WorkspaceID: current.WorkspaceID, WorkID: current.ID, ToState: WorkStateRunning,
+			ExpectedVersion: current.Version, ActorID: "scheduler", Reason: "scheduler started work",
+		}); err != nil {
+			t.Fatalf("start scheduled work: %v", err)
+		}
+	}
 }
 
 func mustClaimStep(t *testing.T, store *Store, work Work, workerID string, lease time.Duration) StepClaim {

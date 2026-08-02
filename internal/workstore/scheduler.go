@@ -115,9 +115,11 @@ func (s *Store) PromoteReadySteps(ctx context.Context, input PromoteReadyStepsIn
 	query := `
 		SELECT s.id
 		FROM steps s
+		JOIN works work ON work.id = s.work_id AND work.workspace_id = s.workspace_id
 		JOIN step_schedules schedule ON schedule.step_id = s.id
 		WHERE s.workspace_id = ?
 			AND s.state = ?
+			AND work.state = ?
 			AND schedule.human_resume_required = 0
 			AND NOT EXISTS (
 				SELECT 1
@@ -129,7 +131,7 @@ func (s *Store) PromoteReadySteps(ctx context.Context, input PromoteReadyStepsIn
 					AND prerequisite.state <> ?
 			)
 	`
-	args := []any{input.WorkspaceID, WorkStateTodo, WorkStateDone}
+	args := []any{input.WorkspaceID, WorkStateTodo, WorkStateRunning, WorkStateDone}
 	if strings.TrimSpace(input.WorkID) != "" {
 		query += " AND s.work_id = ?"
 		args = append(args, input.WorkID)
@@ -223,12 +225,14 @@ func (s *Store) ClaimReadyStep(ctx context.Context, input ClaimReadyStepInput) (
 	query := `
 		SELECT s.id
 		FROM steps s
+		JOIN works work ON work.id = s.work_id AND work.workspace_id = s.workspace_id
 		JOIN step_schedules schedule ON schedule.step_id = s.id
 		WHERE s.workspace_id = ? AND s.state = ?
+			AND work.state = ?
 			AND schedule.lease_owner = ''
 			AND schedule.human_resume_required = 0
 	`
-	args := []any{input.WorkspaceID, WorkStateReady}
+	args := []any{input.WorkspaceID, WorkStateReady, WorkStateRunning}
 	if strings.TrimSpace(input.WorkID) != "" {
 		query += " AND s.work_id = ?"
 		args = append(args, input.WorkID)
@@ -606,6 +610,90 @@ func (s *Store) ReclaimExpiredStepClaims(ctx context.Context, input ReclaimExpir
 		return nil, fmt.Errorf("workstore: commit expired step reclaim: %w", err)
 	}
 	return resolutions, nil
+}
+
+func (s *Store) ReclaimStepClaim(ctx context.Context, input ReclaimStepClaimInput) (StepResolution, error) {
+	if strings.TrimSpace(input.WorkspaceID) == "" || strings.TrimSpace(input.WorkID) == "" || strings.TrimSpace(input.StepID) == "" || strings.TrimSpace(input.AttemptID) == "" || strings.TrimSpace(input.WorkerID) == "" || strings.TrimSpace(input.ActorID) == "" || strings.TrimSpace(input.Reason) == "" {
+		return StepResolution{}, fmt.Errorf("workstore: workspace, work, step, attempt, worker, actor, and reason are required to reclaim a claim")
+	}
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return StepResolution{}, fmt.Errorf("workstore: begin reclaim step claim: %w", err)
+	}
+	defer rollback(tx)
+	resolution, err := s.resolveStepClaimTx(ctx, tx, CompleteStepAttemptInput{
+		WorkspaceID: input.WorkspaceID,
+		WorkID:      input.WorkID,
+		StepID:      input.StepID,
+		AttemptID:   input.AttemptID,
+		WorkerID:    input.WorkerID,
+		Succeeded:   false,
+		ErrorText:   input.Reason,
+		ActorID:     input.ActorID,
+	}, true, true, s.now().UTC())
+	if err != nil {
+		return StepResolution{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return StepResolution{}, fmt.Errorf("workstore: commit reclaim step claim: %w", err)
+	}
+	return resolution, nil
+}
+
+func (s *Store) ListActiveStepClaims(ctx context.Context, workspaceID, workID string) ([]StepClaim, error) {
+	if strings.TrimSpace(workspaceID) == "" {
+		return nil, fmt.Errorf("workstore: workspace is required to list active claims")
+	}
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return nil, fmt.Errorf("workstore: begin list active claims: %w", err)
+	}
+	defer rollback(tx)
+	query := stepScheduleSelect + " WHERE workspace_id = ? AND lease_owner <> ''"
+	args := []any{workspaceID}
+	if strings.TrimSpace(workID) != "" {
+		query += " AND work_id = ?"
+		args = append(args, workID)
+	}
+	query += " ORDER BY updated_at, step_id"
+	rows, err := tx.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("workstore: query active step claims: %w", err)
+	}
+	var schedules []StepSchedule
+	for rows.Next() {
+		schedule, scanErr := scanStepSchedule(rows)
+		if scanErr != nil {
+			_ = rows.Close()
+			return nil, fmt.Errorf("workstore: scan active step claim: %w", scanErr)
+		}
+		schedules = append(schedules, schedule)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return nil, fmt.Errorf("workstore: iterate active step claims: %w", err)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, fmt.Errorf("workstore: close active step claims: %w", err)
+	}
+	claims := make([]StepClaim, 0, len(schedules))
+	for _, schedule := range schedules {
+		step, getErr := getStepTx(ctx, tx, schedule.WorkspaceID, schedule.WorkID, schedule.StepID, "")
+		if getErr != nil {
+			return nil, getErr
+		}
+		attempt, getErr := getAttemptTx(ctx, tx, schedule.WorkspaceID, schedule.WorkID, schedule.ActiveAttemptID, "")
+		if getErr != nil {
+			return nil, getErr
+		}
+		claims = append(claims, StepClaim{Step: step, Attempt: attempt, Schedule: schedule})
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("workstore: commit active claim read: %w", err)
+	}
+	return claims, nil
 }
 
 func (s *Store) ResumeScheduledStep(ctx context.Context, input ResumeScheduledStepInput) (StepResolution, error) {
