@@ -82,10 +82,12 @@ const (
 	EventTypeStepRetryScheduled     EventType = "step.retry_scheduled"
 	EventTypeStepReplanScheduled    EventType = "step.replan_scheduled"
 	EventTypeStepDecomposeScheduled EventType = "step.decompose_scheduled"
+	EventTypeStepReleased           EventType = "step.released"
 	EventTypeStepReclaimed          EventType = "step.reclaimed"
 	EventTypeStepReviewRequested    EventType = "step.review_requested"
 	EventTypeStepBlocked            EventType = "step.blocked"
 	EventTypeStepResumed            EventType = "step.resumed"
+	EventTypeStepCancelled          EventType = "step.cancelled"
 )
 
 type StepExecutionAction string
@@ -180,6 +182,16 @@ type HeartbeatStepClaimInput struct {
 	ActorID       string
 }
 
+type ReleaseStepClaimInput struct {
+	WorkspaceID string
+	WorkID      string
+	StepID      string
+	AttemptID   string
+	WorkerID    string
+	ActorID     string
+	Reason      string
+}
+
 type StepAttemptUsage struct {
 	Iterations int     `json:"iterations"`
 	Tokens     int64   `json:"tokens"`
@@ -214,6 +226,14 @@ type ReclaimExpiredStepClaimsInput struct {
 }
 
 type ResumeScheduledStepInput struct {
+	WorkspaceID string
+	WorkID      string
+	StepID      string
+	ActorID     string
+	Reason      string
+}
+
+type CancelScheduledStepInput struct {
 	WorkspaceID string
 	WorkID      string
 	StepID      string
@@ -373,6 +393,7 @@ type StepDependency struct {
 type WorkProjection struct {
 	Work         Work             `json:"work"`
 	Steps        []Step           `json:"steps"`
+	Schedules    []StepSchedule   `json:"schedules"`
 	Dependencies []StepDependency `json:"dependencies"`
 	Attempts     []Attempt        `json:"attempts"`
 	Events       []Event          `json:"events"`

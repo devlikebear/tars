@@ -1099,6 +1099,9 @@ func (s *Store) GetWorkProjection(ctx context.Context, workspaceID, workID strin
 	if projection.Steps, err = querySteps(ctx, tx, workspaceID, workID); err != nil {
 		return WorkProjection{}, err
 	}
+	if projection.Schedules, err = queryStepSchedules(ctx, tx, workspaceID, workID); err != nil {
+		return WorkProjection{}, err
+	}
 	if projection.Dependencies, err = queryDependencies(ctx, tx, workspaceID, workID); err != nil {
 		return WorkProjection{}, err
 	}

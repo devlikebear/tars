@@ -153,6 +153,7 @@ func (exporter *jsonlExporter) writeProjection(projection WorkProjection) error 
 	}
 	writers := []func() error{
 		func() error { return writeExportRecords(exporter, "step", projection.Steps) },
+		func() error { return writeExportRecords(exporter, "schedule", projection.Schedules) },
 		func() error { return writeExportRecords(exporter, "dependency", projection.Dependencies) },
 		func() error { return writeExportRecords(exporter, "attempt", projection.Attempts) },
 		func() error { return writeExportRecords(exporter, "event", projection.Events) },
@@ -368,7 +369,7 @@ func (s *Store) Doctor(ctx context.Context, workspaceID string) (DoctorReport, e
 	report := DoctorReport{
 		WorkspaceID: workspaceID, SchemaVersion: schemaVersion,
 		CheckedAt: s.now().UTC(), Healthy: true,
-		Checks: make([]DoctorCheck, 0, 7), Issues: make([]DoctorIssue, 0),
+		Checks: make([]DoctorCheck, 0, 8), Issues: make([]DoctorIssue, 0),
 	}
 	addCheck := func(name string, err error) {
 		check := DoctorCheck{Name: name, OK: err == nil}
@@ -391,6 +392,9 @@ func (s *Store) Doctor(ctx context.Context, workspaceID string) (DoctorReport, e
 	dependencyIssues, err := s.doctorDependencyIssues(ctx, workspaceID)
 	report.Issues = append(report.Issues, dependencyIssues...)
 	addCheck("dependency_graph", err)
+	scheduleIssues, err := s.doctorScheduleIssues(ctx, workspaceID)
+	report.Issues = append(report.Issues, scheduleIssues...)
+	addCheck("step_schedules", err)
 	importIssues, err := s.doctorImportIssues(ctx, workspaceID)
 	report.Issues = append(report.Issues, importIssues...)
 	addCheck("import_references", err)
@@ -523,6 +527,7 @@ func (s *Store) doctorJSONIssues(ctx context.Context, workspaceID string) ([]Doc
 		{"attempt", "input_json", "SELECT id, input_json FROM attempts WHERE workspace_id = ?"},
 		{"attempt", "output_json", "SELECT id, output_json FROM attempts WHERE workspace_id = ?"},
 		{"event", "payload_json", "SELECT id, payload_json FROM events WHERE workspace_id = ?"},
+		{"step_schedule", "policy_json", "SELECT step_id, policy_json FROM step_schedules WHERE workspace_id = ?"},
 		{"import_marker", "work_ids_json", "SELECT id, work_ids_json FROM import_markers WHERE workspace_id = ?"},
 	}
 	var issues []DoctorIssue
@@ -640,6 +645,58 @@ func (s *Store) doctorDependencyIssues(ctx context.Context, workspaceID string) 
 		}
 	}
 	return nil, nil
+}
+
+func (s *Store) doctorScheduleIssues(ctx context.Context, workspaceID string) ([]DoctorIssue, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT schedule.step_id, step.state, schedule.lease_owner,
+			COALESCE(schedule.active_attempt_id, ''), schedule.lease_expires_at,
+			schedule.human_resume_required, schedule.cycle_attempt_count,
+			schedule.attempt_count, COALESCE(attempt.status, '')
+		FROM step_schedules schedule
+		JOIN steps step ON step.id = schedule.step_id
+		LEFT JOIN attempts attempt ON attempt.id = schedule.active_attempt_id
+		WHERE schedule.workspace_id = ?
+		ORDER BY schedule.step_id
+	`, workspaceID)
+	if err != nil {
+		return nil, fmt.Errorf("workstore: doctor schedule query: %w", err)
+	}
+	defer closeRows(rows)
+	var issues []DoctorIssue
+	for rows.Next() {
+		var stepID, state, leaseOwner, attemptID, attemptStatus string
+		var leaseExpiresAt sql.NullInt64
+		var humanResume, cycleAttempts, attempts int
+		if err := rows.Scan(&stepID, &state, &leaseOwner, &attemptID, &leaseExpiresAt,
+			&humanResume, &cycleAttempts, &attempts, &attemptStatus); err != nil {
+			return issues, fmt.Errorf("workstore: doctor schedule scan: %w", err)
+		}
+		claimBroken := leaseOwner == "" && (attemptID != "" || leaseExpiresAt.Valid) ||
+			leaseOwner != "" && (attemptID == "" || !leaseExpiresAt.Valid || WorkState(state) != WorkStateRunning || AttemptStatus(attemptStatus) != AttemptStatusRunning)
+		if claimBroken {
+			issues = append(issues, DoctorIssue{
+				Code: "invalid_schedule_claim", RecordType: "step_schedule", RecordID: stepID,
+				Detail: "lease, active attempt, and running state are inconsistent",
+			})
+		}
+		if humanResume != 0 && (leaseOwner != "" || WorkState(state) != WorkStateReview && WorkState(state) != WorkStateBlocked) {
+			issues = append(issues, DoctorIssue{
+				Code: "invalid_schedule_resume", RecordType: "step_schedule", RecordID: stepID,
+				Detail: "human resume is required outside a lease-free review or blocked state",
+			})
+		}
+		if cycleAttempts > attempts {
+			issues = append(issues, DoctorIssue{
+				Code: "invalid_schedule_attempt_count", RecordType: "step_schedule", RecordID: stepID,
+				Detail: "cycle attempt count exceeds lifetime attempt count",
+			})
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return issues, fmt.Errorf("workstore: doctor schedule iterate: %w", err)
+	}
+	return issues, nil
 }
 
 func (s *Store) doctorImportIssues(ctx context.Context, workspaceID string) ([]DoctorIssue, error) {

@@ -132,6 +132,9 @@ func TestSchedulerPromotesDependenciesAndAllowsOneClaim(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get scheduler projection: %v", err)
 	}
+	if len(projection.Schedules) != 2 || projection.Schedules[0].StepID != first.ID || projection.Schedules[1].StepID != second.ID {
+		t.Fatalf("scheduler projection schedules = %+v", projection.Schedules)
+	}
 	for _, eventType := range []EventType{
 		EventTypeStepReady,
 		EventTypeStepClaimed,
@@ -142,6 +145,199 @@ func TestSchedulerPromotesDependenciesAndAllowsOneClaim(t *testing.T) {
 		if !hasEventType(projection.Events, eventType) {
 			t.Fatalf("scheduler events missing %q: %+v", eventType, projection.Events)
 		}
+	}
+}
+
+func TestDoctorReportsBrokenSchedulerClaim(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := openTestStore(t, filepath.Join(t.TempDir(), "ledger.db"))
+	work := mustCreateWork(t, store, "workspace-doctor-scheduler", "doctor-scheduler")
+	step := mustCreateScheduledStep(t, store, work, "broken", 1)
+	if _, err := store.ConfigureStepSchedule(ctx, ConfigureStepScheduleInput{
+		WorkspaceID: work.WorkspaceID,
+		WorkID:      work.ID,
+		StepID:      step.ID,
+		Policy:      StepSchedulePolicy{MaxAttempts: 1, EscalationState: WorkStateReview},
+		ActorID:     "scheduler",
+	}); err != nil {
+		t.Fatalf("configure schedule: %v", err)
+	}
+	if _, err := store.db.ExecContext(ctx, `
+		UPDATE step_schedules
+		SET lease_owner = 'ghost', lease_expires_at = ?, active_attempt_id = NULL
+		WHERE step_id = ?
+	`, time.Now().Add(time.Minute).UnixMilli(), step.ID); err != nil {
+		t.Fatalf("corrupt schedule claim: %v", err)
+	}
+
+	report, err := store.Doctor(ctx, work.WorkspaceID)
+	if err != nil {
+		t.Fatalf("doctor broken schedule: %v", err)
+	}
+	if report.Healthy || !hasDoctorIssue(report, "invalid_schedule_claim", "step_schedule", step.ID) {
+		t.Fatalf("broken schedule doctor report = %+v", report)
+	}
+}
+
+func TestSchedulerReleaseRequeuesWithoutConsumingPolicyCycle(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := openTestStore(t, filepath.Join(t.TempDir(), "ledger.db"))
+	work := mustCreateWork(t, store, "workspace-release", "scheduler-release")
+	step := mustCreateScheduledStep(t, store, work, "release", 1)
+	if _, err := store.ConfigureStepSchedule(ctx, ConfigureStepScheduleInput{
+		WorkspaceID: work.WorkspaceID, WorkID: work.ID, StepID: step.ID,
+		Policy:  StepSchedulePolicy{MaxAttempts: 2, RetryLimit: 1, EscalationState: WorkStateReview},
+		ActorID: "scheduler",
+	}); err != nil {
+		t.Fatalf("configure release schedule: %v", err)
+	}
+	if _, err := store.PromoteReadySteps(ctx, PromoteReadyStepsInput{WorkspaceID: work.WorkspaceID, WorkID: work.ID, ActorID: "scheduler"}); err != nil {
+		t.Fatalf("promote release step: %v", err)
+	}
+	claim := mustClaimStep(t, store, work, "worker-release", time.Minute)
+	released, err := store.ReleaseStepClaim(ctx, ReleaseStepClaimInput{
+		WorkspaceID: work.WorkspaceID, WorkID: work.ID, StepID: step.ID,
+		AttemptID: claim.Attempt.ID, WorkerID: "worker-release", ActorID: "worker-release",
+		Reason: "graceful worker shutdown",
+	})
+	if err != nil {
+		t.Fatalf("release step claim: %v", err)
+	}
+	if released.Step.State != WorkStateReady || released.Attempt.Status != AttemptStatusCancelled || released.Schedule.CycleAttemptCount != 0 {
+		t.Fatalf("released claim = %+v", released)
+	}
+	reclaimed := mustClaimStep(t, store, work, "worker-next", time.Minute)
+	if reclaimed.Attempt.Number != 2 || reclaimed.Schedule.CycleAttemptCount != 1 {
+		t.Fatalf("claim after release = %+v", reclaimed)
+	}
+}
+
+func TestSchedulerCancelTerminatesActiveClaim(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := openTestStore(t, filepath.Join(t.TempDir(), "ledger.db"))
+	work := mustCreateWork(t, store, "workspace-cancel", "scheduler-cancel")
+	step := mustCreateScheduledStep(t, store, work, "cancel", 1)
+	if _, err := store.ConfigureStepSchedule(ctx, ConfigureStepScheduleInput{
+		WorkspaceID: work.WorkspaceID, WorkID: work.ID, StepID: step.ID,
+		Policy: StepSchedulePolicy{MaxAttempts: 1, EscalationState: WorkStateReview}, ActorID: "scheduler",
+	}); err != nil {
+		t.Fatalf("configure cancelled schedule: %v", err)
+	}
+	if _, err := store.PromoteReadySteps(ctx, PromoteReadyStepsInput{WorkspaceID: work.WorkspaceID, WorkID: work.ID, ActorID: "scheduler"}); err != nil {
+		t.Fatalf("promote cancelled step: %v", err)
+	}
+	claim := mustClaimStep(t, store, work, "worker-cancel", time.Minute)
+	cancelled, err := store.CancelScheduledStep(ctx, CancelScheduledStepInput{
+		WorkspaceID: work.WorkspaceID, WorkID: work.ID, StepID: step.ID,
+		ActorID: "operator", Reason: "operator cancelled work",
+	})
+	if err != nil {
+		t.Fatalf("cancel scheduled step: %v", err)
+	}
+	if cancelled.Step.State != WorkStateCancelled || cancelled.Attempt.ID != claim.Attempt.ID || cancelled.Attempt.Status != AttemptStatusCancelled || cancelled.Schedule.LeaseOwner != "" {
+		t.Fatalf("cancelled claim = %+v", cancelled)
+	}
+	if _, err := store.HeartbeatStepClaim(ctx, HeartbeatStepClaimInput{
+		WorkspaceID: work.WorkspaceID, WorkID: work.ID, StepID: step.ID,
+		AttemptID: claim.Attempt.ID, WorkerID: "worker-cancel", ActorID: "worker-cancel",
+	}); !errors.Is(err, ErrClaimConflict) {
+		t.Fatalf("heartbeat after cancel error=%v want ErrClaimConflict", err)
+	}
+}
+
+func TestSchedulerReopensActiveClaimAndReclaimsAfterExpiry(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	databasePath := filepath.Join(t.TempDir(), "ledger.db")
+	var nowMu sync.Mutex
+	now := time.Date(2026, time.August, 2, 14, 0, 0, 0, time.UTC)
+	nowFn := func() time.Time {
+		nowMu.Lock()
+		defer nowMu.Unlock()
+		return now
+	}
+	store, err := Open(ctx, databasePath, Options{Now: nowFn})
+	if err != nil {
+		t.Fatalf("open recovery store: %v", err)
+	}
+	work := mustCreateWork(t, store, "workspace-reopen", "scheduler-reopen")
+	step := mustCreateScheduledStep(t, store, work, "reopen", 1)
+	if _, err := store.ConfigureStepSchedule(ctx, ConfigureStepScheduleInput{
+		WorkspaceID: work.WorkspaceID, WorkID: work.ID, StepID: step.ID,
+		Policy: StepSchedulePolicy{MaxAttempts: 2, RetryLimit: 1, EscalationState: WorkStateReview}, ActorID: "scheduler",
+	}); err != nil {
+		t.Fatalf("configure reopened schedule: %v", err)
+	}
+	if _, err := store.PromoteReadySteps(ctx, PromoteReadyStepsInput{WorkspaceID: work.WorkspaceID, WorkID: work.ID, ActorID: "scheduler"}); err != nil {
+		t.Fatalf("promote reopened step: %v", err)
+	}
+	claim := mustClaimStep(t, store, work, "external-worker", time.Minute)
+	if err := store.Close(); err != nil {
+		t.Fatalf("close claimed store: %v", err)
+	}
+
+	reopened, err := Open(ctx, databasePath, Options{Now: nowFn})
+	if err != nil {
+		t.Fatalf("reopen claimed store: %v", err)
+	}
+	t.Cleanup(func() { _ = reopened.Close() })
+	if _, err := reopened.HeartbeatStepClaim(ctx, HeartbeatStepClaimInput{
+		WorkspaceID: work.WorkspaceID, WorkID: work.ID, StepID: step.ID,
+		AttemptID: claim.Attempt.ID, WorkerID: "external-worker", LeaseDuration: time.Minute, ActorID: "external-worker",
+	}); err != nil {
+		t.Fatalf("heartbeat reopened external claim: %v", err)
+	}
+	nowMu.Lock()
+	now = now.Add(2 * time.Minute)
+	nowMu.Unlock()
+	reclaimed, err := reopened.ReclaimExpiredStepClaims(ctx, ReclaimExpiredStepClaimsInput{
+		WorkspaceID: work.WorkspaceID, WorkID: work.ID, ActorID: "recovery", Reason: "restarted worker unavailable",
+	})
+	if err != nil {
+		t.Fatalf("reclaim reopened claim: %v", err)
+	}
+	if len(reclaimed) != 1 || reclaimed[0].Attempt.ID != claim.Attempt.ID || reclaimed[0].Step.State != WorkStateReady {
+		t.Fatalf("reopened reclaim = %+v", reclaimed)
+	}
+}
+
+func TestSchedulerStopsAtBudgetBoundary(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := openTestStore(t, filepath.Join(t.TempDir(), "ledger.db"))
+	work := mustCreateWork(t, store, "workspace-budget", "scheduler-budget")
+	step := mustCreateScheduledStep(t, store, work, "budget", 1)
+	if _, err := store.ConfigureStepSchedule(ctx, ConfigureStepScheduleInput{
+		WorkspaceID: work.WorkspaceID, WorkID: work.ID, StepID: step.ID,
+		Policy: StepSchedulePolicy{
+			MaxAttempts: 2, RetryLimit: 1, MaxTokens: 100, EscalationState: WorkStateReview,
+		},
+		ActorID: "scheduler",
+	}); err != nil {
+		t.Fatalf("configure budget schedule: %v", err)
+	}
+	if _, err := store.PromoteReadySteps(ctx, PromoteReadyStepsInput{WorkspaceID: work.WorkspaceID, WorkID: work.ID, ActorID: "scheduler"}); err != nil {
+		t.Fatalf("promote budget step: %v", err)
+	}
+	claim := mustClaimStep(t, store, work, "worker-budget", time.Minute)
+	resolution, err := store.CompleteStepAttempt(ctx, CompleteStepAttemptInput{
+		WorkspaceID: work.WorkspaceID, WorkID: work.ID, StepID: step.ID,
+		AttemptID: claim.Attempt.ID, WorkerID: "worker-budget", Succeeded: false,
+		ErrorText: "token budget reached", Usage: StepAttemptUsage{Tokens: 100}, ActorID: "worker-budget",
+	})
+	if err != nil {
+		t.Fatalf("complete budget attempt: %v", err)
+	}
+	if resolution.Disposition != StepDispositionReview || resolution.Step.State != WorkStateReview {
+		t.Fatalf("budget boundary resolution = %+v", resolution)
 	}
 }
 

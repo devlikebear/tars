@@ -158,6 +158,13 @@ func TestExportJSONLIsDeterministicAndChecksummed(t *testing.T) {
 	if approval.ID == "" {
 		t.Fatal("approval was not created")
 	}
+	if _, err := store.ConfigureStepSchedule(ctx, ConfigureStepScheduleInput{
+		WorkspaceID: work.WorkspaceID, WorkID: work.ID, StepID: second.ID,
+		Policy:  StepSchedulePolicy{MaxAttempts: 1, EscalationState: WorkStateReview},
+		ActorID: "scheduler",
+	}); err != nil {
+		t.Fatalf("configure exported schedule: %v", err)
+	}
 	if _, err := store.ImportLegacySession(ctx, LegacySessionImportInput{
 		WorkspaceID: "workspace-a", SessionJSON: []byte(`{"id":"session-export","title":"Imported"}`),
 		TasksJSON: []byte(`{"tasks":[]}`), ActorID: "migration",
@@ -207,7 +214,7 @@ func TestExportJSONLIsDeterministicAndChecksummed(t *testing.T) {
 		}
 		types[envelope.Type] = true
 	}
-	for _, recordType := range []string{"header", "work", "step", "dependency", "attempt", "event", "approval", "artifact", "proof", "import_marker", "checksum"} {
+	for _, recordType := range []string{"header", "work", "step", "schedule", "dependency", "attempt", "event", "approval", "artifact", "proof", "import_marker", "checksum"} {
 		if !types[recordType] {
 			t.Errorf("export missing %q record", recordType)
 		}

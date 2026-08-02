@@ -418,6 +418,101 @@ func (s *Store) HeartbeatStepClaim(ctx context.Context, input HeartbeatStepClaim
 	return schedule, nil
 }
 
+func (s *Store) ReleaseStepClaim(ctx context.Context, input ReleaseStepClaimInput) (StepResolution, error) {
+	if strings.TrimSpace(input.WorkspaceID) == "" || strings.TrimSpace(input.WorkID) == "" || strings.TrimSpace(input.StepID) == "" || strings.TrimSpace(input.AttemptID) == "" || strings.TrimSpace(input.WorkerID) == "" || strings.TrimSpace(input.ActorID) == "" || strings.TrimSpace(input.Reason) == "" {
+		return StepResolution{}, fmt.Errorf("workstore: workspace, work, step, attempt, worker, actor, and reason are required to release a claim")
+	}
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	now := s.now().UTC()
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return StepResolution{}, fmt.Errorf("workstore: begin release step claim: %w", err)
+	}
+	defer rollback(tx)
+	schedule, err := getStepScheduleTx(ctx, tx, input.WorkspaceID, input.WorkID, input.StepID)
+	if err != nil {
+		return StepResolution{}, err
+	}
+	if schedule.LeaseOwner != input.WorkerID || schedule.ActiveAttemptID != input.AttemptID {
+		return StepResolution{}, ErrClaimConflict
+	}
+	if schedule.LeaseExpiresAt == nil || !schedule.LeaseExpiresAt.After(now) {
+		return StepResolution{}, ErrClaimExpired
+	}
+	step, err := getStepTx(ctx, tx, input.WorkspaceID, input.WorkID, input.StepID, "")
+	if err != nil {
+		return StepResolution{}, err
+	}
+	attempt, err := getAttemptTx(ctx, tx, input.WorkspaceID, input.WorkID, input.AttemptID, "")
+	if err != nil {
+		return StepResolution{}, err
+	}
+	if step.State != WorkStateRunning || attempt.Status != AttemptStatusRunning {
+		return StepResolution{}, ErrClaimConflict
+	}
+	if err := execOne(ctx, tx, `
+		UPDATE attempts
+		SET status = ?, error_text = ?, finished_at = ?, updated_at = ?
+		WHERE workspace_id = ? AND work_id = ? AND id = ? AND status = ?
+	`, "release scheduled attempt", AttemptStatusCancelled, input.Reason, now.UnixMilli(), now.UnixMilli(),
+		input.WorkspaceID, input.WorkID, input.AttemptID, AttemptStatusRunning); err != nil {
+		return StepResolution{}, err
+	}
+	if err := execOne(ctx, tx, `
+		UPDATE steps
+		SET state = ?, actor_id = ?, version = version + 1, updated_at = ?, completed_at = NULL
+		WHERE workspace_id = ? AND work_id = ? AND id = ? AND state = ?
+	`, "release scheduled step", WorkStateReady, input.ActorID, now.UnixMilli(), input.WorkspaceID,
+		input.WorkID, input.StepID, WorkStateRunning); err != nil {
+		return StepResolution{}, err
+	}
+	if err := execOne(ctx, tx, `
+		UPDATE step_schedules
+		SET lease_owner = '', lease_expires_at = NULL, last_heartbeat_at = NULL,
+			active_attempt_id = NULL,
+			cycle_attempt_count = CASE WHEN cycle_attempt_count > 0 THEN cycle_attempt_count - 1 ELSE 0 END,
+			updated_at = ?
+		WHERE workspace_id = ? AND work_id = ? AND step_id = ?
+			AND lease_owner = ? AND active_attempt_id = ?
+	`, "release step schedule", now.UnixMilli(), input.WorkspaceID, input.WorkID, input.StepID,
+		input.WorkerID, input.AttemptID); err != nil {
+		return StepResolution{}, err
+	}
+	if err := s.insertEventTx(ctx, tx, eventInput{
+		WorkspaceID: input.WorkspaceID, WorkID: input.WorkID, StepID: input.StepID,
+		AttemptID: input.AttemptID, Type: EventTypeAttemptCompleted, ActorID: input.ActorID,
+		PayloadJSON: mustJSON(map[string]any{"status": AttemptStatusCancelled, "reason": input.Reason, "released": true}),
+		CreatedAt:   now,
+	}); err != nil {
+		return StepResolution{}, err
+	}
+	if err := s.insertEventTx(ctx, tx, eventInput{
+		WorkspaceID: input.WorkspaceID, WorkID: input.WorkID, StepID: input.StepID,
+		AttemptID: input.AttemptID, Type: EventTypeStepReleased,
+		FromState: WorkStateRunning, ToState: WorkStateReady, ActorID: input.ActorID,
+		PayloadJSON: mustJSON(map[string]any{"worker_id": input.WorkerID, "reason": input.Reason}), CreatedAt: now,
+	}); err != nil {
+		return StepResolution{}, err
+	}
+	step, err = getStepTx(ctx, tx, input.WorkspaceID, input.WorkID, input.StepID, "")
+	if err != nil {
+		return StepResolution{}, err
+	}
+	attempt, err = getAttemptTx(ctx, tx, input.WorkspaceID, input.WorkID, input.AttemptID, "")
+	if err != nil {
+		return StepResolution{}, err
+	}
+	schedule, err = getStepScheduleTx(ctx, tx, input.WorkspaceID, input.WorkID, input.StepID)
+	if err != nil {
+		return StepResolution{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return StepResolution{}, fmt.Errorf("workstore: commit release step claim: %w", err)
+	}
+	return StepResolution{Step: step, Attempt: attempt, Schedule: schedule}, nil
+}
+
 func (s *Store) CompleteStepAttempt(ctx context.Context, input CompleteStepAttemptInput) (StepResolution, error) {
 	if err := validateCompleteStepAttemptInput(input); err != nil {
 		return StepResolution{}, err
@@ -581,6 +676,101 @@ func (s *Store) ResumeScheduledStep(ctx context.Context, input ResumeScheduledSt
 	return StepResolution{Step: step, Schedule: schedule}, nil
 }
 
+func (s *Store) CancelScheduledStep(ctx context.Context, input CancelScheduledStepInput) (StepResolution, error) {
+	if strings.TrimSpace(input.WorkspaceID) == "" || strings.TrimSpace(input.WorkID) == "" || strings.TrimSpace(input.StepID) == "" || strings.TrimSpace(input.ActorID) == "" || strings.TrimSpace(input.Reason) == "" {
+		return StepResolution{}, fmt.Errorf("workstore: workspace, work, step, actor, and reason are required to cancel a scheduled step")
+	}
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	now := s.now().UTC()
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return StepResolution{}, fmt.Errorf("workstore: begin cancel scheduled step: %w", err)
+	}
+	defer rollback(tx)
+	step, err := getStepTx(ctx, tx, input.WorkspaceID, input.WorkID, input.StepID, "")
+	if err != nil {
+		return StepResolution{}, err
+	}
+	schedule, err := getStepScheduleTx(ctx, tx, input.WorkspaceID, input.WorkID, input.StepID)
+	if err != nil {
+		return StepResolution{}, err
+	}
+	if step.State == WorkStateCancelled {
+		return StepResolution{Step: step, Schedule: schedule}, nil
+	}
+	if step.State == WorkStateDone || !canTransition(step.State, WorkStateCancelled) {
+		return StepResolution{}, ErrInvalidTransition
+	}
+	var attempt Attempt
+	if schedule.ActiveAttemptID != "" {
+		attempt, err = getAttemptTx(ctx, tx, input.WorkspaceID, input.WorkID, schedule.ActiveAttemptID, "")
+		if err != nil {
+			return StepResolution{}, err
+		}
+		if attempt.Status != AttemptStatusRunning {
+			return StepResolution{}, ErrClaimConflict
+		}
+		if err := execOne(ctx, tx, `
+			UPDATE attempts SET status = ?, error_text = ?, finished_at = ?, updated_at = ?
+			WHERE workspace_id = ? AND work_id = ? AND id = ? AND status = ?
+		`, "cancel scheduled attempt", AttemptStatusCancelled, input.Reason, now.UnixMilli(), now.UnixMilli(),
+			input.WorkspaceID, input.WorkID, attempt.ID, AttemptStatusRunning); err != nil {
+			return StepResolution{}, err
+		}
+		if err := s.insertEventTx(ctx, tx, eventInput{
+			WorkspaceID: input.WorkspaceID, WorkID: input.WorkID, StepID: input.StepID,
+			AttemptID: attempt.ID, Type: EventTypeAttemptCompleted, ActorID: input.ActorID,
+			PayloadJSON: mustJSON(map[string]any{"status": AttemptStatusCancelled, "reason": input.Reason}), CreatedAt: now,
+		}); err != nil {
+			return StepResolution{}, err
+		}
+	} else if step.State == WorkStateRunning {
+		return StepResolution{}, ErrClaimConflict
+	}
+	if err := execOne(ctx, tx, `
+		UPDATE steps SET state = ?, actor_id = ?, version = version + 1, updated_at = ?, completed_at = ?
+		WHERE workspace_id = ? AND work_id = ? AND id = ? AND state = ?
+	`, "cancel scheduled step", WorkStateCancelled, input.ActorID, now.UnixMilli(), now.UnixMilli(),
+		input.WorkspaceID, input.WorkID, input.StepID, step.State); err != nil {
+		return StepResolution{}, err
+	}
+	if err := execOne(ctx, tx, `
+		UPDATE step_schedules
+		SET lease_owner = '', lease_expires_at = NULL, last_heartbeat_at = NULL,
+			active_attempt_id = NULL, blocked_reason = ?, human_resume_required = 0, updated_at = ?
+		WHERE workspace_id = ? AND work_id = ? AND step_id = ?
+	`, "cancel step schedule", input.Reason, now.UnixMilli(), input.WorkspaceID, input.WorkID, input.StepID); err != nil {
+		return StepResolution{}, err
+	}
+	if err := s.insertEventTx(ctx, tx, eventInput{
+		WorkspaceID: input.WorkspaceID, WorkID: input.WorkID, StepID: input.StepID,
+		AttemptID: schedule.ActiveAttemptID, Type: EventTypeStepCancelled,
+		FromState: step.State, ToState: WorkStateCancelled, ActorID: input.ActorID,
+		PayloadJSON: mustJSON(map[string]any{"reason": input.Reason}), CreatedAt: now,
+	}); err != nil {
+		return StepResolution{}, err
+	}
+	step, err = getStepTx(ctx, tx, input.WorkspaceID, input.WorkID, input.StepID, "")
+	if err != nil {
+		return StepResolution{}, err
+	}
+	if attempt.ID != "" {
+		attempt, err = getAttemptTx(ctx, tx, input.WorkspaceID, input.WorkID, attempt.ID, "")
+		if err != nil {
+			return StepResolution{}, err
+		}
+	}
+	schedule, err = getStepScheduleTx(ctx, tx, input.WorkspaceID, input.WorkID, input.StepID)
+	if err != nil {
+		return StepResolution{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return StepResolution{}, fmt.Errorf("workstore: commit cancel scheduled step: %w", err)
+	}
+	return StepResolution{Step: step, Attempt: attempt, Schedule: schedule}, nil
+}
+
 func (s *Store) resolveStepClaimTx(ctx context.Context, tx *sql.Tx, input CompleteStepAttemptInput, allowExpired, reclaimed bool, now time.Time) (StepResolution, error) {
 	schedule, err := getStepScheduleTx(ctx, tx, input.WorkspaceID, input.WorkID, input.StepID)
 	if err != nil {
@@ -716,9 +906,9 @@ func (s *Store) resolveStepClaimTx(ctx context.Context, tx *sql.Tx, input Comple
 
 func chooseFailureDisposition(policy StepSchedulePolicy, attemptCount, consumedIterations int, consumedTokens int64, consumedCost float64) StepDisposition {
 	if policy.MaxAttempts > 0 && attemptCount >= policy.MaxAttempts ||
-		policy.MaxIterations > 0 && consumedIterations > policy.MaxIterations ||
-		policy.MaxTokens > 0 && consumedTokens > policy.MaxTokens ||
-		policy.MaxCostUSD > 0 && consumedCost > policy.MaxCostUSD {
+		policy.MaxIterations > 0 && consumedIterations >= policy.MaxIterations ||
+		policy.MaxTokens > 0 && consumedTokens >= policy.MaxTokens ||
+		policy.MaxCostUSD > 0 && consumedCost >= policy.MaxCostUSD {
 		return escalationDisposition(policy.EscalationState)
 	}
 	if attemptCount <= policy.RetryLimit {
@@ -815,6 +1005,31 @@ func getStepScheduleTx(ctx context.Context, tx *sql.Tx, workspaceID, workID, ste
 	return schedule, nil
 }
 
+func queryStepSchedules(ctx context.Context, tx *sql.Tx, workspaceID, workID string) ([]StepSchedule, error) {
+	rows, err := tx.QueryContext(ctx, stepScheduleSelect+`
+		WHERE workspace_id = ? AND work_id = ?
+		ORDER BY (
+			SELECT position FROM steps WHERE steps.id = step_schedules.step_id
+		), updated_at, step_id
+	`, workspaceID, workID)
+	if err != nil {
+		return nil, fmt.Errorf("workstore: query projection step schedules: %w", err)
+	}
+	defer closeRows(rows)
+	var schedules []StepSchedule
+	for rows.Next() {
+		schedule, err := scanStepSchedule(rows)
+		if err != nil {
+			return nil, fmt.Errorf("workstore: scan projection step schedule: %w", err)
+		}
+		schedules = append(schedules, schedule)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("workstore: iterate projection step schedules: %w", err)
+	}
+	return schedules, nil
+}
+
 func getStepByIDTx(ctx context.Context, tx *sql.Tx, workspaceID, stepID string) (Step, error) {
 	step, err := scanStep(tx.QueryRowContext(ctx, stepSelect+" WHERE workspace_id = ? AND id = ?", workspaceID, stepID))
 	if errors.Is(err, sql.ErrNoRows) {
@@ -856,4 +1071,19 @@ func boolInt(value bool) int {
 		return 1
 	}
 	return 0
+}
+
+func execOne(ctx context.Context, tx *sql.Tx, query, operation string, args ...any) error {
+	result, err := tx.ExecContext(ctx, query, args...)
+	if err != nil {
+		return fmt.Errorf("workstore: %s: %w", operation, err)
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("workstore: inspect %s: %w", operation, err)
+	}
+	if changed != 1 {
+		return ErrClaimConflict
+	}
+	return nil
 }
