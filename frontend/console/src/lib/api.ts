@@ -180,15 +180,9 @@ function normalizeSessionTasks(data: Partial<SessionTasks> | null | undefined): 
 
 function normalizeTaskEvidence(data: Partial<TaskEvidence> | null | undefined): TaskEvidence {
   return {
+	...(data ?? {}),
     id: data?.id ?? '',
     type: data?.type ?? 'command_output_summary',
-    ...(data?.title ? { title: data.title } : {}),
-    ...(data?.summary ? { summary: data.summary } : {}),
-    ...(data?.url ? { url: data.url } : {}),
-    ...(data?.command ? { command: data.command } : {}),
-    ...(data?.path ? { path: data.path } : {}),
-    ...(data?.status ? { status: data.status } : {}),
-    ...(data?.created_at ? { created_at: data.created_at } : {}),
   }
 }
 

@@ -60,6 +60,8 @@
   let contractDoneCriteria = $state('')
   let contractVerificationCommands = $state('')
   let contractArtifacts = $state('')
+  let contractProofRequired = $state(true)
+  let contractProofFailureState = $state<'review' | 'blocked'>('review')
   let contractSaving = $state(false)
   let contractSaved = $state('')
   let contractError = $state('')
@@ -196,6 +198,9 @@
     contractDoneCriteria = joinLines(next_contract?.done_criteria)
     contractVerificationCommands = joinLines(next_contract?.verification_commands)
     contractArtifacts = joinLines(next_contract?.artifacts)
+    contractProofRequired = next_contract?.proof_policy?.required ??
+      ((next_contract?.verification_commands?.length ?? 0) > 0 || (next_contract?.artifacts?.length ?? 0) > 0)
+    contractProofFailureState = next_contract?.proof_policy?.failure_state === 'blocked' ? 'blocked' : 'review'
   }
 
   async function saveContract(markApproved = false) {
@@ -210,6 +215,11 @@
         done_criteria: splitLines(contractDoneCriteria),
         verification_commands: splitLines(contractVerificationCommands),
         artifacts: splitLines(contractArtifacts),
+        proof_policy: {
+          required: contractProofRequired,
+          verifier: 'deterministic',
+          failure_state: contractProofFailureState,
+        },
       })
       if (markApproved) {
         await executeTasksAction(sessionId, { action: 'contract_approve' })
@@ -438,7 +448,22 @@
   }
 
   function evidenceMeta(evidence: TaskEvidence): string {
-    return [evidence.status, evidence.command, evidence.path].filter(Boolean).join(' · ')
+    return [evidence.command, evidence.path, evidence.verifier_id].filter(Boolean).join(' · ')
+  }
+
+  function proofStateLabel(state?: string, origin?: string): string {
+    if (state === 'passed' && origin === 'independent_verifier') return 'Independently verified'
+    if (state === 'failed') return 'Verification failed'
+    if (state === 'stale') return 'Stale proof'
+    if (state === 'pending') return 'Verification pending'
+    return 'Reported only'
+  }
+
+  function proofStateClass(state?: string, origin?: string): string {
+    if (state === 'passed' && origin === 'independent_verifier') return 'badge-success'
+    if (state === 'failed' || state === 'stale') return 'badge-error'
+    if (state === 'pending') return 'badge-warning'
+    return 'badge-default'
   }
 
   function startEvidence(taskId: string) {
@@ -830,7 +855,7 @@
                       <article class="task-evidence-card">
                         <div class="task-evidence-head">
                           <span class="task-evidence-title">{evidenceLabel(evidence)}</span>
-                          <span class="evidence-type">{evidenceTypeLabel(evidence.type)}</span>
+                          <span class="badge {proofStateClass(evidence.proof_state, evidence.proof_origin)}">{proofStateLabel(evidence.proof_state, evidence.proof_origin)}</span>
                         </div>
                         {#if evidence.summary}
                           <p>{evidence.summary}</p>
@@ -947,6 +972,20 @@
           <span>Artifacts (one per line)</span>
           <textarea bind:value={contractArtifacts} rows="4" disabled={contractSaving}></textarea>
         </label>
+        <label class="contract-proof-policy">
+          <span>Completion proof</span>
+          <span class="contract-proof-control">
+            <input type="checkbox" bind:checked={contractProofRequired} disabled={contractSaving} />
+            Require independent deterministic proof
+          </span>
+        </label>
+        <label>
+          <span>On missing, failed, or stale proof</span>
+          <select bind:value={contractProofFailureState} disabled={contractSaving || !contractProofRequired}>
+            <option value="review">Request operator review</option>
+            <option value="blocked">Block completion</option>
+          </select>
+        </label>
       </div>
 
       {#if contractError}
@@ -987,7 +1026,7 @@
           <article class="evidence-aggregate-card">
             <div class="evidence-aggregate-head">
               <strong>{evidenceLabel(evidence)}</strong>
-              <span class="evidence-type">{evidenceTypeLabel(evidence.type)}</span>
+              <span class="badge {proofStateClass(evidence.proof_state, evidence.proof_origin)}">{proofStateLabel(evidence.proof_state, evidence.proof_origin)}</span>
             </div>
             <small class="evidence-aggregate-task">{evidence.task_title}</small>
             {#if evidence.summary}
@@ -1045,6 +1084,21 @@
           <span>{timelineProjection.artifacts.length} artifacts</span>
           <span>{timelineProjection.approvals.length} approvals</span>
         </div>
+        {#if timelineProjection.proofs.length > 0}
+          <section class="timeline-proofs" aria-label="Durable proof records">
+            {#each timelineProjection.proofs as proof (proof.id)}
+              <article>
+                <div class="timeline-proof-head">
+                  <strong>{proof.summary}</strong>
+                  <span class="badge {proofStateClass(proof.status, proof.origin)}">{proofStateLabel(proof.status, proof.origin)}</span>
+                </div>
+                {#if proof.rationale}<p>{proof.rationale}</p>{/if}
+                <small>{proof.kind} · reporter {proof.reporter_id || 'unknown'} · verifier {proof.verifier_id || 'none'}</small>
+                {#if proof.subject_digest}<small>subject {proof.subject_digest}</small>{/if}
+              </article>
+            {/each}
+          </section>
+        {/if}
         {#if timelineResumableSteps.length > 0}
           <section class="timeline-operator-attention" aria-label="Durable steps requiring operator attention">
             <header>
@@ -1167,7 +1221,8 @@
     color: var(--text-secondary);
   }
 
-  .contract-form textarea {
+  .contract-form textarea,
+  .contract-form select {
     width: 100%;
     resize: vertical;
     border-radius: var(--radius-md);
@@ -1177,6 +1232,13 @@
     padding: var(--space-2);
     font: inherit;
     line-height: 1.45;
+  }
+
+  .contract-proof-control {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    color: var(--text-primary);
   }
 
   .contract-form textarea:focus {
@@ -1290,6 +1352,44 @@
     flex-wrap: wrap;
     gap: var(--space-2);
     color: var(--text-secondary);
+    font-size: var(--text-xs);
+  }
+
+  .timeline-proofs {
+    display: grid;
+    gap: var(--space-2);
+  }
+
+  .timeline-proofs article {
+    display: grid;
+    gap: var(--space-1);
+    padding: var(--space-2);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    background: var(--surface-muted);
+  }
+
+  .timeline-proof-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+  }
+
+  .timeline-proofs p,
+  .timeline-proofs small {
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .timeline-proofs p {
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+  }
+
+  .timeline-proofs small {
+    color: var(--text-tertiary);
+    font-family: var(--font-mono);
     font-size: var(--text-xs);
   }
 

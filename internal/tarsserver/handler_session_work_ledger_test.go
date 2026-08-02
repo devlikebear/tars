@@ -169,6 +169,20 @@ func TestSessionTaskVerificationSynchronizesEvidenceToWorkLedger(t *testing.T) {
 	if len(projected.Tasks) != 1 || len(projected.Tasks[0].Evidence) != 1 || projected.Tasks[0].Evidence[0].Status != "passed" {
 		t.Fatalf("verified projection = %#v", projected)
 	}
+	works, err := ledger.ListWorks(context.Background(), workstore.ListWorksFilter{
+		WorkspaceID: defaultWorkspaceID, Source: string(workstore.ImportSourceLegacySession), SourceID: sess.ID, Limit: 10,
+	})
+	if err != nil || len(works) == 0 {
+		t.Fatalf("list verified work revisions = %d, %v", len(works), err)
+	}
+	verifiedWork, err := ledger.GetWorkProjection(context.Background(), defaultWorkspaceID, works[0].ID)
+	if err != nil || len(verifiedWork.Proofs) != 1 {
+		t.Fatalf("get independently verified ledger proof = %+v, %v", verifiedWork.Proofs, err)
+	}
+	proof := verifiedWork.Proofs[0]
+	if proof.Status != workstore.ProofStatusPassed || proof.Origin != workstore.ProofOriginIndependentVerifier || proof.ReporterID == proof.VerifierID || proof.SubjectDigest == "" {
+		t.Fatalf("verified ledger proof = %+v", proof)
+	}
 }
 
 func TestSyncSessionTasksToWorkLedgerHandlesDisabledAndMissingStores(t *testing.T) {

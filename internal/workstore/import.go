@@ -105,15 +105,26 @@ type legacyTask struct {
 }
 
 type legacyEvidence struct {
-	ID        string `json:"id"`
-	Type      string `json:"type"`
-	Title     string `json:"title"`
-	Summary   string `json:"summary"`
-	URL       string `json:"url"`
-	Command   string `json:"command"`
-	Path      string `json:"path"`
-	Status    string `json:"status"`
-	CreatedAt string `json:"created_at"`
+	ID                  string          `json:"id"`
+	Type                string          `json:"type"`
+	Title               string          `json:"title"`
+	Summary             string          `json:"summary"`
+	URL                 string          `json:"url"`
+	Command             string          `json:"command"`
+	Path                string          `json:"path"`
+	Status              string          `json:"status"`
+	ProofState          string          `json:"proof_state"`
+	ProofOrigin         string          `json:"proof_origin"`
+	ReporterID          string          `json:"reporter_id"`
+	VerifierID          string          `json:"verifier_id"`
+	Verifier            string          `json:"verifier"`
+	EnvironmentJSON     json.RawMessage `json:"environment"`
+	InputJSON           json.RawMessage `json:"input"`
+	ArtifactDigestsJSON json.RawMessage `json:"artifact_digests"`
+	SubjectDigest       string          `json:"subject_digest"`
+	Rationale           string          `json:"rationale"`
+	ObservedAt          string          `json:"observed_at"`
+	CreatedAt           string          `json:"created_at"`
 }
 
 type agentRuntimeSnapshot struct {
@@ -437,20 +448,33 @@ func (s *Store) importLegacyEvidence(
 	if summary == "" {
 		summary = "Imported legacy evidence " + evidenceID
 	}
+	proofStatus, proofOrigin := importedEvidenceProof(evidence)
+	rationale := strings.TrimSpace(evidence.Rationale)
+	if proofOrigin == ProofOriginLegacy {
+		rationale = "legacy evidence status was not independently verified: " + strings.TrimSpace(evidence.Status)
+	}
 	if _, err := s.CreateProof(ctx, CreateProofInput{
-		WorkspaceID:    input.WorkspaceID,
-		WorkID:         work.ID,
-		StepID:         step.ID,
-		IdempotencyKey: fmt.Sprintf("%s:evidence:%d:%s:proof", stepKey, evidenceIndex, evidenceID),
-		CausationID:    "import:" + checksum,
-		Kind:           kind,
-		Status:         legacyProofStatus(evidence.Status),
-		Origin:         ProofOriginLegacy,
-		Summary:        summary,
-		Command:        evidence.Command,
-		ArtifactID:     artifact.ID,
-		Rationale:      "legacy evidence status was not independently verified: " + strings.TrimSpace(evidence.Status),
-		ActorID:        input.ActorID,
+		WorkspaceID:         input.WorkspaceID,
+		WorkID:              work.ID,
+		StepID:              step.ID,
+		IdempotencyKey:      fmt.Sprintf("%s:evidence:%d:%s:proof", stepKey, evidenceIndex, evidenceID),
+		CausationID:         "import:" + checksum,
+		Kind:                kind,
+		Status:              proofStatus,
+		Origin:              proofOrigin,
+		Summary:             summary,
+		ReporterID:          evidence.ReporterID,
+		VerifierID:          evidence.VerifierID,
+		Verifier:            evidence.Verifier,
+		Command:             evidence.Command,
+		ArtifactID:          artifact.ID,
+		EnvironmentJSON:     evidence.EnvironmentJSON,
+		InputJSON:           evidence.InputJSON,
+		ArtifactDigestsJSON: evidence.ArtifactDigestsJSON,
+		SubjectDigest:       evidence.SubjectDigest,
+		Rationale:           rationale,
+		ActorID:             input.ActorID,
+		ObservedAt:          parseImportTime(evidence.ObservedAt),
 	}); err != nil {
 		return fmt.Errorf("workstore: import legacy evidence proof %q: %w", evidenceID, err)
 	}
@@ -910,6 +934,37 @@ func legacyTaskWorkState(status string) WorkState {
 
 func legacyProofStatus(status string) ProofStatus {
 	return ProofStatusReported
+}
+
+func importedEvidenceProof(evidence legacyEvidence) (ProofStatus, ProofOrigin) {
+	status := ProofStatus(strings.ToLower(strings.TrimSpace(evidence.ProofState)))
+	origin := ProofOrigin(strings.ToLower(strings.TrimSpace(evidence.ProofOrigin)))
+	if origin != ProofOriginIndependentVerifier || !validProofStatus(status) || status == ProofStatusReported ||
+		strings.TrimSpace(evidence.ReporterID) == "" || strings.TrimSpace(evidence.VerifierID) == "" ||
+		strings.TrimSpace(evidence.ReporterID) == strings.TrimSpace(evidence.VerifierID) ||
+		strings.TrimSpace(evidence.Verifier) == "" || !meaningfulImportJSON(evidence.EnvironmentJSON) ||
+		strings.TrimSpace(evidence.SubjectDigest) == "" || strings.TrimSpace(evidence.Rationale) == "" {
+		return legacyProofStatus(evidence.Status), ProofOriginLegacy
+	}
+	return status, origin
+}
+
+func meaningfulImportJSON(raw json.RawMessage) bool {
+	if len(raw) == 0 || !json.Valid(raw) {
+		return false
+	}
+	var value any
+	if json.Unmarshal(raw, &value) != nil {
+		return false
+	}
+	switch typed := value.(type) {
+	case map[string]any:
+		return len(typed) > 0
+	case []any:
+		return len(typed) > 0
+	default:
+		return typed != nil
+	}
 }
 
 func runtimeWorkState(status string) WorkState {

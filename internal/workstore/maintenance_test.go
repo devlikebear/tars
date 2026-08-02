@@ -250,6 +250,29 @@ func TestDoctorReportsHealthyLedgerAndInvalidJSON(t *testing.T) {
 	}
 }
 
+func TestDoctorRejectsPassedProofWithoutIndependentProvenance(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := openTestStore(t, filepath.Join(t.TempDir(), "ledger.db"))
+	work := mustCreateWork(t, store, "workspace-proof-doctor", "proof-doctor")
+	proof, err := store.CreateProof(ctx, CreateProofInput{
+		WorkspaceID: work.WorkspaceID, WorkID: work.ID,
+		IdempotencyKey: "proof:untrusted", Kind: "test", Status: ProofStatusPassed,
+		Summary: "worker asserted pass", ActorID: "worker-1",
+	})
+	if err != nil {
+		t.Fatalf("create untrusted pass: %v", err)
+	}
+	report, err := store.Doctor(ctx, work.WorkspaceID)
+	if err != nil {
+		t.Fatalf("doctor untrusted pass: %v", err)
+	}
+	if report.Healthy || !hasDoctorIssue(report, "invalid_proof_provenance", "proof", proof.ID) {
+		t.Fatalf("doctor accepted untrusted pass: %#v", report)
+	}
+}
+
 func TestDoctorReportsTerminalDependencyImportAndMigrationIssues(t *testing.T) {
 	t.Parallel()
 

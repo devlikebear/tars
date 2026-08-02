@@ -321,6 +321,7 @@ export type AgentRuntimeRun = {
   consensus_variants?: ConsensusVariantRecord[]
   consensus_cost_usd?: number
   consensus_budget_usd?: number
+  consensus_decision?: ConsensusDecisionRecord
   file_attention?: FileAttentionSummary[]
   file_ops_total?: number
   diff_timeline?: AgentRuntimeDiffTimelineEntry[]
@@ -329,6 +330,25 @@ export type AgentRuntimeRun = {
   started_at?: string
   completed_at?: string
   updated_at?: string
+}
+
+export type ConsensusDecisionRecord = {
+  automatic: boolean
+  baseline_id?: string
+  decision_reason?: string
+  expected_quality_delta?: number
+  expected_tokens: number
+  expected_cost_usd: number
+  token_budget: number
+  cost_budget_usd: number
+  fanout: number
+  observed_completed: number
+  observed_failed: number
+  observed_tokens: number
+  observed_cost_usd: number
+  observed_outcome?: string
+  recorded_at: string
+  observed_at?: string
 }
 
 export type AgentRuntimeRunCheckpoint = {
@@ -1632,9 +1652,19 @@ export type TaskContract = {
   done_criteria?: string[]
   verification_commands?: string[]
   artifacts?: string[]
+  proof_policy?: TaskProofPolicy
   status?: ContractStatus
   created_at?: string
   updated_at?: string
+}
+
+export type TaskProofPolicy = {
+  required: boolean
+  verifier?: string
+  failure_state?: 'review' | 'blocked'
+  allow_llm_fallback?: boolean
+  max_llm_tokens?: number
+  max_llm_cost_usd?: number
 }
 
 export type TaskEvidenceType =
@@ -1654,7 +1684,19 @@ export type TaskEvidence = {
   command?: string
   path?: string
   status?: string
+  proof_state?: 'reported' | 'pending' | 'passed' | 'failed' | 'stale' | string
+  proof_origin?: 'worker_report' | 'independent_verifier' | 'legacy' | string
+  reporter_id?: string
+  verifier_id?: string
+  verifier?: string
+  environment?: Record<string, unknown>
+  input?: Record<string, unknown>
+  artifact_digests?: Array<Record<string, unknown> | string>
+  subject_digest?: string
+  rationale?: string
+  observed_at?: string
   created_at?: string
+  updated_at?: string
 }
 
 export type TaskVerificationResult = {
@@ -1664,6 +1706,9 @@ export type TaskVerificationResult = {
   timed_out?: boolean
   evidence_id: string
   summary?: string
+  proof_state: string
+  proof_origin: string
+  verifier_id: string
 }
 
 export type TaskVerificationResponse = {
@@ -1825,12 +1870,22 @@ export type WorkLedgerProof = {
   causation_id?: string
   kind: string
   status: string
+  origin: 'worker_report' | 'independent_verifier' | 'legacy' | string
   summary: string
+  reporter_id?: string
+  verifier_id?: string
   verifier?: string
   command?: string
   artifact_id?: string
+  environment: Record<string, unknown>
+  input: Record<string, unknown>
+  artifact_digests: Array<Record<string, unknown> | string>
+  subject_digest?: string
+  rationale?: string
   actor_id: string
+  observed_at?: string
   created_at: string
+  updated_at: string
 }
 
 export type WorkLedgerArtifact = {

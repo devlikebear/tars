@@ -399,6 +399,9 @@ func (s *Store) Doctor(ctx context.Context, workspaceID string) (DoctorReport, e
 	effectIssues, err := s.doctorEffectReceiptIssues(ctx, workspaceID)
 	report.Issues = append(report.Issues, effectIssues...)
 	addCheck("effect_receipts", err)
+	proofIssues, err := s.doctorProofIssues(ctx, workspaceID)
+	report.Issues = append(report.Issues, proofIssues...)
+	addCheck("proofs", err)
 	importIssues, err := s.doctorImportIssues(ctx, workspaceID)
 	report.Issues = append(report.Issues, importIssues...)
 	addCheck("import_references", err)
@@ -533,6 +536,9 @@ func (s *Store) doctorJSONIssues(ctx context.Context, workspaceID string) ([]Doc
 		{"event", "payload_json", "SELECT id, payload_json FROM events WHERE workspace_id = ?"},
 		{"step_schedule", "policy_json", "SELECT step_id, policy_json FROM step_schedules WHERE workspace_id = ?"},
 		{"effect_receipt", "outcome_json", "SELECT id, outcome_json FROM effect_receipts WHERE workspace_id = ?"},
+		{"proof", "environment_json", "SELECT id, environment_json FROM proofs WHERE workspace_id = ?"},
+		{"proof", "input_json", "SELECT id, input_json FROM proofs WHERE workspace_id = ?"},
+		{"proof", "artifact_digests_json", "SELECT id, artifact_digests_json FROM proofs WHERE workspace_id = ?"},
 		{"import_marker", "work_ids_json", "SELECT id, work_ids_json FROM import_markers WHERE workspace_id = ?"},
 	}
 	var issues []DoctorIssue
@@ -751,6 +757,45 @@ func (s *Store) doctorEffectReceiptIssues(ctx context.Context, workspaceID strin
 	}
 	if err := rows.Err(); err != nil {
 		return issues, fmt.Errorf("workstore: doctor effect receipt iterate: %w", err)
+	}
+	return issues, nil
+}
+
+func (s *Store) doctorProofIssues(ctx context.Context, workspaceID string) ([]DoctorIssue, error) {
+	rows, err := s.db.QueryContext(ctx, proofSelect+" WHERE workspace_id = ? ORDER BY id", workspaceID)
+	if err != nil {
+		return nil, fmt.Errorf("workstore: doctor proof query: %w", err)
+	}
+	defer closeRows(rows)
+	var issues []DoctorIssue
+	for rows.Next() {
+		proof, err := scanProof(rows)
+		if err != nil {
+			return issues, fmt.Errorf("workstore: doctor proof scan: %w", err)
+		}
+		if proof.UpdatedAt.Before(proof.CreatedAt) ||
+			(proof.Status == ProofStatusPassed || proof.Status == ProofStatusFailed) && proof.ObservedAt == nil {
+			issues = append(issues, DoctorIssue{
+				Code: "invalid_proof_lifecycle", RecordType: "proof", RecordID: proof.ID,
+				Detail: "proof status and lifecycle timestamps are inconsistent",
+			})
+		}
+		if proof.Status == ProofStatusPassed && !proofHasIndependentProvenance(proof) {
+			issues = append(issues, DoctorIssue{
+				Code: "invalid_proof_provenance", RecordType: "proof", RecordID: proof.ID,
+				Detail: "passed proof lacks an independent verifier identity, environment, subject digest, or rationale",
+			})
+		}
+		if (proof.Origin == ProofOriginWorkerReport || proof.Origin == ProofOriginLegacy) &&
+			proof.Status != ProofStatusReported && proof.Status != ProofStatusStale {
+			issues = append(issues, DoctorIssue{
+				Code: "invalid_proof_authority", RecordType: "proof", RecordID: proof.ID,
+				Detail: "reported or legacy evidence cannot hold a verifier terminal state",
+			})
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return issues, fmt.Errorf("workstore: doctor proof iterate: %w", err)
 	}
 	return issues, nil
 }

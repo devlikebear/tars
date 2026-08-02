@@ -19,4 +19,8 @@ test('task evidence is typed, normalized, and rendered in task surfaces', () => 
   // still owns its own evidence list under the new layout.
   assert.match(tasksPanelSource, /TaskContract/)
   assert.match(tasksPanelSource, /contract/)
+  assert.match(typesSource, /proof_state\?:/)
+  assert.match(typesSource, /proof_origin\?:/)
+  assert.match(tasksPanelSource, /Independently verified/)
+  assert.match(tasksPanelSource, /Reported only/)
 })

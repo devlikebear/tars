@@ -219,7 +219,8 @@ func (engine *Engine) verifyCommand(ctx context.Context, requirement workstore.P
 	inputJSON, _ := json.Marshal(map[string]any{
 		"command": command, "exit_code": result.ExitCode, "timed_out": result.TimedOut,
 		"duration_ms": result.Duration.Milliseconds(), "stdout_digest": digestText(result.Stdout),
-		"stderr_digest": digestText(result.Stderr), "subject_before": before.SubjectDigest,
+		"stderr_digest": digestText(result.Stderr), "stdout_excerpt": truncateText(result.Stdout, 4096),
+		"stderr_excerpt": truncateText(result.Stderr, 4096), "subject_before": before.SubjectDigest,
 		"subject_after": after.SubjectDigest,
 	})
 	return workscheduler.VerificationResult{
@@ -629,3 +630,11 @@ func digestJSON(value any) string {
 }
 
 func timePointer(value time.Time) *time.Time { return &value }
+
+func truncateText(value string, limit int) string {
+	value = strings.TrimSpace(value)
+	if len(value) <= limit {
+		return value
+	}
+	return value[:limit] + "..."
+}

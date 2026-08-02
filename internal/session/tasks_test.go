@@ -150,6 +150,9 @@ func TestSessionTasks_ContractPersistsAndInjects(t *testing.T) {
 	if loaded.Contract.Status != ContractStatusDraft {
 		t.Fatalf("expected draft contract, got %+v", loaded.Contract)
 	}
+	if loaded.Contract.ProofPolicy == nil || !loaded.Contract.ProofPolicy.Required || loaded.Contract.ProofPolicy.Verifier != "deterministic" {
+		t.Fatalf("expected deterministic proof policy, got %+v", loaded.Contract.ProofPolicy)
+	}
 
 	injection := FormatTasksForInjection(loaded)
 	for _, want := range []string{
@@ -206,6 +209,9 @@ func TestSessionTasks_EvidencePersistsAndInjects(t *testing.T) {
 	ev := loaded.Tasks[0].Evidence[0]
 	if ev.Type != EvidenceTypeTestResult || ev.Command != "go test ./internal/session" || ev.Status != "passed" {
 		t.Fatalf("unexpected evidence after reload: %+v", ev)
+	}
+	if ev.ProofState != "reported" || ev.ProofOrigin != "legacy" {
+		t.Fatalf("legacy evidence must remain unverified: %+v", ev)
 	}
 
 	injection := FormatTasksForInjection(loaded)

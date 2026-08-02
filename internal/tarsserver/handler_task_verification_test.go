@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/devlikebear/tars/internal/session"
-	"github.com/devlikebear/tars/internal/tool"
 	"github.com/rs/zerolog"
 )
 
@@ -44,9 +43,12 @@ func TestSessionTasksVerificationRunsApprovedContractCommands(t *testing.T) {
 	var payload struct {
 		OK      bool `json:"ok"`
 		Results []struct {
-			Command    string `json:"command"`
-			Status     string `json:"status"`
-			EvidenceID string `json:"evidence_id"`
+			Command     string `json:"command"`
+			Status      string `json:"status"`
+			EvidenceID  string `json:"evidence_id"`
+			ProofState  string `json:"proof_state"`
+			ProofOrigin string `json:"proof_origin"`
+			VerifierID  string `json:"verifier_id"`
 		} `json:"results"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
@@ -57,6 +59,9 @@ func TestSessionTasksVerificationRunsApprovedContractCommands(t *testing.T) {
 	}
 	if payload.Results[0].Command != "printf verification-ok" || payload.Results[0].Status != "passed" || payload.Results[0].EvidenceID == "" {
 		t.Fatalf("unexpected verification result: %+v", payload.Results[0])
+	}
+	if payload.Results[0].ProofState != "passed" || payload.Results[0].ProofOrigin != "independent_verifier" || payload.Results[0].VerifierID == "" {
+		t.Fatalf("missing independent verifier provenance: %+v", payload.Results[0])
 	}
 
 	st, err := store.GetTasks(sess.ID)
@@ -69,6 +74,9 @@ func TestSessionTasksVerificationRunsApprovedContractCommands(t *testing.T) {
 	ev := st.Tasks[0].Evidence[0]
 	if ev.Type != session.EvidenceTypeTestResult || ev.Status != "passed" || ev.Command != "printf verification-ok" {
 		t.Fatalf("unexpected evidence: %+v", ev)
+	}
+	if ev.ProofState != "passed" || ev.ProofOrigin != "independent_verifier" || ev.ReporterID == ev.VerifierID || len(ev.EnvironmentJSON) == 0 || ev.SubjectDigest == "" || ev.Rationale == "" {
+		t.Fatalf("unexpected independent proof provenance: %+v", ev)
 	}
 	if !strings.Contains(ev.Summary, "verification-ok") {
 		t.Fatalf("expected stdout in evidence summary, got %q", ev.Summary)
@@ -299,12 +307,9 @@ func TestSelectVerificationTaskIndex(t *testing.T) {
 	}
 }
 
-func TestParseVerificationExecResponseFallback(t *testing.T) {
-	parsed := parseVerificationExecResponse("custom command", tool.Result{
-		Content: []tool.ContentBlock{{Type: "text", Text: "plain failure"}},
-		IsError: true,
-	})
-	if parsed.Command != "custom command" || parsed.ExitCode != -1 || parsed.Message != "plain failure" {
+func TestParseVerificationProofInputFallback(t *testing.T) {
+	parsed := parseVerificationProofInput("custom command", json.RawMessage(`not-json`))
+	if parsed.Command != "custom command" || parsed.Message != "verification provenance was unavailable" {
 		t.Fatalf("unexpected fallback parse: %+v", parsed)
 	}
 }
