@@ -79,7 +79,20 @@ func validExecutionEventType(eventType EventType) bool {
 		EventTypeExecutionCredentialsRevoked,
 		EventTypeExecutionEnvironmentDestroyed,
 		EventTypeExecutionRecoveryStarted,
-		EventTypeExecutionWorkerCancelled:
+		EventTypeExecutionWorkerCancelled,
+		EventTypeWorkerPlacementCreated,
+		EventTypeWorkerEnvironmentProvisioned,
+		EventTypeWorkerWorkspaceSynced,
+		EventTypeWorkerLeaseGranted,
+		EventTypeWorkerHeartbeatObserved,
+		EventTypeWorkerExecutionStarted,
+		EventTypeWorkerStreamObserved,
+		EventTypeWorkerCheckpointRecorded,
+		EventTypeWorkerArtifactsCollected,
+		EventTypeWorkerPlacementDestroyed,
+		EventTypeWorkerLost,
+		EventTypeWorkerReclaimed,
+		EventTypeWorkerRehydrated:
 		return true
 	default:
 		return false

@@ -170,6 +170,19 @@ const (
 	EventTypeCapabilityEvaluationRecorded    EventType = "capability.evaluation_recorded"
 	EventTypeCapabilityOutcomeRecorded       EventType = "capability.outcome_recorded"
 	EventTypeCapabilityRegressionDetected    EventType = "capability.regression_detected"
+	EventTypeWorkerPlacementCreated          EventType = "worker.placement_created"
+	EventTypeWorkerEnvironmentProvisioned    EventType = "worker.environment_provisioned"
+	EventTypeWorkerWorkspaceSynced           EventType = "worker.workspace_synced"
+	EventTypeWorkerLeaseGranted              EventType = "worker.lease_granted"
+	EventTypeWorkerHeartbeatObserved         EventType = "worker.heartbeat_observed"
+	EventTypeWorkerExecutionStarted          EventType = "worker.execution_started"
+	EventTypeWorkerStreamObserved            EventType = "worker.stream_observed"
+	EventTypeWorkerCheckpointRecorded        EventType = "worker.checkpoint_recorded"
+	EventTypeWorkerArtifactsCollected        EventType = "worker.artifacts_collected"
+	EventTypeWorkerPlacementDestroyed        EventType = "worker.placement_destroyed"
+	EventTypeWorkerLost                      EventType = "worker.lost"
+	EventTypeWorkerReclaimed                 EventType = "worker.reclaimed"
+	EventTypeWorkerRehydrated                EventType = "worker.rehydrated"
 )
 
 type StepExecutionAction string
