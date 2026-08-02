@@ -300,6 +300,10 @@ type CreateAttemptInput struct {
 	Status         AttemptStatus
 	ActorID        string
 	InputJSON      json.RawMessage
+	OutputJSON     json.RawMessage
+	ErrorText      string
+	StartedAt      *time.Time
+	FinishedAt     *time.Time
 }
 
 type CreateApprovalInput struct {

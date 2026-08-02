@@ -13,13 +13,14 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	// Register the pure-Go SQLite driver used by database/sql.
 	_ "modernc.org/sqlite"
 )
 
-const schemaVersion = 1
+const schemaVersion = 2
 
 type Options struct {
 	Now   func() time.Time
@@ -27,9 +28,10 @@ type Options struct {
 }
 
 type Store struct {
-	db    *sql.DB
-	now   func() time.Time
-	newID func(prefix string) (string, error)
+	db      *sql.DB
+	now     func() time.Time
+	newID   func(prefix string) (string, error)
+	writeMu sync.Mutex
 }
 
 const migrationV1 = `
@@ -224,6 +226,37 @@ CREATE INDEX idx_proofs_workspace_status_created
     ON proofs (workspace_id, status, created_at);
 `
 
+const migrationV2 = `
+CREATE TABLE import_markers (
+    schema_version INTEGER NOT NULL,
+    id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL,
+    source_kind TEXT NOT NULL,
+    source_id TEXT NOT NULL,
+    source_path TEXT NOT NULL DEFAULT '',
+    checksum TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('completed','failed','quarantined')),
+    work_ids_json BLOB NOT NULL DEFAULT '[]',
+    actor_id TEXT NOT NULL,
+    error_text TEXT NOT NULL DEFAULT '',
+    imported_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    UNIQUE (workspace_id, source_kind, source_id, checksum)
+);
+CREATE INDEX idx_import_markers_workspace_kind_imported
+    ON import_markers (workspace_id, source_kind, imported_at DESC);
+CREATE INDEX idx_import_markers_workspace_source
+    ON import_markers (workspace_id, source_kind, source_id, imported_at DESC);
+`
+
+var schemaMigrations = []struct {
+	version int
+	sql     string
+}{
+	{version: 1, sql: migrationV1},
+	{version: 2, sql: migrationV2},
+}
+
 func Open(ctx context.Context, path string, opts Options) (*Store, error) {
 	if strings.TrimSpace(path) == "" {
 		return nil, fmt.Errorf("workstore: database path is required")
@@ -296,13 +329,22 @@ func (s *Store) migrate(ctx context.Context) error {
 		return fmt.Errorf("workstore: create migration table: %w", err)
 	}
 
-	checksum := checksumText(migrationV1)
+	for _, migration := range schemaMigrations {
+		if err := s.applyMigration(ctx, migration.version, migration.sql); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Store) applyMigration(ctx context.Context, version int, migrationSQL string) error {
+	checksum := checksumText(migrationSQL)
 	var existing string
-	err := s.db.QueryRowContext(ctx, "SELECT checksum FROM schema_migrations WHERE version = ?", schemaVersion).Scan(&existing)
+	err := s.db.QueryRowContext(ctx, "SELECT checksum FROM schema_migrations WHERE version = ?", version).Scan(&existing)
 	switch {
 	case err == nil:
 		if existing != checksum {
-			return fmt.Errorf("workstore: migration %d checksum mismatch", schemaVersion)
+			return fmt.Errorf("workstore: migration %d checksum mismatch", version)
 		}
 		return nil
 	case !errors.Is(err, sql.ErrNoRows):
@@ -311,20 +353,20 @@ func (s *Store) migrate(ctx context.Context) error {
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("workstore: begin migration: %w", err)
+		return fmt.Errorf("workstore: begin migration %d: %w", version, err)
 	}
 	defer rollback(tx)
-	if _, err := tx.ExecContext(ctx, migrationV1); err != nil {
-		return fmt.Errorf("workstore: apply migration %d: %w", schemaVersion, err)
+	if _, err := tx.ExecContext(ctx, migrationSQL); err != nil {
+		return fmt.Errorf("workstore: apply migration %d: %w", version, err)
 	}
 	if _, err := tx.ExecContext(ctx,
 		"INSERT INTO schema_migrations (version, checksum, applied_at) VALUES (?, ?, ?)",
-		schemaVersion, checksum, s.now().UTC().UnixMilli(),
+		version, checksum, s.now().UTC().UnixMilli(),
 	); err != nil {
-		return fmt.Errorf("workstore: record migration %d: %w", schemaVersion, err)
+		return fmt.Errorf("workstore: record migration %d: %w", version, err)
 	}
 	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("workstore: commit migration %d: %w", schemaVersion, err)
+		return fmt.Errorf("workstore: commit migration %d: %w", version, err)
 	}
 	return nil
 }
@@ -346,6 +388,8 @@ func (s *Store) CreateWork(ctx context.Context, input CreateWorkInput) (Work, er
 	if err := validateCreateWork(input); err != nil {
 		return Work{}, err
 	}
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
 	state := input.InitialState
 	if state == "" {
 		state = WorkStateTriage
@@ -483,6 +527,8 @@ func (s *Store) TransitionWork(ctx context.Context, input TransitionWorkInput) (
 	if !validWorkState(input.ToState) {
 		return Work{}, fmt.Errorf("workstore: invalid target state %q", input.ToState)
 	}
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return Work{}, fmt.Errorf("workstore: begin transition: %w", err)
@@ -566,6 +612,8 @@ func (s *Store) CreateStep(ctx context.Context, input CreateStepInput) (Step, er
 	if err := validateCreateStep(input); err != nil {
 		return Step{}, err
 	}
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
 	state := input.State
 	if state == "" {
 		state = WorkStateTodo
@@ -641,6 +689,8 @@ func (s *Store) AddStepDependency(ctx context.Context, input AddStepDependencyIn
 	if input.StepID == input.DependsOnID {
 		return ErrDependencyCycle
 	}
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("workstore: begin add dependency: %w", err)
@@ -707,15 +757,29 @@ func (s *Store) CreateAttempt(ctx context.Context, input CreateAttemptInput) (At
 	if err := validateCreateAttempt(input); err != nil {
 		return Attempt{}, err
 	}
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
 	inputJSON, err := normalizedJSON(input.InputJSON)
 	if err != nil {
 		return Attempt{}, fmt.Errorf("workstore: attempt input json: %w", err)
+	}
+	outputJSON, err := normalizedJSON(input.OutputJSON)
+	if err != nil {
+		return Attempt{}, fmt.Errorf("workstore: attempt output json: %w", err)
 	}
 	id, err := s.newID("att")
 	if err != nil {
 		return Attempt{}, err
 	}
 	now := s.now().UTC()
+	startedAt := now
+	if input.StartedAt != nil {
+		startedAt = input.StartedAt.UTC()
+	}
+	finishedAt := input.FinishedAt
+	if finishedAt == nil && (input.Status == AttemptStatusSucceeded || input.Status == AttemptStatusFailed || input.Status == AttemptStatusCancelled) {
+		finishedAt = &now
+	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return Attempt{}, fmt.Errorf("workstore: begin create attempt: %w", err)
@@ -728,12 +792,13 @@ func (s *Store) CreateAttempt(ctx context.Context, input CreateAttemptInput) (At
 		INSERT INTO attempts (
 			schema_version, id, workspace_id, work_id, step_id, idempotency_key,
 			causation_id, attempt_number, adapter, status, actor_id, input_json,
-			output_json, started_at, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '{}', ?, ?, ?)
+			output_json, error_text, started_at, finished_at, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (workspace_id, work_id, idempotency_key) DO NOTHING
 	`, recordSchemaVersion, id, input.WorkspaceID, input.WorkID, nullableString(input.StepID),
 		input.IdempotencyKey, input.CausationID, input.Number, input.Adapter, input.Status,
-		input.ActorID, inputJSON, now.UnixMilli(), now.UnixMilli(), now.UnixMilli())
+		input.ActorID, inputJSON, outputJSON, input.ErrorText, startedAt.UnixMilli(),
+		nullableTime(finishedAt), now.UnixMilli(), now.UnixMilli())
 	if err != nil {
 		return Attempt{}, fmt.Errorf("workstore: insert attempt: %w", err)
 	}
@@ -770,6 +835,8 @@ func (s *Store) CreateApproval(ctx context.Context, input CreateApprovalInput) (
 	if strings.TrimSpace(input.WorkspaceID) == "" || strings.TrimSpace(input.WorkID) == "" || strings.TrimSpace(input.IdempotencyKey) == "" || strings.TrimSpace(input.Authority) == "" || strings.TrimSpace(input.Request) == "" || strings.TrimSpace(input.ActorID) == "" || !validApprovalStatus(input.Status) {
 		return Approval{}, fmt.Errorf("workstore: invalid approval input")
 	}
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
 	id, err := s.newID("apr")
 	if err != nil {
 		return Approval{}, err
@@ -830,6 +897,8 @@ func (s *Store) CreateArtifact(ctx context.Context, input CreateArtifactInput) (
 	if strings.TrimSpace(input.WorkspaceID) == "" || strings.TrimSpace(input.WorkID) == "" || strings.TrimSpace(input.IdempotencyKey) == "" || strings.TrimSpace(input.Kind) == "" || strings.TrimSpace(input.Name) == "" || strings.TrimSpace(input.URI) == "" || strings.TrimSpace(input.Digest) == "" || strings.TrimSpace(input.ActorID) == "" || input.SizeBytes < 0 {
 		return Artifact{}, fmt.Errorf("workstore: invalid artifact input")
 	}
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
 	id, err := s.newID("art")
 	if err != nil {
 		return Artifact{}, err
@@ -890,6 +959,8 @@ func (s *Store) CreateProof(ctx context.Context, input CreateProofInput) (Proof,
 	if strings.TrimSpace(input.WorkspaceID) == "" || strings.TrimSpace(input.WorkID) == "" || strings.TrimSpace(input.IdempotencyKey) == "" || strings.TrimSpace(input.Kind) == "" || strings.TrimSpace(input.Summary) == "" || strings.TrimSpace(input.ActorID) == "" || !validProofStatus(input.Status) {
 		return Proof{}, fmt.Errorf("workstore: invalid proof input")
 	}
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
 	id, err := s.newID("prf")
 	if err != nil {
 		return Proof{}, err

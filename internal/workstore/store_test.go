@@ -41,8 +41,8 @@ func TestOpenAppliesSchemaWALAndForeignKeys(t *testing.T) {
 	if err := store.db.QueryRowContext(ctx, "SELECT MAX(version), COUNT(*) FROM schema_migrations").Scan(&version, &migrationCount); err != nil {
 		t.Fatalf("read schema version: %v", err)
 	}
-	if version != schemaVersion || migrationCount != 1 {
-		t.Fatalf("schema version/count = %d/%d, want %d/1", version, migrationCount, schemaVersion)
+	if version != schemaVersion || migrationCount != schemaVersion {
+		t.Fatalf("schema version/count = %d/%d, want %d/%d", version, migrationCount, schemaVersion, schemaVersion)
 	}
 
 	info, err := os.Stat(path)
