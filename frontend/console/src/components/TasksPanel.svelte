@@ -1,11 +1,12 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import { t } from '../i18n'
-  import { getSessionPlanArchive, getSessionTasks, executeTasksAction, cancelChat, runTaskVerification } from '../lib/api'
+  import { getSessionPlanArchive, getSessionTasks, getSessionWorkLedger, getWorkLedgerTimeline, executeTasksAction, cancelChat, runTaskVerification } from '../lib/api'
   import { planProgressPercent, summarizeTasks } from '../lib/tasks'
-  import type { PlanArchiveItem, SessionTask, SessionTasks, TaskContract, TaskEvidence } from '../lib/types'
+  import { buildWorkLedgerTimeline } from '../lib/workLedger'
+  import type { PlanArchiveItem, SessionTask, SessionTasks, TaskContract, TaskEvidence, WorkLedgerProjection } from '../lib/types'
 
-  type TabId = 'tasks' | 'contract' | 'evidence'
+  type TabId = 'tasks' | 'contract' | 'evidence' | 'timeline'
 
   interface Props {
     sessionId: string
@@ -20,6 +21,10 @@
   let error = $state('')
   let planExpanded = $state(true)
   let activeTab = $state<TabId>('tasks')
+  let timelineProjection = $state<WorkLedgerProjection | null>(null)
+  let timelineLoading = $state(false)
+  let timelineError = $state('')
+  let timelineEntries = $derived(timelineProjection ? buildWorkLedgerTimeline(timelineProjection) : [])
 
   // Contract draft state — surfaced under the Contract tab. Mirrors what the
   // legacy standalone ContractPanel used to manage; the legacy panel was
@@ -58,6 +63,30 @@
       .split('\n')
       .map((line) => line.trim())
       .filter(Boolean)
+  }
+
+  async function loadTimeline() {
+    const requestedSessionId = sessionId
+    timelineLoading = true
+    timelineError = ''
+    timelineProjection = null
+    try {
+      const work = await getSessionWorkLedger(requestedSessionId)
+      if (requestedSessionId !== sessionId || !work) return
+      const projection = await getWorkLedgerTimeline(work.id)
+      if (requestedSessionId === sessionId) timelineProjection = projection
+    } catch (err) {
+      if (requestedSessionId === sessionId) {
+        timelineError = err instanceof Error ? err.message : 'Failed to load work ledger timeline'
+      }
+    } finally {
+      if (requestedSessionId === sessionId) timelineLoading = false
+    }
+  }
+
+  function selectTab(tab: TabId) {
+    activeTab = tab
+    if (tab === 'timeline') void loadTimeline()
   }
 
   function loadContractDraft(next: SessionTasks) {
@@ -160,6 +189,7 @@
     } finally {
       loading = false
     }
+    if (activeTab === 'timeline') await loadTimeline()
   }
 
   export function openEvidence() {
@@ -427,6 +457,17 @@
     }
   }
 
+  function workStateClass(state: string): string {
+    switch (state) {
+      case 'done': return 'badge-success'
+      case 'running': return 'badge-accent'
+      case 'blocked':
+      case 'cancelled': return 'badge-error'
+      case 'review': return 'badge-warning'
+      default: return 'badge-default'
+    }
+  }
+
   function formatArchiveDate(value?: string): string {
     if (!value) return ''
     const date = new Date(value)
@@ -448,6 +489,8 @@
   // Reload when sessionId changes
   $effect(() => {
     void sessionId
+    timelineProjection = null
+    timelineError = ''
     void load()
   })
 </script>
@@ -473,7 +516,7 @@
       aria-selected={activeTab === 'tasks'}
       class="tab-btn"
       class:active={activeTab === 'tasks'}
-      onclick={() => activeTab = 'tasks'}
+      onclick={() => selectTab('tasks')}
     >Tasks</button>
     <button
       type="button"
@@ -481,7 +524,7 @@
       aria-selected={activeTab === 'contract'}
       class="tab-btn"
       class:active={activeTab === 'contract'}
-      onclick={() => activeTab = 'contract'}
+      onclick={() => selectTab('contract')}
     >
       Contract
       {#if hasContractDraft}
@@ -494,13 +537,21 @@
       aria-selected={activeTab === 'evidence'}
       class="tab-btn"
       class:active={activeTab === 'evidence'}
-      onclick={() => activeTab = 'evidence'}
+      onclick={() => selectTab('evidence')}
     >
       Evidence
       {#if aggregatedEvidence.length > 0}
         <span class="tab-badge badge badge-default">{aggregatedEvidence.length}</span>
       {/if}
     </button>
+    <button
+      type="button"
+      role="tab"
+      aria-selected={activeTab === 'timeline'}
+      class="tab-btn"
+      class:active={activeTab === 'timeline'}
+      onclick={() => selectTab('timeline')}
+    >Timeline</button>
   </div>
 
   {#if activeTab === 'tasks'}
@@ -850,6 +901,53 @@
         {/each}
       </div>
     {/if}
+  {:else if activeTab === 'timeline'}
+    <section class="work-ledger-timeline" aria-label="Read-only work ledger timeline">
+      {#if timelineLoading}
+        <div class="empty-state">Loading durable timeline...</div>
+      {:else if timelineError}
+        <div class="error-banner">{timelineError}</div>
+      {:else if !timelineProjection}
+        <div class="empty-state">
+          <p>No durable work record for this session yet.</p>
+          <p class="hint">The ledger remains read-only while legacy task mutations are synchronized.</p>
+        </div>
+      {:else}
+        <header class="timeline-summary">
+          <div>
+            <strong>{timelineProjection.work.title}</strong>
+            <small>{timelineProjection.work.kind} · version {timelineProjection.work.version}</small>
+          </div>
+          <span class="badge {workStateClass(timelineProjection.work.state)}">{timelineProjection.work.state}</span>
+        </header>
+        <div class="timeline-counts" aria-label="Work ledger record counts">
+          <span>{timelineProjection.steps.length} steps</span>
+          <span>{timelineProjection.attempts.length} attempts</span>
+          <span>{timelineProjection.proofs.length} proofs</span>
+          <span>{timelineProjection.artifacts.length} artifacts</span>
+          <span>{timelineProjection.approvals.length} approvals</span>
+        </div>
+        {#if timelineEntries.length === 0}
+          <div class="empty-state">No durable events recorded.</div>
+        {:else}
+          <ol class="timeline-events">
+            {#each timelineEntries as entry (entry.id)}
+              <li class="timeline-event">
+                <span class="timeline-marker" aria-hidden="true"></span>
+                <article>
+                  <div class="timeline-event-head">
+                    <strong>{entry.title}</strong>
+                    <small>#{entry.sequence}</small>
+                  </div>
+                  {#if entry.detail}<p>{entry.detail}</p>{/if}
+                  <small>{formatArchiveDate(entry.created_at)} · {entry.actor_id || 'unknown actor'}</small>
+                </article>
+              </li>
+            {/each}
+          </ol>
+        {/if}
+      {/if}
+    </section>
   {/if}
 </div>
 
@@ -997,6 +1095,115 @@
   .evidence-aggregate-card p,
   .evidence-aggregate-card small,
   .evidence-aggregate-card a {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: var(--text-xs);
+    overflow-wrap: anywhere;
+  }
+
+  .work-ledger-timeline {
+    display: grid;
+    gap: var(--space-3);
+  }
+
+  .timeline-summary {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--space-3);
+    padding: var(--space-3);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    background: var(--surface-inset);
+  }
+
+  .timeline-summary > div {
+    display: grid;
+    min-width: 0;
+    gap: var(--space-1);
+  }
+
+  .timeline-summary strong {
+    overflow: hidden;
+    color: var(--text-primary);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .timeline-summary small,
+  .timeline-event small {
+    color: var(--text-tertiary);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+  }
+
+  .timeline-counts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    color: var(--text-secondary);
+    font-size: var(--text-xs);
+  }
+
+  .timeline-events {
+    display: grid;
+    gap: 0;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .timeline-event {
+    display: grid;
+    grid-template-columns: 14px minmax(0, 1fr);
+    gap: var(--space-2);
+    min-height: 64px;
+  }
+
+  .timeline-marker {
+    position: relative;
+    width: 9px;
+    height: 9px;
+    margin-top: 5px;
+    border: 2px solid var(--primary);
+    border-radius: 50%;
+    background: var(--surface);
+  }
+
+  .timeline-marker::after {
+    position: absolute;
+    top: 9px;
+    bottom: -50px;
+    left: 2px;
+    width: 1px;
+    background: var(--border-default);
+    content: '';
+  }
+
+  .timeline-event:last-child .timeline-marker::after {
+    display: none;
+  }
+
+  .timeline-event article {
+    display: grid;
+    align-content: start;
+    gap: var(--space-1);
+    padding-bottom: var(--space-3);
+  }
+
+  .timeline-event-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+  }
+
+  .timeline-event-head strong {
+    color: var(--text-primary);
+    font-size: var(--text-sm);
+  }
+
+  .timeline-event p {
     margin: 0;
     color: var(--text-secondary);
     font-size: var(--text-xs);

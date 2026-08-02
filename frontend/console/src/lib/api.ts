@@ -111,6 +111,9 @@ import type {
   RemoteAccessResponse,
   SessionCleanupMode,
   SessionCleanupSuggestionResponse,
+  WorkLedgerProjection,
+  WorkLedgerWork,
+  WorkLedgerWorksResponse,
 } from './types'
 
 export class APIRequestError extends Error {
@@ -586,6 +589,20 @@ export async function compactSession(sessionId: string): Promise<CompactResult> 
 export async function getSessionTasks(sessionId: string): Promise<SessionTasks> {
   const data = await requestJSON<Partial<SessionTasks>>(`/v1/admin/sessions/${encodeURIComponent(sessionId)}/tasks`)
   return normalizeSessionTasks(data)
+}
+
+export async function getSessionWorkLedger(sessionId: string): Promise<WorkLedgerWork | null> {
+  const params = new URLSearchParams({
+    source: 'legacy-session',
+    source_id: sessionId,
+    limit: '1',
+  })
+  const data = await requestJSON<WorkLedgerWorksResponse>(`/v1/work/works?${params.toString()}`)
+  return data.works[0] ?? null
+}
+
+export async function getWorkLedgerTimeline(workId: string): Promise<WorkLedgerProjection> {
+  return requestJSON<WorkLedgerProjection>(`/v1/work/works/${encodeURIComponent(workId)}/timeline`)
 }
 
 export async function getGlobalPlans(active = true): Promise<GlobalPlansResponse> {

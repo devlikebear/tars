@@ -1656,6 +1656,183 @@ export type SessionTasks = {
   tasks: SessionTask[]
 }
 
+export type WorkLedgerState =
+  | 'triage'
+  | 'backlog'
+  | 'todo'
+  | 'ready'
+  | 'running'
+  | 'review'
+  | 'blocked'
+  | 'done'
+  | 'cancelled'
+
+export type WorkLedgerWork = {
+  schema_version: number
+  id: string
+  workspace_id: string
+  kind: string
+  source?: string
+  source_id?: string
+  idempotency_key: string
+  causation_id?: string
+  parent_work_id?: string
+  title: string
+  objective?: string
+  contract: Record<string, unknown> | null
+  metadata: Record<string, unknown> | null
+  state: WorkLedgerState
+  priority: number
+  actor_id: string
+  version: number
+  created_at: string
+  updated_at: string
+  completed_at?: string
+}
+
+export type WorkLedgerStep = {
+  schema_version: number
+  id: string
+  workspace_id: string
+  work_id: string
+  parent_step_id?: string
+  idempotency_key: string
+  causation_id?: string
+  title: string
+  description?: string
+  state: WorkLedgerState
+  position: number
+  actor_id: string
+  version: number
+  created_at: string
+  updated_at: string
+  completed_at?: string
+}
+
+export type WorkLedgerAttempt = {
+  schema_version: number
+  id: string
+  workspace_id: string
+  work_id: string
+  step_id?: string
+  idempotency_key: string
+  causation_id?: string
+  number: number
+  adapter: string
+  status: string
+  actor_id: string
+  input: unknown
+  output: unknown
+  error?: string
+  started_at: string
+  finished_at?: string
+  created_at: string
+  updated_at: string
+}
+
+export type WorkLedgerEvent = {
+  schema_version: number
+  sequence: number
+  id: string
+  workspace_id: string
+  work_id: string
+  step_id?: string
+  attempt_id?: string
+  type: string
+  from_state?: WorkLedgerState
+  to_state?: WorkLedgerState
+  actor_id: string
+  causation_id?: string
+  idempotency_key?: string
+  payload: Record<string, unknown> | null
+  created_at: string
+}
+
+export type WorkLedgerProof = {
+  schema_version: number
+  id: string
+  workspace_id: string
+  work_id: string
+  step_id?: string
+  attempt_id?: string
+  idempotency_key: string
+  causation_id?: string
+  kind: string
+  status: string
+  summary: string
+  verifier?: string
+  command?: string
+  artifact_id?: string
+  actor_id: string
+  created_at: string
+}
+
+export type WorkLedgerArtifact = {
+  schema_version: number
+  id: string
+  workspace_id: string
+  work_id: string
+  step_id?: string
+  attempt_id?: string
+  idempotency_key: string
+  causation_id?: string
+  kind: string
+  name: string
+  uri: string
+  digest: string
+  media_type?: string
+  size_bytes: number
+  actor_id: string
+  created_at: string
+}
+
+export type WorkLedgerApproval = {
+  schema_version: number
+  id: string
+  workspace_id: string
+  work_id: string
+  step_id?: string
+  attempt_id?: string
+  idempotency_key: string
+  causation_id?: string
+  authority: string
+  status: string
+  request: string
+  reason?: string
+  actor_id: string
+  reviewer_id?: string
+  expires_at?: string
+  decided_at?: string
+  created_at: string
+  updated_at: string
+}
+
+export type WorkLedgerDependency = {
+  workspace_id: string
+  work_id: string
+  step_id: string
+  depends_on_id: string
+  actor_id: string
+  created_at: string
+}
+
+export type WorkLedgerProjection = {
+  work: WorkLedgerWork
+  steps: WorkLedgerStep[]
+  dependencies: WorkLedgerDependency[]
+  attempts: WorkLedgerAttempt[]
+  events: WorkLedgerEvent[]
+  proofs: WorkLedgerProof[]
+  artifacts: WorkLedgerArtifact[]
+  approvals: WorkLedgerApproval[]
+}
+
+export type WorkLedgerWorksResponse = {
+  works: WorkLedgerWork[]
+  limit: number
+  offset: number
+}
+
 export type GitRemote = {
   name: string
   fetch_url?: string
