@@ -245,6 +245,59 @@ func TestControllerReplaySurfacesPendingOutboxFailureUntilPublished(t *testing.T
 	}
 }
 
+func TestControllerSanitizesControlEventsAndRejectsCredentialedEndpoints(t *testing.T) {
+	t.Parallel()
+
+	statePath := filepath.Join(t.TempDir(), "state.json")
+	controller, err := OpenController(ControllerOptions{StatePath: statePath})
+	if err != nil {
+		t.Fatal(err)
+	}
+	endpoint := "ssh://worker.example.test"
+	secret := "Bearer worker-secret-token"
+	if _, err := controller.Apply(context.Background(), testEnvelope("worker-a", "", 1, MessageRegister, RegisterPayload{
+		Transport: "ssh", Endpoint: endpoint,
+		Capabilities: WorkerCapabilities{EgressPolicy: true, ResourceLimits: true},
+	})); err != nil {
+		t.Fatalf("register worker: %v", err)
+	}
+	if _, err := controller.Apply(context.Background(), testEnvelope("worker-a", "", 2, MessageHeartbeat, HeartbeatPayload{
+		LeaseTTLMS: 30_000,
+		Metadata:   map[string]string{"authorization": secret},
+	})); err != nil {
+		t.Fatalf("heartbeat worker: %v", err)
+	}
+
+	persisted, err := os.ReadFile(statePath)
+	if err != nil {
+		t.Fatalf("read controller state: %v", err)
+	}
+	var state controllerState
+	if err := json.Unmarshal(persisted, &state); err != nil {
+		t.Fatalf("decode controller state: %v", err)
+	}
+	events, err := json.Marshal(state.Events)
+	if err != nil {
+		t.Fatalf("encode control events: %v", err)
+	}
+	for _, forbidden := range [][]byte{[]byte(endpoint), []byte(secret), []byte("authorization")} {
+		if bytes.Contains(events, forbidden) {
+			t.Fatalf("persisted control events leaked %q: %s", forbidden, events)
+		}
+	}
+	if !bytes.Contains(events, []byte("endpoint_digest")) {
+		t.Fatalf("persisted control events omitted endpoint digest: %s", events)
+	}
+
+	_, err = controller.Apply(context.Background(), testEnvelope("worker-b", "", 1, MessageRegister, RegisterPayload{
+		Transport: "ssh", Endpoint: "ssh://user:password@worker.example.test",
+		Capabilities: WorkerCapabilities{EgressPolicy: true, ResourceLimits: true},
+	}))
+	if !errors.Is(err, ErrInvalidEnvelope) {
+		t.Fatalf("credentialed endpoint error=%v want %v", err, ErrInvalidEnvelope)
+	}
+}
+
 func testEnvelope(workerID, placementID string, sequence int64, messageType MessageType, payload any) Envelope {
 	raw, _ := json.Marshal(payload)
 	scope := workerID

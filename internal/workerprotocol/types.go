@@ -198,6 +198,8 @@ type Placement struct {
 	Policy         ExecutionPolicy `json:"policy"`
 	Sync           SyncSpec        `json:"sync"`
 	SnapshotDigest string          `json:"snapshot_digest,omitempty"`
+	SyncFileCount  int             `json:"sync_file_count,omitempty"`
+	SyncTotalBytes int64           `json:"sync_total_bytes,omitempty"`
 	Checkpoint     *Checkpoint     `json:"checkpoint,omitempty"`
 	LeaseExpiresAt *time.Time      `json:"lease_expires_at,omitempty"`
 	LastSequence   int64           `json:"last_sequence"`

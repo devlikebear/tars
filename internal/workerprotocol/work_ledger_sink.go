@@ -119,7 +119,7 @@ func safeLedgerPayloadKeys(eventType string) []string {
 	case string(MessageProvision):
 		return []string{"environment_id", "manifest_digest", "policy"}
 	case string(MessageSync):
-		return []string{"mode", "digest", "uri"}
+		return []string{"mode", "digest", "file_count", "total_bytes"}
 	case string(MessageLease), string(MessageHeartbeat):
 		return []string{"lease_ttl_ms", "usage"}
 	case string(MessageExecute):

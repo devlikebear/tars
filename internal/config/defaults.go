@@ -91,6 +91,8 @@ const (
 	defaultWorkSchedulerHeartbeatSeconds       = 20
 	defaultWorkSchedulerPollMilliseconds       = 250
 	defaultWorkSchedulerExecutionEnvironment   = "local"
+	defaultWorkSchedulerA2APollMilliseconds    = 2000
+	defaultWorkSchedulerA2AMaxPollSeconds      = 1800
 	defaultChannelsTelegramDMPolicy            = "pairing"
 	defaultSkillsBundledDir                    = "./skills"
 	defaultPluginsBundledDir                   = "./plugins"
@@ -225,6 +227,11 @@ func defaultConfigValues() Config {
 			SchedulerExecutionEnvironment: defaultWorkSchedulerExecutionEnvironment,
 			SchedulerExecutionDataDir:     filepath.Join(TarsHomeDir(), "execution-plane"),
 			SchedulerArtifactPaths:        []string{},
+			SchedulerRemoteWorkersEnabled: false,
+			SchedulerA2AEnabled:           false,
+			SchedulerA2AAllowedHosts:      []string{},
+			SchedulerA2APollMilliseconds:  defaultWorkSchedulerA2APollMilliseconds,
+			SchedulerA2AMaxPollSeconds:    defaultWorkSchedulerA2AMaxPollSeconds,
 			enabledSet:                    true,
 			schedulerEnabledSet:           true,
 		},

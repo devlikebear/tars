@@ -76,6 +76,17 @@ work_ledger:
     execution_environment: local
     execution_data_dir: $HOME/.tars/execution-plane
     artifact_paths: []
+    remote_workers:
+      enabled: false
+    a2a:
+      enabled: false
+      discovery_url: ""
+      bearer_token: ""
+      allowed_hosts: []
+      allow_private_hosts: false
+      allow_insecure_loopback: false
+      poll_milliseconds: 2000
+      max_poll_seconds: 1800
 
 companion:
   enabled: true

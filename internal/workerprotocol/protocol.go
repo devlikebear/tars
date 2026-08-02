@@ -129,9 +129,11 @@ type ProvisionPayload struct {
 }
 
 type SyncPayload struct {
-	Mode   SyncMode `json:"mode"`
-	Digest string   `json:"digest"`
-	URI    string   `json:"uri,omitempty"`
+	Mode       SyncMode `json:"mode"`
+	Digest     string   `json:"digest"`
+	URI        string   `json:"uri,omitempty"`
+	FileCount  int      `json:"file_count,omitempty"`
+	TotalBytes int64    `json:"total_bytes,omitempty"`
 }
 
 type LeasePayload struct {

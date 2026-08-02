@@ -133,6 +133,7 @@ func (coordinator *GatewayCoordinator) Run(ctx context.Context, input RemoteRunI
 	sequence++
 	if _, err := coordinator.exchangeAndApply(ctx, coordinator.envelope(input.PlacementID, sequence, MessageSync, SyncPayload{
 		Mode: input.Workspace.Manifest.Mode, Digest: input.Workspace.Manifest.Digest,
+		FileCount: input.Workspace.Manifest.FileCount, TotalBytes: input.Workspace.Manifest.TotalBytes,
 	}), &input.Workspace); err != nil {
 		return RemoteRunResult{}, err
 	}

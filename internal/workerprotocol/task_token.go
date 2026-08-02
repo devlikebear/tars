@@ -184,7 +184,9 @@ func (verifier *TaskTokenVerifier) Verify(token string, binding TaskTokenBinding
 		return TaskTokenClaims{}, ErrTaskTokenInvalid
 	}
 	signature, err := base64.RawURLEncoding.DecodeString(parts[2])
-	if err != nil || len(signature) != ed25519.SignatureSize || !ed25519.Verify(verifier.PublicKey, []byte(parts[0]+"."+parts[1]), signature) {
+	if err != nil || len(signature) != ed25519.SignatureSize ||
+		base64.RawURLEncoding.EncodeToString(signature) != parts[2] ||
+		!ed25519.Verify(verifier.PublicKey, []byte(parts[0]+"."+parts[1]), signature) {
 		return TaskTokenClaims{}, ErrTaskTokenSignature
 	}
 	var claims TaskTokenClaims

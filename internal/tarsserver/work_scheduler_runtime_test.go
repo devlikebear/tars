@@ -3,6 +3,8 @@ package tarsserver
 import (
 	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -10,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/devlikebear/tars/internal/a2a"
 	"github.com/devlikebear/tars/internal/agentruntime"
 	"github.com/devlikebear/tars/internal/config"
 	"github.com/devlikebear/tars/internal/session"
@@ -68,6 +71,133 @@ func TestBuildWorkSchedulerHonorsRollbackAndValidatesLease(t *testing.T) {
 		t.Fatalf("enabled scheduler=%v err=%v", scheduler, err)
 	}
 	scheduler.Close()
+}
+
+func TestBuildA2AWorkExecutorDiscoversV1AndKeepsTokenInGateway(t *testing.T) {
+	const token = "gateway-only-a2a-token"
+	var server *httptest.Server
+	server = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case a2a.AgentCardPath:
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{
+  "name":"external-reviewer",
+  "description":"Reviews durable work",
+  "supportedInterfaces":[{"url":"` + server.URL + `/a2a","protocolBinding":"HTTP+JSON","protocolVersion":"1.0"}],
+  "version":"2026.8.0",
+  "capabilities":{},
+  "securitySchemes":{"bearer":{"httpAuthSecurityScheme":{"scheme":"bearer"}}},
+  "securityRequirements":[{"schemes":{"bearer":{"list":[]}}}],
+  "defaultInputModes":["text/plain"],
+  "defaultOutputModes":["text/plain"],
+  "skills":[{"id":"review","name":"Review","description":"Review work","tags":["review"]}]
+}`))
+		case "/a2a/message:send":
+			if r.Header.Get("Authorization") != "Bearer "+token {
+				t.Fatalf("missing gateway authorization: %q", r.Header.Get("Authorization"))
+			}
+			w.Header().Set("Content-Type", a2a.MediaType)
+			_, _ = w.Write([]byte(`{"task":{"id":"remote-task","contextId":"remote-context","status":{"state":"TASK_STATE_COMPLETED"},"artifacts":[{"artifactId":"report","parts":[{"text":"approved"}]}]}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	ledger, err := workstore.Open(context.Background(), filepath.Join(t.TempDir(), "ledger.db"), workstore.Options{})
+	if err != nil {
+		t.Fatalf("open work ledger: %v", err)
+	}
+	t.Cleanup(func() { _ = ledger.Close() })
+	cfg := config.Default()
+	cfg.WorkLedger.SchedulerA2AEnabled = true
+	cfg.WorkLedger.SchedulerA2ADiscoveryURL = server.URL
+	cfg.WorkLedger.SchedulerA2ABearerToken = token
+	cfg.WorkLedger.SchedulerA2AAllowedHosts = []string{"127.0.0.1"}
+	cfg.WorkLedger.SchedulerA2AAllowPrivateHosts = true
+	cfg.WorkLedger.SchedulerA2APollMilliseconds = 1
+	cfg.WorkLedger.SchedulerA2AMaxPollSeconds = 1
+	executor, err := buildA2AWorkExecutor(context.Background(), cfg, ledger, server.Client())
+	if err != nil {
+		t.Fatalf("build A2A executor: %v", err)
+	}
+	if executor == nil || executor.Adapter() != a2a.AdapterName {
+		t.Fatalf("unexpected A2A executor: %#v", executor)
+	}
+	execution := createA2ARuntimeExecution(t, ledger)
+	result, err := executor.Execute(context.Background(), execution)
+	if err != nil || !result.Succeeded {
+		t.Fatalf("execute A2A work: result=%#v err=%v", result, err)
+	}
+	projection, err := ledger.GetWorkProjection(context.Background(), execution.Work.WorkspaceID, execution.Work.ID)
+	if err != nil {
+		t.Fatalf("get A2A work projection: %v", err)
+	}
+	raw, err := json.Marshal(projection.Events)
+	if err != nil {
+		t.Fatalf("marshal A2A events: %v", err)
+	}
+	if strings.Contains(string(raw), token) {
+		t.Fatalf("work ledger leaked A2A token: %s", raw)
+	}
+}
+
+func TestBuildA2AWorkExecutorRejectsMissingCredentialAndLeavesDisabledInstallUntouched(t *testing.T) {
+	cfg := config.Default()
+	if executor, err := buildA2AWorkExecutor(context.Background(), cfg, nil, nil); err != nil || executor != nil {
+		t.Fatalf("disabled A2A executor=%#v err=%v", executor, err)
+	}
+
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+  "name":"secured","description":"secured agent",
+  "supportedInterfaces":[{"url":"https://127.0.0.1/a2a","protocolBinding":"HTTP+JSON","protocolVersion":"1.0"}],
+  "version":"1.0.0","capabilities":{},
+  "securityRequirements":[{"schemes":{"bearer":{"list":[]}}}],
+  "defaultInputModes":["text/plain"],"defaultOutputModes":["text/plain"],
+  "skills":[{"id":"run","name":"Run","description":"Run work","tags":["work"]}]
+}`))
+	}))
+	t.Cleanup(server.Close)
+	ledger, err := workstore.Open(context.Background(), filepath.Join(t.TempDir(), "ledger.db"), workstore.Options{})
+	if err != nil {
+		t.Fatalf("open work ledger: %v", err)
+	}
+	t.Cleanup(func() { _ = ledger.Close() })
+	cfg.WorkLedger.SchedulerA2AEnabled = true
+	cfg.WorkLedger.SchedulerA2ADiscoveryURL = server.URL
+	cfg.WorkLedger.SchedulerA2AAllowPrivateHosts = true
+	if _, err := buildA2AWorkExecutor(context.Background(), cfg, ledger, server.Client()); err == nil || !strings.Contains(err.Error(), "credential") {
+		t.Fatalf("missing credential error=%v", err)
+	}
+}
+
+func createA2ARuntimeExecution(t *testing.T, ledger *workstore.Store) workscheduler.Execution {
+	t.Helper()
+	ctx := context.Background()
+	work, err := ledger.CreateWork(ctx, workstore.CreateWorkInput{
+		WorkspaceID: "default", IdempotencyKey: "a2a-runtime-work", Kind: "external-agent",
+		Title: "Review", Objective: "Review durable work", InitialState: workstore.WorkStateRunning, ActorID: "test",
+	})
+	if err != nil {
+		t.Fatalf("create A2A work: %v", err)
+	}
+	step, err := ledger.CreateStep(ctx, workstore.CreateStepInput{
+		WorkspaceID: work.WorkspaceID, WorkID: work.ID, IdempotencyKey: "a2a-runtime-step",
+		Title: "Review", State: workstore.WorkStateRunning, ActorID: "test",
+	})
+	if err != nil {
+		t.Fatalf("create A2A step: %v", err)
+	}
+	attempt, err := ledger.CreateAttempt(ctx, workstore.CreateAttemptInput{
+		WorkspaceID: work.WorkspaceID, WorkID: work.ID, StepID: step.ID, IdempotencyKey: "a2a-runtime-attempt",
+		Number: 1, Adapter: a2a.AdapterName, Status: workstore.AttemptStatusRunning, ActorID: "test",
+	})
+	if err != nil {
+		t.Fatalf("create A2A attempt: %v", err)
+	}
+	return workscheduler.Execution{Work: work, Claim: workstore.StepClaim{Step: step, Attempt: attempt}}
 }
 
 func TestManagedWorkExecutionPlaneRunsLifecycleAndPreservesSource(t *testing.T) {

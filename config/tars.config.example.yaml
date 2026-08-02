@@ -260,6 +260,21 @@ work_ledger:
     # Relative paths/globs only. Sensitive names, symlinks, .git, .tars, and
     # node_modules are excluded by the collector.
     artifact_paths: []
+    # Remote workers use the same durable scheduler and are opt-in. Controller
+    # state is kept below execution_data_dir/remote-workers/controller.json.
+    remote_workers:
+      enabled: false
+    # A2A is an external interoperability adapter only. It never replaces the
+    # Work Ledger, MCP, or TARS' internal worker protocol.
+    a2a:
+      enabled: false
+      discovery_url: "" # HTTPS origin with /.well-known/agent-card.json
+      bearer_token: "" # Prefer ${TARS_WORK_SCHEDULER_A2A_BEARER_TOKEN}
+      allowed_hosts: []
+      allow_private_hosts: false
+      allow_insecure_loopback: false # development only
+      poll_milliseconds: 2000
+      max_poll_seconds: 1800
 
 agentruntime:
   enabled: false

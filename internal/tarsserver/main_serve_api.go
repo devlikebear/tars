@@ -31,6 +31,7 @@ import (
 	"github.com/devlikebear/tars/internal/skillhub/sources/openclaw"
 	"github.com/devlikebear/tars/internal/tool"
 	"github.com/devlikebear/tars/internal/usage"
+	"github.com/devlikebear/tars/internal/workerprotocol"
 	"github.com/devlikebear/tars/internal/workscheduler"
 	"github.com/devlikebear/tars/internal/workstore"
 	"github.com/rs/zerolog"
@@ -51,6 +52,7 @@ type serveAPIRuntime struct {
 	reflectionRuntime       *reflection.Runtime
 	workLedger              *workstore.Store
 	workScheduler           *workscheduler.Scheduler
+	workerController        *workerprotocol.Controller
 	telegramPoller          *telegramUpdatePoller
 	remoteAccessRunner      remoteaccess.Runner
 	remoteAccessTargetURL   string
@@ -62,6 +64,7 @@ type apiRouteHandlers struct {
 	chat            http.Handler
 	sessions        http.Handler
 	work            http.Handler
+	workers         http.Handler
 	memory          http.Handler
 	console         http.Handler
 	usage           http.Handler
@@ -423,6 +426,16 @@ func buildAPIMux(
 		}
 		return nil, err
 	}
+	workerController, err := buildWorkerControllerIfEnabled(cfg, workLedger)
+	if err != nil {
+		if workScheduler != nil {
+			workScheduler.Close()
+		}
+		if workLedger != nil {
+			_ = workLedger.Close()
+		}
+		return nil, err
+	}
 
 	chatTooling := buildChatToolingOptions(
 		processManager,
@@ -678,12 +691,18 @@ func buildAPIMux(
 	agentRunsHandler := newAgentRunsAPIHandlerWithWorkLedgerAndInflightLimit(agentRuntime, workLedger, logger, cfg.APIMaxInflightAgentRuns)
 	sessionHandler := newSessionAPIHandlerFullWithLocalSkillsAndWorkLedger(sessionStore, logger, deps.usageTracker, sessionStyleDefaultsFromConfig(cfg), dispatcher.Emit, overrideService, deps.llmRouter, localSkillsHandlerDeps{provider: extensionsManager, workspaceDir: cfg.WorkspaceDir}, workLedger)
 	workLedgerHandler := newWorkLedgerAPIHandler(workLedger, logger, workScheduler)
+	workerControlPlaneHandler := newWorkerControlPlaneAPIHandler(
+		workerController,
+		cfg.WorkLedger.SchedulerEnabled && cfg.WorkLedger.SchedulerA2AEnabled,
+		logger,
+	)
 	registerAPIRoutes(mux, apiRouteHandlers{
 		pulse:           pulseSetup.Handler,
 		reflection:      reflectionSetup.Handler,
 		chat:            chatHandler,
 		sessions:        sessionHandler,
 		work:            workLedgerHandler,
+		workers:         workerControlPlaneHandler,
 		memory:          memoryHandler,
 		console:         consoleHandler,
 		usage:           usageHandler,
@@ -747,6 +766,7 @@ func buildAPIMux(
 		reflectionRuntime:       reflectionSetup.Runtime,
 		workLedger:              workLedger,
 		workScheduler:           workScheduler,
+		workerController:        workerController,
 		telegramPoller:          telegramPoller,
 		remoteAccessRunner:      remoteaccess.ExecRunner{},
 		remoteAccessTargetURL:   remoteaccess.DefaultTargetURL,
@@ -793,6 +813,10 @@ func registerAPIRoutes(mux *http.ServeMux, handlers apiRouteHandlers) {
 	mux.Handle("/v1/work/works/", handlers.work)
 	mux.Handle("/v1/admin/work/works/", handlers.work)
 	mux.Handle("/v1/work/legacy/sessions/", handlers.work)
+	if handlers.workers != nil {
+		mux.Handle("/v1/admin/workers", handlers.workers)
+		mux.Handle("/v1/admin/workers/", handlers.workers)
+	}
 	mux.Handle("/v1/memory/assets", handlers.memory)
 	mux.Handle("/v1/memory/file", handlers.memory)
 	mux.Handle("/v1/memory/search", handlers.memory)

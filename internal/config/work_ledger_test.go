@@ -156,3 +156,98 @@ func TestConfigSchemaIncludesDurableSchedulerSettings(t *testing.T) {
 		t.Fatalf("schema missing work scheduler settings: %+v", wantPaths)
 	}
 }
+
+func TestRemoteWorkerAndA2ASchedulerConfigIsOptInAndSourceAware(t *testing.T) {
+	t.Run("safe defaults", func(t *testing.T) {
+		cfg, err := Load("")
+		if err != nil {
+			t.Fatalf("load defaults: %v", err)
+		}
+		if cfg.WorkLedger.SchedulerRemoteWorkersEnabled || cfg.WorkLedger.SchedulerA2AEnabled ||
+			cfg.WorkLedger.SchedulerA2ADiscoveryURL != "" || cfg.WorkLedger.SchedulerA2ABearerToken != "" ||
+			len(cfg.WorkLedger.SchedulerA2AAllowedHosts) != 0 || cfg.WorkLedger.SchedulerA2AAllowPrivateHosts ||
+			cfg.WorkLedger.SchedulerA2AAllowInsecureLoopback || cfg.WorkLedger.SchedulerA2APollMilliseconds != 2000 ||
+			cfg.WorkLedger.SchedulerA2AMaxPollSeconds != 1800 {
+			t.Fatalf("unsafe remote scheduler defaults: %+v", cfg.WorkLedger)
+		}
+	})
+
+	t.Run("yaml", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "config.yaml")
+		raw := `work_ledger:
+  scheduler:
+    remote_workers:
+      enabled: true
+    a2a:
+      enabled: true
+      discovery_url: https://agent.example.test
+      bearer_token: gateway-only
+      allowed_hosts: [agent.example.test, api.example.test]
+      allow_private_hosts: true
+      allow_insecure_loopback: false
+      poll_milliseconds: 125
+      max_poll_seconds: 75
+`
+		if err := os.WriteFile(path, []byte(raw), 0o644); err != nil {
+			t.Fatalf("write config: %v", err)
+		}
+		cfg, err := Load(path)
+		if err != nil {
+			t.Fatalf("load yaml config: %v", err)
+		}
+		if !cfg.WorkLedger.SchedulerRemoteWorkersEnabled || !cfg.WorkLedger.SchedulerA2AEnabled ||
+			cfg.WorkLedger.SchedulerA2ADiscoveryURL != "https://agent.example.test" ||
+			cfg.WorkLedger.SchedulerA2ABearerToken != "gateway-only" || len(cfg.WorkLedger.SchedulerA2AAllowedHosts) != 2 ||
+			!cfg.WorkLedger.SchedulerA2AAllowPrivateHosts || cfg.WorkLedger.SchedulerA2AAllowInsecureLoopback ||
+			cfg.WorkLedger.SchedulerA2APollMilliseconds != 125 || cfg.WorkLedger.SchedulerA2AMaxPollSeconds != 75 {
+			t.Fatalf("loaded remote scheduler config: %+v", cfg.WorkLedger)
+		}
+	})
+
+	t.Run("environment", func(t *testing.T) {
+		t.Setenv("TARS_WORK_SCHEDULER_REMOTE_WORKERS_ENABLED", "true")
+		t.Setenv("TARS_WORK_SCHEDULER_A2A_ENABLED", "true")
+		t.Setenv("TARS_WORK_SCHEDULER_A2A_DISCOVERY_URL", "https://env-agent.example.test")
+		t.Setenv("TARS_WORK_SCHEDULER_A2A_BEARER_TOKEN", "env-secret")
+		t.Setenv("TARS_WORK_SCHEDULER_A2A_ALLOWED_HOSTS_JSON", `["env-agent.example.test"]`)
+		cfg, err := Load("")
+		if err != nil {
+			t.Fatalf("load environment config: %v", err)
+		}
+		if !cfg.WorkLedger.SchedulerRemoteWorkersEnabled || !cfg.WorkLedger.SchedulerA2AEnabled ||
+			cfg.WorkLedger.SchedulerA2ADiscoveryURL != "https://env-agent.example.test" ||
+			cfg.WorkLedger.SchedulerA2ABearerToken != "env-secret" || len(cfg.WorkLedger.SchedulerA2AAllowedHosts) != 1 {
+			t.Fatalf("loaded remote scheduler environment: %+v", cfg.WorkLedger)
+		}
+	})
+}
+
+func TestConfigSchemaMarksA2ATokenSensitive(t *testing.T) {
+	wantPaths := map[string]string{
+		"work_scheduler_remote_workers_enabled":      "work_ledger.scheduler.remote_workers.enabled",
+		"work_scheduler_a2a_enabled":                 "work_ledger.scheduler.a2a.enabled",
+		"work_scheduler_a2a_discovery_url":           "work_ledger.scheduler.a2a.discovery_url",
+		"work_scheduler_a2a_bearer_token":            "work_ledger.scheduler.a2a.bearer_token",
+		"work_scheduler_a2a_allowed_hosts_json":      "work_ledger.scheduler.a2a.allowed_hosts",
+		"work_scheduler_a2a_allow_private_hosts":     "work_ledger.scheduler.a2a.allow_private_hosts",
+		"work_scheduler_a2a_allow_insecure_loopback": "work_ledger.scheduler.a2a.allow_insecure_loopback",
+		"work_scheduler_a2a_poll_milliseconds":       "work_ledger.scheduler.a2a.poll_milliseconds",
+		"work_scheduler_a2a_max_poll_seconds":        "work_ledger.scheduler.a2a.max_poll_seconds",
+	}
+	for _, field := range Schema() {
+		path, ok := wantPaths[field.Key]
+		if !ok {
+			continue
+		}
+		if field.Section != "Work Scheduler" || field.Path != path || !field.RequiresRestart {
+			t.Fatalf("unexpected remote scheduler schema for %s: %+v", field.Key, field)
+		}
+		if field.Key == "work_scheduler_a2a_bearer_token" && !field.Sensitive {
+			t.Fatal("A2A bearer token must be marked sensitive")
+		}
+		delete(wantPaths, field.Key)
+	}
+	if len(wantPaths) != 0 {
+		t.Fatalf("schema missing remote scheduler settings: %+v", wantPaths)
+	}
+}

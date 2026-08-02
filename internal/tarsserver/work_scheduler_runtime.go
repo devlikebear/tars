@@ -1,12 +1,15 @@
 package tarsserver
 
 import (
+	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/devlikebear/tars/internal/a2a"
 	"github.com/devlikebear/tars/internal/agentruntime"
 	"github.com/devlikebear/tars/internal/config"
 	"github.com/devlikebear/tars/internal/executionplane"
@@ -31,17 +34,85 @@ func buildWorkSchedulerIfEnabled(cfg config.Config, ledger *workstore.Store, run
 	if err != nil {
 		return nil, err
 	}
+	executors := []workscheduler.Executor{executor}
+	a2aExecutor, err := buildA2AWorkExecutor(context.Background(), cfg, ledger, &http.Client{Timeout: 15 * time.Second})
+	if err != nil {
+		return nil, err
+	}
+	if a2aExecutor != nil {
+		executors = append(executors, a2aExecutor)
+	}
 	return workscheduler.New(workscheduler.Options{
 		Store: ledger, WorkspaceID: defaultWorkspaceID, WorkerID: workerID, ActorID: "tars-work-scheduler",
 		LeaseDuration:     time.Duration(cfg.WorkLedger.SchedulerLeaseSeconds) * time.Second,
 		HeartbeatInterval: time.Duration(cfg.WorkLedger.SchedulerHeartbeatSeconds) * time.Second,
 		PollInterval:      time.Duration(cfg.WorkLedger.SchedulerPollMilliseconds) * time.Millisecond,
 		MaxWorkers:        cfg.WorkLedger.SchedulerMaxWorkers,
-		Executors:         []workscheduler.Executor{executor},
+		Executors:         executors,
 		OnError: func(err error) {
 			logger.Error().Err(err).Msg("durable work scheduler operation failed")
 		},
 	})
+}
+
+func buildA2AWorkExecutor(ctx context.Context, cfg config.Config, ledger *workstore.Store, httpClient *http.Client) (*a2a.Executor, error) {
+	if !cfg.WorkLedger.SchedulerA2AEnabled {
+		return nil, nil
+	}
+	if ledger == nil || strings.TrimSpace(cfg.WorkLedger.SchedulerA2ADiscoveryURL) == "" {
+		return nil, fmt.Errorf("A2A work executor requires the Work Ledger and a discovery URL")
+	}
+	card, endpoint, err := a2a.Discover(ctx, cfg.WorkLedger.SchedulerA2ADiscoveryURL, a2a.DiscoveryOptions{
+		HTTPClient:        httpClient,
+		AllowLoopbackHTTP: cfg.WorkLedger.SchedulerA2AAllowInsecureLoopback,
+		AllowPrivateHosts: cfg.WorkLedger.SchedulerA2AAllowPrivateHosts,
+		AllowedHosts:      cfg.WorkLedger.SchedulerA2AAllowedHosts,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("discover configured A2A agent: %w", err)
+	}
+	token := strings.TrimSpace(cfg.WorkLedger.SchedulerA2ABearerToken)
+	if agentCardRequiresCredential(card) && token == "" {
+		return nil, fmt.Errorf("configured A2A agent requires a gateway credential")
+	}
+	var tokenProvider a2a.TokenProvider
+	if token != "" {
+		tokenProvider = a2a.TokenProviderFunc(func(context.Context) (string, error) {
+			return token, nil
+		})
+	}
+	client, err := a2a.NewClient(endpoint, a2a.ClientOptions{
+		HTTPClient:        httpClient,
+		AllowLoopbackHTTP: cfg.WorkLedger.SchedulerA2AAllowInsecureLoopback,
+		AllowPrivateHosts: cfg.WorkLedger.SchedulerA2AAllowPrivateHosts,
+		AllowedHosts:      cfg.WorkLedger.SchedulerA2AAllowedHosts,
+		TokenProvider:     tokenProvider,
+	})
+	if err != nil {
+		return nil, err
+	}
+	journal, err := a2a.NewWorkLedgerJournal(ledger, "tars-a2a-gateway")
+	if err != nil {
+		return nil, err
+	}
+	return a2a.NewExecutor(a2a.ExecutorOptions{
+		Client: client, Journal: journal,
+		PollInterval:    time.Duration(cfg.WorkLedger.SchedulerA2APollMilliseconds) * time.Millisecond,
+		MaxPollDuration: time.Duration(cfg.WorkLedger.SchedulerA2AMaxPollSeconds) * time.Second,
+		AcceptedModes:   append([]string(nil), card.DefaultOutputModes...),
+	})
+}
+
+func agentCardRequiresCredential(card a2a.AgentCard) bool {
+	if len(card.SecurityRequirements) == 0 {
+		return false
+	}
+	for _, requirement := range card.SecurityRequirements {
+		if len(requirement.Schemes) == 0 {
+			return false
+		}
+	}
+	return true
 }
 
 func buildNativeWorkExecutionPlane(cfg config.Config, ledger *workstore.Store, runtime *agentruntime.Runtime) (*executionplane.LifecycleExecutor, error) {

@@ -7,12 +7,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/devlikebear/tars/internal/atomicwrite"
+	"github.com/devlikebear/tars/internal/secrets"
 )
 
 const controllerSchemaVersion = 1
@@ -295,7 +297,7 @@ func (controller *Controller) applyWorkerMessageLocked(envelope Envelope) (Contr
 	switch envelope.Type {
 	case MessageRegister:
 		var payload RegisterPayload
-		if err := decodePayload(envelope.Payload, &payload); err != nil || strings.TrimSpace(payload.Transport) == "" || strings.TrimSpace(payload.Endpoint) == "" || !payload.Capabilities.EgressPolicy || !payload.Capabilities.ResourceLimits {
+		if err := decodePayload(envelope.Payload, &payload); err != nil || strings.TrimSpace(payload.Transport) == "" || !safeWorkerEndpoint(payload.Endpoint) || !payload.Capabilities.EgressPolicy || !payload.Capabilities.ResourceLimits {
 			return ControlEvent{}, nil, fmt.Errorf("%w: invalid worker registration", ErrInvalidEnvelope)
 		}
 		if exists && current.State != WorkerStateLost && current.State != WorkerStateDisconnected && current.State != WorkerStateDestroyed {
@@ -403,11 +405,13 @@ func applyPlacementTransition(envelope Envelope, placement *Placement, worker *W
 			return invalidPlacementTransition(placement, envelope.Type)
 		}
 		var payload SyncPayload
-		if err := decodePayload(envelope.Payload, &payload); err != nil || (payload.Mode != SyncModeGit && payload.Mode != SyncModeDirectory) || strings.TrimSpace(payload.Digest) == "" {
+		if err := decodePayload(envelope.Payload, &payload); err != nil || (payload.Mode != SyncModeGit && payload.Mode != SyncModeDirectory) || strings.TrimSpace(payload.Digest) == "" || payload.FileCount < 0 || payload.TotalBytes < 0 {
 			return fmt.Errorf("%w: invalid sync payload", ErrInvalidEnvelope)
 		}
 		placement.Sync.Mode = payload.Mode
 		placement.Sync.ManifestDigest = strings.TrimSpace(payload.Digest)
+		placement.SyncFileCount = payload.FileCount
+		placement.SyncTotalBytes = payload.TotalBytes
 		placement.State = PlacementStateSyncing
 	case MessageLease:
 		if placement.State != PlacementStateSyncing || worker.State != WorkerStateReady {
@@ -555,6 +559,19 @@ func (controller *Controller) eventForEnvelope(envelope Envelope, entity, fromSt
 
 func sanitizedControlPayload(envelope Envelope) json.RawMessage {
 	switch envelope.Type {
+	case MessageRegister:
+		var payload RegisterPayload
+		_ = json.Unmarshal(envelope.Payload, &payload)
+		raw, _ := json.Marshal(map[string]any{
+			"transport": strings.TrimSpace(payload.Transport), "endpoint_digest": digestOptionalString(payload.Endpoint),
+			"capabilities": payload.Capabilities,
+		})
+		return raw
+	case MessageHeartbeat:
+		var payload HeartbeatPayload
+		_ = json.Unmarshal(envelope.Payload, &payload)
+		raw, _ := json.Marshal(map[string]any{"lease_ttl_ms": payload.LeaseTTLMS, "usage": payload.Usage})
+		return raw
 	case MessageExecute:
 		var payload ExecutePayload
 		_ = json.Unmarshal(envelope.Payload, &payload)
@@ -590,6 +607,26 @@ func sanitizedControlPayload(envelope Envelope) json.RawMessage {
 			"manifest_digest": manifestDigest, "policy": payload.Policy,
 		})
 		return raw
+	case MessageSync:
+		var payload SyncPayload
+		_ = json.Unmarshal(envelope.Payload, &payload)
+		raw, _ := json.Marshal(map[string]any{
+			"mode": payload.Mode, "digest": strings.TrimSpace(payload.Digest),
+			"uri_digest": digestOptionalString(payload.URI), "file_count": payload.FileCount, "total_bytes": payload.TotalBytes,
+		})
+		return raw
+	case MessageLease:
+		var payload LeasePayload
+		_ = json.Unmarshal(envelope.Payload, &payload)
+		raw, _ := json.Marshal(map[string]any{"lease_ttl_ms": payload.LeaseTTLMS})
+		return raw
+	case MessageCheckpoint:
+		var payload CheckpointPayload
+		_ = json.Unmarshal(envelope.Payload, &payload)
+		raw, _ := json.Marshal(map[string]any{
+			"checkpoint_id": payload.ID, "digest": payload.Digest, "uri_digest": digestOptionalString(payload.URI),
+		})
+		return raw
 	case MessageCollect:
 		var payload CollectPayload
 		_ = json.Unmarshal(envelope.Payload, &payload)
@@ -601,11 +638,59 @@ func sanitizedControlPayload(envelope Envelope) json.RawMessage {
 	case MessageDestroy:
 		var payload DestroyPayload
 		_ = json.Unmarshal(envelope.Payload, &payload)
-		raw, _ := json.Marshal(map[string]any{"reason": strings.TrimSpace(payload.Reason)})
+		raw, _ := json.Marshal(map[string]any{"reason": sanitizedControlReason(payload.Reason)})
+		return raw
+	case MessageLost:
+		var payload LostPayload
+		_ = json.Unmarshal(envelope.Payload, &payload)
+		raw, _ := json.Marshal(map[string]any{"reason": sanitizedControlReason(payload.Reason)})
+		return raw
+	case MessageReclaim:
+		var payload ReclaimPayload
+		_ = json.Unmarshal(envelope.Payload, &payload)
+		raw, _ := json.Marshal(map[string]any{"reason": sanitizedControlReason(payload.Reason)})
+		return raw
+	case MessageRehydrate:
+		var payload RehydratePayload
+		_ = json.Unmarshal(envelope.Payload, &payload)
+		raw, _ := json.Marshal(map[string]any{
+			"replacement_worker_id": payload.ReplacementWorkerID, "environment_id": payload.EnvironmentID,
+			"snapshot_digest": payload.SnapshotDigest, "checkpoint_id": payload.CheckpointID,
+			"checkpoint_digest": payload.CheckpointDigest, "lease_ttl_ms": payload.LeaseTTLMS, "policy": payload.Policy,
+		})
 		return raw
 	default:
-		return append(json.RawMessage(nil), envelope.Payload...)
+		return json.RawMessage(`{}`)
 	}
+}
+
+func safeWorkerEndpoint(raw string) bool {
+	endpoint := strings.TrimSpace(raw)
+	if endpoint == "" || strings.ContainsAny(endpoint, "\r\n\x00") {
+		return false
+	}
+	parsed, err := url.Parse(endpoint)
+	if err == nil && parsed.User != nil {
+		return false
+	}
+	return !strings.Contains(endpoint, "@")
+}
+
+func digestOptionalString(raw string) string {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return ""
+	}
+	digest := sha256.Sum256([]byte(value))
+	return "sha256:" + hex.EncodeToString(digest[:])
+}
+
+func sanitizedControlReason(raw string) string {
+	reason := strings.Join(strings.Fields(secrets.RedactText(raw)), " ")
+	if len(reason) > 256 {
+		reason = reason[:256]
+	}
+	return reason
 }
 
 func (controller *Controller) duplicateResultLocked(ctx context.Context, envelope Envelope) (ApplyResult, error) {
@@ -698,7 +783,8 @@ func (controller *Controller) validateStateLocked() error {
 			!validProtocolIdentifier(placement.WorkspaceID) || !validProtocolIdentifier(placement.WorkID) ||
 			!validProtocolIdentifier(placement.StepID) || !validProtocolIdentifier(placement.AttemptID) ||
 			!validProtocolIdentifier(placement.WorkerID) || !validPlacementState(placement.State) ||
-			placement.LastSequence < 0 || placement.Version < 1 || placement.RecoveryCount < 0 {
+			placement.LastSequence < 0 || placement.Version < 1 || placement.RecoveryCount < 0 ||
+			placement.SyncFileCount < 0 || placement.SyncTotalBytes < 0 {
 			return fmt.Errorf("%w: invalid persisted placement %q", ErrWireContract, placementID)
 		}
 		if _, ok := controller.state.Workers[placement.WorkerID]; !ok {
