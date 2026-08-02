@@ -87,33 +87,43 @@ const (
 type EventType string
 
 const (
-	EventTypeWorkCreated            EventType = "work.created"
-	EventTypeWorkTransitioned       EventType = "work.transitioned"
-	EventTypeStepCreated            EventType = "step.created"
-	EventTypeStepDependencyAdded    EventType = "step.dependency_added"
-	EventTypeAttemptCreated         EventType = "attempt.created"
-	EventTypeApprovalCreated        EventType = "approval.created"
-	EventTypeProofCreated           EventType = "proof.created"
-	EventTypeProofTransitioned      EventType = "proof.transitioned"
-	EventTypeProofUpdated           EventType = "proof.updated"
-	EventTypeArtifactCreated        EventType = "artifact.created"
-	EventTypeStepScheduleConfigured EventType = "step.schedule_configured"
-	EventTypeStepReady              EventType = "step.ready"
-	EventTypeStepClaimed            EventType = "step.claimed"
-	EventTypeStepHeartbeat          EventType = "step.heartbeat"
-	EventTypeAttemptCompleted       EventType = "attempt.completed"
-	EventTypeStepCompleted          EventType = "step.completed"
-	EventTypeStepRetryScheduled     EventType = "step.retry_scheduled"
-	EventTypeStepReplanScheduled    EventType = "step.replan_scheduled"
-	EventTypeStepDecomposeScheduled EventType = "step.decompose_scheduled"
-	EventTypeStepReleased           EventType = "step.released"
-	EventTypeStepReclaimed          EventType = "step.reclaimed"
-	EventTypeStepReviewRequested    EventType = "step.review_requested"
-	EventTypeStepBlocked            EventType = "step.blocked"
-	EventTypeStepResumed            EventType = "step.resumed"
-	EventTypeStepCancelled          EventType = "step.cancelled"
-	EventTypeEffectStarted          EventType = "effect.started"
-	EventTypeEffectCommitted        EventType = "effect.committed"
+	EventTypeWorkCreated                     EventType = "work.created"
+	EventTypeWorkTransitioned                EventType = "work.transitioned"
+	EventTypeStepCreated                     EventType = "step.created"
+	EventTypeStepDependencyAdded             EventType = "step.dependency_added"
+	EventTypeAttemptCreated                  EventType = "attempt.created"
+	EventTypeApprovalCreated                 EventType = "approval.created"
+	EventTypeProofCreated                    EventType = "proof.created"
+	EventTypeProofTransitioned               EventType = "proof.transitioned"
+	EventTypeProofUpdated                    EventType = "proof.updated"
+	EventTypeArtifactCreated                 EventType = "artifact.created"
+	EventTypeStepScheduleConfigured          EventType = "step.schedule_configured"
+	EventTypeStepReady                       EventType = "step.ready"
+	EventTypeStepClaimed                     EventType = "step.claimed"
+	EventTypeStepHeartbeat                   EventType = "step.heartbeat"
+	EventTypeAttemptCompleted                EventType = "attempt.completed"
+	EventTypeStepCompleted                   EventType = "step.completed"
+	EventTypeStepRetryScheduled              EventType = "step.retry_scheduled"
+	EventTypeStepReplanScheduled             EventType = "step.replan_scheduled"
+	EventTypeStepDecomposeScheduled          EventType = "step.decompose_scheduled"
+	EventTypeStepReleased                    EventType = "step.released"
+	EventTypeStepReclaimed                   EventType = "step.reclaimed"
+	EventTypeStepReviewRequested             EventType = "step.review_requested"
+	EventTypeStepBlocked                     EventType = "step.blocked"
+	EventTypeStepResumed                     EventType = "step.resumed"
+	EventTypeStepCancelled                   EventType = "step.cancelled"
+	EventTypeEffectStarted                   EventType = "effect.started"
+	EventTypeEffectCommitted                 EventType = "effect.committed"
+	EventTypeExecutionEnvironmentProvisioned EventType = "execution.environment_provisioned"
+	EventTypeExecutionCredentialsIssued      EventType = "execution.credentials_issued"
+	EventTypeExecutionWorkerStarted          EventType = "execution.worker_started"
+	EventTypeExecutionCheckpointRecorded     EventType = "execution.checkpoint_recorded"
+	EventTypeExecutionEnvironmentSynced      EventType = "execution.environment_synced"
+	EventTypeExecutionArtifactsCollected     EventType = "execution.artifacts_collected"
+	EventTypeExecutionCredentialsRevoked     EventType = "execution.credentials_revoked"
+	EventTypeExecutionEnvironmentDestroyed   EventType = "execution.environment_destroyed"
+	EventTypeExecutionRecoveryStarted        EventType = "execution.recovery_started"
+	EventTypeExecutionWorkerCancelled        EventType = "execution.worker_cancelled"
 )
 
 type StepExecutionAction string
@@ -376,6 +386,18 @@ type Event struct {
 	IdempotencyKey string          `json:"idempotency_key,omitempty"`
 	PayloadJSON    json.RawMessage `json:"payload"`
 	CreatedAt      time.Time       `json:"created_at"`
+}
+
+type RecordExecutionEventInput struct {
+	WorkspaceID    string
+	WorkID         string
+	StepID         string
+	AttemptID      string
+	Type           EventType
+	ActorID        string
+	CausationID    string
+	IdempotencyKey string
+	PayloadJSON    json.RawMessage
 }
 
 type Proof struct {
