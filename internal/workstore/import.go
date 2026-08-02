@@ -269,6 +269,32 @@ func (s *Store) ImportLegacySession(ctx context.Context, input LegacySessionImpo
 	return importResult(marker, existed), nil
 }
 
+// GetLegacySessionTasksProjection returns the most recent imported Tasks
+// document for a legacy session. The source document is preserved as JSON so
+// compatibility readers can serve the existing API contract without deriving
+// lossy fields from the normalized ledger records.
+func (s *Store) GetLegacySessionTasksProjection(ctx context.Context, workspaceID, sessionID string) (json.RawMessage, bool, error) {
+	workspaceID = strings.TrimSpace(workspaceID)
+	sessionID = strings.TrimSpace(sessionID)
+	if workspaceID == "" || sessionID == "" {
+		return nil, false, fmt.Errorf("workstore: workspace id and session id are required")
+	}
+	work, found, err := s.findLatestSourceWork(ctx, workspaceID, ImportSourceLegacySession, sessionID)
+	if err != nil || !found {
+		return nil, found, err
+	}
+	var metadata struct {
+		LegacyTasks json.RawMessage `json:"legacy_tasks"`
+	}
+	if err := json.Unmarshal(work.MetadataJSON, &metadata); err != nil {
+		return nil, false, fmt.Errorf("workstore: decode legacy tasks projection metadata: %w", err)
+	}
+	if len(metadata.LegacyTasks) == 0 || string(metadata.LegacyTasks) == "null" || !json.Valid(metadata.LegacyTasks) {
+		return nil, false, fmt.Errorf("workstore: legacy tasks projection is missing or invalid")
+	}
+	return append(json.RawMessage(nil), metadata.LegacyTasks...), true, nil
+}
+
 func (s *Store) importLegacyEvidence(
 	ctx context.Context,
 	input LegacySessionImportInput,

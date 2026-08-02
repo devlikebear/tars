@@ -164,6 +164,77 @@ func TestImportLegacySessionPreservesRecordsAndIsIdempotent(t *testing.T) {
 	}
 }
 
+func TestGetLegacySessionTasksProjectionReturnsLatestWorkspaceScopedRevision(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := openTestStore(t, filepath.Join(t.TempDir(), "ledger.db"))
+	sessionJSON := []byte(`{"id":"session-42","title":"Projection source"}`)
+	firstTasks := []byte(`{"plan":{"goal":"First"},"tasks":[{"id":"task-1","title":"First task","status":"pending"}]}`)
+	latestTasks := []byte(`{"plan":{"goal":"Latest"},"contract":{"status":"approved"},"tasks":[{"id":"task-2","title":"Latest task","status":"in_progress"}]}`)
+
+	for _, tasksJSON := range [][]byte{firstTasks, latestTasks} {
+		if _, err := store.ImportLegacySession(ctx, LegacySessionImportInput{
+			WorkspaceID: "workspace-a",
+			SessionJSON: sessionJSON,
+			TasksJSON:   tasksJSON,
+			SourcePath:  "/legacy/session-42.json",
+			ActorID:     "migration",
+		}); err != nil {
+			t.Fatalf("import legacy session revision: %v", err)
+		}
+	}
+
+	projection, found, err := store.GetLegacySessionTasksProjection(ctx, "workspace-a", "session-42")
+	if err != nil {
+		t.Fatalf("get latest legacy tasks projection: %v", err)
+	}
+	if !found {
+		t.Fatal("expected latest legacy tasks projection")
+	}
+	if !jsonEqual(projection, latestTasks) {
+		t.Fatalf("latest projection = %s, want %s", projection, latestTasks)
+	}
+
+	if _, found, err := store.GetLegacySessionTasksProjection(ctx, "workspace-b", "session-42"); err != nil || found {
+		t.Fatalf("cross-workspace projection found=%t err=%v, want false/nil", found, err)
+	}
+	if _, found, err := store.GetLegacySessionTasksProjection(ctx, "workspace-a", "missing"); err != nil || found {
+		t.Fatalf("missing projection found=%t err=%v, want false/nil", found, err)
+	}
+}
+
+func TestGetLegacySessionTasksProjectionRejectsInvalidInputsAndMetadata(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := openTestStore(t, filepath.Join(t.TempDir(), "ledger.db"))
+	if _, _, err := store.GetLegacySessionTasksProjection(ctx, "", "session-1"); err == nil {
+		t.Fatal("expected empty workspace id to fail")
+	}
+	result, err := store.ImportLegacySession(ctx, LegacySessionImportInput{
+		WorkspaceID: "workspace-a",
+		SessionJSON: []byte(`{"id":"session-1","title":"Invalid metadata"}`),
+		TasksJSON:   []byte(`{"tasks":[]}`),
+		ActorID:     "migration",
+	})
+	if err != nil {
+		t.Fatalf("import legacy session: %v", err)
+	}
+	if _, err := store.db.ExecContext(ctx, "UPDATE works SET metadata_json = ? WHERE id = ?", []byte(`not-json`), result.WorkIDs[0]); err != nil {
+		t.Fatalf("corrupt projection metadata: %v", err)
+	}
+	if _, _, err := store.GetLegacySessionTasksProjection(ctx, "workspace-a", "session-1"); err == nil {
+		t.Fatal("expected malformed projection metadata to fail")
+	}
+	if _, err := store.db.ExecContext(ctx, "UPDATE works SET metadata_json = ? WHERE id = ?", []byte(`{"legacy_tasks":null}`), result.WorkIDs[0]); err != nil {
+		t.Fatalf("remove legacy tasks projection: %v", err)
+	}
+	if _, _, err := store.GetLegacySessionTasksProjection(ctx, "workspace-a", "session-1"); err == nil {
+		t.Fatal("expected missing legacy tasks projection to fail")
+	}
+}
+
 func TestImportLegacySessionCreatesNewAppendOnlySnapshotWhenSourceChanges(t *testing.T) {
 	t.Parallel()
 
