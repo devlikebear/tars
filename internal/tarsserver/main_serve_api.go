@@ -419,18 +419,15 @@ func buildAPIMux(
 		return agents
 	}
 	_ = refreshAgentRuntimeExecutors("startup")
-	workScheduler, err := buildWorkSchedulerIfEnabled(cfg, workLedger, agentRuntime, logger)
+	workerController, err := buildWorkerControllerIfEnabled(cfg, workLedger)
 	if err != nil {
 		if workLedger != nil {
 			_ = workLedger.Close()
 		}
 		return nil, err
 	}
-	workerController, err := buildWorkerControllerIfEnabled(cfg, workLedger)
+	workScheduler, err := buildWorkSchedulerWithRemote(cfg, workLedger, agentRuntime, workerController, nil, logger)
 	if err != nil {
-		if workScheduler != nil {
-			workScheduler.Close()
-		}
 		if workLedger != nil {
 			_ = workLedger.Close()
 		}

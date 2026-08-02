@@ -45,7 +45,8 @@ func TestSSHTransportSendsSecretsOnlyThroughBoundedStdin(t *testing.T) {
 	transport, err := NewSSHTransport(SSHTransportOptions{
 		SSHPath: "/usr/bin/ssh", Host: "worker.example.com", User: "tars-worker", Port: 2222,
 		IdentityFile: "/gateway/keys/worker_ed25519", KnownHostsFile: "/gateway/ssh/known_hosts",
-		Runner: runner, Limits: WireLimits{MaxRequestBytes: 1 << 20, MaxResponseBytes: 1 << 20},
+		WorkerConfigPath: "/etc/tars/worker.json",
+		Runner:           runner, Limits: WireLimits{MaxRequestBytes: 1 << 20, MaxResponseBytes: 1 << 20},
 	})
 	if err != nil {
 		t.Fatalf("new SSH transport: %v", err)
@@ -73,6 +74,7 @@ func TestSSHTransportSendsSecretsOnlyThroughBoundedStdin(t *testing.T) {
 		"-o", "IdentitiesOnly=yes", "-o", "UserKnownHostsFile=/gateway/ssh/known_hosts",
 		"-i", "/gateway/keys/worker_ed25519", "-p", "2222", "tars-worker@worker.example.com",
 		"tars", "worker", "serve", "--stdio", "--protocol", ProtocolVersionV1,
+		"--config", "/etc/tars/worker.json",
 	}
 	if !equalStrings(runner.spec.Args, wantArgs) {
 		t.Fatalf("SSH args=%q want %q", runner.spec.Args, wantArgs)
@@ -92,6 +94,7 @@ func TestSSHTransportRejectsInjectionAndBoundedOutput(t *testing.T) {
 		func(input *SSHTransportOptions) { input.User = "worker;evil" },
 		func(input *SSHTransportOptions) { input.IdentityFile = "-oProxyCommand=evil" },
 		func(input *SSHTransportOptions) { input.KnownHostsFile = "known hosts" },
+		func(input *SSHTransportOptions) { input.WorkerConfigPath = "--config=evil" },
 	} {
 		candidate := base
 		mutate(&candidate)

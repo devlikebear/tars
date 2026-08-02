@@ -163,7 +163,7 @@ func TestRemoteWorkerAndA2ASchedulerConfigIsOptInAndSourceAware(t *testing.T) {
 		if err != nil {
 			t.Fatalf("load defaults: %v", err)
 		}
-		if cfg.WorkLedger.SchedulerRemoteWorkersEnabled || cfg.WorkLedger.SchedulerA2AEnabled ||
+		if cfg.WorkLedger.SchedulerRemoteWorkersEnabled || cfg.WorkLedger.SchedulerRemoteWorkersGatewayConfigPath != "" || cfg.WorkLedger.SchedulerA2AEnabled ||
 			cfg.WorkLedger.SchedulerA2ADiscoveryURL != "" || cfg.WorkLedger.SchedulerA2ABearerToken != "" ||
 			len(cfg.WorkLedger.SchedulerA2AAllowedHosts) != 0 || cfg.WorkLedger.SchedulerA2AAllowPrivateHosts ||
 			cfg.WorkLedger.SchedulerA2AAllowInsecureLoopback || cfg.WorkLedger.SchedulerA2APollMilliseconds != 2000 ||
@@ -178,6 +178,7 @@ func TestRemoteWorkerAndA2ASchedulerConfigIsOptInAndSourceAware(t *testing.T) {
   scheduler:
     remote_workers:
       enabled: true
+      gateway_config_path: /tmp/tars-remote-gateway.json
     a2a:
       enabled: true
       discovery_url: https://agent.example.test
@@ -195,7 +196,7 @@ func TestRemoteWorkerAndA2ASchedulerConfigIsOptInAndSourceAware(t *testing.T) {
 		if err != nil {
 			t.Fatalf("load yaml config: %v", err)
 		}
-		if !cfg.WorkLedger.SchedulerRemoteWorkersEnabled || !cfg.WorkLedger.SchedulerA2AEnabled ||
+		if !cfg.WorkLedger.SchedulerRemoteWorkersEnabled || cfg.WorkLedger.SchedulerRemoteWorkersGatewayConfigPath != "/tmp/tars-remote-gateway.json" || !cfg.WorkLedger.SchedulerA2AEnabled ||
 			cfg.WorkLedger.SchedulerA2ADiscoveryURL != "https://agent.example.test" ||
 			cfg.WorkLedger.SchedulerA2ABearerToken != "gateway-only" || len(cfg.WorkLedger.SchedulerA2AAllowedHosts) != 2 ||
 			!cfg.WorkLedger.SchedulerA2AAllowPrivateHosts || cfg.WorkLedger.SchedulerA2AAllowInsecureLoopback ||
@@ -206,6 +207,7 @@ func TestRemoteWorkerAndA2ASchedulerConfigIsOptInAndSourceAware(t *testing.T) {
 
 	t.Run("environment", func(t *testing.T) {
 		t.Setenv("TARS_WORK_SCHEDULER_REMOTE_WORKERS_ENABLED", "true")
+		t.Setenv("TARS_WORK_SCHEDULER_REMOTE_WORKERS_GATEWAY_CONFIG_PATH", "/tmp/tars-env-remote-gateway.json")
 		t.Setenv("TARS_WORK_SCHEDULER_A2A_ENABLED", "true")
 		t.Setenv("TARS_WORK_SCHEDULER_A2A_DISCOVERY_URL", "https://env-agent.example.test")
 		t.Setenv("TARS_WORK_SCHEDULER_A2A_BEARER_TOKEN", "env-secret")
@@ -214,7 +216,7 @@ func TestRemoteWorkerAndA2ASchedulerConfigIsOptInAndSourceAware(t *testing.T) {
 		if err != nil {
 			t.Fatalf("load environment config: %v", err)
 		}
-		if !cfg.WorkLedger.SchedulerRemoteWorkersEnabled || !cfg.WorkLedger.SchedulerA2AEnabled ||
+		if !cfg.WorkLedger.SchedulerRemoteWorkersEnabled || cfg.WorkLedger.SchedulerRemoteWorkersGatewayConfigPath != "/tmp/tars-env-remote-gateway.json" || !cfg.WorkLedger.SchedulerA2AEnabled ||
 			cfg.WorkLedger.SchedulerA2ADiscoveryURL != "https://env-agent.example.test" ||
 			cfg.WorkLedger.SchedulerA2ABearerToken != "env-secret" || len(cfg.WorkLedger.SchedulerA2AAllowedHosts) != 1 {
 			t.Fatalf("loaded remote scheduler environment: %+v", cfg.WorkLedger)
@@ -224,15 +226,16 @@ func TestRemoteWorkerAndA2ASchedulerConfigIsOptInAndSourceAware(t *testing.T) {
 
 func TestConfigSchemaMarksA2ATokenSensitive(t *testing.T) {
 	wantPaths := map[string]string{
-		"work_scheduler_remote_workers_enabled":      "work_ledger.scheduler.remote_workers.enabled",
-		"work_scheduler_a2a_enabled":                 "work_ledger.scheduler.a2a.enabled",
-		"work_scheduler_a2a_discovery_url":           "work_ledger.scheduler.a2a.discovery_url",
-		"work_scheduler_a2a_bearer_token":            "work_ledger.scheduler.a2a.bearer_token",
-		"work_scheduler_a2a_allowed_hosts_json":      "work_ledger.scheduler.a2a.allowed_hosts",
-		"work_scheduler_a2a_allow_private_hosts":     "work_ledger.scheduler.a2a.allow_private_hosts",
-		"work_scheduler_a2a_allow_insecure_loopback": "work_ledger.scheduler.a2a.allow_insecure_loopback",
-		"work_scheduler_a2a_poll_milliseconds":       "work_ledger.scheduler.a2a.poll_milliseconds",
-		"work_scheduler_a2a_max_poll_seconds":        "work_ledger.scheduler.a2a.max_poll_seconds",
+		"work_scheduler_remote_workers_enabled":             "work_ledger.scheduler.remote_workers.enabled",
+		"work_scheduler_remote_workers_gateway_config_path": "work_ledger.scheduler.remote_workers.gateway_config_path",
+		"work_scheduler_a2a_enabled":                        "work_ledger.scheduler.a2a.enabled",
+		"work_scheduler_a2a_discovery_url":                  "work_ledger.scheduler.a2a.discovery_url",
+		"work_scheduler_a2a_bearer_token":                   "work_ledger.scheduler.a2a.bearer_token",
+		"work_scheduler_a2a_allowed_hosts_json":             "work_ledger.scheduler.a2a.allowed_hosts",
+		"work_scheduler_a2a_allow_private_hosts":            "work_ledger.scheduler.a2a.allow_private_hosts",
+		"work_scheduler_a2a_allow_insecure_loopback":        "work_ledger.scheduler.a2a.allow_insecure_loopback",
+		"work_scheduler_a2a_poll_milliseconds":              "work_ledger.scheduler.a2a.poll_milliseconds",
+		"work_scheduler_a2a_max_poll_seconds":               "work_ledger.scheduler.a2a.max_poll_seconds",
 	}
 	for _, field := range Schema() {
 		path, ok := wantPaths[field.Key]

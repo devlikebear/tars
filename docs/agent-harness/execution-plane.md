@@ -63,14 +63,15 @@ refuses any path outside the managed root or any worktree whose marker does not
 match the durable environment identity. Tracked edits and untracked files in
 the source repository are not copied, reset, or deleted.
 
-The container provider contract is implemented with a read-only root,
-default-deny `--network none`, CPU, memory, PID, and tmpfs limits, and a managed
-worktree mounted at `/workspace`. It rejects an allowlist it cannot enforce.
-It is not selectable for the native Agent Runtime adapter: native tools execute
-in the host process, so accepting `container` would falsely claim container
-execution. Startup therefore reports the mode as unsupported instead of
-falling back to host execution. A container-aware worker must be explicitly
-configured before this provider can become an operational adapter.
+The container provider contract uses a read-only root, default-deny
+`--network none`, CPU, memory, PID, and tmpfs limits, and a disposable workspace
+at `/workspace`. It rejects an allowlist it cannot enforce. It is not selectable
+for the native Agent Runtime adapter: native tools execute in the host process,
+so accepting `container` there would falsely claim container execution.
+Instead, configure the internal remote-worker gateway and submit Work to its
+explicit adapter (for example `remote-container`). That adapter now runs the
+same durable provision/sync/execute/collect/destroy lifecycle and crash-safe
+result handoff as remote workers. Startup never falls back to host execution.
 
 ## Configuration
 

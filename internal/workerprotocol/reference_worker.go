@@ -157,6 +157,27 @@ func NewReferenceWorker(opts ReferenceWorkerOptions) (*ReferenceWorker, error) {
 	return worker, nil
 }
 
+func (worker *ReferenceWorker) VerificationKeyID() string {
+	if worker == nil || worker.verifier == nil {
+		return ""
+	}
+	return worker.verifier.KeyID
+}
+
+func (worker *ReferenceWorker) MaxTaskTokenTTL() time.Duration {
+	if worker == nil || worker.verifier == nil {
+		return 0
+	}
+	return worker.verifier.maxTTL
+}
+
+func (worker *ReferenceWorker) RootDir() string {
+	if worker == nil {
+		return ""
+	}
+	return worker.rootDir
+}
+
 func (worker *ReferenceWorker) Handle(ctx context.Context, request WireRequest) (WireResponse, error) {
 	if worker == nil || worker.executor == nil || worker.verifier == nil {
 		return WireResponse{}, fmt.Errorf("workerprotocol: reference worker is not configured")
@@ -175,11 +196,17 @@ func (worker *ReferenceWorker) Handle(ctx context.Context, request WireRequest) 
 		if applied.Fingerprint != fingerprint {
 			return worker.rejected(request, "idempotency_conflict", "request id changed content"), nil
 		}
+		if err := worker.authorizeReplayLocked(request, applied); err != nil {
+			return worker.rejected(request, "authorization_denied", "replay authorization was denied"), nil
+		}
 		return worker.replayLocked(request, applied)
 	}
 	if applied, ok := worker.appliedKeys[request.Envelope.IdempotencyKey]; ok {
 		if applied.Fingerprint != fingerprint {
 			return worker.rejected(request, "idempotency_conflict", "idempotency key changed content"), nil
+		}
+		if err := worker.authorizeReplayLocked(request, applied); err != nil {
+			return worker.rejected(request, "authorization_denied", "replay authorization was denied"), nil
 		}
 		return worker.replayLocked(request, applied)
 	}
@@ -199,6 +226,39 @@ func (worker *ReferenceWorker) Handle(ctx context.Context, request WireRequest) 
 	return response, nil
 }
 
+func (worker *ReferenceWorker) authorizeReplayLocked(request WireRequest, applied referenceApplied) error {
+	var token string
+	var scope TaskScope
+	switch applied.Type {
+	case MessageExecute:
+		var payload ExecutePayload
+		if err := decodePayload(request.Envelope.Payload, &payload); err != nil {
+			return err
+		}
+		token, scope = payload.TaskToken, TaskScopeExecute
+	case MessageCollect:
+		var payload CollectPayload
+		if err := decodePayload(request.Envelope.Payload, &payload); err != nil {
+			return err
+		}
+		token, scope = payload.TaskToken, TaskScopeCollect
+	case MessageDestroy:
+		var payload DestroyPayload
+		if err := decodePayload(request.Envelope.Payload, &payload); err != nil {
+			return err
+		}
+		token, scope = payload.TaskToken, TaskScopeDestroy
+	default:
+		return nil
+	}
+	environment, ok := worker.environments[applied.PlacementID]
+	if !ok {
+		return ErrNotFound
+	}
+	_, err := worker.verifier.Verify(token, environment.Binding, scope)
+	return err
+}
+
 func (worker *ReferenceWorker) handleLocked(ctx context.Context, request WireRequest) WireResponse {
 	envelope := request.Envelope
 	if envelope.PlacementID == "" {
@@ -206,6 +266,7 @@ func (worker *ReferenceWorker) handleLocked(ctx context.Context, request WireReq
 		case MessageRegister:
 			payload, _ := json.Marshal(RegisterPayload{
 				Transport: "in-process", Endpoint: "local://" + worker.workerID, Capabilities: worker.capabilities,
+				VerificationKeyID: worker.VerificationKeyID(),
 			})
 			return worker.accepted(request, payload, nil)
 		case MessageHeartbeat:
@@ -464,7 +525,9 @@ func (worker *ReferenceWorker) collectLocked(request WireRequest, environment Re
 			environment.State = PlacementStateFailed
 		}
 	}
-	return worker.accepted(request, result.Payload, result.Artifacts), environment
+	response := worker.accepted(request, result.Payload, result.Artifacts)
+	response.Checkpoint = cloneCheckpointPayload(result.Checkpoint)
+	return response, environment
 }
 
 func (worker *ReferenceWorker) destroyLocked(request WireRequest, environment ReferenceEnvironment) (WireResponse, ReferenceEnvironment) {
@@ -661,6 +724,7 @@ func (worker *ReferenceWorker) replayLocked(request WireRequest, applied referen
 	case MessageRegister:
 		payload, _ := json.Marshal(RegisterPayload{
 			Transport: "in-process", Endpoint: "local://" + worker.workerID, Capabilities: worker.capabilities,
+			VerificationKeyID: worker.VerificationKeyID(),
 		})
 		return worker.accepted(request, payload, nil), nil
 	case MessageExecute, MessageCollect:

@@ -14,12 +14,24 @@ import (
 	"github.com/devlikebear/tars/internal/config"
 	"github.com/devlikebear/tars/internal/executionplane"
 	"github.com/devlikebear/tars/internal/tool"
+	"github.com/devlikebear/tars/internal/workerprotocol"
 	"github.com/devlikebear/tars/internal/workscheduler"
 	"github.com/devlikebear/tars/internal/workstore"
 	"github.com/rs/zerolog"
 )
 
 func buildWorkSchedulerIfEnabled(cfg config.Config, ledger *workstore.Store, runtime *agentruntime.Runtime, logger zerolog.Logger) (*workscheduler.Scheduler, error) {
+	return buildWorkSchedulerWithRemote(cfg, ledger, runtime, nil, nil, logger)
+}
+
+func buildWorkSchedulerWithRemote(
+	cfg config.Config,
+	ledger *workstore.Store,
+	runtime *agentruntime.Runtime,
+	workerController *workerprotocol.Controller,
+	remoteRunner workerprotocol.ProcessRunner,
+	logger zerolog.Logger,
+) (*workscheduler.Scheduler, error) {
 	if !cfg.WorkLedger.SchedulerEnabled {
 		return nil, nil
 	}
@@ -35,6 +47,13 @@ func buildWorkSchedulerIfEnabled(cfg config.Config, ledger *workstore.Store, run
 		return nil, err
 	}
 	executors := []workscheduler.Executor{executor}
+	remoteExecutor, err := buildConfiguredRemoteWorkExecutor(cfg, workerController, remoteRunner)
+	if err != nil {
+		return nil, err
+	}
+	if remoteExecutor != nil {
+		executors = append(executors, remoteExecutor)
+	}
 	a2aExecutor, err := buildA2AWorkExecutor(context.Background(), cfg, ledger, &http.Client{Timeout: 15 * time.Second})
 	if err != nil {
 		return nil, err
@@ -52,6 +71,32 @@ func buildWorkSchedulerIfEnabled(cfg config.Config, ledger *workstore.Store, run
 		OnError: func(err error) {
 			logger.Error().Err(err).Msg("durable work scheduler operation failed")
 		},
+	})
+}
+
+func buildConfiguredRemoteWorkExecutor(
+	cfg config.Config,
+	controller *workerprotocol.Controller,
+	runner workerprotocol.ProcessRunner,
+) (*workerprotocol.SchedulerExecutor, error) {
+	configPath := strings.TrimSpace(cfg.WorkLedger.SchedulerRemoteWorkersGatewayConfigPath)
+	if configPath == "" {
+		return nil, nil
+	}
+	if !cfg.WorkLedger.SchedulerRemoteWorkersEnabled {
+		return nil, fmt.Errorf("configured remote scheduler worker requires remote_workers.enabled")
+	}
+	if controller == nil {
+		return nil, fmt.Errorf("configured remote scheduler worker requires the shared worker controller")
+	}
+	dataDir := strings.TrimSpace(cfg.WorkLedger.SchedulerExecutionDataDir)
+	if dataDir == "" || pathsOverlap(cfg.WorkspaceDir, dataDir) {
+		return nil, fmt.Errorf("configured remote scheduler state must be outside the workspace")
+	}
+	return workerprotocol.OpenConfiguredSchedulerExecutor(workerprotocol.ConfiguredSchedulerExecutorOptions{
+		ConfigPath: configPath, SourceDir: cfg.WorkspaceDir,
+		DataDir:    filepath.Join(dataDir, "remote-workers", "scheduler"),
+		Controller: controller, Runner: runner,
 	})
 }
 

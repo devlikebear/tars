@@ -196,6 +196,7 @@ func Schema() []FieldMeta {
 		f("work_scheduler_execution_data_dir", "Work Scheduler", "string", "Execution Data Dir", "Private directory outside the workspace for lifecycle state, managed worktrees, and collected artifacts"),
 		f("work_scheduler_artifact_paths_json", "Work Scheduler", "string_list", "Artifact Paths", "Workspace-relative files or globs copied after each durable execution"),
 		f("work_scheduler_remote_workers_enabled", "Work Scheduler", "bool", "Remote Workers", "Enable the versioned remote-worker control plane and its Console projection"),
+		f("work_scheduler_remote_workers_gateway_config_path", "Work Scheduler", "string", "Remote Gateway Config", "Owner-only JSON configuration for an optional in-process container or SSH scheduler worker"),
 		f("work_scheduler_a2a_enabled", "Work Scheduler", "bool", "A2A Adapter", "Enable A2A 1.0 as an external Work executor without replacing internal scheduling"),
 		f("work_scheduler_a2a_discovery_url", "Work Scheduler", "string", "A2A Discovery URL", "HTTPS origin that publishes /.well-known/agent-card.json"),
 		fs("work_scheduler_a2a_bearer_token", "Work Scheduler", "A2A Bearer Token", "Gateway-only credential sent to the selected A2A endpoint", true),
@@ -536,6 +537,8 @@ func extractValue(yamlKey string, cfg Config) any {
 		return append([]string(nil), cfg.WorkLedger.SchedulerArtifactPaths...)
 	case "work_scheduler_remote_workers_enabled":
 		return cfg.WorkLedger.SchedulerRemoteWorkersEnabled
+	case "work_scheduler_remote_workers_gateway_config_path":
+		return cfg.WorkLedger.SchedulerRemoteWorkersGatewayConfigPath
 	case "work_scheduler_a2a_enabled":
 		return cfg.WorkLedger.SchedulerA2AEnabled
 	case "work_scheduler_a2a_discovery_url":

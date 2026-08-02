@@ -2,6 +2,8 @@ package tarsserver
 
 import (
 	"context"
+	"crypto/ed25519"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -16,10 +18,151 @@ import (
 	"github.com/devlikebear/tars/internal/agentruntime"
 	"github.com/devlikebear/tars/internal/config"
 	"github.com/devlikebear/tars/internal/session"
+	"github.com/devlikebear/tars/internal/workerprotocol"
 	"github.com/devlikebear/tars/internal/workscheduler"
 	"github.com/devlikebear/tars/internal/workstore"
 	"github.com/rs/zerolog"
 )
+
+func TestBuildWorkSchedulerConnectsConfiguredContainerToSharedRemoteLifecycle(t *testing.T) {
+	t.Parallel()
+
+	workspaceDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(workspaceDir, "task.txt"), []byte("task\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ledger, err := workstore.Open(context.Background(), filepath.Join(t.TempDir(), "ledger.db"), workstore.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ledger.Close() })
+	runtime := agentruntime.NewRuntime(agentruntime.RuntimeOptions{
+		Enabled: true, WorkspaceDir: workspaceDir, SessionStore: session.NewStore(t.TempDir()),
+	})
+	t.Cleanup(func() { _ = runtime.Close(context.Background()) })
+	seed := make([]byte, ed25519.SeedSize)
+	seed[0] = 71
+	privateKey := ed25519.NewKeyFromSeed(seed)
+	workerRoot := t.TempDir()
+	workerConfigPath := filepath.Join(t.TempDir(), "worker.json")
+	writePrivateJSON(t, workerConfigPath, workerprotocol.WorkerServiceConfig{
+		SchemaVersion: 1, WorkerID: "container-worker", RootDir: workerRoot,
+		StatePath: filepath.Join(workerRoot, "state.json"),
+		PublicKey: base64.RawStdEncoding.EncodeToString(privateKey.Public().(ed25519.PublicKey)), MaxTokenTTLSeconds: 300,
+		WireLimits: workerprotocol.WireLimits{MaxRequestBytes: 4 << 20, MaxResponseBytes: 4 << 20},
+		Container: workerprotocol.ContainerWorkerConfig{
+			RuntimePath: "/usr/bin/docker", Image: "worker@sha256:" + strings.Repeat("f", 64),
+			Command: []string{"/usr/local/bin/tars-task-harness"}, CPUs: "1", PIDsLimit: 64,
+		},
+	})
+	gatewayConfigPath := filepath.Join(t.TempDir(), "gateway.json")
+	writePrivateJSON(t, gatewayConfigPath, workerprotocol.SchedulerGatewayConfig{
+		SchemaVersion: 1, Adapter: "remote-container", WorkerID: "container-worker",
+		Transport:       workerprotocol.SchedulerTransportInProcess,
+		PrivateKey:      base64.RawStdEncoding.EncodeToString(privateKey),
+		LeaseTTLSeconds: 120, TokenTTLSeconds: 60, SyncMode: workerprotocol.SyncModeDirectory,
+		Policy:    workerprotocol.DefaultExecutionPolicy(),
+		InProcess: workerprotocol.SchedulerInProcessConfig{WorkerConfigPath: workerConfigPath},
+	})
+	containerResponse, err := json.Marshal(workerprotocol.ContainerTaskResponse{
+		Succeeded: true, Output: json.RawMessage(`{"summary":"same lifecycle"}`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner := &remoteContainerTestRunner{result: workerprotocol.ProcessResult{Stdout: append(containerResponse, '\n')}}
+	dataDir := filepath.Join(t.TempDir(), "execution-data")
+	cfg := config.Default()
+	cfg.WorkspaceDir = workspaceDir
+	cfg.WorkLedger.SchedulerEnabled = true
+	cfg.WorkLedger.SchedulerPollMilliseconds = 5
+	cfg.WorkLedger.SchedulerHeartbeatSeconds = 1
+	cfg.WorkLedger.SchedulerLeaseSeconds = 5
+	cfg.WorkLedger.SchedulerExecutionDataDir = dataDir
+	cfg.WorkLedger.SchedulerRemoteWorkersEnabled = true
+	cfg.WorkLedger.SchedulerRemoteWorkersGatewayConfigPath = gatewayConfigPath
+	controller, err := buildWorkerControllerIfEnabled(cfg, ledger)
+	if err != nil {
+		t.Fatal(err)
+	}
+	scheduler, err := buildWorkSchedulerWithRemote(cfg, ledger, runtime, controller, runner, zerolog.Nop())
+	if err != nil {
+		t.Fatalf("build scheduler with remote container: %v", err)
+	}
+	t.Cleanup(scheduler.Close)
+	work, err := scheduler.Submit(context.Background(), workscheduler.SubmitInput{
+		WorkspaceID: "default", IdempotencyKey: "remote-container-lifecycle", Kind: "test", Source: "test",
+		SourceID: "remote-container", Title: "Remote container", Objective: "prove shared lifecycle",
+		Adapter: "remote-container", ActorID: "test",
+		Steps: []workscheduler.StepSpec{{Key: "run", Title: "Run", Description: "execute once", Position: 1}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if claimed, err := scheduler.RunOnce(context.Background()); err != nil || claimed != 1 {
+		t.Fatalf("run remote scheduler claimed=%d err=%v", claimed, err)
+	}
+	waitCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	projection, err := scheduler.Wait(waitCtx, work.ID)
+	if err != nil || projection.Work.State != workstore.WorkStateDone || projection.Attempts[0].Status != workstore.AttemptStatusSucceeded {
+		t.Fatalf("remote container projection=%+v err=%v", projection, err)
+	}
+	if runner.calls != 1 || runner.spec.InheritEnv {
+		t.Fatalf("container runner calls=%d spec=%+v", runner.calls, runner.spec)
+	}
+	if len(controller.Snapshot().Placements) != 1 {
+		t.Fatalf("remote placements=%+v", controller.Snapshot().Placements)
+	}
+	for _, placement := range controller.Snapshot().Placements {
+		if placement.State != workerprotocol.PlacementStateDestroyed || placement.WorkID != work.ID {
+			t.Fatalf("remote placement=%+v", placement)
+		}
+	}
+	runEntries, err := os.ReadDir(filepath.Join(dataDir, "remote-workers", "scheduler", "runs"))
+	if err != nil || len(runEntries) != 0 {
+		t.Fatalf("remote recovery journal after ledger commit entries=%d err=%v", len(runEntries), err)
+	}
+	wantEvents := map[workstore.EventType]bool{
+		workstore.EventTypeWorkerPlacementCreated:   false,
+		workstore.EventTypeWorkerExecutionStarted:   false,
+		workstore.EventTypeWorkerArtifactsCollected: false,
+		workstore.EventTypeWorkerPlacementDestroyed: false,
+	}
+	for _, event := range projection.Events {
+		if _, ok := wantEvents[event.Type]; ok {
+			wantEvents[event.Type] = true
+		}
+	}
+	for eventType, found := range wantEvents {
+		if !found {
+			t.Fatalf("remote lifecycle missing Work Ledger event %s", eventType)
+		}
+	}
+}
+
+type remoteContainerTestRunner struct {
+	calls  int
+	spec   workerprotocol.ProcessSpec
+	result workerprotocol.ProcessResult
+}
+
+func (runner *remoteContainerTestRunner) Run(_ context.Context, spec workerprotocol.ProcessSpec) (workerprotocol.ProcessResult, error) {
+	runner.calls++
+	runner.spec = spec
+	return runner.result, nil
+}
+
+func writePrivateJSON(t *testing.T, path string, value any) {
+	t.Helper()
+	raw, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
 
 func TestBuildWorkSchedulerHonorsRollbackAndValidatesLease(t *testing.T) {
 	t.Parallel()

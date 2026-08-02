@@ -611,6 +611,13 @@ func (s *Scheduler) startActive(
 			s.reportError(completeErr)
 		}
 		if completeErr == nil {
+			if finalizer, ok := executor.(FinalizableExecutor); ok {
+				finalizeCtx, finalizeCancel := context.WithTimeout(context.Background(), 5*time.Second)
+				if finalizeErr := finalizer.Finalize(finalizeCtx, execution, result); finalizeErr != nil {
+					s.reportError(fmt.Errorf("workscheduler: finalize executor state: %w", finalizeErr))
+				}
+				finalizeCancel()
+			}
 			outcomeStatus := workstore.CapabilityOutcomeFailed
 			if result.Succeeded {
 				outcomeStatus = workstore.CapabilityOutcomeSucceeded

@@ -16,32 +16,35 @@ import (
 var sshUserPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9._-]{0,63}$`)
 
 type SSHTransportOptions struct {
-	SSHPath        string
-	Host           string
-	User           string
-	Port           int
-	IdentityFile   string
-	KnownHostsFile string
-	Runner         ProcessRunner
-	Limits         WireLimits
+	SSHPath          string
+	Host             string
+	User             string
+	Port             int
+	IdentityFile     string
+	KnownHostsFile   string
+	WorkerConfigPath string
+	Runner           ProcessRunner
+	Limits           WireLimits
 }
 
 type SSHTransport struct {
-	sshPath        string
-	host           string
-	user           string
-	port           int
-	identityFile   string
-	knownHostsFile string
-	runner         ProcessRunner
-	limits         WireLimits
+	sshPath          string
+	host             string
+	user             string
+	port             int
+	identityFile     string
+	knownHostsFile   string
+	workerConfigPath string
+	runner           ProcessRunner
+	limits           WireLimits
 }
 
 func NewSSHTransport(opts SSHTransportOptions) (*SSHTransport, error) {
 	host := strings.TrimSpace(strings.ToLower(opts.Host))
 	user := strings.TrimSpace(opts.User)
 	if !validSSHHost(host) || !sshUserPattern.MatchString(user) || opts.Port < 1 || opts.Port > 65535 ||
-		!safeAbsoluteProcessPath(opts.SSHPath) || !safeAbsoluteProcessPath(opts.IdentityFile) || !safeAbsoluteProcessPath(opts.KnownHostsFile) {
+		!safeAbsoluteProcessPath(opts.SSHPath) || !safeAbsoluteProcessPath(opts.IdentityFile) || !safeAbsoluteProcessPath(opts.KnownHostsFile) ||
+		(strings.TrimSpace(opts.WorkerConfigPath) != "" && !safeAbsoluteProcessPath(opts.WorkerConfigPath)) {
 		return nil, ErrTransportConfig
 	}
 	limits := opts.Limits
@@ -57,7 +60,8 @@ func NewSSHTransport(opts SSHTransportOptions) (*SSHTransport, error) {
 	return &SSHTransport{
 		sshPath: filepath.Clean(opts.SSHPath), host: host, user: user, port: opts.Port,
 		identityFile: filepath.Clean(opts.IdentityFile), knownHostsFile: filepath.Clean(opts.KnownHostsFile),
-		runner: opts.Runner, limits: limits,
+		workerConfigPath: strings.TrimSpace(opts.WorkerConfigPath),
+		runner:           opts.Runner, limits: limits,
 	}, nil
 }
 
@@ -94,7 +98,7 @@ func (transport *SSHTransport) arguments() []string {
 	if net.ParseIP(destinationHost) != nil && strings.Contains(destinationHost, ":") {
 		destinationHost = "[" + destinationHost + "]"
 	}
-	return []string{
+	args := []string{
 		"-T", "-F", "/dev/null",
 		"-o", "BatchMode=yes",
 		"-o", "ClearAllForwardings=yes",
@@ -108,6 +112,10 @@ func (transport *SSHTransport) arguments() []string {
 		transport.user + "@" + destinationHost,
 		"tars", "worker", "serve", "--stdio", "--protocol", ProtocolVersionV1,
 	}
+	if transport.workerConfigPath != "" {
+		args = append(args, "--config", transport.workerConfigPath)
+	}
+	return args
 }
 
 func validSSHHost(host string) bool {

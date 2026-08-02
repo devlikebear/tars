@@ -5,11 +5,231 @@ import (
 	"context"
 	"crypto/ed25519"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 )
+
+func TestGatewayCoordinatorFinalizesDurablyRecordedResultAfterRestartWithoutReexecution(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 8, 3, 10, 0, 0, 0, time.UTC)
+	seed := make([]byte, ed25519.SeedSize)
+	seed[0] = 51
+	issuer, err := NewTaskTokenIssuer(TaskTokenIssuerOptions{
+		PrivateKey: ed25519.NewKeyFromSeed(seed), MaxTTL: 5 * time.Minute, Now: func() time.Time { return now },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	executor := &recordingReferenceExecutor{result: ReferenceExecutionResult{
+		Payload: json.RawMessage(`{"succeeded":true,"summary":"recorded before crash"}`),
+	}}
+	worker, err := NewReferenceWorker(ReferenceWorkerOptions{
+		WorkerID: "worker-a", RootDir: t.TempDir(), TokenVerifier: issuer.PublicVerifier(), Executor: executor,
+		Now: func() time.Time { return now },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	transport, err := NewInProcessTransport(worker, WireLimits{MaxRequestBytes: 4 << 20, MaxResponseBytes: 4 << 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	controllerPath := filepath.Join(t.TempDir(), "controller.json")
+	controller, err := OpenController(ControllerOptions{StatePath: controllerPath, Now: func() time.Time { return now }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	quarantine, err := NewArtifactQuarantine(ArtifactQuarantineOptions{RootDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, err := NewFileRemoteRunStore(filepath.Join(t.TempDir(), "remote-runs"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	recorder := &recordThenFailRemoteResult{store: store, err: errors.New("simulated gateway crash")}
+	coordinator, err := NewGatewayCoordinator(GatewayCoordinatorOptions{
+		Controller: controller, WorkerID: "worker-a", TransportName: "in-process", Endpoint: "local://worker-a",
+		Capabilities: executor.Capabilities(), Transport: transport, TokenIssuer: issuer, Quarantine: quarantine,
+		ResultRecorder: recorder, LeaseTTL: 2 * time.Minute, TokenTTL: time.Minute, Now: func() time.Time { return now },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := t.TempDir()
+	if err := os.WriteFile(filepath.Join(source, "task.txt"), []byte("task\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	bundle, err := BuildWorkspaceBundle(context.Background(), WorkspaceBundleOptions{RootDir: source, Mode: SyncModeDirectory})
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := RemoteRunInput{
+		PlacementID: "placement-crash", EnvironmentID: "environment-crash",
+		WorkspaceID: "workspace-a", WorkID: "work-a", StepID: "step-a", AttemptID: "attempt-crash",
+		Policy: DefaultExecutionPolicy(), Workspace: bundle, Request: json.RawMessage(`{"objective":"run once"}`),
+	}
+	if err := store.Prepare(context.Background(), input); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := coordinator.Run(context.Background(), input); !errors.Is(err, recorder.err) {
+		t.Fatalf("run error=%v want simulated crash", err)
+	}
+	state, found, err := store.Load(context.Background(), input.AttemptID)
+	if err != nil || !found || state.Result == nil {
+		t.Fatalf("durable result after crash state=%+v found=%v err=%v", state, found, err)
+	}
+	if placement := controller.Snapshot().Placements[input.PlacementID]; placement.State != PlacementStateCollecting {
+		t.Fatalf("placement before recovery=%+v", placement)
+	}
+
+	reopened, err := OpenController(ControllerOptions{StatePath: controllerPath, Now: func() time.Time { return now }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	recovered, err := NewGatewayCoordinator(GatewayCoordinatorOptions{
+		Controller: reopened, WorkerID: "worker-a", TransportName: "in-process", Endpoint: "local://worker-a",
+		Capabilities: executor.Capabilities(), Transport: transport, TokenIssuer: issuer, Quarantine: quarantine,
+		ResultRecorder: store, LeaseTTL: 2 * time.Minute, TokenTTL: time.Minute, Now: func() time.Time { return now },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := recovered.FinalizeRecorded(context.Background(), state.Input, *state.Result); err != nil {
+		t.Fatalf("finalize recorded result after restart: %v", err)
+	}
+	if placement := reopened.Snapshot().Placements[input.PlacementID]; placement.State != PlacementStateDestroyed {
+		t.Fatalf("placement after recovery=%+v", placement)
+	}
+	if executor.calls != 1 {
+		t.Fatalf("remote execution repeated after recovery: calls=%d", executor.calls)
+	}
+}
+
+func TestGatewayCoordinatorRecoversWorkerResultWhenGatewayCrashesBeforeExecuteCommit(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 8, 3, 11, 0, 0, 0, time.UTC)
+	seed := make([]byte, ed25519.SeedSize)
+	seed[0] = 52
+	issuer, err := NewTaskTokenIssuer(TaskTokenIssuerOptions{
+		PrivateKey: ed25519.NewKeyFromSeed(seed), MaxTTL: 5 * time.Minute, Now: func() time.Time { return now },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	executor := &recordingReferenceExecutor{result: ReferenceExecutionResult{
+		Payload: json.RawMessage(`{"succeeded":true,"summary":"worker committed once"}`),
+	}}
+	worker, err := NewReferenceWorker(ReferenceWorkerOptions{
+		WorkerID: "worker-a", RootDir: t.TempDir(), TokenVerifier: issuer.PublicVerifier(), Executor: executor,
+		Now: func() time.Time { return now },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	baseTransport, err := NewInProcessTransport(worker, WireLimits{MaxRequestBytes: 4 << 20, MaxResponseBytes: 4 << 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	transport := &failAfterWorkerTransport{delegate: baseTransport, messageType: MessageExecute}
+	controllerPath := filepath.Join(t.TempDir(), "controller.json")
+	controller, err := OpenController(ControllerOptions{StatePath: controllerPath, Now: func() time.Time { return now }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	quarantine, err := NewArtifactQuarantine(ArtifactQuarantineOptions{RootDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	coordinator, err := NewGatewayCoordinator(GatewayCoordinatorOptions{
+		Controller: controller, WorkerID: "worker-a", TransportName: "in-process", Endpoint: "local://worker-a",
+		Capabilities: executor.Capabilities(), Transport: transport, TokenIssuer: issuer, Quarantine: quarantine,
+		LeaseTTL: 2 * time.Minute, TokenTTL: time.Minute, Now: func() time.Time { return now },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := t.TempDir()
+	if err := os.WriteFile(filepath.Join(source, "task.txt"), []byte("task\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	bundle, err := BuildWorkspaceBundle(context.Background(), WorkspaceBundleOptions{RootDir: source, Mode: SyncModeDirectory})
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := RemoteRunInput{
+		PlacementID: "placement-execute-crash", EnvironmentID: "environment-execute-crash",
+		WorkspaceID: "workspace-a", WorkID: "work-a", StepID: "step-a", AttemptID: "attempt-execute-crash",
+		Policy: DefaultExecutionPolicy(), Workspace: bundle, Request: json.RawMessage(`{"objective":"run once"}`),
+	}
+	if _, err := coordinator.Run(context.Background(), input); err == nil {
+		t.Fatal("gateway execute crash was not injected")
+	}
+	if placement := controller.Snapshot().Placements[input.PlacementID]; placement.State != PlacementStateReady || placement.LastSequence != 3 {
+		t.Fatalf("controller advanced past uncommitted execute: %+v", placement)
+	}
+	if executor.calls != 1 {
+		t.Fatalf("worker execution calls before recovery=%d", executor.calls)
+	}
+
+	reopened, err := OpenController(ControllerOptions{StatePath: controllerPath, Now: func() time.Time { return now }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	recovered, err := NewGatewayCoordinator(GatewayCoordinatorOptions{
+		Controller: reopened, WorkerID: "worker-a", TransportName: "in-process", Endpoint: "local://worker-a",
+		Capabilities: executor.Capabilities(), Transport: baseTransport, TokenIssuer: issuer, Quarantine: quarantine,
+		LeaseTTL: 2 * time.Minute, TokenTTL: time.Minute, Now: func() time.Time { return now },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := recovered.RecoverPrepared(context.Background(), input)
+	if err != nil || !result.Succeeded {
+		t.Fatalf("recover prepared result=%+v err=%v", result, err)
+	}
+	if executor.calls != 1 {
+		t.Fatalf("worker execution repeated after gateway crash: calls=%d", executor.calls)
+	}
+	if placement := reopened.Snapshot().Placements[input.PlacementID]; placement.State != PlacementStateDestroyed {
+		t.Fatalf("recovered placement=%+v", placement)
+	}
+}
+
+type failAfterWorkerTransport struct {
+	delegate    WorkerTransport
+	messageType MessageType
+	failed      bool
+}
+
+func (transport *failAfterWorkerTransport) Exchange(ctx context.Context, request WireRequest) (WireResponse, error) {
+	response, err := transport.delegate.Exchange(ctx, request)
+	if err != nil {
+		return response, err
+	}
+	if request.Envelope.Type == transport.messageType && !transport.failed {
+		transport.failed = true
+		return WireResponse{}, errors.New("simulated gateway crash after worker commit")
+	}
+	return response, nil
+}
+
+type recordThenFailRemoteResult struct {
+	store *FileRemoteRunStore
+	err   error
+}
+
+func (recorder *recordThenFailRemoteResult) RecordResult(ctx context.Context, input RemoteRunInput, result RemoteRunResult) error {
+	if err := recorder.store.RecordResult(ctx, input, result); err != nil {
+		return err
+	}
+	return recorder.err
+}
 
 func TestGatewayCoordinatorRunsAndAuditsRemotePlacementEndToEnd(t *testing.T) {
 	t.Parallel()

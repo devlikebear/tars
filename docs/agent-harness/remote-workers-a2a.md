@@ -48,9 +48,72 @@ work_ledger:
 
 The equivalent environment switch is
 `TARS_WORK_SCHEDULER_REMOTE_WORKERS_ENABLED=true`. Restart TARS after changing
-the setting. The preview SSH pilot is one gateway-to-worker placement built
-with `workerprotocol.NewSSHTransport` and `workerprotocol.NewGatewayCoordinator`;
-enabling the controller alone does not invent or auto-discover a fleet.
+the setting. Enabling the controller alone does not invent or auto-discover a
+fleet and does not register a scheduler adapter.
+
+## Bind one worker to the durable scheduler
+
+Set `gateway_config_path` to register one explicitly configured container or
+SSH worker as a Work Scheduler adapter:
+
+```yaml
+work_ledger:
+  enabled: true
+  scheduler:
+    enabled: true
+    execution_data_dir: $HOME/.tars/execution-plane
+    remote_workers:
+      enabled: true
+      gateway_config_path: /var/lib/tars-gateway/remote-gateway.json
+```
+
+The equivalent environment setting is
+`TARS_WORK_SCHEDULER_REMOTE_WORKERS_GATEWAY_CONFIG_PATH`. The JSON file must be
+absolute, regular, non-symlinked, outside the source workspace, and owner-only
+(`0600`). It contains the gateway's raw 64-byte Ed25519 private key encoded with
+unpadded standard base64, so do not commit it or place it in the workspace.
+
+An in-process container worker uses the same serialized protocol and lifecycle
+as SSH:
+
+```json
+{
+  "schema_version": 1,
+  "adapter": "remote-container",
+  "worker_id": "worker-preview-1",
+  "transport": "in-process",
+  "private_key": "BASE64_RAW_64_BYTE_ED25519_PRIVATE_KEY",
+  "lease_ttl_seconds": 120,
+  "token_ttl_seconds": 60,
+  "sync_mode": "directory",
+  "policy": {
+    "egress": {"mode": "deny"},
+    "limits": {
+      "cpu_seconds": 3600,
+      "memory_mb": 2048,
+      "disk_mb": 4096,
+      "max_output_bytes": 67108864
+    }
+  },
+  "in_process": {
+    "worker_config_path": "/var/lib/tars-gateway/worker.json"
+  }
+}
+```
+
+Submit Work with the exact adapter name, here `remote-container`. The gateway
+ships only the bounded workspace plus Work title/objective and Step
+title/instructions; Work contract and metadata blobs remain in the ledger.
+Configured scheduler workers require default-deny egress in protocol v1.
+Set `sync_mode` to `git` only with an explicit absolute `git_path`; directory
+mode is the portable default.
+
+The scheduler writes prepared inputs and verified results below
+`execution_data_dir/remote-workers/scheduler/runs`. A result is persisted before
+the placement is completed, then the journal is removed only after the Work
+Ledger commits the Attempt and remote cleanup succeeds. After a gateway crash,
+TARS replays the protocol message with fresh task authorization, retrieves the
+worker's persisted result, and does not invoke the container task twice.
 
 ## Reference worker service
 
@@ -103,7 +166,7 @@ bounded request needed for that Attempt.
 The SSH transport invokes this fixed remote command:
 
 ```text
-tars worker serve --stdio --protocol 1.0
+tars worker serve --stdio --protocol 1.0 [--config /absolute/worker.json]
 ```
 
 It always enables batch mode, strict host-key checking, identity-only auth,
@@ -116,6 +179,56 @@ therefore have:
 3. a dedicated identity file on the gateway;
 4. a pre-populated, pinned `known_hosts` file; and
 5. a digest-pinned container image already available to the worker runtime.
+
+Use this gateway configuration for the single-host SSH pilot:
+
+```json
+{
+  "schema_version": 1,
+  "adapter": "remote-ssh",
+  "worker_id": "worker-preview-1",
+  "transport": "ssh",
+  "private_key": "BASE64_RAW_64_BYTE_ED25519_PRIVATE_KEY",
+  "lease_ttl_seconds": 120,
+  "token_ttl_seconds": 60,
+  "sync_mode": "directory",
+  "policy": {
+    "egress": {"mode": "deny"},
+    "limits": {
+      "cpu_seconds": 3600,
+      "memory_mb": 2048,
+      "disk_mb": 4096,
+      "max_output_bytes": 67108864
+    }
+  },
+  "wire_limits": {
+    "max_request_bytes": 335544320,
+    "max_response_bytes": 67108864
+  },
+  "capabilities": {
+    "resume": true,
+    "streaming": false,
+    "checkpoints": true,
+    "egress_policy": true,
+    "resource_limits": true,
+    "artifact_scan": true
+  },
+  "ssh": {
+    "ssh_path": "/usr/bin/ssh",
+    "host": "worker.example.com",
+    "user": "tars-worker",
+    "port": 22,
+    "identity_file": "/var/lib/tars-gateway/ssh/worker_ed25519",
+    "known_hosts_file": "/var/lib/tars-gateway/ssh/known_hosts",
+    "worker_config_path": "/var/lib/tars-worker/worker.json"
+  }
+}
+```
+
+The worker registration attests both capabilities and the task-token
+verification-key ID. Duplicate execute/collect/destroy messages ignore the old
+ephemeral token only for idempotency comparison, then require a newly valid,
+correctly bound token before returning a persisted result.
 
 Do not put a password, token, or user-info segment in a persisted worker
 endpoint. The controller rejects credential-bearing endpoints, redacts failure
@@ -195,3 +308,6 @@ This stops new remote placements/delegations without deleting controller or
 Work Ledger records. Keep those records for audit and recovery. If controller
 state fails validation, preserve the file, disable remote workers, and inspect
 the last valid Work Ledger transition before attempting any manual repair.
+Remove `gateway_config_path` as well when rolling back the scheduler adapter;
+never delete a surviving run journal until its Attempt and placement state have
+been reconciled.

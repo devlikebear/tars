@@ -264,6 +264,9 @@ work_ledger:
     # state is kept below execution_data_dir/remote-workers/controller.json.
     remote_workers:
       enabled: false
+      # Optional absolute path to an owner-only (0600) gateway JSON config.
+      # Setting it registers a durable remote/container scheduler adapter.
+      gateway_config_path: ""
     # A2A is an external interoperability adapter only. It never replaces the
     # Work Ledger, MCP, or TARS' internal worker protocol.
     a2a:

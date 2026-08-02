@@ -76,6 +76,45 @@ func TestSchedulerExecutesDAGAndCompletesWork(t *testing.T) {
 	}
 }
 
+func TestSchedulerFinalizesExecutorStateOnlyAfterAttemptCommit(t *testing.T) {
+	t.Parallel()
+
+	store := openSchedulerTestStore(t)
+	executor := &finalizingExecutor{adapter: "finalizing", finalized: make(chan Execution, 1)}
+	scheduler := newTestScheduler(t, store, "workspace-finalize", executor, 1)
+	work, err := scheduler.Submit(context.Background(), SubmitInput{
+		WorkspaceID: "workspace-finalize", IdempotencyKey: "finalize", Title: "Finalize durable state",
+		Adapter: executor.adapter, ActorID: "planner",
+		Steps: []StepSpec{{Key: "run", Title: "Run", Policy: oneAttemptPolicy()}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if claimed, err := scheduler.RunOnce(context.Background()); err != nil || claimed != 1 {
+		t.Fatalf("scheduler tick claimed=%d err=%v", claimed, err)
+	}
+	projection, err := scheduler.Wait(context.Background(), work.ID)
+	if err != nil || projection.Work.State != workstore.WorkStateDone {
+		t.Fatalf("completed projection=%+v err=%v", projection, err)
+	}
+	select {
+	case finalized := <-executor.finalized:
+		projection, err := store.GetWorkProjection(context.Background(), finalized.Claim.Step.WorkspaceID, finalized.Claim.Step.WorkID)
+		if err != nil {
+			t.Fatalf("read durable attempt after finalizer: %v", err)
+		}
+		var committed bool
+		for _, attempt := range projection.Attempts {
+			committed = committed || attempt.ID == finalized.Claim.Attempt.ID && attempt.Status == workstore.AttemptStatusSucceeded
+		}
+		if !committed {
+			t.Fatalf("finalizer ran before durable attempt commit: %+v", projection.Attempts)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("executor finalizer was not called")
+	}
+}
+
 func TestSchedulerRecordsPromotedCapabilityOutcome(t *testing.T) {
 	t.Parallel()
 
@@ -414,7 +453,7 @@ func TestSchedulerRetriesThenRequestsReview(t *testing.T) {
 		}
 		eventually(t, func() bool {
 			projection, projectionErr := store.GetWorkProjection(context.Background(), work.WorkspaceID, work.ID)
-			return projectionErr == nil && projection.Steps[0].State == want
+			return projectionErr == nil && projection.Steps[0].State == want && scheduler.activeCount() == 0
 		})
 	}
 	projection, err := scheduler.Wait(context.Background(), work.ID)
@@ -593,6 +632,22 @@ func (executor *fakeExecutor) Recover(ctx context.Context, execution Execution) 
 		return ExecutionResult{}, false, nil
 	}
 	return executor.recover(ctx, execution)
+}
+
+type finalizingExecutor struct {
+	adapter   string
+	finalized chan Execution
+}
+
+func (executor *finalizingExecutor) Adapter() string { return executor.adapter }
+
+func (*finalizingExecutor) Execute(context.Context, Execution) (ExecutionResult, error) {
+	return ExecutionResult{Succeeded: true, OutputJSON: json.RawMessage(`{"ok":true}`)}, nil
+}
+
+func (executor *finalizingExecutor) Finalize(_ context.Context, execution Execution, _ ExecutionResult) error {
+	executor.finalized <- execution
+	return nil
 }
 
 func newTestScheduler(t *testing.T, store *workstore.Store, workspaceID string, executor Executor, workers int) *Scheduler {

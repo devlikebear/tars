@@ -157,6 +157,82 @@ func TestReferenceWorkerRejectsWrongTaskBindingBeforeExecution(t *testing.T) {
 	}
 }
 
+func TestReferenceWorkerRevalidatesFreshAuthorizationBeforeIdempotentExecuteReplay(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 8, 3, 12, 0, 0, 0, time.UTC)
+	seed := make([]byte, ed25519.SeedSize)
+	seed[0] = 72
+	issuer, err := NewTaskTokenIssuer(TaskTokenIssuerOptions{
+		PrivateKey: ed25519.NewKeyFromSeed(seed), MaxTTL: 5 * time.Minute, Now: func() time.Time { return now },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	executor := &recordingReferenceExecutor{result: ReferenceExecutionResult{Payload: json.RawMessage(`{"succeeded":true}`)}}
+	worker, err := NewReferenceWorker(ReferenceWorkerOptions{
+		WorkerID: "worker-a", RootDir: t.TempDir(), TokenVerifier: issuer.PublicVerifier(), Executor: executor,
+		Now: func() time.Time { return now },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	binding := TaskTokenBinding{
+		WorkspaceID: "ws", WorkID: "work", StepID: "step", AttemptID: "attempt",
+		PlacementID: "placement", WorkerID: "worker-a",
+	}
+	source := t.TempDir()
+	if err := os.WriteFile(filepath.Join(source, "task.txt"), []byte("task\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	bundle, err := BuildWorkspaceBundle(context.Background(), WorkspaceBundleOptions{RootDir: source, Mode: SyncModeDirectory})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, request := range []WireRequest{
+		wireRequestForSequence("worker-a", "placement", 1, MessageProvision, ProvisionPayload{
+			EnvironmentID: "env", Policy: DefaultExecutionPolicy(), Binding: binding,
+		}, nil),
+		wireRequestForSequence("worker-a", "placement", 2, MessageSync, SyncPayload{Mode: SyncModeDirectory, Digest: bundle.Manifest.Digest}, &bundle),
+		wireRequestForSequence("worker-a", "placement", 3, MessageLease, LeasePayload{LeaseTTLMS: 60_000}, nil),
+	} {
+		if response, err := worker.Handle(context.Background(), request); err != nil || !response.Accepted {
+			t.Fatalf("prepare replay worker response=%+v err=%v", response, err)
+		}
+	}
+	token, _, err := issuer.Issue(binding, []TaskScope{TaskScopeExecute}, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	execute := wireRequestForSequence("worker-a", "placement", 4, MessageExecute, ExecutePayload{
+		TaskToken: token, Request: json.RawMessage(`{"objective":"run once"}`),
+	}, nil)
+	if response, err := worker.Handle(context.Background(), execute); err != nil || !response.Accepted {
+		t.Fatalf("execute response=%+v err=%v", response, err)
+	}
+	invalidReplay := execute
+	invalidReplay.Envelope.Payload, _ = json.Marshal(ExecutePayload{
+		TaskToken: "invalid", Request: json.RawMessage(`{"objective":"run once"}`),
+	})
+	if response, err := worker.Handle(context.Background(), invalidReplay); err != nil || response.Accepted || response.ErrorCode != "authorization_denied" {
+		t.Fatalf("unauthorized replay response=%+v err=%v", response, err)
+	}
+	freshToken, _, err := issuer.Issue(binding, []TaskScope{TaskScopeExecute}, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	authorizedReplay := execute
+	authorizedReplay.Envelope.Payload, _ = json.Marshal(ExecutePayload{
+		TaskToken: freshToken, Request: json.RawMessage(`{"objective":"run once"}`),
+	})
+	if response, err := worker.Handle(context.Background(), authorizedReplay); err != nil || !response.Accepted {
+		t.Fatalf("authorized replay response=%+v err=%v", response, err)
+	}
+	if executor.calls != 1 {
+		t.Fatalf("idempotent replay repeated execution: calls=%d", executor.calls)
+	}
+}
+
 type recordingReferenceExecutor struct {
 	request ReferenceExecutionRequest
 	result  ReferenceExecutionResult

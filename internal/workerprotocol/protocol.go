@@ -109,9 +109,10 @@ func validProtocolIdentifier(value string) bool {
 }
 
 type RegisterPayload struct {
-	Transport    string             `json:"transport"`
-	Endpoint     string             `json:"endpoint"`
-	Capabilities WorkerCapabilities `json:"capabilities"`
+	Transport         string             `json:"transport"`
+	Endpoint          string             `json:"endpoint"`
+	Capabilities      WorkerCapabilities `json:"capabilities"`
+	VerificationKeyID string             `json:"verification_key_id,omitempty"`
 }
 
 type HeartbeatPayload struct {

@@ -90,6 +90,13 @@ type CancelableExecutor interface {
 	Cancel(context.Context, Execution) error
 }
 
+// FinalizableExecutor releases executor-owned recovery state only after the
+// scheduler has durably committed the Attempt result to the Work Ledger.
+// Implementations must be idempotent because cleanup can be retried.
+type FinalizableExecutor interface {
+	Finalize(context.Context, Execution, ExecutionResult) error
+}
+
 type Verifier interface {
 	Name() string
 	Identity() VerifierIdentity

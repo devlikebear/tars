@@ -78,6 +78,7 @@ work_ledger:
     artifact_paths: []
     remote_workers:
       enabled: false
+      gateway_config_path: ""
     a2a:
       enabled: false
       discovery_url: ""
