@@ -38,12 +38,13 @@ func (r *Runtime) Spawn(ctx context.Context, req SpawnRequest) (Run, error) {
 		}
 		return Run{}, err
 	}
+	accepted := state.run
 
 	go func() {
 		defer r.runWG.Done()
 		r.executeRun(runCtx, state.run.ID)
 	}()
-	return state.run, nil
+	return accepted, nil
 }
 
 func resolveSpawnSessionID(sessionStore *session.Store, req SpawnRequest, info AgentInfo, selectedAgent string) (string, error) {
