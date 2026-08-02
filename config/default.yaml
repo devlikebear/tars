@@ -73,6 +73,9 @@ work_ledger:
     lease_seconds: 60
     heartbeat_seconds: 20
     poll_milliseconds: 250
+    execution_environment: local
+    execution_data_dir: $HOME/.tars/execution-plane
+    artifact_paths: []
 
 companion:
   enabled: true

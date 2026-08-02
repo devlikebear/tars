@@ -252,6 +252,14 @@ work_ledger:
     lease_seconds: 60
     heartbeat_seconds: 20
     poll_milliseconds: 250
+    # local preserves existing behavior; managed-worktree requires a Git repository.
+    execution_environment: local
+    # Must be outside workspace_dir. Stores resumable state, managed worktrees,
+    # and redacted copies of configured artifacts with private permissions.
+    execution_data_dir: $HOME/.tars/execution-plane
+    # Relative paths/globs only. Sensitive names, symlinks, .git, .tars, and
+    # node_modules are excluded by the collector.
+    artifact_paths: []
 
 agentruntime:
   enabled: false

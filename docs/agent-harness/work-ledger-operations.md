@@ -149,6 +149,9 @@ work_ledger:
     lease_seconds: 60
     heartbeat_seconds: 20
     poll_milliseconds: 250
+    execution_environment: local
+    execution_data_dir: $HOME/.tars/execution-plane
+    artifact_paths: []
 ```
 
 The heartbeat must be shorter than the lease. All numeric values must be
@@ -159,7 +162,10 @@ variables are
 `TARS_WORK_SCHEDULER_ENABLED`, `TARS_WORK_SCHEDULER_MAX_WORKERS`,
 `TARS_WORK_SCHEDULER_LEASE_SECONDS`,
 `TARS_WORK_SCHEDULER_HEARTBEAT_SECONDS`, and
-`TARS_WORK_SCHEDULER_POLL_MILLISECONDS`.
+`TARS_WORK_SCHEDULER_POLL_MILLISECONDS`. Execution-plane settings use
+`TARS_WORK_SCHEDULER_EXECUTION_ENVIRONMENT`,
+`TARS_WORK_SCHEDULER_EXECUTION_DATA_DIR`, and
+`TARS_WORK_SCHEDULER_ARTIFACT_PATHS_JSON`.
 
 When enabled, `subagents_orchestrate` stores the entire dependency graph before
 moving its Work to `running`, returns `work_id` by default, and uses the
@@ -168,8 +174,11 @@ restart, the scheduler reconnects a still-valid Agent Runtime attempt when the
 executor can identify it. Otherwise it releases or reclaims the lease and
 applies the recorded bounded policy. A Step never implies exactly-once external
 side effects; mutating-tool idempotency and effect receipts are a separate
-control-plane capability. See [Agent Runtime checkpoint recovery](checkpoint-recovery.md)
-for the crash boundaries, human-decision path, and executor limitations.
+control-plane capability. Every attempt now uses the execution-plane lifecycle;
+see [Execution-plane operations](execution-plane.md) for local versus disposable
+worktree behavior, artifact filtering, recovery, and cleanup, and see
+[Agent Runtime checkpoint recovery](checkpoint-recovery.md) for the crash
+boundaries, human-decision path, and executor limitations.
 
 Operator APIs are workspace-scoped:
 
