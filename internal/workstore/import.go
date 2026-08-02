@@ -297,6 +297,95 @@ func (s *Store) GetLegacySessionTasksProjection(ctx context.Context, workspaceID
 	return append(json.RawMessage(nil), metadata.LegacyTasks...), true, nil
 }
 
+// GetLegacyAgentRuntimeRunProjection returns the newest source-compatible run
+// document for a run ID. Runtime revisions stay append-only in the ledger,
+// while compatibility readers see the same latest-record behavior as runs.json.
+func (s *Store) GetLegacyAgentRuntimeRunProjection(ctx context.Context, workspaceID, runID string) (json.RawMessage, bool, error) {
+	workspaceID = strings.TrimSpace(workspaceID)
+	runID = strings.TrimSpace(runID)
+	if workspaceID == "" || runID == "" {
+		return nil, false, fmt.Errorf("workstore: workspace id and run id are required")
+	}
+	work, found, err := s.findLatestSourceWork(ctx, workspaceID, ImportSourceAgentRuntime, runID)
+	if err != nil || !found {
+		return nil, found, err
+	}
+	projection, err := legacyAgentRuntimeRunProjection(work.SourceID, work.MetadataJSON)
+	if err != nil {
+		return nil, false, err
+	}
+	return projection, true, nil
+}
+
+// ListLegacyAgentRuntimeRunProjections returns one newest source-compatible
+// document per run, ordered by ledger revision insertion order (newest first).
+// The window query prevents old revisions from consuming the requested limit.
+func (s *Store) ListLegacyAgentRuntimeRunProjections(ctx context.Context, workspaceID string, limit int) ([]json.RawMessage, error) {
+	workspaceID = strings.TrimSpace(workspaceID)
+	if workspaceID == "" {
+		return nil, fmt.Errorf("workstore: workspace id is required")
+	}
+	if limit <= 0 {
+		limit = 50
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT source_id, metadata_json FROM (
+			SELECT source_id, metadata_json, created_at, rowid AS source_rowid,
+				ROW_NUMBER() OVER (
+					PARTITION BY source_id ORDER BY created_at DESC, rowid DESC
+				) AS revision_rank
+			FROM works
+			WHERE workspace_id = ? AND source = ?
+		)
+		WHERE revision_rank = 1
+		ORDER BY created_at DESC, source_rowid DESC
+		LIMIT ?
+	`, workspaceID, ImportSourceAgentRuntime, limit)
+	if err != nil {
+		return nil, fmt.Errorf("workstore: list legacy agent runtime projections: %w", err)
+	}
+	defer closeRows(rows)
+	projections := make([]json.RawMessage, 0)
+	for rows.Next() {
+		var sourceID string
+		var metadata jsonValue
+		if err := rows.Scan(&sourceID, &metadata); err != nil {
+			return nil, fmt.Errorf("workstore: scan legacy agent runtime projection: %w", err)
+		}
+		projection, err := legacyAgentRuntimeRunProjection(sourceID, json.RawMessage(metadata))
+		if err != nil {
+			return nil, err
+		}
+		projections = append(projections, projection)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("workstore: iterate legacy agent runtime projections: %w", err)
+	}
+	return projections, nil
+}
+
+func legacyAgentRuntimeRunProjection(sourceID string, metadataJSON json.RawMessage) (json.RawMessage, error) {
+	var metadata struct {
+		Run json.RawMessage `json:"legacy_run"`
+	}
+	if err := json.Unmarshal(metadataJSON, &metadata); err != nil {
+		return nil, fmt.Errorf("workstore: decode agent runtime projection metadata: %w", err)
+	}
+	if len(metadata.Run) == 0 || string(metadata.Run) == "null" || !json.Valid(metadata.Run) {
+		return nil, fmt.Errorf("workstore: agent runtime projection is missing legacy run")
+	}
+	var identity struct {
+		ID string `json:"run_id"`
+	}
+	if err := json.Unmarshal(metadata.Run, &identity); err != nil {
+		return nil, fmt.Errorf("workstore: decode legacy agent runtime projection: %w", err)
+	}
+	if strings.TrimSpace(identity.ID) != strings.TrimSpace(sourceID) {
+		return nil, fmt.Errorf("workstore: legacy agent runtime projection id mismatch")
+	}
+	return append(json.RawMessage(nil), metadata.Run...), nil
+}
+
 func (s *Store) importLegacyEvidence(
 	ctx context.Context,
 	input LegacySessionImportInput,
@@ -448,8 +537,10 @@ func (s *Store) ImportAgentRuntimeSnapshot(ctx context.Context, input AgentRunti
 
 func (s *Store) importRuntimeRun(ctx context.Context, input AgentRuntimeImportInput, checksum, parentWorkID string, parsed parsedRuntimeRun) (Work, error) {
 	run := parsed.run
+	runChecksum := importChecksum(parsed.raw)
 	metadataJSON, err := json.Marshal(map[string]any{
 		"import_checksum": checksum,
+		"run_checksum":    runChecksum,
 		"source_path":     input.SourcePath,
 		"legacy_run":      parsed.raw,
 		"legacy_snapshot": json.RawMessage(input.SnapshotJSON),
@@ -457,7 +548,7 @@ func (s *Store) importRuntimeRun(ctx context.Context, input AgentRuntimeImportIn
 	if err != nil {
 		return Work{}, fmt.Errorf("workstore: encode runtime run %q metadata: %w", run.ID, err)
 	}
-	prefix := "import:agentruntime:" + input.SourceID + ":" + checksum + ":run:" + run.ID
+	prefix := "import:agentruntime:" + input.SourceID + ":run:" + run.ID + ":" + runChecksum
 	work, err := s.CreateWork(ctx, CreateWorkInput{
 		WorkspaceID:    input.WorkspaceID,
 		Kind:           "agent-run",

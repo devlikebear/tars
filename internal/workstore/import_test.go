@@ -434,6 +434,133 @@ func TestImportAgentRuntimeSnapshotPreservesRunAttempts(t *testing.T) {
 	}
 }
 
+func TestLegacyAgentRuntimeRunProjectionsReturnLatestRunRevisions(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := openTestStore(t, filepath.Join(t.TempDir(), "ledger.db"))
+	first, err := store.ImportAgentRuntimeSnapshot(ctx, AgentRuntimeImportInput{
+		WorkspaceID: "workspace-a",
+		SourceID:    "runs",
+		SnapshotJSON: []byte(`{"runs":[
+			{"run_id":"run-1","prompt":"Build","status":"running","updated_at":"2026-08-02T01:00:00Z"}
+		]}`),
+		ActorID: "runtime-sync",
+	})
+	if err != nil {
+		t.Fatalf("import first runtime snapshot: %v", err)
+	}
+	second, err := store.ImportAgentRuntimeSnapshot(ctx, AgentRuntimeImportInput{
+		WorkspaceID: "workspace-a",
+		SourceID:    "runs",
+		SnapshotJSON: []byte(`{"runs":[
+			{"run_id":"run-1","prompt":"Build","status":"completed","response":"done","updated_at":"2026-08-02T01:02:00Z"},
+			{"run_id":"run-2","prompt":"Review","status":"accepted","updated_at":"2026-08-02T01:01:00Z"}
+		]}`),
+		ActorID: "runtime-sync",
+	})
+	if err != nil {
+		t.Fatalf("import second runtime snapshot: %v", err)
+	}
+	if first.WorkIDs[0] == second.WorkIDs[0] {
+		t.Fatal("changed run revision reused the previous work record")
+	}
+
+	raw, found, err := store.GetLegacyAgentRuntimeRunProjection(ctx, "workspace-a", "run-1")
+	if err != nil || !found {
+		t.Fatalf("get latest run projection found=%t err=%v", found, err)
+	}
+	var latest legacyRuntimeRun
+	if err := json.Unmarshal(raw, &latest); err != nil {
+		t.Fatalf("decode latest run projection: %v", err)
+	}
+	if latest.ID != "run-1" || latest.Status != "completed" || latest.Response != "done" {
+		t.Fatalf("latest run projection = %#v", latest)
+	}
+
+	projections, err := store.ListLegacyAgentRuntimeRunProjections(ctx, "workspace-a", 10)
+	if err != nil {
+		t.Fatalf("list run projections: %v", err)
+	}
+	if len(projections) != 2 {
+		t.Fatalf("run projection count = %d, want 2", len(projections))
+	}
+	var listed []legacyRuntimeRun
+	for _, projection := range projections {
+		var run legacyRuntimeRun
+		if err := json.Unmarshal(projection, &run); err != nil {
+			t.Fatalf("decode listed run projection: %v", err)
+		}
+		listed = append(listed, run)
+	}
+	if listed[0].ID != "run-2" || listed[1].ID != "run-1" {
+		t.Fatalf("listed latest run order = %#v", listed)
+	}
+	if _, found, err := store.GetLegacyAgentRuntimeRunProjection(ctx, "workspace-b", "run-1"); err != nil || found {
+		t.Fatalf("cross-workspace run projection found=%t err=%v", found, err)
+	}
+}
+
+func TestAgentRuntimeImportReusesUnchangedRunsAcrossSnapshots(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := openTestStore(t, filepath.Join(t.TempDir(), "ledger.db"))
+	firstRaw := json.RawMessage(`{"run_id":"run-stable","prompt":"Stable","status":"completed","updated_at":"2026-08-02T01:00:00Z"}`)
+	first, err := store.ImportAgentRuntimeSnapshot(ctx, AgentRuntimeImportInput{
+		WorkspaceID: "workspace-a", SourceID: "runs",
+		SnapshotJSON: []byte(`{"runs":[` + string(firstRaw) + `]}`), ActorID: "runtime-sync",
+	})
+	if err != nil {
+		t.Fatalf("import first snapshot: %v", err)
+	}
+	second, err := store.ImportAgentRuntimeSnapshot(ctx, AgentRuntimeImportInput{
+		WorkspaceID: "workspace-a", SourceID: "runs",
+		SnapshotJSON: []byte(`{"runs":[` + string(firstRaw) + `,{"run_id":"run-new","status":"accepted","updated_at":"2026-08-02T01:01:00Z"}]}`),
+		ActorID:      "runtime-sync",
+	})
+	if err != nil {
+		t.Fatalf("import expanded snapshot: %v", err)
+	}
+	if first.WorkIDs[0] != second.WorkIDs[0] {
+		t.Fatalf("unchanged run work IDs = %q and %q", first.WorkIDs[0], second.WorkIDs[0])
+	}
+	works, err := store.ListWorks(ctx, ListWorksFilter{WorkspaceID: "workspace-a"})
+	if err != nil || len(works) != 2 {
+		t.Fatalf("work count after expanded snapshot = %d err=%v, want 2", len(works), err)
+	}
+}
+
+func TestLegacyAgentRuntimeRunProjectionRejectsInvalidInputsAndMetadata(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := openTestStore(t, filepath.Join(t.TempDir(), "ledger.db"))
+	if _, err := store.ListLegacyAgentRuntimeRunProjections(ctx, "", 10); err == nil {
+		t.Fatal("expected empty workspace list to fail")
+	}
+	if _, _, err := store.GetLegacyAgentRuntimeRunProjection(ctx, "workspace-a", ""); err == nil {
+		t.Fatal("expected empty run id to fail")
+	}
+	result, err := store.ImportAgentRuntimeSnapshot(ctx, AgentRuntimeImportInput{
+		WorkspaceID: "workspace-a", SourceID: "runs",
+		SnapshotJSON: []byte(`{"runs":[{"run_id":"run-corrupt","status":"completed"}]}`),
+		ActorID:      "runtime-sync",
+	})
+	if err != nil {
+		t.Fatalf("import corruptible snapshot: %v", err)
+	}
+	if _, err := store.db.ExecContext(ctx, "UPDATE works SET metadata_json = ? WHERE id = ?", []byte(`{"legacy_run":null}`), result.WorkIDs[0]); err != nil {
+		t.Fatalf("corrupt runtime metadata: %v", err)
+	}
+	if _, _, err := store.GetLegacyAgentRuntimeRunProjection(ctx, "workspace-a", "run-corrupt"); err == nil {
+		t.Fatal("expected missing legacy run metadata to fail")
+	}
+	if _, err := store.ListLegacyAgentRuntimeRunProjections(ctx, "workspace-a", 10); err == nil {
+		t.Fatal("expected corrupt listed run metadata to fail")
+	}
+}
+
 func TestImportRejectsCorruptOrIncompleteSourcesWithoutMutation(t *testing.T) {
 	t.Parallel()
 
