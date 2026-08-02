@@ -6,6 +6,18 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.34.4] - 2026-08-02
+
+### Added
+
+- **Agent Harness Evaluation Pack (#906)** — Adds 12 deterministic fake-model/fake-tool scenarios for single and parallel agents, dependency handoff, restart recovery, approvals, false-success detection, skill reuse, duplicate effects, partial failure, and budget guards. CI now records task success, independent-verifier pass, restart recovery, duplicate effects, operator interventions, TTFT, token usage, and estimated cost through a versioned JSONL/Markdown report contract.
+- **Opt-in live provider evaluation (#906)** — Adds `cmd/agentharness-eval` and Make targets for deterministic baselines plus non-gating provider runs with streamed TTFT, usage, and configurable price estimates.
+- **Durable Work Ledger storage decision (#906)** — Selects pure-Go SQLite in WAL mode over a bespoke append-only file journal and documents transaction, migration, backup, lease-recovery, and effect-receipt requirements for Phase 1.
+
+### Changed
+
+- **Current agent-platform comparison (#906)** — Replaces the stale OpenClaw/Hermes matrix with an official-source, 2026-08-02 status snapshot that separates stable, pre-release, and TARS proposal claims. The refreshed usage decision keeps direct parallel delegation visible while advanced planning/orchestration and consensus remain opt-in.
+
 ## [0.34.3] - 2026-06-23
 
 ### Fixed

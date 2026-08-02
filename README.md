@@ -32,16 +32,16 @@ The name comes from the TARS in *Interstellar* — practical, direct, dependable
 
 | | OpenClaw | Hermes Agent | TARS |
 |---|---|---|---|
-| **Language** | TypeScript | Python | Go (single binary) |
-| **Primary UI** | CLI | CLI + Agent Runtime API | Browser console (CLI / Telegram / webhooks also) |
-| **Sub-agents** | ACP + subagent runtimes, push-based completion, Docker sandbox | ThreadPoolExecutor (max 3), ephemeral prompt, credential override | Agent Runtime executor with per-task model tier, allowlist policy, depth control |
-| **Model routing** | Per-agent model override | Per-child provider/model override, MoA (4 frontier models) | 3-tier named bundles (heavy/standard/light) with role→tier config mapping |
-| **Memory** | Session transcripts | Honcho/Holographic plugin hooks | Durable Markdown memory + semantic search + review-before-store extraction + nightly reflection |
-| **Background** | None | None | Pulse watchdog (1-min) + Reflection nightly batch |
-| **Scheduling** | None | None | Session-bound cron jobs with audit logs |
-| **Channels** | CLI | CLI + Agent Runtime API | Console + Telegram + webhooks |
-| **Context mgmt** | Per-session | ContextCompressor (50% threshold, protect-last-N) | Structured compaction with identifier preservation + light-tier LLM summary |
-| **Extensibility** | Built-in tools | Toolsets (terminal, file, web, delegation) | Skills + companion CLIs first, plus gated plugins/MCP from Skill Hub |
+| **Release used** | Stable `v2026.7.1` | Stable `v0.19.1` (`v2026.7.30`) | `v0.34.4` (this release) |
+| **Packaging** | TypeScript Gateway plus web/native apps and plugins | Python agent/gateway plus TUI, web, and desktop surfaces | Go single binary with embedded browser console and CLI |
+| **Delegation / harnesses** | Native subagents, Codex runtime, and ACP-backed external harness sessions | Isolated `delegate_task` children, live transcripts, MoA, and coding-runtime adapters | Native Agent Runtime with model tiers, tool policy, depth limits, and experimental consensus |
+| **Durable async work** | Background-task ledger plus SQLite-backed automations | Durable Kanban/goals, delegated-result recovery, and delivery-obligation ledger | Session Tasks and file-backed run snapshots; a unified Work Ledger is proposed in [#905](https://github.com/devlikebear/tars/issues/905) |
+| **Restart behavior** | Persistent automation/task records; the latest beta adds broader crash recovery | Gateway auto-resume and durable delegation/delivery recovery | Completed history survives, but an active run is restored as canceled and needs operator action |
+| **Proof of completion** | Completion handoff asks the parent to verify; task audit surfaces unhealthy work | Goal completion contracts and recorded verification evidence | Task verification can attach command evidence, but it is not yet a universal completion gate |
+| **Scheduling** | Persistent Automations, cron alias, heartbeat monitors | Cron, blueprints, watchdog/no-agent jobs | Session-bound cron, Pulse watchdog, and nightly Reflection |
+| **Skills / learning** | Skills and plugin catalog | On-demand skills, `/learn`, background review, and Curator | On-demand skills, reviewed memory extraction, skill creation, and Skill Hub |
+
+Verified on **2026-08-02** from official project documentation and release pages. OpenClaw `v2026.7.2-beta.6` capabilities are treated as pre-release, not stable. See the [status-separated market scan](docs/agent-harness/market-scan-2026-08-02.md) and [reproducible evaluation baseline](docs/agent-harness/README.md) for sources, limitations, and the TARS evolution roadmap.
 
 ## Key Features
 

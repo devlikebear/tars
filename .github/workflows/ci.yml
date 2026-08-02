@@ -91,6 +91,9 @@ jobs:
       - name: Run tests with coverage
         run: make test-cover-check
 
+      - name: Run deterministic agent harness scenarios
+        run: make agent-harness-eval
+
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2 # v6
         with:
@@ -141,3 +144,6 @@ jobs:
           DIFF_BASE: ${{ github.event.pull_request.base.sha }}
           DIFF_HEAD: HEAD
         run: make test-cover-diff
+
+      - name: Run deterministic agent harness scenarios
+        run: make agent-harness-eval

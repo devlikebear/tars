@@ -50,3 +50,18 @@ The review window contains 428 sanitized signal rows across 15 sessions. It does
 - 2026-05-01 Q-012 / [#509](https://github.com/devlikebear/tars/issues/509): a fresh check still showed 0 `subagents_plan`, 0 `subagents_orchestrate`, and 4 `subagents_run` calls, all `mode=parallel`. TARS now keeps `subagents_run` as the default delegated-work tool and gates `subagents_plan` / `subagents_orchestrate` behind explicit session tool opt-in.
 - 2026-05-01 Q-017 / [#508](https://github.com/devlikebear/tars/issues/508): a fresh check still showed 0 `session.tool_config.updated` rows. TARS now removes the always-visible Chat toolbar `Config` button, keeps explicit `/config` access for selected sessions, and preserves backend `SessionToolConfig` filtering plus telemetry for diagnostics.
 - 2026-05-01 Q-015 / [#507](https://github.com/devlikebear/tars/issues/507): a fresh check still showed 0 `agentruntime.consensus.started` rows and 0 `subagents_run` calls with `mode=consensus`. TARS now hides consensus from the default `subagents_run` schema unless `agentruntime.consensus.enabled=true`, and disabled calls are rejected before a run is spawned.
+
+## Decision Refresh - reviewed 2026-08-02
+
+The latest available workspace signal files were re-read for [the agent-control-plane baseline](agent-harness/market-scan-2026-08-02.md). The additional window from 2026-05-01 through the latest recorded event on 2026-05-20 contains 1,144 sanitized rows across 22 sessions:
+
+| Surface | Additional-window count | Combined interpretation |
+| --- | ---: | --- |
+| `subagents_plan` | 0 | Keep behind explicit session opt-in. |
+| `subagents_orchestrate` | 0 | Keep behind explicit session opt-in until durable plans improve evaluation outcomes. |
+| `subagents_run` | 0 | Retain as the single default delegation primitive; the preceding window had four calls, all parallel. |
+| `agentruntime.consensus.started` | 0 | Keep disabled and hidden by default until verifier/cost evaluation demonstrates value. |
+
+The deterministic Agent Harness Evaluation Pack independently exercises parallel fan-out, dependency handoff, and partial-child failure without requiring a default-visible planner or consensus surface. Session Tasks remain the high-signal planning surface and should evolve into the Durable Work Ledger UI.
+
+The signal stream available for this review ends on 2026-05-20. These counts are a current review of the latest available local telemetry, not a claim of data collection through August.

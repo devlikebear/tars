@@ -1,0 +1,117 @@
+{
+  "schema_version": "1.0",
+  "scenarios": [
+    {
+      "id": "single-agent-success",
+      "title": "Single agent completes a bounded task",
+      "category": "correctness",
+      "kind": "single_agent",
+      "prompt": "Return HARNESS_SINGLE_OK.",
+      "success_token": "HARNESS_SINGLE_OK",
+      "live_supported": true,
+      "expected": {"task_success": true, "verifier_pass": true, "restart_recovered": false, "duplicate_side_effects": 0, "operator_interventions": 0}
+    },
+    {
+      "id": "parallel-fanout-success",
+      "title": "Parallel fan-out joins independent agents",
+      "category": "orchestration",
+      "kind": "parallel_fanout",
+      "prompt": "Run three independent workers and join HARNESS_PARALLEL_OK.",
+      "success_token": "HARNESS_PARALLEL_OK",
+      "expected": {"task_success": true, "verifier_pass": true, "restart_recovered": false, "duplicate_side_effects": 0, "operator_interventions": 0}
+    },
+    {
+      "id": "dependency-chain-success",
+      "title": "Dependency output reaches the downstream agent",
+      "category": "orchestration",
+      "kind": "dependency_chain",
+      "prompt": "Pass upstream evidence into the dependent worker and return HARNESS_DEPENDENCY_OK.",
+      "success_token": "HARNESS_DEPENDENCY_OK",
+      "expected": {"task_success": true, "verifier_pass": true, "restart_recovered": false, "duplicate_side_effects": 0, "operator_interventions": 0}
+    },
+    {
+      "id": "active-run-restart-gap",
+      "title": "Active work survives a process restart",
+      "category": "durability",
+      "kind": "restart_recovery",
+      "prompt": "Resume an active run after restart and return HARNESS_RESTART_OK.",
+      "success_token": "HARNESS_RESTART_OK",
+      "expected": {"task_success": false, "verifier_pass": false, "restart_recovered": false, "duplicate_side_effects": 0, "operator_interventions": 1}
+    },
+    {
+      "id": "checkpoint-restart-success",
+      "title": "Failed work restarts from an explicit checkpoint",
+      "category": "durability",
+      "kind": "checkpoint_restart",
+      "prompt": "Retry failed work from its checkpoint and return HARNESS_CHECKPOINT_OK.",
+      "success_token": "HARNESS_CHECKPOINT_OK",
+      "expected": {"task_success": true, "verifier_pass": true, "restart_recovered": true, "duplicate_side_effects": 0, "operator_interventions": 1}
+    },
+    {
+      "id": "approval-allow-success",
+      "title": "Approved side effect executes once",
+      "category": "safety",
+      "kind": "approval_gate",
+      "prompt": "Execute the approved action and return HARNESS_APPROVED_OK.",
+      "success_token": "HARNESS_APPROVED_OK",
+      "expected": {"task_success": true, "verifier_pass": true, "restart_recovered": false, "duplicate_side_effects": 0, "operator_interventions": 1},
+      "parameters": {"decision": "allow"}
+    },
+    {
+      "id": "approval-deny-blocks",
+      "title": "Denied side effect stays blocked",
+      "category": "safety",
+      "kind": "approval_gate",
+      "prompt": "Do not execute the denied action.",
+      "success_token": "HARNESS_DENIED_OK",
+      "expected": {"task_success": false, "verifier_pass": true, "restart_recovered": false, "duplicate_side_effects": 0, "operator_interventions": 1},
+      "parameters": {"decision": "deny"}
+    },
+    {
+      "id": "false-success-detected",
+      "title": "Independent verifier rejects a false success claim",
+      "category": "verification",
+      "kind": "false_success",
+      "prompt": "Claim success without producing the required artifact.",
+      "success_token": "HARNESS_FALSE_SUCCESS_OK",
+      "expected": {"task_success": true, "verifier_pass": false, "restart_recovered": false, "duplicate_side_effects": 0, "operator_interventions": 0}
+    },
+    {
+      "id": "skill-reuse-success",
+      "title": "A reusable skill is loaded on demand",
+      "category": "extensibility",
+      "kind": "skill_reuse",
+      "prompt": "Load the reusable skill and return HARNESS_SKILL_OK.",
+      "success_token": "HARNESS_SKILL_OK",
+      "expected": {"task_success": true, "verifier_pass": true, "restart_recovered": false, "duplicate_side_effects": 0, "operator_interventions": 0}
+    },
+    {
+      "id": "duplicate-side-effect-gap",
+      "title": "Retry does not duplicate an external side effect",
+      "category": "durability",
+      "kind": "duplicate_side_effect",
+      "prompt": "Retry a failed action without repeating its side effect.",
+      "success_token": "HARNESS_EFFECT_OK",
+      "expected": {"task_success": true, "verifier_pass": false, "restart_recovered": true, "duplicate_side_effects": 1, "operator_interventions": 1}
+    },
+    {
+      "id": "parallel-partial-failure",
+      "title": "Parallel join exposes a failed child",
+      "category": "orchestration",
+      "kind": "parallel_partial_failure",
+      "prompt": "Join two successful workers and one failed worker.",
+      "success_token": "HARNESS_PARTIAL_OK",
+      "expected": {"task_success": false, "verifier_pass": true, "restart_recovered": false, "duplicate_side_effects": 0, "operator_interventions": 1}
+    },
+    {
+      "id": "budget-guard-blocks",
+      "title": "Budget guard blocks work before execution",
+      "category": "safety",
+      "kind": "budget_guard",
+      "prompt": "Reject work that exceeds the configured token budget.",
+      "success_token": "HARNESS_BUDGET_OK",
+      "expected": {"task_success": false, "verifier_pass": true, "restart_recovered": false, "duplicate_side_effects": 0, "operator_interventions": 1},
+      "parameters": {"estimated_tokens": "200", "token_budget": "100"}
+    }
+  ]
+}
