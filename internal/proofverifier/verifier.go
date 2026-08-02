@@ -496,7 +496,7 @@ func (engine *Engine) fetchURL(ctx context.Context, rawURL string) (urlSnapshot,
 	if err != nil {
 		return urlSnapshot{}, fmt.Errorf("request URL: %w", err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	body, err := io.ReadAll(io.LimitReader(response.Body, maximumURLBodySize+1))
 	if err != nil {
 		return urlSnapshot{}, fmt.Errorf("read URL response: %w", err)
@@ -521,7 +521,7 @@ func (engine *Engine) validateURLTarget(ctx context.Context, target *url.URL) er
 	if target == nil || strings.TrimSpace(target.Hostname()) == "" {
 		return fmt.Errorf("proofverifier: URL host is required")
 	}
-	if target.Scheme != "https" && !(engine.allowHTTP && target.Scheme == "http") {
+	if target.Scheme != "https" && (!engine.allowHTTP || target.Scheme != "http") {
 		return fmt.Errorf("proofverifier: only HTTPS verification URLs are allowed")
 	}
 	addresses, err := engine.lookupIP(ctx, target.Hostname())

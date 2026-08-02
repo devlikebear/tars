@@ -153,6 +153,21 @@ func TestSchedulerRejectsVerifierWithWorkerIdentity(t *testing.T) {
 	}
 }
 
+func TestHeartbeatFailureStopsOnlyAfterAuthorityIsLost(t *testing.T) {
+	t.Parallel()
+
+	leaseExpiresAt := time.Now().Add(time.Minute)
+	if shouldStopHeartbeat(context.DeadlineExceeded, leaseExpiresAt, time.Now()) {
+		t.Fatal("transient heartbeat timeout stopped a still-valid claim")
+	}
+	if !shouldStopHeartbeat(workstore.ErrClaimConflict, leaseExpiresAt, time.Now()) {
+		t.Fatal("claim conflict did not stop heartbeat")
+	}
+	if !shouldStopHeartbeat(context.DeadlineExceeded, time.Now().Add(-time.Millisecond), time.Now()) {
+		t.Fatal("heartbeat continued after the last known lease expired")
+	}
+}
+
 func TestSchedulerWorkerSuccessCannotOverrideFailedIndependentProof(t *testing.T) {
 	t.Parallel()
 

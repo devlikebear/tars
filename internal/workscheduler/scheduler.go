@@ -724,25 +724,54 @@ func (s *Scheduler) recordVerificationProofs(ctx context.Context, execution Exec
 func (s *Scheduler) heartbeat(ctx context.Context, claim workstore.StepClaim, cancel context.CancelFunc) {
 	ticker := time.NewTicker(s.heartbeatInterval)
 	defer ticker.Stop()
+	leaseExpiresAt := time.Time{}
+	if claim.Schedule.LeaseExpiresAt != nil {
+		leaseExpiresAt = *claim.Schedule.LeaseExpiresAt
+	}
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			heartbeatCtx, heartbeatCancel := context.WithTimeout(context.Background(), s.heartbeatInterval)
-			_, err := s.store.HeartbeatStepClaim(heartbeatCtx, workstore.HeartbeatStepClaimInput{
+			heartbeatCtx, heartbeatCancel := context.WithTimeout(context.Background(), s.heartbeatRequestTimeout())
+			schedule, err := s.store.HeartbeatStepClaim(heartbeatCtx, workstore.HeartbeatStepClaimInput{
 				WorkspaceID: claim.Step.WorkspaceID, WorkID: claim.Step.WorkID, StepID: claim.Step.ID,
 				AttemptID: claim.Attempt.ID, WorkerID: claim.Schedule.LeaseOwner,
 				LeaseDuration: s.leaseDuration, ActorID: s.actorID,
 			})
 			heartbeatCancel()
 			if err != nil {
-				s.reportError(err)
-				cancel()
-				return
+				s.reportError(fmt.Errorf("workscheduler: heartbeat claim %s: %w", claim.Attempt.ID, err))
+				if shouldStopHeartbeat(err, leaseExpiresAt, time.Now()) {
+					cancel()
+					return
+				}
+				continue
+			}
+			if schedule.LeaseExpiresAt != nil {
+				leaseExpiresAt = *schedule.LeaseExpiresAt
 			}
 		}
 	}
+}
+
+func (s *Scheduler) heartbeatRequestTimeout() time.Duration {
+	timeout := s.heartbeatInterval
+	floor := time.Second
+	if halfLease := s.leaseDuration / 2; halfLease > 0 && halfLease < floor {
+		floor = halfLease
+	}
+	if timeout < floor {
+		timeout = floor
+	}
+	return timeout
+}
+
+func shouldStopHeartbeat(err error, leaseExpiresAt, now time.Time) bool {
+	if errors.Is(err, workstore.ErrClaimConflict) || errors.Is(err, workstore.ErrClaimExpired) {
+		return true
+	}
+	return !leaseExpiresAt.IsZero() && !now.Before(leaseExpiresAt)
 }
 
 func (s *Scheduler) reclaimClaim(ctx context.Context, claim workstore.StepClaim, reason string) (workstore.StepResolution, error) {
