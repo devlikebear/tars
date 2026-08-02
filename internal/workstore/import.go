@@ -561,6 +561,32 @@ type completedImportInput struct {
 }
 
 func (s *Store) recordCompletedImport(ctx context.Context, input completedImportInput) (ImportMarker, bool, error) {
+	return s.recordImportMarker(ctx, importMarkerInput{
+		WorkspaceID: input.WorkspaceID,
+		SourceKind:  input.SourceKind,
+		SourceID:    input.SourceID,
+		SourcePath:  input.SourcePath,
+		Checksum:    input.Checksum,
+		Status:      ImportStatusCompleted,
+		WorkIDs:     input.WorkIDs,
+		ActorID:     input.ActorID,
+	})
+}
+
+type importMarkerInput struct {
+	WorkspaceID string
+	SourceKind  ImportSourceKind
+	SourceID    string
+	SourcePath  string
+	Checksum    string
+	Status      ImportStatus
+	WorkIDs     []string
+	ActorID     string
+	ErrorText   string
+	ImportedAt  *time.Time
+}
+
+func (s *Store) recordImportMarker(ctx context.Context, input importMarkerInput) (ImportMarker, bool, error) {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
 
@@ -573,6 +599,9 @@ func (s *Store) recordCompletedImport(ctx context.Context, input completedImport
 		return ImportMarker{}, false, fmt.Errorf("workstore: encode imported work ids: %w", err)
 	}
 	now := s.now().UTC()
+	if input.ImportedAt != nil {
+		now = input.ImportedAt.UTC()
+	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return ImportMarker{}, false, fmt.Errorf("workstore: begin import marker: %w", err)
@@ -581,12 +610,12 @@ func (s *Store) recordCompletedImport(ctx context.Context, input completedImport
 	result, err := tx.ExecContext(ctx, `
 		INSERT INTO import_markers (
 			schema_version, id, workspace_id, source_kind, source_id, source_path,
-			checksum, status, work_ids_json, actor_id, imported_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			checksum, status, work_ids_json, actor_id, error_text, imported_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (workspace_id, source_kind, source_id, checksum) DO NOTHING
 	`, recordSchemaVersion, id, input.WorkspaceID, input.SourceKind, input.SourceID,
-		input.SourcePath, input.Checksum, ImportStatusCompleted, workIDsJSON, input.ActorID,
-		now.UnixMilli(), now.UnixMilli())
+		input.SourcePath, input.Checksum, input.Status, workIDsJSON, input.ActorID,
+		input.ErrorText, now.UnixMilli(), now.UnixMilli())
 	if err != nil {
 		return ImportMarker{}, false, fmt.Errorf("workstore: insert import marker: %w", err)
 	}
@@ -605,9 +634,13 @@ func (s *Store) recordCompletedImport(ctx context.Context, input completedImport
 }
 
 func (s *Store) findImportMarker(ctx context.Context, workspaceID string, sourceKind ImportSourceKind, sourceID, checksum string) (ImportMarker, bool, error) {
+	return s.findImportMarkerStatus(ctx, workspaceID, sourceKind, sourceID, checksum, ImportStatusCompleted)
+}
+
+func (s *Store) findImportMarkerStatus(ctx context.Context, workspaceID string, sourceKind ImportSourceKind, sourceID, checksum string, status ImportStatus) (ImportMarker, bool, error) {
 	marker, err := scanImportMarker(s.db.QueryRowContext(ctx, importMarkerSelect+`
 		WHERE workspace_id = ? AND source_kind = ? AND source_id = ? AND checksum = ? AND status = ?
-	`, workspaceID, sourceKind, sourceID, checksum, ImportStatusCompleted))
+	`, workspaceID, sourceKind, sourceID, checksum, status))
 	if errors.Is(err, sql.ErrNoRows) {
 		return ImportMarker{}, false, nil
 	}
