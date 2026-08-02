@@ -68,6 +68,47 @@ func TestRuntimeSpawnAndWait(t *testing.T) {
 	}
 }
 
+func TestRuntimePublishesRunsSnapshotWithoutFilePersistence(t *testing.T) {
+	snapshots := make(chan []Run, 16)
+	rt := NewRuntime(RuntimeOptions{
+		Enabled:      true,
+		SessionStore: session.NewStore(t.TempDir()),
+		RunPrompt: func(_ context.Context, _ string, prompt string) (string, error) {
+			return "observed: " + prompt, nil
+		},
+		OnRunsSnapshot: func(runs []Run) {
+			snapshots <- runs
+		},
+	})
+	t.Cleanup(func() { closeAgentRuntime(t, rt) })
+
+	run, err := rt.Spawn(context.Background(), SpawnRequest{Prompt: "durable mirror"})
+	if err != nil {
+		t.Fatalf("spawn: %v", err)
+	}
+	waitCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	final, err := rt.Wait(waitCtx, run.ID)
+	if err != nil {
+		t.Fatalf("wait: %v", err)
+	}
+
+	deadline := time.After(2 * time.Second)
+	for {
+		select {
+		case observed := <-snapshots:
+			if len(observed) == 1 && observed[0].ID == run.ID && observed[0].Status == RunStatusCompleted {
+				if observed[0].Response != final.Response {
+					t.Fatalf("observed response = %q, want %q", observed[0].Response, final.Response)
+				}
+				return
+			}
+		case <-deadline:
+			t.Fatal("timed out waiting for completed runs snapshot")
+		}
+	}
+}
+
 func TestRuntimeSystemPromptAppendReachesPromptExecutor(t *testing.T) {
 	store := session.NewStore(t.TempDir())
 	var seenAppend string

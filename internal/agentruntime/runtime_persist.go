@@ -170,11 +170,16 @@ func (r *Runtime) snapshotForPersistence() ([]Run, map[string][]ChannelMessage, 
 }
 
 func (r *Runtime) persistSnapshot() {
-	if r == nil || !r.persistenceEnabled() {
+	if r == nil {
 		return
 	}
 	r.persistMu.Lock()
 	defer r.persistMu.Unlock()
+	if !r.persistenceEnabled() {
+		runs, _, _ := r.snapshotForPersistence()
+		r.publishRunsSnapshot(trimRuns(runs, r.opts.AgentRuntimeRunsMaxRecords))
+		return
+	}
 	for attempt := 0; attempt < 2; attempt++ {
 		runs, channels, snapshotVersion := r.snapshotForPersistence()
 		runs = trimRuns(runs, r.opts.AgentRuntimeRunsMaxRecords)
@@ -199,6 +204,7 @@ func (r *Runtime) persistSnapshot() {
 			r.recordUsageSignal("agentruntime.persist_snapshot.error", Run{}, map[string]string{
 				"attempt": intDimension(attempt + 1),
 			})
+			r.publishRunsSnapshot(runs)
 			return
 		}
 		if currentVersion == snapshotVersion || attempt == 1 {
@@ -210,6 +216,7 @@ func (r *Runtime) persistSnapshot() {
 					"attempt": intDimension(attempt + 1),
 				})
 			}
+			r.publishRunsSnapshot(runs)
 			return
 		}
 		r.mu.Unlock()
@@ -217,4 +224,11 @@ func (r *Runtime) persistSnapshot() {
 			"attempt": intDimension(attempt + 1),
 		})
 	}
+}
+
+func (r *Runtime) publishRunsSnapshot(runs []Run) {
+	if r == nil || r.opts.OnRunsSnapshot == nil {
+		return
+	}
+	r.opts.OnRunsSnapshot(append([]Run(nil), runs...))
 }

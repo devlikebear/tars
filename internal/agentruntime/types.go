@@ -348,7 +348,11 @@ type RuntimeOptions struct {
 	ResolveProviderOverride                   func(tier string, override *ProviderOverride) (ResolvedProviderOverride, error)
 	EstimateTokensCost                        func(provider, model string, inputTokens, outputTokens int) (float64, bool)
 	UsageTracker                              *usage.Tracker
-	Now                                       func() time.Time
+	// OnRunsSnapshot observes a read-only copy of the current run slice after
+	// state changes. It is independent of file persistence so a durable control
+	// plane can mirror runs even when legacy runs.json storage is disabled.
+	OnRunsSnapshot func(runs []Run)
+	Now            func() time.Time
 }
 
 type runState struct {
