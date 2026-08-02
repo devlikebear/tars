@@ -35,9 +35,9 @@ The name comes from the TARS in *Interstellar* — practical, direct, dependable
 | **Release used** | Stable `v2026.7.1` | Stable `v0.19.1` (`v2026.7.30`) | `v0.34.4` (this release) |
 | **Packaging** | TypeScript Gateway plus web/native apps and plugins | Python agent/gateway plus TUI, web, and desktop surfaces | Go single binary with embedded browser console and CLI |
 | **Delegation / harnesses** | Native subagents, Codex runtime, and ACP-backed external harness sessions | Isolated `delegate_task` children, live transcripts, MoA, and coding-runtime adapters | Native Agent Runtime with model tiers, tool policy, depth limits, and experimental consensus |
-| **Durable async work** | Background-task ledger plus SQLite-backed automations | Durable Kanban/goals, delegated-result recovery, and delivery-obligation ledger | Session Tasks and file-backed run snapshots; a unified Work Ledger is proposed in [#905](https://github.com/devlikebear/tars/issues/905) |
+| **Durable async work** | Background-task ledger plus SQLite-backed automations | Durable Kanban/goals, delegated-result recovery, and delivery-obligation ledger | SQLite Work Ledger v1 with versioned work, steps, attempts, audit events, approvals, artifacts, proof, and compatibility projections |
 | **Restart behavior** | Persistent automation/task records; the latest beta adds broader crash recovery | Gateway auto-resume and durable delegation/delivery recovery | Completed history survives, but an active run is restored as canceled and needs operator action |
-| **Proof of completion** | Completion handoff asks the parent to verify; task audit surfaces unhealthy work | Goal completion contracts and recorded verification evidence | Task verification can attach command evidence, but it is not yet a universal completion gate |
+| **Proof of completion** | Completion handoff asks the parent to verify; task audit surfaces unhealthy work | Goal completion contracts and recorded verification evidence | Work Ledger proof/artifact records plus task command evidence; an independent verifier is not yet a universal completion gate |
 | **Scheduling** | Persistent Automations, cron alias, heartbeat monitors | Cron, blueprints, watchdog/no-agent jobs | Session-bound cron, Pulse watchdog, and nightly Reflection |
 | **Skills / learning** | Skills and plugin catalog | On-demand skills, `/learn`, background review, and Curator | On-demand skills, reviewed memory extraction, skill creation, and Skill Hub |
 
@@ -65,6 +65,14 @@ The primary interface is the browser console at `http://127.0.0.1:43180/console`
 - A locale-aware companion surface for Poke, Suggest, Feedback, runtime signals, and bounded handoff into Chat.
 
 See [docs/console.md](docs/console.md) for the detailed console page and panel inventory.
+
+### Durable Work Ledger
+
+TARS opens a local SQLite Work Ledger at `workspace/_shared/work-ledger/work-ledger.db`. Versioned Work, Step, Attempt, Event, Approval, Artifact, and Proof records use workspace-scoped idempotency keys and transactional state transitions. SQLite runs in WAL mode with foreign keys, full synchronous writes, checksummed migrations, and indexed read projections.
+
+During the v0.34.4 compatibility window, startup imports existing Session Goal/Plan/Task/Contract/Evidence and Agent Runtime `runs.json` records without deleting or rewriting those files. Session task saves and Agent Runtime snapshots append new ledger revisions; existing task/run API shapes read the latest projection with a legacy fallback. The Tasks panel exposes the resulting timeline as a read-only view while mutation APIs remain unchanged.
+
+Set `work_ledger.enabled: false` (or `TARS_WORK_LEDGER_ENABLED=false`) and restart to stop ledger writes and return readers to the untouched legacy stores. The SQLite database is retained for inspection or recovery. See [Work Ledger operations](docs/agent-harness/work-ledger-operations.md) for backup, JSONL export, restore, doctor, quarantine, and preview rollback procedures.
 
 ### Sub-Agent Orchestration
 

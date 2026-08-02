@@ -13,10 +13,17 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 - **Agent Harness Evaluation Pack (#906)** — Adds 12 deterministic fake-model/fake-tool scenarios for single and parallel agents, dependency handoff, restart recovery, approvals, false-success detection, skill reuse, duplicate effects, partial failure, and budget guards. CI now records task success, independent-verifier pass, restart recovery, duplicate effects, operator interventions, TTFT, token usage, and estimated cost through a versioned JSONL/Markdown report contract.
 - **Opt-in live provider evaluation (#906)** — Adds `cmd/agentharness-eval` and Make targets for deterministic baselines plus non-gating provider runs with streamed TTFT, usage, and configurable price estimates.
 - **Durable Work Ledger storage decision (#906)** — Selects pure-Go SQLite in WAL mode over a bespoke append-only file journal and documents transaction, migration, backup, lease-recovery, and effect-receipt requirements for Phase 1.
+- **Durable Work Ledger v1 (#905)** — Adds versioned Work, Step, Attempt, Event, Approval, Artifact, and Proof records backed by pure-Go SQLite in WAL mode. Workspace-scoped commands enforce idempotency, dependency integrity, indexed projections, and atomic state-plus-event transitions; maintenance supports verified backup/restore, deterministic JSONL export, doctor checks, and non-destructive quarantine.
+- **Non-destructive compatibility migration (#905)** — Imports Session Goal/Plan/Task/Contract/Evidence and Agent Runtime run snapshots as append-only revisions with checksums and import markers, while preserving the original files. Session task/run APIs read equivalent ledger projections with legacy fallback, and the Console Tasks panel adds a read-only lifecycle timeline.
+- **Work Ledger rollback switch (#905)** — `work_ledger.enabled` and `TARS_WORK_LEDGER_ENABLED` default on but can disable bootstrap and new ledger writes after restart without deleting either the SQLite database or legacy stores.
 
 ### Changed
 
 - **Current agent-platform comparison (#906)** — Replaces the stale OpenClaw/Hermes matrix with an official-source, 2026-08-02 status snapshot that separates stable, pre-release, and TARS proposal claims. The refreshed usage decision keeps direct parallel delegation visible while advanced planning/orchestration and consensus remain opt-in.
+
+### Fixed
+
+- **Agent Runtime snapshot race (#905)** — Copies an accepted run before starting its execution goroutine, so immediate persistence callbacks and API responses no longer race with status updates.
 
 ## [0.34.3] - 2026-06-23
 

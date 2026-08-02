@@ -4,6 +4,13 @@ The Work Ledger is a local SQLite database opened through `internal/workstore`.
 It uses WAL mode, foreign-key enforcement, full synchronous writes, versioned
 migrations, and `0600` database permissions.
 
+The default path is `<workspace>/_shared/work-ledger/work-ledger.db`. On startup,
+TARS imports the current `sessions/sessions.json`, per-session `*.tasks.json`,
+and Agent Runtime `runs.json` documents as checksum-addressed, append-only
+revisions. Import never deletes or rewrites a source file. Session task saves
+and Agent Runtime snapshots continue to update their compatibility stores and
+then synchronize the new revision to the ledger.
+
 ## Safety rules
 
 - Keep the active database and every backup on a trusted local filesystem.
@@ -14,6 +21,22 @@ migrations, and `0600` database permissions.
   are not copied into SQLite unless an operator explicitly archives them.
 - A quarantined source is copied, not moved. The original remains in place for
   forensic review and manual recovery.
+
+## Capture a preview pre-migration snapshot
+
+Before enabling a preview release against an existing workspace:
+
+1. Stop TARS so legacy files are not changing during the copy.
+2. Copy `<workspace>/sessions/` and
+   `<workspace>/_shared/agentruntime/` to a new timestamped backup directory.
+3. Record a SHA-256 digest and byte count for every copied file.
+4. Keep the snapshot until at least one release after the Work Ledger is stable.
+5. Start TARS, confirm `work ledger bootstrap completed` appears without a
+   startup failure, and run `Store.Doctor` before relying on the projections.
+
+The importer itself leaves these legacy inputs in place, but an independent
+snapshot protects the exact pre-upgrade point from later ordinary session or
+Agent Runtime writes.
 
 ## Create and verify a backup
 
@@ -80,3 +103,30 @@ Repeating the operation for the same source bytes returns the existing marker
 and paths. If the source changes, its checksum changes and a separate quarantine
 record is created. Never delete the original automatically; decide retention
 only after the copy, manifest, and digest have been independently verified.
+
+## Disable the Work Ledger and roll back
+
+The preview rollback is a reader/write-path switch, not a down-migration:
+
+```yaml
+work_ledger:
+  enabled: false
+```
+
+Alternatively set `TARS_WORK_LEDGER_ENABLED=false`. Restart TARS after changing
+either value. Disabled startup does not open, migrate, import into, truncate, or
+delete the ledger database. Session task reads/writes return to the legacy
+session files, Agent Runtime list/detail reads use the live runtime and its
+legacy snapshot, and `/v1/work/*` responds with service unavailable.
+
+If the live legacy files must be returned to the exact pre-migration point,
+stop TARS and restore the independently captured `sessions/` and Agent Runtime
+directories from the snapshot above. This intentionally discards legacy-file
+changes made after that snapshot; compare timestamps and digests first. Keep
+the disabled SQLite database and any JSONL export until recovery is verified.
+
+To restore a Work Ledger backup instead, restore it to a new path with
+`workstore.RestoreBackup`, validate its digest and doctor report, stop TARS,
+replace the inactive ledger path only under an explicit operator recovery
+procedure, and then re-enable `work_ledger.enabled`. Never copy only a live
+`.db` file while its WAL may contain committed data.
