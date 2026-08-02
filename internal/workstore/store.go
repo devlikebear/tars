@@ -20,7 +20,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const schemaVersion = 5
+const schemaVersion = 6
 
 type Options struct {
 	Now   func() time.Time
@@ -311,6 +311,60 @@ CREATE INDEX idx_effect_receipts_workspace_status_updated
     ON effect_receipts (workspace_id, status, updated_at DESC);
 `
 
+const migrationV6 = `
+CREATE TABLE proofs_v6 (
+    schema_version INTEGER NOT NULL,
+    id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL,
+    work_id TEXT NOT NULL REFERENCES works(id),
+    step_id TEXT REFERENCES steps(id),
+    attempt_id TEXT REFERENCES attempts(id),
+    idempotency_key TEXT NOT NULL,
+    causation_id TEXT NOT NULL DEFAULT '',
+    kind TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('reported','pending','passed','failed','stale')),
+    origin TEXT NOT NULL CHECK (origin IN ('worker_report','independent_verifier','legacy')),
+    summary TEXT NOT NULL,
+    reporter_id TEXT NOT NULL DEFAULT '',
+    verifier_id TEXT NOT NULL DEFAULT '',
+    verifier TEXT NOT NULL DEFAULT '',
+    command TEXT NOT NULL DEFAULT '',
+    artifact_id TEXT REFERENCES artifacts(id),
+    environment_json BLOB NOT NULL DEFAULT '{}',
+    input_json BLOB NOT NULL DEFAULT '{}',
+    artifact_digests_json BLOB NOT NULL DEFAULT '[]',
+    subject_digest TEXT NOT NULL DEFAULT '',
+    rationale TEXT NOT NULL DEFAULT '',
+    actor_id TEXT NOT NULL,
+    observed_at INTEGER,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    UNIQUE (workspace_id, work_id, idempotency_key)
+);
+INSERT INTO proofs_v6 (
+    schema_version, id, workspace_id, work_id, step_id, attempt_id,
+    idempotency_key, causation_id, kind, status, origin, summary,
+    reporter_id, verifier_id, verifier, command, artifact_id,
+    environment_json, input_json, artifact_digests_json, subject_digest,
+    rationale, actor_id, observed_at, created_at, updated_at
+)
+SELECT
+    schema_version, id, workspace_id, work_id, step_id, attempt_id,
+    idempotency_key, causation_id, kind, 'reported', 'legacy', summary,
+    actor_id, verifier, verifier, command, artifact_id,
+    '{}', '{}', '[]', '', 'migrated from legacy status: ' || status,
+    actor_id, created_at, created_at, created_at
+FROM proofs;
+DROP TABLE proofs;
+ALTER TABLE proofs_v6 RENAME TO proofs;
+CREATE INDEX idx_proofs_workspace_work_created
+    ON proofs (workspace_id, work_id, created_at);
+CREATE INDEX idx_proofs_workspace_status_created
+    ON proofs (workspace_id, status, created_at);
+CREATE INDEX idx_proofs_workspace_step_status
+    ON proofs (workspace_id, work_id, step_id, status, updated_at DESC);
+`
+
 var schemaMigrations = []struct {
 	version int
 	sql     string
@@ -320,6 +374,7 @@ var schemaMigrations = []struct {
 	{version: 3, sql: migrationV3},
 	{version: 4, sql: migrationV4},
 	{version: 5, sql: migrationV5},
+	{version: 6, sql: migrationV6},
 }
 
 func Open(ctx context.Context, path string, opts Options) (*Store, error) {
@@ -1037,6 +1092,48 @@ func (s *Store) CreateProof(ctx context.Context, input CreateProofInput) (Proof,
 	if strings.TrimSpace(input.WorkspaceID) == "" || strings.TrimSpace(input.WorkID) == "" || strings.TrimSpace(input.IdempotencyKey) == "" || strings.TrimSpace(input.Kind) == "" || strings.TrimSpace(input.Summary) == "" || strings.TrimSpace(input.ActorID) == "" || !validProofStatus(input.Status) {
 		return Proof{}, fmt.Errorf("workstore: invalid proof input")
 	}
+	origin := input.Origin
+	if origin == "" {
+		if input.Status == ProofStatusReported {
+			origin = ProofOriginWorkerReport
+		} else {
+			origin = ProofOriginIndependentVerifier
+		}
+	}
+	if !validProofOrigin(origin) {
+		return Proof{}, fmt.Errorf("workstore: invalid proof origin")
+	}
+	environmentJSON, err := normalizedJSON(input.EnvironmentJSON)
+	if err != nil {
+		return Proof{}, fmt.Errorf("workstore: proof environment json: %w", err)
+	}
+	inputJSON, err := normalizedJSON(input.InputJSON)
+	if err != nil {
+		return Proof{}, fmt.Errorf("workstore: proof input json: %w", err)
+	}
+	artifactDigestsJSON := input.ArtifactDigestsJSON
+	if len(artifactDigestsJSON) == 0 {
+		artifactDigestsJSON = json.RawMessage(`[]`)
+	}
+	artifactDigestsJSON, err = normalizedJSON(artifactDigestsJSON)
+	if err != nil {
+		return Proof{}, fmt.Errorf("workstore: proof artifact digests json: %w", err)
+	}
+	reporterID := strings.TrimSpace(input.ReporterID)
+	verifierID := strings.TrimSpace(input.VerifierID)
+	if reporterID == "" && origin != ProofOriginIndependentVerifier {
+		reporterID = strings.TrimSpace(input.ActorID)
+	}
+	if verifierID == "" && origin == ProofOriginIndependentVerifier {
+		verifierID = strings.TrimSpace(input.Verifier)
+		if verifierID == "" {
+			verifierID = strings.TrimSpace(input.ActorID)
+		}
+	}
+	rationale := strings.TrimSpace(input.Rationale)
+	if rationale == "" && (input.Status == ProofStatusPassed || input.Status == ProofStatusFailed) {
+		rationale = strings.TrimSpace(input.Summary)
+	}
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
 	id, err := s.newID("prf")
@@ -1065,14 +1162,18 @@ func (s *Store) CreateProof(ctx context.Context, input CreateProofInput) (Proof,
 	result, err := tx.ExecContext(ctx, `
 		INSERT INTO proofs (
 			schema_version, id, workspace_id, work_id, step_id, attempt_id,
-			idempotency_key, causation_id, kind, status, summary, verifier, command,
-			artifact_id, actor_id, created_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			idempotency_key, causation_id, kind, status, origin, summary,
+			reporter_id, verifier_id, verifier, command, artifact_id,
+			environment_json, input_json, artifact_digests_json, subject_digest,
+			rationale, actor_id, observed_at, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (workspace_id, work_id, idempotency_key) DO NOTHING
 	`, recordSchemaVersion, id, input.WorkspaceID, input.WorkID, nullableString(input.StepID),
 		nullableString(input.AttemptID), input.IdempotencyKey, input.CausationID, input.Kind,
-		input.Status, input.Summary, input.Verifier, input.Command, nullableString(input.ArtifactID),
-		input.ActorID, now.UnixMilli())
+		input.Status, origin, input.Summary, reporterID, verifierID, input.Verifier,
+		input.Command, nullableString(input.ArtifactID), environmentJSON, inputJSON,
+		artifactDigestsJSON, strings.TrimSpace(input.SubjectDigest), rationale, input.ActorID,
+		nullableTime(proofObservedAt(input.Status, input.ObservedAt, now)), now.UnixMilli(), now.UnixMilli())
 	if err != nil {
 		return Proof{}, fmt.Errorf("workstore: insert proof: %w", err)
 	}
@@ -1103,6 +1204,114 @@ func (s *Store) CreateProof(ctx context.Context, input CreateProofInput) (Proof,
 		return Proof{}, fmt.Errorf("workstore: commit create proof: %w", err)
 	}
 	return proof, nil
+}
+
+func (s *Store) GetProof(ctx context.Context, workspaceID, workID, proofID string) (Proof, error) {
+	proof, err := scanProof(s.db.QueryRowContext(ctx, proofSelect+" WHERE workspace_id = ? AND work_id = ? AND id = ?", workspaceID, workID, proofID))
+	if errors.Is(err, sql.ErrNoRows) {
+		return Proof{}, ErrNotFound
+	}
+	if err != nil {
+		return Proof{}, fmt.Errorf("workstore: get proof: %w", err)
+	}
+	return proof, nil
+}
+
+func (s *Store) TransitionProof(ctx context.Context, input TransitionProofInput) (Proof, error) {
+	if strings.TrimSpace(input.WorkspaceID) == "" || strings.TrimSpace(input.WorkID) == "" || strings.TrimSpace(input.ProofID) == "" || strings.TrimSpace(input.ActorID) == "" || !validProofStatus(input.ExpectedStatus) || !validProofStatus(input.ToStatus) {
+		return Proof{}, fmt.Errorf("workstore: invalid proof transition input")
+	}
+	if input.ExpectedStatus != input.ToStatus && !canTransitionProof(input.ExpectedStatus, input.ToStatus) {
+		return Proof{}, ErrInvalidTransition
+	}
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Proof{}, fmt.Errorf("workstore: begin proof transition: %w", err)
+	}
+	defer rollback(tx)
+	proof, err := getProofTx(ctx, tx, input.WorkspaceID, input.WorkID, input.ProofID, "")
+	if err != nil {
+		return Proof{}, err
+	}
+	if proof.Status != input.ExpectedStatus {
+		return Proof{}, ErrConflict
+	}
+	if input.ExpectedStatus == input.ToStatus {
+		if err := tx.Commit(); err != nil {
+			return Proof{}, fmt.Errorf("workstore: commit idempotent proof transition: %w", err)
+		}
+		return proof, nil
+	}
+	now := s.now().UTC()
+	rationale := strings.TrimSpace(input.Rationale)
+	if rationale == "" {
+		rationale = proof.Rationale
+	}
+	subjectDigest := strings.TrimSpace(input.SubjectDigest)
+	if subjectDigest == "" {
+		subjectDigest = proof.SubjectDigest
+	}
+	observedAt := input.ObservedAt
+	if observedAt == nil {
+		observedAt = proof.ObservedAt
+	}
+	if input.ToStatus == ProofStatusPassed || input.ToStatus == ProofStatusFailed {
+		if observedAt == nil {
+			observedAt = &now
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE proofs
+		SET status = ?, subject_digest = ?, rationale = ?, actor_id = ?, observed_at = ?, updated_at = ?
+		WHERE workspace_id = ? AND work_id = ? AND id = ? AND status = ?
+	`, input.ToStatus, subjectDigest, rationale, input.ActorID, nullableTime(observedAt), now.UnixMilli(),
+		input.WorkspaceID, input.WorkID, input.ProofID, input.ExpectedStatus); err != nil {
+		return Proof{}, fmt.Errorf("workstore: transition proof: %w", err)
+	}
+	if err := s.insertEventTx(ctx, tx, eventInput{
+		WorkspaceID: input.WorkspaceID, WorkID: input.WorkID,
+		StepID: proof.StepID, AttemptID: proof.AttemptID,
+		Type: EventTypeProofTransitioned, FromState: WorkState(input.ExpectedStatus), ToState: WorkState(input.ToStatus),
+		ActorID: input.ActorID, CausationID: proof.ID,
+		PayloadJSON: mustJSON(map[string]any{
+			"proof_id": proof.ID, "from_status": input.ExpectedStatus,
+			"to_status": input.ToStatus, "rationale": rationale,
+		}), CreatedAt: now,
+	}); err != nil {
+		return Proof{}, err
+	}
+	proof, err = getProofTx(ctx, tx, input.WorkspaceID, input.WorkID, input.ProofID, "")
+	if err != nil {
+		return Proof{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return Proof{}, fmt.Errorf("workstore: commit proof transition: %w", err)
+	}
+	return proof, nil
+}
+
+func (s *Store) DetectStaleProof(ctx context.Context, input DetectStaleProofInput) (Proof, bool, error) {
+	if strings.TrimSpace(input.CurrentSubjectDigest) == "" {
+		return Proof{}, false, fmt.Errorf("workstore: current proof subject digest is required")
+	}
+	proof, err := s.GetProof(ctx, input.WorkspaceID, input.WorkID, input.ProofID)
+	if err != nil {
+		return Proof{}, false, err
+	}
+	if proof.Status == ProofStatusStale || proof.SubjectDigest == input.CurrentSubjectDigest {
+		return proof, false, nil
+	}
+	stale, err := s.TransitionProof(ctx, TransitionProofInput{
+		WorkspaceID: input.WorkspaceID, WorkID: input.WorkID, ProofID: input.ProofID,
+		ExpectedStatus: proof.Status, ToStatus: ProofStatusStale,
+		ActorID: input.ActorID, Rationale: input.Rationale,
+	})
+	if err != nil {
+		return Proof{}, false, err
+	}
+	return stale, true, nil
 }
 
 func (s *Store) ListEvents(ctx context.Context, workspaceID, workID string) ([]Event, error) {
@@ -1413,20 +1622,32 @@ func getArtifactTx(ctx context.Context, tx *sql.Tx, workspaceID, workID, artifac
 const proofSelect = `SELECT
     schema_version, id, workspace_id, work_id, COALESCE(step_id, ''),
     COALESCE(attempt_id, ''), idempotency_key, causation_id, kind, status,
-    summary, verifier, command, COALESCE(artifact_id, ''), actor_id, created_at
+    origin, summary, reporter_id, verifier_id, verifier, command,
+    COALESCE(artifact_id, ''), environment_json, input_json,
+    artifact_digests_json, subject_digest, rationale, actor_id, observed_at,
+    created_at, updated_at
 FROM proofs`
 
 func scanProof(row scanner) (Proof, error) {
 	var proof Proof
-	var createdAt int64
+	var environmentJSON, inputJSON, artifactDigestsJSON jsonValue
+	var observedAt sql.NullInt64
+	var createdAt, updatedAt int64
 	err := row.Scan(&proof.SchemaVersion, &proof.ID, &proof.WorkspaceID, &proof.WorkID,
 		&proof.StepID, &proof.AttemptID, &proof.IdempotencyKey, &proof.CausationID,
-		&proof.Kind, &proof.Status, &proof.Summary, &proof.Verifier, &proof.Command,
-		&proof.ArtifactID, &proof.ActorID, &createdAt)
+		&proof.Kind, &proof.Status, &proof.Origin, &proof.Summary, &proof.ReporterID,
+		&proof.VerifierID, &proof.Verifier, &proof.Command, &proof.ArtifactID,
+		&environmentJSON, &inputJSON, &artifactDigestsJSON, &proof.SubjectDigest,
+		&proof.Rationale, &proof.ActorID, &observedAt, &createdAt, &updatedAt)
 	if err != nil {
 		return Proof{}, err
 	}
+	proof.EnvironmentJSON = append(json.RawMessage(nil), environmentJSON...)
+	proof.InputJSON = append(json.RawMessage(nil), inputJSON...)
+	proof.ArtifactDigestsJSON = append(json.RawMessage(nil), artifactDigestsJSON...)
+	proof.ObservedAt = timeFromNull(observedAt)
 	proof.CreatedAt = time.UnixMilli(createdAt).UTC()
+	proof.UpdatedAt = time.UnixMilli(updatedAt).UTC()
 	return proof, nil
 }
 
@@ -1713,11 +1934,47 @@ func validApprovalStatus(status ApprovalStatus) bool {
 
 func validProofStatus(status ProofStatus) bool {
 	switch status {
-	case ProofStatusPassed, ProofStatusFailed, ProofStatusInconclusive:
+	case ProofStatusReported, ProofStatusPending, ProofStatusPassed, ProofStatusFailed, ProofStatusStale:
 		return true
 	default:
 		return false
 	}
+}
+
+func validProofOrigin(origin ProofOrigin) bool {
+	switch origin {
+	case ProofOriginWorkerReport, ProofOriginIndependentVerifier, ProofOriginLegacy:
+		return true
+	default:
+		return false
+	}
+}
+
+func canTransitionProof(from, to ProofStatus) bool {
+	switch from {
+	case ProofStatusReported:
+		return to == ProofStatusPending || to == ProofStatusStale
+	case ProofStatusPending:
+		return to == ProofStatusPassed || to == ProofStatusFailed || to == ProofStatusStale
+	case ProofStatusPassed, ProofStatusFailed:
+		return to == ProofStatusStale
+	case ProofStatusStale:
+		return to == ProofStatusPending
+	default:
+		return false
+	}
+}
+
+func proofObservedAt(status ProofStatus, observedAt *time.Time, now time.Time) *time.Time {
+	if observedAt != nil {
+		value := observedAt.UTC()
+		return &value
+	}
+	if status == ProofStatusPending {
+		return nil
+	}
+	value := now.UTC()
+	return &value
 }
 
 func canTransition(from, to WorkState) bool {

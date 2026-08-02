@@ -112,7 +112,7 @@ func TestImportLegacySessionPreservesRecordsAndIsIdempotent(t *testing.T) {
 	if len(projection.Artifacts) != 1 || len(projection.Proofs) != 1 {
 		t.Fatalf("imported evidence counts = artifacts:%d proofs:%d", len(projection.Artifacts), len(projection.Proofs))
 	}
-	if projection.Proofs[0].Status != ProofStatusPassed || projection.Proofs[0].Command != "go test ./internal/workstore" {
+	if projection.Proofs[0].Status != ProofStatusReported || projection.Proofs[0].Origin != ProofOriginLegacy || projection.Proofs[0].Command != "go test ./internal/workstore" {
 		t.Fatalf("imported proof = %#v", projection.Proofs[0])
 	}
 	if !jsonEqual(projection.Work.ContractJSON, []byte(`{

@@ -445,9 +445,11 @@ func (s *Store) importLegacyEvidence(
 		CausationID:    "import:" + checksum,
 		Kind:           kind,
 		Status:         legacyProofStatus(evidence.Status),
+		Origin:         ProofOriginLegacy,
 		Summary:        summary,
 		Command:        evidence.Command,
 		ArtifactID:     artifact.ID,
+		Rationale:      "legacy evidence status was not independently verified: " + strings.TrimSpace(evidence.Status),
 		ActorID:        input.ActorID,
 	}); err != nil {
 		return fmt.Errorf("workstore: import legacy evidence proof %q: %w", evidenceID, err)
@@ -907,14 +909,7 @@ func legacyTaskWorkState(status string) WorkState {
 }
 
 func legacyProofStatus(status string) ProofStatus {
-	switch strings.ToLower(strings.TrimSpace(status)) {
-	case "passed", "pass", "success", "succeeded", "completed", "ok":
-		return ProofStatusPassed
-	case "failed", "failure", "error":
-		return ProofStatusFailed
-	default:
-		return ProofStatusInconclusive
-	}
+	return ProofStatusReported
 }
 
 func runtimeWorkState(status string) WorkState {

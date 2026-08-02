@@ -58,9 +58,23 @@ const (
 type ProofStatus string
 
 const (
-	ProofStatusPassed       ProofStatus = "passed"
-	ProofStatusFailed       ProofStatus = "failed"
-	ProofStatusInconclusive ProofStatus = "inconclusive"
+	ProofStatusReported ProofStatus = "reported"
+	ProofStatusPending  ProofStatus = "pending"
+	ProofStatusPassed   ProofStatus = "passed"
+	ProofStatusFailed   ProofStatus = "failed"
+	ProofStatusStale    ProofStatus = "stale"
+
+	// ProofStatusInconclusive is kept as a source-compatible alias. New records
+	// persist the explicit pending state instead of the ambiguous old value.
+	ProofStatusInconclusive = ProofStatusPending
+)
+
+type ProofOrigin string
+
+const (
+	ProofOriginWorkerReport        ProofOrigin = "worker_report"
+	ProofOriginIndependentVerifier ProofOrigin = "independent_verifier"
+	ProofOriginLegacy              ProofOrigin = "legacy"
 )
 
 type EffectReceiptStatus string
@@ -80,6 +94,7 @@ const (
 	EventTypeAttemptCreated         EventType = "attempt.created"
 	EventTypeApprovalCreated        EventType = "approval.created"
 	EventTypeProofCreated           EventType = "proof.created"
+	EventTypeProofTransitioned      EventType = "proof.transitioned"
 	EventTypeArtifactCreated        EventType = "artifact.created"
 	EventTypeStepScheduleConfigured EventType = "step.schedule_configured"
 	EventTypeStepReady              EventType = "step.ready"
@@ -343,22 +358,32 @@ type Event struct {
 }
 
 type Proof struct {
-	SchemaVersion  int         `json:"schema_version"`
-	ID             string      `json:"id"`
-	WorkspaceID    string      `json:"workspace_id"`
-	WorkID         string      `json:"work_id"`
-	StepID         string      `json:"step_id,omitempty"`
-	AttemptID      string      `json:"attempt_id,omitempty"`
-	IdempotencyKey string      `json:"idempotency_key"`
-	CausationID    string      `json:"causation_id,omitempty"`
-	Kind           string      `json:"kind"`
-	Status         ProofStatus `json:"status"`
-	Summary        string      `json:"summary"`
-	Verifier       string      `json:"verifier,omitempty"`
-	Command        string      `json:"command,omitempty"`
-	ArtifactID     string      `json:"artifact_id,omitempty"`
-	ActorID        string      `json:"actor_id"`
-	CreatedAt      time.Time   `json:"created_at"`
+	SchemaVersion       int             `json:"schema_version"`
+	ID                  string          `json:"id"`
+	WorkspaceID         string          `json:"workspace_id"`
+	WorkID              string          `json:"work_id"`
+	StepID              string          `json:"step_id,omitempty"`
+	AttemptID           string          `json:"attempt_id,omitempty"`
+	IdempotencyKey      string          `json:"idempotency_key"`
+	CausationID         string          `json:"causation_id,omitempty"`
+	Kind                string          `json:"kind"`
+	Status              ProofStatus     `json:"status"`
+	Origin              ProofOrigin     `json:"origin"`
+	Summary             string          `json:"summary"`
+	ReporterID          string          `json:"reporter_id,omitempty"`
+	VerifierID          string          `json:"verifier_id,omitempty"`
+	Verifier            string          `json:"verifier,omitempty"`
+	Command             string          `json:"command,omitempty"`
+	ArtifactID          string          `json:"artifact_id,omitempty"`
+	EnvironmentJSON     json.RawMessage `json:"environment"`
+	InputJSON           json.RawMessage `json:"input"`
+	ArtifactDigestsJSON json.RawMessage `json:"artifact_digests"`
+	SubjectDigest       string          `json:"subject_digest,omitempty"`
+	Rationale           string          `json:"rationale,omitempty"`
+	ActorID             string          `json:"actor_id"`
+	ObservedAt          *time.Time      `json:"observed_at,omitempty"`
+	CreatedAt           time.Time       `json:"created_at"`
+	UpdatedAt           time.Time       `json:"updated_at"`
 }
 
 type Artifact struct {
@@ -531,19 +556,49 @@ type CreateArtifactInput struct {
 }
 
 type CreateProofInput struct {
+	WorkspaceID         string
+	WorkID              string
+	StepID              string
+	AttemptID           string
+	IdempotencyKey      string
+	CausationID         string
+	Kind                string
+	Status              ProofStatus
+	Origin              ProofOrigin
+	Summary             string
+	ReporterID          string
+	VerifierID          string
+	Verifier            string
+	Command             string
+	ArtifactID          string
+	EnvironmentJSON     json.RawMessage
+	InputJSON           json.RawMessage
+	ArtifactDigestsJSON json.RawMessage
+	SubjectDigest       string
+	Rationale           string
+	ActorID             string
+	ObservedAt          *time.Time
+}
+
+type TransitionProofInput struct {
 	WorkspaceID    string
 	WorkID         string
-	StepID         string
-	AttemptID      string
-	IdempotencyKey string
-	CausationID    string
-	Kind           string
-	Status         ProofStatus
-	Summary        string
-	Verifier       string
-	Command        string
-	ArtifactID     string
+	ProofID        string
+	ExpectedStatus ProofStatus
+	ToStatus       ProofStatus
+	SubjectDigest  string
+	Rationale      string
 	ActorID        string
+	ObservedAt     *time.Time
+}
+
+type DetectStaleProofInput struct {
+	WorkspaceID          string
+	WorkID               string
+	ProofID              string
+	CurrentSubjectDigest string
+	ActorID              string
+	Rationale            string
 }
 
 type EffectReceipt struct {
