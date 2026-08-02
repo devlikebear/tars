@@ -132,10 +132,11 @@ type CollectedArtifact struct {
 }
 
 type CollectRequest struct {
-	Execution   workscheduler.Execution `json:"execution"`
-	Environment Environment             `json:"environment"`
-	Snapshot    EnvironmentSnapshot     `json:"snapshot"`
-	Worker      WorkerResult            `json:"worker"`
+	Execution    workscheduler.Execution `json:"execution"`
+	Environment  Environment             `json:"environment"`
+	Snapshot     EnvironmentSnapshot     `json:"snapshot"`
+	Worker       WorkerResult            `json:"worker"`
+	RedactValues []string                `json:"-"`
 }
 
 type ArtifactCollector interface {

@@ -266,7 +266,8 @@ func (executor *LifecycleExecutor) finalize(
 	}
 	if executor.artifactCollector != nil {
 		artifacts, collectErr := executor.artifactCollector.Collect(ctx, CollectRequest{
-			Execution: execution, Environment: state.Environment, Snapshot: state.Snapshot, Worker: workerResult,
+			Execution: execution, Environment: state.Environment, Snapshot: state.Snapshot,
+			Worker: workerResult, RedactValues: credentialValues(grant),
 		})
 		if collectErr != nil {
 			operationErr = errors.Join(operationErr, fmt.Errorf("executionplane: collect artifacts: %w", collectErr))
@@ -284,6 +285,16 @@ func (executor *LifecycleExecutor) finalize(
 	}
 	operationErr = errors.Join(operationErr, executor.cleanup(context.Background(), execution, state, grant))
 	return workerResult.ExecutionResult, operationErr
+}
+
+func credentialValues(grant CredentialGrant) []string {
+	values := make([]string, 0, len(grant.Values))
+	for _, value := range grant.Values {
+		if value != "" {
+			values = append(values, value)
+		}
+	}
+	return values
 }
 
 func (executor *LifecycleExecutor) cleanup(ctx context.Context, execution workscheduler.Execution, state *LifecycleState, grant CredentialGrant) error {
