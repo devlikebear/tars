@@ -169,7 +169,17 @@ func TestLifecycleExecutorRecoversSavedEnvironment(t *testing.T) {
 			return WorkerResult{ExecutionResult: workscheduler.ExecutionResult{Succeeded: true, OutputJSON: json.RawMessage(`{"recovered":true}`)}}, true, nil
 		},
 	}
-	executor, err := NewLifecycleExecutor(Options{Adapter: "recoverable", SourceDir: "/source", Provider: provider, Worker: worker, StateStore: states})
+	broker := &fakeCredentialBroker{
+		issue: func(context.Context, CredentialRequest) (CredentialGrant, error) {
+			return CredentialGrant{ID: "grant-recovered", Values: map[string]string{"TASK_TOKEN": "replacement"}, ExpiresAt: time.Now().Add(time.Minute)}, nil
+		},
+		revoke: func(context.Context, CredentialGrant) error { return nil },
+	}
+	events := &memoryEventSink{}
+	executor, err := NewLifecycleExecutor(Options{
+		Adapter: "recoverable", SourceDir: "/source", Provider: provider, Worker: worker,
+		CredentialBroker: broker, StateStore: states, EventSink: events,
+	})
 	if err != nil {
 		t.Fatalf("new recoverable executor: %v", err)
 	}
@@ -179,6 +189,10 @@ func TestLifecycleExecutorRecoversSavedEnvironment(t *testing.T) {
 	}
 	if !recoveredEnvironment || !workerRecovered {
 		t.Fatalf("recovery calls environment=%v worker=%v", recoveredEnvironment, workerRecovered)
+	}
+	wantEvents := []EventPhase{EventRecoveryStarted, EventCredentialsIssued, EventEnvironmentSynced, EventCredentialsRevoked, EventEnvironmentDestroyed}
+	if got := events.phases(); !reflect.DeepEqual(got, wantEvents) {
+		t.Fatalf("recovery event phases = %v, want %v", got, wantEvents)
 	}
 }
 

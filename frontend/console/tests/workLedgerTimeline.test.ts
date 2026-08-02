@@ -75,6 +75,63 @@ test('work ledger timeline orders durable events and exposes operator labels', (
         payload: { title: 'Persist records', position: 1 },
         created_at: '2026-08-02T00:01:00Z',
       },
+      {
+        schema_version: 1,
+        sequence: 4,
+        id: 'event-4',
+        workspace_id: 'default',
+        work_id: 'work-1',
+        step_id: 'step-1',
+        attempt_id: 'attempt-1',
+        type: 'execution.environment_provisioned',
+        actor_id: 'tars-execution-plane',
+        payload: { provider: 'managed-worktree', environment_id: 'worktree:attempt-1' },
+        created_at: '2026-08-02T00:03:00Z',
+      },
+      {
+        schema_version: 1,
+        sequence: 5,
+        id: 'event-5',
+        workspace_id: 'default',
+        work_id: 'work-1',
+        type: 'execution.worker_started',
+        actor_id: 'tars-execution-plane',
+        payload: { worker: 'native-agentruntime', provider: 'managed-worktree' },
+        created_at: '2026-08-02T00:04:00Z',
+      },
+      {
+        schema_version: 1,
+        sequence: 6,
+        id: 'event-6',
+        workspace_id: 'default',
+        work_id: 'work-1',
+        type: 'execution.environment_synced',
+        actor_id: 'tars-execution-plane',
+        payload: { snapshot: { digest: 'sha256:abc' } },
+        created_at: '2026-08-02T00:05:00Z',
+      },
+      {
+        schema_version: 1,
+        sequence: 7,
+        id: 'event-7',
+        workspace_id: 'default',
+        work_id: 'work-1',
+        type: 'execution.artifacts_collected',
+        actor_id: 'tars-execution-plane',
+        payload: { artifact_count: 2 },
+        created_at: '2026-08-02T00:06:00Z',
+      },
+      {
+        schema_version: 1,
+        sequence: 8,
+        id: 'event-8',
+        workspace_id: 'default',
+        work_id: 'work-1',
+        type: 'execution.environment_destroyed',
+        actor_id: 'tars-execution-plane',
+        payload: { provider: 'managed-worktree', environment_id: 'worktree:attempt-1' },
+        created_at: '2026-08-02T00:07:00Z',
+      },
     ],
     proofs: [],
     artifacts: [],
@@ -83,15 +140,24 @@ test('work ledger timeline orders durable events and exposes operator labels', (
 
   const entries = buildWorkLedgerTimeline(projection)
 
-  assert.deepEqual(entries.map((entry) => entry.sequence), [1, 2, 3])
+  assert.deepEqual(entries.map((entry) => entry.sequence), [1, 2, 3, 4, 5, 6, 7, 8])
   assert.deepEqual(entries.map((entry) => entry.title), [
     'Work created',
     'Step created',
     'ready → running',
+    'Environment provisioned',
+    'Worker started',
+    'Environment synchronized',
+    'Artifacts collected',
+    'Environment destroyed',
   ])
   assert.equal(entries[0].detail, 'Ship the durable ledger')
   assert.equal(entries[1].detail, 'Persist records')
   assert.equal(entries[2].detail, 'Approved for execution')
+  assert.equal(entries[3].detail, 'managed-worktree · worktree:attempt-1')
+  assert.equal(entries[4].detail, 'native-agentruntime · managed-worktree')
+  assert.equal(entries[5].detail, 'sha256:abc')
+  assert.equal(entries[6].detail, '2 artifacts')
 })
 
 test('Tasks panel loads and controls a session-scoped durable work ledger timeline', () => {

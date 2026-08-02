@@ -173,6 +173,14 @@ func (executor *LifecycleExecutor) Recover(ctx context.Context, execution worksc
 	if err != nil {
 		return workscheduler.ExecutionResult{}, true, err
 	}
+	if grant.ID != "" {
+		state.CredentialID = grant.ID
+		state.Phase = EventCredentialsIssued
+		if err := executor.saveAndRecord(ctx, execution, &state, LifecycleEvent{Phase: EventCredentialsIssued, CredentialID: grant.ID}); err != nil {
+			cleanupErr := executor.cleanup(context.Background(), execution, &state, grant)
+			return workscheduler.ExecutionResult{}, true, errors.Join(err, cleanupErr)
+		}
+	}
 	workerResult, recovered, workerErr := executor.worker.Recover(ctx, WorkerRequest{
 		Execution: execution, Environment: environment, Credentials: grant,
 	}, state.Checkpoint)

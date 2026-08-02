@@ -20,6 +20,13 @@ function payloadNumber(event: WorkLedgerEvent, key: string): number | undefined 
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined
 }
 
+function payloadObjectString(event: WorkLedgerEvent, objectKey: string, key: string): string {
+  const object = event.payload?.[objectKey]
+  if (object == null || typeof object !== 'object' || Array.isArray(object)) return ''
+  const value = (object as Record<string, unknown>)[key]
+  return typeof value === 'string' ? value.trim() : ''
+}
+
 function eventPresentation(event: WorkLedgerEvent, projection: WorkLedgerProjection): Pick<WorkLedgerTimelineEntry, 'title' | 'detail'> {
   switch (event.type) {
     case 'work.created':
@@ -87,6 +94,43 @@ function eventPresentation(event: WorkLedgerEvent, projection: WorkLedgerProject
       return { title: 'Step resumed', detail: payloadString(event, 'reason') }
     case 'step.cancelled':
       return { title: 'Step cancelled', detail: payloadString(event, 'reason') }
+    case 'execution.environment_provisioned':
+      return {
+        title: 'Environment provisioned',
+        detail: [payloadString(event, 'provider'), payloadString(event, 'environment_id')].filter(Boolean).join(' · '),
+      }
+    case 'execution.credentials_issued':
+      return {
+        title: 'Task credentials issued',
+        detail: [payloadString(event, 'worker'), payloadString(event, 'credential_id')].filter(Boolean).join(' · '),
+      }
+    case 'execution.worker_started':
+      return {
+        title: 'Worker started',
+        detail: [payloadString(event, 'worker'), payloadString(event, 'provider')].filter(Boolean).join(' · '),
+      }
+    case 'execution.checkpoint_recorded':
+      return { title: 'Worker checkpoint recorded', detail: payloadString(event, 'checkpoint_id') }
+    case 'execution.environment_synced':
+      return { title: 'Environment synchronized', detail: payloadObjectString(event, 'snapshot', 'digest') }
+    case 'execution.artifacts_collected': {
+      const count = payloadNumber(event, 'artifact_count')
+      return { title: 'Artifacts collected', detail: count == null ? '' : `${count} ${count === 1 ? 'artifact' : 'artifacts'}` }
+    }
+    case 'execution.credentials_revoked':
+      return { title: 'Task credentials revoked', detail: payloadString(event, 'credential_id') }
+    case 'execution.environment_destroyed':
+      return {
+        title: 'Environment destroyed',
+        detail: [payloadString(event, 'provider'), payloadString(event, 'environment_id')].filter(Boolean).join(' · '),
+      }
+    case 'execution.recovery_started':
+      return {
+        title: 'Execution recovery started',
+        detail: [payloadString(event, 'worker'), payloadString(event, 'environment_id')].filter(Boolean).join(' · '),
+      }
+    case 'execution.worker_cancelled':
+      return { title: 'Worker cancelled', detail: payloadString(event, 'worker') }
     default:
       return { title: event.type, detail: '' }
   }
