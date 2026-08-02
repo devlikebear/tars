@@ -1238,13 +1238,11 @@ func (s *Store) TransitionProof(ctx context.Context, input TransitionProofInput)
 	if proof.Status != input.ExpectedStatus {
 		return Proof{}, ErrConflict
 	}
-	if input.ExpectedStatus == input.ToStatus {
-		if err := tx.Commit(); err != nil {
-			return Proof{}, fmt.Errorf("workstore: commit idempotent proof transition: %w", err)
-		}
-		return proof, nil
-	}
 	now := s.now().UTC()
+	summary := strings.TrimSpace(input.Summary)
+	if summary == "" {
+		summary = proof.Summary
+	}
 	rationale := strings.TrimSpace(input.Rationale)
 	if rationale == "" {
 		rationale = proof.Rationale
@@ -1278,18 +1276,22 @@ func (s *Store) TransitionProof(ctx context.Context, input TransitionProofInput)
 	}
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE proofs
-		SET status = ?, input_json = ?, artifact_digests_json = ?, subject_digest = ?,
+		SET status = ?, summary = ?, input_json = ?, artifact_digests_json = ?, subject_digest = ?,
 			rationale = ?, actor_id = ?, observed_at = ?, updated_at = ?
 		WHERE workspace_id = ? AND work_id = ? AND id = ? AND status = ?
-	`, input.ToStatus, inputJSON, artifactDigestsJSON, subjectDigest, rationale, input.ActorID,
+	`, input.ToStatus, summary, inputJSON, artifactDigestsJSON, subjectDigest, rationale, input.ActorID,
 		nullableTime(observedAt), now.UnixMilli(),
 		input.WorkspaceID, input.WorkID, input.ProofID, input.ExpectedStatus); err != nil {
 		return Proof{}, fmt.Errorf("workstore: transition proof: %w", err)
 	}
+	eventType := EventTypeProofTransitioned
+	if input.ExpectedStatus == input.ToStatus {
+		eventType = EventTypeProofUpdated
+	}
 	if err := s.insertEventTx(ctx, tx, eventInput{
 		WorkspaceID: input.WorkspaceID, WorkID: input.WorkID,
 		StepID: proof.StepID, AttemptID: proof.AttemptID,
-		Type: EventTypeProofTransitioned, FromState: WorkState(input.ExpectedStatus), ToState: WorkState(input.ToStatus),
+		Type: eventType, FromState: WorkState(input.ExpectedStatus), ToState: WorkState(input.ToStatus),
 		ActorID: input.ActorID, CausationID: proof.ID,
 		PayloadJSON: mustJSON(map[string]any{
 			"proof_id": proof.ID, "from_status": input.ExpectedStatus,

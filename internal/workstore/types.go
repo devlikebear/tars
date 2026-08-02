@@ -95,6 +95,7 @@ const (
 	EventTypeApprovalCreated        EventType = "approval.created"
 	EventTypeProofCreated           EventType = "proof.created"
 	EventTypeProofTransitioned      EventType = "proof.transitioned"
+	EventTypeProofUpdated           EventType = "proof.updated"
 	EventTypeArtifactCreated        EventType = "artifact.created"
 	EventTypeStepScheduleConfigured EventType = "step.schedule_configured"
 	EventTypeStepReady              EventType = "step.ready"
@@ -606,6 +607,7 @@ type TransitionProofInput struct {
 	ProofID             string
 	ExpectedStatus      ProofStatus
 	ToStatus            ProofStatus
+	Summary             string
 	InputJSON           json.RawMessage
 	ArtifactDigestsJSON json.RawMessage
 	SubjectDigest       string

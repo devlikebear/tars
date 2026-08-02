@@ -669,7 +669,30 @@ func (s *Scheduler) recordVerificationProofs(ctx context.Context, execution Exec
 				verified.Rationale = verifyErr.Error()
 			}
 		}
+		if verified.UsedLLM {
+			switch {
+			case !claim.Schedule.Policy.Proof.AllowLLMFallback:
+				verified.Status = workstore.ProofStatusFailed
+				verified.Rationale = "LLM judge was used without an approved fallback policy"
+			case verified.Tokens < 0 || verified.CostUSD < 0:
+				verified.Status = workstore.ProofStatusFailed
+				verified.Rationale = "LLM judge returned invalid usage"
+			case verified.Tokens > claim.Schedule.Policy.Proof.MaxLLMTokens || verified.CostUSD > claim.Schedule.Policy.Proof.MaxLLMCostUSD:
+				verified.Status = workstore.ProofStatusPending
+				verified.Rationale = "LLM proof budget exceeded; operator review required"
+			}
+		}
 		if verified.Status == workstore.ProofStatusPending {
+			if _, err := s.store.TransitionProof(ctx, workstore.TransitionProofInput{
+				WorkspaceID: pending.WorkspaceID, WorkID: pending.WorkID, ProofID: pending.ID,
+				ExpectedStatus: workstore.ProofStatusPending, ToStatus: workstore.ProofStatusPending,
+				Summary: verified.Summary, InputJSON: verified.InputJSON,
+				ArtifactDigestsJSON: verified.ArtifactDigestsJSON,
+				SubjectDigest:       verified.SubjectDigest, Rationale: verified.Rationale,
+				ActorID: identity.ID, ObservedAt: verified.ObservedAt,
+			}); err != nil {
+				return fmt.Errorf("workscheduler: update pending proof %q: %w", requirement.Kind, err)
+			}
 			continue
 		}
 		if verified.Status != workstore.ProofStatusPassed && verified.Status != workstore.ProofStatusFailed {
@@ -687,7 +710,7 @@ func (s *Scheduler) recordVerificationProofs(ctx context.Context, execution Exec
 		}
 		if _, err := s.store.TransitionProof(ctx, workstore.TransitionProofInput{
 			WorkspaceID: pending.WorkspaceID, WorkID: pending.WorkID, ProofID: pending.ID,
-			ExpectedStatus: workstore.ProofStatusPending, ToStatus: verified.Status,
+			ExpectedStatus: workstore.ProofStatusPending, ToStatus: verified.Status, Summary: verified.Summary,
 			InputJSON: verified.InputJSON, ArtifactDigestsJSON: verified.ArtifactDigestsJSON,
 			SubjectDigest: verified.SubjectDigest, Rationale: verified.Rationale,
 			ActorID: identity.ID, ObservedAt: verified.ObservedAt,

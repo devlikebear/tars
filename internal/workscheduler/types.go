@@ -68,6 +68,9 @@ type VerificationResult struct {
 	InputJSON           json.RawMessage       `json:"input"`
 	ArtifactDigestsJSON json.RawMessage       `json:"artifact_digests"`
 	ObservedAt          *time.Time            `json:"observed_at,omitempty"`
+	UsedLLM             bool                  `json:"used_llm,omitempty"`
+	Tokens              int64                 `json:"tokens,omitempty"`
+	CostUSD             float64               `json:"cost_usd,omitempty"`
 }
 
 type Executor interface {
