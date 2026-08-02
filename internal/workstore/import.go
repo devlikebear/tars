@@ -167,6 +167,8 @@ func (s *Store) ImportLegacySession(ctx context.Context, input LegacySessionImpo
 		return ImportResult{}, fmt.Errorf("workstore: decode legacy session tasks: %w", err)
 	}
 	checksum := importChecksum(input.SessionJSON, tasksJSON)
+	s.importMu.Lock()
+	defer s.importMu.Unlock()
 	marker, found, err := s.findImportMarker(ctx, input.WorkspaceID, ImportSourceLegacySession, session.ID, checksum)
 	if err != nil {
 		return ImportResult{}, err
@@ -377,6 +379,8 @@ func (s *Store) ImportAgentRuntimeSnapshot(ctx context.Context, input AgentRunti
 		return ImportResult{}, err
 	}
 	checksum := importChecksum(input.SnapshotJSON)
+	s.importMu.Lock()
+	defer s.importMu.Unlock()
 	marker, found, err := s.findImportMarker(ctx, input.WorkspaceID, ImportSourceAgentRuntime, input.SourceID, checksum)
 	if err != nil {
 		return ImportResult{}, err

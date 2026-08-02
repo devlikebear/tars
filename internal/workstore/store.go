@@ -28,10 +28,11 @@ type Options struct {
 }
 
 type Store struct {
-	db      *sql.DB
-	now     func() time.Time
-	newID   func(prefix string) (string, error)
-	writeMu sync.Mutex
+	db       *sql.DB
+	now      func() time.Time
+	newID    func(prefix string) (string, error)
+	writeMu  sync.Mutex
+	importMu sync.Mutex
 }
 
 const migrationV1 = `
