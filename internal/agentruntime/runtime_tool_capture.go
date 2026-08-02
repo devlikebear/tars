@@ -5,10 +5,37 @@ import "context"
 type runtimeToolCallRecorderKey struct{}
 
 type RuntimeToolCall struct {
-	ToolName    string
-	ToolCallID  string
-	ToolArgs    string
-	ToolIsError bool
+	Phase                      RuntimeToolPhase
+	Iteration                  int
+	ToolName                   string
+	ToolCallID                 string
+	ToolArgs                   string
+	ToolResult                 string
+	ToolIsError                bool
+	ToolEffectClass            string
+	ToolIdempotencyKeyArgument string
+	ToolReplayed               bool
+	ToolReceiptID              string
+	ContinuationID             string
+}
+
+type runtimeExecutionRecorderKey struct{}
+
+type RuntimeExecutionRecorder func(RuntimeToolCall) error
+
+func WithRuntimeExecutionRecorder(ctx context.Context, recorder RuntimeExecutionRecorder) context.Context {
+	if recorder == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, runtimeExecutionRecorderKey{}, recorder)
+}
+
+func RuntimeExecutionRecorderFromContext(ctx context.Context) RuntimeExecutionRecorder {
+	if ctx == nil {
+		return nil
+	}
+	recorder, _ := ctx.Value(runtimeExecutionRecorderKey{}).(RuntimeExecutionRecorder)
+	return recorder
 }
 
 type RuntimeToolCallRecorder func(RuntimeToolCall)

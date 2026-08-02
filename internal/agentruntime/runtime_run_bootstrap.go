@@ -107,6 +107,7 @@ func (r *Runtime) newAcceptedRunState(
 		WorkspaceID:               workspaceID,
 		SessionID:                 sessionID,
 		TaskID:                    strings.TrimSpace(req.TaskID),
+		WorkID:                    strings.TrimSpace(req.WorkID),
 		SessionKind:               strings.TrimSpace(req.SessionKind),
 		Agent:                     selectedAgent,
 		Prompt:                    prompt,

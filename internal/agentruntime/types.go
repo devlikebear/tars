@@ -9,6 +9,7 @@ import (
 
 	"github.com/devlikebear/tars/internal/session"
 	"github.com/devlikebear/tars/internal/usage"
+	"github.com/devlikebear/tars/internal/workstore"
 )
 
 type RunStatus string
@@ -30,6 +31,7 @@ type Run struct {
 	// with the task that triggered it. Forwarded from SpawnRequest.TaskID at
 	// spawn time and never mutated thereafter.
 	TaskID                    string                   `json:"task_id,omitempty"`
+	WorkID                    string                   `json:"work_id,omitempty"`
 	SessionKind               string                   `json:"session_kind,omitempty"`
 	Agent                     string                   `json:"agent,omitempty"`
 	Prompt                    string                   `json:"prompt,omitempty"`
@@ -65,6 +67,10 @@ type Run struct {
 	FileOpsTotal              int                      `json:"file_ops_total,omitempty"`
 	DiffTimeline              []DiffTimelineEntry      `json:"diff_timeline,omitempty"`
 	Checkpoints               []RunCheckpoint          `json:"checkpoints,omitempty"`
+	ToolRequests              []ToolRequestRecord      `json:"tool_requests,omitempty"`
+	ToolResults               []ToolResultRecord       `json:"tool_results,omitempty"`
+	EffectReceipts            []EffectReceipt          `json:"effect_receipts,omitempty"`
+	LatestContinuation        *CheckpointContinuation  `json:"latest_continuation,omitempty"`
 	ProviderOverride          *ProviderOverride        `json:"provider_override,omitempty"`
 	ResolvedAlias             string                   `json:"resolved_alias,omitempty"`
 	ResolvedKind              string                   `json:"resolved_kind,omitempty"`
@@ -77,32 +83,34 @@ type Run struct {
 }
 
 type RunCheckpoint struct {
-	SchemaVersion           int                     `json:"schema_version"`
-	ID                      string                  `json:"checkpoint_id"`
-	RunID                   string                  `json:"run_id,omitempty"`
-	Format                  CheckpointFormat        `json:"format"`
-	Capability              CheckpointCapability    `json:"capability"`
-	Resumable               bool                    `json:"resumable"`
-	ResumeReason            string                  `json:"resume_reason"`
-	RecoveryModes           []RecoveryMode          `json:"recovery_modes"`
-	NextAction              string                  `json:"next_action,omitempty"`
-	StateRefs               []CheckpointReference   `json:"state_refs,omitempty"`
-	ToolRequestRefs         []CheckpointReference   `json:"tool_request_refs,omitempty"`
-	ToolResultRefs          []CheckpointReference   `json:"tool_result_refs,omitempty"`
-	EffectReceiptRefs       []CheckpointReference   `json:"effect_receipt_refs,omitempty"`
-	WorkspaceSnapshotRefs   []CheckpointReference   `json:"workspace_snapshot_refs,omitempty"`
-	EnvironmentSnapshotRefs []CheckpointReference   `json:"environment_snapshot_refs,omitempty"`
-	Continuation            *CheckpointContinuation `json:"continuation,omitempty"`
-	Kind                    string                  `json:"kind"`
-	Label                   string                  `json:"label,omitempty"`
-	Status                  RunStatus               `json:"status,omitempty"`
-	Agent                   string                  `json:"agent,omitempty"`
-	Prompt                  string                  `json:"prompt,omitempty"`
-	Tier                    string                  `json:"tier,omitempty"`
-	ProviderOverride        *ProviderOverride       `json:"provider_override,omitempty"`
-	AllowedTools            []string                `json:"allowed_tools,omitempty"`
-	Error                   string                  `json:"error,omitempty"`
-	CreatedAt               string                  `json:"created_at"`
+	SchemaVersion            int                     `json:"schema_version"`
+	ID                       string                  `json:"checkpoint_id"`
+	RunID                    string                  `json:"run_id,omitempty"`
+	Format                   CheckpointFormat        `json:"format"`
+	Capability               CheckpointCapability    `json:"capability"`
+	Resumable                bool                    `json:"resumable"`
+	ResumeReason             string                  `json:"resume_reason"`
+	RecoveryModes            []RecoveryMode          `json:"recovery_modes"`
+	RecoveryApprovalRequired bool                    `json:"recovery_approval_required,omitempty"`
+	RecoveryApprovalReason   string                  `json:"recovery_approval_reason,omitempty"`
+	NextAction               string                  `json:"next_action,omitempty"`
+	StateRefs                []CheckpointReference   `json:"state_refs,omitempty"`
+	ToolRequestRefs          []CheckpointReference   `json:"tool_request_refs,omitempty"`
+	ToolResultRefs           []CheckpointReference   `json:"tool_result_refs,omitempty"`
+	EffectReceiptRefs        []CheckpointReference   `json:"effect_receipt_refs,omitempty"`
+	WorkspaceSnapshotRefs    []CheckpointReference   `json:"workspace_snapshot_refs,omitempty"`
+	EnvironmentSnapshotRefs  []CheckpointReference   `json:"environment_snapshot_refs,omitempty"`
+	Continuation             *CheckpointContinuation `json:"continuation,omitempty"`
+	Kind                     string                  `json:"kind"`
+	Label                    string                  `json:"label,omitempty"`
+	Status                   RunStatus               `json:"status,omitempty"`
+	Agent                    string                  `json:"agent,omitempty"`
+	Prompt                   string                  `json:"prompt,omitempty"`
+	Tier                     string                  `json:"tier,omitempty"`
+	ProviderOverride         *ProviderOverride       `json:"provider_override,omitempty"`
+	AllowedTools             []string                `json:"allowed_tools,omitempty"`
+	Error                    string                  `json:"error,omitempty"`
+	CreatedAt                string                  `json:"created_at"`
 }
 
 type ProviderOverride struct {
@@ -227,6 +235,7 @@ type PromptExecutionMetadata struct {
 
 type SpawnRequest struct {
 	WorkspaceID               string
+	WorkID                    string
 	SessionID                 string
 	TaskID                    string
 	Title                     string
@@ -412,6 +421,7 @@ type Runtime struct {
 	subagentPool        *weightedSemaphore
 	consensusRuns       *weightedSemaphore
 	consensusPool       *weightedSemaphore
+	effectReceiptStore  *workstore.Store
 }
 
 const DefaultWorkspaceID = "default"

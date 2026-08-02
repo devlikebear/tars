@@ -19,17 +19,26 @@ type runtimeFileOperation struct {
 	ToolIsError bool
 }
 
-func (r *Runtime) recordRuntimeToolCall(runID string, call RuntimeToolCall) {
+func (r *Runtime) recordRuntimeToolCall(runID string, call RuntimeToolCall) error {
+	if call.Phase == "" {
+		call.Phase = RuntimeToolPhaseAfter
+	}
+	if err := r.recordRuntimeExecutionEvent(runID, call); err != nil {
+		return err
+	}
+	if call.Phase != RuntimeToolPhaseAfter {
+		return nil
+	}
 	op, ok := runtimeFileOperationFromToolCall(call)
 	if !ok {
-		return
+		return nil
 	}
 	now := r.nowFn().UTC().Format(time.RFC3339)
 	r.mu.Lock()
 	state := r.runs[strings.TrimSpace(runID)]
 	if state == nil {
 		r.mu.Unlock()
-		return
+		return nil
 	}
 	applyFileAttentionSummary(&state.run, op, now)
 	state.run.UpdatedAt = now
@@ -47,6 +56,7 @@ func (r *Runtime) recordRuntimeToolCall(runID string, call RuntimeToolCall) {
 		Message:     op.Action + " " + op.Path,
 	})
 	r.persistSnapshot()
+	return nil
 }
 
 func runtimeFileOperationFromToolCall(call RuntimeToolCall) (runtimeFileOperation, bool) {
