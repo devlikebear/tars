@@ -40,9 +40,10 @@ func (r *Runtime) executeRun(ctx context.Context, runID string) {
 		return
 	}
 
-	diffBefore, diffBeforeOK := captureGitDiffSnapshot(r.opts.WorkspaceDir)
+	executionRoot := r.executionRoot(state.run)
+	diffBefore, diffBeforeOK := captureGitDiffSnapshot(executionRoot)
 	resp, metadata, err := r.executeRunPrompt(ctx, state, executor)
-	diffAfter, diffAfterOK := captureGitDiffSnapshot(r.opts.WorkspaceDir)
+	diffAfter, diffAfterOK := captureGitDiffSnapshot(executionRoot)
 
 	r.mu.Lock()
 	var diffEntry *DiffTimelineEntry
@@ -105,6 +106,7 @@ func (r *Runtime) executeRunPrompt(ctx context.Context, state *runState, executo
 		agentRuntimeAgentInfo(executor).ToolsAllow,
 	)
 	execCtx := serverauth.WithWorkspaceID(ctx, state.run.WorkspaceID)
+	execCtx = WithExecutionRoot(execCtx, r.executionRoot(state.run))
 	execCtx = usage.WithCallMeta(execCtx, usage.CallMeta{
 		Source:    "agent_run",
 		SessionID: state.run.SessionID,
@@ -128,6 +130,7 @@ func (r *Runtime) executeRunPrompt(ctx context.Context, state *runState, executo
 		RunID:              state.run.ID,
 		WorkspaceID:        state.run.WorkspaceID,
 		SessionID:          state.run.SessionID,
+		ExecutionRoot:      r.executionRoot(state.run),
 		Prompt:             state.run.Prompt,
 		SystemPromptAppend: state.req.SystemPromptAppend,
 		AllowedTools:       allowedTools,
@@ -143,6 +146,13 @@ func (r *Runtime) executeRunPrompt(ctx context.Context, state *runState, executo
 		}
 	}
 	return resp, metadata, err
+}
+
+func (r *Runtime) executionRoot(run Run) string {
+	if root := strings.TrimSpace(run.ExecutionRoot); root != "" {
+		return root
+	}
+	return strings.TrimSpace(r.opts.WorkspaceDir)
 }
 
 // finalizeRunLocked is the single termination path for a agent runtime run.

@@ -26,6 +26,9 @@ type Run struct {
 	ID          string `json:"run_id"`
 	WorkspaceID string `json:"-"`
 	SessionID   string `json:"session_id,omitempty"`
+	// ExecutionRoot is an optional task-scoped filesystem root provisioned by
+	// the durable execution plane. It is immutable for the lifetime of a run.
+	ExecutionRoot string `json:"execution_root,omitempty"`
 	// TaskID, when set, names the session.Task this run was spawned to work
 	// on. Read-only metadata that lets UI consumers correlate live run state
 	// with the task that triggered it. Forwarded from SpawnRequest.TaskID at
@@ -266,6 +269,7 @@ type SpawnRequest struct {
 	WorkID                    string
 	SessionID                 string
 	TaskID                    string
+	ExecutionRoot             string
 	Title                     string
 	Prompt                    string
 	SystemPromptAppend        string

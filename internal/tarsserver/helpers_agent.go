@@ -179,6 +179,9 @@ func newAgentPromptRunnerWithToolsAndMemory(
 		}
 		workspaceID := normalizeWorkspaceID(serverauth.WorkspaceIDFromContext(ctx))
 		targetWorkspaceDir := resolveWorkspaceDir(workspaceDir, workspaceID)
+		if executionRoot := agentruntime.ExecutionRootFromContext(ctx); executionRoot != "" {
+			targetWorkspaceDir = executionRoot
+		}
 		if err := memory.EnsureWorkspace(targetWorkspaceDir); err != nil {
 			return "", err
 		}
@@ -202,7 +205,7 @@ func newAgentPromptRunnerWithToolsAndMemory(
 		}
 		selection := llm.SelectionMetadata{}
 		if activeOverride != nil {
-			resolved, err := resolveProviderOverrideClient(cfg, workspaceDir, tracker, tier, activeOverride)
+			resolved, err := resolveProviderOverrideClient(cfg, targetWorkspaceDir, tracker, tier, activeOverride)
 			if err != nil {
 				return "", err
 			}

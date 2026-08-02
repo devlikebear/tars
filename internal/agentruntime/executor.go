@@ -14,6 +14,7 @@ type ExecuteRequest struct {
 	RunID              string
 	WorkspaceID        string
 	SessionID          string
+	ExecutionRoot      string
 	Prompt             string
 	SystemPromptAppend string
 	AllowedTools       []string
@@ -361,8 +362,12 @@ func (e *CommandExecutor) Execute(ctx context.Context, req ExecuteRequest) (stri
 	defer cancel()
 
 	cmd := exec.CommandContext(runCtx, e.command, e.args...)
-	if e.workDir != "" {
-		cmd.Dir = e.workDir
+	workDir := strings.TrimSpace(req.ExecutionRoot)
+	if workDir == "" {
+		workDir = e.workDir
+	}
+	if workDir != "" {
+		cmd.Dir = workDir
 	}
 	env := append([]string{}, os.Environ()...)
 	for key, value := range e.env {

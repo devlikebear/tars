@@ -223,9 +223,10 @@ func (r *Runtime) executeVariantPrompt(ctx context.Context, state *runState, exe
 		return "", fmt.Errorf("agent executor is not configured")
 	}
 	execCtx := serverauth.WithWorkspaceID(ctx, state.run.WorkspaceID)
+	execCtx = WithExecutionRoot(execCtx, r.executionRoot(state.run))
 	execCtx = usage.WithCallMeta(execCtx, usage.CallMeta{Source: "agent_run", SessionID: state.run.SessionID, RunID: state.run.ID})
 	execCtx = llm.WithSelectionMetadata(execCtx, llm.SelectionMetadata{SessionID: state.run.SessionID, RunID: state.run.ID, AgentName: state.run.Agent, FlowID: state.run.FlowID, StepID: state.run.StepID, Provider: resolved.Kind, Model: resolved.Model, Tier: llm.Tier(resolved.Tier), Source: "task"})
-	return executor.Execute(execCtx, ExecuteRequest{RunID: state.run.ID, WorkspaceID: state.run.WorkspaceID, SessionID: state.run.SessionID, Prompt: state.run.Prompt, AllowedTools: resolveRunAllowedTools(r.opts.WorkspaceDir, agentRuntimeAgentInfo(executor).ToolsAllow), Tier: resolved.Tier, ProviderOverride: &override})
+	return executor.Execute(execCtx, ExecuteRequest{RunID: state.run.ID, WorkspaceID: state.run.WorkspaceID, SessionID: state.run.SessionID, ExecutionRoot: r.executionRoot(state.run), Prompt: state.run.Prompt, AllowedTools: resolveRunAllowedTools(r.opts.WorkspaceDir, agentRuntimeAgentInfo(executor).ToolsAllow), Tier: resolved.Tier, ProviderOverride: &override})
 }
 
 func (r *Runtime) aggregateConsensus(ctx context.Context, state *runState, executor AgentExecutor, strategy string, successes []ConsensusVariantRecord) (string, error) {
@@ -244,9 +245,10 @@ func (r *Runtime) aggregateConsensus(ctx context.Context, state *runState, execu
 		return "", fmt.Errorf("agent executor is not configured")
 	}
 	execCtx := serverauth.WithWorkspaceID(ctx, state.run.WorkspaceID)
+	execCtx = WithExecutionRoot(execCtx, r.executionRoot(state.run))
 	execCtx = usage.WithCallMeta(execCtx, usage.CallMeta{Source: "agent_run", SessionID: state.run.SessionID, RunID: state.run.ID})
 	execCtx = llm.WithSelectionMetadata(execCtx, llm.SelectionMetadata{SessionID: state.run.SessionID, RunID: state.run.ID, AgentName: state.run.Agent, FlowID: state.run.FlowID, StepID: state.run.StepID, Tier: llm.Tier("light"), Source: "task"})
-	return executor.Execute(execCtx, ExecuteRequest{RunID: state.run.ID, WorkspaceID: state.run.WorkspaceID, SessionID: state.run.SessionID, Prompt: b.String(), AllowedTools: resolveRunAllowedTools(r.opts.WorkspaceDir, agentRuntimeAgentInfo(executor).ToolsAllow), Tier: "light"})
+	return executor.Execute(execCtx, ExecuteRequest{RunID: state.run.ID, WorkspaceID: state.run.WorkspaceID, SessionID: state.run.SessionID, ExecutionRoot: r.executionRoot(state.run), Prompt: b.String(), AllowedTools: resolveRunAllowedTools(r.opts.WorkspaceDir, agentRuntimeAgentInfo(executor).ToolsAllow), Tier: "light"})
 }
 
 func sanitizeConsensusVariants(variants []ProviderOverride) []ProviderOverride {

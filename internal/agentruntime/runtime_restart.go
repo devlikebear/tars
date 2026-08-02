@@ -57,6 +57,7 @@ func (r *Runtime) RestartFromCheckpoint(ctx context.Context, req RestartRequest)
 		WorkID:                    source.WorkID,
 		SessionID:                 source.SessionID,
 		TaskID:                    source.TaskID,
+		ExecutionRoot:             source.ExecutionRoot,
 		Title:                     title,
 		Prompt:                    prompt,
 		Agent:                     agent,

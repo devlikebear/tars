@@ -17,6 +17,11 @@ func (r *Runtime) Spawn(ctx context.Context, req SpawnRequest) (Run, error) {
 	if prompt == "" {
 		return Run{}, fmt.Errorf("prompt is required")
 	}
+	executionRoot, err := normalizeExecutionRoot(req.ExecutionRoot)
+	if err != nil {
+		return Run{}, err
+	}
+	req.ExecutionRoot = executionRoot
 	sessionStore := r.sessionStoreForWorkspace(req.WorkspaceID)
 	if sessionStore == nil {
 		return Run{}, fmt.Errorf("session store is not configured")
@@ -106,6 +111,7 @@ func (r *Runtime) newAcceptedRunState(
 		ID:                        runID,
 		WorkspaceID:               workspaceID,
 		SessionID:                 sessionID,
+		ExecutionRoot:             req.ExecutionRoot,
 		TaskID:                    strings.TrimSpace(req.TaskID),
 		WorkID:                    strings.TrimSpace(req.WorkID),
 		SessionKind:               strings.TrimSpace(req.SessionKind),
