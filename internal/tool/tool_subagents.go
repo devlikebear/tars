@@ -26,8 +26,12 @@ func NewSubagentsRunTool(runtime *agentruntime.Runtime) Tool {
 				Agent     string `json:"agent,omitempty"`
 				Mode      string `json:"mode,omitempty"`
 				Consensus struct {
-					Strategy string `json:"strategy,omitempty"`
-					Variants []struct {
+					Strategy             string  `json:"strategy,omitempty"`
+					Automatic            bool    `json:"automatic,omitempty"`
+					BaselineID           string  `json:"baseline_id,omitempty"`
+					ExpectedQualityDelta float64 `json:"expected_quality_delta,omitempty"`
+					DecisionReason       string  `json:"decision_reason,omitempty"`
+					Variants             []struct {
 						Alias string `json:"alias,omitempty"`
 						Model string `json:"model,omitempty"`
 					} `json:"variants,omitempty"`
@@ -167,7 +171,12 @@ func NewSubagentsRunTool(runtime *agentruntime.Runtime) Tool {
 				}
 				if mode == "consensus" {
 					spawnReq.Mode = "consensus"
-					spawnReq.Consensus = &agentruntime.ConsensusSpec{Strategy: strings.TrimSpace(input.Consensus.Strategy)}
+					spawnReq.Consensus = &agentruntime.ConsensusSpec{
+						Strategy: strings.TrimSpace(input.Consensus.Strategy), Automatic: input.Consensus.Automatic,
+						BaselineID:           strings.TrimSpace(input.Consensus.BaselineID),
+						ExpectedQualityDelta: input.Consensus.ExpectedQualityDelta,
+						DecisionReason:       strings.TrimSpace(input.Consensus.DecisionReason),
+					}
 					for _, variant := range input.Consensus.Variants {
 						spawnReq.Consensus.Variants = append(spawnReq.Consensus.Variants, agentruntime.ProviderOverride{Alias: strings.TrimSpace(variant.Alias), Model: strings.TrimSpace(variant.Model)})
 					}
@@ -285,6 +294,10 @@ func subagentsRunToolParameters(runtime *agentruntime.Runtime) json.RawMessage {
 	      "type":"object",
 	      "properties":{
 	        "strategy":{"type":"string","enum":["synthesize"]},
+	        "automatic":{"type":"boolean","description":"Marks policy-selected fan-out; requires OH-001 baseline evidence and expected benefit."},
+	        "baseline_id":{"type":"string"},
+	        "expected_quality_delta":{"type":"number","exclusiveMinimum":0},
+	        "decision_reason":{"type":"string"},
 	        "variants":{
 	          "type":"array",
 	          "minItems":1,

@@ -64,6 +64,7 @@ type Run struct {
 	ConsensusVariants         []ConsensusVariantRecord `json:"consensus_variants,omitempty"`
 	ConsensusCostUSD          float64                  `json:"consensus_cost_usd,omitempty"`
 	ConsensusBudgetUSD        float64                  `json:"consensus_budget_usd,omitempty"`
+	ConsensusDecision         *ConsensusDecisionRecord `json:"consensus_decision,omitempty"`
 	FileAttention             []FileAttentionSummary   `json:"file_attention,omitempty"`
 	FileOpsTotal              int                      `json:"file_ops_total,omitempty"`
 	DiffTimeline              []DiffTimelineEntry      `json:"diff_timeline,omitempty"`
@@ -120,9 +121,32 @@ type ProviderOverride struct {
 }
 
 type ConsensusSpec struct {
-	Strategy   string             `json:"strategy,omitempty"`
-	Variants   []ProviderOverride `json:"variants,omitempty"`
-	Aggregator *ProviderOverride  `json:"aggregator,omitempty"`
+	Strategy             string             `json:"strategy,omitempty"`
+	Variants             []ProviderOverride `json:"variants,omitempty"`
+	Aggregator           *ProviderOverride  `json:"aggregator,omitempty"`
+	Automatic            bool               `json:"automatic,omitempty"`
+	BaselineID           string             `json:"baseline_id,omitempty"`
+	ExpectedQualityDelta float64            `json:"expected_quality_delta,omitempty"`
+	DecisionReason       string             `json:"decision_reason,omitempty"`
+}
+
+type ConsensusDecisionRecord struct {
+	Automatic            bool    `json:"automatic"`
+	BaselineID           string  `json:"baseline_id,omitempty"`
+	DecisionReason       string  `json:"decision_reason,omitempty"`
+	ExpectedQualityDelta float64 `json:"expected_quality_delta,omitempty"`
+	ExpectedTokens       int     `json:"expected_tokens"`
+	ExpectedCostUSD      float64 `json:"expected_cost_usd"`
+	TokenBudget          int     `json:"token_budget"`
+	CostBudgetUSD        float64 `json:"cost_budget_usd"`
+	Fanout               int     `json:"fanout"`
+	ObservedCompleted    int     `json:"observed_completed"`
+	ObservedFailed       int     `json:"observed_failed"`
+	ObservedTokens       int     `json:"observed_tokens"`
+	ObservedCostUSD      float64 `json:"observed_cost_usd"`
+	ObservedOutcome      string  `json:"observed_outcome,omitempty"`
+	RecordedAt           string  `json:"recorded_at"`
+	ObservedAt           string  `json:"observed_at,omitempty"`
 }
 
 type ConsensusVariantRecord struct {
@@ -141,37 +165,40 @@ type ConsensusVariantRecord struct {
 }
 
 type RunEvent struct {
-	Type            string  `json:"type"`
-	RunID           string  `json:"run_id"`
-	Timestamp       string  `json:"timestamp,omitempty"`
-	Agent           string  `json:"agent,omitempty"`
-	Status          string  `json:"status,omitempty"`
-	Tier            string  `json:"tier,omitempty"`
-	ResolvedAlias   string  `json:"resolved_alias,omitempty"`
-	ResolvedKind    string  `json:"resolved_kind,omitempty"`
-	ResolvedModel   string  `json:"resolved_model,omitempty"`
-	Error           string  `json:"error,omitempty"`
-	Message         string  `json:"message,omitempty"`
-	Response        string  `json:"response,omitempty"`
-	VariantCount    int     `json:"variant_count,omitempty"`
-	VariantIdx      int     `json:"variant_idx,omitempty"`
-	Alias           string  `json:"alias,omitempty"`
-	Kind            string  `json:"kind,omitempty"`
-	Model           string  `json:"model,omitempty"`
-	Strategy        string  `json:"strategy,omitempty"`
-	TokenBudget     int     `json:"token_budget,omitempty"`
-	TokensIn        int     `json:"tokens_in,omitempty"`
-	TokensOut       int     `json:"tokens_out,omitempty"`
-	FinalTokens     int     `json:"final_tokens,omitempty"`
-	CostUSDEstimate float64 `json:"cost_usd_estimate,omitempty"`
-	CostUSDActual   float64 `json:"cost_usd_actual,omitempty"`
-	ToolName        string  `json:"tool_name,omitempty"`
-	ToolCallID      string  `json:"tool_call_id,omitempty"`
-	Path            string  `json:"path,omitempty"`
-	Action          string  `json:"action,omitempty"`
-	ToolIsError     bool    `json:"tool_is_error,omitempty"`
-	CheckpointID    string  `json:"checkpoint_id,omitempty"`
-	CheckpointKind  string  `json:"checkpoint_kind,omitempty"`
+	Type                 string  `json:"type"`
+	RunID                string  `json:"run_id"`
+	Timestamp            string  `json:"timestamp,omitempty"`
+	Agent                string  `json:"agent,omitempty"`
+	Status               string  `json:"status,omitempty"`
+	Tier                 string  `json:"tier,omitempty"`
+	ResolvedAlias        string  `json:"resolved_alias,omitempty"`
+	ResolvedKind         string  `json:"resolved_kind,omitempty"`
+	ResolvedModel        string  `json:"resolved_model,omitempty"`
+	Error                string  `json:"error,omitempty"`
+	Message              string  `json:"message,omitempty"`
+	Response             string  `json:"response,omitempty"`
+	VariantCount         int     `json:"variant_count,omitempty"`
+	VariantIdx           int     `json:"variant_idx,omitempty"`
+	Alias                string  `json:"alias,omitempty"`
+	Kind                 string  `json:"kind,omitempty"`
+	Model                string  `json:"model,omitempty"`
+	Strategy             string  `json:"strategy,omitempty"`
+	TokenBudget          int     `json:"token_budget,omitempty"`
+	TokensIn             int     `json:"tokens_in,omitempty"`
+	TokensOut            int     `json:"tokens_out,omitempty"`
+	FinalTokens          int     `json:"final_tokens,omitempty"`
+	CostUSDEstimate      float64 `json:"cost_usd_estimate,omitempty"`
+	CostUSDActual        float64 `json:"cost_usd_actual,omitempty"`
+	Automatic            bool    `json:"automatic,omitempty"`
+	BaselineID           string  `json:"baseline_id,omitempty"`
+	ExpectedQualityDelta float64 `json:"expected_quality_delta,omitempty"`
+	ToolName             string  `json:"tool_name,omitempty"`
+	ToolCallID           string  `json:"tool_call_id,omitempty"`
+	Path                 string  `json:"path,omitempty"`
+	Action               string  `json:"action,omitempty"`
+	ToolIsError          bool    `json:"tool_is_error,omitempty"`
+	CheckpointID         string  `json:"checkpoint_id,omitempty"`
+	CheckpointKind       string  `json:"checkpoint_kind,omitempty"`
 }
 
 type FileAttentionSummary struct {
