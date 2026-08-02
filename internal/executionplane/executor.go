@@ -89,6 +89,21 @@ func (executor *LifecycleExecutor) Capabilities() ExecutorCapabilities {
 	return capabilities
 }
 
+func (executor *LifecycleExecutor) Descriptor() AdapterDescriptor {
+	if executor == nil {
+		return AdapterDescriptor{}
+	}
+	descriptor := AdapterDescriptor{Adapter: executor.adapter, Executor: executor.Capabilities()}
+	if executor.provider != nil {
+		descriptor.Provider = executor.provider.Name()
+		descriptor.Environment = executor.provider.Capabilities()
+	}
+	if executor.worker != nil {
+		descriptor.Worker = executor.worker.Name()
+	}
+	return descriptor
+}
+
 func (executor *LifecycleExecutor) Execute(ctx context.Context, execution workscheduler.Execution) (workscheduler.ExecutionResult, error) {
 	if executor == nil {
 		return workscheduler.ExecutionResult{}, fmt.Errorf("executionplane: executor is not configured")

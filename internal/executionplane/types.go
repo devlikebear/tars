@@ -28,6 +28,14 @@ type ExecutorCapabilities struct {
 	Artifacts    bool `json:"artifacts"`
 }
 
+type AdapterDescriptor struct {
+	Adapter     string                  `json:"adapter"`
+	Provider    string                  `json:"provider"`
+	Worker      string                  `json:"worker"`
+	Executor    ExecutorCapabilities    `json:"executor_capabilities"`
+	Environment EnvironmentCapabilities `json:"environment_capabilities"`
+}
+
 type EnvironmentCapabilities struct {
 	Recoverable         bool `json:"recoverable"`
 	Snapshot            bool `json:"snapshot"`

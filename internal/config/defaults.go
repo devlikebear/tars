@@ -90,6 +90,7 @@ const (
 	defaultWorkSchedulerLeaseSeconds           = 60
 	defaultWorkSchedulerHeartbeatSeconds       = 20
 	defaultWorkSchedulerPollMilliseconds       = 250
+	defaultWorkSchedulerExecutionEnvironment   = "local"
 	defaultChannelsTelegramDMPolicy            = "pairing"
 	defaultSkillsBundledDir                    = "./skills"
 	defaultPluginsBundledDir                   = "./plugins"
@@ -215,14 +216,17 @@ func defaultConfigValues() Config {
 			AgentRuntimeArchiveMaxFileBytes:           defaultAgentRuntimeArchiveMaxFileBytes,
 		},
 		WorkLedger: WorkLedgerConfig{
-			Enabled:                   true,
-			SchedulerEnabled:          false,
-			SchedulerMaxWorkers:       defaultWorkSchedulerMaxWorkers,
-			SchedulerLeaseSeconds:     defaultWorkSchedulerLeaseSeconds,
-			SchedulerHeartbeatSeconds: defaultWorkSchedulerHeartbeatSeconds,
-			SchedulerPollMilliseconds: defaultWorkSchedulerPollMilliseconds,
-			enabledSet:                true,
-			schedulerEnabledSet:       true,
+			Enabled:                       true,
+			SchedulerEnabled:              false,
+			SchedulerMaxWorkers:           defaultWorkSchedulerMaxWorkers,
+			SchedulerLeaseSeconds:         defaultWorkSchedulerLeaseSeconds,
+			SchedulerHeartbeatSeconds:     defaultWorkSchedulerHeartbeatSeconds,
+			SchedulerPollMilliseconds:     defaultWorkSchedulerPollMilliseconds,
+			SchedulerExecutionEnvironment: defaultWorkSchedulerExecutionEnvironment,
+			SchedulerExecutionDataDir:     filepath.Join(TarsHomeDir(), "execution-plane"),
+			SchedulerArtifactPaths:        []string{},
+			enabledSet:                    true,
+			schedulerEnabledSet:           true,
 		},
 		ChannelConfig: ChannelConfig{
 			ChannelsTelegramDMPolicy:       defaultChannelsTelegramDMPolicy,

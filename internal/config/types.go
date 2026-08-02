@@ -282,14 +282,17 @@ type AgentRuntimeConfig struct {
 // unexported presence bit lets an explicit YAML false override the enabled
 // default without changing the legacy bool-field merge behavior.
 type WorkLedgerConfig struct {
-	Enabled                   bool
-	SchedulerEnabled          bool
-	SchedulerMaxWorkers       int
-	SchedulerLeaseSeconds     int
-	SchedulerHeartbeatSeconds int
-	SchedulerPollMilliseconds int
-	enabledSet                bool
-	schedulerEnabledSet       bool
+	Enabled                       bool
+	SchedulerEnabled              bool
+	SchedulerMaxWorkers           int
+	SchedulerLeaseSeconds         int
+	SchedulerHeartbeatSeconds     int
+	SchedulerPollMilliseconds     int
+	SchedulerExecutionEnvironment string
+	SchedulerExecutionDataDir     string
+	SchedulerArtifactPaths        []string
+	enabledSet                    bool
+	schedulerEnabledSet           bool
 }
 
 type AgentRuntimeTaskOverrideConfig struct {

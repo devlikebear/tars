@@ -93,14 +93,14 @@ func TestWorkSchedulerConfigSupportsIndependentRollbackAndRuntimeTuning(t *testi
 		if err != nil {
 			t.Fatalf("load defaults: %v", err)
 		}
-		if cfg.WorkLedger.SchedulerEnabled || cfg.WorkLedger.SchedulerMaxWorkers != 4 || cfg.WorkLedger.SchedulerLeaseSeconds != 60 || cfg.WorkLedger.SchedulerHeartbeatSeconds != 20 || cfg.WorkLedger.SchedulerPollMilliseconds != 250 {
+		if cfg.WorkLedger.SchedulerEnabled || cfg.WorkLedger.SchedulerMaxWorkers != 4 || cfg.WorkLedger.SchedulerLeaseSeconds != 60 || cfg.WorkLedger.SchedulerHeartbeatSeconds != 20 || cfg.WorkLedger.SchedulerPollMilliseconds != 250 || cfg.WorkLedger.SchedulerExecutionEnvironment != "local" || strings.TrimSpace(cfg.WorkLedger.SchedulerExecutionDataDir) == "" || len(cfg.WorkLedger.SchedulerArtifactPaths) != 0 {
 			t.Fatalf("work scheduler defaults = %+v", cfg.WorkLedger)
 		}
 	})
 
 	t.Run("yaml enables scheduler and tunes runtime", func(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "config.yaml")
-		raw := "work_ledger:\n  enabled: true\n  scheduler:\n    enabled: true\n    max_workers: 2\n    lease_seconds: 90\n    heartbeat_seconds: 30\n    poll_milliseconds: 500\n"
+		raw := "work_ledger:\n  enabled: true\n  scheduler:\n    enabled: true\n    max_workers: 2\n    lease_seconds: 90\n    heartbeat_seconds: 30\n    poll_milliseconds: 500\n    execution_environment: managed-worktree\n    execution_data_dir: /tmp/tars-execution\n    artifact_paths: [reports, '*.patch']\n"
 		if err := os.WriteFile(path, []byte(raw), 0o644); err != nil {
 			t.Fatalf("write scheduler config: %v", err)
 		}
@@ -108,13 +108,16 @@ func TestWorkSchedulerConfigSupportsIndependentRollbackAndRuntimeTuning(t *testi
 		if err != nil {
 			t.Fatalf("load scheduler config: %v", err)
 		}
-		if !cfg.WorkLedger.Enabled || !cfg.WorkLedger.SchedulerEnabled || cfg.WorkLedger.SchedulerMaxWorkers != 2 || cfg.WorkLedger.SchedulerLeaseSeconds != 90 || cfg.WorkLedger.SchedulerHeartbeatSeconds != 30 || cfg.WorkLedger.SchedulerPollMilliseconds != 500 {
+		if !cfg.WorkLedger.Enabled || !cfg.WorkLedger.SchedulerEnabled || cfg.WorkLedger.SchedulerMaxWorkers != 2 || cfg.WorkLedger.SchedulerLeaseSeconds != 90 || cfg.WorkLedger.SchedulerHeartbeatSeconds != 30 || cfg.WorkLedger.SchedulerPollMilliseconds != 500 || cfg.WorkLedger.SchedulerExecutionEnvironment != "managed-worktree" || cfg.WorkLedger.SchedulerExecutionDataDir != "/tmp/tars-execution" || len(cfg.WorkLedger.SchedulerArtifactPaths) != 2 {
 			t.Fatalf("loaded work scheduler config = %+v", cfg.WorkLedger)
 		}
 	})
 
 	t.Run("environment enables scheduler", func(t *testing.T) {
 		t.Setenv("TARS_WORK_SCHEDULER_ENABLED", "true")
+		t.Setenv("TARS_WORK_SCHEDULER_EXECUTION_ENVIRONMENT", "managed-worktree")
+		t.Setenv("TARS_WORK_SCHEDULER_EXECUTION_DATA_DIR", "/tmp/tars-env-execution")
+		t.Setenv("TARS_WORK_SCHEDULER_ARTIFACT_PATHS_JSON", `["dist","reports/*.json"]`)
 		cfg, err := Load("")
 		if err != nil {
 			t.Fatalf("load scheduler environment: %v", err)
@@ -122,16 +125,22 @@ func TestWorkSchedulerConfigSupportsIndependentRollbackAndRuntimeTuning(t *testi
 		if !cfg.WorkLedger.SchedulerEnabled {
 			t.Fatal("work scheduler should be enabled by environment")
 		}
+		if cfg.WorkLedger.SchedulerExecutionEnvironment != "managed-worktree" || cfg.WorkLedger.SchedulerExecutionDataDir != "/tmp/tars-env-execution" || len(cfg.WorkLedger.SchedulerArtifactPaths) != 2 {
+			t.Fatalf("work scheduler execution environment = %+v", cfg.WorkLedger)
+		}
 	})
 }
 
 func TestConfigSchemaIncludesDurableSchedulerSettings(t *testing.T) {
 	wantPaths := map[string]string{
-		"work_scheduler_enabled":           "work_ledger.scheduler.enabled",
-		"work_scheduler_max_workers":       "work_ledger.scheduler.max_workers",
-		"work_scheduler_lease_seconds":     "work_ledger.scheduler.lease_seconds",
-		"work_scheduler_heartbeat_seconds": "work_ledger.scheduler.heartbeat_seconds",
-		"work_scheduler_poll_milliseconds": "work_ledger.scheduler.poll_milliseconds",
+		"work_scheduler_enabled":               "work_ledger.scheduler.enabled",
+		"work_scheduler_max_workers":           "work_ledger.scheduler.max_workers",
+		"work_scheduler_lease_seconds":         "work_ledger.scheduler.lease_seconds",
+		"work_scheduler_heartbeat_seconds":     "work_ledger.scheduler.heartbeat_seconds",
+		"work_scheduler_poll_milliseconds":     "work_ledger.scheduler.poll_milliseconds",
+		"work_scheduler_execution_environment": "work_ledger.scheduler.execution_environment",
+		"work_scheduler_execution_data_dir":    "work_ledger.scheduler.execution_data_dir",
+		"work_scheduler_artifact_paths_json":   "work_ledger.scheduler.artifact_paths",
 	}
 	for _, field := range Schema() {
 		path, wanted := wantPaths[field.Key]

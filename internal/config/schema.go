@@ -192,6 +192,9 @@ func Schema() []FieldMeta {
 		f("work_scheduler_lease_seconds", "Work Scheduler", "int", "Lease Seconds", "Claim lease duration before an unresponsive worker can be reclaimed"),
 		f("work_scheduler_heartbeat_seconds", "Work Scheduler", "int", "Heartbeat Seconds", "Interval used to renew active step leases"),
 		f("work_scheduler_poll_milliseconds", "Work Scheduler", "int", "Poll Milliseconds", "Interval used to promote and claim ready steps"),
+		fsel("work_scheduler_execution_environment", "Work Scheduler", "Execution Environment", "Filesystem environment used for durable native workers", []string{"local", "managed-worktree"}),
+		f("work_scheduler_execution_data_dir", "Work Scheduler", "string", "Execution Data Dir", "Private directory outside the workspace for lifecycle state, managed worktrees, and collected artifacts"),
+		f("work_scheduler_artifact_paths_json", "Work Scheduler", "string_list", "Artifact Paths", "Workspace-relative files or globs copied after each durable execution"),
 
 		// ── Channels ─────────────────────────────
 		f("channels_local_enabled", "Channels", "bool", "Local Channel", "Enable local channel for CLI dispatch"),
@@ -516,6 +519,12 @@ func extractValue(yamlKey string, cfg Config) any {
 		return cfg.WorkLedger.SchedulerHeartbeatSeconds
 	case "work_scheduler_poll_milliseconds":
 		return cfg.WorkLedger.SchedulerPollMilliseconds
+	case "work_scheduler_execution_environment":
+		return cfg.WorkLedger.SchedulerExecutionEnvironment
+	case "work_scheduler_execution_data_dir":
+		return cfg.WorkLedger.SchedulerExecutionDataDir
+	case "work_scheduler_artifact_paths_json":
+		return append([]string(nil), cfg.WorkLedger.SchedulerArtifactPaths...)
 	// Channels
 	case "channels_local_enabled":
 		return cfg.ChannelsLocalEnabled

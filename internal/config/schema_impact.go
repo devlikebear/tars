@@ -305,6 +305,15 @@ var configFieldImpactHints = map[string][]string{
 		"Disabling the Work Scheduler returns subagent orchestration to the legacy request-bound path after restart.",
 		"Existing Work Ledger records remain available and are not deleted.",
 	},
+	"work_scheduler_execution_environment": {
+		"Changing the execution environment switches durable workers between the shared local workspace and disposable managed worktrees after restart.",
+	},
+	"work_scheduler_execution_data_dir": {
+		"Changing the execution data directory moves new lifecycle state, managed worktrees, and collected artifacts; existing data is not migrated automatically.",
+	},
+	"work_scheduler_artifact_paths_json": {
+		"Changing artifact paths controls which non-sensitive workspace files are copied into durable execution evidence.",
+	},
 	"agentruntime_default_agent": {
 		"Changing default agent affects which Agent Runtime profile handles unspecified tasks.",
 	},
