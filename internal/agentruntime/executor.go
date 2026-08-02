@@ -67,6 +67,7 @@ type PromptExecutor struct {
 	sessionFixedID     string
 	tier               string
 	providerOverride   *ProviderOverride
+	checkpointSupport  ExecutorCheckpointSupport
 	runPrompt          func(ctx context.Context, runLabel string, prompt string, allowedTools []string, tier string, providerOverride *ProviderOverride) (string, error)
 }
 
@@ -86,6 +87,7 @@ type PromptExecutorOptions struct {
 	SessionFixedID     string
 	Tier               string
 	ProviderOverride   *ProviderOverride
+	CheckpointSupport  ExecutorCheckpointSupport
 	RunPrompt          func(ctx context.Context, runLabel string, prompt string, allowedTools []string, tier string, providerOverride *ProviderOverride) (string, error)
 }
 
@@ -137,8 +139,37 @@ func NewPromptExecutorWithOptions(opts PromptExecutorOptions) (*PromptExecutor, 
 		sessionFixedID:     sessionFixedID,
 		tier:               strings.ToLower(strings.TrimSpace(opts.Tier)),
 		providerOverride:   CloneProviderOverride(opts.ProviderOverride),
+		checkpointSupport:  normalizePromptCheckpointSupport(opts.CheckpointSupport),
 		runPrompt:          opts.RunPrompt,
 	}, nil
+}
+
+func normalizePromptCheckpointSupport(support ExecutorCheckpointSupport) ExecutorCheckpointSupport {
+	switch support.Capability {
+	case CheckpointCapabilityRetryOnly, CheckpointCapabilityReplay, CheckpointCapabilityResumableStep:
+		return support
+	case "":
+		return ExecutorCheckpointSupport{Capability: CheckpointCapabilityRetryOnly}
+	default:
+		return ExecutorCheckpointSupport{
+			Capability: CheckpointCapabilityRetryOnly,
+			Limitation: "prompt executor cannot rehydrate an arbitrary environment snapshot",
+		}
+	}
+}
+
+func (e *PromptExecutor) CheckpointSupport() ExecutorCheckpointSupport {
+	if e == nil {
+		return ExecutorCheckpointSupport{Capability: CheckpointCapabilityRetryOnly}
+	}
+	return e.checkpointSupport
+}
+
+func (e *CommandExecutor) CheckpointSupport() ExecutorCheckpointSupport {
+	return ExecutorCheckpointSupport{
+		Capability: CheckpointCapabilityRetryOnly,
+		Limitation: "command executor exposes no serializable process state; restart launches a new command",
+	}
 }
 
 func NewPromptExecutor(name, description string, runPrompt func(ctx context.Context, runLabel string, prompt string) (string, error)) (*PromptExecutor, error) {

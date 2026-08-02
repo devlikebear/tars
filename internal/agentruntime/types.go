@@ -77,18 +77,32 @@ type Run struct {
 }
 
 type RunCheckpoint struct {
-	ID               string            `json:"checkpoint_id"`
-	RunID            string            `json:"run_id,omitempty"`
-	Kind             string            `json:"kind"`
-	Label            string            `json:"label,omitempty"`
-	Status           RunStatus         `json:"status,omitempty"`
-	Agent            string            `json:"agent,omitempty"`
-	Prompt           string            `json:"prompt,omitempty"`
-	Tier             string            `json:"tier,omitempty"`
-	ProviderOverride *ProviderOverride `json:"provider_override,omitempty"`
-	AllowedTools     []string          `json:"allowed_tools,omitempty"`
-	Error            string            `json:"error,omitempty"`
-	CreatedAt        string            `json:"created_at"`
+	SchemaVersion           int                     `json:"schema_version"`
+	ID                      string                  `json:"checkpoint_id"`
+	RunID                   string                  `json:"run_id,omitempty"`
+	Format                  CheckpointFormat        `json:"format"`
+	Capability              CheckpointCapability    `json:"capability"`
+	Resumable               bool                    `json:"resumable"`
+	ResumeReason            string                  `json:"resume_reason"`
+	RecoveryModes           []RecoveryMode          `json:"recovery_modes"`
+	NextAction              string                  `json:"next_action,omitempty"`
+	StateRefs               []CheckpointReference   `json:"state_refs,omitempty"`
+	ToolRequestRefs         []CheckpointReference   `json:"tool_request_refs,omitempty"`
+	ToolResultRefs          []CheckpointReference   `json:"tool_result_refs,omitempty"`
+	EffectReceiptRefs       []CheckpointReference   `json:"effect_receipt_refs,omitempty"`
+	WorkspaceSnapshotRefs   []CheckpointReference   `json:"workspace_snapshot_refs,omitempty"`
+	EnvironmentSnapshotRefs []CheckpointReference   `json:"environment_snapshot_refs,omitempty"`
+	Continuation            *CheckpointContinuation `json:"continuation,omitempty"`
+	Kind                    string                  `json:"kind"`
+	Label                   string                  `json:"label,omitempty"`
+	Status                  RunStatus               `json:"status,omitempty"`
+	Agent                   string                  `json:"agent,omitempty"`
+	Prompt                  string                  `json:"prompt,omitempty"`
+	Tier                    string                  `json:"tier,omitempty"`
+	ProviderOverride        *ProviderOverride       `json:"provider_override,omitempty"`
+	AllowedTools            []string                `json:"allowed_tools,omitempty"`
+	Error                   string                  `json:"error,omitempty"`
+	CreatedAt               string                  `json:"created_at"`
 }
 
 type ProviderOverride struct {

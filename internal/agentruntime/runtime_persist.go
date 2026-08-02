@@ -53,6 +53,7 @@ func (r *Runtime) restoreSnapshotOnStartup() {
 		r.runOrder = make([]string, 0, len(runs))
 		for _, item := range runs {
 			run := item
+			normalizeRunCheckpointCompatibility(&run)
 			if strings.TrimSpace(run.ID) == "" {
 				continue
 			}

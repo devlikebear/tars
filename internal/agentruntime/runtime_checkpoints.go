@@ -11,9 +11,30 @@ func (r *Runtime) appendRunCheckpointLocked(state *runState, kind string, label 
 		return RunCheckpoint{}
 	}
 	now := r.nowFn().UTC().Format(time.RFC3339)
+	support := checkpointSupportForExecutor(state.executor)
+	capability := support.Capability
+	if capability == CheckpointCapabilityResumableStep {
+		capability = CheckpointCapabilityReplay
+	}
+	resumeReason := strings.TrimSpace(support.Limitation)
+	if resumeReason == "" {
+		resumeReason = "checkpoint does not contain a provider continuation handle"
+	}
 	checkpoint := RunCheckpoint{
-		ID:               fmt.Sprintf("%s_cp_%d", state.run.ID, len(state.run.Checkpoints)+1),
-		RunID:            state.run.ID,
+		SchemaVersion: currentCheckpointSchemaVersion,
+		ID:            fmt.Sprintf("%s_cp_%d", state.run.ID, len(state.run.Checkpoints)+1),
+		RunID:         state.run.ID,
+		Format:        CheckpointFormatStepV1,
+		Capability:    capability,
+		Resumable:     false,
+		ResumeReason:  resumeReason,
+		RecoveryModes: checkpointRecoveryModes(capability, nil),
+		NextAction:    checkpointNextAction(kind),
+		StateRefs: []CheckpointReference{
+			{Kind: "run", ID: state.run.ID},
+			{Kind: "session", ID: state.run.SessionID},
+			{Kind: "workspace", ID: state.run.WorkspaceID},
+		},
 		Kind:             strings.TrimSpace(kind),
 		Label:            strings.TrimSpace(label),
 		Status:           state.run.Status,
@@ -30,6 +51,17 @@ func (r *Runtime) appendRunCheckpointLocked(state *runState, kind string, label 
 	}
 	state.run.Checkpoints = append(state.run.Checkpoints, checkpoint)
 	return checkpoint
+}
+
+func checkpointNextAction(kind string) string {
+	switch strings.ToLower(strings.TrimSpace(kind)) {
+	case "failure":
+		return "recover"
+	case "prompt":
+		return "dispatch_prompt"
+	default:
+		return "continue_step"
+	}
 }
 
 func latestRunCheckpoint(run Run) (RunCheckpoint, bool) {
