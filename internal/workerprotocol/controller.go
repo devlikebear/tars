@@ -116,6 +116,9 @@ func OpenController(opts ControllerOptions) (*Controller, error) {
 		return nil, fmt.Errorf("%w: controller schema %d", ErrVersionUnsupported, controller.state.SchemaVersion)
 	}
 	controller.initializeMapsLocked()
+	if err := controller.validateStateLocked(); err != nil {
+		return nil, err
+	}
 	return controller, nil
 }
 
@@ -211,13 +214,13 @@ func (controller *Controller) Apply(ctx context.Context, envelope Envelope) (App
 		if existing != fingerprint {
 			return ApplyResult{}, fmt.Errorf("%w: message id %s changed payload", ErrConflict, envelope.MessageID)
 		}
-		return controller.duplicateResultLocked(ctx, envelope), nil
+		return controller.duplicateResultLocked(ctx, envelope)
 	}
 	if existing, ok := controller.state.AppliedIdempotencyKeys[envelope.IdempotencyKey]; ok {
 		if existing != fingerprint {
 			return ApplyResult{}, fmt.Errorf("%w: idempotency key %s changed payload", ErrConflict, envelope.IdempotencyKey)
 		}
-		return controller.duplicateResultLocked(ctx, envelope), nil
+		return controller.duplicateResultLocked(ctx, envelope)
 	}
 	previousState := cloneControllerState(controller.state)
 
@@ -325,6 +328,19 @@ func (controller *Controller) applyWorkerMessageLocked(envelope Envelope) (Contr
 			expires := now.Add(time.Duration(payload.LeaseTTLMS) * time.Millisecond)
 			current.LeaseExpiresAt = &expires
 		}
+	case MessageLost:
+		if !exists {
+			return ControlEvent{}, nil, ErrNotFound
+		}
+		if current.State == WorkerStateLost || current.State == WorkerStateDestroyed {
+			return ControlEvent{}, nil, fmt.Errorf("%w: worker %s cannot be lost from %s", ErrInvalidTransition, current.ID, current.State)
+		}
+		var payload LostPayload
+		if err := decodePayload(envelope.Payload, &payload); err != nil {
+			return ControlEvent{}, nil, err
+		}
+		current.State = WorkerStateLost
+		current.LeaseExpiresAt = nil
 	default:
 		return ControlEvent{}, nil, fmt.Errorf("%w: %s requires a placement", ErrInvalidEnvelope, envelope.Type)
 	}
@@ -474,7 +490,7 @@ func applyPlacementTransition(envelope Envelope, placement *Placement, worker *W
 			return invalidPlacementTransition(placement, envelope.Type)
 		}
 		var payload RehydratePayload
-		if err := decodePayload(envelope.Payload, &payload); err != nil || !validProtocolIdentifier(payload.ReplacementWorkerID) || !validProtocolIdentifier(payload.EnvironmentID) || strings.TrimSpace(payload.SnapshotDigest) == "" {
+		if err := decodePayload(envelope.Payload, &payload); err != nil || !validProtocolIdentifier(payload.ReplacementWorkerID) || !validProtocolIdentifier(payload.EnvironmentID) || strings.TrimSpace(payload.SnapshotDigest) == "" || payload.LeaseTTLMS <= 0 {
 			return fmt.Errorf("%w: invalid rehydrate payload", ErrInvalidEnvelope)
 		}
 		replacement, ok := workers[payload.ReplacementWorkerID]
@@ -484,9 +500,24 @@ func applyPlacementTransition(envelope Envelope, placement *Placement, worker *W
 		placement.WorkerID = replacement.ID
 		placement.EnvironmentID = payload.EnvironmentID
 		placement.SnapshotDigest = payload.SnapshotDigest
+		if (payload.CheckpointID == "") != (payload.CheckpointDigest == "") {
+			return fmt.Errorf("%w: checkpoint identity and digest must be provided together", ErrInvalidEnvelope)
+		}
+		if payload.CheckpointID != "" {
+			if !validProtocolIdentifier(payload.CheckpointID) || strings.TrimSpace(payload.CheckpointDigest) == "" {
+				return fmt.Errorf("%w: invalid rehydrate checkpoint", ErrInvalidEnvelope)
+			}
+			if placement.Checkpoint != nil && (placement.Checkpoint.ID != payload.CheckpointID || placement.Checkpoint.Digest != payload.CheckpointDigest) {
+				return fmt.Errorf("%w: rehydrate checkpoint does not match placement", ErrConflict)
+			}
+			placement.Checkpoint = &Checkpoint{ID: payload.CheckpointID, Digest: payload.CheckpointDigest, CreatedAt: now}
+		}
 		placement.RecoveryCount++
 		placement.State = PlacementStateRehydrating
+		expires := now.Add(time.Duration(payload.LeaseTTLMS) * time.Millisecond)
+		placement.LeaseExpiresAt = &expires
 		replacement.State = WorkerStateLeased
+		replacement.LeaseExpiresAt = &expires
 		replacement.UpdatedAt = now
 		replacement.Version++
 		workers[replacement.ID] = replacement
@@ -577,13 +608,15 @@ func sanitizedControlPayload(envelope Envelope) json.RawMessage {
 	}
 }
 
-func (controller *Controller) duplicateResultLocked(ctx context.Context, envelope Envelope) ApplyResult {
+func (controller *Controller) duplicateResultLocked(ctx context.Context, envelope Envelope) (ApplyResult, error) {
 	for index := range controller.state.Events {
 		if controller.state.Events[index].MessageID != envelope.MessageID && controller.state.Events[index].IdempotencyKey != envelope.IdempotencyKey {
 			continue
 		}
 		if !controller.state.Events[index].Published {
-			_ = controller.publishEventLocked(ctx, index)
+			if err := controller.publishEventLocked(ctx, index); err != nil {
+				return ApplyResult{Duplicate: true, Event: controller.state.Events[index]}, err
+			}
 		}
 		result := ApplyResult{Duplicate: true, Event: controller.state.Events[index]}
 		if worker, ok := controller.state.Workers[envelope.WorkerID]; ok {
@@ -594,9 +627,9 @@ func (controller *Controller) duplicateResultLocked(ctx context.Context, envelop
 			copy := placement
 			result.Placement = &copy
 		}
-		return result
+		return result, nil
 	}
-	return ApplyResult{Duplicate: true}
+	return ApplyResult{Duplicate: true}, nil
 }
 
 func (controller *Controller) appendAndSaveLocked(event ControlEvent) (int, error) {
@@ -649,6 +682,78 @@ func (controller *Controller) initializeMapsLocked() {
 	if controller.state.AppliedIdempotencyKeys == nil {
 		controller.state.AppliedIdempotencyKeys = make(map[string]string)
 	}
+}
+
+func (controller *Controller) validateStateLocked() error {
+	for workerID, worker := range controller.state.Workers {
+		if !validProtocolIdentifier(workerID) || worker.ID != workerID || worker.ProtocolVersion != ProtocolVersionV1 ||
+			strings.TrimSpace(worker.Transport) == "" || strings.TrimSpace(worker.Endpoint) == "" ||
+			!validWorkerState(worker.State) || worker.LastSequence < 1 || worker.Version < 1 ||
+			!worker.Capabilities.EgressPolicy || !worker.Capabilities.ResourceLimits {
+			return fmt.Errorf("%w: invalid persisted worker %q", ErrWireContract, workerID)
+		}
+	}
+	for placementID, placement := range controller.state.Placements {
+		if !validProtocolIdentifier(placementID) || placement.ID != placementID ||
+			!validProtocolIdentifier(placement.WorkspaceID) || !validProtocolIdentifier(placement.WorkID) ||
+			!validProtocolIdentifier(placement.StepID) || !validProtocolIdentifier(placement.AttemptID) ||
+			!validProtocolIdentifier(placement.WorkerID) || !validPlacementState(placement.State) ||
+			placement.LastSequence < 0 || placement.Version < 1 || placement.RecoveryCount < 0 {
+			return fmt.Errorf("%w: invalid persisted placement %q", ErrWireContract, placementID)
+		}
+		if _, ok := controller.state.Workers[placement.WorkerID]; !ok {
+			return fmt.Errorf("%w: placement %q references unknown worker", ErrWireContract, placementID)
+		}
+		if err := placement.Policy.Validate(); err != nil {
+			return errors.Join(ErrWireContract, err)
+		}
+		if err := placement.Sync.Validate(); err != nil {
+			return errors.Join(ErrWireContract, err)
+		}
+		if placement.Checkpoint != nil && (!validProtocolIdentifier(placement.Checkpoint.ID) || strings.TrimSpace(placement.Checkpoint.Digest) == "") {
+			return fmt.Errorf("%w: placement %q has invalid checkpoint", ErrWireContract, placementID)
+		}
+	}
+	for _, event := range controller.state.Events {
+		if !validProtocolIdentifier(event.ID) || !validProtocolIdentifier(event.IdempotencyKey) || strings.TrimSpace(event.Type) == "" ||
+			(event.Entity != "worker" && event.Entity != "placement") || (len(event.Payload) > 0 && !json.Valid(event.Payload)) {
+			return fmt.Errorf("%w: invalid persisted control event", ErrWireContract)
+		}
+		for _, identifier := range []string{event.WorkerID, event.PlacementID, event.WorkspaceID, event.WorkID, event.StepID, event.AttemptID, event.MessageID} {
+			if identifier != "" && !validProtocolIdentifier(identifier) {
+				return fmt.Errorf("%w: invalid persisted control event identity", ErrWireContract)
+			}
+		}
+	}
+	for messageID, fingerprint := range controller.state.AppliedMessages {
+		if !validProtocolIdentifier(messageID) || !validFingerprint(fingerprint) {
+			return fmt.Errorf("%w: invalid persisted message receipt", ErrWireContract)
+		}
+	}
+	for idempotencyKey, fingerprint := range controller.state.AppliedIdempotencyKeys {
+		if !validProtocolIdentifier(idempotencyKey) || !validFingerprint(fingerprint) {
+			return fmt.Errorf("%w: invalid persisted idempotency receipt", ErrWireContract)
+		}
+	}
+	return nil
+}
+
+func validWorkerState(state WorkerState) bool {
+	switch state {
+	case WorkerStateRegistered, WorkerStateReady, WorkerStateLeased, WorkerStateExecuting,
+		WorkerStateDisconnected, WorkerStateLost, WorkerStateDraining, WorkerStateDestroyed:
+		return true
+	default:
+		return false
+	}
+}
+
+func validFingerprint(fingerprint string) bool {
+	if len(fingerprint) != sha256.Size*2 {
+		return false
+	}
+	_, err := hex.DecodeString(fingerprint)
+	return err == nil
 }
 
 func cloneControllerState(state controllerState) controllerState {

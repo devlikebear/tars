@@ -153,3 +153,92 @@ func TestGatewayCoordinatorFailsClosedWhenArtifactQuarantineRejectsSecret(t *tes
 		t.Fatalf("failed placement was not destroyed: %+v", placement)
 	}
 }
+
+func TestGatewayCoordinatorResumesLostPlacementOnReplacementWorker(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 8, 2, 20, 0, 0, 0, time.UTC)
+	seed := make([]byte, ed25519.SeedSize)
+	seed[0] = 41
+	issuer, err := NewTaskTokenIssuer(TaskTokenIssuerOptions{
+		PrivateKey: ed25519.NewKeyFromSeed(seed), MaxTTL: 5 * time.Minute, Now: func() time.Time { return now },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	controller, err := OpenController(ControllerOptions{StatePath: filepath.Join(t.TempDir(), "controller.json"), Now: func() time.Time { return now }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	registerReadyWorker(t, controller, "worker-a", 1000)
+	if _, err := controller.CreatePlacement(context.Background(), CreatePlacementInput{
+		ID: "placement-a", WorkspaceID: "workspace-a", WorkID: "work-a", StepID: "step-a", AttemptID: "attempt-a",
+		WorkerID: "worker-a", Policy: DefaultExecutionPolicy(),
+		Sync: SyncSpec{Mode: SyncModeDirectory, SourceOwner: OwnerGateway, WorkspaceOwner: OwnerWorker, ArtifactOwner: OwnerGateway},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	applyRecoveryEnvelope(t, controller, "worker-a", "placement-a", 1, MessageProvision, ProvisionPayload{EnvironmentID: "env-a"})
+	applyRecoveryEnvelope(t, controller, "worker-a", "placement-a", 2, MessageSync, SyncPayload{Mode: SyncModeDirectory, Digest: "sha256:source"})
+	applyRecoveryEnvelope(t, controller, "worker-a", "placement-a", 3, MessageLease, LeasePayload{LeaseTTLMS: 1000})
+	applyRecoveryEnvelope(t, controller, "worker-a", "placement-a", 4, MessageExecute, ExecutePayload{TaskToken: "old-ephemeral"})
+	applyRecoveryEnvelope(t, controller, "worker-a", "placement-a", 5, MessageCheckpoint, CheckpointPayload{ID: "checkpoint-a", Digest: "sha256:checkpoint"})
+	now = now.Add(2 * time.Second)
+	if lost, err := controller.ReconcileExpired(context.Background(), "worker-a heartbeat expired"); err != nil || len(lost) != 1 {
+		t.Fatalf("mark worker-a lost: placements=%+v error=%v", lost, err)
+	}
+
+	executor := &recordingReferenceExecutor{result: ReferenceExecutionResult{
+		Payload:   json.RawMessage(`{"succeeded":true,"summary":"resumed"}`),
+		Artifacts: []WireArtifact{{Name: "resumed.txt", MediaType: "text/plain", Data: []byte("resumed\n"), Digest: digestBytes([]byte("resumed\n"))}},
+	}}
+	replacement, err := NewReferenceWorker(ReferenceWorkerOptions{
+		WorkerID: "worker-b", RootDir: t.TempDir(), TokenVerifier: issuer.PublicVerifier(), Executor: executor,
+		Now: func() time.Time { return now },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	transport, err := NewInProcessTransport(replacement, WireLimits{MaxRequestBytes: 4 << 20, MaxResponseBytes: 4 << 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	quarantine, err := NewArtifactQuarantine(ArtifactQuarantineOptions{RootDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	coordinator, err := NewGatewayCoordinator(GatewayCoordinatorOptions{
+		Controller: controller, WorkerID: "worker-b", TransportName: "in-process", Endpoint: "local://worker-b",
+		Capabilities: executor.Capabilities(), Transport: transport, TokenIssuer: issuer, Quarantine: quarantine,
+		LeaseTTL: 2 * time.Minute, TokenTTL: time.Minute, Now: func() time.Time { return now },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := t.TempDir()
+	if err := os.WriteFile(filepath.Join(source, "task.txt"), []byte("source snapshot\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	bundle, err := BuildWorkspaceBundle(context.Background(), WorkspaceBundleOptions{RootDir: source, Mode: SyncModeDirectory})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := coordinator.Resume(context.Background(), RemoteRecoveryInput{
+		PlacementID: "placement-a", EnvironmentID: "env-b", Workspace: bundle,
+		Request: json.RawMessage(`{"objective":"continue"}`), Reason: "replace expired worker",
+	})
+	if err != nil {
+		t.Fatalf("resume placement on worker-b: %v", err)
+	}
+	if !result.Succeeded || len(result.Artifacts) != 1 || executor.calls != 1 || !executor.request.Resume || executor.request.Checkpoint == nil || executor.request.Checkpoint.ID != "checkpoint-a" {
+		t.Fatalf("recovery result=%+v executor request=%+v calls=%d", result, executor.request, executor.calls)
+	}
+	snapshot := controller.Snapshot()
+	placement := snapshot.Placements["placement-a"]
+	if placement.State != PlacementStateDestroyed || placement.WorkerID != "worker-b" || placement.RecoveryCount != 1 || placement.LastSequence != 12 {
+		t.Fatalf("recovered placement=%+v", placement)
+	}
+	if snapshot.Workers["worker-a"].State != WorkerStateLost || snapshot.Workers["worker-b"].State != WorkerStateReady {
+		t.Fatalf("recovery workers=%+v", snapshot.Workers)
+	}
+}

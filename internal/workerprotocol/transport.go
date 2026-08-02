@@ -75,15 +75,22 @@ func (request WireRequest) Validate() error {
 	if request.Workspace == nil {
 		return nil
 	}
-	if request.Envelope.Type != MessageSync {
-		return fmt.Errorf("%w: workspace bundle requires sync message", ErrWireContract)
+	if request.Envelope.Type != MessageSync && request.Envelope.Type != MessageRehydrate {
+		return fmt.Errorf("%w: workspace bundle requires sync or rehydrate message", ErrWireContract)
 	}
 	if err := VerifyWorkspaceBundle(*request.Workspace, DefaultWorkspaceBundleLimits()); err != nil {
 		return errors.Join(ErrWireContract, err)
 	}
-	var payload SyncPayload
-	if err := decodePayload(request.Envelope.Payload, &payload); err != nil || payload.Digest != request.Workspace.Manifest.Digest || payload.Mode != request.Workspace.Manifest.Mode {
-		return fmt.Errorf("%w: sync payload does not bind workspace manifest", ErrWireContract)
+	if request.Envelope.Type == MessageSync {
+		var payload SyncPayload
+		if err := decodePayload(request.Envelope.Payload, &payload); err != nil || payload.Digest != request.Workspace.Manifest.Digest || payload.Mode != request.Workspace.Manifest.Mode {
+			return fmt.Errorf("%w: sync payload does not bind workspace manifest", ErrWireContract)
+		}
+	} else {
+		var payload RehydratePayload
+		if err := decodePayload(request.Envelope.Payload, &payload); err != nil || payload.SnapshotDigest != request.Workspace.Manifest.Digest {
+			return fmt.Errorf("%w: rehydrate payload does not bind workspace manifest", ErrWireContract)
+		}
 	}
 	return nil
 }

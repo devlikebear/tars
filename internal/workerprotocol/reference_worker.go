@@ -9,7 +9,11 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/devlikebear/tars/internal/atomicwrite"
 )
+
+const referenceWorkerSchemaVersion = 1
 
 type ReferenceExecutionRequest struct {
 	Binding    TaskTokenBinding `json:"binding"`
@@ -34,6 +38,7 @@ type ReferenceExecutor interface {
 type ReferenceWorkerOptions struct {
 	WorkerID      string
 	RootDir       string
+	StatePath     string
 	TokenVerifier *TaskTokenVerifier
 	Executor      ReferenceExecutor
 	Now           func() time.Time
@@ -61,8 +66,19 @@ type ReferenceWorkerSnapshot struct {
 }
 
 type referenceApplied struct {
-	fingerprint string
-	response    WireResponse
+	Fingerprint string       `json:"fingerprint"`
+	Type        MessageType  `json:"type"`
+	PlacementID string       `json:"placement_id,omitempty"`
+	Response    WireResponse `json:"-"`
+}
+
+type referenceWorkerState struct {
+	SchemaVersion int                             `json:"schema_version"`
+	WorkerID      string                          `json:"worker_id"`
+	Environments  map[string]ReferenceEnvironment `json:"environments"`
+	AppliedIDs    map[string]referenceApplied     `json:"applied_ids"`
+	AppliedKeys   map[string]referenceApplied     `json:"applied_keys"`
+	UpdatedAt     time.Time                       `json:"updated_at"`
 }
 
 type ReferenceWorker struct {
@@ -70,6 +86,7 @@ type ReferenceWorker struct {
 	workerID     string
 	rootDir      string
 	placements   string
+	statePath    string
 	verifier     *TaskTokenVerifier
 	executor     ReferenceExecutor
 	capabilities WorkerCapabilities
@@ -116,12 +133,28 @@ func NewReferenceWorker(opts ReferenceWorkerOptions) (*ReferenceWorker, error) {
 	if opts.Now == nil {
 		opts.Now = time.Now
 	}
-	return &ReferenceWorker{
+	statePath := strings.TrimSpace(opts.StatePath)
+	if statePath == "" {
+		statePath = filepath.Join(canonical, "worker-state.json")
+	}
+	statePath, err = filepath.Abs(statePath)
+	if err != nil || filepath.Clean(statePath) == filepath.Clean(canonical) || sameOrWithinWorkspace(placements, statePath) {
+		return nil, fmt.Errorf("workerprotocol: invalid reference worker state path")
+	}
+	if err := os.MkdirAll(filepath.Dir(statePath), 0o700); err != nil {
+		return nil, fmt.Errorf("workerprotocol: create reference worker state directory: %w", err)
+	}
+	worker := &ReferenceWorker{
 		workerID: workerID, rootDir: canonical, placements: placements, verifier: opts.TokenVerifier,
-		executor: opts.Executor, capabilities: capabilities, now: opts.Now,
+		statePath: statePath,
+		executor:  opts.Executor, capabilities: capabilities, now: opts.Now,
 		environments: make(map[string]ReferenceEnvironment), results: make(map[string]ReferenceExecutionResult),
 		appliedIDs: make(map[string]referenceApplied), appliedKeys: make(map[string]referenceApplied),
-	}, nil
+	}
+	if err := worker.loadState(); err != nil {
+		return nil, err
+	}
+	return worker, nil
 }
 
 func (worker *ReferenceWorker) Handle(ctx context.Context, request WireRequest) (WireResponse, error) {
@@ -139,23 +172,29 @@ func (worker *ReferenceWorker) Handle(ctx context.Context, request WireRequest) 
 	worker.mu.Lock()
 	defer worker.mu.Unlock()
 	if applied, ok := worker.appliedIDs[request.RequestID]; ok {
-		if applied.fingerprint != fingerprint {
+		if applied.Fingerprint != fingerprint {
 			return worker.rejected(request, "idempotency_conflict", "request id changed content"), nil
 		}
-		return cloneWireResponse(applied.response), nil
+		return worker.replayLocked(request, applied)
 	}
 	if applied, ok := worker.appliedKeys[request.Envelope.IdempotencyKey]; ok {
-		if applied.fingerprint != fingerprint {
+		if applied.Fingerprint != fingerprint {
 			return worker.rejected(request, "idempotency_conflict", "idempotency key changed content"), nil
 		}
-		return cloneWireResponse(applied.response), nil
+		return worker.replayLocked(request, applied)
 	}
 
 	response := worker.handleLocked(ctx, request)
 	if response.Accepted {
-		applied := referenceApplied{fingerprint: fingerprint, response: cloneWireResponse(response)}
+		applied := referenceApplied{
+			Fingerprint: fingerprint, Type: request.Envelope.Type,
+			PlacementID: request.Envelope.PlacementID, Response: cloneWireResponse(response),
+		}
 		worker.appliedIDs[request.RequestID] = applied
 		worker.appliedKeys[request.Envelope.IdempotencyKey] = applied
+		if err := worker.saveStateLocked(); err != nil {
+			return WireResponse{}, err
+		}
 	}
 	return response, nil
 }
@@ -179,7 +218,7 @@ func (worker *ReferenceWorker) handleLocked(ctx context.Context, request WireReq
 	if exists && envelope.Sequence != environment.LastSequence+1 {
 		return worker.rejected(request, "out_of_order", "placement sequence is out of order")
 	}
-	if !exists && (envelope.Type != MessageProvision || envelope.Sequence != 1) {
+	if !exists && !((envelope.Type == MessageProvision && envelope.Sequence == 1) || envelope.Type == MessageRehydrate) {
 		return worker.rejected(request, "environment_not_found", "placement environment is unavailable")
 	}
 
@@ -187,6 +226,8 @@ func (worker *ReferenceWorker) handleLocked(ctx context.Context, request WireReq
 	switch envelope.Type {
 	case MessageProvision:
 		response, environment = worker.provisionLocked(request, environment, exists)
+	case MessageRehydrate:
+		response, environment = worker.rehydrateLocked(ctx, request, environment, exists)
 	case MessageSync:
 		response, environment = worker.syncLocked(ctx, request, environment)
 	case MessageLease:
@@ -264,6 +305,56 @@ func (worker *ReferenceWorker) syncLocked(ctx context.Context, request WireReque
 	return worker.accepted(request, payload, nil), environment
 }
 
+func (worker *ReferenceWorker) rehydrateLocked(ctx context.Context, request WireRequest, _ ReferenceEnvironment, exists bool) (WireResponse, ReferenceEnvironment) {
+	if exists || request.Workspace == nil {
+		return worker.rejected(request, "invalid_transition", "replacement placement already exists or has no snapshot"), ReferenceEnvironment{}
+	}
+	var payload RehydratePayload
+	if err := decodePayload(request.Envelope.Payload, &payload); err != nil || payload.ReplacementWorkerID != worker.workerID ||
+		!validProtocolIdentifier(payload.EnvironmentID) || payload.SnapshotDigest != request.Workspace.Manifest.Digest ||
+		payload.Binding.PlacementID != request.Envelope.PlacementID || payload.Binding.WorkerID != worker.workerID || payload.LeaseTTLMS <= 0 {
+		return worker.rejected(request, "invalid_rehydrate", "recovery binding or snapshot is invalid"), ReferenceEnvironment{}
+	}
+	if err := validateTaskTokenBinding(payload.Binding); err != nil {
+		return worker.rejected(request, "invalid_rehydrate", "recovery task binding is invalid"), ReferenceEnvironment{}
+	}
+	if err := payload.Policy.Validate(); err != nil {
+		return worker.rejected(request, "policy_denied", "recovery policy cannot be enforced"), ReferenceEnvironment{}
+	}
+	if (payload.CheckpointID == "") != (payload.CheckpointDigest == "") ||
+		(payload.CheckpointID != "" && !validProtocolIdentifier(payload.CheckpointID)) {
+		return worker.rejected(request, "checkpoint_mismatch", "recovery checkpoint is invalid"), ReferenceEnvironment{}
+	}
+	root := filepath.Join(worker.placements, request.Envelope.PlacementID)
+	if !sameOrWithinWorkspace(worker.placements, root) {
+		return worker.rejected(request, "invalid_rehydrate", "replacement path is unsafe"), ReferenceEnvironment{}
+	}
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		return worker.rejected(request, "rehydrate_failed", "replacement root could not be created"), ReferenceEnvironment{}
+	}
+	if err := os.Chmod(root, 0o700); err != nil {
+		return worker.rejected(request, "rehydrate_failed", "replacement root could not be secured"), ReferenceEnvironment{}
+	}
+	if err := ApplyWorkspaceBundle(ctx, root, *request.Workspace, DefaultWorkspaceBundleLimits()); err != nil {
+		return worker.rejected(request, "rehydrate_failed", "recovery snapshot could not be applied"), ReferenceEnvironment{}
+	}
+	expiresAt := worker.now().UTC().Add(time.Duration(payload.LeaseTTLMS) * time.Millisecond)
+	environment := ReferenceEnvironment{
+		EnvironmentID: payload.EnvironmentID, PlacementID: request.Envelope.PlacementID,
+		Binding: payload.Binding, RootDir: root, Policy: payload.Policy,
+		ManifestDigest: payload.SnapshotDigest, State: PlacementStateRehydrating,
+		LeaseExpiresAt: &expiresAt, UpdatedAt: worker.now().UTC(),
+	}
+	if payload.CheckpointID != "" {
+		environment.Checkpoint = &Checkpoint{ID: payload.CheckpointID, Digest: payload.CheckpointDigest, CreatedAt: worker.now().UTC()}
+	}
+	responsePayload, _ := json.Marshal(map[string]any{
+		"environment_id": payload.EnvironmentID, "snapshot_digest": payload.SnapshotDigest,
+		"checkpoint_id": payload.CheckpointID, "lease_expires_at": expiresAt,
+	})
+	return worker.accepted(request, responsePayload, nil), environment
+}
+
 func (worker *ReferenceWorker) leaseLocked(request WireRequest, environment ReferenceEnvironment) (WireResponse, ReferenceEnvironment) {
 	if environment.State != PlacementStateReady {
 		return worker.rejected(request, "invalid_transition", "placement is not ready to lease"), environment
@@ -280,7 +371,7 @@ func (worker *ReferenceWorker) leaseLocked(request WireRequest, environment Refe
 }
 
 func (worker *ReferenceWorker) executeLocked(ctx context.Context, request WireRequest, environment ReferenceEnvironment) (WireResponse, ReferenceEnvironment) {
-	if environment.State != PlacementStateReady && environment.State != PlacementStateCheckpointed {
+	if environment.State != PlacementStateReady && environment.State != PlacementStateCheckpointed && environment.State != PlacementStateRehydrating {
 		return worker.rejected(request, "invalid_transition", "placement is not executable"), environment
 	}
 	if environment.LeaseExpiresAt == nil || !environment.LeaseExpiresAt.After(worker.now().UTC()) {
@@ -305,9 +396,13 @@ func (worker *ReferenceWorker) executeLocked(ctx context.Context, request WireRe
 		environment.State = PlacementStateFailed
 		return worker.rejected(request, "execution_failed", "reference executor failed"), environment
 	}
-	if err := validateReferenceExecutionResult(result, environment.Policy); err != nil {
+	if err := validateReferenceExecutionResult(result, environment.Policy, []string{payload.TaskToken}); err != nil {
 		environment.State = PlacementStateFailed
 		return worker.rejected(request, "result_rejected", "executor result exceeded policy or failed integrity checks"), environment
+	}
+	if err := worker.saveResultLocked(environment, result); err != nil {
+		environment.State = PlacementStateFailed
+		return worker.rejected(request, "result_rejected", "executor result could not be secured"), environment
 	}
 	worker.results[environment.PlacementID] = cloneReferenceExecutionResult(result)
 	environment.ResultDigest = digestBytes(result.Payload)
@@ -355,7 +450,12 @@ func (worker *ReferenceWorker) collectLocked(request WireRequest, environment Re
 	}
 	result, ok := worker.results[environment.PlacementID]
 	if !ok {
-		return worker.rejected(request, "result_unavailable", "execution result is unavailable"), environment
+		var err error
+		result, err = worker.loadResultLocked(environment)
+		if err != nil {
+			return worker.rejected(request, "result_unavailable", "execution result is unavailable"), environment
+		}
+		worker.results[environment.PlacementID] = cloneReferenceExecutionResult(result)
 	}
 	if payload.Complete {
 		if payload.Succeeded {
@@ -409,6 +509,179 @@ func (worker *ReferenceWorker) Snapshot() ReferenceWorkerSnapshot {
 	return ReferenceWorkerSnapshot{WorkerID: worker.workerID, Capabilities: worker.capabilities, Environments: environments}
 }
 
+func (worker *ReferenceWorker) loadState() error {
+	raw, err := os.ReadFile(worker.statePath)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("workerprotocol: read reference worker state: %w", err)
+	}
+	var state referenceWorkerState
+	if err := json.Unmarshal(raw, &state); err != nil {
+		return fmt.Errorf("workerprotocol: decode reference worker state: %w", err)
+	}
+	if state.SchemaVersion != referenceWorkerSchemaVersion || state.WorkerID != worker.workerID {
+		return fmt.Errorf("%w: incompatible reference worker state", ErrVersionUnsupported)
+	}
+	if state.Environments == nil {
+		state.Environments = make(map[string]ReferenceEnvironment)
+	}
+	if state.AppliedIDs == nil {
+		state.AppliedIDs = make(map[string]referenceApplied)
+	}
+	if state.AppliedKeys == nil {
+		state.AppliedKeys = make(map[string]referenceApplied)
+	}
+	for placementID, environment := range state.Environments {
+		if err := worker.validatePersistedEnvironment(placementID, environment); err != nil {
+			return err
+		}
+	}
+	for key, receipt := range state.AppliedIDs {
+		if !validProtocolIdentifier(key) || !validReferenceReceipt(receipt) {
+			return fmt.Errorf("%w: invalid persisted worker receipt", ErrWireContract)
+		}
+	}
+	for key, receipt := range state.AppliedKeys {
+		if !validProtocolIdentifier(key) || !validReferenceReceipt(receipt) {
+			return fmt.Errorf("%w: invalid persisted worker idempotency receipt", ErrWireContract)
+		}
+	}
+	worker.environments = state.Environments
+	worker.appliedIDs = state.AppliedIDs
+	worker.appliedKeys = state.AppliedKeys
+	return nil
+}
+
+func (worker *ReferenceWorker) saveStateLocked() error {
+	state := referenceWorkerState{
+		SchemaVersion: referenceWorkerSchemaVersion, WorkerID: worker.workerID,
+		Environments: worker.environments, AppliedIDs: worker.appliedIDs, AppliedKeys: worker.appliedKeys,
+		UpdatedAt: worker.now().UTC(),
+	}
+	raw, err := json.MarshalIndent(state, "", "  ")
+	if err != nil {
+		return fmt.Errorf("workerprotocol: encode reference worker state: %w", err)
+	}
+	if err := atomicwrite.Write(worker.statePath, append(raw, '\n')); err != nil {
+		return fmt.Errorf("workerprotocol: save reference worker state: %w", err)
+	}
+	if err := os.Chmod(worker.statePath, 0o600); err != nil {
+		return fmt.Errorf("workerprotocol: secure reference worker state: %w", err)
+	}
+	return nil
+}
+
+func (worker *ReferenceWorker) validatePersistedEnvironment(placementID string, environment ReferenceEnvironment) error {
+	expectedRoot := filepath.Join(worker.placements, placementID)
+	if !validProtocolIdentifier(placementID) || environment.PlacementID != placementID ||
+		environment.Binding.PlacementID != placementID || environment.Binding.WorkerID != worker.workerID ||
+		filepath.Clean(environment.RootDir) != filepath.Clean(expectedRoot) || environment.LastSequence < 1 ||
+		!validPlacementState(environment.State) {
+		return fmt.Errorf("%w: invalid persisted reference environment %q", ErrWireContract, placementID)
+	}
+	if err := validateTaskTokenBinding(environment.Binding); err != nil {
+		return err
+	}
+	if err := environment.Policy.Validate(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validReferenceReceipt(receipt referenceApplied) bool {
+	return strings.TrimSpace(receipt.Fingerprint) != "" && validMessageType(receipt.Type) &&
+		(receipt.PlacementID == "" || validProtocolIdentifier(receipt.PlacementID))
+}
+
+func validPlacementState(state PlacementState) bool {
+	switch state {
+	case PlacementStatePending, PlacementStateProvisioning, PlacementStateSyncing, PlacementStateReady,
+		PlacementStateExecuting, PlacementStateCheckpointed, PlacementStateCollecting,
+		PlacementStateCompleted, PlacementStateFailed, PlacementStateLost, PlacementStateReclaiming,
+		PlacementStateRehydrating, PlacementStateDestroyed:
+		return true
+	default:
+		return false
+	}
+}
+
+func (worker *ReferenceWorker) saveResultLocked(environment ReferenceEnvironment, result ReferenceExecutionResult) error {
+	raw, err := json.Marshal(result)
+	if err != nil {
+		return fmt.Errorf("workerprotocol: encode reference execution result: %w", err)
+	}
+	path := worker.resultPath(environment)
+	if !sameOrWithinWorkspace(environment.RootDir, path) {
+		return ErrUnsafeWorkspace
+	}
+	if err := atomicwrite.Write(path, append(raw, '\n')); err != nil {
+		return fmt.Errorf("workerprotocol: save reference execution result: %w", err)
+	}
+	if err := os.Chmod(path, 0o600); err != nil {
+		return fmt.Errorf("workerprotocol: secure reference execution result: %w", err)
+	}
+	return nil
+}
+
+func (worker *ReferenceWorker) loadResultLocked(environment ReferenceEnvironment) (ReferenceExecutionResult, error) {
+	path := worker.resultPath(environment)
+	if !sameOrWithinWorkspace(environment.RootDir, path) {
+		return ReferenceExecutionResult{}, ErrUnsafeWorkspace
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return ReferenceExecutionResult{}, fmt.Errorf("workerprotocol: read reference execution result: %w", err)
+	}
+	var result ReferenceExecutionResult
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return ReferenceExecutionResult{}, fmt.Errorf("workerprotocol: decode reference execution result: %w", err)
+	}
+	if err := validateReferenceExecutionResult(result, environment.Policy, nil); err != nil {
+		return ReferenceExecutionResult{}, err
+	}
+	if environment.ResultDigest != "" && digestBytes(result.Payload) != environment.ResultDigest {
+		return ReferenceExecutionResult{}, ErrManifestMismatch
+	}
+	return result, nil
+}
+
+func (worker *ReferenceWorker) resultPath(environment ReferenceEnvironment) string {
+	return filepath.Join(environment.RootDir, ".tars-result.json")
+}
+
+func (worker *ReferenceWorker) replayLocked(request WireRequest, applied referenceApplied) (WireResponse, error) {
+	if applied.Response.RequestID != "" {
+		response := cloneWireResponse(applied.Response)
+		response.RequestID = request.RequestID
+		return response, nil
+	}
+	switch applied.Type {
+	case MessageRegister:
+		payload, _ := json.Marshal(RegisterPayload{
+			Transport: "in-process", Endpoint: "local://" + worker.workerID, Capabilities: worker.capabilities,
+		})
+		return worker.accepted(request, payload, nil), nil
+	case MessageExecute, MessageCollect:
+		environment, ok := worker.environments[applied.PlacementID]
+		if !ok || environment.State == PlacementStateDestroyed {
+			return WireResponse{}, fmt.Errorf("workerprotocol: replay result is unavailable")
+		}
+		result, err := worker.loadResultLocked(environment)
+		if err != nil {
+			return WireResponse{}, err
+		}
+		response := worker.accepted(request, result.Payload, result.Artifacts)
+		if applied.Type == MessageExecute {
+			response.Checkpoint = cloneCheckpointPayload(result.Checkpoint)
+		}
+		return response, nil
+	default:
+		return worker.accepted(request, json.RawMessage(`{"replayed":true}`), nil), nil
+	}
+}
+
 func (worker *ReferenceWorker) accepted(request WireRequest, payload json.RawMessage, artifacts []WireArtifact) WireResponse {
 	return WireResponse{
 		ProtocolVersion: ProtocolVersionV1, RequestID: request.RequestID, Accepted: true,
@@ -423,7 +696,7 @@ func (worker *ReferenceWorker) rejected(request WireRequest, code, message strin
 	}
 }
 
-func validateReferenceExecutionResult(result ReferenceExecutionResult, policy ExecutionPolicy) error {
+func validateReferenceExecutionResult(result ReferenceExecutionResult, policy ExecutionPolicy, forbiddenValues []string) error {
 	if len(result.Payload) > 0 && !json.Valid(result.Payload) {
 		return ErrWireContract
 	}
@@ -434,6 +707,14 @@ func validateReferenceExecutionResult(result ReferenceExecutionResult, policy Ex
 		if reason := validateWireArtifact(artifact, limits, &totalBytes, seen); reason != "" {
 			return ErrManifestMismatch
 		}
+		if containsForbiddenResultValue(artifact.Data, forbiddenValues) {
+			return ErrTaskTokenInvalid
+		}
+	}
+	if len(result.Payload) > 0 {
+		if containsForbiddenResultValue(result.Payload, forbiddenValues) {
+			return ErrTaskTokenInvalid
+		}
 	}
 	if totalBytes > policy.Limits.MaxOutputBytes {
 		return ErrTransportLimit
@@ -442,6 +723,15 @@ func validateReferenceExecutionResult(result ReferenceExecutionResult, policy Ex
 		return ErrManifestMismatch
 	}
 	return nil
+}
+
+func containsForbiddenResultValue(raw []byte, forbiddenValues []string) bool {
+	for _, value := range forbiddenValues {
+		if value != "" && strings.Contains(string(raw), value) {
+			return true
+		}
+	}
+	return false
 }
 
 func wireRequestFingerprint(request WireRequest) string {

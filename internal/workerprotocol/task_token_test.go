@@ -89,7 +89,11 @@ func TestTaskTokenRejectsScopeBindingExpiryAndTampering(t *testing.T) {
 	if _, err := verifier.Verify(token, binding, TaskScopeCollect); !errors.Is(err, ErrTaskTokenScope) {
 		t.Fatalf("missing-scope error=%v want ErrTaskTokenScope", err)
 	}
-	tampered := token[:len(token)-1] + "A"
+	replacement := byte('A')
+	if token[len(token)-1] == replacement {
+		replacement = 'B'
+	}
+	tampered := token[:len(token)-1] + string(replacement)
 	if _, err := verifier.Verify(tampered, binding, TaskScopeExecute); !errors.Is(err, ErrTaskTokenSignature) {
 		t.Fatalf("tampered error=%v want ErrTaskTokenSignature", err)
 	}

@@ -78,7 +78,7 @@ func (envelope Envelope) Validate() error {
 		envelope.Sequence <= 0 || envelope.SentAt.IsZero() || len(envelope.Payload) > maxEnvelopeBytes {
 		return ErrInvalidEnvelope
 	}
-	if envelope.Type != MessageRegister && envelope.Type != MessageHeartbeat && !validProtocolIdentifier(envelope.PlacementID) {
+	if envelope.Type != MessageRegister && envelope.Type != MessageHeartbeat && envelope.Type != MessageLost && !validProtocolIdentifier(envelope.PlacementID) {
 		return ErrInvalidEnvelope
 	}
 	if strings.TrimSpace(envelope.PlacementID) != "" && !validProtocolIdentifier(envelope.PlacementID) {
@@ -181,9 +181,12 @@ type ReclaimPayload struct {
 }
 
 type RehydratePayload struct {
-	ReplacementWorkerID string `json:"replacement_worker_id"`
-	EnvironmentID       string `json:"environment_id"`
-	SnapshotDigest      string `json:"snapshot_digest"`
-	CheckpointID        string `json:"checkpoint_id,omitempty"`
-	CheckpointDigest    string `json:"checkpoint_digest,omitempty"`
+	ReplacementWorkerID string           `json:"replacement_worker_id"`
+	EnvironmentID       string           `json:"environment_id"`
+	SnapshotDigest      string           `json:"snapshot_digest"`
+	CheckpointID        string           `json:"checkpoint_id,omitempty"`
+	CheckpointDigest    string           `json:"checkpoint_digest,omitempty"`
+	LeaseTTLMS          int64            `json:"lease_ttl_ms"`
+	Binding             TaskTokenBinding `json:"binding,omitempty"`
+	Policy              ExecutionPolicy  `json:"policy,omitempty"`
 }

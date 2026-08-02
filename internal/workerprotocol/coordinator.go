@@ -60,6 +60,15 @@ type RemoteRunResult struct {
 	Checkpoint        *CheckpointPayload `json:"checkpoint,omitempty"`
 }
 
+type RemoteRecoveryInput struct {
+	PlacementID   string
+	EnvironmentID string
+	Workspace     WorkspaceBundle
+	Request       json.RawMessage
+	RedactValues  []string
+	Reason        string
+}
+
 func NewGatewayCoordinator(opts GatewayCoordinatorOptions) (*GatewayCoordinator, error) {
 	if opts.Controller == nil || opts.Transport == nil || opts.TokenIssuer == nil || opts.Quarantine == nil ||
 		!validProtocolIdentifier(opts.WorkerID) || strings.TrimSpace(opts.TransportName) == "" || strings.TrimSpace(opts.Endpoint) == "" {
@@ -145,14 +154,99 @@ func (coordinator *GatewayCoordinator) Run(ctx context.Context, input RemoteRunI
 	if err != nil {
 		return RemoteRunResult{}, err
 	}
+	return coordinator.finalizeExecution(ctx, input, token, sequence, executeResponse)
+}
+
+func (coordinator *GatewayCoordinator) Resume(ctx context.Context, input RemoteRecoveryInput) (RemoteRunResult, error) {
+	if coordinator == nil || !validProtocolIdentifier(input.PlacementID) || !validProtocolIdentifier(input.EnvironmentID) {
+		return RemoteRunResult{}, ErrInvalidEnvelope
+	}
+	if err := VerifyWorkspaceBundle(input.Workspace, DefaultWorkspaceBundleLimits()); err != nil {
+		return RemoteRunResult{}, err
+	}
+	if len(input.Request) > 0 && !json.Valid(input.Request) {
+		return RemoteRunResult{}, ErrInvalidEnvelope
+	}
+	coordinator.mu.Lock()
+	defer coordinator.mu.Unlock()
+	if err := coordinator.controller.FlushPending(ctx); err != nil {
+		return RemoteRunResult{}, err
+	}
+	if err := coordinator.ensureWorkerReady(ctx); err != nil {
+		return RemoteRunResult{}, err
+	}
+	placement, ok := coordinator.controller.Snapshot().Placements[input.PlacementID]
+	if !ok {
+		return RemoteRunResult{}, ErrNotFound
+	}
+	if placement.State != PlacementStateLost {
+		return RemoteRunResult{}, fmt.Errorf("%w: placement %s is %s", ErrInvalidTransition, placement.ID, placement.State)
+	}
+	reclaiming, err := coordinator.controller.BeginReclaim(ctx, placement.ID, input.Reason)
+	if err != nil {
+		return RemoteRunResult{}, err
+	}
+	binding := TaskTokenBinding{
+		WorkspaceID: placement.WorkspaceID, WorkID: placement.WorkID, StepID: placement.StepID,
+		AttemptID: placement.AttemptID, PlacementID: placement.ID, WorkerID: coordinator.workerID,
+	}
+	rehydratePayload := RehydratePayload{
+		ReplacementWorkerID: coordinator.workerID, EnvironmentID: input.EnvironmentID,
+		SnapshotDigest: input.Workspace.Manifest.Digest, LeaseTTLMS: coordinator.leaseTTL.Milliseconds(),
+		Binding: binding, Policy: placement.Policy,
+	}
+	if placement.Checkpoint != nil {
+		rehydratePayload.CheckpointID = placement.Checkpoint.ID
+		rehydratePayload.CheckpointDigest = placement.Checkpoint.Digest
+	}
+	sequence := reclaiming.LastSequence + 1
+	if _, err := coordinator.exchangeOnly(ctx, coordinator.envelope(placement.ID, sequence, MessageRehydrate, rehydratePayload), &input.Workspace); err != nil {
+		return RemoteRunResult{}, err
+	}
+	rehydrated, err := coordinator.controller.RehydratePlacement(ctx, RehydratePlacementInput{
+		PlacementID: placement.ID, ReplacementWorkerID: coordinator.workerID,
+		EnvironmentID: input.EnvironmentID, SnapshotDigest: input.Workspace.Manifest.Digest,
+		CheckpointID: rehydratePayload.CheckpointID, CheckpointDigest: rehydratePayload.CheckpointDigest,
+		LeaseTTLMS: rehydratePayload.LeaseTTLMS,
+	})
+	if err != nil {
+		return RemoteRunResult{}, err
+	}
+	if rehydrated.LastSequence != sequence || rehydrated.WorkerID != coordinator.workerID {
+		return RemoteRunResult{}, fmt.Errorf("%w: rehydrated placement sequence diverged", ErrConflict)
+	}
+	token, _, err := coordinator.tokenIssuer.Issue(binding, []TaskScope{
+		TaskScopeExecute, TaskScopeStream, TaskScopeCheckpoint, TaskScopeCollect, TaskScopeDestroy,
+	}, coordinator.tokenTTL)
+	if err != nil {
+		return RemoteRunResult{}, err
+	}
+	sequence++
+	executeResponse, err := coordinator.exchangeAndApply(ctx, coordinator.envelope(placement.ID, sequence, MessageExecute, ExecutePayload{
+		TaskToken: token, Resume: true, CheckpointID: rehydratePayload.CheckpointID,
+		CheckpointHash: rehydratePayload.CheckpointDigest, Request: append(json.RawMessage(nil), input.Request...),
+	}), nil)
+	if err != nil {
+		return RemoteRunResult{}, err
+	}
+	runInput := RemoteRunInput{
+		PlacementID: placement.ID, EnvironmentID: input.EnvironmentID,
+		WorkspaceID: placement.WorkspaceID, WorkID: placement.WorkID, StepID: placement.StepID, AttemptID: placement.AttemptID,
+		Policy: placement.Policy, Workspace: input.Workspace, Request: input.Request, RedactValues: input.RedactValues,
+	}
+	return coordinator.finalizeExecution(ctx, runInput, token, sequence, executeResponse)
+}
+
+func (coordinator *GatewayCoordinator) finalizeExecution(ctx context.Context, input RemoteRunInput, token string, sequence int64, executeResponse WireResponse) (RemoteRunResult, error) {
 	result := RemoteRunResult{
 		Payload:    append(json.RawMessage(nil), executeResponse.Payload...),
 		Checkpoint: cloneCheckpointPayload(executeResponse.Checkpoint),
 	}
-	result.Succeeded, err = remoteResponseSucceeded(executeResponse.Payload)
+	succeeded, err := remoteResponseSucceeded(executeResponse.Payload)
 	if err != nil {
 		return RemoteRunResult{}, err
 	}
+	result.Succeeded = succeeded
 	if executeResponse.Checkpoint != nil {
 		sequence++
 		checkpoint := *executeResponse.Checkpoint
@@ -161,13 +255,13 @@ func (coordinator *GatewayCoordinator) Run(ctx context.Context, input RemoteRunI
 		}
 	}
 	sequence++
-	collectResponse, err := coordinator.exchangeAndApply(ctx, coordinator.envelope(input.PlacementID, sequence, MessageCollect, CollectPayload{
+	_, err = coordinator.exchangeAndApply(ctx, coordinator.envelope(input.PlacementID, sequence, MessageCollect, CollectPayload{
 		Complete: false, TaskToken: token,
 	}), nil)
 	if err != nil {
 		return RemoteRunResult{}, err
 	}
-	quarantineReport, err := coordinator.quarantine.InspectAndRelease(ctx, input.PlacementID, collectResponse.Artifacts, input.RedactValues)
+	quarantineReport, err := coordinator.quarantine.InspectAndRelease(ctx, input.PlacementID, executeResponse.Artifacts, input.RedactValues)
 	if err != nil {
 		return RemoteRunResult{}, err
 	}
@@ -224,6 +318,20 @@ func (coordinator *GatewayCoordinator) ensureWorkerReady(ctx context.Context) er
 }
 
 func (coordinator *GatewayCoordinator) exchangeAndApply(ctx context.Context, envelope Envelope, workspace *WorkspaceBundle) (WireResponse, error) {
+	response, err := coordinator.exchangeOnly(ctx, envelope, workspace)
+	if err != nil {
+		return WireResponse{}, err
+	}
+	if _, err := coordinator.controller.Apply(ctx, envelope); err != nil {
+		return WireResponse{}, err
+	}
+	if err := coordinator.controller.FlushPending(ctx); err != nil {
+		return WireResponse{}, err
+	}
+	return response, nil
+}
+
+func (coordinator *GatewayCoordinator) exchangeOnly(ctx context.Context, envelope Envelope, workspace *WorkspaceBundle) (WireResponse, error) {
 	request := WireRequest{ProtocolVersion: ProtocolVersionV1, RequestID: envelope.MessageID, Envelope: envelope, Workspace: workspace}
 	response, err := coordinator.transport.Exchange(ctx, request)
 	if err != nil {
@@ -231,12 +339,6 @@ func (coordinator *GatewayCoordinator) exchangeAndApply(ctx context.Context, env
 	}
 	if !response.Accepted {
 		return WireResponse{}, fmt.Errorf("workerprotocol: remote worker rejected %s: %s", envelope.Type, response.ErrorCode)
-	}
-	if _, err := coordinator.controller.Apply(ctx, envelope); err != nil {
-		return WireResponse{}, err
-	}
-	if err := coordinator.controller.FlushPending(ctx); err != nil {
-		return WireResponse{}, err
 	}
 	return response, nil
 }

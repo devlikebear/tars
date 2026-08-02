@@ -218,6 +218,33 @@ func TestControllerRollsBackInMemoryStateWhenPersistenceFails(t *testing.T) {
 	})
 }
 
+func TestControllerReplaySurfacesPendingOutboxFailureUntilPublished(t *testing.T) {
+	t.Parallel()
+
+	sink := &failingRecordingSink{failuresRemaining: 2}
+	controller, err := OpenController(ControllerOptions{StatePath: filepath.Join(t.TempDir(), "state.json"), EventSink: sink})
+	if err != nil {
+		t.Fatal(err)
+	}
+	envelope := testEnvelope("worker-a", "", 1, MessageRegister, RegisterPayload{
+		Transport: "in-process", Endpoint: "local://worker-a",
+		Capabilities: WorkerCapabilities{EgressPolicy: true, ResourceLimits: true},
+	})
+	if _, err := controller.Apply(context.Background(), envelope); err == nil {
+		t.Fatal("first outbox publication unexpectedly succeeded")
+	}
+	if _, err := controller.Apply(context.Background(), envelope); err == nil {
+		t.Fatal("duplicate replay hid pending outbox publication failure")
+	}
+	result, err := controller.Apply(context.Background(), envelope)
+	if err != nil {
+		t.Fatalf("publish pending outbox on retry: %v", err)
+	}
+	if !result.Duplicate || !result.Event.Published || sink.calls != 3 {
+		t.Fatalf("replayed result=%+v sink calls=%d", result, sink.calls)
+	}
+}
+
 func testEnvelope(workerID, placementID string, sequence int64, messageType MessageType, payload any) Envelope {
 	raw, _ := json.Marshal(payload)
 	scope := workerID
@@ -239,6 +266,20 @@ func testEnvelope(workerID, placementID string, sequence int64, messageType Mess
 
 type recordingSink struct {
 	events []ControlEvent
+}
+
+type failingRecordingSink struct {
+	failuresRemaining int
+	calls             int
+}
+
+func (sink *failingRecordingSink) Record(_ context.Context, _ ControlEvent) error {
+	sink.calls++
+	if sink.failuresRemaining > 0 {
+		sink.failuresRemaining--
+		return errors.New("temporary sink failure")
+	}
+	return nil
 }
 
 func (sink *recordingSink) Record(_ context.Context, event ControlEvent) error {

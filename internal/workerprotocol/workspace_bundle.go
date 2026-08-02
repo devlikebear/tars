@@ -468,6 +468,9 @@ func sensitiveWorkspacePath(path string) bool {
 	if base == ".ds_store" {
 		return true
 	}
+	if base == ".tars-result.json" {
+		return true
+	}
 	if base == ".env" || (strings.HasPrefix(base, ".env.") && !strings.HasSuffix(base, ".example")) {
 		return true
 	}
