@@ -138,11 +138,24 @@ func NewReferenceWorker(opts ReferenceWorkerOptions) (*ReferenceWorker, error) {
 		statePath = filepath.Join(canonical, "worker-state.json")
 	}
 	statePath, err = filepath.Abs(statePath)
-	if err != nil || filepath.Clean(statePath) == filepath.Clean(canonical) || sameOrWithinWorkspace(placements, statePath) {
+	if err != nil {
 		return nil, fmt.Errorf("workerprotocol: invalid reference worker state path")
 	}
 	if err := os.MkdirAll(filepath.Dir(statePath), 0o700); err != nil {
 		return nil, fmt.Errorf("workerprotocol: create reference worker state directory: %w", err)
+	}
+	canonicalStateDir, err := filepath.EvalSymlinks(filepath.Dir(statePath))
+	if err != nil {
+		return nil, fmt.Errorf("workerprotocol: resolve reference worker state directory: %w", err)
+	}
+	statePath = filepath.Join(canonicalStateDir, filepath.Base(statePath))
+	if filepath.Clean(statePath) == filepath.Clean(canonical) || sameOrWithinWorkspace(placements, statePath) {
+		return nil, fmt.Errorf("workerprotocol: invalid reference worker state path")
+	}
+	if info, statErr := os.Lstat(statePath); statErr == nil && info.Mode()&os.ModeSymlink != 0 {
+		return nil, fmt.Errorf("workerprotocol: reference worker state path must not be a symlink")
+	} else if statErr != nil && !os.IsNotExist(statErr) {
+		return nil, fmt.Errorf("workerprotocol: inspect reference worker state path: %w", statErr)
 	}
 	worker := &ReferenceWorker{
 		workerID: workerID, rootDir: canonical, placements: placements, verifier: opts.TokenVerifier,
