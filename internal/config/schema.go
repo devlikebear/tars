@@ -195,6 +195,7 @@ func Schema() []FieldMeta {
 		fsel("work_scheduler_execution_environment", "Work Scheduler", "Execution Environment", "Filesystem environment used for durable native workers", []string{"local", "managed-worktree"}),
 		f("work_scheduler_execution_data_dir", "Work Scheduler", "string", "Execution Data Dir", "Private directory outside the workspace for lifecycle state, managed worktrees, and collected artifacts"),
 		f("work_scheduler_artifact_paths_json", "Work Scheduler", "string_list", "Artifact Paths", "Workspace-relative files or globs copied after each durable execution"),
+		f("work_scheduler_external_harness_config_path", "Work Scheduler", "string", "External Harness Config", "Owner-only JSON configuration for the opt-in Claude Code managed-worktree adapter"),
 		f("work_scheduler_remote_workers_enabled", "Work Scheduler", "bool", "Remote Workers", "Enable the versioned remote-worker control plane and its Console projection"),
 		f("work_scheduler_remote_workers_gateway_config_path", "Work Scheduler", "string", "Remote Gateway Config", "Owner-only JSON configuration for an optional in-process container or SSH scheduler worker"),
 		f("work_scheduler_a2a_enabled", "Work Scheduler", "bool", "A2A Adapter", "Enable A2A 1.0 as an external Work executor without replacing internal scheduling"),
@@ -535,6 +536,8 @@ func extractValue(yamlKey string, cfg Config) any {
 		return cfg.WorkLedger.SchedulerExecutionDataDir
 	case "work_scheduler_artifact_paths_json":
 		return append([]string(nil), cfg.WorkLedger.SchedulerArtifactPaths...)
+	case "work_scheduler_external_harness_config_path":
+		return cfg.WorkLedger.SchedulerExternalHarnessConfigPath
 	case "work_scheduler_remote_workers_enabled":
 		return cfg.WorkLedger.SchedulerRemoteWorkersEnabled
 	case "work_scheduler_remote_workers_gateway_config_path":

@@ -291,6 +291,7 @@ type WorkLedgerConfig struct {
 	SchedulerExecutionEnvironment           string
 	SchedulerExecutionDataDir               string
 	SchedulerArtifactPaths                  []string
+	SchedulerExternalHarnessConfigPath      string
 	SchedulerRemoteWorkersEnabled           bool
 	SchedulerRemoteWorkersGatewayConfigPath string
 	SchedulerA2AEnabled                     bool

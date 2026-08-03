@@ -227,6 +227,7 @@ func defaultConfigValues() Config {
 			SchedulerExecutionEnvironment:           defaultWorkSchedulerExecutionEnvironment,
 			SchedulerExecutionDataDir:               filepath.Join(TarsHomeDir(), "execution-plane"),
 			SchedulerArtifactPaths:                  []string{},
+			SchedulerExternalHarnessConfigPath:      "",
 			SchedulerRemoteWorkersEnabled:           false,
 			SchedulerRemoteWorkersGatewayConfigPath: "",
 			SchedulerA2AEnabled:                     false,

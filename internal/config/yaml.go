@@ -37,6 +37,7 @@ var configYAMLPathAliases = map[string]string{
 	"work_ledger.scheduler.execution_environment":              "work_scheduler_execution_environment",
 	"work_ledger.scheduler.execution_data_dir":                 "work_scheduler_execution_data_dir",
 	"work_ledger.scheduler.artifact_paths":                     "work_scheduler_artifact_paths_json",
+	"work_ledger.scheduler.external_harness.config_path":       "work_scheduler_external_harness_config_path",
 	"work_ledger.scheduler.remote_workers.enabled":             "work_scheduler_remote_workers_enabled",
 	"work_ledger.scheduler.remote_workers.gateway_config_path": "work_scheduler_remote_workers_gateway_config_path",
 	"work_ledger.scheduler.a2a.enabled":                        "work_scheduler_a2a_enabled",

@@ -314,6 +314,10 @@ var configFieldImpactHints = map[string][]string{
 	"work_scheduler_artifact_paths_json": {
 		"Changing artifact paths controls which non-sensitive workspace files are copied into durable execution evidence.",
 	},
+	"work_scheduler_external_harness_config_path": {
+		"Setting the external harness config path enables the Claude Code adapter after restart; clearing it leaves native execution unchanged.",
+		"The selected Work prompt and managed-worktree contents may be processed by Anthropic through the operator's existing Claude authentication.",
+	},
 	"agentruntime_default_agent": {
 		"Changing default agent affects which Agent Runtime profile handles unspecified tasks.",
 	},
