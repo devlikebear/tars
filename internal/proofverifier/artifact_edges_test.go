@@ -92,6 +92,42 @@ func TestEngineVerifiesConfinedArtifactTreesAndExpectedDigests(t *testing.T) {
 	}
 }
 
+func TestEngineRejectsArtifactAccessThroughEscapingDirectorySymlink(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	outside := t.TempDir()
+	if err := os.WriteFile(filepath.Join(outside, "secret.txt"), []byte("must-not-be-read"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(root, "escape")); err != nil {
+		t.Fatal(err)
+	}
+	rootAlias := filepath.Join(t.TempDir(), "root-alias")
+	if err := os.Symlink(root, rootAlias); err != nil {
+		t.Fatal(err)
+	}
+	engine, err := New(Options{ID: "confined-verifier", RootDir: rootAlias})
+	if err != nil {
+		t.Fatal(err)
+	}
+	canonicalRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if engine.rootDir != canonicalRoot {
+		t.Fatalf("canonical root=%q want %q", engine.rootDir, canonicalRoot)
+	}
+	requirement := workstore.ProofRequirement{Paths: []string{"escape/secret.txt"}}
+	result, err := engine.Verify(context.Background(), workscheduler.VerificationRequest{Requirement: requirement})
+	if err != nil || result.Status != workstore.ProofStatusFailed || !strings.Contains(result.Rationale, "escapes") {
+		t.Fatalf("escaping symlink result=%+v err=%v", result, err)
+	}
+	if _, _, err := engine.SubjectDigest(context.Background(), requirement); err == nil {
+		t.Fatal("escaping symlink produced a subject digest")
+	}
+}
+
 func TestEngineDiscoversGitWorkspaceAndProcessRunnerOutcomes(t *testing.T) {
 	t.Parallel()
 

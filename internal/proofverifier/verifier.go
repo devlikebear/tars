@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net"
 	"net/http"
 	"net/url"
@@ -105,7 +106,16 @@ func New(opts Options) (*Engine, error) {
 	if err != nil {
 		return nil, fmt.Errorf("proofverifier: resolve root directory: %w", err)
 	}
-	info, err := os.Stat(absRoot)
+	absRoot, err = filepath.EvalSymlinks(absRoot)
+	if err != nil {
+		return nil, fmt.Errorf("proofverifier: resolve root directory: %w", err)
+	}
+	rootFS, err := os.OpenRoot(absRoot)
+	if err != nil {
+		return nil, fmt.Errorf("proofverifier: root directory is unavailable")
+	}
+	defer func() { _ = rootFS.Close() }()
+	info, err := rootFS.Stat(".")
 	if err != nil || !info.IsDir() {
 		return nil, fmt.Errorf("proofverifier: root directory is unavailable")
 	}
@@ -346,38 +356,43 @@ func (engine *Engine) snapshotPaths(ctx context.Context, requested []string) (pa
 		}
 		paths = tracked
 	}
+	rootFS, err := os.OpenRoot(engine.rootDir)
+	if err != nil {
+		return pathSnapshot{}, fmt.Errorf("proofverifier: open verifier root: %w", err)
+	}
+	defer func() { _ = rootFS.Close() }()
 	files := make(map[string]fileDigest)
 	for _, requestedPath := range paths {
 		if err := ctx.Err(); err != nil {
 			return pathSnapshot{}, err
 		}
-		absolute, relative, err := engine.confinedPath(requestedPath)
+		relative, err := engine.confinedPath(requestedPath)
 		if err != nil {
 			return pathSnapshot{}, err
 		}
-		info, err := os.Lstat(absolute)
+		info, err := rootFS.Lstat(filepath.FromSlash(relative))
 		if err != nil {
 			return pathSnapshot{}, fmt.Errorf("path %q: %w", requestedPath, err)
 		}
 		if info.IsDir() {
-			err = filepath.WalkDir(absolute, func(path string, entry os.DirEntry, walkErr error) error {
+			err = fs.WalkDir(rootFS.FS(), relative, func(path string, entry fs.DirEntry, walkErr error) error {
 				if walkErr != nil {
 					return walkErr
 				}
-				if path != absolute && entry.IsDir() && excludedDirectory(entry.Name()) {
+				if path != relative && entry.IsDir() && excludedDirectory(entry.Name()) {
 					return filepath.SkipDir
 				}
 				if entry.IsDir() {
 					return nil
 				}
-				return engine.addFileDigest(files, path)
+				return engine.addFileDigest(rootFS, files, path)
 			})
 			if err != nil {
 				return pathSnapshot{}, fmt.Errorf("walk path %q: %w", relative, err)
 			}
 			continue
 		}
-		if err := engine.addFileDigest(files, absolute); err != nil {
+		if err := engine.addFileDigest(rootFS, files, relative); err != nil {
 			return pathSnapshot{}, err
 		}
 	}
@@ -418,10 +433,10 @@ func (engine *Engine) workspaceFiles(ctx context.Context) ([]string, error) {
 	return []string{"."}, nil
 }
 
-func (engine *Engine) confinedPath(path string) (string, string, error) {
+func (engine *Engine) confinedPath(path string) (string, error) {
 	path = strings.TrimSpace(path)
 	if path == "" {
-		return "", "", fmt.Errorf("proofverifier: empty artifact path")
+		return "", fmt.Errorf("proofverifier: empty artifact path")
 	}
 	absolute := path
 	if !filepath.IsAbs(absolute) {
@@ -429,37 +444,34 @@ func (engine *Engine) confinedPath(path string) (string, string, error) {
 	}
 	absolute = filepath.Clean(absolute)
 	relative, err := filepath.Rel(engine.rootDir, absolute)
-	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
-		return "", "", fmt.Errorf("proofverifier: path %q escapes verifier root", path)
+	if err != nil || !filepath.IsLocal(relative) {
+		return "", fmt.Errorf("proofverifier: path %q escapes verifier root", path)
 	}
-	return absolute, filepath.ToSlash(relative), nil
+	return filepath.ToSlash(relative), nil
 }
 
-func (engine *Engine) addFileDigest(files map[string]fileDigest, absolute string) error {
-	relative, err := filepath.Rel(engine.rootDir, absolute)
-	if err != nil {
-		return err
-	}
-	info, err := os.Lstat(absolute)
+func (engine *Engine) addFileDigest(rootFS *os.Root, files map[string]fileDigest, relative string) error {
+	localPath := filepath.FromSlash(relative)
+	info, err := rootFS.Lstat(localPath)
 	if err != nil {
 		return err
 	}
 	var raw []byte
 	if info.Mode()&os.ModeSymlink != 0 {
-		target, err := os.Readlink(absolute)
+		target, err := rootFS.Readlink(localPath)
 		if err != nil {
 			return err
 		}
 		raw = []byte("symlink:" + target)
 	} else if info.Mode().IsRegular() {
-		raw, err = os.ReadFile(absolute)
+		raw, err = rootFS.ReadFile(localPath)
 		if err != nil {
 			return err
 		}
 	} else {
 		return nil
 	}
-	key := filepath.ToSlash(relative)
+	key := filepath.ToSlash(filepath.Clean(localPath))
 	files[key] = fileDigest{Path: key, Digest: digestBytes(raw), SizeBytes: info.Size()}
 	return nil
 }
