@@ -6,6 +6,8 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.35.0] - 2026-08-03
+
 ### Added
 
 - **Versioned remote-worker control plane (#903)** — Adds idempotent register/provision/sync/lease/heartbeat/execute/stream/checkpoint/collect/destroy plus lost/reclaim/rehydrate transitions, an in-process reference worker, a strict SSH stdio pilot, atomic controller persistence, and complete Work Ledger placement auditing.
@@ -18,6 +20,8 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 - **Durable execution-plane contracts (#910)** — Adds explicit environment provider, worker, credential broker, artifact collector, event sink, and lifecycle state contracts with machine-readable resume, cancellation, tool-policy, transcript, cost, artifact, recovery, isolation, cleanup, and egress capabilities.
 - **Local and disposable worktree execution (#910)** — Routes the native Agent Runtime scheduler through the common provision/run/snapshot/collect/destroy lifecycle. The default `local` mode preserves existing behavior; opt-in `managed-worktree` protects dirty source state, runs tools and diff capture in an owned detached worktree, copies only configured redacted artifacts, and removes the worktree after completion.
 - **Execution lifecycle observability (#910)** — Persists environment, worker, checkpoint, artifact, credential, recovery, cancellation, and cleanup events in the Work Ledger and renders operator-friendly labels and provider/worker/snapshot details in the Console Tasks timeline.
+- **Bounded Claude Code execution pilot (#910)** — Registers exactly one opt-in external coding adapter behind the durable scheduler. It reuses the installed Claude login but runs only in an owned managed worktree with safe mode, strict MCP isolation, non-interactive scoped coding tools, isolated process environment, cancellation/process-tree teardown, and positive timeout, turn, and USD limits. Results normalize tool audit entries, turns, tokens, cost, redacted transcript, and tracked/untracked patch artifacts without editing the source checkout.
+- **Strict external-harness trust boundary (#910)** — Loads only owner-readable, regular, absolute JSON configs outside the workspace; rejects unknown fields, arbitrary arguments, environment, settings, hooks, plugins, MCP servers, credentials, and unscoped tools; excludes Contract/Metadata JSON from the worker prompt; and reports retry-only recovery honestly after a crash or restart.
 - **Opt-in durable scheduler and restart recovery (#904)** — Adds dependency-aware step promotion, atomic claims, leases, heartbeats, bounded retry/replan/decompose policies, reconnect-or-reclaim recovery, human review/resume, and request-independent wait/watch/cancel APIs. `subagents_orchestrate` returns a durable `work_id` when `work_ledger.scheduler.enabled` is explicitly enabled, while the legacy request-bound implementation remains the rollback path.
 - **Durable work Console controls (#904)** — The Tasks timeline now follows session-owned durable work through SSE, shows scheduler decisions and operator-attention reasons, and exposes confirmed work cancellation plus reasoned step resume without reconstructing the originating chat request.
 - **Versioned Agent Runtime recovery checkpoints (#907)** — Replaces prompt-only restart semantics with explicit retry, receipt-backed replay, and provider-session resume modes. Checkpoints declare capability and limitations, preserve legacy prompt snapshots as retry-only, carry durable Work correlation, and expose unsafe pending effects as a human decision in the API and Console.
@@ -25,11 +29,6 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 - **Independent proof lifecycle and completion gates (#909)** — Separates worker-reported, pending, independently passed/failed, and stale proof; records verifier identity/environment, command/input, artifact and subject hashes, timestamps, and rationale; downgrades legacy passes to reported evidence; and prevents worker success or self-verification from completing a proof-gated Step.
 - **Deterministic verification surfaces (#909)** — Adds command, confined artifact/path, and public HTTPS verification with freshness digests, optional strictly budgeted LLM judging only when deterministic checks are unavailable, Task Contract proof policy, Work Ledger doctor validation, and Console labels that distinguish reported evidence from independently verified proof.
 - **Baseline-gated automatic fan-out (#909)** — Requires an OH-001 baseline, positive expected quality delta, and decision rationale before policy-selected consensus fan-out, then records expected and observed token/cost budgets, variant outcomes, and final strategy outcome on the durable Agent Runtime Run.
-
-## [0.34.4] - 2026-08-02
-
-### Added
-
 - **Agent Harness Evaluation Pack (#906)** — Adds 12 deterministic fake-model/fake-tool scenarios for single and parallel agents, dependency handoff, restart recovery, approvals, false-success detection, skill reuse, duplicate effects, partial failure, and budget guards. CI now records task success, independent-verifier pass, restart recovery, duplicate effects, operator interventions, TTFT, token usage, and estimated cost through a versioned JSONL/Markdown report contract.
 - **Opt-in live provider evaluation (#906)** — Adds `cmd/agentharness-eval` and Make targets for deterministic baselines plus non-gating provider runs with streamed TTFT, usage, and configurable price estimates.
 - **Durable Work Ledger storage decision (#906)** — Selects pure-Go SQLite in WAL mode over a bespoke append-only file journal and documents transaction, migration, backup, lease-recovery, and effect-receipt requirements for Phase 1.
