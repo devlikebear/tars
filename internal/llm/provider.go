@@ -194,13 +194,14 @@ type ChatOptions struct {
 // or budget-bounding CLI flags. It cannot inject settings, hooks, environment
 // variables, plugins, MCP servers, credentials, or arbitrary arguments.
 type ClaudeCodeHarnessOptions struct {
-	SafeMode      bool
-	StrictMCP     bool
-	DisableChrome bool
-	Tools         []string
-	AllowedTools  []string
-	MaxTurns      int
-	MaxBudgetUSD  float64
+	SafeMode           bool
+	StrictMCP          bool
+	DisableChrome      bool
+	IsolateEnvironment bool
+	Tools              []string
+	AllowedTools       []string
+	MaxTurns           int
+	MaxBudgetUSD       float64
 }
 
 // ClaudeCodeSkill is the minimal shape needed to render one Claude Code

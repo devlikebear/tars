@@ -155,7 +155,11 @@ func (c *ClaudeCodeCLIClient) Chat(ctx context.Context, messages []ChatMessage, 
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	env := claudeCodeCLIEnv(os.Environ())
+	baseEnv := os.Environ()
+	if opts.ClaudeCodeHarness != nil && opts.ClaudeCodeHarness.IsolateEnvironment {
+		baseEnv = claudeCodeHarnessBaseEnv(baseEnv)
+	}
+	env := claudeCodeCLIEnv(baseEnv)
 
 	attempt := func() (ChatResponse, error) {
 		cmd := exec.CommandContext(ctx, c.cliPath, args...)
@@ -235,6 +239,28 @@ func claudeCodeCLIEnv(base []string) []string {
 		out = append(out, def.key+"="+def.value)
 	}
 	return out
+}
+
+func claudeCodeHarnessBaseEnv(base []string) []string {
+	allowed := map[string]struct{}{
+		"PATH": {}, "HOME": {}, "USER": {}, "LOGNAME": {}, "SHELL": {},
+		"TMPDIR": {}, "TMP": {}, "TEMP": {}, "LANG": {}, "TERM": {},
+		"COLORTERM": {}, "NO_COLOR": {}, "XDG_CONFIG_HOME": {},
+		"CLAUDE_CONFIG_DIR": {}, "__CF_USER_TEXT_ENCODING": {},
+	}
+	result := make([]string, 0, len(allowed))
+	for _, value := range base {
+		index := strings.IndexByte(value, '=')
+		if index <= 0 {
+			continue
+		}
+		key := value[:index]
+		_, exact := allowed[key]
+		if exact || strings.HasPrefix(key, "LC_") {
+			result = append(result, value)
+		}
+	}
+	return result
 }
 
 // parseClaudeCodeCLITimeout interprets a CLAUDE_CODE_CLI_TIMEOUT value. It
