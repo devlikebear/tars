@@ -76,6 +76,63 @@ printf '%s\n' '{"type":"result","subtype":"success","duration_ms":12,"duration_a
 	}
 }
 
+func TestClaudeCodeCLIClientChat_AppliesHarnessControlsAndParsesCost(t *testing.T) {
+	dir := t.TempDir()
+	argsPath := filepath.Join(dir, "claude-args.txt")
+	scriptPath := filepath.Join(dir, "claude")
+	script := strings.TrimSpace(`#!/bin/sh
+printf '%s\n' "$@" > `+shellQuote(argsPath)+`
+printf '%s\n' '{"type":"assistant","message":{"model":"sonnet","content":[{"type":"text","text":"implemented"}]}}'
+printf '%s\n' '{"type":"result","subtype":"success","duration_ms":12,"is_error":false,"num_turns":3,"session_id":"sess-harness","stop_reason":"end_turn","total_cost_usd":0.42,"usage":{"input_tokens":21,"output_tokens":8},"result":"implemented"}'
+`) + "\n"
+	if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("write cli stub: %v", err)
+	}
+	t.Setenv("CLAUDE_CODE_CLI_PATH", scriptPath)
+
+	client, err := NewProvider(ProviderOptions{Provider: "claude-code-cli", Model: "sonnet", WorkDir: dir})
+	if err != nil {
+		t.Fatalf("new provider: %v", err)
+	}
+	resp, err := client.Chat(context.Background(), []ChatMessage{{Role: "user", Content: "implement it"}}, ChatOptions{
+		ClaudeCodePermissionMode: "dontAsk",
+		ClaudeCodeHarness: &ClaudeCodeHarnessOptions{
+			SafeMode: true, StrictMCP: true, DisableChrome: true,
+			Tools:        []string{"Read", "Edit", "Bash"},
+			AllowedTools: []string{"Read", "Edit", "Bash(go test *)"},
+			MaxTurns:     12, MaxBudgetUSD: 2.5,
+		},
+	})
+	if err != nil {
+		t.Fatalf("chat: %v", err)
+	}
+	if resp.Turns != 3 || resp.Usage.CostUSD != 0.42 {
+		t.Fatalf("normalized harness usage = turns:%d usage:%+v", resp.Turns, resp.Usage)
+	}
+	argsData, err := os.ReadFile(argsPath)
+	if err != nil {
+		t.Fatalf("read args: %v", err)
+	}
+	args := string(argsData)
+	for _, flag := range []string{"--safe-mode", "--strict-mcp-config", "--no-chrome"} {
+		if !strings.Contains(args, flag+"\n") {
+			t.Fatalf("expected %s in args, got:\n%s", flag, args)
+		}
+	}
+	wantValues := map[string]string{
+		"--permission-mode": "dontAsk",
+		"--tools":           "Read,Edit,Bash",
+		"--allowedTools":    "Read,Edit,Bash(go test *)",
+		"--max-turns":       "12",
+		"--max-budget-usd":  "2.5",
+	}
+	for flag, want := range wantValues {
+		if got := extractFlagValue(args, flag); got != want {
+			t.Fatalf("%s = %q, want %q; args:\n%s", flag, got, want, args)
+		}
+	}
+}
+
 // TestClaudeCodeCLIClientChat_CapturesSessionInit verifies session_id is
 // captured from system.init events (before any result event arrives), which
 // is the canonical Agent SDK / stream-json source of truth.
@@ -472,8 +529,10 @@ func TestResolveClaudeCodePermissionMode(t *testing.T) {
 	}{
 		{"", "auto"},
 		{"auto", "auto"},
+		{"default", "default"},
 		{"acceptEdits", "acceptEdits"},
 		{"plan", "plan"},
+		{"dontAsk", "dontAsk"},
 		{"bypassPermissions", "bypassPermissions"},
 		{"  plan  ", "plan"}, // whitespace trimmed
 		{"unknown", "auto"},  // unknown → fallback

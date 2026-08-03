@@ -139,6 +139,11 @@ func (c *ClaudeCodeCLIClient) Chat(ctx context.Context, messages []ChatMessage, 
 		defer cleanup()
 		args = append(args, "--settings", settingsPath)
 	}
+	var err error
+	args, err = appendClaudeCodeHarnessArgs(args, opts.ClaudeCodeHarness)
+	if err != nil {
+		return ChatResponse{}, newProviderError(claudeCodeCLIProviderLabel, "request", err)
+	}
 	if systemPrompt := buildClaudeCodeCLISystemPrompt(messages); systemPrompt != "" {
 		args = append(args, "--system-prompt", systemPrompt)
 	}
@@ -263,6 +268,7 @@ func parseClaudeCodeCLIStream(stdout io.Reader, opts ChatOptions) (ChatResponse,
 		usage         Usage
 		stopReason    string
 		sessionID     string
+		turns         int
 	)
 
 	for scanner.Scan() {
@@ -298,6 +304,8 @@ func parseClaudeCodeCLIStream(stdout io.Reader, opts ChatOptions) (ChatResponse,
 		case "result":
 			stopReason = strings.TrimSpace(asString(payload["stop_reason"]))
 			usage = extractClaudeCodeUsage(payload["usage"])
+			usage.CostUSD = asFloat(payload["total_cost_usd"])
+			turns = asInt(payload["num_turns"])
 			resultText = strings.TrimSpace(asString(payload["result"]))
 			if asBool(payload["is_error"]) {
 				errText := firstNonEmptyTrimmed(resultText, fmt.Sprintf("%s request failed", claudeCodeCLIProviderLabel))
@@ -325,6 +333,7 @@ func parseClaudeCodeCLIStream(stdout io.Reader, opts ChatOptions) (ChatResponse,
 		},
 		Usage:                 usage,
 		StopReason:            stopReason,
+		Turns:                 turns,
 		SessionID:             sessionID,
 		ProviderExecutedTools: toolCalls,
 	}, nil
@@ -355,11 +364,70 @@ func buildClaudeCodeCLISystemPrompt(messages []ChatMessage) string {
 // instead of failing the whole turn.
 func resolveClaudeCodePermissionMode(raw string) string {
 	switch strings.TrimSpace(raw) {
-	case "acceptEdits", "plan", "bypassPermissions", "auto":
+	case "default", "acceptEdits", "plan", "auto", "dontAsk", "bypassPermissions":
 		return strings.TrimSpace(raw)
 	default:
 		return "auto"
 	}
+}
+
+func appendClaudeCodeHarnessArgs(args []string, options *ClaudeCodeHarnessOptions) ([]string, error) {
+	if options == nil {
+		return args, nil
+	}
+	if options.MaxTurns < 0 || options.MaxBudgetUSD < 0 {
+		return nil, fmt.Errorf("harness turn and budget limits must not be negative")
+	}
+	if options.SafeMode {
+		args = append(args, "--safe-mode")
+	}
+	if options.StrictMCP {
+		args = append(args, "--strict-mcp-config")
+	}
+	if options.DisableChrome {
+		args = append(args, "--no-chrome")
+	}
+	tools, err := normalizedClaudeCodeRules(options.Tools)
+	if err != nil {
+		return nil, fmt.Errorf("harness tools: %w", err)
+	}
+	if len(tools) > 0 {
+		args = append(args, "--tools", strings.Join(tools, ","))
+	}
+	allowed, err := normalizedClaudeCodeRules(options.AllowedTools)
+	if err != nil {
+		return nil, fmt.Errorf("harness allowed tools: %w", err)
+	}
+	if len(allowed) > 0 {
+		args = append(args, "--allowedTools", strings.Join(allowed, ","))
+	}
+	if options.MaxTurns > 0 {
+		args = append(args, "--max-turns", strconv.Itoa(options.MaxTurns))
+	}
+	if options.MaxBudgetUSD > 0 {
+		args = append(args, "--max-budget-usd", strconv.FormatFloat(options.MaxBudgetUSD, 'f', -1, 64))
+	}
+	return args, nil
+}
+
+func normalizedClaudeCodeRules(values []string) ([]string, error) {
+	result := make([]string, 0, len(values))
+	seen := map[string]struct{}{}
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		if strings.ContainsAny(trimmed, "\r\n\x00") {
+			return nil, fmt.Errorf("rule contains a control character")
+		}
+		if _, duplicate := seen[trimmed]; duplicate {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		result = append(result, trimmed)
+	}
+	return result, nil
 }
 
 // writeClaudeCodeMCPConfigFile materializes a Claude Code-shaped MCP config
@@ -746,4 +814,22 @@ func asInt(values ...any) int {
 		}
 	}
 	return 0
+}
+
+func asFloat(value any) float64 {
+	switch typed := value.(type) {
+	case float64:
+		return typed
+	case float32:
+		return float64(typed)
+	case int:
+		return float64(typed)
+	case int64:
+		return float64(typed)
+	case json.Number:
+		parsed, _ := typed.Float64()
+		return parsed
+	default:
+		return 0
+	}
 }

@@ -53,11 +53,12 @@ type ToolSchema struct {
 }
 
 type Usage struct {
-	InputTokens      int `json:"input_tokens"`
-	OutputTokens     int `json:"output_tokens"`
-	CachedTokens     int `json:"cached_tokens,omitempty"`
-	CacheReadTokens  int `json:"cache_read_tokens,omitempty"`
-	CacheWriteTokens int `json:"cache_write_tokens,omitempty"`
+	InputTokens      int     `json:"input_tokens"`
+	OutputTokens     int     `json:"output_tokens"`
+	CachedTokens     int     `json:"cached_tokens,omitempty"`
+	CacheReadTokens  int     `json:"cache_read_tokens,omitempty"`
+	CacheWriteTokens int     `json:"cache_write_tokens,omitempty"`
+	CostUSD          float64 `json:"cost_usd,omitempty"`
 }
 
 // ToolChoiceMode enumerates the provider-agnostic tool selection modes.
@@ -182,6 +183,24 @@ type ChatOptions struct {
 	// self-executed tools may do — it can never widen authority or smuggle
 	// credentials through this path. Other providers ignore this field.
 	ClaudeCodePermissionDeny []string
+	// ClaudeCodeHarness enables the deterministic controls used when Claude
+	// Code is acting as an Execution Plane worker rather than a chat provider.
+	// It is nil for normal chat. The harness uses safe mode, a strict tool
+	// surface, non-interactive permission rules, and bounded turns/spend.
+	ClaudeCodeHarness *ClaudeCodeHarnessOptions
+}
+
+// ClaudeCodeHarnessOptions is intentionally limited to authority-reducing
+// or budget-bounding CLI flags. It cannot inject settings, hooks, environment
+// variables, plugins, MCP servers, credentials, or arbitrary arguments.
+type ClaudeCodeHarnessOptions struct {
+	SafeMode      bool
+	StrictMCP     bool
+	DisableChrome bool
+	Tools         []string
+	AllowedTools  []string
+	MaxTurns      int
+	MaxBudgetUSD  float64
 }
 
 // ClaudeCodeSkill is the minimal shape needed to render one Claude Code
@@ -212,6 +231,9 @@ type ChatResponse struct {
 	Message    ChatMessage
 	Usage      Usage
 	StopReason string
+	// Turns is provider-reported agentic turns when available. It is zero for
+	// providers that do not expose this value.
+	Turns int
 	// SessionID is set by providers that expose a resumable upstream session
 	// (currently only claude-code-cli via stream-json). Empty for stateless
 	// providers.
