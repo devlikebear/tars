@@ -201,8 +201,8 @@ func TestControlPlanePoliciesRejectInvalidAuthorityAndNormalizeBounds(t *testing
 		StepDispositionRetry, StepDispositionReplan, StepDispositionDecompose,
 		StepDispositionBlocked, StepDispositionReview, StepDispositionDone,
 	} {
-		dispositionOutcome(disposition)
-		eventTypeForDisposition(disposition)
+		_, _, _ = dispositionOutcome(disposition)
+		_ = eventTypeForDisposition(disposition)
 	}
 	if escalationDisposition(WorkStateBlocked) != StepDispositionBlocked || escalationDisposition(WorkStateReview) != StepDispositionReview {
 		t.Fatal("unexpected escalation disposition")

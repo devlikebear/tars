@@ -788,7 +788,7 @@ func replaceCapabilitySkill(workspaceDir string, draft skillCreatorDraftResponse
 	if err != nil {
 		return fmt.Errorf("create capability stage: %w", err)
 	}
-	defer os.RemoveAll(stageDir)
+	defer func() { _ = os.RemoveAll(stageDir) }()
 	if _, err := writeSkillCreatorDraftFiles(stageDir, cleanFiles); err != nil {
 		return err
 	}

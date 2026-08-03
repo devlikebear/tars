@@ -166,7 +166,7 @@ func loadSchedulerGatewayConfig(configPath string) (SchedulerGatewayConfig, erro
 	if err != nil {
 		return SchedulerGatewayConfig{}, fmt.Errorf("workerprotocol: open scheduler gateway config: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	raw, err := io.ReadAll(io.LimitReader(file, maxSchedulerGatewayConfigBytes+1))
 	if err != nil {
 		return SchedulerGatewayConfig{}, fmt.Errorf("workerprotocol: read scheduler gateway config: %w", err)

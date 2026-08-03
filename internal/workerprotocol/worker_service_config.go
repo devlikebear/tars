@@ -86,7 +86,7 @@ func loadWorkerServiceConfig(configPath string) (WorkerServiceConfig, error) {
 	if err != nil {
 		return WorkerServiceConfig{}, fmt.Errorf("workerprotocol: open worker config: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	raw, err := io.ReadAll(io.LimitReader(file, maxWorkerServiceConfigBytes+1))
 	if err != nil {
 		return WorkerServiceConfig{}, fmt.Errorf("workerprotocol: read worker config: %w", err)

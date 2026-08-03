@@ -59,7 +59,7 @@ func loadClaudeCodeHarnessConfig(configPath string) (ClaudeCodeHarnessConfig, er
 	if err != nil {
 		return ClaudeCodeHarnessConfig{}, fmt.Errorf("executionplane: open Claude Code harness config: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	openedInfo, err := file.Stat()
 	if err != nil || !openedInfo.Mode().IsRegular() || openedInfo.Mode().Perm()&0o077 != 0 || !os.SameFile(info, openedInfo) {
 		return ClaudeCodeHarnessConfig{}, fmt.Errorf("executionplane: Claude Code harness config changed during validation")

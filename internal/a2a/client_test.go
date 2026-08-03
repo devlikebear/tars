@@ -70,7 +70,9 @@ func TestClientSendPollAndCancelUsesA2AV1WithoutLeakingToken(t *testing.T) {
 		t.Fatalf("cancel task: task=%#v err=%v", canceled, err)
 	}
 
-	raw, err := json.Marshal(client)
+	raw, err := json.Marshal(struct {
+		Client *Client `json:"client"`
+	}{Client: client})
 	if err != nil {
 		t.Fatalf("marshal client: %v", err)
 	}

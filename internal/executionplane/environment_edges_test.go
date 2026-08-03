@@ -355,7 +355,8 @@ func TestManagedWorktreeOwnershipHelpersFailClosed(t *testing.T) {
 	if !sameOrWithin(root, root) || !sameOrWithin(root, filepath.Join(root, "child")) || sameOrWithin(root, filepath.Dir(root)) {
 		t.Fatal("managed path containment check failed")
 	}
-	if digestRaw([]byte("same")) != digestRaw([]byte("same")) || digestRaw([]byte("same")) == digestRaw([]byte("different")) {
+	sameDigest := digestRaw([]byte("same"))
+	if sameDigest != digestRaw([]byte("same")) || sameDigest == digestRaw([]byte("different")) {
 		t.Fatal("raw digest is not deterministic")
 	}
 	if _, err := NewManagedWorktreeProvider(root, t.TempDir()); err == nil {

@@ -292,7 +292,7 @@ func (worker *ReferenceWorker) handleLocked(ctx context.Context, request WireReq
 	if exists && envelope.Sequence != environment.LastSequence+1 {
 		return worker.rejected(request, "out_of_order", "placement sequence is out of order")
 	}
-	if !exists && !((envelope.Type == MessageProvision && envelope.Sequence == 1) || envelope.Type == MessageRehydrate) {
+	if !exists && (envelope.Type != MessageProvision || envelope.Sequence != 1) && envelope.Type != MessageRehydrate {
 		return worker.rejected(request, "environment_not_found", "placement environment is unavailable")
 	}
 
@@ -777,7 +777,7 @@ func validateReferenceExecutionResult(result ReferenceExecutionResult, policy Ex
 	if len(result.Payload) > 0 && !json.Valid(result.Payload) {
 		return ErrWireContract
 	}
-	var totalBytes int64 = int64(len(result.Payload))
+	totalBytes := int64(len(result.Payload))
 	seen := make(map[string]struct{}, len(result.Artifacts))
 	limits := DefaultArtifactQuarantineLimits()
 	for _, artifact := range result.Artifacts {

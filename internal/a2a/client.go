@@ -191,7 +191,7 @@ func (client *Client) doJSON(ctx context.Context, method, suffix string, body []
 		}
 		return fmt.Errorf("a2a: request failed: %w", err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 		return fmt.Errorf("a2a: remote endpoint returned HTTP %d", response.StatusCode)
 	}

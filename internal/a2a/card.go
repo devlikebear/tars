@@ -54,7 +54,7 @@ func Discover(ctx context.Context, baseURL string, options DiscoveryOptions) (Ag
 		}
 		return AgentCard{}, AgentInterface{}, fmt.Errorf("a2a: discover agent card: %w", err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 		return AgentCard{}, AgentInterface{}, fmt.Errorf("a2a: discovery returned HTTP %d", response.StatusCode)
 	}
