@@ -246,6 +246,7 @@ type fakeWorkerClient struct {
 	capabilities ExecutorCapabilities
 	execute      func(context.Context, WorkerRequest) (WorkerResult, error)
 	recover      func(context.Context, WorkerRequest, *WorkerCheckpoint) (WorkerResult, bool, error)
+	cancel       func(context.Context, WorkerRequest) error
 }
 
 func (worker *fakeWorkerClient) Name() string                       { return worker.name }
@@ -259,7 +260,12 @@ func (worker *fakeWorkerClient) Recover(ctx context.Context, request WorkerReque
 	}
 	return worker.recover(ctx, request, checkpoint)
 }
-func (worker *fakeWorkerClient) Cancel(context.Context, WorkerRequest) error { return ErrUnsupported }
+func (worker *fakeWorkerClient) Cancel(ctx context.Context, request WorkerRequest) error {
+	if worker.cancel == nil {
+		return ErrUnsupported
+	}
+	return worker.cancel(ctx, request)
+}
 
 type fakeCredentialBroker struct {
 	issue  func(context.Context, CredentialRequest) (CredentialGrant, error)
