@@ -90,3 +90,80 @@ func TestFileArtifactCollectorRejectsTraversalAndDestinationOverlap(t *testing.T
 		t.Fatalf("overlapping collection error = %v", err)
 	}
 }
+
+func TestFileArtifactCollectorCapturesTrackedAndUntrackedGitPatch(t *testing.T) {
+	t.Parallel()
+
+	environmentRoot := t.TempDir()
+	artifactsRoot := t.TempDir()
+	for _, args := range [][]string{
+		{"init"},
+		{"config", "user.name", "TARS Test"},
+		{"config", "user.email", "tars@example.invalid"},
+	} {
+		if _, err := runGitCommand(context.Background(), environmentRoot, args...); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(environmentRoot, "tracked.go"), []byte("package sample\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runGitCommand(context.Background(), environmentRoot, "add", "tracked.go"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runGitCommand(context.Background(), environmentRoot, "commit", "-m", "base"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(environmentRoot, "tracked.go"), []byte("package changed\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(environmentRoot, "new.go"), []byte("package newfile // secret-value\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(environmentRoot, ".tars"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(environmentRoot, ".tars", "execution-environment.json"), []byte("private marker"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	collector, err := NewFileArtifactCollector(ArtifactCollectorOptions{
+		RootDir: artifactsRoot, IncludeTranscript: true, IncludeGitPatch: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	artifacts, err := collector.Collect(context.Background(), CollectRequest{
+		Execution: testExecution(), Environment: Environment{RootDir: environmentRoot},
+		Worker:       WorkerResult{Transcript: []TranscriptEntry{{Sequence: 1, Type: "assistant", Text: "done"}}},
+		RedactValues: []string{"secret-value"},
+	})
+	if err != nil {
+		t.Fatalf("collect Git patch: %v", err)
+	}
+	if len(artifacts) != 2 {
+		t.Fatalf("artifacts = %+v, want patch and transcript", artifacts)
+	}
+	var patchText string
+	for _, artifact := range artifacts {
+		if artifact.Name != "changes.patch" {
+			continue
+		}
+		path, err := filepathFromURI(artifact.URI)
+		if err != nil {
+			t.Fatal(err)
+		}
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		patchText = string(raw)
+	}
+	for _, want := range []string{"tracked.go", "package changed", "new.go", "package newfile"} {
+		if !strings.Contains(patchText, want) {
+			t.Fatalf("patch missing %q:\n%s", want, patchText)
+		}
+	}
+	if strings.Contains(patchText, "secret-value") || strings.Contains(patchText, "execution-environment.json") || strings.Contains(patchText, "private marker") {
+		t.Fatalf("patch leaked redacted/private content:\n%s", patchText)
+	}
+}

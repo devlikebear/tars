@@ -26,6 +26,7 @@ type ArtifactCollectorOptions struct {
 	RootDir           string
 	Paths             []string
 	IncludeTranscript bool
+	IncludeGitPatch   bool
 	MaxFiles          int
 	MaxBytes          int64
 }
@@ -34,6 +35,7 @@ type FileArtifactCollector struct {
 	rootDir           string
 	paths             []string
 	includeTranscript bool
+	includeGitPatch   bool
 	maxFiles          int
 	maxBytes          int64
 }
@@ -58,7 +60,7 @@ func NewFileArtifactCollector(opts ArtifactCollectorOptions) (*FileArtifactColle
 		opts.MaxBytes = defaultArtifactMaxBytes
 	}
 	return &FileArtifactCollector{
-		rootDir: root, paths: paths, includeTranscript: opts.IncludeTranscript,
+		rootDir: root, paths: paths, includeTranscript: opts.IncludeTranscript, includeGitPatch: opts.IncludeGitPatch,
 		maxFiles: opts.MaxFiles, maxBytes: opts.MaxBytes,
 	}, nil
 }
@@ -112,6 +114,28 @@ func (collector *FileArtifactCollector) Collect(ctx context.Context, request Col
 		}
 		artifacts = append(artifacts, artifact)
 	}
+	if collector.includeGitPatch {
+		patch, err := collectGitPatch(ctx, root)
+		if err != nil {
+			return nil, err
+		}
+		if len(patch) > 0 {
+			if len(artifacts) >= collector.maxFiles {
+				return nil, fmt.Errorf("executionplane: artifact count exceeds %d", collector.maxFiles)
+			}
+			patch = redactArtifactBytes(patch, request.RedactValues)
+			totalBytes += int64(len(patch))
+			if totalBytes > collector.maxBytes {
+				return nil, fmt.Errorf("executionplane: artifact bytes exceed %d", collector.maxBytes)
+			}
+			artifact, err := writeCollectedArtifact(destination, "patch", "changes.patch", patch)
+			if err != nil {
+				return nil, err
+			}
+			artifact.MediaType = "text/x-diff"
+			artifacts = append(artifacts, artifact)
+		}
+	}
 	if collector.includeTranscript && len(request.Worker.Transcript) > 0 {
 		if len(artifacts) >= collector.maxFiles {
 			return nil, fmt.Errorf("executionplane: artifact count exceeds %d", collector.maxFiles)
@@ -133,6 +157,21 @@ func (collector *FileArtifactCollector) Collect(ctx context.Context, request Col
 	}
 	sort.Slice(artifacts, func(i, j int) bool { return artifacts[i].Name < artifacts[j].Name })
 	return artifacts, nil
+}
+
+func collectGitPatch(ctx context.Context, root string) ([]byte, error) {
+	const privatePathspec = ":(exclude).tars/**"
+	if _, err := runGitCommand(ctx, root, "add", "--intent-to-add", "--", ".", privatePathspec); err != nil {
+		return nil, fmt.Errorf("executionplane: include untracked files in Git patch: %w", err)
+	}
+	patch, err := runGitCommand(ctx, root, "diff", "--binary", "--no-ext-diff", "--no-textconv", "HEAD", "--", ".", privatePathspec)
+	if err != nil {
+		return nil, fmt.Errorf("executionplane: collect Git patch: %w", err)
+	}
+	if len(bytes.TrimSpace(patch)) == 0 {
+		return nil, nil
+	}
+	return patch, nil
 }
 
 type artifactCandidate struct {
