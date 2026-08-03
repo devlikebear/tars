@@ -109,12 +109,13 @@ func NewTasksTool(store *session.Store, workspaceDir string, getSessionID func()
 }
 
 type taskContractPayload struct {
-	Goal                 string                `json:"goal,omitempty"`
-	Scope                string                `json:"scope,omitempty"`
-	DoneCriteria         []string              `json:"done_criteria,omitempty"`
-	VerificationCommands []string              `json:"verification_commands,omitempty"`
-	Artifacts            []string              `json:"artifacts,omitempty"`
-	Contract             *session.TaskContract `json:"contract,omitempty"`
+	Goal                 string                   `json:"goal,omitempty"`
+	Scope                string                   `json:"scope,omitempty"`
+	DoneCriteria         []string                 `json:"done_criteria,omitempty"`
+	VerificationCommands []string                 `json:"verification_commands,omitempty"`
+	Artifacts            []string                 `json:"artifacts,omitempty"`
+	ProofPolicy          *session.TaskProofPolicy `json:"proof_policy,omitempty"`
+	Contract             *session.TaskContract    `json:"contract,omitempty"`
 }
 
 type taskEvidencePayload struct {
@@ -208,6 +209,7 @@ func contractFromPayload(input taskContractPayload, fallbackGoal string, fallbac
 		DoneCriteria:         doneCriteria,
 		VerificationCommands: input.VerificationCommands,
 		Artifacts:            input.Artifacts,
+		ProofPolicy:          input.ProofPolicy,
 		Status:               session.ContractStatusDraft,
 		CreatedAt:            now,
 		UpdatedAt:            now,

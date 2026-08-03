@@ -55,11 +55,18 @@ RELEASE_GOARCH ?= $(shell $(GO) env GOARCH)
 RELEASE_CGO_ENABLED ?= 0
 RELEASE_ARCHIVE_NAME ?= tars_$(VERSION)_$(RELEASE_GOOS)_$(RELEASE_GOARCH).tar.gz
 RELEASE_STAGE_DIR ?= $(DIST_DIR)/release-$(RELEASE_GOOS)-$(RELEASE_GOARCH)
+AGENT_HARNESS_PACK ?= testdata/agent-harness/scenarios.json
+AGENT_HARNESS_MODE ?= deterministic
+AGENT_HARNESS_JSONL ?= -
+AGENT_HARNESS_MARKDOWN ?=
+AGENT_HARNESS_VERSION ?= $(VERSION)
+AGENT_HARNESS_COMMIT ?= $(GIT_COMMIT)
 
 .DEFAULT_GOAL := help
 
 .PHONY: help \
 	test test-v test-one test-nocache test-race test-cover test-cover-check test-diff test-cover-diff \
+	agent-harness-eval agent-harness-baseline \
 	build build-bins windows-build-check release-asset clean tidy fmt vet lint \
 	lint-diff ci-static-analysis-check github-actions-hardening-check codeql-workflow-check sonarcloud-workflow-check \
 	ensure-console-assets console-install console-build \
@@ -93,6 +100,8 @@ help:
 	@echo "  make test-cover-check - require total coverage >= COVER_MIN ($(COVER_MIN)%)"
 	@echo "  make test-diff     - test changed Go packages + coverage check against DIFF_BASE"
 	@echo "  make test-cover-diff - require changed-line coverage >= DIFF_COVER_MIN ($(DIFF_COVER_MIN)%)"
+	@echo "  make agent-harness-eval - run the deterministic agent/harness scenario pack"
+	@echo "  make agent-harness-baseline - write versioned JSONL + Markdown baseline reports"
 	@echo ""
 	@echo "Build/quality targets:"
 	@echo "  make build         - go build ./..."
@@ -168,6 +177,20 @@ test-diff:
 test-cover-diff:
 	GO="$(GO)" DIFF_HEAD="$(DIFF_HEAD)" COVER_OUT="$(COVER_OUT_DIFF)" COVER_MIN="" ./scripts/go_test_diff.sh
 	GO="$(GO)" DIFF_HEAD="$(DIFF_HEAD)" ./scripts/check_diff_coverage.sh "$(COVER_OUT_DIFF)" "$(DIFF_COVER_MIN)"
+
+agent-harness-eval:
+	$(GO) run ./cmd/agentharness-eval \
+		--mode "$(AGENT_HARNESS_MODE)" \
+		--pack "$(AGENT_HARNESS_PACK)" \
+		--version "$(AGENT_HARNESS_VERSION)" \
+		--commit "$(AGENT_HARNESS_COMMIT)" \
+		--jsonl "$(AGENT_HARNESS_JSONL)" \
+		--markdown "$(AGENT_HARNESS_MARKDOWN)"
+
+agent-harness-baseline:
+	$(MAKE) agent-harness-eval \
+		AGENT_HARNESS_JSONL="docs/agent-harness/baseline-v$(AGENT_HARNESS_VERSION).jsonl" \
+		AGENT_HARNESS_MARKDOWN="docs/agent-harness/baseline-v$(AGENT_HARNESS_VERSION).md"
 
 build: ensure-console-assets
 	mkdir -p $(BIN_DIR)

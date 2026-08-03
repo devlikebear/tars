@@ -9,6 +9,7 @@ import (
 
 	"github.com/devlikebear/tars/internal/session"
 	"github.com/devlikebear/tars/internal/usage"
+	"github.com/devlikebear/tars/internal/workstore"
 )
 
 type RunStatus string
@@ -25,11 +26,15 @@ type Run struct {
 	ID          string `json:"run_id"`
 	WorkspaceID string `json:"-"`
 	SessionID   string `json:"session_id,omitempty"`
+	// ExecutionRoot is an optional task-scoped filesystem root provisioned by
+	// the durable execution plane. It is immutable for the lifetime of a run.
+	ExecutionRoot string `json:"execution_root,omitempty"`
 	// TaskID, when set, names the session.Task this run was spawned to work
 	// on. Read-only metadata that lets UI consumers correlate live run state
 	// with the task that triggered it. Forwarded from SpawnRequest.TaskID at
 	// spawn time and never mutated thereafter.
 	TaskID                    string                   `json:"task_id,omitempty"`
+	WorkID                    string                   `json:"work_id,omitempty"`
 	SessionKind               string                   `json:"session_kind,omitempty"`
 	Agent                     string                   `json:"agent,omitempty"`
 	Prompt                    string                   `json:"prompt,omitempty"`
@@ -41,6 +46,7 @@ type Run struct {
 	RestartedFromCheckpointID string                   `json:"restarted_from_checkpoint_id,omitempty"`
 	RestartAttempt            int                      `json:"restart_attempt,omitempty"`
 	RestartReason             string                   `json:"restart_reason,omitempty"`
+	RecoveryMode              RecoveryMode             `json:"recovery_mode,omitempty"`
 	Status                    RunStatus                `json:"status"`
 	Accepted                  bool                     `json:"accepted"`
 	Response                  string                   `json:"response,omitempty"`
@@ -61,10 +67,15 @@ type Run struct {
 	ConsensusVariants         []ConsensusVariantRecord `json:"consensus_variants,omitempty"`
 	ConsensusCostUSD          float64                  `json:"consensus_cost_usd,omitempty"`
 	ConsensusBudgetUSD        float64                  `json:"consensus_budget_usd,omitempty"`
+	ConsensusDecision         *ConsensusDecisionRecord `json:"consensus_decision,omitempty"`
 	FileAttention             []FileAttentionSummary   `json:"file_attention,omitempty"`
 	FileOpsTotal              int                      `json:"file_ops_total,omitempty"`
 	DiffTimeline              []DiffTimelineEntry      `json:"diff_timeline,omitempty"`
 	Checkpoints               []RunCheckpoint          `json:"checkpoints,omitempty"`
+	ToolRequests              []ToolRequestRecord      `json:"tool_requests,omitempty"`
+	ToolResults               []ToolResultRecord       `json:"tool_results,omitempty"`
+	EffectReceipts            []EffectReceipt          `json:"effect_receipts,omitempty"`
+	LatestContinuation        *CheckpointContinuation  `json:"latest_continuation,omitempty"`
 	ProviderOverride          *ProviderOverride        `json:"provider_override,omitempty"`
 	ResolvedAlias             string                   `json:"resolved_alias,omitempty"`
 	ResolvedKind              string                   `json:"resolved_kind,omitempty"`
@@ -77,18 +88,34 @@ type Run struct {
 }
 
 type RunCheckpoint struct {
-	ID               string            `json:"checkpoint_id"`
-	RunID            string            `json:"run_id,omitempty"`
-	Kind             string            `json:"kind"`
-	Label            string            `json:"label,omitempty"`
-	Status           RunStatus         `json:"status,omitempty"`
-	Agent            string            `json:"agent,omitempty"`
-	Prompt           string            `json:"prompt,omitempty"`
-	Tier             string            `json:"tier,omitempty"`
-	ProviderOverride *ProviderOverride `json:"provider_override,omitempty"`
-	AllowedTools     []string          `json:"allowed_tools,omitempty"`
-	Error            string            `json:"error,omitempty"`
-	CreatedAt        string            `json:"created_at"`
+	SchemaVersion            int                     `json:"schema_version"`
+	ID                       string                  `json:"checkpoint_id"`
+	RunID                    string                  `json:"run_id,omitempty"`
+	Format                   CheckpointFormat        `json:"format"`
+	Capability               CheckpointCapability    `json:"capability"`
+	Resumable                bool                    `json:"resumable"`
+	ResumeReason             string                  `json:"resume_reason"`
+	RecoveryModes            []RecoveryMode          `json:"recovery_modes"`
+	RecoveryApprovalRequired bool                    `json:"recovery_approval_required,omitempty"`
+	RecoveryApprovalReason   string                  `json:"recovery_approval_reason,omitempty"`
+	NextAction               string                  `json:"next_action,omitempty"`
+	StateRefs                []CheckpointReference   `json:"state_refs,omitempty"`
+	ToolRequestRefs          []CheckpointReference   `json:"tool_request_refs,omitempty"`
+	ToolResultRefs           []CheckpointReference   `json:"tool_result_refs,omitempty"`
+	EffectReceiptRefs        []CheckpointReference   `json:"effect_receipt_refs,omitempty"`
+	WorkspaceSnapshotRefs    []CheckpointReference   `json:"workspace_snapshot_refs,omitempty"`
+	EnvironmentSnapshotRefs  []CheckpointReference   `json:"environment_snapshot_refs,omitempty"`
+	Continuation             *CheckpointContinuation `json:"continuation,omitempty"`
+	Kind                     string                  `json:"kind"`
+	Label                    string                  `json:"label,omitempty"`
+	Status                   RunStatus               `json:"status,omitempty"`
+	Agent                    string                  `json:"agent,omitempty"`
+	Prompt                   string                  `json:"prompt,omitempty"`
+	Tier                     string                  `json:"tier,omitempty"`
+	ProviderOverride         *ProviderOverride       `json:"provider_override,omitempty"`
+	AllowedTools             []string                `json:"allowed_tools,omitempty"`
+	Error                    string                  `json:"error,omitempty"`
+	CreatedAt                string                  `json:"created_at"`
 }
 
 type ProviderOverride struct {
@@ -97,9 +124,32 @@ type ProviderOverride struct {
 }
 
 type ConsensusSpec struct {
-	Strategy   string             `json:"strategy,omitempty"`
-	Variants   []ProviderOverride `json:"variants,omitempty"`
-	Aggregator *ProviderOverride  `json:"aggregator,omitempty"`
+	Strategy             string             `json:"strategy,omitempty"`
+	Variants             []ProviderOverride `json:"variants,omitempty"`
+	Aggregator           *ProviderOverride  `json:"aggregator,omitempty"`
+	Automatic            bool               `json:"automatic,omitempty"`
+	BaselineID           string             `json:"baseline_id,omitempty"`
+	ExpectedQualityDelta float64            `json:"expected_quality_delta,omitempty"`
+	DecisionReason       string             `json:"decision_reason,omitempty"`
+}
+
+type ConsensusDecisionRecord struct {
+	Automatic            bool    `json:"automatic"`
+	BaselineID           string  `json:"baseline_id,omitempty"`
+	DecisionReason       string  `json:"decision_reason,omitempty"`
+	ExpectedQualityDelta float64 `json:"expected_quality_delta,omitempty"`
+	ExpectedTokens       int     `json:"expected_tokens"`
+	ExpectedCostUSD      float64 `json:"expected_cost_usd"`
+	TokenBudget          int     `json:"token_budget"`
+	CostBudgetUSD        float64 `json:"cost_budget_usd"`
+	Fanout               int     `json:"fanout"`
+	ObservedCompleted    int     `json:"observed_completed"`
+	ObservedFailed       int     `json:"observed_failed"`
+	ObservedTokens       int     `json:"observed_tokens"`
+	ObservedCostUSD      float64 `json:"observed_cost_usd"`
+	ObservedOutcome      string  `json:"observed_outcome,omitempty"`
+	RecordedAt           string  `json:"recorded_at"`
+	ObservedAt           string  `json:"observed_at,omitempty"`
 }
 
 type ConsensusVariantRecord struct {
@@ -118,37 +168,40 @@ type ConsensusVariantRecord struct {
 }
 
 type RunEvent struct {
-	Type            string  `json:"type"`
-	RunID           string  `json:"run_id"`
-	Timestamp       string  `json:"timestamp,omitempty"`
-	Agent           string  `json:"agent,omitempty"`
-	Status          string  `json:"status,omitempty"`
-	Tier            string  `json:"tier,omitempty"`
-	ResolvedAlias   string  `json:"resolved_alias,omitempty"`
-	ResolvedKind    string  `json:"resolved_kind,omitempty"`
-	ResolvedModel   string  `json:"resolved_model,omitempty"`
-	Error           string  `json:"error,omitempty"`
-	Message         string  `json:"message,omitempty"`
-	Response        string  `json:"response,omitempty"`
-	VariantCount    int     `json:"variant_count,omitempty"`
-	VariantIdx      int     `json:"variant_idx,omitempty"`
-	Alias           string  `json:"alias,omitempty"`
-	Kind            string  `json:"kind,omitempty"`
-	Model           string  `json:"model,omitempty"`
-	Strategy        string  `json:"strategy,omitempty"`
-	TokenBudget     int     `json:"token_budget,omitempty"`
-	TokensIn        int     `json:"tokens_in,omitempty"`
-	TokensOut       int     `json:"tokens_out,omitempty"`
-	FinalTokens     int     `json:"final_tokens,omitempty"`
-	CostUSDEstimate float64 `json:"cost_usd_estimate,omitempty"`
-	CostUSDActual   float64 `json:"cost_usd_actual,omitempty"`
-	ToolName        string  `json:"tool_name,omitempty"`
-	ToolCallID      string  `json:"tool_call_id,omitempty"`
-	Path            string  `json:"path,omitempty"`
-	Action          string  `json:"action,omitempty"`
-	ToolIsError     bool    `json:"tool_is_error,omitempty"`
-	CheckpointID    string  `json:"checkpoint_id,omitempty"`
-	CheckpointKind  string  `json:"checkpoint_kind,omitempty"`
+	Type                 string  `json:"type"`
+	RunID                string  `json:"run_id"`
+	Timestamp            string  `json:"timestamp,omitempty"`
+	Agent                string  `json:"agent,omitempty"`
+	Status               string  `json:"status,omitempty"`
+	Tier                 string  `json:"tier,omitempty"`
+	ResolvedAlias        string  `json:"resolved_alias,omitempty"`
+	ResolvedKind         string  `json:"resolved_kind,omitempty"`
+	ResolvedModel        string  `json:"resolved_model,omitempty"`
+	Error                string  `json:"error,omitempty"`
+	Message              string  `json:"message,omitempty"`
+	Response             string  `json:"response,omitempty"`
+	VariantCount         int     `json:"variant_count,omitempty"`
+	VariantIdx           int     `json:"variant_idx,omitempty"`
+	Alias                string  `json:"alias,omitempty"`
+	Kind                 string  `json:"kind,omitempty"`
+	Model                string  `json:"model,omitempty"`
+	Strategy             string  `json:"strategy,omitempty"`
+	TokenBudget          int     `json:"token_budget,omitempty"`
+	TokensIn             int     `json:"tokens_in,omitempty"`
+	TokensOut            int     `json:"tokens_out,omitempty"`
+	FinalTokens          int     `json:"final_tokens,omitempty"`
+	CostUSDEstimate      float64 `json:"cost_usd_estimate,omitempty"`
+	CostUSDActual        float64 `json:"cost_usd_actual,omitempty"`
+	Automatic            bool    `json:"automatic,omitempty"`
+	BaselineID           string  `json:"baseline_id,omitempty"`
+	ExpectedQualityDelta float64 `json:"expected_quality_delta,omitempty"`
+	ToolName             string  `json:"tool_name,omitempty"`
+	ToolCallID           string  `json:"tool_call_id,omitempty"`
+	Path                 string  `json:"path,omitempty"`
+	Action               string  `json:"action,omitempty"`
+	ToolIsError          bool    `json:"tool_is_error,omitempty"`
+	CheckpointID         string  `json:"checkpoint_id,omitempty"`
+	CheckpointKind       string  `json:"checkpoint_kind,omitempty"`
 }
 
 type FileAttentionSummary struct {
@@ -213,8 +266,10 @@ type PromptExecutionMetadata struct {
 
 type SpawnRequest struct {
 	WorkspaceID               string
+	WorkID                    string
 	SessionID                 string
 	TaskID                    string
+	ExecutionRoot             string
 	Title                     string
 	Prompt                    string
 	SystemPromptAppend        string
@@ -235,17 +290,21 @@ type SpawnRequest struct {
 	RestartedFromCheckpointID string
 	RestartAttempt            int
 	RestartReason             string
+	RecoveryMode              RecoveryMode
+	RecoveryPlan              *RecoveryExecutionPlan
 }
 
 type RestartRequest struct {
-	WorkspaceID      string
-	RunID            string
-	CheckpointID     string
-	Agent            string
-	Tier             string
-	ProviderOverride *ProviderOverride
-	PromptAdjustment string
-	Title            string
+	WorkspaceID           string
+	RunID                 string
+	CheckpointID          string
+	Agent                 string
+	Tier                  string
+	ProviderOverride      *ProviderOverride
+	PromptAdjustment      string
+	Title                 string
+	Mode                  RecoveryMode
+	ConfirmUnsafeRecovery bool
 }
 
 type ChannelMessage struct {
@@ -318,6 +377,7 @@ type RuntimeOptions struct {
 	SessionStore                              *session.Store
 	SessionStoreForWorkspace                  func(workspaceID string) *session.Store
 	RunPrompt                                 func(ctx context.Context, runLabel string, prompt string) (string, error)
+	RunPromptCheckpointSupport                ExecutorCheckpointSupport
 	Executors                                 []AgentExecutor
 	DefaultAgent                              string
 	AgentRuntimeAgentsWatchEnabled            bool
@@ -348,7 +408,11 @@ type RuntimeOptions struct {
 	ResolveProviderOverride                   func(tier string, override *ProviderOverride) (ResolvedProviderOverride, error)
 	EstimateTokensCost                        func(provider, model string, inputTokens, outputTokens int) (float64, bool)
 	UsageTracker                              *usage.Tracker
-	Now                                       func() time.Time
+	// OnRunsSnapshot observes a read-only copy of the current run slice after
+	// state changes. It is independent of file persistence so a durable control
+	// plane can mirror runs even when legacy runs.json storage is disabled.
+	OnRunsSnapshot func(runs []Run)
+	Now            func() time.Time
 }
 
 type runState struct {
@@ -394,6 +458,7 @@ type Runtime struct {
 	subagentPool        *weightedSemaphore
 	consensusRuns       *weightedSemaphore
 	consensusPool       *weightedSemaphore
+	effectReceiptStore  *workstore.Store
 }
 
 const DefaultWorkspaceID = "default"

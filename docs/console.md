@@ -58,7 +58,12 @@ workbench actions, and Session Health. The Chat Contract panel keeps goal,
 scope, done criteria, verification commands, expected artifacts, approval
 status, and evidence together. The Chat Tasks panel keeps full plan progress
 visible and accepts tests, logs, screenshots, PRs, releases, and command output
-as task evidence.
+as task evidence. Its Timeline tab prefers current session-owned durable work,
+falls back to imported legacy-session history, and subscribes directly to Work
+Ledger events. Active work can be cancelled after confirmation. Steps in
+`review` or `blocked` appear under Operator attention only when their durable
+schedule requires human resume; the entered resume reason is retained in the
+event history.
 
 The global Plans page lists active plans across sessions. Archived plan data is
 available through `/v1/admin/plans/archive` for future planning views.
@@ -106,7 +111,11 @@ release/PR shortcuts.
 Pulse is the watchdog surface for cron failures, stuck runs, stalled chats,
 disk pressure, delivery health, and reflection state. Reflection is the nightly
 batch surface for memory extraction and stale empty-session pruning. Cron,
-Approvals, Logs, and Analytics provide the rest of the operator loop.
+Approvals, Logs, and Analytics provide the rest of the operator loop. Approvals
+also contains the Remote Execution control-plane card: when enabled it shows a
+sanitized worker/placement summary, sync volume, resource and egress policy,
+checkpoints, recovery counts, A2A status, and recent state transitions without
+exposing worker endpoints or raw event payloads.
 
 ## Setup
 

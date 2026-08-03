@@ -5,9 +5,12 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
+	"github.com/devlikebear/tars/internal/proofverifier"
 	"github.com/devlikebear/tars/internal/session"
-	"github.com/devlikebear/tars/internal/tool"
+	"github.com/devlikebear/tars/internal/workscheduler"
+	"github.com/devlikebear/tars/internal/workstore"
 )
 
 type taskVerificationRequest struct {
@@ -16,19 +19,22 @@ type taskVerificationRequest struct {
 }
 
 type taskVerificationResult struct {
-	Command    string `json:"command"`
-	Status     string `json:"status"`
-	ExitCode   int    `json:"exit_code"`
-	TimedOut   bool   `json:"timed_out,omitempty"`
-	EvidenceID string `json:"evidence_id"`
-	Summary    string `json:"summary,omitempty"`
+	Command     string `json:"command"`
+	Status      string `json:"status"`
+	ExitCode    int    `json:"exit_code"`
+	TimedOut    bool   `json:"timed_out,omitempty"`
+	EvidenceID  string `json:"evidence_id"`
+	Summary     string `json:"summary,omitempty"`
+	ProofState  string `json:"proof_state"`
+	ProofOrigin string `json:"proof_origin"`
+	VerifierID  string `json:"verifier_id"`
 }
 
 type taskVerificationExecResponse struct {
 	Command    string `json:"command"`
 	ExitCode   int    `json:"exit_code"`
-	Stdout     string `json:"stdout,omitempty"`
-	Stderr     string `json:"stderr,omitempty"`
+	Stdout     string `json:"stdout_excerpt,omitempty"`
+	Stderr     string `json:"stderr_excerpt,omitempty"`
 	DurationMS int64  `json:"duration_ms"`
 	TimedOut   bool   `json:"timed_out,omitempty"`
 	Message    string `json:"message,omitempty"`
@@ -73,7 +79,24 @@ func handleSessionTaskVerification(w http.ResponseWriter, r *http.Request, store
 	if currentDir, err := store.GetCurrentDir(sessionID); err == nil && strings.TrimSpace(currentDir) != "" {
 		workDir = strings.TrimSpace(currentDir)
 	}
-	execTool := tool.NewExecTool(workDir)
+	timeout := time.Duration(req.TimeoutMS) * time.Millisecond
+	verifier, err := proofverifier.New(proofverifier.Options{
+		ID: "session-proof-verifier", RootDir: workDir, Timeout: timeout,
+	})
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	identity := verifier.Identity()
+	reporterID := "session-task:" + st.Tasks[taskIndex].ID
+	proofPolicy := workstore.StepProofPolicy{Required: true, FailureState: workstore.WorkStateReview}
+	if st.Contract.ProofPolicy != nil {
+		proofPolicy.Required = st.Contract.ProofPolicy.Required
+		proofPolicy.FailureState = workstore.WorkState(st.Contract.ProofPolicy.FailureState)
+		proofPolicy.AllowLLMFallback = st.Contract.ProofPolicy.AllowLLMFallback
+		proofPolicy.MaxLLMTokens = st.Contract.ProofPolicy.MaxLLMTokens
+		proofPolicy.MaxLLMCostUSD = st.Contract.ProofPolicy.MaxLLMCostUSD
+	}
 	results := make([]taskVerificationResult, 0, len(st.Contract.VerificationCommands))
 	allPassed := true
 	for _, command := range st.Contract.VerificationCommands {
@@ -81,30 +104,46 @@ func handleSessionTaskVerification(w http.ResponseWriter, r *http.Request, store
 		if command == "" {
 			continue
 		}
-		params := map[string]any{"command": command}
-		if req.TimeoutMS > 0 {
-			params["timeout_ms"] = req.TimeoutMS
-		}
-		rawParams, _ := json.Marshal(params)
-		execResult, execErr := execTool.Execute(r.Context(), rawParams)
-		if execErr != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": execErr.Error()})
+		verified, verifyErr := verifier.Verify(r.Context(), workscheduler.VerificationRequest{
+			Execution: workscheduler.Execution{
+				Work:  workstore.Work{Objective: st.Contract.Goal},
+				Claim: workstore.StepClaim{Schedule: workstore.StepSchedule{Policy: workstore.StepSchedulePolicy{Proof: proofPolicy}}},
+			},
+			Result: workscheduler.ExecutionResult{Succeeded: true},
+			Requirement: workstore.ProofRequirement{
+				Kind: session.EvidenceTypeTestResult, Verifier: verifier.Name(), Command: command,
+			},
+		})
+		if verifyErr != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": verifyErr.Error()})
 			return
 		}
-		parsed := parseVerificationExecResponse(command, execResult)
-		status := "passed"
-		if execResult.IsError {
-			status = "failed"
+		parsed := parseVerificationProofInput(command, verified.InputJSON)
+		status := string(verified.Status)
+		if verified.Status != workstore.ProofStatusPassed {
 			allPassed = false
 		}
+		observedAt := session.NowRFC3339()
+		if verified.ObservedAt != nil {
+			observedAt = verified.ObservedAt.UTC().Format(time.RFC3339Nano)
+		}
+		summary := summarizeVerificationExec(parsed)
+		if strings.TrimSpace(verified.Rationale) != "" {
+			if summary == "" {
+				summary = verified.Rationale
+			} else {
+				summary = verified.Rationale + " | " + summary
+			}
+		}
 		ev := session.TaskEvidence{
-			ID:        session.NextEvidenceID(st.Tasks),
-			Type:      session.EvidenceTypeTestResult,
-			Title:     "Verification: " + command,
-			Summary:   summarizeVerificationExec(parsed),
-			Command:   command,
-			Status:    status,
-			CreatedAt: session.NowRFC3339(),
+			ID: session.NextEvidenceID(st.Tasks), Type: session.EvidenceTypeTestResult,
+			Title: "Verification: " + command, Summary: summary, Command: command, Status: status,
+			ProofState: status, ProofOrigin: string(workstore.ProofOriginIndependentVerifier),
+			ReporterID: reporterID, VerifierID: identity.ID, Verifier: verifier.Name(),
+			EnvironmentJSON: identity.EnvironmentJSON, InputJSON: verified.InputJSON,
+			ArtifactDigestsJSON: verified.ArtifactDigestsJSON,
+			SubjectDigest:       verified.SubjectDigest, Rationale: verified.Rationale,
+			ObservedAt: observedAt, CreatedAt: session.NowRFC3339(), UpdatedAt: session.NowRFC3339(),
 		}
 		st.Tasks[taskIndex].Evidence = append(st.Tasks[taskIndex].Evidence, ev)
 		results = append(results, taskVerificationResult{
@@ -114,6 +153,7 @@ func handleSessionTaskVerification(w http.ResponseWriter, r *http.Request, store
 			TimedOut:   parsed.TimedOut,
 			EvidenceID: ev.ID,
 			Summary:    ev.Summary,
+			ProofState: ev.ProofState, ProofOrigin: ev.ProofOrigin, VerifierID: ev.VerifierID,
 		})
 	}
 	if len(results) == 0 {
@@ -160,13 +200,10 @@ func selectVerificationTaskIndex(tasks []session.Task, requestedTaskID string) (
 	return 0, nil
 }
 
-func parseVerificationExecResponse(command string, result tool.Result) taskVerificationExecResponse {
+func parseVerificationProofInput(command string, raw json.RawMessage) taskVerificationExecResponse {
 	parsed := taskVerificationExecResponse{Command: command}
-	if err := json.Unmarshal([]byte(result.Text()), &parsed); err != nil {
-		parsed.Message = strings.TrimSpace(result.Text())
-		if result.IsError {
-			parsed.ExitCode = -1
-		}
+	if err := json.Unmarshal(raw, &parsed); err != nil {
+		parsed.Message = "verification provenance was unavailable"
 	}
 	if strings.TrimSpace(parsed.Command) == "" {
 		parsed.Command = command

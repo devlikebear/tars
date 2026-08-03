@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestClaudeCodeCLIClientChat_ParsesStreamJSON(t *testing.T) {
@@ -73,6 +74,119 @@ printf '%s\n' '{"type":"result","subtype":"success","duration_ms":12,"duration_a
 		if !strings.Contains(args, want) {
 			t.Fatalf("expected args to contain %q, got:\n%s", want, args)
 		}
+	}
+}
+
+func TestClaudeCodeCLIClientChat_AppliesHarnessControlsAndParsesCost(t *testing.T) {
+	dir := t.TempDir()
+	argsPath := filepath.Join(dir, "claude-args.txt")
+	envPath := filepath.Join(dir, "claude-env.txt")
+	scriptPath := filepath.Join(dir, "claude")
+	script := strings.TrimSpace(`#!/bin/sh
+printf '%s\n' "$@" > `+shellQuote(argsPath)+`
+env > `+shellQuote(envPath)+`
+printf '%s\n' '{"type":"assistant","message":{"model":"sonnet","content":[{"type":"text","text":"implemented"}]}}'
+printf '%s\n' '{"type":"result","subtype":"success","duration_ms":12,"is_error":false,"num_turns":3,"session_id":"sess-harness","stop_reason":"end_turn","total_cost_usd":0.42,"usage":{"input_tokens":21,"output_tokens":8},"result":"implemented"}'
+`) + "\n"
+	if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("write cli stub: %v", err)
+	}
+	t.Setenv("CLAUDE_CODE_CLI_PATH", scriptPath)
+	t.Setenv("ANTHROPIC_API_KEY", "must-not-reach-harness")
+	t.Setenv("SSH_AUTH_SOCK", "/tmp/must-not-reach-harness.sock")
+
+	client, err := NewProvider(ProviderOptions{Provider: "claude-code-cli", Model: "sonnet", WorkDir: dir})
+	if err != nil {
+		t.Fatalf("new provider: %v", err)
+	}
+	resp, err := client.Chat(context.Background(), []ChatMessage{{Role: "user", Content: "implement it"}}, ChatOptions{
+		ClaudeCodePermissionMode: "dontAsk",
+		ClaudeCodeHarness: &ClaudeCodeHarnessOptions{
+			SafeMode: true, StrictMCP: true, DisableChrome: true, IsolateEnvironment: true,
+			Tools:        []string{"Read", "Edit", "Bash"},
+			AllowedTools: []string{"Read", "Edit", "Bash(go test *)"},
+			MaxTurns:     12, MaxBudgetUSD: 2.5,
+		},
+	})
+	if err != nil {
+		t.Fatalf("chat: %v", err)
+	}
+	if resp.Turns != 3 || resp.Usage.CostUSD != 0.42 {
+		t.Fatalf("normalized harness usage = turns:%d usage:%+v", resp.Turns, resp.Usage)
+	}
+	argsData, err := os.ReadFile(argsPath)
+	if err != nil {
+		t.Fatalf("read args: %v", err)
+	}
+	args := string(argsData)
+	for _, flag := range []string{"--safe-mode", "--strict-mcp-config", "--no-chrome"} {
+		if !strings.Contains(args, flag+"\n") {
+			t.Fatalf("expected %s in args, got:\n%s", flag, args)
+		}
+	}
+	wantValues := map[string]string{
+		"--permission-mode": "dontAsk",
+		"--tools":           "Read,Edit,Bash",
+		"--allowedTools":    "Read,Edit,Bash(go test *)",
+		"--max-turns":       "12",
+		"--max-budget-usd":  "2.5",
+	}
+	for flag, want := range wantValues {
+		if got := extractFlagValue(args, flag); got != want {
+			t.Fatalf("%s = %q, want %q; args:\n%s", flag, got, want, args)
+		}
+	}
+	envData, err := os.ReadFile(envPath)
+	if err != nil {
+		t.Fatalf("read harness env: %v", err)
+	}
+	environment := string(envData)
+	if strings.Contains(environment, "must-not-reach-harness") || strings.Contains(environment, "ANTHROPIC_API_KEY=") || strings.Contains(environment, "SSH_AUTH_SOCK=") {
+		t.Fatalf("credential-bearing environment reached harness:\n%s", environment)
+	}
+	if !strings.Contains(environment, "HOME=") || !strings.Contains(environment, "PATH=") {
+		t.Fatalf("minimal runtime environment missing:\n%s", environment)
+	}
+}
+
+func TestClaudeCodeCLIChat_CallerCancellationKillsProcessTree(t *testing.T) {
+	dir := t.TempDir()
+	startedPath := filepath.Join(dir, "started")
+	scriptPath := filepath.Join(dir, "claude")
+	script := "#!/bin/sh\nprintf started > " + shellQuote(startedPath) + "\nsleep 30\n"
+	if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CLAUDE_CODE_CLI_PATH", scriptPath)
+	client, err := NewClaudeCodeCLIClient(dir, "sonnet")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		_, err := client.Chat(ctx, []ChatMessage{{Role: "user", Content: "wait"}}, ChatOptions{})
+		done <- err
+	}()
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		if _, err := os.Stat(startedPath); err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			cancel()
+			t.Fatal("Claude Code stub did not start")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("expected cancellation error")
+		}
+	case <-time.After(15 * time.Second):
+		t.Fatal("caller cancellation did not kill the CLI process tree")
 	}
 }
 
@@ -472,8 +586,10 @@ func TestResolveClaudeCodePermissionMode(t *testing.T) {
 	}{
 		{"", "auto"},
 		{"auto", "auto"},
+		{"default", "default"},
 		{"acceptEdits", "acceptEdits"},
 		{"plan", "plan"},
+		{"dontAsk", "dontAsk"},
 		{"bypassPermissions", "bypassPermissions"},
 		{"  plan  ", "plan"}, // whitespace trimmed
 		{"unknown", "auto"},  // unknown → fallback

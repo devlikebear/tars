@@ -126,6 +126,7 @@ func handleChatRequest(w http.ResponseWriter, r *http.Request, deps chatHandlerD
 		"used_tool_names":                 []string{},
 		"selected_skill_name":             skillNameOrEmpty(state.invokedSkill),
 		"selected_skill_reason":           state.invokedSkillReason,
+		"selected_capability_version_ids": state.capabilityVersionIDs,
 		"selected_command_name":           skillNameOrEmpty(state.invokedCommand),
 		"selected_command_reason":         state.invokedCommandReason,
 		"mentioned_path_count":            len(state.mentionedPaths),
@@ -151,8 +152,9 @@ func handleChatRequest(w http.ResponseWriter, r *http.Request, deps chatHandlerD
 	}
 
 	baseCtx := usage.WithCallMeta(r.Context(), usage.CallMeta{
-		Source:    "chat",
-		SessionID: state.sessionID,
+		Source:               "chat",
+		SessionID:            state.sessionID,
+		CapabilityVersionIDs: state.capabilityVersionIDs,
 	})
 	chatCtx, cancelChat := context.WithCancel(baseCtx)
 	defer cancelChat()

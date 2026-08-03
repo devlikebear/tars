@@ -17,6 +17,11 @@ func (r *Runtime) Spawn(ctx context.Context, req SpawnRequest) (Run, error) {
 	if prompt == "" {
 		return Run{}, fmt.Errorf("prompt is required")
 	}
+	executionRoot, err := normalizeExecutionRoot(req.ExecutionRoot)
+	if err != nil {
+		return Run{}, err
+	}
+	req.ExecutionRoot = executionRoot
 	sessionStore := r.sessionStoreForWorkspace(req.WorkspaceID)
 	if sessionStore == nil {
 		return Run{}, fmt.Errorf("session store is not configured")
@@ -38,12 +43,13 @@ func (r *Runtime) Spawn(ctx context.Context, req SpawnRequest) (Run, error) {
 		}
 		return Run{}, err
 	}
+	accepted := state.run
 
 	go func() {
 		defer r.runWG.Done()
 		r.executeRun(runCtx, state.run.ID)
 	}()
-	return state.run, nil
+	return accepted, nil
 }
 
 func resolveSpawnSessionID(sessionStore *session.Store, req SpawnRequest, info AgentInfo, selectedAgent string) (string, error) {
@@ -105,7 +111,9 @@ func (r *Runtime) newAcceptedRunState(
 		ID:                        runID,
 		WorkspaceID:               workspaceID,
 		SessionID:                 sessionID,
+		ExecutionRoot:             req.ExecutionRoot,
 		TaskID:                    strings.TrimSpace(req.TaskID),
+		WorkID:                    strings.TrimSpace(req.WorkID),
 		SessionKind:               strings.TrimSpace(req.SessionKind),
 		Agent:                     selectedAgent,
 		Prompt:                    prompt,
@@ -117,6 +125,7 @@ func (r *Runtime) newAcceptedRunState(
 		RestartedFromCheckpointID: strings.TrimSpace(req.RestartedFromCheckpointID),
 		RestartAttempt:            req.RestartAttempt,
 		RestartReason:             strings.TrimSpace(req.RestartReason),
+		RecoveryMode:              req.RecoveryMode,
 		FlowID:                    strings.TrimSpace(req.FlowID),
 		StepID:                    strings.TrimSpace(req.StepID),
 		Tier:                      resolveRunTier(req.Tier, agentRuntimeAgentInfo(executor).Tier),
@@ -126,6 +135,9 @@ func (r *Runtime) newAcceptedRunState(
 		Accepted:                  true,
 		CreatedAt:                 now.Format(time.RFC3339),
 		UpdatedAt:                 now.Format(time.RFC3339),
+	}
+	if req.RecoveryPlan != nil {
+		run.ToolRequests, run.ToolResults, run.EffectReceipts = inheritedRecoveryRecords(req.RecoveryPlan)
 	}
 	return runCtx, &runState{run: run, req: req, executor: executor, cancel: cancel, done: make(chan struct{})}
 }

@@ -64,6 +64,21 @@ test('Agent Runtime run detail exposes replay scrubber controls', () => {
   assert.match(replaySource, /5x/)
 })
 
+test('Agent Runtime recovery distinguishes retry, replay, and resume with checkpoint safety', () => {
+  assert.match(apiSource, /mode\?: AgentRuntimeRecoveryMode/)
+  assert.match(apiSource, /confirm_unsafe_recovery\?: boolean/)
+  assert.match(source, /retry_from_prompt/)
+  assert.match(source, /replay_from_checkpoint/)
+  assert.match(source, /resume_from_checkpoint/)
+  assert.match(source, /Retry from prompt/)
+  assert.match(source, /Replay from checkpoint/)
+  assert.match(source, /Resume from checkpoint/)
+  assert.match(source, /recovery_approval_required/)
+  assert.match(source, /confirmUnsafeRecovery/)
+  assert.match(source, /resume_reason/)
+  assert.match(source, /effect_receipt_refs/)
+})
+
 test('Agent Runtime runs page exposes static tree and Gantt visualization modes', () => {
   assert.match(source, /AgentRuntimeTree/)
   assert.match(source, /AgentRuntimeGantt/)

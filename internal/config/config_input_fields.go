@@ -138,6 +138,26 @@ var configInputFields = []configInputField{
 	stringField("agentruntime_archive_dir", []string{"AGENTRUNTIME_ARCHIVE_DIR", "TARS_AGENTRUNTIME_ARCHIVE_DIR"}, func(cfg *Config) *string { return &cfg.AgentRuntimeArchiveDir }, strings.TrimSpace),
 	intField("agentruntime_archive_retention_days", []string{"AGENTRUNTIME_ARCHIVE_RETENTION_DAYS", "TARS_AGENTRUNTIME_ARCHIVE_RETENTION_DAYS"}, func(cfg *Config) *int { return &cfg.AgentRuntimeArchiveRetentionDays }, parsePositiveInt),
 	intField("agentruntime_archive_max_file_bytes", []string{"AGENTRUNTIME_ARCHIVE_MAX_FILE_BYTES", "TARS_AGENTRUNTIME_ARCHIVE_MAX_FILE_BYTES"}, func(cfg *Config) *int { return &cfg.AgentRuntimeArchiveMaxFileBytes }, parsePositiveInt),
+	withYAMLPath(workLedgerEnabledField("work_ledger_enabled", []string{"WORK_LEDGER_ENABLED", "TARS_WORK_LEDGER_ENABLED"}), "work_ledger.enabled"),
+	withYAMLPath(workSchedulerEnabledField("work_scheduler_enabled", []string{"WORK_SCHEDULER_ENABLED", "TARS_WORK_SCHEDULER_ENABLED"}), "work_ledger.scheduler.enabled"),
+	withYAMLPath(intField("work_scheduler_max_workers", []string{"WORK_SCHEDULER_MAX_WORKERS", "TARS_WORK_SCHEDULER_MAX_WORKERS"}, func(cfg *Config) *int { return &cfg.WorkLedger.SchedulerMaxWorkers }, parsePositiveInt), "work_ledger.scheduler.max_workers"),
+	withYAMLPath(intField("work_scheduler_lease_seconds", []string{"WORK_SCHEDULER_LEASE_SECONDS", "TARS_WORK_SCHEDULER_LEASE_SECONDS"}, func(cfg *Config) *int { return &cfg.WorkLedger.SchedulerLeaseSeconds }, parsePositiveInt), "work_ledger.scheduler.lease_seconds"),
+	withYAMLPath(intField("work_scheduler_heartbeat_seconds", []string{"WORK_SCHEDULER_HEARTBEAT_SECONDS", "TARS_WORK_SCHEDULER_HEARTBEAT_SECONDS"}, func(cfg *Config) *int { return &cfg.WorkLedger.SchedulerHeartbeatSeconds }, parsePositiveInt), "work_ledger.scheduler.heartbeat_seconds"),
+	withYAMLPath(intField("work_scheduler_poll_milliseconds", []string{"WORK_SCHEDULER_POLL_MILLISECONDS", "TARS_WORK_SCHEDULER_POLL_MILLISECONDS"}, func(cfg *Config) *int { return &cfg.WorkLedger.SchedulerPollMilliseconds }, parsePositiveInt), "work_ledger.scheduler.poll_milliseconds"),
+	withYAMLPath(stringField("work_scheduler_execution_environment", []string{"WORK_SCHEDULER_EXECUTION_ENVIRONMENT", "TARS_WORK_SCHEDULER_EXECUTION_ENVIRONMENT"}, func(cfg *Config) *string { return &cfg.WorkLedger.SchedulerExecutionEnvironment }, lowerTrimmedString), "work_ledger.scheduler.execution_environment"),
+	withYAMLPath(stringField("work_scheduler_execution_data_dir", []string{"WORK_SCHEDULER_EXECUTION_DATA_DIR", "TARS_WORK_SCHEDULER_EXECUTION_DATA_DIR"}, func(cfg *Config) *string { return &cfg.WorkLedger.SchedulerExecutionDataDir }, strings.TrimSpace), "work_ledger.scheduler.execution_data_dir"),
+	withYAMLPath(stringListField("work_scheduler_artifact_paths_json", []string{"WORK_SCHEDULER_ARTIFACT_PATHS_JSON", "TARS_WORK_SCHEDULER_ARTIFACT_PATHS_JSON"}, func(cfg *Config) *[]string { return &cfg.WorkLedger.SchedulerArtifactPaths }, parseJSONStringList), "work_ledger.scheduler.artifact_paths"),
+	withYAMLPath(stringField("work_scheduler_external_harness_config_path", []string{"WORK_SCHEDULER_EXTERNAL_HARNESS_CONFIG_PATH", "TARS_WORK_SCHEDULER_EXTERNAL_HARNESS_CONFIG_PATH"}, func(cfg *Config) *string { return &cfg.WorkLedger.SchedulerExternalHarnessConfigPath }, strings.TrimSpace), "work_ledger.scheduler.external_harness.config_path"),
+	withYAMLPath(boolField("work_scheduler_remote_workers_enabled", []string{"WORK_SCHEDULER_REMOTE_WORKERS_ENABLED", "TARS_WORK_SCHEDULER_REMOTE_WORKERS_ENABLED"}, func(cfg *Config) *bool { return &cfg.WorkLedger.SchedulerRemoteWorkersEnabled }), "work_ledger.scheduler.remote_workers.enabled"),
+	withYAMLPath(stringField("work_scheduler_remote_workers_gateway_config_path", []string{"WORK_SCHEDULER_REMOTE_WORKERS_GATEWAY_CONFIG_PATH", "TARS_WORK_SCHEDULER_REMOTE_WORKERS_GATEWAY_CONFIG_PATH"}, func(cfg *Config) *string { return &cfg.WorkLedger.SchedulerRemoteWorkersGatewayConfigPath }, strings.TrimSpace), "work_ledger.scheduler.remote_workers.gateway_config_path"),
+	withYAMLPath(boolField("work_scheduler_a2a_enabled", []string{"WORK_SCHEDULER_A2A_ENABLED", "TARS_WORK_SCHEDULER_A2A_ENABLED"}, func(cfg *Config) *bool { return &cfg.WorkLedger.SchedulerA2AEnabled }), "work_ledger.scheduler.a2a.enabled"),
+	withYAMLPath(stringField("work_scheduler_a2a_discovery_url", []string{"WORK_SCHEDULER_A2A_DISCOVERY_URL", "TARS_WORK_SCHEDULER_A2A_DISCOVERY_URL"}, func(cfg *Config) *string { return &cfg.WorkLedger.SchedulerA2ADiscoveryURL }, strings.TrimSpace), "work_ledger.scheduler.a2a.discovery_url"),
+	withYAMLPath(stringField("work_scheduler_a2a_bearer_token", []string{"WORK_SCHEDULER_A2A_BEARER_TOKEN", "TARS_WORK_SCHEDULER_A2A_BEARER_TOKEN"}, func(cfg *Config) *string { return &cfg.WorkLedger.SchedulerA2ABearerToken }, strings.TrimSpace), "work_ledger.scheduler.a2a.bearer_token"),
+	withYAMLPath(stringListField("work_scheduler_a2a_allowed_hosts_json", []string{"WORK_SCHEDULER_A2A_ALLOWED_HOSTS_JSON", "TARS_WORK_SCHEDULER_A2A_ALLOWED_HOSTS_JSON"}, func(cfg *Config) *[]string { return &cfg.WorkLedger.SchedulerA2AAllowedHosts }, parseJSONStringList), "work_ledger.scheduler.a2a.allowed_hosts"),
+	withYAMLPath(boolField("work_scheduler_a2a_allow_private_hosts", []string{"WORK_SCHEDULER_A2A_ALLOW_PRIVATE_HOSTS", "TARS_WORK_SCHEDULER_A2A_ALLOW_PRIVATE_HOSTS"}, func(cfg *Config) *bool { return &cfg.WorkLedger.SchedulerA2AAllowPrivateHosts }), "work_ledger.scheduler.a2a.allow_private_hosts"),
+	withYAMLPath(boolField("work_scheduler_a2a_allow_insecure_loopback", []string{"WORK_SCHEDULER_A2A_ALLOW_INSECURE_LOOPBACK", "TARS_WORK_SCHEDULER_A2A_ALLOW_INSECURE_LOOPBACK"}, func(cfg *Config) *bool { return &cfg.WorkLedger.SchedulerA2AAllowInsecureLoopback }), "work_ledger.scheduler.a2a.allow_insecure_loopback"),
+	withYAMLPath(intField("work_scheduler_a2a_poll_milliseconds", []string{"WORK_SCHEDULER_A2A_POLL_MILLISECONDS", "TARS_WORK_SCHEDULER_A2A_POLL_MILLISECONDS"}, func(cfg *Config) *int { return &cfg.WorkLedger.SchedulerA2APollMilliseconds }, parsePositiveInt), "work_ledger.scheduler.a2a.poll_milliseconds"),
+	withYAMLPath(intField("work_scheduler_a2a_max_poll_seconds", []string{"WORK_SCHEDULER_A2A_MAX_POLL_SECONDS", "TARS_WORK_SCHEDULER_A2A_MAX_POLL_SECONDS"}, func(cfg *Config) *int { return &cfg.WorkLedger.SchedulerA2AMaxPollSeconds }, parsePositiveInt), "work_ledger.scheduler.a2a.max_poll_seconds"),
 	boolField("channels_local_enabled", []string{"CHANNELS_LOCAL_ENABLED", "TARS_CHANNELS_LOCAL_ENABLED"}, func(cfg *Config) *bool { return &cfg.ChannelsLocalEnabled }),
 	boolField("channels_webhook_enabled", []string{"CHANNELS_WEBHOOK_ENABLED", "TARS_CHANNELS_WEBHOOK_ENABLED"}, func(cfg *Config) *bool { return &cfg.ChannelsWebhookEnabled }),
 	boolField("channels_telegram_enabled", []string{"CHANNELS_TELEGRAM_ENABLED", "TARS_CHANNELS_TELEGRAM_ENABLED"}, func(cfg *Config) *bool { return &cfg.ChannelsTelegramEnabled }),
@@ -273,6 +293,40 @@ func companionEnabledField(yamlKey string, envKeys []string) configInputField {
 			if src.Companion.enabledSet {
 				dst.Companion.Enabled = src.Companion.Enabled
 				dst.Companion.enabledSet = true
+			}
+		},
+	}
+}
+
+func workLedgerEnabledField(yamlKey string, envKeys []string) configInputField {
+	return configInputField{
+		yamlKey: yamlKey,
+		envKeys: envKeys,
+		apply: func(cfg *Config, raw string) {
+			cfg.WorkLedger.Enabled = parseBool(raw, cfg.WorkLedger.Enabled)
+			cfg.WorkLedger.enabledSet = true
+		},
+		merge: func(dst *Config, src Config) {
+			if src.WorkLedger.enabledSet {
+				dst.WorkLedger.Enabled = src.WorkLedger.Enabled
+				dst.WorkLedger.enabledSet = true
+			}
+		},
+	}
+}
+
+func workSchedulerEnabledField(yamlKey string, envKeys []string) configInputField {
+	return configInputField{
+		yamlKey: yamlKey,
+		envKeys: envKeys,
+		apply: func(cfg *Config, raw string) {
+			cfg.WorkLedger.SchedulerEnabled = parseBool(raw, cfg.WorkLedger.SchedulerEnabled)
+			cfg.WorkLedger.schedulerEnabledSet = true
+		},
+		merge: func(dst *Config, src Config) {
+			if src.WorkLedger.schedulerEnabledSet {
+				dst.WorkLedger.SchedulerEnabled = src.WorkLedger.SchedulerEnabled
+				dst.WorkLedger.schedulerEnabledSet = true
 			}
 		},
 	}

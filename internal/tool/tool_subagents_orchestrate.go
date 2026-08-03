@@ -11,6 +11,7 @@ import (
 	"github.com/devlikebear/tars/internal/agentruntime"
 	"github.com/devlikebear/tars/internal/serverauth"
 	"github.com/devlikebear/tars/internal/usage"
+	"github.com/devlikebear/tars/internal/workscheduler"
 	zlog "github.com/rs/zerolog/log"
 )
 
@@ -29,10 +30,23 @@ var (
 )
 
 type subagentFlowInput struct {
-	Agent     string                  `json:"agent,omitempty"`
-	FlowID    string                  `json:"flow_id,omitempty"`
-	TimeoutMS int                     `json:"timeout_ms,omitempty"`
-	Steps     []subagentFlowStepInput `json:"steps"`
+	Agent             string                      `json:"agent,omitempty"`
+	FlowID            string                      `json:"flow_id,omitempty"`
+	TimeoutMS         int                         `json:"timeout_ms,omitempty"`
+	WaitForCompletion bool                        `json:"wait_for_completion,omitempty"`
+	Policy            *subagentFlowSchedulePolicy `json:"policy,omitempty"`
+	Steps             []subagentFlowStepInput     `json:"steps"`
+}
+
+type subagentFlowSchedulePolicy struct {
+	MaxAttempts    int     `json:"max_attempts,omitempty"`
+	RetryLimit     int     `json:"retry_limit,omitempty"`
+	ReplanLimit    int     `json:"replan_limit,omitempty"`
+	DecomposeLimit int     `json:"decompose_limit,omitempty"`
+	MaxIterations  int     `json:"max_iterations,omitempty"`
+	MaxTokens      int64   `json:"max_tokens,omitempty"`
+	MaxCostUSD     float64 `json:"max_cost_usd,omitempty"`
+	Escalation     string  `json:"escalation,omitempty"`
 }
 
 type subagentFlowStepInput struct {
@@ -84,16 +98,26 @@ type subagentStepOutput struct {
 }
 
 func NewSubagentsOrchestrateTool(runtime *agentruntime.Runtime, mirrorConfig ...SubagentsTaskMirrorConfig) Tool {
+	return newSubagentsOrchestrateTool(runtime, nil, mirrorConfig)
+}
+
+func NewDurableSubagentsOrchestrateTool(runtime *agentruntime.Runtime, scheduler *workscheduler.Scheduler, mirrorConfig ...SubagentsTaskMirrorConfig) Tool {
+	return newSubagentsOrchestrateTool(runtime, scheduler, mirrorConfig)
+}
+
+func newSubagentsOrchestrateTool(runtime *agentruntime.Runtime, scheduler *workscheduler.Scheduler, mirrorConfig []SubagentsTaskMirrorConfig) Tool {
 	taskMirror := newSubagentsTaskMirror(mirrorConfig)
 	return Tool{
 		Name:        "subagents_orchestrate",
-		Description: "Execute a staged subagent flow: use parallel steps for independent work and sequential steps for dependency-aware follow-up tasks.",
+		Description: "Submit a staged subagent flow as durable work: use parallel steps for independent work and sequential steps for dependency-aware follow-up tasks.",
 		Parameters: json.RawMessage(`{
   "type":"object",
   "properties":{
-    "agent":{"type":"string","description":"Optional safe prompt agent. Defaults to explorer."},
-    "flow_id":{"type":"string","description":"Optional flow identifier for logging and traceability."},
-    "timeout_ms":{"type":"integer","minimum":1000,"maximum":300000,"default":60000},
+		"agent":{"type":"string","description":"Optional safe prompt agent. Defaults to explorer."},
+		"flow_id":{"type":"string","description":"Optional flow identifier for logging and traceability."},
+		"timeout_ms":{"type":"integer","minimum":1000,"maximum":300000,"default":60000},
+		"wait_for_completion":{"type":"boolean","default":false,"description":"Wait briefly for a legacy-shaped terminal response. The work continues durably after timeout."},
+		"policy":{"type":"object","properties":{"max_attempts":{"type":"integer","minimum":1},"retry_limit":{"type":"integer","minimum":0},"replan_limit":{"type":"integer","minimum":0},"decompose_limit":{"type":"integer","minimum":0},"max_iterations":{"type":"integer","minimum":0},"max_tokens":{"type":"integer","minimum":0},"max_cost_usd":{"type":"number","minimum":0},"escalation":{"type":"string","enum":["review","blocked"]}},"additionalProperties":false},
     "steps":{
       "type":"array",
       "minItems":1,
@@ -139,6 +163,9 @@ func NewSubagentsOrchestrateTool(runtime *agentruntime.Runtime, mirrorConfig ...
 			}
 			if len(input.Steps) == 0 {
 				return JSONTextResult(map[string]any{"message": "steps must contain at least one item"}, true), nil
+			}
+			if scheduler != nil {
+				return executeDurableSubagentFlow(ctx, runtime, scheduler, input)
 			}
 
 			workspaceID := serverauth.WorkspaceIDFromContext(ctx)

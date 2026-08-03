@@ -2,20 +2,30 @@ package tarsserver
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/devlikebear/tars/internal/agentruntime"
+	"github.com/devlikebear/tars/internal/workstore"
 	"github.com/rs/zerolog"
 )
 
 func newAgentRunsAPIHandler(runtime *agentruntime.Runtime, logger zerolog.Logger) http.Handler {
-	return newAgentRunsAPIHandlerWithInflightLimit(runtime, logger, 4)
+	return newAgentRunsAPIHandlerWithWorkLedgerAndInflightLimit(runtime, nil, logger, 4)
 }
 
 func newAgentRunsAPIHandlerWithInflightLimit(runtime *agentruntime.Runtime, logger zerolog.Logger, maxInflightAgentRuns int) http.Handler {
+	return newAgentRunsAPIHandlerWithWorkLedgerAndInflightLimit(runtime, nil, logger, maxInflightAgentRuns)
+}
+
+func newAgentRunsAPIHandlerWithWorkLedger(runtime *agentruntime.Runtime, ledger *workstore.Store, logger zerolog.Logger) http.Handler {
+	return newAgentRunsAPIHandlerWithWorkLedgerAndInflightLimit(runtime, ledger, logger, 4)
+}
+
+func newAgentRunsAPIHandlerWithWorkLedgerAndInflightLimit(runtime *agentruntime.Runtime, ledger *workstore.Store, logger zerolog.Logger, maxInflightAgentRuns int) http.Handler {
 	inflight := newInflightLimiter(maxInflightAgentRuns, 4)
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/agentruntime/agents", func(w http.ResponseWriter, r *http.Request) {
@@ -32,10 +42,10 @@ func newAgentRunsAPIHandlerWithInflightLimit(runtime *agentruntime.Runtime, logg
 			handleAgentRunSpawn(w, r, runtime, inflight)
 			return
 		}
-		handleAgentRunList(w, r, runtime)
+		handleAgentRunList(w, r, runtime, ledger, logger)
 	})
 	mux.HandleFunc("/v1/agentruntime/runs/", func(w http.ResponseWriter, r *http.Request) {
-		handleAgentRunByID(w, r, runtime, logger)
+		handleAgentRunByID(w, r, runtime, ledger, logger)
 	})
 	return mux
 }
@@ -59,12 +69,14 @@ type agentRunSpawnRequest struct {
 }
 
 type agentRunRestartRequest struct {
-	CheckpointID     string                         `json:"checkpoint_id"`
-	Agent            string                         `json:"agent"`
-	Tier             string                         `json:"tier"`
-	ProviderOverride *agentruntime.ProviderOverride `json:"provider_override"`
-	PromptAdjustment string                         `json:"prompt_adjustment"`
-	Title            string                         `json:"title"`
+	CheckpointID          string                         `json:"checkpoint_id"`
+	Agent                 string                         `json:"agent"`
+	Tier                  string                         `json:"tier"`
+	ProviderOverride      *agentruntime.ProviderOverride `json:"provider_override"`
+	PromptAdjustment      string                         `json:"prompt_adjustment"`
+	Title                 string                         `json:"title"`
+	Mode                  agentruntime.RecoveryMode      `json:"mode"`
+	ConfirmUnsafeRecovery bool                           `json:"confirm_unsafe_recovery"`
 }
 
 func handleAgentRunSpawn(w http.ResponseWriter, r *http.Request, runtime *agentruntime.Runtime, inflight *inflightLimiter) {
@@ -122,11 +134,7 @@ func spawnErrorStatus(err error) int {
 	return http.StatusBadRequest
 }
 
-func handleAgentRunList(w http.ResponseWriter, r *http.Request, runtime *agentruntime.Runtime) {
-	if runtime == nil {
-		writeJSON(w, http.StatusOK, map[string]any{"count": 0, "runs": []agentruntime.Run{}})
-		return
-	}
+func handleAgentRunList(w http.ResponseWriter, r *http.Request, runtime *agentruntime.Runtime, ledger *workstore.Store, logger zerolog.Logger) {
 	limit, ok := parsePositiveLimit(w, r, 50)
 	if !ok {
 		return
@@ -139,11 +147,50 @@ func handleAgentRunList(w http.ResponseWriter, r *http.Request, runtime *agentru
 	if filters.active() {
 		fetchLimit = max(fetchLimit, 1000)
 	}
-	runs := filterAgentRuntimeRuns(runtime.List(fetchLimit), filters)
+	runs, ledgerErr := mergedAgentRuntimeRuns(r, runtime, ledger, fetchLimit)
+	if ledgerErr != nil {
+		logger.Warn().Err(ledgerErr).Msg("read agent runtime work ledger projections failed")
+		if runtime == nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "read agent runtime projections failed"})
+			return
+		}
+	}
+	runs = filterAgentRuntimeRuns(runs, filters)
 	if len(runs) > limit {
 		runs = runs[:limit]
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"count": len(runs), "runs": runs})
+}
+
+func mergedAgentRuntimeRuns(r *http.Request, runtime *agentruntime.Runtime, ledger *workstore.Store, limit int) ([]agentruntime.Run, error) {
+	runs := make([]agentruntime.Run, 0)
+	seen := make(map[string]struct{})
+	if runtime != nil {
+		for _, run := range runtime.List(limit) {
+			runs = append(runs, run)
+			seen[run.ID] = struct{}{}
+		}
+	}
+	if ledger == nil {
+		return runs, nil
+	}
+	projections, err := ledger.ListLegacyAgentRuntimeRunProjections(r.Context(), workspaceIDFromRequest(r), limit)
+	if err != nil {
+		return runs, err
+	}
+	for _, projection := range projections {
+		var run agentruntime.Run
+		if err := json.Unmarshal(projection, &run); err != nil {
+			return runs, fmt.Errorf("decode agent runtime work ledger projection: %w", err)
+		}
+		run = agentruntime.NormalizeRunCompatibility(run)
+		if _, exists := seen[run.ID]; exists {
+			continue
+		}
+		runs = append(runs, run)
+		seen[run.ID] = struct{}{}
+	}
+	return runs, nil
 }
 
 type agentRunListFilters struct {
@@ -261,11 +308,7 @@ func agentRunTime(run agentruntime.Run) time.Time {
 	return time.Time{}
 }
 
-func handleAgentRunByID(w http.ResponseWriter, r *http.Request, runtime *agentruntime.Runtime, logger zerolog.Logger) {
-	if runtime == nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "agent runtime is not configured"})
-		return
-	}
+func handleAgentRunByID(w http.ResponseWriter, r *http.Request, runtime *agentruntime.Runtime, ledger *workstore.Store, logger zerolog.Logger) {
 	runID, action, ok := parseAgentRunPath(r.URL.Path)
 	if !ok {
 		http.NotFound(w, r)
@@ -280,7 +323,12 @@ func handleAgentRunByID(w http.ResponseWriter, r *http.Request, runtime *agentru
 		if !requireMethod(w, r, http.MethodGet) {
 			return
 		}
-		run, found := runtime.Get(runID)
+		run, found, err := findAgentRuntimeRunProjection(r, runtime, ledger, runID)
+		if err != nil {
+			logger.Warn().Err(err).Str("run_id", runID).Msg("read agent runtime work ledger projection failed")
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "read agent runtime projection failed"})
+			return
+		}
 		if !found {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "run not found"})
 			return
@@ -288,6 +336,10 @@ func handleAgentRunByID(w http.ResponseWriter, r *http.Request, runtime *agentru
 		writeJSON(w, http.StatusOK, run)
 	case "cancel":
 		if !requireMethod(w, r, http.MethodPost) {
+			return
+		}
+		if runtime == nil {
+			writeUnavailable(w, "agent runtime is not configured")
 			return
 		}
 		run, err := runtime.Cancel(runID)
@@ -301,23 +353,29 @@ func handleAgentRunByID(w http.ResponseWriter, r *http.Request, runtime *agentru
 		if !requireMethod(w, r, http.MethodPost) {
 			return
 		}
+		if runtime == nil {
+			writeUnavailable(w, "agent runtime is not configured")
+			return
+		}
 		var req agentRunRestartRequest
 		if !decodeOptionalJSONBody(w, r, &req) {
 			return
 		}
 		run, err := runtime.RestartFromCheckpoint(r.Context(), agentruntime.RestartRequest{
-			WorkspaceID:      defaultWorkspaceID,
-			RunID:            runID,
-			CheckpointID:     req.CheckpointID,
-			Agent:            req.Agent,
-			Tier:             req.Tier,
-			ProviderOverride: req.ProviderOverride,
-			PromptAdjustment: req.PromptAdjustment,
-			Title:            req.Title,
+			WorkspaceID:           defaultWorkspaceID,
+			RunID:                 runID,
+			CheckpointID:          req.CheckpointID,
+			Agent:                 req.Agent,
+			Tier:                  req.Tier,
+			ProviderOverride:      req.ProviderOverride,
+			PromptAdjustment:      req.PromptAdjustment,
+			Title:                 req.Title,
+			Mode:                  req.Mode,
+			ConfirmUnsafeRecovery: req.ConfirmUnsafeRecovery,
 		})
 		if err != nil {
 			logger.Error().Err(err).Str("run_id", runID).Msg("restart run failed")
-			writeJSON(w, restartErrorStatus(err), map[string]string{"error": err.Error()})
+			writeJSON(w, restartErrorStatus(err), map[string]string{"error": err.Error(), "code": restartErrorCode(err)})
 			return
 		}
 		writeJSON(w, http.StatusAccepted, run)
@@ -325,10 +383,35 @@ func handleAgentRunByID(w http.ResponseWriter, r *http.Request, runtime *agentru
 		if !requireMethod(w, r, http.MethodGet) {
 			return
 		}
+		if runtime == nil {
+			writeUnavailable(w, "agent runtime is not configured")
+			return
+		}
 		handleAgentRunEvents(w, r, runtime, runID)
 	default:
 		http.NotFound(w, r)
 	}
+}
+
+func findAgentRuntimeRunProjection(r *http.Request, runtime *agentruntime.Runtime, ledger *workstore.Store, runID string) (agentruntime.Run, bool, error) {
+	if runtime != nil {
+		if run, found := runtime.Get(runID); found {
+			return run, true, nil
+		}
+	}
+	if ledger == nil {
+		return agentruntime.Run{}, false, nil
+	}
+	projection, found, err := ledger.GetLegacyAgentRuntimeRunProjection(r.Context(), workspaceIDFromRequest(r), runID)
+	if err != nil || !found {
+		return agentruntime.Run{}, found, err
+	}
+	var run agentruntime.Run
+	if err := json.Unmarshal(projection, &run); err != nil {
+		return agentruntime.Run{}, false, fmt.Errorf("decode agent runtime work ledger projection: %w", err)
+	}
+	run = agentruntime.NormalizeRunCompatibility(run)
+	return run, true, nil
 }
 
 func handleAgentRunEvents(w http.ResponseWriter, r *http.Request, runtime *agentruntime.Runtime, runID string) {
@@ -415,5 +498,19 @@ func restartErrorStatus(err error) int {
 	if strings.Contains(lower, "not found") {
 		return http.StatusNotFound
 	}
+	if errors.Is(err, agentruntime.ErrRecoveryApprovalRequired) {
+		return http.StatusConflict
+	}
 	return http.StatusBadRequest
+}
+
+func restartErrorCode(err error) string {
+	switch {
+	case errors.Is(err, agentruntime.ErrRecoveryApprovalRequired):
+		return "recovery_approval_required"
+	case errors.Is(err, agentruntime.ErrRecoveryModeUnsupported):
+		return "recovery_mode_unsupported"
+	default:
+		return "restart_failed"
+	}
 }

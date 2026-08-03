@@ -64,7 +64,8 @@ cd frontend/console && npm run test:ci # stable frontend CI test slice
 - Local `claude` CLI 재사용. 2026-06-15부터 `claude -p` + Agent SDK 사용량이 Anthropic 구독 플랜의 별도 월 크레딧(Pro $20 / Max5x $100 / Max20x $200)에서 차감 — `tars doctor`가 subscription 모드일 때 안내 hint를 출력
 - 멀티턴 비용 절감: 응답의 `session_id`를 `session.Session.UpstreamSessionID`에 저장하고 다음 턴 `ChatOptions.ResumeSessionID`로 다시 넘겨 `--resume`로 처리, 시스템 프롬프트/이전 transcript 재과금 회피
 - MCP 자동 주입: 세션-effective MCP 서버 셋을 매 호출마다 임시 `--mcp-config` 파일로 마운트 (`internal/tarsserver/claude_code_cli_mcp.go`의 `toClaudeCodeMCPServers` 변환). websocket transport는 Claude Code 미지원이라 silently drop
-- Permission mode: `llm.claude_code_cli.permission_mode` (`auto`/`acceptEdits`/`plan`/`bypassPermissions`) → `--permission-mode`. 빈 값/오타는 `auto`로 graceful degrade
+- Permission mode: `llm.claude_code_cli.permission_mode` (`auto`/`default`/`acceptEdits`/`plan`/`dontAsk`/`bypassPermissions`) → `--permission-mode`. 빈 값/오타는 `auto`로 graceful degrade
+- Durable coding harness: `work_ledger.scheduler.external_harness.config_path`가 비어 있지 않을 때만 `claude-code` scheduler adapter를 등록한다. owner-only JSON은 workspace 밖에 두고, 실행은 별도 managed worktree에서 `--safe-mode --strict-mcp-config --no-chrome --permission-mode dontAsk`와 scoped tool/turn/cost 제한을 강제한다. 로컬 Claude 인증은 재사용하지만 임의 env/argv/MCP/plugin/credential 주입은 허용하지 않는다
 - **단일 사용자 전용**: Agent SDK 크레딧이 개인 계정 귀속이라 다중 사용자 서버로는 부적합. claude.ai 로그인을 외부에 *제공*하는 형태로 노출 금지(Anthropic 정책)
 
 **Extension pattern — IMPORTANT:**

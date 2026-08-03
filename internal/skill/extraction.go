@@ -23,13 +23,25 @@ const (
 	ExtractionCandidateStatusApproved ExtractionCandidateStatus = "approved"
 	ExtractionCandidateStatusRejected ExtractionCandidateStatus = "rejected"
 
-	ExtractionCandidateActionApprove ExtractionCandidateAction = "approve"
-	ExtractionCandidateActionReject  ExtractionCandidateAction = "reject"
+	ExtractionCandidateActionApprove  ExtractionCandidateAction = "approve"
+	ExtractionCandidateActionEvaluate ExtractionCandidateAction = "evaluate"
+	ExtractionCandidateActionPromote  ExtractionCandidateAction = "promote"
+	ExtractionCandidateActionRollback ExtractionCandidateAction = "rollback"
+	ExtractionCandidateActionReject   ExtractionCandidateAction = "reject"
 )
 
 type ExtractionCandidateStatus string
 
 type ExtractionCandidateAction string
+
+type ExtractionSignalKind string
+
+const (
+	ExtractionSignalSuccess        ExtractionSignalKind = "success"
+	ExtractionSignalFailure        ExtractionSignalKind = "failure"
+	ExtractionSignalDeadEnd        ExtractionSignalKind = "dead_end"
+	ExtractionSignalUserCorrection ExtractionSignalKind = "user_correction"
+)
 
 type ExtractionCandidate struct {
 	ID               string                    `json:"id"`
@@ -44,6 +56,7 @@ type ExtractionCandidate struct {
 	MessageRange     string                    `json:"message_range,omitempty"`
 	RepeatedCount    int                       `json:"repeated_count,omitempty"`
 	Evidence         []ExtractionEvidence      `json:"evidence,omitempty"`
+	Signals          []ExtractionSignal        `json:"signals,omitempty"`
 	Provenance       ExtractionProvenance      `json:"provenance"`
 	CreatedAt        time.Time                 `json:"created_at"`
 	UpdatedAt        time.Time                 `json:"updated_at"`
@@ -57,6 +70,14 @@ type ExtractionEvidence struct {
 	Index     int    `json:"index"`
 	Role      string `json:"role"`
 	Snippet   string `json:"snippet"`
+}
+
+type ExtractionSignal struct {
+	Kind      ExtractionSignalKind `json:"kind"`
+	MessageID string               `json:"message_id,omitempty"`
+	Index     int                  `json:"index"`
+	Role      string               `json:"role"`
+	Snippet   string               `json:"snippet"`
 }
 
 type ExtractionProvenance struct {
@@ -147,6 +168,7 @@ func DetectExtractionCandidates(sess session.Session, messages []session.Message
 	}
 
 	candidates := make([]ExtractionCandidate, 0, limit)
+	signals := DetectExtractionSignals(messages)
 	for _, topic := range extractionTopics {
 		evidence := evidenceForTopic(messages, topic)
 		if len(evidence) < 2 && !hasExplicitSkillCue(messages, topic) {
@@ -167,6 +189,7 @@ func DetectExtractionCandidates(sess session.Session, messages []session.Message
 			MessageRange:     evidenceRange(evidence),
 			RepeatedCount:    len(evidence),
 			Evidence:         evidence,
+			Signals:          signals,
 			Provenance: ExtractionProvenance{
 				Source:        "session",
 				SessionID:     strings.TrimSpace(sess.ID),
@@ -183,11 +206,33 @@ func DetectExtractionCandidates(sess session.Session, messages []session.Message
 		}
 	}
 	if len(candidates) == 0 {
-		if fallback, ok := fallbackExtractionCandidate(sess, messages, now); ok {
+		if fallback, ok := fallbackExtractionCandidate(sess, messages, signals, now); ok {
 			candidates = append(candidates, fallback)
 		}
 	}
 	return candidates
+}
+
+func DetectExtractionSignals(messages []session.Message) []ExtractionSignal {
+	signals := make([]ExtractionSignal, 0)
+	for index, message := range messages {
+		content := strings.TrimSpace(message.Content)
+		if content == "" || strings.EqualFold(strings.TrimSpace(message.Role), "system") {
+			continue
+		}
+		kind := classifyExtractionSignal(message.Role, content)
+		if kind == "" {
+			continue
+		}
+		signals = append(signals, ExtractionSignal{
+			Kind:      kind,
+			MessageID: strings.TrimSpace(message.ID),
+			Index:     index,
+			Role:      strings.TrimSpace(message.Role),
+			Snippet:   compactExtractionSnippet(content, 180),
+		})
+	}
+	return signals
 }
 
 func clampExtractionCandidateLimit(limit int) int {
@@ -414,7 +459,7 @@ func hasExplicitSkillCue(messages []session.Message, topic extractionTopic) bool
 	return false
 }
 
-func fallbackExtractionCandidate(sess session.Session, messages []session.Message, now time.Time) (ExtractionCandidate, bool) {
+func fallbackExtractionCandidate(sess session.Session, messages []session.Message, signals []ExtractionSignal, now time.Time) (ExtractionCandidate, bool) {
 	var evidence []ExtractionEvidence
 	for i, msg := range messages {
 		content := strings.TrimSpace(msg.Content)
@@ -431,8 +476,20 @@ func fallbackExtractionCandidate(sess session.Session, messages []session.Messag
 			Snippet:   compactExtractionSnippet(content, 180),
 		})
 	}
+	provenanceSource := "session"
 	if len(evidence) == 0 {
-		return ExtractionCandidate{}, false
+		if len(signals) < 2 {
+			return ExtractionCandidate{}, false
+		}
+		provenanceSource = "session_signals"
+		for _, signal := range signals {
+			evidence = append(evidence, ExtractionEvidence{
+				MessageID: signal.MessageID,
+				Index:     signal.Index,
+				Role:      signal.Role,
+				Snippet:   signal.Snippet,
+			})
+		}
 	}
 	title := firstNonEmpty(strings.TrimSpace(sess.Title), "Session Workflow")
 	name := slugFromText(title)
@@ -451,8 +508,9 @@ func fallbackExtractionCandidate(sess session.Session, messages []session.Messag
 		MessageRange:     evidenceRange(evidence),
 		RepeatedCount:    len(evidence),
 		Evidence:         evidence,
+		Signals:          signals,
 		Provenance: ExtractionProvenance{
-			Source:        "session",
+			Source:        provenanceSource,
 			SessionID:     strings.TrimSpace(sess.ID),
 			MessageRange:  evidenceRange(evidence),
 			SourceSummary: strings.TrimSpace(sess.Title),
@@ -501,6 +559,7 @@ func normalizeExtractionCandidate(candidate ExtractionCandidate, now time.Time) 
 	}
 	candidate.DraftPath = strings.TrimSpace(candidate.DraftPath)
 	candidate.DraftName = slugFromText(candidate.DraftName)
+	candidate.Signals = normalizeExtractionSignals(candidate.Signals)
 	candidate.Provenance.Source = strings.TrimSpace(candidate.Provenance.Source)
 	candidate.Provenance.SessionID = strings.TrimSpace(candidate.Provenance.SessionID)
 	candidate.Provenance.MessageRange = strings.TrimSpace(candidate.Provenance.MessageRange)
@@ -521,6 +580,68 @@ func normalizeExtractionCandidate(candidate ExtractionCandidate, now time.Time) 
 	return candidate
 }
 
+func classifyExtractionSignal(role, content string) ExtractionSignalKind {
+	lower := strings.ToLower(content)
+	if strings.EqualFold(strings.TrimSpace(role), "user") && containsExtractionSignalPhrase(lower, []string{
+		"아니", "말고", "정정", "수정해", "instead", "not that", "i meant", "actually",
+	}) {
+		return ExtractionSignalUserCorrection
+	}
+	if containsExtractionSignalPhrase(lower, []string{
+		"dead end", "blocked", "cannot", "can't", "stuck", "막혔", "불가능", "진행할 수 없",
+	}) {
+		return ExtractionSignalDeadEnd
+	}
+	if containsExtractionSignalPhrase(lower, []string{
+		"failed", "failure", "error", "broken", "regression", "실패", "오류", "에러", "회귀",
+	}) {
+		return ExtractionSignalFailure
+	}
+	if containsExtractionSignalPhrase(lower, []string{
+		"passed", "succeeded", "success", "working", "fixed", "resolved", "완료", "성공", "통과", "해결",
+	}) {
+		return ExtractionSignalSuccess
+	}
+	return ""
+}
+
+func containsExtractionSignalPhrase(content string, phrases []string) bool {
+	for _, phrase := range phrases {
+		if strings.Contains(content, phrase) {
+			return true
+		}
+	}
+	return false
+}
+
+func normalizeExtractionSignals(signals []ExtractionSignal) []ExtractionSignal {
+	out := make([]ExtractionSignal, 0, len(signals))
+	seen := map[string]struct{}{}
+	for _, signal := range signals {
+		switch signal.Kind {
+		case ExtractionSignalSuccess, ExtractionSignalFailure, ExtractionSignalDeadEnd, ExtractionSignalUserCorrection:
+		default:
+			continue
+		}
+		signal.MessageID = strings.TrimSpace(signal.MessageID)
+		signal.Role = strings.TrimSpace(signal.Role)
+		signal.Snippet = compactExtractionSnippet(signal.Snippet, 180)
+		key := fmt.Sprintf("%s\x00%s\x00%d", signal.Kind, signal.MessageID, signal.Index)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, signal)
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].Index == out[j].Index {
+			return out[i].Kind < out[j].Kind
+		}
+		return out[i].Index < out[j].Index
+	})
+	return out
+}
+
 func normalizeExtractionStatus(status ExtractionCandidateStatus) ExtractionCandidateStatus {
 	switch ExtractionCandidateStatus(strings.ToLower(strings.TrimSpace(string(status)))) {
 	case ExtractionCandidateStatusPending:
@@ -538,6 +659,12 @@ func normalizeExtractionAction(action ExtractionCandidateAction) ExtractionCandi
 	switch ExtractionCandidateAction(strings.ToLower(strings.TrimSpace(string(action)))) {
 	case ExtractionCandidateActionApprove:
 		return ExtractionCandidateActionApprove
+	case ExtractionCandidateActionEvaluate:
+		return ExtractionCandidateActionEvaluate
+	case ExtractionCandidateActionPromote:
+		return ExtractionCandidateActionPromote
+	case ExtractionCandidateActionRollback:
+		return ExtractionCandidateActionRollback
 	case ExtractionCandidateActionReject:
 		return ExtractionCandidateActionReject
 	default:

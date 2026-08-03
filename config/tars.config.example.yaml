@@ -82,8 +82,10 @@ llm:
   # Only relevant when a tier uses kind: claude-code-cli. Controls the value
   # passed to `claude -p --permission-mode`. Allowed values:
   #   auto              — Claude Code prompts interactively for risky tools (default)
+  #   default           — use Claude Code's standard permission behavior
   #   acceptEdits       — auto-approve file edits, still prompt for shell/network
   #   plan              — analysis only; refuse to edit or execute
+  #   dontAsk           — deny any permission that was not explicitly allowed
   #   bypassPermissions — disable all prompts (use with care)
   # Empty / unknown values degrade to "auto" inside the provider.
   claude_code_cli:
@@ -239,6 +241,53 @@ tools:
     enabled: false
   agentruntime:
     enabled: false
+
+# Additive durable projection for sessions, tasks, attempts, and proofs.
+# Set false (or TARS_WORK_LEDGER_ENABLED=false) and restart to return to
+# untouched legacy session and Agent Runtime files without deleting SQLite.
+work_ledger:
+  enabled: true
+  # Durable scheduler can be rolled back independently without deleting the ledger.
+  scheduler:
+    enabled: false
+    max_workers: 4
+    lease_seconds: 60
+    heartbeat_seconds: 20
+    poll_milliseconds: 250
+    # local preserves existing behavior; managed-worktree requires a Git repository.
+    execution_environment: local
+    # Must be outside workspace_dir. Stores resumable state, managed worktrees,
+    # and redacted copies of configured artifacts with private permissions.
+    execution_data_dir: $HOME/.tars/execution-plane
+    # Relative paths/globs only. Sensitive names, symlinks, .git, .tars, and
+    # node_modules are excluded by the collector.
+    artifact_paths: []
+    # Optional Claude Code Execution Plane adapter. Disabled when blank.
+    # The JSON file must be an absolute path outside workspace_dir, a regular
+    # owner-only file (0600), and use the bounded schema documented in
+    # docs/agent-harness/execution-plane.md. The adapter reuses the local
+    # Claude login and may send the Work/Step prompt and allowed repository
+    # content to Anthropic. It always runs in a disposable managed worktree.
+    external_harness:
+      config_path: ""
+    # Remote workers use the same durable scheduler and are opt-in. Controller
+    # state is kept below execution_data_dir/remote-workers/controller.json.
+    remote_workers:
+      enabled: false
+      # Optional absolute path to an owner-only (0600) gateway JSON config.
+      # Setting it registers a durable remote/container scheduler adapter.
+      gateway_config_path: ""
+    # A2A is an external interoperability adapter only. It never replaces the
+    # Work Ledger, MCP, or TARS' internal worker protocol.
+    a2a:
+      enabled: false
+      discovery_url: "" # HTTPS origin with /.well-known/agent-card.json
+      bearer_token: "" # Prefer ${TARS_WORK_SCHEDULER_A2A_BEARER_TOKEN}
+      allowed_hosts: []
+      allow_private_hosts: false
+      allow_insecure_loopback: false # development only
+      poll_milliseconds: 2000
+      max_poll_seconds: 1800
 
 agentruntime:
   enabled: false

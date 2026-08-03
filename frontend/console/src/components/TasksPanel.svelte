@@ -1,11 +1,28 @@
 <script lang="ts">
-  import { onMount } from 'svelte'
+  import { onDestroy, onMount } from 'svelte'
   import { t } from '../i18n'
-  import { getSessionPlanArchive, getSessionTasks, executeTasksAction, cancelChat, runTaskVerification } from '../lib/api'
+  import {
+    cancelChat,
+    cancelWorkLedger,
+    executeTasksAction,
+    getSessionPlanArchive,
+    getSessionTasks,
+    getSessionWorkLedger,
+    getWorkLedgerTimeline,
+    resumeWorkLedgerStep,
+    runTaskVerification,
+    watchWorkLedger,
+  } from '../lib/api'
   import { planProgressPercent, summarizeTasks } from '../lib/tasks'
-  import type { PlanArchiveItem, SessionTask, SessionTasks, TaskContract, TaskEvidence } from '../lib/types'
+  import {
+    buildWorkLedgerTimeline,
+    latestWorkLedgerSequence,
+    resumableWorkLedgerSteps,
+    workLedgerCanCancel,
+  } from '../lib/workLedger'
+  import type { PlanArchiveItem, SessionTask, SessionTasks, TaskContract, TaskEvidence, WorkLedgerProjection } from '../lib/types'
 
-  type TabId = 'tasks' | 'contract' | 'evidence'
+  type TabId = 'tasks' | 'contract' | 'evidence' | 'timeline'
 
   interface Props {
     sessionId: string
@@ -20,6 +37,16 @@
   let error = $state('')
   let planExpanded = $state(true)
   let activeTab = $state<TabId>('tasks')
+  let timelineProjection = $state<WorkLedgerProjection | null>(null)
+  let timelineLoading = $state(false)
+  let timelineError = $state('')
+  let timelineControlBusy = $state(false)
+  let timelineLiveStatus = $state<'idle' | 'live' | 'reconnecting'>('idle')
+  let stopTimelineWatch: (() => void) | null = null
+  let timelineRefreshPending = false
+  let timelineEntries = $derived(timelineProjection ? buildWorkLedgerTimeline(timelineProjection) : [])
+  let timelineCanCancel = $derived(timelineProjection ? workLedgerCanCancel(timelineProjection) : false)
+  let timelineResumableSteps = $derived(timelineProjection ? resumableWorkLedgerSteps(timelineProjection) : [])
 
   // Contract draft state — surfaced under the Contract tab. Mirrors what the
   // legacy standalone ContractPanel used to manage; the legacy panel was
@@ -33,6 +60,8 @@
   let contractDoneCriteria = $state('')
   let contractVerificationCommands = $state('')
   let contractArtifacts = $state('')
+  let contractProofRequired = $state(true)
+  let contractProofFailureState = $state<'review' | 'blocked'>('review')
   let contractSaving = $state(false)
   let contractSaved = $state('')
   let contractError = $state('')
@@ -60,6 +89,108 @@
       .filter(Boolean)
   }
 
+  function closeTimelineWatch() {
+    stopTimelineWatch?.()
+    stopTimelineWatch = null
+    timelineLiveStatus = 'idle'
+  }
+
+  function workStopsLiveWatch(projection: WorkLedgerProjection): boolean {
+    return projection.work.state === 'done' || projection.work.state === 'cancelled' ||
+      projection.work.state === 'review' || projection.work.state === 'blocked'
+  }
+
+  function startTimelineWatch(projection: WorkLedgerProjection) {
+    closeTimelineWatch()
+    if (workStopsLiveWatch(projection) || activeTab !== 'timeline') return
+    timelineLiveStatus = 'live'
+    stopTimelineWatch = watchWorkLedger(
+      projection.work.id,
+      latestWorkLedgerSequence(projection),
+      () => { void refreshTimelineProjection() },
+      () => { timelineLiveStatus = 'reconnecting' },
+    )
+  }
+
+  async function refreshTimelineProjection() {
+    const workID = timelineProjection?.work.id
+    if (!workID || timelineRefreshPending || activeTab !== 'timeline') return
+    timelineRefreshPending = true
+    try {
+      const projection = await getWorkLedgerTimeline(workID)
+      if (timelineProjection?.work.id !== workID || activeTab !== 'timeline') return
+      timelineProjection = projection
+      if (workStopsLiveWatch(projection)) closeTimelineWatch()
+      else timelineLiveStatus = 'live'
+    } catch {
+      timelineLiveStatus = 'reconnecting'
+    } finally {
+      timelineRefreshPending = false
+    }
+  }
+
+  async function loadTimeline() {
+    const requestedSessionId = sessionId
+    closeTimelineWatch()
+    timelineLoading = true
+    timelineError = ''
+    timelineProjection = null
+    try {
+      const work = await getSessionWorkLedger(requestedSessionId)
+      if (requestedSessionId !== sessionId || !work) return
+      const projection = await getWorkLedgerTimeline(work.id)
+      if (requestedSessionId === sessionId) {
+        timelineProjection = projection
+        startTimelineWatch(projection)
+      }
+    } catch (err) {
+      if (requestedSessionId === sessionId) {
+        timelineError = err instanceof Error ? err.message : 'Failed to load work ledger timeline'
+      }
+    } finally {
+      if (requestedSessionId === sessionId) timelineLoading = false
+    }
+  }
+
+  function selectTab(tab: TabId) {
+    activeTab = tab
+    if (tab === 'timeline') void loadTimeline()
+    else closeTimelineWatch()
+  }
+
+  async function handleCancelDurableWork() {
+    const work = timelineProjection?.work
+    if (!work || !timelineCanCancel || !confirm(`Cancel durable work "${work.title}"?`)) return
+    timelineControlBusy = true
+    timelineError = ''
+    try {
+      timelineProjection = await cancelWorkLedger(work.id, 'Operator cancelled from Console')
+      closeTimelineWatch()
+    } catch (err) {
+      timelineError = err instanceof Error ? err.message : 'Failed to cancel durable work'
+    } finally {
+      timelineControlBusy = false
+    }
+  }
+
+  async function handleResumeDurableStep(stepId: string, title: string) {
+    const workID = timelineProjection?.work.id
+    if (!workID) return
+    const reason = prompt(`Why should "${title}" resume?`, 'Operator approved from Console')?.trim()
+    if (!reason) return
+    timelineControlBusy = true
+    timelineError = ''
+    try {
+      const projection = await resumeWorkLedgerStep(workID, stepId, reason)
+      timelineProjection = projection
+      startTimelineWatch(projection)
+    } catch (err) {
+      timelineError = err instanceof Error ? err.message : 'Failed to resume durable step'
+    } finally {
+      timelineControlBusy = false
+    }
+  }
+
   function loadContractDraft(next: SessionTasks) {
     const next_contract = next.contract
     contractGoal = next_contract?.goal ?? next.plan?.goal ?? ''
@@ -67,6 +198,9 @@
     contractDoneCriteria = joinLines(next_contract?.done_criteria)
     contractVerificationCommands = joinLines(next_contract?.verification_commands)
     contractArtifacts = joinLines(next_contract?.artifacts)
+    contractProofRequired = next_contract?.proof_policy?.required ??
+      ((next_contract?.verification_commands?.length ?? 0) > 0 || (next_contract?.artifacts?.length ?? 0) > 0)
+    contractProofFailureState = next_contract?.proof_policy?.failure_state === 'blocked' ? 'blocked' : 'review'
   }
 
   async function saveContract(markApproved = false) {
@@ -81,6 +215,11 @@
         done_criteria: splitLines(contractDoneCriteria),
         verification_commands: splitLines(contractVerificationCommands),
         artifacts: splitLines(contractArtifacts),
+        proof_policy: {
+          required: contractProofRequired,
+          verifier: 'deterministic',
+          failure_state: contractProofFailureState,
+        },
       })
       if (markApproved) {
         await executeTasksAction(sessionId, { action: 'contract_approve' })
@@ -160,6 +299,7 @@
     } finally {
       loading = false
     }
+    if (activeTab === 'timeline') await loadTimeline()
   }
 
   export function openEvidence() {
@@ -308,7 +448,22 @@
   }
 
   function evidenceMeta(evidence: TaskEvidence): string {
-    return [evidence.status, evidence.command, evidence.path].filter(Boolean).join(' · ')
+    return [evidence.command, evidence.path, evidence.verifier_id].filter(Boolean).join(' · ')
+  }
+
+  function proofStateLabel(state?: string, origin?: string): string {
+    if (state === 'passed' && origin === 'independent_verifier') return 'Independently verified'
+    if (state === 'failed') return 'Verification failed'
+    if (state === 'stale') return 'Stale proof'
+    if (state === 'pending') return 'Verification pending'
+    return 'Reported only'
+  }
+
+  function proofStateClass(state?: string, origin?: string): string {
+    if (state === 'passed' && origin === 'independent_verifier') return 'badge-success'
+    if (state === 'failed' || state === 'stale') return 'badge-error'
+    if (state === 'pending') return 'badge-warning'
+    return 'badge-default'
   }
 
   function startEvidence(taskId: string) {
@@ -427,6 +582,17 @@
     }
   }
 
+  function workStateClass(state: string): string {
+    switch (state) {
+      case 'done': return 'badge-success'
+      case 'running': return 'badge-accent'
+      case 'blocked':
+      case 'cancelled': return 'badge-error'
+      case 'review': return 'badge-warning'
+      default: return 'badge-default'
+    }
+  }
+
   function formatArchiveDate(value?: string): string {
     if (!value) return ''
     const date = new Date(value)
@@ -444,10 +610,14 @@
   let progress = $derived(planProgressPercent(summary))
 
   onMount(() => { void load() })
+  onDestroy(closeTimelineWatch)
 
   // Reload when sessionId changes
   $effect(() => {
     void sessionId
+    closeTimelineWatch()
+    timelineProjection = null
+    timelineError = ''
     void load()
   })
 </script>
@@ -473,7 +643,7 @@
       aria-selected={activeTab === 'tasks'}
       class="tab-btn"
       class:active={activeTab === 'tasks'}
-      onclick={() => activeTab = 'tasks'}
+      onclick={() => selectTab('tasks')}
     >Tasks</button>
     <button
       type="button"
@@ -481,7 +651,7 @@
       aria-selected={activeTab === 'contract'}
       class="tab-btn"
       class:active={activeTab === 'contract'}
-      onclick={() => activeTab = 'contract'}
+      onclick={() => selectTab('contract')}
     >
       Contract
       {#if hasContractDraft}
@@ -494,13 +664,21 @@
       aria-selected={activeTab === 'evidence'}
       class="tab-btn"
       class:active={activeTab === 'evidence'}
-      onclick={() => activeTab = 'evidence'}
+      onclick={() => selectTab('evidence')}
     >
       Evidence
       {#if aggregatedEvidence.length > 0}
         <span class="tab-badge badge badge-default">{aggregatedEvidence.length}</span>
       {/if}
     </button>
+    <button
+      type="button"
+      role="tab"
+      aria-selected={activeTab === 'timeline'}
+      class="tab-btn"
+      class:active={activeTab === 'timeline'}
+      onclick={() => selectTab('timeline')}
+    >Timeline</button>
   </div>
 
   {#if activeTab === 'tasks'}
@@ -677,7 +855,7 @@
                       <article class="task-evidence-card">
                         <div class="task-evidence-head">
                           <span class="task-evidence-title">{evidenceLabel(evidence)}</span>
-                          <span class="evidence-type">{evidenceTypeLabel(evidence.type)}</span>
+                          <span class="badge {proofStateClass(evidence.proof_state, evidence.proof_origin)}">{proofStateLabel(evidence.proof_state, evidence.proof_origin)}</span>
                         </div>
                         {#if evidence.summary}
                           <p>{evidence.summary}</p>
@@ -794,6 +972,20 @@
           <span>Artifacts (one per line)</span>
           <textarea bind:value={contractArtifacts} rows="4" disabled={contractSaving}></textarea>
         </label>
+        <label class="contract-proof-policy">
+          <span>Completion proof</span>
+          <span class="contract-proof-control">
+            <input type="checkbox" bind:checked={contractProofRequired} disabled={contractSaving} />
+            Require independent deterministic proof
+          </span>
+        </label>
+        <label>
+          <span>On missing, failed, or stale proof</span>
+          <select bind:value={contractProofFailureState} disabled={contractSaving || !contractProofRequired}>
+            <option value="review">Request operator review</option>
+            <option value="blocked">Block completion</option>
+          </select>
+        </label>
       </div>
 
       {#if contractError}
@@ -834,7 +1026,7 @@
           <article class="evidence-aggregate-card">
             <div class="evidence-aggregate-head">
               <strong>{evidenceLabel(evidence)}</strong>
-              <span class="evidence-type">{evidenceTypeLabel(evidence.type)}</span>
+              <span class="badge {proofStateClass(evidence.proof_state, evidence.proof_origin)}">{proofStateLabel(evidence.proof_state, evidence.proof_origin)}</span>
             </div>
             <small class="evidence-aggregate-task">{evidence.task_title}</small>
             {#if evidence.summary}
@@ -850,6 +1042,106 @@
         {/each}
       </div>
     {/if}
+  {:else if activeTab === 'timeline'}
+    <section class="work-ledger-timeline" aria-label="Durable work ledger timeline">
+      {#if timelineLoading}
+        <div class="empty-state">Loading durable timeline...</div>
+      {:else if timelineError}
+        <div class="error-banner">{timelineError}</div>
+      {:else if !timelineProjection}
+        <div class="empty-state">
+          <p>No durable work record for this session yet.</p>
+          <p class="hint">The ledger remains read-only while legacy task mutations are synchronized.</p>
+        </div>
+      {:else}
+        <header class="timeline-summary">
+          <div>
+            <strong>{timelineProjection.work.title}</strong>
+            <small>{timelineProjection.work.kind} · version {timelineProjection.work.version}</small>
+          </div>
+          <div class="timeline-summary-actions">
+            {#if timelineLiveStatus !== 'idle'}
+              <span class="badge {timelineLiveStatus === 'live' ? 'badge-success' : 'badge-warning'}">
+                {timelineLiveStatus === 'live' ? 'Live' : 'Reconnecting'}
+              </span>
+            {/if}
+            <span class="badge {workStateClass(timelineProjection.work.state)}">{timelineProjection.work.state}</span>
+            {#if timelineCanCancel}
+              <button
+                class="btn btn-danger btn-sm"
+                type="button"
+                disabled={timelineControlBusy}
+                onclick={handleCancelDurableWork}
+              >Cancel work</button>
+            {/if}
+          </div>
+        </header>
+        <div class="timeline-counts" aria-label="Work ledger record counts">
+          <span>{timelineProjection.steps.length} steps</span>
+          <span>{timelineProjection.schedules.length} schedules</span>
+          <span>{timelineProjection.attempts.length} attempts</span>
+          <span>{timelineProjection.proofs.length} proofs</span>
+          <span>{timelineProjection.artifacts.length} artifacts</span>
+          <span>{timelineProjection.approvals.length} approvals</span>
+        </div>
+        {#if timelineProjection.proofs.length > 0}
+          <section class="timeline-proofs" aria-label="Durable proof records">
+            {#each timelineProjection.proofs as proof (proof.id)}
+              <article>
+                <div class="timeline-proof-head">
+                  <strong>{proof.summary}</strong>
+                  <span class="badge {proofStateClass(proof.status, proof.origin)}">{proofStateLabel(proof.status, proof.origin)}</span>
+                </div>
+                {#if proof.rationale}<p>{proof.rationale}</p>{/if}
+                <small>{proof.kind} · reporter {proof.reporter_id || 'unknown'} · verifier {proof.verifier_id || 'none'}</small>
+                {#if proof.subject_digest}<small>subject {proof.subject_digest}</small>{/if}
+              </article>
+            {/each}
+          </section>
+        {/if}
+        {#if timelineResumableSteps.length > 0}
+          <section class="timeline-operator-attention" aria-label="Durable steps requiring operator attention">
+            <header>
+              <strong>Operator attention</strong>
+              <small>These steps exhausted their automatic recovery policy.</small>
+            </header>
+            {#each timelineResumableSteps as step (step.id)}
+              <article>
+                <div>
+                  <strong>{step.title}</strong>
+                  <small>{timelineProjection.schedules.find((schedule) => schedule.step_id === step.id)?.blocked_reason ?? step.state}</small>
+                </div>
+                <button
+                  class="btn btn-warning btn-sm"
+                  type="button"
+                  disabled={timelineControlBusy}
+                  onclick={() => handleResumeDurableStep(step.id, step.title)}
+                >Resume step</button>
+              </article>
+            {/each}
+          </section>
+        {/if}
+        {#if timelineEntries.length === 0}
+          <div class="empty-state">No durable events recorded.</div>
+        {:else}
+          <ol class="timeline-events">
+            {#each timelineEntries as entry (entry.id)}
+              <li class="timeline-event">
+                <span class="timeline-marker" aria-hidden="true"></span>
+                <article>
+                  <div class="timeline-event-head">
+                    <strong>{entry.title}</strong>
+                    <small>#{entry.sequence}</small>
+                  </div>
+                  {#if entry.detail}<p>{entry.detail}</p>{/if}
+                  <small>{formatArchiveDate(entry.created_at)} · {entry.actor_id || 'unknown actor'}</small>
+                </article>
+              </li>
+            {/each}
+          </ol>
+        {/if}
+      {/if}
+    </section>
   {/if}
 </div>
 
@@ -929,7 +1221,8 @@
     color: var(--text-secondary);
   }
 
-  .contract-form textarea {
+  .contract-form textarea,
+  .contract-form select {
     width: 100%;
     resize: vertical;
     border-radius: var(--radius-md);
@@ -939,6 +1232,13 @@
     padding: var(--space-2);
     font: inherit;
     line-height: 1.45;
+  }
+
+  .contract-proof-control {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    color: var(--text-primary);
   }
 
   .contract-form textarea:focus {
@@ -997,6 +1297,205 @@
   .evidence-aggregate-card p,
   .evidence-aggregate-card small,
   .evidence-aggregate-card a {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: var(--text-xs);
+    overflow-wrap: anywhere;
+  }
+
+  .work-ledger-timeline {
+    display: grid;
+    gap: var(--space-3);
+  }
+
+  .timeline-summary {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--space-3);
+    padding: var(--space-3);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    background: var(--surface-inset);
+  }
+
+  .timeline-summary > div {
+    display: grid;
+    min-width: 0;
+    gap: var(--space-1);
+  }
+
+  .timeline-summary > .timeline-summary-actions {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--space-2);
+  }
+
+  .timeline-summary strong {
+    overflow: hidden;
+    color: var(--text-primary);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .timeline-summary small,
+  .timeline-event small {
+    color: var(--text-tertiary);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+  }
+
+  .timeline-counts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    color: var(--text-secondary);
+    font-size: var(--text-xs);
+  }
+
+  .timeline-proofs {
+    display: grid;
+    gap: var(--space-2);
+  }
+
+  .timeline-proofs article {
+    display: grid;
+    gap: var(--space-1);
+    padding: var(--space-2);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    background: var(--surface-muted);
+  }
+
+  .timeline-proof-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+  }
+
+  .timeline-proofs p,
+  .timeline-proofs small {
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .timeline-proofs p {
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+  }
+
+  .timeline-proofs small {
+    color: var(--text-tertiary);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+  }
+
+  .timeline-operator-attention {
+    display: grid;
+    gap: var(--space-2);
+    padding: var(--space-3);
+    border: 1px solid color-mix(in srgb, var(--warning) 30%, var(--border-default));
+    border-radius: var(--radius-md);
+    background: var(--warning-muted);
+  }
+
+  .timeline-operator-attention > header,
+  .timeline-operator-attention > article {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+  }
+
+  .timeline-operator-attention > header,
+  .timeline-operator-attention > article > div {
+    min-width: 0;
+  }
+
+  .timeline-operator-attention > article {
+    padding-top: var(--space-2);
+    border-top: 1px solid color-mix(in srgb, var(--warning) 18%, var(--border-subtle));
+  }
+
+  .timeline-operator-attention strong,
+  .timeline-operator-attention small {
+    display: block;
+  }
+
+  .timeline-operator-attention strong {
+    color: var(--text-primary);
+    font-size: var(--text-sm);
+  }
+
+  .timeline-operator-attention small {
+    margin-top: var(--space-1);
+    color: var(--text-secondary);
+    font-size: var(--text-xs);
+    overflow-wrap: anywhere;
+  }
+
+  .timeline-events {
+    display: grid;
+    gap: 0;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .timeline-event {
+    display: grid;
+    grid-template-columns: 14px minmax(0, 1fr);
+    gap: var(--space-2);
+    min-height: 64px;
+  }
+
+  .timeline-marker {
+    position: relative;
+    width: 9px;
+    height: 9px;
+    margin-top: 5px;
+    border: 2px solid var(--primary);
+    border-radius: 50%;
+    background: var(--surface);
+  }
+
+  .timeline-marker::after {
+    position: absolute;
+    top: 9px;
+    bottom: -50px;
+    left: 2px;
+    width: 1px;
+    background: var(--border-default);
+    content: '';
+  }
+
+  .timeline-event:last-child .timeline-marker::after {
+    display: none;
+  }
+
+  .timeline-event article {
+    display: grid;
+    align-content: start;
+    gap: var(--space-1);
+    padding-bottom: var(--space-3);
+  }
+
+  .timeline-event-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+  }
+
+  .timeline-event-head strong {
+    color: var(--text-primary);
+    font-size: var(--text-sm);
+  }
+
+  .timeline-event p {
     margin: 0;
     color: var(--text-secondary);
     font-size: var(--text-xs);

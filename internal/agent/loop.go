@@ -33,15 +33,20 @@ const (
 )
 
 type Event struct {
-	Type         EventType
-	Iteration    int
-	MessageCount int
-	ToolName     string
-	ToolCallID   string
-	ToolArgs     string
-	ToolResult   string
-	ToolIsError  bool
-	Err          error
+	Type                       EventType
+	Iteration                  int
+	MessageCount               int
+	ToolName                   string
+	ToolCallID                 string
+	ToolArgs                   string
+	ToolResult                 string
+	ToolIsError                bool
+	ToolEffectClass            string
+	ToolIdempotencyKeyArgument string
+	ToolReplayed               bool
+	ToolReceiptID              string
+	SessionID                  string
+	Err                        error
 }
 
 type Hook interface {
@@ -83,7 +88,12 @@ type RunOptions struct {
 	// user-role message and the loop will continue. Returning an empty
 	// `injectInput` lets the loop terminate as usual. Returning an error
 	// aborts the loop.
-	OnTurnEnd func(ctx context.Context, lastResp llm.ChatResponse) (injectInput string, err error)
+	OnTurnEnd        func(ctx context.Context, lastResp llm.ChatResponse) (injectInput string, err error)
+	BeforeTool       func(ctx context.Context, event Event) error
+	AfterTool        func(ctx context.Context, event Event) error
+	AfterLLM         func(ctx context.Context, event Event) error
+	ProviderTool     func(ctx context.Context, event Event) error
+	ReplayToolResult func(ctx context.Context, request ToolReplayRequest) (ToolReplayResult, bool)
 	// ResumeSessionID seeds the first iteration's ChatOptions.ResumeSessionID
 	// so resumable providers (claude-code-cli) continue an existing upstream
 	// session rather than starting a new one. Subsequent iterations
@@ -107,6 +117,20 @@ type RunOptions struct {
 	// permission deny rules as a --settings file per turn. Other providers
 	// ignore it.
 	ClaudeCodePermissionDeny []string
+}
+
+type ToolReplayRequest struct {
+	ToolName               string
+	ToolCallID             string
+	ToolArgs               string
+	EffectClass            string
+	IdempotencyKeyArgument string
+}
+
+type ToolReplayResult struct {
+	Result    string
+	IsError   bool
+	ReceiptID string
 }
 
 func (l *Loop) Run(ctx context.Context, initial []llm.ChatMessage, opts RunOptions) (llm.ChatResponse, error) {
@@ -149,20 +173,35 @@ func (l *Loop) Run(ctx context.Context, initial []llm.ChatMessage, opts RunOptio
 			l.emit(ctx, Event{Type: EventLoopError, Iteration: i + 1, Err: err})
 			return llm.ChatResponse{}, err
 		}
-		l.emit(ctx, Event{Type: EventAfterLLM, Iteration: i + 1, MessageCount: len(messages)})
+		afterLLMEvent := Event{Type: EventAfterLLM, Iteration: i + 1, MessageCount: len(messages), SessionID: strings.TrimSpace(resp.SessionID)}
+		if opts.AfterLLM != nil {
+			if hookErr := opts.AfterLLM(ctx, afterLLMEvent); hookErr != nil {
+				l.emit(ctx, Event{Type: EventLoopError, Iteration: i + 1, Err: hookErr})
+				return llm.ChatResponse{}, hookErr
+			}
+		}
+		l.emit(ctx, afterLLMEvent)
 
 		// Surface tools the upstream provider already executed (claude-code-cli
 		// runs Read/Edit/Bash/etc inside its own subprocess and reports them
 		// via stream-json tool_use blocks). These do NOT enter the tool
 		// execution branch below; they're observation-only audit signals.
 		for _, ptc := range resp.ProviderExecutedTools {
-			l.emit(ctx, Event{
-				Type:       EventProviderTool,
-				Iteration:  i + 1,
-				ToolName:   ptc.Name,
-				ToolCallID: ptc.ID,
-				ToolArgs:   ptc.Arguments,
-			})
+			providerEvent := Event{
+				Type:            EventProviderTool,
+				Iteration:       i + 1,
+				ToolName:        ptc.Name,
+				ToolCallID:      ptc.ID,
+				ToolArgs:        ptc.Arguments,
+				ToolEffectClass: string(tool.RecoveryPolicyForTool(tool.Tool{Name: ptc.Name}).EffectClass),
+			}
+			if opts.ProviderTool != nil {
+				if hookErr := opts.ProviderTool(ctx, providerEvent); hookErr != nil {
+					l.emit(ctx, Event{Type: EventLoopError, Iteration: i + 1, ToolName: ptc.Name, ToolCallID: ptc.ID, Err: hookErr})
+					return llm.ChatResponse{}, hookErr
+				}
+			}
+			l.emit(ctx, providerEvent)
 		}
 
 		if sid := strings.TrimSpace(resp.SessionID); sid != "" {
@@ -242,14 +281,6 @@ func (l *Loop) Run(ctx context.Context, initial []llm.ChatMessage, opts RunOptio
 				autoExpanded = true
 			}
 
-			l.emit(ctx, Event{
-				Type:       EventBeforeTool,
-				Iteration:  i + 1,
-				ToolName:   call.Name,
-				ToolCallID: call.ID,
-				ToolArgs:   effectiveArgs,
-			})
-
 			tl, ok := l.registry.Get(call.Name)
 			if !ok {
 				tl, ok = l.registry.Get(callName)
@@ -265,39 +296,88 @@ func (l *Loop) Run(ctx context.Context, initial []llm.ChatMessage, opts RunOptio
 				})
 				return llm.ChatResponse{}, err
 			}
+			recoveryPolicy := tool.RecoveryPolicyForTool(tl)
+			beforeToolEvent := Event{
+				Type:                       EventBeforeTool,
+				Iteration:                  i + 1,
+				ToolName:                   call.Name,
+				ToolCallID:                 call.ID,
+				ToolArgs:                   effectiveArgs,
+				ToolEffectClass:            string(recoveryPolicy.EffectClass),
+				ToolIdempotencyKeyArgument: recoveryPolicy.IdempotencyKeyArgument,
+			}
 
 			params := json.RawMessage(effectiveArgs)
 			if len(params) == 0 {
 				params = json.RawMessage(`{}`)
 			}
-
-			callCtx := ctx
-			if emitter := tool.LineEmitterFromContext(ctx); emitter != nil {
-				if streamer := tool.BindLineEmitter(emitter, call.ID); streamer != nil {
-					callCtx = tool.WithToolOutputStreamer(ctx, streamer)
+			var replay ToolReplayResult
+			replayed := false
+			if opts.ReplayToolResult != nil {
+				replay, replayed = opts.ReplayToolResult(ctx, ToolReplayRequest{
+					ToolName:               call.Name,
+					ToolCallID:             call.ID,
+					ToolArgs:               effectiveArgs,
+					EffectClass:            string(recoveryPolicy.EffectClass),
+					IdempotencyKeyArgument: recoveryPolicy.IdempotencyKeyArgument,
+				})
+			}
+			beforeToolEvent.ToolReplayed = replayed
+			beforeToolEvent.ToolReceiptID = strings.TrimSpace(replay.ReceiptID)
+			if !replayed && opts.BeforeTool != nil {
+				if hookErr := opts.BeforeTool(ctx, beforeToolEvent); hookErr != nil {
+					l.emit(ctx, Event{Type: EventLoopError, Iteration: i + 1, ToolName: call.Name, ToolCallID: call.ID, Err: hookErr})
+					return llm.ChatResponse{}, hookErr
 				}
 			}
-			result, err := tl.Execute(callCtx, params)
-			if err != nil {
-				l.emit(ctx, Event{
-					Type:       EventLoopError,
-					Iteration:  i + 1,
-					ToolName:   call.Name,
-					ToolCallID: call.ID,
-					Err:        err,
-				})
-				return llm.ChatResponse{}, err
+			l.emit(ctx, beforeToolEvent)
+
+			var result tool.Result
+			if replayed {
+				result = tool.Result{
+					Content: []tool.ContentBlock{{Type: "text", Text: replay.Result}},
+					IsError: replay.IsError,
+				}
+			} else {
+				callCtx := ctx
+				if emitter := tool.LineEmitterFromContext(ctx); emitter != nil {
+					if streamer := tool.BindLineEmitter(emitter, call.ID); streamer != nil {
+						callCtx = tool.WithToolOutputStreamer(ctx, streamer)
+					}
+				}
+				result, err = tl.Execute(callCtx, params)
+				if err != nil {
+					l.emit(ctx, Event{
+						Type:       EventLoopError,
+						Iteration:  i + 1,
+						ToolName:   call.Name,
+						ToolCallID: call.ID,
+						Err:        err,
+					})
+					return llm.ChatResponse{}, err
+				}
 			}
 			redactedResult := secrets.RedactText(result.Text())
-			l.emit(ctx, Event{
-				Type:        EventAfterTool,
-				Iteration:   i + 1,
-				ToolName:    call.Name,
-				ToolCallID:  call.ID,
-				ToolArgs:    effectiveArgs,
-				ToolResult:  redactedResult,
-				ToolIsError: result.IsError,
-			})
+			afterToolEvent := Event{
+				Type:                       EventAfterTool,
+				Iteration:                  i + 1,
+				ToolName:                   call.Name,
+				ToolCallID:                 call.ID,
+				ToolArgs:                   effectiveArgs,
+				ToolResult:                 redactedResult,
+				ToolIsError:                result.IsError,
+				ToolEffectClass:            string(recoveryPolicy.EffectClass),
+				ToolIdempotencyKeyArgument: recoveryPolicy.IdempotencyKeyArgument,
+				ToolReplayed:               replayed,
+				ToolReceiptID:              strings.TrimSpace(replay.ReceiptID),
+			}
+			if opts.AfterTool != nil {
+				if hookErr := opts.AfterTool(ctx, afterToolEvent); hookErr != nil {
+					l.emit(ctx, Event{Type: EventLoopError, Iteration: i + 1, ToolName: call.Name, ToolCallID: call.ID, Err: hookErr})
+					return llm.ChatResponse{}, hookErr
+				}
+			}
+			l.emit(ctx, afterToolEvent)
 
 			if isExecCall && isMissingCommandExecResult(effectiveArgs, redactedResult) {
 				repeatedInvalidExecCount++
@@ -352,7 +432,14 @@ func (l *Loop) Run(ctx context.Context, initial []llm.ChatMessage, opts RunOptio
 		ToolChoice:       llm.ToolChoiceNone(),
 	})
 	if finalErr == nil {
-		l.emit(ctx, Event{Type: EventAfterLLM, Iteration: finalIter, MessageCount: len(messages)})
+		afterLLMEvent := Event{Type: EventAfterLLM, Iteration: finalIter, MessageCount: len(messages), SessionID: strings.TrimSpace(finalResp.SessionID)}
+		if opts.AfterLLM != nil {
+			if hookErr := opts.AfterLLM(ctx, afterLLMEvent); hookErr != nil {
+				l.emit(ctx, Event{Type: EventLoopError, Iteration: finalIter, Err: hookErr})
+				return llm.ChatResponse{}, hookErr
+			}
+		}
+		l.emit(ctx, afterLLMEvent)
 		if strings.TrimSpace(finalResp.Message.Content) != "" || len(finalResp.Message.ToolCalls) == 0 {
 			messages = append(messages, finalResp.Message)
 			l.emit(ctx, Event{Type: EventLoopEnd, Iteration: finalIter, MessageCount: len(messages)})

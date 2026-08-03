@@ -31,6 +31,9 @@ import (
 	"github.com/devlikebear/tars/internal/skillhub/sources/openclaw"
 	"github.com/devlikebear/tars/internal/tool"
 	"github.com/devlikebear/tars/internal/usage"
+	"github.com/devlikebear/tars/internal/workerprotocol"
+	"github.com/devlikebear/tars/internal/workscheduler"
+	"github.com/devlikebear/tars/internal/workstore"
 	"github.com/rs/zerolog"
 )
 
@@ -47,6 +50,9 @@ type serveAPIRuntime struct {
 	embodimentSubsystem     *embodiment.Subsystem
 	pulseRuntime            *pulse.Runtime
 	reflectionRuntime       *reflection.Runtime
+	workLedger              *workstore.Store
+	workScheduler           *workscheduler.Scheduler
+	workerController        *workerprotocol.Controller
 	telegramPoller          *telegramUpdatePoller
 	remoteAccessRunner      remoteaccess.Runner
 	remoteAccessTargetURL   string
@@ -57,6 +63,8 @@ type apiRouteHandlers struct {
 	reflection      http.Handler
 	chat            http.Handler
 	sessions        http.Handler
+	work            http.Handler
+	workers         http.Handler
 	memory          http.Handler
 	console         http.Handler
 	usage           http.Handler
@@ -309,12 +317,14 @@ func buildAPIMux(
 	if err != nil {
 		return nil, err
 	}
+	var workLedger *workstore.Store
 	agentRuntime := agentruntime.NewRuntime(agentruntime.RuntimeOptions{
 		Enabled:                                   cfg.AgentRuntimeEnabled,
 		WorkspaceDir:                              cfg.WorkspaceDir,
 		SessionStore:                              sessionStore,
 		SessionStoreForWorkspace:                  sessionStoreResolver,
 		RunPrompt:                                 apiRunPrompt,
+		RunPromptCheckpointSupport:                agentruntime.ExecutorCheckpointSupport{Capability: agentruntime.CheckpointCapabilityResumableStep},
 		Executors:                                 nil,
 		DefaultAgent:                              strings.TrimSpace(cfg.AgentRuntimeDefaultAgent),
 		AgentRuntimeAgentsWatchEnabled:            false,
@@ -359,9 +369,30 @@ func buildAPIMux(
 			return deps.usageTracker.EstimateCost(provider, model, llm.Usage{InputTokens: inputTokens, OutputTokens: outputTokens})
 		},
 		UsageTracker: deps.usageTracker,
-		Now:          nowFn,
+		OnRunsSnapshot: func(runs []agentruntime.Run) {
+			if err := syncAgentRuntimeRunsToWorkLedger(
+				context.Background(),
+				workLedger,
+				defaultWorkspaceID,
+				filepath.Join(strings.TrimSpace(cfg.AgentRuntimePersistenceDir), "runs.json"),
+				runs,
+				"agent-runtime",
+			); err != nil {
+				logger.Error().Err(err).Msg("synchronize agent runtime snapshot to work ledger failed")
+			}
+		},
+		Now: nowFn,
 	})
 	agentRuntimeForTelegram = agentRuntime
+	workLedger, _, err = bootstrapWorkLedgerIfEnabled(context.Background(), cfg.WorkLedger.Enabled, workLedgerBootstrapOptions{
+		WorkspaceDir:               cfg.WorkspaceDir,
+		AgentRuntimePersistenceDir: cfg.AgentRuntimePersistenceDir,
+		Logger:                     logger,
+	})
+	if err != nil {
+		return nil, err
+	}
+	agentRuntime.SetEffectReceiptStore(workLedger)
 
 	reflectionSetup := buildReflectionRuntime(reflectionSetupInputs{
 		Config:       cfg,
@@ -388,6 +419,20 @@ func buildAPIMux(
 		return agents
 	}
 	_ = refreshAgentRuntimeExecutors("startup")
+	workerController, err := buildWorkerControllerIfEnabled(cfg, workLedger)
+	if err != nil {
+		if workLedger != nil {
+			_ = workLedger.Close()
+		}
+		return nil, err
+	}
+	workScheduler, err := buildWorkSchedulerWithRemote(cfg, workLedger, agentRuntime, workerController, nil, logger)
+	if err != nil {
+		if workLedger != nil {
+			_ = workLedger.Close()
+		}
+		return nil, err
+	}
 
 	chatTooling := buildChatToolingOptions(
 		processManager,
@@ -412,6 +457,8 @@ func buildAPIMux(
 	chatTooling.ExecMaxTimeoutMS = cfg.ToolsExecMaxTimeoutMS
 	chatTooling.ExecMaxBackgroundTimeoutMS = cfg.ToolsProcessMaxTimeoutMS
 	chatTooling.ClaudeCodeCLIPermissionMode = strings.TrimSpace(cfg.ClaudeCodeCLIPermissionMode)
+	chatTooling.WorkScheduler = workScheduler
+	chatTooling.WorkLedger = workLedger
 	overrideService := sessionoverride.NewService(sessionStore)
 	chatTooling.OverrideService = overrideService
 	chatTooling.AutomationToolsForWorkspace = func(workspaceID string) []tool.Tool {
@@ -538,9 +585,14 @@ func buildAPIMux(
 		chatTooling,
 		chatTools...,
 	)
-	sessionHandler := newSessionAPIHandlerFullWithLocalSkills(sessionStore, logger, deps.usageTracker, sessionStyleDefaultsFromConfig(cfg), dispatcher.Emit, overrideService, deps.llmRouter, localSkillsHandlerDeps{provider: extensionsManager, workspaceDir: cfg.WorkspaceDir})
 	consoleHandler, err := newConsoleHandler(logger)
 	if err != nil {
+		if workScheduler != nil {
+			workScheduler.Close()
+		}
+		if workLedger != nil {
+			_ = workLedger.Close()
+		}
 		return nil, err
 	}
 	usageHandler := newUsageAPIHandler(deps.usageTracker, cfg.APIAuthMode, logger)
@@ -566,7 +618,6 @@ func buildAPIMux(
 		}
 		return true, refreshAgentRuntimeExecutors("extensions_reload")
 	}, sessionStore, extensionHealthOptions{MCPProvider: mcpClient, WorkspaceDir: cfg.WorkspaceDir})
-	agentRunsHandler := newAgentRunsAPIHandlerWithInflightLimit(agentRuntime, logger, cfg.APIMaxInflightAgentRuns)
 	agentSubagentsHandler := newAgentRuntimeSubagentsAPIHandler(agentRuntime, cfg, func() {
 		_ = refreshAgentRuntimeExecutors("agentruntime_subagents_update")
 	}, deps.llmRouter)
@@ -624,7 +675,7 @@ func buildAPIMux(
 	_ = hubInstaller.Sources.Register(anthropic.New())
 	skillhubHandler := newSkillhubAPIHandler(hubInstaller, extensionsManager, logger)
 	skillCreatorHandler := newSkillCreatorAPIHandler(cfg.WorkspaceDir, logger, nil, extensionsManager)
-	skillExtractionHandler := newSkillExtractionAPIHandler(cfg.WorkspaceDir, sessionStore, deps.llmRouter, logger, extensionsManager)
+	skillExtractionHandler := newSkillExtractionAPIHandler(cfg.WorkspaceDir, sessionStore, deps.llmRouter, logger, extensionsManager, workLedger)
 	mcpCreatorHandler := newMCPServerCreatorAPIHandler(cfg.WorkspaceDir, logger, nil, deps.llmRouter)
 	gitHandler := newGitAPIHandler(cfg.WorkspaceDir, sessionStore, opsManager, logger)
 	eventsHandler := newEventsAPIHandler(broker, notificationStore, logger)
@@ -634,11 +685,21 @@ func buildAPIMux(
 	terminalHandler := newTerminalAPIHandler(cfg.WorkspaceDir, sessionStore, logger)
 	memoryHandler := newMemoryAPIHandler(cfg.WorkspaceDir, buildMemoryBackend(cfg.WorkspaceDir, semanticMemoryConfigFromConfig(cfg), cfg.MemoryBackend), logger)
 	codexUsageHandler := newCodexRateLimitAPIHandler(deps.llmRouter, cfg.APIAuthMode)
+	agentRunsHandler := newAgentRunsAPIHandlerWithWorkLedgerAndInflightLimit(agentRuntime, workLedger, logger, cfg.APIMaxInflightAgentRuns)
+	sessionHandler := newSessionAPIHandlerFullWithLocalSkillsAndWorkLedger(sessionStore, logger, deps.usageTracker, sessionStyleDefaultsFromConfig(cfg), dispatcher.Emit, overrideService, deps.llmRouter, localSkillsHandlerDeps{provider: extensionsManager, workspaceDir: cfg.WorkspaceDir}, workLedger)
+	workLedgerHandler := newWorkLedgerAPIHandler(workLedger, logger, workScheduler)
+	workerControlPlaneHandler := newWorkerControlPlaneAPIHandler(
+		workerController,
+		cfg.WorkLedger.SchedulerEnabled && cfg.WorkLedger.SchedulerA2AEnabled,
+		logger,
+	)
 	registerAPIRoutes(mux, apiRouteHandlers{
 		pulse:           pulseSetup.Handler,
 		reflection:      reflectionSetup.Handler,
 		chat:            chatHandler,
 		sessions:        sessionHandler,
+		work:            workLedgerHandler,
+		workers:         workerControlPlaneHandler,
 		memory:          memoryHandler,
 		console:         consoleHandler,
 		usage:           usageHandler,
@@ -700,6 +761,9 @@ func buildAPIMux(
 		embodimentSubsystem:     embodimentSubsystem,
 		pulseRuntime:            pulseSetup.Runtime,
 		reflectionRuntime:       reflectionSetup.Runtime,
+		workLedger:              workLedger,
+		workScheduler:           workScheduler,
+		workerController:        workerController,
 		telegramPoller:          telegramPoller,
 		remoteAccessRunner:      remoteaccess.ExecRunner{},
 		remoteAccessTargetURL:   remoteaccess.DefaultTargetURL,
@@ -742,6 +806,14 @@ func registerAPIRoutes(mux *http.ServeMux, handlers apiRouteHandlers) {
 	mux.Handle("/v1/admin/sessions", handlers.sessions)
 	mux.Handle("/v1/admin/sessions/", handlers.sessions)
 	mux.Handle("/v1/admin/plans/archive", handlers.sessions)
+	mux.Handle("/v1/work/works", handlers.work)
+	mux.Handle("/v1/work/works/", handlers.work)
+	mux.Handle("/v1/admin/work/works/", handlers.work)
+	mux.Handle("/v1/work/legacy/sessions/", handlers.work)
+	if handlers.workers != nil {
+		mux.Handle("/v1/admin/workers", handlers.workers)
+		mux.Handle("/v1/admin/workers/", handlers.workers)
+	}
 	mux.Handle("/v1/memory/assets", handlers.memory)
 	mux.Handle("/v1/memory/file", handlers.memory)
 	mux.Handle("/v1/memory/search", handlers.memory)
@@ -923,6 +995,19 @@ func startBackgrounds(ctx context.Context, runtime *serveAPIRuntime, logger zero
 		finishStartup(err)
 		return err
 	}
+	if err := runBackgroundStartupStep(logger, "work_scheduler", func() error {
+		if runtime.workScheduler != nil {
+			go func() {
+				if err := runtime.workScheduler.Run(ctx); err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, workscheduler.ErrClosed) {
+					logger.Error().Err(err).Msg("durable work scheduler stopped with error")
+				}
+			}()
+		}
+		return nil
+	}); err != nil {
+		finishStartup(err)
+		return err
+	}
 	if err := runBackgroundStartupStep(logger, "pulse_runtime", func() error {
 		if runtime.pulseRuntime != nil {
 			runtime.pulseRuntime.Start(ctx)
@@ -1048,6 +1133,9 @@ func shutdownRuntime(ctx context.Context, runtime *serveAPIRuntime) {
 	if runtime.agentRuntimeAgentsWatch != nil {
 		runtime.agentRuntimeAgentsWatch.Close()
 	}
+	if runtime.workScheduler != nil {
+		runtime.workScheduler.Close()
+	}
 	if runtime.agentRuntime != nil {
 		_ = runtime.agentRuntime.Close(ctx)
 	}
@@ -1062,6 +1150,9 @@ func shutdownRuntime(ctx context.Context, runtime *serveAPIRuntime) {
 	}
 	if runtime.server != nil {
 		_ = runtime.server.Shutdown(ctx)
+	}
+	if runtime.workLedger != nil {
+		_ = runtime.workLedger.Close()
 	}
 }
 

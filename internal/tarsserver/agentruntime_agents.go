@@ -76,6 +76,7 @@ func newWorkspacePromptExecutor(
 		SessionFixedID:     strings.TrimSpace(def.SessionFixedID),
 		Tier:               strings.TrimSpace(def.Tier),
 		ProviderOverride:   agentruntime.CloneProviderOverride(def.ProviderOverride),
+		CheckpointSupport:  agentruntime.ExecutorCheckpointSupport{Capability: agentruntime.CheckpointCapabilityResumableStep},
 		RunPrompt: func(ctx context.Context, runLabel string, prompt string, allowedTools []string, tier string, providerOverride *agentruntime.ProviderOverride) (string, error) {
 			label := strings.TrimSpace(runLabel)
 			if label == "" {

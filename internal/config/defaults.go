@@ -86,6 +86,13 @@ const (
 	defaultAgentRuntimeConsensusConcurrentRuns = 1
 	defaultAgentRuntimeArchiveRetentionDays    = 30
 	defaultAgentRuntimeArchiveMaxFileBytes     = 10485760
+	defaultWorkSchedulerMaxWorkers             = 4
+	defaultWorkSchedulerLeaseSeconds           = 60
+	defaultWorkSchedulerHeartbeatSeconds       = 20
+	defaultWorkSchedulerPollMilliseconds       = 250
+	defaultWorkSchedulerExecutionEnvironment   = "local"
+	defaultWorkSchedulerA2APollMilliseconds    = 2000
+	defaultWorkSchedulerA2AMaxPollSeconds      = 1800
 	defaultChannelsTelegramDMPolicy            = "pairing"
 	defaultSkillsBundledDir                    = "./skills"
 	defaultPluginsBundledDir                   = "./plugins"
@@ -209,6 +216,26 @@ func defaultConfigValues() Config {
 			AgentRuntimeArchiveEnabled:                false,
 			AgentRuntimeArchiveRetentionDays:          defaultAgentRuntimeArchiveRetentionDays,
 			AgentRuntimeArchiveMaxFileBytes:           defaultAgentRuntimeArchiveMaxFileBytes,
+		},
+		WorkLedger: WorkLedgerConfig{
+			Enabled:                                 true,
+			SchedulerEnabled:                        false,
+			SchedulerMaxWorkers:                     defaultWorkSchedulerMaxWorkers,
+			SchedulerLeaseSeconds:                   defaultWorkSchedulerLeaseSeconds,
+			SchedulerHeartbeatSeconds:               defaultWorkSchedulerHeartbeatSeconds,
+			SchedulerPollMilliseconds:               defaultWorkSchedulerPollMilliseconds,
+			SchedulerExecutionEnvironment:           defaultWorkSchedulerExecutionEnvironment,
+			SchedulerExecutionDataDir:               filepath.Join(TarsHomeDir(), "execution-plane"),
+			SchedulerArtifactPaths:                  []string{},
+			SchedulerExternalHarnessConfigPath:      "",
+			SchedulerRemoteWorkersEnabled:           false,
+			SchedulerRemoteWorkersGatewayConfigPath: "",
+			SchedulerA2AEnabled:                     false,
+			SchedulerA2AAllowedHosts:                []string{},
+			SchedulerA2APollMilliseconds:            defaultWorkSchedulerA2APollMilliseconds,
+			SchedulerA2AMaxPollSeconds:              defaultWorkSchedulerA2AMaxPollSeconds,
+			enabledSet:                              true,
+			schedulerEnabledSet:                     true,
 		},
 		ChannelConfig: ChannelConfig{
 			ChannelsTelegramDMPolicy:       defaultChannelsTelegramDMPolicy,

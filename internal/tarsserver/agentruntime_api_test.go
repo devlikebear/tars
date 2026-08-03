@@ -115,7 +115,7 @@ func TestAgentRunsAPIHandler_RestartFromCheckpoint(t *testing.T) {
 	}
 
 	h := newAgentRunsAPIHandler(runtime, zerolog.New(io.Discard))
-	body := bytes.NewBufferString(`{"checkpoint_id":"` + failed.Checkpoints[0].ID + `","prompt_adjustment":"retry with smaller batch"}`)
+	body := bytes.NewBufferString(`{"checkpoint_id":"` + failed.Checkpoints[0].ID + `","mode":"retry_from_prompt","prompt_adjustment":"retry with smaller batch"}`)
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/v1/agentruntime/runs/"+failed.ID+"/restart", body)
 	h.ServeHTTP(rec, req)
@@ -129,6 +129,9 @@ func TestAgentRunsAPIHandler_RestartFromCheckpoint(t *testing.T) {
 	if retry.ParentRunID != failed.ID || retry.RestartedFromRunID != failed.ID || retry.RestartedFromCheckpointID != failed.Checkpoints[0].ID {
 		t.Fatalf("expected restart provenance, got %+v", retry)
 	}
+	if retry.RecoveryMode != agentruntime.RecoveryModeRetryFromPrompt {
+		t.Fatalf("expected explicit retry mode, got %+v", retry)
+	}
 	waitForAgentRuntimeRun(t, runtime, retry.ID)
 	final, ok := runtime.Get(retry.ID)
 	if !ok {
@@ -136,6 +139,58 @@ func TestAgentRunsAPIHandler_RestartFromCheckpoint(t *testing.T) {
 	}
 	if final.Status != agentruntime.RunStatusCompleted || final.Response != "retry ok" {
 		t.Fatalf("expected completed retry, got %+v", final)
+	}
+}
+
+func TestAgentRunsAPIHandler_UnsafePendingEffectRequiresExplicitDecision(t *testing.T) {
+	store := session.NewStore(filepath.Join(t.TempDir(), "workspace"))
+	runtime := agentruntime.NewRuntime(agentruntime.RuntimeOptions{
+		Enabled:                    true,
+		SessionStore:               store,
+		RunPromptCheckpointSupport: agentruntime.ExecutorCheckpointSupport{Capability: agentruntime.CheckpointCapabilityReplay},
+		RunPrompt: func(ctx context.Context, _ string, _ string) (string, error) {
+			recorder := agentruntime.RuntimeExecutionRecorderFromContext(ctx)
+			if recorder == nil {
+				return "", fmt.Errorf("execution recorder missing")
+			}
+			if err := recorder(agentruntime.RuntimeToolCall{
+				Phase: agentruntime.RuntimeToolPhaseBefore, Iteration: 1,
+				ToolName: "send_message", ToolCallID: "call-unsafe",
+				ToolArgs: `{}`, ToolEffectClass: "unsafe",
+			}); err != nil {
+				return "", err
+			}
+			return "", fmt.Errorf("connection lost after send")
+		},
+	})
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		_ = runtime.Close(ctx)
+	})
+	first, err := runtime.Spawn(context.Background(), agentruntime.SpawnRequest{Prompt: "send"})
+	if err != nil {
+		t.Fatalf("spawn: %v", err)
+	}
+	waitForAgentRuntimeRun(t, runtime, first.ID)
+	failed, ok := runtime.Get(first.ID)
+	if !ok {
+		t.Fatalf("get failed run %s", first.ID)
+	}
+	checkpoint := failed.Checkpoints[len(failed.Checkpoints)-1]
+	h := newAgentRunsAPIHandler(runtime, zerolog.New(io.Discard))
+	rec := httptest.NewRecorder()
+	body := bytes.NewBufferString(`{"checkpoint_id":"` + checkpoint.ID + `","mode":"retry_from_prompt"}`)
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/v1/agentruntime/runs/"+failed.ID+"/restart", body))
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	var payload map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode error response: %v", err)
+	}
+	if payload["code"] != "recovery_approval_required" {
+		t.Fatalf("error payload: %+v", payload)
 	}
 }
 

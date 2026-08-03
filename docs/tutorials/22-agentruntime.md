@@ -313,9 +313,9 @@ func (rt *Runtime) trimRunsLocked() {
 
 Console Chat은 이 payload를 progress card로 렌더링하고 각 개별 run을 `/console/agentruntime/runs/{run_id}`로 연결합니다. 그래서 설계 검토나 root-cause analysis에서 "공통 결론", "충돌 후보", "근거", "원문"을 한 화면에서 비교할 수 있습니다.
 
-### 22-11. Failed run checkpoint restart
+### 22-11. Versioned checkpoint recovery
 
-Agent Runtime은 run 실행 중 재시작에 필요한 최소 snapshot을 `checkpoints`에 저장합니다. 현재 checkpoint는 prompt dispatch 시점과 failure 시점에 남으며, 실패한 run은 다음 API로 checkpoint에서 파생 retry run을 만들 수 있습니다.
+Agent Runtime은 prompt, provider continuation, tool request/result, effect receipt 경계마다 `step_checkpoint_v1`을 남깁니다. 각 checkpoint는 `capability`, `resumable`, `resume_reason`, `recovery_modes`를 명시하므로, 단순 재시도와 실제 재개를 같은 말로 포장하지 않습니다. 기존 snapshot은 읽을 때 `prompt_checkpoint_v0`/`retry_only`로 정규화되어 계속 사용할 수 있습니다.
 
 ```http
 POST /v1/agentruntime/runs/{run_id}/restart
@@ -324,6 +324,7 @@ POST /v1/agentruntime/runs/{run_id}/restart
 ```json
 {
   "checkpoint_id": "run_7_cp_2",
+  "mode": "replay_from_checkpoint",
   "agent": "reviewer",
   "tier": "heavy",
   "provider_override": {"alias": "codex", "model": "gpt-5.5"},
@@ -331,7 +332,11 @@ POST /v1/agentruntime/runs/{run_id}/restart
 }
 ```
 
-새 run은 원본 run을 `parent_run_id`, `restarted_from_run_id`, `restarted_from_checkpoint_id`, `restart_attempt`로 보존합니다. 따라서 Console Agent Runtime 상세 화면에서 실패 run → checkpoint restart → 파생 retry run 관계를 추적할 수 있고, retry 시 agent를 바꿔 permission set을 바꾸거나 tier/model/prompt adjustment를 함께 적용할 수 있습니다.
+`retry_from_prompt`는 저장한 prompt부터 새로 실행하고, `replay_from_checkpoint`는 동일한 정규화 도구 호출에 대해 receipt-safe 결과를 순서대로 돌려주며 실제 도구 실행을 건너뜁니다. `resume_from_checkpoint`는 checkpoint에 provider session handle이 있을 때만 제공됩니다. CommandExecutor는 process state를 직렬화하지 않으므로 retry-only이고, 현재 실행기는 workspace/environment image 복원을 주장하지 않습니다.
+
+unsafe 도구가 실행됐을 수 있지만 receipt가 commit되지 않았다면 API는 `409 recovery_approval_required`를 반환합니다. 외부 시스템을 확인한 운영자만 `confirm_unsafe_recovery: true`로 진행할 수 있습니다. 이 승인은 중복이 없다는 보장이 아니라 모호성을 감수한다는 명시적 결정입니다.
+
+새 run은 원본 run을 `parent_run_id`, `restarted_from_run_id`, `restarted_from_checkpoint_id`, `restart_attempt`로 보존하고, durable `work_id`/`task_id`/`flow_id`/`step_id`도 이어받습니다. 자세한 crash boundary와 exactly-once 한계는 [Agent Runtime checkpoint recovery](../agent-harness/checkpoint-recovery.md)를 참고하세요.
 
 ### 22-12. Run-derived profile recommendations
 

@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/devlikebear/tars/internal/workstore"
 )
 
 func NewRuntime(opts RuntimeOptions) *Runtime {
@@ -79,6 +81,15 @@ func (r *Runtime) Enabled() bool {
 
 func (r *Runtime) ConsensusEnabled() bool {
 	return r != nil && r.opts.AgentRuntimeConsensusEnabled
+}
+
+func (r *Runtime) SetEffectReceiptStore(store *workstore.Store) {
+	if r == nil {
+		return
+	}
+	r.mu.Lock()
+	r.effectReceiptStore = store
+	r.mu.Unlock()
 }
 
 func (r *Runtime) requireEnabled() error {

@@ -99,14 +99,24 @@ const (
 // It is stored next to the active plan/tasks so reload, compaction, and archive
 // flows can keep success criteria attached to the work rather than only in chat.
 type TaskContract struct {
-	Goal                 string   `json:"goal,omitempty"`
-	Scope                string   `json:"scope,omitempty"`
-	DoneCriteria         []string `json:"done_criteria,omitempty"`
-	VerificationCommands []string `json:"verification_commands,omitempty"`
-	Artifacts            []string `json:"artifacts,omitempty"`
-	Status               string   `json:"status,omitempty"`
-	CreatedAt            string   `json:"created_at,omitempty"`
-	UpdatedAt            string   `json:"updated_at,omitempty"`
+	Goal                 string           `json:"goal,omitempty"`
+	Scope                string           `json:"scope,omitempty"`
+	DoneCriteria         []string         `json:"done_criteria,omitempty"`
+	VerificationCommands []string         `json:"verification_commands,omitempty"`
+	Artifacts            []string         `json:"artifacts,omitempty"`
+	ProofPolicy          *TaskProofPolicy `json:"proof_policy,omitempty"`
+	Status               string           `json:"status,omitempty"`
+	CreatedAt            string           `json:"created_at,omitempty"`
+	UpdatedAt            string           `json:"updated_at,omitempty"`
+}
+
+type TaskProofPolicy struct {
+	Required         bool    `json:"required"`
+	Verifier         string  `json:"verifier,omitempty"`
+	FailureState     string  `json:"failure_state,omitempty"`
+	AllowLLMFallback bool    `json:"allow_llm_fallback,omitempty"`
+	MaxLLMTokens     int64   `json:"max_llm_tokens,omitempty"`
+	MaxLLMCostUSD    float64 `json:"max_llm_cost_usd,omitempty"`
 }
 
 const (
@@ -134,15 +144,27 @@ func ValidPlanStatus(s string) bool {
 }
 
 type TaskEvidence struct {
-	ID        string `json:"id"`
-	Type      string `json:"type"`
-	Title     string `json:"title,omitempty"`
-	Summary   string `json:"summary,omitempty"`
-	URL       string `json:"url,omitempty"`
-	Command   string `json:"command,omitempty"`
-	Path      string `json:"path,omitempty"`
-	Status    string `json:"status,omitempty"`
-	CreatedAt string `json:"created_at,omitempty"`
+	ID                  string          `json:"id"`
+	Type                string          `json:"type"`
+	Title               string          `json:"title,omitempty"`
+	Summary             string          `json:"summary,omitempty"`
+	URL                 string          `json:"url,omitempty"`
+	Command             string          `json:"command,omitempty"`
+	Path                string          `json:"path,omitempty"`
+	Status              string          `json:"status,omitempty"`
+	ProofState          string          `json:"proof_state,omitempty"`
+	ProofOrigin         string          `json:"proof_origin,omitempty"`
+	ReporterID          string          `json:"reporter_id,omitempty"`
+	VerifierID          string          `json:"verifier_id,omitempty"`
+	Verifier            string          `json:"verifier,omitempty"`
+	EnvironmentJSON     json.RawMessage `json:"environment,omitempty"`
+	InputJSON           json.RawMessage `json:"input,omitempty"`
+	ArtifactDigestsJSON json.RawMessage `json:"artifact_digests,omitempty"`
+	SubjectDigest       string          `json:"subject_digest,omitempty"`
+	Rationale           string          `json:"rationale,omitempty"`
+	ObservedAt          string          `json:"observed_at,omitempty"`
+	CreatedAt           string          `json:"created_at,omitempty"`
+	UpdatedAt           string          `json:"updated_at,omitempty"`
 }
 
 // Task represents a single work item linked to the session plan.
@@ -211,13 +233,15 @@ func (s *Store) GetTasks(sessionID string) (SessionTasks, error) {
 
 // SaveTasks writes the tasks file for a session.
 func (s *Store) SaveTasks(sessionID string, tasks SessionTasks) error {
-	raw, err := json.MarshalIndent(normalizeSessionTasks(tasks), "", "  ")
+	normalized := normalizeSessionTasks(tasks)
+	raw, err := json.MarshalIndent(normalized, "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshal tasks: %w", err)
 	}
 	if err := atomicwrite.Write(s.tasksPath(sessionID), raw); err != nil {
 		return fmt.Errorf("write tasks: %w", err)
 	}
+	s.notifyTasksSaved(sessionID, normalized)
 	return nil
 }
 
@@ -309,6 +333,28 @@ func normalizeTaskContract(contract *TaskContract) *TaskContract {
 	contract.DoneCriteria = cleanStringSlice(contract.DoneCriteria)
 	contract.VerificationCommands = cleanStringSlice(contract.VerificationCommands)
 	contract.Artifacts = cleanStringSlice(contract.Artifacts)
+	if contract.ProofPolicy == nil && (len(contract.VerificationCommands) > 0 || len(contract.Artifacts) > 0) {
+		contract.ProofPolicy = &TaskProofPolicy{Required: true, Verifier: "deterministic", FailureState: "review"}
+	}
+	if contract.ProofPolicy != nil {
+		contract.ProofPolicy.Verifier = strings.TrimSpace(contract.ProofPolicy.Verifier)
+		if contract.ProofPolicy.Verifier == "" {
+			contract.ProofPolicy.Verifier = "deterministic"
+		}
+		contract.ProofPolicy.FailureState = strings.ToLower(strings.TrimSpace(contract.ProofPolicy.FailureState))
+		if contract.ProofPolicy.FailureState != "blocked" {
+			contract.ProofPolicy.FailureState = "review"
+		}
+		if contract.ProofPolicy.MaxLLMTokens < 0 {
+			contract.ProofPolicy.MaxLLMTokens = 0
+		}
+		if contract.ProofPolicy.MaxLLMCostUSD < 0 {
+			contract.ProofPolicy.MaxLLMCostUSD = 0
+		}
+		if contract.ProofPolicy.AllowLLMFallback && (contract.ProofPolicy.MaxLLMTokens == 0 || contract.ProofPolicy.MaxLLMCostUSD == 0) {
+			contract.ProofPolicy.AllowLLMFallback = false
+		}
+	}
 	contract.Status = strings.ToLower(strings.TrimSpace(contract.Status))
 	if contract.Status == "" {
 		contract.Status = ContractStatusDraft
@@ -358,7 +404,22 @@ func normalizeTaskEvidence(ev TaskEvidence) TaskEvidence {
 	ev.Command = strings.TrimSpace(ev.Command)
 	ev.Path = strings.TrimSpace(ev.Path)
 	ev.Status = strings.ToLower(strings.TrimSpace(ev.Status))
+	ev.ProofState = strings.ToLower(strings.TrimSpace(ev.ProofState))
+	if ev.ProofState == "" {
+		ev.ProofState = "reported"
+	}
+	ev.ProofOrigin = strings.ToLower(strings.TrimSpace(ev.ProofOrigin))
+	if ev.ProofOrigin == "" {
+		ev.ProofOrigin = "legacy"
+	}
+	ev.ReporterID = strings.TrimSpace(ev.ReporterID)
+	ev.VerifierID = strings.TrimSpace(ev.VerifierID)
+	ev.Verifier = strings.TrimSpace(ev.Verifier)
+	ev.SubjectDigest = strings.TrimSpace(ev.SubjectDigest)
+	ev.Rationale = strings.TrimSpace(ev.Rationale)
+	ev.ObservedAt = strings.TrimSpace(ev.ObservedAt)
 	ev.CreatedAt = strings.TrimSpace(ev.CreatedAt)
+	ev.UpdatedAt = strings.TrimSpace(ev.UpdatedAt)
 	return ev
 }
 

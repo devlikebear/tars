@@ -76,11 +76,12 @@ func buildAgentRuntimeExecutors(
 	if runPrompt != nil {
 		if _, exists := registeredNames["explorer"]; !exists {
 			executor, err := agentruntime.NewPromptExecutorWithOptions(agentruntime.PromptExecutorOptions{
-				Name:        "explorer",
-				Description: "Built-in read-only codebase exploration agent",
-				Source:      "builtin",
-				Entry:       "llm-loop:explorer",
-				PolicyMode:  "allowlist",
+				Name:              "explorer",
+				Description:       "Built-in read-only codebase exploration agent",
+				Source:            "builtin",
+				Entry:             "llm-loop:explorer",
+				PolicyMode:        "allowlist",
+				CheckpointSupport: agentruntime.ExecutorCheckpointSupport{Capability: agentruntime.CheckpointCapabilityResumableStep},
 				ToolsAllow: []string{
 					"memory_get", "memory_search",
 					"read", "read_file", "list_dir", "glob",

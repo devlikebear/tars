@@ -40,7 +40,9 @@ func executeChatLoop(
 			return llm.ChatResponse{}, false, nil, err
 		}
 	}
-	ctx = usage.WithCallMeta(ctx, usage.CallMeta{Source: "chat", SessionID: state.sessionID})
+	ctx = usage.WithCallMeta(ctx, usage.CallMeta{
+		Source: "chat", SessionID: state.sessionID, CapabilityVersionIDs: state.capabilityVersionIDs,
+	})
 	afterToolHook := func(_ context.Context, evt agent.Event) {
 		if evt.ToolName != "tasks" {
 			return

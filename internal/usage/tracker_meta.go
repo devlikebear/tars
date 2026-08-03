@@ -8,9 +8,10 @@ import (
 type callMetaKey struct{}
 
 type CallMeta struct {
-	Source    string
-	SessionID string
-	RunID     string
+	Source               string
+	SessionID            string
+	RunID                string
+	CapabilityVersionIDs []string
 }
 
 func WithCallMeta(ctx context.Context, meta CallMeta) context.Context {
@@ -32,9 +33,10 @@ func CallMetaFromContext(ctx context.Context) CallMeta {
 
 func normalizeCallMeta(meta CallMeta) CallMeta {
 	out := CallMeta{
-		Source:    strings.TrimSpace(strings.ToLower(meta.Source)),
-		SessionID: strings.TrimSpace(meta.SessionID),
-		RunID:     strings.TrimSpace(meta.RunID),
+		Source:               strings.TrimSpace(strings.ToLower(meta.Source)),
+		SessionID:            strings.TrimSpace(meta.SessionID),
+		RunID:                strings.TrimSpace(meta.RunID),
+		CapabilityVersionIDs: normalizeCapabilityVersionIDs(meta.CapabilityVersionIDs),
 	}
 	switch out.Source {
 	case "chat", "cron", "pulse", "reflection", "agent_run", "api":
@@ -42,4 +44,24 @@ func normalizeCallMeta(meta CallMeta) CallMeta {
 		out.Source = "chat"
 	}
 	return out
+}
+
+func normalizeCapabilityVersionIDs(raw []string) []string {
+	if len(raw) == 0 {
+		return nil
+	}
+	result := make([]string, 0, len(raw))
+	seen := make(map[string]struct{}, len(raw))
+	for _, candidate := range raw {
+		id := strings.TrimSpace(candidate)
+		if id == "" {
+			continue
+		}
+		if _, exists := seen[id]; exists {
+			continue
+		}
+		seen[id] = struct{}{}
+		result = append(result, id)
+	}
+	return result
 }

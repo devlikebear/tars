@@ -297,6 +297,27 @@ var configFieldImpactHints = map[string][]string{
 	"agentruntime_enabled": {
 		"Disabling Agent Runtime stops multi-agent orchestration and subagent run APIs.",
 	},
+	"work_ledger_enabled": {
+		"Disabling the Work Ledger stops new ledger writes and returns session task and Agent Runtime reads to legacy files after restart.",
+		"The existing SQLite database and legacy source files remain untouched for later recovery.",
+	},
+	"work_scheduler_enabled": {
+		"Disabling the Work Scheduler returns subagent orchestration to the legacy request-bound path after restart.",
+		"Existing Work Ledger records remain available and are not deleted.",
+	},
+	"work_scheduler_execution_environment": {
+		"Changing the execution environment switches durable workers between the shared local workspace and disposable managed worktrees after restart.",
+	},
+	"work_scheduler_execution_data_dir": {
+		"Changing the execution data directory moves new lifecycle state, managed worktrees, and collected artifacts; existing data is not migrated automatically.",
+	},
+	"work_scheduler_artifact_paths_json": {
+		"Changing artifact paths controls which non-sensitive workspace files are copied into durable execution evidence.",
+	},
+	"work_scheduler_external_harness_config_path": {
+		"Setting the external harness config path enables the Claude Code adapter after restart; clearing it leaves native execution unchanged.",
+		"The selected Work prompt and managed-worktree contents may be processed by Anthropic through the operator's existing Claude authentication.",
+	},
 	"agentruntime_default_agent": {
 		"Changing default agent affects which Agent Runtime profile handles unspecified tasks.",
 	},

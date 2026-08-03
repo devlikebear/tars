@@ -51,8 +51,9 @@ type Override struct {
 	ModelTierOverride *string                    `json:"model_tier_override,omitempty"`
 	// ClaudeCodeCLIPermissionMode overrides config.LLMConfig.ClaudeCodeCLIPermissionMode
 	// per-session. Same accepted values as the global setting
-	// (auto/acceptEdits/plan/bypassPermissions); the provider degrades empty
-	// or unknown input to "auto" so a typo doesn't elevate permissions.
+	// (auto/default/acceptEdits/plan/dontAsk/bypassPermissions); the provider
+	// degrades empty or unknown input to "auto" so a typo doesn't elevate
+	// permissions.
 	ClaudeCodeCLIPermissionMode *string `json:"claude_code_cli_permission_mode,omitempty"`
 	// ClaudeCodeCLIPermissionDeny adds Claude Code permission deny rules
 	// (e.g. "Bash(rm:*)", "WebFetch") for the claude-code-cli provider.

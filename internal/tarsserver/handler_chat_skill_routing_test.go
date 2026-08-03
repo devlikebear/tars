@@ -2,6 +2,7 @@ package tarsserver
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -9,6 +10,7 @@ import (
 	"github.com/devlikebear/tars/internal/extensions"
 	"github.com/devlikebear/tars/internal/session"
 	"github.com/devlikebear/tars/internal/skill"
+	"github.com/devlikebear/tars/internal/workstore"
 )
 
 func TestResolveSkillForMessage_DoesNotAutoRouteNaturalLanguageKickoff(t *testing.T) {
@@ -120,6 +122,58 @@ func TestResolveSkillForMessage_RespectsExplicitEmptySkillAllowlist(t *testing.T
 	})
 	if resolved.Definition != nil {
 		t.Fatalf("expected explicit empty skill allowlist to disable routing, got %+v", resolved)
+	}
+}
+
+func TestResolvePromotedCapabilityVersionIDsTracksActiveSkillVersion(t *testing.T) {
+	store, err := workstore.Open(context.Background(), filepath.Join(t.TempDir(), "ledger.db"), workstore.Options{})
+	if err != nil {
+		t.Fatalf("open work ledger: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	work, err := store.CreateWork(context.Background(), workstore.CreateWorkInput{
+		WorkspaceID: "workspace-chat", Kind: "capability_review", IdempotencyKey: "review-helper",
+		Title: "Review helper", InitialState: workstore.WorkStateReview, ActorID: "tester",
+	})
+	if err != nil {
+		t.Fatalf("create capability work: %v", err)
+	}
+	createVersion := func(candidateID, digest string) workstore.CapabilityVersion {
+		version, createErr := store.CreateCapabilityVersion(context.Background(), workstore.CreateCapabilityVersionInput{
+			WorkspaceID: work.WorkspaceID, WorkID: work.ID, CandidateID: candidateID,
+			CapabilityName: "review-helper", InitialState: workstore.CapabilityStatePromoted,
+			ContentDigest: digest, SnapshotJSON: json.RawMessage(`{"files":[]}`),
+			ProvenanceJSON: json.RawMessage(`{"source":"test"}`), PermissionsJSON: json.RawMessage(`[]`),
+			ActorID: "tester",
+		})
+		if createErr != nil {
+			t.Fatalf("create promoted capability: %v", createErr)
+		}
+		return version
+	}
+	first := createVersion("candidate-v1", "sha256:v1")
+	second := createVersion("candidate-v2", "sha256:v2")
+
+	ids, err := resolvePromotedCapabilityVersionIDs(context.Background(), store, "workspace-chat", &skill.Definition{Name: "review-helper"})
+	if err != nil {
+		t.Fatalf("resolve promoted capability: %v", err)
+	}
+	if len(ids) != 1 || ids[0] != second.ID {
+		t.Fatalf("resolved capability ids=%v want latest %s", ids, second.ID)
+	}
+	if _, err := store.TransitionCapabilityVersion(context.Background(), workstore.TransitionCapabilityVersionInput{
+		WorkspaceID: second.WorkspaceID, VersionID: second.ID,
+		ExpectedState: workstore.CapabilityStatePromoted, ToState: workstore.CapabilityStateRolledBack,
+		ActorID: "operator", Reason: "regression",
+	}); err != nil {
+		t.Fatalf("roll back latest capability: %v", err)
+	}
+	ids, err = resolvePromotedCapabilityVersionIDs(context.Background(), store, "workspace-chat", &skill.Definition{Name: "review-helper"})
+	if err != nil {
+		t.Fatalf("resolve rollback target capability: %v", err)
+	}
+	if len(ids) != 1 || ids[0] != first.ID {
+		t.Fatalf("resolved capability ids after rollback=%v want %s", ids, first.ID)
 	}
 }
 

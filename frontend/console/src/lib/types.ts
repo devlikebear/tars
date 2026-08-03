@@ -306,6 +306,7 @@ export type AgentRuntimeRun = {
   restarted_from_checkpoint_id?: string
   restart_attempt?: number
   restart_reason?: string
+  recovery_mode?: AgentRuntimeRecoveryMode
   status: string
   accepted?: boolean
   response?: string
@@ -320,6 +321,7 @@ export type AgentRuntimeRun = {
   consensus_variants?: ConsensusVariantRecord[]
   consensus_cost_usd?: number
   consensus_budget_usd?: number
+  consensus_decision?: ConsensusDecisionRecord
   file_attention?: FileAttentionSummary[]
   file_ops_total?: number
   diff_timeline?: AgentRuntimeDiffTimelineEntry[]
@@ -330,10 +332,45 @@ export type AgentRuntimeRun = {
   updated_at?: string
 }
 
+export type ConsensusDecisionRecord = {
+  automatic: boolean
+  baseline_id?: string
+  decision_reason?: string
+  expected_quality_delta?: number
+  expected_tokens: number
+  expected_cost_usd: number
+  token_budget: number
+  cost_budget_usd: number
+  fanout: number
+  observed_completed: number
+  observed_failed: number
+  observed_tokens: number
+  observed_cost_usd: number
+  observed_outcome?: string
+  recorded_at: string
+  observed_at?: string
+}
+
 export type AgentRuntimeRunCheckpoint = {
+  schema_version: number
   checkpoint_id: string
   run_id?: string
   kind: string
+  format: 'prompt_checkpoint_v0' | 'step_checkpoint_v1'
+  capability: 'retry_only' | 'replay' | 'resumable_step' | 'environment_rehydratable'
+  resumable: boolean
+  resume_reason: string
+  recovery_modes: AgentRuntimeRecoveryMode[]
+  recovery_approval_required?: boolean
+  recovery_approval_reason?: string
+  next_action?: string
+  state_refs?: AgentRuntimeCheckpointReference[]
+  tool_request_refs?: AgentRuntimeCheckpointReference[]
+  tool_result_refs?: AgentRuntimeCheckpointReference[]
+  effect_receipt_refs?: AgentRuntimeCheckpointReference[]
+  workspace_snapshot_refs?: AgentRuntimeCheckpointReference[]
+  environment_snapshot_refs?: AgentRuntimeCheckpointReference[]
+  continuation?: AgentRuntimeCheckpointContinuation
   label?: string
   status?: string
   agent?: string
@@ -343,6 +380,22 @@ export type AgentRuntimeRunCheckpoint = {
   allowed_tools?: string[]
   error?: string
   created_at?: string
+}
+
+export type AgentRuntimeRecoveryMode = 'retry_from_prompt' | 'replay_from_checkpoint' | 'resume_from_checkpoint'
+
+export type AgentRuntimeCheckpointReference = {
+  kind: string
+  id: string
+  digest?: string
+  uri?: string
+}
+
+export type AgentRuntimeCheckpointContinuation = {
+  kind: string
+  id: string
+  executor?: string
+  recorded_at?: string
 }
 
 export type AgentRuntimeRunEvent = {
@@ -1243,9 +1296,109 @@ export type SkillCreatorSubmitResponse = {
 
 export type SkillExtractionCandidateStatus = 'pending' | 'approved' | 'rejected'
 
-export type SkillExtractionCandidateAction = 'approve' | 'reject'
+export type SkillExtractionCandidateAction = 'evaluate' | 'approve' | 'promote' | 'rollback' | 'reject'
+
+export type CapabilityState =
+  | 'candidate'
+  | 'draft'
+  | 'sandbox'
+  | 'offline_eval'
+  | 'shadow'
+  | 'approved'
+  | 'canary'
+  | 'promoted'
+  | 'rolled_back'
+  | 'rejected'
+
+export type CapabilityVersion = {
+  schema_version: number
+  id: string
+  workspace_id: string
+  work_id: string
+  candidate_id: string
+  capability_name: string
+  version: number
+  state: CapabilityState
+  content_digest: string
+  snapshot?: Record<string, unknown>
+  provenance?: Record<string, unknown>
+  permissions?: string[]
+  approval_id?: string
+  previous_version_id?: string
+  rollback_target_id?: string
+  rollout?: {
+    mode?: string
+    percent?: number
+    rollback?: string
+    review_required?: boolean
+    regression_detected?: boolean
+    regression_outcome_id?: string
+  }
+  actor_id: string
+  created_at: string
+  updated_at: string
+  promoted_at?: string
+  rolled_back_at?: string
+}
+
+export type EvaluationRun = {
+  schema_version: number
+  id: string
+  workspace_id: string
+  work_id: string
+  capability_version_id: string
+  idempotency_key: string
+  stage: 'sandbox' | 'offline' | 'shadow' | 'canary'
+  status: 'pending' | 'passed' | 'failed'
+  baseline_version_id?: string
+  metrics?: {
+    success_rate?: number
+    verification_rate?: number
+    cost_usd?: number
+    latency_ms?: number
+  }
+  delta?: {
+    success_rate?: number
+    verification_rate?: number
+    cost_usd?: number
+    latency_ms?: number
+  }
+  report?: {
+    content_diff?: string
+    permission_expansion?: string[]
+    error?: string
+  }
+  proof_id?: string
+  actor_id: string
+  created_at: string
+  updated_at: string
+}
+
+export type CapabilityOutcome = {
+  schema_version: number
+  id: string
+  workspace_id: string
+  capability_version_id: string
+  work_id: string
+  attempt_id?: string
+  idempotency_key: string
+  status: 'succeeded' | 'failed' | 'cancelled'
+  verifier_status: 'reported' | 'pending' | 'passed' | 'failed' | 'stale'
+  cost_usd: number
+  latency_ms: number
+  actor_id: string
+  created_at: string
+}
 
 export type SkillExtractionEvidence = {
+  message_id?: string
+  index: number
+  role: string
+  snippet: string
+}
+
+export type SkillExtractionSignal = {
+  kind: 'success' | 'failure' | 'dead_end' | 'user_correction'
   message_id?: string
   index: number
   role: string
@@ -1273,6 +1426,7 @@ export type SkillExtractionCandidate = {
   message_range?: string
   repeated_count?: number
   evidence?: SkillExtractionEvidence[]
+  signals?: SkillExtractionSignal[]
   provenance?: SkillExtractionProvenance
   created_at: string
   updated_at: string
@@ -1284,10 +1438,17 @@ export type SkillExtractionCandidate = {
 export type SkillExtractionListResponse = {
   count: number
   candidates: SkillExtractionCandidate[]
+  capabilities?: CapabilityVersion[]
+  evaluations?: EvaluationRun[]
+  outcomes?: CapabilityOutcome[]
 }
 
 export type SkillExtractionReviewResponse = {
   candidate: SkillExtractionCandidate
+  capability: CapabilityVersion
+  evaluations: EvaluationRun[]
+  outcomes?: CapabilityOutcome[]
+  diff?: string
   draft?: SkillCreatorDraftResponse
   saved?: SkillCreatorSaveResponse
 }
@@ -1599,9 +1760,19 @@ export type TaskContract = {
   done_criteria?: string[]
   verification_commands?: string[]
   artifacts?: string[]
+  proof_policy?: TaskProofPolicy
   status?: ContractStatus
   created_at?: string
   updated_at?: string
+}
+
+export type TaskProofPolicy = {
+  required: boolean
+  verifier?: string
+  failure_state?: 'review' | 'blocked'
+  allow_llm_fallback?: boolean
+  max_llm_tokens?: number
+  max_llm_cost_usd?: number
 }
 
 export type TaskEvidenceType =
@@ -1621,7 +1792,19 @@ export type TaskEvidence = {
   command?: string
   path?: string
   status?: string
+  proof_state?: 'reported' | 'pending' | 'passed' | 'failed' | 'stale' | string
+  proof_origin?: 'worker_report' | 'independent_verifier' | 'legacy' | string
+  reporter_id?: string
+  verifier_id?: string
+  verifier?: string
+  environment?: Record<string, unknown>
+  input?: Record<string, unknown>
+  artifact_digests?: Array<Record<string, unknown> | string>
+  subject_digest?: string
+  rationale?: string
+  observed_at?: string
   created_at?: string
+  updated_at?: string
 }
 
 export type TaskVerificationResult = {
@@ -1631,6 +1814,9 @@ export type TaskVerificationResult = {
   timed_out?: boolean
   evidence_id: string
   summary?: string
+  proof_state: string
+  proof_origin: string
+  verifier_id: string
 }
 
 export type TaskVerificationResponse = {
@@ -1654,6 +1840,359 @@ export type SessionTasks = {
   plan?: SessionPlan
   contract?: TaskContract
   tasks: SessionTask[]
+}
+
+export type WorkLedgerState =
+  | 'triage'
+  | 'backlog'
+  | 'todo'
+  | 'ready'
+  | 'running'
+  | 'review'
+  | 'blocked'
+  | 'done'
+  | 'cancelled'
+
+export type WorkLedgerWork = {
+  schema_version: number
+  id: string
+  workspace_id: string
+  kind: string
+  source?: string
+  source_id?: string
+  idempotency_key: string
+  causation_id?: string
+  parent_work_id?: string
+  title: string
+  objective?: string
+  contract: Record<string, unknown> | null
+  metadata: Record<string, unknown> | null
+  state: WorkLedgerState
+  priority: number
+  actor_id: string
+  version: number
+  created_at: string
+  updated_at: string
+  completed_at?: string
+}
+
+export type WorkLedgerStep = {
+  schema_version: number
+  id: string
+  workspace_id: string
+  work_id: string
+  parent_step_id?: string
+  idempotency_key: string
+  causation_id?: string
+  title: string
+  description?: string
+  state: WorkLedgerState
+  position: number
+  actor_id: string
+  version: number
+  created_at: string
+  updated_at: string
+  completed_at?: string
+}
+
+export type WorkLedgerAttempt = {
+  schema_version: number
+  id: string
+  workspace_id: string
+  work_id: string
+  step_id?: string
+  idempotency_key: string
+  causation_id?: string
+  number: number
+  adapter: string
+  status: string
+  actor_id: string
+  input: unknown
+  output: unknown
+  error?: string
+  started_at: string
+  finished_at?: string
+  created_at: string
+  updated_at: string
+}
+
+export type WorkLedgerStepSchedulePolicy = {
+  max_attempts: number
+  retry_limit: number
+  replan_limit: number
+  decompose_limit: number
+  max_iterations?: number
+  max_tokens?: number
+  max_cost_usd?: number
+  escalation_state: 'review' | 'blocked'
+}
+
+export type WorkLedgerStepSchedule = {
+  schema_version: number
+  workspace_id: string
+  work_id: string
+  step_id: string
+  policy: WorkLedgerStepSchedulePolicy
+  lease_owner?: string
+  lease_expires_at?: string
+  last_heartbeat_at?: string
+  active_attempt_id?: string
+  attempt_count: number
+  cycle_attempt_count: number
+  consumed_iterations: number
+  consumed_tokens: number
+  consumed_cost_usd: number
+  next_action: 'execute' | 'retry' | 'replan' | 'decompose'
+  last_disposition?: 'done' | 'retry' | 'replan' | 'decompose' | 'review' | 'blocked'
+  blocked_reason?: string
+  human_resume_required: boolean
+  updated_at: string
+}
+
+export type WorkLedgerEvent = {
+  schema_version: number
+  sequence: number
+  id: string
+  workspace_id: string
+  work_id: string
+  step_id?: string
+  attempt_id?: string
+  type: string
+  from_state?: WorkLedgerState
+  to_state?: WorkLedgerState
+  actor_id: string
+  causation_id?: string
+  idempotency_key?: string
+  payload: Record<string, unknown> | null
+  created_at: string
+}
+
+export type WorkLedgerProof = {
+  schema_version: number
+  id: string
+  workspace_id: string
+  work_id: string
+  step_id?: string
+  attempt_id?: string
+  idempotency_key: string
+  causation_id?: string
+  kind: string
+  status: string
+  origin: 'worker_report' | 'independent_verifier' | 'legacy' | string
+  summary: string
+  reporter_id?: string
+  verifier_id?: string
+  verifier?: string
+  command?: string
+  artifact_id?: string
+  environment: Record<string, unknown>
+  input: Record<string, unknown>
+  artifact_digests: Array<Record<string, unknown> | string>
+  subject_digest?: string
+  rationale?: string
+  actor_id: string
+  observed_at?: string
+  created_at: string
+  updated_at: string
+}
+
+export type WorkLedgerArtifact = {
+  schema_version: number
+  id: string
+  workspace_id: string
+  work_id: string
+  step_id?: string
+  attempt_id?: string
+  idempotency_key: string
+  causation_id?: string
+  kind: string
+  name: string
+  uri: string
+  digest: string
+  media_type?: string
+  size_bytes: number
+  actor_id: string
+  created_at: string
+}
+
+export type WorkLedgerApproval = {
+  schema_version: number
+  id: string
+  workspace_id: string
+  work_id: string
+  step_id?: string
+  attempt_id?: string
+  idempotency_key: string
+  causation_id?: string
+  authority: string
+  status: string
+  request: string
+  reason?: string
+  actor_id: string
+  reviewer_id?: string
+  expires_at?: string
+  decided_at?: string
+  created_at: string
+  updated_at: string
+}
+
+export type WorkLedgerDependency = {
+  workspace_id: string
+  work_id: string
+  step_id: string
+  depends_on_id: string
+  actor_id: string
+  created_at: string
+}
+
+export type WorkLedgerProjection = {
+  work: WorkLedgerWork
+  steps: WorkLedgerStep[]
+  schedules: WorkLedgerStepSchedule[]
+  dependencies: WorkLedgerDependency[]
+  attempts: WorkLedgerAttempt[]
+  events: WorkLedgerEvent[]
+  proofs: WorkLedgerProof[]
+  artifacts: WorkLedgerArtifact[]
+  approvals: WorkLedgerApproval[]
+  capability_versions?: CapabilityVersion[]
+  evaluation_runs?: EvaluationRun[]
+  capability_outcomes?: CapabilityOutcome[]
+}
+
+export type WorkLedgerWorksResponse = {
+  works: WorkLedgerWork[]
+  limit: number
+  offset: number
+}
+
+export type RemoteWorkerState =
+  | 'registered'
+  | 'ready'
+  | 'leased'
+  | 'executing'
+  | 'disconnected'
+  | 'lost'
+  | 'draining'
+  | 'destroyed'
+
+export type RemotePlacementState =
+  | 'pending'
+  | 'provisioning'
+  | 'syncing'
+  | 'ready'
+  | 'executing'
+  | 'checkpointed'
+  | 'collecting'
+  | 'completed'
+  | 'failed'
+  | 'lost'
+  | 'reclaiming'
+  | 'rehydrating'
+  | 'destroyed'
+
+export type RemoteWorkerCapabilities = {
+  resume: boolean
+  streaming: boolean
+  checkpoints: boolean
+  egress_policy: boolean
+  resource_limits: boolean
+  artifact_scan: boolean
+}
+
+export type RemoteExecutionPolicy = {
+  egress: {
+    mode: 'deny' | 'allowlist'
+    allow_hosts?: string[]
+  }
+  limits: {
+    cpu_seconds: number
+    memory_mb: number
+    disk_mb: number
+    max_output_bytes: number
+  }
+}
+
+export type RemoteWorker = {
+  id: string
+  protocol_version: string
+  transport: string
+  state: RemoteWorkerState
+  capabilities: RemoteWorkerCapabilities
+  last_sequence: number
+  last_seen_at: string
+  lease_expires_at?: string
+  version: number
+}
+
+export type RemotePlacement = {
+  id: string
+  workspace_id: string
+  work_id: string
+  step_id: string
+  attempt_id: string
+  worker_id: string
+  environment_id?: string
+  state: RemotePlacementState
+  policy: RemoteExecutionPolicy
+  sync: {
+    mode: 'git' | 'directory'
+    source_owner: 'gateway' | 'worker'
+    workspace_owner: 'gateway' | 'worker'
+    artifact_owner: 'gateway' | 'worker'
+    manifest_digest?: string
+    file_count?: number
+    total_bytes?: number
+  }
+  checkpoint?: {
+    id: string
+    digest: string
+    created_at: string
+  }
+  lease_expires_at?: string
+  last_sequence: number
+  recovery_count: number
+  version: number
+  updated_at: string
+}
+
+export type RemoteControlEvent = {
+  id: string
+  type: string
+  entity: string
+  worker_id?: string
+  placement_id?: string
+  work_id?: string
+  step_id?: string
+  attempt_id?: string
+  sequence?: number
+  from_state?: string
+  to_state?: string
+  published: boolean
+  occurred_at: string
+}
+
+export type WorkerControlPlaneResponse = {
+  enabled: boolean
+  protocol_version: string
+  a2a: {
+    enabled: boolean
+    adapter: string
+    protocol_version: string
+  }
+  summary: {
+    workers: number
+    ready_workers: number
+    lost_workers: number
+    placements: number
+    active_placements: number
+    recovering_placements: number
+    recovery_count: number
+  }
+  workers: RemoteWorker[]
+  placements: RemotePlacement[]
+  events: RemoteControlEvent[]
+  updated_at?: string
 }
 
 export type GitRemote = {

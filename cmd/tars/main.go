@@ -11,7 +11,9 @@ import (
 )
 
 func main() {
-	bootstrapEnv()
+	if shouldBootstrapEnv(os.Args[1:]) {
+		bootstrapEnv()
+	}
 	exitCode := 0
 	runOnMainThread(func() {
 		if err := newRootCommand(os.Stdin, os.Stdout, os.Stderr).Execute(); err != nil {
@@ -66,8 +68,13 @@ func newRootCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
 	cmd.AddCommand(newPluginCommand(stdout, stderr))
 	cmd.AddCommand(newMCPCommand(stdout, stderr))
 	cmd.AddCommand(newPackCommand(stdin, stdout, stderr))
+	cmd.AddCommand(newWorkerCommand(stdin, stdout))
 	cmd.AddCommand(newVersionCommand(stdout))
 	return cmd
+}
+
+func shouldBootstrapEnv(args []string) bool {
+	return len(args) < 2 || args[0] != "worker" || args[1] != "serve"
 }
 
 func newVersionCommand(stdout io.Writer) *cobra.Command {

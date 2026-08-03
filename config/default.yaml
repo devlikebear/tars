@@ -65,6 +65,32 @@ automation:
   agent:
     max_iterations: 8
 
+work_ledger:
+  enabled: true
+  scheduler:
+    enabled: false
+    max_workers: 4
+    lease_seconds: 60
+    heartbeat_seconds: 20
+    poll_milliseconds: 250
+    execution_environment: local
+    execution_data_dir: $HOME/.tars/execution-plane
+    artifact_paths: []
+    external_harness:
+      config_path: ""
+    remote_workers:
+      enabled: false
+      gateway_config_path: ""
+    a2a:
+      enabled: false
+      discovery_url: ""
+      bearer_token: ""
+      allowed_hosts: []
+      allow_private_hosts: false
+      allow_insecure_loopback: false
+      poll_milliseconds: 2000
+      max_poll_seconds: 1800
+
 companion:
   enabled: true
 

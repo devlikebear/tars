@@ -185,6 +185,28 @@ func Schema() []FieldMeta {
 		f("agentruntime_archive_retention_days", "Agent Runtime", "int", "Archive Retention (days)", "Days to retain archived runs"),
 		f("agentruntime_archive_max_file_bytes", "Agent Runtime", "int", "Archive Max File Bytes", "Maximum archive file size before rollover"),
 
+		// ── Work Ledger ──────────────────────────
+		f("work_ledger_enabled", "Work Ledger", "bool", "Enabled", "Enable the additive durable Work Ledger and its read-only projections"),
+		f("work_scheduler_enabled", "Work Scheduler", "bool", "Enabled", "Run durable Work Ledger steps independently of chat requests"),
+		f("work_scheduler_max_workers", "Work Scheduler", "int", "Max Workers", "Maximum concurrent durable step executions"),
+		f("work_scheduler_lease_seconds", "Work Scheduler", "int", "Lease Seconds", "Claim lease duration before an unresponsive worker can be reclaimed"),
+		f("work_scheduler_heartbeat_seconds", "Work Scheduler", "int", "Heartbeat Seconds", "Interval used to renew active step leases"),
+		f("work_scheduler_poll_milliseconds", "Work Scheduler", "int", "Poll Milliseconds", "Interval used to promote and claim ready steps"),
+		fsel("work_scheduler_execution_environment", "Work Scheduler", "Execution Environment", "Filesystem environment used for durable native workers", []string{"local", "managed-worktree"}),
+		f("work_scheduler_execution_data_dir", "Work Scheduler", "string", "Execution Data Dir", "Private directory outside the workspace for lifecycle state, managed worktrees, and collected artifacts"),
+		f("work_scheduler_artifact_paths_json", "Work Scheduler", "string_list", "Artifact Paths", "Workspace-relative files or globs copied after each durable execution"),
+		f("work_scheduler_external_harness_config_path", "Work Scheduler", "string", "External Harness Config", "Owner-only JSON configuration for the opt-in Claude Code managed-worktree adapter"),
+		f("work_scheduler_remote_workers_enabled", "Work Scheduler", "bool", "Remote Workers", "Enable the versioned remote-worker control plane and its Console projection"),
+		f("work_scheduler_remote_workers_gateway_config_path", "Work Scheduler", "string", "Remote Gateway Config", "Owner-only JSON configuration for an optional in-process container or SSH scheduler worker"),
+		f("work_scheduler_a2a_enabled", "Work Scheduler", "bool", "A2A Adapter", "Enable A2A 1.0 as an external Work executor without replacing internal scheduling"),
+		f("work_scheduler_a2a_discovery_url", "Work Scheduler", "string", "A2A Discovery URL", "HTTPS origin that publishes /.well-known/agent-card.json"),
+		fs("work_scheduler_a2a_bearer_token", "Work Scheduler", "A2A Bearer Token", "Gateway-only credential sent to the selected A2A endpoint", true),
+		f("work_scheduler_a2a_allowed_hosts_json", "Work Scheduler", "string_list", "A2A Allowed Hosts", "Explicit host allowlist for discovery and the selected A2A interface"),
+		f("work_scheduler_a2a_allow_private_hosts", "Work Scheduler", "bool", "A2A Private Hosts", "Allow explicitly configured private HTTPS A2A endpoints"),
+		f("work_scheduler_a2a_allow_insecure_loopback", "Work Scheduler", "bool", "A2A Insecure Loopback", "Development-only opt-in for an HTTP loopback A2A endpoint"),
+		f("work_scheduler_a2a_poll_milliseconds", "Work Scheduler", "int", "A2A Poll Milliseconds", "Polling interval for non-terminal external A2A tasks"),
+		f("work_scheduler_a2a_max_poll_seconds", "Work Scheduler", "int", "A2A Max Poll Seconds", "Maximum time one external A2A attempt may wait for a terminal or interrupted state"),
+
 		// ── Channels ─────────────────────────────
 		f("channels_local_enabled", "Channels", "bool", "Local Channel", "Enable local channel for CLI dispatch"),
 		f("channels_webhook_enabled", "Channels", "bool", "Webhook Channel", "Enable inbound webhook channel"),
@@ -495,6 +517,47 @@ func extractValue(yamlKey string, cfg Config) any {
 		return cfg.AgentRuntimeArchiveRetentionDays
 	case "agentruntime_archive_max_file_bytes":
 		return cfg.AgentRuntimeArchiveMaxFileBytes
+	// Work Ledger
+	case "work_ledger_enabled":
+		return cfg.WorkLedger.Enabled
+	case "work_scheduler_enabled":
+		return cfg.WorkLedger.SchedulerEnabled
+	case "work_scheduler_max_workers":
+		return cfg.WorkLedger.SchedulerMaxWorkers
+	case "work_scheduler_lease_seconds":
+		return cfg.WorkLedger.SchedulerLeaseSeconds
+	case "work_scheduler_heartbeat_seconds":
+		return cfg.WorkLedger.SchedulerHeartbeatSeconds
+	case "work_scheduler_poll_milliseconds":
+		return cfg.WorkLedger.SchedulerPollMilliseconds
+	case "work_scheduler_execution_environment":
+		return cfg.WorkLedger.SchedulerExecutionEnvironment
+	case "work_scheduler_execution_data_dir":
+		return cfg.WorkLedger.SchedulerExecutionDataDir
+	case "work_scheduler_artifact_paths_json":
+		return append([]string(nil), cfg.WorkLedger.SchedulerArtifactPaths...)
+	case "work_scheduler_external_harness_config_path":
+		return cfg.WorkLedger.SchedulerExternalHarnessConfigPath
+	case "work_scheduler_remote_workers_enabled":
+		return cfg.WorkLedger.SchedulerRemoteWorkersEnabled
+	case "work_scheduler_remote_workers_gateway_config_path":
+		return cfg.WorkLedger.SchedulerRemoteWorkersGatewayConfigPath
+	case "work_scheduler_a2a_enabled":
+		return cfg.WorkLedger.SchedulerA2AEnabled
+	case "work_scheduler_a2a_discovery_url":
+		return cfg.WorkLedger.SchedulerA2ADiscoveryURL
+	case "work_scheduler_a2a_bearer_token":
+		return cfg.WorkLedger.SchedulerA2ABearerToken
+	case "work_scheduler_a2a_allowed_hosts_json":
+		return append([]string(nil), cfg.WorkLedger.SchedulerA2AAllowedHosts...)
+	case "work_scheduler_a2a_allow_private_hosts":
+		return cfg.WorkLedger.SchedulerA2AAllowPrivateHosts
+	case "work_scheduler_a2a_allow_insecure_loopback":
+		return cfg.WorkLedger.SchedulerA2AAllowInsecureLoopback
+	case "work_scheduler_a2a_poll_milliseconds":
+		return cfg.WorkLedger.SchedulerA2APollMilliseconds
+	case "work_scheduler_a2a_max_poll_seconds":
+		return cfg.WorkLedger.SchedulerA2AMaxPollSeconds
 	// Channels
 	case "channels_local_enabled":
 		return cfg.ChannelsLocalEnabled

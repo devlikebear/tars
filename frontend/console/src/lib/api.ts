@@ -22,6 +22,7 @@ import type {
   AgentRuntimeRun,
   AgentRuntimeRunEvent,
   AgentRuntimeProviderOverride,
+  AgentRuntimeRecoveryMode,
   AgentRuntimeSubagent,
   AgentRuntimeSubagentArchiveResponse,
   AgentRuntimeSubagentDraft,
@@ -111,6 +112,11 @@ import type {
   RemoteAccessResponse,
   SessionCleanupMode,
   SessionCleanupSuggestionResponse,
+  WorkLedgerEvent,
+  WorkLedgerProjection,
+  WorkLedgerWork,
+  WorkLedgerWorksResponse,
+  WorkerControlPlaneResponse,
 } from './types'
 
 export class APIRequestError extends Error {
@@ -175,15 +181,9 @@ function normalizeSessionTasks(data: Partial<SessionTasks> | null | undefined): 
 
 function normalizeTaskEvidence(data: Partial<TaskEvidence> | null | undefined): TaskEvidence {
   return {
+	...(data ?? {}),
     id: data?.id ?? '',
     type: data?.type ?? 'command_output_summary',
-    ...(data?.title ? { title: data.title } : {}),
-    ...(data?.summary ? { summary: data.summary } : {}),
-    ...(data?.url ? { url: data.url } : {}),
-    ...(data?.command ? { command: data.command } : {}),
-    ...(data?.path ? { path: data.path } : {}),
-    ...(data?.status ? { status: data.status } : {}),
-    ...(data?.created_at ? { created_at: data.created_at } : {}),
   }
 }
 
@@ -332,6 +332,10 @@ export async function getOpsStatus(): Promise<OpsStatus> {
   return requestJSON<OpsStatus>('/v1/ops/status')
 }
 
+export async function getWorkerControlPlane(): Promise<WorkerControlPlaneResponse> {
+  return requestJSON<WorkerControlPlaneResponse>('/v1/admin/workers')
+}
+
 export async function createCleanupPlan(): Promise<CleanupPlan> {
   return requestJSON<CleanupPlan>('/v1/ops/cleanup/plan', { method: 'POST' })
 }
@@ -475,6 +479,8 @@ export type AgentRuntimeRestartRequest = {
 	provider_override?: AgentRuntimeProviderOverride
 	prompt_adjustment?: string
 	title?: string
+	mode?: AgentRuntimeRecoveryMode
+	confirm_unsafe_recovery?: boolean
 }
 
 export async function restartAgentRuntimeRun(runId: string, payload: AgentRuntimeRestartRequest): Promise<AgentRuntimeRun> {
@@ -586,6 +592,65 @@ export async function compactSession(sessionId: string): Promise<CompactResult> 
 export async function getSessionTasks(sessionId: string): Promise<SessionTasks> {
   const data = await requestJSON<Partial<SessionTasks>>(`/v1/admin/sessions/${encodeURIComponent(sessionId)}/tasks`)
   return normalizeSessionTasks(data)
+}
+
+export async function getSessionWorkLedger(sessionId: string): Promise<WorkLedgerWork | null> {
+  for (const source of ['session', 'legacy-session']) {
+    const params = new URLSearchParams({
+      source,
+      source_id: sessionId,
+      limit: '1',
+    })
+    const data = await requestJSON<WorkLedgerWorksResponse>(`/v1/work/works?${params.toString()}`)
+    if (data.works[0]) return data.works[0]
+  }
+  return null
+}
+
+export async function getWorkLedgerTimeline(workId: string): Promise<WorkLedgerProjection> {
+  return requestJSON<WorkLedgerProjection>(`/v1/work/works/${encodeURIComponent(workId)}/timeline`)
+}
+
+export async function cancelWorkLedger(workId: string, reason: string): Promise<WorkLedgerProjection> {
+  return requestJSON<WorkLedgerProjection>(`/v1/admin/work/works/${encodeURIComponent(workId)}/cancel`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reason }),
+  })
+}
+
+export async function resumeWorkLedgerStep(workId: string, stepId: string, reason: string): Promise<WorkLedgerProjection> {
+  return requestJSON<WorkLedgerProjection>(
+    `/v1/admin/work/works/${encodeURIComponent(workId)}/steps/${encodeURIComponent(stepId)}/resume`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason }),
+    },
+  )
+}
+
+export function watchWorkLedger(
+  workId: string,
+  afterSequence: number,
+  onEvent: (event: WorkLedgerEvent) => void,
+  onError?: () => void,
+): () => void {
+  const params = new URLSearchParams({ after_sequence: String(Math.max(0, afterSequence)) })
+  const stream = new EventSource(
+    `/v1/work/works/${encodeURIComponent(workId)}/watch?${params.toString()}`,
+    { withCredentials: true },
+  )
+  stream.addEventListener('work_event', (message) => {
+    if (!(message instanceof MessageEvent) || !message.data) return
+    try {
+      onEvent(JSON.parse(message.data) as WorkLedgerEvent)
+    } catch {
+      onError?.()
+    }
+  })
+  stream.onerror = () => onError?.()
+  return () => stream.close()
 }
 
 export async function getGlobalPlans(active = true): Promise<GlobalPlansResponse> {

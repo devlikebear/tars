@@ -52,6 +52,44 @@ func TestSessionTasks_CRUD(t *testing.T) {
 	}
 }
 
+func TestSessionTasks_SaveNotifiesObserverAfterDurableWrite(t *testing.T) {
+	store := NewStore(t.TempDir())
+	main, err := store.EnsureMain()
+	if err != nil {
+		t.Fatalf("ensure main: %v", err)
+	}
+
+	notifications := 0
+	store.SetTasksSavedHook(func(sessionID string, tasks SessionTasks) {
+		notifications++
+		if sessionID != main.ID || tasks.Plan == nil || tasks.Plan.Goal != "Observe durable save" {
+			t.Fatalf("observer payload session=%q tasks=%#v", sessionID, tasks)
+		}
+		persisted, getErr := store.GetTasks(sessionID)
+		if getErr != nil || persisted.Plan == nil || persisted.Plan.Goal != tasks.Plan.Goal {
+			t.Fatalf("observer ran before durable read tasks=%#v err=%v", persisted, getErr)
+		}
+	})
+
+	if err := store.SaveTasks(main.ID, SessionTasks{
+		Plan:  &Plan{Goal: "Observe durable save", Status: PlanStatusDrafting},
+		Tasks: []Task{},
+	}); err != nil {
+		t.Fatalf("save tasks: %v", err)
+	}
+	if notifications != 1 {
+		t.Fatalf("observer notifications = %d, want 1", notifications)
+	}
+
+	store.SetTasksSavedHook(nil)
+	if err := store.SaveTasks(main.ID, SessionTasks{}); err != nil {
+		t.Fatalf("save tasks after clearing observer: %v", err)
+	}
+	if notifications != 1 {
+		t.Fatalf("cleared observer notifications = %d, want 1", notifications)
+	}
+}
+
 func TestSessionTasks_JSONIncludesEmptyTasksArray(t *testing.T) {
 	raw, err := json.Marshal(SessionTasks{})
 	if err != nil {
@@ -112,6 +150,9 @@ func TestSessionTasks_ContractPersistsAndInjects(t *testing.T) {
 	if loaded.Contract.Status != ContractStatusDraft {
 		t.Fatalf("expected draft contract, got %+v", loaded.Contract)
 	}
+	if loaded.Contract.ProofPolicy == nil || !loaded.Contract.ProofPolicy.Required || loaded.Contract.ProofPolicy.Verifier != "deterministic" {
+		t.Fatalf("expected deterministic proof policy, got %+v", loaded.Contract.ProofPolicy)
+	}
 
 	injection := FormatTasksForInjection(loaded)
 	for _, want := range []string{
@@ -168,6 +209,9 @@ func TestSessionTasks_EvidencePersistsAndInjects(t *testing.T) {
 	ev := loaded.Tasks[0].Evidence[0]
 	if ev.Type != EvidenceTypeTestResult || ev.Command != "go test ./internal/session" || ev.Status != "passed" {
 		t.Fatalf("unexpected evidence after reload: %+v", ev)
+	}
+	if ev.ProofState != "reported" || ev.ProofOrigin != "legacy" {
+		t.Fatalf("legacy evidence must remain unverified: %+v", ev)
 	}
 
 	injection := FormatTasksForInjection(loaded)

@@ -51,7 +51,11 @@ func buildChatToolRegistry(
 		WorkspaceDir: requestWorkspaceDir,
 		GetSessionID: func() string { return sessionID },
 	}
-	registry.Register(tool.NewSubagentsOrchestrateTool(deps.tooling.AgentRuntime, subagentsTaskMirror))
+	if deps.tooling.WorkScheduler != nil {
+		registry.Register(tool.NewDurableSubagentsOrchestrateTool(deps.tooling.AgentRuntime, deps.tooling.WorkScheduler, subagentsTaskMirror))
+	} else {
+		registry.Register(tool.NewSubagentsOrchestrateTool(deps.tooling.AgentRuntime, subagentsTaskMirror))
+	}
 	if deps.router != nil {
 		registry.Register(tool.NewSubagentsPlanTool(deps.tooling.AgentRuntime, deps.router, subagentsTaskMirror))
 	}

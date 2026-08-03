@@ -34,7 +34,8 @@ func TestSkillExtractionAPIExtractsAndApprovesDraft(t *testing.T) {
 		t.Fatalf("write transcript: %v", err)
 	}
 
-	handler := newSkillExtractionAPIHandler(workspace, store, nil, zerolog.New(io.Discard), nil)
+	ledger := openSkillLifecycleTestLedger(t, workspace)
+	handler := newSkillExtractionAPIHandler(workspace, store, nil, zerolog.New(io.Discard), nil, ledger)
 	extractReq := httptest.NewRequest(http.MethodPost, "/v1/admin/skills/extractions/extract", strings.NewReader(`{"session_id":"`+sess.ID+`"}`))
 	extractReq.Header.Set("Content-Type", "application/json")
 	extractRec := httptest.NewRecorder()
@@ -52,28 +53,15 @@ func TestSkillExtractionAPIExtractsAndApprovesDraft(t *testing.T) {
 		t.Fatalf("unexpected extracted candidates: %+v", extracted.Candidates)
 	}
 
-	reviewReq := httptest.NewRequest(http.MethodPost, "/v1/admin/skills/extractions/review", strings.NewReader(`{"id":"`+extracted.Candidates[0].ID+`","action":"approve"}`))
-	reviewReq.Header.Set("Content-Type", "application/json")
-	reviewRec := httptest.NewRecorder()
-	handler.ServeHTTP(reviewRec, reviewReq)
-	if reviewRec.Code != http.StatusOK {
-		t.Fatalf("expected review 200, got %d body=%q", reviewRec.Code, reviewRec.Body.String())
+	reviewed := postSkillLifecycleAction(t, handler, extracted.Candidates[0].ID, "approve")
+	if reviewed.Candidate.Status != skill.ExtractionCandidateStatusApproved || reviewed.Capability.State != "canary" {
+		t.Fatalf("expected approved candidate in canary, got %+v", reviewed)
 	}
-	var reviewed struct {
-		Candidate skill.ExtractionCandidate  `json:"candidate"`
-		Draft     skillCreatorDraftResponse  `json:"draft"`
-		Saved     skillCreatorSaveResponse   `json:"saved"`
-		Files     []skillCreatorFile         `json:"files"`
-		Meta      map[string]string          `json:"meta"`
-		Raw       map[string]json.RawMessage `json:"-"`
+	if _, err := os.Stat(filepath.Join(workspace, "skills", reviewed.Capability.CapabilityName)); !os.IsNotExist(err) {
+		t.Fatalf("approval activated skill before promotion: %v", err)
 	}
-	if err := json.Unmarshal(reviewRec.Body.Bytes(), &reviewed); err != nil {
-		t.Fatalf("decode review response: %v", err)
-	}
-	if reviewed.Candidate.Status != skill.ExtractionCandidateStatusApproved || reviewed.Saved.Path == "" {
-		t.Fatalf("expected approved candidate and saved draft, got %+v", reviewed)
-	}
-	skillFile := filepath.Join(workspace, "skills", reviewed.Candidate.DraftName, "SKILL.md")
+	promoted := postSkillLifecycleAction(t, handler, extracted.Candidates[0].ID, "promote")
+	skillFile := filepath.Join(workspace, "skills", promoted.Capability.CapabilityName, "SKILL.md")
 	raw, err := os.ReadFile(skillFile)
 	if err != nil {
 		t.Fatalf("read saved skill: %v", err)
@@ -100,7 +88,8 @@ func TestSkillExtractionApproveReloadErrorIsWarningOnly(t *testing.T) {
 	}
 
 	provider := &mockExtensionsProvider{reloadErr: fmt.Errorf("simulated reload failure")}
-	handler := newSkillExtractionAPIHandler(workspace, store, nil, zerolog.New(io.Discard), provider)
+	ledger := openSkillLifecycleTestLedger(t, workspace)
+	handler := newSkillExtractionAPIHandler(workspace, store, nil, zerolog.New(io.Discard), provider, ledger)
 
 	extractReq := httptest.NewRequest(http.MethodPost, "/v1/admin/skills/extractions/extract", strings.NewReader(`{"session_id":"`+sess.ID+`"}`))
 	extractReq.Header.Set("Content-Type", "application/json")
@@ -113,15 +102,9 @@ func TestSkillExtractionApproveReloadErrorIsWarningOnly(t *testing.T) {
 		t.Fatalf("extract failed: %v candidates=%+v", err, extracted.Candidates)
 	}
 
-	reviewReq := httptest.NewRequest(http.MethodPost, "/v1/admin/skills/extractions/review",
-		strings.NewReader(`{"id":"`+extracted.Candidates[0].ID+`","action":"approve"}`))
-	reviewReq.Header.Set("Content-Type", "application/json")
-	reviewRec := httptest.NewRecorder()
-	handler.ServeHTTP(reviewRec, reviewReq)
-	// reload failure is a warning; the response should still be 200
-	if reviewRec.Code != http.StatusOK {
-		t.Fatalf("approve with failing reload expected 200, got %d body=%q", reviewRec.Code, reviewRec.Body.String())
-	}
+	postSkillLifecycleAction(t, handler, extracted.Candidates[0].ID, "approve")
+	// Reload only happens after activation. A reload failure remains a warning.
+	postSkillLifecycleAction(t, handler, extracted.Candidates[0].ID, "promote")
 }
 
 func TestSkillExtractionApproveTriggersReload(t *testing.T) {
@@ -141,7 +124,8 @@ func TestSkillExtractionApproveTriggersReload(t *testing.T) {
 	}
 
 	provider := &mockExtensionsProvider{}
-	handler := newSkillExtractionAPIHandler(workspace, store, nil, zerolog.New(io.Discard), provider)
+	ledger := openSkillLifecycleTestLedger(t, workspace)
+	handler := newSkillExtractionAPIHandler(workspace, store, nil, zerolog.New(io.Discard), provider, ledger)
 
 	extractReq := httptest.NewRequest(http.MethodPost, "/v1/admin/skills/extractions/extract", strings.NewReader(`{"session_id":"`+sess.ID+`"}`))
 	extractReq.Header.Set("Content-Type", "application/json")
@@ -157,16 +141,13 @@ func TestSkillExtractionApproveTriggersReload(t *testing.T) {
 		t.Fatalf("extract failed: %v, candidates=%+v", err, extracted.Candidates)
 	}
 
-	reviewReq := httptest.NewRequest(http.MethodPost, "/v1/admin/skills/extractions/review",
-		strings.NewReader(`{"id":"`+extracted.Candidates[0].ID+`","action":"approve"}`))
-	reviewReq.Header.Set("Content-Type", "application/json")
-	reviewRec := httptest.NewRecorder()
-	handler.ServeHTTP(reviewRec, reviewReq)
-	if reviewRec.Code != http.StatusOK {
-		t.Fatalf("approve expected 200, got %d body=%q", reviewRec.Code, reviewRec.Body.String())
+	postSkillLifecycleAction(t, handler, extracted.Candidates[0].ID, "approve")
+	if provider.reloadCount != 0 {
+		t.Fatal("did not expect provider.Reload() before promotion")
 	}
+	postSkillLifecycleAction(t, handler, extracted.Candidates[0].ID, "promote")
 	if provider.reloadCount == 0 {
-		t.Fatal("expected provider.Reload() to be called after skill approval")
+		t.Fatal("expected provider.Reload() to be called after skill promotion")
 	}
 }
 
@@ -186,7 +167,8 @@ func TestSkillExtractionApprovedSkillHasNoEvidenceSection(t *testing.T) {
 		t.Fatalf("write transcript: %v", err)
 	}
 
-	handler := newSkillExtractionAPIHandler(workspace, store, nil, zerolog.New(io.Discard), nil)
+	ledger := openSkillLifecycleTestLedger(t, workspace)
+	handler := newSkillExtractionAPIHandler(workspace, store, nil, zerolog.New(io.Discard), nil, ledger)
 
 	extractReq := httptest.NewRequest(http.MethodPost, "/v1/admin/skills/extractions/extract", strings.NewReader(`{"session_id":"`+sess.ID+`"}`))
 	extractReq.Header.Set("Content-Type", "application/json")
@@ -199,21 +181,9 @@ func TestSkillExtractionApprovedSkillHasNoEvidenceSection(t *testing.T) {
 		t.Fatalf("extract failed: %v candidates=%+v", err, extracted.Candidates)
 	}
 
-	reviewReq := httptest.NewRequest(http.MethodPost, "/v1/admin/skills/extractions/review",
-		strings.NewReader(`{"id":"`+extracted.Candidates[0].ID+`","action":"approve"}`))
-	reviewReq.Header.Set("Content-Type", "application/json")
-	reviewRec := httptest.NewRecorder()
-	handler.ServeHTTP(reviewRec, reviewReq)
-	if reviewRec.Code != http.StatusOK {
-		t.Fatalf("approve expected 200, got %d body=%q", reviewRec.Code, reviewRec.Body.String())
-	}
-	var reviewed struct {
-		Candidate skill.ExtractionCandidate `json:"candidate"`
-	}
-	if err := json.Unmarshal(reviewRec.Body.Bytes(), &reviewed); err != nil {
-		t.Fatalf("decode: %v", err)
-	}
-	skillFile := filepath.Join(workspace, "skills", reviewed.Candidate.DraftName, "SKILL.md")
+	postSkillLifecycleAction(t, handler, extracted.Candidates[0].ID, "approve")
+	promoted := postSkillLifecycleAction(t, handler, extracted.Candidates[0].ID, "promote")
+	skillFile := filepath.Join(workspace, "skills", promoted.Capability.CapabilityName, "SKILL.md")
 	content, err := os.ReadFile(skillFile)
 	if err != nil {
 		t.Fatalf("read skill file: %v", err)

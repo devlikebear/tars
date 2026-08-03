@@ -100,6 +100,7 @@ type Tool struct {
 	Name        string
 	Description string
 	Parameters  json.RawMessage
+	Recovery    ToolRecoveryPolicy
 	Execute     func(ctx context.Context, params json.RawMessage) (Result, error)
 }
 

@@ -8,6 +8,9 @@
     reviewSkillExtractionCandidate,
   } from '../lib/api'
   import type {
+    CapabilityOutcome,
+    CapabilityVersion,
+    EvaluationRun,
     SessionLocalSkillItem,
     SessionLocalSkillPromoteConflict,
     SessionLocalSkillPromoteMode,
@@ -27,6 +30,9 @@
 
   let activeTab: InboxTab = $state('extracted')
   let candidates: SkillExtractionCandidate[] = $state([])
+  let capabilities: CapabilityVersion[] = $state([])
+  let evaluations: EvaluationRun[] = $state([])
+  let outcomes: CapabilityOutcome[] = $state([])
   let localSkills: SessionLocalSkillItem[] = $state([])
   let cwd = $state('')
   let loading = $state(false)
@@ -59,12 +65,40 @@
     return (candidate.recommended_tools ?? []).join(', ')
   }
 
+  function capabilityFor(candidate: SkillExtractionCandidate): CapabilityVersion | undefined {
+    return capabilities.find((version) => version.candidate_id === candidate.id)
+  }
+
+  function evaluationsFor(version?: CapabilityVersion): EvaluationRun[] {
+    if (!version) return []
+    return evaluations.filter((run) => run.capability_version_id === version.id)
+  }
+
+  function latestEvaluation(version?: CapabilityVersion): EvaluationRun | undefined {
+    const runs = evaluationsFor(version)
+    return runs.length > 0 ? runs[runs.length - 1] : undefined
+  }
+
+  function outcomesFor(version?: CapabilityVersion): CapabilityOutcome[] {
+    if (!version) return []
+    return outcomes.filter((outcome) => outcome.capability_version_id === version.id)
+  }
+
+  function formatDelta(value?: number, suffix = ''): string {
+    if (value === undefined || !Number.isFinite(value)) return '—'
+    const prefix = value > 0 ? '+' : ''
+    return `${prefix}${value.toFixed(suffix === ' ms' ? 0 : 3)}${suffix}`
+  }
+
   async function loadExtracted() {
     loading = true
     error = ''
     try {
       const res = await listSkillExtractions('all')
       candidates = res.candidates ?? []
+      capabilities = res.capabilities ?? []
+      evaluations = res.evaluations ?? []
+      outcomes = res.outcomes ?? []
     } catch (err) {
       error = err instanceof Error ? err.message : 'Failed to load skill extraction inbox'
     } finally {
@@ -110,6 +144,9 @@
     try {
       const res = await extractSkillsFromSession(sessionId, 5)
       candidates = res.candidates ?? []
+      capabilities = res.capabilities ?? []
+      evaluations = res.evaluations ?? []
+      outcomes = res.outcomes ?? []
       success = res.count > 0 ? `Queued ${res.count} candidate${res.count === 1 ? '' : 's'}` : 'No reusable skill candidates found'
     } catch (err) {
       error = err instanceof Error ? err.message : 'Skill extraction failed'
@@ -125,11 +162,23 @@
     success = ''
     try {
       const res = await reviewSkillExtractionCandidate(candidate.id, action)
-      if (action === 'approve') {
-        success = `Saved skill draft: ${res.saved?.path ?? res.candidate.draft_path ?? res.candidate.name}`
-        onApproved?.(res.saved?.path ?? res.candidate.draft_path ?? '')
-      } else {
-        success = `Rejected ${candidate.name}`
+      switch (action) {
+        case 'evaluate':
+          success = `Evaluation pack ready for ${res.capability.capability_name}`
+          break
+        case 'approve':
+          success = `Approved operator canary for ${res.capability.capability_name}`
+          break
+        case 'promote':
+          success = `Promoted ${res.capability.capability_name} to 100% rollout`
+          onApproved?.(res.saved?.path ?? '')
+          break
+        case 'rollback':
+          success = `Rolled back ${res.capability.capability_name}`
+          break
+        case 'reject':
+          success = `Rejected ${candidate.name}`
+          break
       }
       await loadExtracted()
     } catch (err) {
@@ -299,6 +348,10 @@
     {:else}
       <div class="candidate-list">
         {#each candidates as candidate}
+          {@const capability = capabilityFor(candidate)}
+          {@const capabilityEvaluations = evaluationsFor(capability)}
+          {@const capabilityOutcomes = outcomesFor(capability)}
+          {@const latest = latestEvaluation(capability)}
           <article
             class="candidate-card"
             class:approved={candidate.status === 'approved'}
@@ -309,13 +362,22 @@
                 <strong>{candidate.title || candidate.name}</strong>
                 <span class="candidate-name">{candidate.name}</span>
               </div>
-              <span class="badge {candidate.status === 'approved' ? 'badge-success' : candidate.status === 'rejected' ? 'badge-error' : 'badge-default'}">{candidate.status}</span>
+              <div class="badges">
+                {#if capability}
+                  <span class="badge badge-soft">v{capability.version}</span>
+                  <span class="badge {capability.state === 'promoted' ? 'badge-success' : capability.state === 'rejected' || capability.state === 'rolled_back' ? 'badge-error' : 'badge-default'}">{capability.state}</span>
+                  {#if capability.rollout?.review_required}<span class="badge badge-warn">regression review</span>{/if}
+                {:else}
+                  <span class="badge {candidate.status === 'approved' ? 'badge-success' : candidate.status === 'rejected' ? 'badge-error' : 'badge-default'}">{candidate.status}</span>
+                {/if}
+              </div>
             </div>
             <p>{candidate.summary}</p>
             <div class="candidate-meta">
               {#if candidate.trigger}<span>{candidate.trigger}</span>{/if}
               {#if tools(candidate)}<span>tools: {tools(candidate)}</span>{/if}
               {#if candidate.repeated_count}<span>{candidate.repeated_count} evidence</span>{/if}
+              {#if candidate.signals?.length}<span>{candidate.signals.map((signal) => signal.kind).join(' · ')}</span>{/if}
               {#if candidate.message_range}<span>{candidate.message_range}</span>{/if}
               {#if candidate.updated_at}<span>{fmtDate(candidate.updated_at)}</span>{/if}
             </div>
@@ -332,15 +394,88 @@
                 </div>
               </details>
             {/if}
+            {#if capability}
+              <details class="evaluation" open={capability.state === 'shadow' || capability.state === 'canary'}>
+                <summary>Review evidence</summary>
+                <div class="evaluation-grid">
+                  <div>
+                    <span>Provenance</span>
+                    <strong>{candidate.provenance?.source ?? 'skill inbox'} · {candidate.source_session ?? 'unknown session'}</strong>
+                  </div>
+                  <div>
+                    <span>Rollout</span>
+                    <strong>{capability.rollout?.mode ?? 'none'} · {capability.rollout?.percent ?? 0}%</strong>
+                  </div>
+                  <div>
+                    <span>Rollback target</span>
+                    <strong>{capability.rollback_target_id ?? 'remove first version'}</strong>
+                  </div>
+                  <div>
+                    <span>Permission expansion</span>
+                    <strong>{latest?.report?.permission_expansion?.join(', ') || 'none'}</strong>
+                  </div>
+                </div>
+                {#if latest?.report?.content_diff}
+                  <pre class="capability-diff">{latest.report.content_diff}</pre>
+                {/if}
+                {#if capabilityEvaluations.length > 0}
+                  <div class="evaluation-list" aria-label="Capability evaluations">
+                    {#each capabilityEvaluations as evaluation}
+                      <div class="evaluation-row">
+                        <span class="badge {evaluation.status === 'passed' ? 'badge-success' : evaluation.status === 'failed' ? 'badge-error' : 'badge-default'}">{evaluation.stage}: {evaluation.status}</span>
+                        <span>{evaluation.metrics?.latency_ms ?? 0} ms</span>
+                        {#if evaluation.proof_id}<span>proof {evaluation.proof_id}</span>{/if}
+                      </div>
+                    {/each}
+                  </div>
+                {/if}
+                <div class="evaluation-delta">
+                  <span>Evaluation delta</span>
+                  <span>success {formatDelta(latest?.delta?.success_rate)}</span>
+                  <span>verification {formatDelta(latest?.delta?.verification_rate)}</span>
+                  <span>cost {formatDelta(latest?.delta?.cost_usd, ' USD')}</span>
+                  <span>latency {formatDelta(latest?.delta?.latency_ms, ' ms')}</span>
+                </div>
+                {#if capabilityOutcomes.length > 0}
+                  <div class="evaluation-list" aria-label="Observed Work outcomes">
+                    <span>Observed Work outcomes</span>
+                    {#each capabilityOutcomes as outcome}
+                      <div class="evaluation-row">
+                        <span class="badge {outcome.status === 'succeeded' && (outcome.verifier_status === 'passed' || outcome.verifier_status === 'reported') ? 'badge-success' : outcome.status === 'failed' || outcome.verifier_status === 'failed' || outcome.verifier_status === 'stale' ? 'badge-error' : 'badge-default'}">
+                          {outcome.status} · {outcome.verifier_status}
+                        </span>
+                        <span>Work {outcome.work_id}</span>
+                        <span>{outcome.cost_usd.toFixed(3)} USD · {outcome.latency_ms} ms</span>
+                        <span>{fmtDate(outcome.created_at)}</span>
+                      </div>
+                    {/each}
+                  </div>
+                {/if}
+              </details>
+            {/if}
             {#if candidate.draft_path}
               <div class="draft-path">{candidate.draft_path}</div>
             {/if}
-            {#if candidate.status === 'pending'}
+            {#if capability && capability.state !== 'rejected' && capability.state !== 'rolled_back'}
               <div class="candidate-actions">
-                <button class="btn btn-primary btn-sm" type="button" disabled={reviewing === candidate.id} onclick={() => review(candidate, 'approve')}>
-                  {reviewing === candidate.id ? 'Saving...' : 'Approve draft'}
-                </button>
-                <button class="btn btn-ghost btn-sm" type="button" disabled={reviewing === candidate.id} onclick={() => review(candidate, 'reject')}>Reject</button>
+                {#if capability.state === 'candidate' || capability.state === 'draft' || capability.state === 'sandbox' || capability.state === 'offline_eval'}
+                  <button class="btn btn-primary btn-sm" type="button" disabled={reviewing === candidate.id} onclick={() => review(candidate, 'evaluate')}>
+                    {reviewing === candidate.id ? 'Evaluating...' : 'Evaluate draft'}
+                  </button>
+                {:else if capability.state === 'shadow'}
+                  <button class="btn btn-primary btn-sm" type="button" disabled={reviewing === candidate.id} onclick={() => review(candidate, 'approve')}>
+                    {reviewing === candidate.id ? 'Approving...' : 'Approve canary'}
+                  </button>
+                {:else if capability.state === 'canary'}
+                  <button class="btn btn-primary btn-sm" type="button" disabled={reviewing === candidate.id || latest?.status !== 'passed'} onclick={() => review(candidate, 'promote')}>
+                    {reviewing === candidate.id ? 'Promoting...' : 'Promote 100%'}
+                  </button>
+                {:else if capability.state === 'promoted'}
+                  <button class="btn btn-ghost btn-sm" type="button" disabled={reviewing === candidate.id} onclick={() => review(candidate, 'rollback')}>Roll back</button>
+                {/if}
+                {#if capability.state !== 'promoted'}
+                  <button class="btn btn-ghost btn-sm" type="button" disabled={reviewing === candidate.id} onclick={() => review(candidate, 'reject')}>Reject</button>
+                {/if}
               </div>
             {/if}
           </article>
@@ -664,6 +799,74 @@
   .evidence {
     color: var(--text-secondary);
     font-size: var(--text-xs);
+  }
+
+  .evaluation {
+    color: var(--text-secondary);
+    font-size: var(--text-xs);
+  }
+
+  .evaluation-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: var(--space-2);
+    margin-top: var(--space-2);
+  }
+
+  .evaluation-grid > div {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+    padding: var(--space-2);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    background: var(--surface-inset);
+  }
+
+  .evaluation-grid span,
+  .evaluation-row span:not(.badge),
+  .evaluation-delta span:first-child {
+    color: var(--text-tertiary);
+  }
+
+  .evaluation-grid strong {
+    overflow-wrap: anywhere;
+    font-family: var(--font-mono);
+    font-weight: 500;
+  }
+
+  .capability-diff {
+    max-height: 120px;
+    margin: var(--space-2) 0 0;
+    padding: var(--space-2);
+    overflow: auto;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    background: var(--surface-inset);
+    color: var(--text-secondary);
+    font: var(--text-xs)/1.45 var(--font-mono);
+    white-space: pre-wrap;
+  }
+
+  .evaluation-list {
+    display: grid;
+    gap: var(--space-1);
+    margin-top: var(--space-2);
+  }
+
+  .evaluation-row,
+  .evaluation-delta {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+  }
+
+  .evaluation-delta {
+    margin-top: var(--space-2);
+    padding-top: var(--space-2);
+    border-top: 1px solid var(--border-subtle);
+    font-family: var(--font-mono);
   }
 
   .evidence-list {

@@ -41,6 +41,17 @@ func (r *Runtime) runConsensus(ctx context.Context, state *runState, executor Ag
 	if spec == nil {
 		return "", fmt.Errorf("consensus config is required")
 	}
+	if spec.Automatic {
+		if strings.TrimSpace(spec.BaselineID) == "" {
+			return "", fmt.Errorf("automatic consensus requires an OH-001 baseline id")
+		}
+		if spec.ExpectedQualityDelta <= 0 {
+			return "", fmt.Errorf("automatic consensus requires a positive expected quality delta")
+		}
+		if strings.TrimSpace(spec.DecisionReason) == "" {
+			return "", fmt.Errorf("automatic consensus requires a decision reason")
+		}
+	}
 	variants := sanitizeConsensusVariants(spec.Variants)
 	if len(variants) == 0 {
 		return "", fmt.Errorf("consensus requires at least one variant")
@@ -67,9 +78,6 @@ func (r *Runtime) runConsensus(ctx context.Context, state *runState, executor Ag
 	basePromptTokens := estimateTextTokens(state.run.Prompt)
 	outputBudgetPerVariant := maxConsensusInt(256, minInt(1024, basePromptTokens))
 	estimatedTokens := len(resolved)*(basePromptTokens+outputBudgetPerVariant) + (basePromptTokens + outputBudgetPerVariant)
-	if r.opts.AgentRuntimeConsensusBudgetTokens > 0 && estimatedTokens > r.opts.AgentRuntimeConsensusBudgetTokens {
-		return "", fmt.Errorf("consensus_budget_exceeded: %d > %d", estimatedTokens, r.opts.AgentRuntimeConsensusBudgetTokens)
-	}
 	estimatedUSD := 0.0
 	for _, variant := range resolved {
 		estimatedUSD += r.estimateCostUSD(variant.Kind, variant.Model, basePromptTokens, outputBudgetPerVariant)
@@ -77,7 +85,20 @@ func (r *Runtime) runConsensus(ctx context.Context, state *runState, executor Ag
 	if len(resolved) > 0 {
 		estimatedUSD += r.estimateCostUSD(resolved[0].Kind, resolved[0].Model, basePromptTokens, outputBudgetPerVariant)
 	}
+	decision := &ConsensusDecisionRecord{
+		Automatic: spec.Automatic, BaselineID: strings.TrimSpace(spec.BaselineID),
+		DecisionReason: strings.TrimSpace(spec.DecisionReason), ExpectedQualityDelta: spec.ExpectedQualityDelta,
+		ExpectedTokens: estimatedTokens, ExpectedCostUSD: estimatedUSD,
+		TokenBudget: r.opts.AgentRuntimeConsensusBudgetTokens, CostBudgetUSD: r.opts.AgentRuntimeConsensusBudgetUSD,
+		Fanout: len(resolved), RecordedAt: r.nowFn().UTC().Format(time.RFC3339),
+	}
+	state.run.ConsensusDecision = decision
+	if r.opts.AgentRuntimeConsensusBudgetTokens > 0 && estimatedTokens > r.opts.AgentRuntimeConsensusBudgetTokens {
+		markConsensusOutcome(decision, "rejected_token_budget", r.nowFn())
+		return "", fmt.Errorf("consensus_budget_exceeded: %d > %d", estimatedTokens, r.opts.AgentRuntimeConsensusBudgetTokens)
+	}
 	if r.opts.AgentRuntimeConsensusBudgetUSD > 0 && estimatedUSD > r.opts.AgentRuntimeConsensusBudgetUSD {
+		markConsensusOutcome(decision, "rejected_cost_budget", r.nowFn())
 		return "", fmt.Errorf("consensus_usd_budget_exceeded: %.4f > %.4f", estimatedUSD, r.opts.AgentRuntimeConsensusBudgetUSD)
 	}
 	strategy := strings.TrimSpace(spec.Strategy)
@@ -89,7 +110,12 @@ func (r *Runtime) runConsensus(ctx context.Context, state *runState, executor Ag
 		"strategy":      strategy,
 		"variant_count": intDimension(len(resolved)),
 	})
-	r.publishRunEvent(state.run.ID, RunEvent{Type: "consensus_planned", RunID: state.run.ID, VariantCount: len(resolved), TokenBudget: r.opts.AgentRuntimeConsensusBudgetTokens, CostUSDEstimate: estimatedUSD})
+	r.publishRunEvent(state.run.ID, RunEvent{
+		Type: "consensus_planned", RunID: state.run.ID, VariantCount: len(resolved),
+		TokenBudget: r.opts.AgentRuntimeConsensusBudgetTokens, CostUSDEstimate: estimatedUSD,
+		Automatic: spec.Automatic, BaselineID: strings.TrimSpace(spec.BaselineID),
+		ExpectedQualityDelta: spec.ExpectedQualityDelta,
+	})
 
 	if err := r.consensusRuns.Acquire(ctx); err != nil {
 		return "", err
@@ -142,33 +168,54 @@ func (r *Runtime) runConsensus(ctx context.Context, state *runState, executor Ag
 	}
 	wg.Wait()
 	state.run.ConsensusVariants = records
-	if err := consensusCtx.Err(); err != nil {
-		if budget := r.opts.AgentRuntimeConsensusBudgetTokens; budget > 0 && int(tokenSum.Load()) > budget {
-			return "", fmt.Errorf("consensus_budget_exceeded: %d > %d", tokenSum.Load(), budget)
-		}
-		return "", err
-	}
 	successes := make([]ConsensusVariantRecord, 0, len(records))
 	for _, record := range records {
 		state.run.ConsensusCostUSD += record.CostUSD
 		if record.Status == "completed" && strings.TrimSpace(record.Response) != "" {
 			successes = append(successes, record)
+			decision.ObservedCompleted++
+		} else {
+			decision.ObservedFailed++
 		}
 	}
+	decision.ObservedTokens = int(tokenSum.Load())
+	decision.ObservedCostUSD = state.run.ConsensusCostUSD
+	if err := consensusCtx.Err(); err != nil {
+		if budget := r.opts.AgentRuntimeConsensusBudgetTokens; budget > 0 && int(tokenSum.Load()) > budget {
+			markConsensusOutcome(decision, "token_budget_exceeded", r.nowFn())
+			return "", fmt.Errorf("consensus_budget_exceeded: %d > %d", tokenSum.Load(), budget)
+		}
+		markConsensusOutcome(decision, "timed_out_or_cancelled", r.nowFn())
+		return "", err
+	}
 	if len(successes) == 0 {
+		markConsensusOutcome(decision, "all_variants_failed", r.nowFn())
 		return "", fmt.Errorf("all consensus variants failed")
 	}
 	r.publishRunEvent(state.run.ID, RunEvent{Type: "consensus_aggregating", RunID: state.run.ID, Strategy: strategy})
 	finalResp, err := r.aggregateConsensus(consensusCtx, state, executor, strategy, successes)
+	outcome := "completed"
 	if err != nil {
 		finalResp = successes[0].Response
+		outcome = "completed_with_aggregation_fallback"
 	}
 	finalTokens := estimateTextTokens(finalResp)
 	if len(successes) > 0 {
 		state.run.ConsensusCostUSD += r.estimateCostUSD(successes[0].Kind, successes[0].Model, basePromptTokens, finalTokens)
 	}
+	decision.ObservedTokens += basePromptTokens + finalTokens
+	decision.ObservedCostUSD = state.run.ConsensusCostUSD
+	markConsensusOutcome(decision, outcome, r.nowFn())
 	r.publishRunEvent(state.run.ID, RunEvent{Type: "consensus_finished", RunID: state.run.ID, Strategy: strategy, FinalTokens: finalTokens, CostUSDActual: state.run.ConsensusCostUSD})
 	return strings.TrimSpace(finalResp), nil
+}
+
+func markConsensusOutcome(decision *ConsensusDecisionRecord, outcome string, observedAt time.Time) {
+	if decision == nil {
+		return
+	}
+	decision.ObservedOutcome = strings.TrimSpace(outcome)
+	decision.ObservedAt = observedAt.UTC().Format(time.RFC3339)
 }
 
 func (r *Runtime) executeVariantPrompt(ctx context.Context, state *runState, executor AgentExecutor, override ProviderOverride, resolved ResolvedProviderOverride) (string, error) {
@@ -176,9 +223,10 @@ func (r *Runtime) executeVariantPrompt(ctx context.Context, state *runState, exe
 		return "", fmt.Errorf("agent executor is not configured")
 	}
 	execCtx := serverauth.WithWorkspaceID(ctx, state.run.WorkspaceID)
+	execCtx = WithExecutionRoot(execCtx, r.executionRoot(state.run))
 	execCtx = usage.WithCallMeta(execCtx, usage.CallMeta{Source: "agent_run", SessionID: state.run.SessionID, RunID: state.run.ID})
 	execCtx = llm.WithSelectionMetadata(execCtx, llm.SelectionMetadata{SessionID: state.run.SessionID, RunID: state.run.ID, AgentName: state.run.Agent, FlowID: state.run.FlowID, StepID: state.run.StepID, Provider: resolved.Kind, Model: resolved.Model, Tier: llm.Tier(resolved.Tier), Source: "task"})
-	return executor.Execute(execCtx, ExecuteRequest{RunID: state.run.ID, WorkspaceID: state.run.WorkspaceID, SessionID: state.run.SessionID, Prompt: state.run.Prompt, AllowedTools: resolveRunAllowedTools(r.opts.WorkspaceDir, agentRuntimeAgentInfo(executor).ToolsAllow), Tier: resolved.Tier, ProviderOverride: &override})
+	return executor.Execute(execCtx, ExecuteRequest{RunID: state.run.ID, WorkspaceID: state.run.WorkspaceID, SessionID: state.run.SessionID, ExecutionRoot: r.executionRoot(state.run), Prompt: state.run.Prompt, AllowedTools: resolveRunAllowedTools(r.opts.WorkspaceDir, agentRuntimeAgentInfo(executor).ToolsAllow), Tier: resolved.Tier, ProviderOverride: &override})
 }
 
 func (r *Runtime) aggregateConsensus(ctx context.Context, state *runState, executor AgentExecutor, strategy string, successes []ConsensusVariantRecord) (string, error) {
@@ -197,9 +245,10 @@ func (r *Runtime) aggregateConsensus(ctx context.Context, state *runState, execu
 		return "", fmt.Errorf("agent executor is not configured")
 	}
 	execCtx := serverauth.WithWorkspaceID(ctx, state.run.WorkspaceID)
+	execCtx = WithExecutionRoot(execCtx, r.executionRoot(state.run))
 	execCtx = usage.WithCallMeta(execCtx, usage.CallMeta{Source: "agent_run", SessionID: state.run.SessionID, RunID: state.run.ID})
 	execCtx = llm.WithSelectionMetadata(execCtx, llm.SelectionMetadata{SessionID: state.run.SessionID, RunID: state.run.ID, AgentName: state.run.Agent, FlowID: state.run.FlowID, StepID: state.run.StepID, Tier: llm.Tier("light"), Source: "task"})
-	return executor.Execute(execCtx, ExecuteRequest{RunID: state.run.ID, WorkspaceID: state.run.WorkspaceID, SessionID: state.run.SessionID, Prompt: b.String(), AllowedTools: resolveRunAllowedTools(r.opts.WorkspaceDir, agentRuntimeAgentInfo(executor).ToolsAllow), Tier: "light"})
+	return executor.Execute(execCtx, ExecuteRequest{RunID: state.run.ID, WorkspaceID: state.run.WorkspaceID, SessionID: state.run.SessionID, ExecutionRoot: r.executionRoot(state.run), Prompt: b.String(), AllowedTools: resolveRunAllowedTools(r.opts.WorkspaceDir, agentRuntimeAgentInfo(executor).ToolsAllow), Tier: "light"})
 }
 
 func sanitizeConsensusVariants(variants []ProviderOverride) []ProviderOverride {

@@ -101,9 +101,10 @@ type LLMConfig struct {
 
 	// ClaudeCodeCLIPermissionMode selects the value passed to
 	// `claude -p --permission-mode` when the active tier uses the
-	// claude-code-cli provider. Allowed values: "auto" (default),
-	// "acceptEdits", "plan", "bypassPermissions". Empty/unknown values
-	// degrade to "auto" inside the provider. Other providers ignore this.
+	// claude-code-cli provider. Allowed values: "auto" (default), "default",
+	// "acceptEdits", "plan", "dontAsk", "bypassPermissions".
+	// Empty/unknown values degrade to "auto" inside the provider. Other
+	// providers ignore this.
 	ClaudeCodeCLIPermissionMode string
 }
 
@@ -278,6 +279,34 @@ type AgentRuntimeConfig struct {
 	AgentRuntimeArchiveMaxFileBytes           int
 }
 
+// WorkLedgerConfig controls the additive durable work projection. The
+// unexported presence bit lets an explicit YAML false override the enabled
+// default without changing the legacy bool-field merge behavior.
+type WorkLedgerConfig struct {
+	Enabled                                 bool
+	SchedulerEnabled                        bool
+	SchedulerMaxWorkers                     int
+	SchedulerLeaseSeconds                   int
+	SchedulerHeartbeatSeconds               int
+	SchedulerPollMilliseconds               int
+	SchedulerExecutionEnvironment           string
+	SchedulerExecutionDataDir               string
+	SchedulerArtifactPaths                  []string
+	SchedulerExternalHarnessConfigPath      string
+	SchedulerRemoteWorkersEnabled           bool
+	SchedulerRemoteWorkersGatewayConfigPath string
+	SchedulerA2AEnabled                     bool
+	SchedulerA2ADiscoveryURL                string
+	SchedulerA2ABearerToken                 string
+	SchedulerA2AAllowedHosts                []string
+	SchedulerA2AAllowPrivateHosts           bool
+	SchedulerA2AAllowInsecureLoopback       bool
+	SchedulerA2APollMilliseconds            int
+	SchedulerA2AMaxPollSeconds              int
+	enabledSet                              bool
+	schedulerEnabledSet                     bool
+}
+
 type AgentRuntimeTaskOverrideConfig struct {
 	Enabled        bool     `json:"enabled,omitempty" yaml:"enabled,omitempty"`
 	AllowedAliases []string `json:"allowed_aliases,omitempty" yaml:"allowed_aliases,omitempty"`
@@ -347,6 +376,7 @@ type Config struct {
 	CompactionConfig
 	ToolConfig
 	AgentRuntimeConfig
+	WorkLedger WorkLedgerConfig
 	ChannelConfig
 	Companion  CompanionConfig
 	Embodiment EmbodimentConfig

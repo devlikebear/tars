@@ -37,6 +37,40 @@ func TestDetectExtractionCandidatesFromSessionMessages(t *testing.T) {
 	}
 }
 
+func TestDetectExtractionCandidatesCapturesOutcomeAndCorrectionSignals(t *testing.T) {
+	now := time.Date(2026, 8, 2, 12, 0, 0, 0, time.UTC)
+	sess := session.Session{ID: "sess_signals", Title: "Provider recovery"}
+	messages := []session.Message{
+		{ID: "m1", Role: "assistant", Content: "The first provider recovery attempt failed with an authentication error.", Timestamp: now},
+		{ID: "m2", Role: "assistant", Content: "This path is blocked because refresh credentials are unavailable.", Timestamp: now.Add(time.Minute)},
+		{ID: "m3", Role: "user", Content: "아니, API 키를 저장하는 방식 말고 기존 OAuth 세션을 이어 쓰도록 수정해줘.", Timestamp: now.Add(2 * time.Minute)},
+		{ID: "m4", Role: "assistant", Content: "The OAuth recovery test passed and the issue is resolved.", Timestamp: now.Add(3 * time.Minute)},
+	}
+
+	candidates := DetectExtractionCandidates(sess, messages, ExtractionOptions{Now: now})
+	if len(candidates) != 1 {
+		t.Fatalf("signal-driven candidates = %+v, want one", candidates)
+	}
+	got := candidates[0]
+	want := map[ExtractionSignalKind]bool{
+		ExtractionSignalFailure:        false,
+		ExtractionSignalDeadEnd:        false,
+		ExtractionSignalUserCorrection: false,
+		ExtractionSignalSuccess:        false,
+	}
+	for _, signal := range got.Signals {
+		want[signal.Kind] = true
+	}
+	for kind, found := range want {
+		if !found {
+			t.Fatalf("candidate signals = %+v, missing %s", got.Signals, kind)
+		}
+	}
+	if (got.Provenance.Source != "session_signals" && got.Provenance.Source != "session") || got.Status != ExtractionCandidateStatusPending {
+		t.Fatalf("signal candidate provenance/status = %+v/%s", got.Provenance, got.Status)
+	}
+}
+
 func TestExtractionInboxAppendListAndReview(t *testing.T) {
 	root := t.TempDir()
 	now := time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)
@@ -125,4 +159,3 @@ func TestClampExtractionCandidateLimitBounds(t *testing.T) {
 		})
 	}
 }
-
