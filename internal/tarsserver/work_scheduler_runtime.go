@@ -47,6 +47,13 @@ func buildWorkSchedulerWithRemote(
 		return nil, err
 	}
 	executors := []workscheduler.Executor{executor}
+	harnessExecutor, err := buildConfiguredClaudeCodeWorkExecutor(cfg, ledger)
+	if err != nil {
+		return nil, err
+	}
+	if harnessExecutor != nil {
+		executors = append(executors, harnessExecutor)
+	}
 	remoteExecutor, err := buildConfiguredRemoteWorkExecutor(cfg, workerController, remoteRunner)
 	if err != nil {
 		return nil, err
@@ -71,6 +78,57 @@ func buildWorkSchedulerWithRemote(
 		OnError: func(err error) {
 			logger.Error().Err(err).Msg("durable work scheduler operation failed")
 		},
+	})
+}
+
+func buildConfiguredClaudeCodeWorkExecutor(cfg config.Config, ledger *workstore.Store) (*executionplane.LifecycleExecutor, error) {
+	configPath := strings.TrimSpace(cfg.WorkLedger.SchedulerExternalHarnessConfigPath)
+	if configPath == "" {
+		return nil, nil
+	}
+	workspaceDir := strings.TrimSpace(cfg.WorkspaceDir)
+	dataDir := strings.TrimSpace(cfg.WorkLedger.SchedulerExecutionDataDir)
+	if workspaceDir == "" || dataDir == "" || pathsOverlap(workspaceDir, dataDir) {
+		return nil, fmt.Errorf("configured external harness requires private execution data outside the workspace")
+	}
+	canonicalWorkspace, err := filepath.EvalSymlinks(workspaceDir)
+	if err != nil {
+		return nil, fmt.Errorf("resolve external harness workspace: %w", err)
+	}
+	canonicalConfig, err := filepath.EvalSymlinks(configPath)
+	if err != nil {
+		return nil, fmt.Errorf("resolve external harness config: %w", err)
+	}
+	if pathContains(canonicalWorkspace, canonicalConfig) {
+		return nil, fmt.Errorf("external harness config must be outside the workspace")
+	}
+	worker, err := executionplane.OpenConfiguredClaudeCodeWorker(configPath)
+	if err != nil {
+		return nil, err
+	}
+	harnessRoot := filepath.Join(dataDir, "external-harness", "claude-code")
+	provider, err := executionplane.NewManagedWorktreeProvider(workspaceDir, filepath.Join(harnessRoot, "worktrees"))
+	if err != nil {
+		return nil, err
+	}
+	stateStore, err := executionplane.NewFileStateStore(filepath.Join(harnessRoot, "state"))
+	if err != nil {
+		return nil, err
+	}
+	sink, err := executionplane.NewWorkLedgerSink(ledger, "tars-claude-code-harness")
+	if err != nil {
+		return nil, err
+	}
+	collector, err := executionplane.NewFileArtifactCollector(executionplane.ArtifactCollectorOptions{
+		RootDir: filepath.Join(harnessRoot, "artifacts"), Paths: cfg.WorkLedger.SchedulerArtifactPaths,
+		IncludeTranscript: true, IncludeGitPatch: true,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return executionplane.NewLifecycleExecutor(executionplane.Options{
+		Adapter: worker.Name(), SourceDir: workspaceDir, Provider: provider, Worker: worker,
+		ArtifactCollector: collector, ArtifactSink: sink, StateStore: stateStore, EventSink: sink,
 	})
 }
 
