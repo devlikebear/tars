@@ -10,6 +10,11 @@ This scan uses official repositories, release pages, and product documentation c
 
 No official future-dated product roadmap was found for OpenClaw or Hermes Agent. Their “direction” sections below are therefore clearly labeled inferences, not vendor promises.
 
+Implementation status was refreshed on 2026-08-03 for TARS `v0.35.0`. The
+competitor evidence and release snapshot remain fixed at the original
+2026-08-02 verification date; the gap table below is the pre-implementation
+baseline that drove the delivered roadmap.
+
 ## Release snapshot
 
 | Project | Latest stable used | Pre-release observed | Official evidence |
@@ -78,7 +83,7 @@ The strongest TARS lessons are completion contracts, effect/delivery durability,
 - Durable Markdown memory, semantic retrieval, reviewed extraction, and progressive-disclosure skills.
 - Public Go packages for building smaller embedded agents without importing server internals.
 
-### Material gaps confirmed by code and evaluation
+### Baseline gaps confirmed before v0.35.0
 
 | Gap | Evidence | Consequence |
 | --- | --- | --- |
@@ -102,7 +107,7 @@ The target architecture is:
 Trigger (chat / cron / API / webhook)
   -> Durable Work Ledger (identity, state, dependencies, policy, budget)
   -> Scheduler and recovery loop (leases, retries, wakeups)
-  -> Execution adapter (native / CLI harness / future remote worker)
+  -> Execution adapter (native / CLI harness / remote worker / A2A)
   -> Effect receipts and approvals
   -> Independent proof verifier
   -> Reviewed learning proposals
@@ -114,16 +119,19 @@ Every phase must improve or protect a metric in the evaluation pack. New surface
 
 | Phase | Status | Deliverable | GitHub issue | Exit evidence |
 | --- | --- | --- | --- | --- |
-| 0 | In progress | Evaluation pack, official-source comparison, usage decision, storage ADR | [#906](https://github.com/devlikebear/tars/issues/906) | 10+ deterministic CI scenarios and versioned baseline |
-| 1 | Proposal | Durable Work Ledger | [#905](https://github.com/devlikebear/tars/issues/905) | Atomic claim/state transitions, migrations, queryable lifecycle |
-| 2A | Proposal | Durable scheduler and restart recovery | [#904](https://github.com/devlikebear/tars/issues/904) | Active work survives restart without duplicate execution |
-| 2B | Proposal | Checkpoints and effect receipts | [#907](https://github.com/devlikebear/tars/issues/907) | Idempotency keys and receipt-backed replay |
-| 2C | Proposal | Proof verifier and completion gates | [#909](https://github.com/devlikebear/tars/issues/909) | “Done” requires independent evidence when a contract exists |
-| 3 | Proposal | Execution-plane / harness adapters | [#910](https://github.com/devlikebear/tars/issues/910) | Native and external harnesses share spawn/stream/cancel/resume/usage semantics |
-| 4 | Proposal | Reviewed self-improvement | [#908](https://github.com/devlikebear/tars/issues/908) | Eval-backed proposals, human review, promotion, rollback |
-| 5 | Proposal | Remote workers and A2A gateway | [#903](https://github.com/devlikebear/tars/issues/903) | Capability placement, authenticated transport, leases, failure recovery |
+| 0 | Delivered in `v0.35.0` | Evaluation pack, official-source comparison, usage decision, storage ADR | [#906](https://github.com/devlikebear/tars/issues/906) | 10+ deterministic CI scenarios and versioned baseline |
+| 1 | Delivered in `v0.35.0` | Durable Work Ledger | [#905](https://github.com/devlikebear/tars/issues/905) | Atomic claim/state transitions, migrations, queryable lifecycle |
+| 2A | Delivered in `v0.35.0` | Durable scheduler and restart recovery | [#904](https://github.com/devlikebear/tars/issues/904) | Active work survives restart without duplicate execution |
+| 2B | Delivered in `v0.35.0` | Checkpoints and effect receipts | [#907](https://github.com/devlikebear/tars/issues/907) | Idempotency keys and receipt-backed replay |
+| 2C | Delivered in `v0.35.0` | Proof verifier and completion gates | [#909](https://github.com/devlikebear/tars/issues/909) | “Done” requires independent evidence when a contract exists |
+| 3 | Delivered in `v0.35.0` | Execution-plane / Claude Code harness adapter | [#910](https://github.com/devlikebear/tars/issues/910) | Native and external harnesses share lifecycle, cancellation, usage, transcript, and artifact semantics; unsupported resume is explicit |
+| 4 | Delivered in `v0.35.0` | Reviewed self-improvement | [#908](https://github.com/devlikebear/tars/issues/908) | Eval-backed proposals, human review, promotion, rollback |
+| 5 | Delivered in `v0.35.0` | Remote workers and A2A gateway | [#903](https://github.com/devlikebear/tars/issues/903) | Capability placement, authenticated transport, leases, failure recovery |
 
-The umbrella is [Epic #902](https://github.com/devlikebear/tars/issues/902). Phases 1–2 are the product's reliability core and should precede remote execution or broader self-improvement.
+The umbrella is [Epic #902](https://github.com/devlikebear/tars/issues/902). The
+implementation preserved the intended dependency order: phases 1–2 establish
+the reliability core used by execution adapters, reviewed improvement, remote
+workers, and A2A.
 
 ## Default-visible surface decision
 
@@ -132,7 +140,7 @@ The latest available local usage data was re-read on 2026-08-02. The post-snapsh
 The new deterministic pack proves that direct parallel fan-out, dependency handoff, and partial-failure reporting can be evaluated without exposing a separate planner or consensus surface by default. Therefore:
 
 - keep `subagents_run` as the default delegated-work primitive;
-- keep `subagents_plan` and `subagents_orchestrate` behind explicit session opt-in until the Work Ledger makes their plans durable and evaluation shows a measurable success/recovery gain;
+- keep `subagents_plan` and `subagents_orchestrate` behind explicit session opt-in: the Work Ledger now makes their plans durable, but the available usage/evaluation evidence still does not justify default exposure;
 - keep consensus disabled and hidden by default until it beats a single strong model on verifier pass rate within a declared token/cost budget;
 - preserve the actively used session Tasks surface and evolve it into the Work Ledger view rather than adding another competing planner UI.
 

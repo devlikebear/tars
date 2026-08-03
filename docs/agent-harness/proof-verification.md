@@ -98,7 +98,7 @@ checks always take precedence and do not invoke the judge.
 
 ## Fan-out policy
 
-Current consensus remains advanced and opt-in. A future policy-selected
+Current consensus remains advanced and opt-in. A policy-selected
 (`automatic=true`) fan-out is rejected unless it records an OH-001 baseline ID,
 a positive expected quality delta, and a decision reason. The durable Run then
 retains expected tokens/cost, configured budgets, fan-out, completed/failed
@@ -115,6 +115,6 @@ available.
   delivery gate when freshness matters.
 - Command verification is intended for commands approved in a Task Contract;
   it is not a sandbox for untrusted shell text.
-- Container and managed-worktree verifier environments are execution-plane
-  concerns tracked by Phase 3. This phase establishes the identity,
-  environment, provenance, and completion-gate contracts they must implement.
+- Container and managed-worktree verifier environments use the Execution Plane
+  capability and lifecycle contracts. Environment isolation does not make
+  arbitrary command text safe; the Task Contract must still approve it.

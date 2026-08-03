@@ -160,9 +160,10 @@ type ChatOptions struct {
 	ClaudeCodeMCPServers []ClaudeCodeMCPServer
 	// ClaudeCodePermissionMode selects the value passed to `--permission-mode`
 	// for the claude-code-cli provider. Recognized values: "auto" (default),
-	// "acceptEdits", "plan", "bypassPermissions". Empty or unknown values
-	// fall back to "auto" so the provider stays callable even when callers
-	// haven't been updated. Other providers ignore this field.
+	// "default", "acceptEdits", "plan", "dontAsk", "bypassPermissions".
+	// Empty or unknown values fall back to "auto" so the provider stays
+	// callable even when callers haven't been updated. Other providers ignore
+	// this field.
 	ClaudeCodePermissionMode string
 	// ClaudeCodeSkills, when non-empty, asks the claude-code-cli provider to
 	// materialize a session-only Claude Code plugin directory containing

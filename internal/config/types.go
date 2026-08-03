@@ -101,9 +101,10 @@ type LLMConfig struct {
 
 	// ClaudeCodeCLIPermissionMode selects the value passed to
 	// `claude -p --permission-mode` when the active tier uses the
-	// claude-code-cli provider. Allowed values: "auto" (default),
-	// "acceptEdits", "plan", "bypassPermissions". Empty/unknown values
-	// degrade to "auto" inside the provider. Other providers ignore this.
+	// claude-code-cli provider. Allowed values: "auto" (default), "default",
+	// "acceptEdits", "plan", "dontAsk", "bypassPermissions".
+	// Empty/unknown values degrade to "auto" inside the provider. Other
+	// providers ignore this.
 	ClaudeCodeCLIPermissionMode string
 }
 

@@ -76,6 +76,8 @@ work_ledger:
     execution_environment: local
     execution_data_dir: $HOME/.tars/execution-plane
     artifact_paths: []
+    external_harness:
+      config_path: ""
     remote_workers:
       enabled: false
       gateway_config_path: ""

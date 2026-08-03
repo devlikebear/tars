@@ -30,6 +30,12 @@ How each `internal/llm` provider handles the fields in `llm.ChatOptions`. Caller
 | `ReasoningEffort`            | ❌ (silent) | ✅  | ✅   | ✅           | ❌ (skipped)    | partial¹      | ❌ (silent)     |
 | `ThinkingBudget`             | ✅        | ❌     | ❌   | ❌           | ❌              | ✅            | ❌ (silent)     |
 | `ServiceTier`                | ❌ (silent) | ✅  | ✅   | ✅           | ❌ (skipped)    | ❌ (silent)   | ❌ (silent)     |
+| `ResumeSessionID`            | ❌ (silent) | ❌  | ❌   | ❌           | ❌              | ❌            | ✅ `--resume`   |
+| `ClaudeCodeMCPServers`       | ❌ (silent) | ❌  | ❌   | ❌           | ❌              | ❌            | ✅ temporary config |
+| `ClaudeCodePermissionMode`   | ❌ (silent) | ❌  | ❌   | ❌           | ❌              | ❌            | ✅ validated mode |
+| `ClaudeCodeSkills`           | ❌ (silent) | ❌  | ❌   | ❌           | ❌              | ❌            | ✅ temporary plugin |
+| `ClaudeCodePermissionDeny`   | ❌ (silent) | ❌  | ❌   | ❌           | ❌              | ❌            | ✅ tightening-only settings |
+| `ClaudeCodeHarness`          | ❌ (silent) | ❌  | ❌   | ❌           | ❌              | ❌            | ✅ safe/tool/budget controls |
 | `ContentBlocks` text         | ✅        | ✅     | ✅   | ✅           | ✅              | ✅            | ❌               |
 | `ContentBlocks` image        | ✅        | ✅     | ✅   | ✅           | ✅              | ✅            | ❌               |
 | `ContentBlocks` document/PDF | ✅        | ⛔ error² | ⛔ error² | ⛔ error²  | ⛔ error²       | partial³      | ❌ (silent)     |
@@ -59,6 +65,18 @@ How each `internal/llm` provider handles the fields in `llm.ChatOptions`. Caller
 | openai-codex | `text.format: {type:"json_schema", name, schema, strict}` (Responses API flattens) |
 
 The two OpenAI surfaces use different envelopes — `internal/llm` exposes a single `ResponseFormat` struct and each client serializes accordingly.
+
+### Claude Code execution-harness controls
+
+Normal `claude-code-cli` chat keeps the existing session MCP, skill, permission,
+and resume behavior. `ClaudeCodeHarness` is a separate caller-only control used
+by the Execution Plane. It can enable safe mode, strict MCP discovery, Chrome
+disablement, an isolated child environment, explicit tool/allow lists, and
+turn/USD limits; it cannot inject arbitrary arguments, environment variables,
+settings, plugins, MCP servers, or credentials. Stream result events also map
+`num_turns` and `total_cost_usd` into `ChatResponse.Turns` and
+`ChatResponse.Usage.CostUSD` so the durable scheduler can enforce and report
+actual usage.
 
 ### `ReasoningEffort` and `ServiceTier` (OpenAI)
 
