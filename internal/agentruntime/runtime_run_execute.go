@@ -35,14 +35,14 @@ func (r *Runtime) executeRun(ctx context.Context, runID string) {
 	}
 	defer r.releaseExecutionSlot()
 
-	executor, ok := r.startRunExecution(state)
+	executor, runSnapshot, ok := r.startRunExecution(state)
 	if !ok {
 		return
 	}
 
-	executionRoot := r.executionRoot(state.run)
+	executionRoot := r.executionRoot(runSnapshot)
 	diffBefore, diffBeforeOK := captureGitDiffSnapshot(executionRoot)
-	resp, metadata, err := r.executeRunPrompt(ctx, state, executor)
+	resp, metadata, err := r.executeRunPrompt(ctx, state, runSnapshot, executor)
 	diffAfter, diffAfterOK := captureGitDiffSnapshot(executionRoot)
 
 	r.mu.Lock()
@@ -65,12 +65,12 @@ func (r *Runtime) executeRun(ctx context.Context, runID string) {
 	r.persistSnapshot()
 }
 
-func (r *Runtime) startRunExecution(state *runState) (AgentExecutor, bool) {
+func (r *Runtime) startRunExecution(state *runState) (AgentExecutor, Run, bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if state.run.Status == RunStatusCanceled {
 		r.closeRunDoneLocked(state)
-		return nil, false
+		return nil, Run{}, false
 	}
 	executor := state.executor
 	now := r.nowFn().UTC().Format(time.RFC3339)
@@ -84,11 +84,11 @@ func (r *Runtime) startRunExecution(state *runState) (AgentExecutor, bool) {
 	r.stateVersion++
 	r.publishRunEvent(state.run.ID, RunEvent{Type: "run_started", RunID: state.run.ID, Timestamp: now, Agent: state.run.Agent, Status: string(state.run.Status), Tier: state.run.Tier})
 	r.publishRunEvent(state.run.ID, RunEvent{Type: "run_checkpoint", RunID: state.run.ID, Timestamp: checkpoint.CreatedAt, Agent: state.run.Agent, Status: string(state.run.Status), CheckpointID: checkpoint.ID, CheckpointKind: checkpoint.Kind})
-	return executor, true
+	return executor, state.run, true
 }
 
-func (r *Runtime) executeRunPrompt(ctx context.Context, state *runState, executor AgentExecutor) (string, PromptExecutionMetadata, error) {
-	_ = r.appendSessionMessage(state.run.WorkspaceID, state.run.SessionID, "user", state.run.Prompt, r.nowFn().UTC())
+func (r *Runtime) executeRunPrompt(ctx context.Context, state *runState, run Run, executor AgentExecutor) (string, PromptExecutionMetadata, error) {
+	_ = r.appendSessionMessage(run.WorkspaceID, run.SessionID, "user", run.Prompt, r.nowFn().UTC())
 	if strings.EqualFold(strings.TrimSpace(state.req.Mode), "consensus") || state.req.Consensus != nil {
 		resp, err := r.runConsensus(ctx, state, executor)
 		return resp, PromptExecutionMetadata{}, err
@@ -105,44 +105,44 @@ func (r *Runtime) executeRunPrompt(ctx context.Context, state *runState, executo
 		r.opts.WorkspaceDir,
 		agentRuntimeAgentInfo(executor).ToolsAllow,
 	)
-	execCtx := serverauth.WithWorkspaceID(ctx, state.run.WorkspaceID)
-	execCtx = WithExecutionRoot(execCtx, r.executionRoot(state.run))
+	execCtx := serverauth.WithWorkspaceID(ctx, run.WorkspaceID)
+	execCtx = WithExecutionRoot(execCtx, r.executionRoot(run))
 	execCtx = usage.WithCallMeta(execCtx, usage.CallMeta{
 		Source:    "agent_run",
-		SessionID: state.run.SessionID,
-		RunID:     state.run.ID,
+		SessionID: run.SessionID,
+		RunID:     run.ID,
 	})
 	execCtx = llm.WithSelectionMetadata(execCtx, llm.SelectionMetadata{
-		SessionID: state.run.SessionID,
-		RunID:     state.run.ID,
-		AgentName: state.run.Agent,
-		FlowID:    state.run.FlowID,
-		StepID:    state.run.StepID,
+		SessionID: run.SessionID,
+		RunID:     run.ID,
+		AgentName: run.Agent,
+		FlowID:    run.FlowID,
+		StepID:    run.StepID,
 	})
 	execCtx = WithRuntimeToolCallRecorder(execCtx, func(call RuntimeToolCall) {
-		_ = r.recordRuntimeToolCall(state.run.ID, call)
+		_ = r.recordRuntimeToolCall(run.ID, call)
 	})
 	execCtx = WithRuntimeExecutionRecorder(execCtx, func(call RuntimeToolCall) error {
-		return r.recordRuntimeToolCall(state.run.ID, call)
+		return r.recordRuntimeToolCall(run.ID, call)
 	})
 	metadata := PromptExecutionMetadata{}
 	resp, err := executor.Execute(execCtx, ExecuteRequest{
-		RunID:              state.run.ID,
-		WorkspaceID:        state.run.WorkspaceID,
-		SessionID:          state.run.SessionID,
-		ExecutionRoot:      r.executionRoot(state.run),
-		Prompt:             state.run.Prompt,
+		RunID:              run.ID,
+		WorkspaceID:        run.WorkspaceID,
+		SessionID:          run.SessionID,
+		ExecutionRoot:      r.executionRoot(run),
+		Prompt:             run.Prompt,
 		SystemPromptAppend: state.req.SystemPromptAppend,
 		AllowedTools:       allowedTools,
-		Tier:               state.run.Tier,
-		ProviderOverride:   CloneProviderOverride(state.run.ProviderOverride),
+		Tier:               run.Tier,
+		ProviderOverride:   CloneProviderOverride(run.ProviderOverride),
 		Metadata:           &metadata,
 		RecoveryPlan:       cloneRecoveryExecutionPlan(state.req.RecoveryPlan),
 	})
 	if err == nil && ctx.Err() == nil {
 		assistant := strings.TrimSpace(resp)
 		if assistant != "" {
-			_ = r.appendSessionMessage(state.run.WorkspaceID, state.run.SessionID, "assistant", assistant, r.nowFn().UTC())
+			_ = r.appendSessionMessage(run.WorkspaceID, run.SessionID, "assistant", assistant, r.nowFn().UTC())
 		}
 	}
 	return resp, metadata, err
