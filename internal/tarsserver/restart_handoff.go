@@ -18,8 +18,9 @@ const restartPredecessorEnv = "TARS_RESTART_PREDECESSOR_PID"
 
 // restartHandoffTimeout bounds the wait so a predecessor that refuses to die
 // cannot wedge the successor indefinitely — better to attempt the bind and fail
-// loudly with "address already in use" than to hang with no output.
-const restartHandoffTimeout = 10 * time.Second
+// loudly with "address already in use" than to hang with no output. A variable
+// so tests can exercise the timeout without waiting on it.
+var restartHandoffTimeout = 10 * time.Second
 
 // restartHandoffPollInterval is short enough that a normal handoff (the
 // predecessor exits within milliseconds of spawning us) costs one poll.

@@ -3,10 +3,9 @@ package tool
 import (
 	"errors"
 	"fmt"
-	"os"
-	"os/exec"
-	"path/filepath"
 	"sync"
+
+	"github.com/devlikebear/tars/internal/exepath"
 )
 
 // ErrPatchUnavailable reports that the patch utility could not be located.
@@ -15,23 +14,17 @@ import (
 var ErrPatchUnavailable = errors.New("patch utility not found")
 
 // patchExecutable returns the absolute path of the patch utility, resolved
-// once per process. Like git.Executable and shellexec.Executable, it never
-// returns a bare name for the OS to resolve at exec time.
+// once per process.
 var patchExecutable = sync.OnceValues(resolvePatchExecutable)
 
 func resolvePatchExecutable() (string, error) {
-	if defaultPatchPath != "" {
-		if info, err := os.Stat(defaultPatchPath); err == nil && !info.IsDir() {
-			return defaultPatchPath, nil
-		}
+	path, err := exepath.Resolve(exepath.Candidates{
+		DefaultPath: defaultPatchPath,
+		LookupNames: []string{"patch"},
+		Fallbacks:   bundledPatchPaths,
+	})
+	if err != nil {
+		return "", fmt.Errorf("%w: %v: install patch or a git distribution that bundles it", ErrPatchUnavailable, err)
 	}
-	if path, err := exec.LookPath("patch"); err == nil && filepath.IsAbs(path) {
-		return path, nil
-	}
-	for _, path := range bundledPatchPaths() {
-		if info, err := os.Stat(path); err == nil && !info.IsDir() {
-			return path, nil
-		}
-	}
-	return "", fmt.Errorf("%w: install patch or a git distribution that bundles it", ErrPatchUnavailable)
+	return path, nil
 }

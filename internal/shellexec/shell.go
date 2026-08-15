@@ -10,10 +10,9 @@ package shellexec
 import (
 	"errors"
 	"fmt"
-	"os"
-	"os/exec"
-	"path/filepath"
 	"sync"
+
+	"github.com/devlikebear/tars/internal/exepath"
 )
 
 // ErrShellUnavailable reports that no POSIX shell could be located. Callers
@@ -22,31 +21,18 @@ import (
 // running it.
 var ErrShellUnavailable = errors.New("posix shell not found")
 
-// Executable returns the absolute path of the POSIX shell to run.
-//
-// Like git.Executable, the result is always absolute — never a bare "sh" left
-// for the OS to resolve at exec time — and is cached for the process lifetime.
+// Executable returns the absolute path of the POSIX shell to run, cached for
+// the process lifetime.
 var Executable = sync.OnceValues(resolveExecutable)
 
 func resolveExecutable() (string, error) {
-	if defaultShellPath != "" {
-		if info, err := os.Stat(defaultShellPath); err == nil && !info.IsDir() {
-			return defaultShellPath, nil
-		}
+	path, err := exepath.Resolve(exepath.Candidates{
+		DefaultPath: defaultShellPath,
+		LookupNames: shellLookupNames,
+		Fallbacks:   fallbackShellPaths,
+	})
+	if err != nil {
+		return "", fmt.Errorf("%w: %v", ErrShellUnavailable, err)
 	}
-	for _, name := range shellLookupNames {
-		path, err := exec.LookPath(name)
-		if err != nil {
-			continue
-		}
-		if filepath.IsAbs(path) {
-			return path, nil
-		}
-	}
-	for _, path := range fallbackShellPaths() {
-		if info, err := os.Stat(path); err == nil && !info.IsDir() {
-			return path, nil
-		}
-	}
-	return "", fmt.Errorf("%w: tried %v", ErrShellUnavailable, shellLookupNames)
+	return path, nil
 }
