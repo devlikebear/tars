@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	gitrepo "github.com/devlikebear/tars/internal/git"
 )
 
 const maxDiffTimelinePatchBytes = 12000
@@ -265,9 +267,13 @@ func gitNoIndexPatch(repoRoot string, path string) (string, bool) {
 	if info, err := os.Stat(absPath); err != nil || info.IsDir() {
 		return "", false
 	}
+	gitPath, err := gitrepo.Executable()
+	if err != nil {
+		return "", false
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "/usr/bin/git", "-C", repoRoot, "diff", "--no-index", "--", os.DevNull, absPath)
+	cmd := exec.CommandContext(ctx, gitPath, "-C", repoRoot, "diff", "--no-index", "--", os.DevNull, absPath)
 	out, err := cmd.CombinedOutput()
 	if len(out) == 0 {
 		return "", false
@@ -282,9 +288,13 @@ func gitNoIndexPatch(repoRoot string, path string) (string, bool) {
 }
 
 func gitOutput(workspaceDir string, args ...string) (string, bool) {
+	gitPath, err := gitrepo.Executable()
+	if err != nil {
+		return "", false
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "/usr/bin/git", append([]string{"-C", workspaceDir}, args...)...)
+	cmd := exec.CommandContext(ctx, gitPath, append([]string{"-C", workspaceDir}, args...)...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return "", false
