@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/devlikebear/tars/internal/serverauth"
+	"github.com/devlikebear/tars/internal/shellexec"
 	"github.com/rs/zerolog"
 )
 
@@ -125,7 +126,11 @@ func (n *commandNotifier) Notify(ctx context.Context, evt notificationEvent) err
 		return nil
 	}
 	if n.command != "" {
-		cmd := exec.CommandContext(ctx, "/bin/sh", "-lc", n.command)
+		shell, err := shellexec.Executable()
+		if err != nil {
+			return fmt.Errorf("notify command: %w", err)
+		}
+		cmd := exec.CommandContext(ctx, shell, "-lc", n.command)
 		cmd.Env = append(os.Environ(),
 			"TARS_NOTIFY_TITLE="+title,
 			"TARS_NOTIFY_MESSAGE="+message,

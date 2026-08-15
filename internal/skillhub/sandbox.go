@@ -11,6 +11,7 @@ import (
 
 	"github.com/devlikebear/tars/internal/config"
 	"github.com/devlikebear/tars/internal/plugin"
+	"github.com/devlikebear/tars/internal/shellexec"
 	"github.com/devlikebear/tars/internal/skill"
 )
 
@@ -335,10 +336,17 @@ func runSkillSmokeCommand(ctx context.Context, workspaceDir string, skillDir str
 		return check
 	}
 
+	shell, err := shellexec.Executable()
+	if err != nil {
+		check.Status = SandboxCheckFailed
+		check.Error = err.Error()
+		return check
+	}
+
 	start := time.Now()
 	cmdCtx, cancel := context.WithTimeout(ctx, defaultSkillSmokeTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(cmdCtx, "/bin/sh", "-c", command)
+	cmd := exec.CommandContext(cmdCtx, shell, "-c", command)
 	cmd.Dir = skillDir
 	cmd.Env = append(os.Environ(),
 		"TARS_SANDBOX=1",

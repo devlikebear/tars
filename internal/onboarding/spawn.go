@@ -6,7 +6,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"syscall"
 )
 
 // SpawnOptions describes a detached child process. The child inherits
@@ -30,7 +29,8 @@ type SpawnResult struct {
 // SpawnDetached starts a background process that survives the parent
 // exiting. Stdout/stderr go to LogPath (created if needed). Used by
 // `tars init` when running in --no-service mode (or on non-darwin
-// systems) to start `tars serve` without blocking.
+// systems) to start `tars serve` without blocking. Detaching itself is
+// OS-specific and lives in configureDetachedProcess.
 func SpawnDetached(opts SpawnOptions) (SpawnResult, error) {
 	exe := strings.TrimSpace(opts.Executable)
 	if exe == "" {
@@ -43,7 +43,7 @@ func SpawnDetached(opts SpawnOptions) (SpawnResult, error) {
 	if logPath == "" {
 		output, err = os.OpenFile(os.DevNull, os.O_WRONLY, 0)
 		if err != nil {
-			return SpawnResult{}, fmt.Errorf("open /dev/null: %w", err)
+			return SpawnResult{}, fmt.Errorf("open %s: %w", os.DevNull, err)
 		}
 	} else {
 		if err := os.MkdirAll(filepath.Dir(logPath), 0o755); err != nil {
@@ -65,7 +65,7 @@ func SpawnDetached(opts SpawnOptions) (SpawnResult, error) {
 	}
 	cmd.Stdout = output
 	cmd.Stderr = output
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	configureDetachedProcess(cmd)
 
 	if err := cmd.Start(); err != nil {
 		return SpawnResult{}, fmt.Errorf("start %s: %w", exe, err)

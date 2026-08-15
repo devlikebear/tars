@@ -1,0 +1,28 @@
+# Keep the working tree on LF everywhere, including Windows checkouts.
+# The Makefile drives bash scripts under scripts/, and git's default
+# core.autocrlf=true on Windows would check them out with CRLF, which bash
+# rejects ("bad interpreter: ...^M").
+* text=auto eol=lf
+
+# Scripts must stay LF even on Windows: bash rejects CRLF shebangs and bodies.
+*.sh text eol=lf
+
+# Windows-native scripts are the one exception.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Never touch binary assets.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.icns binary
+*.pdf binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.db binary
+*.sqlite binary

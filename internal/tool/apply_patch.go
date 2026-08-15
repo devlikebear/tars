@@ -66,11 +66,16 @@ func NewApplyPatchTool(workspaceDir string, enabled bool) Tool {
 				}
 			}
 
+			patchPath, err := patchExecutable()
+			if err != nil {
+				return JSONTextResult(applyPatchResponse{Message: err.Error()}, true), nil
+			}
+
 			args := []string{"-p0", "-u", "--forward", "--batch"}
 			if input.DryRun {
 				args = append(args, "--dry-run")
 			}
-			cmd := exec.CommandContext(ctx, "/usr/bin/patch", args...)
+			cmd := exec.CommandContext(ctx, patchPath, args...)
 			cmd.Dir = workspaceDir
 			cmd.Stdin = strings.NewReader(input.Patch)
 			var stdout bytes.Buffer

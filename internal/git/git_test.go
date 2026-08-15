@@ -167,6 +167,10 @@ func TestClientDiscardMutationRestoresWorktree(t *testing.T) {
 	runGitCmd(t, repo, "init", "-b", "main")
 	runGitCmd(t, repo, "config", "user.email", "tars@example.test")
 	runGitCmd(t, repo, "config", "user.name", "TARS Test")
+	// This is the only test here that asserts the exact bytes of a file git
+	// checked out, so it must not inherit the developer's core.autocrlf. Git
+	// for Windows defaults it to true, which would restore "hello\r\n".
+	runGitCmd(t, repo, "config", "core.autocrlf", "false")
 	if err := os.WriteFile(filepath.Join(repo, "README.md"), []byte("hello\n"), 0o644); err != nil {
 		t.Fatalf("write readme: %v", err)
 	}

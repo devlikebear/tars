@@ -297,8 +297,19 @@ func TestGitAPIMutationRejectsRootOutsideSessionWorkspace(t *testing.T) {
 
 	mgr := ops.NewManager(workspace, ops.Options{HomeDir: filepath.Join(t.TempDir(), "home")})
 	gitHandler := newGitAPIHandler(workspace, store, mgr, zerolog.New(io.Discard))
-	body := `{"session_id":"` + sess.ID + `","root":"` + outside + `","action":"stage","path":"README.md"}`
-	req := httptest.NewRequest(http.MethodPost, "/v1/git/mutations", strings.NewReader(body))
+	// Marshal rather than concatenate: `outside` is an OS path, and on Windows
+	// its backslashes are invalid JSON escapes, so a hand-built body fails
+	// decoding with 400 and never reaches the containment check under test.
+	body, err := json.Marshal(map[string]string{
+		"session_id": sess.ID,
+		"root":       outside,
+		"action":     "stage",
+		"path":       "README.md",
+	})
+	if err != nil {
+		t.Fatalf("marshal body: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/v1/git/mutations", strings.NewReader(string(body)))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	gitHandler.ServeHTTP(rec, req)

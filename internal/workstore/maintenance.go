@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"hash"
 	"io"
-	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -988,7 +987,10 @@ func verifyMigrationsDB(ctx context.Context, db *sql.DB, requireCurrent bool) er
 }
 
 func validateSQLiteFile(ctx context.Context, path string) error {
-	dsnURL := &url.URL{Scheme: "file", Path: path}
+	dsnURL, err := sqliteFileURL(path)
+	if err != nil {
+		return err
+	}
 	query := dsnURL.Query()
 	query.Set("mode", "ro")
 	query.Add("_pragma", "foreign_keys(1)")
@@ -1190,15 +1192,6 @@ func quarantinePaths(dir, sourcePath, digest string, timestamp time.Time) (strin
 	name := timestamp.UTC().Format("20060102T150405.000000000Z") + "-" + digest[:12] + "-" + base
 	copyPath := filepath.Join(dir, name)
 	return copyPath, copyPath + ".manifest.json"
-}
-
-func syncDirectory(path string) error {
-	directory, err := os.Open(path)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = directory.Close() }()
-	return directory.Sync()
 }
 
 func removeFile(path string) {

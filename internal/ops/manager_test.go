@@ -506,7 +506,7 @@ func TestManager_IsSafeCleanupPath_OnlyAllowsConfiguredRoots(t *testing.T) {
 	}
 }
 
-func TestProcessCountUsesSystemPs(t *testing.T) {
+func TestProcessCountReturnsPositiveCount(t *testing.T) {
 	count, err := processCount()
 	if err != nil {
 		t.Fatalf("process count: %v", err)

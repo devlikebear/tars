@@ -222,6 +222,11 @@ func (c *Client) RepositoryRoot(ctx context.Context, startDir string) (string, e
 	}
 	out, err := runGit(ctx, startDir, gitSubcommandRevParse, "--show-toplevel")
 	if err != nil {
+		// A missing git binary is not a statement about startDir, so it must
+		// not be reported as "not a git repository".
+		if errors.Is(err, ErrGitUnavailable) {
+			return "", err
+		}
 		return "", ErrNotRepository
 	}
 	root := strings.TrimSpace(string(out))
@@ -591,9 +596,13 @@ func runGit(ctx context.Context, startDir string, args ...string) ([]byte, error
 	if err := validateGitInvocation(startDir, args); err != nil {
 		return nil, err
 	}
+	gitPath, err := Executable()
+	if err != nil {
+		return nil, err
+	}
 	cmdArgs := append([]string{"-C", startDir}, args...)
-	cmd := exec.CommandContext(ctx, "/usr/bin/git")
-	cmd.Args = append([]string{"/usr/bin/git"}, cmdArgs...)
+	cmd := exec.CommandContext(ctx, gitPath)
+	cmd.Args = append([]string{gitPath}, cmdArgs...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return out, fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(string(out)))

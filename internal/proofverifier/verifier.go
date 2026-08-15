@@ -21,6 +21,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/devlikebear/tars/internal/shellexec"
 	"github.com/devlikebear/tars/internal/workscheduler"
 	"github.com/devlikebear/tars/internal/workstore"
 )
@@ -582,16 +583,20 @@ func cloneHTTPClient(source *http.Client, timeout time.Duration, validate func(c
 type processCommandRunner struct{}
 
 func (processCommandRunner) Run(ctx context.Context, directory, command string, timeout time.Duration) (CommandResult, error) {
+	shell, err := shellexec.Executable()
+	if err != nil {
+		return CommandResult{}, fmt.Errorf("proofverifier: %w", err)
+	}
 	commandCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	startedAt := time.Now()
-	cmd := exec.CommandContext(commandCtx, "/bin/sh", "-lc", command)
+	cmd := exec.CommandContext(commandCtx, shell, "-lc", command)
 	cmd.Dir = directory
 	cmd.Env = verifierEnvironment()
 	var stdout, stderr strings.Builder
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
-	err := cmd.Run()
+	err = cmd.Run()
 	result := CommandResult{Stdout: stdout.String(), Stderr: stderr.String(), Duration: time.Since(startedAt)}
 	if commandCtx.Err() != nil {
 		result.ExitCode = -1

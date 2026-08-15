@@ -457,6 +457,28 @@ var schemaMigrations = []struct {
 	{version: 7, sql: migrationV7},
 }
 
+// sqliteFileURL builds the file: URI SQLite expects for path.
+//
+// Constructing it as url.URL{Scheme: "file", Path: path} breaks on Windows:
+// `C:\dir\ledger.db` renders as file://C:%5Cdir%5Cledger.db, where the drive
+// letter parses as the URI host and every separator is percent-encoded, so the
+// database cannot be opened at all. A file URI wants forward slashes and a
+// leading one ahead of the drive letter: file:///C:/dir/ledger.db.
+//
+// On unix the absolute path already starts with a slash and ToSlash is a
+// no-op, so the resulting DSN is byte-for-byte what it was before.
+func sqliteFileURL(path string) (*url.URL, error) {
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		return nil, fmt.Errorf("workstore: resolve database path: %w", err)
+	}
+	uriPath := filepath.ToSlash(absolute)
+	if !strings.HasPrefix(uriPath, "/") {
+		uriPath = "/" + uriPath
+	}
+	return &url.URL{Scheme: "file", Path: uriPath}, nil
+}
+
 func Open(ctx context.Context, path string, opts Options) (*Store, error) {
 	if strings.TrimSpace(path) == "" {
 		return nil, fmt.Errorf("workstore: database path is required")
@@ -475,7 +497,10 @@ func Open(ctx context.Context, path string, opts Options) (*Store, error) {
 		return nil, fmt.Errorf("workstore: secure database permissions: %w", err)
 	}
 
-	dsnURL := &url.URL{Scheme: "file", Path: path}
+	dsnURL, err := sqliteFileURL(path)
+	if err != nil {
+		return nil, err
+	}
 	query := dsnURL.Query()
 	query.Add("_pragma", "foreign_keys(1)")
 	query.Add("_pragma", "busy_timeout(5000)")
