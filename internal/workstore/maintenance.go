@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"hash"
 	"io"
-	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -988,7 +987,10 @@ func verifyMigrationsDB(ctx context.Context, db *sql.DB, requireCurrent bool) er
 }
 
 func validateSQLiteFile(ctx context.Context, path string) error {
-	dsnURL := &url.URL{Scheme: "file", Path: path}
+	dsnURL, err := sqliteFileURL(path)
+	if err != nil {
+		return err
+	}
 	query := dsnURL.Query()
 	query.Set("mode", "ro")
 	query.Add("_pragma", "foreign_keys(1)")
