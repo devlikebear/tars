@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/devlikebear/tars/internal/config"
@@ -100,12 +99,10 @@ func (m *Manager) Status(ctx context.Context) (Status, error) {
 		return Status{}, fmt.Errorf("ops manager is nil")
 	}
 	now := m.nowFn().UTC()
-	var fs syscall.Statfs_t
-	if err := syscall.Statfs(strings.TrimSpace(m.homeDir), &fs); err != nil {
+	total, free, err := diskUsage(strings.TrimSpace(m.homeDir))
+	if err != nil {
 		return Status{}, err
 	}
-	total := fs.Blocks * uint64(fs.Bsize)
-	free := fs.Bavail * uint64(fs.Bsize)
 	usedPercent := float64(0)
 	if total > 0 {
 		usedPercent = (float64(total-free) / float64(total)) * 100

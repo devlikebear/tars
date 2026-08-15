@@ -148,6 +148,7 @@ func runServeAPICommand(
 			return &cli.ExitError{Code: 1, Err: err}
 		}
 	}
+	awaitPredecessorExit(opts.APIAddr, logger)
 	if err := apiRuntime.server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		logger.Error().Err(err).Msg("failed to serve api")
 		return &cli.ExitError{Code: 1, Err: err}

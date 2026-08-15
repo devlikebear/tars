@@ -1,3 +1,5 @@
+//go:build !windows
+
 package ops
 
 import (
@@ -6,6 +8,7 @@ import (
 	"strings"
 )
 
+// processCount counts system-wide processes by parsing `ps`.
 func processCount() (int, error) {
 	out, err := exec.Command("/bin/ps", "-A", "-o", "pid=").Output()
 	if err != nil {

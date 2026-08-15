@@ -9,7 +9,6 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/devlikebear/tars/internal/config"
@@ -214,7 +213,7 @@ func handleRestart(w http.ResponseWriter, logger zerolog.Logger) {
 				return
 			}
 			logger.Info().Str("exe", exe).Strs("args", os.Args).Msg("re-executing")
-			if err := syscall.Exec(exe, os.Args, os.Environ()); err != nil {
+			if err := execRestart(exe, os.Args, os.Environ()); err != nil {
 				logger.Error().Err(err).Msg("exec restart failed")
 			}
 		}()
