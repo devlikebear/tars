@@ -149,7 +149,10 @@ func TestEngineDiscoversGitWorkspaceAndProcessRunnerOutcomes(t *testing.T) {
 	}
 
 	for _, args := range [][]string{{"init"}, {"config", "user.name", "TARS Test"}, {"config", "user.email", "tars@example.test"}} {
-		command := append([]string{"-C", root}, args...)
+		// root goes through a POSIX shell, so it must be single-quoted: a
+		// Windows temp path is full of backslashes, which the shell would
+		// otherwise consume as escapes and hand git a mangled directory.
+		command := append([]string{"-C", "'" + root + "'"}, args...)
 		if result, err := (processCommandRunner{}).Run(context.Background(), root, "git "+strings.Join(command, " "), time.Second); err != nil || result.ExitCode != 0 {
 			t.Fatalf("git %v result=%+v err=%v", args, result, err)
 		}
