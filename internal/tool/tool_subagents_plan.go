@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"path/filepath"
+	"path"
 	"regexp"
 	"strings"
 	"time"
@@ -624,8 +624,14 @@ func normalizePlannerTarget(value string) string {
 	if !strings.Contains(target, "/") {
 		return ""
 	}
-	cleaned := filepath.Clean(target)
-	if cleaned == "." || cleaned == string(filepath.Separator) {
+	// path, not filepath: a target is only recognised as one because it
+	// contains a forward slash (above), it is matched against prompt text, and
+	// it is injected verbatim into a task prompt as the exact path to touch.
+	// filepath.Clean would rewrite "/etc/nginx/nginx.conf" to
+	// "\etc\nginx\nginx.conf" on Windows, which no longer matches the prompt it
+	// came from and is not the path the model should be told to edit.
+	cleaned := path.Clean(target)
+	if cleaned == "." || cleaned == "/" {
 		return ""
 	}
 	return cleaned
@@ -652,8 +658,8 @@ func ensurePlannerTargetsInPlan(plan *subagentFlowInput, targets []string) int {
 
 func plannerTaskForTarget(plan *subagentFlowInput, target string) *subagentFlowTaskInput {
 	var fallback *subagentFlowTaskInput
-	targetBase := strings.ToLower(strings.TrimSpace(filepath.Base(target)))
-	targetDir := strings.ToLower(strings.TrimSpace(filepath.Base(filepath.Dir(target))))
+	targetBase := strings.ToLower(strings.TrimSpace(path.Base(target)))
+	targetDir := strings.ToLower(strings.TrimSpace(path.Base(path.Dir(target))))
 	bestScore := -1
 	var best *subagentFlowTaskInput
 
