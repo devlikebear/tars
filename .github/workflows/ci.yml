@@ -48,8 +48,31 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Cross-compile public packages for Windows
+      - name: Cross-compile the module for Windows
         run: make windows-build-check
+
+  windows-test:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        # The repository's scripts are POSIX sh; bash ships with the runner's
+        # git installation. Without this, steps would run under PowerShell.
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      # Invoked directly rather than through make: GNU Make is not guaranteed
+      # on the Windows runner image, and the script is what developers run
+      # locally anyway.
+      - name: Run Go tests on Windows
+        run: ./scripts/windows_test.sh
 
   test:
     if: github.event_name == 'push'

@@ -72,7 +72,7 @@ AGENT_HARNESS_COMMIT ?= $(GIT_COMMIT)
 .PHONY: help \
 	test test-v test-one test-nocache test-race test-cover test-cover-check test-diff test-cover-diff \
 	agent-harness-eval agent-harness-baseline \
-	build build-bins windows-build-check release-asset clean tidy fmt vet lint \
+	build build-bins windows-build-check windows-test release-asset clean tidy fmt vet lint \
 	lint-diff ci-static-analysis-check github-actions-hardening-check codeql-workflow-check sonarcloud-workflow-check \
 	ensure-console-assets console-install console-build \
 	browser-install \
@@ -105,6 +105,7 @@ help:
 	@echo "  make test-cover-check - require total coverage >= COVER_MIN ($(COVER_MIN)%)"
 	@echo "  make test-diff     - test changed Go packages + coverage check against DIFF_BASE"
 	@echo "  make test-cover-diff - require changed-line coverage >= DIFF_COVER_MIN ($(DIFF_COVER_MIN)%)"
+	@echo "  make windows-test  - run the suite the way the CI Windows job does (run this on Windows)"
 	@echo "  make agent-harness-eval - run the deterministic agent/harness scenario pack"
 	@echo "  make agent-harness-baseline - write versioned JSONL + Markdown baseline reports"
 	@echo ""
@@ -213,6 +214,12 @@ build-bins: ensure-console-assets
 # platform splits in internal/onboarding, internal/ops, and internal/tarsserver.
 windows-build-check:
 	GOOS=windows GOARCH=amd64 $(GO) build ./...
+
+# windows-test runs the suite the way the CI Windows job does. It only means
+# anything when run on Windows — elsewhere it just runs most of the suite with
+# a few tests skipped for no reason.
+windows-test:
+	GO="$(GO)" ./scripts/windows_test.sh
 
 # ensure-console-assets bootstraps the embedded Svelte console only
 # when the dist/ directory is empty (e.g. fresh clone, dev build).

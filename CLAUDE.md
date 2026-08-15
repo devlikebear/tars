@@ -170,8 +170,14 @@ TARS 기능 변경 시 홈페이지 콘텐츠도 갱신 필요 (매 변경마다
 
 `.github/workflows/ci.yml`:
 1. **security** — gitleaks + ripgrep secrets scan
-2. **pr-diff** — pull requests run Svelte console checks, `npm run test:ci`, `make lint-diff` (with new-line `errcheck`/`staticcheck`), and `make test-cover-diff` against the PR base SHA
-3. **test** — pushes to main run Node 24 → frontend console checks/test slice → Playwright → Go test + coverage threshold → Codecov
+2. **windows-build** — `make windows-build-check`, cross-compiling the whole module for Windows on ubuntu
+3. **windows-test** — `scripts/windows_test.sh` on `windows-latest`. The only job that runs tests on Windows; everything else is Linux
+4. **pr-diff** — pull requests run Svelte console checks, `npm run test:ci`, `make lint-diff` (with new-line `errcheck`/`staticcheck`), and `make test-cover-diff` against the PR base SHA
+5. **test** — pushes to main run Node 24 → frontend console checks/test slice → Playwright → Go test + coverage threshold → Codecov
+
+`scripts/windows_test.sh` carries two lists of Windows-failing tests — packages excluded wholesale, and individual tests skipped in otherwise-green packages. **Both are debt, not policy**: shrink them rather than adding to them. Reproduce the job locally on Windows with `make windows-test`.
+
+Note that the Linux-only test jobs cannot cover `*_windows.go` files at all, so SonarCloud's `new_coverage` gate reads low on PRs that add platform-split code.
 
 `.github/workflows/codeql.yml`:
 1. **Analyze (go)** — CodeQL autobuild + analysis for Go source
