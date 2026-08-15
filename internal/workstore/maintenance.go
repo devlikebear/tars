@@ -1194,15 +1194,6 @@ func quarantinePaths(dir, sourcePath, digest string, timestamp time.Time) (strin
 	return copyPath, copyPath + ".manifest.json"
 }
 
-func syncDirectory(path string) error {
-	directory, err := os.Open(path)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = directory.Close() }()
-	return directory.Sync()
-}
-
 func removeFile(path string) {
 	_ = os.Remove(path)
 }
