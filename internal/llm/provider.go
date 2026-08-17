@@ -145,7 +145,7 @@ type ChatOptions struct {
 	// ServiceTier controls provider-side latency tier when supported.
 	ServiceTier string
 	// ResumeSessionID, when non-empty, asks providers that expose a resumable
-	// upstream session (currently only claude-code-cli) to continue that
+	// upstream session (currently claude-code-cli and antigravity-cli) to continue that
 	// session instead of replaying the full transcript. The caller is
 	// expected to read ChatResponse.SessionID on the first turn and feed it
 	// back here on subsequent turns. Providers that don't support resume
@@ -237,11 +237,11 @@ type ChatResponse struct {
 	// providers that do not expose this value.
 	Turns int
 	// SessionID is set by providers that expose a resumable upstream session
-	// (currently only claude-code-cli via stream-json). Empty for stateless
+	// (currently claude-code-cli and antigravity-cli via stream-json). Empty for stateless
 	// providers.
 	SessionID string
 	// ProviderExecutedTools enumerates tool invocations the upstream provider
-	// has *already* executed on its own (currently only claude-code-cli,
+	// has *already* executed on its own (currently claude-code-cli and antigravity-cli,
 	// which runs Read/Edit/Bash/Glob/etc internally and reports them as
 	// stream-json tool_use blocks). These are observation-only — callers
 	// must NOT route them through TARS' tool registry, since the work is
@@ -315,6 +315,13 @@ func NewProvider(opts ProviderOptions) (Client, error) {
 	if provider == "claude-code-cli" {
 		zlog.Debug().Str("provider", provider).Msg("llm provider ready")
 		return NewClaudeCodeCLIClient(opts.WorkDir, opts.Model)
+	}
+	// antigravity-cli authenticates through the CLI's own Google login, so it
+	// is constructed before ResolveProviderCredential — there is no TARS-held
+	// credential to resolve.
+	if provider == "antigravity-cli" {
+		zlog.Debug().Str("provider", provider).Msg("llm provider ready")
+		return NewAntigravityCLIClient(opts.WorkDir, opts.Model)
 	}
 
 	cred, err := auth.ResolveProviderCredential(authConfig)

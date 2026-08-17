@@ -36,6 +36,7 @@ type Client = internal.Client
 type ProviderOptions = internal.ProviderOptions
 type ProviderError = internal.ProviderError
 type ClaudeCodeCLIClient = internal.ClaudeCodeCLIClient
+type AntigravityCLIClient = internal.AntigravityCLIClient
 type ModelFetcher = internal.ModelFetcher
 type Role = internal.Role
 
@@ -102,4 +103,10 @@ func FindClaudeCodeCLIPath() (string, error) { return internal.FindClaudeCodeCLI
 
 func NewClaudeCodeCLIClient(workDir, model string) (*ClaudeCodeCLIClient, error) {
 	return internal.NewClaudeCodeCLIClient(workDir, model)
+}
+
+func FindAntigravityCLIPath() (string, error) { return internal.FindAntigravityCLIPath() }
+
+func NewAntigravityCLIClient(workDir, model string) (*AntigravityCLIClient, error) {
+	return internal.NewAntigravityCLIClient(workDir, model)
 }
