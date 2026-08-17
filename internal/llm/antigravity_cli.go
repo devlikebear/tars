@@ -62,9 +62,10 @@ var antigravityCLIPerfEnv = []struct{ key, value string }{
 }
 
 type AntigravityCLIClient struct {
-	cliPath string
-	workDir string
-	model   string
+	cliPath        string
+	workDir        string
+	model          string
+	commandContext func(context.Context, string, ...string) *exec.Cmd
 }
 
 // FindAntigravityCLIPath resolves the agy executable, honouring AGY_CLI_PATH
@@ -97,9 +98,10 @@ func NewAntigravityCLIClient(workDir, model string) (*AntigravityCLIClient, erro
 		trimmedWorkDir = "."
 	}
 	return &AntigravityCLIClient{
-		cliPath: cliPath,
-		workDir: trimmedWorkDir,
-		model:   strings.TrimSpace(model),
+		cliPath:        cliPath,
+		workDir:        trimmedWorkDir,
+		model:          strings.TrimSpace(model),
+		commandContext: exec.CommandContext,
 	}, nil
 }
 
@@ -150,7 +152,7 @@ func (c *AntigravityCLIClient) Chat(ctx context.Context, messages []ChatMessage,
 	ctx, cancel := context.WithTimeout(ctx, timeout+antigravityCLIWaitDelay)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, c.cliPath, args...)
+	cmd := c.commandContext(ctx, c.cliPath, args...)
 	cmd.Dir = c.workDir
 	cmd.Env = antigravityCLIEnv(os.Environ())
 	// On cancellation kill the whole descendant tree, not just the direct

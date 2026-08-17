@@ -3,7 +3,9 @@ package llm
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"runtime"
@@ -618,6 +620,62 @@ func TestAntigravityCLIClient_ChatRejectsAnEmptyPrompt(t *testing.T) {
 	} else if !strings.Contains(err.Error(), "prompt is empty") {
 		t.Errorf("error = %v, want an empty-prompt error", err)
 	}
+}
+
+func TestAntigravityCLIClient_ChatExecutesCLI(t *testing.T) {
+	dir := t.TempDir()
+	stub := filepath.Join(dir, "agy-stub"+exeSuffix())
+	if err := os.WriteFile(stub, []byte("stub"), 0o755); err != nil {
+		t.Fatalf("write stub: %v", err)
+	}
+	t.Setenv(antigravityCLIPathEnv, stub)
+	t.Setenv(antigravityCLITimeoutEnv, "2s")
+	t.Setenv("GO_WANT_ANTIGRAVITY_HELPER_PROCESS", "1")
+
+	client, err := NewAntigravityCLIClient(dir, "gemini-3-pro")
+	if err != nil {
+		t.Fatalf("NewAntigravityCLIClient: %v", err)
+	}
+	var gotPath string
+	var gotArgs []string
+	client.commandContext = func(ctx context.Context, path string, args ...string) *exec.Cmd {
+		gotPath = path
+		gotArgs = append([]string(nil), args...)
+		return exec.CommandContext(ctx, os.Args[0], "-test.run=TestAntigravityCLIHelperProcess")
+	}
+
+	messages := []ChatMessage{
+		{Role: "system", Content: "Be concise."},
+		{Role: "user", Content: "Say ACK."},
+	}
+	resp, err := client.Chat(context.Background(), messages, ChatOptions{ReasoningEffort: "high"})
+	if err != nil {
+		t.Fatalf("Chat: %v", err)
+	}
+	if resp.Message.Content != "ACK" || resp.SessionID != agyConvID {
+		t.Errorf("response = %+v", resp)
+	}
+	if gotPath != stub {
+		t.Errorf("executable = %q, want %q", gotPath, stub)
+	}
+	wantArgs := buildAntigravityCLIArgs(antigravityCLIArgSpec{
+		Model:           "gemini-3-pro",
+		Prompt:          composeAntigravityCLIPrompt(collectAntigravityCLISystemPrompt(messages), buildAntigravityCLITranscript(messages)),
+		ReasoningEffort: "high",
+		PrintTimeout:    2 * time.Second,
+	})
+	if !reflect.DeepEqual(gotArgs, wantArgs) {
+		t.Errorf("args = %#v, want %#v", gotArgs, wantArgs)
+	}
+}
+
+func TestAntigravityCLIHelperProcess(t *testing.T) {
+	if os.Getenv("GO_WANT_ANTIGRAVITY_HELPER_PROCESS") != "1" {
+		return
+	}
+	fmt.Fprintln(os.Stdout, agyInitEvent())
+	fmt.Fprintln(os.Stdout, agyResultEvent("ACK"))
+	os.Exit(0)
 }
 
 // Opt-in live coverage for the locally authenticated CLI. Normal CI skips it:
