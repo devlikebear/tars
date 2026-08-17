@@ -11,7 +11,8 @@ llm:
   # Each alias defines "where to call + how to authenticate" — no model
   # here. At minimum one provider must be defined. Credentials come
   # from environment variables. Supported kinds: anthropic, openai,
-  # kimi, openai-codex, gemini, gemini-native, claude-code-cli.
+  # kimi, openai-codex, gemini, gemini-native, claude-code-cli,
+  # antigravity-cli.
   providers:
     codex:
       kind: openai-codex

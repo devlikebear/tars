@@ -15,30 +15,31 @@ How each `internal/llm` provider handles the fields in `llm.ChatOptions`. Caller
 | `gemini`          | Gemini OpenAI-compat       | `openai_compat_client.go` (label)   |
 | `gemini-native`   | Google Gemini REST         | `gemini_native*.go`                 |
 | `claude-code-cli` | local `claude` CLI         | `claude_code_cli.go`                |
+| `antigravity-cli` | local `agy` CLI            | `antigravity_cli.go`                |
 
 ## ChatOptions × Provider
 
-| Field                        | anthropic | openai | kimi  | openai-codex | gemini (compat) | gemini-native | claude-code-cli |
-|------------------------------|-----------|--------|------|--------------|-----------------|---------------|-----------------|
-| `OnDelta` (streaming)        | ✅        | ✅     | ✅   | ✅           | ✅              | ✅            | ✅              |
-| `Tools`                      | ✅        | ✅     | ✅   | ✅           | ✅              | ✅            | ❌ (silent)     |
-| `ToolChoice` auto/none/required | ✅     | ✅     | ✅   | ✅           | ✅              | ✅            | ❌ (silent)     |
-| `ToolChoice` specific        | ✅        | ✅     | ✅   | ✅           | ✅              | ✅            | ❌ (silent)     |
-| `ResponseFormat` text        | ✅ (default) | ✅  | ✅   | ✅           | ✅              | ❌ (silent)   | ❌ (silent)     |
-| `ResponseFormat` json_object | ❌ (silent) | ✅  | ✅   | ✅           | ✅              | ❌ (silent)   | ❌ (silent)     |
-| `ResponseFormat` json_schema | ❌ (silent) | ✅  | ✅   | ✅           | ✅              | ❌ (silent)   | ❌ (silent)     |
-| `ReasoningEffort`            | ❌ (silent) | ✅  | ✅   | ✅           | ❌ (skipped)    | partial¹      | ❌ (silent)     |
-| `ThinkingBudget`             | ✅        | ❌     | ❌   | ❌           | ❌              | ✅            | ❌ (silent)     |
-| `ServiceTier`                | ❌ (silent) | ✅  | ✅   | ✅           | ❌ (skipped)    | ❌ (silent)   | ❌ (silent)     |
-| `ResumeSessionID`            | ❌ (silent) | ❌  | ❌   | ❌           | ❌              | ❌            | ✅ `--resume`   |
-| `ClaudeCodeMCPServers`       | ❌ (silent) | ❌  | ❌   | ❌           | ❌              | ❌            | ✅ temporary config |
-| `ClaudeCodePermissionMode`   | ❌ (silent) | ❌  | ❌   | ❌           | ❌              | ❌            | ✅ validated mode |
-| `ClaudeCodeSkills`           | ❌ (silent) | ❌  | ❌   | ❌           | ❌              | ❌            | ✅ temporary plugin |
-| `ClaudeCodePermissionDeny`   | ❌ (silent) | ❌  | ❌   | ❌           | ❌              | ❌            | ✅ tightening-only settings |
-| `ClaudeCodeHarness`          | ❌ (silent) | ❌  | ❌   | ❌           | ❌              | ❌            | ✅ safe/tool/budget controls |
-| `ContentBlocks` text         | ✅        | ✅     | ✅   | ✅           | ✅              | ✅            | ❌               |
-| `ContentBlocks` image        | ✅        | ✅     | ✅   | ✅           | ✅              | ✅            | ❌               |
-| `ContentBlocks` document/PDF | ✅        | ⛔ error² | ⛔ error² | ⛔ error²  | ⛔ error²       | partial³      | ❌ (silent)     |
+| Field                        | anthropic | openai | kimi  | openai-codex | gemini (compat) | gemini-native | claude-code-cli | antigravity-cli |
+|------------------------------|-----------|--------|------|--------------|-----------------|---------------|-----------------|-----------------|
+| `OnDelta` (streaming)        | ✅        | ✅     | ✅   | ✅           | ✅              | ✅            | ✅              | ✅ |
+| `Tools`                      | ✅        | ✅     | ✅   | ✅           | ✅              | ✅            | ❌ (silent)     | ❌ (silent) |
+| `ToolChoice` auto/none/required | ✅     | ✅     | ✅   | ✅           | ✅              | ✅            | ❌ (silent)     | ❌ (silent) |
+| `ToolChoice` specific        | ✅        | ✅     | ✅   | ✅           | ✅              | ✅            | ❌ (silent)     | ❌ (silent) |
+| `ResponseFormat` text        | ✅ (default) | ✅  | ✅   | ✅           | ✅              | ❌ (silent)   | ❌ (silent)     | ✅ (default) |
+| `ResponseFormat` json_object | ❌ (silent) | ✅  | ✅   | ✅           | ✅              | ❌ (silent)   | ❌ (silent)     | ❌ (silent) |
+| `ResponseFormat` json_schema | ❌ (silent) | ✅  | ✅   | ✅           | ✅              | ❌ (silent)   | ❌ (silent)     | ✅ `--json-schema` |
+| `ReasoningEffort`            | ❌ (silent) | ✅  | ✅   | ✅           | ❌ (skipped)    | partial¹      | ❌ (silent)     | ✅ `--effort` |
+| `ThinkingBudget`             | ✅        | ❌     | ❌   | ❌           | ❌              | ✅            | ❌ (silent)     | ❌ (silent) |
+| `ServiceTier`                | ❌ (silent) | ✅  | ✅   | ✅           | ❌ (skipped)    | ❌ (silent)   | ❌ (silent)     | ❌ (silent) |
+| `ResumeSessionID`            | ❌ (silent) | ❌  | ❌   | ❌           | ❌              | ❌            | ✅ `--resume`   | ✅ `--conversation` |
+| `ClaudeCodeMCPServers`       | ❌ (silent) | ❌  | ❌   | ❌           | ❌              | ❌            | ✅ temporary config | ❌ (silent) |
+| `ClaudeCodePermissionMode`   | ❌ (silent) | ❌  | ❌   | ❌           | ❌              | ❌            | ✅ validated mode | ❌ (silent) |
+| `ClaudeCodeSkills`           | ❌ (silent) | ❌  | ❌   | ❌           | ❌              | ❌            | ✅ temporary plugin | ❌ (silent) |
+| `ClaudeCodePermissionDeny`   | ❌ (silent) | ❌  | ❌   | ❌           | ❌              | ❌            | ✅ tightening-only settings | ❌ (silent) |
+| `ClaudeCodeHarness`          | ❌ (silent) | ❌  | ❌   | ❌           | ❌              | ❌            | ✅ safe/tool/budget controls | ❌ (silent) |
+| `ContentBlocks` text         | ✅        | ✅     | ✅   | ✅           | ✅              | ✅            | ❌               | ❌ |
+| `ContentBlocks` image        | ✅        | ✅     | ✅   | ✅           | ✅              | ✅            | ❌               | ❌ |
+| `ContentBlocks` document/PDF | ✅        | ⛔ error² | ⛔ error² | ⛔ error²  | ⛔ error²       | partial³      | ❌ (silent)     | ❌ (silent) |
 
 ¹ Gemini-native maps `ReasoningEffort` to `thinkingBudget` heuristically; explicit `ThinkingBudget` overrides.
 ² Returns a `pdf_unsupported_by_provider` ProviderError at build time (RF-046). Convert PDFs to text/images before sending.
@@ -63,6 +64,7 @@ How each `internal/llm` provider handles the fields in `llm.ChatOptions`. Caller
 | openai (Chat)| `response_format: {type:"json_schema", json_schema:{name,schema,strict}}` |
 | kimi (Chat)  | `response_format: {type:"json_schema", json_schema:{name,schema,strict}}` |
 | openai-codex | `text.format: {type:"json_schema", name, schema, strict}` (Responses API flattens) |
+| antigravity-cli | `--json-schema '<schema>'` (applies to terminal `result`) |
 
 The two OpenAI surfaces use different envelopes — `internal/llm` exposes a single `ResponseFormat` struct and each client serializes accordingly.
 
@@ -77,6 +79,43 @@ settings, plugins, MCP servers, or credentials. Stream result events also map
 `num_turns` and `total_cost_usd` into `ChatResponse.Turns` and
 `ChatResponse.Usage.CostUSD` so the durable scheduler can enforce and report
 actual usage.
+
+### Antigravity CLI
+
+`antigravity-cli` shells out to a locally installed `agy` the same way
+`claude-code-cli` shells out to `claude`, via
+`agy --output-format stream-json --print <text>`. The provider targets the
+structured headless protocol introduced in Antigravity CLI 1.1.8.
+
+- **No credential passes through TARS.** `agy` owns its Google login and reads
+  cached credentials from the system keyring. Authenticate once in an
+  interactive `agy` session before using this provider. The kind takes no
+  `api_key` and no `base_url`.
+- **Model selection is explicit.** Use a slug reported by `agy models` in each
+  TARS tier. TARS does not hard-code a default slug because the available set
+  changes with the account and CLI release.
+- **No system-prompt flag.** System messages are folded into a leading prompt
+  block. On resumed turns that block and the old transcript are not replayed.
+- **Resumable sessions.** The stream's `conversation_id` becomes
+  `ChatResponse.SessionID`; subsequent turns pass it through
+  `--conversation`, avoiding transcript replay.
+- **Execution mode fails safe.** `AGY_CLI_MODE` may select `accept-edits` or
+  `plan`. Unknown values omit `--mode`, leaving the CLI's own permission policy
+  in force. TARS deliberately exposes no path to
+  `--dangerously-skip-permissions`.
+- **Tools are the CLI's, not TARS'.** `ChatOptions.Tools` and `ToolChoice` are
+  ignored. Calls already executed by `agy` are reported on
+  `ChatResponse.ProviderExecutedTools` for audit only and are never
+  re-dispatched through TARS. The effective file/command authority comes from
+  the user's Antigravity permission settings.
+- **Structured output and reasoning.** `ResponseFormat` `json_schema` maps to
+  `--json-schema`; `ReasoningEffort` maps to `--effort low|medium|high`.
+- **Usage** comes from the terminal result's `usage` object. Input, output, and
+  cache-read tokens map into `llm.Usage`; `thinking_tokens` and `total_tokens`
+  have no provider-neutral destination today. The CLI reports no cost, so
+  `Usage.CostUSD` stays 0.
+- `AGY_CLI_PATH`, `AGY_CLI_TIMEOUT`, and `AGY_CLI_MODE` are the provider's
+  environment overrides.
 
 ### `ReasoningEffort` and `ServiceTier` (OpenAI)
 

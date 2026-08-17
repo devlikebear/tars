@@ -95,8 +95,8 @@ type RunOptions struct {
 	ProviderTool     func(ctx context.Context, event Event) error
 	ReplayToolResult func(ctx context.Context, request ToolReplayRequest) (ToolReplayResult, bool)
 	// ResumeSessionID seeds the first iteration's ChatOptions.ResumeSessionID
-	// so resumable providers (claude-code-cli) continue an existing upstream
-	// session rather than starting a new one. Subsequent iterations
+	// so resumable providers (claude-code-cli and antigravity-cli) continue an
+	// existing upstream session rather than starting a new one. Subsequent iterations
 	// auto-update from the previous response's SessionID so the whole loop
 	// stays attached to the same upstream session.
 	ResumeSessionID string
@@ -182,8 +182,8 @@ func (l *Loop) Run(ctx context.Context, initial []llm.ChatMessage, opts RunOptio
 		}
 		l.emit(ctx, afterLLMEvent)
 
-		// Surface tools the upstream provider already executed (claude-code-cli
-		// runs Read/Edit/Bash/etc inside its own subprocess and reports them
+		// Surface tools the upstream provider already executed (CLI-backed
+		// providers run tools inside their own subprocesses and report them
 		// via stream-json tool_use blocks). These do NOT enter the tool
 		// execution branch below; they're observation-only audit signals.
 		for _, ptc := range resp.ProviderExecutedTools {

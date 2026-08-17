@@ -288,7 +288,7 @@ func applyAgentRuntimeDefaults(cfg *Config, defaults Config) {
 //
 // For each provider pool entry:
 //   - AuthMode defaults based on Kind (openai-codex → oauth,
-//     claude-code-cli → cli, everything else → api-key)
+//     claude-code-cli and antigravity-cli → cli, everything else → api-key)
 //   - BaseURL defaults to the canonical endpoint for the Kind
 //   - APIKey defaults to the conventional env var for the Kind
 //     when the user did not set one explicitly

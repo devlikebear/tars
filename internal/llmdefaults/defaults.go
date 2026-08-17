@@ -6,13 +6,14 @@ import (
 )
 
 const (
-	ProviderOpenAI        = "openai"
-	ProviderOpenAICodex   = "openai-codex"
-	ProviderClaudeCodeCLI = "claude-code-cli"
-	ProviderGemini        = "gemini"
-	ProviderGeminiNative  = "gemini-native"
-	ProviderAnthropic     = "anthropic"
-	ProviderKimi          = "kimi"
+	ProviderOpenAI         = "openai"
+	ProviderOpenAICodex    = "openai-codex"
+	ProviderClaudeCodeCLI  = "claude-code-cli"
+	ProviderAntigravityCLI = "antigravity-cli"
+	ProviderGemini         = "gemini"
+	ProviderGeminiNative   = "gemini-native"
+	ProviderAnthropic      = "anthropic"
+	ProviderKimi           = "kimi"
 
 	OpenAIBaseURL       = "https://api.openai.com/v1"
 	OpenAIModel         = "gpt-4o-mini"
@@ -58,6 +59,13 @@ var kindDefaults = map[string]KindDefaults{
 	ProviderClaudeCodeCLI: {
 		AuthMode:                 "cli",
 		Model:                    ClaudeCodeCLIModel,
+		AuthModeWhenAPIKeyAbsent: "cli",
+	},
+	// antigravity-cli carries no BaseURL, Model or APIKeyEnv: the CLI holds
+	// its own Google login and talks to its own backend, so TARS never sees a
+	// credential or an endpoint, and the CLI picks its own default model.
+	ProviderAntigravityCLI: {
+		AuthMode:                 "cli",
 		AuthModeWhenAPIKeyAbsent: "cli",
 	},
 	ProviderGemini: {

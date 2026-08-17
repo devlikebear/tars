@@ -114,8 +114,9 @@ type LLMConfig struct {
 // provider can serve multiple models.
 //
 // Kind identifies the provider type ("anthropic", "openai", "openai-codex",
-// "gemini", "gemini-native", "kimi", "claude-code-cli") and maps to the value
-// passed to llm.NewProvider.Provider. The config package does not
+// "gemini", "gemini-native", "kimi", "claude-code-cli",
+// "antigravity-cli") and maps
+// to the value passed to llm.NewProvider.Provider. The config package does not
 // validate Kind against a closed list — llm.NewProvider returns a clear
 // error for unknown kinds, keeping the config package free of an
 // internal/llm import.

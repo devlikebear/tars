@@ -40,7 +40,7 @@ cd frontend/console && npm run test:ci # stable frontend CI test slice
 | `pulse` | Watchdog (1-min): cron failures, stuck runs, disk, telegram, reflection → `pulse_decide` |
 | `reflection` | Nightly (02:00-05:00): experience extraction + empty session cleanup |
 | `ops` | System health, cleanup planning + approval workflow |
-| `llm` | Provider abstraction (anthropic/openai/openai-codex/gemini/gemini-native/claude-code-cli) + 3-tier Router |
+| `llm` | Provider abstraction (anthropic/openai/openai-codex/gemini/gemini-native/claude-code-cli/antigravity-cli) + 3-tier Router |
 | `memory` | Semantic: Gemini embeddings, cosine similarity, JSONL entries |
 | `tool` | Built-in tools: file ops, exec, web fetch/search, agent runtime, telegram, memory |
 | `serverauth` | Bearer token auth, SHA256, three tiers (legacy/user/admin), loopback bypass |
@@ -67,6 +67,17 @@ cd frontend/console && npm run test:ci # stable frontend CI test slice
 - Permission mode: `llm.claude_code_cli.permission_mode` (`auto`/`default`/`acceptEdits`/`plan`/`dontAsk`/`bypassPermissions`) → `--permission-mode`. 빈 값/오타는 `auto`로 graceful degrade
 - Durable coding harness: `work_ledger.scheduler.external_harness.config_path`가 비어 있지 않을 때만 `claude-code` scheduler adapter를 등록한다. owner-only JSON은 workspace 밖에 두고, 실행은 별도 managed worktree에서 `--safe-mode --strict-mcp-config --no-chrome --permission-mode dontAsk`와 scoped tool/turn/cost 제한을 강제한다. 로컬 Claude 인증은 재사용하지만 임의 env/argv/MCP/plugin/credential 주입은 허용하지 않는다
 - **단일 사용자 전용**: Agent SDK 크레딧이 개인 계정 귀속이라 다중 사용자 서버로는 부적합. claude.ai 로그인을 외부에 *제공*하는 형태로 노출 금지(Anthropic 정책)
+
+**antigravity-cli provider:**
+- 로컬 `agy` CLI 재사용. `agy --output-format stream-json --print <text>`로 헤드리스 호출하고 중첩 NDJSON 이벤트(`init`/`step_update`/`result`)를 파싱한다. 최소 지원 프로토콜은 CLI 1.1.8에서 도입됐다
+- **자격증명이 TARS를 통과하지 않는다**: CLI가 시스템 키링의 자기 Google 로그인을 쓰므로 `api_key`/`base_url`이 없다. 사용자는 먼저 대화형 `agy`에서 인증해야 한다
+- 시스템 프롬프트 플래그가 없어서 system 메시지를 프롬프트 앞 블록으로 접어 넣는다
+- **세션 재개 지원**: stream의 `conversation_id`를 `ChatResponse.SessionID`에 싣고 다음 턴 `--conversation <id>`로 넘긴다. 재개 턴에는 저장된 과거 transcript/system block을 다시 보내지 않는다
+- `ReasoningEffort` → `--effort low|medium|high`, JSON schema 응답 → `--json-schema`. 모델은 `agy models`가 보여주는 slug를 tier에 명시하고 TARS는 변동 가능한 기본 모델을 하드코딩하지 않는다
+- `AGY_CLI_MODE`는 `accept-edits`/`plan`만 허용한다. 오타·미인식 값은 flag를 생략해 CLI의 기본 permission policy로 떨어지고, `--dangerously-skip-permissions`로 승격하는 경로는 의도적으로 없다
+- 도구는 CLI 것이며 TARS tool registry로 재실행하지 않는다. 실행 기록은 `ProviderExecutedTools`에 observation-only로 올린다. 실제 권한은 사용자의 Antigravity 설정이 결정한다
+- `AGY_CLI_PATH` / `AGY_CLI_TIMEOUT` / `AGY_CLI_MODE`이 provider 환경 override다
+- 테스트는 stream 파서가 순수 함수라 서브프로세스 없이 검증한다 — POSIX 셸 스텁이 필요한 claude-code-cli 테스트와 달리 Windows에서도 돌아간다
 
 **Extension pattern — IMPORTANT:**
 - **Do NOT add domain features as builtin Go tools or MCP tools** — every registered tool inflates system prompt on every chat turn
