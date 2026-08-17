@@ -673,8 +673,9 @@ func TestAntigravityCLIHelperProcess(t *testing.T) {
 	if os.Getenv("GO_WANT_ANTIGRAVITY_HELPER_PROCESS") != "1" {
 		return
 	}
-	fmt.Fprintln(os.Stdout, agyInitEvent())
-	fmt.Fprintln(os.Stdout, agyResultEvent("ACK"))
+	if _, err := fmt.Fprintln(os.Stdout, agyStream(agyInitEvent(), agyResultEvent("ACK"))); err != nil {
+		os.Exit(1)
+	}
 	os.Exit(0)
 }
 
