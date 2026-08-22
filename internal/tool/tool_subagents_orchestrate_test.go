@@ -232,7 +232,7 @@ func TestSubagentsOrchestrateTool_MirrorsTaskLifecycleToSessionTasks(t *testing.
 
 func waitForMirroredTaskStatus(t *testing.T, store *session.Store, sid, status string) session.SessionTasks {
 	t.Helper()
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(subagentTestEventTimeout)
 	for {
 		tasks, err := store.GetTasks(sid)
 		if err != nil {

@@ -44,7 +44,7 @@ func newAgentRuntimeForSubagentToolTests(
 		AgentRuntimeSubagentsMaxDepth:   maxDepth,
 	})
 	t.Cleanup(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), subagentTestEventTimeout)
 		defer cancel()
 		if err := rt.Close(ctx); err != nil {
 			t.Fatalf("close agent runtime: %v", err)
@@ -94,7 +94,7 @@ func newAgentRuntimeForSubagentCompareToolTests(
 		AgentRuntimeSubagentsMaxDepth:   1,
 	})
 	t.Cleanup(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), subagentTestEventTimeout)
 		defer cancel()
 		if err := rt.Close(ctx); err != nil {
 			t.Fatalf("close agent runtime: %v", err)
@@ -349,7 +349,7 @@ func TestSubagentsRunTool_ExposesConsensusSchemaWhenRuntimeGateEnabled(t *testin
 		AgentRuntimeConsensusMaxFanout: 2,
 	})
 	t.Cleanup(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), subagentTestEventTimeout)
 		defer cancel()
 		if err := rt.Close(ctx); err != nil {
 			t.Fatalf("close agent runtime: %v", err)

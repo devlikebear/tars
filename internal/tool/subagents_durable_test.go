@@ -68,7 +68,7 @@ func TestDurableSubagentsOrchestrateReturnsWorkAndOutlivesRequest(t *testing.T) 
 		select {
 		case prompt := <-started:
 			seen[prompt] = true
-		case <-time.After(2 * time.Second):
+		case <-time.After(subagentTestEventTimeout):
 			t.Fatalf("durable research tasks did not start: %v", seen)
 		}
 	}
@@ -81,10 +81,10 @@ func TestDurableSubagentsOrchestrateReturnsWorkAndOutlivesRequest(t *testing.T) 
 		if prompt != "combine backend findings and docs findings" {
 			t.Fatalf("durable placeholder prompt=%q", prompt)
 		}
-	case <-time.After(2 * time.Second):
+	case <-time.After(subagentTestEventTimeout):
 		t.Fatal("durable dependent task did not start")
 	}
-	waitCtx, waitCancel := context.WithTimeout(context.Background(), 2*time.Second)
+	waitCtx, waitCancel := context.WithTimeout(context.Background(), subagentTestEventTimeout)
 	defer waitCancel()
 	projection, err := scheduler.Wait(waitCtx, accepted.WorkID)
 	if err != nil {
@@ -197,7 +197,7 @@ func startDurableToolScheduler(t *testing.T, ledger *workstore.Store, workspaceI
 		scheduler.Close()
 		select {
 		case <-done:
-		case <-time.After(time.Second):
+		case <-time.After(subagentTestEventTimeout):
 			t.Fatal("durable scheduler did not stop")
 		}
 	})
