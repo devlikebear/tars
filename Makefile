@@ -363,13 +363,22 @@ dev-serve-once:
 dev-serve-loop:
 	$(GO) run ./cmd/tars serve --verbose --run-loop $(if $(TARS_CONFIG),--config $(TARS_CONFIG),) --heartbeat-interval $(HEARTBEAT_INTERVAL) --max-heartbeats $(MAX_HEARTBEATS) --workspace-dir $(WORKSPACE_DIR) $(ARGS)
 
+# dev-console runs Vite directly rather than through `npm run dev`, and execs
+# it so the background job's PID is Vite itself. One targeted kill then stops
+# it on every platform. The previous cleanup was `kill 0`, which signals the
+# whole process group - under Git Bash on Windows that takes the calling
+# shell down with it.
+#
+# The direct invocation is equivalent to the "dev" script in
+# frontend/console/package.json; keep the two in step.
 dev-console: console-install
 	@echo "Starting Vite dev server (hot-reload) + Go API server..."
 	@echo "  Console: http://$(API_ADDR)/console"
 	@echo "  Vite:    http://127.0.0.1:5173 (proxied via Go server)"
 	@echo ""
-	@trap 'kill 0' EXIT; \
-	cd frontend/console && npm run dev & \
+	@( cd frontend/console && exec ./node_modules/.bin/vite ) & \
+	vite_pid=$$!; \
+	trap 'kill $$vite_pid 2>/dev/null || true' EXIT INT TERM; \
 	echo "Waiting for Vite on port 5173..."; \
 	for i in $$(seq 1 30); do \
 		if curl -s -o /dev/null http://127.0.0.1:5173 2>/dev/null; then break; fi; \
