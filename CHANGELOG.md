@@ -6,6 +6,10 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+### Added
+
+- **`antigravity-cli` provider** — Reuses a locally installed `agy` CLI the way `claude-code-cli` reuses `claude`, via `agy --print <text> --output-format stream-json`. The CLI owns its Google login in the system keyring, so the kind takes no `api_key` and no `base_url` and no credential passes through TARS. Multi-turn resumes through the stream's `conversation_id` (`--conversation`), `ReasoningEffort` maps to `--effort`, and a `json_schema` response format maps to `--json-schema`. Tools remain the CLI's own and are reported on `ChatResponse.ProviderExecutedTools` for audit only, never re-dispatched through TARS' registry. `AGY_CLI_MODE` accepts only `accept-edits` or `plan`; there is deliberately no path to `--dangerously-skip-permissions`. Requires Antigravity CLI 1.1.12 or newer.
+
 ## [0.35.0] - 2026-08-03
 
 ### Added

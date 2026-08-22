@@ -84,8 +84,13 @@ actual usage.
 
 `antigravity-cli` shells out to a locally installed `agy` the same way
 `claude-code-cli` shells out to `claude`, via
-`agy --output-format stream-json --print <text>`. The provider targets the
-structured headless protocol introduced in Antigravity CLI 1.1.8.
+`agy --output-format stream-json --print <text>`.
+
+**Minimum CLI version: 1.1.12.** `stream-json` itself arrived in 1.1.8, but the
+`tool_info` object this provider reads for the tool audit trail and the
+`cache_read_tokens` field it maps into `llm.Usage` were both added in 1.1.12.
+On 1.1.8-1.1.11 the turn still succeeds but those two lose their data
+silently. Verified end to end against 1.1.13.
 
 - **No credential passes through TARS.** `agy` owns its Google login and reads
   cached credentials from the system keyring. Authenticate once in an

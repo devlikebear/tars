@@ -679,54 +679,6 @@ func TestAntigravityCLIHelperProcess(t *testing.T) {
 	os.Exit(0)
 }
 
-// Opt-in live coverage for the locally authenticated CLI. Normal CI skips it:
-// it requires a user-owned Antigravity login and consumes account quota.
-// Run with TARS_TEST_ANTIGRAVITY_LIVE=1 and optionally AGY_CLI_PATH=<path>.
-func TestAntigravityCLIClient_LiveConversationResume(t *testing.T) {
-	if os.Getenv("TARS_TEST_ANTIGRAVITY_LIVE") != "1" {
-		t.Skip("set TARS_TEST_ANTIGRAVITY_LIVE=1 to exercise the authenticated CLI")
-	}
-
-	client, err := NewProvider(ProviderOptions{
-		Provider: "antigravity-cli",
-		WorkDir:  ".",
-	})
-	if err != nil {
-		t.Fatalf("NewProvider: %v", err)
-	}
-
-	firstMessages := []ChatMessage{
-		{Role: "user", Content: "Remember the codeword ORCHID for the next turn. Reply with exactly: ACK"},
-	}
-	first, err := client.Chat(context.Background(), firstMessages, ChatOptions{})
-	if err != nil {
-		t.Fatalf("first Chat: %v", err)
-	}
-	if got := strings.TrimSpace(first.Message.Content); got != "ACK" {
-		t.Fatalf("first response = %q, want ACK", got)
-	}
-	if strings.TrimSpace(first.SessionID) == "" {
-		t.Fatal("first response did not expose a resumable conversation id")
-	}
-
-	secondMessages := append(firstMessages,
-		ChatMessage{Role: "assistant", Content: first.Message.Content},
-		ChatMessage{Role: "user", Content: "Reply with only the codeword I asked you to remember. No punctuation."},
-	)
-	second, err := client.Chat(context.Background(), secondMessages, ChatOptions{
-		ResumeSessionID: first.SessionID,
-	})
-	if err != nil {
-		t.Fatalf("resumed Chat: %v", err)
-	}
-	if got := strings.TrimSpace(second.Message.Content); got != "ORCHID" {
-		t.Fatalf("resumed response = %q, want ORCHID", got)
-	}
-	if second.SessionID != first.SessionID {
-		t.Fatalf("resumed session id = %q, want %q", second.SessionID, first.SessionID)
-	}
-}
-
 // exeSuffix keeps the stub resolvable by exec.LookPath, which on Windows only
 // accepts names carrying a PATHEXT extension.
 func exeSuffix() string {

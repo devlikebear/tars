@@ -69,7 +69,7 @@ cd frontend/console && npm run test:ci # stable frontend CI test slice
 - **단일 사용자 전용**: Agent SDK 크레딧이 개인 계정 귀속이라 다중 사용자 서버로는 부적합. claude.ai 로그인을 외부에 *제공*하는 형태로 노출 금지(Anthropic 정책)
 
 **antigravity-cli provider:**
-- 로컬 `agy` CLI 재사용. `agy --output-format stream-json --print <text>`로 헤드리스 호출하고 중첩 NDJSON 이벤트(`init`/`step_update`/`result`)를 파싱한다. 최소 지원 프로토콜은 CLI 1.1.8에서 도입됐다
+- 로컬 `agy` CLI 재사용. `agy --output-format stream-json --print <text>`로 헤드리스 호출하고 중첩 NDJSON 이벤트(`init`/`step_update`/`result`)를 파싱한다. **최소 CLI 버전은 1.1.12** — `stream-json` 자체는 1.1.8에 나왔지만 도구 감사에 쓰는 `tool_info`와 usage의 `cache_read_tokens`가 1.1.12 추가라 그 이전에서는 턴은 성공해도 두 값이 조용히 비어 온다. 1.1.13으로 실제 왕복 검증함
 - **자격증명이 TARS를 통과하지 않는다**: CLI가 시스템 키링의 자기 Google 로그인을 쓰므로 `api_key`/`base_url`이 없다. 사용자는 먼저 대화형 `agy`에서 인증해야 한다
 - 시스템 프롬프트 플래그가 없어서 system 메시지를 프롬프트 앞 블록으로 접어 넣는다
 - **세션 재개 지원**: stream의 `conversation_id`를 `ChatResponse.SessionID`에 싣고 다음 턴 `--conversation <id>`로 넘긴다. 재개 턴에는 저장된 과거 transcript/system block을 다시 보내지 않는다
@@ -78,6 +78,7 @@ cd frontend/console && npm run test:ci # stable frontend CI test slice
 - 도구는 CLI 것이며 TARS tool registry로 재실행하지 않는다. 실행 기록은 `ProviderExecutedTools`에 observation-only로 올린다. 실제 권한은 사용자의 Antigravity 설정이 결정한다
 - `AGY_CLI_PATH` / `AGY_CLI_TIMEOUT` / `AGY_CLI_MODE`이 provider 환경 override다
 - 테스트는 stream 파서가 순수 함수라 서브프로세스 없이 검증한다 — POSIX 셸 스텁이 필요한 claude-code-cli 테스트와 달리 Windows에서도 돌아간다
+- 실제 `agy`를 띄우는 라이브 테스트는 `//go:build integration`: `go test -tags integration ./internal/llm/ -run TestAntigravityCLILive -v` (CLI 미설치 시 skip)
 
 **Extension pattern — IMPORTANT:**
 - **Do NOT add domain features as builtin Go tools or MCP tools** — every registered tool inflates system prompt on every chat turn
