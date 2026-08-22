@@ -89,7 +89,11 @@ func startMemoryPrefetchForNextTurn(
 			ForceRelevantMemory: shouldForceMemoryToolCall(userMessage),
 		})
 		if result.RelevantMemoryCount > 0 {
-			cache.Put(userMessage, sessionID, result)
+			// Only the recall payload is cached — the prompt this goroutine
+			// assembled is discarded. It was built without the session's work
+			// dirs or current dir, so storing it would hand the next turn a
+			// prompt missing whole sections; the live path rebuilds instead.
+			cache.Put(userMessage, sessionID, memoryRecallFromResult(result))
 		}
 	}()
 }

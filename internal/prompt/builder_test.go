@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestBuild(t *testing.T) {
@@ -275,9 +276,10 @@ func TestBuildResult_PrioritizesHigherOrderStaticSections(t *testing.T) {
 		}
 	}
 
-	// Floor must stay above the hardcoded header (Current time + Response
-	// Formatting + Planning + Long-running Commands). Each addition to
-	// the always-on header forces a bump here; 850 accommodates the
+	// Floor must stay above the always-on scaffolding (Response Formatting +
+	// Planning + Long-running Commands, plus the Current Time tail, which is
+	// charged up front even though it renders last). Each addition to
+	// that scaffolding forces a bump here; 850 accommodates the
 	// post-Phase-2 layout while still keeping the prioritization
 	// assertion meaningful (USER fits, IDENTITY/TOOLS get clamped).
 	result := BuildResultFor(BuildOptions{
@@ -304,11 +306,11 @@ func TestBuildResult_ClampsRelevantMemoryToRemainingTotalBudget(t *testing.T) {
 	}
 
 	// Budget here is a stress test for the clamping logic, not a target
-	// for production. The total floor must accommodate the hardcoded
-	// header (Current time + Response Formatting + Planning + Long-running
-	// Commands ≈ ~430 tokens) plus the static USER section, otherwise
+	// for production. The total floor must accommodate the always-on
+	// scaffolding (Response Formatting + Planning + Long-running Commands +
+	// Current Time ≈ ~430 tokens) plus the static USER section, otherwise
 	// relevant memory has nothing left to clamp. 850 keeps the assertion
-	// meaningful with headroom for future header tweaks.
+	// meaningful with headroom for future tweaks.
 	result := BuildResultFor(BuildOptions{
 		WorkspaceDir:         root,
 		Query:                "what coffee do i prefer?",
@@ -322,5 +324,137 @@ func TestBuildResult_ClampsRelevantMemoryToRemainingTotalBudget(t *testing.T) {
 	}
 	if result.RelevantTokens > 0 && result.StaticTokens+result.RelevantTokens > 1000 {
 		t.Fatalf("expected relevant memory to fit remaining budget, got static=%d relevant=%d", result.StaticTokens, result.RelevantTokens)
+	}
+}
+
+// withFixedTime pins the builder's clock for the duration of the test.
+func withFixedTime(t *testing.T, at time.Time) {
+	t.Helper()
+	prev := timeNow
+	timeNow = func() time.Time { return at }
+	t.Cleanup(func() { timeNow = prev })
+}
+
+// LP-001: the cacheable region must not move when the clock does. Two builds
+// hours apart have to agree byte-for-byte through the end of the static
+// sections, or every provider's prefix cache misses on every turn.
+func TestBuildResult_StaticPrefixSurvivesClockChange(t *testing.T) {
+	root := t.TempDir()
+	for name, content := range map[string]string{
+		"IDENTITY.md": "# IDENTITY.md\n\nName: TARS",
+		"USER.md":     "# USER.md\n\nName: Alice",
+	} {
+		if err := os.WriteFile(filepath.Join(root, name), []byte(content), 0o644); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+
+	withFixedTime(t, time.Date(2026, 8, 22, 10, 23, 45, 0, time.UTC))
+	first := BuildResultFor(BuildOptions{WorkspaceDir: root})
+
+	withFixedTime(t, time.Date(2026, 8, 22, 17, 4, 9, 0, time.UTC))
+	second := BuildResultFor(BuildOptions{WorkspaceDir: root})
+
+	if first.StaticPrompt != second.StaticPrompt {
+		t.Fatalf("static region changed with the clock:\nfirst=%q\nsecond=%q", first.StaticPrompt, second.StaticPrompt)
+	}
+	if first.DynamicTail == second.DynamicTail {
+		t.Fatal("expected the dynamic tail to carry the clock change")
+	}
+	if !strings.HasPrefix(first.Prompt, first.StaticPrompt) {
+		t.Fatal("expected Prompt to lead with StaticPrompt")
+	}
+	if first.Prompt != first.StaticPrompt+first.DynamicTail {
+		t.Fatal("expected Prompt to be StaticPrompt+DynamicTail")
+	}
+	if strings.Contains(first.StaticPrompt, "Current time:") {
+		t.Fatalf("expected no timestamp in the static region, got %q", first.StaticPrompt)
+	}
+}
+
+// The clock still has to reach the model — just from the tail.
+func TestBuildResult_KeepsCurrentTimeInTail(t *testing.T) {
+	root := t.TempDir()
+	withFixedTime(t, time.Date(2026, 8, 22, 10, 23, 45, 0, time.UTC))
+
+	result := BuildResultFor(BuildOptions{WorkspaceDir: root})
+
+	// Truncated to the minute so a burst of turns shares one prefix.
+	const want = "Current time: 2026-08-22T10:23:00Z"
+	if !strings.Contains(result.Prompt, want) {
+		t.Fatalf("expected %q in prompt, got %q", want, result.Prompt)
+	}
+	if !strings.Contains(result.DynamicTail, want) {
+		t.Fatalf("expected the clock in the dynamic tail, got %q", result.DynamicTail)
+	}
+}
+
+func TestBuildResult_SubAgentPromptStillCarriesTime(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "AGENTS.md"), []byte("# AGENTS.md\n\nrules"), 0o644); err != nil {
+		t.Fatalf("write AGENTS.md: %v", err)
+	}
+	withFixedTime(t, time.Date(2026, 8, 22, 10, 23, 45, 0, time.UTC))
+
+	result := BuildResultFor(BuildOptions{WorkspaceDir: root, SubAgent: true})
+
+	if !strings.Contains(result.Prompt, "Current time: 2026-08-22T10:23:00Z") {
+		t.Fatalf("expected sub-agent prompt to carry the clock, got %q", result.Prompt)
+	}
+}
+
+// Callers that cache recall must be able to replay it without re-running the
+// search and without touching the static region.
+func TestBuildResult_PresetRelevantReplacesSearch(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "MEMORY.md"), []byte("User prefers black coffee.\n"), 0o644); err != nil {
+		t.Fatalf("write MEMORY.md: %v", err)
+	}
+	withFixedTime(t, time.Date(2026, 8, 22, 10, 23, 45, 0, time.UTC))
+
+	live := BuildResultFor(BuildOptions{WorkspaceDir: root, Query: "what coffee do i prefer?"})
+	if live.RelevantSection == "" {
+		t.Fatal("expected the live path to produce a prior-context section")
+	}
+
+	// No Query and no searcher: the preset alone must reproduce the prompt.
+	replayed := BuildResultFor(BuildOptions{
+		WorkspaceDir: root,
+		PresetRelevant: &PresetRelevantMemory{
+			Section: live.RelevantSection,
+			Items:   live.RelevantMemoryItems,
+			Tokens:  live.RelevantTokens,
+		},
+	})
+
+	if replayed.Prompt != live.Prompt {
+		t.Fatalf("replayed prompt differs:\nlive=%q\nreplayed=%q", live.Prompt, replayed.Prompt)
+	}
+	if replayed.RelevantMemoryCount != live.RelevantMemoryCount {
+		t.Fatalf("expected %d recalled items, got %d", live.RelevantMemoryCount, replayed.RelevantMemoryCount)
+	}
+}
+
+// The tail must close the prompt: recall first, clock last, so an identical
+// query re-run inside the same minute matches all the way through.
+func TestBuildResult_DynamicTailOrdersRecallBeforeClock(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "MEMORY.md"), []byte("User prefers black coffee.\n"), 0o644); err != nil {
+		t.Fatalf("write MEMORY.md: %v", err)
+	}
+	withFixedTime(t, time.Date(2026, 8, 22, 10, 23, 45, 0, time.UTC))
+
+	result := BuildResultFor(BuildOptions{WorkspaceDir: root, Query: "what coffee do i prefer?"})
+
+	recallAt := strings.Index(result.DynamicTail, "## Prior Context")
+	clockAt := strings.Index(result.DynamicTail, "## Current Time")
+	if recallAt < 0 || clockAt < 0 {
+		t.Fatalf("expected both dynamic sections in the tail, got %q", result.DynamicTail)
+	}
+	if recallAt > clockAt {
+		t.Fatalf("expected recall before the clock, got %q", result.DynamicTail)
+	}
+	if !strings.HasSuffix(result.Prompt, result.DynamicTail) {
+		t.Fatal("expected the dynamic tail to close the prompt")
 	}
 }

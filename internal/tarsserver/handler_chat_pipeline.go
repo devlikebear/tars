@@ -108,7 +108,7 @@ func handleChatRequest(w http.ResponseWriter, r *http.Request, deps chatHandlerD
 
 	// Emit context info for frontend monitoring
 	stream.contextInfo(map[string]any{
-		"system_prompt_tokens":            promptTokenEstimate(state.llmMessages[0].Content),
+		"system_prompt_tokens":            systemPromptTokens(state.llmMessages),
 		"history_tokens":                  sumHistoryTokens(state.history),
 		"history_messages":                len(state.history),
 		"tool_count":                      len(state.injectedSchemas),

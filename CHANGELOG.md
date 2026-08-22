@@ -10,6 +10,11 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 - **`antigravity-cli` provider** — Reuses a locally installed `agy` CLI the way `claude-code-cli` reuses `claude`, via `agy --print <text> --output-format stream-json`. The CLI owns its Google login in the system keyring, so the kind takes no `api_key` and no `base_url` and no credential passes through TARS. Multi-turn resumes through the stream's `conversation_id` (`--conversation`), `ReasoningEffort` maps to `--effort`, and a `json_schema` response format maps to `--json-schema`. Tools remain the CLI's own and are reported on `ChatResponse.ProviderExecutedTools` for audit only, never re-dispatched through TARS' registry. `AGY_CLI_MODE` accepts only `accept-edits` or `plan`; there is deliberately no path to `--dangerously-skip-permissions`. Requires Antigravity CLI 1.1.12 or newer.
 
+### Fixed
+
+- **프롬프트 캐시가 매 턴 무효화되던 문제 (#920)** — 시스템 프롬프트 첫 줄이 초 단위 wall-clock 타임스탬프라 어떤 프로바이더의 prefix 캐시에도 걸리지 않았고, 정적 본문 전체가 매 턴 write 요금으로 재과금됐다. 시각은 이제 프롬프트 맨 뒤 `## Current Time` 블록으로 내려가 분 단위로 truncate되고, `## Prior Context` 회상도 skills/style/goal/critic 등 세션 고정 섹션 **뒤**로 재배치된다. Anthropic 요청은 system을 블록 배열로 보내 `cache_control` breakpoint를 안정 블록에만 찍으므로 동적 tail이 캐시 prefix를 깨지 않는다. 정렬 규칙은 `prompt.BuildResultFor`에 불변식으로 문서화했다.
+- **메모리 prefetch가 세션 작업 디렉터리를 지우던 문제 (#920)** — 채팅 메모리 캐시가 조립된 프롬프트를 통째로 저장하는 바람에, work dir을 모르는 prefetch 고루틴의 결과가 캐시에 올라가면 그 다음 턴 프롬프트에서 `## Working Directories` 섹션이 통째로 사라졌다. 이제 캐시는 회상 payload만 보관하고 프롬프트는 항상 live 옵션으로 다시 조립한다 — 캐시 hit과 miss가 구조적으로 동일한 프롬프트를 낸다.
+
 ## [0.35.0] - 2026-08-03
 
 ### Added

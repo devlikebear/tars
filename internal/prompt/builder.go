@@ -27,6 +27,22 @@ type BuildOptions struct {
 	StaticBudgetTokens   int
 	RelevantBudgetTokens int
 	TotalBudgetTokens    int
+	// PresetRelevant short-circuits the "## Prior Context" recall. When set,
+	// the builder reuses this payload verbatim instead of querying
+	// MemorySearcher. Callers that cache recall across turns must use this
+	// rather than caching the assembled prompt: the static region depends on
+	// live options (WorkDirs, CurrentDir, PlanClarifyMode, workspace files),
+	// so replaying a stored prompt ships a stale one and defeats the very
+	// provider prompt cache it was meant to help.
+	PresetRelevant *PresetRelevantMemory
+}
+
+// PresetRelevantMemory is a previously computed "## Prior Context" section,
+// handed back to the builder so a repeat semantic search can be skipped.
+type PresetRelevantMemory struct {
+	Section string
+	Items   []RelevantMemoryItem
+	Tokens  int
 }
 
 // RelevantMemoryItem is the structured form of one line injected into the
@@ -39,8 +55,15 @@ type RelevantMemoryItem struct {
 }
 
 // BuildResult captures prompt assembly output and budget usage.
+//
+// Prompt is StaticPrompt+DynamicTail. The two are also exposed separately so
+// the chat assembler can keep appending its own static sections (skills,
+// session style, goal, critic) *before* the dynamic tail — see the ordering
+// invariant on BuildResultFor.
 type BuildResult struct {
 	Prompt               string
+	StaticPrompt         string
+	DynamicTail          string
 	StaticTokens         int
 	RelevantTokens       int
 	RelevantMemoryCount  int
@@ -57,18 +80,31 @@ func Build(opts BuildOptions) string {
 
 // BuildResultFor assembles a system prompt and returns budget usage details.
 //
+// ORDERING INVARIANT: static sections first, dynamic sections last.
+//
+// Provider prompt caching is prefix-matched — Anthropic against an explicit
+// cache_control breakpoint, OpenAI and Gemini automatically. Anything that
+// changes between two turns of the same session therefore has to sit behind
+// everything that does not, or the cacheable prefix ends at the first byte
+// that moved. Until LP-001 the wall-clock timestamp was the prompt's *first*
+// line, so no prefix ever matched and the entire static body was re-charged
+// at write rates on every single turn.
+//
+// Static (in order): Response Formatting, Planning, Long-running Commands,
+// workspace bootstrap sections, Working Directories.
+// Dynamic (BuildResult.DynamicTail, appended last): "## Prior Context"
+// recall, then "## Current Time".
+//
 // The identity line (\"You are TARS, a personal AI assistant.\") was
 // removed from the hardcoded header in ID-002(a). It now lives in the
 // workspace IDENTITY.md default content, which is loaded as the
 // \"## Identity\" bootstrap section below — that lets users override
 // their assistant’s identity without recompiling. Response Formatting
-// rules and the dynamic \"Current time\" line stay in code: they describe
-// runtime constraints, not user-tunable persona.
+// rules and the dynamic time line stay in code: they describe runtime
+// constraints, not user-tunable persona.
 func BuildResultFor(opts BuildOptions) BuildResult {
 	var b strings.Builder
 
-	b.WriteString(fmt.Sprintf("Current time: %s\n", time.Now().UTC().Format(time.RFC3339)))
-	b.WriteString("\n")
 	b.WriteString("## Response Formatting\n\n")
 	b.WriteString("Always use rich Markdown in your responses:\n")
 	b.WriteString("- Use headings, bold, lists, and tables to structure information clearly.\n")
@@ -129,7 +165,11 @@ func BuildResultFor(opts BuildOptions) BuildResult {
 	if totalBudgetTokens <= 0 {
 		totalBudgetTokens = defaultTotalBudgetTokens
 	}
-	totalTokens := estimateTokens(b.String())
+	// The clock block is rendered last but charged here: it is always emitted,
+	// so reserving it up front keeps the static sections clamped inside the
+	// total budget exactly as they were when the timestamp led the prompt.
+	timeSection := currentTimeSection()
+	totalTokens := estimateTokens(b.String()) + estimateTokens(timeSection)
 	remainingTotalTokens := max(0, totalBudgetTokens-totalTokens)
 
 	remainingStaticTokens := opts.StaticBudgetTokens
@@ -196,29 +236,49 @@ func BuildResultFor(opts BuildOptions) BuildResult {
 		remainingTotalTokens -= sectionTokens
 	}
 
+	// Everything written above is static for the lifetime of a session (it
+	// only moves when a workspace bootstrap file or a session setting
+	// changes). Everything below is per-turn and must stay behind it.
+	staticPrompt := b.String()
+
 	relevantTokens := 0
 	relevantCount := 0
 	relevantBudgetTokens := 0
 	relevantSection := ""
 	var relevantItems []RelevantMemoryItem
 	usedTokens := 0
+	var tail strings.Builder
 	if !opts.SubAgent {
 		relevantBudgetTokens = opts.RelevantBudgetTokens
 		if relevantBudgetTokens <= 0 {
 			relevantBudgetTokens = defaultRelevantBudgetTokens
 		}
 		relevantBudgetTokens = min(relevantBudgetTokens, remainingTotalTokens)
-		relevantSection, relevantItems, usedTokens = buildRelevantMemorySection(opts, relevantBudgetTokens)
+		if opts.PresetRelevant != nil {
+			relevantSection = opts.PresetRelevant.Section
+			relevantItems = append([]RelevantMemoryItem(nil), opts.PresetRelevant.Items...)
+			usedTokens = opts.PresetRelevant.Tokens
+		} else {
+			relevantSection, relevantItems, usedTokens = buildRelevantMemorySection(opts, relevantBudgetTokens)
+		}
 		if relevantSection != "" {
-			b.WriteString(relevantSection)
+			tail.WriteString(relevantSection)
 			relevantTokens = usedTokens
 			relevantCount = len(relevantItems)
 			totalTokens += usedTokens
 		}
 	}
 
+	// Recall changes with the user's query; the clock changes on its own. The
+	// clock goes last so that re-running an identical query inside the same
+	// minute still matches through the recall block.
+	tail.WriteString(timeSection)
+
+	dynamicTail := tail.String()
 	return BuildResult{
-		Prompt:               b.String(),
+		Prompt:               staticPrompt + dynamicTail,
+		StaticPrompt:         staticPrompt,
+		DynamicTail:          dynamicTail,
 		StaticTokens:         staticTokens,
 		RelevantTokens:       relevantTokens,
 		RelevantMemoryCount:  relevantCount,
@@ -227,6 +287,23 @@ func BuildResultFor(opts BuildOptions) BuildResult {
 		RelevantBudgetTokens: relevantBudgetTokens,
 		TotalTokens:          totalTokens,
 	}
+}
+
+// timeNow is a seam so tests can build the prompt at two different wall-clock
+// instants and compare the resulting prefixes.
+var timeNow = time.Now
+
+// currentTimeSection renders the dynamic clock block that closes every prompt.
+//
+// The timestamp is truncated to the minute rather than the second. Second
+// resolution is more precision than any assistant answer needs, and it would
+// re-break the prefix on every retry, tool-loop restart, or rapid follow-up —
+// which is exactly the burst where a cache hit is worth the most.
+func currentTimeSection() string {
+	return fmt.Sprintf(
+		"\n## Current Time\n\nCurrent time: %s\n",
+		timeNow().UTC().Truncate(time.Minute).Format(time.RFC3339),
+	)
 }
 
 func readBootstrapSection(workspaceDir string, section bootstrapSection) string {

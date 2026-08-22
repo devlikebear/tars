@@ -110,15 +110,7 @@ func (c *AnthropicClient) buildChatRequest(messages []ChatMessage, opts ChatOpti
 		}
 	}
 	if len(systemMessages) > 0 {
-		reqBody["system"] = []map[string]any{
-			{
-				"type": "text",
-				"text": strings.Join(systemMessages, "\n"),
-				"cache_control": map[string]any{
-					"type": "ephemeral",
-				},
-			},
-		}
+		reqBody["system"] = toAnthropicSystemBlocks(systemMessages)
 	}
 	if tools := toAnthropicTools(opts.Tools); len(tools) > 0 {
 		tools[len(tools)-1].CacheControl = map[string]any{"type": "ephemeral"}
@@ -131,6 +123,34 @@ func (c *AnthropicClient) buildChatRequest(messages []ChatMessage, opts ChatOpti
 		reqBody["stream"] = true
 	}
 	return reqBody
+}
+
+// toAnthropicSystemBlocks renders the collected system messages as one text
+// block each and marks the cacheable prefix.
+//
+// The breakpoint goes on the FIRST block. Callers order their system messages
+// stable-first, volatile-last (see prompt.BuildResultFor's ordering
+// invariant), so the first block is the turn-stable region and everything
+// after it — per-turn recall, the clock, drained critic feedback — stays
+// outside the cached prefix. Anthropic's cache is prefix-matched at the
+// breakpoint, so a marker placed after volatile text would write a fresh entry
+// every turn and never read one.
+//
+// A single system message keeps the previous behavior exactly: one block,
+// cached in full.
+func toAnthropicSystemBlocks(systemMessages []string) []map[string]any {
+	blocks := make([]map[string]any, 0, len(systemMessages))
+	for i, text := range systemMessages {
+		block := map[string]any{
+			"type": "text",
+			"text": text,
+		}
+		if i == 0 {
+			block["cache_control"] = map[string]any{"type": "ephemeral"}
+		}
+		blocks = append(blocks, block)
+	}
+	return blocks
 }
 
 func (c *AnthropicClient) chatNonStreamingResponse(body io.Reader) (ChatResponse, error) {

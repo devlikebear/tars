@@ -351,3 +351,80 @@ func TestAnthropicChat_StreamThinkingDelta(t *testing.T) {
 		t.Fatalf("Content got %q", resp.Message.Content)
 	}
 }
+
+// A system prompt split into a stable head and a volatile tail must keep the
+// cache breakpoint on the head. Marking the tail instead writes a fresh cache
+// entry every turn and reads none — the LP-001 failure mode.
+func TestToAnthropicSystemBlocks_BreakpointStaysOnStablePrefix(t *testing.T) {
+	blocks := toAnthropicSystemBlocks([]string{"static prefix", "## Current Time\n\n2026-08-22T10:23:00Z"})
+	if len(blocks) != 2 {
+		t.Fatalf("expected one block per system message, got %d", len(blocks))
+	}
+	if blocks[0]["text"] != "static prefix" {
+		t.Fatalf("expected stable prefix first, got %+v", blocks[0]["text"])
+	}
+	if _, ok := blocks[0]["cache_control"]; !ok {
+		t.Fatal("expected cache_control on the stable prefix block")
+	}
+	if _, ok := blocks[1]["cache_control"]; ok {
+		t.Fatal("expected no cache_control on the volatile tail block")
+	}
+}
+
+func TestToAnthropicSystemBlocks_SingleMessageKeepsWholePromptCached(t *testing.T) {
+	blocks := toAnthropicSystemBlocks([]string{"only block"})
+	if len(blocks) != 1 {
+		t.Fatalf("expected a single block, got %d", len(blocks))
+	}
+	if _, ok := blocks[0]["cache_control"]; !ok {
+		t.Fatal("expected cache_control on the only system block")
+	}
+}
+
+func TestAnthropicChat_EmitsSystemTailOutsideCachedPrefix(t *testing.T) {
+	var captured map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&captured); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"content":[{"type":"text","text":"ok"}]}`))
+	}))
+	defer srv.Close()
+
+	client, err := NewAnthropicClient(srv.URL, "k", "claude-3-5-haiku-latest", 0)
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+	_, err = client.Chat(context.Background(), []ChatMessage{
+		{Role: "system", Content: "stable body"},
+		{Role: "system", Content: "## Current Time\n\nCurrent time: 2026-08-22T10:23:00Z"},
+		{Role: "user", Content: "hi"},
+	}, ChatOptions{})
+	if err != nil {
+		t.Fatalf("chat: %v", err)
+	}
+
+	systemRaw, ok := captured["system"].([]any)
+	if !ok || len(systemRaw) != 2 {
+		t.Fatalf("expected two system blocks, got %+v", captured["system"])
+	}
+	head, ok := systemRaw[0].(map[string]any)
+	if !ok || head["text"] != "stable body" {
+		t.Fatalf("unexpected head block: %+v", systemRaw[0])
+	}
+	if _, ok := head["cache_control"]; !ok {
+		t.Fatalf("expected cache_control on head block, got %+v", head)
+	}
+	tail, ok := systemRaw[1].(map[string]any)
+	if !ok {
+		t.Fatalf("invalid tail block: %+v", systemRaw[1])
+	}
+	tailText, _ := tail["text"].(string)
+	if !strings.Contains(tailText, "Current time:") {
+		t.Fatalf("expected the clock in the tail block, got %+v", tail["text"])
+	}
+	if _, ok := tail["cache_control"]; ok {
+		t.Fatalf("expected no cache_control on tail block, got %+v", tail)
+	}
+}
