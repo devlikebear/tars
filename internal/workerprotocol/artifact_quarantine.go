@@ -13,6 +13,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/devlikebear/tars/internal/atomicwrite"
+	"github.com/devlikebear/tars/internal/fileuri"
 	"github.com/devlikebear/tars/internal/secrets"
 )
 
@@ -217,7 +218,7 @@ func (quarantine *ArtifactQuarantine) release(ctx context.Context, placementID s
 
 func releasedArtifact(path string, artifact WireArtifact) ReleasedArtifact {
 	return ReleasedArtifact{
-		Name: artifact.Name, URI: (&url.URL{Scheme: "file", Path: path}).String(),
+		Name: artifact.Name, URI: fileuri.New(path),
 		Digest: artifact.Digest, MediaType: artifact.MediaType, SizeBytes: int64(len(artifact.Data)),
 	}
 }

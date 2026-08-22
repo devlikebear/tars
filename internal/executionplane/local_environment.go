@@ -4,12 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/devlikebear/tars/internal/fileuri"
 	"github.com/devlikebear/tars/internal/proofverifier"
 	"github.com/devlikebear/tars/internal/workstore"
 )
@@ -87,7 +87,7 @@ func (provider *LocalEnvironmentProvider) Sync(ctx context.Context, environment 
 	now := provider.now().UTC()
 	return EnvironmentSnapshot{
 		ID: "snapshot:" + strings.TrimPrefix(digest, "sha256:"), Digest: digest,
-		URI:          (&url.URL{Scheme: "file", Path: recovered.RootDir}).String(),
+		URI:          fileuri.New(recovered.RootDir),
 		MetadataJSON: metadata, CreatedAt: now,
 	}, nil
 }

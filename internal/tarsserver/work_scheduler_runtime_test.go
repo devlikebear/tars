@@ -18,6 +18,7 @@ import (
 	"github.com/devlikebear/tars/internal/agentruntime"
 	"github.com/devlikebear/tars/internal/config"
 	"github.com/devlikebear/tars/internal/executionplane"
+	"github.com/devlikebear/tars/internal/fileuri"
 	"github.com/devlikebear/tars/internal/session"
 	"github.com/devlikebear/tars/internal/workerprotocol"
 	"github.com/devlikebear/tars/internal/workscheduler"
@@ -639,12 +640,13 @@ func shellQuoteForTest(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'"
 }
 
+// filepathFromArtifactURI resolves an artifact URI the way production does.
+//
+// It used to strip "file://" and treat the rest as a path, which quietly
+// accepted the malformed URIs this code used to produce on Windows and handed
+// back a percent-encoded string that could not be opened.
 func filepathFromArtifactURI(raw string) (string, error) {
-	const prefix = "file://"
-	if !strings.HasPrefix(raw, prefix) {
-		return "", os.ErrInvalid
-	}
-	return strings.TrimPrefix(raw, prefix), nil
+	return fileuri.Path(raw)
 }
 
 func TestBuildNativeWorkExecutionPlaneSelectsHonestEnvironment(t *testing.T) {
