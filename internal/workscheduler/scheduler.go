@@ -35,6 +35,13 @@ type Scheduler struct {
 	activeMu  sync.Mutex
 	active    map[string]activeExecution
 	wg        sync.WaitGroup
+
+	// watchMu guards watchClosed, which exists so a Watch stream cannot join
+	// wg after Close has started waiting on it. Adding to a WaitGroup whose
+	// counter is zero while another goroutine waits on it is a data race, and
+	// Watch is callable at any time, including after Close.
+	watchMu     sync.Mutex
+	watchClosed bool
 }
 
 type activeExecution struct {
@@ -395,7 +402,24 @@ func (s *Scheduler) Wait(ctx context.Context, workID string) (workstore.WorkProj
 func (s *Scheduler) Watch(ctx context.Context, workID string, afterSequence int64) (<-chan workstore.Event, <-chan error) {
 	events := make(chan workstore.Event, 16)
 	errs := make(chan error, 1)
+
+	// Streams belong to the scheduler's lifetime: they read from its store, so
+	// Close must not return while one is still running or the caller can shut
+	// the scheduler down and still have a query in flight against the store it
+	// is about to release.
+	s.watchMu.Lock()
+	if s.watchClosed {
+		s.watchMu.Unlock()
+		errs <- ErrClosed
+		close(events)
+		close(errs)
+		return events, errs
+	}
+	s.wg.Add(1)
+	s.watchMu.Unlock()
+
 	go func() {
+		defer s.wg.Done()
 		defer close(events)
 		defer close(errs)
 		ticker := time.NewTicker(s.pollInterval)
@@ -412,6 +436,10 @@ func (s *Scheduler) Watch(ctx context.Context, workID string, afterSequence int6
 				}
 				select {
 				case <-ctx.Done():
+					return
+				case <-s.ctx.Done():
+					// Without this the send parks forever when the caller
+					// stops reading, and Close would wait on it.
 					return
 				case events <- event:
 					afterSequence = event.Sequence
@@ -495,6 +523,9 @@ func (s *Scheduler) Close() {
 	}
 	s.closeOnce.Do(func() {
 		s.cancel()
+		s.watchMu.Lock()
+		s.watchClosed = true
+		s.watchMu.Unlock()
 		s.activeMu.Lock()
 		for _, active := range s.active {
 			active.cancel()

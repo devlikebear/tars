@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -849,4 +850,90 @@ func (*cancelErrorExecutor) Execute(context.Context, Execution) (ExecutionResult
 
 func (*cancelErrorExecutor) Cancel(context.Context, Execution) error {
 	return errors.New("simulated cancellation notification failure")
+}
+
+// TestSchedulerCloseWaitsForWatchStreams pins the property that Watch streams
+// belong to the scheduler's lifetime.
+//
+// A stream reads from the scheduler's store, so if Close can return while one
+// is still running, a caller that shuts the scheduler down and then releases
+// the store has a query racing against it. The stream used to run on an
+// untracked goroutine, so Close never waited for it, and a caller that stopped
+// reading events left it parked on the send forever.
+//
+// Nothing is read from events here on purpose: that is the case that used to
+// leak.
+func TestSchedulerCloseWaitsForWatchStreams(t *testing.T) {
+	t.Parallel()
+
+	store := openSchedulerTestStore(t)
+	scheduler := newTestScheduler(t, store, "workspace-watch-close", &executeOnlyExecutor{adapter: "fake"}, 1)
+
+	// Enough steps to emit far more events than the stream's 16-slot buffer,
+	// so an unread stream parks on the send. That is the state the leak was
+	// about: with the send waiting only on the caller's context, a caller
+	// using context.Background() left the goroutine there forever.
+	steps := make([]StepSpec, 0, 25)
+	for i := range 25 {
+		steps = append(steps, StepSpec{
+			Key: fmt.Sprintf("run-%d", i), Title: fmt.Sprintf("Run %d", i), Policy: oneAttemptPolicy(),
+		})
+	}
+	work, err := scheduler.Submit(context.Background(), SubmitInput{
+		IdempotencyKey: "watch-close", Title: "Watch close", Adapter: "fake", ActorID: "planner",
+		Steps: steps,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	events, errs := scheduler.Watch(context.Background(), work.ID, 0)
+	scheduler.Close()
+
+	// errs is the channel to inspect, and it must not be drained: reading
+	// events would unpark the sender and hide the very state under test.
+	// Nothing is written to errs until the stream ends, so a non-blocking
+	// receive separates the two outcomes — closed and empty means the stream
+	// finished before Close returned, while empty and open means it is still
+	// parked on the send.
+	select {
+	case <-errs:
+	default:
+		t.Fatal("watch stream still running after Close returned")
+	}
+	drainClosed(t, "events", func() bool { _, ok := <-events; return ok })
+}
+
+// TestSchedulerWatchAfterCloseReportsClosed covers the other side of the
+// guard: once Close has run, a new stream must refuse rather than join the
+// WaitGroup that Close already finished waiting on.
+func TestSchedulerWatchAfterCloseReportsClosed(t *testing.T) {
+	t.Parallel()
+
+	store := openSchedulerTestStore(t)
+	scheduler := newTestScheduler(t, store, "workspace-watch-after-close", &executeOnlyExecutor{adapter: "fake"}, 1)
+	scheduler.Close()
+
+	events, errs := scheduler.Watch(context.Background(), "any", 0)
+	if err := <-errs; !errors.Is(err, ErrClosed) {
+		t.Fatalf("Watch() after Close error=%v want ErrClosed", err)
+	}
+	drainClosed(t, "events", func() bool { _, ok := <-events; return ok })
+}
+
+// drainClosed consumes a channel until it is closed, failing if that takes
+// long enough to mean it never was.
+func drainClosed(t *testing.T, name string, receive func() bool) {
+	t.Helper()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for receive() {
+		}
+	}()
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatalf("%s channel still open after Close returned", name)
+	}
 }
