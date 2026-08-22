@@ -384,6 +384,14 @@ func (s *Scheduler) Wait(ctx context.Context, workID string) (workstore.WorkProj
 	for {
 		projection, err := s.store.GetWorkProjection(ctx, s.workspaceID, workID)
 		if err != nil {
+			// When the caller's context expires mid-read, the store fails with
+			// whatever the driver noticed first — usually a transaction that
+			// was already rolled back — which says nothing about the work and
+			// does not match context.DeadlineExceeded. Report the
+			// cancellation, which is the real reason the caller stopped.
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return workstore.WorkProjection{}, ctxErr
+			}
 			return workstore.WorkProjection{}, err
 		}
 		if isTerminalForWait(projection.Work.State) {
