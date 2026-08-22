@@ -85,13 +85,9 @@ func (provider *LocalEnvironmentProvider) Sync(ctx context.Context, environment 
 	}
 	metadata, _ := json.Marshal(map[string]any{"artifact_digests": json.RawMessage(artifactDigests)})
 	now := provider.now().UTC()
-	uri, err := fileuri.New(recovered.RootDir)
-	if err != nil {
-		return EnvironmentSnapshot{}, err
-	}
 	return EnvironmentSnapshot{
 		ID: "snapshot:" + strings.TrimPrefix(digest, "sha256:"), Digest: digest,
-		URI:          uri,
+		URI:          fileuri.New(recovered.RootDir),
 		MetadataJSON: metadata, CreatedAt: now,
 	}, nil
 }

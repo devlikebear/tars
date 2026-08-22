@@ -191,7 +191,7 @@ func (quarantine *ArtifactQuarantine) release(ctx context.Context, placementID s
 		if digestBytes(existing) != artifact.Digest {
 			return ReleasedArtifact{}, fmt.Errorf("%w: accepted artifact %q changed digest", ErrManifestMismatch, artifact.Name)
 		}
-		return releasedArtifact(destination, artifact)
+		return releasedArtifact(destination, artifact), nil
 	} else if !os.IsNotExist(err) {
 		return ReleasedArtifact{}, fmt.Errorf("workerprotocol: inspect accepted artifact: %w", err)
 	}
@@ -213,18 +213,14 @@ func (quarantine *ArtifactQuarantine) release(ctx context.Context, placementID s
 	if err := os.Chmod(destination, 0o600); err != nil {
 		return ReleasedArtifact{}, fmt.Errorf("workerprotocol: secure accepted artifact: %w", err)
 	}
-	return releasedArtifact(destination, artifact)
+	return releasedArtifact(destination, artifact), nil
 }
 
-func releasedArtifact(path string, artifact WireArtifact) (ReleasedArtifact, error) {
-	uri, err := fileuri.New(path)
-	if err != nil {
-		return ReleasedArtifact{}, err
-	}
+func releasedArtifact(path string, artifact WireArtifact) ReleasedArtifact {
 	return ReleasedArtifact{
-		Name: artifact.Name, URI: uri,
+		Name: artifact.Name, URI: fileuri.New(path),
 		Digest: artifact.Digest, MediaType: artifact.MediaType, SizeBytes: int64(len(artifact.Data)),
-	}, nil
+	}
 }
 
 type DefaultArtifactScanner struct{}

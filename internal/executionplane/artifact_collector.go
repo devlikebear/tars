@@ -323,12 +323,8 @@ func writeCollectedArtifact(root, kind, name string, raw []byte) (CollectedArtif
 	if mediaType == "" {
 		mediaType = "application/octet-stream"
 	}
-	uri, err := fileuri.New(path)
-	if err != nil {
-		return CollectedArtifact{}, err
-	}
 	return CollectedArtifact{
-		Kind: kind, Name: filepath.ToSlash(name), URI: uri,
+		Kind: kind, Name: filepath.ToSlash(name), URI: fileuri.New(path),
 		Digest: fmt.Sprintf("sha256:%x", digest[:]), MediaType: mediaType, SizeBytes: int64(len(raw)),
 	}, nil
 }

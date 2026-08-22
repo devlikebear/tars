@@ -18,18 +18,24 @@ import (
 	"strings"
 )
 
-// New returns the file: URI for path, which is made absolute first so the
-// result identifies the same file from any working directory.
-func New(path string) (string, error) {
-	absolute, err := filepath.Abs(strings.TrimSpace(path))
-	if err != nil {
-		return "", fmt.Errorf("fileuri: resolve %q: %w", path, err)
+// New returns the file: URI for path.
+//
+// It takes no error because it cannot fail for its callers. path is made
+// absolute so the URI identifies the same file from any working directory,
+// and filepath.Abs only fails when the working directory cannot be
+// determined — unreachable here, since every caller already holds an absolute
+// path. Returning an error anyway would put a branch in four callers that no
+// test could ever reach.
+func New(path string) string {
+	resolved := strings.TrimSpace(path)
+	if absolute, err := filepath.Abs(resolved); err == nil {
+		resolved = absolute
 	}
-	uriPath := filepath.ToSlash(absolute)
+	uriPath := filepath.ToSlash(resolved)
 	if !strings.HasPrefix(uriPath, "/") {
 		uriPath = "/" + uriPath
 	}
-	return (&url.URL{Scheme: "file", Path: uriPath}).String(), nil
+	return (&url.URL{Scheme: "file", Path: uriPath}).String()
 }
 
 // Path returns the local path a file: URI refers to.

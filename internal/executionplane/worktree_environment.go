@@ -159,13 +159,9 @@ func (provider *ManagedWorktreeProvider) Sync(ctx context.Context, environment E
 		"git_diff_digest": digestRaw(diff), "git_status_entries": bytes.Count(status, []byte{0}),
 	})
 	now := provider.now().UTC()
-	uri, err := fileuri.New(recovered.RootDir)
-	if err != nil {
-		return EnvironmentSnapshot{}, err
-	}
 	return EnvironmentSnapshot{
 		ID: "snapshot:" + strings.TrimPrefix(digest, "sha256:"), Digest: digest,
-		URI:          uri,
+		URI:          fileuri.New(recovered.RootDir),
 		MetadataJSON: metadata, CreatedAt: now,
 	}, nil
 }

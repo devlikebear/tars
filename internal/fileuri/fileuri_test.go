@@ -11,10 +11,7 @@ import (
 func TestRoundTripPreservesPath(t *testing.T) {
 	want := filepath.Join(t.TempDir(), "nested", "artifact.txt")
 
-	uri, err := New(want)
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
+	uri := New(want)
 	got, err := Path(uri)
 	if err != nil {
 		t.Fatalf("Path(%q): %v", uri, err)
@@ -28,10 +25,7 @@ func TestRoundTripPreservesPath(t *testing.T) {
 // where url.URL{Scheme: "file", Path: path} put the drive letter in the host
 // and percent-encoded every separator.
 func TestNewHasNoHostAndForwardSlashes(t *testing.T) {
-	uri, err := New(filepath.Join(t.TempDir(), "artifact.txt"))
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
+	uri := New(filepath.Join(t.TempDir(), "artifact.txt"))
 	if !strings.HasPrefix(uri, "file:///") {
 		t.Fatalf("uri = %q, want a file:/// prefix", uri)
 	}
@@ -43,10 +37,7 @@ func TestNewHasNoHostAndForwardSlashes(t *testing.T) {
 func TestNewResolvesRelativePaths(t *testing.T) {
 	t.Chdir(t.TempDir())
 
-	uri, err := New("artifact.txt")
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
+	uri := New("artifact.txt")
 	path, err := Path(uri)
 	if err != nil {
 		t.Fatalf("Path: %v", err)
