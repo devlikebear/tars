@@ -6,7 +6,6 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
-	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -14,6 +13,7 @@ import (
 	"time"
 
 	"github.com/devlikebear/tars/internal/atomicwrite"
+	"github.com/devlikebear/tars/internal/fileuri"
 	"github.com/devlikebear/tars/internal/proofverifier"
 	"github.com/devlikebear/tars/internal/workstore"
 )
@@ -159,9 +159,13 @@ func (provider *ManagedWorktreeProvider) Sync(ctx context.Context, environment E
 		"git_diff_digest": digestRaw(diff), "git_status_entries": bytes.Count(status, []byte{0}),
 	})
 	now := provider.now().UTC()
+	uri, err := fileuri.New(recovered.RootDir)
+	if err != nil {
+		return EnvironmentSnapshot{}, err
+	}
 	return EnvironmentSnapshot{
 		ID: "snapshot:" + strings.TrimPrefix(digest, "sha256:"), Digest: digest,
-		URI:          (&url.URL{Scheme: "file", Path: recovered.RootDir}).String(),
+		URI:          uri,
 		MetadataJSON: metadata, CreatedAt: now,
 	}, nil
 }

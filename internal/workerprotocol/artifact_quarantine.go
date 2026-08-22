@@ -13,6 +13,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/devlikebear/tars/internal/atomicwrite"
+	"github.com/devlikebear/tars/internal/fileuri"
 	"github.com/devlikebear/tars/internal/secrets"
 )
 
@@ -190,7 +191,7 @@ func (quarantine *ArtifactQuarantine) release(ctx context.Context, placementID s
 		if digestBytes(existing) != artifact.Digest {
 			return ReleasedArtifact{}, fmt.Errorf("%w: accepted artifact %q changed digest", ErrManifestMismatch, artifact.Name)
 		}
-		return releasedArtifact(destination, artifact), nil
+		return releasedArtifact(destination, artifact)
 	} else if !os.IsNotExist(err) {
 		return ReleasedArtifact{}, fmt.Errorf("workerprotocol: inspect accepted artifact: %w", err)
 	}
@@ -212,14 +213,18 @@ func (quarantine *ArtifactQuarantine) release(ctx context.Context, placementID s
 	if err := os.Chmod(destination, 0o600); err != nil {
 		return ReleasedArtifact{}, fmt.Errorf("workerprotocol: secure accepted artifact: %w", err)
 	}
-	return releasedArtifact(destination, artifact), nil
+	return releasedArtifact(destination, artifact)
 }
 
-func releasedArtifact(path string, artifact WireArtifact) ReleasedArtifact {
-	return ReleasedArtifact{
-		Name: artifact.Name, URI: (&url.URL{Scheme: "file", Path: path}).String(),
-		Digest: artifact.Digest, MediaType: artifact.MediaType, SizeBytes: int64(len(artifact.Data)),
+func releasedArtifact(path string, artifact WireArtifact) (ReleasedArtifact, error) {
+	uri, err := fileuri.New(path)
+	if err != nil {
+		return ReleasedArtifact{}, err
 	}
+	return ReleasedArtifact{
+		Name: artifact.Name, URI: uri,
+		Digest: artifact.Digest, MediaType: artifact.MediaType, SizeBytes: int64(len(artifact.Data)),
+	}, nil
 }
 
 type DefaultArtifactScanner struct{}

@@ -8,13 +8,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"mime"
-	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 
 	"github.com/devlikebear/tars/internal/atomicwrite"
+	"github.com/devlikebear/tars/internal/fileuri"
 )
 
 const (
@@ -323,18 +323,22 @@ func writeCollectedArtifact(root, kind, name string, raw []byte) (CollectedArtif
 	if mediaType == "" {
 		mediaType = "application/octet-stream"
 	}
+	uri, err := fileuri.New(path)
+	if err != nil {
+		return CollectedArtifact{}, err
+	}
 	return CollectedArtifact{
-		Kind: kind, Name: filepath.ToSlash(name), URI: (&url.URL{Scheme: "file", Path: path}).String(),
+		Kind: kind, Name: filepath.ToSlash(name), URI: uri,
 		Digest: fmt.Sprintf("sha256:%x", digest[:]), MediaType: mediaType, SizeBytes: int64(len(raw)),
 	}, nil
 }
 
 func filepathFromURI(raw string) (string, error) {
-	parsed, err := url.Parse(raw)
-	if err != nil || parsed.Scheme != "file" || parsed.Host != "" {
-		return "", fmt.Errorf("executionplane: invalid file artifact URI")
+	path, err := fileuri.Path(raw)
+	if err != nil {
+		return "", fmt.Errorf("executionplane: invalid file artifact URI: %w", err)
 	}
-	return filepath.FromSlash(parsed.Path), nil
+	return path, nil
 }
 
 var _ ArtifactCollector = (*FileArtifactCollector)(nil)
