@@ -88,7 +88,7 @@ func TestSubagentsOrchestrateTool_ExecutesParallelThenSequentialSteps(t *testing
 		select {
 		case item := <-started:
 			got[item] = struct{}{}
-		case <-time.After(5 * time.Second):
+		case <-time.After(subagentTestEventTimeout):
 			t.Fatal("expected both research tasks to start in parallel")
 		}
 	}
@@ -107,7 +107,7 @@ func TestSubagentsOrchestrateTool_ExecutesParallelThenSequentialSteps(t *testing
 		if item != "combine backend findings and docs findings" {
 			t.Fatalf("expected sequential step to receive resolved placeholders, got %q", item)
 		}
-	case <-time.After(2 * time.Second):
+	case <-time.After(subagentTestEventTimeout):
 		t.Fatal("expected sequential aggregation task to start after research step")
 	}
 
@@ -145,7 +145,7 @@ func TestSubagentsOrchestrateTool_ExecutesParallelThenSequentialSteps(t *testing
 		if payload.Steps[1].Tasks[0].Tier != "heavy" {
 			t.Fatalf("expected heavy tier on final task, got %+v", payload.Steps[1].Tasks[0])
 		}
-	case <-time.After(2 * time.Second):
+	case <-time.After(subagentTestEventTimeout):
 		t.Fatal("timed out waiting for orchestration result")
 	}
 }
@@ -193,7 +193,7 @@ func TestSubagentsOrchestrateTool_MirrorsTaskLifecycleToSessionTasks(t *testing.
 
 	select {
 	case <-started:
-	case <-time.After(2 * time.Second):
+	case <-time.After(subagentTestEventTimeout):
 		t.Fatal("expected subagent task to start")
 	}
 
@@ -211,7 +211,7 @@ func TestSubagentsOrchestrateTool_MirrorsTaskLifecycleToSessionTasks(t *testing.
 		if result.res.IsError {
 			t.Fatalf("expected success payload, got %s", result.res.Text())
 		}
-	case <-time.After(2 * time.Second):
+	case <-time.After(subagentTestEventTimeout):
 		t.Fatal("timed out waiting for orchestration result")
 	}
 

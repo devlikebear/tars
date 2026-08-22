@@ -103,6 +103,15 @@ func newAgentRuntimeForSubagentCompareToolTests(
 	return rt, store
 }
 
+// subagentTestEventTimeout bounds waits for an event these tests require to
+// happen. The property under test is enforced by the handshake around the wait
+// — a stub signals that it started, then blocks until the test releases it —
+// so this deadline only exists to fail a genuine hang instead of blocking
+// forever. It is deliberately generous: a loaded two-core CI runner is far
+// slower than a developer machine, and the earlier sub-second and two-second
+// values turned that difference into flaky failures on the Windows job.
+const subagentTestEventTimeout = 30 * time.Second
+
 func TestSubagentsRunTool_SpawnsParallelExplorerChildrenAndReturnsSummaries(t *testing.T) {
 	startedCh := make(chan string, 2)
 	release := make(chan struct{})
@@ -146,7 +155,7 @@ func TestSubagentsRunTool_SpawnsParallelExplorerChildrenAndReturnsSummaries(t *t
 		select {
 		case prompt := <-startedCh:
 			got[prompt] = struct{}{}
-		case <-time.After(300 * time.Millisecond):
+		case <-time.After(subagentTestEventTimeout):
 			t.Fatal("expected both subagent runs to start before completion")
 		}
 	}
@@ -198,7 +207,7 @@ func TestSubagentsRunTool_SpawnsParallelExplorerChildrenAndReturnsSummaries(t *t
 				t.Fatalf("expected hidden subagent session, got %+v", sess)
 			}
 		}
-	case <-time.After(2 * time.Second):
+	case <-time.After(subagentTestEventTimeout):
 		t.Fatal("timed out waiting for subagents_run")
 	}
 }
