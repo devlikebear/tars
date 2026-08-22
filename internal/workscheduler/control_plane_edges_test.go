@@ -139,6 +139,26 @@ func TestSchedulerSubmissionRejectsMalformedOrUntrustedInputs(t *testing.T) {
 	}
 }
 
+// nonBlockingErrorSink returns an OnError callback that never blocks the
+// scheduler.
+//
+// reportError invokes OnError synchronously, and Run reports repeatedly while
+// it polls, so a callback that blocks on a full channel wedges Run inside
+// reportError — and any test waiting for Run to return then waits forever.
+// That deadlock made this package time out after ten minutes, intermittently,
+// on both Linux and Windows.
+//
+// Dropping surplus errors is safe here: each assertion waits for one specific
+// error, and the channel is empty when that one is sent.
+func nonBlockingErrorSink(ch chan<- error) func(error) {
+	return func(err error) {
+		select {
+		case ch <- err:
+		default:
+		}
+	}
+}
+
 func TestSchedulerLifecycleAndOperatorBoundaries(t *testing.T) {
 	t.Parallel()
 
@@ -148,7 +168,7 @@ func TestSchedulerLifecycleAndOperatorBoundaries(t *testing.T) {
 		Store: store, WorkspaceID: "workspace-lifecycle", WorkerID: "worker", ActorID: "actor",
 		LeaseDuration: time.Minute, HeartbeatInterval: 10 * time.Millisecond,
 		PollInterval: 2 * time.Millisecond, MaxWorkers: 1,
-		Executors: []Executor{&fakeExecutor{adapter: "fake"}}, OnError: func(err error) { errorsSeen <- err },
+		Executors: []Executor{&fakeExecutor{adapter: "fake"}}, OnError: nonBlockingErrorSink(errorsSeen),
 	})
 	if err != nil {
 		t.Fatalf("New(): %v", err)
@@ -758,7 +778,7 @@ func TestSchedulerRecoveryMissingResultAndFinalizerFailureAreAudited(t *testing.
 	finalizer, err := New(Options{
 		Store: finalizerStore, WorkspaceID: "workspace-finalizer-edge", WorkerID: "worker", ActorID: "scheduler",
 		LeaseDuration: time.Minute, HeartbeatInterval: time.Second, PollInterval: time.Millisecond,
-		Executors: []Executor{&failingFinalizerExecutor{}}, OnError: func(err error) { finalizerErrors <- err },
+		Executors: []Executor{&failingFinalizerExecutor{}}, OnError: nonBlockingErrorSink(finalizerErrors),
 	})
 	if err != nil {
 		t.Fatal(err)
