@@ -12,8 +12,44 @@ import (
 
 const defaultMemoryCacheTTL = 5 * time.Minute
 
+// memoryRecall is the only part of a prompt build worth caching across turns:
+// the semantic search behind "## Prior Context". The assembled prompt itself is
+// deliberately NOT cached — its static region depends on live inputs (session
+// work dirs, current dir, plan-clarify mode, workspace bootstrap files) that
+// the prefetch path does not carry, so replaying a stored prompt used to drop
+// whole sections and hand the provider a different prefix on a cache hit than
+// on a cache miss. Rebuilding from live options with this payload injected
+// makes hit and miss byte-identical by construction.
+type memoryRecall struct {
+	Section string
+	Items   []prompt.RelevantMemoryItem
+	Tokens  int
+	Count   int
+	Budget  int
+}
+
+// Preset converts the cached recall into the builder's injection shape.
+func (r memoryRecall) Preset() *prompt.PresetRelevantMemory {
+	return &prompt.PresetRelevantMemory{
+		Section: r.Section,
+		Items:   r.Items,
+		Tokens:  r.Tokens,
+	}
+}
+
+// memoryRecallFromResult extracts the cacheable recall payload from a build.
+func memoryRecallFromResult(result prompt.BuildResult) memoryRecall {
+	return memoryRecall{
+		Section: result.RelevantSection,
+		Items:   append([]prompt.RelevantMemoryItem(nil), result.RelevantMemoryItems...),
+		Tokens:  result.RelevantTokens,
+		Count:   result.RelevantMemoryCount,
+		Budget:  result.RelevantBudgetTokens,
+	}
+}
+
 type memoryCacheEntry struct {
-	Result    prompt.BuildResult
+	Recall    memoryRecall
 	CreatedAt time.Time
 }
 
@@ -33,34 +69,34 @@ func newMemoryCache(ttl time.Duration) *memoryCache {
 	}
 }
 
-func (c *memoryCache) Get(query, sessionID string) (prompt.BuildResult, bool) {
+func (c *memoryCache) Get(query, sessionID string) (memoryRecall, bool) {
 	if c == nil {
-		return prompt.BuildResult{}, false
+		return memoryRecall{}, false
 	}
 	key := memoryCacheKey(query, sessionID)
 	c.mu.RLock()
 	entry, ok := c.entries[key]
 	c.mu.RUnlock()
 	if !ok {
-		return prompt.BuildResult{}, false
+		return memoryRecall{}, false
 	}
 	if time.Since(entry.CreatedAt) > c.ttl {
 		c.mu.Lock()
 		delete(c.entries, key)
 		c.mu.Unlock()
-		return prompt.BuildResult{}, false
+		return memoryRecall{}, false
 	}
-	return entry.Result, true
+	return entry.Recall, true
 }
 
-func (c *memoryCache) Put(query, sessionID string, result prompt.BuildResult) {
+func (c *memoryCache) Put(query, sessionID string, recall memoryRecall) {
 	if c == nil {
 		return
 	}
 	key := memoryCacheKey(query, sessionID)
 	c.mu.Lock()
 	c.entries[key] = memoryCacheEntry{
-		Result:    result,
+		Recall:    recall,
 		CreatedAt: time.Now(),
 	}
 	c.mu.Unlock()

@@ -69,7 +69,14 @@ func prepareChatContext(workspaceDir, userMessage string) (systemPrompt string, 
 }
 
 type preparedChatContext struct {
-	SystemPrompt               string
+	// SystemPrompt holds only the turn-stable region. Callers keep appending
+	// their own static sections to it and must emit SystemPromptTail last —
+	// see the ordering invariant on prompt.BuildResultFor.
+	SystemPrompt string
+	// SystemPromptTail is the per-turn region (prior-context recall, current
+	// time). It closes the assembled system prompt so everything ahead of it
+	// stays a matchable provider cache prefix.
+	SystemPromptTail           string
 	ToolChoice                 *llm.ToolChoice
 	SystemPromptTokens         int
 	RelevantMemoryCount        int
@@ -91,7 +98,9 @@ func prepareChatContextWithExtensions(
 	if err != nil {
 		return "", nil, err
 	}
-	return details.SystemPrompt, details.ToolChoice, nil
+	// Single-string callers (telegram, previews) get the dynamic tail folded
+	// back on at the end — same order the split assembler produces.
+	return details.SystemPrompt + details.SystemPromptTail, details.ToolChoice, nil
 }
 
 func prepareChatContextDetailsWithExtensions(
@@ -120,25 +129,29 @@ func prepareChatContextDetailsWithCache(
 	forceRelevantMemory := shouldForceMemoryToolCall(userMessage)
 	extSnapshot = filterSkillSnapshotForProject(extSnapshot, workspaceDir)
 
-	// Cache-first strategy: check cache before expensive memory search
-	if cached, ok := cache.Get(userMessage, sessionID); ok {
-		return buildContextFromResult(workspaceDir, cached, extSnapshot, invokedSkill, forceRelevantMemory), nil
-	}
-
-	memService := buildSemanticMemoryService(workspaceDir, semanticCfg)
-	buildResult := prompt.BuildResultFor(prompt.BuildOptions{
+	buildOpts := prompt.BuildOptions{
 		WorkspaceDir:        workspaceDir,
 		WorkDirs:            workDirs,
 		CurrentDir:          currentDir,
 		PlanClarifyMode:     planClarifyMode,
 		Query:               userMessage,
 		SessionID:           sessionID,
-		MemorySearcher:      memService,
 		ForceRelevantMemory: forceRelevantMemory,
-	})
+	}
+
+	// Cache-first strategy: reuse the recall payload to skip the expensive
+	// semantic search, but always reassemble the prompt from the live options
+	// so a cache hit and a cache miss produce byte-identical output.
+	if cached, ok := cache.Get(userMessage, sessionID); ok {
+		buildOpts.PresetRelevant = cached.Preset()
+		return buildContextFromResult(workspaceDir, prompt.BuildResultFor(buildOpts), extSnapshot, invokedSkill, forceRelevantMemory), nil
+	}
+
+	buildOpts.MemorySearcher = buildSemanticMemoryService(workspaceDir, semanticCfg)
+	buildResult := prompt.BuildResultFor(buildOpts)
 
 	// Populate cache with search result
-	cache.Put(userMessage, sessionID, buildResult)
+	cache.Put(userMessage, sessionID, memoryRecallFromResult(buildResult))
 
 	return buildContextFromResult(workspaceDir, buildResult, extSnapshot, invokedSkill, forceRelevantMemory), nil
 }
@@ -150,7 +163,7 @@ func buildContextFromResult(
 	invokedSkill *skill.Definition,
 	forceRelevantMemory bool,
 ) preparedChatContext {
-	systemPrompt := buildResult.Prompt
+	systemPrompt := buildResult.StaticPrompt
 	systemPrompt += "\n" + strings.TrimSpace(memoryToolSystemRule) + "\n"
 	skillPrompt := skillPromptForChatContext(workspaceDir, extSnapshot)
 	if strings.TrimSpace(skillPrompt) != "" {
@@ -175,8 +188,9 @@ func buildContextFromResult(
 	}
 	return preparedChatContext{
 		SystemPrompt:               systemPrompt,
+		SystemPromptTail:           buildResult.DynamicTail,
 		ToolChoice:                 toolChoice,
-		SystemPromptTokens:         promptTokenEstimate(systemPrompt),
+		SystemPromptTokens:         promptTokenEstimate(systemPrompt + buildResult.DynamicTail),
 		RelevantMemoryCount:        buildResult.RelevantMemoryCount,
 		RelevantMemoryTokens:       buildResult.RelevantTokens,
 		RelevantMemorySection:      buildResult.RelevantSection,
@@ -252,12 +266,38 @@ func buildLLMMessages(systemPrompt string, history []session.Message, userMessag
 }
 
 func buildLLMMessagesWithBlocks(systemPrompt string, history []session.Message, userMessage string, contentBlocks []llm.ContentBlock) []llm.ChatMessage {
-	llmMessages := make([]llm.ChatMessage, 0, len(history)+2)
+	return buildLLMMessagesWithTail(systemPrompt, "", history, userMessage, contentBlocks)
+}
+
+// buildLLMMessagesWithTail emits the turn-stable prompt and the per-turn tail
+// as two adjacent system messages. Providers concatenate system messages in
+// order, so the rendered prompt is unchanged — but keeping them separate lets
+// the Anthropic client put its cache_control breakpoint at the end of the
+// stable block instead of after the volatile one, where it could never hit.
+// An empty tail collapses back to a single system message.
+func buildLLMMessagesWithTail(systemPrompt, systemTail string, history []session.Message, userMessage string, contentBlocks []llm.ContentBlock) []llm.ChatMessage {
+	llmMessages := make([]llm.ChatMessage, 0, len(history)+3)
 	llmMessages = append(llmMessages, llm.ChatMessage{Role: "system", Content: systemPrompt})
+	if strings.TrimSpace(systemTail) != "" {
+		llmMessages = append(llmMessages, llm.ChatMessage{Role: "system", Content: systemTail})
+	}
 	llmMessages = append(llmMessages, buildLLMMessageHistory(history)...)
 	msg := llm.ChatMessage{Role: "user", Content: userMessage, ContentBlocks: contentBlocks}
 	llmMessages = append(llmMessages, msg)
 	return llmMessages
+}
+
+// systemPromptTokens estimates the whole system prompt, which the assembler
+// may have split across a stable message and a per-turn tail.
+func systemPromptTokens(msgs []llm.ChatMessage) int {
+	total := 0
+	for _, msg := range msgs {
+		if !strings.EqualFold(strings.TrimSpace(msg.Role), "system") {
+			break
+		}
+		total += promptTokenEstimate(msg.Content)
+	}
+	return total
 }
 
 // insertSystemMessageBeforeUser inserts an extra system-role message
@@ -1428,6 +1468,8 @@ func newChatAPIHandlerWithRuntimeConfig(
 		}
 		style := effectiveSessionStyle(tooling.StyleDefaults, sess.StyleControl)
 		systemPrompt += formatSessionStylePrompt(style, sess.AutomationConsent)
+		// Mirror the live assembler: the per-turn tail closes the prompt.
+		systemPrompt += contextDetails.SystemPromptTail
 		registry := buildChatToolRegistry(
 			reqStore, "", sessionID, requestWorkspaceDir, previewPolicy, historySnapshot.Messages, chatHandlerDeps{
 				workspaceDir:  workspaceDir,
