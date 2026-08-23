@@ -14,6 +14,7 @@ internal/tarsserver/consoleassets/dist/**
 
 # Test
 coverage.out
+coverage.diff.out
 
 # Runtime
 *.db
@@ -56,8 +57,10 @@ node_modules/
 .analysis/sessions/
 .analysis/RESUME.md
 .analysis/cache/
+.analysis/outputs/overhaul-agent-harness.md
 .mcp.json
 .playwright*
+.serena/
 
 # Local-only working docs (plans, code reviews) — kept on disk, not tracked
 docs/plans/
