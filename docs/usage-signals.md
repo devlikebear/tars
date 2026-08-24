@@ -65,3 +65,36 @@ The latest available workspace signal files were re-read for [the agent-control-
 The deterministic Agent Harness Evaluation Pack independently exercises parallel fan-out, dependency handoff, and partial-child failure without requiring a default-visible planner or consensus surface. Session Tasks remain the high-signal planning surface and should evolve into the Durable Work Ledger UI.
 
 The signal stream available for this review ends on 2026-05-20. These counts are a current review of the latest available local telemetry, not a claim of data collection through August.
+
+## Anthropic cache-breakpoint measurement (#921)
+
+`GET /v1/usage/summary?period=today&group_by=shape` splits recorded calls into
+`with-tools` and `no-tools` rows.
+
+The split exists because Anthropic renders `tools` → `system` → `messages` into
+one prefix-matched cache key. A request that omits `tools` therefore cannot hit
+an entry written by a tool-bearing request, even inside the same agent turn.
+`agent.Loop` ends every turn with one tools-absent call (`ToolChoice: none`),
+so each turn produces both shapes.
+
+**What the rows mean**
+
+| Row | Expected if placement is working | Suspected regression looks like |
+| --- | --- | --- |
+| `with-tools` | `cache_read_tokens` grows with conversation length; `cache_write_tokens` stays near one prefix per turn | reads flat at 0 — a silent invalidator upstream |
+| `no-tools` | reads roughly match the previous turn's writes | writes each turn with reads at 0 — paying the 1.25x write premium for an entry nothing reads back |
+
+If `no-tools` shows sustained writes with near-zero reads, the tools-absent
+final call is a net loss and the fix is to keep `tools` on that call and rely
+on `tool_choice: none` (already supported by `toAnthropicToolChoice`) so it
+shares the turn's cache lineage.
+
+**Caveats**
+
+- `tool_count` is recorded per call from this change onward. Entries written
+  before it default to 0 and land in `no-tools`, so restrict any comparison to
+  a window that starts after the upgrade.
+- Anthropic's minimum cacheable prefix is ~1024 tokens; below that nothing
+  caches and both rows read 0 regardless of placement.
+- Ephemeral entries expire after 5 minutes, so a turn that takes longer than
+  that between calls will miss for reasons unrelated to placement.

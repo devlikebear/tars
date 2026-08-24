@@ -75,6 +75,7 @@ func (c *TrackedClient) Chat(ctx context.Context, messages []llm.ChatMessage, op
 		CacheReadTokens:  resp.Usage.CacheReadTokens,
 		CacheWriteTokens: resp.Usage.CacheWriteTokens,
 		EstimatedCostUSD: estimatedCost,
+		ToolCount:        len(opts.Tools),
 		Source:           meta.Source,
 		SessionID:        meta.SessionID,
 		RunID:            meta.RunID,

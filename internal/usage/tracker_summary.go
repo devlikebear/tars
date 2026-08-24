@@ -134,7 +134,7 @@ func periodRange(raw string, now time.Time) (time.Time, string, error) {
 func normalizeGroupBy(raw string) string {
 	v := strings.TrimSpace(strings.ToLower(raw))
 	switch v {
-	case "provider", "model", "source", "project", "run":
+	case "provider", "model", "source", "project", "run", "shape":
 		return v
 	default:
 		return "provider"
@@ -151,6 +151,14 @@ func summaryKey(entry Entry, groupBy string) string {
 		return firstNonEmptyTrimmed(entry.Source, "(none)")
 	case "run":
 		return firstNonEmptyTrimmed(entry.RunID, "(none)")
+	case "shape":
+		// Tools are rendered ahead of messages in the provider's cached
+		// prefix, so these two groups never share a cache entry — not even
+		// within a single agent turn.
+		if entry.ToolCount > 0 {
+			return "with-tools"
+		}
+		return "no-tools"
 	default:
 		return firstNonEmptyTrimmed(entry.Provider, "(none)")
 	}

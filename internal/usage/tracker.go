@@ -38,6 +38,12 @@ type Entry struct {
 	SessionID        string    `json:"session_id,omitempty"`
 	RunID            string    `json:"run_id,omitempty"`
 	PricingKnown     bool      `json:"pricing_known"`
+	// ToolCount is how many tool definitions the request carried. Anthropic
+	// renders tools ahead of messages in the cached prefix, so a tools-absent
+	// call cannot hit an entry written by a tool-bearing one even within the
+	// same turn. Recording it makes the two cache lineages separable — see
+	// the "shape" group-by in Summary.
+	ToolCount int `json:"tool_count,omitempty"`
 }
 
 type Summary struct {

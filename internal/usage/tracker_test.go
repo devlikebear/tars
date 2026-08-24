@@ -298,3 +298,63 @@ func requireUsageFileMode(t *testing.T, path string, want os.FileMode) {
 		t.Fatalf("expected %s mode %04o, got %04o", path, want, got)
 	}
 }
+
+// The tools-absent final call of an agent turn sits in a different cache
+// lineage than the tool-bearing loop iterations before it, because tools are
+// rendered ahead of messages in the cached prefix. Grouping by request shape
+// is what makes that split readable from recorded usage.
+func TestTracker_SummaryGroupByShape(t *testing.T) {
+	now := time.Date(2026, 2, 22, 12, 0, 0, 0, time.UTC)
+	tracker, err := NewTracker(t.TempDir(), TrackerOptions{
+		Now: func() time.Time { return now },
+	})
+	if err != nil {
+		t.Fatalf("new tracker: %v", err)
+	}
+
+	entries := []Entry{
+		{Timestamp: now, Provider: "anthropic", Model: "claude-opus-5", ToolCount: 12,
+			InputTokens: 100, CacheReadTokens: 900, PricingKnown: true},
+		{Timestamp: now, Provider: "anthropic", Model: "claude-opus-5", ToolCount: 12,
+			InputTokens: 100, CacheReadTokens: 900, PricingKnown: true},
+		{Timestamp: now, Provider: "anthropic", Model: "claude-opus-5", ToolCount: 0,
+			InputTokens: 100, CacheWriteTokens: 1200, PricingKnown: true},
+	}
+	for _, e := range entries {
+		if err := tracker.Record(e); err != nil {
+			t.Fatalf("record: %v", err)
+		}
+	}
+
+	summary, err := tracker.Summary("today", "shape")
+	if err != nil {
+		t.Fatalf("summary: %v", err)
+	}
+	if summary.GroupBy != "shape" {
+		t.Fatalf("group_by should survive normalization, got %q", summary.GroupBy)
+	}
+
+	rows := map[string]SummaryRow{}
+	for _, row := range summary.Rows {
+		rows[row.Key] = row
+	}
+	withTools, ok := rows["with-tools"]
+	if !ok {
+		t.Fatalf("expected a with-tools row, got %+v", summary.Rows)
+	}
+	noTools, ok := rows["no-tools"]
+	if !ok {
+		t.Fatalf("expected a no-tools row, got %+v", summary.Rows)
+	}
+	if withTools.Calls != 2 || noTools.Calls != 1 {
+		t.Fatalf("expected 2 tool-bearing and 1 tool-free call, got %d and %d", withTools.Calls, noTools.Calls)
+	}
+	// This is the shape of the suspected regression: the tool-free call pays a
+	// cache write and reads nothing back.
+	if noTools.CacheWriteTokens == 0 || noTools.CacheReadTokens != 0 {
+		t.Fatalf("no-tools row must carry the write/no-read split, got %+v", noTools)
+	}
+	if withTools.CacheReadTokens == 0 {
+		t.Fatalf("with-tools row should show cache reads, got %+v", withTools)
+	}
+}
