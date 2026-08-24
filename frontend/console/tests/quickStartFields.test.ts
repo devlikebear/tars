@@ -10,7 +10,6 @@ import {
 import type { ConfigFieldMeta } from '../src/lib/types.ts'
 
 const configSource = readFileSync(new URL('../src/components/Config.svelte', import.meta.url), 'utf8')
-const configStructuredSource = readFileSync(new URL('../src/lib/configStructured.ts', import.meta.url), 'utf8')
 const apiSource = readFileSync(new URL('../src/lib/api.ts', import.meta.url), 'utf8')
 
 function field(key: string, label = key, type = 'string'): ConfigFieldMeta {
@@ -103,8 +102,13 @@ test('Settings renders Quick Start tab and LLM connection action', () => {
   assert.match(configSource, /Quick Start/)
   assert.match(configSource, /quick-start-grid/)
   assert.match(configSource, /Test connection/)
-  assert.match(configSource, /openEmbodimentProviderEditor/)
-  assert.match(configSource, /EMBODIMENT_PROVIDER_PRESETS/)
-  assert.match(configStructuredSource, /Add StackChan/)
-  assert.match(configSource, /capability-chip/)
+})
+
+test('Quick Start routes structured provider editing to the wizard, not local editors (#931)', () => {
+  // Provider/tier structured editors moved to the onboarding wizard reentry;
+  // Config.svelte only deep links there. Other json fields get a YAML-key hint.
+  assert.match(configSource, /jsonWizardLink/)
+  assert.match(configSource, /onboarding\?reentry=1&section=provider/)
+  assert.match(configSource, /onboarding\?reentry=1&section=tiers/)
+  assert.doesNotMatch(configSource, /openEmbodimentProviderEditor|EMBODIMENT_PROVIDER_PRESETS/)
 })

@@ -597,7 +597,7 @@ export const en = {
   config: {
     pageTitle: 'Settings',
     viewToggleQuick: 'Quick Start',
-    viewToggleFields: 'Fields',
+    viewToggleFields: 'Inspect',
     viewToggleYaml: 'YAML',
     save: 'Save',
     saving: 'Saving...',
