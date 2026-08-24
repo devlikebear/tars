@@ -205,6 +205,120 @@ func TestEstimateCost_PriceOverridesTakePrecedenceOverBuiltIns(t *testing.T) {
 	}
 }
 
+// An operator on a flat-rate or reseller plan expresses it with a single
+// `anthropic/*` override. Before per-model pricing existed that was the only
+// Anthropic key, so it covered every model; built-in per-model rates must not
+// silently take that away.
+func TestEstimateCost_WildcardOverrideCoversModelsWithBuiltInPrices(t *testing.T) {
+	tracker, err := NewTracker(t.TempDir(), TrackerOptions{
+		PriceOverrides: map[string]ModelPrice{
+			"anthropic/*": {InputPer1MUSD: 0, OutputPer1MUSD: 0, CacheReadPer1MUSD: 0, CacheWritePer1MUSD: 0},
+		},
+	})
+	if err != nil {
+		t.Fatalf("new tracker: %v", err)
+	}
+
+	oneMillion := llm.Usage{InputTokens: 1_000_000, OutputTokens: 1_000_000}
+	cases := []struct {
+		name  string
+		model string
+	}{
+		{"built-in exact entry", "claude-opus-4-7"},
+		{"family prefix match", "claude-opus-4-9"},
+		{"built-in wildcard", "unknown-gateway-model"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, ok := tracker.EstimateCost("anthropic", tc.model, oneMillion)
+			if !ok {
+				t.Fatalf("expected an estimate for %s", tc.model)
+			}
+			if got != 0 {
+				t.Fatalf("operator wildcard override must cover %s, got %v", tc.model, got)
+			}
+		})
+	}
+}
+
+// Claude Fable 5 and Mythos 5 match none of the opus/sonnet/haiku prefixes, so
+// they land on the Sonnet-rate wildcard — a 3.3x undercount on the priciest
+// models in the lineup.
+func TestEstimateCost_FableAndMythosPricedAtTheirOwnRates(t *testing.T) {
+	tracker := newCostTestTracker(t)
+	for _, model := range []string{"claude-fable-5", "claude-mythos-5"} {
+		got, ok := tracker.EstimateCost("anthropic", model, llm.Usage{InputTokens: 1_000_000})
+		if !ok {
+			t.Fatalf("expected pricing for %s", model)
+		}
+		if got != 10.00 {
+			t.Fatalf("%s input should price at $10.00/1M, got %v", model, got)
+		}
+		got, ok = tracker.EstimateCost("anthropic", model, llm.Usage{OutputTokens: 1_000_000})
+		if !ok || got != 50.00 {
+			t.Fatalf("%s output should price at $50.00/1M, got %v ok=%v", model, got, ok)
+		}
+	}
+}
+
+// A provider whose table entry is only a wildcard has no per-model pricing to
+// be missing, so the diagnostic is noise there.
+func TestEstimateCost_WildcardOnlyProviderDoesNotWarn(t *testing.T) {
+	var mu sync.Mutex
+	warned := map[string]int{}
+	original := warnPriceFallback
+	warnPriceFallback = func(provider, model string) {
+		mu.Lock()
+		defer mu.Unlock()
+		warned[provider+"/"+model]++
+	}
+	defer func() { warnPriceFallback = original }()
+
+	tracker := newCostTestTracker(t)
+	if _, ok := tracker.EstimateCost("gemini-native", "gemini-3-pro", llm.Usage{InputTokens: 1_000}); !ok {
+		t.Fatalf("expected gemini wildcard estimate")
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if n := warned["gemini-native/gemini-3-pro"]; n != 0 {
+		t.Fatalf("wildcard-only provider must not warn, got %d warnings", n)
+	}
+}
+
+// The dedupe map is written under the tracker mutex; the goroutines must be the
+// first callers for this model or the write path is never exercised.
+func TestEstimateCost_FallbackDiagnosticDedupesUnderConcurrency(t *testing.T) {
+	var mu sync.Mutex
+	warnCount := 0
+	original := warnPriceFallback
+	warnPriceFallback = func(string, string) {
+		mu.Lock()
+		defer mu.Unlock()
+		warnCount++
+	}
+	defer func() { warnPriceFallback = original }()
+
+	tracker := newCostTestTracker(t)
+	usage := llm.Usage{InputTokens: 1_000}
+
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, _ = tracker.EstimateCost("anthropic", "never-seen-gateway-model", usage)
+		}()
+	}
+	wg.Wait()
+
+	mu.Lock()
+	defer mu.Unlock()
+	if warnCount != 1 {
+		t.Fatalf("expected exactly one warning across concurrent first calls, got %d", warnCount)
+	}
+}
+
 func TestEstimateCost_OpenAIEntriesReflectDocumentedPricing(t *testing.T) {
 	tracker := newCostTestTracker(t)
 
