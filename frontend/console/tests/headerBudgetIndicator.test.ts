@@ -7,7 +7,7 @@ import { ko } from '../src/i18n/ko.ts'
 
 const headerSource = readFileSync(new URL('../src/components/Header.svelte', import.meta.url), 'utf8')
 const shellSource = readFileSync(new URL('../src/components/Shell.svelte', import.meta.url), 'utf8')
-const apiSource = readFileSync(new URL('../src/lib/api.ts', import.meta.url), 'utf8')
+const apiSource = readFileSync(new URL('../src/lib/api/system.ts', import.meta.url), 'utf8')
 const typesSource = readFileSync(new URL('../src/lib/types.ts', import.meta.url), 'utf8')
 
 test('Header renders a daily token budget chip backed by the usage today API', () => {

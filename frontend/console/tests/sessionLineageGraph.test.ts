@@ -86,7 +86,7 @@ test('session lineage graph page loads sessions, parent history previews, and ch
 })
 
 test('session lineage graph exposes fork insight promotion controls', () => {
-  const apiSource = readFileSync(new URL('../src/lib/api.ts', import.meta.url), 'utf8')
+  const apiSource = readFileSync(new URL('../src/lib/api/sessions.ts', import.meta.url), 'utf8')
   const i18nEnSource = readFileSync(new URL('../src/i18n/en.ts', import.meta.url), 'utf8')
 
   assert.match(apiSource, /getForkPromotions/)

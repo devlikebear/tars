@@ -8,10 +8,10 @@ import {
   resumableWorkLedgerSteps,
   workLedgerCanCancel,
 } from '../src/lib/workLedger.ts'
-import { cancelWorkLedger, getSessionWorkLedger, resumeWorkLedgerStep } from '../src/lib/api.ts'
+import { cancelWorkLedger, getSessionWorkLedger, resumeWorkLedgerStep } from '../src/lib/api/tasks.ts'
 import type { WorkLedgerProjection } from '../src/lib/types.ts'
 
-const apiSource = readFileSync(new URL('../src/lib/api.ts', import.meta.url), 'utf8')
+const apiSource = readFileSync(new URL('../src/lib/api/tasks.ts', import.meta.url), 'utf8')
 const tasksPanelSource = readFileSync(new URL('../src/components/TasksPanel.svelte', import.meta.url), 'utf8')
 
 test('work ledger timeline orders durable events and exposes operator labels', () => {

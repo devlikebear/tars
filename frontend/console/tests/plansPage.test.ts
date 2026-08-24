@@ -12,7 +12,7 @@ import {
 const appSource = readFileSync(new URL('../src/App.svelte', import.meta.url), 'utf8')
 const routeComponentsSource = readFileSync(new URL('../src/lib/routeComponents.ts', import.meta.url), 'utf8')
 const navSource = readFileSync(new URL('../src/components/Nav.svelte', import.meta.url), 'utf8')
-const apiSource = readFileSync(new URL('../src/lib/api.ts', import.meta.url), 'utf8')
+const apiSource = readFileSync(new URL('../src/lib/api/tasks.ts', import.meta.url), 'utf8')
 const typesSource = readFileSync(new URL('../src/lib/types.ts', import.meta.url), 'utf8')
 const enSource = readFileSync(new URL('../src/i18n/en.ts', import.meta.url), 'utf8')
 const koSource = readFileSync(new URL('../src/i18n/ko.ts', import.meta.url), 'utf8')

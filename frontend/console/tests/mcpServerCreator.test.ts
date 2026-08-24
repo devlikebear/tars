@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
 const extensionsSource = readFileSync(new URL('../src/components/Extensions.svelte', import.meta.url), 'utf8')
-const apiSource = readFileSync(new URL('../src/lib/api.ts', import.meta.url), 'utf8')
+const apiSource = readFileSync(new URL('../src/lib/api/extensions.ts', import.meta.url), 'utf8')
 
 test('Extensions wires an MCP Server Creator wizard into the MCP section', () => {
   assert.match(extensionsSource, /import MCPServerCreator from '\.\/MCPServerCreator\.svelte'/)

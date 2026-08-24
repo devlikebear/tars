@@ -2,7 +2,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
-const apiSource = readFileSync(new URL('../src/lib/api.ts', import.meta.url), 'utf8')
+const apiSource = readFileSync(new URL('../src/lib/api/extensions.ts', import.meta.url), 'utf8')
+const apiClientSource = readFileSync(new URL('../src/lib/api/client.ts', import.meta.url), 'utf8')
 const typesSource = readFileSync(new URL('../src/lib/types.ts', import.meta.url), 'utf8')
 const extensionsSource = readFileSync(new URL('../src/components/Extensions.svelte', import.meta.url), 'utf8')
 
@@ -15,9 +16,9 @@ test('Hub install API returns extension sandbox reports', () => {
 })
 
 test('API errors preserve sandbox report payloads for failed installs', () => {
-  assert.match(apiSource, /export class APIRequestError extends Error/)
-  assert.match(apiSource, /sandbox_report/)
-  assert.match(apiSource, /throw new APIRequestError/)
+  assert.match(apiClientSource, /export class APIRequestError extends Error/)
+  assert.match(apiClientSource, /sandbox_report/)
+  assert.match(apiClientSource, /throw new APIRequestError/)
 })
 
 test('Extensions renders the latest extension sandbox report', () => {

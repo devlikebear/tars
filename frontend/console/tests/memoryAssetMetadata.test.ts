@@ -10,7 +10,7 @@ import { en } from '../src/i18n/en.ts'
 import type { MemoryAsset } from '../src/lib/types.ts'
 
 const memorySource = readFileSync(new URL('../src/components/MemoryCenter.svelte', import.meta.url), 'utf8')
-const apiSource = readFileSync(new URL('../src/lib/api.ts', import.meta.url), 'utf8')
+const apiSource = readFileSync(new URL('../src/lib/api/memory.ts', import.meta.url), 'utf8')
 const typesSource = readFileSync(new URL('../src/lib/types.ts', import.meta.url), 'utf8')
 
 function asset(partial: Partial<MemoryAsset>): MemoryAsset {

@@ -10,7 +10,7 @@ import {
 import type { ConfigFieldMeta } from '../src/lib/types.ts'
 
 const configSource = readFileSync(new URL('../src/components/Config.svelte', import.meta.url), 'utf8')
-const apiSource = readFileSync(new URL('../src/lib/api.ts', import.meta.url), 'utf8')
+const apiSource = readFileSync(new URL('../src/lib/api/config.ts', import.meta.url), 'utf8')
 
 function field(key: string, label = key, type = 'string'): ConfigFieldMeta {
   return {

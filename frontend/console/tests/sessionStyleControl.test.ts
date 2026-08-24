@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs'
 import { buildSessionStylePreview, sessionStylePayload } from '../src/lib/sessionStyle.ts'
 
 const panelSource = readFileSync(new URL('../src/components/SessionConfigPanel.svelte', import.meta.url), 'utf8')
-const apiSource = readFileSync(new URL('../src/lib/api.ts', import.meta.url), 'utf8')
+const apiSource = readFileSync(new URL('../src/lib/api/sessions.ts', import.meta.url), 'utf8')
 const typesSource = readFileSync(new URL('../src/lib/types.ts', import.meta.url), 'utf8')
 
 test('session style preview describes behavioral axes and consent limits', () => {

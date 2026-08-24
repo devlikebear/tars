@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
 const source = readFileSync(new URL('../src/components/AgentRuntimeRunView.svelte', import.meta.url), 'utf8')
-const apiSource = readFileSync(new URL('../src/lib/api.ts', import.meta.url), 'utf8')
+const apiSource = readFileSync(new URL('../src/lib/api/agentruntime.ts', import.meta.url), 'utf8')
 const costFlowSource = readFileSync(new URL('../src/components/AgentRuntimeCostFlow.svelte', import.meta.url), 'utf8')
 const replaySource = readFileSync(new URL('../src/components/AgentRuntimeReplay.svelte', import.meta.url), 'utf8')
 const flowGraphSource = readFileSync(new URL('../src/components/AgentRuntimeFlowGraph.svelte', import.meta.url), 'utf8')
