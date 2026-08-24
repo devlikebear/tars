@@ -90,6 +90,9 @@ type Tracker struct {
 	nowFn      func() time.Time
 	limits     Limits
 	priceByKey map[string]ModelPrice
+	// warnedFallbackModels guards the wildcard-pricing diagnostic so each
+	// model warns once per tracker lifetime, not per call. Guarded by mu.
+	warnedFallbackModels map[string]struct{}
 }
 
 type LimitStatus struct {
@@ -114,12 +117,13 @@ func NewTracker(workspaceDir string, opts TrackerOptions) (*Tracker, error) {
 		return nil, err
 	}
 	t := &Tracker{
-		workspace:  root,
-		usageDir:   usageDir,
-		limitsPath: filepath.Join(usageDir, "limits.json"),
-		nowFn:      nowFn,
-		limits:     normalizeLimits(opts.InitialLimits),
-		priceByKey: defaultPriceTable(),
+		workspace:            root,
+		usageDir:             usageDir,
+		limitsPath:           filepath.Join(usageDir, "limits.json"),
+		nowFn:                nowFn,
+		limits:               normalizeLimits(opts.InitialLimits),
+		priceByKey:           defaultPriceTable(),
+		warnedFallbackModels: make(map[string]struct{}),
 	}
 	for key, price := range opts.PriceOverrides {
 		k := strings.TrimSpace(strings.ToLower(key))
