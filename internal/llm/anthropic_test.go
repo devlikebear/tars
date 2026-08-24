@@ -454,16 +454,109 @@ func TestAnthropicCompletedTurnEndIndexes(t *testing.T) {
 
 func TestApplyAnthropicRollingCacheBreakpoints_EmptyHistory(t *testing.T) {
 	wire := toAnthropicWireMessages(nil)
-	applyAnthropicRollingCacheBreakpoints(wire, nil, true, true)
+	applyAnthropicRollingCacheBreakpoints(wire, nil, 2)
 	if len(wire) != 0 {
 		t.Fatalf("expected empty wire messages, got %d", len(wire))
+	}
+}
+
+// The index-alignment guard is the only thing keeping a marker off an
+// unrelated message if the wire conversion ever stops being 1:1.
+func TestApplyAnthropicRollingCacheBreakpoints_LengthMismatchMarksNothing(t *testing.T) {
+	messages := []ChatMessage{userMsg("q1"), assistMsg("r1"), userMsg("q2")}
+	wire := toAnthropicWireMessages(messages)
+	applyAnthropicRollingCacheBreakpoints(wire, messages[:2], 0)
+	if marked := wireCacheMarkedIndexes(t, wire); len(marked) != 0 {
+		t.Fatalf("mismatched lengths must mark nothing, got %v", marked)
+	}
+}
+
+// anthropicMessageCacheBudget is what keeps the request under the provider's
+// total breakpoint limit, so every reservation level needs to be pinned.
+func TestAnthropicMessageCacheBudget(t *testing.T) {
+	tests := []struct {
+		reserved int
+		want     int
+	}{
+		{0, 2},
+		{1, 2},
+		{2, 2},
+		{3, 1},
+		{4, 0},
+		{5, 0},
+	}
+	for _, tt := range tests {
+		if got := anthropicMessageCacheBudget(tt.reserved); got != tt.want {
+			t.Fatalf("reserved=%d: got budget %d want %d", tt.reserved, got, tt.want)
+		}
+		if total := tt.reserved + anthropicMessageCacheBudget(tt.reserved); tt.reserved <= anthropicMaxCacheBreakpoints && total > anthropicMaxCacheBreakpoints {
+			t.Fatalf("reserved=%d: total %d exceeds provider limit %d", tt.reserved, total, anthropicMaxCacheBreakpoints)
+		}
+	}
+}
+
+// A heavily reserved request must spend fewer slots on messages rather than
+// blow past the provider limit.
+func TestApplyAnthropicRollingCacheBreakpoints_ReservedSlotsShrinkBudget(t *testing.T) {
+	messages := []ChatMessage{
+		userMsg("q1"), assistMsg("r1"),
+		userMsg("q2"), assistMsg("r2"),
+		userMsg("q3"), assistMsg("r3"),
+		userMsg("q4"),
+	}
+	wire := toAnthropicWireMessages(messages)
+	applyAnthropicRollingCacheBreakpoints(wire, messages, 3)
+	if marked := wireCacheMarkedIndexes(t, wire); len(marked) != 1 || marked[0] != 5 {
+		t.Fatalf("expected a single breakpoint on the newest completed turn, got %v", marked)
+	}
+}
+
+// When the newest completed turn cannot carry a marker, the slot must fall
+// back to an older markable turn instead of being forfeited.
+func TestApplyAnthropicRollingCacheBreakpoints_FallsBackWhenNewestTurnUnmarkable(t *testing.T) {
+	messages := []ChatMessage{
+		userMsg("q1"), assistMsg("r1"),
+		userMsg("q2"), assistMsg("r2"),
+		userMsg("q3"), assistMsg(""), // unmarkable: no content to hang cache_control on
+		userMsg("q4"),
+	}
+	wire := toAnthropicWireMessages(messages)
+	applyAnthropicRollingCacheBreakpoints(wire, messages, 2)
+	marked := wireCacheMarkedIndexes(t, wire)
+	if len(marked) != 2 || marked[0] != 1 || marked[1] != 3 {
+		t.Fatalf("expected the budget to fall back to older markable turns, got %v", marked)
+	}
+}
+
+// The point of the second marker is that the previous turn's newest
+// breakpoint — already warm — is retained as the fallback on the next turn.
+func TestApplyAnthropicRollingCacheBreakpoints_WindowRollsAcrossTurns(t *testing.T) {
+	markersFor := func(messages []ChatMessage) []int {
+		wire := toAnthropicWireMessages(messages)
+		applyAnthropicRollingCacheBreakpoints(wire, messages, 2)
+		return wireCacheMarkedIndexes(t, wire)
+	}
+
+	turnA := []ChatMessage{userMsg("q1"), assistMsg("r1"), userMsg("q2"), assistMsg("r2"), userMsg("q3")}
+	turnB := append(append([]ChatMessage{}, turnA...), assistMsg("r3"), userMsg("q4"))
+
+	markedA := markersFor(turnA)
+	markedB := markersFor(turnB)
+	if len(markedA) != 2 || len(markedB) != 2 {
+		t.Fatalf("expected two markers on both turns, got %v and %v", markedA, markedB)
+	}
+	if markedB[0] != markedA[1] {
+		t.Fatalf("turn B's fallback (%d) must reuse turn A's newest breakpoint (%d) so it is already warm", markedB[0], markedA[1])
+	}
+	if markedB[1] <= markedA[1] {
+		t.Fatalf("turn B's newest breakpoint (%d) must advance past turn A's (%d)", markedB[1], markedA[1])
 	}
 }
 
 func TestApplyAnthropicRollingCacheBreakpoints_SingleIncomingMessage(t *testing.T) {
 	messages := []ChatMessage{userMsg("hi")}
 	wire := toAnthropicWireMessages(messages)
-	applyAnthropicRollingCacheBreakpoints(wire, messages, false, false)
+	applyAnthropicRollingCacheBreakpoints(wire, messages, 0)
 	if marked := wireCacheMarkedIndexes(t, wire); len(marked) != 0 {
 		t.Fatalf("expected no breakpoints on bare history, got %v", marked)
 	}
@@ -472,7 +565,7 @@ func TestApplyAnthropicRollingCacheBreakpoints_SingleIncomingMessage(t *testing.
 func TestApplyAnthropicRollingCacheBreakpoints_ShortHistoryMarksLastCompletedTurn(t *testing.T) {
 	messages := []ChatMessage{userMsg("q1"), assistMsg("r1"), userMsg("q2")}
 	wire := toAnthropicWireMessages(messages)
-	applyAnthropicRollingCacheBreakpoints(wire, messages, false, false)
+	applyAnthropicRollingCacheBreakpoints(wire, messages, 0)
 	if marked := wireCacheMarkedIndexes(t, wire); len(marked) != 1 || marked[0] != 1 {
 		t.Fatalf("expected single breakpoint on the previous assistant reply, got %v", marked)
 	}
@@ -490,7 +583,7 @@ func TestApplyAnthropicRollingCacheBreakpoints_LongHistoryUsesRollingWindow(t *t
 		userMsg("q5"),
 	}
 	wire := toAnthropicWireMessages(messages)
-	applyAnthropicRollingCacheBreakpoints(wire, messages, true, true)
+	applyAnthropicRollingCacheBreakpoints(wire, messages, 2)
 	if marked := wireCacheMarkedIndexes(t, wire); len(marked) != 2 || marked[0] != 5 || marked[1] != 7 {
 		t.Fatalf("expected rolling breakpoints on the two newest completed turns, got %v", marked)
 	}
@@ -508,7 +601,7 @@ func TestApplyAnthropicRollingCacheBreakpoints_MidToolLoopKeepsStablePlacement(t
 		{Role: "tool", ToolCallID: "c1", Content: "out"},
 	}
 	wire := toAnthropicWireMessages(messages)
-	applyAnthropicRollingCacheBreakpoints(wire, messages, true, true)
+	applyAnthropicRollingCacheBreakpoints(wire, messages, 2)
 	if marked := wireCacheMarkedIndexes(t, wire); len(marked) != 2 || marked[0] != 1 || marked[1] != 3 {
 		t.Fatalf("expected breakpoints frozen on completed turns, got %v", marked)
 	}
@@ -530,7 +623,7 @@ func TestApplyAnthropicRollingCacheBreakpoints_TurnMayEndOnCompleteToolPair(t *t
 		userMsg("q2"),
 	}
 	wire := toAnthropicWireMessages(messages)
-	applyAnthropicRollingCacheBreakpoints(wire, messages, false, false)
+	applyAnthropicRollingCacheBreakpoints(wire, messages, 0)
 	if marked := wireCacheMarkedIndexes(t, wire); len(marked) != 1 || marked[0] != 2 {
 		t.Fatalf("expected the breakpoint on the completed tool_result message, got %v", marked)
 	}

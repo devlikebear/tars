@@ -8,9 +8,13 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ### Added
 
+- **Anthropic 메시지 배열 rolling cache breakpoint (#921)** — 완료된 턴 경계에 최대 2개의 `cache_control` 마커를 찍어 대화가 길어져도 이전 transcript를 캐시 prefix로 재사용한다. 가장 새 마커는 직전 완료 턴의 마지막 메시지에, 두 번째는 그 앞 턴에 놓여 이전 요청이 이미 데운 위치를 fallback으로 유지한다. 진행 중인 턴(수신 user 메시지 + in-flight tool 교환)에는 찍지 않으므로 tool 루프 반복 사이에 배치가 흔들리지 않고 `tool_use`/`tool_result` 쌍도 갈라지지 않는다. system/tool 마커를 포함한 요청 전체 breakpoint는 프로바이더 상한 4개를 넘지 않는다.
+
 - **`antigravity-cli` provider** — Reuses a locally installed `agy` CLI the way `claude-code-cli` reuses `claude`, via `agy --print <text> --output-format stream-json`. The CLI owns its Google login in the system keyring, so the kind takes no `api_key` and no `base_url` and no credential passes through TARS. Multi-turn resumes through the stream's `conversation_id` (`--conversation`), `ReasoningEffort` maps to `--effort`, and a `json_schema` response format maps to `--json-schema`. Tools remain the CLI's own and are reported on `ChatResponse.ProviderExecutedTools` for audit only, never re-dispatched through TARS' registry. `AGY_CLI_MODE` accepts only `accept-edits` or `plan`; there is deliberately no path to `--dangerously-skip-permissions`. Requires Antigravity CLI 1.1.12 or newer.
 
 ### Fixed
+
+- **rolling cache breakpoint가 마커를 조용히 흘리던 문제 (#921)** — 예산은 마킹 가능 여부를 따지기 전에 최신 2개 턴으로 잘려 있어서, 가장 새 턴이 마커를 못 받는 형태(내용이 빈 assistant 메시지, 끝이 `tool_use`인 블록)면 그 슬롯을 더 오래된 턴으로 넘기지 않고 그냥 버렸다. 이제 최신 턴부터 역순으로 훑으며 **실제로 마커가 찍힌 경우에만** 예산을 소모하므로, 마킹 불가능한 턴은 건너뛰고 그 앞 턴이 fallback 자리를 채운다. 아울러 breakpoint 예산 계산에서 실행되지 않던 분기를 걷어내고(`hasSystemBlocks`/`hasTools` bool 두 개 → 예약 슬롯 수 `int` 하나), `anthropicMessageCacheBudget`으로 분리해 예약 수준별로 테스트한다. `cache_control` 리터럴 4곳은 `anthropicEphemeralCacheControl()` 한 곳으로 모았다.
 
 - **프롬프트 캐시가 매 턴 무효화되던 문제 (#920)** — 시스템 프롬프트 첫 줄이 초 단위 wall-clock 타임스탬프라 어떤 프로바이더의 prefix 캐시에도 걸리지 않았고, 정적 본문 전체가 매 턴 write 요금으로 재과금됐다. 시각은 이제 프롬프트 맨 뒤 `## Current Time` 블록으로 내려가 분 단위로 truncate되고, `## Prior Context` 회상도 skills/style/goal/critic 등 세션 고정 섹션 **뒤**로 재배치된다. Anthropic 요청은 system을 블록 배열로 보내 `cache_control` breakpoint를 안정 블록에만 찍으므로 동적 tail이 캐시 prefix를 깨지 않는다. 정렬 규칙은 `prompt.BuildResultFor`에 불변식으로 문서화했다.
 - **메모리 prefetch가 세션 작업 디렉터리를 지우던 문제 (#920)** — 채팅 메모리 캐시가 조립된 프롬프트를 통째로 저장하는 바람에, work dir을 모르는 prefetch 고루틴의 결과가 캐시에 올라가면 그 다음 턴 프롬프트에서 `## Working Directories` 섹션이 통째로 사라졌다. 이제 캐시는 회상 payload만 보관하고 프롬프트는 항상 live 옵션으로 다시 조립한다 — 캐시 hit과 miss가 구조적으로 동일한 프롬프트를 낸다.
