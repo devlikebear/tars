@@ -4,7 +4,30 @@ import (
 	"strings"
 
 	"github.com/devlikebear/tars/internal/llm"
+	zlog "github.com/rs/zerolog/log"
 )
+
+// warnPriceFallback reports that a model fell through to the provider
+// wildcard price. Package-level so tests can observe emissions; callers
+// must ensure it fires at most once per model (see Tracker.noteWildcardFallback).
+var warnPriceFallback = func(provider, model string) {
+	zlog.Warn().
+		Str("provider", provider).
+		Str("model", model).
+		Msg("no per-model usage pricing; estimated with provider fallback rates")
+}
+
+// anthropicFamilyPrefixPrices prices Anthropic models whose exact ID is not
+// in the table (dated snapshots, future point releases) at their documented
+// family tier instead of the wildcard fallback.
+var anthropicFamilyPrefixPrices = []struct {
+	prefix string
+	price  ModelPrice
+}{
+	{prefix: "claude-opus-", price: ModelPrice{InputPer1MUSD: 5.00, OutputPer1MUSD: 25.00, CacheReadPer1MUSD: 0.50, CacheWritePer1MUSD: 6.25}},
+	{prefix: "claude-sonnet-", price: ModelPrice{InputPer1MUSD: 3.00, OutputPer1MUSD: 15.00, CacheReadPer1MUSD: 0.30, CacheWritePer1MUSD: 3.75}},
+	{prefix: "claude-haiku-", price: ModelPrice{InputPer1MUSD: 1.00, OutputPer1MUSD: 5.00, CacheReadPer1MUSD: 0.10, CacheWritePer1MUSD: 1.25}},
+}
 
 func sanitizePrice(in ModelPrice) ModelPrice {
 	out := in
@@ -25,14 +48,26 @@ func sanitizePrice(in ModelPrice) ModelPrice {
 
 func defaultPriceTable() map[string]ModelPrice {
 	return map[string]ModelPrice{
-		"openai/gpt-4o-mini":         {InputPer1MUSD: 0.15, OutputPer1MUSD: 0.60, CacheReadPer1MUSD: 0.075},
-		"openai/gpt-4.1-mini":        {InputPer1MUSD: 0.40, OutputPer1MUSD: 1.60, CacheReadPer1MUSD: 0.10},
-		"openai/gpt-4.1":             {InputPer1MUSD: 2.00, OutputPer1MUSD: 8.00, CacheReadPer1MUSD: 0.50},
-		"openai/gpt-5.3-codex":       {InputPer1MUSD: 1.50, OutputPer1MUSD: 6.00, CacheReadPer1MUSD: 0.375},
-		"openai-codex/gpt-5.3-codex": {InputPer1MUSD: 1.50, OutputPer1MUSD: 6.00, CacheReadPer1MUSD: 0.375},
-		"anthropic/*":                {InputPer1MUSD: 3.00, OutputPer1MUSD: 15.00, CacheReadPer1MUSD: 0.30, CacheWritePer1MUSD: 3.75},
-		"gemini/*":                   {InputPer1MUSD: 0.30, OutputPer1MUSD: 2.50},
-		"gemini-native/*":            {InputPer1MUSD: 0.30, OutputPer1MUSD: 2.50},
+		"openai/gpt-4o-mini":                  {InputPer1MUSD: 0.15, OutputPer1MUSD: 0.60, CacheReadPer1MUSD: 0.075},
+		"openai/gpt-4.1-mini":                 {InputPer1MUSD: 0.40, OutputPer1MUSD: 1.60, CacheReadPer1MUSD: 0.10},
+		"openai/gpt-4.1":                      {InputPer1MUSD: 2.00, OutputPer1MUSD: 8.00, CacheReadPer1MUSD: 0.50},
+		"openai/gpt-5.3-codex":                {InputPer1MUSD: 1.75, OutputPer1MUSD: 14.00, CacheReadPer1MUSD: 0.175},
+		"openai-codex/gpt-5.3-codex":          {InputPer1MUSD: 1.75, OutputPer1MUSD: 14.00, CacheReadPer1MUSD: 0.175},
+		"openai/gpt-5.4":                      {InputPer1MUSD: 2.50, OutputPer1MUSD: 15.00, CacheReadPer1MUSD: 0.25},
+		"openai-codex/gpt-5.4":                {InputPer1MUSD: 2.50, OutputPer1MUSD: 15.00, CacheReadPer1MUSD: 0.25},
+		"anthropic/claude-opus-4-5":           {InputPer1MUSD: 5.00, OutputPer1MUSD: 25.00, CacheReadPer1MUSD: 0.50, CacheWritePer1MUSD: 6.25},
+		"anthropic/claude-opus-4-6":           {InputPer1MUSD: 5.00, OutputPer1MUSD: 25.00, CacheReadPer1MUSD: 0.50, CacheWritePer1MUSD: 6.25},
+		"anthropic/claude-opus-4-7":           {InputPer1MUSD: 5.00, OutputPer1MUSD: 25.00, CacheReadPer1MUSD: 0.50, CacheWritePer1MUSD: 6.25},
+		"anthropic/claude-sonnet-4-5":         {InputPer1MUSD: 3.00, OutputPer1MUSD: 15.00, CacheReadPer1MUSD: 0.30, CacheWritePer1MUSD: 3.75},
+		"anthropic/claude-sonnet-4-6":         {InputPer1MUSD: 3.00, OutputPer1MUSD: 15.00, CacheReadPer1MUSD: 0.30, CacheWritePer1MUSD: 3.75},
+		"anthropic/claude-haiku-4-5":          {InputPer1MUSD: 1.00, OutputPer1MUSD: 5.00, CacheReadPer1MUSD: 0.10, CacheWritePer1MUSD: 1.25},
+		"anthropic/claude-haiku-4-5-20251001": {InputPer1MUSD: 1.00, OutputPer1MUSD: 5.00, CacheReadPer1MUSD: 0.10, CacheWritePer1MUSD: 1.25},
+		// Fallback for gateway-hosted or unrecognized Anthropic-kind models
+		// (e.g. config/default.yaml routes MiniMax through kind: anthropic);
+		// Sonnet-class mid rates so unknown traffic still gets an estimate.
+		"anthropic/*":     {InputPer1MUSD: 3.00, OutputPer1MUSD: 15.00, CacheReadPer1MUSD: 0.30, CacheWritePer1MUSD: 3.75},
+		"gemini/*":        {InputPer1MUSD: 0.30, OutputPer1MUSD: 2.50},
+		"gemini-native/*": {InputPer1MUSD: 0.30, OutputPer1MUSD: 2.50},
 	}
 }
 
@@ -78,13 +113,41 @@ func (t *Tracker) resolvePrice(provider, model string) (ModelPrice, bool) {
 	if price, ok := t.priceByKey[p+"/"+m]; ok {
 		return price, true
 	}
+	if price, ok := matchFamilyPrice(p, m); ok {
+		return price, true
+	}
 	if price, ok := t.priceByKey[p+"/*"]; ok {
+		t.noteWildcardFallback(p, m)
 		return price, true
 	}
 	if price, ok := t.priceByKey["*/"+m]; ok {
+		t.noteWildcardFallback(p, m)
 		return price, true
 	}
 	return ModelPrice{}, false
+}
+
+func matchFamilyPrice(provider, model string) (ModelPrice, bool) {
+	if provider != "anthropic" {
+		return ModelPrice{}, false
+	}
+	for _, family := range anthropicFamilyPrefixPrices {
+		if strings.HasPrefix(model, family.prefix) {
+			return family.price, true
+		}
+	}
+	return ModelPrice{}, false
+}
+
+// noteWildcardFallback emits the fallback diagnostic at most once per model.
+// Callers must hold t.mu.
+func (t *Tracker) noteWildcardFallback(provider, model string) {
+	key := provider + "/" + model
+	if _, ok := t.warnedFallbackModels[key]; ok {
+		return
+	}
+	t.warnedFallbackModels[key] = struct{}{}
+	warnPriceFallback(provider, model)
 }
 
 func clampUsageTokens(u llm.Usage) (input int, output int, cached int, cacheRead int, cacheWrite int) {
