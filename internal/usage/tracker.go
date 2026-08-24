@@ -90,6 +90,10 @@ type Tracker struct {
 	nowFn      func() time.Time
 	limits     Limits
 	priceByKey map[string]ModelPrice
+	// overrideByKey holds only operator-supplied rates. They are resolved
+	// ahead of every built-in entry, so a single `anthropic/*` override still
+	// covers models that ship with a per-model price.
+	overrideByKey map[string]ModelPrice
 	// warnedFallbackModels guards the wildcard-pricing diagnostic so each
 	// model warns once per tracker lifetime, not per call. Guarded by mu.
 	warnedFallbackModels map[string]struct{}
@@ -123,6 +127,7 @@ func NewTracker(workspaceDir string, opts TrackerOptions) (*Tracker, error) {
 		nowFn:                nowFn,
 		limits:               normalizeLimits(opts.InitialLimits),
 		priceByKey:           defaultPriceTable(),
+		overrideByKey:        make(map[string]ModelPrice, len(opts.PriceOverrides)),
 		warnedFallbackModels: make(map[string]struct{}),
 	}
 	for key, price := range opts.PriceOverrides {
@@ -130,6 +135,7 @@ func NewTracker(workspaceDir string, opts TrackerOptions) (*Tracker, error) {
 		if k == "" {
 			continue
 		}
+		t.overrideByKey[k] = sanitizePrice(price)
 		t.priceByKey[k] = sanitizePrice(price)
 	}
 	_ = t.loadPersistedLimits()

@@ -62,6 +62,11 @@ func defaultPriceTable() map[string]ModelPrice {
 		"anthropic/claude-sonnet-4-6":         {InputPer1MUSD: 3.00, OutputPer1MUSD: 15.00, CacheReadPer1MUSD: 0.30, CacheWritePer1MUSD: 3.75},
 		"anthropic/claude-haiku-4-5":          {InputPer1MUSD: 1.00, OutputPer1MUSD: 5.00, CacheReadPer1MUSD: 0.10, CacheWritePer1MUSD: 1.25},
 		"anthropic/claude-haiku-4-5-20251001": {InputPer1MUSD: 1.00, OutputPer1MUSD: 5.00, CacheReadPer1MUSD: 0.10, CacheWritePer1MUSD: 1.25},
+		// Fable/Mythos match none of the opus/sonnet/haiku family prefixes, so
+		// without explicit entries they fall to the Sonnet-rate wildcard — a
+		// 3.3x undercount on the priciest models in the lineup.
+		"anthropic/claude-fable-5":  {InputPer1MUSD: 10.00, OutputPer1MUSD: 50.00, CacheReadPer1MUSD: 1.00, CacheWritePer1MUSD: 12.50},
+		"anthropic/claude-mythos-5": {InputPer1MUSD: 10.00, OutputPer1MUSD: 50.00, CacheReadPer1MUSD: 1.00, CacheWritePer1MUSD: 12.50},
 		// Fallback for gateway-hosted or unrecognized Anthropic-kind models
 		// (e.g. config/default.yaml routes MiniMax through kind: anthropic);
 		// Sonnet-class mid rates so unknown traffic still gets an estimate.
@@ -101,30 +106,69 @@ func (t *Tracker) EstimateCost(provider, model string, u llm.Usage) (float64, bo
 	return cost, true
 }
 
+// resolvePrice picks the rate for one (provider, model) pair.
+//
+// Operator overrides are consulted in full — exact, then provider wildcard,
+// then model wildcard — before any built-in entry. Overrides are a deliberate
+// statement about what this deployment is billed, so a reseller or flat-rate
+// operator can still express it with a single `anthropic/*` entry even though
+// the table now ships per-model Anthropic rates. Within each layer the more
+// specific key wins.
+//
+// The fallback diagnostic is emitted after the lock is released, and only when
+// falling back for a provider that does have per-model rates — for a provider
+// priced by a single wildcard on purpose, a wildcard hit is the intended
+// answer, not a gap.
 func (t *Tracker) resolvePrice(provider, model string) (ModelPrice, bool) {
+	price, ok, warnProvider, warnModel := t.lookupPrice(provider, model)
+	if warnProvider != "" {
+		warnPriceFallback(warnProvider, warnModel)
+	}
+	return price, ok
+}
+
+func (t *Tracker) lookupPrice(provider, model string) (price ModelPrice, ok bool, warnProvider string, warnModel string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
 	p := strings.TrimSpace(strings.ToLower(provider))
 	m := strings.TrimSpace(strings.ToLower(model))
 	if p == "" || m == "" {
-		return ModelPrice{}, false
+		return ModelPrice{}, false, "", ""
+	}
+	for _, key := range []string{p + "/" + m, p + "/*", "*/" + m} {
+		if price, ok := t.overrideByKey[key]; ok {
+			return price, true, "", ""
+		}
 	}
 	if price, ok := t.priceByKey[p+"/"+m]; ok {
-		return price, true
+		return price, true, "", ""
 	}
 	if price, ok := matchFamilyPrice(p, m); ok {
-		return price, true
+		return price, true, "", ""
 	}
 	if price, ok := t.priceByKey[p+"/*"]; ok {
-		t.noteWildcardFallback(p, m)
-		return price, true
+		wp, wm := t.noteWildcardFallback(p, m)
+		return price, true, wp, wm
 	}
 	if price, ok := t.priceByKey["*/"+m]; ok {
-		t.noteWildcardFallback(p, m)
-		return price, true
+		// A `*/model` key is per-model pricing, just provider-agnostic —
+		// nothing is missing, so this is not a fallback worth reporting.
+		return price, true, "", ""
 	}
-	return ModelPrice{}, false
+	return ModelPrice{}, false, "", ""
+}
+
+// providerHasPerModelPrices reports whether the table carries any per-model
+// entry for this provider. Callers must hold t.mu.
+func (t *Tracker) providerHasPerModelPrices(provider string) bool {
+	prefix := provider + "/"
+	for key := range t.priceByKey {
+		if strings.HasPrefix(key, prefix) && key != prefix+"*" {
+			return true
+		}
+	}
+	return false
 }
 
 func matchFamilyPrice(provider, model string) (ModelPrice, bool) {
@@ -139,15 +183,21 @@ func matchFamilyPrice(provider, model string) (ModelPrice, bool) {
 	return ModelPrice{}, false
 }
 
-// noteWildcardFallback emits the fallback diagnostic at most once per model.
-// Callers must hold t.mu.
-func (t *Tracker) noteWildcardFallback(provider, model string) {
+// noteWildcardFallback claims the once-per-model diagnostic slot and reports
+// which (provider, model) the caller should warn about, or two empty strings
+// when no warning is due. It never logs itself: callers hold t.mu, and the
+// tracker mutex also guards Limits()/UpdateLimits, so the emission happens
+// after the lock is released. Callers must hold t.mu.
+func (t *Tracker) noteWildcardFallback(provider, model string) (string, string) {
+	if !t.providerHasPerModelPrices(provider) {
+		return "", ""
+	}
 	key := provider + "/" + model
 	if _, ok := t.warnedFallbackModels[key]; ok {
-		return
+		return "", ""
 	}
 	t.warnedFallbackModels[key] = struct{}{}
-	warnPriceFallback(provider, model)
+	return provider, model
 }
 
 func clampUsageTokens(u llm.Usage) (input int, output int, cached int, cacheRead int, cacheWrite int) {
