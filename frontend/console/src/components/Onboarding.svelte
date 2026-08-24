@@ -224,7 +224,8 @@
     try {
       const existingProviders =
         (configValues.llm_providers as Record<string, unknown>) || {}
-      await patchConfigValues(buildConfigPayload(form, existingProviders))
+      const existingTiers = (configValues.llm_tiers as Record<string, unknown>) || {}
+      await patchConfigValues(buildConfigPayload(form, existingProviders, existingTiers))
     } catch (err) {
       saveError = (err as Error).message || 'failed to save config'
       restartPhase = 'idle'

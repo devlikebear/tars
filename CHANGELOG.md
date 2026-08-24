@@ -14,6 +14,10 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ### Fixed
 
+- **온보딩 마법사 저장이 커스텀 tier를 지우던 문제 (#931)** — `buildConfigPayload`는 `llm_providers`를 디스크 기존값과 병합하면서 `llm_tiers`는 `heavy`/`standard`/`light`만으로 새로 만들어 통째로 반환했다. alias-keyed PATCH가 보낸 값으로 on-disk 집합을 대체하므로, `vision` 같은 커스텀 tier를 쓰는 사용자가 마법사에서 모델 하나만 바꿔 저장해도 그 tier가 설정에서 사라졌다. Config 페이지가 `llm_tiers` 편집을 마법사 딥링크로 넘기면서 이 경로가 일반 사용자에게 열렸다. 이제 tier도 provider와 동일하게 기존값 위에 덮어쓴다.
+- **Inspect 뷰가 저장되지 않은 값을 보여주던 문제 (#931)** — Quick Start 밖에서는 Save/Discard 버튼이 숨는데 `getDisplayValue`는 view mode와 무관하게 dirty 값을 우선해서, "Read-only inspection" 배너 아래에 커밋되지 않은 편집이 서버 상태처럼 보였다. 사용자가 반영됐다고 믿고 재시작하면 편집은 사라진다. 이제 Inspect는 서버가 실제로 로드한 값만 보여준다.
+- **DESIGN.md가 스스로 모순되던 문제 (#931)** — Quick Start 13개 게이트가 "stay interactive"라고 적힌 줄과, 같은 필드가 read-only가 된다고 적힌 줄이 공존했다. `embodiment_providers_json`의 실제 동작, 자격증명 7개 중 콘솔 입력란이 남은 2개와 YAML 전용이 된 5개(토큰 rotation에 호스트 파일 접근이 필요해진다는 결과 포함), 그리고 편집기 삭제 후 참조가 끊긴 `configStructured.ts` 드래프트 빌더 목록을 명시했다.
+
 - **rolling cache breakpoint가 마커를 조용히 흘리던 문제 (#921)** — 예산은 마킹 가능 여부를 따지기 전에 최신 2개 턴으로 잘려 있어서, 가장 새 턴이 마커를 못 받는 형태(내용이 빈 assistant 메시지, 끝이 `tool_use`인 블록)면 그 슬롯을 더 오래된 턴으로 넘기지 않고 그냥 버렸다. 이제 최신 턴부터 역순으로 훑으며 **실제로 마커가 찍힌 경우에만** 예산을 소모하므로, 마킹 불가능한 턴은 건너뛰고 그 앞 턴이 fallback 자리를 채운다. 아울러 breakpoint 예산 계산에서 실행되지 않던 분기를 걷어내고(`hasSystemBlocks`/`hasTools` bool 두 개 → 예약 슬롯 수 `int` 하나), `anthropicMessageCacheBudget`으로 분리해 예약 수준별로 테스트한다. `cache_control` 리터럴 4곳은 `anthropicEphemeralCacheControl()` 한 곳으로 모았다.
 
 - **프롬프트 캐시가 매 턴 무효화되던 문제 (#920)** — 시스템 프롬프트 첫 줄이 초 단위 wall-clock 타임스탬프라 어떤 프로바이더의 prefix 캐시에도 걸리지 않았고, 정적 본문 전체가 매 턴 write 요금으로 재과금됐다. 시각은 이제 프롬프트 맨 뒤 `## Current Time` 블록으로 내려가 분 단위로 truncate되고, `## Prior Context` 회상도 skills/style/goal/critic 등 세션 고정 섹션 **뒤**로 재배치된다. Anthropic 요청은 system을 블록 배열로 보내 `cache_control` breakpoint를 안정 블록에만 찍으므로 동적 tail이 캐시 prefix를 깨지 않는다. 정렬 규칙은 `prompt.BuildResultFor`에 불변식으로 문서화했다.

@@ -242,9 +242,14 @@ export function validateForm(form: OnboardingFormState, allKnownAliases?: string
 // every existing alias here, then overlay the wizard's currently
 // edited alias on top. previousAlias (when the user renamed) is
 // removed so the rename actually takes effect on disk.
+// existingTiers is the on-disk tier map and exists for the same reason: the
+// wizard only knows heavy/standard/light, but `llm_tiers` may legitimately
+// carry custom tiers (schema.go documents "heavy/standard/light or custom
+// tiers"). Emitting only the three required ones would delete the rest.
 export function buildConfigPayload(
   form: OnboardingFormState,
   existingProviders: Record<string, unknown> = {},
+  existingTiers: Record<string, unknown> = {},
 ): Record<string, unknown> {
   const provider: Record<string, unknown> = {
     kind: form.provider.kind,
@@ -260,7 +265,10 @@ export function buildConfigPayload(
     provider.base_url = form.provider.base_url.trim()
   }
 
-  const tiers: Record<string, Record<string, unknown>> = {}
+  const tiers: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(existingTiers)) {
+    tiers[key] = value
+  }
   for (const tier of requiredTiers) {
     const binding = form.tiers[tier]
     const entry: Record<string, unknown> = {
