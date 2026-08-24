@@ -228,6 +228,52 @@ The aesthetic resists three temptations:
 
 The system is dark-first. There is no light theme; light backgrounds wash out the warmth of the accent and break the workshop framing.
 
+## Console Purpose & Surface Policy (#931)
+
+Decision recorded in the console-narrowing first cut (`refactor/console-narrow-surface`, Refs #931, Part of epic #919 LP-012). This section is normative for future surface decisions: when a proposed feature does not fit one of the pillars below, it belongs in a skill, a CLI command, or the YAML file — not a new console route.
+
+### Purpose
+
+The TARS Console exists for exactly three things:
+
+1. **Conversation** — chat with the agent, steer sessions (title/archive/pin/fork, goal/critic, prompt override), switch active cwd, inspect transcripts and work timelines.
+2. **Observability** — read system signals: pulse findings, reflection runs, ops health and cleanup plans, memory state, agent-runtime runs/subagents/costs, logs, analytics, event stream.
+3. **Targeted control** — the small set of mutations that genuinely need UI: onboarding (provider/tier setup), credential entry, approvals (approve/reject destructive ops), cron job CRUD, extension install/enable/disable, channel pairing, remote access, restart/reset.
+
+Everything else is **file-first**. Configuration is owned by `workspace/config/tars.config.yaml` (documented in `config/tars.config.example.yaml`, validated server-side at load). The console offers *inspection and validation* of configuration, not full editing: long-tail fields are read-only in the UI with a pointer to their documented YAML key.
+
+### Route inventory
+
+Every route must map to a pillar. Current mapping (first cut keeps all routes; consolidation candidates are noted, not acted on):
+
+| Route | Pillar | Rationale |
+|---|---|---|
+| `/console` (home) | Observability | Dashboard summary of all signals |
+| `/console/chat`, `/console/sessions` | Conversation | Chat transcript, session list |
+| `/console/sessions/graph` | Conversation | Session lineage / fork history |
+| `/console/tasks` | Conversation | Work timeline / task contracts |
+| `/console/sysprompt`, `/console/workspace` | Conversation | System-prompt authoring (adjacent to chat behavior) |
+| `/console/memory` | Observability | Memory assets, inbox review |
+| `/console/agentruntime` | Observability | Runs, subagents, cost flow, replay |
+| `/console/pulse`, `/console/heartbeat` | Observability | Watchdog findings |
+| `/console/reflection` | Observability | Nightly batch results |
+| `/console/ops`, `/console/approvals` | Observability + Control | Health/cleanup plus approve/reject |
+| `/console/logs` | Observability | Log tail/filter |
+| `/console/analytics` | Observability | Usage trends (consolidation candidate: overlaps home cards) |
+| `/console/cron` | Control | Cron CRUD + run history |
+| `/console/extensions` | Control | Skill/plugin/MCP management |
+| `/console/channels` | Control | Telegram pairing |
+| `/console/config` | Inspection | File-first config policy (see below) |
+| `/console/onboarding` | Control (setup) | Provider/tier wizard; capability-preserving reentry |
+
+### Config policy: file-first, inspection-not-editing
+
+- Source of truth: `workspace/config/tars.config.yaml`. Reference doc: `config/tars.config.example.yaml`. Server validates on load and reports via `/v1/admin/config/schema`.
+- Console **keeps UI editing** only for: onboarding flows (wizard), credential entry (API keys/tokens marked sensitive), and Quick Start basics that gate first-run readiness.
+- Console **stops editing** the long tail: the Fields tab becomes a validated read view (current value, effective value under env override, default/restart/secret badges) with pointers to the documented YAML key instead of inline editors. Structured LLM provider/tier editing remains available through the onboarding wizard reentry.
+- The raw YAML tab becomes a read view; editing happens in an editor against the real file, then restart applies it.
+- Server write routes (`PUT /v1/admin/config`, `PATCH /v1/admin/config/values`) remain part of the HTTP API for CLI/scripting use even where the console stops calling them.
+
 ## Colors
 
 The palette is rooted in deep neutrals, a single warm accent, and four semantic states.
