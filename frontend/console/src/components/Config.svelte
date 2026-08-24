@@ -252,7 +252,12 @@
     selectField(field, target.value)
   }
 
+  // Uncommitted edits are only shown where the user can act on them. Inspect
+  // reports what the server actually loaded (DESIGN.md), and it hides
+  // Save/Discard, so surfacing a dirty value there reads as committed state
+  // and invites the user to restart believing an edit landed.
   function getDisplayValue(field: ConfigFieldMeta): unknown {
+    if (!shouldShowFieldActions) return values[field.key]
     return dirtyFields[field.key] !== undefined ? dirtyFields[field.key] : values[field.key]
   }
 

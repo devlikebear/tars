@@ -14,6 +14,10 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ### Fixed
 
+- **온보딩 마법사 저장이 커스텀 tier를 지우던 문제 (#931)** — `buildConfigPayload`는 `llm_providers`를 디스크 기존값과 병합하면서 `llm_tiers`는 `heavy`/`standard`/`light`만으로 새로 만들어 통째로 반환했다. alias-keyed PATCH가 보낸 값으로 on-disk 집합을 대체하므로, `vision` 같은 커스텀 tier를 쓰는 사용자가 마법사에서 모델 하나만 바꿔 저장해도 그 tier가 설정에서 사라졌다. Config 페이지가 `llm_tiers` 편집을 마법사 딥링크로 넘기면서 이 경로가 일반 사용자에게 열렸다. 이제 tier도 provider와 동일하게 기존값 위에 덮어쓴다.
+- **Inspect 뷰가 저장되지 않은 값을 보여주던 문제 (#931)** — Quick Start 밖에서는 Save/Discard 버튼이 숨는데 `getDisplayValue`는 view mode와 무관하게 dirty 값을 우선해서, "Read-only inspection" 배너 아래에 커밋되지 않은 편집이 서버 상태처럼 보였다. 사용자가 반영됐다고 믿고 재시작하면 편집은 사라진다. 이제 Inspect는 서버가 실제로 로드한 값만 보여준다.
+- **DESIGN.md가 스스로 모순되던 문제 (#931)** — Quick Start 13개 게이트가 "stay interactive"라고 적힌 줄과, 같은 필드가 read-only가 된다고 적힌 줄이 공존했다. `embodiment_providers_json`의 실제 동작, 자격증명 7개 중 콘솔 입력란이 남은 2개와 YAML 전용이 된 5개(토큰 rotation에 호스트 파일 접근이 필요해진다는 결과 포함), 그리고 편집기 삭제 후 참조가 끊긴 `configStructured.ts` 드래프트 빌더 목록을 명시했다.
+
 - **rolling cache breakpoint가 마커를 조용히 흘리던 문제 (#921)** — 예산은 마킹 가능 여부를 따지기 전에 최신 2개 턴으로 잘려 있어서, 가장 새 턴이 마커를 못 받는 형태(내용이 빈 assistant 메시지, 끝이 `tool_use`인 블록)면 그 슬롯을 더 오래된 턴으로 넘기지 않고 그냥 버렸다. 이제 최신 턴부터 역순으로 훑으며 **실제로 마커가 찍힌 경우에만** 예산을 소모하므로, 마킹 불가능한 턴은 건너뛰고 그 앞 턴이 fallback 자리를 채운다. 아울러 breakpoint 예산 계산에서 실행되지 않던 분기를 걷어내고(`hasSystemBlocks`/`hasTools` bool 두 개 → 예약 슬롯 수 `int` 하나), `anthropicMessageCacheBudget`으로 분리해 예약 수준별로 테스트한다. `cache_control` 리터럴 4곳은 `anthropicEphemeralCacheControl()` 한 곳으로 모았다.
 - **`anthropic/*` 가격 오버라이드가 내장 per-model 요금에 가려지던 문제 (#924)** — per-model 요금표가 들어오기 전에는 `anthropic/*`가 유일한 Anthropic 키였고, 운영자가 이 하나로 리셀러·정액제 요금을 표현했다. per-model 항목과 family prefix 표가 추가되면서 둘 다 오버라이드보다 먼저 조회돼, `claude-`로 시작하는 모델은 오버라이드가 전혀 닿지 않고 유령 지출이 쌓여 일/주 USD 한도를 잘못 트립시켰다. 이제 오버라이드는 내장 항목보다 **항상** 먼저 해석되며(오버라이드 안에서는 exact → provider wildcard → model wildcard 순), 내장 표는 오버라이드가 없을 때의 기본값 역할만 한다.
 - **Fable 5 / Mythos 5가 Sonnet 요금으로 기록되던 문제 (#924)** — 두 모델은 `claude-opus-`/`sonnet-`/`haiku-` prefix 어디에도 걸리지 않아 Sonnet 요율 wildcard로 떨어졌고, 라인업에서 가장 비싼 모델이 3.3배 저평가됐다. $10/$50(캐시 read $1.00, write $12.50) 명시 항목을 추가했다.

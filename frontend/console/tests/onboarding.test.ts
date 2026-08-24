@@ -134,6 +134,28 @@ test('buildConfigPayload shapes a clean PATCH updates map', () => {
   })
 })
 
+// The alias-keyed PATCH replaces the on-disk tier set with whatever the patch
+// sends, exactly as it does for providers. Config.svelte now deep links here
+// for llm_tiers editing, so dropping unknown tiers would silently delete them.
+test('buildConfigPayload preserves custom tiers already on disk', () => {
+  const form = emptyOnboardingForm()
+  form.provider.alias = 'openai'
+  form.provider.kind = 'openai'
+  form.provider.api_key = 'sk-test'
+  for (const tier of ['heavy', 'standard', 'light'] as const) {
+    form.tiers[tier].provider = 'openai'
+    form.tiers[tier].model = 'gpt-5.4'
+  }
+
+  const payload = buildConfigPayload(form, {}, {
+    heavy: { provider: 'openai', model: 'stale' },
+    vision: { provider: 'gemini', model: 'gemini-3-pro' },
+  }) as { llm_tiers: Record<string, unknown> }
+
+  assert.deepEqual(payload.llm_tiers.vision, { provider: 'gemini', model: 'gemini-3-pro' })
+  assert.deepEqual(payload.llm_tiers.heavy, { provider: 'openai', model: 'gpt-5.4' })
+})
+
 test('buildConfigPayload omits empty optional fields', () => {
   const form = emptyOnboardingForm()
   form.provider.alias = 'codex'
