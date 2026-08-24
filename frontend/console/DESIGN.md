@@ -228,6 +228,100 @@ The aesthetic resists three temptations:
 
 The system is dark-first. There is no light theme; light backgrounds wash out the warmth of the accent and break the workshop framing.
 
+## Console Purpose & Surface Policy (#931)
+
+Decision recorded in the console-narrowing first cut (`refactor/console-narrow-surface`, Refs #931, Part of epic #919 LP-012). This section is normative for future surface decisions: when a proposed feature does not fit one of the pillars below, it belongs in a skill, a CLI command, or the YAML file — not a new console route.
+
+### Purpose
+
+The TARS Console exists for exactly three things:
+
+1. **Conversation** — chat with the agent, steer sessions (title/archive/pin/fork, goal/critic, prompt override), switch active cwd, inspect transcripts and work timelines.
+2. **Observability** — read system signals: pulse findings, reflection runs, ops health and cleanup plans, memory state, agent-runtime runs/subagents/costs, logs, analytics, event stream.
+3. **Targeted control** — the small set of mutations that genuinely need UI: onboarding (provider/tier setup), credential entry, approvals (approve/reject destructive ops), cron job CRUD, extension install/enable/disable, channel pairing, remote access, restart/reset.
+
+Everything else is **file-first**. Configuration is owned by `workspace/config/tars.config.yaml` (documented in `config/tars.config.example.yaml`, validated server-side at load). The console offers *inspection and validation* of configuration, not full editing: long-tail fields are read-only in the UI with a pointer to their documented YAML key.
+
+### Route inventory
+
+Every route must map to a pillar. Current mapping (first cut keeps all routes; consolidation candidates are noted, not acted on):
+
+| Route | Pillar | Rationale |
+|---|---|---|
+| `/console` (home) | Observability | Dashboard summary of all signals |
+| `/console/chat`, `/console/sessions` | Conversation | Chat transcript, session list |
+| `/console/sessions/graph` | Conversation | Session lineage / fork history |
+| `/console/tasks` | Conversation | Work timeline / task contracts |
+| `/console/sysprompt`, `/console/workspace` | Conversation | System-prompt authoring (adjacent to chat behavior) |
+| `/console/memory` | Observability | Memory assets, inbox review |
+| `/console/agentruntime` | Observability | Runs, subagents, cost flow, replay |
+| `/console/pulse`, `/console/heartbeat` | Observability | Watchdog findings |
+| `/console/reflection` | Observability | Nightly batch results |
+| `/console/ops`, `/console/approvals` | Observability + Control | Health/cleanup plus approve/reject |
+| `/console/logs` | Observability | Log tail/filter |
+| `/console/analytics` | Observability | Usage trends (consolidation candidate: overlaps home cards) |
+| `/console/cron` | Control | Cron CRUD + run history |
+| `/console/extensions` | Control | Skill/plugin/MCP management |
+| `/console/channels` | Control | Telegram pairing |
+| `/console/config` | Inspection | File-first config policy (see below) |
+| `/console/onboarding` | Control (setup) | Provider/tier wizard; capability-preserving reentry |
+
+### Config policy: file-first, inspection-not-editing
+
+- Source of truth: `workspace/config/tars.config.yaml`. Reference doc: `config/tars.config.example.yaml`. Server validates on load and reports via `/v1/admin/config/schema`.
+- Console **keeps UI editing** only for: onboarding flows (wizard), credential entry (API keys/tokens marked sensitive), and Quick Start basics that gate first-run readiness.
+- Console **stops editing** the long tail: the Fields tab becomes a validated read view (current value, effective value under env override, default/restart/secret badges) with pointers to the documented YAML key instead of inline editors. Structured LLM provider/tier editing remains available through the onboarding wizard reentry.
+- The raw YAML tab becomes a read view; editing happens in an editor against the real file, then restart applies it.
+- Server write routes (`PUT /v1/admin/config`, `PATCH /v1/admin/config/values`) remain part of the HTTP API for CLI/scripting use even where the console stops calling them.
+
+### Config surface audit (#931, first cut)
+
+Server schema exposes 165 fields (`internal/config/schema.go`) grouped into 15 sections. Audit of `Config.svelte` and `SessionConfigPanel.svelte` against actual usage classifies them as follows:
+
+**(a) Keep UI editing** — onboarding, credentials, session control:
+
+- Quick Start set (13 curated gates in `lib/quickStartFields.ts`): `api_auth_mode`, `llm_providers`, `llm_tiers`, `llm_default_tier`, `workspace_dir`, `telegram_bot_token`, `companion_enabled`, `embodiment_enabled`, `embodiment_providers_json`, `pulse_enabled`, `reflection_enabled`, `log_level`, `session_telegram_scope`. These gate first-run readiness and stay interactive.
+- Credential/sensitive fields (masked entry preserved wherever surfaced): `api_auth_token`, `api_user_token`, `api_admin_token`, `memory_embed_api_key`, `tools_web_search_api_key`, `tools_web_search_perplexity_api_key`, `work_scheduler_a2a_bearer_token`.
+- Structured LLM provider/tier editing stays in the console product — but lives in the onboarding wizard reentry (`/console/onboarding?reentry=1&section=provider|tiers`), which already implements alias-replace saves with masked-key preservation. `Config.svelte` links there instead of hosting duplicate editors.
+- `SessionConfigPanel.svelte` (session-scoped tools/skills/commands/MCP allowlists, automation consent, style controls) is session/cwd control — core purpose. Unchanged.
+
+**(b) Read-only inspection candidates** — validated read view + YAML key pointer:
+
+- Operational tuning long-tail across sections: Runtime logging/rotation, API inflight caps, Remote Access, Memory embedding tuning, Usage limits/budgets, Pulse thresholds/windows, Reflection windows, Compaction numbers, Tools toggles/timeouts/providers, MCP allowlist, Agent Runtime persistence/archive/watch/consensus knobs, Work Ledger / Work Scheduler internals (leases, polling, A2A), Channels enables, Assistant binaries, notify/schedule settings.
+- These render value + effective-value-under-env-override + default/restart/secret badges. Editing happens in the YAML file; console shows what the server actually loaded.
+
+**(c) YAML-first removals** — editors deleted from `Config.svelte` in this cut (values remain visible read-only):
+
+- All four heavyweight modal editors: generic JSON editor, LLM tier editor, LLM provider editor, embodiment provider preset editor.
+- Consequence table: `llm_providers` / `llm_tiers` → deep link to onboarding wizard sections (capability preserved). `embodiment_providers_json`, `llm_role_defaults`, `usage_price_overrides_json`, `mcp_servers_json`, `agentruntime_agents_json`, `agentruntime_task_override`, and every other `json`/`string_list` field → read-only summary plus documented YAML key (`config/tars.config.example.yaml`). If a dedicated UI for embodiment presets proves necessary later, it should be a follow-up issue scoped against this policy.
+
+### Shared form primitives (#931 first cut: deferred)
+
+After narrowing, the remaining editors are the Quick Start card controls in `Config.svelte`, `SessionConfigPanel.svelte`, and the onboarding section components. Extracting shared primitives (`FormField`, `BoolToggleButton`, structured-row editors) across all three is a cross-cutting visual change that this first cut deliberately does not attempt — Playwright and manual walkthrough coverage for it is deferred. **Follow-up:** extract primitives once, then migrate the three surfaces in separate PRs with visual verification.
+
+### CLI deprecation candidates (#931 — analysis only, nothing removed)
+
+The 37 CLI subcommands overlap with console-only paths in a few places. Candidates marked for a future deprecation decision; each has a working replacement path today:
+
+| Command | Why candidate | Replacement path |
+|---|---|---|
+| `tars approve list / run / reject` | Mirrors Ops page approvals workflow one-to-one (`/v1/ops/approvals`) | Console Ops page |
+| `tars cron list / get / runs / run` | Mirrors Cron page CRUD + run history (`/v1/cron/*`) | Console Cron page |
+| `tars auth passwd` | Mirrors RemoteAccessCard password change (`PATCH /v1/auth/users/{role}/password`) | Console Remote Access card |
+| `tars remote status / enable / disable / url` | Mirrors RemoteAccessCard Tailscale controls (`/v1/admin/remote-access/*`) | Console Remote Access card (CLI keeps `url` value for scripts) |
+| `tars skill / plugin / mcp search · install · uninstall · update · info` | Hub operations duplicated by Extensions page (`/v1/hub/*`) | Console Extensions page |
+
+Keep-list rationale: `serve/service/status/health/doctor/init/version/worker/assistant/pack/reset/auth init|pairing-code` have no console equivalent or are needed when the console is unavailable (headless recovery, scripting, CI). Deprecation of any candidate above should be its own issue with an exit survey of scripts using them.
+
+### Orphaned-route check (#931 first cut)
+
+Endpoints the console stopped calling in this cut:
+
+- `PUT /v1/admin/config` (was YAML-tab save): no longer called from any component. Server route retained at `internal/tarsserver/main_serve_api.go`; reachable via HTTP API for scripts/tooling. No CLI equivalent exists (`tars serve --config-check` only validates). Follow-up candidate if it stays uncalled, not removed now.
+- `GET /v1/providers` (was tier-editor provider metadata): no longer called from any component. Route retained; useful as a raw API for integrations. Same disposition.
+- `PATCH /v1/admin/config/values`: still called (Quick Start saves). Unchanged.
+- All other endpoints previously called by the console remain called; nothing was deleted server-side.
+
 ## Colors
 
 The palette is rooted in deep neutrals, a single warm accent, and four semantic states.

@@ -4,7 +4,8 @@ import { readFileSync } from 'node:fs'
 
 const chatSource = readFileSync(new URL('../src/components/Chat.svelte', import.meta.url), 'utf8')
 const tasksPanelSource = readFileSync(new URL('../src/components/TasksPanel.svelte', import.meta.url), 'utf8')
-const apiSource = readFileSync(new URL('../src/lib/api.ts', import.meta.url), 'utf8')
+const apiSource = readFileSync(new URL('../src/lib/api/tasks.ts', import.meta.url), 'utf8')
+const apiNormalizeSource = readFileSync(new URL('../src/lib/api/normalize.ts', import.meta.url), 'utf8')
 const typesSource = readFileSync(new URL('../src/lib/types.ts', import.meta.url), 'utf8')
 
 test('Chat mounts the task contract inside the tasks dock panel', () => {
@@ -16,7 +17,7 @@ test('Chat mounts the task contract inside the tasks dock panel', () => {
 test('Tasks panel edits, approves, and verifies the active session contract', () => {
   assert.match(typesSource, /TaskContract/)
   assert.match(typesSource, /contract\?: TaskContract/)
-  assert.match(apiSource, /contract: normalizeTaskContract/)
+  assert.match(apiNormalizeSource, /contract: normalizeTaskContract/)
   assert.match(apiSource, /runTaskVerification/)
   assert.match(tasksPanelSource, /getSessionTasks/)
   assert.match(tasksPanelSource, /executeTasksAction/)

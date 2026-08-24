@@ -1,7 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { buildSessionPermissionPreview } from '../src/lib/sessionPermissionPreview.ts'
-import type { ChatToolInfo, SessionToolConfig } from '../src/lib/api.ts'
+import type { ChatToolInfo } from '../src/lib/api/chat.ts'
+import type { SessionToolConfig } from '../src/lib/api/sessions.ts'
 
 const tools: ChatToolInfo[] = [
   { name: 'read_file', description: 'read files', high_risk: false, group: 'files' },

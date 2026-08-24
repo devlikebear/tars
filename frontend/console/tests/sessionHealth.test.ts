@@ -2,7 +2,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { buildSessionHealthReport } from '../src/lib/sessionHealth.ts'
-import type { ChatToolInfo, SessionToolConfig } from '../src/lib/api.ts'
+import type { ChatToolInfo } from '../src/lib/api/chat.ts'
+import type { SessionToolConfig } from '../src/lib/api/sessions.ts'
 import type { Session, SessionMessage, SessionTasks } from '../src/lib/types.ts'
 
 const chatSource = readFileSync(new URL('../src/components/Chat.svelte', import.meta.url), 'utf8')

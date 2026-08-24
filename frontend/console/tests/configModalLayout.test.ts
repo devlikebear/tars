@@ -4,18 +4,21 @@ import { readFileSync } from 'node:fs'
 
 const source = readFileSync(new URL('../src/components/Config.svelte', import.meta.url), 'utf8')
 
-function cssRule(selector: string): string {
-  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  const match = source.match(new RegExp(`${escaped}\\s*\\{([\\s\\S]*?)\\n\\s*\\}`))
-  assert.ok(match, `expected ${selector} rule`)
-  return match[1]
-}
+test('Config page stays inspection-first and hosts no heavyweight modal editors (#931)', () => {
+  // The long-tail config editors (generic JSON, LLM tier/provider, embodiment
+  // presets) were removed; provider/tier editing lives in the onboarding
+  // wizard reentry and everything else is documented file-first.
+  assert.doesNotMatch(source, /json-editor-modal/)
+  assert.doesNotMatch(source, /tier-editor|provider-editor|embodiment/i)
+  assert.doesNotMatch(source, /modal-backdrop/)
+})
 
-test('JSON editor modal is centered in the content area beside the fixed sidebar', () => {
-  const backdrop = cssRule('.modal-backdrop')
-  const modal = cssRule('.json-editor-modal')
-
-  assert.match(backdrop, /left:\s*var\(--nav-width\);/)
-  assert.match(backdrop, /right:\s*0;/)
-  assert.match(modal, /calc\(100vw - var\(--nav-width\) - 32px\)/)
+test('Config inspection surfaces read-only values with YAML-key pointers and wizard deep links', () => {
+  assert.match(source, /config-yaml-view/)
+  assert.match(source, /Read-only/)
+  assert.match(source, /jsonWizardLink/)
+  assert.match(source, /onboarding\?reentry=1&section=provider/)
+  assert.match(source, /onboarding\?reentry=1&section=tiers/)
+  assert.match(source, /yaml-key-hint/)
+  assert.match(source, /config\/tars\.config\.example\.yaml/)
 })

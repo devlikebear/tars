@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs'
 import { resolveRoute } from '../src/lib/router.ts'
 
 const appSource = readFileSync(new URL('../src/App.svelte', import.meta.url), 'utf8')
-const apiSource = readFileSync(new URL('../src/lib/api.ts', import.meta.url), 'utf8')
+const apiSource = readFileSync(new URL('../src/lib/api/system.ts', import.meta.url), 'utf8')
 const navSource = readFileSync(new URL('../src/components/Nav.svelte', import.meta.url), 'utf8')
 const analyticsSource = readFileSync(new URL('../src/components/Analytics.svelte', import.meta.url), 'utf8')
 const routeComponentsSource = readFileSync(new URL('../src/lib/routeComponents.ts', import.meta.url), 'utf8')

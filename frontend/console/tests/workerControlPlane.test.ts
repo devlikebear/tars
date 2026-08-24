@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
-import { getWorkerControlPlane } from '../src/lib/api.ts'
+import { getWorkerControlPlane } from '../src/lib/api/ops.ts'
 import {
   controlEventPresentation,
   placementStateBadge,

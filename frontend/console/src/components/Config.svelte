@@ -4,8 +4,6 @@
     getConfig,
     getConfigSchema,
     getProviderModels,
-    getProviders,
-    saveConfig,
     patchConfigValues,
     resetWorkspace,
     restartServer,
@@ -14,80 +12,17 @@
   import { buildConfigMetaBadges } from '../lib/configMetaBadges'
   import { buildQuickStartItems, quickStartProgress } from '../lib/quickStartFields'
   import {
-    LLM_PROVIDER_AUTH_MODES,
-    LLM_PROVIDER_KINDS,
-    LLM_TIER_SERVICE_TIERS,
-    EMBODIMENT_PROVIDER_CAPABILITY_DETAILS,
-    EMBODIMENT_PROVIDER_PRESETS,
-    EMBODIMENT_PROVIDER_TRANSPORTS,
-    buildEmbodimentProvidersFromDrafts,
-    buildLLMProvidersFromDrafts,
-    buildLLMTiersFromDrafts,
     configValuesEqual,
-    extractLLMProviderAliases,
     formatConfigDisplayValue,
-    makeEmbodimentProviderDrafts,
-    makeEmbodimentProviderPresetDraft,
-    makeLLMProviderDrafts,
-    makeLLMTierDrafts,
-    parseStructuredJSONEdit,
-    prettyConfigJSON,
     stringifyConfigValue,
     type ConfigDisplaySummary,
-    type EmbodimentCapabilityGroup,
-    type EmbodimentProviderDraft,
-    type EmbodimentProviderDraftErrors,
-    type EmbodimentProviderDraftField,
-    type EmbodimentProviderPreset,
-    type EmbodimentProviderPresetID,
-    type LLMProviderDraft,
-    type LLMProviderDraftErrors,
-    type LLMProviderDraftField,
-    type LLMTierDraft,
-    type LLMTierDraftErrors,
-    type LLMTierDraftField,
   } from '../lib/configStructured'
-  import {
-    availableAuthModesForKind,
-    defaultBaseURLForKind,
-    suggestedAuthModeForKind,
-    type AuthMode,
-    type ProviderKind,
-  } from '../lib/onboarding'
-  import { sortStrings } from '../lib/sort'
-  import type { ConfigEnvOverride, ConfigFieldMeta, ConfigSchema, ProvidersAPIInfo } from '../lib/types'
+  import type { ConfigEnvOverride, ConfigFieldMeta, ConfigSchema } from '../lib/types'
   import ConfigPendingChanges from './ConfigPendingChanges.svelte'
   import RemoteAccessCard from './RemoteAccessCard.svelte'
   import { t } from '../i18n'
 
-  type ViewMode = 'quick' | 'form' | 'yaml'
-
-  const EMBODIMENT_FIELD_HINTS: Record<EmbodimentProviderDraftField, string> = {
-    name: 'Unique body provider name. Use host for Mac Host or stackchan for physical StackChan.',
-    enabled: 'Disabled providers stay in config but cannot trigger cognition or receive actions.',
-    transport: 'Use mcp for tars-stackchan servers. Use webhook only when Endpoint is a full POST URL.',
-    endpoint: 'For mcp, this must match an mcp.servers key such as tars-stackchan or tars-stackchan-host.',
-    capabilities: 'Only declare capabilities the provider can actually perform; unsupported actions are dropped.',
-    session_id: 'Session that receives autonomous embodied turns. sess_main is the normal default.',
-    agent: 'Optional agent override for embodied turns. Leave blank to use the default agent.',
-    owner_only_directive: 'When enabled, only owner audio can become a directive. Ambient or stranger input stays observational.',
-    salience_min_sound_level: 'Audio salience threshold from 0 to 1. 0.6 is a conservative default.',
-    min_trigger_interval: 'Debounce window between autonomous trigger turns for this provider, for example 30s.',
-    max_triggers_per_hour: 'Hourly cap for autonomous trigger turns. 60 is the default guardrail.',
-    trigger_observations: 'Allow non-directive observations to trigger turns. Useful for Mac Host when owner detection is unknown.',
-  }
-
-  const EMBODIMENT_CAPABILITY_GROUP_LABELS: Record<EmbodimentCapabilityGroup, string> = {
-    perception: 'Perception',
-    actuation: 'Actuation',
-  }
-
-  const EMBODIMENT_CAPABILITY_GROUP_HINTS: Record<EmbodimentCapabilityGroup, string> = {
-    perception: 'Inputs the provider can send into TARS as Percepts.',
-    actuation: 'Body actions TARS can send back to the provider.',
-  }
-
-  const EMBODIMENT_CAPABILITY_GROUPS: EmbodimentCapabilityGroup[] = ['perception', 'actuation']
+  type ViewMode = 'quick' | 'inspect' | 'yaml'
 
   interface Props {
     onNavigate?: (path: string) => void
@@ -101,42 +36,19 @@
   let effectiveValues: Record<string, unknown> = $state({})
   let envOverrides: Record<string, ConfigEnvOverride> = $state({})
   let yamlContent = $state('')
-  let originalYaml = $state('')
   let loading = $state(true)
-  let saving = $state(false)
   let error = $state('')
   let success = $state('')
   let viewMode: ViewMode = $state('quick')
   let expandedSections: Record<string, boolean> = $state({})
 
-  // -- Field editing --
+  // -- Quick Start field editing (the only remaining config editing surface;
+  //    everything else is inspection-first per DESIGN.md #931) --
   let editingKey: string | null = $state(null)
   let editValue: string = $state('')
   let editBool: boolean = $state(false)
   let fieldSaving = $state(false)
   let dirtyFields: Record<string, unknown> = $state({})
-  let jsonEditorField: ConfigFieldMeta | null = $state(null)
-  let jsonEditorText = $state('')
-  let jsonEditorError = $state('')
-  let tierEditorField: ConfigFieldMeta | null = $state(null)
-  let tierDrafts: LLMTierDraft[] = $state([])
-  let tierEditorErrors: LLMTierDraftErrors = $state({})
-  let tierProviderOptions: string[] = $state([])
-  let tierDraftSeq = 0
-  let providerEditorField: ConfigFieldMeta | null = $state(null)
-  let providerDrafts: LLMProviderDraft[] = $state([])
-  let providerEditorErrors: LLMProviderDraftErrors = $state({})
-  let providerDraftSeq = 0
-  let providerSecretReveal: Record<string, boolean> = $state({})
-  let embodimentProviderEditorField: ConfigFieldMeta | null = $state(null)
-  let embodimentProviderDrafts: EmbodimentProviderDraft[] = $state([])
-  let embodimentProviderEditorErrors: EmbodimentProviderDraftErrors = $state({})
-  let embodimentProviderDraftSeq = 0
-  let tierModelOptionsByProvider: Record<string, string[]> = $state({})
-  let tierModelLoadingByProvider: Record<string, boolean> = $state({})
-  let tierModelLoadErrorByProvider: Record<string, string> = $state({})
-  let tierModelSupportsByAlias: Record<string, boolean> = $state({})
-  let providersMetadataRequest: Promise<ProvidersAPIInfo | null> | null = $state(null)
   let llmTestBusy = $state(false)
   let llmTestResult = $state('')
   let llmTestKind: 'success' | 'error' | '' = $state('')
@@ -144,9 +56,7 @@
   let hasDirtyFields = $derived(Object.keys(dirtyFields).length > 0)
   let quickStartItems = $derived(buildQuickStartItems(schema, values, dirtyFields))
   let quickStartStats = $derived(quickStartProgress(quickStartItems))
-  let shouldShowFieldActions = $derived(viewMode === 'quick' || viewMode === 'form')
-
-  // -- Diff popup --
+  let shouldShowFieldActions = $derived(viewMode === 'quick')
   let showDiff = $state(false)
 
   let diffEntries = $derived.by(() => {
@@ -237,8 +147,6 @@
     return order.map((name) => ({ name, fields: groups[name] }))
   })
 
-  let isYamlDirty = $derived(yamlContent !== originalYaml)
-
   async function load() {
     loading = true
     error = ''
@@ -251,7 +159,6 @@
       effectiveValues = schemaResp.effective_values || {}
       envOverrides = schemaResp.env_overrides || {}
       yamlContent = rawResp.content
-      originalYaml = rawResp.content
       dirtyFields = {}
       const sectionNames = [...new Set(schemaResp.fields.map((f) => f.section))]
       for (let i = 0; i < Math.min(3, sectionNames.length); i++) {
@@ -275,9 +182,6 @@
       } else {
         editValue = current !== undefined && current !== null ? String(current) : ''
       }
-    } else if (field.type === 'json') {
-      if (field.sensitive) return // Don't expose full structured sensitive data
-      openStructuredEditor(field)
     } else {
       // Sensitive fields start empty so the masked value is not exposed
       editValue = field.sensitive ? '' : (current !== undefined && current !== null ? String(current) : '')
@@ -299,13 +203,6 @@
         .split(/\r?\n|,/)
         .map((item) => item.trim())
         .filter(Boolean)
-    } else if (field.type === 'json') {
-      const result = parseStructuredJSONEdit(editValue)
-      if (!result.ok) {
-        error = result.error
-        return
-      }
-      parsed = result.value
     } else if (field.type === 'int') {
       parsed = editValue.trim() === '' ? 0 : parseInt(editValue, 10)
       if (isNaN(parsed as number)) { cancelEdit(); return }
@@ -436,7 +333,6 @@
       effectiveValues = schemaResp.effective_values || {}
       envOverrides = schemaResp.env_overrides || {}
       yamlContent = rawResp.content
-      originalYaml = rawResp.content
     } catch (e) {
       error = e instanceof Error ? e.message : 'Failed to save config'
     } finally {
@@ -446,50 +342,20 @@
 
   function handleDiscardFields() {
     dirtyFields = {}
-    closeJSONEditor()
-    closeTierEditor()
-    closeProviderEditor()
-    closeEmbodimentProviderEditor()
+    cancelEdit()
     success = ''
     error = ''
-  }
-
-  async function handleSaveYaml() {
-    saving = true
-    error = ''
-    success = ''
-    try {
-      await saveConfig(yamlContent)
-      originalYaml = yamlContent
-      success = 'Config saved. Restart TARS to apply changes.'
-      const schemaResp = await getConfigSchema()
-      schemaUpdatedAt = schemaResp.updated_at || ''
-      values = schemaResp.values
-      effectiveValues = schemaResp.effective_values || {}
-      envOverrides = schemaResp.env_overrides || {}
-    } catch (e) {
-      error = e instanceof Error ? e.message : 'Failed to save config'
-    } finally {
-      saving = false
-    }
-  }
-
-  function handleResetYaml() {
-    yamlContent = originalYaml
-    error = ''
-    success = ''
   }
 
   function handleKeydown(e: KeyboardEvent) {
     if ((e.metaKey || e.ctrlKey) && e.key === 's') {
       e.preventDefault()
-      if (viewMode === 'yaml' && isYamlDirty && !saving) handleSaveYaml()
-      if ((viewMode === 'form' || viewMode === 'quick') && hasDirtyFields && !fieldSaving) handleSaveFields()
+      if (viewMode === 'quick' && hasDirtyFields && !fieldSaving) handleSaveFields()
     }
   }
 
   function handleFieldKeydown(e: KeyboardEvent, field: ConfigFieldMeta) {
-    const multiline = field.type === 'json' || field.type === 'string_list'
+    const multiline = field.type === 'string_list'
     if (e.key === 'Enter' && (!multiline || e.metaKey || e.ctrlKey)) {
       e.preventDefault()
       commitEdit(field)
@@ -506,7 +372,7 @@
   function formatValue(field: ConfigFieldMeta): string {
     const v = getDisplayValue(field)
     if (field.sensitive && typeof v === 'string' && v.length > 0) {
-      return v.includes('*') ? v : '••••••••'
+      return v.includes('*') ? v : '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022'
     }
     const summary = formatConfigDisplayValue(v)
     if (field.type === 'json' || summary.kind === 'array' || summary.kind === 'object') return summary.text
@@ -517,675 +383,18 @@
     return field.path || field.key
   }
 
-  function openJSONEditor(field: ConfigFieldMeta) {
-    if (field.sensitive) return
-    editingKey = null
-    editValue = ''
-    closeTierEditor()
-    closeProviderEditor()
-    closeEmbodimentProviderEditor()
-    jsonEditorField = field
-    jsonEditorText = prettyConfigJSON(getDisplayValue(field))
-    jsonEditorError = ''
+  // Deep link for structured fields that keep a UI editor elsewhere.
+  // Provider/tier editing lives in the onboarding wizard reentry; every
+  // other structured field is documented file-first (DESIGN.md #931).
+  function jsonWizardLink(key: string): string | null {
+    if (key === 'llm_providers') return '/console/onboarding?reentry=1&section=provider'
+    if (key === 'llm_tiers') return '/console/onboarding?reentry=1&section=tiers'
+    return null
   }
 
-  function closeJSONEditor() {
-    jsonEditorField = null
-    jsonEditorText = ''
-    jsonEditorError = ''
-  }
-
-  function resetJSONEditor() {
-    if (!jsonEditorField) return
-    jsonEditorText = prettyConfigJSON(values[jsonEditorField.key])
-    jsonEditorError = ''
-  }
-
-  function applyJSONEditor() {
-    if (!jsonEditorField) return
-    const result = parseStructuredJSONEdit(jsonEditorText)
-    if (!result.ok) {
-      jsonEditorError = result.error
-      return
-    }
-    const original = values[jsonEditorField.key]
-    if (configValuesEqual(result.value, original)) {
-      delete dirtyFields[jsonEditorField.key]
-    } else {
-      dirtyFields[jsonEditorField.key] = result.value
-    }
-    dirtyFields = { ...dirtyFields }
-    closeJSONEditor()
-  }
-
-  function openStructuredEditor(field: ConfigFieldMeta) {
-    if (field.key === 'llm_tiers') {
-      openTierEditor(field)
-      return
-    }
-    if (field.key === 'llm_providers') {
-      openProviderEditor(field)
-      return
-    }
-    if (field.key === 'embodiment_providers_json') {
-      openEmbodimentProviderEditor(field)
-      return
-    }
-    openJSONEditor(field)
-  }
-
-  function openTierEditor(field: ConfigFieldMeta) {
-    if (field.sensitive) return
-    editingKey = null
-    editValue = ''
-    closeJSONEditor()
-    closeProviderEditor()
-    closeEmbodimentProviderEditor()
-    tierProviderOptions = extractLLMProviderAliases(getValueByKey('llm_providers'))
-    const drafts = makeLLMTierDrafts(getDisplayValue(field))
-    tierDrafts = drafts.length > 0 ? drafts : [createTierDraft('standard')]
-    tierEditorField = field
-    tierEditorErrors = {}
-    tierModelOptionsByProvider = {}
-    tierModelLoadingByProvider = {}
-    tierModelLoadErrorByProvider = {}
-    void preloadTierModelOptions(drafts)
-  }
-
-  function openProviderEditor(field: ConfigFieldMeta) {
-    if (field.sensitive) return
-    editingKey = null
-    editValue = ''
-    closeJSONEditor()
-    closeTierEditor()
-    closeEmbodimentProviderEditor()
-    const drafts = makeLLMProviderDrafts(getDisplayValue(field))
-    providerDrafts = drafts.length > 0 ? drafts : [createProviderDraft('default')]
-    providerEditorField = field
-    providerEditorErrors = {}
-    providerSecretReveal = {}
-  }
-
-  function closeProviderEditor() {
-    providerEditorField = null
-    providerDrafts = []
-    providerEditorErrors = {}
-    providerSecretReveal = {}
-  }
-
-  function openEmbodimentProviderEditor(field: ConfigFieldMeta) {
-    if (field.sensitive) return
-    editingKey = null
-    editValue = ''
-    closeJSONEditor()
-    closeTierEditor()
-    closeProviderEditor()
-    embodimentProviderDrafts = makeEmbodimentProviderDrafts(getDisplayValue(field))
-    embodimentProviderEditorField = field
-    embodimentProviderEditorErrors = {}
-  }
-
-  function closeEmbodimentProviderEditor() {
-    embodimentProviderEditorField = null
-    embodimentProviderDrafts = []
-    embodimentProviderEditorErrors = {}
-  }
-
-  function resetEmbodimentProviderEditor() {
-    if (!embodimentProviderEditorField) return
-    embodimentProviderDrafts = makeEmbodimentProviderDrafts(values[embodimentProviderEditorField.key])
-    embodimentProviderEditorErrors = {}
-  }
-
-  function addEmbodimentProviderDraft(presetID: EmbodimentProviderPresetID = 'custom') {
-    embodimentProviderDraftSeq += 1
-    const id = `new-embodiment-provider-${embodimentProviderDraftSeq}`
-    const existingNames = embodimentProviderDrafts.map((draft) => draft.name)
-    embodimentProviderDrafts = [
-      ...embodimentProviderDrafts,
-      makeEmbodimentProviderPresetDraft(presetID, id, existingNames),
-    ]
-  }
-
-  function removeEmbodimentProviderDraft(id: string) {
-    embodimentProviderDrafts = embodimentProviderDrafts.filter((draft) => draft.id !== id)
-    const { [id]: _removed, ...remaining } = embodimentProviderEditorErrors
-    embodimentProviderEditorErrors = remaining
-  }
-
-  function updateEmbodimentProviderDraft(id: string, field: EmbodimentProviderDraftField, value: string | boolean | string[]) {
-    embodimentProviderDrafts = embodimentProviderDrafts.map((draft) => (
-      draft.id === id ? { ...draft, [field]: value } as EmbodimentProviderDraft : draft
-    ))
-    const rowErrors = embodimentProviderEditorErrors[id]
-    if (!rowErrors?.[field]) return
-    const nextRowErrors = { ...rowErrors }
-    delete nextRowErrors[field]
-    const nextErrors = { ...embodimentProviderEditorErrors }
-    if (Object.keys(nextRowErrors).length === 0) {
-      delete nextErrors[id]
-    } else {
-      nextErrors[id] = nextRowErrors
-    }
-    embodimentProviderEditorErrors = nextErrors
-  }
-
-  function toggleEmbodimentCapability(id: string, capability: string) {
-    const draft = embodimentProviderDrafts.find((item) => item.id === id)
-    if (!draft) return
-    const current = new Set(draft.capabilities)
-    if (current.has(capability)) {
-      current.delete(capability)
-    } else {
-      current.add(capability)
-    }
-    updateEmbodimentProviderDraft(id, 'capabilities', Array.from(current))
-  }
-
-  function applyEmbodimentProviderEditor() {
-    if (!embodimentProviderEditorField) return
-    const result = buildEmbodimentProvidersFromDrafts(embodimentProviderDrafts)
-    if (!result.ok) {
-      embodimentProviderEditorErrors = result.errors
-      return
-    }
-    const original = values[embodimentProviderEditorField.key]
-    if (configValuesEqual(result.value, original)) {
-      delete dirtyFields[embodimentProviderEditorField.key]
-    } else {
-      dirtyFields[embodimentProviderEditorField.key] = result.value
-    }
-    dirtyFields = { ...dirtyFields }
-    closeEmbodimentProviderEditor()
-  }
-
-  function embodimentProviderError(id: string, field: EmbodimentProviderDraftField): string {
-    return embodimentProviderEditorErrors[id]?.[field] || ''
-  }
-
-  function resetProviderEditor() {
-    if (!providerEditorField) return
-    const drafts = makeLLMProviderDrafts(values[providerEditorField.key])
-    providerDrafts = drafts.length > 0 ? drafts : [createProviderDraft('default')]
-    providerEditorErrors = {}
-  }
-
-  function addProviderDraft() {
-    providerDrafts = [...providerDrafts, createProviderDraft(nextProviderAlias())]
-  }
-
-  function removeProviderDraft(id: string) {
-    if (providerDrafts.length <= 1) return
-    providerDrafts = providerDrafts.filter((draft) => draft.id !== id)
-    const { [id]: _removed, ...remaining } = providerEditorErrors
-    providerEditorErrors = remaining
-    const { [id]: _r2, ...remainReveal } = providerSecretReveal
-    providerSecretReveal = remainReveal
-  }
-
-  function updateProviderDraft(id: string, field: LLMProviderDraftField, value: string) {
-    providerDrafts = providerDrafts.map((draft) => {
-      if (draft.id !== id) return draft
-      const updated = { ...draft, [field]: value } as LLMProviderDraft
-      if (field === 'kind') {
-        const previousKind = draft.kind as ProviderKind | ''
-        const nextKind = value as ProviderKind | ''
-        // Boilerplate fields tied to the kind get re-seeded when the
-        // kind changes. base_url is only swapped when it was empty or
-        // matched the previous kind's canonical default — preserving
-        // any custom URL the user typed. auth_mode falls back to a
-        // valid value for the new kind. api_key stays as-is so the
-        // user does not need to retype credentials when correcting a
-        // kind misclick.
-        if (previousKind !== nextKind) {
-          const previousDefaultURL = defaultBaseURLForKind(previousKind)
-          const currentBaseURL = updated.base_url.trim()
-          if (currentBaseURL === '' || currentBaseURL === previousDefaultURL) {
-            updated.base_url = defaultBaseURLForKind(nextKind)
-          }
-          const validModes = availableAuthModesForKind(nextKind)
-          if (!validModes.includes(updated.auth_mode as AuthMode)) {
-            updated.auth_mode = suggestedAuthModeForKind(nextKind)
-          }
-        }
-      }
-      if (field === 'auth_mode' && value !== 'api-key') {
-        updated.api_key = ''
-      }
-      return updated
-    })
-    const rowErrors = providerEditorErrors[id]
-    if (!rowErrors?.[field]) return
-    const nextRowErrors = { ...rowErrors }
-    delete nextRowErrors[field]
-    const nextErrors = { ...providerEditorErrors }
-    if (Object.keys(nextRowErrors).length === 0) {
-      delete nextErrors[id]
-    } else {
-      nextErrors[id] = nextRowErrors
-    }
-    providerEditorErrors = nextErrors
-  }
-
-  function applyProviderEditor() {
-    if (!providerEditorField) return
-    const result = buildLLMProvidersFromDrafts(providerDrafts)
-    if (!result.ok) {
-      providerEditorErrors = result.errors
-      return
-    }
-    const original = values[providerEditorField.key]
-    if (configValuesEqual(result.value, original)) {
-      delete dirtyFields[providerEditorField.key]
-    } else {
-      dirtyFields[providerEditorField.key] = result.value
-    }
-
-    // When the editor renamed a provider alias, rebind any tier that
-    // referenced the old alias to the new one. The backend's
-    // alias-replace PATCH would otherwise leave those tiers pointing
-    // at a deleted provider. We only rewrite tier entries currently
-    // bound to the renamed alias — tiers using a different provider
-    // are left as-is.
-    const renames = providerDrafts
-      .filter((draft) => draft.originalAlias && draft.originalAlias !== draft.alias.trim() && draft.alias.trim() !== '')
-      .map((draft) => ({ from: draft.originalAlias, to: draft.alias.trim() }))
-    if (renames.length > 0) {
-      const tiersValue = (dirtyFields['llm_tiers'] !== undefined
-        ? dirtyFields['llm_tiers']
-        : values['llm_tiers']) as Record<string, Record<string, unknown>> | undefined
-      if (tiersValue && typeof tiersValue === 'object') {
-        const next: Record<string, Record<string, unknown>> = {}
-        let changed = false
-        for (const [tierName, binding] of Object.entries(tiersValue)) {
-          const entry = { ...(binding as Record<string, unknown>) }
-          const rename = renames.find((r) => entry.provider === r.from)
-          if (rename) {
-            entry.provider = rename.to
-            changed = true
-          }
-          next[tierName] = entry
-        }
-        if (changed) {
-          if (configValuesEqual(next, values['llm_tiers'])) {
-            delete dirtyFields['llm_tiers']
-          } else {
-            dirtyFields['llm_tiers'] = next
-          }
-        }
-      }
-    }
-
-    dirtyFields = { ...dirtyFields }
-    closeProviderEditor()
-  }
-
-  function createProviderDraft(alias: string): LLMProviderDraft {
-    providerDraftSeq += 1
-    return {
-      id: `new-provider-${providerDraftSeq}`,
-      originalAlias: '',
-      alias,
-      kind: '',
-      auth_mode: '',
-      base_url: '',
-      api_key: '',
-    }
-  }
-
-  function nextProviderAlias(): string {
-    const aliases = new Set(providerDrafts.map((draft) => draft.alias.trim()).filter(Boolean))
-    let idx = providerDrafts.length + 1
-    let candidate = `provider${idx}`
-    while (aliases.has(candidate)) {
-      idx += 1
-      candidate = `provider${idx}`
-    }
-    return candidate
-  }
-
-  function providerError(id: string, field: LLMProviderDraftField): string {
-    return providerEditorErrors[id]?.[field] || ''
-  }
-
-  function providerKindChoices(current: string): string[] {
-    const choices = new Set<string>(LLM_PROVIDER_KINDS)
-    const value = current.trim()
-    if (value) choices.add(value)
-    return sortStrings(choices)
-  }
-
-  function providerAuthModeChoices(current: string): string[] {
-    const choices = new Set<string>(LLM_PROVIDER_AUTH_MODES)
-    const value = current.trim()
-    if (value) choices.add(value)
-    return ['', ...sortStrings(choices)]
-  }
-
-  function tierServiceTierChoices(current: string): string[] {
-    const choices = new Set<string>(LLM_TIER_SERVICE_TIERS.filter(Boolean) as string[])
-    const value = current.trim()
-    if (value) choices.add(value)
-    return ['', ...sortStrings(choices)]
-  }
-
-  function toggleProviderSecret(id: string) {
-    providerSecretReveal = { ...providerSecretReveal, [id]: !providerSecretReveal[id] }
-  }
-
-  function closeTierEditor() {
-    tierEditorField = null
-    tierDrafts = []
-    tierEditorErrors = {}
-    tierProviderOptions = []
-    tierModelOptionsByProvider = {}
-    tierModelLoadingByProvider = {}
-    tierModelLoadErrorByProvider = {}
-  }
-
-  function resetTierEditor() {
-    if (!tierEditorField) return
-    const drafts = makeLLMTierDrafts(values[tierEditorField.key])
-    tierDrafts = drafts.length > 0 ? drafts : [createTierDraft('standard')]
-    tierEditorErrors = {}
-    tierModelOptionsByProvider = {}
-    tierModelLoadingByProvider = {}
-    tierModelLoadErrorByProvider = {}
-    void preloadTierModelOptions(drafts)
-  }
-
-  function addTierDraft() {
-    const draft = createTierDraft(nextTierName())
-    tierDrafts = [...tierDrafts, draft]
-    if (draft?.provider.trim()) {
-      void ensureTierModelOptionsForProvider(draft.provider)
-    }
-  }
-
-  function removeTierDraft(id: string) {
-    if (tierDrafts.length <= 1) return
-    tierDrafts = tierDrafts.filter((draft) => draft.id !== id)
-    const { [id]: _removed, ...remaining } = tierEditorErrors
-    tierEditorErrors = remaining
-  }
-
-  function normalizeProviderAlias(alias: string): string {
-    return alias.trim()
-  }
-
-  function setTierProviderModelSupport(providerAlias: string, supportsLiveModels: boolean) {
-    const alias = normalizeProviderAlias(providerAlias)
-    if (!alias) return
-    tierModelSupportsByAlias = { ...tierModelSupportsByAlias, [alias]: supportsLiveModels }
-  }
-
-  function getTierProviderSupportsLiveModels(alias: string): boolean | undefined {
-    const providerAlias = normalizeProviderAlias(alias)
-    if (!providerAlias || !Object.prototype.hasOwnProperty.call(tierModelSupportsByAlias, providerAlias)) return undefined
-    return tierModelSupportsByAlias[providerAlias]
-  }
-
-  function getProviderKindFromPool(metadata: Pick<ProvidersAPIInfo, 'pool'>, alias: string): string | null {
-    const target = normalizeProviderAlias(alias).toLowerCase()
-    const entry = metadata.pool.find((item) => normalizeProviderAlias(item.alias).toLowerCase() === target)
-    return entry?.kind?.trim().toLowerCase() || null
-  }
-
-  async function preloadProviderModelsMetadata(): Promise<ProvidersAPIInfo | null> {
-    if (providersMetadataRequest) {
-      try {
-        return await providersMetadataRequest
-      } catch {
-        providersMetadataRequest = null
-        return null
-      }
-    }
-
-    providersMetadataRequest = getProviders()
-    try {
-      return await providersMetadataRequest
-    } catch {
-      providersMetadataRequest = null
-      return null
-    }
-  }
-
-  async function providerSupportsLiveModels(alias: string): Promise<boolean> {
-    const normalizedAlias = normalizeProviderAlias(alias)
-    if (!normalizedAlias) return false
-    const cached = getTierProviderSupportsLiveModels(normalizedAlias)
-    if (cached !== undefined) return cached
-
-    const metadata = await preloadProviderModelsMetadata()
-    if (!metadata) {
-      setTierProviderModelSupport(normalizedAlias, true)
-      return true
-    }
-
-    const kind = getProviderKindFromPool(metadata, normalizedAlias)
-    if (!kind) {
-      setTierProviderModelSupport(normalizedAlias, true)
-      return true
-    }
-
-    const provider = metadata.providers.find((entry) => entry.id.toLowerCase() === kind)
-    const supports = provider ? provider.supports_live_models : true
-    setTierProviderModelSupport(normalizedAlias, supports)
-    return supports
-  }
-
-  function preloadTierModelOptions(drafts: LLMTierDraft[]) {
-    const providers = new Set<string>()
-    for (const draft of drafts) {
-      const provider = normalizeProviderAlias(draft.provider)
-      if (provider) providers.add(provider)
-    }
-    providers.forEach((provider) => {
-      void ensureTierModelOptionsForProvider(provider)
-    })
-  }
-
-  async function ensureTierModelOptionsForProvider(providerAlias: string) {
-    const alias = normalizeProviderAlias(providerAlias)
-    if (!alias) return
-    if (tierModelLoadingByProvider[alias] || Object.prototype.hasOwnProperty.call(tierModelOptionsByProvider, alias)) {
-      return
-    }
-    tierModelLoadingByProvider = { ...tierModelLoadingByProvider, [alias]: true }
-    tierModelLoadErrorByProvider = { ...tierModelLoadErrorByProvider, [alias]: '' }
-
-    try {
-      const supportsLiveModels = await providerSupportsLiveModels(alias)
-      if (!supportsLiveModels) {
-        tierModelOptionsByProvider = { ...tierModelOptionsByProvider, [alias]: [] }
-        tierModelLoadErrorByProvider = { ...tierModelLoadErrorByProvider, [alias]: 'Live model listing is unavailable for this provider' }
-        return
-      }
-
-      const info = await getProviderModels(alias)
-      const warning = typeof info.warning === 'string' ? info.warning.trim() : ''
-      const models = Array.isArray(info.models) ? info.models : []
-      const deduped = sortStrings(new Set(models.map((model) => String(model).trim()).filter(Boolean)))
-      tierModelOptionsByProvider = { ...tierModelOptionsByProvider, [alias]: deduped }
-      tierModelLoadErrorByProvider = { ...tierModelLoadErrorByProvider, [alias]: warning }
-    } catch (error) {
-      tierModelLoadErrorByProvider = { ...tierModelLoadErrorByProvider, [alias]: error instanceof Error ? error.message : 'Failed to load models' }
-      tierModelOptionsByProvider = { ...tierModelOptionsByProvider, [alias]: [] }
-    } finally {
-      tierModelLoadingByProvider = { ...tierModelLoadingByProvider, [alias]: false }
-    }
-  }
-
-  function tierModelOptionsForProvider(alias: string): string[] {
-    const provider = normalizeProviderAlias(alias)
-    return provider && tierModelOptionsByProvider[provider] ? tierModelOptionsByProvider[provider] : []
-  }
-
-  function tierModelLoadingForProvider(alias: string): boolean {
-    const provider = normalizeProviderAlias(alias)
-    return !!tierModelLoadingByProvider[provider]
-  }
-
-  function tierModelLoadErrorForProvider(alias: string): string {
-    const provider = normalizeProviderAlias(alias)
-    return tierModelLoadErrorByProvider[provider] || ''
-  }
-
-  function tierModelOptionsForDraft(draft: LLMTierDraft): string[] {
-    const provider = normalizeProviderAlias(draft.provider)
-    if (!provider) return []
-    const options = tierModelOptionsForProvider(provider)
-    if (options.length === 0) return []
-    const current = normalizeProviderAlias(draft.model)
-    if (!current) return options
-    if (options.includes(current)) return options
-    return [current, ...options]
-  }
-
-  function updateTierDraft(id: string, field: LLMTierDraftField, value: string) {
-    tierDrafts = tierDrafts.map((draft) => {
-      if (draft.id !== id) return draft
-      const updated = { ...draft, [field]: value }
-      if (field === 'provider') {
-        updated.model = ''
-        if (normalizeProviderAlias(value)) {
-          void ensureTierModelOptionsForProvider(value)
-        }
-      }
-      return updated
-    })
-    const rowErrors = tierEditorErrors[id]
-    if (!rowErrors?.[field]) return
-    const nextRowErrors = { ...rowErrors }
-    delete nextRowErrors[field]
-    const nextErrors = { ...tierEditorErrors }
-    if (Object.keys(nextRowErrors).length === 0) {
-      delete nextErrors[id]
-    } else {
-      nextErrors[id] = nextRowErrors
-    }
-    tierEditorErrors = nextErrors
-  }
-
-  function applyTierEditor() {
-    if (!tierEditorField) return
-    const result = buildLLMTiersFromDrafts(tierDrafts, tierProviderOptions)
-    if (!result.ok) {
-      tierEditorErrors = result.errors
-      return
-    }
-    const original = values[tierEditorField.key]
-    if (configValuesEqual(result.value, original)) {
-      delete dirtyFields[tierEditorField.key]
-    } else {
-      dirtyFields[tierEditorField.key] = result.value
-    }
-    dirtyFields = { ...dirtyFields }
-    closeTierEditor()
-  }
-
-  function createTierDraft(name: string): LLMTierDraft {
-    tierDraftSeq += 1
-    return {
-      id: `new-tier-${tierDraftSeq}`,
-      originalName: '',
-      name,
-      provider: tierProviderOptions[0] || '',
-      model: '',
-      reasoning_effort: '',
-      thinking_budget: '',
-      service_tier: '',
-    }
-  }
-
-  function nextTierName(): string {
-    const names = new Set(tierDrafts.map((draft) => draft.name.trim()).filter(Boolean))
-    let idx = tierDrafts.length + 1
-    let candidate = `tier${idx}`
-    while (names.has(candidate)) {
-      idx += 1
-      candidate = `tier${idx}`
-    }
-    return candidate
-  }
-
-  function getValueByKey(key: string): unknown {
-    return dirtyFields[key] !== undefined ? dirtyFields[key] : values[key]
-  }
-
-  function inputValue(event: Event): string {
-    const target = event.currentTarget
-    if (target instanceof HTMLInputElement || target instanceof HTMLSelectElement) return target.value
-    return ''
-  }
-
-  function checkedValue(event: Event): boolean {
-    const target = event.currentTarget
-    return target instanceof HTMLInputElement ? target.checked : false
-  }
-
-  function tierError(id: string, field: LLMTierDraftField): string {
-    return tierEditorErrors[id]?.[field] || ''
-  }
-
-  function tierProviderChoices(current: string): string[] {
-    const choices = new Set(tierProviderOptions)
-    const value = current.trim()
-    if (value) choices.add(value)
-    return sortStrings(choices)
-  }
-
-  function tierReasoningChoices(current: string): string[] {
-    const defaults = ['', 'minimal', 'low', 'medium', 'high']
-    const value = current.trim()
-    if (value && !defaults.includes(value)) return [...defaults, value]
-    return defaults
-  }
-
-  function embodimentTransportChoices(current: string): string[] {
-    const choices = new Set<string>(EMBODIMENT_PROVIDER_TRANSPORTS)
-    const value = current.trim()
-    if (value) choices.add(value)
-    return ['', ...sortStrings(choices)]
-  }
-
-  function embodimentPresetCapabilityLabels(preset: EmbodimentProviderPreset): string {
-    return preset.capabilities.map(embodimentCapabilityLabel).join(', ')
-  }
-
-  function embodimentEndpointPlaceholder(draft: EmbodimentProviderDraft): string {
-    return draft.transport.trim().toLowerCase() === 'webhook'
-      ? 'http://127.0.0.1:43180/v1/embodiment/percept/host'
-      : 'tars-stackchan'
-  }
-
-  function embodimentCapabilityDetail(capability: string) {
-    const value = capability.trim().toLowerCase()
-    return EMBODIMENT_PROVIDER_CAPABILITY_DETAILS.find((detail) => detail.id === value) || {
-      id: value,
-      label: value || 'Custom',
-      group: 'actuation' as EmbodimentCapabilityGroup,
-      description: 'Custom provider capability preserved from config.',
-    }
-  }
-
-  function embodimentCapabilityLabel(capability: string): string {
-    return embodimentCapabilityDetail(capability).label
-  }
-
-  function embodimentCapabilityDescription(capability: string): string {
-    return embodimentCapabilityDetail(capability).description
-  }
-
-  function embodimentCapabilitiesForGroup(group: EmbodimentCapabilityGroup): string[] {
-    return EMBODIMENT_PROVIDER_CAPABILITY_DETAILS
-      .filter((detail) => detail.group === group)
-      .map((detail) => detail.id)
-  }
-
-  function customEmbodimentCapabilities(current: string[]): string[] {
-    const known = new Set(EMBODIMENT_PROVIDER_CAPABILITY_DETAILS.map((detail) => detail.id))
-    return sortStrings(current.map((value) => value.trim().toLowerCase()).filter((value) => value && !known.has(value)))
+  function openJSONWizard(key: string) {
+    const link = jsonWizardLink(key)
+    if (link) onNavigate?.(link)
   }
 
   const sectionIcons: Record<string, string> = {
@@ -1218,7 +427,7 @@
       {/if}
       <div class="view-toggle">
         <button class="toggle-btn" class:active={viewMode === 'quick'} onclick={() => { viewMode = 'quick' }}>{$t.config.viewToggleQuick}</button>
-        <button class="toggle-btn" class:active={viewMode === 'form'} onclick={() => { viewMode = 'form' }}>{$t.config.viewToggleFields}</button>
+        <button class="toggle-btn" class:active={viewMode === 'inspect'} onclick={() => { viewMode = 'inspect' }}>{$t.config.viewToggleFields}</button>
         <button class="toggle-btn" class:active={viewMode === 'yaml'} onclick={() => { viewMode = 'yaml' }}>{$t.config.viewToggleYaml}</button>
       </div>
     </div>
@@ -1350,27 +559,33 @@
                   >
                     <span class="value-text sensitive">{formatValue(field)}</span>
                   </button>
+                {:else if field.type === 'json'}
+                  {@const summary = structuredSummary(field)}
+                  <div class="structured-readonly">
+                    <span class="structured-main">{summary.text}</span>
+                    {#if summary.preview.length > 0}
+                      <span class="structured-preview">
+                        {#each summary.preview as preview}
+                          <span>{preview}</span>
+                        {/each}
+                      </span>
+                    {/if}
+                    {#if jsonWizardLink(item.key)}
+                      <button class="btn btn-secondary btn-sm" onclick={() => openJSONWizard(item.key)}>
+                        Edit in wizard
+                      </button>
+                    {:else}
+                      <span class="yaml-key-hint" title="Documented in config/tars.config.example.yaml">YAML: {fieldPath(field)}</span>
+                    {/if}
+                  </div>
                 {:else}
                   <button
-                    class:value-btn={field.type !== 'json'}
-                    class:structured-value-btn={field.type === 'json'}
+                    class="value-btn"
                     class:dirty={isDirty(field.key)}
-                    onclick={() => field.type === 'json' ? openStructuredEditor(field) : startEdit(field)}
-                    title="Click to edit"
+                    onclick={() => startEdit(field)}
+                    title={$t.config.clickToEdit}
                   >
-                    {#if field.type === 'json'}
-                      {@const summary = structuredSummary(field)}
-                      <span class="structured-main">{summary.text}</span>
-                      {#if summary.preview.length > 0}
-                        <span class="structured-preview">
-                          {#each summary.preview as preview}
-                            <span>{preview}</span>
-                          {/each}
-                        </span>
-                      {/if}
-                    {:else}
-                      <span class="value-text">{formatValue(field)}</span>
-                    {/if}
+                    <span class="value-text">{formatValue(field)}</span>
                   </button>
                 {/if}
                 {#if item.key === 'llm_providers'}
@@ -1386,7 +601,15 @@
           {/each}
         </div>
       </div>
-    {:else if viewMode === 'form'}
+    {:else if viewMode === 'inspect'}
+      <div class="inspect-note">
+        <span>
+          Read-only inspection. Configuration is file-first: edit
+          <code>workspace/config/tars.config.yaml</code> (see <code>config/tars.config.example.yaml</code>)
+          and restart to apply.
+        </span>
+        <button class="btn btn-secondary btn-sm" onclick={() => { viewMode = 'yaml' }}>View YAML</button>
+      </div>
       <div class="search-bar">
         <input
           type="text"
@@ -1415,11 +638,11 @@
                 {#each section.fields as field}
                   {@const metaBadges = buildConfigMetaBadges(field, getDisplayValue(field), isDirty(field.key), schemaUpdatedAt)}
                   {@const envOverride = envOverrideFor(field)}
-                  <div class="field-row" class:field-dirty={isDirty(field.key)}>
+                  <div class="field-row">
                     <div class="field-info">
                       <span class="field-label">{field.label}</span>
                       <span class="field-desc">{field.description}</span>
-                      <span class="field-key">{fieldPath(field)}</span>
+                      <span class="field-key" title="Documented in config/tars.config.example.yaml">{fieldPath(field)}</span>
                       {#if metaBadges.length > 0}
                         <div class="field-meta-badges" aria-label={`${field.label} metadata`}>
                           {#each metaBadges as badge}
@@ -1437,76 +660,29 @@
                       {/if}
                     </div>
                     <div class="field-value">
-                      {#if field.type === 'bool'}
-                        <!-- Bool: clickable toggle -->
-                        <button
-                          class="bool-toggle"
-                          class:bool-on={!!getDisplayValue(field)}
-                          class:dirty={isDirty(field.key)}
-                          onclick={() => toggleBool(field)}
-                          title="Click to toggle"
-                        >
-                          {getDisplayValue(field) ? 'ON' : 'OFF'}
-                        </button>
-                      {:else if field.type === 'select' && field.options}
-                        <!-- Select dropdown -->
-                        <select
-                          class="field-select"
-                          class:dirty={isDirty(field.key)}
-                          value={String(getDisplayValue(field) ?? '')}
-                          onchange={(e) => handleSelectChange(field, e)}
-                        >
-                          {#each field.options as opt}
-                            <option value={opt}>{opt || '(none)'}</option>
-                          {/each}
-                        </select>
-                      {:else if editingKey === field.key}
-                        <!-- Editing mode -->
-                        <div class="field-edit">
-                          {#if field.type === 'string_list'}
-                            <textarea
-                              class="field-textarea"
-                              bind:value={editValue}
-                              onkeydown={(e) => handleFieldKeydown(e, field)}
-                              onblur={() => commitEdit(field)}
-                            ></textarea>
-                          {:else}
-                            <input
-                              type={field.type === 'int' || field.type === 'float' ? 'number' : 'text'}
-                              step={field.type === 'float' ? '0.01' : undefined}
-                              class="field-input"
-                              bind:value={editValue}
-                              onkeydown={(e) => handleFieldKeydown(e, field)}
-                              onblur={() => commitEdit(field)}
-                            />
+                      {#if field.type === 'json'}
+                        {@const summary = structuredSummary(field)}
+                        <div class="structured-readonly">
+                          <span class="structured-main">{summary.text}</span>
+                          {#if summary.preview.length > 0}
+                            <span class="structured-preview">
+                              {#each summary.preview as previewItem}
+                                <span>{previewItem}</span>
+                              {/each}
+                            </span>
+                          {/if}
+                          {#if jsonWizardLink(field.key)}
+                            <button class="btn btn-secondary btn-sm" onclick={() => openJSONWizard(field.key)}>
+                              Edit in wizard
+                            </button>
                           {/if}
                         </div>
-                      {:else if field.sensitive}
-                        <!-- Sensitive: show masked, not editable inline -->
-                        <span class="value-text sensitive" title="Edit in YAML tab">{formatValue(field)}</span>
+                      {:else if field.type === 'bool'}
+                        <span class="readonly-bool" class:readonly-on={!!getDisplayValue(field)}>
+                          {getDisplayValue(field) ? 'ON' : 'OFF'}
+                        </span>
                       {:else}
-                        <!-- Clickable value -->
-                        <button
-                          class:value-btn={field.type !== 'json'}
-                          class:structured-value-btn={field.type === 'json'}
-                          class:dirty={isDirty(field.key)}
-                          onclick={() => field.type === 'json' ? openStructuredEditor(field) : startEdit(field)}
-                          title="Click to edit"
-                        >
-                          {#if field.type === 'json'}
-                            {@const summary = structuredSummary(field)}
-                            <span class="structured-main">{summary.text}</span>
-                            {#if summary.preview.length > 0}
-                              <span class="structured-preview">
-                                {#each summary.preview as item}
-                                  <span>{item}</span>
-                                {/each}
-                              </span>
-                            {/if}
-                          {:else}
-                            <span class="value-text">{formatValue(field)}</span>
-                          {/if}
-                        </button>
+                        <span class="value-text" class:sensitive={field.sensitive}>{formatValue(field)}</span>
                       {/if}
                     </div>
                   </div>
@@ -1520,557 +696,12 @@
       <div class="editor-card card">
         <div class="card-header">
           <span class="card-title">Configuration (YAML)</span>
-          <div class="card-actions">
-            <button class="btn btn-ghost btn-sm" disabled={!isYamlDirty} onclick={handleResetYaml}>Reset</button>
-            <button class="btn btn-primary btn-sm" disabled={!isYamlDirty || saving} onclick={handleSaveYaml}>
-              {saving ? 'Saving...' : 'Save'}
-            </button>
-          </div>
+          <span class="yaml-readonly-hint">Read-only — edit the file on disk, then restart to apply.</span>
         </div>
-        <textarea
-          class="config-editor"
-          bind:value={yamlContent}
-          onkeydown={handleKeydown}
-          spellcheck={false}
-        ></textarea>
-        <div class="editor-footer">
-          {#if isYamlDirty}
-            <span class="badge badge-warning">Unsaved changes</span>
-          {:else}
-            <span class="badge badge-default">No changes</span>
-          {/if}
-          <span class="hint">Ctrl+S / Cmd+S to save</span>
-        </div>
+        <pre class="config-yaml-view">{yamlContent}</pre>
       </div>
     {/if}
 
-    {#if embodimentProviderEditorField}
-      <div class="modal-backdrop" role="presentation">
-        <div class="json-editor-modal embodiment-provider-editor-modal" role="dialog" aria-modal="true" aria-labelledby="embodiment-provider-editor-title">
-          <div class="json-editor-header">
-            <div>
-              <div id="embodiment-provider-editor-title" class="json-editor-title">{embodimentProviderEditorField.label}</div>
-              <div class="json-editor-path">{fieldPath(embodimentProviderEditorField)}</div>
-            </div>
-            <button class="btn btn-ghost btn-sm" onclick={closeEmbodimentProviderEditor}>Cancel</button>
-          </div>
-          <div class="tier-editor-toolbar embodiment-preset-toolbar" aria-label="Recommended body provider presets">
-            {#each EMBODIMENT_PROVIDER_PRESETS as preset}
-              <button
-                class={preset.id === 'custom' ? 'btn btn-ghost btn-sm' : 'btn btn-primary btn-sm'}
-                title={preset.tip}
-                onclick={() => addEmbodimentProviderDraft(preset.id)}
-              >
-                {preset.buttonLabel}
-              </button>
-            {/each}
-          </div>
-          <div class="tier-editor-list">
-            {#if embodimentProviderDrafts.length === 0}
-              <div class="embodiment-empty-state">
-                <span>No body providers configured.</span>
-                <div class="embodiment-preset-grid">
-                  {#each EMBODIMENT_PROVIDER_PRESETS.filter((preset) => preset.id !== 'custom') as preset}
-                    <button
-                      type="button"
-                      class="embodiment-preset-card"
-                      title={preset.tip}
-                      onclick={() => addEmbodimentProviderDraft(preset.id)}
-                    >
-                      <strong>{preset.title}</strong>
-                      <span>{preset.name} -> {preset.endpoint}</span>
-                      <small>{embodimentPresetCapabilityLabels(preset)}</small>
-                    </button>
-                  {/each}
-                </div>
-              </div>
-            {/if}
-            {#each embodimentProviderDrafts as draft (draft.id)}
-              <div class="provider-card embodiment-provider-card">
-                <div class="provider-card-header">
-                  <label class="tier-field tier-field-name">
-                    <span class="field-label-with-help">
-                      Name
-                      <span class="help-dot" title={EMBODIMENT_FIELD_HINTS.name}>?</span>
-                    </span>
-                    <input
-                      class:error={!!embodimentProviderError(draft.id, 'name')}
-                      value={draft.name}
-                      placeholder="stackchan"
-                      title={EMBODIMENT_FIELD_HINTS.name}
-                      oninput={(event) => updateEmbodimentProviderDraft(draft.id, 'name', inputValue(event))}
-                    />
-                    {#if embodimentProviderError(draft.id, 'name')}
-                      <small>{embodimentProviderError(draft.id, 'name')}</small>
-                    {/if}
-                  </label>
-                  <div class="embodiment-card-actions">
-                    <label class="embodiment-switch">
-                      <input
-                        type="checkbox"
-                        checked={draft.enabled}
-                        onchange={(event) => updateEmbodimentProviderDraft(draft.id, 'enabled', checkedValue(event))}
-                      />
-                      <span title={EMBODIMENT_FIELD_HINTS.enabled}>{draft.enabled ? 'Enabled' : 'Disabled'}</span>
-                    </label>
-                    <button class="btn btn-ghost btn-sm tier-remove" onclick={() => removeEmbodimentProviderDraft(draft.id)}>Remove</button>
-                  </div>
-                </div>
-
-                <div class="provider-grid embodiment-provider-grid">
-                  <label class="tier-field">
-                    <span class="field-label-with-help">
-                      Transport
-                      <span class="help-dot" title={EMBODIMENT_FIELD_HINTS.transport}>?</span>
-                    </span>
-                    <select
-                      class:error={!!embodimentProviderError(draft.id, 'transport')}
-                      value={draft.transport}
-                      title={EMBODIMENT_FIELD_HINTS.transport}
-                      onchange={(event) => updateEmbodimentProviderDraft(draft.id, 'transport', inputValue(event))}
-                    >
-                      {#each embodimentTransportChoices(draft.transport) as transport}
-                        <option value={transport}>{transport || 'Select'}</option>
-                      {/each}
-                    </select>
-                    {#if embodimentProviderError(draft.id, 'transport')}
-                      <small>{embodimentProviderError(draft.id, 'transport')}</small>
-                    {/if}
-                  </label>
-                  <label class="tier-field">
-                    <span class="field-label-with-help">
-                      Endpoint
-                      <span class="help-dot" title={EMBODIMENT_FIELD_HINTS.endpoint}>?</span>
-                    </span>
-                    <input
-                      class:error={!!embodimentProviderError(draft.id, 'endpoint')}
-                      value={draft.endpoint}
-                      placeholder={embodimentEndpointPlaceholder(draft)}
-                      title={EMBODIMENT_FIELD_HINTS.endpoint}
-                      oninput={(event) => updateEmbodimentProviderDraft(draft.id, 'endpoint', inputValue(event))}
-                    />
-                    {#if embodimentProviderError(draft.id, 'endpoint')}
-                      <small>{embodimentProviderError(draft.id, 'endpoint')}</small>
-                    {/if}
-                  </label>
-                  <label class="tier-field">
-                    <span class="field-label-with-help">
-                      Session
-                      <span class="help-dot" title={EMBODIMENT_FIELD_HINTS.session_id}>?</span>
-                    </span>
-                    <input
-                      value={draft.session_id}
-                      placeholder="sess_main"
-                      title={EMBODIMENT_FIELD_HINTS.session_id}
-                      oninput={(event) => updateEmbodimentProviderDraft(draft.id, 'session_id', inputValue(event))}
-                    />
-                  </label>
-                  <label class="tier-field">
-                    <span class="field-label-with-help">
-                      Agent
-                      <span class="help-dot" title={EMBODIMENT_FIELD_HINTS.agent}>?</span>
-                    </span>
-                    <input
-                      value={draft.agent}
-                      placeholder="optional"
-                      title={EMBODIMENT_FIELD_HINTS.agent}
-                      oninput={(event) => updateEmbodimentProviderDraft(draft.id, 'agent', inputValue(event))}
-                    />
-                  </label>
-                  <label class="tier-field">
-                    <span class="field-label-with-help">
-                      Min Interval
-                      <span class="help-dot" title={EMBODIMENT_FIELD_HINTS.min_trigger_interval}>?</span>
-                    </span>
-                    <input
-                      value={draft.min_trigger_interval}
-                      placeholder="30s"
-                      title={EMBODIMENT_FIELD_HINTS.min_trigger_interval}
-                      oninput={(event) => updateEmbodimentProviderDraft(draft.id, 'min_trigger_interval', inputValue(event))}
-                    />
-                  </label>
-                  <label class="tier-field">
-                    <span class="field-label-with-help">
-                      Max / Hour
-                      <span class="help-dot" title={EMBODIMENT_FIELD_HINTS.max_triggers_per_hour}>?</span>
-                    </span>
-                    <input
-                      type="number"
-                      min="0"
-                      step="1"
-                      class:error={!!embodimentProviderError(draft.id, 'max_triggers_per_hour')}
-                      value={draft.max_triggers_per_hour}
-                      title={EMBODIMENT_FIELD_HINTS.max_triggers_per_hour}
-                      oninput={(event) => updateEmbodimentProviderDraft(draft.id, 'max_triggers_per_hour', inputValue(event))}
-                    />
-                    {#if embodimentProviderError(draft.id, 'max_triggers_per_hour')}
-                      <small>{embodimentProviderError(draft.id, 'max_triggers_per_hour')}</small>
-                    {/if}
-                  </label>
-                  <label class="tier-field">
-                    <span class="field-label-with-help">
-                      Salience
-                      <span class="help-dot" title={EMBODIMENT_FIELD_HINTS.salience_min_sound_level}>?</span>
-                    </span>
-                    <input
-                      type="number"
-                      min="0"
-                      max="1"
-                      step="0.1"
-                      class:error={!!embodimentProviderError(draft.id, 'salience_min_sound_level')}
-                      value={draft.salience_min_sound_level}
-                      title={EMBODIMENT_FIELD_HINTS.salience_min_sound_level}
-                      oninput={(event) => updateEmbodimentProviderDraft(draft.id, 'salience_min_sound_level', inputValue(event))}
-                    />
-                    {#if embodimentProviderError(draft.id, 'salience_min_sound_level')}
-                      <small>{embodimentProviderError(draft.id, 'salience_min_sound_level')}</small>
-                    {/if}
-                  </label>
-                  <div class="embodiment-toggle-stack">
-                    <label class="embodiment-check">
-                      <input
-                        type="checkbox"
-                        checked={draft.owner_only_directive}
-                        onchange={(event) => updateEmbodimentProviderDraft(draft.id, 'owner_only_directive', checkedValue(event))}
-                      />
-                      <span title={EMBODIMENT_FIELD_HINTS.owner_only_directive}>Owner-only directive</span>
-                    </label>
-                    <label class="embodiment-check">
-                      <input
-                        type="checkbox"
-                        checked={draft.trigger_observations}
-                        onchange={(event) => updateEmbodimentProviderDraft(draft.id, 'trigger_observations', checkedValue(event))}
-                      />
-                      <span title={EMBODIMENT_FIELD_HINTS.trigger_observations}>Trigger observations</span>
-                    </label>
-                  </div>
-                  <div class="tier-field provider-field-wide">
-                    <span class="field-label-with-help">
-                      Capabilities
-                      <span class="help-dot" title={EMBODIMENT_FIELD_HINTS.capabilities}>?</span>
-                    </span>
-                    <div class="embodiment-capability-board" class:error={!!embodimentProviderError(draft.id, 'capabilities')}>
-                      {#each EMBODIMENT_CAPABILITY_GROUPS as group}
-                        <div class="capability-group">
-                          <div class="capability-group-title">
-                            {EMBODIMENT_CAPABILITY_GROUP_LABELS[group]}
-                            <span class="help-dot" title={EMBODIMENT_CAPABILITY_GROUP_HINTS[group]}>?</span>
-                          </div>
-                          <div class="capability-chip-grid">
-                            {#each embodimentCapabilitiesForGroup(group) as capability}
-                              <button
-                                type="button"
-                                class="capability-chip"
-                                class:selected={draft.capabilities.includes(capability)}
-                                aria-pressed={draft.capabilities.includes(capability)}
-                                title={embodimentCapabilityDescription(capability)}
-                                onclick={() => toggleEmbodimentCapability(draft.id, capability)}
-                              >
-                                <span class="capability-chip-label">{embodimentCapabilityLabel(capability)}</span>
-                                <small>{capability}</small>
-                              </button>
-                            {/each}
-                          </div>
-                        </div>
-                      {/each}
-                      {#if customEmbodimentCapabilities(draft.capabilities).length > 0}
-                        <div class="capability-group">
-                          <div class="capability-group-title">Custom</div>
-                          <div class="capability-chip-grid">
-                            {#each customEmbodimentCapabilities(draft.capabilities) as capability}
-                              <button
-                                type="button"
-                                class="capability-chip selected"
-                                aria-pressed="true"
-                                title={embodimentCapabilityDescription(capability)}
-                                onclick={() => toggleEmbodimentCapability(draft.id, capability)}
-                              >
-                                <span class="capability-chip-label">{embodimentCapabilityLabel(capability)}</span>
-                                <small>{capability}</small>
-                              </button>
-                            {/each}
-                          </div>
-                        </div>
-                      {/if}
-                    </div>
-                    {#if embodimentProviderError(draft.id, 'capabilities')}
-                      <small>{embodimentProviderError(draft.id, 'capabilities')}</small>
-                    {/if}
-                  </div>
-                </div>
-              </div>
-            {/each}
-          </div>
-          <div class="json-editor-footer">
-            <button class="btn btn-ghost btn-sm" onclick={resetEmbodimentProviderEditor}>Reset</button>
-            <div class="json-editor-actions">
-              <button class="btn btn-ghost btn-sm" onclick={closeEmbodimentProviderEditor}>Cancel</button>
-              <button class="btn btn-primary btn-sm" onclick={applyEmbodimentProviderEditor}>Apply</button>
-            </div>
-          </div>
-        </div>
-      </div>
-    {/if}
-
-    {#if providerEditorField}
-      <div class="modal-backdrop" role="presentation">
-        <div class="json-editor-modal provider-editor-modal" role="dialog" aria-modal="true" aria-labelledby="provider-editor-title">
-          <div class="json-editor-header">
-            <div>
-              <div id="provider-editor-title" class="json-editor-title">{providerEditorField.label}</div>
-              <div class="json-editor-path">{fieldPath(providerEditorField)}</div>
-            </div>
-            <button class="btn btn-ghost btn-sm" onclick={closeProviderEditor}>Cancel</button>
-          </div>
-          <div class="tier-editor-toolbar">
-            <button class="btn btn-ghost btn-sm" onclick={addProviderDraft}>Add Provider</button>
-          </div>
-          <div class="tier-editor-list">
-            {#each providerDrafts as draft (draft.id)}
-              <div class="provider-card">
-                <div class="provider-card-header">
-                  <label class="tier-field tier-field-name">
-                    <span>Alias</span>
-                    <input
-                      class:error={!!providerError(draft.id, 'alias')}
-                      value={draft.alias}
-                      oninput={(event) => updateProviderDraft(draft.id, 'alias', inputValue(event))}
-                    />
-                    {#if providerError(draft.id, 'alias')}
-                      <small>{providerError(draft.id, 'alias')}</small>
-                    {/if}
-                  </label>
-                  <button
-                    class="btn btn-ghost btn-sm tier-remove"
-                    disabled={providerDrafts.length <= 1}
-                    onclick={() => removeProviderDraft(draft.id)}
-                  >Remove</button>
-                </div>
-                <div class="provider-grid">
-                  <label class="tier-field">
-                    <span>Kind</span>
-                    <select
-                      class:error={!!providerError(draft.id, 'kind')}
-                      value={draft.kind}
-                      onchange={(event) => updateProviderDraft(draft.id, 'kind', inputValue(event))}
-                    >
-                      <option value="">Select</option>
-                      {#each providerKindChoices(draft.kind) as kind}
-                        <option value={kind}>{kind}</option>
-                      {/each}
-                    </select>
-                    {#if providerError(draft.id, 'kind')}
-                      <small>{providerError(draft.id, 'kind')}</small>
-                    {/if}
-                  </label>
-                  <label class="tier-field">
-                    <span>Auth Mode</span>
-                    <select
-                      value={draft.auth_mode}
-                      onchange={(event) => updateProviderDraft(draft.id, 'auth_mode', inputValue(event))}
-                    >
-                      {#each providerAuthModeChoices(draft.auth_mode) as mode}
-                        <option value={mode}>{mode || 'default'}</option>
-                      {/each}
-                    </select>
-                  </label>
-                  <label class="tier-field provider-field-wide">
-                    <span>Base URL</span>
-                    <input
-                      value={draft.base_url}
-                      oninput={(event) => updateProviderDraft(draft.id, 'base_url', inputValue(event))}
-                    />
-                  </label>
-                  {#if draft.auth_mode === 'api-key'}
-                    <label class="tier-field provider-field-wide">
-                      <span>API Key</span>
-                      <div class="provider-secret">
-                        <input
-                          type={providerSecretReveal[draft.id] ? 'text' : 'password'}
-                          autocomplete="off"
-                          value={draft.api_key}
-                          oninput={(event) => updateProviderDraft(draft.id, 'api_key', inputValue(event))}
-                        />
-                        <button
-                          type="button"
-                          class="btn btn-ghost btn-sm provider-secret-toggle"
-                          onclick={() => toggleProviderSecret(draft.id)}
-                        >{providerSecretReveal[draft.id] ? 'Hide' : 'Show'}</button>
-                      </div>
-                    </label>
-                  {/if}
-                </div>
-              </div>
-            {/each}
-          </div>
-          <div class="json-editor-footer">
-            <button class="btn btn-ghost btn-sm" onclick={resetProviderEditor}>Reset</button>
-            <div class="json-editor-actions">
-              <button class="btn btn-ghost btn-sm" onclick={closeProviderEditor}>Cancel</button>
-              <button class="btn btn-primary btn-sm" onclick={applyProviderEditor}>Apply</button>
-            </div>
-          </div>
-        </div>
-      </div>
-    {/if}
-
-    {#if tierEditorField}
-      <div class="modal-backdrop" role="presentation">
-        <div class="json-editor-modal tier-editor-modal" role="dialog" aria-modal="true" aria-labelledby="tier-editor-title">
-          <div class="json-editor-header">
-            <div>
-              <div id="tier-editor-title" class="json-editor-title">{tierEditorField.label}</div>
-              <div class="json-editor-path">{fieldPath(tierEditorField)}</div>
-            </div>
-            <button class="btn btn-ghost btn-sm" onclick={closeTierEditor}>Cancel</button>
-          </div>
-          {#if tierProviderOptions.length === 0}
-            <div class="message message-error">Configure llm.providers before assigning tier providers.</div>
-          {/if}
-          <div class="tier-editor-toolbar">
-            <button class="btn btn-ghost btn-sm" onclick={addTierDraft}>Add Tier</button>
-          </div>
-          <div class="tier-editor-list">
-            {#each tierDrafts as draft (draft.id)}
-              <div class="tier-row">
-                <label class="tier-field tier-field-name">
-                  <span>Tier</span>
-                  <input
-                    class:error={!!tierError(draft.id, 'name')}
-                    value={draft.name}
-                    oninput={(event) => updateTierDraft(draft.id, 'name', inputValue(event))}
-                  />
-                  {#if tierError(draft.id, 'name')}
-                    <small>{tierError(draft.id, 'name')}</small>
-                  {/if}
-                </label>
-                <label class="tier-field tier-field-provider">
-                  <span>Provider</span>
-                  <select
-                    class:error={!!tierError(draft.id, 'provider')}
-                    value={draft.provider}
-                    onchange={(event) => updateTierDraft(draft.id, 'provider', inputValue(event))}
-                  >
-                    <option value="">Select</option>
-                    {#each tierProviderChoices(draft.provider) as provider}
-                      <option value={provider}>{provider}</option>
-                    {/each}
-                  </select>
-                  {#if tierError(draft.id, 'provider')}
-                    <small>{tierError(draft.id, 'provider')}</small>
-                  {/if}
-                </label>
-                <label class="tier-field tier-field-model">
-                  <span>Model</span>
-                  {#if tierModelLoadingForProvider(draft.provider.trim())}
-                    <select class="tier-model-loading" disabled>
-                      <option value="">Loading models...</option>
-                    </select>
-                  {:else if tierModelOptionsForDraft(draft).length > 0}
-                      <select
-                        class:error={!!tierError(draft.id, 'model')}
-                        value={draft.model}
-                        onchange={(event) => updateTierDraft(draft.id, 'model', inputValue(event))}
-                      >
-                      <option value="">Select</option>
-                      {#each tierModelOptionsForDraft(draft) as model}
-                        <option value={model}>{model}</option>
-                      {/each}
-                    </select>
-                  {:else}
-                    <input
-                      class:error={!!tierError(draft.id, 'model')}
-                      value={draft.model}
-                      oninput={(event) => updateTierDraft(draft.id, 'model', inputValue(event))}
-                      placeholder="Enter model ID..."
-                    />
-                  {/if}
-                  {#if tierModelLoadErrorForProvider(draft.provider.trim())}
-                    <small class="tier-model-warn">{tierModelLoadErrorForProvider(draft.provider.trim())}</small>
-                  {/if}
-                  {#if tierError(draft.id, 'model')}
-                    <small>{tierError(draft.id, 'model')}</small>
-                  {/if}
-                </label>
-                <label class="tier-field tier-field-effort">
-                  <span>Effort</span>
-                  <select
-                    value={draft.reasoning_effort}
-                    onchange={(event) => updateTierDraft(draft.id, 'reasoning_effort', inputValue(event))}
-                  >
-                    {#each tierReasoningChoices(draft.reasoning_effort) as effort}
-                      <option value={effort}>{effort || 'default'}</option>
-                    {/each}
-                  </select>
-                </label>
-                <label class="tier-field tier-field-budget">
-                  <span>Budget</span>
-                  <input
-                    type="number"
-                    min="0"
-                    step="1"
-                    class:error={!!tierError(draft.id, 'thinking_budget')}
-                    value={draft.thinking_budget}
-                    oninput={(event) => updateTierDraft(draft.id, 'thinking_budget', inputValue(event))}
-                  />
-                  {#if tierError(draft.id, 'thinking_budget')}
-                    <small>{tierError(draft.id, 'thinking_budget')}</small>
-                  {/if}
-                </label>
-                <label class="tier-field tier-field-service">
-                  <span>Service Tier</span>
-                  <select
-                    value={draft.service_tier}
-                    onchange={(event) => updateTierDraft(draft.id, 'service_tier', inputValue(event))}
-                  >
-                    {#each tierServiceTierChoices(draft.service_tier) as tier}
-                      <option value={tier}>{tier || 'default'}</option>
-                    {/each}
-                  </select>
-                </label>
-                <button class="btn btn-ghost btn-sm tier-remove" disabled={tierDrafts.length <= 1} onclick={() => removeTierDraft(draft.id)}>Remove</button>
-              </div>
-            {/each}
-          </div>
-          <div class="json-editor-footer">
-            <button class="btn btn-ghost btn-sm" onclick={resetTierEditor}>Reset</button>
-            <div class="json-editor-actions">
-              <button class="btn btn-ghost btn-sm" onclick={closeTierEditor}>Cancel</button>
-              <button class="btn btn-primary btn-sm" onclick={applyTierEditor}>Apply</button>
-            </div>
-          </div>
-        </div>
-      </div>
-    {/if}
-
-    {#if jsonEditorField}
-      <div class="modal-backdrop" role="presentation">
-        <div class="json-editor-modal" role="dialog" aria-modal="true" aria-labelledby="json-editor-title">
-          <div class="json-editor-header">
-            <div>
-              <div id="json-editor-title" class="json-editor-title">{jsonEditorField.label}</div>
-              <div class="json-editor-path">{fieldPath(jsonEditorField)}</div>
-            </div>
-            <button class="btn btn-ghost btn-sm" onclick={closeJSONEditor}>Cancel</button>
-          </div>
-          <textarea
-            class="json-editor-textarea"
-            bind:value={jsonEditorText}
-            spellcheck={false}
-          ></textarea>
-          {#if jsonEditorError}
-            <div class="message message-error">{jsonEditorError}</div>
-          {/if}
-          <div class="json-editor-footer">
-            <button class="btn btn-ghost btn-sm" onclick={resetJSONEditor}>Reset</button>
-            <div class="json-editor-actions">
-              <button class="btn btn-ghost btn-sm" onclick={closeJSONEditor}>Cancel</button>
-              <button class="btn btn-primary btn-sm" onclick={applyJSONEditor}>Apply</button>
-            </div>
-          </div>
-        </div>
-      </div>
-    {/if}
 
     <!-- Server Restart -->
     <div class="restart-section card">
@@ -2505,35 +1136,19 @@
     font-weight: 500;
   }
 
-  .structured-value-btn {
+  .structured-readonly {
     display: grid;
     gap: var(--space-1);
     justify-items: end;
-    max-width: 300px;
+    max-width: 320px;
     min-width: 150px;
-    border: 1px solid transparent;
-    border-radius: var(--radius-sm);
-    background: transparent;
-    padding: var(--space-1) var(--space-2);
-    color: inherit;
-    cursor: pointer;
     text-align: right;
-    transition: all var(--duration-fast) var(--ease-out);
-  }
-  .structured-value-btn:hover {
-    border-color: var(--border-default);
-    background: var(--surface-elevated);
-  }
-  .structured-value-btn.dirty {
-    border-color: rgba(224, 145, 69, 0.4);
-    background: rgba(224, 145, 69, 0.08);
   }
   .structured-main {
     font-family: var(--font-mono);
     font-size: var(--text-xs);
     color: var(--text-primary);
   }
-  .structured-value-btn.dirty .structured-main { color: var(--primary); }
   .structured-preview {
     display: flex;
     flex-wrap: wrap;
@@ -2554,6 +1169,50 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+
+  .yaml-key-hint {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-ghost);
+  }
+
+  /* Read-only inspection (Fields tab is inspection-only per DESIGN.md #931) */
+  .inspect-note {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    background: var(--surface-elevated);
+    color: var(--text-secondary);
+    font-size: var(--text-xs);
+    line-height: 1.5;
+  }
+  .inspect-note code {
+    font-family: var(--font-mono);
+    color: var(--text-primary);
+    font-size: 10px;
+  }
+  .readonly-bool {
+    display: inline-block;
+    padding: 3px var(--space-2);
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-subtle);
+    font-family: var(--font-display);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-ghost);
+  }
+  .readonly-bool.readonly-on {
+    border-color: rgba(60, 180, 100, 0.28);
+    background: rgba(60, 180, 100, 0.08);
+    color: var(--green);
   }
 
   /* ── Bool toggle ─────────────────────────── */
@@ -2641,36 +1300,33 @@
     box-shadow: 0 0 0 2px rgba(224, 145, 69, 0.3);
   }
 
-  /* ── YAML Editor ─────────────────────────── */
+  /* ── YAML read view ───────────────────── */
   .editor-card { display: flex; flex-direction: column; }
-  .card-actions { display: flex; gap: var(--space-2); }
 
-  .config-editor {
+  .yaml-readonly-hint {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    color: var(--text-ghost);
+  }
+
+  .config-yaml-view {
     width: 100%;
+    margin: 0;
     min-height: 500px;
+    max-height: 70vh;
     padding: var(--space-3);
     background: var(--surface-base);
     color: var(--text-primary);
-    border: none;
     border-top: 1px solid var(--border-subtle);
     border-bottom: 1px solid var(--border-subtle);
     font-family: var(--font-mono);
     font-size: var(--text-sm);
     line-height: 1.6;
-    resize: vertical;
     tab-size: 2;
     white-space: pre;
     overflow-x: auto;
+    overflow-y: auto;
   }
-  .config-editor:focus { outline: none; box-shadow: inset 0 0 0 1px var(--primary); }
-
-  .editor-footer {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: var(--space-2) var(--space-3);
-  }
-  .hint { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--text-ghost); }
 
   /* ── Restart section ──────────────────────── */
   .restart-section { margin-top: var(--space-4); }
@@ -2697,469 +1353,6 @@
 
   /* ── Diff panel ──────────────────────────── */
   .diff-badge { cursor: pointer; }
-  /* ── JSON editor modal ───────────────────── */
-  .modal-backdrop {
-    position: fixed;
-    top: 0;
-    right: 0;
-    bottom: 0;
-    left: var(--nav-width);
-    z-index: 30;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: var(--space-4);
-    background: rgba(0, 0, 0, 0.62);
-  }
-  .json-editor-modal {
-    width: min(880px, calc(100vw - var(--nav-width) - 32px));
-    max-height: calc(100vh - 32px);
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-3);
-    border: 1px solid var(--border-default);
-    border-radius: var(--radius-lg);
-    background: var(--surface);
-    box-shadow: var(--shadow-lg);
-    padding: var(--space-4);
-    overflow: hidden;
-  }
-  .json-editor-header, .json-editor-footer {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: var(--space-3);
-  }
-  .json-editor-title {
-    font-family: var(--font-display);
-    font-size: var(--text-md);
-    color: var(--text-primary);
-  }
-  .json-editor-path {
-    margin-top: 2px;
-    font-family: var(--font-mono);
-    font-size: var(--text-xs);
-    color: var(--text-ghost);
-  }
-  .json-editor-textarea {
-    width: 100%;
-    min-height: clamp(280px, 54vh, 520px);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-md);
-    background: var(--surface-base);
-    color: var(--text-primary);
-    padding: var(--space-3);
-    font-family: var(--font-mono);
-    font-size: var(--text-sm);
-    line-height: 1.55;
-    resize: vertical;
-    tab-size: 2;
-    white-space: pre;
-    overflow: auto;
-  }
-  .json-editor-textarea:focus {
-    outline: none;
-    border-color: var(--primary);
-    box-shadow: 0 0 0 2px rgba(224, 145, 69, 0.22);
-  }
-  .json-editor-actions {
-    display: flex;
-    gap: var(--space-2);
-  }
-
-  .tier-editor-modal {
-    width: min(1040px, calc(100vw - var(--nav-width) - 32px));
-  }
-  .tier-editor-toolbar {
-    display: flex;
-    justify-content: flex-end;
-  }
-  .tier-editor-list {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-    min-height: 0;
-    overflow: auto;
-    padding-right: 2px;
-  }
-  .tier-row {
-    display: grid;
-    grid-template-columns: minmax(90px, 1fr) minmax(120px, 1fr) minmax(180px, 1.4fr) minmax(110px, 0.9fr) minmax(96px, 0.8fr) minmax(130px, 1fr) auto;
-    gap: var(--space-2);
-    align-items: start;
-    padding: var(--space-3);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-md);
-    background: var(--surface-base);
-  }
-  .tier-field {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    min-width: 0;
-  }
-  .tier-field span {
-    font-family: var(--font-display);
-    font-size: 10px;
-    font-weight: 600;
-    color: var(--text-ghost);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-  }
-  .tier-field input,
-  .tier-field select {
-    width: 100%;
-    min-width: 0;
-    height: 32px;
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-sm);
-    background: var(--surface);
-    color: var(--text-primary);
-    padding: 0 var(--space-2);
-    font-family: var(--font-mono);
-    font-size: var(--text-xs);
-  }
-  .tier-field input:focus,
-  .tier-field select:focus {
-    outline: none;
-    border-color: var(--primary);
-    box-shadow: 0 0 0 2px rgba(224, 145, 69, 0.22);
-  }
-  .tier-field input.error,
-  .tier-field select.error {
-    border-color: var(--red);
-    box-shadow: 0 0 0 1px rgba(220, 60, 60, 0.25);
-  }
-  .tier-field small {
-    color: var(--red);
-    font-size: 10px;
-    line-height: 1.25;
-  }
-  .tier-field small.tier-model-warn {
-    color: var(--amber, #e09145);
-  }
-  .tier-remove {
-    align-self: end;
-    white-space: nowrap;
-  }
-
-  /* ── Provider editor ─────────────────────── */
-  .provider-editor-modal {
-    width: min(880px, calc(100vw - var(--nav-width) - 32px));
-  }
-  .provider-card {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-3);
-    padding: var(--space-3);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-md);
-    background: var(--surface-base);
-  }
-  .provider-card-header {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: var(--space-3);
-    align-items: end;
-  }
-  .provider-grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: var(--space-3);
-  }
-  .provider-field-wide {
-    grid-column: span 2;
-  }
-  .provider-secret {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: var(--space-2);
-    align-items: stretch;
-  }
-  .provider-secret input {
-    width: 100%;
-  }
-  .provider-secret-toggle {
-    align-self: stretch;
-    white-space: nowrap;
-  }
-
-  /* ── Embodiment provider editor ─────────── */
-  .embodiment-provider-editor-modal {
-    width: min(1040px, calc(100vw - var(--nav-width) - 32px));
-  }
-  .embodiment-preset-toolbar {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: flex-end;
-    gap: var(--space-2);
-  }
-  .embodiment-provider-card {
-    gap: var(--space-3);
-  }
-  .embodiment-card-actions {
-    display: flex;
-    align-items: flex-end;
-    gap: var(--space-2);
-    justify-content: flex-end;
-  }
-  .embodiment-provider-grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-  .embodiment-toggle-stack {
-    display: flex;
-    flex-direction: column;
-    justify-content: flex-end;
-    gap: var(--space-2);
-    min-height: 58px;
-  }
-  .embodiment-switch,
-  .embodiment-check {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-2);
-    color: var(--text-secondary);
-    font-family: var(--font-display);
-    font-size: var(--text-xs);
-    line-height: 1.3;
-    cursor: pointer;
-  }
-  .embodiment-switch {
-    height: 32px;
-    padding: 0 var(--space-2);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-sm);
-    background: var(--surface);
-    white-space: nowrap;
-  }
-  .embodiment-switch input,
-  .embodiment-check input {
-    accent-color: var(--primary);
-  }
-  .tier-field .field-label-with-help {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    color: var(--text-ghost);
-    letter-spacing: 0;
-  }
-  .tier-field .help-dot {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 15px;
-    height: 15px;
-    border: 1px solid var(--border-subtle);
-    border-radius: 50%;
-    color: var(--text-secondary);
-    background: var(--surface);
-    font-size: 10px;
-    line-height: 1;
-    text-transform: none;
-    letter-spacing: 0;
-    cursor: help;
-  }
-  .embodiment-capability-board {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: var(--space-2);
-    padding: var(--space-2);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-sm);
-    background: var(--surface);
-  }
-  .embodiment-capability-board.error {
-    border-color: var(--red);
-    box-shadow: 0 0 0 1px rgba(220, 60, 60, 0.25);
-  }
-  .capability-group {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-    min-width: 0;
-    padding: var(--space-2);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-sm);
-    background: var(--surface-base);
-  }
-  .capability-group-title {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    color: var(--text-secondary);
-    font-family: var(--font-display);
-    font-size: 10px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0;
-  }
-  .capability-chip-grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: var(--space-2);
-  }
-  .capability-chip {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    justify-content: center;
-    min-width: 0;
-    min-height: 44px;
-    gap: 1px;
-    padding: var(--space-2);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-sm);
-    color: var(--text-secondary);
-    background: var(--surface);
-    cursor: pointer;
-    text-align: left;
-  }
-  .capability-chip:hover {
-    border-color: rgba(224, 145, 69, 0.45);
-    color: var(--text-primary);
-  }
-  .capability-chip.selected {
-    border-color: rgba(224, 145, 69, 0.72);
-    color: var(--text-primary);
-    background: rgba(224, 145, 69, 0.14);
-    box-shadow: inset 3px 0 0 var(--primary);
-  }
-  .tier-field .capability-chip-label {
-    color: inherit;
-    font-family: var(--font-display);
-    font-size: var(--text-xs);
-    font-weight: 700;
-    text-transform: none;
-    letter-spacing: 0;
-    line-height: 1.15;
-  }
-  .tier-field .capability-chip small {
-    color: var(--text-ghost);
-    font-family: var(--font-mono);
-    font-size: 10px;
-    line-height: 1.1;
-    text-transform: none;
-    letter-spacing: 0;
-  }
-  .embodiment-empty-state {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-3);
-    padding: var(--space-4);
-    border: 1px dashed var(--border-default);
-    border-radius: var(--radius-md);
-    color: var(--text-secondary);
-    background: var(--surface-base);
-  }
-  .embodiment-preset-grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: var(--space-2);
-    min-width: min(520px, 100%);
-  }
-  .embodiment-preset-card {
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-    min-width: 0;
-    padding: var(--space-3);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-sm);
-    color: var(--text-secondary);
-    background: var(--surface);
-    cursor: pointer;
-    text-align: left;
-  }
-  .embodiment-preset-card:hover {
-    border-color: rgba(224, 145, 69, 0.45);
-    color: var(--text-primary);
-  }
-  .embodiment-preset-card strong {
-    color: var(--text-primary);
-    font-family: var(--font-display);
-    font-size: var(--text-sm);
-  }
-  .embodiment-preset-card span,
-  .embodiment-preset-card small {
-    overflow-wrap: anywhere;
-  }
-  .embodiment-preset-card span {
-    font-family: var(--font-mono);
-    font-size: 11px;
-  }
-  .embodiment-preset-card small {
-    color: var(--text-ghost);
-    font-size: 11px;
-    line-height: 1.25;
-  }
-
-  @media (max-width: 640px) {
-    .provider-grid {
-      grid-template-columns: minmax(0, 1fr);
-    }
-    .provider-field-wide {
-      grid-column: auto;
-    }
-  }
-
-  @media (max-width: 960px) {
-    .embodiment-provider-grid {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-    .tier-row {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-    .tier-field-model,
-    .tier-field-service {
-      grid-column: span 2;
-    }
-    .tier-remove {
-      justify-self: end;
-    }
-  }
-
-  @media (max-width: 640px) {
-    .modal-backdrop {
-      left: 0;
-      padding: var(--space-2);
-    }
-    .json-editor-modal,
-    .tier-editor-modal,
-    .embodiment-provider-editor-modal {
-      width: calc(100vw - 16px);
-      max-height: calc(100vh - 16px);
-    }
-    .embodiment-provider-grid,
-    .embodiment-capability-board {
-      grid-template-columns: minmax(0, 1fr);
-    }
-    .embodiment-preset-grid,
-    .capability-chip-grid {
-      grid-template-columns: minmax(0, 1fr);
-    }
-    .embodiment-card-actions,
-    .embodiment-empty-state {
-      align-items: stretch;
-      flex-direction: column;
-    }
-    .tier-row {
-      grid-template-columns: minmax(0, 1fr);
-    }
-    .tier-field-model,
-    .tier-field-service {
-      grid-column: auto;
-    }
-    .json-editor-header,
-    .json-editor-footer {
-      align-items: stretch;
-      flex-direction: column;
-    }
-    .json-editor-actions {
-      justify-content: flex-end;
-    }
-  }
-
   /* ── Search bar ──────────────────────────── */
   .search-bar {
     position: relative;
