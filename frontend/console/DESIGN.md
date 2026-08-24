@@ -274,6 +274,27 @@ Every route must map to a pillar. Current mapping (first cut keeps all routes; c
 - The raw YAML tab becomes a read view; editing happens in an editor against the real file, then restart applies it.
 - Server write routes (`PUT /v1/admin/config`, `PATCH /v1/admin/config/values`) remain part of the HTTP API for CLI/scripting use even where the console stops calling them.
 
+### Config surface audit (#931, first cut)
+
+Server schema exposes 165 fields (`internal/config/schema.go`) grouped into 15 sections. Audit of `Config.svelte` and `SessionConfigPanel.svelte` against actual usage classifies them as follows:
+
+**(a) Keep UI editing** — onboarding, credentials, session control:
+
+- Quick Start set (13 curated gates in `lib/quickStartFields.ts`): `api_auth_mode`, `llm_providers`, `llm_tiers`, `llm_default_tier`, `workspace_dir`, `telegram_bot_token`, `companion_enabled`, `embodiment_enabled`, `embodiment_providers_json`, `pulse_enabled`, `reflection_enabled`, `log_level`, `session_telegram_scope`. These gate first-run readiness and stay interactive.
+- Credential/sensitive fields (masked entry preserved wherever surfaced): `api_auth_token`, `api_user_token`, `api_admin_token`, `memory_embed_api_key`, `tools_web_search_api_key`, `tools_web_search_perplexity_api_key`, `work_scheduler_a2a_bearer_token`.
+- Structured LLM provider/tier editing stays in the console product — but lives in the onboarding wizard reentry (`/console/onboarding?reentry=1&section=provider|tiers`), which already implements alias-replace saves with masked-key preservation. `Config.svelte` links there instead of hosting duplicate editors.
+- `SessionConfigPanel.svelte` (session-scoped tools/skills/commands/MCP allowlists, automation consent, style controls) is session/cwd control — core purpose. Unchanged.
+
+**(b) Read-only inspection candidates** — validated read view + YAML key pointer:
+
+- Operational tuning long-tail across sections: Runtime logging/rotation, API inflight caps, Remote Access, Memory embedding tuning, Usage limits/budgets, Pulse thresholds/windows, Reflection windows, Compaction numbers, Tools toggles/timeouts/providers, MCP allowlist, Agent Runtime persistence/archive/watch/consensus knobs, Work Ledger / Work Scheduler internals (leases, polling, A2A), Channels enables, Assistant binaries, notify/schedule settings.
+- These render value + effective-value-under-env-override + default/restart/secret badges. Editing happens in the YAML file; console shows what the server actually loaded.
+
+**(c) YAML-first removals** — editors deleted from `Config.svelte` in this cut (values remain visible read-only):
+
+- All four heavyweight modal editors: generic JSON editor, LLM tier editor, LLM provider editor, embodiment provider preset editor.
+- Consequence table: `llm_providers` / `llm_tiers` → deep link to onboarding wizard sections (capability preserved). `embodiment_providers_json`, `llm_role_defaults`, `usage_price_overrides_json`, `mcp_servers_json`, `agentruntime_agents_json`, `agentruntime_task_override`, and every other `json`/`string_list` field → read-only summary plus documented YAML key (`config/tars.config.example.yaml`). If a dedicated UI for embodiment presets proves necessary later, it should be a follow-up issue scoped against this policy.
+
 ## Colors
 
 The palette is rooted in deep neutrals, a single warm accent, and four semantic states.
