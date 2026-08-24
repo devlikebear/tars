@@ -15,6 +15,17 @@ import (
 const anthropicAPIVersion = "2023-06-01"
 const anthropicPromptCachingBeta = "prompt-caching-2024-07-31"
 
+const (
+	// anthropicMaxCacheBreakpoints is the provider-wide limit on cache_control
+	// markers per request, across system blocks, tool definitions, and
+	// messages.
+	anthropicMaxCacheBreakpoints = 4
+	// anthropicMaxMessageCacheBreakpoints caps how many of the remaining
+	// slots this client spends on the message array. Two are enough for a
+	// rolling window: the newest completed turn plus one older fallback.
+	anthropicMaxMessageCacheBreakpoints = 2
+)
+
 type AnthropicClient struct {
 	baseURL    string
 	apiKey     string
@@ -98,10 +109,14 @@ func (c *AnthropicClient) buildChatRequest(messages []ChatMessage, opts ChatOpti
 		nonSystemMessages = append(nonSystemMessages, msg)
 	}
 
+	tools := toAnthropicTools(opts.Tools)
+	wireMessages := toAnthropicWireMessages(nonSystemMessages)
+	applyAnthropicRollingCacheBreakpoints(wireMessages, nonSystemMessages, len(systemMessages) > 0, len(tools) > 0)
+
 	reqBody := map[string]any{
 		"model":      c.model,
 		"max_tokens": c.config.MaxTokens,
-		"messages":   toAnthropicWireMessages(nonSystemMessages),
+		"messages":   wireMessages,
 	}
 	if budget := effectiveThinkingBudget(c.config, opts); budget > 0 {
 		reqBody["thinking"] = map[string]any{
@@ -112,7 +127,7 @@ func (c *AnthropicClient) buildChatRequest(messages []ChatMessage, opts ChatOpti
 	if len(systemMessages) > 0 {
 		reqBody["system"] = toAnthropicSystemBlocks(systemMessages)
 	}
-	if tools := toAnthropicTools(opts.Tools); len(tools) > 0 {
+	if len(tools) > 0 {
 		tools[len(tools)-1].CacheControl = map[string]any{"type": "ephemeral"}
 		reqBody["tools"] = tools
 		if choice := toAnthropicToolChoice(opts.ToolChoice); len(choice) > 0 {
@@ -151,6 +166,107 @@ func toAnthropicSystemBlocks(systemMessages []string) []map[string]any {
 		blocks = append(blocks, block)
 	}
 	return blocks
+}
+
+// applyAnthropicRollingCacheBreakpoints places cache_control markers on the
+// message array so a growing conversation reuses its prefix instead of paying
+// full input rates every turn.
+//
+// Markers land only on completed turns: the newest sits on the last message of
+// the most recent completed turn — making everything before the incoming turn
+// one cacheable prefix — and an older marker stays two completed turns back so
+// a warm entry survives when the newest is invalidated. The trailing group of
+// messages (the incoming user message plus any in-flight tool exchanges) never
+// gets one: its content still changes within the request cycle, and marking it
+// would write a fresh entry per loop iteration without ever being read.
+//
+// The provider-wide limit counts system and tool markers too, so the message
+// budget is what remains of anthropicMaxCacheBreakpoints, capped at
+// anthropicMaxMessageCacheBreakpoints. Short histories simply use fewer slots;
+// an empty array gets none.
+func applyAnthropicRollingCacheBreakpoints(wire []anthropicWireMessage, messages []ChatMessage, hasSystemBlocks bool, hasTools bool) {
+	if len(wire) == 0 || len(wire) != len(messages) {
+		return
+	}
+	budget := anthropicMaxCacheBreakpoints
+	if hasSystemBlocks {
+		budget--
+	}
+	if hasTools {
+		budget--
+	}
+	if budget > anthropicMaxMessageCacheBreakpoints {
+		budget = anthropicMaxMessageCacheBreakpoints
+	}
+	if budget <= 0 {
+		return
+	}
+	ends := anthropicCompletedTurnEndIndexes(messages)
+	if len(ends) > budget {
+		ends = ends[len(ends)-budget:]
+	}
+	for _, idx := range ends {
+		markAnthropicCacheBreakpoint(&wire[idx])
+	}
+}
+
+// anthropicCompletedTurnEndIndexes returns the index of the last message of
+// each completed turn. A turn starts at a user-initiated message (role "user"
+// that is not a tool result); assistant replies and tool results stay inside
+// the turn that triggered them. The final group is the in-flight turn — the
+// request exists to extend it — so it is excluded.
+func anthropicCompletedTurnEndIndexes(messages []ChatMessage) []int {
+	ends := make([]int, 0, len(messages))
+	prevGroupStart := -1
+	for i := range messages {
+		if !anthropicIsUserTurnStart(messages[i]) {
+			continue
+		}
+		if prevGroupStart >= 0 {
+			ends = append(ends, i-1)
+		} else if i > 0 {
+			// Defensive: leading non-user messages form their own
+			// (completed) prologue group before the first user turn.
+			ends = append(ends, i-1)
+		}
+		prevGroupStart = i
+	}
+	return ends
+}
+
+func anthropicIsUserTurnStart(msg ChatMessage) bool {
+	return msg.Role == "user" && strings.TrimSpace(msg.ToolCallID) == ""
+}
+
+// markAnthropicCacheBreakpoint attaches cache_control to the last content
+// block of one wire message, which makes Anthropic treat everything up to and
+// including that block as the cached prefix. Plain string content is upgraded
+// to a single text block; block arrays get the marker appended to their last
+// entry. Messages that would split a tool-call/tool-result pairing (any
+// tool_use-bearing content) or carry no markable content are skipped quietly.
+func markAnthropicCacheBreakpoint(msg *anthropicWireMessage) {
+	switch content := msg.Content.(type) {
+	case string:
+		if strings.TrimSpace(content) == "" {
+			return
+		}
+		msg.Content = []map[string]any{
+			{
+				"type":          "text",
+				"text":          content,
+				"cache_control": map[string]any{"type": "ephemeral"},
+			},
+		}
+	case []map[string]any:
+		if len(content) == 0 {
+			return
+		}
+		last := content[len(content)-1]
+		if blockType, _ := last["type"].(string); blockType == "tool_use" {
+			return
+		}
+		last["cache_control"] = map[string]any{"type": "ephemeral"}
+	}
 }
 
 func (c *AnthropicClient) chatNonStreamingResponse(body io.Reader) (ChatResponse, error) {
