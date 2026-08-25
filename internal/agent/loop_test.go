@@ -816,11 +816,64 @@ func TestLoop_Run_FinalizesWithoutToolsWhenMaxIterationsReached(t *testing.T) {
 	if len(client.seenToolCounts) != 3 {
 		t.Fatalf("expected 3 llm calls, got %d", len(client.seenToolCounts))
 	}
-	if client.seenToolCounts[2] != 0 {
-		t.Fatalf("expected finalization call without tools, got %d", client.seenToolCounts[2])
+	// The finalization call keeps the tool list so it stays in the same cache
+	// lineage as the loop iterations; suppression is tool_choice=none. What
+	// this test guards is the outcome — finalization yields text — not the
+	// mechanism. See the ignores-none fallback test below for the case where a
+	// provider does not honor the suppression.
+	if client.seenToolCounts[2] == 0 {
+		t.Fatalf("finalization should keep the tools it was called with, got %d", client.seenToolCounts[2])
 	}
 	if client.seenToolChoice[2] != "none" {
 		t.Fatalf("expected finalization tool_choice=none, got %q", client.seenToolChoice[2])
+	}
+}
+
+// A provider that ignores tool_choice=none would hand back another tool call
+// with no text, which the loop cannot use — before this fallback existed that
+// turn degraded into the max-iterations error instead of an answer.
+func TestLoop_Run_FinalizationRetriesWithoutToolsWhenProviderIgnoresNone(t *testing.T) {
+	reg := tool.NewRegistry()
+	reg.Register(tool.NewSessionStatusTool(func(_ context.Context) (tool.SessionStatus, error) {
+		return tool.SessionStatus{SessionID: "sess"}, nil
+	}))
+
+	client := &scriptedLLMClient{
+		responses: []llm.ChatResponse{
+			{Message: llm.ChatMessage{Role: "assistant", ToolCalls: []llm.ToolCall{
+				{ID: "call_1", Name: "session_status", Arguments: `{}`},
+			}}},
+			// Finalization attempt: provider ignores none and calls a tool.
+			{Message: llm.ChatMessage{Role: "assistant", ToolCalls: []llm.ToolCall{
+				{ID: "call_2", Name: "session_status", Arguments: `{}`},
+			}}},
+			// Retry with the tools removed: now it answers.
+			{Message: llm.ChatMessage{Role: "assistant", Content: "fallback answer"}},
+		},
+	}
+
+	loop := NewLoop(client, reg)
+	resp, err := loop.Run(context.Background(), []llm.ChatMessage{
+		{Role: "user", Content: "go"},
+	}, RunOptions{
+		MaxIterations: 1,
+		Tools:         reg.Schemas(),
+		ToolChoice:    llm.ToolChoiceAuto(),
+	})
+	if err != nil {
+		t.Fatalf("fallback should still produce an answer, got %v", err)
+	}
+	if resp.Message.Content != "fallback answer" {
+		t.Fatalf("unexpected final content: %q", resp.Message.Content)
+	}
+	if len(client.seenToolCounts) != 3 {
+		t.Fatalf("expected loop + finalization + retry = 3 calls, got %v", client.seenToolCounts)
+	}
+	if client.seenToolCounts[1] == 0 {
+		t.Fatalf("first finalization attempt should carry tools, got %v", client.seenToolCounts)
+	}
+	if client.seenToolCounts[2] != 0 {
+		t.Fatalf("retry must drop the tools to make a text answer structural, got %v", client.seenToolCounts)
 	}
 }
 
@@ -1101,5 +1154,63 @@ func TestLoop_Run_HonorsCallerResumeSessionID(t *testing.T) {
 	}
 	if len(client.seenResumeIDs) != 1 || client.seenResumeIDs[0] != "carried" {
 		t.Fatalf("expected iter 1 to receive caller resume id 'carried', got %v", client.seenResumeIDs)
+	}
+}
+
+// The turn's final call used to drop the tool list. Providers render tools
+// ahead of messages into one prefix-matched cache key, so a tools-absent
+// request lands in a different cache lineage than the tool-bearing loop
+// iterations it follows — it cannot read what they just wrote, and its own
+// cache write is paid at a premium for an entry the next iteration cannot use.
+//
+// Keeping the tools and suppressing them with tool_choice=none puts the call
+// back in the turn's lineage. It also makes ToolChoiceNone actually reach the
+// wire: every provider emits tool_choice only when tools are present, so with
+// Tools=nil the "none" was silently dropped.
+func TestLoop_Run_FinalCallKeepsToolsAndSuppressesWithToolChoiceNone(t *testing.T) {
+	reg := tool.NewRegistry()
+	reg.Register(tool.NewSessionStatusTool(func(_ context.Context) (tool.SessionStatus, error) {
+		return tool.SessionStatus{SessionID: "sess"}, nil
+	}))
+
+	client := &scriptedLLMClient{
+		responses: []llm.ChatResponse{
+			{
+				Message: llm.ChatMessage{
+					Role: "assistant",
+					ToolCalls: []llm.ToolCall{
+						{ID: "call-1", Name: "session_status", Arguments: "{}"},
+					},
+				},
+				StopReason: "tool_use",
+			},
+			{Message: llm.ChatMessage{Role: "assistant", Content: "done"}},
+		},
+	}
+
+	loop := NewLoop(client, reg)
+	if _, err := loop.Run(context.Background(), []llm.ChatMessage{
+		{Role: "user", Content: "status please"},
+	}, RunOptions{
+		Tools:         reg.Schemas(),
+		ToolChoice:    llm.ToolChoiceAuto(),
+		MaxIterations: 1,
+	}); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+
+	if len(client.seenToolCounts) < 2 {
+		t.Fatalf("expected the loop to reach its final call, got %v", client.seenToolCounts)
+	}
+	last := len(client.seenToolCounts) - 1
+	if client.seenToolCounts[last] == 0 {
+		t.Fatalf("final call must still carry the tool list so it shares the turn's cache prefix, got %v", client.seenToolCounts)
+	}
+	if client.seenToolCounts[last] != client.seenToolCounts[0] {
+		t.Fatalf("final call tool count %d should match the loop's %d — a different tool set is a different cache prefix",
+			client.seenToolCounts[last], client.seenToolCounts[0])
+	}
+	if got := client.seenToolChoice[last]; got != "none" {
+		t.Fatalf("final call must suppress tool use with tool_choice=none, got %q", got)
 	}
 }
