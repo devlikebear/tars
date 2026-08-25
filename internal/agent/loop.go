@@ -428,9 +428,35 @@ func (l *Loop) Run(ctx context.Context, initial []llm.ChatMessage, opts RunOptio
 	finalResp, finalErr := l.client.Chat(ctx, messages, llm.ChatOptions{
 		OnDelta:          opts.OnDelta,
 		OnReasoningDelta: opts.OnReasoningDelta,
-		Tools:            nil,
-		ToolChoice:       llm.ToolChoiceNone(),
+		// Keep the tool list and suppress it with tool_choice=none rather than
+		// dropping it. Providers render tools ahead of messages into one
+		// prefix-matched cache key, so a tools-absent request lands in a
+		// different cache lineage than the loop iterations it follows: it
+		// cannot read the prefix they just wrote, and pays its own write
+		// premium for an entry those iterations can never read back.
+		//
+		// This is also the first time ToolChoiceNone reaches the wire. Every
+		// provider emits tool_choice only inside `if len(tools) > 0`, so with
+		// Tools=nil the "none" was silently dropped and suppression relied
+		// entirely on there being no tools to call.
+		Tools:      llmTools,
+		ToolChoice: llm.ToolChoiceNone(),
 	})
+	// Dropping the tools is what used to make a text answer structural rather
+	// than a request the provider might ignore. Keep that guarantee as a
+	// fallback: if the provider honored neither tool_choice=none nor the
+	// implicit "answer now", retry the way this call used to be made. Costs an
+	// extra round trip only when a provider misbehaves, and without it that
+	// case degrades to the max-iterations error instead of an answer.
+	if finalErr == nil && len(finalResp.Message.ToolCalls) > 0 && strings.TrimSpace(finalResp.Message.Content) == "" {
+		l.emit(ctx, Event{Type: EventBeforeLLM, Iteration: finalIter, MessageCount: len(messages)})
+		finalResp, finalErr = l.client.Chat(ctx, messages, llm.ChatOptions{
+			OnDelta:          opts.OnDelta,
+			OnReasoningDelta: opts.OnReasoningDelta,
+			Tools:            nil,
+			ToolChoice:       llm.ToolChoiceNone(),
+		})
+	}
 	if finalErr == nil {
 		afterLLMEvent := Event{Type: EventAfterLLM, Iteration: finalIter, MessageCount: len(messages), SessionID: strings.TrimSpace(finalResp.SessionID)}
 		if opts.AfterLLM != nil {
