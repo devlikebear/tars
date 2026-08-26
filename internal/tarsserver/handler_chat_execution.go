@@ -164,7 +164,15 @@ func persistChatResult(state chatRunState, userMessage string, chatResp llm.Chat
 			logger.Error().Err(err).Str("tool", tc.ToolName).Msg("append tool message failed")
 		}
 	}
-	assistantMsg := session.Message{Role: "assistant", Content: chatResp.Message.Content, Timestamp: now}
+	assistantMsg := session.Message{
+		Role:      "assistant",
+		Content:   chatResp.Message.Content,
+		Timestamp: now,
+		// Persisted so a transcript replayed after a restart can hand the
+		// signed reasoning blocks back to the provider instead of rebuilding
+		// a turn the provider will not recognize.
+		ReasoningBlocks: toSessionReasoningBlocks(chatResp.Message.ReasoningBlocks),
+	}
 	if err := session.AppendMessage(state.transcriptPath, assistantMsg); err != nil {
 		logger.Error().Err(err).Msg("append assistant message failed")
 	} else if err := state.store.Touch(state.sessionID, assistantMsg.Timestamp); err != nil {

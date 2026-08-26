@@ -322,6 +322,42 @@ func insertSystemMessageBeforeUser(msgs []llm.ChatMessage, content string) []llm
 	return out
 }
 
+// toSessionReasoningBlocks and toLLMReasoningBlocks convert between the
+// provider type and the transcript type. The two shapes are deliberately
+// identical: internal/session stays free of an internal/llm dependency, so
+// this package — which owns both — carries the translation.
+func toSessionReasoningBlocks(blocks []llm.ReasoningBlock) []session.ReasoningBlock {
+	if len(blocks) == 0 {
+		return nil
+	}
+	out := make([]session.ReasoningBlock, 0, len(blocks))
+	for _, b := range blocks {
+		out = append(out, session.ReasoningBlock{
+			Type:      b.Type,
+			Text:      b.Text,
+			Signature: b.Signature,
+			Data:      b.Data,
+		})
+	}
+	return out
+}
+
+func toLLMReasoningBlocks(blocks []session.ReasoningBlock) []llm.ReasoningBlock {
+	if len(blocks) == 0 {
+		return nil
+	}
+	out := make([]llm.ReasoningBlock, 0, len(blocks))
+	for _, b := range blocks {
+		out = append(out, llm.ReasoningBlock{
+			Type:      b.Type,
+			Text:      b.Text,
+			Signature: b.Signature,
+			Data:      b.Data,
+		})
+	}
+	return out
+}
+
 type toolReplayRecord struct {
 	id      string
 	name    string
@@ -362,11 +398,13 @@ func buildLLMMessageHistory(history []session.Message) []llm.ChatMessage {
 	}
 
 	appendAssistantWithPendingTools := func(m session.Message) {
+		reasoningBlocks := toLLMReasoningBlocks(m.ReasoningBlocks)
 		if len(pendingOrder) == 0 {
 			llmMessages = append(llmMessages, llm.ChatMessage{
-				Role:       strings.TrimSpace(m.Role),
-				Content:    m.Content,
-				ToolCallID: strings.TrimSpace(m.ToolCallID),
+				Role:            strings.TrimSpace(m.Role),
+				Content:         m.Content,
+				ToolCallID:      strings.TrimSpace(m.ToolCallID),
+				ReasoningBlocks: reasoningBlocks,
 			})
 			return
 		}
@@ -388,19 +426,21 @@ func buildLLMMessageHistory(history []session.Message) []llm.ChatMessage {
 		}
 		if len(toolCalls) == 0 {
 			llmMessages = append(llmMessages, llm.ChatMessage{
-				Role:       "assistant",
-				Content:    m.Content,
-				ToolCallID: strings.TrimSpace(m.ToolCallID),
+				Role:            "assistant",
+				Content:         m.Content,
+				ToolCallID:      strings.TrimSpace(m.ToolCallID),
+				ReasoningBlocks: reasoningBlocks,
 			})
 			discardToolOutput()
 			return
 		}
 
 		llmMessages = append(llmMessages, llm.ChatMessage{
-			Role:       "assistant",
-			Content:    m.Content,
-			ToolCalls:  toolCalls,
-			ToolCallID: strings.TrimSpace(m.ToolCallID),
+			Role:            "assistant",
+			Content:         m.Content,
+			ToolCalls:       toolCalls,
+			ToolCallID:      strings.TrimSpace(m.ToolCallID),
+			ReasoningBlocks: reasoningBlocks,
 		})
 		appendToolOutput(outputOrder)
 	}
