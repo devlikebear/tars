@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { OnboardingFormState } from '../../lib/onboarding'
   import { t } from '../../i18n'
+  import FormField from './FormField.svelte'
 
   interface Props {
     form: OnboardingFormState
@@ -50,8 +51,10 @@
       </span>
     </label>
     {#if form.channels.telegram_enabled}
-      <label class="onboarding-field">
-        <span>{$t.onboarding.channels.telegramTokenLabel} {#if form.channels.keepTelegramToken}<em>{$t.onboarding.channels.telegramTokenHint}</em>{/if}</span>
+      <FormField
+        label={$t.onboarding.channels.telegramTokenLabel}
+        hint={form.channels.keepTelegramToken ? $t.onboarding.channels.telegramTokenHint : undefined}
+      >
         <input
           type="password"
           value={form.channels.keepTelegramToken ? '' : form.channels.telegram_bot_token}
@@ -59,7 +62,7 @@
           autocomplete="new-password"
           placeholder={form.channels.keepTelegramToken ? $t.onboarding.channels.telegramTokenPlaceholderKeep : $t.onboarding.channels.telegramTokenPlaceholderNew}
         />
-      </label>
+      </FormField>
       <label class="onboarding-checkrow">
         <input type="checkbox" bind:checked={form.channels.telegram_polling_enabled} />
         <span>

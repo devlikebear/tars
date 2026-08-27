@@ -305,9 +305,20 @@ Server schema exposes 165 fields (`internal/config/schema.go`) grouped into 15 s
 - Consequence table: `llm_providers` / `llm_tiers` → deep link to onboarding wizard sections (capability preserved). `embodiment_providers_json`, `llm_role_defaults`, `usage_price_overrides_json`, `mcp_servers_json`, `agentruntime_agents_json`, `agentruntime_task_override`, and every other `json`/`string_list` field → read-only summary plus documented YAML key (`config/tars.config.example.yaml`). If a dedicated UI for embodiment presets proves necessary later, it should be a follow-up issue scoped against this policy.
 - **Retained but currently unreferenced:** deleting the modal editors left `lib/configStructured.ts`'s draft builders (`makeLLMTierDrafts`, `buildLLMTiersFromDrafts`, `makeLLMProviderDrafts`, `buildLLMProvidersFromDrafts`, `makeEmbodimentProviderDrafts`, `makeEmbodimentProviderPresetDraft`, `buildEmbodimentProvidersFromDrafts`) and their constant tables with no component consumer — `Config.svelte` imports only the four display helpers. They are kept, still unit-tested, for the embodiment-preset follow-up named above; the client wrappers `saveConfig` and `getProviders` in `lib/api/config.ts` are unreferenced for the same reason. Treat this list as the inventory to delete if that follow-up is declined, rather than as code to quietly reuse.
 
-### Shared form primitives (#931 first cut: deferred)
+### Shared form primitives (#931)
 
-After narrowing, the remaining editors are the Quick Start card controls in `Config.svelte`, `SessionConfigPanel.svelte`, and the onboarding section components. Extracting shared primitives (`FormField`, `BoolToggleButton`, structured-row editors) across all three is a cross-cutting visual change that this first cut deliberately does not attempt — Playwright and manual walkthrough coverage for it is deferred. **Follow-up:** extract primitives once, then migrate the three surfaces in separate PRs with visual verification.
+**`FormField` — extracted, onboarding migrated.** `src/components/onboarding/FormField.svelte` owns the label + optional hint shell that every wizard control sits in. The control is passed as a snippet child rather than described by props: the wizard's fields bind, dispatch, and validate in too many different ways for a control-generating component to cover without growing a prop per variant. Owning only the shell keeps every `bind:value` and `oninput` handler untouched.
+
+All 18 call sites across the five section components now use it. The styles moved with it: `Onboarding.svelte` previously carried five `:global(.onboarding-field …)` rule blocks purely because the markup was duplicated across children, and those are gone.
+
+Two consequences worth knowing before adding a field:
+
+- **Controls carry the caller's style scope, not `FormField`'s.** Svelte scopes a snippet's markup to the component that wrote it, so `FormField`'s control rules must stay `:global()`, nested under `.onboarding-field` so they cannot leak. A per-control override — like the monospace treatment on the web-fetch allowlist textarea — belongs in the calling component, on a class attached to the control itself.
+- **A conditional hint becomes a ternary prop.** The old markup inlined `{#if …}<em>…</em>{/if}` inside the label span; the equivalent is `hint={condition ? text : undefined}`.
+
+**Still to do:** `Config.svelte`'s Quick Start controls are a *different* primitive — a schema-driven type dispatch (`bool` toggle / `select` / inline edit / sensitive button / `json` readonly) rather than a label shell — so they do not share `FormField` and want their own extraction. `bool-toggle` appears only in `Config.svelte`, so there is nothing to share yet. `SessionConfigPanel.svelte` has not been audited against `FormField`. Per the original plan these stay separate PRs with their own visual verification.
+
+**Known issue found during the extraction:** the wizard's styles reference `var(--border-soft)` 16 times and that token is never defined, so every onboarding input, select, and textarea has silently rendered with no border. `FormField` preserves the broken token verbatim so the extraction is provably behavior-identical; fixing it is #948, because making borders appear across the whole wizard is a real visual change that wants its own review.
 
 ### CLI deprecation candidates (#931 — analysis only, nothing removed)
 

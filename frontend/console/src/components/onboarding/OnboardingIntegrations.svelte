@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { OnboardingFormState } from '../../lib/onboarding'
   import { t } from '../../i18n'
+  import FormField from './FormField.svelte'
 
   interface Props {
     form: OnboardingFormState
@@ -36,12 +37,13 @@
   <fieldset class="onboarding-subsection">
     <legend>{$t.onboarding.integrations.memoryHeading}</legend>
     <div class="onboarding-grid">
-      <label class="onboarding-field">
-        <span>{$t.onboarding.integrations.memoryProviderLabel} <em>{$t.onboarding.integrations.memoryProviderHint}</em></span>
+      <FormField label={$t.onboarding.integrations.memoryProviderLabel} hint={$t.onboarding.integrations.memoryProviderHint}>
         <input type="text" bind:value={form.integrations.memory_embed_provider} placeholder={$t.onboarding.integrations.memoryProviderPlaceholder} />
-      </label>
-      <label class="onboarding-field">
-        <span>{$t.onboarding.integrations.memoryApiKeyLabel} {#if form.integrations.keepMemoryEmbedKey}<em>{$t.onboarding.integrations.memoryApiKeyHint}</em>{/if}</span>
+      </FormField>
+      <FormField
+        label={$t.onboarding.integrations.memoryApiKeyLabel}
+        hint={form.integrations.keepMemoryEmbedKey ? $t.onboarding.integrations.memoryApiKeyHint : undefined}
+      >
         <input
           type="password"
           value={form.integrations.keepMemoryEmbedKey ? '' : form.integrations.memory_embed_api_key}
@@ -49,17 +51,14 @@
           autocomplete="new-password"
           placeholder={form.integrations.keepMemoryEmbedKey ? $t.onboarding.integrations.memoryApiKeyPlaceholderKeep : $t.onboarding.integrations.memoryApiKeyPlaceholderNew}
         />
-      </label>
-      <label class="onboarding-field">
-        <span>{$t.onboarding.integrations.memoryModelLabel}</span>
+      </FormField>
+      <FormField label={$t.onboarding.integrations.memoryModelLabel}>
         <input type="text" bind:value={form.integrations.memory_embed_model} placeholder={$t.onboarding.integrations.memoryModelPlaceholder} />
-      </label>
-      <label class="onboarding-field">
-        <span>{$t.onboarding.integrations.memoryBaseUrlLabel}</span>
+      </FormField>
+      <FormField label={$t.onboarding.integrations.memoryBaseUrlLabel}>
         <input type="url" bind:value={form.integrations.memory_embed_base_url} placeholder={$t.onboarding.integrations.memoryBaseUrlPlaceholder} />
-      </label>
-      <label class="onboarding-field">
-        <span>{$t.onboarding.integrations.memoryDimensionsLabel} <em>{$t.onboarding.integrations.memoryDimensionsHint}</em></span>
+      </FormField>
+      <FormField label={$t.onboarding.integrations.memoryDimensionsLabel} hint={$t.onboarding.integrations.memoryDimensionsHint}>
         <input
           type="number"
           min="1"
@@ -67,7 +66,7 @@
           value={form.integrations.memory_embed_dimensions ?? ''}
           oninput={(e) => handleDimensionsInput((e.currentTarget as HTMLInputElement).value)}
         />
-      </label>
+      </FormField>
     </div>
   </fieldset>
 

@@ -12,6 +12,7 @@
     type ProviderKind,
   } from '../../lib/onboarding'
   import { t } from '../../i18n'
+  import FormField from './FormField.svelte'
 
   interface Props {
     form: OnboardingFormState
@@ -80,8 +81,7 @@
   </div>
   {#if reentry && existingAliases.length > 0}
     <div class="onboarding-provider-selector">
-      <label class="onboarding-field">
-        <span>{$t.onboarding.step1.selectProviderLabel}</span>
+      <FormField label={$t.onboarding.step1.selectProviderLabel}>
         <select
           value={form.provider.alias}
           onchange={(e) => handleSelectProviderForEdit((e.currentTarget as HTMLSelectElement).value)}
@@ -91,37 +91,36 @@
           {/each}
           <option value="__new__">{$t.onboarding.step1.addNewProviderOption}</option>
         </select>
-      </label>
+      </FormField>
     </div>
   {/if}
   <div class="onboarding-grid">
-    <label class="onboarding-field">
-      <span>{$t.onboarding.step1.kindLabel} <em>{$t.onboarding.step1.kindHint}</em></span>
+    <FormField label={$t.onboarding.step1.kindLabel} hint={$t.onboarding.step1.kindHint}>
       <select value={form.provider.kind} onchange={(e) => handleKindChange((e.currentTarget as HTMLSelectElement).value)}>
         <option value="">{$t.onboarding.step1.kindPlaceholder}</option>
         {#each providerKinds as kind}
           <option value={kind}>{kind}</option>
         {/each}
       </select>
-    </label>
+    </FormField>
 
-    <label class="onboarding-field">
-      <span>{$t.onboarding.step1.aliasLabel} <em>{$t.onboarding.step1.aliasHint}</em></span>
+    <FormField label={$t.onboarding.step1.aliasLabel} hint={$t.onboarding.step1.aliasHint}>
       <input type="text" bind:value={form.provider.alias} placeholder={$t.onboarding.step1.aliasPlaceholder} />
-    </label>
+    </FormField>
 
-    <label class="onboarding-field">
-      <span>{$t.onboarding.step1.authModeLabel} <em>{$t.onboarding.step1.authModeHint}</em></span>
+    <FormField label={$t.onboarding.step1.authModeLabel} hint={$t.onboarding.step1.authModeHint}>
       <select bind:value={form.provider.auth_mode} disabled={availableAuthModes.length <= 1 && form.provider.kind !== ''}>
         {#each availableAuthModes as mode}
           <option value={mode}>{mode}</option>
         {/each}
       </select>
-    </label>
+    </FormField>
 
     {#if form.provider.auth_mode === 'api-key'}
-      <label class="onboarding-field">
-        <span>{$t.onboarding.step1.apiKeyLabel} {#if form.provider.keepExistingApiKey}<em>{$t.onboarding.step1.apiKeyKeepHint}</em>{/if}</span>
+      <FormField
+        label={$t.onboarding.step1.apiKeyLabel}
+        hint={form.provider.keepExistingApiKey ? $t.onboarding.step1.apiKeyKeepHint : undefined}
+      >
         <input
           type="password"
           value={form.provider.keepExistingApiKey ? '' : form.provider.api_key}
@@ -129,13 +128,12 @@
           autocomplete="new-password"
           placeholder={form.provider.keepExistingApiKey ? $t.onboarding.step1.apiKeyPlaceholderKeep : $t.onboarding.step1.apiKeyPlaceholderNew}
         />
-      </label>
+      </FormField>
     {/if}
 
-    <label class="onboarding-field">
-      <span>{$t.onboarding.step1.baseUrlLabel} <em>{$t.onboarding.step1.baseUrlHint}</em></span>
+    <FormField label={$t.onboarding.step1.baseUrlLabel} hint={$t.onboarding.step1.baseUrlHint}>
       <input type="url" bind:value={form.provider.base_url} placeholder={defaultBaseURLForKind(form.provider.kind)} />
-    </label>
+    </FormField>
   </div>
 
   {#if form.provider.auth_mode === 'oauth'}

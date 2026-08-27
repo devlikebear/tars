@@ -3,6 +3,7 @@
   import { SNAPSHOT_DATE, popularModelsForKind } from '../../lib/llm-catalog'
   import type { OnboardingFormState } from '../../lib/onboarding'
   import { t } from '../../i18n'
+  import FormField from './FormField.svelte'
 
   interface Props {
     form: OnboardingFormState
@@ -87,8 +88,7 @@
     {#each ['heavy', 'standard', 'light'] as const as tier}
       <fieldset class="onboarding-tier">
         <legend>{tier}</legend>
-        <label class="onboarding-field">
-          <span>{$t.onboarding.step2.providerAliasLabel}</span>
+        <FormField label={$t.onboarding.step2.providerAliasLabel}>
           {#if allKnownAliases.length > 1}
             <select bind:value={form.tiers[tier].provider}>
               {#each allKnownAliases as alias}
@@ -98,9 +98,8 @@
           {:else}
             <input type="text" bind:value={form.tiers[tier].provider} />
           {/if}
-        </label>
-        <label class="onboarding-field">
-          <span>{$t.onboarding.step2.modelLabel}</span>
+        </FormField>
+        <FormField label={$t.onboarding.step2.modelLabel}>
           <input
             type="text"
             bind:value={form.tiers[tier].model}
@@ -108,9 +107,8 @@
             list="onboarding-model-suggestions"
             autocomplete="off"
           />
-        </label>
-        <label class="onboarding-field">
-          <span>{$t.onboarding.step2.reasoningLabel} <em>{$t.onboarding.step2.reasoningHint}</em></span>
+        </FormField>
+        <FormField label={$t.onboarding.step2.reasoningLabel} hint={$t.onboarding.step2.reasoningHint}>
           <select bind:value={form.tiers[tier].reasoning_effort}>
             <option value="">{$t.onboarding.step2.reasoningDefault}</option>
             <option value="minimal">minimal</option>
@@ -118,7 +116,7 @@
             <option value="medium">medium</option>
             <option value="high">high</option>
           </select>
-        </label>
+        </FormField>
       </fieldset>
     {/each}
   </div>
