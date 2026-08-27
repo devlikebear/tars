@@ -73,6 +73,7 @@ func parseLLMTiersJSON(raw string, fallback map[string]LLMTierBinding) map[strin
 			ServiceTier:     os.ExpandEnv(strings.TrimSpace(b.ServiceTier)),
 			MaxTokens:       b.MaxTokens,
 			BetaFeatures:    normalizeLLMBetaFeatures(b.BetaFeatures),
+			ContextWindow:   b.ContextWindow,
 		}
 	}
 	if len(out) == 0 {

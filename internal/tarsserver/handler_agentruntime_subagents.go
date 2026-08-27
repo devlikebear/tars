@@ -24,6 +24,7 @@ type agentRuntimeTierOption struct {
 	ThinkingBudget  int      `json:"thinking_budget,omitempty"`
 	ServiceTier     string   `json:"service_tier,omitempty"`
 	MaxTokens       int      `json:"max_tokens,omitempty"`
+	ContextWindow   int      `json:"context_window,omitempty"`
 	BetaFeatures    []string `json:"beta_features,omitempty"`
 	Error           string   `json:"error,omitempty"`
 }
@@ -272,6 +273,7 @@ func agentRuntimeTierOptions(cfg config.Config) ([]agentRuntimeTierOption, map[s
 			option.ThinkingBudget = resolved.ThinkingBudget
 			option.ServiceTier = resolved.ServiceTier
 			option.MaxTokens = resolved.MaxTokens
+			option.ContextWindow = resolved.ContextWindow
 			option.BetaFeatures = resolved.BetaFeatures
 		}
 		out = append(out, option)

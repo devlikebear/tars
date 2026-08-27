@@ -79,6 +79,35 @@ test('makeLLMTierDrafts converts tier bindings into editable rows', () => {
   assert.equal(drafts[1].beta_features, '')
 })
 
+test('buildLLMTiersFromDrafts rejects a max_tokens that cannot fit inside the context window', () => {
+  const tooBig = buildLLMTiersFromDrafts([
+    { id: 'heavy', originalName: 'heavy', name: 'heavy', provider: 'codex', model: 'gpt-5.5', reasoning_effort: '', thinking_budget: '', service_tier: '', max_tokens: '200000', beta_features: '', context_window: '200000' },
+  ], ['codex'])
+
+  assert.equal(tooBig.ok, false)
+  if (!tooBig.ok) {
+    assert.match(tooBig.errors.heavy.max_tokens, /less than the context window/)
+  }
+
+  // An unset window resolves to the model's documented one, which the
+  // console cannot see, so the guard must not fire.
+  const unsetWindow = buildLLMTiersFromDrafts([
+    { id: 'heavy', originalName: 'heavy', name: 'heavy', provider: 'codex', model: 'gpt-5.5', reasoning_effort: '', thinking_budget: '', service_tier: '', max_tokens: '200000', beta_features: '', context_window: '' },
+  ], ['codex'])
+
+  assert.equal(unsetWindow.ok, true)
+})
+
+test('makeLLMTierDrafts reads context_window into the editable row', () => {
+  const drafts = makeLLMTierDrafts({
+    heavy: { provider: 'codex', model: 'gpt-5.5', context_window: 1000000 },
+    turbo: { provider: 'codex', model: 'gpt-5.4' },
+  })
+
+  assert.equal(drafts[0].context_window, '1000000')
+  assert.equal(drafts[1].context_window, '')
+})
+
 test('makeLLMTierDrafts renders an unset numeric knob as an empty field', () => {
   // 0 means "unset" on the wire for both knobs; showing a literal 0 would
   // make the operator clear it before they could type a value.
@@ -98,8 +127,8 @@ test('extractLLMProviderAliases returns sorted provider keys', () => {
 
 test('buildLLMTiersFromDrafts validates and serializes tier rows', () => {
   const invalid = buildLLMTiersFromDrafts([
-    { id: 'a', originalName: 'heavy', name: 'heavy', provider: 'codex', model: '', reasoning_effort: 'high', thinking_budget: '0', service_tier: '', max_tokens: '', beta_features: '' },
-    { id: 'b', originalName: 'dupe', name: 'heavy', provider: 'missing', model: 'gpt-5.4', reasoning_effort: '', thinking_budget: '-1', service_tier: '', max_tokens: 'lots', beta_features: '' },
+    { id: 'a', originalName: 'heavy', name: 'heavy', provider: 'codex', model: '', reasoning_effort: 'high', thinking_budget: '0', service_tier: '', max_tokens: '', beta_features: '', context_window: '' },
+    { id: 'b', originalName: 'dupe', name: 'heavy', provider: 'missing', model: 'gpt-5.4', reasoning_effort: '', thinking_budget: '-1', service_tier: '', max_tokens: 'lots', beta_features: '', context_window: '' },
   ], ['codex'])
 
   assert.equal(invalid.ok, false)
@@ -112,8 +141,8 @@ test('buildLLMTiersFromDrafts validates and serializes tier rows', () => {
   }
 
   const valid = buildLLMTiersFromDrafts([
-    { id: 'heavy', originalName: 'heavy', name: 'heavy', provider: 'codex', model: 'gpt-5.5', reasoning_effort: 'high', thinking_budget: '2048', service_tier: 'priority', max_tokens: '32000', beta_features: 'context-1m-2025-08-07, interleaved-thinking-2025-05-14' },
-    { id: 'turbo', originalName: '', name: 'turbo', provider: 'codex', model: 'gpt-5.4', reasoning_effort: '', thinking_budget: '', service_tier: '', max_tokens: '', beta_features: '' },
+    { id: 'heavy', originalName: 'heavy', name: 'heavy', provider: 'codex', model: 'gpt-5.5', reasoning_effort: 'high', thinking_budget: '2048', service_tier: 'priority', max_tokens: '32000', beta_features: 'context-1m-2025-08-07, interleaved-thinking-2025-05-14', context_window: '' },
+    { id: 'turbo', originalName: '', name: 'turbo', provider: 'codex', model: 'gpt-5.4', reasoning_effort: '', thinking_budget: '', service_tier: '', max_tokens: '', beta_features: '', context_window: '' },
   ], ['codex'])
 
   assert.equal(valid.ok, true)
@@ -127,6 +156,7 @@ test('buildLLMTiersFromDrafts validates and serializes tier rows', () => {
         service_tier: 'priority',
         max_tokens: 32000,
         beta_features: ['context-1m-2025-08-07', 'interleaved-thinking-2025-05-14'],
+        context_window: 0,
       },
       turbo: {
         provider: 'codex',
@@ -136,6 +166,7 @@ test('buildLLMTiersFromDrafts validates and serializes tier rows', () => {
         service_tier: '',
         max_tokens: 0,
         beta_features: [],
+        context_window: 0,
       },
     })
   }
@@ -145,7 +176,7 @@ test('buildLLMTiersFromDrafts rejects a thinking budget that will not fit under 
   // Mirrors the resolver guard so the operator sees it before saving
   // rather than as a failure to boot.
   const tooBig = buildLLMTiersFromDrafts([
-    { id: 'heavy', originalName: 'heavy', name: 'heavy', provider: 'codex', model: 'gpt-5.5', reasoning_effort: '', thinking_budget: '8000', service_tier: '', max_tokens: '8000', beta_features: '' },
+    { id: 'heavy', originalName: 'heavy', name: 'heavy', provider: 'codex', model: 'gpt-5.5', reasoning_effort: '', thinking_budget: '8000', service_tier: '', max_tokens: '8000', beta_features: '', context_window: '' },
   ], ['codex'])
 
   assert.equal(tooBig.ok, false)
@@ -156,7 +187,7 @@ test('buildLLMTiersFromDrafts rejects a thinking budget that will not fit under 
   // An unset ceiling resolves to a per-model default the console cannot
   // see, so the guard must not fire.
   const unsetCeiling = buildLLMTiersFromDrafts([
-    { id: 'heavy', originalName: 'heavy', name: 'heavy', provider: 'codex', model: 'gpt-5.5', reasoning_effort: '', thinking_budget: '100000', service_tier: '', max_tokens: '', beta_features: '' },
+    { id: 'heavy', originalName: 'heavy', name: 'heavy', provider: 'codex', model: 'gpt-5.5', reasoning_effort: '', thinking_budget: '100000', service_tier: '', max_tokens: '', beta_features: '', context_window: '' },
   ], ['codex'])
 
   assert.equal(unsetCeiling.ok, true)

@@ -299,7 +299,7 @@ func applyAgentRuntimeDefaults(cfg *Config, defaults Config) {
 // For each tier binding:
 //   - ReasoningEffort is normalized (aliases like "med" → "medium")
 //   - ServiceTier is normalized to a canonical value
-//   - negative ThinkingBudget and MaxTokens are clamped to 0
+//   - negative ThinkingBudget, MaxTokens, and ContextWindow are clamped to 0
 //   - BetaFeatures is trimmed, de-duplicated, and emptied to nil
 //
 // This function is the new-schema equivalent of the deleted
@@ -349,6 +349,9 @@ func applyLLMPoolDefaults(cfg *Config) {
 		}
 		if b.MaxTokens < 0 {
 			b.MaxTokens = 0
+		}
+		if b.ContextWindow < 0 {
+			b.ContextWindow = 0
 		}
 		b.ServiceTier = normalizeLLMServiceTier(b.ServiceTier)
 		b.BetaFeatures = normalizeLLMBetaFeatures(b.BetaFeatures)

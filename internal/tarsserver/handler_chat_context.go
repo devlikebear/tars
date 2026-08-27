@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/devlikebear/tars/internal/config"
 	"github.com/devlikebear/tars/internal/extensions"
 	"github.com/devlikebear/tars/internal/llm"
 	"github.com/devlikebear/tars/internal/serverauth"
@@ -179,7 +180,30 @@ func buildSessionChatRunState(
 		Int("system_prompt_len", len(systemPrompt)).
 		Int("system_prompt_tokens", promptTokenEstimate(systemPrompt)).
 		Str("tool_choice", toolChoice.String()).
+		Int("context_window", llmResolution.ContextWindow).
 		Msg("chat context assembled")
+
+	// Pre-flight: report a projected overrun here, where the numbers are
+	// still ours, rather than letting it come back as a provider error with
+	// no indication of which part of the assembly was too big.
+	if overrun := config.ContextWindowOverrun(
+		llmResolution.ContextWindow,
+		historySnapshot.Tokens,
+		promptTokenEstimate(systemPrompt)+contextDetails.RelevantMemoryTokens,
+		llmResolution.MaxTokens,
+		llmResolution.ThinkingBudget,
+	); overrun > 0 {
+		deps.logger.Warn().
+			Str("session_id", sessionID).
+			Str("model", llmResolution.Model).
+			Int("context_window", llmResolution.ContextWindow).
+			Int("history_tokens", historySnapshot.Tokens).
+			Int("system_prompt_tokens", promptTokenEstimate(systemPrompt)).
+			Int("relevant_memory_tokens", contextDetails.RelevantMemoryTokens).
+			Int("max_tokens", llmResolution.MaxTokens).
+			Int("overrun_tokens", overrun).
+			Msg("assembled request is projected to exceed the model's context window")
+	}
 
 	if sessErr == nil && strings.TrimSpace(effectivePromptOverride) != "" {
 		systemPrompt += "\n\n## Session Prompt Override\n" + strings.TrimSpace(effectivePromptOverride) + "\n"
@@ -307,7 +331,19 @@ func prepareChatRunState(r *http.Request, req chatRequestPayload, deps chatHandl
 
 	transcriptPath := reqStore.TranscriptPath(sessionID)
 	deps.logger.Debug().Str("session_id", sessionID).Str("transcript_path", transcriptPath).Msg("chat session resolved")
-	compactionInfo, err := maybeAutoCompactSession(requestWorkspaceDir, transcriptPath, sessionID, reqStore, deps.router, deps.logger, deps.tooling.Compaction, deps.tooling.MemorySemanticConfig)
+	// Size history against the model that will serve this turn, not against
+	// a global constant that cannot know whether the tier is on a 200k or a
+	// 1M window.
+	//
+	// The tier is resolved again inside buildSessionChatRunState, which may
+	// additionally apply an auto-recommendation. That path only engages on a
+	// session's first message, where there is no history to compact, so the
+	// explicit-or-default tier is the right one to size against here.
+	compactionOpts := deps.tooling.Compaction
+	if _, sizing, resolveErr := deps.resolveChatClientForTier(chatRequestedTier(req)); resolveErr == nil {
+		compactionOpts = applyTierContextWindow(compactionOpts, sizing, deps.logger)
+	}
+	compactionInfo, err := maybeAutoCompactSession(requestWorkspaceDir, transcriptPath, sessionID, reqStore, deps.router, deps.logger, compactionOpts, deps.tooling.MemorySemanticConfig)
 	if err != nil {
 		deps.logger.Error().Err(err).Str("session_id", sessionID).Msg("auto compaction failed")
 		return chatRunState{}, http.StatusInternalServerError, "auto compaction failed", err

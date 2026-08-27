@@ -23,6 +23,7 @@ export type LLMTierDraft = {
   max_tokens: string
   /** Comma- or newline-separated in the editor; split on save. */
   beta_features: string
+  context_window: string
 }
 
 export type LLMTierDraftField =
@@ -34,6 +35,7 @@ export type LLMTierDraftField =
   | 'service_tier'
   | 'max_tokens'
   | 'beta_features'
+  | 'context_window'
 
 export type LLMTierDraftErrors = Record<string, Partial<Record<LLMTierDraftField, string>>>
 
@@ -45,6 +47,7 @@ export type LLMTierBindingValue = {
   service_tier: string
   max_tokens: number
   beta_features: string[]
+  context_window: number
 }
 
 export type LLMTiersBuildResult =
@@ -367,6 +370,7 @@ export function makeLLMTierDrafts(value: unknown): LLMTierDraft[] {
         service_tier: readString(binding, 'service_tier', 'serviceTier'),
         max_tokens: readIntegerString(binding, 'max_tokens', 'maxTokens'),
         beta_features: readStringListText(binding, 'beta_features', 'betaFeatures'),
+        context_window: readIntegerString(binding, 'context_window', 'contextWindow'),
       }
     })
 }
@@ -402,6 +406,7 @@ export function buildLLMTiersFromDrafts(drafts: LLMTierDraft[], providerAliases:
     // bundle or persisted editor state should not throw here.
     const maxTokensText = (draft.max_tokens ?? '').trim()
     const betaFeatures = parseStringListText(draft.beta_features ?? '')
+    const contextWindowText = (draft.context_window ?? '').trim()
 
     if (!name) {
       rowErrors.name = 'Tier name is required.'
@@ -441,6 +446,24 @@ export function buildLLMTiersFromDrafts(drafts: LLMTierDraft[], providerAliases:
       }
     }
 
+    let contextWindow = 0
+    if (contextWindowText) {
+      if (!/^\d+$/.test(contextWindowText)) {
+        rowErrors.context_window = 'Context window must be 0 or greater.'
+      } else {
+        contextWindow = Number(contextWindowText)
+        if (!Number.isSafeInteger(contextWindow)) {
+          rowErrors.context_window = 'Context window must be a safe integer.'
+        }
+      }
+    }
+
+    // The window must hold the output too, so a ceiling that alone exceeds
+    // it can never be satisfied.
+    if (!rowErrors.context_window && !rowErrors.max_tokens && contextWindow > 0 && maxTokens >= contextWindow) {
+      rowErrors.max_tokens = `Max tokens must be less than the context window (${contextWindow}).`
+    }
+
     // Mirrors the resolver's guard so the operator sees it before saving
     // rather than as a failure to boot. Both must be set for it to apply:
     // an unset ceiling resolves to a per-model default the console cannot
@@ -462,6 +485,7 @@ export function buildLLMTiersFromDrafts(drafts: LLMTierDraft[], providerAliases:
       service_tier: serviceTier,
       max_tokens: maxTokens,
       beta_features: betaFeatures,
+      context_window: contextWindow,
     }
   })
 
