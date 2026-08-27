@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -294,6 +295,12 @@ type ClientConfig struct {
 	ReasoningEffort string
 	ThinkingBudget  int
 	ServiceTier     string
+
+	// BetaFeatures are provider beta flags to opt into. Values are passed
+	// through verbatim — the Anthropic client joins them into a single
+	// anthropic-beta header and omits the header entirely when empty.
+	// Providers with no beta mechanism ignore the field.
+	BetaFeatures []string
 }
 
 func DefaultClientConfig() ClientConfig {
@@ -321,6 +328,7 @@ type ProviderOptions struct {
 	ReasoningEffort string
 	ThinkingBudget  int
 	ServiceTier     string
+	BetaFeatures    []string
 }
 
 func NewProvider(opts ProviderOptions) (Client, error) {
@@ -405,14 +413,13 @@ func NewProvider(opts ProviderOptions) (Client, error) {
 		)
 	case "anthropic":
 		zlog.Debug().Str("provider", provider).Msg("llm provider ready")
+		model := firstNonEmptyTrimmed(opts.Model, llmdefaults.AnthropicModel)
 		config := providerClientConfig(opts)
-		if config.MaxTokens <= 0 {
-			config.MaxTokens = 4096
-		}
+		config.MaxTokens = resolveAnthropicMaxTokens(model, config.MaxTokens)
 		return newAnthropicClientWithConfig(
 			firstNonEmptyTrimmed(opts.BaseURL, llmdefaults.AnthropicBaseURL),
 			token,
-			firstNonEmptyTrimmed(opts.Model, llmdefaults.AnthropicModel),
+			model,
 			config,
 		)
 	default:
@@ -430,6 +437,7 @@ func providerClientConfig(opts ProviderOptions) ClientConfig {
 		config.ThinkingBudget = opts.ThinkingBudget
 	}
 	config.ServiceTier = normalizeServiceTier(opts.ServiceTier)
+	config.BetaFeatures = slices.Clone(opts.BetaFeatures)
 	return config
 }
 

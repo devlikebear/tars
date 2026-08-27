@@ -336,7 +336,7 @@ llm_tiers:
 
 	t.Setenv("TARS_WORKSPACE_DIR", "./env-workspace")
 	t.Setenv("TARS_LLM_PROVIDERS_JSON", `{"env_prov":{"kind":"openai","auth_mode":"oauth","base_url":"http://localhost:7000/v1","api_key":"env-key"}}`)
-	t.Setenv("TARS_LLM_TIERS_JSON", `{"heavy":{"provider":"env_prov","model":"env-model","reasoning_effort":"veryhigh","thinking_budget":4096,"service_tier":"priority"},"standard":{"provider":"env_prov","model":"env-model"},"light":{"provider":"env_prov","model":"env-model"}}`)
+	t.Setenv("TARS_LLM_TIERS_JSON", `{"heavy":{"provider":"env_prov","model":"env-model","reasoning_effort":"veryhigh","thinking_budget":4096,"service_tier":"priority","max_tokens":32000,"beta_features":["context-1m-2025-08-07"]},"standard":{"provider":"env_prov","model":"env-model"},"light":{"provider":"env_prov","model":"env-model"}}`)
 
 	cfg, err := Load(path)
 	if err != nil {
@@ -371,6 +371,16 @@ llm_tiers:
 	if heavy.ServiceTier != "priority" {
 		t.Fatalf("expected ServiceTier priority, got %q", heavy.ServiceTier)
 	}
+	if heavy.MaxTokens != 32000 {
+		t.Fatalf("expected MaxTokens 32000, got %d", heavy.MaxTokens)
+	}
+	if len(heavy.BetaFeatures) != 1 || heavy.BetaFeatures[0] != "context-1m-2025-08-07" {
+		t.Fatalf("expected one beta feature from env, got %v", heavy.BetaFeatures)
+	}
+	// Tiers that omit the new knobs must stay unset rather than inherit.
+	if standard := cfg.LLMTiers["standard"]; standard.MaxTokens != 0 || standard.BetaFeatures != nil {
+		t.Fatalf("standard tier picked up knobs it did not set: %+v", standard)
+	}
 }
 
 func TestLoad_LLMTierKnobsFromYAML(t *testing.T) {
@@ -380,7 +390,7 @@ func TestLoad_LLMTierKnobsFromYAML(t *testing.T) {
 		"llm_providers:",
 		"  p: {kind: gemini-native}",
 		"llm_tiers:",
-		"  heavy: {provider: p, model: gemini-2.5-pro, reasoning_effort: minimal, thinking_budget: 2048, service_tier: flex}",
+		"  heavy: {provider: p, model: gemini-2.5-pro, reasoning_effort: minimal, thinking_budget: 2048, service_tier: flex, max_tokens: 16000, beta_features: [context-1m-2025-08-07]}",
 	}, "\n") + "\n"
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
@@ -399,6 +409,12 @@ func TestLoad_LLMTierKnobsFromYAML(t *testing.T) {
 	}
 	if heavy.ServiceTier != "flex" {
 		t.Fatalf("expected service tier flex, got %q", heavy.ServiceTier)
+	}
+	if heavy.MaxTokens != 16000 {
+		t.Fatalf("expected max tokens 16000, got %d", heavy.MaxTokens)
+	}
+	if len(heavy.BetaFeatures) != 1 || heavy.BetaFeatures[0] != "context-1m-2025-08-07" {
+		t.Fatalf("expected one beta feature from yaml, got %v", heavy.BetaFeatures)
 	}
 }
 

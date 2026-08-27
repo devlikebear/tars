@@ -136,14 +136,29 @@ type LLMProviderSettings struct {
 // per-call knobs. Provider must be a key in cfg.LLMProviders — the
 // resolver rejects unknown aliases with a loud error.
 //
-// ReasoningEffort, ThinkingBudget, and ServiceTier are per-tier knobs;
-// they are not configurable at the provider level.
+// ReasoningEffort, ThinkingBudget, ServiceTier, MaxTokens, and BetaFeatures
+// are per-tier knobs; they are not configurable at the provider level.
+//
+// MaxTokens caps the response length. Zero means "unset" — the provider
+// applies a per-model default (llmdefaults.MaxOutputTokens) and falls back
+// to a conservative floor for models it does not recognize. Set it
+// explicitly on gateway-hosted models, which never match that table.
+//
+// BetaFeatures opts the tier into provider beta features. The values are
+// passed through verbatim (Anthropic joins them into one anthropic-beta
+// header) and are deliberately not validated against a closed list, so a
+// newly announced flag needs no TARS release. The field is named
+// provider-agnostically: other providers may adopt the same mechanism.
+// Empty means no beta header is sent at all, which is what a third-party
+// Anthropic-compatible gateway wants.
 type LLMTierBinding struct {
-	Provider        string `json:"provider"         yaml:"provider"`
-	Model           string `json:"model"            yaml:"model"`
-	ReasoningEffort string `json:"reasoning_effort" yaml:"reasoning_effort"`
-	ThinkingBudget  int    `json:"thinking_budget"  yaml:"thinking_budget"`
-	ServiceTier     string `json:"service_tier"     yaml:"service_tier"`
+	Provider        string   `json:"provider"         yaml:"provider"`
+	Model           string   `json:"model"            yaml:"model"`
+	ReasoningEffort string   `json:"reasoning_effort" yaml:"reasoning_effort"`
+	ThinkingBudget  int      `json:"thinking_budget"  yaml:"thinking_budget"`
+	ServiceTier     string   `json:"service_tier"     yaml:"service_tier"`
+	MaxTokens       int      `json:"max_tokens"       yaml:"max_tokens"`
+	BetaFeatures    []string `json:"beta_features"    yaml:"beta_features"`
 }
 
 type MemoryConfig struct {

@@ -266,6 +266,8 @@ func newAgentPromptRunnerWithToolsAndMemory(
 					ReasoningEffort: resolved.ReasoningEffort,
 					ThinkingBudget:  resolved.ThinkingBudget,
 					ServiceTier:     resolved.ServiceTier,
+					MaxTokens:       resolved.MaxTokens,
+					BetaFeatures:    resolved.BetaFeatures,
 				})
 				if err != nil {
 					return "", err
@@ -429,18 +431,28 @@ func resolveProviderOverrideClient(cfg config.Config, workspaceDir string, track
 	if model == "" {
 		return providerOverrideClient{}, fmt.Errorf("provider override model is required")
 	}
+	// The override replaces the provider, not the tier's request shape, so
+	// the tier's per-call knobs still apply. MaxTokens stays at 0 when the
+	// tier omits it, which lets the provider default from the override's
+	// own model rather than the tier's.
 	tierServiceTier := ""
+	tierMaxTokens := 0
+	var tierBetaFeatures []string
 	if binding, ok := cfg.LLMTiers[resolvedTier]; ok {
 		tierServiceTier = strings.TrimSpace(binding.ServiceTier)
+		tierMaxTokens = binding.MaxTokens
+		tierBetaFeatures = binding.BetaFeatures
 	}
 	client, err := llm.NewProvider(llm.ProviderOptions{
-		Provider:    strings.TrimSpace(provider.Kind),
-		AuthMode:    strings.TrimSpace(provider.AuthMode),
-		BaseURL:     strings.TrimSpace(provider.BaseURL),
-		WorkDir:     workspaceDir,
-		Model:       model,
-		APIKey:      strings.TrimSpace(provider.APIKey),
-		ServiceTier: tierServiceTier,
+		Provider:     strings.TrimSpace(provider.Kind),
+		AuthMode:     strings.TrimSpace(provider.AuthMode),
+		BaseURL:      strings.TrimSpace(provider.BaseURL),
+		WorkDir:      workspaceDir,
+		Model:        model,
+		APIKey:       strings.TrimSpace(provider.APIKey),
+		ServiceTier:  tierServiceTier,
+		MaxTokens:    tierMaxTokens,
+		BetaFeatures: tierBetaFeatures,
 	})
 	if err != nil {
 		return providerOverrideClient{}, err

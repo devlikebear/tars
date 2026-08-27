@@ -29,6 +29,13 @@ llm:
   # All three tiers (heavy/standard/light) must be configured. Mix
   # multiple providers by adding entries above and referencing them
   # here — e.g. `provider: codex` for a second alias.
+  #
+  # max_tokens and beta_features are available per tier; see
+  # config/tars.config.example.yaml for what they do. Neither is set
+  # here: gateway-hosted models like MiniMax below have no documented
+  # output ceiling for TARS to default from, and picking one for
+  # someone else's endpoint is a guess. Set max_tokens explicitly on
+  # such a tier to lift it off the conservative 4096 fallback.
   tiers:
     heavy:
       provider: codex

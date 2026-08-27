@@ -271,12 +271,23 @@ export function buildConfigPayload(
   }
   for (const tier of requiredTiers) {
     const binding = form.tiers[tier]
-    const entry: Record<string, unknown> = {
-      provider: binding.provider.trim(),
-      model: binding.model.trim(),
-    }
+    // Start from what is already on disk. The backend round-trips
+    // llm_tiers through typed structs, so the patch replaces each binding
+    // wholesale rather than merging inner keys — a field the wizard omits
+    // is a field the wizard deletes. The wizard owns only provider, model,
+    // and reasoning_effort; everything else (thinking_budget, service_tier,
+    // max_tokens, beta_features) must be carried through untouched.
+    const existing = existingTiers[tier]
+    const entry: Record<string, unknown> =
+      existing && typeof existing === 'object' && !Array.isArray(existing)
+        ? { ...(existing as Record<string, unknown>) }
+        : {}
+    entry.provider = binding.provider.trim()
+    entry.model = binding.model.trim()
     if (binding.reasoning_effort && binding.reasoning_effort.trim() !== '') {
       entry.reasoning_effort = binding.reasoning_effort.trim()
+    } else {
+      delete entry.reasoning_effort
     }
     tiers[tier] = entry
   }

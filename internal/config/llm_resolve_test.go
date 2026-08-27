@@ -1,6 +1,7 @@
 package config
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -277,7 +278,7 @@ func TestResolveLLMTier_TableCases(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if got != tc.want {
+			if !reflect.DeepEqual(got, tc.want) {
 				t.Fatalf("mismatch\n got: %+v\nwant: %+v", got, tc.want)
 			}
 		})

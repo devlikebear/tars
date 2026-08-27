@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"maps"
 	"os"
+	"slices"
 	"strings"
 )
 
@@ -70,6 +71,8 @@ func parseLLMTiersJSON(raw string, fallback map[string]LLMTierBinding) map[strin
 			ReasoningEffort: os.ExpandEnv(strings.TrimSpace(b.ReasoningEffort)),
 			ThinkingBudget:  b.ThinkingBudget,
 			ServiceTier:     os.ExpandEnv(strings.TrimSpace(b.ServiceTier)),
+			MaxTokens:       b.MaxTokens,
+			BetaFeatures:    normalizeLLMBetaFeatures(b.BetaFeatures),
 		}
 	}
 	if len(out) == 0 {
@@ -169,10 +172,47 @@ func cloneLLMProviders(src map[string]LLMProviderSettings) map[string]LLMProvide
 	return cloned
 }
 
+// cloneLLMTiers copies the tier map. BetaFeatures is a slice, so a plain
+// maps.Copy would leave both maps sharing one backing array and let a later
+// normalization pass rewrite bindings the caller believes it owns — each
+// entry gets its own slice instead.
 func cloneLLMTiers(src map[string]LLMTierBinding) map[string]LLMTierBinding {
 	cloned := make(map[string]LLMTierBinding, len(src))
-	maps.Copy(cloned, src)
+	for tier, binding := range src {
+		binding.BetaFeatures = slices.Clone(binding.BetaFeatures)
+		cloned[tier] = binding
+	}
 	return cloned
+}
+
+// normalizeLLMBetaFeatures trims, drops empties, expands env references, and
+// de-duplicates while preserving order. It always returns a fresh slice (nil
+// when nothing survives) so callers never alias the input.
+//
+// Values are not checked against a closed list: beta flags are announced by
+// the provider, and rejecting an unrecognized one here would mean a TARS
+// release stands between the user and a newly shipped feature.
+func normalizeLLMBetaFeatures(src []string) []string {
+	if len(src) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(src))
+	seen := make(map[string]struct{}, len(src))
+	for _, raw := range src {
+		feature := os.ExpandEnv(strings.TrimSpace(raw))
+		if feature == "" {
+			continue
+		}
+		if _, dup := seen[feature]; dup {
+			continue
+		}
+		seen[feature] = struct{}{}
+		out = append(out, feature)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 func cloneStringMap(src map[string]string) map[string]string {
