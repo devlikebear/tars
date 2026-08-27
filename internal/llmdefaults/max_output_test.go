@@ -57,3 +57,80 @@ func TestMaxOutputTokens_NormalizesCaseAndSpace(t *testing.T) {
 		t.Fatalf("MaxOutputTokens with padding/case = %d, want 128000", got)
 	}
 }
+
+func TestModelBehaviorFor_ThinkingModeSplit(t *testing.T) {
+	// The Adaptive set is exactly the families where budget_tokens is a hard
+	// 400. Opus 4.6 and Sonnet 4.6 accept adaptive thinking too, but
+	// budget_tokens still works there, so they stay on Budget — that is what
+	// keeps callers from turning a working config into a startup error.
+	adaptive := []string{
+		"claude-fable-5", "claude-mythos-5", "claude-opus-5",
+		"claude-opus-4-8", "claude-opus-4-7", "claude-sonnet-5",
+	}
+	budget := []string{
+		"claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5",
+	}
+	for _, model := range adaptive {
+		behavior, ok := ModelBehaviorFor(model)
+		if !ok {
+			t.Errorf("%s: not recognized", model)
+			continue
+		}
+		if behavior.Thinking != ThinkingModeAdaptive {
+			t.Errorf("%s: Thinking = %v, want adaptive", model, behavior.Thinking)
+		}
+	}
+	for _, model := range budget {
+		behavior, ok := ModelBehaviorFor(model)
+		if !ok {
+			t.Errorf("%s: not recognized", model)
+			continue
+		}
+		if behavior.Thinking != ThinkingModeBudget {
+			t.Errorf("%s: Thinking = %v, want budget", model, behavior.Thinking)
+		}
+	}
+}
+
+func TestModelBehaviorFor_UnknownModelIsBudgetMode(t *testing.T) {
+	// The zero value must be the conservative choice: an unrecognized model
+	// is every gateway-hosted one, and the budget shape is what this client
+	// has always sent them.
+	for _, model := range []string{"", "MiniMax-M2.7", "claude-sonnet-4-5", "gpt-5.4"} {
+		behavior, ok := ModelBehaviorFor(model)
+		if ok {
+			t.Errorf("%s: unexpectedly recognized", model)
+		}
+		if behavior.Thinking != ThinkingModeBudget {
+			t.Errorf("%s: Thinking = %v, want budget for an unknown model", model, behavior.Thinking)
+		}
+		if behavior.MaxOutputTokens != 0 {
+			t.Errorf("%s: MaxOutputTokens = %d, want 0", model, behavior.MaxOutputTokens)
+		}
+	}
+}
+
+func TestModelBehaviorFor_ThinkingCanBeDisabledExceptOnAlwaysThinkingModels(t *testing.T) {
+	for _, model := range []string{"claude-fable-5", "claude-mythos-5"} {
+		behavior, _ := ModelBehaviorFor(model)
+		if behavior.CanDisableThinking {
+			t.Errorf("%s: CanDisableThinking = true, but this model rejects an explicit disable", model)
+		}
+	}
+	for _, model := range []string{"claude-opus-5", "claude-opus-4-8", "claude-opus-4-7", "claude-sonnet-5"} {
+		behavior, _ := ModelBehaviorFor(model)
+		if !behavior.CanDisableThinking {
+			t.Errorf("%s: CanDisableThinking = false, want true", model)
+		}
+	}
+}
+
+func TestModelBehaviorFor_DatedSnapshotInheritsTheFamilyRow(t *testing.T) {
+	behavior, ok := ModelBehaviorFor("claude-opus-4-7-20260115")
+	if !ok {
+		t.Fatal("dated opus 4.7 snapshot not recognized")
+	}
+	if behavior.Thinking != ThinkingModeAdaptive || behavior.MaxOutputTokens != 128000 {
+		t.Fatalf("dated snapshot behavior = %+v, want the opus-4-7 row", behavior)
+	}
+}

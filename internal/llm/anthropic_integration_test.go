@@ -12,11 +12,18 @@ import (
 
 // TestAnthropicThinkingToolLoopLive drives the real Messages API through the
 // exact shape LP-003 exists to fix: extended thinking enabled *and* tools
-// present, across more than one loop iteration. Before this change the second
+// present, across more than one loop iteration. Before that change the second
 // iteration replayed the assistant turn without its signed thinking blocks and
 // the API rejected it.
 //
-// It needs a key and skips without one:
+// It runs against one model per thinking generation, because the request shape
+// differs between them and a single model proves only its own half. The
+// original version of this test defaulted to claude-sonnet-4-5 alone — the
+// last generation that takes budget_tokens — which is why it passed while
+// every adaptive-thinking model was being sent a request they reject (#943).
+//
+// ANTHROPIC_TEST_MODELS overrides the list (comma-separated). It needs a key
+// and skips without one:
 //
 //	ANTHROPIC_API_KEY=... go test -tags integration ./internal/llm/ -run TestAnthropicThinkingToolLoopLive -v
 func TestAnthropicThinkingToolLoopLive(t *testing.T) {
@@ -24,10 +31,29 @@ func TestAnthropicThinkingToolLoopLive(t *testing.T) {
 	if apiKey == "" {
 		t.Skip("anthropic api key not available: set ANTHROPIC_API_KEY")
 	}
-	model := strings.TrimSpace(os.Getenv("ANTHROPIC_TEST_MODEL"))
-	if model == "" {
-		model = "claude-sonnet-4-5"
+
+	models := []string{
+		"claude-sonnet-4-5", // budget generation: thinking.budget_tokens
+		"claude-opus-4-7",   // adaptive generation: output_config.effort
 	}
+	if override := strings.TrimSpace(os.Getenv("ANTHROPIC_TEST_MODELS")); override != "" {
+		models = nil
+		for _, entry := range strings.Split(override, ",") {
+			if trimmed := strings.TrimSpace(entry); trimmed != "" {
+				models = append(models, trimmed)
+			}
+		}
+	}
+
+	for _, model := range models {
+		t.Run(model, func(t *testing.T) {
+			runAnthropicThinkingToolLoop(t, apiKey, model)
+		})
+	}
+}
+
+func runAnthropicThinkingToolLoop(t *testing.T, apiKey, model string) {
+	t.Helper()
 
 	client, err := NewProvider(ProviderOptions{
 		Provider:  "anthropic",
