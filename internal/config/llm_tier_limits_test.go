@@ -62,9 +62,13 @@ func TestResolveLLMTier_ThinkingBudgetMustFitUnderMaxTokens(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			// A budget-mode model: this case is about the budget-vs-ceiling
+			// relationship, which is orthogonal to the model generation.
+			// An adaptive model would trip the separate thinking_budget
+			// guard first and test nothing.
 			cfg := limitsTestConfig(LLMTierBinding{
 				Provider:       "pool",
-				Model:          "claude-opus-5",
+				Model:          "claude-haiku-4-5",
 				MaxTokens:      tc.maxTokens,
 				ThinkingBudget: tc.budget,
 			})
@@ -86,6 +90,54 @@ func TestResolveLLMTier_ThinkingBudgetMustFitUnderMaxTokens(t *testing.T) {
 				t.Fatalf("resolve: %v", err)
 			}
 		})
+	}
+}
+
+func TestResolveLLMTier_RejectsThinkingBudgetOnAdaptiveModel(t *testing.T) {
+	// The pairing fails on every request against these models, so one
+	// startup error naming the fix beats a per-turn 400.
+	for _, model := range []string{"claude-opus-4-7", "claude-opus-5", "claude-sonnet-5", "claude-fable-5"} {
+		cfg := limitsTestConfig(LLMTierBinding{Provider: "pool", Model: model, ThinkingBudget: 8000})
+		_, err := ResolveLLMTier(&cfg, "heavy")
+		if err == nil {
+			t.Errorf("%s: expected an error for thinking_budget on an adaptive model", model)
+			continue
+		}
+		for _, want := range []string{"thinking_budget", "reasoning_effort", model} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("%s: error %q missing %q", model, err.Error(), want)
+			}
+		}
+	}
+}
+
+func TestResolveLLMTier_AllowsThinkingBudgetWhereTheModelAcceptsIt(t *testing.T) {
+	// Budget-mode models and gateway-hosted ones must keep booting. Opus 4.6
+	// and Sonnet 4.6 are the load-bearing cases: budget_tokens is deprecated
+	// there but still works, so rejecting them would break a live config.
+	for _, model := range []string{"claude-haiku-4-5", "claude-sonnet-4-6", "claude-opus-4-6", "claude-sonnet-4-5", "MiniMax-M2.7"} {
+		cfg := limitsTestConfig(LLMTierBinding{Provider: "pool", Model: model, ThinkingBudget: 8000})
+		if _, err := ResolveLLMTier(&cfg, "heavy"); err != nil {
+			t.Errorf("%s: unexpected error: %v", model, err)
+		}
+	}
+}
+
+func TestResolveLLMTier_ThinkingBudgetGuardIsAnthropicOnly(t *testing.T) {
+	// The model names are Anthropic's, but the guard must not fire for a
+	// provider kind whose request shape this says nothing about.
+	cfg := Config{
+		LLMConfig: LLMConfig{
+			LLMProviders: map[string]LLMProviderSettings{
+				"pool": {Kind: "openai", AuthMode: "api-key", APIKey: "k", BaseURL: "https://api.openai.com/v1"},
+			},
+			LLMTiers: map[string]LLMTierBinding{
+				"heavy": {Provider: "pool", Model: "claude-opus-5", ThinkingBudget: 8000},
+			},
+		},
+	}
+	if _, err := ResolveLLMTier(&cfg, "heavy"); err != nil {
+		t.Fatalf("guard fired for a non-anthropic kind: %v", err)
 	}
 }
 

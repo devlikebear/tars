@@ -63,6 +63,8 @@ type ResolvedLLMTier struct {
 //   - binding.Model is empty
 //   - binding sets both max_tokens and thinking_budget, and the budget is
 //     not strictly smaller (the budget is spent out of the output ceiling)
+//   - binding sets thinking_budget on a kind: anthropic model that sets
+//     reasoning depth by effort and rejects a token budget
 //
 // Kind is normalized to lowercase; other string fields are trimmed.
 // Kind value is NOT validated against a closed list — llm.NewProvider
@@ -110,6 +112,18 @@ func ResolveLLMTier(cfg *Config, tier string) (ResolvedLLMTier, error) {
 		return ResolvedLLMTier{}, fmt.Errorf(
 			"tier %q: thinking_budget (%d) must be less than max_tokens (%d) — the thinking budget is spent out of the output ceiling",
 			tierNorm, binding.ThinkingBudget, binding.MaxTokens)
+	}
+
+	// A token budget cannot be expressed on a model that sets reasoning
+	// depth by effort — the provider rejects the parameter outright. This
+	// only fires on a pairing that already fails on every request, so it
+	// turns a per-turn 400 into one startup error naming the fix.
+	if binding.ThinkingBudget > 0 && kind == llmdefaults.ProviderAnthropic {
+		if behavior, _ := llmdefaults.ModelBehaviorFor(model); behavior.Thinking == llmdefaults.ThinkingModeAdaptive {
+			return ResolvedLLMTier{}, fmt.Errorf(
+				"tier %q: model %q does not accept thinking_budget (%d) — it sets reasoning depth by effort; use reasoning_effort instead",
+				tierNorm, model, binding.ThinkingBudget)
+		}
 	}
 
 	authMode := strings.ToLower(strings.TrimSpace(provider.AuthMode))

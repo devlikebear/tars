@@ -133,8 +133,134 @@ func anthropicThinkingBudgetForEffort(effort string) int {
 	}
 }
 
-// buildAnthropicThinking resolves the request's thinking block, or nil when
-// extended thinking stays off.
+// anthropicEffortForLevel maps TARS's provider-agnostic reasoning_effort onto
+// Anthropic's output_config.effort ladder.
+//
+// Anthropic's lowest band is "low", so TARS's "minimal" and "low" both land
+// there — the distinction cannot be expressed. TARS normalizes "xhigh" and
+// "veryhigh" down to "high" (provider.go), so the upper bands "xhigh" and
+// "max" are unreachable from config today; widening that is a separate
+// change to the shared effort vocabulary, not to this renderer.
+func anthropicEffortForLevel(effort string) string {
+	switch effort {
+	case "minimal", "low":
+		return "low"
+	case "medium":
+		return "medium"
+	case "high":
+		return "high"
+	default:
+		return ""
+	}
+}
+
+// anthropicEffortForThinkingBudget approximates an effort band from a token
+// budget, for callers that set thinking_budget against a model that has no
+// budget knob. It is the inverse of anthropicThinkingBudgetForEffort, rounded
+// up to the band whose budget covers the request.
+//
+// TARS configs never reach this: ResolveLLMTier rejects a thinking_budget on
+// an adaptive-thinking model outright. It exists for callers that build a
+// provider directly through pkg/llm and would otherwise ship a 400.
+func anthropicEffortForThinkingBudget(budget int) string {
+	switch {
+	case budget <= 2048:
+		return "low"
+	case budget <= 8192:
+		return "medium"
+	default:
+		return "high"
+	}
+}
+
+// anthropicReasoning is the pair of request fields that carry reasoning
+// configuration. Either may be nil; which one is populated depends on the
+// model's ThinkingMode, and populating the wrong one is a 400.
+type anthropicReasoning struct {
+	Thinking     map[string]any
+	OutputConfig map[string]any
+}
+
+// buildAnthropicReasoning renders reasoning_effort / thinking_budget into the
+// shape the target model accepts.
+//
+// The two generations are mutually exclusive. Budget-mode models take a token
+// budget and reject output_config.effort — including Haiku 4.5, this client's
+// default model — so effort must never leak onto that path. Adaptive-mode
+// models take the opposite: an effort band, with budget_tokens rejected.
+//
+// display: "summarized" is set on the adaptive path deliberately. Those models
+// default to omitting reasoning text, which would silently blank the console's
+// reasoning stream (handler_chat_execution.go consumes OnReasoningDelta) for
+// anyone moving from a budget-mode model.
+func buildAnthropicReasoning(model string, config ClientConfig, opts ChatOptions, maxTokens int) anthropicReasoning {
+	behavior, _ := llmdefaults.ModelBehaviorFor(model)
+	if behavior.Thinking != llmdefaults.ThinkingModeAdaptive {
+		return anthropicReasoning{Thinking: buildAnthropicThinking(config, opts, maxTokens)}
+	}
+
+	effort := effectiveReasoningEffort(config, opts)
+	budget := effectiveThinkingBudget(config, opts)
+
+	if effort == "none" {
+		if !behavior.CanDisableThinking {
+			zlog.Warn().
+				Str("provider", "anthropic").
+				Str("model", model).
+				Msg("reasoning_effort=none not honored: this model thinks unconditionally and rejects an explicit disable")
+			return anthropicReasoning{}
+		}
+		// Honored as asked. Disabling thinking on these models has two
+		// documented failure modes that bite hardest in a tool loop: the
+		// model may write a tool call into its visible text — the turn
+		// succeeds, the call never runs, nothing errors — and it may leak
+		// <thinking> tags into the response. Lowering effort is the better
+		// lever, but silently substituting it for the operator's explicit
+		// "none" is the kind of non-honoring this client is being cured of.
+		if len(opts.Tools) > 0 {
+			zlog.Warn().
+				Str("provider", "anthropic").
+				Str("model", model).
+				Msg("thinking disabled on a tool-calling request: this model may emit tool calls as plain text instead of tool_use blocks — prefer reasoning_effort=minimal")
+		}
+		// No output_config: disabling is accepted only at effort high or
+		// below, and omitting the field defaults to high.
+		return anthropicReasoning{Thinking: map[string]any{"type": "disabled"}}
+	}
+
+	if budget > 0 {
+		zlog.Warn().
+			Str("provider", "anthropic").
+			Str("model", model).
+			Int("thinking_budget", budget).
+			Msg("thinking_budget not honored: this model sets reasoning depth by effort, not by token budget — approximating with an effort level")
+	}
+
+	level := anthropicEffortForLevel(effort)
+	if level == "" && budget > 0 {
+		level = anthropicEffortForThinkingBudget(budget)
+	}
+	if level == "" {
+		// Neither knob set: leave both fields off and take the model's own
+		// defaults rather than asserting one.
+		return anthropicReasoning{}
+	}
+
+	zlog.Debug().
+		Str("provider", "anthropic").
+		Str("model", model).
+		Str("reasoning_effort", effort).
+		Str("anthropic_effort", level).
+		Msg("anthropic adaptive thinking enabled")
+	return anthropicReasoning{
+		Thinking:     map[string]any{"type": "adaptive", "display": "summarized"},
+		OutputConfig: map[string]any{"effort": level},
+	}
+}
+
+// buildAnthropicThinking resolves the thinking block for a budget-mode model,
+// or nil when extended thinking stays off. Adaptive-mode models do not come
+// through here — see buildAnthropicReasoning.
 //
 // An explicit thinking_budget is the more specific knob and outranks
 // reasoning_effort; only when none is set does the effort level derive one.
@@ -319,8 +445,12 @@ func (c *AnthropicClient) buildChatRequest(messages []ChatMessage, opts ChatOpti
 		"max_tokens": c.config.MaxTokens,
 		"messages":   wireMessages,
 	}
-	if thinking := buildAnthropicThinking(c.config, opts, c.config.MaxTokens); thinking != nil {
-		reqBody["thinking"] = thinking
+	reasoning := buildAnthropicReasoning(c.model, c.config, opts, c.config.MaxTokens)
+	if reasoning.Thinking != nil {
+		reqBody["thinking"] = reasoning.Thinking
+	}
+	if reasoning.OutputConfig != nil {
+		reqBody["output_config"] = reasoning.OutputConfig
 	}
 	if len(systemMessages) > 0 {
 		reqBody["system"] = toAnthropicSystemBlocks(systemMessages)

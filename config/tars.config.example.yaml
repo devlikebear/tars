@@ -50,8 +50,25 @@ llm:
   #
   # reasoning_effort accepts none | minimal | low | medium | high. It is a
   # provider-agnostic hint, so each provider renders it in its own terms.
-  # On kind: anthropic the Messages API has no native effort control, so
-  # the level becomes an extended-thinking budget:
+  # On kind: anthropic it renders two different ways, because the models
+  # split into two generations with mutually exclusive request shapes —
+  # sending the wrong one is rejected outright, not degraded.
+  #
+  # Adaptive generation — Opus 4.7 / 4.8 / 5, Sonnet 5, Fable 5, Mythos 5.
+  # The level maps onto the model's own effort control:
+  #
+  #   none     thinking off (Fable and Mythos always think; the setting is
+  #            reported as unhonored rather than sent and rejected)
+  #   minimal  low   (Anthropic has no band below "low")
+  #   low      low
+  #   medium   medium
+  #   high     high
+  #
+  # thinking_budget cannot be expressed on these models and is rejected at
+  # startup — use reasoning_effort.
+  #
+  # Budget generation — Haiku 4.5, Sonnet 4.5, Opus 4.5/4.6, Sonnet 4.6,
+  # and every gateway-hosted model. The level becomes a thinking budget:
   #
   #   none     thinking off
   #   minimal  1024 tokens (the provider floor)
@@ -59,14 +76,12 @@ llm:
   #   medium   8192
   #   high     16384
   #
-  # The budget is clamped to leave 1024 tokens of max_tokens for the
-  # answer, so raising max_tokens is what lifts that clamp. Note the
-  # newest Anthropic models have moved to adaptive thinking and reject an
-  # explicit budget outright — on those, leave both knobs unset.
-  # thinking_budget, where set, is the more specific knob and outranks
-  # reasoning_effort. Third-party gateways served over the Anthropic
-  # protocol receive the same thinking block; one that does not implement
-  # extended thinking may reject or ignore it.
+  # That budget is clamped to leave 1024 tokens of max_tokens for the
+  # answer, so raising max_tokens is what lifts the clamp. thinking_budget,
+  # where set, is the more specific knob and outranks reasoning_effort.
+  # Third-party gateways served over the Anthropic protocol are treated as
+  # budget generation, since that is the shape they were built against; one
+  # that does not implement extended thinking may reject or ignore it.
   #
   # max_tokens caps the response length. Left unset, a tier gets a
   # conservative default (16000 on models TARS recognizes, 4096 on those

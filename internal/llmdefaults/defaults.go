@@ -125,30 +125,92 @@ func OAuthProvider(kind string) string {
 	return strings.TrimSpace(defaults.OAuthProvider)
 }
 
-// modelMaxOutputTokens maps a model-family key to that family's documented
-// output-token ceiling. Lookup is longest-prefix, so a dated snapshot
-// ("claude-haiku-4-5-20251001") inherits its family's limit without needing
-// its own row.
+// ThinkingMode says which extended-thinking request shape a model accepts.
+// The two shapes are mutually exclusive: sending the wrong one is a 400, not
+// a degraded response.
+type ThinkingMode int
+
+const (
+	// ThinkingModeBudget takes thinking: {"type":"enabled","budget_tokens":N},
+	// and rejects output_config.effort. It is the zero value so that an
+	// unrecognized model — every gateway-hosted one — keeps the shape this
+	// client has always sent.
+	ThinkingModeBudget ThinkingMode = iota
+	// ThinkingModeAdaptive takes thinking: {"type":"adaptive"} with depth set
+	// by output_config.effort, and rejects budget_tokens outright.
+	ThinkingModeAdaptive
+)
+
+// ModelBehavior collects the per-model facts a request builder needs. One
+// table rather than several keeps them from drifting apart as families
+// are added.
+type ModelBehavior struct {
+	// MaxOutputTokens is the documented output ceiling. 0 means unknown.
+	MaxOutputTokens int
+
+	// Thinking is the extended-thinking request shape this family accepts.
+	Thinking ThinkingMode
+
+	// CanDisableThinking reports whether thinking: {"type":"disabled"} is
+	// accepted. Only meaningful for ThinkingModeAdaptive — a budget-mode
+	// model turns thinking off by omitting the block entirely. Fable and
+	// Mythos think unconditionally and reject an explicit disable.
+	CanDisableThinking bool
+}
+
+// modelBehaviors maps a model-family key to its behavior. Lookup is
+// longest-prefix, so a dated snapshot ("claude-haiku-4-5-20251001") inherits
+// its family's row without needing one of its own.
 //
-// Only families whose ceiling is published are listed. Older models
+// Only families whose behavior is published are listed. Older models
 // (opus-4-5, opus-4-1, sonnet-4-5, sonnet-4) are deliberately absent: their
-// ceilings are lower than the current families' 128K, and defaulting one of
-// them high would ship requests the provider rejects. They fall through to
-// the caller's conservative fallback instead — see MaxOutputTokens.
+// output ceilings are lower than the current families' 128K, and defaulting
+// one of them high would ship requests the provider rejects. Missing is the
+// safe state — the zero ModelBehavior means "unknown ceiling, budget-mode
+// thinking", which is exactly what this client did before the table existed.
 //
-// Prefix matching is only safe because keys with different ceilings do not
+// Prefix matching is only safe because keys that differ in behavior do not
 // prefix each other: "claude-sonnet-4-6" does not match "claude-sonnet-4-5",
 // so Sonnet 4.5 correctly misses rather than inheriting 128K.
-var modelMaxOutputTokens = map[string]int{
-	"claude-fable-5":    128000,
-	"claude-mythos-5":   128000,
-	"claude-opus-5":     128000,
-	"claude-opus-4-8":   128000,
-	"claude-opus-4-7":   128000,
-	"claude-opus-4-6":   128000,
-	"claude-sonnet-5":   128000,
-	"claude-sonnet-4-6": 128000,
-	"claude-haiku-4-5":  64000,
+//
+// On the Adaptive/Budget split: the Adaptive set is exactly the families
+// where budget_tokens is a hard 400. Opus 4.6 and Sonnet 4.6 accept adaptive
+// thinking too and it is the recommended shape there, but budget_tokens is
+// merely deprecated on them and still works — so they stay on Budget. That
+// keeps this table's Adaptive rows equivalent to "configs that are already
+// broken today", which is what lets callers turn a thinking_budget on an
+// adaptive model into a loud error without breaking a working deployment.
+var modelBehaviors = map[string]ModelBehavior{
+	"claude-fable-5":    {MaxOutputTokens: 128000, Thinking: ThinkingModeAdaptive, CanDisableThinking: false},
+	"claude-mythos-5":   {MaxOutputTokens: 128000, Thinking: ThinkingModeAdaptive, CanDisableThinking: false},
+	"claude-opus-5":     {MaxOutputTokens: 128000, Thinking: ThinkingModeAdaptive, CanDisableThinking: true},
+	"claude-opus-4-8":   {MaxOutputTokens: 128000, Thinking: ThinkingModeAdaptive, CanDisableThinking: true},
+	"claude-opus-4-7":   {MaxOutputTokens: 128000, Thinking: ThinkingModeAdaptive, CanDisableThinking: true},
+	"claude-sonnet-5":   {MaxOutputTokens: 128000, Thinking: ThinkingModeAdaptive, CanDisableThinking: true},
+	"claude-opus-4-6":   {MaxOutputTokens: 128000, Thinking: ThinkingModeBudget},
+	"claude-sonnet-4-6": {MaxOutputTokens: 128000, Thinking: ThinkingModeBudget},
+	"claude-haiku-4-5":  {MaxOutputTokens: 64000, Thinking: ThinkingModeBudget},
+}
+
+// ModelBehaviorFor returns the documented behavior for model. The second
+// result reports whether the model was recognized; the returned value is
+// usable either way, because the zero ModelBehavior is the conservative
+// choice for an unknown model.
+func ModelBehaviorFor(model string) (ModelBehavior, bool) {
+	normalized := strings.ToLower(strings.TrimSpace(model))
+	if normalized == "" {
+		return ModelBehavior{}, false
+	}
+	var best ModelBehavior
+	bestLen := 0
+	found := false
+	for prefix, behavior := range modelBehaviors {
+		if len(prefix) <= bestLen || !strings.HasPrefix(normalized, prefix) {
+			continue
+		}
+		best, bestLen, found = behavior, len(prefix), true
+	}
+	return best, found
 }
 
 // MaxOutputTokens returns the documented output-token ceiling for model, or
@@ -159,16 +221,6 @@ var modelMaxOutputTokens = map[string]int{
 // shipped config routes MiniMax through kind: anthropic) never match, so
 // those tiers should set max_tokens explicitly.
 func MaxOutputTokens(model string) int {
-	normalized := strings.ToLower(strings.TrimSpace(model))
-	if normalized == "" {
-		return 0
-	}
-	best, bestLen := 0, 0
-	for prefix, limit := range modelMaxOutputTokens {
-		if len(prefix) <= bestLen || !strings.HasPrefix(normalized, prefix) {
-			continue
-		}
-		best, bestLen = limit, len(prefix)
-	}
-	return best
+	behavior, _ := ModelBehaviorFor(model)
+	return behavior.MaxOutputTokens
 }
