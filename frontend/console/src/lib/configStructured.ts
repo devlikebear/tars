@@ -20,6 +20,9 @@ export type LLMTierDraft = {
   reasoning_effort: string
   thinking_budget: string
   service_tier: string
+  max_tokens: string
+  /** Comma- or newline-separated in the editor; split on save. */
+  beta_features: string
 }
 
 export type LLMTierDraftField =
@@ -29,6 +32,8 @@ export type LLMTierDraftField =
   | 'reasoning_effort'
   | 'thinking_budget'
   | 'service_tier'
+  | 'max_tokens'
+  | 'beta_features'
 
 export type LLMTierDraftErrors = Record<string, Partial<Record<LLMTierDraftField, string>>>
 
@@ -38,6 +43,8 @@ export type LLMTierBindingValue = {
   reasoning_effort: string
   thinking_budget: number
   service_tier: string
+  max_tokens: number
+  beta_features: string[]
 }
 
 export type LLMTiersBuildResult =
@@ -358,6 +365,8 @@ export function makeLLMTierDrafts(value: unknown): LLMTierDraft[] {
         reasoning_effort: readString(binding, 'reasoning_effort', 'reasoningEffort'),
         thinking_budget: readBudgetString(binding),
         service_tier: readString(binding, 'service_tier', 'serviceTier'),
+        max_tokens: readIntegerString(binding, 'max_tokens', 'maxTokens'),
+        beta_features: readStringListText(binding, 'beta_features', 'betaFeatures'),
       }
     })
 }
@@ -389,6 +398,10 @@ export function buildLLMTiersFromDrafts(drafts: LLMTierDraft[], providerAliases:
     const reasoningEffort = draft.reasoning_effort.trim()
     const budgetText = draft.thinking_budget.trim()
     const serviceTier = draft.service_tier.trim()
+    // Tolerate drafts built before these fields existed — a stale client
+    // bundle or persisted editor state should not throw here.
+    const maxTokensText = (draft.max_tokens ?? '').trim()
+    const betaFeatures = parseStringListText(draft.beta_features ?? '')
 
     if (!name) {
       rowErrors.name = 'Tier name is required.'
@@ -416,6 +429,26 @@ export function buildLLMTiersFromDrafts(drafts: LLMTierDraft[], providerAliases:
       }
     }
 
+    let maxTokens = 0
+    if (maxTokensText) {
+      if (!/^\d+$/.test(maxTokensText)) {
+        rowErrors.max_tokens = 'Max tokens must be 0 or greater.'
+      } else {
+        maxTokens = Number(maxTokensText)
+        if (!Number.isSafeInteger(maxTokens)) {
+          rowErrors.max_tokens = 'Max tokens must be a safe integer.'
+        }
+      }
+    }
+
+    // Mirrors the resolver's guard so the operator sees it before saving
+    // rather than as a failure to boot. Both must be set for it to apply:
+    // an unset ceiling resolves to a per-model default the console cannot
+    // see. See ResolveLLMTier in internal/config/llm_resolve.go.
+    if (!rowErrors.max_tokens && !rowErrors.thinking_budget && maxTokens > 0 && thinkingBudget >= maxTokens) {
+      rowErrors.thinking_budget = `Thinking budget must be less than max tokens (${maxTokens}).`
+    }
+
     if (Object.keys(rowErrors).length > 0) {
       errors[id] = rowErrors
       return
@@ -427,6 +460,8 @@ export function buildLLMTiersFromDrafts(drafts: LLMTierDraft[], providerAliases:
       reasoning_effort: reasoningEffort,
       thinking_budget: thinkingBudget,
       service_tier: serviceTier,
+      max_tokens: maxTokens,
+      beta_features: betaFeatures,
     }
   })
 
@@ -721,4 +756,48 @@ function readBudgetString(record: Record<string, unknown>): string {
   const value = record.thinking_budget ?? record.thinkingBudget
   if (value === undefined || value === null || value === '') return ''
   return String(value)
+}
+
+/**
+ * Reads a numeric field into editor text. A stored 0 means "unset" for both
+ * max_tokens and thinking_budget, so it renders as an empty field rather
+ * than a literal 0 the user would have to clear.
+ */
+function readIntegerString(record: Record<string, unknown>, ...keys: string[]): string {
+  for (const key of keys) {
+    const value = record[key]
+    if (value === undefined || value === null || value === '') continue
+    if (typeof value === 'number' && value === 0) return ''
+    return String(value)
+  }
+  return ''
+}
+
+/** Renders a stored string list as one entry per line for editing. */
+function readStringListText(record: Record<string, unknown>, ...keys: string[]): string {
+  for (const key of keys) {
+    const value = record[key]
+    if (!Array.isArray(value)) continue
+    return value
+      .map((entry) => String(entry ?? '').trim())
+      .filter(Boolean)
+      .join('\n')
+  }
+  return ''
+}
+
+/**
+ * Splits editor text into a list. Commas and newlines both separate, so
+ * pasting a comma-joined header value works as well as typing one per line.
+ */
+export function parseStringListText(text: string): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const raw of text.split(/[\n,]/)) {
+    const entry = raw.trim()
+    if (!entry || seen.has(entry)) continue
+    seen.add(entry)
+    out.push(entry)
+  }
+  return out
 }

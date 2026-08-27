@@ -59,13 +59,33 @@ llm:
   #   medium   8192
   #   high     16384
   #
-  # The budget is then clamped to leave room for the answer under the
-  # tier's output cap, which is pinned at 4096 until it becomes
-  # configurable — so today every level above minimal lands on 3072.
+  # The budget is clamped to leave 1024 tokens of max_tokens for the
+  # answer, so raising max_tokens is what lifts that clamp. Note the
+  # newest Anthropic models have moved to adaptive thinking and reject an
+  # explicit budget outright — on those, leave both knobs unset.
   # thinking_budget, where set, is the more specific knob and outranks
   # reasoning_effort. Third-party gateways served over the Anthropic
   # protocol receive the same thinking block; one that does not implement
   # extended thinking may reject or ignore it.
+  #
+  # max_tokens caps the response length. Left unset, a tier gets a
+  # conservative default (16000 on models TARS recognizes, 4096 on those
+  # it does not — every gateway-hosted model, notably). That default is
+  # deliberately below the models' documented 128000 ceiling: TARS shares
+  # one 30s HTTP timeout across streaming and non-streaming calls, and the
+  # one-shot and background paths do not stream, so a high default turns a
+  # clean truncation into a timeout. Set max_tokens explicitly to go
+  # higher — nothing caps an explicit value. Setting both max_tokens and
+  # thinking_budget where the budget is not strictly smaller fails at
+  # startup rather than at request time.
+  #
+  # beta_features opts the tier into provider beta features. On
+  # kind: anthropic the values are joined into one anthropic-beta header;
+  # leave the list out and no header is sent at all, which is what a
+  # third-party gateway wants. Values are passed through verbatim and are
+  # not validated against a list, so a newly announced flag needs no TARS
+  # release. CLI-backed providers (claude-code-cli, antigravity-cli) own
+  # their own request shape and ignore both knobs.
   providers:
     default:
       kind: anthropic
@@ -77,6 +97,10 @@ llm:
       provider: default
       model: claude-opus-4-7
       reasoning_effort: high
+      # Raise the ceiling above the model default, and opt into 1M context.
+      max_tokens: 64000
+      beta_features:
+        - context-1m-2025-08-07
     standard:
       provider: default
       model: claude-sonnet-4-6

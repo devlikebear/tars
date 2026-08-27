@@ -35,6 +35,16 @@ type ResolvedLLMTier struct {
 	ThinkingBudget  int
 	ServiceTier     string
 
+	// MaxTokens is the tier's raw output ceiling; 0 means the binding did
+	// not set one. Per-model defaulting deliberately does NOT happen here —
+	// it lives in the provider layer so that external consumers calling
+	// llm.NewProvider directly get the same defaults as the TARS router.
+	MaxTokens int
+
+	// BetaFeatures are provider beta flags to opt this tier into, already
+	// trimmed and de-duplicated. Nil means send none.
+	BetaFeatures []string
+
 	// Provenance — alias of the provider pool entry that served this tier
 	ProviderAlias string
 }
@@ -51,6 +61,8 @@ type ResolvedLLMTier struct {
 //   - cfg.LLMProviders[binding.Provider] is missing
 //   - resolved Kind is empty
 //   - binding.Model is empty
+//   - binding sets both max_tokens and thinking_budget, and the budget is
+//     not strictly smaller (the budget is spent out of the output ceiling)
 //
 // Kind is normalized to lowercase; other string fields are trimmed.
 // Kind value is NOT validated against a closed list — llm.NewProvider
@@ -90,6 +102,16 @@ func ResolveLLMTier(cfg *Config, tier string) (ResolvedLLMTier, error) {
 		return ResolvedLLMTier{}, fmt.Errorf("tier %q binding has empty model", tierNorm)
 	}
 
+	// Guard only when the binding states both values. An unset max_tokens
+	// resolves to a per-model default the config layer cannot see, and
+	// hard-erroring against a guess would refuse to boot configs that work
+	// today — the provider degrades thinking off with a warning in that case.
+	if binding.MaxTokens > 0 && binding.ThinkingBudget >= binding.MaxTokens {
+		return ResolvedLLMTier{}, fmt.Errorf(
+			"tier %q: thinking_budget (%d) must be less than max_tokens (%d) — the thinking budget is spent out of the output ceiling",
+			tierNorm, binding.ThinkingBudget, binding.MaxTokens)
+	}
+
 	authMode := strings.ToLower(strings.TrimSpace(provider.AuthMode))
 	oauthProvider := ""
 	if authMode == "oauth" {
@@ -107,6 +129,8 @@ func ResolveLLMTier(cfg *Config, tier string) (ResolvedLLMTier, error) {
 		ReasoningEffort: strings.TrimSpace(binding.ReasoningEffort),
 		ThinkingBudget:  binding.ThinkingBudget,
 		ServiceTier:     strings.TrimSpace(binding.ServiceTier),
+		MaxTokens:       binding.MaxTokens,
+		BetaFeatures:    normalizeLLMBetaFeatures(binding.BetaFeatures),
 		ProviderAlias:   alias,
 	}, nil
 }

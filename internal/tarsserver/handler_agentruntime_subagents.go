@@ -16,14 +16,16 @@ import (
 )
 
 type agentRuntimeTierOption struct {
-	Name            string `json:"name"`
-	ProviderAlias   string `json:"provider_alias,omitempty"`
-	Kind            string `json:"kind,omitempty"`
-	Model           string `json:"model,omitempty"`
-	ReasoningEffort string `json:"reasoning_effort,omitempty"`
-	ThinkingBudget  int    `json:"thinking_budget,omitempty"`
-	ServiceTier     string `json:"service_tier,omitempty"`
-	Error           string `json:"error,omitempty"`
+	Name            string   `json:"name"`
+	ProviderAlias   string   `json:"provider_alias,omitempty"`
+	Kind            string   `json:"kind,omitempty"`
+	Model           string   `json:"model,omitempty"`
+	ReasoningEffort string   `json:"reasoning_effort,omitempty"`
+	ThinkingBudget  int      `json:"thinking_budget,omitempty"`
+	ServiceTier     string   `json:"service_tier,omitempty"`
+	MaxTokens       int      `json:"max_tokens,omitempty"`
+	BetaFeatures    []string `json:"beta_features,omitempty"`
+	Error           string   `json:"error,omitempty"`
 }
 
 type agentRuntimeSubagentRunSummary struct {
@@ -269,6 +271,8 @@ func agentRuntimeTierOptions(cfg config.Config) ([]agentRuntimeTierOption, map[s
 			option.ReasoningEffort = resolved.ReasoningEffort
 			option.ThinkingBudget = resolved.ThinkingBudget
 			option.ServiceTier = resolved.ServiceTier
+			option.MaxTokens = resolved.MaxTokens
+			option.BetaFeatures = resolved.BetaFeatures
 		}
 		out = append(out, option)
 		byName[name] = option

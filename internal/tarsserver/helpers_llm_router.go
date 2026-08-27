@@ -42,6 +42,8 @@ func buildLLMRouter(cfg config.Config, tracker *usage.Tracker) (llm.Router, erro
 			ReasoningEffort: r.ReasoningEffort,
 			ThinkingBudget:  r.ThinkingBudget,
 			ServiceTier:     r.ServiceTier,
+			MaxTokens:       r.MaxTokens,
+			BetaFeatures:    r.BetaFeatures,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("tier %s: %w", r.Tier, err)

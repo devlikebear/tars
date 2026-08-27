@@ -156,6 +156,59 @@ test('buildConfigPayload preserves custom tiers already on disk', () => {
   assert.deepEqual(payload.llm_tiers.heavy, { provider: 'openai', model: 'gpt-5.4' })
 })
 
+test('buildConfigPayload preserves tier knobs the wizard does not edit', () => {
+  // The backend round-trips llm_tiers through typed structs, so each
+  // binding is replaced wholesale — a field the wizard omits is a field
+  // the wizard deletes.
+  const form = emptyOnboardingForm()
+  form.provider.alias = 'anthropic'
+  form.provider.kind = 'anthropic'
+  form.provider.api_key = 'sk-test'
+  for (const tier of ['heavy', 'standard', 'light'] as const) {
+    form.tiers[tier].provider = 'anthropic'
+    form.tiers[tier].model = 'claude-opus-5'
+  }
+
+  const payload = buildConfigPayload(form, {}, {
+    heavy: {
+      provider: 'anthropic',
+      model: 'stale',
+      thinking_budget: 8000,
+      service_tier: 'priority',
+      max_tokens: 64000,
+      beta_features: ['context-1m-2025-08-07'],
+    },
+  }) as { llm_tiers: Record<string, Record<string, unknown>> }
+
+  assert.deepEqual(payload.llm_tiers.heavy, {
+    provider: 'anthropic',
+    model: 'claude-opus-5',
+    thinking_budget: 8000,
+    service_tier: 'priority',
+    max_tokens: 64000,
+    beta_features: ['context-1m-2025-08-07'],
+  })
+})
+
+test('buildConfigPayload clears reasoning_effort the operator emptied', () => {
+  // Carrying the existing binding forward must not resurrect a value the
+  // wizard's own field just cleared.
+  const form = emptyOnboardingForm()
+  form.provider.alias = 'anthropic'
+  form.provider.kind = 'anthropic'
+  for (const tier of ['heavy', 'standard', 'light'] as const) {
+    form.tiers[tier].provider = 'anthropic'
+    form.tiers[tier].model = 'claude-opus-5'
+    form.tiers[tier].reasoning_effort = ''
+  }
+
+  const payload = buildConfigPayload(form, {}, {
+    heavy: { provider: 'anthropic', model: 'stale', reasoning_effort: 'high' },
+  }) as { llm_tiers: Record<string, Record<string, unknown>> }
+
+  assert.equal('reasoning_effort' in payload.llm_tiers.heavy, false)
+})
+
 test('buildConfigPayload omits empty optional fields', () => {
   const form = emptyOnboardingForm()
   form.provider.alias = 'codex'

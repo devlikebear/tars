@@ -57,14 +57,36 @@ test('parseStructuredJSONEdit validates JSON before applying edits', () => {
 
 test('makeLLMTierDrafts converts tier bindings into editable rows', () => {
   const drafts = makeLLMTierDrafts({
-    heavy: { provider: 'codex', model: 'gpt-5.5', reasoning_effort: 'high', thinking_budget: 1024, service_tier: 'priority' },
+    heavy: {
+      provider: 'codex',
+      model: 'gpt-5.5',
+      reasoning_effort: 'high',
+      thinking_budget: 1024,
+      service_tier: 'priority',
+      max_tokens: 32000,
+      beta_features: ['context-1m-2025-08-07', 'interleaved-thinking-2025-05-14'],
+    },
     turbo: { provider: 'codex', model: 'gpt-5.4' },
   })
 
   assert.deepEqual(drafts.map((draft) => draft.name), ['heavy', 'turbo'])
   assert.equal(drafts[0].thinking_budget, '1024')
   assert.equal(drafts[0].service_tier, 'priority')
+  assert.equal(drafts[0].max_tokens, '32000')
+  assert.equal(drafts[0].beta_features, 'context-1m-2025-08-07\ninterleaved-thinking-2025-05-14')
   assert.equal(drafts[1].reasoning_effort, '')
+  assert.equal(drafts[1].max_tokens, '')
+  assert.equal(drafts[1].beta_features, '')
+})
+
+test('makeLLMTierDrafts renders an unset numeric knob as an empty field', () => {
+  // 0 means "unset" on the wire for both knobs; showing a literal 0 would
+  // make the operator clear it before they could type a value.
+  const drafts = makeLLMTierDrafts({
+    heavy: { provider: 'codex', model: 'gpt-5.4', max_tokens: 0 },
+  })
+
+  assert.equal(drafts[0].max_tokens, '')
 })
 
 test('extractLLMProviderAliases returns sorted provider keys', () => {
@@ -76,8 +98,8 @@ test('extractLLMProviderAliases returns sorted provider keys', () => {
 
 test('buildLLMTiersFromDrafts validates and serializes tier rows', () => {
   const invalid = buildLLMTiersFromDrafts([
-    { id: 'a', originalName: 'heavy', name: 'heavy', provider: 'codex', model: '', reasoning_effort: 'high', thinking_budget: '0', service_tier: '' },
-    { id: 'b', originalName: 'dupe', name: 'heavy', provider: 'missing', model: 'gpt-5.4', reasoning_effort: '', thinking_budget: '-1', service_tier: '' },
+    { id: 'a', originalName: 'heavy', name: 'heavy', provider: 'codex', model: '', reasoning_effort: 'high', thinking_budget: '0', service_tier: '', max_tokens: '', beta_features: '' },
+    { id: 'b', originalName: 'dupe', name: 'heavy', provider: 'missing', model: 'gpt-5.4', reasoning_effort: '', thinking_budget: '-1', service_tier: '', max_tokens: 'lots', beta_features: '' },
   ], ['codex'])
 
   assert.equal(invalid.ok, false)
@@ -86,19 +108,68 @@ test('buildLLMTiersFromDrafts validates and serializes tier rows', () => {
     assert.match(invalid.errors.b.name, /unique/)
     assert.match(invalid.errors.b.provider, /configured provider/)
     assert.match(invalid.errors.b.thinking_budget, /0 or greater/)
+    assert.match(invalid.errors.b.max_tokens, /0 or greater/)
   }
 
   const valid = buildLLMTiersFromDrafts([
-    { id: 'heavy', originalName: 'heavy', name: 'heavy', provider: 'codex', model: 'gpt-5.5', reasoning_effort: 'high', thinking_budget: '2048', service_tier: 'priority' },
-    { id: 'turbo', originalName: '', name: 'turbo', provider: 'codex', model: 'gpt-5.4', reasoning_effort: '', thinking_budget: '', service_tier: '' },
+    { id: 'heavy', originalName: 'heavy', name: 'heavy', provider: 'codex', model: 'gpt-5.5', reasoning_effort: 'high', thinking_budget: '2048', service_tier: 'priority', max_tokens: '32000', beta_features: 'context-1m-2025-08-07, interleaved-thinking-2025-05-14' },
+    { id: 'turbo', originalName: '', name: 'turbo', provider: 'codex', model: 'gpt-5.4', reasoning_effort: '', thinking_budget: '', service_tier: '', max_tokens: '', beta_features: '' },
   ], ['codex'])
 
   assert.equal(valid.ok, true)
   if (valid.ok) {
     assert.deepEqual(valid.value, {
-      heavy: { provider: 'codex', model: 'gpt-5.5', reasoning_effort: 'high', thinking_budget: 2048, service_tier: 'priority' },
-      turbo: { provider: 'codex', model: 'gpt-5.4', reasoning_effort: '', thinking_budget: 0, service_tier: '' },
+      heavy: {
+        provider: 'codex',
+        model: 'gpt-5.5',
+        reasoning_effort: 'high',
+        thinking_budget: 2048,
+        service_tier: 'priority',
+        max_tokens: 32000,
+        beta_features: ['context-1m-2025-08-07', 'interleaved-thinking-2025-05-14'],
+      },
+      turbo: {
+        provider: 'codex',
+        model: 'gpt-5.4',
+        reasoning_effort: '',
+        thinking_budget: 0,
+        service_tier: '',
+        max_tokens: 0,
+        beta_features: [],
+      },
     })
+  }
+})
+
+test('buildLLMTiersFromDrafts rejects a thinking budget that will not fit under max tokens', () => {
+  // Mirrors the resolver guard so the operator sees it before saving
+  // rather than as a failure to boot.
+  const tooBig = buildLLMTiersFromDrafts([
+    { id: 'heavy', originalName: 'heavy', name: 'heavy', provider: 'codex', model: 'gpt-5.5', reasoning_effort: '', thinking_budget: '8000', service_tier: '', max_tokens: '8000', beta_features: '' },
+  ], ['codex'])
+
+  assert.equal(tooBig.ok, false)
+  if (!tooBig.ok) {
+    assert.match(tooBig.errors.heavy.thinking_budget, /less than max tokens/)
+  }
+
+  // An unset ceiling resolves to a per-model default the console cannot
+  // see, so the guard must not fire.
+  const unsetCeiling = buildLLMTiersFromDrafts([
+    { id: 'heavy', originalName: 'heavy', name: 'heavy', provider: 'codex', model: 'gpt-5.5', reasoning_effort: '', thinking_budget: '100000', service_tier: '', max_tokens: '', beta_features: '' },
+  ], ['codex'])
+
+  assert.equal(unsetCeiling.ok, true)
+})
+
+test('buildLLMTiersFromDrafts splits beta features on commas and newlines and de-duplicates', () => {
+  const built = buildLLMTiersFromDrafts([
+    { id: 'heavy', originalName: 'heavy', name: 'heavy', provider: 'codex', model: 'gpt-5.5', reasoning_effort: '', thinking_budget: '', service_tier: '', max_tokens: '', beta_features: ' a ,\n b\n\na,, ' },
+  ], ['codex'])
+
+  assert.equal(built.ok, true)
+  if (built.ok) {
+    assert.deepEqual(built.value.heavy.beta_features, ['a', 'b'])
   }
 })
 

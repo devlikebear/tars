@@ -440,6 +440,8 @@ export type AgentRuntimeTierOption = {
   reasoning_effort?: string
   thinking_budget?: number
   service_tier?: string
+  max_tokens?: number
+  beta_features?: string[]
   error?: string
 }
 

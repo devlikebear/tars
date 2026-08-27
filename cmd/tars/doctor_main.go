@@ -219,7 +219,16 @@ func checkDoctorLLMCredentials(report *doctorReport, cfg config.Config, configPa
 		if !ok {
 			continue
 		}
-		parts = append(parts, fmt.Sprintf("%s=%s/%s(auth=%s)", r.Tier, r.Kind, r.Model, r.AuthMode))
+		part := fmt.Sprintf("%s=%s/%s(auth=%s)", r.Tier, r.Kind, r.Model, r.AuthMode)
+		// Only when set: these are opt-in knobs, and printing "max=0" on
+		// every tier would bury the tiers that actually carry one.
+		if r.MaxTokens > 0 {
+			part += fmt.Sprintf("[max=%d]", r.MaxTokens)
+		}
+		if len(r.BetaFeatures) > 0 {
+			part += fmt.Sprintf("[beta=%s]", strings.Join(r.BetaFeatures, ","))
+		}
+		parts = append(parts, part)
 	}
 	report.add("ok", "llm credentials", strings.Join(parts, " "))
 }

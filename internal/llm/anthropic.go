@@ -10,11 +10,76 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/devlikebear/tars/internal/llmdefaults"
 	zlog "github.com/rs/zerolog/log"
 )
 
 const anthropicAPIVersion = "2023-06-01"
-const anthropicPromptCachingBeta = "prompt-caching-2024-07-31"
+
+// anthropicFallbackMaxTokens is the last-resort output ceiling for a model
+// llmdefaults does not recognize — gateway-hosted models reached over an
+// Anthropic-compatible endpoint, mostly. It is deliberately conservative:
+// a too-low ceiling truncates a response, but a too-high one is rejected
+// outright by the provider.
+const anthropicFallbackMaxTokens = 4096
+
+// anthropicDefaultMaxTokensCeiling caps what a tier gets *by default*, as
+// distinct from what it may ask for.
+//
+// The current families document a 128000 ceiling, but this client shares one
+// 30-second HTTPTimeout (http_utils.go) across streaming and non-streaming
+// calls, and Ask/askFromSinglePrompt — `tars --message`, the compactor, pulse,
+// the memory hooks — never streams. Handing those paths a 128000 ceiling
+// silently converts a clean truncation into a timeout on any genuinely long
+// generation. Anthropic's own guidance puts non-streaming requests around
+// 16000 for the same reason, against a far more generous SDK timeout.
+//
+// A tier that wants the model's full ceiling states max_tokens explicitly —
+// which is the point of making the field configurable.
+const anthropicDefaultMaxTokensCeiling = 16000
+
+// resolveAnthropicMaxTokens picks the effective output ceiling for a request.
+//
+// An explicit setting always wins, uncapped: it is the only way to reach a
+// limit TARS does not know about, and the operator asking for one has
+// accepted its consequences. An unset tier takes the model's documented
+// ceiling, capped for the reason above; a model with no documented ceiling
+// falls back further still.
+//
+// Both construction paths (NewProvider and NewAnthropicClient) route through
+// here so the two cannot drift: external consumers of pkg/llm get the same
+// defaults as the TARS router.
+func resolveAnthropicMaxTokens(model string, configured int) int {
+	if configured > 0 {
+		return configured
+	}
+	if documented := llmdefaults.MaxOutputTokens(model); documented > 0 {
+		return min(documented, anthropicDefaultMaxTokensCeiling)
+	}
+	zlog.Debug().
+		Str("provider", "anthropic").
+		Str("model", model).
+		Int("max_tokens", anthropicFallbackMaxTokens).
+		Msg("no documented output ceiling for model; using fallback — set max_tokens on the tier to raise it")
+	return anthropicFallbackMaxTokens
+}
+
+// anthropicBetaHeader joins the tier's beta flags into one anthropic-beta
+// header value, or returns "" when the request should carry no header.
+//
+// The default set is empty on purpose. Prompt caching went GA, so the
+// beta flag this client used to send unconditionally did nothing except
+// occupy the only header slot — and it was sent to third-party
+// Anthropic-compatible gateways that never asked for it.
+func anthropicBetaHeader(features []string) string {
+	cleaned := make([]string, 0, len(features))
+	for _, feature := range features {
+		if trimmed := strings.TrimSpace(feature); trimmed != "" {
+			cleaned = append(cleaned, trimmed)
+		}
+	}
+	return strings.Join(cleaned, ",")
+}
 
 const (
 	// anthropicMaxCacheBreakpoints is the provider-wide limit on cache_control
@@ -170,10 +235,7 @@ func NewAnthropicClient(baseURL, apiKey, model string, maxTokens int) (*Anthropi
 		return nil, err
 	}
 
-	if maxTokens <= 0 {
-		maxTokens = 4096
-	}
-	config.MaxTokens = maxTokens
+	config.MaxTokens = resolveAnthropicMaxTokens(model, maxTokens)
 
 	return newAnthropicClientWithConfig(baseURL, apiKey, model, config)
 }
@@ -194,16 +256,21 @@ func (c *AnthropicClient) Chat(ctx context.Context, messages []ChatMessage, opts
 	logChatRequestStart("anthropic", c.model, url, len(messages), streaming, len(opts.Tools), opts.ToolChoice.String())
 
 	reqBody := c.buildChatRequest(messages, opts, streaming)
+	headers := map[string]string{
+		"x-api-key":         c.apiKey,
+		"anthropic-version": anthropicAPIVersion,
+		"content-type":      "application/json",
+	}
+	// Absent, not empty: an empty anthropic-beta is still a header the
+	// gateway has to interpret.
+	if beta := anthropicBetaHeader(c.config.BetaFeatures); beta != "" {
+		headers["anthropic-beta"] = beta
+	}
 	_, resp, err := executeJSONChatRequest(ctx, jsonRequestSpec{
 		Provider: "anthropic",
 		URL:      url,
-		Headers: map[string]string{
-			"x-api-key":         c.apiKey,
-			"anthropic-version": anthropicAPIVersion,
-			"anthropic-beta":    anthropicPromptCachingBeta,
-			"content-type":      "application/json",
-		},
-		Body: reqBody,
+		Headers:  headers,
+		Body:     reqBody,
 	}, c.httpClient, streaming)
 	if err != nil {
 		return ChatResponse{}, err

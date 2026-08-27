@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -47,7 +48,7 @@ func TestNewOpenAICompatibleClientWithConfig_UsesConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new client: %v", err)
 	}
-	if client.config != cfg {
+	if !reflect.DeepEqual(client.config, cfg) {
 		t.Fatalf("expected config %+v, got %+v", cfg, client.config)
 	}
 	if client.httpClient.Timeout != cfg.HTTPTimeout {
@@ -74,7 +75,7 @@ func TestNewAnthropicClientWithConfig_UsesMaxTokensFromConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new client: %v", err)
 	}
-	if client.config != cfg {
+	if !reflect.DeepEqual(client.config, cfg) {
 		t.Fatalf("expected config %+v, got %+v", cfg, client.config)
 	}
 	if client.httpClient.Timeout != cfg.HTTPTimeout {
@@ -107,7 +108,7 @@ func TestNewGeminiNativeClientWithConfig_UsesConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new client: %v", err)
 	}
-	if client.config != cfg {
+	if !reflect.DeepEqual(client.config, cfg) {
 		t.Fatalf("expected config %+v, got %+v", cfg, client.config)
 	}
 	if client.httpClient.Timeout != cfg.HTTPTimeout {
