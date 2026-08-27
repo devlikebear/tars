@@ -45,10 +45,13 @@ func TestResolveAnthropicMaxTokens(t *testing.T) {
 	}{
 		{"explicit setting wins over documented default", "claude-opus-5", 8192, 8192},
 		{"explicit setting wins for unknown model", "MiniMax-M2.7", 32000, 32000},
-		{"unset falls to the documented ceiling", "claude-opus-5", 0, 128000},
-		{"unset falls to the documented ceiling for haiku", "claude-haiku-4-5", 0, 64000},
+		// An explicit setting is uncapped — reaching the model's full
+		// ceiling is exactly what the tier field is for.
+		{"explicit setting is not capped", "claude-opus-5", 128000, 128000},
+		{"unset is capped below the documented ceiling", "claude-opus-5", 0, anthropicDefaultMaxTokensCeiling},
+		{"unset is capped for haiku too", "claude-haiku-4-5", 0, anthropicDefaultMaxTokensCeiling},
 		{"unknown model falls back", "MiniMax-M2.7", 0, anthropicFallbackMaxTokens},
-		{"negative is treated as unset", "claude-opus-5", -1, 128000},
+		{"negative is treated as unset", "claude-opus-5", -1, anthropicDefaultMaxTokensCeiling},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -82,8 +85,22 @@ func TestNewProvider_AnthropicDefaultsFromModel(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected *AnthropicClient, got %T", client)
 	}
-	if anthropic.config.MaxTokens != 128000 {
-		t.Fatalf("MaxTokens = %d, want 128000 (documented ceiling)", anthropic.config.MaxTokens)
+	if anthropic.config.MaxTokens != anthropicDefaultMaxTokensCeiling {
+		t.Fatalf("MaxTokens = %d, want %d (capped default)", anthropic.config.MaxTokens, anthropicDefaultMaxTokensCeiling)
+	}
+}
+
+func TestResolveAnthropicMaxTokens_DefaultStaysUnderTheNonStreamingBudget(t *testing.T) {
+	// Ask/askFromSinglePrompt never streams and shares the 30s HTTPTimeout,
+	// so an unset tier must not inherit a ceiling that turns a clean
+	// truncation into a timeout. Explicit settings are the escape hatch.
+	if anthropicDefaultMaxTokensCeiling >= 128000 {
+		t.Fatalf("default ceiling %d does not cap the documented 128000", anthropicDefaultMaxTokensCeiling)
+	}
+	for _, model := range []string{"claude-opus-5", "claude-fable-5", "claude-sonnet-5", "claude-haiku-4-5"} {
+		if got := resolveAnthropicMaxTokens(model, 0); got > anthropicDefaultMaxTokensCeiling {
+			t.Errorf("default for %q = %d, want <= %d", model, got, anthropicDefaultMaxTokensCeiling)
+		}
 	}
 }
 
@@ -113,8 +130,8 @@ func TestNewAnthropicClient_SharesTheProviderDefaulting(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new client: %v", err)
 	}
-	if client.config.MaxTokens != 64000 {
-		t.Fatalf("MaxTokens = %d, want 64000", client.config.MaxTokens)
+	if client.config.MaxTokens != anthropicDefaultMaxTokensCeiling {
+		t.Fatalf("MaxTokens = %d, want %d", client.config.MaxTokens, anthropicDefaultMaxTokensCeiling)
 	}
 }
 

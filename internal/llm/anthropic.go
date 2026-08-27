@@ -23,11 +23,28 @@ const anthropicAPIVersion = "2023-06-01"
 // outright by the provider.
 const anthropicFallbackMaxTokens = 4096
 
+// anthropicDefaultMaxTokensCeiling caps what a tier gets *by default*, as
+// distinct from what it may ask for.
+//
+// The current families document a 128000 ceiling, but this client shares one
+// 30-second HTTPTimeout (http_utils.go) across streaming and non-streaming
+// calls, and Ask/askFromSinglePrompt — `tars --message`, the compactor, pulse,
+// the memory hooks — never streams. Handing those paths a 128000 ceiling
+// silently converts a clean truncation into a timeout on any genuinely long
+// generation. Anthropic's own guidance puts non-streaming requests around
+// 16000 for the same reason, against a far more generous SDK timeout.
+//
+// A tier that wants the model's full ceiling states max_tokens explicitly —
+// which is the point of making the field configurable.
+const anthropicDefaultMaxTokensCeiling = 16000
+
 // resolveAnthropicMaxTokens picks the effective output ceiling for a request.
 //
-// An explicit setting always wins — it is the only way to reach a limit
-// TARS does not know about. Otherwise the model's documented ceiling
-// applies, and only a model with no documented ceiling falls back.
+// An explicit setting always wins, uncapped: it is the only way to reach a
+// limit TARS does not know about, and the operator asking for one has
+// accepted its consequences. An unset tier takes the model's documented
+// ceiling, capped for the reason above; a model with no documented ceiling
+// falls back further still.
 //
 // Both construction paths (NewProvider and NewAnthropicClient) route through
 // here so the two cannot drift: external consumers of pkg/llm get the same
@@ -37,7 +54,7 @@ func resolveAnthropicMaxTokens(model string, configured int) int {
 		return configured
 	}
 	if documented := llmdefaults.MaxOutputTokens(model); documented > 0 {
-		return documented
+		return min(documented, anthropicDefaultMaxTokensCeiling)
 	}
 	zlog.Debug().
 		Str("provider", "anthropic").
