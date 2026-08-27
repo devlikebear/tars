@@ -92,8 +92,12 @@ func TestAnthropicChat_IncludesToolsAndParsesToolUse(t *testing.T) {
 	if thinkingRaw["type"] != "enabled" {
 		t.Fatalf("expected thinking.type enabled, got %+v", thinkingRaw)
 	}
-	if thinkingRaw["budget_tokens"] != float64(4096) {
-		t.Fatalf("expected thinking.budget_tokens 4096, got %+v", thinkingRaw)
+	// The requested budget equals max_tokens, which the provider rejects —
+	// budget_tokens must sit strictly below it and leave room for the answer.
+	// buildAnthropicThinking clamps it to max_tokens minus the output
+	// headroom instead of shipping the invalid pair.
+	if thinkingRaw["budget_tokens"] != float64(4096-anthropicThinkingOutputHeadroom) {
+		t.Fatalf("expected thinking.budget_tokens clamped to %d, got %+v", 4096-anthropicThinkingOutputHeadroom, thinkingRaw)
 	}
 
 	if len(resp.Message.ToolCalls) != 1 {

@@ -1,0 +1,92 @@
+//go:build integration
+
+package llm
+
+import (
+	"context"
+	"os"
+	"strings"
+	"testing"
+	"time"
+)
+
+// TestAnthropicThinkingToolLoopLive drives the real Messages API through the
+// exact shape LP-003 exists to fix: extended thinking enabled *and* tools
+// present, across more than one loop iteration. Before this change the second
+// iteration replayed the assistant turn without its signed thinking blocks and
+// the API rejected it.
+//
+// It needs a key and skips without one:
+//
+//	ANTHROPIC_API_KEY=... go test -tags integration ./internal/llm/ -run TestAnthropicThinkingToolLoopLive -v
+func TestAnthropicThinkingToolLoopLive(t *testing.T) {
+	apiKey := strings.TrimSpace(os.Getenv("ANTHROPIC_API_KEY"))
+	if apiKey == "" {
+		t.Skip("anthropic api key not available: set ANTHROPIC_API_KEY")
+	}
+	model := strings.TrimSpace(os.Getenv("ANTHROPIC_TEST_MODEL"))
+	if model == "" {
+		model = "claude-sonnet-4-5"
+	}
+
+	client, err := NewProvider(ProviderOptions{
+		Provider:  "anthropic",
+		Model:     model,
+		APIKey:    apiKey,
+		BaseURL:   "https://api.anthropic.com",
+		MaxTokens: 8192,
+		// The whole point: an effort level, not a hand-written budget.
+		ReasoningEffort: "low",
+	})
+	if err != nil {
+		t.Fatalf("new provider: %v", err)
+	}
+
+	tools := []ToolSchema{{
+		Type: "function",
+		Function: ToolFunctionSchema{
+			Name:        "lookup_city_population",
+			Description: "Return the population of a city.",
+			Parameters:  []byte(`{"type":"object","properties":{"city":{"type":"string"}},"required":["city"]}`),
+		},
+	}}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+
+	messages := []ChatMessage{{
+		Role:    "user",
+		Content: "Use the lookup_city_population tool for Seoul, then tell me the number you got.",
+	}}
+
+	first, err := client.Chat(ctx, messages, ChatOptions{Tools: tools, ToolChoice: ToolChoiceRequired()})
+	if err != nil {
+		t.Fatalf("first turn: %v", err)
+	}
+	if len(first.Message.ToolCalls) == 0 {
+		t.Fatalf("expected a tool call, got %+v", first.Message)
+	}
+	if len(first.Message.ReasoningBlocks) == 0 {
+		t.Fatalf("expected reasoning blocks on a thinking turn, got %+v", first.Message)
+	}
+	for _, block := range first.Message.ReasoningBlocks {
+		if block.Type == ReasoningBlockThinking && strings.TrimSpace(block.Signature) == "" {
+			t.Fatalf("thinking block came back unsigned: %+v", block)
+		}
+	}
+
+	// Replay the assistant turn plus a tool result. This is the request that
+	// used to fail.
+	messages = append(messages, first.Message, ChatMessage{
+		Role:       "tool",
+		ToolCallID: first.Message.ToolCalls[0].ID,
+		Content:    "9650000",
+	})
+	second, err := client.Chat(ctx, messages, ChatOptions{Tools: tools})
+	if err != nil {
+		t.Fatalf("second turn (thinking block replay): %v", err)
+	}
+	if !strings.Contains(second.Message.Content, "9,650,000") && !strings.Contains(second.Message.Content, "9650000") {
+		t.Errorf("second turn did not use the tool result: %q", second.Message.Content)
+	}
+}

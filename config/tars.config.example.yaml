@@ -47,6 +47,25 @@ llm:
   # See internal/llm/role.go for the canonical role list. Each tier binds
   # one provider alias + one model — credentials live at the provider
   # level so multiple tiers can share the same alias.
+  #
+  # reasoning_effort accepts none | minimal | low | medium | high. It is a
+  # provider-agnostic hint, so each provider renders it in its own terms.
+  # On kind: anthropic the Messages API has no native effort control, so
+  # the level becomes an extended-thinking budget:
+  #
+  #   none     thinking off
+  #   minimal  1024 tokens (the provider floor)
+  #   low      2048
+  #   medium   8192
+  #   high     16384
+  #
+  # The budget is then clamped to leave room for the answer under the
+  # tier's output cap, which is pinned at 4096 until it becomes
+  # configurable — so today every level above minimal lands on 3072.
+  # thinking_budget, where set, is the more specific knob and outranks
+  # reasoning_effort. Third-party gateways served over the Anthropic
+  # protocol receive the same thinking block; one that does not implement
+  # extended thinking may reject or ignore it.
   providers:
     default:
       kind: anthropic

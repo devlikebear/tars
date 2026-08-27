@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
 
 	zlog "github.com/rs/zerolog/log"
@@ -25,6 +26,98 @@ const (
 	// rolling window: the newest completed turn plus one older fallback.
 	anthropicMaxMessageCacheBreakpoints = 2
 )
+
+const (
+	// anthropicMinThinkingBudget is the provider's floor for
+	// thinking.budget_tokens. A request below it is rejected outright.
+	anthropicMinThinkingBudget = 1024
+	// anthropicThinkingOutputHeadroom is how much of max_tokens is held back
+	// for the visible answer. budget_tokens must be strictly below
+	// max_tokens, and a budget that eats all of it leaves the model no room
+	// to reply, so derived budgets are clamped to max_tokens minus this.
+	anthropicThinkingOutputHeadroom = 1024
+)
+
+// anthropicThinkingBudgetForEffort maps the provider-agnostic
+// reasoning_effort levels onto Anthropic thinking budgets. The Messages API
+// exposes no native effort control — extended thinking is budgeted in tokens —
+// so the levels are rendered as budgets here:
+//
+//	effort   budget_tokens
+//	none     0 (thinking stays off)
+//	minimal  1024 (the provider floor)
+//	low      2048
+//	medium   8192
+//	high     16384
+//
+// The result is a request, not a guarantee: buildAnthropicThinking clamps it
+// against max_tokens, which is pinned at 4096 until LP-004 (#923) makes it
+// tier-configurable. At that cap everything above minimal lands on 3072.
+func anthropicThinkingBudgetForEffort(effort string) int {
+	switch effort {
+	case "minimal":
+		return anthropicMinThinkingBudget
+	case "low":
+		return 2048
+	case "medium":
+		return 8192
+	case "high":
+		return 16384
+	default: // "" and "none"
+		return 0
+	}
+}
+
+// buildAnthropicThinking resolves the request's thinking block, or nil when
+// extended thinking stays off.
+//
+// An explicit thinking_budget is the more specific knob and outranks
+// reasoning_effort; only when none is set does the effort level derive one.
+// Whatever the source, the budget is clamped into the range the provider will
+// accept: at least anthropicMinThinkingBudget, and low enough to leave
+// anthropicThinkingOutputHeadroom of max_tokens for the answer. When those two
+// cannot both hold, thinking degrades off with a warning rather than shipping
+// a request the provider rejects.
+func buildAnthropicThinking(config ClientConfig, opts ChatOptions, maxTokens int) map[string]any {
+	source := "thinking_budget"
+	budget := effectiveThinkingBudget(config, opts)
+	effort := effectiveReasoningEffort(config, opts)
+	if budget <= 0 {
+		source = "reasoning_effort"
+		budget = anthropicThinkingBudgetForEffort(effort)
+	}
+	if budget <= 0 {
+		return nil
+	}
+
+	ceiling := maxTokens - anthropicThinkingOutputHeadroom
+	if ceiling < anthropicMinThinkingBudget {
+		zlog.Warn().
+			Str("provider", "anthropic").
+			Str("reasoning_effort", effort).
+			Int("requested_budget", budget).
+			Int("max_tokens", maxTokens).
+			Msg("thinking disabled: max_tokens leaves no room for a thinking budget")
+		return nil
+	}
+	if budget > ceiling {
+		budget = ceiling
+	}
+	if budget < anthropicMinThinkingBudget {
+		budget = anthropicMinThinkingBudget
+	}
+	zlog.Debug().
+		Str("provider", "anthropic").
+		Str("budget_source", source).
+		Str("reasoning_effort", effort).
+		Int("thinking_budget", budget).
+		Int("max_tokens", maxTokens).
+		Msg("anthropic extended thinking enabled")
+	return map[string]any{
+		"type":          "enabled",
+		"budget_tokens": budget,
+	}
+}
 
 // anthropicEphemeralCacheControl builds one cache_control marker. Every
 // breakpoint this client emits — system block, tool definition, message —
@@ -159,11 +252,8 @@ func (c *AnthropicClient) buildChatRequest(messages []ChatMessage, opts ChatOpti
 		"max_tokens": c.config.MaxTokens,
 		"messages":   wireMessages,
 	}
-	if budget := effectiveThinkingBudget(c.config, opts); budget > 0 {
-		reqBody["thinking"] = map[string]any{
-			"type":          "enabled",
-			"budget_tokens": budget,
-		}
+	if thinking := buildAnthropicThinking(c.config, opts, c.config.MaxTokens); thinking != nil {
+		reqBody["thinking"] = thinking
 	}
 	if len(systemMessages) > 0 {
 		reqBody["system"] = toAnthropicSystemBlocks(systemMessages)
@@ -333,11 +423,12 @@ func (c *AnthropicClient) chatNonStreamingResponse(body io.Reader) (ChatResponse
 	if err := json.Unmarshal(respBody, &parsed); err != nil {
 		return ChatResponse{}, newProviderError("anthropic", "parse", fmt.Errorf("decode response: %w", err))
 	}
-	content, toolCalls := parseAnthropicContentBlocks(parsed.Content)
+	content, toolCalls, reasoningBlocks := parseAnthropicContentBlocks(parsed.Content)
 	zlog.Debug().
 		Str("provider", "anthropic").
 		Int("assistant_len", len(content)).
 		Int("tool_call_count", len(toolCalls)).
+		Int("reasoning_block_count", len(reasoningBlocks)).
 		Int("input_tokens", parsed.Usage.InputTokens).
 		Int("output_tokens", parsed.Usage.OutputTokens).
 		Str("stop_reason", parsed.StopReason).
@@ -345,9 +436,11 @@ func (c *AnthropicClient) chatNonStreamingResponse(body io.Reader) (ChatResponse
 
 	return ChatResponse{
 		Message: ChatMessage{
-			Role:      "assistant",
-			Content:   content,
-			ToolCalls: toolCalls,
+			Role:             "assistant",
+			Content:          content,
+			ToolCalls:        toolCalls,
+			ReasoningBlocks:  reasoningBlocks,
+			ReasoningContent: flattenReasoningBlocks(reasoningBlocks),
 		},
 		Usage: Usage{
 			InputTokens:      parsed.Usage.InputTokens,
@@ -369,6 +462,10 @@ func (c *AnthropicClient) chatStreamingResponse(body io.Reader, onDelta func(tex
 		toolCallsByIndex = map[int]ToolCall{}
 		toolInputByIndex = map[int]string{}
 		thinkingByIndex  = map[int]bool{}
+		// Reasoning blocks are keyed by their stream index and re-ordered by
+		// it at the end, because signature_delta for one block can arrive
+		// after another block has already started.
+		reasoningByIndex = map[int]*ReasoningBlock{}
 	)
 
 	scanner := createSSEScanner(body)
@@ -410,8 +507,13 @@ func (c *AnthropicClient) chatStreamingResponse(body io.Reader, onDelta func(tex
 				builder.WriteString(parsed.ContentBlock.Text)
 				zlog.Debug().Str("provider", "anthropic").Int("delta_len", len(parsed.ContentBlock.Text)).Str("delta", truncateForLog(parsed.ContentBlock.Text, 4000)).Msg("llm stream delta")
 				onDelta(parsed.ContentBlock.Text)
-			case "thinking":
+			case ReasoningBlockThinking:
 				thinkingByIndex[parsed.Index] = true
+				reasoningByIndex[parsed.Index] = &ReasoningBlock{
+					Type:      ReasoningBlockThinking,
+					Text:      parsed.ContentBlock.Thinking,
+					Signature: parsed.ContentBlock.Signature,
+				}
 				if parsed.ContentBlock.Thinking == "" {
 					continue
 				}
@@ -419,6 +521,15 @@ func (c *AnthropicClient) chatStreamingResponse(body io.Reader, onDelta func(tex
 				zlog.Debug().Str("provider", "anthropic").Int("delta_len", len(parsed.ContentBlock.Thinking)).Str("delta", truncateForLog(parsed.ContentBlock.Thinking, 4000)).Msg("llm stream reasoning delta")
 				if onReasoningDelta != nil {
 					onReasoningDelta(parsed.ContentBlock.Thinking)
+				}
+			case ReasoningBlockRedacted:
+				// Redacted blocks carry no readable text and never receive
+				// deltas — the whole payload arrives here. Marking the index
+				// as thinking keeps any stray partial_json off a tool call.
+				thinkingByIndex[parsed.Index] = true
+				reasoningByIndex[parsed.Index] = &ReasoningBlock{
+					Type: ReasoningBlockRedacted,
+					Data: parsed.ContentBlock.Data,
 				}
 			case "tool_use":
 				prev := toolCallsByIndex[parsed.Index]
@@ -440,6 +551,7 @@ func (c *AnthropicClient) chatStreamingResponse(body io.Reader, onDelta func(tex
 					Type        string `json:"type"`
 					Text        string `json:"text"`
 					Thinking    string `json:"thinking"`
+					Signature   string `json:"signature"`
 					PartialJSON string `json:"partial_json"`
 				} `json:"delta"`
 			}
@@ -452,13 +564,30 @@ func (c *AnthropicClient) chatStreamingResponse(body io.Reader, onDelta func(tex
 				onDelta(parsed.Delta.Text)
 			}
 			if parsed.Delta.Thinking != "" || parsed.Delta.Type == "thinking_delta" {
+				thinkingByIndex[parsed.Index] = true
 				thinkingText := parsed.Delta.Thinking
 				if thinkingText != "" {
+					if block := reasoningByIndex[parsed.Index]; block != nil {
+						block.Text += thinkingText
+					} else {
+						reasoningByIndex[parsed.Index] = &ReasoningBlock{Type: ReasoningBlockThinking, Text: thinkingText}
+					}
 					reasoningBuilder.WriteString(thinkingText)
 					zlog.Debug().Str("provider", "anthropic").Int("delta_len", len(thinkingText)).Str("delta", truncateForLog(thinkingText, 4000)).Msg("llm stream reasoning delta")
 					if onReasoningDelta != nil {
 						onReasoningDelta(thinkingText)
 					}
+				}
+			}
+			// The signature closes a thinking block and is what makes it
+			// replayable; without it the block has to be dropped on the way
+			// back out.
+			if parsed.Delta.Signature != "" {
+				thinkingByIndex[parsed.Index] = true
+				if block := reasoningByIndex[parsed.Index]; block != nil {
+					block.Signature += parsed.Delta.Signature
+				} else {
+					reasoningByIndex[parsed.Index] = &ReasoningBlock{Type: ReasoningBlockThinking, Signature: parsed.Delta.Signature}
 				}
 			}
 			if parsed.Delta.PartialJSON != "" && !thinkingByIndex[parsed.Index] {
@@ -530,6 +659,7 @@ func (c *AnthropicClient) chatStreamingResponse(body io.Reader, onDelta func(tex
 		Role:             "assistant",
 		Content:          builder.String(),
 		ToolCalls:        toolCalls,
+		ReasoningBlocks:  orderedReasoningBlocks(reasoningByIndex),
 		ReasoningContent: reasoningBuilder.String(),
 	}
 	response.StopReason = stopReason
@@ -537,6 +667,7 @@ func (c *AnthropicClient) chatStreamingResponse(body io.Reader, onDelta func(tex
 		Str("provider", "anthropic").
 		Int("assistant_len", len(response.Message.Content)).
 		Int("tool_call_count", len(toolCalls)).
+		Int("reasoning_block_count", len(response.Message.ReasoningBlocks)).
 		Int("input_tokens", response.Usage.InputTokens).
 		Int("output_tokens", response.Usage.OutputTokens).
 		Str("stop_reason", response.StopReason).
@@ -545,12 +676,16 @@ func (c *AnthropicClient) chatStreamingResponse(body io.Reader, onDelta func(tex
 }
 
 type anthropicContentBlock struct {
-	Type     string          `json:"type"`
-	Text     string          `json:"text,omitempty"`
-	Thinking string          `json:"thinking,omitempty"`
-	ID       string          `json:"id,omitempty"`
-	Name     string          `json:"name,omitempty"`
-	Input    json.RawMessage `json:"input,omitempty"`
+	Type     string `json:"type"`
+	Text     string `json:"text,omitempty"`
+	Thinking string `json:"thinking,omitempty"`
+	// Signature authenticates a thinking block; Data is the opaque payload
+	// of a redacted_thinking block. Both round-trip untouched.
+	Signature string          `json:"signature,omitempty"`
+	Data      string          `json:"data,omitempty"`
+	ID        string          `json:"id,omitempty"`
+	Name      string          `json:"name,omitempty"`
+	Input     json.RawMessage `json:"input,omitempty"`
 }
 
 type anthropicWireMessage struct {
@@ -638,6 +773,14 @@ func toAnthropicContentBlocks(textContent string, blocks []ContentBlock) []map[s
 	return out
 }
 
+// toAnthropicAssistantMessage renders one stored assistant turn back onto the
+// wire.
+//
+// Thinking blocks are re-emitted only for turns that carry tool_use, and they
+// lead the block array. That is exactly what the provider asks for: with
+// extended thinking enabled it validates the signed thinking sequence of the
+// assistant turn a tool_result answers, and it ignores thinking blocks on
+// every other turn. Sending them anyway would grow the transcript for nothing.
 func toAnthropicAssistantMessage(msg ChatMessage) anthropicWireMessage {
 	if len(msg.ToolCalls) == 0 {
 		return anthropicWireMessage{
@@ -646,7 +789,9 @@ func toAnthropicAssistantMessage(msg ChatMessage) anthropicWireMessage {
 		}
 	}
 
-	blocks := make([]map[string]any, 0, len(msg.ToolCalls)+1)
+	reasoning := toAnthropicReasoningBlocks(msg.ReasoningBlocks)
+	blocks := make([]map[string]any, 0, len(msg.ToolCalls)+len(reasoning)+1)
+	blocks = append(blocks, reasoning...)
 	if strings.TrimSpace(msg.Content) != "" {
 		blocks = append(blocks, map[string]any{
 			"type": "text",
@@ -698,13 +843,29 @@ func toAnthropicToolResultMessage(msg ChatMessage) anthropicWireMessage {
 	}
 }
 
-func parseAnthropicContentBlocks(blocks []anthropicContentBlock) (string, []ToolCall) {
+// parseAnthropicContentBlocks splits one response content array into the
+// visible text, the tool calls, and the reasoning blocks. Reasoning blocks are
+// returned in wire order: Anthropic validates the sequence when it comes back,
+// so it must not be reordered or deduplicated.
+func parseAnthropicContentBlocks(blocks []anthropicContentBlock) (string, []ToolCall, []ReasoningBlock) {
 	var builder strings.Builder
 	toolCalls := make([]ToolCall, 0)
+	reasoning := make([]ReasoningBlock, 0)
 	for idx, block := range blocks {
 		switch block.Type {
 		case "text":
 			builder.WriteString(block.Text)
+		case ReasoningBlockThinking:
+			reasoning = append(reasoning, ReasoningBlock{
+				Type:      ReasoningBlockThinking,
+				Text:      block.Thinking,
+				Signature: block.Signature,
+			})
+		case ReasoningBlockRedacted:
+			reasoning = append(reasoning, ReasoningBlock{
+				Type: ReasoningBlockRedacted,
+				Data: block.Data,
+			})
 		case "tool_use":
 			if strings.TrimSpace(block.Name) == "" {
 				continue
@@ -720,10 +881,92 @@ func parseAnthropicContentBlocks(blocks []anthropicContentBlock) (string, []Tool
 			})
 		}
 	}
-	if len(toolCalls) == 0 {
-		return builder.String(), nil
+	if len(reasoning) == 0 {
+		reasoning = nil
 	}
-	return builder.String(), toolCalls
+	if len(toolCalls) == 0 {
+		return builder.String(), nil, reasoning
+	}
+	return builder.String(), toolCalls, reasoning
+}
+
+// toAnthropicReasoningBlocks renders stored reasoning blocks back onto the
+// wire, preserving their original order.
+//
+// A thinking block with no signature is dropped: the provider signs what it
+// emitted and rejects an unsigned block, so a transcript written before this
+// client captured signatures degrades to "no thinking replayed" instead of a
+// failed request. Redacted blocks are passed through unread.
+func toAnthropicReasoningBlocks(blocks []ReasoningBlock) []map[string]any {
+	if len(blocks) == 0 {
+		return nil
+	}
+	out := make([]map[string]any, 0, len(blocks))
+	for _, block := range blocks {
+		switch block.Type {
+		case ReasoningBlockThinking:
+			if strings.TrimSpace(block.Signature) == "" {
+				continue
+			}
+			out = append(out, map[string]any{
+				"type":      ReasoningBlockThinking,
+				"thinking":  block.Text,
+				"signature": block.Signature,
+			})
+		case ReasoningBlockRedacted:
+			if strings.TrimSpace(block.Data) == "" {
+				continue
+			}
+			out = append(out, map[string]any{
+				"type": ReasoningBlockRedacted,
+				"data": block.Data,
+			})
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// orderedReasoningBlocks flattens stream-indexed reasoning blocks back into
+// the order the provider emitted them.
+func orderedReasoningBlocks(m map[int]*ReasoningBlock) []ReasoningBlock {
+	if len(m) == 0 {
+		return nil
+	}
+	indices := make([]int, 0, len(m))
+	for idx := range m {
+		indices = append(indices, idx)
+	}
+	sort.Ints(indices)
+
+	out := make([]ReasoningBlock, 0, len(indices))
+	for _, idx := range indices {
+		block := m[idx]
+		if block == nil {
+			continue
+		}
+		out = append(out, *block)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// flattenReasoningBlocks renders the readable part of a reasoning sequence as
+// one string, which is what ReasoningContent and the console reasoning stream
+// consume. Redacted blocks contribute nothing — there is nothing to show.
+func flattenReasoningBlocks(blocks []ReasoningBlock) string {
+	var builder strings.Builder
+	for _, block := range blocks {
+		if block.Type != ReasoningBlockThinking {
+			continue
+		}
+		builder.WriteString(block.Text)
+	}
+	return builder.String()
 }
 
 func toAnthropicTools(tools []ToolSchema) []anthropicWireTool {

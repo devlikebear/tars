@@ -21,12 +21,49 @@ type ContentBlock struct {
 	Data      string `json:"data,omitempty"`       // base64-encoded binary
 }
 
+// Reasoning block types. They mirror Anthropic's wire names because that is
+// the only provider that requires the blocks to be replayed verbatim; other
+// providers either expose no reasoning blocks or carry their own metadata
+// (Gemini Native uses ToolCall.ThoughtSignature).
+const (
+	ReasoningBlockThinking = "thinking"
+	ReasoningBlockRedacted = "redacted_thinking"
+)
+
+// ReasoningBlock preserves one provider-native reasoning block from an
+// assistant turn so the turn can be replayed verbatim on a later request.
+//
+// Anthropic requires the signed thinking blocks of an assistant turn to be
+// echoed back whenever that turn also carries tool_use and extended thinking
+// is enabled; a turn replayed without them is rejected from the second
+// tool-loop iteration onward. Signature and Data are opaque provider tokens —
+// never inspect, reformat, or regenerate them.
+//
+// ReasoningContent stays the flattened, human-facing view of the same
+// reasoning; this is the structured form the wire needs back.
+type ReasoningBlock struct {
+	// Type is ReasoningBlockThinking or ReasoningBlockRedacted.
+	Type string `json:"type"`
+	// Text is the visible reasoning. Always empty for redacted blocks.
+	Text string `json:"text,omitempty"`
+	// Signature authenticates Text. A thinking block without one was never
+	// signed by the provider and cannot be replayed.
+	Signature string `json:"signature,omitempty"`
+	// Data is the opaque payload of a redacted block. It round-trips
+	// unread.
+	Data string `json:"data,omitempty"`
+}
+
 type ChatMessage struct {
 	Role          string         `json:"role"` // system, user, assistant, tool
 	Content       string         `json:"content"`
 	ContentBlocks []ContentBlock `json:"content_blocks,omitempty"` // multimodal content (takes priority over Content when non-empty)
 	ToolCalls     []ToolCall     `json:"tool_calls,omitempty"`
 	ToolCallID    string         `json:"tool_call_id,omitempty"`
+	// ReasoningBlocks preserves provider-native reasoning blocks of an
+	// assistant turn, in the order the provider emitted them. Providers that
+	// do not need them back leave the field empty and ignore it on input.
+	ReasoningBlocks []ReasoningBlock `json:"reasoning_blocks,omitempty"`
 	// ReasoningContent is provider-specific payload metadata for tool-calling
 	// requests. Kimi requires it on assistant messages that include tool calls.
 	ReasoningContent string `json:"reasoning_content,omitempty"`
