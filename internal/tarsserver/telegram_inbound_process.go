@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/devlikebear/tars/internal/agent"
+	"github.com/devlikebear/tars/internal/apptool"
 	"github.com/devlikebear/tars/internal/extensions"
 	"github.com/devlikebear/tars/internal/session"
 	"github.com/devlikebear/tars/internal/tool"
@@ -90,8 +91,8 @@ func (h *telegramInboundHandler) processMessage(
 		Source:    "chat",
 		SessionID: sessionID,
 	})
-	runCtx = tool.WithCurrentSessionInfo(runCtx, sessionID, sess.Kind)
-	runCtx = tool.WithCurrentTelegramTarget(runCtx, chatID, threadID, "telegram")
+	runCtx = apptool.WithCurrentSessionInfo(runCtx, sessionID, sess.Kind)
+	runCtx = apptool.WithCurrentTelegramTarget(runCtx, chatID, threadID, "telegram")
 
 	loop := agent.NewLoop(chatClient, registry)
 	resp, err := loop.Run(runCtx, llmMessages, agent.RunOptions{

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/devlikebear/tars/internal/apptool"
 	"github.com/devlikebear/tars/internal/buildinfo"
 	"github.com/devlikebear/tars/internal/config"
 	"github.com/devlikebear/tars/internal/llm"
@@ -18,7 +19,6 @@ import (
 	"github.com/devlikebear/tars/internal/serverauth"
 	"github.com/devlikebear/tars/internal/session"
 	"github.com/devlikebear/tars/internal/sessionoverride"
-	"github.com/devlikebear/tars/internal/tool"
 	"github.com/devlikebear/tars/internal/usage"
 	"github.com/devlikebear/tars/internal/workstore"
 	"github.com/rs/zerolog"
@@ -830,7 +830,7 @@ func newSessionAPIHandlerFullWithLocalSkillsAndWorkLedger(store *session.Store, 
 			if !decodeJSONBody(w, r, &raw) {
 				return
 			}
-			tasksTool := tool.NewTasksTool(reqStore, reqStore.WorkspaceDir(), func() string { return sessionID })
+			tasksTool := apptool.NewTasksTool(reqStore, reqStore.WorkspaceDir(), func() string { return sessionID })
 			result, execErr := tasksTool.Execute(context.Background(), raw)
 			if execErr != nil {
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": execErr.Error()})

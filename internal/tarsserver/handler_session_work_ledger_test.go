@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/devlikebear/tars/internal/apptool"
 	"github.com/devlikebear/tars/internal/session"
-	"github.com/devlikebear/tars/internal/tool"
 	"github.com/devlikebear/tars/internal/workstore"
 	"github.com/rs/zerolog"
 )
@@ -242,7 +242,7 @@ func TestTasksToolDirectSaveSynchronizesToWorkLedger(t *testing.T) {
 	}
 	ledger := openWorkLedgerHandlerTestStore(t)
 	_ = newSessionAPIHandlerWithWorkLedger(sessionStore, ledger, zerolog.Nop())
-	tasksTool := tool.NewTasksTool(sessionStore, root, func() string { return sess.ID })
+	tasksTool := apptool.NewTasksTool(sessionStore, root, func() string { return sess.ID })
 
 	for _, payload := range []string{
 		`{"action":"plan_set","goal":"Tool-synchronized plan"}`,

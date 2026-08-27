@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/devlikebear/tars/internal/agent"
+	"github.com/devlikebear/tars/internal/apptool"
 	"github.com/devlikebear/tars/internal/llm"
 	"github.com/devlikebear/tars/internal/session"
 	"github.com/devlikebear/tars/internal/tool"
@@ -58,7 +59,7 @@ func executeChatLoop(
 		stream.tasksChanged(tasks)
 	}
 	loop, toolCallRecords := setupAgentLoop(chatClient, state.registry, state.sessionID, len(state.history), deps.tooling.UsageTracker, deps.logger, stream.status, afterToolHook)
-	ctx = tool.WithCurrentSessionInfo(ctx, state.sessionID, state.sessionKind)
+	ctx = apptool.WithCurrentSessionInfo(ctx, state.sessionID, state.sessionKind)
 	ctx = tool.WithLineEmitter(ctx, stream)
 
 	deps.logger.Debug().Str("session_id", state.sessionID).Int("messages", len(state.llmMessages)).Msg("llm chat call start")

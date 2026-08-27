@@ -50,3 +50,19 @@ func aggregatorError(message string) Result {
 		"error": strings.TrimSpace(message),
 	}, true)
 }
+
+// DispatchAction and AggregatorError expose the two helpers above across the
+// package boundary, for the TARS-specific aggregators that live in
+// internal/apptool.
+//
+// They are wrappers rather than a rename of the originals on purpose. Inside
+// this package the helpers are ordinary internals and read better unexported;
+// what the app package needs is a small, deliberate seam, and naming it
+// separately makes it visible which calls cross a package boundary.
+func DispatchAction(params json.RawMessage, aliasFns ...func(map[string]json.RawMessage)) (json.RawMessage, string, error) {
+	return dispatchAction(params, aliasFns...)
+}
+
+func AggregatorError(message string) Result {
+	return aggregatorError(message)
+}

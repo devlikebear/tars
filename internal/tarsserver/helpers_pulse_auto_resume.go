@@ -7,13 +7,13 @@ import (
 	"time"
 
 	"github.com/devlikebear/tars/internal/agent"
+	"github.com/devlikebear/tars/internal/apptool"
 	"github.com/devlikebear/tars/internal/llm"
 	"github.com/devlikebear/tars/internal/ops"
 	"github.com/devlikebear/tars/internal/pulse"
 	"github.com/devlikebear/tars/internal/pulse/autofix"
 	"github.com/devlikebear/tars/internal/serverauth"
 	"github.com/devlikebear/tars/internal/session"
-	"github.com/devlikebear/tars/internal/tool"
 	"github.com/devlikebear/tars/internal/usage"
 	"github.com/rs/zerolog"
 )
@@ -123,7 +123,7 @@ func (c *sessionAutoResumeController) runAutoResumeTurn(ctx context.Context, can
 		return "", err
 	}
 	runCtx := usage.WithCallMeta(ctx, usage.CallMeta{Source: "pulse", SessionID: state.sessionID})
-	runCtx = tool.WithCurrentSessionInfo(runCtx, state.sessionID, state.sessionKind)
+	runCtx = apptool.WithCurrentSessionInfo(runCtx, state.sessionID, state.sessionKind)
 	if c.chatDeps.router != nil {
 		if _, resolution, err := c.chatDeps.router.ClientFor(llm.RoleChatMain); err == nil {
 			runCtx = llm.WithSelectionMetadata(runCtx, llm.SelectionMetadata{

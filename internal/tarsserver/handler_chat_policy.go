@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/devlikebear/tars/internal/apptool"
 	"github.com/devlikebear/tars/internal/config"
 	"github.com/devlikebear/tars/internal/extensions"
 	"github.com/devlikebear/tars/internal/llm"
@@ -36,28 +37,28 @@ func buildChatToolRegistry(
 	)
 
 	// Tasks aggregator (session-scoped plan + tasks)
-	registry.Register(tool.NewTasksTool(reqStore, requestWorkspaceDir, func() string { return sessionID }))
+	registry.Register(apptool.NewTasksTool(reqStore, requestWorkspaceDir, func() string { return sessionID }))
 
 	// Session aggregator + subagents
-	registry.Register(tool.NewSessionTool(reqStore, deps.tooling.AgentRuntime, func(_ context.Context) (tool.SessionStatus, error) {
+	registry.Register(apptool.NewSessionTool(reqStore, deps.tooling.AgentRuntime, func(_ context.Context) (tool.SessionStatus, error) {
 		return tool.SessionStatus{
 			SessionID:       sessionID,
 			HistoryMessages: len(history) + 1,
 		}, nil
 	}))
-	registry.Register(tool.NewSubagentsRunTool(deps.tooling.AgentRuntime))
-	subagentsTaskMirror := tool.SubagentsTaskMirrorConfig{
+	registry.Register(apptool.NewSubagentsRunTool(deps.tooling.AgentRuntime))
+	subagentsTaskMirror := apptool.SubagentsTaskMirrorConfig{
 		Store:        reqStore,
 		WorkspaceDir: requestWorkspaceDir,
 		GetSessionID: func() string { return sessionID },
 	}
 	if deps.tooling.WorkScheduler != nil {
-		registry.Register(tool.NewDurableSubagentsOrchestrateTool(deps.tooling.AgentRuntime, deps.tooling.WorkScheduler, subagentsTaskMirror))
+		registry.Register(apptool.NewDurableSubagentsOrchestrateTool(deps.tooling.AgentRuntime, deps.tooling.WorkScheduler, subagentsTaskMirror))
 	} else {
-		registry.Register(tool.NewSubagentsOrchestrateTool(deps.tooling.AgentRuntime, subagentsTaskMirror))
+		registry.Register(apptool.NewSubagentsOrchestrateTool(deps.tooling.AgentRuntime, subagentsTaskMirror))
 	}
 	if deps.router != nil {
-		registry.Register(tool.NewSubagentsPlanTool(deps.tooling.AgentRuntime, deps.router, subagentsTaskMirror))
+		registry.Register(apptool.NewSubagentsPlanTool(deps.tooling.AgentRuntime, deps.router, subagentsTaskMirror))
 	}
 
 	// Automation (cron aggregator; pulse/reflection live on the system surface)

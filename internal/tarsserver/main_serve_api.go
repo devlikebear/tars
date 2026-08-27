@@ -228,55 +228,17 @@ func buildAPIMux(
 	// It is assigned after agent runtime construction and used at runtime
 	// to append outbound Telegram records to agent runtime channel history.
 	var agentRuntimeForTelegram *agentruntime.Runtime
-	telegramSendTool := tool.NewTelegramSendTool(tool.TelegramSendFunc(func(ctx context.Context, req tool.TelegramSendRequest) (tool.TelegramSendResult, error) {
-		if telegramSender == nil {
-			return tool.TelegramSendResult{}, fmt.Errorf("telegram sender is not configured")
-		}
-		sendResult, err := telegramSender.Send(ctx, telegramSendRequest{
-			BotID:     strings.TrimSpace(req.BotID),
-			ChatID:    strings.TrimSpace(req.ChatID),
-			Text:      strings.TrimSpace(req.Text),
-			ThreadID:  strings.TrimSpace(req.ThreadID),
-			ParseMode: strings.TrimSpace(req.ParseMode),
-		})
-		if err != nil {
-			return tool.TelegramSendResult{}, err
-		}
-		if agentRuntimeForTelegram != nil {
-			recordPayload := map[string]any{
-				"provider": "telegram",
+	telegramSendTool := newTelegramSendTool(telegramSendToolDeps{
+		Sender:       telegramSender,
+		AgentRuntime: &agentRuntimeForTelegram,
+		ResolveDefaultChatID: func() (string, error) {
+			if telegramPairings == nil {
+				return "", nil
 			}
-			if botID := strings.TrimSpace(req.BotID); botID != "" {
-				recordPayload["bot_id"] = botID
-			}
-			if parseMode := strings.TrimSpace(req.ParseMode); parseMode != "" {
-				recordPayload["parse_mode"] = parseMode
-			}
-			if sendResult.MessageID > 0 {
-				recordPayload["message_id"] = sendResult.MessageID
-			}
-			if sendResult.ChatID != "" {
-				recordPayload["provider_chat_id"] = sendResult.ChatID
-			}
-			if sendResult.Text != "" {
-				recordPayload["provider_text"] = sendResult.Text
-			}
-			if _, recordErr := agentRuntimeForTelegram.OutboundTelegram(req.BotID, req.ChatID, req.ThreadID, req.Text, recordPayload); recordErr != nil {
-				logger.Debug().Err(recordErr).Str("chat_id", strings.TrimSpace(req.ChatID)).Msg("telegram_send tool agent runtime record failed")
-			}
-		}
-		return tool.TelegramSendResult{
-			MessageID: sendResult.MessageID,
-			ChatID:    sendResult.ChatID,
-			Text:      sendResult.Text,
-		}, nil
-	}), cfg.ChannelsTelegramEnabled, tool.TelegramDefaultChatIDResolveFunc(func(ctx context.Context) (string, error) {
-		_ = ctx
-		if telegramPairings == nil {
-			return "", nil
-		}
-		return telegramPairings.resolveDefaultChatID()
-	}))
+			return telegramPairings.resolveDefaultChatID()
+		},
+		Logger: logger,
+	}, cfg.ChannelsTelegramEnabled)
 	apiRunPromptWithTools := deps.runPromptWithTools
 	if cfg.ChannelsTelegramEnabled {
 		if runnerWithTelegram := newAgentPromptRunnerWithToolsAndMemory(
