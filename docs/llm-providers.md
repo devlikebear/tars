@@ -2,7 +2,11 @@
 
 How each `internal/llm` provider handles the fields in `llm.ChatOptions`. Caller-side reference so you don't have to grep the wire-format converter to know whether a knob takes effect.
 
-> Last updated post-PR #380/#381/#382 (ID-004 Phase 1+2+wrap-up). Source of truth: the converter functions in `internal/llm/`. If this table disagrees with the code, the code wins — file an issue.
+> **Source of truth: `internal/llm/capabilities.go`.** That file declares what each provider supports, and the conformance suite in `conformance_test.go` verifies each declaration against real client behavior with a stub transport. A wrong declaration is a failing test, not a stale table.
+>
+> This page stays hand-written because it carries the *wire-level* detail — exact JSON shapes, error codes, CLI flags — that a boolean matrix cannot. Where the two disagree, `capabilities.go` and its tests win.
+>
+> Requesting a capability a provider does not declare now produces a warning at provider construction naming the setting and the provider (`reportUnsupportedCapabilities`). Nothing is dropped in silence any more.
 
 ## Providers
 
@@ -28,9 +32,9 @@ How each `internal/llm` provider handles the fields in `llm.ChatOptions`. Caller
 | `ResponseFormat` text        | ✅ (default) | ✅  | ✅   | ✅           | ✅              | ❌ (silent)   | ❌ (silent)     | ✅ (default) |
 | `ResponseFormat` json_object | ❌ (silent) | ✅  | ✅   | ✅           | ✅              | ❌ (silent)   | ❌ (silent)     | ❌ (silent) |
 | `ResponseFormat` json_schema | ❌ (silent) | ✅  | ✅   | ✅           | ✅              | ❌ (silent)   | ❌ (silent)     | ✅ `--json-schema` |
-| `ReasoningEffort`            | ❌ (silent) | ✅  | ✅   | ✅           | ❌ (skipped)    | partial¹      | ❌ (silent)     | ✅ `--effort` |
-| `ThinkingBudget`             | ✅        | ❌     | ❌   | ❌           | ❌              | ✅            | ❌ (silent)     | ❌ (silent) |
-| `ServiceTier`                | ❌ (silent) | ✅  | ✅   | ✅           | ❌ (skipped)    | ❌ (silent)   | ❌ (silent)     | ❌ (silent) |
+| `ReasoningEffort`            | ✅⁴       | ✅     | ✅⁵  | ❌ (dropped)⁶ | ❌ (warned)    | partial¹      | ❌ (warned)     | ✅ `--effort` |
+| `ThinkingBudget`             | ✅⁴       | ❌     | ❌   | ❌           | ❌              | ✅            | ❌ (silent)     | ❌ (silent) |
+| `ServiceTier`                | ❌ (warned) | ✅  | ✅⁵  | ❌ (dropped)⁶ | ❌ (warned)    | ❌ (warned)   | ❌ (warned)     | ❌ (warned) |
 | `ResumeSessionID`            | ❌ (silent) | ❌  | ❌   | ❌           | ❌              | ❌            | ✅ `--resume`   | ✅ `--conversation` |
 | `ClaudeCodeMCPServers`       | ❌ (silent) | ❌  | ❌   | ❌           | ❌              | ❌            | ✅ temporary config | ❌ (silent) |
 | `ClaudeCodePermissionMode`   | ❌ (silent) | ❌  | ❌   | ❌           | ❌              | ❌            | ✅ validated mode | ❌ (silent) |
@@ -44,6 +48,22 @@ How each `internal/llm` provider handles the fields in `llm.ChatOptions`. Caller
 ¹ Gemini-native maps `ReasoningEffort` to `thinkingBudget` heuristically; explicit `ThinkingBudget` overrides.
 ² Returns a `pdf_unsupported_by_provider` ProviderError at build time (RF-046). Convert PDFs to text/images before sending.
 ³ Gemini-native accepts inline base64 PDFs but currently has no caching path — large PDFs are re-uploaded each turn.
+⁴ Anthropic renders reasoning depth by model generation (#943): adaptive-thinking models take `output_config.effort`, budget-generation models take `thinking.budget_tokens`. `ThinkingBudget` is rejected at config-resolve time on an adaptive model — it cannot be expressed there.
+⁵ Kimi drops both on tool-calling turns; the Moonshot endpoint rejects the pair alongside `tools`.
+⁶ `openai-codex` is constructed with `DefaultClientConfig()` in `NewProvider`, which discards `MaxTokens`, `ReasoningEffort`, `ServiceTier`, and `BetaFeatures` before they reach the client — the codex client implements `reasoning_effort` and `service_tier`, but nothing hands them to it. Declared unsupported so the settings warn rather than vanish; wiring the tier's knobs through is separate work, tracked outside this epic.
+
+"(warned)" means the setting is accepted by config, found unsupported at provider construction, and logged — see `reportUnsupportedCapabilities`. "(silent)" marks the fields that still have no capability entry because they are provider-specific request plumbing rather than portable knobs.
+
+## Adding a provider
+
+1. Add the construction case to `NewProvider` in `internal/llm/provider.go`.
+2. Add a `providerCapabilities` entry in `internal/llm/capabilities.go`. **This is not optional** — `TestEveryProviderKindDeclaresCapabilities` fails the build for a constructible kind with no declaration, and for a declaration naming a kind that cannot be built.
+3. If the provider speaks HTTP, add a `conformanceProvider` row to `conformanceProviders()` in `conformance_test.go` with its chat path, base-URL suffix, and three canned response bodies (plain, tool call, usage). The whole scenario table then runs against it.
+4. Run the suite. Declarations are verified against real behavior, so a capability you claimed but did not implement fails immediately — as does one you implemented but did not declare (`TestConformance_ServiceTierReachesTheRequestOnlyWhereDeclared` checks both directions).
+
+CLI-backed providers are declared but not run through the scenario table: driving them needs a process stub, and `internal/llm` must stay Windows-clean. Cover their conversion logic with pure-function tests instead, the way `antigravity_cli_test.go` parses its NDJSON stream without a subprocess.
+
+The suite makes no network calls. Live tests live behind `//go:build integration` and skip without credentials.
 
 ## Wire format details
 

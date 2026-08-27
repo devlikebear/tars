@@ -345,6 +345,10 @@ func NewProvider(opts ProviderOptions) (Client, error) {
 		Str("model", strings.TrimSpace(opts.Model)).
 		Str("base_url", strings.TrimSpace(opts.BaseURL)).
 		Msg("llm new provider request")
+	// Say once, here, what this provider will quietly drop. A tier's
+	// settings are fixed for the life of its client, so a per-request
+	// warning would only repeat this.
+	reportUnsupportedCapabilities(provider, opts)
 
 	if provider == "openai-codex" {
 		zlog.Debug().Str("provider", provider).Msg("llm provider ready")
