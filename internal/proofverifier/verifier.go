@@ -30,6 +30,10 @@ const (
 	defaultName        = "deterministic"
 	defaultTimeout     = 5 * time.Minute
 	maximumURLBodySize = 4 << 20
+	// commandWaitDelay bounds how long Wait blocks on pipe I/O after the shell
+	// is signaled on timeout. Verified commands are arbitrary shell strings and
+	// may leave descendants holding the output pipe; see configureCommand.
+	commandWaitDelay = 5 * time.Second
 )
 
 type Options struct {
@@ -596,6 +600,7 @@ func (processCommandRunner) Run(ctx context.Context, directory, command string, 
 	var stdout, stderr strings.Builder
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
+	configureCommand(cmd)
 	err = cmd.Run()
 	result := CommandResult{Stdout: stdout.String(), Stderr: stderr.String(), Duration: time.Since(startedAt)}
 	if commandCtx.Err() != nil {

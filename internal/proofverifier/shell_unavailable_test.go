@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"testing"
-	"time"
 
 	"github.com/devlikebear/tars/internal/shellexec"
 )
@@ -20,7 +19,7 @@ func TestProcessRunnerFailsWhenNoShellIsAvailable(t *testing.T) {
 	}
 	t.Cleanup(func() { shellexec.Executable = previous })
 
-	_, err := (processCommandRunner{}).Run(context.Background(), t.TempDir(), "printf ok", time.Second)
+	_, err := (processCommandRunner{}).Run(context.Background(), t.TempDir(), "printf ok", commandTestBudget)
 	if !errors.Is(err, shellexec.ErrShellUnavailable) {
 		t.Fatalf("expected ErrShellUnavailable, got %v", err)
 	}

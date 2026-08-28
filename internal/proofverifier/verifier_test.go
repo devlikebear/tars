@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/devlikebear/tars/internal/workscheduler"
 	"github.com/devlikebear/tars/internal/workstore"
@@ -24,7 +23,7 @@ func TestEngineRunsDeterministicCommandAndDetectsChangedSubject(t *testing.T) {
 	if err := os.WriteFile(path, []byte("before\n"), 0o600); err != nil {
 		t.Fatalf("write verification subject: %v", err)
 	}
-	engine, err := New(Options{ID: "verifier-1", RootDir: root, Timeout: time.Second})
+	engine, err := New(Options{ID: "verifier-1", RootDir: root, Timeout: commandTestBudget})
 	if err != nil {
 		t.Fatalf("new proof verifier: %v", err)
 	}
@@ -57,7 +56,7 @@ func TestEngineRunsDeterministicCommandAndDetectsChangedSubject(t *testing.T) {
 func TestEngineRecordsDeterministicCommandFailure(t *testing.T) {
 	t.Parallel()
 
-	engine, err := New(Options{ID: "verifier-1", RootDir: t.TempDir(), Timeout: time.Second})
+	engine, err := New(Options{ID: "verifier-1", RootDir: t.TempDir(), Timeout: commandTestBudget})
 	if err != nil {
 		t.Fatalf("new proof verifier: %v", err)
 	}
