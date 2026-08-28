@@ -55,6 +55,12 @@ type ReasoningBlock struct {
 	Data string `json:"data,omitempty"`
 }
 
+// ChatMessage is one turn in a conversation, in the provider-neutral shape
+// every client converts to and from its own wire format.
+//
+// Content and ContentBlocks are alternatives: set Content for plain text, or
+// ContentBlocks for multimodal input, which takes priority when non-empty.
+// A tool result sets Role "tool" and ToolCallID to the call it answers.
 type ChatMessage struct {
 	Role          string         `json:"role"` // system, user, assistant, tool
 	Content       string         `json:"content"`
@@ -70,6 +76,11 @@ type ChatMessage struct {
 	ReasoningContent string `json:"reasoning_content,omitempty"`
 }
 
+// ToolCall is a tool invocation the model asked the caller to perform.
+//
+// Arguments is raw JSON, not a decoded map: providers differ in how they
+// escape it, so parse it with encoding/json rather than matching on the
+// string.
 type ToolCall struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`
@@ -79,17 +90,27 @@ type ToolCall struct {
 	ThoughtSignature string `json:"thought_signature,omitempty"`
 }
 
+// ToolFunctionSchema describes one callable tool. Parameters is a JSON
+// Schema object; the model sees Description verbatim, so it is the main
+// lever on whether a tool gets called correctly.
 type ToolFunctionSchema struct {
 	Name        string          `json:"name"`
 	Description string          `json:"description"`
 	Parameters  json.RawMessage `json:"parameters,omitempty"`
 }
 
+// ToolSchema wraps a function schema with its dispatch type. Type is
+// "function" for every provider currently supported.
 type ToolSchema struct {
 	Type     string             `json:"type"`
 	Function ToolFunctionSchema `json:"function"`
 }
 
+// Usage reports what one request consumed.
+//
+// Cache fields are populated only by providers that report them; see
+// SupportsCapability with CapCacheUsageReporting. CachedTokens is a subset of
+// InputTokens, not an addition to it.
 type Usage struct {
 	InputTokens      int     `json:"input_tokens"`
 	OutputTokens     int     `json:"output_tokens"`
@@ -161,6 +182,11 @@ type ResponseFormat struct {
 	Strict bool
 }
 
+// ChatOptions are the per-request knobs for Client.Chat.
+//
+// The zero value is a valid non-streaming, tool-free request. Fields a
+// provider does not implement are reported at construction rather than
+// silently dropped — see SupportsCapability for what each kind honors.
 type ChatOptions struct {
 	OnDelta func(text string) // SSE streaming callback (nil = no streaming)
 	// OnReasoningDelta receives provider-native chain-of-thought / thinking
@@ -267,6 +293,11 @@ type ClaudeCodeMCPServer struct {
 	Headers   map[string]string
 }
 
+// ChatResponse is one completed turn.
+//
+// Message is the assistant turn to append to the transcript — append it whole
+// rather than just its text, because ReasoningBlocks on it must be replayed
+// verbatim on the next request for providers that sign them.
 type ChatResponse struct {
 	Message    ChatMessage
 	Usage      Usage
@@ -289,6 +320,9 @@ type ChatResponse struct {
 	ProviderExecutedTools []ToolCall
 }
 
+// ClientConfig holds the settings a client keeps for its lifetime, as
+// opposed to the per-request ChatOptions. Where both carry a knob, the
+// request wins.
 type ClientConfig struct {
 	HTTPTimeout     time.Duration
 	MaxTokens       int
@@ -303,6 +337,9 @@ type ClientConfig struct {
 	BetaFeatures []string
 }
 
+// DefaultClientConfig returns the baseline configuration: the standard HTTP
+// timeout and no opinion on output size, which lets each provider apply its
+// own per-model default.
 func DefaultClientConfig() ClientConfig {
 	return ClientConfig{
 		HTTPTimeout: defaultHTTPTimeout,
@@ -310,11 +347,21 @@ func DefaultClientConfig() ClientConfig {
 	}
 }
 
+// Client is one configured model endpoint. Every provider implements it, and
+// callers that only need a completion should depend on this rather than on a
+// concrete client type.
+//
+// Implementations are safe for concurrent use.
 type Client interface {
 	Ask(ctx context.Context, prompt string) (string, error)
 	Chat(ctx context.Context, messages []ChatMessage, opts ChatOptions) (ChatResponse, error)
 }
 
+// ProviderOptions selects and configures a provider for NewProvider.
+//
+// Provider is the kind ("anthropic", "openai", "gemini-native", …); an empty
+// value defaults to "anthropic". BaseURL and Model fall back to that kind's
+// documented defaults when empty, so the minimum is a kind and a credential.
 type ProviderOptions struct {
 	Provider        string
 	AuthMode        string
@@ -331,6 +378,12 @@ type ProviderOptions struct {
 	BetaFeatures    []string
 }
 
+// NewProvider builds a Client for the requested provider kind.
+//
+// It returns an error for an unknown kind and for a kind whose credential
+// cannot be resolved. Settings the chosen provider does not support are
+// logged as unsupported at this point rather than dropped silently, so a
+// misconfigured tier says so at startup instead of behaving oddly per turn.
 func NewProvider(opts ProviderOptions) (Client, error) {
 	provider := strings.ToLower(strings.TrimSpace(opts.Provider))
 	if provider == "" {
@@ -345,6 +398,10 @@ func NewProvider(opts ProviderOptions) (Client, error) {
 		Str("model", strings.TrimSpace(opts.Model)).
 		Str("base_url", strings.TrimSpace(opts.BaseURL)).
 		Msg("llm new provider request")
+	// Say once, here, what this provider will quietly drop. A tier's
+	// settings are fixed for the life of its client, so a per-request
+	// warning would only repeat this.
+	reportUnsupportedCapabilities(provider, opts)
 
 	if provider == "openai-codex" {
 		zlog.Debug().Str("provider", provider).Msg("llm provider ready")

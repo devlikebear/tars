@@ -5,6 +5,9 @@ import (
 	"strings"
 )
 
+// SelectionMetadata records which role, tier, provider, and model served a
+// request, so downstream logging and usage accounting can attribute it
+// without re-resolving the routing decision.
 type SelectionMetadata struct {
 	Role      Role
 	Tier      Tier
@@ -20,6 +23,7 @@ type SelectionMetadata struct {
 
 type selectionMetadataKey struct{}
 
+// WithSelectionMetadata attaches routing provenance to ctx.
 func WithSelectionMetadata(ctx context.Context, meta SelectionMetadata) context.Context {
 	if ctx == nil {
 		ctx = context.Background()
@@ -31,6 +35,8 @@ func WithSelectionMetadata(ctx context.Context, meta SelectionMetadata) context.
 	return context.WithValue(ctx, selectionMetadataKey{}, normalized)
 }
 
+// SelectionMetadataFromContext reads routing provenance from ctx. The second
+// result is false when none was attached.
 func SelectionMetadataFromContext(ctx context.Context) (SelectionMetadata, bool) {
 	if ctx == nil {
 		return SelectionMetadata{}, false
@@ -91,6 +97,8 @@ func normalizeSelectionMetadata(meta SelectionMetadata) SelectionMetadata {
 	return meta
 }
 
+// ParseRoleOrKeep parses a role name, returning the input unchanged when it
+// is not recognized. Use ParseRole when an unknown role should be an error.
 func ParseRoleOrKeep(role Role) Role {
 	if role == "" {
 		return ""
@@ -101,6 +109,8 @@ func ParseRoleOrKeep(role Role) Role {
 	return Role(strings.ToLower(strings.TrimSpace(role.String())))
 }
 
+// ParseTierOrKeep parses a tier name, returning the input unchanged when it
+// is not recognized. Use ParseTier when an unknown tier should be an error.
 func ParseTierOrKeep(tier Tier) Tier {
 	if tier == "" {
 		return ""

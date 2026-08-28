@@ -45,6 +45,16 @@ type ResolvedLLMTier struct {
 	// trimmed and de-duplicated. Nil means send none.
 	BetaFeatures []string
 
+	// ContextWindow is the tier's effective input+output window, already
+	// defaulted from the model where the binding left it unset. 0 means
+	// unknown — a gateway-hosted model with no documented window — and
+	// history budgeting stays on the global compaction settings.
+	//
+	// Unlike MaxTokens, this IS resolved here rather than in the provider
+	// layer: nothing in internal/llm consumes it, and the consumer that
+	// does (history budgeting) reads the resolved tier.
+	ContextWindow int
+
 	// Provenance — alias of the provider pool entry that served this tier
 	ProviderAlias string
 }
@@ -145,8 +155,24 @@ func ResolveLLMTier(cfg *Config, tier string) (ResolvedLLMTier, error) {
 		ServiceTier:     strings.TrimSpace(binding.ServiceTier),
 		MaxTokens:       binding.MaxTokens,
 		BetaFeatures:    normalizeLLMBetaFeatures(binding.BetaFeatures),
+		ContextWindow:   resolveContextWindow(binding.ContextWindow, model),
 		ProviderAlias:   alias,
 	}, nil
+}
+
+// resolveContextWindow picks the tier's effective window: an explicit
+// setting, else the model's documented window, else 0 for a model TARS does
+// not recognize.
+//
+// An explicit value wins even when it is larger than the documented window —
+// it is the only way to describe a gateway or a model newer than this build,
+// and the pre-flight check reports an overrun rather than the config layer
+// second-guessing the operator.
+func resolveContextWindow(configured int, model string) int {
+	if configured > 0 {
+		return configured
+	}
+	return llmdefaults.ContextWindow(model)
 }
 
 // ResolveAllLLMTiers resolves every tier present in cfg.LLMTiers and

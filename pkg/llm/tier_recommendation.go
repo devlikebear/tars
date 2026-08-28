@@ -5,6 +5,9 @@ import (
 	"unicode/utf8"
 )
 
+// TierRecommendation is a heuristic suggestion of which tier suits a task,
+// with the confidence and reasoning behind it so a UI can explain the choice
+// rather than silently reroute.
 type TierRecommendation struct {
 	TaskType        string  `json:"task_type"`
 	RecommendedTier Tier    `json:"recommended_tier"`
@@ -13,6 +16,8 @@ type TierRecommendation struct {
 	ShouldPrompt    bool    `json:"should_prompt"`
 }
 
+// RecommendTierForTask inspects a user message and suggests a tier. It is
+// deterministic and makes no network call.
 func RecommendTierForTask(message string) TierRecommendation {
 	text := strings.ToLower(strings.TrimSpace(message))
 	length := utf8.RuneCountInString(text)

@@ -442,6 +442,7 @@ export type AgentRuntimeTierOption = {
   service_tier?: string
   max_tokens?: number
   beta_features?: string[]
+  context_window?: number
   error?: string
 }
 

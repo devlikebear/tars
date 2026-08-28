@@ -43,12 +43,17 @@ var claudeCodeCLIPerfEnv = []struct{ key, value string }{
 	{"DISABLE_ERROR_REPORTING", "1"},
 }
 
+// ClaudeCodeCLIClient drives a locally installed `claude` CLI rather than an
+// HTTP endpoint. It runs its own tool loop under its own permission policy,
+// so TARS observes what it executed instead of executing tools for it.
 type ClaudeCodeCLIClient struct {
 	cliPath string
 	workDir string
 	model   string
 }
 
+// FindClaudeCodeCLIPath resolves the claude executable, honouring the path
+// override environment variable before falling back to PATH.
 func FindClaudeCodeCLIPath() (string, error) {
 	if configured := strings.TrimSpace(os.Getenv(claudeCodeCLIPathEnv)); configured != "" {
 		path, err := exec.LookPath(configured)
@@ -64,6 +69,8 @@ func FindClaudeCodeCLIPath() (string, error) {
 	return path, nil
 }
 
+// NewClaudeCodeCLIClient builds a client bound to workDir. It fails when the
+// CLI is not installed, since there is no endpoint to fall back to.
 func NewClaudeCodeCLIClient(workDir, model string) (*ClaudeCodeCLIClient, error) {
 	cliPath, err := FindClaudeCodeCLIPath()
 	if err != nil {

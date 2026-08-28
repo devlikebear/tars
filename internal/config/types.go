@@ -151,6 +151,11 @@ type LLMProviderSettings struct {
 // provider-agnostically: other providers may adopt the same mechanism.
 // Empty means no beta header is sent at all, which is what a third-party
 // Anthropic-compatible gateway wants.
+//
+// ContextWindow is how much input+output the model can hold. Zero means
+// "unset" — the model's documented window applies, and a model with no
+// documented window (every gateway-hosted one) leaves history budgeting on
+// the global compaction settings.
 type LLMTierBinding struct {
 	Provider        string   `json:"provider"         yaml:"provider"`
 	Model           string   `json:"model"            yaml:"model"`
@@ -159,6 +164,7 @@ type LLMTierBinding struct {
 	ServiceTier     string   `json:"service_tier"     yaml:"service_tier"`
 	MaxTokens       int      `json:"max_tokens"       yaml:"max_tokens"`
 	BetaFeatures    []string `json:"beta_features"    yaml:"beta_features"`
+	ContextWindow   int      `json:"context_window"   yaml:"context_window"`
 }
 
 type MemoryConfig struct {

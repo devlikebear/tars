@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/devlikebear/tars/internal/config"
 	"github.com/devlikebear/tars/internal/llm"
 	"github.com/devlikebear/tars/internal/memory"
 	"github.com/devlikebear/tars/internal/session"
@@ -351,6 +352,57 @@ func firstSemanticService(values ...*memory.Service) *memory.Service {
 		return nil
 	}
 	return values[0]
+}
+
+// chatRequestedTier reports the tier the caller explicitly asked for, or ""
+// to take the default. It reads only the request, so it can be consulted
+// before the session transcript is loaded.
+func chatRequestedTier(req chatRequestPayload) string {
+	if req.TierRecommendation == nil {
+		return ""
+	}
+	return strings.TrimSpace(req.TierRecommendation.ChosenTier)
+}
+
+// applyTierContextWindow resizes the compaction thresholds against the model
+// that is about to serve the request.
+//
+// The tier's window, output ceiling, and thinking budget all come from the
+// resolution the chat path already performed, so switching a tier's model
+// changes its history budget with no code change. A tier whose window is
+// unknown — every gateway-hosted model — and a deployment that has tuned the
+// global compaction settings both keep exactly today's behavior; see
+// config.DeriveCompactionBudget.
+func applyTierContextWindow(opts chatCompactionOptions, resolution llm.TierResolution, logger zerolog.Logger) chatCompactionOptions {
+	budget := config.DeriveCompactionBudget(
+		resolution.ContextWindow,
+		resolution.MaxTokens,
+		resolution.ThinkingBudget,
+		config.CompactionConfig{
+			CompactionTriggerTokens:    opts.TriggerTokens,
+			CompactionKeepRecentTokens: opts.KeepRecentTokens,
+		},
+	)
+	if !budget.Derived {
+		logger.Debug().
+			Str("model", resolution.Model).
+			Int("context_window", resolution.ContextWindow).
+			Int("trigger_tokens", opts.TriggerTokens).
+			Msg("history budget: using global compaction settings")
+		return opts
+	}
+	logger.Debug().
+		Str("model", resolution.Model).
+		Int("context_window", budget.Window).
+		Int("max_tokens", resolution.MaxTokens).
+		Int("thinking_budget", resolution.ThinkingBudget).
+		Int("trigger_tokens", budget.TriggerTokens).
+		Int("keep_recent_tokens", budget.KeepRecentTokens).
+		Msg("history budget derived from the tier's context window")
+	opts.TriggerTokens = budget.TriggerTokens
+	opts.KeepRecentTokens = budget.KeepRecentTokens
+	opts.ContextWindow = budget.Window
+	return opts
 }
 
 func normalizeChatCompactionOptions(opts chatCompactionOptions) chatCompactionOptions {

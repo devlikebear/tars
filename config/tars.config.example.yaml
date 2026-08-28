@@ -94,6 +94,20 @@ llm:
   # thinking_budget where the budget is not strictly smaller fails at
   # startup rather than at request time.
   #
+  # context_window is how much input+output the model can hold, and it is
+  # what history budgeting and compaction thresholds are derived from. Left
+  # unset, a tier takes the model's documented window (1000000 on the
+  # current Opus/Sonnet/Fable families, 200000 on Haiku 4.5); a model TARS
+  # does not recognize leaves budgeting on the global compaction settings
+  # rather than being guessed at. Set it explicitly on a gateway tier, or
+  # to describe a model newer than this build.
+  #
+  # Derivation reserves max_tokens and any thinking budget out of the
+  # window first, so input + reasoning + output fit. It applies only when
+  # the global compaction.* settings are still at their shipped values —
+  # tuning those is read as a deliberate statement and wins outright, which
+  # is what keeps an existing deployment's behavior unchanged on upgrade.
+  #
   # beta_features opts the tier into provider beta features. On
   # kind: anthropic the values are joined into one anthropic-beta header;
   # leave the list out and no header is sent at all, which is what a
@@ -116,6 +130,9 @@ llm:
       max_tokens: 64000
       beta_features:
         - context-1m-2025-08-07
+      # Left unset the tier would take the model's documented window; state
+      # it when a beta flag above changes what the model will actually hold.
+      context_window: 1000000
     standard:
       provider: default
       model: claude-sonnet-4-6

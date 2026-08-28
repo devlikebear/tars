@@ -50,9 +50,12 @@ func buildLLMRouter(cfg config.Config, tracker *usage.Tracker) (llm.Router, erro
 		}
 		tracked := usage.NewTrackedClient(client, tracker, r.Kind, r.Model, tier)
 		tiers[tier] = llm.TierEntry{
-			Client:   tracked,
-			Provider: r.Kind,
-			Model:    r.Model,
+			Client:         tracked,
+			Provider:       r.Kind,
+			Model:          r.Model,
+			ContextWindow:  r.ContextWindow,
+			MaxTokens:      r.MaxTokens,
+			ThinkingBudget: r.ThinkingBudget,
 		}
 	}
 

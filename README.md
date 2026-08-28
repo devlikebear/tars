@@ -52,6 +52,7 @@ Public packages under `pkg/` turn the runtime primitives into a small Go agent-b
 - `pkg/llm`, `pkg/tools`, and `pkg/agentloop` are the core loop: provider client, registered tools, and tool-calling iterations.
 - `pkg/memory`, `pkg/skill`, and `pkg/mcp` expose the first helper surfaces for durable memory, `SKILL.md` loading, and MCP tool adaptation.
 - `examples/min-agent` shows the minimal no-network composition, while [docs/public-agent-packages.md](docs/public-agent-packages.md) documents package boundaries and what still intentionally remains internal.
+- That page also carries the [stability policy](docs/public-agent-packages.md#stability-policy): which packages are stable versus experimental, what deprecation means here, and how a breaking change is caught. The surface itself is checked in at [docs/public-api-surface.txt](docs/public-api-surface.txt) and diffed in CI, so a change to what consumers can rely on shows up in review.
 
 ### Chat + Memory
 

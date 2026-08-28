@@ -46,10 +46,14 @@ func newOpenAICompatibleClientWithConfig(label, baseURL, apiKey, model string, c
 	}, nil
 }
 
+// NewOpenAIClient builds a client for the OpenAI Chat Completions API.
 func NewOpenAIClient(baseURL, apiKey, model string) (*OpenAICompatibleClient, error) {
 	return newOpenAICompatibleClientWithConfig("openai", baseURL, apiKey, model, DefaultClientConfig())
 }
 
+// NewGeminiClient builds a client for Google's OpenAI-compatibility shim.
+// That endpoint rejects reasoning_effort and service_tier; use
+// NewGeminiNativeClient when those matter.
 func NewGeminiClient(baseURL, apiKey, model string) (*OpenAICompatibleClient, error) {
 	return newOpenAICompatibleClientWithConfig("gemini", baseURL, apiKey, model, DefaultClientConfig())
 }

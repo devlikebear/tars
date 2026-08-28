@@ -24,6 +24,13 @@ type TierResolution struct {
 	// "role" (role→tier map), "default" (fell back to DefaultTier),
 	// "explicit" (ClientForTier was called).
 	Source string
+
+	// ContextWindow, MaxTokens, and ThinkingBudget mirror the selected
+	// TierEntry's sizing so a caller can budget a request against the model
+	// that will serve it. 0 means unknown or unset.
+	ContextWindow  int
+	MaxTokens      int
+	ThinkingBudget int
 }
 
 // Router resolves (Role | Tier) to a concrete llm.Client.
@@ -56,6 +63,16 @@ type TierEntry struct {
 	Client   Client
 	Provider string
 	Model    string
+
+	// ContextWindow and MaxTokens are the tier's resolved sizing, carried
+	// here so a per-request caller can budget history against the model it
+	// is actually about to call. 0 means unknown for either.
+	ContextWindow int
+	MaxTokens     int
+
+	// ThinkingBudget is the tier's configured reasoning budget, needed by
+	// the same sizing arithmetic. 0 when unset.
+	ThinkingBudget int
 }
 
 // RouterConfig is the input to NewRouter. The caller is responsible for
@@ -149,13 +166,22 @@ func (r *multiTierRouter) ClientFor(role Role) (Client, TierResolution, error) {
 	if !ok {
 		return nil, TierResolution{}, fmt.Errorf("router: tier %q is not configured", tier)
 	}
-	return entry.Client, TierResolution{
-		Tier:     tier,
-		Role:     role,
-		Provider: entry.Provider,
-		Model:    entry.Model,
-		Source:   source,
-	}, nil
+	return entry.Client, tierResolutionFor(tier, role, source, entry), nil
+}
+
+// tierResolutionFor builds the resolution both lookup paths return, so the
+// sizing fields cannot be carried by one and forgotten by the other.
+func tierResolutionFor(tier Tier, role Role, source string, entry TierEntry) TierResolution {
+	return TierResolution{
+		Tier:           tier,
+		Role:           role,
+		Provider:       entry.Provider,
+		Model:          entry.Model,
+		Source:         source,
+		ContextWindow:  entry.ContextWindow,
+		MaxTokens:      entry.MaxTokens,
+		ThinkingBudget: entry.ThinkingBudget,
+	}
 }
 
 func (r *multiTierRouter) ClientForTier(tier Tier) (Client, TierResolution, error) {
@@ -166,10 +192,5 @@ func (r *multiTierRouter) ClientForTier(tier Tier) (Client, TierResolution, erro
 	if !ok {
 		return nil, TierResolution{}, fmt.Errorf("router: tier %q is not configured", tier)
 	}
-	return entry.Client, TierResolution{
-		Tier:     tier,
-		Provider: entry.Provider,
-		Model:    entry.Model,
-		Source:   "explicit",
-	}, nil
+	return entry.Client, tierResolutionFor(tier, "", "explicit", entry), nil
 }

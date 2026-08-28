@@ -9,6 +9,9 @@ import (
 	"sync"
 )
 
+// GeminiNativeClient talks to Google's own Gemini REST API, as opposed to
+// its OpenAI-compatibility shim. It is the kind to use when reasoning effort
+// or thinking round-trip matters, which the shim does not support.
 type GeminiNativeClient struct {
 	baseURL    string
 	apiBaseURL string
@@ -23,6 +26,7 @@ type GeminiNativeClient struct {
 	preflightErr     error
 }
 
+// NewGeminiNativeClient builds a client against the Gemini REST endpoint.
 func NewGeminiNativeClient(baseURL, apiKey, model string) (*GeminiNativeClient, error) {
 	return newGeminiNativeClientWithConfig(baseURL, apiKey, model, DefaultClientConfig())
 }

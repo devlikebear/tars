@@ -1144,6 +1144,11 @@ type chatCompactionOptions struct {
 	KeepRecentFraction float64
 	LLMMode            string
 	LLMTimeoutSeconds  int
+
+	// ContextWindow is the window the thresholds above were derived from,
+	// or 0 when they came from the global settings. Carried for the
+	// pre-flight overrun check and for reporting.
+	ContextWindow int
 }
 
 func defaultChatToolingOptions() chatToolingOptions {

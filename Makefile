@@ -73,7 +73,7 @@ AGENT_HARNESS_COMMIT ?= $(GIT_COMMIT)
 	test test-v test-one test-nocache test-race test-cover test-cover-check test-diff test-cover-diff \
 	agent-harness-eval agent-harness-baseline \
 	build build-bins windows-build-check windows-test release-asset clean tidy fmt vet lint \
-	lint-diff ci-static-analysis-check github-actions-hardening-check codeql-workflow-check sonarcloud-workflow-check \
+	lint-diff api-snapshot api-check ci-static-analysis-check github-actions-hardening-check codeql-workflow-check sonarcloud-workflow-check \
 	ensure-console-assets console-install console-build \
 	browser-install \
 	install install-server install-assistant uninstall uninstall-server uninstall-assistant reinstall \
@@ -130,6 +130,8 @@ help:
 	@echo "  make vet           - go vet ./..."
 	@echo "  make lint          - golangci-lint ./... (includes revive)"
 	@echo "  make lint-diff     - golangci-lint only new issues since DIFF_BASE (adds errcheck/staticcheck)"
+	@echo "  make api-check     - fail when the checked-in pkg/* API snapshot is stale"
+	@echo "  make api-snapshot  - regenerate docs/public-api-surface.txt"
 	@echo "  make ci-static-analysis-check - verify CI static-analysis guardrails"
 	@echo "  make github-actions-hardening-check - verify GitHub Actions security hardening guardrails"
 	@echo "  make codeql-workflow-check - verify CodeQL code-scanning workflow guardrails"
@@ -438,6 +440,12 @@ lint-diff:
 	@base="$${DIFF_BASE:-$$(./scripts/diff_base.sh)}"; \
 	echo "Running golangci-lint for new issues since $${base}"; \
 	$(GOLANGCI_LINT) run --enable=errcheck --enable=staticcheck --new-from-rev="$${base}" ./...
+
+api-snapshot:
+	$(GO) run ./cmd/apisnapshot -write
+
+api-check:
+	GO="$(GO)" ./scripts/check_api_snapshot.sh
 
 ci-static-analysis-check:
 	./scripts/verify_ci_static_analysis.sh

@@ -145,6 +145,10 @@ const (
 // table rather than several keeps them from drifting apart as families
 // are added.
 type ModelBehavior struct {
+	// ContextWindow is the documented input+output context window.
+	// 0 means unknown.
+	ContextWindow int
+
 	// MaxOutputTokens is the documented output ceiling. 0 means unknown.
 	MaxOutputTokens int
 
@@ -181,15 +185,22 @@ type ModelBehavior struct {
 // broken today", which is what lets callers turn a thinking_budget on an
 // adaptive model into a loud error without breaking a working deployment.
 var modelBehaviors = map[string]ModelBehavior{
-	"claude-fable-5":    {MaxOutputTokens: 128000, Thinking: ThinkingModeAdaptive, CanDisableThinking: false},
-	"claude-mythos-5":   {MaxOutputTokens: 128000, Thinking: ThinkingModeAdaptive, CanDisableThinking: false},
-	"claude-opus-5":     {MaxOutputTokens: 128000, Thinking: ThinkingModeAdaptive, CanDisableThinking: true},
-	"claude-opus-4-8":   {MaxOutputTokens: 128000, Thinking: ThinkingModeAdaptive, CanDisableThinking: true},
-	"claude-opus-4-7":   {MaxOutputTokens: 128000, Thinking: ThinkingModeAdaptive, CanDisableThinking: true},
-	"claude-sonnet-5":   {MaxOutputTokens: 128000, Thinking: ThinkingModeAdaptive, CanDisableThinking: true},
-	"claude-opus-4-6":   {MaxOutputTokens: 128000, Thinking: ThinkingModeBudget},
-	"claude-sonnet-4-6": {MaxOutputTokens: 128000, Thinking: ThinkingModeBudget},
-	"claude-haiku-4-5":  {MaxOutputTokens: 64000, Thinking: ThinkingModeBudget},
+	"claude-fable-5":    {ContextWindow: 1000000, MaxOutputTokens: 128000, Thinking: ThinkingModeAdaptive, CanDisableThinking: false},
+	"claude-mythos-5":   {ContextWindow: 1000000, MaxOutputTokens: 128000, Thinking: ThinkingModeAdaptive, CanDisableThinking: false},
+	"claude-opus-5":     {ContextWindow: 1000000, MaxOutputTokens: 128000, Thinking: ThinkingModeAdaptive, CanDisableThinking: true},
+	"claude-opus-4-8":   {ContextWindow: 1000000, MaxOutputTokens: 128000, Thinking: ThinkingModeAdaptive, CanDisableThinking: true},
+	"claude-opus-4-7":   {ContextWindow: 1000000, MaxOutputTokens: 128000, Thinking: ThinkingModeAdaptive, CanDisableThinking: true},
+	"claude-sonnet-5":   {ContextWindow: 1000000, MaxOutputTokens: 128000, Thinking: ThinkingModeAdaptive, CanDisableThinking: true},
+	"claude-opus-4-6":   {ContextWindow: 1000000, MaxOutputTokens: 128000, Thinking: ThinkingModeBudget},
+	"claude-sonnet-4-6": {ContextWindow: 1000000, MaxOutputTokens: 128000, Thinking: ThinkingModeBudget},
+	"claude-haiku-4-5":  {ContextWindow: 200000, MaxOutputTokens: 64000, Thinking: ThinkingModeBudget},
+}
+
+// ContextWindow returns the documented context window for model, or 0 when
+// the model is not recognized. Zero means "unknown", not "unlimited".
+func ContextWindow(model string) int {
+	behavior, _ := ModelBehaviorFor(model)
+	return behavior.ContextWindow
 }
 
 // ModelBehaviorFor returns the documented behavior for model. The second

@@ -36,6 +36,7 @@ type modelFetcherDeps struct {
 	openAICodexModelsURL string
 }
 
+// NewModelFetcher returns a fetcher that lists a provider's available models.
 func NewModelFetcher() ModelFetcher {
 	return newModelFetcherWithDeps(modelFetcherDeps{})
 }
