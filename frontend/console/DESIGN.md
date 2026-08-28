@@ -232,6 +232,15 @@ The system is dark-first. There is no light theme; light backgrounds wash out th
 
 Decision recorded in the console-narrowing first cut (`refactor/console-narrow-surface`, Refs #931, Part of epic #919 LP-012). This section is normative for future surface decisions: when a proposed feature does not fit one of the pillars below, it belongs in a skill, a CLI command, or the YAML file — not a new console route.
 
+### Freeze (2026-08, this branch)
+
+The surface policy above stays normative, but the surface itself is now frozen smaller than the first cut left it:
+
+- **Nav is slimmed to chat + pulse**, plus approvals, logs, and config so the remaining pages still work. Everything else — lineage, plans, memory, sysprompt, extensions, agent runtime, channels, cron, analytics, reflection — is **hidden from the nav only**. Routes, components, and backend packages are untouched and stay reachable by URL; the route inventory below still describes them.
+- **`/console/config` is Quick Start checks only.** The Inspect (165-field) pane and the YAML read view are removed from the page — not made read-only, removed. The Quick Start cards, the onboarding wizard reentry card, remote access, restart, and workspace reset stay. `internal/config`'s schema and the config write routes are unchanged.
+- **No new console routes**, and no new investment in the long-tail internal packages (embodiment, a2a, workstore, workscheduler, skillhub, plugin, remoteaccess) — existing code stays, it just stops growing.
+- **Frozen work: #919 Phase 2–3 and #930.** The public library boundary (#927/#928/#929) and the layering/application-surface work (#930 LP-011: layer-boundary enforcement, ADR, depguard rules, package moves) are deliberately not being implemented. #931 LP-012 is considered done by this narrowing.
+
 ### Purpose
 
 The TARS Console exists for exactly three things:
@@ -270,8 +279,8 @@ Every route must map to a pillar. Current mapping (first cut keeps all routes; c
 
 - Source of truth: `workspace/config/tars.config.yaml`. Reference doc: `config/tars.config.example.yaml`. Server validates on load and reports via `/v1/admin/config/schema`.
 - Console **keeps UI editing** only for: onboarding flows (wizard), credential entry (API keys/tokens marked sensitive), and Quick Start basics that gate first-run readiness.
-- Console **stops editing** the long tail: the Fields tab becomes a validated read view (current value, effective value under env override, default/restart/secret badges) with pointers to the documented YAML key instead of inline editors. Structured LLM provider/tier editing remains available through the onboarding wizard reentry.
-- The raw YAML tab becomes a read view; editing happens in an editor against the real file, then restart applies it.
+- Console **stops editing** the long tail. First cut: the Fields tab became a validated read view (current value, effective value under env override, default/restart/secret badges) with pointers to the documented YAML key instead of inline editors. Structured LLM provider/tier editing remains available through the onboarding wizard reentry.
+- The raw YAML tab became a read view; editing happens in an editor against the real file, then restart applies it. **Freeze update:** both the Fields tab and the YAML tab are gone — the page renders Quick Start only, and inspecting the long tail means reading `workspace/config/tars.config.yaml`.
 - Server write routes (`PUT /v1/admin/config`, `PATCH /v1/admin/config/values`) remain part of the HTTP API for CLI/scripting use even where the console stops calling them.
 
 ### Config surface audit (#931, first cut)
@@ -285,10 +294,10 @@ Server schema exposes 165 fields (`internal/config/schema.go`) grouped into 15 s
 - Structured LLM provider/tier editing stays in the console product — but lives in the onboarding wizard reentry (`/console/onboarding?reentry=1&section=provider|tiers`), which already implements alias-replace saves with masked-key preservation. `Config.svelte` links there instead of hosting duplicate editors.
 - `SessionConfigPanel.svelte` (session-scoped tools/skills/commands/MCP allowlists, automation consent, style controls) is session/cwd control — core purpose. Unchanged.
 
-**(b) Read-only inspection candidates** — validated read view + YAML key pointer:
+**(b) Read-only inspection candidates** — validated read view + YAML key pointer. **Superseded by the freeze:** the read view described here was the first cut's Fields tab, which no longer exists. These fields have no console surface at all now; inspect them in `workspace/config/tars.config.yaml` against `config/tars.config.example.yaml`. The classification is kept as the record of which fields were never editing candidates.
 
 - Operational tuning long-tail across sections: Runtime logging/rotation, API inflight caps, Remote Access, Memory embedding tuning, Usage limits/budgets, Pulse thresholds/windows, Reflection windows, Compaction numbers, Tools toggles/timeouts/providers, MCP allowlist, Agent Runtime persistence/archive/watch/consensus knobs, Work Ledger / Work Scheduler internals (leases, polling, A2A), Channels enables, Assistant binaries, notify/schedule settings.
-- These render value + effective-value-under-env-override + default/restart/secret badges. Editing happens in the YAML file; console shows what the server actually loaded.
+- First cut: these rendered value + effective-value-under-env-override + default/restart/secret badges, and editing happened in the YAML file. Since the freeze only the Quick Start cards render those badges; everything in this list is file-only.
 
 **(c) YAML-first removals** — editors deleted from `Config.svelte` in this cut (values remain visible read-only):
 

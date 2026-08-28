@@ -596,9 +596,6 @@ export const ko = {
   },
   config: {
     pageTitle: '설정',
-    viewToggleQuick: '빠른 시작',
-    viewToggleFields: '검사',
-    viewToggleYaml: 'YAML',
     save: '저장',
     saving: '저장 중...',
     discard: '취소',

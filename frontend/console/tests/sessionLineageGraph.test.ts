@@ -30,10 +30,11 @@ const childSession: Session = {
   updated_at: '2026-05-01T00:02:00Z',
 }
 
-test('session lineage graph route is first-class console view', () => {
+test('session lineage graph route resolves even though the nav hides it', () => {
   assert.deepEqual(resolveRoute('/console/sessions/graph'), { view: 'session-lineage' })
   assert.match(appSource, /loadRouteComponent\('session-lineage'\)/)
-  assert.match(navSource, /id: 'lineage'[\s\S]*path: '\/console\/sessions\/graph'/)
+  // #931 freeze: the route stays reachable by URL, the nav no longer lists it.
+  assert.doesNotMatch(navSource, /id: 'lineage', path:/)
 })
 
 test('session lineage rows order roots before forked children with depth metadata', () => {
