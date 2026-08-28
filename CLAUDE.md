@@ -9,6 +9,7 @@ make test                 # go test ./...
 make lint-diff            # PR preflight: golangci-lint new issues since DIFF_BASE (+errcheck/staticcheck)
 make test-diff            # PR preflight: changed Go packages + coverage check
 make test-cover-diff      # PR preflight: changed-line coverage >= DIFF_COVER_MIN
+make arch-check           # PR preflight: core must not import app (see Layering below)
 make ci-static-analysis-check # PR preflight: CI static-analysis guardrails
 make codeql-workflow-check # PR preflight: CodeQL code-scanning workflow guardrails
 make sonarcloud-workflow-check # PR preflight: SonarCloud evaluation workflow guardrails
@@ -42,11 +43,23 @@ cd frontend/console && npm run test:ci # stable frontend CI test slice
 | `ops` | System health, cleanup planning + approval workflow |
 | `llm` | Provider abstraction (anthropic/openai/openai-codex/gemini/gemini-native/claude-code-cli/antigravity-cli) + 3-tier Router |
 | `memory` | Semantic: Gemini embeddings, cosine similarity, JSONL entries |
-| `tool` | Built-in tools: file ops, exec, web fetch/search, agent runtime, telegram, memory |
+| `tool` | Core tool primitives: registry, policy, file ops, exec, web fetch/search, memory |
+| `apptool` | TARS app tools: agent runtime, sessions, subagents, cron, tasks, telegram, usage |
 | `serverauth` | Bearer token auth, SHA256, three tiers (legacy/user/admin), loopback bypass |
 | `config` | YAML → env override → defaults. 60+ fields |
 | `mcp` | Model Context Protocol client |
 | `skill` | `.md` skill files with YAML frontmatter |
+
+**Layering (enforced — `make arch-check`):**
+```
+cmd/  →  app layer  →  core layer  →  pkg/
+```
+- **core**: llm, tool, session, memory, skill, mcp, prompt, agent, config, auth, git, secrets, …
+- **app**: tarsserver, apptool, agentruntime, cron, pulse, reflection, ops, workstore, workscheduler, …
+- **A core package must never import an app package**, and neither may anything under `pkg/`. Both are test-enforced.
+- Membership lives in `internal/architecture/layers.go`. **A new `internal/` package fails the test until it is classified** there — that is deliberate, not an obstacle to route around.
+- TARS-specific tools go in `internal/apptool`; generic primitives stay in `internal/tool`. Putting an app-coupled tool in core puts its dependencies into every consumer of `pkg/agentloop`.
+- Decision and re-evaluation criteria: `docs/decisions/repository-layering.md`
 
 **System Surface constraints:**
 - Two isolated registries: `RegistryScopeUser` (chat/agents) vs system (pulse/reflection)

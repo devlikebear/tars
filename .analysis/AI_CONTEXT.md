@@ -12,6 +12,22 @@
 - Dependency graph: `.analysis/outputs/dependency-graph.json`
 - Refactor guide: `.analysis/outputs/refactor-tars.md`
 
+## Layering (hand-maintained — not from the analyzer)
+
+The module summary below predates the layer boundary introduced in #930 and
+does not reflect it. Imports run `cmd/` → app → core → `pkg/`, and two rules
+are test-enforced by `internal/architecture/layers_test.go` (`make arch-check`):
+
+- a **core** package must never import an **app** package;
+- nothing under `pkg/` may import an app package.
+
+Membership is declared in `internal/architecture/layers.go`, and a newly added
+`internal/` package fails the test until it is classified there. When this file
+is next regenerated, keep this section: the analyzer infers structure from
+imports and cannot state an intended constraint.
+
+Rationale and re-evaluation criteria: `docs/decisions/repository-layering.md`.
+
 ## Module Summary
 
 - `cli-client`: `cmd/tars` is the thin Cobra entry point; root opens the console or sends one-shot chat, and subcommands call server APIs through `pkg/tarsclient` / `internal/tarsclient`.

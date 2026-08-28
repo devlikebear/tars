@@ -156,6 +156,9 @@ jobs:
       - name: Run frontend console tests
         run: cd frontend/console && npm run test:ci
 
+      - name: Check layer boundaries
+        run: make arch-check
+
       - name: Check the public API snapshot
         run: make api-check
 
