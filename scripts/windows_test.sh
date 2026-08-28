@@ -32,7 +32,7 @@ EXCLUDED_PACKAGES=(
   github.com/devlikebear/tars/internal/agentruntime    # command executor timeouts and effect receipt file modes
   github.com/devlikebear/tars/internal/auth            # credential files asserted at mode 0600
   github.com/devlikebear/tars/internal/executionplane  # artifact URIs, symlinks, and POSIX runner assumptions
-  github.com/devlikebear/tars/internal/llm             # claude-code-cli tests drive POSIX shell script stubs
+  github.com/devlikebear/tars/pkg/llm                  # claude-code-cli tests drive POSIX shell script stubs (was internal/llm before #928)
   github.com/devlikebear/tars/internal/tarsserver      # sandboxes that shell out, plus macOS/Linux notifier paths
   github.com/devlikebear/tars/internal/workerprotocol  # ssh/container/symlink policy assumptions
   github.com/devlikebear/tars/internal/workscheduler   # sqlite holds the ledger file past Close — see above
