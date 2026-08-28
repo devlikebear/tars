@@ -525,40 +525,12 @@
     grid-template-columns: 1fr 1fr;
     gap: var(--space-3) var(--space-4);
   }
-  :global(.onboarding-field) {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-1);
-    font-size: 14px;
-  }
-  :global(.onboarding-field span) {
-    color: var(--text-muted);
-    font-weight: 500;
-  }
-  :global(.onboarding-field span em) {
-    color: var(--text-muted);
-    font-weight: 400;
-    font-style: normal;
-    margin-left: 4px;
-    font-size: 12px;
-  }
-  :global(.onboarding-field input),
-  :global(.onboarding-field select),
-  :global(.onboarding-field textarea) {
-    padding: 8px 10px;
-    border: 1px solid var(--border-soft);
-    border-radius: 6px;
-    background: var(--surface-1);
-    color: var(--text-primary);
-    font-family: inherit;
-    font-size: 14px;
-  }
-  :global(.onboarding-field input:focus),
-  :global(.onboarding-field select:focus),
-  :global(.onboarding-field textarea:focus) {
-    outline: 2px solid var(--primary);
-    outline-offset: 1px;
-  }
+  /*
+   * The .onboarding-field rules that used to live here moved into
+   * onboarding/FormField.svelte, which now owns the markup they targeted.
+   * They only needed :global because the markup was duplicated across five
+   * child components.
+   */
   :global(.onboarding-tier-grid) {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));

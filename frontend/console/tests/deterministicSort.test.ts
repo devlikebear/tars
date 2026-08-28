@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 import { compareStrings, sortStrings } from '../src/lib/sort.js'
 
@@ -22,7 +23,9 @@ test('string sort helpers provide explicit deterministic compare functions', () 
 })
 
 test('frontend source avoids ambiguous argument-free string sort calls', () => {
-  const root = new URL('../', import.meta.url).pathname
+  // fileURLToPath, not .pathname: on Windows the latter yields "/C:/..."
+  // and join() turns that into "C:\C:\...".
+  const root = fileURLToPath(new URL('../', import.meta.url))
   for (const file of sourceFiles) {
     const source = readFileSync(join(root, file), 'utf8')
     assert.equal(source.includes('.sort()'), false, `${file} should pass an explicit comparator`)

@@ -5,6 +5,7 @@
     type OnboardingFormState,
   } from '../../lib/onboarding'
   import { t } from '../../i18n'
+  import FormField from './FormField.svelte'
 
   interface Props {
     form: OnboardingFormState
@@ -48,12 +49,13 @@
     </label>
     {#if form.tools.web_search_enabled}
       <div class="onboarding-grid">
-        <label class="onboarding-field">
-          <span>{$t.onboarding.tools.webSearchProviderLabel}</span>
+        <FormField label={$t.onboarding.tools.webSearchProviderLabel}>
           <input type="text" bind:value={form.tools.web_search_provider} placeholder={$t.onboarding.tools.webSearchProviderPlaceholder} />
-        </label>
-        <label class="onboarding-field">
-          <span>{$t.onboarding.tools.webSearchApiKeyLabel} {#if form.tools.keepWebSearchKey}<em>{$t.onboarding.tools.webSearchApiKeyHint}</em>{/if}</span>
+        </FormField>
+        <FormField
+          label={$t.onboarding.tools.webSearchApiKeyLabel}
+          hint={form.tools.keepWebSearchKey ? $t.onboarding.tools.webSearchApiKeyHint : undefined}
+        >
           <input
             type="password"
             value={form.tools.keepWebSearchKey ? '' : form.tools.web_search_api_key}
@@ -61,7 +63,7 @@
             autocomplete="new-password"
             placeholder={form.tools.keepWebSearchKey ? $t.onboarding.tools.webSearchApiKeyPlaceholderKeep : $t.onboarding.tools.webSearchApiKeyPlaceholderNew}
           />
-        </label>
+        </FormField>
       </div>
     {/if}
   </fieldset>
@@ -82,15 +84,15 @@
         <em>{$t.onboarding.tools.webFetchPrivateHostsHint}</em>
       </span>
     </label>
-    <label class="onboarding-field">
-      <span>{$t.onboarding.tools.webFetchAllowlistLabel} <em>{$t.onboarding.tools.webFetchAllowlistHint}</em></span>
+    <FormField label={$t.onboarding.tools.webFetchAllowlistLabel} hint={$t.onboarding.tools.webFetchAllowlistHint}>
       <textarea
+        class="allowlist-input"
         rows="4"
         value={allowlistInput}
         oninput={(e) => handleAllowlistInput((e.currentTarget as HTMLTextAreaElement).value)}
         placeholder={$t.onboarding.tools.webFetchAllowlistPlaceholder}
       ></textarea>
-    </label>
+    </FormField>
   </fieldset>
 
   <fieldset class="onboarding-subsection">
@@ -163,20 +165,17 @@
   .onboarding-checkrow.danger strong {
     color: var(--accent-error, #d36b6b);
   }
-  .onboarding-field textarea {
-    padding: 8px 10px;
-    border: 1px solid var(--border-soft);
-    border-radius: 6px;
-    background: var(--surface-1);
-    color: var(--text-primary);
+  /*
+   * The allowlist is a list of hostnames, so it keeps the monospace
+   * treatment FormField's base rule does not apply. The class lives on the
+   * textarea itself because snippet children carry this component's style
+   * scope, not FormField's.
+   */
+  .allowlist-input {
     font-family: 'JetBrains Mono', ui-monospace, monospace;
     font-size: 13px;
     line-height: 1.5;
     resize: vertical;
-  }
-  .onboarding-field textarea:focus {
-    outline: 2px solid var(--primary);
-    outline-offset: 1px;
   }
   .onboarding-errors-inline {
     margin-top: var(--space-3);
