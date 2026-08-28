@@ -341,6 +341,10 @@ func anthropicMessageCacheBudget(reserved int) int {
 	return budget
 }
 
+// AnthropicClient talks to the Anthropic Messages API, and to third-party
+// gateways that implement the same protocol.
+//
+// Prefer NewProvider unless you need to construct one directly.
 type AnthropicClient struct {
 	baseURL    string
 	apiKey     string
@@ -349,6 +353,9 @@ type AnthropicClient struct {
 	httpClient *http.Client
 }
 
+// NewAnthropicClient builds a client against an explicit endpoint. A
+// maxTokens of 0 takes the model's documented output ceiling, capped to a
+// value that stays safe on the non-streaming path.
 func NewAnthropicClient(baseURL, apiKey, model string, maxTokens int) (*AnthropicClient, error) {
 	config := DefaultClientConfig()
 	if _, err := requireConfiguredValue("anthropic", "base url", baseURL); err != nil {

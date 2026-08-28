@@ -27,6 +27,8 @@ type openAICodexToolNameMap struct {
 	originalByOutbound map[string]string
 }
 
+// OpenAICodexClient talks to the OpenAI Responses API used by ChatGPT's
+// Codex backend, which authenticates by OAuth rather than an API key.
 type OpenAICodexClient struct {
 	baseURL       string
 	model         string
@@ -47,6 +49,7 @@ type OpenAICodexClient struct {
 	validatedOnStart  bool
 }
 
+// NewOpenAICodexClient builds a Codex client from a resolved OAuth credential.
 func NewOpenAICodexClient(baseURL, model, authMode, oauthProvider, apiKey string) (*OpenAICodexClient, error) {
 	return newOpenAICodexClientWithAuthConfig(
 		baseURL,

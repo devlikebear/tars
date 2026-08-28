@@ -61,6 +61,9 @@ var antigravityCLIPerfEnv = []struct{ key, value string }{
 	{"NO_COLOR", "1"},
 }
 
+// AntigravityCLIClient drives a locally installed `agy` CLI. The CLI holds
+// its own Google login, so no credential passes through TARS — the user must
+// authenticate interactively first.
 type AntigravityCLIClient struct {
 	cliPath        string
 	workDir        string
