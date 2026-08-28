@@ -67,9 +67,12 @@
     },
   ]
 
+  // Only items whose route actually renders for the user role belong here.
+  // App.svelte gates ops, logs, config, and pulse behind `authRole !== 'user'`,
+  // so listing any of them would render a nav entry that silently falls through
+  // to the Home dashboard.
   const userVisibleItems = new Set<NavItemId>([
     'chat',
-    'pulse',
   ])
 
   let visibleGroups = $derived.by(() => {

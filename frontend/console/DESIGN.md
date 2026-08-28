@@ -294,10 +294,10 @@ Server schema exposes 165 fields (`internal/config/schema.go`) grouped into 15 s
 - Structured LLM provider/tier editing stays in the console product — but lives in the onboarding wizard reentry (`/console/onboarding?reentry=1&section=provider|tiers`), which already implements alias-replace saves with masked-key preservation. `Config.svelte` links there instead of hosting duplicate editors.
 - `SessionConfigPanel.svelte` (session-scoped tools/skills/commands/MCP allowlists, automation consent, style controls) is session/cwd control — core purpose. Unchanged.
 
-**(b) Read-only inspection candidates** — validated read view + YAML key pointer:
+**(b) Read-only inspection candidates** — validated read view + YAML key pointer. **Superseded by the freeze:** the read view described here was the first cut's Fields tab, which no longer exists. These fields have no console surface at all now; inspect them in `workspace/config/tars.config.yaml` against `config/tars.config.example.yaml`. The classification is kept as the record of which fields were never editing candidates.
 
 - Operational tuning long-tail across sections: Runtime logging/rotation, API inflight caps, Remote Access, Memory embedding tuning, Usage limits/budgets, Pulse thresholds/windows, Reflection windows, Compaction numbers, Tools toggles/timeouts/providers, MCP allowlist, Agent Runtime persistence/archive/watch/consensus knobs, Work Ledger / Work Scheduler internals (leases, polling, A2A), Channels enables, Assistant binaries, notify/schedule settings.
-- These render value + effective-value-under-env-override + default/restart/secret badges. Editing happens in the YAML file; console shows what the server actually loaded.
+- First cut: these rendered value + effective-value-under-env-override + default/restart/secret badges, and editing happened in the YAML file. Since the freeze only the Quick Start cards render those badges; everything in this list is file-only.
 
 **(c) YAML-first removals** — editors deleted from `Config.svelte` in this cut (values remain visible read-only):
 

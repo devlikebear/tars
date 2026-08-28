@@ -6,6 +6,16 @@ import { en } from '../src/i18n/en.ts'
 import { ko } from '../src/i18n/ko.ts'
 
 const navSource = readFileSync(new URL('../src/components/Nav.svelte', import.meta.url), 'utf8')
+const appSource = readFileSync(new URL('../src/App.svelte', import.meta.url), 'utf8')
+
+// Nav item id -> the route view App.svelte renders for it.
+const navItemViews: Record<string, string> = {
+  chat: 'chat',
+  ops: 'ops',
+  logs: 'logs',
+  pulse: 'pulse',
+  config: 'config',
+}
 
 test('Console nav is slimmed to chat, approvals, logs, pulse, and config', () => {
   assert.match(navSource, /interface NavGroup/)
@@ -43,5 +53,25 @@ test('nav hides the frozen long-tail pages without deleting their routes', () =>
 })
 
 test('user role still sees a non-empty nav after the slim down', () => {
-  assert.match(navSource, /const userVisibleItems = new Set<NavItemId>\(\[\s*'chat',\s*'pulse',\s*\]\)/)
+  assert.match(navSource, /const userVisibleItems = new Set<NavItemId>\(\[\s*'chat',\s*\]\)/)
+})
+
+// A nav entry the user role can see must resolve for the user role. App.svelte
+// falls through to <Home /> when an admin-gated branch does not match, so a
+// gated item in userVisibleItems is a link that silently lands on the
+// dashboard instead of the page it names.
+test('every user-visible nav item resolves for the user role', () => {
+  const block = navSource.match(/const userVisibleItems = new Set<NavItemId>\(\[([\s\S]*?)\]\)/)
+  assert.ok(block, 'userVisibleItems must be declared in Nav.svelte')
+  const visible = [...block[1].matchAll(/'([^']+)'/g)].map((m) => m[1])
+  assert.ok(visible.length > 0, 'user role must keep at least one nav item')
+  for (const id of visible) {
+    const view = navItemViews[id]
+    assert.ok(view, `${id} must be listed as a nav item with a known route view`)
+    assert.doesNotMatch(
+      appSource,
+      new RegExp(`route\\.view === '${view}' && authRole !== 'user'`),
+      `${id} is admin-gated in App.svelte and must not be in userVisibleItems`
+    )
+  }
 })
