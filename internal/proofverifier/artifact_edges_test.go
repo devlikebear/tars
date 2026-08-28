@@ -132,10 +132,10 @@ func TestEngineDiscoversGitWorkspaceAndProcessRunnerOutcomes(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
-	if output, err := (processCommandRunner{}).Run(context.Background(), root, "printf success", time.Second); err != nil || output.Stdout != "success" || output.ExitCode != 0 {
+	if output, err := (processCommandRunner{}).Run(context.Background(), root, "printf success", commandTestBudget); err != nil || output.Stdout != "success" || output.ExitCode != 0 {
 		t.Fatalf("successful process verification = %+v err=%v", output, err)
 	}
-	if output, err := (processCommandRunner{}).Run(context.Background(), root, "printf failed >&2; exit 4", time.Second); err != nil || output.Stderr != "failed" || output.ExitCode != 4 {
+	if output, err := (processCommandRunner{}).Run(context.Background(), root, "printf failed >&2; exit 4", commandTestBudget); err != nil || output.Stderr != "failed" || output.ExitCode != 4 {
 		t.Fatalf("failed process verification = %+v err=%v", output, err)
 	}
 	if output, err := (processCommandRunner{}).Run(context.Background(), root, "sleep 1", 10*time.Millisecond); err != nil || !output.TimedOut || output.ExitCode != -1 {
@@ -153,17 +153,17 @@ func TestEngineDiscoversGitWorkspaceAndProcessRunnerOutcomes(t *testing.T) {
 		// Windows temp path is full of backslashes, which the shell would
 		// otherwise consume as escapes and hand git a mangled directory.
 		command := append([]string{"-C", "'" + root + "'"}, args...)
-		if result, err := (processCommandRunner{}).Run(context.Background(), root, "git "+strings.Join(command, " "), time.Second); err != nil || result.ExitCode != 0 {
+		if result, err := (processCommandRunner{}).Run(context.Background(), root, "git "+strings.Join(command, " "), commandTestBudget); err != nil || result.ExitCode != 0 {
 			t.Fatalf("git %v result=%+v err=%v", args, result, err)
 		}
 	}
 	if err := os.WriteFile(filepath.Join(root, "tracked.txt"), []byte("tracked\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if result, err := (processCommandRunner{}).Run(context.Background(), root, "git add tracked.txt", time.Second); err != nil || result.ExitCode != 0 {
+	if result, err := (processCommandRunner{}).Run(context.Background(), root, "git add tracked.txt", commandTestBudget); err != nil || result.ExitCode != 0 {
 		t.Fatalf("git add result=%+v err=%v", result, err)
 	}
-	if result, err := (processCommandRunner{}).Run(context.Background(), root, "git commit -m initial", time.Second); err != nil || result.ExitCode != 0 {
+	if result, err := (processCommandRunner{}).Run(context.Background(), root, "git commit -m initial", commandTestBudget); err != nil || result.ExitCode != 0 {
 		t.Fatalf("git commit result=%+v err=%v", result, err)
 	}
 	if err := os.WriteFile(filepath.Join(root, "untracked.txt"), []byte("untracked\n"), 0o600); err != nil {
