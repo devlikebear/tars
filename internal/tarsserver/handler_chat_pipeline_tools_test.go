@@ -3,6 +3,7 @@ package tarsserver
 import (
 	"testing"
 
+	"github.com/devlikebear/tars/internal/apptool"
 	"github.com/devlikebear/tars/internal/session"
 	"github.com/devlikebear/tars/internal/tool"
 )
@@ -186,8 +187,8 @@ func hasToolName(names []string, target string) bool {
 func newBaseToolRegistryWithSubagentTools(t *testing.T) *tool.Registry {
 	t.Helper()
 	registry := newBaseToolRegistryWithProcess(t.TempDir(), tool.SingleDirPolicy(t.TempDir()), tool.NewProcessManager())
-	registry.Register(tool.NewSubagentsRunTool(nil))
-	registry.Register(tool.NewSubagentsPlanTool(nil, nil))
-	registry.Register(tool.NewSubagentsOrchestrateTool(nil))
+	registry.Register(apptool.NewSubagentsRunTool(nil))
+	registry.Register(apptool.NewSubagentsPlanTool(nil, nil))
+	registry.Register(apptool.NewSubagentsOrchestrateTool(nil))
 	return registry
 }

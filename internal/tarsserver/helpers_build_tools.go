@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/devlikebear/tars/internal/agentruntime"
+	"github.com/devlikebear/tars/internal/apptool"
 	"github.com/devlikebear/tars/internal/config"
 	"github.com/devlikebear/tars/internal/cron"
 	"github.com/devlikebear/tars/internal/extensions"
@@ -19,7 +20,7 @@ func buildAutomationTools(
 	cronRunner func(ctx context.Context, job cron.Job) (string, error),
 ) []tool.Tool {
 	return []tool.Tool{
-		tool.NewCronTool(cronStore, cronRunner),
+		apptool.NewCronTool(cronStore, cronRunner),
 	}
 }
 
@@ -57,10 +58,10 @@ func buildChatToolingOptions(
 func buildOptionalChatTools(cfg config.Config, agentRuntime *agentruntime.Runtime) []tool.Tool {
 	out := []tool.Tool{}
 	if cfg.ToolsMessageEnabled {
-		out = append(out, tool.NewMessageTool(agentRuntime, true))
+		out = append(out, apptool.NewMessageTool(agentRuntime, true))
 	}
 	if cfg.ToolsAgentRuntimeEnabled {
-		out = append(out, tool.NewAgentRuntimeTool(agentRuntime, true))
+		out = append(out, apptool.NewAgentRuntimeTool(agentRuntime, true))
 	}
 	if cfg.ToolsApplyPatchEnabled {
 		out = append(out, tool.NewApplyPatchTool(cfg.WorkspaceDir, true))

@@ -8,6 +8,7 @@ import (
 
 	"github.com/devlikebear/tars/internal/agent"
 	"github.com/devlikebear/tars/internal/agentruntime"
+	"github.com/devlikebear/tars/internal/apptool"
 	"github.com/devlikebear/tars/internal/config"
 	"github.com/devlikebear/tars/internal/llm"
 	"github.com/devlikebear/tars/internal/memory"
@@ -84,7 +85,7 @@ func newBaseToolRegistryWithOptions(
 
 	// Memory & workspace aggregators
 	registry.Register(tool.NewMemoryTool(workspaceDir, backend, nil))
-	registry.Register(tool.NewWorkspaceTool(workspaceDir))
+	registry.Register(apptool.NewWorkspaceTool(workspaceDir))
 
 	// Standalone tools
 	if usageTracker == nil {
@@ -93,7 +94,7 @@ func newBaseToolRegistryWithOptions(
 		}
 	}
 	if usageTracker != nil {
-		registry.Register(tool.NewUsageReportTool(usageTracker))
+		registry.Register(apptool.NewUsageReportTool(usageTracker))
 	}
 
 	// File I/O (no aliases — canonical names only)

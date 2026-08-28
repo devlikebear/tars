@@ -11,9 +11,9 @@ import (
 
 	"github.com/devlikebear/tars/internal/a2a"
 	"github.com/devlikebear/tars/internal/agentruntime"
+	"github.com/devlikebear/tars/internal/apptool"
 	"github.com/devlikebear/tars/internal/config"
 	"github.com/devlikebear/tars/internal/executionplane"
-	"github.com/devlikebear/tars/internal/tool"
 	"github.com/devlikebear/tars/internal/workerprotocol"
 	"github.com/devlikebear/tars/internal/workscheduler"
 	"github.com/devlikebear/tars/internal/workstore"
@@ -249,7 +249,7 @@ func buildNativeWorkExecutionPlane(cfg config.Config, ledger *workstore.Store, r
 	if err != nil {
 		return nil, err
 	}
-	nativeExecutor := tool.NewAgentRuntimeWorkExecutor(runtime, ledger)
+	nativeExecutor := apptool.NewAgentRuntimeWorkExecutor(runtime, ledger)
 	worker, err := executionplane.NewSchedulerWorkerClient("native-agentruntime", nativeExecutor, true)
 	if err != nil {
 		return nil, err
