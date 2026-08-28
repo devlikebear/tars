@@ -17,6 +17,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -26,27 +27,49 @@ import (
 const snapshotPath = "docs/public-api-surface.txt"
 
 func main() {
-	write := flag.Bool("write", false, "rewrite "+snapshotPath+" instead of printing")
-	root := flag.String("root", ".", "module root")
-	flag.Parse()
+	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+}
+
+// run holds what main would otherwise do, so both modes are testable without
+// spawning a process. It returns the exit code rather than calling os.Exit.
+func run(args []string, stdout, stderr io.Writer) int {
+	flags := flag.NewFlagSet("apisnapshot", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	write := flags.Bool("write", false, "rewrite "+snapshotPath+" instead of printing")
+	root := flags.String("root", ".", "module root")
+	if err := flags.Parse(args); err != nil {
+		return 2
+	}
+
+	// Diagnostics go to stderr; a failed write there is not worth a second
+	// failure path, so they are explicitly discarded.
+	report := func(format string, args ...any) {
+		_, _ = fmt.Fprintf(stderr, format+"\n", args...)
+	}
 
 	lines, err := collect(filepath.Join(*root, "pkg"))
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "apisnapshot:", err)
-		os.Exit(1)
+		report("apisnapshot: %v", err)
+		return 1
 	}
 
 	body := header() + strings.Join(lines, "\n") + "\n"
 	if !*write {
-		fmt.Print(body)
-		return
+		// The snapshot itself is the deliverable, so a short write here is
+		// a real failure rather than a cosmetic one.
+		if _, err := io.WriteString(stdout, body); err != nil {
+			report("apisnapshot: %v", err)
+			return 1
+		}
+		return 0
 	}
 	out := filepath.Join(*root, snapshotPath)
 	if err := os.WriteFile(out, []byte(body), 0o644); err != nil {
-		fmt.Fprintln(os.Stderr, "apisnapshot:", err)
-		os.Exit(1)
+		report("apisnapshot: %v", err)
+		return 1
 	}
-	fmt.Fprintf(os.Stderr, "wrote %s (%d identifiers)\n", out, len(lines))
+	report("wrote %s (%d identifiers)", out, len(lines))
+	return 0
 }
 
 func header() string {

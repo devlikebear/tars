@@ -167,6 +167,87 @@ func Free() {}
 	}
 }
 
+// fixtureRoot builds a throwaway module layout with one public package, so
+// run's two modes can be exercised without touching the real tree.
+func fixtureRoot(t *testing.T) string {
+	t.Helper()
+	root := t.TempDir()
+	pkgDir := filepath.Join(root, "pkg", "widget")
+	if err := os.MkdirAll(pkgDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "docs"), 0o755); err != nil {
+		t.Fatalf("mkdir docs: %v", err)
+	}
+	body := "package widget\n\nfunc Make() {}\n\nfunc hidden() {}\n"
+	if err := os.WriteFile(filepath.Join(pkgDir, "widget.go"), []byte(body), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	return root
+}
+
+func TestRun_PrintsToStdoutByDefault(t *testing.T) {
+	root := fixtureRoot(t)
+	var stdout, stderr strings.Builder
+
+	if code := run([]string{"-root", root}, &stdout, &stderr); code != 0 {
+		t.Fatalf("exit code = %d, stderr=%q", code, stderr.String())
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "pkg/widget func Make") {
+		t.Errorf("output missing the exported function:\n%s", out)
+	}
+	if strings.Contains(out, "hidden") {
+		t.Errorf("output leaked an unexported function:\n%s", out)
+	}
+	if !strings.Contains(out, "make api-snapshot") {
+		t.Error("output is missing the header")
+	}
+	// Default mode must not write anything.
+	if _, err := os.Stat(filepath.Join(root, snapshotPath)); !os.IsNotExist(err) {
+		t.Error("default mode wrote the snapshot file")
+	}
+}
+
+func TestRun_WriteModeUpdatesTheSnapshot(t *testing.T) {
+	root := fixtureRoot(t)
+	var stdout, stderr strings.Builder
+
+	if code := run([]string{"-root", root, "-write"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("exit code = %d, stderr=%q", code, stderr.String())
+	}
+	if stdout.String() != "" {
+		t.Errorf("write mode printed to stdout: %q", stdout.String())
+	}
+	written, err := os.ReadFile(filepath.Join(root, snapshotPath))
+	if err != nil {
+		t.Fatalf("read snapshot: %v", err)
+	}
+	if !strings.Contains(string(written), "pkg/widget func Make") {
+		t.Errorf("snapshot missing the exported function:\n%s", written)
+	}
+	if !strings.Contains(stderr.String(), "wrote") {
+		t.Errorf("write mode did not report on stderr: %q", stderr.String())
+	}
+}
+
+func TestRun_ReportsAMissingTree(t *testing.T) {
+	var stdout, stderr strings.Builder
+	if code := run([]string{"-root", filepath.Join(t.TempDir(), "absent")}, &stdout, &stderr); code != 1 {
+		t.Fatalf("exit code = %d, want 1", code)
+	}
+	if !strings.Contains(stderr.String(), "apisnapshot:") {
+		t.Errorf("error not reported on stderr: %q", stderr.String())
+	}
+}
+
+func TestRun_ReportsBadFlags(t *testing.T) {
+	var stdout, stderr strings.Builder
+	if code := run([]string{"-nope"}, &stdout, &stderr); code != 2 {
+		t.Fatalf("exit code = %d, want 2 for a flag error", code)
+	}
+}
+
 func TestHeaderPointsAtTheRegenerationCommand(t *testing.T) {
 	// The header is what a contributor reads when CI fails, so it has to
 	// name the command that fixes it.
