@@ -23,7 +23,8 @@ test('/console/tasks resolves to the global Plans page', () => {
   assert.doesNotMatch(appSource, /import Plans from '\.\/components\/Plans\.svelte'/)
   assert.match(routeComponentsSource, /tasks: memoizeRouteLoader\(\(\) => import\('\.\.\/components\/Plans\.svelte'\)\)/)
   assert.match(appSource, /route\.view === 'tasks'/)
-  assert.match(navSource, /id: 'plans'[\s\S]*path: '\/console\/tasks'/)
+  // #931 freeze: the route stays reachable by URL, the nav no longer lists it.
+  assert.doesNotMatch(navSource, /id: 'plans', path:/)
   assert.match(enSource, /plans:\s*'Plans'/)
   assert.match(koSource, /plans:\s*'계획'/)
 })

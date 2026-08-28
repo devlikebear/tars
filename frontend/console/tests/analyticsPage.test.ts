@@ -16,7 +16,8 @@ test('/console/analytics resolves to the Analytics page', () => {
   assert.match(routeComponentsSource, /analytics:[^,]*import\('\.\.\/components\/Analytics\.svelte'\)/)
   assert.match(appSource, /route\.view === 'analytics'/)
   assert.match(appSource, /loadRouteComponent\('analytics'\)/)
-  assert.match(navSource, /id: 'analytics'[\s\S]*path: '\/console\/analytics'/)
+  // #931 freeze: the route stays reachable by URL, the nav no longer lists it.
+  assert.doesNotMatch(navSource, /id: 'analytics', path:/)
 })
 
 test('Analytics page renders usage charts and tables', () => {

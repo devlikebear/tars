@@ -14,7 +14,8 @@ test('/console/cron resolves to the global Cron page', () => {
   assert.match(routeComponentsSource, /cron:[^,]*import\('\.\.\/components\/Cron\.svelte'\)/)
   assert.match(appSource, /route\.view === 'cron'/)
   assert.match(appSource, /loadRouteComponent\('cron'\)/)
-  assert.match(navSource, /id: 'cron'[\s\S]*path: '\/console\/cron'/)
+  // #931 freeze: the route stays reachable by URL, the nav no longer lists it.
+  assert.doesNotMatch(navSource, /id: 'cron', path:/)
 })
 
 test('Cron page manages global jobs with existing cron APIs', () => {

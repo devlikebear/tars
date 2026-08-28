@@ -1,7 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import {
-    getConfig,
     getConfigSchema,
     getProviderModels,
     patchConfigValues,
@@ -22,8 +21,6 @@
   import RemoteAccessCard from './RemoteAccessCard.svelte'
   import { t } from '../i18n'
 
-  type ViewMode = 'quick' | 'inspect' | 'yaml'
-
   interface Props {
     onNavigate?: (path: string) => void
   }
@@ -35,15 +32,14 @@
   let values: Record<string, unknown> = $state({})
   let effectiveValues: Record<string, unknown> = $state({})
   let envOverrides: Record<string, ConfigEnvOverride> = $state({})
-  let yamlContent = $state('')
   let loading = $state(true)
   let error = $state('')
   let success = $state('')
-  let viewMode: ViewMode = $state('quick')
-  let expandedSections: Record<string, boolean> = $state({})
 
-  // -- Quick Start field editing (the only remaining config editing surface;
-  //    everything else is inspection-first per DESIGN.md #931) --
+  // -- Quick Start field editing. Since the #931 freeze this page is Quick
+  //    Start checks only: the full field inspector and the YAML read view are
+  //    gone, and everything outside Quick Start is documented file-first in
+  //    config/tars.config.example.yaml. --
   let editingKey: string | null = $state(null)
   let editValue: string = $state('')
   let editBool: boolean = $state(false)
@@ -56,7 +52,6 @@
   let hasDirtyFields = $derived(Object.keys(dirtyFields).length > 0)
   let quickStartItems = $derived(buildQuickStartItems(schema, values, dirtyFields))
   let quickStartStats = $derived(quickStartProgress(quickStartItems))
-  let shouldShowFieldActions = $derived(viewMode === 'quick')
   let showDiff = $state(false)
 
   let diffEntries = $derived.by(() => {
@@ -71,27 +66,6 @@
         impact: buildConfigImpactPreview(field, values[key], newVal).items,
       }
     })
-  })
-
-  // -- Search/filter --
-  let searchQuery = $state('')
-
-  let filteredSections = $derived.by(() => {
-    const q = searchQuery.trim().toLowerCase()
-    if (!q) return sections
-    return sections
-      .map((section) => ({
-        name: section.name,
-        fields: section.fields.filter(
-          (f) =>
-            f.label.toLowerCase().includes(q) ||
-            f.key.toLowerCase().includes(q) ||
-            f.path.toLowerCase().includes(q) ||
-            f.description.toLowerCase().includes(q) ||
-            f.section.toLowerCase().includes(q)
-        ),
-      }))
-      .filter((s) => s.fields.length > 0)
   })
 
   // -- Restart --
@@ -134,36 +108,18 @@
     }
   }
 
-  let sections = $derived.by(() => {
-    const order: string[] = []
-    const groups: Record<string, ConfigFieldMeta[]> = {}
-    for (const f of schema) {
-      if (!groups[f.section]) {
-        order.push(f.section)
-        groups[f.section] = []
-      }
-      groups[f.section].push(f)
-    }
-    return order.map((name) => ({ name, fields: groups[name] }))
-  })
-
   async function load() {
     loading = true
     error = ''
     try {
-      const [schemaResp, rawResp] = await Promise.all([getConfigSchema(), getConfig()])
+      const schemaResp = await getConfigSchema()
       configPath = schemaResp.path
       schemaUpdatedAt = schemaResp.updated_at || ''
       schema = schemaResp.fields
       values = schemaResp.values
       effectiveValues = schemaResp.effective_values || {}
       envOverrides = schemaResp.env_overrides || {}
-      yamlContent = rawResp.content
       dirtyFields = {}
-      const sectionNames = [...new Set(schemaResp.fields.map((f) => f.section))]
-      for (let i = 0; i < Math.min(3, sectionNames.length); i++) {
-        expandedSections[sectionNames[i]] = true
-      }
     } catch (e) {
       error = e instanceof Error ? e.message : 'Failed to load config'
     } finally {
@@ -252,12 +208,7 @@
     selectField(field, target.value)
   }
 
-  // Uncommitted edits are only shown where the user can act on them. Inspect
-  // reports what the server actually loaded (DESIGN.md), and it hides
-  // Save/Discard, so surfacing a dirty value there reads as committed state
-  // and invites the user to restart believing an edit landed.
   function getDisplayValue(field: ConfigFieldMeta): unknown {
-    if (!shouldShowFieldActions) return values[field.key]
     return dirtyFields[field.key] !== undefined ? dirtyFields[field.key] : values[field.key]
   }
 
@@ -331,13 +282,12 @@
       await patchConfigValues(dirtyFields)
       success = 'Config saved. Restart TARS to apply changes.'
       dirtyFields = {}
-      // Reload to get fresh values and YAML
-      const [schemaResp, rawResp] = await Promise.all([getConfigSchema(), getConfig()])
+      // Reload to get fresh values
+      const schemaResp = await getConfigSchema()
       schemaUpdatedAt = schemaResp.updated_at || ''
       values = schemaResp.values
       effectiveValues = schemaResp.effective_values || {}
       envOverrides = schemaResp.env_overrides || {}
-      yamlContent = rawResp.content
     } catch (e) {
       error = e instanceof Error ? e.message : 'Failed to save config'
     } finally {
@@ -355,7 +305,7 @@
   function handleKeydown(e: KeyboardEvent) {
     if ((e.metaKey || e.ctrlKey) && e.key === 's') {
       e.preventDefault()
-      if (viewMode === 'quick' && hasDirtyFields && !fieldSaving) handleSaveFields()
+      if (hasDirtyFields && !fieldSaving) handleSaveFields()
     }
   }
 
@@ -367,11 +317,6 @@
     } else if (e.key === 'Escape') {
       cancelEdit()
     }
-  }
-
-  function toggleSection(name: string) {
-    expandedSections[name] = !expandedSections[name]
-    expandedSections = { ...expandedSections }
   }
 
   function formatValue(field: ConfigFieldMeta): string {
@@ -402,14 +347,6 @@
     if (link) onNavigate?.(link)
   }
 
-  const sectionIcons: Record<string, string> = {
-    Runtime: '\u2699', API: '\u26bf', LLM: '\u2726', Memory: '\u29bf',
-    Usage: '\u2261', Automation: '\u21bb', Assistant: '\u2318', Tools: '\u2692',
-    Browser: '\u2317', 'Agent Runtime': '\u29bf', Channels: '\u2709',
-    Companion: '\u25c9',
-    Extensions: '\u2756',
-  }
-
   onMount(() => { load() })
 </script>
 
@@ -423,18 +360,13 @@
       {/if}
     </div>
     <div class="page-header-right">
-      {#if shouldShowFieldActions && hasDirtyFields}
+      {#if hasDirtyFields}
         <button class="badge badge-warning diff-badge" onclick={() => { showDiff = !showDiff }} title={$t.config.viewChangesTooltip}>{$t.config.changedSuffix(Object.keys(dirtyFields).length)}</button>
         <button class="btn btn-ghost btn-sm" onclick={handleDiscardFields}>{$t.config.discard}</button>
         <button class="btn btn-primary btn-sm" disabled={fieldSaving} onclick={handleSaveFields}>
           {fieldSaving ? $t.config.saving : $t.config.save}
         </button>
       {/if}
-      <div class="view-toggle">
-        <button class="toggle-btn" class:active={viewMode === 'quick'} onclick={() => { viewMode = 'quick' }}>{$t.config.viewToggleQuick}</button>
-        <button class="toggle-btn" class:active={viewMode === 'inspect'} onclick={() => { viewMode = 'inspect' }}>{$t.config.viewToggleFields}</button>
-        <button class="toggle-btn" class:active={viewMode === 'yaml'} onclick={() => { viewMode = 'yaml' }}>{$t.config.viewToggleYaml}</button>
-      </div>
     </div>
   </div>
 
@@ -472,241 +404,139 @@
       <ConfigPendingChanges entries={diffEntries} onClose={() => { showDiff = false }} />
     {/if}
 
-    {#if viewMode === 'quick'}
-      <div class="quick-start-panel">
-        <div class="quick-start-header">
-          <div>
-            <span class="quick-start-kicker">{$t.config.quickStartKicker}</span>
-            <h3>{$t.config.quickStartTitle}</h3>
-          </div>
-          <span class="quick-start-progress">{$t.config.quickStartReady(quickStartStats.ready, quickStartStats.total)}</span>
+    <div class="quick-start-panel">
+      <div class="quick-start-header">
+        <div>
+          <span class="quick-start-kicker">{$t.config.quickStartKicker}</span>
+          <h3>{$t.config.quickStartTitle}</h3>
         </div>
-        <div class="quick-start-grid">
-          {#each quickStartItems as item}
-            {@const field = item.field}
-            {@const metaBadges = buildConfigMetaBadges(field, item.value, item.dirty, schemaUpdatedAt)}
-            {@const envOverride = envOverrideFor(field)}
-            <div class="quick-start-card" class:quick-attention={item.status.kind === 'attention'}>
-              <div class="quick-start-card-main">
-                <div class="quick-start-title-row">
-                  <span class="quick-start-title">{item.title}</span>
-                  <span class={`quick-status status-${item.status.kind}`} title={item.status.message}>{item.status.label}</span>
+        <span class="quick-start-progress">{$t.config.quickStartReady(quickStartStats.ready, quickStartStats.total)}</span>
+      </div>
+      <div class="quick-start-grid">
+        {#each quickStartItems as item}
+          {@const field = item.field}
+          {@const metaBadges = buildConfigMetaBadges(field, item.value, item.dirty, schemaUpdatedAt)}
+          {@const envOverride = envOverrideFor(field)}
+          <div class="quick-start-card" class:quick-attention={item.status.kind === 'attention'}>
+            <div class="quick-start-card-main">
+              <div class="quick-start-title-row">
+                <span class="quick-start-title">{item.title}</span>
+                <span class={`quick-status status-${item.status.kind}`} title={item.status.message}>{item.status.label}</span>
+              </div>
+              <p>{item.description}</p>
+              <span class="quick-status-message">{item.status.message}</span>
+              {#if defaultValueSummary(field)}
+                <span class="quick-default">{$t.config.defaultPrefix(defaultValueSummary(field))}</span>
+              {/if}
+              {#if metaBadges.length > 0}
+                <div class="field-meta-badges" aria-label={`${field.label} metadata`}>
+                  {#each metaBadges as badge}
+                    <span class={`field-meta-badge badge-${badge.tone}`} title={badge.title}>{badge.label}</span>
+                  {/each}
                 </div>
-                <p>{item.description}</p>
-                <span class="quick-status-message">{item.status.message}</span>
-                {#if defaultValueSummary(field)}
-                  <span class="quick-default">{$t.config.defaultPrefix(defaultValueSummary(field))}</span>
-                {/if}
-                {#if metaBadges.length > 0}
-                  <div class="field-meta-badges" aria-label={`${field.label} metadata`}>
-                    {#each metaBadges as badge}
-                      <span class={`field-meta-badge badge-${badge.tone}`} title={badge.title}>{badge.label}</span>
-                    {/each}
-                  </div>
-                {/if}
-                {#if envOverride}
-                  <div class="field-meta-badges" aria-label={`${field.label} environment override`}>
-                    <span class="field-meta-badge badge-env" title={envOverrideTitle(field)}>ENV {envOverride.env_key}</span>
-                    {#if envOverrideDiffers(field)}
-                      <span class="field-meta-badge badge-env-active" title={envOverrideTitle(field)}>Active: {effectiveValueSummary(field)}</span>
-                    {/if}
-                  </div>
-                {/if}
-              </div>
-              <div class="quick-start-control">
-                {#if field.type === 'bool'}
-                  <button
-                    class="bool-toggle"
-                    class:bool-on={!!getDisplayValue(field)}
-                    class:dirty={isDirty(field.key)}
-                    onclick={() => toggleBool(field)}
-                    title={$t.config.clickToToggle}
-                  >
-                    {getDisplayValue(field) ? $t.config.on : $t.config.off}
-                  </button>
-                {:else if field.type === 'select' && field.options}
-                  <select
-                    class="field-select"
-                    class:dirty={isDirty(field.key)}
-                    value={String(getDisplayValue(field) ?? '')}
-                    onchange={(e) => handleSelectChange(field, e)}
-                  >
-                    {#each field.options as opt}
-                      <option value={opt}>{opt || $t.config.selectNone}</option>
-                    {/each}
-                  </select>
-                {:else if editingKey === field.key}
-                  <div class="field-edit">
-                    {#if field.type === 'string_list'}
-                      <textarea
-                        class="field-textarea"
-                        bind:value={editValue}
-                        onkeydown={(e) => handleFieldKeydown(e, field)}
-                        onblur={() => commitEdit(field)}
-                      ></textarea>
-                    {:else}
-                      <input
-                        type={field.sensitive ? 'password' : (field.type === 'int' || field.type === 'float' ? 'number' : 'text')}
-                        step={field.type === 'float' ? '0.01' : undefined}
-                        class="field-input"
-                        bind:value={editValue}
-                        onkeydown={(e) => handleFieldKeydown(e, field)}
-                        onblur={() => commitEdit(field)}
-                      />
-                    {/if}
-                  </div>
-                {:else if field.sensitive}
-                  <button
-                    class="value-btn"
-                    class:dirty={isDirty(field.key)}
-                    onclick={() => startEdit(field)}
-                    title={$t.config.clickToEdit}
-                  >
-                    <span class="value-text sensitive">{formatValue(field)}</span>
-                  </button>
-                {:else if field.type === 'json'}
-                  {@const summary = structuredSummary(field)}
-                  <div class="structured-readonly">
-                    <span class="structured-main">{summary.text}</span>
-                    {#if summary.preview.length > 0}
-                      <span class="structured-preview">
-                        {#each summary.preview as preview}
-                          <span>{preview}</span>
-                        {/each}
-                      </span>
-                    {/if}
-                    {#if jsonWizardLink(item.key)}
-                      <button class="btn btn-secondary btn-sm" onclick={() => openJSONWizard(item.key)}>
-                        Edit in wizard
-                      </button>
-                    {:else}
-                      <span class="yaml-key-hint" title="Documented in config/tars.config.example.yaml">YAML: {fieldPath(field)}</span>
-                    {/if}
-                  </div>
-                {:else}
-                  <button
-                    class="value-btn"
-                    class:dirty={isDirty(field.key)}
-                    onclick={() => startEdit(field)}
-                    title={$t.config.clickToEdit}
-                  >
-                    <span class="value-text">{formatValue(field)}</span>
-                  </button>
-                {/if}
-                {#if item.key === 'llm_providers'}
-                  <button class="btn btn-ghost btn-sm" disabled={llmTestBusy} onclick={testLLMConnection}>
-                    {llmTestBusy ? 'Testing...' : 'Test connection'}
-                  </button>
-                  {#if llmTestResult}
-                    <span class={`quick-test-result test-${llmTestKind}`}>{llmTestResult}</span>
+              {/if}
+              {#if envOverride}
+                <div class="field-meta-badges" aria-label={`${field.label} environment override`}>
+                  <span class="field-meta-badge badge-env" title={envOverrideTitle(field)}>ENV {envOverride.env_key}</span>
+                  {#if envOverrideDiffers(field)}
+                    <span class="field-meta-badge badge-env-active" title={envOverrideTitle(field)}>Active: {effectiveValueSummary(field)}</span>
                   {/if}
-                {/if}
-              </div>
+                </div>
+              {/if}
             </div>
-          {/each}
-        </div>
-      </div>
-    {:else if viewMode === 'inspect'}
-      <div class="inspect-note">
-        <span>
-          Read-only inspection. Configuration is file-first: edit
-          <code>workspace/config/tars.config.yaml</code> (see <code>config/tars.config.example.yaml</code>)
-          and restart to apply.
-        </span>
-        <button class="btn btn-secondary btn-sm" onclick={() => { viewMode = 'yaml' }}>View YAML</button>
-      </div>
-      <div class="search-bar">
-        <input
-          type="text"
-          class="search-input"
-          placeholder="Filter settings..."
-          bind:value={searchQuery}
-        />
-        {#if searchQuery}
-          <button class="search-clear" onclick={() => { searchQuery = '' }}>&times;</button>
-        {/if}
-      </div>
-      <div class="sections">
-        {#each filteredSections as section}
-          <div class="section-card card">
-            <button class="section-header" onclick={() => toggleSection(section.name)}>
-              <div class="section-header-left">
-                <span class="section-icon">{sectionIcons[section.name] || '\u2699'}</span>
-                <span class="section-title">{section.name}</span>
-                <span class="section-count">{section.fields.length}</span>
-              </div>
-              <span class="section-chevron" class:open={expandedSections[section.name]}>{'\u25b8'}</span>
-            </button>
-
-            {#if expandedSections[section.name] || searchQuery.trim()}
-              <div class="section-body">
-                {#each section.fields as field}
-                  {@const metaBadges = buildConfigMetaBadges(field, getDisplayValue(field), isDirty(field.key), schemaUpdatedAt)}
-                  {@const envOverride = envOverrideFor(field)}
-                  <div class="field-row">
-                    <div class="field-info">
-                      <span class="field-label">{field.label}</span>
-                      <span class="field-desc">{field.description}</span>
-                      <span class="field-key" title="Documented in config/tars.config.example.yaml">{fieldPath(field)}</span>
-                      {#if metaBadges.length > 0}
-                        <div class="field-meta-badges" aria-label={`${field.label} metadata`}>
-                          {#each metaBadges as badge}
-                            <span class={`field-meta-badge badge-${badge.tone}`} title={badge.title}>{badge.label}</span>
-                          {/each}
-                        </div>
-                      {/if}
-                      {#if envOverride}
-                        <div class="field-meta-badges" aria-label={`${field.label} environment override`}>
-                          <span class="field-meta-badge badge-env" title={envOverrideTitle(field)}>ENV {envOverride.env_key}</span>
-                          {#if envOverrideDiffers(field)}
-                            <span class="field-meta-badge badge-env-active" title={envOverrideTitle(field)}>Active: {effectiveValueSummary(field)}</span>
-                          {/if}
-                        </div>
-                      {/if}
-                    </div>
-                    <div class="field-value">
-                      {#if field.type === 'json'}
-                        {@const summary = structuredSummary(field)}
-                        <div class="structured-readonly">
-                          <span class="structured-main">{summary.text}</span>
-                          {#if summary.preview.length > 0}
-                            <span class="structured-preview">
-                              {#each summary.preview as previewItem}
-                                <span>{previewItem}</span>
-                              {/each}
-                            </span>
-                          {/if}
-                          {#if jsonWizardLink(field.key)}
-                            <button class="btn btn-secondary btn-sm" onclick={() => openJSONWizard(field.key)}>
-                              Edit in wizard
-                            </button>
-                          {/if}
-                        </div>
-                      {:else if field.type === 'bool'}
-                        <span class="readonly-bool" class:readonly-on={!!getDisplayValue(field)}>
-                          {getDisplayValue(field) ? 'ON' : 'OFF'}
-                        </span>
-                      {:else}
-                        <span class="value-text" class:sensitive={field.sensitive}>{formatValue(field)}</span>
-                      {/if}
-                    </div>
-                  </div>
-                {/each}
-              </div>
-            {/if}
+            <div class="quick-start-control">
+              {#if field.type === 'bool'}
+                <button
+                  class="bool-toggle"
+                  class:bool-on={!!getDisplayValue(field)}
+                  class:dirty={isDirty(field.key)}
+                  onclick={() => toggleBool(field)}
+                  title={$t.config.clickToToggle}
+                >
+                  {getDisplayValue(field) ? $t.config.on : $t.config.off}
+                </button>
+              {:else if field.type === 'select' && field.options}
+                <select
+                  class="field-select"
+                  class:dirty={isDirty(field.key)}
+                  value={String(getDisplayValue(field) ?? '')}
+                  onchange={(e) => handleSelectChange(field, e)}
+                >
+                  {#each field.options as opt}
+                    <option value={opt}>{opt || $t.config.selectNone}</option>
+                  {/each}
+                </select>
+              {:else if editingKey === field.key}
+                <div class="field-edit">
+                  {#if field.type === 'string_list'}
+                    <textarea
+                      class="field-textarea"
+                      bind:value={editValue}
+                      onkeydown={(e) => handleFieldKeydown(e, field)}
+                      onblur={() => commitEdit(field)}
+                    ></textarea>
+                  {:else}
+                    <input
+                      type={field.sensitive ? 'password' : (field.type === 'int' || field.type === 'float' ? 'number' : 'text')}
+                      step={field.type === 'float' ? '0.01' : undefined}
+                      class="field-input"
+                      bind:value={editValue}
+                      onkeydown={(e) => handleFieldKeydown(e, field)}
+                      onblur={() => commitEdit(field)}
+                    />
+                  {/if}
+                </div>
+              {:else if field.sensitive}
+                <button
+                  class="value-btn"
+                  class:dirty={isDirty(field.key)}
+                  onclick={() => startEdit(field)}
+                  title={$t.config.clickToEdit}
+                >
+                  <span class="value-text sensitive">{formatValue(field)}</span>
+                </button>
+              {:else if field.type === 'json'}
+                {@const summary = structuredSummary(field)}
+                <div class="structured-readonly">
+                  <span class="structured-main">{summary.text}</span>
+                  {#if summary.preview.length > 0}
+                    <span class="structured-preview">
+                      {#each summary.preview as preview}
+                        <span>{preview}</span>
+                      {/each}
+                    </span>
+                  {/if}
+                  {#if jsonWizardLink(item.key)}
+                    <button class="btn btn-secondary btn-sm" onclick={() => openJSONWizard(item.key)}>
+                      Edit in wizard
+                    </button>
+                  {:else}
+                    <span class="yaml-key-hint" title="Documented in config/tars.config.example.yaml">YAML: {fieldPath(field)}</span>
+                  {/if}
+                </div>
+              {:else}
+                <button
+                  class="value-btn"
+                  class:dirty={isDirty(field.key)}
+                  onclick={() => startEdit(field)}
+                  title={$t.config.clickToEdit}
+                >
+                  <span class="value-text">{formatValue(field)}</span>
+                </button>
+              {/if}
+              {#if item.key === 'llm_providers'}
+                <button class="btn btn-ghost btn-sm" disabled={llmTestBusy} onclick={testLLMConnection}>
+                  {llmTestBusy ? 'Testing...' : 'Test connection'}
+                </button>
+                {#if llmTestResult}
+                  <span class={`quick-test-result test-${llmTestKind}`}>{llmTestResult}</span>
+                {/if}
+              {/if}
+            </div>
           </div>
         {/each}
       </div>
-    {:else}
-      <div class="editor-card card">
-        <div class="card-header">
-          <span class="card-title">Configuration (YAML)</span>
-          <span class="yaml-readonly-hint">Read-only — edit the file on disk, then restart to apply.</span>
-        </div>
-        <pre class="config-yaml-view">{yamlContent}</pre>
-      </div>
-    {/if}
-
+    </div>
 
     <!-- Server Restart -->
     <div class="restart-section card">
@@ -830,29 +660,6 @@
     padding: 2px var(--space-2);
     border-radius: var(--radius-sm);
   }
-
-  .view-toggle {
-    display: flex;
-    background: var(--surface-elevated);
-    border-radius: var(--radius-md);
-    padding: 2px;
-    gap: 2px;
-  }
-
-  .toggle-btn {
-    padding: var(--space-1) var(--space-3);
-    border: none;
-    border-radius: var(--radius-sm);
-    background: transparent;
-    color: var(--text-secondary);
-    font-family: var(--font-display);
-    font-size: var(--text-sm);
-    font-weight: 500;
-    cursor: pointer;
-    transition: all var(--duration-fast) var(--ease-out);
-  }
-  .toggle-btn:hover { color: var(--text-primary); }
-  .toggle-btn.active { background: var(--primary); color: #fff; }
 
   .loading { color: var(--text-secondary); font-size: var(--text-sm); padding: var(--space-6); }
 
@@ -1008,55 +815,7 @@
     background: rgba(220, 60, 60, 0.08);
   }
 
-  /* ── Sections ────────────────────────────── */
-  .sections { display: flex; flex-direction: column; gap: var(--space-3); }
-  .section-card { overflow: hidden; }
-
-  .section-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    width: 100%;
-    padding: var(--space-3) var(--space-4);
-    background: transparent;
-    border: none;
-    cursor: pointer;
-    transition: background var(--duration-fast) var(--ease-out);
-  }
-  .section-header:hover { background: var(--surface-elevated); }
-
-  .section-header-left { display: flex; align-items: center; gap: var(--space-3); }
-  .section-icon { font-size: var(--text-md); color: var(--primary); width: 20px; text-align: center; }
-  .section-title { font-family: var(--font-display); font-size: var(--text-sm); font-weight: 600; color: var(--text-primary); }
-  .section-count { font-size: var(--text-xs); color: var(--text-ghost); }
-
-  .section-chevron {
-    color: var(--text-ghost);
-    font-size: var(--text-sm);
-    transition: transform var(--duration-fast) var(--ease-out);
-    display: inline-block;
-  }
-  .section-chevron.open { transform: rotate(90deg); }
-  .section-body { border-top: 1px solid var(--border-subtle); }
-
-  /* ── Field rows ──────────────────────────── */
-  .field-row {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: var(--space-4);
-    padding: var(--space-3) var(--space-4);
-    border-bottom: 1px solid var(--border-subtle);
-    transition: background var(--duration-fast) var(--ease-out);
-  }
-  .field-row:last-child { border-bottom: none; }
-  .field-row:hover { background: rgba(255, 255, 255, 0.015); }
-  .field-row.field-dirty { background: rgba(224, 145, 69, 0.06); border-left: 2px solid var(--primary); }
-
-  .field-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
-  .field-label { font-family: var(--font-display); font-size: var(--text-sm); font-weight: 500; color: var(--text-primary); }
-  .field-desc { font-size: var(--text-xs); color: var(--text-tertiary); line-height: 1.4; }
-  .field-key { font-family: var(--font-mono); font-size: 10px; color: var(--text-ghost); }
+  /* ── Field metadata ──────────────────────── */
   .field-meta-badges {
     display: flex;
     align-items: center;
@@ -1110,8 +869,6 @@
     color: var(--primary);
     background: rgba(224, 145, 69, 0.11);
   }
-
-  .field-value { flex-shrink: 0; max-width: 300px; text-align: right; display: flex; align-items: center; }
 
   .value-text {
     font-family: var(--font-mono);
@@ -1181,43 +938,6 @@
     font-family: var(--font-mono);
     font-size: 10px;
     color: var(--text-ghost);
-  }
-
-  /* Read-only inspection (Fields tab is inspection-only per DESIGN.md #931) */
-  .inspect-note {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-3);
-    padding: var(--space-2) var(--space-3);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-md);
-    background: var(--surface-elevated);
-    color: var(--text-secondary);
-    font-size: var(--text-xs);
-    line-height: 1.5;
-  }
-  .inspect-note code {
-    font-family: var(--font-mono);
-    color: var(--text-primary);
-    font-size: 10px;
-  }
-  .readonly-bool {
-    display: inline-block;
-    padding: 3px var(--space-2);
-    border-radius: var(--radius-sm);
-    border: 1px solid var(--border-subtle);
-    font-family: var(--font-display);
-    font-size: var(--text-xs);
-    font-weight: 600;
-    letter-spacing: 0.04em;
-    background: rgba(255, 255, 255, 0.04);
-    color: var(--text-ghost);
-  }
-  .readonly-bool.readonly-on {
-    border-color: rgba(60, 180, 100, 0.28);
-    background: rgba(60, 180, 100, 0.08);
-    color: var(--green);
   }
 
   /* ── Bool toggle ─────────────────────────── */
@@ -1305,34 +1025,6 @@
     box-shadow: 0 0 0 2px rgba(224, 145, 69, 0.3);
   }
 
-  /* ── YAML read view ───────────────────── */
-  .editor-card { display: flex; flex-direction: column; }
-
-  .yaml-readonly-hint {
-    font-family: var(--font-mono);
-    font-size: var(--text-xs);
-    color: var(--text-ghost);
-  }
-
-  .config-yaml-view {
-    width: 100%;
-    margin: 0;
-    min-height: 500px;
-    max-height: 70vh;
-    padding: var(--space-3);
-    background: var(--surface-base);
-    color: var(--text-primary);
-    border-top: 1px solid var(--border-subtle);
-    border-bottom: 1px solid var(--border-subtle);
-    font-family: var(--font-mono);
-    font-size: var(--text-sm);
-    line-height: 1.6;
-    tab-size: 2;
-    white-space: pre;
-    overflow-x: auto;
-    overflow-y: auto;
-  }
-
   /* ── Restart section ──────────────────────── */
   .restart-section { margin-top: var(--space-4); }
 
@@ -1358,41 +1050,4 @@
 
   /* ── Diff panel ──────────────────────────── */
   .diff-badge { cursor: pointer; }
-  /* ── Search bar ──────────────────────────── */
-  .search-bar {
-    position: relative;
-    display: flex;
-    align-items: center;
-  }
-
-  .search-input {
-    width: 100%;
-    padding: var(--space-2) var(--space-3);
-    padding-right: var(--space-8);
-    background: var(--surface-elevated);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-md);
-    color: var(--text-primary);
-    font-family: var(--font-body);
-    font-size: var(--text-sm);
-  }
-  .search-input:focus {
-    outline: none;
-    border-color: var(--primary);
-    box-shadow: 0 0 0 2px rgba(224, 145, 69, 0.2);
-  }
-  .search-input::placeholder { color: var(--text-ghost); }
-
-  .search-clear {
-    position: absolute;
-    right: var(--space-2);
-    background: none;
-    border: none;
-    color: var(--text-ghost);
-    font-size: var(--text-md);
-    cursor: pointer;
-    padding: 2px 6px;
-    line-height: 1;
-  }
-  .search-clear:hover { color: var(--text-primary); }
 </style>

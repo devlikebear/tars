@@ -96,9 +96,9 @@ test('quick start accepts provider credentials and reports progress', () => {
   assert.equal(quickStartProgress(items).ready, 10)
 })
 
-test('Settings renders Quick Start tab and LLM connection action', () => {
+test('Settings renders the Quick Start panel and LLM connection action', () => {
   assert.match(apiSource, /getProviderModels/)
-  assert.match(configSource, /'quick'/)
+  assert.match(configSource, /quick-start-panel/)
   assert.match(configSource, /Quick Start/)
   assert.match(configSource, /quick-start-grid/)
   assert.match(configSource, /Test connection/)

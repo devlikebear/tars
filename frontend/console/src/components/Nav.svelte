@@ -39,29 +39,24 @@
     }
   })
 
+  // Console surface is deliberately slim (DESIGN.md #931 freeze): only the
+  // pages a single operator uses daily are navigable. Lineage, plans, memory,
+  // sysprompt, extensions, agent runtime, channels, cron, analytics, and
+  // reflection keep their routes and stay reachable by URL — they are just no
+  // longer advertised here.
   const groups: NavGroup[] = [
     {
       id: 'work',
       items: [
         { id: 'chat', path: '/console/chat', icon: '\u25ce' },
-        { id: 'lineage', path: '/console/sessions/graph', icon: '\u257f' },
-        { id: 'plans', path: '/console/tasks', icon: '\u2637' },
-        { id: 'memory', path: '/console/memory', icon: '\u22c8' },
-        { id: 'sysprompt', path: '/console/sysprompt', icon: '\u2691' },
-        { id: 'extensions', path: '/console/extensions', icon: '\u2756' },
       ],
     },
     {
       id: 'operate',
       items: [
-        { id: 'agentruntime', path: '/console/agentruntime', icon: '\u25c8' },
-        { id: 'channels', path: '/console/channels', icon: '\u2709' },
         { id: 'ops', path: '/console/approvals', icon: '\u2699' },
-        { id: 'cron', path: '/console/cron', icon: '\u23f2' },
         { id: 'logs', path: '/console/logs', icon: '\u2261' },
-        { id: 'analytics', path: '/console/analytics', icon: '\u25b1' },
         { id: 'pulse', path: '/console/pulse', icon: '\u2661' },
-        { id: 'reflection', path: '/console/reflection', icon: '\u263e' },
       ],
     },
     {
@@ -74,11 +69,7 @@
 
   const userVisibleItems = new Set<NavItemId>([
     'chat',
-    'lineage',
-    'plans',
-    'memory',
-    'sysprompt',
-    'agentruntime',
+    'pulse',
   ])
 
   let visibleGroups = $derived.by(() => {

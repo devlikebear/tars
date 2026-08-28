@@ -13,9 +13,12 @@ test('Config page stays inspection-first and hosts no heavyweight modal editors 
   assert.doesNotMatch(source, /modal-backdrop/)
 })
 
-test('Config inspection surfaces read-only values with YAML-key pointers and wizard deep links', () => {
-  assert.match(source, /config-yaml-view/)
-  assert.match(source, /Read-only/)
+test('Config page is Quick Start only after the #931 freeze', () => {
+  // The field inspector (165 fields) and the YAML read view are gone; Quick
+  // Start checks are the whole page. Everything else is documented file-first.
+  assert.doesNotMatch(source, /viewMode|view-toggle|toggle-btn/)
+  assert.doesNotMatch(source, /config-yaml-view|inspect-note/)
+  assert.match(source, /quick-start-panel/)
   assert.match(source, /jsonWizardLink/)
   assert.match(source, /onboarding\?reentry=1&section=provider/)
   assert.match(source, /onboarding\?reentry=1&section=tiers/)

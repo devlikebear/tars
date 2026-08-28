@@ -595,9 +595,6 @@ export type Translations = {
   }
   config: {
     pageTitle: string
-    viewToggleQuick: string
-    viewToggleFields: string
-    viewToggleYaml: string
     save: string
     saving: string
     discard: string
