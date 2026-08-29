@@ -17,6 +17,9 @@
   <p><strong>Homepage:</strong> <a href="https://tars.marvin-42.com">tars.marvin-42.com</a> — project overview, features, and quickstart.</p>
 </div>
 
+> [!IMPORTANT]
+> **Archived.** This repository is read-only and no longer developed. `v0.35.0` (2026-08-03) is the last tagged release, and `main` carries unreleased changes on top of it — including the console narrowing described below, which is in `main` but not in any release. This README describes `main` as archived. It still builds, still installs, and the MIT license still applies, but there will be no further fixes, releases, or answered issues: read it as a record of what was built rather than a roadmap. Fork it if you want to take it further.
+
 TARS is a local agent runtime for people who want an inspectable AI workbench without handing workspace control to a hosted service. It packages a browser console, API server, CLI, background jobs, memory, and extension system into one Go binary.
 
 The core promise is direct control:
@@ -32,7 +35,7 @@ The name comes from the TARS in *Interstellar* — practical, direct, dependable
 
 | | OpenClaw | Hermes Agent | TARS |
 |---|---|---|---|
-| **Release used** | Stable `v2026.7.1` | Stable `v0.19.1` (`v2026.7.30`) | `v0.35.0` (this release) |
+| **Release used** | Stable `v2026.7.1` | Stable `v0.19.1` (`v2026.7.30`) | `v0.35.0` (final release) |
 | **Packaging** | TypeScript Gateway plus web/native apps and plugins | Python agent/gateway plus TUI, web, and desktop surfaces | Go single binary with embedded browser console and CLI |
 | **Delegation / harnesses** | Native subagents, Codex runtime, and ACP-backed external harness sessions | Isolated `delegate_task` children, live transcripts, MoA, and coding-runtime adapters | Native Agent Runtime plus an opt-in bounded Claude Code execution adapter, model tiers, tool policy, depth limits, and experimental consensus |
 | **Durable async work** | Background-task ledger plus SQLite-backed automations | Durable Kanban/goals, delegated-result recovery, and delivery-obligation ledger | SQLite Work Ledger plus an opt-in dependency scheduler with leases, retries, budgets, and operator escalation |
@@ -152,7 +155,7 @@ llm:
     agentruntime_planner: heavy
 ```
 
-System roles such as chat, pulse, reflection, compaction, cleanup, and agent runtime agents map to tiers. Background work defaults to `light`, Chat can recommend a tier before the first expensive turn, and runtime logs record the resolved `role`, `tier`, `provider`, `model`, and `source` for traceability. Console Settings includes a typed `llm.tiers` editor for tier bindings.
+System roles such as chat, pulse, reflection, compaction, cleanup, and agent runtime agents map to tiers. Background work defaults to `light`, Chat can recommend a tier before the first expensive turn, and runtime logs record the resolved `role`, `tier`, `provider`, `model`, and `source` for traceability. Tier bindings are edited through the onboarding wizard — the Settings Quick Start card for `llm.tiers` reports readiness and hands off to it with "Edit in wizard".
 
 ### Background Surfaces
 
@@ -277,7 +280,7 @@ tars serve
 tars
 ```
 
-On first run, if `~/.tars/config/config.yaml` has no `llm_providers` / `llm_tiers`, the server boots in **setup-only mode**: only the wizard endpoints + `/console` are active and `tars api serving on … (setup-only mode)` is printed to stdout. Open `http://127.0.0.1:43180/console`, the SPA detects `needs_setup=true` from `/v1/healthz`, and walks you through provider setup, heavy/standard/light tier binding, optional Tailscale Remote Access, then save & restart. The wizard is also re-runnable later from the Settings page (`/console/config` → "설정 마법사 다시 실행 →") if you need to swap providers, tweak tier bindings, or enable remote access later.
+On first run, if `~/.tars/config/config.yaml` has no `llm_providers` / `llm_tiers`, the server boots in **setup-only mode**: only the wizard endpoints + `/console` are active and `tars api serving on … (setup-only mode)` is printed to stdout. Open `http://127.0.0.1:43180/console`, the SPA detects `needs_setup=true` from `/v1/healthz`, and walks you through provider setup, heavy/standard/light tier binding, optional Tailscale Remote Access, then save & restart. The wizard is also re-runnable later from the Settings page (`/console/config` → "Re-run setup wizard") if you need to swap providers, tweak tier bindings, or enable remote access later.
 
 To skip the wizard and edit by hand, set credentials directly and validate:
 
@@ -296,27 +299,67 @@ For local console development, set `TARS_CONSOLE_DEV_URL=http://127.0.0.1:5173` 
 
 ## Console Pages
 
-The sidebar groups the workbench into Home, Work, Operate, and Setup. The footer keeps server, Pulse, Reflection, and active session status visible with direct jumps to each detail page.
+The console runs at `http://127.0.0.1:43180/console`. The sidebar is deliberately short: the last changes before the archive trimmed it to the pages a single operator opens daily, grouped under Work, Operate, and Setup. That narrowing is in `main` only — a `v0.35.0` build still shows the wider nav. The footer keeps server, Pulse, Reflection, and active session status visible with direct jumps to each detail page.
 
 | Group | Page | Path | Purpose |
 |-------|------|------|---------|
-| Home | Mission Control | `/console` | Live overview for health, plans, runs, jobs, sessions, notifications, and setup |
+| — | Mission Control | `/console` | The landing screen: health, plans, runs, jobs, sessions, notifications, and recommended setup actions |
 | Work | Chat | `/console/chat` | Agent chat, tool calls, files, terminal, Git, tasks, session policy, and memory context |
-| Work | Lineage | `/console/sessions/graph` | Root/forked session tree with fork previews and chat navigation |
-| Work | Plans | `/console/tasks` | Active plans across sessions with progress and chat links |
-| Work | Memory | `/console/memory` | Review memory candidates, edit stored knowledge, and test recall paths |
-| Work | System Prompt | `/console/sysprompt` | Edit USER.md, IDENTITY.md, AGENTS.md, and TOOLS.md |
-| Work | Extensions | `/console/extensions` | Skills, plugins, MCP packages, hub installs, diagnostics, and local drafts |
-| Operate | Agent Runtime | `/console/agentruntime` | Run history, topology views, replay, restart, costs, file attention, and subagent profiles |
-| Operate | Approvals | `/console/approvals` | Review cleanup plans and approved Git mutations before apply |
-| Operate | Cron | `/console/cron` | Manage global scheduled jobs with delivery targets, pause/resume, run-now, delete, and run history |
+| Operate | Approvals | `/console/approvals` | Review cleanup plans and approved Git mutations before apply, plus the sanitized Remote Execution view |
 | Operate | Logs | `/console/logs` | Tail configured runtime logs with file, level, component, line-count, refresh, and auto-refresh controls |
-| Operate | Analytics | `/console/analytics` | Visualize usage totals, daily token bars, model cost rows, and tool or skill call counts |
 | Operate | Pulse | `/console/pulse` | Watchdog status, incident cards, and run-now trigger |
-| Operate | Reflection | `/console/reflection` | Nightly batch status and run-now trigger |
-| Setup | Settings | `/console/config` | Quick Start onboarding plus structured object/array editing, typed LLM tier editing, subsystem-aware pending-change impact previews, and field metadata badges |
+| Setup | Settings | `/console/config` | Quick Start onboarding gates, wizard reentry, credential entry, remote access, restart, and workspace reset |
 
-Detailed console behavior, panel inventory, localization, usage budget chips, and frontend API type policy live in [docs/console.md](docs/console.md) and [docs/frontend-api-types.md](docs/frontend-api-types.md).
+These routes are **hidden from the nav, not removed** — components and backend packages are untouched and each still opens by URL:
+
+| Page | Path | Purpose |
+|------|------|---------|
+| Lineage | `/console/sessions/graph` | Root/forked session tree with fork previews and chat navigation |
+| Plans | `/console/tasks` | Active plans across sessions with progress and chat links |
+| Memory | `/console/memory` | Review memory candidates, edit stored knowledge, and test recall paths |
+| System Prompt | `/console/sysprompt` | Edit USER.md, IDENTITY.md, AGENTS.md, and TOOLS.md |
+| Extensions | `/console/extensions` | Skills, plugins, MCP packages, hub installs, diagnostics, and local drafts |
+| Agent Runtime | `/console/agentruntime` | Run history, topology views, replay, restart, costs, file attention, and subagent profiles |
+| Channels | `/console/channels` | Telegram pairing requests: approve, revoke, and review the DM policy |
+| Cron | `/console/cron` | Manage global scheduled jobs with delivery targets, pause/resume, run-now, delete, and run history |
+| Analytics | `/console/analytics` | Visualize usage totals, daily token bars, model cost rows, and tool or skill call counts |
+| Reflection | `/console/reflection` | Nightly batch status and run-now trigger |
+
+The narrowing is recorded as normative policy in [`frontend/console/DESIGN.md`](frontend/console/DESIGN.md) (Console Purpose & Surface Policy). Detailed console behavior, panel inventory, localization, usage budget chips, and frontend API type policy live in [docs/console.md](docs/console.md) and [docs/frontend-api-types.md](docs/frontend-api-types.md).
+
+### Screenshots
+
+Captured from a running `tars serve` built from `main` at the archive point — one per sidebar page, in the order the sidebar lists them. The workspace is a throwaway one, so the counters are small. (The sidebar footer reads `v0.35.0` because `VERSION.txt` was never bumped past the last release.)
+
+**Chat** — `/console/chat`
+
+![TARS console Chat page: session list on the left, a two-turn conversation in the middle, dockable panel tabs across the top](docs/screenshots/console-chat.webp)
+
+Panel tabs across the top dock Sessions, Files, Git, Tasks, Health and the rest beside the transcript; the header carries session health and the active working directory.
+
+**Approvals** — `/console/approvals`
+
+![TARS console Approvals page showing the review queue, what triggers an approval, and the Remote Execution panel](docs/screenshots/console-approvals.webp)
+
+The review queue, with what puts something in it and what each decision does. Remote execution sits on the same page, reporting disabled because it is off by default.
+
+**Logs** — `/console/logs`
+
+![TARS console Logs page tailing the runtime log filtered to INFO level](docs/screenshots/console-logs.webp)
+
+File, level, component, and line count are all filters; any line expands to the raw JSON record behind it.
+
+**Pulse** — `/console/pulse`
+
+![TARS console Pulse page listing watch targets, the ignore/notify/autofix actions, and current watchdog status](docs/screenshots/console-pulse.webp)
+
+What the watchdog watches and what it is allowed to do about it. The counters are live: this run classified a disk-pressure signal as `notify` rather than `autofix`.
+
+**Settings** — `/console/config`
+
+![TARS console Settings page showing the Quick Start readiness cards, 9 of 10 ready](docs/screenshots/console-settings.webp)
+
+Quick Start, and only Quick Start. Each card is one gate between you and a working install, with a readiness badge and a note when the change needs a restart.
 
 ## Requirements
 
@@ -358,4 +401,6 @@ cd frontend/console && npm run check && npm run test:ci
 
 ## Status
 
-Pre-1.0.0 — Module path: `github.com/devlikebear/tars`
+**Archived.** `v0.35.0` is the last tagged release and `main` ends a few unreleased changes later; the repository is read-only and there will be no further work on it. It never reached 1.0.0, so treat the API surface as the pre-1.0 one it was — the [stability policy](docs/public-agent-packages.md#stability-policy) describes what `pkg/` promised, and nothing beyond that was settled.
+
+Module path: `github.com/devlikebear/tars`. MIT licensed — fork it if you want to carry it further.
