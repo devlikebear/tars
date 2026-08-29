@@ -1,6 +1,7 @@
 package architecture_test
 
 import (
+	"bytes"
 	"encoding/json"
 	"os/exec"
 	"sort"
@@ -29,9 +30,16 @@ func loadPackages(t *testing.T) map[string][]string {
 	t.Helper()
 	cmd := exec.Command("go", "list", "-deps", "-json", "./...")
 	cmd.Dir = "../.."
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
 	out, err := cmd.Output()
 	if err != nil {
-		t.Fatalf("go list: %v", err)
+		// Surface go's own message. Without it an import cycle or a broken
+		// build reads as four mysterious layer failures rather than the
+		// compile error it is.
+		t.Fatalf("go list failed (%v). This is a build problem, not a layer\n"+
+			"violation — fix it before reading the results below:\n%s",
+			err, strings.TrimSpace(stderr.String()))
 	}
 
 	deps := map[string][]string{}
