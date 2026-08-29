@@ -182,7 +182,15 @@ func startDurableToolScheduler(t *testing.T, ledger *workstore.Store, workspaceI
 	t.Helper()
 	scheduler, err := workscheduler.New(workscheduler.Options{
 		Store: ledger, WorkspaceID: workspaceID, WorkerID: "tool-scheduler", ActorID: "tool-scheduler",
-		LeaseDuration: time.Second, HeartbeatInterval: 100 * time.Millisecond,
+		// The lease only exists to reclaim a worker that has actually died, so it
+		// has to outlast any stall these tests can suffer on a loaded runner. At
+		// one second a starved heartbeat goroutine was enough to lapse the lease
+		// on a live attempt, and the reclaim came back as a retry: the step ran
+		// twice, the prompt picked up "Retry the task and correct the previous
+		// failure.", and the assertions on response text and attempt count failed
+		// on Windows CI. A minute matches both the scheduler's own default and
+		// every other scheduler test in the repo.
+		LeaseDuration: time.Minute, HeartbeatInterval: 100 * time.Millisecond,
 		PollInterval: 5 * time.Millisecond, MaxWorkers: 4,
 		Executors: []workscheduler.Executor{NewAgentRuntimeWorkExecutor(agentRuntime, ledger)},
 	})
