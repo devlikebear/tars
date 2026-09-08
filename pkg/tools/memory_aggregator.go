@@ -10,10 +10,18 @@ import (
 
 // NewMemoryTool creates a single "memory" tool that dispatches to save, search,
 // and get sub-actions. Replaces the individual memory_save, memory_search, and
-// memory_get tools.
+// memory_get tools. Its search sub-action covers no past conversations; use
+// NewMemoryToolWithTranscripts for that.
 func NewMemoryTool(workspaceDir string, backend memory.Backend, nowFn func() time.Time) Tool {
+	return NewMemoryToolWithTranscripts(workspaceDir, backend, nowFn, nil)
+}
+
+// NewMemoryToolWithTranscripts is NewMemoryTool with a source of past
+// conversations for the search sub-action. A nil transcripts is the same as
+// NewMemoryTool.
+func NewMemoryToolWithTranscripts(workspaceDir string, backend memory.Backend, nowFn func() time.Time, transcripts TranscriptSource) Tool {
 	saveTool := NewMemorySaveTool(backend, nowFn)
-	searchTool := NewMemorySearchTool(workspaceDir, backend)
+	searchTool := NewMemorySearchToolWithTranscripts(workspaceDir, backend, transcripts)
 	getTool := NewMemoryGetTool(workspaceDir, backend)
 	return Tool{
 		Name:        "memory",

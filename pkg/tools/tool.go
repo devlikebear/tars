@@ -8,7 +8,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/devlikebear/tars/internal/llm"
+	"github.com/devlikebear/tars/pkg/toolschema"
 	"github.com/rs/zerolog/log"
 )
 
@@ -166,7 +166,7 @@ func (r *Registry) All() []Tool {
 	return list
 }
 
-func (r *Registry) Schemas() []llm.ToolSchema {
+func (r *Registry) Schemas() []toolschema.Schema {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -180,12 +180,12 @@ func (r *Registry) Schemas() []llm.ToolSchema {
 	}
 	sort.Strings(names)
 
-	schemas := make([]llm.ToolSchema, 0, len(names))
+	schemas := make([]toolschema.Schema, 0, len(names))
 	for _, name := range names {
 		t := r.tools[name]
-		schemas = append(schemas, llm.ToolSchema{
+		schemas = append(schemas, toolschema.Schema{
 			Type: "function",
-			Function: llm.ToolFunctionSchema{
+			Function: toolschema.FunctionSchema{
 				Name:        t.Name,
 				Description: t.Description,
 				Parameters:  t.Parameters,
@@ -195,7 +195,7 @@ func (r *Registry) Schemas() []llm.ToolSchema {
 	return schemas
 }
 
-func (r *Registry) SchemasForNames(names []string) []llm.ToolSchema {
+func (r *Registry) SchemasForNames(names []string) []toolschema.Schema {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -203,7 +203,7 @@ func (r *Registry) SchemasForNames(names []string) []llm.ToolSchema {
 		return nil
 	}
 
-	schemas := make([]llm.ToolSchema, 0, len(names))
+	schemas := make([]toolschema.Schema, 0, len(names))
 	seen := map[string]struct{}{}
 	for _, name := range names {
 		key := strings.TrimSpace(name)
@@ -218,9 +218,9 @@ func (r *Registry) SchemasForNames(names []string) []llm.ToolSchema {
 		if !ok {
 			continue
 		}
-		schemas = append(schemas, llm.ToolSchema{
+		schemas = append(schemas, toolschema.Schema{
 			Type: "function",
-			Function: llm.ToolFunctionSchema{
+			Function: toolschema.FunctionSchema{
 				Name:        t.Name,
 				Description: t.Description,
 				Parameters:  t.Parameters,

@@ -12,7 +12,6 @@ import (
 	"unicode"
 
 	"github.com/devlikebear/tars/internal/memory"
-	"github.com/devlikebear/tars/internal/session"
 )
 
 const (
@@ -41,7 +40,17 @@ type memorySearchCandidate struct {
 	Timestamp time.Time
 }
 
+// NewMemorySearchTool searches MEMORY.md, the daily logs and the experience
+// log. It searches no past conversations: pass a TranscriptSource to
+// NewMemorySearchToolWithTranscripts for that.
 func NewMemorySearchTool(workspaceDir string, backend memory.Backend) Tool {
+	return NewMemorySearchToolWithTranscripts(workspaceDir, backend, nil)
+}
+
+// NewMemorySearchToolWithTranscripts is NewMemorySearchTool plus a source of
+// past conversations for include_sessions to search. A nil transcripts is the
+// same as NewMemorySearchTool.
+func NewMemorySearchToolWithTranscripts(workspaceDir string, backend memory.Backend, transcripts TranscriptSource) Tool {
 	return Tool{
 		Name:        "memory_search",
 		Description: "Search MEMORY.md, daily memory logs, and optionally past session transcripts for text snippets with source metadata.",
@@ -89,7 +98,7 @@ func NewMemorySearchTool(workspaceDir string, backend memory.Backend) Tool {
 				includeSessions = *input.IncludeSessions
 			}
 
-			matches, message := runMemorySearch(context.Background(), workspaceDir, query, limit, includeMemory, includeDaily, includeSessions, backend)
+			matches, message := runMemorySearch(context.Background(), workspaceDir, query, limit, includeMemory, includeDaily, includeSessions, backend, transcripts)
 			payload := memorySearchResult{
 				Query:   query,
 				Limit:   limit,
@@ -117,7 +126,7 @@ type memorySearchFile struct {
 	MTime  time.Time
 }
 
-func runMemorySearch(ctx context.Context, workspaceDir, query string, limit int, includeMemory, includeDaily, includeSessions bool, backend memory.Backend) ([]memorySearchMatch, string) {
+func runMemorySearch(ctx context.Context, workspaceDir, query string, limit int, includeMemory, includeDaily, includeSessions bool, backend memory.Backend, transcripts TranscriptSource) ([]memorySearchMatch, string) {
 	results := make([]memorySearchMatch, 0, limit)
 	terms := memorySearchTerms(query)
 	seen := map[string]struct{}{}
@@ -175,7 +184,7 @@ func runMemorySearch(ctx context.Context, workspaceDir, query string, limit int,
 	}
 
 	if includeSessions && len(results) < limit {
-		sessionResults, hasSessions := searchSessionTranscripts(workspaceDir, query, terms, limit-len(results))
+		sessionResults, hasSessions := searchSessionTranscripts(transcripts, query, terms, limit-len(results))
 		hasSearchableSource = hasSearchableSource || hasSessions
 		candidates = append(candidates, sessionResults...)
 	}
@@ -204,9 +213,15 @@ func runMemorySearch(ctx context.Context, workspaceDir, query string, limit int,
 	return results, ""
 }
 
-func searchSessionTranscripts(workspaceDir, query string, terms []string, limit int) ([]memorySearchCandidate, bool) {
-	store := session.NewStore(workspaceDir)
-	sessions, err := store.List()
+// searchSessionTranscripts reads past conversations through the caller's
+// TranscriptSource. With none supplied there is nothing to search, which is
+// reported as "no searchable source" rather than "no matches" so the message
+// the writer sees does not claim a search that never ran.
+func searchSessionTranscripts(transcripts TranscriptSource, query string, terms []string, limit int) ([]memorySearchCandidate, bool) {
+	if transcripts == nil {
+		return nil, false
+	}
+	sessions, err := transcripts.ListTranscripts()
 	if err != nil || len(sessions) == 0 {
 		return nil, false
 	}
@@ -222,7 +237,7 @@ func searchSessionTranscripts(workspaceDir, query string, terms []string, limit 
 		if strings.TrimSpace(item.ID) == "" {
 			continue
 		}
-		msgs, err := session.ReadMessages(store.TranscriptPath(item.ID))
+		msgs, err := transcripts.ReadTranscript(item.ID)
 		if err != nil || len(msgs) == 0 {
 			continue
 		}

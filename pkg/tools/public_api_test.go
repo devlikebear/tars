@@ -74,6 +74,8 @@ func TestPublicConstructorsAndHelpers(t *testing.T) {
 		tools.NewMemorySaveTool(nil, nil),
 		tools.NewMemorySearchTool(root, nil),
 		tools.NewMemoryGetTool(root, nil),
+		tools.NewMemoryToolWithTranscripts(root, nil, nil, nil),
+		tools.NewMemorySearchToolWithTranscripts(root, nil, nil),
 	}
 	for _, tool := range constructors {
 		if tool.Name == "" {

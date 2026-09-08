@@ -14,6 +14,8 @@ import (
 	"github.com/devlikebear/tars/internal/prompt"
 	"github.com/devlikebear/tars/internal/sysprompt"
 	"github.com/devlikebear/tars/internal/tool"
+	"github.com/devlikebear/tars/pkg/session"
+	"github.com/devlikebear/tars/pkg/tools/sessiontranscripts"
 	"github.com/rs/zerolog"
 )
 
@@ -127,7 +129,7 @@ func newMemoryAPIHandler(workspaceDir string, backend memory.Backend, logger zer
 		if !decodeJSONBody(w, r, &raw) {
 			return
 		}
-		result, err := tool.NewMemorySearchTool(workspaceDir, backend).Execute(context.Background(), raw)
+		result, err := tool.NewMemorySearchToolWithTranscripts(workspaceDir, backend, sessiontranscripts.New(session.NewStore(workspaceDir))).Execute(context.Background(), raw)
 		if err != nil {
 			logger.Error().Err(err).Msg("memory search failed")
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "memory search failed"})
