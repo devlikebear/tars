@@ -6,6 +6,8 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.37.0] - 2026-09-08
+
 ### Changed
 
 - **`pkg/tools`가 더 이상 session 런타임을 링크하지 않는다** — 패키지 문서는 "TARS의 session 배선은 internal에 남는다"고 약속하는데, `memory_search`가 과거 대화를 검색하려고 `internal/session`을 직접 열고 있어서 `pkg/tools`를 임포트하는 모든 소비자가 — `web_fetch` 하나만 쓰려는 쪽까지 — 트랜스크립트 저장소 전체를 링크했다. linetta의 의존성 게이트(`pkg/session` 금지)가 v0.36.0 범프에서 이걸 잡았다. 이제 과거 대화 검색은 `tools.TranscriptSource`를 넘겨 켜는 것이다: `NewMemorySearchToolWithTranscripts` / `NewMemoryToolWithTranscripts`가 추가됐고, 기존 `NewMemorySearchTool` / `NewMemoryTool`은 시그니처 그대로 대화를 검색하지 않는 변형이 됐다(`include_sessions`는 아무것도 찾지 않고, 다른 소스도 꺼져 있으면 "no memory sources found"를 돌려준다 — 하지도 않은 검색을 "매치 없음"이라고 말하지 않도록). `*session.Store`를 잇는 어댑터는 새 서브패키지 `pkg/tools/sessiontranscripts`에 있어, 대화 검색을 원하는 임포터만 session을 함께 가져간다. TARS 서버 자신은 두 호출 지점에서 어댑터를 물려 동작이 그대로다. 공개 API는 추가만 있고 제거는 없다.
