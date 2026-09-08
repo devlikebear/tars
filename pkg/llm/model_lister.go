@@ -12,10 +12,9 @@ import (
 	"time"
 
 	"github.com/devlikebear/tars/internal/auth"
+	"github.com/devlikebear/tars/internal/buildinfo"
 	"github.com/devlikebear/tars/internal/llmdefaults"
 )
-
-const defaultOpenAICodexModelsURL = "https://api.openai.com/v1/models"
 
 // ModelFetcher resolves provider model ids via provider-specific live APIs.
 type ModelFetcher interface {
@@ -54,10 +53,10 @@ func newModelFetcherWithDeps(deps modelFetcherDeps) *modelFetcher {
 	if refreshCredential == nil {
 		refreshCredential = auth.RefreshProviderCredential
 	}
+	// Left empty in production: the Codex models URL is derived from the
+	// provider's base URL per call, so it follows a custom endpoint the way the
+	// chat URL does. Tests set it to point at their own server.
 	openAICodexModelsURL := strings.TrimSpace(deps.openAICodexModelsURL)
-	if openAICodexModelsURL == "" {
-		openAICodexModelsURL = defaultOpenAICodexModelsURL
-	}
 	return &modelFetcher{
 		httpClient:           httpClient,
 		resolveCredential:    resolveCredential,
@@ -149,18 +148,42 @@ func (f *modelFetcher) fetchGeminiNativeModels(ctx context.Context, opts Provide
 	return models, nil
 }
 
+// fetchOpenAICodexModels lists the models a ChatGPT-authenticated Codex
+// session may use.
+//
+// This used to hit https://api.openai.com/v1/models -- the OpenAI *platform*
+// API -- with the ChatGPT OAuth bearer token. A ChatGPT token is not a
+// platform API key, so that endpoint answered 401 every time; the 401 was
+// then read as an expired token, a perfectly good refresh token was spent
+// on it, and the retry hit the same wrong host. The chat path never had this
+// confusion: it talks to llmdefaults.OpenAICodexBaseURL, the ChatGPT backend.
+//
+// The Codex CLI lists models from that same backend, at <base>/codex/models
+// with a client_version query (codex-rs/codex-api/src/endpoint/models.rs),
+// and caches the answer in ~/.codex/models_cache.json. The response is not
+// OpenAI-style {data:[{id}]} but {models:[{slug, visibility, priority, ...}]}
+// (codex-rs/protocol/src/openai_models.rs, ModelInfo). Only visibility
+// "list" entries are what the CLI shows; "hide" covers internal models such
+// as codex-auto-review. They come back in the backend's priority order.
 func (f *modelFetcher) fetchOpenAICodexModels(ctx context.Context, opts ProviderOptions) ([]string, error) {
 	authConfig := providerAuthConfig(opts)
 	cred, err := f.resolveCredential(authConfig)
 	if err != nil {
 		return nil, err
 	}
-	models, status, err := f.fetchOpenAIStyleModelIDs(ctx, "openai-codex", f.openAICodexModelsURL, map[string]string{
-		"Authorization": "Bearer " + strings.TrimSpace(cred.AccessToken),
-	})
+	endpoint := f.openAICodexModelsURL
+	if endpoint == "" {
+		endpoint = resolveOpenAICodexModelsURL(opts.BaseURL)
+	}
+	endpoint = appendClientVersionQuery(endpoint, buildinfo.Version)
+
+	models, status, err := f.fetchOpenAICodexModelSlugs(ctx, endpoint, cred)
 	if err == nil {
 		return models, nil
 	}
+	// A 401 from the right host is a stale token; refresh once and retry.
+	// (A 401 from the wrong host was the old bug, and is why this refresh
+	// is only reached after the URL above.)
 	if status != http.StatusUnauthorized && status != http.StatusForbidden {
 		return nil, err
 	}
@@ -171,13 +194,110 @@ func (f *modelFetcher) fetchOpenAICodexModels(ctx context.Context, opts Provider
 	if refreshErr != nil {
 		return nil, refreshErr
 	}
-	models, _, err = f.fetchOpenAIStyleModelIDs(ctx, "openai-codex", f.openAICodexModelsURL, map[string]string{
-		"Authorization": "Bearer " + strings.TrimSpace(refreshed.AccessToken),
-	})
+	models, _, err = f.fetchOpenAICodexModelSlugs(ctx, endpoint, refreshed)
 	if err != nil {
 		return nil, err
 	}
 	return models, nil
+}
+
+func (f *modelFetcher) fetchOpenAICodexModelSlugs(ctx context.Context, endpoint string, cred auth.ProviderCredential) ([]string, int, error) {
+	accountID := strings.TrimSpace(cred.AccountID)
+	if accountID == "" {
+		accountID = auth.ParseCodexAccountIDFromJWT(cred.AccessToken)
+	}
+	// The same three headers the chat request sends; the backend keys the
+	// account on chatgpt-account-id, not only on the bearer.
+	body, status, err := f.fetchModelsBody(ctx, "openai-codex", endpoint, map[string]string{
+		"Authorization":      "Bearer " + strings.TrimSpace(cred.AccessToken),
+		"chatgpt-account-id": accountID,
+		"originator":         codexOriginatorHeader,
+	})
+	if err != nil {
+		return nil, status, err
+	}
+	models, err := parseOpenAICodexModelSlugs(body)
+	if err != nil {
+		return nil, status, newProviderError("openai-codex", "parse", err)
+	}
+	return models, status, nil
+}
+
+// resolveOpenAICodexModelsURL mirrors resolveOpenAICodexResponsesURL: the
+// two endpoints are siblings under <base>/codex/.
+func resolveOpenAICodexModelsURL(baseURL string) string {
+	normalized := strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	if normalized == "" {
+		normalized = llmdefaults.OpenAICodexBaseURL
+	}
+	if strings.HasSuffix(normalized, "/codex/models") {
+		return normalized
+	}
+	if strings.HasSuffix(normalized, "/codex") {
+		return normalized + "/models"
+	}
+	return normalized + "/codex/models"
+}
+
+// appendClientVersionQuery adds the client_version the backend expects, the
+// way the CLI does (ModelsClient::append_client_version_query). tars sends
+// its own build version rather than impersonating a CLI release.
+func appendClientVersionQuery(endpoint, version string) string {
+	version = strings.TrimSpace(version)
+	if version == "" {
+		version = "dev"
+	}
+	separator := "?"
+	if strings.Contains(endpoint, "?") {
+		separator = "&"
+	}
+	return endpoint + separator + "client_version=" + url.QueryEscape(version)
+}
+
+// parseOpenAICodexModelSlugs reads the Codex backend's models response and
+// returns the listable slugs in the backend's priority order.
+func parseOpenAICodexModelSlugs(body []byte) ([]string, error) {
+	var payload struct {
+		Models []struct {
+			Slug       string `json:"slug"`
+			Visibility string `json:"visibility"`
+			Priority   int    `json:"priority"`
+		} `json:"models"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, fmt.Errorf("decode codex models response: %w", err)
+	}
+	type entry struct {
+		slug     string
+		priority int
+	}
+	var listed []entry
+	for _, m := range payload.Models {
+		slug := strings.TrimSpace(m.Slug)
+		if slug == "" || strings.ToLower(strings.TrimSpace(m.Visibility)) != "list" {
+			continue
+		}
+		listed = append(listed, entry{slug: slug, priority: m.Priority})
+	}
+	if len(listed) == 0 {
+		return nil, fmt.Errorf("codex models response listed no models")
+	}
+	sort.SliceStable(listed, func(i, j int) bool {
+		if listed[i].priority != listed[j].priority {
+			return listed[i].priority < listed[j].priority
+		}
+		return listed[i].slug < listed[j].slug
+	})
+	out := make([]string, 0, len(listed))
+	seen := map[string]bool{}
+	for _, e := range listed {
+		if seen[e.slug] {
+			continue
+		}
+		seen[e.slug] = true
+		out = append(out, e.slug)
+	}
+	return out, nil
 }
 
 func (f *modelFetcher) fetchOpenAIStyleModelIDs(ctx context.Context, provider, endpoint string, headers map[string]string) ([]string, int, error) {

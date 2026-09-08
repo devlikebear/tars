@@ -211,8 +211,13 @@ func TestOpenAICodexClient_RequestBody_IncludesRequiredFields(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
 			t.Fatalf("decode body: %v", err)
 		}
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"status":"completed","usage":{"input_tokens":2,"output_tokens":1},"output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"ok"}]}]}`))
+		// The backend only ever answers a streaming request, so the mock
+		// answers in SSE; a JSON body here would be a response the real
+		// service never sends.
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: {\"type\":\"response.output_text.delta\",\"delta\":\"ok\"}\n\n"))
+		_, _ = w.Write([]byte("data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"usage\":{\"input_tokens\":2,\"output_tokens\":1}}}\n\n"))
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
 	}))
 	defer srv.Close()
 
@@ -263,8 +268,10 @@ func TestOpenAICodexClient_RequestBody_IncludesRequiredFields(t *testing.T) {
 	if got["store"] != false {
 		t.Fatalf("expected store=false, got %#v", got["store"])
 	}
-	if got["stream"] != false {
-		t.Fatalf("expected stream=false, got %#v", got["stream"])
+	// Always true now: Codex is stream-only and the request says so from the
+	// first byte instead of learning it from a 400.
+	if got["stream"] != true {
+		t.Fatalf("expected stream=true, got %#v", got["stream"])
 	}
 	if got["tool_choice"] != "auto" {
 		t.Fatalf("expected tool_choice=auto, got %#v", got["tool_choice"])
@@ -794,11 +801,18 @@ func TestOpenAICodexClient_RefreshRetry401_RetriesOnce(t *testing.T) {
 	}
 }
 
-func TestOpenAICodexClient_StreamRequiredFallback_RetriesWithStream(t *testing.T) {
+// Codex is stream-only. A Chat with no OnDelta -- which is what Ask() and
+// every "send one prompt, read the answer" caller does -- used to go out as
+// JSON first, get 400 "Stream must be set to true", and only then be sent
+// again as SSE: a wasted round trip on the very first request of every
+// session. It must now stream from the start and make exactly one request.
+func TestOpenAICodexClient_StreamsFromTheFirstRequest_EvenWithoutOnDelta(t *testing.T) {
 	var requestCount int
 	var streamValues []bool
+	var accepts []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requestCount++
+		accepts = append(accepts, r.Header.Get("Accept"))
 		var body map[string]any
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			t.Fatalf("decode body: %v", err)
@@ -806,6 +820,8 @@ func TestOpenAICodexClient_StreamRequiredFallback_RetriesWithStream(t *testing.T
 		stream, _ := body["stream"].(bool)
 		streamValues = append(streamValues, stream)
 		if !stream {
+			// The backend's real answer to a non-streaming request. If the
+			// client ever sends one again, this is what it gets.
 			w.WriteHeader(http.StatusBadRequest)
 			_, _ = w.Write([]byte(`{"detail":"Stream must be set to true"}`))
 			return
@@ -819,7 +835,7 @@ func TestOpenAICodexClient_StreamRequiredFallback_RetriesWithStream(t *testing.T
 
 	client, err := newOpenAICodexClientWithConfig(
 		srv.URL,
-		"gpt-5.3-codex",
+		"gpt-5.6-sol",
 		"oauth",
 		"openai-codex",
 		"",
@@ -843,13 +859,55 @@ func TestOpenAICodexClient_StreamRequiredFallback_RetriesWithStream(t *testing.T
 		t.Fatalf("chat: %v", err)
 	}
 	if resp.Message.Content != "ok" {
-		t.Fatalf("expected fallback streamed response ok, got %q", resp.Message.Content)
+		t.Fatalf("expected streamed response ok, got %q", resp.Message.Content)
 	}
-	if requestCount != 2 {
-		t.Fatalf("expected two requests with stream fallback, got %d", requestCount)
+	if requestCount != 1 {
+		t.Fatalf("expected exactly one request (no stream fallback round trip), got %d", requestCount)
 	}
-	if len(streamValues) != 2 || streamValues[0] || !streamValues[1] {
-		t.Fatalf("expected stream flags [false,true], got %#v", streamValues)
+	if len(streamValues) != 1 || !streamValues[0] {
+		t.Fatalf("expected the first and only request to carry stream=true, got %#v", streamValues)
+	}
+	if len(accepts) != 1 || accepts[0] != "text/event-stream" {
+		t.Fatalf("expected Accept: text/event-stream on the first request, got %#v", accepts)
+	}
+}
+
+// The fallback is gone, not merely unused: if the backend ever does answer a
+// streaming request with the old "stream must be set to true" error, the
+// client must surface it rather than silently re-sending.
+func TestOpenAICodexClient_DoesNotRetryOnStreamRequiredError(t *testing.T) {
+	var requestCount int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requestCount++
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"detail":"Stream must be set to true"}`))
+	}))
+	defer srv.Close()
+
+	client, err := newOpenAICodexClientWithConfig(
+		srv.URL,
+		"gpt-5.6-sol",
+		"oauth",
+		"openai-codex",
+		"",
+		DefaultClientConfig(),
+		func() (auth.CodexCredential, error) {
+			return auth.CodexCredential{AccessToken: "token-1"}, nil
+		},
+		func(context.Context, auth.CodexCredential) (auth.CodexCredential, error) {
+			t.Fatal("refresh should not be called for a 400")
+			return auth.CodexCredential{}, nil
+		},
+	)
+	if err != nil {
+		t.Fatalf("new codex client: %v", err)
+	}
+
+	if _, err := client.Chat(context.Background(), []ChatMessage{{Role: "user", Content: "hello"}}, ChatOptions{}); err == nil {
+		t.Fatal("expected the 400 to be returned, got nil")
+	}
+	if requestCount != 1 {
+		t.Fatalf("expected exactly one request, got %d", requestCount)
 	}
 }
 

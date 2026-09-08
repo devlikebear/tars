@@ -15,10 +15,17 @@ const (
 	ProviderAnthropic      = "anthropic"
 	ProviderKimi           = "kimi"
 
-	OpenAIBaseURL       = "https://api.openai.com/v1"
-	OpenAIModel         = "gpt-4o-mini"
-	OpenAICodexBaseURL  = "https://chatgpt.com/backend-api"
-	OpenAICodexModel    = "gpt-5.3-codex"
+	OpenAIBaseURL      = "https://api.openai.com/v1"
+	OpenAIModel        = "gpt-4o-mini"
+	OpenAICodexBaseURL = "https://chatgpt.com/backend-api"
+	// OpenAICodexModel is the fallback when a caller leaves the model empty.
+	// The ChatGPT backend retires slugs without notice -- gpt-5.3-codex, the
+	// previous value here, is no longer served and a request naming it got
+	// 400 "not supported when using Codex with a ChatGPT account". This one
+	// was confirmed live on 2026-09-08. The models endpoint (see
+	// pkg/llm/model_lister.go) is the source of truth; a caller that can
+	// list should prefer what it lists over this constant.
+	OpenAICodexModel    = "gpt-5.6-sol"
 	ClaudeCodeCLIModel  = "sonnet"
 	GeminiBaseURL       = "https://generativelanguage.googleapis.com/v1beta/openai"
 	GeminiNativeBaseURL = "https://generativelanguage.googleapis.com/v1beta"
