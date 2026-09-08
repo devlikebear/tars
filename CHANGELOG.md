@@ -9,6 +9,7 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 ### Changed
 
 - **`pkg/tools`가 더 이상 session 런타임을 링크하지 않는다** — 패키지 문서는 "TARS의 session 배선은 internal에 남는다"고 약속하는데, `memory_search`가 과거 대화를 검색하려고 `internal/session`을 직접 열고 있어서 `pkg/tools`를 임포트하는 모든 소비자가 — `web_fetch` 하나만 쓰려는 쪽까지 — 트랜스크립트 저장소 전체를 링크했다. linetta의 의존성 게이트(`pkg/session` 금지)가 v0.36.0 범프에서 이걸 잡았다. 이제 과거 대화 검색은 `tools.TranscriptSource`를 넘겨 켜는 것이다: `NewMemorySearchToolWithTranscripts` / `NewMemoryToolWithTranscripts`가 추가됐고, 기존 `NewMemorySearchTool` / `NewMemoryTool`은 시그니처 그대로 대화를 검색하지 않는 변형이 됐다(`include_sessions`는 아무것도 찾지 않고, 다른 소스도 꺼져 있으면 "no memory sources found"를 돌려준다 — 하지도 않은 검색을 "매치 없음"이라고 말하지 않도록). `*session.Store`를 잇는 어댑터는 새 서브패키지 `pkg/tools/sessiontranscripts`에 있어, 대화 검색을 원하는 임포터만 session을 함께 가져간다. TARS 서버 자신은 두 호출 지점에서 어댑터를 물려 동작이 그대로다. 공개 API는 추가만 있고 제거는 없다.
+- **`pkg/tools`가 더 이상 `pkg/llm`도 링크하지 않는다** — 같은 게이트의 두 번째 항목. v0.34.3까지는 `ToolSchema`/`ToolFunctionSchema`가 `internal/llm`에 있고 `pkg/llm`이 그걸 별칭했는데, #957이 방향을 뒤집어 정의를 `pkg/llm`에 두면서 `Registry.Schemas()` 하나 때문에 `pkg/tools`가 프로바이더 클라이언트 전부를 끌고 왔다. 두 타입은 이제 잎 패키지 `pkg/toolschema`(`Schema`, `FunctionSchema`)에 살고, `pkg/llm.ToolSchema` / `ToolFunctionSchema`는 그 별칭이라 호출 코드는 그대로 컴파일된다. API 스냅샷에서 `pkg/llm field ToolSchema.*` 줄이 사라지는 건 스냅샷 도구가 별칭 타입의 필드를 걷지 않아서이지 필드가 없어진 게 아니다 — 타입 항목 자체는 남아 있고 리터럴 `llm.ToolSchema{Type:…, Function:…}`는 전과 같이 쓰인다.
 
 ## [0.36.0] - 2026-09-08
 

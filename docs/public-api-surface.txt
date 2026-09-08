@@ -248,11 +248,6 @@ pkg/llm field ToolCall.Name
 pkg/llm field ToolCall.ThoughtSignature
 pkg/llm field ToolChoice.Mode
 pkg/llm field ToolChoice.Name
-pkg/llm field ToolFunctionSchema.Description
-pkg/llm field ToolFunctionSchema.Name
-pkg/llm field ToolFunctionSchema.Parameters
-pkg/llm field ToolSchema.Function
-pkg/llm field ToolSchema.Type
 pkg/llm field Usage.CacheReadTokens
 pkg/llm field Usage.CacheWriteTokens
 pkg/llm field Usage.CachedTokens
@@ -1615,3 +1610,10 @@ pkg/tools type WebFetchOptions
 pkg/tools type WebSearchOptions
 pkg/tools var ErrPatchUnavailable
 pkg/tools/sessiontranscripts func New
+pkg/toolschema field FunctionSchema.Description
+pkg/toolschema field FunctionSchema.Name
+pkg/toolschema field FunctionSchema.Parameters
+pkg/toolschema field Schema.Function
+pkg/toolschema field Schema.Type
+pkg/toolschema type FunctionSchema
+pkg/toolschema type Schema

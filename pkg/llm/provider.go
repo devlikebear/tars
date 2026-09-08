@@ -10,6 +10,7 @@ import (
 
 	"github.com/devlikebear/tars/internal/auth"
 	"github.com/devlikebear/tars/internal/llmdefaults"
+	"github.com/devlikebear/tars/pkg/toolschema"
 	zlog "github.com/rs/zerolog/log"
 )
 
@@ -90,21 +91,15 @@ type ToolCall struct {
 	ThoughtSignature string `json:"thought_signature,omitempty"`
 }
 
-// ToolFunctionSchema describes one callable tool. Parameters is a JSON
-// Schema object; the model sees Description verbatim, so it is the main
-// lever on whether a tool gets called correctly.
-type ToolFunctionSchema struct {
-	Name        string          `json:"name"`
-	Description string          `json:"description"`
-	Parameters  json.RawMessage `json:"parameters,omitempty"`
-}
+// ToolFunctionSchema describes one callable tool. The definition lives in
+// pkg/toolschema so that a tool registry can produce schemas without linking
+// the provider clients; this alias keeps llm.ToolFunctionSchema the name
+// callers use.
+type ToolFunctionSchema = toolschema.FunctionSchema
 
-// ToolSchema wraps a function schema with its dispatch type. Type is
-// "function" for every provider currently supported.
-type ToolSchema struct {
-	Type     string             `json:"type"`
-	Function ToolFunctionSchema `json:"function"`
-}
+// ToolSchema wraps a function schema with its dispatch type. See
+// ToolFunctionSchema for why it is an alias.
+type ToolSchema = toolschema.Schema
 
 // Usage reports what one request consumed.
 //
