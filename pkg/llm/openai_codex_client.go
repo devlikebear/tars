@@ -154,8 +154,13 @@ func (c *OpenAICodexClient) Chat(ctx context.Context, messages []ChatMessage, op
 	if err != nil {
 		return ChatResponse{}, newProviderError(openAICodexProviderLabel, "auth", err)
 	}
-	streaming := opts.OnDelta != nil
-	return c.chatWithCredential(ctx, cred, messages, opts, streaming, true, true, true)
+	// Codex is stream-only. The ChatGPT backend answers a non-streaming
+	// request with 400 "Stream must be set to true", so the old shape --
+	// try JSON first, fall back to SSE on that error -- cost every Ask() and
+	// every OnDelta-less Chat() a wasted round trip before it could start.
+	// The SSE parser already assembles a full ChatResponse when there is no
+	// OnDelta, so callers see no difference.
+	return c.chatWithCredential(ctx, cred, messages, opts, true, true)
 }
 
 func (c *OpenAICodexClient) chatWithCredential(
@@ -163,11 +168,10 @@ func (c *OpenAICodexClient) chatWithCredential(
 	cred auth.CodexCredential,
 	messages []ChatMessage,
 	opts ChatOptions,
-	streaming bool,
 	allowRefreshRetry bool,
-	allowStreamFallback bool,
 	allowTransientRetry bool,
 ) (ChatResponse, error) {
+	const streaming = true
 	toolNameMap := newOpenAICodexToolNameMap(opts.Tools)
 	body, err := buildOpenAICodexRequestBody(messages, opts, c.model, streaming, toolNameMap, c.config)
 	if err != nil {
@@ -220,42 +224,22 @@ func (c *OpenAICodexClient) chatWithCredential(
 			refreshed.AccountID = auth.ParseCodexAccountIDFromJWT(refreshed.AccessToken)
 		}
 		c.setOverrideCredential(refreshed)
-		return c.chatWithCredential(ctx, refreshed, messages, opts, streaming, false, allowStreamFallback, allowTransientRetry)
+		return c.chatWithCredential(ctx, refreshed, messages, opts, false, allowTransientRetry)
 	}
 
 	defer resp.Body.Close()
 	if err := checkHTTPStatus(resp, openAICodexProviderLabel); err != nil {
-		if allowStreamFallback && !streaming && isOpenAICodexStreamRequiredError(err) {
-			return c.chatWithCredential(ctx, cred, messages, opts, true, allowRefreshRetry, false, allowTransientRetry)
-		}
 		return ChatResponse{}, err
 	}
 
-	var parsedResp ChatResponse
-	if streaming {
-		parsedResp, err = parseOpenAICodexSSE(resp.Body, opts, toolNameMap)
-	} else {
-		parsedResp, err = parseOpenAICodexJSON(resp.Body, toolNameMap)
-	}
+	parsedResp, err := parseOpenAICodexSSE(resp.Body, opts, toolNameMap)
 	if err != nil {
-		if streaming && allowTransientRetry && isOpenAICodexRetryableStreamError(err) {
-			return c.chatWithCredential(ctx, cred, messages, opts, streaming, allowRefreshRetry, allowStreamFallback, false)
+		if allowTransientRetry && isOpenAICodexRetryableStreamError(err) {
+			return c.chatWithCredential(ctx, cred, messages, opts, allowRefreshRetry, false)
 		}
 		return ChatResponse{}, err
 	}
 	return parsedResp, nil
-}
-
-func isOpenAICodexStreamRequiredError(err error) bool {
-	providerErr, ok := err.(*ProviderError)
-	if !ok || providerErr == nil {
-		return false
-	}
-	if providerErr.StatusCode != http.StatusBadRequest {
-		return false
-	}
-	message := strings.TrimSpace(strings.ToLower(providerErr.Message))
-	return strings.Contains(message, "stream must be set to true")
 }
 
 func isOpenAICodexRetryableStreamError(err error) bool {
@@ -638,54 +622,6 @@ func parseOpenAICodexSSE(body io.Reader, opts ChatOptions, nameMap openAICodexTo
 			ReasoningContent: reasoningBuilder.String(),
 		},
 		Usage:      usage,
-		StopReason: stopReason,
-	}, nil
-}
-
-func parseOpenAICodexJSON(body io.Reader, nameMap openAICodexToolNameMap) (ChatResponse, error) {
-	respBody, err := io.ReadAll(body)
-	if err != nil {
-		return ChatResponse{}, newProviderError(openAICodexProviderLabel, "request", fmt.Errorf("read response: %w", err))
-	}
-	logLLMResponsePayload(openAICodexProviderLabel, http.StatusOK, string(respBody))
-
-	var parsed map[string]any
-	if err := json.Unmarshal(respBody, &parsed); err != nil {
-		return ChatResponse{}, newProviderError(openAICodexProviderLabel, "parse", fmt.Errorf("decode response: %w", err))
-	}
-	if status := strings.TrimSpace(getStringAny(parsed["status"])); status == "failed" {
-		return ChatResponse{}, newProviderError(openAICodexProviderLabel, "request", fmt.Errorf("%s", extractOpenAICodexErrorMessage(parsed)))
-	}
-
-	var (
-		builder       strings.Builder
-		toolCallsByID = map[string]ToolCall{}
-		toolOrder     []string
-	)
-	for _, raw := range castSliceAny(parsed["output"]) {
-		item := castMapAny(raw)
-		parseOpenAICodexToolCallFromItem(item, toolCallsByID, &toolOrder, nameMap)
-		if text := extractOpenAICodexOutputText(item); text != "" {
-			builder.WriteString(text)
-		}
-	}
-	toolCalls := orderedOpenAICodexToolCalls(toolCallsByID, toolOrder)
-
-	stopReason := strings.TrimSpace(getStringAny(parsed["status"]))
-	if stopReason == "" {
-		if len(toolCalls) > 0 {
-			stopReason = "tool_calls"
-		} else {
-			stopReason = "stop"
-		}
-	}
-	return ChatResponse{
-		Message: ChatMessage{
-			Role:      "assistant",
-			Content:   builder.String(),
-			ToolCalls: toolCalls,
-		},
-		Usage:      parseOpenAICodexUsage(castMapAny(parsed["usage"])),
 		StopReason: stopReason,
 	}, nil
 }
