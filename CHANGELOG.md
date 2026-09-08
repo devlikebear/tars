@@ -6,6 +6,8 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.36.0] - 2026-09-08
+
 ### Added
 
 - **요청 형태별 캐시 사용량 측정 (#921)** — `usage.Entry`에 `tool_count`를 기록하고 `GET /v1/usage/summary?group_by=shape`로 호출을 `with-tools` / `no-tools` 두 행으로 나눈다. Anthropic은 `tools` → `system` → `messages` 순으로 prefix를 만들기 때문에 tools 없는 요청은 같은 턴 안이라도 tool을 실은 요청이 쓴 캐시 엔트리에 걸릴 수 없다. `agent.Loop`가 매 턴을 tools 없는 호출로 끝내므로 한 턴이 두 형태를 모두 만들고, 이 분리 없이는 둘의 캐시 read/write가 뭉쳐 보여 어느 쪽이 이득이고 손해인지 판별할 수 없었다. #933이 남긴 미검증 측정 항목을 실제로 읽을 수 있게 하는 계측이며, 판독 방법과 함정은 `docs/usage-signals.md`에 정리했다. `tool_count`는 이 변경 이후 기록분에만 있으므로 그 이전 항목은 전부 `no-tools`로 잡힌다.
