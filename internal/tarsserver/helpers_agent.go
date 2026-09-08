@@ -16,6 +16,8 @@ import (
 	"github.com/devlikebear/tars/internal/serverauth"
 	"github.com/devlikebear/tars/internal/tool"
 	"github.com/devlikebear/tars/internal/usage"
+	"github.com/devlikebear/tars/pkg/session"
+	"github.com/devlikebear/tars/pkg/tools/sessiontranscripts"
 	"github.com/rs/zerolog"
 )
 
@@ -84,7 +86,9 @@ func newBaseToolRegistryWithOptions(
 	backend := buildMemoryBackend(workspaceDir, semantic, memoryBackendFile)
 
 	// Memory & workspace aggregators
-	registry.Register(tool.NewMemoryTool(workspaceDir, backend, nil))
+	// The app is the one place with a transcript store, so it is the one place
+	// conversation search is switched on; pkg/tools itself stays session-free.
+	registry.Register(tool.NewMemoryToolWithTranscripts(workspaceDir, backend, nil, sessiontranscripts.New(session.NewStore(workspaceDir))))
 	registry.Register(apptool.NewWorkspaceTool(workspaceDir))
 
 	// Standalone tools

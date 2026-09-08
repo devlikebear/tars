@@ -1491,6 +1491,11 @@ pkg/tools field Tool.Parameters
 pkg/tools field Tool.Recovery
 pkg/tools field ToolRecoveryPolicy.EffectClass
 pkg/tools field ToolRecoveryPolicy.IdempotencyKeyArgument
+pkg/tools field TranscriptMessage.Content
+pkg/tools field TranscriptMessage.Role
+pkg/tools field TranscriptMessage.Timestamp
+pkg/tools field TranscriptRef.ID
+pkg/tools field TranscriptRef.UpdatedAt
 pkg/tools field WebFetchOptions.AllowPrivateHosts
 pkg/tools field WebFetchOptions.Enabled
 pkg/tools field WebFetchOptions.HTTPClient
@@ -1532,7 +1537,9 @@ pkg/tools func NewListDirToolWithPolicy
 pkg/tools func NewMemoryGetTool
 pkg/tools func NewMemorySaveTool
 pkg/tools func NewMemorySearchTool
+pkg/tools func NewMemorySearchToolWithTranscripts
 pkg/tools func NewMemoryTool
+pkg/tools func NewMemoryToolWithTranscripts
 pkg/tools func NewPathPolicy
 pkg/tools func NewProcessManager
 pkg/tools func NewProcessTool
@@ -1582,6 +1589,8 @@ pkg/tools method Result.Text
 pkg/tools method ToolOutputStreamer.EmitLine
 pkg/tools method ToolRecoveryPolicy.HasIdempotencyContract
 pkg/tools method ToolRecoveryPolicy.SafeToRetryPending
+pkg/tools method TranscriptSource.ListTranscripts
+pkg/tools method TranscriptSource.ReadTranscript
 pkg/tools type BlockedToolError
 pkg/tools type ContentBlock
 pkg/tools type ExecToolOptions
@@ -1599,6 +1608,10 @@ pkg/tools type Tool
 pkg/tools type ToolEffectClass
 pkg/tools type ToolOutputStreamer
 pkg/tools type ToolRecoveryPolicy
+pkg/tools type TranscriptMessage
+pkg/tools type TranscriptRef
+pkg/tools type TranscriptSource
 pkg/tools type WebFetchOptions
 pkg/tools type WebSearchOptions
 pkg/tools var ErrPatchUnavailable
+pkg/tools/sessiontranscripts func New

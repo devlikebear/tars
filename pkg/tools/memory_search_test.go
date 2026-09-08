@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/devlikebear/tars/internal/memory"
-	"github.com/devlikebear/tars/internal/session"
 )
 
 type searchStubEmbedder struct {
@@ -187,34 +186,37 @@ func TestMemorySearchTool_UsesSemanticSearchBeforeLexicalFallback(t *testing.T) 
 	}
 }
 
+// fakeTranscripts is the in-package stand-in for a session store. pkg/tools
+// must not import the session package (that is the whole point of
+// TranscriptSource), and an internal test cannot import the adapter
+// sub-package without a cycle, so the contract is exercised through a fake
+// here and against a real store in sessiontranscripts' own test.
+type fakeTranscripts struct {
+	refs     []TranscriptRef
+	messages map[string][]TranscriptMessage
+}
+
+func (f fakeTranscripts) ListTranscripts() ([]TranscriptRef, error) { return f.refs, nil }
+func (f fakeTranscripts) ReadTranscript(id string) ([]TranscriptMessage, error) {
+	return f.messages[id], nil
+}
+
 func TestMemorySearchTool_IncludeSessions(t *testing.T) {
 	root := t.TempDir()
 	if err := memory.EnsureWorkspace(root); err != nil {
 		t.Fatalf("ensure workspace: %v", err)
 	}
 
-	store := session.NewStore(root)
-	sess, err := store.Create("test session")
-	if err != nil {
-		t.Fatalf("create session: %v", err)
-	}
-	transcriptPath := store.TranscriptPath(sess.ID)
-	if err := session.AppendMessage(transcriptPath, session.Message{
-		Role:      "user",
-		Content:   "I love cooking pasta with tomato sauce",
-		Timestamp: time.Date(2026, 3, 20, 10, 0, 0, 0, time.UTC),
-	}); err != nil {
-		t.Fatalf("append user message: %v", err)
-	}
-	if err := session.AppendMessage(transcriptPath, session.Message{
-		Role:      "assistant",
-		Content:   "Here is a great pasta recipe with tomato sauce",
-		Timestamp: time.Date(2026, 3, 20, 10, 1, 0, 0, time.UTC),
-	}); err != nil {
-		t.Fatalf("append assistant message: %v", err)
+	updated := time.Date(2026, 3, 20, 10, 1, 0, 0, time.UTC)
+	transcripts := fakeTranscripts{
+		refs: []TranscriptRef{{ID: "sess-1", UpdatedAt: updated}},
+		messages: map[string][]TranscriptMessage{"sess-1": {
+			{Role: "user", Content: "I love cooking pasta with tomato sauce", Timestamp: time.Date(2026, 3, 20, 10, 0, 0, 0, time.UTC)},
+			{Role: "assistant", Content: "Here is a great pasta recipe with tomato sauce", Timestamp: updated},
+		}},
 	}
 
-	tl := NewMemorySearchTool(root, memory.NewFileBackend(root, nil))
+	tl := NewMemorySearchToolWithTranscripts(root, memory.NewFileBackend(root, nil), transcripts)
 
 	// With include_sessions=true, should find session content
 	result, err := tl.Execute(context.Background(), json.RawMessage(`{"query":"pasta","include_sessions":true}`))
@@ -244,33 +246,17 @@ func TestMemorySearchTool_IncludeSessionsSkipsSystemAndTool(t *testing.T) {
 		t.Fatalf("ensure workspace: %v", err)
 	}
 
-	store := session.NewStore(root)
-	sess, err := store.Create("test")
-	if err != nil {
-		t.Fatalf("create session: %v", err)
-	}
-	transcriptPath := store.TranscriptPath(sess.ID)
 	// System and tool messages should be skipped
-	if err := session.AppendMessage(transcriptPath, session.Message{
-		Role:    "system",
-		Content: "secretword system prompt",
-	}); err != nil {
-		t.Fatalf("append system message: %v", err)
-	}
-	if err := session.AppendMessage(transcriptPath, session.Message{
-		Role:    "tool",
-		Content: "secretword tool result",
-	}); err != nil {
-		t.Fatalf("append tool message: %v", err)
-	}
-	if err := session.AppendMessage(transcriptPath, session.Message{
-		Role:    "user",
-		Content: "visible user message",
-	}); err != nil {
-		t.Fatalf("append user message: %v", err)
+	transcripts := fakeTranscripts{
+		refs: []TranscriptRef{{ID: "sess-1", UpdatedAt: time.Now()}},
+		messages: map[string][]TranscriptMessage{"sess-1": {
+			{Role: "system", Content: "secretword system prompt"},
+			{Role: "tool", Content: "secretword tool result"},
+			{Role: "user", Content: "visible user message"},
+		}},
 	}
 
-	tl := NewMemorySearchTool(root, memory.NewFileBackend(root, nil))
+	tl := NewMemorySearchToolWithTranscripts(root, memory.NewFileBackend(root, nil), transcripts)
 	result, err := tl.Execute(context.Background(), json.RawMessage(`{"query":"secretword","include_sessions":true}`))
 	if err != nil {
 		t.Fatalf("execute: %v", err)
@@ -317,5 +303,26 @@ func TestMemorySearchTool_SearchesExperienceLogByTerms(t *testing.T) {
 	}
 	if !strings.Contains(result.Text(), `"source":"experience:fact"`) {
 		t.Fatalf("expected experience source in output, got %q", result.Text())
+	}
+}
+
+// The plain constructor has no transcripts. include_sessions must then find
+// nothing -- and must not claim "no matches" for a search that never ran, so
+// with every other source switched off the message is "no memory sources".
+func TestMemorySearchTool_NoTranscriptSourceMeansNoSessionSearch(t *testing.T) {
+	root := t.TempDir()
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+	tl := NewMemorySearchTool(root, memory.NewFileBackend(root, nil))
+	result, err := tl.Execute(context.Background(), json.RawMessage(`{"query":"anything","include_memory":false,"include_daily":false,"include_sessions":true}`))
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if strings.Contains(result.Text(), "session:") {
+		t.Fatalf("no source was supplied, yet a session result came back: %s", result.Text())
+	}
+	if !strings.Contains(result.Text(), "no memory sources found") {
+		t.Fatalf("want the honest 'no memory sources found', got %s", result.Text())
 	}
 }
