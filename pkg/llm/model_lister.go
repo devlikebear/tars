@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/devlikebear/tars/internal/auth"
-	"github.com/devlikebear/tars/internal/buildinfo"
 	"github.com/devlikebear/tars/internal/llmdefaults"
 )
 
@@ -175,7 +174,7 @@ func (f *modelFetcher) fetchOpenAICodexModels(ctx context.Context, opts Provider
 	if endpoint == "" {
 		endpoint = resolveOpenAICodexModelsURL(opts.BaseURL)
 	}
-	endpoint = appendClientVersionQuery(endpoint, buildinfo.Version)
+	endpoint = appendClientVersionQuery(endpoint, openAICodexClientVersion)
 
 	models, status, err := f.fetchOpenAICodexModelSlugs(ctx, endpoint, cred)
 	if err == nil {
@@ -239,9 +238,31 @@ func resolveOpenAICodexModelsURL(baseURL string) string {
 	return normalized + "/codex/models"
 }
 
-// appendClientVersionQuery adds the client_version the backend expects, the
-// way the CLI does (ModelsClient::append_client_version_query). tars sends
-// its own build version rather than impersonating a CLI release.
+// openAICodexClientVersion is what tars sends as client_version to the
+// ChatGPT backend's /codex/models.
+//
+// v0.37.0 sent tars' own build version, on the theory that the query names
+// the caller. It does not: the backend treats it as a compatibility floor
+// and shapes the list by it. Measured against a live login on 2026-09-09
+// with the same token:
+//
+//	dev      -> 400 {"detail":"Invalid client_version format"}
+//	0.37.0   -> 200, models: []            (tars' version is "too old")
+//	0.147.0  -> 200, 5 models, no gpt-6-astra
+//	0.153.4  -> 200, 6 models, gpt-6-astra first
+//	1.0.0    -> 200, same 6
+//
+// And when tars is a library -- linetta's case -- buildinfo.Version is never
+// set at all, so every caller sent "dev" and got the 400. So the value must
+// be a real Codex CLI version, and a recent one: whichever CLI release was
+// last verified to list everything. Bump it when a new model the backend
+// serves to a newer CLI fails to appear here.
+const openAICodexClientVersion = "0.153.4"
+
+// appendClientVersionQuery adds the client_version query the backend
+// requires (ModelsClient::append_client_version_query in codex-rs). A blank
+// version is sent as "dev", which the backend rejects -- that is the caller's
+// bug to see, not one to paper over here.
 func appendClientVersionQuery(endpoint, version string) string {
 	version = strings.TrimSpace(version)
 	if version == "" {

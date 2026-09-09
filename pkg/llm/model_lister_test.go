@@ -251,8 +251,11 @@ func TestModelFetcher_OpenAICodex_ListsFromTheChatGPTBackend(t *testing.T) {
 		if r.Method != http.MethodGet || r.URL.Path != "/backend-api/codex/models" {
 			t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
 		}
-		if got := r.URL.Query().Get("client_version"); got == "" {
-			t.Fatalf("expected a client_version query, got url %q", r.URL.String())
+		// Not tars' build version: the backend shapes the list by this value
+		// (and rejects anything that is not a CLI-style semver), so it has to
+		// be the pinned CLI version whatever binary is calling.
+		if got := r.URL.Query().Get("client_version"); got != openAICodexClientVersion {
+			t.Fatalf("expected client_version %q, got %q (url %q)", openAICodexClientVersion, got, r.URL.String())
 		}
 		if got := r.Header.Get("Authorization"); got != "Bearer old-token" {
 			t.Fatalf("expected the bearer token, got %q", got)

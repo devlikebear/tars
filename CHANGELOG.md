@@ -6,6 +6,10 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+### Fixed
+
+- **`openai-codex` 모델 목록의 `client_version`은 tars 빌드 버전이 아니라 Codex CLI 버전이어야 한다** — v0.36.0의 수정은 "CLI 버전을 흉내내지 않고 tars 자신의 빌드 버전을 보낸다"고 했는데, 백엔드는 그 값을 호출자 이름표가 아니라 **호환성 하한선**으로 쓴다. 같은 토큰으로 2026-09-09 실측: `dev` → 400 `Invalid client_version format`, `0.37.0` → 200이지만 빈 목록, `0.147.0` → 5개(gpt-6-astra 없음), `0.153.4` 이상 → 6개. 게다가 tars를 라이브러리로 쓰는 쪽(linetta)은 `buildinfo.Version`이 ldflags로 채워지지 않아 늘 `dev`를 보내고 있었다 — v0.37.0으로 범프해도 새로고침이 여전히 실패한 이유. 이제 `pkg/llm`이 검증된 CLI 버전 상수(`0.153.4`)를 보내며, 새 모델이 더 새 CLI에만 보이면 그 상수를 올린다. `internal/buildinfo` 의존은 `pkg/llm`에서 빠진다.
+
 ## [0.37.0] - 2026-09-08
 
 ### Changed
