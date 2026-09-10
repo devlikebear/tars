@@ -18,7 +18,7 @@
 </div>
 
 > [!IMPORTANT]
-> **Development resumed.** TARS is no longer archived. `v0.35.0` (2026-08-03) remains the latest tagged release; `main` includes unreleased changes, including the narrower console navigation described below. This README describes `main`; use the release notes for tagged-release behavior.
+> **Development resumed.** TARS is no longer archived. Latest tagged release is `v0.37.1` (2026-09-09). The narrower console navigation described below shipped in `v0.36.0`. This README tracks `main`; see the [changelog](CHANGELOG.md) for tagged-release behavior.
 
 TARS is a local agent runtime for people who want an inspectable AI workbench without handing workspace control to a hosted service. It packages a browser console, API server, CLI, background jobs, memory, and extension system into one Go binary.
 
@@ -35,7 +35,7 @@ The name comes from the TARS in *Interstellar* — practical, direct, dependable
 
 | | OpenClaw | Hermes Agent | TARS |
 |---|---|---|---|
-| **Release used** | Stable `v2026.7.1` | Stable `v0.19.1` (`v2026.7.30`) | `v0.35.0` (latest tagged release) |
+| **Release used** | Stable `v2026.7.1` | Stable `v0.19.1` (`v2026.7.30`) | `v0.37.1` (latest tagged release) |
 | **Packaging** | TypeScript Gateway plus web/native apps and plugins | Python agent/gateway plus TUI, web, and desktop surfaces | Go single binary with embedded browser console and CLI |
 | **Delegation / harnesses** | Native subagents, Codex runtime, and ACP-backed external harness sessions | Isolated `delegate_task` children, live transcripts, MoA, and coding-runtime adapters | Native Agent Runtime plus an opt-in bounded Claude Code execution adapter, model tiers, tool policy, depth limits, and experimental consensus |
 | **Durable async work** | Background-task ledger plus SQLite-backed automations | Durable Kanban/goals, delegated-result recovery, and delivery-obligation ledger | SQLite Work Ledger plus an opt-in dependency scheduler with leases, retries, budgets, and operator escalation |
@@ -299,7 +299,7 @@ For local console development, set `TARS_CONSOLE_DEV_URL=http://127.0.0.1:5173` 
 
 ## Console Pages
 
-The console runs at `http://127.0.0.1:43180/console`. The sidebar is deliberately short: recent changes on `main` trimmed it to the pages a single operator opens daily, grouped under Work, Operate, and Setup. That narrowing is in `main` only — a `v0.35.0` build still shows the wider nav. The footer keeps server, Pulse, Reflection, and active session status visible with direct jumps to each detail page.
+The console runs at `http://127.0.0.1:43180/console`. The sidebar is deliberately short: pages a single operator opens daily, grouped under Work, Operate, and Setup. That narrowing shipped in `v0.36.0` — builds before that still show the wider nav. The footer keeps server, Pulse, Reflection, and active session status visible with direct jumps to each detail page.
 
 | Group | Page | Path | Purpose |
 |-------|------|------|---------|
@@ -329,7 +329,7 @@ The narrowing is recorded as normative policy in [`frontend/console/DESIGN.md`](
 
 ### Screenshots
 
-Captured from a running `tars serve` built from an August 2026 snapshot of `main` — one per sidebar page, in the order the sidebar lists them. The workspace is a throwaway one, so the counters are small. (The sidebar footer reads `v0.35.0` because that snapshot still used the latest release version in `VERSION.txt`.)
+Captured from a running `tars serve` built from an August 2026 snapshot of `main` — one per sidebar page, in the order the sidebar lists them. The workspace is a throwaway one, so the counters are small. (The sidebar footer in that snapshot still showed `v0.35.0`; current `VERSION.txt` is `0.37.1`.)
 
 **Chat** — `/console/chat`
 
@@ -401,6 +401,6 @@ cd frontend/console && npm run check && npm run test:ci
 
 ## Status
 
-**Development resumed.** TARS is no longer archived and development has resumed. `v0.35.0` remains the latest tagged release, with additional unreleased changes on `main`. TARS is pre-1.0; see the [stability policy](docs/public-agent-packages.md#stability-policy) for the public `pkg/` API guarantees.
+**Development resumed.** TARS is no longer archived and development has resumed. Latest tagged release is `v0.37.1`. TARS is pre-1.0; see the [stability policy](docs/public-agent-packages.md#stability-policy) for the public `pkg/` API guarantees.
 
 Module path: `github.com/devlikebear/tars`. MIT licensed. Contributions are welcome; see [Contributing](CONTRIBUTING.md).
