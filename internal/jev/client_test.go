@@ -7,8 +7,11 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/devlikebear/tars/internal/secrets"
 )
 
 // errorsAs keeps the assertions below readable.
@@ -122,6 +125,27 @@ func TestAsk_401IsNotRetriedAndBodyIsTruncated(t *testing.T) {
 	var jerr *Error
 	if !errorsAs(err, &jerr) || jerr.Status != 401 || calls != 1 || len(jerr.Message) > 200 {
 		t.Fatalf("err=%v calls=%d", err, calls)
+	}
+}
+
+func TestAsk_ErrorBodyNeverContainsAPIKey(t *testing.T) {
+	secrets.ResetForTests()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		_, _ = w.Write([]byte(`{"error":"bad key k-test in header"}`))
+	}))
+	defer srv.Close()
+	c := newTestClient(t, srv)
+	_, err := c.Ask(context.Background(), "s", nil)
+	var jerr *Error
+	if !errorsAs(err, &jerr) || jerr.Status != http.StatusUnprocessableEntity {
+		t.Fatalf("err = %v", err)
+	}
+	if strings.Contains(jerr.Message, "k-test") {
+		t.Errorf("api key leaked into error message: %q", jerr.Message)
+	}
+	if strings.Contains(err.Error(), "k-test") {
+		t.Errorf("api key leaked into Error(): %q", err.Error())
 	}
 }
 

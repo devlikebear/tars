@@ -104,9 +104,16 @@ func NewClient(cfg Config) *Client {
 	if timeout <= 0 {
 		timeout = defaultTimeout
 	}
+	apiKey := strings.TrimSpace(cfg.APIKey)
+	if apiKey != "" {
+		// Register here rather than relying on config wiring: it makes the
+		// redaction in do() a property of this package instead of a property
+		// of call order somewhere else.
+		secrets.RegisterForced("jev_api_key", apiKey)
+	}
 	return &Client{
 		baseURL:    base,
-		apiKey:     strings.TrimSpace(cfg.APIKey),
+		apiKey:     apiKey,
 		model:      model,
 		httpClient: &http.Client{Timeout: timeout},
 		sleep:      time.Sleep,
