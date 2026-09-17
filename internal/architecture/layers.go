@@ -94,6 +94,7 @@ var SharedPackages = []string{
 	"cli",
 	"envloader",
 	"fileuri",
+	"jev",
 	"scheduleexpr",
 	"shellexec",
 	"sysprompt",
