@@ -1,0 +1,65 @@
+{
+  "current_space_id": 1,
+  "windows": [
+    {
+      "app_name": "Claude",
+      "bounds": {
+        "height": 948.0,
+        "width": 1512.0,
+        "x": 0.0,
+        "y": 34.0
+      },
+      "current_space_id": 1,
+      "is_on_screen": true,
+      "layer": 0,
+      "on_current_space": true,
+      "pid": 70047,
+      "space_ids": [
+        1
+      ],
+      "title": "Example App",
+      "window_id": 3296,
+      "z_index": 5
+    },
+    {
+      "app_name": "Cua Driver",
+      "bounds": {
+        "height": 1440.0,
+        "width": 2560.0,
+        "x": 0.0,
+        "y": -458.0
+      },
+      "current_space_id": 1,
+      "is_on_screen": true,
+      "layer": 0,
+      "on_current_space": true,
+      "pid": 87097,
+      "space_ids": [
+        1
+      ],
+      "title": "",
+      "window_id": 3557,
+      "z_index": 4
+    },
+    {
+      "app_name": "Google Chrome",
+      "bounds": {
+        "height": 948.0,
+        "width": 1512.0,
+        "x": 0.0,
+        "y": 34.0
+      },
+      "current_space_id": 1,
+      "is_on_screen": true,
+      "layer": 0,
+      "on_current_space": true,
+      "pid": 2415,
+      "space_ids": [
+        1
+      ],
+      "title": "Example Page - Browser",
+      "window_id": 3463,
+      "z_index": 3
+    }
+  ]
+}
