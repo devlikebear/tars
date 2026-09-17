@@ -144,6 +144,75 @@ func TestCuaDriver_PingMapsDaemonDownToUnavailable(t *testing.T) {
 	}
 }
 
+// recordingCommand captures the argv the driver builds and replies with a
+// fixed stdout, pinning the tool names and argument keys verified against
+// `cua-driver describe` at the time this adapter was written.
+func recordingCommand(t *testing.T, stdout string, got *[]string) func(context.Context, string, ...string) *exec.Cmd {
+	t.Helper()
+	if _, err := exec.LookPath("sh"); err != nil {
+		t.Skip("sh not available")
+	}
+	return func(ctx context.Context, _ string, args ...string) *exec.Cmd {
+		*got = args
+		return exec.CommandContext(ctx, "sh", "-c", "printf '%s' "+shellQuote(stdout))
+	}
+}
+
+func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
+
+func TestCuaDriver_ActionArgKeysMatchDescribeSchema(t *testing.T) {
+	w := Window{PID: 11, WindowID: 22}
+	cases := []struct {
+		name     string
+		run      func(*CuaDriver) error
+		wantTool string
+		wantKeys []string
+	}{
+		{"click", func(d *CuaDriver) error {
+			_, err := d.Click(context.Background(), w, "s1:3")
+			return err
+		}, "click", []string{`"pid":11`, `"element_token":"s1:3"`}},
+		{"set_value", func(d *CuaDriver) error {
+			_, err := d.SetValue(context.Background(), w, "s1:3", "abc")
+			return err
+		}, "set_value", []string{`"pid":11`, `"element_token":"s1:3"`, `"value":"abc"`}},
+		{"type_text", func(d *CuaDriver) error {
+			_, err := d.TypeText(context.Background(), w, "s1:3", "hello")
+			return err
+		}, "type_text", []string{`"pid":11`, `"element_token":"s1:3"`, `"text":"hello"`}},
+		{"press_key", func(d *CuaDriver) error {
+			_, err := d.PressKey(context.Background(), w, "return")
+			return err
+		}, "press_key", []string{`"pid":11`, `"window_id":22`, `"key":"return"`}},
+		{"scroll", func(d *CuaDriver) error {
+			_, err := d.Scroll(context.Background(), w, "down")
+			return err
+		}, "scroll", []string{`"pid":11`, `"window_id":22`, `"direction":"down"`}},
+		{"snapshot", func(d *CuaDriver) error {
+			_, err := d.Snapshot(context.Background(), w, SnapshotOpts{Query: "Save", MaxDepth: 4})
+			return err
+		}, "get_window_state", []string{`"pid":11`, `"window_id":22`, `"include_screenshot":false`, `"max_elements":`, `"query":"Save"`, `"max_depth":4`}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var argv []string
+			d := NewCuaDriver("cua-driver", time.Second)
+			d.commandContext = recordingCommand(t, `{"effect":"confirmed","elements":[]}`, &argv)
+			if err := tc.run(d); err != nil {
+				t.Fatal(err)
+			}
+			if len(argv) != 2 || argv[0] != tc.wantTool {
+				t.Fatalf("argv = %v, want tool %q", argv, tc.wantTool)
+			}
+			for _, key := range tc.wantKeys {
+				if !strings.Contains(argv[1], key) {
+					t.Errorf("argv[1] = %s, missing %s", argv[1], key)
+				}
+			}
+		})
+	}
+}
+
 func TestCuaDriver_ClickParsesEffect(t *testing.T) {
 	d := NewCuaDriver("cua-driver", time.Second)
 	d.commandContext = fakeCommand(t, `{"structuredContent":{"effect":"confirmed"}}`, false)
