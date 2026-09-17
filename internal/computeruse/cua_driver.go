@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"os/exec"
 	"sort"
@@ -18,6 +19,10 @@ const (
 	CuaDriverPathEnv     = "CUA_DRIVER_PATH"
 	cuaDriverWaitDelay   = 3 * time.Second
 	cuaDriverMaxElements = 2000
+
+	// A freshly launched app can answer before its window is mapped.
+	cuaLaunchPollAttempts = 10
+	cuaLaunchPollInterval = 300 * time.Millisecond
 )
 
 // FindCuaDriverPath resolves the binary: explicit config, then
@@ -228,28 +233,29 @@ func parseWindows(items []any) []Window {
 	return out
 }
 
-func parseListWindows(raw []byte) ([]Window, error) {
-	p, err := payload(raw)
-	if err != nil {
-		return nil, err
-	}
-	items, _ := p["windows"].([]any)
-	// Highest z_index first so callers can take [0] as the frontmost. z_index is
-	// null when WindowServer cannot report stacking order; those sort last and
-	// keep their original relative order.
+// rankWindows orders window records frontmost-first by z_index. hasZ reports
+// whether any record actually carried a numeric z_index: list_windows documents
+// that z_index may be null when stacking order is unavailable and that callers
+// "must not infer one", so a caller picking a frontmost window has to know
+// whether the order it got is real or just array order.
+func rankWindows(items []any) (wins []Window, hasZ bool) {
 	type ranked struct {
 		w Window
 		z float64
 	}
-	rs := []ranked{}
+	rs := make([]ranked, 0, len(items))
 	for _, it := range items {
 		m, ok := it.(map[string]any)
 		if !ok {
 			continue
 		}
+		// A null z sorts last and keeps its relative order; it must not read as
+		// 0, which would rank it ahead of a real negative z.
 		z, ok := m["z_index"].(float64)
-		if !ok {
-			z = -1
+		if ok {
+			hasZ = true
+		} else {
+			z = math.Inf(-1)
 		}
 		rs = append(rs, ranked{w: parseWindows([]any{it})[0], z: z})
 	}
@@ -258,7 +264,24 @@ func parseListWindows(raw []byte) ([]Window, error) {
 	for _, r := range rs {
 		out = append(out, r.w)
 	}
-	return out, nil
+	return out, hasZ
+}
+
+// parseListWindowsRanked also reports whether the ordering is backed by real
+// z_index values.
+func parseListWindowsRanked(raw []byte) ([]Window, bool, error) {
+	p, err := payload(raw)
+	if err != nil {
+		return nil, false, err
+	}
+	items, _ := p["windows"].([]any)
+	wins, hasZ := rankWindows(items)
+	return wins, hasZ, nil
+}
+
+func parseListWindows(raw []byte) ([]Window, error) {
+	wins, _, err := parseListWindowsRanked(raw)
+	return wins, err
 }
 
 func parseEffect(raw []byte) (Effect, error) {
@@ -275,61 +298,108 @@ func parseEffect(raw []byte) (Effect, error) {
 
 // --- Driver implementation ---
 
+// Ping proves the binary runs AND the daemon answered. The payload has to be
+// decoded, not just the exit status checked: a dead daemon reports through an
+// exit-0 {"code":…} envelope, which would otherwise read as a healthy ping and
+// only surface as a failure on the first Snapshot.
 func (d *CuaDriver) Ping(ctx context.Context) error {
-	_, err := d.call(ctx, "list_windows", map[string]any{"on_screen_only": true})
+	raw, err := d.call(ctx, "list_windows", map[string]any{"on_screen_only": true})
+	if err != nil {
+		return err
+	}
+	_, err = payload(raw)
 	return err
+}
+
+// looksLikeBundleID reports whether app is a reverse-DNS bundle identifier
+// (com.apple.calculator) rather than a display name. A bare dot is not enough:
+// "Node.js" and "Foo v1.2" are names.
+func looksLikeBundleID(app string) bool {
+	return !strings.ContainsAny(app, " \t") && strings.Count(app, ".") >= 2
+}
+
+// sleepCtx waits for d, or returns early if ctx ends first.
+func sleepCtx(ctx context.Context, d time.Duration) error {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 func (d *CuaDriver) ResolveWindow(ctx context.Context, app string) (Window, error) {
 	app = strings.TrimSpace(app)
 	if app != "" {
-		args := map[string]any{"name": app}
-		if strings.Contains(app, ".") {
-			args = map[string]any{"bundle_id": app}
-		}
-		raw, err := d.call(ctx, "launch_app", args)
-		if err != nil {
-			return Window{}, err
-		}
-		p, err := payload(raw)
-		if err != nil {
-			return Window{}, err
-		}
-		wins, _ := p["windows"].([]any)
-		parsed := parseWindows(wins)
-		if len(parsed) == 0 {
-			// App launched without a ready window yet; fall through to a pid-filtered list.
-			pid := asInt(p["pid"])
-			raw, err := d.call(ctx, "list_windows", map[string]any{"pid": pid})
-			if err != nil {
-				return Window{}, err
-			}
-			parsed, err = parseListWindows(raw)
-			if err != nil {
-				return Window{}, err
-			}
-		}
-		if len(parsed) == 0 {
-			return Window{}, fmt.Errorf("computeruse: app %q has no window", app)
-		}
-		w := parsed[0]
-		if w.App == "" {
-			w.App = asString(p["name"])
-		}
-		return w, nil
+		return d.resolveAppWindow(ctx, app)
 	}
 	raw, err := d.call(ctx, "list_windows", map[string]any{"on_screen_only": true})
 	if err != nil {
 		return Window{}, err
 	}
-	wins, err := parseListWindows(raw)
+	wins, hasZ, err := parseListWindowsRanked(raw)
 	if err != nil {
 		return Window{}, err
 	}
 	if len(wins) == 0 {
 		return Window{}, errors.New("computeruse: no on-screen window")
 	}
+	// With more than one candidate and no stacking order anywhere, array order
+	// is not a frontmost signal — the driver documents that callers must not
+	// infer one. Make the caller name the app rather than driving an arbitrary
+	// window.
+	if len(wins) > 1 && !hasZ {
+		return Window{}, errors.New("computeruse: window stacking order unavailable; pass app explicitly")
+	}
 	return wins[0], nil
+}
+
+// resolveAppWindow launches (or foregrounds) app and returns its frontmost
+// window.
+func (d *CuaDriver) resolveAppWindow(ctx context.Context, app string) (Window, error) {
+	args := map[string]any{"name": app}
+	if looksLikeBundleID(app) {
+		args = map[string]any{"bundle_id": app}
+	}
+	raw, err := d.call(ctx, "launch_app", args)
+	if err != nil {
+		return Window{}, err
+	}
+	p, err := payload(raw)
+	if err != nil {
+		return Window{}, err
+	}
+	items, _ := p["windows"].([]any)
+	parsed, _ := rankWindows(items)
+	launchState := asString(p["launch_state"])
+	pid := asInt(p["pid"])
+	// launch_app can answer before the app has a window: the request may only
+	// have been sent, or the process may be running with nothing mapped yet.
+	// Poll the pid rather than failing on a race the app will lose in a moment.
+	for attempt := 0; len(parsed) == 0 && attempt < cuaLaunchPollAttempts; attempt++ {
+		if err := sleepCtx(ctx, cuaLaunchPollInterval); err != nil {
+			return Window{}, err
+		}
+		raw, err := d.call(ctx, "list_windows", map[string]any{"pid": pid})
+		if err != nil {
+			return Window{}, err
+		}
+		parsed, err = parseListWindows(raw)
+		if err != nil {
+			return Window{}, err
+		}
+	}
+	if len(parsed) == 0 {
+		return Window{}, fmt.Errorf("computeruse: app %q has no window after %s (launch_state %q)",
+			app, cuaLaunchPollAttempts*cuaLaunchPollInterval, launchState)
+	}
+	w := parsed[0]
+	if w.App == "" {
+		w.App = asString(p["name"])
+	}
+	return w, nil
 }
 
 func (d *CuaDriver) Snapshot(ctx context.Context, w Window, opts SnapshotOpts) (Snapshot, error) {

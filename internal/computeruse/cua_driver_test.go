@@ -213,6 +213,293 @@ func TestCuaDriver_ActionArgKeysMatchDescribeSchema(t *testing.T) {
 	}
 }
 
+// A dead daemon reports through an exit-0 {"code":…} envelope, so Ping must
+// decode the payload rather than trust the exit status.
+func TestCuaDriver_PingRejectsExitZeroErrorEnvelope(t *testing.T) {
+	var argv []string
+	d := NewCuaDriver("cua-driver", time.Second)
+	d.commandContext = recordingCommand(t,
+		`{"code":"daemon_not_running","suggestion":"start it with cua-driver serve"}`, &argv)
+	err := d.Ping(context.Background())
+	if err == nil {
+		t.Fatal("want error for an exit-0 daemon envelope, got nil")
+	}
+	if !errorsIs(err, ErrDriverUnavailable) {
+		t.Fatalf("err = %v, want ErrDriverUnavailable", err)
+	}
+}
+
+func TestCuaDriver_PingAcceptsHealthyPayload(t *testing.T) {
+	var argv []string
+	d := NewCuaDriver("cua-driver", time.Second)
+	d.commandContext = recordingCommand(t, `{"current_space_id":1,"windows":[]}`, &argv)
+	if err := d.Ping(context.Background()); err != nil {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestRankWindows_OrdersByZIndexDescending(t *testing.T) {
+	cases := []struct {
+		name     string
+		raw      string
+		wantIDs  []int
+		wantHasZ bool
+	}{
+		{
+			name:     "shuffled input is sorted frontmost first",
+			raw:      `{"windows":[{"window_id":1,"pid":1,"z_index":3},{"window_id":2,"pid":1,"z_index":9},{"window_id":3,"pid":1,"z_index":5}]}`,
+			wantIDs:  []int{2, 3, 1},
+			wantHasZ: true,
+		},
+		{
+			name:     "null z sorts last, behind a negative z",
+			raw:      `{"windows":[{"window_id":1,"pid":1,"z_index":null},{"window_id":2,"pid":1,"z_index":-4},{"window_id":3,"pid":1,"z_index":2}]}`,
+			wantIDs:  []int{3, 2, 1},
+			wantHasZ: true,
+		},
+		{
+			name:     "missing z key behaves like null",
+			raw:      `{"windows":[{"window_id":1,"pid":1},{"window_id":2,"pid":1,"z_index":0}]}`,
+			wantIDs:  []int{2, 1},
+			wantHasZ: true,
+		},
+		{
+			name:     "all null keeps array order and reports no z",
+			raw:      `{"windows":[{"window_id":7,"pid":1,"z_index":null},{"window_id":8,"pid":1,"z_index":null}]}`,
+			wantIDs:  []int{7, 8},
+			wantHasZ: false,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			wins, hasZ, err := parseListWindowsRanked([]byte(tc.raw))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if hasZ != tc.wantHasZ {
+				t.Errorf("hasZ = %v, want %v", hasZ, tc.wantHasZ)
+			}
+			got := make([]int, len(wins))
+			for i, w := range wins {
+				got[i] = w.WindowID
+			}
+			if len(got) != len(tc.wantIDs) {
+				t.Fatalf("ids = %v, want %v", got, tc.wantIDs)
+			}
+			for i := range got {
+				if got[i] != tc.wantIDs[i] {
+					t.Fatalf("ids = %v, want %v", got, tc.wantIDs)
+				}
+			}
+		})
+	}
+}
+
+func TestCuaDriver_ResolveWindowPicksHighestZ(t *testing.T) {
+	var argv []string
+	d := NewCuaDriver("cua-driver", time.Second)
+	d.commandContext = recordingCommand(t,
+		`{"windows":[{"window_id":1,"pid":5,"app_name":"A","z_index":2},{"window_id":9,"pid":5,"app_name":"A","z_index":8}]}`, &argv)
+	w, err := d.ResolveWindow(context.Background(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w.WindowID != 9 {
+		t.Fatalf("window = %+v, want the z_index 8 window", w)
+	}
+}
+
+// With several candidates and no stacking order anywhere, array order must not
+// be mistaken for a frontmost signal.
+func TestCuaDriver_ResolveWindowRefusesToGuessWithoutZ(t *testing.T) {
+	var argv []string
+	d := NewCuaDriver("cua-driver", time.Second)
+	d.commandContext = recordingCommand(t,
+		`{"windows":[{"window_id":1,"pid":5,"z_index":null},{"window_id":2,"pid":5,"z_index":null}]}`, &argv)
+	_, err := d.ResolveWindow(context.Background(), "")
+	if err == nil || !strings.Contains(err.Error(), "stacking order") {
+		t.Fatalf("err = %v, want a stacking-order refusal", err)
+	}
+}
+
+// A single window needs no stacking order: there is nothing to infer.
+func TestCuaDriver_ResolveWindowAcceptsLoneWindowWithoutZ(t *testing.T) {
+	var argv []string
+	d := NewCuaDriver("cua-driver", time.Second)
+	d.commandContext = recordingCommand(t, `{"windows":[{"window_id":4,"pid":5,"z_index":null}]}`, &argv)
+	w, err := d.ResolveWindow(context.Background(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w.WindowID != 4 {
+		t.Fatalf("window = %+v", w)
+	}
+}
+
+func TestCuaDriver_ResolveAppWindowPicksHighestZFromLaunch(t *testing.T) {
+	var argv []string
+	d := NewCuaDriver("cua-driver", time.Second)
+	d.commandContext = recordingCommand(t,
+		`{"pid":5,"name":"Example","launch_state":"window_ready","windows":[{"window_id":1,"pid":5,"z_index":2},{"window_id":9,"pid":5,"z_index":8}]}`, &argv)
+	w, err := d.ResolveWindow(context.Background(), "Example")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w.WindowID != 9 {
+		t.Fatalf("window = %+v, want the z_index 8 window", w)
+	}
+	if w.App != "Example" {
+		t.Errorf("app = %q", w.App)
+	}
+}
+
+// launch_app can answer before the window is mapped; the driver polls the pid
+// instead of failing the race.
+func TestCuaDriver_ResolveAppWindowPollsUntilWindowAppears(t *testing.T) {
+	if _, err := exec.LookPath("sh"); err != nil {
+		t.Skip("sh not available")
+	}
+	calls := 0
+	d := NewCuaDriver("cua-driver", time.Second)
+	d.commandContext = func(ctx context.Context, _ string, args ...string) *exec.Cmd {
+		calls++
+		out := `{"pid":5,"name":"Example","launch_state":"process_running","windows":[]}`
+		if calls == 1 {
+			// launch_app: no window yet.
+		} else if calls < 3 {
+			out = `{"windows":[]}`
+		} else {
+			out = `{"windows":[{"window_id":12,"pid":5,"app_name":"Example","z_index":1}]}`
+		}
+		return exec.CommandContext(ctx, "sh", "-c", "printf '%s' "+shellQuote(out))
+	}
+	w, err := d.ResolveWindow(context.Background(), "Example")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w.WindowID != 12 {
+		t.Fatalf("window = %+v", w)
+	}
+	if calls != 3 {
+		t.Errorf("calls = %d, want 3 (launch + 2 polls)", calls)
+	}
+}
+
+// A cancelled context must abandon the poll rather than sleep out the budget.
+func TestCuaDriver_ResolveAppWindowPollRespectsContext(t *testing.T) {
+	var argv []string
+	d := NewCuaDriver("cua-driver", time.Second)
+	d.commandContext = recordingCommand(t, `{"pid":5,"name":"Example","windows":[]}`, &argv)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	start := time.Now()
+	if _, err := d.ResolveWindow(ctx, "Example"); err == nil {
+		t.Fatal("want error from a cancelled context")
+	}
+	if elapsed := time.Since(start); elapsed > 2*time.Second {
+		t.Errorf("took %s; poll ignored the cancelled context", elapsed)
+	}
+}
+
+func TestLooksLikeBundleID(t *testing.T) {
+	bundles := []string{"com.apple.calculator", "com.google.Chrome", "org.mozilla.firefox"}
+	names := []string{"Node.js", "Calculator", "Google Chrome", "Foo v1.2", "", "Visual Studio Code"}
+	for _, s := range bundles {
+		if !looksLikeBundleID(s) {
+			t.Errorf("looksLikeBundleID(%q) = false, want true", s)
+		}
+	}
+	for _, s := range names {
+		if looksLikeBundleID(s) {
+			t.Errorf("looksLikeBundleID(%q) = true, want false", s)
+		}
+	}
+}
+
+func TestFindCuaDriverPath(t *testing.T) {
+	newBinary := func(t *testing.T, name string) (dir, path string) {
+		t.Helper()
+		dir = t.TempDir()
+		path = filepath.Join(dir, name)
+		if err := os.WriteFile(path, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		return dir, path
+	}
+
+	t.Run("configured path wins over env", func(t *testing.T) {
+		_, configured := newBinary(t, "configured-driver")
+		_, fromEnv := newBinary(t, "env-driver")
+		t.Setenv(CuaDriverPathEnv, fromEnv)
+		got, err := FindCuaDriverPath(configured)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != configured {
+			t.Fatalf("path = %q, want %q", got, configured)
+		}
+	})
+
+	t.Run("invalid configured path fails loudly without falling through", func(t *testing.T) {
+		_, fromEnv := newBinary(t, "env-driver")
+		t.Setenv(CuaDriverPathEnv, fromEnv)
+		missing := filepath.Join(t.TempDir(), "definitely-not-here")
+		got, err := FindCuaDriverPath(missing)
+		if err == nil {
+			t.Fatalf("want error, got path %q", got)
+		}
+		if !errorsIs(err, ErrDriverUnavailable) {
+			t.Errorf("err = %v, want ErrDriverUnavailable", err)
+		}
+		if !strings.Contains(err.Error(), missing) {
+			t.Errorf("err = %v, want it to name the configured path", err)
+		}
+		if got != "" {
+			t.Errorf("path = %q, want empty", got)
+		}
+	})
+
+	t.Run("env used when configured is empty", func(t *testing.T) {
+		_, fromEnv := newBinary(t, "env-driver")
+		t.Setenv(CuaDriverPathEnv, fromEnv)
+		got, err := FindCuaDriverPath("   ")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != fromEnv {
+			t.Fatalf("path = %q, want %q", got, fromEnv)
+		}
+	})
+
+	t.Run("PATH fallback finds the binary", func(t *testing.T) {
+		dir, path := newBinary(t, "cua-driver")
+		t.Setenv(CuaDriverPathEnv, "")
+		t.Setenv("PATH", dir)
+		got, err := FindCuaDriverPath("")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != path {
+			t.Fatalf("path = %q, want %q", got, path)
+		}
+	})
+
+	t.Run("PATH miss names the env override", func(t *testing.T) {
+		t.Setenv(CuaDriverPathEnv, "")
+		t.Setenv("PATH", t.TempDir())
+		_, err := FindCuaDriverPath("")
+		if err == nil {
+			t.Fatal("want error when cua-driver is not on PATH")
+		}
+		if !errorsIs(err, ErrDriverUnavailable) {
+			t.Errorf("err = %v, want ErrDriverUnavailable", err)
+		}
+		if !strings.Contains(err.Error(), CuaDriverPathEnv) {
+			t.Errorf("err = %v, want it to mention %s", err, CuaDriverPathEnv)
+		}
+	})
+}
+
 func TestCuaDriver_ClickParsesEffect(t *testing.T) {
 	d := NewCuaDriver("cua-driver", time.Second)
 	d.commandContext = fakeCommand(t, `{"structuredContent":{"effect":"confirmed"}}`, false)
