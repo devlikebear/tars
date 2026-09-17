@@ -233,6 +233,35 @@ func parseWindows(items []any) []Window {
 	return out
 }
 
+// cuaDriverAppName is the driver's own overlay app; its full-screen cursor
+// window sits above everything and is never a target.
+const cuaDriverAppName = "Cua Driver"
+
+// minDrivableWindowEdge drops menu-bar and notch strips (e.g. 1800x39), which
+// carry a high z_index and would otherwise win the frontmost race.
+const minDrivableWindowEdge = 100
+
+// isDrivableWindow rejects surfaces that are on screen and high in the stack
+// but are not app windows a caller could act in: the driver's own overlay, and
+// menu-bar / status strips too thin to hold a UI. A record with no usable
+// bounds is kept — absence of evidence is not evidence of an overlay.
+func isDrivableWindow(m map[string]any) bool {
+	if strings.EqualFold(strings.TrimSpace(asString(m["app_name"])), cuaDriverAppName) {
+		return false
+	}
+	b, ok := m["bounds"].(map[string]any)
+	if !ok {
+		return true
+	}
+	for _, key := range []string{"height", "width"} {
+		v, ok := b[key].(float64)
+		if ok && v < minDrivableWindowEdge {
+			return false
+		}
+	}
+	return true
+}
+
 // rankWindows orders window records frontmost-first by z_index. hasZ reports
 // whether any record actually carried a numeric z_index: list_windows documents
 // that z_index may be null when stacking order is unavailable and that callers
@@ -247,6 +276,9 @@ func rankWindows(items []any) (wins []Window, hasZ bool) {
 	for _, it := range items {
 		m, ok := it.(map[string]any)
 		if !ok {
+			continue
+		}
+		if !isDrivableWindow(m) {
 			continue
 		}
 		// A null z sorts last and keeps its relative order; it must not read as
@@ -356,11 +388,80 @@ func (d *CuaDriver) ResolveWindow(ctx context.Context, app string) (Window, erro
 	return wins[0], nil
 }
 
-// resolveAppWindow launches (or foregrounds) app and returns its frontmost
-// window.
+// appBundleAliases maps a lowercased common app name to its bundle id.
+// Launching by name fails with APP_NOT_INSTALLED for system apps under
+// /System/Library/CoreServices (Finder), and a running app reports its
+// LOCALIZED name (Calculator answers as "계산기"), so a bundle id is the only
+// stable handle for the apps a caller is most likely to ask for by name.
+var appBundleAliases = map[string]string{
+	"finder":          "com.apple.finder",
+	"calculator":      "com.apple.calculator",
+	"textedit":        "com.apple.TextEdit",
+	"safari":          "com.apple.Safari",
+	"notes":           "com.apple.Notes",
+	"terminal":        "com.apple.Terminal",
+	"system settings": "com.apple.systempreferences",
+	"mail":            "com.apple.mail",
+	"messages":        "com.apple.MobileSMS",
+}
+
+// findRunningAppWindow returns the frontmost window of an already-running app
+// whose name matches, without launching anything.
+func (d *CuaDriver) findRunningAppWindow(ctx context.Context, app string) (Window, bool, error) {
+	raw, err := d.call(ctx, "list_windows", map[string]any{})
+	if err != nil {
+		return Window{}, false, err
+	}
+	wins, _, err := parseListWindowsRanked(raw)
+	if err != nil {
+		return Window{}, false, err
+	}
+	// Ranked frontmost-first, so the first match is the max-z one.
+	for _, w := range wins {
+		if strings.EqualFold(strings.TrimSpace(w.App), app) {
+			return w, true, nil
+		}
+	}
+	return Window{}, false, nil
+}
+
+// formatLaunchState renders launch_app's launch_state, which is an object
+// ({"process_running":true,"requested":true,"window_ready":false}), not a
+// string. Keys are sorted so the diagnostic is stable.
+func formatLaunchState(v any) string {
+	m, ok := v.(map[string]any)
+	if !ok {
+		if v == nil {
+			return ""
+		}
+		return fmt.Sprint(v)
+	}
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	parts := make([]string, 0, len(keys))
+	for _, k := range keys {
+		parts = append(parts, fmt.Sprintf("%s=%v", k, m[k]))
+	}
+	return strings.Join(parts, " ")
+}
+
+// resolveAppWindow returns the frontmost window of app, preferring one that is
+// already open over launching anything.
 func (d *CuaDriver) resolveAppWindow(ctx context.Context, app string) (Window, error) {
+	// An app that is already running needs no launch at all — which also avoids
+	// any focus-steal question.
+	if w, found, err := d.findRunningAppWindow(ctx, app); err != nil {
+		return Window{}, err
+	} else if found {
+		return w, nil
+	}
 	args := map[string]any{"name": app}
-	if looksLikeBundleID(app) {
+	if bundle, ok := appBundleAliases[strings.ToLower(strings.TrimSpace(app))]; ok {
+		args = map[string]any{"bundle_id": bundle}
+	} else if looksLikeBundleID(app) {
 		args = map[string]any{"bundle_id": app}
 	}
 	raw, err := d.call(ctx, "launch_app", args)
@@ -373,7 +474,7 @@ func (d *CuaDriver) resolveAppWindow(ctx context.Context, app string) (Window, e
 	}
 	items, _ := p["windows"].([]any)
 	parsed, _ := rankWindows(items)
-	launchState := asString(p["launch_state"])
+	launchState := formatLaunchState(p["launch_state"])
 	pid := asInt(p["pid"])
 	// launch_app can answer before the app has a window: the request may only
 	// have been sent, or the process may be running with nothing mapped yet.
@@ -392,7 +493,7 @@ func (d *CuaDriver) resolveAppWindow(ctx context.Context, app string) (Window, e
 		}
 	}
 	if len(parsed) == 0 {
-		return Window{}, fmt.Errorf("computeruse: app %q has no window after %s (launch_state %q)",
+		return Window{}, fmt.Errorf("computeruse: app %q has no window after %s (launch_state: %s)",
 			app, cuaLaunchPollAttempts*cuaLaunchPollInterval, launchState)
 	}
 	w := parsed[0]

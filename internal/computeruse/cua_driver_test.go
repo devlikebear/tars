@@ -295,6 +295,47 @@ func TestRankWindows_OrdersByZIndexDescending(t *testing.T) {
 	}
 }
 
+// The driver's own overlay and menu-bar strips sit high in the stack but are
+// not drivable app windows; they must never win the frontmost race.
+func TestRankWindows_DropsOverlayAndMenuBarSurfaces(t *testing.T) {
+	raw := []byte(`{"windows":[
+		{"window_id":1,"pid":1,"app_name":"Cua Driver","z_index":100,"bounds":{"x":0,"y":0,"width":2560,"height":1440}},
+		{"window_id":2,"pid":2,"app_name":"MenuBarApp","z_index":90,"bounds":{"x":0,"y":0,"width":1800,"height":39}},
+		{"window_id":3,"pid":3,"app_name":"Thin","z_index":80,"bounds":{"x":0,"y":0,"width":40,"height":600}},
+		{"window_id":4,"pid":4,"app_name":"Real App","z_index":5,"bounds":{"x":0,"y":34,"width":1512,"height":948}},
+		{"window_id":5,"pid":5,"app_name":"Other Real","z_index":3,"bounds":{"x":0,"y":34,"width":800,"height":600}},
+		{"window_id":6,"pid":6,"app_name":"No Bounds","z_index":1}]}`)
+	wins, _, err := parseListWindowsRanked(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []int{4, 5, 6}
+	if len(wins) != len(want) {
+		t.Fatalf("windows = %+v, want ids %v", wins, want)
+	}
+	for i, id := range want {
+		if wins[i].WindowID != id {
+			t.Fatalf("windows = %+v, want ids %v", wins, want)
+		}
+	}
+}
+
+func TestCuaDriver_ResolveWindowSkipsOverlayForRealWindow(t *testing.T) {
+	var argv []string
+	d := NewCuaDriver("cua-driver", time.Second)
+	d.commandContext = recordingCommand(t, `{"windows":[
+		{"window_id":1,"pid":1,"app_name":"Cua Driver","z_index":100,"bounds":{"width":2560,"height":1440}},
+		{"window_id":2,"pid":2,"app_name":"MenuBar","z_index":90,"bounds":{"width":1800,"height":39}},
+		{"window_id":7,"pid":3,"app_name":"Real App","z_index":5,"bounds":{"width":1512,"height":948}}]}`, &argv)
+	w, err := d.ResolveWindow(context.Background(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w.WindowID != 7 || w.App != "Real App" {
+		t.Fatalf("window = %+v, want the real app window", w)
+	}
+}
+
 func TestCuaDriver_ResolveWindowPicksHighestZ(t *testing.T) {
 	var argv []string
 	d := NewCuaDriver("cua-driver", time.Second)
@@ -353,26 +394,57 @@ func TestCuaDriver_ResolveAppWindowPicksHighestZFromLaunch(t *testing.T) {
 	}
 }
 
-// launch_app can answer before the window is mapped; the driver polls the pid
-// instead of failing the race.
-func TestCuaDriver_ResolveAppWindowPollsUntilWindowAppears(t *testing.T) {
+// scriptedCommand dispatches on the tool name so a test can script a whole
+// resolve sequence. Each tool's replies are consumed in order; the last reply
+// repeats once exhausted. tools records the call order.
+func scriptedCommand(t *testing.T, replies map[string][]string, tools *[]string) func(context.Context, string, ...string) *exec.Cmd {
+	t.Helper()
 	if _, err := exec.LookPath("sh"); err != nil {
 		t.Skip("sh not available")
 	}
-	calls := 0
-	d := NewCuaDriver("cua-driver", time.Second)
-	d.commandContext = func(ctx context.Context, _ string, args ...string) *exec.Cmd {
-		calls++
-		out := `{"pid":5,"name":"Example","launch_state":"process_running","windows":[]}`
-		if calls == 1 {
-			// launch_app: no window yet.
-		} else if calls < 3 {
-			out = `{"windows":[]}`
-		} else {
-			out = `{"windows":[{"window_id":12,"pid":5,"app_name":"Example","z_index":1}]}`
+	return func(ctx context.Context, _ string, args ...string) *exec.Cmd {
+		tool := ""
+		if len(args) > 0 {
+			tool = args[0]
+		}
+		*tools = append(*tools, tool)
+		queue, ok := replies[tool]
+		if !ok || len(queue) == 0 {
+			t.Errorf("unexpected call to %q", tool)
+			return exec.CommandContext(ctx, "sh", "-c", "printf '%s' '{}'")
+		}
+		out := queue[0]
+		if len(queue) > 1 {
+			replies[tool] = queue[1:]
 		}
 		return exec.CommandContext(ctx, "sh", "-c", "printf '%s' "+shellQuote(out))
 	}
+}
+
+func countTool(tools []string, name string) int {
+	n := 0
+	for _, t := range tools {
+		if t == name {
+			n++
+		}
+	}
+	return n
+}
+
+// launch_app can answer before the window is mapped; the driver polls the pid
+// instead of failing the race.
+func TestCuaDriver_ResolveAppWindowPollsUntilWindowAppears(t *testing.T) {
+	var tools []string
+	d := NewCuaDriver("cua-driver", time.Second)
+	d.commandContext = scriptedCommand(t, map[string][]string{
+		// First list_windows is the already-running probe (no match), then the polls.
+		"list_windows": {
+			`{"windows":[]}`,
+			`{"windows":[]}`,
+			`{"windows":[{"window_id":12,"pid":5,"app_name":"Example","z_index":1}]}`,
+		},
+		"launch_app": {`{"pid":5,"name":"Example","launch_state":{"process_running":true,"requested":true,"window_ready":false},"windows":[]}`},
+	}, &tools)
 	w, err := d.ResolveWindow(context.Background(), "Example")
 	if err != nil {
 		t.Fatal(err)
@@ -380,8 +452,105 @@ func TestCuaDriver_ResolveAppWindowPollsUntilWindowAppears(t *testing.T) {
 	if w.WindowID != 12 {
 		t.Fatalf("window = %+v", w)
 	}
-	if calls != 3 {
-		t.Errorf("calls = %d, want 3 (launch + 2 polls)", calls)
+	if got := countTool(tools, "launch_app"); got != 1 {
+		t.Errorf("launch_app calls = %d, want 1", got)
+	}
+	if got := countTool(tools, "list_windows"); got != 3 {
+		t.Errorf("list_windows calls = %d, want 3 (probe + 2 polls)", got)
+	}
+}
+
+// An app that is already running is resolved from list_windows alone — no
+// launch, so nothing can steal focus.
+func TestCuaDriver_ResolveAppWindowPrefersRunningApp(t *testing.T) {
+	var tools []string
+	d := NewCuaDriver("cua-driver", time.Second)
+	d.commandContext = scriptedCommand(t, map[string][]string{
+		"list_windows": {`{"windows":[
+			{"window_id":1,"pid":5,"app_name":"Example","z_index":2},
+			{"window_id":9,"pid":5,"app_name":"example","z_index":8},
+			{"window_id":3,"pid":7,"app_name":"Other","z_index":99}]}`},
+	}, &tools)
+	w, err := d.ResolveWindow(context.Background(), "Example")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Max-z among the case-insensitive name matches, not the frontmost overall.
+	if w.WindowID != 9 {
+		t.Fatalf("window = %+v, want window 9", w)
+	}
+	if countTool(tools, "launch_app") != 0 {
+		t.Errorf("must not launch a running app; tools = %v", tools)
+	}
+}
+
+// A name in the alias table launches by bundle id: launching Finder by name
+// fails with APP_NOT_INSTALLED, and a running app reports a localized name.
+func TestCuaDriver_ResolveAppWindowLaunchesAliasByBundleID(t *testing.T) {
+	cases := []struct{ app, wantArg string }{
+		{"Finder", `"bundle_id":"com.apple.finder"`},
+		{"calculator", `"bundle_id":"com.apple.calculator"`},
+		{"System Settings", `"bundle_id":"com.apple.systempreferences"`},
+		{"com.example.Thing", `"bundle_id":"com.example.Thing"`},
+		{"Some Unknown App", `"name":"Some Unknown App"`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.app, func(t *testing.T) {
+			var tools []string
+			var launchArgs string
+			d := NewCuaDriver("cua-driver", time.Second)
+			inner := scriptedCommand(t, map[string][]string{
+				"list_windows": {`{"windows":[]}`},
+				"launch_app":   {`{"pid":5,"name":"Localized","windows":[{"window_id":2,"pid":5,"z_index":1}]}`},
+			}, &tools)
+			d.commandContext = func(ctx context.Context, path string, args ...string) *exec.Cmd {
+				if len(args) > 1 && args[0] == "launch_app" {
+					launchArgs = args[1]
+				}
+				return inner(ctx, path, args...)
+			}
+			if _, err := d.ResolveWindow(context.Background(), tc.app); err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(launchArgs, tc.wantArg) {
+				t.Errorf("launch args = %s, want %s", launchArgs, tc.wantArg)
+			}
+		})
+	}
+}
+
+// launch_state is an object; the diagnostic must not print an empty string.
+func TestFormatLaunchState(t *testing.T) {
+	got := formatLaunchState(map[string]any{"process_running": true, "requested": true, "window_ready": false})
+	want := "process_running=true requested=true window_ready=false"
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+	if s := formatLaunchState(nil); s != "" {
+		t.Errorf("nil → %q, want empty", s)
+	}
+	if s := formatLaunchState("sent"); s != "sent" {
+		t.Errorf("string → %q", s)
+	}
+}
+
+func TestCuaDriver_NoWindowErrorReportsLaunchState(t *testing.T) {
+	// Exhausts the full poll budget (cuaLaunchPollAttempts × interval), so it is
+	// the slowest test in the package by design.
+	var tools []string
+	d := NewCuaDriver("cua-driver", 5*time.Second)
+	d.commandContext = scriptedCommand(t, map[string][]string{
+		"list_windows": {`{"windows":[]}`},
+		"launch_app":   {`{"pid":5,"name":"Example","launch_state":{"process_running":true,"requested":true,"window_ready":false},"windows":[]}`},
+	}, &tools)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	_, err := d.ResolveWindow(ctx, "Example")
+	if err == nil {
+		t.Fatal("want an error when no window ever appears")
+	}
+	if !strings.Contains(err.Error(), "window_ready=false") {
+		t.Errorf("err = %v, want the decoded launch_state", err)
 	}
 }
 
