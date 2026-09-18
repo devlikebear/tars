@@ -91,15 +91,15 @@ func TestProvidersAPI_ReturnsCurrentAndSupportedProviders(t *testing.T) {
 	if out.CurrentProvider != "openai-codex" || out.CurrentModel != "gpt-5.3-codex" || out.AuthMode != "oauth" {
 		t.Fatalf("unexpected providers payload: %+v", out)
 	}
-		if len(out.Providers) != len(supportedLiveModelProviders) {
-			t.Fatalf("expected %d providers, got %d", len(supportedLiveModelProviders), len(out.Providers))
-		}
-		for _, item := range out.Providers {
-			if item.ID == "openai-codex" && !item.SupportsLiveModels {
-				t.Fatalf("expected openai-codex live_models=true, got %+v", item)
-			}
+	if len(out.Providers) != len(supportedLiveModelProviders) {
+		t.Fatalf("expected %d providers, got %d", len(supportedLiveModelProviders), len(out.Providers))
+	}
+	for _, item := range out.Providers {
+		if item.ID == "openai-codex" && !item.SupportsLiveModels {
+			t.Fatalf("expected openai-codex live_models=true, got %+v", item)
 		}
 	}
+}
 
 func TestModelsAPI_OpenAICodexLiveModelsSupported_(t *testing.T) {
 	now := time.Date(2026, 2, 22, 12, 0, 0, 0, time.UTC)
@@ -115,9 +115,9 @@ func TestModelsAPI_OpenAICodexLiveModelsSupported_(t *testing.T) {
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
 	handler.ServeHTTP(rec, req)
-		if rec.Code != http.StatusOK {
-			t.Fatalf("expected 200, got %d body=%q", rec.Code, rec.Body.String())
-		}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
 	if fetcher.calls != 1 {
 		t.Fatalf("expected one fetch attempt, got %d", fetcher.calls)
 	}

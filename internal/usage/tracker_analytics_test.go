@@ -200,4 +200,3 @@ func TestCapAnalyticsDays(t *testing.T) {
 		}
 	}
 }
-

@@ -254,13 +254,13 @@ type Session struct {
 	// remote session instead of replaying the full transcript. Empty for
 	// stateless providers or fresh sessions. Persisted so the next turn can
 	// pass it back via llm.ChatOptions.ResumeSessionID.
-	UpstreamSessionID   string                    `json:"upstream_session_id,omitempty"`
-	ArchivedAt          *time.Time                `json:"archived_at,omitempty"`
-	PinnedAt            *time.Time                `json:"pinned_at,omitempty"`
-	Goal                *SessionGoal              `json:"goal,omitempty"`
-	Critic              *SessionCritic            `json:"critic,omitempty"`
-	CreatedAt           time.Time                 `json:"created_at"`
-	UpdatedAt           time.Time                 `json:"updated_at"`
+	UpstreamSessionID string         `json:"upstream_session_id,omitempty"`
+	ArchivedAt        *time.Time     `json:"archived_at,omitempty"`
+	PinnedAt          *time.Time     `json:"pinned_at,omitempty"`
+	Goal              *SessionGoal   `json:"goal,omitempty"`
+	Critic            *SessionCritic `json:"critic,omitempty"`
+	CreatedAt         time.Time      `json:"created_at"`
+	UpdatedAt         time.Time      `json:"updated_at"`
 }
 
 type Store struct {

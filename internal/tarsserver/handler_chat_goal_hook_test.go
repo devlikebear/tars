@@ -25,7 +25,7 @@ func (r *stubGoalRouter) ClientForTier(_ llm.Tier) (llm.Client, llm.TierResoluti
 	return r.client, llm.TierResolution{}, nil
 }
 func (r *stubGoalRouter) TierForRole(_ llm.Role) llm.Tier { return llm.TierStandard }
-func (r *stubGoalRouter) DefaultTier() llm.Tier            { return llm.TierStandard }
+func (r *stubGoalRouter) DefaultTier() llm.Tier           { return llm.TierStandard }
 
 type stubGoalClient struct {
 	response string

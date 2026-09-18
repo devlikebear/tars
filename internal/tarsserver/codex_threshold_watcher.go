@@ -15,9 +15,9 @@ import (
 type thresholdBand int
 
 const (
-	bandNone thresholdBand = iota
-	bandWarn               // 90.0 <= used < 95.0
-	bandCritical           // used >= 95.0
+	bandNone     thresholdBand = iota
+	bandWarn                   // 90.0 <= used < 95.0
+	bandCritical               // used >= 95.0
 )
 
 const (

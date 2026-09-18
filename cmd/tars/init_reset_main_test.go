@@ -31,7 +31,7 @@ func writeFakeOnboardingConfig(t *testing.T, workspaceAbs string) {
 	}
 	contents := strings.TrimSpace(`
 runtime:
-  workspace_dir: ` + workspaceAbs + `
+  workspace_dir: `+workspaceAbs+`
 api:
   auth_mode: off
   allow_insecure_local_auth: true

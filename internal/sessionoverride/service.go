@@ -140,4 +140,3 @@ func mtime(path string) int64 {
 	}
 	return info.ModTime().UnixNano()
 }
-
