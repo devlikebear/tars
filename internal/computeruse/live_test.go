@@ -64,7 +64,7 @@ func TestLive_Loop(t *testing.T) {
 	e := NewEngine(d, jev.NewClient(jev.Config{APIKey: key}), cfg)
 	res := e.Run(context.Background(), Request{Goal: goal, App: os.Getenv("CU_APP")})
 	for _, ts := range res.Trace {
-		t.Logf("step %d: %s %s conf=%.2f risky=%.2f done=%.2f → %s %s (%dms, %d tok)", ts.Step, ts.Op, ts.Target, ts.Confidence, ts.Risky, ts.Done, ts.Effect, ts.Note, ts.LatencyMS, ts.InputTokens)
+		t.Logf("step %d: %s %s conf=%.2f tconf=%.2f margin=%.2f risky=%.2f done=%.2f → %s %s (%dms, %d tok)", ts.Step, ts.Op, ts.Target, ts.Confidence, ts.TargetConfidence, ts.TargetMargin, ts.Risky, ts.Done, ts.Effect, ts.Note, ts.LatencyMS, ts.InputTokens)
 	}
 	t.Logf("status=%s reason=%s usage=%+v", res.Status, res.Reason, res.Usage)
 	if res.Status != StatusDone {

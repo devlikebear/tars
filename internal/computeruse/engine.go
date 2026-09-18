@@ -21,21 +21,28 @@ type Asker interface {
 
 // Config tunes the loop's budgets and the thresholds the gates compare against.
 type Config struct {
-	MaxSteps       int
-	StepTimeout    time.Duration
-	TotalTimeout   time.Duration
-	ResumeTTL      time.Duration
-	ExposeValues   bool
-	DoneThreshold  float64
-	ActConfidence  float64
-	RiskyThreshold float64
-	InputTokenUSD  float64
+	MaxSteps      int
+	StepTimeout   time.Duration
+	TotalTimeout  time.Duration
+	ResumeTTL     time.Duration
+	ExposeValues  bool
+	DoneThreshold float64
+	ActConfidence float64
+	// TargetActConfidence is the bar for the element choice. It is far lower
+	// than ActConfidence on purpose: picking one of ~25 elements spreads
+	// probability mass in a way picking one of ten ops does not. Live
+	// Calculator runs put Jev's confidence on obviously-correct buttons at
+	// 0.34–0.85 (uniform prior 0.04), so the bar sits just under that band.
+	TargetActConfidence float64
+	RiskyThreshold      float64
+	InputTokenUSD       float64
 }
 
 func DefaultConfig() Config {
 	return Config{
 		MaxSteps: 25, StepTimeout: 15 * time.Second, TotalTimeout: 5 * time.Minute, ResumeTTL: 10 * time.Minute,
-		ExposeValues: true, DoneThreshold: 0.85, ActConfidence: 0.70, RiskyThreshold: 0.50, InputTokenUSD: 0.042 / 1e6,
+		ExposeValues: true, DoneThreshold: 0.85, ActConfidence: 0.70, TargetActConfidence: 0.30,
+		RiskyThreshold: 0.50, InputTokenUSD: 0.042 / 1e6,
 	}
 }
 
@@ -48,27 +55,35 @@ const (
 	// maxPending caps parked confirmations so a caller that never answers
 	// cannot grow the map without bound.
 	maxPending = 32
+	// targetMarginOK lets a confident-enough lead over the runner-up stand in
+	// for absolute confidence on the target choice.
+	targetMarginOK = 0.30
+	// maxConsecutiveLooks bounds a model that keeps asking to look instead of
+	// acting; looking changes nothing, so no_change can never catch that loop.
+	maxConsecutiveLooks = 3
 )
 
 // run is one loop's mutable state; it is parked in Engine.pending while a
 // risky action waits for confirmation.
 type run struct {
-	req       Request
-	window    Window
-	trace     []TraceStep
-	step      int
-	stuck     int
-	noChange  int
-	lastHash  string
-	looked    bool
-	nextOpts  SnapshotOpts
-	usage     Usage
-	started   time.Time
-	proposed  *ProposedAction
-	pendingD  Decision
-	pendingEl Element
-	lastShown []Element
-	createdAt time.Time
+	req         Request
+	window      Window
+	trace       []TraceStep
+	step        int
+	stuck       int
+	noChange    int
+	lastHash    string
+	looked      bool
+	nextOpts    SnapshotOpts
+	usage       Usage
+	started     time.Time
+	proposed    *ProposedAction
+	pendingD    Decision
+	pendingEl   Element
+	lastShown   []Element
+	lastActed   bool
+	consecLooks int
+	createdAt   time.Time
 }
 
 // Engine drives one GUI window through observe → decide → gate → act cycles.
@@ -101,6 +116,9 @@ func NewEngine(driver Driver, asker Asker, cfg Config) *Engine {
 	}
 	if cfg.ActConfidence <= 0 {
 		cfg.ActConfidence = def.ActConfidence
+	}
+	if cfg.TargetActConfidence <= 0 {
+		cfg.TargetActConfidence = def.TargetActConfidence
 	}
 	if cfg.RiskyThreshold <= 0 {
 		cfg.RiskyThreshold = def.RiskyThreshold
@@ -220,8 +238,13 @@ func (e *Engine) loop(ctx context.Context, r *run, confirmedFirst bool) Result {
 		if snap.Degraded != "" {
 			return e.finish(r, Result{Status: StatusStuck, Reason: "accessibility tree unavailable: " + snap.Degraded})
 		}
+		// no_change is about actions that did not land: a step that only looked
+		// or was gated out never touched the screen, so an unchanged tree after
+		// it says nothing. Such steps neither raise nor reset the counter.
 		if h := ElementHash(snap); r.lastHash != "" && h == r.lastHash {
-			r.noChange++
+			if r.lastActed {
+				r.noChange++
+			}
 		} else {
 			r.noChange = 0
 			r.lastHash = h
@@ -242,8 +265,10 @@ func (e *Engine) loop(ctx context.Context, r *run, confirmedFirst bool) Result {
 			return e.finish(r, Result{Status: StatusError, Reason: err.Error()})
 		}
 		r.step++
-		ts := TraceStep{Step: r.step, Op: d.Op, InputKey: d.InputKey, Confidence: d.OpConfidence, Risky: d.Risky, Done: d.Done,
+		ts := TraceStep{Step: r.step, Op: d.Op, InputKey: d.InputKey, Confidence: d.OpConfidence, TargetConfidence: d.TargetConfidence,
+			TargetMargin: d.TargetMargin, Risky: d.Risky, Done: d.Done,
 			LatencyMS: e.now().Sub(start).Milliseconds(), InputTokens: resp.Usage.InputTokens}
+		r.lastActed = false
 		// eN is the element's own Index, not its position: RenderState filters
 		// menus and bare containers without renumbering, so shown[N-1] is a
 		// different element on any real screen. Jev may also name an eN that was
@@ -265,9 +290,12 @@ func (e *Engine) loop(ctx context.Context, r *run, confirmedFirst bool) Result {
 		case d.Op == OpNone || (NeedsTarget(d.Op) && d.TargetIndex == 0):
 			ts.Effect, ts.Note = "skipped", "no_action"
 			r.stuck++
-		case d.OpConfidence < e.cfg.ActConfidence || (NeedsTarget(d.Op) && d.TargetConfidence < e.cfg.ActConfidence):
+		// Looking is read-only, so an unsure look is not the guess this gate
+		// exists to stop: only acting ops are held to a confidence bar.
+		case d.Op != OpLook && (d.OpConfidence < e.cfg.ActConfidence || (NeedsTarget(d.Op) && !e.targetConfident(d))):
 			if !r.looked {
 				r.looked = true
+				r.consecLooks++
 				r.nextOpts = SnapshotOpts{MaxDepth: lookMaxDepth}
 				ts.Effect, ts.Note = "look", "low_confidence_look"
 			} else {
@@ -275,6 +303,12 @@ func (e *Engine) loop(ctx context.Context, r *run, confirmedFirst bool) Result {
 				r.stuck++
 			}
 		case d.Op == OpLook:
+			if r.consecLooks >= maxConsecutiveLooks {
+				ts.Effect, ts.Note = "skipped", "look_loop"
+				r.stuck++
+				break
+			}
+			r.consecLooks++
 			r.nextOpts = SnapshotOpts{MaxDepth: lookMaxDepth}
 			if d.TargetIndex > 0 {
 				r.nextOpts.Query = el.Label
@@ -315,6 +349,12 @@ func (e *Engine) loop(ctx context.Context, r *run, confirmedFirst bool) Result {
 		}
 	}
 	return e.finish(r, Result{Status: StatusMaxSteps, Reason: fmt.Sprintf("reached max_steps=%d", r.req.MaxSteps)})
+}
+
+// targetConfident accepts the element choice either on its own confidence or
+// on a clear lead over the runner-up.
+func (e *Engine) targetConfident(d Decision) bool {
+	return d.TargetConfidence >= e.cfg.TargetActConfidence || d.TargetMargin >= targetMarginOK
 }
 
 // resolveTarget maps Jev's eN back to the element it labelled, matching on
@@ -375,6 +415,8 @@ func (e *Engine) execute(ctx context.Context, r *run, d Decision, el Element) {
 	case OpScrollUp:
 		eff, err = e.driver.Scroll(actx, r.window, "up")
 	}
+	// The action was dispatched, so the next snapshot is a fair verdict on it.
+	r.lastActed, r.consecLooks = true, 0
 	last := &r.trace[len(r.trace)-1]
 	if err != nil {
 		last.Effect = "error"

@@ -71,17 +71,22 @@ type Request struct {
 
 // TraceStep records one observe-decide-act cycle.
 type TraceStep struct {
-	Step        int     `json:"step"`
-	Op          string  `json:"op"`
-	Target      string  `json:"target,omitempty"`
-	InputKey    string  `json:"input_key,omitempty"`
-	Confidence  float64 `json:"confidence"`
-	Risky       float64 `json:"risky"`
-	Done        float64 `json:"done"`
-	Effect      string  `json:"effect"`
-	LatencyMS   int64   `json:"latency_ms"`
-	InputTokens int     `json:"input_tokens"`
-	Note        string  `json:"note,omitempty"`
+	Step       int     `json:"step"`
+	Op         string  `json:"op"`
+	Target     string  `json:"target,omitempty"`
+	InputKey   string  `json:"input_key,omitempty"`
+	Confidence float64 `json:"confidence"`
+	// TargetConfidence is Jev's confidence in the element choice, which a wide
+	// screen spreads thin independently of how sure the op is.
+	TargetConfidence float64 `json:"target_confidence"`
+	// TargetMargin is how far the chosen element led the runner-up.
+	TargetMargin float64 `json:"target_margin"`
+	Risky        float64 `json:"risky"`
+	Done         float64 `json:"done"`
+	Effect       string  `json:"effect"`
+	LatencyMS    int64   `json:"latency_ms"`
+	InputTokens  int     `json:"input_tokens"`
+	Note         string  `json:"note,omitempty"`
 }
 
 // ProposedAction is the action a run stopped short of taking, waiting for the

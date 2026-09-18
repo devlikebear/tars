@@ -81,3 +81,43 @@ func TestCompatible(t *testing.T) {
 		t.Error("NeedsTarget wrong")
 	}
 }
+
+func TestParseDecision_TargetMargin(t *testing.T) {
+	base := map[string]jev.Answer{
+		"op":    {Type: "choice", Choice: "click", Confidence: 0.9},
+		"risky": {Type: "noul", Noul: 0.1},
+		"done":  {Type: "noul", Noul: 0.0},
+	}
+	with := func(a jev.Answer) jev.Response {
+		ans := map[string]jev.Answer{"target": a}
+		for k, v := range base {
+			ans[k] = v
+		}
+		return jev.Response{Answers: ans}
+	}
+	cases := []struct {
+		name   string
+		answer jev.Answer
+		want   float64
+	}{
+		{"lead over runner-up", jev.Answer{Type: "choice", Choice: "e3", Confidence: 0.3,
+			Probabilities: map[string]float64{"e3": 0.45, "e7": 0.10, "none": 0.05}}, 0.35},
+		{"no probabilities", jev.Answer{Type: "choice", Choice: "e3", Confidence: 0.3}, 0},
+		{"single option", jev.Answer{Type: "choice", Choice: "e3", Probabilities: map[string]float64{"e3": 0.9}}, 0},
+		{"chosen absent", jev.Answer{Type: "choice", Choice: "e3",
+			Probabilities: map[string]float64{"e1": 0.5, "e2": 0.4}}, 0},
+		{"chosen trails", jev.Answer{Type: "choice", Choice: "e3",
+			Probabilities: map[string]float64{"e3": 0.2, "e1": 0.5}}, 0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			d, err := ParseDecision(with(tc.answer))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if diff := d.TargetMargin - tc.want; diff > 1e-9 || diff < -1e-9 {
+				t.Fatalf("margin=%v want %v", d.TargetMargin, tc.want)
+			}
+		})
+	}
+}

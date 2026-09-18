@@ -89,6 +89,16 @@ func decide(op, target string, conf, risky, done float64) map[string]jev.Answer 
 	}
 }
 
+// withTarget overrides the target answer's confidence and, optionally, the
+// option probabilities the margin is read from.
+func withTarget(a map[string]jev.Answer, conf float64, probs map[string]float64) map[string]jev.Answer {
+	t := a["target"]
+	t.Confidence = conf
+	t.Probabilities = probs
+	a["target"] = t
+	return a
+}
+
 func withInput(a map[string]jev.Answer, key string) map[string]jev.Answer {
 	a["input_key"] = jev.Answer{Type: "choice", Choice: key, Confidence: 0.9}
 	return a
@@ -507,5 +517,54 @@ func TestRun_ReturnedTraceIsNotAliasedByResume(t *testing.T) {
 	}
 	if last := res1.Trace[len(res1.Trace)-1]; last.Effect != "pending" {
 		t.Fatalf("resume mutated the caller's trace: %+v", last)
+	}
+}
+
+// --- fix round 2 --------------------------------------------------------------
+
+// The element choice has its own, lower bar, and a clear lead over the
+// runner-up passes the gate even when the absolute probability is thin.
+func TestRun_TargetGateUsesOwnThresholdAndMargin(t *testing.T) {
+	// conf 0.5 (≥ TargetActConfidence) with a wide margin: act.
+	d := &FakeDriver{snaps: []Snapshot{snap("A")}}
+	a := &FakeAsker{answers: []map[string]jev.Answer{withTarget(decide("click", "e1", 0.95, 0.05, 0), 0.5, map[string]float64{"e1": 0.5, "none": 0.1})}}
+	res := newTestEngine(d, a).Run(context.Background(), Request{Goal: "g"})
+	if len(d.actions) == 0 || d.actions[0] != "click:t1" || res.Trace[0].Note == "low_confidence_look" {
+		t.Fatalf("conf 0.5 margin 0.4 must act: actions=%v trace=%+v", d.actions, res.Trace)
+	}
+	if res.Trace[0].TargetConfidence != 0.5 {
+		t.Fatalf("target confidence must reach the trace: %+v", res.Trace[0])
+	}
+
+	// conf 0.2, under the bar, but a 0.35 lead over the next option: still act.
+	d2 := &FakeDriver{snaps: []Snapshot{snap("A")}}
+	a2 := &FakeAsker{answers: []map[string]jev.Answer{withTarget(decide("click", "e1", 0.95, 0.05, 0), 0.2, map[string]float64{"e1": 0.4, "none": 0.05})}}
+	if res2 := newTestEngine(d2, a2).Run(context.Background(), Request{Goal: "g"}); len(d2.actions) == 0 || d2.actions[0] != "click:t1" {
+		t.Fatalf("margin must carry a thin target confidence: actions=%v trace=%+v", d2.actions, res2.Trace)
+	}
+
+	// conf 0.25, under the bar, with only a 0.05 lead: look once, then skip.
+	d3 := &FakeDriver{snaps: []Snapshot{snap("A")}}
+	a3 := &FakeAsker{answers: []map[string]jev.Answer{withTarget(decide("click", "e1", 0.95, 0.05, 0), 0.25, map[string]float64{"e1": 0.3, "e2": 0.25})}}
+	res3 := newTestEngine(d3, a3).Run(context.Background(), Request{Goal: "g"})
+	if res3.Status != StatusStuck || len(d3.actions) != 0 {
+		t.Fatalf("thin target must not act: res3=%+v actions=%v", res3, d3.actions)
+	}
+	if res3.Trace[0].Note != "low_confidence_look" || res3.Trace[1].Note != "low_confidence" {
+		t.Fatalf("trace=%+v", res3.Trace)
+	}
+}
+
+// A run that only looked and skipped never touched the screen, so it must end
+// as stuck, not as "the screen did not change".
+func TestRun_SkippedStepsEndAsStuckNotNoChange(t *testing.T) {
+	d := &FakeDriver{snaps: []Snapshot{snap("A")}}
+	a := &FakeAsker{answers: []map[string]jev.Answer{decide("click", "e1", 0.4, 0, 0)}}
+	res := newTestEngine(d, a).Run(context.Background(), Request{Goal: "g"})
+	if res.Status != StatusStuck || len(d.actions) != 0 {
+		t.Fatalf("res=%+v actions=%v", res, d.actions)
+	}
+	if contains(res.Reason, "no_change") || !contains(res.Reason, "stuck:") || res.Steps != 4 {
+		t.Fatalf("look+skips must be stuck, not no_change: %+v", res)
 	}
 }

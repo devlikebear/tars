@@ -68,6 +68,35 @@ type Decision struct {
 	InputKey         string
 	Risky            float64
 	Done             float64
+	// TargetMargin is P(chosen) − P(runner-up) for the target choice, 0 when
+	// the response carried no probabilities. A choice over dozens of elements
+	// spreads mass thin, so a clear lead over the next best option says more
+	// about the pick than its absolute probability does.
+	TargetMargin float64
+}
+
+// choiceMargin is the chosen option's lead over the best alternative.
+func choiceMargin(a jev.Answer) float64 {
+	if len(a.Probabilities) < 2 {
+		return 0
+	}
+	chosen, ok := a.Probabilities[a.Choice]
+	if !ok {
+		return 0
+	}
+	runnerUp := 0.0
+	for k, p := range a.Probabilities {
+		if k == a.Choice {
+			continue
+		}
+		if p > runnerUp {
+			runnerUp = p
+		}
+	}
+	if m := chosen - runnerUp; m > 0 {
+		return m
+	}
+	return 0
 }
 
 func ParseDecision(resp jev.Response) (Decision, error) {
@@ -94,7 +123,8 @@ func ParseDecision(resp jev.Response) (Decision, error) {
 	if err != nil {
 		return Decision{}, err
 	}
-	d := Decision{Op: op.Choice, OpConfidence: op.Confidence, TargetConfidence: target.Confidence, Risky: risky.Noul, Done: done.Noul}
+	d := Decision{Op: op.Choice, OpConfidence: op.Confidence, TargetConfidence: target.Confidence,
+		TargetMargin: choiceMargin(target), Risky: risky.Noul, Done: done.Noul}
 	if strings.HasPrefix(target.Choice, "e") {
 		if n, err := strconv.Atoi(target.Choice[1:]); err == nil && n > 0 {
 			d.TargetIndex = n
