@@ -68,6 +68,8 @@ func TestCompatible(t *testing.T) {
 		{OpType, "AXTextField", true}, {OpType, "AXButton", false},
 		{OpSetValue, "AXPopUpButton", true}, {OpSetValue, "AXCheckBox", true}, {OpSetValue, "AXButton", false},
 		{OpClick, "AXButton", true}, {OpClick, "AXTextField", true}, {OpClick, "AXSecureTextField", true},
+		// secure fields are typeable; the engine gates them behind confirmation
+		{OpType, "AXSecureTextField", true},
 		{OpPressEnter, "", true}, {OpLook, "", true},
 	}
 	for _, c := range cases {
