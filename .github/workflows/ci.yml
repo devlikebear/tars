@@ -18,6 +18,20 @@ permissions:
   contents: read
 
 jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Check gofmt
+        run: make fmt-check
+
   security:
     runs-on: ubuntu-latest
     steps:

@@ -15,7 +15,7 @@ make codeql-workflow-check # PR preflight: CodeQL code-scanning workflow guardra
 make sonarcloud-workflow-check # PR preflight: SonarCloud evaluation workflow guardrails
 make test-one TEST_NAME=TestFoo PKG=./internal/tarsserver/
 make test-race / make test-cover
-make fmt / make vet / make lint / make tidy / make security-scan
+make fmt / make fmt-check / make vet / make lint / make tidy / make security-scan
 make dev-serve            # production-like (requires console-build first)
 make dev-console          # Vite (5173) + Go API (43180), auth off → http://127.0.0.1:43180/console
 cd frontend/console && npm run check   # svelte-check + tsc
@@ -194,11 +194,12 @@ TARS 기능 변경 시 홈페이지 콘텐츠도 갱신 필요 (매 변경마다
 ## CI
 
 `.github/workflows/ci.yml`:
-1. **security** — gitleaks + ripgrep secrets scan
-2. **windows-build** — `make windows-build-check`, cross-compiling the whole module for Windows on ubuntu
-3. **windows-test** — `scripts/windows_test.sh` on `windows-latest`. The only job that runs tests on Windows; everything else is Linux
-4. **pr-diff** — pull requests run Svelte console checks, `npm run test:ci`, `make lint-diff` (with new-line `errcheck`/`staticcheck`), and `make test-cover-diff` against the PR base SHA
-5. **test** — pushes to main run Node 24 → frontend console checks/test slice → Playwright → Go test + coverage threshold → Codecov
+1. **format** — `make fmt-check` (`gofmt -l` over the tree). Fails the build on any unformatted file. `.golangci.yml` enables only `govet`/`ineffassign`/`revive`, so no linter covers formatting — this job is the only guard
+2. **security** — gitleaks + ripgrep secrets scan
+3. **windows-build** — `make windows-build-check`, cross-compiling the whole module for Windows on ubuntu
+4. **windows-test** — `scripts/windows_test.sh` on `windows-latest`. The only job that runs tests on Windows; everything else is Linux
+5. **pr-diff** — pull requests run Svelte console checks, `npm run test:ci`, `make lint-diff` (with new-line `errcheck`/`staticcheck`), and `make test-cover-diff` against the PR base SHA
+6. **test** — pushes to main run Node 24 → frontend console checks/test slice → Playwright → Go test + coverage threshold → Codecov
 
 `scripts/windows_test.sh` carries two lists of Windows-failing tests — packages excluded wholesale, and individual tests skipped in otherwise-green packages. **Both are debt, not policy**: shrink them rather than adding to them. Reproduce the job locally on Windows with `make windows-test`.
 
