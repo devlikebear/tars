@@ -568,3 +568,57 @@ func TestRun_SkippedStepsEndAsStuckNotNoChange(t *testing.T) {
 		t.Fatalf("look+skips must be stuck, not no_change: %+v", res)
 	}
 }
+
+// --- fix round 3 --------------------------------------------------------------
+
+// Looking changes nothing, so no_change can never end a model that only ever
+// asks to look: the consecutive-look cap has to, and an action must clear it.
+func TestRun_LookLoopIsBounded(t *testing.T) {
+	d := &FakeDriver{snaps: []Snapshot{snap("A")}}
+	a := &FakeAsker{answers: []map[string]jev.Answer{decide("look", "none", 0.9, 0, 0)}}
+	res := newTestEngine(d, a).Run(context.Background(), Request{Goal: "g"})
+	if res.Status != StatusStuck || len(d.actions) != 0 {
+		t.Fatalf("res=%+v actions=%v", res, d.actions)
+	}
+	if !contains(res.Reason, "stuck:") || contains(res.Reason, "no_change") {
+		t.Fatalf("a look loop is stuck, not no_change: %q", res.Reason)
+	}
+	// Three looks are allowed, then every further look is refused and counts
+	// toward stuck: 3 + 3 steps.
+	if res.Steps != 6 || len(res.Trace) != 6 {
+		t.Fatalf("steps=%d trace=%+v", res.Steps, res.Trace)
+	}
+	for i, ts := range res.Trace {
+		switch {
+		case i < maxConsecutiveLooks:
+			if ts.Effect != "look" || ts.Note != "" {
+				t.Fatalf("trace[%d] should be a plain look: %+v", i, ts)
+			}
+		default:
+			if ts.Effect != "skipped" || ts.Note != "look_loop" {
+				t.Fatalf("trace[%d] should be look_loop: %+v", i, ts)
+			}
+		}
+	}
+
+	// An action in between resets the budget, so looking again is fine.
+	d2 := &FakeDriver{snaps: []Snapshot{snap("A"), snap("A"), snap("A"), snap("A", "B")}}
+	a2 := &FakeAsker{answers: []map[string]jev.Answer{
+		decide("look", "none", 0.9, 0, 0),
+		decide("look", "none", 0.9, 0, 0),
+		decide("click", "e1", 0.9, 0.05, 0),
+		decide("look", "none", 0.9, 0, 0),
+		decide("look", "none", 0.9, 0, 0),
+		decide("look", "none", 0.9, 0, 0),
+		decide("done", "none", 0.9, 0, 0.99),
+	}}
+	res2 := newTestEngine(d2, a2).Run(context.Background(), Request{Goal: "g", MaxSteps: 8})
+	if res2.Status != StatusDone || res2.Steps != 7 || len(d2.actions) != 1 || d2.actions[0] != "click:t1" {
+		t.Fatalf("res2=%+v actions=%v", res2, d2.actions)
+	}
+	for i, ts := range res2.Trace {
+		if ts.Note == "look_loop" {
+			t.Fatalf("an action must reset the look budget: trace[%d]=%+v", i, ts)
+		}
+	}
+}
