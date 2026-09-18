@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/devlikebear/tars/internal/config"
 	"github.com/devlikebear/tars/internal/llm"
@@ -289,23 +288,7 @@ func checkDoctorLLMRuntime(report *doctorReport, cfg config.Config) {
 	}
 	authMode, authDetail := detectClaudeCodeAuthMode()
 	report.add("ok", "llm runtime", fmt.Sprintf("claude-code-cli=%s auth=%s%s", path, authMode, authDetail))
-
-	// 2026-06-15 Anthropic policy cutover: claude -p / Agent SDK usage on
-	// subscription plans starts drawing from a new monthly Agent SDK credit
-	// (Pro $20 / Max5x $100 / Max20x $200, no rollover) instead of the
-	// interactive plan limits. Surface this once so a user looking at
-	// `tars doctor` before the date knows their TARS chat traffic is about
-	// to change billing buckets. The hint auto-suppresses after the cutover.
-	if authMode == "subscription" && time.Now().UTC().Before(claudeCodeAgentSDKCutoverDate) {
-		report.addHint("note: 2026-06-15부터 Anthropic 구독 플랜의 `claude -p` / Agent SDK 사용량은 별도 월 크레딧(Pro $20 / Max5x $100 / Max20x $200, 롤오버 없음)에서 차감됩니다. TARS의 claude-code-cli provider도 그 크레딧을 소비하므로 잔액 모니터링을 권장. 자세히: https://support.claude.com/en/articles/15036540-use-the-claude-agent-sdk-with-your-claude-plan")
-	}
 }
-
-// claudeCodeAgentSDKCutoverDate is the day Anthropic moves claude -p /
-// Agent SDK usage on subscription plans onto the new monthly credit bucket.
-// The doctor hint auto-clears after this date so it doesn't haunt logs
-// forever.
-var claudeCodeAgentSDKCutoverDate = time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC)
 
 // detectClaudeCodeAuthMode returns a coarse identification of how the local
 // claude binary will authenticate against Anthropic. Returns:
@@ -313,8 +296,14 @@ var claudeCodeAgentSDKCutoverDate = time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC)
 //   - "api_key" + " (env:VARNAME)" detail when ANTHROPIC_API_KEY (or one of
 //     its known aliases) is present — calls bypass subscription quota
 //   - "subscription" + "" detail when no api key is in scope — calls draw
-//     from the user's Pro/Max plan (interactive limits today, Agent SDK
-//     credit from 2026-06-15)
+//     from the user's Pro/Max plan usage limits
+//
+// Anthropic announced on 2026-05-13 that claude -p / Agent SDK usage on
+// subscription plans would move onto a separate monthly credit from
+// 2026-06-15, then paused that change on the day it was due to take effect.
+// Subscription usage limits remain the single bucket; they said they would
+// give advance notice before any revised plan lands. Do not reintroduce
+// credit-bucket messaging here until such a change actually ships.
 //
 // This is an inference, not a guarantee — claude itself decides per-call
 // which auth path to take. We deliberately do not exec `claude config get`

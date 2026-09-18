@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/devlikebear/tars/internal/config"
 )
@@ -329,11 +328,8 @@ func clearDoctorEnv(t *testing.T) {
 }
 
 // TestCheckDoctorLLMRuntime_ClaudeCodeCLI exercises the
-// checkDoctorLLMRuntime function directly across the three branches the
-// auth/cutover code introduces. We can't easily monkey-patch
-// claudeCodeAgentSDKCutoverDate (it's a package-level var) so the
-// before-cutover path is verified via the current date (test runs before
-// 2026-06-15). The skipped runtime case (no claude-code-cli provider in
+// checkDoctorLLMRuntime function directly across the branches the auth code
+// introduces. The skipped runtime case (no claude-code-cli provider in
 // config) is also covered to lock the early-return.
 func TestCheckDoctorLLMRuntime_ClaudeCodeCLI(t *testing.T) {
 	// 1) No claude-code-cli provider configured → check skipped entirely,
@@ -382,12 +378,10 @@ func TestCheckDoctorLLMRuntime_ClaudeCodeCLI(t *testing.T) {
 		}
 	})
 
-	// 3) claude-code-cli configured + binary present + subscription mode +
-	// pre-cutover → ok + auth=subscription in detail + cutover hint.
-	t.Run("ok with subscription cutover hint", func(t *testing.T) {
-		if time.Now().UTC().After(claudeCodeAgentSDKCutoverDate) {
-			t.Skip("post-cutover; hint suppressed by design")
-		}
+	// 3) claude-code-cli configured + binary present + subscription mode →
+	// ok + auth=subscription in detail, and no billing-credit hint (that
+	// change was paused on 2026-06-15 and never took effect).
+	t.Run("ok in subscription mode", func(t *testing.T) {
 		clearDoctorEnv(t)
 		dir := t.TempDir()
 		fakeClaude := filepath.Join(dir, "claude")
@@ -415,20 +409,16 @@ func TestCheckDoctorLLMRuntime_ClaudeCodeCLI(t *testing.T) {
 		if !strings.Contains(runtimeCheck.detail, "auth=subscription") {
 			t.Fatalf("expected auth=subscription in detail, got %q", runtimeCheck.detail)
 		}
-		hintFound := false
 		for _, h := range r.hints {
-			if strings.Contains(h, "2026-06-15") {
-				hintFound = true
+			if strings.Contains(h, "크레딧") || strings.Contains(h, "2026-06-15") {
+				t.Fatalf("billing-credit hint should not be emitted, got %q", h)
 			}
-		}
-		if !hintFound {
-			t.Fatalf("expected 2026-06-15 cutover hint, got hints=%v", r.hints)
 		}
 	})
 
 	// 4) claude-code-cli + binary present + api_key mode → ok + auth=api_key
-	// in detail, NO cutover hint (api_key path is unaffected by the change).
-	t.Run("api_key mode suppresses cutover hint", func(t *testing.T) {
+	// in detail.
+	t.Run("api_key mode reports api_key auth", func(t *testing.T) {
 		clearDoctorEnv(t)
 		t.Setenv("ANTHROPIC_API_KEY", "sk-xxx")
 		dir := t.TempDir()
@@ -450,11 +440,6 @@ func TestCheckDoctorLLMRuntime_ClaudeCodeCLI(t *testing.T) {
 				if !strings.Contains(c.detail, "auth=api_key") {
 					t.Fatalf("expected auth=api_key in detail, got %q", c.detail)
 				}
-			}
-		}
-		for _, h := range r.hints {
-			if strings.Contains(h, "2026-06-15") {
-				t.Fatalf("api_key mode should not produce cutover hint, got %q", h)
 			}
 		}
 	})

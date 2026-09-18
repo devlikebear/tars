@@ -74,12 +74,12 @@ cmd/  →  app layer  →  core layer  →  pkg/
 - JSON env overrides: `TARS_LLM_PROVIDERS_JSON`, `TARS_LLM_TIERS_JSON`, `TARS_LLM_ROLE_DEFAULTS_JSON`
 
 **claude-code-cli provider** (Epic #857):
-- Local `claude` CLI 재사용. 2026-06-15부터 `claude -p` + Agent SDK 사용량이 Anthropic 구독 플랜의 별도 월 크레딧(Pro $20 / Max5x $100 / Max20x $200)에서 차감 — `tars doctor`가 subscription 모드일 때 안내 hint를 출력
+- Local `claude` CLI 재사용. `claude -p` / Agent SDK 사용량은 구독 플랜의 **기존 usage limit에서 차감**된다. Anthropic이 2026-05-13에 예고했던 별도 월 크레딧(Pro $20 / Max5x $100 / Max20x $200) 분리는 시행일인 2026-06-15에 보류됐고, 재개 시 사전 공지하겠다고만 밝혔다 — 실제로 시행되기 전까지 코드·문서에 크레딧 관련 안내를 넣지 말 것
 - 멀티턴 비용 절감: 응답의 `session_id`를 `session.Session.UpstreamSessionID`에 저장하고 다음 턴 `ChatOptions.ResumeSessionID`로 다시 넘겨 `--resume`로 처리, 시스템 프롬프트/이전 transcript 재과금 회피
 - MCP 자동 주입: 세션-effective MCP 서버 셋을 매 호출마다 임시 `--mcp-config` 파일로 마운트 (`internal/tarsserver/claude_code_cli_mcp.go`의 `toClaudeCodeMCPServers` 변환). websocket transport는 Claude Code 미지원이라 silently drop
 - Permission mode: `llm.claude_code_cli.permission_mode` (`auto`/`default`/`acceptEdits`/`plan`/`dontAsk`/`bypassPermissions`) → `--permission-mode`. 빈 값/오타는 `auto`로 graceful degrade
 - Durable coding harness: `work_ledger.scheduler.external_harness.config_path`가 비어 있지 않을 때만 `claude-code` scheduler adapter를 등록한다. owner-only JSON은 workspace 밖에 두고, 실행은 별도 managed worktree에서 `--safe-mode --strict-mcp-config --no-chrome --permission-mode dontAsk`와 scoped tool/turn/cost 제한을 강제한다. 로컬 Claude 인증은 재사용하지만 임의 env/argv/MCP/plugin/credential 주입은 허용하지 않는다
-- **단일 사용자 전용**: Agent SDK 크레딧이 개인 계정 귀속이라 다중 사용자 서버로는 부적합. claude.ai 로그인을 외부에 *제공*하는 형태로 노출 금지(Anthropic 정책)
+- **단일 사용자 전용**: 구독 usage limit이 개인 계정 귀속이라 다중 사용자 서버로는 부적합. claude.ai 로그인을 외부에 *제공*하는 형태로 노출 금지(Anthropic 정책)
 
 **antigravity-cli provider:**
 - 로컬 `agy` CLI 재사용. `agy --output-format stream-json --print <text>`로 헤드리스 호출하고 중첩 NDJSON 이벤트(`init`/`step_update`/`result`)를 파싱한다. **최소 CLI 버전은 1.1.12** — `stream-json` 자체는 1.1.8에 나왔지만 도구 감사에 쓰는 `tool_info`와 usage의 `cache_read_tokens`가 1.1.12 추가라 그 이전에서는 턴은 성공해도 두 값이 조용히 비어 온다. 1.1.13으로 실제 왕복 검증함
