@@ -169,6 +169,17 @@ func asInt(v any) int {
 	return 0
 }
 
+// asIntOK distinguishes an absent or non-numeric field from a real 0.
+func asIntOK(v any) (int, bool) {
+	switch n := v.(type) {
+	case float64:
+		return int(n), true
+	case int:
+		return n, true
+	}
+	return 0, false
+}
+
 func asString(v any) string {
 	s, _ := v.(string)
 	return s
@@ -186,6 +197,11 @@ func parseWindowState(raw []byte) (Snapshot, error) {
 		snap.TotalElements = total
 	}
 	items, _ := p["elements"].([]any)
+	// The driver's element_index / parent_index are its own 0-based numbering
+	// over a walk that skips non-actionable nodes, so parents are resolved in a
+	// second pass once every raw index has a 1-based Index of ours.
+	ourIndex := make(map[int]int, len(items))
+	rawParent := make([]int, 0, len(items))
 	for _, it := range items {
 		m, ok := it.(map[string]any)
 		if !ok {
@@ -203,6 +219,7 @@ func parseWindowState(raw []byte) (Snapshot, error) {
 			Label:   asString(m["label"]),
 			Enabled: true,
 			Secure:  secure,
+			Depth:   asInt(m["depth"]),
 		}
 		if enabled, ok := m["enabled"].(bool); ok {
 			el.Enabled = enabled
@@ -213,12 +230,95 @@ func parseWindowState(raw []byte) (Snapshot, error) {
 		if !secure {
 			el.Value = asString(m["value"])
 		}
+		// A raw index seen twice keeps its first owner; a missing one is not
+		// registered at all, so it cannot collide with a real index 0.
+		if raw, ok := asIntOK(m["element_index"]); ok {
+			if _, dup := ourIndex[raw]; !dup {
+				ourIndex[raw] = el.Index
+			}
+		}
+		// -1 distinguishes "no parent field" from a real parent_index of 0.
+		parent := -1
+		if raw, ok := asIntOK(m["parent_index"]); ok {
+			parent = raw
+		}
+		rawParent = append(rawParent, parent)
 		snap.Elements = append(snap.Elements, el)
 	}
+	for i := range snap.Elements {
+		if rawParent[i] < 0 {
+			continue
+		}
+		// A parent outside the returned set (truncated walk) leaves 0: a root.
+		if idx, ok := ourIndex[rawParent[i]]; ok && idx != snap.Elements[i].Index {
+			snap.Elements[i].ParentIndex = idx
+		}
+	}
+	adoptChildLabels(snap.Elements)
 	if snap.TotalElements < len(snap.Elements) {
 		snap.TotalElements = len(snap.Elements)
 	}
 	return snap, nil
+}
+
+// maxAdoptedLabelRunes bounds a borrowed label: a static text can hold a whole
+// paragraph, and the snapshot the model reads pays for every rune.
+const maxAdoptedLabelRunes = 60
+
+// labelAdoptingRoles are the roles macOS routinely leaves unlabeled while the
+// text a user would name them by sits in a child AXStaticText. Containers
+// (AXWindow, AXToolbar, AXScrollArea, AXWebArea) are deliberately absent: they
+// would swallow the label of their first piece of content.
+var labelAdoptingRoles = map[string]bool{
+	"axrow":         true,
+	"axcell":        true,
+	"axgroup":       true,
+	"axoutlinerow":  true,
+	"axtablerow":    true,
+	"axmenuitem":    true,
+	"axbutton":      true,
+	"axradiobutton": true,
+	"axcheckbox":    true,
+	"axpopupbutton": true,
+	"axlink":        true,
+	"axtab":         true,
+}
+
+// adoptChildLabels gives an unlabeled row / cell / control the text of its
+// first direct AXStaticText child, so the snapshot names it the way the user
+// sees it instead of showing an anonymous e12.
+func adoptChildLabels(els []Element) {
+	children := make(map[int][]int, len(els))
+	for i, el := range els {
+		if el.ParentIndex != 0 {
+			children[el.ParentIndex] = append(children[el.ParentIndex], i)
+		}
+	}
+	for i := range els {
+		el := &els[i]
+		if el.Label != "" || !labelAdoptingRoles[strings.ToLower(el.Role)] {
+			continue
+		}
+		for _, ci := range children[el.Index] {
+			child := els[ci]
+			if !strings.Contains(strings.ToLower(child.Role), "statictext") {
+				continue
+			}
+			text := child.Label
+			if text == "" {
+				text = child.Value
+			}
+			if text == "" {
+				continue
+			}
+			if r := []rune(text); len(r) > maxAdoptedLabelRunes {
+				text = string(r[:maxAdoptedLabelRunes])
+			}
+			el.Label = text
+			el.LabelAdopted = true
+			break
+		}
+	}
 }
 
 func parseWindows(items []any) []Window {

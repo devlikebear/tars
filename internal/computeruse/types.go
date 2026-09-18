@@ -11,6 +11,18 @@ type Element struct {
 	Enabled  bool
 	Selected *bool // nil이면 해당 없음
 	Secure   bool  // secure text field → value 절대 노출 안 함
+
+	// ParentIndex is the 1-based Index of this element's parent within the same
+	// snapshot, 0 when the element is a root or the parent was not returned.
+	ParentIndex int
+	// Depth is the driver's own AX tree depth (0 = the window root). A parent is
+	// always shallower than its child but not necessarily by exactly one: the
+	// walk skips non-actionable nodes, so a depth-2 button can hang directly off
+	// the depth-0 window.
+	Depth int
+	// LabelAdopted marks a Label borrowed from a child AXStaticText because
+	// macOS leaves the row / cell / control itself unlabeled.
+	LabelAdopted bool
 }
 
 // Window identifies the GUI window a step observes and acts on.

@@ -677,3 +677,125 @@ func TestCuaDriver_ClickParsesEffect(t *testing.T) {
 		t.Fatalf("eff=%v err=%v", eff, err)
 	}
 }
+
+// Captured from cua-driver 0.28.2 against the stock macOS Calculator. Every
+// element carries depth, and every non-root element carries parent_index, so
+// the snapshot can be projected as a tree.
+func TestParseWindowState_CalculatorFixture(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("testdata", "get_window_state_calculator.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	snap, err := parseWindowState(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snap.Elements) <= 100 {
+		t.Fatalf("elements = %d; want a full Calculator tree (>100)", len(snap.Elements))
+	}
+	byIndex := make(map[int]Element, len(snap.Elements))
+	for _, el := range snap.Elements {
+		byIndex[el.Index] = el
+	}
+	var equals *Element
+	for i := range snap.Elements {
+		if snap.Elements[i].Label == "등호" {
+			equals = &snap.Elements[i]
+			break
+		}
+	}
+	if equals == nil {
+		t.Fatal(`no element labeled "등호"`)
+	}
+	if equals.Role != "AXButton" || !equals.Enabled {
+		t.Fatalf("equals button = %+v", *equals)
+	}
+	root := snap.Elements[0]
+	if root.Role != "AXWindow" || root.Depth != 0 || root.ParentIndex != 0 {
+		t.Fatalf("root = %+v", root)
+	}
+	linked, deep := 0, 0
+	for _, el := range snap.Elements {
+		if el.ParentIndex != 0 {
+			linked++
+		}
+		if el.Depth > 1 {
+			deep++
+		}
+	}
+	// 0.28.2 carries parent_index on every element but the two roots (the
+	// window and the menu bar), and a menu tree several levels deep.
+	if linked < len(snap.Elements)-2 || deep == 0 {
+		t.Fatalf("linked=%d deep=%d of %d elements", linked, deep, len(snap.Elements))
+	}
+	for _, el := range snap.Elements {
+		if el.ParentIndex == 0 {
+			continue
+		}
+		parent, ok := byIndex[el.ParentIndex]
+		if !ok {
+			t.Fatalf("element %d parent %d not in snapshot", el.Index, el.ParentIndex)
+		}
+		if parent.Index >= el.Index {
+			t.Fatalf("element %d parent %d is not earlier in the snapshot", el.Index, parent.Index)
+		}
+		// The walk omits non-actionable intermediate nodes, so a parent is
+		// shallower than its child but not necessarily by exactly one.
+		if parent.Depth >= el.Depth {
+			t.Fatalf("element %d (depth %d) parent %d has depth %d", el.Index, el.Depth, parent.Index, parent.Depth)
+		}
+	}
+}
+
+// macOS puts a row's / cell's / control's text in a child AXStaticText and
+// leaves the container itself unlabeled, so the snapshot would otherwise show
+// an anonymous row the model cannot name.
+func TestParseWindowState_AdoptsChildStaticTextLabel(t *testing.T) {
+	long := strings.Repeat("가", 80)
+	raw := []byte(`{"structuredContent":{"element_count":8,"elements":[
+	  {"element_index":0,"depth":0,"element_token":"s1:0","role":"AXWindow","label":"","enabled":true},
+	  {"element_index":1,"depth":1,"parent_index":0,"element_token":"s1:1","role":"AXStaticText","label":"Settings","enabled":true},
+	  {"element_index":3,"depth":1,"parent_index":0,"element_token":"s1:3","role":"AXRow","label":"","enabled":true},
+	  {"element_index":4,"depth":2,"parent_index":3,"element_token":"s1:4","role":"AXStaticText","label":"Accessibility","enabled":true},
+	  {"element_index":5,"depth":1,"parent_index":0,"element_token":"s1:5","role":"AXButton","label":"","enabled":true},
+	  {"element_index":6,"depth":2,"parent_index":5,"element_token":"s1:6","role":"AXStaticText","label":"","value":"Continue","enabled":true},
+	  {"element_index":7,"depth":1,"parent_index":0,"element_token":"s1:7","role":"AXCell","label":"","enabled":true},
+	  {"element_index":8,"depth":2,"parent_index":7,"element_token":"s1:8","role":"AXStaticText","label":"` + long + `","enabled":true}]}}`)
+	snap, err := parseWindowState(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	byToken := make(map[string]Element, len(snap.Elements))
+	for _, el := range snap.Elements {
+		byToken[el.Token] = el
+	}
+	row := byToken["s1:3"]
+	if row.Label != "Accessibility" || !row.LabelAdopted {
+		t.Errorf("row = %+v; want adopted label Accessibility", row)
+	}
+	// A static text with no label of its own still carries its value.
+	button := byToken["s1:5"]
+	if button.Label != "Continue" || !button.LabelAdopted {
+		t.Errorf("button = %+v; want adopted label Continue", button)
+	}
+	cell := byToken["s1:7"]
+	if got := len([]rune(cell.Label)); got != 60 {
+		t.Errorf("cell label = %d runes; want capped at 60", got)
+	}
+	// A window is a container, not a control: it keeps its own (empty) label.
+	win := byToken["s1:0"]
+	if win.Label != "" || win.LabelAdopted {
+		t.Errorf("window = %+v; want no adoption", win)
+	}
+	if byToken["s1:4"].LabelAdopted {
+		t.Errorf("static text must not adopt: %+v", byToken["s1:4"])
+	}
+	// Parent links are resolved against our 1-based renumbering, not the
+	// driver's sparse element_index.
+	if row.ParentIndex != win.Index || win.ParentIndex != 0 || byToken["s1:4"].ParentIndex != row.Index {
+		t.Errorf("parent links: win=%+v row=%+v child=%+v", win, row, byToken["s1:4"])
+	}
+	if row.Depth != 1 || byToken["s1:4"].Depth != 2 {
+		t.Errorf("depths: row=%d child=%d", row.Depth, byToken["s1:4"].Depth)
+	}
+}
