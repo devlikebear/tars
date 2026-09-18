@@ -74,6 +74,84 @@ func TestRenderState_ExcludesMenusAndBareContainers(t *testing.T) {
 	}
 }
 
+// AXMenuButton is a popup/dropdown control the user really can click (Finder
+// toolbar, Safari, System Settings), not part of the application menu bar.
+func TestIsMenuRole_KeepsMenuButton(t *testing.T) {
+	for _, role := range []string{"AXMenuBar", "AXMenuBarItem", "AXMenu", "AXMenuItem", "axmenuitem", "AXMENU"} {
+		if !IsMenuRole(role) {
+			t.Errorf("IsMenuRole(%q) = false; want true", role)
+		}
+	}
+	for _, role := range []string{"AXMenuButton", "axmenubutton", "AXButton", "AXPopUpButton", ""} {
+		if IsMenuRole(role) {
+			t.Errorf("IsMenuRole(%q) = true; want false", role)
+		}
+	}
+}
+
+func TestRenderState_KeepsMenuButtonElement(t *testing.T) {
+	snap := sampleSnapshot()
+	snap.Elements = append(snap.Elements,
+		Element{Index: 7, Token: "s:7", Role: "AXMenuButton", Label: "Arrange By", Enabled: true},
+		Element{Index: 8, Token: "s:8", Role: "AXMenuItem", Label: "By Name", Enabled: true},
+	)
+	snap.TotalElements = 8
+	state, shown := RenderState(Request{Goal: "g"}, snap, nil, RenderOptions{ExposeValues: true})
+	if !strings.Contains(state, "[e7] AXMenuButton 'Arrange By' enabled") {
+		t.Fatalf("AXMenuButton dropped:\n%s", state)
+	}
+	if strings.Contains(state, "By Name") || strings.Contains(state, "AXMenuItem") {
+		t.Fatalf("AXMenuItem leaked:\n%s", state)
+	}
+	if !strings.Contains(state, "SCREEN (7 elements)") {
+		t.Fatalf("count wrong:\n%s", state)
+	}
+	if len(shown) != 7 || shown[6].Index != 7 {
+		t.Fatalf("shown = %d, last = %+v", len(shown), shown[len(shown)-1])
+	}
+}
+
+func TestRenderState_CountsDriverTruncatedElementsAsHidden(t *testing.T) {
+	t.Run("truncated", func(t *testing.T) {
+		snap := Snapshot{TotalElements: 50}
+		for i := 1; i <= 10; i++ {
+			role := "AXButton"
+			if i <= 4 {
+				role = "AXMenuItem"
+			}
+			snap.Elements = append(snap.Elements, Element{Index: i, Token: "t", Role: role, Label: "B", Enabled: true})
+		}
+		state, shown := RenderState(Request{Goal: "g"}, snap, nil, RenderOptions{ExposeValues: true})
+		if !strings.Contains(state, "SCREEN (46 elements):\n") {
+			t.Fatalf("header wrong:\n%s", state)
+		}
+		if n := strings.Count(state, "[e"); n != 6 {
+			t.Fatalf("element lines = %d; want 6\n%s", n, state)
+		}
+		if len(shown) != 6 {
+			t.Fatalf("shown = %d; want 6", len(shown))
+		}
+		if !strings.Contains(state, "(…40 more elements not shown; choose look to see them)") {
+			t.Fatalf("announce wrong:\n%s", state)
+		}
+	})
+
+	t.Run("total below returned count clamps to zero", func(t *testing.T) {
+		snap := sampleSnapshot()
+		snap.TotalElements = 2 // driver bug: fewer than it actually returned
+		state, shown := RenderState(Request{Goal: "g"}, snap, nil, RenderOptions{ExposeValues: true})
+		if !strings.Contains(state, "SCREEN (6 elements):\n") {
+			t.Fatalf("header must not go negative:\n%s", state)
+		}
+		if len(shown) != 6 {
+			t.Fatalf("shown = %d; want 6", len(shown))
+		}
+		if strings.Contains(state, "more elements not shown") {
+			t.Fatalf("nothing is hidden, announce must be absent:\n%s", state)
+		}
+	})
+}
+
 func TestRenderState_HidesValuesWhenNotExposed(t *testing.T) {
 	snap := sampleSnapshot()
 	snap.Elements[1].Value = "typed text"
@@ -114,6 +192,40 @@ func TestElementHash_ChangesWithValueNotToken(t *testing.T) {
 	b.Elements[1].Value = "x"
 	if ElementHash(a) == ElementHash(b) {
 		t.Fatal("value must affect hash")
+	}
+}
+
+// A ticked checkbox often changes nothing else about the element, so a hash
+// that ignored Selected would read a successful toggle as an unchanged screen.
+func TestElementHash_ChangesWithSelected(t *testing.T) {
+	on, off := true, false
+	base := sampleSnapshot() // Elements[3] is the AXCheckBox, Selected = &true
+
+	flipped := sampleSnapshot()
+	flipped.Elements[3].Selected = &off
+	if ElementHash(base) == ElementHash(flipped) {
+		t.Fatal("selected flip must affect hash")
+	}
+
+	cleared := sampleSnapshot()
+	cleared.Elements[3].Selected = nil
+	if ElementHash(base) == ElementHash(cleared) {
+		t.Fatal("selected true → nil must affect hash")
+	}
+	if ElementHash(cleared) == ElementHash(flipped) {
+		t.Fatal("nil must not hash the same as false")
+	}
+
+	// Re-pointing an identical value, and nil staying nil, must not move it.
+	same := sampleSnapshot()
+	same.Elements[3].Selected = &on
+	if ElementHash(base) != ElementHash(same) {
+		t.Fatal("equal selected values must hash the same")
+	}
+	nilA, nilB := sampleSnapshot(), sampleSnapshot()
+	nilA.Elements[3].Selected, nilB.Elements[3].Selected = nil, nil
+	if ElementHash(nilA) != ElementHash(nilB) {
+		t.Fatal("nil → nil must not affect hash")
 	}
 }
 

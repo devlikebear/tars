@@ -98,8 +98,14 @@ func RenderState(req Request, snap Snapshot, trace []TraceStep, opts RenderOptio
 		}
 		candidates = append(candidates, el)
 	}
-	// Elements the driver truncated are still "there" for the hidden count.
-	total := len(candidates) + (snap.TotalElements - len(snap.Elements))
+	// Elements the driver truncated are still "there" for the hidden count. A
+	// TotalElements below the returned count is a driver bug, not a negative
+	// header: clamp the delta at zero.
+	truncated := snap.TotalElements - len(snap.Elements)
+	if truncated < 0 {
+		truncated = 0
+	}
+	total := len(candidates) + truncated
 	shown := candidates
 	if len(shown) > MaxChoiceElements {
 		shown = shown[:MaxChoiceElements]
@@ -115,12 +121,22 @@ func RenderState(req Request, snap Snapshot, trace []TraceStep, opts RenderOptio
 	return b.String(), shown
 }
 
+// menuRoles are the four application-menu roles, lowercased for comparison.
+// The set is exact on purpose: AXMenuButton is a real, clickable popup control
+// (Finder toolbar, Safari, System Settings) and must stay in the state.
+var menuRoles = map[string]struct{}{
+	"axmenubar":     {},
+	"axmenubaritem": {},
+	"axmenu":        {},
+	"axmenuitem":    {},
+}
+
 // IsMenuRole reports application-menu nodes. The AX walk of any macOS window
 // reaches the whole menu bar (including Recent Items file names); those are
 // never valid click targets by element index and must not leave the machine.
 func IsMenuRole(role string) bool {
-	r := strings.ToLower(role)
-	return strings.HasPrefix(r, "axmenu")
+	_, ok := menuRoles[strings.ToLower(role)]
+	return ok
 }
 
 // isBareContainer drops unlabeled, valueless structural nodes (AXWindow,
@@ -130,11 +146,25 @@ func isBareContainer(el Element) bool {
 }
 
 // ElementHash fingerprints what the snapshot shows, ignoring element tokens so
-// a re-snapshot of an unchanged screen hashes the same.
+// a re-snapshot of an unchanged screen hashes the same. Selection is part of
+// the fingerprint ("-" when the element has none): a checkbox or radio toggle
+// often changes nothing else, and a loop that watches only role/label/value
+// would read a successful toggle as a screen that never moved.
 func ElementHash(snap Snapshot) string {
 	h := sha256.New()
 	for _, el := range snap.Elements {
-		fmt.Fprintf(h, "%s|%s|%s|%v\n", el.Role, el.Label, el.Value, el.Enabled)
+		fmt.Fprintf(h, "%s|%s|%s|%v|%s\n", el.Role, el.Label, el.Value, el.Enabled, selectedMark(el.Selected))
 	}
 	return hex.EncodeToString(h.Sum(nil))[:16]
+}
+
+func selectedMark(sel *bool) string {
+	switch {
+	case sel == nil:
+		return "-"
+	case *sel:
+		return "1"
+	default:
+		return "0"
+	}
 }
