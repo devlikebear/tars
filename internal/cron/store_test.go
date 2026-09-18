@@ -387,7 +387,6 @@ func TestStore_RunHistoryPrunesPerJobLimit(t *testing.T) {
 	}
 }
 
-
 func TestStore_ListRunsClampsLimitBounds(t *testing.T) {
 	root := t.TempDir()
 	store := NewStore(root)

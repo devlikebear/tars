@@ -11,14 +11,14 @@ import (
 // hermes uses standard YAML (no JSON-in-YAML embedding) so direct
 // struct unmarshal works.
 type Frontmatter struct {
-	Name           string
-	Description    string
-	Version        string
-	Author         string
-	License        string
-	Tags           []string
-	RelatedSkills  []string
-	RawMetadata    map[string]any
+	Name          string
+	Description   string
+	Version       string
+	Author        string
+	License       string
+	Tags          []string
+	RelatedSkills []string
+	RawMetadata   map[string]any
 }
 
 // rawFrontmatter mirrors the on-disk YAML shape.

@@ -9,8 +9,8 @@ import (
 func TestToClaudeCodeSkills_FiltersAndMaps(t *testing.T) {
 	got := toClaudeCodeSkills([]skill.Definition{
 		{Name: "github-flow", Description: "release flow", Content: "Do the flow."},
-		{Name: "  ", Description: "blank name", Content: "x"},     // dropped: empty name
-		{Name: "no-body", Description: "has no content"},          // dropped: empty content
+		{Name: "  ", Description: "blank name", Content: "x"}, // dropped: empty name
+		{Name: "no-body", Description: "has no content"},      // dropped: empty content
 		{Name: "  trimmed  ", Description: "  desc  ", Content: "body"},
 	})
 	if len(got) != 2 {

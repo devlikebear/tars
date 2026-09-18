@@ -53,9 +53,9 @@ func TestHermesMeta_NilAndMissing(t *testing.T) {
 func TestHermesMeta_MapAnyAnyShape(t *testing.T) {
 	in := map[string]any{
 		"hermes": map[any]any{
-			"tags":  []any{"a"},
-			77:      "skipped non-string key",
-			"":      "skipped empty key",
+			"tags": []any{"a"},
+			77:     "skipped non-string key",
+			"":     "skipped empty key",
 		},
 	}
 	got := hermesMeta(in)

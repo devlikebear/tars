@@ -95,9 +95,9 @@ func TestConsoleHandler_ServesBuiltAssetsForConsoleRoutes(t *testing.T) {
 func TestConsoleHandler_ServesPWAManifestWithCorrectContentType(t *testing.T) {
 	manifestBody := `{"name":"TARS Console","start_url":"/console/"}`
 	handler := newConsoleStaticHandler(zerolog.New(io.Discard), fstest.MapFS{
-		"index.html":            &fstest.MapFile{Data: []byte("<!doctype html>")},
-		"manifest.webmanifest":  &fstest.MapFile{Data: []byte(manifestBody)},
-		"pwa-icon-192.png":      &fstest.MapFile{Data: []byte("\x89PNG\r\n")},
+		"index.html":           &fstest.MapFile{Data: []byte("<!doctype html>")},
+		"manifest.webmanifest": &fstest.MapFile{Data: []byte(manifestBody)},
+		"pwa-icon-192.png":     &fstest.MapFile{Data: []byte("\x89PNG\r\n")},
 	}, true)
 
 	rec := httptest.NewRecorder()

@@ -15,19 +15,19 @@ import (
 // per-file SHA256, the converted SKILL.md frontmatter snapshot, and license
 // metadata so the user can verify exactly what would land on disk.
 type DryRunResult struct {
-	SourceID         string         `json:"source_id"`
-	Ref              string         `json:"ref"`
-	OriginalName     string         `json:"original_name"`
-	OriginalPath     string         `json:"original_path,omitempty"`
-	OriginalURL      string         `json:"original_url,omitempty"`
-	CommitSHA        string         `json:"commit_sha,omitempty"`
-	TargetDir        string         `json:"target_dir"`
-	ConvertedSkill   SkillPreview   `json:"converted_skill"`
-	Files            []FilePreview  `json:"files"`
-	AdapterWarnings  []string       `json:"adapter_warnings,omitempty"`
-	LicenseLabel     string         `json:"license_label,omitempty"`
-	LicenseSource    string         `json:"license_source,omitempty"`
-	ChecksumWarnings []string       `json:"checksum_warnings,omitempty"`
+	SourceID         string        `json:"source_id"`
+	Ref              string        `json:"ref"`
+	OriginalName     string        `json:"original_name"`
+	OriginalPath     string        `json:"original_path,omitempty"`
+	OriginalURL      string        `json:"original_url,omitempty"`
+	CommitSHA        string        `json:"commit_sha,omitempty"`
+	TargetDir        string        `json:"target_dir"`
+	ConvertedSkill   SkillPreview  `json:"converted_skill"`
+	Files            []FilePreview `json:"files"`
+	AdapterWarnings  []string      `json:"adapter_warnings,omitempty"`
+	LicenseLabel     string        `json:"license_label,omitempty"`
+	LicenseSource    string        `json:"license_source,omitempty"`
+	ChecksumWarnings []string      `json:"checksum_warnings,omitempty"`
 }
 
 // SkillPreview is the subset of the converted SKILL.md frontmatter we

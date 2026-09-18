@@ -163,7 +163,7 @@ func TestFilesystemBrowseHandlerRequiresAbsolutePath(t *testing.T) {
 		wantReject  bool
 		errContains string
 	}{
-		{"", false, ""},      // empty falls back to home dir
+		{"", false, ""}, // empty falls back to home dir
 		{"./relative", true, "absolute"},
 		{"sub/path", true, "absolute"},
 	}
