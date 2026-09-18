@@ -16,6 +16,7 @@ type FakeDriver struct {
 	i       int
 	actions []string
 	effect  Effect
+	actErr  error
 	pingErr error
 	opts    []SnapshotOpts
 }
@@ -35,6 +36,9 @@ func (f *FakeDriver) Snapshot(_ context.Context, w Window, opts SnapshotOpts) (S
 }
 func (f *FakeDriver) act(kind string) (Effect, error) {
 	f.actions = append(f.actions, kind)
+	if f.actErr != nil {
+		return "", f.actErr
+	}
 	if f.effect == "" {
 		return EffectConfirmed, nil
 	}
@@ -179,8 +183,8 @@ func TestRun_RiskyStopsAndResumeContinues(t *testing.T) {
 	if res2.Status != StatusDone || len(d.actions) != 1 || d.actions[0] != "click:t1" || res2.Steps != 2 {
 		t.Fatalf("res2=%+v actions=%v", res2, d.actions)
 	}
-	if again := e.Resume(context.Background(), "cu_test", true); again.Status != StatusError {
-		t.Fatalf("token must be single-use, got %+v", again)
+	if again := e.Resume(context.Background(), "cu_test", true); again.Status != StatusError || again.Trace == nil {
+		t.Fatalf("token must be single-use with a non-nil trace, got %+v", again)
 	}
 }
 
@@ -216,12 +220,12 @@ func TestResume_CancelAndExpiry(t *testing.T) {
 	a := &FakeAsker{answers: []map[string]jev.Answer{decide("click", "e1", 0.95, 0.9, 0)}}
 	e := newTestEngine(d, a)
 	e.Run(context.Background(), Request{Goal: "g"})
-	if res := e.Resume(context.Background(), "cu_test", false); res.Status != StatusCancelled {
+	if res := e.Resume(context.Background(), "cu_test", false); res.Status != StatusCancelled || res.Trace == nil {
 		t.Fatalf("cancel → %+v", res)
 	}
 	e.Run(context.Background(), Request{Goal: "g"})
 	e.now = func() time.Time { return time.Unix(1_700_000_000+11*60, 0) }
-	if res := e.Resume(context.Background(), "cu_test", true); res.Status != StatusError || !contains(res.Reason, "expired") {
+	if res := e.Resume(context.Background(), "cu_test", true); res.Status != StatusError || !contains(res.Reason, "expired") || res.Trace == nil {
 		t.Fatalf("expiry → %+v", res)
 	}
 }
@@ -260,12 +264,12 @@ func TestRun_MaxSteps(t *testing.T) {
 func TestRun_DriverUnavailableAndJevError(t *testing.T) {
 	d := &FakeDriver{snaps: []Snapshot{snap("A")}, pingErr: ErrDriverUnavailable}
 	res := newTestEngine(d, &FakeAsker{}).Run(context.Background(), Request{Goal: "g"})
-	if res.Status != StatusUnavailable || res.Hint == "" {
+	if res.Status != StatusUnavailable || res.Hint == "" || res.Trace == nil {
 		t.Fatalf("res=%+v", res)
 	}
 	d2 := &FakeDriver{snaps: []Snapshot{snap("A")}}
 	res2 := newTestEngine(d2, &FakeAsker{err: &jev.Error{Status: 401, Message: "bad key"}}).Run(context.Background(), Request{Goal: "g"})
-	if res2.Status != StatusError || !contains(res2.Reason, "401") {
+	if res2.Status != StatusError || !contains(res2.Reason, "401") || res2.Trace == nil {
 		t.Fatalf("res2=%+v", res2)
 	}
 	d3 := &FakeDriver{snaps: []Snapshot{{Degraded: "ax_window_unresolved"}}}
@@ -375,5 +379,133 @@ func TestRun_NeedsConfirmationCarriesPendingTraceEntry(t *testing.T) {
 	}
 	if len(res.LastScreen) != 1 || res.LastScreen[0] != "[e1] AXButton 'Delete' enabled" {
 		t.Fatalf("last_screen=%v", res.LastScreen)
+	}
+}
+
+// --- fix round 1 --------------------------------------------------------------
+
+// dialogSnap is a realistic window: the AXWindow root is element 1 and is
+// filtered out of the state, so an element's Index is NOT its position in
+// shown. Jev is offered the Index, and the engine must resolve by it.
+func dialogSnap() Snapshot {
+	return Snapshot{
+		TotalElements: 4,
+		Elements: []Element{
+			{Index: 1, Token: "t1", Role: "AXWindow", Enabled: true},
+			{Index: 2, Token: "t2", Role: "AXButton", Label: "Cancel", Enabled: true},
+			{Index: 3, Token: "t3", Role: "AXButton", Label: "Save", Enabled: true},
+			{Index: 4, Token: "t4", Role: "AXButton", Label: "Delete", Enabled: true},
+		},
+	}
+}
+
+func TestRun_TargetResolvesByElementIndexNotPosition(t *testing.T) {
+	// e3 is 'Save' by Index; positionally shown[2] would be 'Delete'.
+	d := &FakeDriver{snaps: []Snapshot{dialogSnap()}}
+	a := &FakeAsker{answers: []map[string]jev.Answer{decide("click", "e3", 0.9, 0.05, 0)}}
+	res := newTestEngine(d, a).Run(context.Background(), Request{Goal: "save it"})
+	if len(d.actions) == 0 || d.actions[0] != "click:t3" || res.Trace[0].Target != "AXButton 'Save'" {
+		t.Fatalf("e3 must resolve to Save/t3: actions=%v trace=%+v", d.actions, res.Trace)
+	}
+
+	// The last shown element is selectable; it is not out of range.
+	d2 := &FakeDriver{snaps: []Snapshot{dialogSnap()}}
+	a2 := &FakeAsker{answers: []map[string]jev.Answer{decide("click", "e4", 0.9, 0.05, 0)}}
+	res2 := newTestEngine(d2, a2).Run(context.Background(), Request{Goal: "g"})
+	if len(d2.actions) == 0 || d2.actions[0] != "click:t4" || res2.Trace[0].Note == "target_out_of_range" {
+		t.Fatalf("e4 must resolve to Delete/t4: actions=%v trace=%+v", d2.actions, res2.Trace)
+	}
+
+	// e1 was filtered out of the state, so it was never on offer.
+	d3 := &FakeDriver{snaps: []Snapshot{dialogSnap()}}
+	a3 := &FakeAsker{answers: []map[string]jev.Answer{decide("click", "e1", 0.9, 0.05, 0)}}
+	res3 := newTestEngine(d3, a3).Run(context.Background(), Request{Goal: "g"})
+	if res3.Status != StatusStuck || res3.Trace[0].Note != "target_out_of_range" || len(d3.actions) != 0 {
+		t.Fatalf("e1 was not offered: res3=%+v actions=%v", res3, d3.actions)
+	}
+}
+
+// Every exit carries a non-nil trace, including the ones that never build a run.
+func TestRun_EarlyExitsCarryNonNilTrace(t *testing.T) {
+	if res := NewEngine(nil, nil, DefaultConfig()).Run(context.Background(), Request{Goal: "g"}); res.Status != StatusUnavailable || res.Trace == nil {
+		t.Fatalf("unconfigured → %+v", res)
+	}
+	if res := newTestEngine(&FakeDriver{snaps: []Snapshot{snap("A")}}, &FakeAsker{}).Resume(context.Background(), "nope", true); res.Status != StatusError || res.Trace == nil {
+		t.Fatalf("unknown token → %+v", res)
+	}
+}
+
+// Abandoned confirmations are swept on the next Run, and the map is capped.
+func TestEngine_SweepsExpiredAndCapsPending(t *testing.T) {
+	d := &FakeDriver{snaps: []Snapshot{snap("Delete")}}
+	a := &FakeAsker{answers: []map[string]jev.Answer{decide("click", "e1", 0.95, 0.9, 0), decide("done", "none", 0.9, 0, 0.99)}}
+	e := newTestEngine(d, a)
+	if res := e.Run(context.Background(), Request{Goal: "g"}); res.Status != StatusNeedsConfirmation {
+		t.Fatalf("setup → %+v", res)
+	}
+	e.now = func() time.Time { return time.Unix(1_700_000_000+11*60, 0) }
+	e.Run(context.Background(), Request{Goal: "g"}) // second answer is done → parks nothing
+	e.mu.Lock()
+	n := len(e.pending)
+	e.mu.Unlock()
+	if n != 0 {
+		t.Fatalf("expired confirmation was not swept: %d left", n)
+	}
+	if res := e.Resume(context.Background(), "cu_test", true); res.Status != StatusError {
+		t.Fatalf("swept token must not resume: %+v", res)
+	}
+
+	d2 := &FakeDriver{snaps: []Snapshot{snap("Delete")}}
+	a2 := &FakeAsker{answers: []map[string]jev.Answer{decide("click", "e1", 0.95, 0.9, 0)}}
+	e2 := newTestEngine(d2, a2)
+	i := 0
+	e2.newToken = func() string { i++; return "cu_" + string(rune('a'+i%26)) + string(rune('a'+i/26)) }
+	for j := 0; j < maxPending+8; j++ {
+		e2.Run(context.Background(), Request{Goal: "g"})
+	}
+	e2.mu.Lock()
+	n2 := len(e2.pending)
+	e2.mu.Unlock()
+	if n2 > maxPending {
+		t.Fatalf("pending grew past the cap: %d", n2)
+	}
+}
+
+// A driver error message that quotes the typed value must not land in the trace.
+func TestRun_DriverErrorTextIsRedacted(t *testing.T) {
+	d := &FakeDriver{snaps: []Snapshot{snap("Name")}, actErr: errors.New("type_text failed: could not insert 'hunter2'")}
+	a := &FakeAsker{answers: []map[string]jev.Answer{withInput(decide("type", "e1", 0.9, 0.05, 0), "pw")}}
+	res := newTestEngine(d, a).Run(context.Background(), Request{Goal: "g", Inputs: map[string]string{"pw": "hunter2"}})
+	if res.Trace[0].Effect != "error" {
+		t.Fatalf("trace=%+v", res.Trace)
+	}
+	if contains(res.Trace[0].Note, "hunter2") || contains(res.Reason, "hunter2") {
+		t.Fatalf("input value leaked: note=%q reason=%q", res.Trace[0].Note, res.Reason)
+	}
+	for _, line := range res.LastScreen {
+		if contains(line, "hunter2") {
+			t.Fatalf("input value leaked to last_screen: %q", line)
+		}
+	}
+	if !contains(res.Trace[0].Note, "[redacted]") || !contains(res.Trace[0].Note, "type_text failed") {
+		t.Fatalf("redaction ate the diagnosis: %q", res.Trace[0].Note)
+	}
+}
+
+// The Result handed back with needs_confirmation is a snapshot: resuming the
+// parked run must not rewrite the trace the caller already holds.
+func TestRun_ReturnedTraceIsNotAliasedByResume(t *testing.T) {
+	d := &FakeDriver{snaps: []Snapshot{snap("Delete"), snap("Delete")}}
+	a := &FakeAsker{answers: []map[string]jev.Answer{decide("click", "e1", 0.95, 0.8, 0), decide("done", "none", 0.9, 0, 0.99)}}
+	e := newTestEngine(d, a)
+	res1 := e.Run(context.Background(), Request{Goal: "g"})
+	if res1.Status != StatusNeedsConfirmation {
+		t.Fatalf("setup → %+v", res1)
+	}
+	if res2 := e.Resume(context.Background(), "cu_test", true); res2.Status != StatusDone {
+		t.Fatalf("resume → %+v", res2)
+	}
+	if last := res1.Trace[len(res1.Trace)-1]; last.Effect != "pending" {
+		t.Fatalf("resume mutated the caller's trace: %+v", last)
 	}
 }

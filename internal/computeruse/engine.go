@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -44,6 +45,9 @@ const (
 	lookMaxDepth  = 40
 	maxLastScreen = 20
 	hardMaxSteps  = 50
+	// maxPending caps parked confirmations so a caller that never answers
+	// cannot grow the map without bound.
+	maxPending = 32
 )
 
 // run is one loop's mutable state; it is parked in Engine.pending while a
@@ -116,11 +120,17 @@ func randomToken() string {
 // Run drives req to a terminal status, or stops at the first action that needs
 // the caller's confirmation.
 func (e *Engine) Run(ctx context.Context, req Request) Result {
+	e.mu.Lock()
+	e.sweepPendingLocked(e.now(), "")
+	e.mu.Unlock()
+	// Every exit goes through finish so Result.Trace is never nil: the field
+	// has no omitempty and a caller decoding "trace": null has to special-case it.
+	empty := func() *run { return &run{started: e.now()} }
 	if e.driver == nil || e.jev == nil {
-		return Result{Status: StatusUnavailable, Reason: "computer_use is not configured", Hint: "set jev.api_key and install cua-driver"}
+		return e.finish(empty(), Result{Status: StatusUnavailable, Reason: "computer_use is not configured", Hint: "set jev.api_key and install cua-driver"})
 	}
 	if err := e.driver.Ping(ctx); err != nil {
-		return Result{Status: StatusUnavailable, Reason: err.Error(), Hint: "start the driver with `cua-driver serve` and grant Accessibility via `cua-driver permissions grant`"}
+		return e.finish(empty(), Result{Status: StatusUnavailable, Reason: err.Error(), Hint: "start the driver with `cua-driver serve` and grant Accessibility via `cua-driver permissions grant`"})
 	}
 	maxSteps := req.MaxSteps
 	if maxSteps <= 0 {
@@ -132,7 +142,7 @@ func (e *Engine) Run(ctx context.Context, req Request) Result {
 	req.MaxSteps = maxSteps
 	w, err := e.driver.ResolveWindow(ctx, req.App)
 	if err != nil {
-		return Result{Status: StatusError, Reason: err.Error()}
+		return e.finish(empty(), Result{Status: StatusError, Reason: err.Error()})
 	}
 	r := &run{req: req, window: w, started: e.now()}
 	return e.loop(ctx, r, false)
@@ -141,20 +151,50 @@ func (e *Engine) Run(ctx context.Context, req Request) Result {
 // Resume continues (or drops) the run parked under token. Tokens are
 // single-use: the entry is removed before it is inspected.
 func (e *Engine) Resume(ctx context.Context, token string, confirm bool) Result {
+	now := e.now()
 	e.mu.Lock()
+	e.sweepPendingLocked(now, "")
 	r, ok := e.pending[token]
 	delete(e.pending, token)
 	e.mu.Unlock()
 	if !ok {
-		return Result{Status: StatusError, Reason: "resume token unknown or expired"}
+		return e.finish(&run{started: now}, Result{Status: StatusError, Reason: "resume token unknown or expired"})
 	}
-	if e.now().Sub(r.createdAt) > e.cfg.ResumeTTL {
-		return Result{Status: StatusError, Reason: "resume token expired"}
+	if now.Sub(r.createdAt) > e.cfg.ResumeTTL {
+		return e.finish(r, Result{Status: StatusError, Reason: "resume token expired"})
 	}
 	if !confirm {
 		return e.finish(r, Result{Status: StatusCancelled, Reason: "caller declined the proposed action"})
 	}
 	return e.loop(ctx, r, true)
+}
+
+// sweepPendingLocked drops confirmations nobody answered: first everything
+// past its TTL, then the oldest entries until the map fits maxPending. The
+// caller holds e.mu.
+// The keep token is never evicted: sweeping runs right after a park, and the
+// entry just created is the one token the caller is about to be handed.
+func (e *Engine) sweepPendingLocked(now time.Time, keep string) {
+	for tok, r := range e.pending {
+		if tok != keep && now.Sub(r.createdAt) > e.cfg.ResumeTTL {
+			delete(e.pending, tok)
+		}
+	}
+	for len(e.pending) > maxPending {
+		oldestTok, oldest := "", time.Time{}
+		for tok, r := range e.pending {
+			if tok == keep {
+				continue
+			}
+			if oldestTok == "" || r.createdAt.Before(oldest) {
+				oldestTok, oldest = tok, r.createdAt
+			}
+		}
+		if oldestTok == "" {
+			break
+		}
+		delete(e.pending, oldestTok)
+	}
 }
 
 // loop runs steps until a terminal status. confirmedFirst executes the parked
@@ -204,12 +244,13 @@ func (e *Engine) loop(ctx context.Context, r *run, confirmedFirst bool) Result {
 		r.step++
 		ts := TraceStep{Step: r.step, Op: d.Op, InputKey: d.InputKey, Confidence: d.OpConfidence, Risky: d.Risky, Done: d.Done,
 			LatencyMS: e.now().Sub(start).Milliseconds(), InputTokens: resp.Usage.InputTokens}
-		var el Element
-		// Jev may name an eN that was never shown; the index must be range
-		// checked before shown[...] is touched.
-		outOfRange := d.TargetIndex > len(shown)
-		if d.TargetIndex > 0 && !outOfRange {
-			el = shown[d.TargetIndex-1]
+		// eN is the element's own Index, not its position: RenderState filters
+		// menus and bare containers without renumbering, so shown[N-1] is a
+		// different element on any real screen. Jev may also name an eN that was
+		// never offered; that is out of range, and el stays zero.
+		el, found := resolveTarget(shown, d.TargetIndex)
+		outOfRange := d.TargetIndex > 0 && !found
+		if found {
 			ts.Target = fmt.Sprintf("%s '%s'", el.Role, truncateRunes(el.Label, maxLabelRunes))
 		}
 
@@ -255,6 +296,7 @@ func (e *Engine) loop(ctx context.Context, r *run, confirmedFirst bool) Result {
 			token := e.newToken()
 			e.mu.Lock()
 			e.pending[token] = r
+			e.sweepPendingLocked(r.createdAt, token)
 			e.mu.Unlock()
 			res := e.finish(r, Result{Status: StatusNeedsConfirmation, Reason: "next action looks hard to undo", Resume: token})
 			res.ProposedAction = r.proposed
@@ -275,6 +317,21 @@ func (e *Engine) loop(ctx context.Context, r *run, confirmedFirst bool) Result {
 	return e.finish(r, Result{Status: StatusMaxSteps, Reason: fmt.Sprintf("reached max_steps=%d", r.req.MaxSteps)})
 }
 
+// resolveTarget maps Jev's eN back to the element it labelled, matching on
+// Element.Index because that is what BuildQuestions/ElementLine put in the
+// option key.
+func resolveTarget(shown []Element, index int) (Element, bool) {
+	if index <= 0 {
+		return Element{}, false
+	}
+	for _, el := range shown {
+		if el.Index == index {
+			return el, true
+		}
+	}
+	return Element{}, false
+}
+
 func (e *Engine) snapshot(ctx context.Context, r *run) (Snapshot, error) {
 	opts := r.nextOpts
 	r.nextOpts = SnapshotOpts{}
@@ -290,11 +347,15 @@ func (e *Engine) execute(ctx context.Context, r *run, d Decision, el Element) {
 	defer cancel()
 	var eff Effect
 	var err error
+	// secret is the input VALUE this action carried, kept only so it can be
+	// scrubbed out of a driver error message that echoed it back.
+	var secret string
 	switch d.Op {
 	case OpClick:
 		eff, err = e.driver.Click(actx, r.window, el.Token)
 	case OpType:
-		eff, err = e.driver.TypeText(actx, r.window, el.Token, r.req.Inputs[d.InputKey])
+		secret = r.req.Inputs[d.InputKey]
+		eff, err = e.driver.TypeText(actx, r.window, el.Token, secret)
 	case OpSetValue:
 		value := "true"
 		if el.Selected != nil && *el.Selected {
@@ -302,6 +363,7 @@ func (e *Engine) execute(ctx context.Context, r *run, d Decision, el Element) {
 		}
 		if d.InputKey != "" {
 			value = r.req.Inputs[d.InputKey]
+			secret = value
 		}
 		eff, err = e.driver.SetValue(actx, r.window, el.Token, value)
 	case OpPressEnter:
@@ -316,7 +378,7 @@ func (e *Engine) execute(ctx context.Context, r *run, d Decision, el Element) {
 	last := &r.trace[len(r.trace)-1]
 	if err != nil {
 		last.Effect = "error"
-		last.Note = truncateRunes(err.Error(), 120)
+		last.Note = truncateRunes(redactValue(err.Error(), secret), 120)
 		r.stuck++
 		return
 	}
@@ -328,12 +390,19 @@ func (e *Engine) execute(ctx context.Context, r *run, d Decision, el Element) {
 	}
 }
 
+// redactValue removes an input value a driver error quoted back at us.
+func redactValue(text, secret string) string {
+	if secret == "" {
+		return text
+	}
+	return strings.ReplaceAll(text, secret, "[redacted]")
+}
+
 func (e *Engine) finish(r *run, res Result) Result {
 	res.Steps = r.step
-	res.Trace = r.trace
-	if res.Trace == nil {
-		res.Trace = []TraceStep{}
-	}
+	// Copy: a parked run keeps mutating r.trace after this Result is handed
+	// back (execute rewrites the pending step's effect on resume).
+	res.Trace = append(make([]TraceStep, 0, len(r.trace)), r.trace...)
 	r.usage.ElapsedMS = e.now().Sub(r.started).Milliseconds()
 	r.usage.EstUSD = float64(r.usage.JevInputTokens) * e.cfg.InputTokenUSD
 	res.Usage = r.usage
