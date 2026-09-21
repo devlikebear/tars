@@ -127,6 +127,7 @@ help:
 	@echo "  make logs-assistant - tail assistant stdout log"
 	@echo "  make logs-assistant-err - tail assistant stderr log"
 	@echo "  make fmt           - go fmt ./..."
+	@echo "  make fmt-check     - fail when any file needs gofmt (CI guard)"
 	@echo "  make vet           - go vet ./..."
 	@echo "  make lint          - golangci-lint ./... (includes revive)"
 	@echo "  make lint-diff     - golangci-lint only new issues since DIFF_BASE (adds errcheck/staticcheck)"
@@ -430,6 +431,16 @@ security-scan:
 
 fmt:
 	$(GO) fmt ./...
+
+fmt-check:
+	@drift="$$(gofmt -l . 2>/dev/null)"; \
+	if [ -n "$$drift" ]; then \
+		echo "gofmt drift in:" >&2; \
+		echo "$$drift" | sed 's/^/  /' >&2; \
+		echo "run 'make fmt' and commit the result" >&2; \
+		exit 1; \
+	fi; \
+	echo "[fmt-check] no gofmt drift"
 
 vet:
 	$(GO) vet ./...
