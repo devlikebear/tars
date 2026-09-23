@@ -116,7 +116,7 @@ export function filterCommands(commands: PaletteCommand[], query: string, limit 
     groupBest.set(entry.command.group, Math.max(groupBest.get(entry.command.group) ?? 0, entry.score))
   }
   return matched
-    .sort((a, b) =>
+    .toSorted((a, b) =>
       (groupBest.get(b.command.group) ?? 0) - (groupBest.get(a.command.group) ?? 0) ||
       groupOrder.indexOf(a.command.group) - groupOrder.indexOf(b.command.group) ||
       b.score - a.score ||

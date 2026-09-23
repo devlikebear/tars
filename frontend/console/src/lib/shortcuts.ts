@@ -38,30 +38,34 @@ export function isTypingTarget(target: EventTarget | null | undefined): boolean 
   return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable === true
 }
 
+// Mod+<key> bindings; `shift` must match exactly.
+const modBindings: { key: string; shift: boolean; action: ShortcutAction }[] = [
+  { key: 'k', shift: false, action: 'palette' },
+  { key: 'o', shift: true, action: 'new-session' },
+  { key: 'j', shift: false, action: 'toggle-terminal' },
+  { key: 'b', shift: false, action: 'toggle-sidebar' },
+  { key: '.', shift: false, action: 'toggle-zen' },
+]
+
+function matchModBinding(key: string, shift: boolean): ShortcutMatch | null {
+  const binding = modBindings.find((b) => b.key === key && b.shift === shift)
+  return binding ? { action: binding.action } : null
+}
+
+// Alt+1..9. Match on `code`: on macOS, Option+digit changes `key` to a symbol.
+function matchSessionDigit(event: ShortcutEvent): ShortcutMatch | null {
+  if (event.shiftKey) return null
+  const digit = /^Digit([1-9])$/.exec(event.code)
+  return digit ? { action: 'switch-session', index: Number(digit[1]) - 1 } : null
+}
+
 export function matchShortcut(event: ShortcutEvent): ShortcutMatch | null {
   if (event.defaultPrevented) return null
   const mod = event.metaKey || event.ctrlKey
   const key = event.key.length === 1 ? event.key.toLowerCase() : event.key
-
-  if (mod && !event.altKey) {
-    if (!event.shiftKey && key === 'k') return { action: 'palette' }
-    if (event.shiftKey && key === 'o') return { action: 'new-session' }
-    if (!event.shiftKey && key === 'j') return { action: 'toggle-terminal' }
-    if (!event.shiftKey && key === 'b') return { action: 'toggle-sidebar' }
-    if (!event.shiftKey && key === '.') return { action: 'toggle-zen' }
-    return null
-  }
-
-  // Alt+1..9. Match on `code`: on macOS, Option+digit changes `key` to a symbol.
-  if (event.altKey && !mod && !event.shiftKey) {
-    const digit = /^Digit([1-9])$/.exec(event.code)
-    if (digit) return { action: 'switch-session', index: Number(digit[1]) - 1 }
-    return null
-  }
-
-  if (!mod && !event.altKey && key === '?' && !isTypingTarget(event.target)) {
-    return { action: 'help' }
-  }
+  if (mod && !event.altKey) return matchModBinding(key, event.shiftKey)
+  if (event.altKey && !mod) return matchSessionDigit(event)
+  if (!mod && !event.altKey && key === '?' && !isTypingTarget(event.target)) return { action: 'help' }
   return null
 }
 
