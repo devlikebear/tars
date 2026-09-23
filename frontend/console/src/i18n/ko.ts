@@ -29,8 +29,8 @@ export const ko = {
     navigationSuffix: '내비게이션',
     groups: {
       work: '작업',
-      operate: '운영',
-      setup: '설정',
+      build: '구성',
+      system: '시스템',
     },
     items: {
       chat: '채팅',

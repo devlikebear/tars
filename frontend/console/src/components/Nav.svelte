@@ -1,23 +1,10 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import { t } from '../i18n'
-  import type { Translations } from '../i18n'
   import { getServerStatus } from '../lib/api'
+  import { resolveRoute } from '../lib/router'
+  import { visibleNavGroups, type NavGroupId, type NavItem, type NavItemLabel } from '../lib/navGroups'
   import StatusStrip from './StatusStrip.svelte'
-
-  type NavGroupId = keyof Translations['nav']['groups']
-  type NavItemId = keyof Translations['nav']['items']
-
-  interface NavItem {
-    id: NavItemId
-    path: string
-    icon: string
-  }
-
-  interface NavGroup {
-    id: NavGroupId
-    items: NavItem[]
-  }
 
   interface Props {
     currentPath: string
@@ -39,57 +26,14 @@
     }
   })
 
-  // Console surface is deliberately slim (DESIGN.md #931 freeze): only the
-  // pages a single operator uses daily are navigable. Lineage, plans, memory,
-  // sysprompt, extensions, agent runtime, channels, cron, analytics, and
-  // reflection keep their routes and stay reachable by URL — they are just no
-  // longer advertised here.
-  const groups: NavGroup[] = [
-    {
-      id: 'work',
-      items: [
-        { id: 'chat', path: '/console/chat', icon: '\u25ce' },
-      ],
-    },
-    {
-      id: 'operate',
-      items: [
-        { id: 'ops', path: '/console/approvals', icon: '\u2699' },
-        { id: 'logs', path: '/console/logs', icon: '\u2261' },
-        { id: 'pulse', path: '/console/pulse', icon: '\u2661' },
-      ],
-    },
-    {
-      id: 'setup',
-      items: [
-        { id: 'config', path: '/console/config', icon: '\u2638' },
-      ],
-    },
-  ]
+  // Work · Build · System (#968). Pages not listed here stay one ⌘K away.
+  let visibleGroups = $derived(visibleNavGroups(authRole))
+  let currentView = $derived(resolveRoute(currentPath).view)
 
-  // Only items whose route actually renders for the user role belong here.
-  // App.svelte gates ops, logs, config, and pulse behind `authRole !== 'user'`,
-  // so listing any of them would render a nav entry that silently falls through
-  // to the Home dashboard.
-  const userVisibleItems = new Set<NavItemId>([
-    'chat',
-  ])
-
-  let visibleGroups = $derived.by(() => {
-    if (authRole !== 'user') return groups
-    return groups
-      .map((group) => ({ ...group, items: group.items.filter((item) => userVisibleItems.has(item.id)) }))
-      .filter((group) => group.items.length > 0)
-  })
-
-  function isActive(itemPath: string, current: string): boolean {
-    if (itemPath === '/console/chat') {
-      return current.startsWith('/console/chat') || (current.startsWith('/console/sessions') && !current.startsWith('/console/sessions/graph'))
-    }
-    if (itemPath === '/console/approvals') {
-      return current.startsWith('/console/approvals') || current.startsWith('/console/ops')
-    }
-    return current.startsWith(itemPath)
+  // The router decides which page is showing, so aliases (/console/ops vs
+  // /approvals, /console/sessions vs /chat) highlight the right item.
+  function isActive(item: NavItem): boolean {
+    return item.view === currentView
   }
 
   function handleClick(event: MouseEvent, path: string) {
@@ -106,8 +50,8 @@
     return $t.nav.groups[id]
   }
 
-  function itemLabel(id: NavItemId): string {
-    return $t.nav.items[id]
+  function itemLabel(label: NavItemLabel): string {
+    return $t.nav.items[label]
   }
 </script>
 
@@ -126,15 +70,15 @@
     {#each visibleGroups as group}
       <section class="nav-group" aria-label={`${groupLabel(group.id)} ${$t.nav.navigationSuffix}`}>
         <div class="nav-group-label">{groupLabel(group.id)}</div>
-        {#each group.items as item}
+        {#each group.items as item (item.view)}
           <a
             href={item.path}
             class="nav-item"
-            class:active={isActive(item.path, currentPath)}
+            class:active={isActive(item)}
             onclick={(e: MouseEvent) => handleClick(e, item.path)}
           >
             <span class="nav-icon">{item.icon}</span>
-            <span class="nav-label">{itemLabel(item.id)}</span>
+            <span class="nav-label">{itemLabel(item.label)}</span>
           </a>
         {/each}
       </section>

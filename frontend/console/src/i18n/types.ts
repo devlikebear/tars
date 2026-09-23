@@ -29,8 +29,8 @@ export type Translations = {
     navigationSuffix: string
     groups: {
       work: string
-      operate: string
-      setup: string
+      build: string
+      system: string
     }
     items: {
       chat: string

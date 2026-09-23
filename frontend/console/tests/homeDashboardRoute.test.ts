@@ -3,10 +3,11 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
 import { resolveRoute } from '../src/lib/router.ts'
+import { navGroups } from '../src/lib/navGroups.ts'
 
 const appSource = readFileSync(new URL('../src/App.svelte', import.meta.url), 'utf8')
 const homeSource = readFileSync(new URL('../src/components/Home.svelte', import.meta.url), 'utf8')
-const navSource = readFileSync(new URL('../src/components/Nav.svelte', import.meta.url), 'utf8')
+const navItem = (view: string) => navGroups.flatMap((g) => g.items).find((i) => i.view === view)
 const enSource = readFileSync(new URL('../src/i18n/en.ts', import.meta.url), 'utf8')
 
 test('/console resolves to Home while Chat stays on /console/chat', () => {
@@ -56,6 +57,8 @@ test('Home dashboard exposes system status, sessions, notifications, and actions
 })
 
 test('Chat nav item is inactive on Home', () => {
-  assert.doesNotMatch(navSource, /current === '\/console'/)
-  assert.match(navSource, /current\.startsWith\('\/console\/chat'\)/)
+  // Nav highlights the item whose view matches the resolved route.
+  assert.equal(resolveRoute('/console').view, 'home')
+  assert.notEqual(navItem('chat')?.view, resolveRoute('/console').view)
+  assert.equal(resolveRoute(navItem('chat')?.path ?? '').view, 'chat')
 })

@@ -3,10 +3,11 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
 import { resolveRoute } from '../src/lib/router.ts'
+import { navGroups } from '../src/lib/navGroups.ts'
 
 const appSource = readFileSync(new URL('../src/App.svelte', import.meta.url), 'utf8')
 const apiSource = readFileSync(new URL('../src/lib/api/system.ts', import.meta.url), 'utf8')
-const navSource = readFileSync(new URL('../src/components/Nav.svelte', import.meta.url), 'utf8')
+const navItem = (view: string) => navGroups.flatMap((g) => g.items).find((i) => i.view === view)
 const logsSource = readFileSync(new URL('../src/components/Logs.svelte', import.meta.url), 'utf8')
 const routeComponentsSource = readFileSync(new URL('../src/lib/routeComponents.ts', import.meta.url), 'utf8')
 
@@ -15,7 +16,7 @@ test('/console/logs resolves to the global Logs page', () => {
   assert.match(routeComponentsSource, /logs:[^,]*import\('\.\.\/components\/Logs\.svelte'\)/)
   assert.match(appSource, /route\.view === 'logs'/)
   assert.match(appSource, /loadRouteComponent\('logs'\)/)
-  assert.match(navSource, /id: 'logs'[\s\S]*path: '\/console\/logs'/)
+  assert.equal(navItem('logs')?.path, '/console/logs')
 })
 
 test('Logs page exposes filtering and refresh controls', () => {
