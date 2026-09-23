@@ -2,7 +2,8 @@
   import { onMount, onDestroy, tick } from 'svelte'
   import { t } from '../i18n'
   import { streamChat, cancelChat, getSessionHistory, renameSession, streamEvents, listChatFileMentions, listAgentRuntimeSubagents, listSkills, listChatTools, getSessionEffectiveConfig, forkSessionFromMessage } from '../lib/api'
-  import type { AgentRuntimeSubagent, ChatAttachment, ChatEvent, ChatTier, ChatTierRecommendationRequest, CommandDef, Session, SessionGoal, SessionMessage, SkillDef } from '../lib/types'
+  import type { AgentRuntimeSubagent, ChatAttachment, ChatContextInfo, ChatEvent, ChatTier, ChatTierRecommendationRequest, CommandDef, Session, SessionGoal, SessionMessage, SkillDef } from '../lib/types'
+  import { chatSession } from '../lib/stores/chatSession'
   import { extractArtifact, extractArtifactsFromHistory, mergeArtifact, type Artifact } from '../lib/artifacts'
   import { buildTierRecommendation, tierRecommendationPayload, type TierRecommendation } from '../lib/tierRecommendation'
   import {
@@ -31,67 +32,24 @@
     sessionId?: string
     initialPrompt?: string
     autoSend?: boolean
-    onSessionChange?: () => void
-    onArtifactsChange?: (artifacts: Artifact[]) => void
-    onContextInfo?: (info: {
-      system_prompt_tokens?: number
-      history_tokens?: number
-      history_messages?: number
-      tool_count?: number
-      tool_names?: string[]
-      skill_count?: number
-      skill_names?: string[]
-      command_count?: number
-      command_names?: string[]
-      memory_count?: number
-      memory_tokens?: number
-      compaction_trigger_tokens?: number
-      compaction_keep_recent_tokens?: number
-      compaction_keep_recent_fraction?: number
-      compaction_last_mode?: string
-      used_tool_names?: string[]
-      selected_skill_name?: string
-      selected_skill_reason?: string
-      selected_command_name?: string
-      selected_command_reason?: string
-      mentioned_path_count?: number
-      mentioned_paths?: string[]
-      mentioned_subagent_count?: number
-      mentioned_subagents?: string[]
-      llm_tier?: string
-      tier_recommendation?: ChatTierRecommendationRequest
-    }) => void
+    // Session state (artifacts, draft, context info, tasks, goal, streaming)
+    // goes to the shared chatSession store. These props stay because each
+    // asks the parent to act on something it owns: dock panels and routing.
     onToolComplete?: (toolName: string) => void
-    onSessionReady?: (sessionId: string) => void
     onArtifactOpen?: (path: string) => void
-    onTasksChanged?: (summary: TasksSummary) => void
     onSlashCommand?: (command: string, args: string) => void | Promise<void>
-    onDraftChange?: (draft: string) => void
     onSessionForked?: (session: Session) => void
-    onGoalEvent?: (event: GoalEventInfo) => void
   }
 
-  type GoalEventInfo = {
-    phase: string
-    reason?: string
-    goal: SessionGoal | null
-  }
-
-  type TasksSummary = {
-    total: number
-    pending: number
-    in_progress: number
-    completed: number
-    cancelled: number
-    plan_goal?: string
-  }
-
-  let { sessionId, initialPrompt, autoSend, onSessionChange, onArtifactsChange, onContextInfo, onToolComplete, onSessionReady, onArtifactOpen, onTasksChanged, onSlashCommand, onDraftChange, onSessionForked, onGoalEvent }: Props = $props()
+  let { sessionId, initialPrompt, autoSend, onToolComplete, onArtifactOpen, onSlashCommand, onSessionForked }: Props = $props()
 
   let artifacts: Artifact[] = $state([])
 
   let chatInput = $state('')
   let chatBusy = $state(false)
+  $effect(() => {
+    chatSession.setStreaming(chatBusy)
+  })
   let chatError = $state('')
   let chatSessionId = $state('')
   let chatStatusLine = $state('')
@@ -113,40 +71,13 @@
   let autoTitled = $state(false)
   let autoSendDone = false
   let abortController: AbortController | null = $state(null)
-  let contextInfo: {
-    system_prompt_tokens?: number
-    history_tokens?: number
-    history_messages?: number
-    tool_count?: number
-    tool_names?: string[]
-    skill_count?: number
-    skill_names?: string[]
-    command_count?: number
-    command_names?: string[]
-    memory_count?: number
-    memory_tokens?: number
-    compaction_trigger_tokens?: number
-    compaction_keep_recent_tokens?: number
-    compaction_keep_recent_fraction?: number
-    compaction_last_mode?: string
-    used_tool_names?: string[]
-    selected_skill_name?: string
-    selected_skill_reason?: string
-    selected_command_name?: string
-    selected_command_reason?: string
-    mentioned_path_count?: number
-    mentioned_paths?: string[]
-    mentioned_subagent_count?: number
-    mentioned_subagents?: string[]
-    llm_tier?: string
-    tier_recommendation?: ChatTierRecommendationRequest
-  } = $state({})
+  let contextInfo: ChatContextInfo = $state({})
   let pendingTierRecommendation: TierRecommendation | null = $state(null)
   let pendingTierMessage = $state('')
 
   function publishContextInfo(next: typeof contextInfo) {
     contextInfo = next
-    onContextInfo?.(next)
+    chatSession.setContextInfo(next)
   }
 
   function stopChatStatusTicker() {
@@ -341,7 +272,7 @@
   })
 
   $effect(() => {
-    onDraftChange?.(chatInput)
+    chatSession.draft = chatInput
   })
 
   let chatLogEl: HTMLDivElement | undefined = $state()
@@ -363,7 +294,7 @@
     const resolved = nextSessionId?.trim()
     if (!resolved || resolved === chatSessionId) return
     chatSessionId = resolved
-    onSessionReady?.(resolved)
+    chatSession.adoptSession(resolved)
     void reloadSlashSkillsAndCandidates()
   }
 
@@ -435,7 +366,7 @@
             )
             if (artifact) {
               artifacts = mergeArtifact(artifacts, artifact, chatSessionId || sessionId)
-              onArtifactsChange?.(artifacts)
+              chatSession.setArtifacts(artifacts)
             }
 
             onToolComplete?.(event.tool_name || '')
@@ -575,7 +506,7 @@
         })
         break
       case 'tasks_changed':
-        onTasksChanged?.({
+        chatSession.setTasksSummary({
           total: event.task_total ?? 0,
           pending: event.task_pending ?? 0,
           in_progress: event.task_in_progress ?? 0,
@@ -585,7 +516,7 @@
         })
         break
       case 'goal_event':
-        onGoalEvent?.({
+        chatSession.applyGoalEvent({
           phase: typeof event.phase === 'string' ? event.phase : '',
           reason: typeof event.reason === 'string' ? event.reason : undefined,
           goal: (event.goal ?? null) as SessionGoal | null,
@@ -612,13 +543,13 @@
             renameSession(chatSessionId, title).catch(() => {})
           }
         }
-        onSessionChange?.()
+        void chatSession.turnSettled()
         break
       }
       case 'cancelled':
         applyChatStatus({ phase: 'cancelled' })
         stopChatStatusTicker()
-        onSessionChange?.()
+        void chatSession.turnSettled()
         break
       case 'error':
         chatError = event.error?.trim() || 'Stream failed'
@@ -1239,7 +1170,7 @@
     }
     chatMessages = rebuilt
     artifacts = extractArtifactsFromHistory(chatMessages, targetSessionId)
-    if (artifacts.length > 0) onArtifactsChange?.(artifacts)
+    if (artifacts.length > 0) chatSession.setArtifacts(artifacts)
   }
 
   async function handleForkMessage(message: ChatMessage) {
@@ -1258,7 +1189,7 @@
     try {
       const child = await forkSessionFromMessage(targetSessionId, sourceMessageId, `Forked from ${message.role} message`)
       onSessionForked?.(child)
-      onSessionChange?.()
+      void chatSession.turnSettled()
     } catch (err) {
       chatError = err instanceof Error ? err.message : 'Failed to fork session'
     } finally {

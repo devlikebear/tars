@@ -1,9 +1,10 @@
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte'
-  import { listSessions, deleteSession, compactSession, renameSession, getSessionHistory, runMemorySearch, setSessionArchived, setSessionPinned, recommendSessionCleanup } from '../lib/api'
+  import { deleteSession, compactSession, renameSession, getSessionHistory, runMemorySearch, setSessionArchived, setSessionPinned, recommendSessionCleanup } from '../lib/api'
   import { highlightTerms } from '../lib/markdown'
   import { cleanupCandidateSessions, groupSessions, isArchived, isPinned, organizeSessions, sessionKind, type SessionGroup, type SessionKindFilter, type SessionSortMode } from '../lib/sessionOrganization'
   import { t } from '../i18n'
+  import { chatSession } from '../lib/stores/chatSession'
   import type { MemorySearchMatch, Session, SessionCleanupMode, SessionCleanupSuggestion, SessionCleanupSuggestionResponse } from '../lib/types'
 
   type SessionSearchSnippet = {
@@ -19,9 +20,10 @@
 
   let { selectedSessionId, onSelect, onNewSession }: Props = $props()
 
-  let sessions: Session[] = $state([])
-  let loading = $state(true)
-  let error = $state('')
+  // The session list is shared state; this component only filters and acts on it.
+  let sessions = $derived(chatSession.sessions)
+  let loading = $derived(chatSession.sessionsLoading)
+  let error = $derived(chatSession.sessionsError === null ? '' : (chatSession.sessionsError || $t.sessions.errors.loadFailed))
 
   let searchQuery = $state('')
   let sortBy = $state<SessionSortMode>('updated')
@@ -194,16 +196,8 @@
     }
   }
 
-  export async function load() {
-    loading = true
-    error = ''
-    try {
-      sessions = await listSessions(true, 'include')
-    } catch (err) {
-      error = err instanceof Error ? err.message : $t.sessions.errors.loadFailed
-    } finally {
-      loading = false
-    }
+  function load(): Promise<void> {
+    return chatSession.refreshSessions()
   }
 
   function startRename(s: Session) {

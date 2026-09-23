@@ -16,8 +16,9 @@ test('Chat surface exposes a Prior Context side panel wired to the draft message
   assert.match(chatSource, /\$t\.chat\.panels\.prior/)
   assert.match(i18nEnSource, /prior: 'Prior'/)
   assert.match(chatSource, /<PriorContextPanel[\s\S]*draftQuery=\{chatDraft\}/)
-  assert.match(chatPanelSource, /onDraftChange\?: \(draft: string\) => void/)
-  assert.match(chatPanelSource, /onDraftChange\?\.\(chatInput\)/)
+  // The draft reaches Chat through the shared session store, not a callback.
+  assert.match(chatPanelSource, /chatSession\.draft = chatInput/)
+  assert.match(chatSource, /let chatDraft = \$derived\(chatSession\.draft\)/)
 })
 
 test('Prior Context panel uses the preview API and renders source and budget fields', () => {
