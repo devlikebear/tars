@@ -68,6 +68,9 @@ test('a session command switches to that session', async ({ page }) => {
 
 test('a slash command runs from the palette on the chat route', async ({ page }) => {
   await page.locator('.dock-left .new-chat-btn').click()
+  // Wait for the new session to be active; /cwd needs one.
+  await expect(page).toHaveURL(/\/console\/chat\/[^/]+$/)
+  await expect(page.locator('.cwd-chip')).toBeVisible()
   await openPalette(page)
   await paletteInput(page).fill('/cwd')
   await page.keyboard.press('Enter')
