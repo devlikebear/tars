@@ -885,6 +885,37 @@ export type ChatTierRecommendationRequest = {
   source?: string
 }
 
+// Per-turn context snapshot ChatPanel derives from the stream's status events
+// and publishes to the session store for the context monitor and health panel.
+export type ChatContextInfo = {
+  system_prompt_tokens?: number
+  history_tokens?: number
+  history_messages?: number
+  tool_count?: number
+  tool_names?: string[]
+  skill_count?: number
+  skill_names?: string[]
+  command_count?: number
+  command_names?: string[]
+  memory_count?: number
+  memory_tokens?: number
+  compaction_trigger_tokens?: number
+  compaction_keep_recent_tokens?: number
+  compaction_keep_recent_fraction?: number
+  compaction_last_mode?: string
+  used_tool_names?: string[]
+  selected_skill_name?: string
+  selected_skill_reason?: string
+  selected_command_name?: string
+  selected_command_reason?: string
+  mentioned_path_count?: number
+  mentioned_paths?: string[]
+  mentioned_subagent_count?: number
+  mentioned_subagents?: string[]
+  llm_tier?: string
+  tier_recommendation?: ChatTierRecommendationRequest
+}
+
 export type ChatRequest = {
   message: string
   session_id?: string

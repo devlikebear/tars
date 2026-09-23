@@ -1,21 +1,20 @@
 <script lang="ts">
-  import { onMount, tick } from 'svelte'
+  import { onMount, tick, untrack } from 'svelte'
   import {
     getCodexUsage,
     getEventsHistory, getPulseStatus,
-    getSession, createSession, renameSession, deleteSession, compactSession, getSessionHistory,
-    getSessionTasks, listChatTools, getSessionEffectiveConfig, updateSessionLocalConfig,
-    getSessionCwd, setSessionCwd,
+    createSession, deleteSession,
+    listChatTools, getSessionEffectiveConfig, updateSessionLocalConfig,
     getSessionGoal, setSessionGoal, clearSessionGoal,
     type SessionToolConfig,
   } from '../lib/api'
   import { formatCodexStatusLines } from '../lib/codexStatus'
   import { t } from '../i18n'
-  import { emptyTaskProgressSummary, planProgressPercent, summarizeTasks, type TaskProgressSummary } from '../lib/tasks'
-  import { buildSessionHealthReport, emptySessionHealthReport, type SessionHealthAction, type SessionHealthInput, type SessionHealthReport } from '../lib/sessionHealth'
+  import { planProgressPercent } from '../lib/tasks'
+  import type { SessionHealthAction } from '../lib/sessionHealth'
   import { buildWorkbenchActions, type WorkbenchAction } from '../lib/workbenchActions'
-  import type { ChatTierRecommendationRequest, PulseSnapshot, NotificationMessage, Session, SessionCwd, SessionGoal, SessionMessage, SessionTasks } from '../lib/types'
-  import type { Artifact } from '../lib/artifacts'
+  import type { PulseSnapshot, Session } from '../lib/types'
+  import { chatSession } from '../lib/stores/chatSession'
   import { loadChatComponent } from '../lib/chatComponents'
   import SessionSidebar from './SessionSidebar.svelte'
   import SessionConfigPanel from './SessionConfigPanel.svelte'
@@ -56,35 +55,27 @@
   let pulse: PulseSnapshot | null = $state(null)
   let unreadCount = $state(0)
 
-  // Session selection — synced from sessionId prop
-  let selectedSessionId: string | null = $state(null)
-  let selectedSession: Session | null = $state(null)
-  let chatKey = $state(0)
-  let lastPropSessionId: string | undefined = undefined
-
+  // The route owns which session is active; the shared store owns its state.
   $effect(() => {
     const sid = sessionId
-    if (sid !== lastPropSessionId) {
-      lastPropSessionId = sid
-      selectedSessionId = sid || null
-      selectedSession = null
-      chatKey++
-      chatDraft = ''
-      chatContextInfo = {}
-      if (sid) loadSelectedSession(sid)
-    }
+    untrack(() => chatSession.setActive(sid))
   })
 
-  // Session active-cwd HUD: cwdState mirrors GET /cwd; cwdDropdownOpen
-  // controls a tiny popover anchored to the chip; cwdBusy guards
-  // concurrent transitions while a PUT is in flight.
-  let cwdState: SessionCwd | null = $state(null)
+  let selectedSessionId = $derived(chatSession.activeSessionId)
+  let selectedSession = $derived(chatSession.activeSession)
+  let chatDraft = $derived(chatSession.draft)
+  let chatArtifacts = $derived(chatSession.artifacts)
+  let chatContextInfo = $derived(chatSession.contextInfo)
+  let contextRefreshVersion = $derived(chatSession.contextVersion)
+  // Session active-cwd HUD mirrors GET /cwd; cwdDropdownOpen controls the
+  // popover anchored to the chip.
+  let cwdState = $derived(chatSession.cwd)
+  let cwdBusy = $derived(chatSession.cwdBusy)
   let cwdDropdownOpen = $state(false)
-  let cwdBusy = $state(false)
-
   // Session goal HUD: mirrors GET /goal. Updated by `/goal …` slash commands
   // and by `goal_event` SSE messages emitted from the chat loop.
-  let sessionGoal: SessionGoal | null = $state(null)
+  let sessionGoal = $derived(chatSession.goal)
+  let actionFeedback = $derived(chatSession.feedback)
 
   // Session action state
   let renaming = $state(false)
@@ -92,39 +83,6 @@
   let actionBusy = $state(false)
   let deleteConfirm = $state(false)
   let sessionMenuOpen = $state(false)
-
-  // Docked panel state
-  let chatArtifacts: Artifact[] = $state([])
-  let chatDraft = $state('')
-  let chatContextInfo: {
-    system_prompt_tokens?: number
-    history_tokens?: number
-    history_messages?: number
-    tool_count?: number
-    tool_names?: string[]
-    skill_count?: number
-    skill_names?: string[]
-    command_count?: number
-    command_names?: string[]
-    memory_count?: number
-    memory_tokens?: number
-    compaction_trigger_tokens?: number
-    compaction_keep_recent_tokens?: number
-    compaction_keep_recent_fraction?: number
-    compaction_last_mode?: string
-    used_tool_names?: string[]
-    selected_skill_name?: string
-    selected_skill_reason?: string
-    selected_command_name?: string
-    selected_command_reason?: string
-    mentioned_path_count?: number
-    mentioned_paths?: string[]
-    mentioned_subagent_count?: number
-    mentioned_subagents?: string[]
-    llm_tier?: string
-    tier_recommendation?: ChatTierRecommendationRequest
-  } = $state({})
-  let contextRefreshVersion = $state(0)
   type ChatDockPanelID = 'sessions' | 'artifacts' | 'config' | 'context' | 'prompt' | 'prior' | 'tasks' | 'git' | 'skillExtraction' | 'cron' | 'health' | 'terminal'
   type ToolDockPanelID = Exclude<ChatDockPanelID, 'sessions'>
 
@@ -198,14 +156,11 @@
     panelIsOpen(dockLayout, 'health'),
   )
 
-  let sidebarRef: SessionSidebar | undefined = $state()
   type ChatPanelHandle = {
     sendMessageText: (text: string) => Promise<void>
     clearThread: () => void
     exportAsMarkdown: () => string
   }
-  let actionFeedback = $state('')
-  let feedbackTimer: ReturnType<typeof setTimeout> | null = null
 
   function panelTitle(panelID: ChatDockPanelID): string {
     return dockPanels.find((panel) => panel.id === panelID)?.title ?? panelID
@@ -328,9 +283,7 @@
   }
 
   function showFeedback(msg: string, ms = 4000) {
-    if (feedbackTimer) clearTimeout(feedbackTimer)
-    actionFeedback = msg
-    feedbackTimer = setTimeout(() => { actionFeedback = '' }, ms)
+    chatSession.notify(msg, ms)
   }
 
   function relativeTime(value?: string): string {
@@ -344,39 +297,6 @@
     if (seconds < 3600) return labels.minutesAgo(Math.floor(seconds / 60))
     if (seconds < 86400) return labels.hoursAgo(Math.floor(seconds / 3600))
     return labels.daysAgo(Math.floor(seconds / 86400))
-  }
-
-  async function loadSelectedSession(id: string) {
-    try {
-      selectedSession = await getSession(id)
-    } catch { /* ignore */ }
-    void refreshCwdState(id)
-    void refreshSessionGoal(id)
-  }
-
-  async function refreshSessionGoal(id: string | null) {
-    if (!id) {
-      sessionGoal = null
-      return
-    }
-    try {
-      const resp = await getSessionGoal(id)
-      sessionGoal = resp.goal
-    } catch {
-      sessionGoal = null
-    }
-  }
-
-  async function refreshCwdState(id: string | null) {
-    if (!id) {
-      cwdState = null
-      return
-    }
-    try {
-      cwdState = await getSessionCwd(id)
-    } catch {
-      cwdState = null
-    }
   }
 
   function shortGoalLabel(description: string): string {
@@ -403,83 +323,60 @@
       return
     }
     if (cwdBusy) return
-    cwdBusy = true
     try {
-      await setSessionCwd(selectedSessionId, target)
+      await chatSession.setCwd(target)
       cwdDropdownOpen = false
-      await refreshCwdState(selectedSessionId)
       showFeedback(`cwd → ${shortCwdLabel(target)}`)
     } catch (err) {
       showFeedback(`cwd transition failed: ${err instanceof Error ? err.message : String(err)}`)
-    } finally {
-      cwdBusy = false
     }
   }
 
-  function handleSelectSession(session: Session) {
-    selectedSessionId = session.id
-    selectedSession = session
-    chatKey++
-    chatArtifacts = []
-    chatDraft = ''
-    chatContextInfo = {}
+  // Leaving the current session: reset the chrome that belongs to it. The
+  // store resets its own per-session state when the route change lands.
+  function resetSessionChrome() {
     closeToolPanels()
     if (isMobileLayout()) {
       closePanel('sessions')
     }
     renaming = false
     deleteConfirm = false
+  }
+
+  function handleSelectSession(session: Session) {
+    resetSessionChrome()
     onNavigate(`/console/chat/${encodeURIComponent(session.id)}`)
   }
 
   async function handleNewSession() {
+    let created: Session | null = null
     try {
-      const sess = await createSession()
-      selectedSessionId = sess.id
-      selectedSession = sess
+      created = await createSession()
     } catch {
-      selectedSessionId = null
-      selectedSession = null
+      created = null
+      // The route may not change, so reload the thread explicitly.
+      chatSession.remountThread()
     }
-    chatKey++
-    chatArtifacts = []
-    chatDraft = ''
-    chatContextInfo = {}
-    closeToolPanels()
-    if (isMobileLayout()) {
-      closePanel('sessions')
-    }
-    renaming = false
-    deleteConfirm = false
-    onNavigate(selectedSessionId ? `/console/chat/${encodeURIComponent(selectedSessionId)}` : '/console/chat')
-  }
-
-  function handleSessionChange() {
-    sidebarRef?.load()
-    // Refresh selected session title (may have been auto-titled)
-    if (selectedSessionId) loadSelectedSession(selectedSessionId)
-    void refreshSessionHealth()
+    resetSessionChrome()
+    void chatSession.refreshSessions()
+    onNavigate(created ? `/console/chat/${encodeURIComponent(created.id)}` : '/console/chat')
   }
 
   function handleSessionForked(session: Session) {
-    selectedSessionId = session.id
-    selectedSession = session
-    chatKey++
-    chatArtifacts = []
-    chatDraft = ''
-    chatContextInfo = {}
-    closeToolPanels()
-    sidebarRef?.load()
+    resetSessionChrome()
+    void chatSession.refreshSessions()
     showFeedback(`Forked session: ${session.title || session.id.slice(0, 12)}`)
     onNavigate(`/console/chat/${encodeURIComponent(session.id)}`)
   }
 
-  function handleArtifactsChange(arts: Artifact[]) {
-    chatArtifacts = arts
-    if (arts.length > 0 && !anyToolPanelOpen) {
-      openPanel('artifacts')
-    }
-  }
+  // Surface the Files panel the first time a turn produces artifacts, unless
+  // the user already has a tool panel open.
+  $effect(() => {
+    const artifacts = chatSession.artifacts
+    untrack(() => {
+      if (artifacts.length > 0 && !anyToolPanelOpen) openPanel('artifacts')
+    })
+  })
 
   // Session actions
   function startRename() {
@@ -496,9 +393,7 @@
     if (!selectedSessionId || !renameValue.trim()) { renaming = false; return }
     actionBusy = true
     try {
-      await renameSession(selectedSessionId, renameValue.trim())
-      await loadSelectedSession(selectedSessionId)
-      sidebarRef?.load()
+      await chatSession.rename(renameValue)
     } catch { /* ignore */ }
     renaming = false
     actionBusy = false
@@ -508,24 +403,7 @@
     if (!selectedSessionId || !selectedSession) return
     actionBusy = true
     try {
-      const history = await getSessionHistory(selectedSessionId)
-      const userMsgs = history.filter((m) => m.role === 'user')
-      const assistantMsgs = history.filter((m) => m.role === 'assistant')
-      let title = ''
-      if (userMsgs.length > 0) {
-        const raw = userMsgs[0].content.trim()
-        const clean = raw.replace(/\n/g, ' ').replace(/\s+/g, ' ')
-        title = clean.length > 50 ? clean.slice(0, 47) + '...' : clean
-      } else if (assistantMsgs.length > 0) {
-        const raw = assistantMsgs[0].content.trim()
-        const clean = raw.replace(/\n/g, ' ').replace(/\s+/g, ' ')
-        title = clean.length > 50 ? clean.slice(0, 47) + '...' : clean
-      }
-      if (title) {
-        await renameSession(selectedSessionId, title)
-        await loadSelectedSession(selectedSessionId)
-        sidebarRef?.load()
-      }
+      await chatSession.autoTitle()
     } catch { /* ignore */ }
     actionBusy = false
   }
@@ -534,17 +412,14 @@
     if (!selectedSessionId) return
     actionBusy = true
     try {
-      const r = await compactSession(selectedSessionId)
-      if (r.compacted) {
+      const r = await chatSession.compact()
+      if (r?.compacted) {
         const saved = r.tokens_before - r.tokens_after
         const pct = r.tokens_before > 0 ? Math.round((saved / r.tokens_before) * 100) : 0
         showFeedback($t.chat.feedback.compacted(r.compacted_count, r.original_count, r.final_count, pct))
-      } else {
+      } else if (r) {
         showFeedback(r.reason || $t.chat.feedback.nothingToCompact)
       }
-      sidebarRef?.load()
-      chatKey++
-      await refreshSessionHealth()
     } catch (e) {
       showFeedback(e instanceof Error ? e.message : $t.chat.feedback.compactFailed)
     }
@@ -557,8 +432,7 @@
     actionBusy = true
     try {
       await deleteSession(selectedSessionId)
-      sidebarRef?.load()
-      handleNewSession()
+      await handleNewSession()
     } catch { /* ignore */ }
     actionBusy = false
     deleteConfirm = false
@@ -572,10 +446,7 @@
   let tasksPanelRef: { load: () => void; openEvidence: () => Promise<void> } | undefined = $state()
   let artifactPanelRef: { refresh: () => void; openArtifactPath: (path: string) => Promise<void> } | undefined = $state()
 
-  type TasksSummary = TaskProgressSummary & {
-    plan_goal?: string
-  }
-  let tasksSummary: TasksSummary = $state(emptyTaskProgressSummary())
+  let tasksSummary = $derived(chatSession.tasksSummary)
   let planStripProgress = $derived(planProgressPercent(tasksSummary))
   let hasPlanStrip = $derived(!!tasksSummary.plan_goal?.trim())
   let workbenchActions = $derived(buildWorkbenchActions({
@@ -583,10 +454,8 @@
     hasPlan: hasPlanStrip,
     activeTaskTitle: tasksSummary.active_task_title,
   }))
-  let sessionHealth: SessionHealthReport = $state(emptySessionHealthReport())
-  let sessionHealthLoading = $state(false)
-  let sessionHealthRequest = 0
-  let sessionHealthInputs: Omit<SessionHealthInput, 'contextInfo' | 'now'> | null = $state(null)
+  let sessionHealth = $derived(chatSession.health)
+  let sessionHealthLoading = $derived(chatSession.healthLoading)
   let healthIssueCount = $derived(sessionHealth.recommendations.length)
 
   function handleToolComplete(toolName: string) {
@@ -599,11 +468,6 @@
     if (fileTools.includes(toolName)) {
       artifactPanelRef?.refresh()
     }
-  }
-
-  function handleTasksChanged(summary: TasksSummary) {
-    tasksSummary = summary
-    void refreshSessionHealth()
   }
 
   async function handleWorkbenchAction(action: WorkbenchAction) {
@@ -624,56 +488,8 @@
     openPanel('tasks')
   }
 
-  function rebuildSessionHealth(contextInfo = chatContextInfo) {
-    if (!sessionHealthInputs) {
-      sessionHealth = emptySessionHealthReport()
-      return
-    }
-    sessionHealth = buildSessionHealthReport({
-      ...sessionHealthInputs,
-      contextInfo,
-    })
-  }
-
-  async function refreshSessionHealth() {
-    const sid = selectedSessionId
-    if (!sid) {
-      sessionHealthInputs = null
-      sessionHealth = emptySessionHealthReport()
-      return
-    }
-    const requestID = ++sessionHealthRequest
-    sessionHealthLoading = true
-    try {
-      const [session, history, taskState, config, toolsResp] = await Promise.all([
-        getSession(sid),
-        getSessionHistory(sid),
-        getSessionTasks(sid),
-        getSessionEffectiveConfig(sid),
-        listChatTools(sid),
-      ])
-      if (requestID !== sessionHealthRequest || selectedSessionId !== sid) return
-      selectedSession = session
-      sessionHealthInputs = {
-        session,
-        messages: history as SessionMessage[],
-        tasks: taskState as SessionTasks,
-        config: config.effective.tool_config,
-        tools: toolsResp.tools,
-      }
-      const counts = summarizeTasks(taskState.tasks)
-      tasksSummary = { ...counts, plan_goal: taskState.plan?.goal }
-      rebuildSessionHealth()
-    } catch {
-      if (requestID === sessionHealthRequest) {
-        sessionHealthInputs = null
-        sessionHealth = emptySessionHealthReport()
-      }
-    } finally {
-      if (requestID === sessionHealthRequest) {
-        sessionHealthLoading = false
-      }
-    }
+  function refreshSessionHealth(): Promise<void> {
+    return chatSession.refreshHealth()
   }
 
   async function handleHealthAction(action: SessionHealthAction) {
@@ -699,19 +515,6 @@
     }
   }
 
-  // Fetch initial task counts when the active session changes so the
-  // pulse-bar badge reflects state from prior turns, not just the current
-  // chat-stream lifetime.
-  $effect(() => {
-    const sid = selectedSessionId
-    if (!sid) {
-      tasksSummary = emptyTaskProgressSummary()
-      sessionHealthInputs = null
-      sessionHealth = emptySessionHealthReport()
-      return
-    }
-    void refreshSessionHealth()
-  })
 
   async function handleArtifactOpen(path: string) {
     openPanel('artifacts')
@@ -802,7 +605,7 @@
           return
         }
         if (args === '' || args.toLowerCase() === 'list') {
-          await refreshCwdState(selectedSessionId)
+          await chatSession.refreshCwd()
           if (!cwdState) {
             showFeedback('cwd: no eligible directories')
             return
@@ -832,7 +635,7 @@
     try {
       if (trimmed === '' || lower === 'status' || lower === 'show') {
         const resp = await getSessionGoal(selectedSessionId)
-        sessionGoal = resp.goal
+        chatSession.setGoal(resp.goal)
         if (!resp.goal) {
           showFeedback('goal: (none) — usage: /goal <description> | /goal clear')
           return
@@ -845,12 +648,12 @@
       }
       if (lower === 'clear' || lower === 'cancel') {
         const resp = await clearSessionGoal(selectedSessionId)
-        sessionGoal = resp.goal
+        chatSession.setGoal(resp.goal)
         showFeedback('goal cleared')
         return
       }
       const resp = await setSessionGoal(selectedSessionId, trimmed)
-      sessionGoal = resp.goal
+      chatSession.setGoal(resp.goal)
       if (resp.goal) {
         showFeedback(`goal set: ${resp.goal.description}`)
       } else {
@@ -1009,7 +812,6 @@
     >
       {#if panelID === 'sessions'}
         <SessionSidebar
-          bind:this={sidebarRef}
           selectedSessionId={selectedSessionId}
           onSelect={handleSelectSession}
           onNewSession={handleNewSession}
@@ -1034,7 +836,7 @@
           sessionId={selectedSessionId ?? ''}
           onClose={() => closePanel(panelID)}
           onChange={() => {
-            contextRefreshVersion += 1
+            chatSession.bumpContextVersion()
             void refreshSessionHealth()
           }}
         />
@@ -1064,7 +866,7 @@
           onClose={() => closePanel(panelID)}
           onApproved={(path) => {
             showFeedback(path ? $t.chat.feedback.savedSkillDraft(path) : $t.chat.feedback.savedSkillDraftPlain)
-            contextRefreshVersion += 1
+            chatSession.bumpContextVersion()
           }}
         />
       {:else if panelID === 'cron' && selectedSessionId}
@@ -1279,7 +1081,7 @@
         </div>
       {/if}
 
-      {#key chatKey}
+      {#key chatSession.threadVersion}
         {#await loadChatComponent('chat-panel')}
           <div class="chat-panel-loading">Loading...</div>
         {:then module}
@@ -1288,36 +1090,9 @@
             bind:this={chatPanelRef}
             sessionId={selectedSessionId || undefined}
             {initialPrompt}
-            onSessionChange={handleSessionChange}
-            onArtifactsChange={handleArtifactsChange}
-            onContextInfo={(info: typeof chatContextInfo) => {
-              chatContextInfo = info
-              rebuildSessionHealth(info)
-            }}
             onToolComplete={handleToolComplete}
-            onTasksChanged={handleTasksChanged}
-            onGoalEvent={(event: { phase: string; reason?: string; goal: SessionGoal | null }) => {
-              sessionGoal = event.goal
-              if (event.phase === 'satisfied') {
-                showFeedback(`goal satisfied${event.reason ? `: ${event.reason}` : ''}`)
-              } else if (event.phase === 'exhausted') {
-                showFeedback(`goal auto-continue budget exhausted${event.reason ? ` (last: ${event.reason})` : ''}`)
-              } else if (event.phase === 'auto_continue' && event.goal) {
-                showFeedback(`goal auto-continue ${event.goal.auto_continue_count}/${event.goal.max_auto_continues}`)
-              } else if (event.phase === 'judge_error') {
-                showFeedback(`goal judge error: ${event.reason ?? 'unknown'}`)
-              }
-            }}
             onSlashCommand={handleSlashCommand}
-            onDraftChange={(draft: string) => { chatDraft = draft }}
             onSessionForked={handleSessionForked}
-            onSessionReady={(id: string) => {
-              if (!selectedSessionId) {
-                selectedSessionId = id
-                void loadSelectedSession(id)
-                sidebarRef?.load()
-              }
-            }}
             onArtifactOpen={handleArtifactOpen}
           />
         {:catch}

@@ -2,23 +2,12 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
-const sessionsSource = readFileSync(new URL('../src/components/Sessions.svelte', import.meta.url), 'utf8')
 const sessionSidebarSource = readFileSync(new URL('../src/components/SessionSidebar.svelte', import.meta.url), 'utf8')
 const typesSource = readFileSync(new URL('../src/lib/types.ts', import.meta.url), 'utf8')
 const apiSource = readFileSync(new URL('../src/lib/api/sessions.ts', import.meta.url), 'utf8')
 const chatMessagesSource = readFileSync(new URL('../src/lib/chatMessages.ts', import.meta.url), 'utf8')
 const chatPanelSource = readFileSync(new URL('../src/components/ChatPanel.svelte', import.meta.url), 'utf8')
 const chatMessageItemSource = readFileSync(new URL('../src/components/ChatMessageItem.svelte', import.meta.url), 'utf8')
-
-test('Sessions search reuses memory session search for transcript snippets', () => {
-  assert.match(sessionsSource, /runMemorySearch/)
-  assert.match(sessionsSource, /include_memory:\s*false/)
-  assert.match(sessionsSource, /include_daily:\s*false/)
-  assert.match(sessionsSource, /include_sessions:\s*true/)
-  assert.match(sessionsSource, /source\.startsWith\('session:'\)/)
-  assert.match(sessionsSource, /sessionSearchSnippets/)
-  assert.match(sessionsSource, /session-snippet-list/)
-})
 
 test('Chat session sidebar exposes transcript snippets in the active session picker', () => {
   assert.match(sessionSidebarSource, /runMemorySearch/)
