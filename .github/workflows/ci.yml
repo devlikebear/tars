@@ -170,6 +170,24 @@ jobs:
       - name: Run frontend console tests
         run: cd frontend/console && npm run test:ci
 
+      # Use the @playwright/test pinned in package-lock (installed by npm ci
+      # above) rather than npx, which could fetch an unpinned package.
+      - name: Install Playwright Chromium for console E2E
+        run: cd frontend/console && ./node_modules/.bin/playwright install --with-deps chromium
+
+      - name: Run console E2E
+        run: make console-e2e
+
+      - name: Upload console E2E report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: console-e2e-report
+          path: |
+            frontend/console/playwright-report
+            frontend/console/test-results
+          retention-days: 7
+
       - name: Check layer boundaries
         run: make arch-check
 

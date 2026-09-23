@@ -74,7 +74,7 @@ AGENT_HARNESS_COMMIT ?= $(GIT_COMMIT)
 	agent-harness-eval agent-harness-baseline \
 	build build-bins windows-build-check windows-test release-asset clean tidy fmt vet lint \
 	lint-diff arch-check api-snapshot api-check ci-static-analysis-check github-actions-hardening-check codeql-workflow-check sonarcloud-workflow-check \
-	ensure-console-assets console-install console-build \
+	ensure-console-assets console-install console-build console-e2e \
 	browser-install \
 	install install-server install-assistant uninstall uninstall-server uninstall-assistant reinstall \
 	restart restart-server restart-assistant reload-config reload-server-config reload-assistant-config \
@@ -115,6 +115,7 @@ help:
 	@echo "  make release-asset - build a versioned release archive to $(DIST_DIR)"
 	@echo "  make console-install - npm ci in frontend/console"
 	@echo "  make console-build - build the embedded Svelte console assets"
+	@echo "  make console-e2e   - Playwright E2E: rebuild console, run tars serve + mock LLM"
 	@echo "  make browser-install - npm ci + playwright chromium install"
 	@echo "  make install       - build $(TARS_BIN) and (re)install io.tars.server + io.tars.assistant launch agents"
 	@echo "  make uninstall     - stop and remove io.tars.server + io.tars.assistant launch agents"
@@ -241,6 +242,13 @@ console-install:
 
 console-build: console-install
 	cd frontend/console && npm run build
+
+# console-e2e drives the console in Chromium against `go run ./cmd/tars serve`
+# with freshly built embedded assets, a throwaway workspace, and the
+# deterministic mock LLM in frontend/console/e2e/mock-llm.mjs. Needs the
+# Playwright browser once: `cd frontend/console && ./node_modules/.bin/playwright install chromium`.
+console-e2e: console-build
+	cd frontend/console && npm run test:e2e
 
 release-asset: console-build
 	mkdir -p "$(DIST_DIR)"
