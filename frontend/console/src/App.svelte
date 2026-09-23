@@ -20,7 +20,17 @@
     type CompanionStimulus,
   } from './lib/companion'
   import { locale } from './i18n'
-  import { isZenShortcut, zenMode } from './lib/zenMode.svelte'
+  import { zenMode } from './lib/zenMode.svelte'
+  import { t } from './i18n'
+  import CommandPalette from './components/CommandPalette.svelte'
+  import ShortcutHelp from './components/ShortcutHelp.svelte'
+  import { pageCommands, type PageView, type PaletteCommand } from './lib/commands'
+  import { chatOnlyActions, matchShortcut, type ShortcutMatch } from './lib/shortcuts'
+  import { builtinSlashCommands } from './lib/slash'
+  import { isArchived } from './lib/sessionOrganization'
+  import { chatSession } from './lib/stores/chatSession'
+  import { chatDock, chatDockPanels, chatDockPanelTitleKeys, type ChatDockPanelID } from './lib/stores/chatDockStore.svelte'
+  import { chatCommands, type ChatCommand } from './lib/stores/chatCommandQueue.svelte'
 
   let currentPath = $state('/console')
   let route = $state<Route>({ view: 'home' })
@@ -168,13 +178,135 @@
     navigate('/console')
   }
 
+  // ⌘K palette and ? help (#968). Both are App-level so they work on every
+  // route; chat-only work goes through the chat command queue.
+  let paletteOpen = $state(false)
+  let helpOpen = $state(false)
+
+  function requestChat(command: ChatCommand) {
+    chatCommands.request(command)
+    if (route.view !== 'chat') navigate('/console/chat')
+  }
+
+  function openOnChat(action: () => void) {
+    if (route.view !== 'chat') navigate('/console/chat')
+    action()
+  }
+
+  function openPalette() {
+    helpOpen = false
+    paletteOpen = true
+    if (chatSession.sessions.length === 0) void chatSession.refreshSessions()
+  }
+
+  function buildPaletteCommands(): PaletteCommand[] {
+    const tr = $t
+    const pageTitles: Record<PageView, string> = {
+      home: tr.palette.pages.home,
+      chat: tr.nav.items.chat,
+      'session-lineage': tr.nav.items.lineage,
+      tasks: tr.nav.items.plans,
+      agentruntime: tr.nav.items.agentruntime,
+      memory: tr.nav.items.memory,
+      sysprompt: tr.nav.items.sysprompt,
+      ops: tr.nav.items.ops,
+      cron: tr.nav.items.cron,
+      logs: tr.nav.items.logs,
+      analytics: tr.nav.items.analytics,
+      config: tr.nav.items.config,
+      extensions: tr.nav.items.extensions,
+      pulse: tr.nav.items.pulse,
+      reflection: tr.nav.items.reflection,
+      channels: tr.nav.items.channels,
+      onboarding: tr.palette.pages.onboarding,
+    }
+    const actions: PaletteCommand[] = [
+      { id: 'action:new-session', group: 'action', title: tr.palette.actions.newSession, shortcut: 'new-session', run: () => requestChat({ kind: 'new-session' }) },
+      { id: 'action:toggle-sidebar', group: 'action', title: tr.palette.actions.toggleSidebar, shortcut: 'toggle-sidebar', run: () => openOnChat(() => chatDock.toggle('sessions')) },
+      { id: 'action:toggle-terminal', group: 'action', title: tr.palette.actions.toggleTerminal, shortcut: 'toggle-terminal', run: () => requestChat({ kind: 'toggle-terminal' }) },
+      { id: 'action:toggle-zen', group: 'action', title: tr.palette.actions.toggleZen, shortcut: 'toggle-zen', run: () => openOnChat(() => zenMode.toggle()) },
+      { id: 'action:shortcuts', group: 'action', title: tr.palette.actions.shortcuts, shortcut: 'help', run: () => { helpOpen = true } },
+    ]
+    // The terminal needs a tab to show, which the toggle action handles.
+    const panels: PaletteCommand[] = chatDockPanels
+      .filter((panel) => panel.id !== 'terminal' && panel.id !== 'sessions')
+      .map((panel) => {
+        const id = panel.id as ChatDockPanelID
+        return {
+          id: `panel:${id}`,
+          group: 'panel',
+          title: tr.palette.panel(tr.chat.panels[chatDockPanelTitleKeys[id]]),
+          keywords: [id],
+          run: () => openOnChat(() => chatDock.toggle(id)),
+        }
+      })
+    const sessions: PaletteCommand[] = chatSession.sessions
+      .filter((session) => !isArchived(session))
+      .map((session) => ({
+        id: `session:${session.id}`,
+        group: 'session',
+        title: session.title?.trim() || tr.palette.untitledSession,
+        subtitle: session.id.slice(0, 8),
+        keywords: [session.id],
+        run: () => navigate(`/console/chat/${encodeURIComponent(session.id)}`),
+      }))
+    // Slash commands run against the open session, so only offer them there.
+    const slash: PaletteCommand[] = route.view !== 'chat' ? [] : builtinSlashCommands().map((candidate) => ({
+      id: `slash:${candidate.id ?? candidate.command}`,
+      group: 'slash',
+      title: `/${candidate.command}`,
+      subtitle: candidate.title,
+      keywords: [candidate.title, candidate.description],
+      run: () => requestChat({ kind: 'slash', command: candidate.id ?? candidate.command }),
+    }))
+    return [...actions, ...pageCommands(pageTitles, authRole, navigate), ...panels, ...sessions, ...slash]
+  }
+
+  let paletteCommands = $derived(paletteOpen ? buildPaletteCommands() : [])
+
+  function runShortcut(match: ShortcutMatch) {
+    switch (match.action) {
+      case 'palette':
+        if (paletteOpen) paletteOpen = false
+        else openPalette()
+        return
+      case 'help':
+        helpOpen = true
+        return
+      case 'new-session':
+        requestChat({ kind: 'new-session' })
+        return
+      case 'switch-session':
+        requestChat({ kind: 'switch-session', index: match.index ?? 0 })
+        return
+      case 'toggle-terminal':
+        requestChat({ kind: 'toggle-terminal' })
+        return
+      case 'toggle-sidebar':
+        chatDock.toggle('sessions')
+        return
+      case 'toggle-zen':
+        zenMode.toggle()
+        return
+    }
+  }
+
   function onGlobalKeydown(event: KeyboardEvent) {
-    if (route.view !== 'chat' || needsSetup || loginRequired) return
-    if (isZenShortcut(event)) {
+    if (needsSetup || loginRequired) return
+    const match = matchShortcut(event)
+    if (match) {
+      // While an overlay is open it owns the keyboard, except ⌘K to close.
+      if ((paletteOpen || helpOpen) && match.action !== 'palette') return
+      // Chat-only shortcuts stay inert on other routes.
+      if (chatOnlyActions.has(match.action) && route.view !== 'chat') return
       event.preventDefault()
-      zenMode.toggle()
+      runShortcut(match)
       return
     }
+    if (route.view === 'chat') onChatKeydown(event)
+  }
+
+  function onChatKeydown(event: KeyboardEvent) {
     if (event.key === 'Escape' && zenMode.active) {
       const target = event.target as HTMLElement | null
       const tag = target?.tagName
@@ -370,6 +502,12 @@
       <CompanionPet reaction={companionReaction} routeView={route.view} locale={$locale} onStimulus={handleCompanionStimulus} onAsk={handleCompanionAsk} />
     {/if}
   </Shell>
+  {#if paletteOpen}
+    <CommandPalette commands={paletteCommands} onClose={() => { paletteOpen = false }} />
+  {/if}
+  {#if helpOpen}
+    <ShortcutHelp onClose={() => { helpOpen = false }} />
+  {/if}
 {/if}
 
 <style>

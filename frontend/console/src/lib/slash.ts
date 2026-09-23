@@ -140,6 +140,17 @@ const BUILTIN_SLASH_COMMANDS: SlashCommandCandidate[] = [
   },
 ]
 
+// Builtin slash commands, one per id (the command palette lists these).
+export function builtinSlashCommands(): SlashCommandCandidate[] {
+  const seen = new Set<string>()
+  return BUILTIN_SLASH_COMMANDS.filter((candidate) => {
+    const id = candidate.id ?? candidate.command
+    if (seen.has(id)) return false
+    seen.add(id)
+    return true
+  })
+}
+
 export function builtinSlashCommandId(command: string): string {
   const key = normalizeSlashCommand(command)
   return BUILTIN_SLASH_COMMANDS.find((candidate) => candidate.command === key)?.id || ''

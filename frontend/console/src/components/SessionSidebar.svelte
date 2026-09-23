@@ -5,6 +5,7 @@
   import { cleanupCandidateSessions, groupSessions, isArchived, isPinned, organizeSessions, sessionKind, type SessionGroup, type SessionKindFilter, type SessionSortMode } from '../lib/sessionOrganization'
   import { t } from '../i18n'
   import { chatSession } from '../lib/stores/chatSession'
+  import { chatCommands } from '../lib/stores/chatCommandQueue.svelte'
   import type { MemorySearchMatch, Session, SessionCleanupMode, SessionCleanupSuggestion, SessionCleanupSuggestionResponse } from '../lib/types'
 
   type SessionSearchSnippet = {
@@ -407,6 +408,12 @@
   }
 
   onMount(() => { void load() })
+
+  // Alt+1..9 switches to the Nth session as listed here.
+  $effect(() => {
+    chatCommands.visibleSessionOrder = sessionGroups.flatMap((group) => group.sessions.map((session) => session.id))
+    return () => { chatCommands.visibleSessionOrder = [] }
+  })
 
   onDestroy(() => {
     transcriptSearchToken += 1
