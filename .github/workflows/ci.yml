@@ -170,6 +170,22 @@ jobs:
       - name: Run frontend console tests
         run: cd frontend/console && npm run test:ci
 
+      - name: Install Playwright Chromium for console E2E
+        run: cd frontend/console && npx playwright install --with-deps chromium
+
+      - name: Run console E2E
+        run: make console-e2e
+
+      - name: Upload console E2E report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: console-e2e-report
+          path: |
+            frontend/console/playwright-report
+            frontend/console/test-results
+          retention-days: 7
+
       - name: Check layer boundaries
         run: make arch-check
 

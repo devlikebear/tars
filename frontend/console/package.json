@@ -9,9 +9,11 @@
     "test:ci": "node --experimental-strip-types --test tests/consoleDevProxy.test.ts tests/plansPage.test.ts tests/notificationCoalesce.test.ts tests/routeCodeSplit.test.ts tests/formatDuration.test.ts tests/codexStatus.test.ts tests/markdownSanitize.test.ts tests/quickStartFields.test.ts tests/companionPet.test.ts tests/chatSessionStore.test.ts tests/chatDockStore.test.ts",
     "build": "vite build",
     "preview": "vite preview",
-    "check": "svelte-check --tsconfig ./tsconfig.app.json && tsc -p tsconfig.node.json"
+    "check": "svelte-check --tsconfig ./tsconfig.app.json && tsc -p tsconfig.node.json && tsc -p e2e/tsconfig.json",
+    "test:e2e": "playwright test"
   },
   "devDependencies": {
+    "@playwright/test": "1.58.2",
     "@sveltejs/vite-plugin-svelte": "^7.0.0",
     "@tsconfig/svelte": "^5.0.8",
     "@types/node": "^24.12.0",

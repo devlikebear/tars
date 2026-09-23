@@ -22,6 +22,7 @@ require_pattern "$CI_FILE" 'name: Check frontend console' 'PR CI frontend consol
 require_pattern "$CI_FILE" 'cd frontend/console && npm ci --ignore-scripts' 'frontend dependency install in PR CI'
 require_pattern "$CI_FILE" 'cd frontend/console && npm run check' 'frontend type/Svelte check in PR CI'
 require_pattern "$CI_FILE" 'cd frontend/console && npm run test:ci' 'frontend CI test run in PR CI'
+require_pattern "$CI_FILE" 'run: make console-e2e' 'console Playwright E2E in PR CI'
 require_pattern "$MAKEFILE" '--enable=staticcheck' 'staticcheck enabled for PR diff lint'
 require_pattern "$MAKEFILE" '--enable=errcheck' 'errcheck enabled for PR diff lint'
 
