@@ -218,7 +218,7 @@ A canonical specification of the TARS Console design system. The YAML front matt
 
 ## Overview
 
-The TARS Console is an operator surface for an autonomous-agent runtime — a place to read system signals, edit memory, run jobs, and chat with the model behind the curtain. It should feel like the lit corner of a workshop after hours: dark, focused, warm where it counts. Not a polished SaaS dashboard, not a brutalist terminal — closer to a well-organized engineer's workbench.
+The TARS Console is the maintainer's primary AI development workbench, and it is also the operator surface for the runtime behind it. It is where you run and review agent sessions, and where you read system signals, edit memory, and run jobs. The workbench direction is recorded in [`docs/decisions/console-workbench.md`](../../docs/decisions/console-workbench.md) (#967). It should feel like the lit corner of a workshop after hours: dark, focused, warm where it counts. Not a polished SaaS dashboard, not a brutalist terminal — closer to a well-organized engineer's workbench.
 
 The aesthetic resists three temptations:
 
@@ -230,22 +230,63 @@ The system is dark-first. There is no light theme; light backgrounds wash out th
 
 ## Console Purpose & Surface Policy (#931)
 
-Decision recorded in the console-narrowing first cut (`refactor/console-narrow-surface`, Refs #931, Part of epic #919 LP-012). This section is normative for future surface decisions: when a proposed feature does not fit one of the pillars below, it belongs in a skill, a CLI command, or the YAML file — not a new console route.
+Decision recorded in the console-narrowing first cut (`refactor/console-narrow-surface`, Refs #931, Part of epic #919 LP-012). The surface policy is still normative, with one change: working with agents is now a first-class pillar (see below). When a proposed feature does not fit one of the pillars below, it belongs in a skill, a CLI command, or the YAML file, not a new console route.
 
-### Freeze (2026-08, this branch)
+### Freeze — superseded (2026-09, #967)
 
-The surface policy above stays normative, but the surface itself is now frozen smaller than the first cut left it:
+The 2026-08 freeze is lifted by [`docs/decisions/console-workbench.md`](../../docs/decisions/console-workbench.md). What changed:
 
-- **Nav is slimmed to chat + pulse**, plus approvals, logs, and config so the remaining pages still work. Everything else — lineage, plans, memory, sysprompt, extensions, agent runtime, channels, cron, analytics, reflection — is **hidden from the nav only**. Routes, components, and backend packages are untouched and stay reachable by URL; the route inventory below still describes them.
-- **`/console/config` is Quick Start checks only.** The Inspect (165-field) pane and the YAML read view are removed from the page — not made read-only, removed. The Quick Start cards, the onboarding wizard reentry card, remote access, restart, and workspace reset stay. `internal/config`'s schema and the config write routes are unchanged.
-- **No new console routes**, and no new investment in the long-tail internal packages (embodiment, a2a, workstore, workscheduler, skillhub, plugin, remoteaccess) — existing code stays, it just stops growing.
-- **Frozen work: #919 Phase 2–3 and #930.** The public library boundary (#927/#928/#929) and the layering/application-surface work (#930 LP-011: layer-boundary enforcement, ADR, depguard rules, package moves) are deliberately not being implemented. #931 LP-012 is considered done by this narrowing.
+- **Reversed:** the nav slimmed to chat, approvals, logs, pulse, and config; "no new console routes"; no new investment in the console surface. The workbench IA below replaces them.
+- **Kept:** `/console/config` stays Quick Start checks only. The Inspect (165-field) pane and the YAML read view stay removed. The file-first config policy and the credential rules below are unchanged.
+- **Kept:** the long-tail internal packages (embodiment, a2a, workstore, workscheduler, skillhub, plugin, remoteaccess) stay frozen. The workbench decision concerns the console surface only.
+- **Outdated line, removed:** the freeze listed #930 layering as not being implemented. It has since landed; see `docs/decisions/repository-layering.md` and `make arch-check`.
+
+**Code lags this section.** `Nav.svelte` and `tests/navGroups.test.ts` still encode the frozen five-item nav. The P0 nav PR (#968) restructures the nav to the groups below and updates that test in the same change.
+
+### Workbench IA (#967 — target)
+
+This describes the target. Each item names the phase that delivers it.
+
+- **Home becomes a session board** (P3, #971). Sessions are grouped by repo (the git toplevel of the active cwd) and carry a status badge: `needs input`, `running`, `done·unread`, or `idle`. The current Home dashboard moves into System.
+- **Three-column working layout** (P0). The session sidebar, the conversation, and a dock that shows more than one panel at once (tabs or vertical split) for Changes, Terminal, Git, Tasks, and Files.
+- **Nav groups** (P0):
+
+  | Group | Items |
+  |---|---|
+  | Work | Sessions (board), Chat |
+  | Build | Agent Runtime, Memory, Extensions, Sysprompt |
+  | System | Ops, Pulse, Reflection, Cron, Logs, Analytics |
+
+  Config and Onboarding are reachable from System and from the palette. Channels, lineage, and tasks keep their routes and are reached through the palette and in-context links.
+- **Diffs and approvals stay in the conversation** (P1 #969, P2 #970). Reviewing a change or approving a tool call never requires leaving the chat. The UI does not branch on provider; one event shape serves every provider.
+- **Chat header budget** (P0). The 11 panel toggles collapse into an icon rail and the palette. The pulse mini-dashboard leaves the header. Plan and workbench strips merge into one. Model/tier, permission mode, cwd, and session cost move to a status bar under the composer.
+
+### Command palette and shortcuts (#968)
+
+The palette is the universal way in. Every route, including ones not in the nav, is reachable in **at most two keystrokes** from `⌘K`. A new route or panel is not done until it is registered with the palette.
+
+| Shortcut | Action |
+|---|---|
+| `⌘K` | Command palette: pages, panel toggles, session search/switch, slash commands |
+| `⌘N` | New session |
+| `⌘1` … `⌘9` | Switch to the Nth session in the sidebar |
+| `⌘J` | Toggle the terminal panel |
+| `⌘B` | Toggle the session sidebar |
+| `?` | Shortcut help overlay (when focus is not in a text field) |
+| `⇧Tab` | Cycle permission mode in the composer (P2) |
+
+Rules:
+
+- `⌘` means `Ctrl` on Windows and Linux. Show the platform's glyph in the help overlay and palette hints.
+- Never capture a shortcut the browser or OS reserves in a way that cannot be escaped (`⌘W`, `⌘T`, `⌘L`, `⌘R`). The desktop shell (P4) may add native-only bindings through its bridge.
+- Single-key shortcuts (`?`, and `y`/`s`/`a`/`n` on approval cards in P2) fire only when focus is outside text inputs.
+- The palette uses the `surface-elevated` background and a `border-default` outline, with no shadow (see Elevation). The selected row takes `surface-active` plus a 2px `primary` left edge, which is the same accent rule as focused inputs.
 
 ### Purpose
 
 The TARS Console exists for exactly three things:
 
-1. **Conversation** — chat with the agent, steer sessions (title/archive/pin/fork, goal/critic, prompt override), switch active cwd, inspect transcripts and work timelines.
+1. **Conversation** — run and steer agent sessions: chat, review the changes a turn made, approve tool calls inline, manage sessions (title/archive/pin/fork, goal/critic, prompt override, isolation), switch active cwd, and inspect transcripts and work timelines.
 2. **Observability** — read system signals: pulse findings, reflection runs, ops health and cleanup plans, memory state, agent-runtime runs/subagents/costs, logs, analytics, event stream.
 3. **Targeted control** — the small set of mutations that genuinely need UI: onboarding (provider/tier setup), credential entry, approvals (approve/reject destructive ops), cron job CRUD, extension install/enable/disable, channel pairing, remote access, restart/reset.
 
@@ -253,11 +294,13 @@ Everything else is **file-first**. Configuration is owned by `workspace/config/t
 
 ### Route inventory
 
-Every route must map to a pillar. Current mapping (first cut keeps all routes; consolidation candidates are noted, not acted on):
+Every route must map to a pillar. Rows marked *(target)* describe the #967 workbench and are not built yet.
 
 | Route | Pillar | Rationale |
 |---|---|---|
-| `/console` (home) | Observability | Dashboard summary of all signals |
+| `/console` (home) | Observability → Conversation *(target, P3)* | Today: dashboard summary of all signals. Target: session board; the dashboard moves under System |
+| Changes panel (dock, in chat) *(target, P1)* | Conversation | Turn/session checkpoint diffs, file and hunk revert, hunk comments |
+| Inline approval cards (in chat) *(target, P2)* | Conversation + Control | Approve/deny tool calls without leaving the session; `/console/approvals` stays for unattended runs |
 | `/console/chat`, `/console/sessions` | Conversation | Chat transcript, session list |
 | `/console/sessions/graph` | Conversation | Session lineage / fork history |
 | `/console/tasks` | Conversation | Work timeline / task contracts |
@@ -381,6 +424,8 @@ Headings step down narrowly (1.75 → 1.375 → 1.125 → 1 rem) because most of
 Spacing follows an 8-rooted scale with a 4-unit half-step (`xs`) for micro-adjustments. The default rhythm of a card is `lg` (16px) inside `lg` (16px) outside; the default gap between siblings is `md` (12px). Larger pages use `xl`/`2xl` for outer page padding.
 
 The console uses a fixed left navigation (`220px`) and a fixed top header (`52px`); the remainder is a single content column with a max-readable width on long-form views (memory, sysprompt). On viewports below 768px the nav collapses to zero width and a header-driven menu is expected to take over.
+
+The chat route is moving to a three-column workbench (#967): the session sidebar, then the conversation, then the dock. The conversation column keeps its max-readable width. The dock and sidebar give up width first, and each can be collapsed with `⌘J` and `⌘B`. Below 768px only the conversation shows, and the sidebar and dock open as overlays.
 
 Don't crowd. The system has so much spacing tokenized because the worst failure mode of a dark dense UI is a panel of 12 cards with 4-pixel gaps that read as a single grey wall.
 
