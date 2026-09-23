@@ -13,8 +13,8 @@ test('Chat surface exposes a Prior Context side panel wired to the draft message
   assert.match(chatSource, /import PriorContextPanel from '\.\/PriorContextPanel\.svelte'/)
   assert.match(chatSource, /type ChatDockPanelID = [^\n]*'prior'/)
   assert.match(chatSource, /panelID === 'prior'/)
-  assert.match(chatSource, /isPanelOpen\('prior'\)/)
-  assert.match(chatSource, /\$t\.chat\.panels\.prior/)
+  // The panel rail lists Prior with its own tooltip.
+  assert.match(chatSource, /\{ id: 'prior', icon: [^}]*tooltip: 'priorTooltip' \}/)
   assert.match(i18nEnSource, /prior: 'Prior'/)
   assert.match(chatSource, /<PriorContextPanel[\s\S]*draftQuery=\{chatDraft\}/)
   // The draft reaches Chat through the shared session store, not a callback.

@@ -49,7 +49,7 @@ test('arrow keys move the selection and a panel command opens its dock panel', a
   const options = palette(page).getByRole('option')
   await expect(options.first()).toHaveAttribute('aria-selected', 'true')
   await page.keyboard.press('Enter')
-  await expect(page.locator('.pulse-toggle-btn', { hasText: 'Git' })).toHaveClass(/active/)
+  await expect(page.locator('.chat-rail [data-panel="git"]')).toHaveClass(/active/)
 })
 
 test('a session command switches to that session', async ({ page }) => {

@@ -1,15 +1,16 @@
 <script lang="ts">
   // Session header for the chat column: title and rename, health badge,
-  // goal and cwd chips, the session menu, the feedback line, and the plan
-  // and workbench strips. Session data comes from the shared store; actions
-  // that other surfaces also trigger (compact, goal status, cwd switch,
+  // goal chip, the session menu, the feedback line, and the work strip
+  // (plan progress plus workbench jumps). The cwd chip lives in the status
+  // bar under the composer. Session data comes from the shared store;
+  // actions that other surfaces also trigger (compact, goal status,
   // workbench jumps) are delegated back to Chat.
   import { untrack } from 'svelte'
   import { deleteSession } from '../lib/api'
   import { t } from '../i18n'
   import { planProgressPercent } from '../lib/tasks'
   import { buildWorkbenchActions, type WorkbenchAction } from '../lib/workbenchActions'
-  import { shortCwdLabel, shortGoalLabel } from '../lib/sessionLabels'
+  import { shortGoalLabel } from '../lib/sessionLabels'
   import { chatSession } from '../lib/stores/chatSession'
   import { chatDock, type ChatDockPanelID } from '../lib/stores/chatDockStore.svelte'
   import { zenMode } from '../lib/zenMode.svelte'
@@ -18,21 +19,17 @@
     onNewSession: () => Promise<void>
     onCompact: () => Promise<void>
     onGoalStatus: () => Promise<void>
-    // Resolves true when the switch succeeded.
-    onCwdSelect: (path: string) => Promise<boolean>
     onWorkbenchAction: (action: WorkbenchAction) => Promise<void>
     onCopy: () => void
     onDownload: () => void
   }
 
-  let { onNewSession, onCompact, onGoalStatus, onCwdSelect, onWorkbenchAction, onCopy, onDownload }: Props = $props()
+  let { onNewSession, onCompact, onGoalStatus, onWorkbenchAction, onCopy, onDownload }: Props = $props()
 
   let selectedSessionId = $derived(chatSession.activeSessionId)
   let selectedSession = $derived(chatSession.activeSession)
   let sessionHealth = $derived(chatSession.health)
   let sessionGoal = $derived(chatSession.goal)
-  let cwdState = $derived(chatSession.cwd)
-  let cwdBusy = $derived(chatSession.cwdBusy)
   let actionFeedback = $derived(chatSession.feedback)
   let tasksSummary = $derived(chatSession.tasksSummary)
   let planStripProgress = $derived(planProgressPercent(tasksSummary))
@@ -43,7 +40,6 @@
     activeTaskTitle: tasksSummary.active_task_title,
   }))
 
-  let cwdDropdownOpen = $state(false)
   let renaming = $state(false)
   let renameValue = $state('')
   let actionBusy = $state(false)
@@ -57,7 +53,6 @@
       renaming = false
       deleteConfirm = false
       sessionMenuOpen = false
-      cwdDropdownOpen = false
     })
   })
 
@@ -139,10 +134,6 @@
     await onGoalStatus()
   }
 
-  async function transitionCwd(path: string) {
-    if (await onCwdSelect(path)) cwdDropdownOpen = false
-  }
-
   async function handleWorkbenchAction(action: WorkbenchAction) {
     await onWorkbenchAction(action)
   }
@@ -186,37 +177,6 @@
           <strong>{shortGoalLabel(sessionGoal.description)}</strong>
           <span class="goal-chip-counter">{sessionGoal.auto_continue_count}/{sessionGoal.max_auto_continues}</span>
         </button>
-      {/if}
-      {#if cwdState}
-        <div class="cwd-hud">
-          <button
-            type="button"
-            class="cwd-chip"
-            title={cwdState.current}
-            disabled={cwdBusy}
-            onclick={() => { cwdDropdownOpen = !cwdDropdownOpen }}
-          >
-            <span class="cwd-chip-label">cwd</span>
-            <strong>{shortCwdLabel(cwdState.current)}</strong>
-          </button>
-          {#if cwdDropdownOpen}
-            <div class="cwd-dropdown" role="menu">
-              {#each cwdState.eligible as path (path)}
-                <button
-                  type="button"
-                  class="cwd-dropdown-item"
-                  class:active={path === cwdState.current}
-                  disabled={cwdBusy}
-                  title={path}
-                  onclick={() => transitionCwd(path)}
-                >
-                  {shortCwdLabel(path)}
-                  {#if path === cwdState.current}<span class="cwd-active-marker">●</span>{/if}
-                </button>
-              {/each}
-            </div>
-          {/if}
-        </div>
       {/if}
     </div>
     <div class="session-actions">
@@ -285,6 +245,9 @@
   <div class="action-feedback" class:multiline={actionFeedback.includes('\n')}>{actionFeedback}</div>
 {/if}
 
+<!-- Plan progress and workbench jumps share one row (#968). -->
+{#if hasPlanStrip || workbenchActions.length > 0}
+<div class="work-strip">
 {#if hasPlanStrip}
   <button
     type="button"
@@ -325,6 +288,8 @@
       </button>
     {/each}
   </div>
+{/if}
+</div>
 {/if}
 
 <style>
@@ -424,7 +389,7 @@
     color: var(--error);
   }
 
-  /* Session goal chip — same dimensions as the cwd chip, but tinted amber
+  /* Session goal chip — compact mono chip, tinted with the accent
      by default to flag that an autonomous goal is steering the session.
      Switches to muted styling when the goal is satisfied or exhausted. */
   .goal-chip {
@@ -479,108 +444,6 @@
     color: var(--warning, var(--primary));
   }
 
-  /* Active-cwd HUD: chip mirrors the health badge dimensions so the
-     header row stays balanced; dropdown is absolutely positioned so it
-     doesn't shift the rest of the row when opened. */
-  .cwd-hud {
-    position: relative;
-    display: inline-flex;
-    /* Shrinks before the session actions do; the path truncates inside. */
-    flex: 0 1 auto;
-    min-width: 0;
-  }
-
-  .cwd-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-1);
-    min-width: 0;
-    max-width: min(240px, 100%);
-    overflow: hidden;
-    padding: 3px var(--space-2);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-sm);
-    background: var(--surface-base);
-    color: var(--text-secondary);
-    cursor: pointer;
-    font-size: var(--text-xs);
-    font-family: var(--font-mono);
-    transition:
-      background var(--duration-fast) var(--ease-out),
-      border-color var(--duration-fast) var(--ease-out);
-  }
-
-  .cwd-chip:hover:not(:disabled) {
-    border-color: var(--primary);
-    background: var(--surface-elevated);
-  }
-
-  .cwd-chip:disabled {
-    cursor: progress;
-    opacity: 0.7;
-  }
-
-  .cwd-chip-label {
-    color: var(--text-tertiary);
-    font-family: var(--font-display);
-  }
-
-  .cwd-chip strong {
-    min-width: 0;
-    overflow: hidden;
-    color: var(--primary);
-    font-weight: 600;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .cwd-dropdown {
-    position: absolute;
-    top: calc(100% + 4px);
-    right: 0;
-    z-index: 50;
-    display: flex;
-    flex-direction: column;
-    min-width: 220px;
-    max-width: 360px;
-    padding: var(--space-1);
-    border: 1px solid var(--border-default);
-    border-radius: var(--radius-md);
-    background: var(--surface-elevated);
-    box-shadow: var(--shadow-md, 0 4px 12px rgba(0, 0, 0, 0.25));
-  }
-
-  .cwd-dropdown-item {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    padding: var(--space-1) var(--space-2);
-    border: none;
-    border-radius: var(--radius-sm);
-    background: transparent;
-    color: var(--text-primary);
-    cursor: pointer;
-    font-family: var(--font-mono);
-    font-size: var(--text-xs);
-    text-align: left;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .cwd-dropdown-item:hover:not(:disabled) {
-    background: var(--surface-base);
-  }
-
-  .cwd-dropdown-item.active {
-    color: var(--primary);
-  }
-
-  .cwd-active-marker {
-    margin-left: auto;
-    color: var(--primary);
-    font-size: var(--text-xs);
-  }
 
   .new-chat-title {
     color: var(--text-tertiary);
@@ -670,14 +533,21 @@
     border-color: var(--primary);
   }
 
+  .work-strip {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin: var(--space-2) var(--space-4);
+  }
+
   .plan-progress-strip {
     display: flex;
+    flex: 1;
     align-items: center;
     justify-content: space-between;
     gap: var(--space-3);
-    width: calc(100% - var(--space-8));
-    min-height: 36px;
-    margin: var(--space-2) var(--space-4) var(--space-2);
+    min-width: 0;
+    min-height: 32px;
     padding: var(--space-1) var(--space-3);
     border: 1px solid color-mix(in srgb, var(--border-subtle) 78%, transparent);
     border-radius: var(--radius-md);
@@ -787,17 +657,18 @@
 
   .workbench-action-strip {
     display: flex;
+    flex: 0 1 auto;
     flex-wrap: wrap;
+    justify-content: flex-end;
     gap: var(--space-1);
-    width: calc(100% - var(--space-8));
-    margin: 0 var(--space-4) var(--space-2);
+    margin-left: auto;
   }
 
   .workbench-action {
     min-height: 26px;
     padding: 0 var(--space-2);
     border: 1px solid color-mix(in srgb, var(--border-subtle) 76%, transparent);
-    border-radius: 999px;
+    border-radius: var(--radius-sm);
     background: transparent;
     color: var(--text-tertiary);
     cursor: pointer;
@@ -812,7 +683,7 @@
 
   .workbench-action:hover {
     border-color: var(--primary);
-    background: color-mix(in srgb, var(--primary) 7%, var(--surface-raised));
+    background: color-mix(in srgb, var(--primary) 7%, var(--surface-elevated));
     color: var(--text-primary);
   }
 
@@ -835,6 +706,9 @@
     .session-menu-popover {
       right: 0;
       max-width: calc(100vw - var(--space-6));
+    }
+    .work-strip {
+      flex-wrap: wrap;
     }
     .plan-progress-strip {
       align-items: flex-start;

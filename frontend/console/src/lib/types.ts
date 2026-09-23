@@ -833,6 +833,10 @@ export type ChatEvent = {
   mentioned_subagent_count?: number
   mentioned_subagents?: string[]
   llm_tier?: string
+  // context_info also reports which provider and model served the turn.
+  llm_provider?: string
+  llm_model?: string
+  llm_tier_source?: string
   tier_recommendation?: ChatTierRecommendationRequest
   style_effective?: SessionStyleValues
   // tasks_changed event fields (live count for chat pulse-bar Tasks badge)
@@ -913,6 +917,8 @@ export type ChatContextInfo = {
   mentioned_subagent_count?: number
   mentioned_subagents?: string[]
   llm_tier?: string
+  llm_provider?: string
+  llm_model?: string
   tier_recommendation?: ChatTierRecommendationRequest
 }
 
@@ -2418,6 +2424,8 @@ export type SessionEffectiveConfig = {
     prompt_override: string
     mcp_servers_extra?: Array<{ name: string; command: string; args?: string[]; env?: Record<string, string> }>
     model_tier_override?: string
+    // The session's .tars override only; absent means the global setting.
+    claude_code_cli_permission_mode?: string
   }
   sources: Record<string, EffectiveConfigSource>
   diagnostics?: SessionEffectiveConfigDiagnostic[]

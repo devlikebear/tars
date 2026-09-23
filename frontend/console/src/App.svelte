@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte'
+  import { onMount, onDestroy, untrack } from 'svelte'
   import Shell from './components/Shell.svelte'
   import CompanionPet from './components/CompanionPet.svelte'
   import Home from './components/Home.svelte'
@@ -31,6 +31,7 @@
   import { chatSession } from './lib/stores/chatSession'
   import { chatDock, chatDockPanels, chatDockPanelTitleKeys, type ChatDockPanelID } from './lib/stores/chatDockStore.svelte'
   import { chatCommands, type ChatCommand } from './lib/stores/chatCommandQueue.svelte'
+  import { overlays } from './lib/stores/overlays.svelte'
 
   let currentPath = $state('/console')
   let route = $state<Route>({ view: 'home' })
@@ -180,8 +181,10 @@
 
   // ⌘K palette and ? help (#968). Both are App-level so they work on every
   // route; chat-only work goes through the chat command queue.
-  let paletteOpen = $state(false)
-  let helpOpen = $state(false)
+  // Open state lives in the overlay store so the chat rail can open the
+  // palette too.
+  let paletteOpen = $derived(overlays.paletteOpen)
+  let helpOpen = $derived(overlays.helpOpen)
 
   function requestChat(command: ChatCommand) {
     chatCommands.request(command)
@@ -193,11 +196,13 @@
     action()
   }
 
-  function openPalette() {
-    helpOpen = false
-    paletteOpen = true
-    if (chatSession.sessions.length === 0) void chatSession.refreshSessions()
-  }
+  // The palette lists sessions, so make sure the list is loaded whenever it opens.
+  $effect(() => {
+    if (!overlays.paletteOpen) return
+    untrack(() => {
+      if (chatSession.sessions.length === 0) void chatSession.refreshSessions()
+    })
+  })
 
   function buildPaletteCommands(): PaletteCommand[] {
     const tr = $t
@@ -225,7 +230,7 @@
       { id: 'action:toggle-sidebar', group: 'action', title: tr.palette.actions.toggleSidebar, shortcut: 'toggle-sidebar', run: () => openOnChat(() => chatDock.toggle('sessions')) },
       { id: 'action:toggle-terminal', group: 'action', title: tr.palette.actions.toggleTerminal, shortcut: 'toggle-terminal', run: () => requestChat({ kind: 'toggle-terminal' }) },
       { id: 'action:toggle-zen', group: 'action', title: tr.palette.actions.toggleZen, shortcut: 'toggle-zen', run: () => openOnChat(() => zenMode.toggle()) },
-      { id: 'action:shortcuts', group: 'action', title: tr.palette.actions.shortcuts, shortcut: 'help', run: () => { helpOpen = true } },
+      { id: 'action:shortcuts', group: 'action', title: tr.palette.actions.shortcuts, shortcut: 'help', run: () => overlays.openHelp() },
     ]
     // The terminal needs a tab to show, which the toggle action handles.
     const panels: PaletteCommand[] = chatDockPanels
@@ -267,11 +272,10 @@
   function runShortcut(match: ShortcutMatch) {
     switch (match.action) {
       case 'palette':
-        if (paletteOpen) paletteOpen = false
-        else openPalette()
+        overlays.togglePalette()
         return
       case 'help':
-        helpOpen = true
+        overlays.openHelp()
         return
       case 'new-session':
         requestChat({ kind: 'new-session' })
@@ -503,10 +507,10 @@
     {/if}
   </Shell>
   {#if paletteOpen}
-    <CommandPalette commands={paletteCommands} onClose={() => { paletteOpen = false }} />
+    <CommandPalette commands={paletteCommands} onClose={() => overlays.closeAll()} />
   {/if}
   {#if helpOpen}
-    <ShortcutHelp onClose={() => { helpOpen = false }} />
+    <ShortcutHelp onClose={() => overlays.closeAll()} />
   {/if}
 {/if}
 

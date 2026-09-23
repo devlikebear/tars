@@ -412,6 +412,7 @@
   /* Layout */
   .chat-layout {
     flex: 1;
+    min-width: 0;
     display: grid;
     grid-template-columns: var(--dock-left-size, 0px) minmax(0, 1fr) var(--dock-right-size, 0px);
     grid-template-rows: minmax(0, 1fr) var(--dock-bottom-size, 0px);

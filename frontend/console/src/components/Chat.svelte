@@ -22,7 +22,8 @@
   import { chatDock, isMobileLayout, type ChatDockPanelID } from '../lib/stores/chatDockStore.svelte'
   import { chatCommands, type ChatCommand } from '../lib/stores/chatCommandQueue.svelte'
   import { loadChatComponent } from '../lib/chatComponents'
-  import ChatToolbar from './ChatToolbar.svelte'
+  import ChatRail from './ChatRail.svelte'
+  import ChatStatusBar from './ChatStatusBar.svelte'
   import ChatSessionHeader from './ChatSessionHeader.svelte'
   import ChatDockHost from './ChatDockHost.svelte'
 
@@ -443,7 +444,6 @@
 </script>
 
 <div class="chat-page">
-  <ChatToolbar />
 
   <ChatDockHost
     bind:this={dockHost}
@@ -457,7 +457,6 @@
         onNewSession={handleNewSession}
         onCompact={handleCompact}
         onGoalStatus={() => handleGoalSlashCommand('status')}
-        onCwdSelect={transitionCwd}
         onWorkbenchAction={handleWorkbenchAction}
         onCopy={handleCopyChat}
         onDownload={handleDownloadChat}
@@ -481,8 +480,11 @@
           <div class="chat-panel-loading">Could not load chat panel.</div>
         {/await}
       {/key}
+
+      <ChatStatusBar onCwdSelect={transitionCwd} />
     </main>
   </ChatDockHost>
+  <ChatRail />
 </div>
 
 <style>
@@ -494,9 +496,10 @@
     color: var(--text-secondary);
     font-family: var(--font-display);
   }
+  /* Dock host on the left, the panel rail on the right edge. */
   .chat-page {
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
     flex: 1;
     min-height: 0;
     animation: fadeIn var(--duration-normal) var(--ease-out);
@@ -516,5 +519,12 @@
     padding: var(--space-4);
     padding-top: 0;
     overflow: hidden;
+  }
+
+  @media (max-width: 900px) {
+    /* The rail turns into a row above the chat. */
+    .chat-page {
+      flex-direction: column-reverse;
+    }
   }
 </style>

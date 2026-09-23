@@ -10,7 +10,19 @@ import (
 	"time"
 )
 
+// SummaryFilter narrows the entries a summary counts. The zero value keeps
+// every entry.
+type SummaryFilter struct {
+	// SessionID keeps only calls tagged with this chat session.
+	SessionID string
+}
+
 func (t *Tracker) Summary(period, groupBy string) (Summary, error) {
+	return t.SummaryFiltered(period, groupBy, SummaryFilter{})
+}
+
+// SummaryFiltered is Summary restricted to the entries that match filter.
+func (t *Tracker) SummaryFiltered(period, groupBy string, filter SummaryFilter) (Summary, error) {
 	if t == nil {
 		return Summary{}, fmt.Errorf("usage tracker is nil")
 	}
@@ -22,12 +34,17 @@ func (t *Tracker) Summary(period, groupBy string) (Summary, error) {
 	}
 
 	group := normalizeGroupBy(groupBy)
+	sessionID := strings.TrimSpace(filter.SessionID)
 	out := Summary{
-		Period:  normalizedPeriod,
-		GroupBy: group,
+		Period:    normalizedPeriod,
+		GroupBy:   group,
+		SessionID: sessionID,
 	}
 	rows := map[string]*SummaryRow{}
 	for _, entry := range t.readEntriesInRange(start, now) {
+		if sessionID != "" && strings.TrimSpace(entry.SessionID) != sessionID {
+			continue
+		}
 		applySummaryEntry(&out, rows, entry, group)
 	}
 	out.Rows = materializeSummaryRows(rows)
@@ -134,7 +151,7 @@ func periodRange(raw string, now time.Time) (time.Time, string, error) {
 func normalizeGroupBy(raw string) string {
 	v := strings.TrimSpace(strings.ToLower(raw))
 	switch v {
-	case "provider", "model", "source", "project", "run", "shape":
+	case "provider", "model", "source", "project", "run", "shape", "session":
 		return v
 	default:
 		return "provider"
@@ -151,6 +168,8 @@ func summaryKey(entry Entry, groupBy string) string {
 		return firstNonEmptyTrimmed(entry.Source, "(none)")
 	case "run":
 		return firstNonEmptyTrimmed(entry.RunID, "(none)")
+	case "session":
+		return firstNonEmptyTrimmed(entry.SessionID, "(none)")
 	case "shape":
 		// Tools are rendered ahead of messages in the provider's cached
 		// prefix, so these two groups never share a cache entry — not even

@@ -15,6 +15,8 @@
 
 import type {
   compactSession,
+  getUsageSummary,
+  listAgentRuntimeSubagents,
   getSession,
   getSessionCwd,
   getSessionEffectiveConfig,
@@ -29,7 +31,7 @@ import type {
 import type { Artifact } from '../artifacts'
 import type { SessionHealthInput, SessionHealthReport } from '../sessionHealth'
 import type { TaskProgressSummary } from '../tasks'
-import type { ChatContextInfo, Session, SessionCwd, SessionGoal, SessionMessage, SessionTasks } from '../types'
+import type { AgentRuntimeTierOption, ChatContextInfo, ChatTier, Session, SessionCwd, SessionGoal, SessionMessage, SessionTasks } from '../types'
 
 export type ChatSessionApi = {
   listSessions: typeof listSessions
@@ -43,6 +45,15 @@ export type ChatSessionApi = {
   getSessionGoal: typeof getSessionGoal
   renameSession: typeof renameSession
   compactSession: typeof compactSession
+  getUsageSummary: typeof getUsageSummary
+  listAgentRuntimeSubagents: typeof listAgentRuntimeSubagents
+}
+
+export type SessionUsage = {
+  costUSD: number
+  calls: number
+  inputTokens: number
+  outputTokens: number
 }
 
 export type ChatSessionHealth = {
@@ -122,6 +133,17 @@ export class ChatSessionStore {
   // Transient one-line (or multi-line) notice under the session header.
   feedback = $state('')
 
+  // Status bar (#968). Tiers pinned per session id; '' holds the pick made
+  // before a new chat has an id, and moves to the id when it is adopted.
+  pinnedTiers = $state<Record<string, ChatTier>>({})
+  tierOptions = $state<AgentRuntimeTierOption[]>([])
+  // This month's usage for the active session, from the usage tracker.
+  usage = $state<SessionUsage | null>(null)
+  // The session's .tars permission-mode override; '' means the global setting.
+  permissionModeOverride = $state('')
+  private tierOptionsRequested = false
+  private usageRequest = 0
+
   private healthInputs: Omit<SessionHealthInput, 'contextInfo' | 'now'> | null = null
   private healthRequest = 0
   private sessionsRequest = 0
@@ -148,6 +170,7 @@ export class ChatSessionStore {
     if (next) {
       void this.refreshActive()
       void this.refreshHealth()
+      void this.refreshUsage()
     }
   }
 
@@ -157,9 +180,60 @@ export class ChatSessionStore {
     const next = id.trim()
     if (!next || this.activeSessionId) return
     this.activeSessionId = next
+    const draftTier = this.pinnedTiers['']
+    if (draftTier) {
+      const { '': _, ...rest } = this.pinnedTiers
+      this.pinnedTiers = { ...rest, [next]: draftTier }
+    }
     void this.refreshActive()
     void this.refreshSessions()
     void this.refreshHealth()
+    void this.refreshUsage()
+  }
+
+  get pinnedTier(): ChatTier | null {
+    return this.pinnedTiers[this.activeSessionId ?? ''] ?? null
+  }
+
+  // Pin a tier for every turn of the active session, or null to let the
+  // server choose again.
+  setPinnedTier(tier: ChatTier | null): void {
+    const key = this.activeSessionId ?? ''
+    const { [key]: _, ...rest } = this.pinnedTiers
+    this.pinnedTiers = tier ? { ...rest, [key]: tier } : rest
+  }
+
+  // The configured tiers, fetched once for the status bar picker.
+  async loadTierOptions(): Promise<void> {
+    if (this.tierOptionsRequested) return
+    this.tierOptionsRequested = true
+    try {
+      const resp = await this.api.listAgentRuntimeSubagents()
+      this.tierOptions = resp.tiers ?? []
+    } catch {
+      this.tierOptionsRequested = false
+    }
+  }
+
+  async refreshUsage(): Promise<void> {
+    const id = this.activeSessionId
+    const request = ++this.usageRequest
+    if (!id) {
+      this.usage = null
+      return
+    }
+    try {
+      const summary = await this.api.getUsageSummary({ period: 'month', sessionId: id })
+      if (request !== this.usageRequest || this.activeSessionId !== id) return
+      this.usage = {
+        costUSD: summary.total_cost_usd,
+        calls: summary.total_calls,
+        inputTokens: summary.total_input_tokens,
+        outputTokens: summary.total_output_tokens,
+      }
+    } catch {
+      if (request === this.usageRequest) this.usage = null
+    }
   }
 
   // Force ChatPanel to reload the thread for the same session.
@@ -271,7 +345,7 @@ export class ChatSessionStore {
   // A turn finished or was cancelled: titles, message counts, and health
   // may all have moved.
   async turnSettled(): Promise<void> {
-    await Promise.all([this.refreshSessions(), this.refreshActive(), this.refreshHealth()])
+    await Promise.all([this.refreshSessions(), this.refreshActive(), this.refreshHealth(), this.refreshUsage()])
   }
 
   async refreshHealth(): Promise<void> {
@@ -301,6 +375,7 @@ export class ChatSessionStore {
         config: config.effective.tool_config,
         tools: toolsResp.tools,
       }
+      this.permissionModeOverride = config.effective.claude_code_cli_permission_mode?.trim() ?? ''
       this.tasksSummary = { ...this.helpers.summarizeTasks(taskState.tasks), plan_goal: taskState.plan?.goal }
       this.rebuildHealth()
     } catch {
@@ -368,5 +443,7 @@ export class ChatSessionStore {
     this.health = this.helpers.emptyReport()
     this.tasksSummary = this.helpers.emptyTasks()
     this.streaming = false
+    this.usage = null
+    this.permissionModeOverride = ''
   }
 }

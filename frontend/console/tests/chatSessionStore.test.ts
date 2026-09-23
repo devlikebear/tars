@@ -33,7 +33,10 @@ function fakeApi(overrides: Record<string, unknown> = {}) {
       calls.push(`getSessionTasks:${id}`)
       return { tasks: [{ id: 't1', title: 'x', status: 'completed' }], plan: { goal: `plan-${id}` } }
     },
-    getSessionEffectiveConfig: async (id: string) => { calls.push(`getSessionEffectiveConfig:${id}`); return { effective: { tool_config: {} } } },
+    getSessionEffectiveConfig: async (id: string) => {
+      calls.push(`getSessionEffectiveConfig:${id}`)
+      return { effective: { tool_config: {}, claude_code_cli_permission_mode: id === 'plan-session' ? 'plan' : undefined } }
+    },
     listChatTools: async (id: string) => { calls.push(`listChatTools:${id}`); return { tools: [], skills: [] } },
     getSessionCwd: async (id: string) => { calls.push(`getSessionCwd:${id}`); return { current: `/w/${id}`, eligible: [`/w/${id}`] } },
     setSessionCwd: async (id: string, target: string) => { calls.push(`setSessionCwd:${id}:${target}`) },
@@ -42,6 +45,14 @@ function fakeApi(overrides: Record<string, unknown> = {}) {
     compactSession: async (id: string) => {
       calls.push(`compactSession:${id}`)
       return { compacted: true, compacted_count: 3, original_count: 10, final_count: 7, tokens_before: 100, tokens_after: 40 }
+    },
+    getUsageSummary: async (params: { sessionId?: string }) => {
+      calls.push(`getUsageSummary:${params.sessionId}`)
+      return { period: 'month', group_by: 'provider', session_id: params.sessionId, total_calls: 2, total_cost_usd: 0.25, total_input_tokens: 300, total_output_tokens: 40 }
+    },
+    listAgentRuntimeSubagents: async () => {
+      calls.push('listAgentRuntimeSubagents')
+      return { tiers: [{ name: 'heavy', kind: 'anthropic', model: 'big' }, { name: 'light', kind: 'claude-code-cli', model: 'small' }] }
     },
     ...overrides,
   }
@@ -235,4 +246,46 @@ test('autoTitleFromHistory prefers the first user message and clips long text', 
   const long = autoTitleFromHistory([{ role: 'user', content: 'x'.repeat(80) }])
   assert.equal(long.length, 50)
   assert.ok(long.endsWith('...'))
+})
+
+test('a pinned tier belongs to its session and survives switching away and back', async () => {
+  const { store } = newStore()
+  store.setActive('a')
+  store.setPinnedTier('heavy')
+  assert.equal(store.pinnedTier, 'heavy')
+  store.setActive('b')
+  assert.equal(store.pinnedTier, null)
+  store.setActive('a')
+  assert.equal(store.pinnedTier, 'heavy')
+  store.setPinnedTier(null)
+  assert.equal(store.pinnedTier, null)
+})
+
+test('a tier pinned before the first send moves to the adopted session', () => {
+  const { store } = newStore()
+  store.setActive(null)
+  store.setPinnedTier('light')
+  store.adoptSession('fresh')
+  assert.equal(store.pinnedTier, 'light')
+  assert.equal(store.pinnedTiers[''], undefined)
+})
+
+test('usage and the permission override load for the active session', async () => {
+  const { store, calls } = newStore()
+  store.setActive('plan-session')
+  await flush()
+  assert.deepEqual(store.usage, { costUSD: 0.25, calls: 2, inputTokens: 300, outputTokens: 40 })
+  assert.equal(store.permissionModeOverride, 'plan')
+  assert.ok(calls.includes('getUsageSummary:plan-session'))
+  store.setActive('other')
+  assert.equal(store.usage, null, 'usage resets with the session')
+  assert.equal(store.permissionModeOverride, '')
+})
+
+test('tier options are fetched once', async () => {
+  const { store, calls } = newStore()
+  await store.loadTierOptions()
+  await store.loadTierOptions()
+  assert.equal(store.tierOptions.length, 2)
+  assert.equal(calls.filter((c) => c === 'listAgentRuntimeSubagents').length, 1)
 })

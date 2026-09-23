@@ -73,6 +73,24 @@ export type Translations = {
     note: string
     actions: Record<'palette' | 'help' | 'new-session' | 'switch-session' | 'toggle-terminal' | 'toggle-sidebar' | 'toggle-zen', string>
   }
+  statusBar: {
+    label: string
+    tier: string
+    tierAuto: string
+    tierAutoHint: string
+    tierPinnedHint: (tier: string) => string
+    customTiersHint: string
+    servedBy: (tier: string, model: string) => string
+    permission: string
+    permissionDefault: string
+    permissionHint: string
+    costHint: string
+    tokens: (count: string) => string
+  }
+  rail: {
+    label: string
+    paletteHint: (shortcut: string) => string
+  }
   header: {
     title: string
     notifications: string

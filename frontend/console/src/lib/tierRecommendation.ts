@@ -126,3 +126,24 @@ export function tierRecommendationPayload(
 function hasAny(text: string, signals: string[]): boolean {
   return signals.some((signal) => text.includes(signal))
 }
+
+// The chat status bar pins a tier for the session. The server only accepts a
+// per-turn tier through tier_recommendation, and only heavy/standard/light,
+// so a pinned tier rides along on every turn as an accepted user choice.
+export const pinnableTiers: readonly ChatTier[] = ['heavy', 'standard', 'light']
+
+export function isPinnableTier(value: string): value is ChatTier {
+  return (pinnableTiers as readonly string[]).includes(value)
+}
+
+export function pinnedTierPayload(tier: ChatTier): ChatTierRecommendationRequest {
+  return {
+    task_type: 'user_selected',
+    recommended_tier: tier,
+    chosen_tier: tier,
+    reason: 'Tier pinned in the chat status bar.',
+    confidence: 1,
+    accepted: true,
+    source: 'user',
+  }
+}

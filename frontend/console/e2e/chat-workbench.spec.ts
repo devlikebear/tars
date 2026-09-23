@@ -95,7 +95,7 @@ test('compact reports its result and reloads the thread', async ({ page }) => {
 
 test('the toolbar and the header health badge drive one dock layout', async ({ page }) => {
   await newSession(page)
-  const gitToggle = page.locator('.pulse-toggle-btn', { hasText: 'Git' })
+  const gitToggle = page.locator('.chat-rail [data-panel="git"]')
 
   await gitToggle.click()
   await expect(gitToggle).toHaveClass(/active/)
@@ -123,7 +123,7 @@ test('a re-docked panel keeps its zone across a reload', async ({ page }) => {
 
 test('the terminal keeps its xterm instance when moved between zones (#667)', async ({ page }) => {
   await newSession(page)
-  await page.locator('.pulse-toggle-btn').nth(1).click() // Files
+  await page.locator('.chat-rail [data-panel="artifacts"]').click() // Files
   await page.locator('.dock-right button[title^="Open integrated terminal"]').click()
 
   const terminal = page.locator('.dock-terminal')
