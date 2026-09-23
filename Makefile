@@ -246,9 +246,9 @@ console-build: console-install
 # console-e2e drives the console in Chromium against `go run ./cmd/tars serve`
 # with freshly built embedded assets, a throwaway workspace, and the
 # deterministic mock LLM in frontend/console/e2e/mock-llm.mjs. Needs the
-# Playwright browser once: `cd frontend/console && npx playwright install chromium`.
+# Playwright browser once: `cd frontend/console && ./node_modules/.bin/playwright install chromium`.
 console-e2e: console-build
-	cd frontend/console && npx playwright test
+	cd frontend/console && npm run test:e2e
 
 release-asset: console-build
 	mkdir -p "$(DIST_DIR)"

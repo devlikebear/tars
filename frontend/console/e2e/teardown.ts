@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os'
 
 export default function teardown() {
   const workspace = process.env.TARS_E2E_WORKSPACE
-  if (!workspace || !workspace.startsWith(tmpdir())) return
+  if (!workspace?.startsWith(tmpdir())) return
   try {
     rmSync(workspace, { recursive: true, force: true, maxRetries: 3 })
   } catch { /* leave it for the OS temp cleaner */ }

@@ -170,8 +170,10 @@ jobs:
       - name: Run frontend console tests
         run: cd frontend/console && npm run test:ci
 
+      # Use the @playwright/test pinned in package-lock (installed by npm ci
+      # above) rather than npx, which could fetch an unpinned package.
       - name: Install Playwright Chromium for console E2E
-        run: cd frontend/console && npx playwright install --with-deps chromium
+        run: cd frontend/console && ./node_modules/.bin/playwright install --with-deps chromium
 
       - name: Run console E2E
         run: make console-e2e

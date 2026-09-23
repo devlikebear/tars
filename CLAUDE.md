@@ -20,7 +20,7 @@ make dev-serve            # production-like (requires console-build first)
 make dev-console          # Vite (5173) + Go API (43180), auth off → http://127.0.0.1:43180/console
 cd frontend/console && npm run check   # svelte-check + tsc
 cd frontend/console && npm run test:ci # stable frontend CI test slice
-make console-e2e          # Playwright: rebuilt console + tars serve + mock LLM (browser once: cd frontend/console && npx playwright install chromium)
+make console-e2e          # Playwright: rebuilt console + tars serve + mock LLM (browser once: cd frontend/console && ./node_modules/.bin/playwright install chromium)
 ```
 
 ## Architecture
