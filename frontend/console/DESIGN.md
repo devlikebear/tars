@@ -241,7 +241,7 @@ The 2026-08 freeze is lifted by [`docs/decisions/console-workbench.md`](../../do
 - **Kept:** the long-tail internal packages (embodiment, a2a, workstore, workscheduler, skillhub, plugin, remoteaccess) stay frozen. The workbench decision concerns the console surface only.
 - **Outdated line, removed:** the freeze listed #930 layering as not being implemented. It has since landed; see `docs/decisions/repository-layering.md` and `make arch-check`.
 
-**Code lags this section.** `Nav.svelte` and `tests/navGroups.test.ts` still encode the frozen five-item nav. The P0 nav PR (#968) restructures the nav to the groups below and updates that test in the same change.
+The nav now follows the Work · Build · System groups below (`lib/navGroups.ts`, tested by `tests/navGroups.test.ts`).
 
 ### Workbench IA (#967 — target)
 
@@ -249,15 +249,15 @@ This describes the target. Each item names the phase that delivers it.
 
 - **Home becomes a session board** (P3, #971). Sessions are grouped by repo (the git toplevel of the active cwd) and carry a status badge: `needs input`, `running`, `done·unread`, or `idle`. The current Home dashboard moves into System.
 - **Three-column working layout** (P0). The session sidebar, the conversation, and a dock that shows more than one panel at once (tabs or vertical split) for Changes, Terminal, Git, Tasks, and Files.
-- **Nav groups** (P0):
+- **Nav groups** (P0, shipped):
 
   | Group | Items |
   |---|---|
-  | Work | Sessions (board), Chat |
-  | Build | Agent Runtime, Memory, Extensions, Sysprompt |
-  | System | Ops, Pulse, Reflection, Cron, Logs, Analytics |
+  | Work | Chat (the Sessions board joins in P3) |
+  | Build | Agent Runtime, Memory, Extensions, System Prompt |
+  | System | Approvals, Pulse, Reflection, Cron, Logs, Analytics, Settings |
 
-  Config and Onboarding are reachable from System and from the palette. Channels, lineage, and tasks keep their routes and are reached through the palette and in-context links.
+  Nav paths and role gating come from the palette's page table (`lib/commands.ts`), so the nav, the palette, and `App.svelte`'s gating cannot drift apart. The `user` role sees only the pages it can open (Chat, Agent Runtime, Memory, System Prompt), and groups left empty are dropped. The active item is the one whose view the router resolves for the current path, so aliases such as `/console/ops` highlight Approvals. Home, Lineage, Plans, Channels, and the setup wizard keep their routes and are reached through `⌘K` and in-context links.
 - **Diffs and approvals stay in the conversation** (P1 #969, P2 #970). Reviewing a change or approving a tool call never requires leaving the chat. The UI does not branch on provider; one event shape serves every provider.
 - **Chat header budget** (P0). The 11 panel toggles collapse into an icon rail and the palette. The pulse mini-dashboard leaves the header. Plan and workbench strips merge into one. Model/tier, permission mode, cwd, and session cost move to a status bar under the composer.
 

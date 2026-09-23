@@ -29,8 +29,8 @@ export const en = {
     navigationSuffix: 'navigation',
     groups: {
       work: 'Work',
-      operate: 'Operate',
-      setup: 'Setup',
+      build: 'Build',
+      system: 'System',
     },
     items: {
       chat: 'Chat',

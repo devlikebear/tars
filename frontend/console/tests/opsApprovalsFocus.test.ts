@@ -3,10 +3,11 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
 import { en } from '../src/i18n/en.ts'
+import { navGroups } from '../src/lib/navGroups.ts'
 
 const opsSource = readFileSync(new URL('../src/components/Ops.svelte', import.meta.url), 'utf8')
 const apiSource = readFileSync(new URL('../src/lib/api/ops.ts', import.meta.url), 'utf8')
-const navSource = readFileSync(new URL('../src/components/Nav.svelte', import.meta.url), 'utf8')
+const navItem = (view: string) => navGroups.flatMap((g) => g.items).find((i) => i.view === view)
 const routerSource = readFileSync(new URL('../src/lib/router.ts', import.meta.url), 'utf8')
 const appSource = readFileSync(new URL('../src/App.svelte', import.meta.url), 'utf8')
 
@@ -24,7 +25,7 @@ test('Operations becomes an Approvals-focused page with legacy ops routing', () 
   assert.doesNotMatch(opsSource, /createCronJob/)
 
   assert.equal(en.nav.items.ops, 'Approvals')
-  assert.match(navSource, /id: 'ops'[\s\S]*path: '\/console\/approvals'/)
+  assert.equal(navItem('ops')?.path, '/console/approvals')
 
   assert.match(routerSource, /\/approvals/)
   assert.match(routerSource, /\/ops/)
