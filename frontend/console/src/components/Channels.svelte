@@ -369,7 +369,7 @@
   }
   .field-input:focus {
     border-color: var(--primary);
-    box-shadow: 0 0 0 2px rgba(224, 145, 69, 0.3);
+    box-shadow: 0 0 0 2px rgba(var(--primary-rgb), 0.3);
   }
   .field-input::placeholder {
     color: var(--text-ghost);
@@ -397,7 +397,7 @@
 
   .btn-primary {
     background: var(--primary);
-    color: #fff;
+    color: var(--primary-contrast);
   }
   .btn-primary:hover:not(:disabled) {
     background: var(--primary-hover, #c97a35);

@@ -49,7 +49,7 @@
 </div>
 
 <style>
-  .diff-panel { border-color: rgba(224, 145, 69, 0.3); }
+  .diff-panel { border-color: rgba(var(--primary-rgb), 0.3); }
   .diff-body { display: flex; flex-direction: column; }
 
   .diff-row {

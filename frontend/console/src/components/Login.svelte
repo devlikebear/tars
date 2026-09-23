@@ -130,7 +130,7 @@
     place-items: center;
     padding: var(--space-6);
     background:
-      linear-gradient(140deg, rgba(224, 145, 69, 0.16), rgba(44, 62, 80, 0.08)),
+      linear-gradient(140deg, rgba(var(--primary-rgb), 0.16), rgba(44, 62, 80, 0.08)),
       var(--surface-base);
   }
 
@@ -152,8 +152,8 @@
 
   .login-brand img {
     border-radius: var(--radius-md);
-    background: rgba(224, 145, 69, 0.12);
-    border: 1px solid rgba(224, 145, 69, 0.28);
+    background: rgba(var(--primary-rgb), 0.12);
+    border: 1px solid rgba(var(--primary-rgb), 0.28);
     padding: 4px;
   }
 
@@ -244,7 +244,7 @@
     border: 0;
     border-radius: var(--radius-md);
     background: var(--primary);
-    color: #141414;
+    color: var(--primary-contrast);
     font-weight: 700;
     cursor: pointer;
   }

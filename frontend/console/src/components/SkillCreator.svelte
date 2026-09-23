@@ -424,7 +424,7 @@
   .segmented button.active,
   .preview-tabs button.active {
     background: var(--primary);
-    color: #fff;
+    color: var(--primary-contrast);
   }
 
   .tool-row {

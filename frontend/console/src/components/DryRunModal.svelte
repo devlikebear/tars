@@ -242,7 +242,7 @@
     text-transform: uppercase;
     letter-spacing: 0.5px;
   }
-  .dryrun-warning-heading { color: #e09145; }
+  .dryrun-warning-heading { color: var(--primary); }
 
   .dryrun-files {
     margin: 0;
@@ -261,14 +261,14 @@
     font-family: var(--font-mono);
     color: var(--text-primary);
   }
-  .dryrun-file.mismatch { color: #e09145; }
+  .dryrun-file.mismatch { color: var(--primary); }
   .dryrun-file-size,
   .dryrun-file-hash {
     color: var(--text-tertiary);
   }
   .dryrun-file-warning {
     grid-column: 1 / -1;
-    color: #e09145;
+    color: var(--primary);
     font-size: 10px;
     padding-left: var(--space-3);
   }
@@ -282,7 +282,7 @@
     gap: 2px;
     font-size: var(--text-xs);
     font-family: var(--font-mono);
-    color: #e09145;
+    color: var(--primary);
   }
   .dryrun-warnings li::before { content: '⚠ '; }
 
@@ -314,8 +314,8 @@
     letter-spacing: 0.5px;
   }
   .ext-source-badge-external {
-    border-color: rgba(224, 145, 69, 0.4);
-    color: #e09145;
-    background: rgba(224, 145, 69, 0.08);
+    border-color: rgba(var(--primary-rgb), 0.4);
+    color: var(--primary);
+    background: rgba(var(--primary-rgb), 0.08);
   }
 </style>

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { mermaidThemeVariables } from '../lib/themeColors'
   import { renderMarkdown, readEncodedAttr } from '../lib/markdown'
   import type { Artifact } from '../lib/artifacts'
 
@@ -232,16 +233,7 @@
         mermaidModule.initialize({
           startOnLoad: false,
           theme: 'dark',
-          themeVariables: {
-            darkMode: true,
-            background: '#1c1c1c',
-            primaryColor: '#e09145',
-            primaryTextColor: '#e8e4df',
-            primaryBorderColor: '#3a3a3a',
-            lineColor: '#6b6560',
-            secondaryColor: '#242424',
-            tertiaryColor: '#2a2a2a',
-          },
+          themeVariables: { ...mermaidThemeVariables },
         })
       } catch {
         return
@@ -278,13 +270,13 @@
     display: inline-block;
     padding: 0 3px;
     border-radius: 3px;
-    border-bottom: 1px dashed rgba(224, 145, 69, 0.45);
-    background: rgba(224, 145, 69, 0.08);
+    border-bottom: 1px dashed rgba(var(--primary-rgb), 0.45);
+    background: rgba(var(--primary-rgb), 0.08);
     color: var(--primary-text);
   }
 
   .chat-md :global(a.artifact-inline-link:hover) {
     text-decoration: none;
-    background: rgba(224, 145, 69, 0.14);
+    background: rgba(var(--primary-rgb), 0.14);
   }
 </style>

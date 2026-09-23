@@ -456,7 +456,7 @@
     padding: 0 4px;
     border-radius: 8px;
     background: var(--primary);
-    color: #fff;
+    color: var(--primary-contrast);
     font-family: var(--font-display);
     font-size: 10px;
     font-weight: 600;
@@ -525,7 +525,7 @@
     transition: all var(--duration-fast) var(--ease-out);
   }
   .notif-filter-tab:hover { color: var(--text-primary); }
-  .notif-filter-tab.active { background: var(--primary); color: #fff; }
+  .notif-filter-tab.active { background: var(--primary); color: var(--primary-contrast); }
 
   .notif-panel-body {
     flex: 1;
@@ -549,7 +549,7 @@
   .notif-item:last-child { border-bottom: none; }
   .notif-item:hover { background: rgba(255, 255, 255, 0.02); }
 
-  .notif-unread { background: rgba(224, 145, 69, 0.04); }
+  .notif-unread { background: rgba(var(--primary-rgb), 0.04); }
   .notif-unread .notif-title { color: var(--primary-text); }
 
   .notif-error { border-left-color: var(--error); }

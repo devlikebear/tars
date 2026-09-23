@@ -158,7 +158,7 @@
   .pulse-toggle-btn.active {
     color: var(--primary);
     border-color: var(--primary);
-    background: rgba(224, 145, 69, 0.08);
+    background: rgba(var(--primary-rgb), 0.08);
   }
 
   @media (max-width: 900px) {

@@ -448,7 +448,7 @@
 
 <div class="sidebar">
   <div class="sidebar-header">
-    <button type="button" class="btn btn-primary btn-sm new-chat-btn" onclick={onNewSession}>
+    <button type="button" class="btn btn-secondary btn-sm new-chat-btn" onclick={onNewSession}>
       {$t.sessions.newChat}
     </button>
   </div>
@@ -740,8 +740,8 @@
   }
 
   .cleanup-panel-ai {
-    border-color: rgba(224, 145, 69, 0.22);
-    background: rgba(224, 145, 69, 0.05);
+    border-color: rgba(var(--primary-rgb), 0.22);
+    background: rgba(var(--primary-rgb), 0.05);
   }
 
   .cleanup-summary {
@@ -991,7 +991,7 @@
   .sidebar-snippet-text :global(mark) {
     padding: 0 2px;
     border-radius: 3px;
-    background: rgba(224, 145, 69, 0.24);
+    background: rgba(var(--primary-rgb), 0.24);
     color: var(--text-primary);
   }
 

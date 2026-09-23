@@ -1772,7 +1772,7 @@
     background: var(--surface-inset);
   }
 
-  .stat-chip.accent { color: var(--primary-text); background: rgba(224, 145, 69, 0.12); }
+  .stat-chip.accent { color: var(--primary-text); background: rgba(var(--primary-rgb), 0.12); }
   .stat-chip.success { color: var(--success); background: rgba(74, 222, 128, 0.12); }
   .stat-chip.error { color: var(--error); background: rgba(239, 68, 68, 0.12); }
 
@@ -1795,7 +1795,7 @@
 
   .task-card.active {
     border-color: var(--primary);
-    background: rgba(224, 145, 69, 0.06);
+    background: rgba(var(--primary-rgb), 0.06);
   }
 
   .task-card.completed {

@@ -105,7 +105,7 @@
 
   .slash-option:hover,
   .slash-option.active {
-    background: rgba(224, 145, 69, 0.12);
+    background: rgba(var(--primary-rgb), 0.12);
     color: var(--text-primary);
   }
 

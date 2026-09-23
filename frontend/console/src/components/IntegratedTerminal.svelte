@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { terminalSearchDecorations, terminalTheme } from '../lib/themeColors'
   import { onDestroy, onMount, tick, untrack } from 'svelte'
   import { Terminal } from '@xterm/xterm'
   import { FitAddon } from '@xterm/addon-fit'
@@ -225,14 +226,7 @@
     return {
       caseSensitive: searchCaseSensitive,
       regex: searchRegex,
-      decorations: {
-        matchBackground: '#a45a1f',
-        matchBorder: '#e09145',
-        matchOverviewRuler: '#e09145',
-        activeMatchBackground: '#e09145',
-        activeMatchBorder: '#ffffff',
-        activeMatchColorOverviewRuler: '#ffffff',
-      },
+      decorations: { ...terminalSearchDecorations },
     }
   }
 
@@ -469,23 +463,7 @@
       convertEol: true,
       rightClickSelectsWord: true,
       allowProposedApi: true,
-      theme: {
-        background: '#0d0d0d',
-        foreground: '#e8e3da',
-        cursor: '#f0a04b',
-        selectionBackground: '#a45a1f',
-        selectionForeground: '#ffffff',
-        black: '#121212',
-        red: '#e06c75',
-        green: '#98c379',
-        yellow: '#e5c07b',
-        blue: '#61afef',
-        magenta: '#c678dd',
-        cyan: '#56b6c2',
-        white: '#e8e3da',
-        brightBlack: '#5f5f5f',
-        brightWhite: '#ffffff',
-      },
+      theme: { ...terminalTheme },
     })
 
     terminal.open(container)
@@ -789,13 +767,13 @@
   }
 
   .terminal-dot.bell {
-    background: var(--accent, #e09145);
+    background: var(--primary);
     animation: terminal-bell-flash 0.6s ease-out;
   }
 
   @keyframes terminal-bell-flash {
     0% {
-      box-shadow: 0 0 0 0 var(--accent, #e09145);
+      box-shadow: 0 0 0 0 var(--primary);
       transform: scale(1.4);
     }
     100% {
@@ -833,7 +811,7 @@
   }
 
   .terminal-status.reconnect {
-    color: var(--accent, #e09145);
+    color: var(--primary);
     text-decoration: underline dotted;
   }
 
@@ -861,7 +839,7 @@
 
   .terminal-search input:not([type='checkbox']):focus {
     outline: none;
-    border-color: var(--accent, #e09145);
+    border-color: var(--primary);
   }
 
   .terminal-search label {
@@ -878,8 +856,8 @@
   }
 
   .terminal-search label.active {
-    color: var(--accent, #e09145);
-    border-color: var(--accent, #e09145);
+    color: var(--primary);
+    border-color: var(--primary);
   }
 
   .terminal-search label input {
@@ -926,7 +904,7 @@
   .terminal-settings-row input[type='range'] {
     padding: 0;
     min-width: 120px;
-    accent-color: var(--accent-primary, #e09145);
+    accent-color: var(--accent-primary, var(--primary));
   }
 
   .terminal-settings-value {
@@ -988,7 +966,7 @@
 
   .terminal-menu button:hover:not(:disabled) {
     background: var(--surface-inset);
-    color: var(--accent, #e09145);
+    color: var(--primary);
   }
 
   .terminal-menu button:disabled {

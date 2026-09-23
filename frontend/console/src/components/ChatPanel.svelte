@@ -1428,7 +1428,7 @@
     position: absolute;
     inset: 0;
     z-index: 10;
-    background: rgba(224, 145, 69, 0.08);
+    background: rgba(var(--primary-rgb), 0.08);
     border: 2px dashed var(--primary);
     border-radius: var(--radius-lg);
     display: flex;
@@ -1722,7 +1722,7 @@
 
   .mention-option:hover,
   .mention-option.active {
-    background: rgba(224, 145, 69, 0.12);
+    background: rgba(var(--primary-rgb), 0.12);
     color: var(--text-primary);
   }
 

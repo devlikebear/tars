@@ -135,7 +135,7 @@
     border-radius: var(--radius-md);
     border: 1px solid rgba(255, 211, 170, 0.36);
     background:
-      linear-gradient(145deg, rgba(224, 145, 69, 0.38), rgba(255, 211, 170, 0.16)),
+      linear-gradient(145deg, rgba(var(--primary-rgb), 0.38), rgba(255, 211, 170, 0.16)),
       var(--surface-elevated);
     box-shadow: 0 0 0 2px rgba(255, 211, 170, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.16);
     box-sizing: border-box;
