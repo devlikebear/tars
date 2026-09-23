@@ -32,12 +32,5 @@ class ZenModeStore {
   }
 }
 
+// The Mod+. toggle is matched in lib/shortcuts.ts with the other shortcuts.
 export const zenMode = new ZenModeStore()
-
-export function isZenShortcut(event: KeyboardEvent): boolean {
-  if (event.defaultPrevented) return false
-  const mod = event.metaKey || event.ctrlKey
-  if (!mod) return false
-  if (event.shiftKey || event.altKey) return false
-  return event.key === '.'
-}

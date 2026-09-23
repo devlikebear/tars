@@ -50,6 +50,29 @@ export type Translations = {
       config: string
     }
   }
+  palette: {
+    title: string
+    placeholder: string
+    empty: string
+    groups: Record<'action' | 'page' | 'panel' | 'session' | 'slash', string>
+    pages: { home: string; onboarding: string }
+    actions: {
+      newSession: string
+      toggleSidebar: string
+      toggleTerminal: string
+      toggleZen: string
+      shortcuts: string
+    }
+    panel: (name: string) => string
+    untitledSession: string
+    footer: string
+  }
+  shortcuts: {
+    title: string
+    close: string
+    note: string
+    actions: Record<'palette' | 'help' | 'new-session' | 'switch-session' | 'toggle-terminal' | 'toggle-sidebar' | 'toggle-zen', string>
+  }
   header: {
     title: string
     notifications: string

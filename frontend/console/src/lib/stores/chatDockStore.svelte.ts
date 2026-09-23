@@ -39,6 +39,22 @@ export const chatDockPanels: DockPanelDefinition[] = [
   { id: 'terminal', title: 'terminal', defaultZone: 'bottom' },
 ]
 
+// i18n key under `chat.panels` for each panel title.
+export const chatDockPanelTitleKeys = {
+  sessions: 'sessions',
+  artifacts: 'files',
+  config: 'config',
+  context: 'context',
+  prompt: 'prompt',
+  prior: 'priorFull',
+  tasks: 'tasks',
+  git: 'git',
+  skillExtraction: 'skillsInbox',
+  cron: 'cron',
+  health: 'health',
+  terminal: 'terminal',
+} as const satisfies Record<ChatDockPanelID, string>
+
 const toolPanels: ToolDockPanelID[] = ['artifacts', 'config', 'context', 'prompt', 'prior', 'tasks', 'git', 'skillExtraction', 'cron', 'health', 'terminal']
 // Panels that count as "the user is looking at a tool" (the terminal does not).
 const inspectorPanels: ToolDockPanelID[] = toolPanels.filter((id) => id !== 'terminal')

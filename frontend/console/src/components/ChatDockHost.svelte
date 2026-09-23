@@ -10,7 +10,8 @@
   import type { DockZone } from '../lib/dock/layout'
   import { loadChatComponent } from '../lib/chatComponents'
   import { chatSession } from '../lib/stores/chatSession'
-  import { chatDock, type ChatDockPanelID } from '../lib/stores/chatDockStore.svelte'
+  import { chatDock, chatDockPanelTitleKeys, type ChatDockPanelID } from '../lib/stores/chatDockStore.svelte'
+  import { shortCwdLabel } from '../lib/sessionLabels'
   import SessionSidebar from './SessionSidebar.svelte'
   import SessionConfigPanel from './SessionConfigPanel.svelte'
   import ContextMonitor from './ContextMonitor.svelte'
@@ -69,22 +70,7 @@
   type DockSizeZone = 'left' | 'right' | 'bottom'
 
   function panelTitle(panelID: ChatDockPanelID): string {
-    const panels = $t.chat.panels
-    const titles: Record<ChatDockPanelID, string> = {
-      sessions: panels.sessions,
-      artifacts: panels.files,
-      config: panels.config,
-      context: panels.context,
-      prompt: panels.prompt,
-      prior: panels.priorFull,
-      tasks: panels.tasks,
-      git: panels.git,
-      skillExtraction: panels.skillsInbox,
-      cron: panels.cron,
-      health: panels.health,
-      terminal: panels.terminal,
-    }
-    return titles[panelID] ?? panelID
+    return $t.chat.panels[chatDockPanelTitleKeys[panelID]] ?? panelID
   }
 
   function panelCloseable(panelID: ChatDockPanelID): boolean {
@@ -217,6 +203,26 @@
     if (fileTools.includes(toolName)) {
       artifactPanelRef?.refresh()
     }
+  }
+
+  // Mod+J: close the terminal if it is showing; otherwise reopen this
+  // session's tabs, or start one at the active cwd. Without a cwd, fall
+  // back to the Files panel, where a terminal can be opened at any folder.
+  export function toggleTerminal() {
+    if (chatDock.isOpen('terminal')) {
+      closePanel('terminal')
+      return
+    }
+    if (terminalDockTabs.length > 0 && terminalDockSessionId === selectedSessionId) {
+      openPanel('terminal')
+      return
+    }
+    const cwd = chatSession.cwd?.current
+    if (!cwd) {
+      openPanel('artifacts')
+      return
+    }
+    openIntegratedTerminalDock({ cwd, label: shortCwdLabel(cwd) })
   }
 
   export async function openArtifact(path: string) {

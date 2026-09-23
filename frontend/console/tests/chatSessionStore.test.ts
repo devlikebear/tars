@@ -181,6 +181,21 @@ test('a failed session list load keeps the previous list and reports the error',
   assert.equal(store.sessionsLoading, false)
 })
 
+test('an older session list response never overwrites a newer one', async () => {
+  const first = deferred<unknown>()
+  const second = deferred<unknown>()
+  const responses = [first, second]
+  const { store } = newStore({ listSessions: () => responses.shift()!.promise })
+  const older = store.refreshSessions()
+  const newer = store.refreshSessions()
+  second.resolve([session('b'), session('a')])
+  await newer
+  first.resolve([session('a')])
+  await older
+  assert.deepEqual(store.sessions.map((s) => s.id), ['b', 'a'])
+  assert.equal(store.sessionsLoading, false)
+})
+
 test('setCwd writes, then re-reads the eligible directories', async () => {
   const { store, calls } = newStore()
   store.setActive('a')

@@ -17,8 +17,10 @@
   import type { WorkbenchAction } from '../lib/workbenchActions'
   import type { Session } from '../lib/types'
   import { shortCwdLabel } from '../lib/sessionLabels'
+  import { isArchived } from '../lib/sessionOrganization'
   import { chatSession } from '../lib/stores/chatSession'
   import { chatDock, isMobileLayout, type ChatDockPanelID } from '../lib/stores/chatDockStore.svelte'
+  import { chatCommands, type ChatCommand } from '../lib/stores/chatCommandQueue.svelte'
   import { loadChatComponent } from '../lib/chatComponents'
   import ChatToolbar from './ChatToolbar.svelte'
   import ChatSessionHeader from './ChatSessionHeader.svelte'
@@ -49,7 +51,7 @@
     exportAsMarkdown: () => string
   }
   let chatPanelRef: ChatPanelHandle | undefined = $state()
-  let dockHost: { notifyToolComplete: (toolName: string) => void; openArtifact: (path: string) => Promise<void>; openEvidence: () => Promise<void> } | undefined = $state()
+  let dockHost: { notifyToolComplete: (toolName: string) => void; openArtifact: (path: string) => Promise<void>; openEvidence: () => Promise<void>; toggleTerminal: () => void } | undefined = $state()
 
   function openPanel(panelID: ChatDockPanelID) {
     chatDock.open(panelID)
@@ -112,6 +114,41 @@
     void chatSession.refreshSessions()
     onNavigate(created ? `/console/chat/${encodeURIComponent(created.id)}` : '/console/chat')
   }
+
+  function openSessionById(id: string) {
+    if (id === selectedSessionId) return
+    resetSessionChrome()
+    onNavigate(`/console/chat/${encodeURIComponent(id)}`)
+  }
+
+  // Requests queued by the command palette and global shortcuts (App.svelte).
+  async function runChatCommand(command: ChatCommand) {
+    switch (command.kind) {
+      case 'slash':
+        await handleSlashCommand(command.command, command.args ?? '')
+        return
+      case 'new-session':
+        await handleNewSession()
+        return
+      case 'toggle-terminal':
+        dockHost?.toggleTerminal()
+        return
+      case 'switch-session': {
+        const fallback = chatSession.sessions.filter((session) => !isArchived(session)).map((session) => session.id)
+        const id = chatCommands.sessionAt(command.index, fallback)
+        if (id) openSessionById(id)
+        return
+      }
+    }
+  }
+
+  $effect(() => {
+    if (chatCommands.pending.length === 0) return
+    const commands = untrack(() => chatCommands.take())
+    void (async () => {
+      for (const command of commands) await runChatCommand(command)
+    })()
+  })
 
   function handleSessionForked(session: Session) {
     resetSessionChrome()

@@ -124,6 +124,7 @@ export class ChatSessionStore {
 
   private healthInputs: Omit<SessionHealthInput, 'contextInfo' | 'now'> | null = null
   private healthRequest = 0
+  private sessionsRequest = 0
   private feedbackTimer: ReturnType<typeof setTimeout> | null = null
   private readonly api: ChatSessionApi
   private readonly helpers: ChatSessionHealth
@@ -166,16 +167,20 @@ export class ChatSessionStore {
     this.threadVersion++
   }
 
+  // Overlapping refreshes (several callers fire one after a new session)
+  // can resolve out of order; only the latest request may update the list.
   async refreshSessions(): Promise<void> {
+    const request = ++this.sessionsRequest
     this.sessionsLoading = true
     this.sessionsError = null
     try {
-      this.sessions = await this.api.listSessions(true, 'include')
+      const sessions = await this.api.listSessions(true, 'include')
+      if (request === this.sessionsRequest) this.sessions = sessions
     } catch (err) {
       // Keep the previous list.
-      this.sessionsError = err instanceof Error ? err.message : ''
+      if (request === this.sessionsRequest) this.sessionsError = err instanceof Error ? err.message : ''
     } finally {
-      this.sessionsLoading = false
+      if (request === this.sessionsRequest) this.sessionsLoading = false
     }
   }
 

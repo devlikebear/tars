@@ -263,23 +263,26 @@ This describes the target. Each item names the phase that delivers it.
 
 ### Command palette and shortcuts (#968)
 
-The palette is the universal way in. Every route, including ones not in the nav, is reachable in **at most two keystrokes** from `⌘K`. A new route or panel is not done until it is registered with the palette.
+The palette is the universal way in. Every route, including ones not in the nav, is reachable from `⌘K`: typing the first letters of its name makes it the top result (at most four letters where names share a prefix, like Chat and Channels). A new route or panel is not done until the palette lists it. In code, `lib/commands.ts` derives the page list from the router's `Route` views, and `tests/commands.test.ts` fails when a view has no entry or its admin gating drifts from `App.svelte`.
 
-| Shortcut | Action |
-|---|---|
-| `⌘K` | Command palette: pages, panel toggles, session search/switch, slash commands |
-| `⌘N` | New session |
-| `⌘1` … `⌘9` | Switch to the Nth session in the sidebar |
-| `⌘J` | Toggle the terminal panel |
-| `⌘B` | Toggle the session sidebar |
-| `?` | Shortcut help overlay (when focus is not in a text field) |
-| `⇧Tab` | Cycle permission mode in the composer (P2) |
+| Shortcut | Action | Scope |
+|---|---|---|
+| `⌘K` | Command palette: actions, pages, panel toggles, sessions, slash commands (slash commands only on the chat route) | Everywhere, including text fields |
+| `⌘⇧O` | New session | Everywhere; opens the chat route |
+| `⌥1` … `⌥9` | Switch to the Nth session as the sidebar lists it | Chat route |
+| `⌘J` | Toggle the terminal: close it, reopen this session's tabs, or open one at the active cwd (without a cwd, the Files panel opens instead) | Chat route |
+| `⌘B` | Toggle the session sidebar | Chat route |
+| `⌘.` | Toggle focus (zen) mode | Chat route |
+| `?` | Shortcut help overlay | Everywhere, outside text fields |
+| `⇧Tab` | Cycle permission mode in the composer (P2) | Composer |
 
 Rules:
 
-- `⌘` means `Ctrl` on Windows and Linux. Show the platform's glyph in the help overlay and palette hints.
-- Never capture a shortcut the browser or OS reserves in a way that cannot be escaped (`⌘W`, `⌘T`, `⌘L`, `⌘R`). The desktop shell (P4) may add native-only bindings through its bridge.
+- `⌘` means `Ctrl` on Windows and Linux and `⌥` means `Alt`. The help overlay and palette hints show the platform's glyphs (`lib/shortcuts.ts`).
+- Never bind a key the browser keeps for itself. Chrome delivers neither `⌘N`/`⌘T`/`⌘W` nor `⌘1…9` (tab switching) to the page, so `preventDefault` cannot help. That is why a new session is `⌘⇧O` (the convention web chat apps use) and switching is `⌥1…9`, where the original plan had `⌘N` and `⌘1…9`. The desktop shell (P4) may add native bindings through its bridge.
+- Shortcuts yield to whatever consumed the key first. A focused terminal keeps `Ctrl+K`, `Ctrl+B`, and `Ctrl+J` for readline. To toggle the terminal from the keyboard, move focus out of it first.
 - Single-key shortcuts (`?`, and `y`/`s`/`a`/`n` on approval cards in P2) fire only when focus is outside text inputs.
+- While the palette or help overlay is open, it owns the keyboard; only `⌘K` (close) passes through. Closing returns focus to where it was.
 - The palette uses the `surface-elevated` background and a `border-default` outline, with no shadow (see Elevation). The selected row takes `surface-active` plus a 2px `primary` left edge, which is the same accent rule as focused inputs.
 
 ### Purpose
