@@ -108,7 +108,7 @@ cmd/  →  app layer  →  core layer  →  pkg/
 - Svelte 5 runes: `$state()`, `$props()`, `Snippet`
 - Router: `lib/router.ts` (vanilla pushState). Routes: chat, memory, sysprompt, ops, pulse, reflection, extensions, config
 - API: `lib/api.ts` — `requestJSON<T>()`, SSE via EventSource + ReadableStream
-- Chat workbench: `Chat.svelte` (route + slash commands) composes `ChatToolbar`, `ChatSessionHeader`, `ChatDockHost`, and `ChatPanel`. Shared state lives in runes stores, not callback props: `lib/stores/chatSession.ts` (sessions, active session, per-session slices) and `lib/stores/chatDockStore.svelte.ts` (dock layout). Stores take their API by injection and are behavior-tested under Node via `tests/helpers/compileSvelteModule.ts`
+- Chat workbench: `Chat.svelte` (route + slash commands) composes `ChatSessionHeader`, `ChatDockHost`, `ChatPanel`, `ChatStatusBar` (tier pin, permission mode, cwd, session cost via `/v1/usage/summary?session_id=`), and `ChatRail` (dock panel icons + ⌘K). Shared state lives in runes stores, not callback props: `lib/stores/chatSession.ts` (sessions, active session, per-session slices) and `lib/stores/chatDockStore.svelte.ts` (dock layout). Stores take their API by injection and are behavior-tested under Node via `tests/helpers/compileSvelteModule.ts`
 - Design tokens: `app.css` — "Graphite Signal": dark graphite, signal green `#3ee07f` (`--primary-rgb` for tints), IBM Plex Sans/Mono. Canvas/Mermaid colors live in `lib/themeColors.ts`
 - **Design source of truth**: `frontend/console/DESIGN.md` — consult before any visual change; update it in same PR if deviating
 
@@ -153,7 +153,7 @@ Re-entry via `?reentry=1`: prefills form, masks api_key, adds [Save only] option
 **Active cwd 모델** (Phase 1)
 - 후보 cwd = 세션 아티팩트 디렉터리 ∪ `Session.WorkDirs[]`
 - active cwd = `Session.CurrentDir` (없으면 아티팩트로 fallback)
-- 채팅 헤더 강조색(초록) `cwd ~/path` 칩으로 표시·전환 (`/cwd`, `/cwd list`, `/cwd <path>`)
+- 입력창 아래 상태 바의 강조색(초록) `cwd ~/path` 칩으로 표시·전환 (`/cwd`, `/cwd list`, `/cwd <path>`)
 - `GET/PUT /v1/admin/sessions/{id}/cwd` — 후보 외 경로는 400
 
 **디렉터리 구조** (`<active_cwd>/.tars/`)

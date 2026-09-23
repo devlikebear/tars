@@ -6,7 +6,8 @@ import { readFileSync } from 'node:fs'
 
 export const chatWorkbenchFiles = [
   '../../src/components/Chat.svelte',
-  '../../src/components/ChatToolbar.svelte',
+  '../../src/components/ChatRail.svelte',
+  '../../src/components/ChatStatusBar.svelte',
   '../../src/components/ChatSessionHeader.svelte',
   '../../src/components/ChatDockHost.svelte',
   '../../src/lib/stores/chatDockStore.svelte.ts',

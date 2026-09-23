@@ -24,7 +24,8 @@ func newUsageAPIHandler(tracker *usage.Tracker, authMode string, logger zerolog.
 		}
 		period := strings.TrimSpace(r.URL.Query().Get("period"))
 		groupBy := strings.TrimSpace(r.URL.Query().Get("group_by"))
-		summary, err := tracker.Summary(period, groupBy)
+		filter := usage.SummaryFilter{SessionID: r.URL.Query().Get("session_id")}
+		summary, err := tracker.SummaryFiltered(period, groupBy, filter)
 		if err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 			return

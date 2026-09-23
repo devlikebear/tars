@@ -60,6 +60,24 @@ export async function getTodayUsage(): Promise<UsageToday> {
   return requestJSON<UsageToday>('/v1/admin/usage/today')
 }
 
+export type UsageSummary = {
+  period: string
+  group_by: string
+  session_id?: string
+  total_calls: number
+  total_cost_usd: number
+  total_input_tokens: number
+  total_output_tokens: number
+}
+
+// Usage for one period, optionally restricted to a single chat session.
+export async function getUsageSummary(params: { period?: 'today' | 'week' | 'month'; sessionId?: string } = {}): Promise<UsageSummary> {
+  const query = new URLSearchParams({ period: params.period ?? 'month' })
+  if (params.sessionId?.trim()) query.set('session_id', params.sessionId.trim())
+  const body = await requestJSON<{ summary: UsageSummary }>(`/v1/usage/summary?${query.toString()}`)
+  return body.summary
+}
+
 export async function getCodexUsage(): Promise<CodexUsageResponse> {
   return requestJSON<CodexUsageResponse>('/v1/admin/llm/codex/usage')
 }

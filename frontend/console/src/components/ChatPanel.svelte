@@ -5,7 +5,7 @@
   import type { AgentRuntimeSubagent, ChatAttachment, ChatContextInfo, ChatEvent, ChatTier, ChatTierRecommendationRequest, CommandDef, Session, SessionGoal, SessionMessage, SkillDef } from '../lib/types'
   import { chatSession } from '../lib/stores/chatSession'
   import { extractArtifact, extractArtifactsFromHistory, mergeArtifact, type Artifact } from '../lib/artifacts'
-  import { buildTierRecommendation, tierRecommendationPayload, type TierRecommendation } from '../lib/tierRecommendation'
+  import { buildTierRecommendation, pinnedTierPayload, tierRecommendationPayload, type TierRecommendation } from '../lib/tierRecommendation'
   import {
     applyMentionCandidate,
     buildSubagentMentionCandidates,
@@ -492,6 +492,8 @@
           mentioned_subagent_count: event.mentioned_subagent_count ?? contextInfo.mentioned_subagent_count,
           mentioned_subagents: event.mentioned_subagents ?? contextInfo.mentioned_subagents,
           llm_tier: event.llm_tier ?? contextInfo.llm_tier,
+          llm_provider: event.llm_provider ?? contextInfo.llm_provider,
+          llm_model: event.llm_model ?? contextInfo.llm_model,
           tier_recommendation: event.tier_recommendation ?? contextInfo.tier_recommendation,
         })
         break
@@ -800,6 +802,12 @@
     }
 
     let tierRecommendation = options.recommendation
+    // A tier pinned in the status bar applies to every turn, not just the
+    // first; without it later turns fall back to the role default.
+    const pinnedTier = chatSession.pinnedTier
+    if (!tierRecommendation && pinnedTier) {
+      tierRecommendation = pinnedTierPayload(pinnedTier)
+    }
     if (!tierRecommendation && isFirstUserTurn()) {
       const recommendation = buildTierRecommendation(message)
       if (recommendation.should_prompt && options.allowPrompt !== false) {
@@ -1445,6 +1453,8 @@
 
   .chat-log {
     display: grid;
+    /* Keep short threads at the top; stretch would inflate each message. */
+    align-content: start;
     gap: var(--space-2);
     flex: 1;
     overflow-y: auto;

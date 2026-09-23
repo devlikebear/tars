@@ -179,3 +179,36 @@ func TestUsageAPI_Analytics(t *testing.T) {
 		t.Fatalf("unexpected analytics response: %+v", out)
 	}
 }
+
+func TestUsageAPI_SummaryFiltersBySession(t *testing.T) {
+	now := time.Date(2026, 9, 23, 12, 0, 0, 0, time.UTC)
+	tracker, err := usage.NewTracker(t.TempDir(), usage.TrackerOptions{Now: func() time.Time { return now }})
+	if err != nil {
+		t.Fatalf("new tracker: %v", err)
+	}
+	for _, entry := range []usage.Entry{
+		{Timestamp: now, Provider: "openai", EstimatedCostUSD: 0.02, Source: "chat", SessionID: "sess-a"},
+		{Timestamp: now, Provider: "openai", EstimatedCostUSD: 0.5, Source: "chat", SessionID: "sess-b"},
+	} {
+		if err := tracker.Record(entry); err != nil {
+			t.Fatalf("record usage: %v", err)
+		}
+	}
+	handler := newUsageAPIHandler(tracker, "off", zerolog.Nop())
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/usage/summary?period=month&session_id=sess-a", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("summary status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Summary usage.Summary `json:"summary"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode summary body: %v", err)
+	}
+	if body.Summary.SessionID != "sess-a" || body.Summary.TotalCalls != 1 || body.Summary.TotalCostUSD != 0.02 {
+		t.Fatalf("expected only sess-a usage, got %+v", body.Summary)
+	}
+}

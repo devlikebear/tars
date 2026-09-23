@@ -1,15 +1,16 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { chatWorkbenchSource } from './helpers/chatWorkbenchSource.ts'
+import { chatWorkbenchSource, readChatWorkbenchFile } from './helpers/chatWorkbenchSource.ts'
 
 const chatSource = chatWorkbenchSource
 const panelSource = readFileSync(new URL('../src/components/SessionConfigPanel.svelte', import.meta.url), 'utf8')
 
-test('Chat exposes session config in the panel toggle row', () => {
-  assert.match(chatSource, /class:active=\{isPanelOpen\('config'\)\}/)
-  assert.match(chatSource, /onclick=\{\(\) => togglePanel\('config'\)\}/)
-  assert.match(chatSource, /\$t\.chat\.panels\.configTooltip/)
+test('Chat exposes session config on the panel rail', () => {
+  const railSource = readChatWorkbenchFile('../../src/components/ChatRail.svelte')
+  assert.match(railSource, /\{ id: 'config', icon: [^}]*tooltip: 'configTooltip' \}/)
+  assert.match(railSource, /class:active=\{isPanelOpen\(item\.id\)\}/)
+  assert.match(railSource, /onclick=\{\(\) => togglePanel\(item\.id\)\}/)
 })
 
 test('Chat opens advanced session config only for an existing selected session', () => {

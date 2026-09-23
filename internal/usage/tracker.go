@@ -49,6 +49,7 @@ type Entry struct {
 type Summary struct {
 	Period          string       `json:"period"`
 	GroupBy         string       `json:"group_by"`
+	SessionID       string       `json:"session_id,omitempty"`
 	TotalCalls      int          `json:"total_calls"`
 	TotalCostUSD    float64      `json:"total_cost_usd"`
 	TotalInput      int          `json:"total_input_tokens"`
