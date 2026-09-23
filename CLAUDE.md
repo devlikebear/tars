@@ -107,6 +107,7 @@ cmd/  →  app layer  →  core layer  →  pkg/
 - Svelte 5 runes: `$state()`, `$props()`, `Snippet`
 - Router: `lib/router.ts` (vanilla pushState). Routes: chat, memory, sysprompt, ops, pulse, reflection, extensions, config
 - API: `lib/api.ts` — `requestJSON<T>()`, SSE via EventSource + ReadableStream
+- Chat workbench: `Chat.svelte` (route + slash commands) composes `ChatToolbar`, `ChatSessionHeader`, `ChatDockHost`, and `ChatPanel`. Shared state lives in runes stores, not callback props: `lib/stores/chatSession.ts` (sessions, active session, per-session slices) and `lib/stores/chatDockStore.svelte.ts` (dock layout). Stores take their API by injection and are behavior-tested under Node via `tests/helpers/compileSvelteModule.ts`
 - Design tokens: `app.css` — dark theme, amber `#e09145`, Outfit/DM Sans/JetBrains Mono
 - **Design source of truth**: `frontend/console/DESIGN.md` — consult before any visual change; update it in same PR if deviating
 

@@ -1,11 +1,12 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
+import { chatWorkbenchSource } from './helpers/chatWorkbenchSource.ts'
 
 const apiSource = readFileSync(new URL('../src/lib/api/extensions.ts', import.meta.url), 'utf8')
 const typesSource = readFileSync(new URL('../src/lib/types.ts', import.meta.url), 'utf8')
 const panelSource = readFileSync(new URL('../src/components/SkillExtractionPanel.svelte', import.meta.url), 'utf8')
-const chatSource = readFileSync(new URL('../src/components/Chat.svelte', import.meta.url), 'utf8')
+const chatSource = chatWorkbenchSource
 const slashSource = readFileSync(new URL('../src/lib/slash.ts', import.meta.url), 'utf8')
 
 test('skill extraction inbox is wired into console chat', () => {

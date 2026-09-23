@@ -2,8 +2,9 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { planProgressPercent, summarizeTasks } from '../src/lib/tasks.ts'
+import { chatWorkbenchSource } from './helpers/chatWorkbenchSource.ts'
 
-const chatSource = readFileSync(new URL('../src/components/Chat.svelte', import.meta.url), 'utf8')
+const chatSource = chatWorkbenchSource
 const tasksPanelSource = readFileSync(new URL('../src/components/TasksPanel.svelte', import.meta.url), 'utf8')
 
 test('task progress helper counts completed tasks over total tasks', () => {

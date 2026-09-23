@@ -49,6 +49,9 @@
   let chatBusy = $state(false)
   $effect(() => {
     chatSession.setStreaming(chatBusy)
+    // Unmounting mid-stream (leaving the route, switching sessions) must not
+    // leave the store reporting a response in flight.
+    return () => chatSession.setStreaming(false)
   })
   let chatError = $state('')
   let chatSessionId = $state('')

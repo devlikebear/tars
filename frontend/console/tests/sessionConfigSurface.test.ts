@@ -1,8 +1,9 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
+import { chatWorkbenchSource } from './helpers/chatWorkbenchSource.ts'
 
-const chatSource = readFileSync(new URL('../src/components/Chat.svelte', import.meta.url), 'utf8')
+const chatSource = chatWorkbenchSource
 const panelSource = readFileSync(new URL('../src/components/SessionConfigPanel.svelte', import.meta.url), 'utf8')
 
 test('Chat exposes session config in the panel toggle row', () => {
