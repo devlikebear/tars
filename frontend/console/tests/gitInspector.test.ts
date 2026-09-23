@@ -1,8 +1,9 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
+import { chatWorkbenchSource } from './helpers/chatWorkbenchSource.ts'
 
-const chatSource = readFileSync(new URL('../src/components/Chat.svelte', import.meta.url), 'utf8')
+const chatSource = chatWorkbenchSource
 const apiSource = readFileSync(new URL('../src/lib/api/git.ts', import.meta.url), 'utf8')
 const typesSource = readFileSync(new URL('../src/lib/types.ts', import.meta.url), 'utf8')
 const gitInspectorSource = readFileSync(new URL('../src/components/GitInspector.svelte', import.meta.url), 'utf8')

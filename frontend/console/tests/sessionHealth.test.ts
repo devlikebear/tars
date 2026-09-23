@@ -5,8 +5,9 @@ import { buildSessionHealthReport } from '../src/lib/sessionHealth.ts'
 import type { ChatToolInfo } from '../src/lib/api/chat.ts'
 import type { SessionToolConfig } from '../src/lib/api/sessions.ts'
 import type { Session, SessionMessage, SessionTasks } from '../src/lib/types.ts'
+import { chatWorkbenchSource } from './helpers/chatWorkbenchSource.ts'
 
-const chatSource = readFileSync(new URL('../src/components/Chat.svelte', import.meta.url), 'utf8')
+const chatSource = chatWorkbenchSource
 const panelSource = readFileSync(new URL('../src/components/SessionHealthPanel.svelte', import.meta.url), 'utf8')
 
 const tools: ChatToolInfo[] = [

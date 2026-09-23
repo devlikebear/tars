@@ -3,8 +3,9 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
 import { buildSlashCandidates, builtinSlashCommandId, parseLeadingSlashCommand } from '../src/lib/slash.ts'
+import { chatWorkbenchSource } from './helpers/chatWorkbenchSource.ts'
 
-const chatSource = readFileSync(new URL('../src/components/Chat.svelte', import.meta.url), 'utf8')
+const chatSource = chatWorkbenchSource
 const panelSource = readFileSync(new URL('../src/components/ChatPanel.svelte', import.meta.url), 'utf8')
 const appSource = readFileSync(new URL('../src/App.svelte', import.meta.url), 'utf8')
 const memorySource = readFileSync(new URL('../src/components/MemoryCenter.svelte', import.meta.url), 'utf8')

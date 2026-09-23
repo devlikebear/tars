@@ -1,8 +1,9 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
+import { chatWorkbenchSource } from './helpers/chatWorkbenchSource.ts'
 
-const chatSource = readFileSync(new URL('../src/components/Chat.svelte', import.meta.url), 'utf8')
+const chatSource = chatWorkbenchSource
 const chatPanelSource = readFileSync(new URL('../src/components/ChatPanel.svelte', import.meta.url), 'utf8')
 const apiSource = readFileSync(new URL('../src/lib/api/chat.ts', import.meta.url), 'utf8')
 const panelSource = readFileSync(new URL('../src/components/PriorContextPanel.svelte', import.meta.url), 'utf8')

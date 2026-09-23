@@ -6,7 +6,7 @@
 // compiled file resolves `svelte/*` and sibling `.ts` modules from where they
 // really live.
 
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { stripTypeScriptTypes } from 'node:module'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
@@ -38,7 +38,13 @@ export async function compileSvelteModule<T = Record<string, unknown>>(relativeP
     (_match, lead: string, quote: string, specifier: string) =>
       `${lead}${quote}${resolveSpecifier(specifier, dirname(sourcePath))}${quote}`,
   )
-  const outFile = join(mkdtempSync(join(tmpdir(), 'tars-svelte-module-')), 'module.mjs')
+  const outDir = mkdtempSync(join(tmpdir(), 'tars-svelte-module-'))
+  const outFile = join(outDir, 'module.mjs')
   writeFileSync(outFile, rewritten)
-  return import(pathToFileURL(outFile).href) as Promise<T>
+  try {
+    return (await import(pathToFileURL(outFile).href)) as T
+  } finally {
+    // The module is in memory once imported; the file is not needed.
+    rmSync(outDir, { recursive: true, force: true })
+  }
 }
