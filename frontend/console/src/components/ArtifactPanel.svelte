@@ -1052,8 +1052,8 @@
   }
   .artifact-item:hover { background: var(--surface-hover); }
   .artifact-item.active {
-    background: rgba(224, 145, 69, 0.12);
-    box-shadow: inset 0 0 0 1px rgba(224, 145, 69, 0.35);
+    background: rgba(var(--primary-rgb), 0.12);
+    box-shadow: inset 0 0 0 1px rgba(var(--primary-rgb), 0.35);
   }
 
   .artifact-item-row {
@@ -1252,7 +1252,7 @@
   .preview-mode-btn.active {
     color: var(--primary);
     border-color: var(--primary);
-    background: rgba(224, 145, 69, 0.08);
+    background: rgba(var(--primary-rgb), 0.08);
   }
 
   .preview-body {

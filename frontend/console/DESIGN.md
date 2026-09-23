@@ -1,90 +1,93 @@
 ---
 version: alpha
-name: Warm Workshop
-description: TARS Console — dark neutral base, warm amber accent, generous spacing for an unhurried command-line feel.
+name: Graphite Signal
+description: TARS Console — cool graphite base, one signal-green accent, engineering type, tight corners for a tool you work in all day.
 colors:
   # Brand
-  primary: "#e09145"
-  primary-hover: "#cc7e35"
-  primary-muted: "#372c22"
-  primary-text: "#f0b878"
+  primary: "#3ee07f"
+  primary-hover: "#2fc56b"
+  primary-muted: "#192f26"
+  primary-text: "#7cf0a8"
+  primary-contrast: "#06140c"
 
   # Surface
-  surface-base: "#141414"
-  surface: "#1c1c1c"
-  surface-elevated: "#242424"
-  surface-hover: "#2a2a2a"
-  surface-active: "#303030"
-  surface-inset: "#111111"
+  surface-base: "#0d0f11"
+  surface: "#14171a"
+  surface-elevated: "#1b1f23"
+  surface-hover: "#21262b"
+  surface-active: "#282e34"
+  surface-inset: "#0a0c0e"
 
   # Border
-  border-subtle: "#282828"
-  border-default: "#333333"
-  border-strong: "#444444"
+  border-subtle: "#1f2428"
+  border-default: "#2b3137"
+  border-strong: "#3a4148"
 
   # Text
-  text-primary: "#e8e4df"
-  text-secondary: "#9a9590"
-  text-tertiary: "#6b6560"
-  text-ghost: "#4a4540"
+  text-primary: "#e6e9ec"
+  text-secondary: "#9aa4ad"
+  text-tertiary: "#6b757e"
+  text-ghost: "#454d55"
 
   # Semantic
-  success: "#4ade80"
-  success-muted: "#223328"
-  warning: "#fbbf24"
-  warning-muted: "#37301d"
-  error: "#f87171"
-  error-muted: "#322525"
-  info: "#818cf8"
-  info-muted: "#262732"
+  success: "#3fd4b4"
+  success-muted: "#192e2c"
+  warning: "#f5c542"
+  warning-muted: "#2f2c1f"
+  error: "#ff5d5d"
+  error-muted: "#2c1e21"
+  info: "#5cb8ff"
+  info-muted: "#1b2731"
 
 typography:
   h1:
-    fontFamily: Outfit
+    fontFamily: IBM Plex Sans
     fontSize: 1.75rem
-    fontWeight: 500
+    fontWeight: 600
     lineHeight: 1.25
+    letterSpacing: -0.01em
   h2:
-    fontFamily: Outfit
+    fontFamily: IBM Plex Sans
     fontSize: 1.375rem
-    fontWeight: 500
+    fontWeight: 600
     lineHeight: 1.25
+    letterSpacing: -0.01em
   h3:
-    fontFamily: Outfit
+    fontFamily: IBM Plex Sans
     fontSize: 1.125rem
-    fontWeight: 500
+    fontWeight: 600
     lineHeight: 1.25
   h4:
-    fontFamily: Outfit
+    fontFamily: IBM Plex Sans
     fontSize: 1rem
-    fontWeight: 500
+    fontWeight: 600
     lineHeight: 1.25
   body-md:
-    fontFamily: DM Sans
+    fontFamily: IBM Plex Sans
     fontSize: 0.875rem
     fontWeight: 400
-    lineHeight: 1.6
+    lineHeight: 1.55
   body-sm:
-    fontFamily: DM Sans
+    fontFamily: IBM Plex Sans
     fontSize: 0.8125rem
     fontWeight: 400
-    lineHeight: 1.55
+    lineHeight: 1.5
   label-caps:
-    fontFamily: Outfit
-    fontSize: 0.75rem
+    fontFamily: IBM Plex Mono
+    fontSize: 0.6875rem
     fontWeight: 500
     lineHeight: 1.5
-    letterSpacing: 0.04em
+    letterSpacing: 0.06em
   code:
-    fontFamily: JetBrains Mono
+    fontFamily: IBM Plex Mono
     fontSize: 0.875rem
     fontWeight: 400
     lineHeight: 1.5
 
 rounded:
-  sm: 4px
-  md: 6px
-  lg: 8px
+  sm: 2px
+  md: 4px
+  lg: 6px
 
 spacing:
   xs: 4px
@@ -105,7 +108,7 @@ components:
 
   button-primary:
     backgroundColor: "{colors.primary}"
-    textColor: "#ffffff"
+    textColor: "{colors.primary-contrast}"
     typography: "{typography.label-caps}"
     rounded: "{rounded.md}"
     padding: "{spacing.sm}"
@@ -142,12 +145,12 @@ components:
 
   button-warning:
     backgroundColor: "{colors.surface}"
-    textColor: "{colors.primary}"
+    textColor: "{colors.warning}"
     typography: "{typography.label-caps}"
     rounded: "{rounded.md}"
     padding: "{spacing.sm}"
   button-warning-hover:
-    backgroundColor: "{colors.primary-muted}"
+    backgroundColor: "{colors.warning-muted}"
 
   button-sm:
     padding: "{spacing.xs}"
@@ -212,21 +215,21 @@ components:
     padding: "{spacing.md}"
 ---
 
-# TARS Console — Warm Workshop
+# TARS Console — Graphite Signal
 
 A canonical specification of the TARS Console design system. The YAML front matter is the normative source of truth for tokens; the prose below explains intent and application.
 
 ## Overview
 
-The TARS Console is the maintainer's primary AI development workbench, and it is also the operator surface for the runtime behind it. It is where you run and review agent sessions, and where you read system signals, edit memory, and run jobs. The workbench direction is recorded in [`docs/decisions/console-workbench.md`](../../docs/decisions/console-workbench.md) (#967). It should feel like the lit corner of a workshop after hours: dark, focused, warm where it counts. Not a polished SaaS dashboard, not a brutalist terminal — closer to a well-organized engineer's workbench.
+The TARS Console is the maintainer's primary AI development workbench, and it is also the operator surface for the runtime behind it. It is where you run and review agent sessions, and where you read system signals, edit memory, and run jobs. The workbench direction is recorded in [`docs/decisions/console-workbench.md`](../../docs/decisions/console-workbench.md) (#967). It should feel like a well-kept instrument: dark, exact, quiet until something needs you. Not a chat product and not a SaaS dashboard, closer to the editors and terminals it sits next to.
 
 The aesthetic resists three temptations:
 
 - **Decoration for its own sake.** Borders are thin, shadows are absent, accents are rationed. Visual noise distracts from signal.
-- **Clinical neutrality.** Pure greys and blues read as cold dashboards. The amber accent and warm-tinted neutrals keep the tool feeling human.
+- **Assistant-product styling.** Warm terracotta or amber accents on beige-tinted greys, soft rounded humanist type, and roomy chat bubbles read as a consumer AI chat app. This is a development tool: cool graphite neutrals, one signal-green accent, and engineering type (IBM Plex). Until 2026-09 the console used exactly that warm styling ("Warm Workshop"); the maintainer retired it because it looked like Claude.
 - **Density theatre.** Spacing is generous because most surfaces (memory, sessions, pulse) involve reading prose, not packing rows.
 
-The system is dark-first. There is no light theme; light backgrounds wash out the warmth of the accent and break the workshop framing.
+The system is dark-first. There is no light theme; the green accent and the tonal graphite steps are tuned for dark backgrounds.
 
 ## Console Purpose & Surface Policy (#931)
 
@@ -391,15 +394,15 @@ Endpoints the console stopped calling in this cut:
 
 ## Colors
 
-The palette is rooted in deep neutrals, a single warm accent, and four semantic states.
+The palette is rooted in cool graphite neutrals, a single signal-green accent, and four semantic states.
 
-- **Primary (`#e09145`):** Warm amber. The sole driver of interaction — primary buttons, focus rings, link emphasis, focused borders. Used sparingly so that when it appears, it commands attention. Pair `primary-hover` (`#cc7e35`) for hover/pressed, `primary-muted` (alpha 0.14) for accent backgrounds, and `primary-text` (`#f0b878`) for text on muted accent surfaces.
+- **Primary (`#3ee07f`):** Signal green, like a terminal's ready light. The sole driver of interaction: primary buttons, focus rings, the selected row, link emphasis, focused borders. Used sparingly so that when it appears, it commands attention. Pair `primary-hover` (`#2fc56b`) for hover/pressed, `primary-muted` (alpha 0.12) for accent backgrounds, and `primary-text` (`#7cf0a8`) for text on muted accent surfaces. Text on a solid green fill is always `primary-contrast` (`#06140c`), never white: white on this green fails contrast. In CSS, tint with `rgba(var(--primary-rgb), α)`; never hard-code the accent (a test fails on the retired amber). Canvas and Mermaid colors, which cannot read CSS variables, come from `src/lib/themeColors.ts`, tested against these tokens.
 - **Surfaces (`surface-base` → `surface-active`):** A six-step neutral elevation ladder. `surface-base` (`#141414`) is the page; `surface` (`#1c1c1c`) is a card; `surface-elevated` (`#242424`) is hover/header; `surface-inset` (`#111111`) is for inputs and code. Steps are tonal, not shadow-driven.
 - **Borders (`border-subtle` → `border-strong`):** Three weights of grey for separation. `border-subtle` divides cards from background; `border-default` outlines secondary buttons and inputs; `border-strong` is reserved for hover/focus states on outlined surfaces.
-- **Text (`text-primary` → `text-ghost`):** Four levels of warm-tinted off-white. `text-primary` for body, `text-secondary` for labels and metadata, `text-tertiary` for placeholders and inactive captions, `text-ghost` for nearly-decorative micro-labels (code-block lang badges, etc.).
+- **Text (`text-primary` → `text-ghost`):** Four levels of cool, neutral off-white. `text-primary` for body, `text-secondary` for labels and metadata, `text-tertiary` for placeholders and inactive captions, `text-ghost` for nearly-decorative micro-labels (code-block lang badges, etc.).
 - **Semantic (`success`, `warning`, `error`, `info`):** Each ships with a `*-muted` tinted-background variant. Use the muted variant as the background and the solid variant as the text — never the reverse, and never solid-on-solid.
 
-> **On muted tokens.** The DESIGN.md spec requires opaque sRGB hex values, so each `*-muted` token (including `primary-muted`) is the pre-blended result of the corresponding tint at low alpha (`primary` 14%, semantic states 10–12%) composited over `surface` (`#1c1c1c`). The runtime CSS in `src/app.css` still expresses these as `rgba()` so they remain translucent on whatever surface they sit on; the design tokens here are the canonical *flat* values for tooling that requires opaque colors (Tailwind, Figma, DTCG export). If you change the runtime alpha, recompute the hex here.
+> **On muted tokens.** The DESIGN.md spec requires opaque sRGB hex values, so each `*-muted` token (including `primary-muted`) is the pre-blended result of the corresponding tint at low alpha (`primary` 12%, semantic states 10–12%) composited over `surface` (`#14171a`). The runtime CSS in `src/app.css` still expresses these as `rgba()` so they remain translucent on whatever surface they sit on; the design tokens here are the canonical *flat* values for tooling that requires opaque colors (Tailwind, Figma, DTCG export). If you change the runtime alpha, recompute the hex here.
 
 ### Pairings to avoid
 
@@ -410,11 +413,10 @@ The palette is rooted in deep neutrals, a single warm accent, and four semantic 
 
 Three families, each with one job:
 
-- **Outfit** — display headings (`h1`–`h4`) and label-caps. Geometric, slightly humanist; gives titles personality without flourishing.
-- **DM Sans** — running prose (`body-md`, `body-sm`). Highly readable at small sizes; carries chat transcripts and long-form memory entries.
-- **JetBrains Mono** — code (`code`). Inline code, code blocks, mermaid source, terminal-style log output.
+- **IBM Plex Sans** handles headings (`h1`–`h4`, 600) and running prose (`body-md`, `body-sm`, 400). It is an engineering grotesque: neutral, compact, readable at small sizes, with none of the friendly roundness of consumer chat apps.
+- **IBM Plex Mono** handles code (`code`) and `label-caps`: inline code, code blocks, log output, and every small uppercase label (card titles, badges, group labels). Mono labels are what make the UI read as a tool.
 
-Headings step down narrowly (1.75 → 1.375 → 1.125 → 1 rem) because most of the UI is mid-density list/card surfaces — large hero type would feel out of register. `label-caps` (Outfit 0.75rem with 0.04em tracking) is reserved for slot labels above editable fields, card section titles, and badge/button text.
+Headings step down narrowly (1.75 → 1.375 → 1.125 → 1 rem) because most of the UI is mid-density list/card surfaces — large hero type would feel out of register. `label-caps` (IBM Plex Mono 0.6875rem, uppercase, 0.06em tracking) is reserved for slot labels above editable fields, card section titles, group labels, and badges.
 
 ### Rules
 
@@ -444,9 +446,9 @@ Reasoning: shadows on dark surfaces tend to either disappear (low contrast) or l
 
 ## Shapes
 
-Three corner radii: `sm` (4px), `md` (6px), `lg` (8px). Buttons, inputs, and badges use `md` or smaller; cards and elevated surfaces use `lg`. Nothing is fully pill-shaped — the system has no `full` radius.
+Three corner radii: `sm` (2px), `md` (4px), `lg` (6px). Buttons, inputs, and badges use `md` or smaller; cards and elevated surfaces use `lg`. Nothing is fully pill-shaped — the system has no `full` radius.
 
-Rationale: rounded corners convey approachability, but pill-shaped buttons in a dense operator UI start to look like consumer-app marketing buttons. The 4–8px range stays utilitarian.
+Rationale: generous rounding reads as approachable consumer software. Tight 2–6px corners read as a precise tool and keep dense rows aligned.
 
 ## Components
 
@@ -454,11 +456,11 @@ Rationale: rounded corners convey approachability, but pill-shaped buttons in a 
 
 Five variants — `primary`, `secondary`, `ghost`, `danger`, `warning` — plus a `sm` size modifier.
 
-- `button-primary` is the only filled button. Use it once per screen for the main commit/run/save action. Background is the amber accent; text is white. **Note:** the amber/white pair has a known WCAG contrast shortfall (~2.5:1) — the linter flags this. The system tolerates it because primary buttons carry `label-caps` (semibold, all-caps short copy) which is treated as large text under WCAG; do not use this combination for body-length text.
+- `button-primary` is the only filled button. Use it once per screen for the main commit/run/save action. Background is the green accent; text is `primary-contrast` at weight 600, which passes WCAG AA comfortably. (The old amber/white pair failed at about 2.5:1.)
 - `button-secondary` is the workhorse outlined button. Transparent background, `border-default`, `text-primary`. Most actions land here.
 - `button-ghost` removes the border entirely. Use for tertiary or in-table actions where outlines would multiply visual weight.
 - `button-danger` is a ghost variant tinted red. Always confirm the destructive action with a second affordance (modal, inline confirmation) before letting the click do work.
-- `button-warning` mirrors `button-danger` but tinted amber. Reserved for "this is reversible but unusual" actions (e.g., "Run pulse now" out of cadence).
+- `button-warning` mirrors `button-danger` but uses the `warning` color. Reserved for "this is reversible but unusual" actions (e.g., "Run pulse now" out of cadence).
 
 `button-sm` reduces padding to `xs`. Use for inline actions inside dense rows; never for a primary CTA.
 
@@ -478,15 +480,15 @@ Cards are the primary chunking device. When you want users to perceive "these th
 
 ### CWD chip (chat session header)
 
-Sits next to the session-health badge in `.session-title-row`. Mirrors the badge dimensions (3px / `space-2` padding, `radius-sm`) so the row stays balanced. The active path renders in **`primary` (amber)** with `font-mono`, prefixed by the dimmed label `cwd`. Click toggles a `position: absolute` dropdown anchored to the chip's right edge, listing every eligible cwd; the active row also reads in amber with a small bullet marker. Disabled state uses `opacity 0.7` while a transition is in flight. The chip is hidden until the session has loaded (no eligible-cwd payload → no chip), so empty states never show a phantom widget.
+Sits next to the session-health badge in `.session-title-row`. Mirrors the badge dimensions (3px / `space-2` padding, `radius-sm`) so the row stays balanced. The active path renders in **`primary` (green)** with `font-mono`, prefixed by the dimmed label `cwd`. Click toggles a `position: absolute` dropdown anchored to the chip's right edge, listing every eligible cwd; the active row also reads in green with a small bullet marker. Disabled state uses `opacity 0.7` while a transition is in flight. The chip is hidden until the session has loaded (no eligible-cwd payload → no chip), so empty states never show a phantom widget.
 
 ### Goal chip (chat session header)
 
-Sits to the left of the cwd chip in `.session-title-row` whenever the session has a `SessionGoal` set via `/goal <description>`. Same dimensions as the cwd chip (3px / `space-2` padding, `radius-sm`, `font-mono` body). Default state is **tinted amber** — `border` and `text` use `primary` mixed with the muted accent, signaling that the session is steering itself toward an autonomous target. The label `goal` reads in a dim caps font, the truncated description in amber, and a small `0/3` style counter at the trailing edge shows auto-continue progress (`auto_continue_count / max_auto_continues`). The chip flips to neutral grey when the goal is cleared after a `satisfied` verdict and to a warning tint when the budget is `exhausted`. Click invokes the same handler as `/goal status` and prints the full description plus remaining budget into the chat feedback strip. The chip is hidden when no goal is set.
+Sits to the left of the cwd chip in `.session-title-row` whenever the session has a `SessionGoal` set via `/goal <description>`. Same dimensions as the cwd chip (3px / `space-2` padding, `radius-sm`, `font-mono` body). Default state is **tinted green** — `border` and `text` use `primary` mixed with the muted accent, signaling that the session is steering itself toward an autonomous target. The label `goal` reads in a dim caps font, the truncated description in green, and a small `0/3` style counter at the trailing edge shows auto-continue progress (`auto_continue_count / max_auto_continues`). The chip flips to neutral grey when the goal is cleared after a `satisfied` verdict and to a warning tint when the budget is `exhausted`. Click invokes the same handler as `/goal status` and prints the full description plus remaining budget into the chat feedback strip. The chip is hidden when no goal is set.
 
 ### Source badges (Session Config panel)
 
-Tools and skills that the session inherited from a `.tars/settings*.json` override file are tagged with a tiny `source-badge` chip on the right side of `.config-item`. The badge uses 9px display-font caps with 4–5px padding so it fits inside the existing config row without breaking layout. **`shared`** entries (from `.tars/settings.json`, the team-shared file) render in amber so the user immediately spots project-level overrides; **`local`** entries (from `.tars/settings.local.json`, the per-user gitignored file) use a neutral grey to avoid implying parity with shared. Items whose value comes from the session base (`sessions.json`) render no badge — keeping the row visually quiet for the common case. Hovering a badge reveals the full file path the override came from via the native `title` attribute.
+Tools and skills that the session inherited from a `.tars/settings*.json` override file are tagged with a tiny `source-badge` chip on the right side of `.config-item`. The badge uses 9px display-font caps with 4–5px padding so it fits inside the existing config row without breaking layout. **`shared`** entries (from `.tars/settings.json`, the team-shared file) render in the accent color so the user immediately spots project-level overrides; **`local`** entries (from `.tars/settings.local.json`, the per-user gitignored file) use a neutral grey to avoid implying parity with shared. Items whose value comes from the session base (`sessions.json`) render no badge — keeping the row visually quiet for the common case. Hovering a badge reveals the full file path the override came from via the native `title` attribute.
 
 ### Input fields
 
@@ -529,11 +531,12 @@ The matrix surfaces a "restart required to activate Telegram/Webhook" notice whe
 
 ## Do's and Don'ts
 
-- **Do** use `primary` (amber) only once per screen, for the single most consequential action.
+- **Do** use `primary` (green) only once per screen, for the single most consequential action.
 - **Do** layer surfaces tonally (`surface-base` → `surface` → `surface-elevated`) instead of reaching for shadows or thicker borders.
 - **Do** pair muted-background semantic tokens (`success-muted`) with solid foreground (`success`) — never the reverse.
-- **Do** keep the existing three font families (Outfit / DM Sans / JetBrains Mono); each has a defined role.
-- **Don't** introduce a light theme. The tonal palette and amber accent are calibrated for dark backgrounds.
+- **Do** keep the two font families (IBM Plex Sans / IBM Plex Mono); each has a defined role.
+- **Don't** introduce a light theme. The tonal palette and green accent are calibrated for dark backgrounds.
+- **Don't** bring back warm accents (amber, terracotta, orange) or warm-tinted greys. That styling was retired because it read as a consumer AI chat app.
 - **Don't** mix sharp corners and pill shapes in the same view; use the `sm`/`md`/`lg` radii consistently.
 - **Don't** use `text-ghost` for any copy that the user is meant to read — it's for purely decorative micro-labels.
 - **Don't** add another button variant before exhausting the existing five; new variants dilute meaning.

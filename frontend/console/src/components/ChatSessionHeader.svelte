@@ -485,14 +485,18 @@
   .cwd-hud {
     position: relative;
     display: inline-flex;
-    flex-shrink: 0;
+    /* Shrinks before the session actions do; the path truncates inside. */
+    flex: 0 1 auto;
+    min-width: 0;
   }
 
   .cwd-chip {
     display: inline-flex;
     align-items: center;
     gap: var(--space-1);
-    max-width: 240px;
+    min-width: 0;
+    max-width: min(240px, 100%);
+    overflow: hidden;
     padding: 3px var(--space-2);
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-sm);

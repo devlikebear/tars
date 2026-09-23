@@ -237,8 +237,8 @@
   }
 
   .tab-add:hover {
-    color: var(--accent, #e09145);
-    border-color: var(--accent, #e09145);
+    color: var(--primary);
+    border-color: var(--primary);
   }
 
   .tab-panes {

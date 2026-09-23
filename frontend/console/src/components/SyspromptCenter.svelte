@@ -440,7 +440,7 @@
     justify-content: space-between;
     gap: var(--space-6);
     background:
-      radial-gradient(circle at top right, rgba(224, 145, 69, 0.12), transparent 34%),
+      radial-gradient(circle at top right, rgba(var(--primary-rgb), 0.12), transparent 34%),
       linear-gradient(135deg, rgba(255, 255, 255, 0.02), transparent),
       var(--surface);
   }
@@ -526,7 +526,7 @@
 
   .file-row:hover, .file-row.active {
     border-color: var(--primary);
-    background: rgba(224, 145, 69, 0.08);
+    background: rgba(var(--primary-rgb), 0.08);
   }
 
   .file-row-top {
@@ -606,9 +606,9 @@
     justify-content: space-between;
     gap: var(--space-4);
     padding: var(--space-3) var(--space-4);
-    border: 1px solid rgba(224, 145, 69, 0.24);
+    border: 1px solid rgba(var(--primary-rgb), 0.24);
     border-radius: var(--radius-md);
-    background: rgba(224, 145, 69, 0.08);
+    background: rgba(var(--primary-rgb), 0.08);
   }
 
   .starter-template-bar strong {

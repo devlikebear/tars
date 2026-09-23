@@ -59,7 +59,7 @@
     transition: all var(--duration-fast);
   }
   .tab-btn:hover { color: var(--text-primary); border-color: var(--border-default); }
-  .tab-btn.active { color: var(--primary); border-color: var(--primary); background: rgba(224, 145, 69, 0.08); }
+  .tab-btn.active { color: var(--primary); border-color: var(--primary); background: rgba(var(--primary-rgb), 0.08); }
 
   .tab-count {
     font-size: 9px;

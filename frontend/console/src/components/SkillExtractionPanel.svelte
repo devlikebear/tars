@@ -769,9 +769,9 @@
   }
 
   .badge-warn {
-    border-color: rgba(224, 145, 69, 0.4);
-    background: rgba(224, 145, 69, 0.12);
-    color: var(--accent-amber, #e09145);
+    border-color: rgba(var(--primary-rgb), 0.4);
+    background: rgba(var(--primary-rgb), 0.12);
+    color: var(--accent-amber, var(--primary));
   }
 
   .badge-soft {

@@ -958,8 +958,8 @@
   .pulse-run-result {
     margin-top: var(--space-3);
     padding: var(--space-3);
-    background: rgba(224, 145, 69, 0.06);
-    border: 1px solid rgba(224, 145, 69, 0.12);
+    background: rgba(var(--primary-rgb), 0.06);
+    border: 1px solid rgba(var(--primary-rgb), 0.12);
     border-radius: var(--radius-md);
   }
 

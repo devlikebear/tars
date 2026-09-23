@@ -617,7 +617,7 @@
   .wizard-entry-kicker {
     display: inline-block;
     padding: 2px 8px;
-    background: rgba(224, 145, 69, 0.12);
+    background: rgba(var(--primary-rgb), 0.12);
     border: 1px solid var(--primary);
     color: var(--primary);
     border-radius: 999px;
@@ -725,8 +725,8 @@
     background: var(--surface-elevated);
   }
   .quick-start-card.quick-attention {
-    border-color: rgba(224, 145, 69, 0.3);
-    background: rgba(224, 145, 69, 0.04);
+    border-color: rgba(var(--primary-rgb), 0.3);
+    background: rgba(var(--primary-rgb), 0.04);
   }
   .quick-start-card-main {
     display: flex;
@@ -772,9 +772,9 @@
     background: rgba(60, 180, 100, 0.08);
   }
   .quick-status.status-attention {
-    border-color: rgba(224, 145, 69, 0.35);
+    border-color: rgba(var(--primary-rgb), 0.35);
     color: var(--primary);
-    background: rgba(224, 145, 69, 0.08);
+    background: rgba(var(--primary-rgb), 0.08);
   }
   .quick-status.status-optional {
     color: var(--text-ghost);
@@ -840,9 +840,9 @@
     color: var(--text-ghost);
   }
   .field-meta-badge.badge-modified {
-    border-color: rgba(224, 145, 69, 0.35);
+    border-color: rgba(var(--primary-rgb), 0.35);
     color: var(--primary);
-    background: rgba(224, 145, 69, 0.08);
+    background: rgba(var(--primary-rgb), 0.08);
   }
   .field-meta-badge.badge-restart {
     border-color: rgba(220, 60, 60, 0.28);
@@ -865,9 +865,9 @@
     background: rgba(90, 135, 220, 0.1);
   }
   .field-meta-badge.badge-env-active {
-    border-color: rgba(224, 145, 69, 0.42);
+    border-color: rgba(var(--primary-rgb), 0.42);
     color: var(--primary);
-    background: rgba(224, 145, 69, 0.11);
+    background: rgba(var(--primary-rgb), 0.11);
   }
 
   .value-text {
@@ -986,7 +986,7 @@
     padding-right: var(--space-5);
   }
   .field-select:hover { border-color: var(--border-default); }
-  .field-select:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 2px rgba(224, 145, 69, 0.3); }
+  .field-select:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 2px rgba(var(--primary-rgb), 0.3); }
   .field-select.dirty { border-color: var(--primary); color: var(--primary); font-weight: 500; }
 
   /* ── Field input ─────────────────────────── */
@@ -1004,7 +1004,7 @@
     outline: none;
   }
   .field-input:focus {
-    box-shadow: 0 0 0 2px rgba(224, 145, 69, 0.3);
+    box-shadow: 0 0 0 2px rgba(var(--primary-rgb), 0.3);
   }
   .field-textarea {
     width: min(420px, 42vw);
@@ -1022,7 +1022,7 @@
     white-space: pre;
   }
   .field-textarea:focus {
-    box-shadow: 0 0 0 2px rgba(224, 145, 69, 0.3);
+    box-shadow: 0 0 0 2px rgba(var(--primary-rgb), 0.3);
   }
 
   /* ── Restart section ──────────────────────── */

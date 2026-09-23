@@ -93,7 +93,7 @@
   }
 
   .setup-only-banner {
-    background: rgba(224, 145, 69, 0.12);
+    background: rgba(var(--primary-rgb), 0.12);
     border-bottom: 1px solid var(--primary);
     color: var(--text-primary);
     padding: var(--space-2) var(--space-4);

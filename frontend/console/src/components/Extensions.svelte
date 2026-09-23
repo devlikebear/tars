@@ -976,7 +976,7 @@
     cursor: pointer; transition: all var(--duration-fast) var(--ease-out);
   }
   .toggle-btn:hover { color: var(--text-primary); }
-  .toggle-btn.active { background: var(--primary); color: #fff; }
+  .toggle-btn.active { background: var(--primary); color: var(--primary-contrast); }
 
   .ext-toolbar { display: flex; gap: var(--space-2); }
   .ext-loading { padding: var(--space-10); text-align: center; color: var(--text-tertiary); }
@@ -1089,9 +1089,9 @@
     letter-spacing: 0.5px;
   }
   .ext-source-badge-external {
-    border-color: rgba(224, 145, 69, 0.4);
-    color: #e09145;
-    background: rgba(224, 145, 69, 0.08);
+    border-color: rgba(var(--primary-rgb), 0.4);
+    color: var(--primary);
+    background: rgba(var(--primary-rgb), 0.08);
   }
 
   .ext-item {
@@ -1255,8 +1255,8 @@
   }
   .quality-score.steady {
     color: var(--primary);
-    border-color: rgba(224, 145, 69, 0.28);
-    background: rgba(224, 145, 69, 0.1);
+    border-color: rgba(var(--primary-rgb), 0.28);
+    background: rgba(var(--primary-rgb), 0.1);
   }
   .quality-score.watch {
     color: var(--text-tertiary);

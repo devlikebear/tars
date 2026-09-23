@@ -171,10 +171,10 @@
     position: relative;
     width: 64px;
     height: 58px;
-    border: 1px solid rgba(224, 145, 69, 0.45);
+    border: 1px solid rgba(var(--primary-rgb), 0.45);
     border-radius: var(--radius-lg);
     background:
-      linear-gradient(180deg, rgba(224, 145, 69, 0.18), rgba(224, 145, 69, 0.04)),
+      linear-gradient(180deg, rgba(var(--primary-rgb), 0.18), rgba(var(--primary-rgb), 0.04)),
       var(--surface-elevated);
     box-shadow:
       0 12px 28px rgba(0, 0, 0, 0.42),
@@ -182,10 +182,10 @@
   }
 
   .companion-reacting .companion-body {
-    border-color: rgba(224, 145, 69, 0.68);
+    border-color: rgba(var(--primary-rgb), 0.68);
     box-shadow:
       0 16px 34px rgba(0, 0, 0, 0.46),
-      0 0 0 3px rgba(224, 145, 69, 0.12),
+      0 0 0 3px rgba(var(--primary-rgb), 0.12),
       inset 0 1px 0 rgba(255, 255, 255, 0.08);
   }
 
@@ -209,7 +209,7 @@
     border-radius: 50%;
     transform: translateX(-50%);
     background: var(--primary);
-    box-shadow: 0 0 14px rgba(224, 145, 69, 0.7);
+    box-shadow: 0 0 14px rgba(var(--primary-rgb), 0.7);
   }
 
   .companion-face {
@@ -227,7 +227,7 @@
     height: 12px;
     border-radius: 999px;
     background: var(--primary-text);
-    box-shadow: 0 0 12px rgba(240, 184, 120, 0.75);
+    box-shadow: 0 0 12px color-mix(in srgb, var(--primary-text) 75%, transparent);
     animation: companionBlink 5.6s infinite;
   }
 
@@ -254,7 +254,7 @@
   .mood-focus .companion-glow,
   .mood-spark .companion-glow {
     background: var(--primary);
-    box-shadow: 0 0 12px rgba(224, 145, 69, 0.65);
+    box-shadow: 0 0 12px rgba(var(--primary-rgb), 0.65);
   }
 
   .companion-shadow {
@@ -269,7 +269,7 @@
 
   .companion-bubble {
     width: min(300px, calc(100vw - 32px));
-    border: 1px solid rgba(224, 145, 69, 0.32);
+    border: 1px solid rgba(var(--primary-rgb), 0.32);
     border-radius: var(--radius-lg);
     background: color-mix(in srgb, var(--surface-elevated) 94%, black);
     box-shadow: 0 18px 44px rgba(0, 0, 0, 0.42);
@@ -320,9 +320,9 @@
   .companion-feedback-strip {
     display: block;
     margin-top: var(--space-2);
-    border: 1px solid rgba(224, 145, 69, 0.24);
+    border: 1px solid rgba(var(--primary-rgb), 0.24);
     border-radius: var(--radius-sm);
-    background: rgba(224, 145, 69, 0.1);
+    background: rgba(var(--primary-rgb), 0.1);
     color: var(--primary-text);
     font-size: 0.72rem;
     line-height: 1.25;
@@ -351,13 +351,13 @@
   .companion-actions button:hover,
   .companion-actions button.active,
   .companion-ask button:hover:not(:disabled) {
-    border-color: rgba(224, 145, 69, 0.42);
+    border-color: rgba(var(--primary-rgb), 0.42);
     color: var(--primary-text);
   }
 
   .companion-actions button.active {
-    background: rgba(224, 145, 69, 0.16);
-    box-shadow: inset 0 0 0 1px rgba(224, 145, 69, 0.2);
+    background: rgba(var(--primary-rgb), 0.16);
+    box-shadow: inset 0 0 0 1px rgba(var(--primary-rgb), 0.2);
   }
 
   .companion-ask {

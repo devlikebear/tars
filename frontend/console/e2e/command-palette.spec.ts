@@ -91,10 +91,13 @@ test('Ctrl+Shift+O starts a new session, from any route', async ({ page }) => {
 })
 
 test('Alt+2 switches to the second session in the sidebar', async ({ page }) => {
-  await page.locator('.dock-left .new-chat-btn').click()
-  await page.locator('.dock-left .new-chat-btn').click()
-  // Let the sidebar settle: the newest session is listed first and active.
   const items = page.locator('.dock-left .session-item')
+  const before = await items.count()
+  for (let i = 1; i <= 2; i++) {
+    await page.locator('.dock-left .new-chat-btn').click()
+    await expect(items).toHaveCount(before + i)
+  }
+  // Let the sidebar settle: both new sessions are listed, the newest first and active.
   await expect(items.first()).toHaveClass(/active/)
   const second = items.nth(1)
   await page.keyboard.press('Alt+2')

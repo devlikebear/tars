@@ -151,8 +151,8 @@
   }
 
   .chat-user {
-    background: rgba(224, 145, 69, 0.08);
-    border: 1px solid rgba(224, 145, 69, 0.12);
+    background: rgba(var(--primary-rgb), 0.08);
+    border: 1px solid rgba(var(--primary-rgb), 0.12);
   }
 
   .chat-assistant {
@@ -331,7 +331,7 @@
     border: 1px solid rgba(255, 211, 170, 0.36);
     border-radius: var(--radius-sm);
     background:
-      linear-gradient(145deg, rgba(224, 145, 69, 0.36), rgba(255, 211, 170, 0.14)),
+      linear-gradient(145deg, rgba(var(--primary-rgb), 0.36), rgba(255, 211, 170, 0.14)),
       var(--surface-elevated);
     box-shadow: 0 0 0 2px rgba(255, 211, 170, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.14);
     box-sizing: border-box;
@@ -388,7 +388,7 @@
     padding: var(--space-2) var(--space-3);
     border: 1px dashed var(--border-subtle);
     border-radius: var(--radius-sm);
-    background: rgba(224, 145, 69, 0.04);
+    background: rgba(var(--primary-rgb), 0.04);
   }
 
   .chat-reasoning-summary {
