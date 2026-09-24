@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte'
+  import { t } from '../i18n'
   import { listSessions, getPulseStatus, getReflectionStatus } from '../lib/api'
   import type { PulseSnapshot, ReflectionSnapshot, Session } from '../lib/types'
 
@@ -120,9 +121,9 @@
   <button
     type="button"
     class="status-pill {aggregateLevel}"
-    aria-label="TARS status"
+    aria-label={$t.chatThread.statusPill.ariaLabel}
     aria-expanded={popoverOpen}
-    title="Server, Pulse, Reflection, sessions"
+    title={$t.chatThread.statusPill.title}
     onclick={togglePopover}
   >
     <span class="status-dot {serverState}" aria-hidden="true"></span>
@@ -132,49 +133,49 @@
   </button>
 
   {#if popoverOpen}
-    <div class="status-popover" role="dialog" aria-label="Status detail">
+    <div class="status-popover" role="dialog" aria-label={$t.chatThread.statusPill.detailAria}>
       <div class="status-row">
         <span class="status-row-label">
           <span class="status-dot {serverState}" aria-hidden="true"></span>
-          Server
+          {$t.chatThread.statusPill.server}
         </span>
-        <span class="status-row-value">{serverHealth === 'ok' ? 'Connected' : serverHealth === 'connecting' ? 'Connecting…' : 'Disconnected'}</span>
+        <span class="status-row-value">{serverHealth === 'ok' ? $t.chatThread.statusPill.connected : serverHealth === 'connecting' ? $t.chatThread.statusPill.connecting : $t.chatThread.statusPill.disconnected}</span>
       </div>
 
       <button class="status-row clickable" type="button" onclick={() => jumpTo('/console/pulse')}>
         <span class="status-row-label">
           <span class="status-dot {pulseState}" aria-hidden="true"></span>
-          Pulse
+          {$t.chatThread.statusPill.pulse}
         </span>
         <span class="status-row-value">
-          {pulseState === 'idle' ? '—' : pulse?.last_err ? 'Error' : pulseState === 'warn' ? 'Stale tick' : 'OK'}
+          {pulseState === 'idle' ? '—' : pulse?.last_err ? $t.chatThread.statusPill.error : pulseState === 'warn' ? $t.chatThread.statusPill.staleTick : $t.chatThread.statusPill.ok}
         </span>
       </button>
 
       <button class="status-row clickable" type="button" onclick={() => jumpTo('/console/reflection')}>
         <span class="status-row-label">
           <span class="status-dot {reflectionState}" aria-hidden="true"></span>
-          Reflection
+          {$t.chatThread.statusPill.reflection}
         </span>
         <span class="status-row-value">
-          {reflectionState === 'idle' ? '—' : (reflection?.consecutive_failures ?? 0) > 0 ? `${reflection?.consecutive_failures} fail(s)` : 'OK'}
+          {reflectionState === 'idle' ? '—' : (reflection?.consecutive_failures ?? 0) > 0 ? $t.chatThread.statusPill.failures(reflection?.consecutive_failures ?? 0) : $t.chatThread.statusPill.ok}
         </span>
       </button>
 
       <button class="status-row clickable" type="button" onclick={openActiveChat}>
         <span class="status-row-label">
           <span class="status-dot {sessionState}" aria-hidden="true"></span>
-          Sessions
+          {$t.chatThread.statusPill.sessions}
         </span>
         <span class="status-row-value">
-          {activeSessionCount} active{activeSession ? ` · jump to ${activeSession.title || activeSession.id}` : ''}
+          {$t.chatThread.statusPill.activeSessions(activeSessionCount)}{activeSession ? $t.chatThread.statusPill.jumpTo(activeSession.title || activeSession.id) : ''}
         </span>
       </button>
 
       <div class="status-popover-footer">
-        <button class="btn btn-ghost btn-sm" type="button" onclick={() => jumpTo('/console/ops')}>Open Ops</button>
+        <button class="btn btn-ghost btn-sm" type="button" onclick={() => jumpTo('/console/ops')}>{$t.chatThread.statusPill.openOps}</button>
         <button class="btn btn-primary btn-sm" type="button" onclick={openActiveChat}>
-          {activeSession ? 'Open active chat' : 'Open chat'}
+          {activeSession ? $t.chatThread.statusPill.openActiveChat : $t.chatThread.statusPill.openChat}
         </button>
       </div>
     </div>

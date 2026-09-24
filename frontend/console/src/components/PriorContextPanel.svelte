@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onDestroy } from 'svelte'
+  import { t } from '../i18n'
   import { getPriorContextPreview, type PriorContextPreview, type PriorContextPreviewItem } from '../lib/api'
 
   interface Props {
@@ -31,10 +32,10 @@
   )
   let belowThreshold = $derived<PriorContextPreviewItem[]>(preview?.below_threshold_items ?? [])
   let budgetText = $derived(preview && !isRecentMode
-    ? `${preview.relevant_tokens.toLocaleString()} / ${preview.relevant_budget_tokens.toLocaleString()} tokens (${preview.budget_percent}%)`
+    ? $t.contextPanels.prior.budget(preview.relevant_tokens.toLocaleString(), preview.relevant_budget_tokens.toLocaleString(), preview.budget_percent)
     : isRecentMode
-      ? 'Recent fallback (no active query)'
-      : '0 / 0 tokens (0%)'
+      ? $t.contextPanels.prior.recentFallback
+      : $t.contextPanels.prior.budget('0', '0', 0)
   )
 
   function sourceClass(source_tag: string): string {
@@ -49,7 +50,7 @@
       preview = await getPriorContextPreview(sessionId, query)
       lastPreviewedQuery = query
     } catch (e) {
-      error = e instanceof Error ? e.message : 'Preview failed'
+      error = e instanceof Error ? e.message : $t.contextPanels.prior.previewFailed
     }
     loading = false
   }
@@ -93,7 +94,7 @@
 <div class="prior-panel">
   <div class="prior-header">
     <div>
-      <span class="prior-title">Prior Context</span>
+      <span class="prior-title">{$t.contextPanels.prior.title}</span>
       <span class="prior-subtitle">{budgetText}</span>
     </div>
     {#if onClose}
@@ -103,10 +104,10 @@
 
   <div class="prior-toolbar">
     <button class="btn btn-ghost btn-sm" onclick={() => load()} disabled={loading || !sessionId}>
-      {loading ? 'Loading...' : 'Refresh preview'}
+      {loading ? $t.contextPanels.prior.loading : $t.contextPanels.prior.refreshPreview}
     </button>
     {#if isStale}
-      <span class="stale-badge">Updating…</span>
+      <span class="stale-badge">{$t.contextPanels.prior.updating}</span>
     {/if}
   </div>
 
@@ -116,14 +117,14 @@
 
   <div class="prior-body">
     {#if !preview && loading}
-      <div class="prior-empty">Loading...</div>
+      <div class="prior-empty">{$t.contextPanels.prior.loading}</div>
     {:else if preview}
       {#if isRecentMode}
         <div class="prior-banner" role="status">
-          <strong>No active query.</strong> Showing recent memory the assistant could reach. Type in the chat box to preview the actual recall.
+          <strong>{$t.contextPanels.prior.noActiveQuery}</strong> {$t.contextPanels.prior.recentBanner}
         </div>
       {:else}
-        <div class="prior-meter" aria-label="Prior Context token budget">
+        <div class="prior-meter" aria-label={$t.contextPanels.prior.meterAriaLabel}>
           <div class="prior-meter-fill" style="width: {Math.min(100, Math.max(0, preview.budget_percent))}%;"></div>
         </div>
       {/if}
@@ -135,7 +136,7 @@
               <div class="prior-item-meta">
                 <span class="source-badge tag-{sourceClass(item.source_tag)}">{item.source_tag}</span>
                 <span class="source-path">{item.source}</span>
-                <span class="item-tokens">{item.tokens.toLocaleString()} tokens</span>
+                <span class="item-tokens">{$t.contextPanels.prior.itemTokens(item.tokens.toLocaleString())}</span>
               </div>
               <p>{item.snippet}</p>
             </article>
@@ -143,20 +144,20 @@
         </div>
       {:else}
         <div class="prior-empty">
-          {isRecentMode ? 'No recent memory available yet.' : 'No matches for this query.'}
+          {isRecentMode ? $t.contextPanels.prior.emptyRecent : $t.contextPanels.prior.emptyQuery}
         </div>
       {/if}
 
       {#if belowThreshold.length > 0}
         <details class="prior-section prior-below">
-          <summary>Below threshold ({belowThreshold.length}) — not sent to LLM</summary>
+          <summary>{$t.contextPanels.prior.belowThreshold(belowThreshold.length)}</summary>
           <div class="prior-items prior-items-dim">
             {#each belowThreshold as item}
               <article class="prior-item">
                 <div class="prior-item-meta">
                   <span class="source-badge tag-{sourceClass(item.source_tag)}">{item.source_tag}</span>
                   <span class="source-path">{item.source}</span>
-                  <span class="item-tokens">{item.tokens.toLocaleString()} tokens</span>
+                  <span class="item-tokens">{$t.contextPanels.prior.itemTokens(item.tokens.toLocaleString())}</span>
                 </div>
                 <p>{item.snippet}</p>
               </article>
@@ -167,12 +168,12 @@
 
       {#if !isRecentMode}
         <details class="prior-section">
-          <summary>Prompt Section</summary>
+          <summary>{$t.contextPanels.prior.promptSection}</summary>
           <pre>{preview.section || '## Prior Context\n\n'}</pre>
         </details>
       {/if}
     {:else}
-      <div class="prior-empty">No session selected</div>
+      <div class="prior-empty">{$t.contextPanels.prior.noSession}</div>
     {/if}
   </div>
 </div>

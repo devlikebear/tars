@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '../i18n'
   import type { SubagentProgress, SubagentProgressStatus } from '../lib/subagentProgress'
   import { shortRunID } from '../lib/subagentProgress'
 
@@ -12,16 +13,22 @@
 
   let doneCount = $derived(progress.completed + progress.failed)
   let progressPct = $derived(progress.count > 0 ? Math.min(100, Math.max(0, (doneCount / progress.count) * 100)) : 0)
-  let title = $derived(progress.mode === 'consensus' ? 'Consensus subagents' : progress.mode === 'compare' ? 'Compare subagents' : 'Parallel subagents')
+  let title = $derived(
+    progress.mode === 'consensus'
+      ? $t.chatThread.subagents.titles.consensus
+      : progress.mode === 'compare'
+        ? $t.chatThread.subagents.titles.compare
+        : $t.chatThread.subagents.titles.parallel,
+  )
   let badgeClass = $derived(tone === 'error' || progress.failed > 0 ? 'badge-error' : tone === 'running' ? 'badge-accent' : 'badge-default')
-  let summaryLabel = $derived(`${progress.completed}/${progress.count} done${progress.failed > 0 ? `, ${progress.failed} failed` : ''}`)
+  let summaryLabel = $derived($t.chatThread.subagents.summary(progress.completed, progress.count, progress.failed))
 
   function statusLabel(status: SubagentProgressStatus): string {
     switch (status) {
-      case 'completed': return 'done'
-      case 'failed': return 'failed'
-      case 'running': return 'running'
-      default: return 'pending'
+      case 'completed': return $t.chatThread.subagents.statuses.completed
+      case 'failed': return $t.chatThread.subagents.statuses.failed
+      case 'running': return $t.chatThread.subagents.statuses.running
+      default: return $t.chatThread.subagents.statuses.pending
     }
   }
 </script>
@@ -34,7 +41,7 @@
     {#if elapsedLabel}
       <span class="subagent-elapsed">{elapsedLabel}</span>
     {/if}
-    <span class="badge {badgeClass} subagent-badge">{progress.running > 0 ? `${progress.running} running` : tone}</span>
+    <span class="badge {badgeClass} subagent-badge">{progress.running > 0 ? $t.chatThread.subagents.runningBadge(progress.running) : $t.chatThread.tool.tones[tone]}</span>
   </summary>
 
   <div class="subagent-meter" aria-hidden="true">
@@ -46,13 +53,13 @@
       <div class="subagent-row subagent-row-{task.status}">
         <span class="status-pill">{statusLabel(task.status)}</span>
         <div class="subagent-task-main">
-          <span class="subagent-task-title">{task.title || `Subagent ${index + 1}`}</span>
+          <span class="subagent-task-title">{task.title || $t.chatThread.subagents.untitledTask(index + 1)}</span>
           <span class="subagent-task-meta">
             {[task.agent, task.tier, task.error || task.summary].filter(Boolean).join(' · ')}
           </span>
         </div>
         {#if task.href && task.runId}
-          <a class="subagent-run-link" href={task.href}>Run {shortRunID(task.runId)}</a>
+          <a class="subagent-run-link" href={task.href}>{$t.chatThread.subagents.runLink(shortRunID(task.runId))}</a>
         {/if}
       </div>
     {/each}
@@ -61,7 +68,7 @@
   {#if progress.comparison}
     <div class="compare-summary">
       <section>
-        <h4>Common</h4>
+        <h4>{$t.chatThread.subagents.common}</h4>
         {#if progress.comparison.commonFindings.length > 0}
           <ul>
             {#each progress.comparison.commonFindings as finding}
@@ -69,11 +76,11 @@
             {/each}
           </ul>
         {:else}
-          <p>No shared findings detected.</p>
+          <p>{$t.chatThread.subagents.noCommon}</p>
         {/if}
       </section>
       <section>
-        <h4>Conflicts</h4>
+        <h4>{$t.chatThread.subagents.conflicts}</h4>
         {#if progress.comparison.conflicts.length > 0}
           <ul>
             {#each progress.comparison.conflicts as conflict}
@@ -81,11 +88,11 @@
             {/each}
           </ul>
         {:else}
-          <p>No obvious conflicts detected.</p>
+          <p>{$t.chatThread.subagents.noConflicts}</p>
         {/if}
       </section>
       <section>
-        <h4>Evidence</h4>
+        <h4>{$t.chatThread.subagents.evidence}</h4>
         {#if progress.comparison.evidence.length > 0}
           <ul>
             {#each progress.comparison.evidence as item}
@@ -93,14 +100,14 @@
                 {#if item.href && item.runId}
                   <a href={item.href}>{item.title || item.agent || shortRunID(item.runId)}</a>
                 {:else}
-                  <span>{item.title || item.agent || 'source'}</span>
+                  <span>{item.title || item.agent || $t.chatThread.subagents.evidenceSource}</span>
                 {/if}
                 <span>{item.text}</span>
               </li>
             {/each}
           </ul>
         {:else}
-          <p>No evidence snippets available.</p>
+          <p>{$t.chatThread.subagents.noEvidence}</p>
         {/if}
       </section>
     </div>
@@ -110,12 +117,12 @@
         {#each progress.comparison.sideBySide as item}
           <article>
             <div class="compare-output-head">
-              <strong>{item.title || item.agent || 'Subagent'}</strong>
+              <strong>{item.title || item.agent || $t.chatThread.subagents.outputFallback}</strong>
               {#if item.href && item.runId}
-                <a href={item.href}>Run {shortRunID(item.runId)}</a>
+                <a href={item.href}>{$t.chatThread.subagents.runLink(shortRunID(item.runId))}</a>
               {/if}
             </div>
-            <pre>{item.response || item.error || '(waiting)'}</pre>
+            <pre>{item.response || item.error || $t.chatThread.subagents.waiting}</pre>
           </article>
         {/each}
       </div>

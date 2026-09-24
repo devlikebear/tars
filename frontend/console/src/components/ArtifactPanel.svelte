@@ -1,5 +1,6 @@
 <script lang="ts">
   import { tick } from 'svelte'
+  import { t } from '../i18n'
   import type { Artifact } from '../lib/artifacts'
   import { fileIcon } from '../lib/artifacts'
   import { listWorkspaceFiles, readWorkspaceFile, getSessionWorkDirs, updateSessionWorkDirs, openTerminalHere, browseFilesystem, createFilesystemDirectory, createWorkspaceDirectory, renameWorkspaceDirectory, type WorkspaceFileEntry, type WorkspaceFileContent } from '../lib/api'
@@ -162,7 +163,7 @@
       pickNewFolderName = ''
       await browsePick(created.path)
     } catch (err) {
-      pickActionError = err instanceof Error ? err.message : 'Failed to create folder'
+      pickActionError = err instanceof Error ? err.message : $t.artifactPanel.errors.createFolder
     } finally {
       pickActionBusy = false
     }
@@ -177,7 +178,7 @@
       wsFiles = result.files || []
       currentPath = result.path || path
     } catch (err) {
-      wsError = err instanceof Error ? err.message : 'Failed to list files'
+      wsError = err instanceof Error ? err.message : $t.artifactPanel.errors.listFiles
     } finally {
       wsLoading = false
     }
@@ -207,7 +208,7 @@
       newFolderName = ''
       await browseDir(currentPath)
     } catch (err) {
-      wsActionError = err instanceof Error ? err.message : 'Failed to create folder'
+      wsActionError = err instanceof Error ? err.message : $t.artifactPanel.errors.createFolder
     } finally {
       wsActionBusy = false
     }
@@ -237,7 +238,7 @@
       renameDirName = ''
       await browseDir(currentPath)
     } catch (err) {
-      wsActionError = err instanceof Error ? err.message : 'Failed to rename folder'
+      wsActionError = err instanceof Error ? err.message : $t.artifactPanel.errors.renameFolder
     } finally {
       wsActionBusy = false
     }
@@ -251,12 +252,13 @@
     try {
       const targetPath = currentPath === '.' ? '' : currentPath
       const result = await openTerminalHere(sessionId, targetPath)
-      terminalStatus = `${result.app || 'Terminal'} opened at ${terminalTargetLabel()}`
+      // 'Terminal' is the macOS app name, the same value the server reports.
+      terminalStatus = $t.artifactPanel.workspace.terminalOpened(result.app || 'Terminal', terminalTargetLabel())
       setTimeout(() => {
         terminalStatus = ''
       }, 2500)
     } catch (err) {
-      terminalError = err instanceof Error ? err.message : 'Failed to open terminal'
+      terminalError = err instanceof Error ? err.message : $t.artifactPanel.errors.openTerminal
     } finally {
       terminalBusy = false
     }
@@ -280,7 +282,7 @@
       previewFile = await readWorkspaceFile(path, rootOverride || effectiveRoot)
       previewMode = defaultPreviewMode(previewFile)
     } catch (err) {
-      previewError = err instanceof Error ? err.message : 'Failed to read file'
+      previewError = err instanceof Error ? err.message : $t.artifactPanel.errors.readFile
     } finally {
       previewLoading = false
     }
@@ -349,10 +351,11 @@
     const d = typeof ts === 'number' ? ts : new Date(ts).getTime()
     if (new Date(d).getFullYear() <= 1) return ''
     const seconds = Math.floor((Date.now() - d) / 1000)
-    if (seconds < 60) return `${seconds}s ago`
-    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`
-    if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`
-    return `${Math.floor(seconds / 86400)}d ago`
+    const labels = $t.artifactPanel.time
+    if (seconds < 60) return labels.secondsAgo(seconds)
+    if (seconds < 3600) return labels.minutesAgo(Math.floor(seconds / 60))
+    if (seconds < 86400) return labels.hoursAgo(Math.floor(seconds / 3600))
+    return labels.daysAgo(Math.floor(seconds / 86400))
   }
 
   function basename(path: string): string {
@@ -416,10 +419,11 @@
   }
 
   function primaryModeLabel(file: WorkspaceFileContent): string {
-    if (file.kind === 'markdown') return 'Preview'
-    if (file.kind === 'image') return 'Preview'
-    if (isCodePreview(file)) return 'Code'
-    return 'Text'
+    const modes = $t.artifactPanel.preview.modes
+    if (file.kind === 'markdown') return modes.preview
+    if (file.kind === 'image') return modes.preview
+    if (isCodePreview(file)) return modes.code
+    return modes.text
   }
 
   function guessCodeLanguage(file: WorkspaceFileContent): string | undefined {
@@ -533,7 +537,7 @@
   {#if activeTab === 'session'}
     <div class="artifact-list" bind:this={sessionArtifactListEl}>
       {#if artifacts.length === 0}
-        <div class="artifact-empty">No files created in this session yet.</div>
+        <div class="artifact-empty">{$t.artifactPanel.session.empty}</div>
       {:else}
         {#each artifacts as artifact}
           <button
@@ -552,7 +556,7 @@
             </div>
             <div class="artifact-meta">
               <span class="badge {artifact.action === 'created' ? 'badge-success' : 'badge-accent'}" style="font-size:9px;padding:1px 5px">
-                {artifact.action}
+                {$t.artifactPanel.session.action[artifact.action]}
               </span>
               <span class="artifact-time">{relativeTime(artifact.timestamp)}</span>
             </div>
@@ -574,16 +578,16 @@
           <button
             type="button"
             class="btn btn-ghost btn-sm"
-            title={workDirs.current_dir === mandatoryWorkDir ? 'Session artifact directory is required' : 'Remove current directory'}
+            title={workDirs.current_dir === mandatoryWorkDir ? $t.artifactPanel.workDir.requiredTitle : $t.artifactPanel.workDir.removeTitle}
             disabled={workDirs.current_dir === mandatoryWorkDir}
             onclick={() => removeDir(workDirs.current_dir)}
           >&#x2212;</button>
-          <button type="button" class="btn btn-ghost btn-sm" title="Add directory" onclick={startPicking}>+</button>
+          <button type="button" class="btn btn-ghost btn-sm" title={$t.artifactPanel.workDir.addTitle} onclick={startPicking}>+</button>
         </div>
       {:else}
         <div class="workdir-list">
           <span class="workdir-default">{defaultWorkDirLabel()}</span>
-          <button type="button" class="btn btn-ghost btn-sm" title="Add working directory" onclick={startPicking}>+</button>
+          <button type="button" class="btn btn-ghost btn-sm" title={$t.artifactPanel.workDir.addWorkingTitle} onclick={startPicking}>+</button>
         </div>
       {/if}
     </div>
@@ -592,10 +596,10 @@
       <!-- Directory picker overlay -->
       <div class="pick-overlay">
         <div class="pick-header">
-          <span class="pick-title">Select Directory</span>
+          <span class="pick-title">{$t.artifactPanel.picker.title}</span>
           <div class="pick-actions">
-            <button type="button" class="btn btn-primary btn-sm" disabled={pickLoading || pickActionBusy || !pickPath} onclick={selectPickedDir}>Select Here</button>
-            <button type="button" class="btn btn-ghost btn-sm" disabled={pickActionBusy} onclick={cancelPicking}>Cancel</button>
+            <button type="button" class="btn btn-primary btn-sm" disabled={pickLoading || pickActionBusy || !pickPath} onclick={selectPickedDir}>{$t.artifactPanel.picker.selectHere}</button>
+            <button type="button" class="btn btn-ghost btn-sm" disabled={pickActionBusy} onclick={cancelPicking}>{$t.artifactPanel.actions.cancel}</button>
           </div>
         </div>
         <div class="pick-current">{pickPath || '/'}</div>
@@ -606,17 +610,17 @@
               <input
                 class="ws-inline-input"
                 bind:value={pickNewFolderName}
-                placeholder="New folder name"
+                placeholder={$t.artifactPanel.folder.newFolderPlaceholder}
                 onkeydown={(e) => {
                   if (e.key === 'Enter') submitPickCreateFolder()
                   if (e.key === 'Escape') cancelPickCreateFolder()
                 }}
               />
-              <button type="button" class="btn btn-primary btn-sm" disabled={pickActionBusy || !pickNewFolderName.trim()} onclick={submitPickCreateFolder}>Create</button>
-              <button type="button" class="btn btn-ghost btn-sm" disabled={pickActionBusy} onclick={cancelPickCreateFolder}>Cancel</button>
+              <button type="button" class="btn btn-primary btn-sm" disabled={pickActionBusy || !pickNewFolderName.trim()} onclick={submitPickCreateFolder}>{$t.artifactPanel.actions.create}</button>
+              <button type="button" class="btn btn-ghost btn-sm" disabled={pickActionBusy} onclick={cancelPickCreateFolder}>{$t.artifactPanel.actions.cancel}</button>
             </div>
           {:else}
-            <button type="button" class="btn btn-ghost btn-sm" disabled={pickLoading || pickActionBusy || !pickPath} onclick={beginPickCreateFolder}>New Folder</button>
+            <button type="button" class="btn btn-ghost btn-sm" disabled={pickLoading || pickActionBusy || !pickPath} onclick={beginPickCreateFolder}>{$t.artifactPanel.folder.newFolder}</button>
           {/if}
         </div>
         {#if pickActionError}
@@ -624,7 +628,7 @@
         {/if}
         <div class="pick-list">
           {#if pickLoading}
-            <div class="artifact-empty">Loading...</div>
+            <div class="artifact-empty">{$t.artifactPanel.loading}</div>
           {:else}
             {#if pickParent}
               <button type="button" class="artifact-item" onclick={() => browsePick(pickParent)}>
@@ -639,7 +643,7 @@
               </button>
             {/each}
             {#if pickFiles.length === 0 && pickParent}
-              <div class="artifact-empty">No subdirectories</div>
+              <div class="artifact-empty">{$t.artifactPanel.picker.noSubdirectories}</div>
             {/if}
           {/if}
         </div>
@@ -663,32 +667,32 @@
           <input
             class="ws-inline-input"
             bind:value={newFolderName}
-            placeholder="New folder name"
+            placeholder={$t.artifactPanel.folder.newFolderPlaceholder}
             onkeydown={(e) => {
               if (e.key === 'Enter') submitCreateFolder()
               if (e.key === 'Escape') cancelCreateFolder()
             }}
           />
-          <button type="button" class="btn btn-primary btn-sm" disabled={wsActionBusy || !newFolderName.trim()} onclick={submitCreateFolder}>Create</button>
-          <button type="button" class="btn btn-ghost btn-sm" disabled={wsActionBusy} onclick={cancelCreateFolder}>Cancel</button>
+          <button type="button" class="btn btn-primary btn-sm" disabled={wsActionBusy || !newFolderName.trim()} onclick={submitCreateFolder}>{$t.artifactPanel.actions.create}</button>
+          <button type="button" class="btn btn-ghost btn-sm" disabled={wsActionBusy} onclick={cancelCreateFolder}>{$t.artifactPanel.actions.cancel}</button>
         </div>
       {:else}
         <div class="ws-toolbar-actions">
-          <button type="button" class="btn btn-ghost btn-sm" disabled={wsLoading || wsActionBusy} onclick={beginCreateFolder}>New Folder</button>
+          <button type="button" class="btn btn-ghost btn-sm" disabled={wsLoading || wsActionBusy} onclick={beginCreateFolder}>{$t.artifactPanel.folder.newFolder}</button>
           <button
             type="button"
             class="btn btn-primary btn-sm"
             disabled={wsLoading || wsActionBusy || !sessionId}
-            title={`Open integrated terminal at ${terminalTargetLabel()}`}
+            title={$t.artifactPanel.workspace.shellTitle(terminalTargetLabel())}
             onclick={openIntegratedTerminal}
-          >Shell</button>
+          >{$t.artifactPanel.workspace.shell}</button>
           <button
             type="button"
             class="btn btn-ghost btn-sm"
             disabled={wsLoading || wsActionBusy || terminalBusy || !sessionId}
-            title={`Open macOS Terminal at ${terminalTargetLabel()}`}
+            title={$t.artifactPanel.workspace.openAppTitle(terminalTargetLabel())}
             onclick={openTerminalAtCurrentPath}
-          >{terminalBusy ? 'Opening...' : 'Open App'}</button>
+          >{terminalBusy ? $t.artifactPanel.workspace.opening : $t.artifactPanel.workspace.openApp}</button>
         </div>
       {/if}
     </div>
@@ -704,11 +708,11 @@
 
     <div class="artifact-list">
       {#if wsLoading}
-        <div class="artifact-empty">Loading...</div>
+        <div class="artifact-empty">{$t.artifactPanel.loading}</div>
       {:else if wsError}
         <div class="artifact-empty" style="color:var(--error)">{wsError}</div>
       {:else if wsFiles.length === 0}
-        <div class="artifact-empty">Empty directory</div>
+        <div class="artifact-empty">{$t.artifactPanel.workspace.emptyDirectory}</div>
       {:else}
         {#if currentPath !== '.'}
           <button type="button" class="artifact-item ws-parent" onclick={() => browseDir(parentPath(currentPath))}>
@@ -725,7 +729,7 @@
                   <input
                     class="ws-inline-input"
                     bind:value={renameDirName}
-                    placeholder="Folder name"
+                    placeholder={$t.artifactPanel.folder.namePlaceholder}
                     onkeydown={(e) => {
                       if (e.key === 'Enter') submitRenameFolder()
                       if (e.key === 'Escape') cancelRenameFolder()
@@ -733,8 +737,8 @@
                   />
                 </div>
                 <div class="artifact-item-actions">
-                  <button type="button" class="btn btn-primary btn-sm" disabled={wsActionBusy || !renameDirName.trim()} onclick={submitRenameFolder}>Save</button>
-                  <button type="button" class="btn btn-ghost btn-sm" disabled={wsActionBusy} onclick={cancelRenameFolder}>Cancel</button>
+                  <button type="button" class="btn btn-primary btn-sm" disabled={wsActionBusy || !renameDirName.trim()} onclick={submitRenameFolder}>{$t.artifactPanel.actions.save}</button>
+                  <button type="button" class="btn btn-ghost btn-sm" disabled={wsActionBusy} onclick={cancelRenameFolder}>{$t.artifactPanel.actions.cancel}</button>
                 </div>
               </div>
             </div>
@@ -753,7 +757,7 @@
                 {/if}
               </button>
               {#if entry.is_dir}
-                <button type="button" class="artifact-row-action" disabled={wsActionBusy} onclick={() => startRenameFolder(entry)}>Rename</button>
+                <button type="button" class="artifact-row-action" disabled={wsActionBusy} onclick={() => startRenameFolder(entry)}>{$t.artifactPanel.actions.rename}</button>
               {/if}
             </div>
           {/if}
@@ -778,7 +782,7 @@
       <div class="preview-header">
         <div class="preview-title-row">
           <span class="artifact-icon">{previewFile ? fileIcon(previewFile.name) : ''}</span>
-          <span class="preview-filename">{previewFile?.name || 'Loading...'}</span>
+          <span class="preview-filename">{previewFile?.name || $t.artifactPanel.loading}</span>
           {#if previewFile}
             <span class="preview-size">{formatSize(previewFile.size)}</span>
             <span class="preview-mime">{previewFile.mime_type}</span>
@@ -800,17 +804,17 @@
                     class="preview-mode-btn"
                     class:active={previewMode === 'raw'}
                     onclick={() => { previewMode = 'raw' }}
-                  >Raw</button>
+                  >{$t.artifactPanel.preview.modes.raw}</button>
                 {/if}
               </div>
             {/if}
             {#if canCopyPreview(previewFile)}
               <button type="button" class="btn btn-ghost btn-sm" onclick={copyContent}>
-                {copied ? 'Copied!' : 'Copy'}
+                {copied ? $t.artifactPanel.preview.copied : $t.artifactPanel.preview.copy}
               </button>
             {/if}
             {#if canDownloadPreview(previewFile)}
-              <button type="button" class="btn btn-ghost btn-sm" onclick={downloadFile}>Download</button>
+              <button type="button" class="btn btn-ghost btn-sm" onclick={downloadFile}>{$t.artifactPanel.preview.download}</button>
             {/if}
           {/if}
           <button type="button" class="btn btn-ghost btn-sm" onclick={closePreview}>&times;</button>
@@ -818,7 +822,7 @@
       </div>
       <div class="preview-body">
         {#if previewLoading}
-          <div class="artifact-empty">Loading file...</div>
+          <div class="artifact-empty">{$t.artifactPanel.preview.loadingFile}</div>
         {:else if previewError}
           <div class="artifact-empty" style="color:var(--error)">{previewError}</div>
         {:else if previewFile}
@@ -828,7 +832,7 @@
 
           {#if previewFile.kind === 'binary'}
             <div class="preview-binary">
-              <div class="preview-binary-title">Binary file</div>
+              <div class="preview-binary-title">{$t.artifactPanel.preview.binaryFile}</div>
               <div class="preview-binary-meta">{previewFile.mime_type} · {formatSize(previewFile.size)}</div>
             </div>
           {:else if previewFile.kind === 'image'}
@@ -847,7 +851,7 @@
                 />
               </div>
             {:else}
-              <div class="artifact-empty">Image preview unavailable.</div>
+              <div class="artifact-empty">{$t.artifactPanel.preview.imageUnavailable}</div>
             {/if}
           {:else if previewMode === 'raw'}
             <pre class="preview-content"><code>{previewFile.content || ''}</code></pre>

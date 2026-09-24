@@ -1,8 +1,11 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { buildSessionPermissionPreview } from '../src/lib/sessionPermissionPreview.ts'
+import { sessionConfigEn } from '../src/i18n/sections/sessionConfig.ts'
 import type { ChatToolInfo } from '../src/lib/api/chat.ts'
 import type { SessionToolConfig } from '../src/lib/api/sessions.ts'
+
+const summaryLabels = sessionConfigEn.permissionPreview.summary
 
 const tools: ChatToolInfo[] = [
   { name: 'read_file', description: 'read files', high_risk: false, group: 'files' },
@@ -27,7 +30,7 @@ test('permission preview reports gained risky tools and capabilities', () => {
     tools,
     skills: ['release-helper'],
     mcpServers: ['github'],
-  })
+  }, summaryLabels)
 
   assert.equal(preview.risk, 'high')
   assert.deepEqual(preview.gainedTools, ['write_file', 'exec', 'git_status', 'web_fetch'])
@@ -59,7 +62,7 @@ test('permission preview reports affected skills and MCP servers', () => {
     skills: ['daily-briefing', 'release-helper'],
     commands: ['memo', 'summarize'],
     mcpServers: ['github', 'notion'],
-  })
+  }, summaryLabels)
 
   assert.equal(preview.risk, 'medium')
   assert.deepEqual(preview.gainedSkills, ['release-helper'])
@@ -76,8 +79,29 @@ test('permission preview treats mcp_custom empty allowlist as all MCP disabled',
   const preview = buildSessionPermissionPreview({}, { mcp_custom: true, mcp_enabled: [] }, {
     tools,
     mcpServers: ['github', 'notion'],
-  })
+  }, summaryLabels)
 
   assert.deepEqual(preview.lostMCPServers, ['github', 'notion'])
   assert.match(preview.summary, /2 MCP servers disabled/)
+})
+
+test('permission preview summary keeps the English wording and takes localized labels', () => {
+  const unchanged = buildSessionPermissionPreview({}, {}, { tools }, summaryLabels)
+  assert.equal(unchanged.summary, 'No effective permission change')
+
+  const mixed = buildSessionPermissionPreview(
+    { tools_custom: true, tools_enabled: ['read_file', 'git_status'] },
+    { tools_custom: true, tools_enabled: ['read_file', 'exec'] },
+    { tools },
+    summaryLabels,
+  )
+  assert.equal(mixed.summary, '1 tool enabled, 1 tool disabled')
+
+  const localized = buildSessionPermissionPreview(
+    { tools_custom: true, tools_enabled: ['read_file', 'git_status'] },
+    { tools_custom: true, tools_enabled: ['read_file', 'exec'] },
+    { tools },
+    { ...summaryLabels, toolsEnabled: (count) => `+${count}`, toolsDisabled: (count) => `-${count}` },
+  )
+  assert.equal(localized.summary, '+1, -1')
 })

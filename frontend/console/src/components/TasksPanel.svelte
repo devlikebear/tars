@@ -20,7 +20,7 @@
     resumableWorkLedgerSteps,
     workLedgerCanCancel,
   } from '../lib/workLedger'
-  import type { PlanArchiveItem, SessionTask, SessionTasks, TaskContract, TaskEvidence, WorkLedgerProjection } from '../lib/types'
+  import type { PlanArchiveItem, SessionTask, SessionTasks, TaskContract, TaskEvidence, TaskEvidenceType, WorkLedgerProjection } from '../lib/types'
 
   type TabId = 'tasks' | 'contract' | 'evidence' | 'timeline'
 
@@ -44,7 +44,7 @@
   let timelineLiveStatus = $state<'idle' | 'live' | 'reconnecting'>('idle')
   let stopTimelineWatch: (() => void) | null = null
   let timelineRefreshPending = false
-  let timelineEntries = $derived(timelineProjection ? buildWorkLedgerTimeline(timelineProjection) : [])
+  let timelineEntries = $derived(timelineProjection ? buildWorkLedgerTimeline(timelineProjection, $t.tasksPanel.ledger) : [])
   let timelineCanCancel = $derived(timelineProjection ? workLedgerCanCancel(timelineProjection) : false)
   let timelineResumableSteps = $derived(timelineProjection ? resumableWorkLedgerSteps(timelineProjection) : [])
 
@@ -145,7 +145,7 @@
       }
     } catch (err) {
       if (requestedSessionId === sessionId) {
-        timelineError = err instanceof Error ? err.message : 'Failed to load work ledger timeline'
+        timelineError = err instanceof Error ? err.message : $t.tasksPanel.timeline.loadFailed
       }
     } finally {
       if (requestedSessionId === sessionId) timelineLoading = false
@@ -160,14 +160,14 @@
 
   async function handleCancelDurableWork() {
     const work = timelineProjection?.work
-    if (!work || !timelineCanCancel || !confirm(`Cancel durable work "${work.title}"?`)) return
+    if (!work || !timelineCanCancel || !confirm($t.tasksPanel.timeline.confirmCancel(work.title))) return
     timelineControlBusy = true
     timelineError = ''
     try {
       timelineProjection = await cancelWorkLedger(work.id, 'Operator cancelled from Console')
       closeTimelineWatch()
     } catch (err) {
-      timelineError = err instanceof Error ? err.message : 'Failed to cancel durable work'
+      timelineError = err instanceof Error ? err.message : $t.tasksPanel.timeline.cancelFailed
     } finally {
       timelineControlBusy = false
     }
@@ -176,7 +176,7 @@
   async function handleResumeDurableStep(stepId: string, title: string) {
     const workID = timelineProjection?.work.id
     if (!workID) return
-    const reason = prompt(`Why should "${title}" resume?`, 'Operator approved from Console')?.trim()
+    const reason = prompt($t.tasksPanel.timeline.resumePrompt(title), 'Operator approved from Console')?.trim()
     if (!reason) return
     timelineControlBusy = true
     timelineError = ''
@@ -185,7 +185,7 @@
       timelineProjection = projection
       startTimelineWatch(projection)
     } catch (err) {
-      timelineError = err instanceof Error ? err.message : 'Failed to resume durable step'
+      timelineError = err instanceof Error ? err.message : $t.tasksPanel.timeline.resumeFailed
     } finally {
       timelineControlBusy = false
     }
@@ -226,9 +226,9 @@
       }
       data = await getSessionTasks(sessionId)
       loadContractDraft(data)
-      contractSaved = markApproved ? 'Approved' : 'Saved'
+      contractSaved = markApproved ? $t.tasksPanel.contract.approved : $t.tasksPanel.contract.saved
     } catch (err) {
-      contractError = err instanceof Error ? err.message : 'Save failed'
+      contractError = err instanceof Error ? err.message : $t.tasksPanel.errors.save
     } finally {
       contractSaving = false
     }
@@ -244,11 +244,11 @@
       loadContractDraft(data)
       const count = result.results.length
       contractSaved = result.ok
-        ? `Verification passed (${count})`
-        : `Verification failed (${count})`
+        ? $t.tasksPanel.contract.verificationPassed(count)
+        : $t.tasksPanel.contract.verificationFailedCount(count)
       activeTab = 'evidence'
     } catch (err) {
-      contractError = err instanceof Error ? err.message : 'Verification failed'
+      contractError = err instanceof Error ? err.message : $t.tasksPanel.contract.verificationFailed
     } finally {
       verificationRunning = false
     }
@@ -272,14 +272,17 @@
   let evidenceURL = $state('')
   let evidenceCommand = $state('')
 
-  const evidenceTypeOptions = [
-    { value: 'test_result', label: 'Test result' },
-    { value: 'image', label: 'Image' },
-    { value: 'log_excerpt', label: 'Log excerpt' },
-    { value: 'pr_link', label: 'PR link' },
-    { value: 'release_tag', label: 'Release tag' },
-    { value: 'command_output_summary', label: 'Command output' },
+  const evidenceTypes: TaskEvidenceType[] = [
+    'test_result',
+    'image',
+    'log_excerpt',
+    'pr_link',
+    'release_tag',
+    'command_output_summary',
   ]
+  let evidenceTypeOptions = $derived(
+    evidenceTypes.map((value) => ({ value, label: $t.tasksPanel.evidence.types[value] })),
+  )
 
   export async function load() {
     loading = true
@@ -292,10 +295,10 @@
         archiveItems = (await getSessionPlanArchive(sessionId)).items
       } catch (err) {
         archiveItems = []
-        archiveError = err instanceof Error ? err.message : 'Failed to load archived plans'
+        archiveError = err instanceof Error ? err.message : $t.tasksPanel.errors.loadArchive
       }
     } catch (err) {
-      error = err instanceof Error ? err.message : 'Failed to load tasks'
+      error = err instanceof Error ? err.message : $t.tasksPanel.errors.loadTasks
     } finally {
       loading = false
     }
@@ -314,7 +317,7 @@
       await executeTasksAction(sessionId, payload)
       await load()
     } catch (err) {
-      actionError = err instanceof Error ? err.message : 'Action failed'
+      actionError = err instanceof Error ? err.message : $t.tasksPanel.errors.action
       throw err
     } finally {
       actionBusy = false
@@ -440,7 +443,7 @@
   }
 
   function evidenceTypeLabel(type: string): string {
-    return evidenceTypeOptions.find((option) => option.value === type)?.label ?? 'Evidence'
+    return evidenceTypeOptions.find((option) => option.value === type)?.label ?? $t.tasksPanel.evidence.fallbackLabel
   }
 
   function evidenceLabel(evidence: TaskEvidence): string {
@@ -452,11 +455,11 @@
   }
 
   function proofStateLabel(state?: string, origin?: string): string {
-    if (state === 'passed' && origin === 'independent_verifier') return 'Independently verified'
-    if (state === 'failed') return 'Verification failed'
-    if (state === 'stale') return 'Stale proof'
-    if (state === 'pending') return 'Verification pending'
-    return 'Reported only'
+    if (state === 'passed' && origin === 'independent_verifier') return $t.tasksPanel.proof.independentlyVerified
+    if (state === 'failed') return $t.tasksPanel.proof.failed
+    if (state === 'stale') return $t.tasksPanel.proof.stale
+    if (state === 'pending') return $t.tasksPanel.proof.pending
+    return $t.tasksPanel.proof.reportedOnly
   }
 
   function proofStateClass(state?: string, origin?: string): string {
@@ -558,10 +561,15 @@
       editDrafts = []
       await load()
     } catch (err) {
-      actionError = err instanceof Error ? err.message : 'Save failed'
+      actionError = err instanceof Error ? err.message : $t.tasksPanel.errors.save
     } finally {
       actionBusy = false
     }
+  }
+
+  // Status words map through the locale; a value the map does not know renders raw.
+  function statusLabel(labels: Record<string, string>, value: string, fallback = value): string {
+    return Object.hasOwn(labels, value) ? labels[value] : fallback
   }
 
   function statusIcon(status: string): string {
@@ -636,7 +644,7 @@
     </div>
   </div>
 
-  <div class="tab-nav" role="tablist" aria-label="Tasks panel sections">
+  <div class="tab-nav" role="tablist" aria-label={$t.tasksPanel.tabs.label}>
     <button
       type="button"
       role="tab"
@@ -644,7 +652,7 @@
       class="tab-btn"
       class:active={activeTab === 'tasks'}
       onclick={() => selectTab('tasks')}
-    >Tasks</button>
+    >{$t.tasksPanel.tabs.tasks}</button>
     <button
       type="button"
       role="tab"
@@ -653,9 +661,9 @@
       class:active={activeTab === 'contract'}
       onclick={() => selectTab('contract')}
     >
-      Contract
+      {$t.tasksPanel.tabs.contract}
       {#if hasContractDraft}
-        <span class="tab-badge badge {contractStatus === 'approved' ? 'badge-success' : 'badge-warning'}">{contractStatus}</span>
+        <span class="tab-badge badge {contractStatus === 'approved' ? 'badge-success' : 'badge-warning'}">{statusLabel($t.tasksPanel.contract.status, contractStatus)}</span>
       {/if}
     </button>
     <button
@@ -666,7 +674,7 @@
       class:active={activeTab === 'evidence'}
       onclick={() => selectTab('evidence')}
     >
-      Evidence
+      {$t.tasksPanel.tabs.evidence}
       {#if aggregatedEvidence.length > 0}
         <span class="tab-badge badge badge-default">{aggregatedEvidence.length}</span>
       {/if}
@@ -678,7 +686,7 @@
       class="tab-btn"
       class:active={activeTab === 'timeline'}
       onclick={() => selectTab('timeline')}
-    >Timeline</button>
+    >{$t.tasksPanel.tabs.timeline}</button>
   </div>
 
   {#if activeTab === 'tasks'}
@@ -719,7 +727,7 @@
           <span class="plan-toggle">{planExpanded ? '\u25be' : '\u25b8'}</span>
           <span class="plan-label">{$t.tasks.plan}</span>
           {#if planStatus}
-            <span class="plan-status badge {planStatus === 'proposed' ? 'badge-warning' : planStatus === 'executing' ? 'badge-accent' : planStatus === 'completed' ? 'badge-success' : planStatus === 'aborted' ? 'badge-error' : 'badge-default'}">{planStatus}</span>
+            <span class="plan-status badge {planStatus === 'proposed' ? 'badge-warning' : planStatus === 'executing' ? 'badge-accent' : planStatus === 'completed' ? 'badge-success' : planStatus === 'aborted' ? 'badge-error' : 'badge-default'}">{statusLabel($t.tasksPanel.planStatus, planStatus)}</span>
           {/if}
         </button>
         {#if planExpanded}
@@ -736,18 +744,18 @@
     {#if !editing && (planStatus === 'executing' || planStatus === 'paused')}
       <div class="runtime-actions">
         {#if planStatus === 'executing'}
-          <button class="btn btn-ghost btn-sm" type="button" disabled={actionBusy} onclick={handlePause} title="Pause execution: cancels the in-flight LLM turn and waits for instructions.">
+          <button class="btn btn-ghost btn-sm" type="button" disabled={actionBusy} onclick={handlePause} title={$t.tasksPanel.runtime.pauseHint}>
             {'\u23f8'} {$t.tasks.pause}
           </button>
         {:else}
-          <button class="btn btn-primary btn-sm" type="button" disabled={actionBusy} onclick={handleResume} title="Resume execution: flips status back to executing and sends 'continue' to the chat.">
+          <button class="btn btn-primary btn-sm" type="button" disabled={actionBusy} onclick={handleResume} title={$t.tasksPanel.runtime.resumeHint}>
             {'\u25b6'} {$t.tasks.resume}
           </button>
         {/if}
-        <button class="btn btn-ghost btn-sm" type="button" disabled={actionBusy} onclick={startEdit} title="Edit plan in place: reorder, retitle, add or remove tasks.">
+        <button class="btn btn-ghost btn-sm" type="button" disabled={actionBusy} onclick={startEdit} title={$t.tasksPanel.runtime.editHint}>
           {'\u270e'} {$t.tasks.editPlan}
         </button>
-        <button class="btn btn-danger btn-sm" type="button" disabled={actionBusy} onclick={handleAbort} title="Abort plan: cancels execution and marks the plan aborted permanently.">
+        <button class="btn btn-danger btn-sm" type="button" disabled={actionBusy} onclick={handleAbort} title={$t.tasksPanel.runtime.abortHint}>
           {'\u2298'} {$t.tasks.abort}
         </button>
         {#if actionError}
@@ -823,7 +831,7 @@
               <span class="task-title">{task.title}</span>
             </div>
             <div class="task-row task-row-meta">
-              <span class="badge {statusClass(task.status)}">{task.status.replace('_', ' ')}</span>
+              <span class="badge {statusClass(task.status)}">{statusLabel($t.tasksPanel.taskStatus, task.status, task.status.replace('_', ' '))}</span>
               <div class="task-meta-actions">
                 <button
                   class="btn btn-ghost btn-sm evidence-add-btn"
@@ -831,7 +839,7 @@
                   disabled={actionBusy}
                   onclick={() => startEvidence(task.id)}
                 >
-                  + Evidence
+                  {$t.tasksPanel.evidence.add}
                 </button>
                 {#if (planStatus === 'executing' || planStatus === 'paused') && (task.status === 'pending' || task.status === 'in_progress')}
                   <button
@@ -850,7 +858,7 @@
                   <span class="task-desc">{task.description}</span>
                 {/if}
                 {#if evidenceForTask(task).length > 0}
-                  <div class="task-evidence-list" aria-label={`Evidence for ${task.title}`}>
+                  <div class="task-evidence-list" aria-label={$t.tasksPanel.evidence.listLabel(task.title)}>
                     {#each evidenceForTask(task) as evidence (evidence.id)}
                       <article class="task-evidence-card">
                         <div class="task-evidence-head">
@@ -873,7 +881,7 @@
                             disabled={actionBusy}
                             onclick={() => removeEvidence(task.id, evidence.id)}
                           >
-                            Remove Evidence
+                            {$t.tasksPanel.evidence.remove}
                           </button>
                         </div>
                       </article>
@@ -882,20 +890,20 @@
                 {/if}
                 {#if evidenceDraftTaskId === task.id}
                   <div class="evidence-form">
-                    <select bind:value={evidenceType} disabled={actionBusy} aria-label="Evidence type">
+                    <select bind:value={evidenceType} disabled={actionBusy} aria-label={$t.tasksPanel.evidence.typeLabel}>
                       {#each evidenceTypeOptions as option}
                         <option value={option.value}>{option.label}</option>
                       {/each}
                     </select>
-                    <input bind:value={evidenceTitle} disabled={actionBusy} placeholder="Evidence title" />
-                    <textarea bind:value={evidenceSummary} disabled={actionBusy} rows="2" placeholder="Short summary"></textarea>
-                    <input bind:value={evidenceCommand} disabled={actionBusy} placeholder="Command or release tag" />
-                    <input bind:value={evidenceURL} disabled={actionBusy} placeholder="URL or image path" />
+                    <input bind:value={evidenceTitle} disabled={actionBusy} placeholder={$t.tasksPanel.evidence.titlePlaceholder} />
+                    <textarea bind:value={evidenceSummary} disabled={actionBusy} rows="2" placeholder={$t.tasksPanel.evidence.summaryPlaceholder}></textarea>
+                    <input bind:value={evidenceCommand} disabled={actionBusy} placeholder={$t.tasksPanel.evidence.commandPlaceholder} />
+                    <input bind:value={evidenceURL} disabled={actionBusy} placeholder={$t.tasksPanel.evidence.urlPlaceholder} />
                     <div class="evidence-actions">
                       <button class="btn btn-primary btn-sm" type="button" disabled={actionBusy} onclick={() => saveEvidence(task.id)}>
-                        {actionBusy ? 'Saving...' : 'Attach Evidence'}
+                        {actionBusy ? $t.common.actions.saving : $t.tasksPanel.evidence.attach}
                       </button>
-                      <button class="btn btn-ghost btn-sm" type="button" disabled={actionBusy} onclick={cancelEvidence}>Cancel</button>
+                      <button class="btn btn-ghost btn-sm" type="button" disabled={actionBusy} onclick={cancelEvidence}>{$t.common.actions.cancel}</button>
                     </div>
                   </div>
                 {/if}
@@ -947,43 +955,43 @@
       <div class="empty-state">{$t.tasks.loading}</div>
     {:else if !hasContractDraft}
       <div class="empty-state">
-        <p>No task contract yet.</p>
-        <p class="hint">Start a multi-step plan to draft one.</p>
+        <p>{$t.tasksPanel.contract.empty}</p>
+        <p class="hint">{$t.tasksPanel.contract.emptyHint}</p>
       </div>
     {:else}
       <div class="contract-form">
         <label>
-          <span>Goal</span>
+          <span>{$t.tasksPanel.contract.goal}</span>
           <textarea bind:value={contractGoal} rows="3" disabled={contractSaving}></textarea>
         </label>
         <label>
-          <span>Scope</span>
+          <span>{$t.tasksPanel.contract.scope}</span>
           <textarea bind:value={contractScope} rows="4" disabled={contractSaving}></textarea>
         </label>
         <label>
-          <span>Done criteria (one per line)</span>
+          <span>{$t.tasksPanel.contract.doneCriteria}</span>
           <textarea bind:value={contractDoneCriteria} rows="5" disabled={contractSaving}></textarea>
         </label>
         <label>
-          <span>Verification commands (one per line)</span>
+          <span>{$t.tasksPanel.contract.verificationCommands}</span>
           <textarea bind:value={contractVerificationCommands} rows="4" disabled={contractSaving}></textarea>
         </label>
         <label>
-          <span>Artifacts (one per line)</span>
+          <span>{$t.tasksPanel.contract.artifacts}</span>
           <textarea bind:value={contractArtifacts} rows="4" disabled={contractSaving}></textarea>
         </label>
         <label class="contract-proof-policy">
-          <span>Completion proof</span>
+          <span>{$t.tasksPanel.contract.completionProof}</span>
           <span class="contract-proof-control">
             <input type="checkbox" bind:checked={contractProofRequired} disabled={contractSaving} />
-            Require independent deterministic proof
+            {$t.tasksPanel.contract.requireProof}
           </span>
         </label>
         <label>
-          <span>On missing, failed, or stale proof</span>
+          <span>{$t.tasksPanel.contract.failureState}</span>
           <select bind:value={contractProofFailureState} disabled={contractSaving || !contractProofRequired}>
-            <option value="review">Request operator review</option>
-            <option value="blocked">Block completion</option>
+            <option value="review">{$t.tasksPanel.contract.failureReview}</option>
+            <option value="blocked">{$t.tasksPanel.contract.failureBlocked}</option>
           </select>
         </label>
       </div>
@@ -997,10 +1005,10 @@
 
       <div class="contract-actions">
         <button class="btn btn-primary btn-sm" type="button" disabled={contractSaving} onclick={() => saveContract(false)}>
-          {contractSaving ? 'Saving...' : 'Save'}
+          {contractSaving ? $t.common.actions.saving : $t.common.actions.save}
         </button>
         <button class="btn btn-ghost btn-sm" type="button" disabled={contractSaving || contractStatus === 'approved'} onclick={() => saveContract(true)}>
-          {contractStatus === 'approved' ? 'Approved' : 'Approve Contract'}
+          {contractStatus === 'approved' ? $t.tasksPanel.contract.approved : $t.tasksPanel.contract.approve}
         </button>
         <button
           class="btn btn-ghost btn-sm"
@@ -1008,7 +1016,7 @@
           disabled={contractSaving || verificationRunning || contractStatus !== 'approved' || splitLines(contractVerificationCommands).length === 0 || taskList.length === 0}
           onclick={runContractVerification}
         >
-          {verificationRunning ? 'Running...' : 'Run Verification'}
+          {verificationRunning ? $t.tasksPanel.contract.running : $t.tasksPanel.contract.runVerification}
         </button>
       </div>
     {/if}
@@ -1017,8 +1025,8 @@
       <div class="empty-state">{$t.tasks.loading}</div>
     {:else if aggregatedEvidence.length === 0}
       <div class="empty-state">
-        <p>No verification evidence attached yet.</p>
-        <p class="hint">Use "+ Evidence" on each task to attach test results, logs, PR links, etc.</p>
+        <p>{$t.tasksPanel.evidence.empty}</p>
+        <p class="hint">{$t.tasksPanel.evidence.emptyHint}</p>
       </div>
     {:else}
       <div class="evidence-aggregate-list">
@@ -1043,49 +1051,49 @@
       </div>
     {/if}
   {:else if activeTab === 'timeline'}
-    <section class="work-ledger-timeline" aria-label="Durable work ledger timeline">
+    <section class="work-ledger-timeline" aria-label={$t.tasksPanel.timeline.label}>
       {#if timelineLoading}
-        <div class="empty-state">Loading durable timeline...</div>
+        <div class="empty-state">{$t.tasksPanel.timeline.loading}</div>
       {:else if timelineError}
         <div class="error-banner">{timelineError}</div>
       {:else if !timelineProjection}
         <div class="empty-state">
-          <p>No durable work record for this session yet.</p>
-          <p class="hint">The ledger remains read-only while legacy task mutations are synchronized.</p>
+          <p>{$t.tasksPanel.timeline.empty}</p>
+          <p class="hint">{$t.tasksPanel.timeline.emptyHint}</p>
         </div>
       {:else}
         <header class="timeline-summary">
           <div>
             <strong>{timelineProjection.work.title}</strong>
-            <small>{timelineProjection.work.kind} · version {timelineProjection.work.version}</small>
+            <small>{$t.tasksPanel.timeline.workMeta(timelineProjection.work.kind, timelineProjection.work.version)}</small>
           </div>
           <div class="timeline-summary-actions">
             {#if timelineLiveStatus !== 'idle'}
               <span class="badge {timelineLiveStatus === 'live' ? 'badge-success' : 'badge-warning'}">
-                {timelineLiveStatus === 'live' ? 'Live' : 'Reconnecting'}
+                {timelineLiveStatus === 'live' ? $t.tasksPanel.timeline.live : $t.tasksPanel.timeline.reconnecting}
               </span>
             {/if}
-            <span class="badge {workStateClass(timelineProjection.work.state)}">{timelineProjection.work.state}</span>
+            <span class="badge {workStateClass(timelineProjection.work.state)}">{statusLabel($t.tasksPanel.ledger.workStates, timelineProjection.work.state)}</span>
             {#if timelineCanCancel}
               <button
                 class="btn btn-danger btn-sm"
                 type="button"
                 disabled={timelineControlBusy}
                 onclick={handleCancelDurableWork}
-              >Cancel work</button>
+              >{$t.tasksPanel.timeline.cancelWork}</button>
             {/if}
           </div>
         </header>
-        <div class="timeline-counts" aria-label="Work ledger record counts">
-          <span>{timelineProjection.steps.length} steps</span>
-          <span>{timelineProjection.schedules.length} schedules</span>
-          <span>{timelineProjection.attempts.length} attempts</span>
-          <span>{timelineProjection.proofs.length} proofs</span>
-          <span>{timelineProjection.artifacts.length} artifacts</span>
-          <span>{timelineProjection.approvals.length} approvals</span>
+        <div class="timeline-counts" aria-label={$t.tasksPanel.timeline.countsLabel}>
+          <span>{$t.tasksPanel.timeline.counts.steps(timelineProjection.steps.length)}</span>
+          <span>{$t.tasksPanel.timeline.counts.schedules(timelineProjection.schedules.length)}</span>
+          <span>{$t.tasksPanel.timeline.counts.attempts(timelineProjection.attempts.length)}</span>
+          <span>{$t.tasksPanel.timeline.counts.proofs(timelineProjection.proofs.length)}</span>
+          <span>{$t.tasksPanel.timeline.counts.artifacts(timelineProjection.artifacts.length)}</span>
+          <span>{$t.tasksPanel.timeline.counts.approvals(timelineProjection.approvals.length)}</span>
         </div>
         {#if timelineProjection.proofs.length > 0}
-          <section class="timeline-proofs" aria-label="Durable proof records">
+          <section class="timeline-proofs" aria-label={$t.tasksPanel.timeline.proofsLabel}>
             {#each timelineProjection.proofs as proof (proof.id)}
               <article>
                 <div class="timeline-proof-head">
@@ -1093,36 +1101,36 @@
                   <span class="badge {proofStateClass(proof.status, proof.origin)}">{proofStateLabel(proof.status, proof.origin)}</span>
                 </div>
                 {#if proof.rationale}<p>{proof.rationale}</p>{/if}
-                <small>{proof.kind} · reporter {proof.reporter_id || 'unknown'} · verifier {proof.verifier_id || 'none'}</small>
-                {#if proof.subject_digest}<small>subject {proof.subject_digest}</small>{/if}
+                <small>{$t.tasksPanel.timeline.proofMeta(proof.kind, proof.reporter_id || $t.common.states.unknown, proof.verifier_id || $t.tasksPanel.timeline.noVerifier)}</small>
+                {#if proof.subject_digest}<small>{$t.tasksPanel.timeline.proofSubject(proof.subject_digest)}</small>{/if}
               </article>
             {/each}
           </section>
         {/if}
         {#if timelineResumableSteps.length > 0}
-          <section class="timeline-operator-attention" aria-label="Durable steps requiring operator attention">
+          <section class="timeline-operator-attention" aria-label={$t.tasksPanel.timeline.attentionLabel}>
             <header>
-              <strong>Operator attention</strong>
-              <small>These steps exhausted their automatic recovery policy.</small>
+              <strong>{$t.tasksPanel.timeline.attentionTitle}</strong>
+              <small>{$t.tasksPanel.timeline.attentionHint}</small>
             </header>
             {#each timelineResumableSteps as step (step.id)}
               <article>
                 <div>
                   <strong>{step.title}</strong>
-                  <small>{timelineProjection.schedules.find((schedule) => schedule.step_id === step.id)?.blocked_reason ?? step.state}</small>
+                  <small>{timelineProjection.schedules.find((schedule) => schedule.step_id === step.id)?.blocked_reason ?? statusLabel($t.tasksPanel.ledger.workStates, step.state)}</small>
                 </div>
                 <button
                   class="btn btn-warning btn-sm"
                   type="button"
                   disabled={timelineControlBusy}
                   onclick={() => handleResumeDurableStep(step.id, step.title)}
-                >Resume step</button>
+                >{$t.tasksPanel.timeline.resumeStep}</button>
               </article>
             {/each}
           </section>
         {/if}
         {#if timelineEntries.length === 0}
-          <div class="empty-state">No durable events recorded.</div>
+          <div class="empty-state">{$t.tasksPanel.timeline.noEvents}</div>
         {:else}
           <ol class="timeline-events">
             {#each timelineEntries as entry (entry.id)}
@@ -1134,7 +1142,7 @@
                     <small>#{entry.sequence}</small>
                   </div>
                   {#if entry.detail}<p>{entry.detail}</p>{/if}
-                  <small>{formatArchiveDate(entry.created_at)} · {entry.actor_id || 'unknown actor'}</small>
+                  <small>{formatArchiveDate(entry.created_at)} · {entry.actor_id || $t.tasksPanel.timeline.unknownActor}</small>
                 </article>
               </li>
             {/each}

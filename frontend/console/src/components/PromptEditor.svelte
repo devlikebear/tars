@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '../i18n'
   import { getChatContext, updateSessionPrompt } from '../lib/api'
 
   interface Props {
@@ -58,18 +59,18 @@
 
 <div class="editor-panel">
   <div class="editor-header">
-    <span class="editor-title">Prompt Editor</span>
+    <span class="editor-title">{$t.contextPanels.prompt.title}</span>
     {#if onClose}
       <button class="editor-close" onclick={onClose}>&times;</button>
     {/if}
   </div>
 
   {#if loading}
-    <div class="editor-loading">Loading...</div>
+    <div class="editor-loading">{$t.contextPanels.prompt.loading}</div>
   {:else}
     <div class="editor-section">
       <button class="section-toggle" onclick={() => showBase = !showBase}>
-        {showBase ? '\u25BC' : '\u25B6'} Base System Prompt ({systemPromptTokens.toLocaleString()} tokens)
+        {showBase ? '\u25BC' : '\u25B6'} {$t.contextPanels.prompt.baseSystemPrompt(systemPromptTokens.toLocaleString())}
       </button>
       {#if showBase}
         <pre class="prompt-readonly">{systemPrompt}</pre>
@@ -78,25 +79,25 @@
 
     <div class="editor-section">
       <div class="override-header">
-        <span class="override-label">Session Override</span>
+        <span class="override-label">{$t.contextPanels.prompt.sessionOverride}</span>
         {#if promptOverride}
-          <span class="override-tokens">~{overrideTokens} tokens</span>
+          <span class="override-tokens">{$t.contextPanels.prompt.overrideTokens(overrideTokens)}</span>
         {/if}
       </div>
       <textarea
         class="override-textarea"
         bind:value={promptOverride}
         rows="8"
-        placeholder="Add custom instructions for this session..."
+        placeholder={$t.contextPanels.prompt.placeholder}
       ></textarea>
       <div class="editor-actions">
         <button class="btn btn-primary btn-sm" onclick={save} disabled={saving || !isDirty}>
-          {saving ? 'Saving...' : 'Apply'}
+          {saving ? $t.contextPanels.prompt.saving : $t.contextPanels.prompt.apply}
         </button>
         {#if promptOverride}
-          <button class="btn btn-ghost btn-sm" onclick={clearOverride}>Clear</button>
+          <button class="btn btn-ghost btn-sm" onclick={clearOverride}>{$t.contextPanels.prompt.clear}</button>
         {/if}
-        <button class="btn btn-ghost btn-sm" onclick={load}>Refresh</button>
+        <button class="btn btn-ghost btn-sm" onclick={load}>{$t.contextPanels.prompt.refresh}</button>
       </div>
     </div>
   {/if}

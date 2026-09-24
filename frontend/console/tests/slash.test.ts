@@ -5,10 +5,14 @@ import { readFileSync } from 'node:fs'
 import {
   applySlashCandidate,
   buildSlashCandidates,
+  builtinSlashCommands,
   findActiveSlashTrigger,
   parseLeadingSlashCommand,
 } from '../src/lib/slash.ts'
 import type { CommandDef, SkillDef } from '../src/lib/types.ts'
+import { chatCommandsEn, chatCommandsKo } from '../src/i18n/sections/chatCommands.ts'
+
+const slashText = chatCommandsEn.slash
 
 const slashSource = readFileSync(new URL('../src/lib/slash.ts', import.meta.url), 'utf8')
 
@@ -67,7 +71,7 @@ test('findActiveSlashTrigger ignores non-leading slashes and completed command a
 })
 
 test('buildSlashCandidates merges built-ins and user invocable skills', () => {
-  const candidates = buildSlashCandidates('rev', skills)
+  const candidates = buildSlashCandidates('rev', skills, [], slashText)
 
   assert.deepEqual(candidates.map((c) => `${c.kind}:${c.command}:${c.skillName ?? c.id}`), [
     'skill:rev:review',
@@ -76,7 +80,7 @@ test('buildSlashCandidates merges built-ins and user invocable skills', () => {
 })
 
 test('buildSlashCandidates includes explicit session commands separately from skills', () => {
-  const candidates = buildSlashCandidates('메', skills, commands)
+  const candidates = buildSlashCandidates('메', skills, commands, slashText)
 
   assert.deepEqual(candidates.map((c) => `${c.kind}:${c.command}:${c.skillName ?? c.id}`), [
     'command:메모:메모',
@@ -87,18 +91,46 @@ test('buildSlashCandidates gives built-ins precedence on command conflicts', () 
   const candidates = buildSlashCandidates('config', [
     ...skills,
     { name: 'config', description: 'Skill conflict.', user_invocable: true },
-  ])
+  ], [], slashText)
 
   assert.equal(candidates[0].kind, 'builtin')
   assert.equal(candidates[0].command, 'config')
   assert.equal(candidates.some((c) => c.kind === 'skill' && c.command === 'config'), false)
 })
 
+test('builtin titles and descriptions come from the slash text', () => {
+  const builtins = buildSlashCandidates('', [], [], slashText).filter((c) => c.kind === 'builtin')
+  const sysprompt = builtins.find((c) => c.command === 'sysprompt')
+  assert.equal(sysprompt?.title, 'System Prompt')
+  assert.equal(sysprompt?.description, 'Open the session prompt editor.')
+  assert.equal(sysprompt?.aliasOf, 'prompt')
+  assert.equal(builtins.find((c) => c.command === 'extract-skill')?.title, 'Extract Skill')
+  assert.equal(
+    builtins.find((c) => c.command === 'goal')?.description,
+    'Set/clear an autonomous session goal: /goal <description> | /goal clear | /goal status.',
+  )
+
+  // The palette lists one entry per id, so the sysprompt alias drops out.
+  const palette = builtinSlashCommands(slashText)
+  assert.equal(palette.filter((c) => c.id === 'prompt').length, 1)
+  assert.equal(palette.length, builtins.length - 1)
+
+  const korean = builtinSlashCommands(chatCommandsKo.slash)
+  assert.deepEqual(korean.map((c) => c.command), palette.map((c) => c.command))
+  assert.equal(korean.find((c) => c.command === 'goal')?.title, chatCommandsKo.slash.builtins.goal.title)
+})
+
+test('skills and commands without a description get the fallback text', () => {
+  const [skill] = buildSlashCandidates('bare', [{ name: 'bare', description: '', user_invocable: true }], [], slashText)
+  assert.equal(skill.description, 'No description provided.')
+  assert.equal(slashText.noDescription, 'No description provided.')
+})
+
 test('applySlashCandidate replaces the active command token and preserves args', () => {
   const trigger = findActiveSlashTrigger('/sou please inspect', 4)
   assert.ok(trigger)
 
-  const candidate = buildSlashCandidates('sou', skills)[0]
+  const candidate = buildSlashCandidates('sou', skills, [], slashText)[0]
   const applied = applySlashCandidate('/sou please inspect', trigger, candidate)
 
   assert.equal(applied.value, '/source-analyzer please inspect')

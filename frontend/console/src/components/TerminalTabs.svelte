@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '../i18n'
   import IntegratedTerminal from './IntegratedTerminal.svelte'
 
   export interface TerminalTab {
@@ -78,7 +79,7 @@
           class="tab-close"
           role="button"
           tabindex="-1"
-          aria-label="Close tab"
+          aria-label={$t.terminal.tabs.closeTab}
           onclick={(e) => onCloseClick(e, tab.id)}
           onkeydown={(e) => {
             if (e.key === 'Enter' || e.key === ' ') {
@@ -95,8 +96,8 @@
         type="button"
         class="tab-add"
         onclick={onAddClick}
-        title="New shell in same directory"
-        aria-label="New tab"
+        title={$t.terminal.tabs.newTabTitle}
+        aria-label={$t.terminal.tabs.newTab}
       >+</button>
     {/if}
   </div>

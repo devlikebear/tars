@@ -9,6 +9,7 @@ import {
   workLedgerCanCancel,
 } from '../src/lib/workLedger.ts'
 import { cancelWorkLedger, getSessionWorkLedger, resumeWorkLedgerStep } from '../src/lib/api/tasks.ts'
+import { tasksPanelEn, tasksPanelKo } from '../src/i18n/sections/tasksPanel.ts'
 import type { WorkLedgerProjection } from '../src/lib/types.ts'
 
 const apiSource = readFileSync(new URL('../src/lib/api/tasks.ts', import.meta.url), 'utf8')
@@ -138,7 +139,7 @@ test('work ledger timeline orders durable events and exposes operator labels', (
     approvals: [],
   } satisfies WorkLedgerProjection
 
-  const entries = buildWorkLedgerTimeline(projection)
+  const entries = buildWorkLedgerTimeline(projection, tasksPanelEn.ledger)
 
   assert.deepEqual(entries.map((entry) => entry.sequence), [1, 2, 3, 4, 5, 6, 7, 8])
   assert.deepEqual(entries.map((entry) => entry.title), [
@@ -169,13 +170,17 @@ test('Tasks panel loads and controls a session-scoped durable work ledger timeli
   assert.match(apiSource, /resumeWorkLedgerStep/)
   assert.match(apiSource, /watchWorkLedger/)
   assert.match(tasksPanelSource, /type TabId = 'tasks' \| 'contract' \| 'evidence' \| 'timeline'/)
-  assert.match(tasksPanelSource, /aria-label="Durable proof records"/)
+  assert.match(tasksPanelSource, /aria-label=\{\$t\.tasksPanel\.timeline\.proofsLabel\}/)
+  assert.equal(tasksPanelEn.timeline.proofsLabel, 'Durable proof records')
   assert.match(tasksPanelSource, /proof\.verifier_id/)
   assert.match(tasksPanelSource, /proof\.subject_digest/)
-  assert.match(tasksPanelSource, /Durable work ledger timeline/)
-  assert.match(tasksPanelSource, /buildWorkLedgerTimeline/)
-  assert.match(tasksPanelSource, /Cancel work/)
-  assert.match(tasksPanelSource, /Resume step/)
+  assert.match(tasksPanelSource, /\$t\.tasksPanel\.timeline\.label/)
+  assert.equal(tasksPanelEn.timeline.label, 'Durable work ledger timeline')
+  assert.match(tasksPanelSource, /buildWorkLedgerTimeline\(timelineProjection, \$t\.tasksPanel\.ledger\)/)
+  assert.match(tasksPanelSource, /\$t\.tasksPanel\.timeline\.cancelWork/)
+  assert.equal(tasksPanelEn.timeline.cancelWork, 'Cancel work')
+  assert.match(tasksPanelSource, /\$t\.tasksPanel\.timeline\.resumeStep/)
+  assert.equal(tasksPanelEn.timeline.resumeStep, 'Resume step')
 })
 
 test('work ledger timeline names reviewed capability lifecycle evidence', () => {
@@ -206,7 +211,7 @@ test('work ledger timeline names reviewed capability lifecycle evidence', () => 
     ],
   } satisfies WorkLedgerProjection
 
-  const entries = buildWorkLedgerTimeline(base)
+  const entries = buildWorkLedgerTimeline(base, tasksPanelEn.ledger)
   assert.deepEqual(entries.map((entry) => entry.title), [
     'Capability version created',
     'Capability evaluation recorded',
@@ -237,7 +242,7 @@ test('work ledger timeline explains remote worker and A2A lifecycle evidence', (
     ],
   } satisfies WorkLedgerProjection
 
-  const entries = buildWorkLedgerTimeline(projection)
+  const entries = buildWorkLedgerTimeline(projection, tasksPanelEn.ledger)
   assert.deepEqual(entries.map((entry) => entry.title), [
     'Remote placement created',
     'Workspace synchronized',
@@ -250,6 +255,40 @@ test('work ledger timeline explains remote worker and A2A lifecycle evidence', (
   assert.equal(entries[2].detail, 'worker-a · placement-a')
   assert.equal(entries[3].detail, 'task-a · protocol 1.0')
   assert.equal(entries[4].detail, 'task-a · 2 parts')
+})
+
+test('work ledger timeline follows the Korean locale and keeps server values raw', () => {
+  const event = { schema_version: 1, workspace_id: 'default', work_id: 'work-ko', actor_id: 'scheduler', created_at: '2026-08-02T00:00:00Z' }
+  const projection = {
+    work: {
+      schema_version: 1, id: 'work-ko', workspace_id: 'default', kind: 'remote',
+      idempotency_key: 'remote:ko', title: 'Run remotely', contract: {}, metadata: {},
+      state: 'running', priority: 0, actor_id: 'scheduler', version: 1,
+      created_at: '2026-08-02T00:00:00Z', updated_at: '2026-08-02T00:05:00Z',
+    },
+    steps: [], schedules: [], dependencies: [], attempts: [], proofs: [], artifacts: [], approvals: [],
+    events: [
+      { ...event, sequence: 1, id: 'e1', type: 'work.transitioned', from_state: 'ready', to_state: 'running', payload: { reason: 'Approved for execution' } },
+      { ...event, sequence: 2, id: 'e2', type: 'work.transitioned', from_state: 'running', payload: {} },
+      { ...event, sequence: 3, id: 'e3', type: 'capability.transitioned', payload: { from_state: 'canary', to_state: 'constructor' } },
+      { ...event, sequence: 4, id: 'e4', type: 'worker.workspace_synced', payload: { mode: 'directory', file_count: 12, total_bytes: 2048 } },
+      { ...event, sequence: 5, id: 'e5', type: 'a2a.task_submitted', payload: { task_id: 'task-a', protocol_version: '1.0' } },
+      { ...event, sequence: 6, id: 'e6', type: 'future.event_type', payload: {} },
+    ],
+  } satisfies WorkLedgerProjection
+
+  const entries = buildWorkLedgerTimeline(projection, tasksPanelKo.ledger)
+  assert.deepEqual(entries.map((entry) => entry.title), [
+    '준비 → 실행 중',
+    '실행 중 → 알 수 없음',
+    '카나리 → constructor',
+    '워크스페이스 동기화됨',
+    'A2A 작업 제출됨',
+    'future.event_type',
+  ])
+  assert.equal(entries[0].detail, 'Approved for execution')
+  assert.equal(entries[3].detail, 'directory · 파일 12개 · 2.0 KB')
+  assert.equal(entries[4].detail, 'task-a · 프로토콜 1.0')
 })
 
 test('durable work controls expose only safe operator actions', () => {

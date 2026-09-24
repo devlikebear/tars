@@ -1,20 +1,24 @@
+import type { ChatThreadTranslations } from '../i18n/sections/chatThread'
 import type { PulseSnapshot, ReflectionSnapshot, Session } from './types'
 
 export type StatusTone = 'ok' | 'warn' | 'error'
 
-export function formatRelativeStatusTime(value?: string, now = new Date()): string {
+// Pass $t.chatThread.statusStrip.relativeTime.
+export type RelativeStatusTimeLabels = ChatThreadTranslations['statusStrip']['relativeTime']
+
+export function formatRelativeStatusTime(value: string | undefined, labels: RelativeStatusTimeLabels, now = new Date()): string {
   const text = value?.trim()
-  if (!text) return 'never'
+  if (!text) return labels.never
 
   const date = new Date(text)
   if (Number.isNaN(date.getTime())) return text
-  if (date.getFullYear() <= 1) return 'never'
+  if (date.getFullYear() <= 1) return labels.never
 
   const seconds = Math.max(0, Math.floor((now.getTime() - date.getTime()) / 1000))
-  if (seconds < 60) return `${seconds}s ago`
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`
-  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`
-  return `${Math.floor(seconds / 86400)}d ago`
+  if (seconds < 60) return labels.secondsAgo(seconds)
+  if (seconds < 3600) return labels.minutesAgo(Math.floor(seconds / 60))
+  if (seconds < 86400) return labels.hoursAgo(Math.floor(seconds / 3600))
+  return labels.daysAgo(Math.floor(seconds / 86400))
 }
 
 export function derivePulseTone(snapshot: Partial<PulseSnapshot> | null): StatusTone {

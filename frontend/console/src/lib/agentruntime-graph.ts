@@ -1,5 +1,10 @@
 import type { Edge, Node } from '@xyflow/svelte'
+import type { AgentRuntimeRunTranslations } from '../i18n/sections/agentRuntimeRun'
 import type { AgentRuntimeRun, AgentRuntimeRunEvent, ConsensusVariantRecord } from './types'
+
+// Words the builders put into labels the views display. Components pass
+// `$t.agentRuntimeRun.shared`; tests pass `agentRuntimeRunEn.shared`.
+export type AgentRuntimeGraphLabels = AgentRuntimeRunTranslations['shared']
 
 export type AgentRuntimeReplayBounds = {
   startMs: number
@@ -113,13 +118,13 @@ export function deriveAgentRuntimeReplayBounds(events: AgentRuntimeRunEvent[]): 
   }
 }
 
-export function deriveAgentRuntimeReplayState(events: AgentRuntimeRunEvent[], cursorMs: number): AgentRuntimeReplayState {
+export function deriveAgentRuntimeReplayState(events: AgentRuntimeRunEvent[], cursorMs: number, labels: AgentRuntimeGraphLabels): AgentRuntimeReplayState {
   const timeline = timestampedEvents(events)
   const safeCursor = Number.isFinite(cursorMs) ? cursorMs : timeline[timeline.length - 1]?.timestampMs ?? 0
   const applied = timeline.filter((item) => item.timestampMs <= safeCursor)
   const filePaths = new Set<string>()
   let status = 'pending'
-  let lastEventType = 'none'
+  let lastEventType = labels.noEvent
   let lastMessage = ''
 
   for (const item of applied) {
@@ -142,7 +147,7 @@ export function deriveAgentRuntimeReplayState(events: AgentRuntimeRunEvent[], cu
   }
 }
 
-export function buildAgentRuntimeTreeRows(runs: AgentRuntimeRun[]): AgentRuntimeTreeRow[] {
+export function buildAgentRuntimeTreeRows(runs: AgentRuntimeRun[], labels: AgentRuntimeGraphLabels): AgentRuntimeTreeRow[] {
   const sorted = [...runs].sort(compareRunsByStart)
   const byID = new Map(sorted.map((run) => [run.run_id, run]))
   const children = new Map<string, AgentRuntimeRun[]>()
@@ -162,10 +167,10 @@ export function buildAgentRuntimeTreeRows(runs: AgentRuntimeRun[]): AgentRuntime
   const visited = new Set<string>()
 
   for (const root of roots) {
-    appendTreeRun(root, 0, children, visited, rows)
+    appendTreeRun(root, 0, children, visited, rows, labels)
   }
   for (const run of sorted) {
-    if (!visited.has(run.run_id)) appendTreeRun(run, run.depth ?? 0, children, visited, rows)
+    if (!visited.has(run.run_id)) appendTreeRun(run, run.depth ?? 0, children, visited, rows, labels)
   }
 
   return rows
@@ -210,9 +215,13 @@ export function buildAgentRuntimeGanttRows(runs: AgentRuntimeRun[]): AgentRuntim
   return { startMs, endMs, durationMs, hasTimeline: true, rows }
 }
 
-export function buildAgentRuntimeFlowGraph(runs: AgentRuntimeRun[], filters: AgentRuntimeFlowFilters = {}): AgentRuntimeFlowGraph {
+export function buildAgentRuntimeFlowGraph(
+  runs: AgentRuntimeRun[],
+  labels: AgentRuntimeGraphLabels,
+  filters: AgentRuntimeFlowFilters = {},
+): AgentRuntimeFlowGraph {
   const filteredRuns = runs.filter((run) => matchesFlowFilters(run, filters))
-  const rows = buildAgentRuntimeTreeRows(filteredRuns)
+  const rows = buildAgentRuntimeTreeRows(filteredRuns, labels)
   const included = new Set(rows.map((row) => row.runId))
   const nodes: AgentRuntimeFlowNode[] = []
   const edges: AgentRuntimeFlowEdge[] = []
@@ -224,10 +233,10 @@ export function buildAgentRuntimeFlowGraph(runs: AgentRuntimeRun[], filters: Age
       type: row.depth === 0 ? 'input' : 'default',
       position: { x: row.depth * 280, y: nodes.length * 112 },
       data: {
-        label: flowRunLabel(row.run, tokens),
+        label: flowRunLabel(row.run, tokens, labels),
         runId: row.runId,
         agent: row.agent,
-        model: row.run.resolved_model || row.run.resolved_alias || 'unresolved',
+        model: row.run.resolved_model || row.run.resolved_alias || labels.unresolved,
         status: row.status,
         statusKind: row.statusKind,
         tier: row.tier,
@@ -260,10 +269,10 @@ export function buildAgentRuntimeFlowGraph(runs: AgentRuntimeRun[], filters: Age
         type: 'output',
         position: { x: row.depth * 280 + 260, y: (nodes.length - 1) * 112 + 54 },
         data: {
-          label: flowVariantLabel(variant, variantTokens),
+          label: flowVariantLabel(variant, variantTokens, labels),
           runId: row.runId,
-          agent: variant.alias || `Variant ${variant.variant_idx + 1}`,
-          model: variant.model || variant.kind || 'variant',
+          agent: variant.alias || labels.variantName(variant.variant_idx + 1),
+          model: variant.model || variant.kind || labels.variantFallback,
           status: variant.status || 'pending',
           statusKind: variantStatus,
           tier: row.tier,
@@ -308,6 +317,7 @@ function appendTreeRun(
   children: Map<string, AgentRuntimeRun[]>,
   visited: Set<string>,
   rows: AgentRuntimeTreeRow[],
+  labels: AgentRuntimeGraphLabels,
 ) {
   if (visited.has(run.run_id)) return
   visited.add(run.run_id)
@@ -316,7 +326,7 @@ function appendTreeRun(
     run,
     runId: run.run_id,
     parentRunId: run.parent_run_id ?? '',
-    agent: run.agent || 'default',
+    agent: run.agent || labels.defaultAgent,
     status: run.status || 'pending',
     statusKind: statusKindFromStatus(run.status),
     tier: run.tier || 'default',
@@ -326,7 +336,7 @@ function appendTreeRun(
     y: 40 + rows.length * 78,
   })
   for (const child of children.get(run.run_id) ?? []) {
-    appendTreeRun(child, depth + 1, children, visited, rows)
+    appendTreeRun(child, depth + 1, children, visited, rows, labels)
   }
 }
 
@@ -425,17 +435,17 @@ function runTokens(run: AgentRuntimeRun): number {
   }, 0)
 }
 
-function flowRunLabel(run: AgentRuntimeRun, tokens: number): string {
-  const agent = run.agent || 'default'
-  const model = run.resolved_model || run.resolved_alias || 'unresolved'
+function flowRunLabel(run: AgentRuntimeRun, tokens: number, labels: AgentRuntimeGraphLabels): string {
+  const agent = run.agent || labels.defaultAgent
+  const model = run.resolved_model || run.resolved_alias || labels.unresolved
   const status = run.status || 'pending'
-  return `${agent}\n${model}\n${status}${tokens > 0 ? ` / ${tokens} tokens` : ''}`
+  return `${agent}\n${model}\n${status}${tokens > 0 ? ` / ${labels.tokens(tokens)}` : ''}`
 }
 
-function flowVariantLabel(variant: ConsensusVariantRecord, tokens: number): string {
-  const label = variant.alias || `Variant ${variant.variant_idx + 1}`
-  const model = variant.model || variant.kind || 'variant'
-  return `${label}\n${model}${tokens > 0 ? ` / ${tokens} tokens` : ''}`
+function flowVariantLabel(variant: ConsensusVariantRecord, tokens: number, labels: AgentRuntimeGraphLabels): string {
+  const label = variant.alias || labels.variantName(variant.variant_idx + 1)
+  const model = variant.model || variant.kind || labels.variantFallback
+  return `${label}\n${model}${tokens > 0 ? ` / ${labels.tokens(tokens)}` : ''}`
 }
 
 function statusFromEvent(event: AgentRuntimeRunEvent, fallback: string): string {

@@ -6,6 +6,9 @@ import {
   buildSubagentProgress,
   shortRunID,
 } from '../src/lib/subagentProgress.ts'
+import { chatThreadEn } from '../src/i18n/sections/chatThread.ts'
+
+const labels = chatThreadEn.subagents
 
 test('subagent progress builds a live running card from compact tool args', () => {
   const progress = buildSubagentProgress({
@@ -20,7 +23,7 @@ test('subagent progress builds a live running card from compact tool args', () =
       ],
     }),
     toolDone: false,
-  })
+  }, labels)
 
   assert.ok(progress)
   assert.equal(progress.complete, false)
@@ -61,7 +64,7 @@ test('subagent progress builds completed counts and run links from compact resul
       ],
     }),
     toolDone: true,
-  })
+  }, labels)
 
   assert.ok(progress)
   assert.equal(progress.complete, true)
@@ -103,7 +106,7 @@ test('subagent progress parses compare-mode comparison payloads', () => {
       },
     }),
     toolDone: true,
-  })
+  }, labels)
 
   assert.ok(progress)
   assert.equal(progress.mode, 'compare')
@@ -112,7 +115,20 @@ test('subagent progress parses compare-mode comparison payloads', () => {
   assert.equal(progress.comparison?.sideBySide[1].agent, 'reviewer')
 })
 
+test('subagent progress names untitled tasks with the given labels', () => {
+  const input = {
+    toolName: 'subagents_run',
+    toolArgs: JSON.stringify({ tasks: [{ tier: 'light' }, { title: 'Review UI' }] }),
+    toolDone: false,
+  }
+  assert.deepEqual(buildSubagentProgress(input, labels)?.tasks.map((task) => task.title), ['Subagent 1', 'Review UI'])
+  assert.deepEqual(
+    buildSubagentProgress(input, { untitledTask: (position) => `#${position}` })?.tasks.map((task) => task.title),
+    ['#1', 'Review UI'],
+  )
+})
+
 test('subagent progress ignores non-subagent tools and malformed previews', () => {
-  assert.equal(buildSubagentProgress({ toolName: 'read_file', toolDone: false }), null)
-  assert.equal(buildSubagentProgress({ toolName: 'subagents_run', toolArgs: '{"tasks":' }), null)
+  assert.equal(buildSubagentProgress({ toolName: 'read_file', toolDone: false }, labels), null)
+  assert.equal(buildSubagentProgress({ toolName: 'subagents_run', toolArgs: '{"tasks":' }, labels), null)
 })

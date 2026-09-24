@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte'
+  import { t } from '../i18n'
   import {
     extractSkillsFromSession,
     listSessionLocalSkills,
@@ -100,7 +101,7 @@
       evaluations = res.evaluations ?? []
       outcomes = res.outcomes ?? []
     } catch (err) {
-      error = err instanceof Error ? err.message : 'Failed to load skill extraction inbox'
+      error = err instanceof Error ? err.message : $t.skillInbox.errors.loadInbox
     } finally {
       loading = false
     }
@@ -122,7 +123,7 @@
       const live = new Set(localSkills.filter((s) => s.kind === 'skill').map((s) => s.name))
       selected = new Set([...selected].filter((name) => live.has(name)))
     } catch (err) {
-      error = err instanceof Error ? err.message : 'Failed to load session-local skills'
+      error = err instanceof Error ? err.message : $t.skillInbox.errors.loadSessionSkills
     } finally {
       loadingLocal = false
     }
@@ -147,9 +148,9 @@
       capabilities = res.capabilities ?? []
       evaluations = res.evaluations ?? []
       outcomes = res.outcomes ?? []
-      success = res.count > 0 ? `Queued ${res.count} candidate${res.count === 1 ? '' : 's'}` : 'No reusable skill candidates found'
+      success = res.count > 0 ? $t.skillInbox.feedback.queued(res.count) : $t.skillInbox.feedback.noCandidatesFound
     } catch (err) {
-      error = err instanceof Error ? err.message : 'Skill extraction failed'
+      error = err instanceof Error ? err.message : $t.skillInbox.errors.extract
     } finally {
       extracting = false
     }
@@ -164,25 +165,25 @@
       const res = await reviewSkillExtractionCandidate(candidate.id, action)
       switch (action) {
         case 'evaluate':
-          success = `Evaluation pack ready for ${res.capability.capability_name}`
+          success = $t.skillInbox.feedback.evaluated(res.capability.capability_name)
           break
         case 'approve':
-          success = `Approved operator canary for ${res.capability.capability_name}`
+          success = $t.skillInbox.feedback.approved(res.capability.capability_name)
           break
         case 'promote':
-          success = `Promoted ${res.capability.capability_name} to 100% rollout`
+          success = $t.skillInbox.feedback.promoted(res.capability.capability_name)
           onApproved?.(res.saved?.path ?? '')
           break
         case 'rollback':
-          success = `Rolled back ${res.capability.capability_name}`
+          success = $t.skillInbox.feedback.rolledBack(res.capability.capability_name)
           break
         case 'reject':
-          success = `Rejected ${candidate.name}`
+          success = $t.skillInbox.feedback.rejected(candidate.name)
           break
       }
       await loadExtracted()
     } catch (err) {
-      error = err instanceof Error ? err.message : 'Skill candidate review failed'
+      error = err instanceof Error ? err.message : $t.skillInbox.errors.review
     } finally {
       reviewing = ''
     }
@@ -263,16 +264,16 @@
       const promotedCount = res.promoted?.length ?? 0
       const failedCount = res.failed?.length ?? 0
       if (promotedCount > 0 && failedCount === 0) {
-        success = `Promoted ${promotedCount} skill${promotedCount === 1 ? '' : 's'} to shared workspace`
+        success = $t.skillInbox.feedback.promotedToWorkspace(promotedCount)
       } else if (promotedCount > 0 && failedCount > 0) {
-        success = `Promoted ${promotedCount}; ${failedCount} failed`
+        success = $t.skillInbox.feedback.promotedPartially(promotedCount, failedCount)
       } else if (failedCount > 0) {
-        error = res.failed[0]?.error || 'Promotion failed'
+        error = res.failed[0]?.error || $t.skillInbox.errors.promotion
       }
       selected = new Set()
       await loadLocal()
     } catch (err) {
-      error = err instanceof Error ? err.message : 'Promote failed'
+      error = err instanceof Error ? err.message : $t.skillInbox.errors.promote
     } finally {
       promoting = false
     }
@@ -295,22 +296,22 @@
 <div class="skill-extraction-panel">
   <header class="panel-header">
     <div>
-      <strong>Skill Inbox</strong>
+      <strong>{$t.skillInbox.title}</strong>
       <span>
-        {activeTab === 'extracted' ? `${pendingExtracted} pending` : `${pendingLocal} session skill${pendingLocal === 1 ? '' : 's'}`}
+        {activeTab === 'extracted' ? $t.skillInbox.pendingCount(pendingExtracted) : $t.skillInbox.sessionSkillCount(pendingLocal)}
       </span>
     </div>
-    <button class="btn btn-ghost btn-sm" type="button" onclick={() => onClose?.()}>Close</button>
+    <button class="btn btn-ghost btn-sm" type="button" onclick={() => onClose?.()}>{$t.skillInbox.close}</button>
   </header>
 
-  <nav class="tab-bar" aria-label="Skill inbox tabs">
+  <nav class="tab-bar" aria-label={$t.skillInbox.tabsAriaLabel}>
     <button
       class="tab"
       class:tab-active={activeTab === 'extracted'}
       type="button"
       onclick={() => setTab('extracted')}
     >
-      Extracted
+      {$t.skillInbox.tabs.extracted}
       <span class="tab-count">{pendingExtracted}</span>
     </button>
     <button
@@ -319,7 +320,7 @@
       type="button"
       onclick={() => setTab('session')}
     >
-      Session
+      {$t.skillInbox.tabs.session}
       <span class="tab-count">{pendingLocal}</span>
     </button>
   </nav>
@@ -334,17 +335,17 @@
   {#if activeTab === 'extracted'}
     <div class="panel-actions">
       <button class="btn btn-primary btn-sm" type="button" disabled={extracting || !sessionId} onclick={extract}>
-        {extracting ? 'Extracting...' : 'Extract from session'}
+        {extracting ? $t.skillInbox.extracting : $t.skillInbox.extract}
       </button>
       <button class="btn btn-ghost btn-sm" type="button" disabled={loading} onclick={loadExtracted}>
-        {loading ? 'Loading...' : 'Reload'}
+        {loading ? $t.skillInbox.loading : $t.skillInbox.reload}
       </button>
     </div>
 
     {#if loading && candidates.length === 0}
-      <div class="empty-state">Loading candidates...</div>
+      <div class="empty-state">{$t.skillInbox.loadingCandidates}</div>
     {:else if candidates.length === 0}
-      <div class="empty-state">No skill candidates yet.</div>
+      <div class="empty-state">{$t.skillInbox.noCandidates}</div>
     {:else}
       <div class="candidate-list">
         {#each candidates as candidate}
@@ -366,7 +367,7 @@
                 {#if capability}
                   <span class="badge badge-soft">v{capability.version}</span>
                   <span class="badge {capability.state === 'promoted' ? 'badge-success' : capability.state === 'rejected' || capability.state === 'rolled_back' ? 'badge-error' : 'badge-default'}">{capability.state}</span>
-                  {#if capability.rollout?.review_required}<span class="badge badge-warn">regression review</span>{/if}
+                  {#if capability.rollout?.review_required}<span class="badge badge-warn">{$t.skillInbox.candidate.regressionReview}</span>{/if}
                 {:else}
                   <span class="badge {candidate.status === 'approved' ? 'badge-success' : candidate.status === 'rejected' ? 'badge-error' : 'badge-default'}">{candidate.status}</span>
                 {/if}
@@ -375,15 +376,15 @@
             <p>{candidate.summary}</p>
             <div class="candidate-meta">
               {#if candidate.trigger}<span>{candidate.trigger}</span>{/if}
-              {#if tools(candidate)}<span>tools: {tools(candidate)}</span>{/if}
-              {#if candidate.repeated_count}<span>{candidate.repeated_count} evidence</span>{/if}
+              {#if tools(candidate)}<span>{$t.skillInbox.candidate.tools(tools(candidate))}</span>{/if}
+              {#if candidate.repeated_count}<span>{$t.skillInbox.candidate.evidenceCount(candidate.repeated_count)}</span>{/if}
               {#if candidate.signals?.length}<span>{candidate.signals.map((signal) => signal.kind).join(' · ')}</span>{/if}
               {#if candidate.message_range}<span>{candidate.message_range}</span>{/if}
               {#if candidate.updated_at}<span>{fmtDate(candidate.updated_at)}</span>{/if}
             </div>
             {#if candidate.evidence?.length}
               <details class="evidence">
-                <summary>Evidence</summary>
+                <summary>{$t.skillInbox.candidate.evidence}</summary>
                 <div class="evidence-list">
                   {#each candidate.evidence as evidence}
                     <div class="evidence-row">
@@ -396,55 +397,55 @@
             {/if}
             {#if capability}
               <details class="evaluation" open={capability.state === 'shadow' || capability.state === 'canary'}>
-                <summary>Review evidence</summary>
+                <summary>{$t.skillInbox.review.summary}</summary>
                 <div class="evaluation-grid">
                   <div>
-                    <span>Provenance</span>
-                    <strong>{candidate.provenance?.source ?? 'skill inbox'} · {candidate.source_session ?? 'unknown session'}</strong>
+                    <span>{$t.skillInbox.review.provenance}</span>
+                    <strong>{candidate.provenance?.source ?? $t.skillInbox.review.defaultSource} · {candidate.source_session ?? $t.skillInbox.review.unknownSession}</strong>
                   </div>
                   <div>
-                    <span>Rollout</span>
-                    <strong>{capability.rollout?.mode ?? 'none'} · {capability.rollout?.percent ?? 0}%</strong>
+                    <span>{$t.skillInbox.review.rollout}</span>
+                    <strong>{capability.rollout?.mode ?? $t.skillInbox.review.none} · {capability.rollout?.percent ?? 0}%</strong>
                   </div>
                   <div>
-                    <span>Rollback target</span>
-                    <strong>{capability.rollback_target_id ?? 'remove first version'}</strong>
+                    <span>{$t.skillInbox.review.rollbackTarget}</span>
+                    <strong>{capability.rollback_target_id ?? $t.skillInbox.review.removeFirstVersion}</strong>
                   </div>
                   <div>
-                    <span>Permission expansion</span>
-                    <strong>{latest?.report?.permission_expansion?.join(', ') || 'none'}</strong>
+                    <span>{$t.skillInbox.review.permissionExpansion}</span>
+                    <strong>{latest?.report?.permission_expansion?.join(', ') || $t.skillInbox.review.none}</strong>
                   </div>
                 </div>
                 {#if latest?.report?.content_diff}
                   <pre class="capability-diff">{latest.report.content_diff}</pre>
                 {/if}
                 {#if capabilityEvaluations.length > 0}
-                  <div class="evaluation-list" aria-label="Capability evaluations">
+                  <div class="evaluation-list" aria-label={$t.skillInbox.review.evaluationsAriaLabel}>
                     {#each capabilityEvaluations as evaluation}
                       <div class="evaluation-row">
                         <span class="badge {evaluation.status === 'passed' ? 'badge-success' : evaluation.status === 'failed' ? 'badge-error' : 'badge-default'}">{evaluation.stage}: {evaluation.status}</span>
                         <span>{evaluation.metrics?.latency_ms ?? 0} ms</span>
-                        {#if evaluation.proof_id}<span>proof {evaluation.proof_id}</span>{/if}
+                        {#if evaluation.proof_id}<span>{$t.skillInbox.review.proof(evaluation.proof_id)}</span>{/if}
                       </div>
                     {/each}
                   </div>
                 {/if}
                 <div class="evaluation-delta">
-                  <span>Evaluation delta</span>
-                  <span>success {formatDelta(latest?.delta?.success_rate)}</span>
-                  <span>verification {formatDelta(latest?.delta?.verification_rate)}</span>
-                  <span>cost {formatDelta(latest?.delta?.cost_usd, ' USD')}</span>
-                  <span>latency {formatDelta(latest?.delta?.latency_ms, ' ms')}</span>
+                  <span>{$t.skillInbox.review.evaluationDelta}</span>
+                  <span>{$t.skillInbox.review.delta.success} {formatDelta(latest?.delta?.success_rate)}</span>
+                  <span>{$t.skillInbox.review.delta.verification} {formatDelta(latest?.delta?.verification_rate)}</span>
+                  <span>{$t.skillInbox.review.delta.cost} {formatDelta(latest?.delta?.cost_usd, ' USD')}</span>
+                  <span>{$t.skillInbox.review.delta.latency} {formatDelta(latest?.delta?.latency_ms, ' ms')}</span>
                 </div>
                 {#if capabilityOutcomes.length > 0}
-                  <div class="evaluation-list" aria-label="Observed Work outcomes">
-                    <span>Observed Work outcomes</span>
+                  <div class="evaluation-list" aria-label={$t.skillInbox.review.observedOutcomes}>
+                    <span>{$t.skillInbox.review.observedOutcomes}</span>
                     {#each capabilityOutcomes as outcome}
                       <div class="evaluation-row">
                         <span class="badge {outcome.status === 'succeeded' && (outcome.verifier_status === 'passed' || outcome.verifier_status === 'reported') ? 'badge-success' : outcome.status === 'failed' || outcome.verifier_status === 'failed' || outcome.verifier_status === 'stale' ? 'badge-error' : 'badge-default'}">
                           {outcome.status} · {outcome.verifier_status}
                         </span>
-                        <span>Work {outcome.work_id}</span>
+                        <span>{$t.skillInbox.review.work(outcome.work_id)}</span>
                         <span>{outcome.cost_usd.toFixed(3)} USD · {outcome.latency_ms} ms</span>
                         <span>{fmtDate(outcome.created_at)}</span>
                       </div>
@@ -460,21 +461,21 @@
               <div class="candidate-actions">
                 {#if capability.state === 'candidate' || capability.state === 'draft' || capability.state === 'sandbox' || capability.state === 'offline_eval'}
                   <button class="btn btn-primary btn-sm" type="button" disabled={reviewing === candidate.id} onclick={() => review(candidate, 'evaluate')}>
-                    {reviewing === candidate.id ? 'Evaluating...' : 'Evaluate draft'}
+                    {reviewing === candidate.id ? $t.skillInbox.actions.evaluating : $t.skillInbox.actions.evaluate}
                   </button>
                 {:else if capability.state === 'shadow'}
                   <button class="btn btn-primary btn-sm" type="button" disabled={reviewing === candidate.id} onclick={() => review(candidate, 'approve')}>
-                    {reviewing === candidate.id ? 'Approving...' : 'Approve canary'}
+                    {reviewing === candidate.id ? $t.skillInbox.actions.approving : $t.skillInbox.actions.approve}
                   </button>
                 {:else if capability.state === 'canary'}
                   <button class="btn btn-primary btn-sm" type="button" disabled={reviewing === candidate.id || latest?.status !== 'passed'} onclick={() => review(candidate, 'promote')}>
-                    {reviewing === candidate.id ? 'Promoting...' : 'Promote 100%'}
+                    {reviewing === candidate.id ? $t.skillInbox.actions.promoting : $t.skillInbox.actions.promote}
                   </button>
                 {:else if capability.state === 'promoted'}
-                  <button class="btn btn-ghost btn-sm" type="button" disabled={reviewing === candidate.id} onclick={() => review(candidate, 'rollback')}>Roll back</button>
+                  <button class="btn btn-ghost btn-sm" type="button" disabled={reviewing === candidate.id} onclick={() => review(candidate, 'rollback')}>{$t.skillInbox.actions.rollback}</button>
                 {/if}
                 {#if capability.state !== 'promoted'}
-                  <button class="btn btn-ghost btn-sm" type="button" disabled={reviewing === candidate.id} onclick={() => review(candidate, 'reject')}>Reject</button>
+                  <button class="btn btn-ghost btn-sm" type="button" disabled={reviewing === candidate.id} onclick={() => review(candidate, 'reject')}>{$t.skillInbox.actions.reject}</button>
                 {/if}
               </div>
             {/if}
@@ -485,28 +486,28 @@
   {:else}
     <div class="panel-actions session-actions">
       <button class="btn btn-ghost btn-sm" type="button" disabled={loadingLocal} onclick={loadLocal}>
-        {loadingLocal ? 'Loading...' : 'Reload'}
+        {loadingLocal ? $t.skillInbox.loading : $t.skillInbox.reload}
       </button>
-      <div class="mode-toggle" role="group" aria-label="Promote mode">
+      <div class="mode-toggle" role="group" aria-label={$t.skillInbox.session.modeAriaLabel}>
         <label>
           <input type="radio" name="promote-mode" value="copy" checked={mode === 'copy'} onchange={() => (mode = 'copy')} />
-          Copy
+          {$t.skillInbox.session.modeCopy}
         </label>
         <label>
           <input type="radio" name="promote-mode" value="move" checked={mode === 'move'} onchange={() => (mode = 'move')} />
-          Move (delete local)
+          {$t.skillInbox.session.modeMove}
         </label>
       </div>
       <div class="bulk-actions">
-        <button class="btn btn-ghost btn-sm" type="button" onclick={selectAll} disabled={pendingLocal === 0}>Select all</button>
-        <button class="btn btn-ghost btn-sm" type="button" onclick={clearSelection} disabled={selected.size === 0}>Clear</button>
+        <button class="btn btn-ghost btn-sm" type="button" onclick={selectAll} disabled={pendingLocal === 0}>{$t.skillInbox.session.selectAll}</button>
+        <button class="btn btn-ghost btn-sm" type="button" onclick={clearSelection} disabled={selected.size === 0}>{$t.skillInbox.session.clearSelection}</button>
         <button
           class="btn btn-primary btn-sm"
           type="button"
           onclick={promoteSelected}
           disabled={promoting || selected.size === 0}
         >
-          {promoting ? 'Promoting...' : `Promote selected (${selected.size})`}
+          {promoting ? $t.skillInbox.session.promoting : $t.skillInbox.session.promoteSelected(selected.size)}
         </button>
       </div>
     </div>
@@ -516,9 +517,9 @@
     {/if}
 
     {#if loadingLocal && localSkills.length === 0}
-      <div class="empty-state">Loading session skills...</div>
+      <div class="empty-state">{$t.skillInbox.session.loading}</div>
     {:else if localSkills.length === 0}
-      <div class="empty-state">No session-local skills found under <code>.tars/skills/</code>.</div>
+      <div class="empty-state">{$t.skillInbox.session.empty.before}<code>.tars/skills/</code>{$t.skillInbox.session.empty.after}</div>
     {:else}
       <div class="candidate-list">
         {#each localSkills as item (item.kind + ':' + item.name)}
@@ -528,7 +529,7 @@
                 {#if item.kind === 'skill'}
                   <input
                     type="checkbox"
-                    aria-label={`Select ${item.name}`}
+                    aria-label={$t.skillInbox.session.selectItem(item.name)}
                     checked={selected.has(item.name)}
                     onchange={() => toggleSelect(item.name)}
                   />
@@ -539,7 +540,7 @@
               <div class="badges">
                 <span class="badge {item.kind === 'skill' ? 'badge-default' : 'badge-soft'}">{item.kind}</span>
                 {#if item.has_workspace_collision}
-                  <span class="badge badge-warn" title="A workspace skill with this name already exists">collision</span>
+                  <span class="badge badge-warn" title={$t.skillInbox.session.collisionTitle}>{$t.skillInbox.session.collision}</span>
                 {/if}
               </div>
             </div>
@@ -555,7 +556,7 @@
                   disabled={promoting}
                   onclick={() => promoteOne(item.name)}
                 >
-                  Promote
+                  {$t.skillInbox.session.promote}
                 </button>
               </div>
             {/if}
@@ -568,34 +569,34 @@
   {#if conflictDialogOpen}
     <div class="modal-backdrop" role="presentation" onclick={cancelConflictDialog}></div>
     <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="conflict-title">
-      <h3 id="conflict-title">Workspace skill already exists</h3>
+      <h3 id="conflict-title">{$t.skillInbox.conflict.title}</h3>
       <p>
-        {conflictNames.length} of the selected skills collide with workspace skills of the same name. Choose how to apply this batch:
+        {$t.skillInbox.conflict.body(conflictNames.length)}
       </p>
       <ul class="conflict-list">
         {#each conflictNames as name}
           <li><code>{name}</code></li>
         {/each}
       </ul>
-      <div class="conflict-options" role="radiogroup" aria-label="Conflict resolution">
+      <div class="conflict-options" role="radiogroup" aria-label={$t.skillInbox.conflict.ariaLabel}>
         <label>
           <input type="radio" name="conflict" value="rename" checked={conflictChoice === 'rename'} onchange={() => (conflictChoice = 'rename')} />
-          Rename (auto-suffix)
+          {$t.skillInbox.conflict.rename}
         </label>
         <label>
           <input type="radio" name="conflict" value="overwrite" checked={conflictChoice === 'overwrite'} onchange={() => (conflictChoice = 'overwrite')} />
-          Overwrite existing
+          {$t.skillInbox.conflict.overwrite}
         </label>
         <label>
           <input type="radio" name="conflict" value="abort" checked={conflictChoice === 'abort'} onchange={() => (conflictChoice = 'abort')} />
-          Cancel batch
+          {$t.skillInbox.conflict.abortBatch}
         </label>
       </div>
-      <p class="apply-to-all">Choice applies to all colliding items in this batch.</p>
+      <p class="apply-to-all">{$t.skillInbox.conflict.appliesToAll}</p>
       <div class="modal-actions">
-        <button class="btn btn-ghost btn-sm" type="button" onclick={cancelConflictDialog}>Cancel</button>
+        <button class="btn btn-ghost btn-sm" type="button" onclick={cancelConflictDialog}>{$t.skillInbox.conflict.cancel}</button>
         <button class="btn btn-primary btn-sm" type="button" onclick={confirmConflictDialog}>
-          {conflictChoice === 'abort' ? 'Abort' : 'Apply'}
+          {conflictChoice === 'abort' ? $t.skillInbox.conflict.abort : $t.skillInbox.conflict.apply}
         </button>
       </div>
     </div>

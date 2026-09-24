@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onDestroy } from 'svelte'
+  import { locale, t } from '../i18n'
   import {
     deriveAgentRuntimeReplayBounds,
     deriveAgentRuntimeReplayState,
@@ -31,7 +32,7 @@
   ]
 
   let bounds = $derived(deriveAgentRuntimeReplayBounds(events))
-  let replayState = $derived(deriveAgentRuntimeReplayState(events, cursorMs))
+  let replayState = $derived(deriveAgentRuntimeReplayState(events, cursorMs, $t.agentRuntimeRun.shared))
   let progressPercent = $derived.by<number>(() => {
     if (!bounds.hasTimeline || bounds.endMs <= bounds.startMs) return 100
     return Math.max(0, Math.min(100, ((cursorMs - bounds.startMs) / (bounds.endMs - bounds.startMs)) * 100))
@@ -98,7 +99,7 @@
 
   function fmtTime(value: number): string {
     if (!Number.isFinite(value) || value <= 0) return '--:--'
-    return new Intl.DateTimeFormat('en', {
+    return new Intl.DateTimeFormat($locale, {
       hour: '2-digit',
       minute: '2-digit',
       second: '2-digit',
@@ -108,16 +109,16 @@
   onDestroy(stopPlayback)
 </script>
 
-<section class="detail-panel replay-scrubber" aria-label="Agent Runtime replay scrubber">
+<section class="detail-panel replay-scrubber" aria-label={$t.agentRuntimeRun.replay.ariaLabel}>
   <div class="replay-head">
     <div>
-      <h3>Replay</h3>
-      <p>{replayState.appliedCount}/{replayState.totalCount} events / {effectiveStatus}</p>
+      <h3>{$t.agentRuntimeRun.replay.title}</h3>
+      <p>{$t.agentRuntimeRun.replay.summary(replayState.appliedCount, replayState.totalCount, effectiveStatus)}</p>
     </div>
-    <div class="replay-controls" aria-label="Replay controls">
-      <button type="button" class:active={live} disabled={!bounds.hasTimeline} onclick={toggleLive}>Live</button>
-      <button type="button" disabled={!bounds.hasTimeline} onclick={togglePlayback}>{playing ? 'Pause' : 'Play'}</button>
-      <div class="speed-controls" aria-label="Playback speed">
+    <div class="replay-controls" aria-label={$t.agentRuntimeRun.replay.controlsAriaLabel}>
+      <button type="button" class:active={live} disabled={!bounds.hasTimeline} onclick={toggleLive}>{$t.agentRuntimeRun.replay.live}</button>
+      <button type="button" disabled={!bounds.hasTimeline} onclick={togglePlayback}>{playing ? $t.agentRuntimeRun.replay.pause : $t.agentRuntimeRun.replay.play}</button>
+      <div class="speed-controls" aria-label={$t.agentRuntimeRun.replay.speedAriaLabel}>
         {#each speeds as option}
           <button type="button" class:active={speed === option.value} onclick={() => setSpeed(option.value)}>{option.label}</button>
         {/each}
@@ -126,7 +127,7 @@
   </div>
 
   {#if !bounds.hasTimeline}
-    <div class="agentruntime-empty">No timestamped events available for replay.</div>
+    <div class="agentruntime-empty">{$t.agentRuntimeRun.replay.empty}</div>
   {:else}
     <div class="replay-timeline">
       <span>{fmtTime(bounds.startMs)}</span>
@@ -137,7 +138,7 @@
         step="250"
         value={cursorMs}
         disabled={live}
-        aria-label="Replay cursor"
+        aria-label={$t.agentRuntimeRun.replay.cursorAriaLabel}
         oninput={scrub}
       />
       <span>{fmtTime(bounds.endMs)}</span>
@@ -146,13 +147,13 @@
       <span style={`width: ${progressPercent}%`}></span>
     </div>
     <div class="replay-state-grid">
-      <div><span>Cursor</span><strong>{fmtTime(replayState.currentTimeMs)}</strong></div>
-      <div><span>Status</span><strong>{effectiveStatus}</strong></div>
-      <div><span>Last event</span><strong>{replayState.lastEventType}</strong></div>
-      <div><span>Message</span><strong>{replayState.lastMessage || '-'}</strong></div>
+      <div><span>{$t.agentRuntimeRun.replay.cursor}</span><strong>{fmtTime(replayState.currentTimeMs)}</strong></div>
+      <div><span>{$t.agentRuntimeRun.replay.status}</span><strong>{effectiveStatus}</strong></div>
+      <div><span>{$t.agentRuntimeRun.replay.lastEvent}</span><strong>{replayState.lastEventType}</strong></div>
+      <div><span>{$t.agentRuntimeRun.replay.message}</span><strong>{replayState.lastMessage || '-'}</strong></div>
     </div>
     {#if replayState.filePaths.length > 0}
-      <div class="replay-file-row" aria-label="Files touched by replayed events">
+      <div class="replay-file-row" aria-label={$t.agentRuntimeRun.replay.filesAriaLabel}>
         {#each replayState.filePaths as path}
           <span title={path}>{path}</span>
         {/each}

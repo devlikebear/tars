@@ -256,7 +256,7 @@
         run: () => navigate(`/console/chat/${encodeURIComponent(session.id)}`),
       }))
     // Slash commands run against the open session, so only offer them there.
-    const slash: PaletteCommand[] = route.view !== 'chat' ? [] : builtinSlashCommands().map((candidate) => ({
+    const slash: PaletteCommand[] = route.view !== 'chat' ? [] : builtinSlashCommands(tr.chatCommands.slash).map((candidate) => ({
       id: `slash:${candidate.id ?? candidate.command}`,
       group: 'slash',
       title: `/${candidate.command}`,

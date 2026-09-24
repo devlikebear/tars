@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '../i18n'
   import type { AgentRuntimeRun, ConsensusVariantRecord } from '../lib/types'
 
   interface Props {
@@ -49,8 +50,8 @@
     if (fallbackValue <= 0) return []
     return scaleRows([{
       id: sourceRun.run_id,
-      label: sourceRun.agent || 'agent',
-      detail: sourceRun.resolved_model || sourceRun.resolved_alias || 'run total',
+      label: sourceRun.agent || $t.agentRuntimeRun.costFlow.agentFallback,
+      detail: sourceRun.resolved_model || sourceRun.resolved_alias || $t.agentRuntimeRun.costFlow.runTotal,
       tier: sourceRun.tier || 'default',
       model: sourceRun.resolved_model || '',
       value: fallbackValue,
@@ -70,8 +71,8 @@
     const tier = sourceRun.tier || 'default'
     return {
       id: `${sourceRun.run_id}-${variant.variant_idx}`,
-      label: variant.alias || `Variant ${variant.variant_idx + 1}`,
-      detail: variant.model || variant.kind || 'variant',
+      label: variant.alias || $t.agentRuntimeRun.shared.variantName(variant.variant_idx + 1),
+      detail: variant.model || variant.kind || $t.agentRuntimeRun.shared.variantFallback,
       tier,
       model: variant.model || '',
       value,
@@ -107,7 +108,7 @@
 
   function valueLabel(value: number): string {
     if (mode === 'cost') return `$${value.toFixed(3)}`
-    return `${value.toLocaleString()} tokens`
+    return $t.agentRuntimeRun.shared.tokens(value.toLocaleString())
   }
 
   function fmtUSD(value: number | null | undefined): string {
@@ -121,8 +122,10 @@
   }
 
   function planLabel(sourceRun: AgentRuntimeRun | null): string {
-    if (!sourceRun) return 'Run'
-    return sourceRun.root_run_id || sourceRun.parent_run_id ? `Plan ${shortID(sourceRun.root_run_id || sourceRun.parent_run_id)}` : `Run ${shortID(sourceRun.run_id)}`
+    if (!sourceRun) return $t.agentRuntimeRun.shared.run
+    return sourceRun.root_run_id || sourceRun.parent_run_id
+      ? $t.agentRuntimeRun.shared.planLabel(shortID(sourceRun.root_run_id || sourceRun.parent_run_id))
+      : $t.agentRuntimeRun.shared.runLabel(shortID(sourceRun.run_id))
   }
 
   function shortID(value?: string): string {
@@ -132,36 +135,36 @@
   }
 </script>
 
-<section class="detail-panel cost-flow-panel" aria-label="Agent Runtime token and cost flow">
+<section class="detail-panel cost-flow-panel" aria-label={$t.agentRuntimeRun.costFlow.ariaLabel}>
   <div class="cost-flow-head">
     <div>
-      <h3>Cost Flow</h3>
-      <p>{planLabel(run)} → {run?.agent || 'agent'} → variants</p>
+      <h3>{$t.agentRuntimeRun.costFlow.title}</h3>
+      <p>{$t.agentRuntimeRun.costFlow.path(planLabel(run), run?.agent || $t.agentRuntimeRun.costFlow.agentFallback)}</p>
     </div>
-    <div class="cost-flow-controls" aria-label="Cost flow mode">
-      <button type="button" class:active={mode === 'cost'} onclick={() => (mode = 'cost')}>Actual cost</button>
-      <button type="button" class:active={mode === 'tokens'} onclick={() => (mode = 'tokens')}>Tokens</button>
+    <div class="cost-flow-controls" aria-label={$t.agentRuntimeRun.costFlow.modeAriaLabel}>
+      <button type="button" class:active={mode === 'cost'} onclick={() => (mode = 'cost')}>{$t.agentRuntimeRun.costFlow.actualCost}</button>
+      <button type="button" class:active={mode === 'tokens'} onclick={() => (mode = 'tokens')}>{$t.agentRuntimeRun.costFlow.tokens}</button>
     </div>
   </div>
 
   {#if !hasCostFlow}
-    <div class="agentruntime-empty">No token or cost data recorded for this run yet.</div>
+    <div class="agentruntime-empty">{$t.agentRuntimeRun.costFlow.empty}</div>
   {:else}
     <div class="cost-flow-summary">
-      <div><span>Loaded runs</span><strong>{costFlowRuns.length}</strong></div>
-      <div><span>{mode === 'cost' ? 'Actual cost' : 'Tokens'}</span><strong>{valueLabel(flowTotal)}</strong></div>
-      <div><span>Budget</span><strong>{fmtUSD(run?.consensus_budget_usd)}</strong></div>
+      <div><span>{$t.agentRuntimeRun.costFlow.loadedRuns}</span><strong>{costFlowRuns.length}</strong></div>
+      <div><span>{mode === 'cost' ? $t.agentRuntimeRun.costFlow.actualCost : $t.agentRuntimeRun.costFlow.tokens}</span><strong>{valueLabel(flowTotal)}</strong></div>
+      <div><span>{$t.agentRuntimeRun.costFlow.budget}</span><strong>{fmtUSD(run?.consensus_budget_usd)}</strong></div>
     </div>
 
     <div class="cost-flow-canvas">
-      <svg viewBox={`0 0 720 ${flowHeight}`} role="img" aria-label="Token and cost Sankey diagram">
+      <svg viewBox={`0 0 720 ${flowHeight}`} role="img" aria-label={$t.agentRuntimeRun.costFlow.diagramAriaLabel}>
         <g class="flow-node">
           <rect x="20" y="54" width="132" height="42" rx="6"></rect>
           <text x="34" y="80">{planLabel(run)}</text>
         </g>
         <g class="flow-node">
           <rect x="300" y="54" width="132" height="42" rx="6"></rect>
-          <text x="314" y="80">{run?.agent || 'agent'}</text>
+          <text x="314" y="80">{run?.agent || $t.agentRuntimeRun.costFlow.agentFallback}</text>
         </g>
         {#each flowRows as row}
           <path

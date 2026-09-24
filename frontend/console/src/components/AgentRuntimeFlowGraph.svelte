@@ -7,6 +7,7 @@
     type NodeEventWithPointer,
   } from '@xyflow/svelte'
   import '@xyflow/svelte/dist/style.css'
+  import { t } from '../i18n'
   import {
     buildAgentRuntimeFlowGraph,
     type AgentRuntimeFlowFilters,
@@ -28,13 +29,13 @@
   let flowStatusFilter: FlowStatusFilter = $state('all')
   let flowSessionFilter = $state('all')
 
-  const statusOptions: { value: FlowStatusFilter; label: string }[] = [
-    { value: 'all', label: 'All' },
-    { value: 'running', label: 'Running' },
-    { value: 'done', label: 'Done' },
-    { value: 'error', label: 'Error' },
-    { value: 'pending', label: 'Pending' },
-  ]
+  let statusOptions = $derived<{ value: FlowStatusFilter; label: string }[]>([
+    { value: 'all', label: $t.agentRuntimeRun.flowGraph.all },
+    { value: 'running', label: $t.agentRuntimeRun.flowGraph.statusOptions.running },
+    { value: 'done', label: $t.agentRuntimeRun.flowGraph.statusOptions.done },
+    { value: 'error', label: $t.agentRuntimeRun.flowGraph.statusOptions.error },
+    { value: 'pending', label: $t.agentRuntimeRun.flowGraph.statusOptions.pending },
+  ])
 
   let tierOptions = $derived(uniqueOptions(runs.map((run) => run.tier || 'default')))
   let sessionOptions = $derived(uniqueOptions(runs.map((run) => run.session_id || '').filter(Boolean)))
@@ -43,7 +44,7 @@
     status: flowStatusFilter === 'all' ? undefined : flowStatusFilter,
     session: flowSessionFilter === 'all' ? undefined : flowSessionFilter,
   }))
-  let graph = $derived(buildAgentRuntimeFlowGraph(runs, flowFilters))
+  let graph = $derived(buildAgentRuntimeFlowGraph(runs, $t.agentRuntimeRun.shared, flowFilters))
 
   const handleNodeClick: NodeEventWithPointer<MouseEvent | TouchEvent, AgentRuntimeFlowNode> = ({ node }) => {
     onSelectRun(node.data.runId)
@@ -54,27 +55,27 @@
   }
 </script>
 
-<section class="agent-runtime-flow-graph" aria-label="Agent Runtime Svelte Flow live graph">
+<section class="agent-runtime-flow-graph" aria-label={$t.agentRuntimeRun.flowGraph.ariaLabel}>
   <div class="flow-head">
     <div>
-      <h3>Live Graph</h3>
-      <p>{graph.nodes.length} nodes / {graph.edges.length} edges</p>
+      <h3>{$t.agentRuntimeRun.flowGraph.title}</h3>
+      <p>{$t.agentRuntimeRun.flowGraph.counts(graph.nodes.length, graph.edges.length)}</p>
     </div>
-    <button class="flow-replay-button" type="button" disabled>Replay</button>
+    <button class="flow-replay-button" type="button" disabled>{$t.agentRuntimeRun.flowGraph.replay}</button>
   </div>
 
-  <div class="flow-filter-row" aria-label="Agent Runtime graph filters">
+  <div class="flow-filter-row" aria-label={$t.agentRuntimeRun.flowGraph.filtersAriaLabel}>
     <div class="filter-group">
-      <span class="filter-label">Tier</span>
+      <span class="filter-label">{$t.agentRuntimeRun.flowGraph.tier}</span>
       <div class="filter-chip-row">
-        <button type="button" class="filter-chip" class:active={flowTierFilter === 'all'} onclick={() => (flowTierFilter = 'all')}>All</button>
+        <button type="button" class="filter-chip" class:active={flowTierFilter === 'all'} onclick={() => (flowTierFilter = 'all')}>{$t.agentRuntimeRun.flowGraph.all}</button>
         {#each tierOptions as tier}
           <button type="button" class="filter-chip" class:active={flowTierFilter === tier} onclick={() => (flowTierFilter = tier)}>{tier}</button>
         {/each}
       </div>
     </div>
     <div class="filter-group">
-      <span class="filter-label">Status</span>
+      <span class="filter-label">{$t.agentRuntimeRun.flowGraph.status}</span>
       <div class="filter-chip-row">
         {#each statusOptions as option}
           <button type="button" class="filter-chip" class:active={flowStatusFilter === option.value} onclick={() => (flowStatusFilter = option.value)}>{option.label}</button>
@@ -82,9 +83,9 @@
       </div>
     </div>
     <label class="session-filter">
-      <span class="filter-label">Session</span>
+      <span class="filter-label">{$t.agentRuntimeRun.flowGraph.session}</span>
       <select bind:value={flowSessionFilter}>
-        <option value="all">All</option>
+        <option value="all">{$t.agentRuntimeRun.flowGraph.all}</option>
         {#each sessionOptions as sessionID}
           <option value={sessionID}>{sessionID}</option>
         {/each}
@@ -93,7 +94,7 @@
   </div>
 
   {#if graph.nodes.length === 0}
-    <div class="agentruntime-empty">No runs match the current graph filters.</div>
+    <div class="agentruntime-empty">{$t.agentRuntimeRun.flowGraph.empty}</div>
   {:else}
     <div class="flow-canvas">
       <SvelteFlow

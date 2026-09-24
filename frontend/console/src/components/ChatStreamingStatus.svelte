@@ -1,12 +1,12 @@
 <script lang="ts">
+  import { t } from '../i18n'
+
   interface Props {
     label: string
     elapsedLabel: string
     steps: readonly string[]
     currentStepIndex: number
     stepLabels: string[]
-    locale: 'ko' | 'en'
-    onToggleLocale: () => void
   }
 
   let {
@@ -15,8 +15,6 @@
     steps,
     currentStepIndex,
     stepLabels,
-    locale,
-    onToggleLocale,
   }: Props = $props()
 </script>
 
@@ -31,7 +29,7 @@
     </span>
   </span>
   {#if currentStepIndex >= 0}
-    <div class="chat-status-progress" aria-label="Status progress">
+    <div class="chat-status-progress" aria-label={$t.chatThread.streaming.progressAria}>
       {#each steps as _step, stepIdx (stepIdx)}
         <span
           class={`chat-status-progress-step ${stepIdx < currentStepIndex ? 'completed' : ''} ${stepIdx === currentStepIndex ? 'active' : ''}`}
@@ -45,14 +43,6 @@
       {/each}
     </div>
   {/if}
-  <button
-    type="button"
-    class="chat-status-locale-toggle"
-    title={locale === 'ko' ? 'Switch to English status labels' : '상태 라벨을 한국어로 전환'}
-    onclick={onToggleLocale}
-  >
-    {locale === 'ko' ? 'EN' : 'KR'}
-  </button>
 </div>
 
 <style>
@@ -143,23 +133,6 @@
     width: 6px;
     height: 1px;
     background: var(--border-subtle);
-  }
-
-  .chat-status-locale-toggle {
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-sm);
-    background: var(--surface-elevated);
-    color: var(--text-ghost);
-    font-size: 10px;
-    padding: 1px 6px;
-    cursor: pointer;
-    line-height: 1;
-    min-height: 18px;
-  }
-
-  .chat-status-locale-toggle:hover {
-    color: var(--text-secondary);
-    border-color: var(--border-default);
   }
 
   @keyframes chat-status-dot {

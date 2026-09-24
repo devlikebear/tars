@@ -1,3 +1,4 @@
+import type { SessionHealthTranslations } from '../i18n/sections/sessionHealth'
 import type { ChatToolInfo, SessionToolConfig } from './api'
 import type { Session, SessionMessage, SessionTasks } from './types'
 
@@ -69,11 +70,13 @@ const severityRank: Record<SessionHealthSeverity, number> = {
   critical: 3,
 }
 
-export function emptySessionHealthReport(now = new Date()): SessionHealthReport {
+// Report text comes from `strings` (the sessionHealth i18n section), so callers
+// pick the locale; the builders stay pure.
+export function emptySessionHealthReport(strings: SessionHealthTranslations, now = new Date()): SessionHealthReport {
   return {
     status: 'healthy',
-    badgeLabel: 'Healthy',
-    summary: 'No session warnings detected.',
+    badgeLabel: strings.status.healthy,
+    summary: strings.summary.healthy,
     signals: [],
     recommendations: [],
     metrics: {
@@ -87,7 +90,7 @@ export function emptySessionHealthReport(now = new Date()): SessionHealthReport 
   }
 }
 
-export function buildSessionHealthReport(input: SessionHealthInput): SessionHealthReport {
+export function buildSessionHealthReport(strings: SessionHealthTranslations, input: SessionHealthInput): SessionHealthReport {
   const now = input.now ?? new Date()
   const messages = input.messages ?? []
   const tasks = input.tasks ?? { tasks: [] }
@@ -103,94 +106,98 @@ export function buildSessionHealthReport(input: SessionHealthInput): SessionHeal
   const contextTokenPercent = contextPercent(contextInfo)
   const hasSessionWork = messageCount > 0 || openTaskCount > 0
 
+  const signalText = strings.signals
+  const recommendationText = strings.recommendations
+  const actionLabel = strings.actions
+
   if (messageCount >= 160 || (contextTokenPercent ?? 0) >= 95) {
-    addSignal(signals, 'long_context', 'critical', 'Context is near saturation', `${messageCount} transcript messages are loaded. Compact or split before the next major task.`)
+    addSignal(signals, 'long_context', 'critical', signalText.contextSaturated.title, signalText.contextSaturated.detail(messageCount))
     addRecommendation(recommendations, {
       id: 'compact-long-context',
       severity: 'critical',
-      title: 'Compact this session',
-      detail: 'Shrink old turns into a summary so the next response has cleaner context.',
+      title: recommendationText.compactLongContext.title,
+      detail: recommendationText.compactLongContext.detail,
       action: 'compact',
-      actionLabel: 'Compact',
+      actionLabel: actionLabel.compact,
     })
     addRecommendation(recommendations, {
       id: 'fork-long-context',
       severity: 'warning',
-      title: 'Split at a stable point',
-      detail: 'Start the next task from a known-good message instead of carrying every turn forward.',
+      title: recommendationText.forkLongContext.title,
+      detail: recommendationText.forkLongContext.detail,
       action: 'review_fork_points',
-      actionLabel: 'Review Chat',
+      actionLabel: actionLabel.review_fork_points,
     })
   } else if (messageCount >= 80 || (contextTokenPercent ?? 0) >= 75) {
-    addSignal(signals, 'long_context', 'warning', 'Context is getting long', `${messageCount} transcript messages are loaded.`)
+    addSignal(signals, 'long_context', 'warning', signalText.contextLong.title, signalText.contextLong.detail(messageCount))
     addRecommendation(recommendations, {
       id: 'compact-growing-context',
       severity: 'warning',
-      title: 'Compact soon',
-      detail: 'The session is still workable, but context reuse is starting to cost attention.',
+      title: recommendationText.compactGrowingContext.title,
+      detail: recommendationText.compactGrowingContext.detail,
       action: 'compact',
-      actionLabel: 'Compact',
+      actionLabel: actionLabel.compact,
     })
   }
 
   const stalePlan = stalePlanAgeDays(tasks, now)
   if (stalePlan !== null && openTaskCount > 0) {
     const severity: SessionHealthSeverity = stalePlan >= 7 ? 'error' : 'warning'
-    addSignal(signals, 'stale_plan', severity, 'Plan has gone stale', `${openTaskCount} open task(s), last plan update ${formatDays(stalePlan)} ago.`)
+    addSignal(signals, 'stale_plan', severity, signalText.stalePlan.title, signalText.stalePlan.detail(openTaskCount, strings.ago(stalePlan)))
     addRecommendation(recommendations, {
       id: 'review-stale-plan',
       severity,
-      title: 'Review open tasks',
-      detail: 'Close completed work, archive stale plan items, or rewrite the next step.',
+      title: recommendationText.reviewStalePlan.title,
+      detail: recommendationText.reviewStalePlan.detail,
       action: 'open_tasks',
-      actionLabel: 'Open Tasks',
+      actionLabel: actionLabel.open_tasks,
     })
   }
 
   if (hasSessionWork && highRiskToolCount >= 3) {
-    addSignal(signals, 'broad_permissions', 'error', 'Broad high-risk permissions', `${highRiskToolCount} high-risk tool(s) are enabled for this session.`)
+    addSignal(signals, 'broad_permissions', 'error', signalText.broadPermissions.title, signalText.broadPermissions.detail(highRiskToolCount))
     addRecommendation(recommendations, {
       id: 'trim-permissions',
       severity: 'error',
-      title: 'Reduce session permissions',
-      detail: 'Keep only the tool groups needed for the current task before enabling more automation.',
+      title: recommendationText.trimPermissions.title,
+      detail: recommendationText.trimPermissions.detail,
       action: 'open_config',
-      actionLabel: 'Open Config',
+      actionLabel: actionLabel.open_config,
     })
   } else if (hasSessionWork && highRiskToolCount > 0 && openTaskCount === 0) {
-    addSignal(signals, 'broad_permissions', 'warning', 'High-risk tools still enabled', `${highRiskToolCount} high-risk tool(s) remain enabled after the active task.`)
+    addSignal(signals, 'broad_permissions', 'warning', signalText.idlePermissions.title, signalText.idlePermissions.detail(highRiskToolCount))
     addRecommendation(recommendations, {
       id: 'trim-idle-permissions',
       severity: 'warning',
-      title: 'Trim idle permissions',
-      detail: 'Disable write or shell capabilities when the session is only being used for review.',
+      title: recommendationText.trimIdlePermissions.title,
+      detail: recommendationText.trimIdlePermissions.detail,
       action: 'open_config',
-      actionLabel: 'Open Config',
+      actionLabel: actionLabel.open_config,
     })
   }
 
   if (memoryCount >= 10 || memoryTokens >= 3000) {
-    addSignal(signals, 'memory_noise', 'warning', 'Prior context is noisy', `${memoryCount} memory item(s) and ${memoryTokens} memory token(s) are attached.`)
+    addSignal(signals, 'memory_noise', 'warning', signalText.memoryNoise.title, signalText.memoryNoise.detail(memoryCount, memoryTokens))
     addRecommendation(recommendations, {
       id: 'review-prior-context',
       severity: 'warning',
-      title: 'Review recalled memory',
-      detail: 'Check whether the retrieved memory still matches this task before continuing.',
+      title: recommendationText.reviewPriorContext.title,
+      detail: recommendationText.reviewPriorContext.detail,
       action: 'open_prior',
-      actionLabel: 'Open Prior',
+      actionLabel: actionLabel.open_prior,
     })
   }
 
   const idleDays = daysSince(input.session?.updated_at, now)
   if (idleDays !== null && idleDays >= 7 && openTaskCount === 0 && messageCount > 0) {
-    addSignal(signals, 'stale_session', 'info', 'Session has been idle', `Last updated ${formatDays(idleDays)} ago.`)
+    addSignal(signals, 'stale_session', 'info', signalText.staleSession.title, signalText.staleSession.detail(strings.ago(idleDays)))
     addRecommendation(recommendations, {
       id: 'extract-idle-session-skill',
       severity: 'info',
-      title: 'Extract reusable work',
-      detail: 'If this session produced a reusable workflow, turn it into a skill draft before archiving it.',
+      title: recommendationText.extractIdleSessionSkill.title,
+      detail: recommendationText.extractIdleSessionSkill.detail,
       action: 'open_skill_extraction',
-      actionLabel: 'Extract Skill',
+      actionLabel: actionLabel.open_skill_extraction,
     })
   }
 
@@ -202,8 +209,8 @@ export function buildSessionHealthReport(input: SessionHealthInput): SessionHeal
   const status = statusFromSeverity(maxSeverity)
   return {
     status,
-    badgeLabel: badgeLabel(status),
-    summary: summaryForStatus(status, signals.length),
+    badgeLabel: strings.status[status],
+    summary: summaryForStatus(strings, status, signals.length),
     signals,
     recommendations,
     metrics: {
@@ -288,11 +295,6 @@ function daysSince(value: string | undefined, now: Date): number | null {
   return Math.max(0, (now.getTime() - date.getTime()) / 86_400_000)
 }
 
-function formatDays(days: number): string {
-  if (days < 1) return 'today'
-  return `${Math.floor(days)}d`
-}
-
 function statusFromSeverity(severity: SessionHealthSeverity | null): SessionHealthStatus {
   switch (severity) {
     case 'critical':
@@ -307,28 +309,15 @@ function statusFromSeverity(severity: SessionHealthSeverity | null): SessionHeal
   }
 }
 
-function badgeLabel(status: SessionHealthStatus): string {
+function summaryForStatus(strings: SessionHealthTranslations, status: SessionHealthStatus, signalCount: number): string {
   switch (status) {
     case 'critical':
-      return 'Critical'
+      return strings.summary.critical(signalCount)
     case 'attention':
-      return 'Needs attention'
+      return strings.summary.attention(signalCount)
     case 'watch':
-      return 'Watch'
+      return strings.summary.watch(signalCount)
     default:
-      return 'Healthy'
-  }
-}
-
-function summaryForStatus(status: SessionHealthStatus, signalCount: number): string {
-  switch (status) {
-    case 'critical':
-      return `${signalCount} critical session issue(s) need action before continuing.`
-    case 'attention':
-      return `${signalCount} session issue(s) should be resolved soon.`
-    case 'watch':
-      return `${signalCount} session signal(s) are worth watching.`
-    default:
-      return 'No session warnings detected.'
+      return strings.summary.healthy
   }
 }

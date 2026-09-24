@@ -29,6 +29,7 @@ import type {
   setSessionCwd,
 } from '../api'
 import type { Artifact } from '../artifacts'
+import type { ChatCommandsTranslations } from '../../i18n/sections/chatCommands'
 import type { SessionHealthInput, SessionHealthReport } from '../sessionHealth'
 import type { TaskProgressSummary } from '../tasks'
 import type { AgentRuntimeTierOption, ChatContextInfo, ChatTier, Session, SessionCwd, SessionGoal, SessionMessage, SessionTasks } from '../types'
@@ -56,11 +57,16 @@ export type SessionUsage = {
   outputTokens: number
 }
 
+export type GoalEventText = ChatCommandsTranslations['goalEvents']
+
 export type ChatSessionHealth = {
   emptyReport: () => SessionHealthReport
   buildReport: (input: SessionHealthInput) => SessionHealthReport
   emptyTasks: () => TaskProgressSummary
   summarizeTasks: (tasks: SessionTasks['tasks']) => TaskProgressSummary
+  // The current locale's goal event lines, read when an event arrives so a
+  // locale switch applies.
+  goalEventText: () => GoalEventText
 }
 
 export type ChatTasksSummary = TaskProgressSummary & { plan_goal?: string }
@@ -75,16 +81,16 @@ export type CompactOutcome = Awaited<ReturnType<typeof compactSession>>
 
 // Feedback line for a goal_event from the chat stream, or '' when the phase
 // is not worth surfacing.
-export function goalEventFeedback(event: GoalEvent): string {
+export function goalEventFeedback(event: GoalEvent, text: GoalEventText): string {
   switch (event.phase) {
     case 'satisfied':
-      return `goal satisfied${event.reason ? `: ${event.reason}` : ''}`
+      return text.satisfied(event.reason ?? '')
     case 'exhausted':
-      return `goal auto-continue budget exhausted${event.reason ? ` (last: ${event.reason})` : ''}`
+      return text.exhausted(event.reason ?? '')
     case 'auto_continue':
-      return event.goal ? `goal auto-continue ${event.goal.auto_continue_count}/${event.goal.max_auto_continues}` : ''
+      return event.goal ? text.autoContinue(event.goal.auto_continue_count, event.goal.max_auto_continues) : ''
     case 'judge_error':
-      return `goal judge error: ${event.reason ?? 'unknown'}`
+      return text.judgeError(event.reason ?? text.unknownReason)
     default:
       return ''
   }
@@ -316,7 +322,7 @@ export class ChatSessionStore {
 
   applyGoalEvent(event: GoalEvent): void {
     this.goal = event.goal
-    const message = goalEventFeedback(event)
+    const message = goalEventFeedback(event, this.helpers.goalEventText())
     if (message) this.notify(message)
   }
 

@@ -3,9 +3,12 @@ import assert from 'node:assert/strict'
 
 import { formatCodexStatusLines } from '../src/lib/codexStatus.ts'
 import type { CodexUsageTier } from '../src/lib/types'
+import { chatCommandsEn, chatCommandsKo } from '../src/i18n/sections/chatCommands.ts'
+
+const text = chatCommandsEn.codexStatus
 
 test('formatCodexStatusLines reports empty when no openai-codex tier', () => {
-  const lines = formatCodexStatusLines([])
+  const lines = formatCodexStatusLines([], text)
   assert.deepEqual(lines, ['Codex status: no openai-codex tiers configured.'])
 })
 
@@ -13,7 +16,7 @@ test('formatCodexStatusLines drops non openai-codex providers', () => {
   const tiers: CodexUsageTier[] = [
     { tier: 'heavy', provider: 'anthropic', model: 'claude' },
   ]
-  assert.deepEqual(formatCodexStatusLines(tiers), [
+  assert.deepEqual(formatCodexStatusLines(tiers, text), [
     'Codex status: no openai-codex tiers configured.',
   ])
 })
@@ -22,7 +25,7 @@ test('formatCodexStatusLines renders awaiting-first-request when snapshot missin
   const tiers: CodexUsageTier[] = [
     { tier: 'heavy', provider: 'openai-codex', model: 'gpt-5.3-codex' },
   ]
-  const lines = formatCodexStatusLines(tiers)
+  const lines = formatCodexStatusLines(tiers, text)
   assert.equal(lines[0], 'Codex status:')
   assert.equal(lines[1], '  [heavy] gpt-5.3-codex  Awaiting first request…')
 })
@@ -40,7 +43,7 @@ test('formatCodexStatusLines renders bar + percent + reset/window for each windo
       },
     },
   ]
-  const lines = formatCodexStatusLines(tiers)
+  const lines = formatCodexStatusLines(tiers, text)
   assert.equal(lines.length, 4)
   assert.equal(lines[1], '  [standard] gpt-5.5')
   assert.equal(lines[2], '    primary  ██░░░░░░░░   21.0%  (resets 3h 45m / 5h)')
@@ -68,7 +71,7 @@ test('formatCodexStatusLines bar handles 0%, 100% and rounding', () => {
       snapshot: { captured_at: '', primary: { used_percent: 95.0 } },
     },
   ]
-  const lines = formatCodexStatusLines(tiers)
+  const lines = formatCodexStatusLines(tiers, text)
   // tier blocks at lines 2, 4, 6 (each tier = head + 1 window line)
   assert.match(lines[2], /░░░░░░░░░░ {4}0\.0%/)
   assert.match(lines[4], /██████████ +100\.0%/)
@@ -84,7 +87,7 @@ test('formatCodexStatusLines clamps out-of-range percentages on the bar', () => 
       snapshot: { captured_at: '', primary: { used_percent: 150 } },
     },
   ]
-  const lines = formatCodexStatusLines(tiers)
+  const lines = formatCodexStatusLines(tiers, text)
   assert.match(lines[2], /██████████/)
 })
 
@@ -100,7 +103,7 @@ test('formatCodexStatusLines omits reset when not provided', () => {
       },
     },
   ]
-  const lines = formatCodexStatusLines(tiers)
+  const lines = formatCodexStatusLines(tiers, text)
   assert.equal(lines[2], '    primary  █████░░░░░   50.0%  (5h window)')
 })
 
@@ -119,7 +122,7 @@ test('formatCodexStatusLines emits one block per tier in input order', () => {
       snapshot: { captured_at: '' },
     },
   ]
-  const lines = formatCodexStatusLines(tiers)
+  const lines = formatCodexStatusLines(tiers, text)
   // header + heavy(head + 1 window) + standard(head + no-data) = 5
   assert.equal(lines.length, 5)
   assert.match(lines[1], /\[heavy\]/)
@@ -136,6 +139,14 @@ test('formatCodexStatusLines case-insensitive provider match', () => {
       snapshot: { captured_at: '', primary: { used_percent: 1 } },
     },
   ]
-  const lines = formatCodexStatusLines(tiers)
+  const lines = formatCodexStatusLines(tiers, text)
   assert.equal(lines.length, 3)
+})
+
+test('formatCodexStatusLines speaks the console locale', () => {
+  const tiers: CodexUsageTier[] = [
+    { tier: 'heavy', provider: 'openai-codex', model: 'gpt-5.3-codex' },
+  ]
+  assert.deepEqual(formatCodexStatusLines([], chatCommandsKo.codexStatus), ['Codex 상태: openai-codex 티어가 설정되어 있지 않습니다.'])
+  assert.equal(formatCodexStatusLines(tiers, chatCommandsKo.codexStatus)[1], '  [heavy] gpt-5.3-codex  첫 요청 대기 중…')
 })

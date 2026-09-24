@@ -1,7 +1,11 @@
 import type { ChatToolInfo, SessionToolConfig } from './api'
+import type { SessionConfigTranslations } from '../i18n/sections/sessionConfig'
 import { sortStrings } from './sort.js'
 
 export type PermissionRisk = 'low' | 'medium' | 'high'
+
+// Summary phrases come from the caller's locale ($t.sessionConfig.permissionPreview.summary).
+export type SessionPermissionSummaryLabels = SessionConfigTranslations['permissionPreview']['summary']
 
 export type SessionPermissionPreview = {
   summary: string
@@ -31,6 +35,7 @@ export function buildSessionPermissionPreview(
   before: SessionToolConfig,
   after: SessionToolConfig,
   catalog: SessionPermissionPreviewCatalog,
+  labels: SessionPermissionSummaryLabels,
 ): SessionPermissionPreview {
   const tools = catalog.tools ?? []
   const beforeTools = effectiveToolNames(before, tools)
@@ -59,7 +64,7 @@ export function buildSessionPermissionPreview(
   const risk = determineRisk(gainedHighRiskTools, capabilities, gainedTools, gainedSkills, gainedCommands, gainedMCPServers)
 
   return {
-    summary: buildPermissionSummary(gainedTools, lostTools, gainedSkills, lostSkills, gainedCommands, lostCommands, gainedMCPServers, lostMCPServers),
+    summary: buildPermissionSummary(labels, gainedTools, lostTools, gainedSkills, lostSkills, gainedCommands, lostCommands, gainedMCPServers, lostMCPServers),
     risk,
     capabilities,
     gainedTools,
@@ -153,6 +158,7 @@ function determineRisk(
 }
 
 function buildPermissionSummary(
+  labels: SessionPermissionSummaryLabels,
   gainedTools: string[],
   lostTools: string[],
   gainedSkills: string[],
@@ -163,19 +169,19 @@ function buildPermissionSummary(
   lostMCPServers: string[],
 ): string {
   const parts = [
-    countLabel(gainedTools.length, 'tool', 'enabled'),
-    countLabel(lostTools.length, 'tool', 'disabled'),
-    countLabel(gainedSkills.length, 'skill', 'enabled'),
-    countLabel(lostSkills.length, 'skill', 'disabled'),
-    countLabel(gainedCommands.length, 'command', 'enabled'),
-    countLabel(lostCommands.length, 'command', 'disabled'),
-    countLabel(gainedMCPServers.length, 'MCP server', 'enabled'),
-    countLabel(lostMCPServers.length, 'MCP server', 'disabled'),
+    countLabel(gainedTools.length, labels.toolsEnabled),
+    countLabel(lostTools.length, labels.toolsDisabled),
+    countLabel(gainedSkills.length, labels.skillsEnabled),
+    countLabel(lostSkills.length, labels.skillsDisabled),
+    countLabel(gainedCommands.length, labels.commandsEnabled),
+    countLabel(lostCommands.length, labels.commandsDisabled),
+    countLabel(gainedMCPServers.length, labels.mcpServersEnabled),
+    countLabel(lostMCPServers.length, labels.mcpServersDisabled),
   ].filter(Boolean)
-  return parts.length > 0 ? parts.join(', ') : 'No effective permission change'
+  return parts.length > 0 ? parts.join(', ') : labels.none
 }
 
-function countLabel(count: number, noun: string, action: string): string {
+function countLabel(count: number, label: (count: number) => string): string {
   if (count === 0) return ''
-  return `${count} ${noun}${count === 1 ? '' : 's'} ${action}`
+  return label(count)
 }

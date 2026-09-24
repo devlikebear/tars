@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '../i18n'
   import { getChatContext, type ChatContextInfo } from '../lib/api'
   import type { ChatTierRecommendationRequest } from '../lib/types'
 
@@ -100,7 +101,7 @@
 
 <div class="monitor-panel">
   <div class="monitor-header">
-    <span class="monitor-title">Context HUD</span>
+    <span class="monitor-title">{$t.contextPanels.monitor.title}</span>
     {#if onClose}
       <button class="monitor-close" onclick={onClose}>&times;</button>
     {/if}
@@ -116,59 +117,59 @@
     <div class="monitor-bar" style="width: {usagePercent}%; background: {usageColor};"></div>
   </div>
   <div class="monitor-bar-label">
-    {totalTokens.toLocaleString()} / {contextLimit.toLocaleString()} tokens ({usagePercent.toFixed(1)}%)
+    {$t.contextPanels.monitor.usage(totalTokens.toLocaleString(), contextLimit.toLocaleString(), usagePercent.toFixed(1))}
   </div>
 
   <div class="monitor-meta">
-    <span>trigger {compactionTriggerTokens.toLocaleString()}</span>
-    <span>protect max({keepRecentTokens.toLocaleString()}, {(keepRecentFraction * 100).toFixed(0)}%)</span>
+    <span>{$t.contextPanels.monitor.trigger(compactionTriggerTokens.toLocaleString())}</span>
+    <span>{$t.contextPanels.monitor.protect(keepRecentTokens.toLocaleString(), (keepRecentFraction * 100).toFixed(0))}</span>
     {#if lastCompactionMode}
-      <span class="mode-badge">{lastCompactionMode === 'llm' ? 'LLM' : 'Deterministic'}</span>
+      <span class="mode-badge">{lastCompactionMode === 'llm' ? $t.contextPanels.monitor.modeLlm : $t.contextPanels.monitor.modeDeterministic}</span>
     {/if}
   </div>
 
   <div class="monitor-grid">
     <div class="monitor-stat">
-      <span class="stat-label">System Prompt</span>
+      <span class="stat-label">{$t.contextPanels.monitor.stats.systemPrompt}</span>
       <span class="stat-value">{(contextInfo?.system_prompt_tokens ?? fullContext?.system_prompt_tokens ?? 0).toLocaleString()}</span>
     </div>
     <div class="monitor-stat">
-      <span class="stat-label">History</span>
-      <span class="stat-value">{(contextInfo?.history_tokens ?? fullContext?.history_tokens ?? 0).toLocaleString()} ({contextInfo?.history_messages ?? fullContext?.history_messages ?? 0} msgs)</span>
+      <span class="stat-label">{$t.contextPanels.monitor.stats.history}</span>
+      <span class="stat-value">{(contextInfo?.history_tokens ?? fullContext?.history_tokens ?? 0).toLocaleString()} ({$t.contextPanels.monitor.historyMessages(contextInfo?.history_messages ?? fullContext?.history_messages ?? 0)})</span>
     </div>
     <div class="monitor-stat">
-      <span class="stat-label">Tools</span>
+      <span class="stat-label">{$t.contextPanels.monitor.stats.tools}</span>
       <span class="stat-value">{contextInfo?.tool_count ?? fullContext?.tool_count ?? 0}</span>
     </div>
     <div class="monitor-stat">
-      <span class="stat-label">Skills</span>
+      <span class="stat-label">{$t.contextPanels.monitor.stats.skills}</span>
       <span class="stat-value">{contextInfo?.skill_count ?? fullContext?.skill_count ?? 0}</span>
     </div>
     <div class="monitor-stat">
-      <span class="stat-label">Commands</span>
+      <span class="stat-label">{$t.contextPanels.monitor.stats.commands}</span>
       <span class="stat-value">{contextInfo?.command_count ?? fullContext?.command_count ?? 0}</span>
     </div>
     <div class="monitor-stat">
-      <span class="stat-label">Memory</span>
-      <span class="stat-value">{(contextInfo?.memory_count ?? fullContext?.memory_count ?? 0)} ({(contextInfo?.memory_tokens ?? fullContext?.memory_tokens ?? 0).toLocaleString()} tokens)</span>
+      <span class="stat-label">{$t.contextPanels.monitor.stats.memory}</span>
+      <span class="stat-value">{(contextInfo?.memory_count ?? fullContext?.memory_count ?? 0)} ({$t.contextPanels.monitor.tokens((contextInfo?.memory_tokens ?? fullContext?.memory_tokens ?? 0).toLocaleString())})</span>
     </div>
     <div class="monitor-stat">
-      <span class="stat-label">Used This Turn</span>
+      <span class="stat-label">{$t.contextPanels.monitor.stats.usedThisTurn}</span>
       <span class="stat-value">{usedTools.length}</span>
     </div>
     <div class="monitor-stat">
-      <span class="stat-label">LLM Tier</span>
-      <span class="stat-value">{llmTier || 'pending'}</span>
+      <span class="stat-label">{$t.contextPanels.monitor.stats.llmTier}</span>
+      <span class="stat-value">{llmTier || $t.contextPanels.monitor.tierPending}</span>
     </div>
   </div>
 
   {#if tierRecommendation}
     <div class="monitor-section">
-      <span class="section-title">Tier Recommendation</span>
+      <span class="section-title">{$t.contextPanels.monitor.sections.tierRecommendation}</span>
       <div class="tool-chips">
         <span class="tool-chip">
           {tierRecommendation.recommended_tier} → {tierRecommendation.chosen_tier}
-          {#if tierRecommendation.accepted} · accepted{:else} · override{/if}
+          {#if tierRecommendation.accepted} · {$t.contextPanels.monitor.tierAccepted}{:else} · {$t.contextPanels.monitor.tierOverride}{/if}
         </span>
       </div>
     </div>
@@ -176,7 +177,7 @@
 
   {#if selectedSkillName}
     <div class="monitor-section">
-      <span class="section-title">Selected Skill</span>
+      <span class="section-title">{$t.contextPanels.monitor.sections.selectedSkill}</span>
       <div class="tool-chips">
         <span class="tool-chip">{selectedSkillName}{#if selectedSkillReason} · {selectedSkillReason}{/if}</span>
       </div>
@@ -185,7 +186,7 @@
 
   {#if selectedCommandName}
     <div class="monitor-section">
-      <span class="section-title">Selected Command</span>
+      <span class="section-title">{$t.contextPanels.monitor.sections.selectedCommand}</span>
       <div class="tool-chips">
         <span class="tool-chip">{selectedCommandName}{#if selectedCommandReason} · {selectedCommandReason}{/if}</span>
       </div>
@@ -194,7 +195,7 @@
 
   {#if mentionedPaths.length > 0}
     <div class="monitor-section">
-      <span class="section-title">Mentioned Context</span>
+      <span class="section-title">{$t.contextPanels.monitor.sections.mentionedContext}</span>
       <div class="tool-chips">
         {#each mentionedPaths as path}
           <span class="tool-chip">{path}</span>
@@ -205,7 +206,7 @@
 
   {#if mentionedSubagents.length > 0}
     <div class="monitor-section">
-      <span class="section-title">Mentioned Subagents</span>
+      <span class="section-title">{$t.contextPanels.monitor.sections.mentionedSubagents}</span>
       <div class="tool-chips">
         {#each mentionedSubagents as name}
           <span class="tool-chip">{name}</span>
@@ -216,7 +217,7 @@
 
   {#if injectedTools.length > 0}
     <div class="monitor-section">
-      <span class="section-title">Injected Tools</span>
+      <span class="section-title">{$t.contextPanels.monitor.sections.injectedTools}</span>
       <div class="tool-chips">
         {#each injectedTools as name}
           <span class="tool-chip">{name}</span>
@@ -227,7 +228,7 @@
 
   {#if availableSkills.length > 0}
     <div class="monitor-section">
-      <span class="section-title">Available Skills</span>
+      <span class="section-title">{$t.contextPanels.monitor.sections.availableSkills}</span>
       <div class="tool-chips">
         {#each availableSkills as name}
           <span class="tool-chip">{name}</span>
@@ -238,7 +239,7 @@
 
   {#if availableCommands.length > 0}
     <div class="monitor-section">
-      <span class="section-title">Available Commands</span>
+      <span class="section-title">{$t.contextPanels.monitor.sections.availableCommands}</span>
       <div class="tool-chips">
         {#each availableCommands as name}
           <span class="tool-chip">{name}</span>
@@ -249,7 +250,7 @@
 
   {#if usedTools.length > 0}
     <div class="monitor-section">
-      <span class="section-title">Used Tools</span>
+      <span class="section-title">{$t.contextPanels.monitor.sections.usedTools}</span>
       <div class="tool-chips">
         {#each usedTools as name}
           <span class="tool-chip">{name}</span>
@@ -261,7 +262,7 @@
   {#if fullContext?.system_prompt}
     <div class="monitor-section">
       <button class="section-toggle" onclick={() => showPrompt = !showPrompt}>
-        {showPrompt ? '\u25BC' : '\u25B6'} System Prompt
+        {showPrompt ? '\u25BC' : '\u25B6'} {$t.contextPanels.monitor.stats.systemPrompt}
       </button>
       {#if showPrompt}
         <pre class="prompt-preview">{fullContext.system_prompt}</pre>
@@ -271,7 +272,7 @@
 
   <div class="monitor-actions">
     <button class="btn btn-ghost btn-sm" onclick={loadFullContext} disabled={loading}>
-      {loading ? 'Loading...' : 'Refresh'}
+      {loading ? $t.contextPanels.monitor.loading : $t.contextPanels.monitor.refresh}
     </button>
   </div>
 </div>

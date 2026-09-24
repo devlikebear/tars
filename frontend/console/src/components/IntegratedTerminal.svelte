@@ -10,6 +10,8 @@
   import { SerializeAddon } from '@xterm/addon-serialize'
   import '@xterm/xterm/css/xterm.css'
   import { terminalWebSocketURL } from '../lib/api'
+  import { t } from '../i18n'
+  import type { TerminalTranslations } from '../i18n/sections/terminal'
 
   const FONT_SIZE_KEY = 'tars.terminal.fontSize'
   const FONT_FAMILY_KEY = 'tars.terminal.fontFamily'
@@ -60,6 +62,11 @@
     return FONT_FAMILIES.find((f) => f.id === id) ?? FONT_FAMILIES[0]
   }
 
+  // Font names stay as they are; only the system preset has a UI label.
+  function fontFamilyLabel(preset: FontPreset): string {
+    return preset.id === 'system' ? $t.terminal.settings.systemFont : preset.label
+  }
+
   function loadFontSize(): number {
     if (typeof localStorage === 'undefined') return DEFAULT_FONT_SIZE
     const raw = localStorage.getItem(FONT_SIZE_KEY)
@@ -91,8 +98,15 @@
 
   let container: HTMLDivElement | undefined = $state()
   let searchInputEl: HTMLInputElement | undefined = $state()
-  let status = $state('Connecting')
-  let error = $state('')
+  // Connection states and fallback errors are kept as keys and labeled at
+  // render time, so a locale switch relabels them. `text` is what the server
+  // sent (the shell's cwd, an error message) and is shown as is.
+  type TerminalStatusKey = keyof TerminalTranslations['status']
+  type TerminalErrorKey = keyof TerminalTranslations['errors']
+  let status = $state<{ key: TerminalStatusKey; text?: string }>({ key: 'connecting' })
+  let error = $state<{ key: TerminalErrorKey; text?: string } | null>(null)
+  let statusLabel = $derived(status.text || $t.terminal.status[status.key])
+  let errorLabel = $derived(error ? error.text || $t.terminal.errors[error.key] : '')
   let connected = $state(false)
   let searchOpen = $state(false)
   let searchQuery = $state('')
@@ -159,8 +173,8 @@
 
     socket.onopen = () => {
       connected = true
-      error = ''
-      status = 'Connected'
+      error = null
+      status = { key: 'connected' }
       fitAndResize()
     }
     socket.onmessage = (event) => {
@@ -173,30 +187,30 @@
         }
         switch (message.type) {
           case 'ready':
-            status = message.cwd ? message.cwd : 'Connected'
+            status = { key: 'connected', text: message.cwd }
             break
           case 'output':
             if (message.data) terminal?.write(decodeBase64(message.data))
             break
           case 'error':
-            error = message.message || 'Terminal error'
+            error = { key: 'terminalError', text: message.message }
             if (message.message) terminal?.writeln(`\r\n${message.message}`)
             break
           case 'exit':
             connected = false
-            status = 'Exited'
+            status = { key: 'exited' }
             break
         }
       } catch (err) {
-        error = err instanceof Error ? err.message : 'Invalid terminal message'
+        error = { key: 'invalidMessage', text: err instanceof Error ? err.message : undefined }
       }
     }
     socket.onerror = () => {
-      error = 'Terminal connection failed'
+      error = { key: 'connectionFailed' }
     }
     socket.onclose = () => {
       connected = false
-      if (!error) status = 'Disconnected'
+      if (!error) status = { key: 'disconnected' }
     }
   }
 
@@ -204,8 +218,8 @@
     if (socket && socket.readyState !== WebSocket.CLOSED) {
       socket.close()
     }
-    error = ''
-    status = 'Connecting'
+    error = null
+    status = { key: 'connecting' }
     connect()
   }
 
@@ -560,7 +574,7 @@
     // Track only the data fields. Read the callback inside untrack so a parent
     // re-rendering an inline arrow (new reference each time) doesn't reschedule
     // this effect and create a write→render→re-run loop.
-    const snapshot = { connected, status, error }
+    const snapshot = { connected, status: statusLabel, error: errorLabel }
     untrack(() => onStatusChange?.(snapshot))
   })
 
@@ -597,9 +611,9 @@
         class="terminal-status"
         class:reconnect={!connected}
         onclick={reconnect}
-        title={connected ? 'Reconnect' : 'Click to reconnect'}
+        title={connected ? $t.terminal.header.reconnect : $t.terminal.header.clickToReconnect}
       >
-        {error || status}
+        {errorLabel || statusLabel}
       </button>
     </div>
     <div class="terminal-actions">
@@ -608,13 +622,13 @@
         class="btn btn-ghost btn-sm"
         onclick={() => (settingsOpen = !settingsOpen)}
         aria-expanded={settingsOpen}
-        title="Terminal font settings"
+        title={$t.terminal.header.fontSettings}
       >
         Aa
       </button>
-      <button type="button" class="btn btn-ghost btn-sm" onclick={openSearch} title="Find ({isMac ? '⌘F' : 'Ctrl+Shift+F'})">Find</button>
+      <button type="button" class="btn btn-ghost btn-sm" onclick={openSearch} title={$t.terminal.header.findTitle(isMac ? '⌘F' : 'Ctrl+Shift+F')}>{$t.terminal.header.find}</button>
       {#if !hideLabel}
-        <button type="button" class="btn btn-ghost btn-sm" onclick={onClose}>Close</button>
+        <button type="button" class="btn btn-ghost btn-sm" onclick={onClose}>{$t.terminal.header.close}</button>
       {/if}
     </div>
   </div>
@@ -624,38 +638,38 @@
         bind:this={searchInputEl}
         bind:value={searchQuery}
         onkeydown={onSearchKeydown}
-        placeholder="Find in terminal…"
+        placeholder={$t.terminal.search.placeholder}
         spellcheck="false"
         autocomplete="off"
       />
-      <label class:active={searchCaseSensitive} title="Case sensitive">
+      <label class:active={searchCaseSensitive} title={$t.terminal.search.caseSensitive}>
         <input type="checkbox" bind:checked={searchCaseSensitive} />
         <span>Aa</span>
       </label>
-      <label class:active={searchRegex} title="Regex">
+      <label class:active={searchRegex} title={$t.terminal.search.regex}>
         <input type="checkbox" bind:checked={searchRegex} />
         <span>.*</span>
       </label>
-      <button type="button" class="btn btn-ghost btn-sm" onclick={findPrevious} title="Previous (Shift+Enter)">↑</button>
-      <button type="button" class="btn btn-ghost btn-sm" onclick={findNext} title="Next (Enter)">↓</button>
-      <button type="button" class="btn btn-ghost btn-sm" onclick={closeSearch} title="Close (Esc)">✕</button>
+      <button type="button" class="btn btn-ghost btn-sm" onclick={findPrevious} title={$t.terminal.search.previous}>↑</button>
+      <button type="button" class="btn btn-ghost btn-sm" onclick={findNext} title={$t.terminal.search.next}>↓</button>
+      <button type="button" class="btn btn-ghost btn-sm" onclick={closeSearch} title={$t.terminal.search.close}>✕</button>
     </div>
   {/if}
   {#if settingsOpen}
-    <div class="terminal-settings" role="region" aria-label="Terminal font settings">
+    <div class="terminal-settings" role="region" aria-label={$t.terminal.header.fontSettings}>
       <label class="terminal-settings-row">
-        <span>Font</span>
+        <span>{$t.terminal.settings.font}</span>
         <select
           value={settingsFontFamilyID}
           onchange={(e) => applyFontFamily((e.currentTarget as HTMLSelectElement).value)}
         >
           {#each FONT_FAMILIES as preset (preset.id)}
-            <option value={preset.id}>{preset.label}</option>
+            <option value={preset.id}>{fontFamilyLabel(preset)}</option>
           {/each}
         </select>
       </label>
       <label class="terminal-settings-row">
-        <span>Size</span>
+        <span>{$t.terminal.settings.size}</span>
         <input
           type="range"
           min={MIN_FONT_SIZE}
@@ -673,11 +687,11 @@
           applyFontSize(DEFAULT_FONT_SIZE)
           applyFontFamily(DEFAULT_FONT_FAMILY_ID)
         }}
-        title="Reset to defaults"
+        title={$t.terminal.settings.resetTitle}
       >
-        Reset
+        {$t.terminal.settings.reset}
       </button>
-      <button type="button" class="btn btn-ghost btn-sm" onclick={() => (settingsOpen = false)} title="Close">✕</button>
+      <button type="button" class="btn btn-ghost btn-sm" onclick={() => (settingsOpen = false)} title={$t.terminal.settings.close}>✕</button>
     </div>
   {/if}
   <div class="terminal-frame-wrap">
@@ -699,20 +713,20 @@
         style="left: {menuX}px; top: {menuY}px"
       >
         <button type="button" role="menuitem" disabled={!menuHasSelection} onclick={() => onMenuItem('copy')}>
-          <span>Copy</span>
+          <span>{$t.terminal.menu.copy}</span>
           <kbd>{isMac ? '⌘C' : 'Ctrl+Shift+C'}</kbd>
         </button>
         <button type="button" role="menuitem" onclick={() => onMenuItem('paste')}>
-          <span>Paste</span>
+          <span>{$t.terminal.menu.paste}</span>
           <kbd>{isMac ? '⌘V' : 'Ctrl+Shift+V'}</kbd>
         </button>
         <div class="terminal-menu-sep" role="separator"></div>
         <button type="button" role="menuitem" onclick={() => onMenuItem('clear')}>
-          <span>Clear</span>
+          <span>{$t.terminal.menu.clear}</span>
           <kbd>{isMac ? '⌘K' : 'Ctrl+Shift+K'}</kbd>
         </button>
         <button type="button" role="menuitem" onclick={() => onMenuItem('save')}>
-          <span>Save buffer…</span>
+          <span>{$t.terminal.menu.saveBuffer}</span>
         </button>
       </div>
     {/if}

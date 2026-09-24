@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { chatWorkbenchSource, readChatWorkbenchFile } from './helpers/chatWorkbenchSource.ts'
+import { artifactPanelEn } from '../src/i18n/sections/artifactPanel.ts'
 
 const chatSource = chatWorkbenchSource
 const artifactSource = readFileSync(new URL('../src/components/ArtifactPanel.svelte', import.meta.url), 'utf8')
@@ -32,7 +33,11 @@ test('Files panel delegates Shell to the Chat dock while keeping external app fa
   assert.doesNotMatch(artifactSource, /import IntegratedTerminal/)
   assert.match(artifactSource, /onOpenIntegratedTerminal: \(target: \{ cwd: string; label: string \}\) => void/)
   assert.match(artifactSource, /onOpenIntegratedTerminal\(\{ cwd: terminalCWDPath\(\), label: terminalTargetLabel\(\) \}\)/)
-  assert.match(artifactSource, /Open macOS Terminal at/)
+  assert.match(artifactSource, /title=\{\$t\.artifactPanel\.workspace\.openAppTitle\(terminalTargetLabel\(\)\)\}/)
+  assert.equal(artifactPanelEn.workspace.openAppTitle('x'), 'Open macOS Terminal at x')
+  // e2e/chat-workbench.spec.ts clicks button[title^="Open integrated terminal"].
+  assert.match(artifactSource, /title=\{\$t\.artifactPanel\.workspace\.shellTitle\(terminalTargetLabel\(\)\)\}/)
+  assert.equal(artifactPanelEn.workspace.shellTitle('x'), 'Open integrated terminal at x')
   assert.match(artifactSource, /onclick={openTerminalAtCurrentPath}/)
 })
 

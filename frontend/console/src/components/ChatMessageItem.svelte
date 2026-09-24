@@ -19,8 +19,6 @@
     steps: readonly string[]
     currentStepIndex: number
     stepLabels: string[]
-    locale: 'ko' | 'en'
-    onToggleLocale: () => void
   }
 
   interface Props {
@@ -57,7 +55,12 @@
     toolResult: message.toolResult,
     toolDone: message.toolDone,
     toolIsError: message.toolIsError,
-  }) : null)
+  }, $t.chatThread.subagents) : null)
+
+  function roleLabel(role: ChatMessage['role']): string {
+    if (role === 'error') return $t.chatThread.message.errorRole
+    return $t.chat.message.roles[role as keyof typeof $t.chat.message.roles] ?? role
+  }
 </script>
 
 {#if message.role === 'tool'}
@@ -71,25 +74,25 @@
         {#if elapsedLabel}
           <span class="tool-elapsed">{elapsedLabel}</span>
         {/if}
-        <span class="badge {toolBadgeClass} tool-badge">{tone}</span>
+        <span class="badge {toolBadgeClass} tool-badge">{$t.chatThread.tool.tones[tone]}</span>
       </summary>
       <div class="tool-detail-grid">
         {#if argsJSON}
           <div class="tool-detail">
-            <span class="tool-detail-label">args</span>
+            <span class="tool-detail-label">{$t.chatThread.tool.args}</span>
             <pre class="tool-detail-value"><code>{argsJSON}</code></pre>
           </div>
         {/if}
         {#if message.toolOutputLines && message.toolOutputLines.length > 0}
           <details class="tool-detail tool-output" open={!message.toolDone}>
-            <summary class="tool-detail-label">output ({message.toolOutputLines.length})</summary>
+            <summary class="tool-detail-label">{$t.chatThread.tool.output(message.toolOutputLines.length)}</summary>
             <pre class="tool-output-body"><code>{#each message.toolOutputLines as line, i (i)}<span class={line.stream === 'stderr' ? 'tool-output-stderr' : 'tool-output-stdout'}>{line.text}</span>
 {/each}</code></pre>
           </details>
         {/if}
         {#if resultJSON}
           <div class="tool-detail">
-            <span class="tool-detail-label">result</span>
+            <span class="tool-detail-label">{$t.chatThread.tool.result}</span>
             <pre class="tool-detail-value"><code>{resultJSON}</code></pre>
           </div>
         {/if}
@@ -102,7 +105,7 @@
       {#if message.role === 'assistant'}
         <img class="chat-avatar" src="/console/tars-avatar.png" alt="" width="22" height="22" />
       {/if}
-      <span class="chat-role">{$t.chat.message.roles[message.role as keyof typeof $t.chat.message.roles] ?? message.role}</span>
+      <span class="chat-role">{roleLabel(message.role)}</span>
     </div>
     {#if message.role === 'assistant'}
       {#if message.reasoningText}
@@ -119,8 +122,6 @@
             steps={streamingStatus.steps}
             currentStepIndex={streamingStatus.currentStepIndex}
             stepLabels={streamingStatus.stepLabels}
-            locale={streamingStatus.locale}
-            onToggleLocale={streamingStatus.onToggleLocale}
           />
         </div>
       {:else}

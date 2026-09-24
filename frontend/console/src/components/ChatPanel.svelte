@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy, tick } from 'svelte'
   import { t } from '../i18n'
+  import type { ChatThreadTranslations } from '../i18n/sections/chatThread'
   import { streamChat, cancelChat, getSessionHistory, renameSession, streamEvents, listChatFileMentions, listAgentRuntimeSubagents, listSkills, listChatTools, getSessionEffectiveConfig, forkSessionFromMessage } from '../lib/api'
   import type { AgentRuntimeSubagent, ChatAttachment, ChatContextInfo, ChatEvent, ChatTier, ChatTierRecommendationRequest, CommandDef, Session, SessionGoal, SessionMessage, SkillDef } from '../lib/types'
   import { chatSession } from '../lib/stores/chatSession'
@@ -64,12 +65,10 @@
   let chatStatusElapsedMs = $state(0)
   let chatStatusTicker: ReturnType<typeof setInterval> | null = $state(null)
   const CHAT_STATUS_PROGRESS_STEPS = ['connecting', 'loop_start', 'before_llm', 'tool', 'after_llm', 'done'] as const
-  type ChatStatusLocale = 'ko' | 'en'
-  function getDefaultChatStatusLocale(): ChatStatusLocale {
-    if (typeof navigator === 'undefined') return 'ko'
-    return navigator.language.toLowerCase().startsWith('en') ? 'en' : 'ko'
+  // The streaming status follows the console language like the rest of the UI.
+  function chatStatusText(): ChatThreadTranslations['streaming'] {
+    return $t.chatThread.streaming
   }
-  let chatStatusLocale: ChatStatusLocale = $state(getDefaultChatStatusLocale())
   let chatMessages: ChatMessage[] = $state([])
   let autoTitled = $state(false)
   let autoSendDone = false
@@ -120,21 +119,20 @@
     return CHAT_STATUS_PROGRESS_STEPS.indexOf(step)
   }
 
-  function getStatusStepLabel(step: (typeof CHAT_STATUS_PROGRESS_STEPS)[number], toolName: string, isEn: boolean): string {
-    const t = (ko: string, en: string) => (isEn ? en : ko)
+  function getStatusStepLabel(step: (typeof CHAT_STATUS_PROGRESS_STEPS)[number], toolName: string, text: ChatThreadTranslations['streaming']): string {
     switch (step) {
       case 'connecting':
-        return t('요청 전송', 'Connecting')
+        return text.steps.connecting
       case 'loop_start':
-        return t('추론 시작', 'Starting')
+        return text.steps.loopStart
       case 'before_llm':
-        return t('LLM 추론', 'LLM Thinking')
+        return text.steps.beforeLlm
       case 'tool':
-        return toolName ? toolName : t('도구 호출', 'Tool Call')
+        return toolName ? toolName : text.steps.tool
       case 'after_llm':
-        return t('응답 정리', 'Assembling')
+        return text.steps.afterLlm
       case 'done':
-        return t('완료', 'Done')
+        return text.steps.done
     }
   }
 
@@ -181,51 +179,38 @@
     const msg = chatStatusMessage
     const toolName = chatStatusTool
     const skillName = chatStatusSkill
-    const isEn = chatStatusLocale === 'en'
-    const t = (ko: string, en: string) => (isEn ? en : ko)
+    const text = chatStatusText().phases
 
     if (!phase) return msg || chatStatusLine
 
     switch (phase) {
       case 'connecting':
-        return t('요청 전송 중', 'Sending request')
+        return text.connecting
       case 'loop_start':
-        return t('추론 시작 중', 'Starting reasoning')
+        return text.loopStart
       case 'before_llm':
-        return t('LLM 응답 생성 중', 'Generating LLM response')
+        return text.beforeLlm
       case 'after_llm':
-        return t('응답 정리 중', 'Preparing final response')
+        return text.afterLlm
       case 'before_tool_call':
-        return toolName
-          ? isEn
-            ? `${toolName} running`
-            : `${toolName} 도구 실행 중`
-          : t('도구 실행 중', 'Running tool')
+        return toolName ? text.toolRunning(toolName) : text.runningTool
       case 'after_tool_call':
-        return toolName
-          ? isEn
-            ? `${toolName} applying result`
-            : `${toolName} 도구 결과 반영 중`
-          : t('도구 결과 반영 중', 'Applying tool result')
+        return toolName ? text.toolApplyingResult(toolName) : text.applyingToolResult
       case 'skill_selected':
-        return skillName ? (isEn ? `${skillName} skill selected` : `${skillName} skill 선택`) : (msg || t('skill 선택', 'Skill selected'))
+        return skillName ? text.namedSkillSelected(skillName) : (msg || text.skillSelected)
       case 'command_selected':
-        return msg || t('명령 선택', 'Command selected')
+        return msg || text.commandSelected
       case 'compaction':
-        return `${t('대화 압축 중', 'Compacting conversation')}${msg ? ` · ${msg}` : ''}`
+        return `${text.compacting}${msg ? ` · ${msg}` : ''}`
       case 'slash':
-        return chatStatusLine || msg || t('명령 실행 중', 'Running command')
+        return chatStatusLine || msg || text.runningCommand
       case 'done':
-        return t('응답 완료', 'Response complete')
+        return text.done
       case 'cancelled':
-        return t('요청 취소됨', 'Request cancelled')
+        return text.cancelled
       default:
         return msg || phase
     }
-  }
-
-  function toggleChatStatusLocale() {
-    chatStatusLocale = chatStatusLocale === 'ko' ? 'en' : 'ko'
   }
 
   let streamingAssistantId = $derived.by(() => {
@@ -247,10 +232,8 @@
       steps: CHAT_STATUS_PROGRESS_STEPS,
       currentStepIndex: getCurrentStatusStepIndex(),
       stepLabels: CHAT_STATUS_PROGRESS_STEPS.map((step) =>
-        getStatusStepLabel(step, chatStatusTool, chatStatusLocale === 'en'),
+        getStatusStepLabel(step, chatStatusTool, chatStatusText()),
       ),
-      locale: chatStatusLocale,
-      onToggleLocale: toggleChatStatusLocale,
     }
   })
 
@@ -389,7 +372,7 @@
           const skillMsg: ChatMessage = {
             id: `skill-${Date.now()}`,
             role: 'system',
-            text: `skill selected: ${event.skill_name}`,
+            text: $t.chatThread.thread.skillSelected(event.skill_name),
           }
           const aIdx = chatMessages.findIndex((m) => m.id === assistantRef.id)
           if (aIdx >= 0) {
@@ -405,7 +388,7 @@
           const commandMsg: ChatMessage = {
             id: `command-${Date.now()}`,
             role: 'system',
-            text: `command selected: ${event.command_name}`,
+            text: $t.chatThread.thread.commandSelected(event.command_name),
           }
           const aIdx = chatMessages.findIndex((m) => m.id === assistantRef.id)
           if (aIdx >= 0) {
@@ -505,9 +488,7 @@
         })
         applyChatStatus({
           phase: 'compaction',
-          message: chatStatusLocale === 'en'
-            ? `${event.mode ? `${event.mode} mode` : ''} ${event.compacted_count ?? 0} tokens compacted`.trim()
-            : `${event.mode ? `${event.mode} 모드` : ''} ${event.compacted_count ?? 0}개 토큰 압축`.trim(),
+          message: chatStatusText().compacted(event.mode ?? '', event.compacted_count ?? 0),
         })
         break
       case 'tasks_changed':
@@ -557,7 +538,7 @@
         void chatSession.turnSettled()
         break
       case 'error':
-        chatError = event.error?.trim() || 'Stream failed'
+        chatError = event.error?.trim() || $t.chatThread.errors.streamFailed
         break
     }
   }
@@ -644,7 +625,7 @@
       return
     }
     const seq = ++slashRequestSeq
-    const candidates = buildSlashCandidates(trigger.query, slashSkills, slashCommands)
+    const candidates = buildSlashCandidates(trigger.query, slashSkills, slashCommands, $t.chatCommands.slash)
     if (seq !== slashRequestSeq) return
     slashCandidates = candidates
     slashActiveIndex = 0
@@ -710,20 +691,20 @@
   }
 
   function mentionKindLabel(kind: ChatMentionCandidate['kind'] | SelectedChatMention['kind']): string {
-    if (kind === 'directory') return 'DIR'
-    if (kind === 'subagent') return 'AGENT'
-    return 'FILE'
+    if (kind === 'directory') return $t.chatThread.mention.kinds.directory
+    if (kind === 'subagent') return $t.chatThread.mention.kinds.subagent
+    return $t.chatThread.mention.kinds.file
   }
 
   function mentionSectionLabel(kind: ChatMentionCandidate['kind']): string {
-    if (kind === 'directory') return 'Directories'
-    if (kind === 'subagent') return 'Subagents'
-    return 'Files'
+    if (kind === 'directory') return $t.chatThread.mention.sections.directory
+    if (kind === 'subagent') return $t.chatThread.mention.sections.subagent
+    return $t.chatThread.mention.sections.file
   }
 
   function mentionOptionMeta(candidate: ChatMentionCandidate): string {
     if (candidate.kind === 'subagent') {
-      return [candidate.tier, candidate.model, candidate.description].filter(Boolean).join(' · ') || 'subagent'
+      return [candidate.tier, candidate.model, candidate.description].filter(Boolean).join(' · ') || $t.chatThread.mention.subagentMeta
     }
     return candidate.root_label
   }
@@ -776,9 +757,24 @@
   }
 
   function tierLabel(tier: ChatTier): string {
-    if (tier === 'heavy') return 'Heavy'
-    if (tier === 'light') return 'Light'
-    return 'Standard'
+    if (tier === 'heavy') return $t.chat.tierRecommendation.tierHeavy
+    if (tier === 'light') return $t.chat.tierRecommendation.tierLight
+    return $t.chat.tierRecommendation.tierStandard
+  }
+
+  // The card shows the reason in the console's language; the payload keeps
+  // the lib's English reason, which the server records.
+  function tierReasonLabel(recommendation: TierRecommendation): string {
+    switch (recommendation.task_type) {
+      case 'coding':
+        return $t.chatThread.tierReason.coding
+      case 'light_transform':
+        return $t.chatThread.tierReason.lightTransform
+      case 'general':
+        return $t.chatThread.tierReason.general
+      default:
+        return recommendation.reason
+    }
   }
 
   function tierClass(tier: ChatTier): string {
@@ -875,7 +871,7 @@
       if (err instanceof DOMException && err.name === 'AbortError') {
         // User cancelled — no error to show
       } else {
-        chatError = err instanceof Error ? err.message : 'Failed to send'
+        chatError = err instanceof Error ? err.message : $t.chatThread.errors.sendFailed
         chatMessages = [...chatMessages, { id: `error-${Date.now()}`, role: 'error', text: chatError }]
       }
     } finally {
@@ -1151,7 +1147,7 @@
 
   async function loadHistoryInto(targetSessionId: string) {
     const rebuilt: ChatMessage[] = [
-      { id: 'system-init', role: 'system', text: `Session: ${targetSessionId.slice(0, 8)}...` },
+      { id: 'system-init', role: 'system', text: $t.chat.systemInit.session(targetSessionId.slice(0, 8)) },
     ]
     const history = await getSessionHistory(targetSessionId)
     for (const msg of history) {
@@ -1189,20 +1185,21 @@
     const sourceMessageId = message.sourceMessageId?.trim()
     if (!targetSessionId || !sourceMessageId) return
     if (chatBusy) {
-      chatError = 'Wait for the current response to finish before forking this session.'
+      chatError = $t.chatThread.errors.forkBusy
       return
     }
     chatError = ''
     applyChatStatus({
       phase: 'slash',
-      message: chatStatusLocale === 'en' ? 'Duplicating session...' : '세션 복사 중',
+      message: chatStatusText().forking,
     })
     try {
+      // The fork reason is stored with the session, so it stays English.
       const child = await forkSessionFromMessage(targetSessionId, sourceMessageId, `Forked from ${message.role} message`)
       onSessionForked?.(child)
       void chatSession.turnSettled()
     } catch (err) {
-      chatError = err instanceof Error ? err.message : 'Failed to fork session'
+      chatError = err instanceof Error ? err.message : $t.chatThread.errors.forkFailed
     } finally {
       applyChatStatus({ phase: '', message: '' })
     }
@@ -1278,7 +1275,7 @@
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="chat-panel" role="region" aria-label="Chat" ondragover={handleDragOver} ondragleave={handleDragLeave} ondrop={handleDrop}>
+<div class="chat-panel" role="region" aria-label={$t.chatThread.panel.ariaLabel} ondragover={handleDragOver} ondragleave={handleDragLeave} ondrop={handleDrop}>
   {#if isDragging}
     <div class="drop-overlay">
       <div class="drop-label">{$t.chat.dropOverlay}</div>
@@ -1337,7 +1334,7 @@
         <span class={tierClass(pendingTierRecommendation.recommended_tier)}>{tierLabel(pendingTierRecommendation.recommended_tier)}</span>
         <div>
           <strong>{$t.chat.tierRecommendation.headline(tierLabel(pendingTierRecommendation.recommended_tier))}</strong>
-          <p>{pendingTierRecommendation.reason}</p>
+          <p>{tierReasonLabel(pendingTierRecommendation)}</p>
         </div>
       </div>
       <div class="tier-recommendation-actions" aria-label={$t.chat.tierRecommendation.chooseTierAria}>

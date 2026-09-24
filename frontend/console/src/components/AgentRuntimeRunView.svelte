@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onDestroy } from 'svelte'
-  import { t } from '../i18n'
+  import { locale, t } from '../i18n'
   import AgentRuntimeCostFlow from './AgentRuntimeCostFlow.svelte'
   import AgentRuntimeFlowGraph from './AgentRuntimeFlowGraph.svelte'
   import AgentRuntimeGantt from './AgentRuntimeGantt.svelte'
@@ -100,11 +100,6 @@
     { name: 'subagents_orchestrate', detail: $t.agentRuntime.toolDetail.orchestrate },
     { name: 'subagents_plan', detail: $t.agentRuntime.toolDetail.plan },
   ])
-
-  const starterPrompts = [
-    'Analyze this codebase in parallel with three subagents.',
-    'Ask two subagents to inspect the frontend and backend separately.',
-  ]
 
   let runStatusOptions = $derived<{ value: RunStatusFilter; label: string }[]>([
     { value: 'all', label: $t.agentRuntime.statusAll },
@@ -247,8 +242,8 @@
         }
         selectedRun = event.type === 'tool.call' ? applyFileAttentionEvent(nextRun, event) : nextRun
       },
-      (message) => {
-        streamError = message
+      (reason) => {
+        streamError = reason === 'parse' ? $t.agentRuntimeRun.detail.streamParseFailed : $t.agentRuntimeRun.detail.streamDisconnected
       },
     )
   }
@@ -257,7 +252,7 @@
     if (!value?.trim()) return '—'
     const date = new Date(value)
     if (Number.isNaN(date.getTime())) return value
-    return new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short' }).format(date)
+    return new Intl.DateTimeFormat($locale, { dateStyle: 'medium', timeStyle: 'short' }).format(date)
   }
 
   function fmtUSD(value: number | null): string {
@@ -317,8 +312,8 @@
       if (cost == null) continue
       const key = run.root_run_id || run.parent_run_id || run.run_id
       const label = run.root_run_id || run.parent_run_id
-        ? `Plan ${shortID(key)}`
-        : run.prompt?.trim() || `Run ${shortID(run.run_id)}`
+        ? $t.agentRuntimeRun.shared.planLabel(shortID(key))
+        : run.prompt?.trim() || $t.agentRuntimeRun.shared.runLabel(shortID(run.run_id))
       const existing = groups.get(key) ?? { key, label, total: 0, runs: 0 }
       existing.total += cost
       existing.runs += 1
@@ -349,7 +344,7 @@
     const files = entry.summary?.files ?? entry.files?.length ?? 0
     const additions = entry.summary?.additions ?? 0
     const deletions = entry.summary?.deletions ?? 0
-    return `${files} ${files === 1 ? 'file' : 'files'} · +${additions} -${deletions}`
+    return $t.agentRuntimeRun.diffTimeline.summary(files, additions, deletions)
   }
 
   function diffFileStats(file: AgentRuntimeDiffFileChange): string {
@@ -358,7 +353,7 @@
 
   function diffFileInspectorTitle(file: AgentRuntimeDiffFileChange): string {
     const target = file.git_inspector_url?.trim()
-    return target ? `Git Inspector target: ${target}` : 'Git Inspector target unavailable'
+    return target ? $t.agentRuntimeRun.diffTimeline.inspectorTarget(target) : $t.agentRuntimeRun.diffTimeline.inspectorUnavailable
   }
 
   function normalizedSparkline(values?: number[]): number[] {
@@ -475,9 +470,9 @@
   }
 
   function recoveryModeLabel(mode: AgentRuntimeRecoveryMode): string {
-    if (mode === 'replay_from_checkpoint') return 'Replay from checkpoint'
-    if (mode === 'resume_from_checkpoint') return 'Resume from checkpoint'
-    return 'Retry from prompt'
+    if (mode === 'replay_from_checkpoint') return $t.agentRuntimeRun.recover.modes.replay
+    if (mode === 'resume_from_checkpoint') return $t.agentRuntimeRun.recover.modes.resume
+    return $t.agentRuntimeRun.recover.modes.retry
   }
 
   function handleRestartCheckpointChange() {
@@ -486,7 +481,7 @@
   }
 
   function recoveryActionLabel(): string {
-    if (restartBusy) return 'Starting...'
+    if (restartBusy) return $t.agentRuntimeRun.recover.starting
     return recoveryModeLabel(restartMode)
   }
 
@@ -510,7 +505,7 @@
         mode,
         confirm_unsafe_recovery: checkpoint?.recovery_approval_required ? confirmUnsafeRecovery : undefined,
       })
-      restartMessage = `Started ${retry.run_id}`
+      restartMessage = $t.agentRuntimeRun.recover.started(retry.run_id)
       openRunDetail(retry.run_id)
     } catch (e) {
       error = e instanceof Error ? e.message : $t.agentRuntime.failedRestartRun
@@ -527,7 +522,7 @@
 
   function tierSummary(tier: AgentRuntimeTierOption): string {
     if (tier.error?.trim()) return tier.error
-    return [tier.provider_alias, tier.model].filter(Boolean).join(' / ') || 'unresolved'
+    return [tier.provider_alias, tier.model].filter(Boolean).join(' / ') || $t.agentRuntimeRun.shared.unresolved
   }
 
   function tierLabel(agent: AgentRuntimeSubagent): string {
@@ -535,10 +530,10 @@
   }
 
   function tierSourceLabel(agent: AgentRuntimeSubagent): string {
-    if (agent.tier_source === 'agent') return 'agent'
-    if (agent.tier_source === 'role_default') return 'role default'
-    if (agent.tier_source === 'default') return 'default'
-    return 'unset'
+    if (agent.tier_source === 'agent') return $t.agentRuntimeRun.subagents.tierSource.agent
+    if (agent.tier_source === 'role_default') return $t.agentRuntimeRun.subagents.tierSource.roleDefault
+    if (agent.tier_source === 'default') return $t.agentRuntimeRun.subagents.tierSource.runtimeDefault
+    return $t.agentRuntimeRun.subagents.tierSource.unset
   }
 
   function lastRunTime(agent: AgentRuntimeSubagent): string {
@@ -650,7 +645,7 @@
   async function requestSubagentDraft() {
     const request = builderRequest.trim()
     if (!request) {
-      error = 'Describe what the subagent should do.'
+      error = $t.agentRuntimeRun.builder.requestRequired
       return
     }
     builderBusy = true
@@ -963,7 +958,7 @@
               <p>{$t.agentRuntime.emptyNoRunsBody}</p>
             </div>
             <div class="prompt-grid">
-              {#each starterPrompts as prompt}
+              {#each $t.agentRuntimeRun.runs.starterPrompts as prompt}
                 <blockquote>{prompt}</blockquote>
               {/each}
             </div>
@@ -997,7 +992,7 @@
               <button
                 class="session-link"
                 type="button"
-                title={`Open chat session ${run.session_id}`}
+                title={$t.agentRuntimeRun.runs.openSessionTitle(run.session_id)}
                 onclick={() => onNavigate(`/console/chat/${encodeURIComponent(run.session_id || '')}`)}
               >
                 {$t.agentRuntime.sessionLink(shortID(run.session_id))}
@@ -1013,12 +1008,12 @@
       <div class="error-banner">{error}</div>
     {/if}
 
-    <section class="subagents-summary" aria-label="LLM tier catalog">
+    <section class="subagents-summary" aria-label={$t.agentRuntimeRun.subagents.catalogAriaLabel}>
       <div>
-        <div class="eyebrow">Tier Catalog</div>
+        <div class="eyebrow">{$t.agentRuntimeRun.subagents.catalogEyebrow}</div>
         <div class="tier-line">
           {#if tiers.length === 0}
-            <span class="tier-chip missing">No tiers</span>
+            <span class="tier-chip missing">{$t.agentRuntimeRun.subagents.noTiers}</span>
           {:else}
             {#each tiers as tier}
               <span class="tier-chip" class:missing={!!tier.error} title={tierSummary(tier)}>
@@ -1028,17 +1023,17 @@
           {/if}
         </div>
       </div>
-      <button class="btn btn-ghost btn-sm" onclick={() => onNavigate('/console/config')}>Manage LLM Tiers</button>
+      <button class="btn btn-ghost btn-sm" onclick={() => onNavigate('/console/config')}>{$t.agentRuntimeRun.subagents.manageTiers}</button>
     </section>
 
     {#if recommendationResponse}
-      <section class="recommendation-panel" aria-label="Recommended subagent profiles">
+      <section class="recommendation-panel" aria-label={$t.agentRuntimeRun.recommendations.ariaLabel}>
         <div class="recommendation-head">
           <div>
-            <div class="eyebrow">Run Patterns</div>
-            <h3>Recommended Profiles</h3>
+            <div class="eyebrow">{$t.agentRuntimeRun.recommendations.eyebrow}</div>
+            <h3>{$t.agentRuntimeRun.recommendations.title}</h3>
           </div>
-          <span>{recommendationResponse.count} of {recommendationResponse.analyzed_run_count} analyzed</span>
+          <span>{$t.agentRuntimeRun.recommendations.analyzed(recommendationResponse.count, recommendationResponse.analyzed_run_count)}</span>
         </div>
         {#if recommendationResponse.warnings?.length}
           <div class="warning-list">
@@ -1048,7 +1043,7 @@
           </div>
         {/if}
         {#if recommendationResponse.recommendations.length === 0}
-          <div class="agentruntime-empty">No repeated run pattern is ready to save as a profile.</div>
+          <div class="agentruntime-empty">{$t.agentRuntimeRun.recommendations.empty}</div>
         {:else}
           <div class="recommendation-grid">
             {#each recommendationResponse.recommendations as recommendation}
@@ -1062,7 +1057,7 @@
                 </div>
                 <p>{recommendation.reason}</p>
                 <div class="recommendation-meta">
-                  <span>{recommendation.run_count} runs</span>
+                  <span>{$t.agentRuntimeRun.recommendations.runCount(recommendation.run_count)}</span>
                   {#if recommendation.draft.default_tier}<span>{recommendation.draft.default_tier}</span>{/if}
                   {#if recommendation.keywords.length}<span>{recommendation.keywords.slice(0, 4).join(', ')}</span>{/if}
                 </div>
@@ -1072,13 +1067,13 @@
                 <div class="recommendation-run-list">
                   {#each recommendation.recent_run_ids as runID}
                     <button type="button" class="run-inline-link" onclick={() => openRunDetail(runID)}>
-                      Run {shortID(runID)}
+                      {$t.agentRuntimeRun.shared.runLabel(shortID(runID))}
                     </button>
                   {/each}
                 </div>
                 <div class="builder-actions">
                   <button class="btn btn-primary btn-sm" onclick={() => reviewRecommendation(recommendation)}>
-                    Review Draft
+                    {$t.agentRuntimeRun.recommendations.reviewDraft}
                   </button>
                 </div>
               </article>
@@ -1089,24 +1084,24 @@
     {/if}
 
     {#if builderOpen}
-      <section class="builder-panel" aria-label="Subagent builder">
+      <section class="builder-panel" aria-label={$t.agentRuntimeRun.builder.ariaLabel}>
         <div class="builder-head">
           <div>
-            <div class="eyebrow">{builderMode === 'edit' ? 'Edit with LLM' : 'Create with LLM'}</div>
-            <h3>{builderMode === 'edit' ? builderBaseName : 'New subagent'}</h3>
+            <div class="eyebrow">{builderMode === 'edit' ? $t.agentRuntimeRun.subagents.editWithLLM : $t.agentRuntimeRun.builder.createEyebrow}</div>
+            <h3>{builderMode === 'edit' ? builderBaseName : $t.agentRuntimeRun.builder.newTitle}</h3>
           </div>
-          <button class="btn btn-ghost btn-sm" onclick={closeBuilder}>Close</button>
+          <button class="btn btn-ghost btn-sm" onclick={closeBuilder}>{$t.agentRuntimeRun.builder.close}</button>
         </div>
         <div class="builder-form">
           <label>
-            <span>Request</span>
+            <span>{$t.agentRuntimeRun.fields.request}</span>
             <textarea
               bind:value={builderRequest}
-              placeholder={builderMode === 'edit' ? 'Make this subagent focus on frontend accessibility.' : 'Create a frontend reviewer agent.'}
+              placeholder={builderMode === 'edit' ? $t.agentRuntimeRun.builder.editPlaceholder : $t.agentRuntimeRun.builder.createPlaceholder}
             ></textarea>
           </label>
           <label>
-            <span>Default Tier</span>
+            <span>{$t.agentRuntimeRun.fields.defaultTier}</span>
             <select bind:value={builderTier}>
               {#each tiers as tier}
                 <option value={tier.name} disabled={!!tier.error}>{tier.name}</option>
@@ -1116,7 +1111,7 @@
         </div>
         <div class="builder-actions">
           <button class="btn btn-primary btn-sm" onclick={requestSubagentDraft} disabled={builderBusy || tiers.length === 0}>
-            {builderBusy ? 'Drafting...' : 'Draft'}
+            {builderBusy ? $t.agentRuntimeRun.builder.drafting : $t.agentRuntimeRun.builder.draft}
           </button>
         </div>
 
@@ -1139,15 +1134,15 @@
             {/if}
             <div class="draft-grid">
               <label>
-                <span>Name</span>
+                <span>{$t.agentRuntimeRun.fields.name}</span>
                 <input value={builderResponse.draft.name} disabled={builderResponse.draft.action === 'update'} oninput={(event) => updateDraftField('name', (event.currentTarget as HTMLInputElement).value)} />
               </label>
               <label>
-                <span>Description</span>
+                <span>{$t.agentRuntimeRun.fields.description}</span>
                 <input value={builderResponse.draft.description} oninput={(event) => updateDraftField('description', (event.currentTarget as HTMLInputElement).value)} />
               </label>
               <label>
-                <span>Tier</span>
+                <span>{$t.agentRuntimeRun.fields.tier}</span>
                 <select value={builderResponse.draft.default_tier} onchange={(event) => updateDraftField('default_tier', (event.currentTarget as HTMLSelectElement).value)}>
                   {#each tiers as tier}
                     <option value={tier.name} disabled={!!tier.error}>{tier.name}</option>
@@ -1155,30 +1150,30 @@
                 </select>
               </label>
               <label>
-                <span>Risk Max</span>
+                <span>{$t.agentRuntimeRun.fields.riskMax}</span>
                 <select value={builderResponse.draft.tools_risk_max ?? ''} onchange={(event) => updateDraftField('tools_risk_max', (event.currentTarget as HTMLSelectElement).value)}>
-                  <option value="">default</option>
-                  <option value="low">low</option>
+                  <option value="">{$t.agentRuntimeRun.builder.riskDefault}</option>
+                  <option value="low">{$t.agentRuntimeRun.builder.riskLow}</option>
                 </select>
               </label>
             </div>
             <label class="draft-textarea">
-              <span>Prompt</span>
+              <span>{$t.agentRuntimeRun.fields.prompt}</span>
               <textarea value={builderResponse.draft.prompt} oninput={(event) => updateDraftField('prompt', (event.currentTarget as HTMLTextAreaElement).value)}></textarea>
             </label>
             <div class="draft-grid">
               <label>
-                <span>Allow Tools</span>
+                <span>{$t.agentRuntimeRun.fields.allowTools}</span>
                 <textarea value={builderResponse.draft.tools_allow.join('\n')} oninput={(event) => updateDraftList('tools_allow', (event.currentTarget as HTMLTextAreaElement).value)}></textarea>
               </label>
               <label>
-                <span>Deny Tools</span>
+                <span>{$t.agentRuntimeRun.fields.denyTools}</span>
                 <textarea value={builderResponse.draft.tools_deny.join('\n')} oninput={(event) => updateDraftList('tools_deny', (event.currentTarget as HTMLTextAreaElement).value)}></textarea>
               </label>
             </div>
             <div class="builder-actions">
               <button class="btn btn-primary btn-sm" onclick={applyDraft} disabled={builderApplying}>
-                {builderApplying ? 'Applying...' : 'Approve & Save'}
+                {builderApplying ? $t.agentRuntimeRun.builder.applying : $t.agentRuntimeRun.builder.approveSave}
               </button>
             </div>
           </div>
@@ -1187,9 +1182,9 @@
     {/if}
 
     <div class="subagents-layout">
-      <section class="subagents-list" aria-label="Subagents">
+      <section class="subagents-list" aria-label={$t.agentRuntimeRun.subagents.listAriaLabel}>
         {#if subagents.length === 0 && !loading}
-          <div class="agentruntime-empty">No subagents configured.</div>
+          <div class="agentruntime-empty">{$t.agentRuntimeRun.subagents.empty}</div>
         {:else}
           {#each subagents as agent}
             <button
@@ -1199,8 +1194,8 @@
             >
               <div class="row-main">
                 <span class="row-agent">{agent.name}</span>
-                {#if agent.default}<span class="row-mode">default</span>{/if}
-                <span class="row-status">{agent.enabled ? 'enabled' : 'disabled'}</span>
+                {#if agent.default}<span class="row-mode">{$t.agentRuntimeRun.subagents.defaultBadge}</span>{/if}
+                <span class="row-status">{agent.enabled ? $t.agentRuntimeRun.subagents.enabled : $t.agentRuntimeRun.subagents.disabled}</span>
               </div>
               <div class="row-meta">
                 <span class:tier-warning={agent.tier_missing}>{tierLabel(agent)}</span>
@@ -1212,33 +1207,33 @@
         {/if}
       </section>
 
-      <section class="subagent-detail" aria-label="Subagent detail">
+      <section class="subagent-detail" aria-label={$t.agentRuntimeRun.subagents.detailAriaLabel}>
         {#if !selectedSubagentValue}
-          <div class="agentruntime-empty">Select a subagent.</div>
+          <div class="agentruntime-empty">{$t.agentRuntimeRun.subagents.selectPrompt}</div>
         {:else}
           <div class="detail-head">
             <div>
               <div class="detail-title">{selectedSubagentValue.name}</div>
-              <p>{selectedSubagentValue.description || 'No description'}</p>
+              <p>{selectedSubagentValue.description || $t.agentRuntimeRun.subagents.noDescription}</p>
             </div>
             {#if selectedSubagentValue.tier_editable}
               <div class="detail-actions">
                 <label class="tier-editor">
-                  <span>LLM Tier</span>
+                  <span>{$t.agentRuntimeRun.fields.llmTier}</span>
                   <select
                     value={selectedSubagentValue.default_tier ?? ''}
                     disabled={updatingTier === selectedSubagentValue.name || tiers.length === 0}
                     onchange={(event) => handleTierChange(event, selectedSubagentValue)}
                   >
-                    <option value="">Inherit runtime default</option>
+                    <option value="">{$t.agentRuntimeRun.subagents.inheritDefault}</option>
                     {#each tiers as tier}
                       <option value={tier.name} disabled={!!tier.error}>{tier.name}</option>
                     {/each}
                   </select>
                 </label>
-                <button class="btn btn-ghost btn-sm" onclick={() => openEditBuilder(selectedSubagentValue)}>Edit with LLM</button>
+                <button class="btn btn-ghost btn-sm" onclick={() => openEditBuilder(selectedSubagentValue)}>{$t.agentRuntimeRun.subagents.editWithLLM}</button>
                 <button class="btn btn-danger btn-sm" disabled={archiveBusy} onclick={() => archiveSubagent(selectedSubagentValue)}>
-                  {archiveConfirmName === selectedSubagentValue.name ? 'Confirm Archive' : 'Archive'}
+                  {archiveConfirmName === selectedSubagentValue.name ? $t.agentRuntimeRun.subagents.confirmArchive : $t.agentRuntimeRun.subagents.archive}
                 </button>
               </div>
             {:else}
@@ -1248,7 +1243,7 @@
 
           {#if archiveConfirmName === selectedSubagentValue.name}
             <div class="warning-list">
-              <span>Archiving removes this profile from the active catalog. Recent run history stays visible in Runs. Recorded runs: {selectedSubagentValue.run_count}.</span>
+              <span>{$t.agentRuntimeRun.subagents.archiveWarning(selectedSubagentValue.run_count)}</span>
             </div>
           {/if}
 
@@ -1257,49 +1252,49 @@
           {/if}
 
           <div class="detail-grid">
-            <div><span class="label">Source</span><span>{selectedSubagentValue.source || '—'}</span></div>
-            <div><span class="label">Kind</span><span>{selectedSubagentValue.kind || '—'}</span></div>
-            <div><span class="label">Tier Source</span><span>{tierSourceLabel(selectedSubagentValue)}</span></div>
-            <div><span class="label">Provider</span><span>{selectedSubagentValue.resolved_alias || '—'}</span></div>
-            <div><span class="label">Model</span><span>{selectedSubagentValue.resolved_model || '—'}</span></div>
-            <div><span class="label">Runs</span><span>{selectedSubagentValue.run_count}</span></div>
-            <div><span class="label">Policy</span><span>{selectedSubagentValue.policy_mode || 'full'}</span></div>
-            <div><span class="label">Routing</span><span>{selectedSubagentValue.session_routing_mode || 'caller'}</span></div>
+            <div><span class="label">{$t.agentRuntimeRun.fields.source}</span><span>{selectedSubagentValue.source || '—'}</span></div>
+            <div><span class="label">{$t.agentRuntimeRun.fields.kind}</span><span>{selectedSubagentValue.kind || '—'}</span></div>
+            <div><span class="label">{$t.agentRuntimeRun.fields.tierSource}</span><span>{tierSourceLabel(selectedSubagentValue)}</span></div>
+            <div><span class="label">{$t.agentRuntimeRun.fields.provider}</span><span>{selectedSubagentValue.resolved_alias || '—'}</span></div>
+            <div><span class="label">{$t.agentRuntimeRun.fields.model}</span><span>{selectedSubagentValue.resolved_model || '—'}</span></div>
+            <div><span class="label">{$t.agentRuntimeRun.fields.runs}</span><span>{selectedSubagentValue.run_count}</span></div>
+            <div><span class="label">{$t.agentRuntimeRun.fields.policy}</span><span>{selectedSubagentValue.policy_mode || 'full'}</span></div>
+            <div><span class="label">{$t.agentRuntimeRun.fields.routing}</span><span>{selectedSubagentValue.session_routing_mode || 'caller'}</span></div>
           </div>
 
           {#if selectedSubagentValue.entry}
             <section class="detail-panel">
-              <h3>Entry</h3>
+              <h3>{$t.agentRuntimeRun.fields.entry}</h3>
               <pre>{selectedSubagentValue.entry}</pre>
             </section>
           {/if}
 
           <section class="detail-panel">
-            <h3>Tool Policy</h3>
+            <h3>{$t.agentRuntimeRun.subagents.toolPolicy}</h3>
             <div class="policy-grid">
               <div>
-                <span class="label">Allow</span>
-                <p>{selectedSubagentValue.tools_allow.length > 0 ? selectedSubagentValue.tools_allow.join(', ') : 'all tools'}</p>
+                <span class="label">{$t.agentRuntimeRun.fields.allow}</span>
+                <p>{selectedSubagentValue.tools_allow.length > 0 ? selectedSubagentValue.tools_allow.join(', ') : $t.agentRuntimeRun.subagents.allTools}</p>
               </div>
               <div>
-                <span class="label">Deny</span>
-                <p>{selectedSubagentValue.tools_deny.length > 0 ? selectedSubagentValue.tools_deny.join(', ') : 'none'}</p>
+                <span class="label">{$t.agentRuntimeRun.fields.deny}</span>
+                <p>{selectedSubagentValue.tools_deny.length > 0 ? selectedSubagentValue.tools_deny.join(', ') : $t.agentRuntimeRun.subagents.none}</p>
               </div>
               <div>
-                <span class="label">Groups</span>
-                <p>{[...selectedSubagentValue.tools_allow_groups, ...selectedSubagentValue.tools_deny_groups].join(', ') || 'none'}</p>
+                <span class="label">{$t.agentRuntimeRun.fields.groups}</span>
+                <p>{[...selectedSubagentValue.tools_allow_groups, ...selectedSubagentValue.tools_deny_groups].join(', ') || $t.agentRuntimeRun.subagents.none}</p>
               </div>
               <div>
-                <span class="label">Risk Max</span>
+                <span class="label">{$t.agentRuntimeRun.fields.riskMax}</span>
                 <p>{selectedSubagentValue.tools_risk_max || '—'}</p>
               </div>
             </div>
           </section>
 
           <section class="detail-panel">
-            <h3>Recent Runs</h3>
+            <h3>{$t.agentRuntimeRun.subagents.recentRuns}</h3>
             {#if selectedSubagentValue.recent_runs.length === 0}
-              <div class="agentruntime-empty">No runs recorded for this subagent.</div>
+              <div class="agentruntime-empty">{$t.agentRuntimeRun.subagents.noRecentRuns}</div>
             {:else}
               <div class="recent-runs">
                 {#each selectedSubagentValue.recent_runs as recent}
@@ -1316,7 +1311,7 @@
       </section>
     </div>
   {:else if loading && !selectedRun}
-    <div class="agentruntime-empty">Loading agent runtime run...</div>
+    <div class="agentruntime-empty">{$t.agentRuntimeRun.detail.loading}</div>
   {:else if error}
     <div class="error-banner">{error}</div>
   {:else if selectedRun}
@@ -1324,37 +1319,37 @@
       <div class="detail-card">
         <div class="detail-title">{selectedRun.run_id}</div>
         <div class="detail-grid">
-          <div><span class="label">Agent</span><span>{selectedRun.agent || 'default'}</span></div>
-          <div><span class="label">Status</span><span>{selectedRun.status}</span></div>
-          <div><span class="label">Tier</span><span>{selectedRun.tier || '—'}</span></div>
-          <div><span class="label">Alias</span><span>{selectedRun.resolved_alias || '—'}</span></div>
-          <div><span class="label">Kind</span><span>{selectedRun.resolved_kind || '—'}</span></div>
-          <div><span class="label">Model</span><span>{selectedRun.resolved_model || '—'}</span></div>
-          <div><span class="label">Created</span><span>{fmtTime(selectedRun.created_at)}</span></div>
-          <div><span class="label">Completed</span><span>{fmtTime(selectedRun.completed_at)}</span></div>
-          <div><span class="label">Est Cost</span><span>{fmtUSD(estimatedUSD)}</span></div>
-          <div><span class="label">Actual Cost</span><span>{fmtUSD(actualUSD)}</span></div>
+          <div><span class="label">{$t.agentRuntimeRun.fields.agent}</span><span>{selectedRun.agent || $t.agentRuntimeRun.shared.defaultAgent}</span></div>
+          <div><span class="label">{$t.agentRuntimeRun.fields.status}</span><span>{selectedRun.status}</span></div>
+          <div><span class="label">{$t.agentRuntimeRun.fields.tier}</span><span>{selectedRun.tier || '—'}</span></div>
+          <div><span class="label">{$t.agentRuntimeRun.fields.alias}</span><span>{selectedRun.resolved_alias || '—'}</span></div>
+          <div><span class="label">{$t.agentRuntimeRun.fields.kind}</span><span>{selectedRun.resolved_kind || '—'}</span></div>
+          <div><span class="label">{$t.agentRuntimeRun.fields.model}</span><span>{selectedRun.resolved_model || '—'}</span></div>
+          <div><span class="label">{$t.agentRuntimeRun.fields.created}</span><span>{fmtTime(selectedRun.created_at)}</span></div>
+          <div><span class="label">{$t.agentRuntimeRun.fields.completed}</span><span>{fmtTime(selectedRun.completed_at)}</span></div>
+          <div><span class="label">{$t.agentRuntimeRun.fields.estCost}</span><span>{fmtUSD(estimatedUSD)}</span></div>
+          <div><span class="label">{$t.agentRuntimeRun.fields.actualCost}</span><span>{fmtUSD(actualUSD)}</span></div>
           {#if selectedRun.restarted_from_run_id}
-            <div><span class="label">Restarted From</span><button class="run-inline-link" type="button" onclick={() => openRunDetail(selectedRun?.restarted_from_run_id ?? '')}>{shortID(selectedRun.restarted_from_run_id)}</button></div>
+            <div><span class="label">{$t.agentRuntimeRun.fields.restartedFrom}</span><button class="run-inline-link" type="button" onclick={() => openRunDetail(selectedRun?.restarted_from_run_id ?? '')}>{shortID(selectedRun.restarted_from_run_id)}</button></div>
           {/if}
           {#if selectedRun.restart_attempt}
-            <div><span class="label">Attempt</span><span>#{selectedRun.restart_attempt}</span></div>
+            <div><span class="label">{$t.agentRuntimeRun.fields.attempt}</span><span>#{selectedRun.restart_attempt}</span></div>
           {/if}
           {#if selectedRun.recovery_mode}
-            <div><span class="label">Recovery Mode</span><span>{recoveryModeLabel(selectedRun.recovery_mode)}</span></div>
+            <div><span class="label">{$t.agentRuntimeRun.fields.recoveryMode}</span><span>{recoveryModeLabel(selectedRun.recovery_mode)}</span></div>
           {/if}
         </div>
       </div>
 
       {#if isRestartable(selectedRun)}
-        <section class="detail-panel restart-panel" aria-label="Recover Run">
+        <section class="detail-panel restart-panel" aria-label={$t.agentRuntimeRun.recover.ariaLabel}>
           <div class="panel-title-row">
-            <h3>Recover</h3>
-            <span>{selectedRunCheckpoints.length} checkpoints</span>
+            <h3>{$t.agentRuntimeRun.recover.title}</h3>
+            <span>{$t.agentRuntimeRun.recover.checkpointCount(selectedRunCheckpoints.length)}</span>
           </div>
           <div class="restart-grid">
             <label>
-              <span>Checkpoint</span>
+              <span>{$t.agentRuntimeRun.fields.checkpoint}</span>
               <select bind:value={restartCheckpointID} onchange={handleRestartCheckpointChange}>
                 {#each selectedRunCheckpoints as checkpoint}
                   <option value={checkpoint.checkpoint_id}>{checkpointLabel(checkpoint)}</option>
@@ -1362,7 +1357,7 @@
               </select>
             </label>
             <label>
-              <span>Recovery Mode</span>
+              <span>{$t.agentRuntimeRun.fields.recoveryMode}</span>
               <select bind:value={restartMode}>
                 {#each recoveryModes(selectedCheckpoint()) as mode}
                   <option value={mode}>{recoveryModeLabel(mode)}</option>
@@ -1370,41 +1365,41 @@
               </select>
             </label>
             <label>
-              <span>Agent</span>
+              <span>{$t.agentRuntimeRun.fields.agent}</span>
               <input bind:value={restartAgent} placeholder="default" />
             </label>
             <label>
-              <span>Tier</span>
+              <span>{$t.agentRuntimeRun.fields.tier}</span>
               <input bind:value={restartTier} placeholder="standard" />
             </label>
             <label>
-              <span>Provider Alias</span>
-              <input bind:value={restartAlias} placeholder="alias" />
+              <span>{$t.agentRuntimeRun.fields.providerAlias}</span>
+              <input bind:value={restartAlias} placeholder={$t.agentRuntimeRun.recover.aliasPlaceholder} />
             </label>
             <label>
-              <span>Model</span>
-              <input bind:value={restartModel} placeholder="model" />
+              <span>{$t.agentRuntimeRun.fields.model}</span>
+              <input bind:value={restartModel} placeholder={$t.agentRuntimeRun.recover.modelPlaceholder} />
             </label>
             <label class="restart-adjustment">
-              <span>Prompt Adjustment</span>
-              <textarea bind:value={restartPromptAdjustment} rows="3" placeholder="Retry with a narrower assumption or alternate permission set."></textarea>
+              <span>{$t.agentRuntimeRun.fields.promptAdjustment}</span>
+              <textarea bind:value={restartPromptAdjustment} rows="3" placeholder={$t.agentRuntimeRun.recover.adjustmentPlaceholder}></textarea>
             </label>
           </div>
           {#if selectedRestartCheckpoint}
             <div class="checkpoint-safety" class:checkpoint-warning={selectedRestartCheckpoint.recovery_approval_required}>
               <div>
                 <strong>{selectedRestartCheckpoint.format || 'prompt_checkpoint_v0'} · {selectedRestartCheckpoint.capability || 'retry_only'}</strong>
-                <span>{selectedRestartCheckpoint.resumable ? 'Resumable' : 'Not resumable'} · {selectedRestartCheckpoint.resume_reason || 'No resume metadata recorded.'}</span>
+                <span>{selectedRestartCheckpoint.resumable ? $t.agentRuntimeRun.recover.resumable : $t.agentRuntimeRun.recover.notResumable} · {selectedRestartCheckpoint.resume_reason || $t.agentRuntimeRun.recover.noResumeMetadata}</span>
               </div>
               <div class="row-meta">
-                <span>{selectedRestartCheckpoint.tool_result_refs?.length ?? 0} tool results</span>
-                <span>{selectedRestartCheckpoint.effect_receipt_refs?.length ?? 0} effect receipts</span>
-                <span>next: {selectedRestartCheckpoint.next_action || 'retry_prompt'}</span>
+                <span>{$t.agentRuntimeRun.recover.toolResults(selectedRestartCheckpoint.tool_result_refs?.length ?? 0)}</span>
+                <span>{$t.agentRuntimeRun.recover.effectReceipts(selectedRestartCheckpoint.effect_receipt_refs?.length ?? 0)}</span>
+                <span>{$t.agentRuntimeRun.recover.nextAction(selectedRestartCheckpoint.next_action || 'retry_prompt')}</span>
               </div>
               {#if selectedRestartCheckpoint.recovery_approval_required}
                 <label class="unsafe-recovery-confirm">
                   <input type="checkbox" bind:checked={confirmUnsafeRecovery} />
-                  <span>Human decision: continue despite an effect without a committed receipt. {selectedRestartCheckpoint.recovery_approval_reason || ''}</span>
+                  <span>{$t.agentRuntimeRun.recover.unsafeConfirm(selectedRestartCheckpoint.recovery_approval_reason || '')}</span>
                 </label>
               {/if}
             </div>
@@ -1426,13 +1421,13 @@
 
       <AgentRuntimeReplay events={replayEvents} runStatus={selectedRun.status} />
 
-      <section class="detail-panel diff-timeline" aria-label="Diff Timeline">
+      <section class="detail-panel diff-timeline" aria-label={$t.agentRuntimeRun.diffTimeline.title}>
         <div class="panel-title-row">
-          <h3>Diff Timeline</h3>
-          <span>{diffTimelineEntries.length} entries</span>
+          <h3>{$t.agentRuntimeRun.diffTimeline.title}</h3>
+          <span>{$t.agentRuntimeRun.diffTimeline.entryCount(diffTimelineEntries.length)}</span>
         </div>
         {#if diffTimelineEntries.length === 0}
-          <div class="agentruntime-empty">No git diff snapshots captured for this run.</div>
+          <div class="agentruntime-empty">{$t.agentRuntimeRun.diffTimeline.empty}</div>
         {:else}
           <div class="diff-timeline-list">
             {#each diffTimelineEntries as entry}
@@ -1440,12 +1435,12 @@
                 <div class="diff-entry-head">
                   <div>
                     <button class="run-inline-link" type="button" onclick={() => openRunDetail(entry.run_id)}>
-                      Run {shortID(entry.run_id)}
+                      {$t.agentRuntimeRun.shared.runLabel(shortID(entry.run_id))}
                     </button>
                     <div class="row-meta">
                       {#if entry.agent}<span>{entry.agent}</span>{/if}
-                      {#if entry.session_id}<span>session {shortID(entry.session_id)}</span>{/if}
-                      {#if entry.step_id}<span>step {entry.step_id}</span>{/if}
+                      {#if entry.session_id}<span>{$t.agentRuntimeRun.diffTimeline.session(shortID(entry.session_id))}</span>{/if}
+                      {#if entry.step_id}<span>{$t.agentRuntimeRun.diffTimeline.step(entry.step_id)}</span>{/if}
                       {#if entry.completed_at}<span>{fmtTime(entry.completed_at)}</span>{/if}
                     </div>
                   </div>
@@ -1470,12 +1465,12 @@
                           disabled
                           title={diffFileInspectorTitle(file)}
                         >
-                          Git Inspector
+                          {$t.agentRuntimeRun.diffTimeline.inspector}
                         </button>
                       </div>
                       <details class="diff-preview" open={entry.files?.length === 1}>
-                        <summary>Diff preview</summary>
-                        <pre>{file.patch || 'No patch preview available for this change.'}</pre>
+                        <summary>{$t.agentRuntimeRun.diffTimeline.preview}</summary>
+                        <pre>{file.patch || $t.agentRuntimeRun.diffTimeline.noPatch}</pre>
                       </details>
                     </article>
                   {/each}
@@ -1488,43 +1483,43 @@
 
       <div class="detail-columns">
         <section class="detail-panel">
-          <h3>Prompt</h3>
-          <pre>{selectedRun.prompt || '(none)'}</pre>
+          <h3>{$t.agentRuntimeRun.fields.prompt}</h3>
+          <pre>{selectedRun.prompt || $t.agentRuntimeRun.detail.none}</pre>
         </section>
         <section class="detail-panel">
-          <h3>Response</h3>
-          <pre>{selectedRun.response || selectedRun.error || '(waiting)'}</pre>
+          <h3>{$t.agentRuntimeRun.fields.response}</h3>
+          <pre>{selectedRun.response || selectedRun.error || $t.agentRuntimeRun.detail.waiting}</pre>
         </section>
       </div>
 
-      <section class="detail-panel file-heatmap" aria-label="File Attention Heatmap">
+      <section class="detail-panel file-heatmap" aria-label={$t.agentRuntimeRun.fileAttention.ariaLabel}>
         <div class="panel-title-row">
-          <h3>File Attention</h3>
-          <span>{fileAttentionOpsTotal()} ops</span>
+          <h3>{$t.agentRuntimeRun.fileAttention.title}</h3>
+          <span>{$t.agentRuntimeRun.fileAttention.ops(fileAttentionOpsTotal())}</span>
         </div>
         {#if fileAttentionRows.length === 0}
-          <div class="agentruntime-empty">No file tool calls captured yet.</div>
+          <div class="agentruntime-empty">{$t.agentRuntimeRun.fileAttention.empty}</div>
         {:else}
           <div class="file-attention-list">
             {#each fileAttentionRows as row}
               <article class="file-attention-row" class:read={fileAttentionAction(row) === 'read'} class:edit={fileAttentionAction(row) === 'edit'} class:both={fileAttentionAction(row) === 'both'}>
                 <div class="file-attention-main">
                   <span class="file-path" title={row.path}>{row.path}</span>
-                  <span class="file-count">{row.total} ops</span>
+                  <span class="file-count">{$t.agentRuntimeRun.fileAttention.ops(row.total)}</span>
                 </div>
                 <div class="file-attention-meter">
                   <span class="heat-cell" style={`--heat: ${fileAttentionIntensity(row)}%`}></span>
-                  <div class="sparkline" aria-label={`Access pattern for ${row.path}`}>
+                  <div class="sparkline" aria-label={$t.agentRuntimeRun.fileAttention.accessPattern(row.path)}>
                     {#each normalizedSparkline(row.sparkline) as value}
                       <span style={`height: ${sparklineHeight(value, row.sparkline)}%`}></span>
                     {/each}
                   </div>
                 </div>
                 <div class="row-meta file-meta">
-                  {#if row.reads}<span>{row.reads} read</span>{/if}
-                  {#if row.edits}<span>{row.edits} edit</span>{/if}
-                  {#if row.lists}<span>{row.lists} list</span>{/if}
-                  {#if row.writes}<span>{row.writes} write</span>{/if}
+                  {#if row.reads}<span>{$t.agentRuntimeRun.fileAttention.reads(row.reads)}</span>{/if}
+                  {#if row.edits}<span>{$t.agentRuntimeRun.fileAttention.edits(row.edits)}</span>{/if}
+                  {#if row.lists}<span>{$t.agentRuntimeRun.fileAttention.lists(row.lists)}</span>{/if}
+                  {#if row.writes}<span>{$t.agentRuntimeRun.fileAttention.writes(row.writes)}</span>{/if}
                   {#if row.last_at}<span>{fmtTime(row.last_at)}</span>{/if}
                 </div>
               </article>
@@ -1535,13 +1530,13 @@
 
       {#if variantRecords().length > 0}
         <section class="detail-panel">
-          <h3>Consensus Variants</h3>
+          <h3>{$t.agentRuntimeRun.detail.variantsTitle}</h3>
           <div class="variants-grid">
             {#each variantRecords() as variant}
               <article class="variant-card">
                 <div class="variant-head">
                   <strong>#{variant.variant_idx + 1}</strong>
-                  <span>{variant.alias || 'variant'}</span>
+                  <span>{variant.alias || $t.agentRuntimeRun.shared.variantFallback}</span>
                   <span>{variant.model || '—'}</span>
                 </div>
                 <div class="row-meta">
@@ -1549,7 +1544,7 @@
                   {#if variant.status}<span>{variant.status}</span>{/if}
                   {#if variant.cost_usd != null}<span>{fmtUSD(variant.cost_usd)}</span>{/if}
                 </div>
-                <pre>{variant.response || variant.error || '(waiting)'}</pre>
+                <pre>{variant.response || variant.error || $t.agentRuntimeRun.detail.waiting}</pre>
                 {#if variantEvents(variant.variant_idx).length > 0}
                   <div class="event-log">
                     {#each variantEvents(variant.variant_idx) as event}
@@ -1567,12 +1562,12 @@
       {/if}
 
       <section class="detail-panel">
-        <h3>Run Events</h3>
+        <h3>{$t.agentRuntimeRun.detail.eventsTitle}</h3>
         {#if streamError}
           <div class="agentruntime-empty">{streamError}</div>
         {/if}
         {#if events.length === 0}
-          <div class="agentruntime-empty">No live events received.</div>
+          <div class="agentruntime-empty">{$t.agentRuntimeRun.detail.noEvents}</div>
         {:else}
           <div class="event-log">
             {#each events as event}

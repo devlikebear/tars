@@ -2,6 +2,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
+import { agentRuntimeRunEn } from '../src/i18n/sections/agentRuntimeRun.ts'
+
 const source = readFileSync(new URL('../src/components/AgentRuntimeRunView.svelte', import.meta.url), 'utf8')
 const apiSource = readFileSync(new URL('../src/lib/api/agentruntime.ts', import.meta.url), 'utf8')
 const costFlowSource = readFileSync(new URL('../src/components/AgentRuntimeCostFlow.svelte', import.meta.url), 'utf8')
@@ -40,7 +42,8 @@ test('Agent Runtime run API client forwards filter query params', () => {
 
 test('Agent Runtime run detail exposes file attention heatmap data', () => {
   assert.match(source, /fileAttentionRows/)
-  assert.match(source, /File Attention/)
+  assert.match(source, /\$t\.agentRuntimeRun\.fileAttention\.title/)
+  assert.equal(agentRuntimeRunEn.fileAttention.title, 'File Attention')
   assert.match(source, /file-heatmap/)
   assert.match(source, /sparkline/)
   assert.match(source, /file_attention/)
@@ -51,16 +54,20 @@ test('Agent Runtime run detail exposes token and cost flow visualization', () =>
   assert.match(source, /AgentRuntimeCostFlow/)
   assert.match(source, /costFlowRuns/)
   assert.match(source, /cost-flow-panel/)
-  assert.match(costFlowSource, /Actual cost/)
-  assert.match(costFlowSource, /Tokens/)
-  assert.match(costFlowSource, /Token and cost Sankey diagram/)
+  assert.match(costFlowSource, /\$t\.agentRuntimeRun\.costFlow\.actualCost/)
+  assert.equal(agentRuntimeRunEn.costFlow.actualCost, 'Actual cost')
+  assert.match(costFlowSource, /\$t\.agentRuntimeRun\.costFlow\.tokens/)
+  assert.equal(agentRuntimeRunEn.costFlow.tokens, 'Tokens')
+  assert.match(costFlowSource, /\$t\.agentRuntimeRun\.costFlow\.diagramAriaLabel/)
+  assert.equal(agentRuntimeRunEn.costFlow.diagramAriaLabel, 'Token and cost Sankey diagram')
 })
 
 test('Agent Runtime run detail exposes replay scrubber controls', () => {
   assert.match(source, /AgentRuntimeReplay/)
   assert.match(source, /replayEvents/)
   assert.match(replaySource, /replay-scrubber/)
-  assert.match(replaySource, /Live/)
+  assert.match(replaySource, /\$t\.agentRuntimeRun\.replay\.live/)
+  assert.equal(agentRuntimeRunEn.replay.live, 'Live')
   assert.match(replaySource, /5x/)
 })
 
@@ -70,9 +77,12 @@ test('Agent Runtime recovery distinguishes retry, replay, and resume with checkp
   assert.match(source, /retry_from_prompt/)
   assert.match(source, /replay_from_checkpoint/)
   assert.match(source, /resume_from_checkpoint/)
-  assert.match(source, /Retry from prompt/)
-  assert.match(source, /Replay from checkpoint/)
-  assert.match(source, /Resume from checkpoint/)
+  assert.match(source, /\$t\.agentRuntimeRun\.recover\.modes\.retry/)
+  assert.equal(agentRuntimeRunEn.recover.modes.retry, 'Retry from prompt')
+  assert.match(source, /\$t\.agentRuntimeRun\.recover\.modes\.replay/)
+  assert.equal(agentRuntimeRunEn.recover.modes.replay, 'Replay from checkpoint')
+  assert.match(source, /\$t\.agentRuntimeRun\.recover\.modes\.resume/)
+  assert.equal(agentRuntimeRunEn.recover.modes.resume, 'Resume from checkpoint')
   assert.match(source, /recovery_approval_required/)
   assert.match(source, /confirmUnsafeRecovery/)
   assert.match(source, /resume_reason/)
@@ -86,9 +96,11 @@ test('Agent Runtime runs page exposes static tree and Gantt visualization modes'
   assert.match(source, /Tree/)
   assert.match(source, /Gantt/)
   assert.match(treeSource, /agent-runtime-tree/)
-  assert.match(treeSource, /Mini Tree/)
+  assert.match(treeSource, /\$t\.agentRuntimeRun\.tree\.title/)
+  assert.equal(agentRuntimeRunEn.tree.title, 'Mini Tree')
   assert.match(ganttSource, /agent-runtime-gantt/)
-  assert.match(ganttSource, /Gantt Strip/)
+  assert.match(ganttSource, /\$t\.agentRuntimeRun\.gantt\.title/)
+  assert.equal(agentRuntimeRunEn.gantt.title, 'Gantt Strip')
 })
 
 test('Agent Runtime runs page exposes Svelte Flow live graph mode', () => {
@@ -101,5 +113,6 @@ test('Agent Runtime runs page exposes Svelte Flow live graph mode', () => {
   assert.match(flowGraphSource, /flowTierFilter/)
   assert.match(flowGraphSource, /flowStatusFilter/)
   assert.match(flowGraphSource, /flowSessionFilter/)
-  assert.match(flowGraphSource, /Replay/)
+  assert.match(flowGraphSource, /\$t\.agentRuntimeRun\.flowGraph\.replay/)
+  assert.equal(agentRuntimeRunEn.flowGraph.replay, 'Replay')
 })

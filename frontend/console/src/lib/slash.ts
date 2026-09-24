@@ -1,4 +1,9 @@
+import type { ChatCommandsTranslations } from '../i18n/sections/chatCommands'
 import type { CommandDef, SkillDef } from './types'
+
+// Titles and descriptions of the builtins, plus the fallback description
+// for skills and commands that have none. Callers pass `$t.chatCommands.slash`.
+export type SlashText = ChatCommandsTranslations['slash']
 
 export type SlashCandidateKind = 'builtin' | 'skill' | 'command'
 
@@ -24,126 +29,48 @@ export type ParsedSlashCommand = {
   args: string
 }
 
-const BUILTIN_SLASH_COMMANDS: SlashCommandCandidate[] = [
-  {
-    kind: 'builtin',
-    id: 'clear',
-    command: 'clear',
-    title: 'Clear',
-    description: 'Clear the current chat view without deleting the session.',
-  },
-  {
-    kind: 'builtin',
-    id: 'status',
-    command: 'status',
-    title: 'Status',
-    description: 'Show the current Codex subscription quota inline.',
-  },
-  {
-    kind: 'builtin',
-    id: 'compact',
-    command: 'compact',
-    title: 'Compact',
-    description: 'Compact the current session transcript.',
-  },
-  {
-    kind: 'builtin',
-    id: 'tasks',
-    command: 'tasks',
-    title: 'Tasks',
-    description: 'Open the session Tasks panel.',
-  },
-  {
-    kind: 'builtin',
-    id: 'config',
-    command: 'config',
-    title: 'Config',
-    description: 'Open session tool and skill settings.',
-  },
-  {
-    kind: 'builtin',
-    id: 'context',
-    command: 'context',
-    title: 'Context',
-    description: 'Open the LLM-facing context preview.',
-  },
-  {
-    kind: 'builtin',
-    id: 'prior',
-    command: 'prior',
-    title: 'Prior',
-    description: 'Open the Prior Context preview.',
-  },
-  {
-    kind: 'builtin',
-    id: 'prompt',
-    command: 'prompt',
-    title: 'Prompt',
-    description: 'Open the session prompt editor.',
-  },
-  {
-    kind: 'builtin',
-    id: 'prompt',
-    command: 'sysprompt',
-    title: 'System Prompt',
-    description: 'Open the session prompt editor.',
-    aliasOf: 'prompt',
-  },
-  {
-    kind: 'builtin',
-    id: 'files',
-    command: 'files',
-    title: 'Files',
-    description: 'Open the session Files panel.',
-  },
-  {
-    kind: 'builtin',
-    id: 'cron',
-    command: 'cron',
-    title: 'Cron',
-    description: 'Open session cron jobs.',
-  },
-  {
-    kind: 'builtin',
-    id: 'memory',
-    command: 'memory',
-    title: 'Memory Search',
-    description: 'Open Memory search; pass "search <query>" to prefill the query.',
-  },
-  {
-    kind: 'builtin',
-    id: 'skill',
-    command: 'skill',
-    title: 'Skill',
-    description: 'Toggle a skill for the current session: /skill <name>.',
-  },
-  {
-    kind: 'builtin',
-    id: 'extract-skill',
-    command: 'extract-skill',
-    title: 'Extract Skill',
-    description: 'Open reusable skill candidates for the current session.',
-  },
-  {
-    kind: 'builtin',
-    id: 'cwd',
-    command: 'cwd',
-    title: 'Active CWD',
-    description: 'Show or switch the active working directory: /cwd | /cwd list | /cwd <path>.',
-  },
-  {
-    kind: 'builtin',
-    id: 'goal',
-    command: 'goal',
-    title: 'Session Goal',
-    description: 'Set/clear an autonomous session goal: /goal <description> | /goal clear | /goal status.',
-  },
+type BuiltinSlashCommand = {
+  id: string
+  command: string
+  // Key of the command's title and description in SlashText['builtins'].
+  text: keyof SlashText['builtins']
+  aliasOf?: string
+}
+
+const BUILTIN_SLASH_COMMANDS: BuiltinSlashCommand[] = [
+  { id: 'clear', command: 'clear', text: 'clear' },
+  { id: 'status', command: 'status', text: 'status' },
+  { id: 'compact', command: 'compact', text: 'compact' },
+  { id: 'tasks', command: 'tasks', text: 'tasks' },
+  { id: 'config', command: 'config', text: 'config' },
+  { id: 'context', command: 'context', text: 'context' },
+  { id: 'prior', command: 'prior', text: 'prior' },
+  { id: 'prompt', command: 'prompt', text: 'prompt' },
+  { id: 'prompt', command: 'sysprompt', text: 'sysprompt', aliasOf: 'prompt' },
+  { id: 'files', command: 'files', text: 'files' },
+  { id: 'cron', command: 'cron', text: 'cron' },
+  { id: 'memory', command: 'memory', text: 'memory' },
+  { id: 'skill', command: 'skill', text: 'skill' },
+  { id: 'extract-skill', command: 'extract-skill', text: 'extractSkill' },
+  { id: 'cwd', command: 'cwd', text: 'cwd' },
+  { id: 'goal', command: 'goal', text: 'goal' },
 ]
 
+function builtinSlashCandidates(text: SlashText): SlashCommandCandidate[] {
+  return BUILTIN_SLASH_COMMANDS.map(({ id, command, text: key, aliasOf }): SlashCommandCandidate => ({
+    kind: 'builtin',
+    id,
+    command,
+    title: text.builtins[key].title,
+    description: text.builtins[key].description,
+    ...(aliasOf ? { aliasOf } : {}),
+  }))
+}
+
 // Builtin slash commands, one per id (the command palette lists these).
-export function builtinSlashCommands(): SlashCommandCandidate[] {
+export function builtinSlashCommands(text: SlashText): SlashCommandCandidate[] {
   const seen = new Set<string>()
-  return BUILTIN_SLASH_COMMANDS.filter((candidate) => {
+  return builtinSlashCandidates(text).filter((candidate) => {
     const id = candidate.id ?? candidate.command
     if (seen.has(id)) return false
     seen.add(id)
@@ -187,13 +114,18 @@ export function parseLeadingSlashCommand(value: string): ParsedSlashCommand | nu
   }
 }
 
-export function buildSlashCandidates(query: string, skills: SkillDef[] = [], commands: CommandDef[] = []): SlashCommandCandidate[] {
+export function buildSlashCandidates(
+  query: string,
+  skills: SkillDef[],
+  commands: CommandDef[],
+  text: SlashText,
+): SlashCommandCandidate[] {
   const normalizedQuery = normalizeSlashCommand(query)
   const reserved = new Set(BUILTIN_SLASH_COMMANDS.map((candidate) => candidate.command))
   const candidates = [
-    ...BUILTIN_SLASH_COMMANDS,
-    ...commandSlashCandidates(commands, reserved),
-    ...skillSlashCandidates(skills, reserved),
+    ...builtinSlashCandidates(text),
+    ...commandSlashCandidates(commands, reserved, text),
+    ...skillSlashCandidates(skills, reserved, text),
   ]
 
   const scored = candidates
@@ -219,7 +151,7 @@ export function applySlashCandidate(
   }
 }
 
-function commandSlashCandidates(commands: CommandDef[], reserved: Set<string>): SlashCommandCandidate[] {
+function commandSlashCandidates(commands: CommandDef[], reserved: Set<string>, text: SlashText): SlashCommandCandidate[] {
   const out: SlashCommandCandidate[] = []
   const seen = new Set<string>()
   for (const commandDef of commands) {
@@ -235,7 +167,7 @@ function commandSlashCandidates(commands: CommandDef[], reserved: Set<string>): 
         kind: 'command',
         command,
         title: `/${command}`,
-        description: commandDef.description || 'No description provided.',
+        description: commandDef.description || text.noDescription,
         source: commandDef.source,
         skillName: commandDef.name,
         aliasOf: command === primary ? undefined : primary,
@@ -245,7 +177,7 @@ function commandSlashCandidates(commands: CommandDef[], reserved: Set<string>): 
   return out
 }
 
-function skillSlashCandidates(skills: SkillDef[], reserved: Set<string>): SlashCommandCandidate[] {
+function skillSlashCandidates(skills: SkillDef[], reserved: Set<string>, text: SlashText): SlashCommandCandidate[] {
   const out: SlashCommandCandidate[] = []
   const seen = new Set<string>()
   for (const skill of skills) {
@@ -261,7 +193,7 @@ function skillSlashCandidates(skills: SkillDef[], reserved: Set<string>): SlashC
         kind: 'skill',
         command,
         title: `/${command}`,
-        description: skill.description || 'No description provided.',
+        description: skill.description || text.noDescription,
         source: skill.source,
         skillName: skill.name,
         aliasOf: command === primary ? undefined : primary,
