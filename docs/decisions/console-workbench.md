@@ -113,10 +113,12 @@ No phase may add to the exclusion list.
 | P3 | #971 | Session board home, write lease, hybrid worktrees, background streams, message queue, notifications |
 | P4 | #972 | Thin desktop shell |
 
+P0 shipped in #977–#984, #987, and #988. On a fresh session after one exchange, the controls stacked above the conversation went from 15 to 3 ([before](../screenshots/p0-chat-before.webp), [after](../screenshots/p0-chat-after.webp)). Panels moved to the rail and `⌘K`, and tier, cwd, and cost moved to the composer status bar. The dock stacks panels as tabs; a split inside one zone was not built.
+
 ## Consequences
 
 - `frontend/console/DESIGN.md` is the design source of truth. Its freeze section now points here, and it carries the palette and shortcut rules.
-- **Code lags this document until the P0 nav PR.** `Nav.svelte` and `tests/navGroups.test.ts` still encode the frozen nav. That PR restructures the nav and updates the test in the same change.
+- The nav follows this document since #982: `lib/navGroups.ts` derives the Work, Build, and System groups from the palette's page table, and `tests/navGroups.test.ts` checks them.
 - New console routes are allowed again. Each one must still serve working with agents, and each one must be reachable from the palette.
 - The frontend's regex-over-source tests are not enough for a workbench. P0 adds a Playwright E2E baseline, and later phases extend it rather than adding more source regexes.
 
