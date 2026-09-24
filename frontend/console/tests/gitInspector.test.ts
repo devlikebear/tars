@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { chatWorkbenchSource } from './helpers/chatWorkbenchSource.ts'
+import { gitInspectorEn } from '../src/i18n/sections/gitInspector.ts'
 
 const chatSource = chatWorkbenchSource
 const apiSource = readFileSync(new URL('../src/lib/api/git.ts', import.meta.url), 'utf8')
@@ -26,5 +27,6 @@ test('Git Inspector API client and view expose status, diff, log, and branches',
   assert.match(gitInspectorSource, /getGitDiff/)
   assert.match(gitInspectorSource, /getGitLog/)
   assert.match(gitInspectorSource, /getGitBranches/)
-  assert.match(gitInspectorSource, /side-by-side/i)
+  assert.match(gitInspectorSource, /class="diff-table diff-split" aria-label=\{\$t\.gitInspector\.diff\.sideBySideLabel\}/)
+  assert.equal(gitInspectorEn.diff.sideBySideLabel, 'side-by-side diff')
 })

@@ -725,7 +725,7 @@
                       {#if Object.keys(detailMeta).length > 0}
                         <div class="ext-detail-meta">{#each Object.entries(detailMeta) as [k, v]}{#if v}<span><strong>{k}:</strong> {v}</span>{/if}{/each}</div>
                       {/if}
-                      <div class="ext-detail-content ext-md">{@html renderMarkdown(detailContent)}</div>
+                      <div class="ext-detail-content ext-md">{@html renderMarkdown(detailContent, $t.chatThread.markdown)}</div>
                     {/if}
                   </div>
                 {/if}
@@ -879,7 +879,7 @@
               {#if isDetailOpen('skill', entry.name, 'hub')}
                 <div class="ext-detail">
                   {#if detailLoading}<div class="ext-detail-loading">{$t.extensions.detailLoading}</div>
-                  {:else}<div class="ext-detail-content ext-md">{@html renderMarkdown(detailContent)}</div>{/if}
+                  {:else}<div class="ext-detail-content ext-md">{@html renderMarkdown(detailContent, $t.chatThread.markdown)}</div>{/if}
                 </div>
               {/if}
             </div>

@@ -6,7 +6,10 @@ import {
   buildAgentRuntimeGanttRows,
   buildAgentRuntimeTreeRows,
 } from '../src/lib/agentruntime-graph.ts'
+import { agentRuntimeRunEn } from '../src/i18n/sections/agentRuntimeRun.ts'
 import type { AgentRuntimeRun } from '../src/lib/types.ts'
+
+const labels = agentRuntimeRunEn.shared
 
 const runs: AgentRuntimeRun[] = [
   {
@@ -47,7 +50,7 @@ const runs: AgentRuntimeRun[] = [
 ]
 
 test('buildAgentRuntimeTreeRows orders parents before timestamp-sorted children', () => {
-  const rows = buildAgentRuntimeTreeRows(runs)
+  const rows = buildAgentRuntimeTreeRows(runs, labels)
 
   assert.deepEqual(rows.map((row) => row.runId), ['run_parent', 'run_child_a', 'run_child_b'])
   assert.deepEqual(rows.map((row) => row.depth), [0, 1, 1])
@@ -71,12 +74,14 @@ test('buildAgentRuntimeGanttRows scales runs and consensus variants onto one tim
 })
 
 test('buildAgentRuntimeFlowGraph projects runs into tier-shaped nodes and spawn/variant edges', () => {
-  const graph = buildAgentRuntimeFlowGraph(runs)
+  const graph = buildAgentRuntimeFlowGraph(runs, labels)
 
   assert.equal(graph.nodes.length, 5)
   assert.equal(graph.edges.length, 4)
   assert.equal(graph.nodes.find((node) => node.id === 'run_parent')?.data.tierShape, 'heavy')
   assert.equal(graph.nodes.find((node) => node.id === 'run_child_a')?.data.tokens, 100)
+  assert.equal(graph.nodes.find((node) => node.id === 'run_child_a')?.data.label, 'frontend\nunresolved\nrunning / 100 tokens')
+  assert.equal(graph.nodes.find((node) => node.id === 'run_child_a-variant-0')?.data.label, 'fast\nvariant / 30 tokens')
   assert.ok(graph.edges.some((edge) => edge.id === 'spawn-run_parent-run_child_a' && edge.animated))
   assert.ok(graph.edges.some((edge) => edge.id === 'variant-run_child_a-1' && edge.data?.kind === 'variant'))
 })
@@ -86,7 +91,7 @@ test('buildAgentRuntimeFlowGraph filters by tier, status, and session', () => {
     { ...runs[0], session_id: 's1' },
     { ...runs[1], session_id: 's2' },
     { ...runs[2], session_id: 's1' },
-  ], {
+  ], labels, {
     tier: 'light',
     status: 'running',
     session: 's1',

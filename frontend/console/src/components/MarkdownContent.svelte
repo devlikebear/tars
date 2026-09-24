@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '../i18n'
   import { mermaidThemeVariables } from '../lib/themeColors'
   import { renderMarkdown, readEncodedAttr } from '../lib/markdown'
   import type { Artifact } from '../lib/artifacts'
@@ -15,6 +16,8 @@
   }
 
   let { text, artifacts = [], onArtifactOpen }: Props = $props()
+
+  let html = $derived(renderMarkdown(text || '\u2026', $t.chatThread.markdown))
 
   let containerEl: HTMLDivElement | undefined = $state()
   let mermaidTimer: ReturnType<typeof setTimeout> | null = null
@@ -132,7 +135,9 @@
 
   $effect(() => {
     if (!containerEl) return
-    void text
+    // The markup changes with the text and with the toolbar's locale; either
+    // way the new buttons need their handlers.
+    void html
     void artifacts
     void onArtifactOpen
 
@@ -160,7 +165,7 @@
         const code = readEncodedAttr(btn.getAttribute('data-code'))
         navigator.clipboard.writeText(code).then(() => {
           const original = btn.textContent
-          btn.textContent = 'Copied!'
+          btn.textContent = $t.chatThread.markdown.copied
           btn.classList.add('copied')
           setTimeout(() => {
             btn.textContent = original
@@ -253,7 +258,11 @@
         previewEl.innerHTML = svg
         block.setAttribute('data-rendered', 'true')
       } catch {
-        previewEl.innerHTML = '<span style="color:var(--error);font-size:var(--text-xs)">Diagram render failed</span>'
+        const failed = document.createElement('span')
+        failed.style.color = 'var(--error)'
+        failed.style.fontSize = 'var(--text-xs)'
+        failed.textContent = $t.chatThread.markdown.diagramFailed
+        previewEl.replaceChildren(failed)
         block.classList.add('mermaid-error')
         block.setAttribute('data-rendered', 'true')
       }
@@ -262,7 +271,7 @@
 </script>
 
 <div class="chat-md" bind:this={containerEl}>
-  {@html renderMarkdown(text || '\u2026')}
+  {@html html}
 </div>
 
 <style>

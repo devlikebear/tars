@@ -10,7 +10,7 @@
   import { t } from '../i18n'
   import { planProgressPercent } from '../lib/tasks'
   import { buildWorkbenchActions, type WorkbenchAction } from '../lib/workbenchActions'
-  import { shortGoalLabel } from '../lib/sessionLabels'
+  import { displaySessionTitle, shortGoalLabel } from '../lib/sessionLabels'
   import { chatSession } from '../lib/stores/chatSession'
   import { chatDock, type ChatDockPanelID } from '../lib/stores/chatDockStore.svelte'
   import { zenMode } from '../lib/zenMode.svelte'
@@ -38,7 +38,7 @@
     sessionId: selectedSessionId,
     hasPlan: hasPlanStrip,
     activeTaskTitle: tasksSummary.active_task_title,
-  }))
+  }, $t.chatCommands.workbench))
 
   let renaming = $state(false)
   let renameValue = $state('')
@@ -153,7 +153,7 @@
           onblur={() => commitRename()}
         />
       {:else}
-        <h3 class="session-title">{selectedSession.title || selectedSession.id.slice(0, 12)}</h3>
+        <h3 class="session-title">{displaySessionTitle(selectedSession.title, $t.chat.session.newChat) || selectedSession.id.slice(0, 12)}</h3>
       {/if}
       <button
         type="button"
@@ -170,10 +170,15 @@
           class="goal-chip"
           class:satisfied={sessionGoal.status === 'satisfied'}
           class:exhausted={sessionGoal.status === 'exhausted'}
-          title={`goal [${sessionGoal.status}]: ${sessionGoal.description}\nauto-continues used: ${sessionGoal.auto_continue_count}/${sessionGoal.max_auto_continues}`}
+          title={$t.chatCommands.goal.chipTitle(
+            $t.chatCommands.goal.statuses[sessionGoal.status] ?? sessionGoal.status,
+            sessionGoal.description,
+            sessionGoal.auto_continue_count,
+            sessionGoal.max_auto_continues,
+          )}
           onclick={() => void handleGoalSlashCommand('status')}
         >
-          <span class="goal-chip-label">goal</span>
+          <span class="goal-chip-label">{$t.chatCommands.goal.chipLabel}</span>
           <strong>{shortGoalLabel(sessionGoal.description)}</strong>
           <span class="goal-chip-counter">{sessionGoal.auto_continue_count}/{sessionGoal.max_auto_continues}</span>
         </button>
@@ -276,7 +281,7 @@
 {/if}
 
 {#if workbenchActions.length > 0}
-  <div class="workbench-action-strip" aria-label="Workbench actions">
+  <div class="workbench-action-strip" aria-label={$t.chatCommands.workbench.ariaLabel}>
     {#each workbenchActions as action}
       <button
         type="button"

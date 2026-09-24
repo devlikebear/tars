@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
+import { tasksPanelEn } from '../src/i18n/sections/tasksPanel.ts'
 
 const typesSource = readFileSync(new URL('../src/lib/types.ts', import.meta.url), 'utf8')
 const apiSource = readFileSync(new URL('../src/lib/api/normalize.ts', import.meta.url), 'utf8')
@@ -21,6 +22,8 @@ test('task evidence is typed, normalized, and rendered in task surfaces', () => 
   assert.match(tasksPanelSource, /contract/)
   assert.match(typesSource, /proof_state\?:/)
   assert.match(typesSource, /proof_origin\?:/)
-  assert.match(tasksPanelSource, /Independently verified/)
-  assert.match(tasksPanelSource, /Reported only/)
+  assert.match(tasksPanelSource, /\$t\.tasksPanel\.proof\.independentlyVerified/)
+  assert.equal(tasksPanelEn.proof.independentlyVerified, 'Independently verified')
+  assert.match(tasksPanelSource, /\$t\.tasksPanel\.proof\.reportedOnly/)
+  assert.equal(tasksPanelEn.proof.reportedOnly, 'Reported only')
 })

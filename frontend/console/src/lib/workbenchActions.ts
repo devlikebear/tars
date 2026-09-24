@@ -1,6 +1,11 @@
+import type { ChatCommandsTranslations } from '../i18n/sections/chatCommands'
+
 export type WorkbenchActionID = 'tasks' | 'evidence' | 'agentruntime' | 'git'
 export type WorkbenchPanelID = 'tasks' | 'git'
 export type WorkbenchActionTab = 'evidence'
+
+// Labels and titles for the jumps. Callers pass `$t.chatCommands.workbench`.
+export type WorkbenchActionText = ChatCommandsTranslations['workbench']
 
 export interface WorkbenchAction {
   id: WorkbenchActionID
@@ -17,37 +22,35 @@ export interface WorkbenchActionInput {
   activeTaskTitle?: string
 }
 
-export function buildWorkbenchActions(input: WorkbenchActionInput): WorkbenchAction[] {
+export function buildWorkbenchActions(input: WorkbenchActionInput, text: WorkbenchActionText): WorkbenchAction[] {
   if (!input.sessionId || !input.hasPlan) return []
 
-  const activeSuffix = input.activeTaskTitle?.trim()
-    ? ` for ${input.activeTaskTitle.trim()}`
-    : ''
+  const activeTask = input.activeTaskTitle?.trim() ?? ''
 
   return [
     {
       id: 'tasks',
-      label: 'Tasks',
-      title: `Open active plan tasks${activeSuffix}`,
+      label: text.tasks,
+      title: text.tasksTitle(activeTask),
       panel: 'tasks',
     },
     {
       id: 'evidence',
-      label: 'Evidence',
-      title: `Open plan evidence${activeSuffix}`,
+      label: text.evidence,
+      title: text.evidenceTitle(activeTask),
       panel: 'tasks',
       tab: 'evidence',
     },
     {
       id: 'agentruntime',
-      label: 'Agent Runtime',
-      title: 'Open Agent Runtime runs',
+      label: text.agentRuntime,
+      title: text.agentRuntimeTitle,
       href: '/console/agentruntime',
     },
     {
       id: 'git',
-      label: 'Git',
-      title: 'Open Git Inspector',
+      label: text.git,
+      title: text.gitTitle,
       panel: 'git',
     },
   ]

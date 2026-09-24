@@ -111,10 +111,13 @@ export async function recommendAgentRuntimeSubagents(payload: {
 	})
 }
 
+export type AgentRuntimeRunStreamError = 'parse' | 'disconnected'
+
 export function streamAgentRuntimeRunEvents(
 	runId: string,
 	onEvent: (event: AgentRuntimeRunEvent) => void,
-	onError?: (message: string) => void,
+	// The caller words the failure in the console's language.
+	onError?: (reason: AgentRuntimeRunStreamError) => void,
 	onOpen?: () => void,
 ): () => void {
 	const stream = new EventSource(`/v1/agentruntime/runs/${encodeURIComponent(runId)}/events`, { withCredentials: true })
@@ -126,9 +129,9 @@ export function streamAgentRuntimeRunEvents(
 		try {
 			onEvent(JSON.parse(message.data) as AgentRuntimeRunEvent)
 		} catch {
-			onError?.('Failed to parse agent runtime run event')
+			onError?.('parse')
 		}
 	}
-	stream.onerror = () => onError?.('Agent Runtime run event stream disconnected')
+	stream.onerror = () => onError?.('disconnected')
 	return () => stream.close()
 }

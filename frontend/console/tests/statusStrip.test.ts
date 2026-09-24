@@ -8,6 +8,7 @@ import {
   deriveReflectionTone,
   formatRelativeStatusTime,
 } from '../src/lib/statusStrip.ts'
+import { chatThreadEn } from '../src/i18n/sections/chatThread.ts'
 
 const navSource = readFileSync(new URL('../src/components/Nav.svelte', import.meta.url), 'utf8')
 const stripSource = readFileSync(new URL('../src/components/StatusStrip.svelte', import.meta.url), 'utf8')
@@ -31,10 +32,11 @@ test('StatusStrip polls existing status APIs and clears polling on destroy', () 
 })
 
 test('StatusStrip rows navigate to their detail surfaces', () => {
-  assert.match(stripSource, /SERVER/)
-  assert.match(stripSource, /PULSE/)
-  assert.match(stripSource, /REFLECT/)
-  assert.match(stripSource, /SESSIONS/)
+  const rows = { server: 'SERVER', pulse: 'PULSE', reflect: 'REFLECT', sessions: 'SESSIONS' } as const
+  for (const [key, label] of Object.entries(rows) as [keyof typeof rows, string][]) {
+    assert.match(stripSource, new RegExp(`\\{\\$t\\.chatThread\\.statusStrip\\.${key}\\}`))
+    assert.equal(chatThreadEn.statusStrip[key], label)
+  }
   assert.match(stripSource, /navigate\('\/console'\)/)
   assert.match(stripSource, /navigate\('\/console\/pulse'\)/)
   assert.match(stripSource, /navigate\('\/console\/reflection'\)/)
@@ -51,8 +53,9 @@ test('sidebar status strip collapses before narrow desktop content can overlap',
 test('status strip helpers format health and activity summaries', () => {
   const now = new Date('2026-05-01T00:05:00Z')
 
-  assert.equal(formatRelativeStatusTime('2026-05-01T00:02:30Z', now), '2m ago')
-  assert.equal(formatRelativeStatusTime('', now), 'never')
+  const relativeTime = chatThreadEn.statusStrip.relativeTime
+  assert.equal(formatRelativeStatusTime('2026-05-01T00:02:30Z', relativeTime, now), '2m ago')
+  assert.equal(formatRelativeStatusTime('', relativeTime, now), 'never')
   assert.equal(derivePulseTone({ last_tick_at: '2026-05-01T00:04:00Z' }), 'ok')
   assert.equal(derivePulseTone({ last_tick_at: '0001-01-01T00:00:00Z' }), 'warn')
   assert.equal(derivePulseTone({ last_tick_at: '', last_err: 'boom' }), 'error')

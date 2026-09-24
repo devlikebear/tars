@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '../i18n'
   import {
     buildAgentRuntimeTreeRows,
     type AgentRuntimeTreeRow,
@@ -11,7 +12,7 @@
   }
 
   let { runs, onSelectRun }: Props = $props()
-  let rows = $derived(buildAgentRuntimeTreeRows(runs))
+  let rows = $derived(buildAgentRuntimeTreeRows(runs, $t.agentRuntimeRun.shared))
   let height = $derived(Math.max(180, rows.length * 78 + 48))
   let rowMap = $derived.by<Map<string, AgentRuntimeTreeRow>>(() => new Map(rows.map((row) => [row.runId, row])))
 
@@ -34,19 +35,19 @@
   }
 </script>
 
-<section class="agent-runtime-tree" aria-label="Agent Runtime Mini Tree">
+<section class="agent-runtime-tree" aria-label={$t.agentRuntimeRun.tree.ariaLabel}>
   <div class="visualization-head">
     <div>
-      <h3>Mini Tree</h3>
-      <p>{rows.length} runs grouped by parent and depth</p>
+      <h3>{$t.agentRuntimeRun.tree.title}</h3>
+      <p>{$t.agentRuntimeRun.tree.summary(rows.length)}</p>
     </div>
   </div>
 
   {#if rows.length === 0}
-    <div class="agentruntime-empty">No runs available for tree visualization.</div>
+    <div class="agentruntime-empty">{$t.agentRuntimeRun.tree.empty}</div>
   {:else}
     <div class="tree-canvas">
-      <svg viewBox={`0 0 760 ${height}`} role="img" aria-label="Agent Runtime run tree">
+      <svg viewBox={`0 0 760 ${height}`} role="img" aria-label={$t.agentRuntimeRun.tree.svgAriaLabel}>
         {#each rows as row}
           {@const parent = parentRow(row)}
           {#if parent}

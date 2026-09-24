@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { locale, t } from '../i18n'
   import { buildAgentRuntimeGanttRows } from '../lib/agentruntime-graph'
   import type { AgentRuntimeRun } from '../lib/types'
 
@@ -12,7 +13,7 @@
 
   function fmtTime(value: number): string {
     if (!Number.isFinite(value) || value <= 0) return '--:--'
-    return new Intl.DateTimeFormat('en', {
+    return new Intl.DateTimeFormat($locale, {
       hour: '2-digit',
       minute: '2-digit',
       second: '2-digit',
@@ -24,11 +25,11 @@
   }
 </script>
 
-<section class="agent-runtime-gantt" aria-label="Agent Runtime Gantt Strip">
+<section class="agent-runtime-gantt" aria-label={$t.agentRuntimeRun.gantt.ariaLabel}>
   <div class="visualization-head">
     <div>
-      <h3>Gantt Strip</h3>
-      <p>{model.rows.length} runs on one timeline</p>
+      <h3>{$t.agentRuntimeRun.gantt.title}</h3>
+      <p>{$t.agentRuntimeRun.gantt.summary(model.rows.length)}</p>
     </div>
     {#if model.hasTimeline}
       <div class="timeline-range">
@@ -39,7 +40,7 @@
   </div>
 
   {#if !model.hasTimeline}
-    <div class="agentruntime-empty">No timestamped runs available for Gantt visualization.</div>
+    <div class="agentruntime-empty">{$t.agentRuntimeRun.gantt.empty}</div>
   {:else}
     <div class="gantt-table">
       {#each model.rows as row}
@@ -54,7 +55,7 @@
               <span
                 class={`variant-bar ${variant.statusKind}`}
                 style={percentStyle(variant.leftPercent, variant.widthPercent)}
-                title={`${variant.label}: ${variant.tokens} tokens`}
+                title={`${variant.label}: ${$t.agentRuntimeRun.shared.tokens(variant.tokens)}`}
               ></span>
             {/each}
           </span>

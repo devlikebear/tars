@@ -7,6 +7,7 @@
   import { chatSession } from '../lib/stores/chatSession'
   import { chatCommands } from '../lib/stores/chatCommandQueue.svelte'
   import type { MemorySearchMatch, Session, SessionCleanupMode, SessionCleanupSuggestion, SessionCleanupSuggestionResponse } from '../lib/types'
+  import { displaySessionTitle } from '../lib/sessionLabels'
 
   type SessionSearchSnippet = {
     date: string
@@ -487,7 +488,7 @@
         <span class="cleanup-chevron">›</span>
       </summary>
       <div class="cleanup-body">
-        <div class="cleanup-preview">{cleanupSuggestions.slice(0, 3).map((session) => session.title || session.id.slice(0, 12)).join(' · ')}</div>
+        <div class="cleanup-preview">{cleanupSuggestions.slice(0, 3).map((session) => displaySessionTitle(session.title, $t.chat.session.newChat) || session.id.slice(0, 12)).join(' · ')}</div>
         <button class="cleanup-action" type="button" disabled={actionBusy === 'cleanup'} onclick={handleArchiveCleanupCandidates}>
           {$t.sessions.cleanup.archiveSuggested(cleanupSuggestions.length)}
         </button>
@@ -521,7 +522,7 @@
                     onchange={() => toggleAISuggestion(suggestion.session_id)}
                   />
                   <span class="ai-suggestion-copy">
-                    <strong>{suggestion.title || suggestion.session_id.slice(0, 12)}</strong>
+                    <strong>{displaySessionTitle(suggestion.title, $t.chat.session.newChat) || suggestion.session_id.slice(0, 12)}</strong>
                     <span>{suggestion.reason}</span>
                   </span>
                   <span class="ai-confidence">{$t.sessions.aiCleanup.confidence(suggestion.confidence)}</span>
@@ -584,7 +585,7 @@
                   onclick={(e) => e.stopPropagation()}
                 />
               {:else}
-                <span class="session-title">{session.title || session.id.slice(0, 12)}</span>
+                <span class="session-title">{displaySessionTitle(session.title, $t.chat.session.newChat) || session.id.slice(0, 12)}</span>
               {/if}
               <div class="session-meta">
                 <span class="badge {kindBadge(session)}" style="font-size:9px;padding:1px 5px">{$t.sessions.filters[sessionKind(session) as keyof typeof $t.sessions.filters] ?? sessionKind(session)}</span>

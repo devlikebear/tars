@@ -48,10 +48,13 @@ test('the status bar shows the cwd and this session’s usage after a turn', asy
 
   // The session filter counts this session's calls and nobody else's.
   // (Token counts stay 0 here: the OpenAI-compatible client does not read
-  // usage from streamed responses yet, so only calls are asserted.)
-  const own = await page.request.get(`/v1/usage/summary?period=month&session_id=${sessionId}`)
+  // usage from streamed responses yet, so only calls are asserted.) The
+  // server records a call after the stream ends, so poll for it.
+  await expect.poll(async () => {
+    const own = await page.request.get(`/v1/usage/summary?period=month&session_id=${sessionId}`)
+    return (await own.json()).summary.total_calls
+  }).toBeGreaterThan(0)
   const other = await page.request.get('/v1/usage/summary?period=month&session_id=no-such-session')
-  expect((await own.json()).summary.total_calls).toBeGreaterThan(0)
   expect((await other.json()).summary.total_calls).toBe(0)
 })
 

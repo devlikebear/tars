@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 
 import { compileSvelteModule } from './helpers/compileSvelteModule.ts'
 import { emptyTaskProgressSummary, summarizeTasks } from '../src/lib/tasks.ts'
+import { chatCommandsEn, chatCommandsKo } from '../src/i18n/sections/chatCommands.ts'
 import type * as StoreModule from '../src/lib/stores/chatSessionStore.svelte.ts'
 
 const mod = await compileSvelteModule<typeof StoreModule>('src/lib/stores/chatSessionStore.svelte.ts')
@@ -59,6 +60,9 @@ function fakeApi(overrides: Record<string, unknown> = {}) {
   return { api, calls }
 }
 
+// The goal event lines the store reads; a test switches it to Korean.
+let goalText = chatCommandsEn.goalEvents
+
 // Health helpers that make the report's inputs observable.
 const helpers = {
   emptyReport: () => ({ status: 'healthy', empty: true, recommendations: [] }),
@@ -71,6 +75,7 @@ const helpers = {
   }),
   emptyTasks: emptyTaskProgressSummary,
   summarizeTasks,
+  goalEventText: () => goalText,
 }
 
 function newStore(overrides: Record<string, unknown> = {}) {
@@ -164,6 +169,21 @@ test('setContextInfo rebuilds the health report with the latest context', async 
   assert.equal(report.contextInfo.history_tokens, 999)
 })
 
+test('rebuildHealth words the report again after a language switch', async () => {
+  let language = 'en'
+  const { api } = fakeApi()
+  const store = new ChatSessionStore(api as never, {
+    ...helpers,
+    buildReport: (input: { session: { id: string } }) => ({ status: 'healthy', summary: `${language}:${input.session.id}`, recommendations: [] }),
+  } as never)
+  store.setActive('a')
+  await flush()
+  assert.equal((store.health as unknown as { summary: string }).summary, 'en:a')
+  language = 'ko'
+  store.rebuildHealth()
+  assert.equal((store.health as unknown as { summary: string }).summary, 'ko:a')
+})
+
 test('compact reloads the thread and returns the server result', async () => {
   const { store, calls } = newStore()
   store.setActive('a')
@@ -225,12 +245,31 @@ test('applyGoalEvent updates the goal chip and surfaces feedback', () => {
   assert.equal(store.feedback, 'goal auto-continue 1/3')
 })
 
+test('applyGoalEvent reads the goal lines when the event arrives, so a locale switch applies', () => {
+  const { store } = newStore()
+  const goal = { description: 'ship it', status: 'active', auto_continue_count: 2, max_auto_continues: 3 }
+  goalText = chatCommandsKo.goalEvents
+  try {
+    store.applyGoalEvent({ phase: 'auto_continue', goal: goal as never })
+  } finally {
+    goalText = chatCommandsEn.goalEvents
+  }
+  assert.equal(store.feedback, chatCommandsKo.goalEvents.autoContinue(2, 3))
+  assert.notEqual(store.feedback, 'goal auto-continue 2/3')
+})
+
 test('goalEventFeedback covers each phase and stays quiet for the rest', () => {
-  assert.equal(goalEventFeedback({ phase: 'satisfied', reason: 'done', goal: null }), 'goal satisfied: done')
-  assert.equal(goalEventFeedback({ phase: 'exhausted', goal: null }), 'goal auto-continue budget exhausted')
-  assert.equal(goalEventFeedback({ phase: 'judge_error', goal: null }), 'goal judge error: unknown')
-  assert.equal(goalEventFeedback({ phase: 'auto_continue', goal: null }), '')
-  assert.equal(goalEventFeedback({ phase: 'cleared', goal: null }), '')
+  const text = chatCommandsEn.goalEvents
+  assert.equal(goalEventFeedback({ phase: 'satisfied', reason: 'done', goal: null }, text), 'goal satisfied: done')
+  assert.equal(goalEventFeedback({ phase: 'satisfied', goal: null }, text), 'goal satisfied')
+  assert.equal(goalEventFeedback({ phase: 'exhausted', goal: null }, text), 'goal auto-continue budget exhausted')
+  assert.equal(
+    goalEventFeedback({ phase: 'exhausted', reason: 'still failing', goal: null }, text),
+    'goal auto-continue budget exhausted (last: still failing)',
+  )
+  assert.equal(goalEventFeedback({ phase: 'judge_error', goal: null }, text), 'goal judge error: unknown')
+  assert.equal(goalEventFeedback({ phase: 'auto_continue', goal: null }, text), '')
+  assert.equal(goalEventFeedback({ phase: 'cleared', goal: null }, text), '')
 })
 
 test('autoTitleFromHistory prefers the first user message and clips long text', () => {

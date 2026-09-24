@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '../i18n'
   import type { SlashCommandCandidate } from '../lib/slash'
 
   interface Props {
@@ -19,25 +20,24 @@
   }
 
   function sectionLabel(kind: SlashCommandCandidate['kind']): string {
-    if (kind === 'builtin') return 'Built-in'
-    if (kind === 'command') return 'Commands'
-    return 'Skills'
+    return $t.chatCommands.slashPopover.sections[kind]
   }
 
   function kindLabel(kind: SlashCommandCandidate['kind']): string {
-    if (kind === 'skill') return 'SKILL'
-    if (kind === 'command') return 'CMD'
-    return 'CMD'
+    if (kind === 'skill') return $t.chatCommands.slashPopover.kinds.skill
+    return $t.chatCommands.slashPopover.kinds.command
   }
 
+  // The server's source name when it sent one.
   function sourceLabel(candidate: SlashCommandCandidate): string {
-    if (candidate.kind === 'builtin') return 'built-in'
-    if (candidate.kind === 'command') return candidate.source || 'command'
-    return candidate.source || 'skill'
+    const sources = $t.chatCommands.slashPopover.sources
+    if (candidate.kind === 'builtin') return sources.builtin
+    if (candidate.kind === 'command') return candidate.source || sources.command
+    return candidate.source || sources.skill
   }
 </script>
 
-<div class="slash-popover" role="listbox" aria-label="Slash command suggestions">
+<div class="slash-popover" role="listbox" aria-label={$t.chatCommands.slashPopover.ariaLabel}>
   {#each candidates as candidate, i}
     {#if i === 0 || candidates[i - 1]?.kind !== candidate.kind}
       <div class="slash-section">{sectionLabel(candidate.kind)}</div>

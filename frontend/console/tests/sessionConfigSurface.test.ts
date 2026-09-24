@@ -2,6 +2,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { chatWorkbenchSource, readChatWorkbenchFile } from './helpers/chatWorkbenchSource.ts'
+import { chatCommandsEn } from '../src/i18n/sections/chatCommands.ts'
+import { sessionConfigEn } from '../src/i18n/sections/sessionConfig.ts'
 
 const chatSource = chatWorkbenchSource
 const panelSource = readFileSync(new URL('../src/components/SessionConfigPanel.svelte', import.meta.url), 'utf8')
@@ -14,7 +16,8 @@ test('Chat exposes session config on the panel rail', () => {
 })
 
 test('Chat opens advanced session config only for an existing selected session', () => {
-  assert.match(chatSource, /case 'config':[\s\S]*Select a session first[\s\S]*openPanel\('config'\)/)
+  assert.match(chatSource, /case 'config':[\s\S]*\$t\.chatCommands\.selectSessionFirst[\s\S]*openPanel\('config'\)/)
+  assert.equal(chatCommandsEn.selectSessionFirst, 'Select a session first')
   assert.match(chatSource, /panelID === 'config' && selectedSessionId/)
 })
 
@@ -23,7 +26,8 @@ test('Session config can reload session skills and commands separately', () => {
   assert.match(panelSource, /toolsResp\.commands/)
   assert.match(panelSource, /onclick=\{\(\) => \{ void load\(\) \}\}/)
   assert.match(panelSource, /skillSourceFilter/)
-  assert.match(panelSource, /Session only/)
+  assert.match(panelSource, /\$t\.sessionConfig\.skills\.filters\[filter\]/)
+  assert.equal(sessionConfigEn.skills.filters.session, 'Session only')
   assert.match(panelSource, /activeTab === 'commands'/)
   assert.match(panelSource, /commands_enabled/)
   assert.match(panelSource, /source-session/)

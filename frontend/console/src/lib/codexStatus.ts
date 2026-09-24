@@ -1,4 +1,7 @@
+import type { ChatCommandsTranslations } from '../i18n/sections/chatCommands'
 import type { CodexUsageTier } from './types'
+
+export type CodexStatusText = ChatCommandsTranslations['codexStatus']
 
 const BAR_WIDTH = 10
 
@@ -9,46 +12,48 @@ const BAR_WIDTH = 10
 //
 // Each tier line includes a 10-cell ASCII progress bar (█ filled, ░ empty)
 // per window so the user can eyeball usage without parsing percentages.
-export function formatCodexStatusLines(tiers: CodexUsageTier[]): string[] {
+// `text` is the console locale's wording for the report.
+export function formatCodexStatusLines(tiers: CodexUsageTier[], text: CodexStatusText): string[] {
   const codexTiers = tiers.filter((tier) => (tier.provider ?? '').toLowerCase() === 'openai-codex')
   if (codexTiers.length === 0) {
-    return ['Codex status: no openai-codex tiers configured.']
+    return [text.noTiers]
   }
 
-  const lines: string[] = ['Codex status:']
+  const lines: string[] = [text.title]
   for (const tier of codexTiers) {
-    appendTierLines(lines, tier)
+    appendTierLines(lines, tier, text)
   }
   return lines
 }
 
-function appendTierLines(lines: string[], tier: CodexUsageTier): void {
+function appendTierLines(lines: string[], tier: CodexUsageTier, text: CodexStatusText): void {
   const head = `[${tier.tier}]${tier.model ? ` ${tier.model}` : ''}`
   if (!tier.snapshot) {
-    lines.push(`  ${head}  Awaiting first request…`)
+    lines.push(`  ${head}  ${text.awaiting}`)
     return
   }
   lines.push(`  ${head}`)
   if (tier.snapshot.primary) {
-    lines.push(formatWindowLine('primary', tier.snapshot.primary.used_percent, tier.snapshot.primary.reset_after_seconds, tier.snapshot.primary.window_minutes))
+    lines.push(formatWindowLine(text.primary, text, tier.snapshot.primary.used_percent, tier.snapshot.primary.reset_after_seconds, tier.snapshot.primary.window_minutes))
   }
   if (tier.snapshot.secondary) {
-    lines.push(formatWindowLine('weekly ', tier.snapshot.secondary.used_percent, tier.snapshot.secondary.reset_after_seconds, tier.snapshot.secondary.window_minutes))
+    lines.push(formatWindowLine(text.weekly, text, tier.snapshot.secondary.used_percent, tier.snapshot.secondary.reset_after_seconds, tier.snapshot.secondary.window_minutes))
   }
   if (!tier.snapshot.primary && !tier.snapshot.secondary) {
-    lines.push('    (no window data)')
+    lines.push(`    ${text.noWindowData}`)
   }
 }
 
 function formatWindowLine(
   label: string,
+  text: CodexStatusText,
   usedPercent: number,
   resetAfterSeconds?: number,
   windowMinutes?: number,
 ): string {
   const bar = formatBar(usedPercent)
   const pct = `${usedPercent.toFixed(1).padStart(5)}%`
-  const detail = formatDetail(resetAfterSeconds, windowMinutes)
+  const detail = formatDetail(text, resetAfterSeconds, windowMinutes)
   return `    ${label}  ${bar}  ${pct}${detail}`
 }
 
@@ -59,12 +64,12 @@ function formatBar(usedPercent: number, width = BAR_WIDTH): string {
   return '█'.repeat(safeFilled) + '░'.repeat(width - safeFilled)
 }
 
-function formatDetail(resetAfterSeconds?: number, windowMinutes?: number): string {
+function formatDetail(text: CodexStatusText, resetAfterSeconds?: number, windowMinutes?: number): string {
   const reset = formatReset(resetAfterSeconds)
   const total = formatWindowTotal(windowMinutes)
-  if (reset && total) return `  (resets ${reset} / ${total})`
-  if (reset) return `  (resets ${reset})`
-  if (total) return `  (${total} window)`
+  if (reset && total) return `  ${text.resetsWithin(reset, total)}`
+  if (reset) return `  ${text.resets(reset)}`
+  if (total) return `  ${text.window(total)}`
   return ''
 }
 

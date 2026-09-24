@@ -1,4 +1,9 @@
+import type { ChatThreadTranslations } from '../i18n/sections/chatThread'
+
 export type SubagentProgressStatus = 'pending' | 'running' | 'completed' | 'failed'
+
+// Pass $t.chatThread.subagents; it names tasks that arrive without a title.
+export type SubagentProgressLabels = Pick<ChatThreadTranslations['subagents'], 'untitledTask'>
 
 export type SubagentProgressTask = {
   title: string
@@ -60,14 +65,14 @@ export type SubagentProgressInput = {
 
 type JSONRecord = Record<string, unknown>
 
-export function buildSubagentProgress(input: SubagentProgressInput): SubagentProgress | null {
+export function buildSubagentProgress(input: SubagentProgressInput, labels: SubagentProgressLabels): SubagentProgress | null {
   if (input.toolName?.trim() !== 'subagents_run') return null
 
   const args = parseRecord(input.toolArgs)
   const result = parseRecord(input.toolResult)
   const complete = input.toolDone === true
-  const resultTasks = result ? subagentResultTasks(result) : []
-  const argTasks = args ? subagentArgTasks(args, complete, input.toolIsError === true) : []
+  const resultTasks = result ? subagentResultTasks(result, labels) : []
+  const argTasks = args ? subagentArgTasks(args, complete, input.toolIsError === true, labels) : []
 
   const tasks = resultTasks.length > 0 ? resultTasks : argTasks
   if (tasks.length === 0) return null
@@ -109,7 +114,7 @@ function parseRecord(raw?: string): JSONRecord | null {
   }
 }
 
-function subagentArgTasks(args: JSONRecord, complete: boolean, errored: boolean): SubagentProgressTask[] {
+function subagentArgTasks(args: JSONRecord, complete: boolean, errored: boolean, labels: SubagentProgressLabels): SubagentProgressTask[] {
   const tasks = arrayField(args.tasks)
   const fallbackStatus: SubagentProgressStatus = complete ? (errored ? 'failed' : 'completed') : 'running'
   const out: SubagentProgressTask[] = []
@@ -117,7 +122,7 @@ function subagentArgTasks(args: JSONRecord, complete: boolean, errored: boolean)
     const record = objectField(item)
     if (!record) return
     out.push({
-      title: stringField(record.title) || `Subagent ${index + 1}`,
+      title: stringField(record.title) || labels.untitledTask(index + 1),
       status: fallbackStatus,
       tier: stringField(record.tier),
     })
@@ -125,14 +130,14 @@ function subagentArgTasks(args: JSONRecord, complete: boolean, errored: boolean)
   return out
 }
 
-function subagentResultTasks(result: JSONRecord): SubagentProgressTask[] {
+function subagentResultTasks(result: JSONRecord, labels: SubagentProgressLabels): SubagentProgressTask[] {
   const out: SubagentProgressTask[] = []
   arrayField(result.subagents).forEach((item, index) => {
     const record = objectField(item)
     if (!record) return
     const runId = stringField(record.run_id)
     out.push({
-      title: stringField(record.title) || `Subagent ${index + 1}`,
+      title: stringField(record.title) || labels.untitledTask(index + 1),
       status: normalizeStatus(stringField(record.status)),
       runId,
       sessionId: stringField(record.session_id),

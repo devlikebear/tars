@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte'
+  import { t } from '../i18n'
   import { getPulseStatus, getReflectionStatus, getServerStatus, listSessions } from '../lib/api'
   import {
     countActiveSessions,
@@ -25,9 +26,17 @@
 
   let pulseTone = $derived(derivePulseTone(pulse))
   let reflectionTone = $derived(deriveReflectionTone(reflection))
-  let pulseLabel = $derived(pulseTone === 'error' ? 'error' : pulseTone === 'ok' ? 'healthy' : 'waiting')
-  let reflectionLabel = $derived(formatRelativeStatusTime(reflection?.last_run_at || reflection?.last_successful_run_at))
-  let serverLabel = $derived(serverTone === 'ok' ? 'running' : 'offline')
+  let pulseLabel = $derived(
+    pulseTone === 'error'
+      ? $t.chatThread.statusStrip.pulseError
+      : pulseTone === 'ok'
+        ? $t.chatThread.statusStrip.pulseHealthy
+        : $t.chatThread.statusStrip.pulseWaiting,
+  )
+  let reflectionLabel = $derived(
+    formatRelativeStatusTime(reflection?.last_run_at || reflection?.last_successful_run_at, $t.chatThread.statusStrip.relativeTime),
+  )
+  let serverLabel = $derived(serverTone === 'ok' ? $t.chatThread.statusStrip.serverRunning : $t.chatThread.statusStrip.serverOffline)
 
   function navigate(path: string) {
     onNavigate(path)
@@ -63,9 +72,9 @@
   })
 </script>
 
-<div class="status-strip" aria-label="Sidebar system status">
-  <button type="button" class="status-row" onclick={() => navigate('/console')} aria-label="SERVER status">
-    <span class="status-label">SERVER</span>
+<div class="status-strip" aria-label={$t.chatThread.statusStrip.ariaLabel}>
+  <button type="button" class="status-row" onclick={() => navigate('/console')} aria-label={$t.chatThread.statusStrip.rowAria($t.chatThread.statusStrip.server)}>
+    <span class="status-label">{$t.chatThread.statusStrip.server}</span>
     <span class={`status-dot ${serverTone}`} aria-hidden="true"></span>
     <span class="status-value">{serverLabel}</span>
     {#if serverVersion}
@@ -73,21 +82,21 @@
     {/if}
   </button>
 
-  <button type="button" class="status-row" onclick={() => navigate('/console/pulse')} aria-label="PULSE status">
-    <span class="status-label">PULSE</span>
+  <button type="button" class="status-row" onclick={() => navigate('/console/pulse')} aria-label={$t.chatThread.statusStrip.rowAria($t.chatThread.statusStrip.pulse)}>
+    <span class="status-label">{$t.chatThread.statusStrip.pulse}</span>
     <span class={`status-dot ${pulseTone}`} aria-hidden="true"></span>
     <span class="status-value">{pulseLabel}</span>
   </button>
 
-  <button type="button" class="status-row" onclick={() => navigate('/console/reflection')} aria-label="REFLECT status">
-    <span class="status-label">REFLECT</span>
+  <button type="button" class="status-row" onclick={() => navigate('/console/reflection')} aria-label={$t.chatThread.statusStrip.rowAria($t.chatThread.statusStrip.reflect)}>
+    <span class="status-label">{$t.chatThread.statusStrip.reflect}</span>
     <span class={`status-dot ${reflectionTone}`} aria-hidden="true"></span>
     <span class="status-value">{reflectionLabel}</span>
   </button>
 
-  <button type="button" class="status-row" onclick={() => navigate('/console/chat')} aria-label="SESSIONS status">
-    <span class="status-label">SESSIONS</span>
-    <span class="status-value session-count">{sessionCount} active</span>
+  <button type="button" class="status-row" onclick={() => navigate('/console/chat')} aria-label={$t.chatThread.statusStrip.rowAria($t.chatThread.statusStrip.sessions)}>
+    <span class="status-label">{$t.chatThread.statusStrip.sessions}</span>
+    <span class="status-value session-count">{$t.chatThread.statusStrip.activeSessions(sessionCount)}</span>
   </button>
 </div>
 

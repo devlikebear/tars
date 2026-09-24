@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs'
 
 import { buildSlashCandidates, builtinSlashCommandId, parseLeadingSlashCommand } from '../src/lib/slash.ts'
 import { chatWorkbenchSource } from './helpers/chatWorkbenchSource.ts'
+import { chatCommandsEn } from '../src/i18n/sections/chatCommands.ts'
 
 const chatSource = chatWorkbenchSource
 const panelSource = readFileSync(new URL('../src/components/ChatPanel.svelte', import.meta.url), 'utf8')
@@ -12,7 +13,7 @@ const memorySource = readFileSync(new URL('../src/components/MemoryCenter.svelte
 const popoverSource = readFileSync(new URL('../src/components/SlashPopover.svelte', import.meta.url), 'utf8')
 
 test('slash registry includes first-pass composer commands', () => {
-  const commands = buildSlashCandidates('').map((candidate) => candidate.command)
+  const commands = buildSlashCandidates('', [], [], chatCommandsEn.slash).map((candidate) => candidate.command)
   assert.ok(commands.includes('clear'))
   assert.ok(commands.includes('compact'))
   assert.ok(commands.includes('memory'))
@@ -45,7 +46,8 @@ test('SlashPopover renders command and skill candidates with active state', () =
   assert.match(popoverSource, /candidates: SlashCommandCandidate\[\]/)
   assert.match(popoverSource, /activeIndex: number/)
   assert.match(popoverSource, /sectionLabel\(candidate\.kind\)/)
-  assert.match(popoverSource, /Commands/)
+  assert.match(popoverSource, /\$t\.chatCommands\.slashPopover\.sections\[kind\]/)
+  assert.equal(chatCommandsEn.slashPopover.sections.command, 'Commands')
   assert.match(popoverSource, /class:active=\{i === activeIndex\}/)
   assert.match(popoverSource, /onmousedown=\{\(e\) => e\.preventDefault\(\)\}/)
 })

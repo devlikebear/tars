@@ -1,4 +1,17 @@
 import type { Translations } from './types'
+import { dockEn } from './sections/dock.ts'
+import { terminalEn } from './sections/terminal.ts'
+import { chatCommandsEn } from './sections/chatCommands.ts'
+import { chatThreadEn } from './sections/chatThread.ts'
+import { sessionConfigEn } from './sections/sessionConfig.ts'
+import { gitInspectorEn } from './sections/gitInspector.ts'
+import { artifactPanelEn } from './sections/artifactPanel.ts'
+import { skillInboxEn } from './sections/skillInbox.ts'
+import { sessionCronEn } from './sections/sessionCron.ts'
+import { sessionHealthEn } from './sections/sessionHealth.ts'
+import { contextPanelsEn } from './sections/contextPanels.ts'
+import { tasksPanelEn } from './sections/tasksPanel.ts'
+import { agentRuntimeRunEn } from './sections/agentRuntimeRun.ts'
 
 export const en = {
   common: {
@@ -1626,4 +1639,17 @@ export const en = {
     accessRevoked: 'Access revoked',
     dash: '—',
   },
+  dock: dockEn,
+  terminal: terminalEn,
+  chatCommands: chatCommandsEn,
+  chatThread: chatThreadEn,
+  sessionConfig: sessionConfigEn,
+  gitInspector: gitInspectorEn,
+  artifactPanel: artifactPanelEn,
+  skillInbox: skillInboxEn,
+  sessionCron: sessionCronEn,
+  sessionHealth: sessionHealthEn,
+  contextPanels: contextPanelsEn,
+  tasksPanel: tasksPanelEn,
+  agentRuntimeRun: agentRuntimeRunEn,
 } satisfies Translations

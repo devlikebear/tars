@@ -7,6 +7,7 @@
 import { Marked } from 'marked'
 import DOMPurify, { type Config as DOMPurifyConfig } from 'dompurify'
 import hljs from 'highlight.js/lib/core'
+import { chatThreadEn, type ChatThreadTranslations } from '../i18n/sections/chatThread.ts'
 
 // Selective language imports to keep bundle small
 import go from 'highlight.js/lib/languages/go'
@@ -154,42 +155,67 @@ export function renderHighlightedCodeBlock(text: string, lang?: string): string 
   return `<div class="code-block"><pre><code class="hljs">${highlightCode(text, lang)}</code></pre></div>`
 }
 
-const marked = new Marked({
-  gfm: true,
-  breaks: false,
-  renderer: {
-    code({ text, lang }: { text: string; lang?: string }) {
-      const language = normalizeLanguage(lang)
+// Toolbar button words and titles; MarkdownContent passes $t.chatThread.markdown.
+export type MarkdownToolbarLabels = ChatThreadTranslations['markdown']
 
-      // Mermaid diagrams: toolbar + code/preview toggle + lazy-load
-      if (language === 'mermaid') {
-        const encoded = encodeAttrPayload(text)
-        return `<div class="mermaid-block" data-graph="${encoded}"><div class="code-toolbar"><span class="code-lang">mermaid</span><div class="code-actions"><button type="button" class="code-toggle" data-mode="code" title="View code">Code</button><button type="button" class="code-toggle active" data-mode="preview" title="Preview diagram">Preview</button><button type="button" class="code-copy" data-code="${encoded}" title="Copy code">Copy</button></div></div><pre class="mermaid-src" style="display:none"><code>${escapeAttr(text)}</code></pre><div class="mermaid-preview" data-mermaid-preview></div></div>`
-      }
+function createMarked(labels: MarkdownToolbarLabels): Marked {
+  const code = escapeAttr(labels.code)
+  const codeTitle = escapeAttr(labels.codeTitle)
+  const preview = escapeAttr(labels.preview)
+  const previewTitle = escapeAttr(labels.previewTitle)
+  const previewDiagramTitle = escapeAttr(labels.previewDiagramTitle)
+  const copy = escapeAttr(labels.copy)
+  const copyTitle = escapeAttr(labels.copyTitle)
 
-      const highlighted = highlightCode(text, language)
+  return new Marked({
+    gfm: true,
+    breaks: false,
+    renderer: {
+      code({ text, lang }: { text: string; lang?: string }) {
+        const language = normalizeLanguage(lang)
 
-      const langLabel = language ? `<span class="code-lang">${escapeAttr(language)}</span>` : ''
-      const previewable = ['html', 'svg'].includes(language)
-      const encodedSource = encodeAttrPayload(text)
-      const toolbar = previewable
-        ? `<div class="code-toolbar">${langLabel}<div class="code-actions"><button type="button" class="code-toggle active" data-mode="code" title="View code">Code</button><button type="button" class="code-toggle" data-mode="preview" title="Preview">Preview</button><button type="button" class="code-copy" data-code="${encodedSource}" title="Copy code">Copy</button></div></div>`
-        : `<div class="code-toolbar">${langLabel}<div class="code-actions"><button type="button" class="code-copy" data-code="${encodedSource}" title="Copy code">Copy</button></div></div>`
-      const previewHtml = previewable
-        ? `<div class="code-preview" style="display:none" data-preview>${text}</div>`
-        : ''
-      return `<div class="code-block"${previewable ? ' data-previewable' : ''}>${toolbar}<pre><code class="hljs">${highlighted}</code></pre>${previewHtml}</div>`
+        // Mermaid diagrams: toolbar + code/preview toggle + lazy-load
+        if (language === 'mermaid') {
+          const encoded = encodeAttrPayload(text)
+          return `<div class="mermaid-block" data-graph="${encoded}"><div class="code-toolbar"><span class="code-lang">mermaid</span><div class="code-actions"><button type="button" class="code-toggle" data-mode="code" title="${codeTitle}">${code}</button><button type="button" class="code-toggle active" data-mode="preview" title="${previewDiagramTitle}">${preview}</button><button type="button" class="code-copy" data-code="${encoded}" title="${copyTitle}">${copy}</button></div></div><pre class="mermaid-src" style="display:none"><code>${escapeAttr(text)}</code></pre><div class="mermaid-preview" data-mermaid-preview></div></div>`
+        }
+
+        const highlighted = highlightCode(text, language)
+
+        const langLabel = language ? `<span class="code-lang">${escapeAttr(language)}</span>` : ''
+        const previewable = ['html', 'svg'].includes(language)
+        const encodedSource = encodeAttrPayload(text)
+        const toolbar = previewable
+          ? `<div class="code-toolbar">${langLabel}<div class="code-actions"><button type="button" class="code-toggle active" data-mode="code" title="${codeTitle}">${code}</button><button type="button" class="code-toggle" data-mode="preview" title="${previewTitle}">${preview}</button><button type="button" class="code-copy" data-code="${encodedSource}" title="${copyTitle}">${copy}</button></div></div>`
+          : `<div class="code-toolbar">${langLabel}<div class="code-actions"><button type="button" class="code-copy" data-code="${encodedSource}" title="${copyTitle}">${copy}</button></div></div>`
+        const previewHtml = previewable
+          ? `<div class="code-preview" style="display:none" data-preview>${text}</div>`
+          : ''
+        return `<div class="code-block"${previewable ? ' data-previewable' : ''}>${toolbar}<pre><code class="hljs">${highlighted}</code></pre>${previewHtml}</div>`
+      },
+
+      link({ href, text }: { href: string; text: string }) {
+        return `<a href="${escapeAttr(href)}" target="_blank" rel="noopener">${text}</a>`
+      },
+
+      checkbox({ checked }: { checked: boolean }) {
+        return `<input type="checkbox" disabled ${checked ? 'checked' : ''} />`
+      },
     },
+  })
+}
 
-    link({ href, text }: { href: string; text: string }) {
-      return `<a href="${escapeAttr(href)}" target="_blank" rel="noopener">${text}</a>`
-    },
+// Section objects are module constants, so this holds one parser per locale.
+const markedByLabels = new WeakMap<MarkdownToolbarLabels, Marked>()
 
-    checkbox({ checked }: { checked: boolean }) {
-      return `<input type="checkbox" disabled ${checked ? 'checked' : ''} />`
-    },
-  },
-})
+function markedFor(labels: MarkdownToolbarLabels): Marked {
+  let instance = markedByLabels.get(labels)
+  if (!instance) {
+    instance = createMarked(labels)
+    markedByLabels.set(labels, instance)
+  }
+  return instance
+}
 
 // DOMPurify configuration that preserves the renderer's intentional markup
 // (code/mermaid toolbars with data-* attributes, inline style="display:none"
@@ -225,9 +251,9 @@ DOMPurify.addHook('afterSanitizeAttributes', (node) => {
   }
 })
 
-export function renderMarkdown(source: string): string {
+export function renderMarkdown(source: string, labels: MarkdownToolbarLabels = chatThreadEn.markdown): string {
   if (!source) return ''
-  const result = marked.parse(source)
+  const result = markedFor(labels).parse(source)
   if (typeof result !== 'string') {
     return ''
   }

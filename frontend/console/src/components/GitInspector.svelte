@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte'
+  import { locale, t } from '../i18n'
   import { createGitMutationApproval, getGitBranches, getGitCommit, getGitDiff, getGitLog, getGitStatus, getGitWorktrees, type CreateGitMutationApprovalRequest } from '../lib/api'
   import type { GitBranch, GitBranchesResponse, GitCommit, GitCommitDetail, GitCommitFile, GitDiff, GitStatus, GitStatusFile, GitWorktree } from '../lib/types'
 
@@ -62,7 +63,7 @@
     if (!value) return ''
     const date = new Date(value)
     if (Number.isNaN(date.getTime())) return value
-    return date.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+    return date.toLocaleString($locale, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
   }
 
   function fileTone(file: GitStatusFile): string {
@@ -73,8 +74,14 @@
   }
 
   function branchLabel(branch?: GitBranch): string {
-    if (!branch) return status?.branch || '(detached)'
+    if (!branch) return status?.branch || $t.gitInspector.detached
     return branch.name
+  }
+
+  // The server sends a closed set of status words; a new one shows as sent.
+  function fileStatusLabel(value: string): string {
+    const labels: Record<string, string> = $t.gitInspector.fileStatus
+    return labels[value] ?? value
   }
 
   async function load() {
@@ -109,7 +116,7 @@
         await loadWorktrees(nextStatus.root)
       }
     } catch (err) {
-      error = err instanceof Error ? err.message : 'Failed to load git status'
+      error = err instanceof Error ? err.message : $t.gitInspector.errors.loadStatus
     } finally {
       loading = false
     }
@@ -123,7 +130,7 @@
     try {
       diff = await getGitDiff({ sessionId, root: status.root, path: file.path, staged })
     } catch (err) {
-      error = err instanceof Error ? err.message : 'Failed to load diff'
+      error = err instanceof Error ? err.message : $t.gitInspector.errors.loadDiff
       diff = null
     } finally {
       diffLoading = false
@@ -139,7 +146,7 @@
     try {
       diff = await getGitDiff({ sessionId, root: status.root, path, hash })
     } catch (err) {
-      error = err instanceof Error ? err.message : 'Failed to load commit diff'
+      error = err instanceof Error ? err.message : $t.gitInspector.errors.loadCommitDiff
       diff = null
     } finally {
       diffLoading = false
@@ -159,7 +166,7 @@
       const detail = await getGitCommit({ sessionId, root: status.root, hash })
       commitDetails = { ...commitDetails, [hash]: detail }
     } catch (err) {
-      error = err instanceof Error ? err.message : 'Failed to load commit detail'
+      error = err instanceof Error ? err.message : $t.gitInspector.errors.loadCommitDetail
     } finally {
       commitLoading = { ...commitLoading, [hash]: false }
     }
@@ -174,7 +181,7 @@
       worktrees = res.worktrees ?? []
       worktreesLoaded = true
     } catch (err) {
-      error = err instanceof Error ? err.message : 'Failed to load worktrees'
+      error = err instanceof Error ? err.message : $t.gitInspector.errors.loadWorktrees
     } finally {
       worktreesLoading = false
     }
@@ -200,9 +207,9 @@
         action,
         ...options,
       })
-      mutationFeedback = `${plan.approval_id} queued for approval`
+      mutationFeedback = $t.gitInspector.feedback.queuedForApproval(plan.approval_id)
     } catch (err) {
-      error = err instanceof Error ? err.message : 'Failed to queue git mutation approval'
+      error = err instanceof Error ? err.message : $t.gitInspector.errors.queueMutation
     } finally {
       mutationBusy = ''
     }
@@ -211,7 +218,7 @@
   async function requestCommit() {
     const message = commitMessage.trim()
     if (!message) {
-      error = 'Commit message is required'
+      error = $t.gitInspector.errors.commitMessageRequired
       return
     }
     await requestMutation('commit', { message, reason: 'Commit staged changes from Git Inspector' })
@@ -248,7 +255,7 @@
     const branch = newWorktreeBranch.trim()
     const newBranch = newWorktreeNewBranch.trim()
     if (!path) {
-      error = 'Worktree path is required'
+      error = $t.gitInspector.errors.worktreePathRequired
       return
     }
     await requestMutation('worktree_add', {
@@ -356,18 +363,7 @@
   }
 
   function tabLabel(id: TabId): string {
-    switch (id) {
-      case 'status':
-        return 'Status'
-      case 'files':
-        return 'Files'
-      case 'branches':
-        return 'Branches'
-      case 'log':
-        return 'Log'
-      case 'worktrees':
-        return 'Worktrees'
-    }
+    return $t.gitInspector.tabs[id]
   }
 
   function tabBadge(id: TabId): string {
@@ -413,18 +409,18 @@
         <span class="meta-chip" title="HEAD">{status.head}</span>
       {/if}
       {#if status?.upstream}
-        <span class="meta-chip subtle" title="upstream">↑ {status.upstream}</span>
+        <span class="meta-chip subtle" title={$t.gitInspector.header.upstreamTitle}>↑ {status.upstream}</span>
       {/if}
       {#if status?.is_git}
-        <span class="meta-chip subtle" title="Δ changed · S staged · U unstaged">
+        <span class="meta-chip subtle" title={$t.gitInspector.header.countsTitle}>
           Δ{changedCount} · S{stagedCount} · U{unstagedCount}
         </span>
       {/if}
     </div>
     <div class="git-actions">
-      <button class="btn btn-ghost btn-sm" type="button" disabled={loading} onclick={load}>Refresh</button>
+      <button class="btn btn-ghost btn-sm" type="button" disabled={loading} onclick={load}>{$t.common.actions.refresh}</button>
       {#if onClose}
-        <button class="btn btn-ghost btn-sm" type="button" onclick={onClose}>Close</button>
+        <button class="btn btn-ghost btn-sm" type="button" onclick={onClose}>{$t.common.actions.close}</button>
       {/if}
     </div>
   </header>
@@ -437,11 +433,11 @@
   {/if}
 
   {#if loading && !status}
-    <div class="empty-state">Loading git state...</div>
+    <div class="empty-state">{$t.gitInspector.loadingState}</div>
   {:else if status && !status.is_git}
-    <div class="empty-state">No git repository detected for this session.</div>
+    <div class="empty-state">{$t.gitInspector.notRepository}</div>
   {:else if status}
-    <div class="tab-nav" role="tablist" aria-label="Git Inspector sections">
+    <div class="tab-nav" role="tablist" aria-label={$t.gitInspector.tabsLabel}>
       {#each ['status', 'files', 'branches', 'log', 'worktrees'] as const as tab (tab)}
         <button
           type="button"
@@ -463,39 +459,39 @@
       <section class="tab-body" role="tabpanel">
         <dl class="status-meta">
           <div>
-            <dt>Root</dt>
+            <dt>{$t.gitInspector.status.root}</dt>
             <dd title={status.root}>{status.root}</dd>
           </div>
           <div>
             <dt>HEAD</dt>
-            <dd>{status.head || 'unborn'}</dd>
+            <dd>{status.head || $t.gitInspector.status.unborn}</dd>
           </div>
           <div>
-            <dt>Branch</dt>
-            <dd>{status.branch || '(detached)'}</dd>
+            <dt>{$t.gitInspector.status.branch}</dt>
+            <dd>{status.branch || $t.gitInspector.detached}</dd>
           </div>
           {#if status.upstream}
             <div>
-              <dt>Upstream</dt>
+              <dt>{$t.gitInspector.status.upstream}</dt>
               <dd>{status.upstream}</dd>
             </div>
           {/if}
           <div>
-            <dt>Changed</dt>
+            <dt>{$t.gitInspector.status.changed}</dt>
             <dd>{changedCount}</dd>
           </div>
           <div>
-            <dt>Staged</dt>
+            <dt>{$t.gitInspector.status.staged}</dt>
             <dd>{stagedCount}</dd>
           </div>
           <div>
-            <dt>Unstaged</dt>
+            <dt>{$t.gitInspector.status.unstaged}</dt>
             <dd>{unstagedCount}</dd>
           </div>
         </dl>
 
         {#if remotes.length > 0}
-          <div class="section-title">Remotes</div>
+          <div class="section-title">{$t.gitInspector.status.remotes}</div>
           <div class="remote-list">
             {#each remotes as remote (remote.name)}
               <article class="remote-row">
@@ -509,30 +505,30 @@
     {:else if activeTab === 'files'}
       <section class="tab-body" role="tabpanel">
         {#if files.length === 0}
-          <div class="empty-state compact">Working tree clean.</div>
+          <div class="empty-state compact">{$t.gitInspector.files.clean}</div>
         {:else}
           <div class="file-list" role="list">
             {#each files as file (file.path)}
               <article class="file-row" class:active={activeWorkdirPath === file.path} role="listitem">
                 <button type="button" class="file-main" onclick={() => loadDiff(file, file.staged && !file.unstaged)}>
                   <span class="file-path" title={file.path}>{shortPath(file.path)}</span>
-                  <small>{file.old_path ? `${file.old_path} → ${file.path}` : file.status}</small>
+                  <small>{file.old_path ? `${file.old_path} → ${file.path}` : fileStatusLabel(file.status)}</small>
                 </button>
-                <span class="badge badge-{fileTone(file)}">{file.status}</span>
+                <span class="badge badge-{fileTone(file)}">{fileStatusLabel(file.status)}</span>
                 <div class="file-actions">
                   {#if file.unstaged}
-                    <button class="btn btn-ghost btn-sm" type="button" class:active={activeWorkdirPath === file.path && !selectedStaged} onclick={() => loadDiff(file, false)}>Worktree</button>
+                    <button class="btn btn-ghost btn-sm" type="button" class:active={activeWorkdirPath === file.path && !selectedStaged} onclick={() => loadDiff(file, false)}>{$t.gitInspector.files.worktree}</button>
                     <button class="btn btn-ghost btn-sm" type="button" disabled={!!mutationBusy} onclick={() => requestMutation('stage', { path: file.path, reason: 'Stage selected file from Git Inspector' })}>
-                      {mutationBusy === `stage:${file.path}` ? '…' : 'Stage'}
+                      {mutationBusy === `stage:${file.path}` ? '…' : $t.gitInspector.files.stage}
                     </button>
                     <button class="btn btn-danger btn-sm" type="button" disabled={!!mutationBusy} onclick={() => requestMutation('discard', { path: file.path, reason: 'Discard selected worktree changes from Git Inspector' })}>
-                      {mutationBusy === `discard:${file.path}` ? '…' : 'Discard'}
+                      {mutationBusy === `discard:${file.path}` ? '…' : $t.gitInspector.files.discard}
                     </button>
                   {/if}
                   {#if file.staged}
-                    <button class="btn btn-ghost btn-sm" type="button" class:active={activeWorkdirPath === file.path && selectedStaged} onclick={() => loadDiff(file, true)}>Staged</button>
+                    <button class="btn btn-ghost btn-sm" type="button" class:active={activeWorkdirPath === file.path && selectedStaged} onclick={() => loadDiff(file, true)}>{$t.gitInspector.files.staged}</button>
                     <button class="btn btn-ghost btn-sm" type="button" disabled={!!mutationBusy} onclick={() => requestMutation('unstage', { path: file.path, reason: 'Unstage selected file from Git Inspector' })}>
-                      {mutationBusy === `unstage:${file.path}` ? '…' : 'Unstage'}
+                      {mutationBusy === `unstage:${file.path}` ? '…' : $t.gitInspector.files.unstage}
                     </button>
                   {/if}
                 </div>
@@ -545,31 +541,31 @@
           <div class="diff-section">
             <div class="diff-head">
               <div class="diff-head-title">
-                <span class="section-title">Diff</span>
+                <span class="section-title">{$t.gitInspector.diff.title}</span>
                 {#if diff?.path}
                   <strong title={diff.path}>{shortPath(diff.path, 60)}</strong>
                   {#if diff.hash}
                     <span class="badge badge-info" title={diff.hash}>{diff.hash.slice(0, 7)}</span>
                   {:else}
-                    <span class="badge badge-default">{diff.staged ? 'staged' : 'worktree'}</span>
+                    <span class="badge badge-default">{diff.staged ? $t.gitInspector.diff.staged : $t.gitInspector.diff.worktree}</span>
                   {/if}
                 {/if}
               </div>
               {#if diff}
-                <div class="diff-mode" role="group" aria-label="Diff layout">
-                  <button type="button" class="btn btn-ghost btn-sm" class:active={diffMode === 'unified'} onclick={() => (diffMode = 'unified')}>Unified</button>
-                  <button type="button" class="btn btn-ghost btn-sm" class:active={diffMode === 'split'} onclick={() => (diffMode = 'split')}>Split</button>
+                <div class="diff-mode" role="group" aria-label={$t.gitInspector.diff.layoutLabel}>
+                  <button type="button" class="btn btn-ghost btn-sm" class:active={diffMode === 'unified'} onclick={() => (diffMode = 'unified')}>{$t.gitInspector.diff.unified}</button>
+                  <button type="button" class="btn btn-ghost btn-sm" class:active={diffMode === 'split'} onclick={() => (diffMode = 'split')}>{$t.gitInspector.diff.split}</button>
                 </div>
               {/if}
             </div>
             {#if diffLoading}
-              <div class="empty-state compact">Loading diff…</div>
+              <div class="empty-state compact">{$t.gitInspector.diff.loading}</div>
             {:else if !diff}
-              <div class="empty-state compact">Select a file to inspect its diff.</div>
+              <div class="empty-state compact">{$t.gitInspector.diff.selectFile}</div>
             {:else if diffLines.length === 0}
-              <div class="empty-state compact">No diff available.</div>
+              <div class="empty-state compact">{$t.gitInspector.diff.empty}</div>
             {:else if diffMode === 'split'}
-              <div class="diff-table diff-split" aria-label="side-by-side diff">
+              <div class="diff-table diff-split" aria-label={$t.gitInspector.diff.sideBySideLabel}>
                 {#each diffPairs as pair, idx (idx)}
                   {@const leftKind = pair.left?.kind ?? 'empty'}
                   {@const rightKind = pair.right?.kind ?? 'empty'}
@@ -603,19 +599,19 @@
     {:else if activeTab === 'branches'}
       <section class="tab-body" role="tabpanel">
         <div class="branches-head">
-          <span class="section-title">Branches</span>
+          <span class="section-title">{$t.gitInspector.tabs.branches}</span>
           <button class="btn btn-ghost btn-sm" type="button" disabled={!!mutationBusy} onclick={requestFetch}>
-            {mutationBusy === 'fetch:' ? '…' : 'Fetch'}
+            {mutationBusy === 'fetch:' ? '…' : $t.gitInspector.branches.fetch}
           </button>
         </div>
         <div class="commit-box">
-          <input type="text" bind:value={commitMessage} placeholder="Commit message" />
+          <input type="text" bind:value={commitMessage} placeholder={$t.gitInspector.branches.commitPlaceholder} />
           <button class="btn btn-primary btn-sm" type="button" disabled={stagedCount === 0 || !commitMessage.trim() || !!mutationBusy} onclick={requestCommit}>
-            {mutationBusy === 'commit:' ? 'Queueing…' : `Commit ${stagedCount} staged`}
+            {mutationBusy === 'commit:' ? $t.gitInspector.queueing : $t.gitInspector.branches.commitStaged(stagedCount)}
           </button>
         </div>
         {#if branches.length === 0}
-          <div class="empty-state compact">No branches yet.</div>
+          <div class="empty-state compact">{$t.gitInspector.branches.empty}</div>
         {:else}
           <div class="branch-list">
             {#each branches as branch (branch.name)}
@@ -623,7 +619,7 @@
               <article class="branch-row" class:current={branch.current}>
                 <div class="branch-meta">
                   <strong title={branch.name}>
-                    {#if branch.current}<span class="branch-marker" aria-label="current">●</span>{/if}
+                    {#if branch.current}<span class="branch-marker" aria-label={$t.gitInspector.current}>●</span>{/if}
                     {shortName}
                   </strong>
                   {#if branch.remote}
@@ -634,14 +630,14 @@
                 </div>
                 <div class="branch-actions">
                   {#if branch.current}
-                    <span class="badge badge-default">current</span>
+                    <span class="badge badge-default">{$t.gitInspector.current}</span>
                   {:else if branch.remote}
                     <button class="btn btn-ghost btn-sm" type="button" disabled={!!mutationBusy} onclick={() => requestMutation('switch_branch', { branch: shortName, reason: `Checkout remote branch ${branch.name}` })}>
-                      {mutationBusy === `switch_branch:${shortName}` ? '…' : 'Checkout'}
+                      {mutationBusy === `switch_branch:${shortName}` ? '…' : $t.gitInspector.branches.checkout}
                     </button>
                   {:else}
                     <button class="btn btn-ghost btn-sm" type="button" disabled={!!mutationBusy} onclick={() => requestMutation('switch_branch', { branch: branch.name, reason: 'Switch branch from Git Inspector' })}>
-                      {mutationBusy === `switch_branch:${branch.name}` ? '…' : 'Switch'}
+                      {mutationBusy === `switch_branch:${branch.name}` ? '…' : $t.gitInspector.branches.switch}
                     </button>
                   {/if}
                 </div>
@@ -653,7 +649,7 @@
     {:else if activeTab === 'log'}
       <section class="tab-body" role="tabpanel">
         {#if log.length === 0}
-          <div class="empty-state compact">No commits yet.</div>
+          <div class="empty-state compact">{$t.gitInspector.log.empty}</div>
         {:else}
           <div class="log-list">
             {#each log as commit (commit.hash)}
@@ -674,15 +670,15 @@
                 {#if expanded}
                   <div class="log-detail">
                     {#if detailLoading}
-                      <div class="empty-state compact">Loading commit…</div>
+                      <div class="empty-state compact">{$t.gitInspector.log.loadingCommit}</div>
                     {:else if !detail}
-                      <div class="empty-state compact">No detail available.</div>
+                      <div class="empty-state compact">{$t.gitInspector.log.noDetail}</div>
                     {:else}
                       {#if detail.body}
                         <pre class="commit-body">{detail.body}</pre>
                       {/if}
                       {#if detail.files.length === 0}
-                        <div class="empty-state compact">No file changes recorded.</div>
+                        <div class="empty-state compact">{$t.gitInspector.log.noFileChanges}</div>
                       {:else}
                         <div class="commit-file-list">
                           {#each detail.files as cf (cf.path)}
@@ -691,9 +687,9 @@
                               <span class="commit-file-path" title={cf.old_path ? `${cf.old_path} → ${cf.path}` : cf.path}>
                                 {shortPath(cf.path)}
                               </span>
-                              <span class="badge badge-{commitFileTone(cf)}">{cf.status}</span>
+                              <span class="badge badge-{commitFileTone(cf)}">{fileStatusLabel(cf.status)}</span>
                               {#if cf.binary}
-                                <small class="commit-file-stat">binary</small>
+                                <small class="commit-file-stat">{$t.gitInspector.log.binary}</small>
                               {:else}
                                 <small class="commit-file-stat">+{cf.additions} −{cf.deletions}</small>
                               {/if}
@@ -704,17 +700,17 @@
                       <div class="commit-actions">
                         <input
                           type="text"
-                          placeholder="(optional) new branch name"
+                          placeholder={$t.gitInspector.log.newBranchPlaceholder}
                           value={checkoutBranch[commit.hash] ?? ''}
                           oninput={(e) => (checkoutBranch = { ...checkoutBranch, [commit.hash]: (e.currentTarget as HTMLInputElement).value })}
                         />
                         {#if (checkoutBranch[commit.hash] ?? '').trim()}
                           <button class="btn btn-ghost btn-sm" type="button" disabled={!!mutationBusy} onclick={() => requestCheckoutCommit(commit.hash)}>
-                            {mutationBusy === `checkout_commit:${commit.hash}` ? '…' : 'Checkout as branch'}
+                            {mutationBusy === `checkout_commit:${commit.hash}` ? '…' : $t.gitInspector.log.checkoutAsBranch}
                           </button>
                         {:else}
-                          <button class="btn btn-danger btn-sm" type="button" disabled={!!mutationBusy} onclick={() => requestCheckoutCommit(commit.hash)} title="Detached HEAD — work will not belong to any branch">
-                            {mutationBusy === `checkout_commit:${commit.hash}` ? '…' : 'Checkout (detached)'}
+                          <button class="btn btn-danger btn-sm" type="button" disabled={!!mutationBusy} onclick={() => requestCheckoutCommit(commit.hash)} title={$t.gitInspector.log.detachedWarning}>
+                            {mutationBusy === `checkout_commit:${commit.hash}` ? '…' : $t.gitInspector.log.checkoutDetached}
                           </button>
                         {/if}
                       </div>
@@ -729,50 +725,50 @@
     {:else if activeTab === 'worktrees'}
       <section class="tab-body" role="tabpanel">
         <div class="worktrees-head">
-          <span class="section-title">Worktrees</span>
+          <span class="section-title">{$t.gitInspector.tabs.worktrees}</span>
           <button class="btn btn-ghost btn-sm" type="button" disabled={worktreesLoading} onclick={() => loadWorktrees()}>
-            {worktreesLoading ? 'Loading…' : 'Refresh'}
+            {worktreesLoading ? $t.gitInspector.worktrees.loading : $t.common.actions.refresh}
           </button>
         </div>
 
         <form class="worktree-add" onsubmit={(e) => { e.preventDefault(); void requestWorktreeAdd() }}>
-          <div class="section-title">Add worktree</div>
-          <input type="text" bind:value={newWorktreePath} placeholder="Absolute path (e.g. /tmp/wt-feature)" />
+          <div class="section-title">{$t.gitInspector.worktrees.addTitle}</div>
+          <input type="text" bind:value={newWorktreePath} placeholder={$t.gitInspector.worktrees.pathPlaceholder} />
           <div class="worktree-add-row">
-            <input type="text" bind:value={newWorktreeBranch} placeholder="Existing branch (optional)" />
-            <input type="text" bind:value={newWorktreeNewBranch} placeholder="…or new branch name (optional)" />
+            <input type="text" bind:value={newWorktreeBranch} placeholder={$t.gitInspector.worktrees.branchPlaceholder} />
+            <input type="text" bind:value={newWorktreeNewBranch} placeholder={$t.gitInspector.worktrees.newBranchPlaceholder} />
           </div>
           <button class="btn btn-primary btn-sm" type="submit" disabled={!newWorktreePath.trim() || !!mutationBusy}>
-            {mutationBusy.startsWith('worktree_add:') ? 'Queueing…' : 'Queue worktree add'}
+            {mutationBusy.startsWith('worktree_add:') ? $t.gitInspector.queueing : $t.gitInspector.worktrees.queueAdd}
           </button>
         </form>
 
         {#if worktreesLoading && worktrees.length === 0}
-          <div class="empty-state compact">Loading worktrees…</div>
+          <div class="empty-state compact">{$t.gitInspector.worktrees.loadingList}</div>
         {:else if worktrees.length === 0}
-          <div class="empty-state compact">No worktrees registered.</div>
+          <div class="empty-state compact">{$t.gitInspector.worktrees.empty}</div>
         {:else}
           <div class="worktree-list">
             {#each worktrees as wt (wt.path)}
               <article class="worktree-row" class:current={wt.current}>
                 <div class="worktree-meta">
                   <strong title={wt.path}>
-                    {#if wt.current}<span class="branch-marker" aria-label="current">●</span>{/if}
-                    {wt.branch || (wt.detached ? '(detached)' : wt.bare ? '(bare)' : '(unknown)')}
+                    {#if wt.current}<span class="branch-marker" aria-label={$t.gitInspector.current}>●</span>{/if}
+                    {wt.branch || (wt.detached ? $t.gitInspector.detached : wt.bare ? $t.gitInspector.worktrees.bareLabel : $t.gitInspector.worktrees.unknownLabel)}
                   </strong>
                   <small class="worktree-path" title={wt.path}>{wt.path}</small>
                   <div class="worktree-tags">
                     {#if wt.head}<span class="meta-chip" title={wt.head}>{wt.head.slice(0, 7)}</span>{/if}
-                    {#if wt.detached}<span class="badge badge-warning">detached</span>{/if}
-                    {#if wt.locked}<span class="badge badge-info" title={wt.lock_reason}>locked</span>{/if}
-                    {#if wt.prunable}<span class="badge badge-error" title={wt.prune_reason}>prunable</span>{/if}
-                    {#if wt.bare}<span class="badge badge-default">bare</span>{/if}
+                    {#if wt.detached}<span class="badge badge-warning">{$t.gitInspector.worktrees.badges.detached}</span>{/if}
+                    {#if wt.locked}<span class="badge badge-info" title={wt.lock_reason}>{$t.gitInspector.worktrees.badges.locked}</span>{/if}
+                    {#if wt.prunable}<span class="badge badge-error" title={wt.prune_reason}>{$t.gitInspector.worktrees.badges.prunable}</span>{/if}
+                    {#if wt.bare}<span class="badge badge-default">{$t.gitInspector.worktrees.badges.bare}</span>{/if}
                   </div>
                 </div>
                 <div class="worktree-actions">
                   {#if !wt.current && !wt.bare}
                     <button class="btn btn-danger btn-sm" type="button" disabled={!!mutationBusy} onclick={() => requestWorktreeRemove(wt.path)}>
-                      {mutationBusy === `worktree_remove:${wt.path}` ? '…' : 'Remove'}
+                      {mutationBusy === `worktree_remove:${wt.path}` ? '…' : $t.gitInspector.worktrees.remove}
                     </button>
                   {/if}
                 </div>

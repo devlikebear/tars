@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { t } from '../i18n'
+
   type Tab = 'session' | 'workspace'
 
   interface Props {
@@ -12,13 +14,13 @@
 </script>
 
 <div class="artifact-header">
-  <span class="artifact-title">Files</span>
+  <span class="artifact-title">{$t.artifactPanel.header.title}</span>
   <div class="artifact-tabs">
     <button type="button" class="tab-btn" class:active={activeTab === 'session'} onclick={() => onSelectTab('session')}>
-      Session{#if artifactCount > 0} <span class="tab-count">{artifactCount}</span>{/if}
+      {$t.artifactPanel.header.sessionTab}{#if artifactCount > 0} <span class="tab-count">{artifactCount}</span>{/if}
     </button>
     <button type="button" class="tab-btn" class:active={activeTab === 'workspace'} onclick={() => onSelectTab('workspace')}>
-      Workspace
+      {$t.artifactPanel.header.workspaceTab}
     </button>
   </div>
   <button type="button" class="artifact-close" onclick={onClose}>&times;</button>

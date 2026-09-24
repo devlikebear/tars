@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte'
+  import { locale, t } from '../i18n'
   import { createCronJob, deleteCronJob, listCronJobs, listCronRuns, runCronJob, streamEvents, updateCronJob } from '../lib/api'
   import type { CronJob, CronRunRecord } from '../lib/types'
 
@@ -36,10 +37,8 @@
   let stopStream: (() => void) | null = null
 
   let isMainSession = $derived(sessionKind === 'main')
-  let scopeLabel = $derived(isMainSession ? 'Global cron jobs' : 'Session cron jobs')
-  let scopeHint = $derived(isMainSession
-    ? 'Runs created here stay global, but target the main chat session by default.'
-    : 'Runs created here are bound to this chat session and stay out of Telegram notifications.')
+  let scopeLabel = $derived(isMainSession ? $t.sessionCron.scope.globalTitle : $t.sessionCron.scope.sessionTitle)
+  let scopeHint = $derived(isMainSession ? $t.sessionCron.scope.globalHint : $t.sessionCron.scope.sessionHint)
   let scopedJobs = $derived.by(() => {
     const currentSessionId = sessionId?.trim()
     return jobs.filter((job) => {
@@ -54,7 +53,7 @@
     try {
       jobs = await listCronJobs()
     } catch (err) {
-      error = err instanceof Error ? err.message : 'Failed to load cron jobs'
+      error = err instanceof Error ? err.message : $t.sessionCron.errors.load
     } finally {
       loading = false
     }
@@ -71,7 +70,7 @@
     if (!text) return '\u2014'
     const date = new Date(text)
     if (Number.isNaN(date.getTime())) return text
-    return new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short' }).format(date)
+    return new Intl.DateTimeFormat($locale, { dateStyle: 'medium', timeStyle: 'short' }).format(date)
   }
 
   function scopePayload() {
@@ -97,7 +96,7 @@
       newJobPrompt = ''
       newJobSchedule = ''
     } catch (err) {
-      newJobError = err instanceof Error ? err.message : 'Failed to create cron job'
+      newJobError = err instanceof Error ? err.message : $t.sessionCron.errors.create
     } finally {
       newJobSaving = false
     }
@@ -132,7 +131,7 @@
       await load()
       editingJobId = null
     } catch (err) {
-      editJobError = err instanceof Error ? err.message : 'Failed to update cron job'
+      editJobError = err instanceof Error ? err.message : $t.sessionCron.errors.update
     } finally {
       editJobSaving = false
     }
@@ -146,7 +145,7 @@
       await load()
       await loadRuns(jobId)
     } catch (err) {
-      error = err instanceof Error ? err.message : 'Failed to run cron job'
+      error = err instanceof Error ? err.message : $t.sessionCron.errors.run
     } finally {
       runningJobId = ''
     }
@@ -165,7 +164,7 @@
       deleteConfirmId = null
       if (expandedJob === jobId) expandedJob = ''
     } catch (err) {
-      error = err instanceof Error ? err.message : 'Failed to delete cron job'
+      error = err instanceof Error ? err.message : $t.sessionCron.errors.delete
     } finally {
       deletingJobId = ''
     }
@@ -218,13 +217,13 @@
 <div class="session-cron-panel">
   <div class="panel-header">
     <div class="panel-title-row">
-      <span class="card-title">Cron</span>
-      <span class="badge badge-info">{isMainSession ? 'global' : 'session'}</span>
+      <span class="card-title">{$t.sessionCron.title}</span>
+      <span class="badge badge-info">{isMainSession ? $t.sessionCron.scope.globalBadge : $t.sessionCron.scope.sessionBadge}</span>
       <span class="badge badge-default">{scopedJobs.length}</span>
     </div>
     <div class="panel-actions">
-      <button class="btn btn-ghost btn-sm" type="button" onclick={load} title="Refresh">&#x21bb;</button>
-      <button class="btn btn-ghost btn-sm" type="button" onclick={onClose} title="Close">&times;</button>
+      <button class="btn btn-ghost btn-sm" type="button" onclick={load} title={$t.sessionCron.refresh}>&#x21bb;</button>
+      <button class="btn btn-ghost btn-sm" type="button" onclick={onClose} title={$t.sessionCron.close}>&times;</button>
     </div>
   </div>
 
@@ -239,7 +238,7 @@
 
   <div class="create-actions">
     <button class="btn btn-primary btn-sm" type="button" onclick={() => { showNewJob = !showNewJob }}>
-      {showNewJob ? 'Cancel' : '+ New Job'}
+      {showNewJob ? $t.sessionCron.cancel : $t.sessionCron.newJob}
     </button>
   </div>
 
@@ -248,21 +247,21 @@
       {#if newJobError}
         <div class="form-error">{newJobError}</div>
       {/if}
-      <input type="text" placeholder="Job name (optional)" bind:value={newJobName} class="form-input" />
-      <textarea placeholder="Prompt *" bind:value={newJobPrompt} class="form-input form-textarea" rows="3"></textarea>
-      <input type="text" placeholder="Schedule (e.g. every:10m or in 1 minute)" bind:value={newJobSchedule} class="form-input" />
+      <input type="text" placeholder={$t.sessionCron.form.nameOptionalPlaceholder} bind:value={newJobName} class="form-input" />
+      <textarea placeholder={$t.sessionCron.form.promptPlaceholder} bind:value={newJobPrompt} class="form-input form-textarea" rows="3"></textarea>
+      <input type="text" placeholder={$t.sessionCron.form.scheduleExamplePlaceholder} bind:value={newJobSchedule} class="form-input" />
       <button class="btn btn-primary btn-sm" disabled={!newJobPrompt.trim() || newJobSaving} onclick={handleCreateJob}>
-        {newJobSaving ? 'Creating...' : 'Create Job'}
+        {newJobSaving ? $t.sessionCron.form.creating : $t.sessionCron.form.create}
       </button>
     </div>
   {/if}
 
   {#if loading}
-    <div class="empty-state">Loading cron jobs...</div>
+    <div class="empty-state">{$t.sessionCron.loading}</div>
   {:else if scopedJobs.length === 0}
     <div class="empty-state">
-      <p>No cron jobs in this scope yet.</p>
-      <p class="hint">Create one here for this session.</p>
+      <p>{$t.sessionCron.empty}</p>
+      <p class="hint">{$t.sessionCron.emptyHint}</p>
     </div>
   {:else}
     <div class="cron-list">
@@ -273,18 +272,18 @@
               {#if editJobError}
                 <div class="form-error">{editJobError}</div>
               {/if}
-              <input type="text" placeholder="Job name" bind:value={editJobName} class="form-input" />
-              <textarea placeholder="Prompt *" bind:value={editJobPrompt} class="form-input form-textarea" rows="3"></textarea>
-              <input type="text" placeholder="Schedule" bind:value={editJobSchedule} class="form-input" />
+              <input type="text" placeholder={$t.sessionCron.form.namePlaceholder} bind:value={editJobName} class="form-input" />
+              <textarea placeholder={$t.sessionCron.form.promptPlaceholder} bind:value={editJobPrompt} class="form-input form-textarea" rows="3"></textarea>
+              <input type="text" placeholder={$t.sessionCron.form.schedulePlaceholder} bind:value={editJobSchedule} class="form-input" />
               <label class="form-checkbox">
                 <input type="checkbox" bind:checked={editJobEnabled} />
-                Enabled
+                {$t.sessionCron.form.enabled}
               </label>
               <div class="edit-actions">
                 <button class="btn btn-primary btn-sm" disabled={!editJobPrompt.trim() || editJobSaving} onclick={handleSaveEditJob}>
-                  {editJobSaving ? 'Saving...' : 'Save'}
+                  {editJobSaving ? $t.sessionCron.form.saving : $t.sessionCron.form.save}
                 </button>
-                <button class="btn btn-ghost btn-sm" onclick={cancelEditJob}>Cancel</button>
+                <button class="btn btn-ghost btn-sm" onclick={cancelEditJob}>{$t.sessionCron.cancel}</button>
               </div>
             </div>
           {:else}
@@ -293,27 +292,27 @@
                 <strong class="cron-name">{job.name}</strong>
                 <div class="cron-badges">
                   <span class="badge" class:badge-success={job.enabled && !job.last_run_error} class:badge-error={!!job.last_run_error} class:badge-default={!job.enabled}>
-                    {job.last_run_error ? 'failed' : job.enabled ? 'active' : 'disabled'}
+                    {job.last_run_error ? $t.sessionCron.status.failed : job.enabled ? $t.sessionCron.status.active : $t.sessionCron.status.disabled}
                   </span>
                   <span class="badge badge-default">{job.schedule}</span>
                 </div>
               </div>
               <p class="cron-prompt">{compact(job.prompt, 120)}</p>
               <div class="cron-meta">
-                <span>{isMainSession ? 'Global / main-target' : 'Bound to this session'}</span>
+                <span>{isMainSession ? $t.sessionCron.scope.globalMeta : $t.sessionCron.scope.sessionMeta}</span>
                 {#if job.last_run_at}
-                  <span>Last run: {fmt(job.last_run_at)}</span>
+                  <span>{$t.sessionCron.lastRun(fmt(job.last_run_at))}</span>
                 {/if}
               </div>
             </button>
 
             <div class="cron-actions">
               <button class="btn btn-ghost btn-sm" disabled={runningJobId === job.id} onclick={(e: MouseEvent) => { e.stopPropagation(); void handleRunJob(job.id) }}>
-                {runningJobId === job.id ? 'Running...' : 'Run'}
+                {runningJobId === job.id ? $t.sessionCron.actions.running : $t.sessionCron.actions.run}
               </button>
-              <button class="btn btn-ghost btn-sm" onclick={(e: MouseEvent) => { e.stopPropagation(); enterEditJob(job) }}>Edit</button>
+              <button class="btn btn-ghost btn-sm" onclick={(e: MouseEvent) => { e.stopPropagation(); enterEditJob(job) }}>{$t.sessionCron.actions.edit}</button>
               <button class="btn btn-danger btn-sm" disabled={deletingJobId === job.id} onclick={(e: MouseEvent) => { e.stopPropagation(); void handleDeleteJob(job.id) }}>
-                {deleteConfirmId === job.id ? 'Confirm?' : 'Delete'}
+                {deleteConfirmId === job.id ? $t.sessionCron.actions.confirmDelete : $t.sessionCron.actions.delete}
               </button>
             </div>
           {/if}
@@ -321,15 +320,15 @@
           {#if expandedJob === job.id && editingJobId !== job.id}
             <div class="cron-runs">
               {#if runsLoading === job.id}
-                <div class="runs-loading">Loading runs...</div>
+                <div class="runs-loading">{$t.sessionCron.runs.loading}</div>
               {:else if !cronRuns[job.id] || cronRuns[job.id].length === 0}
-                <div class="runs-empty">No run history.</div>
+                <div class="runs-empty">{$t.sessionCron.runs.empty}</div>
               {:else}
                 {#each cronRuns[job.id] as run}
                   <div class="run-item" class:run-error={!!run.error}>
                     <div class="run-top">
                       <span class="badge" class:badge-success={!run.error} class:badge-error={!!run.error}>
-                        {run.error ? 'error' : 'ok'}
+                        {run.error ? $t.sessionCron.runs.error : $t.sessionCron.runs.ok}
                       </span>
                       <span class="run-time">{fmt(run.ran_at)}</span>
                     </div>

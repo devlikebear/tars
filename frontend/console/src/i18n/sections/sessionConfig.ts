@@ -1,0 +1,333 @@
+// Session config dock panel (SessionConfigPanel), plus the permission-change
+// summary built by lib/sessionPermissionPreview.ts and the style preview lines
+// built by lib/sessionStyle.ts.
+//
+// The `shared` / `local` source badges are not here on purpose: they print the
+// EffectiveConfigSource value of the `.tars/settings*.json` layer verbatim.
+const plural = (count: number, noun: string) => `${count} ${noun}${count === 1 ? '' : 's'}`
+
+export const sessionConfigEn = {
+  title: 'Session Config',
+  loading: 'Loading...',
+  updatedAt: (time: string) => `Updated ${time}`,
+  activeCount: (count: number) => `${count} active`,
+  tabs: {
+    tools: (count: number) => `Tools (${count})`,
+    skills: (count: number) => `Skills (${count})`,
+    commands: (count: number) => `Commands (${count})`,
+    mcp: (count: number) => `MCP (${count})`,
+    automation: 'Automation',
+    style: 'Style',
+  },
+  filter: {
+    placeholder: 'Filter...',
+    reload: 'Reload',
+  },
+  tools: {
+    allowGroups: 'Allow groups',
+    denyGroups: 'Deny groups',
+    all: 'All tools',
+    riskBadge: 'risk',
+  },
+  skills: {
+    all: 'All skills',
+    filtersAria: 'Skill source filters',
+    filters: {
+      all: 'All',
+      global: 'Global',
+      session: 'Session only',
+      enabled: 'Enabled',
+      disabled: 'Disabled',
+    },
+    globalSourceTitle: 'global skill source',
+    promote: '↑ Promote',
+    promoteTitle: 'Promote this session-local skill to the shared workspace (copy, auto-rename on collision)',
+    promotedRenamed: (target: string) => `Promoted as ${target} (renamed)`,
+    promotedShared: 'Promoted to shared workspace',
+    promoteFailedWith: (error: string) => `Promote failed: ${error}`,
+    promoteFailed: 'Promote failed',
+  },
+  commands: {
+    all: 'All commands',
+  },
+  mcp: {
+    all: 'All MCP servers',
+    empty: 'No MCP servers available.',
+    serverTitle: 'MCP server',
+  },
+  // Origin badge on skill and command rows.
+  origin: {
+    command: 'Command',
+    session: 'Session',
+    global: 'Global',
+  },
+  permissionPreview: {
+    title: 'Permission change preview',
+    risk: {
+      low: 'Low risk',
+      medium: 'Medium risk',
+      high: 'High risk',
+    },
+    capabilitiesAria: 'Affected capabilities',
+    // Chip labels for the capability ids buildSessionPermissionPreview returns.
+    capabilities: {
+      shell: 'shell',
+      files: 'files',
+      git: 'git',
+      network: 'network',
+    },
+    rows: {
+      toolsEnabled: 'Tools enabled',
+      toolsDisabled: 'Tools disabled',
+      groupsEnabled: 'Groups enabled',
+      groupsDisabled: 'Groups disabled',
+      skillsEnabled: 'Skills enabled',
+      skillsDisabled: 'Skills disabled',
+      commandsEnabled: 'Commands enabled',
+      commandsDisabled: 'Commands disabled',
+      mcpEnabled: 'MCP enabled',
+      mcpDisabled: 'MCP disabled',
+    },
+    apply: 'Apply',
+    cancel: 'Cancel',
+    // Parts of the one-line summary; the builder joins them with ', '.
+    summary: {
+      toolsEnabled: (count: number) => `${plural(count, 'tool')} enabled`,
+      toolsDisabled: (count: number) => `${plural(count, 'tool')} disabled`,
+      skillsEnabled: (count: number) => `${plural(count, 'skill')} enabled`,
+      skillsDisabled: (count: number) => `${plural(count, 'skill')} disabled`,
+      commandsEnabled: (count: number) => `${plural(count, 'command')} enabled`,
+      commandsDisabled: (count: number) => `${plural(count, 'command')} disabled`,
+      mcpServersEnabled: (count: number) => `${plural(count, 'MCP server')} enabled`,
+      mcpServersDisabled: (count: number) => `${plural(count, 'MCP server')} disabled`,
+      none: 'No effective permission change',
+    },
+  },
+  automation: {
+    autoResume: 'Auto-resume stalled chats',
+    after: 'After',
+    minutes: 'minutes',
+    modes: {
+      assumeAndProceed: 'Assume + proceed',
+      proceed: 'Proceed',
+      nextTask: 'Next task',
+    },
+    gitMutations: 'Approved git mutations',
+    autonomousMutations: 'Autonomous workspace mutations',
+    highAutonomy: 'High autonomy',
+  },
+  critic: {
+    title: 'Critic agent',
+    hint: 'Every assistant turn · async background review',
+    maxRounds: 'Max review rounds',
+    maxRoundsHint: 'per plan transition (assistant turns are unbounded)',
+    status: 'Status:',
+    statuses: {
+      idle: 'idle',
+      reviewing: 'reviewing',
+      satisfied: 'satisfied',
+      exhausted: 'exhausted',
+    },
+    trigger: 'trigger',
+    round: (current: number, max: number) => `round ${current}/${max}`,
+    pendingFeedback: 'Pending feedback queued',
+    pendingRound: (round: number) => `round ${round}`,
+    pendingHint: 'Drains automatically on your next message.',
+    updatedAt: (time: string) => `Critic updated ${time}`,
+  },
+  style: {
+    axes: {
+      directness: 'Directness',
+      humor: 'Humor',
+      caution: 'Caution',
+      autonomy: 'Autonomy',
+    },
+    scale: (value: number, fallback: number) => `${value} / 100 · default ${fallback}`,
+    autoResumeOn: (minutes: number) => `Auto-resume ${minutes}m`,
+    autoResumeOff: 'Auto-resume off',
+    mutationsAllowed: 'autonomous mutations allowed',
+    mutationsOff: 'mutations consent off',
+    // Fallback preview lines when the server sends none (buildSessionStylePreview).
+    preview: {
+      directness: {
+        high: 'direct answers first',
+        low: 'softer exploratory answers',
+        balanced: 'balanced directness',
+      },
+      humor: {
+        high: 'warmer humor',
+        low: 'rare humor',
+        balanced: 'occasional warmth',
+      },
+      caution: {
+        high: 'more verify-before-act behavior',
+        low: 'fewer caveats on reversible work',
+        balanced: 'moderate risk checks',
+      },
+      toneLine: (directness: string, humor: string) => `${directness}; ${humor}.`,
+      cautionLine: (caution: string) => `${caution}; autonomy stays bounded by explicit consent.`,
+    },
+  },
+}
+
+export type SessionConfigTranslations = typeof sessionConfigEn
+
+export const sessionConfigKo: SessionConfigTranslations = {
+  title: '세션 설정',
+  loading: '불러오는 중...',
+  updatedAt: (time) => `업데이트 ${time}`,
+  activeCount: (count) => `${count}개 활성`,
+  tabs: {
+    tools: (count) => `도구 (${count})`,
+    skills: (count) => `스킬 (${count})`,
+    commands: (count) => `명령 (${count})`,
+    mcp: (count) => `MCP (${count})`,
+    automation: '자동화',
+    style: '스타일',
+  },
+  filter: {
+    placeholder: '필터...',
+    reload: '다시 불러오기',
+  },
+  tools: {
+    allowGroups: '허용 그룹',
+    denyGroups: '차단 그룹',
+    all: '모든 도구',
+    riskBadge: '위험',
+  },
+  skills: {
+    all: '모든 스킬',
+    filtersAria: '스킬 출처 필터',
+    filters: {
+      all: '전체',
+      global: '전역',
+      session: '세션 전용',
+      enabled: '활성',
+      disabled: '비활성',
+    },
+    globalSourceTitle: '전역 스킬 출처',
+    promote: '↑ 승격',
+    promoteTitle: '이 세션 로컬 스킬을 공유 워크스페이스로 승격합니다 (복사, 이름이 겹치면 자동 변경)',
+    promotedRenamed: (target) => `${target}(으)로 승격됨 (이름 변경)`,
+    promotedShared: '공유 워크스페이스로 승격됨',
+    promoteFailedWith: (error) => `승격 실패: ${error}`,
+    promoteFailed: '승격 실패',
+  },
+  commands: {
+    all: '모든 명령',
+  },
+  mcp: {
+    all: '모든 MCP 서버',
+    empty: '사용 가능한 MCP 서버가 없습니다.',
+    serverTitle: 'MCP 서버',
+  },
+  origin: {
+    command: '명령',
+    session: '세션',
+    global: '전역',
+  },
+  permissionPreview: {
+    title: '권한 변경 미리보기',
+    risk: {
+      low: '위험 낮음',
+      medium: '위험 보통',
+      high: '위험 높음',
+    },
+    capabilitiesAria: '영향받는 기능',
+    capabilities: {
+      shell: '셸',
+      files: '파일',
+      git: 'git',
+      network: '네트워크',
+    },
+    rows: {
+      toolsEnabled: '도구 활성화',
+      toolsDisabled: '도구 비활성화',
+      groupsEnabled: '그룹 활성화',
+      groupsDisabled: '그룹 비활성화',
+      skillsEnabled: '스킬 활성화',
+      skillsDisabled: '스킬 비활성화',
+      commandsEnabled: '명령 활성화',
+      commandsDisabled: '명령 비활성화',
+      mcpEnabled: 'MCP 활성화',
+      mcpDisabled: 'MCP 비활성화',
+    },
+    apply: '적용',
+    cancel: '취소',
+    summary: {
+      toolsEnabled: (count) => `도구 ${count}개 활성화`,
+      toolsDisabled: (count) => `도구 ${count}개 비활성화`,
+      skillsEnabled: (count) => `스킬 ${count}개 활성화`,
+      skillsDisabled: (count) => `스킬 ${count}개 비활성화`,
+      commandsEnabled: (count) => `명령 ${count}개 활성화`,
+      commandsDisabled: (count) => `명령 ${count}개 비활성화`,
+      mcpServersEnabled: (count) => `MCP 서버 ${count}개 활성화`,
+      mcpServersDisabled: (count) => `MCP 서버 ${count}개 비활성화`,
+      none: '유효 권한 변경 없음',
+    },
+  },
+  automation: {
+    autoResume: '멈춘 대화 자동 재개',
+    after: '대기 시간',
+    minutes: '분',
+    modes: {
+      assumeAndProceed: '가정 기록 후 진행',
+      proceed: '진행',
+      nextTask: '다음 작업',
+    },
+    gitMutations: '승인된 Git 변경 작업',
+    autonomousMutations: '자율 워크스페이스 변경',
+    highAutonomy: '높은 자율성',
+  },
+  critic: {
+    title: '크리틱 에이전트',
+    hint: '모든 어시스턴트 응답 · 백그라운드 비동기 검토',
+    maxRounds: '최대 검토 라운드',
+    maxRoundsHint: '계획 전환당 (어시스턴트 응답은 제한 없음)',
+    status: '상태:',
+    statuses: {
+      idle: '대기',
+      reviewing: '검토 중',
+      satisfied: '통과',
+      exhausted: '한도 소진',
+    },
+    trigger: '트리거',
+    round: (current, max) => `라운드 ${current}/${max}`,
+    pendingFeedback: '대기 중인 피드백',
+    pendingRound: (round) => `라운드 ${round}`,
+    pendingHint: '다음 메시지를 보낼 때 자동으로 전달됩니다.',
+    updatedAt: (time) => `크리틱 업데이트 ${time}`,
+  },
+  style: {
+    axes: {
+      directness: '직설성',
+      humor: '유머',
+      caution: '신중함',
+      autonomy: '자율성',
+    },
+    scale: (value, fallback) => `${value} / 100 · 기본값 ${fallback}`,
+    autoResumeOn: (minutes) => `자동 재개 ${minutes}분`,
+    autoResumeOff: '자동 재개 꺼짐',
+    mutationsAllowed: '자율 변경 허용됨',
+    mutationsOff: '변경 동의 꺼짐',
+    preview: {
+      directness: {
+        high: '결론부터 직접 답변',
+        low: '부드럽고 탐색적인 답변',
+        balanced: '균형 잡힌 직설성',
+      },
+      humor: {
+        high: '더 따뜻한 유머',
+        low: '유머는 드물게',
+        balanced: '가끔 따뜻한 말투',
+      },
+      caution: {
+        high: '실행 전 확인 강화',
+        low: '되돌릴 수 있는 작업엔 단서 최소화',
+        balanced: '적당한 위험 점검',
+      },
+      toneLine: (directness, humor) => `${directness}, ${humor}.`,
+      cautionLine: (caution) => `${caution}. 자율성은 명시적 동의 범위 안으로 제한됩니다.`,
+    },
+  },
+}

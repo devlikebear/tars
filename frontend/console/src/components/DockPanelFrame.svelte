@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Snippet } from 'svelte'
+  import { t } from '../i18n'
   import type { DockTab, DockZone } from '../lib/dock/layout'
 
   interface Props {
@@ -30,11 +31,12 @@
     children,
   }: Props = $props()
 
-  const dockTargets: { zone: DockZone; label: string; title: string }[] = [
-    { zone: 'left', label: '\u2190', title: 'Dock left' },
-    { zone: 'right', label: '\u2192', title: 'Dock right' },
-    { zone: 'bottom', label: '\u2193', title: 'Dock bottom' },
-    { zone: 'fullscreen', label: '\u26f6', title: 'Fullscreen' },
+  type DockTargetTitle = 'dockLeft' | 'dockRight' | 'dockBottom' | 'fullscreen'
+  const dockTargets: { zone: DockZone; label: string; title: DockTargetTitle }[] = [
+    { zone: 'left', label: '\u2190', title: 'dockLeft' },
+    { zone: 'right', label: '\u2192', title: 'dockRight' },
+    { zone: 'bottom', label: '\u2193', title: 'dockBottom' },
+    { zone: 'fullscreen', label: '\u26f6', title: 'fullscreen' },
   ]
 </script>
 
@@ -43,7 +45,7 @@
     {#if tabs.length > 1}
       <!-- Toggle buttons rather than role="tab": there is no arrow-key
            tab pattern here, and each tab carries its own close button. -->
-      <div class="dock-tabs" role="group" aria-label="Docked panels">
+      <div class="dock-tabs" role="group" aria-label={$t.dock.dockedPanels}>
         {#each tabs as tab (tab.id)}
           <div class="dock-tab" class:active={tab.id === activeTab} data-tab={tab.id}>
             <button
@@ -54,7 +56,7 @@
               onclick={() => onSelectTab?.(tab.id)}
             >{tab.title}</button>
             {#if tab.closeable && onCloseTab}
-              <button type="button" class="dock-tab-close" aria-label={`Close ${tab.title}`} onclick={() => onCloseTab?.(tab.id)}>×</button>
+              <button type="button" class="dock-tab-close" aria-label={$t.dock.closeTab(tab.title)} onclick={() => onCloseTab?.(tab.id)}>×</button>
             {/if}
           </div>
         {/each}
@@ -68,13 +70,13 @@
           type="button"
           class="dock-action"
           class:active={zone === target.zone}
-          title={target.title}
-          aria-label={target.title}
+          title={$t.dock[target.title]}
+          aria-label={$t.dock[target.title]}
           onclick={() => onDock(target.zone)}
         >{target.label}</button>
       {/each}
       {#if closeable && onClose}
-        <button type="button" class="dock-action dock-close" title="Close panel" aria-label="Close panel" onclick={onClose}>×</button>
+        <button type="button" class="dock-action dock-close" title={$t.dock.closePanel} aria-label={$t.dock.closePanel} onclick={onClose}>×</button>
       {/if}
     </div>
   </header>

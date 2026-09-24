@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
+import { sessionConfigEn } from '../src/i18n/sections/sessionConfig.ts'
 
 const apiSource = readFileSync(new URL('../src/lib/api/sessions.ts', import.meta.url), 'utf8')
 const panelSource = readFileSync(new URL('../src/components/SessionConfigPanel.svelte', import.meta.url), 'utf8')
@@ -20,7 +21,8 @@ test('Session config exposes automation consent controls', () => {
 })
 
 test('Session config gates permission toggles behind a preview', () => {
-  assert.match(panelSource, /Permission change preview/)
+  assert.match(panelSource, /\$t\.sessionConfig\.permissionPreview\.title/)
+  assert.equal(sessionConfigEn.permissionPreview.title, 'Permission change preview')
   assert.match(panelSource, /applyPendingConfig/)
   assert.match(panelSource, /cancelPendingConfig/)
   assert.match(panelSource, /buildSessionPermissionPreview/)

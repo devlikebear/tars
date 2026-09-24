@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
 import { buildTierRecommendation, tierRecommendationPayload } from '../src/lib/tierRecommendation.ts'
+import { chatThreadEn } from '../src/i18n/sections/chatThread.ts'
 
 const chatPanelSource = readFileSync(new URL('../src/components/ChatPanel.svelte', import.meta.url), 'utf8')
 const typesSource = readFileSync(new URL('../src/lib/types.ts', import.meta.url), 'utf8')
@@ -38,4 +39,18 @@ test('chat panel exposes first-turn tier recommendation controls', () => {
   assert.match(chatPanelSource, /pendingTierRecommendation/)
   assert.match(chatPanelSource, /tier-recommendation-card/)
   assert.match(chatPanelSource, /continueWithTier/)
+})
+
+test('the tier card shows the reason the payload carries, in English', () => {
+  // The card reads the reason from the section by task_type; the payload keeps
+  // the lib's reason. In English the two must stay the same words.
+  assert.match(chatPanelSource, /\{tierReasonLabel\(pendingTierRecommendation\)\}/)
+  const cases = [
+    ['coding', 'Implement the GitHub issue and run tests.'],
+    ['lightTransform', 'Summarize this note.'],
+    ['general', 'Brainstorm a few UX ideas for a dashboard.'],
+  ] as const
+  for (const [key, message] of cases) {
+    assert.equal(chatThreadEn.tierReason[key], buildTierRecommendation(message).reason)
+  }
 })

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { locale, t } from '../i18n'
   import type { SessionHealthAction, SessionHealthReport } from '../lib/sessionHealth'
 
   interface Props {
@@ -10,73 +11,56 @@
 
   let { report, loading = false, onRefresh, onAction }: Props = $props()
 
-  const statusLabel: Record<SessionHealthReport['status'], string> = {
-    healthy: 'Healthy',
-    watch: 'Watch',
-    attention: 'Needs attention',
-    critical: 'Critical',
-  }
-
-  const severityLabel: Record<string, string> = {
-    info: 'Info',
-    warning: 'Warning',
-    error: 'Attention',
-    critical: 'Critical',
-  }
-
-  const actionFallbackLabel: Record<SessionHealthAction, string> = {
-    compact: 'Compact',
-    review_fork_points: 'Review Chat',
-    open_tasks: 'Open Tasks',
-    open_config: 'Open Config',
-    open_prior: 'Open Prior',
-    open_skill_extraction: 'Extract Skill',
+  // Severity is typed, but an unknown value still renders as itself.
+  function severityLabel(severity: string): string {
+    const labels: Record<string, string> = $t.sessionHealth.severity
+    return labels[severity] ?? severity
   }
 </script>
 
 <div class="session-health-panel">
   <header class="health-header">
     <div>
-      <span class="health-eyebrow">Session Health</span>
-      <h3>{statusLabel[report.status]}</h3>
+      <span class="health-eyebrow">{$t.sessionHealth.panel.eyebrow}</span>
+      <h3>{$t.sessionHealth.status[report.status]}</h3>
     </div>
     <button type="button" class="btn btn-ghost btn-sm" disabled={loading} onclick={() => onRefresh?.()}>
-      {loading ? 'Checking...' : 'Refresh'}
+      {loading ? $t.sessionHealth.panel.checking : $t.sessionHealth.panel.refresh}
     </button>
   </header>
 
   <p class="health-summary">{report.summary}</p>
 
-  <section class="health-metrics" aria-label="Session health metrics">
+  <section class="health-metrics" aria-label={$t.sessionHealth.panel.metricsAriaLabel}>
     <div>
       <strong>{report.metrics.messageCount}</strong>
-      <span>Messages</span>
+      <span>{$t.sessionHealth.panel.metrics.messages}</span>
     </div>
     <div>
       <strong>{report.metrics.openTaskCount}</strong>
-      <span>Open tasks</span>
+      <span>{$t.sessionHealth.panel.metrics.openTasks}</span>
     </div>
     <div>
       <strong>{report.metrics.highRiskToolCount}</strong>
-      <span>Risk tools</span>
+      <span>{$t.sessionHealth.panel.metrics.riskTools}</span>
     </div>
     <div>
       <strong>{report.metrics.memoryCount}</strong>
-      <span>Memory</span>
+      <span>{$t.sessionHealth.panel.metrics.memory}</span>
     </div>
   </section>
 
   {#if report.signals.length === 0}
-    <div class="health-empty">No active session warnings.</div>
+    <div class="health-empty">{$t.sessionHealth.panel.noWarnings}</div>
   {:else}
-    <section class="health-section" aria-label="Session health signals">
-      <h4>Signals</h4>
+    <section class="health-section" aria-label={$t.sessionHealth.panel.signalsAriaLabel}>
+      <h4>{$t.sessionHealth.panel.signals}</h4>
       <div class="health-list">
         {#each report.signals as signal}
           <article class={`health-row severity-${signal.severity}`}>
             <div class="health-row-title">
               <strong>{signal.title}</strong>
-              <span>{severityLabel[signal.severity] ?? signal.severity}</span>
+              <span>{severityLabel(signal.severity)}</span>
             </div>
             <p>{signal.detail}</p>
           </article>
@@ -85,21 +69,21 @@
     </section>
   {/if}
 
-  <section class="health-section" aria-label="Session health recommendations">
-    <h4>Recommendations</h4>
+  <section class="health-section" aria-label={$t.sessionHealth.panel.recommendationsAriaLabel}>
+    <h4>{$t.sessionHealth.panel.recommendations}</h4>
     {#if report.recommendations.length === 0}
-      <div class="health-empty compact">No action needed.</div>
+      <div class="health-empty compact">{$t.sessionHealth.panel.noActionNeeded}</div>
     {:else}
       <div class="health-list">
         {#each report.recommendations as recommendation}
           <article class={`health-row severity-${recommendation.severity}`}>
             <div class="health-row-title">
               <strong>{recommendation.title}</strong>
-              <span>{severityLabel[recommendation.severity] ?? recommendation.severity}</span>
+              <span>{severityLabel(recommendation.severity)}</span>
             </div>
             <p>{recommendation.detail}</p>
             <button type="button" class="btn btn-ghost btn-sm" onclick={() => onAction?.(recommendation.action)}>
-              {recommendation.actionLabel || actionFallbackLabel[recommendation.action]}
+              {recommendation.actionLabel || $t.sessionHealth.actions[recommendation.action]}
             </button>
           </article>
         {/each}
@@ -108,7 +92,7 @@
   </section>
 
   <footer class="health-footer">
-    Checked {new Date(report.checkedAt).toLocaleTimeString()}
+    {$t.sessionHealth.panel.checkedAt(new Date(report.checkedAt).toLocaleTimeString($locale))}
   </footer>
 </div>
 

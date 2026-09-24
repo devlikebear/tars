@@ -20,6 +20,7 @@
   import { buildSessionStylePreview, sessionStylePayload } from '../lib/sessionStyle'
   import { sortStrings } from '../lib/sort'
   import type { CommandDef, EffectiveConfigSource, SessionAutomationConsent, SessionCritic, SessionEffectiveConfig, SessionStyleResponse, SessionStyleValues, SkillDef } from '../lib/types'
+  import { locale, t } from '../i18n'
 
   interface Props {
     sessionId: string
@@ -71,6 +72,8 @@
   // on tools/skills items so the user can see when a value comes from
   // a `.tars/settings*.json` file rather than the session base.
   let effectiveConfig: SessionEffectiveConfig | null = $state(null)
+  // Not localized: the badge prints the `.tars` layer name (the
+  // EffectiveConfigSource value), and base never renders a badge.
   const sourceBadgeLabel: Record<EffectiveConfigSource, string> = {
     base: 'session',
     shared: 'shared',
@@ -120,29 +123,14 @@
 
   type AutomationToggleKey = 'auto_resume' | 'git_mutations' | 'autonomous_mutations'
   const defaultAutoResumeMinutes = 30
+  // Labels resolve in markup through $t so they follow locale changes.
   const autoResumeModes = [
-    { id: 'record_assumption_and_proceed', label: 'Assume + proceed' },
-    { id: 'proceed_with_assumption', label: 'Proceed' },
-    { id: 'move_to_next_task', label: 'Next task' },
-  ]
-  const styleAxes: Array<{ key: keyof SessionStyleValues; label: string }> = [
-    { key: 'directness', label: 'Directness' },
-    { key: 'humor', label: 'Humor' },
-    { key: 'caution', label: 'Caution' },
-    { key: 'autonomy', label: 'Autonomy' },
-  ]
-  const previewRiskLabel: Record<SessionPermissionPreview['risk'], string> = {
-    low: 'Low risk',
-    medium: 'Medium risk',
-    high: 'High risk',
-  }
-  const skillSourceFilters: Array<{ id: SkillSourceFilter; label: string }> = [
-    { id: 'all', label: 'All' },
-    { id: 'global', label: 'Global' },
-    { id: 'session', label: 'Session only' },
-    { id: 'enabled', label: 'Enabled' },
-    { id: 'disabled', label: 'Disabled' },
-  ]
+    { id: 'record_assumption_and_proceed', labelKey: 'assumeAndProceed' },
+    { id: 'proceed_with_assumption', labelKey: 'proceed' },
+    { id: 'move_to_next_task', labelKey: 'nextTask' },
+  ] as const
+  const styleAxes: Array<keyof SessionStyleValues> = ['directness', 'humor', 'caution', 'autonomy']
+  const skillSourceFilters: SkillSourceFilter[] = ['all', 'global', 'session', 'enabled', 'disabled']
 
   function normalizeSkillDefs(defs: SkillDef[], names: string[]): SkillDef[] {
     const out: SkillDef[] = []
@@ -196,20 +184,13 @@
   }
 
   function skillOriginLabel(skill: SkillDef): string {
-    switch (skillOriginClass(skill)) {
-      case 'command':
-        return 'Command'
-      case 'session':
-        return 'Session'
-      default:
-        return 'Global'
-    }
+    return $t.sessionConfig.origin[skillOriginClass(skill)]
   }
 
   function skillOriginTitle(skill: SkillDef): string {
     if (isCommandSkill(skill)) return '.tars/commands'
     if (isSessionSkill(skill)) return '.tars/skills'
-    return skill.source || 'global skill source'
+    return skill.source || $t.sessionConfig.skills.globalSourceTitle
   }
 
   function skillSlashLabel(skill: SkillDef): string {
@@ -536,7 +517,7 @@
       skills,
       commands,
       mcpServers,
-    })
+    }, $t.sessionConfig.permissionPreview.summary)
     if (!hasPermissionPreviewChanges(preview)) {
       pendingConfig = null
       pendingPreview = null
@@ -582,18 +563,29 @@
   }
 
   function previewRows(preview: SessionPermissionPreview) {
+    const rows = $t.sessionConfig.permissionPreview.rows
     return [
-      { label: 'Tools enabled', items: preview.gainedTools },
-      { label: 'Tools disabled', items: preview.lostTools },
-      { label: 'Groups enabled', items: preview.gainedGroups },
-      { label: 'Groups disabled', items: preview.lostGroups },
-      { label: 'Skills enabled', items: preview.gainedSkills },
-      { label: 'Skills disabled', items: preview.lostSkills },
-      { label: 'Commands enabled', items: preview.gainedCommands },
-      { label: 'Commands disabled', items: preview.lostCommands },
-      { label: 'MCP enabled', items: preview.gainedMCPServers },
-      { label: 'MCP disabled', items: preview.lostMCPServers },
+      { label: rows.toolsEnabled, items: preview.gainedTools },
+      { label: rows.toolsDisabled, items: preview.lostTools },
+      { label: rows.groupsEnabled, items: preview.gainedGroups },
+      { label: rows.groupsDisabled, items: preview.lostGroups },
+      { label: rows.skillsEnabled, items: preview.gainedSkills },
+      { label: rows.skillsDisabled, items: preview.lostSkills },
+      { label: rows.commandsEnabled, items: preview.gainedCommands },
+      { label: rows.commandsDisabled, items: preview.lostCommands },
+      { label: rows.mcpEnabled, items: preview.gainedMCPServers },
+      { label: rows.mcpDisabled, items: preview.lostMCPServers },
     ].filter((row) => row.items.length > 0)
+  }
+
+  // Capability ids stay English in the preview model; only the chip text is localized.
+  function capabilityLabel(capability: string): string {
+    const labels: Record<string, string> = $t.sessionConfig.permissionPreview.capabilities
+    return labels[capability] ?? capability
+  }
+
+  function criticStatusLabel(status: NonNullable<SessionCritic['status']>): string {
+    return $t.sessionConfig.critic.statuses[status] ?? status
   }
 
   async function toggleCriticEnabled() {
@@ -754,7 +746,7 @@
   let filteredMCPServers = $derived(
     mcpServers.filter((server) => !filterText || server.toLowerCase().includes(filterText.toLowerCase()))
   )
-  let stylePreview = $derived(buildSessionStylePreview({ ...styleResponse, effective: styleDraft }))
+  let stylePreview = $derived(buildSessionStylePreview({ ...styleResponse, effective: styleDraft }, $t.sessionConfig.style.preview))
 
   let promotingSkill = $state('')
   let promoteMessage = $state('')
@@ -773,14 +765,14 @@
       if (promoted) {
         const target = promoted.target_name ?? name
         promoteMessage = promoted.action === 'renamed'
-          ? `Promoted as ${target} (renamed)`
-          : `Promoted to shared workspace`
+          ? $t.sessionConfig.skills.promotedRenamed(target)
+          : $t.sessionConfig.skills.promotedShared
         onChange?.()
       } else if (res.failed?.[0]?.error) {
-        promoteMessage = `Promote failed: ${res.failed[0].error}`
+        promoteMessage = $t.sessionConfig.skills.promoteFailedWith(res.failed[0].error)
       }
     } catch (err) {
-      promoteMessage = err instanceof Error ? err.message : 'Promote failed'
+      promoteMessage = err instanceof Error ? err.message : $t.sessionConfig.skills.promoteFailed
     } finally {
       promotingSkill = ''
     }
@@ -793,53 +785,53 @@
 
 <div class="config-panel">
   <div class="config-header">
-    <span class="config-title">Session Config</span>
+    <span class="config-title">{$t.sessionConfig.title}</span>
     {#if onClose}
       <button class="config-close" onclick={onClose}>&times;</button>
     {/if}
   </div>
 
   {#if loading}
-    <div class="config-loading">Loading...</div>
+    <div class="config-loading">{$t.sessionConfig.loading}</div>
   {:else}
     <div class="config-tabs">
       <button class="config-tab" class:active={activeTab === 'tools'} onclick={() => activeTab = 'tools'}>
-        Tools ({tools.length})
+        {$t.sessionConfig.tabs.tools(tools.length)}
       </button>
       <button class="config-tab" class:active={activeTab === 'skills'} onclick={() => activeTab = 'skills'}>
-        Skills ({skills.length})
+        {$t.sessionConfig.tabs.skills(skills.length)}
       </button>
       <button class="config-tab" class:active={activeTab === 'commands'} onclick={() => activeTab = 'commands'}>
-        Commands ({commands.length})
+        {$t.sessionConfig.tabs.commands(commands.length)}
       </button>
       <button class="config-tab" class:active={activeTab === 'mcp'} onclick={() => activeTab = 'mcp'}>
-        MCP ({mcpServers.length})
+        {$t.sessionConfig.tabs.mcp(mcpServers.length)}
       </button>
       <button class="config-tab" class:active={activeTab === 'automation'} onclick={() => activeTab = 'automation'}>
-        Automation
+        {$t.sessionConfig.tabs.automation}
       </button>
       <button class="config-tab" class:active={activeTab === 'style'} onclick={() => activeTab = 'style'}>
-        Style
+        {$t.sessionConfig.tabs.style}
       </button>
     </div>
 
     {#if activeTab === 'tools' || activeTab === 'skills' || activeTab === 'commands' || activeTab === 'mcp'}
       <div class="config-filter">
-        <input type="text" bind:value={filterText} placeholder="Filter..." class="config-filter-input" />
-        <button class="config-reload" type="button" disabled={loading} onclick={() => { void load() }}>Reload</button>
+        <input type="text" bind:value={filterText} placeholder={$t.sessionConfig.filter.placeholder} class="config-filter-input" />
+        <button class="config-reload" type="button" disabled={loading} onclick={() => { void load() }}>{$t.sessionConfig.filter.reload}</button>
       </div>
     {/if}
 
     {#if activeTab === 'skills'}
-      <div class="config-source-filters" aria-label="Skill source filters">
+      <div class="config-source-filters" aria-label={$t.sessionConfig.skills.filtersAria}>
         {#each skillSourceFilters as filter}
           <button
             class="source-filter"
-            class:active={skillSourceFilter === filter.id}
+            class:active={skillSourceFilter === filter}
             type="button"
-            onclick={() => skillSourceFilter = filter.id}
+            onclick={() => skillSourceFilter = filter}
           >
-            {filter.label}
+            {$t.sessionConfig.skills.filters[filter]}
           </button>
         {/each}
       </div>
@@ -852,14 +844,14 @@
         class:risk-high={pendingPreview.risk === 'high'}
       >
         <div class="permission-preview-head">
-          <strong>Permission change preview</strong>
-          <span>{previewRiskLabel[pendingPreview.risk]}</span>
+          <strong>{$t.sessionConfig.permissionPreview.title}</strong>
+          <span>{$t.sessionConfig.permissionPreview.risk[pendingPreview.risk]}</span>
         </div>
         <p>{pendingPreview.summary}</p>
         {#if pendingPreview.capabilities.length > 0}
-          <div class="permission-preview-chips" aria-label="Affected capabilities">
+          <div class="permission-preview-chips" aria-label={$t.sessionConfig.permissionPreview.capabilitiesAria}>
             {#each pendingPreview.capabilities as capability}
-              <span class="permission-preview-chip">{capability}</span>
+              <span class="permission-preview-chip">{capabilityLabel(capability)}</span>
             {/each}
           </div>
         {/if}
@@ -873,10 +865,10 @@
         </div>
         <div class="permission-preview-actions">
           <button type="button" class="preview-apply" onclick={() => { void applyPendingConfig() }}>
-            Apply
+            {$t.sessionConfig.permissionPreview.apply}
           </button>
           <button type="button" class="preview-cancel" onclick={cancelPendingConfig}>
-            Cancel
+            {$t.sessionConfig.permissionPreview.cancel}
           </button>
         </div>
       </div>
@@ -886,7 +878,7 @@
       {#if toolGroups.length > 0}
         <div class="config-groups">
           <div class="group-section">
-            <div class="group-heading">Allow groups</div>
+            <div class="group-heading">{$t.sessionConfig.tools.allowGroups}</div>
             <div class="group-list">
               {#each toolGroups as group}
                 <label class="group-chip" class:active={allowGroupsSet.has(group)}>
@@ -897,7 +889,7 @@
             </div>
           </div>
           <div class="group-section">
-            <div class="group-heading">Deny groups</div>
+            <div class="group-heading">{$t.sessionConfig.tools.denyGroups}</div>
             <div class="group-list">
               {#each toolGroups as group}
                 <label class="group-chip group-chip-warning" class:active={denyGroupsSet.has(group)}>
@@ -912,21 +904,22 @@
       <div class="config-actions">
         <label class="config-toggle">
           <input type="checkbox" checked={!useCustomConfig} onchange={toggleAllTools} />
-          <span>All tools</span>
+          <span>{$t.sessionConfig.tools.all}</span>
         </label>
-        <span class="config-count">{tools.filter((t) => isToolEnabled(t.name)).length} active</span>
+        <span class="config-count">{$t.sessionConfig.activeCount(tools.filter((tool) => isToolEnabled(tool.name)).length)}</span>
       </div>
       <div class="config-list">
-        {#each filteredTools as t}
-          {@const toolSrc = sourceForToolList(t.name)}
-          <label class="config-item" class:high-risk={t.high_risk}>
-            <input type="checkbox" checked={isToolEnabled(t.name)} disabled={isToolGroupControlled(t.name)} onchange={() => toggleTool(t.name)} />
-            <span class="item-name">{t.name}</span>
-            {#if t.group}
-              <span class="badge badge-neutral" style="font-size:9px;padding:0 4px;">{t.group}</span>
+        <!-- Loop variable is not `t`: that would shadow the $t store. -->
+        {#each filteredTools as tool}
+          {@const toolSrc = sourceForToolList(tool.name)}
+          <label class="config-item" class:high-risk={tool.high_risk}>
+            <input type="checkbox" checked={isToolEnabled(tool.name)} disabled={isToolGroupControlled(tool.name)} onchange={() => toggleTool(tool.name)} />
+            <span class="item-name">{tool.name}</span>
+            {#if tool.group}
+              <span class="badge badge-neutral" style="font-size:9px;padding:0 4px;">{tool.group}</span>
             {/if}
-            {#if t.high_risk}
-              <span class="badge badge-warning" style="font-size:9px;padding:0 4px;">risk</span>
+            {#if tool.high_risk}
+              <span class="badge badge-warning" style="font-size:9px;padding:0 4px;">{$t.sessionConfig.tools.riskBadge}</span>
             {/if}
             {#if toolSrc !== 'base'}
               <span class="source-badge source-{toolSrc}" title={sourceBadgeTitle[toolSrc]}>{sourceBadgeLabel[toolSrc]}</span>
@@ -938,9 +931,9 @@
       <div class="config-actions">
         <label class="config-toggle">
           <input type="checkbox" checked={!useCustomSkills} onchange={toggleAllSkills} />
-          <span>All skills</span>
+          <span>{$t.sessionConfig.skills.all}</span>
         </label>
-        <span class="config-count">{useCustomSkills ? skillsEnabledSet.size : skills.length} active</span>
+        <span class="config-count">{$t.sessionConfig.activeCount(useCustomSkills ? skillsEnabledSet.size : skills.length)}</span>
       </div>
       <div class="config-list">
         {#each filteredSkillDefs as skill}
@@ -960,11 +953,11 @@
               <button
                 class="skill-promote-btn"
                 type="button"
-                title="Promote this session-local skill to the shared workspace (copy, auto-rename on collision)"
+                title={$t.sessionConfig.skills.promoteTitle}
                 disabled={promotingSkill === s}
                 onclick={(e) => { e.preventDefault(); void promoteSessionSkill(s) }}
               >
-                {promotingSkill === s ? '...' : '↑ Promote'}
+                {promotingSkill === s ? '...' : $t.sessionConfig.skills.promote}
               </button>
             {/if}
             {#if skillSrc !== 'base'}
@@ -980,9 +973,9 @@
       <div class="config-actions">
         <label class="config-toggle">
           <input type="checkbox" checked={!useCustomCommands} onchange={toggleAllCommands} />
-          <span>All commands</span>
+          <span>{$t.sessionConfig.commands.all}</span>
         </label>
-        <span class="config-count">{useCustomCommands ? commandsEnabledSet.size : commands.length} active</span>
+        <span class="config-count">{$t.sessionConfig.activeCount(useCustomCommands ? commandsEnabledSet.size : commands.length)}</span>
       </div>
       <div class="config-list">
         {#each filteredCommandDefs as command}
@@ -994,7 +987,7 @@
             {#if skillSlashLabel(command)}
               <span class="skill-slash">{skillSlashLabel(command)}</span>
             {/if}
-            <span class="skill-origin-badge source-command" title=".tars/commands">Command</span>
+            <span class="skill-origin-badge source-command" title=".tars/commands">{$t.sessionConfig.origin.command}</span>
             {#if commandSrc !== 'base'}
               <span class="source-badge source-{commandSrc}" title={sourceBadgeTitle[commandSrc]}>{sourceBadgeLabel[commandSrc]}</span>
             {/if}
@@ -1005,12 +998,12 @@
       <div class="config-actions">
         <label class="config-toggle">
           <input type="checkbox" checked={!useCustomMCP} onchange={toggleAllMCP} />
-          <span>All MCP servers</span>
+          <span>{$t.sessionConfig.mcp.all}</span>
         </label>
-        <span class="config-count">{useCustomMCP ? mcpEnabledSet.size : mcpServers.length} active</span>
+        <span class="config-count">{$t.sessionConfig.activeCount(useCustomMCP ? mcpEnabledSet.size : mcpServers.length)}</span>
       </div>
       {#if mcpServers.length === 0}
-        <div class="config-empty">No MCP servers available.</div>
+        <div class="config-empty">{$t.sessionConfig.mcp.empty}</div>
       {:else}
         <div class="config-list">
           {#each filteredMCPServers as server}
@@ -1018,7 +1011,7 @@
             <label class="config-item">
               <input type="checkbox" checked={isMCPEnabled(server)} onchange={() => toggleMCP(server)} />
               <span class="item-name">{server}</span>
-              <span class="skill-origin-badge source-mcp" title="MCP server">MCP</span>
+              <span class="skill-origin-badge source-mcp" title={$t.sessionConfig.mcp.serverTitle}>MCP</span>
               {#if mcpSrc !== 'base'}
                 <span class="source-badge source-{mcpSrc}" title={sourceBadgeTitle[mcpSrc]}>{sourceBadgeLabel[mcpSrc]}</span>
               {/if}
@@ -1036,14 +1029,14 @@
             onchange={() => { void toggleAutomationConsent('auto_resume') }}
           />
           <span>
-            <strong>Auto-resume stalled chats</strong>
+            <strong>{$t.sessionConfig.automation.autoResume}</strong>
             <small>Pulse</small>
           </span>
         </label>
         {#if automationConsent.auto_resume || automationConsent.auto_resume_enabled}
           <div class="automation-subgrid">
             <label class="automation-field">
-              <span>After</span>
+              <span>{$t.sessionConfig.automation.after}</span>
               <input
                 type="number"
                 min="1"
@@ -1052,7 +1045,7 @@
                 disabled={automationSaving}
                 onchange={(event) => { void setAutoResumeAfterMinutes((event.currentTarget as HTMLInputElement).value) }}
               />
-              <small>minutes</small>
+              <small>{$t.sessionConfig.automation.minutes}</small>
             </label>
             <div class="automation-modes">
               {#each autoResumeModes as mode}
@@ -1063,7 +1056,7 @@
                     disabled={automationSaving}
                     onchange={() => { void toggleAutoResumeMode(mode.id) }}
                   />
-                  <span>{mode.label}</span>
+                  <span>{$t.sessionConfig.automation.modes[mode.labelKey]}</span>
                 </label>
               {/each}
             </div>
@@ -1077,7 +1070,7 @@
             onchange={() => { void toggleAutomationConsent('git_mutations') }}
           />
           <span>
-            <strong>Approved git mutations</strong>
+            <strong>{$t.sessionConfig.automation.gitMutations}</strong>
             <small>Git</small>
           </span>
         </label>
@@ -1089,12 +1082,12 @@
             onchange={() => { void toggleAutomationConsent('autonomous_mutations') }}
           />
           <span>
-            <strong>Autonomous workspace mutations</strong>
-            <small>High autonomy</small>
+            <strong>{$t.sessionConfig.automation.autonomousMutations}</strong>
+            <small>{$t.sessionConfig.automation.highAutonomy}</small>
           </span>
         </label>
         {#if automationConsent.updated_at}
-          <div class="automation-updated">Updated {new Date(automationConsent.updated_at).toLocaleString()}</div>
+          <div class="automation-updated">{$t.sessionConfig.updatedAt(new Date(automationConsent.updated_at).toLocaleString($locale))}</div>
         {/if}
 
         <div class="automation-section-divider"></div>
@@ -1106,14 +1099,14 @@
             onchange={() => { void toggleCriticEnabled() }}
           />
           <span>
-            <strong>Critic agent</strong>
-            <small>Every assistant turn · async background review</small>
+            <strong>{$t.sessionConfig.critic.title}</strong>
+            <small>{$t.sessionConfig.critic.hint}</small>
           </span>
         </label>
         {#if critic?.enabled}
           <div class="automation-subgrid">
             <label class="automation-field">
-              <span>Max review rounds</span>
+              <span>{$t.sessionConfig.critic.maxRounds}</span>
               <input
                 type="number"
                 min="1"
@@ -1122,33 +1115,33 @@
                 disabled={criticSaving}
                 onchange={(event) => { void setCriticMaxIterations((event.currentTarget as HTMLInputElement).value) }}
               />
-              <small>per plan transition (assistant turns are unbounded)</small>
+              <small>{$t.sessionConfig.critic.maxRoundsHint}</small>
             </label>
             {#if critic?.status && critic.status !== 'idle'}
               <div class="automation-modes">
-                <span>Status: <strong>{critic.status}</strong></span>
+                <span>{$t.sessionConfig.critic.status} <strong>{criticStatusLabel(critic.status)}</strong></span>
                 {#if critic.last_trigger}
-                  <span>· trigger <strong>{critic.last_trigger}</strong></span>
+                  <span>· {$t.sessionConfig.critic.trigger} <strong>{critic.last_trigger}</strong></span>
                 {/if}
                 {#if (critic.last_trigger === 'plan_proposed' || critic.last_trigger === 'plan_completed') && typeof critic.current_iteration === 'number'}
-                  <span>· round {critic.current_iteration}/{critic.max_iterations ?? 3}</span>
+                  <span>· {$t.sessionConfig.critic.round(critic.current_iteration, critic.max_iterations ?? 3)}</span>
                 {/if}
               </div>
             {/if}
             {#if critic?.pending_feedback}
               <div class="critic-pending">
-                <strong>Pending feedback queued</strong>
+                <strong>{$t.sessionConfig.critic.pendingFeedback}</strong>
                 {#if critic.pending_feedback_trigger}
-                  <small>({critic.pending_feedback_trigger}{critic.pending_feedback_round ? `, round ${critic.pending_feedback_round}` : ''})</small>
+                  <small>({critic.pending_feedback_trigger}{critic.pending_feedback_round ? `, ${$t.sessionConfig.critic.pendingRound(critic.pending_feedback_round)}` : ''})</small>
                 {/if}
                 <p>{critic.pending_feedback}</p>
-                <small class="critic-pending-hint">Drains automatically on your next message.</small>
+                <small class="critic-pending-hint">{$t.sessionConfig.critic.pendingHint}</small>
               </div>
             {/if}
           </div>
         {/if}
         {#if critic?.updated_at}
-          <div class="automation-updated">Critic updated {new Date(critic.updated_at).toLocaleString()}</div>
+          <div class="automation-updated">{$t.sessionConfig.critic.updatedAt(new Date(critic.updated_at).toLocaleString($locale))}</div>
         {/if}
       </div>
     {:else if activeTab === 'style'}
@@ -1156,17 +1149,17 @@
         {#each styleAxes as axis}
           <label class="style-slider">
             <span class="style-slider-head">
-              <strong>{axis.label}</strong>
-              <small>{styleDraft[axis.key]} / 100 · default {styleResponse.defaults[axis.key]}</small>
+              <strong>{$t.sessionConfig.style.axes[axis]}</strong>
+              <small>{$t.sessionConfig.style.scale(styleDraft[axis], styleResponse.defaults[axis])}</small>
             </span>
             <input
               type="range"
               min="0"
               max="100"
               step="1"
-              value={styleDraft[axis.key]}
+              value={styleDraft[axis]}
               disabled={styleSaving}
-              onchange={(event) => { void setStyleAxis(axis.key, (event.currentTarget as HTMLInputElement).value) }}
+              onchange={(event) => { void setStyleAxis(axis, (event.currentTarget as HTMLInputElement).value) }}
             />
           </label>
         {/each}
@@ -1176,13 +1169,13 @@
           {/each}
           <span>
             {automationConsent.auto_resume || automationConsent.auto_resume_enabled
-              ? `Auto-resume ${automationConsent.auto_resume_after_minutes ?? defaultAutoResumeMinutes}m`
-              : 'Auto-resume off'}
-            · {automationConsent.autonomous_mutations ? 'autonomous mutations allowed' : 'mutations consent off'}
+              ? $t.sessionConfig.style.autoResumeOn(automationConsent.auto_resume_after_minutes ?? defaultAutoResumeMinutes)
+              : $t.sessionConfig.style.autoResumeOff}
+            · {automationConsent.autonomous_mutations ? $t.sessionConfig.style.mutationsAllowed : $t.sessionConfig.style.mutationsOff}
           </span>
         </div>
         {#if styleResponse.style_control?.updated_at}
-          <div class="automation-updated">Updated {new Date(styleResponse.style_control.updated_at).toLocaleString()}</div>
+          <div class="automation-updated">{$t.sessionConfig.updatedAt(new Date(styleResponse.style_control.updated_at).toLocaleString($locale))}</div>
         {/if}
       </div>
     {/if}

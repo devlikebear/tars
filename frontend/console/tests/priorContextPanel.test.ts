@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { chatWorkbenchSource } from './helpers/chatWorkbenchSource.ts'
+import { contextPanelsEn } from '../src/i18n/sections/contextPanels.ts'
 
 const chatSource = chatWorkbenchSource
 const chatPanelSource = readFileSync(new URL('../src/components/ChatPanel.svelte', import.meta.url), 'utf8')
@@ -27,7 +28,8 @@ test('Prior Context panel uses the preview API and renders source and budget fie
   assert.match(apiSource, /getPriorContextPreview/)
   assert.match(apiSource, /\/v1\/chat\/prior-context\/preview/)
   assert.match(panelSource, /getPriorContextPreview/)
-  assert.match(panelSource, /Refresh preview/)
+  assert.match(panelSource, /\$t\.contextPanels\.prior\.refreshPreview\b/)
+  assert.equal(contextPanelsEn.prior.refreshPreview, 'Refresh preview')
   assert.match(panelSource, /source_tag/)
   assert.match(panelSource, /budget_percent/)
   assert.match(panelSource, /section/)

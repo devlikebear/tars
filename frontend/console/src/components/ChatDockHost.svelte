@@ -291,7 +291,7 @@
       />
     {:else if panelID === 'artifacts'}
       {#await loadChatComponent('artifact-panel')}
-        <div class="dock-empty">Loading...</div>
+        <div class="dock-empty">{$t.dock.loading}</div>
       {:then module}
         {@const ArtifactPanelRoute = module.default}
         <ArtifactPanelRoute
@@ -370,7 +370,7 @@
         {@render renderDockPanel(activeLeftPanel, 'left')}
       </aside>
     {/if}
-    <button type="button" class="dock-resizer dock-resizer-left" aria-label="Resize left dock" onpointerdown={(event) => startDockResize('left', event)}></button>
+    <button type="button" class="dock-resizer dock-resizer-left" aria-label={$t.dock.resizeLeft} onpointerdown={(event) => startDockResize('left', event)}></button>
   {/if}
 
   <!-- Conversation column -->
@@ -382,7 +382,7 @@
         {@render renderDockPanel(activeRightPanel, 'right')}
       </aside>
     {/if}
-    <button type="button" class="dock-resizer dock-resizer-right" aria-label="Resize right dock" onpointerdown={(event) => startDockResize('right', event)}></button>
+    <button type="button" class="dock-resizer dock-resizer-right" aria-label={$t.dock.resizeRight} onpointerdown={(event) => startDockResize('right', event)}></button>
   {/if}
 
   {#if activeBottomPanel}
@@ -391,7 +391,7 @@
         {@render renderDockPanel(activeBottomPanel, 'bottom')}
       </section>
     {/if}
-    <button type="button" class="dock-resizer dock-resizer-bottom" aria-label="Resize bottom dock" onpointerdown={(event) => startDockResize('bottom', event)}></button>
+    <button type="button" class="dock-resizer dock-resizer-bottom" aria-label={$t.dock.resizeBottom} onpointerdown={(event) => startDockResize('bottom', event)}></button>
   {/if}
 
   {#if activeFullscreenPanel && activeFullscreenPanel !== 'terminal'}
@@ -417,7 +417,7 @@
         onClose={() => closePanel('terminal')}
       >
         {#await loadChatComponent('terminal-tabs')}
-          <div class="dock-empty">Loading...</div>
+          <div class="dock-empty">{$t.dock.loading}</div>
         {:then module}
           {@const TerminalTabsRoute = module.default}
           <TerminalTabsRoute

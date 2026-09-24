@@ -73,16 +73,16 @@
   // Resolves true when the switch succeeded.
   async function transitionCwd(target: string): Promise<boolean> {
     if (!selectedSessionId) {
-      showFeedback('Select a session first')
+      showFeedback($t.chatCommands.selectSessionFirst)
       return false
     }
     if (cwdBusy) return false
     try {
       await chatSession.setCwd(target)
-      showFeedback(`cwd → ${shortCwdLabel(target)}`)
+      showFeedback($t.chatCommands.cwd.switched(shortCwdLabel(target)))
       return true
     } catch (err) {
-      showFeedback(`cwd transition failed: ${err instanceof Error ? err.message : String(err)}`)
+      showFeedback($t.chatCommands.cwd.switchFailed(err instanceof Error ? err.message : String(err)))
       return false
     }
   }
@@ -154,7 +154,7 @@
   function handleSessionForked(session: Session) {
     resetSessionChrome()
     void chatSession.refreshSessions()
-    showFeedback(`Forked session: ${session.title || session.id.slice(0, 12)}`)
+    showFeedback($t.chatCommands.forkedSession(session.title || session.id.slice(0, 12)))
     onNavigate(`/console/chat/${encodeURIComponent(session.id)}`)
   }
 
@@ -235,25 +235,25 @@
     switch (command) {
       case 'clear':
         chatPanelRef?.clearThread()
-        showFeedback('Chat view cleared')
+        showFeedback($t.chatCommands.viewCleared)
         return
       case 'compact':
         if (!selectedSessionId) {
-          showFeedback('Select a session first')
+          showFeedback($t.chatCommands.selectSessionFirst)
           return
         }
         await handleCompact()
         return
       case 'tasks':
         if (!selectedSessionId) {
-          showFeedback('Select a session first')
+          showFeedback($t.chatCommands.selectSessionFirst)
           return
         }
         openPanel('tasks')
         return
       case 'config':
         if (!selectedSessionId) {
-          showFeedback('Select a session first')
+          showFeedback($t.chatCommands.selectSessionFirst)
           return
         }
         openPanel('config')
@@ -272,7 +272,7 @@
         return
       case 'cron':
         if (!selectedSessionId) {
-          showFeedback('Select a session first')
+          showFeedback($t.chatCommands.selectSessionFirst)
           return
         }
         openPanel('cron')
@@ -292,7 +292,7 @@
         return
       case 'extract-skill':
         if (!selectedSessionId) {
-          showFeedback('Select a session first')
+          showFeedback($t.chatCommands.selectSessionFirst)
           return
         }
         openPanel('skillExtraction')
@@ -300,35 +300,35 @@
       case 'status': {
         try {
           const res = await getCodexUsage()
-          const lines = formatCodexStatusLines(res.tiers ?? [])
+          const lines = formatCodexStatusLines(res.tiers ?? [], $t.chatCommands.codexStatus)
           showFeedback(lines.join('\n'), 10_000)
         } catch (err) {
-          showFeedback(`status: ${err instanceof Error ? err.message : 'failed to load codex quota'}`)
+          showFeedback($t.chatCommands.status.failed(err instanceof Error ? err.message : $t.chatCommands.status.loadFailed))
         }
         return
       }
       case 'cwd':
         if (!selectedSessionId) {
-          showFeedback('Select a session first')
+          showFeedback($t.chatCommands.selectSessionFirst)
           return
         }
         if (args === '' || args.toLowerCase() === 'list') {
           await chatSession.refreshCwd()
           if (!cwdState) {
-            showFeedback('cwd: no eligible directories')
+            showFeedback($t.chatCommands.cwd.noEligible)
             return
           }
           const eligible = cwdState.eligible.length
-            ? cwdState.eligible.map((p, i) => `  ${i + 1}. ${shortCwdLabel(p)}${p === cwdState!.current ? ' (active)' : ''}`).join('\n')
-            : '  (none)'
-          showFeedback(`cwd active: ${shortCwdLabel(cwdState.current)}\n${eligible}`)
+            ? cwdState.eligible.map((p, i) => `  ${i + 1}. ${shortCwdLabel(p)}${p === cwdState!.current ? $t.chatCommands.cwd.activeMarker : ''}`).join('\n')
+            : `  ${$t.chatCommands.cwd.none}`
+          showFeedback($t.chatCommands.cwd.activeList(shortCwdLabel(cwdState.current), eligible))
           return
         }
         await transitionCwd(args)
         return
       case 'goal':
         if (!selectedSessionId) {
-          showFeedback('Select a session first')
+          showFeedback($t.chatCommands.selectSessionFirst)
           return
         }
         await handleGoalSlashCommand(args)
@@ -345,30 +345,29 @@
         const resp = await getSessionGoal(selectedSessionId)
         chatSession.setGoal(resp.goal)
         if (!resp.goal) {
-          showFeedback('goal: (none) — usage: /goal <description> | /goal clear')
+          showFeedback($t.chatCommands.goal.none)
           return
         }
         const remaining = Math.max(resp.goal.max_auto_continues - resp.goal.auto_continue_count, 0)
-        showFeedback(
-          `goal [${resp.goal.status}]: ${resp.goal.description}\n  auto-continues remaining: ${remaining}/${resp.goal.max_auto_continues}`,
-        )
+        const status = $t.chatCommands.goal.statuses[resp.goal.status] ?? resp.goal.status
+        showFeedback($t.chatCommands.goal.show(status, resp.goal.description, remaining, resp.goal.max_auto_continues))
         return
       }
       if (lower === 'clear' || lower === 'cancel') {
         const resp = await clearSessionGoal(selectedSessionId)
         chatSession.setGoal(resp.goal)
-        showFeedback('goal cleared')
+        showFeedback($t.chatCommands.goal.cleared)
         return
       }
       const resp = await setSessionGoal(selectedSessionId, trimmed)
       chatSession.setGoal(resp.goal)
       if (resp.goal) {
-        showFeedback(`goal set: ${resp.goal.description}`)
+        showFeedback($t.chatCommands.goal.set(resp.goal.description))
       } else {
-        showFeedback('goal cleared (empty description)')
+        showFeedback($t.chatCommands.goal.clearedEmpty)
       }
     } catch (err) {
-      showFeedback(`goal: ${err instanceof Error ? err.message : 'failed'}`)
+      showFeedback($t.chatCommands.goal.failed(err instanceof Error ? err.message : $t.chatCommands.goal.failedFallback))
     }
   }
 
@@ -381,13 +380,13 @@
 
   async function toggleSessionSkill(args: string) {
     if (!selectedSessionId) {
-      showFeedback('Select a session first')
+      showFeedback($t.chatCommands.selectSessionFirst)
       return
     }
     const requested = args.trim()
     if (!requested) {
       openPanel('config')
-      showFeedback('Usage: /skill <name>')
+      showFeedback($t.chatCommands.skill.usage)
       return
     }
     try {
@@ -398,7 +397,7 @@
       const skills = toolsResp.skills ?? []
       const match = skills.find((skill) => skill.toLowerCase() === requested.toLowerCase())
       if (!match) {
-        showFeedback(`Skill not found: ${requested}`)
+        showFeedback($t.chatCommands.skill.notFound(requested))
         return
       }
       const effectiveToolConfig = config.effective.tool_config
@@ -416,11 +415,11 @@
         skills_enabled: [...enabledSkills],
       }
       await updateSessionLocalConfig(selectedSessionId, nextConfig)
-      showFeedback(`Skill ${match} ${wasEnabled ? 'disabled' : 'enabled'}`)
+      showFeedback(wasEnabled ? $t.chatCommands.skill.disabled(match) : $t.chatCommands.skill.enabled(match))
       openPanel('config')
       await refreshSessionHealth()
     } catch (err) {
-      showFeedback(err instanceof Error ? err.message : 'Skill toggle failed')
+      showFeedback(err instanceof Error ? err.message : $t.chatCommands.skill.toggleFailed)
     }
   }
 
@@ -464,7 +463,7 @@
 
       {#key chatSession.threadVersion}
         {#await loadChatComponent('chat-panel')}
-          <div class="chat-panel-loading">Loading...</div>
+          <div class="chat-panel-loading">{$t.chatCommands.chatPanel.loading}</div>
         {:then module}
           {@const ChatPanelRoute = module.default}
           <ChatPanelRoute
@@ -477,7 +476,7 @@
             onArtifactOpen={handleArtifactOpen}
           />
         {:catch}
-          <div class="chat-panel-loading">Could not load chat panel.</div>
+          <div class="chat-panel-loading">{$t.chatCommands.chatPanel.loadFailed}</div>
         {/await}
       {/key}
 

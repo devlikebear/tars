@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { buildSessionHealthReport } from '../src/lib/sessionHealth.ts'
+import { sessionHealthEn, sessionHealthKo } from '../src/i18n/sections/sessionHealth.ts'
 import type { ChatToolInfo } from '../src/lib/api/chat.ts'
 import type { SessionToolConfig } from '../src/lib/api/sessions.ts'
 import type { Session, SessionMessage, SessionTasks } from '../src/lib/types.ts'
@@ -39,7 +40,7 @@ function messages(count: number): SessionMessage[] {
 }
 
 test('session health recommends compacting and splitting long sessions', () => {
-  const report = buildSessionHealthReport({
+  const report = buildSessionHealthReport(sessionHealthEn, {
     session: session(),
     messages: messages(190),
     tasks: { tasks: [] },
@@ -50,6 +51,7 @@ test('session health recommends compacting and splitting long sessions', () => {
 
   assert.equal(report.status, 'critical')
   assert.equal(report.badgeLabel, 'Critical')
+  assert.equal(report.summary, '2 critical session issue(s) need action before continuing.')
   assert.ok(report.recommendations.some((item) => item.action === 'compact'))
   assert.ok(report.recommendations.some((item) => item.action === 'review_fork_points'))
   assert.ok(report.signals.some((item) => item.kind === 'long_context'))
@@ -69,7 +71,7 @@ test('session health detects stale plans with open tasks', () => {
     ],
   }
 
-  const report = buildSessionHealthReport({
+  const report = buildSessionHealthReport(sessionHealthEn, {
     session: session(),
     messages: messages(12),
     tasks,
@@ -89,7 +91,7 @@ test('session health warns when high risk tools are broadly enabled', () => {
     tools_enabled: ['read_file', 'write_file', 'edit_file', 'exec', 'git_status'],
   }
 
-  const report = buildSessionHealthReport({
+  const report = buildSessionHealthReport(sessionHealthEn, {
     session: session(),
     messages: messages(8),
     tasks: { tasks: [] },
@@ -104,7 +106,7 @@ test('session health warns when high risk tools are broadly enabled', () => {
 })
 
 test('session health does not flag permissions on an empty new session', () => {
-  const report = buildSessionHealthReport({
+  const report = buildSessionHealthReport(sessionHealthEn, {
     session: session(),
     messages: [],
     tasks: { tasks: [] },
@@ -117,12 +119,30 @@ test('session health does not flag permissions on an empty new session', () => {
   assert.equal(report.recommendations.length, 0)
 })
 
+test('session health report text follows the strings it is given', () => {
+  const report = buildSessionHealthReport(sessionHealthKo, {
+    session: session(),
+    messages: messages(190),
+    tasks: { tasks: [] },
+    config: {},
+    tools,
+    now: new Date('2026-05-01T10:00:00Z'),
+  })
+
+  assert.equal(report.badgeLabel, sessionHealthKo.status.critical)
+  assert.equal(report.summary, sessionHealthKo.summary.critical(report.signals.length))
+  const compact = report.recommendations.find((item) => item.action === 'compact')
+  assert.equal(compact?.actionLabel, sessionHealthKo.actions.compact)
+})
+
 test('chat renders a session health badge and recommendation panel', () => {
   assert.match(chatSource, /SessionHealthPanel/)
   assert.match(chatSource, /session-health-badge/)
   assert.match(chatSource, /Health/)
-  assert.match(panelSource, /Recommendation/)
-  assert.match(panelSource, /Open Tasks/)
-  assert.match(panelSource, /Compact/)
-  assert.match(panelSource, /Open Config/)
+  assert.match(panelSource, /\$t\.sessionHealth\.panel\.recommendations\}/)
+  assert.equal(sessionHealthEn.panel.recommendations, 'Recommendations')
+  assert.match(panelSource, /\$t\.sessionHealth\.actions\[recommendation\.action\]/)
+  assert.equal(sessionHealthEn.actions.open_tasks, 'Open Tasks')
+  assert.equal(sessionHealthEn.actions.compact, 'Compact')
+  assert.equal(sessionHealthEn.actions.open_config, 'Open Config')
 })

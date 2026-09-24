@@ -1,4 +1,8 @@
 import type { SessionStyleControl, SessionStyleResponse, SessionStyleValues } from './types'
+import type { SessionConfigTranslations } from '../i18n/sections/sessionConfig'
+
+// Fallback preview phrases come from the caller's locale ($t.sessionConfig.style.preview).
+export type SessionStylePreviewLabels = SessionConfigTranslations['style']['preview']
 
 export function sessionStylePayload(values: SessionStyleValues): SessionStyleControl {
   return {
@@ -9,14 +13,14 @@ export function sessionStylePayload(values: SessionStyleValues): SessionStyleCon
   }
 }
 
-export function buildSessionStylePreview(response: SessionStyleResponse): string[] {
+export function buildSessionStylePreview(response: SessionStyleResponse, labels: SessionStylePreviewLabels): string[] {
   const style = response.effective
   if (response.preview?.length) {
     return response.preview
   }
   return [
-    `${directnessPreview(style.directness)}; ${humorPreview(style.humor)}.`,
-    `${cautionPreview(style.caution)}; autonomy stays bounded by explicit consent.`,
+    labels.toneLine(scoreLabel(style.directness, labels.directness), scoreLabel(style.humor, labels.humor)),
+    labels.cautionLine(scoreLabel(style.caution, labels.caution)),
   ]
 }
 
@@ -25,20 +29,9 @@ export function clampStyleScore(value: number): number {
   return Math.min(100, Math.max(0, Math.round(value)))
 }
 
-function directnessPreview(value: number): string {
-  if (value >= 70) return 'direct answers first'
-  if (value <= 30) return 'softer exploratory answers'
-  return 'balanced directness'
-}
-
-function humorPreview(value: number): string {
-  if (value >= 70) return 'warmer humor'
-  if (value <= 30) return 'rare humor'
-  return 'occasional warmth'
-}
-
-function cautionPreview(value: number): string {
-  if (value >= 70) return 'more verify-before-act behavior'
-  if (value <= 30) return 'fewer caveats on reversible work'
-  return 'moderate risk checks'
+// Every axis shares the same bands: >= 70 high, <= 30 low, otherwise balanced.
+function scoreLabel(value: number, labels: { high: string; low: string; balanced: string }): string {
+  if (value >= 70) return labels.high
+  if (value <= 30) return labels.low
+  return labels.balanced
 }
