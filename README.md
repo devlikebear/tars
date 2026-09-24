@@ -299,31 +299,31 @@ For local console development, set `TARS_CONSOLE_DEV_URL=http://127.0.0.1:5173` 
 
 ## Console Pages
 
-The console runs at `http://127.0.0.1:43180/console`. The sidebar is deliberately short: pages a single operator opens daily, grouped under Work, Operate, and Setup. That narrowing shipped in `v0.36.0` — builds before that still show the wider nav. The footer keeps server, Pulse, Reflection, and active session status visible with direct jumps to each detail page.
+The console runs at `http://127.0.0.1:43180/console`. The sidebar groups daily pages under **Work**, **Build**, and **System** (regrouped on `main` after `v0.37.1`; tagged `v0.37.1` and earlier still show Work / Operate / Setup). Mission Control remains the landing route. The footer keeps server, Pulse, Reflection, and active session status visible with direct jumps to each detail page. ⌘K opens the command palette for every route, including ones hidden from the sidebar.
 
 | Group | Page | Path | Purpose |
 |-------|------|------|---------|
-| — | Mission Control | `/console` | The landing screen: health, plans, runs, jobs, sessions, notifications, and recommended setup actions |
+| — | Mission Control | `/console` | Landing screen: health, plans, runs, jobs, sessions, notifications, and recommended setup actions |
 | Work | Chat | `/console/chat` | Agent chat, tool calls, files, terminal, Git, tasks, session policy, and memory context |
-| Operate | Approvals | `/console/approvals` | Review cleanup plans and approved Git mutations before apply, plus the sanitized Remote Execution view |
-| Operate | Logs | `/console/logs` | Tail configured runtime logs with file, level, component, line-count, refresh, and auto-refresh controls |
-| Operate | Pulse | `/console/pulse` | Watchdog status, incident cards, and run-now trigger |
-| Setup | Settings | `/console/config` | Quick Start onboarding gates, wizard reentry, credential entry, remote access, restart, and workspace reset |
+| Build | Agent Runtime | `/console/agentruntime` | Run history, topology views, replay, restart, costs, file attention, and subagent profiles |
+| Build | Memory | `/console/memory` | Review memory candidates, edit stored knowledge, and test recall paths |
+| Build | Extensions | `/console/extensions` | Skills, plugins, MCP packages, hub installs, diagnostics, and local drafts |
+| Build | System Prompt | `/console/sysprompt` | Edit USER.md, IDENTITY.md, AGENTS.md, and TOOLS.md |
+| System | Approvals | `/console/approvals` | Review cleanup plans and approved Git mutations before apply, plus the sanitized Remote Execution view |
+| System | Pulse | `/console/pulse` | Watchdog status, incident cards, and run-now trigger |
+| System | Reflection | `/console/reflection` | Nightly batch status and run-now trigger |
+| System | Cron | `/console/cron` | Manage global scheduled jobs with delivery targets, pause/resume, run-now, delete, and run history |
+| System | Logs | `/console/logs` | Tail configured runtime logs with file, level, component, line-count, refresh, and auto-refresh controls |
+| System | Analytics | `/console/analytics` | Visualize usage totals, daily token bars, model cost rows, and tool or skill call counts |
+| System | Settings | `/console/config` | Quick Start onboarding gates, wizard reentry, credential entry, remote access, restart, and workspace reset |
 
-These routes are **hidden from the nav, not removed** — components and backend packages are untouched and each still opens by URL:
+These routes stay reachable through ⌘K and in-context links (not listed in the sidebar):
 
 | Page | Path | Purpose |
 |------|------|---------|
 | Lineage | `/console/sessions/graph` | Root/forked session tree with fork previews and chat navigation |
 | Plans | `/console/tasks` | Active plans across sessions with progress and chat links |
-| Memory | `/console/memory` | Review memory candidates, edit stored knowledge, and test recall paths |
-| System Prompt | `/console/sysprompt` | Edit USER.md, IDENTITY.md, AGENTS.md, and TOOLS.md |
-| Extensions | `/console/extensions` | Skills, plugins, MCP packages, hub installs, diagnostics, and local drafts |
-| Agent Runtime | `/console/agentruntime` | Run history, topology views, replay, restart, costs, file attention, and subagent profiles |
 | Channels | `/console/channels` | Telegram pairing requests: approve, revoke, and review the DM policy |
-| Cron | `/console/cron` | Manage global scheduled jobs with delivery targets, pause/resume, run-now, delete, and run history |
-| Analytics | `/console/analytics` | Visualize usage totals, daily token bars, model cost rows, and tool or skill call counts |
-| Reflection | `/console/reflection` | Nightly batch status and run-now trigger |
 
 The narrowing is recorded as normative policy in [`frontend/console/DESIGN.md`](frontend/console/DESIGN.md) (Console Purpose & Surface Policy). Detailed console behavior, panel inventory, localization, usage budget chips, and frontend API type policy live in [docs/console.md](docs/console.md) and [docs/frontend-api-types.md](docs/frontend-api-types.md).
 
