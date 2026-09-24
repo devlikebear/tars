@@ -109,3 +109,19 @@ test('the palette and shortcut help are Korean', async ({ page }) => {
   found.push(...(await chromeTexts(help)).filter(untranslated))
   expect(found).toEqual([])
 })
+
+test('switching the language rewords an open panel, report text included', async ({ page }) => {
+  await newSession(page)
+  await page.locator('.chat-rail [data-panel="health"]').click()
+  const pane = page.locator('.dock-right')
+  await expect(pane).toContainText('세션 상태')
+  const korean = await pane.innerText()
+
+  // The health report's summary and advice are built in the session store,
+  // not the panel, so they only follow if the store rebuilds the report.
+  await page.locator('.locale-toggle button', { hasText: 'EN' }).click()
+  await expect(pane).toContainText(/session health/i)
+  const english = await pane.innerText()
+  expect(english).not.toBe(korean)
+  expect(english).not.toMatch(/[가-힣]/)
+})

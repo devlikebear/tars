@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte'
-  import { t } from '../i18n'
+  import { locale, t } from '../i18n'
   import {
     extractSkillsFromSession,
     listSessionLocalSkills,
@@ -59,7 +59,7 @@
     if (!value) return ''
     const date = new Date(value)
     if (Number.isNaN(date.getTime())) return value
-    return date.toLocaleString()
+    return date.toLocaleString($locale)
   }
 
   function tools(candidate: SkillExtractionCandidate): string {

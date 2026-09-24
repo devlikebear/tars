@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { t } from '../i18n'
+  import { locale, t } from '../i18n'
   import type { SessionHealthAction, SessionHealthReport } from '../lib/sessionHealth'
 
   interface Props {
@@ -92,7 +92,7 @@
   </section>
 
   <footer class="health-footer">
-    {$t.sessionHealth.panel.checkedAt(new Date(report.checkedAt).toLocaleTimeString())}
+    {$t.sessionHealth.panel.checkedAt(new Date(report.checkedAt).toLocaleTimeString($locale))}
   </footer>
 </div>
 

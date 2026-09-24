@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte'
-  import { t } from '../i18n'
+  import { locale, t } from '../i18n'
   import {
     cancelChat,
     cancelWorkLedger,
@@ -605,7 +605,7 @@
     if (!value) return ''
     const date = new Date(value)
     if (Number.isNaN(date.getTime())) return value
-    return new Intl.DateTimeFormat(undefined, {
+    return new Intl.DateTimeFormat($locale, {
       month: 'short',
       day: '2-digit',
       hour: '2-digit',

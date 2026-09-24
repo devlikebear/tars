@@ -20,7 +20,7 @@
   import { buildSessionStylePreview, sessionStylePayload } from '../lib/sessionStyle'
   import { sortStrings } from '../lib/sort'
   import type { CommandDef, EffectiveConfigSource, SessionAutomationConsent, SessionCritic, SessionEffectiveConfig, SessionStyleResponse, SessionStyleValues, SkillDef } from '../lib/types'
-  import { t } from '../i18n'
+  import { locale, t } from '../i18n'
 
   interface Props {
     sessionId: string
@@ -1087,7 +1087,7 @@
           </span>
         </label>
         {#if automationConsent.updated_at}
-          <div class="automation-updated">{$t.sessionConfig.updatedAt(new Date(automationConsent.updated_at).toLocaleString())}</div>
+          <div class="automation-updated">{$t.sessionConfig.updatedAt(new Date(automationConsent.updated_at).toLocaleString($locale))}</div>
         {/if}
 
         <div class="automation-section-divider"></div>
@@ -1141,7 +1141,7 @@
           </div>
         {/if}
         {#if critic?.updated_at}
-          <div class="automation-updated">{$t.sessionConfig.critic.updatedAt(new Date(critic.updated_at).toLocaleString())}</div>
+          <div class="automation-updated">{$t.sessionConfig.critic.updatedAt(new Date(critic.updated_at).toLocaleString($locale))}</div>
         {/if}
       </div>
     {:else if activeTab === 'style'}
@@ -1175,7 +1175,7 @@
           </span>
         </div>
         {#if styleResponse.style_control?.updated_at}
-          <div class="automation-updated">{$t.sessionConfig.updatedAt(new Date(styleResponse.style_control.updated_at).toLocaleString())}</div>
+          <div class="automation-updated">{$t.sessionConfig.updatedAt(new Date(styleResponse.style_control.updated_at).toLocaleString($locale))}</div>
         {/if}
       </div>
     {/if}

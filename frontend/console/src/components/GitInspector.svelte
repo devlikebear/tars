@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte'
-  import { t } from '../i18n'
+  import { locale, t } from '../i18n'
   import { createGitMutationApproval, getGitBranches, getGitCommit, getGitDiff, getGitLog, getGitStatus, getGitWorktrees, type CreateGitMutationApprovalRequest } from '../lib/api'
   import type { GitBranch, GitBranchesResponse, GitCommit, GitCommitDetail, GitCommitFile, GitDiff, GitStatus, GitStatusFile, GitWorktree } from '../lib/types'
 
@@ -63,7 +63,7 @@
     if (!value) return ''
     const date = new Date(value)
     if (Number.isNaN(date.getTime())) return value
-    return date.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+    return date.toLocaleString($locale, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
   }
 
   function fileTone(file: GitStatusFile): string {
