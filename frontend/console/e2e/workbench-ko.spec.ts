@@ -31,11 +31,18 @@ async function chromeTexts(scope: Locator): Promise<string[]> {
       if (text) seen.add(text)
     }
     // Content, not chrome: terminal output, rendered markdown and code, chat
-    // messages, session titles, and the server's tool and skill lists in the
-    // session config panel.
-    const content = '.xterm, .markdown-body, pre, code, .chat-msg, .session-title, .session-item, .config-list'
+    // messages, session titles (in the sidebar and the palette), and the
+    // server's tool and skill lists in the session config panel.
+    const content = '.xterm, .markdown-body, pre, code, .chat-msg, .session-title, .session-item, .config-list, [data-group="session"]'
+    // An element's own words: drop nested content and <select>s, whose
+    // options (tier and model names, for one) are read one by one instead.
+    const ownText = (el: Element) => {
+      const copy = el.cloneNode(true) as Element
+      copy.querySelectorAll(`${content}, select`).forEach((node) => node.remove())
+      return copy.textContent
+    }
     root.querySelectorAll('button, label, h1, h2, h3, h4, th, legend, summary, option, [role="option"]').forEach((el) => {
-      if (!el.closest(content)) add((el as HTMLElement).innerText)
+      if (!el.closest(content)) add(ownText(el))
     })
     root.querySelectorAll('[title], [aria-label], [placeholder]').forEach((el) => {
       if (el.closest(content)) return

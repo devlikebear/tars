@@ -28,6 +28,7 @@
   import { chatOnlyActions, matchShortcut, type ShortcutMatch } from './lib/shortcuts'
   import { builtinSlashCommands } from './lib/slash'
   import { isArchived } from './lib/sessionOrganization'
+  import { displaySessionTitle } from './lib/sessionLabels'
   import { chatSession } from './lib/stores/chatSession'
   import { chatDock, chatDockPanels, chatDockPanelTitleKeys, type ChatDockPanelID } from './lib/stores/chatDockStore.svelte'
   import { chatCommands, type ChatCommand } from './lib/stores/chatCommandQueue.svelte'
@@ -250,7 +251,7 @@
       .map((session) => ({
         id: `session:${session.id}`,
         group: 'session',
-        title: session.title?.trim() || tr.palette.untitledSession,
+        title: displaySessionTitle(session.title, tr.chat.session.newChat) || tr.palette.untitledSession,
         subtitle: session.id.slice(0, 8),
         keywords: [session.id],
         run: () => navigate(`/console/chat/${encodeURIComponent(session.id)}`),

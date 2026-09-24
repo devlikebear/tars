@@ -17,3 +17,12 @@ export function shortCwdLabel(path: string): string {
   }
   return path
 }
+
+// The title the server (and this console) stores for a session nobody has
+// named yet. It stays English on the wire; show it in the console's language.
+export const untitledSessionTitle = 'New Chat'
+
+export function displaySessionTitle(title: string | undefined, newChatLabel: string): string {
+  const trimmed = title?.trim() ?? ''
+  return trimmed === untitledSessionTitle ? newChatLabel : trimmed
+}

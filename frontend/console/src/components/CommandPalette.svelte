@@ -118,6 +118,7 @@
           <li
             id={`palette-item-${index}`}
             data-index={index}
+            data-group={command.group}
             class="palette-item"
             class:active={index === activeIndex}
             role="option"

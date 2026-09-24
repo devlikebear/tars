@@ -1,6 +1,6 @@
 import { get } from 'svelte/store'
 import * as api from '../api'
-import { t } from '../../i18n'
+import { locale, t } from '../../i18n'
 import { buildSessionHealthReport, emptySessionHealthReport } from '../sessionHealth'
 import { emptyTaskProgressSummary, summarizeTasks } from '../tasks'
 import { ChatSessionStore } from './chatSessionStore.svelte'
@@ -12,3 +12,6 @@ export const chatSession = new ChatSessionStore(api, {
   summarizeTasks,
   goalEventText: () => get(t).chatCommands.goalEvents,
 })
+
+// The health report's summary and advice are built in the active language.
+locale.subscribe(() => chatSession.rebuildHealth())

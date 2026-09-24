@@ -169,6 +169,21 @@ test('setContextInfo rebuilds the health report with the latest context', async 
   assert.equal(report.contextInfo.history_tokens, 999)
 })
 
+test('rebuildHealth words the report again after a language switch', async () => {
+  let language = 'en'
+  const { api } = fakeApi()
+  const store = new ChatSessionStore(api as never, {
+    ...helpers,
+    buildReport: (input: { session: { id: string } }) => ({ status: 'healthy', summary: `${language}:${input.session.id}`, recommendations: [] }),
+  } as never)
+  store.setActive('a')
+  await flush()
+  assert.equal((store.health as unknown as { summary: string }).summary, 'en:a')
+  language = 'ko'
+  store.rebuildHealth()
+  assert.equal((store.health as unknown as { summary: string }).summary, 'ko:a')
+})
+
 test('compact reloads the thread and returns the server result', async () => {
   const { store, calls } = newStore()
   store.setActive('a')

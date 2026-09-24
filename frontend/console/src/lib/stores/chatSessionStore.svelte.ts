@@ -431,7 +431,9 @@ export class ChatSessionStore {
     }, ms)
   }
 
-  private rebuildHealth(): void {
+  // Also called when the console language changes: the report's text is
+  // built in the active language, so it has to be built again.
+  rebuildHealth(): void {
     if (!this.healthInputs) {
       this.health = this.helpers.emptyReport()
       return

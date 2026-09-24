@@ -10,7 +10,7 @@
   import { t } from '../i18n'
   import { planProgressPercent } from '../lib/tasks'
   import { buildWorkbenchActions, type WorkbenchAction } from '../lib/workbenchActions'
-  import { shortGoalLabel } from '../lib/sessionLabels'
+  import { displaySessionTitle, shortGoalLabel } from '../lib/sessionLabels'
   import { chatSession } from '../lib/stores/chatSession'
   import { chatDock, type ChatDockPanelID } from '../lib/stores/chatDockStore.svelte'
   import { zenMode } from '../lib/zenMode.svelte'
@@ -153,7 +153,7 @@
           onblur={() => commitRename()}
         />
       {:else}
-        <h3 class="session-title">{selectedSession.title || selectedSession.id.slice(0, 12)}</h3>
+        <h3 class="session-title">{displaySessionTitle(selectedSession.title, $t.chat.session.newChat) || selectedSession.id.slice(0, 12)}</h3>
       {/if}
       <button
         type="button"
