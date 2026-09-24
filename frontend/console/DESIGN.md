@@ -251,7 +251,7 @@ The nav now follows the Work · Build · System groups below (`lib/navGroups.ts`
 This describes the target. Each item names the phase that delivers it.
 
 - **Home becomes a session board** (P3, #971). Sessions are grouped by repo (the git toplevel of the active cwd) and carry a status badge: `needs input`, `running`, `done·unread`, or `idle`. The current Home dashboard moves into System.
-- **Three-column working layout** (P0). The session sidebar, the conversation, and a dock that shows more than one panel at once (tabs or vertical split) for Changes, Terminal, Git, Tasks, and Files.
+- **Three-column working layout** (P0). The session sidebar, the conversation, and a dock that shows more than one panel at once for Changes, Terminal, Git, Tasks, and Files. Tabs shipped (see Dock tabs below). A vertical split inside one zone was not built, because the three zones already show three panels side by side.
 - **Nav groups** (P0, shipped):
 
   | Group | Items |
@@ -264,6 +264,7 @@ This describes the target. Each item names the phase that delivers it.
 - **Diffs and approvals stay in the conversation** (P1 #969, P2 #970). Reviewing a change or approving a tool call never requires leaving the chat. The UI does not branch on provider; one event shape serves every provider.
 - **Chat header budget** (P0, shipped). The header above the conversation now holds the title, health and goal chips, the session menu, and one **work strip** (plan progress on the left, workbench jumps on the right; hidden when both are empty). The pulse mini-dashboard is gone; Pulse has its own page.
 - **Panel rail** (P0, shipped, `ChatRail.svelte`). The eleven text toggles became a 44px icon rail on the workbench's right edge: one icon per dock panel with an `aria-label` and tooltip, count badges for files, tasks, and health issues, and the active panel marked like the palette's selected row (`surface-active` plus a 2px `primary` edge). `⌘K` leads the rail: the floating companion pet sits over the rail's bottom end, and the palette reaches everything the rail omits. Below 900px the rail becomes a scrolling row above the chat.
+- **Dock tabs** (P0, shipped, `lib/dock/layout.ts`). A zone keeps every panel opened in it as a tab instead of replacing one panel with the next, so opening Git no longer closes Tasks. With two or more tabs, the panel header shows them as a strip in place of the title. The top tab takes the active-tab border (Elevation rule 3), and each closeable tab has its own ×. A rail icon or palette entry brings a covered tab to the front and closes only a panel that is already on screen, so the rail marks what is visible, not what is open. Tabs and the top tab of each zone survive a reload, except the terminal: its shells end with the page, so it is not restored. A covered terminal stays mounted under `visibility: hidden`, which keeps its shell running and its size unchanged.
 - **Composer status bar** (P0, shipped, `ChatStatusBar.svelte`), in mono `text-xs`:
   - **Tier**: Auto, or a pinned `heavy`/`standard`/`light`. A pin is per session and rides on every turn as `tier_recommendation.chosen_tier` with `source: user`, because the server accepts a per-turn tier only through that field. Custom tiers show disabled until the server can take them. After a turn the bar shows which tier and model served it (`context_info.llm_tier`/`llm_model`).
   - **Permissions**: shown only when the active tier's provider is `claude-code-cli`. It reads the session's `.tars` override and shows "default" otherwise; it is display-only until inline approvals (#970).
@@ -289,6 +290,7 @@ Rules:
 
 - `⌘` means `Ctrl` on Windows and Linux and `⌥` means `Alt`. The help overlay and palette hints show the platform's glyphs (`lib/shortcuts.ts`).
 - Never bind a key the browser keeps for itself. Chrome delivers neither `⌘N`/`⌘T`/`⌘W` nor `⌘1…9` (tab switching) to the page, so `preventDefault` cannot help. That is why a new session is `⌘⇧O` (the convention web chat apps use) and switching is `⌥1…9`, where the original plan had `⌘N` and `⌘1…9`. The desktop shell (P4) may add native bindings through its bridge.
+- A panel toggle, whether from the rail, the palette, `⌘B`, or `⌘J`, acts on what is on screen: a panel covered by another dock tab comes to the front, and only a visible panel closes.
 - Shortcuts yield to whatever consumed the key first. A focused terminal keeps `Ctrl+K`, `Ctrl+B`, and `Ctrl+J` for readline. To toggle the terminal from the keyboard, move focus out of it first.
 - Single-key shortcuts (`?`, and `y`/`s`/`a`/`n` on approval cards in P2) fire only when focus is outside text inputs.
 - While the palette or help overlay is open, it owns the keyboard; only `⌘K` (close) passes through. Closing returns focus to where it was.

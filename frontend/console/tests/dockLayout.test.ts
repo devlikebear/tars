@@ -2,11 +2,13 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import {
+  closeDockPanel,
   createDockLayout,
   moveDockPanel,
   normalizeDockLayout,
   openDockPanel,
   panelIsOpen,
+  panelIsVisible,
   resizeDock,
   serializeDockLayout,
   type DockPanelDefinition,
@@ -47,17 +49,36 @@ test('dock layout opens panels in their remembered zone and moves active panels'
   assert.equal(layout.active.bottom, 'files')
 })
 
-test('dock layout can restore a hidden non-closeable panel from its stable placement', () => {
+test('dock layout stacks a moved panel as a tab over a non-closeable one', () => {
   let layout = openDockPanel(createDockLayout(panels), panels, 'files')
 
   layout = moveDockPanel(layout, panels, 'files', 'left')
   assert.equal(layout.active.left, 'files')
-  assert.equal(panelIsOpen(layout, 'sessions'), false)
+  assert.deepEqual(layout.open.left, ['sessions', 'files'])
+  assert.equal(panelIsOpen(layout, 'sessions'), true)
+  assert.equal(panelIsVisible(layout, 'sessions'), false)
 
   layout = openDockPanel(layout, panels, 'sessions')
   assert.equal(layout.placements.sessions, 'left')
   assert.equal(layout.active.left, 'sessions')
-  assert.equal(panelIsOpen(layout, 'sessions'), true)
+  assert.equal(panelIsVisible(layout, 'sessions'), true)
+})
+
+test('dock layout closes a tab and falls back to its neighbor', () => {
+  let layout = createDockLayout(panels)
+  layout = openDockPanel(layout, panels, 'files')
+  layout = openDockPanel(layout, panels, 'tasks')
+  layout = openDockPanel(layout, panels, 'files')
+  assert.equal(layout.active.right, 'files')
+
+  layout = closeDockPanel(layout, 'files')
+  assert.deepEqual(layout.open.right, ['tasks'])
+  assert.equal(layout.active.right, 'tasks')
+
+  layout = closeDockPanel(layout, 'tasks')
+  assert.equal(layout.open.right, undefined)
+  assert.equal(layout.active.right, undefined)
+  assert.equal(layout.placements.tasks, 'right')
 })
 
 test('dock layout clamps resize values and drops unknown stored panels', () => {
@@ -101,7 +122,8 @@ test('dock layout serializes only stable placement, active, and size data', () =
   const layout = moveDockPanel(openDockPanel(createDockLayout(panels), panels, 'files'), panels, 'files', 'fullscreen')
   const serialized = serializeDockLayout(layout)
 
-  assert.deepEqual(sortStrings(Object.keys(serialized)), ['active', 'placements', 'sizes'])
+  assert.deepEqual(sortStrings(Object.keys(serialized)), ['active', 'open', 'placements', 'sizes'])
   assert.equal(serialized.placements.files, 'fullscreen')
+  assert.deepEqual(serialized.open?.fullscreen, ['files'])
   assert.equal(serialized.active.fullscreen, 'files')
 })

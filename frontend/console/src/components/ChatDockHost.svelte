@@ -7,7 +7,7 @@
   import { t } from '../i18n'
   import type { SessionHealthAction } from '../lib/sessionHealth'
   import type { Session } from '../lib/types'
-  import type { DockZone } from '../lib/dock/layout'
+  import type { DockTab, DockZone } from '../lib/dock/layout'
   import { loadChatComponent } from '../lib/chatComponents'
   import { chatSession } from '../lib/stores/chatSession'
   import { chatDock, chatDockPanelTitleKeys, type ChatDockPanelID } from '../lib/stores/chatDockStore.svelte'
@@ -54,6 +54,9 @@
   // wrapper, which would tear down xterm + the WebSocket every time the
   // user dragged the panel (#667).
   let terminalActiveZone = $derived(chatDock.zoneOf('terminal'))
+  // A terminal tab covered by another panel stays mounted (hidden) so its
+  // shell keeps running, the same reason it never unmounts on a re-dock.
+  let terminalCovered = $derived(!!terminalActiveZone && !chatDock.isVisible('terminal'))
 
   interface TerminalDockTab {
     id: string
@@ -75,6 +78,18 @@
 
   function panelCloseable(panelID: ChatDockPanelID): boolean {
     return panelID !== 'sessions'
+  }
+
+  function zoneTabs(zone: DockZone): DockTab[] {
+    return chatDock.tabs(zone).map((id) => ({ id, title: panelTitle(id), closeable: panelCloseable(id) }))
+  }
+
+  function selectTab(id: string) {
+    openPanel(id as ChatDockPanelID)
+  }
+
+  function closeTab(id: string) {
+    closePanel(id as ChatDockPanelID)
   }
 
   function openPanel(panelID: ChatDockPanelID) {
@@ -208,8 +223,9 @@
   // Mod+J: close the terminal if it is showing; otherwise reopen this
   // session's tabs, or start one at the active cwd. Without a cwd, fall
   // back to the Files panel, where a terminal can be opened at any folder.
+  // A terminal covered by another dock tab comes to the front instead.
   export function toggleTerminal() {
-    if (chatDock.isOpen('terminal')) {
+    if (chatDock.isVisible('terminal')) {
       closePanel('terminal')
       return
     }
@@ -241,6 +257,10 @@
 
   onMount(() => {
     chatDock.restore(window.localStorage)
+    // Terminal tabs live in this component and end with it, so a restored
+    // terminal panel without tabs would be an empty zone. It keeps its zone
+    // for next time.
+    if (terminalDockTabs.length === 0) chatDock.close('terminal')
     dockLayoutLoaded = true
   })
 
@@ -256,6 +276,10 @@
     title={panelTitle(panelID)}
     {zone}
     closeable={panelCloseable(panelID)}
+    tabs={zoneTabs(zone)}
+    activeTab={panelID}
+    onSelectTab={selectTab}
+    onCloseTab={closeTab}
     onDock={(nextZone) => dockPanel(panelID, nextZone)}
     onClose={() => closePanel(panelID)}
   >
@@ -380,11 +404,15 @@
        instance + WebSocket survive zone changes. data-zone selects the
        grid area / fullscreen positioning via CSS (#667). -->
   {#if terminalActiveZone && terminalDockSessionId && terminalDockTabs.length > 0}
-    <section class="dock-pane dock-terminal" data-zone={terminalActiveZone}>
+    <section class="dock-pane dock-terminal" data-zone={terminalActiveZone} class:covered={terminalCovered}>
       <DockPanelFrame
         title={panelTitle('terminal')}
         zone={terminalActiveZone}
         closeable={panelCloseable('terminal')}
+        tabs={zoneTabs(terminalActiveZone)}
+        activeTab="terminal"
+        onSelectTab={selectTab}
+        onCloseTab={closeTab}
         onDock={(nextZone) => dockPanel('terminal', nextZone)}
         onClose={() => closePanel('terminal')}
       >
@@ -479,6 +507,14 @@
     border: 1px solid var(--border-strong);
     border-radius: var(--radius-lg);
     box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+  }
+
+  /* visibility, not display: xterm keeps its measured size, so it does not
+     refit to a single row while covered and send that to the shell. Hidden
+     content also leaves the tab order and the accessibility tree. */
+  .dock-terminal.covered {
+    visibility: hidden;
+    pointer-events: none;
   }
 
   .dock-resizer {
