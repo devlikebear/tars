@@ -120,6 +120,13 @@ func (c *OpenAICompatibleClient) buildChatRequest(messages []ChatMessage, opts C
 	}
 	if opts.OnDelta != nil {
 		reqBody["stream"] = true
+		// Without include_usage, OpenAI-compatible servers omit token usage
+		// from streamed responses entirely. Moonshot (kimi) is left out: it
+		// reports streamed usage on its own, inside the final choice, and
+		// is not documented to accept stream_options.
+		if c.label != "kimi" {
+			reqBody["stream_options"] = map[string]any{"include_usage": true}
+		}
 	}
 	return reqBody, nil
 }
@@ -212,6 +219,7 @@ func (c *OpenAICompatibleClient) chatStreaming(ctx context.Context, req *http.Re
 		builder             strings.Builder
 		reasoningContentBuf strings.Builder
 		stopReason          string
+		usage               Usage
 		toolCallsByIndex    = map[int]ToolCall{}
 	)
 	scanner := createSSEScanner(resp.Body)
@@ -244,17 +252,29 @@ func (c *OpenAICompatibleClient) chatStreaming(ctx context.Context, req *http.Re
 						} `json:"function"`
 					} `json:"tool_calls"`
 				} `json:"delta"`
-				FinishReason string `json:"finish_reason"`
+				FinishReason string                 `json:"finish_reason"`
+				Usage        *openAICompatibleUsage `json:"usage"`
 			} `json:"choices"`
+			Usage *openAICompatibleUsage `json:"usage"`
 		}
 		if err := json.Unmarshal([]byte(payload), &parsed); err != nil {
 			return ChatResponse{}, newProviderError(c.label, "parse", fmt.Errorf("decode stream response: %w", err))
+		}
+		// Usage arrives on the final chunk (often with empty choices) when
+		// stream_options.include_usage is set; Moonshot puts it inside the
+		// final choice instead. Some servers repeat cumulative usage on
+		// every chunk, so the last one seen wins.
+		if parsed.Usage != nil {
+			usage = parsed.Usage.toUsage()
 		}
 		if len(parsed.Choices) == 0 {
 			continue
 		}
 
 		choice := parsed.Choices[0]
+		if choice.Usage != nil {
+			usage = choice.Usage.toUsage()
+		}
 		content := choice.Delta.Content
 		reasoningContent := choice.Delta.ReasoningContent
 		builder.WriteString(content)
@@ -294,6 +314,8 @@ func (c *OpenAICompatibleClient) chatStreaming(ctx context.Context, req *http.Re
 		Str("provider", c.label).
 		Int("assistant_len", len(builder.String())).
 		Int("tool_call_count", len(toolCalls)).
+		Int("input_tokens", usage.InputTokens).
+		Int("output_tokens", usage.OutputTokens).
 		Str("stop_reason", stopReason).
 		Msg("llm stream complete")
 
@@ -304,8 +326,38 @@ func (c *OpenAICompatibleClient) chatStreaming(ctx context.Context, req *http.Re
 			ToolCalls:        toolCalls,
 			ReasoningContent: reasoningContentBuf.String(),
 		},
+		Usage:      usage,
 		StopReason: stopReason,
 	}, nil
+}
+
+// openAICompatibleUsage is the Chat Completions usage object, shared by the
+// streaming and non-streaming paths.
+type openAICompatibleUsage struct {
+	PromptTokens        int `json:"prompt_tokens"`
+	CompletionTokens    int `json:"completion_tokens"`
+	PromptTokensDetails struct {
+		CachedTokens int `json:"cached_tokens"`
+	} `json:"prompt_tokens_details"`
+	// CachedTokens is Moonshot's (kimi) top-level spelling of
+	// prompt_tokens_details.cached_tokens.
+	CachedTokens     int `json:"cached_tokens"`
+	CacheReadTokens  int `json:"cache_read_tokens"`
+	CacheWriteTokens int `json:"cache_write_tokens"`
+}
+
+func (u openAICompatibleUsage) toUsage() Usage {
+	cached := u.PromptTokensDetails.CachedTokens
+	if cached == 0 {
+		cached = u.CachedTokens
+	}
+	return Usage{
+		InputTokens:      u.PromptTokens,
+		OutputTokens:     u.CompletionTokens,
+		CachedTokens:     cached,
+		CacheReadTokens:  u.CacheReadTokens,
+		CacheWriteTokens: u.CacheWriteTokens,
+	}
 }
 
 func (c *OpenAICompatibleClient) chatNonStreaming(ctx context.Context, req *http.Request) (ChatResponse, error) {
@@ -333,15 +385,7 @@ func (c *OpenAICompatibleClient) chatNonStreaming(ctx context.Context, req *http
 			} `json:"message"`
 			FinishReason string `json:"finish_reason"`
 		} `json:"choices"`
-		Usage struct {
-			PromptTokens        int `json:"prompt_tokens"`
-			CompletionTokens    int `json:"completion_tokens"`
-			PromptTokensDetails struct {
-				CachedTokens int `json:"cached_tokens"`
-			} `json:"prompt_tokens_details"`
-			CacheReadTokens  int `json:"cache_read_tokens"`
-			CacheWriteTokens int `json:"cache_write_tokens"`
-		} `json:"usage"`
+		Usage openAICompatibleUsage `json:"usage"`
 	}
 	if err := json.Unmarshal(respBody, &parsed); err != nil {
 		return ChatResponse{}, newProviderError(c.label, "parse", fmt.Errorf("decode response: %w", err))
@@ -365,13 +409,7 @@ func (c *OpenAICompatibleClient) chatNonStreaming(ctx context.Context, req *http
 			ToolCalls:        nonStreamingToolCalls(parsed.Choices[0].Message.ToolCalls),
 			ReasoningContent: parsed.Choices[0].Message.ReasoningContent,
 		},
-		Usage: Usage{
-			InputTokens:      parsed.Usage.PromptTokens,
-			OutputTokens:     parsed.Usage.CompletionTokens,
-			CachedTokens:     parsed.Usage.PromptTokensDetails.CachedTokens,
-			CacheReadTokens:  parsed.Usage.CacheReadTokens,
-			CacheWriteTokens: parsed.Usage.CacheWriteTokens,
-		},
+		Usage:      parsed.Usage.toUsage(),
 		StopReason: parsed.Choices[0].FinishReason,
 	}, nil
 }

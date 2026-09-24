@@ -846,3 +846,102 @@ func TestOpenAICompatibleChat_StreamReasoningWithoutCallback(t *testing.T) {
 		t.Fatalf("content stream got %q", content.String())
 	}
 }
+
+func TestOpenAICompatibleChat_StreamParsesUsageFromFinalChunk(t *testing.T) {
+	var reqBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"hel\"}}]}\n\n"))
+		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"lo\"},\"finish_reason\":\"stop\"}]}\n\n"))
+		_, _ = w.Write([]byte("data: {\"choices\":[],\"usage\":{\"prompt_tokens\":120,\"completion_tokens\":7,\"prompt_tokens_details\":{\"cached_tokens\":64}}}\n\n"))
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	defer srv.Close()
+
+	client, err := NewOpenAIClient(srv.URL+"/v1", "k", "m")
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+	resp, err := client.Chat(context.Background(), []ChatMessage{{Role: "user", Content: "hi"}}, ChatOptions{
+		OnDelta: func(string) {},
+	})
+	if err != nil {
+		t.Fatalf("chat: %v", err)
+	}
+
+	streamOpts, _ := reqBody["stream_options"].(map[string]any)
+	if streamOpts["include_usage"] != true {
+		t.Fatalf("expected stream_options.include_usage=true, got %#v", reqBody["stream_options"])
+	}
+	if resp.Message.Content != "hello" {
+		t.Fatalf("unexpected content: %q", resp.Message.Content)
+	}
+	want := Usage{InputTokens: 120, OutputTokens: 7, CachedTokens: 64}
+	if resp.Usage != want {
+		t.Fatalf("usage = %+v, want %+v", resp.Usage, want)
+	}
+	if resp.StopReason != "stop" {
+		t.Fatalf("expected stop_reason stop, got %q", resp.StopReason)
+	}
+}
+
+func TestOpenAICompatibleChat_StreamWithoutUsageStaysZero(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"ok\"},\"finish_reason\":\"stop\"}]}\n\n"))
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	defer srv.Close()
+
+	client, err := NewOpenAIClient(srv.URL+"/v1", "k", "m")
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+	resp, err := client.Chat(context.Background(), []ChatMessage{{Role: "user", Content: "hi"}}, ChatOptions{
+		OnDelta: func(string) {},
+	})
+	if err != nil {
+		t.Fatalf("chat: %v", err)
+	}
+	if resp.Message.Content != "ok" {
+		t.Fatalf("unexpected content: %q", resp.Message.Content)
+	}
+	if resp.Usage != (Usage{}) {
+		t.Fatalf("expected zero usage, got %+v", resp.Usage)
+	}
+}
+
+func TestOpenAICompatibleChat_KimiStreamOmitsStreamOptionsAndReadsChoiceUsage(t *testing.T) {
+	var reqBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\n"))
+		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\",\"usage\":{\"prompt_tokens\":30,\"completion_tokens\":2,\"cached_tokens\":10}}]}\n\n"))
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	defer srv.Close()
+
+	client, err := newOpenAICompatibleClientWithConfig("kimi", srv.URL+"/v1", "k", "m", DefaultClientConfig())
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+	resp, err := client.Chat(context.Background(), []ChatMessage{{Role: "user", Content: "hi"}}, ChatOptions{
+		OnDelta: func(string) {},
+	})
+	if err != nil {
+		t.Fatalf("chat: %v", err)
+	}
+	if _, ok := reqBody["stream_options"]; ok {
+		t.Fatalf("kimi request must not carry stream_options, got %#v", reqBody["stream_options"])
+	}
+	want := Usage{InputTokens: 30, OutputTokens: 2, CachedTokens: 10}
+	if resp.Usage != want {
+		t.Fatalf("usage = %+v, want %+v", resp.Usage, want)
+	}
+}
