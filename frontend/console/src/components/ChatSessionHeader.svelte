@@ -57,7 +57,7 @@
   })
 
   function isPanelOpen(panelID: ChatDockPanelID): boolean {
-    return chatDock.isOpen(panelID)
+    return chatDock.isVisible(panelID)
   }
 
   function openPanel(panelID: ChatDockPanelID) {

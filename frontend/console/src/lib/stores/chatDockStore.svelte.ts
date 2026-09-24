@@ -1,5 +1,5 @@
-// Dock layout for the chat workbench (#968): which panel is open in which
-// zone, and how big each zone is.
+// Dock layout for the chat workbench (#968): which panels are open as tabs
+// in which zone, which tab is on top, and how big each zone is.
 //
 // Shared by the toolbar toggles, the session header, and ChatDockHost so
 // they read and change one layout instead of passing callbacks around.
@@ -7,12 +7,15 @@
 // the layout logic never reads them.
 
 import {
+  activePanelZone,
   closeDockPanel,
   createDockLayout,
+  dockZoneTabs,
   moveDockPanel,
   normalizeDockLayout,
   openDockPanel,
   panelIsOpen,
+  panelIsVisible,
   resizeDock,
   serializeDockLayout,
   type DockLayoutState,
@@ -78,8 +81,19 @@ export class ChatDockStore {
   get bottom(): ChatDockPanelID | undefined { return this.layout.active.bottom as ChatDockPanelID | undefined }
   get fullscreen(): ChatDockPanelID | undefined { return this.layout.active.fullscreen as ChatDockPanelID | undefined }
 
+  // Open: the panel has a tab, possibly behind another one.
   isOpen(panelID: ChatDockPanelID): boolean {
     return panelIsOpen(this.layout, panelID)
+  }
+
+  // Visible: the panel is the top tab of its zone.
+  isVisible(panelID: ChatDockPanelID): boolean {
+    return panelIsVisible(this.layout, panelID)
+  }
+
+  // The panels stacked in a zone, in tab order.
+  tabs(zone: DockZone): ChatDockPanelID[] {
+    return dockZoneTabs(this.layout, zone) as ChatDockPanelID[]
   }
 
   // True when any inspector panel (not the session list or terminal) is open.
@@ -95,8 +109,9 @@ export class ChatDockStore {
     this.layout = closeDockPanel(this.layout, panelID)
   }
 
+  // A covered tab comes to the front; only a visible panel closes.
   toggle(panelID: ChatDockPanelID): void {
-    if (this.isOpen(panelID)) {
+    if (this.isVisible(panelID)) {
       this.close(panelID)
     } else {
       this.open(panelID)
@@ -117,13 +132,9 @@ export class ChatDockStore {
     this.layout = next
   }
 
-  // Which zone a panel is currently shown in, if any.
+  // Which zone holds a panel's tab, if any, whether or not it is on top.
   zoneOf(panelID: ChatDockPanelID): DockZone | null {
-    if (this.fullscreen === panelID) return 'fullscreen'
-    if (this.bottom === panelID) return 'bottom'
-    if (this.left === panelID) return 'left'
-    if (this.right === panelID) return 'right'
-    return null
+    return activePanelZone(this.layout, panelID) ?? null
   }
 
   restore(storage: StorageLike | undefined): void {

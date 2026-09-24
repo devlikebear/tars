@@ -26,12 +26,49 @@ test('panels open in their default zone and toggle closed again', () => {
   assert.equal(dock.bottom, 'terminal')
 })
 
-test('opening another panel in the same zone replaces the active one', () => {
+test('opening another panel in the same zone stacks it as a tab on top', () => {
   const dock = new ChatDockStore()
   dock.open('git')
   dock.open('tasks')
+  assert.deepEqual(dock.tabs('right'), ['git', 'tasks'])
   assert.equal(dock.right, 'tasks')
+  assert.equal(dock.isOpen('git'), true)
+  assert.equal(dock.isVisible('git'), false)
+})
+
+test('toggle brings a covered tab forward and closes only a visible one', () => {
+  const dock = new ChatDockStore()
+  dock.open('git')
+  dock.open('tasks')
+  dock.toggle('git')
+  assert.equal(dock.right, 'git')
+  assert.deepEqual(dock.tabs('right'), ['git', 'tasks'])
+  dock.toggle('git')
   assert.equal(dock.isOpen('git'), false)
+  assert.equal(dock.right, 'tasks')
+})
+
+test('closing the top tab hands the zone to its neighbor', () => {
+  const dock = new ChatDockStore()
+  dock.open('git')
+  dock.open('tasks')
+  dock.open('health')
+  dock.open('tasks')
+  dock.close('tasks')
+  assert.equal(dock.right, 'health')
+  dock.close('health')
+  assert.equal(dock.right, 'git')
+  dock.close('git')
+  assert.equal(dock.right, undefined)
+  assert.deepEqual(dock.tabs('right'), [])
+})
+
+test('a covered terminal tab still reports its zone', () => {
+  const dock = new ChatDockStore()
+  dock.move('terminal', 'right')
+  dock.open('git')
+  assert.equal(dock.right, 'git')
+  assert.equal(dock.zoneOf('terminal'), 'right')
 })
 
 test('anyToolPanelOpen ignores the session list and the terminal', () => {
@@ -78,7 +115,34 @@ test('layout survives a persist and restore round trip', () => {
   const second = new ChatDockStore()
   second.restore(storage)
   assert.equal(second.left, 'git')
+  assert.deepEqual(second.tabs('left'), ['sessions', 'git'])
   assert.equal(second.layout.sizes.left, 400)
+})
+
+test('a covered tab and a hidden session list survive a reload', () => {
+  const storage = memoryStorage()
+  const first = new ChatDockStore()
+  first.open('git')
+  first.open('tasks')
+  first.toggle('git')
+  first.close('sessions')
+  first.persist(storage)
+
+  const second = new ChatDockStore()
+  second.restore(storage)
+  assert.deepEqual(second.tabs('right'), ['git', 'tasks'])
+  assert.equal(second.right, 'git')
+  assert.equal(second.isOpen('sessions'), false)
+})
+
+test('a layout stored before tabs restores one tab per zone', () => {
+  const dock = new ChatDockStore()
+  dock.restore(memoryStorage({
+    [chatDockStorageKey]: JSON.stringify({ placements: { git: 'bottom' }, active: { right: 'tasks', bottom: 'git' } }),
+  }))
+  assert.deepEqual(dock.tabs('left'), ['sessions'])
+  assert.deepEqual(dock.tabs('right'), ['tasks'])
+  assert.deepEqual(dock.tabs('bottom'), ['git'])
 })
 
 test('a corrupt stored layout falls back to the default', () => {

@@ -55,8 +55,10 @@
     return ''
   }
 
+  // Pressed means on screen: a tab covered by another one is not, and
+  // clicking it brings it forward rather than closing it.
   function isPanelOpen(id: ChatDockPanelID): boolean {
-    return chatDock.isOpen(id)
+    return chatDock.isVisible(id)
   }
 
   function togglePanel(id: ChatDockPanelID) {

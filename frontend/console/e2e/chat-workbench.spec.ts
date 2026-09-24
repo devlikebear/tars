@@ -106,6 +106,63 @@ test('the toolbar and the header health badge drive one dock layout', async ({ p
   await expect(page.locator('.dock-right')).toContainText(/session health/i)
 })
 
+test('panels in one zone stack as tabs that survive a reload', async ({ page }) => {
+  await newSession(page)
+  const gitToggle = page.locator('.chat-rail [data-panel="git"]')
+  const healthToggle = page.locator('.chat-rail [data-panel="health"]')
+  const rightTabs = page.locator('.dock-right .dock-tab')
+
+  await gitToggle.click()
+  await healthToggle.click()
+  await expect(rightTabs).toHaveCount(2)
+  await expect(page.locator('.dock-right .dock-tab.active')).toHaveAttribute('data-tab', 'health')
+
+  // The rail brings a covered tab forward instead of closing it.
+  await gitToggle.click()
+  await expect(gitToggle).toHaveClass(/active/)
+  await expect(healthToggle).not.toHaveClass(/active/)
+  await expect(page.locator('.dock-right .dock-tab.active')).toHaveAttribute('data-tab', 'git')
+
+  await page.reload()
+  await expect(rightTabs).toHaveCount(2)
+  await expect(page.locator('.dock-right .dock-tab.active')).toHaveAttribute('data-tab', 'git')
+
+  // Closing the top tab hands the zone to the other one.
+  await page.locator('.dock-right .dock-tab[data-tab="git"] .dock-tab-close').click()
+  await expect(rightTabs).toHaveCount(0)
+  await expect(page.locator('.dock-right')).toContainText(/session health/i)
+  await healthToggle.click()
+  await expect(page.locator('.dock-right')).toHaveCount(0)
+})
+
+test('a terminal covered by another tab keeps running', async ({ page }) => {
+  await newSession(page)
+  await page.locator('.chat-rail [data-panel="artifacts"]').click() // Files
+  await page.locator('.dock-right button[title^="Open integrated terminal"]').click()
+  const terminal = page.locator('.dock-terminal')
+  await expect(terminal.locator('.xterm')).toBeVisible()
+  const xterm = await terminal.locator('.xterm').elementHandle()
+
+  // Moving the terminal next to Files makes them tabs of one zone.
+  await terminal.locator('button[aria-label="Dock right"]').click()
+  await expect(terminal).toHaveAttribute('data-zone', 'right')
+  await terminal.locator('.dock-tab[data-tab="artifacts"] .dock-tab-label').click()
+  await expect(terminal).toHaveClass(/covered/)
+  await expect(page.locator('.dock-right')).toBeVisible()
+  expect(await xterm?.evaluate((el) => el.isConnected)).toBe(true)
+
+  await page.locator('.dock-right .dock-tab[data-tab="terminal"] .dock-tab-label').click()
+  await expect(terminal).not.toHaveClass(/covered/)
+  expect(await terminal.locator('.xterm').evaluate((el, prev) => el === prev, xterm)).toBe(true)
+
+  // Terminal tabs end with the page, so a reload must not restore the
+  // terminal panel as an empty zone: Files takes the zone back.
+  await page.reload()
+  await expect(page.locator('.dock-right')).toBeVisible()
+  await expect(page.locator('.dock-right .dock-tab')).toHaveCount(0)
+  await expect(terminal).toHaveCount(0)
+})
+
 test('a re-docked panel keeps its zone across a reload', async ({ page }) => {
   await newSession(page)
   await page.locator('.session-health-badge').click()

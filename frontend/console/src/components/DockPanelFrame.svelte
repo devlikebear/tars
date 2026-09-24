@@ -1,11 +1,17 @@
 <script lang="ts">
   import type { Snippet } from 'svelte'
-  import type { DockZone } from '../lib/dock/layout'
+  import type { DockTab, DockZone } from '../lib/dock/layout'
 
   interface Props {
     title: string
     zone: DockZone
     closeable?: boolean
+    // Every panel stacked in this zone. With two or more, the header shows
+    // them as tabs instead of the single title.
+    tabs?: DockTab[]
+    activeTab?: string
+    onSelectTab?: (id: string) => void
+    onCloseTab?: (id: string) => void
     onDock: (zone: DockZone) => void
     onClose?: () => void
     children: Snippet
@@ -15,6 +21,10 @@
     title,
     zone,
     closeable = true,
+    tabs = [],
+    activeTab,
+    onSelectTab,
+    onCloseTab,
     onDock,
     onClose,
     children,
@@ -30,7 +40,28 @@
 
 <section class="dock-panel-frame" data-dock-zone={zone}>
   <header class="dock-panel-header">
-    <strong>{title}</strong>
+    {#if tabs.length > 1}
+      <!-- Toggle buttons rather than role="tab": there is no arrow-key
+           tab pattern here, and each tab carries its own close button. -->
+      <div class="dock-tabs" role="group" aria-label="Docked panels">
+        {#each tabs as tab (tab.id)}
+          <div class="dock-tab" class:active={tab.id === activeTab} data-tab={tab.id}>
+            <button
+              type="button"
+              class="dock-tab-label"
+              aria-pressed={tab.id === activeTab}
+              title={tab.title}
+              onclick={() => onSelectTab?.(tab.id)}
+            >{tab.title}</button>
+            {#if tab.closeable && onCloseTab}
+              <button type="button" class="dock-tab-close" aria-label={`Close ${tab.title}`} onclick={() => onCloseTab?.(tab.id)}>×</button>
+            {/if}
+          </div>
+        {/each}
+      </div>
+    {:else}
+      <strong>{title}</strong>
+    {/if}
     <div class="dock-panel-actions">
       {#each dockTargets as target}
         <button
@@ -82,6 +113,71 @@
     font-weight: 600;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .dock-tabs {
+    display: flex;
+    align-items: stretch;
+    gap: 2px;
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .dock-tab {
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 0;
+    max-width: 160px;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    color: var(--text-tertiary);
+  }
+
+  .dock-tab:hover {
+    color: var(--text-secondary);
+  }
+
+  /* DESIGN.md Elevation rule 3: an active tab takes a 1px primary border. */
+  .dock-tab.active {
+    border-color: var(--primary);
+    background: var(--primary-muted);
+    color: var(--primary-text);
+  }
+
+  .dock-tab-label {
+    min-width: 0;
+    overflow: hidden;
+    padding: 3px var(--space-2);
+    border: 0;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    font-family: var(--font-display);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .dock-tab-close {
+    padding: 0 6px 0 0;
+    border: 0;
+    background: transparent;
+    color: var(--text-ghost);
+    cursor: pointer;
+    font-size: var(--text-xs);
+    line-height: 1;
+  }
+
+  .dock-tab-close:hover {
+    color: var(--error);
+  }
+
+  .dock-tab-label:focus-visible,
+  .dock-tab-close:focus-visible {
+    outline: 1px solid var(--primary);
+    outline-offset: -1px;
   }
 
   .dock-panel-actions {
