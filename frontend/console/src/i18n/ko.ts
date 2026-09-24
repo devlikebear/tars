@@ -1,4 +1,17 @@
 import type { Translations } from './types'
+import { dockKo } from './sections/dock.ts'
+import { terminalKo } from './sections/terminal.ts'
+import { chatCommandsKo } from './sections/chatCommands.ts'
+import { chatThreadKo } from './sections/chatThread.ts'
+import { sessionConfigKo } from './sections/sessionConfig.ts'
+import { gitInspectorKo } from './sections/gitInspector.ts'
+import { artifactPanelKo } from './sections/artifactPanel.ts'
+import { skillInboxKo } from './sections/skillInbox.ts'
+import { sessionCronKo } from './sections/sessionCron.ts'
+import { sessionHealthKo } from './sections/sessionHealth.ts'
+import { contextPanelsKo } from './sections/contextPanels.ts'
+import { tasksPanelKo } from './sections/tasksPanel.ts'
+import { agentRuntimeRunKo } from './sections/agentRuntimeRun.ts'
 
 export const ko = {
   common: {
@@ -1624,4 +1637,17 @@ export const ko = {
     accessRevoked: '접근이 취소되었습니다',
     dash: '—',
   },
+  dock: dockKo,
+  terminal: terminalKo,
+  chatCommands: chatCommandsKo,
+  chatThread: chatThreadKo,
+  sessionConfig: sessionConfigKo,
+  gitInspector: gitInspectorKo,
+  artifactPanel: artifactPanelKo,
+  skillInbox: skillInboxKo,
+  sessionCron: sessionCronKo,
+  sessionHealth: sessionHealthKo,
+  contextPanels: contextPanelsKo,
+  tasksPanel: tasksPanelKo,
+  agentRuntimeRun: agentRuntimeRunKo,
 } satisfies Translations

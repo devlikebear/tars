@@ -1,3 +1,19 @@
+import type { DockTranslations } from './sections/dock.ts'
+import type { TerminalTranslations } from './sections/terminal.ts'
+import type { ChatCommandsTranslations } from './sections/chatCommands.ts'
+import type { ChatThreadTranslations } from './sections/chatThread.ts'
+import type { SessionConfigTranslations } from './sections/sessionConfig.ts'
+import type { GitInspectorTranslations } from './sections/gitInspector.ts'
+import type { ArtifactPanelTranslations } from './sections/artifactPanel.ts'
+import type { SkillInboxTranslations } from './sections/skillInbox.ts'
+import type { SessionCronTranslations } from './sections/sessionCron.ts'
+import type { SessionHealthTranslations } from './sections/sessionHealth.ts'
+import type { ContextPanelsTranslations } from './sections/contextPanels.ts'
+import type { TasksPanelTranslations } from './sections/tasksPanel.ts'
+import type { AgentRuntimeRunTranslations } from './sections/agentRuntimeRun.ts'
+
+// Big chat panels keep their strings in ./sections/<area>.ts. Each section's
+// English object is its type, so the Korean object must match it key for key.
 export type Locale = 'en' | 'ko'
 
 export type Translations = {
@@ -1564,4 +1580,17 @@ export type Translations = {
     accessRevoked: string
     dash: string
   }
+  dock: DockTranslations
+  terminal: TerminalTranslations
+  chatCommands: ChatCommandsTranslations
+  chatThread: ChatThreadTranslations
+  sessionConfig: SessionConfigTranslations
+  gitInspector: GitInspectorTranslations
+  artifactPanel: ArtifactPanelTranslations
+  skillInbox: SkillInboxTranslations
+  sessionCron: SessionCronTranslations
+  sessionHealth: SessionHealthTranslations
+  contextPanels: ContextPanelsTranslations
+  tasksPanel: TasksPanelTranslations
+  agentRuntimeRun: AgentRuntimeRunTranslations
 }
