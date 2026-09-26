@@ -8,6 +8,7 @@ const chatSource = chatWorkbenchSource
 const apiSource = readFileSync(new URL('../src/lib/api/git.ts', import.meta.url), 'utf8')
 const typesSource = readFileSync(new URL('../src/lib/types.ts', import.meta.url), 'utf8')
 const gitInspectorSource = readFileSync(new URL('../src/components/GitInspector.svelte', import.meta.url), 'utf8')
+const diffViewSource = readFileSync(new URL('../src/components/DiffView.svelte', import.meta.url), 'utf8')
 
 test('Chat mounts Git Inspector as a dockable read-only panel', () => {
   assert.match(chatSource, /import GitInspector from '\.\/GitInspector\.svelte'/)
@@ -27,6 +28,8 @@ test('Git Inspector API client and view expose status, diff, log, and branches',
   assert.match(gitInspectorSource, /getGitDiff/)
   assert.match(gitInspectorSource, /getGitLog/)
   assert.match(gitInspectorSource, /getGitBranches/)
-  assert.match(gitInspectorSource, /class="diff-table diff-split" aria-label=\{\$t\.gitInspector\.diff\.sideBySideLabel\}/)
+  // The shared DiffView renders the table; the inspector names it.
+  assert.match(gitInspectorSource, /<DiffView lines=\{diffLines\} mode=\{diffMode\} label=\{\$t\.gitInspector\.diff\.sideBySideLabel\} \/>/)
+  assert.match(diffViewSource, /class="diff-table diff-split" aria-label=\{label\}/)
   assert.equal(gitInspectorEn.diff.sideBySideLabel, 'side-by-side diff')
 })
