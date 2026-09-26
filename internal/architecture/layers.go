@@ -55,6 +55,7 @@ var AppPackages = []string{
 	"agentruntime",
 	"apptool",
 	"assistant",
+	"checkpoint",
 	"consoleauth",
 	"critic",
 	"cron",

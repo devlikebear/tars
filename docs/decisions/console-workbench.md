@@ -79,7 +79,8 @@ The console becomes a workbench:
 - A foreground session works in its current directory and takes the single **write lease** for its repo.
 - A session gets an **automatic worktree** when another session already holds that repo's lease, or when the run is unattended (cron, worker, goal auto-continue).
 - The session header has a manual "isolate" toggle. `.tars/settings.json` lists the gitignored files to copy into a worktree.
-- **Every turn leaves a checkpoint, whether or not the session is isolated.** The snapshot is taken with a temporary `GIT_INDEX_FILE` and stored at `refs/tars/checkpoints/<session>/<turn>`. The user's index, stash, and HEAD are never touched.
+- **Every turn leaves a checkpoint, whether or not the session is isolated.** Each work-tree root gets a shadow git repository in TARS's data directory, and snapshots are stored there at `refs/tars/checkpoints/<session>/<turn>/{start,end}`. Nothing is written under the user's `.git`: not the index, stash, HEAD, refs, or objects. This applies to folders that are not repositories as well (`internal/checkpoint`).
+  - *Revised at the start of P1 (#969).* The first version borrowed the user's index through a temporary `GIT_INDEX_FILE` and wrote the refs into their repository. On a machine with `core.autocrlf=true` (Git for Windows' system default), that stores normalized blobs: EOL-only edits disappear, and a restore writes CRLF over LF files. It also ran the user's LFS and clean filters, their reference-transaction hook, and `commit.gpgSign`. The shadow turns off every conversion and filter, so a checkpoint holds the exact bytes on disk. The cost is one full hash of a root's files on its first snapshot.
 
 Why not isolate every session: always-on worktrees drop gitignored files (`.env`, `node_modules`, `.tars/settings.local.json`), collide on ports and caches, add a merge step, and mean nothing for non-coding sessions. A single user mostly works in one main session.
 
@@ -102,6 +103,8 @@ Before starting P1 or P3, the phase picks one of these and records the choice in
 - (c) shrink the exclusion list first, as a prerequisite.
 
 No phase may add to the exclusion list.
+
+- **P1 chose (a), 2026-09-26.** Checkpoints live in `internal/checkpoint`, which does not depend on `internal/executionplane`, and its tests run in the windows-test job. They cover CRLF and autocrlf, Korean and space-containing paths, and files held open without sharing. The server wiring in `internal/tarsserver` stays covered by Linux CI and the E2E suite, as that package already is.
 
 ## Phases
 
