@@ -153,11 +153,11 @@ type diffStats struct {
 }
 
 func (s *Store) stats(ctx context.Context, sh *shadowRepo, from, to string, unknown []string) (diffStats, error) {
-	entries, err := s.nameStatus(ctx, sh, from, to, "")
+	entries, err := s.nameStatus(ctx, sh, from, to, nil)
 	if err != nil {
 		return diffStats{}, err
 	}
-	counts, err := s.numstat(ctx, sh, from, to, "")
+	counts, err := s.numstat(ctx, sh, from, to, nil)
 	if err != nil {
 		return diffStats{}, err
 	}
@@ -181,17 +181,28 @@ type statusEntry struct {
 	oldPath string
 }
 
-func diffArgs(from, to, path string, extra ...string) []string {
-	args := append([]string{"diff", "--no-ext-diff", "--no-color", "--no-textconv", "-M"}, extra...)
+// diffBaseArgs keep the user's global config (external diff tools, colors,
+// textconv) out of what the store parses.
+var diffBaseArgs = []string{"diff", "--no-ext-diff", "--no-color", "--no-textconv", "-M"}
+
+func diffArgs(from, to string, paths []string, extra ...string) []string {
+	args := append(slices.Clone(diffBaseArgs), extra...)
 	args = append(args, from, to)
-	if path != "" {
-		args = append(args, "--", path)
+	if len(paths) > 0 {
+		args = append(append(args, "--"), paths...)
 	}
 	return args
 }
 
-func (s *Store) nameStatus(ctx context.Context, sh *shadowRepo, from, to, path string) ([]statusEntry, error) {
-	out, _, err := s.git.run(ctx, sh.call(diffArgs(from, to, path, "--name-status", "-z")...))
+func onePath(path string) []string {
+	if path == "" {
+		return nil
+	}
+	return []string{path}
+}
+
+func (s *Store) nameStatus(ctx context.Context, sh *shadowRepo, from, to string, paths []string) ([]statusEntry, error) {
+	out, _, err := s.git.run(ctx, sh.call(diffArgs(from, to, paths, "--name-status", "-z")...))
 	if err != nil {
 		return nil, err
 	}
@@ -237,8 +248,8 @@ type numstatEntry struct {
 	binary               bool
 }
 
-func (s *Store) numstat(ctx context.Context, sh *shadowRepo, from, to, path string) ([]numstatEntry, error) {
-	out, _, err := s.git.run(ctx, sh.call(diffArgs(from, to, path, "--numstat", "-z")...))
+func (s *Store) numstat(ctx context.Context, sh *shadowRepo, from, to string, paths []string) ([]numstatEntry, error) {
+	out, _, err := s.git.run(ctx, sh.call(diffArgs(from, to, paths, "--numstat", "-z")...))
 	if err != nil {
 		return nil, err
 	}
@@ -263,15 +274,15 @@ func (s *Store) numstat(ctx context.Context, sh *shadowRepo, from, to, path stri
 }
 
 func (s *Store) diffFiles(ctx context.Context, sh *shadowRepo, from, to, path string, unknown []string) ([]FileDiff, error) {
-	entries, err := s.nameStatus(ctx, sh, from, to, path)
+	entries, err := s.nameStatus(ctx, sh, from, to, onePath(path))
 	if err != nil {
 		return nil, err
 	}
-	counts, err := s.numstat(ctx, sh, from, to, path)
+	counts, err := s.numstat(ctx, sh, from, to, onePath(path))
 	if err != nil {
 		return nil, err
 	}
-	out, _, err := s.git.run(ctx, sh.call(diffArgs(from, to, path, "-U3")...))
+	out, _, err := s.git.run(ctx, sh.call(diffArgs(from, to, onePath(path), "-U3")...))
 	if err != nil {
 		return nil, err
 	}
@@ -301,24 +312,17 @@ func (s *Store) diffFilesOneByOne(ctx context.Context, sh *shadowRepo, from, to 
 		if e.oldPath != "" {
 			paths = append(paths, e.oldPath)
 		}
-		args := append([]string{"diff", "--no-ext-diff", "--no-color", "--no-textconv", "-M", "-U3", from, to, "--"}, paths...)
-		out, _, err := s.git.run(ctx, sh.call(args...))
+		out, _, err := s.git.run(ctx, sh.call(diffArgs(from, to, paths, "-U3")...))
 		if err != nil {
 			return nil, err
 		}
-		countArgs := append([]string{"diff", "--no-ext-diff", "--no-color", "--no-textconv", "-M", "--numstat", "-z", from, to, "--"}, paths...)
-		countOut, _, err := s.git.run(ctx, sh.call(countArgs...))
+		counts, err := s.numstat(ctx, sh, from, to, paths)
 		if err != nil {
 			return nil, err
 		}
 		var count numstatEntry
-		if fields := splitNUL(countOut); len(fields) > 0 {
-			parts := strings.SplitN(fields[0], "\t", 3)
-			if len(parts) == 3 {
-				count.binary = parts[0] == "-"
-				count.additions, _ = strconv.Atoi(parts[0])
-				count.deletions, _ = strconv.Atoi(parts[1])
-			}
+		if len(counts) > 0 {
+			count = counts[0]
 		}
 		patch := ""
 		if chunks := splitPatch(string(out)); len(chunks) > 0 {

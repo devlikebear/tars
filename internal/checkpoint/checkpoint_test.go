@@ -53,7 +53,7 @@ func TestTurnsLeaveTheUserRepositoryUntouched(t *testing.T) {
 	if refs := userGit(t, repo, "for-each-ref", "refs/tars"); refs != "" {
 		t.Fatalf("refs written to the user's repository: %s", refs)
 	}
-	if entry.Files != 2 || entry.Root != repo && !samePath(entry.Root, repo) {
+	if entry.Files != 2 || !samePath(entry.Root, canonicalPath(repo)) {
 		t.Fatalf("entry = %+v", entry)
 	}
 }

@@ -34,7 +34,7 @@ func (s *Store) dropTurnRefs(ctx context.Context, sessionID string, dropped []En
 // existingRefs keeps the refs that exist, since update-ref --stdin refuses to
 // delete a missing one.
 func (s *Store) existingRefs(ctx context.Context, sh *shadowRepo, refs []string) []string {
-	all, err := s.refsUnder(ctx, sh, "refs/tars/checkpoints/")
+	all, err := s.refsUnder(ctx, sh, refNamespace)
 	if err != nil {
 		return nil
 	}
@@ -159,14 +159,14 @@ func (s *Store) sweepShadow(ctx context.Context, key string, alive func(string) 
 	}
 	unlock := s.lockRoot(key)
 	defer unlock()
-	refs, err := s.refsUnder(ctx, sh, "refs/tars/checkpoints/")
+	refs, err := s.refsUnder(ctx, sh, refNamespace)
 	if err != nil {
 		return err
 	}
 	var stale []string
 	live := 0
 	for _, ref := range refs {
-		rest := strings.TrimPrefix(ref, "refs/tars/checkpoints/")
+		rest := strings.TrimPrefix(ref, refNamespace)
 		sessionID, _, _ := strings.Cut(rest, "/")
 		if s.isActive(sessionID) {
 			live++

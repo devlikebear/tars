@@ -141,6 +141,7 @@ func (s *Store) ResolveRoot(ctx context.Context, cwd string) (string, error) {
 	if !info.IsDir() {
 		return "", fmt.Errorf("checkpoint: cwd %q is not a directory", abs)
 	}
+	abs = canonicalPath(abs)
 	out, code, err := s.git.run(ctx, gitCall{dir: abs, args: []string{"rev-parse", "--show-toplevel", "--show-prefix"}, okExit: []int{128}})
 	if err != nil {
 		return "", err
@@ -149,7 +150,7 @@ func (s *Store) ResolveRoot(ctx context.Context, cwd string) (string, error) {
 		return abs, nil
 	}
 	lines := strings.Split(strings.TrimRight(string(out), "\r\n"), "\n")
-	top := filepath.Clean(filepath.FromSlash(strings.TrimSpace(lines[0])))
+	top := canonicalPath(filepath.Clean(filepath.FromSlash(strings.TrimSpace(lines[0]))))
 	prefix := ""
 	if len(lines) > 1 {
 		prefix = strings.TrimSuffix(strings.TrimSpace(lines[1]), "/")
@@ -165,6 +166,15 @@ func (s *Store) ResolveRoot(ctx context.Context, cwd string) (string, error) {
 		return abs, nil
 	}
 	return top, nil
+}
+
+// canonicalPath resolves symlinks and, on Windows, 8.3 short names, so one
+// folder always maps to one shadow however its path was spelled.
+func canonicalPath(p string) string {
+	if resolved, err := filepath.EvalSymlinks(p); err == nil {
+		return resolved
+	}
+	return p
 }
 
 // Turn is a checkpoint in progress: the start snapshot is taken, the end is
@@ -346,12 +356,15 @@ func (s *Store) deleteRefs(ctx context.Context, sh *shadowRepo, refs []string) e
 	return err
 }
 
+// refNamespace holds every checkpoint ref in a shadow.
+const refNamespace = "refs/tars/checkpoints/"
+
 func turnRef(sessionID, turnID, phase string) string {
-	return "refs/tars/checkpoints/" + sessionID + "/" + turnID + "/" + phase
+	return refNamespace + sessionID + "/" + turnID + "/" + phase
 }
 
 func sessionRefPrefix(sessionID string) string {
-	return "refs/tars/checkpoints/" + sessionID + "/"
+	return refNamespace + sessionID + "/"
 }
 
 func snapshotMessage(sessionID, turnID, phase string) string {
@@ -363,12 +376,12 @@ func clipPreview(s string) string {
 	if i := strings.IndexAny(s, "\r\n"); i >= 0 {
 		s = strings.TrimSpace(s[:i])
 	}
-	const max = 120
-	if utf8.RuneCountInString(s) <= max {
+	const previewRunes = 120
+	if utf8.RuneCountInString(s) <= previewRunes {
 		return s
 	}
 	r := []rune(s)
-	return string(r[:max-1]) + "…"
+	return string(r[:previewRunes-1]) + "…"
 }
 
 func mergeSorted(a, b []string) []string {

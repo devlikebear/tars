@@ -63,6 +63,8 @@ func (e *gitError) Unwrap() error { return e.err }
 const checkpointIdentity = "TARS checkpoint"
 const checkpointEmail = "checkpoint@tars.invalid"
 
+const gitLsFiles = "ls-files"
+
 func gitEnv(c gitCall) []string {
 	env := make([]string, 0, len(os.Environ())+12)
 	for _, kv := range os.Environ() {
@@ -126,11 +128,12 @@ func (r gitRunner) run(ctx context.Context, c gitCall) ([]byte, int, error) {
 	return out, code, &gitError{args: c.args, code: code, stderr: trimStderr(stderr.String()), err: err}
 }
 
+const stderrLimit = 2000
+
 func trimStderr(s string) string {
 	s = strings.TrimSpace(s)
-	const max = 2000
-	if len(s) > max {
-		s = s[:max] + "…"
+	if len(s) > stderrLimit {
+		s = s[:stderrLimit] + "…"
 	}
 	return s
 }

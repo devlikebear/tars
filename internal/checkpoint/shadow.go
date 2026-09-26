@@ -229,7 +229,7 @@ func samePath(a, b string) bool {
 func removeAllWritable(path string) error {
 	_ = filepath.WalkDir(path, func(p string, d fs.DirEntry, err error) error {
 		if err == nil && !d.IsDir() {
-			_ = os.Chmod(p, 0o644)
+			_ = os.Chmod(p, 0o600)
 		}
 		return nil
 	})

@@ -110,58 +110,23 @@ type changeScan struct {
 	forced          []string
 }
 
+// candidateSet is every path the next add may hash, in first-seen order.
+type candidateSet struct {
+	paths []string
+	// tracked marks files already in the shadow's index, which a snapshot
+	// must drop rather than keep stale when they grow past the limit.
+	tracked map[string]bool
+	forced  map[string]bool
+}
+
 // scanChanges lists what the next add would hash and enforces the limits
 // before any object is written.
 func (s *Store) scanChanges(ctx context.Context, sh *shadowRepo, forced []string) (changeScan, error) {
-	others, _, err := s.git.run(ctx, sh.call("ls-files", "-z", "--others", "--exclude-standard"))
+	set, err := s.changeCandidates(ctx, sh, forced)
 	if err != nil {
 		return changeScan{}, err
 	}
-	modified, _, err := s.git.run(ctx, sh.call("ls-files", "-z", "--modified"))
-	if err != nil {
-		return changeScan{}, err
-	}
-	var scan changeScan
-	tracked := map[string]bool{}
-	for _, p := range splitNUL(modified) {
-		tracked[p] = true
-	}
-	candidates := append(splitNUL(others), splitNUL(modified)...)
-	candidates = append(candidates, forced...)
-	isForced := map[string]bool{}
-	for _, p := range forced {
-		isForced[p] = true
-	}
-	files, total := 0, int64(0)
-	seen := map[string]bool{}
-	for _, p := range candidates {
-		if seen[p] {
-			continue
-		}
-		seen[p] = true
-		if strings.HasSuffix(p, "/") {
-			// ls-files reports a repository nested in the root as its
-			// directory; its contents are not the root's to snapshot.
-			scan.nested = append(scan.nested, p)
-			continue
-		}
-		info, err := os.Lstat(filepath.Join(sh.root, filepath.FromSlash(p)))
-		if err != nil {
-			continue // deleted; nothing to hash
-		}
-		if info.Mode().IsRegular() && info.Size() > s.limits.MaxFileBytes {
-			scan.oversize = append(scan.oversize, p)
-			if tracked[p] {
-				scan.oversizeTracked = append(scan.oversizeTracked, p)
-			}
-			continue
-		}
-		if isForced[p] {
-			scan.forced = append(scan.forced, p)
-		}
-		files++
-		total += info.Size()
-	}
+	scan, files, total := s.classify(sh.root, set)
 	if s.limits.MaxFiles > 0 && files > s.limits.MaxFiles {
 		return changeScan{}, &skipError{reason: SkipTooManyFiles, detail: fmt.Sprintf("%d files to record, limit %d", files, s.limits.MaxFiles)}
 	}
@@ -169,6 +134,69 @@ func (s *Store) scanChanges(ctx context.Context, sh *shadowRepo, forced []string
 		return changeScan{}, &skipError{reason: SkipTooLarge, detail: fmt.Sprintf("%d bytes to record, limit %d", total, s.limits.MaxBytes)}
 	}
 	return scan, nil
+}
+
+func (s *Store) changeCandidates(ctx context.Context, sh *shadowRepo, forced []string) (candidateSet, error) {
+	others, _, err := s.git.run(ctx, sh.call(gitLsFiles, "-z", "--others", "--exclude-standard"))
+	if err != nil {
+		return candidateSet{}, err
+	}
+	modified, _, err := s.git.run(ctx, sh.call(gitLsFiles, "-z", "--modified"))
+	if err != nil {
+		return candidateSet{}, err
+	}
+	set := candidateSet{tracked: map[string]bool{}, forced: map[string]bool{}}
+	seen := map[string]bool{}
+	add := func(p string) {
+		if !seen[p] {
+			seen[p] = true
+			set.paths = append(set.paths, p)
+		}
+	}
+	for _, p := range splitNUL(others) {
+		add(p)
+	}
+	for _, p := range splitNUL(modified) {
+		set.tracked[p] = true
+		add(p)
+	}
+	for _, p := range forced {
+		set.forced[p] = true
+		add(p)
+	}
+	return set, nil
+}
+
+// classify sorts candidates into what the snapshot hashes, what it leaves
+// out, and the file count and bytes that the limits apply to.
+func (s *Store) classify(root string, set candidateSet) (changeScan, int, int64) {
+	var scan changeScan
+	files, total := 0, int64(0)
+	for _, p := range set.paths {
+		if strings.HasSuffix(p, "/") {
+			// ls-files reports a repository nested in the root as its
+			// directory; its contents are not the root's to snapshot.
+			scan.nested = append(scan.nested, p)
+			continue
+		}
+		info, err := os.Lstat(filepath.Join(root, filepath.FromSlash(p)))
+		if err != nil {
+			continue // deleted; nothing to hash
+		}
+		if info.Mode().IsRegular() && info.Size() > s.limits.MaxFileBytes {
+			scan.oversize = append(scan.oversize, p)
+			if set.tracked[p] {
+				scan.oversizeTracked = append(scan.oversizeTracked, p)
+			}
+			continue
+		}
+		if set.forced[p] {
+			scan.forced = append(scan.forced, p)
+		}
+		files++
+		total += info.Size()
+	}
+	return scan, files, total
 }
 
 // trackedButIgnored returns files the root's own repository tracks even
@@ -179,7 +207,7 @@ func (s *Store) trackedButIgnored(ctx context.Context, sh *shadowRepo) ([]string
 		return nil, nil
 	}
 	// A read-only listing of the user's index (optional locks are off).
-	out, _, err := s.git.run(ctx, gitCall{dir: sh.root, args: []string{"ls-files", "-z"}})
+	out, _, err := s.git.run(ctx, gitCall{dir: sh.root, args: []string{gitLsFiles, "-z"}})
 	if err != nil {
 		return nil, nil // not a usable repository; the snapshot does not need it
 	}
@@ -199,7 +227,7 @@ func (s *Store) trackedButIgnored(ctx context.Context, sh *shadowRepo) ([]string
 	if len(ignored) == 0 {
 		return nil, nil
 	}
-	have, _, err := s.git.run(ctx, sh.call("ls-files", "-z"))
+	have, _, err := s.git.run(ctx, sh.call(gitLsFiles, "-z"))
 	if err != nil {
 		return nil, err
 	}

@@ -54,7 +54,7 @@ func TestDiffArgumentsAndFallback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	entries, err := s.nameStatus(ctx, sh, entry.Start, entry.End, "")
+	entries, err := s.nameStatus(ctx, sh, entry.Start, entry.End, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
