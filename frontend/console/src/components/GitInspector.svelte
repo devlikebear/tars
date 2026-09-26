@@ -3,6 +3,8 @@
   import { locale, t } from '../i18n'
   import { createGitMutationApproval, getGitBranches, getGitCommit, getGitDiff, getGitLog, getGitStatus, getGitWorktrees, type CreateGitMutationApprovalRequest } from '../lib/api'
   import type { GitBranch, GitBranchesResponse, GitCommit, GitCommitDetail, GitCommitFile, GitDiff, GitStatus, GitStatusFile, GitWorktree } from '../lib/types'
+  import { parseUnifiedDiff } from '../lib/diff'
+  import DiffView from './DiffView.svelte'
 
   interface Props {
     sessionId: string
@@ -48,7 +50,6 @@
   let unstagedCount = $derived(files.filter((file) => file.unstaged).length)
   let currentBranch = $derived.by<GitBranch | undefined>(() => branches.find((branch) => branch.current))
   let diffLines = $derived(parseUnifiedDiff(diff?.patch))
-  let diffPairs = $derived(pairDiffLines(diffLines))
   let selectedPath = $derived(diffSource?.path ?? '')
   let selectedStaged = $derived(diffSource?.kind === 'workdir' && diffSource.staged === true)
   let activeWorkdirPath = $derived(diffSource?.kind === 'workdir' ? diffSource.path : '')
@@ -278,90 +279,6 @@
     })
   }
 
-  type DiffLineKind = 'context' | 'add' | 'del' | 'hunk' | 'meta'
-  type DiffLine = { kind: DiffLineKind; oldLine?: number; newLine?: number; text: string }
-  type DiffPair = { left?: DiffLine; right?: DiffLine }
-
-  function parseUnifiedDiff(patch?: string): DiffLine[] {
-    const out: DiffLine[] = []
-    if (!patch) return out
-    let oldLine = 0
-    let newLine = 0
-    for (const raw of patch.split('\n')) {
-      if (
-        raw.startsWith('diff ') ||
-        raw.startsWith('index ') ||
-        raw.startsWith('--- ') ||
-        raw.startsWith('+++ ') ||
-        raw.startsWith('new file mode') ||
-        raw.startsWith('deleted file mode') ||
-        raw.startsWith('similarity index') ||
-        raw.startsWith('rename from') ||
-        raw.startsWith('rename to') ||
-        raw.startsWith('Binary files')
-      ) {
-        continue
-      }
-      if (raw.startsWith('@@')) {
-        const match = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(raw)
-        if (match) {
-          oldLine = Number(match[1])
-          newLine = Number(match[2])
-        }
-        out.push({ kind: 'hunk', text: raw })
-        continue
-      }
-      if (raw.startsWith('\\')) {
-        out.push({ kind: 'meta', text: raw })
-        continue
-      }
-      if (raw.startsWith('+')) {
-        out.push({ kind: 'add', newLine, text: raw.slice(1) })
-        newLine++
-      } else if (raw.startsWith('-')) {
-        out.push({ kind: 'del', oldLine, text: raw.slice(1) })
-        oldLine++
-      } else if (raw.startsWith(' ')) {
-        out.push({ kind: 'context', oldLine, newLine, text: raw.slice(1) })
-        oldLine++
-        newLine++
-      } else if (raw === '') {
-        // Trailing newline from split — ignore.
-      } else {
-        out.push({ kind: 'context', text: raw })
-      }
-    }
-    return out
-  }
-
-  function pairDiffLines(lines: DiffLine[]): DiffPair[] {
-    const pairs: DiffPair[] = []
-    let i = 0
-    while (i < lines.length) {
-      const line = lines[i]
-      if (line.kind === 'hunk' || line.kind === 'meta' || line.kind === 'context') {
-        pairs.push({ left: line, right: line })
-        i++
-        continue
-      }
-      const dels: DiffLine[] = []
-      const adds: DiffLine[] = []
-      while (i < lines.length && lines[i].kind === 'del') {
-        dels.push(lines[i])
-        i++
-      }
-      while (i < lines.length && lines[i].kind === 'add') {
-        adds.push(lines[i])
-        i++
-      }
-      const max = Math.max(dels.length, adds.length)
-      for (let k = 0; k < max; k++) {
-        pairs.push({ left: dels[k], right: adds[k] })
-      }
-    }
-    return pairs
-  }
-
   function tabLabel(id: TabId): string {
     return $t.gitInspector.tabs[id]
   }
@@ -564,34 +481,8 @@
               <div class="empty-state compact">{$t.gitInspector.diff.selectFile}</div>
             {:else if diffLines.length === 0}
               <div class="empty-state compact">{$t.gitInspector.diff.empty}</div>
-            {:else if diffMode === 'split'}
-              <div class="diff-table diff-split" aria-label={$t.gitInspector.diff.sideBySideLabel}>
-                {#each diffPairs as pair, idx (idx)}
-                  {@const leftKind = pair.left?.kind ?? 'empty'}
-                  {@const rightKind = pair.right?.kind ?? 'empty'}
-                  <div class="dline dline-{leftKind}">
-                    <span class="dline-num">{pair.left?.oldLine ?? ''}</span>
-                    <span class="dline-sign">{pair.left ? (pair.left.kind === 'del' ? '−' : pair.left.kind === 'hunk' ? '@' : pair.left.kind === 'meta' ? '\\' : ' ') : ''}</span>
-                    <span class="dline-text">{pair.left?.text ?? ''}</span>
-                  </div>
-                  <div class="dline dline-{rightKind}">
-                    <span class="dline-num">{pair.right?.newLine ?? ''}</span>
-                    <span class="dline-sign">{pair.right ? (pair.right.kind === 'add' ? '+' : pair.right.kind === 'hunk' ? '@' : pair.right.kind === 'meta' ? '\\' : ' ') : ''}</span>
-                    <span class="dline-text">{pair.right?.text ?? ''}</span>
-                  </div>
-                {/each}
-              </div>
             {:else}
-              <div class="diff-table diff-unified">
-                {#each diffLines as line, idx (idx)}
-                  <div class="dline dline-{line.kind}">
-                    <span class="dline-num">{line.oldLine ?? ''}</span>
-                    <span class="dline-num">{line.newLine ?? ''}</span>
-                    <span class="dline-sign">{line.kind === 'add' ? '+' : line.kind === 'del' ? '−' : line.kind === 'hunk' ? '@' : line.kind === 'meta' ? '\\' : ' '}</span>
-                    <span class="dline-text">{line.text}</span>
-                  </div>
-                {/each}
-              </div>
+              <DiffView lines={diffLines} mode={diffMode} label={$t.gitInspector.diff.sideBySideLabel} />
             {/if}
           </div>
         {/if}
@@ -1070,117 +961,6 @@
     border-color: var(--primary);
   }
 
-  .diff-table {
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-sm);
-    background: var(--surface-inset);
-    overflow: auto;
-    font-family: var(--font-mono);
-    font-size: var(--text-xs);
-    line-height: 1.5;
-    min-width: 0;
-    min-height: 0;
-    flex: 1 1 auto;
-  }
-
-  .diff-unified {
-    display: grid;
-    grid-template-columns: max-content max-content max-content minmax(0, 1fr);
-  }
-
-  .diff-split {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    gap: 1px;
-    background: var(--border-subtle);
-  }
-
-  .diff-split > .dline {
-    display: grid;
-    grid-template-columns: max-content max-content minmax(0, 1fr);
-    background: var(--surface-inset);
-  }
-
-  .dline {
-    display: contents;
-  }
-
-  .diff-split .dline {
-    display: grid;
-  }
-
-  .dline-num,
-  .dline-sign,
-  .dline-text {
-    padding: 0 var(--space-2);
-    white-space: pre;
-  }
-
-  .dline-num {
-    color: var(--text-ghost);
-    text-align: right;
-    min-width: 2.5ch;
-    user-select: none;
-    background: var(--surface);
-    border-right: 1px solid var(--border-subtle);
-  }
-
-  .dline-sign {
-    color: var(--text-tertiary);
-    user-select: none;
-    text-align: center;
-    padding: 0 var(--space-1);
-  }
-
-  .dline-text {
-    color: var(--text-secondary);
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .dline-add .dline-num,
-  .dline-add .dline-sign,
-  .dline-add .dline-text {
-    background: rgba(34, 197, 94, 0.10);
-  }
-
-  .dline-add .dline-text,
-  .dline-add .dline-sign {
-    color: var(--green, #22c55e);
-  }
-
-  .dline-del .dline-num,
-  .dline-del .dline-sign,
-  .dline-del .dline-text {
-    background: rgba(239, 68, 68, 0.12);
-  }
-
-  .dline-del .dline-text,
-  .dline-del .dline-sign {
-    color: var(--error, #ef4444);
-  }
-
-  .dline-hunk .dline-num,
-  .dline-hunk .dline-sign,
-  .dline-hunk .dline-text {
-    background: var(--surface-elevated);
-    color: var(--primary-text);
-    font-weight: 500;
-  }
-
-  .dline-meta .dline-num,
-  .dline-meta .dline-sign,
-  .dline-meta .dline-text {
-    color: var(--text-tertiary);
-    font-style: italic;
-  }
-
-  .dline-empty .dline-num,
-  .dline-empty .dline-sign,
-  .dline-empty .dline-text {
-    background: var(--surface-base);
-  }
-
   .branch-list,
   .log-list {
     display: grid;
@@ -1501,10 +1281,6 @@
   }
 
   @media (max-width: 600px) {
-    .diff-split {
-      grid-template-columns: minmax(0, 1fr);
-    }
-
     .branch-name {
       max-width: 100%;
     }
