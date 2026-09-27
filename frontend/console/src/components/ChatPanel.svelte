@@ -5,6 +5,8 @@
   import { streamChat, cancelChat, getSessionHistory, renameSession, streamEvents, listChatFileMentions, listAgentRuntimeSubagents, listSkills, listChatTools, getSessionEffectiveConfig, forkSessionFromMessage } from '../lib/api'
   import type { AgentRuntimeSubagent, ChatAttachment, ChatContextInfo, ChatEvent, ChatTier, ChatTierRecommendationRequest, CommandDef, Session, SessionGoal, SessionMessage, SkillDef } from '../lib/types'
   import { chatSession } from '../lib/stores/chatSession'
+  import { changes } from '../lib/stores/changesStore'
+  import { turnCardAnchors } from '../lib/changes'
   import { extractArtifact, extractArtifactsFromHistory, mergeArtifact, type Artifact } from '../lib/artifacts'
   import { buildTierRecommendation, pinnedTierPayload, tierRecommendationPayload, type TierRecommendation } from '../lib/tierRecommendation'
   import {
@@ -27,6 +29,7 @@
   } from '../lib/slash'
   import type { ChatMessage } from '../lib/chatMessages'
   import ChatMessageItem from './ChatMessageItem.svelte'
+  import TurnChangesCard from './TurnChangesCard.svelte'
   import SlashPopover from './SlashPopover.svelte'
 
   interface Props {
@@ -70,6 +73,8 @@
     return $t.chatThread.streaming
   }
   let chatMessages: ChatMessage[] = $state([])
+  // The last message of each turn, mapped to the turn whose change card it carries.
+  let turnCards = $derived(turnCardAnchors(chatMessages))
   let autoTitled = $state(false)
   let autoSendDone = false
   let abortController: AbortController | null = $state(null)
@@ -284,10 +289,33 @@
     void reloadSlashSkillsAndCandidates()
   }
 
-  function handleChatEvent(event: ChatEvent, assistantRef: { id: string }) {
+  function handleChatEvent(event: ChatEvent, assistantRef: { id: string }, userRef?: { id: string }) {
     syncSessionId(event.session_id)
 
     switch (event.type) {
+      case 'turn_started': {
+        // The server's ID for the message just sent: the turn's key for
+        // checkpoints, and a fork point.
+        const serverId = event.user_message_id?.trim()
+        const uIdx = userRef ? chatMessages.findIndex((m) => m.id === userRef.id) : -1
+        if (serverId && uIdx >= 0) {
+          chatMessages[uIdx] = { ...chatMessages[uIdx], sourceMessageId: serverId }
+          chatMessages = [...chatMessages]
+        }
+        break
+      }
+      case 'checkpoint':
+        if (event.session_id && event.user_message_id) {
+          changes.applyEvent({
+            session_id: event.session_id,
+            user_message_id: event.user_message_id,
+            files: event.files ?? 0,
+            additions: event.additions ?? 0,
+            deletions: event.deletions ?? 0,
+            skipped: event.skipped,
+          })
+        }
+        break
       case 'status':
         if (event.phase === 'before_tool_call' && event.tool_name) {
           addUsedToolName(event.tool_name)
@@ -864,7 +892,7 @@
           })),
           tier_recommendation: tierRecommendation,
         },
-        (event) => handleChatEvent(event, assistantRef),
+        (event) => handleChatEvent(event, assistantRef, { id: userId }),
         ac.signal,
       )
     } catch (err) {
@@ -1176,6 +1204,7 @@
       }
     }
     chatMessages = rebuilt
+    void changes.load(targetSessionId)
     artifacts = extractArtifactsFromHistory(chatMessages, targetSessionId)
     if (artifacts.length > 0) chatSession.setArtifacts(artifacts)
   }
@@ -1218,6 +1247,7 @@
       } catch { /* ignore */ }
     } else {
       chatMessages = [{ id: 'system-init', role: 'system', text: $t.chat.systemInit.tars }]
+      void changes.load(null)
     }
     if (initialPrompt && !autoSend) {
       chatInput = initialPrompt
@@ -1291,6 +1321,9 @@
         onForkMessage={handleForkMessage}
         streamingStatus={msg.id === streamingAssistantId ? streamingStatus : null}
       />
+      {#if turnCards.has(msg.id)}
+        <TurnChangesCard turnId={turnCards.get(msg.id) ?? ''} />
+      {/if}
     {/each}
   </div>
   {#if chatError}
@@ -1450,6 +1483,9 @@
 
   .chat-log {
     display: grid;
+    /* One column no wider than the log, so a long tool call or diff line
+       truncates or scrolls inside its own box instead of the whole log. */
+    grid-template-columns: minmax(0, 1fr);
     /* Keep short threads at the top; stretch would inflate each message. */
     align-content: start;
     gap: var(--space-2);

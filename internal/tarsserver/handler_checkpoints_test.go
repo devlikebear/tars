@@ -360,3 +360,46 @@ func waitForTurns(t *testing.T, store *checkpoint.Store, sessionID string, want 
 		time.Sleep(20 * time.Millisecond)
 	}
 }
+
+// The TARS workspace itself holds transcripts, memory, and logs that change
+// on every turn. A session pointed at it gets no checkpoint.
+func TestChatTurnInWorkspaceRootIsNotCheckpointed(t *testing.T) {
+	f := newCheckpointFixture(t)
+	if err := f.sessions.SetWorkDirs(f.sessionID, []string{f.root}, f.root); err != nil {
+		t.Fatal(err)
+	}
+	events := f.chat(t, &workDirEditingClient{}, f.store)
+	if cp := eventOfType(events, "checkpoint"); cp != nil {
+		t.Fatalf("checkpoint for a workspace-root turn: %v", cp)
+	}
+	if turns, err := f.store.List(f.sessionID); err != nil || len(turns) != 0 {
+		t.Fatalf("turns = %v %v, want none", turns, err)
+	}
+}
+
+// A session with no folder of its own works in its artifacts directory,
+// which is recorded like any other.
+func TestChatTurnInArtifactsDirIsCheckpointed(t *testing.T) {
+	f := newCheckpointFixture(t)
+	bare, err := f.sessions.Create("no folder")
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.sessionID = bare.ID
+	events := f.chat(t, &workDirEditingClient{edit: func(dir string) {
+		writeTestFile(t, filepath.Join(dir, "report.md"), "# report\n")
+	}}, f.store)
+	if cp := eventOfType(events, "checkpoint"); cp == nil || cp["files"] != float64(1) {
+		t.Fatalf("checkpoint event = %v, want 1 file", cp)
+	}
+}
+
+func TestSameDir(t *testing.T) {
+	dir := t.TempDir()
+	if !sameDir(dir, dir+string(filepath.Separator)) || !sameDir(dir, filepath.Join(dir, "x", "..")) {
+		t.Fatal("equivalent spellings of one directory differ")
+	}
+	if sameDir(dir, filepath.Join(dir, "sub")) || sameDir("", dir) || sameDir(dir, " ") {
+		t.Fatal("different or empty directories match")
+	}
+}

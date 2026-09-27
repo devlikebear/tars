@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -22,6 +23,12 @@ const checkpointEndTimeout = 2 * time.Minute
 func beginChatCheckpoint(ctx context.Context, deps chatHandlerDeps, state chatRunState, preview string) *checkpoint.Turn {
 	store := deps.tooling.Checkpoints
 	if store == nil || state.turnID == "" || strings.TrimSpace(state.cwd) == "" {
+		return nil
+	}
+	// A session without a folder of its own works in the TARS workspace,
+	// whose transcripts, memory, and logs change on every turn. That is
+	// TARS's data, not the user's project: leave it out.
+	if sameDir(state.cwd, state.requestWorkspaceDir) {
 		return nil
 	}
 	turn, err := store.BeginTurn(ctx, state.sessionID, state.turnID, state.cwd, preview)
@@ -89,6 +96,23 @@ func attachCheckpointCleanup(store *checkpoint.Store, sessions *session.Store, l
 			logger.Warn().Err(err).Msg("checkpoint: sweep failed")
 		}
 	}()
+}
+
+// sameDir reports whether two paths name the same directory, ignoring case
+// where the file system does.
+func sameDir(a, b string) bool {
+	if strings.TrimSpace(a) == "" || strings.TrimSpace(b) == "" {
+		return false
+	}
+	absA, errA := filepath.Abs(a)
+	absB, errB := filepath.Abs(b)
+	if errA != nil || errB != nil {
+		return false
+	}
+	if runtime.GOOS == "windows" || runtime.GOOS == "darwin" {
+		return strings.EqualFold(absA, absB)
+	}
+	return absA == absB
 }
 
 // isSessionNotFound matches the session store's not-found errors, which are

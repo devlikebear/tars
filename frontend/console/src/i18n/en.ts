@@ -5,6 +5,7 @@ import { chatCommandsEn } from './sections/chatCommands.ts'
 import { chatThreadEn } from './sections/chatThread.ts'
 import { sessionConfigEn } from './sections/sessionConfig.ts'
 import { gitInspectorEn } from './sections/gitInspector.ts'
+import { changesEn } from './sections/changes.ts'
 import { artifactPanelEn } from './sections/artifactPanel.ts'
 import { skillInboxEn } from './sections/skillInbox.ts'
 import { sessionCronEn } from './sections/sessionCron.ts'
@@ -566,6 +567,8 @@ export const en = {
       tasksCount: (done, total) => ` (${done}/${total})`,
       git: 'Git',
       gitTooltip: 'Git Inspector',
+      changes: 'Changes',
+      changesTooltip: 'What each turn changed',
       skills: 'Skills',
       skillsTooltip: 'Skill Extraction Inbox',
       skillsInbox: 'Skill Inbox',
@@ -1645,6 +1648,7 @@ export const en = {
   chatThread: chatThreadEn,
   sessionConfig: sessionConfigEn,
   gitInspector: gitInspectorEn,
+  changes: changesEn,
   artifactPanel: artifactPanelEn,
   skillInbox: skillInboxEn,
   sessionCron: sessionCronEn,

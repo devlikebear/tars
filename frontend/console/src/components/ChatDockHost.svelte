@@ -331,6 +331,15 @@
         onClose={() => closePanel(panelID)}
         onSendMessage={async (text) => { await onSendMessage(text) }}
       />
+    {:else if panelID === 'changes' && selectedSessionId}
+      {#await loadChatComponent('changes-panel')}
+        <div class="dock-empty">{$t.dock.loading}</div>
+      {:then module}
+        {@const ChangesPanelRoute = module.default}
+        <ChangesPanelRoute sessionId={selectedSessionId} onClose={() => closePanel(panelID)} />
+      {:catch}
+        <div class="dock-empty">{$t.chat.panels.dockEmpty}</div>
+      {/await}
     {:else if panelID === 'git' && selectedSessionId}
       <GitInspector sessionId={selectedSessionId} onClose={() => closePanel(panelID)} />
     {:else if panelID === 'skillExtraction' && selectedSessionId}
