@@ -3,8 +3,8 @@ package tarsserver
 import (
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"time"
 
@@ -98,21 +98,15 @@ func attachCheckpointCleanup(store *checkpoint.Store, sessions *session.Store, l
 	}()
 }
 
-// sameDir reports whether two paths name the same directory, ignoring case
-// where the file system does.
+// sameDir reports whether two paths name the same existing directory. The
+// file system decides, so case-insensitive volumes and links match.
 func sameDir(a, b string) bool {
 	if strings.TrimSpace(a) == "" || strings.TrimSpace(b) == "" {
 		return false
 	}
-	absA, errA := filepath.Abs(a)
-	absB, errB := filepath.Abs(b)
-	if errA != nil || errB != nil {
-		return false
-	}
-	if runtime.GOOS == "windows" || runtime.GOOS == "darwin" {
-		return strings.EqualFold(absA, absB)
-	}
-	return absA == absB
+	infoA, errA := os.Stat(a)
+	infoB, errB := os.Stat(b)
+	return errA == nil && errB == nil && os.SameFile(infoA, infoB)
 }
 
 // isSessionNotFound matches the session store's not-found errors, which are

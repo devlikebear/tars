@@ -396,10 +396,13 @@ func TestChatTurnInArtifactsDirIsCheckpointed(t *testing.T) {
 
 func TestSameDir(t *testing.T) {
 	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, "x"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	if !sameDir(dir, dir+string(filepath.Separator)) || !sameDir(dir, filepath.Join(dir, "x", "..")) {
 		t.Fatal("equivalent spellings of one directory differ")
 	}
-	if sameDir(dir, filepath.Join(dir, "sub")) || sameDir("", dir) || sameDir(dir, " ") {
+	if sameDir(dir, filepath.Join(dir, "x")) || sameDir(dir, filepath.Join(dir, "missing")) || sameDir("", dir) || sameDir(dir, " ") {
 		t.Fatal("different or empty directories match")
 	}
 }
