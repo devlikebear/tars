@@ -6,6 +6,8 @@
   import AgentRuntimeGantt from './AgentRuntimeGantt.svelte'
   import AgentRuntimeReplay from './AgentRuntimeReplay.svelte'
   import AgentRuntimeTree from './AgentRuntimeTree.svelte'
+  import DiffView from './DiffView.svelte'
+  import { parseUnifiedDiff } from '../lib/diff'
   import {
     applyAgentRuntimeSubagentDraft,
     archiveAgentRuntimeSubagent,
@@ -1470,7 +1472,11 @@
                       </div>
                       <details class="diff-preview" open={entry.files?.length === 1}>
                         <summary>{$t.agentRuntimeRun.diffTimeline.preview}</summary>
-                        <pre>{file.patch || $t.agentRuntimeRun.diffTimeline.noPatch}</pre>
+                        {#if file.patch}
+                          <DiffView lines={parseUnifiedDiff(file.patch)} />
+                        {:else}
+                          <pre>{$t.agentRuntimeRun.diffTimeline.noPatch}</pre>
+                        {/if}
                       </details>
                     </article>
                   {/each}
