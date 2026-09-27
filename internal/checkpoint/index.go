@@ -53,7 +53,7 @@ var safeID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
 
 func validID(kind, id string) error {
 	if !safeID.MatchString(id) || id == "." || id == ".." {
-		return fmt.Errorf("checkpoint: invalid %s id %q", kind, id)
+		return fmt.Errorf("%w: %s id %q", ErrInvalid, kind, id)
 	}
 	return nil
 }

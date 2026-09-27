@@ -103,6 +103,13 @@ func ReadMessages(path string) ([]Message, error) {
 	return messages, nil
 }
 
+// NewMessageID mints the kind of ID AppendMessage assigns, so a caller can
+// know a message's ID before saving it. A chat turn is keyed by the ID of
+// the user message that starts it.
+func NewMessageID(at time.Time) (string, error) {
+	return newUUIDv7(at)
+}
+
 func ensurePersistedMessageID(msg Message) (Message, error) {
 	msg.ID = strings.TrimSpace(msg.ID)
 	if msg.ID != "" {

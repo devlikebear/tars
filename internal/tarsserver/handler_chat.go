@@ -12,6 +12,7 @@ import (
 
 	"github.com/devlikebear/tars/internal/agent"
 	"github.com/devlikebear/tars/internal/agentruntime"
+	"github.com/devlikebear/tars/internal/checkpoint"
 	"github.com/devlikebear/tars/internal/config"
 	"github.com/devlikebear/tars/internal/extensions"
 	"github.com/devlikebear/tars/internal/llm"
@@ -1136,6 +1137,9 @@ type chatToolingOptions struct {
 	// into an EffectiveConfig used for tool gating and prompt override.
 	// nil disables overrides (chat falls back to raw session fields).
 	OverrideService *sessionoverride.Service
+	// Checkpoints records each chat turn's changes to the session's work
+	// tree (#969). nil disables checkpoints.
+	Checkpoints *checkpoint.Store
 }
 
 type chatCompactionOptions struct {

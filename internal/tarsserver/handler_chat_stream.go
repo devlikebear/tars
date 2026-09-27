@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/devlikebear/tars/internal/checkpoint"
 	"github.com/devlikebear/tars/internal/llm"
 	"github.com/devlikebear/tars/internal/session"
 	"github.com/rs/zerolog"
@@ -15,7 +16,10 @@ type chatStreamWriter struct {
 	w         http.ResponseWriter
 	flusher   http.Flusher
 	sessionID string
-	logger    zerolog.Logger
+	// turnID is the user message that started the turn; the closing events
+	// carry it so the console can find the turn without reloading history.
+	turnID string
+	logger zerolog.Logger
 }
 
 func newChatStreamWriter(w http.ResponseWriter, sessionID string, logger zerolog.Logger) *chatStreamWriter {
@@ -230,10 +234,30 @@ func (s *chatStreamWriter) compactionApplied(info map[string]any) {
 	s.send(info)
 }
 
+// turnStarted names the user message that starts this turn.
+func (s *chatStreamWriter) turnStarted(turnID string) {
+	s.turnID = turnID
+	s.send(map[string]any{"type": "turn_started", "session_id": s.sessionID, "user_message_id": turnID})
+}
+
+// checkpoint reports what the turn changed in the session's work tree.
+func (s *chatStreamWriter) checkpoint(entry checkpoint.Entry) {
+	s.send(map[string]any{
+		"type":            "checkpoint",
+		"session_id":      s.sessionID,
+		"user_message_id": entry.TurnID,
+		"files":           entry.Files,
+		"additions":       entry.Additions,
+		"deletions":       entry.Deletions,
+		"skipped":         entry.Skipped,
+	})
+}
+
 func (s *chatStreamWriter) done(usage llm.Usage) {
 	s.send(map[string]any{
-		"type":       "done",
-		"session_id": s.sessionID,
+		"type":            "done",
+		"session_id":      s.sessionID,
+		"user_message_id": s.turnID,
 		"usage": map[string]int{
 			"input_tokens":       usage.InputTokens,
 			"output_tokens":      usage.OutputTokens,

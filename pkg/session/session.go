@@ -267,6 +267,7 @@ type Store struct {
 	dir            string
 	tasksSavedMu   sync.RWMutex
 	tasksSavedHook func(sessionID string, tasks SessionTasks)
+	deletedHook    func(sessionID string)
 }
 
 // ForkOptions controls how a child session is created from an existing
@@ -293,6 +294,28 @@ func (s *Store) SetTasksSavedHook(hook func(sessionID string, tasks SessionTasks
 	s.tasksSavedMu.Lock()
 	s.tasksSavedHook = hook
 	s.tasksSavedMu.Unlock()
+}
+
+// SetDeleteHook installs an observer that runs after a session is deleted,
+// so data kept elsewhere for the session (turn checkpoints, for one) can go
+// with it. It runs synchronously while the index lock is held: hand slow work
+// to a goroutine.
+func (s *Store) SetDeleteHook(hook func(sessionID string)) {
+	if s == nil {
+		return
+	}
+	s.tasksSavedMu.Lock()
+	s.deletedHook = hook
+	s.tasksSavedMu.Unlock()
+}
+
+func (s *Store) notifyDeleted(sessionID string) {
+	s.tasksSavedMu.RLock()
+	hook := s.deletedHook
+	s.tasksSavedMu.RUnlock()
+	if hook != nil {
+		hook(sessionID)
+	}
 }
 
 func (s *Store) notifyTasksSaved(sessionID string, tasks SessionTasks) {
@@ -1510,6 +1533,7 @@ func (s *Store) Delete(id string) error {
 	}
 
 	_ = os.Remove(s.TranscriptPath(id))
+	s.notifyDeleted(id)
 
 	return nil
 }

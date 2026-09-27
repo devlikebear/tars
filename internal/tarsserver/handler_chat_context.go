@@ -63,6 +63,9 @@ type chatRunState struct {
 	// directory, the same primary directory TARS's own file tools resolve
 	// against. CLI providers run there.
 	cwd string
+	// turnID is the ID of the user message that starts the turn. It keys
+	// the turn's checkpoint and is sent to the console before and after.
+	turnID string
 }
 
 func decodeChatRequestPayload(w http.ResponseWriter, r *http.Request) (chatRequestPayload, bool) {
@@ -396,10 +399,16 @@ func prepareChatRunState(r *http.Request, req chatRequestPayload, deps chatHandl
 	}
 
 	userMsg := session.Message{Role: "user", Content: req.Message, Timestamp: time.Now().UTC()}
+	// Known before saving, so the turn's checkpoint and the console can
+	// refer to this message.
+	if id, idErr := session.NewMessageID(userMsg.Timestamp); idErr == nil {
+		userMsg.ID = id
+	}
 	if err := session.AppendMessage(transcriptPath, userMsg); err != nil {
 		deps.logger.Error().Err(err).Msg("append user message failed")
 		return chatRunState{}, http.StatusInternalServerError, "save message failed", err
 	}
+	state.turnID = userMsg.ID
 
 	return state, 0, "", nil
 }

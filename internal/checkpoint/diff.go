@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	gopath "path"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -74,6 +75,14 @@ func (s *Store) Diff(ctx context.Context, sessionID, turnID string, scope Scope,
 	if err := validID("session", sessionID); err != nil {
 		return DiffResult{}, err
 	}
+	switch scope {
+	case ScopeTurn, ScopeSession, ScopeSince, "":
+	default:
+		return DiffResult{}, fmt.Errorf("%w: unknown scope %q", ErrInvalid, scope)
+	}
+	if err := validDiffPath(path); err != nil {
+		return DiffResult{}, err
+	}
 	idx, err := s.readIndex(sessionID)
 	if err != nil {
 		return DiffResult{}, err
@@ -114,8 +123,6 @@ func (s *Store) Diff(ctx context.Context, sessionID, turnID string, scope Scope,
 		}
 		result.To = snap.commit
 		unknown = mergeSorted(unknown, snap.unknown)
-	default:
-		return DiffResult{}, fmt.Errorf("checkpoint: unknown scope %q", scope)
 	}
 	result.Unknown = unknown
 	files, err := s.diffFiles(ctx, sh, result.From, result.To, path, unknown)
@@ -124,6 +131,18 @@ func (s *Store) Diff(ctx context.Context, sessionID, turnID string, scope Scope,
 	}
 	result.Files = files
 	return result, nil
+}
+
+// validDiffPath accepts a root-relative, slash-separated file path, the form
+// diffs report paths in.
+func validDiffPath(path string) error {
+	if path == "" {
+		return nil
+	}
+	if strings.Contains(path, "\\") || gopath.IsAbs(path) || gopath.Clean(path) != path || path == ".." || strings.HasPrefix(path, "../") || filepath.VolumeName(path) != "" {
+		return fmt.Errorf("%w: path %q is not root-relative", ErrInvalid, path)
+	}
+	return nil
 }
 
 func firstStart(turns []Entry, shadow string) string {
