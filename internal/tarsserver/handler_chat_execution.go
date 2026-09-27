@@ -82,12 +82,16 @@ func executeChatLoop(
 	}
 
 	chatResp, err := loop.Run(ctx, state.llmMessages, agent.RunOptions{
-		MaxIterations:            deps.maxIters,
-		Tools:                    state.injectedSchemas,
-		BlockedTools:             state.blockedTools,
-		ToolChoice:               state.toolChoice,
-		OnTurnEnd:                onTurnEnd,
-		ResumeSessionID:          resumeID,
+		MaxIterations:   deps.maxIters,
+		Tools:           state.injectedSchemas,
+		BlockedTools:    state.blockedTools,
+		ToolChoice:      state.toolChoice,
+		OnTurnEnd:       onTurnEnd,
+		ResumeSessionID: resumeID,
+		// The session resumes this upstream session next turn, so the first
+		// call must save it; and the CLI works in the session's directory.
+		PersistUpstreamSession:   true,
+		WorkDir:                  state.cwd,
 		ClaudeCodeMCPServers:     state.claudeCodeMCPServers,
 		ClaudeCodePermissionMode: permissionMode,
 		ClaudeCodeSkills:         state.claudeCodeSkills,

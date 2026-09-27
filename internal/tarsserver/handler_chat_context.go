@@ -59,6 +59,10 @@ type chatRunState struct {
 	// pipeline as the chat prompt) converted for claude-code-cli's
 	// --plugin-dir materialization. nil when no skills apply.
 	claudeCodeSkills []llm.ClaudeCodeSkill
+	// cwd is the directory the turn works in: the session's current
+	// directory, the same primary directory TARS's own file tools resolve
+	// against. CLI providers run there.
+	cwd string
 }
 
 func decodeChatRequestPayload(w http.ResponseWriter, r *http.Request) (chatRequestPayload, bool) {
@@ -256,6 +260,7 @@ func buildSessionChatRunState(
 		Msg("tool injection result")
 
 	return chatRunState{
+		cwd:                   policy.PrimaryDir,
 		requestWorkspaceDir:   requestWorkspaceDir,
 		workspaceID:           workspaceID,
 		store:                 reqStore,
