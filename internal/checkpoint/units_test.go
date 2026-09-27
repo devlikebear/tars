@@ -123,7 +123,8 @@ func TestErrorMessages(t *testing.T) {
 
 func TestShadowRefusesAnotherRootsDirectory(t *testing.T) {
 	s := newTestStore(t, Options{})
-	root := t.TempDir()
+	// Roots reach shadow() canonical, as ResolveRoot returns them.
+	root := canonicalPath(t.TempDir())
 	gitDir := filepath.Join(s.dir, "shadow", shadowKey(root)+".git")
 	if err := os.MkdirAll(gitDir, 0o755); err != nil {
 		t.Fatal(err)

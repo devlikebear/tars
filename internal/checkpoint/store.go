@@ -67,6 +67,9 @@ func Open(dir string, opts Options) (*Store, error) {
 			return nil, fmt.Errorf("checkpoint: create %s: %w", sub, err)
 		}
 	}
+	// Roots are canonical (see ResolveRoot); the store's own path must be
+	// too, or a store inside a root would not be recognized and excluded.
+	abs = canonicalPath(abs)
 	limits := opts.Limits
 	if limits == (Limits{}) {
 		limits = DefaultLimits
