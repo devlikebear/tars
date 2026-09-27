@@ -2,9 +2,43 @@
 //
 // Answers POST /v1/chat/completions with "Echo: <last user message>", either
 // as an SSE stream (chunked deltas, usage, [DONE]) or a single JSON body, so
-// specs can assert exact assistant text without a real provider. No tools.
+// specs can assert exact assistant text without a real provider.
+//
+// A message containing [e2e:write3] makes it act like an agent that edits
+// files: it calls write_file three times (base.txt changed in two places,
+// two new files). It keeps no state, so once the tool results come back it
+// answers "Wrote N files." Specs seed base.txt with lines "line 1" to
+// "line 20" (see e2e/changes.spec.ts).
 
 import { createServer } from 'node:http'
+
+const WRITE3 = '[e2e:write3]'
+
+function numberedLines(edit = {}) {
+  return Array.from({ length: 20 }, (_, i) => edit[i + 1] ?? `line ${i + 1}`).join('\n') + '\n'
+}
+
+const write3Calls = [
+  { path: 'base.txt', content: numberedLines({ 2: 'line 2 edited', 19: 'line 19 edited' }) },
+  { path: 'notes.md', content: '# Notes\n\nWritten by the E2E agent.\n' },
+  { path: 'src/app.txt', content: 'app v1\n' },
+].map((args, i) => ({
+  id: `call_e2e_${i + 1}`,
+  type: 'function',
+  function: { name: 'write_file', arguments: JSON.stringify(args) },
+}))
+
+// Tool results that end the conversation so far, i.e. this call follows the
+// tools the mock asked for.
+function trailingToolResults(messages) {
+  let count = 0
+  for (let i = messages.length - 1; i >= 0 && messages[i]?.role === 'tool'; i--) count++
+  return count
+}
+
+function offersTool(body, name) {
+  return (body.tools ?? []).some((tool) => tool?.function?.name === name)
+}
 
 const port = Number(process.env.TARS_E2E_MOCK_LLM_PORT || 43291)
 
@@ -47,8 +81,14 @@ async function handleCompletion(req, res) {
   let body = {}
   try { body = JSON.parse(raw || '{}') } catch { /* treat as empty */ }
   const model = body.model || 'e2e-model'
-  const reply = replyFor(body)
-  if (process.env.TARS_E2E_MOCK_LLM_DEBUG) console.error(JSON.stringify(body.messages?.slice(-1)))
+  const messages = body.messages ?? []
+  if (process.env.TARS_E2E_MOCK_LLM_DEBUG) console.error(JSON.stringify(messages.slice(-1)))
+  const toolResults = trailingToolResults(messages)
+  if (toolResults === 0 && lastUserText(messages).includes(WRITE3) && offersTool(body, 'write_file')) {
+    sendToolCalls(res, model, body.stream, write3Calls)
+    return
+  }
+  const reply = toolResults > 0 ? `Wrote ${toolResults} files.` : replyFor(body)
 
   if (!body.stream) {
     res.writeHead(200, { 'content-type': 'application/json' })
@@ -71,6 +111,30 @@ async function handleCompletion(req, res) {
     await new Promise((r) => setTimeout(r, 15))
   }
   res.write(chunk(model, {}, 'stop'))
+  res.write(`data: ${JSON.stringify({ id: 'chatcmpl-e2e', object: 'chat.completion.chunk', created: 0, model, choices: [], usage })}\n\n`)
+  res.write('data: [DONE]\n\n')
+  res.end()
+}
+
+function sendToolCalls(res, model, stream, calls) {
+  if (!stream) {
+    res.writeHead(200, { 'content-type': 'application/json' })
+    res.end(JSON.stringify({
+      id: 'chatcmpl-e2e',
+      object: 'chat.completion',
+      created: 0,
+      model,
+      choices: [{ index: 0, message: { role: 'assistant', content: null, tool_calls: calls }, finish_reason: 'tool_calls' }],
+      usage,
+    }))
+    return
+  }
+  res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive' })
+  res.write(chunk(model, { role: 'assistant', content: null }))
+  calls.forEach((call, index) => {
+    res.write(chunk(model, { tool_calls: [{ index, ...call }] }))
+  })
+  res.write(chunk(model, {}, 'tool_calls'))
   res.write(`data: ${JSON.stringify({ id: 'chatcmpl-e2e', object: 'chat.completion.chunk', created: 0, model, choices: [], usage })}\n\n`)
   res.write('data: [DONE]\n\n')
   res.end()

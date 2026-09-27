@@ -4,6 +4,7 @@ import type { ChatCommandsTranslations } from './sections/chatCommands.ts'
 import type { ChatThreadTranslations } from './sections/chatThread.ts'
 import type { SessionConfigTranslations } from './sections/sessionConfig.ts'
 import type { GitInspectorTranslations } from './sections/gitInspector.ts'
+import type { ChangesTranslations } from './sections/changes.ts'
 import type { ArtifactPanelTranslations } from './sections/artifactPanel.ts'
 import type { SkillInboxTranslations } from './sections/skillInbox.ts'
 import type { SessionCronTranslations } from './sections/sessionCron.ts'
@@ -551,6 +552,8 @@ export type Translations = {
       tasksCount: (done: number, total: number) => string
       git: string
       gitTooltip: string
+      changes: string
+      changesTooltip: string
       skills: string
       skillsTooltip: string
       skillsInbox: string
@@ -1586,6 +1589,7 @@ export type Translations = {
   chatThread: ChatThreadTranslations
   sessionConfig: SessionConfigTranslations
   gitInspector: GitInspectorTranslations
+  changes: ChangesTranslations
   artifactPanel: ArtifactPanelTranslations
   skillInbox: SkillInboxTranslations
   sessionCron: SessionCronTranslations

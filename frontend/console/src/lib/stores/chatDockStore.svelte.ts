@@ -24,7 +24,7 @@ import {
   type DockZone,
 } from '../dock/layout'
 
-export type ChatDockPanelID = 'sessions' | 'artifacts' | 'config' | 'context' | 'prompt' | 'prior' | 'tasks' | 'git' | 'skillExtraction' | 'cron' | 'health' | 'terminal'
+export type ChatDockPanelID = 'sessions' | 'artifacts' | 'config' | 'context' | 'prompt' | 'prior' | 'tasks' | 'changes' | 'git' | 'skillExtraction' | 'cron' | 'health' | 'terminal'
 export type ToolDockPanelID = Exclude<ChatDockPanelID, 'sessions'>
 
 export const chatDockPanels: DockPanelDefinition[] = [
@@ -35,6 +35,7 @@ export const chatDockPanels: DockPanelDefinition[] = [
   { id: 'prompt', title: 'prompt', defaultZone: 'right' },
   { id: 'prior', title: 'prior', defaultZone: 'right' },
   { id: 'tasks', title: 'tasks', defaultZone: 'right' },
+  { id: 'changes', title: 'changes', defaultZone: 'right' },
   { id: 'git', title: 'git', defaultZone: 'right' },
   { id: 'skillExtraction', title: 'skillExtraction', defaultZone: 'right' },
   { id: 'cron', title: 'cron', defaultZone: 'right' },
@@ -51,6 +52,7 @@ export const chatDockPanelTitleKeys = {
   prompt: 'prompt',
   prior: 'priorFull',
   tasks: 'tasks',
+  changes: 'changes',
   git: 'git',
   skillExtraction: 'skillsInbox',
   cron: 'cron',
@@ -58,7 +60,7 @@ export const chatDockPanelTitleKeys = {
   terminal: 'terminal',
 } as const satisfies Record<ChatDockPanelID, string>
 
-const toolPanels: ToolDockPanelID[] = ['artifacts', 'config', 'context', 'prompt', 'prior', 'tasks', 'git', 'skillExtraction', 'cron', 'health', 'terminal']
+const toolPanels: ToolDockPanelID[] = ['artifacts', 'config', 'context', 'prompt', 'prior', 'tasks', 'changes', 'git', 'skillExtraction', 'cron', 'health', 'terminal']
 // Panels that count as "the user is looking at a tool" (the terminal does not).
 const inspectorPanels: ToolDockPanelID[] = toolPanels.filter((id) => id !== 'terminal')
 

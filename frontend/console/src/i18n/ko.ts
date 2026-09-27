@@ -5,6 +5,7 @@ import { chatCommandsKo } from './sections/chatCommands.ts'
 import { chatThreadKo } from './sections/chatThread.ts'
 import { sessionConfigKo } from './sections/sessionConfig.ts'
 import { gitInspectorKo } from './sections/gitInspector.ts'
+import { changesKo } from './sections/changes.ts'
 import { artifactPanelKo } from './sections/artifactPanel.ts'
 import { skillInboxKo } from './sections/skillInbox.ts'
 import { sessionCronKo } from './sections/sessionCron.ts'
@@ -566,6 +567,8 @@ export const ko = {
       tasksCount: (done, total) => ` (${done}/${total})`,
       git: 'Git',
       gitTooltip: 'Git 인스펙터',
+      changes: '변경 사항',
+      changesTooltip: '턴마다 바뀐 파일',
       skills: '스킬',
       skillsTooltip: '스킬 추출 인박스',
       skillsInbox: '스킬 인박스',
@@ -1643,6 +1646,7 @@ export const ko = {
   chatThread: chatThreadKo,
   sessionConfig: sessionConfigKo,
   gitInspector: gitInspectorKo,
+  changes: changesKo,
   artifactPanel: artifactPanelKo,
   skillInbox: skillInboxKo,
   sessionCron: sessionCronKo,

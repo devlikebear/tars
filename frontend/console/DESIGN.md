@@ -261,7 +261,7 @@ This describes the target. Each item names the phase that delivers it.
   | System | Approvals, Pulse, Reflection, Cron, Logs, Analytics, Settings |
 
   Nav paths and role gating come from the palette's page table (`lib/commands.ts`), so the nav, the palette, and `App.svelte`'s gating cannot drift apart. The `user` role sees only the pages it can open (Chat, Agent Runtime, Memory, System Prompt), and groups left empty are dropped. The active item is the one whose view the router resolves for the current path, so aliases such as `/console/ops` highlight Approvals. Home, Lineage, Plans, Channels, and the setup wizard keep their routes and are reached through `⌘K` and in-context links.
-- **Diffs and approvals stay in the conversation** (P1 #969, P2 #970). Reviewing a change or approving a tool call never requires leaving the chat. The UI does not branch on provider; one event shape serves every provider.
+- **Diffs and approvals stay in the conversation** (P1 #969, P2 #970). Reviewing a change or approving a tool call never requires leaving the chat. The UI does not branch on provider; one event shape serves every provider. Shipped so far: turn checkpoints for every provider, the Changes panel, and the change card under each turn (read-only; see Components). Revert and review notes come next.
 - **Chat header budget** (P0, shipped). The header above the conversation now holds the title, health and goal chips, the session menu, and one **work strip** (plan progress on the left, workbench jumps on the right; hidden when both are empty). The pulse mini-dashboard is gone; Pulse has its own page.
 - **Panel rail** (P0, shipped, `ChatRail.svelte`). The eleven text toggles became a 44px icon rail on the workbench's right edge: one icon per dock panel with an `aria-label` and tooltip, count badges for files, tasks, and health issues, and the active panel marked like the palette's selected row (`surface-active` plus a 2px `primary` edge). `⌘K` leads the rail: the floating companion pet sits over the rail's bottom end, and the palette reaches everything the rail omits. Below 900px the rail becomes a scrolling row above the chat.
 - **Dock tabs** (P0, shipped, `lib/dock/layout.ts`). A zone keeps every panel opened in it as a tab instead of replacing one panel with the next, so opening Git no longer closes Tasks. With two or more tabs, the panel header shows them as a strip in place of the title. The top tab takes the active-tab border (Elevation rule 3), and each closeable tab has its own ×. A rail icon or palette entry brings a covered tab to the front and closes only a panel that is already on screen, so the rail marks what is visible, not what is open. Tabs and the top tab of each zone survive a reload, except the terminal: its shells end with the page, so it is not restored. A covered terminal stays mounted under `visibility: hidden`, which keeps its shell running and its size unchanged.
@@ -489,6 +489,24 @@ Cards are the primary chunking device. When you want users to perceive "these th
 ### CWD chip (composer status bar)
 
 Sits in the status bar under the composer (it lived in the session header until #968). Compact mono chip (3px / `space-2` padding, `radius-sm`) that shrinks and truncates before crowding the bar. The active path renders in **`primary` (green)** with `font-mono`, prefixed by the dimmed label `cwd`. Click toggles a `position: absolute` dropdown that opens upward from the chip's right edge, listing every eligible cwd; the active row also reads in green with a small bullet marker. Disabled state uses `opacity 0.7` while a transition is in flight. The chip is hidden until the session has loaded (no eligible-cwd payload → no chip), so empty states never show a phantom widget.
+
+### Turn change card (chat thread, #969)
+
+Sits under the last message of each turn that changed files, in the thread column (not inside a message bubble, since the Korean E2E reads the card's chrome). It is a `surface` box with a `border-subtle` outline and `radius-md`. Collapsed, it is one line: a caret and the mono `text-xs` summary `3 files +6 −2`, plus a ghost `Open in Changes` button on the right. Expanded, it lists each file as a header row (mono path, status word in `text-tertiary`, `+n` in `success`, `−n` in `error`) above a unified `DiffView`. The body scrolls past 480px. A turn whose recording was skipped shows one dim mono line instead (`± Not recorded: too many files changed`), and a turn that changed nothing shows no card at all. The card is keyed by the turn's user-message ID, so it returns when history reloads.
+
+The chat log is one `minmax(0, 1fr)` grid column, so a wide diff line or tool call scrolls or truncates inside its own box instead of pushing the whole log sideways.
+
+### Changes panel (dock, #969)
+
+A right-zone dock panel (`±` on the rail) that reads the same store as the cards (`lib/stores/changes.svelte.ts`). From top to bottom:
+
+- The heading (the Git Inspector's small caps `section-title`), a two-button segment (`This turn` / `Session so far`), and Refresh.
+- The turns that changed files, newest first. Each is a row with the prompt preview on top and a mono meta line below (summary on the left, time on the right). Skipped turns show their reason in `warning`.
+- The recorded folder.
+- The selected turn's files, as rows with path, status, and counts.
+- The selected file's `DiffView`, with the same Unified/Split toggle as the Git Inspector.
+
+Selected rows take the `primary` border on `surface-elevated`, as in the Git Inspector. It is read-only until the revert work (P1 PR6), which will put hunk actions on the diff's hunk headers.
 
 ### Goal chip (chat session header)
 

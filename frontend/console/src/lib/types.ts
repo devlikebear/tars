@@ -784,6 +784,14 @@ export type APIErrorPayload = {
 
 export type ChatEvent = {
   type: string
+  // turn_started, checkpoint, done: the server's ID for the turn's user
+  // message, which keys its checkpoint.
+  user_message_id?: string
+  // checkpoint: what the turn changed on disk (#969)
+  files?: number
+  additions?: number
+  deletions?: number
+  skipped?: string
   text?: string
   error?: string
   session_id?: string
