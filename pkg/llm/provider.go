@@ -210,6 +210,18 @@ type ChatOptions struct {
 	// back here on subsequent turns. Providers that don't support resume
 	// ignore the field silently.
 	ResumeSessionID string
+	// PersistSession asks a resumable CLI provider to save the upstream
+	// session a fresh call starts, because the caller will pass its ID back
+	// as ResumeSessionID. Without it claude-code-cli runs a fresh call with
+	// --no-session-persistence, which keeps one-shot calls out of ~/.claude
+	// but leaves nothing to resume.
+	PersistSession bool
+	// WorkDir, when set, is the directory a CLI-backed provider runs in for
+	// this call. claude-code-cli uses it as the process working directory, so
+	// its file tools, CLAUDE.md, and .claude settings are the project's; the
+	// provider's configured directory stays available through --add-dir.
+	// Empty keeps the configured directory.
+	WorkDir string
 	// ClaudeCodeMCPServers, when non-empty, asks the claude-code-cli provider
 	// to materialize a Claude Code MCP config file (`{"mcpServers": {...}}`)
 	// for the duration of one Chat call and pass it via `--mcp-config`. Other

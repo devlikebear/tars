@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -113,48 +114,11 @@ func (c *ClaudeCodeCLIClient) Chat(ctx context.Context, messages []ChatMessage, 
 		return ChatResponse{}, fmt.Errorf("%s prompt is empty", claudeCodeCLIProviderLabel)
 	}
 
-	args := []string{
-		"-p",
-		"--output-format", "stream-json",
-		"--verbose",
-		"--permission-mode", resolveClaudeCodePermissionMode(opts.ClaudeCodePermissionMode),
-		"--model", c.model,
-		"--add-dir", c.workDir,
-	}
-	if resumeID != "" {
-		// --resume requires session-persistence to be enabled so Claude Code
-		// can actually load the saved transcript from disk.
-		args = append(args, "--resume", resumeID)
-	} else {
-		args = append(args, "--no-session-persistence")
-	}
-	if mcpPath, cleanup, err := writeClaudeCodeMCPConfigFile(opts.ClaudeCodeMCPServers); err != nil {
-		return ChatResponse{}, newProviderError(claudeCodeCLIProviderLabel, "request", fmt.Errorf("mcp config: %w", err))
-	} else if mcpPath != "" {
-		defer cleanup()
-		args = append(args, "--mcp-config", mcpPath)
-	}
-	if pluginDir, cleanup, err := writeClaudeCodeSkillsPluginDir(opts.ClaudeCodeSkills); err != nil {
-		return ChatResponse{}, newProviderError(claudeCodeCLIProviderLabel, "request", fmt.Errorf("skills plugin: %w", err))
-	} else if pluginDir != "" {
-		defer cleanup()
-		args = append(args, "--plugin-dir", pluginDir)
-	}
-	if settingsPath, cleanup, err := writeClaudeCodeSettingsFile(opts.ClaudeCodePermissionDeny); err != nil {
-		return ChatResponse{}, newProviderError(claudeCodeCLIProviderLabel, "request", fmt.Errorf("settings: %w", err))
-	} else if settingsPath != "" {
-		defer cleanup()
-		args = append(args, "--settings", settingsPath)
-	}
-	var err error
-	args, err = appendClaudeCodeHarnessArgs(args, opts.ClaudeCodeHarness)
+	extra, cleanup, err := c.callArgs(messages, opts)
 	if err != nil {
-		return ChatResponse{}, newProviderError(claudeCodeCLIProviderLabel, "request", err)
+		return ChatResponse{}, err
 	}
-	if systemPrompt := buildClaudeCodeCLISystemPrompt(messages); systemPrompt != "" {
-		args = append(args, "--system-prompt", systemPrompt)
-	}
-	args = append(args, prompt)
+	defer cleanup()
 
 	// Bound the invocation so a hung or slow claude process fails predictably
 	// instead of blocking until some upstream client gives up.
@@ -167,49 +131,147 @@ func (c *ClaudeCodeCLIClient) Chat(ctx context.Context, messages []ChatMessage, 
 		baseEnv = claudeCodeHarnessBaseEnv(baseEnv)
 	}
 	env := claudeCodeCLIEnv(baseEnv)
-
-	attempt := func() (ChatResponse, error) {
-		cmd := exec.CommandContext(ctx, c.cliPath, args...)
-		cmd.Dir = c.workDir
-		cmd.Env = env
-		// On context cancellation, kill the whole descendant tree, not just
-		// the direct child: claude spawns descendants (e.g. stdio MCP servers)
-		// that inherit the stdout pipe, and a surviving descendant holds it
-		// open so the stream read would block past the deadline. The mechanism
-		// is platform-specific (see claude_code_cli_unix.go / _windows.go).
-		configureClaudeCodeCLIProcess(cmd)
-		var stderr bytes.Buffer
-		cmd.Stderr = &stderr
-		stdout, err := cmd.StdoutPipe()
-		if err != nil {
-			return ChatResponse{}, newProviderError(claudeCodeCLIProviderLabel, "request", fmt.Errorf("stdout pipe: %w", err))
-		}
-		if err := cmd.Start(); err != nil {
-			return ChatResponse{}, newProviderError(claudeCodeCLIProviderLabel, "request", fmt.Errorf("start cli: %w", err))
-		}
-
-		resp, parseErr := parseClaudeCodeCLIStream(stdout, opts)
-		waitErr := cmd.Wait()
-		// A deadline kill surfaces as a process/stream error; report it as a
-		// timeout so callers (and the retry policy) can tell it apart from a
-		// transient crash.
-		if ctx.Err() == context.DeadlineExceeded {
-			return ChatResponse{}, newProviderError(claudeCodeCLIProviderLabel, "request", fmt.Errorf("cli timed out after %s", timeout))
-		}
-		if parseErr != nil {
-			return ChatResponse{}, parseErr
-		}
-		if waitErr != nil {
-			errText := strings.TrimSpace(stderr.String())
-			if errText != "" {
-				return ChatResponse{}, newProviderError(claudeCodeCLIProviderLabel, "request", fmt.Errorf("cli failed: %w: %s", waitErr, errText))
-			}
-			return ChatResponse{}, newProviderError(claudeCodeCLIProviderLabel, "request", fmt.Errorf("cli failed: %w", waitErr))
-		}
-		return resp, nil
+	// The CLI works in the caller's directory when given one (a chat
+	// session's cwd), so its file tools, CLAUDE.md, and .claude settings are
+	// the project's. The configured workspace stays reachable via --add-dir.
+	dir := c.workDir
+	if wd := strings.TrimSpace(opts.WorkDir); wd != "" {
+		dir = wd
 	}
 
-	return runClaudeCodeCLIWithRetry(ctx, attempt)
+	run := func(resume, prompt string) (ChatResponse, error) {
+		args := append(c.sessionArgs(opts, resume), extra...)
+		args = append(args, prompt)
+		return runClaudeCodeCLIWithRetry(ctx, func() (ChatResponse, error) {
+			return c.runOnce(ctx, args, dir, env, timeout, opts)
+		})
+	}
+	resp, err := run(resumeID, prompt)
+	if resumeID != "" && errors.Is(err, errClaudeCodeSessionNotFound) {
+		// The upstream session is gone: it was never saved, or Claude Code
+		// cleaned it up. Start a fresh one with the whole transcript so the
+		// turn still succeeds; the caller stores the new session ID.
+		return run("", buildClaudeCodeCLIPrompt(messages))
+	}
+	return resp, err
+}
+
+// errClaudeCodeSessionNotFound reports a --resume of a session the CLI has
+// no transcript for.
+var errClaudeCodeSessionNotFound = errors.New("upstream session not found")
+
+// sessionArgs are the flags that pick the model, permissions, and upstream
+// session. A fresh call saves its session only when the caller will resume
+// it (PersistSession); one-shot calls stay out of ~/.claude.
+func (c *ClaudeCodeCLIClient) sessionArgs(opts ChatOptions, resumeID string) []string {
+	args := []string{
+		"-p",
+		"--output-format", "stream-json",
+		"--verbose",
+		"--permission-mode", resolveClaudeCodePermissionMode(opts.ClaudeCodePermissionMode),
+		"--model", c.model,
+		"--add-dir", c.workDir,
+	}
+	switch {
+	case resumeID != "":
+		// --resume requires session-persistence to be enabled so Claude Code
+		// can actually load the saved transcript from disk.
+		args = append(args, "--resume", resumeID)
+	case !opts.PersistSession:
+		args = append(args, "--no-session-persistence")
+	}
+	return args
+}
+
+// callArgs materializes the per-call files (MCP config, skills plugin,
+// settings) and returns the flags that point at them, plus the harness
+// limits and system prompt. cleanup removes the files.
+func (c *ClaudeCodeCLIClient) callArgs(messages []ChatMessage, opts ChatOptions) ([]string, func(), error) {
+	var args []string
+	var cleanups []func()
+	cleanup := func() {
+		for _, fn := range cleanups {
+			fn()
+		}
+	}
+	fail := func(stage string, err error) ([]string, func(), error) {
+		cleanup()
+		return nil, func() {}, newProviderError(claudeCodeCLIProviderLabel, "request", fmt.Errorf("%s: %w", stage, err))
+	}
+	if mcpPath, done, err := writeClaudeCodeMCPConfigFile(opts.ClaudeCodeMCPServers); err != nil {
+		return fail("mcp config", err)
+	} else if mcpPath != "" {
+		cleanups = append(cleanups, done)
+		args = append(args, "--mcp-config", mcpPath)
+	}
+	if pluginDir, done, err := writeClaudeCodeSkillsPluginDir(opts.ClaudeCodeSkills); err != nil {
+		return fail("skills plugin", err)
+	} else if pluginDir != "" {
+		cleanups = append(cleanups, done)
+		args = append(args, "--plugin-dir", pluginDir)
+	}
+	if settingsPath, done, err := writeClaudeCodeSettingsFile(opts.ClaudeCodePermissionDeny); err != nil {
+		return fail("settings", err)
+	} else if settingsPath != "" {
+		cleanups = append(cleanups, done)
+		args = append(args, "--settings", settingsPath)
+	}
+	args, err := appendClaudeCodeHarnessArgs(args, opts.ClaudeCodeHarness)
+	if err != nil {
+		cleanup()
+		return nil, func() {}, newProviderError(claudeCodeCLIProviderLabel, "request", err)
+	}
+	if systemPrompt := buildClaudeCodeCLISystemPrompt(messages); systemPrompt != "" {
+		args = append(args, "--system-prompt", systemPrompt)
+	}
+	return args, cleanup, nil
+}
+
+// runOnce starts the CLI once and parses its stream.
+func (c *ClaudeCodeCLIClient) runOnce(ctx context.Context, args []string, dir string, env []string, timeout time.Duration, opts ChatOptions) (ChatResponse, error) {
+	cmd := exec.CommandContext(ctx, c.cliPath, args...)
+	cmd.Dir = dir
+	cmd.Env = env
+	// On context cancellation, kill the whole descendant tree, not just
+	// the direct child: claude spawns descendants (e.g. stdio MCP servers)
+	// that inherit the stdout pipe, and a surviving descendant holds it
+	// open so the stream read would block past the deadline. The mechanism
+	// is platform-specific (see claude_code_cli_unix.go / _windows.go).
+	configureClaudeCodeCLIProcess(cmd)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return ChatResponse{}, newProviderError(claudeCodeCLIProviderLabel, "request", fmt.Errorf("stdout pipe: %w", err))
+	}
+	if err := cmd.Start(); err != nil {
+		return ChatResponse{}, newProviderError(claudeCodeCLIProviderLabel, "request", fmt.Errorf("start cli: %w", err))
+	}
+
+	resp, parseErr := parseClaudeCodeCLIStream(stdout, opts)
+	waitErr := cmd.Wait()
+	// A deadline kill surfaces as a process/stream error; report it as a
+	// timeout so callers (and the retry policy) can tell it apart from a
+	// transient crash.
+	if ctx.Err() == context.DeadlineExceeded {
+		return ChatResponse{}, newProviderError(claudeCodeCLIProviderLabel, "request", fmt.Errorf("cli timed out after %s", timeout))
+	}
+	errText := strings.TrimSpace(stderr.String())
+	// Checked before the stream error: a missing session prints nothing to
+	// stdout, so the parser's complaint would hide the reason.
+	if waitErr != nil && strings.Contains(errText, "No conversation found") {
+		return ChatResponse{}, newProviderError(claudeCodeCLIProviderLabel, "request", fmt.Errorf("%w: %s", errClaudeCodeSessionNotFound, errText))
+	}
+	if parseErr != nil {
+		return ChatResponse{}, parseErr
+	}
+	if waitErr != nil {
+		if errText != "" {
+			return ChatResponse{}, newProviderError(claudeCodeCLIProviderLabel, "request", fmt.Errorf("cli failed: %w: %s", waitErr, errText))
+		}
+		return ChatResponse{}, newProviderError(claudeCodeCLIProviderLabel, "request", fmt.Errorf("cli failed: %w", waitErr))
+	}
+	return resp, nil
 }
 
 // runClaudeCodeCLIWithRetry runs attempt once and retries a single time on a
@@ -222,7 +284,9 @@ func (c *ClaudeCodeCLIClient) Chat(ctx context.Context, messages []ChatMessage, 
 // this is accepted in exchange for recovering from one-off process crashes.
 func runClaudeCodeCLIWithRetry(ctx context.Context, attempt func() (ChatResponse, error)) (ChatResponse, error) {
 	resp, err := attempt()
-	if err == nil || ctx.Err() != nil {
+	// A missing upstream session is not transient either: the same --resume
+	// fails the same way, and Chat falls back to a fresh session instead.
+	if err == nil || ctx.Err() != nil || errors.Is(err, errClaudeCodeSessionNotFound) {
 		return resp, err
 	}
 	return attempt()

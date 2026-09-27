@@ -76,7 +76,8 @@ cmd/  →  app layer  →  core layer  →  pkg/
 
 **claude-code-cli provider** (Epic #857):
 - Local `claude` CLI 재사용. `claude -p` / Agent SDK 사용량은 구독 플랜의 **기존 usage limit에서 차감**된다. Anthropic이 2026-05-13에 예고했던 별도 월 크레딧(Pro $20 / Max5x $100 / Max20x $200) 분리는 시행일인 2026-06-15에 보류됐고, 재개 시 사전 공지하겠다고만 밝혔다 — 실제로 시행되기 전까지 코드·문서에 크레딧 관련 안내를 넣지 말 것
-- 멀티턴 비용 절감: 응답의 `session_id`를 `session.Session.UpstreamSessionID`에 저장하고 다음 턴 `ChatOptions.ResumeSessionID`로 다시 넘겨 `--resume`로 처리, 시스템 프롬프트/이전 transcript 재과금 회피
+- 멀티턴 비용 절감: 응답의 `session_id`를 `session.Session.UpstreamSessionID`에 저장하고 다음 턴 `ChatOptions.ResumeSessionID`로 다시 넘겨 `--resume`로 처리, 시스템 프롬프트/이전 transcript 재과금 회피. 채팅 턴은 `ChatOptions.PersistSession`으로 첫 호출부터 세션을 저장한다. 이 옵션이 없으면 `--no-session-persistence`로 실행되어 다음 턴 resume이 'No conversation found'로 실패했다. resume이 그래도 실패하면 재시도하지 않고 전체 transcript로 새 세션을 한 번 시작한다
+- 작업 디렉터리: 채팅 턴은 세션 cwd를 `ChatOptions.WorkDir`로 넘겨 CLI를 그 폴더에서 실행한다. 그래서 그 프로젝트의 CLAUDE.md·`.claude` 설정(훅 포함)·`.mcp.json`을 읽는다. 작업 공간은 `--add-dir`로 계속 접근한다. 다른 폴더에서도 resume된다(Claude Code 2.1.270에서 확인)
 - MCP 자동 주입: 세션-effective MCP 서버 셋을 매 호출마다 임시 `--mcp-config` 파일로 마운트 (`internal/tarsserver/claude_code_cli_mcp.go`의 `toClaudeCodeMCPServers` 변환). websocket transport는 Claude Code 미지원이라 silently drop
 - Permission mode: `llm.claude_code_cli.permission_mode` (`auto`/`default`/`acceptEdits`/`plan`/`dontAsk`/`bypassPermissions`) → `--permission-mode`. 빈 값/오타는 `auto`로 graceful degrade
 - Durable coding harness: `work_ledger.scheduler.external_harness.config_path`가 비어 있지 않을 때만 `claude-code` scheduler adapter를 등록한다. owner-only JSON은 workspace 밖에 두고, 실행은 별도 managed worktree에서 `--safe-mode --strict-mcp-config --no-chrome --permission-mode dontAsk`와 scoped tool/turn/cost 제한을 강제한다. 로컬 Claude 인증은 재사용하지만 임의 env/argv/MCP/plugin/credential 주입은 허용하지 않는다

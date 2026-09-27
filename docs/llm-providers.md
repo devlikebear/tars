@@ -88,6 +88,13 @@ The suite makes no network calls. Live tests live behind `//go:build integration
 
 The two OpenAI surfaces use different envelopes — `internal/llm` exposes a single `ResponseFormat` struct and each client serializes accordingly.
 
+### Claude Code working directory and sessions
+
+- **The CLI runs in the session's directory.** A chat turn passes the session's current directory as `ChatOptions.WorkDir`, which becomes the process working directory. Claude Code therefore reads that project's `CLAUDE.md`, `.claude/settings.json` (hooks included), and `.mcp.json`, just as running `claude` there would. The configured workspace stays reachable through `--add-dir`. Calls without a `WorkDir` still run in the workspace.
+- **Chat turns save their session.** A fresh call normally runs with `--no-session-persistence`, so one-shot calls leave nothing in `~/.claude`. That also left nothing to resume: before this change, every chat's second turn failed its `--resume` with "No conversation found". Chat turns now set `ChatOptions.PersistSession`, so the fresh call saves its session.
+- **A missing session falls back to a fresh one.** If `--resume` still finds nothing, the provider does not retry the resume. That happens with a session saved before this change, or one Claude Code cleaned up. The provider starts a fresh session with the whole transcript instead, and the caller stores the new session ID.
+- **A changed directory does not force a fresh session.** Resuming works from a different directory (checked with Claude Code 2.1.270).
+
 ### Claude Code execution-harness controls
 
 Normal `claude-code-cli` chat keeps the existing session MCP, skill, permission,

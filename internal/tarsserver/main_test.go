@@ -2165,6 +2165,8 @@ type mockLLMClient struct {
 	seenToolCounts  []int
 	seenTools       [][]string
 	seenToolChoices []string
+	seenWorkDirs    []string
+	seenPersist     []bool
 }
 
 func (m *mockLLMClient) Ask(ctx context.Context, prompt string) (string, error) {
@@ -2191,6 +2193,8 @@ func (m *mockLLMClient) Chat(ctx context.Context, messages []llm.ChatMessage, op
 	}
 	m.seenTools = append(m.seenTools, toolNames)
 	m.seenToolChoices = append(m.seenToolChoices, opts.ToolChoice.String())
+	m.seenWorkDirs = append(m.seenWorkDirs, opts.WorkDir)
+	m.seenPersist = append(m.seenPersist, opts.PersistSession)
 
 	resp := m.response
 	if len(m.responses) > 0 {

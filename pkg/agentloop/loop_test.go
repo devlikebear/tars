@@ -19,6 +19,8 @@ type scriptedLLMClient struct {
 	seenToolCounts []int
 	seenToolChoice []string
 	seenResumeIDs  []string
+	seenWorkDirs   []string
+	seenPersist    []bool
 }
 
 func (c *scriptedLLMClient) Ask(ctx context.Context, prompt string) (string, error) {
@@ -34,6 +36,8 @@ func (c *scriptedLLMClient) Chat(ctx context.Context, messages []llm.ChatMessage
 	c.seenToolCounts = append(c.seenToolCounts, len(opts.Tools))
 	c.seenToolChoice = append(c.seenToolChoice, opts.ToolChoice.String())
 	c.seenResumeIDs = append(c.seenResumeIDs, opts.ResumeSessionID)
+	c.seenWorkDirs = append(c.seenWorkDirs, opts.WorkDir)
+	c.seenPersist = append(c.seenPersist, opts.PersistSession)
 	resp := c.responses[c.callIndex]
 	c.callIndex++
 	return resp, nil
@@ -1212,5 +1216,26 @@ func TestLoop_Run_FinalCallKeepsToolsAndSuppressesWithToolChoiceNone(t *testing.
 	}
 	if got := client.seenToolChoice[last]; got != "none" {
 		t.Fatalf("final call must suppress tool use with tool_choice=none, got %q", got)
+	}
+}
+
+// A chat session's directory and its need to resume the upstream session
+// reach every iteration's ChatOptions.
+func TestLoop_Run_ForwardsWorkDirAndPersistence(t *testing.T) {
+	client := &scriptedLLMClient{
+		responses: []llm.ChatResponse{
+			{SessionID: "s1", Message: llm.ChatMessage{Role: "assistant", Content: "ack"}},
+		},
+	}
+	loop := NewLoop(client, tool.NewRegistry())
+	_, err := loop.Run(context.Background(), []llm.ChatMessage{{Role: "user", Content: "hi"}}, RunOptions{
+		WorkDir:                "/repo",
+		PersistUpstreamSession: true,
+	})
+	if err != nil {
+		t.Fatalf("loop run: %v", err)
+	}
+	if len(client.seenWorkDirs) != 1 || client.seenWorkDirs[0] != "/repo" || !client.seenPersist[0] {
+		t.Fatalf("work dirs %v, persist %v", client.seenWorkDirs, client.seenPersist)
 	}
 }

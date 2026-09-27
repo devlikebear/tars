@@ -100,6 +100,13 @@ type RunOptions struct {
 	// auto-update from the previous response's SessionID so the whole loop
 	// stays attached to the same upstream session.
 	ResumeSessionID string
+	// PersistUpstreamSession asks a resumable provider to save the session a
+	// fresh first iteration starts, so later iterations and later turns can
+	// resume it (see llm.ChatOptions.PersistSession).
+	PersistUpstreamSession bool
+	// WorkDir is forwarded to ChatOptions on every iteration: the directory
+	// a CLI-backed provider runs in, such as a chat session's cwd.
+	WorkDir string
 	// ClaudeCodeMCPServers is forwarded to ChatOptions on every iteration so
 	// the claude-code-cli provider can inject the same MCP server set per
 	// turn. Other providers ignore it.
@@ -164,6 +171,8 @@ func (l *Loop) Run(ctx context.Context, initial []llm.ChatMessage, opts RunOptio
 			ToolChoice:               opts.ToolChoice,
 			ResponseFormat:           opts.ResponseFormat,
 			ResumeSessionID:          activeResumeID,
+			PersistSession:           opts.PersistUpstreamSession,
+			WorkDir:                  opts.WorkDir,
 			ClaudeCodeMCPServers:     opts.ClaudeCodeMCPServers,
 			ClaudeCodePermissionMode: opts.ClaudeCodePermissionMode,
 			ClaudeCodeSkills:         opts.ClaudeCodeSkills,
