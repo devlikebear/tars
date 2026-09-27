@@ -105,6 +105,7 @@ var (
 	LoadHistory                       = pkgsession.LoadHistory
 	LoadHistorySnapshot               = pkgsession.LoadHistorySnapshot
 	NewStore                          = pkgsession.NewStore
+	NewMessageID                      = pkgsession.NewMessageID
 	NextEvidenceID                    = pkgsession.NextEvidenceID
 	NextTaskID                        = pkgsession.NextTaskID
 	NormalizeAutoResumeModes          = pkgsession.NormalizeAutoResumeModes

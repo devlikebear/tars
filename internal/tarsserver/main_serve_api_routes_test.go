@@ -214,6 +214,7 @@ func testAPIRouteHandlers(handler, consoleHandler http.Handler) apiRouteHandlers
 		reflection:      handler,
 		chat:            handler,
 		sessions:        handler,
+		checkpoints:     handler,
 		work:            handler,
 		memory:          handler,
 		console:         consoleHandler,
@@ -266,6 +267,32 @@ func TestRegisterAPIRoutes_DoesNotRegisterLegacyKBRoutes(t *testing.T) {
 		mux.ServeHTTP(rec, req)
 		if rec.Code != http.StatusNotFound {
 			t.Fatalf("expected legacy KB route %s to be unregistered, got %d", path, rec.Code)
+		}
+	}
+}
+
+// Checkpoint routes sit under the session prefix and must win over it.
+func TestRegisterAPIRoutes_CheckpointRoutesBeatSessionPrefix(t *testing.T) {
+	mux := http.NewServeMux()
+	handlers := testAPIRouteHandlers(http.NotFoundHandler(), http.NotFoundHandler())
+	handlers.sessions = http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
+	handlers.checkpoints = http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusAccepted)
+	})
+	registerAPIRoutes(mux, handlers)
+
+	for path, want := range map[string]int{
+		"/v1/admin/sessions/s1/checkpoints":            http.StatusAccepted,
+		"/v1/admin/sessions/s1/checkpoints/t1/diff":    http.StatusAccepted,
+		"/v1/admin/sessions/s1/history":                http.StatusNoContent,
+		"/v1/admin/sessions/s1/checkpoints/t1/unknown": http.StatusNoContent,
+	} {
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		if rec.Code != want {
+			t.Errorf("%s: status %d, want %d", path, rec.Code, want)
 		}
 	}
 }

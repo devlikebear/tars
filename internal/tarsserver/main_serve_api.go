@@ -63,6 +63,7 @@ type apiRouteHandlers struct {
 	reflection      http.Handler
 	chat            http.Handler
 	sessions        http.Handler
+	checkpoints     http.Handler
 	work            http.Handler
 	workers         http.Handler
 	memory          http.Handler
@@ -424,6 +425,9 @@ func buildAPIMux(
 	chatTooling.WorkLedger = workLedger
 	overrideService := sessionoverride.NewService(sessionStore)
 	chatTooling.OverrideService = overrideService
+	checkpointStore := openCheckpointStore(cfg.WorkspaceDir, logger)
+	chatTooling.Checkpoints = checkpointStore
+	attachCheckpointCleanup(checkpointStore, sessionStore, logger)
 	chatTooling.AutomationToolsForWorkspace = func(workspaceID string) []tool.Tool {
 		resolvedStore, err := cronStoreResolver.Resolve(defaultWorkspaceID)
 		if err != nil {
@@ -661,6 +665,7 @@ func buildAPIMux(
 		reflection:      reflectionSetup.Handler,
 		chat:            chatHandler,
 		sessions:        sessionHandler,
+		checkpoints:     newCheckpointAPIHandler(checkpointStore, sessionStore, logger),
 		work:            workLedgerHandler,
 		workers:         workerControlPlaneHandler,
 		memory:          memoryHandler,
@@ -768,6 +773,10 @@ func registerAPIRoutes(mux *http.ServeMux, handlers apiRouteHandlers) {
 	mux.Handle("/v1/admin/tasks", handlers.sessions)
 	mux.Handle("/v1/admin/sessions", handlers.sessions)
 	mux.Handle("/v1/admin/sessions/", handlers.sessions)
+	if handlers.checkpoints != nil {
+		mux.Handle("/v1/admin/sessions/{id}/checkpoints", handlers.checkpoints)
+		mux.Handle("/v1/admin/sessions/{id}/checkpoints/{turn}/diff", handlers.checkpoints)
+	}
 	mux.Handle("/v1/admin/plans/archive", handlers.sessions)
 	mux.Handle("/v1/work/works", handlers.work)
 	mux.Handle("/v1/work/works/", handlers.work)

@@ -39,11 +39,16 @@ func TestDiffArgumentsAndFallback(t *testing.T) {
 	if _, err := s.Diff(ctx, "sess", "missing", ScopeTurn, ""); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("missing turn: %v", err)
 	}
-	if _, err := s.Diff(ctx, "sess", "turn", Scope("sideways"), ""); err == nil {
-		t.Fatal("unknown scope accepted")
+	if _, err := s.Diff(ctx, "sess", "turn", Scope("sideways"), ""); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("unknown scope: %v", err)
 	}
-	if _, err := s.Diff(ctx, "../x", "turn", ScopeTurn, ""); err == nil {
-		t.Fatal("bad session id accepted")
+	if _, err := s.Diff(ctx, "../x", "turn", ScopeTurn, ""); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("bad session id: %v", err)
+	}
+	for _, bad := range []string{"/etc/passwd", "../a.txt", "..", "./a.txt", "dir//a.txt", `dir\a.txt`} {
+		if _, err := s.Diff(ctx, "sess", "turn", ScopeTurn, bad); !errors.Is(err, ErrInvalid) {
+			t.Fatalf("path %q: %v", bad, err)
+		}
 	}
 	one, err := s.Diff(ctx, "sess", "turn", "", "b.txt")
 	if err != nil || one.Scope != ScopeTurn || len(one.Files) != 1 || one.Files[0].Path != "b.txt" {

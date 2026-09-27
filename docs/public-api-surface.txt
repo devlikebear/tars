@@ -784,6 +784,7 @@ pkg/session func InheritCriticConfig
 pkg/session func IsTasksInjectionMessage
 pkg/session func LoadHistory
 pkg/session func LoadHistorySnapshot
+pkg/session func NewMessageID
 pkg/session func NewStore
 pkg/session func NextEvidenceID
 pkg/session func NextTaskID
@@ -828,6 +829,7 @@ pkg/session method Store.SetArchived
 pkg/session method Store.SetAutomationConsent
 pkg/session method Store.SetCritic
 pkg/session method Store.SetCurrentDir
+pkg/session method Store.SetDeleteHook
 pkg/session method Store.SetGoal
 pkg/session method Store.SetLastCompactionMode
 pkg/session method Store.SetPinned

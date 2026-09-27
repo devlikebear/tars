@@ -51,6 +51,9 @@ type Store struct {
 // ErrNotFound reports an unknown turn.
 var ErrNotFound = errors.New("checkpoint: turn not found")
 
+// ErrInvalid reports a malformed request: a bad ID, scope, or path.
+var ErrInvalid = errors.New("checkpoint: invalid request")
+
 // Open prepares a store rooted at dir. It fails only when git is missing or
 // dir cannot be created.
 func Open(dir string, opts Options) (*Store, error) {

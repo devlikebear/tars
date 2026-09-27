@@ -99,6 +99,9 @@ func handleChatRequest(w http.ResponseWriter, r *http.Request, deps chatHandlerD
 
 	stream := newChatStreamWriter(w, state.sessionID, deps.logger)
 	stream.status("stream_open", "stream connected", "", "", "", "")
+	if state.turnID != "" {
+		stream.turnStarted(state.turnID)
+	}
 	if state.invokedSkill != nil {
 		stream.skillSelected(state.invokedSkill.Name, state.invokedSkillReason)
 	}
@@ -164,7 +167,10 @@ func handleChatRequest(w http.ResponseWriter, r *http.Request, deps chatHandlerD
 	}
 
 	recordTierRecommendationSignal(deps.tooling.UsageTracker, state, "requested", llm.Usage{})
+	checkpointTurn := beginChatCheckpoint(chatCtx, deps, state, req.Message)
 	chatResp, deltaSent, toolCalls, err := executeChatLoop(chatCtx, deps, state, stream)
+	// Before the outcome branches: an error or a cancel leaves edits on disk too.
+	endChatCheckpoint(chatCtx, checkpointTurn, stream, deps.logger, state.sessionID)
 	if err != nil {
 		if chatCtx.Err() == context.Canceled {
 			stream.cancelled()
