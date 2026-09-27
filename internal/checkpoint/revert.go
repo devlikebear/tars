@@ -560,7 +560,7 @@ func (s *Store) mergeMove(ctx context.Context, sh *shadowRepo, p *plannedFile, c
 	if err != nil {
 		return err
 	}
-	defer os.RemoveAll(dir)
+	defer func() { _ = os.RemoveAll(dir) }()
 	names := [3]string{"current", "base", "target"}
 	for i, data := range [3][]byte{cur.data, p.base.data, p.target.data} {
 		if err := os.WriteFile(filepath.Join(dir, names[i]), data, 0o600); err != nil {
