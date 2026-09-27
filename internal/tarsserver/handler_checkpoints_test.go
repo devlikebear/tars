@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -25,6 +26,7 @@ import (
 // provider does: inside the call, invisible to TARS's own tools.
 type workDirEditingClient struct {
 	edit func(dir string)
+	err  error
 }
 
 func (c *workDirEditingClient) Ask(context.Context, string) (string, error) { return "", nil }
@@ -32,6 +34,9 @@ func (c *workDirEditingClient) Ask(context.Context, string) (string, error) { re
 func (c *workDirEditingClient) Chat(_ context.Context, _ []llm.ChatMessage, opts llm.ChatOptions) (llm.ChatResponse, error) {
 	if c.edit != nil && opts.WorkDir != "" {
 		c.edit(opts.WorkDir)
+	}
+	if c.err != nil {
+		return llm.ChatResponse{}, c.err
 	}
 	if opts.OnDelta != nil {
 		opts.OnDelta("done")
@@ -212,6 +217,21 @@ func TestChatTurnWithoutEditsRecordsEmptyCheckpoint(t *testing.T) {
 	cp := eventOfType(events, "checkpoint")
 	if cp == nil || cp["files"] != float64(0) {
 		t.Fatalf("checkpoint event = %v, want 0 files", cp)
+	}
+}
+
+// A turn that fails after editing still records what it left on disk.
+func TestFailedChatTurnStillRecordsCheckpoint(t *testing.T) {
+	f := newCheckpointFixture(t)
+	events := f.chat(t, &workDirEditingClient{
+		edit: func(dir string) { writeTestFile(t, filepath.Join(dir, "half.txt"), "partial\n") },
+		err:  errors.New("provider crashed"),
+	}, f.store)
+	if eventOfType(events, "error") == nil {
+		t.Fatalf("no error event in %v", events)
+	}
+	if cp := eventOfType(events, "checkpoint"); cp == nil || cp["files"] != float64(1) {
+		t.Fatalf("checkpoint event = %v, want 1 file", cp)
 	}
 }
 

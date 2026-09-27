@@ -170,7 +170,7 @@ func handleChatRequest(w http.ResponseWriter, r *http.Request, deps chatHandlerD
 	checkpointTurn := beginChatCheckpoint(chatCtx, deps, state, req.Message)
 	chatResp, deltaSent, toolCalls, err := executeChatLoop(chatCtx, deps, state, stream)
 	// Before the outcome branches: an error or a cancel leaves edits on disk too.
-	endChatCheckpoint(checkpointTurn, stream, deps.logger, state.sessionID)
+	endChatCheckpoint(chatCtx, checkpointTurn, stream, deps.logger, state.sessionID)
 	if err != nil {
 		if chatCtx.Err() == context.Canceled {
 			stream.cancelled()

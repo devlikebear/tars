@@ -34,12 +34,13 @@ func beginChatCheckpoint(ctx context.Context, deps chatHandlerDeps, state chatRu
 
 // endChatCheckpoint records the turn's end snapshot and tells the console
 // what changed. Call it on every way out of the turn: success, error, and
-// cancellation all leave edits on disk.
-func endChatCheckpoint(turn *checkpoint.Turn, stream *chatStreamWriter, logger zerolog.Logger, sessionID string) {
+// cancellation all leave edits on disk, so the snapshot outlives ctx's
+// cancellation.
+func endChatCheckpoint(ctx context.Context, turn *checkpoint.Turn, stream *chatStreamWriter, logger zerolog.Logger, sessionID string) {
 	if turn == nil {
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), checkpointEndTimeout)
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), checkpointEndTimeout)
 	defer cancel()
 	entry, err := turn.End(ctx)
 	if err != nil {
