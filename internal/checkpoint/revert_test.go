@@ -455,3 +455,75 @@ func TestRevertRefusesFilesItCannotBackUp(t *testing.T) {
 		t.Fatal("the file was written")
 	}
 }
+
+// Hunks come from git's own diff and go back byte for byte: CRLF lines and a
+// file without a final newline included.
+func TestRevertHunkIsByteExact(t *testing.T) {
+	s := newTestStore(t, Options{})
+	root := t.TempDir()
+	lines := func(edits map[int]string, eol, last string) string {
+		var b strings.Builder
+		for i := 1; i <= 20; i++ {
+			line, ok := edits[i]
+			if !ok {
+				line = "row " + string(rune('a'+i))
+			}
+			b.WriteString(line)
+			if i < 20 {
+				b.WriteString(eol)
+			} else {
+				b.WriteString(last)
+			}
+		}
+		return b.String()
+	}
+	writeFile(t, root, "crlf.txt", lines(nil, "\r\n", "\r\n"))
+	writeFile(t, root, "open.txt", lines(nil, "\n", ""))
+	runTurn(t, s, "sess", "turn", root, func() {
+		writeFile(t, root, "crlf.txt", lines(map[int]string{2: "B", 19: "S"}, "\r\n", "\r\n"))
+		writeFile(t, root, "open.txt", lines(map[int]string{2: "B", 20: "T"}, "\n", ""))
+	})
+	mustRevert(t, s, "sess", "turn", RevertRequest{Apply: true, Files: []RevertFile{
+		{Path: "crlf.txt", HunkIDs: []string{"h1"}},
+		{Path: "open.txt", HunkIDs: []string{"h1"}},
+	}})
+	if got, want := readText(t, root, "crlf.txt"), lines(map[int]string{2: "B"}, "\r\n", "\r\n"); got != want {
+		t.Fatalf("crlf.txt = %q\nwant %q", got, want)
+	}
+	if got, want := readText(t, root, "open.txt"), lines(map[int]string{2: "B"}, "\n", ""); got != want {
+		t.Fatalf("open.txt = %q\nwant %q", got, want)
+	}
+}
+
+// A revert whose after-snapshot failed is recorded, but cannot be undone.
+func TestUndoNeedsTheAfterSnapshot(t *testing.T) {
+	s, _ := threeHunkTurn(t)
+	entry, err := s.turnEntry("sess", "turn")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.appendRevert(context.Background(), "sess", RevertEntry{ID: "rhalf", Shadow: entry.Shadow, Pre: entry.Start}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Undo(context.Background(), "sess", "rhalf", false); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("undo without a post snapshot: %v", err)
+	}
+}
+
+// A revert that writes nothing leaves no undo point behind.
+func TestRevertThatWritesNothingKeepsNoRefs(t *testing.T) {
+	s, root := threeHunkTurn(t)
+	writeFile(t, root, "a.txt", thirty(nil))
+	mustRevert(t, s, "sess", "turn", RevertRequest{Apply: true})
+	entry, err := s.turnEntry("sess", "turn")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sh, err := s.openShadow(entry.Shadow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if refs, err := s.refsUnder(context.Background(), sh, refNamespace+"sess/reverts/"); err != nil || len(refs) != 0 {
+		t.Fatalf("refs = %v %v", refs, err)
+	}
+}

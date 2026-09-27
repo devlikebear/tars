@@ -67,3 +67,23 @@ func TestRevertReportsUnwritableFile(t *testing.T) {
 		t.Fatalf("run.sh: %v %v", info.Mode(), err)
 	}
 }
+
+// A file that cannot be read now is reported, not planned.
+func TestRevertReportsUnreadableFile(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root reads files regardless of mode")
+	}
+	s := newTestStore(t, Options{})
+	root := t.TempDir()
+	writeFile(t, root, "a.txt", "before\n")
+	runTurn(t, s, "sess", "turn", root, func() { writeFile(t, root, "a.txt", "after\n") })
+	path := filepath.Join(root, "a.txt")
+	if err := os.Chmod(path, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(path, 0o644) })
+	result := mustRevert(t, s, "sess", "turn", RevertRequest{})
+	if result.Failed != 1 || result.Files[0].Outcome != RevertFailed {
+		t.Fatalf("result = %+v", result)
+	}
+}

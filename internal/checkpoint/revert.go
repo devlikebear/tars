@@ -193,27 +193,28 @@ func (s *Store) Revert(ctx context.Context, sessionID, turnID string, req Revert
 	if result.Conflicts > 0 && !req.Force {
 		return result, ErrConflict
 	}
+	rec := RevertEntry{
+		ID: newRevertID(s.now()), TurnID: turnID, Scope: scope,
+		Shadow: sh.key, Pre: pre.commit, At: s.now().UTC(), Targets: targets,
+	}
+	// Pin the undo point before anything is written: a snapshot no ref
+	// holds is gone at the next sweep's gc.
+	preRef := revertRef(sessionID, rec.ID, "pre")
+	if err := s.updateRef(ctx, sh, preRef, rec.Pre); err != nil {
+		return result, err
+	}
 	written := s.applyMoves(sh.root, planned)
 	result.Files, result.Conflicts, result.Failed = summarize(planned)
 	if len(written) == 0 {
+		_ = s.deleteRefs(ctx, sh, []string{preRef})
 		return result, nil
 	}
-	rec := RevertEntry{
-		ID: newRevertID(s.now()), TurnID: turnID, Scope: scope,
-		Shadow: sh.key, Pre: pre.commit, At: s.now().UTC(), Targets: targets, Files: written,
-	}
-	post, err := s.takeSnapshot(ctx, sh, snapshotMessage(sessionID, turnID, "reverted"))
-	if err == nil {
-		rec.Post = post.commit
-		err = s.updateRef(ctx, sh, revertRef(sessionID, rec.ID, "pre"), rec.Pre)
-	}
-	if err == nil {
-		err = s.updateRef(ctx, sh, revertRef(sessionID, rec.ID, "post"), rec.Post)
-	}
 	result.Applied = true
-	if err != nil {
-		// The files are written; only the undo record is missing.
-		return result, fmt.Errorf("checkpoint: revert applied, but it cannot be undone: %w", err)
+	rec.Files = written
+	post, postErr := s.takeSnapshot(ctx, sh, snapshotMessage(sessionID, turnID, "reverted"))
+	if postErr == nil {
+		rec.Post = post.commit
+		postErr = s.updateRef(ctx, sh, revertRef(sessionID, rec.ID, "post"), rec.Post)
 	}
 	// The index is updated under the session lock, which is always taken
 	// before a root lock.
@@ -223,6 +224,10 @@ func (s *Store) Revert(ctx context.Context, sessionID, turnID string, req Revert
 		return result, err
 	}
 	result.RevertID = rec.ID
+	if postErr != nil {
+		// The files are written and recorded; only the undo is missing.
+		return result, fmt.Errorf("checkpoint: revert applied, but it cannot be undone: %w", postErr)
+	}
 	return result, nil
 }
 
@@ -244,6 +249,9 @@ func (s *Store) Undo(ctx context.Context, sessionID, revertID string, force bool
 	result := RevertResult{RevertID: rec.ID, TurnID: rec.TurnID, Scope: rec.Scope}
 	if !rec.UndoneAt.IsZero() {
 		return result, fmt.Errorf("%w: revert %s is already undone", ErrInvalid, rec.ID)
+	}
+	if rec.Post == "" {
+		return result, fmt.Errorf("%w: revert %s has no snapshot to undo from", ErrInvalid, rec.ID)
 	}
 	sh, err := s.openShadow(rec.Shadow)
 	if err != nil {
