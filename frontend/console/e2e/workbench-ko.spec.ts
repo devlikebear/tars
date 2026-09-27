@@ -33,7 +33,8 @@ async function chromeTexts(scope: Locator): Promise<string[]> {
     // Content, not chrome: terminal output, rendered markdown and code, chat
     // messages, session titles (in the sidebar and the palette), and the
     // server's tool and skill lists in the session config panel.
-    const content = '.xterm, .markdown-body, pre, code, .chat-msg, .session-title, .session-item, .config-list, [data-group="session"]'
+    // [data-content] marks other user content, such as a turn's prompt.
+    const content = '.xterm, .markdown-body, pre, code, .chat-msg, .session-title, .session-item, .config-list, [data-group="session"], [data-content]'
     // An element's own words: drop nested content and <select>s, whose
     // options (tier and model names, for one) are read one by one instead.
     const ownText = (el: Element) => {
@@ -73,7 +74,7 @@ test('the chat workbench chrome is Korean', async ({ page }) => {
   expect(texts.filter(untranslated)).toEqual([])
 })
 
-const dockPanels = ['artifacts', 'git', 'tasks', 'context', 'prior', 'prompt', 'config', 'skillExtraction', 'cron', 'health'] as const
+const dockPanels = ['artifacts', 'changes', 'git', 'tasks', 'context', 'prior', 'prompt', 'config', 'skillExtraction', 'cron', 'health'] as const
 
 test('every dock panel is Korean', async ({ page }) => {
   await newSession(page)
