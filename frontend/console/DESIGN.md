@@ -500,7 +500,7 @@ The chat log is one `minmax(0, 1fr)` grid column, so a wide diff line or tool ca
 
 A right-zone dock panel (`±` on the rail) that reads the same store as the cards (`lib/stores/changes.svelte.ts`). From top to bottom:
 
-- The `label-caps` heading, a two-button segment (`This turn` / `Session so far`), and Refresh.
+- The heading (the Git Inspector's small caps `section-title`), a two-button segment (`This turn` / `Session so far`), and Refresh.
 - The turns that changed files, newest first. Each is a row with the prompt preview on top and a mono meta line below (summary on the left, time on the right). Skipped turns show their reason in `warning`.
 - The recorded folder.
 - The selected turn's files, as rows with path, status, and counts.
