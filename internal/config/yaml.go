@@ -17,6 +17,9 @@ var configYAMLRootAliases = map[string][]string{
 }
 
 var configYAMLPathAliases = map[string]string{
+	"initiative.thresholds.quiet_requested":                    "initiative_threshold_quiet_requested",
+	"initiative.thresholds.user_strained":                      "initiative_threshold_user_strained",
+	"initiative.thresholds.special_day":                        "initiative_threshold_special_day",
 	"api.dashboard.auth_mode":                                  "dashboard_auth_mode",
 	"channels.telegram.bot_token":                              "telegram_bot_token",
 	"dashboard.auth_mode":                                      "dashboard_auth_mode",

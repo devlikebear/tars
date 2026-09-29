@@ -25,6 +25,8 @@ func TestConfig_UsesFocusedEmbeddedGroups(t *testing.T) {
 		"ChannelConfig",
 		"Companion",
 		"Embodiment",
+		"Initiative",
+		"Jev",
 		"ExtensionConfig",
 	}
 
@@ -37,7 +39,7 @@ func TestConfig_UsesFocusedEmbeddedGroups(t *testing.T) {
 		if field.Name != name {
 			t.Fatalf("expected config field %d to be %q, got %q", index, name, field.Name)
 		}
-		if name == "WorkLedger" || name == "Companion" || name == "Embodiment" {
+		if name == "WorkLedger" || name == "Companion" || name == "Embodiment" || name == "Initiative" || name == "Jev" {
 			if field.Anonymous {
 				t.Fatalf("expected %q to be named", name)
 			}

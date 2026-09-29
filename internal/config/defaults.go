@@ -241,6 +241,17 @@ func defaultConfigValues() Config {
 			ChannelsTelegramDMPolicy:       defaultChannelsTelegramDMPolicy,
 			ChannelsTelegramPollingEnabled: true,
 		},
+		Initiative: InitiativeConfig{
+			Mode:                    "shadow",
+			Tick:                    "1m",
+			QuietHours:              "23:00-07:00",
+			DailyCap:                6,
+			Cooldown:                "45m",
+			QuietRequestedThreshold: 0.55,
+			UserStrainedThreshold:   0.60,
+			SpecialDayThreshold:     0.50,
+		},
+		Jev: JevConfig{TimeoutSeconds: 10},
 		Companion: CompanionConfig{
 			Enabled:    true,
 			enabledSet: true,

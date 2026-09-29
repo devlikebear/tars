@@ -65,6 +65,12 @@ func inferPreferredYAMLPathForKey(key string) string {
 		return "memory.embed." + strings.TrimPrefix(key, "memory_embed_")
 	case strings.HasPrefix(key, "memory_"):
 		return "memory." + strings.TrimPrefix(key, "memory_")
+	case strings.HasPrefix(key, "initiative_threshold_"):
+		return "initiative.thresholds." + strings.TrimPrefix(key, "initiative_threshold_")
+	case strings.HasPrefix(key, "initiative_"):
+		return "initiative." + strings.TrimPrefix(key, "initiative_")
+	case strings.HasPrefix(key, "jev_"):
+		return "jev." + strings.TrimPrefix(key, "jev_")
 	case strings.HasPrefix(key, "pulse_"):
 		return "automation.pulse." + strings.TrimPrefix(key, "pulse_")
 	case strings.HasPrefix(key, "reflection_"):

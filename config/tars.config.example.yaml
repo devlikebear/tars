@@ -271,6 +271,45 @@ embodiment:
   #     min_trigger_interval: 30s
   #     max_triggers_per_hour: 60
 
+initiative:
+  # Lets TARS decide when to speak first (tars#997). Go computes exact
+  # signals (time, idle, console, pacing); a System One server reads the
+  # user's recent words for three fuzzy ones (asked for quiet, seems
+  # strained, special day); a fixed policy picks greet / check_in /
+  # body_only / none. Every decision lands in
+  # workspace/_shared/initiative/ledger.jsonl and GET /v1/initiative/status.
+  enabled: false
+  # shadow records what TARS would say and never sends a message. The only
+  # action it takes is a silent body expression when body_provider is set.
+  mode: shadow
+  tick: 1m
+  quiet_hours: "23:00-07:00"
+  # IANA name for quiet hours; empty uses the server's local zone.
+  timezone: ""
+  daily_cap: 6
+  cooldown: 45m
+  # Embodiment provider name (see embodiment.providers) for idle expressions.
+  body_provider: ""
+  # System One probability needed for each text signal (measured on
+  # Kev-0.8B with Korean messages, tars#998).
+  thresholds:
+    quiet_requested: 0.55
+    user_strained: 0.60
+    special_day: 0.50
+
+jev:
+  # A server speaking the /v1/systemone protocol. A local Kev-0.8B works:
+  #   git clone https://github.com/jaredpalmer/kev && cd kev && uv sync --extra serve
+  #   uv run --extra serve python -m kev.serve --run jaredpalmer/kev-0.8b --port 8009
+  # User messages and USER.md are sent ONLY when this host is loopback
+  # (127.0.0.1, ::1, localhost). A remote server gets metadata only, which
+  # leaves the three text signals off.
+  base_url: ""        # e.g. http://127.0.0.1:8009
+  # Hosted Jev only. Also read from JEV_API_KEY or TYPESAFE_API_KEY.
+  api_key: ""
+  model: ""
+  timeout_seconds: 10
+
 compaction:
   trigger_tokens: 100000
   keep_recent_tokens: 12000

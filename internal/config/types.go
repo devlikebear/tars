@@ -385,6 +385,29 @@ type ExtensionConfig struct {
 	MCPCommandAllowlist    []string
 }
 
+// InitiativeConfig controls when TARS speaks first (tars#997).
+type InitiativeConfig struct {
+	Enabled                 bool
+	Mode                    string
+	Tick                    string
+	QuietHours              string
+	Timezone                string
+	DailyCap                int
+	Cooldown                string
+	BodyProvider            string
+	QuietRequestedThreshold float64
+	UserStrainedThreshold   float64
+	SpecialDayThreshold     float64
+}
+
+// JevConfig points at a System One server speaking /v1/systemone.
+type JevConfig struct {
+	BaseURL        string
+	APIKey         string
+	Model          string
+	TimeoutSeconds int
+}
+
 // Config holds top-level runtime settings grouped by concern.
 type Config struct {
 	RuntimeConfig
@@ -402,6 +425,8 @@ type Config struct {
 	ChannelConfig
 	Companion  CompanionConfig
 	Embodiment EmbodimentConfig
+	Initiative InitiativeConfig
+	Jev        JevConfig
 	ExtensionConfig
 }
 
