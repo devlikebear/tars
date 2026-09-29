@@ -26,6 +26,7 @@ type chatHandlerDeps struct {
 	tooling        chatToolingOptions
 	extraTools     []tool.Tool
 	cancelRegistry *chatCancelRegistry
+	chatActivity   *chatActivity
 	permissions    *chatPermissionBroker
 }
 
@@ -103,6 +104,8 @@ func handleChatRequest(w http.ResponseWriter, r *http.Request, deps chatHandlerD
 
 	state.interactivePermissions = req.InteractivePermissions
 	stream := newChatStreamWriter(w, state.sessionID, deps.logger)
+	stream.activity = deps.chatActivity
+	defer deps.chatActivity.begin(state.sessionID)()
 	stream.status("stream_open", "stream connected", "", "", "", "")
 	if state.turnID != "" {
 		stream.turnStarted(state.turnID)

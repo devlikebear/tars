@@ -115,7 +115,7 @@ cmd/  →  app layer  →  core layer  →  pkg/
 - Design tokens: `app.css` — "Graphite Signal": dark graphite, signal green `#3ee07f` (`--primary-rgb` for tints), IBM Plex Sans/Mono. Canvas/Mermaid colors live in `lib/themeColors.ts`
 - **Design source of truth**: `frontend/console/DESIGN.md` — consult before any visual change; update it in same PR if deviating
 
-**SSE:** `/v1/events/stream` — `{type,category,severity,title,message,timestamp}`; `/v1/events/history?limit=N`
+**SSE:** `/v1/events/stream` — `{type,category,severity,title,message,timestamp}`; `/v1/events/history?limit=N`. A chat turn waiting for tool approval publishes `category: "approval"` (with `session_id`, `request_id`, `open_path`). `GET /v1/chat/activity` lists running turns and pending approvals for clients other than the request running the turn — the desktop tray (#972) or the console showing another session (`chat_activity.go`, fed by watching each turn stream's permission events)
 
 ## Git Workflow
 
