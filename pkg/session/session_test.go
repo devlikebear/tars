@@ -791,3 +791,101 @@ func TestStoreGet_MigratesLegacyNestedArtifactDir(t *testing.T) {
 		t.Fatalf("expected legacy file to be removed, stat err=%v", err)
 	}
 }
+
+func TestForkLeavesTheParentWorktree(t *testing.T) {
+	dir := t.TempDir()
+	store := NewStore(dir)
+	parent, err := store.Create("Isolated")
+	if err != nil {
+		t.Fatal(err)
+	}
+	project := filepath.Join(dir, "project")
+	wtDir := filepath.Join(dir, "worktrees", "wt")
+	for _, d := range []string{project, wtDir} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := store.SetWorkDirs(parent.ID, []string{project}, project); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetWorktree(parent.ID, &SessionWorktree{Path: wtDir, Dir: wtDir, Branch: "tars/session-x", SourceDir: project}); err != nil {
+		t.Fatal(err)
+	}
+	if err := AppendMessage(store.TranscriptPath(parent.ID), Message{Role: "user", Content: "hi", Timestamp: time.Now().UTC()}); err != nil {
+		t.Fatal(err)
+	}
+	history, _ := ReadMessages(store.TranscriptPath(parent.ID))
+	child, err := store.ForkFromMessage(parent.ID, history[0].ID, ForkOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if child.Worktree != nil {
+		t.Fatal("fork must not share the parent's worktree")
+	}
+	if child.CurrentDir != canonicalSessionPath(project) {
+		t.Fatalf("fork cwd = %s", child.CurrentDir)
+	}
+	for _, d := range child.WorkDirs {
+		if d == canonicalSessionPath(wtDir) {
+			t.Fatalf("fork work dirs keep the worktree: %v", child.WorkDirs)
+		}
+	}
+	if err := store.SetIsolation(parent.ID, "bogus"); err == nil {
+		t.Fatal("unknown isolation mode")
+	}
+	if err := store.SetIsolation(parent.ID, IsolationOff); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSetWorktreeMovesTheSessionAndBack(t *testing.T) {
+	dir := t.TempDir()
+	store := NewStore(dir)
+	sess, err := store.Create("wt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	project := filepath.Join(dir, "project")
+	wtDir := filepath.Join(dir, "wt")
+	for _, d := range []string{project, wtDir} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := store.SetWorkDirs(sess.ID, []string{project}, project); err != nil {
+		t.Fatal(err)
+	}
+	// Clearing a session that has no worktree changes nothing.
+	if err := store.SetWorktree(sess.ID, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetWorktree(sess.ID, &SessionWorktree{Path: wtDir, Dir: wtDir, Branch: "tars/session-x", SourceDir: project}); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := store.Get(sess.ID)
+	if got.Worktree == nil || got.CurrentDir != canonicalSessionPath(wtDir) {
+		t.Fatalf("after set: %+v", got)
+	}
+	if err := store.SetWorktree(sess.ID, nil); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = store.Get(sess.ID)
+	if got.Worktree != nil || got.CurrentDir != canonicalSessionPath(project) {
+		t.Fatalf("after clear: %+v", got)
+	}
+	for _, d := range got.WorkDirs {
+		if d == canonicalSessionPath(wtDir) {
+			t.Fatalf("worktree left in work dirs: %v", got.WorkDirs)
+		}
+	}
+	if err := store.SetWorktree("missing", nil); err == nil {
+		t.Fatal("missing session")
+	}
+	if got := appendUniquePath([]string{"a"}, ""); len(got) != 1 {
+		t.Fatalf("empty path appended: %v", got)
+	}
+	if got := appendUniquePath([]string{"a"}, "a"); len(got) != 1 {
+		t.Fatalf("duplicate appended: %v", got)
+	}
+}

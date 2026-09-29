@@ -6,7 +6,11 @@ import { chatThreadKo } from './sections/chatThread.ts'
 import { sessionConfigKo } from './sections/sessionConfig.ts'
 import { gitInspectorKo } from './sections/gitInspector.ts'
 import { changesKo } from './sections/changes.ts'
+import { sessionWorktreeKo } from './sections/sessionWorktree.ts'
 import { chatApprovalKo } from './sections/chatApproval.ts'
+import { sessionBoardKo } from './sections/sessionBoard.ts'
+
+import { messageQueueKo } from './sections/messageQueue.ts'
 import { artifactPanelKo } from './sections/artifactPanel.ts'
 import { skillInboxKo } from './sections/skillInbox.ts'
 import { sessionCronKo } from './sections/sessionCron.ts'
@@ -48,6 +52,8 @@ export const ko = {
       system: '시스템',
     },
     items: {
+      board: '세션',
+      overview: '개요',
       chat: '채팅',
       lineage: '분기',
       plans: '계획',
@@ -77,7 +83,7 @@ export const ko = {
       slash: '슬래시 명령',
     },
     pages: {
-      home: '홈',
+      home: '시스템 개요',
       onboarding: '설정 마법사',
     },
     actions: {
@@ -1648,7 +1654,11 @@ export const ko = {
   sessionConfig: sessionConfigKo,
   gitInspector: gitInspectorKo,
   changes: changesKo,
+  sessionWorktree: sessionWorktreeKo,
   chatApproval: chatApprovalKo,
+  sessionBoard: sessionBoardKo,
+
+  messageQueue: messageQueueKo,
   artifactPanel: artifactPanelKo,
   skillInbox: skillInboxKo,
   sessionCron: sessionCronKo,

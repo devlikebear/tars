@@ -603,6 +603,7 @@ pkg/session const EvidenceTypeLogExcerpt
 pkg/session const EvidenceTypePRLink
 pkg/session const EvidenceTypeReleaseTag
 pkg/session const EvidenceTypeTestResult
+pkg/session const IsolationOff
 pkg/session const MaxCriticFeedbackLen
 pkg/session const MaxCriticMaxIterations
 pkg/session const MaxGoalDescriptionLen
@@ -696,6 +697,7 @@ pkg/session field Session.ForkedFromMessageID
 pkg/session field Session.Goal
 pkg/session field Session.Hidden
 pkg/session field Session.ID
+pkg/session field Session.Isolation
 pkg/session field Session.Kind
 pkg/session field Session.LastCompactionMode
 pkg/session field Session.ParentSessionID
@@ -708,6 +710,7 @@ pkg/session field Session.ToolConfig
 pkg/session field Session.UpdatedAt
 pkg/session field Session.UpstreamSessionID
 pkg/session field Session.WorkDirs
+pkg/session field Session.Worktree
 pkg/session field SessionAutomationConsent.AllowedResumeModes
 pkg/session field SessionAutomationConsent.AutoResume
 pkg/session field SessionAutomationConsent.AutoResumeAfterMinutes
@@ -760,6 +763,14 @@ pkg/session field SessionWithPlanTasks.StaleCompleted
 pkg/session field SessionWithPlanTasks.Summary
 pkg/session field SessionWithPlanTasks.Tasks
 pkg/session field SessionWithPlanTasks.UpdatedAt
+pkg/session field SessionWorktree.BaseCommit
+pkg/session field SessionWorktree.Branch
+pkg/session field SessionWorktree.CreatedAt
+pkg/session field SessionWorktree.Dir
+pkg/session field SessionWorktree.Path
+pkg/session field SessionWorktree.Reason
+pkg/session field SessionWorktree.RepoRoot
+pkg/session field SessionWorktree.SourceDir
 pkg/session field Task.Description
 pkg/session field Task.Evidence
 pkg/session field Task.ID
@@ -864,6 +875,7 @@ pkg/session method Store.SetCritic
 pkg/session method Store.SetCurrentDir
 pkg/session method Store.SetDeleteHook
 pkg/session method Store.SetGoal
+pkg/session method Store.SetIsolation
 pkg/session method Store.SetLastCompactionMode
 pkg/session method Store.SetPinned
 pkg/session method Store.SetPromptOverride
@@ -873,6 +885,7 @@ pkg/session method Store.SetTitle
 pkg/session method Store.SetToolConfig
 pkg/session method Store.SetUpstreamSessionID
 pkg/session method Store.SetWorkDirs
+pkg/session method Store.SetWorktree
 pkg/session method Store.TakePendingCriticFeedback
 pkg/session method Store.Touch
 pkg/session method Store.TranscriptPath
@@ -898,6 +911,7 @@ pkg/session type SessionStyleControl
 pkg/session type SessionTasks
 pkg/session type SessionToolConfig
 pkg/session type SessionWithPlanTasks
+pkg/session type SessionWorktree
 pkg/session type Store
 pkg/session type Task
 pkg/session type TaskContract

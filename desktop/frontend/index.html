@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TARS</title>
+<style>
+  :root { color-scheme: dark; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: #16181b;
+    color: #d7dade;
+    font: 15px/1.5 "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    display: grid;
+    place-items: center;
+  }
+  main { max-width: 30rem; padding: 2rem; text-align: center; }
+  .mark {
+    width: 56px; height: 56px; margin: 0 auto 1.5rem;
+    border-radius: 50%; border: 6px solid #3ee07f; box-sizing: border-box;
+    position: relative;
+  }
+  .mark::after {
+    content: ""; position: absolute; inset: 14px; border-radius: 50%;
+    background: #8a8f98; animation: pulse 1.6s ease-in-out infinite;
+  }
+  @keyframes pulse { 50% { opacity: 0.3; } }
+  h1 { font-size: 1.15rem; font-weight: 600; margin: 0 0 0.5rem; color: #f2f4f5; }
+  p { margin: 0.25rem 0; color: #a3a8b0; }
+  code { font-family: "IBM Plex Mono", ui-monospace, monospace; color: #3ee07f; }
+</style>
+</head>
+<body>
+<main>
+  <div class="mark" aria-hidden="true"></div>
+  <h1>Waiting for the TARS server</h1>
+  <p>This window opens the console as soon as the server answers.</p>
+  <p>Start it from the tray menu (<strong>Start server</strong>) or run <code>tars serve</code>.</p>
+</main>
+</body>
+</html>

@@ -120,10 +120,80 @@ jobs:
           path: dist/*.tar.gz
           if-no-files-found: error
 
+  # Desktop shell archives. The self-updater picks tars-desktop_* assets out
+  # of the same release and verifies them against checksums.txt.
+  build-desktop-macos:
+    needs: prepare-release
+    runs-on: macos-14
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: desktop/go.mod
+          cache-dependency-path: desktop/go.sum
+
+      - name: Package the app bundles
+        env:
+          VERSION: ${{ needs.prepare-release.outputs.version }}
+        run: |
+          set -euo pipefail
+          for desktop_goarch in arm64 amd64; do
+            ./scripts/desktop_package.sh darwin "${desktop_goarch}" "${VERSION}" dist
+          done
+          tar -xzf "dist/tars-desktop_${VERSION}_darwin_arm64.tar.gz" -C "${RUNNER_TEMP}"
+          "${RUNNER_TEMP}/TARS.app/Contents/MacOS/TARS" --version | grep -F "tars-desktop ${VERSION} "
+
+      - name: Upload desktop archives
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-desktop-macos
+          path: dist/tars-desktop_*
+          if-no-files-found: error
+
+  build-desktop-linux-windows:
+    needs: prepare-release
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: desktop/go.mod
+          cache-dependency-path: desktop/go.sum
+
+      - name: Install webview headers
+        run: sudo apt-get update && sudo apt-get install -y libgtk-4-dev libwebkitgtk-6.0-dev
+
+      - name: Package for Linux and Windows
+        env:
+          VERSION: ${{ needs.prepare-release.outputs.version }}
+        run: |
+          set -euo pipefail
+          ./scripts/desktop_package.sh linux amd64 "${VERSION}" dist
+          ./scripts/desktop_package.sh windows amd64 "${VERSION}" dist
+
+      - name: Upload desktop archives
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-desktop-linux-windows
+          path: dist/tars-desktop_*
+          if-no-files-found: error
+
   publish-release:
     needs:
       - prepare-release
       - build-assets
+      - build-desktop-macos
+      - build-desktop-linux-windows
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -152,6 +222,9 @@ jobs:
           {
             printf '%s  %s\n' "${arm64_sha}" "$(basename "${arm64_asset}")"
             printf '%s  %s\n' "${amd64_sha}" "$(basename "${amd64_asset}")"
+            for desktop_asset in dist/tars-desktop_*; do
+              printf '%s  %s\n' "$(shasum -a 256 "${desktop_asset}" | awk '{print $1}')" "$(basename "${desktop_asset}")"
+            done
           } > dist/checksums.txt
           printf 'version=%s\n' "${VERSION}" >> "${GITHUB_OUTPUT}"
           printf 'arm64_sha=%s\n' "${arm64_sha}" >> "${GITHUB_OUTPUT}"
@@ -166,10 +239,10 @@ jobs:
           set -euo pipefail
           printf 'Release %s\n\nSee CHANGELOG.md for details.\n' "${TAG_NAME}" > release-notes.txt
           if gh release view "${TAG_NAME}" >/dev/null 2>&1; then
-            gh release upload "${TAG_NAME}" dist/*.tar.gz dist/checksums.txt --clobber
+            gh release upload "${TAG_NAME}" dist/*.tar.gz dist/*.zip dist/checksums.txt --clobber
             gh release edit "${TAG_NAME}" --title "${TAG_NAME}" --notes-file release-notes.txt
           else
-            gh release create "${TAG_NAME}" dist/*.tar.gz dist/checksums.txt --target "${GITHUB_SHA}" --title "${TAG_NAME}" --notes-file release-notes.txt
+            gh release create "${TAG_NAME}" dist/*.tar.gz dist/*.zip dist/checksums.txt --target "${GITHUB_SHA}" --title "${TAG_NAME}" --notes-file release-notes.txt
           fi
 
   update-homebrew:
