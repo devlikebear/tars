@@ -23,6 +23,7 @@
   import SessionCronPanel from './SessionCronPanel.svelte'
   import SessionHealthPanel from './SessionHealthPanel.svelte'
   import DockPanelFrame from './DockPanelFrame.svelte'
+  import SideSessionPanel from './SideSessionPanel.svelte'
 
   interface Props {
     children: Snippet
@@ -340,6 +341,8 @@
       {:catch}
         <div class="dock-empty">{$t.chat.panels.dockEmpty}</div>
       {/await}
+    {:else if panelID === 'side'}
+      <SideSessionPanel activeSessionId={selectedSessionId ?? null} onOpen={handleSelectSession} onClose={() => closePanel(panelID)} />
     {:else if panelID === 'git' && selectedSessionId}
       <GitInspector sessionId={selectedSessionId} onClose={() => closePanel(panelID)} />
     {:else if panelID === 'skillExtraction' && selectedSessionId}

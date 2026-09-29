@@ -8,6 +8,8 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ### Added
 
+- **옆 세션 패널 (#971)** — 채팅 오른쪽 레일의 `◫`(옆 세션)로 다른 세션을 지금 세션 옆에 띄운다. 그 세션의 대화를 보고, 진행 중인 턴을 실시간으로 따라가고, 승인 카드에 답하고, 메시지를 보낼 수 있어 두 세션을 전환 없이 나란히 다룬다. `열기`로 그 세션을 메인으로 옮긴다. 턴 피드(`GET /v1/chat/stream`)를 쓰므로 다른 탭이나 cron이 시작한 턴에도 붙는다.
+
 - **턴이 콘솔을 떠나도 계속 돈다 (#971)** — 다른 세션으로 옮기거나 새로고침하거나 연결이 끊겨도 진행 중인 채팅 턴이 멈추지 않는다. 지금까지는 요청이 끊기면 턴도 취소됐다. 멈추는 방법은 이제 명시적인 중지(`POST /v1/chat/cancel`)뿐이다. 세션으로 돌아오면 콘솔이 진행 중인 턴에 다시 붙어, 지금까지의 답과 도구 호출, 대기 중인 승인 카드를 그대로 다시 보여주고 이어서 받는다(`GET /v1/chat/stream?session_id=`). 따라서 승인 질문도 연결이 끊겼다고 닫히지 않고, 돌아와서 답할 때까지 기다린다.
 
 - **세션 worktree와 저장소 write lease (#971)** — 한 저장소에서 두 세션이 동시에 파일을 고쳐 변경이 섞이던 문제를 막는다. 채팅 턴은 세션 작업 폴더의 git 저장소에 대한 write lease를 잡고(턴 동안과 끝난 뒤 15분), 다른 세션이 lease를 쥔 저장소에서 턴을 시작하면 그 세션은 자동으로 자기 worktree(브랜치 `tars/session-<id>`)로 옮겨 가 거기서 작업한다. 세션에 묶인 cron 실행도 체크아웃 대신 worktree에서 돈다. 채팅 헤더의 ⑂ 칩에서 직접 격리할 수 있고, 격리된 세션은 바뀐 파일을 보여주며 **체크아웃에 적용**(커밋·stage 없이 작업 트리에 패치, 충돌하면 아무것도 바꾸지 않음), **브랜치로 보관**(남은 변경을 브랜치에 커밋하고 폴더 제거), **폐기** 중 하나로 끝낸다. 세션을 지우면 작업은 브랜치에 보관된다. `.tars/settings.json`의 `worktree_include`로 `.env` 같은 gitignore 파일을 worktree에 복사한다 — 명령을 실행하는 설정은 클론한 저장소가 명령을 실행하게 되므로 받지 않는다(`worktree_setup`은 차단 필드). 세션별로 자동 격리를 끌 수 있다. Windows도 지원한다. 공개 API: `session.SessionWorktree`, `session.Session.Worktree` / `Isolation`, `session.Store.SetWorktree` / `SetIsolation`, `session.IsolationOff`.

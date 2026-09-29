@@ -6,6 +6,7 @@ import { chatThreadKo } from './sections/chatThread.ts'
 import { sessionConfigKo } from './sections/sessionConfig.ts'
 import { gitInspectorKo } from './sections/gitInspector.ts'
 import { changesKo } from './sections/changes.ts'
+import { sideSessionKo } from './sections/sideSession.ts'
 import { sessionWorktreeKo } from './sections/sessionWorktree.ts'
 import { chatApprovalKo } from './sections/chatApproval.ts'
 import { sessionBoardKo } from './sections/sessionBoard.ts'
@@ -576,6 +577,8 @@ export const ko = {
       gitTooltip: 'Git 인스펙터',
       changes: '변경 사항',
       changesTooltip: '턴마다 바뀐 파일',
+      side: '옆 세션',
+      sideTooltip: '지금 세션 옆에 다른 세션',
       skills: '스킬',
       skillsTooltip: '스킬 추출 인박스',
       skillsInbox: '스킬 인박스',
@@ -1654,6 +1657,7 @@ export const ko = {
   sessionConfig: sessionConfigKo,
   gitInspector: gitInspectorKo,
   changes: changesKo,
+  sideSession: sideSessionKo,
   sessionWorktree: sessionWorktreeKo,
   chatApproval: chatApprovalKo,
   sessionBoard: sessionBoardKo,

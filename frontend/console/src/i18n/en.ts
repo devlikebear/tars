@@ -6,6 +6,7 @@ import { chatThreadEn } from './sections/chatThread.ts'
 import { sessionConfigEn } from './sections/sessionConfig.ts'
 import { gitInspectorEn } from './sections/gitInspector.ts'
 import { changesEn } from './sections/changes.ts'
+import { sideSessionEn } from './sections/sideSession.ts'
 import { sessionWorktreeEn } from './sections/sessionWorktree.ts'
 import { chatApprovalEn } from './sections/chatApproval.ts'
 import { sessionBoardEn } from './sections/sessionBoard.ts'
@@ -576,6 +577,8 @@ export const en = {
       gitTooltip: 'Git Inspector',
       changes: 'Changes',
       changesTooltip: 'What each turn changed',
+      side: 'Side session',
+      sideTooltip: 'Another session next to this one',
       skills: 'Skills',
       skillsTooltip: 'Skill Extraction Inbox',
       skillsInbox: 'Skill Inbox',
@@ -1656,6 +1659,7 @@ export const en = {
   sessionConfig: sessionConfigEn,
   gitInspector: gitInspectorEn,
   changes: changesEn,
+  sideSession: sideSessionEn,
   sessionWorktree: sessionWorktreeEn,
   chatApproval: chatApprovalEn,
   sessionBoard: sessionBoardEn,
