@@ -129,6 +129,9 @@ type RunOptions struct {
 	// to the caller (see llm.ChatOptions.ClaudeCodePermissionHandler). Nil
 	// leaves the provider on its one-shot path. Other providers ignore it.
 	ClaudeCodePermissionHandler llm.ClaudeCodePermissionHandler
+	// ToolAuthorizer, when set, is asked before each tool call runs and may
+	// deny it (see ToolAuthorizer). Nil runs every allowed call.
+	ToolAuthorizer ToolAuthorizer
 }
 
 type ToolReplayRequest struct {
@@ -340,7 +343,23 @@ func (l *Loop) Run(ctx context.Context, initial []llm.ChatMessage, opts RunOptio
 			}
 			beforeToolEvent.ToolReplayed = replayed
 			beforeToolEvent.ToolReceiptID = strings.TrimSpace(replay.ReceiptID)
-			if !replayed && opts.BeforeTool != nil {
+			denied := false
+			var denial ToolDecision
+			if !replayed && opts.ToolAuthorizer != nil {
+				decision, gateErr := opts.ToolAuthorizer.Authorize(ctx, ToolCallRequest{
+					ToolName:    call.Name,
+					ToolCallID:  call.ID,
+					ToolArgs:    effectiveArgs,
+					EffectClass: string(recoveryPolicy.EffectClass),
+					Iteration:   i + 1,
+				})
+				if gateErr != nil {
+					l.emit(ctx, Event{Type: EventLoopError, Iteration: i + 1, ToolName: call.Name, ToolCallID: call.ID, Err: gateErr})
+					return llm.ChatResponse{}, gateErr
+				}
+				denied, denial = !decision.Allow, decision
+			}
+			if !replayed && !denied && opts.BeforeTool != nil {
 				if hookErr := opts.BeforeTool(ctx, beforeToolEvent); hookErr != nil {
 					l.emit(ctx, Event{Type: EventLoopError, Iteration: i + 1, ToolName: call.Name, ToolCallID: call.ID, Err: hookErr})
 					return llm.ChatResponse{}, hookErr
@@ -349,12 +368,18 @@ func (l *Loop) Run(ctx context.Context, initial []llm.ChatMessage, opts RunOptio
 			l.emit(ctx, beforeToolEvent)
 
 			var result tool.Result
-			if replayed {
+			switch {
+			case replayed:
 				result = tool.Result{
 					Content: []tool.ContentBlock{{Type: "text", Text: replay.Result}},
 					IsError: replay.IsError,
 				}
-			} else {
+			case denied:
+				result = tool.Result{
+					Content: []tool.ContentBlock{{Type: "text", Text: toolDenialResult(denial)}},
+					IsError: true,
+				}
+			default:
 				callCtx := ctx
 				if emitter := tool.LineEmitterFromContext(ctx); emitter != nil {
 					if streamer := tool.BindLineEmitter(emitter, call.ID); streamer != nil {

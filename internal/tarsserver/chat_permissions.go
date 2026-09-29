@@ -41,10 +41,13 @@ func validChatPermissionDecision(decision string) bool {
 }
 
 // chatPermissionBroker holds the prompts running turns are waiting on, so the
-// request carrying the answer can reach the request running the turn.
+// request carrying the answer can reach the request running the turn. It
+// also keeps the "allow for this session" rules native-provider turns have
+// granted (chat_tool_gate.go); Claude Code keeps its own.
 type chatPermissionBroker struct {
 	mu      sync.Mutex
 	pending map[string]pendingChatPermission
+	rules   map[string][]chatToolRule
 }
 
 type pendingChatPermission struct {
@@ -53,7 +56,7 @@ type pendingChatPermission struct {
 }
 
 func newChatPermissionBroker() *chatPermissionBroker {
-	return &chatPermissionBroker{pending: map[string]pendingChatPermission{}}
+	return &chatPermissionBroker{pending: map[string]pendingChatPermission{}, rules: map[string][]chatToolRule{}}
 }
 
 // open registers a prompt for sessionID. done must be called once the prompt
@@ -91,26 +94,36 @@ func newChatPermissionID() string {
 	return hex.EncodeToString(raw[:])
 }
 
+// askChatPermission streams one permission_request and waits for the
+// console's answer. The caller reports the outcome with permissionResolved
+// under the returned request id. If ctx ends first — a cancelled turn, a
+// disconnected console, or Claude Code dropping the question — the prompt is
+// closed as withdrawn and ctx's error returned.
+func askChatPermission(ctx context.Context, broker *chatPermissionBroker, sessionID string, stream *chatStreamWriter, prompt llm.ClaudeCodePermissionRequest, sessionRule string) (string, chatPermissionAnswer, error) {
+	id, answers, done := broker.open(sessionID)
+	defer done()
+	stream.permissionRequest(id, prompt, sessionRule)
+	select {
+	case answer := <-answers:
+		return id, answer, nil
+	case <-ctx.Done():
+		stream.permissionResolved(id, "withdrawn")
+		return id, chatPermissionAnswer{}, ctx.Err()
+	}
+}
+
 // newChatPermissionHandler answers Claude Code's permission prompts for one
 // turn by asking the console.
 func newChatPermissionHandler(broker *chatPermissionBroker, sessionID string, stream *chatStreamWriter) llm.ClaudeCodePermissionHandler {
 	return func(ctx context.Context, req llm.ClaudeCodePermissionRequest) (llm.ClaudeCodePermissionDecision, error) {
-		id, answers, done := broker.open(sessionID)
-		defer done()
-
 		ruleDisplay, ruleUpdate := chatPermissionSessionRule(req)
-		stream.permissionRequest(id, req, ruleDisplay)
-		select {
-		case answer := <-answers:
-			decision, outcome := chatPermissionDecision(answer, ruleUpdate)
-			stream.permissionResolved(id, outcome)
-			return decision, nil
-		case <-ctx.Done():
-			// Cancelled turn, disconnected console, or Claude Code dropping
-			// the question: nobody is waiting for an answer any more.
-			stream.permissionResolved(id, "withdrawn")
-			return llm.ClaudeCodePermissionDecision{}, ctx.Err()
+		id, answer, err := askChatPermission(ctx, broker, sessionID, stream, req, ruleDisplay)
+		if err != nil {
+			return llm.ClaudeCodePermissionDecision{}, err
 		}
+		decision, outcome := chatPermissionDecision(answer, ruleUpdate)
+		stream.permissionResolved(id, outcome)
+		return decision, nil
 	}
 }
 
@@ -199,12 +212,21 @@ var chatPermissionSubcommandTools = map[string]bool{
 	"cargo": true, "make": true, "docker": true, "kubectl": true, "gh": true, "uv": true,
 }
 
-func chatPermissionBashPrefix(command string) string {
-	command = strings.TrimSpace(command)
+// chatPermissionHasShellSyntax reports whether command chains, redirects or
+// substitutes, so its first word says nothing about everything it runs.
+func chatPermissionHasShellSyntax(command string) bool {
 	for _, marker := range chatPermissionShellSyntax {
 		if strings.Contains(command, marker) {
-			return ""
+			return true
 		}
+	}
+	return false
+}
+
+func chatPermissionBashPrefix(command string) string {
+	command = strings.TrimSpace(command)
+	if chatPermissionHasShellSyntax(command) {
+		return ""
 	}
 	fields := strings.Fields(command)
 	if len(fields) == 0 || chatPermissionNeverRemembered[fields[0]] {
