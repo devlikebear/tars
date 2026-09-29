@@ -521,6 +521,18 @@ Reverting (P1 PR6) happens in the panel, never in the thread's card:
 - **Marks.** A turn's diff never changes after a revert, so reverted hunks and files carry a small caps `reverted` badge (`surface-active`, 10px mono), read from the session's revert list.
 - **Waiting.** Revert buttons are disabled while a turn streams. A server that is still running a turn answers "A turn is running. Try again when it finishes."
 
+### Follow-up queue (composer, #971)
+
+While a turn runs, the composer queues instead of sending (`lib/stores/messageQueue.svelte.ts`, per session). The placeholder says so, Enter queues, and a `button-secondary` **Queue** appears beside **Stop** once something is typed. A slash command picked from the menu mid-turn queues too, since running `/compact` or `/new` then would cut the turn off.
+
+Queued messages sit in a `surface` box above the composer: a mono `text-xs` count, a hint (or a `warning` **Paused** badge), and **Clear** on the right; then one row per message, with the text truncated to a line, a file count when it carries attachments, and ghost **Send now**, **Edit**, and **×** buttons. A paused queue takes a `warning` border.
+
+- When a turn ends on its own, the next message sends, one turn each; the draft in the composer is never swept in.
+- **Stop**, a failed turn, or reopening a chat with messages still queued pauses the queue; **Resume** sends again.
+- **Send now** moves a message first and stops the running turn so it goes next.
+- **Edit** moves a message back into the composer; anything already typed takes its place at the end of the queue.
+- Queues live in memory for the page's lifetime. Text, files, and mentions are kept, so a queued message sends exactly as typed.
+
 ### Goal chip (chat session header)
 
 Sits after the health badge in `.session-title-row` whenever the session has a `SessionGoal` set via `/goal <description>`. Same dimensions as the cwd chip (3px / `space-2` padding, `radius-sm`, `font-mono` body). Default state is **tinted green** — `border` and `text` use `primary` mixed with the muted accent, signaling that the session is steering itself toward an autonomous target. The label `goal` reads in a dim caps font, the truncated description in green, and a small `0/3` style counter at the trailing edge shows auto-continue progress (`auto_continue_count / max_auto_continues`). The chip flips to neutral grey when the goal is cleared after a `satisfied` verdict and to a warning tint when the budget is `exhausted`. Click invokes the same handler as `/goal status` and prints the full description plus remaining budget into the chat feedback strip. The chip is hidden when no goal is set.

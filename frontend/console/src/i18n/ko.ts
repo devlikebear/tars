@@ -7,6 +7,7 @@ import { sessionConfigKo } from './sections/sessionConfig.ts'
 import { gitInspectorKo } from './sections/gitInspector.ts'
 import { changesKo } from './sections/changes.ts'
 import { chatApprovalKo } from './sections/chatApproval.ts'
+import { messageQueueKo } from './sections/messageQueue.ts'
 import { artifactPanelKo } from './sections/artifactPanel.ts'
 import { skillInboxKo } from './sections/skillInbox.ts'
 import { sessionCronKo } from './sections/sessionCron.ts'
@@ -1649,6 +1650,7 @@ export const ko = {
   gitInspector: gitInspectorKo,
   changes: changesKo,
   chatApproval: chatApprovalKo,
+  messageQueue: messageQueueKo,
   artifactPanel: artifactPanelKo,
   skillInbox: skillInboxKo,
   sessionCron: sessionCronKo,
