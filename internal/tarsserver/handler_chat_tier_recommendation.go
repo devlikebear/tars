@@ -125,9 +125,12 @@ func recordTierRecommendationSignal(tracker *usage.Tracker, state chatRunState, 
 	if responseUsage.InputTokens > 0 || responseUsage.OutputTokens > 0 {
 		dimensions["input_tokens"] = strconv.Itoa(responseUsage.InputTokens)
 		dimensions["output_tokens"] = strconv.Itoa(responseUsage.OutputTokens)
-		estimatedCost, pricingKnown := tracker.EstimateCost(state.llmResolution.Provider, state.llmResolution.Model, responseUsage)
-		dimensions["estimated_cost_usd"] = fmt.Sprintf("%.6f", estimatedCost)
+		cost, pricingKnown, costSource := tracker.CallCost(state.llmResolution.Provider, state.llmResolution.Model, responseUsage)
+		dimensions["estimated_cost_usd"] = fmt.Sprintf("%.6f", cost)
 		dimensions["pricing_known"] = strconv.FormatBool(pricingKnown)
+		if costSource != "" {
+			dimensions["cost_source"] = costSource
+		}
 	}
 	_ = tracker.RecordSignal(usage.SignalEntry{
 		Name:       "llm_tier_recommendation",

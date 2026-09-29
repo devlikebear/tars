@@ -13,6 +13,10 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 - **`claude-code-cli` 권한 프롬프트를 호출자에게 넘기는 경로 (스파이크 #996)** — `ChatOptions.ClaudeCodePermissionHandler`를 주면 그 턴은 `-p <prompt>` 대신 `--input-format stream-json --permission-prompt-tool stdio`로 실행되고, Claude Agent SDK가 쓰는 stdio 제어 프로토콜로 CLI의 `can_use_tool` 질문이 핸들러에 도착한다. 핸들러는 허용/거부와 함께 입력 수정(`UpdatedInput`), 권한 규칙 추가(`UpdatedPermissions`), 턴 중단(`Interrupt`)을 돌려줄 수 있다. 요청이 그 세션의 CLI 프로세스 파이프로 오므로 #970이 MCP 승인 툴 경로에서 걱정한 세션 식별 문제가 없다. 프로토콜 코덱은 `pkg/llm/internal/ccproto`에 있어 공개 API를 늘리지 않는다. CLI는 stdin EOF에만 종료하고 그 뒤로는 질문에 답할 수 없으므로, stdin은 결과가 오고 진행 중인 subagent 작업이 없을 때 닫는다 — 비동기 subagent는 부모의 첫 결과 뒤에 권한을 묻고 끝나면 후속 턴을 깨운다(2.1.283 실측). 핸들러가 없으면 기존 `-p` 호출이 그대로이며, 아직 채팅 서버에는 배선하지 않았다. 실제 CLI 왕복은 `go test -tags integration ./pkg/llm/ -run TestClaudeCodeCLIControlLive`로 확인한다.
 - **`cmd/apisnapshot`이 `internal` 패키지를 건너뛴다** — Go는 `pkg/x/internal/y`를 부모 밖에서 import하지 못하게 막으므로 그 아래는 외부 소비자가 기댈 수 있는 표면이 아니다.
 
+### Fixed
+
+- **`claude-code-cli` 채팅 턴이 사용량에 $0으로 기록되던 문제** — provider는 CLI 결과 이벤트의 `total_cost_usd`를 이미 `Usage.CostUSD`로 파싱하고 있었지만, 사용량 추적은 가격표만 봤다. 이 provider의 tier는 `haiku`/`sonnet` 같은 별칭으로 모델을 지정해 가격표에 없으므로 `estimated_cost_usd: 0`, `pricing_known: false`가 됐고 콘솔 상태 바도 `$0`을 보였다. 이제 provider가 비용을 직접 보고하면(`CostUSD > 0`) 그 값을 항목의 비용으로 기록하고 `pricing_known: true`, 새 필드 `cost_source: "provider"`를 남긴다. 가격표 추정은 fallback으로 남으며 그때는 `cost_source: "estimate"`, 둘 다 없으면 필드를 생략한다. 합계가 같은 필드를 읽으므로 `/v1/usage/summary`와 일/주/월 한도 검사에도 그대로 반영된다. `llm_tier_recommendation` 신호의 비용 차원도 같은 규칙을 따른다. `antigravity-cli`는 CLI가 비용을 보고하지 않아 이전처럼 미가격 상태로 남는다.
+
 ## [0.37.1] - 2026-09-09
 
 ### Fixed
