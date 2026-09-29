@@ -36,3 +36,45 @@ func TestLockedFileIsReportedAsUnknown(t *testing.T) {
 		t.Fatalf("files = %+v", files)
 	}
 }
+
+func lockFile(t *testing.T, path string, share uint32) {
+	t.Helper()
+	name, err := syscall.UTF16PtrFromString(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handle, err := syscall.CreateFile(name, syscall.GENERIC_READ, share, nil, syscall.OPEN_EXISTING, syscall.FILE_ATTRIBUTE_NORMAL, 0)
+	if err != nil {
+		t.Fatalf("lock %s: %v", path, err)
+	}
+	t.Cleanup(func() { _ = syscall.CloseHandle(handle) })
+}
+
+// A file another program holds open is reported; the rest of the revert
+// goes ahead. One that cannot be read is not even planned.
+func TestRevertReportsLockedFiles(t *testing.T) {
+	s := newTestStore(t, Options{})
+	root := t.TempDir()
+	for _, name := range []string{"unreadable.txt", "unwritable.txt", "free.txt"} {
+		writeFile(t, root, name, "before\n")
+	}
+	runTurn(t, s, "sess", "turn", root, func() {
+		for _, name := range []string{"unreadable.txt", "unwritable.txt", "free.txt"} {
+			writeFile(t, root, name, "after\n")
+		}
+	})
+	lockFile(t, filepath.Join(root, "unreadable.txt"), 0)
+	lockFile(t, filepath.Join(root, "unwritable.txt"), syscall.FILE_SHARE_READ)
+
+	result := mustRevert(t, s, "sess", "turn", RevertRequest{Apply: true})
+	outcomes := map[string]string{}
+	for _, f := range result.Files {
+		outcomes[f.Path] = f.Outcome
+	}
+	if outcomes["unreadable.txt"] != RevertFailed || outcomes["unwritable.txt"] != RevertFailed || outcomes["free.txt"] != RevertWrite {
+		t.Fatalf("outcomes = %v", outcomes)
+	}
+	if !result.Applied || result.RevertID == "" || readText(t, root, "free.txt") != "before\n" {
+		t.Fatalf("result = %+v", result)
+	}
+}
