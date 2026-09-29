@@ -54,27 +54,33 @@ func TestChatPermissionSessionRule(t *testing.T) {
 				}
 				return
 			}
-			var decoded struct {
-				Type        string `json:"type"`
-				Behavior    string `json:"behavior"`
-				Destination string `json:"destination"`
-				Rules       []struct {
-					ToolName    string `json:"toolName"`
-					RuleContent string `json:"ruleContent"`
-				} `json:"rules"`
-			}
-			if err := json.Unmarshal(update, &decoded); err != nil {
-				t.Fatalf("decode update %s: %v", update, err)
-			}
-			// Session scope only: any other destination writes a settings
-			// file in the user's project.
-			if decoded.Type != "addRules" || decoded.Behavior != "allow" || decoded.Destination != "session" {
-				t.Fatalf("update = %s", update)
-			}
-			if len(decoded.Rules) != 1 || decoded.Rules[0].ToolName != tc.tool || decoded.Rules[0].RuleContent != tc.content {
-				t.Fatalf("rules = %+v", decoded.Rules)
-			}
+			assertSessionRuleUpdate(t, update, tc.tool, tc.content)
 		})
+	}
+}
+
+// assertSessionRuleUpdate checks update is one allow rule for tool with
+// content, scoped to the session: any other destination writes a settings
+// file in the user's project.
+func assertSessionRuleUpdate(t *testing.T, update json.RawMessage, tool, content string) {
+	t.Helper()
+	var decoded struct {
+		Type        string `json:"type"`
+		Behavior    string `json:"behavior"`
+		Destination string `json:"destination"`
+		Rules       []struct {
+			ToolName    string `json:"toolName"`
+			RuleContent string `json:"ruleContent"`
+		} `json:"rules"`
+	}
+	if err := json.Unmarshal(update, &decoded); err != nil {
+		t.Fatalf("decode update %s: %v", update, err)
+	}
+	if decoded.Type != "addRules" || decoded.Behavior != "allow" || decoded.Destination != "session" {
+		t.Fatalf("update = %s", update)
+	}
+	if len(decoded.Rules) != 1 || decoded.Rules[0].ToolName != tool || decoded.Rules[0].RuleContent != content {
+		t.Fatalf("rules = %+v", decoded.Rules)
 	}
 }
 
