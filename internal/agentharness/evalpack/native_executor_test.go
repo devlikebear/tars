@@ -2,8 +2,10 @@ package evalpack
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"testing"
+	"testing/synctest"
 	"time"
 )
 
@@ -38,6 +40,47 @@ func TestNativeExecutorMatchesCanonicalBaseline(t *testing.T) {
 	if report.Summary.DuplicateSideEffects == 0 {
 		t.Fatalf("baseline must expose replayed side effects, got %+v", report.Summary)
 	}
+}
+
+// A loaded Windows runner once took over 2s to carry a run from Spawn to its
+// prompt, and the executor reported that slowness as a baseline error. Inside
+// the bubble the 10s delay costs no real time, while git and session I/O still
+// run at their own pace without advancing the fake clock.
+func TestNativeExecutorBaselineToleratesSlowPathToPrompt(t *testing.T) {
+	pack, err := LoadPack(filepath.Join("..", "..", "..", "testdata", "agent-harness", "scenarios.json"))
+	if err != nil {
+		t.Fatalf("load pack: %v", err)
+	}
+	fakePromptDelay = 10 * time.Second
+	defer func() { fakePromptDelay = 0 }()
+	synctest.Test(t, func(t *testing.T) {
+		report, err := (Runner{
+			Executor: NativeExecutor{RootDir: t.TempDir()},
+			Config:   RunConfig{Mode: ModeDeterministic, Version: "test", Commit: "test"},
+		}).Run(t.Context(), pack)
+		if err != nil {
+			t.Fatalf("run pack: %v", err)
+		}
+		for _, result := range report.Results {
+			if !result.ExpectationMet {
+				t.Errorf("scenario %s did not match baseline: status=%s error=%s", result.ID, result.Status, result.Error)
+			}
+		}
+	})
+}
+
+func TestAwaitSignalReportsContextEndAndGuardExpiry(t *testing.T) {
+	canceled, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := awaitSignal(canceled, make(chan struct{}), "never"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled wait = %v", err)
+	}
+	synctest.Test(t, func(t *testing.T) {
+		err := awaitSignal(t.Context(), make(chan struct{}), "worker did not start")
+		if want := "worker did not start within " + nativeWaitTimeout.String(); err == nil || err.Error() != want {
+			t.Fatalf("expired wait = %v, want %s", err, want)
+		}
+	})
 }
 
 func TestNativeExecutorConvenienceAndValidationBranches(t *testing.T) {

@@ -12,10 +12,15 @@ async function newSession(page: Page) {
   await expect(statusBar(page).locator('.cwd-chip')).toBeVisible()
 }
 
+// A turn is over when the Send button is back: the reply can show before
+// the turn's end snapshot is taken and the reply is saved.
+const turnSettled = (page: Page) => expect(page.locator('.chat-form-actions button[type="submit"]')).toBeVisible()
+
 async function send(page: Page, text: string) {
   await composer(page).fill(text)
   await composer(page).press('Enter')
   await expect(lastAssistant(page)).toContainText(`Echo: ${text}`)
+  await turnSettled(page)
 }
 
 test.beforeEach(async ({ page }) => {
