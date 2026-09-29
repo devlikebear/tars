@@ -108,14 +108,14 @@ cmd/  →  app layer  →  core layer  →  pkg/
 
 **Frontend** (`frontend/console/`) — Svelte 5 SPA embedded via `go:embed`
 - Svelte 5 runes: `$state()`, `$props()`, `Snippet`
-- Router: `lib/router.ts` (vanilla pushState). Routes: chat, memory, sysprompt, ops, pulse, reflection, extensions, config
+- Router: `lib/router.ts` (vanilla pushState). Routes: board (`/console`, home), home (`/console/system`, overview), chat, memory, sysprompt, ops, pulse, reflection, extensions, config
 - API: `lib/api.ts` — `requestJSON<T>()`, SSE via EventSource + ReadableStream
 - Chat workbench: `Chat.svelte` (route + slash commands) composes `ChatSessionHeader`, `ChatDockHost`, `ChatPanel`, `ChatStatusBar` (tier pin, permission mode, cwd, session cost via `/v1/usage/summary?session_id=`), and `ChatRail` (dock panel icons + ⌘K). Shared state lives in runes stores, not callback props: `lib/stores/chatSession.ts` (sessions, active session, per-session slices) and `lib/stores/chatDockStore.svelte.ts` (dock layout; each zone stacks its panels as tabs, model in `lib/dock/layout.ts`). Stores take their API by injection and are behavior-tested under Node via `tests/helpers/compileSvelteModule.ts`
 - i18n (en/ko): components read `$t.<namespace>.<key>`; strings live in `src/i18n/{en,ko,types}.ts`, and the chat workbench's panels keep theirs in `src/i18n/sections/<area>.ts` (the English object is the section's type, so Korean must match key for key). `src/lib` builders take their section's strings as a parameter instead of importing the store. New UI text goes through `$t`: `e2e/workbench-ko.spec.ts` fails on English phrases left in the Korean workbench
 - Design tokens: `app.css` — "Graphite Signal": dark graphite, signal green `#3ee07f` (`--primary-rgb` for tints), IBM Plex Sans/Mono. Canvas/Mermaid colors live in `lib/themeColors.ts`
 - **Design source of truth**: `frontend/console/DESIGN.md` — consult before any visual change; update it in same PR if deviating
 
-**SSE:** `/v1/events/stream` — `{type,category,severity,title,message,timestamp}`; `/v1/events/history?limit=N`. A chat turn waiting for tool approval publishes `category: "approval"` (with `session_id`, `request_id`, `open_path`). `GET /v1/chat/activity` lists running turns and pending approvals for clients other than the request running the turn — the desktop tray (#972) or the console showing another session (`chat_activity.go`, fed by watching each turn stream's permission events)
+**SSE:** `/v1/events/stream` — `{type,category,severity,title,message,timestamp}`; `/v1/events/history?limit=N`. A chat turn waiting for tool approval publishes `category: "approval"` (with `session_id`, `request_id`, `open_path`). `GET /v1/chat/activity` lists running turns and pending approvals for clients other than the request running the turn — the desktop tray (#972) or the console showing another session (`chat_activity.go`, fed by watching each turn stream's permission events). `GET /v1/chat/board` is the console home's session board (#971, `chat_board.go`): visible main sessions with that status, repository top level + branch (cached 15s), the latest checkpointed change, and this month's cost in one call; `/console` renders it and the old dashboard moved to `/console/system`
 
 ## Git Workflow
 

@@ -10,18 +10,22 @@ const homeSource = readFileSync(new URL('../src/components/Home.svelte', import.
 const navItem = (view: string) => navGroups.flatMap((g) => g.items).find((i) => i.view === view)
 const enSource = readFileSync(new URL('../src/i18n/en.ts', import.meta.url), 'utf8')
 
-test('/console resolves to Home while Chat stays on /console/chat', () => {
-  assert.deepEqual(resolveRoute('/console'), { view: 'home' })
-  assert.deepEqual(resolveRoute('/console/'), { view: 'home' })
+test('/console resolves to the session board, the overview moves to /console/system (#971)', () => {
+  assert.deepEqual(resolveRoute('/console'), { view: 'board' })
+  assert.deepEqual(resolveRoute('/console/'), { view: 'board' })
+  assert.deepEqual(resolveRoute('/console/system'), { view: 'home' })
+  assert.deepEqual(resolveRoute('/console/nowhere'), { view: 'board' })
   assert.deepEqual(resolveRoute('/console/chat'), { view: 'chat' })
   assert.deepEqual(resolveRoute('/console/chat/session-1'), { view: 'chat', sessionId: 'session-1' })
   assert.deepEqual(resolveRoute('/console/chat?session=session-1'), { view: 'chat', sessionId: 'session-1' })
   assert.doesNotMatch(readFileSync(new URL('../src/lib/router.ts', import.meta.url), 'utf8'), /http:\/\/tars\.local/)
 })
 
-test('App renders Home for the console entry route', () => {
+test('App renders the session board for the console entry route and Home for the overview', () => {
+  assert.match(appSource, /import SessionBoard from '\.\/components\/SessionBoard\.svelte'/)
   assert.match(appSource, /import Home from '\.\/components\/Home\.svelte'/)
-  assert.match(appSource, /let route = \$state<Route>\(\{ view: 'home' \}\)/)
+  assert.match(appSource, /let route = \$state<Route>\(\{ view: 'board' \}\)/)
+  assert.match(appSource, /route\.view === 'board'/)
   assert.match(appSource, /route\.view === 'home'/)
   assert.match(appSource, /<Home onNavigate=\{navigate\} \/>/)
   assert.doesNotMatch(appSource, /import Chat from '\.\/components\/Chat\.svelte'/)
@@ -56,9 +60,11 @@ test('Home dashboard exposes system status, sessions, notifications, and actions
   assert.doesNotMatch(homeSource, /ChatPanel/)
 })
 
-test('Chat nav item is inactive on Home', () => {
+test('Chat nav item is inactive on the board and the overview', () => {
   // Nav highlights the item whose view matches the resolved route.
-  assert.equal(resolveRoute('/console').view, 'home')
+  assert.equal(resolveRoute('/console').view, 'board')
+  assert.equal(navItem('board')?.path, '/console')
+  assert.equal(navItem('home')?.path, '/console/system')
   assert.notEqual(navItem('chat')?.view, resolveRoute('/console').view)
   assert.equal(resolveRoute(navItem('chat')?.path ?? '').view, 'chat')
 })

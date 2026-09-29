@@ -1143,6 +1143,9 @@ type chatToolingOptions struct {
 	// Notify publishes a notification on /v1/events/stream; chat uses it to
 	// announce a turn waiting for approval (#972). nil sends none.
 	Notify func(context.Context, notificationEvent)
+	// SessionCosts returns this month's cost per chat session for the
+	// session board (#971). nil shows every cost as 0.
+	SessionCosts func() (map[string]float64, error)
 }
 
 type chatCompactionOptions struct {
@@ -1320,6 +1323,8 @@ func newChatAPIHandlerWithRuntimeConfig(
 	mux.HandleFunc("/v1/chat/activity", func(w http.ResponseWriter, r *http.Request) {
 		handleChatActivity(w, r, chatActivity)
 	})
+	board := newSessionBoard(store, chatActivity, tooling.Checkpoints, tooling.SessionCosts)
+	mux.HandleFunc("/v1/chat/board", board.handle)
 	mux.HandleFunc("/v1/chat/mentions/files", func(w http.ResponseWriter, r *http.Request) {
 		handleChatFileMentionCandidates(w, r, chatHandlerDeps{
 			workspaceDir:  workspaceDir,
