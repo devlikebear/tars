@@ -6,6 +6,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/devlikebear/tars/internal/session"
 )
 
 func TestLoad_NoTarsDir_ReturnsNils(t *testing.T) {
@@ -349,5 +351,28 @@ func writeSettings(t *testing.T, cwd, name, body string) {
 	}
 	if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {
 		t.Fatalf("write %s: %v", name, err)
+	}
+}
+
+// TestLoad_WorktreeInclude unions the copy list across layers and refuses
+// worktree_setup, which would run commands from a cloned repository.
+func TestLoad_WorktreeInclude(t *testing.T) {
+	cwd := t.TempDir()
+	writeSettings(t, cwd, "settings.json", `{"worktree_include":[".env","config/local.json"],"worktree_setup":["npm install"]}`)
+	writeSettings(t, cwd, "settings.local.json", `{"worktree_include":[".env",".tars/settings.local.json"]}`)
+	shared, local, diags, err := Load(cwd)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if len(diags) != 1 || diags[0].Path != "worktree_setup" || diags[0].Severity != SeverityError {
+		t.Fatalf("diagnostics = %+v", diags)
+	}
+	eff, sources := Merge(session.SessionToolConfig{}, "", shared, local)
+	want := []string{".env", "config/local.json", ".tars/settings.local.json"}
+	if !reflect.DeepEqual(eff.WorktreeInclude, want) {
+		t.Fatalf("worktree_include = %v, want %v", eff.WorktreeInclude, want)
+	}
+	if sources["worktree_include"] != SourceLocal {
+		t.Fatalf("source = %v", sources["worktree_include"])
 	}
 }

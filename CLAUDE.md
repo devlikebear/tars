@@ -124,6 +124,13 @@ cmd/  →  app layer  →  core layer  →  pkg/
 - A `tars://` link or dropped folder only navigates or *proposes* (confirm dialog) — never answers an approval or sends a message
 - All logic lives in plain-Go `desktop/internal/*` packages with tests; `main.go`/`shell.go` only wire Wails. Details: `desktop/README.md`
 
+**Session worktrees** (#971, `internal/sessionworktree` + `internal/tarsserver/chat_worktree.go`):
+- 채팅 턴은 세션 cwd의 git 저장소에 대한 **write lease**(서버 메모리, 턴 + 15분)를 잡는다. 다른 세션이 잡고 있으면 새 턴의 세션은 자동으로 자기 worktree(`<workspace>/_shared/session-worktrees/<repo>/<session>`, 브랜치 `tars/session-<id>`, 체크아웃 HEAD에서 분기)로 옮겨 가고 SSE `worktree` 이벤트를 보낸다. 세션에 묶인 cron 실행은 lease와 상관없이 격리된다. 헤더의 ⑂ 칩으로 직접 격리하거나 끝낸다
+- 끝내기: **apply** = base 대비 패치를 체크아웃 작업 트리에 `git apply`(stage/commit/stash 없음, 충돌이면 아무것도 바꾸지 않고 409), **keep** = 남은 변경을 브랜치에 커밋하고 폴더 제거, **discard** = 폴더와 브랜치 삭제. 세션 삭제와 시작 시 sweep은 keep으로 작업을 보존한다. 턴이 도는 동안에는 409
+- `GET/POST/PUT /v1/admin/sessions/{id}/worktree` (`{action: isolate|apply|keep|discard}`, `{isolation: ""|"off"}`). 모든 동작은 automation audit `session_worktree`에 남는다
+- `.tars/settings*.json`의 `worktree_include`(레이어 union)는 저장소 안 gitignore 파일만 복사하고 심볼릭 링크는 건너뛴다. 명령을 실행하는 `worktree_setup`은 차단 필드다(클론한 저장소가 명령을 실행하게 되므로)
+- 삭제는 manager 루트 아래 `<repo>/<session>` 폴더만 허용한다(세션 기록이 조작돼도 다른 경로를 지우지 않음). Windows는 지원(ADR §6 (a)): 테스트가 windows-test job에서 돈다
+
 ## Git Workflow
 
 **Small changes** (1-2 files): commit directly to main after `make test`, then push.
@@ -187,7 +194,7 @@ sessions.json (세션 base)
 - 스칼라/맵 필드는 last-write-wins, `mcp_servers_extra`는 Name 키로 머지
 - 결과는 `GET /v1/admin/sessions/{id}/effective-config`에서 `{effective, sources, diagnostics}`로 노출, `Service.Resolve`가 (cwd, mtime) 키로 캐시
 
-**허용 필드** — `tool_config`, `prompt_override`, `mcp_servers_extra`, `model_tier_override`, `claude_code_cli_permission_mode`, `claude_code_cli_permission_deny`(Claude Code deny 규칙 리스트, 레이어 union = tightening-only → `--settings` 임시 파일로 마운트). 차단 필드(`llm_providers`, `api_key`, `auth*`, `hooks`, `server_command`)는 로드 시 drop + error diagnostic — 절대 자격증명/임의 바이너리 등록을 settings 파일에 허용하지 않는다.
+**허용 필드** — `tool_config`, `prompt_override`, `mcp_servers_extra`, `model_tier_override`, `claude_code_cli_permission_mode`, `claude_code_cli_permission_deny`(Claude Code deny 규칙 리스트, 레이어 union = tightening-only → `--settings` 임시 파일로 마운트), `worktree_include`(세션 worktree에 복사할 gitignore 파일, 레이어 union). 차단 필드(`llm_providers`, `api_key`, `auth*`, `hooks`, `server_command`, `worktree_setup`)는 로드 시 drop + error diagnostic — 절대 자격증명/임의 바이너리 등록을 settings 파일에 허용하지 않는다.
 
 **적용 지점**
 - 채팅 시스템 프롬프트: `effectiveSessionView` 헬퍼가 `prompt_override`를 머지된 값으로 교체 (`handler_chat_context.go`, `handler_chat.go` 양쪽)

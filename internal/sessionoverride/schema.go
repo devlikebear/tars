@@ -62,6 +62,12 @@ type Override struct {
 	// This is the only Claude Code settings.json knob TARS materializes; see
 	// llm.ChatOptions.ClaudeCodePermissionDeny for the threat-model rationale.
 	ClaudeCodeCLIPermissionDeny []string `json:"claude_code_cli_permission_deny,omitempty"`
+	// WorktreeInclude lists gitignored files and folders, relative to the
+	// repository root, that a session worktree copies from the checkout
+	// (.env, local settings). Layers union. Only copying is offered: a
+	// settings file can come with a cloned repository, so it never names
+	// commands to run.
+	WorktreeInclude []string `json:"worktree_include,omitempty"`
 
 	// Presence records every override path the file explicitly touched.
 	// Keys are dotted paths (e.g. "tool_config.tools_enabled"); the loader
@@ -80,6 +86,7 @@ var AllowedTopLevelFields = map[string]struct{}{
 	"model_tier_override":             {},
 	"claude_code_cli_permission_mode": {},
 	"claude_code_cli_permission_deny": {},
+	"worktree_include":                {},
 }
 
 // BlockedTopLevelFields enumerates JSON keys that, if present, generate a
@@ -93,6 +100,9 @@ var BlockedTopLevelFields = map[string]struct{}{
 	"auth_token":     {},
 	"hooks":          {},
 	"server_command": {},
+	// Commands to run in a new worktree would let a cloned repository run
+	// programs on the person's machine; worktree_include only copies files.
+	"worktree_setup": {},
 }
 
 // AllowedToolConfigFields enumerates the JSON keys honoured inside the
@@ -163,4 +173,5 @@ type EffectiveConfig struct {
 	ModelTierOverride           string                    `json:"model_tier_override,omitempty"`
 	ClaudeCodeCLIPermissionMode string                    `json:"claude_code_cli_permission_mode,omitempty"`
 	ClaudeCodeCLIPermissionDeny []string                  `json:"claude_code_cli_permission_deny,omitempty"`
+	WorktreeInclude             []string                  `json:"worktree_include,omitempty"`
 }

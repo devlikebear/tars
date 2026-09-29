@@ -5,6 +5,7 @@ import type { ChatThreadTranslations } from './sections/chatThread.ts'
 import type { SessionConfigTranslations } from './sections/sessionConfig.ts'
 import type { GitInspectorTranslations } from './sections/gitInspector.ts'
 import type { ChangesTranslations } from './sections/changes.ts'
+import type { SessionWorktreeTranslations } from './sections/sessionWorktree.ts'
 import type { ChatApprovalTranslations } from './sections/chatApproval.ts'
 import type { SessionBoardTranslations } from './sections/sessionBoard.ts'
 
@@ -1596,6 +1597,7 @@ export type Translations = {
   sessionConfig: SessionConfigTranslations
   gitInspector: GitInspectorTranslations
   changes: ChangesTranslations
+  sessionWorktree: SessionWorktreeTranslations
   chatApproval: ChatApprovalTranslations
   sessionBoard: SessionBoardTranslations
 

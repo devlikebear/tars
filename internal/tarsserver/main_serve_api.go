@@ -25,6 +25,7 @@ import (
 	"github.com/devlikebear/tars/internal/reflection"
 	"github.com/devlikebear/tars/internal/remoteaccess"
 	"github.com/devlikebear/tars/internal/sessionoverride"
+	"github.com/devlikebear/tars/internal/sessionworktree"
 	"github.com/devlikebear/tars/internal/skillhub"
 	"github.com/devlikebear/tars/internal/skillhub/sources/anthropic"
 	"github.com/devlikebear/tars/internal/skillhub/sources/hermes"
@@ -64,6 +65,7 @@ type apiRouteHandlers struct {
 	chat            http.Handler
 	sessions        http.Handler
 	checkpoints     http.Handler
+	worktrees       http.Handler
 	work            http.Handler
 	workers         http.Handler
 	memory          http.Handler
@@ -424,6 +426,19 @@ func buildAPIMux(
 	chatTooling.WorkScheduler = workScheduler
 	chatTooling.WorkLedger = workLedger
 	overrideService := sessionoverride.NewService(sessionStore)
+	sessionWorktrees := &chatWorktrees{
+		manager:   sessionworktree.New(filepath.Join(cfg.WorkspaceDir, "_shared", "session-worktrees")),
+		store:     sessionStore,
+		leases:    newRepoLeases(),
+		overrides: overrideService,
+		audit: func(entry ops.AutomationAuditEntry) {
+			_, _ = opsManager.RecordAutomationAudit(entry)
+		},
+	}
+	if swept := sessionWorktrees.sweep(context.Background()); swept > 0 {
+		logger.Info().Int("count", swept).Msg("kept worktrees of deleted sessions on their branches")
+	}
+	chatTooling.Worktrees = sessionWorktrees
 	chatTooling.OverrideService = overrideService
 	checkpointStore := openCheckpointStore(cfg.WorkspaceDir, logger)
 	chatTooling.Checkpoints = checkpointStore
@@ -667,7 +682,8 @@ func buildAPIMux(
 		pulse:           pulseSetup.Handler,
 		reflection:      reflectionSetup.Handler,
 		chat:            chatHandler,
-		sessions:        sessionHandler,
+		sessions:        withWorktreeRetire(sessionHandler, sessionWorktrees),
+		worktrees:       newSessionWorktreeHandler(sessionWorktrees),
 		checkpoints:     newCheckpointAPIHandler(checkpointStore, sessionStore, logger),
 		work:            workLedgerHandler,
 		workers:         workerControlPlaneHandler,
@@ -776,6 +792,9 @@ func registerAPIRoutes(mux *http.ServeMux, handlers apiRouteHandlers) {
 	mux.Handle("/v1/admin/tasks", handlers.sessions)
 	mux.Handle("/v1/admin/sessions", handlers.sessions)
 	mux.Handle("/v1/admin/sessions/", handlers.sessions)
+	if handlers.worktrees != nil {
+		mux.Handle("/v1/admin/sessions/{id}/worktree", handlers.worktrees)
+	}
 	if handlers.checkpoints != nil {
 		mux.Handle("/v1/admin/sessions/{id}/checkpoints", handlers.checkpoints)
 		mux.Handle("/v1/admin/sessions/{id}/checkpoints/{turn}/diff", handlers.checkpoints)
