@@ -10,6 +10,18 @@ if [[ -n "${head}" ]]; then
 else
   changed_files="$(git diff --name-only --diff-filter=ACMRT "${base}" -- '*.go' 'go.mod' 'go.sum')"
 fi
+
+# Files in nested modules (a directory with its own go.mod, such as desktop/
+# or tools/) are not packages of the root module: `go list` from here
+# rejects them. Those modules run their own checks (make desktop-test).
+nested_modules="$(git ls-files -- '*/go.mod' | sed 's#/go\.mod$##')"
+if [[ -n "${nested_modules}" && -n "${changed_files}" ]]; then
+  changed_files="$(printf '%s\n' "${changed_files}" | awk -v roots="${nested_modules}" '
+    BEGIN { n = split(roots, r, "\n") }
+    { for (i = 1; i <= n; i++) if (index($0, r[i] "/") == 1) next; print }
+  ')"
+fi
+
 if [[ -z "${changed_files}" ]]; then
   exit 0
 fi

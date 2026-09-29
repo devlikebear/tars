@@ -16,11 +16,18 @@ relevant_file="$(mktemp)"
 covered_relevant_file="$(mktemp)"
 trap 'rm -f "${changed_file}" "${coverable_file}" "${covered_file}" "${relevant_file}" "${covered_relevant_file}"' EXIT
 
+# Nested modules (a directory with its own go.mod, such as desktop/) are not
+# in the root module's coverage profile; they run their own checks.
+nested_excludes=()
+while IFS= read -r mod; do
+  [[ -n "${mod}" ]] && nested_excludes+=(":(exclude)${mod%/go.mod}/**")
+done < <(git ls-files -- '*/go.mod')
+
 diff_command() {
   if [[ -n "${head}" ]]; then
-    git diff -U0 --diff-filter=ACMRT "${base}" "${head}" -- '*.go'
+    git diff -U0 --diff-filter=ACMRT "${base}" "${head}" -- '*.go' ${nested_excludes[@]+"${nested_excludes[@]}"}
   else
-    git diff -U0 --diff-filter=ACMRT "${base}" -- '*.go'
+    git diff -U0 --diff-filter=ACMRT "${base}" -- '*.go' ${nested_excludes[@]+"${nested_excludes[@]}"}
   fi
 }
 
