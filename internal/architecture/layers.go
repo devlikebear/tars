@@ -63,6 +63,7 @@ var AppPackages = []string{
 	"executionplane",
 	"extensions",
 	"goal",
+	"initiative",
 	"launchagent",
 	"onboarding",
 	"ops",
