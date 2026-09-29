@@ -63,6 +63,9 @@ type chatRequestPayload struct {
 	Mentions           []chatFileMentionRequest       `json:"mentions,omitempty"`
 	SubagentMentions   []chatSubagentMentionRequest   `json:"subagent_mentions,omitempty"`
 	TierRecommendation *chatTierRecommendationPayload `json:"tier_recommendation,omitempty"`
+	// ReviewNotes are comments on, and reverts of, earlier turns' changes;
+	// they are appended to the message (see appendReviewNotes).
+	ReviewNotes []chatReviewNote `json:"review_notes,omitempty"`
 	// InteractivePermissions says the client will answer permission_request
 	// events, so tool prompts wait for it instead of failing the call.
 	InteractivePermissions bool `json:"interactive_permissions,omitempty"`

@@ -96,10 +96,25 @@ func writeTestFile(t *testing.T, path, content string) {
 // chat runs one turn through the chat handler and returns its SSE events.
 func (f checkpointFixture) chat(t *testing.T, client llm.Client, store *checkpoint.Store) []map[string]any {
 	t.Helper()
+	code, body := f.chatRequest(t, client, store, map[string]any{"message": "edit the files"})
+	if code != http.StatusOK {
+		t.Fatalf("chat status %d body=%q", code, body)
+	}
+	return sseEvents(t, body)
+}
+
+// chatRequest posts one chat turn in the fixture's session; payload adds to
+// or overrides the request fields.
+func (f checkpointFixture) chatRequest(t *testing.T, client llm.Client, store *checkpoint.Store, payload map[string]any) (int, string) {
+	t.Helper()
 	tooling := defaultChatToolingOptions()
 	tooling.Checkpoints = store
 	handler := newChatAPIHandlerWithRuntimeConfig(f.root, f.sessions, client, nil, zerolog.New(io.Discard), agent.DefaultMaxLoopIters, nil, "", tooling)
-	raw, err := json.Marshal(map[string]any{"session_id": f.sessionID, "message": "edit the files"})
+	body := map[string]any{"session_id": f.sessionID}
+	for k, v := range payload {
+		body[k] = v
+	}
+	raw, err := json.Marshal(body)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,11 +122,13 @@ func (f checkpointFixture) chat(t *testing.T, client llm.Client, store *checkpoi
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("chat status %d body=%q", rec.Code, rec.Body.String())
-	}
+	return rec.Code, rec.Body.String()
+}
+
+func sseEvents(t *testing.T, body string) []map[string]any {
+	t.Helper()
 	var events []map[string]any
-	for _, block := range strings.Split(rec.Body.String(), "\n\n") {
+	for _, block := range strings.Split(body, "\n\n") {
 		data, ok := strings.CutPrefix(strings.TrimSpace(block), "data: ")
 		if !ok {
 			continue
