@@ -515,9 +515,9 @@ Appears in the thread where a tool call waits on the user — a `claude-code-cli
 A right-zone dock panel (`±` on the rail) that reads the same store as the cards (`lib/stores/changes.svelte.ts`). From top to bottom:
 
 - The heading (the Git Inspector's small caps `section-title`), a two-button segment (`This turn` / `Session so far`), and Refresh.
-- The turns that changed files, newest first. Each is a row with the prompt preview on top and a mono meta line below (summary on the left, time on the right). Skipped turns show their reason in `warning`.
+- The turns that changed files, newest first. Each is a row with the prompt preview on top and a mono meta line below (summary on the left, time on the right). Skipped turns show their reason in `warning`. Next to each recorded turn a narrow `↺` button (`surface`, `border-subtle`, `warning` on hover) reverts that whole turn through the same preview bar as `Revert turn`, without selecting it first.
 - The recorded folder.
-- The selected turn's files, as rows with path, status, and counts.
+- The selected turn's files as a folder tree: folder rows (caret, mono `name/`, file count and summed counts, `text-secondary`, no border) fold and unfold, a folder holding only one folder shows as one row (`src/lib/`), and file rows keep their bordered style with the file name, status and counts. Rows indent 14px per level. Folded folders stay folded across turns.
 - The selected file's `DiffView`, with the same Unified/Split toggle as the Git Inspector.
 
 Selected rows take the `primary` border on `surface-elevated`, as in the Git Inspector.

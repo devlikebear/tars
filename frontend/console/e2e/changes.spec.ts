@@ -78,6 +78,23 @@ test('a turn that edits three files shows its diff in the thread and the Changes
   await changesPanel(page).getByRole('button', { name: 'Session so far' }).click()
   await expect(changesPanel(page).locator('.file-row')).toHaveCount(3)
 
+  // Files sit in a folder tree: src/ folds and unfolds.
+  const srcDir = changesPanel(page).locator('.dir-row', { hasText: 'src/' })
+  await expect(srcDir).toContainText('1 file')
+  await expect(changesPanel(page).locator('.file-row', { hasText: 'app.txt' })).toHaveCount(1)
+  await srcDir.click()
+  await expect(srcDir).toHaveAttribute('aria-expanded', 'false')
+  await expect(changesPanel(page).locator('.file-row')).toHaveCount(2)
+  await srcDir.click()
+  await expect(changesPanel(page).locator('.file-row')).toHaveCount(3)
+  await changesPanel(page).getByRole('button', { name: 'This turn', exact: true }).click()
+
+  // The turn's row reverts the whole turn after the usual preview.
+  await changesPanel(page).getByTestId('turn-restore').click()
+  await expect(changesPanel(page).locator('.revert-bar')).toContainText('Revert this turn’s changes to 3 files?')
+  await changesPanel(page).locator('.revert-bar').getByRole('button', { name: 'Revert', exact: true }).click()
+  await expect.poll(() => readFileSync(join(dir, 'base.txt'), 'utf8')).not.toContain('edited')
+
   // History keeps the card: the turn's user message carries its ID.
   await turnSettled(page)
   await page.reload()
