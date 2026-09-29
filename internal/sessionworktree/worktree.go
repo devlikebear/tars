@@ -26,6 +26,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -127,7 +128,9 @@ func (m *Manager) Create(ctx context.Context, req CreateRequest) (CreateResult, 
 	}
 	base = strings.TrimSpace(base)
 	rel, err := filepath.Rel(repo, source)
-	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+	// A folder named with ".." anywhere is refused too, so the worktree's
+	// working folder can never point outside the worktree.
+	if err != nil || strings.Contains(rel, "..") {
 		return CreateResult{}, fmt.Errorf("%s is not inside %s", source, repo)
 	}
 
@@ -484,20 +487,12 @@ func repoKey(repo string) string {
 	return hex.EncodeToString(sum[:6])
 }
 
-func validSessionID(id string) bool {
-	if id == "" || len(id) > 128 {
-		return false
-	}
-	for _, r := range id {
-		if !validSessionIDRune(r) {
-			return false
-		}
-	}
-	return true
-}
+// sessionIDPattern is the only shape of session ID a worktree path is built
+// from, so an ID can never add a path separator or "..".
+var sessionIDPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,128}$`)
 
-func validSessionIDRune(r rune) bool {
-	return r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' || r == '_'
+func validSessionID(id string) bool {
+	return sessionIDPattern.MatchString(id)
 }
 
 func git(ctx context.Context, dir string, args ...string) (string, error) {
@@ -509,7 +504,7 @@ func gitInput(ctx context.Context, dir string, input []byte, args ...string) (st
 }
 
 func gitEnv(ctx context.Context, dir string, env []string, input []byte, args ...string) (string, error) {
-	cmd := exec.CommandContext(ctx, "git", append([]string{"-c", "core.quotepath=false"}, args...)...)
+	cmd := exec.CommandContext(ctx, "git", append([]string{"-c", "core.quotepath=false"}, args...)...) // NOSONAR: git is the person's own toolchain, resolved from their PATH like every other TARS git call.
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_OPTIONAL_LOCKS=0")
 	cmd.Env = append(cmd.Env, env...)

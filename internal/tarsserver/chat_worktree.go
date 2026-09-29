@@ -130,7 +130,9 @@ type worktreeNotice struct {
 // or isolates the session when another session holds it or the turn is
 // unattended. The returned func ends the turn's hold on the lease.
 func (c *chatWorktrees) beginTurn(ctx context.Context, sessionID string, unattended bool) (*worktreeNotice, func()) {
-	noop := func() {}
+	noop := func() {
+		// Nothing to release: the turn took no lease.
+	}
 	if c == nil || strings.TrimSpace(sessionID) == "" {
 		return nil, noop
 	}

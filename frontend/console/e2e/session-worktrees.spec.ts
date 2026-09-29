@@ -23,7 +23,7 @@ const turnSettled = (page: Page) => expect(page.locator('.chat-form-actions butt
 const original = Array.from({ length: 20 }, (_, i) => `line ${i + 1}`).join('\n') + '\n'
 
 function git(dir: string, ...args: string[]) {
-  execFileSync('git', ['-c', 'user.name=E2E', '-c', 'user.email=e2e@example.com', '-c', 'commit.gpgSign=false', ...args], { cwd: dir })
+  execFileSync('git', ['-c', 'user.name=E2E', '-c', 'user.email=e2e@example.com', '-c', 'commit.gpgSign=false', ...args], { cwd: dir }) // NOSONAR: the machine's own git from PATH
 }
 
 async function newSessionIn(page: Page, dir: string): Promise<string> {
@@ -69,11 +69,11 @@ test('a second session in a busy repository works in its own worktree', async ({
   await expect(page.getByTestId('worktree-isolate')).toBeVisible()
   expect(readFileSync(join(repo, 'base.txt'), 'utf8')).toContain('line 19 edited')
   expect(existsSync(join(repo, 'notes.md'))).toBe(true)
-  expect(execFileSync('git', ['branch', '--list', 'tars/*'], { cwd: repo }).toString()).toBe('')
+  expect(execFileSync('git', ['branch', '--list', 'tars/*'], { cwd: repo }).toString()).toBe('') // NOSONAR: the machine's own git
 
   const audit = await (await page.request.get(`/v1/ops/automation-audit?session_id=${b}&limit=20`)).json()
   const results = (audit.items as { action: string; result: string }[]).filter((e) => e.action === 'session_worktree').map((e) => e.result)
-  expect(results.sort()).toEqual(['applied', 'isolated'])
+  expect(results.toSorted((a, b) => a.localeCompare(b))).toEqual(['applied', 'isolated'])
 })
 
 test('isolate by hand, then discard', async ({ page }) => {
