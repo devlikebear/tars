@@ -295,7 +295,7 @@ initiative:
   thresholds:
     quiet_requested: 0.55
     user_strained: 0.60
-    special_day: 0.50
+    special_day: 0.55
 
 jev:
   # A server speaking the /v1/systemone protocol. A local Kev-0.8B works:

@@ -66,7 +66,7 @@ func (c Config) WithDefaults() Config {
 		c.Thresholds.UserStrained = 0.60
 	}
 	if c.Thresholds.SpecialDay <= 0 {
-		c.Thresholds.SpecialDay = 0.50
+		c.Thresholds.SpecialDay = 0.55
 	}
 	c.BodyProvider = strings.TrimSpace(c.BodyProvider)
 	return c

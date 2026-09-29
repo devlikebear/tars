@@ -249,7 +249,7 @@ func defaultConfigValues() Config {
 			Cooldown:                "45m",
 			QuietRequestedThreshold: 0.55,
 			UserStrainedThreshold:   0.60,
-			SpecialDayThreshold:     0.50,
+			SpecialDayThreshold:     0.55,
 		},
 		Jev: JevConfig{TimeoutSeconds: 10},
 		Companion: CompanionConfig{

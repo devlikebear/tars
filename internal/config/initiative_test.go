@@ -15,7 +15,7 @@ func TestInitiativeConfig(t *testing.T) {
 		in := cfg.Initiative
 		if in.Enabled || in.Mode != "shadow" || in.Tick != "1m" || in.QuietHours != "23:00-07:00" ||
 			in.DailyCap != 6 || in.Cooldown != "45m" || in.QuietRequestedThreshold != 0.55 ||
-			in.UserStrainedThreshold != 0.60 || in.SpecialDayThreshold != 0.50 {
+			in.UserStrainedThreshold != 0.60 || in.SpecialDayThreshold != 0.55 {
 			t.Fatalf("initiative defaults = %+v", in)
 		}
 		if cfg.Jev.BaseURL != "" || cfg.Jev.TimeoutSeconds != 10 {

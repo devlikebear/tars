@@ -167,7 +167,7 @@ func (c *Client) post(ctx context.Context, body []byte) (Response, int, error) {
 	if err != nil {
 		return Response{}, 0, fmt.Errorf("jev: %s", c.redact(err.Error()))
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	raw, err := io.ReadAll(io.LimitReader(res.Body, maxResponseBytes))
 	if err != nil {
 		return Response{}, res.StatusCode, fmt.Errorf("jev: read response: %w", err)

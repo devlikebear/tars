@@ -62,8 +62,10 @@ func (l *Ledger) Append(e Entry) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
 	_, err = f.Write(append(line, '\n'))
+	if closeErr := f.Close(); err == nil {
+		err = closeErr
+	}
 	return err
 }
 
@@ -81,7 +83,7 @@ func (l *Ledger) Recent(n int) ([]Entry, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	var out []Entry
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 64*1024), 1<<20)

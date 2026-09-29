@@ -156,7 +156,7 @@ func (r *Runtime) RunOnce(ctx context.Context) Entry {
 	text := TextSignals{Source: "skipped"}
 	if !g.QuietHours && !g.CooldownActive && !g.DailyCapReached {
 		state, key := RenderState(r.cfg, obs, r.deps.IncludeText)
-		text, err = r.text.Read(ctx, key, state)
+		text, err = r.text.Read(ctx, key, state, textQuestionsFor(now.In(r.cfg.Location)))
 		if err != nil {
 			entry.Error = err.Error()
 			r.noteErrorLocked(entry.Error)
