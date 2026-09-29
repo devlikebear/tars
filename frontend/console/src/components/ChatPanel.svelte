@@ -2,7 +2,7 @@
   import { onMount, onDestroy, tick } from 'svelte'
   import { t } from '../i18n'
   import type { ChatThreadTranslations } from '../i18n/sections/chatThread'
-  import { streamChat, cancelChat, getSessionHistory, renameSession, streamEvents, listChatFileMentions, listAgentRuntimeSubagents, listSkills, listChatTools, getSessionEffectiveConfig, forkSessionFromMessage } from '../lib/api'
+  import { streamChat, attachChatStream, cancelChat, getSessionHistory, renameSession, streamEvents, listChatFileMentions, listAgentRuntimeSubagents, listSkills, listChatTools, getSessionEffectiveConfig, forkSessionFromMessage } from '../lib/api'
   import type { AgentRuntimeSubagent, ChatAttachment, ChatContextInfo, ChatEvent, ChatTier, ChatTierRecommendationRequest, CommandDef, Session, SessionGoal, SessionMessage, SkillDef } from '../lib/types'
   import { chatSession } from '../lib/stores/chatSession'
   import { changes } from '../lib/stores/changesStore'
@@ -939,6 +939,46 @@
     }
   }
 
+  // A turn keeps running when its console goes away (#971). When this panel
+  // opens a session with a turn in progress, it attaches and rebuilds the
+  // turn from its events: the user message is already in the history, so
+  // only the reply is added.
+  async function resumeRunningTurn() {
+    const id = activeChatSessionId()
+    if (!id || chatBusy) return
+    const ac = new AbortController()
+    abortController = ac
+    const assistantRef = { id: `assistant-resumed-${Date.now()}` }
+    let attached = false
+    try {
+      await attachChatStream(id, (event) => {
+        if (!attached) {
+          attached = true
+          chatBusy = true
+          chatError = ''
+          applyChatStatus({ phase: 'connecting' })
+          chatMessages = [...chatMessages, { id: assistantRef.id, role: 'assistant', text: '' }]
+          void scrollToBottom()
+        }
+        // Too long to rebuild; the history reload after the turn has it all.
+        if (event.type === 'turn_feed_truncated') return
+        handleChatEvent(event, assistantRef)
+      }, ac.signal)
+    } catch (err) {
+      if (!(err instanceof DOMException && err.name === 'AbortError') && attached) {
+        chatError = err instanceof Error ? err.message : $t.chatThread.errors.sendFailed
+      }
+    } finally {
+      if (abortController === ac) abortController = null
+      if (attached) {
+        chatBusy = false
+        chatMessages = withdrawPendingApprovals(chatMessages)
+        stopChatStatusTicker()
+        void scrollToBottom()
+      }
+    }
+  }
+
   async function handleCancel() {
     if (chatSessionId) {
       await cancelChat(chatSessionId)
@@ -1274,6 +1314,7 @@
         autoTitled = true
         void scrollToBottom()
       } catch { /* ignore */ }
+      void resumeRunningTurn()
     } else {
       chatMessages = [{ id: 'system-init', role: 'system', text: $t.chat.systemInit.tars }]
       void changes.load(null)
@@ -1324,6 +1365,9 @@
   })
 
   onDestroy(() => {
+    // Only this panel stops listening: the turn itself runs on in the
+    // server, and the next panel for the session attaches to it.
+    abortController?.abort()
     stopEventStream?.()
     stopChatStatusTicker()
     if (visibilityHandler) {

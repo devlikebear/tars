@@ -271,6 +271,8 @@ This describes the target. Each item names the phase that delivers it.
   - **cwd**: the chip moved here from the header; its dropdown opens upward.
   - **Cost**: this session's usage this month from `GET /v1/usage/summary?session_id=` (the usage tracker's estimate), with total tokens.
 
+- **Background turns** (#971). Leaving a session does not stop its turn. Opening a session whose turn is still running attaches to it: the reply bubble, tool cards and any open approval card are rebuilt from the turn's events, the composer shows Stop, and the turn finishes in place. Nothing marks a replayed turn as different from a live one. Stop is the only control that ends a turn.
+
 ### Command palette and shortcuts (#968)
 
 The palette is the universal way in. Every route, including ones not in the nav, is reachable from `⌘K`: typing the first letters of its name makes it the top result (at most four letters where names share a prefix, like Chat and Channels). A new route or panel is not done until the palette lists it. In code, `lib/commands.ts` derives the page list from the router's `Route` views, and `tests/commands.test.ts` fails when a view has no entry or its admin gating drifts from `App.svelte`.

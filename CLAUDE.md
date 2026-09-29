@@ -117,6 +117,8 @@ cmd/  →  app layer  →  core layer  →  pkg/
 
 **SSE:** `/v1/events/stream` — `{type,category,severity,title,message,timestamp}`; `/v1/events/history?limit=N`
 
+**Background turns** (#971, `internal/tarsserver/chat_turn_feed.go`): 채팅 턴의 컨텍스트는 요청에서 분리돼 있어 콘솔이 떠나도(세션 전환·새로고침·연결 끊김) 턴이 계속 돈다. 멈추는 건 `POST /v1/chat/cancel`뿐이다. 턴이 보내는 모든 SSE 이벤트는 세션별 피드(최대 20,000개, 넘치면 오래된 것부터 버리고 `turn_feed_truncated`)에 남고, `GET /v1/chat/stream?session_id=`가 처음부터 재생한 뒤 이어서 따라간다(턴이 없으면 204). `ChatPanel`은 세션을 열 때 여기에 붙어 진행 중인 답과 대기 중인 승인 카드를 다시 만든다. 떠나는 패널은 자기 fetch만 abort한다. 승인 질문은 이제 연결이 끊겨도 `withdrawn`되지 않고, 다시 붙은 콘솔이 답하거나 취소될 때까지 기다린다
+
 ## Git Workflow
 
 **Small changes** (1-2 files): commit directly to main after `make test`, then push.
