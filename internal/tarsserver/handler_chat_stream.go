@@ -306,3 +306,24 @@ func (s *chatStreamWriter) permissionResolved(requestID, outcome string) {
 		"outcome":    outcome,
 	})
 }
+
+// worktree tells the console the turn runs in a worktree of its own,
+// created just now because another session holds the repository or the
+// run is unattended.
+func (s *chatStreamWriter) worktree(notice worktreeNotice) {
+	payload := map[string]any{
+		"type":       "worktree",
+		"session_id": s.sessionID,
+		"path":       notice.Worktree.Path,
+		"dir":        notice.Worktree.Dir,
+		"branch":     notice.Worktree.Branch,
+		"reason":     notice.Worktree.Reason,
+	}
+	if notice.Holder != "" {
+		payload["lease_holder"] = notice.Holder
+	}
+	if len(notice.Copied) > 0 {
+		payload["copied"] = notice.Copied
+	}
+	s.send(payload)
+}

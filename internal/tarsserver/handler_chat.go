@@ -1115,7 +1115,10 @@ type chatToolingOptions struct {
 	APIMaxInflightChat          int
 	UsageTracker                *usage.Tracker
 	OpsManager                  *ops.Manager
-	Compaction                  chatCompactionOptions
+	// Worktrees holds repository write leases and isolates sessions in
+	// worktrees of their own (#971); nil leaves every turn in its folder.
+	Worktrees  *chatWorktrees
+	Compaction chatCompactionOptions
 	// ExecMaxTimeoutMS forwards config.ToolsExecMaxTimeoutMS into the
 	// per-call cap on the exec tool. 0 falls back to the tool default.
 	ExecMaxTimeoutMS int
@@ -1274,6 +1277,9 @@ func newChatAPIHandlerWithRuntimeConfig(
 	maxIters := resolveAgentMaxIterations(maxIterations)
 	chatLimiter := newInflightLimiter(tooling.APIMaxInflightChat, 2)
 	cancelRegistry := newChatCancelRegistry()
+	if tooling.Worktrees != nil {
+		tooling.Worktrees.running = cancelRegistry.Running
+	}
 	permissions := newChatPermissionBroker()
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/chat", func(w http.ResponseWriter, r *http.Request) {

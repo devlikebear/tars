@@ -340,6 +340,12 @@
         }
         break
       }
+      case 'worktree':
+        // Another session holds this repository, or the run is unattended:
+        // the turn works in a worktree of its own (#971).
+        if (event.branch) chatSession.notify($t.sessionWorktree.isolated(event.branch))
+        void chatSession.refreshActive()
+        break
       case 'checkpoint':
         if (event.session_id && event.user_message_id) {
           changes.applyEvent({

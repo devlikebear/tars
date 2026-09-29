@@ -74,6 +74,7 @@ var AppPackages = []string{
 	"remoteaccess",
 	"serverauth",
 	"sessionoverride",
+	"sessionworktree",
 	"skillhub",
 	"tarsserver",
 	"workerprotocol",

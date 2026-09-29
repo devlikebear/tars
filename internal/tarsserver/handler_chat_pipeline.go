@@ -89,6 +89,8 @@ func handleChatRequest(w http.ResponseWriter, r *http.Request, deps chatHandlerD
 
 	endBusy := deps.activity.beginChat()
 	defer endBusy()
+	worktreeMoved, endLease := deps.tooling.Worktrees.beginTurn(r.Context(), strings.TrimSpace(req.SessionID), false)
+	defer endLease()
 	deps.logger.Debug().
 		Str("path", r.URL.Path).
 		Str("session_id", strings.TrimSpace(req.SessionID)).
@@ -104,6 +106,9 @@ func handleChatRequest(w http.ResponseWriter, r *http.Request, deps chatHandlerD
 	state.interactivePermissions = req.InteractivePermissions
 	stream := newChatStreamWriter(w, state.sessionID, deps.logger)
 	stream.status("stream_open", "stream connected", "", "", "", "")
+	if worktreeMoved != nil {
+		stream.worktree(*worktreeMoved)
+	}
 	if state.turnID != "" {
 		stream.turnStarted(state.turnID)
 	}
