@@ -104,10 +104,28 @@ func run(args []string, stdout, stderr io.Writer, getenv func(string) string) er
 		return fmt.Errorf("write evaluation summary: %w", err)
 	}
 	if mode == evalpack.ModeDeterministic && (report.Summary.Errors > 0 || report.Summary.ExpectationsMet != report.Summary.Completed) {
-		return fmt.Errorf("deterministic baseline drifted: %d errors, %d/%d expectations met",
-			report.Summary.Errors, report.Summary.ExpectationsMet, report.Summary.Completed)
+		return fmt.Errorf("deterministic baseline drifted: %d errors, %d/%d expectations met: %s",
+			report.Summary.Errors, report.Summary.ExpectationsMet, report.Summary.Completed,
+			describeDrift(report.Results))
 	}
 	return nil
+}
+
+// describeDrift names each scenario that missed its baseline, so a drift error
+// says where to look without the report file.
+func describeDrift(results []evalpack.ScenarioResult) string {
+	var drifted []string
+	for _, result := range results {
+		if result.Status == evalpack.StatusPassed || result.Status == evalpack.StatusSkipped {
+			continue
+		}
+		entry := result.ID + " (" + string(result.Status)
+		if result.Error != "" {
+			entry += ": " + result.Error
+		}
+		drifted = append(drifted, entry+")")
+	}
+	return strings.Join(drifted, "; ")
 }
 
 func resolveVersion(explicit string) (string, error) {
