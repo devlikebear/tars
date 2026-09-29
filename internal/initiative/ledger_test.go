@@ -11,7 +11,7 @@ import (
 func TestLedgerAppendRecentAndRotate(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "initiative", "ledger.jsonl")
 	l := OpenLedger(path, 600)
-	for i := 0; i < 6; i++ {
+	for i := range 6 {
 		if err := l.Append(Entry{At: at(10, i), Decision: Decision{Intent: IntentGreet, Speak: true, Reason: "arrived"}}); err != nil {
 			t.Fatalf("append: %v", err)
 		}
