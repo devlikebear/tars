@@ -8,6 +8,8 @@ import { gitInspectorKo } from './sections/gitInspector.ts'
 import { changesKo } from './sections/changes.ts'
 import { chatApprovalKo } from './sections/chatApproval.ts'
 import { sessionBoardKo } from './sections/sessionBoard.ts'
+
+import { messageQueueKo } from './sections/messageQueue.ts'
 import { artifactPanelKo } from './sections/artifactPanel.ts'
 import { skillInboxKo } from './sections/skillInbox.ts'
 import { sessionCronKo } from './sections/sessionCron.ts'
@@ -1653,6 +1655,8 @@ export const ko = {
   changes: changesKo,
   chatApproval: chatApprovalKo,
   sessionBoard: sessionBoardKo,
+
+  messageQueue: messageQueueKo,
   artifactPanel: artifactPanelKo,
   skillInbox: skillInboxKo,
   sessionCron: sessionCronKo,

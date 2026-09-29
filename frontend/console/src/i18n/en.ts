@@ -8,6 +8,8 @@ import { gitInspectorEn } from './sections/gitInspector.ts'
 import { changesEn } from './sections/changes.ts'
 import { chatApprovalEn } from './sections/chatApproval.ts'
 import { sessionBoardEn } from './sections/sessionBoard.ts'
+
+import { messageQueueEn } from './sections/messageQueue.ts'
 import { artifactPanelEn } from './sections/artifactPanel.ts'
 import { skillInboxEn } from './sections/skillInbox.ts'
 import { sessionCronEn } from './sections/sessionCron.ts'
@@ -1655,6 +1657,8 @@ export const en = {
   changes: changesEn,
   chatApproval: chatApprovalEn,
   sessionBoard: sessionBoardEn,
+
+  messageQueue: messageQueueEn,
   artifactPanel: artifactPanelEn,
   skillInbox: skillInboxEn,
   sessionCron: sessionCronEn,

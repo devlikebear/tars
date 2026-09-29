@@ -1325,6 +1325,7 @@ func newChatAPIHandlerWithRuntimeConfig(
 	})
 	board := newSessionBoard(store, chatActivity, tooling.Checkpoints, tooling.SessionCosts)
 	mux.HandleFunc("/v1/chat/board", board.handle)
+
 	mux.HandleFunc("/v1/chat/mentions/files", func(w http.ResponseWriter, r *http.Request) {
 		handleChatFileMentionCandidates(w, r, chatHandlerDeps{
 			workspaceDir:  workspaceDir,
