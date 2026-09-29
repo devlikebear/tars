@@ -75,6 +75,7 @@ AGENT_HARNESS_COMMIT ?= $(GIT_COMMIT)
 	build build-bins windows-build-check windows-test release-asset clean tidy fmt vet lint \
 	lint-diff arch-check api-snapshot api-check ci-static-analysis-check github-actions-hardening-check codeql-workflow-check sonarcloud-workflow-check \
 	ensure-console-assets console-install console-build console-e2e \
+	desktop-test desktop-build desktop-package \
 	browser-install \
 	install install-server install-assistant uninstall uninstall-server uninstall-assistant reinstall \
 	restart restart-server restart-assistant reload-config reload-server-config reload-assistant-config \
@@ -116,6 +117,9 @@ help:
 	@echo "  make console-install - npm ci in frontend/console"
 	@echo "  make console-build - build the embedded Svelte console assets"
 	@echo "  make console-e2e   - Playwright E2E: rebuild console, run tars serve + mock LLM"
+	@echo "  make desktop-test  - vet + test the desktop shell module (desktop/)"
+	@echo "  make desktop-build - build the desktop shell to $(BIN_DIR)/tars-desktop"
+	@echo "  make desktop-package DESKTOP_GOOS=... DESKTOP_GOARCH=... - desktop release archive to $(DIST_DIR)"
 	@echo "  make browser-install - npm ci + playwright chromium install"
 	@echo "  make install       - build $(TARS_BIN) and (re)install io.tars.server + io.tars.assistant launch agents"
 	@echo "  make uninstall     - stop and remove io.tars.server + io.tars.assistant launch agents"
@@ -258,6 +262,23 @@ release-asset: console-build
 	@if [ -d "./skills" ]; then cp -R "./skills" "$(RELEASE_STAGE_DIR)/share/tars/skills"; fi
 	@if [ -d "./plugins" ]; then cp -R "./plugins" "$(RELEASE_STAGE_DIR)/share/tars/plugins"; fi
 	tar -C "$(RELEASE_STAGE_DIR)" -czf "$(DIST_DIR)/$(RELEASE_ARCHIVE_NAME)" tars share
+
+# The desktop shell (desktop/) is its own Go module so the webview toolkit
+# stays out of the server's dependency graph; `go test ./...` at the root does
+# not reach it. On Linux it needs the GTK 4 and WebKitGTK 6.0 headers
+# (libgtk-4-dev libwebkitgtk-6.0-dev); see desktop/README.md.
+DESKTOP_GOOS ?= $(shell $(GO) env GOOS)
+DESKTOP_GOARCH ?= $(shell $(GO) env GOARCH)
+
+desktop-test:
+	cd desktop && $(GO) vet ./... && $(GO) test ./...
+
+desktop-build:
+	mkdir -p $(BIN_DIR)
+	cd desktop && $(GO) build -ldflags "-X main.version=$(VERSION)" -o ../$(BIN_DIR)/tars-desktop$(GOEXE) .
+
+desktop-package:
+	./scripts/desktop_package.sh "$(DESKTOP_GOOS)" "$(DESKTOP_GOARCH)" "$(VERSION)" "$(DIST_DIR)"
 
 browser-install:
 	npm ci --ignore-scripts
