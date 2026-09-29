@@ -62,7 +62,7 @@ Public packages under `pkg/` turn the runtime primitives into a small Go agent-b
 The primary interface is the browser console at `http://127.0.0.1:43180/console`.
 
 - Multi-session chat with tool-calling loops, session search, pins, archives, cleanup review, and message-level forks.
-- Dockable panels for sessions, files, terminal, Git inspection, tool calls, prior context, Tasks, Session Health, and session-specific policy.
+- Dockable panels for sessions, files, terminal, Git inspection, Changes, tool calls, prior context, Tasks, Session Health, and session-specific policy.
 - Durable memory through `MEMORY.md`, reviewed experiences, daily logs, semantic search, structured compaction, and a Memory Inbox review queue.
 - Explicit context injection through `@` file/directory mentions, `/` command autocomplete, and user-invocable skills.
 - Configurable system prompts through `USER.md`, `IDENTITY.md`, `AGENTS.md`, and `TOOLS.md`.
@@ -304,7 +304,7 @@ The console runs at `http://127.0.0.1:43180/console`. The sidebar groups daily p
 | Group | Page | Path | Purpose |
 |-------|------|------|---------|
 | — | Mission Control | `/console` | Landing screen: health, plans, runs, jobs, sessions, notifications, and recommended setup actions |
-| Work | Chat | `/console/chat` | Agent chat, tool calls, files, terminal, Git, tasks, session policy, and memory context |
+| Work | Chat | `/console/chat` | Agent chat, tool calls, files, terminal, Git, Changes, tasks, session policy, and memory context |
 | Build | Agent Runtime | `/console/agentruntime` | Run history, topology views, replay, restart, costs, file attention, and subagent profiles |
 | Build | Memory | `/console/memory` | Review memory candidates, edit stored knowledge, and test recall paths |
 | Build | Extensions | `/console/extensions` | Skills, plugins, MCP packages, hub installs, diagnostics, and local drafts |
