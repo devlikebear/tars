@@ -10,8 +10,12 @@ import { expect, test, type Page } from '@playwright/test'
 
 const original = Array.from({ length: 20 }, (_, i) => `line ${i + 1}`).join('\n') + '\n'
 
+// newSession waits for the URL to name a session other than the one open,
+// so two calls in a row cannot read the same ID.
 async function newSession(page: Page): Promise<string> {
+  const before = page.url()
   await page.locator('.dock-left .new-chat-btn').click()
+  await expect.poll(() => page.url()).not.toBe(before)
   await expect(page).toHaveURL(/\/console\/chat\/[^/]+$/)
   return page.url().split('/').pop() ?? ''
 }
