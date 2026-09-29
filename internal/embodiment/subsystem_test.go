@@ -182,3 +182,34 @@ func TestSubsystemTriggerObservationsAreProviderScoped(t *testing.T) {
 		t.Fatalf("host observation spawned %d runs, want 1", rt.spawnCount())
 	}
 }
+
+type recordingDispatcher struct{ actions []BodyAction }
+
+func (d *recordingDispatcher) Dispatch(_ context.Context, _ ProviderDescriptor, action BodyAction) error {
+	d.actions = append(d.actions, action)
+	return nil
+}
+
+func TestSubsystemActRoutesWithoutAgentTurn(t *testing.T) {
+	dispatcher := &recordingDispatcher{}
+	subsystem := NewWithOptions(config.EmbodimentConfig{
+		Enabled: true,
+		Providers: []config.EmbodimentProviderConfig{
+			{Name: "stackchan", Enabled: true, Transport: "mcp", Endpoint: "tars-stackchan", Capabilities: []string{"expression"}},
+		},
+	}, zerolog.New(io.Discard), Options{ActionDispatcher: dispatcher})
+
+	res := subsystem.Act(context.Background(), "stackchan", BodyAction{Kind: ActionExpress, Payload: map[string]any{"emotion": "happy"}})
+	if !res.Delivered || len(dispatcher.actions) != 1 || dispatcher.actions[0].Kind != ActionExpress {
+		t.Fatalf("result = %+v actions = %+v", res, dispatcher.actions)
+	}
+}
+
+func TestSubsystemActDropsUnknownProvider(t *testing.T) {
+	dispatcher := &recordingDispatcher{}
+	subsystem := NewWithOptions(config.EmbodimentConfig{Enabled: true}, zerolog.New(io.Discard), Options{ActionDispatcher: dispatcher})
+	res := subsystem.Act(context.Background(), "ghost", BodyAction{Kind: ActionExpress, Payload: map[string]any{"emotion": "happy"}})
+	if !res.Dropped || res.Reason != "unknown_provider" || len(dispatcher.actions) != 0 {
+		t.Fatalf("result = %+v", res)
+	}
+}
