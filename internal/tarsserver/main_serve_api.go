@@ -776,6 +776,8 @@ func registerAPIRoutes(mux *http.ServeMux, handlers apiRouteHandlers) {
 	if handlers.checkpoints != nil {
 		mux.Handle("/v1/admin/sessions/{id}/checkpoints", handlers.checkpoints)
 		mux.Handle("/v1/admin/sessions/{id}/checkpoints/{turn}/diff", handlers.checkpoints)
+		mux.Handle("/v1/admin/sessions/{id}/checkpoints/{turn}/revert", handlers.checkpoints)
+		mux.Handle("/v1/admin/sessions/{id}/checkpoints/reverts/{revert}/undo", handlers.checkpoints)
 	}
 	mux.Handle("/v1/admin/plans/archive", handlers.sessions)
 	mux.Handle("/v1/work/works", handlers.work)
