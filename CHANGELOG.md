@@ -6,7 +6,11 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.38.0] - 2026-09-29
+
 ### Added
+
+- **먼저 말을 거는 initiative 루프 — 섀도 모드 (#999, Epic #997)** — TARS가 "지금 말을 걸까, 건다면 어떻게"를 1분마다 판단하는 루프가 생겼다. 기본은 꺼져 있고(`initiative.enabled: false`), 이번 버전은 `mode: shadow`만 있어 **판단만 기록하고 메시지는 보내지 않는다**. 판단은 세 겹이다: Go가 정확히 계산하는 신호(조용한 시간, 입력 중, 콘솔을 막 연 도착, 3시간 넘는 긴 세션, 하루 이상 부재, 쿨다운·하루 한도), System One 서버가 사용자 원문을 읽어 답하는 원자 신호 3개(조용히 해달라고 했나 / 지쳐 보이나 / 특별한 날인가), 둘을 합치는 순수 함수 정책(`greet` / `check_in` / `body_only` / `none`). 스파이크(#998)에서 작은 System One에게 "말을 걸까"를 통째로 물으면 AUC≈0.5로 동전 던지기였고, 원문을 읽는 원자 질문은 0.95~1.0이어서 이렇게 나눴다. System One은 새 `internal/jev` 클라이언트가 `/v1/systemone` 프로토콜로 부른다 — 호스팅 Jev든 로컬 Kev-0.8B든 `jev.base_url`만 바꾸면 된다(한국어 원문 AUC 0.92로 로컬 권고는 Kev). **사용자 메시지와 USER.md는 `base_url`이 loopback일 때만 보낸다**; 원격이면 메타데이터만 가고 텍스트 신호는 꺼진다. 섀도 모드에서 실제로 하는 행동은 콘솔을 켜 둔 채 쉬고 있을 때 `initiative.body_provider`로 지정한 몸(스택짱)이 짓는 무음 표정 하나뿐이고, 이를 위해 `embodiment.Subsystem.Act`가 에이전트 턴 없이 몸 동작을 보낸다. 모든 판단은 텍스트 없는 ledger(`workspace/_shared/initiative/ledger.jsonl`, 5MB 회전)에 남아 재시작 뒤에도 한도·쿨다운이 이어지고, 최근 판단은 `GET /v1/initiative/status`로 본다. `tars doctor`가 System One 도달 여부와 loopback 여부를 점검한다. 새 LLM 도구는 없고 pulse와도 섞지 않았다. 메시지 발송은 P2(#1000)다.
 
 - **채팅 안 도구 승인 카드 — `claude-code-cli` (#970 1차)** — Claude Code가 자기 권한 규칙으로 허용하지 않는 도구 호출을 이제 채팅에서 바로 허용하거나 거부한다. 지금까지는 턴이 `-p`로 돌아 CLI가 물을 방법이 없었고, 모델이 "승인이 필요합니다, 진행할까요?"라고 글로 되묻는 데서 멈췄다 — 그렇게 답해도 그 답은 CLI의 권한 확인에 닿지 않았다. 콘솔은 채팅 요청에 `interactive_permissions: true`를 싣고, 서버는 그 턴에만 #1004의 권한 핸들러를 붙여 질문을 SSE `permission_request`로 보낸 뒤 `POST /v1/chat/permissions/{request_id}`의 답(`allow_once` / `allow_session` / `deny`)을 기다린다. 대화 안 카드는 명령·파일·URL 미리보기와 이유를 보여주고, 포커스가 카드에 있을 때 `y` / `s` / `n`으로도 답한다. "이 세션 동안 허용"은 서버가 만든 `destination: session`의 prefix 규칙(`Bash(npm test:*)`)을 보낸다 — Claude Code 자신의 제안은 정확한 명령 하나에 기본 저장 위치가 프로젝트의 `.claude/settings.local.json`이라 쓰지 않으며, 복합 명령·리다이렉트·`rm`·`sudo`에는 규칙을 제안하지 않는다. 턴이 취소되거나 콘솔 연결이 끊기면 대기 중인 질문은 `withdrawn`으로 닫힌다. 사람이 답을 기다리는 시간은 `CLAUDE_CODE_CLI_TIMEOUT`(기본 5분)에서 빠진다 — CLI 자신은 무기한 기다리므로, 이전에는 5분을 넘겨 고민하면 턴 전체가 타임아웃으로 실패했을 것이다. cron·텔레그램처럼 답할 사람이 없는 호출은 핸들러를 받지 않아 동작이 그대로다. 네이티브 provider 게이트, "항상 허용" 저장, 무인 실행의 ops 큐 연결, 권한 모드 전환 UI는 #970의 다음 단계다.
 
