@@ -6,6 +6,7 @@ import type { SessionConfigTranslations } from './sections/sessionConfig.ts'
 import type { GitInspectorTranslations } from './sections/gitInspector.ts'
 import type { ChangesTranslations } from './sections/changes.ts'
 import type { ChatApprovalTranslations } from './sections/chatApproval.ts'
+import type { MessageQueueTranslations } from './sections/messageQueue.ts'
 import type { ArtifactPanelTranslations } from './sections/artifactPanel.ts'
 import type { SkillInboxTranslations } from './sections/skillInbox.ts'
 import type { SessionCronTranslations } from './sections/sessionCron.ts'
@@ -1592,6 +1593,7 @@ export type Translations = {
   gitInspector: GitInspectorTranslations
   changes: ChangesTranslations
   chatApproval: ChatApprovalTranslations
+  messageQueue: MessageQueueTranslations
   artifactPanel: ArtifactPanelTranslations
   skillInbox: SkillInboxTranslations
   sessionCron: SessionCronTranslations
