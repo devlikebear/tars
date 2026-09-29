@@ -24,6 +24,10 @@ type chatStreamWriter struct {
 	// carry it so the console can find the turn without reloading history.
 	turnID string
 	logger zerolog.Logger
+	// feed keeps every event for consoles that attach to the running turn
+	// later (chat_turn_feed.go).
+	feed *chatTurnFeed
+
 	// activity, when set, sees every event so clients other than this
 	// request can tell the turn is waiting for approval (#972).
 	activity *chatActivity
@@ -50,6 +54,9 @@ func (s *chatStreamWriter) send(data any) {
 	jsonData, _ := json.Marshal(data)
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.feed.publish(jsonData)
+	// The console that started the turn may be gone; the turn runs on and
+	// its events stay in the feed.
 	_, _ = fmt.Fprintf(s.w, "data: %s\n\n", jsonData)
 	switch evt := data.(type) {
 	case map[string]string:

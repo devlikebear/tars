@@ -1284,6 +1284,8 @@ func newChatAPIHandlerWithRuntimeConfig(
 	chatLimiter := newInflightLimiter(tooling.APIMaxInflightChat, 2)
 	chatActivity := newChatActivity(store, tooling.Notify)
 	cancelRegistry := newChatCancelRegistry()
+	turnFeeds := newChatTurnFeeds()
+
 	if tooling.Worktrees != nil {
 		tooling.Worktrees.running = cancelRegistry.Running
 	}
@@ -1303,12 +1305,16 @@ func newChatAPIHandlerWithRuntimeConfig(
 			tooling:        tooling,
 			extraTools:     extraTools,
 			cancelRegistry: cancelRegistry,
+			turnFeeds:      turnFeeds,
 			chatActivity:   chatActivity,
 			permissions:    permissions,
 		})
 	})
 	mux.HandleFunc("/v1/chat/permissions/", func(w http.ResponseWriter, r *http.Request) {
 		handleChatPermissionAnswer(w, r, permissions)
+	})
+	mux.HandleFunc("/v1/chat/stream", func(w http.ResponseWriter, r *http.Request) {
+		handleChatTurnStream(w, r, turnFeeds)
 	})
 	mux.HandleFunc("/v1/chat/cancel", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {

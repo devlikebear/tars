@@ -143,6 +143,29 @@ export async function streamChat(
     throw new Error(message)
   }
 
+  await readChatStream(response, onEvent)
+}
+
+// attachChatStream follows the turn running in a session, from its first
+// event (#971): a turn outlives the console that started it, so coming back
+// to the session picks it up. Resolves false at once when no turn runs.
+export async function attachChatStream(
+  sessionId: string,
+  onEvent: (event: ChatEvent) => void,
+  signal?: AbortSignal,
+): Promise<boolean> {
+  const response = await fetch(`/v1/chat/stream?session_id=${encodeURIComponent(sessionId)}`, {
+    credentials: 'same-origin',
+    headers: { Accept: 'text/event-stream' },
+    signal,
+  })
+  if (response.status === 204) return false
+  if (!response.ok) throw new Error(`${response.status} ${response.statusText}`.trim())
+  await readChatStream(response, onEvent)
+  return true
+}
+
+async function readChatStream(response: Response, onEvent: (event: ChatEvent) => void): Promise<void> {
   if (!response.body) {
     throw new Error('chat stream body missing')
   }
