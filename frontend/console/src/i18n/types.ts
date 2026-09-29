@@ -5,6 +5,7 @@ import type { ChatThreadTranslations } from './sections/chatThread.ts'
 import type { SessionConfigTranslations } from './sections/sessionConfig.ts'
 import type { GitInspectorTranslations } from './sections/gitInspector.ts'
 import type { ChangesTranslations } from './sections/changes.ts'
+import type { SideSessionTranslations } from './sections/sideSession.ts'
 import type { ChatApprovalTranslations } from './sections/chatApproval.ts'
 import type { ArtifactPanelTranslations } from './sections/artifactPanel.ts'
 import type { SkillInboxTranslations } from './sections/skillInbox.ts'
@@ -555,6 +556,8 @@ export type Translations = {
       gitTooltip: string
       changes: string
       changesTooltip: string
+      side: string
+      sideTooltip: string
       skills: string
       skillsTooltip: string
       skillsInbox: string
@@ -1591,6 +1594,7 @@ export type Translations = {
   sessionConfig: SessionConfigTranslations
   gitInspector: GitInspectorTranslations
   changes: ChangesTranslations
+  sideSession: SideSessionTranslations
   chatApproval: ChatApprovalTranslations
   artifactPanel: ArtifactPanelTranslations
   skillInbox: SkillInboxTranslations

@@ -8,6 +8,8 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ### Added
 
+- **옆 세션 패널 (#971)** — 채팅 오른쪽 레일의 `◫`(옆 세션)로 다른 세션을 지금 세션 옆에 띄운다. 그 세션의 대화를 보고, 진행 중인 턴을 실시간으로 따라가고, 승인 카드에 답하고, 메시지를 보낼 수 있어 두 세션을 전환 없이 나란히 다룬다. `열기`로 그 세션을 메인으로 옮긴다. 턴 피드(`GET /v1/chat/stream`)를 쓰므로 다른 탭이나 cron이 시작한 턴에도 붙는다.
+
 - **턴이 콘솔을 떠나도 계속 돈다 (#971)** — 다른 세션으로 옮기거나 새로고침하거나 연결이 끊겨도 진행 중인 채팅 턴이 멈추지 않는다. 지금까지는 요청이 끊기면 턴도 취소됐다. 멈추는 방법은 이제 명시적인 중지(`POST /v1/chat/cancel`)뿐이다. 세션으로 돌아오면 콘솔이 진행 중인 턴에 다시 붙어, 지금까지의 답과 도구 호출, 대기 중인 승인 카드를 그대로 다시 보여주고 이어서 받는다(`GET /v1/chat/stream?session_id=`). 따라서 승인 질문도 연결이 끊겼다고 닫히지 않고, 돌아와서 답할 때까지 기다린다.
 
 - **네이티브 provider의 위험 도구도 채팅에서 승인한다 (#970 B)** — anthropic / openai / openai-codex / gemini 세션에서 `exec`, `process`, `write_file`, `edit_file`, `apply_patch`, `workspace`, `project_skill`(기존 high-risk 목록)을 실행하기 전에 콘솔에 묻는다. 읽기 도구는 그대로 바로 실행된다. 질문은 `claude-code-cli`와 같은 `permission_request` 이벤트로 가서 같은 카드에 뜨므로 콘솔은 provider를 구분하지 않는다. 거부는 턴을 멈추지 않는다: 도구는 실행되지 않고 `Tool call denied: …`가 그 호출의 결과로 모델에 전달돼 모델이 다른 방법을 찾는다. "이 세션 동안 허용"은 서버 메모리에 세션별로 남는다 — `exec`는 명령 prefix(`exec(git status:*)`)로, 파일 도구는 도구 단위로. 복합 명령·리다이렉트·`rm`·`sudo`와 임의 명령을 띄울 수 있는 `process`에는 규칙을 제안하지 않으며, prefix 규칙도 셸 구문이 섞인 명령에는 적용되지 않는다. 서버를 재시작하면 세션 규칙은 사라진다. `pkg/agentloop`에 `ToolAuthorizer`(`Authorize(ctx, ToolCallRequest) (ToolDecision, error)`)와 `RunOptions.ToolAuthorizer`가 추가됐다 — 관찰만 하는 `Hook`과 달리 호출을 막을 수 있고, `Authorize`의 오류는 결정을 못 내린 것으로 보고 턴을 멈춘다. 콘솔이 `interactive_permissions`를 싣지 않는 호출(cron, 텔레그램, subagent 실행)은 게이트가 없어 동작이 그대로다.
