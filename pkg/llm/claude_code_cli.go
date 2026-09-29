@@ -220,7 +220,7 @@ func (c *ClaudeCodeCLIClient) callArgs(messages []ChatMessage, opts ChatOptions)
 		cleanups = append(cleanups, done)
 		args = append(args, "--plugin-dir", pluginDir)
 	}
-	if settingsPath, done, err := writeClaudeCodeSettingsFile(opts.ClaudeCodePermissionDeny); err != nil {
+	if settingsPath, done, err := writeClaudeCodeSettingsFile(opts.ClaudeCodePermissionDeny, opts.ClaudeCodePermissionAllow); err != nil {
 		return fail("settings", err)
 	} else if settingsPath != "" {
 		cleanups = append(cleanups, done)
@@ -646,21 +646,32 @@ func writeClaudeCodeMCPConfigFile(servers []ClaudeCodeMCPServer) (string, func()
 }
 
 // writeClaudeCodeSettingsFile materializes the smallest possible Claude Code
-// settings document — exactly `{"permissions":{"deny":[...]}}` — into a temp
-// file and returns its path plus a cleanup function. Returns an empty path
-// when there is no usable deny rule so the caller skips the --settings flag.
+// settings document — only `{"permissions":{"deny":[...],"allow":[...]}}` —
+// into a temp file and returns its path plus a cleanup function. Returns an
+// empty path when there is no usable rule so the caller skips the --settings
+// flag.
 //
 // This is intentionally NOT a generic settings passthrough. The function
-// accepts only a deny list and emits a fixed two-key shape; there is no code
-// path here that can write `env`, `hooks`, `apiKeyHelper`, `model`, or any
-// other key. That makes the credential / arbitrary-binary threat model a
-// schema-level guarantee rather than a runtime filter: even adversarial
-// session-override input can only ever add more deny rules (tightening what
-// Claude Code's self-executed tools may do), never widen authority.
+// accepts only permission rule lists and emits a fixed shape; there is no
+// code path here that can write `env`, `hooks`, `apiKeyHelper`, `model`, or
+// any other key. That makes the credential / arbitrary-binary threat model a
+// schema-level guarantee rather than a runtime filter.
+//
+// The two lists have different sources and different trust. deny comes from
+// session overrides, which a repository's .tars files can supply, and can
+// only tighten what Claude Code's self-executed tools may do. allow widens
+// it, so it must come only from the person's own "always allow" choices in
+// TARS' store (ChatOptions.ClaudeCodePermissionAllow); Claude Code applies
+// deny before allow.
 //
 // Entries are trimmed; blank entries are dropped and duplicates are removed
-// while preserving first-seen order so the emitted document is stable.
-func writeClaudeCodeSettingsFile(deny []string) (string, func(), error) {
+// while preserving first-seen order so the emitted document is stable. An
+// allow rule with a control character is refused.
+func writeClaudeCodeSettingsFile(deny, allow []string) (string, func(), error) {
+	allowRules, err := normalizedClaudeCodeRules(allow)
+	if err != nil {
+		return "", func() {}, fmt.Errorf("allow rules: %w", err)
+	}
 	seen := make(map[string]struct{}, len(deny))
 	rules := make([]string, 0, len(deny))
 	for _, d := range deny {
@@ -674,10 +685,17 @@ func writeClaudeCodeSettingsFile(deny []string) (string, func(), error) {
 		seen[rule] = struct{}{}
 		rules = append(rules, rule)
 	}
-	if len(rules) == 0 {
+	if len(rules) == 0 && len(allowRules) == 0 {
 		return "", func() {}, nil
 	}
-	payload := map[string]any{"permissions": map[string]any{"deny": rules}}
+	permissions := map[string]any{}
+	if len(rules) > 0 {
+		permissions["deny"] = rules
+	}
+	if len(allowRules) > 0 {
+		permissions["allow"] = allowRules
+	}
+	payload := map[string]any{"permissions": permissions}
 	encoded, err := json.Marshal(payload)
 	if err != nil {
 		return "", func() {}, fmt.Errorf("encode settings: %w", err)

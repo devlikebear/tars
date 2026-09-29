@@ -274,10 +274,11 @@ func (s *chatStreamWriter) done(usage llm.Usage) {
 	})
 }
 
-// permissionRequest asks the console to decide one Claude Code permission
-// prompt. input is the tool input as Claude Code sent it; sessionRule is the
-// rule "allow for this session" would add, empty when none is offered.
-func (s *chatStreamWriter) permissionRequest(requestID string, req llm.ClaudeCodePermissionRequest, sessionRule string) {
+// permissionRequest asks the console to decide one permission prompt. input
+// is the tool input as sent; sessionRule is the rule "allow for this session"
+// would add, empty when none is offered; alwaysDir is the folder "always
+// allow" would cover, empty when that is not offered.
+func (s *chatStreamWriter) permissionRequest(requestID string, req llm.ClaudeCodePermissionRequest, sessionRule, alwaysDir string) {
 	payload := map[string]any{
 		"type":         "permission_request",
 		"session_id":   s.sessionID,
@@ -289,6 +290,7 @@ func (s *chatStreamWriter) permissionRequest(requestID string, req llm.ClaudeCod
 		"reason":       req.DecisionReason,
 		"agent_id":     req.AgentID,
 		"session_rule": sessionRule,
+		"always_dir":   alwaysDir,
 	}
 	if json.Valid(req.Input) {
 		payload["input"] = json.RawMessage(req.Input)

@@ -191,13 +191,32 @@ export async function cancelChat(sessionId: string): Promise<boolean> {
 export async function answerChatPermission(
   requestId: string,
   sessionId: string,
-  decision: 'allow_once' | 'allow_session' | 'deny',
+  decision: 'allow_once' | 'allow_session' | 'allow_always' | 'deny',
 ): Promise<void> {
   await requestJSON(`/v1/chat/permissions/${encodeURIComponent(requestId)}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ session_id: sessionId, decision }),
   })
+}
+
+export type PermissionRule = {
+  provider: string
+  rule: string
+  created_at: string
+}
+
+// listPermissionRules returns the folder's "always allow" rules.
+export async function listPermissionRules(dir: string): Promise<PermissionRule[]> {
+  const result = await requestJSON<{ rules: PermissionRule[] }>(
+    `/v1/chat/permission-rules?dir=${encodeURIComponent(dir)}`,
+  )
+  return result.rules ?? []
+}
+
+export async function removePermissionRule(dir: string, provider: string, rule: string): Promise<void> {
+  const qs = new URLSearchParams({ dir, provider, rule })
+  await requestJSON(`/v1/chat/permission-rules?${qs.toString()}`, { method: 'DELETE' })
 }
 
 export type ChatToolInfo = {

@@ -269,6 +269,13 @@ type ChatOptions struct {
 	// already granted — never reach the handler. Nil keeps the one-shot `-p`
 	// invocation. Other providers ignore this field.
 	ClaudeCodePermissionHandler ClaudeCodePermissionHandler
+	// ClaudeCodePermissionAllow are Claude Code permission rules (e.g.
+	// "Bash(npm test:*)") to allow without asking, written beside the deny
+	// rules in the --settings file. They widen authority, so callers must
+	// take them only from the person's own "always allow" choices — never
+	// from settings a repository can carry. Other providers ignore this
+	// field.
+	ClaudeCodePermissionAllow []string
 }
 
 // ClaudeCodeHarnessOptions is intentionally limited to authority-reducing

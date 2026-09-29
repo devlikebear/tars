@@ -1275,6 +1275,7 @@ func newChatAPIHandlerWithRuntimeConfig(
 	chatLimiter := newInflightLimiter(tooling.APIMaxInflightChat, 2)
 	cancelRegistry := newChatCancelRegistry()
 	permissions := newChatPermissionBroker()
+	permissions.always = newChatAlwaysRuleStore(workspaceDir)
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/chat", func(w http.ResponseWriter, r *http.Request) {
 		handleChatRequest(w, r, chatHandlerDeps{
@@ -1295,6 +1296,9 @@ func newChatAPIHandlerWithRuntimeConfig(
 	})
 	mux.HandleFunc("/v1/chat/permissions/", func(w http.ResponseWriter, r *http.Request) {
 		handleChatPermissionAnswer(w, r, permissions)
+	})
+	mux.HandleFunc("/v1/chat/permission-rules", func(w http.ResponseWriter, r *http.Request) {
+		handleChatPermissionRules(w, r, permissions.always)
 	})
 	mux.HandleFunc("/v1/chat/cancel", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {

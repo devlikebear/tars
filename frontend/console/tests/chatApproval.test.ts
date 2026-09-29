@@ -97,3 +97,15 @@ test('withdrawPendingApprovals closes cards the stream left open', () => {
   const settled = [messages[1]]
   assert.equal(withdrawPendingApprovals(settled), settled, 'nothing open, same array')
 })
+
+test('always allow is offered only with a folder, and a answers it', () => {
+  const approval = approvalFromEvent({ ...request, always_dir: '/repo' }) as ChatApproval
+  assert.equal(approval.alwaysDir, '/repo')
+  assert.equal(decisionForKey('a', approval), 'allow_always')
+  const withoutFolder = approvalFromEvent({ ...request, always_dir: '' }) as ChatApproval
+  assert.equal(withoutFolder.alwaysDir, undefined)
+  assert.equal(decisionForKey('a', withoutFolder), null)
+
+  const messages: ChatMessage[] = [{ id: 'approval-r1', role: 'approval', text: '', approval }]
+  assert.equal(resolveApproval(messages, 'r1', 'allowed_always')[0].approval?.state, 'allowed_always')
+})

@@ -40,6 +40,7 @@ pkg/agentloop field RunOptions.AutoExpandOnce
 pkg/agentloop field RunOptions.BeforeTool
 pkg/agentloop field RunOptions.BlockedTools
 pkg/agentloop field RunOptions.ClaudeCodeMCPServers
+pkg/agentloop field RunOptions.ClaudeCodePermissionAllow
 pkg/agentloop field RunOptions.ClaudeCodePermissionDeny
 pkg/agentloop field RunOptions.ClaudeCodePermissionHandler
 pkg/agentloop field RunOptions.ClaudeCodePermissionMode
@@ -140,6 +141,7 @@ pkg/llm field ChatMessage.ToolCallID
 pkg/llm field ChatMessage.ToolCalls
 pkg/llm field ChatOptions.ClaudeCodeHarness
 pkg/llm field ChatOptions.ClaudeCodeMCPServers
+pkg/llm field ChatOptions.ClaudeCodePermissionAllow
 pkg/llm field ChatOptions.ClaudeCodePermissionDeny
 pkg/llm field ChatOptions.ClaudeCodePermissionHandler
 pkg/llm field ChatOptions.ClaudeCodePermissionMode
