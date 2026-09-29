@@ -24,6 +24,9 @@ type chatStreamWriter struct {
 	// carry it so the console can find the turn without reloading history.
 	turnID string
 	logger zerolog.Logger
+	// activity, when set, sees every event so clients other than this
+	// request can tell the turn is waiting for approval (#972).
+	activity *chatActivity
 }
 
 func newChatStreamWriter(w http.ResponseWriter, sessionID string, logger zerolog.Logger) *chatStreamWriter {
@@ -55,6 +58,7 @@ func (s *chatStreamWriter) send(data any) {
 		if eventType, ok := evt["type"].(string); ok {
 			s.logger.Debug().Str("event_type", eventType).Msg("chat sse event")
 		}
+		s.activity.observe(s.sessionID, evt)
 	}
 	if s.flusher != nil {
 		s.flusher.Flush()
