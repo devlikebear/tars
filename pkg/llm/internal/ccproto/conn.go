@@ -36,15 +36,14 @@ func (e *ResponseError) Error() string { return "ccproto: " + e.Message }
 // Handler answers one control request the CLI sent. Its result becomes the
 // success payload; an error becomes an error response. ctx is cancelled when
 // the CLI withdraws the request or the Conn closes, and the answer is then
-// dropped.
+// dropped. The caller ends a turn by closing the Conn, so a handler needs no
+// other deadline.
 type Handler func(ctx context.Context, subtype string, request json.RawMessage) (any, error)
 
 // Conn multiplexes control requests in both directions over one CLI process.
 // Dispatch must be fed every stdout line; the other methods are safe for
 // concurrent use.
 type Conn struct {
-	base    context.Context
-	stop    context.CancelFunc
 	handler Handler
 
 	writeMu sync.Mutex
@@ -65,11 +64,8 @@ type reply struct {
 
 // NewConn writes frames to w, which is normally the CLI's stdin. handler may
 // be nil, in which case every inbound request gets an error response.
-func NewConn(ctx context.Context, w io.Writer, handler Handler) *Conn {
-	base, stop := context.WithCancel(ctx)
+func NewConn(w io.Writer, handler Handler) *Conn {
 	return &Conn{
-		base:     base,
-		stop:     stop,
 		handler:  handler,
 		w:        w,
 		pending:  map[string]chan reply{},
@@ -187,7 +183,7 @@ func (c *Conn) serve(id string, request json.RawMessage) {
 		c.mu.Unlock()
 		return
 	}
-	ctx, cancel := context.WithCancel(c.base)
+	ctx, cancel := context.WithCancel(context.Background())
 	c.inflight[id] = cancel
 	c.handlers.Add(1)
 	c.mu.Unlock()
@@ -255,9 +251,11 @@ func (c *Conn) Close() {
 	c.closed = true
 	pending := c.pending
 	c.pending = map[string]chan reply{}
+	for _, cancel := range c.inflight {
+		cancel()
+	}
 	c.mu.Unlock()
 
-	c.stop()
 	for _, ch := range pending {
 		ch <- reply{err: ErrClosed}
 	}

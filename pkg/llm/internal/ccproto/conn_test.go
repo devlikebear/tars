@@ -58,7 +58,7 @@ func (w *wire) next(t *testing.T, seen *int) map[string]any {
 
 func TestConnRequestMatchesResponseByID(t *testing.T) {
 	w := newWire()
-	conn := NewConn(context.Background(), w, nil)
+	conn := NewConn(w, nil)
 	defer conn.Close()
 
 	type result struct {
@@ -101,7 +101,7 @@ func TestConnRequestMatchesResponseByID(t *testing.T) {
 
 func TestConnRequestSurfacesErrorResponse(t *testing.T) {
 	w := newWire()
-	conn := NewConn(context.Background(), w, nil)
+	conn := NewConn(w, nil)
 	defer conn.Close()
 
 	done := make(chan error, 1)
@@ -122,7 +122,7 @@ func TestConnRequestSurfacesErrorResponse(t *testing.T) {
 
 func TestConnRequestFailsWhenClosed(t *testing.T) {
 	w := newWire()
-	conn := NewConn(context.Background(), w, nil)
+	conn := NewConn(w, nil)
 
 	done := make(chan error, 1)
 	go func() {
@@ -150,7 +150,7 @@ func TestConnAnswersInboundRequestWithHandlerResult(t *testing.T) {
 		_ = json.Unmarshal(request, &gotRequest)
 		return map[string]any{"behavior": "deny", "message": "no"}, nil
 	}
-	conn := NewConn(context.Background(), w, handler)
+	conn := NewConn(w, handler)
 	defer conn.Close()
 
 	if !conn.Dispatch([]byte(`{"type":"control_request","request_id":"cli_1","request":{"subtype":"can_use_tool","tool_name":"Bash"}}`)) {
@@ -177,7 +177,7 @@ func TestConnAnswersHandlerErrorAndMissingHandlerWithErrorResponse(t *testing.T)
 	} {
 		t.Run(name, func(t *testing.T) {
 			w := newWire()
-			conn := NewConn(context.Background(), w, handler)
+			conn := NewConn(w, handler)
 			defer conn.Close()
 
 			conn.Dispatch([]byte(`{"type":"control_request","request_id":"cli_2","request":{"subtype":"hook_callback"}}`))
@@ -200,7 +200,7 @@ func TestConnCancelRequestCancelsHandlerWithoutResponding(t *testing.T) {
 		close(finished)
 		return map[string]any{"behavior": "allow"}, nil
 	}
-	conn := NewConn(context.Background(), w, handler)
+	conn := NewConn(w, handler)
 	defer conn.Close()
 
 	conn.Dispatch([]byte(`{"type":"control_request","request_id":"cli_3","request":{"subtype":"can_use_tool"}}`))
@@ -230,7 +230,7 @@ func TestConnCloseCancelsInFlightHandlers(t *testing.T) {
 		<-ctx.Done()
 		return nil, ctx.Err()
 	}
-	conn := NewConn(context.Background(), w, handler)
+	conn := NewConn(w, handler)
 	conn.Dispatch([]byte(`{"type":"control_request","request_id":"cli_4","request":{"subtype":"can_use_tool"}}`))
 	<-started
 
@@ -244,7 +244,7 @@ func TestConnCloseCancelsInFlightHandlers(t *testing.T) {
 }
 
 func TestConnDispatchLeavesOtherFramesToCaller(t *testing.T) {
-	conn := NewConn(context.Background(), io.Discard, nil)
+	conn := NewConn(io.Discard, nil)
 	defer conn.Close()
 	for _, line := range []string{
 		`{"type":"assistant","message":{}}`,
@@ -260,7 +260,7 @@ func TestConnDispatchLeavesOtherFramesToCaller(t *testing.T) {
 
 func TestConnWriteUserMessage(t *testing.T) {
 	w := newWire()
-	conn := NewConn(context.Background(), w, nil)
+	conn := NewConn(w, nil)
 	defer conn.Close()
 
 	if err := conn.WriteUserMessage("hello"); err != nil {
@@ -279,7 +279,7 @@ func TestConnWriteUserMessage(t *testing.T) {
 
 func TestConnRequestGivesUpWhenContextEnds(t *testing.T) {
 	w := newWire()
-	conn := NewConn(context.Background(), w, nil)
+	conn := NewConn(w, nil)
 	defer conn.Close()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -305,7 +305,7 @@ type brokenPipe struct{}
 func (brokenPipe) Write([]byte) (int, error) { return 0, errors.New("broken pipe") }
 
 func TestConnRequestReportsWriteFailure(t *testing.T) {
-	conn := NewConn(context.Background(), brokenPipe{}, nil)
+	conn := NewConn(brokenPipe{}, nil)
 	defer conn.Close()
 
 	_, err := conn.Request(context.Background(), map[string]any{"subtype": "initialize"})

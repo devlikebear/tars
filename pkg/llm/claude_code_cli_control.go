@@ -90,7 +90,7 @@ func (c *ClaudeCodeCLIClient) runControlOnce(ctx context.Context, args []string,
 		return ChatResponse{}, newProviderError(claudeCodeCLIProviderLabel, "request", fmt.Errorf("start cli: %w", err))
 	}
 
-	conn := ccproto.NewConn(ctx, stdin, claudeCodeControlHandler(opts.ClaudeCodePermissionHandler))
+	conn := ccproto.NewConn(stdin, claudeCodeControlHandler(opts.ClaudeCodePermissionHandler))
 	var closeInput sync.Once
 	endInput := func() { closeInput.Do(func() { _ = stdin.Close() }) }
 

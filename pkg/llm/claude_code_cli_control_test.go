@@ -107,12 +107,23 @@ func TestClaudeCodeCLIChat_PermissionHandlerAllowsThroughControlProtocol(t *test
 	if len(resp.ProviderExecutedTools) != 1 || resp.ProviderExecutedTools[0].Name != "Bash" {
 		t.Fatalf("provider executed tools = %+v", resp.ProviderExecutedTools)
 	}
-
 	if calls != 1 {
 		t.Fatalf("handler calls = %d, want 1", calls)
 	}
-	if got.ToolName != "Bash" || got.ToolUseID != "toolu_1" || got.Title != "Run touch?" ||
-		got.DecisionReason != "touch writes a file" || got.DecisionReasonType != "rule" || got.AgentID != "agent-7" {
+	assertDecodedPermissionRequest(t, got)
+	assertAllowAnswer(t, readJSONFile(t, filepath.Join(dir, "answer.json")))
+	assertControlHandshake(t, dir)
+	assertControlArgs(t, dir)
+}
+
+func assertDecodedPermissionRequest(t *testing.T, got ClaudeCodePermissionRequest) {
+	t.Helper()
+	want := ClaudeCodePermissionRequest{
+		ToolName: "Bash", ToolUseID: "toolu_1", Title: "Run touch?",
+		DecisionReason: "touch writes a file", DecisionReasonType: "rule", AgentID: "agent-7",
+	}
+	if got.ToolName != want.ToolName || got.ToolUseID != want.ToolUseID || got.Title != want.Title ||
+		got.DecisionReason != want.DecisionReason || got.DecisionReasonType != want.DecisionReasonType || got.AgentID != want.AgentID {
 		t.Fatalf("request = %+v", got)
 	}
 	if string(got.Input) != `{"command":"touch x","description":"Create x"}` {
@@ -121,8 +132,11 @@ func TestClaudeCodeCLIChat_PermissionHandlerAllowsThroughControlProtocol(t *test
 	if len(got.Suggestions) != 1 {
 		t.Fatalf("suggestions = %s", got.Suggestions)
 	}
+}
 
-	body := answerBody(t, readJSONFile(t, filepath.Join(dir, "answer.json")))
+func assertAllowAnswer(t *testing.T, frame map[string]any) {
+	t.Helper()
+	body := answerBody(t, frame)
 	if body["subtype"] != "success" {
 		t.Fatalf("answer = %v", body)
 	}
@@ -139,7 +153,12 @@ func TestClaudeCodeCLIChat_PermissionHandlerAllowsThroughControlProtocol(t *test
 	if len(perms) != 1 || perms[0].(map[string]any)["destination"] != "session" {
 		t.Fatalf("updatedPermissions = %v", decision["updatedPermissions"])
 	}
+}
 
+// assertControlHandshake checks that initialize went first and the prompt
+// followed as a user frame.
+func assertControlHandshake(t *testing.T, dir string) {
+	t.Helper()
 	init := readJSONFile(t, filepath.Join(dir, "init.json"))
 	if req, _ := init["request"].(map[string]any); init["type"] != "control_request" || req["subtype"] != "initialize" {
 		t.Fatalf("first frame must be initialize, got %v", init)
@@ -148,7 +167,10 @@ func TestClaudeCodeCLIChat_PermissionHandlerAllowsThroughControlProtocol(t *test
 	if msg, _ := user["message"].(map[string]any); user["type"] != "user" || !strings.Contains(asString(msg["content"]), "make x") {
 		t.Fatalf("user frame = %v", user)
 	}
+}
 
+func assertControlArgs(t *testing.T, dir string) {
+	t.Helper()
 	argsData, err := os.ReadFile(filepath.Join(dir, "args.txt"))
 	if err != nil {
 		t.Fatalf("read args: %v", err)
