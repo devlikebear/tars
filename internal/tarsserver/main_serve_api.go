@@ -18,6 +18,7 @@ import (
 	"github.com/devlikebear/tars/internal/cron"
 	"github.com/devlikebear/tars/internal/embodiment"
 	"github.com/devlikebear/tars/internal/extensions"
+	"github.com/devlikebear/tars/internal/initiative"
 	"github.com/devlikebear/tars/internal/llm"
 	"github.com/devlikebear/tars/internal/mcp"
 	"github.com/devlikebear/tars/internal/ops"
@@ -50,6 +51,7 @@ type serveAPIRuntime struct {
 	embodimentSubsystem     *embodiment.Subsystem
 	pulseRuntime            *pulse.Runtime
 	reflectionRuntime       *reflection.Runtime
+	initiativeRuntime       *initiative.Runtime
 	workLedger              *workstore.Store
 	workScheduler           *workscheduler.Scheduler
 	workerController        *workerprotocol.Controller
@@ -60,6 +62,7 @@ type serveAPIRuntime struct {
 
 type apiRouteHandlers struct {
 	pulse           http.Handler
+	initiative      http.Handler
 	reflection      http.Handler
 	chat            http.Handler
 	sessions        http.Handler
@@ -372,6 +375,18 @@ func buildAPIMux(
 		Now:              nowFn,
 		ActionDispatcher: embodiment.NewMCPTransport(mcpClient, logger),
 	})
+	initiativeSetup := buildInitiativeRuntime(initiativeSetupInputs{
+		Config:           cfg,
+		WorkspaceDir:     cfg.WorkspaceDir,
+		SessionStore:     sessionStore,
+		MainSessionID:    mainSessionID,
+		Broker:           broker,
+		Activity:         activity,
+		TelegramPairings: telegramPairings,
+		Embodiment:       embodimentSubsystem,
+		Logger:           logger,
+		Now:              nowFn,
+	})
 
 	var pulseSetup pulseSetup
 
@@ -662,6 +677,7 @@ func buildAPIMux(
 	)
 	registerAPIRoutes(mux, apiRouteHandlers{
 		pulse:           pulseSetup.Handler,
+		initiative:      initiativeSetup.Handler,
 		reflection:      reflectionSetup.Handler,
 		chat:            chatHandler,
 		sessions:        sessionHandler,
@@ -729,6 +745,7 @@ func buildAPIMux(
 		embodimentSubsystem:     embodimentSubsystem,
 		pulseRuntime:            pulseSetup.Runtime,
 		reflectionRuntime:       reflectionSetup.Runtime,
+		initiativeRuntime:       initiativeSetup.Runtime,
 		workLedger:              workLedger,
 		workScheduler:           workScheduler,
 		workerController:        workerController,
@@ -765,6 +782,7 @@ func registerAPIRoutes(mux *http.ServeMux, handlers apiRouteHandlers) {
 		return
 	}
 	mux.Handle("/v1/pulse/", handlers.pulse)
+	mux.Handle("/v1/initiative/", handlers.initiative)
 	mux.Handle("/v1/reflection/", handlers.reflection)
 	mux.Handle("/v1/chat", handlers.chat)
 	mux.Handle("/v1/chat/", handlers.chat)
@@ -1007,6 +1025,15 @@ func startBackgrounds(ctx context.Context, runtime *serveAPIRuntime, logger zero
 		finishStartup(err)
 		return err
 	}
+	if err := runBackgroundStartupStep(logger, "initiative_runtime", func() error {
+		if runtime.initiativeRuntime != nil {
+			runtime.initiativeRuntime.Start(ctx)
+		}
+		return nil
+	}); err != nil {
+		finishStartup(err)
+		return err
+	}
 	if err := runBackgroundStartupStep(logger, "watchdog_manager", func() error {
 		if runtime.watchdogManager != nil {
 			go func() {
@@ -1095,6 +1122,9 @@ func shutdownRuntime(ctx context.Context, runtime *serveAPIRuntime) {
 	}
 	if runtime.reflectionRuntime != nil {
 		runtime.reflectionRuntime.Stop()
+	}
+	if runtime.initiativeRuntime != nil {
+		runtime.initiativeRuntime.Stop()
 	}
 	if runtime.embodimentSubsystem != nil {
 		runtime.embodimentSubsystem.Stop()

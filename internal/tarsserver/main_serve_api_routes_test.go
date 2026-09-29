@@ -24,6 +24,7 @@ func TestRegisterAPIRoutes_RegistersCoreRoutes(t *testing.T) {
 		"/v1/reflection/status",
 		"/v1/reflection/run-once",
 		"/v1/reflection/config",
+		"/v1/initiative/status",
 		"/v1/chat",
 		"/v1/chat/mentions/files",
 		"/v1/chat/prior-context/preview",
@@ -212,6 +213,7 @@ func testAPIRouteHandlers(handler, consoleHandler http.Handler) apiRouteHandlers
 	return apiRouteHandlers{
 		pulse:           handler,
 		reflection:      handler,
+		initiative:      handler,
 		chat:            handler,
 		sessions:        handler,
 		checkpoints:     handler,

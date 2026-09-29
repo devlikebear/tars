@@ -140,6 +140,7 @@ func buildDoctorReport(opts doctorOptions) (doctorReport, error) {
 		checkDoctorLLMRuntime(&report, cfg)
 		checkDoctorSemanticMemory(&report, cfg, configPath)
 		checkDoctorEmbodiment(&report, cfg)
+		checkDoctorInitiative(&report, cfg)
 	}
 
 	if report.failureCount() > 0 {
