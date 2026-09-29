@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 
 	"github.com/devlikebear/tars/internal/checkpoint"
 	"github.com/devlikebear/tars/internal/llm"
@@ -13,6 +14,9 @@ import (
 )
 
 type chatStreamWriter struct {
+	// mu serializes events: a permission prompt is written from the
+	// provider's control goroutine while the turn streams deltas.
+	mu        sync.Mutex
 	w         http.ResponseWriter
 	flusher   http.Flusher
 	sessionID string
@@ -41,6 +45,8 @@ func (s *chatStreamWriter) send(data any) {
 		return
 	}
 	jsonData, _ := json.Marshal(data)
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	_, _ = fmt.Fprintf(s.w, "data: %s\n\n", jsonData)
 	switch evt := data.(type) {
 	case map[string]string:
@@ -265,5 +271,38 @@ func (s *chatStreamWriter) done(usage llm.Usage) {
 			"cache_read_tokens":  usage.CacheReadTokens,
 			"cache_write_tokens": usage.CacheWriteTokens,
 		},
+	})
+}
+
+// permissionRequest asks the console to decide one Claude Code permission
+// prompt. input is the tool input as Claude Code sent it; sessionRule is the
+// rule "allow for this session" would add, empty when none is offered.
+func (s *chatStreamWriter) permissionRequest(requestID string, req llm.ClaudeCodePermissionRequest, sessionRule string) {
+	payload := map[string]any{
+		"type":         "permission_request",
+		"session_id":   s.sessionID,
+		"request_id":   requestID,
+		"tool_name":    req.ToolName,
+		"tool_use_id":  req.ToolUseID,
+		"title":        req.Title,
+		"description":  req.Description,
+		"reason":       req.DecisionReason,
+		"agent_id":     req.AgentID,
+		"session_rule": sessionRule,
+	}
+	if json.Valid(req.Input) {
+		payload["input"] = json.RawMessage(req.Input)
+	}
+	s.send(payload)
+}
+
+// permissionResolved closes a prompt card: allowed, allowed_session, denied,
+// or withdrawn when the turn ended before anyone answered.
+func (s *chatStreamWriter) permissionResolved(requestID, outcome string) {
+	s.send(map[string]any{
+		"type":       "permission_resolved",
+		"session_id": s.sessionID,
+		"request_id": requestID,
+		"outcome":    outcome,
 	})
 }

@@ -76,6 +76,21 @@ func defaultPriceTable() map[string]ModelPrice {
 	}
 }
 
+// CallCost prices one call. A cost the provider reported itself wins over
+// the table: claude-code-cli returns the CLI's total_cost_usd, and its tiers
+// name models by alias (haiku, sonnet) the table cannot price. Without a
+// reported cost the table estimate is the fallback.
+func (t *Tracker) CallCost(provider, model string, u llm.Usage) (cost float64, pricingKnown bool, source string) {
+	if u.CostUSD > 0 {
+		return u.CostUSD, true, CostSourceProvider
+	}
+	cost, pricingKnown = t.EstimateCost(provider, model, u)
+	if !pricingKnown {
+		return cost, false, ""
+	}
+	return cost, true, CostSourceEstimate
+}
+
 func (t *Tracker) EstimateCost(provider, model string, u llm.Usage) (float64, bool) {
 	if t == nil {
 		return 0, false

@@ -101,14 +101,24 @@ func attachCheckpointCleanup(store *checkpoint.Store, sessions *session.Store, l
 // foldPathCase is set where volumes are case-insensitive by default.
 var foldPathCase = runtime.GOOS == "windows" || runtime.GOOS == "darwin"
 
-// sameDir reports whether two paths spell the same directory. It compares
-// names only, so it never touches the file system.
+// sameDir reports whether two paths name the same directory. Symlinks are
+// resolved first: the session store saves work directories resolved, while
+// the workspace path keeps the spelling it was configured with, so the two
+// differ whenever the workspace sits under a link (macOS's /var and /tmp, a
+// relocated ~/.tars). A path that cannot be resolved is compared as written.
 func sameDir(a, b string) bool {
 	if strings.TrimSpace(a) == "" || strings.TrimSpace(b) == "" {
 		return false
 	}
-	ca, cb := filepath.Clean(a), filepath.Clean(b)
+	ca, cb := resolvedDir(a), resolvedDir(b)
 	return ca == cb || (foldPathCase && strings.EqualFold(ca, cb))
+}
+
+func resolvedDir(p string) string {
+	if resolved, err := filepath.EvalSymlinks(p); err == nil {
+		return filepath.Clean(resolved)
+	}
+	return filepath.Clean(p)
 }
 
 // isSessionNotFound matches the session store's not-found errors, which are

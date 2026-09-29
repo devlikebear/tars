@@ -11,6 +11,7 @@ import (
 	"github.com/devlikebear/tars/internal/session"
 	"github.com/devlikebear/tars/internal/tool"
 	"github.com/devlikebear/tars/internal/usage"
+	"github.com/devlikebear/tars/pkg/agentloop"
 	"github.com/rs/zerolog"
 )
 
@@ -120,6 +121,8 @@ func executeChatLoop(
 			deps.logger.Debug().Str("session_id", state.sessionID).Int("delta_len", len(text)).Msg("llm reasoning delta")
 			stream.reasoning(text)
 		},
+		ClaudeCodePermissionHandler: chatPermissionHandlerFor(deps, state, stream),
+		ToolAuthorizer:              chatToolGateFor(deps, state, stream),
 	})
 	if err != nil {
 		if ctx.Err() == context.Canceled {
@@ -193,4 +196,25 @@ func persistChatResult(state chatRunState, userMessage string, chatResp llm.Chat
 	}); err != nil {
 		logger.Error().Err(err).Str("session_id", state.sessionID).Msg("write chat memory failed")
 	}
+}
+
+// chatPermissionHandlerFor returns the handler that routes Claude Code's
+// permission prompts to the console, or nil when the client cannot answer
+// them: then the provider keeps its one-shot path, where the CLI settles
+// prompts by its own permission mode.
+func chatPermissionHandlerFor(deps chatHandlerDeps, state chatRunState, stream *chatStreamWriter) llm.ClaudeCodePermissionHandler {
+	if !state.interactivePermissions || deps.permissions == nil {
+		return nil
+	}
+	return newChatPermissionHandler(deps.permissions, state.sessionID, stream)
+}
+
+// chatToolGateFor returns the gate that asks the console before a native
+// provider's turn runs a high-risk tool, or nil when the client cannot
+// answer. CLI providers run their own tools and never reach it.
+func chatToolGateFor(deps chatHandlerDeps, state chatRunState, stream *chatStreamWriter) agentloop.ToolAuthorizer {
+	if !state.interactivePermissions || deps.permissions == nil {
+		return nil
+	}
+	return newChatToolGate(deps.permissions, state.sessionID, stream)
 }

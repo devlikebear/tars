@@ -402,6 +402,18 @@ func TestSameDir(t *testing.T) {
 	if sameDir(dir, filepath.Join(dir, "x")) || sameDir("", dir) || sameDir(dir, " ") {
 		t.Fatal("different or empty directories match")
 	}
+	target := filepath.Join(dir, "real")
+	link := filepath.Join(dir, "link")
+	if err := os.Mkdir(target, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, link); err == nil {
+		if !sameDir(link, target) {
+			t.Fatal("a directory and a symlink to it differ")
+		}
+	} else {
+		t.Logf("symlink unavailable, skipping the link case: %v", err)
+	}
 	upper := filepath.Join(dir, "Work")
 	lower := filepath.Join(dir, "work")
 	saved := foldPathCase

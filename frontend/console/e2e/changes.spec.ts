@@ -2,6 +2,9 @@
 // a change card under it and fills the Changes panel. The mock LLM's
 // [e2e:write3] command calls write_file three times: base.txt changed in two
 // places (lines 2 and 19), plus notes.md and src/app.txt.
+//
+// write_file is a high-risk tool, so each call first asks through an
+// approval card in the thread (#970).
 
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -11,6 +14,8 @@ import { expect, test, type Page } from '@playwright/test'
 const composer = (page: Page) => page.locator('.chat-main textarea')
 const card = (page: Page) => page.locator('.chat-log .turn-changes').last()
 const changesPanel = (page: Page) => page.locator('.dock-right .changes-panel')
+const approvals = (page: Page) => page.locator('.chat-log .approval')
+const pendingApproval = (page: Page) => page.locator('.chat-log .approval:not(.settled)')
 // A turn is over when the Send button is back: the reply can show before
 // the turn's end snapshot is taken and the reply is saved.
 const turnSettled = (page: Page) => expect(page.locator('.chat-form-actions button[type="submit"]')).toBeVisible()
@@ -42,7 +47,16 @@ test('a turn that edits three files shows its diff in the thread and the Changes
 
   await composer(page).fill('Edit the files [e2e:write3]')
   await composer(page).press('Enter')
+
+  // One card for the first write; allowing write_file for the session lets
+  // the other two through without asking.
+  await expect(pendingApproval(page)).toHaveCount(1)
+  await expect(pendingApproval(page)).toContainText('Allow write_file?')
+  await expect(pendingApproval(page)).toContainText('base.txt')
+  await pendingApproval(page).getByRole('button', { name: 'Allow write_file for this session' }).click()
   await expect(page.locator('.chat-msg.chat-assistant').last()).toContainText('Wrote 3 files.')
+  await expect(approvals(page)).toHaveCount(1)
+  await expect(approvals(page)).toContainText('Allowed for this session: write_file')
   expect(readFileSync(join(dir, 'base.txt'), 'utf8')).toContain('line 19 edited')
 
   // The card under the turn: collapsed summary, then every file's diff.
@@ -71,6 +85,27 @@ test('a turn that edits three files shows its diff in the thread and the Changes
   await expect(card(page)).toContainText('3 files +6 −2')
 })
 
+test('denied writes leave the files alone and the turn still finishes', async ({ page }) => {
+  const dir = seedProject()
+  await newSessionIn(page, dir)
+  await composer(page).fill('Edit the files [e2e:write3]')
+  await composer(page).press('Enter')
+
+  // Nothing is remembered on deny, so each of the three writes asks. The
+  // card takes focus, so the n key answers it.
+  for (let answered = 1; answered <= 3; answered++) {
+    await expect(pendingApproval(page)).toHaveCount(1)
+    await expect(pendingApproval(page)).toBeFocused()
+    await page.keyboard.press('n')
+    await expect(page.locator('.chat-log .approval.settled')).toHaveCount(answered)
+  }
+  // The mock counts tool results, denials included; the turn did not stop.
+  await expect(page.locator('.chat-msg.chat-assistant').last()).toContainText('Wrote 3 files.')
+  await expect(approvals(page).filter({ hasText: 'Denied' })).toHaveCount(3)
+  expect(readFileSync(join(dir, 'base.txt'), 'utf8')).not.toContain('edited')
+  await expect(page.locator('.chat-log .turn-changes')).toHaveCount(0)
+})
+
 test('a turn without file changes gets no card', async ({ page }) => {
   await newSessionIn(page, seedProject())
   await composer(page).fill('just talk')
@@ -84,7 +119,9 @@ test('one hunk is reverted after a confirm, and Undo puts it back', async ({ pag
   await newSessionIn(page, dir)
   await composer(page).fill('Edit the files [e2e:write3]')
   await composer(page).press('Enter')
+  await pendingApproval(page).getByRole('button', { name: 'Allow write_file for this session' }).click()
   await expect(page.locator('.chat-msg.chat-assistant').last()).toContainText('Wrote 3 files.')
+  await turnSettled(page)
   await card(page).getByRole('button', { name: 'Open in Changes' }).click()
   const panel = changesPanel(page)
   await panel.locator('.file-row', { hasText: 'base.txt' }).click()

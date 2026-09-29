@@ -66,6 +66,9 @@ type chatRunState struct {
 	// turnID is the ID of the user message that starts the turn. It keys
 	// the turn's checkpoint and is sent to the console before and after.
 	turnID string
+
+	// interactivePermissions: the client answers permission_request events.
+	interactivePermissions bool
 }
 
 func decodeChatRequestPayload(w http.ResponseWriter, r *http.Request) (chatRequestPayload, bool) {

@@ -36,6 +36,14 @@ func TestChatAPI_PassesSessionDirectoryAndPersistsUpstreamSession(t *testing.T) 
 	if err := store.SetWorkDirs(sess.ID, []string{projectDir}, projectDir); err != nil {
 		t.Fatalf("set work dirs: %v", err)
 	}
+	// The store saves the directory with symlinks resolved, so on macOS,
+	// where t.TempDir() is under /var -> /private/var, it differs from
+	// projectDir.
+	saved, err := store.Get(sess.ID)
+	if err != nil {
+		t.Fatalf("get session: %v", err)
+	}
+	currentDir := saved.CurrentDir
 	client := &mockLLMClient{response: llm.ChatResponse{Message: llm.ChatMessage{Role: "assistant", Content: "ok"}}}
 	handler := newChatAPIHandler(root, store, client, zerolog.New(io.Discard))
 
@@ -53,8 +61,8 @@ func TestChatAPI_PassesSessionDirectoryAndPersistsUpstreamSession(t *testing.T) 
 	if len(client.seenWorkDirs) == 0 {
 		t.Fatal("expected an LLM call")
 	}
-	if client.seenWorkDirs[0] != projectDir {
-		t.Fatalf("work dir = %q, want the session's current directory %q", client.seenWorkDirs[0], projectDir)
+	if client.seenWorkDirs[0] != currentDir {
+		t.Fatalf("work dir = %q, want the session's current directory %q", client.seenWorkDirs[0], currentDir)
 	}
 	if !client.seenPersist[0] {
 		t.Fatal("a chat turn must ask the provider to save the upstream session it resumes next turn")

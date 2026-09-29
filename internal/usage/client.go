@@ -65,7 +65,7 @@ func (c *TrackedClient) Chat(ctx context.Context, messages []llm.ChatMessage, op
 	}
 
 	meta := CallMetaFromContext(ctx)
-	estimatedCost, pricingKnown := c.tracker.EstimateCost(c.provider, c.model, resp.Usage)
+	cost, pricingKnown, costSource := c.tracker.CallCost(c.provider, c.model, resp.Usage)
 	_ = c.tracker.Record(Entry{
 		Provider:         c.provider,
 		Model:            c.model,
@@ -74,12 +74,13 @@ func (c *TrackedClient) Chat(ctx context.Context, messages []llm.ChatMessage, op
 		CachedTokens:     resp.Usage.CachedTokens,
 		CacheReadTokens:  resp.Usage.CacheReadTokens,
 		CacheWriteTokens: resp.Usage.CacheWriteTokens,
-		EstimatedCostUSD: estimatedCost,
+		EstimatedCostUSD: cost,
 		ToolCount:        len(opts.Tools),
 		Source:           meta.Source,
 		SessionID:        meta.SessionID,
 		RunID:            meta.RunID,
 		PricingKnown:     pricingKnown,
+		CostSource:       costSource,
 	})
 
 	status, checkErr := c.tracker.CheckLimitStatus()

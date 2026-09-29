@@ -594,7 +594,13 @@ func (processCommandRunner) Run(ctx context.Context, directory, command string, 
 	commandCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	startedAt := time.Now()
-	cmd := exec.CommandContext(commandCtx, shell, "-lc", command)
+	// -c, not -lc: a login shell sources /etc/profile, /etc/profile.d/* and
+	// ~/.profile first, and whatever they print lands on the same stdout the
+	// verified command writes to. Since stdout is hashed into the proof record
+	// (stdout_digest) and excerpted into it, that noise makes one command
+	// digest differently on different machines. The command still inherits this
+	// process's environment, PATH included, via verifierEnvironment.
+	cmd := exec.CommandContext(commandCtx, shell, "-c", command)
 	cmd.Dir = directory
 	cmd.Env = verifierEnvironment()
 	var stdout, stderr strings.Builder

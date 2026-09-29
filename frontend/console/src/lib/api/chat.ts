@@ -186,6 +186,20 @@ export async function cancelChat(sessionId: string): Promise<boolean> {
   }
 }
 
+// answerChatPermission replies to a permission_request. It rejects when the
+// prompt is gone (answered elsewhere, or the turn ended) or the reply is bad.
+export async function answerChatPermission(
+  requestId: string,
+  sessionId: string,
+  decision: 'allow_once' | 'allow_session' | 'deny',
+): Promise<void> {
+  await requestJSON(`/v1/chat/permissions/${encodeURIComponent(requestId)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ session_id: sessionId, decision }),
+  })
+}
+
 export type ChatToolInfo = {
   name: string
   description: string

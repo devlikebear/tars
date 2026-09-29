@@ -7,12 +7,16 @@ import (
 )
 
 // commandTestBudget bounds the shell invocations in this package's tests that
-// are not themselves testing timing. It is deliberately generous: commands go
-// through a *login* shell (`-lc`), and on a cold Windows runner Git Bash spends
-// most of a second sourcing profile files before the command even starts. A
-// one-second budget made those call sites fail under CI load, and the timeout
-// path they fell into then exposed the descendant-pipe hang that
+// are not themselves testing timing. It is deliberately generous: a cold
+// Windows runner is slow to spawn Git Bash at all, and a one-second budget made
+// these call sites fail under CI load. The timeout path they fell into then
+// exposed the descendant-pipe hang that
 // TestProcessRunnerReturnsWhenDescendantOutlivesTimeout pins.
+//
+// Commands used to go through a *login* shell (`-lc`), which spent most of that
+// second sourcing profile files before the command even started. Run now uses
+// -c, so startup is cheaper — the budget stays generous because the CI-load
+// margin, not profile sourcing, is what it is really covering.
 const commandTestBudget = 30 * time.Second
 
 // TestProcessRunnerReturnsWhenDescendantOutlivesTimeout pins the deadline
