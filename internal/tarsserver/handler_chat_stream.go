@@ -27,6 +27,10 @@ type chatStreamWriter struct {
 	// feed keeps every event for consoles that attach to the running turn
 	// later (chat_turn_feed.go).
 	feed *chatTurnFeed
+
+	// activity, when set, sees every event so clients other than this
+	// request can tell the turn is waiting for approval (#972).
+	activity *chatActivity
 }
 
 func newChatStreamWriter(w http.ResponseWriter, sessionID string, logger zerolog.Logger) *chatStreamWriter {
@@ -61,6 +65,7 @@ func (s *chatStreamWriter) send(data any) {
 		if eventType, ok := evt["type"].(string); ok {
 			s.logger.Debug().Str("event_type", eventType).Msg("chat sse event")
 		}
+		s.activity.observe(s.sessionID, evt)
 	}
 	if s.flusher != nil {
 		s.flusher.Flush()
@@ -311,4 +316,25 @@ func (s *chatStreamWriter) permissionResolved(requestID, outcome string) {
 		"request_id": requestID,
 		"outcome":    outcome,
 	})
+}
+
+// worktree tells the console the turn runs in a worktree of its own,
+// created just now because another session holds the repository or the
+// run is unattended.
+func (s *chatStreamWriter) worktree(notice worktreeNotice) {
+	payload := map[string]any{
+		"type":       "worktree",
+		"session_id": s.sessionID,
+		"path":       notice.Worktree.Path,
+		"dir":        notice.Worktree.Dir,
+		"branch":     notice.Worktree.Branch,
+		"reason":     notice.Worktree.Reason,
+	}
+	if notice.Holder != "" {
+		payload["lease_holder"] = notice.Holder
+	}
+	if len(notice.Copied) > 0 {
+		payload["copied"] = notice.Copied
+	}
+	s.send(payload)
 }

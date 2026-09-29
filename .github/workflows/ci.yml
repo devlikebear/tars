@@ -65,6 +65,56 @@ jobs:
       - name: Cross-compile the module for Windows
         run: make windows-build-check
 
+  # The desktop shell (desktop/) is a separate Go module; nothing above
+  # builds or tests it. Linux needs the GTK 4 / WebKitGTK 6.0 headers for
+  # the webview; the Windows build cross-compiles without cgo.
+  desktop:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: desktop/go.mod
+          cache-dependency-path: desktop/go.sum
+
+      - name: Install webview headers
+        run: sudo apt-get update && sudo apt-get install -y libgtk-4-dev libwebkitgtk-6.0-dev
+
+      - name: Vet and test the desktop shell
+        run: make desktop-test
+
+      - name: Package for Linux and Windows
+        run: |
+          make desktop-package DESKTOP_GOOS=linux DESKTOP_GOARCH=amd64 VERSION=0.0.0-ci DIST_DIR=dist
+          make desktop-package DESKTOP_GOOS=windows DESKTOP_GOARCH=amd64 VERSION=0.0.0-ci DIST_DIR=dist
+          test "$(tar -tzf dist/tars-desktop_0.0.0-ci_linux_amd64.tar.gz)" = tars-desktop
+
+  desktop-macos:
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: desktop/go.mod
+          cache-dependency-path: desktop/go.sum
+
+      - name: Vet the desktop shell
+        run: cd desktop && go vet ./...
+
+      - name: Package the app bundle
+        run: |
+          make desktop-package DESKTOP_GOOS=darwin DESKTOP_GOARCH=arm64 VERSION=0.0.0-ci DIST_DIR=dist
+          tar -xzf dist/tars-desktop_0.0.0-ci_darwin_arm64.tar.gz -C dist
+          plutil -lint dist/TARS.app/Contents/Info.plist
+          codesign --verify --deep dist/TARS.app
+          dist/TARS.app/Contents/MacOS/TARS --version | grep -F "tars-desktop 0.0.0-ci"
+
   windows-test:
     runs-on: windows-latest
     timeout-minutes: 20

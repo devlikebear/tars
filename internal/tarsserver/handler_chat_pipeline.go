@@ -28,8 +28,9 @@ type chatHandlerDeps struct {
 	cancelRegistry *chatCancelRegistry
 	// turnFeeds keeps each running turn's events for consoles that attach
 	// later (GET /v1/chat/stream).
-	turnFeeds   *chatTurnFeeds
-	permissions *chatPermissionBroker
+	turnFeeds    *chatTurnFeeds
+	chatActivity *chatActivity
+	permissions  *chatPermissionBroker
 }
 
 func (d chatHandlerDeps) resolveChatClient() (llm.Client, llm.TierResolution, error) {
@@ -92,6 +93,8 @@ func handleChatRequest(w http.ResponseWriter, r *http.Request, deps chatHandlerD
 
 	endBusy := deps.activity.beginChat()
 	defer endBusy()
+	worktreeMoved, endLease := deps.tooling.Worktrees.beginTurn(r.Context(), strings.TrimSpace(req.SessionID), false)
+	defer endLease()
 	deps.logger.Debug().
 		Str("path", r.URL.Path).
 		Str("session_id", strings.TrimSpace(req.SessionID)).
@@ -109,7 +112,13 @@ func handleChatRequest(w http.ResponseWriter, r *http.Request, deps chatHandlerD
 	feed, endFeed := deps.turnFeeds.begin(state.sessionID)
 	defer endFeed()
 	stream.feed = feed
+
+	stream.activity = deps.chatActivity
+	defer deps.chatActivity.begin(state.sessionID)()
 	stream.status("stream_open", "stream connected", "", "", "", "")
+	if worktreeMoved != nil {
+		stream.worktree(*worktreeMoved)
+	}
 	if state.turnID != "" {
 		stream.turnStarted(state.turnID)
 	}

@@ -63,6 +63,10 @@ func applyLayer(eff *EffectiveConfig, o *Override, src Source, sources map[strin
 		eff.ClaudeCodeCLIPermissionDeny = unionDedup(eff.ClaudeCodeCLIPermissionDeny, o.ClaudeCodeCLIPermissionDeny)
 		sources["claude_code_cli_permission_deny"] = src
 	}
+	if o.Presence["worktree_include"] {
+		eff.WorktreeInclude = unionDedup(eff.WorktreeInclude, o.WorktreeInclude)
+		sources["worktree_include"] = src
+	}
 	if o.Presence["mcp_servers_extra"] {
 		eff.MCPServersExtra = mergeMCPServers(eff.MCPServersExtra, o.MCPServersExtra)
 		sources["mcp_servers_extra"] = src

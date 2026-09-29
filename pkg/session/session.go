@@ -41,6 +41,23 @@ type SessionToolConfig struct {
 	MCPCustom        bool     `json:"mcp_custom,omitempty"`
 }
 
+// SessionWorktree is the git worktree an isolated session works in (#971):
+// a checkout of Branch in Path, made from SourceDir's repository at
+// BaseCommit. Dir is the session's working folder inside it.
+type SessionWorktree struct {
+	Path       string    `json:"path"`
+	Dir        string    `json:"dir"`
+	Branch     string    `json:"branch"`
+	BaseCommit string    `json:"base_commit"`
+	RepoRoot   string    `json:"repo_root"`
+	SourceDir  string    `json:"source_dir"`
+	Reason     string    `json:"reason,omitempty"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+
+// IsolationOff turns automatic worktrees off for a session.
+const IsolationOff = "off"
+
 type SessionAutomationConsent struct {
 	AutoResume             bool       `json:"auto_resume,omitempty"`
 	AutoResumeEnabled      bool       `json:"auto_resume_enabled,omitempty"`
@@ -249,6 +266,12 @@ type Session struct {
 	PromptOverride      string                    `json:"prompt_override,omitempty"`
 	WorkDirs            []string                  `json:"work_dirs,omitempty"`
 	CurrentDir          string                    `json:"current_dir,omitempty"`
+	// Worktree is set while the session works in a worktree of its own.
+	Worktree *SessionWorktree `json:"worktree,omitempty"`
+	// Isolation is IsolationOff when the session never gets an automatic
+	// worktree; empty lets TARS isolate it when another session holds its
+	// repository or the run is unattended.
+	Isolation string `json:"isolation,omitempty"`
 	// UpstreamSessionID is an opaque handle exposed by certain LLM providers
 	// (currently only claude-code-cli) that lets a follow-up turn resume the
 	// remote session instead of replaying the full transcript. Empty for
@@ -1376,6 +1399,89 @@ func (s *Store) SetWorkDirs(id string, dirs []string, currentDir string) error {
 	return s.saveIndex(index)
 }
 
+// SetWorktree moves the session into wt, making wt.Dir its current
+// directory, or with nil moves it back to the folder the worktree was made
+// from.
+func (s *Store) SetWorktree(id string, wt *SessionWorktree) error {
+	unlock := lockPath(s.indexPath())
+	defer unlock()
+	index, err := s.loadIndex()
+	if err != nil {
+		return err
+	}
+	sess, ok := index[id]
+	if !ok {
+		return ErrSessionNotFound
+	}
+	if wt != nil {
+		next := *wt
+		next.Dir = canonicalSessionPath(next.Dir)
+		sess.WorkDirs = appendUniquePath(sess.WorkDirs, next.Dir)
+		sess.CurrentDir = next.Dir
+		sess.Worktree = &next
+	} else if sess.Worktree != nil {
+		old := sess.Worktree
+		dir := canonicalSessionPath(old.Dir)
+		kept := sess.WorkDirs[:0:0]
+		for _, d := range sess.WorkDirs {
+			if d != dir {
+				kept = append(kept, d)
+			}
+		}
+		sess.WorkDirs = kept
+		if sess.CurrentDir == dir {
+			source := canonicalSessionPath(old.SourceDir)
+			if source != "" {
+				sess.WorkDirs = appendUniquePath(sess.WorkDirs, source)
+			}
+			sess.CurrentDir = source
+		}
+		sess.Worktree = nil
+	}
+	sess, _, err = s.applySessionDefaults(sess)
+	if err != nil {
+		return err
+	}
+	sess.UpdatedAt = time.Now().UTC()
+	index[id] = sess
+	return s.saveIndex(index)
+}
+
+// SetIsolation sets whether TARS may give the session automatic worktrees:
+// IsolationOff or empty.
+func (s *Store) SetIsolation(id, mode string) error {
+	mode = strings.TrimSpace(mode)
+	if mode != "" && mode != IsolationOff {
+		return fmt.Errorf("unknown isolation mode %q", mode)
+	}
+	unlock := lockPath(s.indexPath())
+	defer unlock()
+	index, err := s.loadIndex()
+	if err != nil {
+		return err
+	}
+	sess, ok := index[id]
+	if !ok {
+		return ErrSessionNotFound
+	}
+	sess.Isolation = mode
+	sess.UpdatedAt = time.Now().UTC()
+	index[id] = sess
+	return s.saveIndex(index)
+}
+
+func appendUniquePath(list []string, value string) []string {
+	if value == "" {
+		return list
+	}
+	for _, v := range list {
+		if v == value {
+			return list
+		}
+	}
+	return append(append([]string(nil), list...), value)
+}
+
 // SetUpstreamSessionID records the opaque upstream handle returned by a
 // provider that supports resumable sessions (currently only claude-code-cli).
 // Passing an empty string clears the field. No-op when the value is unchanged
@@ -1635,6 +1741,12 @@ func forkWorkDirs(parent Session, parentArtifactDir string) []string {
 		if parentArtifactDir != "" && canonicalSessionPath(dir) == parentArtifactDir {
 			continue
 		}
+		// The parent's worktree stays the parent's; the fork works in the
+		// folder the worktree was made from.
+		if parent.Worktree != nil && canonicalSessionPath(dir) == canonicalSessionPath(parent.Worktree.Dir) {
+			dirs = appendUniquePath(dirs, canonicalSessionPath(parent.Worktree.SourceDir))
+			continue
+		}
 		dirs = append(dirs, dir)
 	}
 	return dirs
@@ -1644,6 +1756,9 @@ func forkCurrentDir(parent Session, parentArtifactDir string) string {
 	parentArtifactDir = canonicalSessionPath(parentArtifactDir)
 	if parentArtifactDir != "" && canonicalSessionPath(parent.CurrentDir) == parentArtifactDir {
 		return ""
+	}
+	if parent.Worktree != nil && canonicalSessionPath(parent.CurrentDir) == canonicalSessionPath(parent.Worktree.Dir) {
+		return canonicalSessionPath(parent.Worktree.SourceDir)
 	}
 	return parent.CurrentDir
 }

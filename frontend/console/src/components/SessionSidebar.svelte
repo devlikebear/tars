@@ -6,6 +6,7 @@
   import { t } from '../i18n'
   import { chatSession } from '../lib/stores/chatSession'
   import { chatCommands } from '../lib/stores/chatCommandQueue.svelte'
+  import { sessionActivity } from '../lib/stores/sessionActivity'
   import type { MemorySearchMatch, Session, SessionCleanupMode, SessionCleanupSuggestion, SessionCleanupSuggestionResponse } from '../lib/types'
   import { displaySessionTitle } from '../lib/sessionLabels'
 
@@ -588,6 +589,11 @@
                 <span class="session-title">{displaySessionTitle(session.title, $t.chat.session.newChat) || session.id.slice(0, 12)}</span>
               {/if}
               <div class="session-meta">
+                {#if sessionActivity.pending(session.id) > 0}
+                  <span class="live-status needs-input" title={$t.sessionBoard.pending(sessionActivity.pending(session.id))}>{$t.sessionBoard.status.needs_input}</span>
+                {:else if sessionActivity.running(session.id)}
+                  <span class="live-status running">{$t.sessionBoard.status.running}</span>
+                {/if}
                 <span class="badge {kindBadge(session)}" style="font-size:9px;padding:1px 5px">{$t.sessions.filters[sessionKind(session) as keyof typeof $t.sessions.filters] ?? sessionKind(session)}</span>
                 {#if isArchived(session)}
                   <span class="badge badge-default" style="font-size:9px;padding:1px 5px">{$t.sessions.filters.archived}</span>
@@ -948,6 +954,23 @@
     font-size: 10px;
     color: var(--text-ghost);
     margin-left: auto;
+  }
+
+  /* Live turn state from the session activity store (#971). */
+  .live-status {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    padding: 1px 5px;
+    border-radius: var(--radius-sm);
+    white-space: nowrap;
+  }
+  .live-status.running {
+    background: var(--primary-muted);
+    color: var(--primary-text);
+  }
+  .live-status.needs-input {
+    background: var(--warning-muted);
+    color: var(--warning);
   }
 
   .session-pin-indicator {
