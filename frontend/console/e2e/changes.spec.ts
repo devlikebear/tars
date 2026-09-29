@@ -11,6 +11,9 @@ import { expect, test, type Page } from '@playwright/test'
 const composer = (page: Page) => page.locator('.chat-main textarea')
 const card = (page: Page) => page.locator('.chat-log .turn-changes').last()
 const changesPanel = (page: Page) => page.locator('.dock-right .changes-panel')
+// A turn is over when the Send button is back: the reply can show before
+// the turn's end snapshot is taken and the reply is saved.
+const turnSettled = (page: Page) => expect(page.locator('.chat-form-actions button[type="submit"]')).toBeVisible()
 
 // The base.txt the mock edits: "line 1" to "line 20".
 function seedProject(): string {
@@ -62,6 +65,7 @@ test('a turn that edits three files shows its diff in the thread and the Changes
   await expect(changesPanel(page).locator('.file-row')).toHaveCount(3)
 
   // History keeps the card: the turn's user message carries its ID.
+  await turnSettled(page)
   await page.reload()
   await expect(page).toHaveURL(new RegExp(`${sessionId}$`))
   await expect(card(page)).toContainText('3 files +6 −2')
@@ -73,4 +77,34 @@ test('a turn without file changes gets no card', async ({ page }) => {
   await composer(page).press('Enter')
   await expect(page.locator('.chat-msg.chat-assistant').last()).toContainText('Echo: just talk')
   await expect(page.locator('.chat-log .turn-changes')).toHaveCount(0)
+})
+
+test('one hunk is reverted after a confirm, and Undo puts it back', async ({ page }) => {
+  const dir = seedProject()
+  await newSessionIn(page, dir)
+  await composer(page).fill('Edit the files [e2e:write3]')
+  await composer(page).press('Enter')
+  await expect(page.locator('.chat-msg.chat-assistant').last()).toContainText('Wrote 3 files.')
+  await card(page).getByRole('button', { name: 'Open in Changes' }).click()
+  const panel = changesPanel(page)
+  await panel.locator('.file-row', { hasText: 'base.txt' }).click()
+
+  // base.txt has two hunks: line 2 (h0) and line 19 (h1). Revert the second.
+  const hunkButtons = panel.getByRole('button', { name: 'Revert hunk' })
+  await expect(hunkButtons).toHaveCount(2)
+  await hunkButtons.nth(1).click()
+  const bar = panel.locator('.revert-bar')
+  await expect(bar).toContainText('Revert 1 hunk in base.txt?')
+  await bar.getByRole('button', { name: 'Revert', exact: true }).click()
+  await expect(bar).toContainText('Reverted 1 file.')
+
+  const base = () => readFileSync(join(dir, 'base.txt'), 'utf8')
+  expect(base()).toContain('line 2 edited')
+  expect(base()).not.toContain('line 19 edited')
+  await expect(panel.locator('.reverted-badge')).toHaveCount(1)
+
+  await bar.getByRole('button', { name: 'Undo' }).click()
+  await expect(bar).toContainText('The revert is undone.')
+  expect(base()).toContain('line 19 edited')
+  await expect(panel.locator('.reverted-badge')).toHaveCount(0)
 })
