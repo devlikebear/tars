@@ -171,3 +171,13 @@ export function undoRevert(sessionId: string, revertId: string, force = false): 
     body: JSON.stringify({ force }),
   })
 }
+
+// A note from reviewing an earlier turn's changes, sent with the next chat
+// message: a comment on a hunk or file, or word that the user reverted it.
+export type ReviewNote = {
+  turn_id: string
+  path: string
+  hunk_id?: string
+  comment?: string
+  kind?: 'comment' | 'revert'
+}

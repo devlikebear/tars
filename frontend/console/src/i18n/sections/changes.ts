@@ -97,6 +97,20 @@ export const changesEn = {
     undoFailed: (message: string) => `Undo failed: ${message}`,
     dismiss: 'Dismiss',
   },
+  notes: {
+    comment: 'Comment',
+    commentFile: 'Comment on file',
+    title: (where: string) => `Comment on ${where}`,
+    placeholder: 'What should change here?',
+    add: 'Add note',
+    cancel: 'Cancel',
+    chipsLabel: 'Review notes for the next message',
+    chipComment: (where: string, comment: string) => `${where}: ${comment}`,
+    chipRevert: (where: string) => `${where}: reverted`,
+    remove: 'Remove note',
+    pending: (count: number) => `${count} review ${count === 1 ? 'note goes' : 'notes go'} with your next message.`,
+    folded: (count: number) => `Review notes (${count})`,
+  },
 }
 
 export type ChangesTranslations = typeof changesEn
@@ -189,5 +203,19 @@ export const changesKo: ChangesTranslations = {
     undoForce: '그래도 취소',
     undoFailed: (message) => `취소하지 못했습니다: ${message}`,
     dismiss: '닫기',
+  },
+  notes: {
+    comment: '코멘트',
+    commentFile: '파일에 코멘트',
+    title: (where) => `${where}에 코멘트`,
+    placeholder: '여기서 무엇을 바꿔야 하나요?',
+    add: '노트 추가',
+    cancel: '취소',
+    chipsLabel: '다음 메시지에 붙을 리뷰 노트',
+    chipComment: (where, comment) => `${where}: ${comment}`,
+    chipRevert: (where) => `${where}: 되돌림`,
+    remove: '노트 빼기',
+    pending: (count) => `리뷰 노트 ${count}개가 다음 메시지와 함께 전송됩니다.`,
+    folded: (count) => `리뷰 노트 (${count})`,
   },
 }

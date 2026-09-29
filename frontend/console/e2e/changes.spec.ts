@@ -145,3 +145,48 @@ test('one hunk is reverted after a confirm, and Undo puts it back', async ({ pag
   expect(base()).toContain('line 19 edited')
   await expect(panel.locator('.reverted-badge')).toHaveCount(0)
 })
+
+// #969's completion criterion, end to end on one page: a turn changes three
+// files; the diff is reviewed; one hunk is reverted; a comment on another
+// asks for rework; the next message carries both notes to the agent.
+test('review a turn: revert a hunk, comment on another, and send them back', async ({ page }) => {
+  const dir = seedProject()
+  await newSessionIn(page, dir)
+  const url = page.url()
+  await composer(page).fill('Edit the files [e2e:write3]')
+  await composer(page).press('Enter')
+  await pendingApproval(page).getByRole('button', { name: 'Allow write_file for this session' }).click()
+  await expect(page.locator('.chat-msg.chat-assistant').last()).toContainText('Wrote 3 files.')
+  await turnSettled(page)
+  await expect(card(page)).toContainText('3 files +6 −2')
+
+  await card(page).getByRole('button', { name: 'Open in Changes' }).click()
+  const panel = changesPanel(page)
+  await panel.locator('.file-row', { hasText: 'base.txt' }).click()
+  await panel.getByRole('button', { name: 'Revert hunk' }).nth(1).click()
+  await panel.locator('.revert-bar').getByRole('button', { name: 'Revert', exact: true }).click()
+  await expect(panel.locator('.revert-bar')).toContainText('Reverted 1 file.')
+  expect(readFileSync(join(dir, 'base.txt'), 'utf8')).not.toContain('line 19 edited')
+
+  // The reverted hunk shows its mark; the other takes a comment.
+  await panel.getByRole('button', { name: 'Comment', exact: true }).click()
+  await panel.locator('.note-form textarea').fill('Say line two louder')
+  await panel.getByRole('button', { name: 'Add note' }).click()
+  const chips = page.locator('.chat-main .review-note-chip')
+  await expect(chips).toHaveCount(2)
+  await expect(chips.nth(0)).toContainText('base.txt (h1): reverted')
+  await expect(chips.nth(1)).toContainText('base.txt (h0): Say line two louder')
+
+  await composer(page).fill('Please rework')
+  await composer(page).press('Enter')
+  await expect(page.locator('.chat-msg.chat-assistant').last()).toContainText('Rework: Say line two louder')
+  await expect(chips).toHaveCount(0)
+  expect(page.url()).toBe(url)
+
+  // The thread keeps the notes, folded under the message.
+  await turnSettled(page)
+  await page.reload()
+  const sent = page.locator('.chat-msg.chat-user').last()
+  await expect(sent).toContainText('Please rework')
+  await expect(sent.locator('.review-notes-fold summary')).toHaveText('Review notes (2)')
+})

@@ -14,6 +14,7 @@ import type {
   CheckpointScope,
   RevertEntry,
   RevertFile,
+  ReviewNote,
   RevertResult,
   RevertScope,
 } from '../api/checkpoints'
@@ -49,6 +50,10 @@ export type LastRevert = {
   error: string
 }
 
+// A review note waiting for the next message. revertId ties a revert's note
+// to that revert, so undoing it takes the note back.
+export type DraftNote = ReviewNote & { id: string; revertId?: string }
+
 type ErrorShape = { status?: number; message?: string; payload?: { code?: string; result?: RevertResult } }
 
 // A 409 revert_conflict carries the result, so the conflicts can be shown.
@@ -79,6 +84,9 @@ export class ChangesStore {
   reverts = $state<RevertEntry[]>([])
   pending = $state<PendingRevert | null>(null)
   last = $state<LastRevert | null>(null)
+  // Notes for the next chat message.
+  notes = $state<DraftNote[]>([])
+  private noteSeq = 0
 
   private api: ChangesApi
   private diffs = new Map<string, Promise<CheckpointDiff>>()
@@ -118,6 +126,7 @@ export class ChangesStore {
       this.reverts = []
       this.pending = null
       this.last = null
+      this.notes = []
       this.error = ''
       this.selectedTurnId = null
       this.dropDiffs(() => true)
@@ -144,6 +153,7 @@ export class ChangesStore {
       this.reverts = []
       this.pending = null
       this.last = null
+      this.notes = []
       this.selectedTurnId = null
       this.dropDiffs(() => true)
     }
@@ -232,6 +242,7 @@ export class ChangesStore {
       const result = await this.api.revertCheckpoint(sessionId, pending.turnId, { scope: pending.scope, files: pending.files, apply: true, force })
       if (seq === this.revertSeq) this.pending = null
       this.last = { revertId: result.revert_id ?? '', turnId: pending.turnId, result, stage: 'done', undoResult: null, errorCode: '', error: '' }
+      if (result.revert_id) this.noteRevert(pending.turnId, result.revert_id, pending, result)
     } catch (err) {
       if (seq === this.revertSeq) {
         const conflict = conflictOf(err)
@@ -253,6 +264,7 @@ export class ChangesStore {
     try {
       const undoResult = await this.api.undoRevert(sessionId, last.revertId, force)
       this.last = { ...last, stage: 'undone', undoResult, errorCode: '', error: '' }
+      this.notes = this.notes.filter((note) => note.revertId !== last.revertId)
     } catch (err) {
       const conflict = conflictOf(err)
       this.last = conflict
@@ -265,6 +277,43 @@ export class ChangesStore {
 
   dismissLast(): void {
     this.last = null
+  }
+
+  addNote(note: ReviewNote, revertId?: string): void {
+    this.notes = [...this.notes, { ...note, id: `n${++this.noteSeq}`, revertId }]
+  }
+
+  removeNote(id: string): void {
+    this.notes = this.notes.filter((note) => note.id !== id)
+  }
+
+  // The notes to send with a message, as the server takes them. They are
+  // cleared: once sent they are part of the message.
+  takeNotes(): ReviewNote[] {
+    const wire = this.notes.map(({ turn_id, path, hunk_id, comment, kind }) => {
+      const note: ReviewNote = { turn_id, path }
+      if (hunk_id) note.hunk_id = hunk_id
+      if (comment) note.comment = comment
+      if (kind) note.kind = kind
+      return note
+    })
+    this.notes = []
+    return wire
+  }
+
+  // A revert tells the agent what it took back, so the next turn does not
+  // redo it.
+  private noteRevert(turnId: string, revertId: string, pending: PendingRevert, result: RevertResult): void {
+    const written = new Set(result.files.filter((f) => f.outcome === 'write' || f.outcome === 'merge').map((f) => f.path))
+    // Named files keep their hunks; a whole-turn or since revert names what
+    // it wrote.
+    const targets: RevertFile[] = pending.scope === 'turn' && pending.files.length > 0
+      ? pending.files.filter((file) => written.has(file.path))
+      : [...written].map((path) => ({ path }))
+    for (const file of targets) {
+      const hunks = file.hunk_ids?.length ? file.hunk_ids : [undefined]
+      for (const hunk_id of hunks) this.addNote({ turn_id: turnId, path: file.path, hunk_id, kind: 'revert' }, revertId)
+    }
   }
 
   private dropDiffs(match: (key: string) => boolean): void {

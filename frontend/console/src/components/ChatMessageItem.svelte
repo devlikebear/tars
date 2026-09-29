@@ -12,6 +12,7 @@
   import SubagentProgressCard from './SubagentProgressCard.svelte'
   import ChatStreamingStatus from './ChatStreamingStatus.svelte'
   import { buildSubagentProgress } from '../lib/subagentProgress'
+  import { splitReviewNotes } from '../lib/changes'
 
   interface StreamingStatus {
     label: string
@@ -128,7 +129,14 @@
         <div class="chat-text"><MarkdownContent text={message.text} {artifacts} {onArtifactOpen} /></div>
       {/if}
     {:else}
-      <div class="chat-text">{message.text || '\u2026'}</div>
+      {@const split = splitReviewNotes(message.text)}
+      <div class="chat-text">{split.text || '\u2026'}</div>
+      {#if split.count > 0}
+        <details class="review-notes-fold">
+          <summary>{$t.changes.notes.folded(split.count)}</summary>
+          <pre>{split.notes}</pre>
+        </details>
+      {/if}
     {/if}
     {#if (message.role === 'assistant' || message.role === 'user') && message.text}
       <div class="chat-msg-footer">
@@ -149,6 +157,27 @@
     padding: var(--space-3);
     border-radius: var(--radius-md);
     background: var(--surface-base);
+  }
+
+  .review-notes-fold {
+    margin-top: var(--space-2);
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
+  }
+
+  .review-notes-fold summary {
+    cursor: pointer;
+    font-family: var(--font-mono);
+  }
+
+  .review-notes-fold pre {
+    max-height: 240px;
+    overflow: auto;
+    margin: var(--space-1) 0 0;
+    padding: var(--space-2);
+    background: var(--surface-inset);
+    border-radius: var(--radius-sm);
+    white-space: pre-wrap;
   }
 
   .chat-user {

@@ -28,6 +28,9 @@
   let diffFailed = $state(false)
   let selectedPath = $state('')
   let diffMode = $state<'unified' | 'split'>('unified')
+  // The hunk or file a review note is being written for.
+  let commentTarget = $state<{ turnId: string; path: string; hunkId?: string } | null>(null)
+  let commentText = $state('')
 
   let selectedFile = $derived(diff?.files.find((file) => file.path === selectedPath) ?? diff?.files[0])
   let selectedLines = $derived(parseUnifiedDiff(selectedFile?.patch))
@@ -129,6 +132,25 @@
     return result.failed > 0 ? `${head} ${$t.changes.revert.someFailed(result.failed)}` : head
   }
 
+  function startComment(path: string, hunkId?: string) {
+    if (!selected) return
+    commentTarget = { turnId: selected.turn_id, path, hunkId }
+    commentText = ''
+  }
+
+  function addComment() {
+    const target = commentTarget
+    const comment = commentText.trim()
+    if (!target || !comment) return
+    changes.addNote({ turn_id: target.turnId, path: target.path, hunk_id: target.hunkId, comment, kind: 'comment' })
+    commentTarget = null
+    commentText = ''
+  }
+
+  function noteWhere(path: string, hunkId?: string): string {
+    return hunkId ? `${path} (${hunkId})` : path
+  }
+
   function turnTime(turn: CheckpointEntry): string {
     const at = new Date(turn.ended_at || turn.started_at)
     return Number.isNaN(at.getTime()) ? '' : at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -149,6 +171,10 @@
 
   {#if changes.error}
     <div class="error-banner">{$t.changes.loadFailed}</div>
+  {/if}
+
+  {#if changes.notes.length > 0}
+    <div class="changes-note notes-pending">{$t.changes.notes.pending(changes.notes.length)}</div>
   {/if}
 
   {#if changes.pending}
@@ -299,6 +325,7 @@
             </div>
             <div class="diff-tools">
               {#if changes.scope === 'turn'}
+                <button type="button" class="btn btn-ghost btn-sm" onclick={() => startComment(selectedFile.path)}>{$t.changes.notes.commentFile}</button>
                 <button type="button" class="btn btn-ghost btn-sm" disabled={revertBusy} onclick={() => revert('turn', [{ path: selectedFile.path }])}>{$t.changes.revert.file}</button>
               {/if}
               <div class="seg" role="group" aria-label={$t.changes.diff.layoutLabel}>
@@ -312,9 +339,20 @@
               <span class="reverted-badge">{$t.changes.revert.reverted}</span>
             {:else if selectedFile}
               {@const path = selectedFile.path}
+              <button type="button" class="hunk-revert" onclick={() => startComment(path, hunkId(index))}>{$t.changes.notes.comment}</button>
               <button type="button" class="hunk-revert" disabled={revertBusy} onclick={() => revert('turn', [{ path, hunk_ids: [hunkId(index)] }])}>{$t.changes.revert.hunk}</button>
             {/if}
           {/snippet}
+          {#if commentTarget && commentTarget.path === selectedFile.path}
+            <form class="note-form" onsubmit={(event) => { event.preventDefault(); addComment() }}>
+              <label for="review-note-text">{$t.changes.notes.title(noteWhere(commentTarget.path, commentTarget.hunkId))}</label>
+              <textarea id="review-note-text" rows="3" bind:value={commentText} placeholder={$t.changes.notes.placeholder}></textarea>
+              <div class="revert-buttons">
+                <button type="submit" class="btn btn-secondary btn-sm" disabled={!commentText.trim()}>{$t.changes.notes.add}</button>
+                <button type="button" class="btn btn-ghost btn-sm" onclick={() => (commentTarget = null)}>{$t.changes.notes.cancel}</button>
+              </div>
+            </form>
+          {/if}
           {#if selectedFile.binary}
             <div class="empty-state compact">{$t.changes.binary}</div>
           {:else if selectedLines.length === 0}
@@ -504,6 +542,30 @@
     align-items: baseline;
     gap: var(--space-2);
     min-width: 0;
+  }
+
+  .note-form {
+    display: grid;
+    gap: var(--space-2);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-md);
+    background: var(--surface-elevated);
+    padding: var(--space-2);
+    font-size: var(--text-xs);
+  }
+
+  .note-form label {
+    color: var(--text-secondary);
+  }
+
+  .note-form textarea {
+    width: 100%;
+    resize: vertical;
+    font-size: var(--text-sm);
+  }
+
+  .notes-pending {
+    color: var(--primary-text);
   }
 
   .diff-tools {

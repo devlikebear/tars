@@ -7,6 +7,7 @@
   import { chatSession } from '../lib/stores/chatSession'
   import { changes } from '../lib/stores/changesStore'
   import { turnCardAnchors } from '../lib/changes'
+  import type { DraftNote } from '../lib/stores/changes.svelte'
   import { extractArtifact, extractArtifactsFromHistory, mergeArtifact, type Artifact } from '../lib/artifacts'
   import { buildTierRecommendation, pinnedTierPayload, tierRecommendationPayload, type TierRecommendation } from '../lib/tierRecommendation'
   import {
@@ -897,6 +898,7 @@
       { id: assistantRef.id, role: 'assistant', text: '' },
     ]
     void scrollToBottom()
+    const reviewNotes = !message.trimStart().startsWith('/') && changes.notes.length > 0 ? changes.takeNotes() : undefined
     const ac = new AbortController()
     abortController = ac
     try {
@@ -916,6 +918,8 @@
             token: mention.token,
           })),
           tier_recommendation: tierRecommendation,
+          // A slash command keeps its arguments clean; the notes wait.
+          review_notes: reviewNotes,
           interactive_permissions: true,
         },
         (event) => handleChatEvent(event, assistantRef, { id: userId }),
@@ -937,6 +941,11 @@
       stopChatStatusTicker()
       void scrollToBottom()
     }
+  }
+
+  function noteChipText(note: DraftNote): string {
+    const where = note.hunk_id ? `${note.path} (${note.hunk_id})` : note.path
+    return note.kind === 'revert' ? $t.changes.notes.chipRevert(where) : $t.changes.notes.chipComment(where, note.comment ?? '')
   }
 
   async function handleCancel() {
@@ -1362,6 +1371,16 @@
   {#if chatError}
     <div class="error-banner" style="margin-bottom: var(--space-3)">{chatError}</div>
   {/if}
+  {#if changes.notes.length > 0}
+    <div class="review-notes" role="list" aria-label={$t.changes.notes.chipsLabel}>
+      {#each changes.notes as note (note.id)}
+        <span class="review-note-chip" class:revert={note.kind === 'revert'} role="listitem">
+          <span class="review-note-text" data-content title={noteChipText(note)}>{noteChipText(note)}</span>
+          <button type="button" class="review-note-remove" aria-label={$t.changes.notes.remove} title={$t.changes.notes.remove} onclick={() => changes.removeNote(note.id)}>×</button>
+        </span>
+      {/each}
+    </div>
+  {/if}
   {#if attachedFiles.length > 0}
     <div class="chat-attachments">
       {#each attachedFiles as file, i}
@@ -1512,6 +1531,52 @@
     font-size: var(--text-lg);
     font-weight: 500;
     color: var(--primary);
+  }
+
+  .review-notes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1);
+    margin-bottom: var(--space-2);
+  }
+
+  .review-note-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    max-width: 100%;
+    border: 1px solid rgba(var(--primary-rgb), 0.35);
+    border-radius: var(--radius-sm);
+    background: rgba(var(--primary-rgb), 0.08);
+    padding: 2px var(--space-2);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    color: var(--text-primary);
+  }
+
+  .review-note-chip.revert {
+    border-color: var(--border-default);
+    background: var(--surface-elevated);
+    color: var(--text-secondary);
+  }
+
+  .review-note-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 360px;
+  }
+
+  .review-note-remove {
+    border: 0;
+    background: transparent;
+    color: var(--text-tertiary);
+    cursor: pointer;
+    padding: 0 2px;
+  }
+
+  .review-note-remove:hover {
+    color: var(--text-primary);
   }
 
   .chat-log {
