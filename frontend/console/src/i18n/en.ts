@@ -7,6 +7,8 @@ import { sessionConfigEn } from './sections/sessionConfig.ts'
 import { gitInspectorEn } from './sections/gitInspector.ts'
 import { changesEn } from './sections/changes.ts'
 import { chatApprovalEn } from './sections/chatApproval.ts'
+import { sessionBoardEn } from './sections/sessionBoard.ts'
+
 import { messageQueueEn } from './sections/messageQueue.ts'
 import { artifactPanelEn } from './sections/artifactPanel.ts'
 import { skillInboxEn } from './sections/skillInbox.ts'
@@ -49,6 +51,8 @@ export const en = {
       system: 'System',
     },
     items: {
+      board: 'Sessions',
+      overview: 'Overview',
       chat: 'Chat',
       lineage: 'Lineage',
       plans: 'Plans',
@@ -78,7 +82,7 @@ export const en = {
       slash: 'Slash commands',
     },
     pages: {
-      home: 'Home',
+      home: 'System overview',
       onboarding: 'Setup wizard',
     },
     actions: {
@@ -1652,6 +1656,8 @@ export const en = {
   gitInspector: gitInspectorEn,
   changes: changesEn,
   chatApproval: chatApprovalEn,
+  sessionBoard: sessionBoardEn,
+
   messageQueue: messageQueueEn,
   artifactPanel: artifactPanelEn,
   skillInbox: skillInboxEn,

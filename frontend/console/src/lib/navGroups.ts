@@ -1,8 +1,10 @@
-// Sidebar navigation groups (#968): Work · Build · System.
+// Sidebar navigation groups (#968): Work · Build · System. The session
+// board (#971) leads Work; the system overview that used to be home leads
+// System.
 //
 // Paths and role gating come from the command palette's page table, so the
 // nav, the palette, and App.svelte's route gating cannot drift apart. Pages
-// that are not listed here (home, lineage, plans, channels, onboarding) stay
+// that are not listed here (lineage, plans, channels, onboarding) stay
 // reachable through ⌘K and in-context links.
 
 import { pageEntries, type PageView } from './commands.ts'
@@ -11,6 +13,8 @@ export type NavGroupId = 'work' | 'build' | 'system'
 
 // Label keys under `nav.items`.
 export type NavItemLabel =
+  | 'board'
+  | 'overview'
   | 'chat'
   | 'agentruntime'
   | 'memory'
@@ -40,6 +44,7 @@ const groupViews: { id: NavGroupId; items: { view: PageView; label: NavItemLabel
   {
     id: 'work',
     items: [
+      { view: 'board', label: 'board', icon: '▦' },
       { view: 'chat', label: 'chat', icon: '◎' },
     ],
   },
@@ -55,6 +60,7 @@ const groupViews: { id: NavGroupId; items: { view: PageView; label: NavItemLabel
   {
     id: 'system',
     items: [
+      { view: 'home', label: 'overview', icon: '◇' },
       { view: 'ops', label: 'ops', icon: '⚙' },
       { view: 'pulse', label: 'pulse', icon: '♡' },
       { view: 'reflection', label: 'reflection', icon: '☾' },
