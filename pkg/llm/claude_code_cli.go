@@ -141,6 +141,12 @@ func (c *ClaudeCodeCLIClient) Chat(ctx context.Context, messages []ChatMessage, 
 
 	run := func(resume, prompt string) (ChatResponse, error) {
 		args := append(c.sessionArgs(opts, resume), extra...)
+		if opts.ClaudeCodePermissionHandler != nil {
+			// Not retried: the attempt may already have asked the person and
+			// run the tools they approved.
+			args = append(args, claudeCodeControlArgs...)
+			return c.runControlOnce(ctx, args, dir, env, timeout, opts, prompt)
+		}
 		args = append(args, prompt)
 		return runClaudeCodeCLIWithRetry(ctx, func() (ChatResponse, error) {
 			return c.runOnce(ctx, args, dir, env, timeout, opts)
@@ -248,15 +254,21 @@ func (c *ClaudeCodeCLIClient) runOnce(ctx context.Context, args []string, dir st
 		return ChatResponse{}, newProviderError(claudeCodeCLIProviderLabel, "request", fmt.Errorf("start cli: %w", err))
 	}
 
-	resp, parseErr := parseClaudeCodeCLIStream(stdout, opts)
+	resp, parseErr := parseClaudeCodeCLIStream(stdout, opts, claudeCodeStreamHooks{})
 	waitErr := cmd.Wait()
+	return finishClaudeCodeCLIRun(ctx, timeout, stderr.String(), resp, parseErr, waitErr)
+}
+
+// finishClaudeCodeCLIRun turns a finished process into the turn's outcome,
+// ranking the failure causes so the most specific one is reported.
+func finishClaudeCodeCLIRun(ctx context.Context, timeout time.Duration, stderr string, resp ChatResponse, parseErr, waitErr error) (ChatResponse, error) {
 	// A deadline kill surfaces as a process/stream error; report it as a
 	// timeout so callers (and the retry policy) can tell it apart from a
 	// transient crash.
 	if ctx.Err() == context.DeadlineExceeded {
 		return ChatResponse{}, newProviderError(claudeCodeCLIProviderLabel, "request", fmt.Errorf("cli timed out after %s", timeout))
 	}
-	errText := strings.TrimSpace(stderr.String())
+	errText := strings.TrimSpace(stderr)
 	// Checked before the stream error: a missing session prints nothing to
 	// stdout, so the parser's complaint would hide the reason.
 	if waitErr != nil && strings.Contains(errText, "No conversation found") {
@@ -354,23 +366,25 @@ func parseClaudeCodeCLITimeout(raw string) time.Duration {
 	return defaultClaudeCodeCLITimeout
 }
 
-func parseClaudeCodeCLIStream(stdout io.Reader, opts ChatOptions) (ChatResponse, error) {
+// claudeCodeStreamHooks let the control-protocol runner share the stream
+// parser. control consumes control frames; event sees every other decoded
+// event before the parser does. The zero value parses a plain `-p` stream.
+type claudeCodeStreamHooks struct {
+	control func(line []byte) bool
+	event   func(payload map[string]any)
+}
+
+func parseClaudeCodeCLIStream(stdout io.Reader, opts ChatOptions, hooks claudeCodeStreamHooks) (ChatResponse, error) {
 	scanner := bufio.NewScanner(stdout)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
-	var (
-		assistantText strings.Builder
-		toolCalls     []ToolCall
-		resultText    string
-		usage         Usage
-		stopReason    string
-		sessionID     string
-		turns         int
-	)
-
+	state := claudeCodeStreamState{onDelta: opts.OnDelta}
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" {
+			continue
+		}
+		if hooks.control != nil && hooks.control([]byte(line)) {
 			continue
 		}
 
@@ -378,45 +392,77 @@ func parseClaudeCodeCLIStream(stdout io.Reader, opts ChatOptions) (ChatResponse,
 		if err := json.Unmarshal([]byte(line), &payload); err != nil {
 			return ChatResponse{}, newProviderError(claudeCodeCLIProviderLabel, "parse", fmt.Errorf("decode stream event: %w", err))
 		}
-
-		if sid := strings.TrimSpace(asString(payload["session_id"])); sid != "" {
-			sessionID = sid
+		if hooks.event != nil {
+			hooks.event(payload)
 		}
-
-		switch strings.TrimSpace(asString(payload["type"])) {
-		case "system":
-			// session_id already captured above; nothing else to do for init.
-		case "assistant":
-			text, calls := extractClaudeCodeAssistantBlocks(payload)
-			if text != "" {
-				if assistantText.Len() > 0 {
-					assistantText.WriteString("\n")
-				}
-				assistantText.WriteString(text)
-				if opts.OnDelta != nil {
-					opts.OnDelta(text)
-				}
-			}
-			toolCalls = append(toolCalls, calls...)
-		case "result":
-			stopReason = strings.TrimSpace(asString(payload["stop_reason"]))
-			usage = extractClaudeCodeUsage(payload["usage"])
-			usage.CostUSD = asFloat(payload["total_cost_usd"])
-			turns = asInt(payload["num_turns"])
-			resultText = strings.TrimSpace(asString(payload["result"]))
-			if asBool(payload["is_error"]) {
-				errText := firstNonEmptyTrimmed(resultText, fmt.Sprintf("%s request failed", claudeCodeCLIProviderLabel))
-				return ChatResponse{}, newProviderError(claudeCodeCLIProviderLabel, "request", fmt.Errorf("%s", errText))
-			}
+		if err := state.apply(payload); err != nil {
+			return ChatResponse{}, err
 		}
 	}
 	if err := scanner.Err(); err != nil {
 		return ChatResponse{}, newProviderError(claudeCodeCLIProviderLabel, "stream", fmt.Errorf("read stream response: %w", err))
 	}
+	return state.response(), nil
+}
 
-	content := strings.TrimSpace(assistantText.String())
+// claudeCodeStreamState accumulates one stream's events into a ChatResponse.
+type claudeCodeStreamState struct {
+	onDelta       func(string)
+	assistantText strings.Builder
+	toolCalls     []ToolCall
+	resultText    string
+	usage         Usage
+	stopReason    string
+	sessionID     string
+	turns         int
+}
+
+func (s *claudeCodeStreamState) apply(payload map[string]any) error {
+	if sid := strings.TrimSpace(asString(payload["session_id"])); sid != "" {
+		s.sessionID = sid
+	}
+	switch strings.TrimSpace(asString(payload["type"])) {
+	case "assistant":
+		s.applyAssistant(payload)
+	case "result":
+		return s.applyResult(payload)
+	}
+	// system events carry only the session_id captured above.
+	return nil
+}
+
+func (s *claudeCodeStreamState) applyAssistant(payload map[string]any) {
+	text, calls := extractClaudeCodeAssistantBlocks(payload)
+	s.toolCalls = append(s.toolCalls, calls...)
+	if text == "" {
+		return
+	}
+	if s.assistantText.Len() > 0 {
+		s.assistantText.WriteString("\n")
+	}
+	s.assistantText.WriteString(text)
+	if s.onDelta != nil {
+		s.onDelta(text)
+	}
+}
+
+func (s *claudeCodeStreamState) applyResult(payload map[string]any) error {
+	s.stopReason = strings.TrimSpace(asString(payload["stop_reason"]))
+	s.usage = extractClaudeCodeUsage(payload["usage"])
+	s.usage.CostUSD = asFloat(payload["total_cost_usd"])
+	s.turns = asInt(payload["num_turns"])
+	s.resultText = strings.TrimSpace(asString(payload["result"]))
+	if !asBool(payload["is_error"]) {
+		return nil
+	}
+	errText := firstNonEmptyTrimmed(s.resultText, fmt.Sprintf("%s request failed", claudeCodeCLIProviderLabel))
+	return newProviderError(claudeCodeCLIProviderLabel, "request", fmt.Errorf("%s", errText))
+}
+
+func (s *claudeCodeStreamState) response() ChatResponse {
+	content := strings.TrimSpace(s.assistantText.String())
 	if content == "" {
-		content = resultText
+		content = s.resultText
 	}
 	return ChatResponse{
 		Message: ChatMessage{
@@ -428,12 +474,12 @@ func parseClaudeCodeCLIStream(stdout io.Reader, opts ChatOptions) (ChatResponse,
 			Content:   content,
 			ToolCalls: nil,
 		},
-		Usage:                 usage,
-		StopReason:            stopReason,
-		Turns:                 turns,
-		SessionID:             sessionID,
-		ProviderExecutedTools: toolCalls,
-	}, nil
+		Usage:                 s.usage,
+		StopReason:            s.stopReason,
+		Turns:                 s.turns,
+		SessionID:             s.sessionID,
+		ProviderExecutedTools: s.toolCalls,
+	}
 }
 
 func buildClaudeCodeCLISystemPrompt(messages []ChatMessage) string {

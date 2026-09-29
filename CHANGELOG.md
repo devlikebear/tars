@@ -6,6 +6,11 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+### Added
+
+- **`claude-code-cli` 권한 프롬프트를 호출자에게 넘기는 경로 (스파이크 #996)** — `ChatOptions.ClaudeCodePermissionHandler`를 주면 그 턴은 `-p <prompt>` 대신 `--input-format stream-json --permission-prompt-tool stdio`로 실행되고, Claude Agent SDK가 쓰는 stdio 제어 프로토콜로 CLI의 `can_use_tool` 질문이 핸들러에 도착한다. 핸들러는 허용/거부와 함께 입력 수정(`UpdatedInput`), 권한 규칙 추가(`UpdatedPermissions`), 턴 중단(`Interrupt`)을 돌려줄 수 있다. 요청이 그 세션의 CLI 프로세스 파이프로 오므로 #970이 MCP 승인 툴 경로에서 걱정한 세션 식별 문제가 없다. 프로토콜 코덱은 `pkg/llm/internal/ccproto`에 있어 공개 API를 늘리지 않는다. CLI는 stdin EOF에만 종료하고 그 뒤로는 질문에 답할 수 없으므로, stdin은 결과가 오고 진행 중인 subagent 작업이 없을 때 닫는다 — 비동기 subagent는 부모의 첫 결과 뒤에 권한을 묻고 끝나면 후속 턴을 깨운다(2.1.283 실측). 핸들러가 없으면 기존 `-p` 호출이 그대로이며, 아직 채팅 서버에는 배선하지 않았다. 실제 CLI 왕복은 `go test -tags integration ./pkg/llm/ -run TestClaudeCodeCLIControlLive`로 확인한다.
+- **`cmd/apisnapshot`이 `internal` 패키지를 건너뛴다** — Go는 `pkg/x/internal/y`를 부모 밖에서 import하지 못하게 막으므로 그 아래는 외부 소비자가 기댈 수 있는 표면이 아니다.
+
 ## [0.37.1] - 2026-09-09
 
 ### Fixed

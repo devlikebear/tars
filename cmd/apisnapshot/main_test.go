@@ -146,6 +146,39 @@ func TestCollect_IsSortedAndStable(t *testing.T) {
 	}
 }
 
+// TestCollect_SkipsInternalPackages keeps Go-internal packages out of the
+// snapshot: an external module cannot import pkg/x/internal/y, so nothing
+// there is surface a consumer can rely on.
+func TestCollect_SkipsInternalPackages(t *testing.T) {
+	root := t.TempDir()
+	for dir, body := range map[string]string{
+		filepath.Join("pkg", "beta"):                       "package beta\n\nfunc Public() {}\n",
+		filepath.Join("pkg", "beta", "internal", "wire"):   "package wire\n\nfunc Hidden() {}\n",
+		filepath.Join("pkg", "beta", "internal", "a", "b"): "package b\n\nfunc Deeper() {}\n",
+	} {
+		full := filepath.Join(root, dir)
+		if err := os.MkdirAll(full, 0o755); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(full, "x.go"), []byte(body), 0o644); err != nil {
+			t.Fatalf("write: %v", err)
+		}
+	}
+
+	lines, err := collect(filepath.Join(root, "pkg"))
+	if err != nil {
+		t.Fatalf("collect: %v", err)
+	}
+	if !slices.Contains(lines, "pkg/beta func Public") {
+		t.Fatalf("public package missing: %v", lines)
+	}
+	for _, line := range lines {
+		if strings.Contains(line, "internal") {
+			t.Fatalf("an internal package reached the snapshot: %v", lines)
+		}
+	}
+}
+
 func TestReceiverName(t *testing.T) {
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, "recv.go", `package p
