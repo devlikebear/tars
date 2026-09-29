@@ -443,6 +443,9 @@ func buildAPIMux(
 	checkpointStore := openCheckpointStore(cfg.WorkspaceDir, logger)
 	chatTooling.Checkpoints = checkpointStore
 	attachCheckpointCleanup(checkpointStore, sessionStore, logger)
+	chatTooling.Notify = dispatcher.Emit
+	chatTooling.SessionCosts = sessionCostsFrom(deps.usageTracker)
+
 	chatTooling.AutomationToolsForWorkspace = func(workspaceID string) []tool.Tool {
 		resolvedStore, err := cronStoreResolver.Resolve(defaultWorkspaceID)
 		if err != nil {

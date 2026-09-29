@@ -250,17 +250,17 @@ The nav now follows the Work · Build · System groups below (`lib/navGroups.ts`
 
 This describes the target. Each item names the phase that delivers it.
 
-- **Home becomes a session board** (P3, #971). Sessions are grouped by repo (the git toplevel of the active cwd) and carry a status badge: `needs input`, `running`, `done·unread`, or `idle`. The current Home dashboard moves into System.
+- **Home is the session board** (P3, #971, shipped). `/console` shows every visible chat session grouped by repository (the git top level of the active cwd; sessions still in their own artifact folder form a last "No working folder" group) with a status badge: `needs input`, `running`, `done · unread`, or `idle`. The dashboard that used to be home is **Overview** at `/console/system`, first in System. See Components → Session board.
 - **Three-column working layout** (P0). The session sidebar, the conversation, and a dock that shows more than one panel at once for Changes, Terminal, Git, Tasks, and Files. Tabs shipped (see Dock tabs below). A vertical split inside one zone was not built, because the three zones already show three panels side by side.
 - **Nav groups** (P0, shipped):
 
   | Group | Items |
   |---|---|
-  | Work | Chat (the Sessions board joins in P3) |
+  | Work | Sessions (the board), Chat |
   | Build | Agent Runtime, Memory, Extensions, System Prompt |
-  | System | Approvals, Pulse, Reflection, Cron, Logs, Analytics, Settings |
+  | System | Overview, Approvals, Pulse, Reflection, Cron, Logs, Analytics, Settings |
 
-  Nav paths and role gating come from the palette's page table (`lib/commands.ts`), so the nav, the palette, and `App.svelte`'s gating cannot drift apart. The `user` role sees only the pages it can open (Chat, Agent Runtime, Memory, System Prompt), and groups left empty are dropped. The active item is the one whose view the router resolves for the current path, so aliases such as `/console/ops` highlight Approvals. Home, Lineage, Plans, Channels, and the setup wizard keep their routes and are reached through `⌘K` and in-context links.
+  Nav paths and role gating come from the palette's page table (`lib/commands.ts`), so the nav, the palette, and `App.svelte`'s gating cannot drift apart. The `user` role sees only the pages it can open (Sessions, Chat, Agent Runtime, Memory, System Prompt, Overview), and groups left empty are dropped. The active item is the one whose view the router resolves for the current path, so aliases such as `/console/ops` highlight Approvals. Lineage, Plans, Channels, and the setup wizard keep their routes and are reached through `⌘K` and in-context links.
 - **Diffs and approvals stay in the conversation** (P1 #969, P2 #970). Reviewing a change or approving a tool call never requires leaving the chat. The UI does not branch on provider; one event shape serves every provider. Shipped so far: turn checkpoints for every provider, the Changes panel with revert and undo, the change card under each turn (see Components), and approval cards for tool calls — Claude Code's own prompts on `claude-code-cli`, and high-risk TARS tools (`exec`, file writes and edits) on native providers (see Components). Review notes come next.
 - **Chat header budget** (P0, shipped). The header above the conversation now holds the title, health and goal chips, the session menu, and one **work strip** (plan progress on the left, workbench jumps on the right; hidden when both are empty). The pulse mini-dashboard is gone; Pulse has its own page.
 - **Panel rail** (P0, shipped, `ChatRail.svelte`). The eleven text toggles became a 44px icon rail on the workbench's right edge: one icon per dock panel with an `aria-label` and tooltip, count badges for files, tasks, and health issues, and the active panel marked like the palette's selected row (`surface-active` plus a 2px `primary` edge). `⌘K` leads the rail: the floating companion pet sits over the rail's bottom end, and the palette reaches everything the rail omits. Below 900px the rail becomes a scrolling row above the chat.
@@ -314,7 +314,8 @@ Every route must map to a pillar. Rows marked *(target)* describe the #967 workb
 
 | Route | Pillar | Rationale |
 |---|---|---|
-| `/console` (home) | Observability → Conversation *(target, P3)* | Today: dashboard summary of all signals. Target: session board; the dashboard moves under System |
+| `/console` (home) | Conversation | Session board (#971): sessions by repository with live status |
+| `/console/system` | Observability | Overview: dashboard summary of all signals (was home until #971) |
 | Changes panel (dock, in chat) *(target, P1)* | Conversation | Turn/session checkpoint diffs, file and hunk revert, hunk comments |
 | Inline approval cards (in chat) *(P2)* | Conversation + Control | Approve/deny tool calls without leaving the session; `/console/approvals` stays for unattended runs |
 | `/console/chat`, `/console/sessions` | Conversation | Chat transcript, session list |
@@ -522,6 +523,29 @@ Reverting (P1 PR6) happens in the panel, never in the thread's card:
 - **Undo.** After an apply, the bar turns into a status line with a `success`-tinted border ("Reverted 1 file.") and a secondary `Undo` button. Undo can conflict too, and then offers `Undo anyway`. Only the last revert has an Undo.
 - **Marks.** A turn's diff never changes after a revert, so reverted hunks and files carry a small caps `reverted` badge (`surface-active`, 10px mono), read from the session's revert list.
 - **Waiting.** Revert buttons are disabled while a turn streams. A server that is still running a turn answers "A turn is running. Try again when it finishes."
+
+### Session board (home, #971)
+
+`SessionBoard.svelte` on `/console`. One request, `GET /v1/chat/board`, returns every visible main session with its server status, pending approvals, last turn time, working folder, repository top level, branch, the latest turn that changed files (from its checkpoint), and this month's cost; the board refreshes every 15 seconds and whenever the activity store sees a change.
+
+- **Header**: title and subtitle on the left; on the right a ghost **Notify me** toggle (hidden without the Notification API, replaced by a dim note when the browser blocks it) and the screen's one `button-primary`, **New chat**.
+- **Controls**: filter chips (All, Needs input, Running, Done · unread, Idle), each with a mono count; the active chip takes the accent border and `primary-muted` fill. A search field (title, repository, branch, folder) and a Sort select (Recent, Status, Title, Cost). Filter and sort persist per browser.
+- **Groups**: one section per repository, headed by the folder name in mono `text-sm` and a session count; groups with sessions waiting for input come first, then the most recently active; "No working folder" comes last.
+- **Cards**: a `surface` card per session in an auto-fill grid (min 260px): title and status badge (`warning` needs input, `accent` running, `info` done · unread, `default` idle); branch in mono; then mono `text-xs` facts: approvals waiting (in `warning`), the latest change `n files +a −d` (`success`/`error`), running time or time since the last turn, and this month's cost. A card waiting for input takes a `warning` border. Pinned sessions lead their group. Clicking a card opens its chat.
+- **Done · unread** is per browser: the console remembers in localStorage when each session was last on screen (and, for sessions never opened here, when it started keeping track). A finished turn after that reads as unread.
+- **Live state elsewhere**: the chat sidebar shows the same `running` / `needs input` states as tiny mono badges on each row, from the activity store (`lib/stores/sessionActivity.svelte.ts`), which polls `GET /v1/chat/activity` every 4 seconds and at once on an `approval` event. With notifications on, it sends a browser notification when a session starts waiting for input or finishes, unless that session is on screen; clicking it opens the chat.
+
+### Follow-up queue (composer, #971)
+
+While a turn runs, the composer queues instead of sending (`lib/stores/messageQueue.svelte.ts`, per session). The placeholder says so, Enter queues, and a `button-secondary` **Queue** appears beside **Stop** once something is typed. A slash command picked from the menu mid-turn queues too, since running `/compact` or `/new` then would cut the turn off.
+
+Queued messages sit in a `surface` box above the composer: a mono `text-xs` count, a hint (or a `warning` **Paused** badge), and **Clear** on the right; then one row per message, with the text truncated to a line, a file count when it carries attachments, and ghost **Send now**, **Edit**, and **×** buttons. A paused queue takes a `warning` border.
+
+- When a turn ends on its own, the next message sends, one turn each; the draft in the composer is never swept in.
+- **Stop**, a failed turn, or reopening a chat with messages still queued pauses the queue; **Resume** sends again.
+- **Send now** moves a message first and stops the running turn so it goes next.
+- **Edit** moves a message back into the composer; anything already typed takes its place at the end of the queue.
+- Queues live in memory for the page's lifetime. Text, files, and mentions are kept, so a queued message sends exactly as typed.
 
 ### Goal chip (chat session header)
 
