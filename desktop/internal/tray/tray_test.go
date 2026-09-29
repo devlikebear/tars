@@ -124,3 +124,18 @@ func TestHelpers(t *testing.T) {
 		t.Fatal("an empty preview adds nothing")
 	}
 }
+
+func TestKey(t *testing.T) {
+	idle := Menu(StatusOf(Observation{Reachable: true}), []activity.Session{{ID: "a", Title: "Alpha"}})
+	if Key(idle) != Key(Menu(StatusOf(Observation{Reachable: true}), []activity.Session{{ID: "a", Title: "Alpha"}})) {
+		t.Fatal("the same menu must have the same key")
+	}
+	if Key(idle) == Key(Menu(StatusOf(Observation{Reachable: true}), []activity.Session{{ID: "a", Title: "Alpha 2"}})) {
+		t.Fatal("a renamed chat in a submenu must change the key")
+	}
+	busy := Menu(StatusOf(Observation{Reachable: true, Snapshot: activity.Snapshot{Pending: []activity.Approval{{RequestID: "r1", SessionID: "s"}}}}), nil)
+	other := Menu(StatusOf(Observation{Reachable: true, Snapshot: activity.Snapshot{Pending: []activity.Approval{{RequestID: "r2", SessionID: "s"}}}}), nil)
+	if Key(busy) == Key(other) {
+		t.Fatal("a different pending request must change the key")
+	}
+}

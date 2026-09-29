@@ -256,3 +256,18 @@ func truncate(s string, max int) string {
 	}
 	return string(r[:max-1]) + "…"
 }
+
+// Key is a fingerprint of a menu, so the shell rebuilds the native menu only
+// when something in it changed: rebuilding closes a menu the user has open.
+func Key(items []Item) string {
+	var b strings.Builder
+	var walk func([]Item, int)
+	walk = func(items []Item, depth int) {
+		for _, it := range items {
+			fmt.Fprintf(&b, "%d|%s|%v|%v|%d|%s|%s|%s\n", depth, it.Label, it.Separator, it.Disabled, it.Action.Kind, it.Action.Path, it.Action.Approval.RequestID, it.Action.Decision)
+			walk(it.Children, depth+1)
+		}
+	}
+	walk(items, 0)
+	return b.String()
+}

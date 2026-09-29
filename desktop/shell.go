@@ -214,7 +214,7 @@ func (s *shell) applyTrayIcon(st tray.Status) {
 
 func (s *shell) rebuildMenu(st tray.Status, sessions []activity.Session) {
 	items := tray.Menu(st, sessions)
-	key := menuKey(items)
+	key := tray.Key(items)
 	s.mu.Lock()
 	if key == s.menuKey {
 		s.mu.Unlock()
@@ -226,19 +226,6 @@ func (s *shell) rebuildMenu(st tray.Status, sessions []activity.Session) {
 	menu := s.app.NewMenu()
 	s.addItems(menu, items)
 	s.tray.SetMenu(menu)
-}
-
-func menuKey(items []tray.Item) string {
-	var b strings.Builder
-	var walk func([]tray.Item, int)
-	walk = func(items []tray.Item, depth int) {
-		for _, it := range items {
-			fmt.Fprintf(&b, "%d|%s|%v|%v|%d|%s|%s|%s\n", depth, it.Label, it.Separator, it.Disabled, it.Action.Kind, it.Action.Path, it.Action.Approval.RequestID, it.Action.Decision)
-			walk(it.Children, depth+1)
-		}
-	}
-	walk(items, 0)
-	return b.String()
 }
 
 func (s *shell) addItems(menu *application.Menu, items []tray.Item) {

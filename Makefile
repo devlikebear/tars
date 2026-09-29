@@ -75,7 +75,7 @@ AGENT_HARNESS_COMMIT ?= $(GIT_COMMIT)
 	build build-bins windows-build-check windows-test release-asset clean tidy fmt vet lint \
 	lint-diff arch-check api-snapshot api-check ci-static-analysis-check github-actions-hardening-check codeql-workflow-check sonarcloud-workflow-check \
 	ensure-console-assets console-install console-build console-e2e \
-	desktop-test desktop-build desktop-package \
+	desktop-test desktop-cover desktop-build desktop-package \
 	browser-install \
 	install install-server install-assistant uninstall uninstall-server uninstall-assistant reinstall \
 	restart restart-server restart-assistant reload-config reload-server-config reload-assistant-config \
@@ -272,6 +272,13 @@ DESKTOP_GOARCH ?= $(shell $(GO) env GOARCH)
 
 desktop-test:
 	cd desktop && $(GO) vet ./... && $(GO) test ./...
+
+# desktop-cover writes desktop/coverage.out for SonarCloud. The logic lives
+# in desktop/internal and tests without cgo; main.go and shell.go only wire
+# Wails and need a display, so they are excluded from coverage in
+# sonar-project.properties.
+desktop-cover:
+	cd desktop && CGO_ENABLED=0 $(GO) test -coverprofile=coverage.out ./internal/...
 
 desktop-build:
 	mkdir -p $(BIN_DIR)
