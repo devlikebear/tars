@@ -64,6 +64,12 @@ jobs:
         if: steps.sonar-config.outputs.configured == 'true'
         run: make test-cover
 
+      # desktop/ is its own Go module, so make test-cover does not reach it.
+      # Its logic packages test without cgo, so no webview headers are needed.
+      - name: Generate desktop shell coverage
+        if: steps.sonar-config.outputs.configured == 'true'
+        run: make desktop-cover
+
       - name: Run SonarCloud scan
         id: sonar-scan
         if: steps.sonar-config.outputs.configured == 'true'
