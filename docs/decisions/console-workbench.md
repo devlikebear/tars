@@ -35,7 +35,7 @@ A design that adds structured fields to tool results would therefore produce not
 
 - **Diffs are built from turn checkpoints (git snapshots).** They work the same no matter who edited the file. This is P1's first priority.
 - **Approvals go through `--permission-prompt-tool stdio`, the control protocol the Claude Agent SDKs use.** The P2 spike (#996, #1004) was Go and chose `stdio` over the MCP tool first planned here: the prompt arrives on the session's own CLI process pipe, so no per-session MCP server or session identifier is needed. The chat server streams each prompt to the console as a `permission_request` event and waits for the answer (#970).
-- **Native providers** (anthropic/openai/gemini/gemini-native) also get `pkg/agentloop` gates and structured `pkg/tools` results, **as a reinforcement path, not the default one**. The gate shipped with #970: `agentloop.ToolGate` asks before high-risk TARS tools (`exec`, file writes and edits) and streams the same `permission_request` event, so the card is shared.
+- **Native providers** (anthropic/openai/gemini/gemini-native) also get `pkg/agentloop` gates and structured `pkg/tools` results, **as a reinforcement path, not the default one**. The gate shipped with #970: `agentloop.ToolAuthorizer` asks before high-risk TARS tools (`exec`, file writes and edits) and streams the same `permission_request` event, so the card is shared.
 - `antigravity-cli` has the same constraint but no delegation flag. Its sessions get checkpoint diffs only; inline approval is out of scope.
 
 The frontend must never branch on provider. Both the diff and the approval surfaces consume one event shape.

@@ -275,28 +275,10 @@ func TestChatAPI_NativeToolGateAsksBeforeWriting(t *testing.T) {
 		t.Run(tc.decision, func(t *testing.T) {
 			client := nativeWriteClient()
 			srv := newPermissionTestServer(t, client)
-			events := srv.startChat(t, true)
-
-			prompt := waitForEvent(t, events, "permission_request")
-			if prompt["tool_name"] != "write_file" || prompt["tool_use_id"] != "call_write" || prompt["session_rule"] != "write_file" {
-				t.Fatalf("permission_request = %v", prompt)
-			}
-			if code := srv.answer(t, prompt["request_id"].(string), tc.decision); code != http.StatusOK {
-				t.Fatalf("answer: status %d", code)
-			}
-			if outcome := waitForEvent(t, events, "permission_resolved")["outcome"]; outcome != tc.outcome {
+			if outcome := answerNativeWrite(t, srv, tc.decision); outcome != tc.outcome {
 				t.Fatalf("outcome = %v", outcome)
 			}
-			waitForEvent(t, events, "done")
-
-			written := false
-			_ = filepath.WalkDir(srv.root, func(path string, d os.DirEntry, err error) error {
-				if err == nil && d.Name() == "gated.txt" {
-					written = true
-				}
-				return nil
-			})
-			if written != tc.written {
+			if written := gatedFileWritten(srv.root); written != tc.written {
 				t.Fatalf("gated.txt written = %v, want %v", written, tc.written)
 			}
 			if client.callCount != 2 {
@@ -304,6 +286,35 @@ func TestChatAPI_NativeToolGateAsksBeforeWriting(t *testing.T) {
 			}
 		})
 	}
+}
+
+// answerNativeWrite runs a nativeWriteClient turn, answers its write_file
+// prompt with decision, waits for the turn to finish, and returns the
+// prompt's outcome.
+func answerNativeWrite(t *testing.T, srv permissionTestServer, decision string) any {
+	t.Helper()
+	events := srv.startChat(t, true)
+	prompt := waitForEvent(t, events, "permission_request")
+	if prompt["tool_name"] != "write_file" || prompt["tool_use_id"] != "call_write" || prompt["session_rule"] != "write_file" {
+		t.Fatalf("permission_request = %v", prompt)
+	}
+	if code := srv.answer(t, prompt["request_id"].(string), decision); code != http.StatusOK {
+		t.Fatalf("answer: status %d", code)
+	}
+	outcome := waitForEvent(t, events, "permission_resolved")["outcome"]
+	waitForEvent(t, events, "done")
+	return outcome
+}
+
+func gatedFileWritten(root string) bool {
+	written := false
+	_ = filepath.WalkDir(root, func(_ string, d os.DirEntry, err error) error {
+		if err == nil && d.Name() == "gated.txt" {
+			written = true
+		}
+		return nil
+	})
+	return written
 }
 
 // Without the console's opt-in the gate is absent and the tool runs as it

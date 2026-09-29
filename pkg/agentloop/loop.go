@@ -129,9 +129,9 @@ type RunOptions struct {
 	// to the caller (see llm.ChatOptions.ClaudeCodePermissionHandler). Nil
 	// leaves the provider on its one-shot path. Other providers ignore it.
 	ClaudeCodePermissionHandler llm.ClaudeCodePermissionHandler
-	// ToolGate, when set, is asked before each tool call runs and may deny
-	// it (see ToolGate). Nil runs every allowed call.
-	ToolGate ToolGate
+	// ToolAuthorizer, when set, is asked before each tool call runs and may
+	// deny it (see ToolAuthorizer). Nil runs every allowed call.
+	ToolAuthorizer ToolAuthorizer
 }
 
 type ToolReplayRequest struct {
@@ -345,8 +345,8 @@ func (l *Loop) Run(ctx context.Context, initial []llm.ChatMessage, opts RunOptio
 			beforeToolEvent.ToolReceiptID = strings.TrimSpace(replay.ReceiptID)
 			denied := false
 			var denial ToolDecision
-			if !replayed && opts.ToolGate != nil {
-				decision, gateErr := opts.ToolGate.Authorize(ctx, ToolCallRequest{
+			if !replayed && opts.ToolAuthorizer != nil {
+				decision, gateErr := opts.ToolAuthorizer.Authorize(ctx, ToolCallRequest{
 					ToolName:    call.Name,
 					ToolCallID:  call.ID,
 					ToolArgs:    effectiveArgs,

@@ -122,7 +122,7 @@ func executeChatLoop(
 			stream.reasoning(text)
 		},
 		ClaudeCodePermissionHandler: chatPermissionHandlerFor(deps, state, stream),
-		ToolGate:                    chatToolGateFor(deps, state, stream),
+		ToolAuthorizer:              chatToolGateFor(deps, state, stream),
 	})
 	if err != nil {
 		if ctx.Err() == context.Canceled {
@@ -212,7 +212,7 @@ func chatPermissionHandlerFor(deps chatHandlerDeps, state chatRunState, stream *
 // chatToolGateFor returns the gate that asks the console before a native
 // provider's turn runs a high-risk tool, or nil when the client cannot
 // answer. CLI providers run their own tools and never reach it.
-func chatToolGateFor(deps chatHandlerDeps, state chatRunState, stream *chatStreamWriter) agentloop.ToolGate {
+func chatToolGateFor(deps chatHandlerDeps, state chatRunState, stream *chatStreamWriter) agentloop.ToolAuthorizer {
 	if !state.interactivePermissions || deps.permissions == nil {
 		return nil
 	}

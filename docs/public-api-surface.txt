@@ -53,8 +53,8 @@ pkg/agentloop field RunOptions.ProviderTool
 pkg/agentloop field RunOptions.ReplayToolResult
 pkg/agentloop field RunOptions.ResponseFormat
 pkg/agentloop field RunOptions.ResumeSessionID
+pkg/agentloop field RunOptions.ToolAuthorizer
 pkg/agentloop field RunOptions.ToolChoice
-pkg/agentloop field RunOptions.ToolGate
 pkg/agentloop field RunOptions.Tools
 pkg/agentloop field RunOptions.WorkDir
 pkg/agentloop field ToolCallRequest.EffectClass
@@ -83,7 +83,7 @@ pkg/agentloop method CounterHook.Snapshot
 pkg/agentloop method Hook.OnEvent
 pkg/agentloop method HookFunc.OnEvent
 pkg/agentloop method Loop.Run
-pkg/agentloop method ToolGate.Authorize
+pkg/agentloop method ToolAuthorizer.Authorize
 pkg/agentloop type AuditEntry
 pkg/agentloop type AuditHook
 pkg/agentloop type CounterHook
@@ -93,9 +93,9 @@ pkg/agentloop type Hook
 pkg/agentloop type HookFunc
 pkg/agentloop type Loop
 pkg/agentloop type RunOptions
+pkg/agentloop type ToolAuthorizer
 pkg/agentloop type ToolCallRequest
 pkg/agentloop type ToolDecision
-pkg/agentloop type ToolGate
 pkg/agentloop type ToolReplayRequest
 pkg/agentloop type ToolReplayResult
 pkg/llm const CapCacheUsageReporting

@@ -11,7 +11,7 @@ import (
 	"github.com/devlikebear/tars/internal/tool"
 )
 
-// gateFunc adapts a function to ToolGate.
+// gateFunc adapts a function to ToolAuthorizer.
 type gateFunc func(context.Context, ToolCallRequest) (ToolDecision, error)
 
 func (f gateFunc) Authorize(ctx context.Context, req ToolCallRequest) (ToolDecision, error) {
@@ -20,7 +20,7 @@ func (f gateFunc) Authorize(ctx context.Context, req ToolCallRequest) (ToolDecis
 
 // gatedLoop runs one write_file call followed by a final answer, counting
 // how often the tool actually ran.
-func gatedLoop(t *testing.T, gate ToolGate) (*scriptedLLMClient, *int, []Event, error) {
+func gatedLoop(t *testing.T, gate ToolAuthorizer) (*scriptedLLMClient, *int, []Event, error) {
 	t.Helper()
 	runs := 0
 	reg := tool.NewRegistry()
@@ -40,13 +40,13 @@ func gatedLoop(t *testing.T, gate ToolGate) (*scriptedLLMClient, *int, []Event, 
 	var events []Event
 	loop := NewLoop(client, reg, HookFunc(func(_ context.Context, evt Event) { events = append(events, evt) }))
 	_, err := loop.Run(context.Background(), []llm.ChatMessage{{Role: "user", Content: "write it"}}, RunOptions{
-		Tools:    reg.Schemas(),
-		ToolGate: gate,
+		Tools:          reg.Schemas(),
+		ToolAuthorizer: gate,
 	})
 	return client, &runs, events, err
 }
 
-func TestLoop_ToolGateAllowRunsTheTool(t *testing.T) {
+func TestLoop_ToolAuthorizerAllowRunsTheTool(t *testing.T) {
 	var seen ToolCallRequest
 	_, runs, _, err := gatedLoop(t, gateFunc(func(_ context.Context, req ToolCallRequest) (ToolDecision, error) {
 		seen = req
@@ -65,7 +65,7 @@ func TestLoop_ToolGateAllowRunsTheTool(t *testing.T) {
 
 // A denial is an answer, not a failure: the model learns the call was
 // refused and the turn goes on.
-func TestLoop_ToolGateDenyReportsToTheModelAndContinues(t *testing.T) {
+func TestLoop_ToolAuthorizerDenyReportsToTheModelAndContinues(t *testing.T) {
 	client, runs, events, err := gatedLoop(t, gateFunc(func(context.Context, ToolCallRequest) (ToolDecision, error) {
 		return ToolDecision{Message: "not in this folder"}, nil
 	}))
@@ -95,7 +95,7 @@ func TestLoop_ToolGateDenyReportsToTheModelAndContinues(t *testing.T) {
 	}
 }
 
-func TestLoop_ToolGateDenyWithoutMessageUsesDefault(t *testing.T) {
+func TestLoop_ToolAuthorizerDenyWithoutMessageUsesDefault(t *testing.T) {
 	client, _, _, err := gatedLoop(t, gateFunc(func(context.Context, ToolCallRequest) (ToolDecision, error) {
 		return ToolDecision{}, nil
 	}))
@@ -110,7 +110,7 @@ func TestLoop_ToolGateDenyWithoutMessageUsesDefault(t *testing.T) {
 
 // A gate that cannot decide (the person left, the turn was cancelled) stops
 // the turn rather than guessing.
-func TestLoop_ToolGateErrorStopsTheTurn(t *testing.T) {
+func TestLoop_ToolAuthorizerErrorStopsTheTurn(t *testing.T) {
 	_, runs, _, err := gatedLoop(t, gateFunc(func(context.Context, ToolCallRequest) (ToolDecision, error) {
 		return ToolDecision{}, context.Canceled
 	}))
