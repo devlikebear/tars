@@ -389,6 +389,7 @@
               toolArgs,
               event.tool_result_preview,
               chatSessionId || sessionId,
+              event.tool_is_error,
             )
             if (artifact) {
               artifacts = mergeArtifact(artifacts, artifact, chatSessionId || sessionId)

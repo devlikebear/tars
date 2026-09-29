@@ -85,7 +85,8 @@ export function mergeArtifact(artifacts: Artifact[], artifact: Artifact, session
 
 /**
  * Attempt to extract an artifact from a tool call event.
- * Returns null if the tool is not a file operation or the path can't be parsed.
+ * Returns null if the tool is not a file operation, the path can't be parsed,
+ * or the call failed or was denied — then nothing was written.
  */
 export function extractArtifact(
   toolName: string,
@@ -93,8 +94,9 @@ export function extractArtifact(
   toolArgs: string | undefined,
   toolResult: string | undefined,
   sessionId?: string,
+  toolIsError?: boolean,
 ): Artifact | null {
-  if (!ARTIFACT_TOOLS.has(toolName)) return null
+  if (!ARTIFACT_TOOLS.has(toolName) || toolIsError) return null
 
   // Prefer the original args preview, but fall back to the tool result preview.
   // Session history can miss tool_args while still preserving a result with "path".
@@ -117,14 +119,14 @@ export function extractArtifact(
  * Extract artifacts from a list of historical tool messages.
  */
 export function extractArtifactsFromHistory(
-  messages: Array<{ role: string; toolName?: string; toolCallId?: string; toolArgs?: string; toolResult?: string }>,
+  messages: Array<{ role: string; toolName?: string; toolCallId?: string; toolArgs?: string; toolResult?: string; toolIsError?: boolean }>,
   sessionId?: string,
 ): Artifact[] {
   const artifacts: Artifact[] = []
 
   for (const msg of messages) {
     if (msg.role !== 'tool' || !msg.toolName) continue
-    const artifact = extractArtifact(msg.toolName, msg.toolCallId || '', msg.toolArgs, msg.toolResult, sessionId)
+    const artifact = extractArtifact(msg.toolName, msg.toolCallId || '', msg.toolArgs, msg.toolResult, sessionId, msg.toolIsError)
     if (artifact) {
       artifacts.push(artifact)
     }

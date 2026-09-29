@@ -152,6 +152,7 @@ type permissionTestServer struct {
 	server  *httptest.Server
 	store   *session.Store
 	session string
+	root    string
 }
 
 func newPermissionTestServer(t *testing.T, client llm.Client) permissionTestServer {
@@ -165,9 +166,13 @@ func newPermissionTestServer(t *testing.T, client llm.Client) permissionTestServ
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
-	server := httptest.NewServer(newChatAPIHandler(root, store, client, zerolog.New(io.Discard)))
+	// High-risk tools are what the native gate asks about; the default
+	// options leave them out for a non-admin caller.
+	tooling := defaultChatToolingOptions()
+	tooling.ToolsAllowHighRiskUser = true
+	server := httptest.NewServer(newChatAPIHandlerWithRuntimeConfig(root, store, client, nil, zerolog.New(io.Discard), 0, nil, "", tooling))
 	t.Cleanup(server.Close)
-	return permissionTestServer{server: server, store: store, session: sess.ID}
+	return permissionTestServer{server: server, store: store, session: sess.ID, root: root}
 }
 
 // startChat posts a turn and returns a channel of its SSE events.
