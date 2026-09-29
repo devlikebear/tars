@@ -67,7 +67,7 @@ func TestHistoryFromCountsTodaysSpeech(t *testing.T) {
 		{At: at(14, 40), Decision: Decision{Intent: IntentNone}},
 	}
 	h := historyFrom(entries, now, seoul)
-	if h.Today != 2 || !h.LastSpokeAt.Equal(at(11, 0)) || !h.LastCheckInAt.Equal(at(11, 0)) || !h.LastBodyAt.Equal(at(14, 30)) {
+	if h.Today != 2 || !h.LastSpokeAt.Equal(at(11, 0)) || !h.LastCheckInAt.Equal(at(11, 0)) || !h.LastBodyAt.Equal(at(14, 35)) {
 		t.Fatalf("history = %+v", h)
 	}
 }

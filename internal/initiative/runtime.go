@@ -2,9 +2,12 @@ package initiative
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"sync"
 	"time"
 
+	"github.com/devlikebear/tars/internal/jev"
 	"github.com/rs/zerolog"
 )
 
@@ -56,12 +59,16 @@ type Runtime struct {
 	deps Dependencies
 	text *textReader
 
+	// mu serializes ticks and guards pacing state. snapMu guards only what
+	// Snapshot reads, so status stays responsive while a tick waits on I/O.
 	mu         sync.Mutex
 	hist       History
 	histLoaded bool
 	lastReason string
-	lastError  string
-	recent     []Entry
+
+	snapMu    sync.Mutex
+	lastError string
+	recent    []Entry
 
 	lifeMu  sync.Mutex
 	started bool
@@ -158,10 +165,10 @@ func (r *Runtime) RunOnce(ctx context.Context) Entry {
 		state, key := RenderState(r.cfg, obs, r.deps.IncludeText)
 		text, err = r.text.Read(ctx, key, state, textQuestionsFor(now.In(r.cfg.Location)))
 		if err != nil {
-			entry.Error = err.Error()
+			entry.Error = describeSystemOneError(err)
 			r.noteErrorLocked(entry.Error)
 		} else if text.Source == "systemone" {
-			r.lastError = ""
+			r.clearError()
 		}
 	}
 	entry.Text = text
@@ -196,7 +203,9 @@ func (r *Runtime) applyLocked(e Entry) {
 			r.hist.LastCheckInAt = e.At
 		}
 	}
-	if e.Intent == IntentBodyOnly && e.Body == "delivered" {
+	if e.Intent == IntentBodyOnly {
+		// A failed attempt is spaced like a delivered one, so an offline
+		// body is not retried (and logged) every tick.
 		r.hist.LastBodyAt = e.At
 	}
 	if e.Intent != IntentNone || e.Text.Source == "systemone" || e.Reason != r.lastReason {
@@ -209,6 +218,8 @@ func (r *Runtime) applyLocked(e Entry) {
 
 func (r *Runtime) rememberLocked(e Entry) {
 	r.lastReason = e.Reason
+	r.snapMu.Lock()
+	defer r.snapMu.Unlock()
 	r.recent = append(r.recent, e)
 	if len(r.recent) > recentKept {
 		r.recent = r.recent[len(r.recent)-recentKept:]
@@ -230,10 +241,30 @@ func (r *Runtime) loadHistoryLocked(now time.Time) {
 
 // noteErrorLocked logs an error once per change, not on every tick.
 func (r *Runtime) noteErrorLocked(msg string) {
-	if msg != r.lastError {
+	r.snapMu.Lock()
+	changed := msg != r.lastError
+	r.lastError = msg
+	r.snapMu.Unlock()
+	if changed {
 		r.deps.Logger.Warn().Str("error", msg).Msg("initiative: tick degraded")
 	}
-	r.lastError = msg
+}
+
+func (r *Runtime) clearError() {
+	r.snapMu.Lock()
+	r.lastError = ""
+	r.snapMu.Unlock()
+}
+
+// describeSystemOneError keeps only the status of an HTTP failure. A
+// server's error body can echo the request state, which on a loopback
+// backend holds the user's words, and those must not reach the ledger.
+func describeSystemOneError(err error) string {
+	var httpErr *jev.HTTPError
+	if errors.As(err, &httpErr) {
+		return fmt.Sprintf("jev: http %d", httpErr.Status)
+	}
+	return err.Error()
 }
 
 func (r *Runtime) localDay(t time.Time) string { return t.In(r.cfg.Location).Format("2006-01-02") }
@@ -242,8 +273,8 @@ func (r *Runtime) Snapshot() Snapshot {
 	if r == nil {
 		return Snapshot{Recent: []Entry{}}
 	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
+	r.snapMu.Lock()
+	defer r.snapMu.Unlock()
 	return Snapshot{
 		Enabled:   r.cfg.Enabled,
 		Mode:      r.cfg.Mode,

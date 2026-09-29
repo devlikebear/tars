@@ -1,9 +1,9 @@
 package initiative
 
 // Decide turns signals into one companion intent. The order is the policy:
-// an explicit request for quiet and the hard limits first, then arrival,
-// then care, then a silent body expression. It is pure so every rule is
-// table-tested.
+// an explicit request for quiet and the hard limits (including typing or a
+// turn in flight) first, then arrival, then care, then a silent body
+// expression. It is pure so every rule is table-tested.
 func Decide(g GoSignals, t TextSignals) Decision {
 	switch {
 	case t.QuietRequested:
@@ -20,10 +20,9 @@ func Decide(g GoSignals, t TextSignals) Decision {
 		}
 		return speak(IntentGreet, "arrived")
 	case g.Busy:
-		if g.LongSession && !g.CheckedInRecently {
-			return speak(IntentCheckIn, "long_session")
-		}
 		return none("busy")
+	case g.LongSession && !g.CheckedInRecently:
+		return speak(IntentCheckIn, "long_session")
 	case t.UserStrained && !g.CheckedInRecently && g.Reachable:
 		return speak(IntentCheckIn, "strained")
 	case g.LongAbsence:

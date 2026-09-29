@@ -21,9 +21,12 @@ type UserMessage struct {
 
 // Observation is what one tick sees. Adapters in tarsserver fill it.
 type Observation struct {
-	Now                time.Time
-	RecentUser         []UserMessage // oldest first
-	ConsoleConnectedAt time.Time     // zero when no console is subscribed
+	Now        time.Time
+	RecentUser []UserMessage // oldest first
+	// LastUserAt is the newest user message anywhere, even when it is too
+	// old to be in RecentUser. Zero means unknown; RecentUser then decides.
+	LastUserAt         time.Time
+	ConsoleConnectedAt time.Time // zero when no console is subscribed
 	ChatBusy           bool
 	TelegramPaired     bool
 	BodyAvailable      bool

@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/devlikebear/tars/internal/jev"
 	"github.com/rs/zerolog"
 )
 
@@ -193,4 +194,77 @@ func TestStartStop(t *testing.T) {
 	disabled := NewRuntime(Config{}, Dependencies{Observer: &fakeObserver{}, Logger: zerolog.Nop()})
 	disabled.Start(ctx)
 	disabled.Stop() // must not block when never started
+}
+
+type blockingSystemOne struct {
+	entered chan struct{}
+	release chan struct{}
+}
+
+func (b *blockingSystemOne) Ask(ctx context.Context, _ string, _ map[string]jev.Question) (jev.Response, error) {
+	close(b.entered)
+	select {
+	case <-b.release:
+	case <-ctx.Done():
+	}
+	return jev.Response{}, nil
+}
+
+func TestSnapshotIsNotBlockedByASlowSystemOne(t *testing.T) {
+	now := at(14, 0)
+	slow := &blockingSystemOne{entered: make(chan struct{}), release: make(chan struct{})}
+	r, _ := runtimeFixture{obs: Observation{Profile: "likes tea", RecentUser: []UserMessage{{At: now.Add(-time.Hour), Text: "hi"}}},
+		one: slow, include: true}.build(t, &now)
+	done := make(chan struct{})
+	go func() { r.RunOnce(context.Background()); close(done) }()
+	<-slow.entered
+	got := make(chan Snapshot, 1)
+	go func() { got <- r.Snapshot() }()
+	select {
+	case <-got:
+	case <-time.After(time.Second):
+		t.Fatal("Snapshot blocked while the System One was answering")
+	}
+	close(slow.release)
+	<-done
+}
+
+type failingBody struct{ calls int }
+
+func (f *failingBody) Express(context.Context, string, string) (string, error) {
+	f.calls++
+	return "dropped:provider_disabled", nil
+}
+
+func TestFailedBodyExpressionIsSpacedToo(t *testing.T) {
+	now := at(14, 0)
+	body := &failingBody{}
+	r, _ := runtimeFixture{obs: Observation{ConsoleConnectedAt: now.Add(-3 * time.Hour), BodyAvailable: true,
+		RecentUser: []UserMessage{{At: now.Add(-20 * time.Minute)}}}, body: body, include: true}.build(t, &now)
+	r.RunOnce(context.Background())
+	now = now.Add(5 * time.Minute)
+	r.RunOnce(context.Background())
+	if body.calls != 1 {
+		t.Fatalf("a failed expression must not be retried every tick, calls=%d", body.calls)
+	}
+}
+
+func TestSystemOneErrorBodyIsNotRecorded(t *testing.T) {
+	now := at(14, 0)
+	fake := &fakeSystemOne{err: &jev.HTTPError{Status: 422, Message: `{"detail":[{"input":"recent_user_messages: 오늘 너무 피곤해"}]}`}}
+	r, ledger := runtimeFixture{obs: Observation{ConsoleConnectedAt: now.Add(-time.Minute), Profile: "likes tea",
+		RecentUser: []UserMessage{{At: now.Add(-5 * time.Hour), Text: "오늘 너무 피곤해"}}}, one: fake, include: true}.build(t, &now)
+	e := r.RunOnce(context.Background())
+	if strings.Contains(e.Error, "피곤") || !strings.Contains(e.Error, "422") {
+		t.Fatalf("entry error = %q", e.Error)
+	}
+	recent, _ := ledger.Recent(10)
+	for _, entry := range recent {
+		if strings.Contains(entry.Error, "피곤") {
+			t.Fatalf("ledger holds user text: %q", entry.Error)
+		}
+	}
+	if strings.Contains(r.Snapshot().LastError, "피곤") {
+		t.Fatal("status holds user text")
+	}
 }

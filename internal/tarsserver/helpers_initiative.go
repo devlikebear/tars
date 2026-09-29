@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -22,13 +23,15 @@ import (
 const (
 	observerUserLookback = 12 * time.Hour
 	observerMaxUser      = 50
+	// observerSessionHorizon bounds which sessions are read at all. The user
+	// can be away longer; LastUserAt then falls back to session activity.
+	observerSessionHorizon = 7 * 24 * time.Hour
 )
 
 // sessionObserverDeps are the live sources the initiative observer reads.
 // Every function is optional; a missing one reads as false or zero.
 type sessionObserverDeps struct {
 	Store           *session.Store
-	MainSessionID   string
 	WorkspaceDir    string
 	SubscriberCount func() int
 	ChatBusy        func() bool
@@ -36,19 +39,20 @@ type sessionObserverDeps struct {
 	BodyAvailable   func() bool
 }
 
-// sessionInitiativeObserver builds an initiative.Observation from the main
-// session transcript, USER.md and live server state. It re-reads files only
-// when they change.
+// sessionInitiativeObserver builds an initiative.Observation from every
+// visible session's transcript, USER.md and live server state. The user may
+// be working in any session, so activity is not read from the main session
+// alone. Files are re-read only when they change.
 type sessionInitiativeObserver struct {
 	deps        sessionObserverDeps
 	mu          sync.Mutex
 	connectedAt time.Time
-	transcript  fileCache[[]initiative.UserMessage]
+	transcripts map[string]*fileCache[[]initiative.UserMessage]
 	profile     fileCache[string]
 }
 
 func newSessionInitiativeObserver(deps sessionObserverDeps) *sessionInitiativeObserver {
-	return &sessionInitiativeObserver{deps: deps}
+	return &sessionInitiativeObserver{deps: deps, transcripts: map[string]*fileCache[[]initiative.UserMessage]{}}
 }
 
 func (o *sessionInitiativeObserver) Observe(_ context.Context, now time.Time) (initiative.Observation, error) {
@@ -72,18 +76,9 @@ func (o *sessionInitiativeObserver) Observe(_ context.Context, now time.Time) (i
 	if o.deps.BodyAvailable != nil {
 		obs.BodyAvailable = o.deps.BodyAvailable()
 	}
-	if o.deps.Store != nil && o.deps.MainSessionID != "" {
-		msgs, err := o.transcript.load(o.deps.Store.TranscriptPath(o.deps.MainSessionID), readUserMessages)
-		if err != nil {
+	if o.deps.Store != nil {
+		if err := o.readSessions(now, &obs); err != nil {
 			return obs, err
-		}
-		for _, m := range msgs {
-			if now.Sub(m.At) <= observerUserLookback {
-				obs.RecentUser = append(obs.RecentUser, m)
-			}
-		}
-		if len(obs.RecentUser) > observerMaxUser {
-			obs.RecentUser = obs.RecentUser[len(obs.RecentUser)-observerMaxUser:]
 		}
 	}
 	if o.deps.WorkspaceDir != "" {
@@ -92,6 +87,61 @@ func (o *sessionInitiativeObserver) Observe(_ context.Context, now time.Time) (i
 		}
 	}
 	return obs, nil
+}
+
+func (o *sessionInitiativeObserver) readSessions(now time.Time, obs *initiative.Observation) error {
+	sessions, err := o.deps.Store.List()
+	if err != nil {
+		return err
+	}
+	var all []initiative.UserMessage
+	var newestActivity time.Time
+	seen := map[string]bool{}
+	for _, sess := range sessions {
+		if sess.Hidden || strings.TrimSpace(sess.Kind) == "worker" {
+			continue
+		}
+		if sess.UpdatedAt.After(newestActivity) {
+			newestActivity = sess.UpdatedAt
+		}
+		if now.Sub(sess.UpdatedAt) > observerSessionHorizon {
+			continue
+		}
+		path := o.deps.Store.TranscriptPath(sess.ID)
+		seen[path] = true
+		cache := o.transcripts[path]
+		if cache == nil {
+			cache = &fileCache[[]initiative.UserMessage]{}
+			o.transcripts[path] = cache
+		}
+		msgs, err := cache.load(path, readUserMessages)
+		if err != nil {
+			return err
+		}
+		all = append(all, msgs...)
+	}
+	for path := range o.transcripts {
+		if !seen[path] {
+			delete(o.transcripts, path)
+		}
+	}
+	sort.SliceStable(all, func(i, j int) bool { return all[i].At.Before(all[j].At) })
+	if n := len(all); n > 0 {
+		obs.LastUserAt = all[n-1].At
+	} else {
+		// Nobody spoke within the horizon: the newest session activity is an
+		// upper bound on the last user message, which errs toward "recent".
+		obs.LastUserAt = newestActivity
+	}
+	for _, m := range all {
+		if now.Sub(m.At) <= observerUserLookback {
+			obs.RecentUser = append(obs.RecentUser, m)
+		}
+	}
+	if len(obs.RecentUser) > observerMaxUser {
+		obs.RecentUser = obs.RecentUser[len(obs.RecentUser)-observerMaxUser:]
+	}
+	return nil
 }
 
 // readUserMessages keeps what the user actually typed: synthetic pulse
@@ -167,7 +217,6 @@ type initiativeSetupInputs struct {
 	Config           config.Config
 	WorkspaceDir     string
 	SessionStore     *session.Store
-	MainSessionID    string
 	Broker           *eventBroker
 	Activity         *runtimeActivity
 	TelegramPairings *telegramPairingStore
@@ -230,7 +279,7 @@ func buildInitiativeRuntime(in initiativeSetupInputs) initiativeSetup {
 		deps.Backend = initiative.BackendInfo{Configured: true, Loopback: client.IsLoopback(), Host: hostOf(base)}
 	}
 
-	observerDeps := sessionObserverDeps{Store: in.SessionStore, MainSessionID: in.MainSessionID, WorkspaceDir: in.WorkspaceDir}
+	observerDeps := sessionObserverDeps{Store: in.SessionStore, WorkspaceDir: in.WorkspaceDir}
 	if in.Broker != nil {
 		observerDeps.SubscriberCount = in.Broker.subscriberCount
 	}

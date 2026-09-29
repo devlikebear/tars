@@ -379,7 +379,6 @@ func buildAPIMux(
 		Config:           cfg,
 		WorkspaceDir:     cfg.WorkspaceDir,
 		SessionStore:     sessionStore,
-		MainSessionID:    mainSessionID,
 		Broker:           broker,
 		Activity:         activity,
 		TelegramPairings: telegramPairings,

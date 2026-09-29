@@ -12,8 +12,8 @@ type History struct {
 
 func deriveGoSignals(cfg Config, obs Observation, hist History) GoSignals {
 	now := obs.Now
-	var lastUser time.Time
-	if n := len(obs.RecentUser); n > 0 {
+	lastUser := obs.LastUserAt
+	if n := len(obs.RecentUser); n > 0 && obs.RecentUser[n-1].At.After(lastUser) {
 		lastUser = obs.RecentUser[n-1].At
 	}
 	since := func(ts time.Time) time.Duration { return now.Sub(ts) }

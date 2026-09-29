@@ -14,7 +14,7 @@ import (
 
 func TestSessionObserverToleratesMissingFiles(t *testing.T) {
 	store := session.NewStore(t.TempDir())
-	obs := newSessionInitiativeObserver(sessionObserverDeps{Store: store, MainSessionID: "missing", WorkspaceDir: t.TempDir()})
+	obs := newSessionInitiativeObserver(sessionObserverDeps{Store: store, WorkspaceDir: t.TempDir()})
 	got, err := obs.Observe(context.Background(), time.Now())
 	if err != nil || len(got.RecentUser) != 0 || got.Profile != "" || !got.ConsoleConnectedAt.IsZero() {
 		t.Fatalf("observation = %+v err=%v", got, err)
@@ -39,13 +39,16 @@ func TestSessionObserverReadsUserMessagesAndConsole(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	if err := store.Touch(sess.ID, now.Add(-20*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
 	workspace := t.TempDir()
 	if err := os.WriteFile(filepath.Join(workspace, "USER.md"), []byte("birthday: Sep 29"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	subscribers := 1
 	obs := newSessionInitiativeObserver(sessionObserverDeps{
-		Store: store, MainSessionID: sess.ID, WorkspaceDir: workspace,
+		Store: store, WorkspaceDir: workspace,
 		SubscriberCount: func() int { return subscribers },
 		ChatBusy:        func() bool { return true },
 		TelegramPaired:  func() bool { return true },
@@ -89,5 +92,68 @@ func TestBuildInitiativeRuntimeGatesTextByLoopback(t *testing.T) {
 		if b := setup.Runtime.Snapshot().Backend; !b.Configured || b.Loopback != loopback {
 			t.Fatalf("%s backend = %+v", base, b)
 		}
+	}
+}
+
+func appendAndTouch(t *testing.T, store *session.Store, id string, msgs ...session.Message) {
+	t.Helper()
+	var last time.Time
+	for _, m := range msgs {
+		if err := session.AppendMessage(store.TranscriptPath(id), m); err != nil {
+			t.Fatal(err)
+		}
+		last = m.Timestamp
+	}
+	if err := store.Touch(id, last); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSessionObserverReadsEveryVisibleSession(t *testing.T) {
+	store := session.NewStore(t.TempDir())
+	now := time.Date(2026, 9, 29, 14, 0, 0, 0, time.UTC)
+	main, err := store.EnsureMain()
+	if err != nil {
+		t.Fatal(err)
+	}
+	project, err := store.Create("tars workbench")
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker, err := store.CreateWithOptions("worker run", "worker", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	appendAndTouch(t, store, main.ID, session.Message{Role: "user", Content: "main earlier", Timestamp: now.Add(-40 * time.Minute)})
+	appendAndTouch(t, store, project.ID, session.Message{Role: "user", Content: "project now", Timestamp: now.Add(-2 * time.Minute)})
+	appendAndTouch(t, store, worker.ID, session.Message{Role: "user", Content: "worker prompt", Timestamp: now.Add(-time.Minute)})
+
+	got, err := newSessionInitiativeObserver(sessionObserverDeps{Store: store}).Observe(context.Background(), now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.RecentUser) != 2 || got.RecentUser[1].Text != "project now" || got.RecentUser[0].Text != "main earlier" {
+		t.Fatalf("recent user = %+v", got.RecentUser)
+	}
+	if !got.LastUserAt.Equal(now.Add(-2 * time.Minute)) {
+		t.Fatalf("last user at = %v", got.LastUserAt)
+	}
+}
+
+func TestSessionObserverKnowsLastUserBeyondTheTextLookback(t *testing.T) {
+	store := session.NewStore(t.TempDir())
+	now := time.Date(2026, 9, 29, 14, 0, 0, 0, time.UTC)
+	main, err := store.EnsureMain()
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := now.Add(-50 * time.Hour)
+	appendAndTouch(t, store, main.ID, session.Message{Role: "user", Content: "see you", Timestamp: old})
+	got, err := newSessionInitiativeObserver(sessionObserverDeps{Store: store}).Observe(context.Background(), now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.RecentUser) != 0 || !got.LastUserAt.Equal(old) {
+		t.Fatalf("observation = %+v", got)
 	}
 }

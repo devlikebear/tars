@@ -116,7 +116,7 @@ func historyFrom(entries []Entry, now time.Time, loc *time.Location) History {
 				h.LastCheckInAt = e.At
 			}
 		}
-		if e.Intent == IntentBodyOnly && e.Body == "delivered" && e.At.After(h.LastBodyAt) {
+		if e.Intent == IntentBodyOnly && e.At.After(h.LastBodyAt) {
 			h.LastBodyAt = e.At
 		}
 	}
