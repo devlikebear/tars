@@ -38,6 +38,9 @@ type notificationEvent struct {
 	JobID       string `json:"job_id,omitempty"`
 	SessionID   string `json:"session_id,omitempty"`
 	OpenPath    string `json:"open_path,omitempty"`
+	// RequestID names the permission request an "approval" notification is
+	// about (see chat_activity.go).
+	RequestID string `json:"request_id,omitempty"`
 }
 
 func newNotificationEvent(category, severity, title, message string) notificationEvent {
