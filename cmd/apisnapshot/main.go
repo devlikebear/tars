@@ -91,6 +91,11 @@ func collect(root string) ([]string, error) {
 		if !entry.IsDir() {
 			return nil
 		}
+		// Go forbids importing an internal package from outside its parent,
+		// so nothing beneath one is surface a consumer can rely on.
+		if entry.Name() == "internal" {
+			return filepath.SkipDir
+		}
 		pkgLines, err := collectDir(path, root)
 		if err != nil {
 			return err

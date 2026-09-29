@@ -260,6 +260,15 @@ type ChatOptions struct {
 	// It is nil for normal chat. The harness uses safe mode, a strict tool
 	// surface, non-interactive permission rules, and bounded turns/spend.
 	ClaudeCodeHarness *ClaudeCodeHarnessOptions
+	// ClaudeCodePermissionHandler, when set, routes the permission prompts
+	// Claude Code would otherwise resolve on its own to the caller. The
+	// claude-code-cli provider then runs the turn over the stream-json control
+	// protocol (`--input-format stream-json --permission-prompt-tool stdio`)
+	// and calls the handler once per prompt, blocking the tool until it
+	// returns. Calls the CLI allows by itself — read-only commands, rules
+	// already granted — never reach the handler. Nil keeps the one-shot `-p`
+	// invocation. Other providers ignore this field.
+	ClaudeCodePermissionHandler ClaudeCodePermissionHandler
 }
 
 // ClaudeCodeHarnessOptions is intentionally limited to authority-reducing
