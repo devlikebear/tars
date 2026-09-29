@@ -38,6 +38,11 @@ type Entry struct {
 	SessionID        string    `json:"session_id,omitempty"`
 	RunID            string    `json:"run_id,omitempty"`
 	PricingKnown     bool      `json:"pricing_known"`
+	// CostSource says where EstimatedCostUSD came from: CostSourceProvider
+	// when the provider reported the call's cost itself, CostSourceEstimate
+	// when it was computed from the price table, empty when neither applied
+	// (and for entries written before this field existed).
+	CostSource string `json:"cost_source,omitempty"`
 	// ToolCount is how many tool definitions the request carried. Anthropic
 	// renders tools ahead of messages in the cached prefix, so a tools-absent
 	// call cannot hit an entry written by a tool-bearing one even within the
@@ -45,6 +50,11 @@ type Entry struct {
 	// the "shape" group-by in Summary.
 	ToolCount int `json:"tool_count,omitempty"`
 }
+
+const (
+	CostSourceProvider = "provider"
+	CostSourceEstimate = "estimate"
+)
 
 type Summary struct {
 	Period          string       `json:"period"`
