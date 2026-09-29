@@ -6,6 +6,7 @@ import { chatThreadEn } from './sections/chatThread.ts'
 import { sessionConfigEn } from './sections/sessionConfig.ts'
 import { gitInspectorEn } from './sections/gitInspector.ts'
 import { changesEn } from './sections/changes.ts'
+import { chatApprovalEn } from './sections/chatApproval.ts'
 import { artifactPanelEn } from './sections/artifactPanel.ts'
 import { skillInboxEn } from './sections/skillInbox.ts'
 import { sessionCronEn } from './sections/sessionCron.ts'
@@ -114,7 +115,7 @@ export const en = {
     servedBy: (tier: string, model: string) => `last turn: ${tier}${model ? ` · ${model}` : ''}`,
     permission: 'Permissions',
     permissionDefault: 'default',
-    permissionHint: 'Claude Code permission mode for this session. Change it in .tars/settings.local.json; inline approvals arrive with #970.',
+    permissionHint: 'Claude Code permission mode for this session, set in .tars/settings.local.json. Tool calls it does not allow ask for approval in the conversation.',
     costHint: 'This session this month, estimated by the usage tracker.',
     tokens: (count: string) => `${count} tok`,
   },
@@ -1649,6 +1650,7 @@ export const en = {
   sessionConfig: sessionConfigEn,
   gitInspector: gitInspectorEn,
   changes: changesEn,
+  chatApproval: chatApprovalEn,
   artifactPanel: artifactPanelEn,
   skillInbox: skillInboxEn,
   sessionCron: sessionCronEn,

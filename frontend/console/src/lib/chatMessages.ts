@@ -1,3 +1,5 @@
+import type { ChatApproval } from './chatApproval.ts'
+
 export type ToolOutputLine = {
   stream: 'stdout' | 'stderr' | string
   text: string
@@ -6,8 +8,10 @@ export type ToolOutputLine = {
 export type ChatMessage = {
   id: string
   sourceMessageId?: string
-  role: 'user' | 'assistant' | 'system' | 'error' | 'tool'
+  role: 'user' | 'assistant' | 'system' | 'error' | 'tool' | 'approval'
   text: string
+  // role 'approval': a tool call waiting on the user's decision (#970).
+  approval?: ChatApproval
   reasoningText?: string
   toolName?: string
   toolCallId?: string

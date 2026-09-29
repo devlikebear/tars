@@ -21,6 +21,7 @@ type scriptedLLMClient struct {
 	seenResumeIDs  []string
 	seenWorkDirs   []string
 	seenPersist    []bool
+	seenHandlers   []llm.ClaudeCodePermissionHandler
 }
 
 func (c *scriptedLLMClient) Ask(ctx context.Context, prompt string) (string, error) {
@@ -38,6 +39,7 @@ func (c *scriptedLLMClient) Chat(ctx context.Context, messages []llm.ChatMessage
 	c.seenResumeIDs = append(c.seenResumeIDs, opts.ResumeSessionID)
 	c.seenWorkDirs = append(c.seenWorkDirs, opts.WorkDir)
 	c.seenPersist = append(c.seenPersist, opts.PersistSession)
+	c.seenHandlers = append(c.seenHandlers, opts.ClaudeCodePermissionHandler)
 	resp := c.responses[c.callIndex]
 	c.callIndex++
 	return resp, nil
@@ -1237,5 +1239,32 @@ func TestLoop_Run_ForwardsWorkDirAndPersistence(t *testing.T) {
 	}
 	if len(client.seenWorkDirs) != 1 || client.seenWorkDirs[0] != "/repo" || !client.seenPersist[0] {
 		t.Fatalf("work dirs %v, persist %v", client.seenWorkDirs, client.seenPersist)
+	}
+}
+
+// The chat server's permission handler reaches every iteration, so a prompt
+// raised on any provider call inside the turn finds someone to answer it.
+func TestLoop_Run_ForwardsClaudeCodePermissionHandler(t *testing.T) {
+	client := &scriptedLLMClient{
+		responses: []llm.ChatResponse{
+			{Message: llm.ChatMessage{Role: "assistant", Content: "ack"}},
+		},
+	}
+	called := false
+	handler := func(context.Context, llm.ClaudeCodePermissionRequest) (llm.ClaudeCodePermissionDecision, error) {
+		called = true
+		return llm.ClaudeCodePermissionDecision{Allow: true}, nil
+	}
+	loop := NewLoop(client, tool.NewRegistry())
+	if _, err := loop.Run(context.Background(), []llm.ChatMessage{{Role: "user", Content: "hi"}}, RunOptions{
+		ClaudeCodePermissionHandler: handler,
+	}); err != nil {
+		t.Fatalf("loop run: %v", err)
+	}
+	if len(client.seenHandlers) != 1 || client.seenHandlers[0] == nil {
+		t.Fatalf("handler was not forwarded: %v", client.seenHandlers)
+	}
+	if _, err := client.seenHandlers[0](context.Background(), llm.ClaudeCodePermissionRequest{}); err != nil || !called {
+		t.Fatalf("forwarded handler is not the caller's (called=%v, err=%v)", called, err)
 	}
 }

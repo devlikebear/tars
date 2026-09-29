@@ -784,6 +784,16 @@ export type APIErrorPayload = {
 
 export type ChatEvent = {
   type: string
+  // permission_request / permission_resolved: a Claude Code tool call
+  // waiting on the user's decision (#970). reason is shared with goal_event.
+  request_id?: string
+  tool_use_id?: string
+  input?: unknown
+  title?: string
+  description?: string
+  agent_id?: string
+  session_rule?: string
+  outcome?: string
   // turn_started, checkpoint, done: the server's ID for the turn's user
   // message, which keys its checkpoint.
   user_message_id?: string
@@ -937,6 +947,9 @@ export type ChatRequest = {
   mentions?: ChatFileMention[]
   subagent_mentions?: ChatSubagentMention[]
   tier_recommendation?: ChatTierRecommendationRequest
+  // The console answers permission_request events, so tool prompts may
+  // wait for it (#970).
+  interactive_permissions?: boolean
 }
 
 export type MemoryAsset = {

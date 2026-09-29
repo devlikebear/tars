@@ -41,6 +41,7 @@ pkg/agentloop field RunOptions.BeforeTool
 pkg/agentloop field RunOptions.BlockedTools
 pkg/agentloop field RunOptions.ClaudeCodeMCPServers
 pkg/agentloop field RunOptions.ClaudeCodePermissionDeny
+pkg/agentloop field RunOptions.ClaudeCodePermissionHandler
 pkg/agentloop field RunOptions.ClaudeCodePermissionMode
 pkg/agentloop field RunOptions.ClaudeCodeSkills
 pkg/agentloop field RunOptions.MaxIterations

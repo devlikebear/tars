@@ -26,6 +26,7 @@ type chatHandlerDeps struct {
 	tooling        chatToolingOptions
 	extraTools     []tool.Tool
 	cancelRegistry *chatCancelRegistry
+	permissions    *chatPermissionBroker
 }
 
 func (d chatHandlerDeps) resolveChatClient() (llm.Client, llm.TierResolution, error) {
@@ -62,6 +63,9 @@ type chatRequestPayload struct {
 	Mentions           []chatFileMentionRequest       `json:"mentions,omitempty"`
 	SubagentMentions   []chatSubagentMentionRequest   `json:"subagent_mentions,omitempty"`
 	TierRecommendation *chatTierRecommendationPayload `json:"tier_recommendation,omitempty"`
+	// InteractivePermissions says the client will answer permission_request
+	// events, so tool prompts wait for it instead of failing the call.
+	InteractivePermissions bool `json:"interactive_permissions,omitempty"`
 }
 
 func handleChatRequest(w http.ResponseWriter, r *http.Request, deps chatHandlerDeps) {
@@ -97,6 +101,7 @@ func handleChatRequest(w http.ResponseWriter, r *http.Request, deps chatHandlerD
 		return
 	}
 
+	state.interactivePermissions = req.InteractivePermissions
 	stream := newChatStreamWriter(w, state.sessionID, deps.logger)
 	stream.status("stream_open", "stream connected", "", "", "", "")
 	if state.turnID != "" {

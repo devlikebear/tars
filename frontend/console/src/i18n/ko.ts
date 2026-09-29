@@ -6,6 +6,7 @@ import { chatThreadKo } from './sections/chatThread.ts'
 import { sessionConfigKo } from './sections/sessionConfig.ts'
 import { gitInspectorKo } from './sections/gitInspector.ts'
 import { changesKo } from './sections/changes.ts'
+import { chatApprovalKo } from './sections/chatApproval.ts'
 import { artifactPanelKo } from './sections/artifactPanel.ts'
 import { skillInboxKo } from './sections/skillInbox.ts'
 import { sessionCronKo } from './sections/sessionCron.ts'
@@ -114,7 +115,7 @@ export const ko = {
     servedBy: (tier: string, model: string) => `최근 턴: ${tier}${model ? ` · ${model}` : ''}`,
     permission: '권한',
     permissionDefault: '기본값',
-    permissionHint: '이 세션의 Claude Code 권한 모드입니다. .tars/settings.local.json에서 바꿀 수 있고, 인라인 승인은 #970에서 추가됩니다.',
+    permissionHint: '이 세션의 Claude Code 권한 모드입니다. .tars/settings.local.json에서 정합니다. 이 모드가 허용하지 않는 도구 호출은 대화 안에서 승인을 묻습니다.',
     costHint: '이 세션의 이번 달 사용량입니다(사용량 추적기 추정치).',
     tokens: (count: string) => `${count} 토큰`,
   },
@@ -1647,6 +1648,7 @@ export const ko = {
   sessionConfig: sessionConfigKo,
   gitInspector: gitInspectorKo,
   changes: changesKo,
+  chatApproval: chatApprovalKo,
   artifactPanel: artifactPanelKo,
   skillInbox: skillInboxKo,
   sessionCron: sessionCronKo,

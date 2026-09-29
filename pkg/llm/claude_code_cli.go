@@ -121,10 +121,14 @@ func (c *ClaudeCodeCLIClient) Chat(ctx context.Context, messages []ChatMessage, 
 	defer cleanup()
 
 	// Bound the invocation so a hung or slow claude process fails predictably
-	// instead of blocking until some upstream client gives up.
+	// instead of blocking until some upstream client gives up. Time spent
+	// waiting on a person to answer a permission prompt is not counted.
 	timeout := parseClaudeCodeCLITimeout(os.Getenv(claudeCodeCLITimeoutEnv))
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
+	ctx, clock := newClaudeCodeTurnClock(ctx, timeout)
+	defer clock.stop()
+	if opts.ClaudeCodePermissionHandler != nil {
+		opts.ClaudeCodePermissionHandler = clock.untimed(opts.ClaudeCodePermissionHandler)
+	}
 
 	baseEnv := os.Environ()
 	if opts.ClaudeCodeHarness != nil && opts.ClaudeCodeHarness.IsolateEnvironment {
@@ -265,7 +269,7 @@ func finishClaudeCodeCLIRun(ctx context.Context, timeout time.Duration, stderr s
 	// A deadline kill surfaces as a process/stream error; report it as a
 	// timeout so callers (and the retry policy) can tell it apart from a
 	// transient crash.
-	if ctx.Err() == context.DeadlineExceeded {
+	if errors.Is(context.Cause(ctx), context.DeadlineExceeded) {
 		return ChatResponse{}, newProviderError(claudeCodeCLIProviderLabel, "request", fmt.Errorf("cli timed out after %s", timeout))
 	}
 	errText := strings.TrimSpace(stderr)
