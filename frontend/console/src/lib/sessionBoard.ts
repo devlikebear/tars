@@ -144,7 +144,9 @@ export function groupBoard(
   const out = [...groups.values()]
   for (const g of out) g.cards.sort(compareCards(sort))
   out.sort((a, b) => {
-    if (!a.key !== !b.key) return a.key ? -1 : 1
+    // Groups with a repository come before the one without.
+    const aRepo = a.key !== ''
+    if (aRepo !== (b.key !== '')) return aRepo ? -1 : 1
     const urgent = b.counts.needs_input - a.counts.needs_input
     if (urgent !== 0) return urgent
     return latest(b) - latest(a) || a.key.localeCompare(b.key)
