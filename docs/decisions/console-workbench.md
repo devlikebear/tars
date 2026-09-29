@@ -34,7 +34,7 @@ This constrains P1–P3 more than anything else does. In a `claude-code-cli` ses
 A design that adds structured fields to tool results would therefore produce nothing for the primary provider. Instead:
 
 - **Diffs are built from turn checkpoints (git snapshots).** They work the same no matter who edited the file. This is P1's first priority.
-- **Approvals go through `claude -p --permission-prompt-tool`, backed by a TARS MCP tool.** The flag works in headless `--print` mode. TARS already injects a per-call `--mcp-config` file (`internal/tarsserver/claude_code_cli_mcp.go`), so the injection path exists. It is gated on a Go/No-Go spike in P2.
+- **Approvals go through `--permission-prompt-tool stdio`, the control protocol the Claude Agent SDKs use.** The P2 spike (#996, #1004) was Go and chose `stdio` over the MCP tool first planned here: the prompt arrives on the session's own CLI process pipe, so no per-session MCP server or session identifier is needed. The chat server streams each prompt to the console as a `permission_request` event and waits for the answer (#970).
 - **Native providers** (anthropic/openai/gemini/gemini-native) also get `pkg/agentloop` gates and structured `pkg/tools` results, **as a reinforcement path, not the default one**.
 - `antigravity-cli` has the same constraint but no delegation flag. Its sessions get checkpoint diffs only; inline approval is out of scope.
 
@@ -129,5 +129,5 @@ P0 shipped in #977–#984, #987, and #988. On a fresh session after one exchange
 ## Re-evaluate if
 
 - The primary provider moves off `claude-code-cli`. Decision 1's ordering (checkpoints before structured diffs, `--permission-prompt-tool` before `agentloop` gates) would then flip.
-- The P2 `--permission-prompt-tool` spike is No-Go. `claude-code-cli` sessions would then get pre-set policy UI only (`--permission-mode` plus deny rules), and inline approval would narrow to native providers.
+- Claude Code drops or changes the `stdio` control protocol. It is the SDKs' internal contract rather than a published one, so the provider pins the behavior with live tests (`go test -tags integration ./pkg/llm/`); if it breaks, `claude-code-cli` sessions fall back to pre-set policy UI only (`--permission-mode` plus deny rules).
 - Always-on worktrees become cheap. Copying gitignored files and avoiding port collisions would have to be solved generically first.

@@ -28,6 +28,8 @@
     type SlashCommandCandidate,
   } from '../lib/slash'
   import type { ChatMessage } from '../lib/chatMessages'
+  import { approvalFromEvent, resolveApproval, withdrawPendingApprovals, type ChatApproval } from '../lib/chatApproval'
+  import ChatApprovalCard from './ChatApprovalCard.svelte'
   import ChatMessageItem from './ChatMessageItem.svelte'
   import TurnChangesCard from './TurnChangesCard.svelte'
   import SlashPopover from './SlashPopover.svelte'
@@ -289,6 +291,40 @@
     void reloadSlashSkillsAndCandidates()
   }
 
+  // insertBeforeStreaming places a tool or approval card at this point in the
+  // turn. If the streaming bubble already has text, it is frozen and a fresh
+  // one starts after the card, keeping the "text -> tool -> text" order
+  // instead of collapsing all intermediate text into one final bubble.
+  function insertBeforeStreaming(item: ChatMessage, assistantRef: { id: string }) {
+    const aIdx = chatMessages.findIndex((m) => m.id === assistantRef.id)
+    if (aIdx < 0) return
+    const placeholder = chatMessages[aIdx]
+    const hasContent =
+      (placeholder.text?.trim() || '').length > 0 ||
+      (placeholder.reasoningText?.trim() || '').length > 0
+    if (hasContent) {
+      const newId = `assistant-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+      chatMessages = [
+        ...chatMessages.slice(0, aIdx + 1),
+        item,
+        { id: newId, role: 'assistant', text: '' },
+        ...chatMessages.slice(aIdx + 1),
+      ]
+      assistantRef.id = newId
+    } else {
+      chatMessages.splice(aIdx, 0, item)
+      chatMessages = [...chatMessages]
+    }
+    void scrollToBottom()
+  }
+
+  function updateApproval(next: ChatApproval) {
+    const idx = chatMessages.findIndex((m) => m.approval?.requestId === next.requestId)
+    if (idx < 0) return
+    chatMessages[idx] = { ...chatMessages[idx], approval: next }
+    chatMessages = [...chatMessages]
+  }
+
   function handleChatEvent(event: ChatEvent, assistantRef: { id: string }, userRef?: { id: string }) {
     syncSessionId(event.session_id)
 
@@ -329,31 +365,7 @@
             toolDone: false,
             toolStartedAt: Date.now(),
           }
-          const aIdx = chatMessages.findIndex((m) => m.id === assistantRef.id)
-          if (aIdx >= 0) {
-            const placeholder = chatMessages[aIdx]
-            const hasContent =
-              (placeholder.text?.trim() || '').length > 0 ||
-              (placeholder.reasoningText?.trim() || '').length > 0
-            if (hasContent) {
-              // Freeze the current bubble, append tool after it, and start a
-              // new placeholder so subsequent text streams into a fresh bubble.
-              // This preserves the chronological "text -> tool -> text" order
-              // instead of collapsing all intermediate text into one final bubble.
-              const newId = `assistant-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
-              chatMessages = [
-                ...chatMessages.slice(0, aIdx + 1),
-                toolMsg,
-                { id: newId, role: 'assistant', text: '' },
-                ...chatMessages.slice(aIdx + 1),
-              ]
-              assistantRef.id = newId
-            } else {
-              chatMessages.splice(aIdx, 0, toolMsg)
-              chatMessages = [...chatMessages]
-            }
-            void scrollToBottom()
-          }
+          insertBeforeStreaming(toolMsg, assistantRef)
         } else if (event.phase === 'after_tool_call' && event.tool_call_id) {
           addUsedToolName(event.tool_name)
           const tIdx = chatMessages.findIndex((m) => m.toolCallId === event.tool_call_id)
@@ -454,6 +466,18 @@
         }
         break
       }
+      case 'permission_request': {
+        const approval = approvalFromEvent(event)
+        if (approval) {
+          insertBeforeStreaming({ id: `approval-${approval.requestId}`, role: 'approval', text: '', approval }, assistantRef)
+        }
+        break
+      }
+      case 'permission_resolved':
+        if (event.request_id) {
+          chatMessages = resolveApproval(chatMessages, event.request_id, event.outcome ?? '')
+        }
+        break
       case 'tool_output_line': {
         // Streamed stdout/stderr line from a running tool (currently exec).
         // Append to the matching tool message so the user sees progress
@@ -891,6 +915,7 @@
             token: mention.token,
           })),
           tier_recommendation: tierRecommendation,
+          interactive_permissions: true,
         },
         (event) => handleChatEvent(event, assistantRef, { id: userId }),
         ac.signal,
@@ -905,6 +930,9 @@
     } finally {
       abortController = null
       chatBusy = false
+      // A stream that ended without closing a prompt (aborted, or dropped)
+      // leaves nothing to answer it.
+      chatMessages = withdrawPendingApprovals(chatMessages)
       stopChatStatusTicker()
       void scrollToBottom()
     }
@@ -1313,14 +1341,18 @@
   {/if}
   <div class="chat-log" bind:this={chatLogEl} onscroll={handleScroll}>
     {#each chatMessages as msg}
-      <ChatMessageItem
-        message={msg}
-        {artifacts}
-        {onArtifactOpen}
-        onCopy={copyMessageText}
-        onForkMessage={handleForkMessage}
-        streamingStatus={msg.id === streamingAssistantId ? streamingStatus : null}
-      />
+      {#if msg.role === 'approval' && msg.approval}
+        <ChatApprovalCard approval={msg.approval} onChange={updateApproval} />
+      {:else}
+        <ChatMessageItem
+          message={msg}
+          {artifacts}
+          {onArtifactOpen}
+          onCopy={copyMessageText}
+          onForkMessage={handleForkMessage}
+          streamingStatus={msg.id === streamingAssistantId ? streamingStatus : null}
+        />
+      {/if}
       {#if turnCards.has(msg.id)}
         <TurnChangesCard turnId={turnCards.get(msg.id) ?? ''} />
       {/if}

@@ -1274,6 +1274,7 @@ func newChatAPIHandlerWithRuntimeConfig(
 	maxIters := resolveAgentMaxIterations(maxIterations)
 	chatLimiter := newInflightLimiter(tooling.APIMaxInflightChat, 2)
 	cancelRegistry := newChatCancelRegistry()
+	permissions := newChatPermissionBroker()
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/chat", func(w http.ResponseWriter, r *http.Request) {
 		handleChatRequest(w, r, chatHandlerDeps{
@@ -1289,7 +1290,11 @@ func newChatAPIHandlerWithRuntimeConfig(
 			tooling:        tooling,
 			extraTools:     extraTools,
 			cancelRegistry: cancelRegistry,
+			permissions:    permissions,
 		})
+	})
+	mux.HandleFunc("/v1/chat/permissions/", func(w http.ResponseWriter, r *http.Request) {
+		handleChatPermissionAnswer(w, r, permissions)
 	})
 	mux.HandleFunc("/v1/chat/cancel", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {

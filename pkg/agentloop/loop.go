@@ -124,6 +124,11 @@ type RunOptions struct {
 	// permission deny rules as a --settings file per turn. Other providers
 	// ignore it.
 	ClaudeCodePermissionDeny []string
+	// ClaudeCodePermissionHandler is forwarded to ChatOptions on every
+	// iteration so the claude-code-cli provider hands its permission prompts
+	// to the caller (see llm.ChatOptions.ClaudeCodePermissionHandler). Nil
+	// leaves the provider on its one-shot path. Other providers ignore it.
+	ClaudeCodePermissionHandler llm.ClaudeCodePermissionHandler
 }
 
 type ToolReplayRequest struct {
@@ -177,6 +182,8 @@ func (l *Loop) Run(ctx context.Context, initial []llm.ChatMessage, opts RunOptio
 			ClaudeCodePermissionMode: opts.ClaudeCodePermissionMode,
 			ClaudeCodeSkills:         opts.ClaudeCodeSkills,
 			ClaudeCodePermissionDeny: opts.ClaudeCodePermissionDeny,
+			// Set after the aligned block: gofmt would widen every key above.
+			ClaudeCodePermissionHandler: opts.ClaudeCodePermissionHandler,
 		})
 		if err != nil {
 			l.emit(ctx, Event{Type: EventLoopError, Iteration: i + 1, Err: err})

@@ -53,6 +53,14 @@ type (
 	Usage                    = pkgllm.Usage
 )
 
+// The claude-code-cli permission handler types sit apart so gofmt does not
+// realign the block above.
+type (
+	ClaudeCodePermissionDecision = pkgllm.ClaudeCodePermissionDecision
+	ClaudeCodePermissionHandler  = pkgllm.ClaudeCodePermissionHandler
+	ClaudeCodePermissionRequest  = pkgllm.ClaudeCodePermissionRequest
+)
+
 const (
 	CapCacheUsageReporting   = pkgllm.CapCacheUsageReporting
 	CapJSONSchemaResponse    = pkgllm.CapJSONSchemaResponse
