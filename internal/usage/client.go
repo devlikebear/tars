@@ -58,24 +58,35 @@ func (c *TrackedClient) Chat(ctx context.Context, messages []llm.ChatMessage, op
 	}
 	resp, err := c.inner.Chat(ctx, messages, opts)
 	if err != nil {
+		// A call can fail after spending tokens: a CLI provider cut off by
+		// a timeout or cancel has made its API requests. Record them.
+		if spent, ok := llm.PartialUsageFromError(err); ok && c.tracker != nil {
+			cost, pricingKnown, costSource := c.tracker.PartialCallCost(c.provider, c.model, spent)
+			c.record(ctx, spent.Usage, cost, pricingKnown, costSource, len(opts.Tools))
+		}
 		return llm.ChatResponse{}, err
 	}
 	if c.tracker == nil {
 		return resp, nil
 	}
 
-	meta := CallMetaFromContext(ctx)
 	cost, pricingKnown, costSource := c.tracker.CallCost(c.provider, c.model, resp.Usage)
+	c.record(ctx, resp.Usage, cost, pricingKnown, costSource, len(opts.Tools))
+	return resp, nil
+}
+
+func (c *TrackedClient) record(ctx context.Context, u llm.Usage, cost float64, pricingKnown bool, costSource string, toolCount int) {
+	meta := CallMetaFromContext(ctx)
 	_ = c.tracker.Record(Entry{
 		Provider:         c.provider,
 		Model:            c.model,
-		InputTokens:      resp.Usage.InputTokens,
-		OutputTokens:     resp.Usage.OutputTokens,
-		CachedTokens:     resp.Usage.CachedTokens,
-		CacheReadTokens:  resp.Usage.CacheReadTokens,
-		CacheWriteTokens: resp.Usage.CacheWriteTokens,
+		InputTokens:      u.InputTokens,
+		OutputTokens:     u.OutputTokens,
+		CachedTokens:     u.CachedTokens,
+		CacheReadTokens:  u.CacheReadTokens,
+		CacheWriteTokens: u.CacheWriteTokens,
 		EstimatedCostUSD: cost,
-		ToolCount:        len(opts.Tools),
+		ToolCount:        toolCount,
 		Source:           meta.Source,
 		SessionID:        meta.SessionID,
 		RunID:            meta.RunID,
@@ -87,8 +98,6 @@ func (c *TrackedClient) Chat(ctx context.Context, messages []llm.ChatMessage, op
 	if checkErr == nil && status.Exceeded && status.Mode == "soft" && c.notifier != nil {
 		c.notifier(ctx, fmt.Sprintf("usage limit exceeded (%s: %.6f >= %.6f USD)", status.Period, status.SpentUSD, status.LimitUSD))
 	}
-
-	return resp, nil
 }
 
 // Inner returns the wrapped llm.Client. Lets server-side wiring unwrap the

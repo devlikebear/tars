@@ -174,23 +174,33 @@ func (c *AntigravityCLIClient) Chat(ctx context.Context, messages []ChatMessage,
 
 	resp, parseErr := parseAntigravityCLIStream(stdout, opts)
 	waitErr := cmd.Wait()
-	if ctx.Err() == context.DeadlineExceeded {
-		return ChatResponse{}, newProviderError(antigravityCLIProviderLabel, "request", fmt.Errorf("cli timed out after %s", timeout))
-	}
-	if ctx.Err() != nil {
-		return ChatResponse{}, newProviderError(antigravityCLIProviderLabel, "request", fmt.Errorf("cli canceled: %w", ctx.Err()))
-	}
-	if parseErr != nil {
-		return ChatResponse{}, parseErr
-	}
-	if waitErr != nil {
-		errText := strings.TrimSpace(stderr.String())
-		if errText != "" {
-			return ChatResponse{}, newProviderError(antigravityCLIProviderLabel, "request", fmt.Errorf("cli failed: %w: %s", waitErr, errText))
-		}
-		return ChatResponse{}, newProviderError(antigravityCLIProviderLabel, "request", fmt.Errorf("cli failed: %w", waitErr))
+	if err := antigravityCLIRunError(ctx, timeout, stderr.String(), parseErr, waitErr); err != nil {
+		// Antigravity keeps every conversation it starts (it has no
+		// no-persistence mode), so a failed call still names one the next
+		// turn can resume.
+		return ChatResponse{}, withUpstreamSession(err, resp.SessionID)
 	}
 	return resp, nil
+}
+
+func antigravityCLIRunError(ctx context.Context, timeout time.Duration, stderr string, parseErr, waitErr error) error {
+	if ctx.Err() == context.DeadlineExceeded {
+		return newProviderError(antigravityCLIProviderLabel, "request", fmt.Errorf("cli timed out after %s", timeout))
+	}
+	if ctx.Err() != nil {
+		return newProviderError(antigravityCLIProviderLabel, "request", fmt.Errorf("cli canceled: %w", ctx.Err()))
+	}
+	if parseErr != nil {
+		return parseErr
+	}
+	if waitErr != nil {
+		errText := strings.TrimSpace(stderr)
+		if errText != "" {
+			return newProviderError(antigravityCLIProviderLabel, "request", fmt.Errorf("cli failed: %w: %s", waitErr, errText))
+		}
+		return newProviderError(antigravityCLIProviderLabel, "request", fmt.Errorf("cli failed: %w", waitErr))
+	}
+	return nil
 }
 
 // antigravityCLIArgSpec is the full set of inputs that shape one invocation.
@@ -397,6 +407,13 @@ func parseAntigravityCLIStream(stdout io.Reader, opts ChatOptions) (ChatResponse
 		sawResult      bool
 	)
 
+	// Every failure after the stream named its conversation reports it: the
+	// CLI saves conversations as it goes, so the next turn can resume one
+	// that timed out or broke off.
+	failed := func(err error) (ChatResponse, error) {
+		return ChatResponse{SessionID: conversationID}, withUpstreamSession(err, conversationID)
+	}
+
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" {
@@ -405,7 +422,7 @@ func parseAntigravityCLIStream(stdout io.Reader, opts ChatOptions) (ChatResponse
 
 		var envelope map[string]any
 		if err := json.Unmarshal([]byte(line), &envelope); err != nil {
-			return ChatResponse{}, newProviderError(antigravityCLIProviderLabel, "parse", fmt.Errorf("decode stream event: %w", err))
+			return failed(newProviderError(antigravityCLIProviderLabel, "parse", fmt.Errorf("decode stream event: %w", err)))
 		}
 
 		event := strings.TrimSpace(asString(envelope["event"]))
@@ -446,18 +463,18 @@ func parseAntigravityCLIStream(stdout io.Reader, opts ChatOptions) (ChatResponse
 					finalText,
 					fmt.Sprintf("%s request failed with status %q", antigravityCLIProviderLabel, stopReason),
 				)
-				return ChatResponse{}, newProviderError(antigravityCLIProviderLabel, "request", fmt.Errorf("%s", message))
+				return failed(newProviderError(antigravityCLIProviderLabel, "request", fmt.Errorf("%s", message)))
 			}
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		return ChatResponse{}, newProviderError(antigravityCLIProviderLabel, "stream", fmt.Errorf("read stream response: %w", err))
+		return failed(newProviderError(antigravityCLIProviderLabel, "stream", fmt.Errorf("read stream response: %w", err)))
 	}
 	// A stream that ends without a result event means the process died
 	// mid-turn. Returning the partial deltas would look like a complete
 	// answer, so fail instead and let the caller retry.
 	if !sawResult {
-		return ChatResponse{}, newProviderError(antigravityCLIProviderLabel, "stream", fmt.Errorf("stream ended without a result event"))
+		return failed(newProviderError(antigravityCLIProviderLabel, "stream", fmt.Errorf("stream ended without a result event")))
 	}
 
 	content := finalText

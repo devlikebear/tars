@@ -1,6 +1,7 @@
 package llm
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -68,4 +69,78 @@ func containsPDFDocumentBlock(messages []ChatMessage) bool {
 		}
 	}
 	return false
+}
+
+// UpstreamSessionError marks a failed call whose upstream session was
+// saved anyway — a CLI provider that timed out, was cancelled, or failed
+// after it had started and stored a resumable session. The caller can keep
+// SessionID and pass it back as ChatOptions.ResumeSessionID next turn, so
+// the work done before the failure is not lost. The message and error chain
+// are Err's.
+type UpstreamSessionError struct {
+	SessionID string
+	Err       error
+}
+
+func (e *UpstreamSessionError) Error() string { return e.Err.Error() }
+
+func (e *UpstreamSessionError) Unwrap() error { return e.Err }
+
+// UpstreamSessionIDFromError returns the resumable upstream session a failed
+// call left behind, or "" when there is none.
+func UpstreamSessionIDFromError(err error) string {
+	var sessErr *UpstreamSessionError
+	if errors.As(err, &sessErr) {
+		return strings.TrimSpace(sessErr.SessionID)
+	}
+	return ""
+}
+
+// withUpstreamSession attaches a saved session's id to err. Providers call
+// it only for sessions they know are on disk.
+func withUpstreamSession(err error, sessionID string) error {
+	sessionID = strings.TrimSpace(sessionID)
+	if err == nil || sessionID == "" || UpstreamSessionIDFromError(err) != "" {
+		return err
+	}
+	return &UpstreamSessionError{SessionID: sessionID, Err: err}
+}
+
+// PartialUsageError marks a failed call that had already spent tokens — a
+// CLI provider cut off by a timeout or cancel, or one whose run ended in an
+// error. Usage is what the call spent; CostUSD is set only when the
+// provider reported a cost itself. ByModel splits Usage by the upstream
+// model id that spent it (a CLI can call more than one model in a call), so
+// a caller can price the spend without a reported cost. Nil when the
+// provider named no model. The message and error chain are Err's.
+type PartialUsageError struct {
+	Usage   Usage
+	ByModel map[string]Usage
+	Err     error
+}
+
+func (e *PartialUsageError) Error() string { return e.Err.Error() }
+
+func (e *PartialUsageError) Unwrap() error { return e.Err }
+
+// PartialUsageFromError returns what a failed call spent, if its provider
+// reported it.
+func PartialUsageFromError(err error) (*PartialUsageError, bool) {
+	var usageErr *PartialUsageError
+	if errors.As(err, &usageErr) {
+		return usageErr, true
+	}
+	return nil, false
+}
+
+// withPartialUsage attaches what a failed call spent to err. Nothing spent,
+// nothing attached.
+func withPartialUsage(err error, spent Usage, byModel map[string]Usage) error {
+	if err == nil || spent == (Usage{}) {
+		return err
+	}
+	if _, ok := PartialUsageFromError(err); ok {
+		return err
+	}
+	return &PartialUsageError{Usage: spent, ByModel: byModel, Err: err}
 }

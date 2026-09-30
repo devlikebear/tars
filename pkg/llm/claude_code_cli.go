@@ -164,9 +164,22 @@ func (c *ClaudeCodeCLIClient) Chat(ctx context.Context, messages []ChatMessage, 
 		// The upstream session is gone: it was never saved, or Claude Code
 		// cleaned it up. Start a fresh one with the whole transcript so the
 		// turn still succeeds; the caller stores the new session ID.
-		return run("", buildClaudeCodeCLIPrompt(messages))
+		resumeID = ""
+		resp, err = run(resumeID, buildClaudeCodeCLIPrompt(messages))
 	}
-	return resp, err
+	if err != nil {
+		// The API requests made before the failure are spent either way.
+		err = withPartialUsage(err, resp.Usage, resp.spentByModel)
+		// The CLI saves a resumed or persisted session as it goes, so a
+		// call that timed out, was cancelled, or failed after the stream
+		// named its session leaves that session resumable. Hand the ID
+		// back on the error; a --no-session-persistence call saved nothing.
+		if resumeID != "" || opts.PersistSession {
+			err = withUpstreamSession(err, resp.SessionID)
+		}
+		return ChatResponse{}, err
+	}
+	return resp, nil
 }
 
 // errClaudeCodeSessionNotFound reports a --resume of a session the CLI has
@@ -267,30 +280,38 @@ func (c *ClaudeCodeCLIClient) runOnce(ctx context.Context, args []string, dir st
 }
 
 // finishClaudeCodeCLIRun turns a finished process into the turn's outcome,
-// ranking the failure causes so the most specific one is reported.
+// ranking the failure causes so the most specific one is reported. A failed
+// run keeps the stream's session ID (and nothing else) on the response.
 func finishClaudeCodeCLIRun(ctx context.Context, idle time.Duration, stderr string, resp ChatResponse, parseErr, waitErr error) (ChatResponse, error) {
+	if err := claudeCodeCLIRunError(ctx, idle, stderr, parseErr, waitErr); err != nil {
+		return ChatResponse{SessionID: resp.SessionID, Usage: resp.Usage, spentByModel: resp.spentByModel}, err
+	}
+	return resp, nil
+}
+
+func claudeCodeCLIRunError(ctx context.Context, idle time.Duration, stderr string, parseErr, waitErr error) error {
 	// An idle kill surfaces as a process/stream error; report it as a
 	// timeout so callers (and the retry policy) can tell it apart from a
 	// transient crash, and say it was silence, not total run time.
 	if errors.Is(context.Cause(ctx), context.DeadlineExceeded) {
-		return ChatResponse{}, newProviderError(claudeCodeCLIProviderLabel, "request", fmt.Errorf("cli timed out: no output for %s", idle))
+		return newProviderError(claudeCodeCLIProviderLabel, "request", fmt.Errorf("cli timed out: no output for %s", idle))
 	}
 	errText := strings.TrimSpace(stderr)
 	// Checked before the stream error: a missing session prints nothing to
 	// stdout, so the parser's complaint would hide the reason.
 	if waitErr != nil && strings.Contains(errText, "No conversation found") {
-		return ChatResponse{}, newProviderError(claudeCodeCLIProviderLabel, "request", fmt.Errorf("%w: %s", errClaudeCodeSessionNotFound, errText))
+		return newProviderError(claudeCodeCLIProviderLabel, "request", fmt.Errorf("%w: %s", errClaudeCodeSessionNotFound, errText))
 	}
 	if parseErr != nil {
-		return ChatResponse{}, parseErr
+		return parseErr
 	}
 	if waitErr != nil {
 		if errText != "" {
-			return ChatResponse{}, newProviderError(claudeCodeCLIProviderLabel, "request", fmt.Errorf("cli failed: %w: %s", waitErr, errText))
+			return newProviderError(claudeCodeCLIProviderLabel, "request", fmt.Errorf("cli failed: %w: %s", waitErr, errText))
 		}
-		return ChatResponse{}, newProviderError(claudeCodeCLIProviderLabel, "request", fmt.Errorf("cli failed: %w", waitErr))
+		return newProviderError(claudeCodeCLIProviderLabel, "request", fmt.Errorf("cli failed: %w", waitErr))
 	}
-	return resp, nil
+	return nil
 }
 
 // runClaudeCodeCLIWithRetry runs attempt once and retries a single time on a
@@ -402,18 +423,20 @@ func parseClaudeCodeCLIStream(stdout io.Reader, opts ChatOptions, hooks claudeCo
 		}
 
 		var payload map[string]any
+		// A failed stream still reports the session it started (SessionID
+		// only), which may be saved and resumable.
 		if err := json.Unmarshal([]byte(line), &payload); err != nil {
-			return ChatResponse{}, newProviderError(claudeCodeCLIProviderLabel, "parse", fmt.Errorf("decode stream event: %w", err))
+			return state.failed(), newProviderError(claudeCodeCLIProviderLabel, "parse", fmt.Errorf("decode stream event: %w", err))
 		}
 		if hooks.event != nil {
 			hooks.event(payload)
 		}
 		if err := state.apply(payload); err != nil {
-			return ChatResponse{}, err
+			return state.failed(), err
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		return ChatResponse{}, newProviderError(claudeCodeCLIProviderLabel, "stream", fmt.Errorf("read stream response: %w", err))
+		return state.failed(), newProviderError(claudeCodeCLIProviderLabel, "stream", fmt.Errorf("read stream response: %w", err))
 	}
 	return state.response(), nil
 }
@@ -426,12 +449,18 @@ type claudeCodeStreamState struct {
 	toolCalls     []ToolCall
 	// openTools holds started calls by tool_use id until their tool_result
 	// arrives, so the result can be reported with the call it belongs to.
-	openTools  map[string]ToolCall
-	resultText string
-	usage      Usage
-	stopReason string
-	sessionID  string
-	turns      int
+	openTools map[string]ToolCall
+	// messages holds each API response's usage by message.id: a response
+	// arrives as several assistant events repeating its id and usage, so it
+	// is counted once. Only used when the stream ends without a result.
+	messages     map[string]claudeCodeMessageSpend
+	messageOrder []string
+	sawResult    bool
+	resultText   string
+	usage        Usage
+	stopReason   string
+	sessionID    string
+	turns        int
 }
 
 func (s *claudeCodeStreamState) apply(payload map[string]any) error {
@@ -451,6 +480,7 @@ func (s *claudeCodeStreamState) apply(payload map[string]any) error {
 }
 
 func (s *claudeCodeStreamState) applyAssistant(payload map[string]any) {
+	s.noteMessageSpend(payload)
 	text, calls := extractClaudeCodeAssistantBlocks(payload)
 	s.toolCalls = append(s.toolCalls, calls...)
 	// Text first: a message's words precede the tools it goes on to call.
@@ -501,7 +531,92 @@ func (s *claudeCodeStreamState) applyUser(payload map[string]any) {
 	}
 }
 
+type claudeCodeMessageSpend struct {
+	model string
+	usage Usage
+}
+
+// noteMessageSpend records an assistant event's message.usage under its
+// message.id. Repeats of an id keep the larger count of each field, since a
+// later block of the same response may report more output tokens.
+func (s *claudeCodeStreamState) noteMessageSpend(payload map[string]any) {
+	message, ok := payload["message"].(map[string]any)
+	if !ok {
+		return
+	}
+	id := strings.TrimSpace(asString(message["id"]))
+	if id == "" {
+		return
+	}
+	if _, ok := message["usage"].(map[string]any); !ok {
+		return
+	}
+	usage := extractClaudeCodeUsage(message["usage"])
+	if s.messages == nil {
+		s.messages = map[string]claudeCodeMessageSpend{}
+	}
+	prev, seen := s.messages[id]
+	if !seen {
+		s.messageOrder = append(s.messageOrder, id)
+	}
+	s.messages[id] = claudeCodeMessageSpend{
+		model: firstNonEmptyTrimmed(asString(message["model"]), prev.model),
+		usage: maxUsage(prev.usage, usage),
+	}
+}
+
+func maxUsage(a, b Usage) Usage {
+	return Usage{
+		InputTokens:      max(a.InputTokens, b.InputTokens),
+		OutputTokens:     max(a.OutputTokens, b.OutputTokens),
+		CachedTokens:     max(a.CachedTokens, b.CachedTokens),
+		CacheReadTokens:  max(a.CacheReadTokens, b.CacheReadTokens),
+		CacheWriteTokens: max(a.CacheWriteTokens, b.CacheWriteTokens),
+	}
+}
+
+func addUsage(a, b Usage) Usage {
+	return Usage{
+		InputTokens:      a.InputTokens + b.InputTokens,
+		OutputTokens:     a.OutputTokens + b.OutputTokens,
+		CachedTokens:     a.CachedTokens + b.CachedTokens,
+		CacheReadTokens:  a.CacheReadTokens + b.CacheReadTokens,
+		CacheWriteTokens: a.CacheWriteTokens + b.CacheWriteTokens,
+		CostUSD:          a.CostUSD + b.CostUSD,
+	}
+}
+
+// spent is what the stream's API requests used. The result's totals (and
+// cost) when it came; otherwise the assistant events' usage, each response
+// once, split by model for pricing.
+func (s *claudeCodeStreamState) spent() (Usage, map[string]Usage) {
+	if s.sawResult {
+		return s.usage, nil
+	}
+	var total Usage
+	var byModel map[string]Usage
+	for _, id := range s.messageOrder {
+		spend := s.messages[id]
+		total = addUsage(total, spend.usage)
+		if spend.model == "" {
+			continue
+		}
+		if byModel == nil {
+			byModel = map[string]Usage{}
+		}
+		byModel[spend.model] = addUsage(byModel[spend.model], spend.usage)
+	}
+	return total, byModel
+}
+
+// failed is the response a failed stream leaves: its session and spend.
+func (s *claudeCodeStreamState) failed() ChatResponse {
+	usage, byModel := s.spent()
+	return ChatResponse{SessionID: s.sessionID, Usage: usage, spentByModel: byModel}
+}
+
 func (s *claudeCodeStreamState) applyResult(payload map[string]any) error {
+	s.sawResult = true
 	s.stopReason = strings.TrimSpace(asString(payload["stop_reason"]))
 	s.usage = extractClaudeCodeUsage(payload["usage"])
 	s.usage.CostUSD = asFloat(payload["total_cost_usd"])
@@ -519,6 +634,9 @@ func (s *claudeCodeStreamState) response() ChatResponse {
 	if content == "" {
 		content = s.resultText
 	}
+	// Without a result (the process was killed) the result's usage is
+	// unknown; the assistant events' is what the caller gets.
+	usage, byModel := s.spent()
 	return ChatResponse{
 		Message: ChatMessage{
 			Role: "assistant",
@@ -529,7 +647,8 @@ func (s *claudeCodeStreamState) response() ChatResponse {
 			Content:   content,
 			ToolCalls: nil,
 		},
-		Usage:                 s.usage,
+		Usage:                 usage,
+		spentByModel:          byModel,
 		StopReason:            s.stopReason,
 		Turns:                 s.turns,
 		SessionID:             s.sessionID,
