@@ -9,10 +9,22 @@
 // two new files). It keeps no state, so once the tool results come back it
 // answers "Wrote N files." Specs seed base.txt with lines "line 1" to
 // "line 20" (see e2e/changes.spec.ts).
+//
+// A message containing [e2e:narrate] makes it talk between its tool calls:
+// it streams "Writing the note first." and then calls write_file once
+// (notes.md), and once the result comes back answers "All written." — a
+// turn that reads text, tool, text (see e2e/turn-order.spec.ts).
 
 import { createServer } from 'node:http'
 
 const WRITE3 = '[e2e:write3]'
+const NARRATE = '[e2e:narrate]'
+const narrateText = 'Writing the note first.'
+const narrateCalls = [{
+  id: 'call_e2e_narrate',
+  type: 'function',
+  function: { name: 'write_file', arguments: JSON.stringify({ path: 'notes.md', content: '# Notes\n' }) },
+}]
 
 function numberedLines(edit = {}) {
   return Array.from({ length: 20 }, (_, i) => edit[i + 1] ?? `line ${i + 1}`).join('\n') + '\n'
@@ -101,7 +113,12 @@ async function handleCompletion(req, res) {
     sendToolCalls(res, model, body.stream, write3Calls)
     return
   }
-  const reply = toolResults > 0 ? `Wrote ${toolResults} files.` : replyFor(body)
+  const narrate = lastUserText(messages).includes(NARRATE)
+  if (toolResults === 0 && narrate && offersTool(body, 'write_file')) {
+    sendToolCalls(res, model, body.stream, narrateCalls, narrateText)
+    return
+  }
+  const reply = toolResults > 0 ? (narrate ? 'All written.' : `Wrote ${toolResults} files.`) : replyFor(body)
 
   if (!body.stream) {
     res.writeHead(200, { 'content-type': 'application/json' })
@@ -129,7 +146,9 @@ async function handleCompletion(req, res) {
   res.end()
 }
 
-function sendToolCalls(res, model, stream, calls) {
+// text, when given, is said before the calls, as a model explains what it
+// is about to do.
+function sendToolCalls(res, model, stream, calls, text = null) {
   if (!stream) {
     res.writeHead(200, { 'content-type': 'application/json' })
     res.end(JSON.stringify({
@@ -137,13 +156,14 @@ function sendToolCalls(res, model, stream, calls) {
       object: 'chat.completion',
       created: 0,
       model,
-      choices: [{ index: 0, message: { role: 'assistant', content: null, tool_calls: calls }, finish_reason: 'tool_calls' }],
+      choices: [{ index: 0, message: { role: 'assistant', content: text, tool_calls: calls }, finish_reason: 'tool_calls' }],
       usage,
     }))
     return
   }
   res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive' })
   res.write(chunk(model, { role: 'assistant', content: null }))
+  if (text) res.write(chunk(model, { content: text }))
   calls.forEach((call, index) => {
     res.write(chunk(model, { tool_calls: [{ index, ...call }] }))
   })

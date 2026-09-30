@@ -37,6 +37,7 @@
   import ChatApprovalCard from './ChatApprovalCard.svelte'
   import ChatUnattendedApprovals from './ChatUnattendedApprovals.svelte'
   import ChatMessageItem from './ChatMessageItem.svelte'
+  import { transcriptChatMessages } from '../lib/transcriptMessages'
   import TurnChangesCard from './TurnChangesCard.svelte'
   import SlashPopover from './SlashPopover.svelte'
   import { messageQueue } from '../lib/stores/messageQueue.svelte'
@@ -1482,32 +1483,7 @@
     const rebuilt: ChatMessage[] = [
       { id: 'system-init', role: 'system', text: $t.chat.systemInit.session(targetSessionId.slice(0, 8)) },
     ]
-    const history = await getSessionHistory(targetSessionId)
-    for (const msg of history) {
-      if (msg.role === 'system' && (msg.content.startsWith('[HEARTBEAT]') || msg.content.startsWith('[COMPACTION SUMMARY]'))) {
-        continue
-      }
-      if (msg.role === 'tool') {
-        rebuilt.push({
-          id: `tool-${msg.tool_call_id || Date.now()}`,
-          role: 'tool',
-          text: '',
-          toolName: msg.tool_name,
-          toolCallId: msg.tool_call_id,
-          toolArgs: msg.tool_args,
-          toolResult: msg.content,
-          toolDone: true,
-          toolIsError: msg.tool_is_error,
-        })
-      } else {
-        rebuilt.push({
-          id: msg.id || `hist-${rebuilt.length}`,
-          sourceMessageId: msg.id,
-          role: msg.role as ChatMessage['role'],
-          text: msg.content,
-        })
-      }
-    }
+    rebuilt.push(...transcriptChatMessages(await getSessionHistory(targetSessionId)))
     chatMessages = rebuilt
     void changes.load(targetSessionId)
     artifacts = extractArtifactsFromHistory(chatMessages, targetSessionId)
