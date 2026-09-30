@@ -5,9 +5,13 @@
 
 import { expect, test } from '@playwright/test'
 
-const words = 'which session needs me first?'
+// The pet floats and nods; reduced motion keeps its button still enough for
+// Playwright's stability check, however earlier specs made it react.
+test.use({ contextOptions: { reducedMotion: 'reduce' } })
 
-test('a companion question keeps its words as the message and the title', async ({ page }) => {
+test('a companion question keeps its words as the message and the title', async ({ page }, testInfo) => {
+  // A per-run suffix keeps --repeat-each runs from finding each other's sessions.
+  const words = `which session needs me first? (run ${testInfo.repeatEachIndex}-${Date.now().toString(36)})`
   await page.goto('/console')
   await page.getByRole('button', { name: 'Talk to TARS companion' }).click()
   await page.getByRole('textbox', { name: 'Ask TARS companion' }).fill(words)

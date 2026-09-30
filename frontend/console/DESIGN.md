@@ -466,6 +466,10 @@ Three corner radii: `sm` (2px), `md` (4px), `lg` (6px). Buttons, inputs, and bad
 
 Rationale: generous rounding reads as approachable consumer software. Tight 2–6px corners read as a precise tool and keep dense rows aligned.
 
+## Motion
+
+Motion is decoration, never the only signal. Every repeating or decorative animation (floating, nodding, blinking, pulses, enter animations) stops under `prefers-reduced-motion: reduce`; the state it hints at must still read from text, colour or position. When a state class adds an animation (e.g. `.companion-reacting`), the reduced-motion block must name that selector too — a bare base selector loses on specificity. `tests/companionPet.test.ts` checks this for the companion pet.
+
 ## Components
 
 ### Buttons

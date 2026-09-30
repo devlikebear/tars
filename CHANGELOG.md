@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.40.3] - 2026-09-30
+
+### Fixed
+
+- **반응 중인 컴패니언 펫이 동작 줄이기 설정을 무시하던 문제** — 펫 버튼의 떠다니기 애니메이션은 `prefers-reduced-motion: reduce`에서 꺼졌지만, 알림에 반응할 때의 끄덕임+떠다니기(`.companion-reacting .companion-button`)는 선택자가 더 구체적이라 설정을 덮어쓰고 계속 움직였다. 이제 동작 줄이기에서는 반응 애니메이션도 멈춘다. 같은 원인으로 `e2e/companion-handoff.spec.ts`가 CI에서 "element is not stable"로 가끔 실패하던 문제도, 스펙을 reduced motion으로 돌리고 반복 실행 간 세션이 겹치지 않게 문구를 실행마다 다르게 해서 해결했다. DESIGN.md에 모션 원칙을 추가했다.
+
 ## [0.40.2] - 2026-09-30
 
 ### Fixed
