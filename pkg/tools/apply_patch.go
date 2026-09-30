@@ -75,6 +75,10 @@ func NewApplyPatchTool(workspaceDir string, enabled bool) Tool {
 			if input.DryRun {
 				args = append(args, "--dry-run")
 			}
+			var before []fileSnapshot
+			if !input.DryRun {
+				before = snapshotPatchFiles(workspaceDir, files)
+			}
 			cmd := exec.CommandContext(ctx, patchPath, args...)
 			cmd.Dir = workspaceDir
 			cmd.Stdin = strings.NewReader(input.Patch)
@@ -92,11 +96,43 @@ func NewApplyPatchTool(workspaceDir string, enabled bool) Tool {
 			}
 			if err != nil {
 				resp.Message = fmt.Sprintf("patch apply failed: %v", err)
-				return JSONTextResult(resp, true), nil
 			}
-			return JSONTextResult(resp, false), nil
+			// A failed patch may still have changed some files (--batch
+			// applies the hunks it can), so report whatever is on disk.
+			return reportPatchChanges(JSONTextResult(resp, err != nil), workspaceDir, files, before), nil
 		},
 	}
+}
+
+// snapshotPatchFile reads a file the patch names, for its change report. The
+// name has passed the lexical checks above, but a symlink inside the
+// workspace could still lead outside it, so the path is resolved the way the
+// write tools resolve theirs; a path that escapes reports nothing rather
+// than reading a file the tools may not touch.
+func snapshotPatchFile(workspaceDir, name string) fileSnapshot {
+	absPath, err := resolveWorkspaceWritePath(workspaceDir, filepath.FromSlash(name))
+	if err != nil {
+		return fileSnapshot{}
+	}
+	return snapshotFile(absPath)
+}
+
+// snapshotPatchFiles reads every file the patch names before it runs.
+func snapshotPatchFiles(workspaceDir string, files []string) []fileSnapshot {
+	before := make([]fileSnapshot, len(files))
+	for i, f := range files {
+		before[i] = snapshotPatchFile(workspaceDir, f)
+	}
+	return before
+}
+
+// reportPatchChanges attaches what the patch did to each file snapshotted
+// in before; a dry run has no snapshots and reports nothing.
+func reportPatchChanges(result Result, workspaceDir string, files []string, before []fileSnapshot) Result {
+	for i, f := range before {
+		result = withFileChange(result, filepath.Clean(files[i]), f, snapshotPatchFile(workspaceDir, files[i]))
+	}
+	return result
 }
 
 func parsePatchFiles(patch string) ([]string, error) {

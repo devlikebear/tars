@@ -29,6 +29,7 @@
     type SlashCommandCandidate,
   } from '../lib/slash'
   import type { ChatMessage } from '../lib/chatMessages'
+  import { fileChangeFromEvent, mergeToolFileChange } from '../lib/toolFileChanges'
   import { approvalFromEvent, resolveApproval, withdrawPendingApprovals, type ChatApproval } from '../lib/chatApproval'
   import ChatApprovalCard from './ChatApprovalCard.svelte'
   import ChatUnattendedApprovals from './ChatUnattendedApprovals.svelte'
@@ -524,6 +525,22 @@
           }
           chatMessages = [...chatMessages]
           void scrollToBottom()
+        }
+        break
+      }
+      case 'file_change': {
+        // A native provider's edit tool changed a file (#1032): attach it to
+        // the tool call. CLI providers never send this; their turn card stays.
+        const change = fileChangeFromEvent(event)
+        const callId = event.tool_call_id
+        if (!change || !callId) break
+        const idx = chatMessages.findIndex((m) => m.toolCallId === callId)
+        if (idx >= 0) {
+          chatMessages[idx] = {
+            ...chatMessages[idx],
+            toolFileChanges: mergeToolFileChange(chatMessages[idx].toolFileChanges, change),
+          }
+          chatMessages = [...chatMessages]
         }
         break
       }

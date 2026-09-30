@@ -502,6 +502,10 @@ Sits in the status bar under the composer (it lived in the session header until 
 
 Sits under the last message of each turn that changed files, in the thread column (not inside a message bubble, since the Korean E2E reads the card's chrome). It is a `surface` box with a `border-subtle` outline and `radius-md`. Collapsed, it is one line: a caret and the mono `text-xs` summary `3 files +6 −2`, plus a ghost `Open in Changes` button on the right. Expanded, it lists each file as a header row (mono path, status word in `text-tertiary`, `+n` in `success`, `−n` in `error`) above a unified `DiffView`. The body scrolls past 480px. A turn whose recording was skipped shows one dim mono line instead (`± Not recorded: too many files changed`), and a turn that changed nothing shows no card at all. The card is keyed by the turn's user-message ID, so it returns when history reloads.
 
+### Tool call changes (chat thread, #1032)
+
+On native providers, a file tool's card (`write_file`, `edit_file`, `apply_patch`) learns what the call changed as it finishes, from the stream's `file_change` event. The collapsed card's header gains a mono `text-xs` `+n −m` (`success` / `error`) between the call preview and the elapsed time. Expanded, a `ToolCallChanges` block sits between the output and the result: the dim mono label `2 files changed`, then one foldable row per file laid out like the turn change card's file header (caret, mono path, status word in `text-tertiary`, `+n −m`), opening to the same unified `DiffView`, which scrolls past 360px. Binary and over-long files show the change card's dim notes instead of a diff. CLI providers send no event, so their cards stay as they were and only the turn change card shows their edits; a reloaded history shows tool cards without these rows, the turn card covering the same files.
+
 The chat log is one `minmax(0, 1fr)` grid column, so a wide diff line or tool call scrolls or truncates inside its own box instead of pushing the whole log sideways.
 
 ### Tool approval card (chat thread, #970)

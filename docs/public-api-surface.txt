@@ -27,6 +27,7 @@ pkg/agentloop field Event.SessionID
 pkg/agentloop field Event.ToolArgs
 pkg/agentloop field Event.ToolCallID
 pkg/agentloop field Event.ToolEffectClass
+pkg/agentloop field Event.ToolFileChanges
 pkg/agentloop field Event.ToolIdempotencyKeyArgument
 pkg/agentloop field Event.ToolIsError
 pkg/agentloop field Event.ToolName
@@ -1494,6 +1495,9 @@ pkg/tarsclient type UsageSignalSummary
 pkg/tarsclient type UsageSummary
 pkg/tarsclient type UsageSummaryRow
 pkg/tarsclient type WhoamiInfo
+pkg/tools const FileChangeCreate
+pkg/tools const FileChangeDelete
+pkg/tools const FileChangeModify
 pkg/tools const RegistryScopeAny
 pkg/tools const RegistryScopePulse
 pkg/tools const RegistryScopeReflection
@@ -1511,6 +1515,18 @@ pkg/tools field ContentBlock.Text
 pkg/tools field ContentBlock.Type
 pkg/tools field ExecToolOptions.MaxBackgroundTimeoutMS
 pkg/tools field ExecToolOptions.MaxTimeoutMS
+pkg/tools field FileChange.Additions
+pkg/tools field FileChange.Binary
+pkg/tools field FileChange.Deletions
+pkg/tools field FileChange.Hunks
+pkg/tools field FileChange.Op
+pkg/tools field FileChange.Path
+pkg/tools field FileChange.Truncated
+pkg/tools field FileChangeHunk.Lines
+pkg/tools field FileChangeHunk.NewLines
+pkg/tools field FileChangeHunk.NewStart
+pkg/tools field FileChangeHunk.OldLines
+pkg/tools field FileChangeHunk.OldStart
 pkg/tools field PathPolicy.AllowedDirs
 pkg/tools field PathPolicy.PrimaryDir
 pkg/tools field Policy.AllowGroups
@@ -1533,6 +1549,7 @@ pkg/tools field ProcessSnapshot.Stderr
 pkg/tools field ProcessSnapshot.Stdout
 pkg/tools field ProcessSnapshot.WaitTimedOut
 pkg/tools field Result.Content
+pkg/tools field Result.FileChanges
 pkg/tools field Result.IsError
 pkg/tools field SessionStatus.HistoryMessages
 pkg/tools field SessionStatus.SessionID
@@ -1646,6 +1663,9 @@ pkg/tools method TranscriptSource.ReadTranscript
 pkg/tools type BlockedToolError
 pkg/tools type ContentBlock
 pkg/tools type ExecToolOptions
+pkg/tools type FileChange
+pkg/tools type FileChangeHunk
+pkg/tools type FileChangeOp
 pkg/tools type LineEmitter
 pkg/tools type PathPolicy
 pkg/tools type Policy

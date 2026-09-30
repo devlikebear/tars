@@ -1,3 +1,5 @@
+import type { ToolFileChangeHunk } from './toolFileChanges'
+
 // --- Pulse (system watchdog) ---
 
 export type PulseDecision = {
@@ -861,6 +863,13 @@ export type ChatEvent = {
   // tool_output_line — streamed stdout/stderr lines from running tools
   // (currently emitted by exec). One event per line.
   stream?: string
+  // file_change: one file a TARS-run tool changed (#1032), keyed by
+  // tool_call_id; additions/deletions are shared with checkpoint.
+  path?: string
+  op?: string
+  binary?: boolean
+  truncated?: boolean
+  hunks?: ToolFileChangeHunk[]
   skill_name?: string
   skill_reason?: string
   // context_info fields

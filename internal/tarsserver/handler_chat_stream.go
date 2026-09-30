@@ -10,6 +10,7 @@ import (
 	"github.com/devlikebear/tars/internal/checkpoint"
 	"github.com/devlikebear/tars/internal/llm"
 	"github.com/devlikebear/tars/internal/session"
+	"github.com/devlikebear/tars/internal/tool"
 	"github.com/rs/zerolog"
 )
 
@@ -165,6 +166,35 @@ func (s *chatStreamWriter) toolOutputLine(toolCallID, stream, text string) {
 // the stream writer directly into the agent loop via context.
 func (s *chatStreamWriter) EmitToolLine(toolCallID, stream, text string) {
 	s.toolOutputLine(toolCallID, stream, text)
+}
+
+// fileChange reports one file a TARS-run tool changed (#1032), as soon as
+// the call finishes, so the console can put the diff on the tool call. Only
+// native providers send it: CLI providers run their own tools, and their
+// changes show in the turn's checkpoint card alone.
+func (s *chatStreamWriter) fileChange(toolCallID string, change tool.FileChange) {
+	if s == nil || strings.TrimSpace(change.Path) == "" {
+		return
+	}
+	payload := map[string]any{
+		"type":         "file_change",
+		"session_id":   s.sessionID,
+		"tool_call_id": strings.TrimSpace(toolCallID),
+		"path":         change.Path,
+		"op":           string(change.Op),
+		"additions":    change.Additions,
+		"deletions":    change.Deletions,
+	}
+	if change.Binary {
+		payload["binary"] = true
+	}
+	if change.Truncated {
+		payload["truncated"] = true
+	}
+	if len(change.Hunks) > 0 {
+		payload["hunks"] = change.Hunks
+	}
+	s.send(payload)
 }
 
 func (s *chatStreamWriter) memoryRecall(count int) {

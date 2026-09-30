@@ -46,6 +46,9 @@ func executeChatLoop(
 		Source: "chat", SessionID: state.sessionID, CapabilityVersionIDs: state.capabilityVersionIDs,
 	})
 	afterToolHook := func(_ context.Context, evt agent.Event) {
+		for _, change := range evt.ToolFileChanges {
+			stream.fileChange(evt.ToolCallID, change)
+		}
 		if evt.ToolName != "tasks" {
 			return
 		}

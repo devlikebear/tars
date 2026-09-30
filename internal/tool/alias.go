@@ -15,6 +15,9 @@ type (
 	BlockedToolError   = pkgtools.BlockedToolError
 	ContentBlock       = pkgtools.ContentBlock
 	ExecToolOptions    = pkgtools.ExecToolOptions
+	FileChange         = pkgtools.FileChange
+	FileChangeHunk     = pkgtools.FileChangeHunk
+	FileChangeOp       = pkgtools.FileChangeOp
 	LineEmitter        = pkgtools.LineEmitter
 	PathPolicy         = pkgtools.PathPolicy
 	Policy             = pkgtools.Policy
