@@ -627,7 +627,13 @@ func (s *shell) apply(st tray.Status, sessions []activity.Session) {
 		return
 	}
 	s.notifyQueued(st.Snapshot.Queued)
-	added, removed := s.approvals.Update(st.Snapshot.Pending)
+	s.notifyPending(st.Snapshot.Pending)
+}
+
+// notifyPending sends one notification per new chat question and withdraws
+// those answered elsewhere.
+func (s *shell) notifyPending(pending []activity.Approval) {
+	added, removed := s.approvals.Update(pending)
 	for _, a := range added {
 		title, subtitle, body := tray.NotificationText(a)
 		err := s.notifier.SendNotificationWithActions(notifications.NotificationOptions{
