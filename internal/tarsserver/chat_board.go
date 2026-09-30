@@ -4,7 +4,6 @@ import (
 	"context"
 	"net/http"
 	"os/exec"
-	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -186,10 +185,9 @@ func (b *sessionBoard) workingFolder(s session.Session) string {
 	if cwd == "" {
 		return ""
 	}
-	artifacts := filepath.Join(b.sessions.WorkspaceDir(), "artifacts", s.ID)
 	// The store saves cwd with symlinks resolved; the workspace path keeps
-	// its configured spelling.
-	if sameDir(cwd, artifacts) {
+	// its configured spelling, which sameDir sees through.
+	if sessionArtifactFolder(b.sessions, s, cwd) {
 		return ""
 	}
 	return cwd

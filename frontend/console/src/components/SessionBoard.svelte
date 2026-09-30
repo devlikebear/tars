@@ -14,6 +14,7 @@
     type BoardSort,
   } from '../lib/sessionBoard'
   import { sessionActivity } from '../lib/stores/sessionActivity'
+  import NewChatFolderMenu from './NewChatFolderMenu.svelte'
 
   let { onNavigate, onNewChat }: { onNavigate: (path: string) => void; onNewChat: () => void } = $props()
 
@@ -157,6 +158,7 @@
         {/if}
       {/if}
       <button class="btn btn-primary btn-sm" onclick={onNewChat}>{$t.sessionBoard.newChat}</button>
+      <NewChatFolderMenu buttonClass="btn-primary" onCreated={(session) => onNavigate(`/console/chat/${encodeURIComponent(session.id)}`)} />
     </div>
   </div>
 
@@ -268,6 +270,7 @@
   }
 
   .board-actions {
+    position: relative;
     display: flex;
     align-items: center;
     gap: var(--space-2);

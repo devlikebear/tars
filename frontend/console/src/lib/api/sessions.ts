@@ -1,4 +1,5 @@
 import { requestJSON } from './client.ts'
+import type { NewChatOptions } from '../newChat.ts'
 import type {
   ChatTier,
   ForkPromotionListResponse,
@@ -30,12 +31,35 @@ export async function listSessions(includeHidden = false, archivedMode: SessionA
   return requestJSON<Session[]>(`/v1/admin/sessions${query ? `?${query}` : ''}`)
 }
 
-export async function createSession(title?: string): Promise<Session> {
+// With options.cwd the session starts working in that folder, and with
+// options.isolate in a worktree of its own too, in one call (lib/newChat.ts).
+export async function createSession(title?: string, options: NewChatOptions = {}): Promise<Session> {
   return requestJSON<Session>('/v1/admin/sessions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ title: title || 'New Chat' }),
+    body: JSON.stringify({ title: title || 'New Chat', ...options }),
   })
+}
+
+// A folder a new chat can start in. repo_root is set inside a git
+// repository, the only place a chat can be isolated.
+export interface SessionFolder {
+  path: string
+  repo_root?: string
+  last_used_at?: string
+}
+
+// Folders recent sessions worked in, most recent first.
+export async function listRecentSessionFolders(): Promise<SessionFolder[]> {
+  const resp = await requestJSON<{ recent: SessionFolder[] }>('/v1/admin/session-folders')
+  return resp.recent ?? []
+}
+
+// Checks a typed folder the way creating the session will (absolute or ~,
+// exists, is a folder) and finds its repository.
+export async function checkSessionFolder(path: string): Promise<SessionFolder> {
+  const resp = await requestJSON<{ folder: SessionFolder }>(`/v1/admin/session-folders?path=${encodeURIComponent(path)}`)
+  return resp.folder
 }
 
 export async function getSession(sessionId: string): Promise<Session> {

@@ -69,6 +69,7 @@ type apiRouteHandlers struct {
 	sessions        http.Handler
 	checkpoints     http.Handler
 	worktrees       http.Handler
+	sessionFolders  http.Handler
 	permissionMode  http.Handler
 	work            http.Handler
 	workers         http.Handler
@@ -704,13 +705,14 @@ func buildAPIMux(
 		logger,
 	)
 	registerAPIRoutes(mux, apiRouteHandlers{
-		pulse:       pulseSetup.Handler,
-		initiative:  initiativeSetup.Handler,
-		reflection:  reflectionSetup.Handler,
-		chat:        chatHandler,
-		sessions:    withWorktreeRetire(sessionHandler, sessionWorktrees),
-		worktrees:   newSessionWorktreeHandler(sessionWorktrees),
-		checkpoints: newCheckpointAPIHandler(checkpointStore, sessionStore, logger),
+		pulse:          pulseSetup.Handler,
+		initiative:     initiativeSetup.Handler,
+		reflection:     reflectionSetup.Handler,
+		chat:           chatHandler,
+		sessions:       withWorktreeRetire(withSessionCreateIn(sessionHandler, sessionWorktrees), sessionWorktrees),
+		worktrees:      newSessionWorktreeHandler(sessionWorktrees),
+		sessionFolders: newSessionFoldersHandler(sessionWorktrees),
+		checkpoints:    newCheckpointAPIHandler(checkpointStore, sessionStore, logger),
 		permissionMode: newPermissionModeHandler(sessionStore,
 			chatPermissionModeResolver{overrides: overrideService, configFlag: strings.TrimSpace(cfg.ClaudeCodeCLIPermissionMode)},
 			auditTo(opsManager)),
@@ -825,6 +827,9 @@ func registerAPIRoutes(mux *http.ServeMux, handlers apiRouteHandlers) {
 	mux.Handle("/v1/admin/sessions/", handlers.sessions)
 	if handlers.worktrees != nil {
 		mux.Handle("/v1/admin/sessions/{id}/worktree", handlers.worktrees)
+	}
+	if handlers.sessionFolders != nil {
+		mux.Handle("/v1/admin/session-folders", handlers.sessionFolders)
 	}
 	if handlers.permissionMode != nil {
 		mux.Handle("/v1/admin/sessions/{id}/permission-mode", handlers.permissionMode)

@@ -139,7 +139,7 @@ func main() {
 		s.handleLink(e.Context().URL())
 	})
 	app.Event.OnApplicationEvent(events.Common.ApplicationOpenedWithFile, func(e *application.ApplicationEvent) {
-		s.proposeChatIn(e.Context().Filename())
+		s.proposeChatIn(e.Context().Filename(), false)
 	})
 	app.Event.OnApplicationEvent(events.Mac.ApplicationShouldHandleReopen, func(*application.ApplicationEvent) {
 		s.showConsole("")

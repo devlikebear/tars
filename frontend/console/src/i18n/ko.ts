@@ -8,6 +8,7 @@ import { gitInspectorKo } from './sections/gitInspector.ts'
 import { changesKo } from './sections/changes.ts'
 import { sideSessionKo } from './sections/sideSession.ts'
 import { sessionWorktreeKo } from './sections/sessionWorktree.ts'
+import { newChatFolderKo } from './sections/newChatFolder.ts'
 import { chatApprovalKo } from './sections/chatApproval.ts'
 import { sessionBoardKo } from './sections/sessionBoard.ts'
 
@@ -1665,6 +1666,7 @@ export const ko = {
   changes: changesKo,
   sideSession: sideSessionKo,
   sessionWorktree: sessionWorktreeKo,
+  newChatFolder: newChatFolderKo,
   chatApproval: chatApprovalKo,
   sessionBoard: sessionBoardKo,
 

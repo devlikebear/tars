@@ -705,6 +705,9 @@ export type Session = {
   // The CLI provider's own session that turns resume (claude-code-cli,
   // antigravity-cli); absent until one has been captured.
   upstream_session_id?: string
+  // The folders the session may work in and the active one.
+  work_dirs?: string[]
+  current_dir?: string
   created_at: string
   updated_at: string
 }

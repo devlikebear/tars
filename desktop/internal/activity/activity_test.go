@@ -25,6 +25,8 @@ type fakeServer struct {
 	requests []recorded
 	status   int
 	sessions string
+	// created answers POST /v1/admin/sessions; empty is an older server.
+	created string
 }
 
 func (f *fakeServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -52,7 +54,11 @@ func (f *fakeServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case r.URL.Path == "/v1/admin/sessions" && r.Method == http.MethodGet:
 		_, _ = w.Write([]byte(f.sessions))
 	case r.URL.Path == "/v1/admin/sessions" && r.Method == http.MethodPost:
-		_, _ = w.Write([]byte(`{"id":"new1","title":"x"}`))
+		created := f.created
+		if created == "" {
+			created = `{"id":"new1","title":"x"}`
+		}
+		_, _ = w.Write([]byte(created))
 	default:
 		_, _ = w.Write([]byte(`{}`))
 	}
@@ -174,32 +180,71 @@ func TestRecentSessions(t *testing.T) {
 }
 
 func TestNewSessionIn(t *testing.T) {
-	f := &fakeServer{}
+	dir := t.TempDir()
+	f := &fakeServer{created: `{"id":"new1","title":"repo","current_dir":` + quote(dir) + `}`}
 	c := newTestClient(t, f)
-	id, err := c.NewSessionIn(context.Background(), "repo", "/work/repo")
+	id, err := c.NewSessionIn(context.Background(), "repo", dir, false)
 	if err != nil || id != "new1" {
 		t.Fatalf("new session = %q, %v", id, err)
 	}
 	f.mu.Lock()
 	reqs := append([]recorded(nil), f.requests...)
 	f.mu.Unlock()
-	if len(reqs) != 2 || reqs[0].Body["title"] != "repo" || reqs[0].Auth != "Bearer admin-tok" {
+	if len(reqs) != 1 || reqs[0].Body["title"] != "repo" || reqs[0].Body["cwd"] != dir || reqs[0].Auth != "Bearer admin-tok" {
 		t.Fatalf("create sent %+v", reqs)
 	}
-	put := reqs[1]
-	if put.Method != http.MethodPut || put.Path != "/v1/admin/sessions/new1/workdirs" || put.Body["current_dir"] != "/work/repo" {
-		t.Fatalf("workdirs sent %+v", put)
+	if _, asked := reqs[0].Body["isolate"]; asked {
+		t.Fatalf("isolate sent without being asked: %+v", reqs[0].Body)
 	}
-	if dirs, _ := put.Body["work_dirs"].([]any); len(dirs) != 1 || dirs[0] != "/work/repo" {
-		t.Fatalf("work_dirs = %v", put.Body["work_dirs"])
+}
+
+func TestNewSessionInIsolated(t *testing.T) {
+	dir := t.TempDir()
+	f := &fakeServer{created: `{"id":"new1","current_dir":"elsewhere","worktree":{"dir":"elsewhere","branch":"tars/session-new1"}}`}
+	c := newTestClient(t, f)
+	id, err := c.NewSessionIn(context.Background(), "repo", dir, true)
+	if err != nil || id != "new1" {
+		t.Fatalf("new session = %q, %v", id, err)
 	}
+	if req := f.last(); req.Method != http.MethodPost || req.Body["isolate"] != true {
+		t.Fatalf("create sent %+v", req)
+	}
+}
+
+// A server from before the one-call create ignores cwd: the client sets the
+// folder itself, and says it could not isolate.
+func TestNewSessionInOlderServer(t *testing.T) {
+	dir := t.TempDir()
+	for _, isolate := range []bool{false, true} {
+		f := &fakeServer{}
+		c := newTestClient(t, f)
+		id, err := c.NewSessionIn(context.Background(), "repo", dir, isolate)
+		if id != "new1" {
+			t.Fatalf("id = %q", id)
+		}
+		if isolate != errors.Is(err, ErrIsolateUnsupported) {
+			t.Fatalf("isolate=%v err=%v", isolate, err)
+		}
+		put := f.last()
+		if put.Method != http.MethodPut || put.Path != "/v1/admin/sessions/new1/workdirs" || put.Body["current_dir"] != dir {
+			t.Fatalf("workdirs sent %+v", put)
+		}
+		if dirs, _ := put.Body["work_dirs"].([]any); len(dirs) != 1 || dirs[0] != dir {
+			t.Fatalf("work_dirs = %v", put.Body["work_dirs"])
+		}
+	}
+}
+
+func quote(s string) string {
+	raw, _ := json.Marshal(s)
+	return string(raw)
 }
 
 func TestNewSessionInWithoutID(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte(`{}`)) }))
 	defer srv.Close()
 	c := NewClient(server.Config{URL: srv.URL}, srv.Client())
-	if _, err := c.NewSessionIn(context.Background(), "x", "/x"); err == nil {
+	if _, err := c.NewSessionIn(context.Background(), "x", t.TempDir(), false); err == nil {
 		t.Fatal("a create without an id must fail")
 	}
 }

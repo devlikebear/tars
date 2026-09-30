@@ -396,7 +396,12 @@ func (s *shell) do(a tray.Action) {
 		if err != nil || dir == "" {
 			return
 		}
-		s.startChatIn(dir)
+		// The folder was just picked: ask again only to offer a worktree.
+		if deeplink.InGitRepository(dir) {
+			s.proposeChatIn(dir, false)
+			return
+		}
+		s.startChatIn(dir, false)
 	case tray.StartServer:
 		s.startServer()
 	case tray.CheckUpdates:
@@ -734,7 +739,7 @@ func (s *shell) handleArgs(args []string) bool {
 			continue
 		}
 		if info, err := os.Stat(arg); err == nil && info.IsDir() {
-			s.proposeChatIn(arg)
+			s.proposeChatIn(arg, false)
 			return true
 		}
 	}
@@ -754,13 +759,15 @@ func (s *shell) handleLink(raw string) {
 	case deeplink.OpenWindow:
 		s.openChatWindow(link.SessionID)
 	case deeplink.NewChat:
-		s.proposeChatIn(link.Dir)
+		s.proposeChatIn(link.Dir, link.Isolate)
 	}
 }
 
 // proposeChatIn asks before starting a chat in dir: a link or a dropped
-// folder can come from anywhere, and a chat gets to work in its folder.
-func (s *shell) proposeChatIn(dir string) {
+// folder can come from anywhere, and a chat gets to work in its folder. In a
+// git repository it also offers a worktree of the chat's own; a link that
+// asked for one (isolate) makes that the default.
+func (s *shell) proposeChatIn(dir string, isolate bool) {
 	abs, err := filepath.Abs(dir)
 	if err != nil {
 		return
@@ -769,25 +776,42 @@ func (s *shell) proposeChatIn(dir string) {
 	if err != nil || !info.IsDir() {
 		return
 	}
+	inRepo := deeplink.InGitRepository(abs)
+	isolate = isolate && inRepo
 	s.showConsole("")
+	message := fmt.Sprintf("Start a new chat working in\n%s ?", abs)
+	if isolate {
+		message = fmt.Sprintf("Start a new chat in a worktree of its own, made from\n%s ?", abs)
+	}
 	dialog := s.app.Dialog.Question().
 		SetTitle("Start a TARS chat").
-		SetMessage(fmt.Sprintf("Start a new chat working in\n%s ?", abs))
+		SetMessage(message)
 	start := dialog.AddButton("Start chat")
-	start.OnClick(func() { go s.startChatIn(abs) })
+	start.OnClick(func() { go s.startChatIn(abs, false) })
+	defaultButton := start
+	if inRepo {
+		isolated := dialog.AddButton("Start isolated")
+		isolated.OnClick(func() { go s.startChatIn(abs, true) })
+		if isolate {
+			defaultButton = isolated
+		}
+	}
 	cancel := dialog.AddButton("Cancel")
-	dialog.SetDefaultButton(start).SetCancelButton(cancel).AttachToWindow(s.window).Show()
+	dialog.SetDefaultButton(defaultButton).SetCancelButton(cancel).AttachToWindow(s.window).Show()
 }
 
-func (s *shell) startChatIn(dir string) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+func (s *shell) startChatIn(dir string, isolate bool) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	id, err := s.client.NewSessionIn(ctx, filepath.Base(dir), dir)
+	id, err := s.client.NewSessionIn(ctx, filepath.Base(dir), dir, isolate)
 	if id == "" {
 		s.showError("Could not start a chat", err)
 		return
 	}
-	if err != nil {
+	switch {
+	case errors.Is(err, activity.ErrIsolateUnsupported):
+		s.showError("The chat started in that folder, but not isolated", err)
+	case err != nil:
 		// The session exists but kept its default folder.
 		s.showError("The chat started, but not in that folder", err)
 	}

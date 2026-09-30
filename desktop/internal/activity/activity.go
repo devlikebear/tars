@@ -14,6 +14,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -70,6 +71,15 @@ type Session struct {
 	Kind      string    `json:"kind"`
 	Hidden    bool      `json:"hidden"`
 	UpdatedAt time.Time `json:"updated_at"`
+	// CurrentDir and Worktree say where a new session ended up working.
+	CurrentDir string           `json:"current_dir,omitempty"`
+	Worktree   *SessionWorktree `json:"worktree,omitempty"`
+}
+
+// SessionWorktree is the worktree an isolated session works in.
+type SessionWorktree struct {
+	Dir    string `json:"dir"`
+	Branch string `json:"branch"`
 }
 
 // Client calls the server with the configured tokens.
@@ -226,21 +236,52 @@ func sortByUpdated(sessions []Session) {
 	}
 }
 
-// NewSessionIn creates a session whose working folder is dir and returns
-// its ID. Both steps are admin calls, as they are from the console.
-func (c *Client) NewSessionIn(ctx context.Context, title, dir string) (string, error) {
+// ErrIsolateUnsupported means the server started the chat in the folder
+// but is too old to isolate it in a worktree.
+var ErrIsolateUnsupported = errors.New("tars server: this server cannot isolate a new chat; update it, or isolate from the chat header")
+
+// NewSessionIn creates a session whose working folder is dir, in a worktree
+// of its own when isolate is set, and returns its ID. It is one admin call,
+// the one the console makes. A server from before that call ignores the
+// folder, so the folder is then set with a second call as it used to be.
+func (c *Client) NewSessionIn(ctx context.Context, title, dir string, isolate bool) (string, error) {
 	var created Session
-	if err := c.do(ctx, http.MethodPost, "/v1/admin/sessions", true, map[string]string{"title": title}, &created); err != nil {
+	body := map[string]any{"title": title, "cwd": dir}
+	if isolate {
+		body["isolate"] = true
+	}
+	if err := c.do(ctx, http.MethodPost, "/v1/admin/sessions", true, body, &created); err != nil {
 		return "", err
 	}
 	if created.ID == "" {
 		return "", errors.New("tars server: created session has no id")
 	}
-	body := map[string]any{"work_dirs": []string{dir}, "current_dir": dir}
-	if err := c.do(ctx, http.MethodPut, "/v1/admin/sessions/"+url.PathEscape(created.ID)+"/workdirs", true, body, nil); err != nil {
+	if created.Worktree != nil || sameFolder(created.CurrentDir, dir) {
+		return created.ID, nil
+	}
+	put := map[string]any{"work_dirs": []string{dir}, "current_dir": dir}
+	if err := c.do(ctx, http.MethodPut, "/v1/admin/sessions/"+url.PathEscape(created.ID)+"/workdirs", true, put, nil); err != nil {
 		return created.ID, err
 	}
+	if isolate {
+		return created.ID, ErrIsolateUnsupported
+	}
 	return created.ID, nil
+}
+
+// sameFolder compares folders the way the server stores them: with
+// symlinks resolved.
+func sameFolder(a, b string) bool {
+	if a == "" || b == "" {
+		return false
+	}
+	resolve := func(p string) string {
+		if r, err := filepath.EvalSymlinks(p); err == nil {
+			return filepath.Clean(r)
+		}
+		return filepath.Clean(p)
+	}
+	return resolve(a) == resolve(b)
 }
 
 // Event is one notification from GET /v1/events/stream.
