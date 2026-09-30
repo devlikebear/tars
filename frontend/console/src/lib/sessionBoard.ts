@@ -18,6 +18,9 @@ export type BoardSession = {
   title: string
   status: BoardServerStatus
   pending_approvals: number
+  // Tool calls of unattended runs (cron, Telegram, subagents) waiting in the
+  // ops queue (#970). The chat shows them too, so the card still opens it.
+  queued_approvals?: number
   running_since?: string
   last_turn_at?: string
   updated_at: string

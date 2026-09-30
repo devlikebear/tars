@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/devlikebear/tars/internal/ops"
 	"github.com/devlikebear/tars/internal/session"
 )
 
@@ -242,5 +243,55 @@ func TestGitBranch(t *testing.T) {
 	}
 	if got := gitBranch(context.Background(), t.TempDir()); got != "" {
 		t.Fatalf("outside a repo = %q", got)
+	}
+}
+
+func TestSessionBoardCountsUnattendedApprovals(t *testing.T) {
+	f := newUnattendedFixture(t, chatPermissionModeManual)
+	other, err := f.store.Create("quiet")
+	if err != nil {
+		t.Fatal(err)
+	}
+	waiting, err := f.ops.CreateToolPermissionApproval(ops.ToolPermissionRequest{SessionID: f.session, Source: "cron", ToolName: "exec"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	answered, _ := f.ops.CreateToolPermissionApproval(ops.ToolPermissionRequest{SessionID: other.ID, Source: "cron", ToolName: "exec"})
+	if err := f.ops.ReviewToolPermission(answered.ID, true); err != nil {
+		t.Fatal(err)
+	}
+
+	board := newSessionBoard(f.store, nil, nil, nil)
+	board.queued = f.perms.queuedBySession
+	statusOf := func() map[string]boardSession {
+		t.Helper()
+		resp, err := board.build(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := map[string]boardSession{}
+		for _, s := range resp.Sessions {
+			out[s.ID] = s
+		}
+		return out
+	}
+	got := statusOf()
+	if s := got[f.session]; s.Status != boardStatusNeedsInput || s.QueuedApprovals != 1 || s.PendingApprovals != 0 {
+		t.Fatalf("waiting session = %+v", s)
+	}
+	if s := got[other.ID]; s.Status != boardStatusIdle || s.QueuedApprovals != 0 {
+		t.Fatalf("answered session = %+v", s)
+	}
+
+	if err := f.ops.ReviewToolPermission(waiting.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	if s := statusOf()[f.session]; s.Status != boardStatusIdle || s.QueuedApprovals != 0 {
+		t.Fatalf("after the review = %+v", s)
+	}
+
+	board.queued = func() (map[string]int, error) { return nil, errors.New("ops unavailable") }
+	if s := statusOf()[f.session]; s.Status != boardStatusIdle {
+		t.Fatalf("an unreadable queue counts nothing, got %+v", s)
 	}
 }

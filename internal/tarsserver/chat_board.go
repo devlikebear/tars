@@ -21,25 +21,30 @@ import (
 // fan out a request per session.
 //
 // Status comes from the chat activity tracker: needs_input when a turn waits
-// for a tool approval, running while a turn runs, idle otherwise. Whether
+// for a tool approval, running while a turn runs, idle otherwise. A cron,
+// Telegram or subagent run waiting on an approval in the ops queue (#970)
+// needs input too: the chat shows those questions with the turn's own. Whether
 // a finished turn has been looked at is the viewer's to know, so "done but
 // unread" is worked out by the console from last_turn_at.
 
 type boardSession struct {
-	ID               string          `json:"id"`
-	Title            string          `json:"title"`
-	Status           string          `json:"status"`
-	PendingApprovals int             `json:"pending_approvals"`
-	RunningSince     *time.Time      `json:"running_since,omitempty"`
-	LastTurnAt       *time.Time      `json:"last_turn_at,omitempty"`
-	UpdatedAt        time.Time       `json:"updated_at"`
-	PinnedAt         *time.Time      `json:"pinned_at,omitempty"`
-	Cwd              string          `json:"cwd,omitempty"`
-	Repo             string          `json:"repo,omitempty"`
-	Branch           string          `json:"branch,omitempty"`
-	LastChange       *boardChange    `json:"last_change,omitempty"`
-	CostUSD          float64         `json:"cost_usd"`
-	Goal             *boardGoalBrief `json:"goal,omitempty"`
+	ID               string `json:"id"`
+	Title            string `json:"title"`
+	Status           string `json:"status"`
+	PendingApprovals int    `json:"pending_approvals"`
+	// QueuedApprovals are unattended runs' tool calls waiting in the ops
+	// queue.
+	QueuedApprovals int             `json:"queued_approvals"`
+	RunningSince    *time.Time      `json:"running_since,omitempty"`
+	LastTurnAt      *time.Time      `json:"last_turn_at,omitempty"`
+	UpdatedAt       time.Time       `json:"updated_at"`
+	PinnedAt        *time.Time      `json:"pinned_at,omitempty"`
+	Cwd             string          `json:"cwd,omitempty"`
+	Repo            string          `json:"repo,omitempty"`
+	Branch          string          `json:"branch,omitempty"`
+	LastChange      *boardChange    `json:"last_change,omitempty"`
+	CostUSD         float64         `json:"cost_usd"`
+	Goal            *boardGoalBrief `json:"goal,omitempty"`
 }
 
 // boardChange is the latest turn that changed files, from its checkpoint.
@@ -81,8 +86,10 @@ type sessionBoard struct {
 	activity    *chatActivity
 	checkpoints *checkpoint.Store
 	costs       func() (map[string]float64, error)
-	branchOf    func(ctx context.Context, dir string) string
-	now         func() time.Time
+	// queued counts each session's unattended approvals; nil counts none.
+	queued   func() (map[string]int, error)
+	branchOf func(ctx context.Context, dir string) string
+	now      func() time.Time
 
 	mu    sync.Mutex
 	repos map[string]boardRepo
@@ -119,6 +126,12 @@ func (b *sessionBoard) build(ctx context.Context) (boardResponse, error) {
 	for _, p := range snap.Pending {
 		pending[p.SessionID]++
 	}
+	var queued map[string]int
+	if b.queued != nil {
+		if q, err := b.queued(); err == nil {
+			queued = q
+		}
+	}
 	var costs map[string]float64
 	if b.costs != nil {
 		if c, err := b.costs(); err == nil {
@@ -136,6 +149,7 @@ func (b *sessionBoard) build(ctx context.Context) (boardResponse, error) {
 			Title:            s.Title,
 			Status:           boardStatusIdle,
 			PendingApprovals: pending[s.ID],
+			QueuedApprovals:  queued[s.ID],
 			UpdatedAt:        s.UpdatedAt,
 			PinnedAt:         s.PinnedAt,
 			Cwd:              b.workingFolder(s),
@@ -145,7 +159,7 @@ func (b *sessionBoard) build(ctx context.Context) (boardResponse, error) {
 			item.Status = boardStatusRunning
 			item.RunningSince = &started
 		}
-		if item.PendingApprovals > 0 {
+		if item.PendingApprovals > 0 || item.QueuedApprovals > 0 {
 			item.Status = boardStatusNeedsInput
 		}
 		if s.Goal != nil {

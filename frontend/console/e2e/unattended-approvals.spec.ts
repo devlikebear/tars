@@ -11,7 +11,7 @@ import { expect, test } from '@playwright/test'
 
 const original = Array.from({ length: 20 }, (_, i) => `line ${i + 1}`).join('\n') + '\n'
 
-test('a cron run in Ask mode waits for the needs-input bar', async ({ page }) => {
+test('a cron run in Ask mode waits for the needs-input bar', async ({ page, context }) => {
   const dir = mkdtempSync(join(tmpdir(), 'tars-e2e-unattended-'))
   writeFileSync(join(dir, 'base.txt'), original)
   await page.goto('/console/chat')
@@ -38,6 +38,15 @@ test('a cron run in Ask mode waits for the needs-input bar', async ({ page }) =>
     await bar.getByRole('button', { name: button }).click()
     await expect(bar).toHaveCount(0, { timeout: 15_000 })
   }
+  // The session board counts the queued question as needs input.
+  await expect(bar).toHaveCount(1, { timeout: 15_000 })
+  const board = await context.newPage()
+  await board.goto('/console')
+  const card = board.locator(`.session-card[data-session-id="${id}"]`)
+  await expect(card).toContainText('needs input')
+  await expect(card).toContainText('1 unattended approval waiting')
+  await board.close()
+
   await answer('Approve', 'base.txt')
   await answer('Reject', 'notes.md')
   await answer('Approve', 'src/app.txt')

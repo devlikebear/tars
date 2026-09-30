@@ -202,6 +202,22 @@ func (u *unattendedPermissions) ask(ctx context.Context, run unattendedRun, tool
 	}
 }
 
+// queuedBySession counts the tool approvals still waiting in the ops queue
+// for each session, for the session board.
+func (u *unattendedPermissions) queuedBySession() (map[string]int, error) {
+	approvals, err := u.ops.ListApprovals()
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]int{}
+	for _, a := range approvals {
+		if a.Type == ops.ApprovalTypeToolPermission && a.Status == ops.ApprovalStatusPending && a.ToolPermission != nil {
+			out[a.ToolPermission.SessionID]++
+		}
+	}
+	return out, nil
+}
+
 func (u *unattendedPermissions) status(id string) string {
 	approval, err := u.ops.GetApproval(id)
 	if err != nil {
