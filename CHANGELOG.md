@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.40.1] - 2026-09-30
+
+### Fixed
+
+- **고른 티어가 세션 내내 유지되지 않던 문제** — 상태 바에서 고른 티어는 콘솔 메모리에만 있어 새로고침하거나 세션에 다시 들어오면 사라졌고, 첫 턴의 "Heavy 티어 권장" 카드에서 고른 티어는 그 턴에만 실려 다음 턴부터 기본값(standard)으로 내려갔다. 코딩 도중 티어가 바뀌는 셈이었다. 이제 세션에 `tier_pin`이 저장된다(`session.Session.TierPin`, `Store.SetTierPin`). 상태 바에서 고르면 `PATCH /v1/admin/sessions/{id}`의 `{"tier_pin": "heavy"}`로 바로 저장되고, "자동"을 고르면 해제된다. 권장 카드에서 수락하면 요청의 `tier_recommendation.pin`으로 함께 고정된다. 티어는 요청에 담긴 값, 세션 고정값, 첫 턴 추정 순으로 정해지며, 압축 전 히스토리 크기 계산과 그 세션의 cron·자동 재개 턴에도 적용된다. 알 수 없는 티어는 400이고, 저장값이 잘못돼도 턴은 실패하지 않고 기본값을 쓴다. fork한 세션은 권한 모드처럼 고정값을 물려받지 않는다.
+
 ## [0.40.0] - 2026-09-30
 
 ### Added
