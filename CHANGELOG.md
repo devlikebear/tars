@@ -39,6 +39,8 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ### Fixed
 
+- **세션 보드가 새 세션을 저장소에서 일하는 세션으로 보여주던 문제 (#971)** — 워크스페이스가 심볼릭 링크 아래에 있으면(macOS의 `/var`·`/tmp`, 옮긴 `~/.tars`) 아직 자기 아티팩트 폴더에 있는 세션도 그 폴더를 작업 폴더·저장소로 표시했다. 세션 저장소는 cwd를 링크를 푼 경로로 저장하는데 보드는 설정된 워크스페이스 경로와 글자 그대로 비교했기 때문이다. 이제 체크포인트 코드(#1005)처럼 링크를 풀어 비교한다. 보드의 `cwd`는 계속 저장된 값, 즉 `GET /v1/admin/sessions/{id}/cwd`와 같은 값을 보낸다.
+
 - **콘솔 파일 패널이 실패하거나 거부된 쓰기를 "수정됨"으로 보여주던 문제** — `write_file` / `edit_file` / `apply_patch` 호출이면 결과와 상관없이 아티팩트로 잡아서, 아무것도 쓰지 않은 호출도 파일 목록에 올랐다. 도구 승인(#970)으로 거부가 흔해지면서 드러났다. 이제 오류로 끝난 호출은 스트리밍 중에도, 히스토리를 다시 불러올 때도 건너뛴다.
 
 - **`claude-code-cli` 채팅 턴이 사용량에 $0으로 기록되던 문제** — provider는 CLI 결과 이벤트의 `total_cost_usd`를 이미 `Usage.CostUSD`로 파싱하고 있었지만, 사용량 추적은 가격표만 봤다. 이 provider의 tier는 `haiku`/`sonnet` 같은 별칭으로 모델을 지정해 가격표에 없으므로 `estimated_cost_usd: 0`, `pricing_known: false`가 됐고 콘솔 상태 바도 `$0`을 보였다. 이제 provider가 비용을 직접 보고하면(`CostUSD > 0`) 그 값을 항목의 비용으로 기록하고 `pricing_known: true`, 새 필드 `cost_source: "provider"`를 남긴다. 가격표 추정은 fallback으로 남으며 그때는 `cost_source: "estimate"`, 둘 다 없으면 필드를 생략한다. 합계가 같은 필드를 읽으므로 `/v1/usage/summary`와 일/주/월 한도 검사에도 그대로 반영된다. `llm_tier_recommendation` 신호의 비용 차원도 같은 규칙을 따른다. `antigravity-cli`는 CLI가 비용을 보고하지 않아 이전처럼 미가격 상태로 남는다.
