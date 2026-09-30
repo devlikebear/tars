@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 
 	"github.com/devlikebear/tars/internal/llm"
 	"github.com/devlikebear/tars/internal/session"
@@ -83,7 +84,16 @@ func handleChatRequest(w http.ResponseWriter, r *http.Request, deps chatHandlerD
 			writeError(w, http.StatusTooManyRequests, "overloaded", "overloaded")
 			return
 		}
-		defer release()
+		// The limit counts consoles streaming a turn. A turn whose console
+		// went away keeps running (#971) but gives its slot back, so turns
+		// left waiting on an approval cannot lock everyone out of chat.
+		var once sync.Once
+		releaseOnce := func() { once.Do(release) }
+		defer releaseOnce()
+		go func() {
+			<-r.Context().Done()
+			releaseOnce()
+		}()
 	}
 
 	req, ok := decodeChatRequestPayload(w, r)

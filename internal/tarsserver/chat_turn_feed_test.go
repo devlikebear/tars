@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -136,12 +137,13 @@ func TestChatTurnStreamEndpoint(t *testing.T) {
 type gatedLLMClient struct {
 	started chan struct{}
 	release chan struct{}
+	once    sync.Once
 }
 
 func (c *gatedLLMClient) Ask(context.Context, string) (string, error) { return "", nil }
 
 func (c *gatedLLMClient) Chat(ctx context.Context, _ []llm.ChatMessage, opts llm.ChatOptions) (llm.ChatResponse, error) {
-	close(c.started)
+	c.once.Do(func() { close(c.started) })
 	select {
 	case <-c.release:
 	case <-ctx.Done():
@@ -203,5 +205,54 @@ func TestChatTurnOutlivesItsClientAndCanBeReattached(t *testing.T) {
 	}
 	if last := messages[len(messages)-1]; last.Role != "assistant" || last.Content != "finished in the background" {
 		t.Fatalf("transcript ends with %+v", last)
+	}
+}
+
+func TestDetachedTurnGivesBackItsChatSlot(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatal(err)
+	}
+	store := session.NewStore(root)
+	first, _ := store.Create("left waiting")
+	second, _ := store.Create("next")
+	client := &gatedLLMClient{started: make(chan struct{}), release: make(chan struct{})}
+	tooling := defaultChatToolingOptions()
+	tooling.APIMaxInflightChat = 1
+	srv := httptest.NewServer(newChatAPIHandlerWithRuntimeConfig(root, store, client, nil, zerolog.Nop(), 2, nil, "", tooling))
+	defer srv.Close()
+	// Let the held turn finish before the server waits for it to close.
+	defer close(client.release)
+
+	post := func(ctx context.Context, id string) (*http.Response, error) {
+		req, _ := http.NewRequestWithContext(ctx, http.MethodPost, srv.URL+"/v1/chat", strings.NewReader(`{"session_id":"`+id+`","message":"go"}`))
+		req.Header.Set("Content-Type", "application/json")
+		return http.DefaultClient.Do(req)
+	}
+	ctx, drop := context.WithCancel(context.Background())
+	go func() {
+		if resp, err := post(ctx, first.ID); err == nil {
+			_ = resp.Body.Close()
+		}
+	}()
+	<-client.started
+	drop()
+
+	// The first turn still runs, but its console left: the slot is free.
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		resp, err := post(context.Background(), second.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		code := resp.StatusCode
+		_ = resp.Body.Close()
+		if code != http.StatusTooManyRequests {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("a detached turn kept its chat slot")
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 }
