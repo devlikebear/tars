@@ -26,6 +26,12 @@ import (
 // The tracker learns about questions by watching the permission events a
 // turn's stream sends, so every path that asks (Claude Code's permission
 // prompts and the native tool gate) is covered without being changed.
+//
+// Unattended runs (cron, Telegram, subagents, #970) ask through the ops
+// approvals instead, and nobody's stream carries those questions. The
+// endpoint lists them in their own array, queued_approvals (#1033), because
+// they are answered through POST /v1/ops/approvals/{id}/approve|reject and
+// never through the chat permission endpoint.
 
 type chatActivity struct {
 	mu       sync.Mutex
@@ -34,6 +40,9 @@ type chatActivity struct {
 	sessions *session.Store
 	notify   func(context.Context, notificationEvent)
 	now      func() time.Time
+	// queued lists unattended runs' tool calls waiting in the ops queue;
+	// nil lists none.
+	queued func() ([]chatQueuedApproval, error)
 }
 
 type chatRunningTurn struct {
@@ -63,9 +72,28 @@ type chatRunningSession struct {
 	StartedAt time.Time `json:"started_at"`
 }
 
+// chatQueuedApproval is one unattended run's tool call waiting in the ops
+// queue. It is answered with POST /v1/ops/approvals/{approval_id}/approve
+// or /reject.
+type chatQueuedApproval struct {
+	ApprovalID string `json:"approval_id"`
+	SessionID  string `json:"session_id"`
+	Session    string `json:"session_title,omitempty"`
+	// Source is the kind of run that asked: cron, telegram or subagent.
+	Source      string    `json:"source,omitempty"`
+	RunLabel    string    `json:"run_label,omitempty"`
+	ToolName    string    `json:"tool_name"`
+	Preview     string    `json:"preview,omitempty"`
+	Reason      string    `json:"reason,omitempty"`
+	RequestedAt time.Time `json:"requested_at"`
+}
+
 type chatActivitySnapshot struct {
 	Running []chatRunningSession  `json:"running"`
 	Pending []chatPendingApproval `json:"pending_approvals"`
+	// Queued is filled only by GET /v1/chat/activity; the in-memory
+	// snapshot the board reads leaves it empty.
+	Queued []chatQueuedApproval `json:"queued_approvals"`
 }
 
 func newChatActivity(sessions *session.Store, notify func(context.Context, notificationEvent)) *chatActivity {
@@ -147,7 +175,7 @@ func (a *chatActivity) observe(sessionID string, payload map[string]any) {
 }
 
 func (a *chatActivity) snapshot() chatActivitySnapshot {
-	snap := chatActivitySnapshot{Running: []chatRunningSession{}, Pending: []chatPendingApproval{}}
+	snap := chatActivitySnapshot{Running: []chatRunningSession{}, Pending: []chatPendingApproval{}, Queued: []chatQueuedApproval{}}
 	if a == nil {
 		return snap
 	}
@@ -166,6 +194,27 @@ func (a *chatActivity) snapshot() chatActivitySnapshot {
 	slices.SortFunc(snap.Running, func(x, y chatRunningSession) int { return x.StartedAt.Compare(y.StartedAt) })
 	slices.SortFunc(snap.Pending, func(x, y chatPendingApproval) int { return x.AskedAt.Compare(y.AskedAt) })
 	return snap
+}
+
+// queuedApprovals reads the unattended approvals. A missing or failing
+// source lists nothing rather than failing the endpoint.
+func (a *chatActivity) queuedApprovals() []chatQueuedApproval {
+	out := []chatQueuedApproval{}
+	if a == nil || a.queued == nil {
+		return out
+	}
+	list, err := a.queued()
+	if err != nil {
+		return out
+	}
+	for _, q := range list {
+		if q.Session == "" {
+			q.Session = a.sessionTitle(q.SessionID)
+		}
+		out = append(out, q)
+	}
+	slices.SortStableFunc(out, func(x, y chatQueuedApproval) int { return x.RequestedAt.Compare(y.RequestedAt) })
+	return out
 }
 
 // announce tells every event-stream client that a turn is waiting. The
@@ -229,6 +278,11 @@ func approvalPreview(payload map[string]any) string {
 	if preview == "" {
 		preview = activityString(payload, "description")
 	}
+	return capPreview(preview)
+}
+
+// capPreview shortens a preview to approvalPreviewRunes.
+func capPreview(preview string) string {
 	if utf8.RuneCountInString(preview) > approvalPreviewRunes {
 		r := []rune(preview)
 		preview = string(r[:approvalPreviewRunes-1]) + "…"
@@ -241,7 +295,9 @@ func handleChatActivity(w http.ResponseWriter, r *http.Request, activity *chatAc
 		writeMethodNotAllowed(w)
 		return
 	}
-	writeJSON(w, http.StatusOK, activity.snapshot())
+	snap := activity.snapshot()
+	snap.Queued = activity.queuedApprovals()
+	writeJSON(w, http.StatusOK, snap)
 }
 
 // chatApprovalDecisions lists the answers a question takes. allow_session is

@@ -7,6 +7,8 @@ import {
   boardCounts,
   boardStatus,
   groupBoard,
+  needsInput,
+  needsInputHint,
   repoName,
   type BoardSession,
 } from '../src/lib/sessionBoard.ts'
@@ -89,8 +91,8 @@ test('activityChanges reports new questions and finished turns only', () => {
     running: [{ session_id: 's1', session_title: 'Build' }],
     pending_approvals: [{ request_id: 'r1', session_id: 's1' }, { request_id: 'r2', session_id: 's2', session_title: 'Docs' }],
   })
-  assert.deepEqual(asking.s1, { running: true, pending: 1, title: 'Build' })
-  assert.deepEqual(asking.s2, { running: true, pending: 1, title: 'Docs' }, 'a question implies a running turn')
+  assert.deepEqual(asking.s1, { running: true, pending: 1, queued: 0, title: 'Build' })
+  assert.deepEqual(asking.s2, { running: true, pending: 1, queued: 0, title: 'Docs' }, 'a question implies a running turn')
   assert.deepEqual(activityChanges(idle, running), [])
   assert.deepEqual(activityChanges(running, asking), [
     { sessionId: 's1', title: 'Build', kind: 'needs_input' },
@@ -99,6 +101,49 @@ test('activityChanges reports new questions and finished turns only', () => {
   assert.deepEqual(activityChanges(asking, asking), [], 'still waiting is not news')
   assert.deepEqual(activityChanges(asking, running), [{ sessionId: 's2', title: 'Docs', kind: 'done' }])
   assert.deepEqual(activityChanges(running, idle), [{ sessionId: 's1', title: 'Build', kind: 'done' }])
+})
+
+// #1033: an unattended run's tool call waiting in the ops queue makes its
+// session need input, without making it a running chat turn.
+test('activityMap counts unattended approvals as needs input', () => {
+  const queued = activityMap({
+    running: [{ session_id: 's1', session_title: 'Build' }],
+    pending_approvals: [],
+    queued_approvals: [
+      { approval_id: 'a1', session_id: 's1', source: 'cron', tool_name: 'exec' },
+      { approval_id: 'a2', session_id: 's3', session_title: 'Nightly', source: 'cron', tool_name: 'exec' },
+      { approval_id: 'a3', session_id: 's3', source: 'subagent', tool_name: 'write_file' },
+    ],
+  })
+  assert.deepEqual(queued.s1, { running: true, pending: 0, queued: 1, title: 'Build' })
+  assert.deepEqual(queued.s3, { running: false, pending: 0, queued: 2, title: 'Nightly' }, 'an unattended run is not a chat turn')
+  assert.equal(needsInput(queued.s1), true)
+  assert.equal(needsInput(queued.s3), true)
+  assert.equal(needsInput(undefined), false)
+  assert.equal(needsInput({ running: true, pending: 0, queued: 0, title: '' }), false)
+
+  const text = { pending: (n: number) => `${n} chat`, queued: (n: number) => `${n} unattended` }
+  assert.equal(needsInputHint(queued.s3, text), '2 unattended')
+  assert.equal(needsInputHint({ running: true, pending: 1, queued: 2, title: '' }, text), '1 chat · 2 unattended')
+  assert.equal(needsInputHint(undefined, text), '')
+
+  // A server before #1033 sends no queued_approvals.
+  assert.deepEqual(activityMap({ running: [], pending_approvals: [] }), {})
+
+  const idle = activityMap({ running: [], pending_approvals: [] })
+  const running = activityMap({ running: [{ session_id: 's1', session_title: 'Build' }], pending_approvals: [] })
+  assert.deepEqual(activityChanges(idle, queued), [
+    { sessionId: 's1', title: 'Build', kind: 'needs_input' },
+    { sessionId: 's3', title: 'Nightly', kind: 'needs_input' },
+  ])
+  assert.deepEqual(activityChanges(running, queued), [
+    { sessionId: 's1', title: 'Build', kind: 'needs_input' },
+    { sessionId: 's3', title: 'Nightly', kind: 'needs_input' },
+  ], 'a running session that starts waiting in the queue is news')
+  assert.deepEqual(activityChanges(queued, queued), [], 'still waiting is not news')
+  const chatAsking = activityMap({ running: [{ session_id: 's3' }], pending_approvals: [{ request_id: 'r1', session_id: 's3' }] })
+  assert.deepEqual(activityChanges(queued, chatAsking), [{ sessionId: 's1', title: 'Build', kind: 'done' }], 'from one kind of question to the other is not news')
+  assert.deepEqual(activityChanges(queued, idle), [{ sessionId: 's1', title: 'Build', kind: 'done' }], 'a reviewed unattended approval is not a finished turn')
 })
 
 type Shown = { title: string; body: string; tag: string; click: () => void }
@@ -178,6 +223,30 @@ test('the store notifies about background sessions once notifications are on', a
 
   await h.activity.poll()
   assert.deepEqual(h.shown.map((s) => s.tag), ['tars-needs_input-s1', 'tars-done-s1'])
+})
+
+test('the store marks and announces a session waiting in the ops queue', async () => {
+  const queuedS2 = {
+    running: [],
+    pending_approvals: [],
+    queued_approvals: [{ approval_id: 'a1', session_id: 's2', session_title: 'Nightly', source: 'cron', tool_name: 'exec' }],
+  }
+  const h = harness([quiet, queuedS2, queuedS2, quiet])
+  h.setPermission('granted')
+  await h.activity.enableNotifications()
+  await h.activity.poll()
+  assert.equal(h.activity.needsInput('s2'), false)
+  await h.activity.poll()
+  assert.equal(h.activity.needsInput('s2'), true)
+  assert.equal(h.activity.queued('s2'), 1)
+  assert.equal(h.activity.pending('s2'), 0, 'not a chat approval')
+  assert.equal(h.activity.running('s2'), false)
+  assert.deepEqual(h.shown.map((s) => s.tag), ['tars-needs_input-s2'])
+  await h.activity.poll()
+  assert.equal(h.shown.length, 1, 'no repeat while it still waits')
+  await h.activity.poll()
+  assert.equal(h.activity.needsInput('s2'), false)
+  assert.equal(h.shown.length, 1, 'a reviewed approval is not a finished turn')
 })
 
 test('no notification for the session on screen, or with notifications off', async () => {

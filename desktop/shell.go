@@ -43,6 +43,9 @@ const (
 	// opens; after that it reopens where it was.
 	chatWidth  = 1100
 	chatHeight = 780
+	// queuedNotificationPrefix marks an unattended run's question (#1033),
+	// answered through the ops approvals rather than the chat API.
+	queuedNotificationPrefix = "tars-unattended-"
 )
 
 type shell struct {
@@ -59,6 +62,7 @@ type shell struct {
 	quitting  atomic.Bool
 	pollNow   chan struct{}
 	approvals tray.Approvals
+	queued    tray.QueuedApprovals
 
 	// windows is where the console window and the chat windows were.
 	windows *winstate.Store
@@ -381,6 +385,8 @@ func (s *shell) do(a tray.Action) {
 		s.openChatWindow(a.SessionID)
 	case tray.Decide:
 		s.answer(a.Approval, a.Decision)
+	case tray.Review:
+		s.review(a.Queued, a.Decision == tray.ReviewApprove)
 	case tray.NewSessionInFolder:
 		dir, err := s.app.Dialog.OpenFile().
 			SetTitle("Start a chat in a folder").
@@ -410,6 +416,17 @@ func (s *shell) answer(a activity.Approval, decision string) {
 	s.kick()
 }
 
+// review answers an unattended run's queued question through the ops
+// approvals. One answered elsewhere in the meantime (409) needs no dialog.
+func (s *shell) review(q activity.QueuedApproval, approve bool) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := s.client.Review(ctx, q, approve); err != nil && !activity.IsConflict(err) {
+		s.showError("Could not answer the approval", err)
+	}
+	s.kick()
+}
+
 // start runs once the app is up: it looks at the launch arguments, starts
 // the poll loop and the event stream, and asks for notification permission.
 func (s *shell) start(args []string) {
@@ -427,6 +444,13 @@ func (s *shell) registerNotifications() {
 			}
 		}
 	}()
+	s.registerNotificationCategories()
+	s.notifier.OnNotificationResponse(s.onNotificationResponse)
+}
+
+// registerNotificationCategories declares the buttons of both kinds of
+// approval notification.
+func (s *shell) registerNotificationCategories() {
 	if err := s.notifier.RegisterNotificationCategory(notifications.NotificationCategory{
 		ID: tray.NotificationCategory,
 		Actions: []notifications.NotificationAction{
@@ -437,26 +461,57 @@ func (s *shell) registerNotifications() {
 	}); err != nil {
 		log.Printf("notification actions: %v", err)
 	}
-	s.notifier.OnNotificationResponse(func(result notifications.NotificationResult) {
-		if result.Error != nil {
-			log.Printf("notification response: %v", result.Error)
-			return
-		}
-		requestID, ok := strings.CutPrefix(result.Response.ID, notificationPrefix)
-		if !ok {
-			return
-		}
-		approval, known := s.approvals.Lookup(requestID)
-		decision, isDecision := tray.DecisionFor(result.Response.ActionIdentifier)
-		switch {
-		case known && isDecision:
-			go s.answer(approval, decision)
-		case known:
-			go s.showConsole(chatPath(approval.SessionID))
-		default:
-			go s.showConsole("")
-		}
-	})
+	if err := s.notifier.RegisterNotificationCategory(notifications.NotificationCategory{
+		ID: tray.QueuedNotificationCategory,
+		Actions: []notifications.NotificationAction{
+			{ID: tray.ActionApprove, Title: tray.ReviewLabel(tray.ReviewApprove)},
+			{ID: tray.ActionReject, Title: tray.ReviewLabel(tray.ReviewReject), Destructive: true},
+		},
+	}); err != nil {
+		log.Printf("notification actions: %v", err)
+	}
+}
+
+// onNotificationResponse handles a click on an approval notification: a
+// chat question's answer, an unattended run's review, or opening the chat.
+func (s *shell) onNotificationResponse(result notifications.NotificationResult) {
+	if result.Error != nil {
+		log.Printf("notification response: %v", result.Error)
+		return
+	}
+	if approvalID, ok := strings.CutPrefix(result.Response.ID, queuedNotificationPrefix); ok {
+		s.onQueuedResponse(approvalID, result.Response.ActionIdentifier)
+		return
+	}
+	requestID, ok := strings.CutPrefix(result.Response.ID, notificationPrefix)
+	if !ok {
+		return
+	}
+	approval, known := s.approvals.Lookup(requestID)
+	decision, isDecision := tray.DecisionFor(result.Response.ActionIdentifier)
+	switch {
+	case known && isDecision:
+		go s.answer(approval, decision)
+	case known:
+		go s.showConsole(chatPath(approval.SessionID))
+	default:
+		go s.showConsole("")
+	}
+}
+
+// onQueuedResponse handles a click on an unattended run's notification:
+// approve or reject through the ops approvals, or open the chat.
+func (s *shell) onQueuedResponse(approvalID, actionID string) {
+	q, known := s.queued.Lookup(approvalID)
+	decision, isReview := tray.ReviewFor(actionID)
+	switch {
+	case known && isReview:
+		go s.review(q, decision == tray.ReviewApprove)
+	case known:
+		go s.showConsole(chatPath(q.SessionID))
+	default:
+		go s.showConsole("")
+	}
 }
 
 func (s *shell) kick() {
@@ -541,7 +596,7 @@ func (s *shell) recentSessions(ctx context.Context, locked bool) []activity.Sess
 
 func (s *shell) apply(st tray.Status, sessions []activity.Session) {
 	s.mu.Lock()
-	changed := !s.statusSet || s.status.State != st.State || s.status.Running != st.Running || s.status.Pending != st.Pending
+	changed := !s.statusSet || s.status.State != st.State || s.status.Running != st.Running || s.status.Pending != st.Pending || s.status.Queued != st.Queued
 	s.status, s.statusSet = st, true
 	goConsole := st.State != tray.Offline && !s.onConsole
 	path := ""
@@ -566,8 +621,12 @@ func (s *shell) apply(st tray.Status, sessions []activity.Session) {
 		for _, gone := range s.approvals.Forget() {
 			_ = s.notifier.RemoveNotification(notificationPrefix + gone.RequestID)
 		}
+		for _, gone := range s.queued.Forget() {
+			_ = s.notifier.RemoveNotification(queuedNotificationPrefix + gone.ApprovalID)
+		}
 		return
 	}
+	s.notifyQueued(st.Snapshot.Queued)
 	added, removed := s.approvals.Update(st.Snapshot.Pending)
 	for _, a := range added {
 		title, subtitle, body := tray.NotificationText(a)
@@ -589,12 +648,38 @@ func (s *shell) apply(st tray.Status, sessions []activity.Session) {
 	}
 }
 
+// notifyQueued sends one notification per new unattended question and
+// withdraws those answered elsewhere.
+func (s *shell) notifyQueued(queued []activity.QueuedApproval) {
+	added, removed := s.queued.Update(queued)
+	for _, q := range added {
+		title, subtitle, body := tray.QueuedNotificationText(q)
+		err := s.notifier.SendNotificationWithActions(notifications.NotificationOptions{
+			ID:         queuedNotificationPrefix + q.ApprovalID,
+			Title:      title,
+			Subtitle:   subtitle,
+			Body:       body,
+			CategoryID: tray.QueuedNotificationCategory,
+			ThreadID:   q.SessionID,
+			Data:       map[string]any{"approval_id": q.ApprovalID, "session_id": q.SessionID},
+		})
+		if err != nil {
+			log.Printf("notify: %v", err)
+		}
+	}
+	for _, q := range removed {
+		_ = s.notifier.RemoveNotification(queuedNotificationPrefix + q.ApprovalID)
+	}
+}
+
 // streamLoop listens to the server's event stream so a new approval shows
 // at once instead of on the next poll. It reconnects after a drop.
 func (s *shell) streamLoop() {
 	for {
 		err := s.client.Stream(context.Background(), func(e activity.Event) {
-			if e.Category == "approval" || e.RequestID != "" {
+			// An unattended run's question and its review arrive as ops
+			// events without a request id.
+			if e.Category == "approval" || e.Category == "ops" || e.RequestID != "" {
 				s.kick()
 			}
 		})

@@ -1345,6 +1345,7 @@ func newChatAPIHandlerWithRuntimeConfig(
 	})
 	board := newSessionBoard(store, chatActivity, tooling.Checkpoints, tooling.SessionCosts)
 	if tooling.Unattended != nil {
+		chatActivity.queued = tooling.Unattended.queuedApprovals
 		board.queued = tooling.Unattended.queuedBySession
 	}
 	mux.HandleFunc("/v1/chat/board", board.handle)

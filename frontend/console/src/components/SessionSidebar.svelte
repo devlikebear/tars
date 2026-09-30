@@ -7,6 +7,7 @@
   import { chatSession } from '../lib/stores/chatSession'
   import { chatCommands } from '../lib/stores/chatCommandQueue.svelte'
   import { sessionActivity } from '../lib/stores/sessionActivity'
+  import { needsInputHint } from '../lib/sessionBoard'
   import type { MemorySearchMatch, Session, SessionCleanupMode, SessionCleanupSuggestion, SessionCleanupSuggestionResponse } from '../lib/types'
   import { displaySessionTitle } from '../lib/sessionLabels'
 
@@ -589,8 +590,8 @@
                 <span class="session-title">{displaySessionTitle(session.title, $t.chat.session.newChat) || session.id.slice(0, 12)}</span>
               {/if}
               <div class="session-meta">
-                {#if sessionActivity.pending(session.id) > 0}
-                  <span class="live-status needs-input" title={$t.sessionBoard.pending(sessionActivity.pending(session.id))}>{$t.sessionBoard.status.needs_input}</span>
+                {#if sessionActivity.needsInput(session.id)}
+                  <span class="live-status needs-input" title={needsInputHint(sessionActivity.activity[session.id], $t.sessionBoard)}>{$t.sessionBoard.status.needs_input}</span>
                 {:else if sessionActivity.running(session.id)}
                   <span class="live-status running">{$t.sessionBoard.status.running}</span>
                 {/if}

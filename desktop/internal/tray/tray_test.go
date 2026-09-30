@@ -165,3 +165,79 @@ func TestKey(t *testing.T) {
 		t.Fatal("a different pending request must change the key")
 	}
 }
+
+// #1033: unattended runs' questions wait in the ops queue. The tray counts
+// them as needs input and lists them with approve and reject, which review
+// through the ops approvals and never decide a chat permission.
+func TestQueuedApprovalsNeedInput(t *testing.T) {
+	queued := activity.QueuedApproval{ApprovalID: "apv_1", SessionID: "s2", Session: "Nightly", Source: "cron", ToolName: "write_file", Preview: "notes.md"}
+	st := StatusOf(Observation{Reachable: true, Snapshot: activity.Snapshot{
+		Running: []activity.Running{{SessionID: "s1"}},
+		Pending: []activity.Approval{{RequestID: "r1", SessionID: "s1", ToolName: "Bash"}},
+		Queued:  []activity.QueuedApproval{queued, {ApprovalID: "apv_2", SessionID: "s3", ToolName: "exec"}},
+	}})
+	if st.State != NeedsInput || st.Pending != 1 || st.Queued != 2 || st.Waiting() != 3 {
+		t.Fatalf("status = %+v", st)
+	}
+	if st.Label() != "3?" || !strings.Contains(st.Tooltip(), "3 requests waiting") {
+		t.Fatalf("label %q tooltip %q", st.Label(), st.Tooltip())
+	}
+	onlyQueued := StatusOf(Observation{Reachable: true, Snapshot: activity.Snapshot{Queued: []activity.QueuedApproval{queued}}})
+	if onlyQueued.State != NeedsInput || onlyQueued.Label() != "1?" {
+		t.Fatalf("an unattended question alone needs input: %+v", onlyQueued)
+	}
+
+	checkQueuedMenu(t, Menu(onlyQueued, nil))
+	checkQueuedMenuKeys(t, st)
+}
+
+// checkQueuedMenu checks the entry of apv_1 (Nightly, cron, write_file on
+// notes.md) in a menu that lists it alone.
+func checkQueuedMenu(t *testing.T, items []Item) {
+	t.Helper()
+	if find(items, "Waiting for approval") == nil {
+		t.Fatal("queued approvals are listed under waiting for approval")
+	}
+	entry := find(items, "Nightly — write_file: notes.md (cron)")
+	if entry == nil || len(entry.Children) != 4 {
+		t.Fatalf("queued entry = %+v", entry)
+	}
+	if open := entry.Children[0]; open.Action.Kind != ShowConsole || open.Action.Path != "/console/chat/s2" {
+		t.Fatalf("open = %+v", open)
+	}
+	approve, reject := entry.Children[2], entry.Children[3]
+	if approve.Label != "Approve" || approve.Action.Kind != Review || approve.Action.Decision != ReviewApprove || approve.Action.Queued.ApprovalID != "apv_1" {
+		t.Fatalf("approve = %+v", approve)
+	}
+	if reject.Label != "Reject" || reject.Action.Kind != Review || reject.Action.Decision != ReviewReject {
+		t.Fatalf("reject = %+v", reject)
+	}
+}
+
+// checkQueuedMenuKeys checks that the full menu of st never turns a queued
+// approval into a chat decision, and that the menu key follows the queue.
+func checkQueuedMenuKeys(t *testing.T, st Status) {
+	t.Helper()
+	assertNoQueuedDecision(t, Menu(st, nil))
+	if other := find(Menu(st, nil), "s3 — exec"); other == nil || strings.Contains(other.Label, "(") {
+		t.Fatalf("a queued approval without a source = %+v", other)
+	}
+
+	a := Menu(StatusOf(Observation{Reachable: true, Snapshot: activity.Snapshot{Queued: []activity.QueuedApproval{{ApprovalID: "apv_1", SessionID: "s"}}}}), nil)
+	b := Menu(StatusOf(Observation{Reachable: true, Snapshot: activity.Snapshot{Queued: []activity.QueuedApproval{{ApprovalID: "apv_2", SessionID: "s"}}}}), nil)
+	if Key(a) == Key(b) {
+		t.Fatal("a different queued approval must change the key")
+	}
+}
+
+// assertNoQueuedDecision fails if any item answers a queued approval as a
+// chat permission.
+func assertNoQueuedDecision(t *testing.T, items []Item) {
+	t.Helper()
+	for _, it := range items {
+		if it.Action.Queued.ApprovalID != "" && it.Action.Kind == Decide {
+			t.Fatalf("a queued approval must never be a chat decision: %+v", it)
+		}
+		assertNoQueuedDecision(t, it.Children)
+	}
+}

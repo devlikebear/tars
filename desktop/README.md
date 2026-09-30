@@ -11,6 +11,13 @@ cannot:
 - **Native notifications** for each tool approval, with the same three
   answers as buttons. A question answered elsewhere has its notification
   withdrawn.
+- **Unattended approvals**: a cron job, Telegram message, or subagent run of
+  a session in Ask, Accept edits, or Plan mode queues its tool calls in the
+  server's ops approvals. The tray counts them as waiting too, lists them
+  with **Open chat**, **Approve**, and **Reject**, and notifies each one
+  with the same choices. Their answers go to
+  `POST /v1/ops/approvals/{id}/approve|reject`; they are never sent to the
+  chat permission endpoint, which does not know them.
 - **Global hotkey** to show or hide the window from anywhere.
 - **`tars://` links** and **folders dropped on the app icon**.
 - **Chats in windows of their own**, from the tray or a link, reopened on
@@ -64,6 +71,10 @@ to native code. Reach a remote server with a browser.
 Which tokens the tray needs depends on the server's `api_auth_mode`. With
 the default `required`, the user token is needed for the running and
 waiting state, approvals, and notifications; without it the tray says so.
+Approving or rejecting an unattended approval uses the same user token:
+`/v1/ops/*` is not an admin route. When the server refuses the answer, the
+tray shows the error and the question stays open in the chat and on the Ops
+page; one already answered elsewhere is dropped quietly.
 Recent chats and **New chat in folder…** use admin routes, which need the
 admin token in every mode except `off`. The console in the window logs in
 on its own, as in a browser.
@@ -168,7 +179,7 @@ notarization is not wired up yet.
 |------|------|
 | `main.go`, `shell.go` | Wails wiring: window, tray, notifications, hotkey, links, updater |
 | `internal/server` | server URL, health probe, how to start the server |
-| `internal/activity` | API client: activity, approvals, sessions, event stream |
+| `internal/activity` | API client: activity, chat and unattended approvals, sessions, event stream |
 | `internal/tray` | tray state, menu model, which approvals to notify |
 | `internal/deeplink` | `tars://` parsing |
 | `internal/links` | opening the console's outbound links in the browser |

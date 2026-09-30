@@ -77,8 +77,9 @@
       (event) => {
         if (!event.coalesced) unreadCount++
         // A new approval question: refresh live activity now, not on the
-        // next poll, so badges and notifications follow at once.
-        if (event.category === 'approval') void sessionActivity.poll()
+        // next poll, so badges and notifications follow at once. An
+        // unattended run's question and its review arrive as ops events.
+        if (event.category === 'approval' || event.category === 'ops') void sessionActivity.poll()
         const reaction = companionReactionFromEvent(event, $locale)
         if (reaction) showCompanionReaction(reaction)
       },

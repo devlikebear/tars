@@ -3,6 +3,7 @@ package tarsserver
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"github.com/devlikebear/tars/internal/memory"
+	"github.com/devlikebear/tars/internal/ops"
 	"github.com/devlikebear/tars/internal/session"
 	"github.com/rs/zerolog"
 )
@@ -197,5 +199,96 @@ func TestChatActivityOffersAlwaysOnlyWithAFolder(t *testing.T) {
 	}
 	if got := decisions["r2"]; !slices.Equal(got, []string{"allow_once", "allow_session", "deny"}) {
 		t.Fatalf("without a folder: %v", got)
+	}
+}
+
+// Unattended runs (#970) ask through the ops queue. The activity lists
+// their questions in queued_approvals (#1033), apart from the chat
+// permission requests, so no client answers them through the chat API.
+func TestChatActivityListsQueuedUnattendedApprovals(t *testing.T) {
+	f := newUnattendedFixture(t, chatPermissionModeManual)
+	other, err := f.store.Create("quiet")
+	if err != nil {
+		t.Fatal(err)
+	}
+	long := strings.Repeat("x", approvalPreviewRunes+40)
+	waiting, err := f.ops.CreateToolPermissionApproval(ops.ToolPermissionRequest{SessionID: f.session, Source: "cron", RunLabel: "nightly build", ToolName: "exec", Preview: long, Reason: "runs a command"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	answered, _ := f.ops.CreateToolPermissionApproval(ops.ToolPermissionRequest{SessionID: other.ID, Source: "telegram", ToolName: "exec"})
+	if err := f.ops.ReviewToolPermission(answered.ID, true); err != nil {
+		t.Fatal(err)
+	}
+
+	tooling := defaultChatToolingOptions()
+	tooling.Unattended = f.perms
+	srv := httptest.NewServer(newChatAPIHandlerWithRuntimeConfig(f.root, f.store, &permissionAskingClient{}, nil, zerolog.New(io.Discard), 0, nil, "", tooling))
+	t.Cleanup(srv.Close)
+
+	snap := getActivity(t, srv.URL)
+	if len(snap.Running) != 0 || len(snap.Pending) != 0 {
+		t.Fatalf("an unattended question is not a chat turn or a chat permission: %+v", snap)
+	}
+	if len(snap.Queued) != 1 {
+		t.Fatalf("queued = %+v", snap.Queued)
+	}
+	q := snap.Queued[0]
+	if q.ApprovalID != waiting.ID || q.SessionID != f.session || q.Session != "nightly" || q.Source != "cron" || q.RunLabel != "nightly build" || q.ToolName != "exec" || q.Reason != "runs a command" {
+		t.Fatalf("queued approval = %+v", q)
+	}
+	if !q.RequestedAt.Equal(waiting.RequestedAt) {
+		t.Fatalf("requested_at = %v, want %v", q.RequestedAt, waiting.RequestedAt)
+	}
+	if n := len([]rune(q.Preview)); n != approvalPreviewRunes || !strings.HasSuffix(q.Preview, "…") {
+		t.Fatalf("preview is capped like a chat approval's, got %d runes", n)
+	}
+
+	if err := f.ops.ReviewToolPermission(waiting.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	if snap := getActivity(t, srv.URL); len(snap.Queued) != 0 {
+		t.Fatalf("after the review = %+v", snap.Queued)
+	}
+}
+
+func TestChatActivityQueuedApprovalsAreOptional(t *testing.T) {
+	read := func(activity *chatActivity) string {
+		t.Helper()
+		rec := httptest.NewRecorder()
+		handleChatActivity(rec, httptest.NewRequest(http.MethodGet, "/v1/chat/activity", nil), activity)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status %d", rec.Code)
+		}
+		return rec.Body.String()
+	}
+	// Older clients read only running and pending_approvals; every array
+	// is present, never null.
+	for name, activity := range map[string]*chatActivity{"nil tracker": nil, "no source": newChatActivity(nil, nil)} {
+		body := read(activity)
+		for _, field := range []string{`"running":[]`, `"pending_approvals":[]`, `"queued_approvals":[]`} {
+			if !strings.Contains(body, field) {
+				t.Fatalf("%s: %s missing from %s", name, field, body)
+			}
+		}
+	}
+
+	failing := newChatActivity(nil, nil)
+	failing.queued = func() ([]chatQueuedApproval, error) { return nil, errors.New("ops unavailable") }
+	if body := read(failing); !strings.Contains(body, `"queued_approvals":[]`) {
+		t.Fatalf("an unreadable queue lists nothing, got %s", body)
+	}
+
+	early := time.Date(2026, 9, 30, 9, 0, 0, 0, time.UTC)
+	sorted := newChatActivity(nil, nil)
+	sorted.queued = func() ([]chatQueuedApproval, error) {
+		return []chatQueuedApproval{
+			{ApprovalID: "b", SessionID: "s", Session: "kept", RequestedAt: early.Add(time.Minute)},
+			{ApprovalID: "a", SessionID: "s", RequestedAt: early},
+		}, nil
+	}
+	got := sorted.queuedApprovals()
+	if len(got) != 2 || got[0].ApprovalID != "a" || got[1].Session != "kept" {
+		t.Fatalf("oldest first = %+v", got)
 	}
 }

@@ -68,11 +68,17 @@ test('plan mode keeps a turn read-only until the plan is approved', async ({ pag
   await composer(page).press('Shift+Tab')
   await expect(modeSelect(page)).toHaveValue('auto')
 
-  // The audit has the plan-mode refusals and the mode changes.
-  const audit = await (await page.request.get(`/v1/ops/automation-audit?session_id=${id}&limit=50`)).json()
-  const results = (audit.items as { action: string; result: string }[]).map((e) => `${e.action}:${e.result}`)
-  expect(results).toContain('chat_tool_permission:refused_plan_mode')
-  expect(results.filter((r) => r === 'chat_permission_mode:changed').length).toBeGreaterThanOrEqual(4)
+  // The audit has the plan-mode refusals and the mode changes. The select
+  // shows a new mode before its PUT is answered, so the last change can
+  // still be on its way: poll until it is recorded.
+  const auditResults = async () => {
+    const audit = await (await page.request.get(`/v1/ops/automation-audit?session_id=${id}&limit=50`)).json()
+    return (audit.items as { action: string; result: string }[]).map((e) => `${e.action}:${e.result}`)
+  }
+  await expect
+    .poll(async () => (await auditResults()).filter((r) => r === 'chat_permission_mode:changed').length)
+    .toBeGreaterThanOrEqual(4)
+  expect(await auditResults()).toContain('chat_tool_permission:refused_plan_mode')
 })
 
 test('back to the default mode asks again', async ({ page }) => {

@@ -44,7 +44,11 @@ func (f *fakeServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case r.URL.Path == "/v1/chat/activity":
 		_, _ = w.Write([]byte(`{"running":[{"session_id":"s1","session_title":"Build","started_at":"2026-09-29T12:00:00Z"}],
-			"pending_approvals":[{"request_id":"r1","session_id":"s1","session_title":"Build","tool_name":"Bash","preview":"make","decisions":["allow_once","allow_session","deny"]}]}`))
+			"pending_approvals":[{"request_id":"r1","session_id":"s1","session_title":"Build","tool_name":"Bash","preview":"make","decisions":["allow_once","allow_session","deny"]}],
+			"queued_approvals":[{"approval_id":"apv_1","session_id":"s2","session_title":"Nightly","source":"cron","run_label":"nightly","tool_name":"write_file","preview":"notes.md","requested_at":"2026-09-29T12:01:00Z"}]}`))
+	case strings.HasPrefix(r.URL.Path, "/v1/ops/approvals/") && strings.HasSuffix(r.URL.Path, "/closed/approve"):
+		w.WriteHeader(http.StatusConflict)
+		_, _ = w.Write([]byte(`{"error":"approval is not pending"}`))
 	case r.URL.Path == "/v1/admin/sessions" && r.Method == http.MethodGet:
 		_, _ = w.Write([]byte(f.sessions))
 	case r.URL.Path == "/v1/admin/sessions" && r.Method == http.MethodPost:
@@ -80,8 +84,51 @@ func TestActivity(t *testing.T) {
 	if len(snap.Pending) != 1 || snap.Pending[0].ToolName != "Bash" || len(snap.Pending[0].Decisions) != 3 {
 		t.Fatalf("pending = %+v", snap.Pending)
 	}
+	if len(snap.Queued) != 1 {
+		t.Fatalf("queued = %+v", snap.Queued)
+	}
+	if q := snap.Queued[0]; q.ApprovalID != "apv_1" || q.SessionID != "s2" || q.Session != "Nightly" || q.Source != "cron" || q.ToolName != "write_file" || q.Preview != "notes.md" || !q.RequestedAt.Equal(time.Date(2026, 9, 29, 12, 1, 0, 0, time.UTC)) {
+		t.Fatalf("queued approval = %+v", q)
+	}
 	if got := f.last().Auth; got != "Bearer user-tok" {
 		t.Fatalf("activity sent %q, want the user token", got)
+	}
+}
+
+// A queued approval is reviewed through the ops endpoint with the user
+// token, and never reaches the chat permission endpoint.
+func TestReview(t *testing.T) {
+	f := &fakeServer{}
+	c := newTestClient(t, f)
+	if err := c.Review(context.Background(), QueuedApproval{ApprovalID: "apv/1", SessionID: "s1"}, true); err != nil {
+		t.Fatal(err)
+	}
+	got := f.last()
+	if got.Method != http.MethodPost || got.Path != "/v1/ops/approvals/apv/1/approve" || got.Auth != "Bearer user-tok" {
+		t.Fatalf("approve sent %+v", got)
+	}
+	if err := c.Review(context.Background(), QueuedApproval{ApprovalID: "apv_2"}, false); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.last(); got.Path != "/v1/ops/approvals/apv_2/reject" {
+		t.Fatalf("reject sent %+v", got)
+	}
+	if err := c.Review(context.Background(), QueuedApproval{SessionID: "s1"}, true); err == nil {
+		t.Fatal("a queued approval without an id must be refused")
+	}
+	err := c.Review(context.Background(), QueuedApproval{ApprovalID: "closed"}, true)
+	if !IsConflict(err) || IsUnauthorized(err) {
+		t.Fatalf("an approval answered elsewhere = %v", err)
+	}
+	if IsConflict(errors.New("plain")) {
+		t.Fatal("a plain error is not a 409")
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, r := range f.requests {
+		if strings.HasPrefix(r.Path, "/v1/chat/permissions") {
+			t.Fatalf("a queued approval reached the chat permission endpoint: %+v", r)
+		}
 	}
 }
 

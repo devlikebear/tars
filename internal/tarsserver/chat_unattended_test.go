@@ -26,6 +26,7 @@ type unattendedFixture struct {
 	store   *session.Store
 	session string
 	dir     string
+	root    string
 
 	mu     sync.Mutex
 	events []notificationEvent
@@ -47,7 +48,7 @@ func newUnattendedFixture(t *testing.T, mode string) *unattendedFixture {
 			t.Fatal(err)
 		}
 	}
-	f := &unattendedFixture{ops: ops.NewManager(root, ops.Options{HomeDir: t.TempDir()}), store: store, session: sess.ID, dir: t.TempDir()}
+	f := &unattendedFixture{ops: ops.NewManager(root, ops.Options{HomeDir: t.TempDir()}), store: store, session: sess.ID, dir: t.TempDir(), root: root}
 	f.perms = newUnattendedPermissions(f.ops, store, newChatAlwaysRuleStore(root), func(_ context.Context, evt notificationEvent) {
 		f.mu.Lock()
 		defer f.mu.Unlock()
