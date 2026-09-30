@@ -1,8 +1,11 @@
 package tarsserver
 
 import (
+	"errors"
 	"net/http"
+	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -169,5 +172,101 @@ func TestSessionAPIPatchTierPin(t *testing.T) {
 	cleared := patchSessionJSON(t, handler, sess.ID, `{"tier_pin":""}`)
 	if cleared.TierPin != "" {
 		t.Fatalf("TierPin = %q after clearing", cleared.TierPin)
+	}
+}
+
+func TestSessionTierPin_IgnoresAStoredTierThatNoLongerParses(t *testing.T) {
+	if got := sessionTierPin(session.Session{TierPin: "turbo"}, nil); got != "" {
+		t.Fatalf("sessionTierPin(turbo) = %q, want none", got)
+	}
+	if got := sessionTierPin(session.Session{TierPin: "heavy"}, session.ErrSessionNotFound); got != "" {
+		t.Fatalf("sessionTierPin with a load error = %q, want none", got)
+	}
+	if got := sessionTierPin(session.Session{TierPin: "Heavy"}, nil); got != llm.TierHeavy {
+		t.Fatalf("sessionTierPin(Heavy) = %q, want heavy", got)
+	}
+}
+
+func TestBuildSessionChatRunState_UnparsablePinFallsBackToDefault(t *testing.T) {
+	root, store := tierPinTestStore(t)
+	sess, err := store.Create("chat")
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if err := store.SetTierPin(sess.ID, "turbo"); err != nil {
+		t.Fatalf("set pin: %v", err)
+	}
+	appendTierPinHistory(t, store, sess.ID)
+	state := buildTierPinState(t, root, store, sess.ID, nil)
+	if state.llmResolution.Tier != llm.TierStandard {
+		t.Fatalf("tier = %q, want the default standard", state.llmResolution.Tier)
+	}
+}
+
+func TestPinChatTierIfAsked_SkipsAndFailures(t *testing.T) {
+	pinned := chatTierRecommendationState{RecommendedTier: llm.TierHeavy, ChosenTier: llm.TierHeavy}
+	ask := &chatTierRecommendationPayload{Pin: true}
+
+	// Nothing to save: no pin asked, or the session already has this tier.
+	// The nil store would panic if either tried to write.
+	if err := pinChatTierIfAsked(nil, &session.Session{ID: "s"}, &chatTierRecommendationPayload{}, pinned); err != nil {
+		t.Fatalf("no pin asked: %v", err)
+	}
+	if err := pinChatTierIfAsked(nil, &session.Session{ID: "s"}, ask, chatTierRecommendationState{}); err != nil {
+		t.Fatalf("no tier chosen: %v", err)
+	}
+	same := &session.Session{ID: "s", TierPin: "heavy"}
+	if err := pinChatTierIfAsked(nil, same, ask, pinned); err != nil {
+		t.Fatalf("same tier: %v", err)
+	}
+
+	_, store := tierPinTestStore(t)
+	missing := &session.Session{ID: "missing"}
+	err := pinChatTierIfAsked(store, missing, ask, pinned)
+	if !errors.Is(err, session.ErrSessionNotFound) {
+		t.Fatalf("err = %v, want the store's ErrSessionNotFound", err)
+	}
+	if missing.TierPin != "" {
+		t.Fatalf("TierPin = %q after a failed save", missing.TierPin)
+	}
+}
+
+func TestBuildSessionChatRunState_FailsWhenThePinCannotBeSaved(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("directory permissions do not block writes on Windows")
+	}
+	if os.Geteuid() == 0 {
+		t.Skip("root writes to read-only directories")
+	}
+	root, store := tierPinTestStore(t)
+	sess, err := store.Create("chat")
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	// Load the session once so its artifact dir exists, then make the
+	// index directory read-only: reads still work, the pin cannot be saved.
+	if _, err := store.Get(sess.ID); err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	indexDir := filepath.Dir(store.TranscriptPath(sess.ID))
+	if err := os.Chmod(indexDir, 0o500); err != nil {
+		t.Fatalf("chmod: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(indexDir, 0o700) })
+
+	deps := chatHandlerDeps{workspaceDir: root, store: store, router: tierPinTestRouter(t), logger: zerolog.Nop()}
+	_, err = buildSessionChatRunState(root, "", store, sess.ID, "go", nil, nil,
+		&chatTierRecommendationPayload{RecommendedTier: "heavy", ChosenTier: "heavy", Pin: true}, true, "", deps)
+	if err == nil || !strings.Contains(err.Error(), "pin session tier") {
+		t.Fatalf("err = %v, want the pin save failure", err)
+	}
+}
+
+func TestSessionAPIPatchTierPin_MissingSession(t *testing.T) {
+	_, store := tierPinTestStore(t)
+	handler := newSessionAPIHandler(store, zerolog.Nop())
+	status, body := patchSessionRaw(t, handler, "missing", `{"tier_pin":"heavy"}`)
+	if status != http.StatusBadRequest || !strings.Contains(string(body), "session not found") {
+		t.Fatalf("status %d body %q, want 400 session not found", status, body)
 	}
 }
