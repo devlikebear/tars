@@ -65,8 +65,26 @@
     void chatSession.setPinnedTier(isPinnableTier(value) ? value : null)
   }
 
-  async function transitionCwd(path: string) {
-    if (await onCwdSelect(path)) cwdDropdownOpen = false
+  // A choice closes the popover whether or not the switch worked: Chat
+  // reports the outcome in the feedback line, not here.
+  function transitionCwd(path: string) {
+    cwdDropdownOpen = false
+    void onCwdSelect(path)
+  }
+
+  // Close like the other popovers: Escape, or a click outside the chip and
+  // its menu (the menu sits over the composer's Send button).
+  let cwdHud = $state<HTMLDivElement | undefined>()
+
+  function closeCwdOnOutsideClick(event: MouseEvent) {
+    if (cwdDropdownOpen && cwdHud && !cwdHud.contains(event.target as Node)) cwdDropdownOpen = false
+  }
+
+  function closeCwdOnEscape(event: KeyboardEvent) {
+    if (cwdDropdownOpen && event.key === 'Escape') {
+      event.stopPropagation()
+      cwdDropdownOpen = false
+    }
   }
 
   function formatCost(usd: number): string {
@@ -80,6 +98,8 @@
     return String(count)
   }
 </script>
+
+<svelte:document onclick={closeCwdOnOutsideClick} onkeydown={closeCwdOnEscape} />
 
 <div class="status-bar" role="group" aria-label={$t.statusBar.label}>
   <label
@@ -136,12 +156,14 @@
   <span class="status-spacer"></span>
 
   {#if cwdState}
-    <div class="cwd-hud">
+    <div class="cwd-hud" bind:this={cwdHud}>
       <button
         type="button"
         class="cwd-chip"
         title={cwdState.current}
         disabled={cwdBusy}
+        aria-haspopup="menu"
+        aria-expanded={cwdDropdownOpen}
         onclick={() => { cwdDropdownOpen = !cwdDropdownOpen }}
       >
         <span class="cwd-chip-label">cwd</span>

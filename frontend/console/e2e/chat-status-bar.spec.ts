@@ -63,6 +63,28 @@ test('the status bar shows the cwd and this session’s usage after a turn', asy
   expect((await other.json()).summary.total_calls).toBe(0)
 })
 
+// The cwd popover opens over the composer's Send button, so it closes the
+// way the other popovers do: Escape, a click elsewhere, or a choice.
+test('the cwd popover closes on Escape, an outside click, and a choice', async ({ page }) => {
+  await newSession(page)
+  const chip = statusBar(page).locator('.cwd-chip')
+  const popover = statusBar(page).locator('.cwd-dropdown')
+
+  await chip.click()
+  await expect(popover).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(popover).toHaveCount(0)
+
+  await chip.click()
+  await expect(popover).toBeVisible()
+  await composer(page).click()
+  await expect(popover).toHaveCount(0)
+
+  await chip.click()
+  await popover.locator('.cwd-dropdown-item').first().click()
+  await expect(popover).toHaveCount(0)
+})
+
 test('a pinned tier applies to every turn, not only the first', async ({ page }) => {
   await newSession(page)
   await statusBar(page).locator('.tier-select').selectOption('heavy')

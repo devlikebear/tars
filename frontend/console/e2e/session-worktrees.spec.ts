@@ -4,7 +4,7 @@
 // The mock LLM's [e2e:write3] turn calls write_file three times.
 
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test, type Page } from '@playwright/test'
@@ -96,4 +96,55 @@ test('isolate by hand, then discard', async ({ page }) => {
   await expect(chip).toHaveCount(0)
   expect(readFileSync(join(repo, 'base.txt'), 'utf8')).toBe(original)
   expect(existsSync(join(repo, 'notes.md'))).toBe(false)
+})
+
+// A session that starts outside any repository learns about one as soon as
+// its folder changes, whichever way it changes: no reload needed for the
+// header's Isolate chip.
+async function sessionWithRepoCandidate(page: Page): Promise<{ id: string; repo: string; home: string }> {
+  const repo = realpathSync(mkdtempSync(join(tmpdir(), 'tars-e2e-cwd-')))
+  git(repo, 'init', '-q', '-b', 'main')
+  writeFileSync(join(repo, 'base.txt'), original)
+  git(repo, 'add', '-A')
+  git(repo, 'commit', '-q', '-m', 'init')
+  const home = realpathSync(mkdtempSync(join(tmpdir(), 'tars-e2e-plain-')))
+
+  await page.goto('/console/chat')
+  await expect(page.locator('.dock-left .session-btn').first()).toBeVisible()
+  await page.locator('.dock-left .new-chat-btn').click()
+  await expect(page).toHaveURL(/\/console\/chat\/[^/]+$/)
+  const id = page.url().split('/').pop() ?? ''
+  expect((await page.request.put(`/v1/admin/sessions/${id}/workdirs`, { data: { work_dirs: [home, repo], current_dir: home } })).ok()).toBe(true)
+  await page.reload()
+  await expect(page.locator('.status-bar .cwd-chip')).toHaveAttribute('title', home)
+  await expect(page.getByTestId('worktree-isolate')).toHaveCount(0)
+  return { id, repo, home }
+}
+
+test('switching the cwd with /cwd shows the Isolate chip without a reload', async ({ page }) => {
+  const { repo } = await sessionWithRepoCandidate(page)
+  await composer(page).fill(`/cwd ${repo}`)
+  await composer(page).press('Enter')
+  await expect(page.locator('.status-bar .cwd-chip')).toHaveAttribute('title', repo)
+  await expect(page.getByTestId('worktree-isolate')).toBeVisible()
+})
+
+test('switching the cwd from the status bar chip shows the Isolate chip', async ({ page }) => {
+  const { repo, home } = await sessionWithRepoCandidate(page)
+  await page.locator('.status-bar .cwd-chip').click()
+  await page.locator('.status-bar .cwd-dropdown-item').and(page.locator(`[title="${repo}"]`)).click()
+  await expect(page.getByTestId('worktree-isolate')).toBeVisible()
+
+  // And back out of the repository: the chip goes away again.
+  await page.locator('.status-bar .cwd-chip').click()
+  await page.locator('.status-bar .cwd-dropdown-item').and(page.locator(`[title="${home}"]`)).click()
+  await expect(page.getByTestId('worktree-isolate')).toHaveCount(0)
+})
+
+test('switching the folder in the Files panel updates the cwd chip and the Isolate chip', async ({ page }) => {
+  const { repo } = await sessionWithRepoCandidate(page)
+  await page.locator('.chat-rail [data-panel="artifacts"]').click() // Files
+  await page.locator('.workdir-select').selectOption(repo)
+  await expect(page.locator('.status-bar .cwd-chip')).toHaveAttribute('title', repo)
+  await expect(page.getByTestId('worktree-isolate')).toBeVisible()
 })
