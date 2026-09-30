@@ -6,6 +6,14 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.39.3] - 2026-09-30
+
+### Fixed
+
+- **`claude-code-cli` 코딩 턴이 5분이면 끊기던 문제** — `CLAUDE_CODE_CLI_TIMEOUT`(기본 5분)이 CLI 호출 전체에 걸리는 벽시계 제한이어서, 파일을 읽고 고치고 테스트를 돌리며 출력을 계속 내는 턴도 5분이 지나면 `cli timed out after 5m0s`로 죽었다. 이제 이 값은 **무응답 한도**다: CLI stdout에서 줄이 올 때마다 다시 채워지고(인라인 권한 경로의 제어 메시지 포함), 권한 질문에 사람이 답하길 기다리는 동안은 전처럼 멈춘다. Bash 도구 하나가 출력 없이 최대 10분 돌 수 있어 기본값은 15분으로 올렸다. 만료 에러는 `cli timed out: no output for 15m0s`이고 "timed out"을 그대로 담아 재시도 정책은 달라지지 않는다.
+
+- **`claude-code-cli` 스트리밍 답의 문단이 붙어 나오던 문제** — CLI가 assistant 메시지를 여러 개 보내면 채팅 스트림에 "…읽겠습니다.The store is in place."처럼 구분 없이 이어졌다. 두 번째 메시지부터 앞에 빈 줄을 넣어 보낸다. 저장되는 최종 본문은 그대로다.
+
 ## [0.39.1] - 2026-09-30
 
 ### Fixed

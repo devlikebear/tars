@@ -21,10 +21,12 @@ const (
 	defaultClaudeCodeCLIModel  = "sonnet"
 	claudeCodeCLIPathEnv       = "CLAUDE_CODE_CLI_PATH"
 	claudeCodeCLITimeoutEnv    = "CLAUDE_CODE_CLI_TIMEOUT"
-	// defaultClaudeCodeCLITimeout bounds a single claude invocation. Real
-	// agentic turns can legitimately run for tens of seconds to minutes, so
-	// the default is generous; operators tune it via CLAUDE_CODE_CLI_TIMEOUT.
-	defaultClaudeCodeCLITimeout = 5 * time.Minute
+	// defaultClaudeCodeCLITimeout bounds how long a claude invocation may
+	// print nothing, not how long it may run: every stdout line restarts it,
+	// so a coding turn that keeps working is never cut off. A single Bash
+	// tool call may run up to 10 minutes silently, so the limit sits above
+	// that; operators tune it via CLAUDE_CODE_CLI_TIMEOUT.
+	defaultClaudeCodeCLITimeout = 15 * time.Minute
 	// claudeCodeCLIWaitDelay bounds how long Wait blocks on pipe I/O after the
 	// process is signaled on cancellation. Shared by the platform-specific
 	// process configuration (claude_code_cli_unix.go / _windows.go).
@@ -120,11 +122,12 @@ func (c *ClaudeCodeCLIClient) Chat(ctx context.Context, messages []ChatMessage, 
 	}
 	defer cleanup()
 
-	// Bound the invocation so a hung or slow claude process fails predictably
-	// instead of blocking until some upstream client gives up. Time spent
-	// waiting on a person to answer a permission prompt is not counted.
-	timeout := parseClaudeCodeCLITimeout(os.Getenv(claudeCodeCLITimeoutEnv))
-	ctx, clock := newClaudeCodeTurnClock(ctx, timeout)
+	// Bound silence so a hung claude process fails predictably instead of
+	// blocking until some upstream client gives up. Each line of output
+	// restarts the window, and time spent waiting on a person to answer a
+	// permission prompt is not counted.
+	idle := parseClaudeCodeCLITimeout(os.Getenv(claudeCodeCLITimeoutEnv))
+	ctx, clock := newClaudeCodeTurnClock(ctx, idle)
 	defer clock.stop()
 	if opts.ClaudeCodePermissionHandler != nil {
 		opts.ClaudeCodePermissionHandler = clock.untimed(opts.ClaudeCodePermissionHandler)
@@ -149,11 +152,11 @@ func (c *ClaudeCodeCLIClient) Chat(ctx context.Context, messages []ChatMessage, 
 			// Not retried: the attempt may already have asked the person and
 			// run the tools they approved.
 			args = append(args, claudeCodeControlArgs...)
-			return c.runControlOnce(ctx, args, dir, env, timeout, opts, prompt)
+			return c.runControlOnce(ctx, args, dir, env, clock, opts, prompt)
 		}
 		args = append(args, prompt)
 		return runClaudeCodeCLIWithRetry(ctx, func() (ChatResponse, error) {
-			return c.runOnce(ctx, args, dir, env, timeout, opts)
+			return c.runOnce(ctx, args, dir, env, clock, opts)
 		})
 	}
 	resp, err := run(resumeID, prompt)
@@ -238,7 +241,7 @@ func (c *ClaudeCodeCLIClient) callArgs(messages []ChatMessage, opts ChatOptions)
 }
 
 // runOnce starts the CLI once and parses its stream.
-func (c *ClaudeCodeCLIClient) runOnce(ctx context.Context, args []string, dir string, env []string, timeout time.Duration, opts ChatOptions) (ChatResponse, error) {
+func (c *ClaudeCodeCLIClient) runOnce(ctx context.Context, args []string, dir string, env []string, clock *claudeCodeTurnClock, opts ChatOptions) (ChatResponse, error) {
 	cmd := exec.CommandContext(ctx, c.cliPath, args...)
 	cmd.Dir = dir
 	cmd.Env = env
@@ -258,19 +261,19 @@ func (c *ClaudeCodeCLIClient) runOnce(ctx context.Context, args []string, dir st
 		return ChatResponse{}, newProviderError(claudeCodeCLIProviderLabel, "request", fmt.Errorf("start cli: %w", err))
 	}
 
-	resp, parseErr := parseClaudeCodeCLIStream(stdout, opts, claudeCodeStreamHooks{})
+	resp, parseErr := parseClaudeCodeCLIStream(stdout, opts, claudeCodeStreamHooks{activity: clock.touch})
 	waitErr := cmd.Wait()
-	return finishClaudeCodeCLIRun(ctx, timeout, stderr.String(), resp, parseErr, waitErr)
+	return finishClaudeCodeCLIRun(ctx, clock.idle, stderr.String(), resp, parseErr, waitErr)
 }
 
 // finishClaudeCodeCLIRun turns a finished process into the turn's outcome,
 // ranking the failure causes so the most specific one is reported.
-func finishClaudeCodeCLIRun(ctx context.Context, timeout time.Duration, stderr string, resp ChatResponse, parseErr, waitErr error) (ChatResponse, error) {
-	// A deadline kill surfaces as a process/stream error; report it as a
+func finishClaudeCodeCLIRun(ctx context.Context, idle time.Duration, stderr string, resp ChatResponse, parseErr, waitErr error) (ChatResponse, error) {
+	// An idle kill surfaces as a process/stream error; report it as a
 	// timeout so callers (and the retry policy) can tell it apart from a
-	// transient crash.
+	// transient crash, and say it was silence, not total run time.
 	if errors.Is(context.Cause(ctx), context.DeadlineExceeded) {
-		return ChatResponse{}, newProviderError(claudeCodeCLIProviderLabel, "request", fmt.Errorf("cli timed out after %s", timeout))
+		return ChatResponse{}, newProviderError(claudeCodeCLIProviderLabel, "request", fmt.Errorf("cli timed out: no output for %s", idle))
 	}
 	errText := strings.TrimSpace(stderr)
 	// Checked before the stream error: a missing session prints nothing to
@@ -372,10 +375,13 @@ func parseClaudeCodeCLITimeout(raw string) time.Duration {
 
 // claudeCodeStreamHooks let the control-protocol runner share the stream
 // parser. control consumes control frames; event sees every other decoded
-// event before the parser does. The zero value parses a plain `-p` stream.
+// event before the parser does; activity fires for every non-empty line,
+// control frames included, to keep the idle clock running. The zero value
+// parses a plain `-p` stream.
 type claudeCodeStreamHooks struct {
-	control func(line []byte) bool
-	event   func(payload map[string]any)
+	control  func(line []byte) bool
+	event    func(payload map[string]any)
+	activity func()
 }
 
 func parseClaudeCodeCLIStream(stdout io.Reader, opts ChatOptions, hooks claudeCodeStreamHooks) (ChatResponse, error) {
@@ -387,6 +393,9 @@ func parseClaudeCodeCLIStream(stdout io.Reader, opts ChatOptions, hooks claudeCo
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" {
 			continue
+		}
+		if hooks.activity != nil {
+			hooks.activity()
 		}
 		if hooks.control != nil && hooks.control([]byte(line)) {
 			continue
@@ -441,12 +450,16 @@ func (s *claudeCodeStreamState) applyAssistant(payload map[string]any) {
 	if text == "" {
 		return
 	}
+	// Each assistant message is a separate block; without a break the live
+	// stream would glue them ("…읽겠습니다.The store is in place.").
+	delta := text
 	if s.assistantText.Len() > 0 {
 		s.assistantText.WriteString("\n")
+		delta = "\n\n" + text
 	}
 	s.assistantText.WriteString(text)
 	if s.onDelta != nil {
-		s.onDelta(text)
+		s.onDelta(delta)
 	}
 }
 
