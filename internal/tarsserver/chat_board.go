@@ -126,18 +126,8 @@ func (b *sessionBoard) build(ctx context.Context) (boardResponse, error) {
 	for _, p := range snap.Pending {
 		pending[p.SessionID]++
 	}
-	var queued map[string]int
-	if b.queued != nil {
-		if q, err := b.queued(); err == nil {
-			queued = q
-		}
-	}
-	var costs map[string]float64
-	if b.costs != nil {
-		if c, err := b.costs(); err == nil {
-			costs = c
-		}
-	}
+	queued := optionalCounts(b.queued)
+	costs := optionalCounts(b.costs)
 
 	out := boardResponse{Sessions: []boardSession{}, CostPeriod: boardCostPeriod}
 	for _, s := range list {
@@ -172,6 +162,19 @@ func (b *sessionBoard) build(ctx context.Context) (boardResponse, error) {
 		return y.UpdatedAt.Compare(x.UpdatedAt)
 	})
 	return out, nil
+}
+
+// optionalCounts reads an optional per-session source. A missing or
+// failing source counts nothing rather than failing the board.
+func optionalCounts[V any](read func() (map[string]V, error)) map[string]V {
+	if read == nil {
+		return nil
+	}
+	out, err := read()
+	if err != nil {
+		return nil
+	}
+	return out
 }
 
 // workingFolder is the session's active cwd, or "" while it is still the
