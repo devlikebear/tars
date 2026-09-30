@@ -10,6 +10,7 @@ import (
 
 type promptExecutionContextKey struct{}
 type executionRootContextKey struct{}
+type parentSessionContextKey struct{}
 
 type PromptExecutionContext struct {
 	ProviderOverride *ProviderOverride
@@ -63,4 +64,20 @@ func normalizeExecutionRoot(raw string) (string, error) {
 		return "", fmt.Errorf("execution root is unavailable")
 	}
 	return filepath.Clean(resolved), nil
+}
+
+// WithParentSession records the session that spawned a run, so the prompt
+// runner can apply that session's permission mode to the run's tools.
+func WithParentSession(ctx context.Context, sessionID string) context.Context {
+	return context.WithValue(ctx, parentSessionContextKey{}, strings.TrimSpace(sessionID))
+}
+
+// ParentSessionFromContext returns the session that spawned the running
+// run, or "" when none did.
+func ParentSessionFromContext(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	id, _ := ctx.Value(parentSessionContextKey{}).(string)
+	return id
 }

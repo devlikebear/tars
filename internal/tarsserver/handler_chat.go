@@ -1117,7 +1117,10 @@ type chatToolingOptions struct {
 	OpsManager                  *ops.Manager
 	// Worktrees holds repository write leases and isolates sessions in
 	// worktrees of their own (#971); nil leaves every turn in its folder.
-	Worktrees  *chatWorktrees
+	Worktrees *chatWorktrees
+	// Unattended gates the tools of turns nobody watches (cron, Telegram)
+	// by their session's permission mode; nil runs them as before.
+	Unattended *unattendedPermissions
 	Compaction chatCompactionOptions
 	// ExecMaxTimeoutMS forwards config.ToolsExecMaxTimeoutMS into the
 	// per-call cap on the exec tool. 0 falls back to the tool default.

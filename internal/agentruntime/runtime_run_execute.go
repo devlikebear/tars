@@ -107,6 +107,7 @@ func (r *Runtime) executeRunPrompt(ctx context.Context, state *runState, run Run
 	)
 	execCtx := serverauth.WithWorkspaceID(ctx, run.WorkspaceID)
 	execCtx = WithExecutionRoot(execCtx, r.executionRoot(run))
+	execCtx = WithParentSession(execCtx, run.ParentSessionID)
 	execCtx = usage.WithCallMeta(execCtx, usage.CallMeta{
 		Source:    "agent_run",
 		SessionID: run.SessionID,

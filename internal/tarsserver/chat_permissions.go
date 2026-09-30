@@ -68,6 +68,9 @@ type chatPermissionAudit struct {
 	tool      string
 	rule      string
 	mode      string
+	// source names an unattended turn (cron, telegram, subagent) whose
+	// question was answered in the ops queue rather than on a card.
+	source string
 }
 
 // settle tells the console how a question ended and records it.
@@ -84,7 +87,10 @@ func (b *chatPermissionBroker) record(id, outcome string, info chatPermissionAud
 		return
 	}
 	actor := "console"
-	if strings.HasPrefix(outcome, "refused_") || outcome == "withdrawn" {
+	if info.source != "" {
+		actor = "ops"
+	}
+	if strings.HasPrefix(outcome, "refused_") || outcome == "withdrawn" || outcome == "expired" {
 		actor = "tars"
 	}
 	details := map[string]any{"tool": info.tool}
@@ -96,6 +102,9 @@ func (b *chatPermissionBroker) record(id, outcome string, info chatPermissionAud
 	}
 	if info.mode != "" {
 		details["mode"] = info.mode
+	}
+	if info.source != "" {
+		details["source"] = info.source
 	}
 	b.audit(ops.AutomationAuditEntry{
 		Timestamp: time.Now().UTC(),

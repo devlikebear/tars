@@ -31,6 +31,7 @@
   import type { ChatMessage } from '../lib/chatMessages'
   import { approvalFromEvent, resolveApproval, withdrawPendingApprovals, type ChatApproval } from '../lib/chatApproval'
   import ChatApprovalCard from './ChatApprovalCard.svelte'
+  import ChatUnattendedApprovals from './ChatUnattendedApprovals.svelte'
   import ChatMessageItem from './ChatMessageItem.svelte'
   import TurnChangesCard from './TurnChangesCard.svelte'
   import SlashPopover from './SlashPopover.svelte'
@@ -1607,6 +1608,7 @@
       {/each}
     </div>
   {/if}
+  <ChatUnattendedApprovals sessionId={activeChatSessionId()} />
   {#if showPlanBar}
     <div class="plan-bar" role="group" aria-label={$t.permissionMode.planBar.title}>
       <div class="plan-bar-text">

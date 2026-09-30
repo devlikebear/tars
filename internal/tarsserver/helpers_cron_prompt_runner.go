@@ -98,11 +98,13 @@ func newCronPromptRunnerWithSessionContext(fallback agentRuntimePromptRunner, de
 		runCtx := usage.WithCallMeta(ctx, usage.CallMeta{Source: "cron", SessionID: state.sessionID})
 		runCtx = apptool.WithCurrentSessionInfo(runCtx, state.sessionID, state.sessionKind)
 		loop, _ := setupAgentLoop(state.llmClient, state.registry, state.sessionID, len(state.history), deps.tooling.UsageTracker, deps.logger, func(string, string, string, string, string, string, ...bool) {}, nil)
-		resp, err := loop.Run(runCtx, state.llmMessages, agent.RunOptions{
+		runOptions := agent.RunOptions{
 			MaxIterations: deps.maxIters,
 			Tools:         tools,
 			ToolChoice:    state.toolChoice,
-		})
+		}
+		deps.tooling.Unattended.options(state.sessionID, state.cwd, "cron", runLabel).apply(&runOptions)
+		resp, err := loop.Run(runCtx, state.llmMessages, runOptions)
 		if err != nil {
 			return "", err
 		}

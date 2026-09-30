@@ -25,6 +25,13 @@ export const permissionModeEn = {
   switchFailed: 'Could not change the permission mode.',
   cliPolicy: 'CLI policy',
   cliPolicyHint: 'antigravity-cli runs its own tools under your Antigravity settings. TARS cannot ask for approval in the conversation, so modes do not apply; turn changes are still recorded.',
+  unattended: {
+    title: (source: string) => `A ${source} run needs input`,
+    body: (tool: string) => `It waits to run ${tool}.`,
+    approve: 'Approve',
+    reject: 'Reject',
+    error: 'Could not answer the question',
+  },
   planBar: {
     title: 'Plan mode: read-only',
     hint: 'When the plan looks right, approve it to start making changes.',
@@ -61,6 +68,13 @@ export const permissionModeKo: PermissionModeTranslations = {
   switchFailed: '권한 모드를 바꾸지 못했습니다.',
   cliPolicy: 'CLI 정책',
   cliPolicyHint: 'antigravity-cli는 사용자의 Antigravity 설정에 따라 자기 도구를 실행합니다. TARS가 대화 안에서 승인을 물을 수 없어서 모드가 적용되지 않습니다. 턴 변경 기록은 그대로 남습니다.',
+  unattended: {
+    title: (source: string) => `${source} 실행이 입력을 기다립니다`,
+    body: (tool: string) => `${tool} 실행 승인을 기다리는 중입니다.`,
+    approve: '승인',
+    reject: '거부',
+    error: '답을 보내지 못했습니다',
+  },
   planBar: {
     title: '계획 모드: 읽기 전용',
     hint: '계획이 괜찮으면 승인해서 변경을 시작하세요.',

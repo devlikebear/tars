@@ -228,11 +228,19 @@ func chatToolGateFor(deps chatHandlerDeps, state chatRunState, stream *chatStrea
 // always allow in this turn's folder. They apply to every turn there, asked
 // interactively or not; they come only from TARS' own store.
 func chatClaudeCodeAlwaysRules(deps chatHandlerDeps, state chatRunState) []string {
-	if deps.permissions == nil || deps.permissions.always == nil {
+	if deps.permissions == nil {
+		return nil
+	}
+	return claudeCodeAlwaysRules(deps.permissions.always, state.cwd)
+}
+
+// claudeCodeAlwaysRules lists the Claude Code rules always allowed in cwd.
+func claudeCodeAlwaysRules(store *chatAlwaysRuleStore, cwd string) []string {
+	if store == nil {
 		return nil
 	}
 	var rules []string
-	for _, rule := range deps.permissions.always.list(state.cwd) {
+	for _, rule := range store.list(cwd) {
 		if rule.Provider == chatRuleProviderClaudeCode {
 			rules = append(rules, rule.Display())
 		}

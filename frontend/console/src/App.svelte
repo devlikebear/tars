@@ -452,7 +452,7 @@
         <div class="route-loading">Loading...</div>
       {:then module}
         {@const OpsRoute = module.default}
-        <OpsRoute />
+        <OpsRoute onNavigate={navigate} />
       {:catch}
         <div class="route-error">Could not load console page.</div>
       {/await}

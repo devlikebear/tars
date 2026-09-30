@@ -588,6 +588,20 @@ export type Approval = {
     }>
   }
   git_mutation?: GitMutationPlan
+  tool_permission?: ToolPermissionRequest
+}
+
+// A tool call an unattended turn (cron, Telegram, subagent) waits to run,
+// queued because its session's permission mode asks (#970).
+export type ToolPermissionRequest = {
+  session_id: string
+  source: string
+  run_label?: string
+  tool_name: string
+  preview?: string
+  reason?: string
+  cwd?: string
+  mode?: string
 }
 
 export type AutomationAuditEntry = {

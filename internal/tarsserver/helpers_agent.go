@@ -352,6 +352,7 @@ func newAgentPromptRunnerWithToolsAndMemory(
 			MaxIterations: resolveAgentMaxIterations(profile.maxIterations(maxIters)),
 			Tools:         tools,
 		}
+		subagentRunOptions(ctx, targetWorkspaceDir, label).apply(&runOptions)
 		if runtimeExecutionRecorder != nil {
 			runOptions.BeforeTool = func(_ context.Context, evt agent.Event) error {
 				return runtimeExecutionRecorder(runtimeToolCallFromAgentEvent(agentruntime.RuntimeToolPhaseBefore, evt))
