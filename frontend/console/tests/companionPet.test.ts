@@ -114,3 +114,26 @@ test('companion labels follow console locale', () => {
   assert.equal(companionUiText('ko-KR').actions.poke, '콕 찌르기')
   assert.equal(companionUiText('ko').send, '묻기')
 })
+
+test('companion honours prefers-reduced-motion for every animated selector', () => {
+  const style = componentSource.slice(componentSource.indexOf('<style>'))
+  const reducedStart = style.indexOf('@media (prefers-reduced-motion: reduce)')
+  assert.ok(reducedStart > 0, 'reduced-motion block is missing')
+  const reduced = style.slice(reducedStart)
+  const reducedSelectors = new Set(
+    (reduced.match(/\{([^{}]*)\{\s*animation:\s*none/)?.[1] ?? '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean),
+  )
+  // A rule is "selector { ... animation: ... }" outside @keyframes and the reduced block.
+  const animated = new Set<string>()
+  for (const rule of style.slice(0, reducedStart).matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    if (!/(^|;|\s)animation\s*:/.test(rule[2])) continue
+    for (const sel of rule[1].split(',')) animated.add(sel.trim())
+  }
+  assert.ok(animated.size > 0)
+  for (const sel of animated) {
+    assert.ok(reducedSelectors.has(sel), `reduced motion does not stop ${sel}`)
+  }
+})

@@ -433,8 +433,11 @@
     }
   }
 
+  /* Reduced motion stops every animation here, including the reacting
+     nod+float, whose selector would otherwise outrank a bare .companion-button. */
   @media (prefers-reduced-motion: reduce) {
     .companion-button,
+    .companion-reacting .companion-button,
     .companion-eye,
     .companion-bubble,
     .companion-feedback-strip {
