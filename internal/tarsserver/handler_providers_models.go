@@ -2,6 +2,7 @@ package tarsserver
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"slices"
@@ -32,6 +33,7 @@ var supportedLiveModelProviders = []string{
 	"openai-codex",
 	"kimi",
 	"claude-code-cli",
+	"antigravity-cli",
 	"gemini",
 	"gemini-native",
 	"anthropic",
@@ -73,6 +75,8 @@ type modelsAPIInfo struct {
 	ExpiresAt    string   `json:"expires_at,omitempty"`
 	Models       []string `json:"models"`
 	Warning      string   `json:"warning,omitempty"`
+	// CLIPath is the resolved local binary when Source is "cli".
+	CLIPath string `json:"cli_path,omitempty"`
 }
 
 type providerModelsService struct {
@@ -80,6 +84,8 @@ type providerModelsService struct {
 	cache   *providerModelsCache
 	fetcher llm.ModelFetcher
 	nowFn   func() time.Time
+	// findCLI resolves the local binary of a CLI-backed provider kind.
+	findCLI func(kind string) (string, error)
 }
 
 func newProviderModelsService(cfg config.Config, cache *providerModelsCache, fetcher llm.ModelFetcher, nowFn func() time.Time) *providerModelsService {
@@ -94,6 +100,19 @@ func newProviderModelsService(cfg config.Config, cache *providerModelsCache, fet
 		cache:   cache,
 		fetcher: fetcher,
 		nowFn:   nowFn,
+		findCLI: findProviderCLIPath,
+	}
+}
+
+// findProviderCLIPath resolves the executable a CLI-backed provider runs.
+func findProviderCLIPath(kind string) (string, error) {
+	switch normalizeProviderValue(kind) {
+	case llmdefaults.ProviderClaudeCodeCLI:
+		return llm.FindClaudeCodeCLIPath()
+	case llmdefaults.ProviderAntigravityCLI:
+		return llm.FindAntigravityCLIPath()
+	default:
+		return "", fmt.Errorf("llm provider %s is not CLI-backed", kind)
 	}
 }
 
@@ -164,7 +183,7 @@ func (s *providerModelsService) models(ctx context.Context, providerAlias string
 		return modelsAPIInfo{}, fmt.Errorf("unsupported llm provider: %s", provider)
 	}
 	if !providerSupportsLiveModels(provider) {
-		return modelsAPIInfo{}, fmt.Errorf("live model listing is unsupported for llm provider: %s", provider)
+		return s.cliModels(resolved, provider)
 	}
 	baseURL := normalizeBaseURL(resolved.BaseURL)
 	authMode := normalizeAuthMode(resolved.AuthMode)
@@ -223,6 +242,37 @@ func (s *providerModelsService) models(ctx context.Context, providerAlias string
 		return s.responseFromCacheEntry(cached, currentModel, true, err.Error(), now), nil
 	}
 	return modelsAPIInfo{}, err
+}
+
+// cliModels answers for providers that run a local CLI instead of an HTTP
+// endpoint. There is no model list to fetch, so the check is that the CLI is
+// installed, and the models are the ones the tiers bind to this provider.
+func (s *providerModelsService) cliModels(resolved config.ResolvedLLMTier, provider string) (modelsAPIInfo, error) {
+	cliPath, err := s.findCLI(provider)
+	if err != nil {
+		return modelsAPIInfo{}, fmt.Errorf("%w: %v", errCLIProviderUnavailable, err)
+	}
+	return modelsAPIInfo{
+		Provider:     provider,
+		CurrentModel: resolved.Model,
+		Source:       "cli",
+		Models:       appendCurrentModel(s.tierModelsForProviderAlias(resolved.ProviderAlias), resolved.Model),
+		CLIPath:      cliPath,
+	}, nil
+}
+
+var errCLIProviderUnavailable = errors.New("llm provider CLI unavailable")
+
+func (s *providerModelsService) tierModelsForProviderAlias(providerAlias string) []string {
+	alias := strings.TrimSpace(providerAlias)
+	models := []string{}
+	for _, tier := range sortedTierKeys(s.cfg.LLMTiers) {
+		binding := s.cfg.LLMTiers[tier]
+		if alias != "" && strings.TrimSpace(binding.Provider) == alias {
+			models = append(models, binding.Model)
+		}
+	}
+	return models
 }
 
 func (s *providerModelsService) responseFromCacheEntry(entry providerModelsCacheEntry, currentModel string, stale bool, warning string, now time.Time) modelsAPIInfo {
@@ -309,7 +359,7 @@ func (s *providerModelsService) supportsProvider(provider string) bool {
 
 func providerSupportsLiveModels(provider string) bool {
 	switch normalizeProviderValue(provider) {
-	case "claude-code-cli":
+	case llmdefaults.ProviderClaudeCodeCLI, llmdefaults.ProviderAntigravityCLI:
 		return false
 	default:
 		return true
@@ -370,7 +420,7 @@ func newProvidersModelsAPIHandler(service *providerModelsService, logger zerolog
 
 		models, err := service.models(r.Context(), providerAlias)
 		if err != nil {
-			if strings.Contains(strings.ToLower(err.Error()), "unsupported for llm provider") || strings.Contains(strings.ToLower(err.Error()), "provider alias") {
+			if errors.Is(err, errCLIProviderUnavailable) || strings.Contains(strings.ToLower(err.Error()), "unsupported llm provider") || strings.Contains(strings.ToLower(err.Error()), "provider alias") {
 				writeError(w, http.StatusBadRequest, "models_unsupported", err.Error())
 				return
 			}

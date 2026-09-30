@@ -263,7 +263,11 @@
       const result = await getProviderModels()
       const count = Array.isArray(result.models) ? result.models.length : 0
       const provider = result.provider || 'provider'
-      llmTestResult = count > 0 ? `${provider}: ${count} models available` : `${provider}: connection returned no model list`
+      if (result.source === 'cli') {
+        llmTestResult = `${provider}: CLI found at ${result.cli_path || 'PATH'}`
+      } else {
+        llmTestResult = count > 0 ? `${provider}: ${count} models available` : `${provider}: connection returned no model list`
+      }
       llmTestKind = result.warning ? 'error' : 'success'
     } catch (e) {
       llmTestResult = e instanceof Error ? e.message : 'Connection test failed'

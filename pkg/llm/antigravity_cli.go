@@ -81,9 +81,9 @@ func FindAntigravityCLIPath() (string, error) {
 		}
 		return path, nil
 	}
-	path, err := exec.LookPath("agy")
+	path, err := lookPathOrUserBin("agy")
 	if err != nil {
-		return "", fmt.Errorf("%s executable not found in PATH; install Antigravity CLI or set %s", antigravityCLIProviderLabel, antigravityCLIPathEnv)
+		return "", fmt.Errorf("%s executable not found in PATH or ~/.local/bin; install Antigravity CLI or set %s", antigravityCLIProviderLabel, antigravityCLIPathEnv)
 	}
 	return path, nil
 }

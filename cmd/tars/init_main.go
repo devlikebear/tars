@@ -325,7 +325,7 @@ func startInitService(ctx context.Context, params initStartParams, stdout io.Wri
 		stdoutLog:     target.stdoutLog,
 		stderrLog:     target.stderrLog,
 		domain:        target.domain,
-		launchPath:    defaultServiceLaunchPath,
+		launchPath:    defaultServiceLaunchPath(),
 		apiAddr:       params.apiAddr,
 		keepAlive:     true,
 		runAtLoad:     true,

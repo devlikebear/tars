@@ -63,9 +63,9 @@ func FindClaudeCodeCLIPath() (string, error) {
 		}
 		return path, nil
 	}
-	path, err := exec.LookPath("claude")
+	path, err := lookPathOrUserBin("claude")
 	if err != nil {
-		return "", fmt.Errorf("%s executable not found in PATH; install Claude Code or set %s", claudeCodeCLIProviderLabel, claudeCodeCLIPathEnv)
+		return "", fmt.Errorf("%s executable not found in PATH or ~/.local/bin; install Claude Code or set %s", claudeCodeCLIProviderLabel, claudeCodeCLIPathEnv)
 	}
 	return path, nil
 }

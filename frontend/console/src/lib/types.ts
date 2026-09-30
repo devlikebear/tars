@@ -1732,6 +1732,8 @@ export type ProviderModelsInfo = {
   expires_at?: string
   models: string[]
   warning?: string
+  // Set when source is "cli": the local binary a CLI-backed provider runs.
+  cli_path?: string
 }
 
 export type ProviderAPIStatus = {
