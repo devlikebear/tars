@@ -19,7 +19,7 @@ export function historyMessages(history: SessionMessage[]): ChatMessage[] {
     if (message.role === 'user' || message.role === 'assistant') {
       if (text) out.push({ id: message.id || `h-${out.length}`, role: message.role, text })
     } else if (message.role === 'tool' && message.tool_name) {
-      out.push({ id: message.id || `h-${out.length}`, role: 'tool', text: '', toolName: message.tool_name, toolIsError: !!message.tool_is_error, toolDone: true })
+      out.push({ id: message.id || `h-${out.length}`, role: 'tool', text: '', toolName: message.tool_name, toolArgs: message.tool_args, toolIsError: !!message.tool_is_error, toolDone: true })
     }
   }
   return out
@@ -48,7 +48,7 @@ export function applySideEvent(messages: ChatMessage[], event: ChatEvent, replyI
       return event.request_id ? resolveApproval(messages, event.request_id, event.outcome ?? '') : messages
     case 'status':
       if (event.phase === 'before_tool_call' && event.tool_name) {
-        return [...messages, { id: `tool-${event.tool_call_id || messages.length}`, role: 'tool', text: '', toolName: event.tool_name }]
+        return [...messages, { id: `tool-${event.tool_call_id || messages.length}`, role: 'tool', text: '', toolName: event.tool_name, toolArgs: event.tool_args_preview }]
       }
       if (event.phase === 'provider_tool') {
         if (event.tool_call_id && messages.some((m) => m.role === 'tool' && m.toolCallId === event.tool_call_id)) return messages

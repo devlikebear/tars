@@ -5,6 +5,7 @@
   import { streamChat, attachChatStream, cancelChat, getSessionHistory, renameSession, streamEvents, listChatFileMentions, listAgentRuntimeSubagents, listSkills, listChatTools, getSessionEffectiveConfig, forkSessionFromMessage } from '../lib/api'
   import type { AgentRuntimeSubagent, ChatAttachment, ChatContextInfo, ChatEvent, ChatTier, ChatTierRecommendationRequest, CommandDef, Session, SessionGoal, SessionMessage, SkillDef } from '../lib/types'
   import { chatSession } from '../lib/stores/chatSession'
+  import { toolBaseDirs } from '../lib/cliToolLabels'
   import { changes } from '../lib/stores/changesStore'
   import { turnCardAnchors } from '../lib/changes'
   import type { DraftNote } from '../lib/stores/changes.svelte'
@@ -1609,6 +1610,7 @@
           onCopy={copyMessageText}
           onForkMessage={handleForkMessage}
           streamingStatus={msg.id === streamingAssistantId ? streamingStatus : null}
+          toolBaseDir={toolBaseDirs(chatSession.activeSession, chatSession.cwd?.current)}
         />
       {/if}
       {#if turnCards.has(msg.id)}

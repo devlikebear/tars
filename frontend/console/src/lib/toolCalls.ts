@@ -1,3 +1,5 @@
+import { cliToolLabel } from './cliToolLabels.ts'
+
 type ToolCallState = {
   toolDone?: boolean
   toolIsError?: boolean
@@ -26,7 +28,12 @@ export function formatToolJSON(raw?: string): string {
   }
 }
 
-export function formatToolInvocationPreview(toolName?: string, rawArgs?: string): string {
+// formatToolInvocationPreview is a tool card's label. Tools a CLI provider
+// runs get their own label (cliToolLabels.ts), with paths relative to
+// baseDirs, the session's folders; others show their first arguments.
+export function formatToolInvocationPreview(toolName?: string, rawArgs?: string, baseDirs?: string | readonly string[]): string {
+  const cliLabel = cliToolLabel(toolName, rawArgs, baseDirs)
+  if (cliLabel !== null) return cliLabel
   const name = toolName?.trim() || 'tool'
   const entries = previewArgEntries(rawArgs)
   if (entries.length === 0) return `${name}()`
