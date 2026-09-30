@@ -16,8 +16,10 @@ fi
 # rejects them. Those modules run their own checks (make desktop-test).
 nested_modules="$(git ls-files -- '*/go.mod' | sed 's#/go\.mod$##')"
 if [[ -n "${nested_modules}" && -n "${changed_files}" ]]; then
-  changed_files="$(printf '%s\n' "${changed_files}" | awk -v roots="${nested_modules}" '
-    BEGIN { n = split(roots, r, "\n") }
+  # Passed through the environment, not -v: macOS awk rejects a newline in
+  # a -v value ("newline in string") once there is more than one module.
+  changed_files="$(printf '%s\n' "${changed_files}" | NESTED_MODULES="${nested_modules}" awk '
+    BEGIN { n = split(ENVIRON["NESTED_MODULES"], r, "\n") }
     { for (i = 1; i <= n; i++) if (index($0, r[i] "/") == 1) next; print }
   ')"
 fi
