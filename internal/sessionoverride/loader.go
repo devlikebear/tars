@@ -157,6 +157,15 @@ func assignTopLevel(o *Override, key string, raw json.RawMessage, file string) (
 		o.Presence["claude_code_cli_permission_deny"] = true
 		return nil, nil
 
+	case "worktree_include":
+		var entries []string
+		if err := json.Unmarshal(raw, &entries); err != nil {
+			return nil, err
+		}
+		o.WorktreeInclude = entries
+		o.Presence["worktree_include"] = true
+		return nil, nil
+
 	case "mcp_servers_extra":
 		var entries []MCPServerExtra
 		if err := json.Unmarshal(raw, &entries); err != nil {

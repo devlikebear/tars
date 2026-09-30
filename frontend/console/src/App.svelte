@@ -3,6 +3,7 @@
   import Shell from './components/Shell.svelte'
   import CompanionPet from './components/CompanionPet.svelte'
   import Home from './components/Home.svelte'
+  import SessionBoard from './components/SessionBoard.svelte'
   import Onboarding from './components/Onboarding.svelte'
   import Login from './components/Login.svelte'
   import { resolveRoute, type Route } from './lib/router'
@@ -33,9 +34,10 @@
   import { chatDock, chatDockPanels, chatDockPanelTitleKeys, type ChatDockPanelID } from './lib/stores/chatDockStore.svelte'
   import { chatCommands, type ChatCommand } from './lib/stores/chatCommandQueue.svelte'
   import { overlays } from './lib/stores/overlays.svelte'
+  import { sessionActivity } from './lib/stores/sessionActivity'
 
   let currentPath = $state('/console')
-  let route = $state<Route>({ view: 'home' })
+  let route = $state<Route>({ view: 'board' })
   let serverHealth = $state('connecting')
   let needsSetup = $state(false)
   let unreadCount = $state(0)
@@ -74,6 +76,9 @@
     stopGlobalStream = streamEvents(
       (event) => {
         if (!event.coalesced) unreadCount++
+        // A new approval question: refresh live activity now, not on the
+        // next poll, so badges and notifications follow at once.
+        if (event.category === 'approval') void sessionActivity.poll()
         const reaction = companionReactionFromEvent(event, $locale)
         if (reaction) showCompanionReaction(reaction)
       },
@@ -139,6 +144,7 @@
       .then((h) => { unreadCount = h.unread_count ?? 0 })
       .catch(() => {})
     startGlobalStream()
+    sessionActivity.start()
   }
 
   async function loadCompanionSetting() {
@@ -174,6 +180,7 @@
     }
     stopGlobalStream?.()
     stopGlobalStream = null
+    sessionActivity.stop()
     authInfo = null
     loginRequired = true
     unreadCount = 0
@@ -197,6 +204,17 @@
     action()
   }
 
+  // Session activity (#971): notifications speak the current language and
+  // open the session they are about; the chat on screen counts as seen.
+  $effect(() => {
+    sessionActivity.text = $t.sessionBoard.notifications
+  })
+  sessionActivity.onOpenSession = (id) => navigate(`/console/chat/${encodeURIComponent(id)}`)
+  $effect(() => {
+    const viewing = route.view === 'chat' ? chatSession.activeSessionId : null
+    untrack(() => sessionActivity.setViewing(viewing))
+  })
+
   // The palette lists sessions, so make sure the list is loaded whenever it opens.
   $effect(() => {
     if (!overlays.paletteOpen) return
@@ -208,6 +226,7 @@
   function buildPaletteCommands(): PaletteCommand[] {
     const tr = $t
     const pageTitles: Record<PageView, string> = {
+      board: tr.nav.items.board,
       home: tr.palette.pages.home,
       chat: tr.nav.items.chat,
       'session-lineage': tr.nav.items.lineage,
@@ -326,6 +345,11 @@
     const onPopState = () => syncFromBrowser()
     window.addEventListener('popstate', onPopState)
     window.addEventListener('keydown', onGlobalKeydown)
+    // Coming back to a tab that shows a chat is looking at it.
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') sessionActivity.markSeen(sessionActivity.viewing)
+    }
+    document.addEventListener('visibilitychange', onVisible)
 
     void checkSetupAndMaybeRedirect()
       .then(refreshAuth)
@@ -334,11 +358,13 @@
     return () => {
       window.removeEventListener('popstate', onPopState)
       window.removeEventListener('keydown', onGlobalKeydown)
+      document.removeEventListener('visibilitychange', onVisible)
     }
   })
 
   onDestroy(() => {
     stopGlobalStream?.()
+    sessionActivity.stop()
     if (companionReactionTimer) clearTimeout(companionReactionTimer)
   })
 </script>
@@ -361,6 +387,8 @@
   >
     {#if route.view === 'onboarding'}
       <Onboarding onComplete={handleOnboardingComplete} reentry={route.reentry === true} />
+    {:else if route.view === 'board'}
+      <SessionBoard onNavigate={navigate} onNewChat={() => requestChat({ kind: 'new-session' })} />
     {:else if route.view === 'home'}
       <Home onNavigate={navigate} />
     {:else if route.view === 'chat'}
@@ -501,7 +529,7 @@
         <div class="route-error">Could not load console page.</div>
       {/await}
     {:else}
-      <Home onNavigate={navigate} />
+      <SessionBoard onNavigate={navigate} onNewChat={() => requestChat({ kind: 'new-session' })} />
     {/if}
     {#if showCompanion}
       <CompanionPet reaction={companionReaction} routeView={route.view} locale={$locale} onStimulus={handleCompanionStimulus} onAsk={handleCompanionAsk} />

@@ -18,6 +18,7 @@
     { id: 'sessions', icon: '☰︎', tooltip: 'sessionsTooltip' },
     { id: 'artifacts', icon: '▤', tooltip: 'filesTooltip' },
     { id: 'changes', icon: '±', tooltip: 'changesTooltip' },
+    { id: 'side', icon: '◫', tooltip: 'sideTooltip' },
     { id: 'git', icon: '⎇', tooltip: 'gitTooltip' },
     { id: 'tasks', icon: '☑︎', tooltip: 'tasksTooltip' },
     { id: 'terminal', icon: '›_' },

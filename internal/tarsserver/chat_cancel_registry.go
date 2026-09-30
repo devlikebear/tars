@@ -45,3 +45,14 @@ func (r *chatCancelRegistry) Unregister(sessionID string) {
 	defer r.mu.Unlock()
 	delete(r.cancels, sessionID)
 }
+
+// Running reports whether a turn is registered for the session.
+func (r *chatCancelRegistry) Running(sessionID string) bool {
+	if r == nil {
+		return false
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	_, ok := r.cancels[sessionID]
+	return ok
+}

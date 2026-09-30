@@ -108,14 +108,30 @@ cmd/  →  app layer  →  core layer  →  pkg/
 
 **Frontend** (`frontend/console/`) — Svelte 5 SPA embedded via `go:embed`
 - Svelte 5 runes: `$state()`, `$props()`, `Snippet`
-- Router: `lib/router.ts` (vanilla pushState). Routes: chat, memory, sysprompt, ops, pulse, reflection, extensions, config
+- Router: `lib/router.ts` (vanilla pushState). Routes: board (`/console`, home), home (`/console/system`, overview), chat, memory, sysprompt, ops, pulse, reflection, extensions, config
 - API: `lib/api.ts` — `requestJSON<T>()`, SSE via EventSource + ReadableStream
 - Chat workbench: `Chat.svelte` (route + slash commands) composes `ChatSessionHeader`, `ChatDockHost`, `ChatPanel`, `ChatStatusBar` (tier pin, permission mode, cwd, session cost via `/v1/usage/summary?session_id=`), and `ChatRail` (dock panel icons + ⌘K). Shared state lives in runes stores, not callback props: `lib/stores/chatSession.ts` (sessions, active session, per-session slices) and `lib/stores/chatDockStore.svelte.ts` (dock layout; each zone stacks its panels as tabs, model in `lib/dock/layout.ts`). Stores take their API by injection and are behavior-tested under Node via `tests/helpers/compileSvelteModule.ts`
 - i18n (en/ko): components read `$t.<namespace>.<key>`; strings live in `src/i18n/{en,ko,types}.ts`, and the chat workbench's panels keep theirs in `src/i18n/sections/<area>.ts` (the English object is the section's type, so Korean must match key for key). `src/lib` builders take their section's strings as a parameter instead of importing the store. New UI text goes through `$t`: `e2e/workbench-ko.spec.ts` fails on English phrases left in the Korean workbench
 - Design tokens: `app.css` — "Graphite Signal": dark graphite, signal green `#3ee07f` (`--primary-rgb` for tints), IBM Plex Sans/Mono. Canvas/Mermaid colors live in `lib/themeColors.ts`
 - **Design source of truth**: `frontend/console/DESIGN.md` — consult before any visual change; update it in same PR if deviating
 
-**SSE:** `/v1/events/stream` — `{type,category,severity,title,message,timestamp}`; `/v1/events/history?limit=N`
+**SSE:** `/v1/events/stream` — `{type,category,severity,title,message,timestamp}`; `/v1/events/history?limit=N`. A chat turn waiting for tool approval publishes `category: "approval"` (with `session_id`, `request_id`, `open_path`). `GET /v1/chat/activity` lists running turns and pending approvals for clients other than the request running the turn — the desktop tray (#972) or the console showing another session (`chat_activity.go`, fed by watching each turn stream's permission events). `GET /v1/chat/board` is the console home's session board (#971, `chat_board.go`): visible main sessions with that status, repository top level + branch (cached 15s), the latest checkpointed change, and this month's cost in one call; `/console` renders it and the old dashboard moved to `/console/system`
+
+**Desktop shell** (`desktop/`, #972) — Wails v3 app `tars-desktop` that shows the console of a *local* server in a native window. **Separate Go module** (`desktop/go.mod`): root `go test ./...`/`make test` never reach it; use `make desktop-test` / `make desktop-build` / `make desktop-package`. Linux builds need `libgtk-4-dev libwebkitgtk-6.0-dev` (Wails defaults to GTK4; `-tags gtk3` is the old path)
+- Adds only what a tab can't: tray state from `GET /v1/chat/activity` (#1014) + SSE, approval notifications whose buttons `POST /v1/chat/permissions/{id}`, global hotkey, `tars://` links, self-update from the release's `tars-desktop_*` assets verified by `checksums.txt`
+- Never runs the server in-process: macOS `tars service start`, else a detached `tars serve`. Closing the window hides it
+- Loopback servers only. Tokens: flag > env (`TARS_API_TOKEN`/`TARS_ADMIN_API_TOKEN`) > `<user config dir>/tars-desktop/config.json` (0600). Admin routes (recent chats, new chat in folder) need the admin token in every auth mode but `off`
+- A `tars://` link or dropped folder only navigates or *proposes* (confirm dialog) — never answers an approval or sends a message
+- All logic lives in plain-Go `desktop/internal/*` packages with tests; `main.go`/`shell.go` only wire Wails. Details: `desktop/README.md`
+
+**Session worktrees** (#971, `internal/sessionworktree` + `internal/tarsserver/chat_worktree.go`):
+- 채팅 턴은 세션 cwd의 git 저장소에 대한 **write lease**(서버 메모리, 턴 + 15분)를 잡는다. 다른 세션이 잡고 있으면 새 턴의 세션은 자동으로 자기 worktree(`<workspace>/_shared/session-worktrees/<repo>/<session>`, 브랜치 `tars/session-<id>`, 체크아웃 HEAD에서 분기)로 옮겨 가고 SSE `worktree` 이벤트를 보낸다. 세션에 묶인 cron 실행은 lease와 상관없이 격리된다. 헤더의 ⑂ 칩으로 직접 격리하거나 끝낸다
+- 끝내기: **apply** = base 대비 패치를 체크아웃 작업 트리에 `git apply`(stage/commit/stash 없음, 충돌이면 아무것도 바꾸지 않고 409), **keep** = 남은 변경을 브랜치에 커밋하고 폴더 제거, **discard** = 폴더와 브랜치 삭제. 세션 삭제와 시작 시 sweep은 keep으로 작업을 보존한다. 턴이 도는 동안에는 409
+- `GET/POST/PUT /v1/admin/sessions/{id}/worktree` (`{action: isolate|apply|keep|discard}`, `{isolation: ""|"off"}`). 모든 동작은 automation audit `session_worktree`에 남는다
+- `.tars/settings*.json`의 `worktree_include`(레이어 union)는 저장소 안 gitignore 파일만 복사하고 심볼릭 링크는 건너뛴다. 명령을 실행하는 `worktree_setup`은 차단 필드다(클론한 저장소가 명령을 실행하게 되므로)
+- 삭제는 manager 루트 아래 `<repo>/<session>` 폴더만 허용한다(세션 기록이 조작돼도 다른 경로를 지우지 않음). Windows는 지원(ADR §6 (a)): 테스트가 windows-test job에서 돈다
+
+**Background turns** (#971, `internal/tarsserver/chat_turn_feed.go`): 채팅 턴의 컨텍스트는 요청에서 분리돼 있어 콘솔이 떠나도(세션 전환·새로고침·연결 끊김) 턴이 계속 돈다. 멈추는 건 `POST /v1/chat/cancel`뿐이다. 턴이 보내는 모든 SSE 이벤트는 세션별 피드(최대 20,000개, 넘치면 오래된 것부터 버리고 `turn_feed_truncated`)에 남고, `GET /v1/chat/stream?session_id=`가 처음부터 재생한 뒤 이어서 따라간다(턴이 없으면 204). `ChatPanel`은 세션을 열 때 여기에 붙어 진행 중인 답과 대기 중인 승인 카드를 다시 만든다. 떠나는 패널은 자기 fetch만 abort한다. 승인 질문은 이제 연결이 끊겨도 `withdrawn`되지 않고, 다시 붙은 콘솔이 답하거나 취소될 때까지 기다린다. 같은 피드로 도크의 **옆 세션** 패널(`SideSessionPanel.svelte`, 패널 id `side`)이 다른 세션을 나란히 보여주고 답하게 한다
 
 ## Git Workflow
 
@@ -180,7 +196,7 @@ sessions.json (세션 base)
 - 스칼라/맵 필드는 last-write-wins, `mcp_servers_extra`는 Name 키로 머지
 - 결과는 `GET /v1/admin/sessions/{id}/effective-config`에서 `{effective, sources, diagnostics}`로 노출, `Service.Resolve`가 (cwd, mtime) 키로 캐시
 
-**허용 필드** — `tool_config`, `prompt_override`, `mcp_servers_extra`, `model_tier_override`, `claude_code_cli_permission_mode`, `claude_code_cli_permission_deny`(Claude Code deny 규칙 리스트, 레이어 union = tightening-only → `--settings` 임시 파일로 마운트). 차단 필드(`llm_providers`, `api_key`, `auth*`, `hooks`, `server_command`)는 로드 시 drop + error diagnostic — 절대 자격증명/임의 바이너리 등록을 settings 파일에 허용하지 않는다.
+**허용 필드** — `tool_config`, `prompt_override`, `mcp_servers_extra`, `model_tier_override`, `claude_code_cli_permission_mode`, `claude_code_cli_permission_deny`(Claude Code deny 규칙 리스트, 레이어 union = tightening-only → `--settings` 임시 파일로 마운트), `worktree_include`(세션 worktree에 복사할 gitignore 파일, 레이어 union). 차단 필드(`llm_providers`, `api_key`, `auth*`, `hooks`, `server_command`, `worktree_setup`)는 로드 시 drop + error diagnostic — 절대 자격증명/임의 바이너리 등록을 settings 파일에 허용하지 않는다.
 
 **적용 지점**
 - 채팅 시스템 프롬프트: `effectiveSessionView` 헬퍼가 `prompt_override`를 머지된 값으로 교체 (`handler_chat_context.go`, `handler_chat.go` 양쪽)
@@ -204,7 +220,8 @@ TARS 기능 변경 시 홈페이지 콘텐츠도 갱신 필요 (매 변경마다
 3. **windows-build** — `make windows-build-check`, cross-compiling the whole module for Windows on ubuntu
 4. **windows-test** — `scripts/windows_test.sh` on `windows-latest`. The only job that runs tests on Windows; everything else is Linux
 5. **pr-diff** — pull requests run Svelte console checks, `npm run test:ci`, `make console-e2e` (Playwright specs in `frontend/console/e2e/` against the real server and `e2e/mock-llm.mjs`; report uploaded on failure), `make lint-diff` (with new-line `errcheck`/`staticcheck`), and `make test-cover-diff` against the PR base SHA
-6. **test** — pushes to main run Node 24 → frontend console checks/test slice → Playwright → Go test + coverage threshold → Codecov
+6. **desktop** / **desktop-macos** — `make desktop-test`, then package the Linux + Windows archives (ubuntu) and the `.app` bundle (macos-14, `codesign --verify`, `--version` check)
+7. **test** — pushes to main run Node 24 → frontend console checks/test slice → Playwright → Go test + coverage threshold → Codecov
 
 `scripts/windows_test.sh` carries two lists of Windows-failing tests — packages excluded wholesale, and individual tests skipped in otherwise-green packages. **Both are debt, not policy**: shrink them rather than adding to them. Reproduce the job locally on Windows with `make windows-test`.
 
@@ -222,7 +239,7 @@ Note that the Linux-only test jobs cannot cover `*_windows.go` files at all, so 
 
 See `docs/static-analysis.md` for the static-analysis layering and local workflow guards.
 
-`release-on-version-bump.yml` — triggered by `VERSION.txt` change on main. Builds console before binary.
+`release-on-version-bump.yml` — triggered by `VERSION.txt` change on main. Builds console before binary. Also builds the desktop archives (`scripts/desktop_package.sh`: darwin arm64/amd64 on macos-14, linux/windows amd64 on ubuntu) and adds them to the release and `checksums.txt` — each archive must hold exactly one top-level entry for the self-updater.
 
 ## Codebase Analysis
 

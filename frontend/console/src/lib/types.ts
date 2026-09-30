@@ -680,9 +680,37 @@ export type Session = {
   pinned_at?: string
   goal?: SessionGoal | null
   critic?: SessionCritic | null
+  // Set while the session works in a worktree of its own (#971).
+  worktree?: SessionWorktree | null
+  // 'off' turns automatic worktrees off for the session.
+  isolation?: string
   created_at: string
   updated_at: string
 }
+
+export type SessionWorktree = {
+  path: string
+  dir: string
+  branch: string
+  base_commit: string
+  repo_root: string
+  source_dir: string
+  reason?: string
+  created_at: string
+}
+
+// GET /v1/admin/sessions/{id}/worktree
+export type SessionWorktreeView = {
+  worktree: SessionWorktree | null
+  isolation: string
+  status?: { files: string[]; commits: number }
+  repo_root?: string
+  lease_holder?: string
+  lease_holder_title?: string
+  running: boolean
+}
+
+export type SessionWorktreeAction = 'isolate' | 'apply' | 'keep' | 'discard'
 
 export type SessionCleanupMode = 'archive' | 'delete'
 
@@ -784,6 +812,9 @@ export type APIErrorPayload = {
 
 export type ChatEvent = {
   type: string
+  // worktree: the turn moved into a worktree of its own (#971).
+  branch?: string
+  lease_holder?: string
   // permission_request / permission_resolved: a Claude Code tool call
   // waiting on the user's decision (#970). reason is shared with goal_event.
   request_id?: string

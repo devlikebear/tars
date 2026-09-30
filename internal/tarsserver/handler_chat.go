@@ -1115,7 +1115,10 @@ type chatToolingOptions struct {
 	APIMaxInflightChat          int
 	UsageTracker                *usage.Tracker
 	OpsManager                  *ops.Manager
-	Compaction                  chatCompactionOptions
+	// Worktrees holds repository write leases and isolates sessions in
+	// worktrees of their own (#971); nil leaves every turn in its folder.
+	Worktrees  *chatWorktrees
+	Compaction chatCompactionOptions
 	// ExecMaxTimeoutMS forwards config.ToolsExecMaxTimeoutMS into the
 	// per-call cap on the exec tool. 0 falls back to the tool default.
 	ExecMaxTimeoutMS int
@@ -1140,6 +1143,12 @@ type chatToolingOptions struct {
 	// Checkpoints records each chat turn's changes to the session's work
 	// tree (#969). nil disables checkpoints.
 	Checkpoints *checkpoint.Store
+	// Notify publishes a notification on /v1/events/stream; chat uses it to
+	// announce a turn waiting for approval (#972). nil sends none.
+	Notify func(context.Context, notificationEvent)
+	// SessionCosts returns this month's cost per chat session for the
+	// session board (#971). nil shows every cost as 0.
+	SessionCosts func() (map[string]float64, error)
 }
 
 type chatCompactionOptions struct {
@@ -1273,7 +1282,13 @@ func newChatAPIHandlerWithRuntimeConfig(
 ) http.Handler {
 	maxIters := resolveAgentMaxIterations(maxIterations)
 	chatLimiter := newInflightLimiter(tooling.APIMaxInflightChat, 2)
+	chatActivity := newChatActivity(store, tooling.Notify)
 	cancelRegistry := newChatCancelRegistry()
+	turnFeeds := newChatTurnFeeds()
+
+	if tooling.Worktrees != nil {
+		tooling.Worktrees.running = cancelRegistry.Running
+	}
 	permissions := newChatPermissionBroker()
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/chat", func(w http.ResponseWriter, r *http.Request) {
@@ -1290,11 +1305,16 @@ func newChatAPIHandlerWithRuntimeConfig(
 			tooling:        tooling,
 			extraTools:     extraTools,
 			cancelRegistry: cancelRegistry,
+			turnFeeds:      turnFeeds,
+			chatActivity:   chatActivity,
 			permissions:    permissions,
 		})
 	})
 	mux.HandleFunc("/v1/chat/permissions/", func(w http.ResponseWriter, r *http.Request) {
 		handleChatPermissionAnswer(w, r, permissions)
+	})
+	mux.HandleFunc("/v1/chat/stream", func(w http.ResponseWriter, r *http.Request) {
+		handleChatTurnStream(w, r, turnFeeds)
 	})
 	mux.HandleFunc("/v1/chat/cancel", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -1312,6 +1332,12 @@ func newChatAPIHandlerWithRuntimeConfig(
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "no active chat for session"})
 		}
 	})
+	mux.HandleFunc("/v1/chat/activity", func(w http.ResponseWriter, r *http.Request) {
+		handleChatActivity(w, r, chatActivity)
+	})
+	board := newSessionBoard(store, chatActivity, tooling.Checkpoints, tooling.SessionCosts)
+	mux.HandleFunc("/v1/chat/board", board.handle)
+
 	mux.HandleFunc("/v1/chat/mentions/files", func(w http.ResponseWriter, r *http.Request) {
 		handleChatFileMentionCandidates(w, r, chatHandlerDeps{
 			workspaceDir:  workspaceDir,
