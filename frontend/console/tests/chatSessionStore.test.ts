@@ -407,6 +407,22 @@ test('usage and the permission override load for the active session', async () =
   assert.equal(store.permissionModeOverride, '')
 })
 
+test('a settled turn re-reads the session cost', async () => {
+  let cost = 0
+  const { store } = newStore({
+    getUsageSummary: async (params: { sessionId?: string }) => ({
+      period: 'month', group_by: 'provider', session_id: params.sessionId,
+      total_calls: cost ? 1 : 0, total_cost_usd: cost, total_input_tokens: cost ? 10 : 0, total_output_tokens: cost ? 90 : 0,
+    }),
+  })
+  store.setActive('isolated')
+  await flush()
+  assert.equal(store.usage?.costUSD, 0, 'nothing recorded before the first turn ends')
+  cost = 1.5
+  await store.turnSettled()
+  assert.deepEqual(store.usage, { costUSD: 1.5, calls: 1, inputTokens: 10, outputTokens: 90 })
+})
+
 test('tier options are fetched once', async () => {
   const { store, calls } = newStore()
   await store.loadTierOptions()
