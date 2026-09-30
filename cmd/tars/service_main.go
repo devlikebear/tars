@@ -16,10 +16,21 @@ import (
 )
 
 const (
-	defaultServiceLaunchPath = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
-	defaultServiceStdoutLog  = "Library/Logs/tars-server.out.log"
-	defaultServiceStderrLog  = "Library/Logs/tars-server.err.log"
+	baseServiceLaunchPath   = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+	defaultServiceStdoutLog = "Library/Logs/tars-server.out.log"
+	defaultServiceStderrLog = "Library/Logs/tars-server.err.log"
 )
+
+// defaultServiceLaunchPath is the PATH injected into launchd. It leads with
+// ~/.local/bin, where the native installers of the claude and agy CLIs put
+// their binaries, so the service finds what an interactive shell finds.
+func defaultServiceLaunchPath() string {
+	home, err := os.UserHomeDir()
+	if err != nil || strings.TrimSpace(home) == "" {
+		return baseServiceLaunchPath
+	}
+	return filepath.Join(home, ".local", "bin") + ":" + baseServiceLaunchPath
+}
 
 type serviceOptions struct {
 	action          string
@@ -63,7 +74,7 @@ func defaultServiceOptions() serviceOptions {
 	return serviceOptions{
 		label:           launchagent.DefaultServerLabel,
 		launchctlDomain: defaultServiceDomain(),
-		launchPath:      defaultServiceLaunchPath,
+		launchPath:      defaultServiceLaunchPath(),
 		keepAlive:       true,
 		runAtLoad:       true,
 	}
@@ -298,7 +309,7 @@ func installLaunchAgent(params serviceInstallParams, doctorOut io.Writer) (strin
 		KeepAlive:        params.keepAlive,
 		RunAtLoad:        params.runAtLoad,
 		Environment: map[string]string{
-			"PATH":                       strings.TrimSpace(firstNonEmpty(params.launchPath, defaultServiceLaunchPath)),
+			"PATH":                       strings.TrimSpace(firstNonEmpty(params.launchPath, defaultServiceLaunchPath())),
 			launchagent.ServiceLabelEnv:  params.label,
 			launchagent.ServiceDomainEnv: params.domain,
 		},

@@ -147,6 +147,8 @@ func TestRootCommand_ServiceInstallWritesLaunchAgentPlist(t *testing.T) {
 		configPath,
 		stdoutLog,
 		stderrLog,
+		// claude and agy install into ~/.local/bin, which launchd leaves out.
+		filepath.Join(fakeHome, ".local", "bin") + ":/opt/homebrew/bin",
 	} {
 		if !strings.Contains(plist, token) {
 			t.Fatalf("expected plist to contain %q, got:\n%s", token, plist)

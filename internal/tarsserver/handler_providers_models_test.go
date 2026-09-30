@@ -3,11 +3,14 @@ package tarsserver
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -445,27 +448,102 @@ func TestProvidersAPI_KimiListedWithLiveModels(t *testing.T) {
 	}
 }
 
-func TestModelsAPI_ClaudeCodeCLIUnsupported_(t *testing.T) {
+func TestModelsAPI_CLIProviderReportsInstalledCLIAndTierModels(t *testing.T) {
+	now := time.Date(2026, 3, 14, 12, 0, 0, 0, time.UTC)
+	for _, kind := range []string{"claude-code-cli", "antigravity-cli"} {
+		t.Run(kind, func(t *testing.T) {
+			cfg := makePoolTestCfg(kind, "sonnet", "cli", "")
+			cfg.LLMTiers["heavy"] = config.LLMTierBinding{Provider: "default", Model: "opus"}
+			cache, err := newProviderModelsCache(filepath.Join(t.TempDir(), "provider_models_cache.json"), providerModelsCacheTTL, func() time.Time { return now })
+			if err != nil {
+				t.Fatalf("newProviderModelsCache: %v", err)
+			}
+			fetcher := &fakeModelFetcher{models: []string{"should-not-be-used"}}
+			service := newProviderModelsService(cfg, cache, fetcher, func() time.Time { return now })
+			var lookedUp string
+			service.findCLI = func(kind string) (string, error) {
+				lookedUp = kind
+				return "/usr/local/bin/cli", nil
+			}
+			handler := newProvidersModelsAPIHandler(service, zerolog.New(io.Discard))
+
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/models", nil))
+			if rec.Code != http.StatusOK {
+				t.Fatalf("expected 200, got %d body=%q", rec.Code, rec.Body.String())
+			}
+			if fetcher.calls != 0 {
+				t.Fatalf("expected no fetch attempt, got %d", fetcher.calls)
+			}
+			if lookedUp != kind {
+				t.Fatalf("expected CLI lookup for %s, got %q", kind, lookedUp)
+			}
+			var out modelsAPIInfo
+			if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+				t.Fatalf("decode: %v", err)
+			}
+			if out.Provider != kind || out.Source != "cli" || out.CLIPath != "/usr/local/bin/cli" || out.Warning != "" {
+				t.Fatalf("unexpected response: %+v", out)
+			}
+			if strings.Join(out.Models, ",") != "opus,sonnet" {
+				t.Fatalf("expected tier models, got %v", out.Models)
+			}
+		})
+	}
+}
+
+func TestModelsAPI_CLIProviderMissingBinaryFails(t *testing.T) {
 	now := time.Date(2026, 3, 14, 12, 0, 0, 0, time.UTC)
 	cfg := makePoolTestCfg("claude-code-cli", "sonnet", "cli", "")
 	cache, err := newProviderModelsCache(filepath.Join(t.TempDir(), "provider_models_cache.json"), providerModelsCacheTTL, func() time.Time { return now })
 	if err != nil {
 		t.Fatalf("newProviderModelsCache: %v", err)
 	}
-	fetcher := &fakeModelFetcher{models: []string{"should-not-be-used"}}
-	service := newProviderModelsService(cfg, cache, fetcher, func() time.Time { return now })
+	service := newProviderModelsService(cfg, cache, &fakeModelFetcher{}, func() time.Time { return now })
+	service.findCLI = func(string) (string, error) {
+		return "", errors.New("claude-code-cli executable not found in PATH")
+	}
 	handler := newProvidersModelsAPIHandler(service, zerolog.New(io.Discard))
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
-	handler.ServeHTTP(rec, req)
+	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/models", nil))
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d body=%q", rec.Code, rec.Body.String())
 	}
-	if fetcher.calls != 0 {
-		t.Fatalf("expected no fetch attempt, got %d", fetcher.calls)
+	if !strings.Contains(rec.Body.String(), "executable not found") {
+		t.Fatalf("expected missing-binary message, got %q", rec.Body.String())
 	}
-	if !strings.Contains(rec.Body.String(), "claude-code-cli") {
-		t.Fatalf("expected claude-code-cli message, got %q", rec.Body.String())
+}
+
+func TestFindProviderCLIPath_ResolvesEachCLIProvider(t *testing.T) {
+	dir := t.TempDir()
+	suffix := ""
+	if runtime.GOOS == "windows" {
+		suffix = ".exe"
+	}
+	stubs := map[string]string{}
+	for kind, env := range map[string]string{
+		"claude-code-cli": "CLAUDE_CODE_CLI_PATH",
+		"antigravity-cli": "AGY_CLI_PATH",
+	} {
+		stub := filepath.Join(dir, kind+suffix)
+		if err := os.WriteFile(stub, []byte("#!/bin/sh\n"), 0o755); err != nil {
+			t.Fatalf("write stub: %v", err)
+		}
+		t.Setenv(env, stub)
+		stubs[kind] = stub
+	}
+
+	for kind, want := range stubs {
+		got, err := findProviderCLIPath(kind)
+		if err != nil {
+			t.Fatalf("%s: %v", kind, err)
+		}
+		if got != want {
+			t.Errorf("%s path = %q, want %q", kind, got, want)
+		}
+	}
+	if _, err := findProviderCLIPath("openai"); err == nil {
+		t.Error("expected an error for a provider that is not CLI-backed")
 	}
 }
