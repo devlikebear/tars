@@ -376,3 +376,26 @@ func TestLoad_WorktreeInclude(t *testing.T) {
 		t.Fatalf("source = %v", sources["worktree_include"])
 	}
 }
+
+// TestLoad_WorktreeIncludeStaysInsideTheRepository drops entries a cloned
+// repository could use to read files outside itself, with a warning.
+func TestLoad_WorktreeIncludeStaysInsideTheRepository(t *testing.T) {
+	cwd := t.TempDir()
+	writeSettings(t, cwd, "settings.json", `{"worktree_include":["frontend/console/node_modules","../sibling/.env","/etc/hosts","a/../../b",".git/config","  ",".env"]}`)
+	shared, _, diags, err := Load(cwd)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	want := []string{"frontend/console/node_modules", ".env"}
+	if !reflect.DeepEqual(shared.WorktreeInclude, want) {
+		t.Fatalf("worktree_include = %v, want %v", shared.WorktreeInclude, want)
+	}
+	if len(diags) != 4 {
+		t.Fatalf("diagnostics = %+v", diags)
+	}
+	for _, d := range diags {
+		if d.Severity != SeverityWarn || !strings.HasPrefix(d.Path, "worktree_include[") {
+			t.Fatalf("diagnostic = %+v", d)
+		}
+	}
+}

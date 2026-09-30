@@ -21,7 +21,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -30,6 +29,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/devlikebear/tars/pkg/session"
@@ -58,11 +58,32 @@ func (e *ConflictError) Error() string {
 type Manager struct {
 	root string
 	now  func() time.Time
+
+	// includeWait is how long Create waits for includes to be copied
+	// before it returns and leaves the rest to the background.
+	includeWait time.Duration
+	// copyLimit caps the bytes one worktree's includes may copy when the
+	// file system cannot clone them.
+	copyLimit int64
+	clone     func(src, dst string) error
+	// copyHook lets tests hold a copy mid-way.
+	copyHook func(ctx context.Context)
+
+	mu        sync.Mutex
+	jobs      map[string]*includeJob
+	onInclude func(IncludeDone)
 }
 
 // New returns a manager that keeps worktrees and their records under root.
 func New(root string) *Manager {
-	return &Manager{root: filepath.Clean(root), now: time.Now}
+	return &Manager{
+		root:        filepath.Clean(root),
+		now:         time.Now,
+		includeWait: defaultIncludeWait,
+		copyLimit:   defaultCopyLimit,
+		clone:       cloneFile,
+		jobs:        map[string]*includeJob{},
+	}
 }
 
 // Root is the folder the manager keeps worktrees in.
@@ -88,7 +109,8 @@ type CreateRequest struct {
 	// its place in the repository.
 	SourceDir string
 	// Include lists gitignored files and folders, relative to the
-	// repository root, to copy into the worktree (.env, local settings).
+	// repository root, to copy into the worktree (.env, local settings,
+	// node_modules). See include.go for the rules.
 	Include []string
 	// Reason records why the session was isolated: manual, lease or
 	// unattended.
@@ -101,6 +123,9 @@ type CreateResult struct {
 	Copied   []string
 	// Skipped lists include entries that were not copied, with why.
 	Skipped []string
+	// Pending lists include entries still being copied in the background;
+	// OnIncludeDone reports them when they finish.
+	Pending []string
 }
 
 // Create adds a worktree for the session on a new branch at the checkout's
@@ -162,11 +187,14 @@ func (m *Manager) Create(ctx context.Context, req CreateRequest) (CreateResult, 
 		return CreateResult{}, err
 	}
 	result := CreateResult{Worktree: wt}
-	result.Copied, result.Skipped = copyIncluded(repo, path, req.Include)
 	if err := m.writeRecord(sessionID, wt); err != nil {
 		_ = m.remove(ctx, wt, true)
 		return CreateResult{}, err
 	}
+	items, refused := planIncludes(repo, req.Include)
+	copied, skipped, pending := m.startIncludes(sessionID, wt, items)
+	result.Copied, result.Pending = copied, pending
+	result.Skipped = append(refused, skipped...)
 	return result, nil
 }
 
@@ -288,6 +316,7 @@ func (m *Manager) remove(ctx context.Context, wt session.SessionWorktree, delete
 	if !m.owns(wt.Path) {
 		return fmt.Errorf("%s is not a TARS session worktree", wt.Path)
 	}
+	m.stopIncludes(wt)
 	if _, err := os.Stat(wt.Path); err == nil {
 		if _, err := git(ctx, wt.RepoRoot, "worktree", "remove", "--force", wt.Path); err != nil {
 			// The checkout may be gone; drop the folder and let prune forget it.
@@ -394,92 +423,6 @@ func freeBranch(ctx context.Context, repo, want string) (string, error) {
 		}
 	}
 	return "", fmt.Errorf("no free branch name for %s", want)
-}
-
-// copyIncluded copies the listed gitignored paths from the checkout into
-// the worktree. Entries must be relative and stay inside the repository;
-// symlinks are not followed.
-func copyIncluded(repo, worktree string, include []string) (copied, skipped []string) {
-	for _, entry := range include {
-		entry = strings.TrimSpace(entry)
-		if entry == "" {
-			continue
-		}
-		clean := filepath.Clean(filepath.FromSlash(entry))
-		if filepath.IsAbs(clean) || filepath.VolumeName(clean) != "" || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) || clean == "." {
-			skipped = append(skipped, entry+": must be a path inside the repository")
-			continue
-		}
-		matches, err := filepath.Glob(filepath.Join(repo, clean))
-		if err != nil || len(matches) == 0 {
-			skipped = append(skipped, entry+": not found")
-			continue
-		}
-		for _, match := range matches {
-			rel, err := filepath.Rel(repo, match)
-			if err != nil || strings.HasPrefix(rel, "..") || rel == ".git" || strings.HasPrefix(rel, ".git"+string(filepath.Separator)) {
-				continue
-			}
-			if err := copyTree(match, filepath.Join(worktree, rel)); err != nil {
-				skipped = append(skipped, filepath.ToSlash(rel)+": "+err.Error())
-				continue
-			}
-			copied = append(copied, filepath.ToSlash(rel))
-		}
-	}
-	return copied, skipped
-}
-
-func copyTree(src, dst string) error {
-	info, err := os.Lstat(src)
-	if err != nil {
-		return err
-	}
-	switch {
-	case info.Mode()&os.ModeSymlink != 0:
-		return errors.New("symlinks are not copied")
-	case info.IsDir():
-		return filepath.WalkDir(src, func(path string, d fs.DirEntry, err error) error {
-			if err != nil {
-				return err
-			}
-			rel, _ := filepath.Rel(src, path)
-			target := filepath.Join(dst, rel)
-			if d.Type()&os.ModeSymlink != 0 {
-				return nil
-			}
-			if d.IsDir() {
-				return os.MkdirAll(target, 0o755)
-			}
-			return copyFile(path, target)
-		})
-	default:
-		return copyFile(src, dst)
-	}
-}
-
-func copyFile(src, dst string) error {
-	info, err := os.Stat(src)
-	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
-		return err
-	}
-	in, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = in.Close() }()
-	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, info.Mode().Perm())
-	if err != nil {
-		return err
-	}
-	if _, err := io.Copy(out, in); err != nil {
-		_ = out.Close()
-		return err
-	}
-	return out.Close()
 }
 
 func repoKey(repo string) string {

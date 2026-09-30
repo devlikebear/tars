@@ -368,6 +368,9 @@ func (s *chatStreamWriter) worktree(notice worktreeNotice) {
 	if len(notice.Copied) > 0 {
 		payload["copied"] = notice.Copied
 	}
+	if len(notice.Pending) > 0 {
+		payload["pending"] = notice.Pending
+	}
 	s.send(payload)
 }
 

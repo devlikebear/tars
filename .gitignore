@@ -66,5 +66,7 @@ node_modules/
 docs/plans/
 docs/code-review/
 
-# for tars
-.tars/
+# for tars: local .tars state stays untracked; the shared session settings
+# (worktree_include for session worktrees) are checked in.
+.tars/*
+!.tars/settings.json

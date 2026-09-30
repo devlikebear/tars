@@ -459,6 +459,7 @@ func buildAPIMux(
 			_, _ = opsManager.RecordAutomationAudit(entry)
 		},
 	}
+	sessionWorktrees.watchIncludes()
 	if swept := sessionWorktrees.sweep(context.Background()); swept > 0 {
 		logger.Info().Int("count", swept).Msg("kept worktrees of deleted sessions on their branches")
 	}
