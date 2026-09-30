@@ -369,6 +369,10 @@ func prepareChatRunState(r *http.Request, req chatRequestPayload, deps chatHandl
 	if err != nil {
 		return chatRunState{}, http.StatusBadRequest, err.Error(), err
 	}
+	req.Message, err = appendReviewNotes(r.Context(), deps.tooling.Checkpoints, sessionID, req.Message, req.ReviewNotes)
+	if err != nil {
+		return chatRunState{}, http.StatusBadRequest, err.Error(), err
+	}
 	authRole := strings.TrimSpace(serverauth.RoleFromRequest(r))
 	state, err := buildSessionChatRunState(
 		requestWorkspaceDir,

@@ -1,3 +1,5 @@
+import type { ToolFileChangeHunk } from './toolFileChanges'
+
 // --- Pulse (system watchdog) ---
 
 export type PulseDecision = {
@@ -588,6 +590,20 @@ export type Approval = {
     }>
   }
   git_mutation?: GitMutationPlan
+  tool_permission?: ToolPermissionRequest
+}
+
+// A tool call an unattended turn (cron, Telegram, subagent) waits to run,
+// queued because its session's permission mode asks (#970).
+export type ToolPermissionRequest = {
+  session_id: string
+  source: string
+  run_label?: string
+  tool_name: string
+  preview?: string
+  reason?: string
+  cwd?: string
+  mode?: string
 }
 
 export type AutomationAuditEntry = {
@@ -680,9 +696,37 @@ export type Session = {
   pinned_at?: string
   goal?: SessionGoal | null
   critic?: SessionCritic | null
+  // Set while the session works in a worktree of its own (#971).
+  worktree?: SessionWorktree | null
+  // 'off' turns automatic worktrees off for the session.
+  isolation?: string
   created_at: string
   updated_at: string
 }
+
+export type SessionWorktree = {
+  path: string
+  dir: string
+  branch: string
+  base_commit: string
+  repo_root: string
+  source_dir: string
+  reason?: string
+  created_at: string
+}
+
+// GET /v1/admin/sessions/{id}/worktree
+export type SessionWorktreeView = {
+  worktree: SessionWorktree | null
+  isolation: string
+  status?: { files: string[]; commits: number }
+  repo_root?: string
+  lease_holder?: string
+  lease_holder_title?: string
+  running: boolean
+}
+
+export type SessionWorktreeAction = 'isolate' | 'apply' | 'keep' | 'discard'
 
 export type SessionCleanupMode = 'archive' | 'delete'
 
@@ -784,6 +828,9 @@ export type APIErrorPayload = {
 
 export type ChatEvent = {
   type: string
+  // worktree: the turn moved into a worktree of its own (#971).
+  branch?: string
+  lease_holder?: string
   // permission_request / permission_resolved: a Claude Code tool call
   // waiting on the user's decision (#970). reason is shared with goal_event.
   request_id?: string
@@ -816,6 +863,13 @@ export type ChatEvent = {
   // tool_output_line — streamed stdout/stderr lines from running tools
   // (currently emitted by exec). One event per line.
   stream?: string
+  // file_change: one file a TARS-run tool changed (#1032), keyed by
+  // tool_call_id; additions/deletions are shared with checkpoint.
+  path?: string
+  op?: string
+  binary?: boolean
+  truncated?: boolean
+  hunks?: ToolFileChangeHunk[]
   skill_name?: string
   skill_reason?: string
   // context_info fields
@@ -950,6 +1004,8 @@ export type ChatRequest = {
   // The console answers permission_request events, so tool prompts may
   // wait for it (#970).
   interactive_permissions?: boolean
+  // Comments on and reverts of earlier turns' changes (#969).
+  review_notes?: import('./api/checkpoints').ReviewNote[]
 }
 
 export type MemoryAsset = {

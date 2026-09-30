@@ -14,9 +14,9 @@ const ids = (groups: typeof navGroups) => groups.map((g) => [g.id, g.items.map((
 
 test('the nav is grouped into Work, Build, and System (#968)', () => {
   assert.deepEqual(ids(navGroups), [
-    ['work', ['chat']],
+    ['work', ['board', 'chat']],
     ['build', ['agentruntime', 'memory', 'extensions', 'sysprompt']],
-    ['system', ['ops', 'pulse', 'reflection', 'cron', 'logs', 'analytics', 'config']],
+    ['system', ['home', 'ops', 'pulse', 'reflection', 'cron', 'logs', 'analytics', 'config']],
   ])
   for (const locale of [en, ko]) {
     for (const group of navGroups) assert.ok(locale.nav.groups[group.id], `${group.id} label`)
@@ -38,12 +38,17 @@ test('every nav path is the palette path and resolves to its own view', () => {
 // user role cannot open would silently land on Home.
 test('the user role only sees pages it can open', () => {
   const userViews = visibleNavGroups('user').flatMap((g) => g.items.map((i) => i.view))
-  assert.deepEqual(userViews, ['chat', 'agentruntime', 'memory', 'sysprompt'])
+  assert.deepEqual(userViews, ['board', 'chat', 'agentruntime', 'memory', 'sysprompt', 'home'])
   for (const view of userViews) {
     assert.equal(pageEntries.find((p) => p.view === view)?.adminOnly, false, view)
   }
   assert.equal(visibleNavGroups('admin'), navGroups)
-  assert.deepEqual(visibleNavGroups('user').map((g) => g.id), ['work', 'build'], 'empty groups are dropped')
+  assert.deepEqual(visibleNavGroups('user').map((g) => g.id), ['work', 'build', 'system'])
+  assert.deepEqual(
+    visibleNavGroups('user').find((g) => g.id === 'system')?.items.map((i) => i.view),
+    ['home'],
+    'the admin-only system pages are dropped',
+  )
 })
 
 test('Nav.svelte renders the shared groups and highlights by resolved route', () => {

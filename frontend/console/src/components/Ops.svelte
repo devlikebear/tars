@@ -11,6 +11,8 @@
   import { t } from '../i18n'
   import RemoteWorkers from './RemoteWorkers.svelte'
 
+  let { onNavigate }: { onNavigate?: (path: string) => void } = $props()
+
   type ApprovalGuideStep = {
     title: string
     detail: string
@@ -69,6 +71,7 @@
       case 'approved': return 'badge-success'
       case 'rejected': return 'badge-error'
       case 'applied': return 'badge-info'
+      case 'expired': return 'badge-default'
       default: return 'badge-default'
     }
   }
@@ -77,8 +80,15 @@
     return approval.plan?.candidates ?? []
   }
 
+  function approvalSecondary(approval: Approval): string {
+    if (approval.type === 'git_mutation') return approval.git_mutation?.action ?? ''
+    if (approval.type === 'tool_permission') return $t.ops.toolSource(approval.tool_permission?.source ?? '')
+    return fmtBytes(approval.plan?.total_bytes ?? 0)
+  }
+
   function approvalPrimaryCount(approval: Approval): string {
     if (approval.type === 'git_mutation') return approval.git_mutation?.destructive ? $t.ops.gitDestructive : $t.ops.gitAction
+    if (approval.type === 'tool_permission') return $t.ops.toolCall(approval.tool_permission?.tool_name ?? '')
     return $t.ops.candidatesSuffix(cleanupCandidates(approval).length)
   }
 
@@ -248,7 +258,7 @@
               <div class="approval-detail">
                 <span>{approvalPrimaryCount(approval)}</span>
                 <span class="approval-dot"></span>
-                <span>{approval.type === 'git_mutation' ? approval.git_mutation?.action : fmtBytes(approval.plan?.total_bytes ?? 0)}</span>
+                <span>{approvalSecondary(approval)}</span>
                 {#if approval.note}
                   <span class="approval-dot"></span>
                   <span class="approval-note" class:approval-result={approval.status === 'applied'}>{compact(approval.note, 120)}</span>
@@ -263,6 +273,35 @@
                   {/if}
                   <span>{compact(approval.git_mutation.root, 100)}</span>
                 </div>
+              {/if}
+
+              {#if approval.type === 'tool_permission' && approval.tool_permission}
+                {@const request = approval.tool_permission}
+                <div class="git-approval-detail tool-approval-detail" data-testid="tool-approval">
+                  {#if request.preview}
+                    <span class="mono">{compact(request.preview, 200)}</span>
+                  {/if}
+                  {#if request.reason}
+                    <span>{compact(request.reason, 160)}</span>
+                  {/if}
+                  {#if request.cwd}
+                    <span class="mono">{compact(request.cwd, 100)}</span>
+                  {/if}
+                  {#if request.session_id}
+                    <a
+                      class="btn btn-ghost btn-sm"
+                      href={`/console/chat/${encodeURIComponent(request.session_id)}`}
+                      onclick={(event) => {
+                        if (!onNavigate) return
+                        event.preventDefault()
+                        onNavigate(`/console/chat/${encodeURIComponent(request.session_id)}`)
+                      }}
+                    >{$t.ops.openSession}</a>
+                  {/if}
+                </div>
+                {#if approval.status === 'pending'}
+                  <div class="approval-hint">{$t.ops.toolWaiting}</div>
+                {/if}
               {/if}
 
               {#if approval.status === 'pending'}
@@ -570,6 +609,12 @@
     gap: var(--space-2);
     flex-wrap: wrap;
     margin-top: var(--space-2);
+    color: var(--text-tertiary);
+    font-size: var(--text-xs);
+  }
+
+  .approval-hint {
+    margin-top: var(--space-1);
     color: var(--text-tertiary);
     font-size: var(--text-xs);
   }

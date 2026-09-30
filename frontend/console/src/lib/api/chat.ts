@@ -143,6 +143,29 @@ export async function streamChat(
     throw new Error(message)
   }
 
+  await readChatStream(response, onEvent)
+}
+
+// attachChatStream follows the turn running in a session, from its first
+// event (#971): a turn outlives the console that started it, so coming back
+// to the session picks it up. Resolves false at once when no turn runs.
+export async function attachChatStream(
+  sessionId: string,
+  onEvent: (event: ChatEvent) => void,
+  signal?: AbortSignal,
+): Promise<boolean> {
+  const response = await fetch(`/v1/chat/stream?session_id=${encodeURIComponent(sessionId)}`, {
+    credentials: 'same-origin',
+    headers: { Accept: 'text/event-stream' },
+    signal,
+  })
+  if (response.status === 204) return false
+  if (!response.ok) throw new Error(`${response.status} ${response.statusText}`.trim())
+  await readChatStream(response, onEvent)
+  return true
+}
+
+async function readChatStream(response: Response, onEvent: (event: ChatEvent) => void): Promise<void> {
   if (!response.body) {
     throw new Error('chat stream body missing')
   }
@@ -188,16 +211,69 @@ export async function cancelChat(sessionId: string): Promise<boolean> {
 
 // answerChatPermission replies to a permission_request. It rejects when the
 // prompt is gone (answered elsewhere, or the turn ended) or the reply is bad.
+// mode, when approving a plan (ExitPlanMode), is the permission mode to
+// continue in.
 export async function answerChatPermission(
   requestId: string,
   sessionId: string,
-  decision: 'allow_once' | 'allow_session' | 'deny',
+  decision: 'allow_once' | 'allow_session' | 'allow_always' | 'deny',
+  mode?: 'accept_edits' | 'auto',
 ): Promise<void> {
   await requestJSON(`/v1/chat/permissions/${encodeURIComponent(requestId)}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ session_id: sessionId, decision }),
+    body: JSON.stringify(mode ? { session_id: sessionId, decision, mode } : { session_id: sessionId, decision }),
   })
+}
+
+// --- Permission modes (#970) ---
+
+export type PermissionMode = 'manual' | 'accept_edits' | 'plan' | 'auto'
+
+export type PermissionModeView = {
+  // The session's own choice, or '' when it inherits.
+  mode: PermissionMode | ''
+  // What native-provider turns run under: the session's mode, or manual.
+  effective: PermissionMode
+  // What claude-code-cli turns run under: the session's mode, or the
+  // configured Claude Code mode.
+  claude_code_effective: PermissionMode
+  // Where claude_code_effective comes from.
+  source: 'session' | 'override' | 'config'
+  claude_code_flag: string
+  modes: PermissionMode[]
+}
+
+export function getPermissionMode(sessionId: string): Promise<PermissionModeView> {
+  return requestJSON<PermissionModeView>(`/v1/admin/sessions/${encodeURIComponent(sessionId)}/permission-mode`)
+}
+
+// setPermissionMode sets the session's mode; '' goes back to the default.
+export function setPermissionMode(sessionId: string, mode: PermissionMode | ''): Promise<PermissionModeView> {
+  return requestJSON<PermissionModeView>(`/v1/admin/sessions/${encodeURIComponent(sessionId)}/permission-mode`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mode }),
+  })
+}
+
+export type PermissionRule = {
+  provider: string
+  rule: string
+  created_at: string
+}
+
+// listPermissionRules returns the folder's "always allow" rules.
+export async function listPermissionRules(dir: string): Promise<PermissionRule[]> {
+  const result = await requestJSON<{ rules: PermissionRule[] }>(
+    `/v1/chat/permission-rules?dir=${encodeURIComponent(dir)}`,
+  )
+  return result.rules ?? []
+}
+
+export async function removePermissionRule(dir: string, provider: string, rule: string): Promise<void> {
+  const qs = new URLSearchParams({ dir, provider, rule })
+  await requestJSON(`/v1/chat/permission-rules?${qs.toString()}`, { method: 'DELETE' })
 }
 
 export type ChatToolInfo = {

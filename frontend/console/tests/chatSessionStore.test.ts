@@ -328,3 +328,68 @@ test('tier options are fetched once', async () => {
   assert.equal(store.tierOptions.length, 2)
   assert.equal(calls.filter((c) => c === 'listAgentRuntimeSubagents').length, 1)
 })
+
+function modeApi(initial: { mode: string; effective: string; source: string }, fail = false) {
+  const state = { ...initial }
+  const log: string[] = []
+  const view = () => ({ ...state, claude_code_effective: state.effective, claude_code_flag: '', modes: ['manual', 'accept_edits', 'plan', 'auto'] })
+  return {
+    log,
+    overrides: {
+      getPermissionMode: async (id: string) => { log.push(`get:${id}`); return view() },
+      setPermissionMode: async (id: string, mode: string) => {
+        log.push(`set:${id}:${mode}`)
+        if (fail) throw new Error('nope')
+        state.mode = mode
+        state.effective = mode || 'manual'
+        state.source = mode ? 'session' : 'config'
+        return view()
+      },
+    },
+  }
+}
+
+test('the permission mode loads, switches, cycles, and follows the server (#970)', async () => {
+  const api = modeApi({ mode: '', effective: 'auto', source: 'config' })
+  const { store } = newStore(api.overrides)
+  store.setActive('m1')
+  await flush()
+  assert.equal(store.permission?.effective, 'auto')
+  assert.equal(store.permission?.mode, '')
+
+  assert.equal(await store.setPermissionMode('plan'), true)
+  assert.deepEqual([store.permission?.mode, store.permission?.effective, store.permission?.source], ['plan', 'plan', 'session'])
+
+  await store.cyclePermissionMode()
+  assert.equal(store.permission?.effective, 'auto', 'plan → auto')
+  await store.cyclePermissionMode('plan')
+  assert.equal(store.permission?.effective, 'auto', 'the shown mode can be passed in')
+  await store.cyclePermissionMode()
+  assert.equal(store.permission?.effective, 'manual', 'auto wraps to manual')
+
+  store.applyPermissionMode('accept_edits')
+  assert.equal(store.permission?.effective, 'accept_edits')
+  store.applyPermissionMode('bogus')
+  assert.equal(store.permission?.effective, 'accept_edits', 'unknown modes are ignored')
+
+  await store.setPermissionMode('')
+  assert.equal(store.permission?.source, 'config')
+  assert.deepEqual(api.log, ['get:m1', 'set:m1:plan', 'set:m1:auto', 'set:m1:auto', 'set:m1:manual', 'set:m1:'])
+
+  store.setActive('m2')
+  assert.equal(store.permission, null, 'the mode resets with the session')
+})
+
+test('a failed mode switch falls back and reports it', async () => {
+  const api = modeApi({ mode: '', effective: 'manual', source: 'config' }, true)
+  const { store } = newStore(api.overrides)
+  store.setActive('m1')
+  await flush()
+  assert.equal(await store.setPermissionMode('auto'), false)
+  assert.equal(store.permission?.effective, 'manual')
+  assert.equal(store.permissionError, 'nope')
+  store.setActive(null)
+  assert.equal(await store.setPermissionMode('auto'), false, 'no session, nothing to switch')
+  await store.refreshPermission()
+  assert.equal(store.permission, null)
+})

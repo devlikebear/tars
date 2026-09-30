@@ -96,10 +96,25 @@ func writeTestFile(t *testing.T, path, content string) {
 // chat runs one turn through the chat handler and returns its SSE events.
 func (f checkpointFixture) chat(t *testing.T, client llm.Client, store *checkpoint.Store) []map[string]any {
 	t.Helper()
+	code, body := f.chatRequest(t, client, store, map[string]any{"message": "edit the files"})
+	if code != http.StatusOK {
+		t.Fatalf("chat status %d body=%q", code, body)
+	}
+	return sseEvents(t, body)
+}
+
+// chatRequest posts one chat turn in the fixture's session; payload adds to
+// or overrides the request fields.
+func (f checkpointFixture) chatRequest(t *testing.T, client llm.Client, store *checkpoint.Store, payload map[string]any) (int, string) {
+	t.Helper()
 	tooling := defaultChatToolingOptions()
 	tooling.Checkpoints = store
 	handler := newChatAPIHandlerWithRuntimeConfig(f.root, f.sessions, client, nil, zerolog.New(io.Discard), agent.DefaultMaxLoopIters, nil, "", tooling)
-	raw, err := json.Marshal(map[string]any{"session_id": f.sessionID, "message": "edit the files"})
+	body := map[string]any{"session_id": f.sessionID}
+	for k, v := range payload {
+		body[k] = v
+	}
+	raw, err := json.Marshal(body)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,11 +122,13 @@ func (f checkpointFixture) chat(t *testing.T, client llm.Client, store *checkpoi
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("chat status %d body=%q", rec.Code, rec.Body.String())
-	}
+	return rec.Code, rec.Body.String()
+}
+
+func sseEvents(t *testing.T, body string) []map[string]any {
+	t.Helper()
 	var events []map[string]any
-	for _, block := range strings.Split(rec.Body.String(), "\n\n") {
+	for _, block := range strings.Split(body, "\n\n") {
 		data, ok := strings.CutPrefix(strings.TrimSpace(block), "data: ")
 		if !ok {
 			continue
@@ -425,5 +442,85 @@ func TestSameDir(t *testing.T) {
 	foldPathCase = false
 	if sameDir(upper, lower) {
 		t.Fatal("case ignored on a case-sensitive volume")
+	}
+}
+
+func (f checkpointFixture) post(t *testing.T, path, body string) (int, map[string]any) {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	f.checkpoint.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, path, strings.NewReader(body)))
+	var out map[string]any
+	if rec.Body.Len() > 0 {
+		if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+			t.Fatalf("decode %s: %v body=%q", path, err, rec.Body.String())
+		}
+	}
+	return rec.Code, out
+}
+
+// Revert a turn's file through the API, see it listed, and undo it.
+func TestCheckpointRevertAPI(t *testing.T) {
+	f := newCheckpointFixture(t)
+	events := f.chat(t, &workDirEditingClient{edit: func(dir string) {
+		writeTestFile(t, filepath.Join(dir, "base.txt"), "one\n2\n")
+		writeTestFile(t, filepath.Join(dir, "new.txt"), "fresh\n")
+	}}, f.store)
+	turnID, _ := eventOfType(events, "turn_started")["user_message_id"].(string)
+	base := "/v1/admin/sessions/" + f.sessionID + "/checkpoints/"
+	readBase := func() string {
+		data, err := os.ReadFile(filepath.Join(f.project, "base.txt"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(data)
+	}
+
+	code, preview := f.post(t, base+turnID+"/revert", "")
+	if code != http.StatusOK || preview["applied"] != false || len(preview["files"].([]any)) != 2 {
+		t.Fatalf("preview: %d %v", code, preview)
+	}
+	code, applied := f.post(t, base+turnID+"/revert", `{"apply":true,"files":[{"path":"base.txt"}]}`)
+	revertID, _ := applied["revert_id"].(string)
+	if code != http.StatusOK || revertID == "" || readBase() != "one\ntwo\n" {
+		t.Fatalf("apply: %d %v", code, applied)
+	}
+
+	var list struct {
+		Reverts []checkpoint.RevertEntry `json:"reverts"`
+	}
+	if f.get(t, "/v1/admin/sessions/"+f.sessionID+"/checkpoints", &list); len(list.Reverts) != 1 || list.Reverts[0].ID != revertID {
+		t.Fatalf("list reverts = %+v", list.Reverts)
+	}
+
+	undoPath := base + "reverts/" + revertID + "/undo"
+	if code, out := f.post(t, undoPath, `{}`); code != http.StatusOK || readBase() != "one\n2\n" {
+		t.Fatalf("undo: %d %v", code, out)
+	}
+	if code, _ := f.post(t, undoPath, ""); code != http.StatusBadRequest {
+		t.Fatalf("second undo: %d, want 400", code)
+	}
+	if code, _ := f.post(t, base+"reverts/nope/undo", ""); code != http.StatusNotFound {
+		t.Fatalf("unknown revert: %d, want 404", code)
+	}
+	if code, _ := f.post(t, base+turnID+"/revert", `{"apply":`); code != http.StatusBadRequest {
+		t.Fatalf("bad body: %d, want 400", code)
+	}
+
+	// Later edits that overlap: 409 with the conflicts to show.
+	writeTestFile(t, filepath.Join(f.project, "base.txt"), "one\nTWO!\n")
+	code, conflict := f.post(t, base+turnID+"/revert", `{"apply":true,"files":[{"path":"base.txt"}]}`)
+	result, _ := conflict["result"].(map[string]any)
+	if code != http.StatusConflict || conflict["code"] != "revert_conflict" || result["conflicts"] != float64(1) {
+		t.Fatalf("conflict: %d %v", code, conflict)
+	}
+
+	// While a turn runs, nothing is applied.
+	running, err := f.store.BeginTurn(context.Background(), f.sessionID, "running", f.project, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = running.End(context.Background()) }()
+	if code, out := f.post(t, base+turnID+"/revert", `{"apply":true,"force":true}`); code != http.StatusConflict || out["code"] != "turn_in_progress" {
+		t.Fatalf("busy: %d %v", code, out)
 	}
 }

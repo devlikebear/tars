@@ -33,6 +33,60 @@ export type CheckpointEntry = {
 export type CheckpointList = {
   session_id: string
   turns: CheckpointEntry[]
+  // Applied reverts, oldest first. A turn's diff never changes after a
+  // revert, so this is what marks what was taken back.
+  reverts?: RevertEntry[]
+}
+
+// A file to revert; no hunk IDs means the whole file.
+export type RevertFile = {
+  path: string
+  hunk_ids?: string[]
+}
+
+// turn: the turn's own edits, merged into later ones. since: every file back
+// to how it was before the turn.
+export type RevertScope = Extract<CheckpointScope, 'turn' | 'since'>
+
+export type RevertRequest = {
+  scope?: RevertScope
+  files?: RevertFile[]
+  // Without apply the result is a preview and nothing is written.
+  apply?: boolean
+  // Write over conflicts with later edits.
+  force?: boolean
+}
+
+export type RevertOutcome = 'write' | 'merge' | 'unchanged' | 'conflict' | 'failed'
+
+export type RevertFileResult = {
+  path: string
+  outcome: RevertOutcome | string
+  delete?: boolean
+  forced?: boolean
+  // A conflicting merge with its markers.
+  merged?: string
+  detail?: string
+}
+
+export type RevertResult = {
+  revert_id?: string
+  turn_id: string
+  scope: RevertScope
+  applied: boolean
+  conflicts: number
+  failed: number
+  files: RevertFileResult[]
+}
+
+export type RevertEntry = {
+  id: string
+  turn_id: string
+  scope: RevertScope
+  at: string
+  targets: RevertFile[]
+  files: string[]
+  undone_at?: string
 }
 
 // turn: what the turn changed. session: everything the session's turns
@@ -100,4 +154,30 @@ export function getCheckpointDiff(
   if (options.path) params.set('path', options.path)
   const suffix = params.toString()
   return requestJSON<CheckpointDiff>(`${checkpointsPath(sessionId)}/${encodeURIComponent(turnId)}/diff${suffix ? `?${suffix}` : ''}`)
+}
+
+export function revertCheckpoint(sessionId: string, turnId: string, request: RevertRequest): Promise<RevertResult> {
+  return requestJSON<RevertResult>(`${checkpointsPath(sessionId)}/${encodeURIComponent(turnId)}/revert`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
+  })
+}
+
+export function undoRevert(sessionId: string, revertId: string, force = false): Promise<RevertResult> {
+  return requestJSON<RevertResult>(`${checkpointsPath(sessionId)}/reverts/${encodeURIComponent(revertId)}/undo`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ force }),
+  })
+}
+
+// A note from reviewing an earlier turn's changes, sent with the next chat
+// message: a comment on a hunk or file, or word that the user reverted it.
+export type ReviewNote = {
+  turn_id: string
+  path: string
+  hunk_id?: string
+  comment?: string
+  kind?: 'comment' | 'revert'
 }

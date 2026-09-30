@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import { compileSvelteModule } from './helpers/compileSvelteModule.ts'
-import { turnCardAnchors } from '../src/lib/changes.ts'
+import { turnCardAnchors, fileTreeRows } from '../src/lib/changes.ts'
 import type * as ChangesModule from '../src/lib/stores/changes.svelte.ts'
 import type { CheckpointDiff, CheckpointEntry, CheckpointScope } from '../src/lib/api/checkpoints.ts'
 
@@ -143,4 +143,31 @@ test('scope is shared by the panel and the cards', () => {
   assert.equal(store.scope, 'turn')
   store.setScope('session')
   assert.equal(store.scope, 'session')
+})
+
+test('fileTreeRows groups files into folders, folding single-folder chains', () => {
+  const files = [
+    { path: 'README.md', additions: 1, deletions: 0 },
+    { path: 'src/lib/a.ts', additions: 2, deletions: 1 },
+    { path: 'src/lib/b.ts', additions: 3, deletions: 0 },
+    { path: 'src/main.ts', additions: 0, deletions: 4 },
+    { path: 'docs/deep/er/x.md', additions: 1, deletions: 1 },
+  ]
+  const rows = fileTreeRows(files)
+  assert.deepEqual(
+    rows.map((r) => `${'  '.repeat(r.depth)}${r.kind === 'dir' ? `${r.name}/ ${r.files} +${r.additions} -${r.deletions}` : r.name}`),
+    [
+      'docs/deep/er/ 1 +1 -1',
+      '  x.md',
+      'src/ 3 +5 -5',
+      '  lib/ 2 +5 -1',
+      '    a.ts',
+      '    b.ts',
+      '  main.ts',
+      'README.md',
+    ],
+  )
+  const folded = fileTreeRows(files, new Set(['src/lib', 'docs/deep/er']))
+  assert.deepEqual(folded.map((r) => r.path), ['docs/deep/er', 'src', 'src/lib', 'src/main.ts', 'README.md'])
+  assert.deepEqual(fileTreeRows([]), [])
 })

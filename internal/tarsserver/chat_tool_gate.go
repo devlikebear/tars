@@ -19,43 +19,66 @@ import (
 type chatToolGate struct {
 	broker    *chatPermissionBroker
 	sessionID string
-	stream    *chatStreamWriter
+	// cwd is the folder the turn works in, which "always allow" covers.
+	cwd    string
+	stream *chatStreamWriter
+	// mode is the session's permission mode (chat_permission_mode.go).
+	mode string
 }
 
-func newChatToolGate(broker *chatPermissionBroker, sessionID string, stream *chatStreamWriter) *chatToolGate {
-	return &chatToolGate{broker: broker, sessionID: sessionID, stream: stream}
+func newChatToolGate(broker *chatPermissionBroker, sessionID, cwd string, stream *chatStreamWriter, mode string) *chatToolGate {
+	if !validChatPermissionMode(mode) {
+		mode = chatPermissionModeManual
+	}
+	return &chatToolGate{broker: broker, sessionID: sessionID, cwd: cwd, stream: stream, mode: mode}
+}
+
+func (g *chatToolGate) audit(tool, rule string) chatPermissionAudit {
+	return chatPermissionAudit{sessionID: g.sessionID, cwd: g.cwd, tool: tool, rule: rule, mode: g.mode}
 }
 
 func (g *chatToolGate) Authorize(ctx context.Context, call agentloop.ToolCallRequest) (agentloop.ToolDecision, error) {
 	name := tool.CanonicalToolName(call.ToolName)
-	if !tool.IsHighRiskToolName(name) || g.broker.allows(g.sessionID, name, call.ToolArgs) {
+	switch chatGateVerdictFor(g.mode, name) {
+	case chatGateAllow:
+		return agentloop.ToolDecision{Allow: true}, nil
+	case chatGateRefuse:
+		g.broker.record("", "refused_plan_mode", g.audit(call.ToolName, ""))
+		return agentloop.ToolDecision{Message: chatPlanModeMessage}, nil
+	}
+	if g.broker.allows(g.sessionID, name, call.ToolArgs) || g.broker.alwaysAllows(g.cwd, name, call.ToolArgs) {
 		return agentloop.ToolDecision{Allow: true}, nil
 	}
 	rule, display, remembered := chatToolSessionRule(name, call.ToolArgs)
+	alwaysDir := g.broker.alwaysDir(g.cwd, remembered)
 
 	prompt := llm.ClaudeCodePermissionRequest{ToolName: call.ToolName, ToolUseID: call.ToolCallID}
 	if json.Valid([]byte(call.ToolArgs)) {
 		prompt.Input = json.RawMessage(call.ToolArgs)
 	}
-	id, answer, err := askChatPermission(ctx, g.broker, g.sessionID, g.stream, prompt, display)
+	id, answer, err := askChatPermission(ctx, g.broker, g.sessionID, g.stream, prompt, display, alwaysDir)
 	if err != nil {
 		return agentloop.ToolDecision{}, err
 	}
 	switch answer.Decision {
-	case "allow_session":
+	case "allow_session", "allow_always":
 		if remembered {
 			g.broker.remember(g.sessionID, rule)
-			g.stream.permissionResolved(id, "allowed_session")
+			outcome := "allowed_session"
+			if answer.Decision == "allow_always" && alwaysDir != "" && g.broker.always.add(alwaysDir, rule.always()) == nil {
+				outcome = "allowed_always"
+			}
+			g.broker.settle(g.stream, id, outcome, g.audit(call.ToolName, display))
 			return agentloop.ToolDecision{Allow: true}, nil
 		}
 		// Nothing safe to remember for this call; allow it once.
-		g.stream.permissionResolved(id, "allowed")
+		g.broker.settle(g.stream, id, "allowed", g.audit(call.ToolName, ""))
 		return agentloop.ToolDecision{Allow: true}, nil
 	case "allow_once":
-		g.stream.permissionResolved(id, "allowed")
+		g.broker.settle(g.stream, id, "allowed", g.audit(call.ToolName, ""))
 		return agentloop.ToolDecision{Allow: true}, nil
 	default:
-		g.stream.permissionResolved(id, "denied")
+		g.broker.settle(g.stream, id, "denied", g.audit(call.ToolName, ""))
 		message := strings.TrimSpace(answer.Message)
 		if message == "" {
 			message = chatPermissionDenyMessage
@@ -111,6 +134,33 @@ func (r chatToolRule) matches(name, args string) bool {
 		}
 	}
 	return true
+}
+
+// always is the rule as stored for "always allow": exec keeps its prefix in
+// Claude Code's notation (exec(ls:*)).
+func (r chatToolRule) always() chatAlwaysRule {
+	content := ""
+	if r.Prefix != "" {
+		content = r.Prefix + ":*"
+	}
+	return chatAlwaysRule{Provider: chatRuleProviderTARS, Tool: r.Tool, Content: content}
+}
+
+// alwaysAllows reports whether a stored always rule for cwd covers the call.
+func (b *chatPermissionBroker) alwaysAllows(cwd, name, args string) bool {
+	if b.always == nil {
+		return false
+	}
+	for _, stored := range b.always.list(cwd) {
+		if stored.Provider != chatRuleProviderTARS {
+			continue
+		}
+		rule := chatToolRule{Tool: stored.Tool, Prefix: strings.TrimSuffix(stored.Content, ":*")}
+		if rule.matches(name, args) {
+			return true
+		}
+	}
+	return false
 }
 
 func chatToolCommand(args string) string {

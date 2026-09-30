@@ -5,7 +5,13 @@ import type { ChatThreadTranslations } from './sections/chatThread.ts'
 import type { SessionConfigTranslations } from './sections/sessionConfig.ts'
 import type { GitInspectorTranslations } from './sections/gitInspector.ts'
 import type { ChangesTranslations } from './sections/changes.ts'
+import type { SideSessionTranslations } from './sections/sideSession.ts'
+import type { SessionWorktreeTranslations } from './sections/sessionWorktree.ts'
 import type { ChatApprovalTranslations } from './sections/chatApproval.ts'
+import type { SessionBoardTranslations } from './sections/sessionBoard.ts'
+
+import type { MessageQueueTranslations } from './sections/messageQueue.ts'
+import type { PermissionModeTranslations } from './sections/permissionMode.ts'
 import type { ArtifactPanelTranslations } from './sections/artifactPanel.ts'
 import type { SkillInboxTranslations } from './sections/skillInbox.ts'
 import type { SessionCronTranslations } from './sections/sessionCron.ts'
@@ -51,6 +57,8 @@ export type Translations = {
       system: string
     }
     items: {
+      board: string
+      overview: string
       chat: string
       lineage: string
       plans: string
@@ -555,6 +563,8 @@ export type Translations = {
       gitTooltip: string
       changes: string
       changesTooltip: string
+      side: string
+      sideTooltip: string
       skills: string
       skillsTooltip: string
       skillsInbox: string
@@ -876,6 +886,10 @@ export type Translations = {
     gitDestructive: string
     gitAction: string
     candidatesSuffix: (count: number) => string
+    toolCall: (tool: string) => string
+    toolSource: (source: string) => string
+    openSession: string
+    toolWaiting: string
     approve: string
     reject: string
     auditTitle: string
@@ -1591,7 +1605,13 @@ export type Translations = {
   sessionConfig: SessionConfigTranslations
   gitInspector: GitInspectorTranslations
   changes: ChangesTranslations
+  sideSession: SideSessionTranslations
+  sessionWorktree: SessionWorktreeTranslations
   chatApproval: ChatApprovalTranslations
+  sessionBoard: SessionBoardTranslations
+
+  messageQueue: MessageQueueTranslations
+  permissionMode: PermissionModeTranslations
   artifactPanel: ArtifactPanelTranslations
   skillInbox: SkillInboxTranslations
   sessionCron: SessionCronTranslations

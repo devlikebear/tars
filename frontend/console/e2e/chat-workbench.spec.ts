@@ -12,6 +12,10 @@ const activeSessionItem = (page: Page) => page.locator('.dock-left .session-item
 const sessionHeaderTitle = (page: Page) => page.locator('.chat-main .session-title:not(.new-chat-title)')
 const lastAssistant = (page: Page) => page.locator('.chat-msg.chat-assistant').last()
 
+// A turn is over when the Send button is back: the reply can show before
+// the turn's end snapshot is taken and the reply is saved.
+const turnSettled = (page: Page) => expect(page.locator('.chat-form-actions button[type="submit"]')).toBeVisible()
+
 async function send(page: Page, text: string) {
   await composer(page).fill(text)
   await composer(page).press('Enter')
@@ -72,6 +76,7 @@ test('a streamed turn settles into the session: title, health, and history survi
   await newSession(page)
   await send(page, 'persist me')
   await expect(lastAssistant(page)).toContainText('Echo: persist me')
+  await turnSettled(page)
 
   await page.reload()
   await expect(page.locator('.chat-msg.chat-user').last()).toContainText('persist me')

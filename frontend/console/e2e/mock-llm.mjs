@@ -58,6 +58,11 @@ function lastUserText(messages) {
 // part after the last blank line, which is what the user typed.
 function replyFor(body) {
   const text = lastUserText(body.messages ?? []).trim()
+  // Review notes (#969) ride after the message; answer the first comment so
+  // a spec can see the note arrived.
+  if (text.includes('<review-notes>')) {
+    return `Rework: ${text.match(/^Comment: (.*)$/m)?.[1] ?? 'reverted changes noted'}`
+  }
   const tail = text.split(/\n\s*\n/).pop()?.trim() ?? ''
   return `Echo: ${tail || 'ok'}`
 }

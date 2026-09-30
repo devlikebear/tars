@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 
 	"github.com/devlikebear/tars/internal/llm"
 	"github.com/devlikebear/tars/internal/session"
@@ -26,7 +27,11 @@ type chatHandlerDeps struct {
 	tooling        chatToolingOptions
 	extraTools     []tool.Tool
 	cancelRegistry *chatCancelRegistry
-	permissions    *chatPermissionBroker
+	// turnFeeds keeps each running turn's events for consoles that attach
+	// later (GET /v1/chat/stream).
+	turnFeeds    *chatTurnFeeds
+	chatActivity *chatActivity
+	permissions  *chatPermissionBroker
 }
 
 func (d chatHandlerDeps) resolveChatClient() (llm.Client, llm.TierResolution, error) {
@@ -63,6 +68,9 @@ type chatRequestPayload struct {
 	Mentions           []chatFileMentionRequest       `json:"mentions,omitempty"`
 	SubagentMentions   []chatSubagentMentionRequest   `json:"subagent_mentions,omitempty"`
 	TierRecommendation *chatTierRecommendationPayload `json:"tier_recommendation,omitempty"`
+	// ReviewNotes are comments on, and reverts of, earlier turns' changes;
+	// they are appended to the message (see appendReviewNotes).
+	ReviewNotes []chatReviewNote `json:"review_notes,omitempty"`
 	// InteractivePermissions says the client will answer permission_request
 	// events, so tool prompts wait for it instead of failing the call.
 	InteractivePermissions bool `json:"interactive_permissions,omitempty"`
@@ -79,7 +87,16 @@ func handleChatRequest(w http.ResponseWriter, r *http.Request, deps chatHandlerD
 			writeError(w, http.StatusTooManyRequests, "overloaded", "overloaded")
 			return
 		}
-		defer release()
+		// The limit counts consoles streaming a turn. A turn whose console
+		// went away keeps running (#971) but gives its slot back, so turns
+		// left waiting on an approval cannot lock everyone out of chat.
+		var once sync.Once
+		releaseOnce := func() { once.Do(release) }
+		defer releaseOnce()
+		go func() {
+			<-r.Context().Done()
+			releaseOnce()
+		}()
 	}
 
 	req, ok := decodeChatRequestPayload(w, r)
@@ -89,6 +106,8 @@ func handleChatRequest(w http.ResponseWriter, r *http.Request, deps chatHandlerD
 
 	endBusy := deps.activity.beginChat()
 	defer endBusy()
+	worktreeMoved, endLease := deps.tooling.Worktrees.beginTurn(r.Context(), strings.TrimSpace(req.SessionID), false)
+	defer endLease()
 	deps.logger.Debug().
 		Str("path", r.URL.Path).
 		Str("session_id", strings.TrimSpace(req.SessionID)).
@@ -103,7 +122,16 @@ func handleChatRequest(w http.ResponseWriter, r *http.Request, deps chatHandlerD
 
 	state.interactivePermissions = req.InteractivePermissions
 	stream := newChatStreamWriter(w, state.sessionID, deps.logger)
+	feed, endFeed := deps.turnFeeds.begin(state.sessionID)
+	defer endFeed()
+	stream.feed = feed
+
+	stream.activity = deps.chatActivity
+	defer deps.chatActivity.begin(state.sessionID)()
 	stream.status("stream_open", "stream connected", "", "", "", "")
+	if worktreeMoved != nil {
+		stream.worktree(*worktreeMoved)
+	}
 	if state.turnID != "" {
 		stream.turnStarted(state.turnID)
 	}
@@ -159,7 +187,9 @@ func handleChatRequest(w http.ResponseWriter, r *http.Request, deps chatHandlerD
 		})
 	}
 
-	baseCtx := usage.WithCallMeta(r.Context(), usage.CallMeta{
+	// Detached from the request: the turn keeps running when the console
+	// goes away, and POST /v1/chat/cancel is what stops it.
+	baseCtx := usage.WithCallMeta(context.WithoutCancel(r.Context()), usage.CallMeta{
 		Source:               "chat",
 		SessionID:            state.sessionID,
 		CapabilityVersionIDs: state.capabilityVersionIDs,

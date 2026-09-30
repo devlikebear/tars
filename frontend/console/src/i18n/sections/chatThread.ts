@@ -76,6 +76,8 @@ export const chatThreadEn = {
   tool: {
     args: 'args',
     output: (count: number) => `output (${count})`,
+    // Files the call changed (#1032).
+    changes: (count: number) => (count === 1 ? '1 file changed' : `${count} files changed`),
     result: 'result',
     tones: {
       running: 'running',
@@ -236,6 +238,7 @@ export const chatThreadKo: ChatThreadTranslations = {
   tool: {
     args: '인자',
     output: (count) => `출력 (${count})`,
+    changes: (count) => `파일 ${count}개 변경`,
     result: '결과',
     tones: {
       running: '실행 중',

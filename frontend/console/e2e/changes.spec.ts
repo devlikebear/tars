@@ -16,6 +16,9 @@ const card = (page: Page) => page.locator('.chat-log .turn-changes').last()
 const changesPanel = (page: Page) => page.locator('.dock-right .changes-panel')
 const approvals = (page: Page) => page.locator('.chat-log .approval')
 const pendingApproval = (page: Page) => page.locator('.chat-log .approval:not(.settled)')
+// A turn is over when the Send button is back: the reply can show before
+// the turn's end snapshot is taken and the reply is saved.
+const turnSettled = (page: Page) => expect(page.locator('.chat-form-actions button[type="submit"]')).toBeVisible()
 
 // The base.txt the mock edits: "line 1" to "line 20".
 function seedProject(): string {
@@ -56,6 +59,18 @@ test('a turn that edits three files shows its diff in the thread and the Changes
   await expect(approvals(page)).toContainText('Allowed for this session: write_file')
   expect(readFileSync(join(dir, 'base.txt'), 'utf8')).toContain('line 19 edited')
 
+  // Each write_file card carries its file's change as the call finished
+  // (#1032): the +/− summary on the card, the diff under the file row.
+  const toolCards = page.locator('.chat-log .chat-tool')
+  await expect(toolCards).toHaveCount(3)
+  await expect(toolCards.locator('.tool-change-totals')).toHaveText(['+2 −2', '+3 −0', '+1 −0'])
+  await toolCards.nth(0).locator('.tool-header').click()
+  const baseChange = toolCards.nth(0).locator('.tool-change')
+  await expect(baseChange.locator('.tool-change-path')).toHaveText('base.txt')
+  await baseChange.locator('.tool-change-head').click()
+  await expect(baseChange.locator('.diff-table')).toContainText('line 19 edited')
+  await toolCards.nth(0).locator('.tool-header').click()
+
   // The card under the turn: collapsed summary, then every file's diff.
   await expect(card(page)).toContainText('3 files +6 −2')
   await card(page).locator('.turn-changes-toggle').click()
@@ -75,7 +90,25 @@ test('a turn that edits three files shows its diff in the thread and the Changes
   await changesPanel(page).getByRole('button', { name: 'Session so far' }).click()
   await expect(changesPanel(page).locator('.file-row')).toHaveCount(3)
 
+  // Files sit in a folder tree: src/ folds and unfolds.
+  const srcDir = changesPanel(page).locator('.dir-row', { hasText: 'src/' })
+  await expect(srcDir).toContainText('1 file')
+  await expect(changesPanel(page).locator('.file-row', { hasText: 'app.txt' })).toHaveCount(1)
+  await srcDir.click()
+  await expect(srcDir).toHaveAttribute('aria-expanded', 'false')
+  await expect(changesPanel(page).locator('.file-row')).toHaveCount(2)
+  await srcDir.click()
+  await expect(changesPanel(page).locator('.file-row')).toHaveCount(3)
+  await changesPanel(page).getByRole('button', { name: 'This turn', exact: true }).click()
+
+  // The turn's row reverts the whole turn after the usual preview.
+  await changesPanel(page).getByTestId('turn-restore').click()
+  await expect(changesPanel(page).locator('.revert-bar')).toContainText('Revert this turn’s changes to 3 files?')
+  await changesPanel(page).locator('.revert-bar').getByRole('button', { name: 'Revert', exact: true }).click()
+  await expect.poll(() => readFileSync(join(dir, 'base.txt'), 'utf8')).not.toContain('edited')
+
   // History keeps the card: the turn's user message carries its ID.
+  await turnSettled(page)
   await page.reload()
   await expect(page).toHaveURL(new RegExp(`${sessionId}$`))
   await expect(card(page)).toContainText('3 files +6 −2')
@@ -108,4 +141,81 @@ test('a turn without file changes gets no card', async ({ page }) => {
   await composer(page).press('Enter')
   await expect(page.locator('.chat-msg.chat-assistant').last()).toContainText('Echo: just talk')
   await expect(page.locator('.chat-log .turn-changes')).toHaveCount(0)
+})
+
+test('one hunk is reverted after a confirm, and Undo puts it back', async ({ page }) => {
+  const dir = seedProject()
+  await newSessionIn(page, dir)
+  await composer(page).fill('Edit the files [e2e:write3]')
+  await composer(page).press('Enter')
+  await pendingApproval(page).getByRole('button', { name: 'Allow write_file for this session' }).click()
+  await expect(page.locator('.chat-msg.chat-assistant').last()).toContainText('Wrote 3 files.')
+  await turnSettled(page)
+  await card(page).getByRole('button', { name: 'Open in Changes' }).click()
+  const panel = changesPanel(page)
+  await panel.locator('.file-row', { hasText: 'base.txt' }).click()
+
+  // base.txt has two hunks: line 2 (h0) and line 19 (h1). Revert the second.
+  const hunkButtons = panel.getByRole('button', { name: 'Revert hunk' })
+  await expect(hunkButtons).toHaveCount(2)
+  await hunkButtons.nth(1).click()
+  const bar = panel.locator('.revert-bar')
+  await expect(bar).toContainText('Revert 1 hunk in base.txt?')
+  await bar.getByRole('button', { name: 'Revert', exact: true }).click()
+  await expect(bar).toContainText('Reverted 1 file.')
+
+  const base = () => readFileSync(join(dir, 'base.txt'), 'utf8')
+  expect(base()).toContain('line 2 edited')
+  expect(base()).not.toContain('line 19 edited')
+  await expect(panel.locator('.reverted-badge')).toHaveCount(1)
+
+  await bar.getByRole('button', { name: 'Undo' }).click()
+  await expect(bar).toContainText('The revert is undone.')
+  expect(base()).toContain('line 19 edited')
+  await expect(panel.locator('.reverted-badge')).toHaveCount(0)
+})
+
+// #969's completion criterion, end to end on one page: a turn changes three
+// files; the diff is reviewed; one hunk is reverted; a comment on another
+// asks for rework; the next message carries both notes to the agent.
+test('review a turn: revert a hunk, comment on another, and send them back', async ({ page }) => {
+  const dir = seedProject()
+  await newSessionIn(page, dir)
+  const url = page.url()
+  await composer(page).fill('Edit the files [e2e:write3]')
+  await composer(page).press('Enter')
+  await pendingApproval(page).getByRole('button', { name: 'Allow write_file for this session' }).click()
+  await expect(page.locator('.chat-msg.chat-assistant').last()).toContainText('Wrote 3 files.')
+  await turnSettled(page)
+  await expect(card(page)).toContainText('3 files +6 −2')
+
+  await card(page).getByRole('button', { name: 'Open in Changes' }).click()
+  const panel = changesPanel(page)
+  await panel.locator('.file-row', { hasText: 'base.txt' }).click()
+  await panel.getByRole('button', { name: 'Revert hunk' }).nth(1).click()
+  await panel.locator('.revert-bar').getByRole('button', { name: 'Revert', exact: true }).click()
+  await expect(panel.locator('.revert-bar')).toContainText('Reverted 1 file.')
+  expect(readFileSync(join(dir, 'base.txt'), 'utf8')).not.toContain('line 19 edited')
+
+  // The reverted hunk shows its mark; the other takes a comment.
+  await panel.getByRole('button', { name: 'Comment', exact: true }).click()
+  await panel.locator('.note-form textarea').fill('Say line two louder')
+  await panel.getByRole('button', { name: 'Add note' }).click()
+  const chips = page.locator('.chat-main .review-note-chip')
+  await expect(chips).toHaveCount(2)
+  await expect(chips.nth(0)).toContainText('base.txt (h1): reverted')
+  await expect(chips.nth(1)).toContainText('base.txt (h0): Say line two louder')
+
+  await composer(page).fill('Please rework')
+  await composer(page).press('Enter')
+  await expect(page.locator('.chat-msg.chat-assistant').last()).toContainText('Rework: Say line two louder')
+  await expect(chips).toHaveCount(0)
+  expect(page.url()).toBe(url)
+
+  // The thread keeps the notes, folded under the message.
+  await turnSettled(page)
+  await page.reload()
+  const sent = page.locator('.chat-msg.chat-user').last()
+  await expect(sent).toContainText('Please rework')
+  await expect(sent.locator('.review-notes-fold summary')).toHaveText('Review notes (2)')
 })

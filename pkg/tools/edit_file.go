@@ -47,61 +47,82 @@ func newEditToolWithPolicy(name string, policy PathPolicy) Tool {
   "additionalProperties":false
 }`),
 		Execute: func(_ context.Context, params json.RawMessage) (Result, error) {
-			var input struct {
-				Path       string `json:"path"`
-				OldText    string `json:"old_text"`
-				NewText    string `json:"new_text"`
-				ReplaceAll bool   `json:"replace_all,omitempty"`
-			}
-			if err := json.Unmarshal(params, &input); err != nil {
-				return JSONTextResult(editFileResponse{Message: fmt.Sprintf("invalid arguments: %v", err)}, true), nil
-			}
-			if input.Path == "" {
-				return JSONTextResult(editFileResponse{Message: "path is required"}, true), nil
-			}
-			if input.OldText == "" {
-				return JSONTextResult(editFileResponse{Message: "old_text is required"}, true), nil
+			input, msg := parseEditFileInput(params)
+			if msg != "" {
+				return editFileError(msg), nil
 			}
 
 			absPath, err := resolvePathWithPolicy(policy, input.Path)
 			if err != nil {
-				return JSONTextResult(editFileResponse{Message: err.Error()}, true), nil
+				return editFileError(err.Error()), nil
 			}
 			body, err := os.ReadFile(absPath)
 			if err != nil {
-				if os.IsNotExist(err) {
-					return JSONTextResult(editFileResponse{Message: "file not found"}, true), nil
-				}
-				return JSONTextResult(editFileResponse{Message: fmt.Sprintf("read file failed: %v", err)}, true), nil
+				return editFileError(readFileFailure(err)), nil
 			}
-			text := string(body)
-			count := strings.Count(text, input.OldText)
-			if count == 0 {
-				return JSONTextResult(editFileResponse{Message: "old_text not found"}, true), nil
+			updated, replacements, msg := replaceEditText(string(body), input)
+			if msg != "" {
+				return editFileError(msg), nil
 			}
-			if !input.ReplaceAll && count > 1 {
-				return JSONTextResult(editFileResponse{Message: "old_text is not unique; set replace_all=true"}, true), nil
-			}
-			n := 1
-			if input.ReplaceAll {
-				n = -1
-			}
-			updated := strings.Replace(text, input.OldText, input.NewText, n)
 			mode := fs.FileMode(0o644)
 			if info, err := os.Stat(absPath); err == nil {
 				mode = info.Mode().Perm()
 			}
 			if err := writeTextFileAtomic(absPath, updated, mode); err != nil {
-				return JSONTextResult(editFileResponse{Message: fmt.Sprintf("write file failed: %v", err)}, true), nil
+				return editFileError(fmt.Sprintf("write file failed: %v", err)), nil
 			}
-			replacements := 1
-			if input.ReplaceAll {
-				replacements = count
-			}
-			return JSONTextResult(editFileResponse{
-				Path:         policyRelativePath(policy, absPath),
-				Replacements: replacements,
-			}, false), nil
+			relPath := policyRelativePath(policy, absPath)
+			result := JSONTextResult(editFileResponse{Path: relPath, Replacements: replacements}, false)
+			return withFileChange(result, relPath, snapshotWritten(body), snapshotWritten([]byte(updated))), nil
 		},
 	}
+}
+
+type editFileInput struct {
+	Path       string `json:"path"`
+	OldText    string `json:"old_text"`
+	NewText    string `json:"new_text"`
+	ReplaceAll bool   `json:"replace_all,omitempty"`
+}
+
+func editFileError(message string) Result {
+	return JSONTextResult(editFileResponse{Message: message}, true)
+}
+
+func parseEditFileInput(params json.RawMessage) (editFileInput, string) {
+	var input editFileInput
+	if err := json.Unmarshal(params, &input); err != nil {
+		return input, fmt.Sprintf("invalid arguments: %v", err)
+	}
+	if input.Path == "" {
+		return input, "path is required"
+	}
+	if input.OldText == "" {
+		return input, "old_text is required"
+	}
+	return input, ""
+}
+
+// readFileFailure is the message for a failed read of the file to edit.
+func readFileFailure(err error) string {
+	if os.IsNotExist(err) {
+		return "file not found"
+	}
+	return fmt.Sprintf("read file failed: %v", err)
+}
+
+// replaceEditText applies the edit to text, returning the new text and the
+// number of replacements, or a message when the edit cannot apply.
+func replaceEditText(text string, input editFileInput) (string, int, string) {
+	count := strings.Count(text, input.OldText)
+	if count == 0 {
+		return "", 0, "old_text not found"
+	}
+	if !input.ReplaceAll {
+		if count > 1 {
+			return "", 0, "old_text is not unique; set replace_all=true"
+		}
+		return strings.Replace(text, input.OldText, input.NewText, 1), 1, ""
+	}
+	return strings.ReplaceAll(text, input.OldText, input.NewText), count, ""
 }

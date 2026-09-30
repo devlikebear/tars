@@ -46,6 +46,9 @@ func executeChatLoop(
 		Source: "chat", SessionID: state.sessionID, CapabilityVersionIDs: state.capabilityVersionIDs,
 	})
 	afterToolHook := func(_ context.Context, evt agent.Event) {
+		for _, change := range evt.ToolFileChanges {
+			stream.fileChange(evt.ToolCallID, change)
+		}
 		if evt.ToolName != "tasks" {
 			return
 		}
@@ -73,11 +76,15 @@ func executeChatLoop(
 	// config value otherwise).
 	resumeID := ""
 	permissionMode := strings.TrimSpace(deps.tooling.ClaudeCodeCLIPermissionMode)
+	gateMode := chatPermissionModeManual
 	var permissionDeny []string
 	if state.store != nil {
 		if priorSess, lookupErr := state.store.Get(state.sessionID); lookupErr == nil {
 			resumeID = strings.TrimSpace(priorSess.UpstreamSessionID)
-			permissionMode = effectiveClaudeCodePermissionMode(deps.tooling.OverrideService, priorSess, permissionMode)
+			// The session's own mode (#970) wins over the .tars override and
+			// the configured default.
+			permissionMode = chatPermissionModeResolver{overrides: deps.tooling.OverrideService, configFlag: permissionMode}.claudeCodeFlag(priorSess)
+			gateMode = gateModeFor(priorSess)
 			permissionDeny = effectiveClaudeCodePermissionDeny(deps.tooling.OverrideService, priorSess)
 		}
 	}
@@ -122,7 +129,8 @@ func executeChatLoop(
 			stream.reasoning(text)
 		},
 		ClaudeCodePermissionHandler: chatPermissionHandlerFor(deps, state, stream),
-		ToolAuthorizer:              chatToolGateFor(deps, state, stream),
+		ClaudeCodePermissionAllow:   chatClaudeCodeAlwaysRules(deps, state),
+		ToolAuthorizer:              chatToolGateFor(deps, state, stream, gateMode),
 	})
 	if err != nil {
 		if ctx.Err() == context.Canceled {
@@ -206,15 +214,39 @@ func chatPermissionHandlerFor(deps chatHandlerDeps, state chatRunState, stream *
 	if !state.interactivePermissions || deps.permissions == nil {
 		return nil
 	}
-	return newChatPermissionHandler(deps.permissions, state.sessionID, stream)
+	return newChatPermissionHandler(deps.permissions, state.sessionID, state.cwd, stream, sessionModeSwitch(state.store, state.sessionID))
 }
 
 // chatToolGateFor returns the gate that asks the console before a native
 // provider's turn runs a high-risk tool, or nil when the client cannot
 // answer. CLI providers run their own tools and never reach it.
-func chatToolGateFor(deps chatHandlerDeps, state chatRunState, stream *chatStreamWriter) agentloop.ToolAuthorizer {
+func chatToolGateFor(deps chatHandlerDeps, state chatRunState, stream *chatStreamWriter, mode string) agentloop.ToolAuthorizer {
 	if !state.interactivePermissions || deps.permissions == nil {
 		return nil
 	}
-	return newChatToolGate(deps.permissions, state.sessionID, stream)
+	return newChatToolGate(deps.permissions, state.sessionID, state.cwd, stream, mode)
+}
+
+// chatClaudeCodeAlwaysRules are the Claude Code rules the person chose to
+// always allow in this turn's folder. They apply to every turn there, asked
+// interactively or not; they come only from TARS' own store.
+func chatClaudeCodeAlwaysRules(deps chatHandlerDeps, state chatRunState) []string {
+	if deps.permissions == nil {
+		return nil
+	}
+	return claudeCodeAlwaysRules(deps.permissions.always, state.cwd)
+}
+
+// claudeCodeAlwaysRules lists the Claude Code rules always allowed in cwd.
+func claudeCodeAlwaysRules(store *chatAlwaysRuleStore, cwd string) []string {
+	if store == nil {
+		return nil
+	}
+	var rules []string
+	for _, rule := range store.list(cwd) {
+		if rule.Provider == chatRuleProviderClaudeCode {
+			rules = append(rules, rule.Display())
+		}
+	}
+	return rules
 }

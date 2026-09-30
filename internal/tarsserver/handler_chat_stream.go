@@ -10,6 +10,7 @@ import (
 	"github.com/devlikebear/tars/internal/checkpoint"
 	"github.com/devlikebear/tars/internal/llm"
 	"github.com/devlikebear/tars/internal/session"
+	"github.com/devlikebear/tars/internal/tool"
 	"github.com/rs/zerolog"
 )
 
@@ -24,6 +25,13 @@ type chatStreamWriter struct {
 	// carry it so the console can find the turn without reloading history.
 	turnID string
 	logger zerolog.Logger
+	// feed keeps every event for consoles that attach to the running turn
+	// later (chat_turn_feed.go).
+	feed *chatTurnFeed
+
+	// activity, when set, sees every event so clients other than this
+	// request can tell the turn is waiting for approval (#972).
+	activity *chatActivity
 }
 
 func newChatStreamWriter(w http.ResponseWriter, sessionID string, logger zerolog.Logger) *chatStreamWriter {
@@ -47,6 +55,9 @@ func (s *chatStreamWriter) send(data any) {
 	jsonData, _ := json.Marshal(data)
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.feed.publish(jsonData)
+	// The console that started the turn may be gone; the turn runs on and
+	// its events stay in the feed.
 	_, _ = fmt.Fprintf(s.w, "data: %s\n\n", jsonData)
 	switch evt := data.(type) {
 	case map[string]string:
@@ -55,6 +66,7 @@ func (s *chatStreamWriter) send(data any) {
 		if eventType, ok := evt["type"].(string); ok {
 			s.logger.Debug().Str("event_type", eventType).Msg("chat sse event")
 		}
+		s.activity.observe(s.sessionID, evt)
 	}
 	if s.flusher != nil {
 		s.flusher.Flush()
@@ -154,6 +166,35 @@ func (s *chatStreamWriter) toolOutputLine(toolCallID, stream, text string) {
 // the stream writer directly into the agent loop via context.
 func (s *chatStreamWriter) EmitToolLine(toolCallID, stream, text string) {
 	s.toolOutputLine(toolCallID, stream, text)
+}
+
+// fileChange reports one file a TARS-run tool changed (#1032), as soon as
+// the call finishes, so the console can put the diff on the tool call. Only
+// native providers send it: CLI providers run their own tools, and their
+// changes show in the turn's checkpoint card alone.
+func (s *chatStreamWriter) fileChange(toolCallID string, change tool.FileChange) {
+	if s == nil || strings.TrimSpace(change.Path) == "" {
+		return
+	}
+	payload := map[string]any{
+		"type":         "file_change",
+		"session_id":   s.sessionID,
+		"tool_call_id": strings.TrimSpace(toolCallID),
+		"path":         change.Path,
+		"op":           string(change.Op),
+		"additions":    change.Additions,
+		"deletions":    change.Deletions,
+	}
+	if change.Binary {
+		payload["binary"] = true
+	}
+	if change.Truncated {
+		payload["truncated"] = true
+	}
+	if len(change.Hunks) > 0 {
+		payload["hunks"] = change.Hunks
+	}
+	s.send(payload)
 }
 
 func (s *chatStreamWriter) memoryRecall(count int) {
@@ -274,10 +315,11 @@ func (s *chatStreamWriter) done(usage llm.Usage) {
 	})
 }
 
-// permissionRequest asks the console to decide one Claude Code permission
-// prompt. input is the tool input as Claude Code sent it; sessionRule is the
-// rule "allow for this session" would add, empty when none is offered.
-func (s *chatStreamWriter) permissionRequest(requestID string, req llm.ClaudeCodePermissionRequest, sessionRule string) {
+// permissionRequest asks the console to decide one permission prompt. input
+// is the tool input as sent; sessionRule is the rule "allow for this session"
+// would add, empty when none is offered; alwaysDir is the folder "always
+// allow" would cover, empty when that is not offered.
+func (s *chatStreamWriter) permissionRequest(requestID string, req llm.ClaudeCodePermissionRequest, sessionRule, alwaysDir string) {
 	payload := map[string]any{
 		"type":         "permission_request",
 		"session_id":   s.sessionID,
@@ -289,6 +331,7 @@ func (s *chatStreamWriter) permissionRequest(requestID string, req llm.ClaudeCod
 		"reason":       req.DecisionReason,
 		"agent_id":     req.AgentID,
 		"session_rule": sessionRule,
+		"always_dir":   alwaysDir,
 	}
 	if json.Valid(req.Input) {
 		payload["input"] = json.RawMessage(req.Input)
@@ -304,5 +347,36 @@ func (s *chatStreamWriter) permissionResolved(requestID, outcome string) {
 		"session_id": s.sessionID,
 		"request_id": requestID,
 		"outcome":    outcome,
+	})
+}
+
+// worktree tells the console the turn runs in a worktree of its own,
+// created just now because another session holds the repository or the
+// run is unattended.
+func (s *chatStreamWriter) worktree(notice worktreeNotice) {
+	payload := map[string]any{
+		"type":       "worktree",
+		"session_id": s.sessionID,
+		"path":       notice.Worktree.Path,
+		"dir":        notice.Worktree.Dir,
+		"branch":     notice.Worktree.Branch,
+		"reason":     notice.Worktree.Reason,
+	}
+	if notice.Holder != "" {
+		payload["lease_holder"] = notice.Holder
+	}
+	if len(notice.Copied) > 0 {
+		payload["copied"] = notice.Copied
+	}
+	s.send(payload)
+}
+
+// permissionMode tells the console the session's permission mode changed
+// during the turn (an approved plan), so its status bar follows.
+func (s *chatStreamWriter) permissionMode(mode string) {
+	s.send(map[string]any{
+		"type":       "permission_mode",
+		"session_id": s.sessionID,
+		"mode":       mode,
 	})
 }

@@ -536,11 +536,37 @@ func Open(ctx context.Context, path string, opts Options) (*Store, error) {
 	return store, nil
 }
 
+// closeConnectionTimeout bounds how long Close waits for connections that were
+// still in use to be released. It matches the busy_timeout pragma: a release
+// is a rollback or a finished statement, never a wait on another writer.
+var closeConnectionTimeout = 5 * time.Second
+
+// Close closes the database and returns only once every connection, and so
+// every handle on the database file, is closed.
+//
+// sql.DB.Close alone does not promise that. It closes the idle connections and
+// leaves each one still in use to be closed when it is released, and a
+// connection can be in use after its caller has returned: when a
+// transaction's context is cancelled, database/sql rolls it back on a
+// goroutine of its own. A caller that removes the ledger's directory right
+// after Close then races that rollback, which on Windows fails the removal
+// with a sharing violation.
 func (s *Store) Close() error {
 	if s == nil || s.db == nil {
 		return nil
 	}
-	return s.db.Close()
+	err := s.db.Close()
+	deadline := time.Now().Add(closeConnectionTimeout)
+	for {
+		open := s.db.Stats().OpenConnections
+		if open == 0 {
+			return err
+		}
+		if time.Now().After(deadline) {
+			return errors.Join(err, fmt.Errorf("workstore: %d database connection(s) still open %s after close", open, closeConnectionTimeout))
+		}
+		time.Sleep(time.Millisecond)
+	}
 }
 
 func (s *Store) migrate(ctx context.Context) error {

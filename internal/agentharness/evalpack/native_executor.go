@@ -23,6 +23,17 @@ type NativeExecutor struct {
 
 var nativeRunSequence atomic.Uint64
 
+// nativeWaitTimeout bounds each wait on the native runtime: a run reaching its
+// prompt, a run finishing, the runtime closing. It is a hang guard, not a
+// latency expectation. The path to a prompt spawns git and fsyncs session
+// files, and on a loaded Windows runner it has taken longer than the 2s the
+// guards once allowed, which reported slowness as a baseline error.
+const nativeWaitTimeout = 30 * time.Second
+
+// fakePromptDelay holds every fake prompt back before it runs, standing in for
+// a slow path from Spawn to the prompt. Only tests set it.
+var fakePromptDelay time.Duration
+
 func (e NativeExecutor) Execute(ctx context.Context, scenario Scenario) (Metrics, error) {
 	metrics, _, err := e.ExecuteDetailed(ctx, scenario)
 	return metrics, err
@@ -102,11 +113,17 @@ func sanitizePathPart(value string) string {
 }
 
 func newNativeRuntime(root string, runPrompt func(context.Context, string, string) (string, error), persistence bool) *agentruntime.Runtime {
+	delayedPrompt := func(ctx context.Context, runLabel string, prompt string) (string, error) {
+		if fakePromptDelay > 0 {
+			time.Sleep(fakePromptDelay)
+		}
+		return runPrompt(ctx, runLabel, prompt)
+	}
 	return agentruntime.NewRuntime(agentruntime.RuntimeOptions{
 		Enabled:                                true,
 		WorkspaceDir:                           root,
 		SessionStore:                           session.NewStore(filepath.Join(root, "session-store")),
-		RunPrompt:                              runPrompt,
+		RunPrompt:                              delayedPrompt,
 		AgentRuntimeSubagentsMaxThreads:        4,
 		AgentRuntimePersistenceEnabled:         persistence,
 		AgentRuntimeRunsPersistenceEnabled:     persistence,
@@ -117,15 +134,30 @@ func newNativeRuntime(root string, runPrompt func(context.Context, string, strin
 }
 
 func closeNativeRuntime(rt *agentruntime.Runtime) {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), nativeWaitTimeout)
 	defer cancel()
 	_ = rt.Close(ctx)
 }
 
 func waitRun(ctx context.Context, rt *agentruntime.Runtime, run agentruntime.Run) (agentruntime.Run, error) {
-	waitCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	waitCtx, cancel := context.WithTimeout(ctx, nativeWaitTimeout)
 	defer cancel()
 	return rt.Wait(waitCtx, run.ID)
+}
+
+// awaitSignal waits for signal until ctx ends or nativeWaitTimeout passes;
+// failure says what did not happen.
+func awaitSignal(ctx context.Context, signal <-chan struct{}, failure string) error {
+	timer := time.NewTimer(nativeWaitTimeout)
+	defer timer.Stop()
+	select {
+	case <-signal:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return fmt.Errorf("%s within %s", failure, nativeWaitTimeout)
+	}
 }
 
 func executeSingleAgent(ctx context.Context, root string, scenario Scenario) (Metrics, string, error) {
@@ -167,12 +199,8 @@ func executeParallelFanout(ctx context.Context, root string, scenario Scenario) 
 		runs = append(runs, run)
 	}
 	for range runs {
-		select {
-		case <-started:
-		case <-ctx.Done():
-			return Metrics{}, "", ctx.Err()
-		case <-time.After(2 * time.Second):
-			return Metrics{}, "", fmt.Errorf("parallel workers did not start concurrently")
+		if err := awaitSignal(ctx, started, "parallel workers did not start concurrently"); err != nil {
+			return Metrics{}, "", err
 		}
 	}
 	releaseOnce.Do(func() { close(release) })
@@ -235,12 +263,8 @@ func executeRestartRecovery(ctx context.Context, root string, scenario Scenario)
 	if err != nil {
 		return Metrics{}, "", err
 	}
-	select {
-	case <-entered:
-	case <-ctx.Done():
-		return Metrics{}, "", ctx.Err()
-	case <-time.After(2 * time.Second):
-		return Metrics{}, "", fmt.Errorf("active run did not start")
+	if err := awaitSignal(ctx, entered, "active run did not start"); err != nil {
+		return Metrics{}, "", err
 	}
 	restarted := newNativeRuntime(root, func(_ context.Context, _ string, _ string) (string, error) {
 		return scenario.SuccessToken, nil

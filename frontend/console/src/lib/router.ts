@@ -2,6 +2,7 @@ const consoleBase = '/console'
 const chatPrefix = `${consoleBase}/chat`
 
 export type Route =
+  | { view: 'board' }
   | { view: 'home' }
   | { view: 'chat'; sessionId?: string }
   | { view: 'session-lineage' }
@@ -34,7 +35,13 @@ export function resolveRoute(pathname: string): Route {
     path = pathname.trim()
   }
 
+  // The session board is the console's home (#971); the system overview
+  // that used to be home lives under /console/system.
   if (path === consoleBase || path === `${consoleBase}/`) {
+    return { view: 'board' }
+  }
+
+  if (path.startsWith(`${consoleBase}/system`)) {
     return { view: 'home' }
   }
 
@@ -121,5 +128,5 @@ export function resolveRoute(pathname: string): Route {
     return reentryQuery ? { view: 'onboarding', reentry: true } : { view: 'onboarding' }
   }
 
-  return { view: 'home' }
+  return { view: 'board' }
 }

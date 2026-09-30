@@ -48,7 +48,9 @@ type Approval struct {
 	ReviewedAt  *time.Time       `json:"reviewed_at,omitempty"`
 	Plan        CleanupPlan      `json:"plan"`
 	GitMutation *GitMutationPlan `json:"git_mutation,omitempty"`
-	Note        string           `json:"note,omitempty"`
+	// ToolPermission is set on a tool_permission approval.
+	ToolPermission *ToolPermissionRequest `json:"tool_permission,omitempty"`
+	Note           string                 `json:"note,omitempty"`
 }
 
 type CleanupApplyResult struct {

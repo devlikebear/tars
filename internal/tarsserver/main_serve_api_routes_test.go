@@ -286,10 +286,12 @@ func TestRegisterAPIRoutes_CheckpointRoutesBeatSessionPrefix(t *testing.T) {
 	registerAPIRoutes(mux, handlers)
 
 	for path, want := range map[string]int{
-		"/v1/admin/sessions/s1/checkpoints":            http.StatusAccepted,
-		"/v1/admin/sessions/s1/checkpoints/t1/diff":    http.StatusAccepted,
-		"/v1/admin/sessions/s1/history":                http.StatusNoContent,
-		"/v1/admin/sessions/s1/checkpoints/t1/unknown": http.StatusNoContent,
+		"/v1/admin/sessions/s1/checkpoints":                 http.StatusAccepted,
+		"/v1/admin/sessions/s1/checkpoints/t1/diff":         http.StatusAccepted,
+		"/v1/admin/sessions/s1/checkpoints/t1/revert":       http.StatusAccepted,
+		"/v1/admin/sessions/s1/checkpoints/reverts/r1/undo": http.StatusAccepted,
+		"/v1/admin/sessions/s1/history":                     http.StatusNoContent,
+		"/v1/admin/sessions/s1/checkpoints/t1/unknown":      http.StatusNoContent,
 	} {
 		rec := httptest.NewRecorder()
 		mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))

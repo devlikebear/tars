@@ -145,6 +145,9 @@ func newOpsAPIHandler(manager *ops.Manager, logger zerolog.Logger, emit func(con
 		if !requireMethod(w, r, http.MethodPost) {
 			return
 		}
+		if handled := reviewToolPermission(w, r, manager, emit, approvalID, action); handled {
+			return
+		}
 		var err error
 		switch action {
 		case "approve":
@@ -217,4 +220,35 @@ func newOpsAPIHandler(manager *ops.Manager, logger zerolog.Logger, emit func(con
 	})
 
 	return mux
+}
+
+// reviewToolPermission answers a tool_permission approval: the unattended
+// turn waiting on it reads the new status and runs or skips the call, so
+// nothing is applied here. It reports false for any other approval.
+func reviewToolPermission(w http.ResponseWriter, r *http.Request, manager *ops.Manager, emit func(context.Context, notificationEvent), approvalID, action string) bool {
+	approval, err := manager.GetApproval(approvalID)
+	if err != nil || approval.Type != ops.ApprovalTypeToolPermission {
+		return false
+	}
+	if action != "approve" && action != "reject" {
+		http.NotFound(w, r)
+		return true
+	}
+	if err := manager.ReviewToolPermission(approvalID, action == "approve"); err != nil {
+		status := http.StatusBadRequest
+		if ops.IsApprovalNotPending(err) {
+			status = http.StatusConflict
+		}
+		writeJSON(w, status, map[string]string{"error": err.Error()})
+		return true
+	}
+	if emit != nil && approval.ToolPermission != nil {
+		title := "Tool call approved"
+		if action == "reject" {
+			title = "Tool call rejected"
+		}
+		emit(r.Context(), newNotificationEvent("ops", "info", title, approval.ToolPermission.ToolName+" · approval_id="+approvalID))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"approval_id": approvalID, "action": action, "ok": true})
+	return true
 }

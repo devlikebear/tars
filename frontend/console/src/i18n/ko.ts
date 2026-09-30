@@ -6,7 +6,13 @@ import { chatThreadKo } from './sections/chatThread.ts'
 import { sessionConfigKo } from './sections/sessionConfig.ts'
 import { gitInspectorKo } from './sections/gitInspector.ts'
 import { changesKo } from './sections/changes.ts'
+import { sideSessionKo } from './sections/sideSession.ts'
+import { sessionWorktreeKo } from './sections/sessionWorktree.ts'
 import { chatApprovalKo } from './sections/chatApproval.ts'
+import { sessionBoardKo } from './sections/sessionBoard.ts'
+
+import { messageQueueKo } from './sections/messageQueue.ts'
+import { permissionModeKo } from './sections/permissionMode.ts'
 import { artifactPanelKo } from './sections/artifactPanel.ts'
 import { skillInboxKo } from './sections/skillInbox.ts'
 import { sessionCronKo } from './sections/sessionCron.ts'
@@ -48,6 +54,8 @@ export const ko = {
       system: '시스템',
     },
     items: {
+      board: '세션',
+      overview: '개요',
       chat: '채팅',
       lineage: '분기',
       plans: '계획',
@@ -77,7 +85,7 @@ export const ko = {
       slash: '슬래시 명령',
     },
     pages: {
-      home: '홈',
+      home: '시스템 개요',
       onboarding: '설정 마법사',
     },
     actions: {
@@ -570,6 +578,8 @@ export const ko = {
       gitTooltip: 'Git 인스펙터',
       changes: '변경 사항',
       changesTooltip: '턴마다 바뀐 파일',
+      side: '옆 세션',
+      sideTooltip: '지금 세션 옆에 다른 세션',
       skills: '스킬',
       skillsTooltip: '스킬 추출 인박스',
       skillsInbox: '스킬 인박스',
@@ -891,6 +901,10 @@ export const ko = {
     gitDestructive: '위험한 git 작업',
     gitAction: 'git 작업',
     candidatesSuffix: (count) => `${count}개 후보`,
+    toolCall: (tool) => `도구 호출: ${tool}`,
+    toolSource: (source) => `${source}에서`,
+    openSession: '세션 열기',
+    toolWaiting: '실행은 이 답을 기다리며, 30분 안에 아무도 답하지 않으면 호출을 건너뜁니다.',
     approve: '승인',
     reject: '거부',
     auditTitle: '자동화 감사',
@@ -1648,7 +1662,13 @@ export const ko = {
   sessionConfig: sessionConfigKo,
   gitInspector: gitInspectorKo,
   changes: changesKo,
+  sideSession: sideSessionKo,
+  sessionWorktree: sessionWorktreeKo,
   chatApproval: chatApprovalKo,
+  sessionBoard: sessionBoardKo,
+
+  messageQueue: messageQueueKo,
+  permissionMode: permissionModeKo,
   artifactPanel: artifactPanelKo,
   skillInbox: skillInboxKo,
   sessionCron: sessionCronKo,

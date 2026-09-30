@@ -25,6 +25,7 @@ type (
 	ReasoningBlock           = pkgsession.ReasoningBlock
 	Session                  = pkgsession.Session
 	SessionAutomationConsent = pkgsession.SessionAutomationConsent
+	SessionWorktree          = pkgsession.SessionWorktree
 	SessionCritic            = pkgsession.SessionCritic
 	SessionGoal              = pkgsession.SessionGoal
 	SessionStyleControl      = pkgsession.SessionStyleControl
@@ -94,6 +95,7 @@ var (
 	CompactTranscriptWithOptions      = pkgsession.CompactTranscriptWithOptions
 	DetectForkPromotionCandidates     = pkgsession.DetectForkPromotionCandidates
 	ErrCwdNotEligible                 = pkgsession.ErrCwdNotEligible
+	IsolationOff                      = pkgsession.IsolationOff
 	ErrSessionKindUnsupported         = pkgsession.ErrSessionKindUnsupported
 	ErrSessionNotFound                = pkgsession.ErrSessionNotFound
 	EstimateMessageTokenCost          = pkgsession.EstimateMessageTokenCost

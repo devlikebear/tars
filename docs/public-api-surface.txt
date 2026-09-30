@@ -27,6 +27,7 @@ pkg/agentloop field Event.SessionID
 pkg/agentloop field Event.ToolArgs
 pkg/agentloop field Event.ToolCallID
 pkg/agentloop field Event.ToolEffectClass
+pkg/agentloop field Event.ToolFileChanges
 pkg/agentloop field Event.ToolIdempotencyKeyArgument
 pkg/agentloop field Event.ToolIsError
 pkg/agentloop field Event.ToolName
@@ -40,6 +41,7 @@ pkg/agentloop field RunOptions.AutoExpandOnce
 pkg/agentloop field RunOptions.BeforeTool
 pkg/agentloop field RunOptions.BlockedTools
 pkg/agentloop field RunOptions.ClaudeCodeMCPServers
+pkg/agentloop field RunOptions.ClaudeCodePermissionAllow
 pkg/agentloop field RunOptions.ClaudeCodePermissionDeny
 pkg/agentloop field RunOptions.ClaudeCodePermissionHandler
 pkg/agentloop field RunOptions.ClaudeCodePermissionMode
@@ -140,6 +142,7 @@ pkg/llm field ChatMessage.ToolCallID
 pkg/llm field ChatMessage.ToolCalls
 pkg/llm field ChatOptions.ClaudeCodeHarness
 pkg/llm field ChatOptions.ClaudeCodeMCPServers
+pkg/llm field ChatOptions.ClaudeCodePermissionAllow
 pkg/llm field ChatOptions.ClaudeCodePermissionDeny
 pkg/llm field ChatOptions.ClaudeCodePermissionHandler
 pkg/llm field ChatOptions.ClaudeCodePermissionMode
@@ -603,6 +606,7 @@ pkg/session const EvidenceTypeLogExcerpt
 pkg/session const EvidenceTypePRLink
 pkg/session const EvidenceTypeReleaseTag
 pkg/session const EvidenceTypeTestResult
+pkg/session const IsolationOff
 pkg/session const MaxCriticFeedbackLen
 pkg/session const MaxCriticMaxIterations
 pkg/session const MaxGoalDescriptionLen
@@ -696,9 +700,11 @@ pkg/session field Session.ForkedFromMessageID
 pkg/session field Session.Goal
 pkg/session field Session.Hidden
 pkg/session field Session.ID
+pkg/session field Session.Isolation
 pkg/session field Session.Kind
 pkg/session field Session.LastCompactionMode
 pkg/session field Session.ParentSessionID
+pkg/session field Session.PermissionMode
 pkg/session field Session.PinnedAt
 pkg/session field Session.PromptOverride
 pkg/session field Session.RootSessionID
@@ -708,6 +714,7 @@ pkg/session field Session.ToolConfig
 pkg/session field Session.UpdatedAt
 pkg/session field Session.UpstreamSessionID
 pkg/session field Session.WorkDirs
+pkg/session field Session.Worktree
 pkg/session field SessionAutomationConsent.AllowedResumeModes
 pkg/session field SessionAutomationConsent.AutoResume
 pkg/session field SessionAutomationConsent.AutoResumeAfterMinutes
@@ -760,6 +767,14 @@ pkg/session field SessionWithPlanTasks.StaleCompleted
 pkg/session field SessionWithPlanTasks.Summary
 pkg/session field SessionWithPlanTasks.Tasks
 pkg/session field SessionWithPlanTasks.UpdatedAt
+pkg/session field SessionWorktree.BaseCommit
+pkg/session field SessionWorktree.Branch
+pkg/session field SessionWorktree.CreatedAt
+pkg/session field SessionWorktree.Dir
+pkg/session field SessionWorktree.Path
+pkg/session field SessionWorktree.Reason
+pkg/session field SessionWorktree.RepoRoot
+pkg/session field SessionWorktree.SourceDir
 pkg/session field Task.Description
 pkg/session field Task.Evidence
 pkg/session field Task.ID
@@ -864,7 +879,9 @@ pkg/session method Store.SetCritic
 pkg/session method Store.SetCurrentDir
 pkg/session method Store.SetDeleteHook
 pkg/session method Store.SetGoal
+pkg/session method Store.SetIsolation
 pkg/session method Store.SetLastCompactionMode
+pkg/session method Store.SetPermissionMode
 pkg/session method Store.SetPinned
 pkg/session method Store.SetPromptOverride
 pkg/session method Store.SetStyleControl
@@ -873,6 +890,7 @@ pkg/session method Store.SetTitle
 pkg/session method Store.SetToolConfig
 pkg/session method Store.SetUpstreamSessionID
 pkg/session method Store.SetWorkDirs
+pkg/session method Store.SetWorktree
 pkg/session method Store.TakePendingCriticFeedback
 pkg/session method Store.Touch
 pkg/session method Store.TranscriptPath
@@ -898,6 +916,7 @@ pkg/session type SessionStyleControl
 pkg/session type SessionTasks
 pkg/session type SessionToolConfig
 pkg/session type SessionWithPlanTasks
+pkg/session type SessionWorktree
 pkg/session type Store
 pkg/session type Task
 pkg/session type TaskContract
@@ -1476,6 +1495,9 @@ pkg/tarsclient type UsageSignalSummary
 pkg/tarsclient type UsageSummary
 pkg/tarsclient type UsageSummaryRow
 pkg/tarsclient type WhoamiInfo
+pkg/tools const FileChangeCreate
+pkg/tools const FileChangeDelete
+pkg/tools const FileChangeModify
 pkg/tools const RegistryScopeAny
 pkg/tools const RegistryScopePulse
 pkg/tools const RegistryScopeReflection
@@ -1493,6 +1515,18 @@ pkg/tools field ContentBlock.Text
 pkg/tools field ContentBlock.Type
 pkg/tools field ExecToolOptions.MaxBackgroundTimeoutMS
 pkg/tools field ExecToolOptions.MaxTimeoutMS
+pkg/tools field FileChange.Additions
+pkg/tools field FileChange.Binary
+pkg/tools field FileChange.Deletions
+pkg/tools field FileChange.Hunks
+pkg/tools field FileChange.Op
+pkg/tools field FileChange.Path
+pkg/tools field FileChange.Truncated
+pkg/tools field FileChangeHunk.Lines
+pkg/tools field FileChangeHunk.NewLines
+pkg/tools field FileChangeHunk.NewStart
+pkg/tools field FileChangeHunk.OldLines
+pkg/tools field FileChangeHunk.OldStart
 pkg/tools field PathPolicy.AllowedDirs
 pkg/tools field PathPolicy.PrimaryDir
 pkg/tools field Policy.AllowGroups
@@ -1515,6 +1549,7 @@ pkg/tools field ProcessSnapshot.Stderr
 pkg/tools field ProcessSnapshot.Stdout
 pkg/tools field ProcessSnapshot.WaitTimedOut
 pkg/tools field Result.Content
+pkg/tools field Result.FileChanges
 pkg/tools field Result.IsError
 pkg/tools field SessionStatus.HistoryMessages
 pkg/tools field SessionStatus.SessionID
@@ -1628,6 +1663,9 @@ pkg/tools method TranscriptSource.ReadTranscript
 pkg/tools type BlockedToolError
 pkg/tools type ContentBlock
 pkg/tools type ExecToolOptions
+pkg/tools type FileChange
+pkg/tools type FileChangeHunk
+pkg/tools type FileChangeOp
 pkg/tools type LineEmitter
 pkg/tools type PathPolicy
 pkg/tools type Policy

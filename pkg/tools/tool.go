@@ -77,6 +77,9 @@ type ContentBlock struct {
 type Result struct {
 	Content []ContentBlock `json:"content"`
 	IsError bool           `json:"is_error,omitempty"`
+	// FileChanges lists the files a file-editing tool changed, for the UI
+	// (#1032). It is never sent to the model.
+	FileChanges []FileChange `json:"-"`
 }
 
 func (r Result) Text() string {

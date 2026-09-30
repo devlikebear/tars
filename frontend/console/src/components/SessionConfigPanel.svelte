@@ -21,6 +21,7 @@
   import { sortStrings } from '../lib/sort'
   import type { CommandDef, EffectiveConfigSource, SessionAutomationConsent, SessionCritic, SessionEffectiveConfig, SessionStyleResponse, SessionStyleValues, SkillDef } from '../lib/types'
   import { locale, t } from '../i18n'
+  import PermissionRulesList from './PermissionRulesList.svelte'
 
   interface Props {
     sessionId: string
@@ -50,7 +51,7 @@
   let styleDraft: SessionStyleValues = $state({ directness: 70, humor: 20, caution: 60, autonomy: 40 })
   let loading = $state(true)
   let filterText = $state('')
-  let activeTab: 'tools' | 'skills' | 'commands' | 'mcp' | 'automation' | 'style' = $state('tools')
+  let activeTab: 'tools' | 'skills' | 'commands' | 'mcp' | 'automation' | 'style' | 'permissions' = $state('tools')
   let automationSaving = $state(false)
   let styleSaving = $state(false)
   type SkillSourceFilter = 'all' | 'global' | 'session' | 'enabled' | 'disabled'
@@ -813,6 +814,9 @@
       <button class="config-tab" class:active={activeTab === 'style'} onclick={() => activeTab = 'style'}>
         {$t.sessionConfig.tabs.style}
       </button>
+      <button class="config-tab" class:active={activeTab === 'permissions'} onclick={() => activeTab = 'permissions'}>
+        {$t.chatApproval.rules.tab}
+      </button>
     </div>
 
     {#if activeTab === 'tools' || activeTab === 'skills' || activeTab === 'commands' || activeTab === 'mcp'}
@@ -1144,6 +1148,8 @@
           <div class="automation-updated">{$t.sessionConfig.critic.updatedAt(new Date(critic.updated_at).toLocaleString($locale))}</div>
         {/if}
       </div>
+    {:else if activeTab === 'permissions'}
+      <PermissionRulesList {sessionId} />
     {:else if activeTab === 'style'}
       <div class="style-list">
         {#each styleAxes as axis}

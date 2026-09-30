@@ -6,11 +6,13 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"strings"
 	"time"
 
 	"github.com/devlikebear/tars/internal/consoleauth"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 )
 
 type authOptions struct {
@@ -145,10 +147,11 @@ func resolveAuthPassword(stdin io.Reader, stderr io.Writer, explicit, fallback s
 	if strings.TrimSpace(fallback) != "" {
 		return fallback, nil
 	}
-	if stderr != nil {
-		if _, err := fmt.Fprint(stderr, "Password: "); err != nil {
-			return "", err
-		}
+	if fd, ok := stdinTerminalFd(stdin); ok {
+		return promptTerminalPassword(fd, stderr)
+	}
+	if err := writeAuthPrompt(stderr, "Password: "); err != nil {
+		return "", err
 	}
 	reader := bufio.NewReader(stdin)
 	password, err := reader.ReadString('\n')
@@ -160,6 +163,104 @@ func resolveAuthPassword(stdin io.Reader, stderr io.Writer, explicit, fallback s
 		return "", fmt.Errorf("password is required")
 	}
 	return password, nil
+}
+
+// stdinTerminalFd reports the descriptor of stdin when it is an interactive
+// terminal. Pipes, files and in-memory readers (tests) keep the line-based
+// path. Swappable so tests can drive the terminal path.
+var stdinTerminalFd = func(stdin io.Reader) (int, bool) {
+	f, ok := stdin.(*os.File)
+	if !ok || f == nil {
+		return 0, false
+	}
+	fd := int(f.Fd())
+	return fd, term.IsTerminal(fd)
+}
+
+// readTerminalPassword reads one line from a terminal without echoing it.
+// Swappable so tests can drive the terminal path.
+var readTerminalPassword = readPasswordNoEcho
+
+// promptTerminalPassword asks twice without echo so a typo cannot lock the
+// user out of the console. term.ReadPassword swallows the Enter key, so each
+// read is followed by a newline to keep the next prompt on its own line.
+func promptTerminalPassword(fd int, stderr io.Writer) (string, error) {
+	password, err := readTerminalPasswordLine(fd, stderr, "Password: ")
+	if err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(password) == "" {
+		return "", fmt.Errorf("password is required")
+	}
+	confirm, err := readTerminalPasswordLine(fd, stderr, "Confirm password: ")
+	if err != nil {
+		return "", err
+	}
+	if confirm != password {
+		return "", fmt.Errorf("passwords do not match")
+	}
+	return password, nil
+}
+
+func readTerminalPasswordLine(fd int, stderr io.Writer, prompt string) (string, error) {
+	if err := writeAuthPrompt(stderr, prompt); err != nil {
+		return "", err
+	}
+	raw, err := readTerminalPassword(fd)
+	if werr := writeAuthPrompt(stderr, "\n"); werr != nil && err == nil {
+		err = werr
+	}
+	if err != nil {
+		return "", fmt.Errorf("read password: %w", err)
+	}
+	return strings.TrimRight(string(raw), "\r\n"), nil
+}
+
+// readPasswordNoEcho wraps term.ReadPassword so that Ctrl-C while the prompt
+// is waiting restores the terminal before the process exits; otherwise the
+// shell is left with echo turned off.
+func readPasswordNoEcho(fd int) ([]byte, error) {
+	state, err := term.GetState(fd)
+	if err != nil {
+		return nil, err
+	}
+	stop := onInterrupt(func() { _ = term.Restore(fd, state) })
+	defer stop()
+	return term.ReadPassword(fd)
+}
+
+// exitInterrupted ends the process after Ctrl-C at a password prompt.
+// Swappable so tests can observe it.
+var exitInterrupted = func() {
+	fmt.Fprintln(os.Stderr)
+	os.Exit(130)
+}
+
+// onInterrupt runs restore and exits if Ctrl-C arrives before stop is called.
+func onInterrupt(restore func()) (stop func()) {
+	interrupted := make(chan os.Signal, 1)
+	signal.Notify(interrupted, os.Interrupt)
+	done := make(chan struct{})
+	go func() {
+		select {
+		case <-interrupted:
+			restore()
+			exitInterrupted()
+		case <-done:
+		}
+	}()
+	return func() {
+		signal.Stop(interrupted)
+		close(done)
+	}
+}
+
+func writeAuthPrompt(stderr io.Writer, text string) error {
+	if stderr == nil {
+		return nil
+	}
+	_, err := fmt.Fprint(stderr, text)
+	return err
 }
 
 func normalizeAuthCommandRole(role string) (string, error) {

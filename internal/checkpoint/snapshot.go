@@ -69,9 +69,10 @@ func (s *Store) takeSnapshot(ctx context.Context, sh *shadowRepo, message string
 		}
 	}
 	// A file that grew past the limit leaves the snapshot instead of keeping
-	// a stale copy.
+	// a stale copy. -f: the shadow has no HEAD, so rm's up-to-date check
+	// would refuse any file whose content changed since it was added.
 	if len(scan.oversizeTracked) > 0 {
-		call := sh.call("rm", "--cached", "--quiet", "--ignore-unmatch", "--pathspec-from-file=-", "--pathspec-file-nul")
+		call := sh.call("rm", "--cached", "-f", "--quiet", "--ignore-unmatch", "--pathspec-from-file=-", "--pathspec-file-nul")
 		call.stdin = nulList(scan.oversizeTracked)
 		if _, _, err := s.git.run(ctx, call); err != nil {
 			return snapshot{}, err

@@ -10,8 +10,10 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/devlikebear/tars/internal/llm"
+	"github.com/devlikebear/tars/internal/ops"
 )
 
 // Inline tool approvals for claude-code-cli chat turns (#970).
@@ -26,15 +28,18 @@ var errChatPermissionNotFound = errors.New("no pending permission request")
 
 // chatPermissionAnswer is the console's reply to one permission_request.
 type chatPermissionAnswer struct {
-	// Decision is allow_once, allow_session or deny.
+	// Decision is allow_once, allow_session, allow_always or deny.
 	Decision string `json:"decision"`
 	// Message is shown to the model on deny.
 	Message string `json:"message,omitempty"`
+	// Mode, on allowing a plan, is the permission mode to continue in
+	// (accept_edits or auto).
+	Mode string `json:"mode,omitempty"`
 }
 
 func validChatPermissionDecision(decision string) bool {
 	switch decision {
-	case "allow_once", "allow_session", "deny":
+	case "allow_once", "allow_session", "allow_always", "deny":
 		return true
 	}
 	return false
@@ -48,6 +53,68 @@ type chatPermissionBroker struct {
 	mu      sync.Mutex
 	pending map[string]pendingChatPermission
 	rules   map[string][]chatToolRule
+	// always persists "always allow in this folder" rules. Nil disables the
+	// choice.
+	always *chatAlwaysRuleStore
+	// audit records each decision in the automation audit log (#970). Nil
+	// records nothing.
+	audit func(ops.AutomationAuditEntry)
+}
+
+// chatPermissionAudit describes a settled question for the audit log.
+type chatPermissionAudit struct {
+	sessionID string
+	cwd       string
+	tool      string
+	rule      string
+	mode      string
+	// source names an unattended turn (cron, telegram, subagent) whose
+	// question was answered in the ops queue rather than on a card.
+	source string
+}
+
+// settle tells the console how a question ended and records it.
+func (b *chatPermissionBroker) settle(stream *chatStreamWriter, id, outcome string, info chatPermissionAudit) {
+	stream.permissionResolved(id, outcome)
+	b.record(id, outcome, info)
+}
+
+// record writes one decision to the automation audit log: who decided
+// (the person in the console, or the session's permission mode), what, and
+// for which tool call.
+func (b *chatPermissionBroker) record(id, outcome string, info chatPermissionAudit) {
+	if b == nil || b.audit == nil {
+		return
+	}
+	actor := "console"
+	if info.source != "" {
+		actor = "ops"
+	}
+	if strings.HasPrefix(outcome, "refused_") || outcome == "withdrawn" || outcome == "expired" {
+		actor = "tars"
+	}
+	details := map[string]any{"tool": info.tool}
+	if id != "" {
+		details["request_id"] = id
+	}
+	if info.rule != "" {
+		details["rule"] = info.rule
+	}
+	if info.mode != "" {
+		details["mode"] = info.mode
+	}
+	if info.source != "" {
+		details["source"] = info.source
+	}
+	b.audit(ops.AutomationAuditEntry{
+		Timestamp: time.Now().UTC(),
+		Actor:     actor,
+		Action:    "chat_tool_permission",
+		SessionID: info.sessionID,
+		CWD:       info.cwd,
+		Result:    outcome,
+		Details:   details,
+	})
 }
 
 type pendingChatPermission struct {
@@ -99,30 +166,50 @@ func newChatPermissionID() string {
 // under the returned request id. If ctx ends first — a cancelled turn, a
 // disconnected console, or Claude Code dropping the question — the prompt is
 // closed as withdrawn and ctx's error returned.
-func askChatPermission(ctx context.Context, broker *chatPermissionBroker, sessionID string, stream *chatStreamWriter, prompt llm.ClaudeCodePermissionRequest, sessionRule string) (string, chatPermissionAnswer, error) {
+func askChatPermission(ctx context.Context, broker *chatPermissionBroker, sessionID string, stream *chatStreamWriter, prompt llm.ClaudeCodePermissionRequest, sessionRule, alwaysDir string) (string, chatPermissionAnswer, error) {
 	id, answers, done := broker.open(sessionID)
 	defer done()
-	stream.permissionRequest(id, prompt, sessionRule)
+	stream.permissionRequest(id, prompt, sessionRule, alwaysDir)
 	select {
 	case answer := <-answers:
 		return id, answer, nil
 	case <-ctx.Done():
-		stream.permissionResolved(id, "withdrawn")
+		broker.settle(stream, id, "withdrawn", chatPermissionAudit{sessionID: sessionID, tool: prompt.ToolName})
 		return id, chatPermissionAnswer{}, ctx.Err()
 	}
 }
 
+// alwaysDir is the folder "always allow" would cover, or "" when the choice
+// is not offered: no store, no folder, or no rule to remember.
+func (b *chatPermissionBroker) alwaysDir(cwd string, haveRule bool) string {
+	if b.always == nil || !haveRule {
+		return ""
+	}
+	return chatAlwaysRuleDir(cwd)
+}
+
 // newChatPermissionHandler answers Claude Code's permission prompts for one
-// turn by asking the console.
-func newChatPermissionHandler(broker *chatPermissionBroker, sessionID string, stream *chatStreamWriter) llm.ClaudeCodePermissionHandler {
+// turn by asking the console. cwd is the folder the turn works in, which an
+// "always allow" answer covers.
+func newChatPermissionHandler(broker *chatPermissionBroker, sessionID, cwd string, stream *chatStreamWriter, modes *chatModeSwitch) llm.ClaudeCodePermissionHandler {
 	return func(ctx context.Context, req llm.ClaudeCodePermissionRequest) (llm.ClaudeCodePermissionDecision, error) {
+		if req.ToolName == chatExitPlanModeTool {
+			return askPlanApproval(ctx, broker, sessionID, cwd, stream, req, modes)
+		}
 		ruleDisplay, ruleUpdate := chatPermissionSessionRule(req)
-		id, answer, err := askChatPermission(ctx, broker, sessionID, stream, req, ruleDisplay)
+		alwaysDir := broker.alwaysDir(cwd, ruleUpdate != nil)
+		id, answer, err := askChatPermission(ctx, broker, sessionID, stream, req, ruleDisplay, alwaysDir)
 		if err != nil {
 			return llm.ClaudeCodePermissionDecision{}, err
 		}
 		decision, outcome := chatPermissionDecision(answer, ruleUpdate)
-		stream.permissionResolved(id, outcome)
+		if answer.Decision == "allow_always" && alwaysDir != "" {
+			tool, content, _ := chatPermissionClaudeRule(req)
+			if broker.always.add(alwaysDir, chatAlwaysRule{Provider: chatRuleProviderClaudeCode, Tool: tool, Content: content}) == nil {
+				outcome = "allowed_always"
+			}
+		}
+		broker.settle(stream, id, outcome, chatPermissionAudit{sessionID: sessionID, cwd: cwd, tool: req.ToolName, rule: ruleDisplay})
 		return decision, nil
 	}
 }
@@ -131,7 +218,9 @@ const chatPermissionDenyMessage = "The user denied this tool call in the TARS co
 
 func chatPermissionDecision(answer chatPermissionAnswer, sessionRule json.RawMessage) (llm.ClaudeCodePermissionDecision, string) {
 	switch answer.Decision {
-	case "allow_session":
+	case "allow_session", "allow_always":
+		// An always rule is persisted by the caller; the running CLI is told
+		// the session rule so it stops asking now too.
 		if sessionRule != nil {
 			return llm.ClaudeCodePermissionDecision{Allow: true, UpdatedPermissions: []json.RawMessage{sessionRule}}, "allowed_session"
 		}
@@ -157,29 +246,10 @@ func chatPermissionDecision(answer chatPermissionAnswer, sessionRule json.RawMes
 // and default to the localSettings destination, which writes the project's
 // .claude/settings.local.json.
 func chatPermissionSessionRule(req llm.ClaudeCodePermissionRequest) (string, json.RawMessage) {
-	var input map[string]any
-	_ = json.Unmarshal(req.Input, &input)
-	tool := strings.TrimSpace(req.ToolName)
-	content := ""
-	switch tool {
-	case "":
+	tool, content, ok := chatPermissionClaudeRule(req)
+	if !ok {
 		return "", nil
-	case "Bash":
-		command, _ := input["command"].(string)
-		prefix := chatPermissionBashPrefix(command)
-		if prefix == "" {
-			return "", nil
-		}
-		content = prefix + ":*"
-	case "WebFetch":
-		raw, _ := input["url"].(string)
-		parsed, err := url.Parse(strings.TrimSpace(raw))
-		if err != nil || parsed.Hostname() == "" {
-			return "", nil
-		}
-		content = "domain:" + parsed.Hostname()
 	}
-
 	rule := map[string]string{"toolName": tool}
 	display := tool
 	if content != "" {
@@ -196,6 +266,33 @@ func chatPermissionSessionRule(req llm.ClaudeCodePermissionRequest) (string, jso
 		return "", nil
 	}
 	return display, update
+}
+
+// chatPermissionClaudeRule is the Claude Code rule (tool and content) that
+// remembering this prompt would add, or !ok when none is safe to offer.
+func chatPermissionClaudeRule(req llm.ClaudeCodePermissionRequest) (tool, content string, ok bool) {
+	var input map[string]any
+	_ = json.Unmarshal(req.Input, &input)
+	tool = strings.TrimSpace(req.ToolName)
+	switch tool {
+	case "":
+		return "", "", false
+	case "Bash":
+		command, _ := input["command"].(string)
+		prefix := chatPermissionBashPrefix(command)
+		if prefix == "" {
+			return "", "", false
+		}
+		return tool, prefix + ":*", true
+	case "WebFetch":
+		raw, _ := input["url"].(string)
+		parsed, err := url.Parse(strings.TrimSpace(raw))
+		if err != nil || parsed.Hostname() == "" {
+			return "", "", false
+		}
+		return tool, "domain:" + parsed.Hostname(), true
+	}
+	return tool, "", true
 }
 
 // chatPermissionShellSyntax marks commands that chain, redirect or substitute:
@@ -259,7 +356,12 @@ func handleChatPermissionAnswer(w http.ResponseWriter, r *http.Request, broker *
 		return
 	}
 	if !validChatPermissionDecision(body.Decision) {
-		writeError(w, http.StatusBadRequest, "", "decision must be allow_once, allow_session or deny")
+		writeError(w, http.StatusBadRequest, "", "decision must be allow_once, allow_session, allow_always or deny")
+		return
+	}
+	body.Mode = strings.TrimSpace(body.Mode)
+	if body.Mode != "" && body.Mode != chatPermissionModeAcceptEdits && body.Mode != chatPermissionModeAuto {
+		writeError(w, http.StatusBadRequest, "", "mode must be accept_edits or auto")
 		return
 	}
 	if err := broker.answer(requestID, strings.TrimSpace(body.SessionID), body.chatPermissionAnswer); err != nil {

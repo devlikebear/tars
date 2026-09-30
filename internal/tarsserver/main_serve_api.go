@@ -26,6 +26,7 @@ import (
 	"github.com/devlikebear/tars/internal/reflection"
 	"github.com/devlikebear/tars/internal/remoteaccess"
 	"github.com/devlikebear/tars/internal/sessionoverride"
+	"github.com/devlikebear/tars/internal/sessionworktree"
 	"github.com/devlikebear/tars/internal/skillhub"
 	"github.com/devlikebear/tars/internal/skillhub/sources/anthropic"
 	"github.com/devlikebear/tars/internal/skillhub/sources/hermes"
@@ -67,6 +68,8 @@ type apiRouteHandlers struct {
 	chat            http.Handler
 	sessions        http.Handler
 	checkpoints     http.Handler
+	worktrees       http.Handler
+	permissionMode  http.Handler
 	work            http.Handler
 	workers         http.Handler
 	memory          http.Handler
@@ -204,6 +207,14 @@ func buildAPIMux(
 		logger,
 	)
 	dispatcher.store = notificationStore
+	// Tool approvals queued by unattended turns belong to turns that did
+	// not survive the restart; close them so the queue shows only live ones.
+	if expired, err := opsManager.ExpirePendingToolPermissions(); err != nil {
+		logger.Warn().Err(err).Msg("expire stale tool approvals failed")
+	} else if expired > 0 {
+		logger.Info().Int("count", expired).Msg("expired tool approvals left by a previous run")
+	}
+	unattended := newUnattendedPermissions(opsManager, sessionStore, newChatAlwaysRuleStore(cfg.WorkspaceDir), dispatcher.Emit)
 	// deps.LLMReady is true here — the setup-only branch returned earlier.
 	_, chatResolution, err := deps.llmRouter.ClientFor(llm.RoleChatMain)
 	if err != nil {
@@ -390,7 +401,7 @@ func buildAPIMux(
 	var pulseSetup pulseSetup
 
 	refreshAgentRuntimeExecutors := func(reason string) int {
-		executors := buildAgentRuntimeExecutors(cfg, apiRunPromptWithTools, logger)
+		executors := buildAgentRuntimeExecutors(cfg, withSubagentPermissions(apiRunPromptWithTools, unattended), logger)
 		agentRuntime.SetExecutors(executors, strings.TrimSpace(cfg.AgentRuntimeDefaultAgent))
 		agents := len(agentRuntime.Agents())
 		logger.Debug().Str("reason", reason).Int("agentruntime_agents", agents).Msg("agent runtime executors refreshed")
@@ -432,16 +443,33 @@ func buildAPIMux(
 		sessionStyleDefaultsFromConfig(cfg),
 	)
 	chatTooling.OpsManager = opsManager
+	chatTooling.Unattended = unattended
 	chatTooling.ExecMaxTimeoutMS = cfg.ToolsExecMaxTimeoutMS
 	chatTooling.ExecMaxBackgroundTimeoutMS = cfg.ToolsProcessMaxTimeoutMS
 	chatTooling.ClaudeCodeCLIPermissionMode = strings.TrimSpace(cfg.ClaudeCodeCLIPermissionMode)
 	chatTooling.WorkScheduler = workScheduler
 	chatTooling.WorkLedger = workLedger
 	overrideService := sessionoverride.NewService(sessionStore)
+	sessionWorktrees := &chatWorktrees{
+		manager:   sessionworktree.New(filepath.Join(cfg.WorkspaceDir, "_shared", "session-worktrees")),
+		store:     sessionStore,
+		leases:    newRepoLeases(),
+		overrides: overrideService,
+		audit: func(entry ops.AutomationAuditEntry) {
+			_, _ = opsManager.RecordAutomationAudit(entry)
+		},
+	}
+	if swept := sessionWorktrees.sweep(context.Background()); swept > 0 {
+		logger.Info().Int("count", swept).Msg("kept worktrees of deleted sessions on their branches")
+	}
+	chatTooling.Worktrees = sessionWorktrees
 	chatTooling.OverrideService = overrideService
 	checkpointStore := openCheckpointStore(cfg.WorkspaceDir, logger)
 	chatTooling.Checkpoints = checkpointStore
 	attachCheckpointCleanup(checkpointStore, sessionStore, logger)
+	chatTooling.Notify = dispatcher.Emit
+	chatTooling.SessionCosts = sessionCostsFrom(deps.usageTracker)
+
 	chatTooling.AutomationToolsForWorkspace = func(workspaceID string) []tool.Tool {
 		resolvedStore, err := cronStoreResolver.Resolve(defaultWorkspaceID)
 		if err != nil {
@@ -675,12 +703,16 @@ func buildAPIMux(
 		logger,
 	)
 	registerAPIRoutes(mux, apiRouteHandlers{
-		pulse:           pulseSetup.Handler,
-		initiative:      initiativeSetup.Handler,
-		reflection:      reflectionSetup.Handler,
-		chat:            chatHandler,
-		sessions:        sessionHandler,
-		checkpoints:     newCheckpointAPIHandler(checkpointStore, sessionStore, logger),
+		pulse:       pulseSetup.Handler,
+		initiative:  initiativeSetup.Handler,
+		reflection:  reflectionSetup.Handler,
+		chat:        chatHandler,
+		sessions:    withWorktreeRetire(sessionHandler, sessionWorktrees),
+		worktrees:   newSessionWorktreeHandler(sessionWorktrees),
+		checkpoints: newCheckpointAPIHandler(checkpointStore, sessionStore, logger),
+		permissionMode: newPermissionModeHandler(sessionStore,
+			chatPermissionModeResolver{overrides: overrideService, configFlag: strings.TrimSpace(cfg.ClaudeCodeCLIPermissionMode)},
+			auditTo(opsManager)),
 		work:            workLedgerHandler,
 		workers:         workerControlPlaneHandler,
 		memory:          memoryHandler,
@@ -790,9 +822,17 @@ func registerAPIRoutes(mux *http.ServeMux, handlers apiRouteHandlers) {
 	mux.Handle("/v1/admin/tasks", handlers.sessions)
 	mux.Handle("/v1/admin/sessions", handlers.sessions)
 	mux.Handle("/v1/admin/sessions/", handlers.sessions)
+	if handlers.worktrees != nil {
+		mux.Handle("/v1/admin/sessions/{id}/worktree", handlers.worktrees)
+	}
+	if handlers.permissionMode != nil {
+		mux.Handle("/v1/admin/sessions/{id}/permission-mode", handlers.permissionMode)
+	}
 	if handlers.checkpoints != nil {
 		mux.Handle("/v1/admin/sessions/{id}/checkpoints", handlers.checkpoints)
 		mux.Handle("/v1/admin/sessions/{id}/checkpoints/{turn}/diff", handlers.checkpoints)
+		mux.Handle("/v1/admin/sessions/{id}/checkpoints/{turn}/revert", handlers.checkpoints)
+		mux.Handle("/v1/admin/sessions/{id}/checkpoints/reverts/{revert}/undo", handlers.checkpoints)
 	}
 	mux.Handle("/v1/admin/plans/archive", handlers.sessions)
 	mux.Handle("/v1/work/works", handlers.work)
