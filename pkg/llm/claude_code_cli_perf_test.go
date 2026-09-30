@@ -115,8 +115,8 @@ func TestClaudeCodeCLIChat_TimesOut(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected timeout error, got nil")
 	}
-	if !strings.Contains(err.Error(), "timed out") {
-		t.Fatalf("expected timeout error, got %v", err)
+	if !strings.Contains(err.Error(), "no output for 1s") {
+		t.Fatalf("expected an idle-timeout error naming the limit, got %v", err)
 	}
 	if elapsed > 15*time.Second {
 		t.Fatalf("timeout/process-group kill not enforced: took %s", elapsed)

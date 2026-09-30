@@ -9,7 +9,6 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/devlikebear/tars/pkg/llm/internal/ccproto"
 )
@@ -68,7 +67,7 @@ var claudeCodeControlArgs = []string{"--input-format", "stream-json", "--permiss
 // runControlOnce runs one turn over the control protocol: initialize, send
 // the prompt, answer the CLI's control requests while parsing the stream, and
 // close stdin once the turn's result arrives so the CLI exits.
-func (c *ClaudeCodeCLIClient) runControlOnce(ctx context.Context, args []string, dir string, env []string, timeout time.Duration, opts ChatOptions, prompt string) (ChatResponse, error) {
+func (c *ClaudeCodeCLIClient) runControlOnce(ctx context.Context, args []string, dir string, env []string, clock *claudeCodeTurnClock, opts ChatOptions, prompt string) (ChatResponse, error) {
 	cmd := exec.CommandContext(ctx, c.cliPath, args...)
 	cmd.Dir = dir
 	// Asks for session_state_changed frames, the SDKs' signal that a run is
@@ -113,7 +112,8 @@ func (c *ClaudeCodeCLIClient) runControlOnce(ctx context.Context, args []string,
 
 	var runEnd claudeCodeRunEnd
 	resp, parseErr := parseClaudeCodeCLIStream(stdout, opts, claudeCodeStreamHooks{
-		control: conn.Dispatch,
+		control:  conn.Dispatch,
+		activity: clock.touch,
 		// Closing stdin is what makes the CLI exit, so it waits until no
 		// further turn can need a control response.
 		event: func(payload map[string]any) {
@@ -134,7 +134,7 @@ func (c *ClaudeCodeCLIClient) runControlOnce(ctx context.Context, args []string,
 	if startErr != nil && errors.As(startErr, &refused) && ctx.Err() == nil {
 		return ChatResponse{}, newProviderError(claudeCodeCLIProviderLabel, "request", startErr)
 	}
-	resp, err = finishClaudeCodeCLIRun(ctx, timeout, stderr.String(), resp, parseErr, waitErr)
+	resp, err = finishClaudeCodeCLIRun(ctx, clock.idle, stderr.String(), resp, parseErr, waitErr)
 	if err != nil {
 		return ChatResponse{}, err
 	}
