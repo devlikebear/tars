@@ -1344,6 +1344,9 @@ func newChatAPIHandlerWithRuntimeConfig(
 		handleChatActivity(w, r, chatActivity)
 	})
 	board := newSessionBoard(store, chatActivity, tooling.Checkpoints, tooling.SessionCosts)
+	if tooling.Unattended != nil {
+		board.queued = tooling.Unattended.queuedBySession
+	}
 	mux.HandleFunc("/v1/chat/board", board.handle)
 
 	mux.HandleFunc("/v1/chat/mentions/files", func(w http.ResponseWriter, r *http.Request) {

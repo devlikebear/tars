@@ -221,6 +221,9 @@
                 {#if card.pending_approvals > 0}
                   <span class="fact attention">{$t.sessionBoard.pending(card.pending_approvals)}</span>
                 {/if}
+                {#if (card.queued_approvals ?? 0) > 0}
+                  <span class="fact attention" title={$t.sessionBoard.queuedTitle}>{$t.sessionBoard.queued(card.queued_approvals ?? 0)}</span>
+                {/if}
                 {#if card.last_change}
                   <span class="fact change" title={$t.sessionBoard.changeTitle}>
                     {$t.sessionBoard.change(card.last_change.files)}
