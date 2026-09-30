@@ -354,12 +354,12 @@ func firstSemanticService(values ...*memory.Service) *memory.Service {
 	return values[0]
 }
 
-// chatRequestedTier reports the tier the caller explicitly asked for, or ""
-// to take the default. It reads only the request, so it can be consulted
-// before the session transcript is loaded.
-func chatRequestedTier(req chatRequestPayload) string {
+// chatRequestedTier reports the tier the caller explicitly asked for, else
+// the session's pinned tier, or "" to take the default. It does not read the
+// transcript, so it can be consulted before the history is loaded.
+func chatRequestedTier(req chatRequestPayload, pinned llm.Tier) string {
 	if req.TierRecommendation == nil {
-		return ""
+		return pinned.String()
 	}
 	return strings.TrimSpace(req.TierRecommendation.ChosenTier)
 }

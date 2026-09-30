@@ -7,7 +7,7 @@ import (
 )
 
 func TestResolveChatTierRecommendationFallsBackOnFirstTurn(t *testing.T) {
-	rec, err := resolveChatTierRecommendation(nil, "Implement the next issue and verify the release.", true)
+	rec, err := resolveChatTierRecommendation(nil, "Implement the next issue and verify the release.", true, "")
 	if err != nil {
 		t.Fatalf("resolveChatTierRecommendation: %v", err)
 	}
@@ -20,7 +20,7 @@ func TestResolveChatTierRecommendationFallsBackOnFirstTurn(t *testing.T) {
 }
 
 func TestResolveChatTierRecommendationCanDisableFallback(t *testing.T) {
-	rec, err := resolveChatTierRecommendation(nil, "Implement the next issue and verify the release.", false)
+	rec, err := resolveChatTierRecommendation(nil, "Implement the next issue and verify the release.", false, "")
 	if err != nil {
 		t.Fatalf("resolveChatTierRecommendation: %v", err)
 	}

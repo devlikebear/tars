@@ -105,6 +105,7 @@ export type Translations = {
     tierAuto: string
     tierAutoHint: string
     tierPinnedHint: (tier: string) => string
+    tierPinFailed: (error: string) => string
     customTiersHint: string
     servedBy: (tier: string, model: string) => string
     permission: string

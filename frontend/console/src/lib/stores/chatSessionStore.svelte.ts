@@ -14,6 +14,7 @@
 // the store can be compiled and exercised under plain Node in tests.
 
 import { nextPermissionMode, permissionModeCycle } from '../chatApproval.ts'
+import { isPinnableTier } from '../tierRecommendation.ts'
 import type {
   PermissionMode,
   PermissionModeView,
@@ -32,6 +33,7 @@ import type {
   listSessions,
   renameSession,
   setSessionCwd,
+  setSessionTierPin,
 } from '../api'
 import type { Artifact } from '../artifacts'
 import type { ChatCommandsTranslations } from '../../i18n/sections/chatCommands'
@@ -52,6 +54,7 @@ export type ChatSessionApi = {
   getPermissionMode: typeof getPermissionMode
   setPermissionMode: typeof setPermissionMode
   renameSession: typeof renameSession
+  setSessionTierPin: typeof setSessionTierPin
   compactSession: typeof compactSession
   getUsageSummary: typeof getUsageSummary
   listAgentRuntimeSubagents: typeof listAgentRuntimeSubagents
@@ -158,7 +161,12 @@ export class ChatSessionStore {
   permission = $state<PermissionModeView | null>(null)
   permissionError = $state('')
   private permissionRequest = 0
+  // Why the last pin could not be saved; '' when it was.
+  tierPinError = $state('')
   private tierOptionsRequested = false
+  // Bumped by every local pin change, so a session record fetched before
+  // it cannot put the old pin back.
+  private tierPinEdits = 0
   private usageRequest = 0
 
   private healthInputs: Omit<SessionHealthInput, 'contextInfo' | 'now'> | null = null
@@ -200,8 +208,10 @@ export class ChatSessionStore {
     this.activeSessionId = next
     const draftTier = this.pinnedTiers['']
     if (draftTier) {
-      const { '': _, ...rest } = this.pinnedTiers
-      this.pinnedTiers = { ...rest, [next]: draftTier }
+      // The turn carried the pin, but save it here too so the session keeps
+      // it whatever order the server's writes and our reads land in.
+      this.writePin('', null)
+      void this.setPinnedTier(draftTier)
     }
     void this.refreshActive()
     void this.refreshSessions()
@@ -267,11 +277,38 @@ export class ChatSessionStore {
   }
 
   // Pin a tier for every turn of the active session, or null to let the
-  // server choose again.
-  setPinnedTier(tier: ChatTier | null): void {
-    const key = this.activeSessionId ?? ''
+  // server choose again. The pin is saved on the session (tier_pin), so it
+  // outlives a reload; before a new chat has an id it waits under '' and is
+  // saved when the session is adopted. When the save fails the previous
+  // pick comes back and tierPinError says why.
+  async setPinnedTier(tier: ChatTier | null): Promise<boolean> {
+    const id = this.activeSessionId
+    const key = id ?? ''
+    const before = this.pinnedTiers[key] ?? null
+    this.writePin(key, tier)
+    const edit = ++this.tierPinEdits
+    this.tierPinError = ''
+    if (!id) return true
+    try {
+      await this.api.setSessionTierPin(id, tier)
+      return true
+    } catch (err) {
+      if (edit === this.tierPinEdits) {
+        this.writePin(key, before)
+        this.tierPinError = err instanceof Error ? err.message : String(err)
+      }
+      return false
+    }
+  }
+
+  private writePin(key: string, tier: ChatTier | null): void {
     const { [key]: _, ...rest } = this.pinnedTiers
     this.pinnedTiers = tier ? { ...rest, [key]: tier } : rest
+  }
+
+  // Take the pin from a session record the server sent.
+  private syncPinFromSession(session: Session): void {
+    this.writePin(session.id, isPinnableTier(session.tier_pin ?? '') ? (session.tier_pin as ChatTier) : null)
   }
 
   // The configured tiers, fetched once for the status bar picker.
@@ -333,9 +370,11 @@ export class ChatSessionStore {
   async refreshActive(): Promise<void> {
     const id = this.activeSessionId
     if (!id) return
+    const pinEdits = this.tierPinEdits
     try {
       const session = await this.api.getSession(id)
       if (this.activeSessionId === id) this.activeSession = session
+      if (pinEdits === this.tierPinEdits) this.syncPinFromSession(session)
     } catch { /* keep the previous record */ }
     await Promise.all([this.refreshCwd(), this.refreshGoal()])
   }
@@ -520,5 +559,6 @@ export class ChatSessionStore {
     this.permissionModeOverride = ''
     this.permission = null
     this.permissionError = ''
+    this.tierPinError = ''
   }
 }

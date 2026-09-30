@@ -85,13 +85,17 @@ func TestApplyTierContextWindow_KeepsUnrelatedOptions(t *testing.T) {
 }
 
 func TestChatRequestedTier(t *testing.T) {
-	if got := chatRequestedTier(chatRequestPayload{}); got != "" {
+	if got := chatRequestedTier(chatRequestPayload{}, ""); got != "" {
 		t.Errorf("no recommendation payload = %q, want empty", got)
 	}
-	if got := chatRequestedTier(chatRequestPayload{TierRecommendation: &chatTierRecommendationPayload{}}); got != "" {
+	if got := chatRequestedTier(chatRequestPayload{TierRecommendation: &chatTierRecommendationPayload{}}, ""); got != "" {
 		t.Errorf("empty chosen tier = %q, want empty", got)
 	}
-	if got := chatRequestedTier(chatRequestPayload{TierRecommendation: &chatTierRecommendationPayload{ChosenTier: " heavy "}}); got != "heavy" {
+	if got := chatRequestedTier(chatRequestPayload{TierRecommendation: &chatTierRecommendationPayload{ChosenTier: " heavy "}}, "light"); got != "heavy" {
 		t.Errorf("chosen tier = %q, want heavy", got)
+	}
+	// A turn without a tier of its own is sized against the session's pin.
+	if got := chatRequestedTier(chatRequestPayload{}, llm.TierHeavy); got != "heavy" {
+		t.Errorf("pinned session = %q, want heavy", got)
 	}
 }

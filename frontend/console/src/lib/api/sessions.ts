@@ -1,5 +1,6 @@
 import { requestJSON } from './client.ts'
 import type {
+  ChatTier,
   ForkPromotionListResponse,
   ForkPromotionResult,
   Session,
@@ -86,6 +87,16 @@ export async function setSessionPinned(sessionId: string, pinned: boolean): Prom
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ pinned }),
+  })
+}
+
+// setSessionTierPin keeps a tier for every turn of the session; null
+// returns it to auto.
+export async function setSessionTierPin(sessionId: string, tier: ChatTier | null): Promise<Session> {
+  return requestJSON<Session>(`/v1/admin/sessions/${encodeURIComponent(sessionId)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tier_pin: tier ?? '' }),
   })
 }
 

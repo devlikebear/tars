@@ -82,3 +82,59 @@ test('choosing Auto releases the pin', async ({ page }) => {
   await select.selectOption('auto')
   await expect(select).not.toHaveClass(/pinned/)
 })
+
+test('a pinned tier stays after sending and after a reload, and nowhere else', async ({ page }) => {
+  await newSession(page)
+  const pinnedUrl = page.url()
+  const select = statusBar(page).locator('.tier-select')
+  await select.selectOption('heavy')
+  await send(page, 'pin me')
+  await expect(select).toHaveValue('heavy')
+
+  await page.reload()
+  await expect(statusBar(page).locator('.tier-select')).toHaveValue('heavy')
+  await send(page, 'after reload')
+  await expect(statusBar(page).getByTestId('status-served-by')).toContainText('heavy')
+
+  // Another session is not pinned.
+  await newSession(page)
+  await expect(statusBar(page).locator('.tier-select')).toHaveValue('auto')
+
+  // Auto releases the pin for good.
+  await page.goto(pinnedUrl)
+  await expect(statusBar(page).locator('.tier-select')).toHaveValue('heavy')
+  await statusBar(page).locator('.tier-select').selectOption('auto')
+  await expect.poll(async () => {
+    const id = pinnedUrl.split('/').pop() ?? ''
+    return (await (await page.request.get(`/v1/admin/sessions/${id}`)).json()).tier_pin ?? ''
+  }).toBe('')
+  await page.reload()
+  await expect(statusBar(page).locator('.tier-select')).toHaveValue('auto')
+})
+
+test('a tier picked before a new chat has a session is kept for its later turns', async ({ page }) => {
+  const select = statusBar(page).locator('.tier-select')
+  await select.selectOption('light')
+  await send(page, 'brand new chat')
+  await expect(select).toHaveValue('light')
+  await send(page, 'second in new chat')
+  await expect(statusBar(page).getByTestId('status-served-by')).toContainText('light')
+})
+
+test('accepting the first-turn recommendation pins that tier', async ({ page }) => {
+  await newSession(page)
+  const prompt = 'Implement the GitHub issue, run tests, and push a PR.'
+  await composer(page).fill(prompt)
+  await composer(page).press('Enter')
+  const card = page.locator('.tier-recommendation-card')
+  await expect(card).toBeVisible()
+  await card.getByRole('button', { name: 'Heavy' }).click()
+  await expect(lastAssistant(page)).toContainText(`Echo: ${prompt}`)
+  await turnSettled(page)
+  await expect(statusBar(page).locator('.tier-select')).toHaveValue('heavy')
+
+  await send(page, 'a quick follow-up')
+  await expect(statusBar(page).getByTestId('status-served-by')).toContainText('heavy')
+  await page.reload()
+  await expect(statusBar(page).locator('.tier-select')).toHaveValue('heavy')
+})
