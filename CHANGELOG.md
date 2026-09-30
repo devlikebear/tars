@@ -51,6 +51,8 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 - **`tars auth init` / `tars auth passwd`가 비밀번호를 화면에 그대로 보여주던 문제** — 프롬프트가 stdin을 줄 단위로 읽어 입력한 비밀번호가 터미널에 에코됐다. 이제 stdin이 터미널이면 `golang.org/x/term`으로 에코 없이 읽고, 오타로 로그인이 막히지 않도록 `Confirm password:`로 한 번 더 받아 다르면 `passwords do not match`로 아무것도 저장하지 않는다. 입력 중 Ctrl-C를 누르면 터미널 에코를 되돌린 뒤 종료(130)한다. 파이프·리다이렉트 입력(`echo pw | tars auth passwd user`)은 이전처럼 한 줄만 읽고 확인을 묻지 않으며, `--password`와 `TARS_INITIAL_ADMIN_PASSWORD`도 그대로 우선한다.
 
+- **작업 원장(`workstore.Store`)의 `Close`가 DB 파일을 연 채로 반환하던 문제** — `sql.DB.Close`는 쉬고 있는 연결만 닫고, 사용 중인 연결은 반환될 때 닫는다. 그런데 컨텍스트가 취소된 트랜잭션은 database/sql이 자기 고루틴에서 롤백하므로, 호출자가 이미 반환한 뒤에도 연결이 잠깐 사용 중으로 남는다. 스케줄러를 멈추면(5ms 폴링 중 컨텍스트 취소) 이 창이 자주 열려, 바로 뒤에 원장 폴더를 지우면 Windows에서 "다른 프로세스가 파일을 사용 중" 오류가 났다 — `windows-test`의 `internal/apptool` durable subagent 테스트가 PR과 무관하게 간헐 실패한 원인이다. 이제 `Close`는 모든 연결이 실제로 닫힐 때까지 기다리고, 5초 안에 반환되지 않는 연결(누수된 트랜잭션·Rows)은 오류로 알린다.
+
 - **세션 보드가 새 세션을 저장소에서 일하는 세션으로 보여주던 문제 (#971)** — 워크스페이스가 심볼릭 링크 아래에 있으면(macOS의 `/var`·`/tmp`, 옮긴 `~/.tars`) 아직 자기 아티팩트 폴더에 있는 세션도 그 폴더를 작업 폴더·저장소로 표시했다. 세션 저장소는 cwd를 링크를 푼 경로로 저장하는데 보드는 설정된 워크스페이스 경로와 글자 그대로 비교했기 때문이다. 이제 체크포인트 코드(#1005)처럼 링크를 풀어 비교한다. 보드의 `cwd`는 계속 저장된 값, 즉 `GET /v1/admin/sessions/{id}/cwd`와 같은 값을 보낸다.
 
 - **콘솔 파일 패널이 실패하거나 거부된 쓰기를 "수정됨"으로 보여주던 문제** — `write_file` / `edit_file` / `apply_patch` 호출이면 결과와 상관없이 아티팩트로 잡아서, 아무것도 쓰지 않은 호출도 파일 목록에 올랐다. 도구 승인(#970)으로 거부가 흔해지면서 드러났다. 이제 오류로 끝난 호출은 스트리밍 중에도, 히스토리를 다시 불러올 때도 건너뛴다.

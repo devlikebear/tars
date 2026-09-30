@@ -151,7 +151,11 @@ func openDurableToolLedger(t *testing.T) *workstore.Store {
 	if err != nil {
 		t.Fatalf("open durable tool ledger: %v", err)
 	}
-	t.Cleanup(func() { _ = store.Close() })
+	t.Cleanup(func() {
+		if err := store.Close(); err != nil {
+			t.Errorf("close durable tool ledger: %v", err)
+		}
+	})
 	return store
 }
 
