@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs'
 
 import {
   companionAskHandoffReaction,
-  companionPromptForAsk,
+  companionHandoffForAsk,
   companionReactionForStimulus,
   companionReactionFromEvent,
   companionUiText,
@@ -88,16 +88,25 @@ test('companion creates short feedback from user stimuli and runtime events', ()
   assert.equal(error?.mood, 'error')
 })
 
-test('companion ask prompt hands off to normal chat with bounded context', () => {
-  const prompt = companionPromptForAsk('what should I inspect?', 'agentruntime')
-  assert.match(prompt, /TARS companion/i)
-  assert.match(prompt, /agentruntime/i)
-  assert.match(prompt, /what should I inspect/)
+test('companion ask hands off the user words, with the guidance kept apart', () => {
+  const handoff = companionHandoffForAsk('  what should I inspect?  ', 'agentruntime')
+  // The message (and so the bubble and the session title) is the user's own words.
+  assert.equal(handoff.prompt, 'what should I inspect?')
+  assert.match(handoff.context, /TARS companion/i)
+  assert.match(handoff.context, /agentruntime/i)
+  assert.match(handoff.context, /do not run tools/i)
+  assert.doesNotMatch(handoff.context, /what should I inspect/)
 
-  const koreanPrompt = companionPromptForAsk('어디를 보면 돼?', 'pulse', 'ko')
-  assert.match(koreanPrompt, /TARS 콘솔/)
-  assert.match(koreanPrompt, /사용자 자극: 어디를 보면 돼\?/)
+  const korean = companionHandoffForAsk('어디를 보면 돼?', 'pulse', 'ko')
+  assert.equal(korean.prompt, '어디를 보면 돼?')
+  assert.match(korean.context, /TARS 콘솔/)
+  assert.match(korean.context, /\(pulse\)/)
+  assert.doesNotMatch(korean.context, /어디를 보면 돼/)
   assert.match(companionAskHandoffReaction('ko').message, /채팅/)
+
+  assert.equal(companionHandoffForAsk('x'.repeat(900), 'board').prompt.length <= 600, true)
+  assert.match(appSource, /companionHandoffForAsk\(/)
+  assert.match(appSource, /initialContext=\{aiContext\}/)
 })
 
 test('companion labels follow console locale', () => {

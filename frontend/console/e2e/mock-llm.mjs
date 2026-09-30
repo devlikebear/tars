@@ -63,6 +63,14 @@ function replyFor(body) {
   if (text.includes('<review-notes>')) {
     return `Rework: ${text.match(/^Comment: (.*)$/m)?.[1] ?? 'reverted changes noted'}`
   }
+  // Console context (the companion handoff) rides after the message; name
+  // its console area so a spec can see it arrived, and echo the words.
+  const context = text.match(/\n\n<console-context>\n([\s\S]*)\n<\/console-context>$/)
+  if (context) {
+    const typed = text.slice(0, context.index).split(/\n\s*\n/).pop()?.trim() ?? ''
+    const area = context[1].match(/^Current console area: (.*?)\.?$/m)?.[1] ?? 'unknown'
+    return `Companion at ${area}: ${typed || 'ok'}`
+  }
   const tail = text.split(/\n\s*\n/).pop()?.trim() ?? ''
   return `Echo: ${tail || 'ok'}`
 }

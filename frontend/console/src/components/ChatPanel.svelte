@@ -42,6 +42,9 @@
   interface Props {
     sessionId?: string
     initialPrompt?: string
+    // Console context for the first message (the companion handoff): sent
+    // as console_context beside it, so the bubble and title stay the user's.
+    initialContext?: string
     autoSend?: boolean
     // Session state (artifacts, draft, context info, tasks, goal, streaming)
     // goes to the shared chatSession store. These props stay because each
@@ -52,7 +55,7 @@
     onSessionForked?: (session: Session) => void
   }
 
-  let { sessionId, initialPrompt, autoSend, onToolComplete, onArtifactOpen, onSlashCommand, onSessionForked }: Props = $props()
+  let { sessionId, initialPrompt, initialContext, autoSend, onToolComplete, onArtifactOpen, onSlashCommand, onSessionForked }: Props = $props()
 
   let artifacts: Artifact[] = $state([])
 
@@ -83,6 +86,8 @@
   // The last message of each turn, mapped to the turn whose change card it carries.
   let turnCards = $derived(turnCardAnchors(chatMessages))
   let autoTitled = $state(false)
+  // Hidden guidance waiting for the next typed message; see initialContext.
+  let pendingConsoleContext = $state('')
   let autoSendDone = false
   let abortController: AbortController | null = $state(null)
 
@@ -281,6 +286,7 @@
     if (autoSend && initialPrompt && !autoSendDone && !chatBusy) {
       autoSendDone = true
       chatInput = initialPrompt
+      pendingConsoleContext = initialContext?.trim() ?? ''
       tick().then(() => submitChat({ allowPrompt: false }))
     }
   })
@@ -996,6 +1002,13 @@
     ]
     void scrollToBottom()
     const reviewNotes = !message.trimStart().startsWith('/') && changes.notes.length > 0 ? changes.takeNotes() : undefined
+    // Sent once, with the next message the user typed (a slash command or a
+    // queued message keeps waiting, as the server would drop it anyway).
+    let consoleContext: string | undefined
+    if (pendingConsoleContext && !queuedPayload && !message.trimStart().startsWith('/')) {
+      consoleContext = pendingConsoleContext
+      pendingConsoleContext = ''
+    }
     const ac = new AbortController()
     abortController = ac
     userStopped = false
@@ -1019,6 +1032,7 @@
           tier_recommendation: tierRecommendation,
           // A slash command keeps its arguments clean; the notes wait.
           review_notes: reviewNotes,
+          console_context: consoleContext,
           interactive_permissions: true,
         },
         (event) => handleChatEvent(event, assistantRef, { id: userId }),
@@ -1519,6 +1533,7 @@
     }
     if (initialPrompt && !autoSend) {
       chatInput = initialPrompt
+      pendingConsoleContext = initialContext?.trim() ?? ''
       tick().then(() => textareaEl?.focus())
     }
 
@@ -1603,6 +1618,14 @@
   </div>
   {#if chatError}
     <div class="error-banner" style="margin-bottom: var(--space-3)">{chatError}</div>
+  {/if}
+  {#if pendingConsoleContext}
+    <div class="review-notes">
+      <span class="review-note-chip console-context-chip" title={$t.chatThread.consoleContext.title}>
+        <span class="review-note-text">{$t.chatThread.consoleContext.chip}</span>
+        <button type="button" class="review-note-remove" aria-label={$t.chatThread.consoleContext.remove} title={$t.chatThread.consoleContext.remove} onclick={() => (pendingConsoleContext = '')}>×</button>
+      </span>
+    </div>
   {/if}
   {#if changes.notes.length > 0}
     <div class="review-notes" role="list" aria-label={$t.changes.notes.chipsLabel}>

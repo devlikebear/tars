@@ -31,9 +31,12 @@
     sessionId?: string
     onNavigate: (path: string) => void
     initialPrompt?: string
+    // Guidance for the model that goes with the first message (see
+    // lib/consoleContext.ts), e.g. from the companion handoff.
+    initialContext?: string
   }
 
-  let { sessionId, onNavigate, initialPrompt }: Props = $props()
+  let { sessionId, onNavigate, initialPrompt, initialContext }: Props = $props()
 
   // The route owns which session is active; the shared store owns its state.
   $effect(() => {
@@ -470,6 +473,7 @@
             bind:this={chatPanelRef}
             sessionId={selectedSessionId || undefined}
             {initialPrompt}
+            {initialContext}
             onToolComplete={handleToolComplete}
             onSlashCommand={handleSlashCommand}
             onSessionForked={handleSessionForked}

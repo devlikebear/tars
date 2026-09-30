@@ -294,6 +294,11 @@ test('autoTitleFromHistory prefers the first user message and clips long text', 
   const long = autoTitleFromHistory([{ role: 'user', content: 'x'.repeat(80) }])
   assert.equal(long.length, 50)
   assert.ok(long.endsWith('...'))
+  // A companion handoff's guidance is not part of the title.
+  assert.equal(
+    autoTitleFromHistory([{ role: 'user', content: '어디를 보면 돼?\n\n<console-context>\nTARS 콘솔 안의 컴패니언처럼 답해줘.\n</console-context>' }]),
+    '어디를 보면 돼?',
+  )
 })
 
 test('a pinned tier belongs to its session and survives switching away and back', async () => {
