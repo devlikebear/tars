@@ -34,7 +34,8 @@ export type PageEntry = {
 // One entry per routable view. App.svelte gates the admin-only views behind
 // `authRole !== 'user'`; keep the two lists in step.
 export const pageEntries: PageEntry[] = [
-  { view: 'home', path: '/console', adminOnly: false, keywords: ['dashboard', 'overview'] },
+  { view: 'board', path: '/console', adminOnly: false, keywords: ['home', 'sessions', 'board', 'status'] },
+  { view: 'home', path: '/console/system', adminOnly: false, keywords: ['dashboard', 'overview', 'system'] },
   { view: 'chat', path: '/console/chat', adminOnly: false, keywords: ['conversation', 'session'] },
   { view: 'session-lineage', path: '/console/sessions/graph', adminOnly: false, keywords: ['fork', 'graph', 'history'] },
   { view: 'tasks', path: '/console/tasks', adminOnly: false, keywords: ['plans', 'work', 'contracts'] },

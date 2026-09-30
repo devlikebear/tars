@@ -13,7 +13,13 @@ import (
 // newCheckpointAPIHandler serves a session's turn checkpoints (#969):
 //
 //	GET /v1/admin/sessions/{id}/checkpoints              the recorded turns, oldest first
-//	GET /v1/admin/sessions/{id}/checkpoints/{turn}/diff  ?scope=turn|session|since&path=
+//	GET  /v1/admin/sessions/{id}/checkpoints/{turn}/diff    ?scope=turn|session|since&path=
+//	POST /v1/admin/sessions/{id}/checkpoints/{turn}/revert  checkpoint.RevertRequest
+//	POST /v1/admin/sessions/{id}/checkpoints/reverts/{revert}/undo  {"force": bool}
+//
+// A revert or undo answers 409 when a turn is running (turn_in_progress) or
+// when later edits conflict and force is off (revert_conflict, with the
+// result so the conflicts can be shown).
 //
 // It is mounted on those patterns ahead of the session handler's prefix.
 func newCheckpointAPIHandler(store *checkpoint.Store, sessions *session.Store, logger zerolog.Logger) http.Handler {
@@ -28,10 +34,18 @@ func newCheckpointAPIHandler(store *checkpoint.Store, sessions *session.Store, l
 			writeCheckpointError(w, logger, err)
 			return
 		}
+		reverts, err := store.Reverts(sessionID)
+		if err != nil {
+			writeCheckpointError(w, logger, err)
+			return
+		}
 		if turns == nil {
 			turns = []checkpoint.Entry{}
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"session_id": sessionID, "turns": turns})
+		if reverts == nil {
+			reverts = []checkpoint.RevertEntry{}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"session_id": sessionID, "turns": turns, "reverts": reverts})
 	})
 	mux.HandleFunc("GET /v1/admin/sessions/{id}/checkpoints/{turn}/diff", func(w http.ResponseWriter, r *http.Request) {
 		sessionID, ok := checkpointSession(w, r, store, sessions)
@@ -50,7 +64,49 @@ func newCheckpointAPIHandler(store *checkpoint.Store, sessions *session.Store, l
 		}
 		writeJSON(w, http.StatusOK, result)
 	})
+	mux.HandleFunc("POST /v1/admin/sessions/{id}/checkpoints/{turn}/revert", func(w http.ResponseWriter, r *http.Request) {
+		sessionID, ok := checkpointSession(w, r, store, sessions)
+		if !ok {
+			return
+		}
+		var req checkpoint.RevertRequest
+		if !decodeOptionalJSONBody(w, r, &req) {
+			return
+		}
+		result, err := store.Revert(r.Context(), sessionID, r.PathValue("turn"), req)
+		writeRevertResult(w, logger, result, err)
+	})
+	mux.HandleFunc("POST /v1/admin/sessions/{id}/checkpoints/reverts/{revert}/undo", func(w http.ResponseWriter, r *http.Request) {
+		sessionID, ok := checkpointSession(w, r, store, sessions)
+		if !ok {
+			return
+		}
+		var req struct {
+			Force bool `json:"force"`
+		}
+		if !decodeOptionalJSONBody(w, r, &req) {
+			return
+		}
+		result, err := store.Undo(r.Context(), sessionID, r.PathValue("revert"), req.Force)
+		writeRevertResult(w, logger, result, err)
+	})
 	return mux
+}
+
+func writeRevertResult(w http.ResponseWriter, logger zerolog.Logger, result checkpoint.RevertResult, err error) {
+	if result.Files == nil {
+		result.Files = []checkpoint.RevertFileResult{}
+	}
+	switch {
+	case err == nil:
+		writeJSON(w, http.StatusOK, result)
+	case errors.Is(err, checkpoint.ErrConflict):
+		writeJSON(w, http.StatusConflict, map[string]any{"code": "revert_conflict", "error": err.Error(), "result": result})
+	case errors.Is(err, checkpoint.ErrBusy):
+		writeError(w, http.StatusConflict, "turn_in_progress", err.Error())
+	default:
+		writeCheckpointError(w, logger, err)
+	}
 }
 
 // checkpointSession resolves the path's session, answering the request itself

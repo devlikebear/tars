@@ -43,6 +43,8 @@ type sessionIndex struct {
 	Version   int     `json:"version"`
 	SessionID string  `json:"session_id"`
 	Turns     []Entry `json:"turns"`
+	// Reverts are the applied reverts, oldest first (see revert.go).
+	Reverts []RevertEntry `json:"reverts,omitempty"`
 }
 
 const indexVersion = 1

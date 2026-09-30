@@ -14,6 +14,7 @@
   import { chatSession } from '../lib/stores/chatSession'
   import { chatDock, type ChatDockPanelID } from '../lib/stores/chatDockStore.svelte'
   import { zenMode } from '../lib/zenMode.svelte'
+  import SessionWorktreeChip from './SessionWorktreeChip.svelte'
 
   interface Props {
     onNewSession: () => Promise<void>
@@ -183,6 +184,7 @@
           <span class="goal-chip-counter">{sessionGoal.auto_continue_count}/{sessionGoal.max_auto_continues}</span>
         </button>
       {/if}
+      <SessionWorktreeChip />
     </div>
     <div class="session-actions">
       <button
@@ -314,6 +316,7 @@
   }
   /* Session header */
   .session-header {
+    position: relative;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -326,6 +329,7 @@
 
   .session-title-row {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: var(--space-2);
     flex: 1;

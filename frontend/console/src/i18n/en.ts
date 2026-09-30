@@ -6,7 +6,12 @@ import { chatThreadEn } from './sections/chatThread.ts'
 import { sessionConfigEn } from './sections/sessionConfig.ts'
 import { gitInspectorEn } from './sections/gitInspector.ts'
 import { changesEn } from './sections/changes.ts'
+import { sideSessionEn } from './sections/sideSession.ts'
+import { sessionWorktreeEn } from './sections/sessionWorktree.ts'
 import { chatApprovalEn } from './sections/chatApproval.ts'
+import { sessionBoardEn } from './sections/sessionBoard.ts'
+
+import { messageQueueEn } from './sections/messageQueue.ts'
 import { artifactPanelEn } from './sections/artifactPanel.ts'
 import { skillInboxEn } from './sections/skillInbox.ts'
 import { sessionCronEn } from './sections/sessionCron.ts'
@@ -48,6 +53,8 @@ export const en = {
       system: 'System',
     },
     items: {
+      board: 'Sessions',
+      overview: 'Overview',
       chat: 'Chat',
       lineage: 'Lineage',
       plans: 'Plans',
@@ -77,7 +84,7 @@ export const en = {
       slash: 'Slash commands',
     },
     pages: {
-      home: 'Home',
+      home: 'System overview',
       onboarding: 'Setup wizard',
     },
     actions: {
@@ -570,6 +577,8 @@ export const en = {
       gitTooltip: 'Git Inspector',
       changes: 'Changes',
       changesTooltip: 'What each turn changed',
+      side: 'Side session',
+      sideTooltip: 'Another session next to this one',
       skills: 'Skills',
       skillsTooltip: 'Skill Extraction Inbox',
       skillsInbox: 'Skill Inbox',
@@ -1650,7 +1659,12 @@ export const en = {
   sessionConfig: sessionConfigEn,
   gitInspector: gitInspectorEn,
   changes: changesEn,
+  sideSession: sideSessionEn,
+  sessionWorktree: sessionWorktreeEn,
   chatApproval: chatApprovalEn,
+  sessionBoard: sessionBoardEn,
+
+  messageQueue: messageQueueEn,
   artifactPanel: artifactPanelEn,
   skillInbox: skillInboxEn,
   sessionCron: sessionCronEn,

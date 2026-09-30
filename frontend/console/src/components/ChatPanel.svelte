@@ -2,7 +2,7 @@
   import { onMount, onDestroy, tick } from 'svelte'
   import { t } from '../i18n'
   import type { ChatThreadTranslations } from '../i18n/sections/chatThread'
-  import { streamChat, cancelChat, getSessionHistory, renameSession, streamEvents, listChatFileMentions, listAgentRuntimeSubagents, listSkills, listChatTools, getSessionEffectiveConfig, forkSessionFromMessage } from '../lib/api'
+  import { streamChat, attachChatStream, cancelChat, getSessionHistory, renameSession, streamEvents, listChatFileMentions, listAgentRuntimeSubagents, listSkills, listChatTools, getSessionEffectiveConfig, forkSessionFromMessage } from '../lib/api'
   import type { AgentRuntimeSubagent, ChatAttachment, ChatContextInfo, ChatEvent, ChatTier, ChatTierRecommendationRequest, CommandDef, Session, SessionGoal, SessionMessage, SkillDef } from '../lib/types'
   import { chatSession } from '../lib/stores/chatSession'
   import { changes } from '../lib/stores/changesStore'
@@ -33,6 +33,7 @@
   import ChatMessageItem from './ChatMessageItem.svelte'
   import TurnChangesCard from './TurnChangesCard.svelte'
   import SlashPopover from './SlashPopover.svelte'
+  import { messageQueue } from '../lib/stores/messageQueue.svelte'
 
   interface Props {
     sessionId?: string
@@ -80,6 +81,20 @@
   let autoTitled = $state(false)
   let autoSendDone = false
   let abortController: AbortController | null = $state(null)
+
+  // Follow-up queue (#971). A new chat's messages wait under a placeholder
+  // key until the server names the session.
+  const newChatQueueKey = 'new'
+  let queueKey = $derived(chatSessionId || newChatQueueKey)
+  let queued = $derived(messageQueue.items(queueKey))
+  let queuePaused = $derived(messageQueue.paused(queueKey))
+  // Why the last turn stopped, so its end knows whether to send the next
+  // queued message: only a turn that ended on its own does.
+  let userStopped = false
+  let sendNowRequested = false
+  $effect(() => {
+    if (chatSessionId) messageQueue.rekey(newChatQueueKey, chatSessionId)
+  })
   let contextInfo: ChatContextInfo = $state({})
   let pendingTierRecommendation: TierRecommendation | null = $state(null)
   let pendingTierMessage = $state('')
@@ -340,6 +355,12 @@
         }
         break
       }
+      case 'worktree':
+        // Another session holds this repository, or the run is unattended:
+        // the turn works in a worktree of its own (#971).
+        if (event.branch) chatSession.notify($t.sessionWorktree.isolated(event.branch))
+        void chatSession.refreshActive()
+        break
       case 'checkpoint':
         if (event.session_id && event.user_message_id) {
           changes.applyEvent({
@@ -777,12 +798,16 @@
     })
   }
 
-  async function executeBuiltinSlashCommand(command: string, args: string): Promise<boolean> {
+  // fromComposer is false for a queued command, which leaves the composer
+  // as the user has it.
+  async function executeBuiltinSlashCommand(command: string, args: string, fromComposer = true): Promise<boolean> {
     const id = builtinSlashCommandId(command)
     if (!id || !onSlashCommand) return false
-    chatInput = ''
-    closeMentionMenu()
-    closeSlashMenu()
+    if (fromComposer) {
+      chatInput = ''
+      closeMentionMenu()
+      closeSlashMenu()
+    }
     chatError = ''
     applyChatStatus({ phase: 'slash', message: `/${command}` })
     await onSlashCommand(id, args)
@@ -791,6 +816,13 @@
 
   async function executeSlashCandidate(candidate: SlashCommandCandidate): Promise<boolean> {
     if (candidate.kind !== 'builtin') return false
+    // A command picked while a turn runs waits its turn like any message:
+    // /compact or /new now would cut the running turn off (#971).
+    if (chatBusy) {
+      chatInput = `/${candidate.command}`
+      queueComposer()
+      return true
+    }
     return executeBuiltinSlashCommand(candidate.command, '')
   }
 
@@ -803,6 +835,9 @@
   type SubmitChatOptions = {
     recommendation?: ChatTierRecommendationRequest
     allowPrompt?: boolean
+    // A queued message to send in place of the composer, which is then
+    // left as the user has it (#971).
+    queued?: { text: string; files: File[]; mentions: SelectedChatMention[] }
   }
 
   function isFirstUserTurn(): boolean {
@@ -842,11 +877,28 @@
     await submitChat({ recommendation, allowPrompt: false })
   }
 
+  // queueComposer moves what is typed (text, files, mentions) into the
+  // follow-up queue and clears the composer.
+  function queueComposer() {
+    const item = messageQueue.enqueue(queueKey, chatInput, attachedFiles, selectedMentions)
+    if (!item) return
+    chatInput = ''
+    attachedFiles = []
+    selectedMentions = []
+    closeMentionMenu()
+    closeSlashMenu()
+  }
+
   async function submitChat(options: SubmitChatOptions = {}) {
-    const message = chatInput.trim()
-    if (!message || chatBusy) return
+    const queuedPayload = options.queued
+    const message = (queuedPayload ? queuedPayload.text : chatInput).trim()
+    if (!message) return
+    if (chatBusy) {
+      if (!queuedPayload) queueComposer()
+      return
+    }
     const parsedSlash = parseLeadingSlashCommand(message)
-    if (parsedSlash && await executeBuiltinSlashCommand(parsedSlash.command, parsedSlash.args)) {
+    if (parsedSlash && await executeBuiltinSlashCommand(parsedSlash.command, parsedSlash.args, !queuedPayload)) {
       return
     }
 
@@ -871,20 +923,22 @@
     chatBusy = true
     chatError = ''
     applyChatStatus({ phase: 'connecting' })
-    chatInput = ''
+    if (!queuedPayload) chatInput = ''
     pendingTierRecommendation = null
     pendingTierMessage = ''
     autoScroll = true
     publishContextInfo({})
 
-    const currentFiles = [...attachedFiles]
-    const currentMentions = filterSelectedMentionsForMessage(selectedMentions, message)
+    const currentFiles = [...(queuedPayload ? queuedPayload.files : attachedFiles)]
+    const currentMentions = filterSelectedMentionsForMessage(queuedPayload ? queuedPayload.mentions : selectedMentions, message)
     const fileMentions = currentMentions.filter(isFileOrDirectoryMention)
     const subagentMentions = currentMentions.filter((mention) => mention.kind === 'subagent')
-    attachedFiles = []
-    selectedMentions = []
-    closeMentionMenu()
-    closeSlashMenu()
+    if (!queuedPayload) {
+      attachedFiles = []
+      selectedMentions = []
+      closeMentionMenu()
+      closeSlashMenu()
+    }
 
     const fileLabel = currentFiles.length > 0
       ? ` [${currentFiles.map((f) => f.name).join(', ')}]`
@@ -899,6 +953,8 @@
     void scrollToBottom()
     const ac = new AbortController()
     abortController = ac
+    userStopped = false
+    let failed = false
     try {
       const chatAttachments = currentFiles.length > 0 ? await filesToAttachments(currentFiles) : undefined
       await streamChat(
@@ -925,6 +981,7 @@
       if (err instanceof DOMException && err.name === 'AbortError') {
         // User cancelled — no error to show
       } else {
+        failed = true
         chatError = err instanceof Error ? err.message : $t.chatThread.errors.sendFailed
         chatMessages = [...chatMessages, { id: `error-${Date.now()}`, role: 'error', text: chatError }]
       }
@@ -937,9 +994,114 @@
       stopChatStatusTicker()
       void scrollToBottom()
     }
+    await afterTurn(failed)
+  }
+
+  // afterTurn sends the next queued message when the turn ended on its own
+  // or the user asked to send one now. A stopped or failed turn pauses the
+  // queue instead: the user will want to look before anything else goes.
+  async function afterTurn(failed: boolean) {
+    const sendNow = sendNowRequested
+    sendNowRequested = false
+    if (sendNow) {
+      messageQueue.resume(queueKey)
+    } else if (failed || userStopped) {
+      messageQueue.pause(queueKey)
+      return
+    }
+    await sendNextQueued()
+  }
+
+  // sendNextQueued sends queued messages in order, leaving the composer
+  // alone so a draft in progress is not swept into the send.
+  //
+  // A queued slash command runs without a turn, so the loop goes on to the
+  // next message; a real turn drains the rest from its own afterTurn.
+  async function sendNextQueued() {
+    while (!chatBusy) {
+      const next = messageQueue.take(queueKey)
+      if (!next) return
+      await submitChat({
+        allowPrompt: false,
+        queued: { text: next.text, files: next.files as File[], mentions: next.mentions as SelectedChatMention[] },
+      })
+    }
+  }
+
+  // sendQueuedNow puts a message first and, if a turn is running, stops it
+  // so that message goes next.
+  async function sendQueuedNow(id: string) {
+    messageQueue.moveToFront(queueKey, id)
+    if (chatBusy) {
+      sendNowRequested = true
+      await handleCancel()
+      return
+    }
+    messageQueue.resume(queueKey)
+    await sendNextQueued()
+  }
+
+  async function resumeQueue() {
+    messageQueue.resume(queueKey)
+    await sendNextQueued()
+  }
+
+  // editQueued moves a message back into the composer. Anything already
+  // typed takes its place at the end of the queue.
+  function editQueued(id: string) {
+    const item = messageQueue.remove(queueKey, id)
+    if (!item) return
+    if (chatInput.trim() || attachedFiles.length) {
+      messageQueue.enqueue(queueKey, chatInput, attachedFiles, selectedMentions)
+    }
+    chatInput = item.text
+    attachedFiles = item.files as File[]
+    selectedMentions = item.mentions as SelectedChatMention[]
+    tick().then(() => textareaEl?.focus())
+  }
+
+  // A turn keeps running when its console goes away (#971). When this panel
+  // opens a session with a turn in progress, it attaches and rebuilds the
+  // turn from its events: the user message is already in the history, so
+  // only the reply is added.
+  async function resumeRunningTurn() {
+    const id = activeChatSessionId()
+    if (!id || chatBusy) return
+    const ac = new AbortController()
+    abortController = ac
+    const assistantRef = { id: `assistant-resumed-${Date.now()}` }
+    let attached = false
+    try {
+      await attachChatStream(id, (event) => {
+        if (!attached) {
+          attached = true
+          chatBusy = true
+          chatError = ''
+          applyChatStatus({ phase: 'connecting' })
+          chatMessages = [...chatMessages, { id: assistantRef.id, role: 'assistant', text: '' }]
+          void scrollToBottom()
+        }
+        // Too long to rebuild; the history reload after the turn has it all.
+        if (event.type === 'turn_feed_truncated') return
+        handleChatEvent(event, assistantRef)
+      }, ac.signal)
+    } catch (err) {
+      if (!(err instanceof DOMException && err.name === 'AbortError') && attached) {
+        chatError = err instanceof Error ? err.message : $t.chatThread.errors.sendFailed
+      }
+    } finally {
+      if (abortController === ac) abortController = null
+      if (attached) {
+        chatBusy = false
+        chatMessages = withdrawPendingApprovals(chatMessages)
+        stopChatStatusTicker()
+        void scrollToBottom()
+      }
+    }
   }
 
   async function handleCancel() {
+    userStopped = true
     if (chatSessionId) {
       await cancelChat(chatSessionId)
     }
@@ -1264,6 +1426,9 @@
   }
 
   onMount(async () => {
+    // Messages queued before this chat was last closed were waiting on a
+    // turn this view did not see end; hold them until the user resumes.
+    messageQueue.pause((sessionId ?? '').trim() || newChatQueueKey)
     void loadSlashSkills()
     void loadMentionSubagents()
     if (sessionId) {
@@ -1274,6 +1439,7 @@
         autoTitled = true
         void scrollToBottom()
       } catch { /* ignore */ }
+      void resumeRunningTurn()
     } else {
       chatMessages = [{ id: 'system-init', role: 'system', text: $t.chat.systemInit.tars }]
       void changes.load(null)
@@ -1324,6 +1490,9 @@
   })
 
   onDestroy(() => {
+    // Only this panel stops listening: the turn itself runs on in the
+    // server, and the next panel for the session attaches to it.
+    abortController?.abort()
     stopEventStream?.()
     stopChatStatusTicker()
     if (visibilityHandler) {
@@ -1410,6 +1579,35 @@
       </div>
     </div>
   {/if}
+  {#if queued.length > 0}
+    <div class="message-queue" class:paused={queuePaused} aria-label={$t.messageQueue.title(queued.length)}>
+      <div class="queue-header">
+        <span class="queue-title">{$t.messageQueue.title(queued.length)}</span>
+        {#if queuePaused}
+          <span class="badge badge-warning" title={$t.messageQueue.pausedHint}>{$t.messageQueue.paused}</span>
+          {#if !chatBusy}
+            <button type="button" class="btn btn-ghost btn-sm" onclick={() => void resumeQueue()}>{$t.messageQueue.resume}</button>
+          {/if}
+        {:else}
+          <span class="queue-hint">{$t.messageQueue.hint}</span>
+        {/if}
+        <button type="button" class="btn btn-ghost btn-sm queue-clear" onclick={() => messageQueue.clear(queueKey)}>{$t.messageQueue.clear}</button>
+      </div>
+      <ol class="queue-items">
+        {#each queued as item (item.id)}
+          <li class="queue-item">
+            <span class="queue-text" title={item.text}>{item.text}</span>
+            {#if item.files.length > 0}<span class="queue-files">{$t.messageQueue.files(item.files.length)}</span>{/if}
+            <span class="queue-actions">
+              <button type="button" class="btn btn-ghost btn-sm" title={$t.messageQueue.sendNowTitle} onclick={() => void sendQueuedNow(item.id)}>{$t.messageQueue.sendNow}</button>
+              <button type="button" class="btn btn-ghost btn-sm" title={$t.messageQueue.editTitle} onclick={() => editQueued(item.id)}>{$t.messageQueue.edit}</button>
+              <button type="button" class="btn btn-ghost btn-sm queue-remove" aria-label={$t.messageQueue.remove} title={$t.messageQueue.remove} onclick={() => messageQueue.remove(queueKey, item.id)}>×</button>
+            </span>
+          </li>
+        {/each}
+      </ol>
+    </div>
+  {/if}
   <form class="chat-form" onsubmit={(e) => { e.preventDefault(); void submitChat() }}>
     <div class="chat-input-row">
       <div class="chat-toolbar">
@@ -1433,7 +1631,7 @@
           bind:this={textareaEl}
           bind:value={chatInput}
           rows="2"
-          placeholder={sessionId ? $t.chat.input.placeholderContinue : $t.chat.input.placeholderNew}
+          placeholder={chatBusy ? $t.messageQueue.placeholderBusy : sessionId ? $t.chat.input.placeholderContinue : $t.chat.input.placeholderNew}
           oninput={handleChatInput}
           onclick={handleTextareaCursorChange}
           onkeyup={handleTextareaKeyup}
@@ -1478,6 +1676,9 @@
     </div>
     <div class="chat-form-actions">
       {#if chatBusy}
+        {#if chatInput.trim()}
+          <button type="submit" class="btn btn-secondary btn-sm queue-btn" title={$t.messageQueue.queueTitle}>{$t.messageQueue.queue}</button>
+        {/if}
         <button type="button" class="btn btn-danger btn-sm" onclick={handleCancel}>{$t.chat.input.stop}</button>
       {:else}
         <button type="submit" class="btn btn-primary" disabled={!chatInput.trim()}>{$t.chat.input.send}</button>
@@ -1859,6 +2060,78 @@
     display: flex;
     align-items: center;
     gap: var(--space-2);
+  }
+
+  /* Follow-up queue above the composer (#971). */
+  .message-queue {
+    display: grid;
+    gap: var(--space-1);
+    margin-bottom: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+  }
+
+  .message-queue.paused {
+    border-color: var(--warning);
+  }
+
+  .queue-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--text-xs);
+  }
+
+  .queue-title {
+    font-family: var(--font-mono);
+    color: var(--text-secondary);
+  }
+
+  .queue-hint {
+    color: var(--text-tertiary);
+  }
+
+  .queue-clear {
+    margin-left: auto;
+  }
+
+  .queue-items {
+    display: grid;
+    gap: 2px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .queue-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+    font-size: var(--text-sm);
+  }
+
+  .queue-text {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text-primary);
+  }
+
+  .queue-files {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    color: var(--text-tertiary);
+  }
+
+  .queue-actions {
+    display: flex;
+    flex-shrink: 0;
+    gap: 2px;
   }
 
   .file-input-hidden {
