@@ -81,10 +81,28 @@ test('Send now stops the running turn and sends that message next', async ({ pag
   await composer(page).fill('jump the line')
   await composer(page).press('Enter')
 
+  // The stopped turn's stream can end, and the next turn start, before the
+  // cancel request answers (seen on slow CI runners). Hold the answer until
+  // then so this ordering is the one tested: finishing the cancel must not
+  // stop the turn that took over.
+  const aborted: string[] = []
+  page.on('requestfailed', (req) => {
+    if (req.method() === 'POST' && new URL(req.url()).pathname === '/v1/chat') aborted.push(req.postData() ?? '')
+  })
+  await page.route((url) => url.pathname === '/v1/chat/cancel', async (route) => {
+    const nextTurn = page.waitForRequest((req) => req.method() === 'POST' && new URL(req.url()).pathname === '/v1/chat')
+    const response = await route.fetch()
+    await nextTurn
+    await route.fulfill({ response })
+  })
   await queue(page).locator('.queue-item').nth(1).getByRole('button', { name: 'Send now' }).click()
   await expect(assistant(page).filter({ hasText: 'Echo: jump the line' })).toHaveCount(1)
   await expect(assistant(page).filter({ hasText: 'Echo: first in line' })).toHaveCount(1)
   await expect(queue(page)).toHaveCount(0)
+  // Neither queued turn was cut off on the way (a late abort once hit the
+  // turn that took over, leaving its reply blank and the next one running
+  // beside it).
+  expect(aborted.filter((body) => /"message":"(first in line|jump the line)"/.test(body))).toEqual([])
 })
 
 test('Stop pauses the queue until it is resumed', async ({ page }) => {

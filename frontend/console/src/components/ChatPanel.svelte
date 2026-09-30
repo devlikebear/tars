@@ -642,16 +642,19 @@
             chatMessages = [...chatMessages]
           }
         }
-        // Auto-title: use first user message as session title for new sessions
+        // Auto-title: use first user message as session title for new sessions.
+        // The refresh waits for the title: run side by side, the session
+        // list could be read before the title was saved and keep the old one.
+        let titled: Promise<void> = Promise.resolve()
         if (chatSessionId && !autoTitled) {
           autoTitled = true
           const firstUser = chatMessages.find((m) => m.role === 'user')
           if (firstUser?.text) {
             const title = firstUser.text.slice(0, 60).trim() + (firstUser.text.length > 60 ? '...' : '')
-            renameSession(chatSessionId, title).catch(() => {})
+            titled = renameSession(chatSessionId, title).catch(() => {})
           }
         }
-        void chatSession.turnSettled()
+        void titled.then(() => chatSession.turnSettled())
         break
       }
       case 'cancelled':
@@ -1169,10 +1172,14 @@
 
   async function handleCancel() {
     userStopped = true
+    // Stop the turn running now. Its stream can end, and a queued message
+    // start the next turn, before the cancel request returns; reading
+    // abortController after the await would stop that next turn instead.
+    const running = abortController
     if (chatSessionId) {
       await cancelChat(chatSessionId)
     }
-    abortController?.abort()
+    running?.abort()
   }
 
   // -- File attachments --
