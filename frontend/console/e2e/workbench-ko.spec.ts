@@ -3,6 +3,8 @@
 // content may still be English, so this reads only the chrome: buttons,
 // headings, labels, options, and title/aria-label/placeholder attributes.
 
+import { mkdirSync } from 'node:fs'
+import { join } from 'node:path'
 import { expect, test, type Locator, type Page } from '@playwright/test'
 
 test.use({ locale: 'ko-KR' })
@@ -125,4 +127,30 @@ test('switching the language rewords an open panel, report text included', async
   const english = await pane.innerText()
   expect(english).not.toBe(korean)
   expect(english).not.toMatch(/[가-힣]/)
+})
+
+test('the folder picker is Korean, errors included', async ({ page }) => {
+  const root = join(process.env.TARS_E2E_WORKSPACE ?? '', 'picker-ko')
+  for (const dir of ['alpha', '.hidden']) mkdirSync(join(root, dir), { recursive: true })
+
+  await newSession(page)
+  await page.locator('.chat-rail [data-panel="artifacts"]').click()
+  const pane = page.locator('.dock-right')
+  await pane.getByRole('button', { name: '+', exact: true }).click()
+  const picker = pane.locator('.pick-overlay')
+  const path = picker.getByRole('textbox', { name: '폴더 경로' })
+  await path.fill(root)
+  await path.press('Enter')
+  await expect(picker.getByRole('button', { name: '숨김 폴더 (1)' })).toBeVisible()
+  await picker.getByRole('searchbox', { name: '폴더 거르기' }).fill('zzz')
+  await expect(picker).toContainText('"zzz"와 맞는 폴더 없음')
+  const found = (await chromeTexts(picker)).filter(untranslated)
+
+  await path.fill(join(root, 'nope'))
+  await path.press('Enter')
+  await expect(picker.getByRole('alert')).toHaveText(`폴더를 찾을 수 없음: ${join(root, 'nope')}`)
+  await path.fill('relative')
+  await path.press('Enter')
+  await expect(picker.getByRole('alert')).toHaveText('전체 경로나 ~로 시작하는 경로를 입력하세요')
+  expect(found).toEqual([])
 })
