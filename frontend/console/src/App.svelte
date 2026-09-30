@@ -13,7 +13,7 @@
   import {
     companionAskHandoffReaction,
     companionEnabledFromConfigValues,
-    companionPromptForAsk,
+    companionHandoffForAsk,
     companionReactionForStimulus,
     companionReactionFromEvent,
     shouldShowCompanion,
@@ -42,6 +42,7 @@
   let needsSetup = $state(false)
   let unreadCount = $state(0)
   let aiPrompt = $state('')
+  let aiContext = $state('')
   let authLoading = $state(true)
   let authInfo = $state<AuthWhoamiResponse | null>(null)
   let loginRequired = $state(false)
@@ -60,8 +61,11 @@
     route = resolveRoute(path)
   }
 
-  function navigateWithPrompt(prompt: string) {
+  // context is guidance for the model that the user did not type (the
+  // companion handoff); ChatPanel sends it beside the prompt, not in it.
+  function navigateWithPrompt(prompt: string, context = '') {
     aiPrompt = prompt
+    aiContext = context
     navigate('/console/chat')
   }
 
@@ -110,7 +114,8 @@
 
   function handleCompanionAsk(prompt: string) {
     showCompanionReaction(companionAskHandoffReaction($locale))
-    navigateWithPrompt(companionPromptForAsk(prompt, route.view, $locale))
+    const handoff = companionHandoffForAsk(prompt, route.view, $locale)
+    navigateWithPrompt(handoff.prompt, handoff.context)
   }
 
   async function checkSetupAndMaybeRedirect() {
@@ -398,7 +403,7 @@
       {:then module}
         {@const ChatRoute = module.default}
         {#key aiPrompt}
-          <ChatRoute sessionId={route.sessionId} onNavigate={navigate} initialPrompt={aiPrompt} />
+          <ChatRoute sessionId={route.sessionId} onNavigate={navigate} initialPrompt={aiPrompt} initialContext={aiContext} />
         {/key}
       {:catch}
         <div class="route-error">Could not load console page.</div>

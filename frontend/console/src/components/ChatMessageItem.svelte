@@ -15,6 +15,7 @@
   import { totalFileChanges } from '../lib/toolFileChanges'
   import { buildSubagentProgress } from '../lib/subagentProgress'
   import { splitReviewNotes } from '../lib/changes'
+  import { splitConsoleContext } from '../lib/consoleContext'
 
   interface StreamingStatus {
     label: string
@@ -139,7 +140,8 @@
       {/if}
     {:else}
       {@const split = splitReviewNotes(message.text)}
-      <div class="chat-text">{split.text || '\u2026'}</div>
+      {@const typed = splitConsoleContext(split.text).text}
+      <div class="chat-text">{typed || '\u2026'}</div>
       {#if split.count > 0}
         <details class="review-notes-fold">
           <summary>{$t.changes.notes.folded(split.count)}</summary>

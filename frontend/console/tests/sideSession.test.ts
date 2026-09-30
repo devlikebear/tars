@@ -3,6 +3,13 @@ import assert from 'node:assert/strict'
 import { applySideEvent, historyMessages } from '../src/lib/sideSession.ts'
 import type { ChatMessage } from '../src/lib/chatMessages.ts'
 
+test('history shows the user words without the console context', () => {
+  const got = historyMessages([
+    { id: 'u', role: 'user', content: 'hi\n\n<console-context>\nbe brief\n</console-context>', timestamp: '' },
+  ])
+  assert.equal(got[0].text, 'hi')
+})
+
 test('history keeps words and one line per tool call', () => {
   const got = historyMessages([
     { id: 'u', role: 'user', content: ' hi ', timestamp: '' },

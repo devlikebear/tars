@@ -49,6 +49,11 @@ export const chatThreadEn = {
     forkBusy: 'Wait for the current response to finish before forking this session.',
     forkFailed: 'Failed to fork session',
   },
+  consoleContext: {
+    chip: 'Companion context attached',
+    title: 'Sent to the model with your next message, not shown in the chat',
+    remove: 'Remove companion context',
+  },
   mention: {
     kinds: {
       directory: 'DIR',
@@ -213,6 +218,11 @@ export const chatThreadKo: ChatThreadTranslations = {
     sendFailed: '전송 실패',
     forkBusy: '이 세션을 분기하려면 현재 응답이 끝날 때까지 기다리세요.',
     forkFailed: '세션 분기 실패',
+  },
+  consoleContext: {
+    chip: '컴패니언 맥락 첨부됨',
+    title: '다음 메시지와 함께 모델에 전달되며, 채팅에는 보이지 않습니다',
+    remove: '컴패니언 맥락 제거',
   },
   mention: {
     kinds: {

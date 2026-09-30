@@ -1010,6 +1010,9 @@ export type ChatRequest = {
   interactive_permissions?: boolean
   // Comments on and reverts of earlier turns' changes (#969).
   review_notes?: import('./api/checkpoints').ReviewNote[]
+  // Guidance the user did not type (the companion handoff); the server
+  // appends it as a <console-context> block the console hides.
+  console_context?: string
 }
 
 export type MemoryAsset = {

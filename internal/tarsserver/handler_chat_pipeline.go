@@ -71,6 +71,10 @@ type chatRequestPayload struct {
 	// ReviewNotes are comments on, and reverts of, earlier turns' changes;
 	// they are appended to the message (see appendReviewNotes).
 	ReviewNotes []chatReviewNote `json:"review_notes,omitempty"`
+	// ConsoleContext is guidance the console adds to this turn without the
+	// user typing it (the companion handoff); it is appended to the message
+	// as a tagged block the console hides (see appendConsoleContext).
+	ConsoleContext string `json:"console_context,omitempty"`
 	// InteractivePermissions says the client will answer permission_request
 	// events, so tool prompts wait for it instead of failing the call.
 	InteractivePermissions bool `json:"interactive_permissions,omitempty"`

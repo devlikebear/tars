@@ -194,24 +194,32 @@ export function companionReactionFromEvent(event: NotificationMessage, locale?: 
   return null
 }
 
-export function companionPromptForAsk(raw: string, routeView?: string, locale?: string | null): string {
+export interface CompanionHandoff {
+  // The chat message: the user's own words, so the bubble and the session
+  // title show what they typed.
+  prompt: string
+  // Guidance for the model only, sent as `console_context` (see
+  // lib/consoleContext.ts): the companion tone, the console area, and no
+  // tools unless asked.
+  context: string
+}
+
+export function companionHandoffForAsk(raw: string, routeView?: string, locale?: string | null): CompanionHandoff {
   const lang = normalizeCompanionLocale(locale)
-  const text = clipText(raw.trim(), 600)
+  const prompt = clipText(raw.trim(), 600)
   const route = (routeView || 'unknown').trim()
-  if (lang === 'ko') {
-    return [
-      'TARS 콘솔 안의 컴패니언처럼 답해줘.',
-      `현재 콘솔 영역: ${companionAreaLabel(routeView, lang)} (${route}).`,
-      '짧게 답하고, 실용적인 다음 행동 하나만 제안해. 내가 명시적으로 요청하지 않으면 도구를 실행하지 마.',
-      `사용자 자극: ${text}`,
-    ].join('\n')
-  }
-  return [
-    'Act as the TARS companion inside the Console.',
-    `Current console area: ${companionAreaLabel(routeView, lang)} (${route}).`,
-    'Answer briefly, give one practical next action, and do not run tools unless I explicitly ask.',
-    `User stimulus: ${text}`,
-  ].join('\n')
+  const context = lang === 'ko'
+    ? [
+        '이 메시지는 콘솔의 컴패니언에게 건넨 말이야. TARS 콘솔 안의 컴패니언처럼 답해줘.',
+        `현재 콘솔 영역: ${companionAreaLabel(routeView, lang)} (${route}).`,
+        '짧게 답하고, 실용적인 다음 행동 하나만 제안해. 내가 명시적으로 요청하지 않으면 도구를 실행하지 마.',
+      ]
+    : [
+        'This message was said to the companion in the Console. Act as the TARS companion inside the Console.',
+        `Current console area: ${companionAreaLabel(routeView, lang)} (${route}).`,
+        'Answer briefly, give one practical next action, and do not run tools unless I explicitly ask.',
+      ]
+  return { prompt, context: context.join('\n') }
 }
 
 export function companionAskHandoffReaction(locale?: string | null): CompanionReaction {
@@ -313,5 +321,5 @@ function companionAreaLabel(routeView?: string, locale: CompanionLocale = 'en'):
 function clipText(value: string, max: number): string {
   const text = value.replace(/\s+/g, ' ').trim()
   if (text.length <= max) return text
-  return `${text.slice(0, Math.max(0, max - 1)).trim()}...`
+  return `${text.slice(0, Math.max(0, max - 3)).trim()}...`
 }
