@@ -109,3 +109,20 @@ test('always allow is offered only with a folder, and a answers it', () => {
   const messages: ChatMessage[] = [{ id: 'approval-r1', role: 'approval', text: '', approval }]
   assert.equal(resolveApproval(messages, 'r1', 'allowed_always')[0].approval?.state, 'allowed_always')
 })
+
+test('plan approvals: detection, plan text, keys, and the mode cycle (#970)', async () => {
+  const { isPlanApproval, planText, nextPermissionMode, decisionForKey, resolveApproval } = await import('../src/lib/chatApproval.ts')
+  const plan = { requestId: 'r', sessionId: 's', toolName: 'ExitPlanMode', input: { plan: '  1. Do it  ' }, state: 'pending' as const }
+  assert.equal(isPlanApproval(plan), true)
+  assert.equal(planText(plan), '1. Do it')
+  assert.equal(planText({ ...plan, input: undefined }), '')
+  assert.equal(isPlanApproval({ ...plan, toolName: 'Bash' }), false)
+  assert.equal(decisionForKey('y', plan), 'allow_once')
+  assert.equal(decisionForKey('N', plan), 'deny')
+  assert.equal(decisionForKey('s', plan), null, 'a plan has no session rule')
+  assert.equal(decisionForKey('a', plan), null)
+  assert.deepEqual(['manual', 'accept_edits', 'plan', 'auto', 'weird'].map(nextPermissionMode), ['accept_edits', 'plan', 'auto', 'manual', 'manual'])
+  const settled = resolveApproval([{ id: 'x', role: 'approval', text: '', approval: plan }], 'r', 'plan_approved')
+  assert.equal(settled[0].approval?.state, 'plan_approved')
+  assert.equal(resolveApproval([{ id: 'x', role: 'approval', text: '', approval: plan }], 'r', 'plan_rejected')[0].approval?.state, 'plan_rejected')
+})

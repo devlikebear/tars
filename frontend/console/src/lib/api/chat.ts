@@ -211,15 +211,49 @@ export async function cancelChat(sessionId: string): Promise<boolean> {
 
 // answerChatPermission replies to a permission_request. It rejects when the
 // prompt is gone (answered elsewhere, or the turn ended) or the reply is bad.
+// mode, when approving a plan (ExitPlanMode), is the permission mode to
+// continue in.
 export async function answerChatPermission(
   requestId: string,
   sessionId: string,
   decision: 'allow_once' | 'allow_session' | 'allow_always' | 'deny',
+  mode?: 'accept_edits' | 'auto',
 ): Promise<void> {
   await requestJSON(`/v1/chat/permissions/${encodeURIComponent(requestId)}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ session_id: sessionId, decision }),
+    body: JSON.stringify(mode ? { session_id: sessionId, decision, mode } : { session_id: sessionId, decision }),
+  })
+}
+
+// --- Permission modes (#970) ---
+
+export type PermissionMode = 'manual' | 'accept_edits' | 'plan' | 'auto'
+
+export type PermissionModeView = {
+  // The session's own choice, or '' when it inherits.
+  mode: PermissionMode | ''
+  // What native-provider turns run under: the session's mode, or manual.
+  effective: PermissionMode
+  // What claude-code-cli turns run under: the session's mode, or the
+  // configured Claude Code mode.
+  claude_code_effective: PermissionMode
+  // Where claude_code_effective comes from.
+  source: 'session' | 'override' | 'config'
+  claude_code_flag: string
+  modes: PermissionMode[]
+}
+
+export function getPermissionMode(sessionId: string): Promise<PermissionModeView> {
+  return requestJSON<PermissionModeView>(`/v1/admin/sessions/${encodeURIComponent(sessionId)}/permission-mode`)
+}
+
+// setPermissionMode sets the session's mode; '' goes back to the default.
+export function setPermissionMode(sessionId: string, mode: PermissionMode | ''): Promise<PermissionModeView> {
+  return requestJSON<PermissionModeView>(`/v1/admin/sessions/${encodeURIComponent(sessionId)}/permission-mode`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mode }),
   })
 }
 

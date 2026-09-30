@@ -12,6 +12,7 @@ import { chatApprovalKo } from './sections/chatApproval.ts'
 import { sessionBoardKo } from './sections/sessionBoard.ts'
 
 import { messageQueueKo } from './sections/messageQueue.ts'
+import { permissionModeKo } from './sections/permissionMode.ts'
 import { artifactPanelKo } from './sections/artifactPanel.ts'
 import { skillInboxKo } from './sections/skillInbox.ts'
 import { sessionCronKo } from './sections/sessionCron.ts'
@@ -1663,6 +1664,7 @@ export const ko = {
   sessionBoard: sessionBoardKo,
 
   messageQueue: messageQueueKo,
+  permissionMode: permissionModeKo,
   artifactPanel: artifactPanelKo,
   skillInbox: skillInboxKo,
   sessionCron: sessionCronKo,

@@ -12,6 +12,7 @@ import { chatApprovalEn } from './sections/chatApproval.ts'
 import { sessionBoardEn } from './sections/sessionBoard.ts'
 
 import { messageQueueEn } from './sections/messageQueue.ts'
+import { permissionModeEn } from './sections/permissionMode.ts'
 import { artifactPanelEn } from './sections/artifactPanel.ts'
 import { skillInboxEn } from './sections/skillInbox.ts'
 import { sessionCronEn } from './sections/sessionCron.ts'
@@ -1665,6 +1666,7 @@ export const en = {
   sessionBoard: sessionBoardEn,
 
   messageQueue: messageQueueEn,
+  permissionMode: permissionModeEn,
   artifactPanel: artifactPanelEn,
   skillInbox: skillInboxEn,
   sessionCron: sessionCronEn,

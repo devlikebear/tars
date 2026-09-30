@@ -1291,6 +1291,7 @@ func newChatAPIHandlerWithRuntimeConfig(
 	}
 	permissions := newChatPermissionBroker()
 	permissions.always = newChatAlwaysRuleStore(workspaceDir)
+	permissions.audit = auditTo(tooling.OpsManager)
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/chat", func(w http.ResponseWriter, r *http.Request) {
 		handleChatRequest(w, r, chatHandlerDeps{

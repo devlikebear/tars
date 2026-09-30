@@ -10,10 +10,15 @@
 // is `adoptSession`: ChatPanel creates a session lazily on the first send and
 // reports its id mid-stream, which must not reset state or remount the panel.
 //
-// This module imports types only. The API is injected so the store can be
-// compiled and exercised under plain Node in tests.
+// This module imports types and pure helpers only. The API is injected so
+// the store can be compiled and exercised under plain Node in tests.
 
+import { nextPermissionMode, permissionModeCycle } from '../chatApproval.ts'
 import type {
+  PermissionMode,
+  PermissionModeView,
+  getPermissionMode,
+  setPermissionMode,
   compactSession,
   getUsageSummary,
   listAgentRuntimeSubagents,
@@ -44,6 +49,8 @@ export type ChatSessionApi = {
   getSessionCwd: typeof getSessionCwd
   setSessionCwd: typeof setSessionCwd
   getSessionGoal: typeof getSessionGoal
+  getPermissionMode: typeof getPermissionMode
+  setPermissionMode: typeof setPermissionMode
   renameSession: typeof renameSession
   compactSession: typeof compactSession
   getUsageSummary: typeof getUsageSummary
@@ -147,6 +154,10 @@ export class ChatSessionStore {
   usage = $state<SessionUsage | null>(null)
   // The session's .tars permission-mode override; '' means the global setting.
   permissionModeOverride = $state('')
+  // The session's tool permission mode (#970); null until loaded.
+  permission = $state<PermissionModeView | null>(null)
+  permissionError = $state('')
+  private permissionRequest = 0
   private tierOptionsRequested = false
   private usageRequest = 0
 
@@ -177,6 +188,7 @@ export class ChatSessionStore {
       void this.refreshActive()
       void this.refreshHealth()
       void this.refreshUsage()
+      void this.refreshPermission()
     }
   }
 
@@ -195,6 +207,59 @@ export class ChatSessionStore {
     void this.refreshSessions()
     void this.refreshHealth()
     void this.refreshUsage()
+    void this.refreshPermission()
+  }
+
+  async refreshPermission(): Promise<void> {
+    const id = this.activeSessionId
+    if (!id) {
+      this.permission = null
+      return
+    }
+    const request = ++this.permissionRequest
+    try {
+      const view = await this.api.getPermissionMode(id)
+      if (request === this.permissionRequest && this.activeSessionId === id) this.permission = view
+    } catch {
+      if (request === this.permissionRequest) this.permission = null
+    }
+  }
+
+  // setPermissionMode switches the active session's mode; '' returns to the
+  // default. The bar shows the new mode at once and falls back on failure.
+  async setPermissionMode(mode: PermissionMode | ''): Promise<boolean> {
+    const id = this.activeSessionId
+    if (!id) return false
+    const before = this.permission
+    if (before && mode) this.permission = { ...before, mode, effective: mode, claude_code_effective: mode, source: 'session' }
+    this.permissionError = ''
+    const request = ++this.permissionRequest
+    try {
+      const view = await this.api.setPermissionMode(id, mode)
+      if (request === this.permissionRequest && this.activeSessionId === id) this.permission = view
+      return true
+    } catch (err) {
+      if (request === this.permissionRequest && this.activeSessionId === id) {
+        this.permission = before
+        this.permissionError = err instanceof Error ? err.message : String(err)
+      }
+      return false
+    }
+  }
+
+  // cyclePermissionMode steps to the next mode (⇧Tab in the composer).
+  // current is the mode the bar shows, which for an inheriting session
+  // depends on the provider.
+  cyclePermissionMode(current?: string): Promise<boolean> {
+    return this.setPermissionMode(nextPermissionMode(current ?? this.permission?.mode ?? this.permission?.effective ?? 'manual'))
+  }
+
+  // applyPermissionMode follows a mode change the server made during a turn
+  // (an approved plan).
+  applyPermissionMode(mode: string): void {
+    if (!this.permission || !permissionModeCycle.includes(mode as PermissionMode)) return
+    const next = mode as PermissionMode
+    this.permission = { ...this.permission, mode: next, effective: next, claude_code_effective: next, source: 'session' }
   }
 
   get pinnedTier(): ChatTier | null {
@@ -453,5 +518,7 @@ export class ChatSessionStore {
     this.streaming = false
     this.usage = null
     this.permissionModeOverride = ''
+    this.permission = null
+    this.permissionError = ''
   }
 }

@@ -9,9 +9,12 @@
   import {
     approvalPreview,
     decisionForKey,
+    isPlanApproval,
+    planText,
     type ChatApproval,
     type ChatApprovalDecision,
   } from '../lib/chatApproval'
+  import MarkdownContent from './MarkdownContent.svelte'
 
   interface Props {
     approval: ChatApproval
@@ -23,12 +26,18 @@
   let card: HTMLElement | undefined = $state()
   let preview = $derived(approvalPreview(approval))
   let pending = $derived(approval.state === 'pending')
+  // In plan mode Claude Code asks to leave it with the plan (#970).
+  let isPlan = $derived(isPlanApproval(approval))
+  let plan = $derived(isPlan ? planText(approval) : '')
 
-  async function answer(decision: ChatApprovalDecision) {
+  // mode picks what an approved plan continues in; y on a plan card means
+  // accept edits.
+  async function answer(decision: ChatApprovalDecision, mode?: 'accept_edits' | 'auto') {
     if (approval.state !== 'pending') return
+    if (isPlan && decision === 'allow_once' && !mode) mode = 'accept_edits'
     onChange({ ...approval, state: 'sending', error: undefined })
     try {
-      await answerChatPermission(approval.requestId, approval.sessionId, decision)
+      await answerChatPermission(approval.requestId, approval.sessionId, decision, mode)
     } catch {
       onChange({ ...approval, state: 'pending', error: $t.chatApproval.sendFailed })
     }
@@ -63,6 +72,10 @@
         return $t.chatApproval.state.denied
       case 'withdrawn':
         return $t.chatApproval.state.withdrawn
+      case 'plan_approved':
+        return $t.chatApproval.state.planApproved
+      case 'plan_rejected':
+        return $t.chatApproval.state.planRejected
     }
     return ''
   }
@@ -78,13 +91,19 @@
   tabindex="-1"
 >
   <header class="approval-head">
-    <span class="approval-title">{approval.title ?? $t.chatApproval.heading(approval.toolName)}</span>
+    <span class="approval-title">{isPlan ? $t.chatApproval.plan.heading : (approval.title ?? $t.chatApproval.heading(approval.toolName))}</span>
     {#if approval.agentId}
       <span class="badge badge-info">{$t.chatApproval.subagent}</span>
     {/if}
   </header>
 
-  {#if preview.text}
+  {#if isPlan}
+    {#if plan}
+      <div class="approval-plan">
+        <MarkdownContent text={plan} />
+      </div>
+    {/if}
+  {:else if preview.text}
     <div class="approval-preview">
       <span class="approval-label">{$t.chatApproval.preview[preview.kind]}</span>
       <pre class="approval-code">{preview.text}</pre>
@@ -97,7 +116,17 @@
     <p class="approval-note"><span class="approval-label">{$t.chatApproval.reason}</span> {approval.reason}</p>
   {/if}
 
-  {#if pending}
+  {#if pending && isPlan}
+    <div class="approval-actions">
+      <button type="button" class="btn btn-secondary btn-sm" title={$t.chatApproval.plan.approveEditsTitle} onclick={() => answer('allow_once', 'accept_edits')}>{$t.chatApproval.plan.approveEdits}</button>
+      <button type="button" class="btn btn-ghost btn-sm" title={$t.chatApproval.plan.approveAutoTitle} onclick={() => answer('allow_once', 'auto')}>{$t.chatApproval.plan.approveAuto}</button>
+      <button type="button" class="btn btn-ghost btn-sm" onclick={() => answer('deny')}>{$t.chatApproval.plan.keepPlanning}</button>
+      <span class="approval-keys" aria-hidden="true">{$t.chatApproval.plan.keysHint}</span>
+    </div>
+    {#if approval.error}
+      <p class="approval-error" role="alert">{approval.error}</p>
+    {/if}
+  {:else if pending}
     <div class="approval-actions">
       <button type="button" class="btn btn-secondary btn-sm" onclick={() => answer('allow_once')}>{$t.chatApproval.allowOnce}</button>
       {#if approval.sessionRule}
@@ -152,6 +181,15 @@
 
   .approval.settled {
     border-color: var(--border-subtle);
+    background: var(--surface);
+  }
+
+  .approval-plan {
+    max-height: 360px;
+    overflow-y: auto;
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
     background: var(--surface);
   }
 
