@@ -4,9 +4,10 @@
 // adds what a browser tab cannot: a tray icon that says whether a chat is
 // running or waiting for approval, native notifications that approve or
 // deny a tool call without opening the window, a global hotkey, tars://
-// links, and self-update from GitHub releases.
+// links, chats in windows of their own, and self-update from GitHub releases.
 //
-// The shell holds no state of its own beyond the window's position. The
+// The shell holds no state of its own beyond where its windows were and
+// which chats had a window of their own. The
 // server runs separately (the launchd service on macOS, a detached
 // `tars serve` elsewhere) so closing or quitting the shell never stops a
 // chat, a cron job, or pulse.
@@ -95,7 +96,7 @@ func main() {
 			s.quitting.Store(true)
 			return true
 		},
-		OnShutdown:        s.saveWindow,
+		OnShutdown:        s.onShutdown,
 		RawMessageHandler: s.onRawMessage,
 		Mac: application.MacOptions{
 			ActivationPolicy: application.ActivationPolicyRegular,

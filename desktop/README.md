@@ -13,11 +13,14 @@ cannot:
   withdrawn.
 - **Global hotkey** to show or hide the window from anywhere.
 - **`tars://` links** and **folders dropped on the app icon**.
+- **Chats in windows of their own**, from the tray or a link, reopened on
+  the next start.
 - **Self-update** from GitHub releases.
 
-The shell keeps no state beyond the window's position. The server runs on
-its own, so closing the window (it only hides) or quitting the shell never
-stops a chat, a cron job, or pulse.
+The shell keeps no state beyond where its windows were and which chats had
+a window of their own. The server runs on its own, so closing the window
+(it only hides) or quitting the shell never stops a chat, a cron job, or
+pulse.
 
 ## Running
 
@@ -65,12 +68,47 @@ Recent chats and **New chat in folder…** use admin routes, which need the
 admin token in every mode except `off`. The console in the window logs in
 on its own, as in a browser.
 
+## Windows
+
+The console window reopens at the size, place, and maximised state it had
+when it was last hidden or the shell quit. A window saved on a monitor that
+is no longer attached opens centred at its default size instead; where the
+platform reports no screens, the saved values are only clamped to sane
+limits.
+
+**Recent chats → Open in new window** in the tray menu, or a
+`tars://session/<id>?window=new` link, opens a chat in a window of its own,
+showing the console's `/console/chat/<id>` page from the same server with
+the same rules as the main window. Opening a chat that already has a window
+brings that window forward. At most 8 chats get a window; past that the
+chat opens in the console window. Closing a chat window closes it for good.
+Chat windows still open when the shell quits reopen, where they were, on
+the next start (a `--hidden` start leaves them for the one after).
+
+All of this lives in `<user config dir>/tars-desktop/window.json`
+(0600, in a 0700 folder), written through a temporary file on every change:
+
+```json
+{
+  "bounds": { "x": 80, "y": 60, "width": 1280, "height": 840 },
+  "maximised": true,
+  "sessions": [
+    { "id": "abc123", "bounds": { "x": 200, "y": 120, "width": 1100, "height": 780 } }
+  ]
+}
+```
+
+A maximised window keeps the size it had before it was maximised. Entries
+that make no sense (no area, a malformed or repeated chat id) are dropped
+on load.
+
 ## Links
 
 | Link | Does |
 |------|------|
 | `tars://` or `tars://open` | show the console |
 | `tars://session/<id>` | open that chat |
+| `tars://session/<id>?window=new` | open that chat in a window of its own |
 | `tars://new?cwd=<absolute folder>` | ask, then start a chat working in the folder |
 
 Any web page or document can open a link, so a link only navigates or
@@ -135,7 +173,7 @@ notarization is not wired up yet.
 | `internal/deeplink` | `tars://` parsing |
 | `internal/links` | opening the console's outbound links in the browser |
 | `internal/protocol` | `tars://` registration on Windows and Linux |
-| `internal/winstate` | saving and fitting the window's position |
+| `internal/winstate` | saving and fitting the windows' places, the chat windows to reopen |
 | `internal/update` | picking the shell's archive out of a release |
 | `internal/icon` | app and tray icons, drawn in code |
 | `frontend/` | the page shown while the server is down |

@@ -39,6 +39,10 @@ const (
 	recentChats = 8
 	// notificationPrefix keeps approval notification IDs apart from others.
 	notificationPrefix = "tars-approval-"
+	// chatWidth and chatHeight are a chat window's size the first time it
+	// opens; after that it reopens where it was.
+	chatWidth  = 1100
+	chatHeight = 780
 )
 
 type shell struct {
@@ -56,16 +60,19 @@ type shell struct {
 	pollNow   chan struct{}
 	approvals tray.Approvals
 
-	mu           sync.Mutex
-	status       tray.Status
-	statusSet    bool
-	sessions     []activity.Session
-	sessionsAt   time.Time
-	menuKey      string
-	onConsole    bool
-	pendingPath  string
-	winStatePath string
-	lastErrors   map[string]string
+	// windows is where the console window and the chat windows were.
+	windows *winstate.Store
+
+	mu          sync.Mutex
+	status      tray.Status
+	statusSet   bool
+	sessions    []activity.Session
+	sessionsAt  time.Time
+	menuKey     string
+	onConsole   bool
+	pendingPath string
+	chats       map[string]*application.WebviewWindow
+	lastErrors  map[string]string
 }
 
 func newShell(cfg server.Config) *shell {
@@ -74,15 +81,18 @@ func newShell(cfg server.Config) *shell {
 		client:  activity.NewClient(cfg, nil),
 		probe:   &http.Client{Timeout: 2 * time.Second},
 		pollNow: make(chan struct{}, 1),
+		chats:   map[string]*application.WebviewWindow{},
 	}
-	if path, err := winstate.DefaultPath(); err == nil {
-		s.winStatePath = path
-	}
+	// Without a config dir the places are kept for this run only.
+	path, _ := winstate.DefaultPath()
+	s.windows = winstate.Open(path, deeplink.ValidSessionID)
 	return s
 }
 
 // createWindow makes the console window. It starts on the bundled offline
-// page and moves to the console once the server answers.
+// page and moves to the console once the server answers. A shown window
+// brings back the chat windows that were open when the shell quit; a hidden
+// start leaves them for the next one.
 func (s *shell) createWindow(show bool) {
 	opts := application.WebviewWindowOptions{
 		Name:             "console",
@@ -113,49 +123,169 @@ func (s *shell) createWindow(show bool) {
 			s.restoreWindow()
 			s.window.Show()
 			s.window.Focus()
+			open := s.chatWindows()
+			for _, sw := range s.windows.Sessions() {
+				if open[sw.ID] == nil {
+					s.createChatWindow(sw.ID)
+				}
+			}
 		})
 	}
 }
 
 func (s *shell) restoreWindow() {
-	if s.winStatePath == "" {
-		return
-	}
-	saved, ok := winstate.Load(s.winStatePath)
-	if !ok {
-		s.window.Center()
-		return
-	}
+	saved, _ := s.windows.Main()
+	s.placeWindow(s.window, saved)
+}
+
+// placeWindow moves w to its saved place, fitted to the screens now
+// attached; a window never saved, or saved off every screen, is centred.
+func (s *shell) placeWindow(w *application.WebviewWindow, saved winstate.Window) {
 	var screens []winstate.Rect
 	for _, sc := range s.app.Screen.GetAll() {
 		screens = append(screens, winstate.Rect{X: sc.WorkArea.X, Y: sc.WorkArea.Y, Width: sc.WorkArea.Width, Height: sc.WorkArea.Height})
 	}
 	fit, ok := winstate.Fit(saved.Bounds, screens)
 	if !ok {
-		s.window.Center()
+		w.Center()
 		return
 	}
-	s.window.SetBounds(application.Rect{X: fit.X, Y: fit.Y, Width: fit.Width, Height: fit.Height})
+	w.SetBounds(application.Rect{X: fit.X, Y: fit.Y, Width: fit.Width, Height: fit.Height})
 	if saved.Maximised {
-		s.window.Maximise()
+		w.Maximise()
 	}
 }
 
+// placeOf is where w is now; ok is false for a hidden or minimised window,
+// whose bounds say nothing about where it should reopen.
+func placeOf(w *application.WebviewWindow) (winstate.Window, bool) {
+	if w == nil || !w.IsVisible() || w.IsMinimised() {
+		return winstate.Window{}, false
+	}
+	b := w.Bounds()
+	return winstate.Window{Bounds: winstate.Rect{X: b.X, Y: b.Y, Width: b.Width, Height: b.Height}, Maximised: w.IsMaximised()}, true
+}
+
 func (s *shell) saveWindow() {
-	if s.winStatePath == "" || s.window == nil || !s.window.IsVisible() || s.window.IsMinimised() {
+	place, ok := placeOf(s.window)
+	if !ok {
 		return
 	}
-	b := s.window.Bounds()
-	st := winstate.State{Bounds: winstate.Rect{X: b.X, Y: b.Y, Width: b.Width, Height: b.Height}, Maximised: s.window.IsMaximised()}
-	if st.Maximised {
-		// Keep the size it had before it was maximised.
-		if old, ok := winstate.Load(s.winStatePath); ok {
-			st.Bounds = old.Bounds
-		}
-	}
-	if err := winstate.Save(s.winStatePath, st); err != nil {
+	if err := s.windows.SetMain(place); err != nil {
 		log.Printf("save window position: %v", err)
 	}
+}
+
+// saveWindows records every window's place, for a quit.
+func (s *shell) saveWindows() {
+	s.saveWindow()
+	for id, w := range s.chatWindows() {
+		place, ok := placeOf(w)
+		if !ok {
+			continue
+		}
+		if err := s.windows.SetSession(id, place); err != nil {
+			log.Printf("save window position: %v", err)
+		}
+	}
+}
+
+// onShutdown runs however the app quits, before Wails closes the windows:
+// marking the quit first keeps the chat windows' close hooks from dropping
+// them from the list to reopen.
+func (s *shell) onShutdown() {
+	s.quitting.Store(true)
+	s.saveWindows()
+}
+
+func (s *shell) chatWindows() map[string]*application.WebviewWindow {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make(map[string]*application.WebviewWindow, len(s.chats))
+	for id, w := range s.chats {
+		out[id] = w
+	}
+	return out
+}
+
+func chatPath(id string) string {
+	return "/console/chat/" + url.PathEscape(id)
+}
+
+// openChatWindow shows chat id in a window of its own, or brings its window
+// forward when it has one. Past winstate.MaxSessions windows the chat opens
+// in the console window instead.
+func (s *shell) openChatWindow(id string) {
+	if !deeplink.ValidSessionID(id) {
+		log.Printf("chat window: bad session id %q", id)
+		return
+	}
+	s.mu.Lock()
+	w := s.chats[id]
+	s.mu.Unlock()
+	if w != nil {
+		w.Show()
+		if w.IsMinimised() {
+			w.UnMinimise()
+		}
+		w.Focus()
+		return
+	}
+	added, err := s.windows.AddSession(id)
+	if err != nil {
+		log.Printf("save window list: %v", err)
+	}
+	if !added {
+		log.Printf("%d chat windows are open; showing %s in the console window", winstate.MaxSessions, id)
+		s.showConsole(chatPath(id))
+		return
+	}
+	s.createChatWindow(id)
+}
+
+// createChatWindow makes chat id's window at its saved place. Like the
+// console window it waits on the offline page until the server answers.
+// Closing it closes it for good and drops it from the list to reopen.
+func (s *shell) createChatWindow(id string) {
+	s.mu.Lock()
+	title := tray.ChatWindowTitle(s.sessions, id)
+	s.mu.Unlock()
+	w := s.app.Window.NewWithOptions(application.WebviewWindowOptions{
+		Name:             "chat-" + id,
+		Title:            title,
+		Width:            chatWidth,
+		Height:           chatHeight,
+		MinWidth:         winstate.MinWidth,
+		MinHeight:        winstate.MinHeight,
+		URL:              "/",
+		Hidden:           true,
+		BackgroundColour: application.NewRGB(0x16, 0x18, 0x1b),
+		JS:               links.Script,
+	})
+	w.RegisterHook(events.Common.WindowClosing, func(*application.WindowEvent) {
+		if s.quitting.Load() {
+			return
+		}
+		s.mu.Lock()
+		delete(s.chats, id)
+		s.mu.Unlock()
+		if err := s.windows.RemoveSession(id); err != nil {
+			log.Printf("save window list: %v", err)
+		}
+	})
+	// Registered and checked under one lock: apply either finds this window
+	// when the server comes up, or the server is already up.
+	s.mu.Lock()
+	s.chats[id] = w
+	onConsole := s.onConsole
+	s.mu.Unlock()
+	if onConsole {
+		w.SetURL(s.cfg.ConsoleURL(chatPath(id)))
+	}
+	saved, _ := s.windows.Session(id)
+	s.placeWindow(w, saved.Window)
+	w.Show()
+	w.Focus()
 }
 
 func (s *shell) toggleWindow() {
@@ -247,6 +377,8 @@ func (s *shell) do(a tray.Action) {
 	switch a.Kind {
 	case tray.ShowConsole:
 		s.showConsole(a.Path)
+	case tray.OpenSessionWindow:
+		s.openChatWindow(a.SessionID)
 	case tray.Decide:
 		s.answer(a.Approval, a.Decision)
 	case tray.NewSessionInFolder:
@@ -264,8 +396,7 @@ func (s *shell) do(a tray.Action) {
 	case tray.CheckUpdates:
 		s.checkUpdates()
 	case tray.Quit:
-		s.quitting.Store(true)
-		s.saveWindow()
+		s.onShutdown()
 		s.app.Quit()
 	}
 }
@@ -321,7 +452,7 @@ func (s *shell) registerNotifications() {
 		case known && isDecision:
 			go s.answer(approval, decision)
 		case known:
-			go s.showConsole("/console/chat/" + url.PathEscape(approval.SessionID))
+			go s.showConsole(chatPath(approval.SessionID))
 		default:
 			go s.showConsole("")
 		}
@@ -426,6 +557,9 @@ func (s *shell) apply(st tray.Status, sessions []activity.Session) {
 	s.rebuildMenu(st, sessions)
 	if goConsole {
 		s.window.SetURL(s.cfg.ConsoleURL(path))
+		for id, w := range s.chatWindows() {
+			w.SetURL(s.cfg.ConsoleURL(chatPath(id)))
+		}
 	}
 
 	if st.State == tray.Offline {
@@ -472,10 +606,13 @@ func (s *shell) streamLoop() {
 	}
 }
 
+// onSecondInstance acts on what a second launch was given; a bare launch
+// brings the console window up.
 func (s *shell) onSecondInstance(data application.SecondInstanceData) {
 	go func() {
-		s.showConsole("")
-		s.handleArgs(data.Args)
+		if !s.handleArgs(data.Args) {
+			s.showConsole("")
+		}
 	}()
 }
 
@@ -494,11 +631,12 @@ func (s *shell) onRawMessage(_ application.Window, message string, origin *appli
 	}
 }
 
-// handleArgs acts on a tars:// link or a folder given on the command line.
-func (s *shell) handleArgs(args []string) {
+// handleArgs acts on a tars:// link or a folder given on the command line
+// and reports whether there was one.
+func (s *shell) handleArgs(args []string) bool {
 	if link, ok := deeplink.FromArgs(args); ok {
 		s.handleLink(link)
-		return
+		return true
 	}
 	for _, arg := range args {
 		if strings.HasPrefix(arg, "-") {
@@ -506,9 +644,10 @@ func (s *shell) handleArgs(args []string) {
 		}
 		if info, err := os.Stat(arg); err == nil && info.IsDir() {
 			s.proposeChatIn(arg)
-			return
+			return true
 		}
 	}
+	return false
 }
 
 func (s *shell) handleLink(raw string) {
@@ -521,6 +660,8 @@ func (s *shell) handleLink(raw string) {
 	switch link.Kind {
 	case deeplink.Open:
 		s.showConsole(link.Path)
+	case deeplink.OpenWindow:
+		s.openChatWindow(link.SessionID)
 	case deeplink.NewChat:
 		s.proposeChatIn(link.Dir)
 	}
@@ -559,7 +700,7 @@ func (s *shell) startChatIn(dir string) {
 		// The session exists but kept its default folder.
 		s.showError("The chat started, but not in that folder", err)
 	}
-	s.showConsole("/console/chat/" + url.PathEscape(id))
+	s.showConsole(chatPath(id))
 }
 
 func (s *shell) startServer() {

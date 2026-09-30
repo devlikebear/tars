@@ -124,6 +124,7 @@ cmd/  →  app layer  →  core layer  →  pkg/
 - Never runs the server in-process: macOS `tars service start`, else a detached `tars serve`. Closing the window hides it
 - Loopback servers only. Tokens: flag > env (`TARS_API_TOKEN`/`TARS_ADMIN_API_TOKEN`) > `<user config dir>/tars-desktop/config.json` (0600). Admin routes (recent chats, new chat in folder) need the admin token in every auth mode but `off`
 - A `tars://` link or dropped folder only navigates or *proposes* (confirm dialog) — never answers an approval or sends a message
+- Windows (#1031): the console window's bounds/maximised state and the open chat windows (tray **Recent chats → Open in new window**, `tars://session/<id>?window=new`; each loads `/console/chat/<id>` of the same server, max 8) live in `<user config dir>/tars-desktop/window.json` (0600) and come back on start. Saved off every screen → default place; no screen info → clamped only
 - All logic lives in plain-Go `desktop/internal/*` packages with tests; `main.go`/`shell.go` only wire Wails. Details: `desktop/README.md`
 
 **Session worktrees** (#971, `internal/sessionworktree` + `internal/tarsserver/chat_worktree.go`):

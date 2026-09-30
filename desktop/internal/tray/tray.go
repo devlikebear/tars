@@ -134,6 +134,8 @@ const (
 	NoAction ActionKind = iota
 	// ShowConsole opens the window on Path.
 	ShowConsole
+	// OpenSessionWindow shows chat SessionID in a window of its own.
+	OpenSessionWindow
 	// Decide answers an approval with Decision.
 	Decide
 	// NewSessionInFolder asks for a folder and starts a session there.
@@ -148,10 +150,11 @@ const (
 
 // Action is a menu entry's click.
 type Action struct {
-	Kind     ActionKind
-	Path     string
-	Approval activity.Approval
-	Decision string
+	Kind      ActionKind
+	Path      string
+	SessionID string
+	Approval  activity.Approval
+	Decision  string
 }
 
 // Item is one menu entry. Separator entries have no label.
@@ -191,9 +194,12 @@ func Menu(status Status, sessions []activity.Session) []Item {
 	}
 	if len(sessions) > 0 {
 		recent := Item{Label: "Recent chats"}
+		windows := Item{Label: "Open in new window"}
 		for _, s := range sessions {
 			recent.Children = append(recent.Children, Item{Label: titleOr(s.Title, s.ID), Action: chatAction(s.ID)})
+			windows.Children = append(windows.Children, Item{Label: titleOr(s.Title, s.ID), Action: windowAction(s.ID)})
 		}
+		recent.Children = append(recent.Children, Item{Separator: true}, windows)
 		items = append(items, Item{Separator: true}, recent)
 	}
 	return append(items,
@@ -237,6 +243,23 @@ func chatAction(sessionID string) Action {
 	return Action{Kind: ShowConsole, Path: "/console/chat/" + url.PathEscape(sessionID)}
 }
 
+// ChatWindowTitle is the title of chat id's own window: its title when the
+// recent chats know it, else its id.
+func ChatWindowTitle(sessions []activity.Session, id string) string {
+	for _, s := range sessions {
+		if s.ID == id {
+			return "TARS — " + titleOr(s.Title, id)
+		}
+	}
+	return "TARS — " + id
+}
+
+func windowAction(sessionID string) Action {
+	a := chatAction(sessionID)
+	a.Kind, a.SessionID = OpenSessionWindow, sessionID
+	return a
+}
+
 func describe(preview string) string {
 	if preview = strings.TrimSpace(preview); preview == "" {
 		return ""
@@ -266,7 +289,7 @@ func Key(items []Item) string {
 	var walk func([]Item, int)
 	walk = func(items []Item, depth int) {
 		for _, it := range items {
-			fmt.Fprintf(&b, "%d|%s|%v|%v|%d|%s|%s|%s\n", depth, it.Label, it.Separator, it.Disabled, it.Action.Kind, it.Action.Path, it.Action.Approval.RequestID, it.Action.Decision)
+			fmt.Fprintf(&b, "%d|%s|%v|%v|%d|%s|%s|%s|%s\n", depth, it.Label, it.Separator, it.Disabled, it.Action.Kind, it.Action.Path, it.Action.SessionID, it.Action.Approval.RequestID, it.Action.Decision)
 			walk(it.Children, depth+1)
 		}
 	}

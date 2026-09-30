@@ -98,8 +98,15 @@ func TestBusyMenu(t *testing.T) {
 		t.Fatalf("running entry = %+v", r)
 	}
 	recent := find(items, "Recent chats")
-	if recent == nil || len(recent.Children) != 2 || recent.Children[1].Label != "b" || recent.Children[0].Action.Path != "/console/chat/a" {
+	if recent == nil || len(recent.Children) != 4 || recent.Children[1].Label != "b" || recent.Children[0].Action.Path != "/console/chat/a" || !recent.Children[2].Separator {
 		t.Fatalf("recent = %+v", recent)
+	}
+	windows := recent.Children[3]
+	if windows.Label != "Open in new window" || len(windows.Children) != 2 {
+		t.Fatalf("new window submenu = %+v", windows)
+	}
+	if w := windows.Children[0]; w.Label != "Alpha" || w.Action.Kind != OpenSessionWindow || w.Action.SessionID != "a" || w.Action.Path != "/console/chat/a" {
+		t.Fatalf("new window entry = %+v", w)
 	}
 	if n := find(items, "New chat in folder"); n == nil || n.Disabled {
 		t.Fatal("new chat must be enabled on a running server")
@@ -125,6 +132,15 @@ func TestHelpers(t *testing.T) {
 	}
 	if describe("  ") != "" {
 		t.Fatal("an empty preview adds nothing")
+	}
+}
+
+func TestChatWindowTitle(t *testing.T) {
+	sessions := []activity.Session{{ID: "a", Title: "Alpha"}, {ID: "b", Title: " "}}
+	for id, want := range map[string]string{"a": "TARS — Alpha", "b": "TARS — b", "c": "TARS — c"} {
+		if got := ChatWindowTitle(sessions, id); got != want {
+			t.Errorf("ChatWindowTitle(%q) = %q, want %q", id, got, want)
+		}
 	}
 }
 
