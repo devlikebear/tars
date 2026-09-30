@@ -138,6 +138,14 @@ func TestStore(t *testing.T) {
 		t.Fatal("no such chat window")
 	}
 
+	checkReloadAndRemove(t, path, s, normal)
+}
+
+// checkReloadAndRemove checks that a second store reads what s wrote (chat
+// windows a and b, the main window maximised at normal) and that closed
+// chat windows are dropped from the file.
+func checkReloadAndRemove(t *testing.T, path string, s *Store, normal Window) {
+	t.Helper()
 	// A second store reads what the first wrote.
 	again := Open(path, anyID)
 	if got := again.Sessions(); len(got) != 2 || got[0].ID != "a" || got[1].Bounds.Width != 800 {

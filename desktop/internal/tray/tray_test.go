@@ -97,6 +97,16 @@ func TestBusyMenu(t *testing.T) {
 	if r := find(items, "  s 2"); r == nil || r.Action.Path != "/console/chat/s%202" {
 		t.Fatalf("running entry = %+v", r)
 	}
+	checkRecentChats(t, items)
+	if n := find(items, "New chat in folder"); n == nil || n.Disabled {
+		t.Fatal("new chat must be enabled on a running server")
+	}
+}
+
+// checkRecentChats checks the Recent chats submenu of a menu listing the
+// chats "Alpha" (a) and b.
+func checkRecentChats(t *testing.T, items []Item) {
+	t.Helper()
 	recent := find(items, "Recent chats")
 	if recent == nil || len(recent.Children) != 4 || recent.Children[1].Label != "b" || recent.Children[0].Action.Path != "/console/chat/a" || !recent.Children[2].Separator {
 		t.Fatalf("recent = %+v", recent)
@@ -107,9 +117,6 @@ func TestBusyMenu(t *testing.T) {
 	}
 	if w := windows.Children[0]; w.Label != "Alpha" || w.Action.Kind != OpenSessionWindow || w.Action.SessionID != "a" || w.Action.Path != "/console/chat/a" {
 		t.Fatalf("new window entry = %+v", w)
-	}
-	if n := find(items, "New chat in folder"); n == nil || n.Disabled {
-		t.Fatal("new chat must be enabled on a running server")
 	}
 }
 
