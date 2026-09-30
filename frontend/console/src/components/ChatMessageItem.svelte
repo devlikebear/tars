@@ -32,9 +32,11 @@
     onCopy: (text: string) => void
     onForkMessage?: (message: ChatMessage) => void
     streamingStatus?: StreamingStatus | null
+    // The session's folders (toolBaseDirs): tool card paths inside show relative.
+    toolBaseDir?: readonly string[]
   }
 
-  let { message, artifacts, onArtifactOpen, onCopy, onForkMessage, streamingStatus }: Props = $props()
+  let { message, artifacts, onArtifactOpen, onCopy, onForkMessage, streamingStatus, toolBaseDir }: Props = $props()
 
   let nowMs = $state(Date.now())
 
@@ -49,7 +51,7 @@
 
   let tone = $derived(message.role === 'tool' ? toolCallTone(message) : 'done')
   let elapsedLabel = $derived(formatElapsedSeconds(message.toolStartedAt, message.toolFinishedAt, nowMs))
-  let invocationPreview = $derived(formatToolInvocationPreview(message.toolName, message.toolArgs))
+  let invocationPreview = $derived(formatToolInvocationPreview(message.toolName, message.toolArgs, toolBaseDir))
   let argsJSON = $derived(formatToolJSON(message.toolArgs))
   let resultJSON = $derived(formatToolJSON(message.toolResult))
   let fileTotals = $derived(totalFileChanges(message.toolFileChanges))

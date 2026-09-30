@@ -56,3 +56,14 @@ test('a CLI provider tool shows as one card that settles on its result, even whe
   assert.equal(messages[0].toolDone, true)
   assert.equal(messages[0].toolIsError, true)
 })
+
+test('tool lines keep their arguments so the side panel can label them like the main thread', () => {
+  const got = historyMessages([
+    { id: 't', role: 'tool', content: 'ok', tool_name: 'Bash', tool_args: '{"command":"git status"}', timestamp: '' },
+  ])
+  assert.equal(got[0].toolArgs, '{"command":"git status"}')
+  let live: ChatMessage[] = applySideEvent([], { type: 'status', phase: 'before_tool_call', tool_name: 'read_file', tool_call_id: 'c', tool_args_preview: '{"path":"a"}' }, 'r')
+  assert.equal(live[0].toolArgs, '{"path":"a"}')
+  live = applySideEvent([], { type: 'status', phase: 'provider_tool', tool_name: 'Read', tool_call_id: 'p', tool_args_preview: '{"file_path":"/x"}' }, 'r')
+  assert.equal(live[0].toolArgs, '{"file_path":"/x"}')
+})

@@ -4,12 +4,14 @@
   // the turn feed, lets approval cards be answered, and sends messages, so
   // two sessions can be worked side by side.
   import { onDestroy, tick } from 'svelte'
-  import { attachChatStream, getSessionHistory, streamChat, streamEvents } from '../lib/api'
+  import { attachChatStream, getSessionCwd, getSessionHistory, streamChat, streamEvents } from '../lib/api'
   import type { ChatApproval } from '../lib/chatApproval'
   import { withdrawPendingApprovals } from '../lib/chatApproval'
   import type { ChatMessage } from '../lib/chatMessages'
   import { applySideEvent, historyMessages } from '../lib/sideSession'
   import { displaySessionTitle } from '../lib/sessionLabels'
+  import { formatToolInvocationPreview } from '../lib/toolCalls'
+  import { toolBaseDirs } from '../lib/cliToolLabels'
   import { chatSession } from '../lib/stores/chatSession'
   import type { Session } from '../lib/types'
   import { t } from '../i18n'
@@ -36,6 +38,8 @@
 
   let sideId = $state(stored())
   let messages = $state<ChatMessage[]>([])
+  // The side session's working folder: tool paths inside it show relative.
+  let sideCwd = $state<string | undefined>(undefined)
   let running = $state(false)
   let draft = $state('')
   let error = $state('')
@@ -66,10 +70,18 @@
     controller = null
     running = false
     error = ''
+    sideCwd = undefined
     if (!id) {
       messages = []
       return
     }
+    void getSessionCwd(id)
+      .then((cwd) => {
+        if (token === loadToken) sideCwd = cwd.current || undefined
+      })
+      .catch(() => {
+        // Absolute paths then; the label still names the file.
+      })
     try {
       const history = await getSessionHistory(id)
       if (token !== loadToken) return
@@ -213,7 +225,7 @@
         {#if message.role === 'approval' && message.approval}
           <ChatApprovalCard approval={message.approval} onChange={updateApproval} />
         {:else if message.role === 'tool'}
-          <div class="side-tool" class:error={message.toolIsError}>⚙ {message.toolName}</div>
+          <div class="side-tool" class:error={message.toolIsError} title={message.toolArgs}>⚙ {formatToolInvocationPreview(message.toolName, message.toolArgs, toolBaseDirs(sideSession, sideCwd))}</div>
         {:else if message.role === 'error'}
           <div class="side-error">{message.text}</div>
         {:else}
@@ -322,6 +334,9 @@
     color: var(--text-tertiary);
     font-family: var(--font-mono);
     font-size: var(--text-xs);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .side-tool.error {

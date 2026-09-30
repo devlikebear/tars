@@ -1042,13 +1042,13 @@ func setupAgentLoop(
 				"upstream tool executed",
 				evt.ToolName,
 				evt.ToolCallID,
-				statusPreviewForTool(evt.ToolName, evt.ToolArgs, 180),
+				providerToolArgsPreview(evt.ToolName, evt.ToolArgs, 180),
 				"",
 			)
 			*toolCalls = append(*toolCalls, ToolCallRecord{
 				ToolName:    evt.ToolName,
 				ToolCallID:  evt.ToolCallID,
-				ToolArgs:    statusPreviewForTool(evt.ToolName, evt.ToolArgs, 500),
+				ToolArgs:    providerToolArgsPreview(evt.ToolName, evt.ToolArgs, 500),
 				ToolResult:  providerToolPendingResult,
 				ToolIsError: false,
 				upstream:    true,
@@ -1059,7 +1059,7 @@ func setupAgentLoop(
 				"upstream tool completed",
 				evt.ToolName,
 				evt.ToolCallID,
-				statusPreviewForTool(evt.ToolName, evt.ToolArgs, 180),
+				providerToolArgsPreview(evt.ToolName, evt.ToolArgs, 180),
 				statusPreviewForTool(evt.ToolName, evt.ToolResult, 180),
 				evt.ToolIsError,
 			)
