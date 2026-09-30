@@ -910,11 +910,14 @@
     return `tier-pill ${tier}`
   }
 
+  // A tier picked on the card is kept for the whole session, like a pick in
+  // the status bar: the turn asks the server to pin it.
   async function continueWithTier(tier: ChatTier) {
     if (!pendingTierRecommendation) return
-    const recommendation = tierRecommendationPayload(pendingTierRecommendation, tier)
+    const recommendation = { ...tierRecommendationPayload(pendingTierRecommendation, tier), pin: true }
     pendingTierRecommendation = null
     pendingTierMessage = ''
+    void chatSession.setPinnedTier(tier)
     await submitChat({ recommendation, allowPrompt: false })
   }
 
@@ -944,8 +947,8 @@
     }
 
     let tierRecommendation = options.recommendation
-    // A tier pinned in the status bar applies to every turn, not just the
-    // first; without it later turns fall back to the role default.
+    // A pinned tier applies to every turn, not just the first. The server
+    // keeps it on the session too; sending it covers a pin not saved yet.
     const pinnedTier = chatSession.pinnedTier
     if (!tierRecommendation && pinnedTier) {
       tierRecommendation = pinnedTierPayload(pinnedTier)

@@ -62,7 +62,7 @@
   }
 
   function selectTier(value: string) {
-    chatSession.setPinnedTier(isPinnableTier(value) ? value : null)
+    void chatSession.setPinnedTier(isPinnableTier(value) ? value : null)
   }
 
   async function transitionCwd(path: string) {
@@ -82,7 +82,10 @@
 </script>
 
 <div class="status-bar" role="group" aria-label={$t.statusBar.label}>
-  <label class="status-item tier-picker" title={pinnedTier ? $t.statusBar.tierPinnedHint(pinnedTier) : $t.statusBar.tierAutoHint}>
+  <label
+    class="status-item tier-picker"
+    title={chatSession.tierPinError ? $t.statusBar.tierPinFailed(chatSession.tierPinError) : pinnedTier ? $t.statusBar.tierPinnedHint(pinnedTier) : $t.statusBar.tierAutoHint}
+  >
     <span class="status-label">{$t.statusBar.tier}</span>
     <select
       class="tier-select"

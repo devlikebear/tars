@@ -102,7 +102,11 @@ func buildSessionChatRunState(
 		return chatRunState{}, err
 	}
 	history := historySnapshot.Messages
-	tierRecommendation, err := resolveChatTierRecommendation(tierInput, userMessage, len(history) == 0 && autoRecommendTier)
+
+	// Fetch session early for WorkDirs and the pinned tier
+	sess, sessErr := reqStore.Get(sessionID)
+
+	tierRecommendation, err := resolveChatTierRecommendation(tierInput, userMessage, len(history) == 0 && autoRecommendTier, sessionTierPin(sess, sessErr))
 	if err != nil {
 		return chatRunState{}, err
 	}
@@ -114,9 +118,11 @@ func buildSessionChatRunState(
 	if err != nil {
 		return chatRunState{}, err
 	}
-
-	// Fetch session early for WorkDirs
-	sess, sessErr := reqStore.Get(sessionID)
+	if sessErr == nil {
+		if err := pinChatTierIfAsked(reqStore, &sess, tierInput, tierRecommendation); err != nil {
+			return chatRunState{}, err
+		}
+	}
 
 	// Session artifacts directory — always available, isolated per session
 	artifactsDir := filepath.Join(requestWorkspaceDir, "artifacts", sessionID)
@@ -349,9 +355,10 @@ func prepareChatRunState(r *http.Request, req chatRequestPayload, deps chatHandl
 	// The tier is resolved again inside buildSessionChatRunState, which may
 	// additionally apply an auto-recommendation. That path only engages on a
 	// session's first message, where there is no history to compact, so the
-	// explicit-or-default tier is the right one to size against here.
+	// explicit, pinned, or default tier is the right one to size against here.
 	compactionOpts := deps.tooling.Compaction
-	if _, sizing, resolveErr := deps.resolveChatClientForTier(chatRequestedTier(req)); resolveErr == nil {
+	pinnedTier := sessionTierPin(reqStore.Get(sessionID))
+	if _, sizing, resolveErr := deps.resolveChatClientForTier(chatRequestedTier(req, pinnedTier)); resolveErr == nil {
 		compactionOpts = applyTierContextWindow(compactionOpts, sizing, deps.logger)
 	}
 	compactionInfo, err := maybeAutoCompactSession(requestWorkspaceDir, transcriptPath, sessionID, reqStore, deps.router, deps.logger, compactionOpts, deps.tooling.MemorySemanticConfig)

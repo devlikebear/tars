@@ -517,9 +517,20 @@ func newSessionAPIHandlerFullWithLocalSkillsAndWorkLedger(store *session.Store, 
 					Title    *string `json:"title,omitempty"`
 					Archived *bool   `json:"archived,omitempty"`
 					Pinned   *bool   `json:"pinned,omitempty"`
+					// TierPin keeps a tier for every turn; "" clears it.
+					TierPin *string `json:"tier_pin,omitempty"`
 				}
 				if !decodeJSONBody(w, r, &req) {
 					return
+				}
+				tierPin := ""
+				if req.TierPin != nil && strings.TrimSpace(*req.TierPin) != "" {
+					parsed, err := llm.ParseTier(*req.TierPin)
+					if err != nil {
+						writeJSON(w, http.StatusBadRequest, map[string]string{"error": "tier_pin: " + err.Error()})
+						return
+					}
+					tierPin = parsed.String()
 				}
 				var updated session.Session
 				var err error
@@ -543,6 +554,17 @@ func newSessionAPIHandlerFullWithLocalSkillsAndWorkLedger(store *session.Store, 
 				}
 				if req.Pinned != nil {
 					updated, err = reqStore.SetPinned(sessionID, *req.Pinned)
+					if err != nil {
+						writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+						return
+					}
+				}
+				if req.TierPin != nil {
+					if err := reqStore.SetTierPin(sessionID, tierPin); err != nil {
+						writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+						return
+					}
+					updated, err = reqStore.Get(sessionID)
 					if err != nil {
 						writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 						return

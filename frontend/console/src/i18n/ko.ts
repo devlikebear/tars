@@ -119,6 +119,7 @@ export const ko = {
     tierAuto: '자동',
     tierAutoHint: '첫 턴은 서버가 티어를 고르고, 이후에는 기본값을 씁니다.',
     tierPinnedHint: (tier: string) => `바꾸기 전까지 이 세션의 모든 턴에 ${tier}를 씁니다.`,
+    tierPinFailed: (error: string) => `티어를 고정하지 못했습니다: ${error}`,
     customTiersHint: '사용자 정의 티어는 아직 턴마다 고정할 수 없습니다.',
     servedBy: (tier: string, model: string) => `최근 턴: ${tier}${model ? ` · ${model}` : ''}`,
     permission: '권한',

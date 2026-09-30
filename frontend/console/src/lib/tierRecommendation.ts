@@ -127,9 +127,10 @@ function hasAny(text: string, signals: string[]): boolean {
   return signals.some((signal) => text.includes(signal))
 }
 
-// The chat status bar pins a tier for the session. The server only accepts a
-// per-turn tier through tier_recommendation, and only heavy/standard/light,
-// so a pinned tier rides along on every turn as an accepted user choice.
+// The chat status bar (or the first-turn card) pins a tier for the session.
+// The server saves it on the session (tier_pin) and uses it for turns that
+// carry no tier. Only heavy/standard/light can be pinned. The console still
+// sends it with pin: true, so a pin whose save failed still reaches the server.
 export const pinnableTiers: readonly ChatTier[] = ['heavy', 'standard', 'light']
 
 export function isPinnableTier(value: string): value is ChatTier {
@@ -145,5 +146,6 @@ export function pinnedTierPayload(tier: ChatTier): ChatTierRecommendationRequest
     confidence: 1,
     accepted: true,
     source: 'user',
+    pin: true,
   }
 }

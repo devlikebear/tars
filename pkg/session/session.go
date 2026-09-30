@@ -281,13 +281,16 @@ type Session struct {
 	// PermissionMode is the tool permission mode picked for this session in
 	// the console (manual, accept_edits, plan, auto). Empty keeps the
 	// configured default.
-	PermissionMode string         `json:"permission_mode,omitempty"`
-	ArchivedAt     *time.Time     `json:"archived_at,omitempty"`
-	PinnedAt       *time.Time     `json:"pinned_at,omitempty"`
-	Goal           *SessionGoal   `json:"goal,omitempty"`
-	Critic         *SessionCritic `json:"critic,omitempty"`
-	CreatedAt      time.Time      `json:"created_at"`
-	UpdatedAt      time.Time      `json:"updated_at"`
+	PermissionMode string `json:"permission_mode,omitempty"`
+	// TierPin is the LLM tier the user chose for every turn of this session
+	// (heavy, standard, light). Empty lets each turn take the default.
+	TierPin    string         `json:"tier_pin,omitempty"`
+	ArchivedAt *time.Time     `json:"archived_at,omitempty"`
+	PinnedAt   *time.Time     `json:"pinned_at,omitempty"`
+	Goal       *SessionGoal   `json:"goal,omitempty"`
+	Critic     *SessionCritic `json:"critic,omitempty"`
+	CreatedAt  time.Time      `json:"created_at"`
+	UpdatedAt  time.Time      `json:"updated_at"`
 }
 
 type Store struct {
@@ -1538,6 +1541,33 @@ func (s *Store) SetPermissionMode(id string, mode string) error {
 		return nil
 	}
 	sess.PermissionMode = trimmed
+	sess.UpdatedAt = time.Now().UTC()
+	index[id] = sess
+	return s.saveIndex(index)
+}
+
+// SetTierPin records the tier every turn of the session uses; "" clears it.
+// The value is stored as given: callers validate it.
+func (s *Store) SetTierPin(id string, tier string) error {
+	unlock := lockPath(s.indexPath())
+	defer unlock()
+	index, err := s.loadIndex()
+	if err != nil {
+		return err
+	}
+	sess, ok := index[id]
+	if !ok {
+		return ErrSessionNotFound
+	}
+	sess, _, err = s.applySessionDefaults(sess)
+	if err != nil {
+		return err
+	}
+	trimmed := strings.TrimSpace(tier)
+	if sess.TierPin == trimmed {
+		return nil
+	}
+	sess.TierPin = trimmed
 	sess.UpdatedAt = time.Now().UTC()
 	index[id] = sess
 	return s.saveIndex(index)

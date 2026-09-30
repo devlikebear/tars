@@ -119,6 +119,7 @@ export const en = {
     tierAuto: 'Auto',
     tierAutoHint: 'The server picks a tier for the first turn, then uses the default.',
     tierPinnedHint: (tier: string) => `Every turn in this session uses ${tier} until you change it.`,
+    tierPinFailed: (error: string) => `Could not keep the tier: ${error}`,
     customTiersHint: 'Custom tiers cannot be pinned per turn yet.',
     servedBy: (tier: string, model: string) => `last turn: ${tier}${model ? ` · ${model}` : ''}`,
     permission: 'Permissions',

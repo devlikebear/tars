@@ -716,6 +716,7 @@ pkg/session field Session.PinnedAt
 pkg/session field Session.PromptOverride
 pkg/session field Session.RootSessionID
 pkg/session field Session.StyleControl
+pkg/session field Session.TierPin
 pkg/session field Session.Title
 pkg/session field Session.ToolConfig
 pkg/session field Session.UpdatedAt
@@ -893,6 +894,7 @@ pkg/session method Store.SetPinned
 pkg/session method Store.SetPromptOverride
 pkg/session method Store.SetStyleControl
 pkg/session method Store.SetTasksSavedHook
+pkg/session method Store.SetTierPin
 pkg/session method Store.SetTitle
 pkg/session method Store.SetToolConfig
 pkg/session method Store.SetUpstreamSessionID

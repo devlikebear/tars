@@ -26,9 +26,12 @@ function session(id: string, extra: Record<string, unknown> = {}) {
 // A fake API that records calls. Individual methods can be overridden.
 function fakeApi(overrides: Record<string, unknown> = {}) {
   const calls: string[] = []
+  // Tier pins the fake server has saved, returned on the session record.
+  const pins: Record<string, string> = {}
+  const withPin = (id: string) => session(id, pins[id] ? { tier_pin: pins[id] } : {})
   const api = {
     listSessions: async () => { calls.push('listSessions'); return [session('a'), session('b')] },
-    getSession: async (id: string) => { calls.push(`getSession:${id}`); return session(id) },
+    getSession: async (id: string) => { calls.push(`getSession:${id}`); return withPin(id) },
     getSessionHistory: async (id: string) => { calls.push(`getSessionHistory:${id}`); return [] },
     getSessionTasks: async (id: string) => {
       calls.push(`getSessionTasks:${id}`)
@@ -43,6 +46,12 @@ function fakeApi(overrides: Record<string, unknown> = {}) {
     setSessionCwd: async (id: string, target: string) => { calls.push(`setSessionCwd:${id}:${target}`) },
     getSessionGoal: async (id: string) => { calls.push(`getSessionGoal:${id}`); return { goal: null } },
     renameSession: async (id: string, title: string) => { calls.push(`renameSession:${id}:${title}`) },
+    setSessionTierPin: async (id: string, tier: string | null) => {
+      calls.push(`setSessionTierPin:${id}:${tier ?? ''}`)
+      if (tier) pins[id] = tier
+      else delete pins[id]
+      return withPin(id)
+    },
     compactSession: async (id: string) => {
       calls.push(`compactSession:${id}`)
       return { compacted: true, compacted_count: 3, original_count: 10, final_count: 7, tokens_before: 100, tokens_after: 40 }
@@ -307,6 +316,78 @@ test('a tier pinned before the first send moves to the adopted session', () => {
   store.adoptSession('fresh')
   assert.equal(store.pinnedTier, 'light')
   assert.equal(store.pinnedTiers[''], undefined)
+})
+
+test('a pinned tier is saved on the session and cleared by Auto', async () => {
+  const { store, calls } = newStore()
+  store.setActive('a')
+  await flush()
+  assert.equal(await store.setPinnedTier('heavy'), true)
+  assert.ok(calls.includes('setSessionTierPin:a:heavy'))
+  assert.equal(store.pinnedTier, 'heavy')
+  assert.equal(await store.setPinnedTier(null), true)
+  assert.ok(calls.includes('setSessionTierPin:a:'))
+  assert.equal(store.pinnedTier, null)
+})
+
+test('the pin comes back from the session record after a reload', async () => {
+  const { store } = newStore({
+    getSession: async (id: string) => session(id, id === 'a' ? { tier_pin: 'heavy' } : {}),
+  })
+  store.setActive('a')
+  await flush()
+  assert.equal(store.pinnedTier, 'heavy')
+  store.setActive('b')
+  await flush()
+  assert.equal(store.pinnedTier, null)
+})
+
+test('a session record without a pin clears a stale one', async () => {
+  const { store } = newStore()
+  store.pinnedTiers = { a: 'light' }
+  store.setActive('a')
+  await flush()
+  assert.equal(store.pinnedTier, null)
+})
+
+test('a failed save puts the previous pick back', async () => {
+  const { store } = newStore({
+    getSession: async (id: string) => session(id, { tier_pin: 'light' }),
+    setSessionTierPin: async () => { throw new Error('offline') },
+  })
+  store.setActive('a')
+  await flush()
+  assert.equal(await store.setPinnedTier('heavy'), false)
+  assert.equal(store.pinnedTier, 'light')
+  assert.equal(store.tierPinError, 'offline')
+})
+
+test('a session load that started before a pick does not undo it', async () => {
+  const load = deferred<ReturnType<typeof session>>()
+  const { store } = newStore({ getSession: () => load.promise })
+  store.setActive('a')
+  const saved = store.setPinnedTier('heavy')
+  load.resolve(session('a'))
+  await saved
+  await flush()
+  assert.equal(store.pinnedTier, 'heavy')
+})
+
+test('a draft pin is saved on the session the first turn creates', async () => {
+  const { store, calls } = newStore()
+  store.setActive(null)
+  await store.setPinnedTier('heavy')
+  assert.ok(!calls.some((call) => call.startsWith('setSessionTierPin')), 'no session to save on yet')
+  store.adoptSession('fresh')
+  await flush()
+  assert.ok(calls.includes('setSessionTierPin:fresh:heavy'))
+  assert.equal(store.pinnedTier, 'heavy')
+  // A reload reads it back from the session.
+  store.pinnedTiers = {}
+  store.setActive('other')
+  store.setActive('fresh')
+  await flush()
+  assert.equal(store.pinnedTier, 'heavy')
 })
 
 test('usage and the permission override load for the active session', async () => {

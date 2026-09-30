@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
-import { buildTierRecommendation, tierRecommendationPayload } from '../src/lib/tierRecommendation.ts'
+import { buildTierRecommendation, pinnedTierPayload, tierRecommendationPayload } from '../src/lib/tierRecommendation.ts'
 import { chatThreadEn } from '../src/i18n/sections/chatThread.ts'
 
 const chatPanelSource = readFileSync(new URL('../src/components/ChatPanel.svelte', import.meta.url), 'utf8')
@@ -32,6 +32,15 @@ test('tier recommendation payload records accepted and overridden choices', () =
   assert.equal(accepted.chosen_tier, 'light')
   assert.equal(overridden.accepted, false)
   assert.equal(overridden.chosen_tier, 'standard')
+})
+
+test('a pinned tier asks the server to keep it for the session', () => {
+  const payload = pinnedTierPayload('heavy')
+  assert.equal(payload.chosen_tier, 'heavy')
+  assert.equal(payload.pin, true)
+  // A tier picked on the first-turn card is pinned the same way.
+  const card = chatPanelSource.slice(chatPanelSource.indexOf('async function continueWithTier'))
+  assert.match(card.slice(0, card.indexOf('\n  }\n')), /pin: true[\s\S]*chatSession\.setPinnedTier\(tier\)/)
 })
 
 test('chat panel exposes first-turn tier recommendation controls', () => {

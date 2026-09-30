@@ -700,6 +700,8 @@ export type Session = {
   worktree?: SessionWorktree | null
   // 'off' turns automatic worktrees off for the session.
   isolation?: string
+  // The tier every turn of the session uses; absent means auto.
+  tier_pin?: string
   created_at: string
   updated_at: string
 }
@@ -959,6 +961,8 @@ export type ChatTierRecommendationRequest = {
   confidence: number
   accepted: boolean
   source?: string
+  // Keep chosen_tier for every later turn of the session (session tier_pin).
+  pin?: boolean
 }
 
 // Per-turn context snapshot ChatPanel derives from the stream's status events
