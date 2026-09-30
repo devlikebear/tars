@@ -981,6 +981,8 @@ export type ChatRequest = {
   // The console answers permission_request events, so tool prompts may
   // wait for it (#970).
   interactive_permissions?: boolean
+  // Comments on and reverts of earlier turns' changes (#969).
+  review_notes?: import('./api/checkpoints').ReviewNote[]
 }
 
 export type MemoryAsset = {

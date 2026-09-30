@@ -27,3 +27,16 @@ export function turnCardAnchors(messages: ThreadMessage[]): Map<string, string> 
   close()
   return anchors
 }
+
+const notesOpen = '<review-notes>'
+const notesClose = '</review-notes>'
+
+// Splits the server's review-notes block off a stored user message, so the
+// thread can fold it. count is the number of notes in it.
+export function splitReviewNotes(text: string): { text: string; notes: string; count: number } {
+  const start = text.lastIndexOf(`\n\n${notesOpen}`)
+  if (start < 0 || !text.trimEnd().endsWith(notesClose)) return { text, notes: '', count: 0 }
+  const notes = text.slice(start + 2).trimEnd()
+  const count = (notes.match(/^\d+\. /gm) ?? []).length
+  return { text: text.slice(0, start), notes, count }
+}
