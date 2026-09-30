@@ -66,19 +66,19 @@ func TestChatAlwaysRuleStorePersistsPerFolder(t *testing.T) {
 
 func TestChatAlwaysRuleStoreResolvesSymlinks(t *testing.T) {
 	workspace := t.TempDir()
-	real := t.TempDir()
+	target := t.TempDir()
 	link := filepath.Join(t.TempDir(), "link")
-	if err := os.Symlink(real, link); err != nil {
+	if err := os.Symlink(target, link); err != nil {
 		t.Skipf("symlink: %v", err)
 	}
 	store := newChatAlwaysRuleStore(workspace)
 	if err := store.add(link, chatAlwaysRule{Provider: chatRuleProviderTARS, Tool: "exec", Content: "ls:*"}); err != nil {
 		t.Fatalf("add: %v", err)
 	}
-	if got := store.list(real); len(got) != 1 {
+	if got := store.list(target); len(got) != 1 {
 		t.Fatalf("the same folder through a symlink has no rules: %+v", got)
 	}
-	if got := store.list(filepath.Join(real, ".")); len(got) != 1 {
+	if got := store.list(filepath.Join(target, ".")); len(got) != 1 {
 		t.Fatalf("an unclean path of the same folder has no rules: %+v", got)
 	}
 }

@@ -670,7 +670,7 @@ func writeClaudeCodeMCPConfigFile(servers []ClaudeCodeMCPServer) (string, func()
 func writeClaudeCodeSettingsFile(deny, allow []string) (string, func(), error) {
 	allowRules, err := normalizedClaudeCodeRules(allow)
 	if err != nil {
-		return "", func() {}, fmt.Errorf("allow rules: %w", err)
+		return "", func() { /* nothing written yet, nothing to remove */ }, fmt.Errorf("allow rules: %w", err)
 	}
 	seen := make(map[string]struct{}, len(deny))
 	rules := make([]string, 0, len(deny))
