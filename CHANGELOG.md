@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.40.4] - 2026-09-30
+
+### Fixed
+
+- **`claude-code-cli` 도구 카드 라벨이 이스케이프된 JSON으로 보이던 문제** — 실시간 도구 카드가 `Bash(args="{\"command\":\"rg -n …`처럼 나와 무슨 명령인지 읽기 어려웠다. 서버가 인자 미리보기를 JSON 텍스트째로 180자(스트림)·500자(transcript)에서 잘라, 입력이 긴 도구는 깨진 JSON이 되어 콘솔이 원문을 그대로 보여 준 것이다. 짧은 입력은 파싱돼서 같은 턴 안에서 두 형태가 섞였고, CLI가 키를 정렬해 인코딩하므로 Write는 `file_path`가 긴 `content` 뒤에 와 가장 먼저 잘렸다. 이제 서버(`providerToolArgsPreview`)는 텍스트가 아니라 값을 줄인다: 라벨에 쓰는 인자(`file_path`, `command`, `pattern` 등)를 앞에 두고, 비밀값은 값마다 가려, 미리보기가 항상 유효한 JSON으로 한도 안에 들어온다. 콘솔(`lib/cliToolLabels.ts`)은 Bash는 명령·설명, 파일 도구는 세션 폴더(또는 그 worktree) 기준 상대 경로, Grep/Glob은 패턴·경로, WebFetch/WebSearch는 URL·검색어, Task/Agent는 설명으로 라벨을 만든다. 모르는 도구는 전처럼 일반 표시다. 실시간 카드, 다시 재생되는 턴 피드, 옆 세션 패널이 같은 라벨을 쓰고, 예전에 잘린 transcript도 너그럽게 읽는다. 카드를 펼치면 전체 인자는 그대로 보인다.
+
 ## [0.40.3] - 2026-09-30
 
 ### Fixed
