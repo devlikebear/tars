@@ -13,6 +13,7 @@ pkg/agentloop const EventLoopEnd
 pkg/agentloop const EventLoopError
 pkg/agentloop const EventLoopStart
 pkg/agentloop const EventProviderTool
+pkg/agentloop const EventProviderToolResult
 pkg/agentloop field AuditEntry.Error
 pkg/agentloop field AuditEntry.Iteration
 pkg/agentloop field AuditEntry.MessageCount
@@ -148,6 +149,7 @@ pkg/llm field ChatOptions.ClaudeCodePermissionHandler
 pkg/llm field ChatOptions.ClaudeCodePermissionMode
 pkg/llm field ChatOptions.ClaudeCodeSkills
 pkg/llm field ChatOptions.OnDelta
+pkg/llm field ChatOptions.OnProviderTool
 pkg/llm field ChatOptions.OnReasoningDelta
 pkg/llm field ChatOptions.PersistSession
 pkg/llm field ChatOptions.ReasoningEffort
@@ -239,6 +241,10 @@ pkg/llm field ProviderOptions.ReasoningEffort
 pkg/llm field ProviderOptions.ServiceTier
 pkg/llm field ProviderOptions.ThinkingBudget
 pkg/llm field ProviderOptions.WorkDir
+pkg/llm field ProviderToolEvent.Call
+pkg/llm field ProviderToolEvent.Finished
+pkg/llm field ProviderToolEvent.IsError
+pkg/llm field ProviderToolEvent.Result
 pkg/llm field ReasoningBlock.Data
 pkg/llm field ReasoningBlock.Signature
 pkg/llm field ReasoningBlock.Text
@@ -379,6 +385,7 @@ pkg/llm type OpenAICodexClient
 pkg/llm type OpenAICompatibleClient
 pkg/llm type ProviderError
 pkg/llm type ProviderOptions
+pkg/llm type ProviderToolEvent
 pkg/llm type ReasoningBlock
 pkg/llm type ResponseFormat
 pkg/llm type ResponseFormatType

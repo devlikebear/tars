@@ -140,7 +140,9 @@ func executeChatLoop(
 			return llm.ChatResponse{Message: llm.ChatMessage{Content: partial}}, deltaSent, *toolCallRecords, err
 		}
 		deps.logger.Debug().Str("session_id", state.sessionID).Err(err).Msg("llm chat call failed")
-		return llm.ChatResponse{}, false, nil, err
+		// The tools that ran before the failure (a CLI provider's timeout,
+		// say) stay on record so the reopened session still shows them.
+		return llm.ChatResponse{}, false, *toolCallRecords, err
 	}
 	if state.store != nil {
 		if upstream := strings.TrimSpace(chatResp.SessionID); upstream != "" && upstream != resumeID {
@@ -163,9 +165,22 @@ func executeChatLoop(
 	return chatResp, deltaSent, *toolCallRecords, nil
 }
 
-func persistChatResult(state chatRunState, userMessage string, chatResp llm.ChatResponse, toolCalls []ToolCallRecord, logger zerolog.Logger) {
-	now := time.Now().UTC()
-	// Persist tool call messages before the assistant response
+// persistInterruptedTurn saves what a failed or cancelled turn got done. A
+// partial reply is saved with every tool call, as before. Without one, only
+// the tools the upstream provider ran are saved: a CLI provider's turn can
+// run for minutes of tool work before a timeout, and that work is on disk.
+// Tool messages with no assistant reply after them never reach the model
+// again (buildLLMMessageHistory drops them), so they only feed the console.
+func persistInterruptedTurn(state chatRunState, userMessage string, chatResp llm.ChatResponse, toolCalls []ToolCallRecord, logger zerolog.Logger) {
+	toolCalls = markInterruptedProviderTools(toolCalls)
+	if chatResp.Message.Content != "" {
+		persistChatResult(state, userMessage, chatResp, toolCalls, logger)
+		return
+	}
+	persistToolCallRecords(state, upstreamToolCallRecords(toolCalls), time.Now().UTC(), logger)
+}
+
+func persistToolCallRecords(state chatRunState, toolCalls []ToolCallRecord, now time.Time, logger zerolog.Logger) {
 	for _, tc := range toolCalls {
 		toolMsg := session.Message{
 			Role:        "tool",
@@ -180,6 +195,12 @@ func persistChatResult(state chatRunState, userMessage string, chatResp llm.Chat
 			logger.Error().Err(err).Str("tool", tc.ToolName).Msg("append tool message failed")
 		}
 	}
+}
+
+func persistChatResult(state chatRunState, userMessage string, chatResp llm.ChatResponse, toolCalls []ToolCallRecord, logger zerolog.Logger) {
+	now := time.Now().UTC()
+	// Persist tool call messages before the assistant response
+	persistToolCallRecords(state, toolCalls, now, logger)
 	assistantMsg := session.Message{
 		Role:      "assistant",
 		Content:   chatResp.Message.Content,

@@ -29,6 +29,7 @@
     type SlashCommandCandidate,
   } from '../lib/slash'
   import type { ChatMessage } from '../lib/chatMessages'
+  import { isProviderToolPhase, providerToolCard, settleInterruptedProviderTools, settleProviderToolCard } from '../lib/providerToolCards'
   import { fileChangeFromEvent, mergeToolFileChange } from '../lib/toolFileChanges'
   import { approvalFromEvent, resolveApproval, withdrawPendingApprovals, type ChatApproval } from '../lib/chatApproval'
   import ChatApprovalCard from './ChatApprovalCard.svelte'
@@ -131,7 +132,7 @@
 
   function getStatusStepPhase(phase: string): (typeof CHAT_STATUS_PROGRESS_STEPS)[number] | '' {
     if (!phase) return ''
-    if (phase === 'before_tool_call' || phase === 'after_tool_call') return 'tool'
+    if (phase === 'before_tool_call' || phase === 'after_tool_call' || isProviderToolPhase(phase)) return 'tool'
     if (phase === 'connecting' || phase === 'loop_start' || phase === 'before_llm' || phase === 'after_llm' || phase === 'done') {
       return phase
     }
@@ -192,7 +193,7 @@
     if (phase !== previousPhase) {
       if (chatBusy) {
         startChatStatusTicker()
-      } else if (['connecting', 'loop_start', 'before_llm', 'before_tool_call', 'after_tool_call', 'after_llm', 'done', 'cancelled'].includes(phase)) {
+      } else if (['connecting', 'loop_start', 'before_llm', 'before_tool_call', 'after_tool_call', 'provider_tool', 'provider_tool_result', 'after_llm', 'done', 'cancelled'].includes(phase)) {
         chatStatusElapsedMs = 0
         chatStatusPhaseStartAt = Date.now()
       }
@@ -218,8 +219,10 @@
       case 'after_llm':
         return text.afterLlm
       case 'before_tool_call':
+      case 'provider_tool':
         return toolName ? text.toolRunning(toolName) : text.runningTool
       case 'after_tool_call':
+      case 'provider_tool_result':
         return toolName ? text.toolApplyingResult(toolName) : text.applyingToolResult
       case 'skill_selected':
         return skillName ? text.namedSkillSelected(skillName) : (msg || text.skillSelected)
@@ -427,6 +430,21 @@
             if ((event.tool_name || '').trim() === 'project_skill') {
               void reloadSlashSkillsAndCandidates()
             }
+          }
+        } else if (event.phase === 'provider_tool' && event.tool_name) {
+          // A tool the CLI provider runs itself: the same card, drawn as the
+          // CLI starts it. A replayed turn feed may repeat a call the
+          // reloaded history already shows, so an existing card is kept.
+          addUsedToolName(event.tool_name)
+          const exists = !!event.tool_call_id && chatMessages.some((m) => m.role === 'tool' && m.toolCallId === event.tool_call_id)
+          const card = exists ? null : providerToolCard(event, Date.now())
+          if (card) insertBeforeStreaming(card, assistantRef)
+        } else if (event.phase === 'provider_tool_result' && event.tool_call_id) {
+          const settled = settleProviderToolCard(chatMessages, event, Date.now())
+          if (settled) {
+            chatMessages = settled
+            void scrollToBottom()
+            onToolComplete?.(event.tool_name || '')
           }
         } else if (event.phase === 'skill_selected' && event.skill_name) {
           publishContextInfo({
@@ -1016,7 +1034,7 @@
       chatBusy = false
       // A stream that ended without closing a prompt (aborted, or dropped)
       // leaves nothing to answer it.
-      chatMessages = withdrawPendingApprovals(chatMessages)
+      chatMessages = settleInterruptedProviderTools(withdrawPendingApprovals(chatMessages), Date.now())
       stopChatStatusTicker()
       void scrollToBottom()
     }
@@ -1119,7 +1137,7 @@
       if (abortController === ac) abortController = null
       if (attached) {
         chatBusy = false
-        chatMessages = withdrawPendingApprovals(chatMessages)
+        chatMessages = settleInterruptedProviderTools(withdrawPendingApprovals(chatMessages), Date.now())
         stopChatStatusTicker()
         void scrollToBottom()
       }

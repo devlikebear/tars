@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.40.0] - 2026-09-30
+
+### Added
+
+- **`claude-code-cli`가 실행하는 도구가 콘솔에 실시간 카드로 뜬다** — 지금까지는 CLI가 파일을 읽고(Read/Grep) 고치고(Edit) 명령을 돌려도(Bash) 턴이 끝날 때까지 채팅에 아무것도 보이지 않아, 몇 분 동안 첫 문장만 떠 있었다. 도구 기록은 호출이 끝난 뒤에야 `ProviderExecutedTools`로 한꺼번에 나왔고, 콘솔은 그 `provider_tool` 이벤트를 그리지도 않았다. 이제 stream-json의 `tool_use`가 오는 즉시 도구 카드가 실행 중으로 뜨고, CLI가 돌려준 `tool_result`가 오면 완료 또는 실패로 바뀐다(네이티브 도구 카드와 같은 모양, 옆 세션 패널 포함). 새로고침하거나 세션을 다시 열어도 턴 피드와 transcript에서 같은 카드가 중복 없이 보인다. 턴이 타임아웃·에러·취소로 끊겨도 그때까지 실행된 도구 기록은 transcript에 남고, 결과를 못 받은 도구는 `(no result: the turn ended before the upstream tool reported back)`로 저장된다. 공개 API: provider 중립 콜백 `llm.ChatOptions.OnProviderTool(llm.ProviderToolEvent)`, `agentloop.EventProviderToolResult`, SSE status phase `provider_tool_result`. 실시간 보고를 못 하는 provider는 전처럼 호출이 끝난 뒤 한꺼번에 나온다. CLI가 실행한 도구는 `before/after_tool_call`과 분리해 TARS 도구 사용량에 세지 않는다.
+
 ## [0.39.3] - 2026-09-30
 
 ### Fixed

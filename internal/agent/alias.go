@@ -35,6 +35,8 @@ const (
 	EventLoopError      = pkgagentloop.EventLoopError
 	EventLoopStart      = pkgagentloop.EventLoopStart
 	EventProviderTool   = pkgagentloop.EventProviderTool
+
+	EventProviderToolResult = pkgagentloop.EventProviderToolResult
 )
 
 var (
