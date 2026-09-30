@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.39.0] - 2026-09-30
+
+### Added
+
+- **먼저 말을 거는 initiative 루프 — 섀도 모드 (#999, Epic #997)** — TARS가 "지금 말을 걸까, 건다면 어떻게"를 1분마다 판단하는 루프가 생겼다. 기본은 꺼져 있고(`initiative.enabled: false`), 이번 버전은 `mode: shadow`만 있어 **판단만 기록하고 메시지는 보내지 않는다**. 판단은 세 겹이다: Go가 정확히 계산하는 신호(조용한 시간, 입력 중, 콘솔을 막 연 도착, 3시간 넘는 긴 세션, 하루 이상 부재, 쿨다운·하루 한도), System One 서버가 사용자 원문을 읽어 답하는 원자 신호 3개(조용히 해달라고 했나 / 지쳐 보이나 / 특별한 날인가), 둘을 합치는 순수 함수 정책(`greet` / `check_in` / `body_only` / `none`). 스파이크(#998)에서 작은 System One에게 "말을 걸까"를 통째로 물으면 AUC≈0.5로 동전 던지기였고, 원문을 읽는 원자 질문은 0.95~1.0이어서 이렇게 나눴다. System One은 새 `internal/jev` 클라이언트가 `/v1/systemone` 프로토콜로 부른다 — 호스팅 Jev든 로컬 Kev-0.8B든 `jev.base_url`만 바꾸면 된다(한국어 원문 AUC 0.92로 로컬 권고는 Kev). **사용자 메시지와 USER.md는 `base_url`이 loopback일 때만 보낸다**; 원격이면 메타데이터만 가고 텍스트 신호는 꺼진다. 섀도 모드에서 실제로 하는 행동은 콘솔을 켜 둔 채 쉬고 있을 때 `initiative.body_provider`로 지정한 몸(스택짱)이 짓는 무음 표정 하나뿐이고, 이를 위해 `embodiment.Subsystem.Act`가 에이전트 턴 없이 몸 동작을 보낸다. 모든 판단은 텍스트 없는 ledger(`workspace/_shared/initiative/ledger.jsonl`, 5MB 회전)에 남아 재시작 뒤에도 한도·쿨다운이 이어지고, 최근 판단은 `GET /v1/initiative/status`로 본다. `tars doctor`가 System One 도달 여부와 loopback 여부를 점검한다. 새 LLM 도구는 없고 pulse와도 섞지 않았다. 메시지 발송은 P2(#1000)다.
+
 ## [0.38.0] - 2026-09-30
 
 ### Added

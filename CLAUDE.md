@@ -41,6 +41,7 @@ make console-e2e          # Playwright: rebuilt console + tars serve + mock LLM 
 | `cron` | Tick-based scheduler (30s). `@at` one-time + cron exprs. History capped 50/job |
 | `pulse` | Watchdog (1-min): cron failures, stuck runs, disk, telegram, reflection → `pulse_decide` |
 | `reflection` | Nightly (02:00-05:00): experience extraction + empty session cleanup |
+| `initiative` | Speak-first loop (1-min, off by default, shadow only): Go signals + System One text signals → pure policy → ledger |
 | `ops` | System health, cleanup planning + approval workflow |
 | `llm` | Provider abstraction (anthropic/openai/openai-codex/gemini/gemini-native/claude-code-cli/antigravity-cli) + 3-tier Router |
 | `memory` | Semantic: Gemini embeddings, cosine similarity, JSONL entries |
@@ -49,6 +50,7 @@ make console-e2e          # Playwright: rebuilt console + tars serve + mock LLM 
 | `serverauth` | Bearer token auth, SHA256, three tiers (legacy/user/admin), loopback bypass |
 | `config` | YAML → env override → defaults. 60+ fields |
 | `mcp` | Model Context Protocol client |
+| `jev` | `/v1/systemone` client for System One servers (hosted Jev or local Kev); shared with #973 |
 | `skill` | `.md` skill files with YAML frontmatter |
 
 **Layering (enforced — `make arch-check`):**
@@ -67,6 +69,13 @@ cmd/  →  app layer  →  core layer  →  pkg/
 - `RegistryScopeUser` forbids `ops_`, `pulse_`, `reflection_` prefixes — panics at register time
 - Pulse uses narrow Go interfaces only; LLM calls only `pulse_decide`
 - Reflection has **no LLM tool surface** — deterministic Go only
+
+**Initiative (Epic #997):**
+- 먼저 말을 거는 루프. `initiative.enabled` 기본 false, P1은 `mode: shadow`만 — 판단만 기록하고 말하지 않는다. 실제 행동은 `body_provider`가 있을 때의 무음 표정(`body_only`)뿐
+- 판단 구조: Go가 정확한 신호(시각·조용한 시간, 입력 중, 콘솔 도착, 긴 세션·부재, 쿨다운·하루 한도)를 계산 → System One이 사용자 원문을 읽어 원자 신호 3개(`quiet_requested`/`user_strained`/`special_day`, 기준값 config) → 순수 함수 `initiative.Decide`가 intent 결정. P0(#998)에서 "말 걸까"를 System One에 통째로 묻는 방식은 AUC≈0.5로 실패했다 — **합친 판단을 System One에 묻지 말 것, 정형 사실(개수·시각)도 묻지 말 것**
+- **사용자 원문(최근 메시지·USER.md)은 `jev.base_url`이 loopback일 때만** state에 들어간다(`jev.Client.IsLoopback`). 원격이면 메타데이터만 보내고 텍스트 신호는 꺼진다. ledger(`workspace/_shared/initiative/ledger.jsonl`)는 텍스트를 저장하지 않는다
+- 로컬 백엔드 권고는 Kev-0.8B(한국어 원문 AUC 0.92, 약 3.1GB). TARS는 모델 프로세스를 띄우지 않고 `tars doctor`가 도달 여부만 점검
+- 상태: `GET /v1/initiative/status`. 새 LLM 도구 없음, pulse와 분리
 
 **LLM Provider Pool:**
 - `LLMConfig`: `LLMProviders` (alias → settings), `LLMTiers` (name → binding), `LLMDefaultTier`, `LLMRoleDefaults`

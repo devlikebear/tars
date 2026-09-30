@@ -221,6 +221,22 @@ func Schema() []FieldMeta {
 		// ── Embodiment ───────────────────────────
 		f("embodiment_enabled", "Embodiment", "bool", "Enabled", "Enable the dormant embodiment subsystem"),
 		fjson("embodiment_providers_json", "Embodiment", "Providers", "Body provider descriptors and declared capabilities"),
+		// ── Initiative ───────────────────────────
+		f("initiative_enabled", "Initiative", "bool", "Enabled", "Let TARS decide when to speak first (shadow mode records decisions only)"),
+		fsel("initiative_mode", "Initiative", "Mode", "shadow records decisions without speaking", []string{"shadow"}),
+		f("initiative_tick", "Initiative", "string", "Tick", "How often to evaluate (e.g. 1m)"),
+		f("initiative_quiet_hours", "Initiative", "string", "Quiet Hours", "HH:MM-HH:MM window with no initiatives"),
+		f("initiative_timezone", "Initiative", "string", "Timezone", "IANA timezone for quiet hours (empty = server local)"),
+		f("initiative_daily_cap", "Initiative", "int", "Daily Cap", "Maximum spoken initiatives per day"),
+		f("initiative_cooldown", "Initiative", "string", "Cooldown", "Minimum gap between spoken initiatives"),
+		f("initiative_body_provider", "Initiative", "string", "Body Provider", "Embodiment provider for silent expressions"),
+		f("initiative_threshold_quiet_requested", "Initiative", "float", "Quiet Requested Threshold", "System One probability that counts as a quiet request"),
+		f("initiative_threshold_user_strained", "Initiative", "float", "User Strained Threshold", "System One probability that counts as strain"),
+		f("initiative_threshold_special_day", "Initiative", "float", "Special Day Threshold", "System One probability that counts as a special day"),
+		f("jev_base_url", "Initiative", "string", "System One URL", "Base URL of a /v1/systemone server; user text is sent only to a loopback host"),
+		fs("jev_api_key", "Initiative", "System One API Key", "Bearer token for a hosted System One", true),
+		f("jev_model", "Initiative", "string", "System One Model", "Model name sent with each request"),
+		f("jev_timeout_seconds", "Initiative", "int", "System One Timeout", "Per-request timeout in seconds"),
 
 		// ── Extensions ───────────────────────────
 		f("skills_enabled", "Extensions", "bool", "Skills Enabled", "Load and serve skill definitions"),
@@ -579,6 +595,37 @@ func extractValue(yamlKey string, cfg Config) any {
 		return cfg.Embodiment.Enabled
 	case "embodiment_providers_json":
 		return cloneEmbodimentProviders(cfg.Embodiment.Providers)
+	// Initiative
+	case "initiative_enabled":
+		return cfg.Initiative.Enabled
+	case "initiative_mode":
+		return cfg.Initiative.Mode
+	case "initiative_tick":
+		return cfg.Initiative.Tick
+	case "initiative_quiet_hours":
+		return cfg.Initiative.QuietHours
+	case "initiative_timezone":
+		return cfg.Initiative.Timezone
+	case "initiative_daily_cap":
+		return cfg.Initiative.DailyCap
+	case "initiative_cooldown":
+		return cfg.Initiative.Cooldown
+	case "initiative_body_provider":
+		return cfg.Initiative.BodyProvider
+	case "initiative_threshold_quiet_requested":
+		return cfg.Initiative.QuietRequestedThreshold
+	case "initiative_threshold_user_strained":
+		return cfg.Initiative.UserStrainedThreshold
+	case "initiative_threshold_special_day":
+		return cfg.Initiative.SpecialDayThreshold
+	case "jev_base_url":
+		return cfg.Jev.BaseURL
+	case "jev_api_key":
+		return cfg.Jev.APIKey
+	case "jev_model":
+		return cfg.Jev.Model
+	case "jev_timeout_seconds":
+		return cfg.Jev.TimeoutSeconds
 	// Extensions
 	case "skills_enabled":
 		return cfg.SkillsEnabled

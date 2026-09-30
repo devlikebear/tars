@@ -82,6 +82,16 @@ func (s *Subsystem) resolveProvider(provider string) (ProviderDescriptor, bool) 
 	return desc, true
 }
 
+// Act routes one body action to a configured provider without an agent
+// turn. The initiative loop uses it for silent expressions.
+func (s *Subsystem) Act(ctx context.Context, provider string, action BodyAction) RouteResult {
+	desc, ok := s.resolveProvider(provider)
+	if !ok {
+		return RouteResult{Action: action, Provider: provider, Dropped: true, Reason: "unknown_provider"}
+	}
+	return s.router.Route(ctx, action, desc)
+}
+
 func (s *Subsystem) Start(ctx context.Context) error {
 	if s == nil {
 		return nil

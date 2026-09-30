@@ -106,3 +106,21 @@ companion:
 embodiment:
   enabled: false
   providers: []
+
+initiative:
+  enabled: false
+  mode: shadow
+  tick: 1m
+  quiet_hours: "23:00-07:00"
+  daily_cap: 6
+  cooldown: 45m
+  body_provider: ""
+  thresholds:
+    quiet_requested: 0.55
+    user_strained: 0.60
+    special_day: 0.55
+
+jev:
+  base_url: ""
+  model: ""
+  timeout_seconds: 10
