@@ -1,4 +1,5 @@
 import type { ChatApproval } from './chatApproval.ts'
+import type { ToolFileChange } from './toolFileChanges.ts'
 
 export type ToolOutputLine = {
   stream: 'stdout' | 'stderr' | string
@@ -24,6 +25,9 @@ export type ChatMessage = {
   // Streaming stdout/stderr lines emitted while the tool runs.
   // Currently populated by exec via SSE `tool_output_line` events.
   toolOutputLines?: ToolOutputLine[]
+  // Files the call changed, from SSE `file_change` events (#1032). Only
+  // native providers send them; absent for CLI providers and reloaded history.
+  toolFileChanges?: ToolFileChange[]
   usage?: {
     input_tokens: number
     output_tokens: number

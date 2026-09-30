@@ -45,8 +45,11 @@ type Event struct {
 	ToolIdempotencyKeyArgument string
 	ToolReplayed               bool
 	ToolReceiptID              string
-	SessionID                  string
-	Err                        error
+	// ToolFileChanges lists the files a tool call changed (#1032), from
+	// Result.FileChanges. Replayed and denied calls carry none.
+	ToolFileChanges []tool.FileChange
+	SessionID       string
+	Err             error
 }
 
 type Hook interface {
@@ -417,6 +420,7 @@ func (l *Loop) Run(ctx context.Context, initial []llm.ChatMessage, opts RunOptio
 				ToolIdempotencyKeyArgument: recoveryPolicy.IdempotencyKeyArgument,
 				ToolReplayed:               replayed,
 				ToolReceiptID:              strings.TrimSpace(replay.ReceiptID),
+				ToolFileChanges:            result.FileChanges,
 			}
 			if opts.AfterTool != nil {
 				if hookErr := opts.AfterTool(ctx, afterToolEvent); hookErr != nil {

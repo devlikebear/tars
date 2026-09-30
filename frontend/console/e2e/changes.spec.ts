@@ -59,6 +59,18 @@ test('a turn that edits three files shows its diff in the thread and the Changes
   await expect(approvals(page)).toContainText('Allowed for this session: write_file')
   expect(readFileSync(join(dir, 'base.txt'), 'utf8')).toContain('line 19 edited')
 
+  // Each write_file card carries its file's change as the call finished
+  // (#1032): the +/− summary on the card, the diff under the file row.
+  const toolCards = page.locator('.chat-log .chat-tool')
+  await expect(toolCards).toHaveCount(3)
+  await expect(toolCards.locator('.tool-change-totals')).toHaveText(['+2 −2', '+3 −0', '+1 −0'])
+  await toolCards.nth(0).locator('.tool-header').click()
+  const baseChange = toolCards.nth(0).locator('.tool-change')
+  await expect(baseChange.locator('.tool-change-path')).toHaveText('base.txt')
+  await baseChange.locator('.tool-change-head').click()
+  await expect(baseChange.locator('.diff-table')).toContainText('line 19 edited')
+  await toolCards.nth(0).locator('.tool-header').click()
+
   // The card under the turn: collapsed summary, then every file's diff.
   await expect(card(page)).toContainText('3 files +6 −2')
   await card(page).locator('.turn-changes-toggle').click()

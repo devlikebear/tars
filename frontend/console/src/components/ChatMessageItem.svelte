@@ -11,6 +11,8 @@
   import MarkdownContent from './MarkdownContent.svelte'
   import SubagentProgressCard from './SubagentProgressCard.svelte'
   import ChatStreamingStatus from './ChatStreamingStatus.svelte'
+  import ToolCallChanges from './ToolCallChanges.svelte'
+  import { totalFileChanges } from '../lib/toolFileChanges'
   import { buildSubagentProgress } from '../lib/subagentProgress'
   import { splitReviewNotes } from '../lib/changes'
 
@@ -49,6 +51,7 @@
   let invocationPreview = $derived(formatToolInvocationPreview(message.toolName, message.toolArgs))
   let argsJSON = $derived(formatToolJSON(message.toolArgs))
   let resultJSON = $derived(formatToolJSON(message.toolResult))
+  let fileTotals = $derived(totalFileChanges(message.toolFileChanges))
   let toolBadgeClass = $derived(tone === 'error' ? 'badge-error' : tone === 'running' ? 'badge-accent' : 'badge-default')
   let subagentProgress = $derived(message.role === 'tool' ? buildSubagentProgress({
     toolName: message.toolName,
@@ -72,6 +75,9 @@
       <summary class="tool-header">
         <span class="tool-icon">{tone === 'error' ? '!' : message.toolDone ? '\u2713' : '\u27F3'}</span>
         <span class="tool-name">{invocationPreview}</span>
+        {#if fileTotals.files > 0}
+          <span class="tool-change-totals" title={$t.chatThread.tool.changes(fileTotals.files)}><span class="plus">+{fileTotals.additions}</span> <span class="minus">−{fileTotals.deletions}</span></span>
+        {/if}
         {#if elapsedLabel}
           <span class="tool-elapsed">{elapsedLabel}</span>
         {/if}
@@ -90,6 +96,9 @@
             <pre class="tool-output-body"><code>{#each message.toolOutputLines as line, i (i)}<span class={line.stream === 'stderr' ? 'tool-output-stderr' : 'tool-output-stdout'}>{line.text}</span>
 {/each}</code></pre>
           </details>
+        {/if}
+        {#if message.toolFileChanges && message.toolFileChanges.length > 0}
+          <ToolCallChanges changes={message.toolFileChanges} />
         {/if}
         {#if resultJSON}
           <div class="tool-detail">
@@ -269,6 +278,26 @@
   }
 
   .tool-badge { font-size: 10px; padding: 1px 6px; }
+
+  .tool-change-totals {
+    margin-left: auto;
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .tool-change-totals + .tool-elapsed {
+    margin-left: 0;
+  }
+
+  .tool-change-totals .plus {
+    color: var(--success);
+  }
+
+  .tool-change-totals .minus {
+    color: var(--error);
+  }
 
   .tool-detail-grid {
     display: grid;
