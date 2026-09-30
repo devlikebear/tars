@@ -73,6 +73,9 @@
   --space-8: 32px;
   --space-10: 40px;
 
+  /* layout */
+  --chat-rail-width: 44px;
+
   /* radius — tight, tool-like */
   --radius-sm: 2px;
   --radius-md: 4px;
