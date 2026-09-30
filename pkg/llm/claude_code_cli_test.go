@@ -831,7 +831,7 @@ func shellQuote(value string) string {
 func TestWriteClaudeCodeSettingsFile(t *testing.T) {
 	t.Run("empty yields no file", func(t *testing.T) {
 		for _, in := range [][]string{nil, {}, {"", "   ", "\t"}} {
-			path, cleanup, err := writeClaudeCodeSettingsFile(in)
+			path, cleanup, err := writeClaudeCodeSettingsFile(in, nil)
 			if err != nil {
 				t.Fatalf("unexpected error for %v: %v", in, err)
 			}
@@ -845,7 +845,7 @@ func TestWriteClaudeCodeSettingsFile(t *testing.T) {
 	t.Run("trims dedups and preserves order", func(t *testing.T) {
 		path, cleanup, err := writeClaudeCodeSettingsFile([]string{
 			"  Bash(rm:*)  ", "WebFetch", "Bash(rm:*)", "", "WebFetch", "Bash(git push:*)",
-		})
+		}, nil)
 		if err != nil {
 			t.Fatalf("write: %v", err)
 		}
@@ -885,7 +885,7 @@ func TestWriteClaudeCodeSettingsFile(t *testing.T) {
 	t.Run("adversarial keys stay inside deny array", func(t *testing.T) {
 		path, cleanup, err := writeClaudeCodeSettingsFile([]string{
 			`env`, `apiKeyHelper`, `hooks`, `{"env":{"ANTHROPIC_API_KEY":"x"}}`,
-		})
+		}, nil)
 		if err != nil {
 			t.Fatalf("write: %v", err)
 		}
@@ -1028,5 +1028,74 @@ printf '%s\n' '{"type":"result","subtype":"success","is_error":false,"stop_reaso
 	args, _ := os.ReadFile(argsPath)
 	if strings.Contains(string(args), "--settings") {
 		t.Fatalf("expected no --settings flag when deny all-blank, got:\n%s", args)
+	}
+}
+
+// Always-allow rules come only from TARS' own store (never from .tars
+// files) and land beside any deny rules; Claude Code applies deny first.
+func TestWriteClaudeCodeSettingsFile_AllowRules(t *testing.T) {
+	path, cleanup, err := writeClaudeCodeSettingsFile([]string{"Bash(rm:*)"}, []string{" Bash(npm test:*) ", "Edit", "Bash(npm test:*)", ""})
+	if err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	defer cleanup()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	var doc struct {
+		Permissions map[string][]string `json:"permissions"`
+	}
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatalf("decode: %v\n%s", err, raw)
+	}
+	if !reflect.DeepEqual(doc.Permissions["allow"], []string{"Bash(npm test:*)", "Edit"}) ||
+		!reflect.DeepEqual(doc.Permissions["deny"], []string{"Bash(rm:*)"}) || len(doc.Permissions) != 2 {
+		t.Fatalf("permissions = %v", doc.Permissions)
+	}
+
+	// Allow alone still writes a file, with no deny key.
+	onlyAllow, done, err := writeClaudeCodeSettingsFile(nil, []string{"Edit"})
+	if err != nil || onlyAllow == "" {
+		t.Fatalf("allow-only: path %q err %v", onlyAllow, err)
+	}
+	defer done()
+	raw, _ = os.ReadFile(onlyAllow)
+	if !strings.Contains(string(raw), `"allow":["Edit"]`) || strings.Contains(string(raw), "deny") {
+		t.Fatalf("allow-only settings = %s", raw)
+	}
+
+	if _, _, err := writeClaudeCodeSettingsFile(nil, []string{"Bash(ls:*)\n\"hooks\""}); err == nil {
+		t.Fatal("an allow rule with a control character must be refused")
+	}
+}
+
+func TestClaudeCodeCLIClientChat_SettingsCarryAllowRules(t *testing.T) {
+	dir := t.TempDir()
+	argsPath := filepath.Join(dir, "claude-args.txt")
+	settingsCopy := filepath.Join(dir, "settings-copy.json")
+	script := "#!/bin/sh\nprintf '%s\\n' \"$@\" > " + shellQuote(argsPath) + "\n" +
+		`prev=""; for a in "$@"; do if [ "$prev" = "--settings" ]; then cp "$a" ` + shellQuote(settingsCopy) + `; fi; prev="$a"; done` + "\n" +
+		`printf '%s\n' '{"type":"result","subtype":"success","is_error":false,"result":"ok"}'` + "\n"
+	scriptPath := filepath.Join(dir, "claude")
+	if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("write stub: %v", err)
+	}
+	t.Setenv("CLAUDE_CODE_CLI_PATH", scriptPath)
+	client, err := NewProvider(ProviderOptions{Provider: "claude-code-cli", Model: "sonnet", WorkDir: dir})
+	if err != nil {
+		t.Fatalf("new provider: %v", err)
+	}
+	if _, err := client.Chat(context.Background(), []ChatMessage{{Role: "user", Content: "hi"}}, ChatOptions{
+		ClaudeCodePermissionAllow: []string{"Bash(npm test:*)"},
+	}); err != nil {
+		t.Fatalf("chat: %v", err)
+	}
+	raw, err := os.ReadFile(settingsCopy)
+	if err != nil {
+		t.Fatalf("no --settings file reached the CLI: %v", err)
+	}
+	if !strings.Contains(string(raw), `"allow":["Bash(npm test:*)"]`) {
+		t.Fatalf("settings = %s", raw)
 	}
 }

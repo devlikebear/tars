@@ -22,6 +22,7 @@ type scriptedLLMClient struct {
 	seenWorkDirs   []string
 	seenPersist    []bool
 	seenHandlers   []llm.ClaudeCodePermissionHandler
+	seenAllow      [][]string
 }
 
 func (c *scriptedLLMClient) Ask(ctx context.Context, prompt string) (string, error) {
@@ -40,6 +41,7 @@ func (c *scriptedLLMClient) Chat(ctx context.Context, messages []llm.ChatMessage
 	c.seenWorkDirs = append(c.seenWorkDirs, opts.WorkDir)
 	c.seenPersist = append(c.seenPersist, opts.PersistSession)
 	c.seenHandlers = append(c.seenHandlers, opts.ClaudeCodePermissionHandler)
+	c.seenAllow = append(c.seenAllow, opts.ClaudeCodePermissionAllow)
 	resp := c.responses[c.callIndex]
 	c.callIndex++
 	return resp, nil
@@ -1266,5 +1268,19 @@ func TestLoop_Run_ForwardsClaudeCodePermissionHandler(t *testing.T) {
 	}
 	if _, err := client.seenHandlers[0](context.Background(), llm.ClaudeCodePermissionRequest{}); err != nil || !called {
 		t.Fatalf("forwarded handler is not the caller's (called=%v, err=%v)", called, err)
+	}
+}
+
+// Always-allow rules reach every iteration, like the deny rules beside them.
+func TestLoop_Run_ForwardsClaudeCodePermissionAllow(t *testing.T) {
+	client := &scriptedLLMClient{responses: []llm.ChatResponse{{Message: llm.ChatMessage{Role: "assistant", Content: "ack"}}}}
+	loop := NewLoop(client, tool.NewRegistry())
+	if _, err := loop.Run(context.Background(), []llm.ChatMessage{{Role: "user", Content: "hi"}}, RunOptions{
+		ClaudeCodePermissionAllow: []string{"Bash(npm test:*)"},
+	}); err != nil {
+		t.Fatalf("loop run: %v", err)
+	}
+	if len(client.seenAllow) != 1 || len(client.seenAllow[0]) != 1 || client.seenAllow[0][0] != "Bash(npm test:*)" {
+		t.Fatalf("allow rules forwarded = %v", client.seenAllow)
 	}
 }

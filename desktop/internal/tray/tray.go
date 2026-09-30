@@ -225,6 +225,8 @@ func DecisionLabel(decision string) string {
 		return "Allow once"
 	case "allow_session":
 		return "Allow for this session"
+	case "allow_always":
+		return "Always allow in this folder"
 	case "deny":
 		return "Deny"
 	}

@@ -4,11 +4,11 @@
 // POST /v1/chat/permissions/{request_id}. Pure helpers, tested under Node.
 import type { ChatMessage } from './chatMessages.ts'
 
-export type ChatApprovalDecision = 'allow_once' | 'allow_session' | 'deny'
+export type ChatApprovalDecision = 'allow_once' | 'allow_session' | 'allow_always' | 'deny'
 
 // sending: answered here, waiting for the server to confirm.
 // withdrawn: the turn ended (or Claude Code dropped the question) first.
-export type ChatApprovalState = 'pending' | 'sending' | 'allowed' | 'allowed_session' | 'denied' | 'withdrawn'
+export type ChatApprovalState = 'pending' | 'sending' | 'allowed' | 'allowed_session' | 'allowed_always' | 'denied' | 'withdrawn'
 
 export type ChatApproval = {
   requestId: string
@@ -24,6 +24,9 @@ export type ChatApproval = {
   // The rule "allow for this session" adds, e.g. Bash(npm test:*). Absent
   // when the server offers none (compound commands, rm, sudo, ...).
   sessionRule?: string
+  // The folder "always allow" would cover, remembered by TARS across
+  // sessions and restarts. Absent when the server does not offer it.
+  alwaysDir?: string
   state: ChatApprovalState
   error?: string
 }
@@ -46,6 +49,7 @@ type PermissionEvent = {
   reason?: string
   agent_id?: string
   session_rule?: string
+  always_dir?: string
 }
 
 function text(value: unknown): string | undefined {
@@ -68,6 +72,7 @@ export function approvalFromEvent(event: PermissionEvent): ChatApproval | null {
     reason: text(event.reason),
     agentId: text(event.agent_id),
     sessionRule: text(event.session_rule),
+    alwaysDir: text(event.always_dir),
     state: 'pending',
   }
 }
@@ -85,7 +90,7 @@ export function approvalPreview(approval: ChatApproval): ChatApprovalPreview {
   return { kind: 'input', text: approval.input === undefined ? '' : JSON.stringify(approval.input, null, 2) }
 }
 
-const outcomes: ReadonlySet<string> = new Set(['allowed', 'allowed_session', 'denied', 'withdrawn'])
+const outcomes: ReadonlySet<string> = new Set(['allowed', 'allowed_session', 'allowed_always', 'denied', 'withdrawn'])
 
 // resolveApproval returns messages with the card for requestId settled, or
 // the same array when no card matches.
@@ -107,8 +112,9 @@ export function withdrawPendingApprovals(messages: ChatMessage[]): ChatMessage[]
   return messages.map((m) => (open(m) ? { ...m, approval: { ...(m.approval as ChatApproval), state: 'withdrawn' } } : m))
 }
 
-// decisionForKey maps the card's single-key shortcuts (y, s, n). s needs a
-// session rule, and a card that is not pending takes no keys.
+// decisionForKey maps the card's single-key shortcuts (y, s, a, n). s needs a
+// session rule, a an always folder, and a card that is not pending takes no
+// keys.
 export function decisionForKey(key: string, approval: ChatApproval): ChatApprovalDecision | null {
   if (approval.state !== 'pending') return null
   switch (key.toLowerCase()) {
@@ -116,6 +122,8 @@ export function decisionForKey(key: string, approval: ChatApproval): ChatApprova
       return 'allow_once'
     case 's':
       return approval.sessionRule ? 'allow_session' : null
+    case 'a':
+      return approval.alwaysDir ? 'allow_always' : null
     case 'n':
       return 'deny'
   }

@@ -117,6 +117,9 @@ func TestHelpers(t *testing.T) {
 	if got := truncate(strings.Repeat("가", 70), 60); len([]rune(got)) != 60 || !strings.HasSuffix(got, "…") {
 		t.Fatalf("truncate = %q", got)
 	}
+	if DecisionLabel("allow_always") != "Always allow in this folder" {
+		t.Fatalf("allow_always label = %q", DecisionLabel("allow_always"))
+	}
 	if DecisionLabel("custom") != "custom" || DecisionLabel("deny") != "Deny" || DecisionLabel("allow_once") != "Allow once" {
 		t.Fatal("decision labels")
 	}

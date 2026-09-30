@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -178,5 +179,23 @@ func TestApprovalPreviewFallsBackToTheDescription(t *testing.T) {
 	}
 	if got := approvalPreview(map[string]any{"input": json.RawMessage(`{"url":"https://example.com"}`)}); got != "https://example.com" {
 		t.Fatalf("preview = %q", got)
+	}
+}
+
+// Other clients (the desktop tray) learn which answers a question takes:
+// "always allow" only when the prompt names a folder it would cover.
+func TestChatActivityOffersAlwaysOnlyWithAFolder(t *testing.T) {
+	a := newChatActivity(nil, nil)
+	a.observe("s1", map[string]any{"type": "permission_request", "request_id": "r1", "tool_name": "Bash", "always_dir": "/repo"})
+	a.observe("s1", map[string]any{"type": "permission_request", "request_id": "r2", "tool_name": "Bash", "always_dir": ""})
+	decisions := map[string][]string{}
+	for _, p := range a.snapshot().Pending {
+		decisions[p.RequestID] = p.Decisions
+	}
+	if got := decisions["r1"]; !slices.Equal(got, []string{"allow_once", "allow_session", "allow_always", "deny"}) {
+		t.Fatalf("with a folder: %v", got)
+	}
+	if got := decisions["r2"]; !slices.Equal(got, []string{"allow_once", "allow_session", "deny"}) {
+		t.Fatalf("without a folder: %v", got)
 	}
 }
