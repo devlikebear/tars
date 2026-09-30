@@ -6,6 +6,14 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.39.1] - 2026-09-30
+
+### Fixed
+
+- **launchd 서비스로 돌면 `claude-code-cli`를 못 찾아 setup-only 모드로 뜨던 문제** — `claude`와 `agy`의 네이티브 설치 프로그램은 바이너리를 `~/.local/bin`에 두는데, `tars service install`이 만든 launchd 서비스의 PATH에는 이 폴더가 없다. 그래서 대화형 셸에서는 잘 되던 설치가 서비스에서는 시작 때 `claude-code-cli executable not found in PATH`로 LLM 초기화에 실패하고 setup-only 모드로 떨어져, 채팅 등 대부분의 API가 503을 돌려줬다. 이제 `FindClaudeCodeCLIPath` / `FindAntigravityCLIPath`는 PATH에서 못 찾으면 `~/.local/bin/<name>`을 확인한다(기존 서비스 설치도 재설치 없이 동작). 새로 설치하는 서비스는 launchd PATH 맨 앞에 `~/.local/bin`을 넣는다. `CLAUDE_CODE_CLI_PATH` / `AGY_CLI_PATH`는 여전히 가장 먼저 적용된다.
+
+- **설정 화면의 Test connection이 `claude-code-cli`에서 항상 실패하던 문제** — 버튼이 모델 목록 API(`GET /v1/models`)를 부르는데, CLI provider는 모델 목록을 가져올 수 없어 `live model listing is unsupported for llm provider: claude-code-cli`로 400을 받았다. `antigravity-cli`는 아예 지원 목록에 없어 500이었다. 이제 CLI provider에서는 로컬 CLI 바이너리를 찾아 `source: "cli"`, 새 필드 `cli_path`, 그 provider에 tier로 묶인 모델을 200으로 돌려주고, 콘솔은 `claude-code-cli: CLI found at <경로>`를 보여준다. 바이너리가 없으면 설치 안내와 함께 400이다. 로그인 여부까지는 확인하지 않는다 — 그러려면 사용량이 차감되는 실제 호출이 필요하다. 알 수 없는 provider 종류는 500 대신 400을 돌려준다.
+
 ## [0.39.0] - 2026-09-30
 
 ### Added
