@@ -8,6 +8,8 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ### Added
 
+- **무인 실행도 세션 권한 모드를 따른다 (#970)** — 세션을 Ask / Accept edits / Plan 모드로 두면, 그 세션의 cron 작업·텔레그램 메시지 처리와 그 세션이 띄운 subagent도 같은 규칙으로 도구를 쓴다. 지금까지 이런 실행은 지켜보는 사람이 없어 모든 도구를 묻지 않고 실행했다. 물어야 할 호출은 ops 승인 큐에 **도구 호출 승인**(`tool_permission`)으로 올라가고 "입력 필요" 알림이 뜨며, 실행은 답을 기다린다. 답은 Ops 페이지나, 그 세션 채팅 입력창 위에 나타나는 입력 필요 바에서 한다. 승인하면 호출이 실행되고, 거부하면 건너뛰고 모델에 거부 사실을 알린다. 30분 안에 아무도 답하지 않으면 호출을 건너뛰고 `expired`로 닫으며, 서버가 재시작되면 남은 질문도 닫는다. "이 폴더에서 항상 허용" 규칙은 무인 실행에도 적용된다. 모드를 고르지 않았거나 Auto인 세션은 이전과 같이 동작한다. 결정은 모두 자동화 감사 기록에 `source`(cron / telegram / subagent)와 함께 남는다.
+
 - **Changes 패널: 파일 트리와 턴 행에서 바로 되돌리기 (#969)** — 선택한 턴의 바뀐 파일을 폴더 트리로 보여준다. 폴더 행은 파일 수와 +/− 합계를 보이고 접고 펼 수 있으며, 폴더 하나만 든 폴더는 한 행(`src/lib/`)으로 합친다. 턴 목록의 각 행 옆 `↺` 버튼은 그 턴 전체를 되돌린다 — 턴을 먼저 고를 필요 없이 `턴 되돌리기`와 같은 미리보기·확인을 거친다.
 
 - **세션별 권한 모드와 plan 승인 (#970)** — 채팅 상태 바에서 세션마다 권한 모드를 고른다: **Ask**(위험 도구마다 묻기), **Accept edits**(파일 편집은 묻지 않음), **Plan**(읽기만; 편집·명령 거부), **Auto**(묻지 않음). 컴포저에서 `⇧Tab`으로 순환한다. 세션 값은 `.tars` override와 `llm.claude_code_cli.permission_mode`보다 우선하며, `claude-code-cli`는 `--permission-mode`로, 네이티브 provider는 도구 게이트로 적용된다. 고르지 않으면 이전 동작 그대로다(네이티브는 Ask, `claude-code-cli`는 설정값). Plan 모드에서 Claude Code가 `ExitPlanMode`로 계획을 내면 대화에 계획 카드가 뜨고 "승인 · 편집 허용" / "승인 · 자동" / "계속 계획"으로 답한다 — 승인하면 모드가 저장되고 실행 중인 CLI도 바로 전환된다. 네이티브 provider는 plan 모드에서 위험 도구를 카드 없이 거부하고, 답이 끝난 뒤 컴포저 위 plan 바에서 승인한다. 모드 변경과 도구 승인·거부·철회는 ops 자동화 감사 기록(`GET /v1/ops/automation-audit?session_id=`)에 남는다. `antigravity-cli`는 CLI 자체 설정이 권한을 정하므로 상태 바에 "CLI 정책"으로만 표시한다. 공개 API: `session.Session.PermissionMode`, `session.Store.SetPermissionMode`.

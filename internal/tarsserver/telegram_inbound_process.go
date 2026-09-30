@@ -95,12 +95,14 @@ func (h *telegramInboundHandler) processMessage(
 	runCtx = apptool.WithCurrentTelegramTarget(runCtx, chatID, threadID, "telegram")
 
 	loop := agent.NewLoop(chatClient, registry)
-	resp, err := loop.Run(runCtx, llmMessages, agent.RunOptions{
+	runOptions := agent.RunOptions{
 		MaxIterations: resolveAgentMaxIterations(h.maxIterations),
 		Tools:         injectedSchemas,
 		BlockedTools:  resolvedTools.Blocked,
 		ToolChoice:    toolChoice,
-	})
+	}
+	h.tooling.Unattended.options(sessionID, h.workspaceDir, "telegram", "telegram").apply(&runOptions)
+	resp, err := loop.Run(runCtx, llmMessages, runOptions)
 	if err != nil {
 		return "", sessionID, err
 	}

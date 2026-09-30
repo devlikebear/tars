@@ -886,6 +886,10 @@ export type Translations = {
     gitDestructive: string
     gitAction: string
     candidatesSuffix: (count: number) => string
+    toolCall: (tool: string) => string
+    toolSource: (source: string) => string
+    openSession: string
+    toolWaiting: string
     approve: string
     reject: string
     auditTitle: string

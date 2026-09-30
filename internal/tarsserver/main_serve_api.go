@@ -204,6 +204,14 @@ func buildAPIMux(
 		logger,
 	)
 	dispatcher.store = notificationStore
+	// Tool approvals queued by unattended turns belong to turns that did
+	// not survive the restart; close them so the queue shows only live ones.
+	if expired, err := opsManager.ExpirePendingToolPermissions(); err != nil {
+		logger.Warn().Err(err).Msg("expire stale tool approvals failed")
+	} else if expired > 0 {
+		logger.Info().Int("count", expired).Msg("expired tool approvals left by a previous run")
+	}
+	unattended := newUnattendedPermissions(opsManager, sessionStore, newChatAlwaysRuleStore(cfg.WorkspaceDir), dispatcher.Emit)
 	// deps.LLMReady is true here — the setup-only branch returned earlier.
 	_, chatResolution, err := deps.llmRouter.ClientFor(llm.RoleChatMain)
 	if err != nil {
@@ -379,7 +387,7 @@ func buildAPIMux(
 	var pulseSetup pulseSetup
 
 	refreshAgentRuntimeExecutors := func(reason string) int {
-		executors := buildAgentRuntimeExecutors(cfg, apiRunPromptWithTools, logger)
+		executors := buildAgentRuntimeExecutors(cfg, withSubagentPermissions(apiRunPromptWithTools, unattended), logger)
 		agentRuntime.SetExecutors(executors, strings.TrimSpace(cfg.AgentRuntimeDefaultAgent))
 		agents := len(agentRuntime.Agents())
 		logger.Debug().Str("reason", reason).Int("agentruntime_agents", agents).Msg("agent runtime executors refreshed")
@@ -421,6 +429,7 @@ func buildAPIMux(
 		sessionStyleDefaultsFromConfig(cfg),
 	)
 	chatTooling.OpsManager = opsManager
+	chatTooling.Unattended = unattended
 	chatTooling.ExecMaxTimeoutMS = cfg.ToolsExecMaxTimeoutMS
 	chatTooling.ExecMaxBackgroundTimeoutMS = cfg.ToolsProcessMaxTimeoutMS
 	chatTooling.ClaudeCodeCLIPermissionMode = strings.TrimSpace(cfg.ClaudeCodeCLIPermissionMode)
