@@ -91,6 +91,45 @@ func (t *Tracker) CallCost(provider, model string, u llm.Usage) (cost float64, p
 	return cost, true, CostSourceEstimate
 }
 
+// upstreamPricingProvider names the price-table provider for the models a
+// provider runs upstream. claude-code-cli drives Anthropic models: its tiers
+// name them by alias, but its stream reports their real ids.
+var upstreamPricingProvider = map[string]string{
+	"claude-code-cli": "anthropic",
+}
+
+// PartialCallCost prices what a failed call spent (llm.PartialUsageError).
+// A cost the provider reported wins, as in CallCost. Otherwise each
+// upstream model's share is estimated at that model's rates, which prices
+// claude-code-cli calls the alias-named tier cannot; it is known only when
+// every model was priceable, and unpriceable shares count as zero. With no
+// per-model split, the tier's (provider, model) estimate applies.
+func (t *Tracker) PartialCallCost(provider, model string, spent *llm.PartialUsageError) (cost float64, pricingKnown bool, source string) {
+	if spent == nil {
+		return 0, false, ""
+	}
+	if spent.Usage.CostUSD > 0 || len(spent.ByModel) == 0 {
+		return t.CallCost(provider, model, spent.Usage)
+	}
+	pricingProvider := provider
+	if mapped, ok := upstreamPricingProvider[strings.TrimSpace(strings.ToLower(provider))]; ok {
+		pricingProvider = mapped
+	}
+	pricingKnown = true
+	for upstreamModel, u := range spent.ByModel {
+		share, ok := t.EstimateCost(pricingProvider, upstreamModel, u)
+		if !ok {
+			pricingKnown = false
+			continue
+		}
+		cost += share
+	}
+	if !pricingKnown {
+		return cost, false, ""
+	}
+	return cost, true, CostSourceEstimate
+}
+
 func (t *Tracker) EstimateCost(provider, model string, u llm.Usage) (float64, bool) {
 	if t == nil {
 		return 0, false

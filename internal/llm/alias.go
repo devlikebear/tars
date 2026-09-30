@@ -47,6 +47,8 @@ type (
 	TierResolution           = pkgllm.TierResolution
 	ToolCall                 = pkgllm.ToolCall
 	ProviderToolEvent        = pkgllm.ProviderToolEvent
+	UpstreamSessionError     = pkgllm.UpstreamSessionError
+	PartialUsageError        = pkgllm.PartialUsageError
 	ToolChoice               = pkgllm.ToolChoice
 	ToolChoiceMode           = pkgllm.ToolChoiceMode
 	ToolFunctionSchema       = pkgllm.ToolFunctionSchema
@@ -130,4 +132,6 @@ var (
 	ToolChoiceRequired           = pkgllm.ToolChoiceRequired
 	ToolChoiceSpecific           = pkgllm.ToolChoiceSpecific
 	WithSelectionMetadata        = pkgllm.WithSelectionMetadata
+	UpstreamSessionIDFromError   = pkgllm.UpstreamSessionIDFromError
+	PartialUsageFromError        = pkgllm.PartialUsageFromError
 )

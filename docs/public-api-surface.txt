@@ -223,6 +223,9 @@ pkg/llm field FakeClient.ChatCalls
 pkg/llm field FakeClient.ChatResponse
 pkg/llm field FakeClient.Label
 pkg/llm field FakeClient.LastChatOptions
+pkg/llm field PartialUsageError.ByModel
+pkg/llm field PartialUsageError.Err
+pkg/llm field PartialUsageError.Usage
 pkg/llm field ProviderError.Cause
 pkg/llm field ProviderError.Message
 pkg/llm field ProviderError.Operation
@@ -291,6 +294,8 @@ pkg/llm field ToolCall.Name
 pkg/llm field ToolCall.ThoughtSignature
 pkg/llm field ToolChoice.Mode
 pkg/llm field ToolChoice.Name
+pkg/llm field UpstreamSessionError.Err
+pkg/llm field UpstreamSessionError.SessionID
 pkg/llm field Usage.CacheReadTokens
 pkg/llm field Usage.CacheWriteTokens
 pkg/llm field Usage.CachedTokens
@@ -320,6 +325,7 @@ pkg/llm func ParseRole
 pkg/llm func ParseRoleOrKeep
 pkg/llm func ParseTier
 pkg/llm func ParseTierOrKeep
+pkg/llm func PartialUsageFromError
 pkg/llm func RecommendTierForTask
 pkg/llm func SelectionMetadataFromContext
 pkg/llm func SupportsCapability
@@ -327,6 +333,7 @@ pkg/llm func ToolChoiceAuto
 pkg/llm func ToolChoiceNone
 pkg/llm func ToolChoiceRequired
 pkg/llm func ToolChoiceSpecific
+pkg/llm func UpstreamSessionIDFromError
 pkg/llm func WithSelectionMetadata
 pkg/llm method AnthropicClient.Ask
 pkg/llm method AnthropicClient.Chat
@@ -348,6 +355,8 @@ pkg/llm method OpenAICodexClient.LastCodexRateLimit
 pkg/llm method OpenAICodexClient.SetRateLimitObserver
 pkg/llm method OpenAICompatibleClient.Ask
 pkg/llm method OpenAICompatibleClient.Chat
+pkg/llm method PartialUsageError.Error
+pkg/llm method PartialUsageError.Unwrap
 pkg/llm method ProviderError.Error
 pkg/llm method ProviderError.Unwrap
 pkg/llm method Role.String
@@ -359,6 +368,8 @@ pkg/llm method Router.TierForRole
 pkg/llm method Tier.String
 pkg/llm method Tier.Valid
 pkg/llm method ToolChoice.String
+pkg/llm method UpstreamSessionError.Error
+pkg/llm method UpstreamSessionError.Unwrap
 pkg/llm type AnthropicClient
 pkg/llm type AntigravityCLIClient
 pkg/llm type Capability
@@ -383,6 +394,7 @@ pkg/llm type GeminiNativeClient
 pkg/llm type ModelFetcher
 pkg/llm type OpenAICodexClient
 pkg/llm type OpenAICompatibleClient
+pkg/llm type PartialUsageError
 pkg/llm type ProviderError
 pkg/llm type ProviderOptions
 pkg/llm type ProviderToolEvent
@@ -402,6 +414,7 @@ pkg/llm type ToolChoice
 pkg/llm type ToolChoiceMode
 pkg/llm type ToolFunctionSchema
 pkg/llm type ToolSchema
+pkg/llm type UpstreamSessionError
 pkg/llm type Usage
 pkg/mcp const TransportSSE
 pkg/mcp const TransportStdio

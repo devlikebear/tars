@@ -181,7 +181,8 @@ func (l *Loop) Run(ctx context.Context, initial []llm.ChatMessage, opts RunOptio
 	// iteration. Starts from caller intent, then follows whatever the
 	// provider returns so we stay attached to the same session even when the
 	// provider mints a fresh ID on the first (fresh) call.
-	activeResumeID := strings.TrimSpace(opts.ResumeSessionID)
+	seededResumeID := strings.TrimSpace(opts.ResumeSessionID)
+	activeResumeID := seededResumeID
 
 	for i := 0; i < maxIters; i++ {
 		l.emit(ctx, Event{Type: EventBeforeLLM, Iteration: i + 1, MessageCount: len(messages)})
@@ -205,6 +206,12 @@ func (l *Loop) Run(ctx context.Context, initial []llm.ChatMessage, opts RunOptio
 			ClaudeCodePermissionAllow:   opts.ClaudeCodePermissionAllow,
 		})
 		if err != nil {
+			// A session an earlier iteration saved (or the caller resumed)
+			// is still there after this call failed; say so unless the
+			// provider already named the session it used.
+			if activeResumeID != "" && (opts.PersistUpstreamSession || seededResumeID != "") && llm.UpstreamSessionIDFromError(err) == "" {
+				err = &llm.UpstreamSessionError{SessionID: activeResumeID, Err: err}
+			}
 			l.emit(ctx, Event{Type: EventLoopError, Iteration: i + 1, Err: err})
 			return llm.ChatResponse{}, err
 		}

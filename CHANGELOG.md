@@ -6,6 +6,14 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.40.6] - 2026-09-30
+
+### Fixed
+
+- **`claude-code-cli` 턴이 끊기면 다음 턴이 맥락을 잃던 문제** — 타임아웃·취소·에러로 끝난 호출도 CLI는 그때까지의 세션을 `~/.claude`에 저장하는데, TARS는 에러 경로에서 스트림의 `session_id`를 버리고 `UpstreamSessionID`도 성공 때만 갱신했다. 그래서 다음 턴은 그 사이 읽은 파일과 맥락 없이 새 세션으로 시작했고, 캐시도 처음부터 다시 썼다. 이제 provider 중립 `llm.UpstreamSessionError`(`UpstreamSessionIDFromError`)에 세션 ID를 실어 돌려주고, 채팅 서버가 성공·에러·취소 어느 경로에서든 저장해 다음 턴이 `--resume`으로 이어진다. 세션이 실제로 저장되는 호출(`--resume` 또는 `PersistSession`)에만 싣고, `--no-session-persistence`로 돈 일회성 호출에는 싣지 않는다. resume 실패 시 새 세션으로 한 번 다시 시작하는 폴백은 그대로다. `antigravity-cli`도 같은 방식으로 `conversation_id`를 돌려준다.
+
+- **끊긴 `claude-code-cli` 턴의 사용량이 집계에서 빠지던 문제** — 사용량을 마지막 `result` 이벤트에서만 읽어서, 강제로 끊긴 턴은 수십 번의 API 요청을 쓰고도 사용량 0으로 기록됐고 세션 비용에도 잡히지 않았다. 이제 result 없이 끝나면 assistant 이벤트의 `message.usage`를 `message.id`별로 한 번씩(같은 id가 반복되면 필드별 최댓값) 합산해 `llm.PartialUsageError{Usage, ByModel}`로 에러에 싣고, `usage.TrackedClient`가 이를 기록한다. 비용은 provider가 보고한 값이 있으면 그 값을, 없으면 스트림에 찍힌 실제 모델 id별로 기존 단가표(`claude-code-cli` → anthropic)로 추정한다(`source=estimate`). 가격을 모르는 모델은 토큰만 남기고 `pricing_known=false`다. 알려진 한계: 일시 실패 뒤 재시도한 호출은 첫 시도의 사용량이 빠진다.
+
 ## [0.40.5] - 2026-09-30
 
 ### Fixed

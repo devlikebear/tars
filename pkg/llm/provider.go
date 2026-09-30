@@ -349,6 +349,10 @@ type ChatResponse struct {
 	// "model wants TARS to execute this" semantic and stays nil for
 	// self-executing providers.
 	ProviderExecutedTools []ToolCall
+
+	// spentByModel carries a failed call's usage split by upstream model
+	// from a provider's stream parser to the PartialUsageError it returns.
+	spentByModel map[string]Usage
 }
 
 // ProviderToolEvent is one live report through ChatOptions.OnProviderTool.

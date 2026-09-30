@@ -136,10 +136,10 @@ func (c *ClaudeCodeCLIClient) runControlOnce(ctx context.Context, args []string,
 	}
 	resp, err = finishClaudeCodeCLIRun(ctx, clock.idle, stderr.String(), resp, parseErr, waitErr)
 	if err != nil {
-		return ChatResponse{}, err
+		return resp, err
 	}
 	if startErr != nil {
-		return ChatResponse{}, newProviderError(claudeCodeCLIProviderLabel, "request", startErr)
+		return ChatResponse{SessionID: resp.SessionID, Usage: resp.Usage, spentByModel: resp.spentByModel}, newProviderError(claudeCodeCLIProviderLabel, "request", startErr)
 	}
 	return resp, nil
 }

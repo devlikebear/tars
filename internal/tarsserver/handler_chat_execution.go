@@ -133,6 +133,10 @@ func executeChatLoop(
 		ToolAuthorizer:              chatToolGateFor(deps, state, stream, gateMode),
 	})
 	if err != nil {
+		// A CLI provider can fail (timeout, cancel, crash) after saving the
+		// upstream session it started; keep it so the next turn resumes
+		// with the context this one built instead of starting over.
+		rememberUpstreamSession(deps, state, llm.UpstreamSessionIDFromError(err), resumeID)
 		if ctx.Err() == context.Canceled {
 			// Return partial content on cancellation
 			partial := accumulated.String()
@@ -144,15 +148,7 @@ func executeChatLoop(
 		// say) stay on record so the reopened session still shows them.
 		return llm.ChatResponse{}, false, *toolCallRecords, err
 	}
-	if state.store != nil {
-		if upstream := strings.TrimSpace(chatResp.SessionID); upstream != "" && upstream != resumeID {
-			if persistErr := state.store.SetUpstreamSessionID(state.sessionID, upstream); persistErr != nil {
-				// Non-fatal: the next turn will just start a fresh upstream
-				// session instead of resuming. Log and continue.
-				deps.logger.Debug().Str("session_id", state.sessionID).Str("upstream_session_id", upstream).Err(persistErr).Msg("persist upstream session id failed")
-			}
-		}
-	}
+	rememberUpstreamSession(deps, state, chatResp.SessionID, resumeID)
 
 	deps.logger.Debug().
 		Str("session_id", state.sessionID).
@@ -163,6 +159,20 @@ func executeChatLoop(
 		Msg("llm chat call complete")
 
 	return chatResp, deltaSent, *toolCallRecords, nil
+}
+
+// rememberUpstreamSession stores the upstream session the turn ended on so
+// the next turn resumes it. Empty or unchanged IDs are left alone.
+func rememberUpstreamSession(deps chatHandlerDeps, state chatRunState, upstream, resumeID string) {
+	upstream = strings.TrimSpace(upstream)
+	if state.store == nil || upstream == "" || upstream == resumeID {
+		return
+	}
+	if err := state.store.SetUpstreamSessionID(state.sessionID, upstream); err != nil {
+		// Non-fatal: the next turn will just start a fresh upstream
+		// session instead of resuming. Log and continue.
+		deps.logger.Debug().Str("session_id", state.sessionID).Str("upstream_session_id", upstream).Err(err).Msg("persist upstream session id failed")
+	}
 }
 
 // persistInterruptedTurn saves what a failed or cancelled turn got done. A
