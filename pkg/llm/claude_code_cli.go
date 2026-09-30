@@ -388,7 +388,7 @@ func parseClaudeCodeCLIStream(stdout io.Reader, opts ChatOptions, hooks claudeCo
 	scanner := bufio.NewScanner(stdout)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
-	state := claudeCodeStreamState{onDelta: opts.OnDelta}
+	state := claudeCodeStreamState{onDelta: opts.OnDelta, onTool: opts.OnProviderTool}
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" {
@@ -421,13 +421,17 @@ func parseClaudeCodeCLIStream(stdout io.Reader, opts ChatOptions, hooks claudeCo
 // claudeCodeStreamState accumulates one stream's events into a ChatResponse.
 type claudeCodeStreamState struct {
 	onDelta       func(string)
+	onTool        func(ProviderToolEvent)
 	assistantText strings.Builder
 	toolCalls     []ToolCall
-	resultText    string
-	usage         Usage
-	stopReason    string
-	sessionID     string
-	turns         int
+	// openTools holds started calls by tool_use id until their tool_result
+	// arrives, so the result can be reported with the call it belongs to.
+	openTools  map[string]ToolCall
+	resultText string
+	usage      Usage
+	stopReason string
+	sessionID  string
+	turns      int
 }
 
 func (s *claudeCodeStreamState) apply(payload map[string]any) error {
@@ -437,6 +441,8 @@ func (s *claudeCodeStreamState) apply(payload map[string]any) error {
 	switch strings.TrimSpace(asString(payload["type"])) {
 	case "assistant":
 		s.applyAssistant(payload)
+	case "user":
+		s.applyUser(payload)
 	case "result":
 		return s.applyResult(payload)
 	}
@@ -447,6 +453,21 @@ func (s *claudeCodeStreamState) apply(payload map[string]any) error {
 func (s *claudeCodeStreamState) applyAssistant(payload map[string]any) {
 	text, calls := extractClaudeCodeAssistantBlocks(payload)
 	s.toolCalls = append(s.toolCalls, calls...)
+	// Text first: a message's words precede the tools it goes on to call.
+	s.appendText(text)
+	for _, call := range calls {
+		if s.onTool == nil || call.ID == "" {
+			continue
+		}
+		if s.openTools == nil {
+			s.openTools = map[string]ToolCall{}
+		}
+		s.openTools[call.ID] = call
+		s.onTool(ProviderToolEvent{Call: call})
+	}
+}
+
+func (s *claudeCodeStreamState) appendText(text string) {
 	if text == "" {
 		return
 	}
@@ -460,6 +481,23 @@ func (s *claudeCodeStreamState) applyAssistant(payload map[string]any) {
 	s.assistantText.WriteString(text)
 	if s.onDelta != nil {
 		s.onDelta(delta)
+	}
+}
+
+// applyUser reports the tool_result blocks the CLI feeds back to the model
+// after running a tool. Results for calls this stream never started (such
+// as a replayed transcript) are ignored.
+func (s *claudeCodeStreamState) applyUser(payload map[string]any) {
+	if s.onTool == nil || len(s.openTools) == 0 {
+		return
+	}
+	for _, result := range extractClaudeCodeToolResults(payload) {
+		call, ok := s.openTools[result.id]
+		if !ok {
+			continue
+		}
+		delete(s.openTools, result.id)
+		s.onTool(ProviderToolEvent{Call: call, Finished: true, Result: result.text, IsError: result.isError})
 	}
 }
 
@@ -944,6 +982,62 @@ func extractClaudeCodeAssistantBlocks(payload map[string]any) (string, []ToolCal
 		}
 	}
 	return text.String(), calls
+}
+
+type claudeCodeToolResult struct {
+	id      string
+	text    string
+	isError bool
+}
+
+// extractClaudeCodeToolResults reads the tool_result blocks of a stream-json
+// user event. Their content is a string or a list of content blocks, of
+// which the text blocks are kept.
+func extractClaudeCodeToolResults(payload map[string]any) []claudeCodeToolResult {
+	message, ok := payload["message"].(map[string]any)
+	if !ok {
+		return nil
+	}
+	blocks, ok := message["content"].([]any)
+	if !ok {
+		return nil
+	}
+	var results []claudeCodeToolResult
+	for _, raw := range blocks {
+		block, ok := raw.(map[string]any)
+		if !ok || strings.TrimSpace(asString(block["type"])) != "tool_result" {
+			continue
+		}
+		id := strings.TrimSpace(asString(block["tool_use_id"]))
+		if id == "" {
+			continue
+		}
+		results = append(results, claudeCodeToolResult{
+			id:      id,
+			text:    claudeCodeToolResultText(block["content"]),
+			isError: asBool(block["is_error"]),
+		})
+	}
+	return results
+}
+
+func claudeCodeToolResultText(content any) string {
+	if text, ok := content.(string); ok {
+		return text
+	}
+	parts, ok := content.([]any)
+	if !ok {
+		return ""
+	}
+	var texts []string
+	for _, raw := range parts {
+		part, ok := raw.(map[string]any)
+		if !ok || strings.TrimSpace(asString(part["type"])) != "text" {
+			continue
+		}
+		texts = append(texts, asString(part["text"]))
+	}
+	return strings.Join(texts, "\n")
 }
 
 func extractClaudeCodeUsage(raw any) Usage {

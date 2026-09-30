@@ -209,14 +209,13 @@ func handleChatRequest(w http.ResponseWriter, r *http.Request, deps chatHandlerD
 	if err != nil {
 		if chatCtx.Err() == context.Canceled {
 			stream.cancelled()
-			if chatResp.Message.Content != "" {
-				persistChatResult(state, req.Message, chatResp, toolCalls, deps.logger)
-			}
+			persistInterruptedTurn(state, req.Message, chatResp, toolCalls, deps.logger)
 			recordTierRecommendationSignal(deps.tooling.UsageTracker, state, "cancelled", chatResp.Usage)
 			deps.logger.Debug().Str("session_id", state.sessionID).Msg("chat request cancelled")
 			return
 		}
 		stream.error(err)
+		persistInterruptedTurn(state, req.Message, llm.ChatResponse{}, toolCalls, deps.logger)
 		recordTierRecommendationSignal(deps.tooling.UsageTracker, state, "error", llm.Usage{})
 		return
 	}

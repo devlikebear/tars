@@ -903,6 +903,52 @@ func latestTurnUsedTools(messages []session.Message) []string {
 	return used
 }
 
+const (
+	// providerToolPendingResult stands in for the result of a tool the
+	// upstream provider ran until (or unless) the provider reports it.
+	providerToolPendingResult = "(executed by upstream provider)"
+	// providerToolInterruptedResult replaces it when the turn ended —
+	// timed out, failed, or was cancelled — before the result came back.
+	providerToolInterruptedResult = "(no result: the turn ended before the upstream tool reported back)"
+)
+
+// settleProviderToolRecord fills in the result of the provider tool record
+// evt reports on.
+func settleProviderToolRecord(records []ToolCallRecord, evt agent.Event) {
+	for i := len(records) - 1; i >= 0; i-- {
+		if records[i].ToolCallID != evt.ToolCallID || records[i].ToolResult != providerToolPendingResult {
+			continue
+		}
+		records[i].ToolResult = statusPreviewForTool(evt.ToolName, evt.ToolResult, 500)
+		records[i].ToolIsError = evt.ToolIsError
+		return
+	}
+}
+
+// markInterruptedProviderTools marks provider tools still waiting on a
+// result when a turn ends early. Only live reports leave records pending at
+// that point: the after-the-call report of a provider that cannot report
+// live happens only when the call succeeded.
+func markInterruptedProviderTools(records []ToolCallRecord) []ToolCallRecord {
+	out := append([]ToolCallRecord(nil), records...)
+	for i := range out {
+		if out[i].upstream && out[i].ToolResult == providerToolPendingResult {
+			out[i].ToolResult = providerToolInterruptedResult
+		}
+	}
+	return out
+}
+
+func upstreamToolCallRecords(records []ToolCallRecord) []ToolCallRecord {
+	var out []ToolCallRecord
+	for _, rec := range records {
+		if rec.upstream {
+			out = append(out, rec)
+		}
+	}
+	return out
+}
+
 // ToolCallRecord holds a tool invocation for transcript persistence.
 type ToolCallRecord struct {
 	ToolName    string
@@ -910,6 +956,8 @@ type ToolCallRecord struct {
 	ToolArgs    string
 	ToolResult  string
 	ToolIsError bool
+	// upstream marks a tool the provider ran itself (EventProviderTool).
+	upstream bool
 }
 
 func setupAgentLoop(
@@ -986,7 +1034,9 @@ func setupAgentLoop(
 			// to the persisted transcript so the audit trail survives the
 			// session — but we don't issue a usage signal (no TARS-side
 			// invocation occurred) and we don't fire the afterTool hook
-			// (that hook assumes TARS ran the tool).
+			// (that hook assumes TARS ran the tool). Providers that report
+			// tools live send this when the tool starts, and
+			// EventProviderToolResult below when it finishes.
 			sendStatus(
 				"provider_tool",
 				"upstream tool executed",
@@ -999,9 +1049,21 @@ func setupAgentLoop(
 				ToolName:    evt.ToolName,
 				ToolCallID:  evt.ToolCallID,
 				ToolArgs:    statusPreviewForTool(evt.ToolName, evt.ToolArgs, 500),
-				ToolResult:  "(executed by upstream provider)",
+				ToolResult:  providerToolPendingResult,
 				ToolIsError: false,
+				upstream:    true,
 			})
+		case agent.EventProviderToolResult:
+			sendStatus(
+				"provider_tool_result",
+				"upstream tool completed",
+				evt.ToolName,
+				evt.ToolCallID,
+				statusPreviewForTool(evt.ToolName, evt.ToolArgs, 180),
+				statusPreviewForTool(evt.ToolName, evt.ToolResult, 180),
+				evt.ToolIsError,
+			)
+			settleProviderToolRecord(*toolCalls, evt)
 		case agent.EventLoopEnd:
 			sendStatus("loop_end", "agent loop completed", "", "", "", "")
 			logger.Debug().

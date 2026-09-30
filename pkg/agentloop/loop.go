@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/devlikebear/tars/internal/llm"
 	"github.com/devlikebear/tars/internal/secrets"
@@ -24,7 +25,11 @@ const (
 	// surfaces audit data — ToolName, ToolCallID, ToolArgs — without
 	// triggering local execution. Observers (console, ops) treat it as a
 	// read-only signal of what the upstream agent did.
-	EventProviderTool       EventType = "provider_tool"
+	EventProviderTool EventType = "provider_tool"
+	// EventProviderToolResult fires when a provider that reports tools live
+	// (llm.ChatOptions.OnProviderTool) gets a tool's result back: ToolResult
+	// and ToolIsError are set. Like EventProviderTool it is observation only.
+	EventProviderToolResult EventType = "provider_tool_result"
 	EventLoopEnd            EventType = "loop_end"
 	EventLoopError          EventType = "error"
 	DefaultMaxLoopIters               = 20
@@ -180,9 +185,11 @@ func (l *Loop) Run(ctx context.Context, initial []llm.ChatMessage, opts RunOptio
 
 	for i := 0; i < maxIters; i++ {
 		l.emit(ctx, Event{Type: EventBeforeLLM, Iteration: i + 1, MessageCount: len(messages)})
+		live := &providerToolRelay{loop: l, ctx: ctx, iteration: i + 1}
 		resp, err := l.client.Chat(ctx, messages, llm.ChatOptions{
 			OnDelta:                  opts.OnDelta,
 			OnReasoningDelta:         opts.OnReasoningDelta,
+			OnProviderTool:           live.report,
 			Tools:                    llmTools,
 			ToolChoice:               opts.ToolChoice,
 			ResponseFormat:           opts.ResponseFormat,
@@ -214,22 +221,19 @@ func (l *Loop) Run(ctx context.Context, initial []llm.ChatMessage, opts RunOptio
 		// providers run tools inside their own subprocesses and report them
 		// via stream-json tool_use blocks). These do NOT enter the tool
 		// execution branch below; they're observation-only audit signals.
+		// Calls the provider already reported live are not emitted again,
+		// but the caller's ProviderTool hook still sees every call here.
 		for _, ptc := range resp.ProviderExecutedTools {
-			providerEvent := Event{
-				Type:            EventProviderTool,
-				Iteration:       i + 1,
-				ToolName:        ptc.Name,
-				ToolCallID:      ptc.ID,
-				ToolArgs:        ptc.Arguments,
-				ToolEffectClass: string(tool.RecoveryPolicyForTool(tool.Tool{Name: ptc.Name}).EffectClass),
-			}
+			providerEvent := providerToolEvent(i+1, ptc)
 			if opts.ProviderTool != nil {
 				if hookErr := opts.ProviderTool(ctx, providerEvent); hookErr != nil {
 					l.emit(ctx, Event{Type: EventLoopError, Iteration: i + 1, ToolName: ptc.Name, ToolCallID: ptc.ID, Err: hookErr})
 					return llm.ChatResponse{}, hookErr
 				}
 			}
-			l.emit(ctx, providerEvent)
+			if !live.reported(ptc.ID) {
+				l.emit(ctx, providerEvent)
+			}
 		}
 
 		if sid := strings.TrimSpace(resp.SessionID); sid != "" {
@@ -550,6 +554,54 @@ func callNameOrOriginal(canonical, raw string) string {
 		return strings.TrimSpace(canonical)
 	}
 	return strings.TrimSpace(raw)
+}
+
+func providerToolEvent(iteration int, call llm.ToolCall) Event {
+	return Event{
+		Type:            EventProviderTool,
+		Iteration:       iteration,
+		ToolName:        call.Name,
+		ToolCallID:      call.ID,
+		ToolArgs:        call.Arguments,
+		ToolEffectClass: string(tool.RecoveryPolicyForTool(tool.Tool{Name: call.Name}).EffectClass),
+	}
+}
+
+// providerToolRelay turns one LLM call's live provider tool reports into
+// loop events as they arrive, and remembers which calls it surfaced so the
+// after-the-call pass over ProviderExecutedTools does not repeat them.
+type providerToolRelay struct {
+	loop      *Loop
+	ctx       context.Context
+	iteration int
+
+	mu   sync.Mutex
+	seen map[string]struct{}
+}
+
+func (r *providerToolRelay) report(pte llm.ProviderToolEvent) {
+	evt := providerToolEvent(r.iteration, pte.Call)
+	if pte.Finished {
+		evt.Type = EventProviderToolResult
+		evt.ToolResult = pte.Result
+		evt.ToolIsError = pte.IsError
+	}
+	if id := strings.TrimSpace(pte.Call.ID); id != "" {
+		r.mu.Lock()
+		if r.seen == nil {
+			r.seen = map[string]struct{}{}
+		}
+		r.seen[id] = struct{}{}
+		r.mu.Unlock()
+	}
+	r.loop.emit(r.ctx, evt)
+}
+
+func (r *providerToolRelay) reported(id string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	_, ok := r.seen[strings.TrimSpace(id)]
+	return ok
 }
 
 func (l *Loop) emit(ctx context.Context, evt Event) {

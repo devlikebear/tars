@@ -5,6 +5,7 @@
 // under Node.
 import type { ChatMessage } from './chatMessages.ts'
 import { approvalFromEvent, resolveApproval } from './chatApproval.ts'
+import { providerToolCard, settleProviderToolCard } from './providerToolCards.ts'
 import type { ChatEvent, SessionMessage } from './types.ts'
 
 // historyMessages keeps what the side panel shows of a transcript: the
@@ -46,6 +47,14 @@ export function applySideEvent(messages: ChatMessage[], event: ChatEvent, replyI
     case 'status':
       if (event.phase === 'before_tool_call' && event.tool_name) {
         return [...messages, { id: `tool-${event.tool_call_id || messages.length}`, role: 'tool', text: '', toolName: event.tool_name }]
+      }
+      if (event.phase === 'provider_tool') {
+        if (event.tool_call_id && messages.some((m) => m.role === 'tool' && m.toolCallId === event.tool_call_id)) return messages
+        const card = providerToolCard(event, Date.now())
+        return card ? [...messages, card] : messages
+      }
+      if (event.phase === 'provider_tool_result') {
+        return settleProviderToolCard(messages, event, Date.now()) ?? messages
       }
       return messages
     case 'error':

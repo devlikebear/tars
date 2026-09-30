@@ -46,6 +46,7 @@ type (
 	TierRecommendation       = pkgllm.TierRecommendation
 	TierResolution           = pkgllm.TierResolution
 	ToolCall                 = pkgllm.ToolCall
+	ProviderToolEvent        = pkgllm.ProviderToolEvent
 	ToolChoice               = pkgllm.ToolChoice
 	ToolChoiceMode           = pkgllm.ToolChoiceMode
 	ToolFunctionSchema       = pkgllm.ToolFunctionSchema

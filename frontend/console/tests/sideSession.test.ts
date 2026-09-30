@@ -38,3 +38,14 @@ test('a turn streams into one reply bubble and its approval cards', () => {
   assert.equal(applySideEvent(messages, { type: 'context_info' }, 'r'), messages)
   assert.equal(applySideEvent(messages, { type: 'permission_request' }, 'r'), messages)
 })
+
+test('a CLI provider tool shows as one card that settles on its result, even when replayed', () => {
+  const start = { type: 'status', phase: 'provider_tool', tool_name: 'Bash', tool_call_id: 'p1' }
+  let messages: ChatMessage[] = applySideEvent([], start, 'r')
+  messages = applySideEvent(messages, start, 'r')
+  assert.equal(messages.length, 1)
+  assert.equal(messages[0].toolDone, false)
+  messages = applySideEvent(messages, { type: 'status', phase: 'provider_tool_result', tool_call_id: 'p1', tool_is_error: true }, 'r')
+  assert.equal(messages[0].toolDone, true)
+  assert.equal(messages[0].toolIsError, true)
+})

@@ -191,7 +191,15 @@ type ChatOptions struct {
 	// OnDelta governs whether streaming is requested; reasoning deltas only
 	// fire when streaming is active.
 	OnReasoningDelta func(text string)
-	Tools            []ToolSchema
+	// OnProviderTool receives tools a self-executing provider runs on its
+	// own (see ChatResponse.ProviderExecutedTools) while the call is still
+	// in flight: once when the provider starts a tool and once when its
+	// result arrives. Observation only — the tool has already run. It is
+	// called on the goroutine that drives Chat, in stream order with
+	// OnDelta. Providers that cannot report tools live never call it; the
+	// final ProviderExecutedTools stays the complete list either way.
+	OnProviderTool func(ProviderToolEvent)
+	Tools          []ToolSchema
 	// ToolChoice picks how the LLM selects tools. nil = provider default (auto).
 	ToolChoice *ToolChoice
 	// ResponseFormat constrains the response shape. nil = free-form text.
@@ -341,6 +349,17 @@ type ChatResponse struct {
 	// "model wants TARS to execute this" semantic and stays nil for
 	// self-executing providers.
 	ProviderExecutedTools []ToolCall
+}
+
+// ProviderToolEvent is one live report through ChatOptions.OnProviderTool.
+// Finished is false when the provider starts Call and true when its result
+// arrives; Result and IsError are set only then. A call cut off by a
+// timeout or cancel gets a start and no finish.
+type ProviderToolEvent struct {
+	Call     ToolCall
+	Finished bool
+	Result   string
+	IsError  bool
 }
 
 // ClientConfig holds the settings a client keeps for its lifetime, as

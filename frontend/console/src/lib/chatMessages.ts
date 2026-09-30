@@ -22,6 +22,8 @@ export type ChatMessage = {
   toolIsError?: boolean
   toolStartedAt?: number
   toolFinishedAt?: number
+  // A tool a CLI provider ran itself (SSE `provider_tool`), not TARS.
+  toolUpstream?: boolean
   // Streaming stdout/stderr lines emitted while the tool runs.
   // Currently populated by exec via SSE `tool_output_line` events.
   toolOutputLines?: ToolOutputLine[]
