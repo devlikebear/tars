@@ -170,7 +170,9 @@ func (b *sessionBoard) workingFolder(s session.Session) string {
 		return ""
 	}
 	artifacts := filepath.Join(b.sessions.WorkspaceDir(), "artifacts", s.ID)
-	if filepath.Clean(cwd) == filepath.Clean(artifacts) {
+	// The store saves cwd with symlinks resolved; the workspace path keeps
+	// its configured spelling.
+	if sameDir(cwd, artifacts) {
 		return ""
 	}
 	return cwd

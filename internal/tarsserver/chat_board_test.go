@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/devlikebear/tars/internal/session"
 )
 
 func gitInit(t *testing.T, dir, branch string) {
@@ -83,8 +85,15 @@ func TestSessionBoardShowsStatusRepoChangeAndCost(t *testing.T) {
 		t.Fatalf("status = %q pending=%d running=%v", got.Status, got.PendingApprovals, got.RunningSince)
 	}
 	wantRepo, _ := filepath.EvalSymlinks(fx.project)
-	if got.Repo != wantRepo || got.Branch != "feat/board" || got.Cwd != fx.project {
-		t.Fatalf("repo = %q (want %q) branch = %q cwd = %q", got.Repo, wantRepo, got.Branch, got.Cwd)
+	// The board reports the cwd as the store saved it, with symlinks
+	// resolved, so on macOS, where t.TempDir() is under /var ->
+	// /private/var, it differs from fx.project.
+	saved, err := fx.sessions.Get(fx.sessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Repo != wantRepo || got.Branch != "feat/board" || got.Cwd != saved.CurrentDir {
+		t.Fatalf("repo = %q (want %q) branch = %q cwd = %q (want %q)", got.Repo, wantRepo, got.Branch, got.Cwd, saved.CurrentDir)
 	}
 	if got.LastChange == nil || got.LastChange.Files != 1 || got.LastChange.Additions != 1 || got.LastTurnAt == nil {
 		t.Fatalf("last change = %+v last turn = %v", got.LastChange, got.LastTurnAt)
@@ -145,6 +154,36 @@ func TestSessionBoardWithoutCheckpointsOrCosts(t *testing.T) {
 	for _, s := range resp.Sessions {
 		if s.Repo != "" || s.CostUSD != 0 || s.Status != boardStatusIdle {
 			t.Fatalf("session = %+v", s)
+		}
+	}
+}
+
+// A new session starts in its own artifact folder, which the store saves with
+// symlinks resolved. When the workspace is reached through a link (macOS's
+// /var, a relocated ~/.tars) that folder must still be recognized, or every
+// fresh session shows up as working in a repository of its own.
+func TestSessionBoardArtifactFolderThroughSymlinkedWorkspace(t *testing.T) {
+	target := filepath.Join(t.TempDir(), "target")
+	if err := os.MkdirAll(target, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	sessions := session.NewStore(link)
+	sess, err := sessions.Create("fresh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	board := newSessionBoard(sessions, nil, nil, nil)
+	resp, err := board.build(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range resp.Sessions {
+		if s.ID == sess.ID && (s.Cwd != "" || s.Repo != "") {
+			t.Fatalf("a session still in its artifact folder is not in a project: %+v", s)
 		}
 	}
 }
