@@ -205,14 +205,53 @@ func (u *unattendedPermissions) ask(ctx context.Context, run unattendedRun, tool
 // queuedBySession counts the tool approvals still waiting in the ops queue
 // for each session, for the session board.
 func (u *unattendedPermissions) queuedBySession() (map[string]int, error) {
-	approvals, err := u.ops.ListApprovals()
+	approvals, err := u.pendingToolPermissions()
 	if err != nil {
 		return nil, err
 	}
 	out := map[string]int{}
 	for _, a := range approvals {
+		out[a.ToolPermission.SessionID]++
+	}
+	return out, nil
+}
+
+// queuedApprovals lists the tool approvals still waiting in the ops queue,
+// for GET /v1/chat/activity. They are answered through the ops approvals,
+// never through the chat permission endpoint.
+func (u *unattendedPermissions) queuedApprovals() ([]chatQueuedApproval, error) {
+	approvals, err := u.pendingToolPermissions()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]chatQueuedApproval, 0, len(approvals))
+	for _, a := range approvals {
+		req := a.ToolPermission
+		out = append(out, chatQueuedApproval{
+			ApprovalID:  a.ID,
+			SessionID:   req.SessionID,
+			Source:      req.Source,
+			RunLabel:    req.RunLabel,
+			ToolName:    req.ToolName,
+			Preview:     capPreview(req.Preview),
+			Reason:      req.Reason,
+			RequestedAt: a.RequestedAt,
+		})
+	}
+	return out, nil
+}
+
+// pendingToolPermissions are the tool_permission approvals nobody has
+// answered yet.
+func (u *unattendedPermissions) pendingToolPermissions() ([]ops.Approval, error) {
+	approvals, err := u.ops.ListApprovals()
+	if err != nil {
+		return nil, err
+	}
+	out := approvals[:0]
+	for _, a := range approvals {
 		if a.Type == ops.ApprovalTypeToolPermission && a.Status == ops.ApprovalStatusPending && a.ToolPermission != nil {
-			out[a.ToolPermission.SessionID]++
+			out = append(out, a)
 		}
 	}
 	return out, nil

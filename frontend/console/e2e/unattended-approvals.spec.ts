@@ -40,6 +40,15 @@ test('a cron run in Ask mode waits for the needs-input bar', async ({ page, cont
   }
   // The session board counts the queued question as needs input.
   await expect(bar).toHaveCount(1, { timeout: 15_000 })
+  // So does the sidebar's live status, read from GET /v1/chat/activity
+  // (#1033), which lists it apart from chat permission requests.
+  const sidebarStatus = page.locator('.dock-left .session-item.active .live-status.needs-input')
+  await expect(sidebarStatus).toBeVisible({ timeout: 15_000 })
+  await expect(sidebarStatus).toHaveAttribute('title', '1 unattended approval waiting')
+  const activity = await (await page.request.get('/v1/chat/activity')).json()
+  expect(activity.pending_approvals).toEqual([])
+  expect(activity.queued_approvals).toHaveLength(1)
+  expect(activity.queued_approvals[0]).toMatchObject({ session_id: id, source: 'cron', tool_name: 'write_file' })
   const board = await context.newPage()
   await board.goto('/console')
   const card = board.locator(`.session-card[data-session-id="${id}"]`)
@@ -50,6 +59,7 @@ test('a cron run in Ask mode waits for the needs-input bar', async ({ page, cont
   await answer('Approve', 'base.txt')
   await answer('Reject', 'notes.md')
   await answer('Approve', 'src/app.txt')
+  await expect(sidebarStatus).toHaveCount(0, { timeout: 15_000 })
 
   expect((await run).ok()).toBe(true)
   expect(readFileSync(join(dir, 'base.txt'), 'utf8')).toContain('line 19 edited')

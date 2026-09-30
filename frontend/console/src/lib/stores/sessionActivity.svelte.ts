@@ -2,13 +2,16 @@
 // being streamed: sidebar badges, the session board, and browser
 // notifications when a background session needs input or finishes (#971).
 //
-// It polls GET /v1/chat/activity (cheap: two in-memory maps on the server)
-// and polls again at once when the event stream announces an approval. What
-// has been looked at is remembered per browser in localStorage.
+// It polls GET /v1/chat/activity (cheap: two in-memory maps and the ops
+// approvals file on the server) and polls again at once when the event
+// stream announces an approval. A session needs input when a chat turn asks
+// or when an unattended run's tool call waits in the ops queue (#1033).
+// What has been looked at is remembered per browser in localStorage.
 
 import {
   activityChanges,
   activityMap,
+  needsInput,
   seenBaselineKey,
   type ActivityChange,
   type ActivityMap,
@@ -122,6 +125,17 @@ export class SessionActivityStore {
 
   pending(id: string): number {
     return this.activity[id]?.pending ?? 0
+  }
+
+  // queued counts the session's unattended approvals waiting in the ops
+  // queue (#1033).
+  queued(id: string): number {
+    return this.activity[id]?.queued ?? 0
+  }
+
+  // needsInput is whether the session waits for an answer of either kind.
+  needsInput(id: string): boolean {
+    return needsInput(this.activity[id])
   }
 
   async poll(): Promise<void> {

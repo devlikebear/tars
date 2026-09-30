@@ -166,28 +166,74 @@ export function boardCounts(sessions: BoardSession[], seen: Seen): Record<BoardS
 
 // --- Notifications ---------------------------------------------------------
 
-export type ActivityState = { running: boolean; pending: number; title: string }
+// pending counts the chat turn's approval cards; queued counts unattended
+// runs' tool calls waiting in the ops queue (#970, #1033). Either one means
+// the session needs input.
+export type ActivityState = { running: boolean; pending: number; queued: number; title: string }
 
 // Activity by session, from GET /v1/chat/activity.
 export type ActivityMap = Record<string, ActivityState>
 
+// An unattended run's tool call waiting in the ops queue. It is answered
+// with POST /v1/ops/approvals/{approval_id}/approve|reject, never through
+// the chat permission endpoint.
+export type QueuedApproval = {
+  approval_id: string
+  session_id: string
+  session_title?: string
+  source?: string
+  run_label?: string
+  tool_name?: string
+  preview?: string
+  requested_at?: string
+}
+
 export type ActivitySnapshot = {
   running: { session_id: string; session_title?: string; started_at?: string }[]
   pending_approvals: { request_id: string; session_id: string; session_title?: string; tool_name?: string }[]
+  // Absent from servers before #1033.
+  queued_approvals?: QueuedApproval[]
 }
 
 export function activityMap(snap: ActivitySnapshot): ActivityMap {
   const out: ActivityMap = {}
   for (const r of snap.running ?? []) {
-    out[r.session_id] = { running: true, pending: 0, title: r.session_title ?? '' }
+    out[r.session_id] = { running: true, pending: 0, queued: 0, title: r.session_title ?? '' }
   }
   for (const p of snap.pending_approvals ?? []) {
-    const cur = out[p.session_id] ?? { running: true, pending: 0, title: p.session_title ?? '' }
+    const cur = out[p.session_id] ?? { running: true, pending: 0, queued: 0, title: p.session_title ?? '' }
     cur.pending++
     if (!cur.title) cur.title = p.session_title ?? ''
     out[p.session_id] = cur
   }
+  // An unattended run is not a chat turn: it does not make the session
+  // running, so its end is not announced as a finished turn.
+  for (const q of snap.queued_approvals ?? []) {
+    const cur = out[q.session_id] ?? { running: false, pending: 0, queued: 0, title: q.session_title ?? '' }
+    cur.queued++
+    if (!cur.title) cur.title = q.session_title ?? ''
+    out[q.session_id] = cur
+  }
   return out
+}
+
+// needsInput is whether someone has to answer something for the session:
+// a chat approval card or an unattended approval.
+export function needsInput(state: ActivityState | undefined): boolean {
+  return Boolean(state && (state.pending > 0 || (state.queued ?? 0) > 0))
+}
+
+// needsInputHint says what a session waits for, e.g. for a tooltip:
+// "1 approval waiting · 2 unattended approvals waiting".
+export function needsInputHint(
+  state: ActivityState | undefined,
+  text: { pending: (n: number) => string; queued: (n: number) => string },
+): string {
+  if (!state) return ''
+  const parts: string[] = []
+  if (state.pending > 0) parts.push(text.pending(state.pending))
+  if ((state.queued ?? 0) > 0) parts.push(text.queued(state.queued))
+  return parts.join(' · ')
 }
 
 export type ActivityChange = { sessionId: string; title: string; kind: 'needs_input' | 'done' }
@@ -199,7 +245,7 @@ export function activityChanges(prev: ActivityMap, next: ActivityMap): ActivityC
   const out: ActivityChange[] = []
   for (const [id, cur] of Object.entries(next)) {
     const before = prev[id]
-    if (cur.pending > 0 && (!before || before.pending === 0)) {
+    if (needsInput(cur) && !needsInput(before)) {
       out.push({ sessionId: id, title: cur.title, kind: 'needs_input' })
     }
   }

@@ -8,6 +8,8 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ### Added
 
+- **사이드바와 데스크톱 트레이도 무인 실행 승인을 needs input으로 본다 (#1033)** — `GET /v1/chat/activity`가 ops 큐에서 기다리는 cron·텔레그램·subagent 실행의 도구 호출을 별도 배열 `queued_approvals`(`approval_id`, `session_id`, `session_title`, `source`, `tool_name`, `preview`, `requested_at`)로 알려 준다. 채팅 권한 요청(`pending_approvals`)과 섞이지 않으므로 어떤 클라이언트도 이를 `/v1/chat/permissions`로 답하지 않는다. 콘솔 사이드바는 그 세션에 `needs input` 표시를 붙이고 브라우저 알림도 같은 기준으로 보낸다. 데스크톱 트레이는 대기 수에 포함하고 메뉴와 알림에서 채팅 열기 또는 승인·거절(`POST /v1/ops/approvals/{id}/approve|reject`)을 제공한다. ops 경로는 관리자 경로가 아니라 활동 조회와 같은 사용자 토큰으로 충분하다.
+
 - **데스크톱 셸: 창 상태 기억과 세션별 창 (#1031)** — `tars-desktop`이 콘솔 창의 크기·위치·최대화 상태를 기억해 다음 실행 때 그대로 연다. 저장된 위치가 지금 연결된 어느 화면에도 없으면 기본 위치(가운데, 기본 크기)로 열고, 화면 정보를 얻지 못하는 환경에서는 값을 적당한 범위로만 자른다. 트레이 메뉴의 **최근 채팅 → Open in new window**나 `tars://session/<id>?window=new` 링크로 채팅을 따로 된 창에서 연다 — 각 창은 같은 로컬 서버의 `/console/chat/<id>`를 띄우고 루프백 전용·토큰 규칙은 메인 창과 같으며, 링크는 여전히 창을 열기만 할 뿐 승인에 답하거나 메시지를 보내지 않는다. 이미 창이 있는 채팅은 그 창을 앞으로 가져오고, 세션 창은 최대 8개까지다. 셸을 종료할 때 열려 있던 세션 창은 다음 실행 때 제자리에 다시 열린다. 모든 상태는 `<사용자 설정 폴더>/tars-desktop/window.json`(0600)에 저장되며, 이전 형식 파일도 그대로 읽는다.
 
 - **세션 보드가 무인 실행 승인도 센다 (#970)** — cron·텔레그램·subagent 실행이 ops 큐에서 승인을 기다리면 그 세션 카드가 `needs input`이 되고 "무인 실행 승인 대기 n건"을 보여준다. `GET /v1/chat/board`의 세션마다 `queued_approvals`가 추가됐다. 카드를 누르면 채팅이 열리고, 채팅의 needs-input 바나 Ops 페이지에서 답할 수 있다.

@@ -25,7 +25,8 @@ const (
 	Idle
 	// Running: at least one chat turn is in progress.
 	Running
-	// NeedsInput: at least one turn waits for a tool approval.
+	// NeedsInput: at least one turn waits for a tool approval, a chat
+	// turn's or an unattended run's.
 	NeedsInput
 )
 
@@ -49,10 +50,18 @@ func (s State) String() string {
 
 // Status is what the last poll of the server found.
 type Status struct {
-	State    State
-	Running  int
+	State   State
+	Running int
+	// Pending counts chat turns' approvals, Queued unattended runs'
+	// approvals waiting in the ops queue.
 	Pending  int
+	Queued   int
 	Snapshot activity.Snapshot
+}
+
+// Waiting counts every question waiting for an answer.
+func (s Status) Waiting() int {
+	return s.Pending + s.Queued
 }
 
 // Observation is the raw result of one poll.
@@ -70,7 +79,7 @@ type Observation struct {
 // StatusOf turns one poll into the state the icon shows. Waiting for input
 // outranks running: a person has to act.
 func StatusOf(o Observation) Status {
-	st := Status{Snapshot: o.Snapshot, Running: len(o.Snapshot.Running), Pending: len(o.Snapshot.Pending)}
+	st := Status{Snapshot: o.Snapshot, Running: len(o.Snapshot.Running), Pending: len(o.Snapshot.Pending), Queued: len(o.Snapshot.Queued)}
 	switch {
 	case !o.Reachable:
 		st = Status{State: Offline}
@@ -78,7 +87,7 @@ func StatusOf(o Observation) Status {
 		st = Status{State: Setup}
 	case o.Unauthorized:
 		st = Status{State: Locked}
-	case st.Pending > 0:
+	case st.Waiting() > 0:
 		st.State = NeedsInput
 	case st.Running > 0:
 		st.State = Running
@@ -93,7 +102,7 @@ func StatusOf(o Observation) Status {
 func (s Status) Label() string {
 	switch s.State {
 	case NeedsInput:
-		return fmt.Sprintf("%d?", s.Pending)
+		return fmt.Sprintf("%d?", s.Waiting())
 	case Running:
 		return fmt.Sprintf("%d…", s.Running)
 	case Offline:
@@ -112,7 +121,7 @@ func (s Status) Tooltip() string {
 	case Setup:
 		return "TARS — finish setup in the console"
 	case NeedsInput:
-		return fmt.Sprintf("TARS — %s waiting for approval", plural(s.Pending, "request", "requests"))
+		return fmt.Sprintf("TARS — %s waiting for approval", plural(s.Waiting(), "request", "requests"))
 	case Running:
 		return fmt.Sprintf("TARS — %s running", plural(s.Running, "chat", "chats"))
 	}
@@ -136,8 +145,11 @@ const (
 	ShowConsole
 	// OpenSessionWindow shows chat SessionID in a window of its own.
 	OpenSessionWindow
-	// Decide answers an approval with Decision.
+	// Decide answers a chat approval with Decision.
 	Decide
+	// Review approves or rejects a queued unattended approval; Decision is
+	// ReviewApprove or ReviewReject.
+	Review
 	// NewSessionInFolder asks for a folder and starts a session there.
 	NewSessionInFolder
 	// StartServer starts the server.
@@ -154,8 +166,15 @@ type Action struct {
 	Path      string
 	SessionID string
 	Approval  activity.Approval
+	Queued    activity.QueuedApproval
 	Decision  string
 }
+
+// The two answers a queued unattended approval takes.
+const (
+	ReviewApprove = "approve"
+	ReviewReject  = "reject"
+)
 
 // Item is one menu entry. Separator entries have no label.
 type Item struct {
@@ -180,10 +199,13 @@ func Menu(status Status, sessions []activity.Session) []Item {
 		)
 	}
 
-	if len(status.Snapshot.Pending) > 0 {
+	if len(status.Snapshot.Pending) > 0 || len(status.Snapshot.Queued) > 0 {
 		items = append(items, Item{Separator: true}, Item{Label: "Waiting for approval", Disabled: true})
 		for _, a := range status.Snapshot.Pending {
 			items = append(items, approvalItem(a))
+		}
+		for _, q := range status.Snapshot.Queued {
+			items = append(items, queuedItem(q))
 		}
 	}
 	if len(status.Snapshot.Running) > 0 {
@@ -222,6 +244,34 @@ func approvalItem(a activity.Approval) Item {
 		item.Children = append(item.Children, Item{Label: DecisionLabel(d), Action: Action{Kind: Decide, Approval: a, Decision: d}})
 	}
 	return item
+}
+
+// queuedItem is an unattended run's question. Its answers go to the ops
+// approvals (Review), never to the chat permission endpoint.
+func queuedItem(q activity.QueuedApproval) Item {
+	label := "  " + truncate(titleOr(q.Session, q.SessionID)+" — "+q.ToolName+describe(q.Preview)+runOf(q.Source), 60)
+	item := Item{Label: label}
+	item.Children = []Item{{Label: "Open chat", Action: chatAction(q.SessionID)}, {Separator: true}}
+	for _, d := range []string{ReviewApprove, ReviewReject} {
+		item.Children = append(item.Children, Item{Label: ReviewLabel(d), Action: Action{Kind: Review, Queued: q, Decision: d}})
+	}
+	return item
+}
+
+// ReviewLabel is how a queued approval's answer reads on a button.
+func ReviewLabel(decision string) string {
+	if decision == ReviewApprove {
+		return "Approve"
+	}
+	return "Reject"
+}
+
+// runOf names the kind of run that asked, e.g. " (cron)".
+func runOf(source string) string {
+	if source = strings.TrimSpace(source); source == "" {
+		return ""
+	}
+	return " (" + source + ")"
 }
 
 // DecisionLabel is how a decision reads on a button.
@@ -289,7 +339,7 @@ func Key(items []Item) string {
 	var walk func([]Item, int)
 	walk = func(items []Item, depth int) {
 		for _, it := range items {
-			fmt.Fprintf(&b, "%d|%s|%v|%v|%d|%s|%s|%s|%s\n", depth, it.Label, it.Separator, it.Disabled, it.Action.Kind, it.Action.Path, it.Action.SessionID, it.Action.Approval.RequestID, it.Action.Decision)
+			fmt.Fprintf(&b, "%d|%s|%v|%v|%d|%s|%s|%s|%s|%s\n", depth, it.Label, it.Separator, it.Disabled, it.Action.Kind, it.Action.Path, it.Action.SessionID, it.Action.Approval.RequestID, it.Action.Queued.ApprovalID, it.Action.Decision)
 			walk(it.Children, depth+1)
 		}
 	}

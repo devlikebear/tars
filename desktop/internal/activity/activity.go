@@ -1,6 +1,7 @@
 // Package activity talks to the running TARS server on the tray's behalf:
-// which chat turns are running, which wait for a tool approval, answering
-// an approval, and opening a new session in a folder.
+// which chat turns are running, which wait for a tool approval, which
+// unattended runs wait in the ops queue, answering either kind, and opening
+// a new session in a folder.
 package activity
 
 import (
@@ -38,10 +39,28 @@ type Approval struct {
 	Decisions []string  `json:"decisions"`
 }
 
+// QueuedApproval is a tool call of an unattended run (cron, Telegram, a
+// subagent) waiting in the server's ops queue (#970, #1033). It is answered
+// with Review, never with Answer: the chat permission endpoint does not
+// know it.
+type QueuedApproval struct {
+	ApprovalID  string    `json:"approval_id"`
+	SessionID   string    `json:"session_id"`
+	Session     string    `json:"session_title"`
+	Source      string    `json:"source"`
+	RunLabel    string    `json:"run_label"`
+	ToolName    string    `json:"tool_name"`
+	Preview     string    `json:"preview"`
+	Reason      string    `json:"reason"`
+	RequestedAt time.Time `json:"requested_at"`
+}
+
 // Snapshot is GET /v1/chat/activity.
 type Snapshot struct {
 	Running []Running  `json:"running"`
 	Pending []Approval `json:"pending_approvals"`
+	// Queued is empty from a server before #1033.
+	Queued []QueuedApproval `json:"queued_approvals"`
 }
 
 // Session is one row of GET /v1/sessions.
@@ -77,6 +96,12 @@ func (e *APIError) Error() string {
 		return fmt.Sprintf("tars server: %d %s", e.Status, e.Message)
 	}
 	return fmt.Sprintf("tars server: %d", e.Status)
+}
+
+// IsConflict reports a 409: the question was already answered or closed.
+func IsConflict(err error) bool {
+	var apiErr *APIError
+	return errors.As(err, &apiErr) && apiErr.Status == http.StatusConflict
 }
 
 // IsUnauthorized reports a 401 or 403: the server wants a token the shell
@@ -156,6 +181,20 @@ func (c *Client) Answer(ctx context.Context, a Approval, decision string) error 
 	}
 	body := map[string]string{"session_id": a.SessionID, "decision": decision}
 	return c.do(ctx, http.MethodPost, "/v1/chat/permissions/"+url.PathEscape(a.RequestID), false, body, nil)
+}
+
+// Review approves or rejects an unattended run's queued tool call through
+// POST /v1/ops/approvals/{id}/approve|reject. The ops routes are not admin
+// routes on the server, so this sends the same token as Activity.
+func (c *Client) Review(ctx context.Context, q QueuedApproval, approve bool) error {
+	if q.ApprovalID == "" {
+		return errors.New("queued approval without an id")
+	}
+	action := "reject"
+	if approve {
+		action = "approve"
+	}
+	return c.do(ctx, http.MethodPost, "/v1/ops/approvals/"+url.PathEscape(q.ApprovalID)+"/"+action, false, nil, nil)
 }
 
 // RecentSessions lists up to limit visible, unarchived chat sessions, most
