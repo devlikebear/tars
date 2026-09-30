@@ -14,9 +14,11 @@
     sessionId: string
     onClose: () => void
     onOpenIntegratedTerminal: (target: { cwd: string; label: string }) => void
+    // The session's folder changed here; the rest of the workbench re-reads it.
+    onWorkDirsChange?: () => void
   }
 
-  let { artifacts, sessionId, onClose, onOpenIntegratedTerminal }: Props = $props()
+  let { artifacts, sessionId, onClose, onOpenIntegratedTerminal, onWorkDirsChange }: Props = $props()
 
   type Tab = 'session' | 'workspace'
   let activeTab: Tab = $state('workspace')
@@ -76,6 +78,7 @@
     if (!sessionId) return
     await updateSessionWorkDirs(sessionId, { ...workDirs, current_dir: dir })
     workDirs.current_dir = dir
+    onWorkDirsChange?.()
     currentPath = '.'
     await browseDir('.')
   }
@@ -87,6 +90,7 @@
     const cd = dir === workDirs.current_dir ? (dirs[0] || '') : workDirs.current_dir
     await updateSessionWorkDirs(sessionId, { work_dirs: dirs, current_dir: cd })
     workDirs = { work_dirs: dirs, current_dir: cd }
+    onWorkDirsChange?.()
     currentPath = '.'
     await browseDir('.')
   }
@@ -136,6 +140,7 @@
     const dirs = Array.from(new Set([...workDirs.work_dirs, absPath]))
     await updateSessionWorkDirs(sessionId, { work_dirs: dirs, current_dir: absPath })
     workDirs = { work_dirs: dirs, current_dir: absPath }
+    onWorkDirsChange?.()
     pickingDir = false
     currentPath = '.'
     await browseDir('.')

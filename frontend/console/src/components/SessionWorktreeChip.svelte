@@ -14,6 +14,9 @@
   let sessionId = $derived(chatSession.activeSessionId ?? '')
   // The session record carries the worktree; the view adds status and lease.
   let worktreeKey = $derived(chatSession.activeSession?.worktree?.path ?? '')
+  // The repository comes from the session's folder: a new cwd (slash command,
+  // status bar chip, or Files panel) can move the session into or out of one.
+  let cwdKey = $derived(chatSession.cwd?.current ?? '')
   let view = $state<SessionWorktreeView | null>(null)
   let open = $state(false)
   let busy = $state(false)
@@ -35,6 +38,7 @@
   $effect(() => {
     const id = sessionId
     void worktreeKey
+    void cwdKey
     void chatSession.streaming
     untrack(() => {
       open = false

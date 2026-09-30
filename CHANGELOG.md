@@ -6,6 +6,14 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.40.7] - 2026-09-30
+
+### Fixed
+
+- **cwd 팝오버가 닫히지 않던 문제** — 입력창 아래 상태 바의 cwd 칩을 누르면 뜨는 폴더 팝오버가 Esc나 바깥 클릭으로 닫히지 않아 전송 버튼을 가렸다. 이제 Esc, 바깥 클릭, 항목 선택으로 닫히고, 칩에 `aria-haspopup`/`aria-expanded`가 붙는다.
+
+- **폴더를 바꿔도 ⑂ 격리 칩이 새로고침 전까지 보이지 않던 문제** — `/cwd`, 상태 바 칩, 파일 패널로 세션을 git 저장소로 옮겨도 헤더의 worktree 칩은 페이지를 새로고침해야 나타났다. 이제 활성 cwd가 바뀌면 worktree 상태를 다시 읽어 바로 보이고, 저장소 밖으로 나가면 사라진다. 파일 패널에서 폴더를 바꾸거나 추가·제거해도 세션 cwd를 다시 읽어 상태 바와 헤더가 따라온다.
+
 ## [0.40.6] - 2026-09-30
 
 ### Fixed
