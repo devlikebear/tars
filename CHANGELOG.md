@@ -6,6 +6,8 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.38.0] - 2026-09-30
+
 ### Added
 
 - **네이티브 provider의 파일 편집이 도구 카드에 바로 diff로 뜬다 (#1032)** — anthropic / openai / gemini처럼 TARS가 도구를 직접 실행하는 provider에서 `write_file` · `edit_file` · `apply_patch`가 끝나는 즉시 채팅 스트림에 `file_change` 이벤트(`tool_call_id`, `path`, `op`: create / modify / delete, `additions`, `deletions`, `hunks`)가 온다. 콘솔은 그 도구 호출 카드 머리에 `+n −m`을 붙이고, 카드를 펼치면 파일별 행을 눌러 턴 변경 카드와 같은 diff 보기로 본다. 바이너리 파일, 1 MiB를 넘는 파일, 줄 수가 너무 많은 diff는 hunk 없이 수치만(또는 바이너리 표시만) 보낸다. 모델이 받는 도구 결과 텍스트는 그대로다. 백그라운드 턴 피드로도 재생되므로 다시 붙은 콘솔에도 뜬다. `claude-code-cli` / `antigravity-cli`는 CLI가 자기 도구를 실행하므로 이벤트가 없고, 지금처럼 턴이 끝날 때의 변경 카드만 보인다. 공개 API: `tools.Result.FileChanges`, `tools.FileChange` / `FileChangeHunk` / `FileChangeOp`, `agentloop.Event.ToolFileChanges`.
@@ -46,6 +48,8 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 - **`cmd/apisnapshot`이 `internal` 패키지를 건너뛴다** — Go는 `pkg/x/internal/y`를 부모 밖에서 import하지 못하게 막으므로 그 아래는 외부 소비자가 기댈 수 있는 표면이 아니다.
 
 ### Fixed
+
+- **`tars auth init` / `tars auth passwd`가 비밀번호를 화면에 그대로 보여주던 문제** — 프롬프트가 stdin을 줄 단위로 읽어 입력한 비밀번호가 터미널에 에코됐다. 이제 stdin이 터미널이면 `golang.org/x/term`으로 에코 없이 읽고, 오타로 로그인이 막히지 않도록 `Confirm password:`로 한 번 더 받아 다르면 `passwords do not match`로 아무것도 저장하지 않는다. 입력 중 Ctrl-C를 누르면 터미널 에코를 되돌린 뒤 종료(130)한다. 파이프·리다이렉트 입력(`echo pw | tars auth passwd user`)은 이전처럼 한 줄만 읽고 확인을 묻지 않으며, `--password`와 `TARS_INITIAL_ADMIN_PASSWORD`도 그대로 우선한다.
 
 - **작업 원장(`workstore.Store`)의 `Close`가 DB 파일을 연 채로 반환하던 문제** — `sql.DB.Close`는 쉬고 있는 연결만 닫고, 사용 중인 연결은 반환될 때 닫는다. 그런데 컨텍스트가 취소된 트랜잭션은 database/sql이 자기 고루틴에서 롤백하므로, 호출자가 이미 반환한 뒤에도 연결이 잠깐 사용 중으로 남는다. 스케줄러를 멈추면(5ms 폴링 중 컨텍스트 취소) 이 창이 자주 열려, 바로 뒤에 원장 폴더를 지우면 Windows에서 "다른 프로세스가 파일을 사용 중" 오류가 났다 — `windows-test`의 `internal/apptool` durable subagent 테스트가 PR과 무관하게 간헐 실패한 원인이다. 이제 `Close`는 모든 연결이 실제로 닫힐 때까지 기다리고, 5초 안에 반환되지 않는 연결(누수된 트랜잭션·Rows)은 오류로 알린다.
 
