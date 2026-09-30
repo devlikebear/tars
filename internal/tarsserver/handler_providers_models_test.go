@@ -8,7 +8,9 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -510,5 +512,38 @@ func TestModelsAPI_CLIProviderMissingBinaryFails(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), "executable not found") {
 		t.Fatalf("expected missing-binary message, got %q", rec.Body.String())
+	}
+}
+
+func TestFindProviderCLIPath_ResolvesEachCLIProvider(t *testing.T) {
+	dir := t.TempDir()
+	suffix := ""
+	if runtime.GOOS == "windows" {
+		suffix = ".exe"
+	}
+	stubs := map[string]string{}
+	for kind, env := range map[string]string{
+		"claude-code-cli": "CLAUDE_CODE_CLI_PATH",
+		"antigravity-cli": "AGY_CLI_PATH",
+	} {
+		stub := filepath.Join(dir, kind+suffix)
+		if err := os.WriteFile(stub, []byte("#!/bin/sh\n"), 0o755); err != nil {
+			t.Fatalf("write stub: %v", err)
+		}
+		t.Setenv(env, stub)
+		stubs[kind] = stub
+	}
+
+	for kind, want := range stubs {
+		got, err := findProviderCLIPath(kind)
+		if err != nil {
+			t.Fatalf("%s: %v", kind, err)
+		}
+		if got != want {
+			t.Errorf("%s path = %q, want %q", kind, got, want)
+		}
+	}
+	if _, err := findProviderCLIPath("openai"); err == nil {
+		t.Error("expected an error for a provider that is not CLI-backed")
 	}
 }
