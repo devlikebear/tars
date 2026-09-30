@@ -21,6 +21,13 @@ test('a companion question keeps its words as the message and the title', async 
   const composer = page.locator('.chat-main textarea')
   await expect(composer).toHaveValue(words)
   await expect(page.locator('.console-context-chip')).toBeVisible()
+  // The session list refreshes when the turn ends. Slow the title save so
+  // it lands after a refresh that does not wait for it would have read the
+  // list (seen on slow CI runners); the sidebar must still get the title.
+  await page.route('**/v1/admin/sessions/*', async (route) => {
+    if (route.request().method() === 'PATCH') await new Promise((resolve) => setTimeout(resolve, 300))
+    await route.fallback()
+  })
   await composer.press('Enter')
 
   // The model got the guidance: the mock names the console area it read.
