@@ -17,6 +17,9 @@ export const changesEn = {
   untitledTurn: '(no message)',
   folder: 'Folder',
   filesLabel: 'Changed files',
+  tree: {
+    files: (count: number) => (count === 1 ? '1 file' : `${count} files`),
+  },
   summary: (files: number, additions: number, deletions: number) =>
     `${files} ${files === 1 ? 'file' : 'files'} +${additions} −${deletions}`,
   // Keyed by internal/checkpoint's Skip* reasons; others use `skippedOther`.
@@ -59,6 +62,7 @@ export const changesEn = {
     hunk: 'Revert hunk',
     file: 'Revert file',
     turn: 'Revert turn',
+    rowTitle: 'Revert this turn’s changes',
     since: 'Restore to before this turn',
     sinceTitle: 'Put every file changed since this turn began back as it was, including later turns’ edits to them',
     reverted: 'reverted',
@@ -131,6 +135,9 @@ export const changesKo: ChangesTranslations = {
   untitledTurn: '(메시지 없음)',
   folder: '폴더',
   filesLabel: '바뀐 파일',
+  tree: {
+    files: (count: number) => `파일 ${count}개`,
+  },
   summary: (files, additions, deletions) => `파일 ${files}개 +${additions} −${deletions}`,
   skipped: {
     too_many_files: '기록 안 됨: 바뀐 파일이 너무 많음',
@@ -168,6 +175,7 @@ export const changesKo: ChangesTranslations = {
     hunk: '이 부분 되돌리기',
     file: '파일 되돌리기',
     turn: '턴 되돌리기',
+    rowTitle: '이 턴의 변경 되돌리기',
     since: '이 턴 이전으로 복원',
     sinceTitle: '이 턴이 시작된 뒤 바뀐 파일을 모두 그때 상태로 돌립니다. 이후 턴의 수정도 함께 사라집니다',
     reverted: '되돌림',

@@ -12,6 +12,7 @@
   import { changes } from '../lib/stores/changesStore'
   import type { ChangesScope } from '../lib/stores/changes.svelte'
   import DiffView from './DiffView.svelte'
+  import { fileTreeRows } from '../lib/changes'
 
   interface Props {
     sessionId: string
@@ -31,6 +32,23 @@
   // The hunk or file a review note is being written for.
   let commentTarget = $state<{ turnId: string; path: string; hunkId?: string } | null>(null)
   let commentText = $state('')
+
+  // Folders the person folded in the file tree; they stay folded across turns.
+  let collapsedDirs = $state<Set<string>>(new Set())
+  let fileRows = $derived(fileTreeRows(diff?.files ?? [], collapsedDirs))
+
+  function toggleDir(path: string) {
+    const next = new Set(collapsedDirs)
+    if (next.has(path)) next.delete(path)
+    else next.add(path)
+    collapsedDirs = next
+  }
+
+  // Reverts one turn straight from its row in the list.
+  function revertTurnRow(turnId: string) {
+    changes.select(turnId)
+    void changes.requestRevert(turnId, 'turn', [])
+  }
 
   let selectedFile = $derived(diff?.files.find((file) => file.path === selectedPath) ?? diff?.files[0])
   let selectedLines = $derived(parseUnifiedDiff(selectedFile?.patch))
@@ -254,24 +272,37 @@
   {:else}
     <div class="turn-list" role="listbox" aria-label={$t.changes.turnsLabel}>
       {#each listed as turn (turn.turn_id)}
-        <button
-          type="button"
-          role="option"
-          class="turn-row"
-          class:active={selected?.turn_id === turn.turn_id}
-          aria-selected={selected?.turn_id === turn.turn_id}
-          onclick={() => changes.select(turn.turn_id)}
-        >
-          <span class="turn-preview" data-content>{turn.preview || $t.changes.untitledTurn}</span>
-          <span class="turn-meta">
-            {#if turn.skipped}
-              <span class="turn-skipped">{skipText(turn.skipped)}</span>
-            {:else}
-              <span class="turn-counts">{$t.changes.summary(turn.files, turn.additions, turn.deletions)}</span>
-            {/if}
-            <span class="turn-time">{turnTime(turn)}</span>
-          </span>
-        </button>
+        <div class="turn-item">
+          <button
+            type="button"
+            role="option"
+            class="turn-row"
+            class:active={selected?.turn_id === turn.turn_id}
+            aria-selected={selected?.turn_id === turn.turn_id}
+            onclick={() => changes.select(turn.turn_id)}
+          >
+            <span class="turn-preview" data-content>{turn.preview || $t.changes.untitledTurn}</span>
+            <span class="turn-meta">
+              {#if turn.skipped}
+                <span class="turn-skipped">{skipText(turn.skipped)}</span>
+              {:else}
+                <span class="turn-counts">{$t.changes.summary(turn.files, turn.additions, turn.deletions)}</span>
+              {/if}
+              <span class="turn-time">{turnTime(turn)}</span>
+            </span>
+          </button>
+          {#if !turn.skipped && turn.files > 0}
+            <button
+              type="button"
+              class="turn-restore"
+              data-testid="turn-restore"
+              disabled={revertBusy}
+              title={$t.changes.revert.rowTitle}
+              aria-label={$t.changes.revert.rowTitle}
+              onclick={() => revertTurnRow(turn.turn_id)}
+            >↺</button>
+          {/if}
+        </div>
       {/each}
     </div>
 
@@ -290,24 +321,42 @@
         <button type="button" class="btn btn-ghost btn-sm" disabled={revertBusy} title={$t.changes.revert.sinceTitle} onclick={() => revert('since')}>{$t.changes.revert.since}</button>
       </div>
       <div class="file-list" role="listbox" aria-label={$t.changes.filesLabel}>
-        {#each diff.files as file (file.path)}
-          <button
-            type="button"
-            role="option"
-            class="file-row"
-            class:active={selectedFile?.path === file.path}
-            aria-selected={selectedFile?.path === file.path}
-            onclick={() => (selectedPath = file.path)}
-          >
-            <code class="file-path" title={file.path}>{file.path}</code>
-            <span class="file-status">
-              {statusText(file.status)}
-              {#if changes.scope === 'turn' && selected && changes.isReverted(selected.turn_id, file.path)}
-                <span class="reverted-badge">{$t.changes.revert.reverted}</span>
-              {/if}
-            </span>
-            <span class="file-counts"><span class="plus">+{file.additions}</span> <span class="minus">−{file.deletions}</span></span>
-          </button>
+        {#each fileRows as row (row.kind + row.path)}
+          {#if row.kind === 'dir'}
+            <button
+              type="button"
+              class="dir-row"
+              style={`--depth: ${row.depth}`}
+              aria-expanded={!collapsedDirs.has(row.path)}
+              title={row.path}
+              onclick={() => toggleDir(row.path)}
+            >
+              <span class="dir-caret" aria-hidden="true">{collapsedDirs.has(row.path) ? '▸' : '▾'}</span>
+              <code class="dir-name">{row.name}/</code>
+              <span class="file-status">{$t.changes.tree.files(row.files)}</span>
+              <span class="file-counts"><span class="plus">+{row.additions}</span> <span class="minus">−{row.deletions}</span></span>
+            </button>
+          {:else}
+            {@const file = row.file}
+            <button
+              type="button"
+              role="option"
+              class="file-row"
+              style={`--depth: ${row.depth}`}
+              class:active={selectedFile?.path === file.path}
+              aria-selected={selectedFile?.path === file.path}
+              onclick={() => (selectedPath = file.path)}
+            >
+              <code class="file-path" title={file.path}>{row.name}</code>
+              <span class="file-status">
+                {statusText(file.status)}
+                {#if changes.scope === 'turn' && selected && changes.isReverted(selected.turn_id, file.path)}
+                  <span class="reverted-badge">{$t.changes.revert.reverted}</span>
+                {/if}
+              </span>
+              <span class="file-counts"><span class="plus">+{file.additions}</span> <span class="minus">−{file.deletions}</span></span>
+            </button>
+          {/if}
         {/each}
       </div>
       {#if diff.unknown?.length}
@@ -448,6 +497,67 @@
     background: var(--surface-elevated);
   }
 
+  .turn-item {
+    display: flex;
+    align-items: stretch;
+    gap: var(--space-1);
+    min-width: 0;
+  }
+
+  .turn-item .turn-row {
+    flex: 1;
+  }
+
+  .turn-restore {
+    flex-shrink: 0;
+    width: 28px;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    color: var(--text-tertiary);
+    cursor: pointer;
+  }
+
+  .turn-restore:hover:not(:disabled) {
+    color: var(--warning);
+    border-color: var(--warning);
+  }
+
+  .turn-restore:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+
+  .dir-row {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
+    align-items: baseline;
+    gap: var(--space-2);
+    padding: 2px var(--space-2);
+    padding-left: calc(var(--space-2) + var(--depth, 0) * 14px);
+    border: 0;
+    background: transparent;
+    color: var(--text-secondary);
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .dir-row:hover {
+    color: var(--text-primary);
+  }
+
+  .dir-caret {
+    color: var(--text-tertiary);
+    font-size: var(--text-xs);
+  }
+
+  .dir-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--text-xs);
+  }
+
   .turn-preview {
     color: var(--text-primary);
     font-size: var(--text-sm);
@@ -473,6 +583,7 @@
     grid-template-columns: minmax(0, 1fr) auto auto;
     align-items: baseline;
     gap: var(--space-2);
+    padding-left: calc(var(--space-2) + var(--depth, 0) * 14px);
   }
 
   .file-path {
