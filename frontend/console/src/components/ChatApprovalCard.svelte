@@ -34,7 +34,7 @@
     }
   }
 
-  // y / s / n answer the card while focus is inside it, which it takes when
+  // y / s / a / n answer the card while focus is inside it, which it takes when
   // it appears; typing in the composer never reaches it.
   function onKeydown(event: KeyboardEvent) {
     if (!card?.contains(document.activeElement)) return
@@ -57,6 +57,8 @@
         return $t.chatApproval.state.allowed
       case 'allowed_session':
         return $t.chatApproval.state.allowedSession(approval.sessionRule ?? approval.toolName)
+      case 'allowed_always':
+        return $t.chatApproval.state.allowedAlways(approval.sessionRule ?? approval.toolName)
       case 'denied':
         return $t.chatApproval.state.denied
       case 'withdrawn':
@@ -103,9 +105,23 @@
           {$t.chatApproval.allowSession(approval.sessionRule)}
         </button>
       {/if}
+      {#if approval.sessionRule && approval.alwaysDir}
+        <button
+          type="button"
+          class="btn btn-ghost btn-sm"
+          title={$t.chatApproval.alwaysTitle(approval.alwaysDir)}
+          onclick={() => answer('allow_always')}
+        >
+          {$t.chatApproval.allowAlways(approval.sessionRule)}
+        </button>
+      {/if}
       <button type="button" class="btn btn-danger btn-sm" onclick={() => answer('deny')}>{$t.chatApproval.deny}</button>
       <span class="approval-keys" aria-hidden="true">
-        {approval.sessionRule ? $t.chatApproval.keysHint : $t.chatApproval.keysHintNoSession}
+        {approval.alwaysDir
+          ? $t.chatApproval.keysHintAlways
+          : approval.sessionRule
+            ? $t.chatApproval.keysHint
+            : $t.chatApproval.keysHintNoSession}
       </span>
     </div>
     {#if approval.error}
@@ -219,7 +235,8 @@
   }
 
   .approval-outcome[data-state='allowed'],
-  .approval-outcome[data-state='allowed_session'] {
+  .approval-outcome[data-state='allowed_session'],
+  .approval-outcome[data-state='allowed_always'] {
     color: var(--success);
   }
 </style>

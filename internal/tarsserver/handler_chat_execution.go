@@ -122,6 +122,7 @@ func executeChatLoop(
 			stream.reasoning(text)
 		},
 		ClaudeCodePermissionHandler: chatPermissionHandlerFor(deps, state, stream),
+		ClaudeCodePermissionAllow:   chatClaudeCodeAlwaysRules(deps, state),
 		ToolAuthorizer:              chatToolGateFor(deps, state, stream),
 	})
 	if err != nil {
@@ -206,7 +207,7 @@ func chatPermissionHandlerFor(deps chatHandlerDeps, state chatRunState, stream *
 	if !state.interactivePermissions || deps.permissions == nil {
 		return nil
 	}
-	return newChatPermissionHandler(deps.permissions, state.sessionID, stream)
+	return newChatPermissionHandler(deps.permissions, state.sessionID, state.cwd, stream)
 }
 
 // chatToolGateFor returns the gate that asks the console before a native
@@ -216,5 +217,21 @@ func chatToolGateFor(deps chatHandlerDeps, state chatRunState, stream *chatStrea
 	if !state.interactivePermissions || deps.permissions == nil {
 		return nil
 	}
-	return newChatToolGate(deps.permissions, state.sessionID, stream)
+	return newChatToolGate(deps.permissions, state.sessionID, state.cwd, stream)
+}
+
+// chatClaudeCodeAlwaysRules are the Claude Code rules the person chose to
+// always allow in this turn's folder. They apply to every turn there, asked
+// interactively or not; they come only from TARS' own store.
+func chatClaudeCodeAlwaysRules(deps chatHandlerDeps, state chatRunState) []string {
+	if deps.permissions == nil || deps.permissions.always == nil {
+		return nil
+	}
+	var rules []string
+	for _, rule := range deps.permissions.always.list(state.cwd) {
+		if rule.Provider == chatRuleProviderClaudeCode {
+			rules = append(rules, rule.Display())
+		}
+	}
+	return rules
 }

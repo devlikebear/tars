@@ -132,9 +132,7 @@ func (a *chatActivity) observe(sessionID string, payload map[string]any) {
 			Preview:   approvalPreview(payload),
 			Reason:    activityString(payload, "reason"),
 			AskedAt:   a.now().UTC(),
-			// allow_session is always accepted: the server falls back to
-			// allowing once when no rule can be remembered.
-			Decisions: []string{"allow_once", "allow_session", "deny"},
+			Decisions: chatApprovalDecisions(payload),
 		}
 		p.Session = a.sessionTitle(sessionID)
 		a.mu.Lock()
@@ -244,4 +242,15 @@ func handleChatActivity(w http.ResponseWriter, r *http.Request, activity *chatAc
 		return
 	}
 	writeJSON(w, http.StatusOK, activity.snapshot())
+}
+
+// chatApprovalDecisions lists the answers a question takes. allow_session is
+// always accepted: the server falls back to allowing once when no rule can
+// be remembered. allow_always is offered only when the prompt names the
+// folder it would cover.
+func chatApprovalDecisions(payload map[string]any) []string {
+	if activityString(payload, "always_dir") != "" {
+		return []string{"allow_once", "allow_session", "allow_always", "deny"}
+	}
+	return []string{"allow_once", "allow_session", "deny"}
 }

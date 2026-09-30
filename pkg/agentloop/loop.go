@@ -129,6 +129,11 @@ type RunOptions struct {
 	// to the caller (see llm.ChatOptions.ClaudeCodePermissionHandler). Nil
 	// leaves the provider on its one-shot path. Other providers ignore it.
 	ClaudeCodePermissionHandler llm.ClaudeCodePermissionHandler
+	// ClaudeCodePermissionAllow is forwarded to ChatOptions on every
+	// iteration: Claude Code rules allowed without asking. Take them only
+	// from the person's own "always allow" choices (see
+	// llm.ChatOptions.ClaudeCodePermissionAllow). Other providers ignore it.
+	ClaudeCodePermissionAllow []string
 	// ToolAuthorizer, when set, is asked before each tool call runs and may
 	// deny it (see ToolAuthorizer). Nil runs every allowed call.
 	ToolAuthorizer ToolAuthorizer
@@ -187,6 +192,7 @@ func (l *Loop) Run(ctx context.Context, initial []llm.ChatMessage, opts RunOptio
 			ClaudeCodePermissionDeny: opts.ClaudeCodePermissionDeny,
 			// Set after the aligned block: gofmt would widen every key above.
 			ClaudeCodePermissionHandler: opts.ClaudeCodePermissionHandler,
+			ClaudeCodePermissionAllow:   opts.ClaudeCodePermissionAllow,
 		})
 		if err != nil {
 			l.emit(ctx, Event{Type: EventLoopError, Iteration: i + 1, Err: err})

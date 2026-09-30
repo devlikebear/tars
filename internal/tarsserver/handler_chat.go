@@ -1290,6 +1290,7 @@ func newChatAPIHandlerWithRuntimeConfig(
 		tooling.Worktrees.running = cancelRegistry.Running
 	}
 	permissions := newChatPermissionBroker()
+	permissions.always = newChatAlwaysRuleStore(workspaceDir)
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/chat", func(w http.ResponseWriter, r *http.Request) {
 		handleChatRequest(w, r, chatHandlerDeps{
@@ -1312,6 +1313,9 @@ func newChatAPIHandlerWithRuntimeConfig(
 	})
 	mux.HandleFunc("/v1/chat/permissions/", func(w http.ResponseWriter, r *http.Request) {
 		handleChatPermissionAnswer(w, r, permissions)
+	})
+	mux.HandleFunc("/v1/chat/permission-rules", func(w http.ResponseWriter, r *http.Request) {
+		handleChatPermissionRules(w, r, permissions.always)
 	})
 	mux.HandleFunc("/v1/chat/stream", func(w http.ResponseWriter, r *http.Request) {
 		handleChatTurnStream(w, r, turnFeeds)

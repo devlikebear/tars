@@ -8,6 +8,8 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ### Added
 
+- **"이 폴더에서 항상 허용" (#970)** — 승인 카드에 네 번째 선택지(`a`)가 생겼다. 고르면 그 규칙이 세션의 작업 폴더에 대해 저장되어, 그 폴더에서 일하는 모든 세션이 서버를 재시작한 뒤에도 묻지 않고 실행한다. 규칙은 "이 세션 동안 허용"과 같은 방식으로 만든다(`Bash(npm test:*)`, `exec(go test:*)`, `write_file`; 복합 명령·`rm`·`sudo`에는 제안하지 않음). **저장 위치는 프로젝트가 아니라 TARS 워크스페이스**(`_shared/permissions/always-allow.json`, 심볼릭 링크를 푼 폴더 경로별)다: 허용 규칙은 권한을 넓히므로, 클론한 저장소가 실어 올 수 있는 `.tars` 설정은 계속 deny 전용으로 두고 허용 규칙은 사람이 카드에서 고른 것만 쓴다. `claude-code-cli`는 저장된 규칙을 매 턴 `--settings`의 `permissions.allow`로 받고(Claude Code가 deny를 먼저 적용), 네이티브 provider는 게이트가 묻기 전에 확인한다. 세션 설정 패널의 새 **권한** 탭에서 폴더의 규칙을 보고 지운다(`GET` / `DELETE /v1/chat/permission-rules?dir=`). 공개 API: `llm.ChatOptions.ClaudeCodePermissionAllow`, `agentloop.RunOptions.ClaudeCodePermissionAllow`.
+
 - **옆 세션 패널 (#971)** — 채팅 오른쪽 레일의 `◫`(옆 세션)로 다른 세션을 지금 세션 옆에 띄운다. 그 세션의 대화를 보고, 진행 중인 턴을 실시간으로 따라가고, 승인 카드에 답하고, 메시지를 보낼 수 있어 두 세션을 전환 없이 나란히 다룬다. `열기`로 그 세션을 메인으로 옮긴다. 턴 피드(`GET /v1/chat/stream`)를 쓰므로 다른 탭이나 cron이 시작한 턴에도 붙는다.
 
 - **턴이 콘솔을 떠나도 계속 돈다 (#971)** — 다른 세션으로 옮기거나 새로고침하거나 연결이 끊겨도 진행 중인 채팅 턴이 멈추지 않는다. 지금까지는 요청이 끊기면 턴도 취소됐다. 멈추는 방법은 이제 명시적인 중지(`POST /v1/chat/cancel`)뿐이다. 세션으로 돌아오면 콘솔이 진행 중인 턴에 다시 붙어, 지금까지의 답과 도구 호출, 대기 중인 승인 카드를 그대로 다시 보여주고 이어서 받는다(`GET /v1/chat/stream?session_id=`). 따라서 승인 질문도 연결이 끊겼다고 닫히지 않고, 돌아와서 답할 때까지 기다린다.
