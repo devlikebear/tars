@@ -6,6 +6,8 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.38.0] - 2026-09-30
+
 ### Added
 
 - **네이티브 provider의 파일 편집이 도구 카드에 바로 diff로 뜬다 (#1032)** — anthropic / openai / gemini처럼 TARS가 도구를 직접 실행하는 provider에서 `write_file` · `edit_file` · `apply_patch`가 끝나는 즉시 채팅 스트림에 `file_change` 이벤트(`tool_call_id`, `path`, `op`: create / modify / delete, `additions`, `deletions`, `hunks`)가 온다. 콘솔은 그 도구 호출 카드 머리에 `+n −m`을 붙이고, 카드를 펼치면 파일별 행을 눌러 턴 변경 카드와 같은 diff 보기로 본다. 바이너리 파일, 1 MiB를 넘는 파일, 줄 수가 너무 많은 diff는 hunk 없이 수치만(또는 바이너리 표시만) 보낸다. 모델이 받는 도구 결과 텍스트는 그대로다. 백그라운드 턴 피드로도 재생되므로 다시 붙은 콘솔에도 뜬다. `claude-code-cli` / `antigravity-cli`는 CLI가 자기 도구를 실행하므로 이벤트가 없고, 지금처럼 턴이 끝날 때의 변경 카드만 보인다. 공개 API: `tools.Result.FileChanges`, `tools.FileChange` / `FileChangeHunk` / `FileChangeOp`, `agentloop.Event.ToolFileChanges`.
@@ -46,6 +48,8 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 - **`cmd/apisnapshot`이 `internal` 패키지를 건너뛴다** — Go는 `pkg/x/internal/y`를 부모 밖에서 import하지 못하게 막으므로 그 아래는 외부 소비자가 기댈 수 있는 표면이 아니다.
 
 ### Fixed
+
+- **`tars auth init` / `tars auth passwd`가 비밀번호를 화면에 그대로 보여주던 문제** — 프롬프트가 stdin을 줄 단위로 읽어 입력한 비밀번호가 터미널에 에코됐다. 이제 stdin이 터미널이면 `golang.org/x/term`으로 에코 없이 읽고, 오타로 로그인이 막히지 않도록 `Confirm password:`로 한 번 더 받아 다르면 `passwords do not match`로 아무것도 저장하지 않는다. 입력 중 Ctrl-C를 누르면 터미널 에코를 되돌린 뒤 종료(130)한다. 파이프·리다이렉트 입력(`echo pw | tars auth passwd user`)은 이전처럼 한 줄만 읽고 확인을 묻지 않으며, `--password`와 `TARS_INITIAL_ADMIN_PASSWORD`도 그대로 우선한다.
 
 - **세션 보드가 새 세션을 저장소에서 일하는 세션으로 보여주던 문제 (#971)** — 워크스페이스가 심볼릭 링크 아래에 있으면(macOS의 `/var`·`/tmp`, 옮긴 `~/.tars`) 아직 자기 아티팩트 폴더에 있는 세션도 그 폴더를 작업 폴더·저장소로 표시했다. 세션 저장소는 cwd를 링크를 푼 경로로 저장하는데 보드는 설정된 워크스페이스 경로와 글자 그대로 비교했기 때문이다. 이제 체크포인트 코드(#1005)처럼 링크를 풀어 비교한다. 보드의 `cwd`는 계속 저장된 값, 즉 `GET /v1/admin/sessions/{id}/cwd`와 같은 값을 보낸다.
 
