@@ -200,3 +200,44 @@ test('the terminal keeps its xterm instance when moved between zones (#667)', as
 
   await terminal.locator('button[aria-label="Close panel"]').click()
 })
+
+// claude-code-cli resumes its own upstream session and runs its own tools,
+// so the health panel must not judge it by TARS's transcript or tool
+// registry (#857). The e2e server runs a native provider; the CLI case is
+// made by patching two real responses.
+test('session health judges a resumed claude-code-cli session by the CLI, a native one by TARS', async ({ page }) => {
+  const id = await newSession(page)
+  await send(page, 'health check')
+  await expect(lastAssistant(page)).toContainText('Echo: health check')
+  await turnSettled(page)
+
+  const healthToggle = page.locator('.chat-rail [data-panel="health"]')
+  const metrics = page.locator('.dock-right .health-metrics')
+  await healthToggle.click()
+  await expect(metrics).toContainText('Risk tools')
+  await expect(page.locator('.dock-right .health-note')).toHaveCount(0)
+
+  await page.route(
+    (url) => url.pathname === '/v1/agentruntime/subagents',
+    async (route) => {
+      const response = await route.fetch()
+      const body = await response.json()
+      body.tiers = (body.tiers ?? []).map((tier: { name: string }) => ({ ...tier, kind: 'claude-code-cli' }))
+      await route.fulfill({ response, json: body })
+    },
+  )
+  await page.route(
+    (url) => url.pathname === `/v1/admin/sessions/${id}`,
+    async (route) => {
+      const response = await route.fetch()
+      await route.fulfill({ response, json: { ...(await response.json()), upstream_session_id: 'upstream-e2e' } })
+    },
+  )
+  await page.reload()
+  if (!(await metrics.isVisible())) await healthToggle.click()
+
+  await expect(page.locator('.dock-right')).toContainText('Claude Code CLI manages this context')
+  await expect(metrics).toContainText('Permissions')
+  await expect(metrics).not.toContainText('Risk tools')
+  await expect(page.locator('.dock-right')).not.toContainText('Compact soon')
+})

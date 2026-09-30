@@ -38,7 +38,7 @@ import type {
 } from '../api'
 import type { Artifact } from '../artifacts'
 import type { ChatCommandsTranslations } from '../../i18n/sections/chatCommands'
-import type { SessionHealthInput, SessionHealthReport } from '../sessionHealth'
+import type { SessionHealthInput, SessionHealthProvider, SessionHealthReport } from '../sessionHealth'
 import type { TaskProgressSummary } from '../tasks'
 import type { AgentRuntimeTierOption, ChatContextInfo, ChatTier, Session, SessionCwd, SessionGoal, SessionMessage, SessionTasks } from '../types'
 
@@ -155,6 +155,9 @@ export class ChatSessionStore {
   // before a new chat has an id, and moves to the id when it is adopted.
   pinnedTiers = $state<Record<string, ChatTier>>({})
   tierOptions = $state<AgentRuntimeTierOption[]>([])
+  // The configured default tier: what an unpinned turn runs on when no turn
+  // has told us otherwise yet.
+  defaultTier = $state('')
   // This month's usage for the active session, from the usage tracker.
   usage = $state<SessionUsage | null>(null)
   // The session's .tars permission-mode override; '' means the global setting.
@@ -171,7 +174,7 @@ export class ChatSessionStore {
   private tierPinEdits = 0
   private usageRequest = 0
 
-  private healthInputs: Omit<SessionHealthInput, 'contextInfo' | 'now'> | null = null
+  private healthInputs: Omit<SessionHealthInput, 'contextInfo' | 'provider' | 'now'> | null = null
   private healthRequest = 0
   private sessionsRequest = 0
   private feedbackTimer: ReturnType<typeof setTimeout> | null = null
@@ -225,15 +228,15 @@ export class ChatSessionStore {
   async refreshPermission(): Promise<void> {
     const id = this.activeSessionId
     if (!id) {
-      this.permission = null
+      this.setPermissionView(null)
       return
     }
     const request = ++this.permissionRequest
     try {
       const view = await this.api.getPermissionMode(id)
-      if (request === this.permissionRequest && this.activeSessionId === id) this.permission = view
+      if (request === this.permissionRequest && this.activeSessionId === id) this.setPermissionView(view)
     } catch {
-      if (request === this.permissionRequest) this.permission = null
+      if (request === this.permissionRequest) this.setPermissionView(null)
     }
   }
 
@@ -243,16 +246,16 @@ export class ChatSessionStore {
     const id = this.activeSessionId
     if (!id) return false
     const before = this.permission
-    if (before && mode) this.permission = { ...before, mode, effective: mode, claude_code_effective: mode, source: 'session' }
+    if (before && mode) this.setPermissionView({ ...before, mode, effective: mode, claude_code_effective: mode, source: 'session' })
     this.permissionError = ''
     const request = ++this.permissionRequest
     try {
       const view = await this.api.setPermissionMode(id, mode)
-      if (request === this.permissionRequest && this.activeSessionId === id) this.permission = view
+      if (request === this.permissionRequest && this.activeSessionId === id) this.setPermissionView(view)
       return true
     } catch (err) {
       if (request === this.permissionRequest && this.activeSessionId === id) {
-        this.permission = before
+        this.setPermissionView(before)
         this.permissionError = err instanceof Error ? err.message : String(err)
       }
       return false
@@ -271,7 +274,13 @@ export class ChatSessionStore {
   applyPermissionMode(mode: string): void {
     if (!this.permission || !permissionModeCycle.includes(mode as PermissionMode)) return
     const next = mode as PermissionMode
-    this.permission = { ...this.permission, mode: next, effective: next, claude_code_effective: next, source: 'session' }
+    this.setPermissionView({ ...this.permission, mode: next, effective: next, claude_code_effective: next, source: 'session' })
+  }
+
+  // The permission view also feeds the health report (the Claude Code flag).
+  private setPermissionView(view: PermissionModeView | null): void {
+    this.permission = view
+    this.rebuildHealth()
   }
 
   get pinnedTier(): ChatTier | null {
@@ -306,6 +315,7 @@ export class ChatSessionStore {
   private writePin(key: string, tier: ChatTier | null): void {
     const { [key]: _, ...rest } = this.pinnedTiers
     this.pinnedTiers = tier ? { ...rest, [key]: tier } : rest
+    this.rebuildHealth()
   }
 
   // Take the pin from a session record the server sent.
@@ -320,6 +330,8 @@ export class ChatSessionStore {
     try {
       const resp = await this.api.listAgentRuntimeSubagents()
       this.tierOptions = resp.tiers ?? []
+      this.defaultTier = resp.default_tier?.trim() ?? ''
+      this.rebuildHealth()
     } catch {
       this.tierOptionsRequested = false
     }
@@ -544,7 +556,18 @@ export class ChatSessionStore {
       this.health = this.helpers.emptyReport()
       return
     }
-    this.health = this.helpers.buildReport({ ...this.healthInputs, contextInfo: this.contextInfo })
+    this.health = this.helpers.buildReport({ ...this.healthInputs, contextInfo: this.contextInfo, provider: this.healthProvider() })
+  }
+
+  // The provider the next turn runs on, as far as the console knows: the
+  // pinned tier's kind, else the last turn's provider, else the default
+  // tier's kind.
+  private healthProvider(): SessionHealthProvider {
+    const kindOf = (tier: string) => this.tierOptions.find((option) => option.name === tier)?.kind?.trim() ?? ''
+    const pinned = this.pinnedTier
+    const kind = pinned ? kindOf(pinned) : this.contextInfo.llm_provider?.trim() || kindOf(this.defaultTier)
+    const claudeCodeFlag = this.permission?.claude_code_flag?.trim()
+    return { kind, ...(claudeCodeFlag ? { claudeCodeFlag } : {}) }
   }
 
   private resetSlices(): void {

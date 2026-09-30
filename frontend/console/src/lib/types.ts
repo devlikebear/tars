@@ -702,6 +702,9 @@ export type Session = {
   isolation?: string
   // The tier every turn of the session uses; absent means auto.
   tier_pin?: string
+  // The CLI provider's own session that turns resume (claude-code-cli,
+  // antigravity-cli); absent until one has been captured.
+  upstream_session_id?: string
   created_at: string
   updated_at: string
 }

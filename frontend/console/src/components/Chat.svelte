@@ -230,6 +230,10 @@
       case 'review_fork_points':
         closePanel('health')
         return
+      case 'choose_permission_mode':
+        // The status bar's permission switch sets the mode for claude-code-cli turns.
+        document.querySelector<HTMLSelectElement>('[data-testid="status-permission"] select')?.focus()
+        return
     }
   }
 
