@@ -340,3 +340,13 @@ func (s *chatStreamWriter) worktree(notice worktreeNotice) {
 	}
 	s.send(payload)
 }
+
+// permissionMode tells the console the session's permission mode changed
+// during the turn (an approved plan), so its status bar follows.
+func (s *chatStreamWriter) permissionMode(mode string) {
+	s.send(map[string]any{
+		"type":       "permission_mode",
+		"session_id": s.sessionID,
+		"mode":       mode,
+	})
+}

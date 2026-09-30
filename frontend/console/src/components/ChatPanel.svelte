@@ -501,6 +501,10 @@
           chatMessages = resolveApproval(chatMessages, event.request_id, event.outcome ?? '')
         }
         break
+      case 'permission_mode':
+        // An approved plan switched the session's mode (#970).
+        if (event.mode) chatSession.applyPermissionMode(event.mode)
+        break
       case 'tool_output_line': {
         // Streamed stdout/stderr line from a running tool (currently exec).
         // Append to the matching tool message so the user sees progress
@@ -1209,6 +1213,21 @@
     navigator.clipboard.writeText(text).catch(() => {})
   }
 
+  // Plan mode (#970): once a turn has answered in plan mode, offer to
+  // approve the plan, which switches the mode and asks the agent to go on.
+  // Claude Code may ask through an ExitPlanMode card instead; approving that
+  // switches the mode too, and the bar goes away with it.
+  let showPlanBar = $derived(
+    chatSession.permission?.mode === 'plan' &&
+      !chatBusy &&
+      chatMessages.some((m) => m.role === 'assistant' && m.text.trim() !== ''),
+  )
+
+  async function approvePlan(mode: 'accept_edits' | 'auto') {
+    if (!(await chatSession.setPermissionMode(mode))) return
+    await sendMessageText($t.permissionMode.planBar.proceed)
+  }
+
   // Send a message programmatically — used by panels (TasksPanel
   // Approve & Run) that need to emit a follow-up turn without forcing
   // the user back into the composer.
@@ -1306,6 +1325,12 @@
         closeMentionMenu()
         return
       }
+    }
+    // ⇧Tab cycles the permission mode, as in Claude Code (#970).
+    if (e.key === 'Tab' && e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey && chatSession.permission) {
+      e.preventDefault()
+      void chatSession.cyclePermissionMode()
+      return
     }
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
       e.preventDefault()
@@ -1580,6 +1605,18 @@
           <span class="mention-remove">&times;</span>
         </button>
       {/each}
+    </div>
+  {/if}
+  {#if showPlanBar}
+    <div class="plan-bar" role="group" aria-label={$t.permissionMode.planBar.title}>
+      <div class="plan-bar-text">
+        <strong>{$t.permissionMode.planBar.title}</strong>
+        <span>{$t.permissionMode.planBar.hint}</span>
+      </div>
+      <div class="plan-bar-actions">
+        <button type="button" class="btn btn-secondary btn-sm" onclick={() => void approvePlan('accept_edits')}>{$t.permissionMode.planBar.approveEdits}</button>
+        <button type="button" class="btn btn-ghost btn-sm" onclick={() => void approvePlan('auto')}>{$t.permissionMode.planBar.approveAuto}</button>
+      </div>
     </div>
   {/if}
   {#if pendingTierRecommendation}
@@ -2197,6 +2234,39 @@
     display: flex;
     flex-shrink: 0;
     gap: 2px;
+  }
+
+  /* Plan mode approval bar above the composer (#970). */
+  .plan-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    margin-bottom: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--info);
+    border-radius: var(--radius-md);
+    background: var(--info-muted);
+    font-size: var(--text-sm);
+  }
+
+  .plan-bar-text {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    min-width: 0;
+    color: var(--text-secondary);
+  }
+
+  .plan-bar-text strong {
+    color: var(--info);
+    font-weight: 600;
+  }
+
+  .plan-bar-actions {
+    display: flex;
+    flex-shrink: 0;
+    gap: var(--space-1);
   }
 
   .file-input-hidden {

@@ -8,6 +8,7 @@
   import { isPinnableTier, pinnableTiers } from '../lib/tierRecommendation'
   import { chatSession } from '../lib/stores/chatSession'
   import type { ChatTier } from '../lib/types'
+  import type { PermissionMode } from '../lib/api'
 
   interface Props {
     // Resolves true when the switch succeeded.
@@ -30,9 +31,19 @@
   // The tier the next turn will use, if we know it: the pin, else the last turn's.
   let effectiveTier = $derived(pinnedTier ?? lastTier)
   let effectiveKind = $derived(tierOptions.find((option) => option.name === effectiveTier)?.kind ?? '')
-  // Permission mode only means something for the Claude Code CLI provider.
-  let showPermission = $derived(effectiveKind === 'claude-code-cli')
-  let permissionMode = $derived(chatSession.permissionModeOverride || $t.statusBar.permissionDefault)
+  // Permission modes (#970) apply to every provider that can ask in the
+  // conversation. antigravity-cli runs its own tools under its own policy.
+  let permission = $derived(chatSession.permission)
+  let cliPolicyOnly = $derived(effectiveKind === 'antigravity-cli')
+  let modeValue = $derived(permission?.mode ?? '')
+  // An inheriting session runs under different defaults per provider.
+  let shownMode = $derived(
+    permission ? (permission.mode || (effectiveKind === 'claude-code-cli' ? permission.claude_code_effective : permission.effective)) : 'manual',
+  )
+
+  function selectMode(value: string) {
+    void chatSession.setPermissionMode(value as PermissionMode | '')
+  }
 
   let usage = $derived(chatSession.usage)
 
@@ -93,11 +104,30 @@
     <span class="status-item status-muted" data-testid="status-served-by">{$t.statusBar.servedBy(lastTier, lastModel)}</span>
   {/if}
 
-  {#if showPermission}
-    <span class="status-item permission-chip" title={$t.statusBar.permissionHint} aria-disabled="true">
-      <span class="status-label">{$t.statusBar.permission}</span>
-      <strong>{permissionMode}</strong>
+  {#if cliPolicyOnly}
+    <span class="status-item permission-chip" title={$t.permissionMode.cliPolicyHint} data-testid="status-permission">
+      <span class="status-label">{$t.permissionMode.label}</span>
+      <strong>{$t.permissionMode.cliPolicy}</strong>
     </span>
+  {:else if permission}
+    <label class="status-item permission-picker" title={chatSession.permissionError ? $t.permissionMode.switchFailed : $t.permissionMode.switchHint} data-testid="status-permission">
+      <span class="status-label">{$t.permissionMode.label}</span>
+      <select
+        class="permission-select"
+        class:mode-set={modeValue !== ''}
+        class:mode-plan={shownMode === 'plan'}
+        class:mode-auto={shownMode === 'auto'}
+        value={modeValue}
+        onchange={(event) => selectMode((event.currentTarget as HTMLSelectElement).value)}
+      >
+        <option value="" title={$t.permissionMode.inheritTitle[permission.source === 'session' ? 'config' : permission.source]}>
+          {modeValue === '' ? $t.permissionMode.inherit($t.permissionMode.modes[shownMode]) : $t.permissionMode.inheritPlain}
+        </option>
+        {#each permission.modes as mode (mode)}
+          <option value={mode} title={$t.permissionMode.modeHints[mode]}>{$t.permissionMode.modes[mode]}</option>
+        {/each}
+      </select>
+    </label>
   {/if}
 
   <span class="status-spacer"></span>
@@ -198,6 +228,39 @@
   .tier-select.pinned {
     border-color: rgba(var(--primary-rgb), 0.45);
     color: var(--primary-text);
+  }
+
+  .permission-select {
+    padding: 2px var(--space-2);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    background: var(--surface-inset);
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    cursor: pointer;
+  }
+
+  .permission-select:focus-visible {
+    outline: none;
+    border-color: var(--primary);
+  }
+
+  /* A mode chosen for this session reads like a pinned tier; plan and auto
+     are the two that change what the agent may do, so they stand out. */
+  .permission-select.mode-set {
+    border-color: rgba(var(--primary-rgb), 0.45);
+    color: var(--primary-text);
+  }
+
+  .permission-select.mode-plan {
+    border-color: var(--info);
+    color: var(--info);
+  }
+
+  .permission-select.mode-auto {
+    border-color: var(--warning);
+    color: var(--warning);
   }
 
   .permission-chip {

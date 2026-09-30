@@ -11,6 +11,7 @@ import type { ChatApprovalTranslations } from './sections/chatApproval.ts'
 import type { SessionBoardTranslations } from './sections/sessionBoard.ts'
 
 import type { MessageQueueTranslations } from './sections/messageQueue.ts'
+import type { PermissionModeTranslations } from './sections/permissionMode.ts'
 import type { ArtifactPanelTranslations } from './sections/artifactPanel.ts'
 import type { SkillInboxTranslations } from './sections/skillInbox.ts'
 import type { SessionCronTranslations } from './sections/sessionCron.ts'
@@ -1606,6 +1607,7 @@ export type Translations = {
   sessionBoard: SessionBoardTranslations
 
   messageQueue: MessageQueueTranslations
+  permissionMode: PermissionModeTranslations
   artifactPanel: ArtifactPanelTranslations
   skillInbox: SkillInboxTranslations
   sessionCron: SessionCronTranslations

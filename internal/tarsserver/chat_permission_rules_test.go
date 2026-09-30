@@ -105,7 +105,7 @@ func TestChatPermissionHandlerAllowAlwaysPersistsTheRule(t *testing.T) {
 	broker, store := newAlwaysBroker(t)
 	project := t.TempDir()
 	sink := newEventSink()
-	handler := newChatPermissionHandler(broker, "s1", project, newChatStreamWriter(sink, "s1", zerolog.New(io.Discard)))
+	handler := newChatPermissionHandler(broker, "s1", project, newChatStreamWriter(sink, "s1", zerolog.New(io.Discard)), nil)
 
 	type result struct {
 		decision llm.ClaudeCodePermissionDecision
@@ -148,7 +148,7 @@ func TestChatPermissionAlwaysNeedsARuleAndAFolder(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			sink := newEventSink()
-			handler := newChatPermissionHandler(broker, "s1", tc.cwd, newChatStreamWriter(sink, "s1", zerolog.New(io.Discard)))
+			handler := newChatPermissionHandler(broker, "s1", tc.cwd, newChatStreamWriter(sink, "s1", zerolog.New(io.Discard)), nil)
 			done := make(chan struct{})
 			go func() {
 				defer close(done)
@@ -176,7 +176,7 @@ func TestChatToolGateAllowAlwaysSurvivesARestart(t *testing.T) {
 	broker, store := newAlwaysBroker(t)
 	project := t.TempDir()
 	sink := newEventSink()
-	gate := newChatToolGate(broker, "s1", project, newChatStreamWriter(sink, "s1", zerolog.New(io.Discard)))
+	gate := newChatToolGate(broker, "s1", project, newChatStreamWriter(sink, "s1", zerolog.New(io.Discard)), "")
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
@@ -198,7 +198,7 @@ func TestChatToolGateAllowAlwaysSurvivesARestart(t *testing.T) {
 	restarted := newChatPermissionBroker()
 	restarted.always = store
 	fresh := newEventSink()
-	gate = newChatToolGate(restarted, "s9", project, newChatStreamWriter(fresh, "s9", zerolog.New(io.Discard)))
+	gate = newChatToolGate(restarted, "s9", project, newChatStreamWriter(fresh, "s9", zerolog.New(io.Discard)), "")
 	d, err := gate.Authorize(context.Background(), agentloop.ToolCallRequest{ToolName: "exec", ToolArgs: `{"command":"go test ./pkg/..."}`})
 	if err != nil || !d.Allow {
 		t.Fatalf("after restart: %+v %v", d, err)
@@ -206,7 +206,7 @@ func TestChatToolGateAllowAlwaysSurvivesARestart(t *testing.T) {
 	fresh.none(t)
 
 	// Another folder is not covered.
-	other := newChatToolGate(restarted, "s9", t.TempDir(), newChatStreamWriter(fresh, "s9", zerolog.New(io.Discard)))
+	other := newChatToolGate(restarted, "s9", t.TempDir(), newChatStreamWriter(fresh, "s9", zerolog.New(io.Discard)), "")
 	asked := make(chan struct{})
 	go func() {
 		defer close(asked)

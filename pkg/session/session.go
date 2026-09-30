@@ -277,13 +277,17 @@ type Session struct {
 	// remote session instead of replaying the full transcript. Empty for
 	// stateless providers or fresh sessions. Persisted so the next turn can
 	// pass it back via llm.ChatOptions.ResumeSessionID.
-	UpstreamSessionID string         `json:"upstream_session_id,omitempty"`
-	ArchivedAt        *time.Time     `json:"archived_at,omitempty"`
-	PinnedAt          *time.Time     `json:"pinned_at,omitempty"`
-	Goal              *SessionGoal   `json:"goal,omitempty"`
-	Critic            *SessionCritic `json:"critic,omitempty"`
-	CreatedAt         time.Time      `json:"created_at"`
-	UpdatedAt         time.Time      `json:"updated_at"`
+	UpstreamSessionID string `json:"upstream_session_id,omitempty"`
+	// PermissionMode is the tool permission mode picked for this session in
+	// the console (manual, accept_edits, plan, auto). Empty keeps the
+	// configured default.
+	PermissionMode string         `json:"permission_mode,omitempty"`
+	ArchivedAt     *time.Time     `json:"archived_at,omitempty"`
+	PinnedAt       *time.Time     `json:"pinned_at,omitempty"`
+	Goal           *SessionGoal   `json:"goal,omitempty"`
+	Critic         *SessionCritic `json:"critic,omitempty"`
+	CreatedAt      time.Time      `json:"created_at"`
+	UpdatedAt      time.Time      `json:"updated_at"`
 }
 
 type Store struct {
@@ -1506,6 +1510,34 @@ func (s *Store) SetUpstreamSessionID(id string, upstreamID string) error {
 		return nil
 	}
 	sess.UpstreamSessionID = trimmed
+	sess.UpdatedAt = time.Now().UTC()
+	index[id] = sess
+	return s.saveIndex(index)
+}
+
+// SetPermissionMode records the session's tool permission mode; "" clears
+// it back to the configured default. The value is stored as given: callers
+// validate it.
+func (s *Store) SetPermissionMode(id string, mode string) error {
+	unlock := lockPath(s.indexPath())
+	defer unlock()
+	index, err := s.loadIndex()
+	if err != nil {
+		return err
+	}
+	sess, ok := index[id]
+	if !ok {
+		return ErrSessionNotFound
+	}
+	sess, _, err = s.applySessionDefaults(sess)
+	if err != nil {
+		return err
+	}
+	trimmed := strings.TrimSpace(mode)
+	if sess.PermissionMode == trimmed {
+		return nil
+	}
+	sess.PermissionMode = trimmed
 	sess.UpdatedAt = time.Now().UTC()
 	index[id] = sess
 	return s.saveIndex(index)

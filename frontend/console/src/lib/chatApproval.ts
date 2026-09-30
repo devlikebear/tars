@@ -8,7 +8,17 @@ export type ChatApprovalDecision = 'allow_once' | 'allow_session' | 'allow_alway
 
 // sending: answered here, waiting for the server to confirm.
 // withdrawn: the turn ended (or Claude Code dropped the question) first.
-export type ChatApprovalState = 'pending' | 'sending' | 'allowed' | 'allowed_session' | 'allowed_always' | 'denied' | 'withdrawn'
+// plan_approved / plan_rejected settle a plan approval (ExitPlanMode).
+export type ChatApprovalState =
+  | 'pending'
+  | 'sending'
+  | 'allowed'
+  | 'allowed_session'
+  | 'allowed_always'
+  | 'denied'
+  | 'withdrawn'
+  | 'plan_approved'
+  | 'plan_rejected'
 
 export type ChatApproval = {
   requestId: string
@@ -90,7 +100,28 @@ export function approvalPreview(approval: ChatApproval): ChatApprovalPreview {
   return { kind: 'input', text: approval.input === undefined ? '' : JSON.stringify(approval.input, null, 2) }
 }
 
-const outcomes: ReadonlySet<string> = new Set(['allowed', 'allowed_session', 'allowed_always', 'denied', 'withdrawn'])
+const outcomes: ReadonlySet<string> = new Set(['allowed', 'allowed_session', 'allowed_always', 'denied', 'withdrawn', 'plan_approved', 'plan_rejected'])
+
+// In plan mode Claude Code asks to leave it by calling ExitPlanMode with the
+// plan; the card shows the plan and approves it into a mode (#970).
+export const exitPlanModeTool = 'ExitPlanMode'
+
+export function isPlanApproval(approval: ChatApproval): boolean {
+  return approval.toolName === exitPlanModeTool
+}
+
+export function planText(approval: ChatApproval): string {
+  const input = approval.input && typeof approval.input === 'object' ? (approval.input as Record<string, unknown>) : {}
+  return text(input.plan) ?? ''
+}
+
+// The order ⇧Tab steps through, as in Claude Code.
+export const permissionModeCycle = ['manual', 'accept_edits', 'plan', 'auto'] as const
+
+export function nextPermissionMode(current: string): (typeof permissionModeCycle)[number] {
+  const at = permissionModeCycle.indexOf(current as (typeof permissionModeCycle)[number])
+  return permissionModeCycle[(at + 1) % permissionModeCycle.length]
+}
 
 // resolveApproval returns messages with the card for requestId settled, or
 // the same array when no card matches.
@@ -117,6 +148,12 @@ export function withdrawPendingApprovals(messages: ChatMessage[]): ChatMessage[]
 // keys.
 export function decisionForKey(key: string, approval: ChatApproval): ChatApprovalDecision | null {
   if (approval.state !== 'pending') return null
+  // A plan card has its own buttons; y approves it into accept edits and n
+  // keeps planning.
+  if (isPlanApproval(approval)) {
+    const k = key.toLowerCase()
+    return k === 'y' ? 'allow_once' : k === 'n' ? 'deny' : null
+  }
   switch (key.toLowerCase()) {
     case 'y':
       return 'allow_once'

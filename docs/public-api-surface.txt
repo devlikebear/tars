@@ -703,6 +703,7 @@ pkg/session field Session.Isolation
 pkg/session field Session.Kind
 pkg/session field Session.LastCompactionMode
 pkg/session field Session.ParentSessionID
+pkg/session field Session.PermissionMode
 pkg/session field Session.PinnedAt
 pkg/session field Session.PromptOverride
 pkg/session field Session.RootSessionID
@@ -879,6 +880,7 @@ pkg/session method Store.SetDeleteHook
 pkg/session method Store.SetGoal
 pkg/session method Store.SetIsolation
 pkg/session method Store.SetLastCompactionMode
+pkg/session method Store.SetPermissionMode
 pkg/session method Store.SetPinned
 pkg/session method Store.SetPromptOverride
 pkg/session method Store.SetStyleControl

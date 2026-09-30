@@ -26,8 +26,20 @@ export const chatApprovalEn = {
     allowedAlways: (rule: string) => `Always allowed in this folder: ${rule}`,
     denied: 'Denied',
     withdrawn: 'The turn ended before an answer',
+    planApproved: 'Plan approved',
+    planRejected: 'Kept planning',
   },
   sendFailed: 'Could not send your answer. Try again.',
+  // Claude Code asks to leave plan mode with the plan (ExitPlanMode).
+  plan: {
+    heading: 'Approve this plan?',
+    approveEdits: 'Approve · accept edits',
+    approveEditsTitle: 'Start working: file edits run without asking, commands still ask',
+    approveAuto: 'Approve · auto',
+    approveAutoTitle: 'Start working without asking',
+    keepPlanning: 'Keep planning',
+    keysHint: 'y approve · n keep planning',
+  },
   // Session Config → Permissions: the folder's always-allow rules.
   rules: {
     tab: 'Permissions',
@@ -75,8 +87,19 @@ export const chatApprovalKo: ChatApprovalTranslations = {
     allowedAlways: (rule: string) => `이 폴더에서 항상 허용함: ${rule}`,
     denied: '거부함',
     withdrawn: '응답하기 전에 턴이 끝났습니다',
+    planApproved: '계획 승인함',
+    planRejected: '계획 계속 다듬기',
   },
   sendFailed: '응답을 보내지 못했습니다. 다시 시도해 주세요.',
+  plan: {
+    heading: '이 계획을 승인할까요?',
+    approveEdits: '승인 · 편집 자동 허용',
+    approveEditsTitle: '작업을 시작합니다. 파일 편집은 묻지 않고, 명령은 계속 묻습니다',
+    approveAuto: '승인 · 자동',
+    approveAutoTitle: '묻지 않고 작업을 시작합니다',
+    keepPlanning: '계획 계속 다듬기',
+    keysHint: 'y 승인 · n 계속 다듬기',
+  },
   rules: {
     tab: '권한',
     heading: '이 폴더에서 항상 허용',

@@ -74,7 +74,7 @@ func newGateHarness() gateHarness {
 	sink := newEventSink()
 	broker := newChatPermissionBroker()
 	stream := newChatStreamWriter(sink, "s1", zerolog.New(io.Discard))
-	return gateHarness{gate: newChatToolGate(broker, "s1", "", stream), broker: broker, sink: sink}
+	return gateHarness{gate: newChatToolGate(broker, "s1", "", stream, ""), broker: broker, sink: sink}
 }
 
 type gateResult struct {
@@ -188,7 +188,7 @@ func TestChatToolGateRulesAreScopedToTheSession(t *testing.T) {
 	h.resolved(t)
 	wait(t, pending)
 
-	other := newChatToolGate(h.broker, "s2", "", newChatStreamWriter(h.sink, "s2", zerolog.New(io.Discard)))
+	other := newChatToolGate(h.broker, "s2", "", newChatStreamWriter(h.sink, "s2", zerolog.New(io.Discard)), "")
 	out := make(chan gateResult, 1)
 	go func() {
 		d, err := other.Authorize(context.Background(), agentloop.ToolCallRequest{ToolName: "write_file", ToolArgs: `{"path":"c.txt"}`})
