@@ -66,4 +66,10 @@ test('always allow remembers the rule for the folder until it is removed', async
   await newSessionIn(page, dir)
   await sendWrite3(page)
   await expect(pendingApproval(page)).toHaveCount(1)
+
+  // Finish the turn: turns outlive the page (#971), and one left waiting on
+  // a card would hold a chat slot on the shared server for the specs after.
+  await expect(pendingApproval(page)).toBeFocused()
+  await page.keyboard.press('s')
+  await expect(lastReply(page)).toContainText('Wrote 3 files.')
 })
