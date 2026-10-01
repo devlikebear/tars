@@ -522,3 +522,69 @@ func TestReviewRetryPromptNamesTheNewRound(t *testing.T) {
 		t.Fatalf("stage = %+v prompt = %q", st, act.Prompt)
 	}
 }
+
+// Decisions asked by one turn are answered as one turn: answering some of
+// them sends nothing, the last answer sends every answer.
+func TestDecisionAnswersBatchPerTurn(t *testing.T) {
+	p, _ := reviewTurn(t, inReview(t), twoFindings()[:1])
+	p, _ = decide(t, p, p.Review.Triage[0], "fix")
+	p, act := turn(p, t, &Report{Summary: "fixed", Decisions: []Decision{
+		{ID: "d1", Question: "Rename the field?", Options: []string{"yes", "no"}},
+		{ID: "d2", Question: "Keep the flag?", Options: []string{"keep", "drop"}},
+	}})
+	if act.Kind != ActionNone {
+		t.Fatalf("decisions must pause the loop: %+v", act)
+	}
+	var ids []string
+	for _, c := range p.Cards {
+		if c.Kind == CardDecision {
+			ids = append(ids, c.ID)
+			if c.Stage != StageReview || c.Iteration != 1 {
+				t.Fatalf("decision card without its round: %+v", c)
+			}
+		}
+	}
+	p, act = decide(t, p, ids[0], "yes")
+	if act.Kind != ActionNone || p.PendingTurn != "" {
+		t.Fatalf("one of two answers sent a turn: %+v pending %q", act, p.PendingTurn)
+	}
+	p, act = decide(t, p, ids[1], "drop")
+	if act.Kind != ActionSendTurn || len(act.Answers) != 2 {
+		t.Fatalf("act = %+v", act)
+	}
+	for _, s := range []string{"Rename the field? → yes", "Keep the flag? → drop"} {
+		if !strings.Contains(act.Prompt, s) {
+			t.Errorf("prompt lacks %q:\n%s", s, act.Prompt)
+		}
+	}
+	if act.Answers[0].CardID != ids[0] || act.Answers[1].CardID != ids[1] || p.PendingTurn != act.Prompt {
+		t.Fatalf("answers = %+v pending = %q", act.Answers, p.PendingTurn)
+	}
+	// The answer turn is still the round's fix turn.
+	if !p.Review.Fixing {
+		t.Fatal("answering the fix turn's questions left the fix turn")
+	}
+}
+
+func TestAnswersPromptAndStaleness(t *testing.T) {
+	one := []Answer{{CardID: "c1", Question: "Which DB?", Answer: "postgres"}}
+	if got := AnswersPrompt(one); got != "Which DB? → postgres" {
+		t.Fatalf("one answer = %q", got)
+	}
+	two := append(one, Answer{CardID: "c2", Question: "Port?", Answer: "5432"})
+	if got := AnswersPrompt(two); !strings.Contains(got, "- Which DB? → postgres\n- Port? → 5432") {
+		t.Fatalf("two answers = %q", got)
+	}
+
+	p := inReview(t)
+	p.Cards = append(p.Cards,
+		Card{ID: "now", Kind: CardDecision, Stage: StageReview, Iteration: 1},
+		Card{ID: "old-round", Kind: CardDecision, Stage: StageReview, Iteration: 2},
+		Card{ID: "old-stage", Kind: CardDecision, Stage: StageBuild, Iteration: 1},
+		Card{ID: "legacy", Kind: CardDecision, Stage: StageReview},
+	)
+	fresh, stale := SplitStaleAnswers(p, []Answer{{CardID: "now"}, {CardID: "old-round"}, {CardID: "old-stage"}, {CardID: "legacy"}, {CardID: "gone"}})
+	if len(fresh) != 2 || fresh[0].CardID != "now" || fresh[1].CardID != "legacy" || len(stale) != 3 {
+		t.Fatalf("fresh = %+v stale = %+v", fresh, stale)
+	}
+}

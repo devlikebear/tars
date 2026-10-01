@@ -108,7 +108,10 @@ type Card struct {
 	Stage StageID `json:"stage"`
 	// Turn is the transcript turn (1-based count of user messages) the card
 	// came from; 0 when it came from no turn.
-	Turn      int             `json:"turn"`
+	Turn int `json:"turn"`
+	// Iteration is the stage's round the card came from (0 on cards from
+	// before it was recorded).
+	Iteration int             `json:"iteration,omitempty"`
 	Title     string          `json:"title"`
 	Payload   json.RawMessage `json:"payload,omitempty"`
 	State     string          `json:"state"`

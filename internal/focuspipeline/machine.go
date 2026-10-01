@@ -94,6 +94,9 @@ type Event struct {
 type Action struct {
 	Kind   string // ActionSendTurn | ActionRunVerification | ActionNone
 	Prompt string // the next user turn's text for ActionSendTurn
+	// Answers are the decision answers a send_turn delivers: the server
+	// merges queued answers and drops those whose stage moved on.
+	Answers []Answer
 }
 
 var noAction = Action{Kind: ActionNone}
@@ -442,11 +445,13 @@ func (p *Pipeline) addCard(kind string, turn int, title string, payload any, now
 	if err != nil {
 		raw = nil
 	}
+	stage, _ := p.Stage(p.Current)
 	p.Cards = append(p.Cards, Card{
 		ID:        fmt.Sprintf("c%d", len(p.Cards)+1),
 		Kind:      kind,
 		Stage:     p.Current,
 		Turn:      turn,
+		Iteration: stage.Iteration,
 		Title:     title,
 		Payload:   raw,
 		State:     CardUnseen,
@@ -519,7 +524,13 @@ func SetCardState(p Pipeline, cardID, state, decision string, now time.Time) (Pi
 	next.Cards[idx] = card
 	next.UpdatedAt = now.UTC()
 	if card.Kind == CardDecision && card.State == CardDecided {
-		act := Action{Kind: ActionSendTurn, Prompt: card.Title + " → " + decision}
+		// The turn's other questions still open: wait, and send every
+		// answer as one turn with the last.
+		answers, ok := turnAnswers(next, card)
+		if !ok {
+			return next, noAction, nil
+		}
+		act := Action{Kind: ActionSendTurn, Prompt: AnswersPrompt(answers), Answers: answers}
 		return owe(next, act), act, nil
 	}
 	if card.Kind == CardFinding && card.State == CardDecided {
