@@ -94,6 +94,9 @@ type Event struct {
 type Action struct {
 	Kind   string // ActionSendTurn | ActionRunVerification | ActionNone
 	Prompt string // the next user turn's text for ActionSendTurn
+	// Answers are the decision answers a send_turn delivers: the server
+	// merges queued answers and drops those whose stage moved on.
+	Answers []Answer
 }
 
 var noAction = Action{Kind: ActionNone}
@@ -170,6 +173,9 @@ func applyTurn(p Pipeline, ev Event, now time.Time) (Pipeline, Action) {
 	if !p.Active() {
 		return p, noAction
 	}
+	if p.Current == StageReview && p.OpenGate == GateTriage {
+		return triageTurn(p, now)
+	}
 	b := ev.Blocks
 	act := noAction
 	// A turn completed: the turn the server owed (if any) is not owed any
@@ -190,8 +196,10 @@ func applyTurn(p Pipeline, ev Event, now time.Time) (Pipeline, Action) {
 			p.addCard(CardDecision, ev.Turn, d.Question, d, now)
 		}
 	}
-	for _, f := range b.Findings {
-		p.addCard(CardFinding, ev.Turn, f.Title, f, now)
+	if p.Current != StageReview {
+		for _, f := range b.Findings {
+			p.addCard(CardFinding, ev.Turn, f.Title, f, now)
+		}
 	}
 	if b.PR != nil {
 		// A report-kind card until P4 brings the G3 gate.
@@ -202,6 +210,8 @@ func applyTurn(p Pipeline, ev Event, now time.Time) (Pipeline, Action) {
 		act = buildTurnAction(&p, b)
 	} else if p.Current == StageBuild {
 		buildTurnAction(&p, Blocks{})
+	} else if p.Current == StageReview && !missing {
+		act = reviewTurnAction(&p, b, ev.Turn, now)
 	}
 	if missing {
 		p.addCard(CardNotice, ev.Turn, NoticeFormatMissing, map[string]any{"errors": nonNil(b.Errors)}, now)
@@ -210,7 +220,7 @@ func applyTurn(p Pipeline, ev Event, now time.Time) (Pipeline, Action) {
 		case p.Current == StageBuild && build.Turns >= buildTurnCap(p):
 			p.block(BlockedNoProgress, nil, ev.Turn, now)
 		case !priorNotice:
-			act = Action{Kind: ActionSendTurn, Prompt: reRequestPrompt(p.Current)}
+			act = Action{Kind: ActionSendTurn, Prompt: reRequestPrompt(p)}
 		}
 	} else if len(b.Errors) > 0 {
 		p.addCard(CardNotice, ev.Turn, NoticeFormatMissing, map[string]any{"errors": b.Errors}, now)
@@ -228,6 +238,11 @@ func missingRequiredBlock(p Pipeline, b Blocks) bool {
 		return b.Plan == nil && p.OpenGate != GatePlan
 	case StagePR:
 		return b.Report == nil && b.Findings == nil && b.PR == nil
+	case StageReview:
+		if p.Review.Fixing {
+			return b.Report == nil
+		}
+		return b.Findings == nil
 	default:
 		return b.Report == nil && b.Findings == nil
 	}
@@ -242,10 +257,13 @@ func lastCardIsFormatNotice(p Pipeline) bool {
 	return last.Kind == CardNotice && last.Title == NoticeFormatMissing
 }
 
-func reRequestPrompt(stage StageID) string {
+func reRequestPrompt(p Pipeline) string {
 	tag := TagReport
-	if stage == StagePlan {
+	switch {
+	case p.Current == StagePlan:
 		tag = TagPlan
+	case p.Current == StageReview && !p.Review.Fixing:
+		tag = TagFindings
 	}
 	return fmt.Sprintf("Your last reply did not end with a well-formed <%s> block. Reply again, following the <focus-stage> instructions, and end with exactly one <%s>…</%s> block containing valid JSON.", tag, tag, tag)
 }
@@ -284,6 +302,9 @@ func applyGate(p Pipeline, ev Event, now time.Time) (Pipeline, Action, error) {
 	}
 	if p.OpenGate == GateNone || ev.Gate != p.OpenGate {
 		return p, noAction, ErrGateNotOpen
+	}
+	if p.OpenGate == GateTriage && ev.Action != GateStop {
+		return p, noAction, fmt.Errorf("%w: triage closes when every finding is decided", ErrInvalidAction)
 	}
 	gate := p.OpenGate
 	cardIdx := p.openGateCard()
@@ -375,6 +396,7 @@ func (p *Pipeline) skipUnplannedStages() {
 func (p *Pipeline) advance() StageID {
 	p.setStatus(p.Current, StatusDone)
 	p.TasksDone, p.AwaitingVerification, p.LastFailure = false, false, nil
+	p.Review = ReviewState{}
 	for i := range p.Stages {
 		s := &p.Stages[i]
 		if s.Status != StatusPending {
@@ -423,11 +445,13 @@ func (p *Pipeline) addCard(kind string, turn int, title string, payload any, now
 	if err != nil {
 		raw = nil
 	}
+	stage, _ := p.Stage(p.Current)
 	p.Cards = append(p.Cards, Card{
 		ID:        fmt.Sprintf("c%d", len(p.Cards)+1),
 		Kind:      kind,
 		Stage:     p.Current,
 		Turn:      turn,
+		Iteration: stage.Iteration,
 		Title:     title,
 		Payload:   raw,
 		State:     CardUnseen,
@@ -484,6 +508,13 @@ func SetCardState(p Pipeline, cardID, state, decision string, now time.Time) (Pi
 		if decision == "" && card.Kind == CardDecision {
 			return p, noAction, fmt.Errorf("%w: a decision needs an answer", ErrInvalidCardState)
 		}
+		if card.Kind == CardFinding {
+			d, err := validFindingDecision(decision)
+			if err != nil {
+				return p, noAction, err
+			}
+			decision = d
+		}
 		card.State = CardDecided
 		card.Decision = decision
 	default:
@@ -493,7 +524,17 @@ func SetCardState(p Pipeline, cardID, state, decision string, now time.Time) (Pi
 	next.Cards[idx] = card
 	next.UpdatedAt = now.UTC()
 	if card.Kind == CardDecision && card.State == CardDecided {
-		act := Action{Kind: ActionSendTurn, Prompt: card.Title + " → " + decision}
+		// The turn's other questions still open: wait, and send every
+		// answer as one turn with the last.
+		answers, ok := turnAnswers(next, card)
+		if !ok {
+			return next, noAction, nil
+		}
+		act := Action{Kind: ActionSendTurn, Prompt: AnswersPrompt(answers), Answers: answers}
+		return owe(next, act), act, nil
+	}
+	if card.Kind == CardFinding && card.State == CardDecided {
+		act := closeTriage(&next)
 		return owe(next, act), act, nil
 	}
 	return next, noAction, nil

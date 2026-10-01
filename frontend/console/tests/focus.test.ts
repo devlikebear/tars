@@ -5,6 +5,7 @@ import {
   acknowledgeable,
   changeCards,
   deckFor,
+  excerptLines,
   mustHandle,
   orderCards,
   pipelinePhase,
@@ -18,6 +19,7 @@ import {
   stripFocusStage,
   turnIndex,
   turnSlice,
+  triageProgress,
   turnStage,
 } from '../src/lib/focus.ts'
 import { userVisibleText } from '../src/lib/consoleContext.ts'
@@ -424,4 +426,46 @@ test('the pipeline screen owns `?` (ask about the card); help keeps it elsewhere
   assert.equal(focusOwnsShortcut('help', { view: 'focus' }), false)
   assert.equal(focusOwnsShortcut('help', { view: 'chat' }), false)
   assert.equal(focusOwnsShortcut('palette', { view: 'focus', sessionId: 's1' }), false)
+})
+
+test('triageProgress counts the decided findings of the open triage gate', () => {
+  const cards = [
+    card('c1', 'finding', { stage: 'review', state: 'decided', decision: 'fix' }),
+    card('c2', 'finding', { stage: 'review', state: 'seen' }),
+    card('c3', 'finding', { stage: 'review' }),
+    card('c4', 'finding', { stage: 'review', state: 'decided', decision: 'dismiss' }),
+  ]
+  const open = pipeline({ current: 'review', open_gate: 'triage', cards, review: { triage: ['c1', 'c2', 'c3'] } })
+  assert.deepEqual(triageProgress(open), { decided: 1, total: 3 })
+  assert.equal(triageProgress(pipeline({ current: 'review', cards, review: { triage: ['c1'] } })), null, 'no gate, no progress')
+  assert.equal(triageProgress(pipeline({ current: 'review', open_gate: 'triage', cards })), null, 'no triage list')
+  assert.equal(triageProgress(null), null)
+})
+
+test('excerptLines classifies diff lines and marks the finding line in new-file numbering', () => {
+  const excerpt = ['@@ -1,4 +1,5 @@', ' package b', '-var x = 1', '+var x = 2', '+var y = 3', ' func f() {}', '\\ No newline at end of file'].join('\n')
+  const lines = excerptLines(excerpt, 3)
+  assert.deepEqual(
+    lines.map((l) => [l.kind, l.text, l.line ?? null, l.target]),
+    [
+      ['hunk', '@@ -1,4 +1,5 @@', null, false],
+      ['context', ' package b', 1, false],
+      ['del', '-var x = 1', null, false],
+      ['add', '+var x = 2', 2, false],
+      ['add', '+var y = 3', 3, true],
+      ['context', ' func f() {}', 4, false],
+      ['meta', '\\ No newline at end of file', null, false],
+    ],
+  )
+  assert.equal(excerptLines('', 3).length, 0)
+  assert.equal(excerptLines('@@ new file +5 @@\n+a\n+b', 6).find((l) => l.target)?.text, '+b', 'untracked file excerpts number from their header')
+})
+
+test('stripFocusBlocks pairs tags like the server when a block quotes a tag in its JSON', () => {
+  const other = 'Done.\n\n<focus-report>{"summary":"ok","risks":["a turn without a <focus-findings> block"]}</focus-report>'
+  assert.equal(stripFocusBlocks(other), 'Done.')
+  const same = 'Done.\n\n<focus-report>{"summary":"ok","risks":["end with one <focus-report> block"]}</focus-report>'
+  assert.equal(stripFocusBlocks(same), 'Done.')
+  const prose = 'I end with a <focus-report> block.\n\n<focus-report>{"summary":"ok"}</focus-report>'
+  assert.equal(stripFocusBlocks(prose), 'I end with a <focus-report> block.')
 })

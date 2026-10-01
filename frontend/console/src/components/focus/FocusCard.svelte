@@ -2,7 +2,8 @@
   // One card of the deck (ADR §7) and its actions: a gate (G1 plan; the
   // blocked gate retry / instruct / stop; later gates approve / request
   // changes / stop), a decision (option buttons or a
-  // free answer), a finding (fix / dismiss), and the informational cards —
+  // free answer), a finding (fix / dismiss / ask, with its diff excerpt),
+  // and the informational cards —
   // verification failure, report, change, notice — which are acknowledged.
   import { t } from '../../i18n'
   import type {
@@ -16,6 +17,7 @@
     FocusPRDraft,
     FocusReport,
   } from '../../lib/types'
+  import { excerptLines } from '../../lib/focus'
   import FocusChangeCard from './FocusChangeCard.svelte'
   import FocusPlanGate from './FocusPlanGate.svelte'
 
@@ -26,9 +28,11 @@
     busy: boolean
     onGate: (gate: string, action: FocusGateAction, note?: string, edits?: FocusPlan) => void
     onDecide: (card: FocusCard, decision: string) => void
+    // Opens the card's Q&A drawer; absent hides a finding's Ask.
+    onAsk?: () => void
   }
 
-  let { card, openGate, busy, onGate, onDecide }: Props = $props()
+  let { card, openGate, busy, onGate, onDecide, onAsk }: Props = $props()
 
   let answer = $state('')
   let asking = $state(false)
@@ -60,7 +64,7 @@
   function blockedTitle(b: FocusBlocked): string {
     if (b.reason === 'interrupted') return $t.focus.gate.interruptedTitle
     if (b.reason === 'turn_failed') return $t.focus.gate.turnFailedTitle
-    return $t.focus.gate.blockedTitle
+    return card.stage === 'review' ? $t.focus.gate.reviewBlockedTitle : $t.focus.gate.blockedTitle
   }
 
   function blockedReason(b: FocusBlocked): string {
@@ -70,7 +74,7 @@
       case 'turn_failed':
         return $t.focus.gate.blockedReason.turn_failed
       case 'limit':
-        return $t.focus.gate.blockedReason.limit(b.iteration, b.limit)
+        return card.stage === 'review' ? $t.focus.gate.blockedReason.reviewLimit(b.iteration, b.limit) : $t.focus.gate.blockedReason.limit(b.iteration, b.limit)
       case 'repeated':
         return $t.focus.gate.blockedReason.repeated
       case 'no_progress':
@@ -223,17 +227,26 @@
     {:else if card.kind === 'finding'}
       {@const f = card.payload as FocusFinding | undefined}
       <p class="finding-loc">
-        <span class="badge {f?.severity === 'high' ? 'badge-error' : f?.severity === 'medium' ? 'badge-warning' : 'badge-default'}">{f?.severity ?? ''}</span>
-        {#if f?.file}<span class="mono" data-content>{f.file}{f.line ? `:${f.line}` : ''}</span>{/if}
+        {#if f?.severity}
+          <span class="badge {f.severity === 'high' ? 'badge-error' : f.severity === 'medium' ? 'badge-warning' : 'badge-default'}" data-testid="focus-finding-severity">{$t.focus.finding.severity[f.severity] ?? f.severity}</span>
+        {/if}
+        {#if f?.file}<span class="mono" data-content data-testid="focus-finding-loc">{f.file}{f.line ? `:${f.line}` : ''}</span>{/if}
       </p>
       {#if f?.scenario}
         <h4 class="label">{$t.focus.finding.scenario}</h4>
         <p class="prose" data-content>{f.scenario}</p>
       {/if}
+      {#if f?.excerpt}
+        <h4 class="label">{$t.focus.finding.diff}</h4>
+        <pre class="mono excerpt" data-content data-testid="focus-finding-excerpt">{#each excerptLines(f.excerpt, f.line) as l, i (i)}<span class="ex-{l.kind}" class:ex-target={l.target}>{l.text}</span>{/each}</pre>
+      {/if}
       {#if !decided}
         <div class="actions">
-          <button type="button" class="btn btn-secondary btn-sm" disabled={busy} onclick={() => onDecide(card, 'fix')}>{$t.focus.finding.fix}</button>
-          <button type="button" class="btn btn-ghost btn-sm" disabled={busy} onclick={() => onDecide(card, 'dismiss')}>{$t.focus.finding.dismiss}</button>
+          <button type="button" class="btn btn-primary btn-sm" disabled={busy} onclick={() => onDecide(card, 'fix')} data-testid="focus-finding-fix">{$t.focus.finding.fix}</button>
+          <button type="button" class="btn btn-secondary btn-sm" disabled={busy} onclick={() => onDecide(card, 'dismiss')} data-testid="focus-finding-dismiss">{$t.focus.finding.dismiss}</button>
+          {#if onAsk}
+            <button type="button" class="btn btn-ghost btn-sm" onclick={onAsk} data-testid="focus-finding-ask">{$t.focus.finding.ask} <kbd class="mono">?</kbd></button>
+          {/if}
         </div>
       {/if}
     {:else if card.kind === 'failure'}
@@ -436,5 +449,37 @@
     display: flex;
     flex-wrap: wrap;
     gap: var(--space-2);
+  }
+
+  /* A finding's diff excerpt: one line per span, the finding line marked. */
+  .excerpt {
+    white-space: pre;
+    overflow-x: auto;
+  }
+
+  .excerpt span {
+    display: block;
+    min-width: max-content;
+    padding: 0 var(--space-1);
+  }
+
+  .ex-hunk,
+  .ex-meta {
+    color: var(--text-tertiary);
+  }
+
+  .ex-add {
+    color: var(--primary-text);
+    background: rgba(var(--primary-rgb), 0.08);
+  }
+
+  .ex-del {
+    color: var(--error);
+    background: var(--error-muted);
+  }
+
+  .ex-target {
+    box-shadow: inset 2px 0 0 var(--warning);
+    font-weight: 600;
   }
 </style>

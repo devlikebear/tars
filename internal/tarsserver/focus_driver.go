@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -91,11 +92,49 @@ type focusRun struct {
 	cancelled bool
 }
 
-// push queues act after what the run already owes.
+// push queues act after what the run already owes. Decision answers join
+// answers already waiting in the queue, so answers given while a turn runs
+// (or before the run reaches them) go out as one turn.
 func (r *focusRun) push(act focuspipeline.Action) {
 	r.mu.Lock()
+	defer r.mu.Unlock()
+	if len(act.Answers) > 0 {
+		for i := range r.queue {
+			if len(r.queue[i].Answers) > 0 {
+				r.queue[i] = mergeAnswers(r.queue[i], act)
+				return
+			}
+		}
+	}
 	r.queue = append(r.queue, act)
-	r.mu.Unlock()
+}
+
+// mergeAnswers is one answer turn carrying a's answers and then b's (a
+// card answered twice keeps its latest answer).
+func mergeAnswers(a, b focuspipeline.Action) focuspipeline.Action {
+	answers := append([]focuspipeline.Answer(nil), a.Answers...)
+	for _, ans := range b.Answers {
+		if i := slices.IndexFunc(answers, func(x focuspipeline.Answer) bool { return x.CardID == ans.CardID }); i >= 0 {
+			answers[i] = ans
+			continue
+		}
+		answers = append(answers, ans)
+	}
+	return focuspipeline.Action{Kind: focuspipeline.ActionSendTurn, Prompt: focuspipeline.AnswersPrompt(answers), Answers: answers}
+}
+
+// foldLate appends late answers as context to the next turn the run owes;
+// false when none is queued.
+func (r *focusRun) foldLate(late []focuspipeline.Answer) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for i := range r.queue {
+		if r.queue[i].Kind == focuspipeline.ActionSendTurn && len(r.queue[i].Answers) == 0 {
+			r.queue[i].Prompt = strings.TrimRight(r.queue[i].Prompt, "\n") + "\n\n" + focuspipeline.LateAnswersContext(late)
+			return true
+		}
+	}
+	return false
 }
 
 // pushFront makes act the run's next step: what its own step asked for
@@ -310,6 +349,12 @@ func (d *focusDriver) loop(run *focusRun, after <-chan struct{}) {
 		if !d.waitIdle(run) {
 			return
 		}
+		if len(act.Answers) > 0 {
+			var ok bool
+			if act, ok = d.currentAnswers(run, act, log); !ok {
+				continue
+			}
+		}
 		if !d.stepAllowed(run.sessionID, act) {
 			log.Debug().Str("action", act.Kind).Msg("focus: step skipped, the pipeline moved on")
 			continue
@@ -357,6 +402,39 @@ func (d *focusDriver) stepAllowed(sessionID string, act focuspipeline.Action) bo
 	return act.Kind != focuspipeline.ActionRunVerification || p.AwaitingVerification
 }
 
+// currentAnswers keeps the answers of act whose decision card is still in
+// the pipeline's current stage and round. The rest are never sent as a turn
+// of a stage they were not asked in: they ride in the next turn the run
+// owes as context, or, with none queued, leave a notice card. ok is false
+// when no answer is left to send.
+func (d *focusDriver) currentAnswers(run *focusRun, act focuspipeline.Action, log zerolog.Logger) (focuspipeline.Action, bool) {
+	store := focusStoreFor(d.sessions)
+	p, found, err := store.Get(run.sessionID)
+	if err != nil || !found {
+		return act, false
+	}
+	fresh, late := focuspipeline.SplitStaleAnswers(p, act.Answers)
+	if len(late) > 0 && !run.foldLate(late) {
+		if _, _, err := store.Update(run.sessionID, func(p focuspipeline.Pipeline) (focuspipeline.Pipeline, error) {
+			next := focuspipeline.AddNotice(p, focuspipeline.NoticeLateAnswers, map[string]any{"answers": late}, d.now())
+			if len(fresh) == 0 && next.PendingTurn == act.Prompt {
+				next.PendingTurn = "" // nothing of it is sent
+			}
+			return next, nil
+		}); err != nil {
+			log.Warn().Err(err).Msg("focus: record late decision answers")
+		}
+	}
+	if len(fresh) == 0 {
+		log.Debug().Int("late", len(late)).Msg("focus: decision answers arrived after their stage moved on")
+		return act, false
+	}
+	if len(late) > 0 {
+		act = focuspipeline.Action{Kind: focuspipeline.ActionSendTurn, Prompt: focuspipeline.AnswersPrompt(fresh), Answers: fresh}
+	}
+	return act, true
+}
+
 // turnFailed raises the resumable blocked gate for a server turn that
 // ended in an error, so the loop never stops silently.
 func (d *focusDriver) turnFailed(sessionID string, cause error, log zerolog.Logger) {
@@ -383,8 +461,8 @@ func (d *focusDriver) waitIdle(run *focusRun) bool {
 	return run.ctx.Err() == nil
 }
 
-// runVerification runs the plan's verify commands (end-to-end commands
-// belong to review) and applies the result. It claims the session like a
+// runVerification runs the plan's verify commands — and in review its
+// end-to-end commands after them — and applies the result. It claims the session like a
 // turn: the session shows as running, its progress goes to a turn feed a
 // console follows on GET /v1/chat/stream, and POST /v1/chat/cancel stops
 // it. claimed is false when another turn held the session.
@@ -401,14 +479,7 @@ func (d *focusDriver) runVerification(run *focusRun, log zerolog.Logger) (focusp
 	if err != nil || !found || !p.AwaitingVerification {
 		return none, true
 	}
-	var commands []string
-	if p.Plan != nil {
-		for _, c := range p.Plan.Verify {
-			if c = strings.TrimSpace(c); c != "" {
-				commands = append(commands, c)
-			}
-		}
-	}
+	commands := focusVerifyCommands(p)
 
 	feed, endFeed := d.feeds.begin(run.sessionID)
 	defer endFeed()
@@ -451,4 +522,25 @@ func (d *focusDriver) runVerification(run *focusRun, log zerolog.Logger) (focusp
 	stream.pipeline(updated, focusNextPrompt(act))
 	stream.focusDone()
 	return act, true
+}
+
+// focusVerifyCommands are the commands a verification runs: the plan's
+// verify commands, and in review its end-to-end commands after them.
+func focusVerifyCommands(p focuspipeline.Pipeline) []string {
+	if p.Plan == nil {
+		return nil
+	}
+	lists := [][]string{p.Plan.Verify}
+	if p.Current == focuspipeline.StageReview {
+		lists = append(lists, p.Plan.E2E)
+	}
+	var commands []string
+	for _, list := range lists {
+		for _, c := range list {
+			if c = strings.TrimSpace(c); c != "" {
+				commands = append(commands, c)
+			}
+		}
+	}
+	return commands
 }

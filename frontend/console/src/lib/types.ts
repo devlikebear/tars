@@ -2639,7 +2639,14 @@ export type FocusBlocked = {
   verify?: boolean
   error?: string
 }
-export type FocusFinding = { id: string; severity: string; file: string; line: number; title: string; scenario: string }
+// excerpt: the diff around file:line since the pipeline's base commit, set
+// by the server (P3).
+export type FocusFinding = { id: string; severity: string; file: string; line: number; title: string; scenario: string; excerpt?: string }
+
+// The review loop's round (P3): the finding cards of the open triage gate,
+// whether a fix turn is owed, whether fixes landed this round, and the
+// round's verification failures.
+export type FocusReviewState = { triage?: string[]; fixing?: boolean; fixed?: boolean; failures?: number }
 export type FocusPRDraft = { title: string; body: string }
 
 // A change card's payload: one file of a turn's checkpoint diff. The console
@@ -2692,6 +2699,9 @@ export type FocusPipeline = {
   tasks_done?: boolean
   awaiting_verification?: boolean
   last_failure?: FocusFailure
+  // The commit the review diff starts from, and the review round (P3).
+  base_commit?: string
+  review?: FocusReviewState
   // The hidden Q&A session (ADR §8) and, per card id, its turns about it.
   qa_session_id?: string
   qa_turns?: Record<string, number[]>

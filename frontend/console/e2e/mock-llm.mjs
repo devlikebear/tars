@@ -24,8 +24,13 @@
 // ("question → option"), which gets a report without one that says every
 // task is done (tasks_done), so the server's verification ends the build.
 // [e2e:focus-loop] answers every build turn with a done report and no
-// decision, for the server-driven build loop (P2). Review turns get a plain
-// report. A Q&A question (console context, no stage) gets the generic
+// decision, for the server-driven build loop (P2). Review turns get no
+// findings and a plain report, and a PR turn a draft without a question, so
+// those pipelines rest in the pr stage.
+// [e2e:focus-review] runs the review loop (P3): its plan adds an end-to-end
+// command, build reports done, the first review finds two issues in
+// base.txt, the fix turn ("Fix these findings…") reports, and the next
+// review round finds none. A Q&A question (console context, no stage) gets the generic
 // console-context answer below.
 
 import { createServer } from 'node:http'
@@ -84,32 +89,52 @@ const FOCUS_PLAN = '[e2e:focus-plan]'
 const FOCUS_ASK = '[e2e:focus-ask]'
 const FOCUS_REPORT = '[e2e:focus-report]'
 const FOCUS_LOOP = '[e2e:focus-loop]'
+const FOCUS_REVIEW = '[e2e:focus-review]'
+
+function reviewReply(typed) {
+  if (typed.startsWith('Fix these findings')) {
+    return `Fixed the accepted finding.\n\n<focus-report>${JSON.stringify({ summary: 'Fixed the greeting line.', risks: [] })}</focus-report>`
+  }
+  const findings = typed.includes('Review the changes again')
+    ? []
+    : [
+        { id: 'f1', severity: 'high', file: 'base.txt', line: 2, title: 'Greeting has no punctuation', scenario: 'greet() prints "hello" → the UI shows a bare word' },
+        { id: 'f2', severity: 'low', file: 'base.txt', line: 1, title: 'File name is vague', scenario: 'a reader opens base.txt → cannot tell it holds the greeting' },
+      ]
+  const summary = findings.length ? `Found ${findings.length} issues.` : 'Reviewed the change again.'
+  return `${summary}\n\n<focus-findings>${JSON.stringify(findings)}</focus-findings>\n<focus-report>${JSON.stringify({ summary, risks: [] })}</focus-report>`
+}
 
 function focusReply(text) {
   const stage = text.match(/<focus-stage>[\s\S]*?current stage: ([a-z_]+)/)?.[1]
   if (!stage) return null
-  if (text.slice(0, text.indexOf('<focus-stage>')).includes(FOCUS_ASK)) return 'The verification commands look right.'
+  const typed = text.slice(0, text.indexOf('<focus-stage>'))
+  if (typed.includes(FOCUS_ASK)) return 'The verification commands look right.'
   if (stage === 'plan' && text.includes(FOCUS_PLAN)) {
     const plan = {
       goal: 'Add a greeting',
       tasks: [{ title: 'Add greet()', done: 'greet() returns a greeting' }, { title: 'Test greet()', done: 'make test passes' }],
       stages: ['plan', 'build', 'review', 'pr', 'pr_review', 'merge'],
       verify: ['make test'],
-      e2e: [],
+      e2e: text.includes(FOCUS_REVIEW) ? ['git status --short'] : [],
       limits: { build: 3, review: 2, pr: 3 },
     }
     return `Here is the plan.\n\n<focus-plan>${JSON.stringify(plan)}</focus-plan>`
   }
+  if (stage === 'review' && text.includes(FOCUS_REVIEW)) return reviewReply(typed)
+  if (stage === 'pr' && (text.includes(FOCUS_REPORT) || text.includes(FOCUS_LOOP) || text.includes(FOCUS_REVIEW))) {
+    const draft = { title: 'Add a greeting', body: 'Adds greet().' }
+    return `Drafted the PR.\n\n<focus-pr>${JSON.stringify(draft)}</focus-pr>\n<focus-report>${JSON.stringify({ summary: 'Drafted the PR.', risks: [] })}</focus-report>`
+  }
   if (stage === 'review' && (text.includes(FOCUS_REPORT) || text.includes(FOCUS_LOOP))) {
     return `Looked over the change.\n\n<focus-findings>[]</focus-findings>\n<focus-report>${JSON.stringify({ summary: 'Reviewed the change.', risks: [] })}</focus-report>`
   }
-  if (stage === 'build' && text.includes(FOCUS_LOOP)) {
+  if (stage === 'build' && (text.includes(FOCUS_LOOP) || text.includes(FOCUS_REVIEW))) {
     const fixing = text.startsWith('Verification failed')
     const report = { summary: fixing ? 'Fixed the failing test.' : 'Implemented greet().', tasks_done: true, risks: [] }
     return `${fixing ? 'Fixed it.' : 'Implemented it.'}\n\n<focus-report>${JSON.stringify(report)}</focus-report>`
   }
   if (stage !== 'plan' && text.includes(FOCUS_REPORT)) {
-    const typed = text.slice(0, text.indexOf('<focus-stage>'))
     const answered = typed.includes('→')
     const report = answered
       ? { summary: 'Applied the chosen greeting.', tasks_done: true, risks: [] }

@@ -36,7 +36,7 @@ type Pipeline = {
   current: string
   open_gate?: string
   plan?: { stages: string[]; verify: string[] }
-  stages: { id: string; status: string }[]
+  stages: { id: string; status: string; iteration?: number }[]
   cards: { id: string; kind: string; state: string; decision?: string }[]
 }
 
@@ -142,11 +142,14 @@ test('a focus task: plan gate, approve, report and decision cards, decide, then 
   expect(await page.locator('main').evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true)
 
   // Key 2 picks the second option; the server runs the answer turn. Its
-  // report says every task is done, verification passes, and review starts.
+  // report says every task is done, verification passes, and review starts;
+  // the review finds nothing, verification passes again (P3), and the PR
+  // stage drafts its PR.
   await page.keyboard.press('2')
-  await expect(page.getByTestId('focus-step-review')).toHaveAttribute('data-status', 'active', { timeout: 15_000 })
+  await expect(page.getByTestId('focus-step-pr')).toHaveAttribute('data-status', 'active', { timeout: 20_000 })
   await expect(page.getByTestId('focus-step-build')).toHaveAttribute('data-status', 'done')
-  await expect(page.getByText('Reviewed the change.')).toBeVisible()
+  await expect(page.getByTestId('focus-step-review')).toHaveAttribute('data-status', 'done')
+  await expect(card(page).getByText('Drafted the PR.').first()).toBeVisible()
 
   // The build history: the newest report leads (U2), marking it seen does
   // not move the deck under the developer, and each arrow press is one card.
@@ -163,7 +166,7 @@ test('a focus task: plan gate, approve, report and decision cards, decide, then 
   await page.getByRole('button', { name: 'Back to the current stage' }).click()
 
   const p = await pipelineOf(page, id)
-  expect(p.current).toBe('review')
+  expect(p.current).toBe('pr')
   expect(p.plan?.stages).toEqual(['plan', 'build', 'review', 'pr', 'merge'])
   expect(p.plan?.verify).toEqual(['true', 'git status --short'])
   expect(p.cards.find((c) => c.kind === 'decision')).toMatchObject({ state: 'decided', decision: 'Hi there' })
@@ -246,9 +249,10 @@ test('the build loop: a failed verification becomes a failure card and a fix tur
   await page.getByTestId('focus-gate-approve').click()
 
   // Build turn → verification fails → failure card + fix turn → passes →
-  // review: all on the server, the console only follows.
-  await expect(page.getByTestId('focus-step-review')).toHaveAttribute('data-status', 'active', { timeout: 20_000 })
-  await expect(page.getByText('Reviewed the change.')).toBeVisible()
+  // review (no findings, verification passes) → pr: all on the server, the
+  // console only follows.
+  await expect(page.getByTestId('focus-step-pr')).toHaveAttribute('data-status', 'active', { timeout: 20_000 })
+  await expect(page.getByTestId('focus-step-review')).toHaveAttribute('data-status', 'done')
   const p = await pipelineOf(page, id)
   const failure = p.cards.find((c) => c.kind === 'failure')
   expect(failure).toBeTruthy()
@@ -280,7 +284,83 @@ test('the build loop: a failed verification becomes a failure card and a fix tur
   // Promote to instruction fills the stage input as a draft; nothing is sent.
   await page.getByTestId('focus-qa-promote').click()
   await expect(page.getByTestId('focus-instruction')).toHaveValue(/^About "Verification failed: sh -c/)
-  expect((await pipelineOf(page, id)).current).toBe('review')
+  expect((await pipelineOf(page, id)).current).toBe('pr')
+})
+
+// The review loop (P3): two findings open the triage gate and arrive one card
+// at a time; fixing one and dismissing the other sends one fix turn, after
+// which verification (verify and end-to-end commands) runs and a second
+// review round finds nothing, so review is done.
+const reviewGoal = '[e2e:focus-plan] [e2e:focus-review] Add a greeting'
+
+// startReview creates a review-loop pipeline and opens it (the console sends
+// the first turn), changes base.txt after its base commit, and approves the plan with a passing
+// verification command; it returns the session id once triage is open.
+async function startReview(page: Page, approveInUI: boolean): Promise<string> {
+  const repo = newRepo('tars-e2e-focus-review-')
+  const created = await (await page.request.post('/v1/focus/pipelines', { data: { goal: reviewGoal, cwd: repo } })).json()
+  const id = created.session_id as string
+  await autoMode(page, id)
+  // The console sends the goal as the first turn; it records the base commit.
+  await page.goto(`/console/focus/${id}`)
+  await expect(page.locator('[data-testid="focus-card"][data-kind="gate"]')).toBeVisible({ timeout: 15_000 })
+  writeFileSync(join(repo, 'base.txt'), 'base\nhello\n')
+  if (approveInUI) {
+    await page.getByTestId('focus-plan-verify').fill('true')
+    await page.getByTestId('focus-gate-approve').click()
+  } else {
+    const plan = (await pipelineOf(page, id)).plan!
+    const res = await page.request.post(`/v1/focus/pipelines/${encodeURIComponent(id)}/gates/plan`, { data: { action: 'approve', edits: { ...plan, verify: ['true'] } } })
+    expect(res.ok()).toBe(true)
+  }
+  await expect.poll(async () => (await pipelineOf(page, id)).open_gate ?? '', { timeout: 20_000 }).toBe('triage')
+  return id
+}
+
+test('the review loop: findings are triaged one at a time, a fix turn and verification run, and a clean round ends review', async ({ page }) => {
+  const id = await startReview(page, true)
+  const finding = page.locator('[data-testid="focus-card"][data-kind="finding"]')
+  const progress = page.getByTestId('focus-triage-progress')
+
+  // The first finding: severity, location, scenario and the diff around it.
+  await expect(finding).toBeVisible()
+  await expect(progress).toHaveText('0 / 2 decided')
+  await expect(finding.getByTestId('focus-finding-severity')).toHaveText('high')
+  await expect(finding.getByTestId('focus-finding-loc')).toHaveText('base.txt:2')
+  await expect(finding.getByText('the UI shows a bare word')).toBeVisible()
+  await expect(finding.getByTestId('focus-finding-excerpt')).toContainText('+hello')
+
+  // Ask opens the card's Q&A drawer, like `?`.
+  await finding.getByTestId('focus-finding-ask').click()
+  await expect(page.getByTestId('focus-qa-input')).toBeFocused()
+
+  // One at a time: Fix hands over to the second finding; triage stays open.
+  await finding.getByTestId('focus-finding-fix').click()
+  await expect(progress).toHaveText('1 / 2 decided')
+  await expect(finding.getByTestId('focus-finding-loc')).toHaveText('base.txt:1')
+  expect((await pipelineOf(page, id)).open_gate).toBe('triage')
+
+  // The last decision closes triage; the server sends the fix turn with the
+  // accepted finding only, verifies, reviews again, and moves on.
+  await finding.getByTestId('focus-finding-dismiss').click()
+  await expect(page.getByTestId('focus-step-review')).toHaveAttribute('data-status', 'done', { timeout: 30_000 })
+  await expect(progress).toHaveCount(0)
+
+  const p = await pipelineOf(page, id)
+  const findings = p.cards.filter((c) => c.kind === 'finding')
+  expect(findings.map((c) => c.decision)).toEqual(['fix', 'dismiss'])
+  expect(p.stages.find((s) => s.id === 'review')?.iteration).toBe(2)
+  expect(p.current).toBe('pr')
+
+  // The fix turn named the accepted finding only.
+  const history = await (await page.request.get(`/v1/admin/sessions/${encodeURIComponent(id)}/history`)).json() as { role: string; content: string }[]
+  const fix = history.find((m) => m.role === 'user' && m.content.startsWith('Fix these findings'))
+  expect(fix?.content).toContain('base.txt:2')
+  expect(fix?.content).not.toContain('base.txt:1')
+
+  // A stale tab deciding again gets 409 and the current pipeline.
+  const again = await page.request.post(`/v1/focus/pipelines/${encodeURIComponent(id)}/cards/${findings[0].id}`, { data: { state: 'decided', decision: 'dismiss' } })
+  expect(again.status()).toBe(409)
 })
 
 // --- Korean (see e2e/workbench-ko.spec.ts) ---
@@ -339,6 +419,17 @@ test.describe('Korean', () => {
     await expect(page.locator('[data-testid="focus-card"][data-kind="gate"]')).toBeVisible()
     const screen = await chromeTexts(page.getByTestId('focus-pipeline'))
     expect(screen.length).toBeGreaterThan(5)
+    expect(screen.filter(untranslated)).toEqual([])
+  })
+
+  test('a finding card and triage progress are Korean', async ({ page }) => {
+    const id = await startReview(page, false)
+    await page.goto(`/console/focus/${id}`)
+    const finding = page.locator('[data-testid="focus-card"][data-kind="finding"]')
+    await expect(finding).toBeVisible()
+    await expect(page.getByTestId('focus-triage-progress')).toHaveText('2개 중 0개 결정')
+    await expect(finding.getByTestId('focus-finding-severity')).toHaveText('높음')
+    const screen = await chromeTexts(page.getByTestId('focus-pipeline'))
     expect(screen.filter(untranslated)).toEqual([])
   })
 })

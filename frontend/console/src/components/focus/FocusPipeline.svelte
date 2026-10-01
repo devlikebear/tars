@@ -6,7 +6,7 @@
   import { onDestroy, untrack } from 'svelte'
   import { t } from '../../i18n'
   import * as api from '../../lib/api'
-  import { pipelinePhase, promoteDraft, stepperItems, type QAEntry } from '../../lib/focus'
+  import { pipelinePhase, promoteDraft, stepperItems, triageProgress, type QAEntry } from '../../lib/focus'
   import { shortCwdLabel } from '../../lib/sessionLabels'
   import { FocusStore } from '../../lib/stores/focusStore.svelte'
   import type { FocusCard, FocusGateAction, FocusPlan, FocusStageId } from '../../lib/types'
@@ -224,6 +224,7 @@
       qaError={store.qaError}
       onAsk={(id, question) => store.ask(id, question)}
       onPromote={promote}
+      triage={triageProgress(pipeline)}
     />
 
 

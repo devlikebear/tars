@@ -58,6 +58,9 @@ type Finding struct {
 	Line     int    `json:"line"`
 	Title    string `json:"title"`
 	Scenario string `json:"scenario"`
+	// Excerpt is the diff around File:Line since the pipeline's base
+	// commit, added by the server (never by the model) for the card.
+	Excerpt string `json:"excerpt,omitempty"`
 }
 
 // tagPattern matches any focus open or close tag; group 1 is "/" for a
@@ -119,6 +122,9 @@ func ParseBlocks(text string) Blocks {
 			}
 			if findings == nil {
 				findings = []Finding{}
+			}
+			for i := range findings {
+				findings[i].Excerpt = "" // the server's alone, never the model's
 			}
 			out.Findings = findings
 		}
@@ -212,30 +218,41 @@ func cleanStrings(values []string) []string {
 }
 
 // scanBlocks finds every complete focus block outside code fences, in
-// order. A close tag pairs with the nearest open tag of the same name before
-// it, so an inline mention of an open tag does not swallow the real block,
-// and a block never spans a fence.
+// order. A close tag pairs with an open tag of the same name before it (and
+// after the previous block): the nearest one whose body is valid JSON, else
+// the nearest one. So an inline mention of an open tag — in prose before the
+// block, or quoted inside the block's own JSON, of any tag — never swallows
+// or splits the real block. A block never spans a fence, and tags inside a
+// block found are not reused.
 func scanBlocks(text string) []rawBlock {
 	var out []rawBlock
 	for _, seg := range unfencedSegments(text) {
 		part := text[seg[0]:seg[1]]
-		openTag, openStart, openEnd := "", -1, -1
+		opens := map[string][][2]int{} // tag → [start, end) of its open tags
 		for _, m := range tagPattern.FindAllStringSubmatchIndex(part, -1) {
 			tag := "focus-" + part[m[4]:m[5]]
 			if m[3] == m[2] { // open tag
-				openTag, openStart, openEnd = tag, m[0], m[1]
+				opens[tag] = append(opens[tag], [2]int{m[0], m[1]})
 				continue
 			}
-			if openStart < 0 || tag != openTag {
+			candidates := opens[tag]
+			if len(candidates) == 0 {
 				continue
+			}
+			open := candidates[len(candidates)-1]
+			for i := len(candidates) - 1; i >= 0; i-- {
+				if json.Valid([]byte(strings.TrimSpace(part[candidates[i][1]:m[0]]))) {
+					open = candidates[i]
+					break
+				}
 			}
 			out = append(out, rawBlock{
 				tag:   tag,
-				body:  part[openEnd:m[0]],
-				start: seg[0] + openStart,
+				body:  part[open[1]:m[0]],
+				start: seg[0] + open[0],
 				end:   seg[0] + m[1],
 			})
-			openTag, openStart, openEnd = "", -1, -1
+			clear(opens)
 		}
 	}
 	return out

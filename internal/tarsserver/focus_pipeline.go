@@ -83,6 +83,7 @@ func appendFocusGuidance(message string, sessions *session.Store, sessionID stri
 	if !ok {
 		return message, nil
 	}
+	p = focusRecordBaseCommit(sessions, sessionID, p, logger)
 	guidance := strings.TrimSpace(strings.ReplaceAll(focuspipeline.Guidance(p), focusStageClose, ""))
 	if guidance == "" {
 		return message, nil
@@ -103,6 +104,7 @@ func focusAfterTurn(sessions *session.Store, sessionID, transcriptPath, reply st
 		return focuspipeline.Pipeline{}, none, false
 	}
 	turn := countUserTurns(transcriptPath)
+	blocks := focusEnrichFindings(sessions, sessionID, focuspipeline.ParseBlocks(reply))
 	next := none
 	p, ok, err := store.Update(sessionID, func(p focuspipeline.Pipeline) (focuspipeline.Pipeline, error) {
 		if stage, _ := p.Stage(p.Current); stage.ID != mark.Stage || stage.Iteration != mark.Iteration {
@@ -111,7 +113,7 @@ func focusAfterTurn(sessions *session.Store, sessionID, transcriptPath, reply st
 		updated, act, err := focuspipeline.Apply(p, focuspipeline.Event{
 			Kind:   focuspipeline.EventTurnCompleted,
 			Turn:   turn,
-			Blocks: focuspipeline.ParseBlocks(reply),
+			Blocks: blocks,
 		}, now)
 		next = act
 		return updated, err

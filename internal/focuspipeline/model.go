@@ -108,7 +108,10 @@ type Card struct {
 	Stage StageID `json:"stage"`
 	// Turn is the transcript turn (1-based count of user messages) the card
 	// came from; 0 when it came from no turn.
-	Turn      int             `json:"turn"`
+	Turn int `json:"turn"`
+	// Iteration is the stage's round the card came from (0 on cards from
+	// before it was recorded).
+	Iteration int             `json:"iteration,omitempty"`
 	Title     string          `json:"title"`
 	Payload   json.RawMessage `json:"payload,omitempty"`
 	State     string          `json:"state"`
@@ -187,6 +190,11 @@ type Pipeline struct {
 	// once the release finishes, the release train treats both as released.
 	ReleaseItems []string   `json:"release_items,omitempty"`
 	ReleaseSince *time.Time `json:"release_since,omitempty"`
+	// BaseCommit is HEAD of the session's folder when the pipeline's first
+	// turn ran, before any change: the review diff starts there (P3).
+	BaseCommit string `json:"base_commit,omitempty"`
+	// Review is the review loop's position in its round (P3).
+	Review ReviewState `json:"review,omitzero"`
 }
 
 // KindRelease marks a release pipeline, which the release train never lists.
@@ -273,6 +281,7 @@ func (p Pipeline) clone() Pipeline {
 		f.Results = append([]VerificationResult(nil), f.Results...)
 		out.LastFailure = &f
 	}
+	out.Review = p.Review.clone()
 	if p.QATurns != nil {
 		out.QATurns = make(map[string][]int, len(p.QATurns))
 		for k, v := range p.QATurns {

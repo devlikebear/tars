@@ -148,13 +148,19 @@ func applyVerification(p Pipeline, ev Event, now time.Time) (Pipeline, Action, e
 	if ev.Verification == nil {
 		return p, noAction, fmt.Errorf("%w: no results", ErrInvalidVerification)
 	}
-	if !p.Active() || p.Current != StageBuild || p.OpenGate != GateNone || !p.AwaitingVerification {
+	if !p.Active() || (p.Current != StageBuild && p.Current != StageReview) || p.OpenGate != GateNone || !p.AwaitingVerification {
 		return p, noAction, nil // stale: the loop has moved on
 	}
 	next := p.clone()
 	next.AwaitingVerification = false
 	next.UpdatedAt = now
 	v := *ev.Verification
+	if next.Current == StageReview {
+		if v.Passed {
+			return next.reviewVerificationPassed(ev.Turn, now)
+		}
+		return next.reviewVerificationFailed(v, ev.Turn, now)
+	}
 	if v.Passed {
 		return next.verificationPassed(ev.Turn, now)
 	}
@@ -202,7 +208,7 @@ func (p *Pipeline) block(reason string, failure *FailureFact, turn int, now time
 	if failure != nil {
 		p.LastFailure = failure
 	}
-	p.raiseBlocked(BlockedTitle, BlockedFact{
+	p.raiseBlocked(blockedTitle(p.Current), BlockedFact{
 		Reason: reason, Iteration: stage.Iteration, Limit: p.stageLimit(p.Current), Failure: failure,
 	}, turn, now)
 }
@@ -309,6 +315,11 @@ func applyBlockedGate(p *Pipeline, ev Event, decide func()) (Pipeline, Action, e
 	s.Limit = p.stageLimit(p.Current) + 1
 	s.Iteration++
 	s.Turns = 0
+	if p.Current == StageReview {
+		if retry := reviewRetry(p, ev.Action); retry != "" {
+			prompt = retry
+		}
+	}
 	p.LastFailure = nil
 	p.AwaitingVerification = false
 	decide()
