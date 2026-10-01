@@ -6,6 +6,18 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.42.0] - 2026-10-01
+
+### Added
+
+- **폴더를 골라 격리된 새 채팅을 한 번에 시작** — 저장소에서 격리된 채팅을 시작하려면 새 채팅 → `/cwd <저장소>` → (칩이 늦게 떠서) 새로고침 → ⑂ 격리를 거쳐야 했다. 이제 세션 보드의 "새 채팅"과 사이드바의 "+ 새 대화" 옆 화살표가 최근 작업 폴더, 서버가 확인하는 경로 입력칸, 그리고 저장소라면 "격리" 체크박스를 연다. 입력창에서는 `/new [경로] [--isolate]`로 같은 일을 한다(경로가 없으면 이 채팅의 폴더, 격리 중이면 원래 체크아웃). 서버: `POST /v1/admin/sessions`가 선택적 `cwd`·`isolate`를 받아, 세션을 그 폴더에서 시작하고 `isolate`면 첫 턴 전에 worktree로 옮긴다(`reason new_chat`). 폴더가 없거나 저장소 밖에서 격리를 요청하면 아무것도 만들지 않고, worktree를 만들지 못하면 세션을 다시 지운다. 폴더 지정은 `PUT .../workdirs`처럼 관리자 토큰이 필요하다. `GET /v1/admin/session-folders`는 최근 세션이 작업한 폴더를 보여 주고 입력한 경로를 같은 방식으로 확인한다. 데스크톱: "폴더에서 새 채팅"이 이 한 번의 호출을 쓰고(예전 서버에서는 `PUT workdirs`로 폴백), 저장소에서는 확인 창에 "격리해서 시작"을 제안하며, `tars://new`가 `isolate=1`을 받는다. (#1058)
+
+### Fixed
+
+- **채팅에서 `/cwd <경로>`로 새 폴더를 열 수 없던 문제** — 세션 작업 폴더 후보(`work_dirs`)에 없는 경로는 `session: cwd not in eligible work_dirs`로 거절돼서, 파일 패널의 폴더 선택기를 한 단계씩 눌러 내려가지 않으면 저장소에서 채팅을 시작할 수 없었다. 이제 `PUT /v1/admin/sessions/{id}/cwd`가 후보에 없는 경로를 받으면 서버가 절대경로인지, 존재하는지, 디렉터리인지 확인한 뒤 후보에 추가하고 전환한다(`session.Store.SwitchCurrentDir`). 실패하면 아무것도 바꾸지 않고 400과 함께 `ErrCwdNotAbsolute` / `ErrCwdNotFound` / `ErrCwdNotDirectory` 문구를 돌려준다. 경로 앞의 `~`는 서버 사용자의 홈으로 바뀌고, 응답에 실제로 저장한 경로(`current`)와 새로 추가됐는지(`added`)가 담긴다. (#1041)
+
+- **`/cwd`로 폴더를 바꿔도 파일 패널이 이전 폴더를 보여주던 문제** — 이제 `/cwd`나 상태 바 칩으로 cwd를 바꾸면 파일 패널이 폴더 목록을 다시 불러와 새 폴더를 보여 준다(반대 방향, 파일 패널 → 상태 바는 #1048). (#1041)
+
 ## [0.41.0] - 2026-10-01
 
 ### Added
