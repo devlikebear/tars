@@ -1,0 +1,47 @@
+// A chat turn runs on in the server when the console's stream to it breaks
+// (#971). A panel that only reacted to the stream's own `done` then never
+// learned the turn had ended: the transcript, title and session cost stayed
+// as they were before it, so a new session read "$0 · 0 tokens" after
+// minutes of work. The cost is recorded when the provider call returns, so
+// it can only be read after the turn ends.
+
+// streamDropped tells a broken stream (network error, proxy reset) from the
+// user stopping the turn, which aborts the fetch on purpose.
+export function streamDropped(err: unknown): boolean {
+  return !(err instanceof DOMException && err.name === 'AbortError')
+}
+
+export type ReattachOutcome = {
+  // The server still had the turn running and the panel followed it again.
+  attached: boolean
+  // The reattached stream reached `done` or `cancelled`, which settle the
+  // turn themselves.
+  ended: boolean
+}
+
+export type DroppedTurnDeps = {
+  // Rebuild the thread from the transcript: the turn's user message is
+  // already there, and the reattached feed replays only the reply.
+  reloadHistory: () => Promise<void>
+  reattach: () => Promise<ReattachOutcome>
+  // Re-read what a finished turn changes: sessions, health, cost.
+  settle: () => Promise<void>
+}
+
+// recoverDroppedTurn follows a turn whose stream broke. The turn is settled
+// exactly once: by its own end event if the panel sees one, here otherwise
+// (it ended during the gap, or the stream broke again).
+export async function recoverDroppedTurn(deps: DroppedTurnDeps): Promise<void> {
+  try {
+    await deps.reloadHistory()
+  } catch {
+    // The reattach and the settle below still bring the rest back.
+  }
+  let outcome: ReattachOutcome = { attached: false, ended: false }
+  try {
+    outcome = await deps.reattach()
+  } catch {
+    // Still unreachable: settle with whatever the server can tell us.
+  }
+  if (!outcome.ended) await deps.settle()
+}

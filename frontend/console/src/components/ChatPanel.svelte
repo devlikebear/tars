@@ -8,6 +8,7 @@
   import { toolBaseDirs } from '../lib/cliToolLabels'
   import { changes } from '../lib/stores/changesStore'
   import { turnCardAnchors } from '../lib/changes'
+  import { recoverDroppedTurn, streamDropped, type ReattachOutcome } from '../lib/chatTurnRecovery'
   import type { DraftNote } from '../lib/stores/changes.svelte'
   import { extractArtifact, extractArtifactsFromHistory, mergeArtifact, type Artifact } from '../lib/artifacts'
   import { buildTierRecommendation, pinnedTierPayload, tierRecommendationPayload, type TierRecommendation } from '../lib/tierRecommendation'
@@ -1017,6 +1018,7 @@
     abortController = ac
     userStopped = false
     let failed = false
+    let dropped = false
     try {
       const chatAttachments = currentFiles.length > 0 ? await filesToAttachments(currentFiles) : undefined
       await streamChat(
@@ -1043,10 +1045,11 @@
         ac.signal,
       )
     } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') {
+      if (!streamDropped(err)) {
         // User cancelled — no error to show
       } else {
         failed = true
+        dropped = true
         chatError = err instanceof Error ? err.message : $t.chatThread.errors.sendFailed
         chatMessages = [...chatMessages, { id: `error-${Date.now()}`, role: 'error', text: chatError }]
       }
@@ -1058,6 +1061,18 @@
       chatMessages = settleInterruptedProviderTools(withdrawPendingApprovals(chatMessages), Date.now())
       stopChatStatusTicker()
       void scrollToBottom()
+    }
+    if (dropped) {
+      // The turn runs on in the server; follow it again so its reply and
+      // cost show up instead of what was there before it.
+      await recoverDroppedTurn({
+        reloadHistory: async () => {
+          const id = activeChatSessionId()
+          if (id) await loadHistoryInto(id)
+        },
+        reattach: resumeRunningTurn,
+        settle: () => chatSession.turnSettled(),
+      })
     }
     await afterTurn(failed)
   }
@@ -1129,13 +1144,15 @@
   // opens a session with a turn in progress, it attaches and rebuilds the
   // turn from its events: the user message is already in the history, so
   // only the reply is added.
-  async function resumeRunningTurn() {
+  async function resumeRunningTurn(): Promise<ReattachOutcome> {
     const id = activeChatSessionId()
-    if (!id || chatBusy) return
+    if (!id || chatBusy) return { attached: false, ended: false }
     const ac = new AbortController()
     abortController = ac
     const assistantRef = { id: `assistant-resumed-${Date.now()}` }
     let attached = false
+    // done and cancelled settle the turn in handleChatEvent.
+    let ended = false
     try {
       await attachChatStream(id, (event) => {
         if (!attached) {
@@ -1148,6 +1165,7 @@
         }
         // Too long to rebuild; the history reload after the turn has it all.
         if (event.type === 'turn_feed_truncated') return
+        if (event.type === 'done' || event.type === 'cancelled') ended = true
         handleChatEvent(event, assistantRef)
       }, ac.signal)
     } catch (err) {
@@ -1163,6 +1181,7 @@
         void scrollToBottom()
       }
     }
+    return { attached, ended }
   }
 
   function noteChipText(note: DraftNote): string {
@@ -1559,6 +1578,8 @@
           void scrollToBottom()
         } catch { /* ignore */ }
       })()
+      // A turn that ended while the stream was down recorded its cost then.
+      void chatSession.refreshUsage()
     }
 
     stopEventStream = streamEvents(
