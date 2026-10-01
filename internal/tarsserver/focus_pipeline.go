@@ -26,6 +26,7 @@ import (
 //	POST /v1/focus/pipelines/{id}/cards/{card}    {state, decision?} → {pipeline, next_prompt}
 //	POST /v1/focus/pipelines/{id}/advance         {stage} → {pipeline, next_prompt}; 409 unless stage is the active current one with no gate open
 //	POST /v1/focus/pipelines/{id}/stop            → {pipeline, next_prompt: ""}; 409 when already finished or stopped
+//	POST /v1/focus/pipelines/{id}/qa              {card_id, question} → 202 {qa_session_id, turn} (focus_qa.go)
 //
 // Every chat turn of a session with a pipeline gets the stage's guidance
 // appended to the user message as a <focus-stage> block, and the reply's
@@ -155,8 +156,18 @@ func countUserTurns(transcriptPath string) int {
 func focusPipelineCleanup(sessions *session.Store, logger zerolog.Logger) func(string) {
 	store := focusStoreFor(sessions)
 	return func(sessionID string) {
+		p, ok, _ := store.Get(sessionID)
 		if err := store.Delete(sessionID); err != nil {
 			logger.Warn().Err(err).Str("session_id", sessionID).Msg("focus: delete pipeline of deleted session failed")
+		}
+		if qa := strings.TrimSpace(p.QASessionID); ok && qa != "" {
+			// The hook runs under the session index lock: delete the
+			// pipeline's hidden Q&A session after it is released.
+			go func() {
+				if err := sessions.Delete(qa); err != nil && !isSessionNotFound(err) {
+					logger.Warn().Err(err).Str("session_id", qa).Msg("focus: delete Q&A session of deleted session failed")
+				}
+			}()
 		}
 	}
 }
@@ -205,6 +216,7 @@ func newFocusPipelineHandler(sessions *session.Store, worktrees *chatWorktrees, 
 	mux.HandleFunc("POST /v1/focus/pipelines/{id}/cards/{card}", api.card)
 	mux.HandleFunc("POST /v1/focus/pipelines/{id}/advance", api.advance)
 	mux.HandleFunc("POST /v1/focus/pipelines/{id}/stop", api.stop)
+	mux.HandleFunc("POST /v1/focus/pipelines/{id}/qa", api.qa)
 	return mux
 }
 

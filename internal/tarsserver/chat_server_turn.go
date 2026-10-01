@@ -22,6 +22,12 @@ const focusTurnSource = "focus"
 // the turn (the server lifetime) and carries the role the turn runs as
 // (serverauth.WithRoleContext).
 func runServerChatTurn(ctx context.Context, deps chatHandlerDeps, sessionID, message, consoleContext string) (llm.ChatResponse, error) {
+	return runServerChatTurnAs(ctx, deps, sessionID, message, consoleContext, chatTurnOrigin{unattended: focusTurnSource})
+}
+
+// runServerChatTurnAs is runServerChatTurn for another origin (a Q&A turn
+// is read-only and named focus_qa).
+func runServerChatTurnAs(ctx context.Context, deps chatHandlerDeps, sessionID, message, consoleContext string, origin chatTurnOrigin) (llm.ChatResponse, error) {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
 		// An empty or stale id would start a new session.
@@ -38,7 +44,7 @@ func runServerChatTurn(ctx context.Context, deps chatHandlerDeps, sessionID, mes
 		return llm.ChatResponse{}, err
 	}
 	req := chatRequestPayload{SessionID: sessionID, Message: message, ConsoleContext: consoleContext}
-	return runChatTurn(discardResponseWriter{header: http.Header{}}, r, req, deps, chatTurnOrigin{unattended: focusTurnSource})
+	return runChatTurn(discardResponseWriter{header: http.Header{}}, r, req, deps, origin)
 }
 
 // discardResponseWriter is the response of a turn nobody requested: its

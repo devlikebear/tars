@@ -43,10 +43,13 @@ type focusDriver struct {
 	feeds    *chatTurnFeeds
 	activity *chatActivity
 	cancels  *chatCancelRegistry
+	qaTurn   focusQATurnRunner
 
 	mu   sync.Mutex
 	runs map[string]*focusRun
-	wg   sync.WaitGroup
+	// qaBusy holds the Q&A sessions answering a question now.
+	qaBusy map[string]bool
+	wg     sync.WaitGroup
 }
 
 // focusTurnRunner runs one turn on a session (runServerChatTurn in the
@@ -108,6 +111,7 @@ func newFocusDriver(logger zerolog.Logger) *focusDriver {
 		now:      time.Now,
 		idlePoll: 100 * time.Millisecond,
 		runs:     map[string]*focusRun{},
+		qaBusy:   map[string]bool{},
 	}
 }
 
@@ -122,6 +126,10 @@ func (d *focusDriver) bind(deps chatHandlerDeps) {
 	d.cancels = deps.cancelRegistry
 	d.runTurn = func(ctx context.Context, sessionID, message string) error {
 		_, err := runServerChatTurn(ctx, deps, sessionID, message, "")
+		return err
+	}
+	d.qaTurn = func(ctx context.Context, qaSessionID, question, consoleContext string) error {
+		_, err := runServerChatTurnAs(ctx, deps, qaSessionID, question, consoleContext, chatTurnOrigin{unattended: focusQASource, readOnly: true})
 		return err
 	}
 	d.verify = func(ctx context.Context, sessionID, command string) (focuspipeline.VerificationResult, error) {

@@ -123,6 +123,10 @@ type chatTurnOrigin struct {
 	// through the ops approval queue, like cron turns, and its context is
 	// the caller's (the server lifetime), not detached from a request.
 	unattended string
+	// readOnly turns (focus Q&A, in plan mode) never take the repository's
+	// write lease, so they never push the session holding it, or
+	// themselves, into a worktree.
+	readOnly bool
 }
 
 // errChatTurnRejected is a turn that never started: its error answer was
@@ -142,8 +146,12 @@ func (e *errChatTurnRejected) Error() string { return e.msg }
 func runChatTurn(w http.ResponseWriter, r *http.Request, req chatRequestPayload, deps chatHandlerDeps, origin chatTurnOrigin) (llm.ChatResponse, error) {
 	endBusy := deps.activity.beginChat()
 	defer endBusy()
-	worktreeMoved, endLease := deps.tooling.Worktrees.beginTurn(r.Context(), strings.TrimSpace(req.SessionID), false)
-	defer endLease()
+	var worktreeMoved *worktreeNotice
+	if !origin.readOnly {
+		moved, endLease := deps.tooling.Worktrees.beginTurn(r.Context(), strings.TrimSpace(req.SessionID), false)
+		defer endLease()
+		worktreeMoved = moved
+	}
 	deps.logger.Debug().
 		Str("path", r.URL.Path).
 		Str("session_id", strings.TrimSpace(req.SessionID)).
