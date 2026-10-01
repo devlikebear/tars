@@ -16,7 +16,7 @@ func TestReRequestOnlyOnceWhenOtherCardsArrive(t *testing.T) {
 	if act.Kind != ActionSendTurn {
 		t.Fatalf("first miss re-requests: %+v", act)
 	}
-	p, act, _ = Apply(p, Event{Kind: EventTurnCompleted, Turn: 4, Blocks: bad}, t0)
+	_, act, _ = Apply(p, Event{Kind: EventTurnCompleted, Turn: 4, Blocks: bad}, t0)
 	if act.Kind == ActionSendTurn {
 		t.Fatalf("second miss in a row must not re-request again: %+v", act)
 	}
