@@ -32,6 +32,9 @@ type Report struct {
 	Summary   string     `json:"summary"`
 	Decisions []Decision `json:"decisions,omitempty"`
 	Risks     []string   `json:"risks,omitempty"`
+	// TasksDone is the build stage's claim that every approved task is
+	// complete. It only counts together with passing verification.
+	TasksDone bool `json:"tasks_done,omitempty"`
 }
 
 // Decision is one question the agent asks with its options.

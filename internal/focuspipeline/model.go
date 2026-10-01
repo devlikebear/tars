@@ -96,6 +96,9 @@ type Stage struct {
 	Status    StageStatus `json:"status"`
 	Iteration int         `json:"iteration"`
 	Limit     int         `json:"limit,omitempty"`
+	// Turns counts the focus turns completed in the stage (build's
+	// no-progress cap).
+	Turns int `json:"turns,omitempty"`
 }
 
 // Card is one item of the focus deck.
@@ -145,10 +148,24 @@ type Pipeline struct {
 	Current   StageID `json:"current"`
 	Plan      *Plan   `json:"plan,omitempty"`
 	// OpenGate is the gate waiting for the developer, GateNone when none.
-	OpenGate  string    `json:"open_gate,omitempty"`
-	Cards     []Card    `json:"cards"`
-	PR        *PRInfo   `json:"pr,omitempty"`
-	UpdatedAt time.Time `json:"updated_at"`
+	OpenGate string  `json:"open_gate,omitempty"`
+	Cards    []Card  `json:"cards"`
+	PR       *PRInfo `json:"pr,omitempty"`
+	// TasksDone is the latest build report's claim that every task is
+	// complete; build exits when it holds and verification passes.
+	TasksDone bool `json:"tasks_done,omitempty"`
+	// AwaitingVerification is set when a build turn asked for verification
+	// and cleared by its result, so a stale result changes nothing.
+	AwaitingVerification bool `json:"awaiting_verification,omitempty"`
+	// LastFailure is the build's latest verification failure, for repeat
+	// detection and the blocked gate's retry.
+	LastFailure *FailureFact `json:"last_failure,omitempty"`
+	// QASessionID is the hidden Q&A session of the pipeline (ADR §8), and
+	// QATurns maps a card id to the Q&A turns asked about it. Q&A changes
+	// nothing else.
+	QASessionID string           `json:"qa_session_id,omitempty"`
+	QATurns     map[string][]int `json:"qa_turns,omitempty"`
+	UpdatedAt   time.Time        `json:"updated_at"`
 	// FinishedAt is when the pipeline ran to its end (Finished), stamped once
 	// by Apply; nil while it runs and for pipelines finished before P5. The
 	// release train compares it, not UpdatedAt, with the latest tag, since
@@ -245,6 +262,17 @@ func (p Pipeline) clone() Pipeline {
 	if p.ReleaseSince != nil {
 		since := *p.ReleaseSince
 		out.ReleaseSince = &since
+	}
+	if p.LastFailure != nil {
+		f := *p.LastFailure
+		f.Results = append([]VerificationResult(nil), f.Results...)
+		out.LastFailure = &f
+	}
+	if p.QATurns != nil {
+		out.QATurns = make(map[string][]int, len(p.QATurns))
+		for k, v := range p.QATurns {
+			out.QATurns[k] = append([]int(nil), v...)
+		}
 	}
 	return out
 }

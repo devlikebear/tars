@@ -17,6 +17,9 @@ const (
 	EventAdvance = "advance"
 	// EventStop stops the pipeline at any time, gate open or not.
 	EventStop = "stop"
+	// EventVerification is the result of the verification a build turn
+	// asked for (ActionRunVerification).
+	EventVerification = "verification"
 )
 
 // Gate actions.
@@ -30,6 +33,9 @@ const (
 const (
 	ActionNone     = "none"
 	ActionSendTurn = "send_turn"
+	// ActionRunVerification asks the server to run the plan's verify
+	// commands and feed the result back as EventVerification.
+	ActionRunVerification = "run_verification"
 )
 
 // NoticeFormatMissing is the title of the card a turn without its required
@@ -79,11 +85,13 @@ type Event struct {
 	Action string
 	Edits  *Plan
 	Note   string
+	// Verification is the verification result (EventVerification).
+	Verification *Verification
 }
 
 // Action is what the server should do next.
 type Action struct {
-	Kind   string // ActionSendTurn | ActionNone
+	Kind   string // ActionSendTurn | ActionRunVerification | ActionNone
 	Prompt string // the next user turn's text for ActionSendTurn
 }
 
@@ -121,8 +129,10 @@ func applyEvent(p Pipeline, ev Event, now time.Time) (Pipeline, Action, error) {
 		next.UpdatedAt = now.UTC()
 		stage := next.advance()
 		return next, Action{Kind: ActionSendTurn, Prompt: approvedPrompt(GateNone, stage)}, nil
+	case EventVerification:
+		return applyVerification(p, ev, now.UTC())
 	case EventStop:
-		if !p.Active() {
+		if !p.Active() && p.OpenGate != GateBlocked {
 			return p, noAction, ErrNotActive
 		}
 		next := p.clone()
@@ -166,7 +176,13 @@ func applyTurn(p Pipeline, ev Event, now time.Time) (Pipeline, Action) {
 		// A report-kind card until P4 brings the G3 gate.
 		p.addCard(CardReport, ev.Turn, PRDraftTitle, *b.PR, now)
 	}
-	if missingRequiredBlock(p, b) {
+	missing := missingRequiredBlock(p, b)
+	if p.Current == StageBuild && !missing {
+		act = buildTurnAction(&p, b)
+	} else if p.Current == StageBuild {
+		buildTurnAction(&p, Blocks{})
+	}
+	if missing {
 		reRequest := !lastCardIsFormatNotice(p)
 		p.addCard(CardNotice, ev.Turn, NoticeFormatMissing, map[string]any{"errors": nonNil(b.Errors)}, now)
 		if reRequest {
@@ -238,7 +254,7 @@ func supersedeOpenGate(p *Pipeline) {
 
 func applyGate(p Pipeline, ev Event, now time.Time) (Pipeline, Action, error) {
 	switch ev.Action {
-	case GateApprove, GateRequestChanges, GateStop:
+	case GateApprove, GateRequestChanges, GateStop, GateRetry, GateInstruct:
 	default:
 		return p, noAction, ErrInvalidAction
 	}
@@ -255,7 +271,12 @@ func applyGate(p Pipeline, ev Event, now time.Time) (Pipeline, Action, error) {
 		p.OpenGate = GateNone
 		p.UpdatedAt = now
 	}
+	if gate == GateBlocked {
+		return applyBlockedGate(&p, ev, decide)
+	}
 	switch ev.Action {
+	case GateRetry, GateInstruct:
+		return p, noAction, fmt.Errorf("%w: %s is only for the blocked gate", ErrInvalidAction, ev.Action)
 	case GateStop:
 		p.setStatus(p.Current, StatusBlocked)
 		decide()
@@ -328,6 +349,7 @@ func (p *Pipeline) skipUnplannedStages() {
 // Current stays on the last finished stage).
 func (p *Pipeline) advance() StageID {
 	p.setStatus(p.Current, StatusDone)
+	p.TasksDone, p.AwaitingVerification, p.LastFailure = false, false, nil
 	for i := range p.Stages {
 		s := &p.Stages[i]
 		if s.Status != StatusPending {
