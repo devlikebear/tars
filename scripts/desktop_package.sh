@@ -15,7 +15,13 @@
 #
 # macOS signing: with DESKTOP_CODESIGN_IDENTITY set, the bundle is signed
 # with that identity and the hardened runtime; otherwise it is ad-hoc signed,
-# which runs locally but makes Gatekeeper ask the first time it is opened.
+# which runs locally but Gatekeeper refuses it once it is downloaded.
+#
+# macOS notarization: with DESKTOP_NOTARY_KEY_PATH (App Store Connect API
+# key .p8), DESKTOP_NOTARY_KEY_ID and DESKTOP_NOTARY_ISSUER also set, the
+# signed bundle is submitted to Apple's notary service and the ticket is
+# stapled into it, so Gatekeeper accepts the downloaded app offline. A
+# Developer ID signature alone is not enough on a downloaded app.
 set -euo pipefail
 
 if [ "$#" -ne 4 ]; then
@@ -64,6 +70,24 @@ case "${goos}" in
 
     if [ -n "${DESKTOP_CODESIGN_IDENTITY:-}" ]; then
       codesign --force --options runtime --timestamp --sign "${DESKTOP_CODESIGN_IDENTITY}" "${app}"
+      codesign --verify --strict --verbose=2 "${app}"
+      if [ -n "${DESKTOP_NOTARY_KEY_PATH:-}" ]; then
+        : "${DESKTOP_NOTARY_KEY_ID:?DESKTOP_NOTARY_KEY_ID is required with DESKTOP_NOTARY_KEY_PATH}"
+        : "${DESKTOP_NOTARY_ISSUER:?DESKTOP_NOTARY_ISSUER is required with DESKTOP_NOTARY_KEY_PATH}"
+        # notarytool takes a zip, dmg or pkg, not a bare bundle or a tarball.
+        ditto -c -k --keepParent "${app}" "${stage}/notarize.zip"
+        xcrun notarytool submit "${stage}/notarize.zip" \
+          --key "${DESKTOP_NOTARY_KEY_PATH}" \
+          --key-id "${DESKTOP_NOTARY_KEY_ID}" \
+          --issuer "${DESKTOP_NOTARY_ISSUER}" \
+          --wait
+        xcrun stapler staple "${app}"
+        xcrun stapler validate "${app}"
+        spctl --assess --type execute --verbose=2 "${app}"
+      fi
+    elif [ -n "${DESKTOP_NOTARY_KEY_PATH:-}" ]; then
+      echo "DESKTOP_NOTARY_KEY_PATH needs DESKTOP_CODESIGN_IDENTITY: an ad-hoc signature cannot be notarized" >&2
+      exit 2
     else
       codesign --force --sign - "${app}"
     fi

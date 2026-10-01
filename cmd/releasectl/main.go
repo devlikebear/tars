@@ -19,6 +19,8 @@ func main() {
 		validateRelease(os.Args[2:])
 	case "homebrew-formula":
 		homebrewFormula(os.Args[2:])
+	case "homebrew-cask":
+		homebrewCask(os.Args[2:])
 	default:
 		usage()
 		os.Exit(2)
@@ -55,6 +57,25 @@ func homebrewFormula(args []string) {
 	fmt.Fprint(os.Stdout, formula)
 }
 
+func homebrewCask(args []string) {
+	fs := flag.NewFlagSet("homebrew-cask", flag.ExitOnError)
+	repoSlug := fs.String("repo", "devlikebear/tars", "GitHub repo slug")
+	version := fs.String("version", "", "release version without v prefix")
+	arm64SHA := fs.String("arm64-sha", "", "SHA256 for the darwin arm64 desktop archive")
+	amd64SHA := fs.String("amd64-sha", "", "SHA256 for the darwin amd64 desktop archive")
+	_ = fs.Parse(args)
+
+	cask, err := release.HomebrewCask(*repoSlug, *version, *arm64SHA, *amd64SHA)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	if _, err := fmt.Fprint(os.Stdout, cask); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
+
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: releasectl <validate-release|homebrew-formula> [flags]")
+	fmt.Fprintln(os.Stderr, "usage: releasectl <validate-release|homebrew-formula|homebrew-cask> [flags]")
 }

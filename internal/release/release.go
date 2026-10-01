@@ -48,6 +48,16 @@ func AssetArchiveName(version, goos, goarch string) string {
 	return fmt.Sprintf("tars_%s_%s_%s.tar.gz", strings.TrimSpace(version), strings.TrimSpace(goos), strings.TrimSpace(goarch))
 }
 
+// DesktopArchiveName is the desktop shell's release archive for goos/goarch;
+// it must match scripts/desktop_package.sh.
+func DesktopArchiveName(version, goos, goarch string) string {
+	ext := ".tar.gz"
+	if strings.TrimSpace(goos) == "windows" {
+		ext = ".zip"
+	}
+	return fmt.Sprintf("tars-desktop_%s_%s_%s%s", strings.TrimSpace(version), strings.TrimSpace(goos), strings.TrimSpace(goarch), ext)
+}
+
 func ReleaseAssetURL(repoSlug, version, goos, goarch string) string {
 	return fmt.Sprintf("https://github.com/%s/releases/download/%s/%s", strings.TrimSpace(repoSlug), ReleaseTag(version), AssetArchiveName(version, goos, goarch))
 }
@@ -91,6 +101,9 @@ func HomebrewFormula(repoSlug, version, arm64SHA, amd64SHA string) (string, erro
       Optional assistant dependencies are not installed by this formula.
       Install them separately when needed:
         brew install ffmpeg whisper-cpp
+
+      For the desktop app (tray, approval notifications, its own window):
+        brew install --cask devlikebear/tap/tars-desktop
     EOS
   end
 
@@ -99,4 +112,54 @@ func HomebrewFormula(repoSlug, version, arm64SHA, amd64SHA string) (string, erro
   end
 end
 `, repoSlug, version, ReleaseAssetURL(repoSlug, version, "darwin", "arm64"), arm64SHA, ReleaseAssetURL(repoSlug, version, "darwin", "amd64"), amd64SHA), nil
+}
+
+// HomebrewCask renders the tap's tars-desktop cask. It depends on the tars
+// formula because the app only shows the console of a local server, so
+// `brew install --cask devlikebear/tap/tars-desktop` installs both.
+func HomebrewCask(repoSlug, version, arm64SHA, amd64SHA string) (string, error) {
+	if err := ValidateVersion(version); err != nil {
+		return "", err
+	}
+	repoSlug = strings.TrimSpace(repoSlug)
+	if repoSlug == "" {
+		return "", fmt.Errorf("repository slug must not be empty")
+	}
+	arm64SHA = strings.TrimSpace(arm64SHA)
+	amd64SHA = strings.TrimSpace(amd64SHA)
+	if arm64SHA == "" || amd64SHA == "" {
+		return "", fmt.Errorf("arm64 and amd64 SHA256 values are required")
+	}
+
+	return fmt.Sprintf(`cask "tars-desktop" do
+  arch arm: "arm64", intel: "amd64"
+
+  version "%[2]s"
+  sha256 arm:   "%[3]s",
+         intel: "%[4]s"
+
+  url "https://github.com/%[1]s/releases/download/v#{version}/tars-desktop_#{version}_darwin_#{arch}.tar.gz"
+  name "TARS"
+  desc "Desktop app for the local TARS server"
+  homepage "https://github.com/%[1]s"
+
+  livecheck do
+    url :url
+    strategy :github_latest
+  end
+
+  # The app replaces itself from GitHub releases (tray: Check for updates).
+  auto_updates true
+  depends_on formula: "devlikebear/tap/tars"
+  depends_on :macos
+
+  app "TARS.app"
+
+  zap trash: [
+    "~/Library/Application Support/tars-desktop",
+    "~/Library/Caches/com.devlikebear.tars.desktop",
+    "~/Library/WebKit/com.devlikebear.tars.desktop",
+  ]
+end
+`, repoSlug, version, arm64SHA, amd64SHA), nil
 }

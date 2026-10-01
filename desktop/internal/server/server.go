@@ -215,8 +215,10 @@ func PlanStart(goos, tarsBinary string, cfg Config) StartPlan {
 }
 
 // FindTARS locates the tars executable: next to the shell first (a release
-// archive ships both), then on PATH.
-func FindTARS(shellExe string, lookPath func(string) (string, error)) (string, error) {
+// archive ships both), then on PATH, then in installDirs. An app opened from
+// Finder or the Dock gets launchd's minimal PATH, which misses Homebrew's and
+// install.sh's bin directories, so those are tried explicitly last.
+func FindTARS(shellExe string, lookPath func(string) (string, error), installDirs []string) (string, error) {
 	name := "tars"
 	if runtime.GOOS == "windows" {
 		name = "tars.exe"
@@ -225,14 +227,46 @@ func FindTARS(shellExe string, lookPath func(string) (string, error)) (string, e
 		dir := filepath.Dir(shellExe)
 		// Inside a macOS bundle the shell lives in TARS.app/Contents/MacOS.
 		for _, candidate := range []string{filepath.Join(dir, name), filepath.Join(dir, "..", "..", "..", name)} {
-			if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+			if isFile(candidate) {
 				return filepath.Clean(candidate), nil
 			}
 		}
 	}
 	path, err := lookPath(name)
-	if err != nil {
-		return "", fmt.Errorf("tars executable not found next to the desktop app or on PATH: %w", err)
+	if err == nil {
+		return path, nil
 	}
-	return path, nil
+	for _, dir := range installDirs {
+		if candidate := filepath.Join(dir, name); isFile(candidate) {
+			return candidate, nil
+		}
+	}
+	return "", fmt.Errorf("tars executable not found next to the desktop app, on PATH or in %s: %w", strings.Join(installDirs, ", "), err)
+}
+
+// InstallDirs are where tars lands when installed by Homebrew or install.sh
+// on goos; home is the user's home directory ("" skips ~/.local/bin).
+func InstallDirs(goos, home string) []string {
+	var dirs []string
+	switch goos {
+	case "darwin":
+		dirs = []string{"/opt/homebrew/bin", "/usr/local/bin"}
+	case "linux":
+		dirs = []string{"/home/linuxbrew/.linuxbrew/bin", "/usr/local/bin"}
+	default:
+		return nil
+	}
+	if home != "" {
+		local := filepath.Join(home, ".local", "bin")
+		if goos == "linux" {
+			return append([]string{local}, dirs...)
+		}
+		dirs = append(dirs, local)
+	}
+	return dirs
+}
+
+func isFile(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && !info.IsDir()
 }

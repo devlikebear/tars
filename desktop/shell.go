@@ -820,7 +820,8 @@ func (s *shell) startChatIn(dir string, isolate bool) {
 
 func (s *shell) startServer() {
 	exe, _ := os.Executable()
-	bin, err := server.FindTARS(exe, exec.LookPath)
+	home, _ := os.UserHomeDir()
+	bin, err := server.FindTARS(exe, exec.LookPath, server.InstallDirs(runtime.GOOS, home))
 	if err != nil {
 		s.showError("Could not start the TARS server", err)
 		return
