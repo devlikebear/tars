@@ -45,3 +45,55 @@ func TestFinished(t *testing.T) {
 		})
 	}
 }
+
+func TestApplyStampsFinishedAt(t *testing.T) {
+	t0 := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)
+	p := New("s1", "g", t0)
+	p.Plan = &Plan{Stages: []StageID{StagePlan, StageBuild}}
+	p.skipUnplannedStages()
+	p.advance() // build is active, the last planned stage
+	if p.FinishedAt != nil {
+		t.Fatal("an active pipeline has no FinishedAt")
+	}
+
+	finishAt := t0.Add(time.Hour)
+	done, _, err := Apply(p, Event{Kind: EventAdvance, Stage: StageBuild}, finishAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !Finished(done) || done.FinishedAt == nil || !done.FinishedAt.Equal(finishAt) {
+		t.Fatalf("finishing stamps FinishedAt: finished=%v at=%v", Finished(done), done.FinishedAt)
+	}
+	if p.FinishedAt != nil {
+		t.Fatal("Apply never modifies its input")
+	}
+
+	// Later changes (acknowledging a card) move UpdatedAt, never FinishedAt.
+	done.Cards = append(done.Cards, Card{ID: "c1", Kind: CardReport, State: CardUnseen})
+	later := finishAt.Add(24 * time.Hour)
+	acked, _, err := SetCardState(done, "c1", CardSeen, "", later)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !acked.UpdatedAt.Equal(later) || !acked.FinishedAt.Equal(finishAt) {
+		t.Fatalf("updated=%v finished=%v", acked.UpdatedAt, acked.FinishedAt)
+	}
+	// A stamped pipeline keeps its first finish time through another Apply.
+	again, _, _ := Apply(acked, Event{Kind: EventTurnCompleted, Turn: 9}, later)
+	if !again.FinishedAt.Equal(finishAt) {
+		t.Fatalf("restamped: %v", again.FinishedAt)
+	}
+}
+
+func TestReleaseTime(t *testing.T) {
+	updated := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
+	p := New("s1", "g", updated)
+	if got := ReleaseTime(p); !got.Equal(updated) {
+		t.Fatalf("no FinishedAt falls back to UpdatedAt: %v", got)
+	}
+	finished := updated.Add(-time.Hour)
+	p.FinishedAt = &finished
+	if got := ReleaseTime(p); !got.Equal(finished) {
+		t.Fatalf("FinishedAt wins: %v", got)
+	}
+}

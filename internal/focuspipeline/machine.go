@@ -91,8 +91,17 @@ var noAction = Action{Kind: ActionNone}
 
 // Apply is the pipeline's pure state machine: it returns the pipeline after
 // ev and the action to take. On error the input pipeline is returned
-// unchanged. Apply never modifies p.
+// unchanged. Apply never modifies p. The event that finishes the pipeline
+// stamps FinishedAt.
 func Apply(p Pipeline, ev Event, now time.Time) (Pipeline, Action, error) {
+	next, act, err := applyEvent(p, ev, now)
+	if err == nil {
+		next = stampFinished(next, now)
+	}
+	return next, act, err
+}
+
+func applyEvent(p Pipeline, ev Event, now time.Time) (Pipeline, Action, error) {
 	switch ev.Kind {
 	case EventTurnCompleted:
 		next, act := applyTurn(p.clone(), ev, now.UTC())

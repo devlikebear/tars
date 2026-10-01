@@ -149,7 +149,21 @@ type Pipeline struct {
 	Cards     []Card    `json:"cards"`
 	PR        *PRInfo   `json:"pr,omitempty"`
 	UpdatedAt time.Time `json:"updated_at"`
+	// FinishedAt is when the pipeline ran to its end (Finished), stamped once
+	// by Apply; nil while it runs and for pipelines finished before P5. The
+	// release train compares it, not UpdatedAt, with the latest tag, since
+	// acknowledging a card later moves UpdatedAt.
+	FinishedAt *time.Time `json:"finished_at,omitempty"`
+	// Kind is KindRelease for a pipeline started from the release train;
+	// empty for feature work.
+	Kind string `json:"kind,omitempty"`
+	// Kickoff is the first turn's text when it differs from Goal (a release
+	// lists every merged change there); stage guidance repeats only Goal.
+	Kickoff string `json:"kickoff,omitempty"`
 }
+
+// KindRelease marks a release pipeline, which the release train never lists.
+const KindRelease = "release"
 
 // New starts a pipeline for a session: every stage pending but plan, which
 // is active.
@@ -217,6 +231,10 @@ func (p Pipeline) clone() Pipeline {
 	if p.PR != nil {
 		pr := *p.PR
 		out.PR = &pr
+	}
+	if p.FinishedAt != nil {
+		at := *p.FinishedAt
+		out.FinishedAt = &at
 	}
 	return out
 }

@@ -1,6 +1,9 @@
 package focuspipeline
 
-import "slices"
+import (
+	"slices"
+	"time"
+)
 
 // Finished reports whether a pipeline ran to its end, which makes it part
 // of the next release (ADR §9 P5): no stage is still active, blocked
@@ -33,4 +36,23 @@ func lastStageDone(p Pipeline) bool {
 		return ok && s.Status == StatusDone
 	}
 	return false
+}
+
+// stampFinished sets FinishedAt the first time p is Finished.
+func stampFinished(p Pipeline, now time.Time) Pipeline {
+	if p.FinishedAt != nil || !Finished(p) {
+		return p
+	}
+	at := now.UTC()
+	p.FinishedAt = &at
+	return p
+}
+
+// ReleaseTime is when a pipeline's work became releasable: FinishedAt, or
+// UpdatedAt for a pipeline finished before FinishedAt existed.
+func ReleaseTime(p Pipeline) time.Time {
+	if p.FinishedAt != nil {
+		return *p.FinishedAt
+	}
+	return p.UpdatedAt
 }
