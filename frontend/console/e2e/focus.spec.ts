@@ -144,12 +144,13 @@ test('a focus task: plan gate, approve, report and decision cards, decide, then 
   // Key 2 picks the second option; the server runs the answer turn. Its
   // report says every task is done, verification passes, and review starts;
   // the review finds nothing, verification passes again (P3), and the PR
-  // stage drafts its PR.
+  // stage drafts its PR, which opens the G3 gate with the draft editable (P4).
   await page.keyboard.press('2')
   await expect(page.getByTestId('focus-step-pr')).toHaveAttribute('data-status', 'active', { timeout: 20_000 })
   await expect(page.getByTestId('focus-step-build')).toHaveAttribute('data-status', 'done')
   await expect(page.getByTestId('focus-step-review')).toHaveAttribute('data-status', 'done')
-  await expect(card(page).getByText('Drafted the PR.').first()).toBeVisible()
+  await expect(page.getByTestId('focus-pr-gate')).toBeVisible()
+  await expect(page.getByTestId('focus-pr-title')).toHaveValue('Add a greeting')
 
   // The build history: the newest report leads (U2), marking it seen does
   // not move the deck under the developer, and each arrow press is one card.
@@ -170,7 +171,9 @@ test('a focus task: plan gate, approve, report and decision cards, decide, then 
   expect(p.plan?.stages).toEqual(['plan', 'build', 'review', 'pr', 'merge'])
   expect(p.plan?.verify).toEqual(['true', 'git status --short'])
   expect(p.cards.find((c) => c.kind === 'decision')).toMatchObject({ state: 'decided', decision: 'Hi there' })
-  expect(p.cards.filter((c) => c.kind === 'gate')).toHaveLength(1)
+  // G1 (decided) and G3 (open: the draft waits for the developer).
+  expect(p.cards.filter((c) => c.kind === 'gate')).toHaveLength(2)
+  expect(p.open_gate).toBe('pr')
 
   // A reload rebuilds the same deck: no duplicate cards.
   const total = (text: string | null) => text?.split('/')[1]?.trim()
