@@ -80,6 +80,10 @@ func (o unattendedRunOptions) apply(opts *agentloop.RunOptions) {
 		return
 	}
 	opts.ToolAuthorizer = o.authorizer
+	if o.permissionMode == "" {
+		// Native gate only: the claude-code-cli fields stay as configured.
+		return
+	}
 	opts.ClaudeCodePermissionHandler = o.handler
 	opts.ClaudeCodePermissionMode = o.permissionMode
 	opts.ClaudeCodePermissionAllow = o.permissionAllow
@@ -107,6 +111,23 @@ func (u *unattendedPermissions) options(sessionID, cwd, source, label string) un
 		permissionMode:  claudeCodePermissionFlag(mode),
 		permissionAllow: claudeCodeAlwaysRules(u.always, run.cwd),
 	}
+}
+
+// focusOptions are the options of a server-driven focus turn: the session's
+// mode as for any unattended turn, but a session that never picked one asks
+// before high-risk native tools (manual, through the ops queue) — the same
+// default a console turn there gets. claude-code-cli keeps its configured
+// permission mode then: only the native gate is added.
+func (u *unattendedPermissions) focusOptions(sessionID, cwd, source string) unattendedRunOptions {
+	if opts := u.options(sessionID, cwd, source, source); opts.authorizer != nil || u == nil {
+		return opts
+	}
+	sess, err := u.sessions.Get(sessionID)
+	if err != nil || strings.TrimSpace(sess.PermissionMode) != "" {
+		return unattendedRunOptions{}
+	}
+	run := unattendedRun{sessionID: sess.ID, cwd: strings.TrimSpace(cwd), source: source, label: source, mode: chatPermissionModeManual}
+	return unattendedRunOptions{authorizer: &unattendedToolGate{perms: u, run: run}}
 }
 
 // unattendedToolGate is the native-provider gate of an unattended turn.

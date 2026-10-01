@@ -136,7 +136,7 @@ func executeChatLoop(
 	if state.unattendedSource != "" {
 		// No console answers this turn's prompts: like a cron turn, the
 		// session's mode decides and questions wait in the ops queue.
-		deps.tooling.Unattended.options(state.sessionID, state.cwd, state.unattendedSource, state.unattendedSource).apply(&runOptions)
+		deps.tooling.Unattended.focusOptions(state.sessionID, state.cwd, state.unattendedSource).apply(&runOptions)
 	}
 	chatResp, err := loop.Run(ctx, state.llmMessages, runOptions)
 	if err != nil {
