@@ -675,8 +675,12 @@ test('poll re-reads the pipeline when no turn runs: server-side facts (the gh pr
   const store = newStore(fake)
   await store.load('s1')
   fake.state.pipeline = pipeline('2026-10-01T00:00:09Z', [], { current: 'pr', pr_wait: 'open', pr_unavailable: 'e2e gh stub: not logged in' })
+  // A turn that ended unseen wrote the transcript too: a newer pipeline
+  // re-reads it with the pipeline, so its cards' raw slices exist.
+  fake.state.history = [{ id: 'a9', role: 'assistant', content: 'Opened the PR.', timestamp: '' }]
   await store.poll()
   assert.equal(store.pipeline?.pr_unavailable, 'e2e gh stub: not logged in')
+  assert.deepEqual(store.history.map((m) => m.content), ['Opened the PR.'])
   // An older read never replaces a newer one.
   fake.state.pipeline = pipeline('2026-10-01T00:00:05Z', [], { current: 'pr' })
   await store.poll()

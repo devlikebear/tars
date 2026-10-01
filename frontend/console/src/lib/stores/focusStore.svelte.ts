@@ -262,10 +262,14 @@ export class FocusStore {
     await this.attaching
   }
 
-  // refreshPipeline adopts the server's pipeline if it is newer.
+  // refreshPipeline re-reads everything a finished turn changed when the
+  // server's pipeline is newer than the one held: the pipeline alone would
+  // carry cards from a turn whose transcript (view raw) is not loaded yet.
   private async refreshPipeline(sessionId: string): Promise<void> {
     const pipeline = await this.api.getPipeline(sessionId).catch(() => null)
-    if (pipeline && this.sessionId === sessionId && !this.disposed) this.adopt(pipeline)
+    if (!pipeline || this.sessionId !== sessionId || this.disposed) return
+    if (this.pipeline && time(pipeline.updated_at) <= time(this.pipeline.updated_at)) return
+    await this.afterTurn()
   }
 
   private async runningElsewhere(sessionId: string): Promise<boolean> {
