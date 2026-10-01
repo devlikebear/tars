@@ -105,6 +105,8 @@ export function buildFocusGraph(p: FocusPipeline, labels: FocusGraphLabels): Foc
         id: `forward-${prev.id}-${stage.id}`,
         source: stageId(prev.id),
         target: stageId(stage.id),
+        sourceHandle: 'out',
+        targetHandle: 'in',
         type: 'smoothstep',
         animated: current && stage.status === 'active',
         class: `focus-graph-edge${skipped ? ' focus-graph-edge-skipped' : ''}`,

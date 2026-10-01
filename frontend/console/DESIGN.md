@@ -325,7 +325,7 @@ Every route must map to a pillar. Rows marked *(target)* describe the #967 workb
 | `/console/system` | Observability | Overview: dashboard summary of all signals (was home until #971) |
 | Changes panel (dock, in chat) *(target, P1)* | Conversation | Turn/session checkpoint diffs, file and hunk revert, hunk comments |
 | Inline approval cards (in chat) *(P2)* | Conversation + Control | Approve/deny tool calls without leaving the session; `/console/approvals` stays for unattended runs |
-| `/console/focus`, `/console/focus/<session>` | Conversation | Focus mode (#1068): pipelines and one task's stepper and card deck over the same session |
+| `/console/focus`, `/console/focus/<session>`, `/console/focus/release` | Conversation | Focus mode (#1068): pipelines, one task's stepper, card deck and graph over the same session, and the release train |
 | `/console/chat`, `/console/sessions` | Conversation | Chat transcript, session list |
 | `/console/sessions/graph` | Conversation | Session lineage / fork history |
 | `/console/tasks` | Conversation | Work timeline / task contracts |
@@ -578,6 +578,8 @@ A second console mode next to the workbench (Advanced): one development pipeline
 - **Progress line**: mono `text-sm`, a pulsing `primary` dot (static under reduced motion): stage verb · files changed · what runs now ("Implementing · 3 files changed · running tests").
 - **Hidden blocks**: user messages carry the server's `<focus-stage>` guidance and replies carry `<focus-plan|report|findings|pr>` blocks. Every chat surface (thread, side session, auto titles, view raw) folds them away; a block inside a code fence stays.
 - **Advanced**: a session with a pipeline shows a secondary **Focus view** button in the chat header.
+- **Release train** (`/console/focus/release`, `FocusReleaseTrain.svelte`, P5): reached from a ghost *Release train* button on the home. One `surface` group per repository (mono short path, a `default` badge *since vX* or *no release tag yet*, a mono count), listing the pipelines finished since the latest `v*` tag oldest first: `#PR title` linked to the PR when there is one, else the session title opening its pipeline, the goal's first line in `text-secondary`, the date in mono. Each group's **Start release** (`button-primary`, small) opens an inline gate — accent border on `primary-muted`, the fixed plan in one sentence, Cancel / Start release — and nothing starts until it is confirmed. Starting creates an ordinary isolated focus pipeline whose kickoff asks for the fixed plan (`lib/focusRelease.ts`); its plan gate still runs. Empty state is the dashed `.empty`; a load failure is the error banner.
+- **Pipeline graph** (`FocusGraph.svelte`, P5): a ghost *Graph* toggle beside the stepper opens a read-only `@xyflow/svelte` canvas (320px, `surface-inset`, no attribution, no drag/select/connect) under the stage bar. Stages run left to right with the stepper's colours (done `primary` at half strength, current accent border on `primary-muted`, blocked `warning`, skipped dashed at 0.6 opacity); forward edges are `border-strong` and dashed into or out of a skipped stage. Each looping stage (build, review, PR) has a U-shaped self-loop under it labelled in mono `↻N` or `↻N/limit`, `primary` from the second round. Plan tasks sit inside the build node as numbered `surface` rows. Nodes come from the pure `lib/focusGraph.ts`.
 
 ### Follow-up queue (composer, #971)
 

@@ -186,6 +186,12 @@ export const focusEn = {
     startFailed: (message: string) => `Could not start the release: ${message}`,
     sessionTitle: (n: number) => (n === 1 ? 'Release (1 change)' : `Release (${n} changes)`),
   },
+  graph: {
+    open: 'Graph',
+    close: 'Hide graph',
+    openTitle: 'Show the pipeline as a graph',
+    label: 'Pipeline graph',
+  },
   advanced: {
     focusView: 'Focus view',
     focusViewTitle: 'Open this session as a focus pipeline',
@@ -378,6 +384,12 @@ export const focusKo: FocusTranslations = {
     starting: '시작하는 중…',
     startFailed: (message: string) => `릴리스를 시작하지 못했습니다: ${message}`,
     sessionTitle: (n: number) => `릴리스 (변경 ${n}건)`,
+  },
+  graph: {
+    open: '그래프',
+    close: '그래프 닫기',
+    openTitle: '파이프라인을 그래프로 보기',
+    label: '파이프라인 그래프',
   },
   advanced: {
     focusView: '포커스 보기',
