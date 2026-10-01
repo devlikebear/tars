@@ -248,14 +248,24 @@ export class FocusStore {
     const sessionId = this.sessionId
     if (!sessionId || this.disposed || this.streaming || this.running || this.attaching) return
     if (!(await this.runningElsewhere(sessionId))) {
-      // Nothing runs: send what waited (a prompt queued while the activity
-      // still listed a turn that was ending).
+      // Nothing runs: re-read the pipeline — the server changes it without a
+      // turn (the PR stages' gh probe, P4), and a turn short enough to end
+      // between two activity checks is never followed — then send what
+      // waited (a prompt queued while the activity still listed a turn that
+      // was ending).
+      await this.refreshPipeline(sessionId)
       await this.flush()
       return
     }
     if (this.sessionId !== sessionId || this.disposed || this.streaming || this.running || this.attaching) return
     this.attaching = this.follow(sessionId)
     await this.attaching
+  }
+
+  // refreshPipeline adopts the server's pipeline if it is newer.
+  private async refreshPipeline(sessionId: string): Promise<void> {
+    const pipeline = await this.api.getPipeline(sessionId).catch(() => null)
+    if (pipeline && this.sessionId === sessionId && !this.disposed) this.adopt(pipeline)
   }
 
   private async runningElsewhere(sessionId: string): Promise<boolean> {

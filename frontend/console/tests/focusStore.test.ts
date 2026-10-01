@@ -667,3 +667,18 @@ test('the kickoff is the one first message the console sends; every later prompt
   await settle(again)
   assert.deepEqual(fake.state.sent.map((r) => r.message), ['Release: ship 2 changes\n- a\n- b'])
 })
+
+test('poll re-reads the pipeline when no turn runs: server-side facts (the gh probe) reach the screen', async () => {
+  // CI #1077: the open-PR turn ran between two activity checks, so no turn
+  // was ever followed; the probe's "gh unavailable" only exists server-side.
+  const fake = fakeApi(pipeline('2026-10-01T00:00:01Z', [], { current: 'pr', pr_wait: 'open' }))
+  const store = newStore(fake)
+  await store.load('s1')
+  fake.state.pipeline = pipeline('2026-10-01T00:00:09Z', [], { current: 'pr', pr_wait: 'open', pr_unavailable: 'e2e gh stub: not logged in' })
+  await store.poll()
+  assert.equal(store.pipeline?.pr_unavailable, 'e2e gh stub: not logged in')
+  // An older read never replaces a newer one.
+  fake.state.pipeline = pipeline('2026-10-01T00:00:05Z', [], { current: 'pr' })
+  await store.poll()
+  assert.equal(store.pipeline?.pr_unavailable, 'e2e gh stub: not logged in')
+})

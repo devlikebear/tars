@@ -2,14 +2,16 @@
 # Stand-in for gh in the console E2E (the server's TARS_FOCUS_GH_PATH, set by
 # playwright.config.ts): no spec depends on the host's gh, its login, or the
 # network. The server runs it in the session's folder as
-# `gh pr view [<number>] --json …`; the scenario is the content of
-# .git/e2e-gh there, written by the spec:
+# `gh pr view [<number>] --json …`; the scenario is the content of e2e-gh in
+# the repository's git dir (.git/e2e-gh; a worktree's .git is a file, so the
+# git dir is asked for), written by the spec:
 #   (missing) unavailable — gh fails as if not logged in
 #   open      an open PR #7 from the checked-out branch, one passing check
 #   merged    the same PR, merged
-# Every call is appended to .git/e2e-gh.log.
-echo "$*" >> .git/e2e-gh.log 2>/dev/null
-scenario=$(cat .git/e2e-gh 2>/dev/null)
+# Every call is appended to e2e-gh.log beside it.
+gitdir=$(git rev-parse --git-dir 2>/dev/null || echo .git)
+echo "$*" >> "$gitdir/e2e-gh.log" 2>/dev/null
+scenario=$(cat "$gitdir/e2e-gh" 2>/dev/null)
 case "$scenario" in
   open) state=OPEN ;;
   merged) state=MERGED ;;
