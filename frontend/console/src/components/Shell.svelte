@@ -11,6 +11,8 @@
     needsSetup?: boolean
     authRole?: string
     zenActive?: boolean
+    // Focus mode hides the app sidebar (ADR §3); the header stays.
+    hideNav?: boolean
     onNavigate: (path: string) => void
     onUnreadChange?: (count: number) => void
     onLogout?: () => void
@@ -24,6 +26,7 @@
     needsSetup = false,
     authRole = '',
     zenActive = false,
+    hideNav = false,
     onNavigate,
     onUnreadChange,
     onLogout,
@@ -51,13 +54,13 @@
 </script>
 
 <div class="shell" class:setup-only={needsSetup} class:zen-active={zenActive}>
-  {#if !needsSetup && !zenActive}
+  {#if !needsSetup && !zenActive && !hideNav}
     <Nav {currentPath} {authRole} onNavigate={handleNavigate} {navOpen} onClose={closeNav} />
     {#if navOpen}
       <div class="nav-overlay" role="presentation" onclick={closeNav}></div>
     {/if}
   {/if}
-  <div class="shell-main" class:no-nav={needsSetup || zenActive}>
+  <div class="shell-main" class:no-nav={needsSetup || zenActive || hideNav}>
     {#if !zenActive}
       <Header {serverHealth} {unreadCount} {onUnreadChange} {onNavigate} {navOpen} {authRole} {onLogout} onToggleNav={toggleNav} />
     {/if}

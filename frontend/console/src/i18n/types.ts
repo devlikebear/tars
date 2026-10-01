@@ -8,6 +8,7 @@ import type { ChangesTranslations } from './sections/changes.ts'
 import type { SideSessionTranslations } from './sections/sideSession.ts'
 import type { SessionWorktreeTranslations } from './sections/sessionWorktree.ts'
 import type { NewChatFolderTranslations } from './sections/newChatFolder.ts'
+import type { FocusTranslations } from './sections/focus.ts'
 import type { ChatApprovalTranslations } from './sections/chatApproval.ts'
 import type { SessionBoardTranslations } from './sections/sessionBoard.ts'
 
@@ -59,6 +60,7 @@ export type Translations = {
     }
     items: {
       board: string
+      focus: string
       overview: string
       chat: string
       lineage: string
@@ -1610,6 +1612,7 @@ export type Translations = {
   sideSession: SideSessionTranslations
   sessionWorktree: SessionWorktreeTranslations
   newChatFolder: NewChatFolderTranslations
+  focus: FocusTranslations
   chatApproval: ChatApprovalTranslations
   sessionBoard: SessionBoardTranslations
 

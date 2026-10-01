@@ -1,10 +1,13 @@
 const consoleBase = '/console'
 const chatPrefix = `${consoleBase}/chat`
+const focusPrefix = `${consoleBase}/focus`
 
 export type Route =
   | { view: 'board' }
   | { view: 'home' }
   | { view: 'chat'; sessionId?: string }
+  // Focus mode: the focus home, or one session's pipeline.
+  | { view: 'focus'; sessionId?: string }
   | { view: 'session-lineage' }
   | { view: 'tasks' }
   | { view: 'agentruntime'; runId?: string; tab?: 'runs' | 'subagents' }
@@ -53,6 +56,11 @@ export function resolveRoute(pathname: string): Route {
     }
     if (sessionQuery) return { view: 'chat', sessionId: sessionQuery }
     return { view: 'chat' }
+  }
+
+  if (path === focusPrefix || path.startsWith(`${focusPrefix}/`)) {
+    const sessionId = decodeURIComponent(path.slice(focusPrefix.length + 1).split('/')[0]?.trim() || '')
+    return sessionId ? { view: 'focus', sessionId } : { view: 'focus' }
   }
 
   if (path.startsWith(`${consoleBase}/tasks`)) {

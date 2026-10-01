@@ -16,6 +16,7 @@
   import { buildSubagentProgress } from '../lib/subagentProgress'
   import { splitReviewNotes } from '../lib/changes'
   import { splitConsoleContext } from '../lib/consoleContext'
+  import { stripFocusBlocks, stripFocusStage } from '../lib/focus'
 
   interface StreamingStatus {
     label: string
@@ -32,11 +33,14 @@
     onCopy: (text: string) => void
     onForkMessage?: (message: ChatMessage) => void
     streamingStatus?: StreamingStatus | null
+    // The reply is still streaming: a focus block opened but not closed yet
+    // is hidden until it closes.
+    streaming?: boolean
     // The session's folders (toolBaseDirs): tool card paths inside show relative.
     toolBaseDir?: readonly string[]
   }
 
-  let { message, artifacts, onArtifactOpen, onCopy, onForkMessage, streamingStatus, toolBaseDir }: Props = $props()
+  let { message, artifacts, onArtifactOpen, onCopy, onForkMessage, streamingStatus, streaming = false, toolBaseDir }: Props = $props()
 
   let nowMs = $state(Date.now())
 
@@ -49,6 +53,9 @@
     return () => clearInterval(timer)
   })
 
+  // Focus mode's hidden blocks (<focus-plan> and the rest) never show in a
+  // reply; copying takes what is shown.
+  let replyText = $derived(message.role === 'assistant' ? stripFocusBlocks(message.text, { streaming }) : message.text)
   let tone = $derived(message.role === 'tool' ? toolCallTone(message) : 'done')
   let elapsedLabel = $derived(formatElapsedSeconds(message.toolStartedAt, message.toolFinishedAt, nowMs))
   let invocationPreview = $derived(formatToolInvocationPreview(message.toolName, message.toolArgs, toolBaseDir))
@@ -138,11 +145,11 @@
           />
         </div>
       {:else}
-        <div class="chat-text"><MarkdownContent text={message.text} {artifacts} {onArtifactOpen} /></div>
+        <div class="chat-text"><MarkdownContent text={replyText} {artifacts} {onArtifactOpen} /></div>
       {/if}
     {:else}
       {@const split = splitReviewNotes(message.text)}
-      {@const typed = splitConsoleContext(split.text).text}
+      {@const typed = splitConsoleContext(stripFocusStage(split.text)).text}
       <div class="chat-text">{typed || '\u2026'}</div>
       {#if split.count > 0}
         <details class="review-notes-fold">
@@ -159,7 +166,7 @@
         {#if message.sourceMessageId && onForkMessage}
           <button type="button" class="msg-copy-btn" title={$t.chat.message.forkFromHereTitle} onclick={() => onForkMessage?.(message)}>{$t.chat.message.forkFromHere}</button>
         {/if}
-        <button type="button" class="msg-copy-btn" title={$t.chat.message.copyTitle} onclick={() => onCopy(message.text)}>{$t.chat.message.copy}</button>
+        <button type="button" class="msg-copy-btn" title={$t.chat.message.copyTitle} onclick={() => onCopy(replyText)}>{$t.chat.message.copy}</button>
       </div>
     {/if}
   </div>

@@ -6,7 +6,7 @@
   // actions that other surfaces also trigger (compact, goal status,
   // workbench jumps) are delegated back to Chat.
   import { untrack } from 'svelte'
-  import { deleteSession } from '../lib/api'
+  import { deleteSession, listFocusPipelines } from '../lib/api'
   import { t } from '../i18n'
   import { planProgressPercent } from '../lib/tasks'
   import { buildWorkbenchActions, type WorkbenchAction } from '../lib/workbenchActions'
@@ -23,9 +23,26 @@
     onWorkbenchAction: (action: WorkbenchAction) => Promise<void>
     onCopy: () => void
     onDownload: () => void
+    // Opens the session's focus pipeline; the button shows only when the
+    // session has one.
+    onOpenFocus?: (sessionId: string) => void
   }
 
-  let { onNewSession, onCompact, onGoalStatus, onWorkbenchAction, onCopy, onDownload }: Props = $props()
+  let { onNewSession, onCompact, onGoalStatus, onWorkbenchAction, onCopy, onDownload, onOpenFocus }: Props = $props()
+
+  // Whether the active session has a focus pipeline. The list answers 200
+  // either way, where a GET of a session without one would log a 404.
+  let focusSessionId = $state<string | null>(null)
+  $effect(() => {
+    const id = selectedSessionId
+    focusSessionId = null
+    if (!id || !onOpenFocus) return
+    let alive = true
+    listFocusPipelines()
+      .then((list) => { if (alive && list.some((item) => item.session_id === id)) focusSessionId = id })
+      .catch(() => {})
+    return () => { alive = false }
+  })
 
   let selectedSessionId = $derived(chatSession.activeSessionId)
   let selectedSession = $derived(chatSession.activeSession)
@@ -187,6 +204,15 @@
       <SessionWorktreeChip />
     </div>
     <div class="session-actions">
+      {#if focusSessionId && focusSessionId === selectedSessionId}
+        <button
+          type="button"
+          class="btn btn-secondary btn-sm focus-view-btn"
+          title={$t.focus.advanced.focusViewTitle}
+          data-testid="focus-view-button"
+          onclick={() => onOpenFocus?.(focusSessionId!)}
+        >{$t.focus.advanced.focusView}</button>
+      {/if}
       <button
         type="button"
         class="btn btn-ghost btn-sm zen-toggle"

@@ -105,3 +105,32 @@ func TestResolveEndpointAccessClassifiesPolicy(t *testing.T) {
 		})
 	}
 }
+
+// Focus mode (#1068) works from a browser user session: reading pipelines
+// and acting on gates and cards. Creating one in a folder is checked by the
+// handler itself (admin only, like a new chat in a folder).
+func TestEndpointAllowsRole_FocusPipelines(t *testing.T) {
+	cases := []struct {
+		method string
+		path   string
+		want   bool
+	}{
+		{http.MethodGet, "/v1/focus/pipelines", true},
+		{http.MethodPost, "/v1/focus/pipelines", true},
+		{http.MethodGet, "/v1/focus/pipelines/abc123", true},
+		{http.MethodPost, "/v1/focus/pipelines/abc123/gates/plan", true},
+		{http.MethodPost, "/v1/focus/pipelines/abc123/cards/c1", true},
+		{http.MethodPost, "/v1/focus/pipelines/abc123/advance", true},
+		{http.MethodPost, "/v1/focus/pipelines/abc123/stop", true},
+		{http.MethodDelete, "/v1/focus/pipelines/abc123", false},
+		{http.MethodPost, "/v1/focus/pipelines/abc123/other", false},
+		{http.MethodPost, "/v1/focus/pipelines/abc123/gates/plan/extra", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
+			if got := EndpointAllowsRole(tc.method, tc.path, RoleUser); got != tc.want {
+				t.Fatalf("user allowed=%v for %s %s, want %v", got, tc.method, tc.path, tc.want)
+			}
+		})
+	}
+}

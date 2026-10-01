@@ -9,6 +9,7 @@ import { changesEn } from './sections/changes.ts'
 import { sideSessionEn } from './sections/sideSession.ts'
 import { sessionWorktreeEn } from './sections/sessionWorktree.ts'
 import { newChatFolderEn } from './sections/newChatFolder.ts'
+import { focusEn } from './sections/focus.ts'
 import { chatApprovalEn } from './sections/chatApproval.ts'
 import { sessionBoardEn } from './sections/sessionBoard.ts'
 
@@ -56,6 +57,7 @@ export const en = {
     },
     items: {
       board: 'Sessions',
+      focus: 'Focus',
       overview: 'Overview',
       chat: 'Chat',
       lineage: 'Lineage',
@@ -93,7 +95,7 @@ export const en = {
       newSession: 'New session',
       toggleSidebar: 'Toggle session list',
       toggleTerminal: 'Toggle terminal',
-      toggleZen: 'Toggle focus mode',
+      toggleZen: 'Toggle zen mode',
       shortcuts: 'Keyboard shortcuts',
     },
     panel: (name: string) => `Toggle ${name} panel`,
@@ -111,7 +113,7 @@ export const en = {
       'switch-session': 'Switch to session 1–9 in the list',
       'toggle-terminal': 'Toggle the terminal',
       'toggle-sidebar': 'Toggle the session list',
-      'toggle-zen': 'Toggle focus mode',
+      'toggle-zen': 'Toggle zen mode',
     },
   },
   statusBar: {
@@ -611,9 +613,9 @@ export const en = {
         delete: 'Delete',
         confirmDelete: 'Confirm?',
         zenEnter: 'Zen',
-        zenEnterTooltip: 'Enter focus mode (Ctrl/Cmd + .)',
+        zenEnterTooltip: 'Enter zen mode (Ctrl/Cmd + .)',
         zenExit: 'Exit Zen',
-        zenExitTooltip: 'Exit focus mode (Esc or Ctrl/Cmd + .)',
+        zenExitTooltip: 'Exit zen mode (Esc or Ctrl/Cmd + .)',
       },
     },
     planStrip: {
@@ -1669,6 +1671,7 @@ export const en = {
   sideSession: sideSessionEn,
   sessionWorktree: sessionWorktreeEn,
   newChatFolder: newChatFolderEn,
+  focus: focusEn,
   chatApproval: chatApprovalEn,
   sessionBoard: sessionBoardEn,
 

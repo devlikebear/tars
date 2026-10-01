@@ -8,6 +8,7 @@ import { approvalFromEvent, resolveApproval } from './chatApproval.ts'
 import { providerToolCard, settleProviderToolCard } from './providerToolCards.ts'
 import type { ChatEvent, SessionMessage } from './types.ts'
 import { userVisibleText } from './consoleContext.ts'
+import { stripFocusBlocks } from './focus.ts'
 
 // historyMessages keeps what the side panel shows of a transcript: the
 // user's and the assistant's words, and one line per tool call.
@@ -15,7 +16,7 @@ export function historyMessages(history: SessionMessage[]): ChatMessage[] {
   const out: ChatMessage[] = []
   for (const message of history) {
     const content = message.content ?? ''
-    const text = (message.role === 'user' ? userVisibleText(content) : content).trim()
+    const text = (message.role === 'user' ? userVisibleText(content) : stripFocusBlocks(content)).trim()
     if (message.role === 'user' || message.role === 'assistant') {
       if (text) out.push({ id: message.id || `h-${out.length}`, role: message.role, text })
     } else if (message.role === 'tool' && message.tool_name) {

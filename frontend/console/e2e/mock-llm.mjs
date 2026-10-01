@@ -15,6 +15,14 @@
 // (notes.md), and once the result comes back answers "All written." — a
 // turn that reads text, tool, text (see e2e/turn-order.spec.ts).
 
+//
+// Focus mode (docs/decisions/focus-mode.md) puts the goal in every turn's
+// <focus-stage> guidance, so markers in the goal reach every turn:
+// [e2e:focus-plan] answers a plan-stage turn with a <focus-plan> block, and
+// [e2e:focus-report] answers any later stage with a <focus-report> block
+// that asks one decision — unless the turn is that decision's answer
+// ("question → option"), which gets a report without one.
+
 import { createServer } from 'node:http'
 
 const WRITE3 = '[e2e:write3]'
@@ -66,10 +74,60 @@ function lastUserText(messages) {
   return ''
 }
 
+const FOCUS_PLAN = '[e2e:focus-plan]'
+// A question typed while the plan gate is open: a plain answer, no block.
+const FOCUS_ASK = '[e2e:focus-ask]'
+const FOCUS_REPORT = '[e2e:focus-report]'
+
+function focusReply(text) {
+  const stage = text.match(/<focus-stage>[\s\S]*?current stage: ([a-z_]+)/)?.[1]
+  if (!stage) return null
+  if (text.slice(0, text.indexOf('<focus-stage>')).includes(FOCUS_ASK)) return 'The verification commands look right.'
+  if (stage === 'plan' && text.includes(FOCUS_PLAN)) {
+    const plan = {
+      goal: 'Add a greeting',
+      tasks: [{ title: 'Add greet()', done: 'greet() returns a greeting' }, { title: 'Test greet()', done: 'make test passes' }],
+      stages: ['plan', 'build', 'review', 'pr', 'pr_review', 'merge'],
+      verify: ['make test'],
+      e2e: [],
+      limits: { build: 3, review: 2, pr: 3 },
+    }
+    return `Here is the plan.\n\n<focus-plan>${JSON.stringify(plan)}</focus-plan>`
+  }
+  if (stage !== 'plan' && text.includes(FOCUS_REPORT)) {
+    const typed = text.slice(0, text.indexOf('<focus-stage>'))
+    const answered = typed.includes('→')
+    const report = answered
+      ? { summary: 'Applied the chosen greeting.', risks: [] }
+      : {
+          summary: 'Implemented greet() and its test.',
+          decisions: [{ id: 'd1', question: 'Which greeting should greet() return?', options: ['Hello', 'Hi there'] }],
+          risks: ['The greeting is not localized.'],
+        }
+    // A summary table with long code cells, as models write them.
+    const table = answered ? '' : `\n\n| File | Change |\n|---|---|\n| \`${focusLongPath}\` | \`export const greet = (name: string, punctuation: string = '!') => \\\`Hello, \${name}\${punctuation}\\\`\` |`
+    return `${answered ? 'Done.' : 'Implemented the greeting.'}${table}\n\n<focus-report>${JSON.stringify(report)}</focus-report>`
+  }
+  return null
+}
+
+// The build turn of a [e2e:focus-report] task first writes one file at a
+// long nested path, so its tool card (and its change card) carry a long
+// unbroken line, as real tool calls do; the report follows the result.
+const focusLongPath = `src/${'deeply-nested-folder/'.repeat(12)}greet.ts`
+
+function focusBuildTool(text) {
+  const stage = text.match(/<focus-stage>[\s\S]*?current stage: ([a-z_]+)/)?.[1]
+  const typed = stage ? text.slice(0, text.indexOf('<focus-stage>')) : ''
+  return stage === 'build' && text.includes(FOCUS_REPORT) && !typed.includes('→') && !typed.includes(FOCUS_ASK)
+}
+
 // The chat handler wraps the user's text in context blocks; keep only the
 // part after the last blank line, which is what the user typed.
 function replyFor(body) {
   const text = lastUserText(body.messages ?? []).trim()
+  const focus = focusReply(text)
+  if (focus) return focus
   // Review notes (#969) ride after the message; answer the first comment so
   // a spec can see the note arrived.
   if (text.includes('<review-notes>')) {
@@ -113,12 +171,21 @@ async function handleCompletion(req, res) {
     sendToolCalls(res, model, body.stream, write3Calls)
     return
   }
+  if (toolResults === 0 && focusBuildTool(lastUserText(messages)) && offersTool(body, 'write_file')) {
+    sendToolCalls(res, model, body.stream, [{
+      id: 'call_e2e_focus',
+      type: 'function',
+      function: { name: 'write_file', arguments: JSON.stringify({ path: focusLongPath, content: 'export const greet = () => "Hello"\n' }) },
+    }])
+    return
+  }
   const narrate = lastUserText(messages).includes(NARRATE)
   if (toolResults === 0 && narrate && offersTool(body, 'write_file')) {
     sendToolCalls(res, model, body.stream, narrateCalls, narrateText)
     return
   }
-  const reply = toolResults > 0 ? (narrate ? 'All written.' : `Wrote ${toolResults} files.`) : replyFor(body)
+  const focusAfterTool = toolResults > 0 ? focusReply(lastUserText(messages).trim()) : null
+  const reply = toolResults > 0 ? (focusAfterTool ?? (narrate ? 'All written.' : `Wrote ${toolResults} files.`)) : replyFor(body)
 
   if (!body.stream) {
     res.writeHead(200, { 'content-type': 'application/json' })

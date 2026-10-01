@@ -1,0 +1,602 @@
+// Focus mode's pipeline screen state (docs/decisions/focus-mode.md, P1b).
+//
+// One store per open pipeline screen. It is rebuilt from the server every
+// time — GET pipeline, session, transcript and checkpoints, then the turn
+// feed (GET /v1/chat/stream) replayed from its first event — so a reload or
+// a switch back mid-turn shows the same screen, with no duplicate cards:
+// cards are the server's (replaced wholesale, never appended) plus change
+// cards derived from checkpoints.
+//
+// next_prompt (from a gate/card API response or the chat stream's
+// `pipeline` event), the kickoff goal and typed instructions go through one
+// queue, persisted in storage, and are sent one at a time when no turn runs
+// on the session (here, in another tab, or in Advanced — /v1/chat/activity).
+// Each entry is keyed (a prompt by the pipeline update that produced it) and
+// its key is marked sent only once the server accepted the chat request, so
+// a reload or a failed request never loses a prompt and a replayed event
+// never sends one twice. P2 moves this to the server.
+import { changeCards, deckFor, progressLine, turnIndex, turnStage, type ChangeTurn } from '../focus.ts'
+import type { FocusTranslations } from '../../i18n/sections/focus.ts'
+import type {
+  ChatEvent,
+  ChatRequest,
+  FocusActionResult,
+  FocusCard,
+  FocusCardState,
+  FocusGateAction,
+  FocusPipeline,
+  FocusPlan,
+  FocusStageId,
+  Session,
+  SessionMessage,
+} from '../types.ts'
+import type { CheckpointDiff, CheckpointList } from '../api/checkpoints.ts'
+
+export type FocusStoreApi = {
+  getPipeline(sessionId: string): Promise<FocusPipeline>
+  getSession(sessionId: string): Promise<Session>
+  getHistory(sessionId: string): Promise<SessionMessage[]>
+  listCheckpoints(sessionId: string): Promise<CheckpointList>
+  getCheckpointDiff(sessionId: string, turnId: string, options?: { scope?: 'turn' }): Promise<CheckpointDiff>
+  streamChat(request: ChatRequest, onEvent: (event: ChatEvent) => void, signal?: AbortSignal): Promise<void>
+  attachChatStream(sessionId: string, onEvent: (event: ChatEvent) => void, signal?: AbortSignal): Promise<boolean>
+  gate(sessionId: string, gate: string, action: FocusGateAction, options: { note?: string; edits?: FocusPlan }): Promise<FocusActionResult>
+  card(sessionId: string, cardId: string, state: FocusCardState, decision?: string): Promise<FocusActionResult>
+  advance(sessionId: string, stage: FocusStageId): Promise<FocusActionResult>
+  stop(sessionId: string): Promise<FocusActionResult>
+  // Turns running now, across sessions (GET /v1/chat/activity).
+  activity?(): Promise<{ running?: { session_id: string }[] | null }>
+}
+
+type QueuedPrompt = { key: string; prompt: string }
+
+export type FocusStorage = {
+  getItem(key: string): string | null
+  setItem(key: string, value: string): void
+}
+
+// Change diffs fetched per load: the most recent turns that changed files.
+const changeTurnLimit = 12
+const sentKeysKept = 50
+const turnEventsKept = 2000
+
+function statusOf(err: unknown): number | undefined {
+  const status = (err as { status?: unknown } | null)?.status
+  return typeof status === 'number' ? status : undefined
+}
+
+function message(err: unknown): string {
+  return err instanceof Error ? err.message : String(err)
+}
+
+function time(value: string | undefined): number {
+  const ms = Date.parse(value ?? '')
+  return Number.isNaN(ms) ? 0 : ms
+}
+
+export class FocusStore {
+  sessionId = $state<string | null>(null)
+  pipeline = $state<FocusPipeline | null>(null)
+  session = $state<Session | null>(null)
+  history = $state<SessionMessage[]>([])
+  changes = $state<FocusCard[]>([])
+  loading = $state(false)
+  // '' | 'notFound' | an error message from loading.
+  error = $state('')
+  // '' | 'stale' (a 409 replaced the state) | a server warning.
+  notice = $state('')
+  // An action or send failed; shown until the next action.
+  actionError = $state('')
+  // A turn runs: one this store sent, or one it follows through the feed.
+  running = $state(false)
+  turnEvents = $state<ChatEvent[]>([])
+  busy = $state(false)
+  // The stage whose cards the deck shows; null follows the current stage.
+  viewStage = $state<FocusStageId | null>(null)
+
+  private api: FocusStoreApi
+  private storage: FocusStorage | null
+  private pending: QueuedPrompt[] = []
+  // The transcript was read; until then nothing can tell a new pipeline.
+  private historyKnown = false
+  private disposed = false
+  private flushing = false
+  // A chat request failed before the server took it: stop retrying until
+  // the next load or action, so a server that is down is not hammered.
+  private sendBlocked = false
+  private streaming = false
+  private attaching: Promise<void> | null = null
+  private controller: AbortController | null = null
+  private diffCache = new Map<string, CheckpointDiff>()
+  private localSeen = new Set<string>()
+
+  constructor(api: FocusStoreApi, storage: FocusStorage | null = null) {
+    this.api = api
+    this.storage = storage
+  }
+
+  // All cards: the server's and the change cards.
+  get cards(): FocusCard[] {
+    return [...(this.pipeline?.cards ?? []), ...this.changes]
+  }
+
+  // The stage whose cards the deck shows: the one picked on the stepper, else
+  // the current stage — or, while that has no cards yet (a turn just started
+  // it), the latest earlier stage that has some, so they stay navigable.
+  get stage(): FocusStageId | null {
+    if (this.viewStage) return this.viewStage
+    const p = this.pipeline
+    if (!p) return null
+    const cards = this.cards
+    if (cards.some((c) => c.stage === p.current)) return p.current
+    const at = p.stages.findIndex((s) => s.id === p.current)
+    for (let i = at - 1; i >= 0; i--) {
+      const id = p.stages[i].id
+      if (cards.some((c) => c.stage === id)) return id
+    }
+    return p.current
+  }
+
+  // The deck: the shown stage's cards in deck order.
+  get deck(): FocusCard[] {
+    const stage = this.stage
+    return stage ? deckFor(this.cards, stage) : []
+  }
+
+  progress(stage?: FocusStageId, text?: FocusTranslations['progress']): string {
+    return progressLine(this.turnEvents, { stage, text })
+  }
+
+  async load(sessionId: string): Promise<void> {
+    if (this.sessionId !== sessionId) {
+      this.controller?.abort()
+      this.controller = null
+      this.pipeline = null
+      this.session = null
+      this.history = []
+      this.changes = []
+      this.turnEvents = []
+      this.running = false
+      this.viewStage = null
+      this.historyKnown = false
+      this.diffCache.clear()
+      this.localSeen.clear()
+    }
+    this.sessionId = sessionId
+    this.pending = this.storedPending()
+    this.sendBlocked = false
+    this.loading = true
+    this.error = ''
+    this.notice = ''
+    this.actionError = ''
+    try {
+      const pipeline = await this.api.getPipeline(sessionId)
+      if (this.sessionId !== sessionId) return
+      this.pipeline = pipeline
+    } catch (err) {
+      if (this.sessionId !== sessionId) return
+      this.error = statusOf(err) === 404 ? 'notFound' : message(err)
+      this.loading = false
+      return
+    }
+    const [session, history] = await Promise.all([
+      this.api.getSession(sessionId).catch(() => null),
+      // A session without messages answers `null`; a failed read is unknown.
+      this.api.getHistory(sessionId).then((h) => h ?? []).catch(() => null),
+    ])
+    if (this.sessionId !== sessionId) return
+    this.session = session
+    this.historyKnown = history !== null
+    this.history = history ?? []
+    await this.refreshChanges()
+    this.loading = false
+    if (!this.streaming && !this.attaching) {
+      this.attaching = this.follow(sessionId)
+      await this.attaching
+    }
+    this.kickoff()
+    void this.flush()
+  }
+
+  // poll follows a turn that started elsewhere — another tab, a store this
+  // screen replaced, or Advanced — so this screen shows it and never starts
+  // a parallel one. The screen calls it on an interval.
+  async poll(): Promise<void> {
+    const sessionId = this.sessionId
+    if (!sessionId || this.disposed || this.streaming || this.running || this.attaching) return
+    if (!(await this.runningElsewhere(sessionId))) {
+      // Nothing runs: send what waited (a prompt queued while the activity
+      // still listed a turn that was ending).
+      await this.flush()
+      return
+    }
+    if (this.sessionId !== sessionId || this.disposed || this.streaming || this.running || this.attaching) return
+    this.attaching = this.follow(sessionId)
+    await this.attaching
+  }
+
+  private async runningElsewhere(sessionId: string): Promise<boolean> {
+    if (!this.api.activity) return false
+    try {
+      const snap = await this.api.activity()
+      return (snap?.running ?? []).some((r) => r.session_id === sessionId)
+    } catch {
+      return false
+    }
+  }
+
+  // follow attaches to the session's running turn, replaying it from its
+  // first event. It returns once the replay has caught up or no turn runs;
+  // the rest of the turn streams in the background.
+  private follow(sessionId: string): Promise<void> {
+    const controller = new AbortController()
+    this.controller = controller
+    let caughtUp: () => void = () => {}
+    const ready = new Promise<void>((resolve) => { caughtUp = resolve })
+    const run = async () => {
+      let attached = false
+      try {
+        attached = await this.api.attachChatStream(sessionId, (event) => {
+          if (!this.running) {
+            this.running = true
+            this.turnEvents = []
+          }
+          caughtUp()
+          this.applyEvent(event)
+        }, controller.signal)
+      } catch {
+        // A dropped feed ends the follow; the GET below shows where it stands.
+        attached = true
+      } finally {
+        caughtUp()
+      }
+      if (controller.signal.aborted || this.disposed || this.sessionId !== sessionId) {
+        if (this.controller === controller) this.attaching = null
+        return
+      }
+      if (attached) await this.afterTurn()
+      this.running = false
+      this.attaching = null
+      await this.flush()
+    }
+    void run()
+    return ready
+  }
+
+  // kickoff sends the goal as the first turn of a pipeline that has none.
+  private kickoff() {
+    const p = this.pipeline
+    if (!p || !this.historyKnown || this.running || this.streaming || this.history.length > 0 || p.cards.length > 0) return
+    if (p.current !== 'plan' || !p.goal.trim()) return
+    this.queuePrompt(`first\n${p.session_id}`, p.goal)
+  }
+
+  // applyEvent folds one chat stream event (sent or replayed) into the state.
+  applyEvent(event: ChatEvent) {
+    if (event.session_id && this.sessionId && event.session_id !== this.sessionId) return
+    if (event.type === 'turn_started') {
+      this.turnEvents = [event]
+    } else {
+      this.turnEvents = [...this.turnEvents.slice(-turnEventsKept), event]
+    }
+    if (event.type === 'pipeline' && event.pipeline) {
+      this.adopt(event.pipeline)
+      if (event.next_prompt) this.queuePrompt(this.promptKey(event.pipeline, event.next_prompt), event.next_prompt)
+    }
+  }
+
+  // adopt takes a pipeline unless it is older than the one held.
+  private adopt(p: FocusPipeline, force = false) {
+    if (p.session_id && this.sessionId && p.session_id !== this.sessionId) return
+    if (!force && this.pipeline && time(p.updated_at) < time(this.pipeline.updated_at)) return
+    this.pipeline = p
+  }
+
+  private promptKey(p: FocusPipeline, prompt: string): string {
+    return `${p.updated_at}\n${prompt}`
+  }
+
+  private sentKeysName(): string {
+    return `tars.focus.sent.${this.sessionId}`
+  }
+
+  private sentKeys(): string[] {
+    try {
+      const parsed = JSON.parse(this.storage?.getItem(this.sentKeysName()) ?? '[]')
+      return Array.isArray(parsed) ? parsed.filter((k): k is string => typeof k === 'string') : []
+    } catch {
+      return []
+    }
+  }
+
+  private pendingName(): string {
+    return `tars.focus.pending.${this.sessionId}`
+  }
+
+  private storedPending(): QueuedPrompt[] {
+    try {
+      const parsed = JSON.parse(this.storage?.getItem(this.pendingName()) ?? '[]')
+      if (!Array.isArray(parsed)) return []
+      const sent = this.sentKeys()
+      return parsed.filter((e): e is QueuedPrompt => typeof e?.key === 'string' && typeof e?.prompt === 'string' && !sent.includes(e.key))
+    } catch {
+      return []
+    }
+  }
+
+  private savePending() {
+    try {
+      this.storage?.setItem(this.pendingName(), JSON.stringify(this.pending))
+    } catch {
+      // Storage full or blocked: the queue lives in memory for this page.
+    }
+  }
+
+  private queuePrompt(key: string, prompt: string) {
+    if (this.sentKeys().includes(key) || this.pending.some((e) => e.key === key)) return
+    this.pending = [...this.pending, { key, prompt }]
+    this.savePending()
+  }
+
+  // markSent records that the server took an entry's chat request.
+  private markSent(entry: QueuedPrompt) {
+    try {
+      const keys = this.sentKeys()
+      if (!keys.includes(entry.key)) this.storage?.setItem(this.sentKeysName(), JSON.stringify([...keys, entry.key].slice(-sentKeysKept)))
+    } catch {
+      // The in-memory queue below still drops it for this page.
+    }
+    this.pending = this.pending.filter((e) => e.key !== entry.key)
+    this.savePending()
+  }
+
+  // flush sends the next queued entry when no turn runs on the session.
+  private async flush() {
+    const sessionId = this.sessionId
+    if (!sessionId || this.disposed || this.sendBlocked || this.flushing || this.streaming || this.running || this.attaching) return
+    this.flushing = true
+    try {
+      // Another tab may have sent an entry since it was queued.
+      const sent = this.sentKeys()
+      this.pending = this.pending.filter((e) => !sent.includes(e.key))
+      const next = this.pending[0]
+      if (!next || (await this.runningElsewhere(sessionId))) return
+      if (this.disposed || this.sessionId !== sessionId || this.streaming || this.running || this.attaching) return
+      this.flushing = false
+      await this.sendEntry(next)
+    } finally {
+      this.flushing = false
+    }
+  }
+
+  // send queues an instruction the developer typed; it goes out at once when
+  // no turn runs, else after it.
+  async send(text: string): Promise<void> {
+    const body = text.trim()
+    if (!this.sessionId || !body || this.disposed) return
+    this.queuePrompt(`typed\n${Date.now()}\n${body}`, body)
+    this.sendBlocked = false
+    await this.flush()
+  }
+
+  // sendEntry runs one chat turn for a queued entry.
+  private async sendEntry(entry: QueuedPrompt): Promise<void> {
+    const sessionId = this.sessionId
+    if (!sessionId) return
+    this.streaming = true
+    this.running = true
+    this.turnEvents = []
+    this.actionError = ''
+    let accepted = false
+    const accept = () => {
+      if (accepted) return
+      accepted = true
+      this.markSent(entry)
+    }
+    try {
+      await this.api.streamChat({ message: entry.prompt, session_id: sessionId }, (event) => {
+        accept()
+        if (!this.disposed) this.applyEvent(event)
+      })
+      accept()
+    } catch (err) {
+      // Not accepted: the entry stays queued for the next load or action.
+      if (!accepted) this.sendBlocked = true
+      if (this.sessionId === sessionId && !this.disposed) this.actionError = message(err)
+    } finally {
+      this.streaming = false
+    }
+    if (this.disposed || this.sessionId !== sessionId) return
+    await this.afterTurn()
+    this.running = false
+    await this.flush()
+  }
+
+  // afterTurn re-reads what a finished turn changed.
+  private async afterTurn() {
+    const sessionId = this.sessionId
+    if (!sessionId || this.disposed) return
+    // The session too: a turn may have moved it into a worktree.
+    const [pipeline, history, session] = await Promise.all([
+      this.api.getPipeline(sessionId).catch(() => null),
+      this.api.getHistory(sessionId).then((h) => h ?? []).catch(() => null),
+      this.api.getSession(sessionId).catch(() => null),
+    ])
+    if (this.sessionId !== sessionId || this.disposed) return
+    if (session) this.session = session
+    if (pipeline) this.adopt(pipeline)
+    if (history !== null) {
+      this.history = history
+      this.historyKnown = true
+    }
+    await this.refreshChanges()
+  }
+
+  // refreshChanges rebuilds the change cards from the session's checkpoints:
+  // one card per file of each recent turn that changed files. A turn's diff
+  // never changes, so it is fetched once.
+  async refreshChanges(): Promise<void> {
+    const sessionId = this.sessionId
+    if (!sessionId) return
+    let list: CheckpointList
+    try {
+      list = await this.api.listCheckpoints(sessionId)
+    } catch {
+      return
+    }
+    const turns = (list?.turns ?? []).filter((t) => t.files > 0 && !t.skipped).slice(-changeTurnLimit)
+    const out: ChangeTurn[] = []
+    for (const entry of turns) {
+      let diff = this.diffCache.get(entry.turn_id)
+      if (!diff) {
+        try {
+          diff = await this.api.getCheckpointDiff(sessionId, entry.turn_id, { scope: 'turn' })
+          this.diffCache.set(entry.turn_id, diff)
+        } catch {
+          continue
+        }
+      }
+      const turn = turnIndex(this.history, entry.turn_id)
+      const user = this.history.find((m) => m.id === entry.turn_id)
+      out.push({
+        turnId: entry.turn_id,
+        turn,
+        stage: (user && turnStage(user.content)) || this.pipeline?.current || 'build',
+        at: entry.ended_at || entry.started_at,
+        files: diff.files,
+      })
+    }
+    if (this.sessionId !== sessionId) return
+    const acked = new Set(this.acks())
+    this.changes = changeCards(out, acked).map((c) => (c.state === 'unseen' && this.localSeen.has(c.id) ? { ...c, state: 'seen' } : c))
+  }
+
+  private acksName(): string {
+    return `tars.focus.acks.${this.sessionId}`
+  }
+
+  private acks(): string[] {
+    try {
+      const parsed = JSON.parse(this.storage?.getItem(this.acksName()) ?? '[]')
+      return Array.isArray(parsed) ? parsed.filter((k): k is string => typeof k === 'string') : []
+    } catch {
+      return []
+    }
+  }
+
+  private markChange(id: string, state: FocusCardState) {
+    if (state === 'decided') {
+      const acks = this.acks()
+      if (!acks.includes(id)) {
+        try {
+          this.storage?.setItem(this.acksName(), JSON.stringify([...acks, id]))
+        } catch {
+          // Kept in memory for this page.
+        }
+      }
+    } else {
+      this.localSeen.add(id)
+    }
+    this.changes = this.changes.map((c) => (c.id === id && c.state !== 'decided' ? { ...c, state } : c))
+  }
+
+  private async act(run: () => Promise<FocusActionResult>): Promise<boolean> {
+    this.busy = true
+    this.actionError = ''
+    this.sendBlocked = false
+    try {
+      const result = await run()
+      if (result.conflict) {
+        this.adopt(result.pipeline, true)
+        this.notice = 'stale'
+        return false
+      }
+      this.adopt(result.pipeline, true)
+      this.notice = result.warning ?? ''
+      if (result.next_prompt) this.queuePrompt(this.promptKey(result.pipeline, result.next_prompt), result.next_prompt)
+      return true
+    } catch (err) {
+      this.actionError = message(err)
+      return false
+    } finally {
+      this.busy = false
+    }
+  }
+
+  async gate(gate: string, action: FocusGateAction, note?: string, edits?: FocusPlan): Promise<boolean> {
+    const sessionId = this.sessionId
+    if (!sessionId) return false
+    const ok = await this.act(() => this.api.gate(sessionId, gate, action, { note, edits }))
+    if (ok) this.viewStage = null
+    await this.flush()
+    return ok
+  }
+
+  async markCard(cardId: string, state: FocusCardState, decision?: string): Promise<boolean> {
+    const sessionId = this.sessionId
+    if (!sessionId) return false
+    if (cardId.startsWith('change:')) {
+      this.markChange(cardId, state)
+      return true
+    }
+    const ok = await this.act(() => this.api.card(sessionId, cardId, state, decision))
+    await this.flush()
+    return ok
+  }
+
+  // markSeen notes that a card was on screen. Cards the developer must
+  // handle stay unseen so they keep counting as needing input.
+  async markSeen(card: FocusCard): Promise<void> {
+    if (card.state !== 'unseen' || card.kind === 'gate' || card.kind === 'decision' || card.kind === 'finding') return
+    if (card.id.startsWith('change:')) {
+      this.markChange(card.id, 'seen')
+      return
+    }
+    const sessionId = this.sessionId
+    if (!sessionId) return
+    try {
+      const result = await this.api.card(sessionId, card.id, 'seen')
+      this.adopt(result.pipeline)
+    } catch {
+      // Seen is a courtesy; a failure changes nothing the developer relies on.
+    }
+  }
+
+  // acknowledgeRest decides every remaining report, change, failure and
+  // notice card of the deck.
+  async acknowledgeRest(cards: FocusCard[]): Promise<void> {
+    for (const card of cards) {
+      if (card.state === 'decided') continue
+      if (card.kind !== 'report' && card.kind !== 'change' && card.kind !== 'failure' && card.kind !== 'notice') continue
+      await this.markCard(card.id, 'decided', 'acknowledged')
+    }
+  }
+
+  async advance(): Promise<boolean> {
+    const sessionId = this.sessionId
+    const stage = this.pipeline?.current
+    if (!sessionId || !stage) return false
+    const ok = await this.act(() => this.api.advance(sessionId, stage))
+    if (ok) this.viewStage = null
+    await this.flush()
+    return ok
+  }
+
+  async stop(): Promise<boolean> {
+    const sessionId = this.sessionId
+    if (!sessionId) return false
+    return this.act(() => this.api.stop(sessionId))
+  }
+
+  showStage(stage: FocusStageId | null) {
+    this.viewStage = stage && stage !== this.pipeline?.current ? stage : null
+  }
+
+  // dispose stops the store for good: a turn it sent still finishes on the
+  // server, but nothing more is read or sent from here.
+  dispose() {
+    this.disposed = true
+    this.controller?.abort()
+    this.controller = null
+  }
+}

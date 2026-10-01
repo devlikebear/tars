@@ -5,6 +5,7 @@
 // message therefore carries the block; these helpers take it back off so the
 // bubble, the side panel and the session title show only the user's words.
 import { splitReviewNotes } from './changes.ts'
+import { stripFocusStage } from './focus.ts'
 
 const contextOpen = '<console-context>'
 const contextClose = '</console-context>'
@@ -17,7 +18,9 @@ export function splitConsoleContext(text: string): { text: string; context: stri
 }
 
 // userVisibleText is a stored user message as the user wrote it: without the
-// console context or the review notes block after it.
+// console context, the focus stage guidance, or the review notes block. The
+// server appends them in that order: message, <console-context>,
+// <focus-stage>, <review-notes>.
 export function userVisibleText(text: string): string {
-  return splitConsoleContext(splitReviewNotes(text).text).text
+  return splitConsoleContext(stripFocusStage(splitReviewNotes(text).text)).text
 }

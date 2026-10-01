@@ -9,6 +9,7 @@ import { changesKo } from './sections/changes.ts'
 import { sideSessionKo } from './sections/sideSession.ts'
 import { sessionWorktreeKo } from './sections/sessionWorktree.ts'
 import { newChatFolderKo } from './sections/newChatFolder.ts'
+import { focusKo } from './sections/focus.ts'
 import { chatApprovalKo } from './sections/chatApproval.ts'
 import { sessionBoardKo } from './sections/sessionBoard.ts'
 
@@ -56,6 +57,7 @@ export const ko = {
     },
     items: {
       board: '세션',
+      focus: '포커스',
       overview: '개요',
       chat: '채팅',
       lineage: '분기',
@@ -1667,6 +1669,7 @@ export const ko = {
   sideSession: sideSessionKo,
   sessionWorktree: sessionWorktreeKo,
   newChatFolder: newChatFolderKo,
+  focus: focusKo,
   chatApproval: chatApprovalKo,
   sessionBoard: sessionBoardKo,
 

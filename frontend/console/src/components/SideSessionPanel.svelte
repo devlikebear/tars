@@ -17,6 +17,7 @@
   import { t } from '../i18n'
   import ChatApprovalCard from './ChatApprovalCard.svelte'
   import MarkdownContent from './MarkdownContent.svelte'
+  import { stripFocusBlocks } from '../lib/focus'
 
   interface Props {
     activeSessionId: string | null
@@ -41,6 +42,8 @@
   // The side session's working folder: tool paths inside it show relative.
   let sideCwd = $state<string | undefined>(undefined)
   let running = $state(false)
+  // The bubble a running turn is still writing into.
+  let lastAssistantId = $derived(messages.findLast((m) => m.role === 'assistant')?.id ?? '')
   let draft = $state('')
   let error = $state('')
   let logEl: HTMLElement | undefined = $state()
@@ -231,7 +234,7 @@
         {:else}
           <div class={`side-msg side-${message.role}`}>
             {#if message.role === 'assistant'}
-              <MarkdownContent text={message.text} />
+              <MarkdownContent text={stripFocusBlocks(message.text, { streaming: running && message.id === lastAssistantId })} />
             {:else}
               {message.text}
             {/if}

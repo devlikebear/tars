@@ -16,6 +16,7 @@
 import { nextPermissionMode, permissionModeCycle } from '../chatApproval.ts'
 import { isPinnableTier } from '../tierRecommendation.ts'
 import { userVisibleText } from '../consoleContext.ts'
+import { stripFocusBlocks } from '../focus.ts'
 import type {
   PermissionMode,
   PermissionModeView,
@@ -111,7 +112,7 @@ export function goalEventFeedback(event: GoalEvent, text: GoalEventText): string
 export function autoTitleFromHistory(history: Pick<SessionMessage, 'role' | 'content'>[]): string {
   const source = history.find((m) => m.role === 'user') ?? history.find((m) => m.role === 'assistant')
   if (!source) return ''
-  const content = source.role === 'user' ? userVisibleText(source.content) : source.content
+  const content = source.role === 'user' ? userVisibleText(source.content) : stripFocusBlocks(source.content)
   const clean = content.trim().replace(/\n/g, ' ').replace(/\s+/g, ' ')
   return clean.length > 50 ? clean.slice(0, 47) + '...' : clean
 }

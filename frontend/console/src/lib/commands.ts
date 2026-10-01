@@ -36,6 +36,7 @@ export type PageEntry = {
 export const pageEntries: PageEntry[] = [
   { view: 'board', path: '/console', adminOnly: false, keywords: ['home', 'sessions', 'board', 'status'] },
   { view: 'home', path: '/console/system', adminOnly: false, keywords: ['dashboard', 'overview', 'system'] },
+  { view: 'focus', path: '/console/focus', adminOnly: false, keywords: ['pipeline', 'task', 'gate'] },
   { view: 'chat', path: '/console/chat', adminOnly: false, keywords: ['conversation', 'session'] },
   { view: 'session-lineage', path: '/console/sessions/graph', adminOnly: false, keywords: ['fork', 'graph', 'history'] },
   { view: 'tasks', path: '/console/tasks', adminOnly: false, keywords: ['plans', 'work', 'contracts'] },
