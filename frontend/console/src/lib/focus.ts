@@ -231,7 +231,9 @@ export function stripFocusStage(text: string): string {
 }
 
 const tagPattern = /<(\/?)focus-([a-z_]+)>/g
-const partialTag = /<(?:\/?(?:f(?:o(?:c(?:u(?:s(?:-[a-z_]*)?)?)?)?)?)?)?$/
+// The start of a focus tag cut off by streaming: "</", or "<" or "</"
+// followed by a prefix of "focus-<name>". Every alternative is non-empty.
+const partialTag = /<(?:\/|\/?(?:f|fo|foc|focu|focus|focus-[a-z_]+|focus-))$/
 
 // unfencedSegments are the [start, end) spans outside ``` fences, as the
 // server's parser sees them; text after an unclosed fence is not one.
@@ -289,7 +291,7 @@ export function stripFocusBlocks(text: string, options: { streaming?: boolean } 
       end = tailOpen
     } else {
       const partial = text.match(partialTag)
-      if (partial && partial[0].length > 1) end = text.length - partial[0].length
+      if (partial) end = text.length - partial[0].length
     }
   }
   if (spans.length === 0 && end === text.length) return text

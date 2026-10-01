@@ -315,3 +315,13 @@ test('focusChrome hides the app sidebar and the companion on focus routes only',
   assert.equal(focusChromeHidden(resolveRoute('/console')), false)
   assert.equal(focusChromeHidden(resolveRoute('/console/chat/abc')), false)
 })
+
+test('stripFocusBlocks while streaming drops only a partial focus tag at the end', () => {
+  for (const tail of ['</', '<f', '<fo', '<foc', '<focu', '<focus', '<focus-', '<focus-rep', '</focus-pl']) {
+    assert.equal(stripFocusBlocks(`Done.\n${tail}`, { streaming: true }), 'Done.', tail)
+  }
+  // A lone "<", or one that is not the start of a focus tag, stays.
+  for (const tail of ['a <', 'a <fx', 'a <b', 'a <focusx']) {
+    assert.equal(stripFocusBlocks(tail, { streaming: true }), tail, tail)
+  }
+})
