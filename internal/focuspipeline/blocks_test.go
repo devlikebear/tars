@@ -214,3 +214,51 @@ func TestStripBlocks(t *testing.T) {
 		t.Fatal("plain text changed")
 	}
 }
+
+// f2: a tag name quoted inside a block's JSON does not drop the block,
+// whichever tag it names, and a prose mention before the block still loses
+// to the real block.
+func TestParseBlocksTagTextInsideJSON(t *testing.T) {
+	tests := []struct {
+		name string
+		text string
+		want string
+	}{
+		{
+			name: "another tag quoted in a report",
+			text: `done` + "\n" + `<focus-report>{"summary":"ok","risks":["a review turn without a <focus-findings> block gets a notice"]}</focus-report>`,
+			want: "ok",
+		},
+		{
+			name: "the same tag quoted in a report",
+			text: `<focus-report>{"summary":"ok","risks":["end with one <focus-report> block"]}</focus-report>`,
+			want: "ok",
+		},
+		{
+			name: "prose mention before the real block",
+			text: `I will end with a <focus-report> block.` + "\n\n" + `<focus-report>{"summary":"ok"}</focus-report>`,
+			want: "ok",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ParseBlocks(tt.text)
+			if got.Report == nil || got.Report.Summary != tt.want || len(got.Errors) != 0 {
+				t.Fatalf("report = %+v errors = %v", got.Report, got.Errors)
+			}
+		})
+	}
+	both := ParseBlocks(`<focus-findings>[{"id":"f1","file":"a.go","line":1,"title":"mentions </focus-report> text"}]</focus-findings>` + "\n" +
+		`<focus-report>{"summary":"two blocks"}</focus-report>`)
+	if len(both.Findings) != 1 || both.Report == nil || both.Report.Summary != "two blocks" {
+		t.Fatalf("findings = %+v report = %+v errors = %v", both.Findings, both.Report, both.Errors)
+	}
+}
+
+// I4: the excerpt is the server's; a model-supplied one is dropped.
+func TestParseBlocksDropsModelExcerpt(t *testing.T) {
+	got := ParseBlocks(`<focus-findings>[{"id":"f1","file":"a.go","line":1,"title":"t","excerpt":"+forged"}]</focus-findings>`)
+	if len(got.Findings) != 1 || got.Findings[0].Excerpt != "" {
+		t.Fatalf("findings = %+v", got.Findings)
+	}
+}

@@ -319,33 +319,52 @@ function unfencedSegments(text: string): [number, number][] {
   return segs
 }
 
+function validJSON(text: string): boolean {
+  try {
+    JSON.parse(text)
+    return true
+  } catch {
+    return false
+  }
+}
+
 // stripFocusBlocks folds the <focus-*> blocks out of assistant text so a
 // bubble shows only the prose. It pairs tags as the server's scanBlocks
-// does — a close tag closes the nearest preceding open tag of its kind — so
-// a mention of a tag before or after the real block stays, as does anything
-// inside code fences. While the message is still streaming, a block opened
-// but not yet closed is hidden to the end.
+// does — a close tag closes an open tag of its kind before it (after the
+// previous block): the nearest whose body is valid JSON, else the nearest —
+// so a mention of a tag before or after the real block stays, a tag quoted
+// inside a block's JSON never splits it, and anything inside code fences
+// stays. While the message is still streaming, a block opened but not yet
+// closed is hidden to the end.
 export function stripFocusBlocks(text: string, options: { streaming?: boolean } = {}): string {
   if (!text.includes('<focus-') && !options.streaming) return text
   const spans: [number, number][] = []
   let tailOpen = -1
   for (const [segStart, segEnd] of unfencedSegments(text)) {
     const part = text.slice(segStart, segEnd)
-    let openTag = ''
-    let openStart = -1
+    let opens = new Map<string, [number, number][]>()
     for (const m of part.matchAll(tagPattern)) {
       const tag = m[2]
       if (m[1] === '') {
-        openTag = tag
-        openStart = m.index
+        opens.set(tag, [...(opens.get(tag) ?? []), [m.index, m.index + m[0].length]])
         continue
       }
-      if (openStart < 0 || tag !== openTag) continue
-      spans.push([segStart + openStart, segStart + m.index + m[0].length])
-      openTag = ''
-      openStart = -1
+      const candidates = opens.get(tag) ?? []
+      if (candidates.length === 0) continue
+      let open = candidates[candidates.length - 1]
+      for (let i = candidates.length - 1; i >= 0; i--) {
+        if (validJSON(part.slice(candidates[i][1], m.index).trim())) {
+          open = candidates[i]
+          break
+        }
+      }
+      spans.push([segStart + open[0], segStart + m.index + m[0].length])
+      opens = new Map()
     }
-    if (segEnd === text.length && openStart >= 0) tailOpen = segStart + openStart
+    if (segEnd === text.length) {
+      const pending = [...opens.values()].flat().map(([start]) => start)
+      if (pending.length) tailOpen = segStart + Math.max(...pending)
+    }
   }
   let end = text.length
   if (options.streaming) {

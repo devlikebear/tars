@@ -460,3 +460,12 @@ test('excerptLines classifies diff lines and marks the finding line in new-file 
   assert.equal(excerptLines('', 3).length, 0)
   assert.equal(excerptLines('@@ new file +5 @@\n+a\n+b', 6).find((l) => l.target)?.text, '+b', 'untracked file excerpts number from their header')
 })
+
+test('stripFocusBlocks pairs tags like the server when a block quotes a tag in its JSON', () => {
+  const other = 'Done.\n\n<focus-report>{"summary":"ok","risks":["a turn without a <focus-findings> block"]}</focus-report>'
+  assert.equal(stripFocusBlocks(other), 'Done.')
+  const same = 'Done.\n\n<focus-report>{"summary":"ok","risks":["end with one <focus-report> block"]}</focus-report>'
+  assert.equal(stripFocusBlocks(same), 'Done.')
+  const prose = 'I end with a <focus-report> block.\n\n<focus-report>{"summary":"ok"}</focus-report>'
+  assert.equal(stripFocusBlocks(prose), 'I end with a <focus-report> block.')
+})
