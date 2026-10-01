@@ -107,7 +107,16 @@ func Apply(p Pipeline, ev Event, now time.Time) (Pipeline, Action, error) {
 	if err != nil {
 		return p, act, err
 	}
-	return stampFinished(next, now), act, nil
+	return owe(stampFinished(next, now), act), act, nil
+}
+
+// owe records a send_turn action as the turn the server owes the pipeline
+// (PendingTurn); a completed turn or a stop cleared the previous one.
+func owe(p Pipeline, act Action) Pipeline {
+	if act.Kind == ActionSendTurn && p.PendingTurn != act.Prompt {
+		p.PendingTurn = act.Prompt
+	}
+	return p
 }
 
 func applyEvent(p Pipeline, ev Event, now time.Time) (Pipeline, Action, error) {
@@ -142,6 +151,7 @@ func applyEvent(p Pipeline, ev Event, now time.Time) (Pipeline, Action, error) {
 			next.Cards[i].Decision = GateStop
 		}
 		next.OpenGate = GateNone
+		next.AwaitingVerification, next.PendingTurn = false, ""
 		next.setStatus(next.Current, StatusBlocked)
 		next.UpdatedAt = now.UTC()
 		return next, noAction, nil
@@ -156,6 +166,10 @@ func applyTurn(p Pipeline, ev Event, now time.Time) (Pipeline, Action) {
 	}
 	b := ev.Blocks
 	act := noAction
+	// A turn completed: the turn the server owed (if any) is not owed any
+	// more. Asked before this turn's cards land on top of the last one.
+	p.PendingTurn = ""
+	priorNotice := lastCardIsFormatNotice(p)
 	if p.Current == StagePlan && b.Plan != nil {
 		supersedeOpenGate(&p)
 		plan := clonePlan(*b.Plan)
@@ -184,9 +198,12 @@ func applyTurn(p Pipeline, ev Event, now time.Time) (Pipeline, Action) {
 		buildTurnAction(&p, Blocks{})
 	}
 	if missing {
-		reRequest := !lastCardIsFormatNotice(p)
 		p.addCard(CardNotice, ev.Turn, NoticeFormatMissing, map[string]any{"errors": nonNil(b.Errors)}, now)
-		if reRequest {
+		build, _ := p.Stage(StageBuild)
+		switch {
+		case p.Current == StageBuild && build.Turns >= buildTurnCap(p):
+			p.block(BlockedNoProgress, nil, ev.Turn, now)
+		case !priorNotice:
 			act = Action{Kind: ActionSendTurn, Prompt: reRequestPrompt(p.Current)}
 		}
 	} else if len(b.Errors) > 0 {
@@ -280,6 +297,7 @@ func applyGate(p Pipeline, ev Event, now time.Time) (Pipeline, Action, error) {
 		return p, noAction, fmt.Errorf("%w: %s is only for the blocked gate", ErrInvalidAction, ev.Action)
 	case GateStop:
 		p.setStatus(p.Current, StatusBlocked)
+		p.AwaitingVerification, p.PendingTurn = false, ""
 		decide()
 		return p, noAction, nil
 	case GateRequestChanges:
@@ -469,7 +487,8 @@ func SetCardState(p Pipeline, cardID, state, decision string, now time.Time) (Pi
 	next.Cards[idx] = card
 	next.UpdatedAt = now.UTC()
 	if card.Kind == CardDecision && card.State == CardDecided {
-		return next, Action{Kind: ActionSendTurn, Prompt: card.Title + " → " + decision}, nil
+		act := Action{Kind: ActionSendTurn, Prompt: card.Title + " → " + decision}
+		return owe(next, act), act, nil
 	}
 	return next, noAction, nil
 }

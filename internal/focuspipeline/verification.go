@@ -1,6 +1,7 @@
 package focuspipeline
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
@@ -24,7 +25,13 @@ const (
 	BlockedLimit      = "limit"
 	BlockedRepeated   = "repeated"
 	BlockedNoProgress = "no_progress"
+	// BlockedInterrupted is a pipeline the server stopped mid-step (a
+	// restart): retry resumes exactly the step that was cut off.
+	BlockedInterrupted = "interrupted"
 )
+
+// InterruptedTitle is the title of the gate an interruption raises.
+const InterruptedTitle = "Pipeline interrupted"
 
 // BlockedTitle is the title of the blocked gate card.
 const BlockedTitle = "Build blocked"
@@ -67,6 +74,10 @@ type BlockedFact struct {
 	Iteration int          `json:"iteration"`
 	Limit     int          `json:"limit"`
 	Failure   *FailureFact `json:"failure,omitempty"`
+	// Prompt and Verify are what an interruption cut off: the turn that was
+	// owed, or the verification that was running.
+	Prompt string `json:"prompt,omitempty"`
+	Verify bool   `json:"verify,omitempty"`
 }
 
 var (
@@ -179,15 +190,49 @@ func (p Pipeline) verificationFailed(v Verification, turn int, now time.Time) (P
 // block raises the blocked gate: the stage stops until the developer
 // retries, instructs, or stops.
 func (p *Pipeline) block(reason string, failure *FailureFact, turn int, now time.Time) {
-	build, _ := p.Stage(StageBuild)
-	p.setStatus(StageBuild, StatusBlocked)
-	p.OpenGate = GateBlocked
+	stage, _ := p.Stage(p.Current)
 	if failure != nil {
 		p.LastFailure = failure
 	}
-	p.addCard(CardGate, turn, BlockedTitle, BlockedFact{
-		Reason: reason, Iteration: build.Iteration, Limit: p.stageLimit(StageBuild), Failure: failure,
-	}, now)
+	p.raiseBlocked(BlockedTitle, BlockedFact{
+		Reason: reason, Iteration: stage.Iteration, Limit: p.stageLimit(p.Current), Failure: failure,
+	}, turn, now)
+}
+
+// raiseBlocked opens the blocked gate on the current stage with its card.
+func (p *Pipeline) raiseBlocked(title string, fact BlockedFact, turn int, now time.Time) {
+	p.setStatus(p.Current, StatusBlocked)
+	p.OpenGate = GateBlocked
+	p.AwaitingVerification = false
+	p.PendingTurn = ""
+	p.addCard(CardGate, turn, title, fact, now)
+}
+
+// Interrupt raises the blocked gate on a pipeline the server stopped
+// mid-step — verification awaited or a turn owed — so a restart never
+// resumes it silently (ADR §4: the developer decides). ok is false, and p
+// is returned unchanged, when nothing was cut off.
+func Interrupt(p Pipeline, now time.Time) (Pipeline, bool) {
+	if !p.Active() || p.OpenGate != GateNone || (!p.AwaitingVerification && p.PendingTurn == "") {
+		return p, false
+	}
+	next := p.clone()
+	stage, _ := next.Stage(next.Current)
+	next.raiseBlocked(InterruptedTitle, BlockedFact{
+		Reason: BlockedInterrupted, Iteration: stage.Iteration, Limit: next.stageLimit(next.Current),
+		Prompt: p.PendingTurn, Verify: p.AwaitingVerification,
+	}, 0, now.UTC())
+	next.UpdatedAt = now.UTC()
+	return next, true
+}
+
+// openBlockedFact is the payload of the open blocked gate's card.
+func (p Pipeline) openBlockedFact() BlockedFact {
+	var fact BlockedFact
+	if i := p.openGateCard(); i >= 0 {
+		_ = json.Unmarshal(p.Cards[i].Payload, &fact)
+	}
+	return fact
 }
 
 // applyBlockedGate answers the blocked gate: retry and instruct allow one
@@ -196,6 +241,7 @@ func applyBlockedGate(p *Pipeline, ev Event, decide func()) (Pipeline, Action, e
 	note := strings.TrimSpace(ev.Note)
 	switch ev.Action {
 	case GateStop:
+		p.AwaitingVerification, p.PendingTurn = false, ""
 		decide()
 		return *p, noAction, nil
 	case GateInstruct:
@@ -206,12 +252,29 @@ func applyBlockedGate(p *Pipeline, ev Event, decide func()) (Pipeline, Action, e
 	default:
 		return *p, noAction, fmt.Errorf("%w: the blocked gate takes retry, instruct or stop", ErrInvalidAction)
 	}
+	fact := p.openBlockedFact()
+	s := p.stageRef(p.Current)
+	s.Status = StatusActive
+	if fact.Reason == BlockedInterrupted {
+		// Resume the step that was cut off, in the same round.
+		decide()
+		if ev.Action == GateRetry && fact.Verify {
+			p.AwaitingVerification = true
+			return *p, Action{Kind: ActionRunVerification}, nil
+		}
+		prompt := note
+		if ev.Action == GateRetry {
+			prompt = fact.Prompt
+			if prompt == "" {
+				prompt = retryPrompt(p.LastFailure)
+			}
+		}
+		return *p, Action{Kind: ActionSendTurn, Prompt: prompt}, nil
+	}
 	prompt := note
 	if ev.Action == GateRetry {
 		prompt = retryPrompt(p.LastFailure)
 	}
-	s := p.stageRef(p.Current)
-	s.Status = StatusActive
 	s.Limit = p.stageLimit(p.Current) + 1
 	s.Iteration++
 	s.Turns = 0

@@ -157,6 +157,11 @@ type Pipeline struct {
 	// AwaitingVerification is set when a build turn asked for verification
 	// and cleared by its result, so a stale result changes nothing.
 	AwaitingVerification bool `json:"awaiting_verification,omitempty"`
+	// PendingTurn is the prompt of the turn the server owes the pipeline:
+	// set with every send_turn action, cleared when a turn completes or the
+	// pipeline stops. A server restart that finds it set (or verification
+	// awaited) raises the interrupted gate instead of resuming silently.
+	PendingTurn string `json:"pending_turn,omitempty"`
 	// LastFailure is the build's latest verification failure, for repeat
 	// detection and the blocked gate's retry.
 	LastFailure *FailureFact `json:"last_failure,omitempty"`
