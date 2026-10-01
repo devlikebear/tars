@@ -2640,8 +2640,20 @@ export type FocusBlocked = {
   error?: string
 }
 // excerpt: the diff around file:line since the pipeline's base commit, set
-// by the server (P3).
-export type FocusFinding = { id: string; severity: string; file: string; line: number; title: string; scenario: string; excerpt?: string }
+// by the server (P3). key and url are set on findings from the PR's checks
+// and comments, trusted on comments by the PR author or a collaborator (P4).
+export type FocusFinding = {
+  id: string
+  severity: string
+  file: string
+  line: number
+  title: string
+  scenario: string
+  excerpt?: string
+  key?: string
+  url?: string
+  trusted?: boolean
+}
 
 // The review loop's round (P3): the finding cards of the open triage gate,
 // whether a fix turn is owed, whether fixes landed this round, and the
@@ -2684,7 +2696,33 @@ export type FocusCard = {
   created_at: string
 }
 
-export type FocusPRInfo = { number: number; url: string; state: string }
+// The PR stages (P4): the latest gh probe's checks, normalized by the server.
+export type FocusPRCheckState = 'pass' | 'fail' | 'pending' | 'skipped'
+export type FocusPRCheck = { name: string; state: FocusPRCheckState; url?: string; started_at?: string }
+export type FocusPRInfo = {
+  number: number
+  url: string
+  state: string
+  merge_state?: string
+  checks?: FocusPRCheck[]
+  head_oid?: string
+  head_ref?: string
+  head_since?: string
+  no_ci?: boolean
+}
+// How a finished pipeline's session worktree ended, as the server recorded it.
+export type FocusWorktreeEnd = { action: 'discard' | 'keep' | 'none' | 'left'; reason?: string }
+export type FocusCICounts = { passed: number; failed: number; pending: number }
+// The G4 merge gate card's payload: facts only.
+export type FocusMergeSummary = {
+  pr?: FocusPRInfo
+  title?: string
+  checks: FocusCICounts
+  fixed: number
+  dismissed: number
+  undecided: number
+  merge_state?: string
+}
 
 export type FocusPipeline = {
   version: number
@@ -2696,6 +2734,13 @@ export type FocusPipeline = {
   open_gate?: FocusGate
   cards: FocusCard[]
   pr?: FocusPRInfo
+  // The draft G3 approved and what the pipeline waits for after a write
+  // turn: the PR to appear, a fix to be pushed, the merge.
+  pr_draft?: FocusPRDraft
+  pr_wait?: 'open' | 'fix' | 'merge'
+  // The latest probe's error while gh cannot run; cleared by a probe that runs.
+  pr_unavailable?: string
+  worktree_end?: FocusWorktreeEnd
   tasks_done?: boolean
   awaiting_verification?: boolean
   last_failure?: FocusFailure

@@ -53,12 +53,25 @@ type focusDriver struct {
 	activity *chatActivity
 	cancels  *chatCancelRegistry
 	qaTurn   focusQATurnRunner
+	// The PR stages (focus_pr_poll.go): the gh probe, how often it runs,
+	// how a finished pipeline's worktree ends, and where attention-worthy
+	// changes are announced.
+	probe          focusPRProber
+	prPoll         time.Duration
+	finishWorktree func(ctx context.Context, sessionID, action string) error
+	notify         func(context.Context, notificationEvent)
+	// localBranch is the branch checked out in a folder; discardCheck says
+	// why a merged pipeline's worktree must be kept ("" = safe to discard).
+	localBranch  func(ctx context.Context, dir string) string
+	discardCheck func(ctx context.Context, dir, head string) string
 
 	mu   sync.Mutex
 	runs map[string]*focusRun
 	// qaBusy holds the Q&A sessions answering a question now.
 	qaBusy map[string]bool
-	wg     sync.WaitGroup
+	// pollers holds each session's running PR poller.
+	pollers map[string]*focusPoller
+	wg      sync.WaitGroup
 }
 
 // focusTurnRunner runs one turn on a session (runServerChatTurn in the
@@ -187,8 +200,10 @@ func newFocusDriver(logger zerolog.Logger) *focusDriver {
 		logger:   logger,
 		now:      time.Now,
 		idlePoll: 100 * time.Millisecond,
+		prPoll:   focusPRPollInterval,
 		runs:     map[string]*focusRun{},
 		qaBusy:   map[string]bool{},
+		pollers:  map[string]*focusPoller{},
 	}
 }
 
@@ -201,6 +216,7 @@ func (d *focusDriver) bind(deps chatHandlerDeps) {
 	d.feeds = deps.turnFeeds
 	d.activity = deps.chatActivity
 	d.cancels = deps.cancelRegistry
+	d.bindPR(deps.tooling)
 	d.runTurn = func(ctx context.Context, sessionID, message string) error {
 		_, err := runServerChatTurn(ctx, deps, sessionID, message, "")
 		return err
@@ -219,6 +235,10 @@ func (d *focusDriver) bind(deps chatHandlerDeps) {
 			Command: command, ExitCode: r.ExitCode, TimedOut: r.TimedOut,
 			Passed: r.Status == "passed", Excerpt: r.Output,
 		}, nil
+	}
+	// Pipelines a restart left waiting on PR facts poll again.
+	if n := d.resumePRPolls(); n > 0 {
+		d.logger.Info().Int("count", n).Msg("focus: resumed PR polls")
 	}
 }
 
@@ -248,6 +268,7 @@ func (d *focusDriver) Close(ctx context.Context) {
 // one is going, else in a new run. role is the role of the person whose
 // action led here; the run's turns run as that role.
 func (d *focusDriver) start(sessionID string, act focuspipeline.Action, role string) {
+	d.watchPR(sessionID)
 	if d == nil || act.Kind == focuspipeline.ActionNone || strings.TrimSpace(sessionID) == "" || d.runTurn == nil {
 		return
 	}
@@ -279,6 +300,7 @@ func (d *focusDriver) start(sessionID string, act focuspipeline.Action, role str
 // next action back to the front of the run's queue; any other turn (a
 // person's) starts or joins a run.
 func (d *focusDriver) afterTurn(ctx context.Context, sessionID string, act focuspipeline.Action, role string) {
+	d.watchPR(sessionID)
 	if d == nil || act.Kind == focuspipeline.ActionNone {
 		return
 	}

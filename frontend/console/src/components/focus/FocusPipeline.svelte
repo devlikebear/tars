@@ -7,9 +7,10 @@
   import { t } from '../../i18n'
   import * as api from '../../lib/api'
   import { pipelinePhase, promoteDraft, stepperItems, triageProgress, type QAEntry } from '../../lib/focus'
+  import { finishedText, finishOutcome, ghUnavailable, prStageChip, type PRStageChip } from '../../lib/focusPR'
   import { shortCwdLabel } from '../../lib/sessionLabels'
   import { FocusStore } from '../../lib/stores/focusStore.svelte'
-  import type { FocusCard, FocusGateAction, FocusPlan, FocusStageId } from '../../lib/types'
+  import type { FocusCard, FocusGateAction, FocusPlan, FocusPRDraft, FocusStageId } from '../../lib/types'
   import FocusDeck from './FocusDeck.svelte'
   import FocusGraph from './FocusGraph.svelte'
   import FocusStepper from './FocusStepper.svelte'
@@ -62,6 +63,20 @@
   let steps = $derived(pipeline ? stepperItems(pipeline, $t.focus.stages) : [])
   let viewing = $derived(store.stage)
   let openGate = $derived(pipeline?.open_gate ?? '')
+  // The PR stages (P4): CI chips on the stepper, gh unavailable → pass by
+  // hand, what the pipeline waits for, and how a finished one ended.
+  let prChips = $derived.by(() => {
+    const chips: Partial<Record<FocusStageId, PRStageChip>> = {}
+    if (!pipeline) return chips
+    for (const stage of ['pr', 'pr_review', 'merge'] as FocusStageId[]) {
+      const chip = prStageChip(pipeline, stage)
+      if (chip) chips[stage] = chip
+    }
+    return chips
+  })
+  let ghError = $derived(pipeline ? ghUnavailable(pipeline) : null)
+  let outcome = $derived(pipeline ? finishOutcome(pipeline) : null)
+  let prWait = $derived(pipeline && phase === 'active' && !pipeline.open_gate ? pipeline.pr_wait ?? '' : '')
   let canMarkDone = $derived(!!pipeline && phase === 'active' && !openGate && pipeline.current !== 'plan' && !store.running && !store.busy)
   let worktree = $derived(store.session?.worktree ?? null)
   let cwd = $derived(store.session?.worktree?.source_dir || store.session?.current_dir || '')
@@ -73,8 +88,8 @@
     store.showStage(stage)
   }
 
-  function onGate(gate: string, action: FocusGateAction, note?: string, edits?: FocusPlan) {
-    void store.gate(gate, action, note, edits)
+  function onGate(gate: string, action: FocusGateAction, note?: string, edits?: FocusPlan, pr?: FocusPRDraft) {
+    void store.gate(gate, action, note, edits, pr)
   }
 
   function onDecide(card: FocusCard, decision: string) {
@@ -168,7 +183,7 @@
     <p class="banner error">{$t.focus.screen.loadFailed(store.error)}</p>
   {:else if pipeline}
     <div class="stage-bar">
-      <FocusStepper items={steps} selected={viewing} onSelect={selectStage} />
+      <FocusStepper items={steps} selected={viewing} onSelect={selectStage} chips={prChips} />
       <button
         type="button"
         class="btn btn-ghost btn-sm"
@@ -192,11 +207,19 @@
     {/if}
 
     {#if phase === 'finished'}
-      <p class="banner done">{$t.focus.screen.finished}</p>
+      <p class="banner done" data-testid="focus-finished">{outcome ? finishedText(outcome, { ...$t.focus.pr, finished: $t.focus.screen.finished }) : $t.focus.screen.finished}</p>
     {:else if phase === 'stopped'}
       <p class="banner">{$t.focus.screen.stopped}</p>
     {/if}
     {#if noticeText}<p class="banner">{noticeText}</p>{/if}
+    {#if ghError}
+      <div class="banner gh-banner" data-testid="focus-gh-unavailable">
+        <span>{$t.focus.pr.ghUnavailable(ghError)}</span>
+        <button type="button" class="btn btn-secondary btn-sm" disabled={!canMarkDone} onclick={() => void store.advance()} data-testid="focus-gh-pass">{$t.focus.pr.passByHand}</button>
+      </div>
+    {:else if prWait && !store.running}
+      <p class="progress-line mono" role="status" data-testid="focus-pr-wait"><span class="pulse" aria-hidden="true"></span>{prWait === 'open' ? $t.focus.pr.waitOpen : prWait === 'fix' ? $t.focus.pr.waitFix : $t.focus.pr.waitMerge}</p>
+    {/if}
     {#if store.actionError}<p class="banner error">{$t.focus.screen.actionFailed(store.actionError)}</p>{/if}
 
     <!-- A running turn shows one line above the deck; the cards stay. -->
@@ -385,6 +408,16 @@
   .banner.error {
     background: var(--error-muted);
     color: var(--error);
+  }
+
+  .gh-banner {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    background: var(--warning-muted);
+    color: var(--text-primary);
   }
 
   .banner.done {

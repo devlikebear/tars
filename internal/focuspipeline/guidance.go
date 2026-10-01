@@ -31,10 +31,31 @@ var stageInstructions = map[StageID]string{
 		"Each finding needs a concrete failure scenario (inputs or state → wrong output or crash).",
 	StagePR: "Draft the pull request title and body for the approved work. " +
 		"Do not open, push or merge anything until the developer approves the PR gate.",
-	StagePRReview: "Check the pull request's CI results and review comments. " +
+	// Passed into by hand (gh could not run on the server): the agent reads
+	// CI itself. Facts from the server's probe otherwise.
+	StagePRReview: "Check the pull request's CI results (`gh pr checks`) and review comments. " +
 		"Report each failure or comment that needs a change as a finding; do not edit files in this turn.",
 	StageMerge: "Summarize what will be merged and anything left open. " +
 		"Do not merge until the developer approves the merge gate.",
+}
+
+// prWaitInstructions replace a PR stage's instructions while the pipeline
+// waits on a write turn the developer approved (pr.go): the turn carries
+// out that write; the server's gh probe, not the reply, decides what
+// happens next.
+var prWaitInstructions = map[string]string{
+	PRWaitOpen: "The developer approved the PR gate. Push the branch and open the pull request with `gh pr create` " +
+		"using exactly the approved title and body. Do not merge. Report the PR's URL.",
+	PRWaitFix: "Fix the accepted pull request findings listed in the message, run the verification commands yourself, " +
+		"commit, and push the branch so CI runs again. Do not merge.",
+	PRWaitMerge: "The developer approved the merge gate. Merge the pull request with `gh pr merge --squash` and report the result.",
+}
+
+func stageInstruction(p Pipeline) string {
+	if text, ok := prWaitInstructions[p.PRWait]; ok {
+		return text
+	}
+	return stageInstructions[p.Current]
 }
 
 // Guidance is the hidden instruction appended to a focus turn's user
@@ -55,9 +76,13 @@ func Guidance(p Pipeline) string {
 	if goal := strings.TrimSpace(p.Goal); goal != "" {
 		fmt.Fprintf(&b, "Goal: %s\n", goal)
 	}
-	instructions, blocks := stageInstructions[stage.ID], requiredBlocks(stage.ID)
+	instructions, blocks := stageInstruction(p), requiredBlocks(stage.ID)
 	if stage.ID == StageReview {
 		instructions, blocks = reviewGuidance(p)
+	}
+	if p.PRWait != "" {
+		// The write turn reports; a new draft or findings would be noise.
+		blocks = requiredBlocks(StageMerge)
 	}
 	b.WriteString(instructions)
 	b.WriteString("\n")

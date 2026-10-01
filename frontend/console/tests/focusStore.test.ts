@@ -246,6 +246,19 @@ test('gate approve: the server sends the next turn and the store follows it', as
   assert.deepEqual(fake.state.sent, [])
 })
 
+test('the PR gate posts its edited title and body with approve', async () => {
+  const g3: FocusCard = { id: 'c4', kind: 'gate', stage: 'pr', turn: 3, title: 'Open pull request', state: 'unseen', created_at: '2026-10-01T00:00:04Z', payload: { title: 'draft', body: 'b' } }
+  const fake = fakeApi(pipeline('2026-10-01T00:00:04Z', [g3], { current: 'pr', open_gate: 'pr' }))
+  fake.state.gateResult = { pipeline: pipeline('2026-10-01T00:00:05Z', [{ ...g3, state: 'decided', decision: 'approve' }], { current: 'pr', pr_wait: 'open' }), next_prompt: 'PR gate approved.' }
+  const store = newStore(fake)
+  await store.load('s1')
+  const draft = { title: 'feat: edited', body: 'new body' }
+  assert.equal(await store.gate('pr', 'approve', undefined, undefined, draft), true)
+  assert.deepEqual(fake.state.gateCalls[0], ['s1', 'pr', 'approve', { note: undefined, edits: undefined, pr: draft }])
+  assert.equal(store.pipeline?.pr_wait, 'open')
+  await settle(store)
+})
+
 test('the blocked gate takes retry and instruct with its note', async () => {
   const blocked: FocusCard = { id: 'c5', kind: 'gate', stage: 'build', turn: 4, title: 'Build blocked', state: 'unseen', created_at: '2026-10-01T00:00:05Z', payload: { reason: 'repeated', iteration: 2, limit: 3 } }
   const fake = fakeApi(pipeline('2026-10-01T00:00:05Z', [blocked], { current: 'build', open_gate: 'blocked' }))

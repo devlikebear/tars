@@ -363,6 +363,53 @@ test('the review loop: findings are triaged one at a time, a fix turn and verifi
   expect(again.status()).toBe(409)
 })
 
+test('the PR stages: G3 opens the PR with an edited title, gh unavailable is passed by hand, G4 merges, and the pipeline finishes', async ({ page }) => {
+  // No GitHub remote: the server's gh probe cannot read a PR (gh missing,
+  // logged out, or no remote all come back unavailable), which is the path
+  // a developer without gh takes.
+  const repo = newRepo('tars-e2e-focus-pr-')
+  const created = await (await page.request.post('/v1/focus/pipelines', { data: { goal: '[e2e:focus-plan] [e2e:focus-loop] [e2e:focus-pr] Add a greeting', cwd: repo } })).json()
+  const id = created.session_id as string
+  await autoMode(page, id)
+  await page.goto(`/console/focus/${id}`)
+  await expect(page.locator('[data-testid="focus-card"][data-kind="gate"]')).toBeVisible()
+  await page.getByTestId('focus-plan-stage-review').uncheck()
+  await page.getByTestId('focus-plan-stage-pr_review').uncheck()
+  await page.getByTestId('focus-plan-verify').fill('true')
+  await page.getByTestId('focus-gate-approve').click()
+
+  // Build passes; the pr stage's draft opens G3, editable.
+  const prGate = page.getByTestId('focus-pr-gate')
+  await expect(prGate).toBeVisible({ timeout: 20_000 })
+  await expect(page.getByTestId('focus-pr-title')).toHaveValue('feat: add a greeting')
+  await page.getByTestId('focus-pr-title').fill('feat: add a friendly greeting')
+  await page.getByTestId('focus-pr-approve').click()
+
+  // The open turn runs; the probe cannot read a PR: pass by hand.
+  const unavailable = page.getByTestId('focus-gh-unavailable')
+  await expect(unavailable).toBeVisible({ timeout: 20_000 })
+  let p = await pipelineOf(page, id)
+  expect((p as Pipeline & { pr_draft?: { title: string } }).pr_draft?.title).toBe('feat: add a friendly greeting')
+  expect(p.current).toBe('pr')
+  await page.getByTestId('focus-gh-pass').click()
+
+  // pr_review is skipped: merge opens G4 with its summary, no turn needed.
+  await expect(page.getByTestId('focus-merge-summary')).toBeVisible()
+  p = await pipelineOf(page, id)
+  expect(p.current).toBe('merge')
+  expect(p.open_gate).toBe('merge')
+  await page.getByTestId('focus-gate-approve-generic').click()
+
+  // The merge turn runs; gh still cannot confirm it: pass by hand.
+  await expect(unavailable).toBeVisible({ timeout: 20_000 })
+  await page.getByTestId('focus-gh-pass').click()
+  // Not isolated: no worktree, and the banner claims no worktree outcome.
+  await expect.poll(async () => ((await pipelineOf(page, id)) as Pipeline & { worktree_end?: { action: string } }).worktree_end?.action).toBe('none')
+  await expect(page.getByTestId('focus-finished')).toHaveText('The pipeline is complete.')
+  p = await pipelineOf(page, id)
+  expect(p.stages.find((s) => s.id === 'merge')?.status).toBe('done')
+})
+
 // --- Korean (see e2e/workbench-ko.spec.ts) ---
 
 const keptInEnglish = ['TARS', 'Git', 'PR', 'cwd', 'diff', 'Ctrl', 'Cmd', 'Enter', 'Esc']

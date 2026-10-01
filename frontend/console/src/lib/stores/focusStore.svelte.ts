@@ -35,6 +35,7 @@ import type {
   FocusGateAction,
   FocusPipeline,
   FocusPlan,
+  FocusPRDraft,
   FocusQAResult,
   FocusStageId,
   Session,
@@ -50,7 +51,7 @@ export type FocusStoreApi = {
   getCheckpointDiff(sessionId: string, turnId: string, options?: { scope?: 'turn' }): Promise<CheckpointDiff>
   streamChat(request: ChatRequest, onEvent: (event: ChatEvent) => void, signal?: AbortSignal): Promise<void>
   attachChatStream(sessionId: string, onEvent: (event: ChatEvent) => void, signal?: AbortSignal): Promise<boolean>
-  gate(sessionId: string, gate: string, action: FocusGateAction, options: { note?: string; edits?: FocusPlan }): Promise<FocusActionResult>
+  gate(sessionId: string, gate: string, action: FocusGateAction, options: { note?: string; edits?: FocusPlan; pr?: FocusPRDraft }): Promise<FocusActionResult>
   card(sessionId: string, cardId: string, state: FocusCardState, decision?: string): Promise<FocusActionResult>
   advance(sessionId: string, stage: FocusStageId): Promise<FocusActionResult>
   stop(sessionId: string): Promise<FocusActionResult>
@@ -599,10 +600,12 @@ export class FocusStore {
     }
   }
 
-  async gate(gate: string, action: FocusGateAction, note?: string, edits?: FocusPlan): Promise<boolean> {
+  // pr is G3's edited title and body (P4).
+  async gate(gate: string, action: FocusGateAction, note?: string, edits?: FocusPlan, pr?: FocusPRDraft): Promise<boolean> {
     const sessionId = this.sessionId
     if (!sessionId) return false
-    const ok = await this.act(() => this.api.gate(sessionId, gate, action, { note, edits }))
+    const options = pr ? { note, edits, pr } : { note, edits }
+    const ok = await this.act(() => this.api.gate(sessionId, gate, action, options))
     if (ok) this.viewStage = null
     await this.flush()
     return ok
