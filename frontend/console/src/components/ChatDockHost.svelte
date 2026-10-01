@@ -29,11 +29,12 @@
     children: Snippet
     onSelectSession: (session: Session) => void
     onNewSession: () => Promise<void>
+    onSessionCreated: (session: Session) => void
     onSendMessage: (text: string) => Promise<void>
     onHealthAction: (action: SessionHealthAction) => Promise<void>
   }
 
-  let { children, onSelectSession, onNewSession, onSendMessage, onHealthAction }: Props = $props()
+  let { children, onSelectSession, onNewSession, onSessionCreated, onSendMessage, onHealthAction }: Props = $props()
 
   let selectedSessionId = $derived(chatSession.activeSessionId)
   let selectedSession = $derived(chatSession.activeSession)
@@ -289,6 +290,7 @@
         selectedSessionId={selectedSessionId}
         onSelect={handleSelectSession}
         onNewSession={handleNewSession}
+        {onSessionCreated}
       />
     {:else if panelID === 'artifacts'}
       {#await loadChatComponent('artifact-panel')}

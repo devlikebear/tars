@@ -79,6 +79,14 @@ Recent chats and **New chat in folder…** use admin routes, which need the
 admin token in every mode except `off`. The console in the window logs in
 on its own, as in a browser.
 
+A new chat in a folder is one `POST /v1/admin/sessions` with `cwd` (and
+`isolate`), the call the console makes. When the folder is in a git
+repository — a `.git` entry in it or a parent — the confirm dialog, and the
+tray's folder picker, also offer **Start isolated**, which starts the chat in
+a worktree of its own. A server from before that call ignores `cwd`; the
+shell then sets the folder with `PUT …/workdirs` as it used to, and says the
+chat could not be isolated.
+
 ## Windows
 
 The console window reopens at the size, place, and maximised state it had
@@ -121,6 +129,7 @@ on load.
 | `tars://session/<id>` | open that chat |
 | `tars://session/<id>?window=new` | open that chat in a window of its own |
 | `tars://new?cwd=<absolute folder>` | ask, then start a chat working in the folder |
+| `tars://new?cwd=<absolute folder>&isolate=1` | the same, with **Start isolated** (a worktree of the chat's own) as the default button |
 
 Any web page or document can open a link, so a link only navigates or
 proposes; it never answers an approval or sends a message. macOS reads the

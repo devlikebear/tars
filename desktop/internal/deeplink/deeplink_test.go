@@ -2,6 +2,7 @@ package deeplink
 
 import (
 	"net/url"
+	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
@@ -27,6 +28,8 @@ func TestParse(t *testing.T) {
 		"tars:chat/a.b?window=new":      {Kind: OpenWindow, Path: "/console/chat/a.b", SessionID: "a.b"},
 		"tars://session/abc?other=1":    {Kind: Open, Path: "/console/chat/abc"},
 		"tars://new?cwd=" + url.QueryEscape(dir+"/../repo"): {Kind: NewChat, Dir: filepath.Clean(dir)},
+		"tars://new?isolate=1&cwd=" + url.QueryEscape(dir):  {Kind: NewChat, Dir: filepath.Clean(dir), Isolate: true},
+		"tars://new?isolate=0&cwd=" + url.QueryEscape(dir):  {Kind: NewChat, Dir: filepath.Clean(dir)},
 	}
 	for raw, want := range ok {
 		got, err := Parse(raw)
@@ -47,6 +50,7 @@ func TestParse(t *testing.T) {
 		"tars://open/extra",
 		"tars://new",
 		"tars://new?cwd=relative/dir",
+		"tars://new?isolate=yes&cwd=" + url.QueryEscape(dir),
 		"tars://new/x?cwd=" + url.QueryEscape(dir),
 		"tars://approve/r1",
 		"tars://%zz",
@@ -77,5 +81,26 @@ func TestFromArgs(t *testing.T) {
 	}
 	if _, ok := FromArgs([]string{"--hidden", "https://x"}); ok {
 		t.Fatal("no link among the args")
+	}
+}
+
+func TestInGitRepository(t *testing.T) {
+	root := t.TempDir()
+	nested := filepath.Join(root, "repo", "sub", "dir")
+	if err := os.MkdirAll(nested, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if InGitRepository(nested) {
+		t.Fatal("no .git anywhere yet")
+	}
+	// A worktree or submodule has a .git file, not a folder.
+	if err := os.WriteFile(filepath.Join(root, "repo", ".git"), []byte("gitdir: elsewhere\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if !InGitRepository(nested) || !InGitRepository(filepath.Join(root, "repo")) {
+		t.Fatal("folders under the .git entry are in the repository")
+	}
+	if InGitRepository(root) {
+		t.Fatal("the parent is not")
 	}
 }

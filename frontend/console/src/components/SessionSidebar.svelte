@@ -10,6 +10,7 @@
   import { needsInputHint } from '../lib/sessionBoard'
   import type { MemorySearchMatch, Session, SessionCleanupMode, SessionCleanupSuggestion, SessionCleanupSuggestionResponse } from '../lib/types'
   import { displaySessionTitle } from '../lib/sessionLabels'
+  import NewChatFolderMenu from './NewChatFolderMenu.svelte'
 
   type SessionSearchSnippet = {
     date: string
@@ -20,9 +21,11 @@
     selectedSessionId: string | null
     onSelect: (session: Session) => void
     onNewSession: () => void
+    // A session the folder menu created (NewChatFolderMenu).
+    onSessionCreated: (session: Session) => void
   }
 
-  let { selectedSessionId, onSelect, onNewSession }: Props = $props()
+  let { selectedSessionId, onSelect, onNewSession, onSessionCreated }: Props = $props()
 
   // The session list is shared state; this component only filters and acts on it.
   let sessions = $derived(chatSession.sessions)
@@ -454,6 +457,7 @@
     <button type="button" class="btn btn-secondary btn-sm new-chat-btn" onclick={onNewSession}>
       {$t.sessions.newChat}
     </button>
+    <NewChatFolderMenu align="stretch" onCreated={onSessionCreated} />
   </div>
 
   <input type="text" class="sidebar-search" placeholder={$t.sessions.sidebarSearchPlaceholder} bind:value={searchQuery} />
@@ -697,6 +701,7 @@
   }
 
   .sidebar-header {
+    position: relative;
     display: flex;
     align-items: center;
     gap: var(--space-2);

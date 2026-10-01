@@ -17,6 +17,14 @@ export const chatCommandsEn = {
     activeMarker: ' (active)',
     none: '(none)',
   },
+  // `/new [path] [--isolate]`.
+  newChat: {
+    unknownFlag: (flag: string) => `Unknown option ${flag}. Usage: /new [path] [--isolate]`,
+    isolateNeedsFolder: 'Isolating needs a folder: /new <path> --isolate',
+    failed: (message: string) => `Could not start the chat: ${message}`,
+    started: (label: string) => `New chat in ${label}`,
+    startedIsolated: (label: string, branch: string) => `New chat isolated from ${label} on ${branch}`,
+  },
   status: {
     failed: (message: string) => `status: ${message}`,
     loadFailed: 'failed to load codex quota',
@@ -76,6 +84,7 @@ export const chatCommandsEn = {
       skill: { title: 'Skill', description: 'Toggle a skill for the current session: /skill <name>.' },
       extractSkill: { title: 'Extract Skill', description: 'Open reusable skill candidates for the current session.' },
       cwd: { title: 'Active CWD', description: 'Show or switch the active working directory: /cwd | /cwd list | /cwd <path>.' },
+      new: { title: 'New chat', description: 'Start a new chat in a folder, this chat\'s folder by default, optionally in a worktree: /new [path] [--isolate].' },
       goal: {
         title: 'Session Goal',
         description: 'Set/clear an autonomous session goal: /goal <description> | /goal clear | /goal status.',
@@ -148,6 +157,13 @@ export const chatCommandsKo: ChatCommandsTranslations = {
     activeMarker: ' (활성)',
     none: '(없음)',
   },
+  newChat: {
+    unknownFlag: (flag) => `알 수 없는 옵션 ${flag}. 사용법: /new [경로] [--isolate]`,
+    isolateNeedsFolder: '격리하려면 폴더가 필요합니다: /new <경로> --isolate',
+    failed: (message) => `채팅을 시작하지 못했습니다: ${message}`,
+    started: (label) => `${label}에서 새 채팅`,
+    startedIsolated: (label, branch) => `${label}에서 격리한 새 채팅 (${branch})`,
+  },
   status: {
     failed: (message) => `상태: ${message}`,
     loadFailed: 'Codex 할당량을 불러오지 못했습니다',
@@ -201,6 +217,7 @@ export const chatCommandsKo: ChatCommandsTranslations = {
       skill: { title: '스킬', description: '현재 세션에서 스킬을 켜거나 끕니다: /skill <이름>.' },
       extractSkill: { title: '스킬 추출', description: '현재 세션의 재사용 가능한 스킬 후보를 엽니다.' },
       cwd: { title: '활성 CWD', description: '활성 작업 디렉터리를 표시하거나 전환합니다: /cwd | /cwd list | /cwd <경로>.' },
+      new: { title: '새 채팅', description: '폴더(기본은 이 채팅의 폴더)에서 새 채팅을 시작하고, 원하면 worktree로 격리합니다: /new [경로] [--isolate].' },
       goal: {
         title: '세션 목표',
         description: '자율 세션 목표를 설정하거나 해제합니다: /goal <설명> | /goal clear | /goal status.',

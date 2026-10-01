@@ -8,6 +8,7 @@ import { gitInspectorEn } from './sections/gitInspector.ts'
 import { changesEn } from './sections/changes.ts'
 import { sideSessionEn } from './sections/sideSession.ts'
 import { sessionWorktreeEn } from './sections/sessionWorktree.ts'
+import { newChatFolderEn } from './sections/newChatFolder.ts'
 import { chatApprovalEn } from './sections/chatApproval.ts'
 import { sessionBoardEn } from './sections/sessionBoard.ts'
 
@@ -1667,6 +1668,7 @@ export const en = {
   changes: changesEn,
   sideSession: sideSessionEn,
   sessionWorktree: sessionWorktreeEn,
+  newChatFolder: newChatFolderEn,
   chatApproval: chatApprovalEn,
   sessionBoard: sessionBoardEn,
 

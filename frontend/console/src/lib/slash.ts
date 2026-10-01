@@ -53,6 +53,7 @@ const BUILTIN_SLASH_COMMANDS: BuiltinSlashCommand[] = [
   { id: 'skill', command: 'skill', text: 'skill' },
   { id: 'extract-skill', command: 'extract-skill', text: 'extractSkill' },
   { id: 'cwd', command: 'cwd', text: 'cwd' },
+  { id: 'new', command: 'new', text: 'new' },
   { id: 'goal', command: 'goal', text: 'goal' },
 ]
 

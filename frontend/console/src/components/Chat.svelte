@@ -17,6 +17,7 @@
   import type { WorkbenchAction } from '../lib/workbenchActions'
   import type { Session } from '../lib/types'
   import { shortCwdLabel } from '../lib/sessionLabels'
+  import { currentProjectFolder, newChatRequest, parseNewChatArgs } from '../lib/newChat'
   import { isArchived } from '../lib/sessionOrganization'
   import { chatSession } from '../lib/stores/chatSession'
   import { chatDock, isMobileLayout, type ChatDockPanelID } from '../lib/stores/chatDockStore.svelte'
@@ -118,6 +119,47 @@
     resetSessionChrome()
     void chatSession.refreshSessions()
     onNavigate(created ? `/console/chat/${encodeURIComponent(created.id)}` : '/console/chat')
+  }
+
+  // A session made elsewhere (the sidebar's folder menu, /new) opens here.
+  function handleSessionCreated(session: Session) {
+    resetSessionChrome()
+    void chatSession.refreshSessions()
+    onNavigate(`/console/chat/${encodeURIComponent(session.id)}`)
+  }
+
+  // `/new [path] [--isolate]`: without a path, the folder this chat works in
+  // (the checkout, when this chat is isolated); without either, a plain new
+  // chat.
+  async function handleNewSlashCommand(args: string) {
+    const parsed = parseNewChatArgs(args)
+    if (parsed.unknownFlag) {
+      showFeedback($t.chatCommands.newChat.unknownFlag(parsed.unknownFlag))
+      return
+    }
+    let folder = parsed.path
+    if (!folder && selectedSessionId) {
+      await chatSession.refreshCwd()
+      folder = currentProjectFolder(chatSession.activeSession, chatSession.cwd)
+    }
+    if (!folder) {
+      if (parsed.isolate) {
+        showFeedback($t.chatCommands.newChat.isolateNeedsFolder)
+        return
+      }
+      await handleNewSession()
+      return
+    }
+    try {
+      const created = await createSession(undefined, newChatRequest(folder, parsed.isolate))
+      handleSessionCreated(created)
+      const label = shortCwdLabel(created.worktree?.source_dir || created.current_dir || folder)
+      showFeedback(created.worktree
+        ? $t.chatCommands.newChat.startedIsolated(label, created.worktree.branch)
+        : $t.chatCommands.newChat.started(label))
+    } catch (err) {
+      showFeedback($t.chatCommands.newChat.failed(err instanceof Error ? err.message : String(err)))
+    }
   }
 
   function openSessionById(id: string) {
@@ -334,6 +376,9 @@
         }
         await transitionCwd(args)
         return
+      case 'new':
+        await handleNewSlashCommand(args)
+        return
       case 'goal':
         if (!selectedSessionId) {
           showFeedback($t.chatCommands.selectSessionFirst)
@@ -456,6 +501,7 @@
     bind:this={dockHost}
     onSelectSession={handleSelectSession}
     onNewSession={handleNewSession}
+    onSessionCreated={handleSessionCreated}
     onSendMessage={async (text) => { await chatPanelRef?.sendMessageText(text) }}
     onHealthAction={handleHealthAction}
   >

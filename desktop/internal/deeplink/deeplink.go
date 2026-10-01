@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -36,6 +37,8 @@ type Link struct {
 	Path string
 	// Dir is the absolute folder for NewChat.
 	Dir string
+	// Isolate asks for NewChat in a worktree of its own (?isolate=1).
+	Isolate bool
 	// SessionID is the chat for OpenWindow.
 	SessionID string
 }
@@ -50,6 +53,8 @@ var sessionIDPattern = regexp.MustCompile(`^[A-Za-z0-9._-]{1,128}$`)
 //	tars://session/<id>?window=new
 //	                            a chat in a window of its own
 //	tars://new?cwd=<abs path>   a new chat in a folder
+//	tars://new?cwd=<abs path>&isolate=1
+//	                            the same, in a worktree of its own
 func Parse(raw string) (Link, error) {
 	u, err := url.Parse(strings.TrimSpace(raw))
 	if err != nil {
@@ -77,7 +82,7 @@ func Parse(raw string) (Link, error) {
 		return parseSession(raw, parts, u.Query().Get("window"))
 	case "new":
 		if len(parts) == 1 {
-			return parseNewChat(u.Query().Get("cwd"))
+			return parseNewChat(u.Query().Get("cwd"), u.Query().Get("isolate"))
 		}
 	}
 	return Link{}, fmt.Errorf("deep link %q: unknown route", raw)
@@ -97,15 +102,40 @@ func parseSession(raw string, parts []string, window string) (Link, error) {
 	return Link{}, fmt.Errorf("deep link %q: window must be \"new\"", raw)
 }
 
-// parseNewChat reads tars://new?cwd=<abs path>.
-func parseNewChat(dir string) (Link, error) {
+// parseNewChat reads tars://new?cwd=<abs path>, optionally &isolate=1.
+func parseNewChat(dir, isolate string) (Link, error) {
 	if dir == "" {
 		return Link{}, errors.New("deep link: tars://new needs ?cwd=<folder>")
 	}
 	if !filepath.IsAbs(dir) {
 		return Link{}, fmt.Errorf("deep link: cwd %q is not an absolute path", dir)
 	}
-	return Link{Kind: NewChat, Dir: filepath.Clean(dir)}, nil
+	link := Link{Kind: NewChat, Dir: filepath.Clean(dir)}
+	switch strings.ToLower(isolate) {
+	case "", "0", "false":
+	case "1", "true":
+		link.Isolate = true
+	default:
+		return Link{}, fmt.Errorf("deep link: isolate must be 1 or 0, not %q", isolate)
+	}
+	return link, nil
+}
+
+// InGitRepository reports whether dir is inside a git work tree, the only
+// kind of folder a chat can be isolated in. It looks for a .git entry in dir
+// and its parents without running git.
+func InGitRepository(dir string) bool {
+	current := filepath.Clean(dir)
+	for {
+		if _, err := os.Stat(filepath.Join(current, ".git")); err == nil {
+			return true
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			return false
+		}
+		current = parent
+	}
 }
 
 // ValidSessionID reports whether id can name a chat in a console path: no
