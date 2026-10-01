@@ -436,7 +436,7 @@ func TestWorktreeStreamEventAndRunningRegistry(t *testing.T) {
 	if registry.Running("s1") {
 		t.Fatal("nothing registered")
 	}
-	registry.Register("s1", func() {})
+	registry.Claim("s1")
 	if !registry.Running("s1") {
 		t.Fatal("registered turn")
 	}

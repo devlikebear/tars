@@ -112,8 +112,22 @@ func handleChatRequest(w http.ResponseWriter, r *http.Request, deps chatHandlerD
 	// A person's turn wins over the focus driver: its pending step (a
 	// verification, a queued turn) stops, and this turn's post-turn hook
 	// starts a new run.
-	deps.tooling.Focus.cancel(strings.TrimSpace(req.SessionID))
+	deps.tooling.Focus.cancel(chatClaimKey(req.SessionID, deps.mainSessionID))
 	_, _ = runChatTurn(w, r, req, deps, chatTurnOrigin{})
+}
+
+// chatClaimKey is the session a chat request will run in, as far as it is
+// known before the turn is prepared: "main" and "" name the main session,
+// "new" names none yet (a new session cannot be busy).
+func chatClaimKey(requested, mainSessionID string) string {
+	id := strings.TrimSpace(requested)
+	switch {
+	case strings.EqualFold(id, "new"):
+		return ""
+	case id == "" || strings.EqualFold(id, "main"):
+		return strings.TrimSpace(mainSessionID)
+	}
+	return id
 }
 
 // chatTurnOrigin says who started a turn.
@@ -144,6 +158,16 @@ func (e *errChatTurnRejected) Error() string { return e.msg }
 // chat activity, checkpoint, persistence and post-turn focus hook. It
 // returns the reply, or the error that ended the turn.
 func runChatTurn(w http.ResponseWriter, r *http.Request, req chatRequestPayload, deps chatHandlerDeps, origin chatTurnOrigin) (llm.ChatResponse, error) {
+	// Claim the session before anything else: the transcript, feed and
+	// cancel belong to one turn at a time. A second turn — a person typing
+	// while the focus driver's turn is being prepared, say — is refused.
+	claimKey := chatClaimKey(req.SessionID, deps.mainSessionID)
+	claim, release, ok := deps.cancelRegistry.Claim(claimKey)
+	if !ok {
+		writeError(w, http.StatusConflict, "turn_running", errChatTurnBusy.Error())
+		return llm.ChatResponse{}, errChatTurnBusy
+	}
+	defer release()
 	endBusy := deps.activity.beginChat()
 	defer endBusy()
 	var worktreeMoved *worktreeNotice
@@ -162,6 +186,15 @@ func runChatTurn(w http.ResponseWriter, r *http.Request, req chatRequestPayload,
 	if err != nil {
 		writeError(w, status, "", errMessage)
 		return llm.ChatResponse{}, &errChatTurnRejected{status: status, msg: errMessage}
+	}
+	if state.sessionID != claimKey {
+		// The request named no live session; it runs in a new one.
+		var releaseNew func()
+		if claim, releaseNew, ok = deps.cancelRegistry.Claim(state.sessionID); !ok {
+			writeError(w, http.StatusConflict, "turn_running", errChatTurnBusy.Error())
+			return llm.ChatResponse{}, errChatTurnBusy
+		}
+		defer releaseNew()
 	}
 
 	state.interactivePermissions = req.InteractivePermissions && origin.unattended == ""
@@ -246,9 +279,7 @@ func runChatTurn(w http.ResponseWriter, r *http.Request, req chatRequestPayload,
 	})
 	chatCtx, cancelChat := context.WithCancel(baseCtx)
 	defer cancelChat()
-	if deps.cancelRegistry != nil {
-		defer deps.cancelRegistry.Register(state.sessionID, cancelChat)()
-	}
+	claim.setCancel(cancelChat)
 
 	recordTierRecommendationSignal(deps.tooling.UsageTracker, state, "requested", llm.Usage{})
 	checkpointTurn := beginChatCheckpoint(chatCtx, deps, state, req.Message)

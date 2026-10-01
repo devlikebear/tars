@@ -2,6 +2,7 @@ package tarsserver
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -179,6 +180,40 @@ func readAll(t *testing.T, resp *http.Response) string {
 		b.Write(buf[:n])
 		if err != nil {
 			return b.String()
+		}
+	}
+}
+
+// R1: a session claimed by one turn refuses a second, from a console or
+// from the server, before anything is prepared or written.
+func TestRunChatTurnRefusesASecondTurnOnTheSession(t *testing.T) {
+	client := newReplyGateClient("one")
+	deps, store, root := testChatDeps(t, client)
+	sess, _ := store.Create("s")
+	_, release, _ := deps.cancelRegistry.Claim(sess.ID) // a turn in its prepare window
+	defer release()
+
+	if _, err := runServerChatTurn(context.Background(), deps, sess.ID, "go", ""); !errors.Is(err, errChatTurnBusy) {
+		t.Fatalf("server turn: err = %v", err)
+	}
+	h := newChatAPIHandlerWithRuntimeConfig(root, store, client, nil, zerolog.Nop(), 2, nil, "", defaultChatToolingOptions())
+	// A different registry inside h, so claim through a running turn there.
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		focusRequest(t, h, http.MethodPost, "/v1/chat", `{"session_id":"`+sess.ID+`","message":"first"}`, false)
+	}()
+	<-client.started
+	rec := focusRequest(t, h, http.MethodPost, "/v1/chat", `{"session_id":"`+sess.ID+`","message":"second"}`, false)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("second console turn = %d %s", rec.Code, rec.Body.String())
+	}
+	close(client.release)
+	<-done
+	messages, _ := session.ReadMessages(store.TranscriptPath(sess.ID))
+	for _, m := range messages {
+		if strings.Contains(m.Content, "second") {
+			t.Fatal("the refused turn wrote to the transcript")
 		}
 	}
 }

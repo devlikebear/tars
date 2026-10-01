@@ -331,6 +331,12 @@ func (s *chatStreamWriter) focusProgress(phase, command string, index, total int
 	s.send(event)
 }
 
+// focusDone ends a focus driver verification feed: the feed carried no
+// assistant reply, so consoles drop the placeholder they opened for it.
+func (s *chatStreamWriter) focusDone() {
+	s.send(map[string]any{"type": "focus_done", "session_id": s.sessionID})
+}
+
 func (s *chatStreamWriter) done(usage llm.Usage) {
 	s.send(map[string]any{
 		"type":            "done",

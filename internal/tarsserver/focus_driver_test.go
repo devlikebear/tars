@@ -2,6 +2,7 @@ package tarsserver
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 	"sync"
@@ -44,8 +45,11 @@ type fakeFocusTurns struct {
 	store  *session.Store
 	driver *focusDriver
 	reply  func(n int, prompt string) string
-	// block makes turn n wait for its context.
+	// block makes turn n wait for its context, or for gate when set.
 	block func(n int) bool
+	gate  chan struct{}
+	// fail makes turn n return an error, as a provider failure would.
+	fail func(n int) error
 
 	mu      sync.Mutex
 	prompts []string
@@ -66,9 +70,21 @@ func (f *fakeFocusTurns) run(ctx context.Context, sessionID, prompt string) erro
 	f.prompts = append(f.prompts, prompt)
 	n := len(f.prompts)
 	f.mu.Unlock()
+	if f.fail != nil {
+		if err := f.fail(n); err != nil {
+			return err
+		}
+	}
 	if f.block != nil && f.block(n) {
-		<-ctx.Done()
-		return ctx.Err()
+		if f.gate == nil {
+			<-ctx.Done()
+			return ctx.Err()
+		}
+		select {
+		case <-f.gate:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
 	}
 	message, mark := appendFocusGuidance(prompt, f.store, sessionID, zerolog.Nop())
 	transcript := f.store.TranscriptPath(sessionID)
@@ -116,7 +132,7 @@ func testFocusDriver(t *testing.T, reply func(int, string) string, verifier *fak
 	store := session.NewStore(t.TempDir())
 	sess := buildingFocusSession(t, store)
 	d := newFocusDriver(zerolog.Nop())
-	t.Cleanup(d.Close)
+	t.Cleanup(func() { d.Close(context.Background()) })
 	d.idlePoll = 5 * time.Millisecond
 	d.sessions = store
 	d.feeds = newChatTurnFeeds()
@@ -274,7 +290,7 @@ func TestFocusDriverCancel(t *testing.T) {
 		turns.block = func(int) bool { return true }
 		d.start(id, sendTurn("go"), "")
 		waitFor(t, "the turn", func() bool { return len(turns.seen()) == 1 })
-		d.Close()
+		d.Close(context.Background())
 		if d.running(id) {
 			t.Fatal("Close leaves a run")
 		}
@@ -285,28 +301,156 @@ func TestFocusDriverCancel(t *testing.T) {
 	})
 }
 
+// asking pauses the loop after each turn (a decision), so queued actions
+// run strictly in order.
+func asking(int, string) string {
+	return "ok\n<focus-report>{\"summary\":\"q\",\"decisions\":[{\"id\":\"d1\",\"question\":\"which?\",\"options\":[\"a\"]}]}</focus-report>"
+}
+
 func TestFocusDriverOneRunPerSession(t *testing.T) {
-	d, turns, _, id := testFocusDriver(t, func(int, string) string { return focusReport("x", false) }, &fakeVerifier{result: passAll})
-	turns.block = func(n int) bool { return n < 3 }
+	d, turns, _, id := testFocusDriver(t, asking, &fakeVerifier{result: passAll})
+	turns.gate = make(chan struct{})
+	turns.block = func(n int) bool { return n == 1 }
 	d.start(id, sendTurn("first"), "")
 	waitFor(t, "first turn", func() bool { return len(turns.seen()) == 1 })
+	// Actions arriving while the run is busy join it; they never replace
+	// what it owes and never run beside it.
 	d.start(id, sendTurn("second"), "")
-	waitFor(t, "second turn", func() bool { return len(turns.seen()) == 2 })
 	d.start(id, sendTurn("third"), "")
-	waitFor(t, "third turn", func() bool { return len(turns.seen()) >= 3 })
-	d.cancel(id)
+	close(turns.gate)
+	waitDriverIdle(t, d, id)
 	if max := atomic.LoadInt32(&turns.maxSeen); max != 1 {
 		t.Fatalf("%d turns ran at once", max)
 	}
-	if prompts := turns.seen(); prompts[0] != "first" || prompts[1] != "second" || prompts[2] != "third" {
+	if prompts := turns.seen(); len(prompts) != 3 || prompts[0] != "first" || prompts[1] != "second" || prompts[2] != "third" {
 		t.Fatalf("prompts = %q", prompts)
+	}
+}
+
+// f3: a decision answered while a person's turn runs is still sent after
+// that turn's own hook queues its verification.
+func TestFocusDriverKeepsAnOwedTurnWhenAPersonsTurnEnds(t *testing.T) {
+	d, turns, _, id := testFocusDriver(t, asking, &fakeVerifier{result: passAll})
+	_, release, _ := d.cancels.Claim(id) // the person's turn runs
+	d.start(id, sendTurn("Which flag? → --b"), "")
+	d.afterTurn(context.Background(), id, focuspipeline.Action{Kind: focuspipeline.ActionRunVerification}, "")
+	release()
+	waitDriverIdle(t, d, id)
+	if prompts := turns.seen(); len(prompts) != 1 || prompts[0] != "Which flag? → --b" {
+		t.Fatalf("the owed answer was dropped: %q", prompts)
+	}
+}
+
+// R3: a pipeline stopped while a step waited gets nothing more.
+func TestFocusDriverSkipsStepsOfAStoppedPipeline(t *testing.T) {
+	verifier := &fakeVerifier{result: passAll}
+	d, turns, store, id := testFocusDriver(t, asking, verifier)
+	_, release, _ := d.cancels.Claim(id)
+	d.start(id, sendTurn("fix it"), "")
+	d.start(id, focuspipeline.Action{Kind: focuspipeline.ActionRunVerification}, "")
+	if _, _, err := focusStoreFor(store).Update(id, func(p focuspipeline.Pipeline) (focuspipeline.Pipeline, error) {
+		p.AwaitingVerification = true
+		next, _, err := focuspipeline.Apply(p, focuspipeline.Event{Kind: focuspipeline.EventStop}, time.Now())
+		return next, err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	release()
+	waitDriverIdle(t, d, id)
+	if len(turns.seen()) != 0 || verifier.calls.Load() != 0 {
+		t.Fatalf("a stopped pipeline got turns %q and %d verifications", turns.seen(), verifier.calls.Load())
+	}
+	if p := pipelineOf(t, store, id); p.AwaitingVerification || p.PendingTurn != "" {
+		t.Fatalf("stop left work pending: %+v", p)
+	}
+}
+
+// R1: a step that finds its session claimed (a person's turn in its
+// prepare window) waits and tries again instead of running beside it.
+func TestFocusDriverRetriesWhenTheSessionIsClaimed(t *testing.T) {
+	d, turns, _, id := testFocusDriver(t, asking, &fakeVerifier{result: passAll})
+	calls := 0
+	inner := d.runTurn
+	d.runTurn = func(ctx context.Context, sessionID, message string) error {
+		calls++
+		if calls == 1 {
+			return errChatTurnBusy
+		}
+		return inner(ctx, sessionID, message)
+	}
+	d.start(id, sendTurn("go"), "")
+	waitDriverIdle(t, d, id)
+	if calls != 2 || len(turns.seen()) != 1 {
+		t.Fatalf("calls = %d prompts = %q", calls, turns.seen())
+	}
+}
+
+// f5: a failed server turn raises the resumable blocked gate.
+func TestFocusDriverFailedTurnRaisesTheGate(t *testing.T) {
+	d, turns, store, id := testFocusDriver(t, asking, &fakeVerifier{result: passAll})
+	turns.fail = func(int) error { return errors.New("cli timed out: no output for 15m0s") }
+	// The owed turn, as an approval leaves it.
+	if _, _, err := focusStoreFor(store).Update(id, func(p focuspipeline.Pipeline) (focuspipeline.Pipeline, error) {
+		p.PendingTurn = "Plan approved. Start the build stage with task 1."
+		return p, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	d.start(id, sendTurn("Plan approved. Start the build stage with task 1."), "")
+	waitDriverIdle(t, d, id)
+	p := pipelineOf(t, store, id)
+	card := p.Cards[len(p.Cards)-1]
+	if p.OpenGate != focuspipeline.GateBlocked || card.Title != focuspipeline.TurnFailedTitle || !strings.Contains(string(card.Payload), "no output for 15m0s") {
+		t.Fatalf("gate = %q card = %+v", p.OpenGate, card)
+	}
+}
+
+// R7/f9: Close returns by the shutdown deadline even when a turn ignores
+// its cancel.
+func TestFocusDriverCloseIsBounded(t *testing.T) {
+	d, _, _, id := testFocusDriver(t, asking, &fakeVerifier{result: passAll})
+	stuck := make(chan struct{})
+	defer close(stuck)
+	d.runTurn = func(context.Context, string, string) error { <-stuck; return nil }
+	d.start(id, sendTurn("go"), "")
+	waitFor(t, "the run", func() bool { return d.running(id) })
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	d.Close(ctx)
+	if time.Since(start) > 2*time.Second {
+		t.Fatal("Close ignored the shutdown deadline")
+	}
+}
+
+// f4: a pipeline the last server left mid-step waits at the interrupted
+// gate; retry resumes the cut-off step.
+func TestInterruptFocusPipelinesAtStartup(t *testing.T) {
+	store := session.NewStore(t.TempDir())
+	verifying := buildingFocusSession(t, store)
+	if _, _, err := focusStoreFor(store).Update(verifying.ID, func(p focuspipeline.Pipeline) (focuspipeline.Pipeline, error) {
+		next, _, err := focuspipeline.Apply(p, focuspipeline.Event{Kind: focuspipeline.EventTurnCompleted, Turn: 2, Blocks: focuspipeline.ParseBlocks(focusReport("t1", false))}, time.Now())
+		return next, err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	idle := plannedFocusSession(t, store) // its gate is open: nothing was cut off
+	if n := interruptFocusPipelines(store, time.Now(), zerolog.Nop()); n != 1 {
+		t.Fatalf("interrupted = %d", n)
+	}
+	p := pipelineOf(t, store, verifying.ID)
+	if p.OpenGate != focuspipeline.GateBlocked || p.AwaitingVerification || p.Cards[len(p.Cards)-1].Title != focuspipeline.InterruptedTitle {
+		t.Fatalf("pipeline = %+v", p)
+	}
+	if q := pipelineOf(t, store, idle.ID); q.OpenGate != focuspipeline.GatePlan {
+		t.Fatalf("idle pipeline changed: %q", q.OpenGate)
 	}
 }
 
 func TestFocusDriverWaitsForARunningTurn(t *testing.T) {
 	d, turns, _, id := testFocusDriver(t, func(int, string) string { return focusReport("x", false) }, &fakeVerifier{result: passAll})
 	turns.block = func(int) bool { return true }
-	unregister := d.cancels.Register(id, func() {}) // a person's turn is still finishing
+	_, unregister, _ := d.cancels.Claim(id) // a person's turn is still finishing
 	d.start(id, sendTurn("go"), "")
 	time.Sleep(30 * time.Millisecond)
 	if len(turns.seen()) != 0 {
@@ -317,17 +461,47 @@ func TestFocusDriverWaitsForARunningTurn(t *testing.T) {
 	d.cancel(id)
 }
 
-func TestChatCancelRegistryUnregistersOnlyItsOwnEntry(t *testing.T) {
+func TestChatCancelRegistryClaims(t *testing.T) {
 	r := newChatCancelRegistry()
-	first := r.Register("s", func() {})
-	second := r.Register("s", func() {})
-	first()
-	if !r.Running("s") {
-		t.Fatal("an older registration removed a newer one")
+	first, release, ok := r.Claim("s")
+	if !ok || !r.Running("s") {
+		t.Fatal("first claim")
 	}
-	second()
+	if _, _, ok := r.Claim("s"); ok {
+		t.Fatal("a second turn on the session must be refused")
+	}
+	// A cancel before the turn has its context fires once it has one, and
+	// the claim stays until the turn releases it.
+	if !r.Cancel("s") {
+		t.Fatal("cancel found no turn")
+	}
+	if !r.Running("s") {
+		t.Fatal("the claim stays until the cancelled turn ends")
+	}
+	fired := false
+	first.setCancel(func() { fired = true })
+	if !fired {
+		t.Fatal("an early cancel fires when the cancel func arrives")
+	}
+	release()
 	if r.Running("s") {
-		t.Fatal("registration not removed")
+		t.Fatal("released")
+	}
+	_, again, ok := r.Claim("s")
+	if !ok {
+		t.Fatal("a released session can be claimed")
+	}
+	release() // an old release never ends a newer claim
+	if !r.Running("s") {
+		t.Fatal("old release removed a newer claim")
+	}
+	again()
+	if _, _, ok := r.Claim(""); !ok {
+		t.Fatal("an empty id claims nothing")
+	}
+	var nilRegistry *chatCancelRegistry
+	if _, _, ok := nilRegistry.Claim("s"); !ok || nilRegistry.Cancel("s") {
+		t.Fatal("nil registry")
 	}
 }
 
@@ -337,7 +511,7 @@ func focusChatHarness(t *testing.T, client llm.Client, verifier *fakeVerifier) (
 	t.Helper()
 	_, store, root := testChatDeps(t, client)
 	d := newFocusDriver(zerolog.Nop())
-	t.Cleanup(d.Close)
+	t.Cleanup(func() { d.Close(context.Background()) })
 	d.idlePoll = 5 * time.Millisecond
 	tooling := defaultChatToolingOptions()
 	tooling.Focus = d

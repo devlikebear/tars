@@ -46,7 +46,7 @@ func qaFixture(t *testing.T) (http.Handler, *focusDriver, *session.Store, sessio
 		t.Fatal(err)
 	}
 	d := newFocusDriver(zerolog.Nop())
-	t.Cleanup(d.Close)
+	t.Cleanup(func() { d.Close(context.Background()) })
 	d.cancels = newChatCancelRegistry()
 	return newFocusPipelineHandler(store, nil, d, zerolog.Nop()), d, store, sess, cwd
 }
@@ -218,5 +218,42 @@ func TestFocusCardExcerpt(t *testing.T) {
 	}
 	if focusCardExcerpt(path, 0) != "" || focusCardExcerpt(path, 9) != "" {
 		t.Fatal("no turn, no excerpt")
+	}
+}
+
+// R6: two first questions at once share one Q&A session.
+func TestFocusQAConcurrentFirstQuestionsShareOneSession(t *testing.T) {
+	h, d, store, sess, _ := qaFixture(t)
+	d.qaTurn = func(context.Context, string, string, string) error { return nil }
+	var wg sync.WaitGroup
+	ids := make([]string, 8)
+	for i := range ids {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			rec := focusRequest(t, h, http.MethodPost, "/v1/focus/pipelines/"+sess.ID+"/qa", `{"card_id":"c1","question":"why?"}`, false)
+			var out struct {
+				QASessionID string `json:"qa_session_id"`
+			}
+			_ = json.Unmarshal(rec.Body.Bytes(), &out)
+			ids[i] = out.QASessionID
+		}(i)
+	}
+	wg.Wait()
+	want := pipelineOf(t, store, sess.ID).QASessionID
+	for _, id := range ids {
+		if id != "" && id != want {
+			t.Fatalf("questions got sessions %v, pipeline has %s", ids, want)
+		}
+	}
+	all, _ := store.ListAll()
+	workers := 0
+	for _, s := range all {
+		if s.Kind == "worker" {
+			workers++
+		}
+	}
+	if workers != 1 {
+		t.Fatalf("%d Q&A sessions were made", workers)
 	}
 }

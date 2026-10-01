@@ -2,6 +2,7 @@ package tarsserver
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 	"sync"
@@ -19,10 +20,17 @@ import (
 // the next turn itself, so the build loop continues with no console open.
 //
 // One run per session at a time, in a goroutine bound to the server's
-// lifetime. A run ends when the pipeline asks for nothing more (a gate, a
-// decision, a stop), when a step fails, on POST /v1/chat/cancel for the
+// lifetime, working through a queue of actions: an action that arrives
+// while the run is busy (a person's turn ended while a decision answer
+// waited) joins the queue instead of replacing what is owed. Every step
+// claims the session like any chat turn (chatCancelRegistry.Claim), so a
+// driver step and a person's turn never run together, and re-reads the
+// pipeline first: a stopped, finished or gated pipeline gets nothing more.
+// A run ends when the queue is empty, on POST /v1/chat/cancel for the
 // session, at shutdown, and when a person starts a turn on the session —
-// human input wins; that turn's post-turn hook starts a new run.
+// human input wins; that turn's post-turn hook starts a new run. A server
+// turn that fails raises the resumable blocked gate (FailTurn), and a
+// restart that cut a step off raises it at startup (Interrupt).
 //
 // The driver never asks the model whether a stage is done: it only moves
 // facts (verification exit codes, the turn's blocks) into the pipeline.
@@ -67,6 +75,10 @@ const focusVerifyTimeout = 15 * time.Minute
 // run to wind down.
 const focusPreemptWait = 30 * time.Second
 
+// focusBusyRetries bounds how often a step that found its session claimed
+// (a person's turn starting in the same instant) waits and tries again.
+const focusBusyRetries = 50
+
 type focusRun struct {
 	sessionID string
 	role      string
@@ -74,22 +86,48 @@ type focusRun struct {
 	cancel    context.CancelFunc
 	done      chan struct{}
 
-	mu   sync.Mutex
-	next focuspipeline.Action
+	mu        sync.Mutex
+	queue     []focuspipeline.Action
+	cancelled bool
 }
 
-func (r *focusRun) setNext(act focuspipeline.Action) {
+// push queues act after what the run already owes.
+func (r *focusRun) push(act focuspipeline.Action) {
 	r.mu.Lock()
-	r.next = act
+	r.queue = append(r.queue, act)
 	r.mu.Unlock()
 }
 
-func (r *focusRun) takeNext() focuspipeline.Action {
+// pushFront makes act the run's next step: what its own step asked for
+// comes before what was queued meanwhile.
+func (r *focusRun) pushFront(act focuspipeline.Action) {
+	r.mu.Lock()
+	r.queue = append([]focuspipeline.Action{act}, r.queue...)
+	r.mu.Unlock()
+}
+
+func (r *focusRun) pop() (focuspipeline.Action, bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	act := r.next
-	r.next = focuspipeline.Action{Kind: focuspipeline.ActionNone}
-	return act
+	if len(r.queue) == 0 {
+		return focuspipeline.Action{}, false
+	}
+	act := r.queue[0]
+	r.queue = r.queue[1:]
+	return act, true
+}
+
+func (r *focusRun) stop() {
+	r.mu.Lock()
+	r.cancelled = true
+	r.mu.Unlock()
+	r.cancel()
+}
+
+func (r *focusRun) isCancelled() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.cancelled
 }
 
 type focusRunKey struct{}
@@ -145,18 +183,31 @@ func (d *focusDriver) bind(deps chatHandlerDeps) {
 	}
 }
 
-// Close stops every run and waits for them: server shutdown.
-func (d *focusDriver) Close() {
+// Close stops every run and waits for them, at most until ctx ends:
+// server shutdown must not hang on a turn that ignores its cancel.
+func (d *focusDriver) Close(ctx context.Context) {
 	if d == nil {
 		return
 	}
+	// Under mu: start and ask add to wg only while the driver is open.
+	d.mu.Lock()
 	d.stop()
-	d.wg.Wait()
+	d.mu.Unlock()
+	finished := make(chan struct{})
+	go func() {
+		d.wg.Wait()
+		close(finished)
+	}()
+	select {
+	case <-finished:
+	case <-ctx.Done():
+		d.logger.Warn().Msg("focus: driver runs still going at shutdown")
+	}
 }
 
-// start begins a run that carries out act for sessionID, replacing a run
-// already going there (the newest intent wins). role is the role of the
-// person whose action led here; the run's turns run as that role.
+// start carries out act for sessionID: queued on the session's run when
+// one is going, else in a new run. role is the role of the person whose
+// action led here; the run's turns run as that role.
 func (d *focusDriver) start(sessionID string, act focuspipeline.Action, role string) {
 	if d == nil || act.Kind == focuspipeline.ActionNone || strings.TrimSpace(sessionID) == "" || d.runTurn == nil {
 		return
@@ -167,49 +218,52 @@ func (d *focusDriver) start(sessionID string, act focuspipeline.Action, role str
 		return
 	}
 	previous := d.runs[sessionID]
+	if previous != nil && !previous.isCancelled() {
+		previous.push(act)
+		d.mu.Unlock()
+		return
+	}
 	ctx, cancel := context.WithCancel(d.ctx)
-	run := &focusRun{sessionID: sessionID, role: role, cancel: cancel, done: make(chan struct{})}
+	run := &focusRun{sessionID: sessionID, role: role, cancel: cancel, done: make(chan struct{}), queue: []focuspipeline.Action{act}}
 	run.ctx = context.WithValue(serverauth.WithRoleContext(ctx, role), focusRunKey{}, run)
 	d.runs[sessionID] = run
 	d.wg.Add(1)
 	d.mu.Unlock()
 	var after <-chan struct{}
 	if previous != nil {
-		previous.cancel()
 		after = previous.done
 	}
-	go d.loop(run, act, after)
+	go d.loop(run, after)
 }
 
-// afterTurn is the post-turn hook: a turn the run itself started hands the
-// next action back to it; any other turn (a person's) starts a run.
+// afterTurn is the post-turn hook: a turn the run itself started hands its
+// next action back to the front of the run's queue; any other turn (a
+// person's) starts or joins a run.
 func (d *focusDriver) afterTurn(ctx context.Context, sessionID string, act focuspipeline.Action, role string) {
-	if d == nil {
+	if d == nil || act.Kind == focuspipeline.ActionNone {
 		return
 	}
 	if run := focusRunFrom(ctx); run != nil && run.sessionID == sessionID {
-		run.setNext(act)
+		run.pushFront(act)
 		return
 	}
 	d.start(sessionID, act, role)
 }
 
 // cancel stops the session's run, if any, and waits (bounded) for it to
-// end. It reports whether there was a run.
+// end. The run stays the session's run until it has ended, so a new run
+// never starts beside it. It reports whether there was a run.
 func (d *focusDriver) cancel(sessionID string) bool {
 	if d == nil {
 		return false
 	}
 	d.mu.Lock()
 	run := d.runs[sessionID]
-	if run != nil {
-		delete(d.runs, sessionID)
-	}
 	d.mu.Unlock()
 	if run == nil {
 		return false
 	}
-	run.cancel()
+	run.stop()
 	select {
 	case <-run.done:
 	case <-time.After(focusPreemptWait):
@@ -228,7 +282,7 @@ func (d *focusDriver) running(sessionID string) bool {
 	return d.runs[sessionID] != nil
 }
 
-func (d *focusDriver) loop(run *focusRun, act focuspipeline.Action, after <-chan struct{}) {
+func (d *focusDriver) loop(run *focusRun, after <-chan struct{}) {
 	defer d.wg.Done()
 	defer close(run.done)
 	defer func() {
@@ -239,7 +293,7 @@ func (d *focusDriver) loop(run *focusRun, act focuspipeline.Action, after <-chan
 		d.mu.Unlock()
 	}()
 	if after != nil {
-		// The run this one replaced winds down first: one run per session.
+		// The run this one follows winds down first: one run per session.
 		select {
 		case <-after:
 		case <-run.ctx.Done():
@@ -247,28 +301,75 @@ func (d *focusDriver) loop(run *focusRun, act focuspipeline.Action, after <-chan
 		}
 	}
 	log := d.logger.With().Str("session_id", run.sessionID).Logger()
-	for act.Kind != focuspipeline.ActionNone {
+	busy := 0
+	for {
+		act, ok := run.pop()
+		if !ok {
+			return
+		}
 		if !d.waitIdle(run) {
 			return
 		}
+		if !d.stepAllowed(run.sessionID, act) {
+			log.Debug().Str("action", act.Kind).Msg("focus: step skipped, the pipeline moved on")
+			continue
+		}
 		switch act.Kind {
 		case focuspipeline.ActionSendTurn:
-			run.setNext(focuspipeline.Action{Kind: focuspipeline.ActionNone})
-			if err := d.runTurn(run.ctx, run.sessionID, act.Prompt); err != nil {
-				log.Info().Err(err).Msg("focus: driver turn ended without a reply; the loop stops")
+			err := d.runTurn(run.ctx, run.sessionID, act.Prompt)
+			if errors.Is(err, errChatTurnBusy) && busy < focusBusyRetries {
+				busy++
+				run.pushFront(act)
+				continue
+			}
+			busy = 0
+			if err != nil {
+				if run.ctx.Err() == nil {
+					d.turnFailed(run.sessionID, err, log)
+				}
 				return
 			}
-			act = run.takeNext()
 		case focuspipeline.ActionRunVerification:
-			act = d.runVerification(run, log)
+			next, claimed := d.runVerification(run, log)
+			if !claimed && busy < focusBusyRetries {
+				busy++
+				run.pushFront(act)
+				continue
+			}
+			busy = 0
+			if next.Kind != focuspipeline.ActionNone {
+				run.pushFront(next)
+			}
 		default:
 			log.Warn().Str("action", act.Kind).Msg("focus: unknown action")
-			return
 		}
 	}
 }
 
-// waitIdle waits until no turn runs on the run's session (a person's turn
+// stepAllowed re-reads the pipeline before a step: only an active pipeline
+// with no gate open gets a turn or a verification, and verification only
+// while one is awaited — a stopped pipeline never gets a fix turn.
+func (d *focusDriver) stepAllowed(sessionID string, act focuspipeline.Action) bool {
+	p, ok, err := focusStoreFor(d.sessions).Get(sessionID)
+	if err != nil || !ok || !p.Active() || p.OpenGate != focuspipeline.GateNone {
+		return false
+	}
+	return act.Kind != focuspipeline.ActionRunVerification || p.AwaitingVerification
+}
+
+// turnFailed raises the resumable blocked gate for a server turn that
+// ended in an error, so the loop never stops silently.
+func (d *focusDriver) turnFailed(sessionID string, cause error, log zerolog.Logger) {
+	log.Info().Err(cause).Msg("focus: driver turn failed; raising the blocked gate")
+	if _, _, err := focusStoreFor(d.sessions).Update(sessionID, func(p focuspipeline.Pipeline) (focuspipeline.Pipeline, error) {
+		next, _ := focuspipeline.FailTurn(p, cause.Error(), d.now())
+		return next, nil
+	}); err != nil {
+		log.Warn().Err(err).Msg("focus: record failed turn")
+	}
+}
+
+// waitIdle waits until no turn holds the run's session (a person's turn
 // still finishing, the turn whose hook started this run). False when the
 // run was cancelled meanwhile.
 func (d *focusDriver) waitIdle(run *focusRun) bool {
@@ -283,16 +384,22 @@ func (d *focusDriver) waitIdle(run *focusRun) bool {
 }
 
 // runVerification runs the plan's verify commands (end-to-end commands
-// belong to review) and applies the result. While it runs the session
-// shows as running and its progress goes to a turn feed, so a console
-// follows it on GET /v1/chat/stream like a turn, and POST /v1/chat/cancel
-// stops it.
-func (d *focusDriver) runVerification(run *focusRun, log zerolog.Logger) focuspipeline.Action {
+// belong to review) and applies the result. It claims the session like a
+// turn: the session shows as running, its progress goes to a turn feed a
+// console follows on GET /v1/chat/stream, and POST /v1/chat/cancel stops
+// it. claimed is false when another turn held the session.
+func (d *focusDriver) runVerification(run *focusRun, log zerolog.Logger) (focuspipeline.Action, bool) {
 	none := focuspipeline.Action{Kind: focuspipeline.ActionNone}
+	claim, release, ok := d.cancels.Claim(run.sessionID)
+	if !ok {
+		return none, false
+	}
+	defer release()
+	claim.setCancel(run.cancel)
 	store := focusStoreFor(d.sessions)
-	p, ok, err := store.Get(run.sessionID)
-	if err != nil || !ok || !p.AwaitingVerification {
-		return none
+	p, found, err := store.Get(run.sessionID)
+	if err != nil || !found || !p.AwaitingVerification {
+		return none, true
 	}
 	var commands []string
 	if p.Plan != nil {
@@ -306,7 +413,6 @@ func (d *focusDriver) runVerification(run *focusRun, log zerolog.Logger) focuspi
 	feed, endFeed := d.feeds.begin(run.sessionID)
 	defer endFeed()
 	defer d.activity.begin(run.sessionID)()
-	defer d.cancels.Register(run.sessionID, run.cancel)()
 	stream := newChatStreamWriter(discardResponseWriter{header: http.Header{}}, run.sessionID, log)
 	stream.feed = feed
 	stream.status("stream_open", "stream connected", "", "", "", "")
@@ -317,7 +423,7 @@ func (d *focusDriver) runVerification(run *focusRun, log zerolog.Logger) focuspi
 		result, err := d.verify(run.ctx, run.sessionID, command)
 		if run.ctx.Err() != nil {
 			stream.cancelled()
-			return none
+			return none, true
 		}
 		if err != nil {
 			// A command that could not run at all is a failed fact, not a
@@ -340,8 +446,9 @@ func (d *focusDriver) runVerification(run *focusRun, log zerolog.Logger) focuspi
 	})
 	if err != nil {
 		log.Warn().Err(err).Msg("focus: apply verification failed")
-		return none
+		return none, true
 	}
 	stream.pipeline(updated, focusNextPrompt(act))
-	return act
+	stream.focusDone()
+	return act, true
 }

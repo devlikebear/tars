@@ -480,6 +480,10 @@ func buildAPIMux(
 		focusPipelineCleanup(sessionStore, logger),
 	)
 	go sweepOrphanFocusPipelines(sessionStore, logger)
+	// Synchronous, before the API serves: no driver run exists yet.
+	if n := interruptFocusPipelines(sessionStore, time.Now(), logger); n > 0 {
+		logger.Info().Int("count", n).Msg("focus: pipelines left mid-step by the last run wait at an interrupted gate")
+	}
 	chatTooling.Notify = dispatcher.Emit
 	chatTooling.SessionCosts = sessionCostsFrom(deps.usageTracker)
 
@@ -1184,7 +1188,7 @@ func shutdownRuntime(ctx context.Context, runtime *serveAPIRuntime) {
 		return
 	}
 	// Focus runs start turns; stop them before the things turns use.
-	runtime.focusDriver.Close()
+	runtime.focusDriver.Close(ctx)
 	if runtime.pulseRuntime != nil {
 		runtime.pulseRuntime.Stop()
 	}

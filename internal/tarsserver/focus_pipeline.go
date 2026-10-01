@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/devlikebear/tars/internal/focuspipeline"
@@ -172,6 +173,39 @@ func focusPipelineCleanup(sessions *session.Store, logger zerolog.Logger) func(s
 	}
 }
 
+// interruptFocusPipelines runs at startup, before any driver run: a
+// pipeline the previous server left mid-step (verification awaited, a turn
+// owed) gets the blocked "interrupted" gate instead of resuming silently,
+// so the developer decides — retry resumes the cut-off step.
+func interruptFocusPipelines(sessions *session.Store, now time.Time, logger zerolog.Logger) int {
+	store := focusStoreFor(sessions)
+	if store == nil {
+		return 0
+	}
+	list, err := store.List()
+	if err != nil {
+		logger.Warn().Err(err).Msg("focus: list pipelines for interrupted runs failed")
+		return 0
+	}
+	count := 0
+	for _, listed := range list {
+		interrupted := false
+		_, _, err := store.Update(listed.SessionID, func(p focuspipeline.Pipeline) (focuspipeline.Pipeline, error) {
+			next, ok := focuspipeline.Interrupt(p, now)
+			interrupted = ok
+			return next, nil
+		})
+		if err != nil {
+			logger.Warn().Err(err).Str("session_id", listed.SessionID).Msg("focus: mark interrupted pipeline failed")
+			continue
+		}
+		if interrupted {
+			count++
+		}
+	}
+	return count
+}
+
 // sweepOrphanFocusPipelines removes pipelines whose session is gone (deleted
 // while the server was down, or before this cleanup existed).
 func sweepOrphanFocusPipelines(sessions *session.Store, logger zerolog.Logger) int {
@@ -204,6 +238,8 @@ type focusAPI struct {
 	driver *focusDriver
 	logger zerolog.Logger
 	now    func() time.Time
+	// qaMu makes finding or creating a pipeline's Q&A session one step.
+	qaMu sync.Mutex
 }
 
 func newFocusPipelineHandler(sessions *session.Store, worktrees *chatWorktrees, driver *focusDriver, logger zerolog.Logger) http.Handler {

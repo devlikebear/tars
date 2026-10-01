@@ -28,6 +28,10 @@ import (
 // focusQASource names Q&A turns in the ops approval queue and the audit.
 const focusQASource = "focus_qa"
 
+// focusQACardMarker starts the console-context line naming the card a
+// question is about (the console's lib/focus.ts qaThreads reads it).
+const focusQACardMarker = "focus-card: "
+
 // Console context budget of a question: the card's payload and the source
 // excerpt share the 2000-byte console context.
 const (
@@ -71,7 +75,7 @@ func (a *focusAPI) qa(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "pipeline not found"})
 		return
 	}
-	qaID, err := a.qaSession(p, parent)
+	qaID, err := a.qaSession(id, parent)
 	if err != nil {
 		a.logger.Error().Err(err).Str("session_id", id).Msg("focus: prepare Q&A session failed")
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "prepare Q&A session failed"})
@@ -106,8 +110,16 @@ func focusCard(p focuspipeline.Pipeline, cardID string) (focuspipeline.Card, boo
 
 // qaSession returns the pipeline's Q&A session, creating it on first use,
 // and points it at the folder the pipeline session works in now (it may
-// have moved into a worktree since the last question).
-func (a *focusAPI) qaSession(p focuspipeline.Pipeline, parent session.Session) (string, error) {
+// have moved into a worktree since the last question). Finding or making
+// the session and recording its id is one locked step, so two first
+// questions at once share one session instead of orphaning one.
+func (a *focusAPI) qaSession(pipelineID string, parent session.Session) (string, error) {
+	a.qaMu.Lock()
+	defer a.qaMu.Unlock()
+	p, _, err := a.store().Get(pipelineID)
+	if err != nil {
+		return "", err
+	}
 	qaID := strings.TrimSpace(p.QASessionID)
 	if qaID != "" {
 		if _, err := a.sessions.Get(qaID); err != nil {
@@ -123,6 +135,14 @@ func (a *focusAPI) qaSession(p focuspipeline.Pipeline, parent session.Session) (
 		// Never isolated and never holding the repository: a read-only
 		// question must not push the pipeline's own turns into a worktree.
 		if err := a.sessions.SetIsolation(qaID, session.IsolationOff); err != nil {
+			return "", err
+		}
+		// Recorded at once (no session store call inside the update).
+		if _, _, err := a.store().Update(pipelineID, func(p focuspipeline.Pipeline) (focuspipeline.Pipeline, error) {
+			p.QASessionID = qaID
+			return p, nil
+		}); err != nil {
+			_ = a.sessions.Delete(qaID)
 			return "", err
 		}
 	}
@@ -153,6 +173,9 @@ func focusQATitle(parent string) string {
 // about, the card's payload, and the reply it came from.
 func focusQAContext(card focuspipeline.Card, excerpt string) string {
 	var b strings.Builder
+	// The first line names the card for the console, which threads the Q&A
+	// transcript by it (turn numbers shift when the transcript compacts).
+	fmt.Fprintf(&b, "%s%s\n", focusQACardMarker, card.ID)
 	b.WriteString("The developer is asking about one focus-mode card. Answer the question; read code if you need to, but do not edit anything.\n")
 	fmt.Fprintf(&b, "Card %s (%s, stage %s, turn %d): %s\n", card.ID, card.Kind, card.Stage, card.Turn, card.Title)
 	if payload := strings.TrimSpace(string(card.Payload)); payload != "" && payload != "null" {
