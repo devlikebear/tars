@@ -3,8 +3,9 @@
   import { t } from '../i18n'
   import type { Artifact } from '../lib/artifacts'
   import { fileIcon } from '../lib/artifacts'
-  import { listWorkspaceFiles, readWorkspaceFile, getSessionWorkDirs, updateSessionWorkDirs, openTerminalHere, browseFilesystem, createFilesystemDirectory, createWorkspaceDirectory, renameWorkspaceDirectory, type WorkspaceFileEntry, type WorkspaceFileContent } from '../lib/api'
+  import { listWorkspaceFiles, readWorkspaceFile, getSessionWorkDirs, updateSessionWorkDirs, openTerminalHere, browseFilesystem, createFilesystemDirectory, createWorkspaceDirectory, renameWorkspaceDirectory, APIRequestError, type WorkspaceFileEntry, type WorkspaceFileContent } from '../lib/api'
   import { renderHighlightedCodeBlock } from '../lib/markdown'
+  import { arrangePickerEntries, browseErrorReason, resolvePickerPath } from '../lib/folderPicker'
   import type { SessionWorkDirs } from '../lib/types'
   import ArtifactPanelHeader from './ArtifactPanelHeader.svelte'
   import MarkdownContent from './MarkdownContent.svelte'
@@ -35,6 +36,14 @@
   let pickActionBusy = $state(false)
   let pickCreatingFolder = $state(false)
   let pickNewFolderName = $state('')
+  // Typed/pasted path, filter, and the collapsed dot-folder group (#picker).
+  let pickHome = $state('')
+  let pickPathInput = $state('')
+  let pickFilter = $state('')
+  let pickShowHidden = $state(false)
+  let pickRequest = 0
+  let pickArranged = $derived(arrangePickerEntries(pickFiles, pickFilter))
+  let pickFiltering = $derived(pickFilter.trim() !== '')
 
   // Workspace browser state
   let currentPath = $state('.')
@@ -104,6 +113,10 @@
     pickActionBusy = false
     pickCreatingFolder = false
     pickNewFolderName = ''
+    pickHome = ''
+    pickPathInput = ''
+    pickFilter = ''
+    pickShowHidden = false
     await browsePick(undefined)
   }
 
@@ -115,22 +128,67 @@
     pickNewFolderName = ''
   }
 
+  // A failed browse keeps the current listing and says why, so a mistyped
+  // path or an unreadable folder doesn't lose the user's place.
   async function browsePick(path: string | undefined) {
+    const request = ++pickRequest
     pickLoading = true
     pickActionError = ''
     try {
       const result = await browseFilesystem(path)
+      if (request !== pickRequest) return
       pickFiles = result.entries.filter(e => e.is_dir).map(e => ({
         name: e.name,
         path: joinFilesystemPath(result.path, e.name),
         is_dir: true,
       }))
+      if (path === undefined) pickHome = result.path
       pickPath = result.path
       pickParent = result.parent
-    } catch {
-      pickFiles = []
+      pickPathInput = result.path
+      pickFilter = ''
+    } catch (err) {
+      if (request !== pickRequest) return
+      const reason = browseErrorReason(err instanceof APIRequestError ? err.status : undefined)
+      pickActionError = $t.artifactPanel.picker.errors[reason](path ?? '~')
     } finally {
-      pickLoading = false
+      if (request === pickRequest) pickLoading = false
+    }
+  }
+
+  async function submitPickPath() {
+    const resolved = resolvePickerPath(pickPathInput, pickHome)
+    if (!resolved.ok) {
+      if (resolved.reason === 'empty') {
+        pickPathInput = pickPath
+        pickActionError = ''
+      } else {
+        pickActionError = $t.artifactPanel.picker.errors.relative
+      }
+      return
+    }
+    await browsePick(resolved.path)
+  }
+
+  function onPickPathKeydown(e: KeyboardEvent) {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      void submitPickPath()
+    } else if (e.key === 'Escape') {
+      e.preventDefault()
+      pickPathInput = pickPath
+      pickActionError = ''
+    }
+  }
+
+  function onPickFilterKeydown(e: KeyboardEvent) {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      const first = pickArranged.shown[0] ?? pickArranged.hidden[0]
+      if (first) void browsePick(first.path)
+    } else if (e.key === 'Escape' && pickFilter) {
+      e.preventDefault()
+      pickFilter = ''
     }
   }
 
@@ -597,6 +655,13 @@
       {/if}
     </div>
 
+    {#snippet pickEntry(entry: WorkspaceFileEntry)}
+      <button type="button" class="artifact-item" onclick={() => browsePick(entry.path)}>
+        <span class="artifact-icon">&#x1f4c1;</span>
+        <span class="artifact-name">{entry.name}</span>
+      </button>
+    {/snippet}
+
     {#if pickingDir}
       <!-- Directory picker overlay -->
       <div class="pick-overlay">
@@ -607,7 +672,16 @@
             <button type="button" class="btn btn-ghost btn-sm" disabled={pickActionBusy} onclick={cancelPicking}>{$t.artifactPanel.actions.cancel}</button>
           </div>
         </div>
-        <div class="pick-current">{pickPath || '/'}</div>
+        <input
+          class="pick-current"
+          type="text"
+          spellcheck="false"
+          autocomplete="off"
+          aria-label={$t.artifactPanel.picker.pathLabel}
+          title={$t.artifactPanel.picker.pathTitle}
+          bind:value={pickPathInput}
+          onkeydown={onPickPathKeydown}
+        />
         <div class="pick-toolbar">
           {#if pickCreatingFolder}
             <div class="ws-inline-form">
@@ -629,7 +703,21 @@
           {/if}
         </div>
         {#if pickActionError}
-          <div class="pick-error">{pickActionError}</div>
+          <div class="pick-error" role="alert">{pickActionError}</div>
+        {/if}
+        {#if pickFiles.length > 0}
+          <div class="pick-filter">
+            <input
+              class="ws-inline-input"
+              type="search"
+              spellcheck="false"
+              autocomplete="off"
+              aria-label={$t.artifactPanel.picker.filterLabel}
+              placeholder={$t.artifactPanel.picker.filterPlaceholder}
+              bind:value={pickFilter}
+              onkeydown={onPickFilterKeydown}
+            />
+          </div>
         {/if}
         <div class="pick-list">
           {#if pickLoading}
@@ -641,14 +729,35 @@
                 <span class="artifact-name">..</span>
               </button>
             {/if}
-            {#each pickFiles as entry}
-              <button type="button" class="artifact-item" onclick={() => browsePick(entry.path)}>
-                <span class="artifact-icon">&#x1f4c1;</span>
-                <span class="artifact-name">{entry.name}</span>
-              </button>
+            {#each pickArranged.shown as entry (entry.path)}
+              {@render pickEntry(entry)}
             {/each}
+            {#if pickArranged.hidden.length > 0}
+              {#if pickFiltering}
+                {#each pickArranged.hidden as entry (entry.path)}
+                  {@render pickEntry(entry)}
+                {/each}
+              {:else}
+                <button
+                  type="button"
+                  class="pick-hidden-toggle"
+                  aria-expanded={pickShowHidden}
+                  onclick={() => (pickShowHidden = !pickShowHidden)}
+                >
+                  <span class="pick-hidden-caret" class:open={pickShowHidden}>&#x25B8;</span>
+                  {$t.artifactPanel.picker.hiddenToggle(pickArranged.hidden.length)}
+                </button>
+                {#if pickShowHidden}
+                  {#each pickArranged.hidden as entry (entry.path)}
+                    {@render pickEntry(entry)}
+                  {/each}
+                {/if}
+              {/if}
+            {/if}
             {#if pickFiles.length === 0 && pickParent}
               <div class="artifact-empty">{$t.artifactPanel.picker.noSubdirectories}</div>
+            {:else if pickFiltering && pickArranged.shown.length === 0 && pickArranged.hidden.length === 0}
+              <div class="artifact-empty">{$t.artifactPanel.picker.noMatches(pickFilter.trim())}</div>
             {/if}
           {/if}
         </div>
@@ -951,15 +1060,65 @@
   }
 
   .pick-current {
+    flex-shrink: 0;
+    width: 100%;
+    min-width: 0;
     padding: var(--space-1) var(--space-3);
     font-family: var(--font-mono);
     font-size: 10px;
-    color: var(--text-secondary);
+    color: var(--text-primary);
     background: var(--surface-inset);
-    border-bottom: 1px solid var(--border-subtle);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    border: 1px solid transparent;
+    border-bottom-color: var(--border-subtle);
+    border-radius: 0;
+    outline: none;
+  }
+
+  .pick-current:focus {
+    border-color: var(--primary);
+  }
+
+  .pick-filter {
+    padding: var(--space-2) var(--space-3) 0;
+    flex-shrink: 0;
+  }
+
+  .pick-filter .ws-inline-input {
+    width: 100%;
+  }
+
+  .pick-filter .ws-inline-input:focus {
+    outline: none;
+    border-color: var(--primary);
+  }
+
+  .pick-hidden-toggle {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    margin-top: var(--space-2);
+    padding: 4px 8px;
+    border: none;
+    border-top: 1px solid var(--border-subtle);
+    background: transparent;
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .pick-hidden-toggle:hover {
+    color: var(--text-primary);
+  }
+
+  .pick-hidden-caret {
+    display: inline-block;
+    transition: transform var(--duration-fast) var(--ease-out);
+  }
+
+  .pick-hidden-caret.open {
+    transform: rotate(90deg);
   }
 
   .pick-toolbar {
