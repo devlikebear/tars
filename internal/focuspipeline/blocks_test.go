@@ -164,6 +164,24 @@ func TestParseBlocks(t *testing.T) {
 			},
 		},
 		{
+			name: "pr draft",
+			text: `<focus-pr>{"title":"feat: x","body":"why\nwhat"}</focus-pr>`,
+			check: func(t *testing.T, b Blocks) {
+				if b.PR == nil || b.PR.Title != "feat: x" || b.PR.Body != "why\nwhat" || len(b.Errors) != 0 {
+					t.Fatalf("blocks = %+v", b)
+				}
+			},
+		},
+		{
+			name: "pr draft without a title is malformed",
+			text: `<focus-pr>{"title":" ","body":"b"}</focus-pr>`,
+			check: func(t *testing.T, b Blocks) {
+				if b.PR != nil || len(b.Errors) != 1 {
+					t.Fatalf("blocks = %+v", b)
+				}
+			},
+		},
+		{
 			name: "unterminated block is ignored",
 			text: "<focus-report>{\"summary\":\"x\"}",
 			check: func(t *testing.T, b Blocks) {

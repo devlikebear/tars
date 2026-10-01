@@ -48,42 +48,63 @@ func focusStoreFor(sessions *session.Store) *focuspipeline.Store {
 	return focuspipeline.NewStore(filepath.Join(sessions.WorkspaceDir(), "sessions"))
 }
 
+// focusTurnMark records the stage a turn's guidance was built for. Only a
+// marked turn feeds the pipeline, and only while the pipeline is still at
+// that stage and iteration: a reply that ends after the developer approved
+// or passed the stage belongs to no stage that is open any more.
+type focusTurnMark struct {
+	Stage     focuspipeline.StageID
+	Iteration int
+}
+
+// errFocusStaleTurn aborts an update for a turn whose stage has moved on.
+var errFocusStaleTurn = errors.New("focus: turn belongs to an earlier stage")
+
 // appendFocusGuidance puts the current stage's instructions after the user's
 // message as one <focus-stage> block when the session has an active
-// pipeline. Unlike <console-context> it has no size cap: the block format
-// it quotes must arrive whole. Slash commands keep their arguments clean.
-func appendFocusGuidance(message string, sessions *session.Store, sessionID string, logger zerolog.Logger) string {
+// pipeline, and returns the mark the turn carries to focusAfterTurn (nil
+// when no guidance was added). Unlike <console-context> it has no size cap:
+// the block format it quotes must arrive whole. Slash commands keep their
+// arguments clean and do not feed the pipeline.
+func appendFocusGuidance(message string, sessions *session.Store, sessionID string, logger zerolog.Logger) (string, *focusTurnMark) {
 	store := focusStoreFor(sessions)
 	if store == nil || strings.HasPrefix(strings.TrimSpace(message), "/") {
-		return message
+		return message, nil
 	}
 	p, ok, err := store.Get(sessionID)
 	if err != nil {
 		logger.Warn().Err(err).Str("session_id", sessionID).Msg("focus: read pipeline failed")
-		return message
+		return message, nil
 	}
 	if !ok {
-		return message
+		return message, nil
 	}
 	guidance := strings.TrimSpace(strings.ReplaceAll(focuspipeline.Guidance(p), focusStageClose, ""))
 	if guidance == "" {
-		return message
+		return message, nil
 	}
-	return strings.TrimRight(message, "\n") + "\n\n" + focusStageOpen + "\n" + guidance + "\n" + focusStageClose
+	stage, _ := p.Stage(p.Current)
+	mark := &focusTurnMark{Stage: stage.ID, Iteration: stage.Iteration}
+	return strings.TrimRight(message, "\n") + "\n\n" + focusStageOpen + "\n" + guidance + "\n" + focusStageClose, mark
 }
 
 // focusAfterTurn feeds a completed turn's reply to the session's pipeline.
-// ok is false when the session has none (or it could not be updated).
-func focusAfterTurn(sessions *session.Store, sessionID, transcriptPath, reply string, now time.Time, logger zerolog.Logger) (focuspipeline.Pipeline, string, bool) {
+// ok is false when the turn carried no mark, the pipeline has moved past
+// the marked stage, or there is no pipeline (or it could not be updated).
+func focusAfterTurn(sessions *session.Store, sessionID, transcriptPath, reply string, mark *focusTurnMark, now time.Time, logger zerolog.Logger) (focuspipeline.Pipeline, string, bool) {
 	store := focusStoreFor(sessions)
-	if store == nil {
+	if store == nil || mark == nil {
 		return focuspipeline.Pipeline{}, "", false
 	}
+	turn := countUserTurns(transcriptPath)
 	var next string
 	p, ok, err := store.Update(sessionID, func(p focuspipeline.Pipeline) (focuspipeline.Pipeline, error) {
+		if stage, _ := p.Stage(p.Current); stage.ID != mark.Stage || stage.Iteration != mark.Iteration {
+			return p, errFocusStaleTurn
+		}
 		updated, act, err := focuspipeline.Apply(p, focuspipeline.Event{
 			Kind:   focuspipeline.EventTurnCompleted,
-			Turn:   countUserTurns(transcriptPath),
+			Turn:   turn,
 			Blocks: focuspipeline.ParseBlocks(reply),
 		}, now)
 		if act.Kind == focuspipeline.ActionSendTurn {
@@ -91,6 +112,10 @@ func focusAfterTurn(sessions *session.Store, sessionID, transcriptPath, reply st
 		}
 		return updated, err
 	})
+	if errors.Is(err, errFocusStaleTurn) {
+		logger.Debug().Str("session_id", sessionID).Str("stage", string(mark.Stage)).Msg("focus: reply ignored, its stage has moved on")
+		return focuspipeline.Pipeline{}, "", false
+	}
 	if err != nil {
 		logger.Warn().Err(err).Str("session_id", sessionID).Msg("focus: update pipeline after turn failed")
 		return focuspipeline.Pipeline{}, "", false
@@ -318,11 +343,6 @@ func (a *focusAPI) gate(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return p, err
 		}
-		if gate == focuspipeline.GatePlan && action == focuspipeline.GateApprove && next.Plan != nil {
-			if err := a.sessions.SaveTasks(id, focuspipeline.SessionTasks(*next.Plan, now)); err != nil {
-				return p, err
-			}
-		}
 		act = result
 		return next, nil
 	})
@@ -337,7 +357,39 @@ func (a *focusAPI) gate(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, focusActionResponse(p, act))
+	resp := focusActionResponse(p, act)
+	if gate == focuspipeline.GatePlan && action == focuspipeline.GateApprove && p.Plan != nil {
+		if warning, updated, failed := a.writePlanTasks(id, *p.Plan, now); failed {
+			resp = focusActionResponse(updated, act)
+			resp["warning"] = warning
+		}
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// focusNoticeTasksNotSaved titles the card raised when an approved plan's
+// session tasks could not be written.
+const focusNoticeTasksNotSaved = "plan approved, but session tasks were not saved"
+
+// writePlanTasks writes the approved plan's session tasks and contract. It
+// runs after the pipeline update committed and released the folder lock:
+// saving tasks fires the session store's hooks, which take the session index
+// lock, while a session delete holds that lock and calls into the pipeline
+// store, so the two locks are never held together. On failure the approval
+// stands and a notice card says the tasks are missing.
+func (a *focusAPI) writePlanTasks(id string, plan focuspipeline.Plan, now time.Time) (string, focuspipeline.Pipeline, bool) {
+	err := a.sessions.SaveTasks(id, focuspipeline.SessionTasks(plan, now))
+	if err == nil {
+		return "", focuspipeline.Pipeline{}, false
+	}
+	a.logger.Error().Err(err).Str("session_id", id).Msg("focus: save tasks of approved plan failed")
+	updated, _, uerr := a.store().Update(id, func(p focuspipeline.Pipeline) (focuspipeline.Pipeline, error) {
+		return focuspipeline.AddNotice(p, focusNoticeTasksNotSaved, map[string]any{"errors": []string{err.Error()}}, a.now()), nil
+	})
+	if uerr != nil {
+		a.logger.Error().Err(uerr).Str("session_id", id).Msg("focus: record tasks notice failed")
+	}
+	return focusNoticeTasksNotSaved + ": " + err.Error(), updated, true
 }
 
 type focusCardRequest struct {

@@ -121,3 +121,46 @@ func TestStoreUpdate(t *testing.T) {
 		t.Fatalf("cards = %d, want %d", len(got.Cards), n)
 	}
 }
+
+// Delete runs from the session store's delete hook while the session index
+// lock is held, so it must never wait for the folder lock: an Update that
+// holds the folder lock and needs the index lock would deadlock with it.
+func TestStoreDeleteDoesNotWaitForUpdate(t *testing.T) {
+	s := NewStore(t.TempDir())
+	if err := s.Save(New("s1", "g", t0)); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Save(New("s2", "g", t0)); err != nil {
+		t.Fatal(err)
+	}
+	inUpdate := make(chan struct{})
+	release := make(chan struct{})
+	updateDone := make(chan struct{})
+	go func() {
+		defer close(updateDone)
+		_, _, _ = s.Update("s1", func(p Pipeline) (Pipeline, error) {
+			close(inUpdate)
+			// Stand-in for the index lock the deleter holds: this update
+			// cannot finish until the delete has.
+			<-release
+			return p, nil
+		})
+	}()
+	<-inUpdate
+	deleted := make(chan error, 1)
+	go func() { deleted <- s.Delete("s2") }()
+	select {
+	case err := <-deleted:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(2 * time.Second):
+		close(release)
+		t.Fatal("deadlock: Delete blocked behind the folder lock held by Update")
+	}
+	close(release)
+	<-updateDone
+	if _, ok, _ := s.Get("s2"); ok {
+		t.Fatal("pipeline not deleted")
+	}
+}

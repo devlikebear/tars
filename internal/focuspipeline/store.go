@@ -100,7 +100,9 @@ func (s *Store) save(p Pipeline) error {
 
 // Update reads a session's pipeline, applies fn and saves the result, all
 // under the folder's lock, so a turn's hook and a gate action cannot lose
-// each other's change. fn's error is returned as is and nothing is saved;
+// each other's change. fn must not call into the session store (or anything
+// else that takes a lock): the session store's delete path calls into this
+// package with its index lock held. fn's error is returned as is and nothing is saved;
 // the pipeline fn returned is returned either way. ok is false when the
 // session has no pipeline (fn is not called).
 func (s *Store) Update(sessionID string, fn func(Pipeline) (Pipeline, error)) (Pipeline, bool, error) {
@@ -121,13 +123,17 @@ func (s *Store) Update(sessionID string, fn func(Pipeline) (Pipeline, error)) (P
 }
 
 // Delete removes a session's pipeline; a missing one is not an error.
+//
+// It deliberately does not take the folder lock: it runs from the session
+// store's delete hook with the session index lock held, and waiting for an
+// Update there could deadlock. Removing the file is atomic on its own; an
+// Update racing a delete can at worst rewrite the file of a session that is
+// gone, which List callers skip and the startup sweep removes.
 func (s *Store) Delete(sessionID string) error {
 	path, err := s.path(sessionID)
 	if err != nil {
 		return err
 	}
-	unlock := s.lock()
-	defer unlock()
 	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 		return err
 	}

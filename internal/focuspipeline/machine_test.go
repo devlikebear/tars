@@ -556,6 +556,14 @@ func TestApplyAdvance(t *testing.T) {
 		{name: "stale stage", start: func(t *testing.T) Pipeline { return building(t) }, stage: StagePlan, wantErr: ErrCannotAdvance},
 		{name: "empty stage", start: func(t *testing.T) Pipeline { return building(t) }, stage: "", wantErr: ErrCannotAdvance},
 		{name: "gate open", start: func(t *testing.T) Pipeline { return planned(t) }, stage: StagePlan, wantErr: ErrCannotAdvance},
+		{name: "plan stage only exits through G1", start: func(*testing.T) Pipeline { return New("s1", "g", t0) }, stage: StagePlan, wantErr: ErrCannotAdvance},
+		{name: "plan stage after request changes", start: func(t *testing.T) Pipeline {
+			p, _, err := Apply(planned(t), Event{Kind: EventGate, Gate: GatePlan, Action: GateRequestChanges}, t0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			return p
+		}, stage: StagePlan, wantErr: ErrCannotAdvance},
 		{name: "stopped", start: stopped, stage: StageBuild, wantErr: ErrCannotAdvance},
 		{name: "finished", start: finished, stage: StageBuild, wantErr: ErrCannotAdvance},
 	}
@@ -657,5 +665,52 @@ func TestApplyStopEvent(t *testing.T) {
 				t.Fatal("expected a gate card")
 			}
 		})
+	}
+}
+
+func TestApplyPRDraft(t *testing.T) {
+	p, _, err := Apply(building(t, StagePlan, StageBuild, StagePR, StageMerge), Event{Kind: EventAdvance, Stage: StageBuild}, t0)
+	if err != nil || p.Current != StagePR {
+		t.Fatalf("setup: %v %s", err, p.Current)
+	}
+	draft := &PRDraft{Title: "feat: focus", Body: "body"}
+	tests := []struct {
+		name       string
+		blocks     Blocks
+		wantKinds  []string
+		wantAction string
+	}{
+		{"draft alone is enough", Blocks{PR: draft}, []string{CardReport}, ActionNone},
+		{"draft with report", Blocks{PR: draft, Report: &Report{Summary: "s"}}, []string{CardReport, CardReport}, ActionNone},
+		{"neither is missing", Blocks{}, []string{CardNotice}, ActionSendTurn},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, act, err := Apply(p, Event{Kind: EventTurnCompleted, Turn: 7, Blocks: tt.blocks}, t0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			added := got.Cards[len(p.Cards):]
+			var kinds []string
+			for _, c := range added {
+				kinds = append(kinds, c.Kind)
+			}
+			if !reflect.DeepEqual(kinds, tt.wantKinds) || act.Kind != tt.wantAction {
+				t.Fatalf("cards = %v act = %+v", kinds, act)
+			}
+			if tt.blocks.PR != nil {
+				c := added[len(added)-1]
+				var d PRDraft
+				if c.Title != "PR draft" || c.Stage != StagePR || json.Unmarshal(c.Payload, &d) != nil || d.Title != "feat: focus" {
+					t.Fatalf("draft card = %+v", c)
+				}
+			}
+		})
+	}
+	// Outside the pr stage a draft does not stand in for the report.
+	b := building(t)
+	got, act, err := Apply(b, Event{Kind: EventTurnCompleted, Turn: 3, Blocks: Blocks{PR: draft}}, t0)
+	if err != nil || act.Kind != ActionSendTurn || got.Cards[len(got.Cards)-1].Kind != CardNotice {
+		t.Fatalf("build stage: %v %+v", err, act)
 	}
 }

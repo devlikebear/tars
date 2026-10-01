@@ -74,6 +74,9 @@ type chatRunState struct {
 	// so persistChatResult saves them in stream order. nil saves the old
 	// layout: every tool, then the reply.
 	turnText *chatTurnText
+	// focusMark is set when focus guidance was added to this turn; only
+	// such a turn feeds the session's pipeline (focus_pipeline.go).
+	focusMark *focusTurnMark
 }
 
 func decodeChatRequestPayload(w http.ResponseWriter, r *http.Request) (chatRequestPayload, bool) {
@@ -382,7 +385,8 @@ func prepareChatRunState(r *http.Request, req chatRequestPayload, deps chatHandl
 		return chatRunState{}, http.StatusBadRequest, err.Error(), err
 	}
 	req.Message = appendConsoleContext(req.Message, req.ConsoleContext)
-	req.Message = appendFocusGuidance(req.Message, reqStore, sessionID, deps.logger)
+	var focusMark *focusTurnMark
+	req.Message, focusMark = appendFocusGuidance(req.Message, reqStore, sessionID, deps.logger)
 	req.Message, err = appendReviewNotes(r.Context(), deps.tooling.Checkpoints, sessionID, req.Message, req.ReviewNotes)
 	if err != nil {
 		return chatRunState{}, http.StatusBadRequest, err.Error(), err
@@ -406,6 +410,7 @@ func prepareChatRunState(r *http.Request, req chatRequestPayload, deps chatHandl
 		return chatRunState{}, http.StatusInternalServerError, "prepare chat context failed", err
 	}
 	state.compaction = compactionInfo
+	state.focusMark = focusMark
 	state.mentionedPaths = mentionedPaths
 	state.mentionedSubagents = subagentMentions
 	state.capabilityVersionIDs, err = resolvePromotedCapabilityVersionIDs(r.Context(), deps.tooling.WorkLedger, workspaceID, state.invokedSkill)

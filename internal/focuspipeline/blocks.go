@@ -21,6 +21,7 @@ type Blocks struct {
 	Plan     *Plan
 	Report   *Report
 	Findings []Finding
+	PR       *PRDraft
 	// Errors are diagnostics for blocks that were present but malformed.
 	Errors []string
 }
@@ -38,6 +39,12 @@ type Decision struct {
 	ID       string   `json:"id"`
 	Question string   `json:"question"`
 	Options  []string `json:"options"`
+}
+
+// PRDraft is the pull request the pr stage drafts.
+type PRDraft struct {
+	Title string `json:"title"`
+	Body  string `json:"body"`
 }
 
 // Finding is one review finding.
@@ -84,6 +91,18 @@ func ParseBlocks(text string) Blocks {
 			}
 			report.Summary = strings.TrimSpace(report.Summary)
 			out.Report = &report
+		case TagPR:
+			var draft PRDraft
+			if err := decodeObject(b.body, &draft); err != nil {
+				out.Errors = append(out.Errors, fmt.Sprintf("%s: %v", b.tag, err))
+				continue
+			}
+			draft.Title = strings.TrimSpace(draft.Title)
+			if draft.Title == "" {
+				out.Errors = append(out.Errors, fmt.Sprintf("%s: title is required", b.tag))
+				continue
+			}
+			out.PR = &draft
 		case TagFindings:
 			var findings []Finding
 			body := strings.TrimSpace(b.body)

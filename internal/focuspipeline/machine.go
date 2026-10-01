@@ -36,6 +36,9 @@ const (
 // block raises.
 const NoticeFormatMissing = "report format missing"
 
+// PRDraftTitle is the title of the card a <focus-pr> draft becomes.
+const PRDraftTitle = "PR draft"
+
 // DecisionSuperseded marks a plan gate card replaced by a newer plan.
 const DecisionSuperseded = "superseded"
 
@@ -55,7 +58,8 @@ var (
 	// ErrInvalidCardState is a card update the card cannot take.
 	ErrInvalidCardState = errors.New("invalid card state")
 	// ErrCannotAdvance is a manual pass of a stage that is not the active
-	// current one, or while a gate is open (the gate decides then).
+	// current one, of the plan stage (only G1 approval leaves it), or while
+	// a gate is open (the gate decides then).
 	ErrCannotAdvance = errors.New("cannot advance this stage")
 	// ErrNotActive is a stop of a pipeline already finished or stopped.
 	ErrNotActive = errors.New("pipeline is not active")
@@ -100,7 +104,8 @@ func Apply(p Pipeline, ev Event, now time.Time) (Pipeline, Action, error) {
 		}
 		return next, act, nil
 	case EventAdvance:
-		if !p.Active() || p.OpenGate != GateNone || ev.Stage != p.Current {
+		// The plan stage's only exit is G1 approval (ADR §4).
+		if !p.Active() || p.OpenGate != GateNone || ev.Stage != p.Current || p.Current == StagePlan {
 			return p, noAction, ErrCannotAdvance
 		}
 		next := p.clone()
@@ -148,6 +153,10 @@ func applyTurn(p Pipeline, ev Event, now time.Time) (Pipeline, Action) {
 	for _, f := range b.Findings {
 		p.addCard(CardFinding, ev.Turn, f.Title, f, now)
 	}
+	if b.PR != nil {
+		// A report-kind card until P4 brings the G3 gate.
+		p.addCard(CardReport, ev.Turn, PRDraftTitle, *b.PR, now)
+	}
 	if missingRequiredBlock(p, b) {
 		reRequest := !lastCardIsFormatNotice(p)
 		p.addCard(CardNotice, ev.Turn, NoticeFormatMissing, map[string]any{"errors": nonNil(b.Errors)}, now)
@@ -165,10 +174,14 @@ func applyTurn(p Pipeline, ev Event, now time.Time) (Pipeline, Action) {
 // requires. While the plan gate is open a turn is the developer's question,
 // not a new plan, so nothing is required.
 func missingRequiredBlock(p Pipeline, b Blocks) bool {
-	if p.Current == StagePlan {
+	switch p.Current {
+	case StagePlan:
 		return b.Plan == nil && p.OpenGate != GatePlan
+	case StagePR:
+		return b.Report == nil && b.Findings == nil && b.PR == nil
+	default:
+		return b.Report == nil && b.Findings == nil
 	}
-	return b.Report == nil && b.Findings == nil
 }
 
 func lastCardIsFormatNotice(p Pipeline) bool {
@@ -364,6 +377,15 @@ func (p *Pipeline) addCard(kind string, turn int, title string, payload any, now
 		State:     CardUnseen,
 		CreatedAt: now,
 	})
+}
+
+// AddNotice adds a notice card to the current stage, for facts the server
+// observes outside a turn (a failed tasks write, for one).
+func AddNotice(p Pipeline, title string, payload any, now time.Time) Pipeline {
+	next := p.clone()
+	next.addCard(CardNotice, 0, title, payload, now.UTC())
+	next.UpdatedAt = now.UTC()
+	return next
 }
 
 func nonNil(s []string) []string {

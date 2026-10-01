@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -55,7 +56,7 @@ func focusSession(t *testing.T, store *session.Store, goal string) session.Sessi
 func plannedFocusSession(t *testing.T, store *session.Store) session.Session {
 	t.Helper()
 	sess := focusSession(t, store, "goal")
-	if _, _, ok := focusAfterTurn(store, sess.ID, store.TranscriptPath(sess.ID), focusPlanReply, time.Now(), zerolog.Nop()); !ok {
+	if _, _, ok := focusAfterTurn(store, sess.ID, store.TranscriptPath(sess.ID), focusPlanReply, currentFocusMark(t, store, sess.ID), time.Now(), zerolog.Nop()); !ok {
 		t.Fatal("focusAfterTurn found no pipeline")
 	}
 	return sess
@@ -230,7 +231,7 @@ func TestFocusCards(t *testing.T) {
 	h := newFocusPipelineHandler(f.store, f.c, zerolog.Nop())
 	sess := focusSession(t, f.store, "g")
 	reply := focusPlanReply + "\n<focus-report>{\"summary\":\"s\",\"decisions\":[{\"id\":\"d1\",\"question\":\"Which store?\",\"options\":[\"file\",\"sqlite\"]}]}</focus-report>"
-	p, _, ok := focusAfterTurn(f.store, sess.ID, f.store.TranscriptPath(sess.ID), reply, time.Now(), zerolog.Nop())
+	p, _, ok := focusAfterTurn(f.store, sess.ID, f.store.TranscriptPath(sess.ID), reply, currentFocusMark(t, f.store, sess.ID), time.Now(), zerolog.Nop())
 	if !ok || len(p.Cards) != 3 {
 		t.Fatalf("cards = %+v", p.Cards)
 	}
@@ -261,15 +262,18 @@ func TestAppendFocusGuidance(t *testing.T) {
 	sess := focusSession(t, store, "ship it")
 	log := zerolog.Nop()
 
-	if got := appendFocusGuidance("hello", store, plain.ID, log); got != "hello" {
-		t.Fatalf("no pipeline: %q", got)
+	if got, mark := appendFocusGuidance("hello", store, plain.ID, log); got != "hello" || mark != nil {
+		t.Fatalf("no pipeline: %q %+v", got, mark)
 	}
-	got := appendFocusGuidance("hello\n", store, sess.ID, log)
+	got, mark := appendFocusGuidance("hello\n", store, sess.ID, log)
 	if !strings.HasPrefix(got, "hello\n\n<focus-stage>\n") || !strings.HasSuffix(got, "\n</focus-stage>") || !strings.Contains(got, "<focus-plan>") {
 		t.Fatalf("with pipeline: %q", got)
 	}
-	if got := appendFocusGuidance("/review now", store, sess.ID, log); got != "/review now" {
-		t.Fatalf("slash command: %q", got)
+	if mark == nil || mark.Stage != focuspipeline.StagePlan || mark.Iteration != 1 {
+		t.Fatalf("mark = %+v", mark)
+	}
+	if got, mark := appendFocusGuidance("/review now", store, sess.ID, log); got != "/review now" || mark != nil {
+		t.Fatalf("slash command: %q %+v", got, mark)
 	}
 	// A stopped pipeline gives no guidance.
 	if _, _, err := focusStoreFor(store).Update(sess.ID, func(p focuspipeline.Pipeline) (focuspipeline.Pipeline, error) {
@@ -278,8 +282,8 @@ func TestAppendFocusGuidance(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if got := appendFocusGuidance("hello", store, sess.ID, log); got != "hello" {
-		t.Fatalf("stopped: %q", got)
+	if got, mark := appendFocusGuidance("hello", store, sess.ID, log); got != "hello" || mark != nil {
+		t.Fatalf("stopped: %q %+v", got, mark)
 	}
 }
 
@@ -462,5 +466,192 @@ func TestFocusStop(t *testing.T) {
 	}
 	if rec := focusRequest(t, h, http.MethodPost, "/v1/focus/pipelines/nope/stop", "", false); rec.Code != http.StatusNotFound {
 		t.Fatalf("missing: %d", rec.Code)
+	}
+}
+
+// currentFocusMark is the mark a turn starting now would carry.
+func currentFocusMark(t *testing.T, store *session.Store, sessionID string) *focusTurnMark {
+	t.Helper()
+	_, mark := appendFocusGuidance("x", store, sessionID, zerolog.Nop())
+	if mark == nil {
+		t.Fatal("no focus mark: pipeline missing or inactive")
+	}
+	return mark
+}
+
+func approvePlanVia(t *testing.T, h http.Handler, sessionID string) *httptest.ResponseRecorder {
+	t.Helper()
+	done := make(chan *httptest.ResponseRecorder, 1)
+	go func() {
+		done <- focusRequest(t, h, http.MethodPost, "/v1/focus/pipelines/"+sessionID+"/gates/plan", `{"action":"approve"}`, false)
+	}()
+	select {
+	case rec := <-done:
+		return rec
+	case <-time.After(5 * time.Second):
+		t.Fatal("deadlock: plan approval never returned")
+		return nil
+	}
+}
+
+// Plan approval writes session tasks, whose saved hook (the work ledger
+// sync) takes the session index lock; a session delete holds that lock and
+// runs the pipeline delete hook. The two must never wait on each other.
+func TestFocusPlanApprovalDoesNotDeadlockWithSessionDelete(t *testing.T) {
+	f := newWorktreeFixture(t)
+	attachSessionDeleteHooks(f.store, focusPipelineCleanup(f.store, zerolog.Nop()))
+	h := newFocusPipelineHandler(f.store, f.c, zerolog.Nop())
+
+	// The deleter runs inside the tasks hook: under the old lock order the
+	// approval held the pipeline folder lock here and the delete hook needed
+	// it, so this hung forever.
+	victim := focusSession(t, f.store, "doomed")
+	f.store.SetTasksSavedHook(func(string, session.SessionTasks) {
+		_, _ = f.store.Get(victim.ID) // index lock, like the work ledger sync
+		_ = f.store.Delete(victim.ID)
+	})
+	sess := plannedFocusSession(t, f.store)
+	if rec := approvePlanVia(t, h, sess.ID); rec.Code != http.StatusOK {
+		t.Fatalf("approve: %d %s", rec.Code, rec.Body.String())
+	}
+	if _, ok, _ := focusStoreFor(f.store).Get(victim.ID); ok {
+		t.Fatal("deleted session kept its pipeline")
+	}
+
+	// And under real concurrency: approvals and deletes interleaved.
+	f.store.SetTasksSavedHook(func(id string, _ session.SessionTasks) { _, _ = f.store.Get(id) })
+	const n = 8
+	approvals := make([]session.Session, n)
+	doomed := make([]session.Session, n)
+	for i := range approvals {
+		approvals[i] = plannedFocusSession(t, f.store)
+		doomed[i] = focusSession(t, f.store, "doomed")
+	}
+	finished := make(chan struct{})
+	go func() {
+		defer close(finished)
+		var wg sync.WaitGroup
+		for i := 0; i < n; i++ {
+			wg.Add(2)
+			go func(id string) {
+				defer wg.Done()
+				focusRequest(t, h, http.MethodPost, "/v1/focus/pipelines/"+id+"/gates/plan", `{"action":"approve"}`, false)
+			}(approvals[i].ID)
+			go func(id string) { defer wg.Done(); _ = f.store.Delete(id) }(doomed[i].ID)
+		}
+		wg.Wait()
+	}()
+	select {
+	case <-finished:
+	case <-time.After(10 * time.Second):
+		t.Fatal("deadlock between plan approvals and session deletes")
+	}
+	for _, s := range approvals {
+		if tasks, _ := f.store.GetTasks(s.ID); tasks.Contract == nil {
+			t.Fatalf("session %s has no contract", s.ID)
+		}
+	}
+}
+
+func TestFocusPlanApprovalTasksWriteFailure(t *testing.T) {
+	f := newWorktreeFixture(t)
+	h := newFocusPipelineHandler(f.store, f.c, zerolog.Nop())
+	sess := plannedFocusSession(t, f.store)
+	// A folder where the tasks file belongs makes the write fail.
+	if err := os.MkdirAll(filepath.Join(f.store.WorkspaceDir(), "sessions", sess.ID+".tasks.json", "x"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	rec := approvePlanVia(t, h, sess.ID)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("approve: %d %s", rec.Code, rec.Body.String())
+	}
+	var out struct {
+		Pipeline   focuspipeline.Pipeline `json:"pipeline"`
+		NextPrompt string                 `json:"next_prompt"`
+		Warning    string                 `json:"warning"`
+	}
+	decodeInto(t, rec, &out)
+	last := out.Pipeline.Cards[len(out.Pipeline.Cards)-1]
+	if out.Warning == "" || last.Kind != focuspipeline.CardNotice || last.Title != focusNoticeTasksNotSaved || out.Pipeline.Current != focuspipeline.StageBuild {
+		t.Fatalf("out = %+v", out)
+	}
+	saved, _, _ := focusStoreFor(f.store).Get(sess.ID)
+	if saved.Cards[len(saved.Cards)-1].Title != focusNoticeTasksNotSaved {
+		t.Fatal("notice not saved")
+	}
+	// Nothing is left locked.
+	if rec := focusRequest(t, h, http.MethodPost, "/v1/focus/pipelines/"+sess.ID+"/stop", "", false); rec.Code != http.StatusOK {
+		t.Fatalf("stop after failure: %d", rec.Code)
+	}
+}
+
+// A reply is judged against the stage its guidance was built for: when the
+// developer passes the stage mid-turn, the late reply changes nothing.
+func TestFocusAfterTurnIgnoresStaleStage(t *testing.T) {
+	store := session.NewStore(t.TempDir())
+	sess := plannedFocusSession(t, store)
+	fs := focusStoreFor(store)
+	approve := func(p focuspipeline.Pipeline) (focuspipeline.Pipeline, error) {
+		next, _, err := focuspipeline.Apply(p, focuspipeline.Event{Kind: focuspipeline.EventGate, Gate: "plan", Action: "approve"}, time.Now())
+		return next, err
+	}
+
+	// Guidance built in plan; the plan is approved before the reply ends.
+	mark := currentFocusMark(t, store, sess.ID)
+	if _, _, err := fs.Update(sess.ID, approve); err != nil {
+		t.Fatal(err)
+	}
+	before, _, _ := fs.Get(sess.ID)
+	if _, next, ok := focusAfterTurn(store, sess.ID, store.TranscriptPath(sess.ID), "no block here", mark, time.Now(), zerolog.Nop()); ok || next != "" {
+		t.Fatalf("stale turn applied: ok=%v next=%q", ok, next)
+	}
+	after, _, _ := fs.Get(sess.ID)
+	if len(after.Cards) != len(before.Cards) || !after.UpdatedAt.Equal(before.UpdatedAt) {
+		t.Fatal("stale turn changed the pipeline")
+	}
+
+	// Same stage, later iteration: stale too.
+	mark = currentFocusMark(t, store, sess.ID)
+	if _, _, err := fs.Update(sess.ID, func(p focuspipeline.Pipeline) (focuspipeline.Pipeline, error) {
+		for i := range p.Stages {
+			if p.Stages[i].ID == p.Current {
+				p.Stages[i].Iteration++
+			}
+		}
+		return p, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, ok := focusAfterTurn(store, sess.ID, store.TranscriptPath(sess.ID), "x", mark, time.Now(), zerolog.Nop()); ok {
+		t.Fatal("turn from an earlier iteration applied")
+	}
+
+	// A turn without a mark (no guidance was injected) never applies.
+	if _, _, ok := focusAfterTurn(store, sess.ID, store.TranscriptPath(sess.ID), "x", nil, time.Now(), zerolog.Nop()); ok {
+		t.Fatal("unmarked turn applied")
+	}
+
+	// The current mark still works.
+	if _, next, ok := focusAfterTurn(store, sess.ID, store.TranscriptPath(sess.ID), "x", currentFocusMark(t, store, sess.ID), time.Now(), zerolog.Nop()); !ok || next == "" {
+		t.Fatalf("current turn: ok=%v next=%q", ok, next)
+	}
+}
+
+func TestFocusSlashCommandTurnLeavesPipelineAlone(t *testing.T) {
+	root := t.TempDir()
+	store := session.NewStore(root)
+	sess := focusSession(t, store, "ship it")
+	client := &mockLLMClient{response: llm.ChatResponse{Message: llm.ChatMessage{Role: "assistant", Content: "done, no block"}}}
+	handler := newChatAPIHandlerWithRuntimeConfig(root, store, client, nil, zerolog.Nop(), 2, nil, "", defaultChatToolingOptions())
+
+	rec := focusRequest(t, handler, http.MethodPost, "/v1/chat", `{"session_id":"`+sess.ID+`","message":"/not-a-command please"}`, false)
+	if !strings.Contains(rec.Body.String(), `"type":"done"`) {
+		t.Fatalf("turn did not complete: %s", rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), `"type":"pipeline"`) {
+		t.Fatal("a slash-command turn fed the pipeline")
+	}
+	if p, _, _ := focusStoreFor(store).Get(sess.ID); len(p.Cards) != 0 {
+		t.Fatalf("cards = %+v", p.Cards)
 	}
 }

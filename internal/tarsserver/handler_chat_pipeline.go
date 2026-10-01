@@ -246,7 +246,7 @@ func handleChatRequest(w http.ResponseWriter, r *http.Request, deps chatHandlerD
 		deps.tooling.PlanClarifyMode,
 	)
 
-	if p, next, ok := focusAfterTurn(state.store, state.sessionID, state.transcriptPath, chatResp.Message.Content, time.Now(), deps.logger); ok {
+	if p, next, ok := focusAfterTurn(state.store, state.sessionID, state.transcriptPath, chatResp.Message.Content, state.focusMark, time.Now(), deps.logger); ok {
 		stream.pipeline(p, next)
 	}
 
