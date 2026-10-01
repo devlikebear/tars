@@ -137,3 +137,14 @@ func TestFocusCheckStates(t *testing.T) {
 		})
 	}
 }
+
+func TestFocusGHBinary(t *testing.T) {
+	t.Setenv("TARS_FOCUS_GH_PATH", "")
+	if got := focusGHBinary(); got != "gh" {
+		t.Fatalf("default = %q", got)
+	}
+	t.Setenv("TARS_FOCUS_GH_PATH", " e2e/fake-gh.sh ")
+	if got := focusGHBinary(); got != "e2e/fake-gh.sh" {
+		t.Fatalf("override = %q", got)
+	}
+}

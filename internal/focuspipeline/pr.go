@@ -400,6 +400,10 @@ func (p *Pipeline) applyFoundPR(probe PRProbe, now time.Time) {
 		}
 		p.advance()
 		p.addPRFindings(probe, now)
+		// The finding probe is a full set of facts: green now is green.
+		if p.Current == StagePRReview && p.prReviewGreen(probe, now) {
+			p.advance()
+		}
 	case StagePRReview:
 		p.addPRFindings(probe, now)
 		if p.prReviewGreen(probe, now) {

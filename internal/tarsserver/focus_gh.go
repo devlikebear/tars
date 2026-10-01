@@ -34,9 +34,23 @@ var focusGHTimeout = 20 * time.Second
 // branch checked out there.
 type focusPRProber func(ctx context.Context, dir string, number int) focuspipeline.PRProbe
 
-// probeFocusPR is the server's prober: gh from the person's PATH.
+// focusGHPathEnv names the gh binary the probe runs instead of gh from
+// PATH. The console E2E points it at a stub (frontend/console/e2e/fake-gh.sh)
+// so no spec depends on the host's gh or reaches the network.
+const focusGHPathEnv = "TARS_FOCUS_GH_PATH"
+
+// focusGHBinary is the gh the probe runs: TARS_FOCUS_GH_PATH, else gh.
+func focusGHBinary() string {
+	if bin := strings.TrimSpace(os.Getenv(focusGHPathEnv)); bin != "" {
+		return bin
+	}
+	return "gh"
+}
+
+// probeFocusPR is the server's prober: gh from the person's PATH, or the
+// binary TARS_FOCUS_GH_PATH names.
 func probeFocusPR(ctx context.Context, dir string, number int) focuspipeline.PRProbe {
-	return runFocusGH(ctx, dir, "gh", number)
+	return runFocusGH(ctx, dir, focusGHBinary(), number)
 }
 
 func unavailablePR(format string, args ...any) focuspipeline.PRProbe {

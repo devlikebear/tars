@@ -787,3 +787,17 @@ func TestProbeWithoutAHeadIsUnsettled(t *testing.T) {
 		t.Fatalf("with the head back: %s", back.Current)
 	}
 }
+
+func TestFirstFindAlreadyGreenGoesToMerge(t *testing.T) {
+	// The probe that finds the PR is a full set of facts: all checks of the
+	// head passed → straight to G4, no second poll needed.
+	p, _ := mustApply(t, opening(t), Event{Kind: EventPRProbe, Probe: probeFound(PRCheck{Name: "test", State: CheckPass})})
+	if p.Current != StageMerge || p.OpenGate != GateMerge {
+		t.Fatalf("current %s gate %q", p.Current, p.OpenGate)
+	}
+	// Without checks it waits (settle rule), like any pr_review probe.
+	q, _ := mustApply(t, opening(t), Event{Kind: EventPRProbe, Probe: probeFound()})
+	if q.Current != StagePRReview {
+		t.Fatalf("current = %s", q.Current)
+	}
+}
