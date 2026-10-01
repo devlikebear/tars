@@ -50,10 +50,17 @@ test('a focus task: plan gate, approve, report and decision cards, decide, then 
   await page.getByTestId('focus-new-folder').fill(repo)
   await expect(page.getByTestId('focus-new-folder-status')).toHaveText('Git repository')
   await page.getByTestId('focus-new-goal').fill(goal)
+  await page.getByTestId('focus-new-isolate').check()
   await page.getByTestId('focus-new-start').click()
 
   await expect(page).toHaveURL(/\/console\/focus\/[^/]+$/)
   const id = sessionId(page)
+
+  // Focus mode hides the app sidebar and the companion; an isolated task
+  // shows its own branch.
+  await expect(page.getByRole('navigation', { name: 'Main navigation' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Talk to TARS companion' })).toHaveCount(0)
+  await expect(page.getByTestId('focus-worktree-chip')).toContainText(`tars/session-${id}`)
 
   // The goal went out as the first turn; the plan comes back as the G1 gate.
   const gate = page.locator('[data-testid="focus-card"][data-kind="gate"]')
@@ -69,15 +76,22 @@ test('a focus task: plan gate, approve, report and decision cards, decide, then 
   // The approval's next prompt runs the build turn: a report and a decision.
   await expect(page.getByTestId('focus-step-build')).toHaveAttribute('data-status', 'active')
   await expect(page.getByTestId('focus-step-pr_review')).toHaveAttribute('data-status', 'skipped')
-  await expect(position(page)).toHaveText('1 / 2')
+  // Decision, report, and the change card of the file the turn wrote.
+  await expect(position(page)).toHaveText('1 / 3')
   await expect(card(page)).toHaveAttribute('data-kind', 'decision')
   await expect(card(page).getByText('Which greeting should greet() return?')).toBeVisible()
 
   // ← / → move through the deck.
   await page.keyboard.press('ArrowRight')
-  await expect(position(page)).toHaveText('2 / 2')
+  await expect(position(page)).toHaveText('2 / 3')
   await expect(card(page)).toHaveAttribute('data-kind', 'report')
   await expect(card(page).getByText('Implemented greet() and its test.')).toBeVisible()
+  // A card title reads as a sentence, not a caps label.
+  await expect(card(page).locator('h3')).toHaveCSS('text-transform', 'none')
+  await page.keyboard.press('ArrowRight')
+  await expect(card(page)).toHaveAttribute('data-kind', 'change')
+  await expect(page.getByTestId('focus-change')).toContainText('greet.ts')
+  await page.getByTestId('focus-deck-prev').click()
   await page.getByTestId('focus-deck-prev').click()
   await expect(card(page)).toHaveAttribute('data-kind', 'decision')
 
@@ -85,7 +99,17 @@ test('a focus task: plan gate, approve, report and decision cards, decide, then 
   await page.getByTestId('focus-view-raw').click()
   const raw = page.getByTestId('focus-raw')
   await expect(raw.getByText('Implemented the greeting.')).toBeVisible()
+  await expect(raw).toContainText('greet.ts')
   await expect(raw).not.toContainText('<focus-')
+  // The raw turn — a long path, a long code line — never widens the page:
+  // the deck's and the input's buttons stay on screen.
+  const viewport = page.viewportSize()?.width ?? 0
+  for (const control of [page.getByTestId('focus-view-raw'), page.getByRole('button', { name: 'Send' })]) {
+    const box = await control.boundingBox()
+    expect(box && box.x + box.width).toBeLessThanOrEqual(viewport)
+  }
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true)
+  expect(await page.locator('main').evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true)
 
   // Key 2 picks the second option; the answer runs the next turn.
   await page.keyboard.press('2')
@@ -93,13 +117,13 @@ test('a focus task: plan gate, approve, report and decision cards, decide, then 
 
   // The new report leads; marking it seen does not move the deck under the
   // developer, and each arrow press is one card.
-  await expect(position(page)).toHaveText('1 / 3')
+  await expect(position(page)).toHaveText('1 / 4')
   await page.keyboard.press('ArrowRight')
-  await expect(position(page)).toHaveText('2 / 3')
+  await expect(position(page)).toHaveText('2 / 4')
   await page.keyboard.press('ArrowRight')
-  await expect(position(page)).toHaveText('3 / 3')
+  await expect(position(page)).toHaveText('3 / 4')
   await page.keyboard.press('ArrowLeft')
-  await expect(position(page)).toHaveText('2 / 3')
+  await expect(position(page)).toHaveText('2 / 4')
 
   const p = await pipelineOf(page, id)
   expect(p.current).toBe('build')
@@ -123,6 +147,7 @@ test('a focus task: plan gate, approve, report and decision cards, decide, then 
   await expect(thread.locator('.chat-user').first()).toContainText('Add a greeting')
   await expect(thread).not.toContainText('<focus-')
   await expect(thread).not.toContainText('current stage:')
+  await expect(page.getByRole('navigation', { name: 'Main navigation' })).toBeVisible()
 
   // And back.
   await page.getByTestId('focus-view-button').click()

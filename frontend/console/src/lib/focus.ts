@@ -443,3 +443,9 @@ export function deckOrder(shown: string[], sorted: string[]): string[] {
   const now = new Set(sorted)
   return shown.every((id) => now.has(id)) ? shown : sorted
 }
+
+// focusChromeHidden: focus mode hides the app sidebar and the companion
+// (ADR §3); its own header leads back to the tasks, Advanced and the board.
+export function focusChromeHidden(route: { view: string }): boolean {
+  return route.view === 'focus'
+}

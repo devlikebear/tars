@@ -139,6 +139,7 @@
 
 <style>
   .focus-deck {
+    min-width: 0;
     display: flex;
     flex-direction: column;
     gap: var(--space-3);

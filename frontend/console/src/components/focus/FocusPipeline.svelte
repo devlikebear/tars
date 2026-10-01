@@ -58,6 +58,7 @@
   let viewing = $derived(store.stage)
   let openGate = $derived(pipeline?.open_gate ?? '')
   let canMarkDone = $derived(!!pipeline && phase === 'active' && !openGate && pipeline.current !== 'plan' && !store.running && !store.busy)
+  let worktree = $derived(store.session?.worktree ?? null)
   let cwd = $derived(store.session?.worktree?.source_dir || store.session?.current_dir || '')
   let baseDirs = $derived([store.session?.worktree?.path, store.session?.current_dir].filter((d): d is string => !!d))
   let progress = $derived(store.running ? store.progress(pipeline?.current, $t.focus.progress) : '')
@@ -111,7 +112,15 @@
     <button type="button" class="btn btn-ghost btn-sm" onclick={() => onNavigate('/console/focus')}>← {$t.focus.screen.back}</button>
     <div class="focus-title">
       <h2 data-content>{store.session?.title || pipeline?.goal || sessionId}</h2>
-      {#if cwd}<span class="mono cwd" title={cwd} data-content>{shortCwdLabel(cwd)}</span>{/if}
+      {#if cwd || worktree}
+        <span class="where">
+          {#if cwd}<span class="mono cwd" title={cwd} data-content>{shortCwdLabel(cwd)}</span>{/if}
+          {#if worktree}
+            <!-- An isolated pipeline works on its own branch, not the checkout above. -->
+            <span class="badge badge-accent mono worktree-chip" title={worktree.path} data-testid="focus-worktree-chip"><span aria-hidden="true">⑂</span> <span data-content>{worktree.branch}</span></span>
+          {/if}
+        </span>
+      {/if}
     </div>
     <div class="focus-header-actions">
       <button
@@ -121,6 +130,7 @@
         data-testid="focus-view-advanced"
         onclick={() => onNavigate(`/console/chat/${encodeURIComponent(sessionId)}`)}
       >{$t.focus.screen.viewAdvanced}</button>
+      <button type="button" class="btn btn-ghost btn-sm" onclick={() => onNavigate('/console')} data-testid="focus-open-board">{$t.focus.home.advanced}</button>
       {#if pipeline && phase === 'active'}
         <div class="menu">
           <button type="button" class="btn btn-ghost btn-sm" aria-haspopup="menu" aria-expanded={menuOpen} aria-label={$t.focus.screen.more} title={$t.focus.screen.more} onclick={() => { menuOpen = !menuOpen }}>⋯</button>
@@ -200,6 +210,9 @@
 
 <style>
   .focus-screen {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
     display: flex;
     flex-direction: column;
     gap: var(--space-4);
@@ -228,6 +241,22 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .where {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+
+  .worktree-chip {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--text-xs);
   }
 
   .cwd {

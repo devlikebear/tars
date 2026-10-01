@@ -416,11 +416,14 @@ export class FocusStore {
   private async afterTurn() {
     const sessionId = this.sessionId
     if (!sessionId || this.disposed) return
-    const [pipeline, history] = await Promise.all([
+    // The session too: a turn may have moved it into a worktree.
+    const [pipeline, history, session] = await Promise.all([
       this.api.getPipeline(sessionId).catch(() => null),
       this.api.getHistory(sessionId).then((h) => h ?? []).catch(() => null),
+      this.api.getSession(sessionId).catch(() => null),
     ])
     if (this.sessionId !== sessionId || this.disposed) return
+    if (session) this.session = session
     if (pipeline) this.adopt(pipeline)
     if (history !== null) {
       this.history = history

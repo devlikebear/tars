@@ -33,6 +33,7 @@
   let note = $state('')
 
   let decided = $derived(card.state === 'decided')
+  let title = $derived(card.kind === 'gate' && card.stage === 'plan' ? $t.focus.gate.planTitle : card.title)
   // The open gate's card is the newest undecided gate card.
   let gateOpen = $derived(card.kind === 'gate' && !decided && !!openGate)
   let isPRDraft = $derived(card.kind === 'report' && isDraft(card.payload))
@@ -90,7 +91,8 @@
 <article class="focus-card kind-{card.kind}" class:decided data-testid="focus-card" data-kind={card.kind} data-card-id={card.id}>
   <header class="card-head">
     <span class="badge kind-badge">{$t.focus.kinds[card.kind] ?? card.kind}</span>
-    <h3 class="card-title" data-content>{card.kind === 'gate' && card.stage === 'plan' ? $t.focus.gate.planTitle : card.title}</h3>
+    <!-- Not the global .card-title (label caps): a card's title is a sentence. -->
+    <h3 class="focus-card-title" title={title} data-content>{title}</h3>
     <span class="card-meta">
       {#if card.turn > 0}<span class="mono">{$t.focus.card.turn(card.turn)}</span>{/if}
       <span class="badge {card.state === 'unseen' ? 'badge-accent' : 'badge-default'}">{$t.focus.states[card.state]}</span>
@@ -215,6 +217,8 @@
 
 <style>
   .focus-card {
+    min-width: 0;
+    overflow-wrap: anywhere;
     display: flex;
     flex-direction: column;
     gap: var(--space-3);
@@ -242,9 +246,13 @@
     flex-wrap: wrap;
   }
 
-  .card-title {
-    flex: 1 1 auto;
+  .focus-card-title {
+    flex: 1 1 0;
+    min-width: 0;
     margin: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     font-size: var(--text-md);
     font-weight: 600;
     color: var(--text-primary);

@@ -306,3 +306,12 @@ test('deckOrder keeps the order on screen until cards arrive or leave', async ()
   // A card leaves: the new sorted order.
   assert.deepEqual(deckOrder(['a', 'b', 'c'], ['c', 'a']), ['c', 'a'])
 })
+
+test('focusChrome hides the app sidebar and the companion on focus routes only', async () => {
+  const { focusChromeHidden } = await import('../src/lib/focus.ts')
+  const { resolveRoute } = await import('../src/lib/router.ts')
+  assert.equal(focusChromeHidden(resolveRoute('/console/focus')), true)
+  assert.equal(focusChromeHidden(resolveRoute('/console/focus/abc')), true)
+  assert.equal(focusChromeHidden(resolveRoute('/console')), false)
+  assert.equal(focusChromeHidden(resolveRoute('/console/chat/abc')), false)
+})

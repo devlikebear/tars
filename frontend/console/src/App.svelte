@@ -9,7 +9,7 @@
   import { resolveRoute, type Route } from './lib/router'
   import { loadRouteComponent } from './lib/routeComponents'
   import { APIRequestError, getAuthWhoami, getConfigSchema, getEventsHistory, getHealthz, logoutAuth, patchConfigValues, streamEvents } from './lib/api'
-  import { defaultModeRedirect, onboardingModeUpdate } from './lib/focus'
+  import { defaultModeRedirect, focusChromeHidden, onboardingModeUpdate } from './lib/focus'
   import type { AuthWhoamiResponse } from './lib/types'
   import {
     companionAskHandoffReaction,
@@ -56,7 +56,8 @@
   let companionReactionTimer: ReturnType<typeof setTimeout> | null = null
   let authRole = $derived(authInfo?.auth_role ?? '')
   let zenActive = $derived(zenMode.active && route.view === 'chat' && !needsSetup && !loginRequired)
-  let showCompanion = $derived(shouldShowCompanion({ enabled: companionEnabled, needsSetup, loginRequired, zenActive }))
+  let focusChrome = $derived(focusChromeHidden(route))
+  let showCompanion = $derived(!focusChrome && shouldShowCompanion({ enabled: companionEnabled, needsSetup, loginRequired, zenActive }))
 
   function navigate(path: string) {
     landing = false
@@ -419,6 +420,7 @@
     {needsSetup}
     {authRole}
     {zenActive}
+    hideNav={focusChrome}
     onNavigate={navigate}
     onUnreadChange={(count) => { unreadCount = count }}
     onLogout={handleLogout}

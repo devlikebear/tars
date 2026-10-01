@@ -39,7 +39,11 @@
 </section>
 
 <style>
+  /* The transcript stays inside the card column: long lines wrap, and tool
+     cards and code blocks scroll on their own instead of widening the page. */
   .raw-slice {
+    min-width: 0;
+    max-width: 100%;
     display: flex;
     flex-direction: column;
     gap: var(--space-2);
@@ -52,11 +56,31 @@
   }
 
   .raw-messages {
+    min-width: 0;
+    overflow-x: hidden;
+    overflow-wrap: anywhere;
     display: flex;
     flex-direction: column;
     gap: var(--space-2);
     max-height: 480px;
     overflow: auto;
+  }
+
+  .raw-messages > :global(*) {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .raw-messages :global(pre) {
+    max-width: 100%;
+    overflow-x: auto;
+  }
+
+  /* A table sizes to its cells; as a block it scrolls inside the slice. */
+  .raw-messages :global(table) {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
   }
 
   .muted {
