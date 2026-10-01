@@ -12,6 +12,7 @@ import {
   progressLine,
   promoteDraft,
   qaThreads,
+  focusOwnsShortcut,
   stepperItems,
   stripFocusBlocks,
   stripFocusStage,
@@ -377,4 +378,11 @@ test('promoteDraft turns an answer into an editable instruction draft', () => {
   const long = promoteDraft('t', { turn: 1, question: 'q', answer: 'x'.repeat(2000) })
   assert.ok(long.length < 1300 && long.endsWith('…'))
   assert.equal(promoteDraft('t', { turn: 1, question: 'q', answer: '  ' }, focusKo.qa), '"t" 관련: ')
+})
+
+test('the pipeline screen owns `?` (ask about the card); help keeps it elsewhere', () => {
+  assert.equal(focusOwnsShortcut('help', { view: 'focus', sessionId: 's1' }), true)
+  assert.equal(focusOwnsShortcut('help', { view: 'focus' }), false)
+  assert.equal(focusOwnsShortcut('help', { view: 'chat' }), false)
+  assert.equal(focusOwnsShortcut('palette', { view: 'focus', sessionId: 's1' }), false)
 })

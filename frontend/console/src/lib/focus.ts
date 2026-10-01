@@ -496,6 +496,12 @@ export function deckOrder(shown: string[], sorted: string[]): string[] {
 
 // focusChromeHidden: focus mode hides the app sidebar and the companion
 // (ADR §3); its own header leads back to the tasks, Advanced and the board.
+// focusOwnsShortcut: on the pipeline screen `?` asks about the card on
+// screen (ADR §7), so the global shortcut help yields it there.
+export function focusOwnsShortcut(action: string, route: { view: string; sessionId?: string }): boolean {
+  return action === 'help' && route.view === 'focus' && !!route.sessionId
+}
+
 export function focusChromeHidden(route: { view: string }): boolean {
   return route.view === 'focus'
 }
