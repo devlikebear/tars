@@ -114,7 +114,9 @@
       <h2 data-content>{store.session?.title || pipeline?.goal || sessionId}</h2>
       {#if cwd || worktree}
         <span class="where">
-          {#if cwd}<span class="mono cwd" title={cwd} data-content>{shortCwdLabel(cwd)}</span>{/if}
+          <!-- One line; a long path loses its start (rtl ellipsis), the full
+               path is in the title. <bdi> keeps the path itself left-to-right. -->
+          {#if cwd}<span class="mono cwd" title={cwd} data-testid="focus-cwd" data-content><bdi>{shortCwdLabel(cwd)}</bdi></span>{/if}
           {#if worktree}
             <!-- An isolated pipeline works on its own branch, not the checkout above. -->
             <span class="badge badge-accent mono worktree-chip" title={worktree.path} data-testid="focus-worktree-chip"><span aria-hidden="true">⑂</span> <span data-content>{worktree.branch}</span></span>
@@ -221,14 +223,21 @@
     padding: var(--space-6) var(--space-6) var(--space-10);
   }
 
+  /* At narrow widths the button group wraps below the title; the title and
+     path shrink, the buttons and the branch chip never do. */
   .focus-header {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: var(--space-3);
+    gap: var(--space-2) var(--space-3);
+  }
+
+  .focus-header > .btn {
+    flex: 0 0 auto;
   }
 
   .focus-title {
-    flex: 1;
+    flex: 1 1 240px;
     min-width: 0;
     display: flex;
     flex-direction: column;
@@ -251,23 +260,30 @@
   }
 
   .worktree-chip {
-    flex: 0 1 auto;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    flex: 0 0 auto;
     white-space: nowrap;
     font-size: var(--text-xs);
   }
 
   .cwd {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    direction: rtl;
+    text-align: left;
     font-size: var(--text-xs);
     color: var(--text-tertiary);
   }
 
   .focus-header-actions {
     display: flex;
+    flex: 0 0 auto;
+    flex-wrap: wrap;
     align-items: center;
     gap: var(--space-2);
+    margin-left: auto;
   }
 
   .menu {

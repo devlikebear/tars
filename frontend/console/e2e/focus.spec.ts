@@ -62,6 +62,23 @@ test('a focus task: plan gate, approve, report and decision cards, decide, then 
   await expect(page.getByRole('button', { name: 'Talk to TARS companion' })).toHaveCount(0)
   await expect(page.getByTestId('focus-worktree-chip')).toContainText(`tars/session-${id}`)
 
+  // At a narrow width the path shrinks to one line and the branch chip and
+  // the header buttons stay whole and on screen.
+  await page.setViewportSize({ width: 700, height: 900 })
+  const chip = page.getByTestId('focus-worktree-chip')
+  const chipBox = await chip.boundingBox()
+  expect(chipBox && chipBox.x + chipBox.width).toBeLessThanOrEqual(700)
+  expect(await chip.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true)
+  const cwdLine = page.getByTestId('focus-cwd')
+  await expect(cwdLine).toHaveAttribute('title', repo)
+  const cwdBox = await cwdLine.boundingBox()
+  expect(cwdBox?.height ?? 0).toBeLessThan(24)
+  for (const control of [page.getByTestId('focus-view-advanced'), page.getByTestId('focus-open-board')]) {
+    const box = await control.boundingBox()
+    expect(box && box.x + box.width).toBeLessThanOrEqual(700)
+  }
+  await page.setViewportSize({ width: 1400, height: 900 })
+
   // The goal went out as the first turn; the plan comes back as the G1 gate.
   const gate = page.locator('[data-testid="focus-card"][data-kind="gate"]')
   await expect(gate).toBeVisible()
