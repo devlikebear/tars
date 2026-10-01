@@ -58,7 +58,7 @@ func handleSessionTaskVerification(w http.ResponseWriter, r *http.Request, store
 	if !decodeJSONBody(w, r, &req) {
 		return
 	}
-	run, err := verifySessionTask(r.Context(), store, sessionID, req.TaskID, nil, time.Duration(req.TimeoutMS)*time.Millisecond)
+	run, err := verifySessionTask(r.Context(), store, sessionID, req.TaskID, nil, time.Duration(req.TimeoutMS)*time.Millisecond, nil)
 	if err != nil {
 		writeJSON(w, verificationErrorStatus(err), map[string]string{"error": err.Error()})
 		return
@@ -99,7 +99,7 @@ func badVerification(msg string) error {
 // when empty), records each command's evidence on that task, and reports
 // whether all of them passed.
 func runTaskVerification(ctx context.Context, store *session.Store, sessionID, taskID string, timeout time.Duration) ([]taskVerificationResult, bool, error) {
-	run, err := verifySessionTask(ctx, store, sessionID, taskID, nil, timeout)
+	run, err := verifySessionTask(ctx, store, sessionID, taskID, nil, timeout, nil)
 	if err != nil {
 		return nil, false, err
 	}
@@ -110,11 +110,13 @@ func runTaskVerification(ctx context.Context, store *session.Store, sessionID, t
 // subset of commands: the focus build loop runs the plan's verify commands
 // and keeps the end-to-end ones for review. The contract must still be
 // approved; the commands go through the same verifier and evidence path.
-func runTaskVerificationCommands(ctx context.Context, store *session.Store, sessionID, taskID string, commands []string, timeout time.Duration) ([]taskVerificationResult, bool, error) {
+// excerpt, when set, makes the output excerpts (proofverifier.Options.Excerpt);
+// nil keeps the verifier's default.
+func runTaskVerificationCommands(ctx context.Context, store *session.Store, sessionID, taskID string, commands []string, timeout time.Duration, excerpt func(string, int) string) ([]taskVerificationResult, bool, error) {
 	if commands == nil {
 		commands = []string{}
 	}
-	run, err := verifySessionTask(ctx, store, sessionID, taskID, commands, timeout)
+	run, err := verifySessionTask(ctx, store, sessionID, taskID, commands, timeout, excerpt)
 	if err != nil {
 		return nil, false, err
 	}
@@ -130,7 +132,7 @@ type taskVerificationRun struct {
 
 // verifySessionTask runs commands (the contract's when nil) and saves their
 // evidence.
-func verifySessionTask(ctx context.Context, store *session.Store, sessionID, taskID string, commands []string, timeout time.Duration) (taskVerificationRun, error) {
+func verifySessionTask(ctx context.Context, store *session.Store, sessionID, taskID string, commands []string, timeout time.Duration, excerpt func(string, int) string) (taskVerificationRun, error) {
 	if _, err := store.Get(sessionID); err != nil {
 		if strings.Contains(err.Error(), "session not found") {
 			return taskVerificationRun{}, &verificationError{status: http.StatusNotFound, msg: "session not found"}
@@ -162,7 +164,7 @@ func verifySessionTask(ctx context.Context, store *session.Store, sessionID, tas
 		workDir = strings.TrimSpace(currentDir)
 	}
 	verifier, err := proofverifier.New(proofverifier.Options{
-		ID: "session-proof-verifier", RootDir: workDir, Timeout: timeout,
+		ID: "session-proof-verifier", RootDir: workDir, Timeout: timeout, Excerpt: excerpt,
 	})
 	if err != nil {
 		return taskVerificationRun{}, err

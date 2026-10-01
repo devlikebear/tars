@@ -54,14 +54,14 @@ func TestRunTaskVerification(t *testing.T) {
 	})
 	t.Run("explicit commands run only those", func(t *testing.T) {
 		store, id := verificationSession(t, pass, fail)
-		results, ok, err := runTaskVerificationCommands(context.Background(), store, id, "", []string{pass}, 0)
+		results, ok, err := runTaskVerificationCommands(context.Background(), store, id, "", []string{pass}, 0, nil)
 		if err != nil || !ok || len(results) != 1 || results[0].Command != pass {
 			t.Fatalf("results = %+v ok = %v err = %v", results, ok, err)
 		}
 	})
 	t.Run("errors carry their status", func(t *testing.T) {
 		store, id := verificationSession(t, pass)
-		if _, _, err := runTaskVerificationCommands(context.Background(), store, id, "", []string{" "}, 0); verificationErrorStatus(err) != http.StatusBadRequest {
+		if _, _, err := runTaskVerificationCommands(context.Background(), store, id, "", []string{" "}, 0, nil); verificationErrorStatus(err) != http.StatusBadRequest {
 			t.Fatalf("blank commands: err = %v", err)
 		}
 		if _, _, err := runTaskVerification(context.Background(), store, "missing", "", 0); verificationErrorStatus(err) != http.StatusNotFound {
@@ -72,8 +72,25 @@ func TestRunTaskVerification(t *testing.T) {
 		}
 		unapproved, uid := verificationSession(t, pass)
 		_ = unapproved.SaveTasks(uid, session.SessionTasks{Contract: &session.TaskContract{Status: "draft", VerificationCommands: []string{pass}}, Tasks: []session.Task{{ID: "1"}}})
-		if _, _, err := runTaskVerificationCommands(context.Background(), unapproved, uid, "", []string{pass}, 0); verificationErrorStatus(err) != http.StatusBadRequest {
+		if _, _, err := runTaskVerificationCommands(context.Background(), unapproved, uid, "", []string{pass}, 0, nil); verificationErrorStatus(err) != http.StatusBadRequest {
 			t.Fatalf("unapproved contract: err = %v", err)
 		}
 	})
+}
+
+func TestFocusVerificationExcerptKeepsTheFailure(t *testing.T) {
+	const noisy = `for i in $(seq 1 400); do echo "ok  pkg/a$i 0.1s"; done; echo "--- FAIL: TestGreet"; for i in $(seq 1 400); do echo "ok  pkg/z$i 0.1s"; done; exit 1`
+	store, id := verificationSession(t, noisy)
+	results, ok, err := runTaskVerificationCommands(context.Background(), store, id, "", []string{noisy}, 0, focusFailureExcerpt)
+	if err != nil || ok || len(results) != 1 {
+		t.Fatalf("results = %+v ok = %v err = %v", results, ok, err)
+	}
+	if !strings.Contains(results[0].Output, "--- FAIL: TestGreet") {
+		t.Fatalf("the failure fell out of the excerpt:\n%.300s", results[0].Output)
+	}
+	// The shared default (the HTTP handler) keeps the head as before.
+	results, _, _ = runTaskVerification(context.Background(), store, id, "", 0)
+	if strings.Contains(results[0].Output, "--- FAIL: TestGreet") {
+		t.Fatal("the default excerpt changed")
+	}
 }

@@ -48,6 +48,11 @@ type Options struct {
 	AllowPrivateNetwork bool
 	LLMJudge            LLMJudge
 	Now                 func() time.Time
+	// Excerpt makes the stdout/stderr excerpts of a command's proof from
+	// its full output and a byte limit. nil keeps the head of the output
+	// (the shared default); the focus build loop passes one that keeps the
+	// failure.
+	Excerpt func(text string, limit int) string
 }
 
 type CommandResult struct {
@@ -96,6 +101,7 @@ type Engine struct {
 	judge               LLMJudge
 	now                 func() time.Time
 	environmentJSON     json.RawMessage
+	excerpt             func(string, int) string
 }
 
 func New(opts Options) (*Engine, error) {
@@ -160,7 +166,7 @@ func New(opts Options) (*Engine, error) {
 		name: name, id: id, rootDir: absRoot, timeout: timeout, runner: runner,
 		lookupIP: lookupIP, allowHTTP: opts.AllowHTTP,
 		allowPrivateNetwork: opts.AllowPrivateNetwork, judge: opts.LLMJudge,
-		now: now, environmentJSON: environmentJSON,
+		now: now, environmentJSON: environmentJSON, excerpt: opts.Excerpt,
 	}
 	engine.client = cloneHTTPClient(opts.HTTPClient, timeout, engine.validateURLTarget)
 	return engine, nil
@@ -234,8 +240,8 @@ func (engine *Engine) verifyCommand(ctx context.Context, requirement workstore.P
 	inputJSON, _ := json.Marshal(map[string]any{
 		"command": command, "exit_code": result.ExitCode, "timed_out": result.TimedOut,
 		"duration_ms": result.Duration.Milliseconds(), "stdout_digest": digestText(result.Stdout),
-		"stderr_digest": digestText(result.Stderr), "stdout_excerpt": truncateText(result.Stdout, 4096),
-		"stderr_excerpt": truncateText(result.Stderr, 4096), "subject_before": before.SubjectDigest,
+		"stderr_digest": digestText(result.Stderr), "stdout_excerpt": engine.excerptOf(result.Stdout, 4096),
+		"stderr_excerpt": engine.excerptOf(result.Stderr, 4096), "subject_before": before.SubjectDigest,
 		"subject_after": after.SubjectDigest,
 	})
 	return workscheduler.VerificationResult{
@@ -658,6 +664,14 @@ func digestJSON(value any) string {
 }
 
 func timePointer(value time.Time) *time.Time { return &value }
+
+// excerptOf is the proof's excerpt of a command's output.
+func (engine *Engine) excerptOf(value string, limit int) string {
+	if engine.excerpt != nil {
+		return engine.excerpt(strings.TrimSpace(value), limit)
+	}
+	return truncateText(value, limit)
+}
 
 func truncateText(value string, limit int) string {
 	value = strings.TrimSpace(value)

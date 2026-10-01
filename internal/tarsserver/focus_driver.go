@@ -133,7 +133,7 @@ func (d *focusDriver) bind(deps chatHandlerDeps) {
 		return err
 	}
 	d.verify = func(ctx context.Context, sessionID, command string) (focuspipeline.VerificationResult, error) {
-		results, _, err := runTaskVerificationCommands(ctx, deps.store, sessionID, "", []string{command}, focusVerifyTimeout)
+		results, _, err := runTaskVerificationCommands(ctx, deps.store, sessionID, "", []string{command}, focusVerifyTimeout, focusFailureExcerpt)
 		if err != nil || len(results) == 0 {
 			return focuspipeline.VerificationResult{Command: command}, err
 		}
