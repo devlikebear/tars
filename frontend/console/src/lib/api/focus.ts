@@ -32,7 +32,9 @@ export function getFocusPipeline(sessionId: string): Promise<FocusPipeline> {
   return requestJSON<FocusPipeline>(pipelinePath(sessionId))
 }
 
-export type FocusCreateRequest = { goal: string; cwd: string; isolate?: boolean; title?: string }
+// kind 'release' marks a pipeline started from the release train; kickoff
+// is a first turn that says more than the goal (the merged list).
+export type FocusCreateRequest = { goal: string; cwd: string; isolate?: boolean; title?: string; kind?: 'release'; kickoff?: string }
 
 export function createFocusPipeline(request: FocusCreateRequest): Promise<{ session_id: string; pipeline: FocusPipeline }> {
   return requestJSON(base, {

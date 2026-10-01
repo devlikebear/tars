@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { RELEASE_STAGES, releaseGoal, releaseItemLabel, releaseRequest } from '../src/lib/focusRelease.ts'
+import { RELEASE_STAGES, releaseGoal, releaseItemLabel, releaseKickoff, releaseRequest } from '../src/lib/focusRelease.ts'
 import type { ReleaseTrainGroup } from '../src/lib/types.ts'
 
 function group(extra: Partial<ReleaseTrainGroup> = {}): ReleaseTrainGroup {
@@ -10,12 +10,13 @@ function group(extra: Partial<ReleaseTrainGroup> = {}): ReleaseTrainGroup {
     last_tag: 'v0.1.0',
     since: '2026-01-01T00:00:00Z',
     items: [
-      { session_id: 's1', title: 'Pipeline graph', goal: 'Draw the pipeline\nwith xyflow', updated_at: '2026-02-01T00:00:00Z' },
+      { session_id: 's1', title: 'Pipeline graph', goal: 'Draw the pipeline\nwith xyflow', finished_at: '2026-02-01T00:00:00Z', updated_at: '2026-02-01T00:00:00Z' },
       {
         session_id: 's2',
         title: 'Release train',
         goal: 'List merged pipelines',
         pr: { number: 42, url: 'https://example.com/pr/42', state: 'merged' },
+        finished_at: '2026-02-02T00:00:00Z',
         updated_at: '2026-02-02T00:00:00Z',
       },
     ],
@@ -29,8 +30,8 @@ test('releaseItemLabel uses the PR number when there is one, else the session ti
   assert.equal(releaseItemLabel(g.items[1]), '#42 Release train')
 })
 
-test('releaseGoal asks for exactly the fixed release plan', () => {
-  const goal = releaseGoal(group())
+test('releaseKickoff asks for exactly the fixed release plan', () => {
+  const goal = releaseKickoff(group())
   assert.match(goal.split('\n')[0], /^Release: /)
   assert.match(goal, /VERSION\.txt/)
   assert.match(goal, /CHANGELOG\.md/)
@@ -41,19 +42,32 @@ test('releaseGoal asks for exactly the fixed release plan', () => {
   assert.match(goal, /since v0\.1\.0/)
 })
 
-test('releaseGoal lists every merged item with its PR link and the first line of its goal', () => {
-  const goal = releaseGoal(group())
+test('releaseKickoff lists every merged item with its PR link and the first line of its goal', () => {
+  const goal = releaseKickoff(group())
   assert.ok(goal.includes('- Pipeline graph — Draw the pipeline\n'))
   assert.ok(goal.includes('- #42 Release train (https://example.com/pr/42) — List merged pipelines'))
   assert.ok(!goal.includes('with xyflow'), 'only the first line of a goal')
 })
 
-test('releaseGoal without a tag lists everything since the first release', () => {
-  const goal = releaseGoal(group({ last_tag: undefined, since: undefined }))
+test('releaseKickoff without a tag lists everything since the first release', () => {
+  const goal = releaseKickoff(group({ last_tag: undefined, since: undefined }))
   assert.match(goal, /since the start of the repository/)
 })
 
-test('releaseRequest starts an isolated pipeline in the repository root', () => {
+test('releaseGoal is one line, so stage guidance never repeats the merged list', () => {
+  const goal = releaseGoal(group())
+  assert.equal(goal, 'Release: ship the 2 change(s) merged since v0.1.0.')
+  assert.equal(releaseKickoff(group()).split('\n')[0], goal, 'the kickoff opens with the goal')
+})
+
+test('releaseRequest starts an isolated release pipeline in the repository root', () => {
   const g = group()
-  assert.deepEqual(releaseRequest(g, 'Release (2)'), { goal: releaseGoal(g), cwd: 'repo/tars', isolate: true, title: 'Release (2)' })
+  assert.deepEqual(releaseRequest(g, 'Release (2)'), {
+    goal: releaseGoal(g),
+    kickoff: releaseKickoff(g),
+    kind: 'release',
+    cwd: 'repo/tars',
+    isolate: true,
+    title: 'Release (2)',
+  })
 })

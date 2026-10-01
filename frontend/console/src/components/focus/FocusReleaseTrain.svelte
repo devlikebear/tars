@@ -16,6 +16,9 @@
 
   let { onNavigate }: Props = $props()
 
+  // The command the stale-tags hint names: content, not translated text.
+  const fetchTagsCommand = 'git fetch --tags'
+
   let groups = $state<ReleaseTrainGroup[]>([])
   let loaded = $state(false)
   let error = $state('')
@@ -91,6 +94,10 @@
         {/if}
       </header>
 
+      {#if group.tags_stale}
+        <p class="banner warning" data-testid="focus-release-stale">{$t.focus.release.staleTags(fetchTagsCommand)}</p>
+      {/if}
+
       {#if confirming === group.repo}
         <div class="gate" role="group" aria-label={$t.focus.release.confirmTitle} data-testid="focus-release-gate">
           <strong>{$t.focus.release.confirmTitle}</strong>
@@ -116,7 +123,7 @@
               {/if}
               {#if item.goal && item.goal !== item.title}<span class="item-goal" data-content>{item.goal}</span>{/if}
             </span>
-            <time class="mono when" datetime={item.updated_at}>{item.updated_at.slice(0, 10)}</time>
+            <time class="mono when" datetime={item.finished_at}>{item.finished_at.slice(0, 10)}</time>
           </li>
         {/each}
       </ul>
@@ -267,6 +274,15 @@
     color: var(--text-tertiary);
     border: 1px dashed var(--border-default);
     border-radius: var(--radius-lg);
+  }
+
+  .banner.warning {
+    margin: 0;
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-md);
+    background: var(--warning-muted);
+    color: var(--warning);
+    font-size: var(--text-sm);
   }
 
   .banner.error {

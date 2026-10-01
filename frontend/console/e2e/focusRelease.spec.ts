@@ -33,9 +33,10 @@ test('the release train lists merged work and Start release opens a release pipe
             repo,
             last_tag: 'v0.1.0',
             since: '2026-01-01T00:00:00Z',
+            tags_stale: true,
             items: [
-              { session_id: 'merged-1', title: 'Pipeline graph', goal: 'Draw the pipeline', pr: { number: 42, url: 'https://example.com/pr/42', state: 'merged' }, updated_at: '2026-02-01T00:00:00Z' },
-              { session_id: 'merged-2', title: 'Release train', goal: 'List merged work', updated_at: '2026-02-02T00:00:00Z' },
+              { session_id: 'merged-1', title: 'Pipeline graph', goal: 'Draw the pipeline', pr: { number: 42, url: 'https://example.com/pr/42', state: 'merged' }, finished_at: '2026-02-01T00:00:00Z', updated_at: '2026-02-01T00:00:00Z' },
+              { session_id: 'merged-2', title: 'Release train', goal: 'List merged work', finished_at: '2026-02-02T00:00:00Z', updated_at: '2026-02-02T00:00:00Z' },
             ],
           },
         ],
@@ -51,6 +52,8 @@ test('the release train lists merged work and Start release opens a release pipe
   await expect(group).toContainText('2 changes')
   await expect(group.getByRole('link', { name: '#42 Pipeline graph' })).toHaveAttribute('href', 'https://example.com/pr/42')
   await expect(group).toContainText('Release train')
+  // The remote's tags could not be fetched: say the list may hold released work.
+  await expect(page.getByTestId('focus-release-stale')).toContainText('git fetch --tags')
 
   // Nothing starts before the gate is confirmed.
   await page.getByTestId('focus-release-start').click()
@@ -63,8 +66,11 @@ test('the release train lists merged work and Start release opens a release pipe
   await expect(page).toHaveURL(/\/console\/focus\/(?!release)[^/]+$/)
   const id = decodeURIComponent(page.url().split('/').pop() ?? '')
   const pipeline = await (await page.request.get(`/v1/focus/pipelines/${encodeURIComponent(id)}`)).json()
-  expect(pipeline.goal).toMatch(/^Release: ship the 2 change\(s\) merged since v0\.1\.0\./)
-  expect(pipeline.goal).toContain('- #42 Pipeline graph (https://example.com/pr/42) — Draw the pipeline')
+  // A one-line goal (repeated by every turn's guidance) and the merged list
+  // in the first turn only; marked so the next train skips it.
+  expect(pipeline.goal).toBe('Release: ship the 2 change(s) merged since v0.1.0.')
+  expect(pipeline.kickoff).toContain('- #42 Pipeline graph (https://example.com/pr/42) — Draw the pipeline')
+  expect(pipeline.kind).toBe('release')
   expect(pipeline.current).toBe('plan')
 })
 

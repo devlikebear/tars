@@ -263,12 +263,14 @@ export class FocusStore {
     return ready
   }
 
-  // kickoff sends the goal as the first turn of a pipeline that has none.
+  // kickoff sends the goal (or the pipeline's kickoff text, when it has one)
+  // as the first turn of a pipeline that has none.
   private kickoff() {
     const p = this.pipeline
     if (!p || !this.historyKnown || this.running || this.streaming || this.history.length > 0 || p.cards.length > 0) return
-    if (p.current !== 'plan' || !p.goal.trim()) return
-    this.queuePrompt(`first\n${p.session_id}`, p.goal)
+    const first = p.kickoff?.trim() ? p.kickoff : p.goal
+    if (p.current !== 'plan' || !first.trim()) return
+    this.queuePrompt(`first\n${p.session_id}`, first)
   }
 
   // applyEvent folds one chat stream event (sent or replayed) into the state.

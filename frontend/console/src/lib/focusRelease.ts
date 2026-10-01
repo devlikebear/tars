@@ -30,11 +30,21 @@ function itemLine(item: ReleaseTrainItem): string {
   return `- ${releaseItemLabel(item)}${link}${goal ? ` — ${goal}` : ''}`
 }
 
-// releaseGoal is the kickoff turn of a release pipeline.
+// releaseGoal is the release pipeline's goal: one line, since the stage
+// guidance repeats the goal on every turn.
 export function releaseGoal(group: ReleaseTrainGroup): string {
-  const since = group.last_tag ? `since ${group.last_tag}` : 'since the start of the repository'
+  return `Release: ship the ${group.items.length} change(s) merged ${sinceText(group)}.`
+}
+
+function sinceText(group: ReleaseTrainGroup): string {
+  return group.last_tag ? `since ${group.last_tag}` : 'since the start of the repository'
+}
+
+// releaseKickoff is the first turn of a release pipeline: the goal, the
+// fixed plan, and the merged list, sent once.
+export function releaseKickoff(group: ReleaseTrainGroup): string {
   return [
-    `Release: ship the ${group.items.length} change(s) merged ${since}.`,
+    releaseGoal(group),
     '',
     'Propose exactly this plan and nothing else:',
     '1. Bump VERSION.txt to the next version.',
@@ -43,13 +53,14 @@ export function releaseGoal(group: ReleaseTrainGroup): string {
     '4. Merge it once its checks pass.',
     `Use the stages ${JSON.stringify(RELEASE_STAGES)}.`,
     '',
-    `Merged ${since}:`,
+    `Merged ${sinceText(group)}:`,
     ...group.items.map(itemLine),
   ].join('\n')
 }
 
 // releaseRequest starts the release pipeline in an isolated worktree of the
-// repository's main checkout.
+// repository's main checkout, marked as a release so the next release train
+// does not list it.
 export function releaseRequest(group: ReleaseTrainGroup, title: string): FocusCreateRequest {
-  return { goal: releaseGoal(group), cwd: group.repo, isolate: true, title }
+  return { goal: releaseGoal(group), kickoff: releaseKickoff(group), kind: 'release', cwd: group.repo, isolate: true, title }
 }

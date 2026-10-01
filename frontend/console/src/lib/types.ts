@@ -2649,6 +2649,12 @@ export type FocusPipeline = {
   cards: FocusCard[]
   pr?: FocusPRInfo
   updated_at: string
+  // Set once the pipeline runs to its end.
+  finished_at?: string
+  // 'release' for a pipeline started from the release train.
+  kind?: string
+  // The first turn when it says more than the goal.
+  kickoff?: string
 }
 
 export type FocusListItem = {
@@ -2669,6 +2675,7 @@ export type ReleaseTrainItem = {
   title: string
   goal: string
   pr?: FocusPRInfo
+  finished_at: string
   updated_at: string
 }
 
@@ -2676,6 +2683,8 @@ export type ReleaseTrainGroup = {
   repo: string
   last_tag?: string
   since?: string
+  // Fetching tags from the remote failed: a newer release tag may be missing.
+  tags_stale?: boolean
   items: ReleaseTrainItem[]
 }
 
