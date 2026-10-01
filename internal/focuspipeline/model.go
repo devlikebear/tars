@@ -1,0 +1,232 @@
+// Package focuspipeline is the server side of Focus mode
+// (docs/decisions/focus-mode.md): a development pipeline attached to one
+// ordinary chat session.
+//
+// The package is deliberately small and mostly pure:
+//
+//   - model.go   the persisted pipeline (stages, gates, cards, plan)
+//   - blocks.go  the parser for the <focus-*> blocks a focus turn ends with
+//   - machine.go Apply, the pure state machine fed by turn completions and
+//     gate actions
+//   - guidance.go the stage instructions appended to each focus turn
+//   - store.go   <workspace>/sessions/<id>.pipeline.json
+//
+// Stage transitions are decided by facts (blocks, gate actions, and from P2
+// on verification exit codes) and never by asking the model whether a stage
+// is done.
+package focuspipeline
+
+import (
+	"encoding/json"
+	"maps"
+	"slices"
+	"time"
+)
+
+// Version is the pipeline file format version.
+const Version = 1
+
+// StageID names one stage of the development loop.
+type StageID string
+
+// The stages, in pipeline order.
+const (
+	StagePlan     StageID = "plan"
+	StageBuild    StageID = "build"
+	StageReview   StageID = "review"
+	StagePR       StageID = "pr"
+	StagePRReview StageID = "pr_review"
+	StageMerge    StageID = "merge"
+)
+
+// StageOrder is the fixed order of every pipeline's stages.
+var StageOrder = []StageID{StagePlan, StageBuild, StageReview, StagePR, StagePRReview, StageMerge}
+
+// ValidStage reports whether id is one of StageOrder.
+func ValidStage(id StageID) bool {
+	return slices.Contains(StageOrder, id)
+}
+
+// StageStatus is where a stage stands.
+type StageStatus string
+
+// Stage statuses.
+const (
+	StatusPending StageStatus = "pending"
+	StatusActive  StageStatus = "active"
+	StatusDone    StageStatus = "done"
+	StatusSkipped StageStatus = "skipped"
+	StatusBlocked StageStatus = "blocked"
+)
+
+// Gates the developer acts on. GateNone means no gate is open.
+const (
+	GateNone    = ""
+	GatePlan    = "plan"
+	GateTriage  = "triage"
+	GatePR      = "pr"
+	GateMerge   = "merge"
+	GateBlocked = "blocked"
+)
+
+// Card kinds, in deck priority order.
+const (
+	CardGate     = "gate"
+	CardDecision = "decision"
+	CardFinding  = "finding"
+	CardFailure  = "failure"
+	CardReport   = "report"
+	CardChange   = "change"
+	CardNotice   = "notice"
+)
+
+// Card states.
+const (
+	CardUnseen  = "unseen"
+	CardSeen    = "seen"
+	CardDecided = "decided"
+)
+
+// DefaultLimits are the loop limits a plan does not override.
+var DefaultLimits = map[StageID]int{StageBuild: 3, StageReview: 2, StagePR: 3}
+
+// Stage is one step of the pipeline.
+type Stage struct {
+	ID        StageID     `json:"id"`
+	Status    StageStatus `json:"status"`
+	Iteration int         `json:"iteration"`
+	Limit     int         `json:"limit,omitempty"`
+}
+
+// Card is one item of the focus deck.
+type Card struct {
+	ID    string  `json:"id"`
+	Kind  string  `json:"kind"`
+	Stage StageID `json:"stage"`
+	// Turn is the transcript turn (1-based count of user messages) the card
+	// came from; 0 when it came from no turn.
+	Turn      int             `json:"turn"`
+	Title     string          `json:"title"`
+	Payload   json.RawMessage `json:"payload,omitempty"`
+	State     string          `json:"state"`
+	Decision  string          `json:"decision,omitempty"`
+	CreatedAt time.Time       `json:"created_at"`
+}
+
+// Plan is what the plan stage proposes and G1 approves.
+type Plan struct {
+	Goal   string         `json:"goal"`
+	Tasks  []PlanTask     `json:"tasks"`
+	Stages []StageID      `json:"stages"`
+	Verify []string       `json:"verify"`
+	E2E    []string       `json:"e2e,omitempty"`
+	Limits map[string]int `json:"limits,omitempty"`
+}
+
+// PlanTask is one task of a plan and what "done" means for it.
+type PlanTask struct {
+	Title string `json:"title"`
+	Done  string `json:"done"`
+}
+
+// PRInfo is the pull request a pipeline opened (P4).
+type PRInfo struct {
+	Number int    `json:"number"`
+	URL    string `json:"url"`
+	State  string `json:"state"`
+}
+
+// Pipeline is the persisted focus state of one session.
+type Pipeline struct {
+	Version   int     `json:"version"`
+	SessionID string  `json:"session_id"`
+	Goal      string  `json:"goal"`
+	Stages    []Stage `json:"stages"`
+	Current   StageID `json:"current"`
+	Plan      *Plan   `json:"plan,omitempty"`
+	// OpenGate is the gate waiting for the developer, GateNone when none.
+	OpenGate  string    `json:"open_gate,omitempty"`
+	Cards     []Card    `json:"cards"`
+	PR        *PRInfo   `json:"pr,omitempty"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// New starts a pipeline for a session: every stage pending but plan, which
+// is active.
+func New(sessionID, goal string, now time.Time) Pipeline {
+	stages := make([]Stage, 0, len(StageOrder))
+	for _, id := range StageOrder {
+		stages = append(stages, Stage{ID: id, Status: StatusPending})
+	}
+	stages[0].Status = StatusActive
+	stages[0].Iteration = 1
+	return Pipeline{
+		Version:   Version,
+		SessionID: sessionID,
+		Goal:      goal,
+		Stages:    stages,
+		Current:   StagePlan,
+		Cards:     []Card{},
+		UpdatedAt: now.UTC(),
+	}
+}
+
+// Stage returns the stage with id, or false.
+func (p Pipeline) Stage(id StageID) (Stage, bool) {
+	for _, s := range p.Stages {
+		if s.ID == id {
+			return s, true
+		}
+	}
+	return Stage{}, false
+}
+
+// Active reports whether the pipeline still has a stage to work on: its
+// current stage is active (not blocked, and not past the last stage).
+func (p Pipeline) Active() bool {
+	s, ok := p.Stage(p.Current)
+	return ok && s.Status == StatusActive
+}
+
+// NeedsInput counts the cards waiting for the developer: unseen gates,
+// decisions and findings.
+func (p Pipeline) NeedsInput() int {
+	n := 0
+	for _, c := range p.Cards {
+		if c.State != CardUnseen {
+			continue
+		}
+		switch c.Kind {
+		case CardGate, CardDecision, CardFinding:
+			n++
+		}
+	}
+	return n
+}
+
+// clone copies the slices and pointers Apply mutates so the caller's
+// pipeline is never changed.
+func (p Pipeline) clone() Pipeline {
+	out := p
+	out.Stages = append([]Stage(nil), p.Stages...)
+	out.Cards = append([]Card{}, p.Cards...)
+	if p.Plan != nil {
+		plan := clonePlan(*p.Plan)
+		out.Plan = &plan
+	}
+	if p.PR != nil {
+		pr := *p.PR
+		out.PR = &pr
+	}
+	return out
+}
+
+func clonePlan(p Plan) Plan {
+	out := p
+	out.Tasks = append([]PlanTask(nil), p.Tasks...)
+	out.Stages = append([]StageID(nil), p.Stages...)
+	out.Verify = append([]string(nil), p.Verify...)
+	out.E2E = append([]string(nil), p.E2E...)
+	out.Limits = maps.Clone(p.Limits)
+	return out
+}
