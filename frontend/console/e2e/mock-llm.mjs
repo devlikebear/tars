@@ -75,11 +75,14 @@ function lastUserText(messages) {
 }
 
 const FOCUS_PLAN = '[e2e:focus-plan]'
+// A question typed while the plan gate is open: a plain answer, no block.
+const FOCUS_ASK = '[e2e:focus-ask]'
 const FOCUS_REPORT = '[e2e:focus-report]'
 
 function focusReply(text) {
   const stage = text.match(/<focus-stage>[\s\S]*?current stage: ([a-z_]+)/)?.[1]
   if (!stage) return null
+  if (text.slice(0, text.indexOf('<focus-stage>')).includes(FOCUS_ASK)) return 'The verification commands look right.'
   if (stage === 'plan' && text.includes(FOCUS_PLAN)) {
     const plan = {
       goal: 'Add a greeting',

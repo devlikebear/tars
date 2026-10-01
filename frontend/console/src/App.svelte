@@ -9,7 +9,7 @@
   import { resolveRoute, type Route } from './lib/router'
   import { loadRouteComponent } from './lib/routeComponents'
   import { APIRequestError, getAuthWhoami, getConfigSchema, getEventsHistory, getHealthz, logoutAuth, patchConfigValues, streamEvents } from './lib/api'
-  import { defaultModeRedirect } from './lib/focus'
+  import { defaultModeRedirect, onboardingModeUpdate } from './lib/focus'
   import type { AuthWhoamiResponse } from './lib/types'
   import {
     companionAskHandoffReaction,
@@ -180,20 +180,26 @@
     }
   }
 
-  // Finishing the wizard makes focus the default mode (ADR §2) and opens
-  // the focus home. Re-entry (changing providers later) keeps the mode the
-  // user already has.
+  // Finishing the wizard makes focus the default mode (ADR §2) when no mode
+  // is set yet, and opens the focus home then. A mode already chosen —
+  // advanced included — is kept, and so is re-entry's (changing providers
+  // later) landing.
   async function handleOnboardingComplete() {
     const firstSetup = !(route.view === 'onboarding' && route.reentry)
     needsSetup = false
+    let toFocus = false
     if (firstSetup) {
       try {
-        await patchConfigValues({ console_default_mode: 'focus' })
+        const config = await getConfigSchema()
+        const values = config.effective_values || config.values || {}
+        const update = onboardingModeUpdate(values)
+        if (update) await patchConfigValues(update)
+        toFocus = (update?.console_default_mode ?? values.console_default_mode) === 'focus'
       } catch {
-        // The mode stays advanced; the focus home is still one click away.
+        // Unknown mode: write nothing; the focus home is one click away.
       }
     }
-    navigate(firstSetup ? '/console/focus' : '/console')
+    navigate(toFocus ? '/console/focus' : '/console')
     void refreshAuth().then(loadConsoleNotifications)
   }
 

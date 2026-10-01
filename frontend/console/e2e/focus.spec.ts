@@ -139,6 +139,25 @@ test('the focus home lists the task and a stale gate action shows the current st
   await expect(page.getByTestId('focus-task').filter({ hasText: 'Add a greeting' }).first()).toBeVisible()
 })
 
+test('plan gate edits survive a question turn that re-reads the pipeline', async ({ page }) => {
+  const repo = newRepo('tars-e2e-focus-edit-')
+  const created = await (await page.request.post('/v1/focus/pipelines', { data: { goal, cwd: repo } })).json()
+  const id = created.session_id as string
+  await page.goto(`/console/focus/${id}`)
+  await expect(page.locator('[data-testid="focus-card"][data-kind="gate"]')).toBeVisible()
+
+  await page.getByTestId('focus-plan-stage-review').uncheck()
+  await page.getByTestId('focus-plan-verify').fill('make test\nmake lint')
+  // A question while the gate is open: the turn ends and the pipeline is read again.
+  await page.getByTestId('focus-instruction').fill('[e2e:focus-ask] are these commands enough?')
+  await page.getByTestId('focus-instruction').press('Enter')
+  await expect(page.getByTestId('focus-progress')).toBeVisible()
+  await expect(page.getByTestId('focus-progress')).toBeHidden()
+
+  await expect(page.getByTestId('focus-plan-verify')).toHaveValue('make test\nmake lint')
+  await expect(page.getByTestId('focus-plan-stage-review')).not.toBeChecked()
+})
+
 // --- Korean (see e2e/workbench-ko.spec.ts) ---
 
 const keptInEnglish = ['TARS', 'Git', 'PR', 'cwd', 'diff', 'Ctrl', 'Cmd', 'Enter', 'Esc']

@@ -422,3 +422,14 @@ export function deckCursor(known: ReadonlySet<string>, ids: string[], current: s
   if (current && ids.includes(current)) return current
   return ids[0]
 }
+
+// onboardingModeUpdate is the config write that finishing the onboarding
+// wizard makes: focus becomes the default mode only when none is set, so a
+// mode the user chose (advanced included) is never overwritten. null values
+// (config unreadable) mean unknown: write nothing.
+export function onboardingModeUpdate(values: Record<string, unknown> | null | undefined): Record<string, string> | null {
+  if (!values) return null
+  const mode = values.console_default_mode
+  if (typeof mode === 'string' && mode.trim() !== '') return null
+  return { console_default_mode: 'focus' }
+}

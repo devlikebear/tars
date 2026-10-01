@@ -101,6 +101,7 @@
     {#if card.kind === 'gate'}
       {#if card.stage === 'plan'}
         <FocusPlanGate
+          cardId={card.id}
           plan={asPlan(card.payload)}
           open={gateOpen && openGate === 'plan'}
           {busy}

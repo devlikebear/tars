@@ -283,3 +283,14 @@ test('deckCursor pins the card on screen and jumps to the first only when a card
   assert.equal(deckCursor(new Set(['c2', 'c4']), ['c4', 'c2'], null), 'c4')
   assert.equal(deckCursor(new Set(['c2']), [], 'c2'), null)
 })
+
+test('onboardingModeUpdate writes focus only when no mode is set', async () => {
+  const { onboardingModeUpdate } = await import('../src/lib/focus.ts')
+  assert.deepEqual(onboardingModeUpdate({}), { console_default_mode: 'focus' })
+  assert.deepEqual(onboardingModeUpdate({ console_default_mode: '' }), { console_default_mode: 'focus' })
+  assert.deepEqual(onboardingModeUpdate({ console_default_mode: '  ' }), { console_default_mode: 'focus' })
+  assert.equal(onboardingModeUpdate({ console_default_mode: 'advanced' }), null)
+  assert.equal(onboardingModeUpdate({ console_default_mode: 'focus' }), null)
+  // Config unreadable: the mode is unknown, so nothing is written.
+  assert.equal(onboardingModeUpdate(null), null)
+})

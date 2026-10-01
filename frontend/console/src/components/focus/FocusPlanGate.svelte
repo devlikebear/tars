@@ -3,11 +3,15 @@
   // the verification commands — which the developer edits and approves
   // before any change is made. Unticking a stage skips it; approve sends the
   // edited plan as `edits`.
+  import { untrack } from 'svelte'
   import { t } from '../../i18n'
   import { planEdits } from '../../lib/focus'
   import type { FocusPlan, FocusStageId } from '../../lib/types'
 
   interface Props {
+    // The gate card: a new card (a revised plan) resets the edits; the same
+    // card re-read from the server keeps them.
+    cardId: string
     plan: FocusPlan | null
     // The gate is open and the card undecided: the plan can be edited.
     open: boolean
@@ -17,7 +21,7 @@
     onStop: () => void
   }
 
-  let { plan, open, busy, onApprove, onRequestChanges, onStop }: Props = $props()
+  let { cardId, plan, open, busy, onApprove, onRequestChanges, onStop }: Props = $props()
 
   const optionalStages: FocusStageId[] = ['build', 'review', 'pr', 'pr_review', 'merge']
 
@@ -25,17 +29,20 @@
   let verify = $state('')
   let asking = $state(false)
   let note = $state('')
-  let seededFrom: FocusPlan | null = null
+  let seededFor: string | null = null
 
-  // A new plan (a revision) resets the edits.
   $effect(() => {
-    if (plan === seededFrom) return
-    seededFrom = plan
+    if (cardId === seededFor) return
+    seededFor = cardId
+    untrack(() => seed())
+  })
+
+  function seed() {
     skipped = new Set(optionalStages.filter((s) => !plan?.stages.includes(s)))
     verify = (plan?.verify ?? []).join('\n')
     asking = false
     note = ''
-  })
+  }
 
   function toggle(stage: FocusStageId) {
     const next = new Set(skipped)
