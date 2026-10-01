@@ -160,6 +160,11 @@ type Pipeline struct {
 	// Kickoff is the first turn's text when it differs from Goal (a release
 	// lists every merged change there); stage guidance repeats only Goal.
 	Kickoff string `json:"kickoff,omitempty"`
+	// ReleaseItems are the sessions a release pipeline ships, and
+	// ReleaseSince the cut-off its list started from (the latest tag then);
+	// once the release finishes, the release train treats both as released.
+	ReleaseItems []string   `json:"release_items,omitempty"`
+	ReleaseSince *time.Time `json:"release_since,omitempty"`
 }
 
 // KindRelease marks a release pipeline, which the release train never lists.
@@ -235,6 +240,11 @@ func (p Pipeline) clone() Pipeline {
 	if p.FinishedAt != nil {
 		at := *p.FinishedAt
 		out.FinishedAt = &at
+	}
+	out.ReleaseItems = append([]string(nil), p.ReleaseItems...)
+	if p.ReleaseSince != nil {
+		since := *p.ReleaseSince
+		out.ReleaseSince = &since
 	}
 	return out
 }

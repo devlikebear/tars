@@ -1,10 +1,12 @@
 package tarsserver
 
 import (
+	"context"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -315,5 +317,176 @@ func TestFocusReleaseTrainGroupsManualWorktrees(t *testing.T) {
 	}
 	if ids := itemIDs(out.Groups[0]); len(ids) != 2 || ids[0] != mainSess.ID || ids[1] != inWorktree.ID {
 		t.Fatalf("items = %v", ids)
+	}
+}
+
+// releasePipeline is a release pipeline of the repository; finished when
+// done, else still running at its plan gate.
+func releasePipeline(sessionID string, items []string, since time.Time, done bool, at time.Time) focuspipeline.Pipeline {
+	var p focuspipeline.Pipeline
+	if done {
+		p = finishedPipeline(sessionID, at)
+		p.FinishedAt = &at
+	} else {
+		p = focuspipeline.New(sessionID, "Release", at)
+	}
+	p.Kind = focuspipeline.KindRelease
+	p.ReleaseItems = items
+	p.ReleaseSince = &since
+	return p
+}
+
+// Item 2: work that finished while a release was in flight is not covered by
+// it, even though the release tag (made when the release merged) is newer.
+func TestFocusReleaseTrainUsesReleaseCoverage(t *testing.T) {
+	f := newWorktreeFixture(t)
+	tagAt := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	tagRepo(t, f.repo, "v0.1.0", tagAt)
+
+	old := f.session(t, "released by hand before")
+	saveFocus(t, f.store, finishedPipeline(old.ID, time.Date(2025, 12, 1, 0, 0, 0, 0, time.UTC)))
+	shipped := f.session(t, "shipped")
+	saveFocus(t, f.store, finishedPipeline(shipped.ID, time.Date(2026, 1, 5, 0, 0, 0, 0, time.UTC)))
+	during := f.session(t, "finished during the release")
+	saveFocus(t, f.store, finishedPipeline(during.ID, time.Date(2026, 1, 7, 0, 0, 0, 0, time.UTC)))
+	release := f.session(t, "Release")
+	saveFocus(t, f.store, releasePipeline(release.ID, []string{shipped.ID}, tagAt, true, time.Date(2026, 1, 8, 0, 0, 0, 0, time.UTC)))
+	// CI tags the release when it merges, after "during" finished.
+	tagRepo(t, f.repo, "v0.2.0", time.Date(2026, 1, 8, 0, 0, 0, 0, time.UTC))
+
+	out := releaseTrainOf(t, f.store)
+	if len(out.Groups) != 1 {
+		t.Fatalf("groups = %+v", out.Groups)
+	}
+	if ids := itemIDs(out.Groups[0]); len(ids) != 1 || ids[0] != during.ID {
+		t.Fatalf("items = %v, want only the work that finished during the release", ids)
+	}
+}
+
+// Item 3: a running release is named on its group, and a second one is
+// refused with the running one's session.
+func TestFocusReleaseActiveReleaseConflict(t *testing.T) {
+	f := newWorktreeFixture(t)
+	feature := f.session(t, "feature")
+	saveFocus(t, f.store, finishedPipeline(feature.ID, time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)))
+	running := f.session(t, "Release (1 change)")
+	saveFocus(t, f.store, releasePipeline(running.ID, []string{feature.ID}, time.Time{}, false, time.Date(2026, 2, 2, 0, 0, 0, 0, time.UTC)))
+
+	out := releaseTrainOf(t, f.store)
+	if len(out.Groups) != 1 || out.Groups[0].ActiveRelease != running.ID || len(out.Groups[0].Items) != 1 {
+		t.Fatalf("groups = %+v", out.Groups)
+	}
+
+	h := newFocusPipelineHandler(f.store, f.c, zerolog.Nop())
+	body := `{"goal":"Release","kind":"release","cwd":` + jsonString(f.repo) + `,"release_items":[` + jsonString(feature.ID) + `]}`
+	rec := focusRequest(t, h, http.MethodPost, "/v1/focus/pipelines", body, true)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("second release: %d %s", rec.Code, rec.Body.String())
+	}
+	var conflict struct {
+		Error     string `json:"error"`
+		SessionID string `json:"session_id"`
+	}
+	decodeInto(t, rec, &conflict)
+	if conflict.SessionID != running.ID || conflict.Error == "" {
+		t.Fatalf("409 body = %+v", conflict)
+	}
+	// A feature task in the same repository is not a release: no conflict.
+	if rec := focusRequest(t, h, http.MethodPost, "/v1/focus/pipelines", `{"goal":"g","cwd":`+jsonString(f.repo)+`}`, true); rec.Code != http.StatusCreated {
+		t.Fatalf("feature create: %d %s", rec.Code, rec.Body.String())
+	}
+
+	// Stopping the running release frees the repository; the new release
+	// records its list and cut-off.
+	if rec := focusRequest(t, h, http.MethodPost, "/v1/focus/pipelines/"+running.ID+"/stop", "", true); rec.Code != http.StatusOK {
+		t.Fatalf("stop: %d %s", rec.Code, rec.Body.String())
+	}
+	body = `{"goal":"Release","kind":"release","cwd":` + jsonString(f.repo) + `,"release_items":[` + jsonString(feature.ID) + `,` + jsonString(feature.ID) + `],"release_since":"2026-01-01T00:00:00Z"}`
+	rec = focusRequest(t, h, http.MethodPost, "/v1/focus/pipelines", body, true)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("release after stop: %d %s", rec.Code, rec.Body.String())
+	}
+	var created struct {
+		Pipeline focuspipeline.Pipeline `json:"pipeline"`
+	}
+	decodeInto(t, rec, &created)
+	if len(created.Pipeline.ReleaseItems) != 1 || created.Pipeline.ReleaseItems[0] != feature.ID || created.Pipeline.ReleaseSince == nil {
+		t.Fatalf("release fields = %+v / %v", created.Pipeline.ReleaseItems, created.Pipeline.ReleaseSince)
+	}
+}
+
+// Item 5: only merged work is listed; a plan that skipped merge finishes
+// without shipping anything.
+func TestFocusReleaseTrainListsOnlyMergedWork(t *testing.T) {
+	f := newWorktreeFixture(t)
+	merged := f.session(t, "merged")
+	saveFocus(t, f.store, finishedPipeline(merged.ID, time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)))
+	local := f.session(t, "local only")
+	p := focuspipeline.New(local.ID, "local", time.Date(2026, 2, 2, 0, 0, 0, 0, time.UTC))
+	p.Plan = &focuspipeline.Plan{Stages: []focuspipeline.StageID{focuspipeline.StagePlan, focuspipeline.StageBuild}}
+	for i := range p.Stages {
+		switch p.Stages[i].ID {
+		case focuspipeline.StagePlan, focuspipeline.StageBuild:
+			p.Stages[i].Status = focuspipeline.StatusDone
+		default:
+			p.Stages[i].Status = focuspipeline.StatusSkipped
+		}
+	}
+	saveFocus(t, f.store, p)
+
+	out := releaseTrainOf(t, f.store)
+	if len(out.Groups) != 1 {
+		t.Fatalf("groups = %+v", out.Groups)
+	}
+	if ids := itemIDs(out.Groups[0]); len(ids) != 1 || ids[0] != merged.ID {
+		t.Fatalf("items = %v", ids)
+	}
+}
+
+// Item 1: one fetch per repository per window, shared by concurrent
+// requests.
+func TestFocusReleaseTrainCachesTagFetch(t *testing.T) {
+	f := newWorktreeFixture(t)
+	sess := f.session(t, "after")
+	saveFocus(t, f.store, finishedPipeline(sess.ID, time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)))
+
+	var mu sync.Mutex
+	calls := 0
+	release := make(chan struct{})
+	api := newFocusReleaseAPI(f.store, zerolog.Nop(), func(context.Context, string) bool {
+		mu.Lock()
+		calls++
+		mu.Unlock()
+		<-release
+		return true
+	})
+	clock := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
+	api.fetches.now = func() time.Time { return clock }
+	h := api.handler()
+
+	var wg sync.WaitGroup
+	for range 4 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_ = focusRequest(t, h, http.MethodGet, "/v1/focus/release-train", "", false)
+		}()
+	}
+	time.Sleep(200 * time.Millisecond)
+	close(release)
+	wg.Wait()
+	_ = focusRequest(t, h, http.MethodGet, "/v1/focus/release-train", "", false)
+	mu.Lock()
+	if calls != 1 {
+		t.Fatalf("fetches within the window = %d, want 1", calls)
+	}
+	mu.Unlock()
+
+	clock = clock.Add(releaseFetchWindow + time.Second)
+	_ = focusRequest(t, h, http.MethodGet, "/v1/focus/release-train", "", false)
+	mu.Lock()
+	defer mu.Unlock()
+	if calls != 2 {
+		t.Fatalf("fetches after the window = %d, want 2", calls)
 	}
 }

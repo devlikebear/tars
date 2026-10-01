@@ -1,24 +1,32 @@
 package tarsserver
 
 // The release train (docs/decisions/focus-mode.md §9 P5): the focus
-// pipelines finished since the latest v* tag of their repository, grouped by
-// repository, so one release PR can batch them.
+// pipelines merged since the last release, grouped by repository, so one
+// release PR can batch them.
 //
-//	GET /v1/focus/release-train → {groups: [{repo, last_tag, since, tags_stale, items: [{session_id, title, goal, pr?, finished_at, updated_at}]}]}
+//	GET /v1/focus/release-train → {groups: [{repo, last_tag, since, tags_stale, active_release?, items: [{session_id, title, goal, pr?, finished_at, updated_at}]}]}
 //
-// Release tags are made on the remote by CI, so the train fetches tags
-// (short timeout) before reading the latest one; when that fails it uses the
-// local tags and marks the group tags_stale. Release pipelines themselves are
-// never listed.
+// What counts as released:
+//   - A finished release pipeline (kind release) records the sessions it
+//     listed (ReleaseItems) and the cut-off it started from (ReleaseSince).
+//     Once a repository has one, a merged pipeline is released when a
+//     finished release listed it or it finished before the latest such
+//     cut-off; work that finished while a release was in flight stays.
+//   - A repository without a finished focus release falls back to the date
+//     of its latest v* tag. Tags are made on the remote by CI, so they are
+//     fetched first (bounded, cached per repository); when that fails the
+//     local tags are used and the group is marked tags_stale.
+//
+// active_release names a release pipeline still running for the repository;
+// POST /v1/focus/pipelines refuses a second one.
 
 import (
 	"context"
 	"net/http"
-	"os"
-	"os/exec"
-	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/devlikebear/tars/internal/focuspipeline"
@@ -26,34 +34,27 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// releaseGitTimeout bounds each local git probe of the release train;
-// releaseFetchTimeout bounds the tag fetch from the remote.
-const (
-	releaseGitTimeout   = 2 * time.Second
-	releaseFetchTimeout = 5 * time.Second
-)
-
 type releaseTrainItem struct {
 	SessionID string                `json:"session_id"`
 	Title     string                `json:"title"`
 	Goal      string                `json:"goal"`
 	PR        *focuspipeline.PRInfo `json:"pr,omitempty"`
-	// FinishedAt is when the pipeline finished (focuspipeline.ReleaseTime),
-	// the time compared with the latest tag.
+	// FinishedAt is when the pipeline finished (focuspipeline.ReleaseTime).
 	FinishedAt time.Time `json:"finished_at"`
 	UpdatedAt  time.Time `json:"updated_at"`
 }
 
 type releaseTrainGroup struct {
 	Repo string `json:"repo"`
-	// LastTag is the latest v* tag; empty when the repository has none,
-	// and then every finished pipeline is listed.
+	// LastTag is the latest v* tag; empty when the repository has none.
 	LastTag string     `json:"last_tag,omitempty"`
 	Since   *time.Time `json:"since,omitempty"`
 	// TagsStale is set when fetching tags from the remote failed, so a
-	// release tag made since may be missing and released work listed.
-	TagsStale bool               `json:"tags_stale,omitempty"`
-	Items     []releaseTrainItem `json:"items"`
+	// release tag made since may be missing.
+	TagsStale bool `json:"tags_stale,omitempty"`
+	// ActiveRelease is the session of a release pipeline still running.
+	ActiveRelease string             `json:"active_release,omitempty"`
+	Items         []releaseTrainItem `json:"items"`
 }
 
 type releaseTrainResponse struct {
@@ -66,67 +67,171 @@ type releaseTag struct {
 	at   time.Time
 }
 
+// releaseRepos resolves the repository a session's work lands in, caching
+// folders for the life of one request.
+type releaseRepos struct {
+	sessions *session.Store
+	repoRoot func(ctx context.Context, dir string) string
+	roots    map[string]string
+}
+
+func newReleaseRepos(sessions *session.Store, repoRoot func(ctx context.Context, dir string) string) *releaseRepos {
+	return &releaseRepos{sessions: sessions, repoRoot: repoRoot, roots: map[string]string{}}
+}
+
+// of is the main checkout of the repository a session works in: that of the
+// folder an isolated session's worktree came from, else of its working
+// folder; "" outside any repository.
+func (r *releaseRepos) of(ctx context.Context, sess session.Session) string {
+	dir := strings.TrimSpace(sess.CurrentDir)
+	if sess.Worktree != nil && strings.TrimSpace(sess.Worktree.RepoRoot) != "" {
+		dir = sess.Worktree.RepoRoot
+	}
+	return r.dir(ctx, dir)
+}
+
+func (r *releaseRepos) dir(ctx context.Context, dir string) string {
+	if dir == "" {
+		return ""
+	}
+	if root, ok := r.roots[dir]; ok {
+		return root
+	}
+	root := r.repoRoot(ctx, dir)
+	r.roots[dir] = root
+	return root
+}
+
+// livePipeline is a pipeline whose session still exists, with that session
+// and its repository.
+type livePipeline struct {
+	p    focuspipeline.Pipeline
+	sess session.Session
+	repo string
+}
+
+// repoReleases is what a repository's release pipelines say.
+type repoReleases struct {
+	finished bool
+	covered  map[string]bool
+	cutoff   time.Time
+	active   string
+}
+
+// releaseInFlight reports whether a release pipeline still runs: not
+// finished and not stopped (a stop leaves the stage blocked with no gate).
+func releaseInFlight(p focuspipeline.Pipeline) bool {
+	return !focuspipeline.Finished(p) && (p.Active() || p.OpenGate != focuspipeline.GateNone)
+}
+
+// scanReleases reads every pipeline of a live session in a repository and
+// what that repository's release pipelines cover.
+func scanReleases(ctx context.Context, store *focuspipeline.Store, repos *releaseRepos) ([]livePipeline, map[string]*repoReleases, error) {
+	pipelines, err := store.List()
+	if err != nil {
+		return nil, nil, err
+	}
+	live := make([]livePipeline, 0, len(pipelines))
+	releases := map[string]*repoReleases{}
+	for _, p := range pipelines {
+		sess, err := repos.sessions.Get(p.SessionID)
+		if err != nil {
+			continue // its session is gone; the sweep removes the file
+		}
+		repo := repos.of(ctx, sess)
+		if repo == "" {
+			continue
+		}
+		live = append(live, livePipeline{p: p, sess: sess, repo: repo})
+		if p.Kind != focuspipeline.KindRelease {
+			continue
+		}
+		rel := releases[repo]
+		if rel == nil {
+			rel = &repoReleases{covered: map[string]bool{}}
+			releases[repo] = rel
+		}
+		switch {
+		case focuspipeline.Finished(p):
+			rel.finished = true
+			for _, id := range p.ReleaseItems {
+				rel.covered[id] = true
+			}
+			if p.ReleaseSince != nil && p.ReleaseSince.After(rel.cutoff) {
+				rel.cutoff = *p.ReleaseSince
+			}
+		case releaseInFlight(p):
+			rel.active = p.SessionID
+		}
+	}
+	return live, releases, nil
+}
+
 type focusReleaseAPI struct {
 	sessions  *session.Store
 	logger    zerolog.Logger
 	repoRoot  func(ctx context.Context, dir string) string
 	latestTag func(ctx context.Context, repo string) (releaseTag, bool)
-	// fetchTags updates repo's tags from its remote; false when the
-	// repository has a remote and the fetch failed.
-	fetchTags func(ctx context.Context, repo string) bool
+	fetches   *tagFetchCache
 }
 
 func newFocusReleaseHandler(sessions *session.Store, logger zerolog.Logger) http.Handler {
-	api := &focusReleaseAPI{sessions: sessions, logger: logger, repoRoot: gitMainCheckout, latestTag: gitLatestReleaseTag, fetchTags: gitFetchTags}
+	return newFocusReleaseAPI(sessions, logger, gitFetchTags).handler()
+}
+
+func newFocusReleaseAPI(sessions *session.Store, logger zerolog.Logger, fetch func(ctx context.Context, repo string) bool) *focusReleaseAPI {
+	return &focusReleaseAPI{sessions: sessions, logger: logger, repoRoot: gitMainCheckout, latestTag: gitLatestReleaseTag, fetches: newTagFetchCache(fetch)}
+}
+
+func (a *focusReleaseAPI) handler() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /v1/focus/release-train", api.list)
+	mux.HandleFunc("GET /v1/focus/release-train", a.list)
 	return mux
 }
 
 func (a *focusReleaseAPI) list(w http.ResponseWriter, r *http.Request) {
-	pipelines, err := focusStoreFor(a.sessions).List()
+	groups, err := a.groups(r.Context())
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, releaseTrainResponse{Groups: a.groups(r.Context(), pipelines)})
+	writeJSON(w, http.StatusOK, releaseTrainResponse{Groups: groups})
 }
 
-// groups keeps the finished feature pipelines of live sessions in a
-// repository, finished after that repository's latest v* tag. Tags are
-// fetched and looked up once per repository, folders once per request.
-func (a *focusReleaseAPI) groups(ctx context.Context, pipelines []focuspipeline.Pipeline) []releaseTrainGroup {
+// groups lists, per repository, the merged feature pipelines no release has
+// shipped yet. Tags are fetched and read once per repository.
+func (a *focusReleaseAPI) groups(ctx context.Context) ([]releaseTrainGroup, error) {
+	live, releases, err := scanReleases(ctx, focusStoreFor(a.sessions), newReleaseRepos(a.sessions, a.repoRoot))
+	if err != nil {
+		return nil, err
+	}
 	byRepo := map[string]*releaseTrainGroup{}
-	roots := map[string]string{}
-	for _, p := range pipelines {
-		if !focuspipeline.Finished(p) || p.Kind == focuspipeline.KindRelease {
-			continue
-		}
-		sess, err := a.sessions.Get(p.SessionID)
-		if err != nil {
-			continue // its session is gone; the sweep removes the file
-		}
-		repo := a.sessionRepo(ctx, sess, roots)
-		if repo == "" {
-			continue
-		}
+	group := func(repo string) *releaseTrainGroup {
 		g, ok := byRepo[repo]
 		if !ok {
-			g = &releaseTrainGroup{Repo: repo, Items: []releaseTrainItem{}}
-			g.TagsStale = !a.fetchTags(ctx, repo)
-			if tag, found := a.latestTag(ctx, repo); found {
-				since := tag.at.UTC()
-				g.LastTag, g.Since = tag.name, &since
-			}
+			g = a.newGroup(ctx, repo, releases[repo])
 			byRepo[repo] = g
 		}
+		return g
+	}
+	for repo, rel := range releases {
+		if rel.active != "" {
+			group(repo)
+		}
+	}
+	for _, lp := range live {
+		p := lp.p
+		if p.Kind == focuspipeline.KindRelease || !focuspipeline.Releasable(p) {
+			continue
+		}
+		g := group(lp.repo)
 		finished := focuspipeline.ReleaseTime(p)
-		if g.Since != nil && !finished.After(*g.Since) {
+		if released(p.SessionID, finished, g, releases[lp.repo]) {
 			continue
 		}
 		g.Items = append(g.Items, releaseTrainItem{
 			SessionID:  p.SessionID,
-			Title:      sess.Title,
+			Title:      lp.sess.Title,
 			Goal:       p.Goal,
 			PR:         p.PR,
 			FinishedAt: finished,
@@ -135,7 +240,7 @@ func (a *focusReleaseAPI) groups(ctx context.Context, pipelines []focuspipeline.
 	}
 	out := make([]releaseTrainGroup, 0, len(byRepo))
 	for _, g := range byRepo {
-		if len(g.Items) == 0 {
+		if len(g.Items) == 0 && g.ActiveRelease == "" {
 			continue
 		}
 		// Oldest first: the order a changelog reads in.
@@ -143,82 +248,66 @@ func (a *focusReleaseAPI) groups(ctx context.Context, pipelines []focuspipeline.
 		out = append(out, *g)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Repo < out[j].Repo })
+	return out, nil
+}
+
+func (a *focusReleaseAPI) newGroup(ctx context.Context, repo string, rel *repoReleases) *releaseTrainGroup {
+	g := &releaseTrainGroup{Repo: repo, Items: []releaseTrainItem{}}
+	if rel != nil {
+		g.ActiveRelease = rel.active
+	}
+	g.TagsStale = !a.fetches.fetched(ctx, repo)
+	if tag, found := a.latestTag(ctx, repo); found {
+		since := tag.at.UTC()
+		g.LastTag, g.Since = tag.name, &since
+	}
+	return g
+}
+
+// released reports whether a merged pipeline already shipped: listed by a
+// finished focus release or finished before its cut-off, or — for a
+// repository with no finished focus release — finished by the latest tag.
+func released(sessionID string, finished time.Time, g *releaseTrainGroup, rel *repoReleases) bool {
+	if rel != nil && rel.finished {
+		return rel.covered[sessionID] || !finished.After(rel.cutoff)
+	}
+	return g.Since != nil && !finished.After(*g.Since)
+}
+
+// releaseCreateMu serializes the active-release check with the create, so
+// two clicks cannot both start a release for one repository.
+var releaseCreateMu sync.Mutex
+
+// activeReleaseIn is the session of a release pipeline still running in the
+// repository of dir, or "".
+func activeReleaseIn(ctx context.Context, sessions *session.Store, repoRoot func(ctx context.Context, dir string) string, dir string) (string, error) {
+	repos := newReleaseRepos(sessions, repoRoot)
+	repo := repos.dir(ctx, dir)
+	if repo == "" {
+		return "", nil
+	}
+	_, releases, err := scanReleases(ctx, focusStoreFor(sessions), repos)
+	if err != nil {
+		return "", err
+	}
+	if rel := releases[repo]; rel != nil {
+		return rel.active, nil
+	}
+	return "", nil
+}
+
+// releaseItemsOf keeps the session ids a release request lists, trimmed and
+// without duplicates.
+func releaseItemsOf(ids []string) []string {
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if id = strings.TrimSpace(id); id != "" && !slices.Contains(out, id) {
+			out = append(out, id)
+		}
+	}
 	return out
 }
 
-// sessionRepo is the main checkout of the repository a session's work lands
-// in: that of the folder an isolated session's worktree came from, else of
-// its working folder; "" outside any repository. roots caches folders.
-func (a *focusReleaseAPI) sessionRepo(ctx context.Context, sess session.Session, roots map[string]string) string {
-	dir := strings.TrimSpace(sess.CurrentDir)
-	if sess.Worktree != nil && strings.TrimSpace(sess.Worktree.RepoRoot) != "" {
-		dir = sess.Worktree.RepoRoot
-	}
-	if dir == "" {
-		return ""
-	}
-	if root, ok := roots[dir]; ok {
-		return root
-	}
-	root := a.repoRoot(ctx, dir)
-	roots[dir] = root
-	return root
-}
-
-func runGit(ctx context.Context, timeout time.Duration, dir string, args ...string) (string, error) {
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...) // NOSONAR: git is the person's own toolchain, resolved from their PATH like every other TARS git call.
-	// Never wait on a credential prompt nobody can answer.
-	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
-	out, err := cmd.Output()
-	return strings.TrimSpace(string(out)), err
-}
-
-// gitMainCheckout is the main working tree of dir's repository — the same
-// for the checkout and every linked worktree (they share one common git
-// dir) — or "" outside a repository.
-func gitMainCheckout(ctx context.Context, dir string) string {
-	common, err := runGit(ctx, releaseGitTimeout, dir, "rev-parse", "--path-format=absolute", "--git-common-dir")
-	if err == nil && filepath.Base(common) == ".git" {
-		return filepath.Dir(common)
-	}
-	// A bare repository's worktree, or an unusual layout: its own top level.
-	root, err := runGit(ctx, releaseGitTimeout, dir, "rev-parse", "--show-toplevel")
-	if err != nil {
-		return ""
-	}
-	return root
-}
-
-// gitFetchTags fetches repo's tags from its default remote. A repository
-// without a remote has nothing to fetch and its tags are current.
-func gitFetchTags(ctx context.Context, repo string) bool {
-	remotes, err := runGit(ctx, releaseGitTimeout, repo, "remote")
-	if err != nil {
-		return false
-	}
-	if remotes == "" {
-		return true
-	}
-	_, err = runGit(ctx, releaseFetchTimeout, repo, "fetch", "--tags", "--quiet", "--no-recurse-submodules")
-	return err == nil
-}
-
-// gitLatestReleaseTag is the most recently created v* tag of repo.
-func gitLatestReleaseTag(ctx context.Context, repo string) (releaseTag, bool) {
-	out, err := runGit(ctx, releaseGitTimeout, repo, "for-each-ref", "--sort=-creatordate", "--count=1",
-		"--format=%(refname:short)%09%(creatordate:iso-strict)", "refs/tags/v*")
-	if err != nil || out == "" {
-		return releaseTag{}, false
-	}
-	name, date, ok := strings.Cut(out, "\t")
-	if !ok {
-		return releaseTag{}, false
-	}
-	at, err := time.Parse(time.RFC3339, date)
-	if err != nil {
-		return releaseTag{}, false
-	}
-	return releaseTag{name: name, at: at}, true
-}
+// repoRoot is how the create path resolves a folder's repository for its
+// one-release-at-a-time check.
+func (a *focusAPI) repoRoot() func(ctx context.Context, dir string) string { return gitMainCheckout }

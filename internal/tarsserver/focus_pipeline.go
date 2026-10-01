@@ -19,7 +19,7 @@ import (
 // A pipeline is a sidecar of an ordinary chat session,
 // <workspace>/sessions/<id>.pipeline.json:
 //
-//	POST /v1/focus/pipelines                      {goal, cwd, isolate, title?, kind?, kickoff?} → 201 {session_id, pipeline}
+//	POST /v1/focus/pipelines                      {goal, cwd, isolate, title?, kind?, kickoff?, release_items?, release_since?} → 201 {session_id, pipeline}; 409 {error, session_id} when kind is release and the repository's release is still running
 //	GET  /v1/focus/pipelines                      → [{session_id, title, goal, current, open_gate, needs_input, updated_at}]
 //	GET  /v1/focus/pipelines/{id}                 → pipeline
 //	POST /v1/focus/pipelines/{id}/gates/{gate}    {action, note?, edits?} → {pipeline, next_prompt}
@@ -208,6 +208,10 @@ type focusCreateRequest struct {
 	// Kickoff is the first turn when it says more than the goal; stage
 	// guidance repeats only the goal.
 	Kickoff string `json:"kickoff,omitempty"`
+	// ReleaseItems and ReleaseSince (kind release only) are the release
+	// train's list and cut-off the release ships.
+	ReleaseItems []string   `json:"release_items,omitempty"`
+	ReleaseSince *time.Time `json:"release_since,omitempty"`
 }
 
 // create starts a session in a folder exactly as POST /v1/admin/sessions
@@ -239,6 +243,21 @@ func (a *focusAPI) create(w http.ResponseWriter, r *http.Request) {
 	if title == "" {
 		title = focusTitleFromGoal(goal)
 	}
+	if kind == focuspipeline.KindRelease {
+		// One release at a time per repository: a second Start release
+		// (another tab, a double click) opens the running one instead.
+		releaseCreateMu.Lock()
+		defer releaseCreateMu.Unlock()
+		active, err := activeReleaseIn(r.Context(), a.sessions, a.repoRoot(), expandCwdHome(strings.TrimSpace(req.Cwd)))
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+		if active != "" {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "a release is already running for this repository", "session_id": active})
+			return
+		}
+	}
 	sess, err := a.worktrees.createIn(r.Context(), newSessionRequest{Title: title, Cwd: req.Cwd, Isolate: req.Isolate})
 	if err != nil {
 		writeJSON(w, folderErrorStatus(err), map[string]string{"error": err.Error()})
@@ -247,6 +266,13 @@ func (a *focusAPI) create(w http.ResponseWriter, r *http.Request) {
 	p := focuspipeline.New(sess.ID, goal, a.now())
 	p.Kind = kind
 	p.Kickoff = strings.TrimSpace(req.Kickoff)
+	if kind == focuspipeline.KindRelease {
+		p.ReleaseItems = releaseItemsOf(req.ReleaseItems)
+		if req.ReleaseSince != nil {
+			since := req.ReleaseSince.UTC()
+			p.ReleaseSince = &since
+		}
+	}
 	if err := a.store().Save(p); err != nil {
 		// Never leave a focus session without its pipeline.
 		a.worktrees.retire(context.WithoutCancel(r.Context()), sess)
