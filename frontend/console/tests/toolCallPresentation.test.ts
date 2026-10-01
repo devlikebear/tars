@@ -11,6 +11,8 @@ import {
 
 const itemSource = readFileSync(new URL('../src/components/ChatMessageItem.svelte', import.meta.url), 'utf8')
 const panelSource = readFileSync(new URL('../src/components/ChatPanel.svelte', import.meta.url), 'utf8')
+// History becomes chat messages in lib/transcriptMessages.ts (stream order).
+const transcriptSource = readFileSync(new URL('../src/lib/transcriptMessages.ts', import.meta.url), 'utf8')
 
 test('tool call presentation formats elapsed time and compact invocation previews', () => {
   assert.equal(formatElapsedSeconds(1_000, undefined, 3_340), '2.3s')
@@ -51,5 +53,5 @@ test('ChatPanel records tool timing and error metadata from stream and history',
   assert.match(panelSource, /toolStartedAt: Date\.now\(\)/)
   assert.match(panelSource, /toolFinishedAt: Date\.now\(\)/)
   assert.match(panelSource, /toolIsError: event\.tool_is_error/)
-  assert.match(panelSource, /toolIsError: msg\.tool_is_error/)
+  assert.match(transcriptSource, /toolIsError: msg\.tool_is_error/)
 })
