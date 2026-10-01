@@ -2661,6 +2661,26 @@ export type FocusListItem = {
   updated_at: string
 }
 
+// The release train (GET /v1/focus/release-train): pipelines finished since
+// the latest v* tag of their repository. last_tag/since are missing when the
+// repository has no release tag yet.
+export type ReleaseTrainItem = {
+  session_id: string
+  title: string
+  goal: string
+  pr?: FocusPRInfo
+  updated_at: string
+}
+
+export type ReleaseTrainGroup = {
+  repo: string
+  last_tag?: string
+  since?: string
+  items: ReleaseTrainItem[]
+}
+
+export type ReleaseTrain = { groups: ReleaseTrainGroup[] }
+
 // Every mutating focus route answers this; next_prompt is the turn the
 // console sends next ('' when none). conflict marks a 409, whose pipeline is
 // the server's current state.

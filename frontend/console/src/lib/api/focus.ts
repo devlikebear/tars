@@ -7,6 +7,7 @@ import type {
   FocusPipeline,
   FocusPlan,
   FocusStageId,
+  ReleaseTrain,
 } from '../types'
 
 // --- Focus mode (docs/decisions/focus-mode.md) ---
@@ -76,4 +77,8 @@ export function focusAdvance(sessionId: string, stage: FocusStageId): Promise<Fo
 
 export function focusStop(sessionId: string): Promise<FocusActionResult> {
   return postAction(`${pipelinePath(sessionId)}/stop`, {})
+}
+
+export function getReleaseTrain(): Promise<ReleaseTrain> {
+  return requestJSON<ReleaseTrain>('/v1/focus/release-train')
 }
