@@ -40,15 +40,36 @@
       <strong>{report.metrics.openTaskCount}</strong>
       <span>{$t.sessionHealth.panel.metrics.openTasks}</span>
     </div>
-    <div>
-      <strong>{report.metrics.highRiskToolCount}</strong>
-      <span>{$t.sessionHealth.panel.metrics.riskTools}</span>
-    </div>
+    {#if report.metrics.cliPermissionMode !== undefined}
+      <!-- A CLI provider's own permission mode decides what its tools may do. -->
+      <div>
+        <strong class="health-metric-text">{report.metrics.cliPermissionMode || $t.sessionHealth.panel.metrics.cliPolicy}</strong>
+        <span>{$t.sessionHealth.panel.metrics.cliPermission}</span>
+      </div>
+    {:else}
+      <div>
+        <strong>{report.metrics.highRiskToolCount}</strong>
+        <span>{$t.sessionHealth.panel.metrics.riskTools}</span>
+      </div>
+    {/if}
     <div>
       <strong>{report.metrics.memoryCount}</strong>
       <span>{$t.sessionHealth.panel.metrics.memory}</span>
     </div>
   </section>
+
+  {#if report.notes.length > 0}
+    <section class="health-list" aria-label={$t.sessionHealth.panel.notesAriaLabel}>
+      {#each report.notes as note}
+        <article class="health-row health-note">
+          <div class="health-row-title">
+            <strong>{note.title}</strong>
+          </div>
+          <p>{note.detail}</p>
+        </article>
+      {/each}
+    </section>
+  {/if}
 
   {#if report.signals.length === 0}
     <div class="health-empty">{$t.sessionHealth.panel.noWarnings}</div>
@@ -208,6 +229,20 @@
   .health-row.severity-error,
   .health-row.severity-critical {
     border-left-color: var(--error);
+  }
+
+  /* A neutral fact, not a warning: no severity stripe. */
+  .health-row.health-note {
+    border-left-width: 1px;
+    background: transparent;
+  }
+
+  .health-metrics strong.health-metric-text {
+    overflow: hidden;
+    font-size: var(--text-sm);
+    line-height: 1.75;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .health-row-title strong {

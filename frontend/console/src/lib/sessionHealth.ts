@@ -11,10 +11,19 @@ export type SessionHealthAction =
   | 'open_config'
   | 'open_prior'
   | 'open_skill_extraction'
+  | 'choose_permission_mode'
 
 export type SessionHealthSignal = {
   kind: 'long_context' | 'stale_plan' | 'broad_permissions' | 'memory_noise' | 'stale_session'
   severity: SessionHealthSeverity
+  title: string
+  detail: string
+}
+
+// A neutral fact about how the provider runs the session. Notes explain why
+// a warning is absent; they never raise the status.
+export type SessionHealthNote = {
+  kind: 'provider_context' | 'provider_permissions'
   title: string
   detail: string
 }
@@ -34,6 +43,7 @@ export type SessionHealthReport = {
   summary: string
   signals: SessionHealthSignal[]
   recommendations: SessionHealthRecommendation[]
+  notes: SessionHealthNote[]
   metrics: {
     messageCount: number
     openTaskCount: number
@@ -41,6 +51,10 @@ export type SessionHealthReport = {
     memoryCount: number
     memoryTokens: number
     contextTokenPercent?: number
+    // Set for CLI providers, whose own permission mode decides what their
+    // tools may do: Claude Code's --permission-mode flag, or '' for a CLI
+    // with its own policy.
+    cliPermissionMode?: string
   }
   checkedAt: string
 }
@@ -53,6 +67,14 @@ export type SessionHealthContextInfo = {
   compaction_trigger_tokens?: number
 }
 
+// The provider that runs the session's next turn, when the console knows it.
+export type SessionHealthProvider = {
+  // Provider kind, e.g. 'anthropic' or 'claude-code-cli'.
+  kind?: string
+  // The --permission-mode claude-code-cli turns run with.
+  claudeCodeFlag?: string
+}
+
 export type SessionHealthInput = {
   session?: Session | null
   messages?: SessionMessage[] | null
@@ -60,7 +82,15 @@ export type SessionHealthInput = {
   config?: SessionToolConfig | null
   tools?: ChatToolInfo[] | null
   contextInfo?: SessionHealthContextInfo | null
+  provider?: SessionHealthProvider | null
   now?: Date
+}
+
+// CLI providers that run their own tools and resume their own upstream
+// session (Session.upstream_session_id) instead of taking the transcript.
+const cliProviderNames: Record<string, string> = {
+  'claude-code-cli': 'Claude Code',
+  'antigravity-cli': 'Antigravity',
 }
 
 const severityRank: Record<SessionHealthSeverity, number> = {
@@ -79,6 +109,7 @@ export function emptySessionHealthReport(strings: SessionHealthTranslations, now
     summary: strings.summary.healthy,
     signals: [],
     recommendations: [],
+    notes: [],
     metrics: {
       messageCount: 0,
       openTaskCount: 0,
@@ -97,20 +128,37 @@ export function buildSessionHealthReport(strings: SessionHealthTranslations, inp
   const contextInfo = input.contextInfo ?? {}
   const signals: SessionHealthSignal[] = []
   const recommendations: SessionHealthRecommendation[] = []
+  const notes: SessionHealthNote[] = []
+
+  const providerKind = input.provider?.kind?.trim() ?? ''
+  const cliName = cliProviderNames[providerKind]
+  // A resumed CLI session keeps its context upstream: TARS sends only the
+  // new message, and the CLI compacts on its own. Without an upstream id the
+  // next turn starts fresh from the whole transcript, so length still counts.
+  const contextManagedByCli = Boolean(cliName && input.session?.upstream_session_id?.trim())
+  const cliPermissionMode =
+    cliName === undefined ? undefined : providerKind === 'claude-code-cli' ? (input.provider?.claudeCodeFlag?.trim() ?? '') : ''
 
   const messageCount = messages.length
   const openTaskCount = (tasks.tasks ?? []).filter((task) => task.status === 'pending' || task.status === 'in_progress').length
-  const highRiskToolCount = countEnabledHighRiskTools(input.config ?? {}, input.tools ?? [])
+  // CLI providers never run TARS's tool registry.
+  const highRiskToolCount = cliName ? 0 : countEnabledHighRiskTools(input.config ?? {}, input.tools ?? [])
   const memoryCount = contextInfo.memory_count ?? 0
   const memoryTokens = contextInfo.memory_tokens ?? 0
-  const contextTokenPercent = contextPercent(contextInfo)
+  const contextTokenPercent = contextManagedByCli ? undefined : contextPercent(contextInfo)
   const hasSessionWork = messageCount > 0 || openTaskCount > 0
 
   const signalText = strings.signals
   const recommendationText = strings.recommendations
   const actionLabel = strings.actions
 
-  if (messageCount >= 160 || (contextTokenPercent ?? 0) >= 95) {
+  if (contextManagedByCli) {
+    notes.push({
+      kind: 'provider_context',
+      title: strings.notes.providerContext.title(cliName ?? providerKind),
+      detail: strings.notes.providerContext.detail(messageCount),
+    })
+  } else if (messageCount >= 160 || (contextTokenPercent ?? 0) >= 95) {
     addSignal(signals, 'long_context', 'critical', signalText.contextSaturated.title, signalText.contextSaturated.detail(messageCount))
     addRecommendation(recommendations, {
       id: 'compact-long-context',
@@ -154,7 +202,24 @@ export function buildSessionHealthReport(strings: SessionHealthTranslations, inp
     })
   }
 
-  if (hasSessionWork && highRiskToolCount >= 3) {
+  if (cliName) {
+    notes.push({
+      kind: 'provider_permissions',
+      title: strings.notes.providerPermissions.title,
+      detail: strings.notes.providerPermissions.detail(cliName, cliPermissionMode ?? ''),
+    })
+    if (hasSessionWork && cliPermissionMode === 'bypassPermissions') {
+      addSignal(signals, 'broad_permissions', 'error', signalText.cliBypassPermissions.title, signalText.cliBypassPermissions.detail)
+      addRecommendation(recommendations, {
+        id: 'choose-cli-permission-mode',
+        severity: 'error',
+        title: recommendationText.chooseCliPermissionMode.title,
+        detail: recommendationText.chooseCliPermissionMode.detail,
+        action: 'choose_permission_mode',
+        actionLabel: actionLabel.choose_permission_mode,
+      })
+    }
+  } else if (hasSessionWork && highRiskToolCount >= 3) {
     addSignal(signals, 'broad_permissions', 'error', signalText.broadPermissions.title, signalText.broadPermissions.detail(highRiskToolCount))
     addRecommendation(recommendations, {
       id: 'trim-permissions',
@@ -213,6 +278,7 @@ export function buildSessionHealthReport(strings: SessionHealthTranslations, inp
     summary: summaryForStatus(strings, status, signals.length),
     signals,
     recommendations,
+    notes,
     metrics: {
       messageCount,
       openTaskCount,
@@ -220,6 +286,7 @@ export function buildSessionHealthReport(strings: SessionHealthTranslations, inp
       memoryCount,
       memoryTokens,
       ...(contextTokenPercent !== undefined ? { contextTokenPercent } : {}),
+      ...(cliPermissionMode !== undefined ? { cliPermissionMode } : {}),
     },
     checkedAt: now.toISOString(),
   }

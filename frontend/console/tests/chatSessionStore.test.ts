@@ -495,3 +495,62 @@ test('a failed mode switch falls back and reports it', async () => {
   await store.refreshPermission()
   assert.equal(store.permission, null)
 })
+
+// The health report learns which provider runs the session's turns (#857):
+// the pinned tier's kind, else the last turn's provider, else the default
+// tier's kind — and the Claude Code permission flag.
+test('the health report is told the provider and Claude Code flag of the next turn', async () => {
+  let built: { provider?: { kind?: string; claudeCodeFlag?: string } } = {}
+  const { api } = fakeApi({
+    listAgentRuntimeSubagents: async () => ({
+      default_tier: 'standard',
+      tiers: [
+        { name: 'heavy', kind: 'anthropic', model: 'big' },
+        { name: 'standard', kind: 'claude-code-cli', model: 'mid' },
+        { name: 'light', kind: 'openai', model: 'small' },
+      ],
+    }),
+    getPermissionMode: async () => ({ mode: '', effective: 'manual', claude_code_effective: 'auto', claude_code_flag: 'auto', source: 'config', modes: [] }),
+  })
+  const store = new ChatSessionStore(api as never, {
+    ...helpers,
+    buildReport: (input: typeof built) => {
+      built = input
+      return { status: 'healthy', recommendations: [] }
+    },
+  } as never)
+  store.setActive('a')
+  await store.loadTierOptions()
+  await flush()
+  assert.deepEqual(built.provider, { kind: 'claude-code-cli', claudeCodeFlag: 'auto' }, 'default tier')
+
+  store.setContextInfo({ llm_tier: 'light', llm_provider: 'openai' })
+  assert.equal(built.provider?.kind, 'openai', 'the last turn wins over the default tier')
+
+  await store.setPinnedTier('heavy')
+  assert.equal(built.provider?.kind, 'anthropic', 'a pin wins over the last turn')
+})
+
+test('the health report follows a permission mode switch', async () => {
+  let built: { provider?: { claudeCodeFlag?: string } } = {}
+  let flag = 'bypassPermissions'
+  const { api } = fakeApi({
+    getPermissionMode: async () => ({ mode: '', effective: 'manual', claude_code_effective: 'auto', claude_code_flag: flag, source: 'config', modes: [] }),
+    setPermissionMode: async (_id: string, mode: string) => {
+      flag = 'default'
+      return { mode, effective: mode, claude_code_effective: mode, claude_code_flag: flag, source: 'session', modes: [] }
+    },
+  })
+  const store = new ChatSessionStore(api as never, {
+    ...helpers,
+    buildReport: (input: typeof built) => {
+      built = input
+      return { status: 'healthy', recommendations: [] }
+    },
+  } as never)
+  store.setActive('a')
+  await flush()
+  assert.equal(built.provider?.claudeCodeFlag, 'bypassPermissions')
+  await store.setPermissionMode('manual')
+  assert.equal(built.provider?.claudeCodeFlag, 'default')
+})

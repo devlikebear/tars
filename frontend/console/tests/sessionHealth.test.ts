@@ -146,3 +146,140 @@ test('chat renders a session health badge and recommendation panel', () => {
   assert.equal(sessionHealthEn.actions.compact, 'Compact')
   assert.equal(sessionHealthEn.actions.open_config, 'Open Config')
 })
+
+// claude-code-cli resumes its own upstream session (#857): TARS does not
+// re-send the transcript, and Claude Code compacts its own context.
+const highRiskConfig: SessionToolConfig = {
+  tools_custom: true,
+  tools_enabled: ['read_file', 'write_file', 'edit_file', 'exec', 'git_status'],
+}
+
+test('a resumed claude-code-cli session gets no transcript-length compaction advice', () => {
+  const report = buildSessionHealthReport(sessionHealthKo, {
+    session: session({ upstream_session_id: 'upstream-1' }),
+    messages: messages(104),
+    tasks: { tasks: [] },
+    config: {},
+    tools: [],
+    contextInfo: { history_tokens: 90_000, compaction_trigger_tokens: 100_000 },
+    provider: { kind: 'claude-code-cli', claudeCodeFlag: 'auto' },
+    now: new Date('2026-04-28T11:00:00Z'),
+  })
+
+  assert.equal(report.status, 'healthy')
+  assert.ok(!report.signals.some((item) => item.kind === 'long_context'))
+  assert.ok(!report.recommendations.some((item) => item.action === 'compact'))
+  assert.equal(report.metrics.messageCount, 104)
+  assert.equal(report.metrics.contextTokenPercent, undefined)
+  const note = report.notes.find((item) => item.kind === 'provider_context')
+  assert.equal(note?.title, sessionHealthKo.notes.providerContext.title('Claude Code'))
+  assert.equal(note?.detail, sessionHealthKo.notes.providerContext.detail(104))
+})
+
+test('a claude-code-cli session that has not resumed yet still warns about length', () => {
+  // No upstream session: the next turn starts a fresh CLI session from the
+  // whole transcript, so its length matters as it does for native providers.
+  const report = buildSessionHealthReport(sessionHealthEn, {
+    session: session(),
+    messages: messages(104),
+    tasks: { tasks: [] },
+    config: {},
+    tools: [],
+    provider: { kind: 'claude-code-cli' },
+    now: new Date('2026-04-28T11:00:00Z'),
+  })
+
+  assert.ok(report.signals.some((item) => item.kind === 'long_context'))
+  assert.ok(report.recommendations.some((item) => item.action === 'compact'))
+  assert.ok(!report.notes.some((item) => item.kind === 'provider_context'))
+})
+
+test('a native session keeps its length warning even with a stale upstream id', () => {
+  const report = buildSessionHealthReport(sessionHealthEn, {
+    session: session({ upstream_session_id: 'upstream-1' }),
+    messages: messages(104),
+    tasks: { tasks: [] },
+    config: highRiskConfig,
+    tools,
+    provider: { kind: 'anthropic' },
+    now: new Date('2026-04-28T11:00:00Z'),
+  })
+
+  assert.ok(report.signals.some((item) => item.kind === 'long_context'))
+  assert.ok(report.signals.some((item) => item.kind === 'broad_permissions'))
+  assert.equal(report.metrics.highRiskToolCount, 3)
+  assert.equal(report.metrics.cliPermissionMode, undefined)
+  assert.deepEqual(report.notes, [])
+})
+
+test('a claude-code-cli session is judged by its permission mode, not TARS tools', () => {
+  const report = buildSessionHealthReport(sessionHealthEn, {
+    session: session({ upstream_session_id: 'upstream-1' }),
+    messages: messages(8),
+    tasks: { tasks: [] },
+    config: highRiskConfig,
+    tools,
+    provider: { kind: 'claude-code-cli', claudeCodeFlag: 'acceptEdits' },
+    now: new Date('2026-04-28T11:00:00Z'),
+  })
+
+  assert.equal(report.status, 'healthy')
+  assert.ok(!report.signals.some((item) => item.kind === 'broad_permissions'))
+  assert.ok(!report.recommendations.some((item) => item.action === 'open_config'))
+  assert.equal(report.metrics.cliPermissionMode, 'acceptEdits')
+  const note = report.notes.find((item) => item.kind === 'provider_permissions')
+  assert.equal(note?.detail, sessionHealthEn.notes.providerPermissions.detail('Claude Code', 'acceptEdits'))
+})
+
+test('claude-code-cli running with bypassPermissions is flagged', () => {
+  const report = buildSessionHealthReport(sessionHealthEn, {
+    session: session({ upstream_session_id: 'upstream-1' }),
+    messages: messages(8),
+    tasks: { tasks: [] },
+    config: {},
+    tools,
+    provider: { kind: 'claude-code-cli', claudeCodeFlag: 'bypassPermissions' },
+    now: new Date('2026-04-28T11:00:00Z'),
+  })
+
+  assert.equal(report.status, 'attention')
+  const signal = report.signals.find((item) => item.kind === 'broad_permissions')
+  assert.equal(signal?.title, sessionHealthEn.signals.cliBypassPermissions.title)
+  const recommendation = report.recommendations.find((item) => item.action === 'choose_permission_mode')
+  assert.equal(recommendation?.actionLabel, sessionHealthEn.actions.choose_permission_mode)
+})
+
+test('bypassPermissions is not flagged on an empty new session', () => {
+  const report = buildSessionHealthReport(sessionHealthEn, {
+    session: session(),
+    messages: [],
+    config: {},
+    tools,
+    provider: { kind: 'claude-code-cli', claudeCodeFlag: 'bypassPermissions' },
+  })
+
+  assert.equal(report.status, 'healthy')
+})
+
+test('a resumed antigravity-cli session is left to the CLI for context and tools', () => {
+  const report = buildSessionHealthReport(sessionHealthEn, {
+    session: session({ upstream_session_id: 'conversation-1' }),
+    messages: messages(170),
+    tasks: { tasks: [] },
+    config: highRiskConfig,
+    tools,
+    provider: { kind: 'antigravity-cli' },
+    now: new Date('2026-04-28T11:00:00Z'),
+  })
+
+  assert.equal(report.status, 'healthy')
+  assert.equal(report.notes.find((item) => item.kind === 'provider_context')?.title, sessionHealthEn.notes.providerContext.title('Antigravity'))
+  assert.equal(report.notes.find((item) => item.kind === 'provider_permissions')?.detail, sessionHealthEn.notes.providerPermissions.detail('Antigravity', ''))
+  assert.equal(report.metrics.cliPermissionMode, '')
+})
+
+test('the health panel shows provider notes and the CLI permission mode', () => {
+  assert.match(panelSource, /report\.notes/)
+  assert.match(panelSource, /cliPermissionMode/)
+  assert.match(chatSource, /case 'choose_permission_mode'/)
+})

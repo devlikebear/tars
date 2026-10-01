@@ -12,9 +12,12 @@ export const sessionHealthEn = {
       messages: 'Messages',
       openTasks: 'Open tasks',
       riskTools: 'Risk tools',
+      cliPermission: 'Permissions',
+      cliPolicy: 'CLI policy',
       memory: 'Memory',
     },
     noWarnings: 'No active session warnings.',
+    notesAriaLabel: 'How this provider runs the session',
     signalsAriaLabel: 'Session health signals',
     signals: 'Signals',
     recommendationsAriaLabel: 'Session health recommendations',
@@ -41,6 +44,7 @@ export const sessionHealthEn = {
     open_config: 'Open Config',
     open_prior: 'Open Prior',
     open_skill_extraction: 'Extract Skill',
+    choose_permission_mode: 'Choose Mode',
   },
   summary: {
     critical: (count: number) => `${count} critical session issue(s) need action before continuing.`,
@@ -68,6 +72,10 @@ export const sessionHealthEn = {
       title: 'Broad high-risk permissions',
       detail: (toolCount: number) => `${toolCount} high-risk tool(s) are enabled for this session.`,
     },
+    cliBypassPermissions: {
+      title: 'Claude Code skips permission checks',
+      detail: 'Every tool call runs without asking (bypassPermissions).',
+    },
     idlePermissions: {
       title: 'High-risk tools still enabled',
       detail: (toolCount: number) => `${toolCount} high-risk tool(s) remain enabled after the active task.`,
@@ -80,6 +88,22 @@ export const sessionHealthEn = {
     staleSession: {
       title: 'Session has been idle',
       detail: (ago: string) => `Last updated ${ago}.`,
+    },
+  },
+  // Neutral facts about how a CLI provider runs the session. They explain
+  // missing warnings and never change the status.
+  notes: {
+    providerContext: {
+      title: (provider: string) => `${provider} CLI manages this context`,
+      detail: (messageCount: number) =>
+        `Turns resume the CLI's own session, so the ${messageCount} messages kept here are not sent again and TARS compaction would not shrink the CLI's context. The CLI compacts it itself.`,
+    },
+    providerPermissions: {
+      title: 'Tools follow the CLI',
+      detail: (provider: string, mode: string) =>
+        mode
+          ? `TARS tool settings do not apply to these turns: ${provider} runs its own tools with permission mode ${mode}.`
+          : `TARS tool settings do not apply to these turns: ${provider} runs its own tools under its own permission policy.`,
     },
   },
   recommendations: {
@@ -102,6 +126,10 @@ export const sessionHealthEn = {
     trimPermissions: {
       title: 'Reduce session permissions',
       detail: 'Keep only the tool groups needed for the current task before enabling more automation.',
+    },
+    chooseCliPermissionMode: {
+      title: 'Pick a permission mode',
+      detail: 'Choose Ask, Accept edits, or Plan in the status bar so risky calls stop for review.',
     },
     trimIdlePermissions: {
       title: 'Trim idle permissions',
@@ -130,9 +158,12 @@ export const sessionHealthKo: SessionHealthTranslations = {
       messages: '메시지',
       openTasks: '열린 작업',
       riskTools: '위험 도구',
+      cliPermission: '권한',
+      cliPolicy: 'CLI 정책',
       memory: '메모리',
     },
     noWarnings: '활성 세션 경고가 없습니다.',
+    notesAriaLabel: '이 provider가 세션을 실행하는 방식',
     signalsAriaLabel: '세션 상태 신호',
     signals: '신호',
     recommendationsAriaLabel: '세션 상태 권장 조치',
@@ -159,6 +190,7 @@ export const sessionHealthKo: SessionHealthTranslations = {
     open_config: '설정 열기',
     open_prior: '이전 컨텍스트 열기',
     open_skill_extraction: '스킬 추출',
+    choose_permission_mode: '모드 선택',
   },
   summary: {
     critical: (count) => `계속하기 전에 조치가 필요한 심각한 세션 문제가 ${count}건 있습니다.`,
@@ -185,6 +217,10 @@ export const sessionHealthKo: SessionHealthTranslations = {
       title: '광범위한 고위험 권한',
       detail: (toolCount) => `이 세션에 고위험 도구 ${toolCount}개가 활성화되어 있습니다.`,
     },
+    cliBypassPermissions: {
+      title: '권한 확인 없이 도구 실행',
+      detail: '모든 도구 호출이 묻지 않고 실행됩니다(bypassPermissions).',
+    },
     idlePermissions: {
       title: '고위험 도구가 아직 활성화됨',
       detail: (toolCount) => `진행 중인 작업이 끝난 뒤에도 고위험 도구 ${toolCount}개가 활성화되어 있습니다.`,
@@ -197,6 +233,20 @@ export const sessionHealthKo: SessionHealthTranslations = {
     staleSession: {
       title: '유휴 세션',
       detail: (ago) => `마지막 업데이트: ${ago}.`,
+    },
+  },
+  notes: {
+    providerContext: {
+      title: (provider) => `${provider} CLI가 컨텍스트를 관리함`,
+      detail: (messageCount) =>
+        `매 턴 CLI 자체 세션을 이어 쓰므로 여기 저장된 메시지 ${messageCount}건을 다시 보내지 않고, TARS 압축으로는 CLI 컨텍스트가 줄지 않습니다. 압축은 CLI가 알아서 합니다.`,
+    },
+    providerPermissions: {
+      title: '도구는 CLI 권한을 따름',
+      detail: (provider, mode) =>
+        mode
+          ? `TARS 도구 설정은 이 턴에 적용되지 않습니다. ${provider}가 권한 모드 ${mode}로 자체 도구를 실행합니다.`
+          : `TARS 도구 설정은 이 턴에 적용되지 않습니다. ${provider}가 자체 권한 정책으로 도구를 실행합니다.`,
     },
   },
   recommendations: {
@@ -219,6 +269,10 @@ export const sessionHealthKo: SessionHealthTranslations = {
     trimPermissions: {
       title: '세션 권한 줄이기',
       detail: '자동화를 더 켜기 전에 현재 작업에 필요한 도구 그룹만 남기세요.',
+    },
+    chooseCliPermissionMode: {
+      title: '권한 모드 선택',
+      detail: '상태 바에서 묻기·편집 허용·계획 중 하나를 골라 위험한 호출이 검토를 거치게 하세요.',
     },
     trimIdlePermissions: {
       title: '유휴 권한 정리',
