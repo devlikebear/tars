@@ -325,3 +325,10 @@ test('stripFocusBlocks while streaming drops only a partial focus tag at the end
     assert.equal(stripFocusBlocks(tail, { streaming: true }), tail, tail)
   }
 })
+
+test('routes: /console/focus/release is the release train, not a session', async () => {
+  const { resolveRoute } = await import('../src/lib/router.ts')
+  assert.deepEqual(resolveRoute('/console/focus/release'), { view: 'focus', release: true })
+  assert.deepEqual(resolveRoute('/console/focus/release/'), { view: 'focus', release: true })
+  assert.deepEqual(resolveRoute('/console/focus/releases'), { view: 'focus', sessionId: 'releases' })
+})

@@ -125,6 +125,10 @@ func TestEndpointAllowsRole_FocusPipelines(t *testing.T) {
 		{http.MethodDelete, "/v1/focus/pipelines/abc123", false},
 		{http.MethodPost, "/v1/focus/pipelines/abc123/other", false},
 		{http.MethodPost, "/v1/focus/pipelines/abc123/gates/plan/extra", false},
+		// The release train is read from the same browser session; starting
+		// a release goes through the create route (admin, checked there).
+		{http.MethodGet, "/v1/focus/release-train", true},
+		{http.MethodPost, "/v1/focus/release-train", false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.method+" "+tc.path, func(t *testing.T) {

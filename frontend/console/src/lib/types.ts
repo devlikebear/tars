@@ -2649,6 +2649,12 @@ export type FocusPipeline = {
   cards: FocusCard[]
   pr?: FocusPRInfo
   updated_at: string
+  // Set once the pipeline runs to its end.
+  finished_at?: string
+  // 'release' for a pipeline started from the release train.
+  kind?: string
+  // The first turn when it says more than the goal.
+  kickoff?: string
 }
 
 export type FocusListItem = {
@@ -2660,6 +2666,31 @@ export type FocusListItem = {
   needs_input: number
   updated_at: string
 }
+
+// The release train (GET /v1/focus/release-train): pipelines finished since
+// the latest v* tag of their repository. last_tag/since are missing when the
+// repository has no release tag yet.
+export type ReleaseTrainItem = {
+  session_id: string
+  title: string
+  goal: string
+  pr?: FocusPRInfo
+  finished_at: string
+  updated_at: string
+}
+
+export type ReleaseTrainGroup = {
+  repo: string
+  last_tag?: string
+  since?: string
+  // Fetching tags from the remote failed: a newer release tag may be missing.
+  tags_stale?: boolean
+  // The session of a release pipeline still running for this repository.
+  active_release?: string
+  items: ReleaseTrainItem[]
+}
+
+export type ReleaseTrain = { groups: ReleaseTrainGroup[] }
 
 // Every mutating focus route answers this; next_prompt is the turn the
 // console sends next ('' when none). conflict marks a 409, whose pipeline is

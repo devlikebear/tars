@@ -445,3 +445,11 @@ test('while the current stage has no cards yet, the deck keeps the last stage wi
   assert.equal(store.stage, 'build')
   assert.deepEqual(store.deck.map((c) => c.id), ['c2'])
 })
+
+test('a pipeline with a kickoff sends the kickoff, not the goal, as its first turn', async () => {
+  const fake = fakeApi({ ...pipeline('2026-10-01T00:00:00Z'), goal: 'Release: ship 2 changes', kickoff: 'Release: ship 2 changes\n- a\n- b' })
+  const store = newStore(fake)
+  await store.load('s1')
+  await settle(store)
+  assert.deepEqual(fake.state.sent.map((r) => r.message), ['Release: ship 2 changes\n- a\n- b'])
+})

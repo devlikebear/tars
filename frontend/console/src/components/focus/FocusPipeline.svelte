@@ -11,6 +11,7 @@
   import { FocusStore } from '../../lib/stores/focusStore.svelte'
   import type { FocusCard, FocusGateAction, FocusPlan, FocusStageId } from '../../lib/types'
   import FocusDeck from './FocusDeck.svelte'
+  import FocusGraph from './FocusGraph.svelte'
   import FocusStepper from './FocusStepper.svelte'
 
   interface Props {
@@ -51,6 +52,8 @@
 
   let instruction = $state('')
   let menuOpen = $state(false)
+  // The pipeline graph under the stage bar (ADR §9 P5).
+  let showGraph = $state(false)
 
   let pipeline = $derived(store.pipeline)
   let phase = $derived(pipeline ? pipelinePhase(pipeline) : 'active')
@@ -153,10 +156,20 @@
   {:else if pipeline}
     <div class="stage-bar">
       <FocusStepper items={steps} selected={viewing} onSelect={selectStage} />
+      <button
+        type="button"
+        class="btn btn-ghost btn-sm"
+        aria-pressed={showGraph}
+        title={$t.focus.graph.openTitle}
+        onclick={() => { showGraph = !showGraph }}
+        data-testid="focus-graph-toggle"
+      >{showGraph ? $t.focus.graph.close : $t.focus.graph.open}</button>
       {#if canMarkDone && viewing === pipeline.current}
         <button type="button" class="btn btn-ghost btn-sm" title={$t.focus.screen.markDoneTitle} onclick={() => void store.advance()} data-testid="focus-mark-done">{$t.focus.screen.markDone}</button>
       {/if}
     </div>
+
+    {#if showGraph}<FocusGraph {pipeline} />{/if}
 
     {#if store.viewStage && store.viewStage !== pipeline.current}
       <p class="history-line">
