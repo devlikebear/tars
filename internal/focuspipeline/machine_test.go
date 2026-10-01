@@ -484,3 +484,178 @@ func TestSetCardState(t *testing.T) {
 		t.Fatalf("seen gate: %v", err)
 	}
 }
+
+// building is an approved pipeline in its build stage.
+func building(t *testing.T, stages ...StageID) Pipeline {
+	t.Helper()
+	p, _, err := Apply(planned(t, stages...), Event{Kind: EventGate, Gate: GatePlan, Action: GateApprove}, t0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+func TestApplyAdvance(t *testing.T) {
+	stopped := func(t *testing.T) Pipeline {
+		p, _, err := Apply(building(t), Event{Kind: EventStop}, t0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	finished := func(t *testing.T) Pipeline {
+		p := building(t, StagePlan, StageBuild)
+		p, _, err := Apply(p, Event{Kind: EventAdvance, Stage: StageBuild}, t0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	tests := []struct {
+		name        string
+		start       func(t *testing.T) Pipeline
+		stage       StageID
+		wantErr     error
+		wantCurrent StageID
+		wantStatus  map[StageID]StageStatus
+		wantPrompt  string
+	}{
+		{
+			name:        "build to review",
+			start:       func(t *testing.T) Pipeline { return building(t, StageOrder...) },
+			stage:       StageBuild,
+			wantCurrent: StageReview,
+			wantStatus: map[StageID]StageStatus{
+				StagePlan: StatusDone, StageBuild: StatusDone, StageReview: StatusActive,
+				StagePR: StatusPending, StagePRReview: StatusPending, StageMerge: StatusPending,
+			},
+			wantPrompt: "Approved. Start the review stage.",
+		},
+		{
+			name:        "skipped stages are passed over",
+			start:       func(t *testing.T) Pipeline { return building(t, StagePlan, StageBuild, StagePR, StageMerge) },
+			stage:       StageBuild,
+			wantCurrent: StagePR,
+			wantStatus: map[StageID]StageStatus{
+				StagePlan: StatusDone, StageBuild: StatusDone, StageReview: StatusSkipped,
+				StagePR: StatusActive, StagePRReview: StatusSkipped, StageMerge: StatusPending,
+			},
+			wantPrompt: "Approved. Start the pr stage.",
+		},
+		{
+			name:        "last stage completes the pipeline",
+			start:       func(t *testing.T) Pipeline { return building(t, StagePlan, StageBuild) },
+			stage:       StageBuild,
+			wantCurrent: StageBuild,
+			wantStatus: map[StageID]StageStatus{
+				StagePlan: StatusDone, StageBuild: StatusDone, StageReview: StatusSkipped,
+				StagePR: StatusSkipped, StagePRReview: StatusSkipped, StageMerge: StatusSkipped,
+			},
+			wantPrompt: "Approved. The pipeline is complete.",
+		},
+		{name: "stale stage", start: func(t *testing.T) Pipeline { return building(t) }, stage: StagePlan, wantErr: ErrCannotAdvance},
+		{name: "empty stage", start: func(t *testing.T) Pipeline { return building(t) }, stage: "", wantErr: ErrCannotAdvance},
+		{name: "gate open", start: func(t *testing.T) Pipeline { return planned(t) }, stage: StagePlan, wantErr: ErrCannotAdvance},
+		{name: "stopped", start: stopped, stage: StageBuild, wantErr: ErrCannotAdvance},
+		{name: "finished", start: finished, stage: StageBuild, wantErr: ErrCannotAdvance},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			start := tt.start(t)
+			before := start.clone()
+			p, act, err := Apply(start, Event{Kind: EventAdvance, Stage: tt.stage}, t0.Add(time.Hour))
+			if !reflect.DeepEqual(start, before) {
+				t.Fatal("Apply mutated its input")
+			}
+			if tt.wantErr != nil {
+				if !errors.Is(err, tt.wantErr) || !reflect.DeepEqual(p, start) || act.Kind != ActionNone {
+					t.Fatalf("err = %v, changed = %v, act = %+v", err, !reflect.DeepEqual(p, start), act)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Apply: %v", err)
+			}
+			if p.Current != tt.wantCurrent {
+				t.Fatalf("current = %s", p.Current)
+			}
+			if got := statuses(p); !reflect.DeepEqual(got, tt.wantStatus) {
+				t.Fatalf("statuses = %v, want %v", got, tt.wantStatus)
+			}
+			if act.Kind != ActionSendTurn || act.Prompt != tt.wantPrompt {
+				t.Fatalf("action = %+v", act)
+			}
+			if cur, _ := p.Stage(p.Current); cur.Status == StatusActive && cur.Iteration != 1 {
+				t.Fatalf("new stage = %+v", cur)
+			}
+			if !p.UpdatedAt.Equal(t0.Add(time.Hour)) {
+				t.Fatalf("updated_at = %v", p.UpdatedAt)
+			}
+		})
+	}
+}
+
+func TestApplyStopEvent(t *testing.T) {
+	tests := []struct {
+		name      string
+		start     func(t *testing.T) Pipeline
+		wantErr   error
+		wantStage StageID
+		gateCard  bool // an open gate card must end decided as stop
+	}{
+		{name: "no gate open", start: func(t *testing.T) Pipeline { return building(t) }, wantStage: StageBuild},
+		{name: "fresh pipeline", start: func(*testing.T) Pipeline { return New("s1", "g", t0) }, wantStage: StagePlan},
+		{name: "gate open", start: func(t *testing.T) Pipeline { return planned(t) }, wantStage: StagePlan, gateCard: true},
+		{name: "already stopped", start: func(t *testing.T) Pipeline {
+			p, _, err := Apply(building(t), Event{Kind: EventStop}, t0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			return p
+		}, wantErr: ErrNotActive},
+		{name: "finished", start: func(t *testing.T) Pipeline {
+			p, _, err := Apply(building(t, StagePlan, StageBuild), Event{Kind: EventAdvance, Stage: StageBuild}, t0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			return p
+		}, wantErr: ErrNotActive},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			start := tt.start(t)
+			before := start.clone()
+			p, act, err := Apply(start, Event{Kind: EventStop}, t0.Add(time.Hour))
+			if !reflect.DeepEqual(start, before) {
+				t.Fatal("Apply mutated its input")
+			}
+			if tt.wantErr != nil {
+				if !errors.Is(err, tt.wantErr) || !reflect.DeepEqual(p, start) {
+					t.Fatalf("err = %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Apply: %v", err)
+			}
+			if p.Current != tt.wantStage || statuses(p)[tt.wantStage] != StatusBlocked || p.OpenGate != GateNone || act.Kind != ActionNone {
+				t.Fatalf("pipeline = %+v act = %+v", p, act)
+			}
+			if p.Active() || Guidance(p) != "" {
+				t.Fatal("a stopped pipeline is inactive and gives no guidance")
+			}
+			for i, c := range p.Cards {
+				wasOpen := start.OpenGate != GateNone && start.Cards[i].Kind == CardGate && start.Cards[i].State != CardDecided
+				switch {
+				case wasOpen && (c.State != CardDecided || c.Decision != GateStop):
+					t.Fatalf("open gate card = %+v", c)
+				case !wasOpen && !reflect.DeepEqual(c, start.Cards[i]):
+					t.Fatalf("card changed: %+v", c)
+				}
+			}
+			if tt.gateCard && len(p.Cards) == 0 {
+				t.Fatal("expected a gate card")
+			}
+		})
+	}
+}

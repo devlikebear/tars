@@ -24,6 +24,8 @@ import (
 //	GET  /v1/focus/pipelines/{id}                 → pipeline
 //	POST /v1/focus/pipelines/{id}/gates/{gate}    {action, note?, edits?} → {pipeline, next_prompt}
 //	POST /v1/focus/pipelines/{id}/cards/{card}    {state, decision?} → {pipeline, next_prompt}
+//	POST /v1/focus/pipelines/{id}/advance         {stage} → {pipeline, next_prompt}; 409 unless stage is the active current one with no gate open
+//	POST /v1/focus/pipelines/{id}/stop            → {pipeline, next_prompt: ""}; 409 when already finished or stopped
 //
 // Every chat turn of a session with a pipeline gets the stage's guidance
 // appended to the user message as a <focus-stage> block, and the reply's
@@ -163,6 +165,8 @@ func newFocusPipelineHandler(sessions *session.Store, worktrees *chatWorktrees, 
 	mux.HandleFunc("GET /v1/focus/pipelines/{id}", api.get)
 	mux.HandleFunc("POST /v1/focus/pipelines/{id}/gates/{gate}", api.gate)
 	mux.HandleFunc("POST /v1/focus/pipelines/{id}/cards/{card}", api.card)
+	mux.HandleFunc("POST /v1/focus/pipelines/{id}/advance", api.advance)
+	mux.HandleFunc("POST /v1/focus/pipelines/{id}/stop", api.stop)
 	return mux
 }
 
@@ -365,6 +369,54 @@ func (a *focusAPI) card(w http.ResponseWriter, r *http.Request) {
 		return
 	case errors.Is(err, focuspipeline.ErrInvalidCardState):
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	case err != nil:
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, focusActionResponse(p, act))
+}
+
+type focusAdvanceRequest struct {
+	Stage focuspipeline.StageID `json:"stage"`
+}
+
+// advance passes the current stage by hand: the developer's call until a
+// stage has fact-based completion (build before P2, PR stages without gh).
+func (a *focusAPI) advance(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if _, ok := a.load(w, id); !ok {
+		return
+	}
+	var req focusAdvanceRequest
+	if !decodeJSONBody(w, r, &req) {
+		return
+	}
+	stage := focuspipeline.StageID(strings.TrimSpace(string(req.Stage)))
+	a.applyEvent(w, id, focuspipeline.Event{Kind: focuspipeline.EventAdvance, Stage: stage}, focuspipeline.ErrCannotAdvance)
+}
+
+// stop stops the pipeline whether or not a gate is open.
+func (a *focusAPI) stop(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if _, ok := a.load(w, id); !ok {
+		return
+	}
+	a.applyEvent(w, id, focuspipeline.Event{Kind: focuspipeline.EventStop}, focuspipeline.ErrNotActive)
+}
+
+// applyEvent applies ev to a session's pipeline and writes the result; the
+// conflict error answers 409 with the unchanged pipeline.
+func (a *focusAPI) applyEvent(w http.ResponseWriter, id string, ev focuspipeline.Event, conflict error) {
+	var act focuspipeline.Action
+	p, _, err := a.store().Update(id, func(p focuspipeline.Pipeline) (focuspipeline.Pipeline, error) {
+		next, result, err := focuspipeline.Apply(p, ev, a.now())
+		act = result
+		return next, err
+	})
+	switch {
+	case errors.Is(err, conflict):
+		writeJSON(w, http.StatusConflict, map[string]any{"error": err.Error(), "pipeline": p})
 		return
 	case err != nil:
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})

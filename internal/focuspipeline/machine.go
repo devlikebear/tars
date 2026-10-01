@@ -12,6 +12,11 @@ import (
 const (
 	EventTurnCompleted = "turn_completed"
 	EventGate          = "gate"
+	// EventAdvance passes the current stage by hand: until fact-based
+	// completion exists for it (build before P2, PR stages without gh).
+	EventAdvance = "advance"
+	// EventStop stops the pipeline at any time, gate open or not.
+	EventStop = "stop"
 )
 
 // Gate actions.
@@ -49,6 +54,11 @@ var (
 	ErrCardDecided = errors.New("card already decided")
 	// ErrInvalidCardState is a card update the card cannot take.
 	ErrInvalidCardState = errors.New("invalid card state")
+	// ErrCannotAdvance is a manual pass of a stage that is not the active
+	// current one, or while a gate is open (the gate decides then).
+	ErrCannotAdvance = errors.New("cannot advance this stage")
+	// ErrNotActive is a stop of a pipeline already finished or stopped.
+	ErrNotActive = errors.New("pipeline is not active")
 )
 
 // Event is one fact fed to Apply.
@@ -57,6 +67,9 @@ type Event struct {
 	// Turn is the transcript turn that completed (EventTurnCompleted).
 	Turn   int
 	Blocks Blocks
+	// Stage is the stage to pass (EventAdvance); it must be Current, so a
+	// stale tab cannot pass the stage after it.
+	Stage StageID
 	// Gate, Action, Edits and Note describe a gate action (EventGate).
 	Gate   string
 	Action string
@@ -86,6 +99,27 @@ func Apply(p Pipeline, ev Event, now time.Time) (Pipeline, Action, error) {
 			return p, noAction, err
 		}
 		return next, act, nil
+	case EventAdvance:
+		if !p.Active() || p.OpenGate != GateNone || ev.Stage != p.Current {
+			return p, noAction, ErrCannotAdvance
+		}
+		next := p.clone()
+		next.UpdatedAt = now.UTC()
+		stage := next.advance()
+		return next, Action{Kind: ActionSendTurn, Prompt: approvedPrompt(GateNone, stage)}, nil
+	case EventStop:
+		if !p.Active() {
+			return p, noAction, ErrNotActive
+		}
+		next := p.clone()
+		if i := next.openGateCard(); i >= 0 && next.OpenGate != GateNone {
+			next.Cards[i].State = CardDecided
+			next.Cards[i].Decision = GateStop
+		}
+		next.OpenGate = GateNone
+		next.setStatus(next.Current, StatusBlocked)
+		next.UpdatedAt = now.UTC()
+		return next, noAction, nil
 	default:
 		return p, noAction, fmt.Errorf("unknown event kind %q", ev.Kind)
 	}

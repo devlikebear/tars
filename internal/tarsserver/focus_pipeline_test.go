@@ -377,3 +377,90 @@ func TestFocusPipelineRemovedWithSession(t *testing.T) {
 		t.Fatal("live pipeline swept")
 	}
 }
+
+func TestFocusAdvance(t *testing.T) {
+	f := newWorktreeFixture(t)
+	h := newFocusPipelineHandler(f.store, f.c, zerolog.Nop())
+	sess := plannedFocusSession(t, f.store)
+	advanceURL := "/v1/focus/pipelines/" + sess.ID + "/advance"
+
+	// The plan gate is open: only the gate may pass the plan stage.
+	rec := focusRequest(t, h, http.MethodPost, advanceURL, `{"stage":"plan"}`, false)
+	if rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), `"open_gate":"plan"`) {
+		t.Fatalf("advance with open gate: %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := focusRequest(t, h, http.MethodPost, "/v1/focus/pipelines/"+sess.ID+"/gates/plan", `{"action":"approve"}`, false); rec.Code != http.StatusOK {
+		t.Fatalf("approve: %d", rec.Code)
+	}
+
+	rec = focusRequest(t, h, http.MethodPost, advanceURL, `{"stage":"build"}`, false)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("advance: %d %s", rec.Code, rec.Body.String())
+	}
+	var out struct {
+		Pipeline   focuspipeline.Pipeline `json:"pipeline"`
+		NextPrompt string                 `json:"next_prompt"`
+	}
+	decodeInto(t, rec, &out)
+	// focusPlanReply skips review and pr_review.
+	if out.Pipeline.Current != focuspipeline.StagePR || out.NextPrompt != "Approved. Start the pr stage." {
+		t.Fatalf("out = %+v", out)
+	}
+	if saved, _, _ := focusStoreFor(f.store).Get(sess.ID); saved.Current != focuspipeline.StagePR {
+		t.Fatalf("saved current = %s", saved.Current)
+	}
+
+	// A stale tab passing build again: 409 with the current pipeline.
+	rec = focusRequest(t, h, http.MethodPost, advanceURL, `{"stage":"build"}`, false)
+	var conflict struct {
+		Error    string                 `json:"error"`
+		Pipeline focuspipeline.Pipeline `json:"pipeline"`
+	}
+	decodeInto(t, rec, &conflict)
+	if rec.Code != http.StatusConflict || conflict.Error == "" || conflict.Pipeline.Current != focuspipeline.StagePR {
+		t.Fatalf("stale advance: %d %s", rec.Code, rec.Body.String())
+	}
+
+	if rec := focusRequest(t, h, http.MethodPost, advanceURL, `{`, false); rec.Code != http.StatusBadRequest {
+		t.Fatalf("bad body: %d", rec.Code)
+	}
+	if rec := focusRequest(t, h, http.MethodPost, "/v1/focus/pipelines/nope/advance", `{"stage":"build"}`, false); rec.Code != http.StatusNotFound {
+		t.Fatalf("missing: %d", rec.Code)
+	}
+}
+
+func TestFocusStop(t *testing.T) {
+	f := newWorktreeFixture(t)
+	h := newFocusPipelineHandler(f.store, f.c, zerolog.Nop())
+	sess := plannedFocusSession(t, f.store)
+	stopURL := "/v1/focus/pipelines/" + sess.ID + "/stop"
+
+	rec := focusRequest(t, h, http.MethodPost, stopURL, "", false)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("stop: %d %s", rec.Code, rec.Body.String())
+	}
+	var out struct {
+		Pipeline   focuspipeline.Pipeline `json:"pipeline"`
+		NextPrompt string                 `json:"next_prompt"`
+	}
+	decodeInto(t, rec, &out)
+	st, _ := out.Pipeline.Stage(focuspipeline.StagePlan)
+	if st.Status != focuspipeline.StatusBlocked || out.Pipeline.OpenGate != "" || out.NextPrompt != "" {
+		t.Fatalf("out = %+v", out)
+	}
+	if c := out.Pipeline.Cards[0]; c.State != focuspipeline.CardDecided || c.Decision != focuspipeline.GateStop {
+		t.Fatalf("gate card = %+v", c)
+	}
+
+	// Already stopped: 409 with the pipeline, and it stays as it was.
+	rec = focusRequest(t, h, http.MethodPost, stopURL, "", false)
+	if rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), `"status":"blocked"`) {
+		t.Fatalf("second stop: %d %s", rec.Code, rec.Body.String())
+	}
+	if saved, _, _ := focusStoreFor(f.store).Get(sess.ID); !saved.UpdatedAt.Equal(out.Pipeline.UpdatedAt) {
+		t.Fatal("a refused stop changed the pipeline")
+	}
+	if rec := focusRequest(t, h, http.MethodPost, "/v1/focus/pipelines/nope/stop", "", false); rec.Code != http.StatusNotFound {
+		t.Fatalf("missing: %d", rec.Code)
+	}
+}
