@@ -226,7 +226,7 @@ func (p *Pipeline) openPRGate(draft PRDraft, turn int, now time.Time) {
 func approvePRGate(p *Pipeline, gate string, ev Event, decide func()) (Pipeline, Action, error) {
 	if gate == GateMerge {
 		decide()
-		p.PRWait, p.PRProbes = PRWaitMerge, 0
+		p.PRWait, p.PRProbes, p.PRUnavailable = PRWaitMerge, 0, ""
 		return *p, Action{Kind: ActionSendTurn, Prompt: mergePrompt(p.PR)}, nil
 	}
 	draft := p.openGateDraft()
@@ -243,7 +243,7 @@ func approvePRGate(p *Pipeline, gate string, ev Event, decide func()) (Pipeline,
 	}
 	decide()
 	p.PRDraft = &draft
-	p.PRWait, p.PRProbes = PRWaitOpen, 0
+	p.PRWait, p.PRProbes, p.PRUnavailable = PRWaitOpen, 0, ""
 	return *p, Action{Kind: ActionSendTurn, Prompt: openPRPrompt(draft)}, nil
 }
 

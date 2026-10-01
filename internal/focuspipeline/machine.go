@@ -416,7 +416,7 @@ func (p *Pipeline) advance() StageID {
 	p.setStatus(p.Current, StatusDone)
 	p.TasksDone, p.AwaitingVerification, p.LastFailure = false, false, nil
 	p.Review = ReviewState{}
-	p.PRWait, p.PRProbes = "", 0
+	p.PRWait, p.PRProbes, p.PRUnavailable = "", 0, ""
 	for i := range p.Stages {
 		s := &p.Stages[i]
 		if s.Status != StatusPending {

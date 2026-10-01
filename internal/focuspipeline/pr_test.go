@@ -801,3 +801,20 @@ func TestFirstFindAlreadyGreenGoesToMerge(t *testing.T) {
 		t.Fatalf("current = %s", q.Current)
 	}
 }
+
+func TestUnavailableDoesNotCarryIntoTheNextWait(t *testing.T) {
+	// A probe error belongs to the wait it was seen in: after a manual pass
+	// or an approved write, the banner waits for the new wait's own probe.
+	p := opening(t)
+	p, _ = mustApply(t, p, Event{Kind: EventPRProbe, Probe: &PRProbe{Status: ProbeUnavailable, Error: "gh: not logged in"}})
+	passed, _ := mustApply(t, p, Event{Kind: EventAdvance, Stage: StagePR})
+	if passed.PRUnavailable != "" {
+		t.Fatalf("after the pass: %q", passed.PRUnavailable)
+	}
+	m := inMerge(t)
+	m.PRUnavailable = "gh: not logged in"
+	approved, _ := mustApply(t, m, Event{Kind: EventGate, Gate: GateMerge, Action: GateApprove})
+	if approved.PRUnavailable != "" {
+		t.Fatalf("after G4: %q", approved.PRUnavailable)
+	}
+}
