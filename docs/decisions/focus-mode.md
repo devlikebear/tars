@@ -79,12 +79,13 @@ Loops run automatically inside a stage; the developer acts only at gates. Stage 
 Each focus turn ends with a structured block the server parses into pipeline state. This works for every provider, including `claude-code-cli`, which never calls TARS's native `tasks` tool.
 
 ```
-<focus-plan>{"goal":"…","tasks":[{"title":"…","done":"…"}],"stages":["plan","build","review","pr","pr_review","merge"],"verify":["make test"],"limits":{"build":3,"review":2,"pr":3}}</focus-plan>
+<focus-plan>{"goal":"…","tasks":[{"title":"…","done":"…"}],"stages":["plan","build","review","pr","pr_review","merge"],"verify":["make test"],"e2e":["make console-e2e"],"limits":{"build":3,"review":2,"pr":3}}</focus-plan>
 <focus-report>{"summary":"…","decisions":[{"id":"d1","question":"…","options":["…","…"]}],"risks":["…"]}</focus-report>
 <focus-findings>[{"id":"f1","severity":"high|medium|low","file":"…","line":42,"title":"…","scenario":"…"}]</focus-findings>
+<focus-pr>{"title":"…","body":"…"}</focus-pr>
 ```
 
-- Stage instructions and the block format are sent with every focus turn as `console_context`, the existing hidden-guidance path (`chat_console_context.go`), so they never appear as the user's words. Stage instructions are specific (review: "report findings, do not edit").
+- Stage instructions and the block format are appended to every focus turn's user message in a `<focus-stage>` block, the same hidden-guidance pattern as `<console-context>` (`chat_console_context.go`) but without its 2000-byte cap, so they never appear as the user's words. Stage instructions are specific (review: "report findings, do not edit").
 - The console folds the blocks out of the visible transcript, as it already does for `<review-notes>`.
 - A missing or malformed block is never guessed around: a "report format missing" card appears and the server sends one re-request turn.
 
