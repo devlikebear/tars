@@ -88,16 +88,18 @@ func appendFocusGuidance(message string, sessions *session.Store, sessionID stri
 	return strings.TrimRight(message, "\n") + "\n\n" + focusStageOpen + "\n" + guidance + "\n" + focusStageClose, mark
 }
 
-// focusAfterTurn feeds a completed turn's reply to the session's pipeline.
-// ok is false when the turn carried no mark, the pipeline has moved past
-// the marked stage, or there is no pipeline (or it could not be updated).
-func focusAfterTurn(sessions *session.Store, sessionID, transcriptPath, reply string, mark *focusTurnMark, now time.Time, logger zerolog.Logger) (focuspipeline.Pipeline, string, bool) {
+// focusAfterTurn feeds a completed turn's reply to the session's pipeline
+// and returns the action the pipeline asks for next. ok is false when the
+// turn carried no mark, the pipeline has moved past the marked stage, or
+// there is no pipeline (or it could not be updated).
+func focusAfterTurn(sessions *session.Store, sessionID, transcriptPath, reply string, mark *focusTurnMark, now time.Time, logger zerolog.Logger) (focuspipeline.Pipeline, focuspipeline.Action, bool) {
+	none := focuspipeline.Action{Kind: focuspipeline.ActionNone}
 	store := focusStoreFor(sessions)
 	if store == nil || mark == nil {
-		return focuspipeline.Pipeline{}, "", false
+		return focuspipeline.Pipeline{}, none, false
 	}
 	turn := countUserTurns(transcriptPath)
-	var next string
+	next := none
 	p, ok, err := store.Update(sessionID, func(p focuspipeline.Pipeline) (focuspipeline.Pipeline, error) {
 		if stage, _ := p.Stage(p.Current); stage.ID != mark.Stage || stage.Iteration != mark.Iteration {
 			return p, errFocusStaleTurn
@@ -107,20 +109,27 @@ func focusAfterTurn(sessions *session.Store, sessionID, transcriptPath, reply st
 			Turn:   turn,
 			Blocks: focuspipeline.ParseBlocks(reply),
 		}, now)
-		if act.Kind == focuspipeline.ActionSendTurn {
-			next = act.Prompt
-		}
+		next = act
 		return updated, err
 	})
 	if errors.Is(err, errFocusStaleTurn) {
 		logger.Debug().Str("session_id", sessionID).Str("stage", string(mark.Stage)).Msg("focus: reply ignored, its stage has moved on")
-		return focuspipeline.Pipeline{}, "", false
+		return focuspipeline.Pipeline{}, none, false
 	}
 	if err != nil {
 		logger.Warn().Err(err).Str("session_id", sessionID).Msg("focus: update pipeline after turn failed")
-		return focuspipeline.Pipeline{}, "", false
+		return focuspipeline.Pipeline{}, none, false
 	}
 	return p, next, ok
+}
+
+// focusNextPrompt is the prompt of a send_turn action, "" otherwise: shown
+// to the developer, sent by the server.
+func focusNextPrompt(act focuspipeline.Action) string {
+	if act.Kind == focuspipeline.ActionSendTurn {
+		return act.Prompt
+	}
+	return ""
 }
 
 // countUserTurns is the 1-based number of the transcript's latest turn.

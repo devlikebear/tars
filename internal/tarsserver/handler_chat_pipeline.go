@@ -108,7 +108,33 @@ func handleChatRequest(w http.ResponseWriter, r *http.Request, deps chatHandlerD
 	if !ok {
 		return
 	}
+	_, _ = runChatTurn(w, r, req, deps, chatTurnOrigin{})
+}
 
+// chatTurnOrigin says who started a turn.
+type chatTurnOrigin struct {
+	// unattended names the server-side source of a turn no console started
+	// ("focus"). Its tool prompts follow the session's permission mode
+	// through the ops approval queue, like cron turns, and its context is
+	// the caller's (the server lifetime), not detached from a request.
+	unattended string
+}
+
+// errChatTurnRejected is a turn that never started: its error answer was
+// written to w.
+type errChatTurnRejected struct {
+	status int
+	msg    string
+}
+
+func (e *errChatTurnRejected) Error() string { return e.msg }
+
+// runChatTurn is one chat turn from the prepared request to "done": the
+// console request and the server's own turns (runServerChatTurn) share it,
+// so both go through the same turn feed, cancel registry, worktree lease,
+// chat activity, checkpoint, persistence and post-turn focus hook. It
+// returns the reply, or the error that ended the turn.
+func runChatTurn(w http.ResponseWriter, r *http.Request, req chatRequestPayload, deps chatHandlerDeps, origin chatTurnOrigin) (llm.ChatResponse, error) {
 	endBusy := deps.activity.beginChat()
 	defer endBusy()
 	worktreeMoved, endLease := deps.tooling.Worktrees.beginTurn(r.Context(), strings.TrimSpace(req.SessionID), false)
@@ -122,10 +148,11 @@ func handleChatRequest(w http.ResponseWriter, r *http.Request, deps chatHandlerD
 	state, status, errMessage, err := prepareChatRunState(r, req, deps)
 	if err != nil {
 		writeError(w, status, "", errMessage)
-		return
+		return llm.ChatResponse{}, &errChatTurnRejected{status: status, msg: errMessage}
 	}
 
-	state.interactivePermissions = req.InteractivePermissions
+	state.interactivePermissions = req.InteractivePermissions && origin.unattended == ""
+	state.unattendedSource = origin.unattended
 	stream := newChatStreamWriter(w, state.sessionID, deps.logger)
 	feed, endFeed := deps.turnFeeds.begin(state.sessionID)
 	defer endFeed()
@@ -193,8 +220,13 @@ func handleChatRequest(w http.ResponseWriter, r *http.Request, deps chatHandlerD
 	}
 
 	// Detached from the request: the turn keeps running when the console
-	// goes away, and POST /v1/chat/cancel is what stops it.
-	baseCtx := usage.WithCallMeta(context.WithoutCancel(r.Context()), usage.CallMeta{
+	// goes away, and POST /v1/chat/cancel is what stops it. A server turn's
+	// context is already the server's, so shutdown stops it too.
+	parentCtx := r.Context()
+	if origin.unattended == "" {
+		parentCtx = context.WithoutCancel(parentCtx)
+	}
+	baseCtx := usage.WithCallMeta(parentCtx, usage.CallMeta{
 		Source:               "chat",
 		SessionID:            state.sessionID,
 		CapabilityVersionIDs: state.capabilityVersionIDs,
@@ -218,12 +250,12 @@ func handleChatRequest(w http.ResponseWriter, r *http.Request, deps chatHandlerD
 			persistInterruptedTurn(state, req.Message, chatResp, toolCalls, deps.logger)
 			recordTierRecommendationSignal(deps.tooling.UsageTracker, state, "cancelled", chatResp.Usage)
 			deps.logger.Debug().Str("session_id", state.sessionID).Msg("chat request cancelled")
-			return
+			return chatResp, err
 		}
 		stream.error(err)
 		persistInterruptedTurn(state, req.Message, llm.ChatResponse{}, toolCalls, deps.logger)
 		recordTierRecommendationSignal(deps.tooling.UsageTracker, state, "error", llm.Usage{})
-		return
+		return llm.ChatResponse{}, err
 	}
 	if !deltaSent && chatResp.Message.Content != "" {
 		deps.logger.Debug().
@@ -246,10 +278,11 @@ func handleChatRequest(w http.ResponseWriter, r *http.Request, deps chatHandlerD
 		deps.tooling.PlanClarifyMode,
 	)
 
-	if p, next, ok := focusAfterTurn(state.store, state.sessionID, state.transcriptPath, chatResp.Message.Content, state.focusMark, time.Now(), deps.logger); ok {
-		stream.pipeline(p, next)
+	if p, act, ok := focusAfterTurn(state.store, state.sessionID, state.transcriptPath, chatResp.Message.Content, state.focusMark, time.Now(), deps.logger); ok {
+		stream.pipeline(p, focusNextPrompt(act))
 	}
 
 	stream.done(chatResp.Usage)
 	deps.logger.Debug().Str("session_id", state.sessionID).Msg("chat request complete")
+	return chatResp, nil
 }

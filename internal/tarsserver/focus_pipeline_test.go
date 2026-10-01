@@ -602,7 +602,7 @@ func TestFocusAfterTurnIgnoresStaleStage(t *testing.T) {
 		t.Fatal(err)
 	}
 	before, _, _ := fs.Get(sess.ID)
-	if _, next, ok := focusAfterTurn(store, sess.ID, store.TranscriptPath(sess.ID), "no block here", mark, time.Now(), zerolog.Nop()); ok || next != "" {
+	if _, next, ok := focusAfterTurn(store, sess.ID, store.TranscriptPath(sess.ID), "no block here", mark, time.Now(), zerolog.Nop()); ok || next.Kind != focuspipeline.ActionNone {
 		t.Fatalf("stale turn applied: ok=%v next=%q", ok, next)
 	}
 	after, _, _ := fs.Get(sess.ID)
@@ -632,7 +632,7 @@ func TestFocusAfterTurnIgnoresStaleStage(t *testing.T) {
 	}
 
 	// The current mark still works.
-	if _, next, ok := focusAfterTurn(store, sess.ID, store.TranscriptPath(sess.ID), "x", currentFocusMark(t, store, sess.ID), time.Now(), zerolog.Nop()); !ok || next == "" {
+	if _, next, ok := focusAfterTurn(store, sess.ID, store.TranscriptPath(sess.ID), "x", currentFocusMark(t, store, sess.ID), time.Now(), zerolog.Nop()); !ok || next.Kind == focuspipeline.ActionNone {
 		t.Fatalf("current turn: ok=%v next=%q", ok, next)
 	}
 }

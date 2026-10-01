@@ -69,6 +69,9 @@ type chatRunState struct {
 
 	// interactivePermissions: the client answers permission_request events.
 	interactivePermissions bool
+	// unattendedSource is set for a turn the server started ("focus"): its
+	// tool prompts go to the ops queue under the session's mode.
+	unattendedSource string
 
 	// turnText collects the text the turn streams between its tool calls,
 	// so persistChatResult saves them in stream order. nil saves the old
