@@ -57,6 +57,7 @@ export const en = {
     },
     items: {
       board: 'Sessions',
+      focus: 'Focus',
       overview: 'Overview',
       chat: 'Chat',
       lineage: 'Lineage',

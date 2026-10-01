@@ -513,6 +513,7 @@
         onWorkbenchAction={handleWorkbenchAction}
         onCopy={handleCopyChat}
         onDownload={handleDownloadChat}
+        onOpenFocus={(id) => onNavigate(`/console/focus/${encodeURIComponent(id)}`)}
       />
 
       {#key chatSession.threadVersion}

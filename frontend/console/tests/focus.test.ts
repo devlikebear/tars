@@ -227,3 +227,20 @@ test('Advanced chat surfaces hide focus blocks: transcript, side panel, auto tit
   assert.deepEqual(transcriptChatMessages(saved).map((m) => m.id), ['u1', 'a2'])
   assert.deepEqual(historyMessages(saved).map((m) => m.text), ['ship it', 'Done.'])
 })
+
+test('routes: /console/focus is the focus home, /console/focus/<id> a pipeline', async () => {
+  const { resolveRoute } = await import('../src/lib/router.ts')
+  assert.deepEqual(resolveRoute('/console/focus'), { view: 'focus' })
+  assert.deepEqual(resolveRoute('/console/focus/'), { view: 'focus' })
+  assert.deepEqual(resolveRoute('/console/focus/abc%20d'), { view: 'focus', sessionId: 'abc d' })
+  assert.deepEqual(resolveRoute('/console/focus/abc/x'), { view: 'focus', sessionId: 'abc' })
+})
+
+test('defaultModeRedirect lands /console on the focus home only when focus is the default', async () => {
+  const { defaultModeRedirect } = await import('../src/lib/focus.ts')
+  assert.equal(defaultModeRedirect('focus', { view: 'board' }), '/console/focus')
+  assert.equal(defaultModeRedirect('advanced', { view: 'board' }), null)
+  assert.equal(defaultModeRedirect('', { view: 'board' }), null)
+  assert.equal(defaultModeRedirect('focus', { view: 'chat' }), null)
+  assert.equal(defaultModeRedirect(undefined, { view: 'board' }), null)
+})

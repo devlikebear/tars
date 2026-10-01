@@ -8,7 +8,8 @@
   import Login from './components/Login.svelte'
   import { resolveRoute, type Route } from './lib/router'
   import { loadRouteComponent } from './lib/routeComponents'
-  import { APIRequestError, getAuthWhoami, getConfigSchema, getEventsHistory, getHealthz, logoutAuth, streamEvents } from './lib/api'
+  import { APIRequestError, getAuthWhoami, getConfigSchema, getEventsHistory, getHealthz, logoutAuth, patchConfigValues, streamEvents } from './lib/api'
+  import { defaultModeRedirect } from './lib/focus'
   import type { AuthWhoamiResponse } from './lib/types'
   import {
     companionAskHandoffReaction,
@@ -47,6 +48,9 @@
   let authInfo = $state<AuthWhoamiResponse | null>(null)
   let loginRequired = $state(false)
   let companionEnabled = $state(false)
+  // True until the user navigates: only the landing on /console follows
+  // console_default_mode, so the board stays reachable from the nav.
+  let landing = true
   let companionReaction = $state<CompanionReaction | null>(null)
   let stopGlobalStream: (() => void) | null = null
   let companionReactionTimer: ReturnType<typeof setTimeout> | null = null
@@ -55,6 +59,7 @@
   let showCompanion = $derived(shouldShowCompanion({ enabled: companionEnabled, needsSetup, loginRequired, zenActive }))
 
   function navigate(path: string) {
+    landing = false
     if (path === currentPath) return
     window.history.pushState(null, '', path)
     currentPath = path
@@ -153,6 +158,9 @@
     sessionActivity.start()
   }
 
+  // Console settings from the server config: the companion, and the mode
+  // /console lands in (console_default_mode; focus sends it to the focus
+  // home). A user-role console cannot read the config and stays advanced.
   async function loadCompanionSetting() {
     if (needsSetup || loginRequired) {
       companionEnabled = false
@@ -160,15 +168,32 @@
     }
     try {
       const config = await getConfigSchema()
-      companionEnabled = companionEnabledFromConfigValues(config.effective_values || config.values)
+      const values = config.effective_values || config.values
+      companionEnabled = companionEnabledFromConfigValues(values)
+      const redirect = landing ? defaultModeRedirect(values?.console_default_mode, route) : null
+      if (redirect) {
+        window.history.replaceState(null, '', redirect)
+        syncFromBrowser()
+      }
     } catch {
       companionEnabled = false
     }
   }
 
-  function handleOnboardingComplete() {
+  // Finishing the wizard makes focus the default mode (ADR §2) and opens
+  // the focus home. Re-entry (changing providers later) keeps the mode the
+  // user already has.
+  async function handleOnboardingComplete() {
+    const firstSetup = !(route.view === 'onboarding' && route.reentry)
     needsSetup = false
-    navigate('/console')
+    if (firstSetup) {
+      try {
+        await patchConfigValues({ console_default_mode: 'focus' })
+      } catch {
+        // The mode stays advanced; the focus home is still one click away.
+      }
+    }
+    navigate(firstSetup ? '/console/focus' : '/console')
     void refreshAuth().then(loadConsoleNotifications)
   }
 
@@ -235,6 +260,7 @@
       board: tr.nav.items.board,
       home: tr.palette.pages.home,
       chat: tr.nav.items.chat,
+      focus: tr.nav.items.focus,
       'session-lineage': tr.nav.items.lineage,
       tasks: tr.nav.items.plans,
       agentruntime: tr.nav.items.agentruntime,
@@ -397,6 +423,15 @@
       <SessionBoard onNavigate={navigate} onNewChat={() => requestChat({ kind: 'new-session' })} />
     {:else if route.view === 'home'}
       <Home onNavigate={navigate} />
+    {:else if route.view === 'focus'}
+      {#await loadRouteComponent('focus')}
+        <div class="route-loading">Loading...</div>
+      {:then module}
+        {@const FocusRoute = module.default}
+        <FocusRoute sessionId={route.sessionId} onNavigate={navigate} />
+      {:catch}
+        <div class="route-error">Could not load console page.</div>
+      {/await}
     {:else if route.view === 'chat'}
       {#await loadRouteComponent('chat')}
         <div class="route-loading">Loading...</div>

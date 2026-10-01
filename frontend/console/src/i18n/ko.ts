@@ -57,6 +57,7 @@ export const ko = {
     },
     items: {
       board: '세션',
+      focus: '포커스',
       overview: '개요',
       chat: '채팅',
       lineage: '분기',

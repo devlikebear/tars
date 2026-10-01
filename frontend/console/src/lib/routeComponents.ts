@@ -1,5 +1,6 @@
 export type LazyRouteView =
   | 'chat'
+  | 'focus'
   | 'session-lineage'
   | 'tasks'
   | 'agentruntime'
@@ -28,6 +29,7 @@ function memoizeRouteLoader(loader: RouteComponentLoader): RouteComponentLoader 
 
 export const routeComponentLoaders = {
   chat: memoizeRouteLoader(() => import('../components/Chat.svelte')),
+  focus: memoizeRouteLoader(() => import('../components/focus/FocusView.svelte')),
   'session-lineage': memoizeRouteLoader(() => import('../components/SessionLineageGraph.svelte')),
   tasks: memoizeRouteLoader(() => import('../components/Plans.svelte')),
   agentruntime: memoizeRouteLoader(() => import('../components/AgentRuntimeRunView.svelte')),

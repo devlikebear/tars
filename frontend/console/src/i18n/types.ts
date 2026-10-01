@@ -60,6 +60,7 @@ export type Translations = {
     }
     items: {
       board: string
+      focus: string
       overview: string
       chat: string
       lineage: string

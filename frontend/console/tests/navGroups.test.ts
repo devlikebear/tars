@@ -14,7 +14,7 @@ const ids = (groups: typeof navGroups) => groups.map((g) => [g.id, g.items.map((
 
 test('the nav is grouped into Work, Build, and System (#968)', () => {
   assert.deepEqual(ids(navGroups), [
-    ['work', ['board', 'chat']],
+    ['work', ['board', 'focus', 'chat']],
     ['build', ['agentruntime', 'memory', 'extensions', 'sysprompt']],
     ['system', ['home', 'ops', 'pulse', 'reflection', 'cron', 'logs', 'analytics', 'config']],
   ])
@@ -38,7 +38,7 @@ test('every nav path is the palette path and resolves to its own view', () => {
 // user role cannot open would silently land on Home.
 test('the user role only sees pages it can open', () => {
   const userViews = visibleNavGroups('user').flatMap((g) => g.items.map((i) => i.view))
-  assert.deepEqual(userViews, ['board', 'chat', 'agentruntime', 'memory', 'sysprompt', 'home'])
+  assert.deepEqual(userViews, ['board', 'focus', 'chat', 'agentruntime', 'memory', 'sysprompt', 'home'])
   for (const view of userViews) {
     assert.equal(pageEntries.find((p) => p.view === view)?.adminOnly, false, view)
   }

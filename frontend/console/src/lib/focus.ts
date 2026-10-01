@@ -356,3 +356,12 @@ export function planEdits(plan: FocusPlan, edits: { skipped: ReadonlySet<string>
     verify: edits.verify.split('\n').map((line) => line.trim()).filter(Boolean),
   }
 }
+
+// --- Default mode ---
+
+// defaultModeRedirect is where the console lands instead of the board when
+// console_default_mode is focus. Only the landing redirects: the board stays
+// reachable from the nav.
+export function defaultModeRedirect(mode: unknown, route: { view: string }): string | null {
+  return mode === 'focus' && route.view === 'board' ? '/console/focus' : null
+}
