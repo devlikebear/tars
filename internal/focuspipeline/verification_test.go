@@ -89,14 +89,6 @@ func TestBuildTurnRequestsVerification(t *testing.T) {
 	}
 }
 
-func TestReviewTurnDoesNotRunVerification(t *testing.T) {
-	p := atStage(t, StageReview)
-	_, act := turn(p, t, &Report{Summary: "s", TasksDone: true})
-	if act.Kind != ActionNone {
-		t.Fatalf("review verification belongs to P3: %+v", act)
-	}
-}
-
 func TestVerificationOutcomes(t *testing.T) {
 	tests := []struct {
 		name          string

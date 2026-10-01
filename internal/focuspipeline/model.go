@@ -187,6 +187,8 @@ type Pipeline struct {
 	// once the release finishes, the release train treats both as released.
 	ReleaseItems []string   `json:"release_items,omitempty"`
 	ReleaseSince *time.Time `json:"release_since,omitempty"`
+	// Review is the review loop's position in its round (P3).
+	Review ReviewState `json:"review,omitzero"`
 }
 
 // KindRelease marks a release pipeline, which the release train never lists.
@@ -273,6 +275,7 @@ func (p Pipeline) clone() Pipeline {
 		f.Results = append([]VerificationResult(nil), f.Results...)
 		out.LastFailure = &f
 	}
+	out.Review = p.Review.clone()
 	if p.QATurns != nil {
 		out.QATurns = make(map[string][]int, len(p.QATurns))
 		for k, v := range p.QATurns {
