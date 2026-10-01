@@ -59,6 +59,7 @@ type serveAPIRuntime struct {
 	telegramPoller          *telegramUpdatePoller
 	remoteAccessRunner      remoteaccess.Runner
 	remoteAccessTargetURL   string
+	focusDriver             *focusDriver
 }
 
 type apiRouteHandlers struct {
@@ -467,6 +468,8 @@ func buildAPIMux(
 		logger.Info().Int("count", swept).Msg("kept worktrees of deleted sessions on their branches")
 	}
 	chatTooling.Worktrees = sessionWorktrees
+	focusDriver := newFocusDriver(logger)
+	chatTooling.Focus = focusDriver
 	chatTooling.OverrideService = overrideService
 	checkpointStore := openCheckpointStore(cfg.WorkspaceDir, logger)
 	chatTooling.Checkpoints = checkpointStore
@@ -720,7 +723,7 @@ func buildAPIMux(
 		sessions:       withWorktreeRetire(withSessionCreateIn(sessionHandler, sessionWorktrees), sessionWorktrees),
 		worktrees:      newSessionWorktreeHandler(sessionWorktrees),
 		sessionFolders: newSessionFoldersHandler(sessionWorktrees),
-		focus:          newFocusPipelineHandler(sessionStore, sessionWorktrees, logger),
+		focus:          newFocusPipelineHandler(sessionStore, sessionWorktrees, focusDriver, logger),
 		focusRelease:   newFocusReleaseHandler(sessionStore, logger),
 		checkpoints:    newCheckpointAPIHandler(checkpointStore, sessionStore, logger),
 		permissionMode: newPermissionModeHandler(sessionStore,
@@ -796,6 +799,7 @@ func buildAPIMux(
 		telegramPoller:          telegramPoller,
 		remoteAccessRunner:      remoteaccess.ExecRunner{},
 		remoteAccessTargetURL:   remoteaccess.DefaultTargetURL,
+		focusDriver:             focusDriver,
 	}, nil
 }
 
@@ -1179,6 +1183,8 @@ func shutdownRuntime(ctx context.Context, runtime *serveAPIRuntime) {
 	if runtime == nil {
 		return
 	}
+	// Focus runs start turns; stop them before the things turns use.
+	runtime.focusDriver.Close()
 	if runtime.pulseRuntime != nil {
 		runtime.pulseRuntime.Stop()
 	}

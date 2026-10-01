@@ -74,7 +74,8 @@ var (
 // Event is one fact fed to Apply.
 type Event struct {
 	Kind string // EventTurnCompleted | EventGate
-	// Turn is the transcript turn that completed (EventTurnCompleted).
+	// Turn is the transcript turn that completed (EventTurnCompleted), or
+	// the turn a verification ran after (EventVerification).
 	Turn   int
 	Blocks Blocks
 	// Stage is the stage to pass (EventAdvance); it must be Current, so a

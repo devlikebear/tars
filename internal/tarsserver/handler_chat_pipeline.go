@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/devlikebear/tars/internal/llm"
+	"github.com/devlikebear/tars/internal/serverauth"
 	"github.com/devlikebear/tars/internal/session"
 	"github.com/devlikebear/tars/internal/tool"
 	"github.com/devlikebear/tars/internal/usage"
@@ -108,6 +109,10 @@ func handleChatRequest(w http.ResponseWriter, r *http.Request, deps chatHandlerD
 	if !ok {
 		return
 	}
+	// A person's turn wins over the focus driver: its pending step (a
+	// verification, a queued turn) stops, and this turn's post-turn hook
+	// starts a new run.
+	deps.tooling.Focus.cancel(strings.TrimSpace(req.SessionID))
 	_, _ = runChatTurn(w, r, req, deps, chatTurnOrigin{})
 }
 
@@ -234,8 +239,7 @@ func runChatTurn(w http.ResponseWriter, r *http.Request, req chatRequestPayload,
 	chatCtx, cancelChat := context.WithCancel(baseCtx)
 	defer cancelChat()
 	if deps.cancelRegistry != nil {
-		deps.cancelRegistry.Register(state.sessionID, cancelChat)
-		defer deps.cancelRegistry.Unregister(state.sessionID)
+		defer deps.cancelRegistry.Register(state.sessionID, cancelChat)()
 	}
 
 	recordTierRecommendationSignal(deps.tooling.UsageTracker, state, "requested", llm.Usage{})
@@ -280,6 +284,7 @@ func runChatTurn(w http.ResponseWriter, r *http.Request, req chatRequestPayload,
 
 	if p, act, ok := focusAfterTurn(state.store, state.sessionID, state.transcriptPath, chatResp.Message.Content, state.focusMark, time.Now(), deps.logger); ok {
 		stream.pipeline(p, focusNextPrompt(act))
+		deps.tooling.Focus.afterTurn(r.Context(), state.sessionID, act, serverauth.RoleFromRequest(r))
 	}
 
 	stream.done(chatResp.Usage)

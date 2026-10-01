@@ -222,9 +222,12 @@ func TestVerificationAdvanceResetsBuildFacts(t *testing.T) {
 
 func TestVerificationFailureCardPayload(t *testing.T) {
 	p, _ := turn(inBuild(t), t, &Report{Summary: "t1"})
-	got, _ := verify(p, t, failed("make test", "--- FAIL: TestX"))
+	got, _, err := Apply(p, Event{Kind: EventVerification, Turn: 3, Verification: failed("make test", "--- FAIL: TestX")}, t0)
+	if err != nil {
+		t.Fatal(err)
+	}
 	card := got.Cards[len(got.Cards)-1]
-	if !strings.Contains(card.Title, "make test") || card.Stage != StageBuild {
+	if !strings.Contains(card.Title, "make test") || card.Stage != StageBuild || card.Turn != 3 {
 		t.Fatalf("card = %+v", card)
 	}
 	var payload FailureFact

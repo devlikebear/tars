@@ -137,12 +137,12 @@ func applyVerification(p Pipeline, ev Event, now time.Time) (Pipeline, Action, e
 	next.UpdatedAt = now
 	v := *ev.Verification
 	if v.Passed {
-		return next.verificationPassed(now)
+		return next.verificationPassed(ev.Turn, now)
 	}
-	return next.verificationFailed(v, now)
+	return next.verificationFailed(v, ev.Turn, now)
 }
 
-func (p Pipeline) verificationPassed(now time.Time) (Pipeline, Action, error) {
+func (p Pipeline) verificationPassed(turn int, now time.Time) (Pipeline, Action, error) {
 	p.LastFailure = nil
 	if p.TasksDone {
 		stage := p.advance()
@@ -150,26 +150,26 @@ func (p Pipeline) verificationPassed(now time.Time) (Pipeline, Action, error) {
 	}
 	build, _ := p.Stage(StageBuild)
 	if build.Turns >= buildTurnCap(p) {
-		p.block(BlockedNoProgress, nil, now)
+		p.block(BlockedNoProgress, nil, turn, now)
 		return p, noAction, nil
 	}
 	return p, Action{Kind: ActionSendTurn, Prompt: "Verification passed. Continue with the next task."}, nil
 }
 
-func (p Pipeline) verificationFailed(v Verification, now time.Time) (Pipeline, Action, error) {
+func (p Pipeline) verificationFailed(v Verification, turn int, now time.Time) (Pipeline, Action, error) {
 	build := p.stageRef(StageBuild)
 	fact := failureFact(v, build.Iteration)
 	repeated := p.LastFailure != nil && p.LastFailure.key() == fact.key()
 	limit := p.stageLimit(StageBuild)
 	switch {
 	case repeated:
-		p.block(BlockedRepeated, &fact, now)
+		p.block(BlockedRepeated, &fact, turn, now)
 		return p, noAction, nil
 	case build.Iteration >= limit:
-		p.block(BlockedLimit, &fact, now)
+		p.block(BlockedLimit, &fact, turn, now)
 		return p, noAction, nil
 	}
-	p.addCard(CardFailure, 0, failureTitle(fact), fact, now)
+	p.addCard(CardFailure, turn, failureTitle(fact), fact, now)
 	p.LastFailure = &fact
 	build.Iteration++
 	build.Limit = limit
@@ -178,14 +178,14 @@ func (p Pipeline) verificationFailed(v Verification, now time.Time) (Pipeline, A
 
 // block raises the blocked gate: the stage stops until the developer
 // retries, instructs, or stops.
-func (p *Pipeline) block(reason string, failure *FailureFact, now time.Time) {
+func (p *Pipeline) block(reason string, failure *FailureFact, turn int, now time.Time) {
 	build, _ := p.Stage(StageBuild)
 	p.setStatus(StageBuild, StatusBlocked)
 	p.OpenGate = GateBlocked
 	if failure != nil {
 		p.LastFailure = failure
 	}
-	p.addCard(CardGate, 0, BlockedTitle, BlockedFact{
+	p.addCard(CardGate, turn, BlockedTitle, BlockedFact{
 		Reason: reason, Iteration: build.Iteration, Limit: p.stageLimit(StageBuild), Failure: failure,
 	}, now)
 }

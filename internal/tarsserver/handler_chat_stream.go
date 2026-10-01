@@ -312,6 +312,25 @@ func (s *chatStreamWriter) pipeline(p focuspipeline.Pipeline, nextPrompt string)
 	})
 }
 
+// focusProgress reports the focus driver's verification step: phase is
+// "verifying" before command index of total runs and "verified" with its
+// result after.
+func (s *chatStreamWriter) focusProgress(phase, command string, index, total int, result *focuspipeline.VerificationResult) {
+	event := map[string]any{
+		"type":       "focus_progress",
+		"session_id": s.sessionID,
+		"phase":      phase,
+		"command":    command,
+		"index":      index,
+		"total":      total,
+	}
+	if result != nil {
+		event["passed"] = result.Passed
+		event["exit_code"] = result.ExitCode
+	}
+	s.send(event)
+}
+
 func (s *chatStreamWriter) done(usage llm.Usage) {
 	s.send(map[string]any{
 		"type":            "done",

@@ -64,7 +64,7 @@ func plannedFocusSession(t *testing.T, store *session.Store) session.Session {
 
 func TestFocusCreate(t *testing.T) {
 	f := newWorktreeFixture(t)
-	h := newFocusPipelineHandler(f.store, f.c, zerolog.Nop())
+	h := newFocusPipelineHandler(f.store, f.c, nil, zerolog.Nop())
 
 	if rec := focusRequest(t, h, http.MethodPost, "/v1/focus/pipelines", `{"goal":"g","cwd":`+jsonString(f.repo)+`}`, false); rec.Code != http.StatusForbidden {
 		t.Fatalf("non-admin: %d %s", rec.Code, rec.Body.String())
@@ -109,7 +109,7 @@ func TestFocusCreate(t *testing.T) {
 
 func TestFocusListAndGet(t *testing.T) {
 	f := newWorktreeFixture(t)
-	h := newFocusPipelineHandler(f.store, f.c, zerolog.Nop())
+	h := newFocusPipelineHandler(f.store, f.c, nil, zerolog.Nop())
 	live := plannedFocusSession(t, f.store)
 	// A pipeline whose session is gone never shows.
 	if err := focusStoreFor(f.store).Save(focuspipeline.New("ghost", "g", time.Now())); err != nil {
@@ -142,7 +142,7 @@ func TestFocusListAndGet(t *testing.T) {
 
 func TestFocusPlanGate(t *testing.T) {
 	f := newWorktreeFixture(t)
-	h := newFocusPipelineHandler(f.store, f.c, zerolog.Nop())
+	h := newFocusPipelineHandler(f.store, f.c, nil, zerolog.Nop())
 	sess := plannedFocusSession(t, f.store)
 	gateURL := "/v1/focus/pipelines/" + sess.ID + "/gates/plan"
 
@@ -199,7 +199,7 @@ func TestFocusPlanGate(t *testing.T) {
 
 func TestFocusPlanGateEditsAndRequestChanges(t *testing.T) {
 	f := newWorktreeFixture(t)
-	h := newFocusPipelineHandler(f.store, f.c, zerolog.Nop())
+	h := newFocusPipelineHandler(f.store, f.c, nil, zerolog.Nop())
 
 	sess := plannedFocusSession(t, f.store)
 	gateURL := "/v1/focus/pipelines/" + sess.ID + "/gates/plan"
@@ -228,7 +228,7 @@ func TestFocusPlanGateEditsAndRequestChanges(t *testing.T) {
 
 func TestFocusCards(t *testing.T) {
 	f := newWorktreeFixture(t)
-	h := newFocusPipelineHandler(f.store, f.c, zerolog.Nop())
+	h := newFocusPipelineHandler(f.store, f.c, nil, zerolog.Nop())
 	sess := focusSession(t, f.store, "g")
 	reply := focusPlanReply + "\n<focus-report>{\"summary\":\"s\",\"decisions\":[{\"id\":\"d1\",\"question\":\"Which store?\",\"options\":[\"file\",\"sqlite\"]}]}</focus-report>"
 	p, _, ok := focusAfterTurn(f.store, sess.ID, f.store.TranscriptPath(sess.ID), reply, currentFocusMark(t, f.store, sess.ID), time.Now(), zerolog.Nop())
@@ -384,7 +384,7 @@ func TestFocusPipelineRemovedWithSession(t *testing.T) {
 
 func TestFocusAdvance(t *testing.T) {
 	f := newWorktreeFixture(t)
-	h := newFocusPipelineHandler(f.store, f.c, zerolog.Nop())
+	h := newFocusPipelineHandler(f.store, f.c, nil, zerolog.Nop())
 	sess := plannedFocusSession(t, f.store)
 	advanceURL := "/v1/focus/pipelines/" + sess.ID + "/advance"
 
@@ -435,7 +435,7 @@ func TestFocusAdvance(t *testing.T) {
 
 func TestFocusStop(t *testing.T) {
 	f := newWorktreeFixture(t)
-	h := newFocusPipelineHandler(f.store, f.c, zerolog.Nop())
+	h := newFocusPipelineHandler(f.store, f.c, nil, zerolog.Nop())
 	sess := plannedFocusSession(t, f.store)
 	stopURL := "/v1/focus/pipelines/" + sess.ID + "/stop"
 
@@ -500,7 +500,7 @@ func approvePlanVia(t *testing.T, h http.Handler, sessionID string) *httptest.Re
 func TestFocusPlanApprovalDoesNotDeadlockWithSessionDelete(t *testing.T) {
 	f := newWorktreeFixture(t)
 	attachSessionDeleteHooks(f.store, focusPipelineCleanup(f.store, zerolog.Nop()))
-	h := newFocusPipelineHandler(f.store, f.c, zerolog.Nop())
+	h := newFocusPipelineHandler(f.store, f.c, nil, zerolog.Nop())
 
 	// The deleter runs inside the tasks hook: under the old lock order the
 	// approval held the pipeline folder lock here and the delete hook needed
@@ -555,7 +555,7 @@ func TestFocusPlanApprovalDoesNotDeadlockWithSessionDelete(t *testing.T) {
 
 func TestFocusPlanApprovalTasksWriteFailure(t *testing.T) {
 	f := newWorktreeFixture(t)
-	h := newFocusPipelineHandler(f.store, f.c, zerolog.Nop())
+	h := newFocusPipelineHandler(f.store, f.c, nil, zerolog.Nop())
 	sess := plannedFocusSession(t, f.store)
 	// A folder where the tasks file belongs makes the write fail.
 	if err := os.MkdirAll(filepath.Join(f.store.WorkspaceDir(), "sessions", sess.ID+".tasks.json", "x"), 0o755); err != nil {

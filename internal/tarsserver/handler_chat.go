@@ -1248,6 +1248,10 @@ type chatToolingOptions struct {
 	// SessionCosts returns this month's cost per chat session for the
 	// session board (#971). nil shows every cost as 0.
 	SessionCosts func() (map[string]float64, error)
+	// Focus carries out focus pipelines' actions after turns and gate
+	// actions (verification, the next turn). nil leaves pipelines waiting
+	// for the console.
+	Focus *focusDriver
 }
 
 type chatCompactionOptions struct {
@@ -1392,24 +1396,26 @@ func newChatAPIHandlerWithRuntimeConfig(
 	permissions.always = newChatAlwaysRuleStore(workspaceDir)
 	permissions.audit = auditTo(tooling.OpsManager)
 	mux := http.NewServeMux()
+	chatDeps := chatHandlerDeps{
+		workspaceDir:   workspaceDir,
+		store:          store,
+		client:         client,
+		router:         router,
+		logger:         logger,
+		maxIters:       maxIters,
+		chatLimiter:    chatLimiter,
+		activity:       activity,
+		mainSessionID:  strings.TrimSpace(mainSessionID),
+		tooling:        tooling,
+		extraTools:     extraTools,
+		cancelRegistry: cancelRegistry,
+		turnFeeds:      turnFeeds,
+		chatActivity:   chatActivity,
+		permissions:    permissions,
+	}
+	tooling.Focus.bind(chatDeps)
 	mux.HandleFunc("/v1/chat", func(w http.ResponseWriter, r *http.Request) {
-		handleChatRequest(w, r, chatHandlerDeps{
-			workspaceDir:   workspaceDir,
-			store:          store,
-			client:         client,
-			router:         router,
-			logger:         logger,
-			maxIters:       maxIters,
-			chatLimiter:    chatLimiter,
-			activity:       activity,
-			mainSessionID:  strings.TrimSpace(mainSessionID),
-			tooling:        tooling,
-			extraTools:     extraTools,
-			cancelRegistry: cancelRegistry,
-			turnFeeds:      turnFeeds,
-			chatActivity:   chatActivity,
-			permissions:    permissions,
-		})
+		handleChatRequest(w, r, chatDeps)
 	})
 	mux.HandleFunc("/v1/chat/permissions/", func(w http.ResponseWriter, r *http.Request) {
 		handleChatPermissionAnswer(w, r, permissions)
@@ -1430,7 +1436,10 @@ func newChatAPIHandlerWithRuntimeConfig(
 			writeError(w, http.StatusBadRequest, "", "session_id is required")
 			return
 		}
-		if cancelRegistry.Cancel(sessionID) {
+		// Cancel both: the running turn, and the focus driver's run that
+		// would otherwise start the next one.
+		turnCancelled := cancelRegistry.Cancel(sessionID)
+		if tooling.Focus.cancel(sessionID) || turnCancelled {
 			writeJSON(w, http.StatusOK, map[string]bool{"cancelled": true})
 		} else {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "no active chat for session"})
