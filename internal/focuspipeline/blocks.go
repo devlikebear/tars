@@ -58,6 +58,9 @@ type Finding struct {
 	Line     int    `json:"line"`
 	Title    string `json:"title"`
 	Scenario string `json:"scenario"`
+	// Excerpt is the diff around File:Line since the pipeline's base
+	// commit, added by the server (never by the model) for the card.
+	Excerpt string `json:"excerpt,omitempty"`
 }
 
 // tagPattern matches any focus open or close tag; group 1 is "/" for a

@@ -383,8 +383,8 @@ func (d *focusDriver) waitIdle(run *focusRun) bool {
 	return run.ctx.Err() == nil
 }
 
-// runVerification runs the plan's verify commands (end-to-end commands
-// belong to review) and applies the result. It claims the session like a
+// runVerification runs the plan's verify commands — and in review its
+// end-to-end commands after them — and applies the result. It claims the session like a
 // turn: the session shows as running, its progress goes to a turn feed a
 // console follows on GET /v1/chat/stream, and POST /v1/chat/cancel stops
 // it. claimed is false when another turn held the session.
@@ -401,14 +401,7 @@ func (d *focusDriver) runVerification(run *focusRun, log zerolog.Logger) (focusp
 	if err != nil || !found || !p.AwaitingVerification {
 		return none, true
 	}
-	var commands []string
-	if p.Plan != nil {
-		for _, c := range p.Plan.Verify {
-			if c = strings.TrimSpace(c); c != "" {
-				commands = append(commands, c)
-			}
-		}
-	}
+	commands := focusVerifyCommands(p)
 
 	feed, endFeed := d.feeds.begin(run.sessionID)
 	defer endFeed()
@@ -451,4 +444,25 @@ func (d *focusDriver) runVerification(run *focusRun, log zerolog.Logger) (focusp
 	stream.pipeline(updated, focusNextPrompt(act))
 	stream.focusDone()
 	return act, true
+}
+
+// focusVerifyCommands are the commands a verification runs: the plan's
+// verify commands, and in review its end-to-end commands after them.
+func focusVerifyCommands(p focuspipeline.Pipeline) []string {
+	if p.Plan == nil {
+		return nil
+	}
+	lists := [][]string{p.Plan.Verify}
+	if p.Current == focuspipeline.StageReview {
+		lists = append(lists, p.Plan.E2E)
+	}
+	var commands []string
+	for _, list := range lists {
+		for _, c := range list {
+			if c = strings.TrimSpace(c); c != "" {
+				commands = append(commands, c)
+			}
+		}
+	}
+	return commands
 }
