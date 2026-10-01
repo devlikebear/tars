@@ -6,6 +6,32 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.41.0] - 2026-10-01
+
+### Added
+
+- **세션 worktree가 의존성 폴더를 copy-on-write로 가져온다** — ⑂ 격리한 세션에는 gitignore된 의존성 폴더(`frontend/console/node_modules` 등)가 없어 프론트 검사·e2e를 바로 돌릴 수 없었다. 원본의 `node_modules`를 심볼릭 링크하는 우회는 쓰기 격리가 없어, 격리 세션에서 `npm install`을 돌리자 원본이 통째로 비워졌다. 이제 `.tars/settings*.json`의 `worktree_include`가 폴더도 받아 실제 사본으로 가져온다. 파일마다 파일시스템이 지원하면 copy-on-write 복제(APFS `clonefile`, Btrfs/XFS `FICLONE`)를 쓰고, 아니면 worktree당 1 GiB까지 일반 복사한다(넘으면 그 항목 전체를 건너뜀). 항목은 저장소 안에 머물러야 한다: 상대 경로만, `..`·`.git`·경로 중간의 심볼릭 링크 금지(벗어나는 항목은 경고와 함께 버림). 폴더 안의 심볼릭 링크는 상대 경로이면서 저장소 안을 가리킬 때만(`.bin/*` 등) 다시 만든다. 복사는 스테이징 폴더에서 조립해 제자리로 옮기고, 격리는 3초만 기다린 뒤 나머지는 백그라운드로 계속한다(SSE `worktree` "pending", audit `include_copied`/`include_skipped`). 세션이 이미 만든 경로는 덮어쓰지 않고, apply/keep/discard는 진행 중인 복사를 먼저 취소한다. 이 저장소는 `.tars/settings.json`에 `frontend/console/node_modules`를 등록했다(clone 약 2초, 추가 디스크 없음). (#1053)
+
+- **폴더 선택기에서 경로 입력·필터·숨김 폴더 접기** — 파일 패널의 "+" 폴더 선택기는 홈에서 한 단계씩 눌러 내려가야만 해서, `.claude/worktrees/...` 같은 깊은 폴더는 7번 넘게 누르고 긴 숨김 폴더 목록을 스크롤해야 했다. 이제 경로 칸에 경로를 입력하거나 붙여 넣고 Enter로 이동한다(앞의 `~`는 홈, 상대 경로는 요청 전에 거절, Esc는 원래 경로로 되돌림). 이동에 실패하면 상태에 맞는 한국어/영어 오류와 경로를 보여 주고 목록은 그대로 둔다. 이름 필터로 목록을 좁히고 Enter로 첫 항목을 연다. `.`으로 시작하는 폴더는 목록 끝의 접힌 "숨김 폴더 (N)" 묶음으로 옮기고, 필터가 있으면 일치하는 것만 바로 보여 준다. (#1054)
+
+### Fixed
+
+- **`internal/workscheduler`의 흔들리는 테스트** — `TestSchedulerExecutesDAGAndCompletesWork`가 CI에서 가끔 `second scheduler tick claimed=0`으로 실패했다. 단계는 durable하게 완료로 기록된 뒤 마무리·capability 결과·reconcile을 거쳐서야 실행 고루틴이 슬롯을 반납하는데, 테스트는 완료 기록만 기다리고 바로 다음 틱을 돌려 부하가 걸리면 가용 슬롯이 0이었다. 제품 코드의 경합이 아니라 테스트 가정의 문제라, 재시도 테스트처럼 `activeCount()==0`도 기다리게 했다(`-race -count=100` 통과). (#1049)
+
+- **채팅 스트림이 끊기면 상태 바 비용이 갱신되지 않던 문제** — 채팅 턴은 콘솔의 스트림이 끊겨도 서버에서 계속 도는데, 패널은 스트림 자체의 done/cancelled 이벤트를 받을 때만 세션 목록·상태·상태 바 비용을 다시 읽었다. 그래서 "network error" 뒤에는 턴이 보이지 않게 끝났고, 상태 바는 그 전에 읽은 값(새 세션이면 `$0 · 0 토큰`)을 새로고침 전까지 보여 줬다. 이제 보내던 스트림이 끊기면 transcript를 다시 불러오고, 턴 피드로 실행 중인 턴에 다시 붙으며, 끝 이벤트가 오지 않으면 스스로 턴을 정리한다. 이벤트 스트림이 다시 연결되거나 탭으로 돌아올 때도 세션 사용량을 다시 읽는다. (#1050)
+
+- **다시 연 턴에서 텍스트와 도구 카드의 순서가 사라지던 문제** — 턴은 도구 호출 전부와 모든 텍스트를 담은 답 하나로 저장돼서, 다시 연 `claude-code-cli` 턴은 도구 카드가 모두 위에, 설명은 모두 아래에 모여 무엇을 왜 했는지의 흐름이 사라졌다. 네이티브 provider는 도구 호출 앞에서 한 말을 아예 잃었다(마지막 반복의 답만 반환됐기 때문). 이제 서버가 스트리밍된 텍스트를 도구 호출마다 잘라 턴을 스트림 순서대로 저장한다: 도구 앞의 텍스트는 중간 assistant 메시지(`session.Message.Interim`)로, 답은 마지막에. 모델 히스토리를 만들 때는 중간 텍스트를 답에 다시 접어 provider가 보는 턴의 형태는 전과 같고, 예전 transcript는 그대로 읽힌다. 스트리밍되지 않은 답은 기존 배치를 유지한다. 옆 세션 패널도 도구 뒤의 텍스트를 새 말풍선으로 흘려 같은 순서를 보여 준다. (#1051)
+
+- **CLI provider 세션에 맞지 않는 세션 상태 경고** — `claude-code-cli`(와 `antigravity-cli`) 세션은 업스트림 세션을 resume해서 TARS는 새 메시지만 보내고 컨텍스트 압축도 CLI가 하는데, 상태 패널은 transcript 길이만 보고 "컨텍스트가 길어지는 중"·"곧 압축 필요"를 권했다. TARS의 압축은 CLI의 실제 컨텍스트를 줄이지 않는다. 또 CLI는 자기 도구를 실행하므로 TARS의 고위험 도구 수("고위험 도구 6개 활성화")도 맞지 않았다. 이제 세션 상태는 다음 턴을 실행할 provider를 기준으로 판단한다(티어 고정, 최근 턴, 기본 티어 순으로 추정). resume 중인 CLI 세션은 긴 컨텍스트 신호 대신 "CLI가 이 컨텍스트를 관리함" 안내를 보이고, 고위험 도구 대신 권한 모드를 보여 주며 `bypassPermissions`일 때만 경고한다. 네이티브 provider 세션은 그대로다. (#1055)
+
+- **컴패니언 말풍선이 채팅 레일 아이콘을 가리던 문제** — 오른쪽 아래에 고정된 컴패니언 펫의 말풍선이 채팅 레일 아래쪽 아이콘(상태, 크론)을 덮었고, ops·cron·usage 이벤트마다 9초씩 저절로 열려 그동안 그 아이콘을 누를 수 없었다. 이제 데스크톱 폭의 채팅 화면에서는 펫이 레일 왼쪽(`--chat-rail-width` 토큰)에 앉는다. 이 문제로 `e2e/workbench-ko.spec.ts`의 "every dock panel is Korean"이 앞선 스펙의 이벤트 뒤에 45초 타임아웃까지 멈추곤 했고, 말풍선을 연 채 모든 레일 아이콘이 눌리는지 확인하는 회귀 e2e를 추가했다. (#1057)
+
+- **macOS에서만 실패하던 `?` 단축키 도움말 e2e** — 앱의 키 처리(`event.key` 기준, 레이아웃 인식)는 맞았지만, 단축키 목록은 `navigator.platform`에 따라 Mod를 ⌘로 표시하는데 테스트는 Ctrl+K만 기대했다. 이제 Mac 페이지에서는 ⌘K, 그 밖에서는 Ctrl+K를 기대한다. (#1057)
+
+### Changed
+
+- CLAUDE.md의 PR 사전 점검 목록에 `make api-check`(공개 API 스냅샷, `make api-snapshot`으로 갱신)와 `make security-scan`(gitleaks·로컬 절대경로·개인키 검사)을 추가했다. 둘 다 CI에서 PR을 막은 적이 있다. (#1049)
+
 ## [0.40.7] - 2026-09-30
 
 ### Fixed
