@@ -137,9 +137,69 @@ jobs:
           go-version-file: desktop/go.mod
           cache-dependency-path: desktop/go.sum
 
+      # Without a Developer ID signature and a notarization ticket, Gatekeeper
+      # refuses the downloaded app (and the Homebrew cask, which installs it
+      # quarantined). The secret names match devlikebear/linetta's.
+      - name: Check Apple signing secrets
+        id: apple_signing
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_BASE64: ${{ secrets.APPLE_API_KEY_BASE64 }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          missing=()
+          for name in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_API_ISSUER APPLE_API_KEY APPLE_API_KEY_BASE64 KEYCHAIN_PASSWORD; do
+            if [ -z "${!name:-}" ]; then
+              missing+=("${name}")
+            fi
+          done
+          if [ "${#missing[@]}" -eq 0 ]; then
+            echo "configured=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "configured=false" >> "${GITHUB_OUTPUT}"
+            echo "::warning::Apple signing secrets missing (${missing[*]}): the macOS desktop app is ad-hoc signed and Gatekeeper will refuse it once downloaded."
+          fi
+
+      - name: Import Apple signing assets
+        id: apple_assets
+        if: steps.apple_signing.outputs.configured == 'true'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_API_KEY_BASE64: ${{ secrets.APPLE_API_KEY_BASE64 }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          keychain="${RUNNER_TEMP}/tars-signing.keychain-db"
+          cert_path="${RUNNER_TEMP}/developer-id.p12"
+          key_path="${RUNNER_TEMP}/AuthKey.p8"
+          printf '%s' "${APPLE_CERTIFICATE}" | base64 --decode > "${cert_path}"
+          printf '%s' "${APPLE_API_KEY_BASE64}" | base64 --decode > "${key_path}"
+          security create-keychain -p "${KEYCHAIN_PASSWORD}" "${keychain}"
+          security default-keychain -s "${keychain}"
+          security list-keychains -d user -s "${keychain}"
+          security unlock-keychain -p "${KEYCHAIN_PASSWORD}" "${keychain}"
+          security set-keychain-settings -lut 21600 "${keychain}"
+          security import "${cert_path}" -k "${keychain}" -P "${APPLE_CERTIFICATE_PASSWORD}" \
+            -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s \
+            -k "${KEYCHAIN_PASSWORD}" "${keychain}"
+          security find-identity -v -p codesigning "${keychain}"
+          rm -f "${cert_path}"
+          echo "api_key_path=${key_path}" >> "${GITHUB_OUTPUT}"
+
       - name: Package the app bundles
         env:
           VERSION: ${{ needs.prepare-release.outputs.version }}
+          DESKTOP_CODESIGN_IDENTITY: ${{ steps.apple_signing.outputs.configured == 'true' && secrets.APPLE_SIGNING_IDENTITY || '' }}
+          DESKTOP_NOTARY_KEY_PATH: ${{ steps.apple_assets.outputs.api_key_path }}
+          DESKTOP_NOTARY_KEY_ID: ${{ steps.apple_signing.outputs.configured == 'true' && secrets.APPLE_API_KEY || '' }}
+          DESKTOP_NOTARY_ISSUER: ${{ steps.apple_signing.outputs.configured == 'true' && secrets.APPLE_API_ISSUER || '' }}
         run: |
           set -euo pipefail
           for desktop_goarch in arm64 amd64; do
@@ -147,6 +207,12 @@ jobs:
           done
           tar -xzf "dist/tars-desktop_${VERSION}_darwin_arm64.tar.gz" -C "${RUNNER_TEMP}"
           "${RUNNER_TEMP}/TARS.app/Contents/MacOS/TARS" --version | grep -F "tars-desktop ${VERSION} "
+
+      - name: Remove signing assets
+        if: always() && steps.apple_assets.outcome == 'success'
+        run: |
+          rm -f "${RUNNER_TEMP}/AuthKey.p8"
+          security delete-keychain "${RUNNER_TEMP}/tars-signing.keychain-db" || true
 
       - name: Upload desktop archives
         uses: actions/upload-artifact@v4
@@ -201,6 +267,8 @@ jobs:
       version: ${{ steps.checksums.outputs.version }}
       arm64_sha: ${{ steps.checksums.outputs.arm64_sha }}
       amd64_sha: ${{ steps.checksums.outputs.amd64_sha }}
+      desktop_arm64_sha: ${{ steps.checksums.outputs.desktop_arm64_sha }}
+      desktop_amd64_sha: ${{ steps.checksums.outputs.desktop_amd64_sha }}
     steps:
       - name: Download built archives
         uses: actions/download-artifact@v4
@@ -229,6 +297,8 @@ jobs:
           printf 'version=%s\n' "${VERSION}" >> "${GITHUB_OUTPUT}"
           printf 'arm64_sha=%s\n' "${arm64_sha}" >> "${GITHUB_OUTPUT}"
           printf 'amd64_sha=%s\n' "${amd64_sha}" >> "${GITHUB_OUTPUT}"
+          printf 'desktop_arm64_sha=%s\n' "$(shasum -a 256 "dist/tars-desktop_${VERSION}_darwin_arm64.tar.gz" | awk '{print $1}')" >> "${GITHUB_OUTPUT}"
+          printf 'desktop_amd64_sha=%s\n' "$(shasum -a 256 "dist/tars-desktop_${VERSION}_darwin_amd64.tar.gz" | awk '{print $1}')" >> "${GITHUB_OUTPUT}"
 
       - name: Publish GitHub release
         env:
@@ -279,21 +349,31 @@ jobs:
           token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
           path: homebrew-tap
 
-      - name: Render formula
+      # The tars-desktop cask depends on the tars formula, so
+      # `brew install --cask devlikebear/tap/tars-desktop` installs both.
+      - name: Render formula and cask
         env:
           VERSION: ${{ needs.publish-release.outputs.version }}
           ARM64_SHA: ${{ needs.publish-release.outputs.arm64_sha }}
           AMD64_SHA: ${{ needs.publish-release.outputs.amd64_sha }}
+          DESKTOP_ARM64_SHA: ${{ needs.publish-release.outputs.desktop_arm64_sha }}
+          DESKTOP_AMD64_SHA: ${{ needs.publish-release.outputs.desktop_amd64_sha }}
         working-directory: repo
         run: |
           set -euo pipefail
-          mkdir -p ../homebrew-tap/Formula
+          mkdir -p ../homebrew-tap/Formula ../homebrew-tap/Casks
           go run ./cmd/releasectl homebrew-formula \
             --repo devlikebear/tars \
             --version "${VERSION}" \
             --arm64-sha "${ARM64_SHA}" \
             --amd64-sha "${AMD64_SHA}" \
             > ../homebrew-tap/Formula/tars.rb
+          go run ./cmd/releasectl homebrew-cask \
+            --repo devlikebear/tars \
+            --version "${VERSION}" \
+            --arm64-sha "${DESKTOP_ARM64_SHA}" \
+            --amd64-sha "${DESKTOP_AMD64_SHA}" \
+            > ../homebrew-tap/Casks/tars-desktop.rb
 
       - name: Commit and push formula update
         working-directory: homebrew-tap
@@ -301,9 +381,9 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Formula/tars.rb
+          git add Formula/tars.rb Casks/tars-desktop.rb
           if git diff --cached --quiet; then
-            echo "formula already up to date"
+            echo "formula and cask already up to date"
             exit 0
           fi
           git commit -m "tars ${{ needs.publish-release.outputs.version }}"

@@ -6,6 +6,17 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.42.1] - 2026-10-01
+
+### Added
+
+- **Homebrew cask로 데스크톱 앱과 서버를 한 번에 설치** — 서버는 `brew install devlikebear/tap/tars`로, 데스크톱 앱은 릴리스에서 `.tar.gz`를 따로 받아 풀어야 했다. 이제 `brew install --cask devlikebear/tap/tars-desktop`이 `TARS.app`을 설치하면서 의존하는 `tars` 포뮬러도 함께 설치한다. 릴리스가 포뮬러 옆에 `Casks/tars-desktop.rb`를 갱신하고(`releasectl homebrew-cask`), 앱이 스스로 업데이트하므로 cask는 `auto_updates`로 표시한다. 포뮬러의 caveats가 cask를 안내한다.
+
+### Fixed
+
+- **릴리스에서 받은 macOS 데스크톱 앱이 Gatekeeper에 막히던 문제** — 번들이 ad-hoc 서명만 되어 있어, 브라우저로 받은 앱은 "Apple이 확인할 수 없음"으로 열리지 않았다. 이제 릴리스가 Developer ID와 hardened runtime으로 서명하고 Apple 공증을 받아 티켓을 번들에 붙인다(`scripts/desktop_package.sh`의 `DESKTOP_NOTARY_*`, 워크플로의 `APPLE_*` 시크릿). 시크릿이 없으면 예전처럼 ad-hoc으로 만들고 경고를 남긴다.
+- **Finder에서 연 데스크톱 앱이 Homebrew로 설치한 `tars`를 찾지 못하던 문제** — Finder·Dock으로 연 앱은 launchd의 최소 PATH만 받아 `/opt/homebrew/bin`이 없으므로, 트레이의 "서버 시작"이 `tars executable not found`로 실패했다. 이제 PATH 다음에 `/opt/homebrew/bin`, `/usr/local/bin`, `~/.local/bin`(Linux는 `~/.local/bin`, Linuxbrew, `/usr/local/bin`)을 찾는다.
+
 ## [0.42.0] - 2026-10-01
 
 ### Added

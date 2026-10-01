@@ -258,7 +258,8 @@ The Extensions console validates MCP draft names before requesting generated fil
 
 ```bash
 brew tap devlikebear/tap
-brew install devlikebear/tap/tars
+brew install devlikebear/tap/tars                  # server + CLI
+brew install --cask devlikebear/tap/tars-desktop   # desktop app (macOS); pulls in the server too
 ```
 
 **Curl:**

@@ -151,7 +151,7 @@ func TestFindTARS(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, name), []byte("x"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := FindTARS(shell, noPath); err != nil || got != filepath.Join(dir, name) {
+	if got, err := FindTARS(shell, noPath, nil); err != nil || got != filepath.Join(dir, name) {
 		t.Fatalf("next to the shell = %q, %v", got, err)
 	}
 
@@ -163,16 +163,55 @@ func TestFindTARS(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(bundle, name), []byte("x"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := FindTARS(filepath.Join(macOS, "TARS"), noPath); err != nil || got != filepath.Join(bundle, name) {
+	if got, err := FindTARS(filepath.Join(macOS, "TARS"), noPath, nil); err != nil || got != filepath.Join(bundle, name) {
 		t.Fatalf("beside the app bundle = %q, %v", got, err)
 	}
 
 	onPath := func(string) (string, error) { return "/usr/local/bin/tars", nil }
-	if got, err := FindTARS(filepath.Join(t.TempDir(), "shell"), onPath); err != nil || got != "/usr/local/bin/tars" {
+	if got, err := FindTARS(filepath.Join(t.TempDir(), "shell"), onPath, nil); err != nil || got != "/usr/local/bin/tars" {
 		t.Fatalf("on PATH = %q, %v", got, err)
 	}
-	if _, err := FindTARS("", noPath); err == nil {
+	if _, err := FindTARS("", noPath, nil); err == nil {
 		t.Fatal("missing tars must be an error")
+	}
+
+	// An app opened from Finder gets launchd's PATH (/usr/bin:/bin:...), which
+	// misses Homebrew's bin, so the well-known install places come last.
+	brewBin := t.TempDir()
+	if err := os.WriteFile(filepath.Join(brewBin, name), []byte("x"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	missing := filepath.Join(t.TempDir(), "nope")
+	if got, err := FindTARS("", noPath, []string{missing, brewBin}); err != nil || got != filepath.Join(brewBin, name) {
+		t.Fatalf("well-known dir = %q, %v", got, err)
+	}
+	if got, err := FindTARS("", onPath, []string{brewBin}); err != nil || got != "/usr/local/bin/tars" {
+		t.Fatalf("PATH must win over well-known dirs = %q, %v", got, err)
+	}
+}
+
+func TestInstallDirs(t *testing.T) {
+	darwin := InstallDirs("darwin", "/Users/me")
+	for _, want := range []string{"/opt/homebrew/bin", "/usr/local/bin", filepath.Join("/Users/me", ".local", "bin")} {
+		found := false
+		for _, d := range darwin {
+			if d == want {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("darwin install dirs %v miss %q", darwin, want)
+		}
+	}
+	if darwin[0] != "/opt/homebrew/bin" {
+		t.Fatalf("Apple silicon Homebrew must come first: %v", darwin)
+	}
+	linux := InstallDirs("linux", "/home/me")
+	if len(linux) == 0 || linux[0] != filepath.Join("/home/me", ".local", "bin") {
+		t.Fatalf("linux install dirs = %v", linux)
+	}
+	if got := InstallDirs("darwin", ""); len(got) != 2 {
+		t.Fatalf("no home must skip ~/.local/bin: %v", got)
 	}
 }
 

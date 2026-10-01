@@ -29,6 +29,18 @@ a window of their own. The server runs on its own, so closing the window
 (it only hides) or quitting the shell never stops a chat, a cron job, or
 pulse.
 
+## Installing
+
+On macOS, the Homebrew cask installs the app together with the server
+formula it depends on:
+
+```bash
+brew install --cask devlikebear/tap/tars-desktop
+```
+
+Elsewhere, take the archive for your platform from the GitHub release and
+put `tars` on `PATH` (Homebrew or `install.sh`).
+
 ## Running
 
 ```bash
@@ -40,8 +52,10 @@ When nothing answers, the window shows a waiting page and moves to the
 console as soon as the server is up. **Start server** in the tray menu runs
 `tars service start` on macOS and a detached `tars serve` elsewhere (its
 output goes to `<user config dir>/tars-desktop/server.log`). The `tars`
-executable is looked up next to the shell, beside the `.app` bundle, then on
-`PATH`.
+executable is looked up next to the shell, beside the `.app` bundle, on
+`PATH`, then in Homebrew's and `install.sh`'s bin directories
+(`/opt/homebrew/bin`, `/usr/local/bin`, `~/.local/bin`): an app opened from
+Finder or the Dock gets launchd's minimal `PATH`, which has none of them.
 
 | Flag | Environment | Config file key | Default |
 |------|-------------|-----------------|---------|
@@ -177,10 +191,17 @@ place of the running app, and is listed in the release's `checksums.txt`,
 which the updater verifies before installing. **Check for updates…** in the
 tray menu runs it; development builds (`dev`) do not update.
 
-The macOS bundle is ad-hoc signed, so the first open needs a right-click →
-Open (or System Settings → Privacy & Security → Open Anyway). Set
-`DESKTOP_CODESIGN_IDENTITY` when packaging to sign with a Developer ID;
-notarization is not wired up yet.
+The release signs the macOS bundle with a Developer ID and the hardened
+runtime, notarizes it and staples the ticket, so Gatekeeper opens the
+downloaded app (and the cask, which installs it quarantined) without a
+prompt. `scripts/desktop_package.sh` does this when
+`DESKTOP_CODESIGN_IDENTITY` and the App Store Connect API key
+(`DESKTOP_NOTARY_KEY_PATH`, `DESKTOP_NOTARY_KEY_ID`,
+`DESKTOP_NOTARY_ISSUER`) are set; the release workflow takes them from the
+`APPLE_*` repository secrets. Without them the bundle is ad-hoc signed,
+which runs where it was built but is refused once downloaded (the release
+job warns). For such a build, clear the quarantine flag yourself:
+`xattr -dr com.apple.quarantine /Applications/TARS.app`.
 
 ## Layout
 

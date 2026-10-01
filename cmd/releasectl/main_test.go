@@ -38,8 +38,20 @@ func TestReleaseCommandsRenderValidatedBundleAndFormula(t *testing.T) {
 		t.Fatalf("homebrew formula stdout=%q stderr=%q", stdout, stderr)
 	}
 
+	stdout, stderr = captureReleaseCommandOutput(t, func() {
+		homebrewCask([]string{
+			"--repo", "example/tars", "--version", "1.2.3",
+			"--arm64-sha", "desk-arm64", "--amd64-sha", "desk-amd64",
+		})
+	})
+	if stderr != "" || !strings.Contains(stdout, `cask "tars-desktop" do`) ||
+		!strings.Contains(stdout, "example/tars/releases/download/v#{version}") ||
+		!strings.Contains(stdout, `"desk-arm64"`) || !strings.Contains(stdout, `"desk-amd64"`) {
+		t.Fatalf("homebrew cask stdout=%q stderr=%q", stdout, stderr)
+	}
+
 	_, stderr = captureReleaseCommandOutput(t, usage)
-	if !strings.Contains(stderr, "validate-release|homebrew-formula") {
+	if !strings.Contains(stderr, "validate-release|homebrew-formula|homebrew-cask") {
 		t.Fatalf("usage stderr=%q", stderr)
 	}
 }
