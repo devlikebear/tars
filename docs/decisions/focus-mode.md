@@ -62,7 +62,7 @@ Loops run automatically inside a stage; the developer acts only at gates. Stage 
 
 - **One skeleton, skippable stages.** The plan proposes which stages apply (a small fix may go build → PR → merge); the developer confirms at G1. No per-type templates.
 - **Release is outside the feature pipeline.** TARS releases by batching merged PRs into one release PR (v0.41.0, v0.42.0). A separate *release train* view (§9 P5) collects pipelines merged since the last release.
-- **Blocked.** Reaching a loop limit (defaults: build 3, review 2, PR 3) or repeating the same failure raises a *blocked* gate: try once more / give an instruction / open in Advanced.
+- **Blocked.** Reaching a loop limit (defaults: build 3, review 2, PR 3) or repeating the same failure raises a *blocked* gate: try once more / give an instruction / open in Advanced. Build also blocks on **no progress**: after 2 turns per planned task plus the build limit, passing turns whose report never sets `tasks_done` stop at the same gate instead of looping. A failure counts as "the same" when its first failing command and output excerpt match the previous one with numbers (durations, counts) ignored. Retry and instruct allow one more iteration.
 - **A decision card pauses the loop.** When the agent asks a question, that question is an implicit gate; answering continues the loop.
 
 ### 5. Facts come from deterministic sources
