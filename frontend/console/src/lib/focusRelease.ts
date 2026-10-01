@@ -46,6 +46,8 @@ export function releaseKickoff(group: ReleaseTrainGroup): string {
   return [
     releaseGoal(group),
     '',
+    'Work from the remote: run `git fetch origin` and start the release branch from `origin/<default branch>` (find it with `git symbolic-ref refs/remotes/origin/HEAD`), not from the local HEAD.',
+    '',
     'Propose exactly this plan and nothing else:',
     '1. Bump VERSION.txt to the next version.',
     '2. Update CHANGELOG.md with one entry per merged change listed below.',
@@ -60,7 +62,18 @@ export function releaseKickoff(group: ReleaseTrainGroup): string {
 
 // releaseRequest starts the release pipeline in an isolated worktree of the
 // repository's main checkout, marked as a release so the next release train
-// does not list it.
+// does not list it. It records the sessions it ships and the cut-off the list started from,
+// which the train treats as released once this release finishes.
 export function releaseRequest(group: ReleaseTrainGroup, title: string): FocusCreateRequest {
-  return { goal: releaseGoal(group), kickoff: releaseKickoff(group), kind: 'release', cwd: group.repo, isolate: true, title }
+  const request: FocusCreateRequest = {
+    goal: releaseGoal(group),
+    kickoff: releaseKickoff(group),
+    kind: 'release',
+    cwd: group.repo,
+    isolate: true,
+    title,
+    release_items: group.items.map((item) => item.session_id),
+  }
+  if (group.since) request.release_since = group.since
+  return request
 }

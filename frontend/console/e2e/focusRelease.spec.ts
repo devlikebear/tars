@@ -71,7 +71,33 @@ test('the release train lists merged work and Start release opens a release pipe
   expect(pipeline.goal).toBe('Release: ship the 2 change(s) merged since v0.1.0.')
   expect(pipeline.kickoff).toContain('- #42 Pipeline graph (https://example.com/pr/42) — Draw the pipeline')
   expect(pipeline.kind).toBe('release')
+  expect(pipeline.kickoff).toContain('git fetch origin')
+  expect(pipeline.release_items).toEqual(['merged-1', 'merged-2'])
+  expect(pipeline.release_since).toBe('2026-01-01T00:00:00Z')
   expect(pipeline.current).toBe('plan')
+})
+
+test('a running release replaces Start release with Open release, and a stale Start opens the running one', async ({ page }) => {
+  const repo = newRepo('tars-e2e-release-running-')
+  const running = await (await page.request.post('/v1/focus/pipelines', { data: { goal: 'Release', kind: 'release', cwd: repo } })).json()
+  const runningId = running.session_id as string
+  const item = { session_id: 'merged-1', title: 'Pipeline graph', goal: 'Draw', finished_at: '2026-02-01T00:00:00Z', updated_at: '2026-02-01T00:00:00Z' }
+
+  // The server names the running release on its group.
+  await page.route('**/v1/focus/release-train', (route) => route.fulfill({ json: { groups: [{ repo, items: [item], active_release: runningId }] } }))
+  await page.goto('/console/focus/release')
+  await expect(page.getByTestId('focus-release-start')).toHaveCount(0)
+  await page.getByTestId('focus-release-open-running').click()
+  await expect(page).toHaveURL(new RegExp(`/console/focus/${runningId}$`))
+
+  // A tab that loaded before the release started still shows Start; the
+  // server refuses the second release (409) and the console opens the first.
+  await page.unroute('**/v1/focus/release-train')
+  await page.route('**/v1/focus/release-train', (route) => route.fulfill({ json: { groups: [{ repo, items: [item] }] } }))
+  await page.goto('/console/focus/release')
+  await page.getByTestId('focus-release-start').click()
+  await page.getByTestId('focus-release-confirm').click()
+  await expect(page).toHaveURL(new RegExp(`/console/focus/${runningId}$`))
 })
 
 test('the release train shows its empty state', async ({ page }) => {

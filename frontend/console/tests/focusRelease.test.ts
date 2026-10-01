@@ -60,7 +60,7 @@ test('releaseGoal is one line, so stage guidance never repeats the merged list',
   assert.equal(releaseKickoff(group()).split('\n')[0], goal, 'the kickoff opens with the goal')
 })
 
-test('releaseRequest starts an isolated release pipeline in the repository root', () => {
+test('releaseRequest starts an isolated release pipeline that records what it ships', () => {
   const g = group()
   assert.deepEqual(releaseRequest(g, 'Release (2)'), {
     goal: releaseGoal(g),
@@ -69,5 +69,29 @@ test('releaseRequest starts an isolated release pipeline in the repository root'
     cwd: 'repo/tars',
     isolate: true,
     title: 'Release (2)',
+    release_items: ['s1', 's2'],
+    release_since: '2026-01-01T00:00:00Z',
   })
+  // No tag yet: no cut-off to record.
+  assert.equal('release_since' in releaseRequest(group({ last_tag: undefined, since: undefined }), 't'), false)
+})
+
+test('releaseKickoff works from the remote default branch, not the local HEAD', () => {
+  const text = releaseKickoff(group())
+  assert.match(text, /git fetch origin/)
+  assert.match(text, /origin\/<default branch>/)
+  assert.match(text, /not .*local HEAD/)
+})
+
+test('an item without a PR has no PR reference; a PR without a URL has no empty link', () => {
+  const text = releaseKickoff(group({
+    items: [
+      { session_id: 's1', title: 'No PR', goal: 'g1', finished_at: '2026-02-01T00:00:00Z', updated_at: '2026-02-01T00:00:00Z' },
+      { session_id: 's2', title: 'No URL', goal: 'g2', pr: { number: 7, url: '', state: 'merged' }, finished_at: '2026-02-02T00:00:00Z', updated_at: '2026-02-02T00:00:00Z' },
+    ],
+  }))
+  assert.ok(text.includes('- No PR — g1\n'))
+  assert.ok(text.includes('- #7 No URL — g2'))
+  assert.ok(!text.includes('()'), 'no empty link')
+  assert.ok(!/#undefined|#0 /.test(text))
 })

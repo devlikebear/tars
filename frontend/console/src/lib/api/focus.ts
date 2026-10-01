@@ -34,7 +34,30 @@ export function getFocusPipeline(sessionId: string): Promise<FocusPipeline> {
 
 // kind 'release' marks a pipeline started from the release train; kickoff
 // is a first turn that says more than the goal (the merged list).
-export type FocusCreateRequest = { goal: string; cwd: string; isolate?: boolean; title?: string; kind?: 'release'; kickoff?: string }
+export type FocusCreateRequest = {
+  goal: string
+  cwd: string
+  isolate?: boolean
+  title?: string
+  kind?: 'release'
+  kickoff?: string
+  // A release's list and the cut-off it started from (the group's since).
+  release_items?: string[]
+  release_since?: string
+}
+
+// startFocusRelease creates a release pipeline; when the repository already
+// runs one (409), it answers that release's session instead.
+export async function startFocusRelease(request: FocusCreateRequest): Promise<{ session_id: string; existing: boolean }> {
+  try {
+    const created = await createFocusPipeline(request)
+    return { session_id: created.session_id, existing: false }
+  } catch (err) {
+    const running = err instanceof APIRequestError && err.status === 409 ? (err.payload as { session_id?: string } | undefined)?.session_id : undefined
+    if (running) return { session_id: running, existing: true }
+    throw err
+  }
+}
 
 export function createFocusPipeline(request: FocusCreateRequest): Promise<{ session_id: string; pipeline: FocusPipeline }> {
   return requestJSON(base, {

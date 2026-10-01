@@ -5,7 +5,7 @@
   // The plan gate of that pipeline still applies.
   import { onMount } from 'svelte'
   import { t } from '../../i18n'
-  import { createFocusPipeline, getReleaseTrain } from '../../lib/api'
+  import { getReleaseTrain, startFocusRelease } from '../../lib/api'
   import { releaseItemLabel, releaseRequest } from '../../lib/focusRelease'
   import { shortCwdLabel } from '../../lib/sessionLabels'
   import type { ReleaseTrainGroup } from '../../lib/types'
@@ -47,8 +47,9 @@
     starting = true
     startError = ''
     try {
-      const created = await createFocusPipeline(releaseRequest(group, $t.focus.release.sessionTitle(group.items.length)))
-      onNavigate(`/console/focus/${encodeURIComponent(created.session_id)}`)
+      // Another tab may have started one meanwhile: open that instead.
+      const started = await startFocusRelease(releaseRequest(group, $t.focus.release.sessionTitle(group.items.length)))
+      onNavigate(`/console/focus/${encodeURIComponent(started.session_id)}`)
     } catch (err) {
       startError = $t.focus.release.startFailed(err instanceof Error ? err.message : String(err))
     } finally {
@@ -84,7 +85,15 @@
         <span class="repo mono" title={group.repo} data-content>{shortCwdLabel(group.repo)}</span>
         <span class="badge badge-default">{group.last_tag ? $t.focus.release.since(group.last_tag) : $t.focus.release.untagged}</span>
         <span class="count mono">{$t.focus.release.count(group.items.length)}</span>
-        {#if confirming !== group.repo}
+        {#if group.active_release}
+          <span class="running mono">{$t.focus.release.running}</span>
+          <button
+            type="button"
+            class="btn btn-secondary btn-sm"
+            onclick={() => openSession(group.active_release ?? '')}
+            data-testid="focus-release-open-running"
+          >{$t.focus.release.openRelease}</button>
+        {:else if confirming !== group.repo}
           <button
             type="button"
             class="btn btn-primary btn-sm start"
@@ -98,7 +107,7 @@
         <p class="banner warning" data-testid="focus-release-stale">{$t.focus.release.staleTags(fetchTagsCommand)}</p>
       {/if}
 
-      {#if confirming === group.repo}
+      {#if confirming === group.repo && !group.active_release}
         <div class="gate" role="group" aria-label={$t.focus.release.confirmTitle} data-testid="focus-release-gate">
           <strong>{$t.focus.release.confirmTitle}</strong>
           <p>{$t.focus.release.confirmBody}</p>
@@ -188,6 +197,12 @@
 
   .start {
     margin-left: auto;
+  }
+
+  .running {
+    margin-left: auto;
+    font-size: var(--text-xs);
+    color: var(--primary-text);
   }
 
   .gate {

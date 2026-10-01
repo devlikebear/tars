@@ -2685,6 +2685,8 @@ export type ReleaseTrainGroup = {
   since?: string
   // Fetching tags from the remote failed: a newer release tag may be missing.
   tags_stale?: boolean
+  // The session of a release pipeline still running for this repository.
+  active_release?: string
   items: ReleaseTrainItem[]
 }
 
