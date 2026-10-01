@@ -914,6 +914,7 @@ pkg/session method Store.SetToolConfig
 pkg/session method Store.SetUpstreamSessionID
 pkg/session method Store.SetWorkDirs
 pkg/session method Store.SetWorktree
+pkg/session method Store.SwitchCurrentDir
 pkg/session method Store.TakePendingCriticFeedback
 pkg/session method Store.Touch
 pkg/session method Store.TranscriptPath
@@ -945,7 +946,10 @@ pkg/session type Task
 pkg/session type TaskContract
 pkg/session type TaskEvidence
 pkg/session type TaskProofPolicy
+pkg/session var ErrCwdNotAbsolute
+pkg/session var ErrCwdNotDirectory
 pkg/session var ErrCwdNotEligible
+pkg/session var ErrCwdNotFound
 pkg/session var ErrSessionKindUnsupported
 pkg/session var ErrSessionNotFound
 pkg/skill const ExtractionCandidateActionApprove

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -936,11 +937,17 @@ func newSessionAPIHandlerFullWithLocalSkillsAndWorkLedger(store *session.Store, 
 				if !decodeJSONBody(w, r, &req) {
 					return
 				}
-				if err := reqStore.SetCurrentDir(sessionID, req.Current); err != nil {
+				// A folder that is not a candidate yet is added, as the Files
+				// panel's picker does, once the store has checked it exists.
+				added, err := reqStore.SwitchCurrentDir(sessionID, expandCwdHome(req.Current))
+				if err != nil {
 					switch {
 					case errors.Is(err, session.ErrSessionNotFound):
 						writeJSON(w, http.StatusNotFound, map[string]string{"error": "session not found"})
-					case errors.Is(err, session.ErrCwdNotEligible):
+					case errors.Is(err, session.ErrCwdNotEligible),
+						errors.Is(err, session.ErrCwdNotAbsolute),
+						errors.Is(err, session.ErrCwdNotFound),
+						errors.Is(err, session.ErrCwdNotDirectory):
 						writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 					default:
 						writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
@@ -952,17 +959,21 @@ func newSessionAPIHandlerFullWithLocalSkillsAndWorkLedger(store *session.Store, 
 				if overrideService != nil {
 					overrideService.Invalidate(sessionID)
 				}
+				current, err := reqStore.GetCurrentDir(sessionID)
+				if err != nil {
+					current = strings.TrimSpace(req.Current)
+				}
 				if notify != nil {
 					evt := newNotificationEvent(
 						"session",
 						"info",
 						"Active cwd changed",
-						strings.TrimSpace(req.Current),
+						current,
 					)
 					evt.SessionID = sessionID
 					notify(r.Context(), evt)
 				}
-				writeJSON(w, http.StatusOK, map[string]string{"ok": "true"})
+				writeJSON(w, http.StatusOK, map[string]any{"ok": "true", "current": current, "added": added})
 			}
 		case len(pathParts) == 2 && pathParts[1] == "effective-config":
 			if !requireMethod(w, r, http.MethodGet) {
@@ -1458,4 +1469,18 @@ func newCompactAPIHandler(workspaceDir string, store *session.Store, router llm.
 			"final_count":    result.FinalCount,
 		})
 	})
+}
+
+// expandCwdHome turns a leading "~" in a /cwd target into the server user's
+// home directory, so `/cwd ~/src/repo` works like it does in a shell.
+func expandCwdHome(value string) string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed != "~" && !strings.HasPrefix(trimmed, "~/") && !strings.HasPrefix(trimmed, "~"+string(filepath.Separator)) {
+		return value
+	}
+	home, err := os.UserHomeDir()
+	if err != nil || strings.TrimSpace(home) == "" {
+		return value
+	}
+	return filepath.Join(home, trimmed[1:])
 }

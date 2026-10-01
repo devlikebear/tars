@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tick } from 'svelte'
+  import { tick, untrack } from 'svelte'
   import { t } from '../i18n'
   import type { Artifact } from '../lib/artifacts'
   import { fileIcon } from '../lib/artifacts'
@@ -15,11 +15,13 @@
     sessionId: string
     onClose: () => void
     onOpenIntegratedTerminal: (target: { cwd: string; label: string }) => void
+    // The session's active cwd as the chat store sees it (status bar chip).
+    activeCwd?: string
     // The session's folder changed here; the rest of the workbench re-reads it.
     onWorkDirsChange?: () => void
   }
 
-  let { artifacts, sessionId, onClose, onOpenIntegratedTerminal, onWorkDirsChange }: Props = $props()
+  let { artifacts, sessionId, onClose, onOpenIntegratedTerminal, activeCwd = '', onWorkDirsChange }: Props = $props()
 
   type Tab = 'session' | 'workspace'
   let activeTab: Tab = $state('workspace')
@@ -580,6 +582,19 @@
     if (artifacts.length === 0 && activeTab === 'session') {
       activeTab = 'workspace'
     }
+  })
+
+  // The cwd changed elsewhere (`/cwd`, the status bar chip): reload the
+  // folder list, which may have gained a candidate, and browse the new root.
+  $effect(() => {
+    const cwd = activeCwd
+    if (!cwd || !sessionId) return
+    if (untrack(() => workDirs.current_dir) === cwd) return
+    void loadWorkDirs().then((loaded) => {
+      if (!loaded) return
+      currentPath = '.'
+      return browseDir('.')
+    })
   })
 
   $effect(() => {
