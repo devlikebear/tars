@@ -16,7 +16,8 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: var(--text-xs);
+    /* GRAPH_NODE_FONT_PX (lib/focusGraph). */
+    font-size: 13px;
     line-height: 30px;
   }
 </style>

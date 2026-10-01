@@ -117,9 +117,32 @@ test('the pipeline graph opens from the stage bar with plan tasks inside the bui
   expect(approved.ok()).toBeTruthy()
   await page.reload()
 
+  // A ~700px pane: the stages wrap so their text stays readable.
+  await page.setViewportSize({ width: 700, height: 900 })
   await page.getByTestId('focus-graph-toggle').click()
   const graph = page.getByTestId('focus-graph')
   await expect(graph).toBeVisible()
+  await expect(graph.locator('.svelte-flow__viewport')).toHaveAttribute('style', /scale/)
+  const shown = await graph.evaluate((el) => {
+    const viewport = el.querySelector('.svelte-flow__viewport') as HTMLElement
+    const zoom = new DOMMatrixReadOnly(getComputedStyle(viewport).transform).a
+    const label = el.querySelector('[data-testid="focus-graph-stage"] .stage-label') as HTMLElement
+    const button = el.querySelector('.svelte-flow__controls-button') as HTMLElement
+    return {
+      zoom,
+      fontPx: parseFloat(getComputedStyle(label).fontSize),
+      labelRect: label.getBoundingClientRect().height,
+      paneRight: el.getBoundingClientRect().right,
+      stagesRight: Math.max(...Array.from(el.querySelectorAll('.svelte-flow__node.focus-graph-stage')).map((n) => n.getBoundingClientRect().right)),
+      buttonBg: getComputedStyle(button).backgroundColor,
+    }
+  })
+  expect(shown.fontPx * shown.zoom).toBeGreaterThanOrEqual(11)
+  expect(shown.stagesRight).toBeLessThanOrEqual(shown.paneRight)
+  // Controls take the graphite surface (#1b1f23), not xyflow's white.
+  expect(shown.buttonBg).toBe('rgb(27, 31, 35)')
+  await page.setViewportSize({ width: 1400, height: 900 })
+
   await expect(graph.getByTestId('focus-graph-stage')).toHaveCount(6)
   await expect(graph.locator('[data-testid="focus-graph-stage"][data-status="active"]')).toContainText('Build')
   expect(await graph.getByTestId('focus-graph-task').count()).toBeGreaterThan(0)

@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { buildFocusGraph, LOOP_STAGES } from '../src/lib/focusGraph.ts'
+import { buildFocusGraph, focusGraphColumns, GRAPH_MIN_ZOOM, GRAPH_NODE_FONT_PX, GRAPH_PADDING, LOOP_STAGES } from '../src/lib/focusGraph.ts'
 import { focusEn } from '../src/i18n/sections/focus.ts'
 import type { FocusPipeline, FocusStage } from '../src/lib/types.ts'
 
@@ -120,4 +120,74 @@ test('plan tasks are child nodes inside the build node, in plan order', () => {
 test('a pipeline without a plan has no task nodes', () => {
   const { nodes } = buildFocusGraph(pipeline(), labels)
   assert.equal(nodes.filter((n) => n.data.kind === 'task').length, 0)
+})
+
+function threeTaskPipeline(): FocusPipeline {
+  return pipeline({
+    stages: stages({
+      plan: { status: 'done', iteration: 1 },
+      build: { status: 'active', iteration: 1, limit: 3 },
+      pr: { status: 'skipped' },
+      pr_review: { status: 'skipped' },
+    }),
+    plan: {
+      goal: 'g',
+      tasks: [
+        { title: 'Server listing', done: 'd' },
+        { title: 'Console view', done: 'd' },
+        { title: 'Graph', done: 'd' },
+      ],
+      stages: ['plan', 'build', 'review', 'merge'],
+      verify: ['make test'],
+    },
+  })
+}
+
+// The zoom fitView reaches for a pane: never above 1 (maxZoom).
+function fittedZoom(graph: { width: number; height: number }, paneWidth: number): number {
+  return Math.min(1, paneWidth / (graph.width * (1 + 2 * GRAPH_PADDING)))
+}
+
+test('the graph reports its content size, every node inside it', () => {
+  const g = buildFocusGraph(threeTaskPipeline(), labels)
+  for (const n of g.nodes.filter((n) => !n.parentId)) {
+    assert.ok(n.position.x + (n.width ?? 0) <= g.width, `${n.id} fits the width`)
+    assert.ok(n.position.y + (n.height ?? 0) <= g.height, `${n.id} fits the height`)
+  }
+})
+
+test('stages wrap into rows that snake: the next row turns back under the last stage', () => {
+  const g = buildFocusGraph(threeTaskPipeline(), labels, { columns: 3 })
+  const at = (id: string) => g.nodes.find((n) => n.id === `stage-${id}`)!.position
+  assert.equal(at('plan').y, at('review').y)
+  assert.ok(at('pr').y > at('plan').y, 'the fourth stage opens a second row')
+  assert.equal(at('pr').y, at('merge').y)
+  // Right to left: PR under Review, Merge under Plan.
+  assert.equal(at('pr').x, at('review').x)
+  assert.equal(at('merge').x, at('plan').x)
+  assert.ok(at('pr_review').x < at('pr').x)
+  const edge = (from: string, to: string) => g.edges.find((e) => e.id === `forward-${from}-${to}`)!
+  // Within a right-to-left row the edge leaves left and enters right; the
+  // wrap drops straight down.
+  assert.deepEqual([edge('pr', 'pr_review').sourceHandle, edge('pr', 'pr_review').targetHandle], ['out-left', 'in-right'])
+  assert.deepEqual([edge('review', 'pr').sourceHandle, edge('review', 'pr').targetHandle], ['wrap-out', 'wrap-in'])
+  assert.deepEqual([edge('plan', 'build').sourceHandle, edge('plan', 'build').targetHandle], ['out', 'in'])
+  const oneRow = buildFocusGraph(threeTaskPipeline(), labels, { columns: 6 })
+  assert.ok(g.width < oneRow.width && g.height > oneRow.height)
+})
+
+test('focusGraphColumns keeps a ~700px pane at a readable zoom and uses one row when wide', () => {
+  const p = threeTaskPipeline()
+  // A 700px viewport leaves about 650px for the canvas.
+  for (const pane of [650, 600, 480, 360]) {
+    const columns = focusGraphColumns(p, labels, pane)
+    const zoom = fittedZoom(buildFocusGraph(p, labels, { columns }), pane)
+    assert.ok(zoom >= GRAPH_MIN_ZOOM, `pane ${pane}: ${columns} columns at zoom ${zoom.toFixed(2)}`)
+  }
+  assert.equal(focusGraphColumns(p, labels, 1400), 6)
+  assert.ok(focusGraphColumns(p, labels, 650) < 6)
+})
+
+test('node text at the smallest allowed zoom is at least 11px on screen', () => {
+  assert.ok(GRAPH_NODE_FONT_PX * GRAPH_MIN_ZOOM >= 11, `${GRAPH_NODE_FONT_PX}px × ${GRAPH_MIN_ZOOM}`)
 })
