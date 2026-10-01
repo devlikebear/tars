@@ -71,6 +71,7 @@ type apiRouteHandlers struct {
 	worktrees       http.Handler
 	sessionFolders  http.Handler
 	focus           http.Handler
+	focusRelease    http.Handler
 	permissionMode  http.Handler
 	work            http.Handler
 	workers         http.Handler
@@ -720,6 +721,7 @@ func buildAPIMux(
 		worktrees:      newSessionWorktreeHandler(sessionWorktrees),
 		sessionFolders: newSessionFoldersHandler(sessionWorktrees),
 		focus:          newFocusPipelineHandler(sessionStore, sessionWorktrees, logger),
+		focusRelease:   newFocusReleaseHandler(sessionStore, logger),
 		checkpoints:    newCheckpointAPIHandler(checkpointStore, sessionStore, logger),
 		permissionMode: newPermissionModeHandler(sessionStore,
 			chatPermissionModeResolver{overrides: overrideService, configFlag: strings.TrimSpace(cfg.ClaudeCodeCLIPermissionMode)},
@@ -842,6 +844,9 @@ func registerAPIRoutes(mux *http.ServeMux, handlers apiRouteHandlers) {
 	if handlers.focus != nil {
 		mux.Handle("/v1/focus/pipelines", handlers.focus)
 		mux.Handle("/v1/focus/pipelines/", handlers.focus)
+	}
+	if handlers.focusRelease != nil {
+		mux.Handle("/v1/focus/release-train", handlers.focusRelease)
 	}
 	if handlers.permissionMode != nil {
 		mux.Handle("/v1/admin/sessions/{id}/permission-mode", handlers.permissionMode)
