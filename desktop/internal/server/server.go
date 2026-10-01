@@ -18,6 +18,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -150,6 +151,65 @@ type Health struct {
 	OK         bool   `json:"ok"`
 	Component  string `json:"component"`
 	NeedsSetup bool   `json:"needs_setup"`
+	// Version is the server's release, reported to loopback callers since
+	// 0.42.2; "" from an older server.
+	Version string `json:"version"`
+}
+
+// Outdated reports that the server is an older release than the app. A
+// server that reports no version predates the field, so it is older too.
+// Development builds on either side are never compared.
+func Outdated(serverVersion, appVersion string) bool {
+	app, ok := parseRelease(appVersion)
+	if !ok {
+		return false
+	}
+	if strings.TrimSpace(serverVersion) == "" {
+		return true
+	}
+	srv, ok := parseRelease(serverVersion)
+	if !ok {
+		return false
+	}
+	for i := range app {
+		if srv[i] != app[i] {
+			return srv[i] < app[i]
+		}
+	}
+	return false
+}
+
+// OutdatedMessage tells the user how to bring the server up to the app.
+func OutdatedMessage(serverVersion, appVersion string) string {
+	running := "an older release"
+	if v := strings.TrimSpace(serverVersion); v != "" {
+		running = v
+	}
+	return fmt.Sprintf("The TARS server is %s, older than this app (%s), so some of the app may not work.\n\n"+
+		"Installing or updating the app does not update the server. With Homebrew:\n\n"+
+		"  brew upgrade devlikebear/tap/tars\n  tars service install && tars service start", running, appVersion)
+}
+
+// parseRelease reads "1.2.3" (with an optional "v" and pre-release or build
+// suffix) into its three numbers.
+func parseRelease(v string) ([3]int, bool) {
+	var out [3]int
+	v = strings.TrimPrefix(strings.TrimSpace(v), "v")
+	if i := strings.IndexAny(v, "-+ "); i >= 0 {
+		v = v[:i]
+	}
+	parts := strings.Split(v, ".")
+	if len(parts) != 3 {
+		return out, false
+	}
+	for i, p := range parts {
+		n, err := strconv.Atoi(p)
+		if err != nil || n < 0 {
+			return out, false
+		}
+		out[i] = n
+	}
+	return out, true
 }
 
 // ErrNotTARS reports that something answered on the port but it is not a
@@ -199,19 +259,36 @@ type StartPlan struct {
 	// Detached reports that the shell spawns and forgets the process;
 	// otherwise the command returns once launchd has taken over.
 	Detached bool
+	// Fallback are the arguments to retry with when the tars found is too
+	// old for Args (see UnknownFlag); nil when there is nothing to retry.
+	Fallback []string
 }
 
 // PlanStart picks how to start the server on goos: the launchd service on
 // macOS, a detached `tars serve` elsewhere. apiAddr is host:port from cfg.
+//
+// On macOS the service is installed first when it is missing, as on a
+// machine where `tars init` never ran (a fresh Homebrew install); a tars
+// from before --install-if-missing gets the plain start as a fallback.
 func PlanStart(goos, tarsBinary string, cfg Config) StartPlan {
-	if goos == "darwin" {
-		return StartPlan{Binary: tarsBinary, Args: []string{"service", "start"}}
-	}
-	args := []string{"serve"}
+	var addr []string
 	if u, err := url.Parse(cfg.URL); err == nil && u.Host != "" && cfg.URL != DefaultURL {
-		args = append(args, "--api-addr", u.Host)
+		addr = []string{"--api-addr", u.Host}
 	}
-	return StartPlan{Binary: tarsBinary, Args: args, Detached: true}
+	if goos == "darwin" {
+		return StartPlan{
+			Binary:   tarsBinary,
+			Args:     append([]string{"service", "start", "--install-if-missing"}, addr...),
+			Fallback: []string{"service", "start"},
+		}
+	}
+	return StartPlan{Binary: tarsBinary, Args: append([]string{"serve"}, addr...), Detached: true}
+}
+
+// UnknownFlag reports that a tars command failed because the binary is too
+// old to know one of its flags.
+func UnknownFlag(output string) bool {
+	return strings.Contains(output, "unknown flag")
 }
 
 // FindTARS locates the tars executable: next to the shell first (a release

@@ -38,6 +38,16 @@ formula it depends on:
 brew install --cask devlikebear/tap/tars-desktop
 ```
 
+The cask installs the formula only when it is missing: a server installed
+earlier stays at its version. The app compares the server's version (from
+`/v1/healthz`) with its own and, once per server version, says when the
+server is older, with the commands to update it:
+
+```bash
+brew upgrade devlikebear/tap/tars
+tars service install && tars service start
+```
+
 Elsewhere, take the archive for your platform from the GitHub release and
 put `tars` on `PATH` (Homebrew or `install.sh`).
 
@@ -50,8 +60,12 @@ tars-desktop
 
 When nothing answers, the window shows a waiting page and moves to the
 console as soon as the server is up. **Start server** in the tray menu runs
-`tars service start` on macOS and a detached `tars serve` elsewhere (its
-output goes to `<user config dir>/tars-desktop/server.log`). The `tars`
+`tars service start --install-if-missing` on macOS and a detached
+`tars serve` elsewhere (its output goes to
+`<user config dir>/tars-desktop/server.log`). On a machine where
+`tars init` never ran, `--install-if-missing` writes the starter config and
+workspace and installs the LaunchAgent first, so the console opens on the
+setup wizard; a tars from before the flag gets a plain `tars service start`. The `tars`
 executable is looked up next to the shell, beside the `.app` bundle, on
 `PATH`, then in Homebrew's and `install.sh`'s bin directories
 (`/opt/homebrew/bin`, `/usr/local/bin`, `~/.local/bin`): an app opened from

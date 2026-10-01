@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/devlikebear/tars/internal/agentruntime"
+	"github.com/devlikebear/tars/internal/buildinfo"
 	"github.com/devlikebear/tars/internal/cli"
 	"github.com/devlikebear/tars/internal/config"
 	"github.com/devlikebear/tars/internal/cron"
@@ -27,6 +28,7 @@ import (
 	"github.com/devlikebear/tars/internal/mcp"
 	"github.com/devlikebear/tars/internal/memory"
 	"github.com/devlikebear/tars/internal/plugin"
+	"github.com/devlikebear/tars/internal/serverauth"
 	"github.com/devlikebear/tars/internal/session"
 	"github.com/devlikebear/tars/internal/skill"
 	"github.com/devlikebear/tars/internal/tool"
@@ -2903,6 +2905,42 @@ func TestHealthzAPI(t *testing.T) {
 	handler.ServeHTTP(methodRec, methodReq)
 	if methodRec.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("expected 405, got %d body=%q", methodRec.Code, methodRec.Body.String())
+	}
+}
+
+// The desktop app compares the version with its own to tell the user when
+// the server it shows is older (a Homebrew cask does not upgrade an already
+// installed formula). Only same-machine callers learn it.
+func TestHealthzAPI_ReportsVersionToLoopbackOnly(t *testing.T) {
+	handler := newHealthzAPIHandler(time.Now, nil, nil)
+	versionOf := func(req *http.Request) (string, bool) {
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		var payload map[string]any
+		if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		v, ok := payload["version"].(string)
+		return v, ok
+	}
+
+	local := httptest.NewRequest(http.MethodGet, "/v1/healthz", nil)
+	local.RemoteAddr = "127.0.0.1:50000"
+	if v, ok := versionOf(local); !ok || v != buildinfo.Version {
+		t.Fatalf("loopback version = %q (present %v), want %q", v, ok, buildinfo.Version)
+	}
+
+	remote := httptest.NewRequest(http.MethodGet, "/v1/healthz", nil)
+	remote.RemoteAddr = "100.64.0.7:50000"
+	if _, ok := versionOf(remote); ok {
+		t.Fatal("remote callers must not learn the version")
+	}
+
+	proxied := httptest.NewRequest(http.MethodGet, "/v1/healthz", nil)
+	proxied.RemoteAddr = "127.0.0.1:50000"
+	proxied.Header.Set(serverauth.TailscaleUserLoginHeader, "someone@example.com")
+	if _, ok := versionOf(proxied); ok {
+		t.Fatal("requests proxied by tailscale serve are remote")
 	}
 }
 

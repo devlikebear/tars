@@ -5,11 +5,15 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"net"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/devlikebear/tars/internal/config"
 	"github.com/devlikebear/tars/internal/llm"
+	"github.com/devlikebear/tars/internal/onboarding"
 	"github.com/devlikebear/tars/internal/session"
 	"github.com/devlikebear/tars/internal/usage"
 	"github.com/rs/zerolog"
@@ -73,6 +77,19 @@ func loadConfigForServe(opts *options) (config.Config, error) {
 		return config.Config{}, fmt.Errorf("options are required")
 	}
 	resolvedPath := config.ResolveConfigPath(opts.ConfigPath)
+	if path, ok := firstRunSkeletonPath(opts, resolvedPath); ok {
+		// First `tars serve` without `tars init`: write the same skeleton
+		// init writes. Without it the server boots with auth required and
+		// no token, so the wizard's saves to /v1/admin/* are all 401s.
+		workspace := strings.TrimSpace(opts.WorkspaceDir)
+		if workspace == "" {
+			workspace = config.DefaultWorkspaceDir()
+		}
+		if err := onboarding.WriteSkeletonConfig(path, workspace, opts.APIAddr); err != nil {
+			return config.Config{}, &runtimeDepsError{stage: "load_config", err: err}
+		}
+		resolvedPath = path
+	}
 	cfg, err := config.Load(resolvedPath)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
@@ -104,6 +121,39 @@ func loadConfigForServe(opts *options) (config.Config, error) {
 		}
 	}
 	return cfg, nil
+}
+
+// firstRunSkeletonPath returns where to write the first-run skeleton: the
+// fixed config path, when that is the file serve would use (no --config, or
+// --config naming it, as the LaunchAgent does), it does not exist yet, and
+// the server listens on loopback only. Any other missing file is left to
+// the operator.
+func firstRunSkeletonPath(opts *options, resolvedPath string) (string, bool) {
+	if !isLoopbackListenAddr(opts.APIAddr) {
+		return "", false
+	}
+	fixed := config.FixedConfigPath()
+	if resolvedPath != "" && filepath.Clean(resolvedPath) != filepath.Clean(fixed) {
+		return "", false
+	}
+	if _, err := os.Stat(fixed); !errors.Is(err, fs.ErrNotExist) {
+		return "", false
+	}
+	return fixed, true
+}
+
+// isLoopbackListenAddr reports whether addr (host:port) only accepts
+// connections from this machine.
+func isLoopbackListenAddr(addr string) bool {
+	host, _, err := net.SplitHostPort(strings.TrimSpace(addr))
+	if err != nil {
+		return false
+	}
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 // buildRuntimeDeps composes buildBaseDeps + buildLLMDeps. It exists as
