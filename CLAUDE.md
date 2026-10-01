@@ -10,6 +10,8 @@ make lint-diff            # PR preflight: golangci-lint new issues since DIFF_BA
 make test-diff            # PR preflight: changed Go packages + coverage check
 make test-cover-diff      # PR preflight: changed-line coverage >= DIFF_COVER_MIN
 make arch-check           # PR preflight: core must not import app (see Layering below)
+make api-check            # PR preflight: fail when the checked-in pkg/* API snapshot (docs/public-api-surface.txt) is stale — after changing exported pkg/ types/funcs, regenerate with `make api-snapshot` and commit it
+make security-scan        # PR preflight: scan tracked files/history for secrets and local-path leaks (gitleaks + absolute home-dir paths + private key blocks) — no machine-local absolute paths or key-shaped strings in tests/fixtures
 make ci-static-analysis-check # PR preflight: CI static-analysis guardrails
 make codeql-workflow-check # PR preflight: CodeQL code-scanning workflow guardrails
 make sonarcloud-workflow-check # PR preflight: SonarCloud evaluation workflow guardrails

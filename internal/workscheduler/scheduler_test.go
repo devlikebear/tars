@@ -44,9 +44,14 @@ func TestSchedulerExecutesDAGAndCompletesWork(t *testing.T) {
 	if claimed, err := scheduler.RunOnce(context.Background()); err != nil || claimed != 2 {
 		t.Fatalf("first scheduler tick claimed=%d err=%v", claimed, err)
 	}
+	// A step is committed as done before its worker slot is released: the
+	// execution goroutine still finalizes, records outcomes and reconciles the
+	// work, and only then leaves s.active. Until both slots are free RunOnce
+	// has no capacity and legitimately claims nothing, so wait for the
+	// scheduler to go idle as well as for the durable state.
 	eventually(t, func() bool {
 		projection, projectionErr := store.GetWorkProjection(context.Background(), work.WorkspaceID, work.ID)
-		return projectionErr == nil && countStepState(projection.Steps, workstore.WorkStateDone) == 2
+		return projectionErr == nil && countStepState(projection.Steps, workstore.WorkStateDone) == 2 && scheduler.activeCount() == 0
 	})
 	if claimed, err := scheduler.RunOnce(context.Background()); err != nil || claimed != 1 {
 		t.Fatalf("second scheduler tick claimed=%d err=%v", claimed, err)
