@@ -8,10 +8,13 @@
 // cards derived from checkpoints.
 //
 // next_prompt (from a gate/card API response or the chat stream's
-// `pipeline` event) is sent as the next chat turn once the running turn
-// ends. Each prompt is keyed by the pipeline update that produced it and
-// remembered in storage, so a replayed event or a second look never sends it
-// twice. P2 moves this to the server.
+// `pipeline` event), the kickoff goal and typed instructions go through one
+// queue, persisted in storage, and are sent one at a time when no turn runs
+// on the session (here, in another tab, or in Advanced — /v1/chat/activity).
+// Each entry is keyed (a prompt by the pipeline update that produced it) and
+// its key is marked sent only once the server accepted the chat request, so
+// a reload or a failed request never loses a prompt and a replayed event
+// never sends one twice. P2 moves this to the server.
 import { changeCards, deckFor, progressLine, turnIndex, turnStage, type ChangeTurn } from '../focus.ts'
 import type { FocusTranslations } from '../../i18n/sections/focus.ts'
 import type {
@@ -41,7 +44,11 @@ export type FocusStoreApi = {
   card(sessionId: string, cardId: string, state: FocusCardState, decision?: string): Promise<FocusActionResult>
   advance(sessionId: string, stage: FocusStageId): Promise<FocusActionResult>
   stop(sessionId: string): Promise<FocusActionResult>
+  // Turns running now, across sessions (GET /v1/chat/activity).
+  activity?(): Promise<{ running?: { session_id: string }[] | null }>
 }
+
+type QueuedPrompt = { key: string; prompt: string }
 
 export type FocusStorage = {
   getItem(key: string): string | null
@@ -89,7 +96,14 @@ export class FocusStore {
 
   private api: FocusStoreApi
   private storage: FocusStorage | null
-  private pending: string[] = []
+  private pending: QueuedPrompt[] = []
+  // The transcript was read; until then nothing can tell a new pipeline.
+  private historyKnown = false
+  private disposed = false
+  private flushing = false
+  // A chat request failed before the server took it: stop retrying until
+  // the next load or action, so a server that is down is not hammered.
+  private sendBlocked = false
   private streaming = false
   private attaching: Promise<void> | null = null
   private controller: AbortController | null = null
@@ -131,11 +145,13 @@ export class FocusStore {
       this.turnEvents = []
       this.running = false
       this.viewStage = null
-      this.pending = []
+      this.historyKnown = false
       this.diffCache.clear()
       this.localSeen.clear()
     }
     this.sessionId = sessionId
+    this.pending = this.storedPending()
+    this.sendBlocked = false
     this.loading = true
     this.error = ''
     this.notice = ''
@@ -152,19 +168,48 @@ export class FocusStore {
     }
     const [session, history] = await Promise.all([
       this.api.getSession(sessionId).catch(() => null),
-      this.api.getHistory(sessionId).catch(() => [] as SessionMessage[]),
+      // A session without messages answers `null`; a failed read is unknown.
+      this.api.getHistory(sessionId).then((h) => h ?? []).catch(() => null),
     ])
     if (this.sessionId !== sessionId) return
     this.session = session
-    // A session without messages answers `null`.
+    this.historyKnown = history !== null
     this.history = history ?? []
     await this.refreshChanges()
     this.loading = false
-    if (!this.streaming) {
+    if (!this.streaming && !this.attaching) {
       this.attaching = this.follow(sessionId)
       await this.attaching
     }
     this.kickoff()
+    void this.flush()
+  }
+
+  // poll follows a turn that started elsewhere — another tab, a store this
+  // screen replaced, or Advanced — so this screen shows it and never starts
+  // a parallel one. The screen calls it on an interval.
+  async poll(): Promise<void> {
+    const sessionId = this.sessionId
+    if (!sessionId || this.disposed || this.streaming || this.running || this.attaching) return
+    if (!(await this.runningElsewhere(sessionId))) {
+      // Nothing runs: send what waited (a prompt queued while the activity
+      // still listed a turn that was ending).
+      await this.flush()
+      return
+    }
+    if (this.sessionId !== sessionId || this.disposed || this.streaming || this.running || this.attaching) return
+    this.attaching = this.follow(sessionId)
+    await this.attaching
+  }
+
+  private async runningElsewhere(sessionId: string): Promise<boolean> {
+    if (!this.api.activity) return false
+    try {
+      const snap = await this.api.activity()
+      return (snap?.running ?? []).some((r) => r.session_id === sessionId)
+    } catch {
+      return false
+    }
   }
 
   // follow attaches to the session's running turn, replaying it from its
@@ -192,7 +237,10 @@ export class FocusStore {
       } finally {
         caughtUp()
       }
-      if (controller.signal.aborted || this.sessionId !== sessionId) return
+      if (controller.signal.aborted || this.disposed || this.sessionId !== sessionId) {
+        if (this.controller === controller) this.attaching = null
+        return
+      }
       if (attached) await this.afterTurn()
       this.running = false
       this.attaching = null
@@ -205,10 +253,9 @@ export class FocusStore {
   // kickoff sends the goal as the first turn of a pipeline that has none.
   private kickoff() {
     const p = this.pipeline
-    if (!p || this.running || this.streaming || this.history.length > 0 || p.cards.length > 0) return
+    if (!p || !this.historyKnown || this.running || this.streaming || this.history.length > 0 || p.cards.length > 0) return
     if (p.current !== 'plan' || !p.goal.trim()) return
     this.queuePrompt(`first\n${p.session_id}`, p.goal)
-    void this.flush()
   }
 
   // applyEvent folds one chat stream event (sent or replayed) into the state.
@@ -249,45 +296,104 @@ export class FocusStore {
     }
   }
 
-  private queuePrompt(key: string, prompt: string) {
-    const keys = this.sentKeys()
-    if (keys.includes(key) || this.pending.includes(prompt)) return
+  private pendingName(): string {
+    return `tars.focus.pending.${this.sessionId}`
+  }
+
+  private storedPending(): QueuedPrompt[] {
     try {
-      this.storage?.setItem(this.sentKeysName(), JSON.stringify([...keys, key].slice(-sentKeysKept)))
+      const parsed = JSON.parse(this.storage?.getItem(this.pendingName()) ?? '[]')
+      if (!Array.isArray(parsed)) return []
+      const sent = this.sentKeys()
+      return parsed.filter((e): e is QueuedPrompt => typeof e?.key === 'string' && typeof e?.prompt === 'string' && !sent.includes(e.key))
     } catch {
-      // Storage full or blocked: the in-memory queue still dedupes this page.
+      return []
     }
-    this.pending.push(prompt)
   }
 
+  private savePending() {
+    try {
+      this.storage?.setItem(this.pendingName(), JSON.stringify(this.pending))
+    } catch {
+      // Storage full or blocked: the queue lives in memory for this page.
+    }
+  }
+
+  private queuePrompt(key: string, prompt: string) {
+    if (this.sentKeys().includes(key) || this.pending.some((e) => e.key === key)) return
+    this.pending = [...this.pending, { key, prompt }]
+    this.savePending()
+  }
+
+  // markSent records that the server took an entry's chat request.
+  private markSent(entry: QueuedPrompt) {
+    try {
+      const keys = this.sentKeys()
+      if (!keys.includes(entry.key)) this.storage?.setItem(this.sentKeysName(), JSON.stringify([...keys, entry.key].slice(-sentKeysKept)))
+    } catch {
+      // The in-memory queue below still drops it for this page.
+    }
+    this.pending = this.pending.filter((e) => e.key !== entry.key)
+    this.savePending()
+  }
+
+  // flush sends the next queued entry when no turn runs on the session.
   private async flush() {
-    if (this.streaming || this.running || this.attaching) return
-    const next = this.pending.shift()
-    if (next) await this.send(next)
+    const sessionId = this.sessionId
+    if (!sessionId || this.disposed || this.sendBlocked || this.flushing || this.streaming || this.running || this.attaching) return
+    this.flushing = true
+    try {
+      // Another tab may have sent an entry since it was queued.
+      const sent = this.sentKeys()
+      this.pending = this.pending.filter((e) => !sent.includes(e.key))
+      const next = this.pending[0]
+      if (!next || (await this.runningElsewhere(sessionId))) return
+      if (this.disposed || this.sessionId !== sessionId || this.streaming || this.running || this.attaching) return
+      this.flushing = false
+      await this.sendEntry(next)
+    } finally {
+      this.flushing = false
+    }
   }
 
-  // send runs one chat turn in the session — an instruction the developer
-  // typed, or a next_prompt.
+  // send queues an instruction the developer typed; it goes out at once when
+  // no turn runs, else after it.
   async send(text: string): Promise<void> {
-    const sessionId = this.sessionId
     const body = text.trim()
-    if (!sessionId || !body) return
-    if (this.streaming) {
-      this.pending.push(body)
-      return
-    }
+    if (!this.sessionId || !body || this.disposed) return
+    this.queuePrompt(`typed\n${Date.now()}\n${body}`, body)
+    this.sendBlocked = false
+    await this.flush()
+  }
+
+  // sendEntry runs one chat turn for a queued entry.
+  private async sendEntry(entry: QueuedPrompt): Promise<void> {
+    const sessionId = this.sessionId
+    if (!sessionId) return
     this.streaming = true
     this.running = true
     this.turnEvents = []
     this.actionError = ''
+    let accepted = false
+    const accept = () => {
+      if (accepted) return
+      accepted = true
+      this.markSent(entry)
+    }
     try {
-      await this.api.streamChat({ message: body, session_id: sessionId }, (event) => this.applyEvent(event))
+      await this.api.streamChat({ message: entry.prompt, session_id: sessionId }, (event) => {
+        accept()
+        if (!this.disposed) this.applyEvent(event)
+      })
+      accept()
     } catch (err) {
-      if (this.sessionId === sessionId) this.actionError = message(err)
+      // Not accepted: the entry stays queued for the next load or action.
+      if (!accepted) this.sendBlocked = true
+      if (this.sessionId === sessionId && !this.disposed) this.actionError = message(err)
     } finally {
       this.streaming = false
     }
-    if (this.sessionId !== sessionId) return
+    if (this.disposed || this.sessionId !== sessionId) return
     await this.afterTurn()
     this.running = false
     await this.flush()
@@ -296,14 +402,17 @@ export class FocusStore {
   // afterTurn re-reads what a finished turn changed.
   private async afterTurn() {
     const sessionId = this.sessionId
-    if (!sessionId) return
+    if (!sessionId || this.disposed) return
     const [pipeline, history] = await Promise.all([
       this.api.getPipeline(sessionId).catch(() => null),
       this.api.getHistory(sessionId).then((h) => h ?? []).catch(() => null),
     ])
-    if (this.sessionId !== sessionId) return
+    if (this.sessionId !== sessionId || this.disposed) return
     if (pipeline) this.adopt(pipeline)
-    if (history !== null) this.history = history ?? []
+    if (history !== null) {
+      this.history = history
+      this.historyKnown = true
+    }
     await this.refreshChanges()
   }
 
@@ -378,6 +487,7 @@ export class FocusStore {
   private async act(run: () => Promise<FocusActionResult>): Promise<boolean> {
     this.busy = true
     this.actionError = ''
+    this.sendBlocked = false
     try {
       const result = await run()
       if (result.conflict) {
@@ -466,7 +576,10 @@ export class FocusStore {
     this.viewStage = stage && stage !== this.pipeline?.current ? stage : null
   }
 
+  // dispose stops the store for good: a turn it sent still finishes on the
+  // server, but nothing more is read or sent from here.
   dispose() {
+    this.disposed = true
     this.controller?.abort()
     this.controller = null
   }

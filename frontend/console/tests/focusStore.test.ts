@@ -56,6 +56,10 @@ function fakeApi(initial: FocusPipeline) {
     diffCalls: 0,
     // Resolves the attach stream when set; lets a test hold it open.
     holdAttach: null as Promise<void> | null,
+    // Sessions /v1/chat/activity reports as running.
+    runningSessions: [] as string[],
+    // The next streamChat call fails before the server accepts it.
+    failNextStream: false,
   }
   const api = {
     getPipeline: async () => state.pipeline,
@@ -67,6 +71,10 @@ function fakeApi(initial: FocusPipeline) {
       return { turn_id: turnId, scope: 'turn', root: '', from: '', to: '', files: state.diffs[turnId] ?? [] }
     },
     streamChat: async (req: ChatRequest, onEvent: (e: ChatEvent) => void) => {
+      if (state.failNextStream) {
+        state.failNextStream = false
+        throw new Error('network down')
+      }
       state.sent.push(req)
       const events = state.turns.shift() ?? [{ type: 'done' }]
       for (const ev of events) onEvent(ev)
@@ -89,6 +97,7 @@ function fakeApi(initial: FocusPipeline) {
     },
     advance: async () => ({ pipeline: state.pipeline, next_prompt: '' }),
     stop: async () => ({ pipeline: state.pipeline, next_prompt: '' }),
+    activity: async () => ({ running: state.runningSessions.map((session_id) => ({ session_id })), pending_approvals: [] }),
   }
   return { state, api }
 }
@@ -308,4 +317,116 @@ test('an empty transcript the server answers as null still kicks off the goal', 
   await settle(store)
   assert.deepEqual(fake.state.sent.map((r) => r.message), ['Ship it'])
   assert.deepEqual(store.history.length >= 0, true)
+})
+
+test('a queued next_prompt survives a reload before it was sent', async () => {
+  const storage = memoryStorage()
+  const fake = fakeApi(pipeline('2026-10-01T00:00:01Z', [gateCard()], { open_gate: 'plan' }))
+  fake.state.history = [{ id: 'u0', role: 'user', content: 'earlier', timestamp: '' }]
+  fake.state.gateResult = { pipeline: pipeline('2026-10-01T00:00:02Z', [], { current: 'build' }), next_prompt: 'Start the build.' }
+  // Another turn runs, so the prompt waits; then the page goes away.
+  fake.state.runningSessions = ['s1']
+  const first = newStore(fake, storage)
+  await first.load('s1')
+  await first.gate('plan', 'approve')
+  first.dispose()
+  assert.deepEqual(fake.state.sent, [])
+  // Reloaded once the turn ended: the prompt goes out, once.
+  fake.state.runningSessions = []
+  const second = newStore(fake, storage)
+  await second.load('s1')
+  await settle(second)
+  assert.deepEqual(fake.state.sent.map((r) => r.message), ['Start the build.'])
+  const third = newStore(fake, storage)
+  await third.load('s1')
+  await settle(third)
+  assert.equal(fake.state.sent.length, 1)
+})
+
+test('a prompt whose chat request failed stays queued and is retried', async () => {
+  const storage = memoryStorage()
+  const fake = fakeApi({ ...pipeline('2026-10-01T00:00:00Z'), goal: 'Ship it' })
+  fake.state.failNextStream = true
+  const first = newStore(fake, storage)
+  await first.load('s1')
+  await settle(first)
+  assert.deepEqual(fake.state.sent, [])
+  assert.match(first.actionError, /network down/)
+  const second = newStore(fake, storage)
+  await second.load('s1')
+  await settle(second)
+  assert.deepEqual(fake.state.sent.map((r) => r.message), ['Ship it'])
+})
+
+test('a failed transcript read never kicks off the goal', async () => {
+  const fake = fakeApi({ ...pipeline('2026-10-01T00:00:00Z'), goal: 'Ship it' })
+  fake.api.getHistory = async () => { throw new Error('boom') }
+  const store = newStore(fake)
+  await store.load('s1')
+  await settle(store)
+  assert.deepEqual(fake.state.sent, [])
+})
+
+test('a disposed store sends nothing more after its turn ends', async () => {
+  const fake = fakeApi(pipeline('2026-10-01T00:00:00Z'))
+  fake.state.history = [{ id: 'u0', role: 'user', content: 'earlier', timestamp: '' }]
+  const p1 = pipeline('2026-10-01T00:00:05Z', [], { current: 'plan' })
+  let release: () => void = () => {}
+  const hold = new Promise<void>((r) => { release = r })
+  const store = newStore(fake)
+  await store.load('s1')
+  fake.api.streamChat = async (req, onEvent) => {
+    fake.state.sent.push(req)
+    onEvent({ type: 'turn_started' })
+    onEvent({ type: 'pipeline', session_id: 's1', pipeline: p1, next_prompt: 'Reply again.' })
+    await hold
+  }
+  const sending = store.send('go')
+  await new Promise((r) => setTimeout(r, 0))
+  store.dispose()
+  release()
+  await sending
+  await settle(store)
+  assert.deepEqual(fake.state.sent.map((r) => r.message), ['go'])
+})
+
+test('a turn started elsewhere is followed, and an instruction waits for it', async () => {
+  const fake = fakeApi(pipeline('2026-10-01T00:00:00Z'))
+  fake.state.history = [{ id: 'u0', role: 'user', content: 'earlier', timestamp: '' }]
+  const store = newStore(fake)
+  await store.load('s1')
+  await settle(store)
+  assert.equal(store.running, false)
+  // A turn starts in Advanced: the next poll attaches to it.
+  let release: () => void = () => {}
+  fake.state.holdAttach = new Promise((r) => { release = r })
+  fake.state.feed = [{ type: 'turn_started', session_id: 's1' }]
+  fake.state.runningSessions = ['s1']
+  await store.poll()
+  await new Promise((r) => setTimeout(r, 0))
+  assert.equal(store.running, true)
+  // An instruction now does not start a parallel turn.
+  const sending = store.send('also do x')
+  await new Promise((r) => setTimeout(r, 0))
+  assert.deepEqual(fake.state.sent, [])
+  fake.state.runningSessions = []
+  release()
+  await sending
+  await settle(store)
+  assert.deepEqual(fake.state.sent.map((r) => r.message), ['also do x'])
+})
+
+test('a prompt held back by a running turn goes out on the next poll once it ends', async () => {
+  const fake = fakeApi(pipeline('2026-10-01T00:00:01Z', [gateCard()], { open_gate: 'plan' }))
+  fake.state.history = [{ id: 'u0', role: 'user', content: 'earlier', timestamp: '' }]
+  fake.state.gateResult = { pipeline: pipeline('2026-10-01T00:00:02Z', [], { current: 'build' }), next_prompt: 'Start the build.' }
+  fake.state.runningSessions = ['s1']
+  const store = newStore(fake)
+  await store.load('s1')
+  await store.gate('plan', 'approve')
+  assert.deepEqual(fake.state.sent, [])
+  fake.state.runningSessions = []
+  await store.poll()
+  await settle(store)
+  assert.deepEqual(fake.state.sent.map((r) => r.message), ['Start the build.'])
 })

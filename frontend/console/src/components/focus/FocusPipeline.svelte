@@ -32,14 +32,22 @@
     card: api.focusCard,
     advance: api.focusAdvance,
     stop: api.focusStop,
+    activity: api.getChatActivity,
   }, typeof localStorage === 'undefined' ? null : localStorage)
+
+  // A turn started elsewhere (another tab, Advanced) is picked up within a
+  // few seconds, and a prompt that waited for one goes out after it.
+  const pollTimer = setInterval(() => void store.poll(), 3000)
 
   $effect(() => {
     const id = sessionId
     untrack(() => void store.load(id))
   })
 
-  onDestroy(() => store.dispose())
+  onDestroy(() => {
+    clearInterval(pollTimer)
+    store.dispose()
+  })
 
   let instruction = $state('')
   let menuOpen = $state(false)
@@ -179,6 +187,7 @@
           bind:value={instruction}
           placeholder={$t.focus.screen.instructionPlaceholder}
           onkeydown={onInstructionKeydown}
+          disabled={store.running}
           data-testid="focus-instruction"
         ></textarea>
         <button type="submit" class="btn btn-secondary" disabled={store.running || !instruction.trim()}>{$t.focus.screen.send}</button>
