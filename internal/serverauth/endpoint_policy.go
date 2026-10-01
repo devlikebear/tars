@@ -59,6 +59,14 @@ var defaultEndpointPolicyRules = []EndpointPolicyRule{
 	userRule([]string{http.MethodGet}, "/v1/admin/sessions/:id/automation-consent", "automation consent read"),
 	userRule([]string{http.MethodGet, http.MethodPatch}, "/v1/admin/sessions/:id/style", "session style control"),
 	userRule([]string{http.MethodGet}, "/v1/admin/tasks", "global plan list"),
+	// Focus mode (#1068). Creating a pipeline in a folder is admin-only in
+	// the handler, as a new chat in a folder is.
+	userRule([]string{http.MethodGet, http.MethodPost}, "/v1/focus/pipelines", "focus pipeline list/create"),
+	userRule([]string{http.MethodGet}, "/v1/focus/pipelines/:id", "focus pipeline read"),
+	userRule([]string{http.MethodPost}, "/v1/focus/pipelines/:id/gates/:gate", "focus gate action"),
+	userRule([]string{http.MethodPost}, "/v1/focus/pipelines/:id/cards/:card", "focus card state"),
+	userRule([]string{http.MethodPost}, "/v1/focus/pipelines/:id/advance", "focus manual stage pass"),
+	userRule([]string{http.MethodPost}, "/v1/focus/pipelines/:id/stop", "focus pipeline stop"),
 	userRule([]string{http.MethodGet}, "/v1/admin/plans/archive", "plan archive"),
 
 	userRule(nil, "/v1/memory/assets", "memory assets"),
