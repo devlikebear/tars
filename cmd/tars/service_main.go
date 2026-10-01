@@ -12,6 +12,7 @@ import (
 
 	"github.com/devlikebear/tars/internal/config"
 	"github.com/devlikebear/tars/internal/launchagent"
+	"github.com/devlikebear/tars/internal/onboarding"
 	"github.com/spf13/cobra"
 )
 
@@ -44,6 +45,11 @@ type serviceOptions struct {
 	keepAlive       bool
 	runAtLoad       bool
 	skipLLMChecks   bool // onboarding: allow install when config is in setup-only mode
+	// installIfMissing makes `start` set up a fresh machine the way `tars
+	// init` does (starter config + workspace, then the plist) instead of
+	// failing on a missing plist, and reinstall a plist whose binary is gone.
+	// The desktop app's Start server uses it.
+	installIfMissing bool
 }
 
 type launchctlStatus struct {
@@ -115,6 +121,8 @@ func newServiceCommand(stdout, stderr io.Writer) *cobra.Command {
 		},
 	}
 	bindServiceFlags(startCmd, &opts)
+	startCmd.Flags().BoolVar(&opts.installIfMissing, "install-if-missing", opts.installIfMissing, "install the LaunchAgent (and a starter config) first when it is missing or its binary is gone")
+	startCmd.Flags().StringVar(&opts.apiAddr, "api-addr", opts.apiAddr, "with --install-if-missing: bake --api-addr 127.0.0.1:<port> into a new plist")
 
 	stopCmd := &cobra.Command{
 		Use:          "stop",
@@ -209,6 +217,9 @@ func runServiceCommand(ctx context.Context, opts serviceOptions, stdout, _ io.Wr
 		_, _ = fmt.Fprint(stdout, summary)
 		return nil
 	case "start":
+		if err := prepareServiceStart(target, opts, stdout); err != nil {
+			return err
+		}
 		summary, err := startLaunchAgent(ctx, target.label, target.plistPath, target.domain)
 		if err != nil {
 			return err
@@ -248,6 +259,11 @@ type serviceInstallParams struct {
 	keepAlive     bool
 	runAtLoad     bool
 	skipLLMChecks bool
+	// allowLLMFailures installs even when a complete LLM config fails its
+	// checks (a CLI provider missing from PATH, a bad key): the server then
+	// boots in setup-only mode and the wizard can repair it, which beats a
+	// Start server that cannot start anything.
+	allowLLMFailures bool
 }
 
 // installLaunchAgent loads the fixed config, optionally runs the
@@ -274,7 +290,7 @@ func installLaunchAgent(params serviceInstallParams, doctorOut io.Writer) (strin
 		// Setup-only mode (no LLM yet) is a legitimate state during
 		// onboarding. When the caller opts in, ignore failures whose
 		// only cause is the missing LLM configuration.
-		if params.skipLLMChecks && config.NeedsSetup(cfg) && doctorReportOnlyLLMFailures(report) {
+		if (params.allowLLMFailures || params.skipLLMChecks && config.NeedsSetup(cfg)) && doctorReportOnlyLLMFailures(report) {
 			// Print the report so the user still sees what was skipped.
 			renderDoctorReport(doctorOut, report)
 		} else {
@@ -324,6 +340,77 @@ func installLaunchAgent(params serviceInstallParams, doctorOut io.Writer) (strin
 	}
 	return fmt.Sprintf("service installed\nlabel: %s\nplist: %s\nconfig: %s\nworkspace: %s\n%sstdout log: %s\nstderr log: %s\nnext: tars service start\n",
 		params.label, params.plistPath, configPath, workspaceAbs, addrLine, params.stdoutLog, params.stderrLog), nil
+}
+
+// prepareServiceStart runs before `service start`. It warns when the plist
+// runs another tars than this one, and with --install-if-missing installs
+// the plist (writing the starter config and workspace when there is no
+// config yet) if it is missing or names a binary that no longer exists.
+func prepareServiceStart(target serviceTarget, opts serviceOptions, stdout io.Writer) error {
+	state, err := inspectServiceBinary(target.plistPath)
+	if err != nil {
+		// Best effort: an unreadable plist is launchctl's to report.
+		return nil
+	}
+	needsInstall := !state.Installed || state.Missing
+	if !opts.installIfMissing || !needsInstall {
+		if warning := state.Warning(); warning != "" {
+			_, _ = fmt.Fprintf(stdout, "warning: %s\n", warning)
+		}
+		return nil
+	}
+	if state.Missing {
+		_, _ = fmt.Fprintf(stdout, "the service ran %s, which no longer exists; reinstalling it for %s\n", state.ServiceBinary, state.CurrentBinary)
+	}
+	if err := ensureStarterConfig(opts.apiAddr, stdout); err != nil {
+		return err
+	}
+	summary, err := installLaunchAgent(serviceInstallParams{
+		label:            target.label,
+		plistPath:        target.plistPath,
+		stdoutLog:        target.stdoutLog,
+		stderrLog:        target.stderrLog,
+		domain:           target.domain,
+		launchPath:       opts.launchPath,
+		apiAddr:          opts.apiAddr,
+		keepAlive:        true,
+		runAtLoad:        true,
+		skipLLMChecks:    true,
+		allowLLMFailures: true,
+	}, stdout)
+	if err != nil {
+		return err
+	}
+	_, _ = fmt.Fprint(stdout, summary)
+	return nil
+}
+
+// ensureStarterConfig writes what `tars init` writes on a fresh machine (the
+// wizard skeleton config and the starter workspace) when the fixed config
+// does not exist yet. An existing config is left alone.
+func ensureStarterConfig(apiAddr string, stdout io.Writer) error {
+	configPath := config.FixedConfigPath()
+	if exists, err := pathExists(configPath); err != nil {
+		return fmt.Errorf("stat config path %s: %w", configPath, err)
+	} else if exists {
+		return nil
+	}
+	workspaceAbs, err := resolveWorkspaceDir("")
+	if err != nil {
+		return fmt.Errorf("resolve workspace dir: %w", err)
+	}
+	if err := ensureStarterWorkspaceLayout(workspaceAbs, defaultStarterBundledPluginsDir()); err != nil {
+		return err
+	}
+	addr := strings.TrimSpace(apiAddr)
+	if addr == "" {
+		addr = onboarding.FormatLoopbackAddr(onboarding.DefaultPortRangeStart)
+	}
+	if err := writeOnboardingConfigFile(workspaceAbs, addr, configPath); err != nil {
+		return err
+	}
+	_, _ = fmt.Fprintf(stdout, "initialized TARS workspace\nworkspace: %s\nconfig: %s\n", workspaceAbs, configPath)
+	return nil
 }
 
 // startLaunchAgent loads then kickstarts the named service. Mirrors

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -127,13 +128,25 @@ func TestWaitReady(t *testing.T) {
 }
 
 func TestPlanStart(t *testing.T) {
-	if got := PlanStart("darwin", "/opt/tars", Config{URL: DefaultURL}); !reflect.DeepEqual(got, StartPlan{Binary: "/opt/tars", Args: []string{"service", "start"}}) {
+	// A machine where `tars init` never ran has no LaunchAgent: the shell
+	// asks tars to install it (and a starter config) first. A tars from
+	// before the flag gets the plain start as the fallback.
+	want := StartPlan{
+		Binary:   "/opt/tars",
+		Args:     []string{"service", "start", "--install-if-missing"},
+		Fallback: []string{"service", "start"},
+	}
+	if got := PlanStart("darwin", "/opt/tars", Config{URL: DefaultURL}); !reflect.DeepEqual(got, want) {
 		t.Fatalf("darwin = %+v", got)
+	}
+	got := PlanStart("darwin", "/opt/tars", Config{URL: "http://127.0.0.1:43185"})
+	if !reflect.DeepEqual(got.Args, []string{"service", "start", "--install-if-missing", "--api-addr", "127.0.0.1:43185"}) {
+		t.Fatalf("darwin custom port = %+v", got)
 	}
 	if got := PlanStart("linux", "tars", Config{URL: DefaultURL}); !reflect.DeepEqual(got, StartPlan{Binary: "tars", Args: []string{"serve"}, Detached: true}) {
 		t.Fatalf("linux default = %+v", got)
 	}
-	got := PlanStart("windows", "tars.exe", Config{URL: "http://127.0.0.1:9000"})
+	got = PlanStart("windows", "tars.exe", Config{URL: "http://127.0.0.1:9000"})
 	if !reflect.DeepEqual(got.Args, []string{"serve", "--api-addr", "127.0.0.1:9000"}) || !got.Detached {
 		t.Fatalf("windows custom port = %+v", got)
 	}
@@ -266,5 +279,51 @@ func TestLoadFile(t *testing.T) {
 	}
 	if _, err := DefaultConfigPath(); err != nil {
 		t.Skipf("no user config dir: %v", err)
+	}
+}
+
+func TestUnknownFlag(t *testing.T) {
+	if !UnknownFlag("Error: unknown flag: --install-if-missing\nUsage:") {
+		t.Fatal("cobra's unknown flag error must be recognised")
+	}
+	if UnknownFlag("launchctl bootstrap failed: 5: Input/output error") {
+		t.Fatal("other failures are not an old tars")
+	}
+}
+
+func TestOutdated(t *testing.T) {
+	for _, c := range []struct {
+		server, app string
+		want        bool
+	}{
+		{"0.37.1", "0.42.2", true},
+		{"0.42.1", "0.42.2", true},
+		{"0.42.2", "0.42.2", false},
+		{"0.43.0", "0.42.2", false},
+		{"1.0.0", "0.42.2", false},
+		{"v0.41.0", "v0.42.2", true},
+		// A server that does not report its version predates the field.
+		{"", "0.42.2", true},
+		// Development builds on either side are not compared.
+		{"dev", "0.42.2", false},
+		{"0.37.1", "dev", false},
+		{"0.37.1", "", false},
+		{"garbage", "0.42.2", false},
+	} {
+		if got := Outdated(c.server, c.app); got != c.want {
+			t.Errorf("Outdated(%q, %q) = %v, want %v", c.server, c.app, got, c.want)
+		}
+	}
+}
+
+func TestOutdatedMessage(t *testing.T) {
+	msg := OutdatedMessage("0.37.1", "0.42.2")
+	for _, want := range []string{"0.37.1", "0.42.2", "brew upgrade devlikebear/tap/tars", "tars service install"} {
+		if !strings.Contains(msg, want) {
+			t.Fatalf("message %q misses %q", msg, want)
+		}
+	}
+	if !strings.Contains(OutdatedMessage("", "0.42.2"), "older") {
+		t.Fatal("an unknown server version still reads as older")
 	}
 }

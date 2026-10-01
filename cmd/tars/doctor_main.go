@@ -59,6 +59,9 @@ func newDoctorCommand(stdout, stderr io.Writer) *cobra.Command {
 
 func runDoctorCommand(_ context.Context, opts doctorOptions, stdout, _ io.Writer) error {
 	report, err := buildDoctorReport(opts)
+	// Not part of buildDoctorReport: `tars service install` runs that as its
+	// gate, and the plist it is about to replace must not block it.
+	checkDoctorServiceBinary(&report)
 	renderDoctorReport(stdout, report)
 	return err
 }

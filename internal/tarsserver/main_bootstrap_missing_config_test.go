@@ -1,6 +1,7 @@
 package tarsserver
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -95,5 +96,109 @@ func TestLoadConfigForServe_MissingFileAppliesEnvOverrides(t *testing.T) {
 	}
 	if cfg.DashboardAuthMode != "off" {
 		t.Fatalf("expected DashboardAuthMode=off from env, got %q", cfg.DashboardAuthMode)
+	}
+}
+
+// A first `tars serve` without `tars init` used to boot with
+// api_auth_mode=required and no tokens, so every wizard PATCH to
+// /v1/admin/config/values was a 401 and setup could never finish.
+func TestLoadConfigForServe_FirstRunOnLoopbackWritesSkeleton(t *testing.T) {
+	t.Setenv("TARS_CONFIG", "")
+	t.Setenv("TARS_CONFIG_PATH", "")
+	t.Setenv("HOME", t.TempDir())
+	t.Chdir(t.TempDir())
+
+	opts := &options{APIAddr: DefaultAPIAddr}
+	cfg, err := loadConfigForServe(opts)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if opts.ConfigPath != config.FixedConfigPath() {
+		t.Fatalf("config path = %q, want %q", opts.ConfigPath, config.FixedConfigPath())
+	}
+	if _, err := os.Stat(config.FixedConfigPath()); err != nil {
+		t.Fatalf("skeleton not written: %v", err)
+	}
+	if !config.NeedsSetup(cfg) {
+		t.Fatal("skeleton must still need setup")
+	}
+	if cfg.APIAuthMode != "off" || !cfg.APIAllowInsecureLocalAuth {
+		t.Fatalf("auth = %q / insecure local %v, want off / true", cfg.APIAuthMode, cfg.APIAllowInsecureLocalAuth)
+	}
+	if err := validateAPIAuthSecurity(cfg); err != nil {
+		t.Fatalf("skeleton auth posture rejected: %v", err)
+	}
+}
+
+func TestLoadConfigForServe_FirstRunLeavesNonLoopbackAndExplicitPathsAlone(t *testing.T) {
+	t.Setenv("TARS_CONFIG", "")
+	t.Setenv("TARS_CONFIG_PATH", "")
+	t.Setenv("HOME", t.TempDir())
+	t.Chdir(t.TempDir())
+
+	// Listening beyond loopback with auth off would open the server to the
+	// network, so the skeleton is only written for loopback addresses.
+	opts := &options{APIAddr: "0.0.0.0:43180"}
+	cfg, err := loadConfigForServe(opts)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if _, err := os.Stat(config.FixedConfigPath()); !os.IsNotExist(err) {
+		t.Fatalf("non-loopback first run must not write a config, stat err = %v", err)
+	}
+	if cfg.APIAuthMode == "off" {
+		t.Fatal("non-loopback first run must keep auth on")
+	}
+
+	// An explicit --config is the operator's file to write.
+	explicit := filepath.Join(t.TempDir(), "mine.yaml")
+	if _, err := loadConfigForServe(&options{ConfigPath: explicit, APIAddr: DefaultAPIAddr}); err != nil {
+		t.Fatalf("load explicit: %v", err)
+	}
+	if _, err := os.Stat(explicit); !os.IsNotExist(err) {
+		t.Fatalf("explicit missing config must not be written, stat err = %v", err)
+	}
+}
+
+func TestLoadConfigForServe_FirstRunWithFixedPathFlagWritesSkeleton(t *testing.T) {
+	t.Setenv("TARS_CONFIG", "")
+	t.Setenv("TARS_CONFIG_PATH", "")
+	t.Setenv("HOME", t.TempDir())
+	t.Chdir(t.TempDir())
+
+	// The LaunchAgent runs `tars serve --config ~/.tars/config/config.yaml`.
+	cfg, err := loadConfigForServe(&options{ConfigPath: config.FixedConfigPath(), APIAddr: DefaultAPIAddr})
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if cfg.APIAuthMode != "off" {
+		t.Fatalf("auth = %q, want off from the skeleton", cfg.APIAuthMode)
+	}
+	// An existing file is never replaced.
+	if err := os.WriteFile(config.FixedConfigPath(), []byte("api:\n  auth_mode: required\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err = loadConfigForServe(&options{ConfigPath: config.FixedConfigPath(), APIAddr: DefaultAPIAddr})
+	if err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+	if cfg.APIAuthMode != "required" {
+		t.Fatalf("existing config overwritten: auth = %q", cfg.APIAuthMode)
+	}
+}
+
+func TestIsLoopbackListenAddr(t *testing.T) {
+	for addr, want := range map[string]bool{
+		"127.0.0.1:43180": true,
+		"localhost:43180": true,
+		"[::1]:43180":     true,
+		"0.0.0.0:43180":   false,
+		":43180":          false,
+		"10.0.0.5:43180":  false,
+		"":                false,
+	} {
+		if got := isLoopbackListenAddr(addr); got != want {
+			t.Errorf("isLoopbackListenAddr(%q) = %v, want %v", addr, got, want)
+		}
 	}
 }

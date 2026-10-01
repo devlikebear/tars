@@ -77,6 +77,9 @@ type shell struct {
 	pendingPath string
 	chats       map[string]*application.WebviewWindow
 	lastErrors  map[string]string
+	// warnedServer is the server version last flagged as older than the
+	// app, so each one is reported once per run.
+	warnedServer *string
 }
 
 func newShell(cfg server.Config) *shell {
@@ -547,6 +550,7 @@ func (s *shell) poll() {
 	if err == nil {
 		obs.Reachable = true
 		obs.NeedsSetup = health.NeedsSetup
+		s.checkServerVersion(health.Version)
 	}
 	var sessions []activity.Session
 	if obs.Reachable && !obs.NeedsSetup {
@@ -562,6 +566,27 @@ func (s *shell) poll() {
 		sessions = s.recentSessions(ctx, obs.Unauthorized)
 	}
 	s.apply(tray.StatusOf(obs), sessions)
+}
+
+// checkServerVersion tells the user, once per server version, when the
+// server is older than the app: installing or upgrading the app (the cask
+// included) leaves an already installed server as it was.
+func (s *shell) checkServerVersion(serverVersion string) {
+	if !server.Outdated(serverVersion, version) {
+		return
+	}
+	s.mu.Lock()
+	if s.warnedServer != nil && *s.warnedServer == serverVersion {
+		s.mu.Unlock()
+		return
+	}
+	s.warnedServer = &serverVersion
+	s.mu.Unlock()
+	log.Printf("server %q is older than tars-desktop %s", serverVersion, version)
+	go s.app.Dialog.Warning().
+		SetTitle("The TARS server needs an update").
+		SetMessage(server.OutdatedMessage(serverVersion, version)).
+		Show()
 }
 
 // logOnce logs an error from a poll the first time it appears, not on
@@ -842,6 +867,10 @@ func (s *shell) startServer() {
 	} else {
 		var out []byte
 		out, err = cmd.CombinedOutput()
+		if err != nil && plan.Fallback != nil && server.UnknownFlag(string(out)) {
+			// A tars from before the flag: start what is installed.
+			out, err = exec.Command(plan.Binary, plan.Fallback...).CombinedOutput()
+		}
 		if err != nil {
 			err = fmt.Errorf("%w: %s", err, strings.TrimSpace(string(out)))
 		}

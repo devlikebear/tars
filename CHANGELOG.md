@@ -6,6 +6,15 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.42.2] - 2026-10-01
+
+### Fixed
+
+- **`tars init` 없이 띄운 서버에서 설정 마법사가 저장되지 않던 문제** — config 파일 없이 처음 `tars serve`를 하면 인증이 `required`인데 토큰이 없어서, 마법사가 보내는 `PATCH /v1/admin/config/values`와 재시작이 모두 401이었다. 저장이 안 되니 몇 번을 해도 setup-only로 돌아왔다. 이제 loopback 주소에서 기본 config 경로(`~/.tars/config/config.yaml`, 플래그 없이 또는 LaunchAgent처럼 `--config`로 그 경로를 줄 때)에 파일이 없으면 `tars init`이 쓰는 것과 같은 시작 설정(로컬 전용, 인증 off)을 먼저 쓴다(`onboarding.WriteSkeletonConfig`로 공유). 다른 경로나 loopback이 아닌 주소에서는 예전처럼 아무것도 쓰지 않는다.
+- **새 컴퓨터에서 데스크톱 앱의 "서버 시작"이 실패하던 문제** — `tars init`을 한 적이 없으면 LaunchAgent plist가 없어 `service plist not found`로 끝났다. 이제 앱이 `tars service start --install-if-missing`을 실행한다. plist가 없거나 plist의 실행 파일이 사라졌으면 시작 설정과 workspace를 (없을 때만) 만들고 plist를 설치한 뒤 시작한다. 설정은 다 됐는데 LLM 점검만 실패하는 경우(`claude` CLI를 PATH에서 못 찾는 등)에도 설치한다. 서버가 setup-only로 떠서 마법사로 고칠 수 있기 때문이다. 그 플래그를 모르는 예전 tars에는 그냥 `service start`로 다시 시도한다.
+- **데스크톱 앱이 낡은 서버를 그대로 보여 주던 문제** — Homebrew cask의 `depends_on formula`는 이미 설치된 서버를 업그레이드하지 않아서, 앱은 0.42.1인데 서버는 0.37.1로 남아 `claude`를 `~/.local/bin`에서 찾지 못하고 setup-only로 떴다. 이제 `/v1/healthz`가 같은 컴퓨터의 요청에 `version`을 알려 주고(원격·tailscale serve 경유 요청에는 숨김), 앱은 서버가 자기보다 오래되면(버전을 알려 주지 않는 서버 포함) 서버 버전마다 한 번 `brew upgrade devlikebear/tap/tars`와 `tars service install && tars service start`를 안내한다.
+- **LaunchAgent가 다른 tars를 실행하는 줄 알 수 없던 문제** — 새로 설치해도 plist는 예전 실행 파일 경로를 그대로 가리킨다. 이제 `tars service start`와 `tars doctor`가 plist의 실행 파일이 지금의 tars와 다르고 버전도 다르면(또는 파일이 없어졌으면) 두 경로·버전과 `tars service install && tars service start`를 경고로 보여 준다. 같은 버전의 다른 사본, 심볼릭 링크로 같은 파일(Homebrew `bin` ↔ Cellar)은 조용히 넘어간다.
+
 ## [0.42.1] - 2026-10-01
 
 ### Added

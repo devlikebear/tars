@@ -1368,6 +1368,11 @@ func newHealthzAPIHandler(nowFn func() time.Time, dashboardAuthStatus map[string
 		if dashboardAuthStatus != nil {
 			body["dashboard_auth"] = dashboardAuthStatus
 		}
+		// The desktop app compares this with its own version to flag an
+		// outdated server. Remote callers do not need it.
+		if isLoopbackLoginRemoteAddr(r.RemoteAddr) && !serverauth.HasTailscaleIdentityHeader(r) {
+			body["version"] = buildinfo.Version
+		}
 		writeJSON(w, http.StatusOK, body)
 	})
 }
