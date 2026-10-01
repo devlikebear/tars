@@ -236,6 +236,14 @@ assistant:
   ffmpeg_bin: ffmpeg
   tts_bin: say
 
+console:
+  # The mode /console opens in (docs/decisions/focus-mode.md):
+  #   advanced — the chat workbench (dock panels, tool cards, status details)
+  #   focus    — a development pipeline view: stage stepper, one card at a
+  #              time, and only the decisions that need you
+  # Empty means advanced. Completing the onboarding wizard writes focus.
+  # default_mode: advanced
+
 companion:
   # Shows the always-floating Console companion. It is visual-only in this
   # version; proactive suggestion/speech loops stay separately gated.
