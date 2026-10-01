@@ -465,9 +465,14 @@ export class FocusStore {
       })
       accept()
     } catch (err) {
-      // Not accepted: the entry stays queued for the next load or action.
-      if (!accepted) this.sendBlocked = true
-      if (this.sessionId === sessionId && !this.disposed) this.actionError = message(err)
+      if (!accepted && statusOf(err) === 409) {
+        // Another turn took the session in the same instant (the server's):
+        // the entry stays queued and goes out once that turn ends.
+      } else {
+        // Not accepted: the entry stays queued for the next load or action.
+        if (!accepted) this.sendBlocked = true
+        if (this.sessionId === sessionId && !this.disposed) this.actionError = message(err)
+      }
     } finally {
       this.streaming = false
     }

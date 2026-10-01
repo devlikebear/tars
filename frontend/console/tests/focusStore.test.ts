@@ -612,3 +612,24 @@ test('a Q&A answer whose turn starts late is still followed to the end (R5)', as
   assert.deepEqual(store.qaThread('c1'), [{ turn: 1, question: 'why?', answer: 'Because.' }])
   store.dispose()
 })
+
+test('an instruction refused because a turn just started (409) stays queued, without an error', async () => {
+  const fake = fakeApi(pipeline('2026-10-01T00:00:02Z', [], { current: 'build' }))
+  fake.state.history = [{ id: 'u0', role: 'user', content: 'earlier', timestamp: '' }]
+  const store = newStore(fake)
+  await store.load('s1')
+  let refused = false
+  fake.api.streamChat = async (req) => {
+    if (!refused) {
+      refused = true
+      throw Object.assign(new Error('a turn is already running on this session'), { status: 409 })
+    }
+    fake.state.sent.push(req)
+  }
+  await store.send('also rename it')
+  await settle(store)
+  assert.equal(store.actionError, '')
+  await store.poll()
+  await settle(store)
+  assert.deepEqual(fake.state.sent.map((r) => r.message), ['also rename it'])
+})
