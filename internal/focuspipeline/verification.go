@@ -28,7 +28,13 @@ const (
 	// BlockedInterrupted is a pipeline the server stopped mid-step (a
 	// restart): retry resumes exactly the step that was cut off.
 	BlockedInterrupted = "interrupted"
+	// BlockedTurnFailed is a turn the server sent that ended in an error
+	// (provider timeout, crash): retry sends it again.
+	BlockedTurnFailed = "turn_failed"
 )
+
+// TurnFailedTitle is the title of the gate a failed server turn raises.
+const TurnFailedTitle = "Turn failed"
 
 // InterruptedTitle is the title of the gate an interruption raises.
 const InterruptedTitle = "Pipeline interrupted"
@@ -78,6 +84,8 @@ type BlockedFact struct {
 	// owed, or the verification that was running.
 	Prompt string `json:"prompt,omitempty"`
 	Verify bool   `json:"verify,omitempty"`
+	// Error is why a server turn failed (BlockedTurnFailed).
+	Error string `json:"error,omitempty"`
 }
 
 var (
@@ -226,6 +234,29 @@ func Interrupt(p Pipeline, now time.Time) (Pipeline, bool) {
 	return next, true
 }
 
+// FailTurn raises the blocked gate when the turn the server owed ended in
+// an error, so the loop never stops silently; retry sends the turn again.
+// ok is false, and p is returned unchanged, when no turn was owed.
+func FailTurn(p Pipeline, errText string, now time.Time) (Pipeline, bool) {
+	if !p.Active() || p.OpenGate != GateNone || p.PendingTurn == "" {
+		return p, false
+	}
+	next := p.clone()
+	stage, _ := next.Stage(next.Current)
+	next.raiseBlocked(TurnFailedTitle, BlockedFact{
+		Reason: BlockedTurnFailed, Iteration: stage.Iteration, Limit: next.stageLimit(next.Current),
+		Prompt: p.PendingTurn, Error: tailRunes(strings.TrimSpace(errText), excerptRunes),
+	}, 0, now.UTC())
+	next.UpdatedAt = now.UTC()
+	return next, true
+}
+
+// resumable reports whether a blocked reason resumes the cut-off step on
+// retry instead of starting a new round.
+func resumable(reason string) bool {
+	return reason == BlockedInterrupted || reason == BlockedTurnFailed
+}
+
 // openBlockedFact is the payload of the open blocked gate's card.
 func (p Pipeline) openBlockedFact() BlockedFact {
 	var fact BlockedFact
@@ -255,7 +286,7 @@ func applyBlockedGate(p *Pipeline, ev Event, decide func()) (Pipeline, Action, e
 	fact := p.openBlockedFact()
 	s := p.stageRef(p.Current)
 	s.Status = StatusActive
-	if fact.Reason == BlockedInterrupted {
+	if resumable(fact.Reason) {
 		// Resume the step that was cut off, in the same round.
 		decide()
 		if ev.Action == GateRetry && fact.Verify {

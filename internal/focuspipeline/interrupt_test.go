@@ -149,3 +149,26 @@ func TestInterruptedNotice(t *testing.T) {
 		t.Fatalf("title = %q", got.Cards[len(got.Cards)-1].Title)
 	}
 }
+
+func TestFailTurn(t *testing.T) {
+	p, _, _ := Apply(planned(t), Event{Kind: EventGate, Gate: GatePlan, Action: GateApprove}, t0)
+	owed := p.PendingTurn
+	got, ok := FailTurn(p, "cli timed out: no output for 15m0s", t0)
+	if !ok {
+		t.Fatal("a failed owed turn raises the gate")
+	}
+	var fact BlockedFact
+	_ = json.Unmarshal(got.Cards[len(got.Cards)-1].Payload, &fact)
+	if got.OpenGate != GateBlocked || fact.Reason != BlockedTurnFailed || fact.Error != "cli timed out: no output for 15m0s" || fact.Prompt != owed {
+		t.Fatalf("got %q %+v", got.OpenGate, fact)
+	}
+	r, act, err := Apply(got, Event{Kind: EventGate, Gate: GateBlocked, Action: GateRetry}, t0)
+	if err != nil || act.Kind != ActionSendTurn || act.Prompt != owed || stageOf(r, r.Current).Status != StatusActive {
+		t.Fatalf("retry = %+v err %v", act, err)
+	}
+	// Nothing owed (a person's turn failed): no gate.
+	idle, _ := turn(inBuild(t), t, &Report{Summary: "q", Decisions: []Decision{{ID: "d1", Question: "?"}}})
+	if _, ok := FailTurn(idle, "x", t0); ok {
+		t.Fatal("nothing was owed")
+	}
+}
