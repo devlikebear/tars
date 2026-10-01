@@ -170,6 +170,9 @@ func applyTurn(p Pipeline, ev Event, now time.Time) (Pipeline, Action) {
 	if !p.Active() {
 		return p, noAction
 	}
+	if p.Current == StageReview && p.OpenGate == GateTriage {
+		return triageTurn(p, now)
+	}
 	b := ev.Blocks
 	act := noAction
 	// A turn completed: the turn the server owed (if any) is not owed any

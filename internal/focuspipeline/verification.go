@@ -312,14 +312,14 @@ func applyBlockedGate(p *Pipeline, ev Event, decide func()) (Pipeline, Action, e
 	if ev.Action == GateRetry {
 		prompt = retryPrompt(p.LastFailure)
 	}
+	s.Limit = p.stageLimit(p.Current) + 1
+	s.Iteration++
+	s.Turns = 0
 	if p.Current == StageReview {
 		if retry := reviewRetry(p, ev.Action); retry != "" {
 			prompt = retry
 		}
 	}
-	s.Limit = p.stageLimit(p.Current) + 1
-	s.Iteration++
-	s.Turns = 0
 	p.LastFailure = nil
 	p.AwaitingVerification = false
 	decide()

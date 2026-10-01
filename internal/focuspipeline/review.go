@@ -39,11 +39,46 @@ type ReviewState struct {
 	// Failures counts the round's verification failures, capped by the
 	// stage limit.
 	Failures int `json:"failures,omitempty"`
+	// Dismissed are the findings dismissed in earlier rounds of the stage:
+	// listed in the review guidance, and dropped when reported again.
+	Dismissed []DismissedFinding `json:"dismissed,omitempty"`
+}
+
+// DismissedFinding identifies a dismissed finding across rounds.
+type DismissedFinding struct {
+	File  string `json:"file"`
+	Line  int    `json:"line,omitempty"`
+	Title string `json:"title"`
 }
 
 func (r ReviewState) clone() ReviewState {
 	r.Triage = append([]string(nil), r.Triage...)
+	r.Dismissed = append([]DismissedFinding(nil), r.Dismissed...)
 	return r
+}
+
+// nextRound is the state a new review round starts from: only the
+// dismissals carry over.
+func (r ReviewState) nextRound() ReviewState {
+	return ReviewState{Dismissed: append([]DismissedFinding(nil), r.Dismissed...)}
+}
+
+// dismissed reports whether f matches a finding dismissed earlier, by file
+// and title.
+func (r ReviewState) dismissed(f Finding) bool {
+	file, title := strings.TrimSpace(f.File), strings.TrimSpace(f.Title)
+	return slices.ContainsFunc(r.Dismissed, func(d DismissedFinding) bool {
+		return d.File == file && strings.EqualFold(d.Title, title)
+	})
+}
+
+// triageTurn handles a turn that completed while triage is open: the
+// developer's question, answered in the transcript. It changes nothing but
+// the owed turn — no cards, no blocks required, findings ignored.
+func triageTurn(p Pipeline, now time.Time) (Pipeline, Action) {
+	p.PendingTurn = ""
+	p.UpdatedAt = now
+	return p, noAction
 }
 
 // reviewTurnAction handles a completed review-stage turn that carried the
@@ -58,12 +93,13 @@ func reviewTurnAction(p *Pipeline, b Blocks, turn int, now time.Time) Action {
 		p.AwaitingVerification = true
 		return Action{Kind: ActionRunVerification}
 	}
-	if len(b.Findings) == 0 {
+	findings := slices.DeleteFunc(slices.Clone(b.Findings), p.Review.dismissed)
+	if len(findings) == 0 {
 		p.AwaitingVerification = true
 		return Action{Kind: ActionRunVerification}
 	}
 	p.Review.Triage = p.Review.Triage[:0]
-	for _, f := range b.Findings {
+	for _, f := range findings {
 		p.addCard(CardFinding, turn, f.Title, f, now)
 		p.Review.Triage = append(p.Review.Triage, p.Cards[len(p.Cards)-1].ID)
 	}
@@ -89,6 +125,7 @@ func closeTriage(p *Pipeline) Action {
 		return noAction
 	}
 	var accepted []Finding
+	var dismissed []DismissedFinding
 	for _, id := range p.Review.Triage {
 		i := p.cardIndex(id)
 		if i < 0 {
@@ -98,15 +135,22 @@ func closeTriage(p *Pipeline) Action {
 		if c.State != CardDecided {
 			return noAction
 		}
-		if c.Decision == DecisionFix {
-			var f Finding
-			if decodePayload(c.Payload, &f) {
-				accepted = append(accepted, f)
-			}
+		var f Finding
+		if !decodePayload(c.Payload, &f) {
+			continue
+		}
+		switch c.Decision {
+		case DecisionFix:
+			accepted = append(accepted, f)
+		case DecisionDismiss:
+			dismissed = append(dismissed, DismissedFinding{
+				File: strings.TrimSpace(f.File), Line: f.Line, Title: strings.TrimSpace(f.Title),
+			})
 		}
 	}
 	p.OpenGate = GateNone
 	p.Review.Triage = nil
+	p.Review.Dismissed = append(p.Review.Dismissed, dismissed...)
 	if len(accepted) == 0 {
 		p.AwaitingVerification = true
 		return Action{Kind: ActionRunVerification}
@@ -159,7 +203,7 @@ func (p Pipeline) reviewVerificationPassed(turn int, now time.Time) (Pipeline, A
 	}
 	s.Iteration++
 	s.Limit = limit
-	p.Review = ReviewState{}
+	p.Review = p.Review.nextRound()
 	return p, Action{Kind: ActionSendTurn, Prompt: reviewAgainPrompt(s.Iteration, limit)}, nil
 }
 
@@ -195,10 +239,13 @@ func reviewDonePrompt(next StageID) string {
 }
 
 // reviewRetry starts a new review round after the review blocked gate
-// (retry), or makes the developer's instruction a fix turn (instruct).
+// (retry), or makes the developer's instruction a fix turn (instruct). It
+// runs after the gate raised the stage's iteration and limit, so the
+// prompt names the round that starts.
 func reviewRetry(p *Pipeline, action string) string {
-	p.Review = ReviewState{Fixing: action == GateInstruct}
+	p.Review = p.Review.nextRound()
 	if action == GateInstruct {
+		p.Review.Fixing = true
 		return ""
 	}
 	s, _ := p.Stage(StageReview)
@@ -224,6 +271,10 @@ func decodePayload(raw json.RawMessage, v any) bool {
 // review turn reviews the diff since the pipeline's base commit and reports
 // findings; a fix turn fixes only the findings it was sent and reports.
 func reviewGuidance(p Pipeline) (instructions, blocks string) {
+	if p.OpenGate == GateTriage {
+		return "Triage in progress: the developer is deciding the reported findings one at a time. " +
+			"Answer the developer's question only; do not edit files and do not report findings in this turn.", ""
+	}
 	if p.Review.Fixing {
 		return "Fix only the findings listed in this message (or the verification failure it quotes); " +
 				"do not change anything else. Run the verification commands yourself before you finish.",
@@ -235,6 +286,19 @@ func reviewGuidance(p Pipeline) (instructions, blocks string) {
 	}
 	return what + "; do not edit files in this turn. " +
 			"Report every finding in the <focus-findings> block (an empty array when there are none). " +
-			"Each finding needs its file and line and a concrete failure scenario (inputs or state → wrong output or crash).",
+			"Each finding needs its file and line and a concrete failure scenario (inputs or state → wrong output or crash)." +
+			dismissedList(p.Review.Dismissed),
 		requiredBlocks(StageReview)
+}
+
+func dismissedList(dismissed []DismissedFinding) string {
+	if len(dismissed) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("\nAlready dismissed — do not re-report:")
+	for _, d := range dismissed {
+		fmt.Fprintf(&b, "\n- %s — %s", findingLocation(Finding{File: d.File, Line: d.Line}), d.Title)
+	}
+	return b.String()
 }

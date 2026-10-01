@@ -417,3 +417,108 @@ func TestBaseCommitSurvivesClone(t *testing.T) {
 		t.Fatalf("base = %q", got.BaseCommit)
 	}
 }
+
+// I1 / f1: a turn while triage is open is the developer's question.
+func TestTurnDuringTriageIsAQuestion(t *testing.T) {
+	tests := []struct {
+		name   string
+		blocks Blocks
+	}{
+		{name: "findings in the reply", blocks: Blocks{Findings: []Finding{{ID: "n1", File: "c.go", Line: 1, Title: "new"}}, Report: &Report{Summary: "s"}}},
+		{name: "empty findings", blocks: Blocks{Findings: []Finding{}}},
+		{name: "no block", blocks: Blocks{}},
+		{name: "malformed block", blocks: Blocks{Errors: []string{"focus-findings: want a JSON array"}}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p, _ := reviewTurn(t, inReview(t), twoFindings())
+			p.PendingTurn = ""
+			got, act, err := Apply(p, Event{Kind: EventTurnCompleted, Turn: 9, Blocks: tt.blocks}, t0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if act.Kind != ActionNone || got.AwaitingVerification || got.PendingTurn != "" {
+				t.Fatalf("act = %+v awaiting = %v pending = %q", act, got.AwaitingVerification, got.PendingTurn)
+			}
+			if got.OpenGate != GateTriage || len(got.Cards) != len(p.Cards) || strings.Join(got.Review.Triage, ",") != strings.Join(p.Review.Triage, ",") {
+				t.Fatalf("state changed: gate = %q cards %d→%d triage = %v", got.OpenGate, len(p.Cards), len(got.Cards), got.Review.Triage)
+			}
+		})
+	}
+}
+
+func TestGuidanceDuringTriage(t *testing.T) {
+	p, _ := reviewTurn(t, inReview(t), twoFindings())
+	g := Guidance(p)
+	for _, s := range []string{"Triage in progress", "Answer the developer's question only"} {
+		if !strings.Contains(g, s) {
+			t.Errorf("guidance lacks %q:\n%s", s, g)
+		}
+	}
+	for _, s := range []string{"Report every finding", "<focus-findings>", "<focus-report>"} {
+		if strings.Contains(g, s) {
+			t.Errorf("guidance during triage has %q:\n%s", s, g)
+		}
+	}
+}
+
+// I3: dismissed findings are remembered across rounds, listed in the
+// re-review guidance, and dropped when reported again.
+func TestDismissedFindingsStayDismissed(t *testing.T) {
+	p, _ := reviewTurn(t, inReview(t), twoFindings())
+	p, _ = decide(t, p, p.Review.Triage[0], "fix")
+	p, _ = decide(t, p, p.Review.Triage[1], "dismiss")
+	p, _ = turn(p, t, &Report{Summary: "fixed"})
+	p, _ = verify(p, t, passed())
+	if stageOf(p, StageReview).Iteration != 2 {
+		t.Fatalf("not in round 2: %+v", stageOf(p, StageReview))
+	}
+	if len(p.Review.Dismissed) != 1 || p.Review.Dismissed[0] != (DismissedFinding{File: "b.go", Line: 9, Title: "typo"}) {
+		t.Fatalf("dismissed = %+v", p.Review.Dismissed)
+	}
+	g := Guidance(p)
+	if !strings.Contains(g, "Already dismissed — do not re-report") || !strings.Contains(g, "b.go:9 — typo") {
+		t.Fatalf("guidance lacks the dismissed list:\n%s", g)
+	}
+
+	t.Run("only dismissed findings come back", func(t *testing.T) {
+		got, act := reviewTurn(t, p, []Finding{{ID: "x", Severity: "low", File: " b.go ", Line: 12, Title: "Typo"}})
+		if act.Kind != ActionRunVerification || got.OpenGate != GateNone || len(findingCards(got)) != 2 {
+			t.Fatalf("a re-reported dismissal opened triage: act = %+v gate = %q", act, got.OpenGate)
+		}
+	})
+	t.Run("new findings still open triage", func(t *testing.T) {
+		got, _ := reviewTurn(t, p, []Finding{{ID: "x", File: "b.go", Line: 9, Title: "typo"}, {ID: "y", File: "c.go", Line: 1, Title: "new"}})
+		if got.OpenGate != GateTriage || len(got.Review.Triage) != 1 {
+			t.Fatalf("triage = %v", got.Review.Triage)
+		}
+	})
+	t.Run("kept by retry, cleared when the stage ends", func(t *testing.T) {
+		q := p.clone()
+		q.block(BlockedLimit, nil, 7, t0)
+		q, _, err := Apply(q, Event{Kind: EventGate, Gate: GateBlocked, Action: GateRetry}, t0)
+		if err != nil || len(q.Review.Dismissed) != 1 {
+			t.Fatalf("retry lost dismissals: %v %+v", err, q.Review)
+		}
+		done, _ := reviewTurn(t, p, []Finding{})
+		done, _ = verify(done, t, passed())
+		if len(done.Review.Dismissed) != 0 {
+			t.Fatalf("dismissals outlived the stage: %+v", done.Review)
+		}
+	})
+}
+
+// I5 / f4: the retry prompt names the round and limit after the bump.
+func TestReviewRetryPromptNamesTheNewRound(t *testing.T) {
+	p := inReview(t)
+	s := p.stageRef(StageReview)
+	s.Iteration = 2
+	p.block(BlockedLimit, nil, 7, t0)
+	got, act, err := Apply(p, Event{Kind: EventGate, Gate: GateBlocked, Action: GateRetry}, t0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st := stageOf(got, StageReview); st.Iteration != 3 || st.Limit != 3 || !strings.Contains(act.Prompt, "round 3 of 3") {
+		t.Fatalf("stage = %+v prompt = %q", st, act.Prompt)
+	}
+}
