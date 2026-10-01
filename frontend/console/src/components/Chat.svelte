@@ -82,7 +82,8 @@
     if (cwdBusy) return false
     try {
       await chatSession.setCwd(target)
-      showFeedback($t.chatCommands.cwd.switched(shortCwdLabel(target)))
+      // The server canonicalizes the path (and expands ~), so report what it stored.
+      showFeedback($t.chatCommands.cwd.switched(shortCwdLabel(chatSession.cwd?.current || target)))
       return true
     } catch (err) {
       showFeedback($t.chatCommands.cwd.switchFailed(err instanceof Error ? err.message : String(err)))

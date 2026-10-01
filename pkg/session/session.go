@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -19,6 +20,14 @@ import (
 // is not present in the session's normalized work_dirs (i.e. neither the
 // artifact dir nor any user-registered work_dir).
 var ErrCwdNotEligible = errors.New("session: cwd not in eligible work_dirs")
+
+// SwitchCurrentDir errors for a directory that is not a work_dir yet and so
+// must be checked before it is registered.
+var (
+	ErrCwdNotAbsolute  = errors.New("session: cwd must be an absolute path")
+	ErrCwdNotFound     = errors.New("session: cwd does not exist")
+	ErrCwdNotDirectory = errors.New("session: cwd is not a directory")
+)
 
 // ErrSessionNotFound is returned when a session ID does not resolve to an
 // entry in the index. The message is intentionally kept stable for callers
@@ -1606,6 +1615,56 @@ func (s *Store) SetCurrentDir(id string, dir string) error {
 	sess.UpdatedAt = time.Now().UTC()
 	index[id] = sess
 	return s.saveIndex(index)
+}
+
+// SwitchCurrentDir makes dir the session's current directory. A directory
+// that is not among the work_dirs yet is registered first — the same thing
+// the console's folder picker does — but only when dir is an absolute path
+// to an existing directory; otherwise it returns ErrCwdNotAbsolute,
+// ErrCwdNotFound, or ErrCwdNotDirectory and changes nothing. added reports
+// whether dir was registered. An empty dir resets to the default, as with
+// SetCurrentDir.
+func (s *Store) SwitchCurrentDir(id string, dir string) (added bool, err error) {
+	unlock := lockPath(s.indexPath())
+	defer unlock()
+	index, err := s.loadIndex()
+	if err != nil {
+		return false, err
+	}
+	sess, ok := index[id]
+	if !ok {
+		return false, ErrSessionNotFound
+	}
+	sess, _, err = s.applySessionDefaults(sess)
+	if err != nil {
+		return false, err
+	}
+	trimmed := strings.TrimSpace(dir)
+	cd := canonicalSessionPath(trimmed)
+	if cd != "" && !slices.Contains(sess.WorkDirs, cd) {
+		if !filepath.IsAbs(trimmed) {
+			return false, fmt.Errorf("%w: %s", ErrCwdNotAbsolute, trimmed)
+		}
+		info, statErr := os.Stat(cd)
+		switch {
+		case os.IsNotExist(statErr):
+			return false, fmt.Errorf("%w: %s", ErrCwdNotFound, cd)
+		case statErr != nil:
+			return false, fmt.Errorf("session: cannot access cwd %s: %w", cd, statErr)
+		case !info.IsDir():
+			return false, fmt.Errorf("%w: %s", ErrCwdNotDirectory, cd)
+		}
+		sess.WorkDirs = append(append([]string(nil), sess.WorkDirs...), cd)
+		added = true
+	}
+	sess.CurrentDir = cd
+	sess, _, err = s.applySessionDefaults(sess)
+	if err != nil {
+		return false, err
+	}
+	sess.UpdatedAt = time.Now().UTC()
+	index[id] = sess
+	return added, s.saveIndex(index)
 }
 
 // EligibleCwds returns the canonical list of directories the session may use

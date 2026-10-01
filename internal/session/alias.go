@@ -95,6 +95,9 @@ var (
 	CompactTranscriptWithOptions      = pkgsession.CompactTranscriptWithOptions
 	DetectForkPromotionCandidates     = pkgsession.DetectForkPromotionCandidates
 	ErrCwdNotEligible                 = pkgsession.ErrCwdNotEligible
+	ErrCwdNotAbsolute                 = pkgsession.ErrCwdNotAbsolute
+	ErrCwdNotFound                    = pkgsession.ErrCwdNotFound
+	ErrCwdNotDirectory                = pkgsession.ErrCwdNotDirectory
 	IsolationOff                      = pkgsession.IsolationOff
 	ErrSessionKindUnsupported         = pkgsession.ErrSessionKindUnsupported
 	ErrSessionNotFound                = pkgsession.ErrSessionNotFound

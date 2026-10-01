@@ -111,17 +111,71 @@ func TestSessionCwdAPI_PutTransitionsAndEmits(t *testing.T) {
 	}
 }
 
-func TestSessionCwdAPI_PutRejectsNonEligible(t *testing.T) {
+func putSessionCwd(t *testing.T, handler http.Handler, sessionID, current string) *httptest.ResponseRecorder {
+	t.Helper()
+	body, _ := json.Marshal(map[string]string{"current": current})
+	req := httptest.NewRequest(http.MethodPut, "/v1/admin/sessions/"+sessionID+"/cwd", strings.NewReader(string(body)))
+	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "127.0.0.1:1"
+	req.Header.Set("Tars-Debug-Auth-Role", "admin")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	return rec
+}
+
+func TestSessionCwdAPI_PutAddsExistingDirectory(t *testing.T) {
 	root := t.TempDir()
 	store := session.NewStore(root)
 	sess, err := store.Create("chat")
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
-
-	stranger := filepath.Join(root, "elsewhere")
-	if err := os.MkdirAll(stranger, 0o755); err != nil {
+	repo := filepath.Join(root, "some", "repo")
+	if err := os.MkdirAll(repo, 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
+	}
+	canonical, err := filepath.EvalSymlinks(repo)
+	if err != nil {
+		t.Fatalf("eval symlinks: %v", err)
+	}
+
+	var emitted []notificationEvent
+	notify := func(_ context.Context, evt notificationEvent) { emitted = append(emitted, evt) }
+	handler := newSessionAPIHandlerWithNotifier(store, zerolog.New(io.Discard), nil, sessionStyleValues{}, notify)
+
+	rec := putSessionCwd(t, handler, sess.ID, repo)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		Current string `json:"current"`
+		Added   bool   `json:"added"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.Current != canonical || !resp.Added {
+		t.Fatalf("unexpected response %+v", resp)
+	}
+	eligible, _ := store.EligibleCwds(sess.ID)
+	if len(eligible) != 2 || eligible[1] != canonical {
+		t.Fatalf("expected repo registered as a candidate, got %v", eligible)
+	}
+	if len(emitted) != 1 || emitted[0].Message != canonical {
+		t.Fatalf("expected one cwd event for %q, got %+v", canonical, emitted)
+	}
+}
+
+func TestSessionCwdAPI_PutRejectsMissingOrNonDirectory(t *testing.T) {
+	root := t.TempDir()
+	store := session.NewStore(root)
+	sess, err := store.Create("chat")
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	file := filepath.Join(root, "notes.txt")
+	if err := os.WriteFile(file, []byte("x"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
 	}
 
 	var emitCount int32
@@ -130,19 +184,57 @@ func TestSessionCwdAPI_PutRejectsNonEligible(t *testing.T) {
 	}
 	handler := newSessionAPIHandlerWithNotifier(store, zerolog.New(io.Discard), nil, sessionStyleValues{}, notify)
 
-	body := `{"current":"` + stranger + `"}`
-	req := httptest.NewRequest(http.MethodPut, "/v1/admin/sessions/"+sess.ID+"/cwd", strings.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	req.RemoteAddr = "127.0.0.1:1"
-	req.Header.Set("Tars-Debug-Auth-Role", "admin")
-	rec := httptest.NewRecorder()
-	handler.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d body=%q", rec.Code, rec.Body.String())
+	cases := map[string]struct {
+		target string
+		want   string
+	}{
+		"missing":  {filepath.Join(root, "elsewhere"), "does not exist"},
+		"file":     {file, "not a directory"},
+		"relative": {"some/repo", "absolute path"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			rec := putSessionCwd(t, handler, sess.ID, tc.target)
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("expected 400, got %d body=%q", rec.Code, rec.Body.String())
+			}
+			if !strings.Contains(rec.Body.String(), tc.want) {
+				t.Fatalf("expected error mentioning %q, got %q", tc.want, rec.Body.String())
+			}
+		})
 	}
 	if atomic.LoadInt32(&emitCount) != 0 {
 		t.Fatalf("expected no SSE emit on rejection, got %d", atomic.LoadInt32(&emitCount))
+	}
+	if eligible, _ := store.EligibleCwds(sess.ID); len(eligible) != 1 {
+		t.Fatalf("rejections must not register candidates, got %v", eligible)
+	}
+}
+
+func TestExpandCwdHome(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	cases := map[string]string{
+		"~":              home,
+		"~/src/repo":     filepath.Join(home, "src", "repo"),
+		"/abs/path":      "/abs/path",
+		"~other/project": "~other/project",
+	}
+	for in, want := range cases {
+		if got := expandCwdHome(in); got != want {
+			t.Errorf("expandCwdHome(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestSessionCwdAPI_PutUnknownSessionReturns404(t *testing.T) {
+	store := session.NewStore(t.TempDir())
+	handler := newSessionAPIHandlerWithNotifier(store, zerolog.New(io.Discard), nil, sessionStyleValues{}, nil)
+
+	rec := putSessionCwd(t, handler, "does-not-exist", t.TempDir())
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d body=%q", rec.Code, rec.Body.String())
 	}
 }
 

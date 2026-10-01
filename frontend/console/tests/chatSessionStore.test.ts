@@ -246,6 +246,33 @@ test('setCwd writes, then re-reads the eligible directories', async () => {
   assert.equal(store.cwdBusy, false)
 })
 
+test('setCwd to a new folder shows it as current and as a candidate', async () => {
+  // The server registers a folder that is not a candidate yet.
+  let state = { current: '/w/a', eligible: ['/w/a'] }
+  const { store } = newStore({
+    getSessionCwd: async () => state,
+    setSessionCwd: async (_id: string, target: string) => {
+      state = { current: target, eligible: [...state.eligible, target] }
+    },
+  })
+  store.setActive('a')
+  await flush()
+  await store.setCwd('/w/some/repo')
+  assert.equal(store.cwd?.current, '/w/some/repo')
+  assert.deepEqual(store.cwd?.eligible, ['/w/a', '/w/some/repo'])
+})
+
+test('setCwd rejects with the server error and keeps the previous cwd', async () => {
+  const { store } = newStore({
+    setSessionCwd: async () => { throw new Error('session: cwd does not exist: /nope') },
+  })
+  store.setActive('a')
+  await flush()
+  await assert.rejects(store.setCwd('/nope'), /does not exist/)
+  assert.equal(store.cwd?.current, '/w/a')
+  assert.equal(store.cwdBusy, false)
+})
+
 test('applyGoalEvent updates the goal chip and surfaces feedback', () => {
   const { store } = newStore()
   const goal = { description: 'ship it', status: 'active', auto_continue_count: 1, max_auto_continues: 3 }

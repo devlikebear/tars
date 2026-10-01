@@ -302,6 +302,7 @@
           onClose={() => closePanel(panelID)}
           onOpenIntegratedTerminal={openIntegratedTerminalDock}
           onWorkDirsChange={() => { void chatSession.refreshCwd() }}
+          activeCwd={chatSession.cwd?.current ?? ''}
         />
       {:catch}
         <div class="dock-empty">{$t.chat.panels.dockEmpty}</div>
