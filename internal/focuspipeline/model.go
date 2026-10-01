@@ -187,6 +187,9 @@ type Pipeline struct {
 	// once the release finishes, the release train treats both as released.
 	ReleaseItems []string   `json:"release_items,omitempty"`
 	ReleaseSince *time.Time `json:"release_since,omitempty"`
+	// BaseCommit is HEAD of the session's folder when the pipeline's first
+	// turn ran, before any change: the review diff starts there (P3).
+	BaseCommit string `json:"base_commit,omitempty"`
 	// Review is the review loop's position in its round (P3).
 	Review ReviewState `json:"review,omitzero"`
 }

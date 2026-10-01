@@ -363,3 +363,57 @@ func indexOfCard(p Pipeline, id string) int {
 	}
 	return -1
 }
+
+func TestReviewGuidance(t *testing.T) {
+	tests := []struct {
+		name string
+		edit func(p *Pipeline)
+		want []string
+		not  []string
+	}{
+		{
+			name: "review turn with base",
+			edit: func(p *Pipeline) { p.BaseCommit = "abc1234" },
+			want: []string{"git diff abc1234...HEAD", "do not edit files", "empty array", "<focus-findings>"},
+			not:  []string{"Fix only"},
+		},
+		{
+			name: "review turn without base",
+			edit: func(*Pipeline) {},
+			want: []string{"Review the changes made for this goal", "<focus-findings>", "empty array"},
+			not:  []string{"git diff", "Fix only"},
+		},
+		{
+			name: "fix turn",
+			edit: func(p *Pipeline) { p.BaseCommit = "abc1234"; p.Review.Fixing = true },
+			want: []string{"Fix only the findings listed", "<focus-report>", "- make test"},
+			not:  []string{"<focus-findings>", "do not edit files"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := atStage(t, StageReview)
+			tt.edit(&p)
+			g := Guidance(p)
+			for _, s := range tt.want {
+				if !strings.Contains(g, s) {
+					t.Errorf("guidance lacks %q:\n%s", s, g)
+				}
+			}
+			for _, s := range tt.not {
+				if strings.Contains(g, s) {
+					t.Errorf("guidance has %q:\n%s", s, g)
+				}
+			}
+		})
+	}
+}
+
+func TestBaseCommitSurvivesClone(t *testing.T) {
+	p := inReview(t)
+	p.BaseCommit = "abc1234"
+	got, _ := reviewTurn(t, p, []Finding{})
+	if got.BaseCommit != "abc1234" {
+		t.Fatalf("base = %q", got.BaseCommit)
+	}
+}

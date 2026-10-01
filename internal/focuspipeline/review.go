@@ -219,3 +219,22 @@ func blockedTitle(stage StageID) string {
 func decodePayload(raw json.RawMessage, v any) bool {
 	return len(raw) > 0 && json.Unmarshal(raw, v) == nil
 }
+
+// reviewGuidance is the review stage's instructions and required blocks: a
+// review turn reviews the diff since the pipeline's base commit and reports
+// findings; a fix turn fixes only the findings it was sent and reports.
+func reviewGuidance(p Pipeline) (instructions, blocks string) {
+	if p.Review.Fixing {
+		return "Fix only the findings listed in this message (or the verification failure it quotes); " +
+				"do not change anything else. Run the verification commands yourself before you finish.",
+			reportBlock()
+	}
+	what := "Review the changes made for this goal"
+	if base := strings.TrimSpace(p.BaseCommit); base != "" {
+		what = fmt.Sprintf("Review the diff since the stage started (`git diff %s...HEAD`, and `git diff %s` for changes not yet committed)", base, base)
+	}
+	return what + "; do not edit files in this turn. " +
+			"Report every finding in the <focus-findings> block (an empty array when there are none). " +
+			"Each finding needs its file and line and a concrete failure scenario (inputs or state → wrong output or crash).",
+		requiredBlocks(StageReview)
+}

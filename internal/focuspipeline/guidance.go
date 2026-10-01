@@ -55,13 +55,17 @@ func Guidance(p Pipeline) string {
 	if goal := strings.TrimSpace(p.Goal); goal != "" {
 		fmt.Fprintf(&b, "Goal: %s\n", goal)
 	}
-	b.WriteString(stageInstructions[stage.ID])
+	instructions, blocks := stageInstructions[stage.ID], requiredBlocks(stage.ID)
+	if stage.ID == StageReview {
+		instructions, blocks = reviewGuidance(p)
+	}
+	b.WriteString(instructions)
 	b.WriteString("\n")
 	if p.Plan != nil && stage.ID != StagePlan {
 		writePlan(&b, *p.Plan)
 	}
 	b.WriteString("\n")
-	b.WriteString(requiredBlocks(stage.ID))
+	b.WriteString(blocks)
 	return strings.TrimRight(b.String(), "\n")
 }
 
@@ -84,9 +88,12 @@ func writePlan(b *strings.Builder, plan Plan) {
 	}
 }
 
+// blockTail closes every block request.
+const blockTail = "Put the block at the very end of your reply, outside any code fence, with valid JSON between the tags. " +
+	"If you include the block more than once, only the last one counts."
+
 func requiredBlocks(stage StageID) string {
-	const tail = "Put the block at the very end of your reply, outside any code fence, with valid JSON between the tags. " +
-		"If you include the block more than once, only the last one counts."
+	const tail = blockTail
 	switch stage {
 	case StagePlan:
 		return "End your reply with exactly one plan block in this format:\n" + planFormat + "\n" + tail
@@ -99,9 +106,14 @@ func requiredBlocks(stage StageID) string {
 		return "End your reply with exactly one report block in this format (decisions and risks may be empty):\n" +
 			buildReportFormat + "\n" + buildTasksDone + "\n" + tail
 	default:
-		return "End your reply with exactly one report block in this format (decisions and risks may be empty):\n" +
-			reportFormat + "\n" + tail
+		return reportBlock()
 	}
+}
+
+// reportBlock asks for the plain report block.
+func reportBlock() string {
+	return "End your reply with exactly one report block in this format (decisions and risks may be empty):\n" +
+		reportFormat + "\n" + blockTail
 }
 
 func orDash(s string) string {
