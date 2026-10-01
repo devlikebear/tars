@@ -53,6 +53,7 @@ test('forward edges join consecutive stages; skipped stages and their edges are 
     'stage-pr>stage-pr_review',
     'stage-pr_review>stage-merge',
   ])
+  assert.ok(forward.every((e) => e.sourceHandle === 'out' && e.targetHandle === 'in'))
   assert.equal(nodes.find((n) => n.id === 'stage-review')?.data.status, 'skipped')
   assert.match(String(nodes.find((n) => n.id === 'stage-review')?.class), /focus-graph-skipped/)
   assert.match(String(forward[1].class), /focus-graph-edge-skipped/)
