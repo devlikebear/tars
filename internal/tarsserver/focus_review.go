@@ -1,7 +1,9 @@
 package tarsserver
 
 import (
+	"bytes"
 	"context"
+	"io"
 	"os"
 	"path"
 	"path/filepath"
@@ -23,6 +25,9 @@ const (
 	// excerpt keeps; focusExcerptMaxBytes caps the excerpt.
 	focusExcerptRadius   = 6
 	focusExcerptMaxBytes = 4000
+	// focusUntrackedMaxBytes caps how much of an untracked file is read for
+	// its excerpt.
+	focusUntrackedMaxBytes = 64 << 10
 )
 
 // focusRecordBaseCommit stores HEAD of the session's folder as the
@@ -74,15 +79,22 @@ func focusEnrichFindings(sessions *session.Store, sessionID string, blocks focus
 }
 
 // focusFindingExcerpts returns findings with Excerpt set from `git diff
-// <base>` in dir (committed and uncommitted changes since base; HEAD when
-// base is unknown), or, for a file git does not track yet, its lines around
-// the finding as additions. Paths that leave dir get no excerpt. The input
-// is not modified.
+// <base>` in dir's repository (committed and uncommitted changes since
+// base; HEAD when base is unknown), or, for a file git does not track yet,
+// its lines around the finding as additions. Finding paths are relative to
+// the repository's top level, wherever in it dir is; paths that leave the
+// repository — by text or through a symlink — get no excerpt. The input is
+// not modified.
 func focusFindingExcerpts(ctx context.Context, dir, base string, findings []focuspipeline.Finding) []focuspipeline.Finding {
 	out := append([]focuspipeline.Finding(nil), findings...)
 	if strings.TrimSpace(dir) == "" {
 		return out
 	}
+	top, err := runGit(ctx, releaseGitTimeout, dir, nil, "rev-parse", "--show-toplevel")
+	if err != nil || top == "" {
+		return out
+	}
+	dir = top
 	if base = strings.TrimSpace(base); base == "" {
 		base = "HEAD"
 	}
@@ -122,17 +134,19 @@ func focusRepoPath(file string) (string, bool) {
 }
 
 // focusUntrackedExcerpt shows a file git does not track as added lines
-// around line.
+// around line. The file must resolve, symlinks evaluated, to a regular file
+// inside the repository top level dir; at most focusUntrackedMaxBytes of it
+// are read.
 func focusUntrackedExcerpt(ctx context.Context, dir, file string, line int) string {
 	if tracked, err := runGit(ctx, releaseGitTimeout, dir, nil, "ls-files", "--", file); err != nil || tracked != "" {
 		return ""
 	}
-	full := filepath.Join(dir, filepath.FromSlash(file))
-	if info, err := os.Lstat(full); err != nil || !info.Mode().IsRegular() {
+	real, ok := focusInsideRepo(dir, filepath.Join(dir, filepath.FromSlash(file)))
+	if !ok {
 		return ""
 	}
-	data, err := os.ReadFile(full)
-	if err != nil {
+	data, err := readHead(real, focusUntrackedMaxBytes)
+	if err != nil || len(data) == 0 {
 		return ""
 	}
 	lines := strings.Split(strings.TrimRight(string(data), "\n"), "\n")
@@ -238,4 +252,48 @@ func capExcerpt(s string) string {
 		cut = focusExcerptMaxBytes
 	}
 	return strings.ToValidUTF8(s[:cut], "") + "\n…"
+}
+
+// focusInsideRepo resolves path's symlinks and reports the real path when it
+// is a regular file under the repository top level (also resolved).
+func focusInsideRepo(top, path string) (string, bool) {
+	realTop, err := filepath.EvalSymlinks(top)
+	if err != nil {
+		return "", false
+	}
+	real, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return "", false
+	}
+	rel, err := filepath.Rel(realTop, real)
+	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
+		return "", false
+	}
+	info, err := os.Lstat(real)
+	if err != nil || !info.Mode().IsRegular() {
+		return "", false
+	}
+	return real, true
+}
+
+// readHead reads at most limit bytes of path, cut back to its last whole
+// line when the file is longer.
+func readHead(path string, limit int64) ([]byte, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	data, err := io.ReadAll(io.LimitReader(f, limit+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) <= limit {
+		return data, nil
+	}
+	data = data[:limit]
+	if i := bytes.LastIndexByte(data, '\n'); i >= 0 {
+		data = data[:i+1]
+	}
+	return data, nil
 }
