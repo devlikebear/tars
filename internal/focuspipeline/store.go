@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -41,12 +42,20 @@ func (s *Store) lock() func() {
 	return m.Unlock
 }
 
+// safeSessionID is the allowlist a session id must match before it names a
+// file: the same anchored pattern internal/checkpoint uses, which code
+// scanning recognises as a path sanitizer (a hand-written separator check is
+// not). It admits the store's UUID-style ids and nothing with a separator,
+// space, NUL, or non-ASCII character.
+var safeSessionID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
+
+// path is the pipeline file of sessionID, validated against safeSessionID
+// before any path is built.
 func (s *Store) path(sessionID string) (string, error) {
-	id := strings.TrimSpace(sessionID)
-	if id == "" || id == "." || id == ".." || strings.ContainsAny(id, `/\`) || strings.ContainsRune(id, 0) {
+	if !safeSessionID.MatchString(sessionID) || sessionID == "." || sessionID == ".." {
 		return "", ErrInvalidSessionID
 	}
-	return filepath.Join(s.dir, id+fileSuffix), nil
+	return filepath.Join(s.dir, sessionID+fileSuffix), nil
 }
 
 // Get reads a session's pipeline; false when it has none.

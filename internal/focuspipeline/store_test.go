@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -43,7 +44,11 @@ func TestStoreRoundTrip(t *testing.T) {
 
 func TestStoreRejectsPathIDs(t *testing.T) {
 	s := NewStore(t.TempDir())
-	for _, id := range []string{"", "..", "../x", `a\b`, "a/b"} {
+	for _, id := range []string{
+		"", ".", "..", "../x", `a\b`, "a/b", "a\x00b",
+		"has space", " s1", "s1 ", "세션", "café",
+		".hidden", "-dash", strings.Repeat("a", 129),
+	} {
 		if _, _, err := s.Get(id); !errors.Is(err, ErrInvalidSessionID) {
 			t.Errorf("Get(%q) err = %v", id, err)
 		}
@@ -162,5 +167,17 @@ func TestStoreDeleteDoesNotWaitForUpdate(t *testing.T) {
 	<-updateDone
 	if _, ok, _ := s.Get("s2"); ok {
 		t.Fatal("pipeline not deleted")
+	}
+}
+
+func TestStoreAcceptsSessionIDs(t *testing.T) {
+	s := NewStore(t.TempDir())
+	for _, id := range []string{"s1", "019a2b3c-4d5e-7f00-8a9b-0c1d2e3f4a5b", "a.b_c-d", strings.Repeat("a", 128)} {
+		if err := s.Save(New(id, "g", t0)); err != nil {
+			t.Errorf("Save(%q): %v", id, err)
+		}
+		if _, ok, err := s.Get(id); err != nil || !ok {
+			t.Errorf("Get(%q): ok=%v err=%v", id, ok, err)
+		}
 	}
 }
