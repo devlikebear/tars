@@ -633,3 +633,24 @@ test('an instruction refused because a turn just started (409) stays queued, wit
   await settle(store)
   assert.deepEqual(fake.state.sent.map((r) => r.message), ['also rename it'])
 })
+
+test('the kickoff is the one first message the console sends; every later prompt is the server\'s', async () => {
+  const storage = memoryStorage()
+  const fake = fakeApi({ ...pipeline('2026-10-01T00:00:00Z'), goal: 'Release: ship 2 changes', kickoff: 'Release: ship 2 changes\n- a\n- b' })
+  const store = newStore(fake, storage)
+  await store.load('s1')
+  await settle(store)
+  assert.deepEqual(fake.state.sent.map((r) => r.message), ['Release: ship 2 changes\n- a\n- b'])
+  // The plan comes back; approving it starts the build turn on the server.
+  fake.state.history = [{ id: 'u1', role: 'user', content: 'Release: ship 2 changes', timestamp: '' }]
+  fake.state.pipeline = pipeline('2026-10-01T00:00:01Z', [gateCard()], { open_gate: 'plan' })
+  fake.state.gateResult = { pipeline: pipeline('2026-10-01T00:00:02Z', [{ ...gateCard(), state: 'decided', decision: 'approve' }], { current: 'build' }), next_prompt: 'Plan approved. Start the build stage with task 1.' }
+  await store.load('s1')
+  await store.gate('plan', 'approve')
+  await settle(store)
+  // A reload does not send the kickoff again either.
+  const again = newStore(fake, storage)
+  await again.load('s1')
+  await settle(again)
+  assert.deepEqual(fake.state.sent.map((r) => r.message), ['Release: ship 2 changes\n- a\n- b'])
+})

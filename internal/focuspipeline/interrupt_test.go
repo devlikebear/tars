@@ -172,3 +172,35 @@ func TestFailTurn(t *testing.T) {
 		t.Fatal("nothing was owed")
 	}
 }
+
+func TestFinishedPipelineOwesNoTurn(t *testing.T) {
+	// The last stage's approval finishes the pipeline (P5 FinishedAt); its
+	// "complete" prompt is not a turn the server owes.
+	p := atStage(t, StageMerge)
+	p.Plan.Stages = []StageID{StagePlan, StageMerge}
+	p.OpenGate = GateMerge
+	p.addCard(CardGate, 1, "merge", nil, t0)
+	got, act, err := Apply(p, Event{Kind: EventGate, Gate: GateMerge, Action: GateApprove}, t0)
+	if err != nil || got.Active() {
+		t.Fatalf("err %v active %v", err, got.Active())
+	}
+	if act.Kind != ActionSendTurn || got.PendingTurn != "" || got.FinishedAt == nil {
+		t.Fatalf("pending = %q finished = %v act = %+v", got.PendingTurn, got.FinishedAt, act)
+	}
+	if _, ok := Interrupt(got, t0); ok {
+		t.Fatal("a finished pipeline is never interrupted")
+	}
+}
+
+func TestNewPipelineOwesNothingSoTheKickoffStaysTheConsoles(t *testing.T) {
+	// The first message (the goal, or P5's kickoff) is the developer's own,
+	// sent by the console; the server owes no turn until an action asks.
+	p := New("s1", "Release: ship 2 changes", t0)
+	p.Kickoff = "Release: ship 2 changes\n- a\n- b"
+	if p.PendingTurn != "" {
+		t.Fatal("a new pipeline owes no turn")
+	}
+	if _, ok := Interrupt(p, t0); ok {
+		t.Fatal("a restart before the kickoff raises no gate")
+	}
+}

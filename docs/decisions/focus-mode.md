@@ -120,7 +120,7 @@ Ordered by priority:
 
 - pipeline model persisted next to the session as `pipeline.json`: stages with status (`pending` | `active` | `done` | `skipped` | `blocked`), iteration counts, gates, cards and their state, findings, PR info;
 - block parser and a **pure** state machine `Next(state, facts) → (state, action)` tested table-driven, like `initiative.Decide`;
-- a driver that reacts to turn completion: evaluates facts, then either enqueues the next automatic turn or stops at a gate. It runs server-side on top of background turns (#971), so loops continue when the console is closed; tool permissions needed while unattended go to the existing ops approval queue (#970).
+- a driver that reacts to turn completion: evaluates facts, then either enqueues the next automatic turn or stops at a gate. The developer's own messages — the first one (the goal, or a release pipeline's kickoff) and typed instructions — come from the console; every turn the pipeline asks for after that is sent by the server, which records it as owed (`pending_turn`) so a restart raises an *interrupted* gate instead of losing or silently resuming it. It runs server-side on top of background turns (#971), so loops continue when the console is closed; tool permissions needed while unattended go to the existing ops approval queue (#970).
 - tasks and the contract reuse the existing session `Plan`/`Task`/`TaskContract`; the durable work ledger is not used (it is built for the unattended scheduler).
 - API under `/v1/focus/…` and an SSE `pipeline` event for state changes.
 

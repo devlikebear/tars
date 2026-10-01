@@ -112,7 +112,13 @@ func Apply(p Pipeline, ev Event, now time.Time) (Pipeline, Action, error) {
 
 // owe records a send_turn action as the turn the server owes the pipeline
 // (PendingTurn); a completed turn or a stop cleared the previous one.
+// A finished or stopped pipeline owes nothing: its last prompt ("the
+// pipeline is complete") is shown, never sent.
 func owe(p Pipeline, act Action) Pipeline {
+	if !p.Active() {
+		p.PendingTurn = ""
+		return p
+	}
 	if act.Kind == ActionSendTurn && p.PendingTurn != act.Prompt {
 		p.PendingTurn = act.Prompt
 	}

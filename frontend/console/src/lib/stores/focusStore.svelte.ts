@@ -13,7 +13,8 @@
 // `pipeline` event) is only shown; this store follows the server's work on
 // GET /v1/chat/stream like any turn started elsewhere.
 //
-// What the developer sends — the kickoff goal and typed instructions — goes
+// What the developer sends — the first message (the goal, or a release's
+// kickoff text) and typed instructions — goes
 // through one queue, persisted in storage, sent one at a time when no turn
 // runs on the session (here, in another tab, in Advanced, or the server's —
 // /v1/chat/activity). Each entry is keyed and marked sent only once the
