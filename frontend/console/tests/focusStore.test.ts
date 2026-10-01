@@ -430,3 +430,18 @@ test('a prompt held back by a running turn goes out on the next poll once it end
   await settle(store)
   assert.deepEqual(fake.state.sent.map((r) => r.message), ['Start the build.'])
 })
+
+test('while the current stage has no cards yet, the deck keeps the last stage with cards', async () => {
+  const decided = { ...gateCard(), state: 'decided' as const, decision: 'approve' }
+  const fake = fakeApi(pipeline('2026-10-01T00:00:02Z', [decided], { current: 'build' }))
+  fake.state.history = [{ id: 'u0', role: 'user', content: 'earlier', timestamp: '' }]
+  const store = newStore(fake)
+  await store.load('s1')
+  await settle(store)
+  assert.equal(store.stage, 'plan')
+  assert.deepEqual(store.deck.map((c) => c.id), ['c1'])
+  // Cards of the current stage take over as soon as there are any.
+  store.applyEvent({ type: 'pipeline', session_id: 's1', next_prompt: '', pipeline: pipeline('2026-10-01T00:00:03Z', [decided, { id: 'c2', kind: 'report', stage: 'build', turn: 2, title: 'r', state: 'unseen', created_at: '2026-10-01T00:00:03Z' }], { current: 'build' }) })
+  assert.equal(store.stage, 'build')
+  assert.deepEqual(store.deck.map((c) => c.id), ['c2'])
+})

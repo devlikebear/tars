@@ -6,7 +6,7 @@
   // leaves the deck hands over to the first one.
   import { untrack } from 'svelte'
   import { t } from '../../i18n'
-  import { acknowledgeable, deckCursor, mustHandle } from '../../lib/focus'
+  import { acknowledgeable, deckCursor, deckOrder, mustHandle } from '../../lib/focus'
   import type { FocusCard as Card, FocusDecision, FocusGateAction, FocusPlan, SessionMessage } from '../../lib/types'
   import FocusCard from './FocusCard.svelte'
   import FocusRawSlice from './FocusRawSlice.svelte'
@@ -28,23 +28,33 @@
 
   let currentId = $state<string | null>(null)
   let showRaw = $state(false)
-  // The ids of the deck last time it changed; a new one moves the deck to
-  // its first card (lib/focus deckCursor).
+  // The order on screen (lib/focus deckOrder): held while the same cards
+  // stay, re-sorted when cards arrive or leave. The ids last seen tell an
+  // arrival, which moves the deck to its first card (deckCursor).
+  let order = $state<string[]>([])
   let known = new Set<string>()
 
   $effect(() => {
     const ids = cards.map((c) => c.id)
     untrack(() => {
-      currentId = deckCursor(known, ids, currentId)
+      order = deckOrder(order, ids)
+      currentId = deckCursor(known, order, currentId)
       known = new Set(ids)
     })
   })
 
+  // The cards in the order on screen; until the effect has run for a new
+  // deck, the sorted order.
+  let shown = $derived.by(() => {
+    const byId = new Map(cards.map((c) => [c.id, c]))
+    const held = order.map((id) => byId.get(id)).filter((c): c is Card => !!c)
+    return held.length === cards.length ? held : cards
+  })
   let index = $derived.by(() => {
-    const at = currentId ? cards.findIndex((c) => c.id === currentId) : -1
+    const at = currentId ? shown.findIndex((c) => c.id === currentId) : -1
     return at >= 0 ? at : 0
   })
-  let current = $derived(cards[index] ?? null)
+  let current = $derived(shown[index] ?? null)
   let rest = $derived(acknowledgeable(cards))
 
   // The card on screen is seen.
@@ -60,15 +70,16 @@
   })
 
   function move(step: number) {
-    if (cards.length === 0) return
-    const next = (index + step + cards.length) % cards.length
-    currentId = cards[next].id
+    if (shown.length === 0) return
+    const next = (index + step + shown.length) % shown.length
+    currentId = shown[next].id
   }
 
   function decide(card: Card, decision: string) {
-    // After a card is handled, the deck goes to its first card — the next
-    // one needing attention — once the decision lands.
-    currentId = null
+    // A handled card hands over to the next one on screen; cards the
+    // decision brings (the answer turn's) move the deck to its first card.
+    const at = shown.findIndex((c) => c.id === card.id)
+    if (at >= 0 && at + 1 < shown.length) currentId = shown[at + 1].id
     onDecide(card, decision)
   }
 
@@ -102,9 +113,9 @@
     <p class="deck-empty" data-testid="focus-deck-empty">{running ? $t.focus.screen.emptyRunning : $t.focus.screen.empty}</p>
   {:else}
     <div class="deck-nav">
-      <button type="button" class="btn btn-ghost btn-sm" aria-label={$t.focus.deck.prev} title={$t.focus.deck.prev} disabled={cards.length < 2} onclick={() => move(-1)} data-testid="focus-deck-prev">←</button>
-      <span class="mono deck-pos" data-testid="focus-deck-position">{$t.focus.deck.position(index + 1, cards.length)}</span>
-      <button type="button" class="btn btn-ghost btn-sm" aria-label={$t.focus.deck.next} title={$t.focus.deck.next} disabled={cards.length < 2} onclick={() => move(1)} data-testid="focus-deck-next">→</button>
+      <button type="button" class="btn btn-ghost btn-sm" aria-label={$t.focus.deck.prev} title={$t.focus.deck.prev} disabled={shown.length < 2} onclick={() => move(-1)} data-testid="focus-deck-prev">←</button>
+      <span class="mono deck-pos" data-testid="focus-deck-position">{$t.focus.deck.position(index + 1, shown.length)}</span>
+      <button type="button" class="btn btn-ghost btn-sm" aria-label={$t.focus.deck.next} title={$t.focus.deck.next} disabled={shown.length < 2} onclick={() => move(1)} data-testid="focus-deck-next">→</button>
       <span class="deck-spacer"></span>
       {#if rest.length > 1 && !mustHandle(current)}
         <button type="button" class="btn btn-ghost btn-sm" disabled={busy} onclick={() => onAcknowledgeRest(rest)} data-testid="focus-ack-rest">{$t.focus.deck.acknowledgeRest(rest.length)}</button>

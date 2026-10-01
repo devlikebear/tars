@@ -120,8 +120,21 @@ export class FocusStore {
     return [...(this.pipeline?.cards ?? []), ...this.changes]
   }
 
+  // The stage whose cards the deck shows: the one picked on the stepper, else
+  // the current stage — or, while that has no cards yet (a turn just started
+  // it), the latest earlier stage that has some, so they stay navigable.
   get stage(): FocusStageId | null {
-    return this.viewStage ?? this.pipeline?.current ?? null
+    if (this.viewStage) return this.viewStage
+    const p = this.pipeline
+    if (!p) return null
+    const cards = this.cards
+    if (cards.some((c) => c.stage === p.current)) return p.current
+    const at = p.stages.findIndex((s) => s.id === p.current)
+    for (let i = at - 1; i >= 0; i--) {
+      const id = p.stages[i].id
+      if (cards.some((c) => c.stage === id)) return id
+    }
+    return p.current
   }
 
   // The deck: the shown stage's cards in deck order.

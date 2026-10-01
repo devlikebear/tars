@@ -433,3 +433,13 @@ export function onboardingModeUpdate(values: Record<string, unknown> | null | un
   if (typeof mode === 'string' && mode.trim() !== '') return null
   return { console_default_mode: 'focus' }
 }
+
+// deckOrder is the order the deck shows its cards in: the sorted order,
+// held while the same cards stay in the deck, so a card marked seen (which
+// sorts it back) does not move under the developer and ←/→ step one card
+// at a time through what is on screen. Cards arriving or leaving re-sort.
+export function deckOrder(shown: string[], sorted: string[]): string[] {
+  if (shown.length !== sorted.length) return sorted
+  const now = new Set(sorted)
+  return shown.every((id) => now.has(id)) ? shown : sorted
+}

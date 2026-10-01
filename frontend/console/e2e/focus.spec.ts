@@ -91,6 +91,16 @@ test('a focus task: plan gate, approve, report and decision cards, decide, then 
   await page.keyboard.press('2')
   await expect(page.getByText('Applied the chosen greeting.')).toBeVisible()
 
+  // The new report leads; marking it seen does not move the deck under the
+  // developer, and each arrow press is one card.
+  await expect(position(page)).toHaveText('1 / 3')
+  await page.keyboard.press('ArrowRight')
+  await expect(position(page)).toHaveText('2 / 3')
+  await page.keyboard.press('ArrowRight')
+  await expect(position(page)).toHaveText('3 / 3')
+  await page.keyboard.press('ArrowLeft')
+  await expect(position(page)).toHaveText('2 / 3')
+
   const p = await pipelineOf(page, id)
   expect(p.current).toBe('build')
   expect(p.plan?.stages).toEqual(['plan', 'build', 'review', 'pr', 'merge'])

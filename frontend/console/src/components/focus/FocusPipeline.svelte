@@ -146,9 +146,9 @@
       {/if}
     </div>
 
-    {#if viewing && viewing !== pipeline.current}
+    {#if store.viewStage && store.viewStage !== pipeline.current}
       <p class="history-line">
-        <span class="label">{$t.focus.screen.history($t.focus.stages[viewing])}</span>
+        <span class="label">{$t.focus.screen.history($t.focus.stages[store.viewStage])}</span>
         <button type="button" class="btn btn-ghost btn-sm" onclick={() => store.showStage(null)}>{$t.focus.screen.backToCurrent}</button>
       </p>
     {/if}
@@ -160,6 +160,11 @@
     {/if}
     {#if noticeText}<p class="banner">{noticeText}</p>{/if}
     {#if store.actionError}<p class="banner error">{$t.focus.screen.actionFailed(store.actionError)}</p>{/if}
+
+    <!-- A running turn shows one line above the deck; the cards stay. -->
+    {#if progress}
+      <p class="progress-line mono" role="status" data-testid="focus-progress"><span class="pulse" aria-hidden="true"></span>{progress}</p>
+    {/if}
 
     <FocusDeck
       cards={store.deck}
@@ -174,9 +179,6 @@
       onAcknowledgeRest={(cards) => void store.acknowledgeRest(cards)}
     />
 
-    {#if progress}
-      <p class="progress-line mono" role="status" data-testid="focus-progress"><span class="pulse" aria-hidden="true"></span>{progress}</p>
-    {/if}
 
     <form class="instruction" onsubmit={(e) => { e.preventDefault(); void sendInstruction() }}>
       <label class="label" for="focus-instruction">{$t.focus.screen.instruction}</label>

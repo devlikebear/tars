@@ -294,3 +294,15 @@ test('onboardingModeUpdate writes focus only when no mode is set', async () => {
   // Config unreadable: the mode is unknown, so nothing is written.
   assert.equal(onboardingModeUpdate(null), null)
 })
+
+test('deckOrder keeps the order on screen until cards arrive or leave', async () => {
+  const { deckOrder } = await import('../src/lib/focus.ts')
+  // First look: the sorted order.
+  assert.deepEqual(deckOrder([], ['a', 'b', 'c']), ['a', 'b', 'c'])
+  // a was marked seen and sorts last now; the order on screen stays.
+  assert.deepEqual(deckOrder(['a', 'b', 'c'], ['b', 'c', 'a']), ['a', 'b', 'c'])
+  // A card arrives: the new sorted order.
+  assert.deepEqual(deckOrder(['a', 'b', 'c'], ['d', 'b', 'c', 'a']), ['d', 'b', 'c', 'a'])
+  // A card leaves: the new sorted order.
+  assert.deepEqual(deckOrder(['a', 'b', 'c'], ['c', 'a']), ['c', 'a'])
+})
