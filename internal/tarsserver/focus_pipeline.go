@@ -19,7 +19,7 @@ import (
 // A pipeline is a sidecar of an ordinary chat session,
 // <workspace>/sessions/<id>.pipeline.json:
 //
-//	POST /v1/focus/pipelines                      {goal, cwd, isolate, title?} → 201 {session_id, pipeline}
+//	POST /v1/focus/pipelines                      {goal, cwd, isolate, title?, kind?, kickoff?} → 201 {session_id, pipeline}
 //	GET  /v1/focus/pipelines                      → [{session_id, title, goal, current, open_gate, needs_input, updated_at}]
 //	GET  /v1/focus/pipelines/{id}                 → pipeline
 //	POST /v1/focus/pipelines/{id}/gates/{gate}    {action, note?, edits?} → {pipeline, next_prompt}
@@ -202,6 +202,12 @@ type focusCreateRequest struct {
 	Cwd     string `json:"cwd"`
 	Isolate bool   `json:"isolate,omitempty"`
 	Title   string `json:"title,omitempty"`
+	// Kind is "" (feature work) or "release" (started from the release
+	// train, which never lists release pipelines).
+	Kind string `json:"kind,omitempty"`
+	// Kickoff is the first turn when it says more than the goal; stage
+	// guidance repeats only the goal.
+	Kickoff string `json:"kickoff,omitempty"`
 }
 
 // create starts a session in a folder exactly as POST /v1/admin/sessions
@@ -220,6 +226,11 @@ func (a *focusAPI) create(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "goal is required"})
 		return
 	}
+	kind := strings.TrimSpace(req.Kind)
+	if kind != "" && kind != focuspipeline.KindRelease {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unknown pipeline kind"})
+		return
+	}
 	if a.worktrees == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "sessions in folders are unavailable"})
 		return
@@ -234,6 +245,8 @@ func (a *focusAPI) create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p := focuspipeline.New(sess.ID, goal, a.now())
+	p.Kind = kind
+	p.Kickoff = strings.TrimSpace(req.Kickoff)
 	if err := a.store().Save(p); err != nil {
 		// Never leave a focus session without its pipeline.
 		a.worktrees.retire(context.WithoutCancel(r.Context()), sess)
