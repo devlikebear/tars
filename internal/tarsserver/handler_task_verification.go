@@ -1,7 +1,9 @@
 package tarsserver
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -28,6 +30,9 @@ type taskVerificationResult struct {
 	ProofState  string `json:"proof_state"`
 	ProofOrigin string `json:"proof_origin"`
 	VerifierID  string `json:"verifier_id"`
+	// Output is the captured output (stderr, then stdout); not part of the
+	// HTTP response, which keeps it in Summary.
+	Output string `json:"-"`
 }
 
 type taskVerificationExecResponse struct {
@@ -53,39 +58,114 @@ func handleSessionTaskVerification(w http.ResponseWriter, r *http.Request, store
 	if !decodeJSONBody(w, r, &req) {
 		return
 	}
+	run, err := verifySessionTask(r.Context(), store, sessionID, req.TaskID, nil, time.Duration(req.TimeoutMS)*time.Millisecond)
+	if err != nil {
+		writeJSON(w, verificationErrorStatus(err), map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"ok":       run.allPassed,
+		"task_id":  run.taskID,
+		"results":  run.results,
+		"plan":     run.tasks.Plan,
+		"contract": run.tasks.Contract,
+		"summary":  session.TaskSummary(run.tasks.Tasks),
+	})
+}
+
+// verificationError is a verification that could not run, with the HTTP
+// status the handler answers.
+type verificationError struct {
+	status int
+	msg    string
+}
+
+func (e *verificationError) Error() string { return e.msg }
+
+func verificationErrorStatus(err error) int {
+	var verr *verificationError
+	if errors.As(err, &verr) {
+		return verr.status
+	}
+	return http.StatusInternalServerError
+}
+
+func badVerification(msg string) error {
+	return &verificationError{status: http.StatusBadRequest, msg: msg}
+}
+
+// runTaskVerification runs a session's approved contract verification
+// commands against one task (taskID, or the in-progress/first pending task
+// when empty), records each command's evidence on that task, and reports
+// whether all of them passed.
+func runTaskVerification(ctx context.Context, store *session.Store, sessionID, taskID string, timeout time.Duration) ([]taskVerificationResult, bool, error) {
+	run, err := verifySessionTask(ctx, store, sessionID, taskID, nil, timeout)
+	if err != nil {
+		return nil, false, err
+	}
+	return run.results, run.allPassed, nil
+}
+
+// runTaskVerificationCommands is runTaskVerification for an explicit
+// subset of commands: the focus build loop runs the plan's verify commands
+// and keeps the end-to-end ones for review. The contract must still be
+// approved; the commands go through the same verifier and evidence path.
+func runTaskVerificationCommands(ctx context.Context, store *session.Store, sessionID, taskID string, commands []string, timeout time.Duration) ([]taskVerificationResult, bool, error) {
+	if commands == nil {
+		commands = []string{}
+	}
+	run, err := verifySessionTask(ctx, store, sessionID, taskID, commands, timeout)
+	if err != nil {
+		return nil, false, err
+	}
+	return run.results, run.allPassed, nil
+}
+
+type taskVerificationRun struct {
+	taskID    string
+	results   []taskVerificationResult
+	allPassed bool
+	tasks     session.SessionTasks
+}
+
+// verifySessionTask runs commands (the contract's when nil) and saves their
+// evidence.
+func verifySessionTask(ctx context.Context, store *session.Store, sessionID, taskID string, commands []string, timeout time.Duration) (taskVerificationRun, error) {
+	if _, err := store.Get(sessionID); err != nil {
+		if strings.Contains(err.Error(), "session not found") {
+			return taskVerificationRun{}, &verificationError{status: http.StatusNotFound, msg: "session not found"}
+		}
+		return taskVerificationRun{}, &verificationError{status: http.StatusInternalServerError, msg: "get session failed"}
+	}
 	st, err := store.GetTasks(sessionID)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
-		return
+		return taskVerificationRun{}, err
 	}
 	if st.Contract == nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "approved task contract is required before running verification"})
-		return
+		return taskVerificationRun{}, badVerification("approved task contract is required before running verification")
 	}
 	if !strings.EqualFold(strings.TrimSpace(st.Contract.Status), session.ContractStatusApproved) {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "task contract must be approved before running verification"})
-		return
+		return taskVerificationRun{}, badVerification("task contract must be approved before running verification")
 	}
-	if len(st.Contract.VerificationCommands) == 0 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "task contract has no verification commands"})
-		return
+	if commands == nil {
+		commands = st.Contract.VerificationCommands
+		if len(commands) == 0 {
+			return taskVerificationRun{}, badVerification("task contract has no verification commands")
+		}
 	}
-	taskIndex, err := selectVerificationTaskIndex(st.Tasks, req.TaskID)
+	taskIndex, err := selectVerificationTaskIndex(st.Tasks, taskID)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
-		return
+		return taskVerificationRun{}, badVerification(err.Error())
 	}
 	workDir := store.WorkspaceDir()
 	if currentDir, err := store.GetCurrentDir(sessionID); err == nil && strings.TrimSpace(currentDir) != "" {
 		workDir = strings.TrimSpace(currentDir)
 	}
-	timeout := time.Duration(req.TimeoutMS) * time.Millisecond
 	verifier, err := proofverifier.New(proofverifier.Options{
 		ID: "session-proof-verifier", RootDir: workDir, Timeout: timeout,
 	})
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
-		return
+		return taskVerificationRun{}, err
 	}
 	identity := verifier.Identity()
 	reporterID := "session-task:" + st.Tasks[taskIndex].ID
@@ -97,14 +177,14 @@ func handleSessionTaskVerification(w http.ResponseWriter, r *http.Request, store
 		proofPolicy.MaxLLMTokens = st.Contract.ProofPolicy.MaxLLMTokens
 		proofPolicy.MaxLLMCostUSD = st.Contract.ProofPolicy.MaxLLMCostUSD
 	}
-	results := make([]taskVerificationResult, 0, len(st.Contract.VerificationCommands))
+	results := make([]taskVerificationResult, 0, len(commands))
 	allPassed := true
-	for _, command := range st.Contract.VerificationCommands {
+	for _, command := range commands {
 		command = strings.TrimSpace(command)
 		if command == "" {
 			continue
 		}
-		verified, verifyErr := verifier.Verify(r.Context(), workscheduler.VerificationRequest{
+		verified, verifyErr := verifier.Verify(ctx, workscheduler.VerificationRequest{
 			Execution: workscheduler.Execution{
 				Work:  workstore.Work{Objective: st.Contract.Goal},
 				Claim: workstore.StepClaim{Schedule: workstore.StepSchedule{Policy: workstore.StepSchedulePolicy{Proof: proofPolicy}}},
@@ -115,8 +195,7 @@ func handleSessionTaskVerification(w http.ResponseWriter, r *http.Request, store
 			},
 		})
 		if verifyErr != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": verifyErr.Error()})
-			return
+			return taskVerificationRun{}, verifyErr
 		}
 		parsed := parseVerificationProofInput(command, verified.InputJSON)
 		status := string(verified.Status)
@@ -154,24 +233,28 @@ func handleSessionTaskVerification(w http.ResponseWriter, r *http.Request, store
 			EvidenceID: ev.ID,
 			Summary:    ev.Summary,
 			ProofState: ev.ProofState, ProofOrigin: ev.ProofOrigin, VerifierID: ev.VerifierID,
+			Output: verificationOutput(parsed),
 		})
 	}
 	if len(results) == 0 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "task contract has no runnable verification commands"})
-		return
+		return taskVerificationRun{}, badVerification("task contract has no runnable verification commands")
 	}
 	if err := store.SaveTasks(sessionID, st); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
-		return
+		return taskVerificationRun{}, err
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"ok":       allPassed,
-		"task_id":  st.Tasks[taskIndex].ID,
-		"results":  results,
-		"plan":     st.Plan,
-		"contract": st.Contract,
-		"summary":  session.TaskSummary(st.Tasks),
-	})
+	return taskVerificationRun{taskID: st.Tasks[taskIndex].ID, results: results, allPassed: allPassed, tasks: st}, nil
+}
+
+// verificationOutput is a command's captured output, stderr first: what a
+// failure card and the next fix turn quote.
+func verificationOutput(result taskVerificationExecResponse) string {
+	parts := make([]string, 0, 3)
+	for _, text := range []string{result.Stderr, result.Stdout, result.Message} {
+		if text = strings.TrimSpace(text); text != "" {
+			parts = append(parts, text)
+		}
+	}
+	return strings.Join(parts, "\n")
 }
 
 func selectVerificationTaskIndex(tasks []session.Task, requestedTaskID string) (int, error) {
