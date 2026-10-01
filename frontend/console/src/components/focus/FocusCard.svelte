@@ -8,7 +8,7 @@
   import type {
     FocusBlocked,
     FocusCard,
-    FocusChangePayload,
+    FocusChangeTurnPayload,
     FocusDecision,
     FocusFinding,
     FocusGateAction,
@@ -36,7 +36,15 @@
 
   let decided = $derived(card.state === 'decided')
   let isBlocked = $derived(card.kind === 'gate' && isBlockedPayload(card.payload))
-  let title = $derived(card.kind === 'gate' && card.stage === 'plan' ? $t.focus.gate.planTitle : isBlocked ? $t.focus.gate.blockedTitle : card.title)
+  let title = $derived(
+    card.kind === 'gate' && card.stage === 'plan'
+      ? $t.focus.gate.planTitle
+      : isBlocked
+        ? blockedTitle(card.payload as FocusBlocked)
+        : card.kind === 'change'
+          ? $t.focus.change.turnTitle(card.turn)
+          : card.title,
+  )
   // The open gate's card is the newest undecided gate card.
   let gateOpen = $derived(card.kind === 'gate' && !decided && !!openGate)
   let isPRDraft = $derived(card.kind === 'report' && isDraft(card.payload))
@@ -49,8 +57,18 @@
     return !!payload && typeof payload === 'object' && typeof (payload as FocusBlocked).reason === 'string'
   }
 
+  function blockedTitle(b: FocusBlocked): string {
+    if (b.reason === 'interrupted') return $t.focus.gate.interruptedTitle
+    if (b.reason === 'turn_failed') return $t.focus.gate.turnFailedTitle
+    return $t.focus.gate.blockedTitle
+  }
+
   function blockedReason(b: FocusBlocked): string {
     switch (b.reason) {
+      case 'interrupted':
+        return b.verify ? $t.focus.gate.blockedReason.interruptedVerify : $t.focus.gate.blockedReason.interrupted
+      case 'turn_failed':
+        return $t.focus.gate.blockedReason.turn_failed
       case 'limit':
         return $t.focus.gate.blockedReason.limit(b.iteration, b.limit)
       case 'repeated':
@@ -141,6 +159,8 @@
       {:else if isBlocked}
         {@const b = card.payload as FocusBlocked}
         <p class="prose" data-testid="focus-blocked-reason">{blockedReason(b)}</p>
+        {#if b.error}<pre class="mono" data-content>{b.error}</pre>{/if}
+        {#if b.prompt}<p class="muted" data-content>{b.prompt}</p>{/if}
         {#if b.failure}
           {@const f = failureFacts(b.failure)}
           {#if f.command}<p class="mono" data-content>$ {f.command}{f.timedOut ? ` → ${$t.focus.failure.timedOut}` : f.exit ? ` → ${f.exit}` : ''}</p>{/if}
@@ -243,7 +263,7 @@
         <p class="muted">{$t.focus.report.decisions(r.decisions.length)}</p>
       {/if}
     {:else if card.kind === 'change'}
-      <FocusChangeCard change={card.payload as FocusChangePayload} />
+      <FocusChangeCard change={card.payload as FocusChangeTurnPayload} />
     {:else if card.kind === 'notice'}
       {@const errors = errorsOf(card.payload)}
       {#if errors.length}

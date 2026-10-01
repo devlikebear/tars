@@ -127,7 +127,7 @@ async function settle(store: InstanceType<typeof FocusStore>) {
 
 function newStore(fake: Fake, storage = memoryStorage()) {
   const store = new FocusStore(fake.api as never, storage)
-  store.timing = { chaseTries: 3, chaseDelayMs: 1, qaAttachTries: 5, qaAttachDelayMs: 1 }
+  store.timing = { chaseTries: 3, chaseDelayMs: 1, qaAttachTries: 5, qaAttachDelayMs: 1, qaMaxWaitMs: 200 }
   return store
 }
 
@@ -284,7 +284,7 @@ test('deciding a decision card sends nothing itself: the server runs the answer 
   assert.equal(store.nextPrompt, 'Which flag? → --b')
 })
 
-test('change cards come from checkpoint diffs, one per file, acknowledged locally', async () => {
+test('change cards come from checkpoint diffs, one per turn, acknowledged locally', async () => {
   const storage = memoryStorage()
   const fake = fakeApi(pipeline('2026-10-01T00:00:03Z', [], { current: 'build' }))
   fake.state.history = [
@@ -304,15 +304,17 @@ test('change cards come from checkpoint diffs, one per file, acknowledged locall
   const store = newStore(fake, storage)
   await store.load('s1')
   await settle(store)
-  assert.deepEqual(store.deck.map((c) => [c.id, c.stage, c.turn]), [['change:u2:a.go', 'build', 2], ['change:u2:b.go', 'build', 2]])
-  await store.markCard('change:u2:a.go', 'decided', 'acknowledged')
-  assert.equal(store.cards.find((c) => c.id === 'change:u2:a.go')?.state, 'decided')
+  // One card for the turn, with both files (U1).
+  assert.deepEqual(store.deck.map((c) => [c.id, c.stage, c.turn]), [['change:u2', 'build', 2]])
+  assert.deepEqual((store.deck[0].payload as { files: { path: string }[] }).files.map((f) => f.path), ['a.go', 'b.go'])
+  await store.markCard('change:u2', 'decided', 'acknowledged')
+  assert.equal(store.cards.find((c) => c.id === 'change:u2')?.state, 'decided')
   assert.deepEqual(fake.state.cardCalls, [])
   // The acknowledgement survives a reload; diffs of a turn are fetched once.
   const again = newStore(fake, storage)
   await again.load('s1')
   await settle(again)
-  assert.equal(again.cards.find((c) => c.id === 'change:u2:a.go')?.state, 'decided')
+  assert.equal(again.cards.find((c) => c.id === 'change:u2')?.state, 'decided')
   await store.refreshChanges()
   assert.equal(fake.state.diffCalls, 2)
 })
@@ -544,12 +546,69 @@ test('a question while one is being answered is refused', async () => {
   const fake = fakeApi(pipeline('2026-10-01T00:00:03Z', [gateCard()], { current: 'build' }))
   fake.state.history = [{ id: 'u0', role: 'user', content: 'earlier', timestamp: '' }]
   const store = newStore(fake)
-  store.timing = { chaseTries: 1, chaseDelayMs: 1, qaAttachTries: 50, qaAttachDelayMs: 5 }
+  store.timing = { chaseTries: 1, chaseDelayMs: 1, qaAttachTries: 50, qaAttachDelayMs: 5, qaMaxWaitMs: 5000 }
   await store.load('s1')
   assert.equal(await store.ask('c1', 'first?'), true)
   assert.equal(await store.ask('c1', 'second?'), false)
   assert.equal(store.qaError, 'busy')
   assert.equal(fake.state.askCalls.length, 1)
   assert.deepEqual(store.qaThread('c1'), [{ turn: 1, question: 'first?', answer: '' }])
+  store.dispose()
+})
+
+test('an instruction the developer sends clears the pipeline prompt shown (f7)', async () => {
+  const fake = fakeApi(pipeline('2026-10-01T00:00:02Z', [], { current: 'build' }))
+  fake.state.history = [{ id: 'u0', role: 'user', content: 'earlier', timestamp: '' }]
+  const store = newStore(fake)
+  await store.load('s1')
+  store.applyEvent({ type: 'pipeline', session_id: 's1', pipeline: pipeline('2026-10-01T00:00:03Z', [], { current: 'build' }), next_prompt: 'Verification failed … fix it' })
+  assert.equal(store.nextPrompt, 'Verification failed … fix it')
+  let seen = ''
+  fake.api.streamChat = async (req, onEvent) => {
+    fake.state.sent.push(req)
+    seen = store.nextPrompt
+    onEvent({ type: 'done' })
+  }
+  await store.send('rename greet to hello')
+  await settle(store)
+  assert.equal(seen, '', 'the running turn is the developer\'s own')
+})
+
+test('a transient error clears once a later request succeeds (U3)', async () => {
+  const fake = fakeApi(pipeline('2026-10-01T00:00:02Z', [], { current: 'build' }))
+  fake.state.history = [{ id: 'u0', role: 'user', content: 'earlier', timestamp: '' }]
+  const store = newStore(fake)
+  await store.load('s1')
+  fake.state.failNextStream = true
+  await store.send('go')
+  await settle(store)
+  assert.match(store.actionError, /network down/)
+  // The stream comes back: the server's turn is followed, and the error goes.
+  fake.state.feed = [{ type: 'turn_started', session_id: 's1' }, { type: 'done', session_id: 's1' }]
+  fake.state.runningSessions = ['s1']
+  await store.poll()
+  await settle(store)
+  assert.equal(store.actionError, '')
+})
+
+test('a Q&A answer whose turn starts late is still followed to the end (R5)', async () => {
+  const fake = fakeApi(pipeline('2026-10-01T00:00:03Z', [gateCard()], { current: 'build' }))
+  fake.state.history = [{ id: 'u0', role: 'user', content: 'earlier', timestamp: '' }]
+  const store = newStore(fake)
+  store.timing = { chaseTries: 1, chaseDelayMs: 1, qaAttachTries: 3, qaAttachDelayMs: 2, qaMaxWaitMs: 5000 }
+  await store.load('s1')
+  // The answer turn waits behind something for longer than the old retry
+  // budget: no feed yet, and the activity lists it as not running.
+  assert.equal(await store.ask('c1', 'why?'), true)
+  await new Promise((r) => setTimeout(r, 40))
+  assert.ok(store.qaPending, 'still waiting for the answer')
+  fake.state.qaHistory = [
+    { id: 'q1', role: 'user', content: 'why?\n\n<console-context>\nfocus-card: c1\nCard c1\n</console-context>', timestamp: '' },
+    { id: 'q1a', role: 'assistant', content: 'Because.', timestamp: '' },
+  ]
+  fake.state.qaFeed = [{ type: 'turn_started' }, { type: 'delta', text: 'Because.' }, { type: 'done' }]
+  for (let i = 0; i < 100 && store.qaPending; i++) await new Promise((r) => setTimeout(r, 5))
+  assert.equal(store.qaPending, null)
+  assert.deepEqual(store.qaThread('c1'), [{ turn: 1, question: 'why?', answer: 'Because.' }])
   store.dispose()
 })

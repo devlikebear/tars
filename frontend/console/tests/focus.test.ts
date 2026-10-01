@@ -48,7 +48,7 @@ function pipeline(extra: Partial<FocusPipeline> = {}): FocusPipeline {
   }
 }
 
-test('orderCards: kind priority, then unseen before seen, then created_at; decided last', () => {
+test('orderCards: kind priority, unseen before seen; handled kinds oldest first, informational newest first; decided last', () => {
   const cards = [
     card('change', 'change'),
     card('report-seen', 'report', { state: 'seen' }),
@@ -57,13 +57,22 @@ test('orderCards: kind priority, then unseen before seen, then created_at; decid
     card('failure', 'failure'),
     card('finding', 'finding'),
     card('gate-done', 'gate', { state: 'decided', decision: 'approve' }),
-    card('decision', 'decision'),
+    card('decision-new', 'decision', { created_at: '2026-10-01T00:00:02Z' }),
+    card('decision-old', 'decision', { created_at: '2026-10-01T00:00:01Z' }),
     card('gate', 'gate'),
     card('notice', 'notice'),
   ]
   assert.deepEqual(orderCards(cards).map((c) => c.id), [
-    'gate', 'decision', 'finding', 'failure', 'notice', 'report-old', 'report-new', 'report-seen', 'change', 'gate-done',
+    // Decisions are answered in the order asked; the latest report leads.
+    'gate', 'decision-old', 'decision-new', 'finding', 'failure', 'notice', 'report-new', 'report-old', 'report-seen', 'change', 'gate-done',
   ])
+  // Both reports already seen (a card on screen is marked seen at once):
+  // the newer one still comes first.
+  const seen = orderCards([
+    card('old', 'report', { state: 'seen', created_at: '2026-10-01T00:00:01Z' }),
+    card('new', 'report', { state: 'seen', created_at: '2026-10-01T00:00:09Z' }),
+  ])
+  assert.deepEqual(seen.map((c) => c.id), ['new', 'old'])
   // Never mutates its input.
   assert.equal(cards[0].id, 'change')
 })
@@ -218,21 +227,29 @@ test('turnStage reads the stage the guidance was written for', () => {
   assert.equal(turnStage('no guidance'), null)
 })
 
-test('changeCards makes one card per changed file, acknowledged ones decided', () => {
-  const cards = changeCards([
+test('changeCards makes one card per turn with its files, acknowledged together', () => {
+  const turns = [
     {
-      turnId: 'u2', turn: 2, stage: 'build', at: '2026-10-01T00:00:05Z',
+      turnId: 'u2', turn: 2, stage: 'build' as const, at: '2026-10-01T00:00:05Z',
       files: [
         { path: 'a.go', status: 'modified', additions: 2, deletions: 1, patch: '@@ -1 +1 @@\n-a\n+b\n' },
         { path: 'b.go', status: 'added', additions: 3, deletions: 0 },
       ],
     },
-  ], new Set(['change:u2:b.go']))
-  assert.deepEqual(cards.map((c) => [c.id, c.kind, c.stage, c.turn, c.title, c.state]), [
-    ['change:u2:a.go', 'change', 'build', 2, 'a.go', 'unseen'],
-    ['change:u2:b.go', 'change', 'build', 2, 'b.go', 'decided'],
+    { turnId: 'u3', turn: 3, stage: 'build' as const, at: '2026-10-01T00:00:06Z', files: [{ path: 'c.go', status: 'deleted', additions: 0, deletions: 4 }] },
+  ]
+  const cards = changeCards(turns, new Set(['change:u3']))
+  assert.deepEqual(cards.map((c) => [c.id, c.kind, c.stage, c.turn, c.state]), [
+    ['change:u2', 'change', 'build', 2, 'unseen'],
+    ['change:u3', 'change', 'build', 3, 'decided'],
   ])
-  assert.deepEqual(cards[0].payload, { turn_id: 'u2', path: 'a.go', status: 'modified', additions: 2, deletions: 1, binary: undefined, patch: '@@ -1 +1 @@\n-a\n+b\n' })
+  const payload = cards[0].payload as { turn_id: string; additions: number; deletions: number; files: { path: string }[] }
+  assert.equal(payload.turn_id, 'u2')
+  assert.deepEqual([payload.additions, payload.deletions], [5, 1])
+  assert.deepEqual(payload.files.map((f) => f.path), ['a.go', 'b.go'])
+  // Acknowledgements kept per file before (one card per file) still count.
+  assert.equal(changeCards(turns.slice(0, 1), new Set(['change:u2:a.go', 'change:u2:b.go']))[0].state, 'decided')
+  assert.equal(changeCards(turns.slice(0, 1), new Set(['change:u2:a.go']))[0].state, 'unseen')
 })
 
 test('planEdits applies stage skips and edited verification commands', () => {
@@ -273,17 +290,26 @@ test('defaultModeRedirect lands /console on the focus home only when focus is th
   assert.equal(defaultModeRedirect(undefined, { view: 'board' }), null)
 })
 
-test('deckCursor pins the card on screen and jumps to the first only when a card arrives or leaves', async () => {
+test('deckCursor keeps the card being read; only a new card that outranks it takes the screen', async () => {
   const { deckCursor } = await import('../src/lib/focus.ts')
+  const c = (id: string, kind: FocusCard['kind'], state: FocusCard['state'] = 'unseen') => ({ id, kind, state })
   // Nothing known yet: the first card.
-  assert.equal(deckCursor(new Set(), ['c4', 'c2'], null), 'c4')
+  assert.equal(deckCursor(new Set(), [c('c4', 'gate'), c('c2', 'report')], null), 'c4')
   // c4 marked seen reorders the deck; the cursor stays on c4.
-  assert.equal(deckCursor(new Set(['c4', 'c2']), ['c2', 'c4'], 'c4'), 'c4')
-  // A new card arrives: go to the first (the highest priority).
-  assert.equal(deckCursor(new Set(['c2', 'c4']), ['c5', 'c2', 'c4'], 'c2'), 'c5')
-  // The pinned card left the deck (or none was pinned): the first.
-  assert.equal(deckCursor(new Set(['c2', 'c4']), ['c2'], 'c4'), 'c2')
-  assert.equal(deckCursor(new Set(['c2', 'c4']), ['c4', 'c2'], null), 'c4')
+  assert.equal(deckCursor(new Set(['c4', 'c2']), [c('c2', 'report'), c('c4', 'report', 'seen')], 'c4'), 'c4')
+  // A gate arrives while a report is read: the gate takes the screen.
+  assert.equal(deckCursor(new Set(['c2']), [c('g', 'gate'), c('c2', 'report', 'seen')], 'c2'), 'g')
+  // Change cards finish loading while a report is read: the report stays.
+  assert.equal(deckCursor(new Set(['r']), [c('r', 'report', 'seen'), c('change:u1', 'change'), c('change:u2', 'change')], 'r'), 'r')
+  // A new report arrives while an older, already seen one is read: the new one.
+  assert.equal(deckCursor(new Set(['old']), [c('new', 'report'), c('old', 'report', 'seen')], 'old'), 'new')
+  // A new report while an open decision is read: the decision stays.
+  assert.equal(deckCursor(new Set(['d']), [c('d', 'decision'), c('r', 'report')], 'd'), 'd')
+  // The card read was handled: the newcomer.
+  assert.equal(deckCursor(new Set(['d']), [c('r', 'report'), c('d', 'decision', 'decided')], 'd'), 'r')
+  // The pinned card left the deck (or none was pinned): a newcomer, else the first.
+  assert.equal(deckCursor(new Set(['c2', 'c4']), [c('c2', 'report')], 'c4'), 'c2')
+  assert.equal(deckCursor(new Set(['c2', 'c4']), [c('c4', 'gate'), c('c2', 'report')], null), 'c4')
   assert.equal(deckCursor(new Set(['c2']), [], 'c2'), null)
 })
 
@@ -357,6 +383,19 @@ const qaHistory: SessionMessage[] = [
   { id: 'a2', role: 'assistant', content: 'It is a notice.', timestamp: '' },
   { id: 'u3', role: 'user', content: 'and the e2e?\n\n<console-context>\nCard c1\n</console-context>', timestamp: '' },
 ]
+
+test('qaThreads threads by the card named in each question, so a compacted transcript still threads right', () => {
+  const marked: SessionMessage[] = [
+    // The first question was compacted away; qa_turns still says c1:[1, 3].
+    { id: 'u2', role: 'user', content: 'and c2?\n\n<console-context>\nfocus-card: c2\nCard c2\n</console-context>', timestamp: '' },
+    { id: 'a2', role: 'assistant', content: 'It is a notice.', timestamp: '' },
+    { id: 'u3', role: 'user', content: 'and the e2e?\n\n<console-context>\nfocus-card: c1\nCard c1\n</console-context>', timestamp: '' },
+    { id: 'a3', role: 'assistant', content: 'Not yet.', timestamp: '' },
+  ]
+  const threads = qaThreads(marked, { c1: [1, 3], c2: [2] })
+  assert.deepEqual(threads.c2, [{ turn: 1, question: 'and c2?', answer: 'It is a notice.' }])
+  assert.deepEqual(threads.c1, [{ turn: 2, question: 'and the e2e?', answer: 'Not yet.' }])
+})
 
 test('qaThreads threads Q&A turns by card, without the hidden context', () => {
   const threads = qaThreads(qaHistory, { c1: [1, 3], c2: [2] })

@@ -2628,7 +2628,17 @@ export type FocusFailure = {
   results?: FocusVerificationResult[]
 }
 // The blocked gate card's payload: why the build loop stopped.
-export type FocusBlocked = { reason: 'limit' | 'repeated' | 'no_progress' | string; iteration: number; limit: number; failure?: FocusFailure }
+export type FocusBlocked = {
+  reason: 'limit' | 'repeated' | 'no_progress' | 'interrupted' | 'turn_failed' | string
+  iteration: number
+  limit: number
+  failure?: FocusFailure
+  // interrupted / turn_failed: the turn that was owed, or the verification
+  // that was running, and the error that ended a failed turn.
+  prompt?: string
+  verify?: boolean
+  error?: string
+}
 export type FocusFinding = { id: string; severity: string; file: string; line: number; title: string; scenario: string }
 export type FocusPRDraft = { title: string; body: string }
 
@@ -2642,6 +2652,15 @@ export type FocusChangePayload = {
   deletions: number
   binary?: boolean
   patch?: string
+}
+
+// A change card's payload (U1): one turn's checkpoint diff, every file of
+// it, shown one file at a time and acknowledged together.
+export type FocusChangeTurnPayload = {
+  turn_id: string
+  additions: number
+  deletions: number
+  files: FocusChangePayload[]
 }
 
 export type FocusCard = {

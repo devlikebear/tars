@@ -66,7 +66,8 @@
     const ids = cards.map((c) => c.id)
     untrack(() => {
       order = deckOrder(order, ids)
-      currentId = deckCursor(known, order, currentId)
+      const byId = new Map(cards.map((c) => [c.id, c]))
+      currentId = deckCursor(known, order.map((id) => byId.get(id)!).filter(Boolean), currentId)
       known = new Set(ids)
     })
   })

@@ -26,7 +26,7 @@
   let question = $state('')
   let sending = $state(false)
 
-  let errorText = $derived(error === 'busy' ? $t.focus.qa.busy : error ? $t.focus.qa.failed(error) : '')
+  let errorText = $derived(error === 'busy' ? $t.focus.qa.busy : error === 'unanswered' ? $t.focus.qa.unanswered : error ? $t.focus.qa.failed(error) : '')
 
   async function ask() {
     const text = question.trim()

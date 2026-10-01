@@ -72,7 +72,9 @@ const turnEventsKept = 2000
 // After an action the server starts its turn within moments: look for it
 // chaseTries times, chaseDelayMs apart, before leaving it to the screen's
 // poll. A Q&A answer's feed likewise appears once its turn starts.
-export const focusTimingDefaults = { chaseTries: 10, chaseDelayMs: 300, qaAttachTries: 25, qaAttachDelayMs: 200 }
+// A Q&A answer is followed until its turn ends — however long it waits to
+// start — up to qaMaxWaitMs.
+export const focusTimingDefaults = { chaseTries: 10, chaseDelayMs: 300, qaAttachTries: 25, qaAttachDelayMs: 200, qaMaxWaitMs: 15 * 60 * 1000 }
 
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms))
@@ -279,6 +281,8 @@ export class FocusStore {
           if (!this.running) {
             this.running = true
             this.turnEvents = []
+            // The stream is back: an error from a dropped one is history (U3).
+            this.actionError = ''
           }
           caughtUp()
           this.applyEvent(event)
@@ -446,6 +450,8 @@ export class FocusStore {
     this.running = true
     this.turnEvents = []
     this.actionError = ''
+    // This turn is the developer's own: no pipeline prompt is running (f7).
+    this.nextPrompt = ''
     let accepted = false
     const accept = () => {
       if (accepted) return
@@ -712,13 +718,17 @@ export class FocusStore {
     return true
   }
 
-  // followQA streams the answer from the Q&A session's feed, then reads the
-  // transcript that now holds it.
+  // followQA follows the answer until its turn ends (R5): the turn may wait
+  // to start (another question, a busy provider), so it keeps attaching to
+  // the Q&A session's feed and reading its transcript until the question is
+  // answered, or its turn ended without an answer, or qaMaxWaitMs passed.
   private async followQA(sessionId: string, qaId: string): Promise<void> {
     this.qaController?.abort()
     const controller = new AbortController()
     this.qaController = controller
-    for (let i = 0; i < this.timing.qaAttachTries && !controller.signal.aborted; i++) {
+    const live = () => !controller.signal.aborted && !this.disposed && this.sessionId === sessionId && !!this.qaPending
+    const deadline = Date.now() + this.timing.qaMaxWaitMs
+    while (live() && Date.now() < deadline) {
       let attached = false
       try {
         attached = await this.api.attachChatStream(qaId, (event) => {
@@ -729,13 +739,38 @@ export class FocusStore {
       } catch {
         attached = true
       }
-      if (attached) break
+      if (!live()) break
+      await this.loadQA()
+      const entry = this.qaPendingEntry()
+      if (entry?.answer) break
+      if (attached && entry && !(await this.qaRunning(qaId))) {
+        // The turn ran and ended without an answer (a provider error).
+        this.qaError = 'unanswered'
+        break
+      }
       await sleep(this.timing.qaAttachDelayMs)
     }
     if (controller.signal.aborted || this.sessionId !== sessionId || this.disposed) return
-    await this.loadQA()
-    if (this.sessionId === sessionId && !this.disposed) this.qaPending = null
+    this.qaPending = null
     if (this.qaController === controller) this.qaController = null
+  }
+
+  // qaPendingEntry is the pending question as the Q&A transcript has it.
+  private qaPendingEntry(): QAEntry | undefined {
+    const pending = this.qaPending
+    if (!pending) return undefined
+    const thread = qaThreads(this.qaHistory, this.pipeline?.qa_turns)[pending.cardId] ?? []
+    return [...thread].reverse().find((e) => e.question === pending.question)
+  }
+
+  private async qaRunning(qaId: string): Promise<boolean> {
+    if (!this.api.activity) return false
+    try {
+      const snap = await this.api.activity()
+      return (snap?.running ?? []).some((r) => r.session_id === qaId)
+    } catch {
+      return true
+    }
   }
 
   // dispose stops the store for good: a turn it sent still finishes on the
