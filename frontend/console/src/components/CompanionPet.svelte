@@ -84,7 +84,7 @@
   })
 </script>
 
-<div class={`companion-pet mood-${activeReaction.mood}`} class:companion-reacting={manualPriority}>
+<div class={`companion-pet mood-${activeReaction.mood}`} class:companion-reacting={manualPriority} class:beside-rail={routeView === 'chat'}>
   {#if bubbleVisible}
     {#key feedbackTick}
       <section class="companion-bubble" aria-live="polite">
@@ -140,6 +140,16 @@
     display: grid;
     justify-items: end;
     gap: var(--space-2);
+  }
+
+  /* On the chat workbench the panel rail runs down the right edge, inside the
+     shell's padding. Keep the pet and its bubble left of it: the bubble opens
+     by itself on ops, cron, and usage events and would cover the rail's
+     lower icons until it closes. Below 900px the rail is a row above the chat. */
+  @media (min-width: 901px) {
+    .companion-pet.beside-rail {
+      right: calc(var(--space-6) + var(--chat-rail-width) + var(--space-2));
+    }
   }
 
   .companion-button {

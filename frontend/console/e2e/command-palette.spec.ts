@@ -135,7 +135,11 @@ test('? shows the shortcut list outside text fields only', async ({ page }) => {
   await page.keyboard.press('Shift+Slash')
   const help = page.getByRole('dialog', { name: 'Keyboard shortcuts' })
   await expect(help).toBeVisible()
-  await expect(help).toContainText('Ctrl+K')
+  // The list spells Mod the way the page's platform does (lib/shortcuts.ts):
+  // ⌘K on macOS, Ctrl+K elsewhere. The Desktop Chrome device only swaps the
+  // user agent, so navigator.platform is the host's and a Mac run sees ⌘K.
+  const mac = await page.evaluate(() => /mac|iphone|ipad|ipod/i.test(navigator.platform))
+  await expect(help).toContainText(mac ? '⌘K' : 'Ctrl+K')
   await page.keyboard.press('Escape')
   await expect(help).toHaveCount(0)
 })

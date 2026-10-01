@@ -59,3 +59,28 @@ test('a companion question keeps its words as the message and the title', async 
   await expect(card).toContainText(words)
   await expect(card).not.toContainText('companion inside the Console')
 })
+
+// The companion's bubble opens by itself on ops, cron, and usage events, so
+// it must never sit on the chat rail: a covered rail icon cannot be clicked
+// until the bubble goes (seen as a 45 s stall in workbench-ko after the
+// unattended-approvals spec left cron and ops events behind).
+test('the open companion bubble leaves every chat rail icon clickable', async ({ page }) => {
+  await page.goto('/console/chat')
+  await page.locator('.dock-left .new-chat-btn').click()
+  await expect(page).toHaveURL(/\/console\/chat\/[^/]+$/)
+  await page.getByRole('button', { name: 'Talk to TARS companion' }).click()
+  await expect(page.locator('.companion-bubble')).toBeVisible()
+
+  const covered = await page.locator('.chat-rail button').evaluateAll((buttons) =>
+    buttons
+      .filter((b) => {
+        const r = b.getBoundingClientRect()
+        const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)
+        return !(hit && b.contains(hit))
+      })
+      .map((b) => b.getAttribute('data-panel') ?? b.getAttribute('aria-label') ?? '?'),
+  )
+  expect(covered).toEqual([])
+  await page.locator('.chat-rail [data-panel="health"]').click({ timeout: 2_000 })
+  await expect(page.locator('.dock-right')).toBeVisible()
+})

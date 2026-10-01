@@ -112,7 +112,7 @@
     flex-direction: column;
     align-items: center;
     gap: 2px;
-    width: 44px;
+    width: var(--chat-rail-width);
     flex-shrink: 0;
     padding: var(--space-2) 0;
     border-left: 1px solid var(--border-subtle);
