@@ -40,6 +40,14 @@ type Pipeline = {
   cards: { id: string; kind: string; state: string; decision?: string }[]
 }
 
+// The server sends a pipeline's turns after the goal. In a session that never
+// picked a permission mode they ask before high-risk native tools through
+// the ops queue (focus P2, d1); these specs opt their sessions into auto, as
+// a developer who trusts the agent would, so the mock's file write runs.
+async function autoMode(page: Page, id: string) {
+  expect((await page.request.put(`/v1/admin/sessions/${encodeURIComponent(id)}/permission-mode`, { data: { mode: 'auto' } })).ok()).toBe(true)
+}
+
 async function pipelineOf(page: Page, id: string): Promise<Pipeline> {
   return (await page.request.get(`/v1/focus/pipelines/${encodeURIComponent(id)}`)).json()
 }
@@ -57,6 +65,7 @@ test('a focus task: plan gate, approve, report and decision cards, decide, then 
 
   await expect(page).toHaveURL(/\/console\/focus\/[^/]+$/)
   const id = sessionId(page)
+  await autoMode(page, id)
 
   // Focus mode hides the app sidebar and the companion; an isolated task
   // shows its own branch.
@@ -139,10 +148,11 @@ test('a focus task: plan gate, approve, report and decision cards, decide, then 
   await expect(page.getByTestId('focus-step-build')).toHaveAttribute('data-status', 'done')
   await expect(page.getByText('Reviewed the change.')).toBeVisible()
 
-  // The build history: the new report leads; marking it seen does not move
-  // the deck under the developer, and each arrow press is one card.
+  // The build history: the newest report leads (U2), marking it seen does
+  // not move the deck under the developer, and each arrow press is one card.
   await page.getByTestId('focus-step-build').click()
   await expect(position(page)).toHaveText('1 / 4')
+  await expect(card(page).getByText('Applied the chosen greeting.')).toBeVisible()
   await page.keyboard.press('ArrowRight')
   await expect(position(page)).toHaveText('2 / 4')
   await page.keyboard.press('ArrowRight')
@@ -150,7 +160,6 @@ test('a focus task: plan gate, approve, report and decision cards, decide, then 
   await page.keyboard.press('ArrowLeft')
   await expect(position(page)).toHaveText('2 / 4')
 
-  await expect(page.getByText('Applied the chosen greeting.')).toBeVisible()
   await page.getByRole('button', { name: 'Back to the current stage' }).click()
 
   const p = await pipelineOf(page, id)
@@ -187,6 +196,7 @@ test('the focus home lists the task and a stale gate action shows the current st
   const repo = newRepo('tars-e2e-focus-list-')
   const created = await (await page.request.post('/v1/focus/pipelines', { data: { goal, cwd: repo } })).json()
   const id = created.session_id as string
+  await autoMode(page, id)
 
   await page.goto(`/console/focus/${id}`)
   await expect(page.locator('[data-testid="focus-card"][data-kind="gate"]')).toBeVisible()
@@ -206,6 +216,7 @@ test('plan gate edits survive a question turn that re-reads the pipeline', async
   const repo = newRepo('tars-e2e-focus-edit-')
   const created = await (await page.request.post('/v1/focus/pipelines', { data: { goal, cwd: repo } })).json()
   const id = created.session_id as string
+  await autoMode(page, id)
   await page.goto(`/console/focus/${id}`)
   await expect(page.locator('[data-testid="focus-card"][data-kind="gate"]')).toBeVisible()
 
@@ -225,6 +236,7 @@ test('the build loop: a failed verification becomes a failure card and a fix tur
   const repo = newRepo('tars-e2e-focus-loop-')
   const created = await (await page.request.post('/v1/focus/pipelines', { data: { goal: '[e2e:focus-plan] [e2e:focus-loop] Add a greeting', cwd: repo } })).json()
   const id = created.session_id as string
+  await autoMode(page, id)
   await page.goto(`/console/focus/${id}`)
   await expect(page.locator('[data-testid="focus-card"][data-kind="gate"]')).toBeVisible()
 

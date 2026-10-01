@@ -167,7 +167,19 @@ func runChatTurn(w http.ResponseWriter, r *http.Request, req chatRequestPayload,
 		writeError(w, http.StatusConflict, "turn_running", errChatTurnBusy.Error())
 		return llm.ChatResponse{}, errChatTurnBusy
 	}
-	defer release()
+	// The claim ends just before the turn's last event (done, cancelled,
+	// error): a console that sends its next message on that event — a
+	// queued follow-up after Stop — finds the session free, not a 409.
+	var releaseOnce sync.Once
+	releases := []func(){release}
+	endClaim := func() {
+		releaseOnce.Do(func() {
+			for _, r := range releases {
+				r()
+			}
+		})
+	}
+	defer endClaim()
 	endBusy := deps.activity.beginChat()
 	defer endBusy()
 	var worktreeMoved *worktreeNotice
@@ -194,7 +206,7 @@ func runChatTurn(w http.ResponseWriter, r *http.Request, req chatRequestPayload,
 			writeError(w, http.StatusConflict, "turn_running", errChatTurnBusy.Error())
 			return llm.ChatResponse{}, errChatTurnBusy
 		}
-		defer releaseNew()
+		releases = append(releases, releaseNew)
 	}
 
 	state.interactivePermissions = req.InteractivePermissions && origin.unattended == ""
@@ -289,14 +301,16 @@ func runChatTurn(w http.ResponseWriter, r *http.Request, req chatRequestPayload,
 	endChatCheckpoint(chatCtx, checkpointTurn, stream, deps.logger, state.sessionID)
 	if err != nil {
 		if chatCtx.Err() == context.Canceled {
-			stream.cancelled()
 			persistInterruptedTurn(state, req.Message, chatResp, toolCalls, deps.logger)
+			endClaim()
+			stream.cancelled()
 			recordTierRecommendationSignal(deps.tooling.UsageTracker, state, "cancelled", chatResp.Usage)
 			deps.logger.Debug().Str("session_id", state.sessionID).Msg("chat request cancelled")
 			return chatResp, err
 		}
-		stream.error(err)
 		persistInterruptedTurn(state, req.Message, llm.ChatResponse{}, toolCalls, deps.logger)
+		endClaim()
+		stream.error(err)
 		recordTierRecommendationSignal(deps.tooling.UsageTracker, state, "error", llm.Usage{})
 		return llm.ChatResponse{}, err
 	}
@@ -326,6 +340,7 @@ func runChatTurn(w http.ResponseWriter, r *http.Request, req chatRequestPayload,
 		deps.tooling.Focus.afterTurn(r.Context(), state.sessionID, act, serverauth.RoleFromRequest(r))
 	}
 
+	endClaim()
 	stream.done(chatResp.Usage)
 	deps.logger.Debug().Str("session_id", state.sessionID).Msg("chat request complete")
 	return chatResp, nil

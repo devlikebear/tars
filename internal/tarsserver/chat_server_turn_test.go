@@ -217,3 +217,47 @@ func TestRunChatTurnRefusesASecondTurnOnTheSession(t *testing.T) {
 		}
 	}
 }
+
+// A console sends its queued follow-up on the turn's last event (Stop then
+// resume): by the time `cancelled` or `done` is out, the session is free.
+func TestTurnReleasesTheSessionBeforeItsLastEvent(t *testing.T) {
+	for _, cancel := range []bool{true, false} {
+		client := newReplyGateClient("ok")
+		deps, store, _ := testChatDeps(t, client)
+		sess, _ := store.Create("s")
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			_, _ = runServerChatTurn(context.Background(), deps, sess.ID, "go", "")
+		}()
+		<-client.started
+		feed := deps.turnFeeds.get(sess.ID)
+		if cancel {
+			deps.cancelRegistry.Cancel(sess.ID)
+		} else {
+			close(client.release)
+		}
+		last := "done"
+		if cancel {
+			last = "cancelled"
+		}
+		freeAtLast := false
+		for next := 0; ; {
+			events, after, finished, _, changed := feed.since(next)
+			for _, e := range events {
+				if strings.Contains(string(e), `"type":"`+last+`"`) {
+					freeAtLast = !deps.cancelRegistry.Running(sess.ID)
+				}
+			}
+			next = after
+			if finished {
+				break
+			}
+			<-changed
+		}
+		<-done
+		if !freeAtLast {
+			t.Fatalf("cancel=%v: the session was still claimed when %q went out", cancel, last)
+		}
+	}
+}
