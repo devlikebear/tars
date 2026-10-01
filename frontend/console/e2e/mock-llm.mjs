@@ -21,7 +21,12 @@
 // [e2e:focus-plan] answers a plan-stage turn with a <focus-plan> block, and
 // [e2e:focus-report] answers any later stage with a <focus-report> block
 // that asks one decision — unless the turn is that decision's answer
-// ("question → option"), which gets a report without one.
+// ("question → option"), which gets a report without one that says every
+// task is done (tasks_done), so the server's verification ends the build.
+// [e2e:focus-loop] answers every build turn with a done report and no
+// decision, for the server-driven build loop (P2). Review turns get a plain
+// report. A Q&A question (console context, no stage) gets the generic
+// console-context answer below.
 
 import { createServer } from 'node:http'
 
@@ -78,6 +83,7 @@ const FOCUS_PLAN = '[e2e:focus-plan]'
 // A question typed while the plan gate is open: a plain answer, no block.
 const FOCUS_ASK = '[e2e:focus-ask]'
 const FOCUS_REPORT = '[e2e:focus-report]'
+const FOCUS_LOOP = '[e2e:focus-loop]'
 
 function focusReply(text) {
   const stage = text.match(/<focus-stage>[\s\S]*?current stage: ([a-z_]+)/)?.[1]
@@ -94,11 +100,19 @@ function focusReply(text) {
     }
     return `Here is the plan.\n\n<focus-plan>${JSON.stringify(plan)}</focus-plan>`
   }
+  if (stage === 'review' && (text.includes(FOCUS_REPORT) || text.includes(FOCUS_LOOP))) {
+    return `Looked over the change.\n\n<focus-findings>[]</focus-findings>\n<focus-report>${JSON.stringify({ summary: 'Reviewed the change.', risks: [] })}</focus-report>`
+  }
+  if (stage === 'build' && text.includes(FOCUS_LOOP)) {
+    const fixing = text.startsWith('Verification failed')
+    const report = { summary: fixing ? 'Fixed the failing test.' : 'Implemented greet().', tasks_done: true, risks: [] }
+    return `${fixing ? 'Fixed it.' : 'Implemented it.'}\n\n<focus-report>${JSON.stringify(report)}</focus-report>`
+  }
   if (stage !== 'plan' && text.includes(FOCUS_REPORT)) {
     const typed = text.slice(0, text.indexOf('<focus-stage>'))
     const answered = typed.includes('→')
     const report = answered
-      ? { summary: 'Applied the chosen greeting.', risks: [] }
+      ? { summary: 'Applied the chosen greeting.', tasks_done: true, risks: [] }
       : {
           summary: 'Implemented greet() and its test.',
           decisions: [{ id: 'd1', question: 'Which greeting should greet() return?', options: ['Hello', 'Hi there'] }],

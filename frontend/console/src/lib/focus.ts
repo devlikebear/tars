@@ -3,11 +3,13 @@
 // turn, folding the hidden <focus-*> blocks out of chat text, and mapping
 // cards back to the transcript turn they came from. Tested under Node.
 import { focusEn, type FocusTranslations } from '../i18n/sections/focus.ts'
+import { userVisibleText } from './consoleContext.ts'
 import type {
   ChatEvent,
   FocusCard,
   FocusCardKind,
   FocusChangePayload,
+  FocusChangeTurnPayload,
   FocusPipeline,
   FocusPlan,
   FocusStageId,
@@ -32,7 +34,10 @@ const kindRank: Record<FocusCardKind, number> = {
 const stateRank = { unseen: 0, seen: 1, decided: 2 } as const
 
 // orderCards sorts a deck: decided cards last, then by kind priority, unseen
-// before seen, and oldest first.
+// before seen; then cards handled one by one (gate, decision, finding) oldest
+// first — in the order they were asked — and informational cards newest
+// first, so the latest report leads even after both were seen (a card on
+// screen is marked seen at once).
 export function orderCards(cards: FocusCard[]): FocusCard[] {
   return [...cards].sort((a, b) => {
     const decided = Number(a.state === 'decided') - Number(b.state === 'decided')
@@ -41,9 +46,12 @@ export function orderCards(cards: FocusCard[]): FocusCard[] {
     if (kind) return kind
     const state = (stateRank[a.state] ?? 0) - (stateRank[b.state] ?? 0)
     if (state) return state
-    return a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0
+    const older = a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0
+    return handledInOrder.has(a.kind) ? older : -older
   })
 }
+
+const handledInOrder = new Set<FocusCardKind>(['gate', 'decision', 'finding'])
 
 // mustHandle: the cards the developer handles one by one (ADR §7, 1–3).
 export function mustHandle(card: FocusCard): boolean {
@@ -152,8 +160,13 @@ export function progressLine(
   const running = new Map<string, RunningTool>()
   let waiting = false
   let last: 'writing' | 'thinking' | '' = ''
+  // The focus driver's verification step (P2), when the feed is one.
+  let verify: ChatEvent | null = null
   for (const event of events) {
     switch (event.type) {
+      case 'focus_progress':
+        verify = event
+        break
       case 'turn_started':
         running.clear()
         waiting = false
@@ -202,7 +215,11 @@ export function progressLine(
   const parts = [options.stage ? text.stages[options.stage] : text.working]
   const changed = Math.max(files.size, checkpointFiles)
   if (changed > 0) parts.push(text.filesChanged(changed))
-  if (waiting) {
+  if (verify) {
+    const at = verify.index ?? 0
+    const of = verify.total ?? 0
+    parts.push(verify.phase === 'verifying' ? text.verifying(verify.command ?? '', at, of) : text.verified(at, of))
+  } else if (waiting) {
     parts.push(text.waiting)
   } else if (running.size > 0) {
     parts.push(describeTool([...running.values()].at(-1)!, text))
@@ -210,6 +227,51 @@ export function progressLine(
     parts.push(text[last])
   }
   return parts.join(' · ')
+}
+
+// --- Q&A (ADR §8) ---
+
+// One question about a card and its answer ('' while it is being answered).
+export type QAEntry = { turn: number; question: string; answer: string }
+
+// qaThreads threads the Q&A session's transcript by card: qaTurns maps a
+// card id to the 1-based user turns asked about it. The question shows as
+// the developer typed it, without the card context the server added; the
+// answer is the turn's last assistant reply. Turns the history does not
+// have yet are left out.
+export function qaThreads(history: SessionMessage[], qaTurns: Record<string, number[]> | undefined): Record<string, QAEntry[]> {
+  // The server names the card in each question's context (focus-card: id);
+  // older questions without it fall back to qa_turns' turn numbers, which
+  // shift once the transcript compacts.
+  const byTurn = new Map<number, string>()
+  for (const [cardId, list] of Object.entries(qaTurns ?? {})) for (const n of list) byTurn.set(n, cardId)
+  const out: Record<string, QAEntry[]> = {}
+  for (const cardId of Object.keys(qaTurns ?? {})) out[cardId] = []
+  let turn = 0
+  let entry: QAEntry | null = null
+  for (const m of history) {
+    if (m.role === 'user') {
+      turn++
+      const cardId = qaCardMarker.exec(m.content)?.[1] ?? byTurn.get(turn)
+      entry = cardId ? { turn, question: userVisibleText(m.content).trim(), answer: '' } : null
+      if (cardId && entry) (out[cardId] ??= []).push(entry)
+    } else if (m.role === 'assistant' && entry && m.content.trim()) {
+      entry.answer = m.content.trim()
+    }
+  }
+  return out
+}
+
+const qaCardMarker = /<console-context>\s*\nfocus-card: (\S+)/
+
+const promoteAnswerChars = 1200
+
+// promoteDraft is the stage instruction an answer becomes when promoted:
+// the developer edits it before sending (ADR §8).
+export function promoteDraft(cardTitle: string, entry: QAEntry, text: FocusTranslations['qa'] = focusEn.qa): string {
+  let answer = entry.answer.trim()
+  if (answer.length > promoteAnswerChars) answer = answer.slice(0, promoteAnswerChars - 1).trimEnd() + '…'
+  return text.promoteDraft(cardTitle, answer)
 }
 
 // --- Hidden blocks ---
@@ -355,37 +417,47 @@ export type ChangeTurn = {
   files: { path: string; status: string; additions: number; deletions: number; binary?: boolean; patch?: string }[]
 }
 
-export function changeCardId(turnId: string, path: string): string {
-  return `change:${turnId}:${path}`
+export function changeCardId(turnId: string, path?: string): string {
+  return path === undefined ? `change:${turnId}` : `change:${turnId}:${path}`
 }
 
-// changeCards turns checkpoint diffs into one change card per file. The
-// server keeps no change cards (P1b), so acknowledgements are the console's.
+// changeCards turns checkpoint diffs into one change card per turn (U1: one
+// card per file buried the deck in dozens of cards): the card lists the
+// turn's files and shows their diffs one at a time, and is acknowledged
+// as a whole. The server keeps no change cards (P1b), so acknowledgements
+// are the console's; ones kept per file before still count when every file
+// of the turn was acknowledged.
 export function changeCards(turns: ChangeTurn[], acknowledged: ReadonlySet<string>): FocusCard[] {
   const out: FocusCard[] = []
   for (const t of turns) {
-    for (const file of t.files) {
-      const id = changeCardId(t.turnId, file.path)
-      const payload: FocusChangePayload = {
-        turn_id: t.turnId,
-        path: file.path,
-        status: file.status,
-        additions: file.additions,
-        deletions: file.deletions,
-        binary: file.binary,
-        patch: file.patch,
-      }
-      out.push({
-        id,
-        kind: 'change',
-        stage: t.stage,
-        turn: t.turn,
-        title: file.path,
-        payload,
-        state: acknowledged.has(id) ? 'decided' : 'unseen',
-        created_at: t.at,
-      })
+    if (t.files.length === 0) continue
+    const files: FocusChangePayload[] = t.files.map((file) => ({
+      turn_id: t.turnId,
+      path: file.path,
+      status: file.status,
+      additions: file.additions,
+      deletions: file.deletions,
+      binary: file.binary,
+      patch: file.patch,
+    }))
+    const payload: FocusChangeTurnPayload = {
+      turn_id: t.turnId,
+      additions: files.reduce((n, f) => n + f.additions, 0),
+      deletions: files.reduce((n, f) => n + f.deletions, 0),
+      files,
     }
+    const id = changeCardId(t.turnId)
+    const acked = acknowledged.has(id) || files.every((f) => acknowledged.has(changeCardId(t.turnId, f.path)))
+    out.push({
+      id,
+      kind: 'change',
+      stage: t.stage,
+      turn: t.turn,
+      title: files.length === 1 ? files[0].path : `${files.length} files`,
+      payload,
+      state: acked ? 'decided' : 'unseen',
+      created_at: t.at,
+    })
   }
   return out
 }
@@ -418,11 +490,23 @@ export function defaultModeRedirect(mode: unknown, route: { view: string }): str
 // card stays on screen while cards reorder under it (being seen moves a
 // card back), and the deck goes to its first card when a new card arrives,
 // the pinned one left, or none is pinned.
-export function deckCursor(known: ReadonlySet<string>, ids: string[], current: string | null): string | null {
-  if (ids.length === 0) return null
-  if (ids.some((id) => !known.has(id))) return ids[0]
-  if (current && ids.includes(current)) return current
-  return ids[0]
+export type DeckCursorCard = Pick<FocusCard, 'id' | 'kind' | 'state'>
+
+export function deckCursor(known: ReadonlySet<string>, cards: DeckCursorCard[], current: string | null): string | null {
+  if (cards.length === 0) return null
+  // cards are in deck order, so the first newcomer is the most important.
+  const newcomer = cards.find((c) => !known.has(c.id))
+  const reading = current ? cards.find((c) => c.id === current) : undefined
+  if (!reading) return (newcomer ?? cards[0]).id
+  if (!newcomer) return reading.id
+  // U2: a newcomer takes the screen only when it outranks the card being
+  // read — a gate over a report, a new report over one already seen, any
+  // card over one already handled — never because derived cards (changes)
+  // finished loading under it.
+  const rank = (c: DeckCursorCard) => kindRank[c.kind] ?? 9
+  if (reading.state === 'decided' || rank(newcomer) < rank(reading)) return newcomer.id
+  if (rank(newcomer) === rank(reading) && reading.state !== 'unseen') return newcomer.id
+  return reading.id
 }
 
 // onboardingModeUpdate is the config write that finishing the onboarding
@@ -448,6 +532,12 @@ export function deckOrder(shown: string[], sorted: string[]): string[] {
 
 // focusChromeHidden: focus mode hides the app sidebar and the companion
 // (ADR §3); its own header leads back to the tasks, Advanced and the board.
+// focusOwnsShortcut: on the pipeline screen `?` asks about the card on
+// screen (ADR §7), so the global shortcut help yields it there.
+export function focusOwnsShortcut(action: string, route: { view: string; sessionId?: string }): boolean {
+  return action === 'help' && route.view === 'focus' && !!route.sessionId
+}
+
 export function focusChromeHidden(route: { view: string }): boolean {
   return route.view === 'focus'
 }

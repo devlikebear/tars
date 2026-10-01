@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/devlikebear/tars/internal/llm"
+	"github.com/devlikebear/tars/internal/serverauth"
 	"github.com/devlikebear/tars/internal/session"
 	"github.com/devlikebear/tars/internal/tool"
 	"github.com/devlikebear/tars/internal/usage"
@@ -108,11 +109,85 @@ func handleChatRequest(w http.ResponseWriter, r *http.Request, deps chatHandlerD
 	if !ok {
 		return
 	}
+	// A person's turn wins over the focus driver: its pending step (a
+	// verification, a queued turn) stops, and this turn's post-turn hook
+	// starts a new run.
+	deps.tooling.Focus.cancel(chatClaimKey(req.SessionID, deps.mainSessionID))
+	_, _ = runChatTurn(w, r, req, deps, chatTurnOrigin{})
+}
 
+// chatClaimKey is the session a chat request will run in, as far as it is
+// known before the turn is prepared: "main" and "" name the main session,
+// "new" names none yet (a new session cannot be busy).
+func chatClaimKey(requested, mainSessionID string) string {
+	id := strings.TrimSpace(requested)
+	switch {
+	case strings.EqualFold(id, "new"):
+		return ""
+	case id == "" || strings.EqualFold(id, "main"):
+		return strings.TrimSpace(mainSessionID)
+	}
+	return id
+}
+
+// chatTurnOrigin says who started a turn.
+type chatTurnOrigin struct {
+	// unattended names the server-side source of a turn no console started
+	// ("focus"). Its tool prompts follow the session's permission mode
+	// through the ops approval queue, like cron turns, and its context is
+	// the caller's (the server lifetime), not detached from a request.
+	unattended string
+	// readOnly turns (focus Q&A, in plan mode) never take the repository's
+	// write lease, so they never push the session holding it, or
+	// themselves, into a worktree.
+	readOnly bool
+}
+
+// errChatTurnRejected is a turn that never started: its error answer was
+// written to w.
+type errChatTurnRejected struct {
+	status int
+	msg    string
+}
+
+func (e *errChatTurnRejected) Error() string { return e.msg }
+
+// runChatTurn is one chat turn from the prepared request to "done": the
+// console request and the server's own turns (runServerChatTurn) share it,
+// so both go through the same turn feed, cancel registry, worktree lease,
+// chat activity, checkpoint, persistence and post-turn focus hook. It
+// returns the reply, or the error that ended the turn.
+func runChatTurn(w http.ResponseWriter, r *http.Request, req chatRequestPayload, deps chatHandlerDeps, origin chatTurnOrigin) (llm.ChatResponse, error) {
+	// Claim the session before anything else: the transcript, feed and
+	// cancel belong to one turn at a time. A second turn — a person typing
+	// while the focus driver's turn is being prepared, say — is refused.
+	claimKey := chatClaimKey(req.SessionID, deps.mainSessionID)
+	claim, release, ok := deps.cancelRegistry.Claim(claimKey)
+	if !ok {
+		writeError(w, http.StatusConflict, "turn_running", errChatTurnBusy.Error())
+		return llm.ChatResponse{}, errChatTurnBusy
+	}
+	// The claim ends just before the turn's last event (done, cancelled,
+	// error): a console that sends its next message on that event — a
+	// queued follow-up after Stop — finds the session free, not a 409.
+	var releaseOnce sync.Once
+	releases := []func(){release}
+	endClaim := func() {
+		releaseOnce.Do(func() {
+			for _, r := range releases {
+				r()
+			}
+		})
+	}
+	defer endClaim()
 	endBusy := deps.activity.beginChat()
 	defer endBusy()
-	worktreeMoved, endLease := deps.tooling.Worktrees.beginTurn(r.Context(), strings.TrimSpace(req.SessionID), false)
-	defer endLease()
+	var worktreeMoved *worktreeNotice
+	if !origin.readOnly {
+		moved, endLease := deps.tooling.Worktrees.beginTurn(r.Context(), strings.TrimSpace(req.SessionID), false)
+		defer endLease()
+		worktreeMoved = moved
+	}
 	deps.logger.Debug().
 		Str("path", r.URL.Path).
 		Str("session_id", strings.TrimSpace(req.SessionID)).
@@ -122,10 +197,20 @@ func handleChatRequest(w http.ResponseWriter, r *http.Request, deps chatHandlerD
 	state, status, errMessage, err := prepareChatRunState(r, req, deps)
 	if err != nil {
 		writeError(w, status, "", errMessage)
-		return
+		return llm.ChatResponse{}, &errChatTurnRejected{status: status, msg: errMessage}
+	}
+	if state.sessionID != claimKey {
+		// The request named no live session; it runs in a new one.
+		var releaseNew func()
+		if claim, releaseNew, ok = deps.cancelRegistry.Claim(state.sessionID); !ok {
+			writeError(w, http.StatusConflict, "turn_running", errChatTurnBusy.Error())
+			return llm.ChatResponse{}, errChatTurnBusy
+		}
+		releases = append(releases, releaseNew)
 	}
 
-	state.interactivePermissions = req.InteractivePermissions
+	state.interactivePermissions = req.InteractivePermissions && origin.unattended == ""
+	state.unattendedSource = origin.unattended
 	stream := newChatStreamWriter(w, state.sessionID, deps.logger)
 	feed, endFeed := deps.turnFeeds.begin(state.sessionID)
 	defer endFeed()
@@ -193,18 +278,20 @@ func handleChatRequest(w http.ResponseWriter, r *http.Request, deps chatHandlerD
 	}
 
 	// Detached from the request: the turn keeps running when the console
-	// goes away, and POST /v1/chat/cancel is what stops it.
-	baseCtx := usage.WithCallMeta(context.WithoutCancel(r.Context()), usage.CallMeta{
+	// goes away, and POST /v1/chat/cancel is what stops it. A server turn's
+	// context is already the server's, so shutdown stops it too.
+	parentCtx := r.Context()
+	if origin.unattended == "" {
+		parentCtx = context.WithoutCancel(parentCtx)
+	}
+	baseCtx := usage.WithCallMeta(parentCtx, usage.CallMeta{
 		Source:               "chat",
 		SessionID:            state.sessionID,
 		CapabilityVersionIDs: state.capabilityVersionIDs,
 	})
 	chatCtx, cancelChat := context.WithCancel(baseCtx)
 	defer cancelChat()
-	if deps.cancelRegistry != nil {
-		deps.cancelRegistry.Register(state.sessionID, cancelChat)
-		defer deps.cancelRegistry.Unregister(state.sessionID)
-	}
+	claim.setCancel(cancelChat)
 
 	recordTierRecommendationSignal(deps.tooling.UsageTracker, state, "requested", llm.Usage{})
 	checkpointTurn := beginChatCheckpoint(chatCtx, deps, state, req.Message)
@@ -214,16 +301,18 @@ func handleChatRequest(w http.ResponseWriter, r *http.Request, deps chatHandlerD
 	endChatCheckpoint(chatCtx, checkpointTurn, stream, deps.logger, state.sessionID)
 	if err != nil {
 		if chatCtx.Err() == context.Canceled {
-			stream.cancelled()
 			persistInterruptedTurn(state, req.Message, chatResp, toolCalls, deps.logger)
+			endClaim()
+			stream.cancelled()
 			recordTierRecommendationSignal(deps.tooling.UsageTracker, state, "cancelled", chatResp.Usage)
 			deps.logger.Debug().Str("session_id", state.sessionID).Msg("chat request cancelled")
-			return
+			return chatResp, err
 		}
-		stream.error(err)
 		persistInterruptedTurn(state, req.Message, llm.ChatResponse{}, toolCalls, deps.logger)
+		endClaim()
+		stream.error(err)
 		recordTierRecommendationSignal(deps.tooling.UsageTracker, state, "error", llm.Usage{})
-		return
+		return llm.ChatResponse{}, err
 	}
 	if !deltaSent && chatResp.Message.Content != "" {
 		deps.logger.Debug().
@@ -246,10 +335,13 @@ func handleChatRequest(w http.ResponseWriter, r *http.Request, deps chatHandlerD
 		deps.tooling.PlanClarifyMode,
 	)
 
-	if p, next, ok := focusAfterTurn(state.store, state.sessionID, state.transcriptPath, chatResp.Message.Content, state.focusMark, time.Now(), deps.logger); ok {
-		stream.pipeline(p, next)
+	if p, act, ok := focusAfterTurn(state.store, state.sessionID, state.transcriptPath, chatResp.Message.Content, state.focusMark, time.Now(), deps.logger); ok {
+		stream.pipeline(p, focusNextPrompt(act))
+		deps.tooling.Focus.afterTurn(r.Context(), state.sessionID, act, serverauth.RoleFromRequest(r))
 	}
 
+	endClaim()
 	stream.done(chatResp.Usage)
 	deps.logger.Debug().Str("session_id", state.sessionID).Msg("chat request complete")
+	return chatResp, nil
 }

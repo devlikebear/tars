@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/devlikebear/tars/internal/focuspipeline"
@@ -26,12 +27,15 @@ import (
 //	POST /v1/focus/pipelines/{id}/cards/{card}    {state, decision?} → {pipeline, next_prompt}
 //	POST /v1/focus/pipelines/{id}/advance         {stage} → {pipeline, next_prompt}; 409 unless stage is the active current one with no gate open
 //	POST /v1/focus/pipelines/{id}/stop            → {pipeline, next_prompt: ""}; 409 when already finished or stopped
+//	POST /v1/focus/pipelines/{id}/qa              {card_id, question} → 202 {qa_session_id, turn} (focus_qa.go)
 //
 // Every chat turn of a session with a pipeline gets the stage's guidance
 // appended to the user message as a <focus-stage> block, and the reply's
 // <focus-*> blocks advance the pipeline after the turn, reported on the
-// chat stream as a "pipeline" event. The server never sends next_prompt by
-// itself in P1a; the console sends it as the next turn.
+// chat stream as a "pipeline" event. From P2 the server carries out what
+// the pipeline asks for next (focusDriver): it runs the plan's verification
+// after a build turn and starts the next turn itself; next_prompt is only
+// shown.
 
 const (
 	focusStageOpen  = "<focus-stage>"
@@ -88,16 +92,18 @@ func appendFocusGuidance(message string, sessions *session.Store, sessionID stri
 	return strings.TrimRight(message, "\n") + "\n\n" + focusStageOpen + "\n" + guidance + "\n" + focusStageClose, mark
 }
 
-// focusAfterTurn feeds a completed turn's reply to the session's pipeline.
-// ok is false when the turn carried no mark, the pipeline has moved past
-// the marked stage, or there is no pipeline (or it could not be updated).
-func focusAfterTurn(sessions *session.Store, sessionID, transcriptPath, reply string, mark *focusTurnMark, now time.Time, logger zerolog.Logger) (focuspipeline.Pipeline, string, bool) {
+// focusAfterTurn feeds a completed turn's reply to the session's pipeline
+// and returns the action the pipeline asks for next. ok is false when the
+// turn carried no mark, the pipeline has moved past the marked stage, or
+// there is no pipeline (or it could not be updated).
+func focusAfterTurn(sessions *session.Store, sessionID, transcriptPath, reply string, mark *focusTurnMark, now time.Time, logger zerolog.Logger) (focuspipeline.Pipeline, focuspipeline.Action, bool) {
+	none := focuspipeline.Action{Kind: focuspipeline.ActionNone}
 	store := focusStoreFor(sessions)
 	if store == nil || mark == nil {
-		return focuspipeline.Pipeline{}, "", false
+		return focuspipeline.Pipeline{}, none, false
 	}
 	turn := countUserTurns(transcriptPath)
-	var next string
+	next := none
 	p, ok, err := store.Update(sessionID, func(p focuspipeline.Pipeline) (focuspipeline.Pipeline, error) {
 		if stage, _ := p.Stage(p.Current); stage.ID != mark.Stage || stage.Iteration != mark.Iteration {
 			return p, errFocusStaleTurn
@@ -107,20 +113,27 @@ func focusAfterTurn(sessions *session.Store, sessionID, transcriptPath, reply st
 			Turn:   turn,
 			Blocks: focuspipeline.ParseBlocks(reply),
 		}, now)
-		if act.Kind == focuspipeline.ActionSendTurn {
-			next = act.Prompt
-		}
+		next = act
 		return updated, err
 	})
 	if errors.Is(err, errFocusStaleTurn) {
 		logger.Debug().Str("session_id", sessionID).Str("stage", string(mark.Stage)).Msg("focus: reply ignored, its stage has moved on")
-		return focuspipeline.Pipeline{}, "", false
+		return focuspipeline.Pipeline{}, none, false
 	}
 	if err != nil {
 		logger.Warn().Err(err).Str("session_id", sessionID).Msg("focus: update pipeline after turn failed")
-		return focuspipeline.Pipeline{}, "", false
+		return focuspipeline.Pipeline{}, none, false
 	}
 	return p, next, ok
+}
+
+// focusNextPrompt is the prompt of a send_turn action, "" otherwise: shown
+// to the developer, sent by the server.
+func focusNextPrompt(act focuspipeline.Action) string {
+	if act.Kind == focuspipeline.ActionSendTurn {
+		return act.Prompt
+	}
+	return ""
 }
 
 // countUserTurns is the 1-based number of the transcript's latest turn.
@@ -144,10 +157,53 @@ func countUserTurns(transcriptPath string) int {
 func focusPipelineCleanup(sessions *session.Store, logger zerolog.Logger) func(string) {
 	store := focusStoreFor(sessions)
 	return func(sessionID string) {
+		p, ok, _ := store.Get(sessionID)
 		if err := store.Delete(sessionID); err != nil {
 			logger.Warn().Err(err).Str("session_id", sessionID).Msg("focus: delete pipeline of deleted session failed")
 		}
+		if qa := strings.TrimSpace(p.QASessionID); ok && qa != "" {
+			// The hook runs under the session index lock: delete the
+			// pipeline's hidden Q&A session after it is released.
+			go func() {
+				if err := sessions.Delete(qa); err != nil && !isSessionNotFound(err) {
+					logger.Warn().Err(err).Str("session_id", qa).Msg("focus: delete Q&A session of deleted session failed")
+				}
+			}()
+		}
 	}
+}
+
+// interruptFocusPipelines runs at startup, before any driver run: a
+// pipeline the previous server left mid-step (verification awaited, a turn
+// owed) gets the blocked "interrupted" gate instead of resuming silently,
+// so the developer decides — retry resumes the cut-off step.
+func interruptFocusPipelines(sessions *session.Store, now time.Time, logger zerolog.Logger) int {
+	store := focusStoreFor(sessions)
+	if store == nil {
+		return 0
+	}
+	list, err := store.List()
+	if err != nil {
+		logger.Warn().Err(err).Msg("focus: list pipelines for interrupted runs failed")
+		return 0
+	}
+	count := 0
+	for _, listed := range list {
+		interrupted := false
+		_, _, err := store.Update(listed.SessionID, func(p focuspipeline.Pipeline) (focuspipeline.Pipeline, error) {
+			next, ok := focuspipeline.Interrupt(p, now)
+			interrupted = ok
+			return next, nil
+		})
+		if err != nil {
+			logger.Warn().Err(err).Str("session_id", listed.SessionID).Msg("focus: mark interrupted pipeline failed")
+			continue
+		}
+		if interrupted {
+			count++
+		}
+	}
+	return count
 }
 
 // sweepOrphanFocusPipelines removes pipelines whose session is gone (deleted
@@ -178,12 +234,16 @@ func sweepOrphanFocusPipelines(sessions *session.Store, logger zerolog.Logger) i
 type focusAPI struct {
 	sessions  *session.Store
 	worktrees *chatWorktrees
-	logger    zerolog.Logger
-	now       func() time.Time
+	// driver runs the next turn a gate, card or advance action asks for.
+	driver *focusDriver
+	logger zerolog.Logger
+	now    func() time.Time
+	// qaMu makes finding or creating a pipeline's Q&A session one step.
+	qaMu sync.Mutex
 }
 
-func newFocusPipelineHandler(sessions *session.Store, worktrees *chatWorktrees, logger zerolog.Logger) http.Handler {
-	api := &focusAPI{sessions: sessions, worktrees: worktrees, logger: logger, now: time.Now}
+func newFocusPipelineHandler(sessions *session.Store, worktrees *chatWorktrees, driver *focusDriver, logger zerolog.Logger) http.Handler {
+	api := &focusAPI{sessions: sessions, worktrees: worktrees, driver: driver, logger: logger, now: time.Now}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /v1/focus/pipelines", api.list)
 	mux.HandleFunc("POST /v1/focus/pipelines", api.create)
@@ -192,6 +252,7 @@ func newFocusPipelineHandler(sessions *session.Store, worktrees *chatWorktrees, 
 	mux.HandleFunc("POST /v1/focus/pipelines/{id}/cards/{card}", api.card)
 	mux.HandleFunc("POST /v1/focus/pipelines/{id}/advance", api.advance)
 	mux.HandleFunc("POST /v1/focus/pipelines/{id}/stop", api.stop)
+	mux.HandleFunc("POST /v1/focus/pipelines/{id}/qa", api.qa)
 	return mux
 }
 
@@ -403,6 +464,9 @@ func (a *focusAPI) gate(w http.ResponseWriter, r *http.Request) {
 			resp["warning"] = warning
 		}
 	}
+	// After the tasks are written: the build turn the approval starts
+	// reads them.
+	a.driver.start(id, act, serverauth.RoleFromRequest(r))
 	writeJSON(w, http.StatusOK, resp)
 }
 
@@ -465,6 +529,7 @@ func (a *focusAPI) card(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
+	a.driver.start(id, act, serverauth.RoleFromRequest(r))
 	writeJSON(w, http.StatusOK, focusActionResponse(p, act))
 }
 
@@ -484,7 +549,7 @@ func (a *focusAPI) advance(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	stage := focuspipeline.StageID(strings.TrimSpace(string(req.Stage)))
-	a.applyEvent(w, id, focuspipeline.Event{Kind: focuspipeline.EventAdvance, Stage: stage}, focuspipeline.ErrCannotAdvance)
+	a.applyEvent(w, r, id, focuspipeline.Event{Kind: focuspipeline.EventAdvance, Stage: stage}, focuspipeline.ErrCannotAdvance)
 }
 
 // stop stops the pipeline whether or not a gate is open.
@@ -493,12 +558,15 @@ func (a *focusAPI) stop(w http.ResponseWriter, r *http.Request) {
 	if _, ok := a.load(w, id); !ok {
 		return
 	}
-	a.applyEvent(w, id, focuspipeline.Event{Kind: focuspipeline.EventStop}, focuspipeline.ErrNotActive)
+	// A stopped pipeline starts nothing more: end the driver's run (and
+	// with it a turn it started) first.
+	a.driver.cancel(id)
+	a.applyEvent(w, r, id, focuspipeline.Event{Kind: focuspipeline.EventStop}, focuspipeline.ErrNotActive)
 }
 
 // applyEvent applies ev to a session's pipeline and writes the result; the
 // conflict error answers 409 with the unchanged pipeline.
-func (a *focusAPI) applyEvent(w http.ResponseWriter, id string, ev focuspipeline.Event, conflict error) {
+func (a *focusAPI) applyEvent(w http.ResponseWriter, r *http.Request, id string, ev focuspipeline.Event, conflict error) {
 	var act focuspipeline.Action
 	p, _, err := a.store().Update(id, func(p focuspipeline.Pipeline) (focuspipeline.Pipeline, error) {
 		next, result, err := focuspipeline.Apply(p, ev, a.now())
@@ -513,9 +581,13 @@ func (a *focusAPI) applyEvent(w http.ResponseWriter, id string, ev focuspipeline
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
+	a.driver.start(id, act, serverauth.RoleFromRequest(r))
 	writeJSON(w, http.StatusOK, focusActionResponse(p, act))
 }
 
+// focusActionResponse answers a gate, card or advance action. next_prompt
+// is the turn the server has started for it, for display only: the console
+// no longer sends it (P2).
 func focusActionResponse(p focuspipeline.Pipeline, act focuspipeline.Action) map[string]any {
 	next := ""
 	if act.Kind == focuspipeline.ActionSendTurn {

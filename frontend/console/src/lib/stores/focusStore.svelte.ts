@@ -7,15 +7,24 @@
 // cards are the server's (replaced wholesale, never appended) plus change
 // cards derived from checkpoints.
 //
-// next_prompt (from a gate/card API response or the chat stream's
-// `pipeline` event), the kickoff goal and typed instructions go through one
-// queue, persisted in storage, and are sent one at a time when no turn runs
-// on the session (here, in another tab, or in Advanced — /v1/chat/activity).
-// Each entry is keyed (a prompt by the pipeline update that produced it) and
-// its key is marked sent only once the server accepted the chat request, so
-// a reload or a failed request never loses a prompt and a replayed event
-// never sends one twice. P2 moves this to the server.
-import { changeCards, deckFor, progressLine, turnIndex, turnStage, type ChangeTurn } from '../focus.ts'
+// The server carries the pipeline forward (P2): after a turn or a gate,
+// card or advance action it runs verification and sends the next turn
+// itself. next_prompt (from an action's response or the chat stream's
+// `pipeline` event) is only shown; this store follows the server's work on
+// GET /v1/chat/stream like any turn started elsewhere.
+//
+// What the developer sends — the first message (the goal, or a release's
+// kickoff text) and typed instructions — goes
+// through one queue, persisted in storage, sent one at a time when no turn
+// runs on the session (here, in another tab, in Advanced, or the server's —
+// /v1/chat/activity). Each entry is keyed and marked sent only once the
+// server accepted the chat request, so a reload or a failed request never
+// loses one and none is sent twice.
+//
+// Q&A (ADR §8): questions about a card go to the pipeline's hidden Q&A
+// session; answers stream on that session's feed and thread by card from
+// its history and the pipeline's qa_turns.
+import { changeCards, deckFor, progressLine, qaThreads, turnIndex, turnStage, type ChangeTurn, type QAEntry } from '../focus.ts'
 import type { FocusTranslations } from '../../i18n/sections/focus.ts'
 import type {
   ChatEvent,
@@ -26,6 +35,7 @@ import type {
   FocusGateAction,
   FocusPipeline,
   FocusPlan,
+  FocusQAResult,
   FocusStageId,
   Session,
   SessionMessage,
@@ -44,6 +54,7 @@ export type FocusStoreApi = {
   card(sessionId: string, cardId: string, state: FocusCardState, decision?: string): Promise<FocusActionResult>
   advance(sessionId: string, stage: FocusStageId): Promise<FocusActionResult>
   stop(sessionId: string): Promise<FocusActionResult>
+  ask?(sessionId: string, cardId: string, question: string): Promise<FocusQAResult>
   // Turns running now, across sessions (GET /v1/chat/activity).
   activity?(): Promise<{ running?: { session_id: string }[] | null }>
 }
@@ -59,6 +70,19 @@ export type FocusStorage = {
 const changeTurnLimit = 12
 const sentKeysKept = 50
 const turnEventsKept = 2000
+// After an action the server starts its turn within moments: look for it
+// chaseTries times, chaseDelayMs apart, before leaving it to the screen's
+// poll. A Q&A answer's feed likewise appears once its turn starts.
+// A Q&A answer is followed until its turn ends — however long it waits to
+// start — up to qaMaxWaitMs.
+export const focusTimingDefaults = { chaseTries: 10, chaseDelayMs: 300, qaAttachTries: 25, qaAttachDelayMs: 200, qaMaxWaitMs: 15 * 60 * 1000 }
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms))
+}
+
+// The question being answered now, with the answer as it streams.
+export type QAPending = { cardId: string; turn: number; question: string; answer: string }
 
 function statusOf(err: unknown): number | undefined {
   const status = (err as { status?: unknown } | null)?.status
@@ -93,6 +117,13 @@ export class FocusStore {
   busy = $state(false)
   // The stage whose cards the deck shows; null follows the current stage.
   viewStage = $state<FocusStageId | null>(null)
+  // The turn the server sent last on the pipeline's behalf (display only).
+  nextPrompt = $state('')
+  // The Q&A session's transcript, the question being answered, and the
+  // last failure to ask.
+  qaHistory = $state<SessionMessage[]>([])
+  qaPending = $state<QAPending | null>(null)
+  qaError = $state('')
 
   private api: FocusStoreApi
   private storage: FocusStorage | null
@@ -109,6 +140,10 @@ export class FocusStore {
   private controller: AbortController | null = null
   private diffCache = new Map<string, CheckpointDiff>()
   private localSeen = new Set<string>()
+  private chasing = false
+  // Overridable by tests.
+  timing = { ...focusTimingDefaults }
+  private qaController: AbortController | null = null
 
   constructor(api: FocusStoreApi, storage: FocusStorage | null = null) {
     this.api = api
@@ -158,6 +193,12 @@ export class FocusStore {
       this.turnEvents = []
       this.running = false
       this.viewStage = null
+      this.nextPrompt = ''
+      this.qaHistory = []
+      this.qaPending = null
+      this.qaError = ''
+      this.qaController?.abort()
+      this.qaController = null
       this.historyKnown = false
       this.diffCache.clear()
       this.localSeen.clear()
@@ -189,6 +230,7 @@ export class FocusStore {
     this.historyKnown = history !== null
     this.history = history ?? []
     await this.refreshChanges()
+    void this.loadQA()
     this.loading = false
     if (!this.streaming && !this.attaching) {
       this.attaching = this.follow(sessionId)
@@ -240,6 +282,8 @@ export class FocusStore {
           if (!this.running) {
             this.running = true
             this.turnEvents = []
+            // The stream is back: an error from a dropped one is history (U3).
+            this.actionError = ''
           }
           caughtUp()
           this.applyEvent(event)
@@ -258,9 +302,30 @@ export class FocusStore {
       this.running = false
       this.attaching = null
       await this.flush()
+      if (attached) void this.chase()
     }
     void run()
     return ready
+  }
+
+  // chase follows the server's next step of the pipeline (verification,
+  // the next turn) as soon as it starts, instead of waiting for the screen's
+  // poll. It gives up after a few tries: the poll still catches it.
+  private async chase(): Promise<void> {
+    if (this.chasing) return
+    this.chasing = true
+    try {
+      for (let i = 0; i < this.timing.chaseTries; i++) {
+        const p = this.pipeline
+        if (this.disposed || !this.sessionId || !p || p.open_gate) return
+        if (this.streaming || this.running || this.attaching) return
+        await this.poll()
+        if (this.running || this.attaching) return
+        await sleep(this.timing.chaseDelayMs)
+      }
+    } finally {
+      this.chasing = false
+    }
   }
 
   // kickoff sends the goal (or the pipeline's kickoff text, when it has one)
@@ -283,7 +348,8 @@ export class FocusStore {
     }
     if (event.type === 'pipeline' && event.pipeline) {
       this.adopt(event.pipeline)
-      if (event.next_prompt) this.queuePrompt(this.promptKey(event.pipeline, event.next_prompt), event.next_prompt)
+      // Shown, never sent: the server sends it (P2).
+      if (event.next_prompt) this.nextPrompt = event.next_prompt
     }
   }
 
@@ -292,10 +358,6 @@ export class FocusStore {
     if (p.session_id && this.sessionId && p.session_id !== this.sessionId) return
     if (!force && this.pipeline && time(p.updated_at) < time(this.pipeline.updated_at)) return
     this.pipeline = p
-  }
-
-  private promptKey(p: FocusPipeline, prompt: string): string {
-    return `${p.updated_at}\n${prompt}`
   }
 
   private sentKeysName(): string {
@@ -389,6 +451,8 @@ export class FocusStore {
     this.running = true
     this.turnEvents = []
     this.actionError = ''
+    // This turn is the developer's own: no pipeline prompt is running (f7).
+    this.nextPrompt = ''
     let accepted = false
     const accept = () => {
       if (accepted) return
@@ -402,9 +466,14 @@ export class FocusStore {
       })
       accept()
     } catch (err) {
-      // Not accepted: the entry stays queued for the next load or action.
-      if (!accepted) this.sendBlocked = true
-      if (this.sessionId === sessionId && !this.disposed) this.actionError = message(err)
+      if (!accepted && statusOf(err) === 409) {
+        // Another turn took the session in the same instant (the server's):
+        // the entry stays queued and goes out once that turn ends.
+      } else {
+        // Not accepted: the entry stays queued for the next load or action.
+        if (!accepted) this.sendBlocked = true
+        if (this.sessionId === sessionId && !this.disposed) this.actionError = message(err)
+      }
     } finally {
       this.streaming = false
     }
@@ -412,6 +481,7 @@ export class FocusStore {
     await this.afterTurn()
     this.running = false
     await this.flush()
+    void this.chase()
   }
 
   // afterTurn re-reads what a finished turn changed.
@@ -515,7 +585,11 @@ export class FocusStore {
       }
       this.adopt(result.pipeline, true)
       this.notice = result.warning ?? ''
-      if (result.next_prompt) this.queuePrompt(this.promptKey(result.pipeline, result.next_prompt), result.next_prompt)
+      if (result.next_prompt) {
+        // The server started this turn; follow it as soon as it shows.
+        this.nextPrompt = result.next_prompt
+        void this.chase()
+      }
       return true
     } catch (err) {
       this.actionError = message(err)
@@ -594,11 +668,124 @@ export class FocusStore {
     this.viewStage = stage && stage !== this.pipeline?.current ? stage : null
   }
 
+  // --- Q&A (ADR §8) ---
+
+  // qaThread is the questions about a card and their answers, oldest
+  // first, with the one being answered now last.
+  qaThread(cardId: string): QAEntry[] {
+    const thread = qaThreads(this.qaHistory, this.pipeline?.qa_turns)[cardId] ?? []
+    const pending = this.qaPending
+    if (pending && pending.cardId === cardId && !thread.some((e) => e.turn === pending.turn && e.answer)) {
+      return [...thread.filter((e) => e.turn !== pending.turn), { turn: pending.turn, question: pending.question, answer: pending.answer }]
+    }
+    return thread
+  }
+
+  // loadQA reads the Q&A session's transcript, if the pipeline has one.
+  private async loadQA(): Promise<void> {
+    const qaId = this.pipeline?.qa_session_id
+    const sessionId = this.sessionId
+    if (!qaId || !sessionId) return
+    try {
+      const history = (await this.api.getHistory(qaId)) ?? []
+      if (this.sessionId === sessionId && !this.disposed) this.qaHistory = history
+    } catch {
+      // The threads stay as they were; the next answer reads them again.
+    }
+  }
+
+  // ask sends a question about a card to the Q&A session and streams its
+  // answer. It never changes the pipeline's stage or cards.
+  async ask(cardId: string, question: string): Promise<boolean> {
+    const sessionId = this.sessionId
+    const text = question.trim()
+    if (!sessionId || !text || this.disposed || !this.api.ask) return false
+    if (this.qaPending) {
+      this.qaError = 'busy'
+      return false
+    }
+    this.qaError = ''
+    let result: FocusQAResult
+    try {
+      result = await this.api.ask(sessionId, cardId, text)
+    } catch (err) {
+      this.qaError = statusOf(err) === 409 ? 'busy' : message(err)
+      return false
+    }
+    if (this.sessionId !== sessionId || this.disposed) return false
+    const p = this.pipeline
+    if (p) {
+      const turns = { ...(p.qa_turns ?? {}) }
+      turns[cardId] = [...(turns[cardId] ?? []).filter((n) => n !== result.turn), result.turn]
+      this.pipeline = { ...p, qa_session_id: result.qa_session_id, qa_turns: turns }
+    }
+    this.qaPending = { cardId, turn: result.turn, question: text, answer: '' }
+    void this.followQA(sessionId, result.qa_session_id)
+    return true
+  }
+
+  // followQA follows the answer until its turn ends (R5): the turn may wait
+  // to start (another question, a busy provider), so it keeps attaching to
+  // the Q&A session's feed and reading its transcript until the question is
+  // answered, or its turn ended without an answer, or qaMaxWaitMs passed.
+  private async followQA(sessionId: string, qaId: string): Promise<void> {
+    this.qaController?.abort()
+    const controller = new AbortController()
+    this.qaController = controller
+    const live = () => !controller.signal.aborted && !this.disposed && this.sessionId === sessionId && !!this.qaPending
+    const deadline = Date.now() + this.timing.qaMaxWaitMs
+    while (live() && Date.now() < deadline) {
+      let attached = false
+      try {
+        attached = await this.api.attachChatStream(qaId, (event) => {
+          const pending = this.qaPending
+          if (!pending || controller.signal.aborted) return
+          if (event.type === 'delta' && event.text) this.qaPending = { ...pending, answer: pending.answer + event.text }
+        }, controller.signal)
+      } catch {
+        attached = true
+      }
+      if (!live()) break
+      await this.loadQA()
+      const entry = this.qaPendingEntry()
+      if (entry?.answer) break
+      if (attached && entry && !(await this.qaRunning(qaId))) {
+        // The turn ran and ended without an answer (a provider error).
+        this.qaError = 'unanswered'
+        break
+      }
+      await sleep(this.timing.qaAttachDelayMs)
+    }
+    if (controller.signal.aborted || this.sessionId !== sessionId || this.disposed) return
+    this.qaPending = null
+    if (this.qaController === controller) this.qaController = null
+  }
+
+  // qaPendingEntry is the pending question as the Q&A transcript has it.
+  private qaPendingEntry(): QAEntry | undefined {
+    const pending = this.qaPending
+    if (!pending) return undefined
+    const thread = qaThreads(this.qaHistory, this.pipeline?.qa_turns)[pending.cardId] ?? []
+    return [...thread].reverse().find((e) => e.question === pending.question)
+  }
+
+  private async qaRunning(qaId: string): Promise<boolean> {
+    if (!this.api.activity) return false
+    try {
+      const snap = await this.api.activity()
+      return (snap?.running ?? []).some((r) => r.session_id === qaId)
+    } catch {
+      return true
+    }
+  }
+
   // dispose stops the store for good: a turn it sent still finishes on the
   // server, but nothing more is read or sent from here.
   dispose() {
     this.disposed = true
     this.controller?.abort()
     this.controller = null
+    this.qaController?.abort()
+    this.qaController = null
   }
 }

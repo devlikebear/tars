@@ -17,6 +17,9 @@ const (
 	EventAdvance = "advance"
 	// EventStop stops the pipeline at any time, gate open or not.
 	EventStop = "stop"
+	// EventVerification is the result of the verification a build turn
+	// asked for (ActionRunVerification).
+	EventVerification = "verification"
 )
 
 // Gate actions.
@@ -30,6 +33,9 @@ const (
 const (
 	ActionNone     = "none"
 	ActionSendTurn = "send_turn"
+	// ActionRunVerification asks the server to run the plan's verify
+	// commands and feed the result back as EventVerification.
+	ActionRunVerification = "run_verification"
 )
 
 // NoticeFormatMissing is the title of the card a turn without its required
@@ -68,7 +74,8 @@ var (
 // Event is one fact fed to Apply.
 type Event struct {
 	Kind string // EventTurnCompleted | EventGate
-	// Turn is the transcript turn that completed (EventTurnCompleted).
+	// Turn is the transcript turn that completed (EventTurnCompleted), or
+	// the turn a verification ran after (EventVerification).
 	Turn   int
 	Blocks Blocks
 	// Stage is the stage to pass (EventAdvance); it must be Current, so a
@@ -79,11 +86,13 @@ type Event struct {
 	Action string
 	Edits  *Plan
 	Note   string
+	// Verification is the verification result (EventVerification).
+	Verification *Verification
 }
 
 // Action is what the server should do next.
 type Action struct {
-	Kind   string // ActionSendTurn | ActionNone
+	Kind   string // ActionSendTurn | ActionRunVerification | ActionNone
 	Prompt string // the next user turn's text for ActionSendTurn
 }
 
@@ -98,7 +107,22 @@ func Apply(p Pipeline, ev Event, now time.Time) (Pipeline, Action, error) {
 	if err != nil {
 		return p, act, err
 	}
-	return stampFinished(next, now), act, nil
+	return owe(stampFinished(next, now), act), act, nil
+}
+
+// owe records a send_turn action as the turn the server owes the pipeline
+// (PendingTurn); a completed turn or a stop cleared the previous one.
+// A finished or stopped pipeline owes nothing: its last prompt ("the
+// pipeline is complete") is shown, never sent.
+func owe(p Pipeline, act Action) Pipeline {
+	if !p.Active() {
+		p.PendingTurn = ""
+		return p
+	}
+	if act.Kind == ActionSendTurn && p.PendingTurn != act.Prompt {
+		p.PendingTurn = act.Prompt
+	}
+	return p
 }
 
 func applyEvent(p Pipeline, ev Event, now time.Time) (Pipeline, Action, error) {
@@ -121,8 +145,10 @@ func applyEvent(p Pipeline, ev Event, now time.Time) (Pipeline, Action, error) {
 		next.UpdatedAt = now.UTC()
 		stage := next.advance()
 		return next, Action{Kind: ActionSendTurn, Prompt: approvedPrompt(GateNone, stage)}, nil
+	case EventVerification:
+		return applyVerification(p, ev, now.UTC())
 	case EventStop:
-		if !p.Active() {
+		if !p.Active() && p.OpenGate != GateBlocked {
 			return p, noAction, ErrNotActive
 		}
 		next := p.clone()
@@ -131,6 +157,7 @@ func applyEvent(p Pipeline, ev Event, now time.Time) (Pipeline, Action, error) {
 			next.Cards[i].Decision = GateStop
 		}
 		next.OpenGate = GateNone
+		next.AwaitingVerification, next.PendingTurn = false, ""
 		next.setStatus(next.Current, StatusBlocked)
 		next.UpdatedAt = now.UTC()
 		return next, noAction, nil
@@ -145,6 +172,10 @@ func applyTurn(p Pipeline, ev Event, now time.Time) (Pipeline, Action) {
 	}
 	b := ev.Blocks
 	act := noAction
+	// A turn completed: the turn the server owed (if any) is not owed any
+	// more. Asked before this turn's cards land on top of the last one.
+	p.PendingTurn = ""
+	priorNotice := lastCardIsFormatNotice(p)
 	if p.Current == StagePlan && b.Plan != nil {
 		supersedeOpenGate(&p)
 		plan := clonePlan(*b.Plan)
@@ -166,10 +197,19 @@ func applyTurn(p Pipeline, ev Event, now time.Time) (Pipeline, Action) {
 		// A report-kind card until P4 brings the G3 gate.
 		p.addCard(CardReport, ev.Turn, PRDraftTitle, *b.PR, now)
 	}
-	if missingRequiredBlock(p, b) {
-		reRequest := !lastCardIsFormatNotice(p)
+	missing := missingRequiredBlock(p, b)
+	if p.Current == StageBuild && !missing {
+		act = buildTurnAction(&p, b)
+	} else if p.Current == StageBuild {
+		buildTurnAction(&p, Blocks{})
+	}
+	if missing {
 		p.addCard(CardNotice, ev.Turn, NoticeFormatMissing, map[string]any{"errors": nonNil(b.Errors)}, now)
-		if reRequest {
+		build, _ := p.Stage(StageBuild)
+		switch {
+		case p.Current == StageBuild && build.Turns >= buildTurnCap(p):
+			p.block(BlockedNoProgress, nil, ev.Turn, now)
+		case !priorNotice:
 			act = Action{Kind: ActionSendTurn, Prompt: reRequestPrompt(p.Current)}
 		}
 	} else if len(b.Errors) > 0 {
@@ -238,7 +278,7 @@ func supersedeOpenGate(p *Pipeline) {
 
 func applyGate(p Pipeline, ev Event, now time.Time) (Pipeline, Action, error) {
 	switch ev.Action {
-	case GateApprove, GateRequestChanges, GateStop:
+	case GateApprove, GateRequestChanges, GateStop, GateRetry, GateInstruct:
 	default:
 		return p, noAction, ErrInvalidAction
 	}
@@ -255,9 +295,15 @@ func applyGate(p Pipeline, ev Event, now time.Time) (Pipeline, Action, error) {
 		p.OpenGate = GateNone
 		p.UpdatedAt = now
 	}
+	if gate == GateBlocked {
+		return applyBlockedGate(&p, ev, decide)
+	}
 	switch ev.Action {
+	case GateRetry, GateInstruct:
+		return p, noAction, fmt.Errorf("%w: %s is only for the blocked gate", ErrInvalidAction, ev.Action)
 	case GateStop:
 		p.setStatus(p.Current, StatusBlocked)
+		p.AwaitingVerification, p.PendingTurn = false, ""
 		decide()
 		return p, noAction, nil
 	case GateRequestChanges:
@@ -328,6 +374,7 @@ func (p *Pipeline) skipUnplannedStages() {
 // Current stays on the last finished stage).
 func (p *Pipeline) advance() StageID {
 	p.setStatus(p.Current, StatusDone)
+	p.TasksDone, p.AwaitingVerification, p.LastFailure = false, false, nil
 	for i := range p.Stages {
 		s := &p.Stages[i]
 		if s.Status != StatusPending {
@@ -446,7 +493,8 @@ func SetCardState(p Pipeline, cardID, state, decision string, now time.Time) (Pi
 	next.Cards[idx] = card
 	next.UpdatedAt = now.UTC()
 	if card.Kind == CardDecision && card.State == CardDecided {
-		return next, Action{Kind: ActionSendTurn, Prompt: card.Title + " → " + decision}, nil
+		act := Action{Kind: ActionSendTurn, Prompt: card.Title + " → " + decision}
+		return owe(next, act), act, nil
 	}
 	return next, noAction, nil
 }

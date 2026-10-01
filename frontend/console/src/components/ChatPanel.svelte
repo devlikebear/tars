@@ -8,7 +8,7 @@
   import { toolBaseDirs } from '../lib/cliToolLabels'
   import { changes } from '../lib/stores/changesStore'
   import { turnCardAnchors } from '../lib/changes'
-  import { recoverDroppedTurn, streamDropped, type ReattachOutcome } from '../lib/chatTurnRecovery'
+  import { dropVerificationPlaceholder, recoverDroppedTurn, streamDropped, type ReattachOutcome } from '../lib/chatTurnRecovery'
   import type { DraftNote } from '../lib/stores/changes.svelte'
   import { extractArtifact, extractArtifactsFromHistory, mergeArtifact, type Artifact } from '../lib/artifacts'
   import { buildTierRecommendation, pinnedTierPayload, tierRecommendationPayload, type TierRecommendation } from '../lib/tierRecommendation'
@@ -1163,6 +1163,7 @@
     let attached = false
     // done and cancelled settle the turn in handleChatEvent.
     let ended = false
+    let verificationFeed = false
     try {
       await attachChatStream(id, (event) => {
         if (!attached) {
@@ -1175,6 +1176,14 @@
         }
         // Too long to rebuild; the history reload after the turn has it all.
         if (event.type === 'turn_feed_truncated') return
+        // A focus pipeline's verification step (P2) streams progress, not a
+        // reply: it ends with focus_done and leaves no assistant message.
+        if (event.type === 'focus_progress') verificationFeed = true
+        if (event.type === 'focus_done') {
+          verificationFeed = true
+          ended = true
+          return
+        }
         if (event.type === 'done' || event.type === 'cancelled') ended = true
         handleChatEvent(event, assistantRef)
       }, ac.signal)
@@ -1186,6 +1195,7 @@
       if (abortController === ac) abortController = null
       if (attached) {
         chatBusy = false
+        chatMessages = dropVerificationPlaceholder(chatMessages, assistantRef.id, verificationFeed)
         chatMessages = settleInterruptedProviderTools(withdrawPendingApprovals(chatMessages), Date.now())
         stopChatStatusTicker()
         void scrollToBottom()

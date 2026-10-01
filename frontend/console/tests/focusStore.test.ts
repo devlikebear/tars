@@ -60,11 +60,16 @@ function fakeApi(initial: FocusPipeline) {
     runningSessions: [] as string[],
     // The next streamChat call fails before the server accepts it.
     failNextStream: false,
+    // The Q&A session: its transcript, its answer feed, the asks made.
+    qaHistory: [] as SessionMessage[],
+    qaFeed: null as ChatEvent[] | null,
+    askCalls: [] as unknown[][],
+    askResult: { qa_session_id: 'qa1', turn: 1 },
   }
   const api = {
     getPipeline: async () => state.pipeline,
     getSession: async (id: string) => ({ id, title: 'Task', current_dir: 'repo', created_at: '', updated_at: '' }),
-    getHistory: async () => state.history,
+    getHistory: async (id: string) => (id === 'qa1' ? state.qaHistory : state.history),
     listCheckpoints: async (id: string) => ({ session_id: id, turns: state.checkpoints }),
     getCheckpointDiff: async (_id: string, turnId: string) => {
       state.diffCalls++
@@ -79,7 +84,14 @@ function fakeApi(initial: FocusPipeline) {
       const events = state.turns.shift() ?? [{ type: 'done' }]
       for (const ev of events) onEvent(ev)
     },
-    attachChatStream: async (_id: string, onEvent: (e: ChatEvent) => void) => {
+    attachChatStream: async (id: string, onEvent: (e: ChatEvent) => void) => {
+      if (id === 'qa1') {
+        const qa = state.qaFeed
+        state.qaFeed = null
+        if (!qa) return false
+        for (const ev of qa) onEvent(ev)
+        return true
+      }
       const feed = state.feed
       state.feed = null
       if (!feed) return false
@@ -98,6 +110,10 @@ function fakeApi(initial: FocusPipeline) {
     advance: async () => ({ pipeline: state.pipeline, next_prompt: '' }),
     stop: async () => ({ pipeline: state.pipeline, next_prompt: '' }),
     activity: async () => ({ running: state.runningSessions.map((session_id) => ({ session_id })), pending_approvals: [] }),
+    ask: async (...args: unknown[]) => {
+      state.askCalls.push(args)
+      return state.askResult
+    },
   }
   return { state, api }
 }
@@ -110,7 +126,9 @@ async function settle(store: InstanceType<typeof FocusStore>) {
 }
 
 function newStore(fake: Fake, storage = memoryStorage()) {
-  return new FocusStore(fake.api as never, storage)
+  const store = new FocusStore(fake.api as never, storage)
+  store.timing = { chaseTries: 3, chaseDelayMs: 1, qaAttachTries: 5, qaAttachDelayMs: 1, qaMaxWaitMs: 200 }
+  return store
 }
 
 test('load reads the pipeline, the session and its transcript', async () => {
@@ -134,19 +152,18 @@ test('a 404 pipeline reads as not found', async () => {
   assert.equal(store.pipeline, null)
 })
 
-test('a pipeline event with next_prompt sends it once, after the turn ends', async () => {
+test('a pipeline event next_prompt is shown, never sent: the server sends it', async () => {
   const fake = fakeApi(pipeline('2026-10-01T00:00:00Z'))
   const p1 = pipeline('2026-10-01T00:00:05Z', [gateCard()], { open_gate: 'plan' })
   const event: ChatEvent = { type: 'pipeline', session_id: 's1', pipeline: p1, next_prompt: 'Reply again.' }
-  // The same event twice (a replay, say) must not send twice.
   fake.state.history = [{ id: 'u0', role: 'user', content: 'earlier', timestamp: '' }]
   fake.state.turns.push([{ type: 'turn_started' }, event, event, { type: 'done' }])
   const store = newStore(fake)
   await store.load('s1')
   await store.send('ship it')
   await settle(store)
-  assert.deepEqual(fake.state.sent.map((r) => r.message), ['ship it', 'Reply again.'])
-  assert.equal(fake.state.sent[0].session_id, 's1')
+  assert.deepEqual(fake.state.sent.map((r) => r.message), ['ship it'])
+  assert.equal(store.nextPrompt, 'Reply again.')
   assert.deepEqual(store.pipeline?.cards.map((c) => c.id), ['c1'])
 })
 
@@ -192,38 +209,54 @@ test('reload mid-turn rebuilds from GET and the stream replay without duplicate 
   assert.deepEqual(fake.state.sent, [])
 })
 
-test('the same next_prompt replayed after a page reload is not sent again', async () => {
-  const storage = memoryStorage()
+test('a next_prompt replayed after a page reload sends nothing', async () => {
   const p1 = pipeline('2026-10-01T00:00:05Z', [gateCard()], { open_gate: 'plan' })
-  const event: ChatEvent = { type: 'pipeline', session_id: 's1', pipeline: p1, next_prompt: 'Reply again.' }
   const fake = fakeApi(pipeline('2026-10-01T00:00:00Z'))
   fake.state.history = [{ id: 'u0', role: 'user', content: 'earlier', timestamp: '' }]
-  fake.state.turns.push([event, { type: 'done' }])
-  const first = newStore(fake, storage)
-  await first.load('s1')
-  await first.send('go')
-  await settle(first)
-  assert.equal(fake.state.sent.length, 2)
-  // A new store (page reload) sees the same event in a replay.
-  fake.state.feed = [event]
-  const second = newStore(fake, storage)
-  await second.load('s1')
-  await settle(second)
-  assert.equal(fake.state.sent.length, 2)
+  fake.state.feed = [{ type: 'pipeline', session_id: 's1', pipeline: p1, next_prompt: 'Reply again.' }]
+  const store = newStore(fake)
+  await store.load('s1')
+  await settle(store)
+  assert.deepEqual(fake.state.sent, [])
+  assert.equal(store.nextPrompt, 'Reply again.')
 })
 
-test('gate approve sends next_prompt as the next chat turn', async () => {
+test('gate approve: the server sends the next turn and the store follows it', async () => {
   const fake = fakeApi(pipeline('2026-10-01T00:00:01Z', [gateCard()], { open_gate: 'plan' }))
+  fake.state.history = [{ id: 'u0', role: 'user', content: 'earlier', timestamp: '' }]
   const approved = pipeline('2026-10-01T00:00:02Z', [{ ...gateCard(), state: 'decided', decision: 'approve' }], { current: 'build' })
   fake.state.gateResult = { pipeline: approved, next_prompt: 'Plan approved. Start the build stage with task 1.' }
   const store = newStore(fake)
   await store.load('s1')
+  // The server's turn shows up as running on the session.
+  let release: () => void = () => {}
+  fake.state.holdAttach = new Promise((r) => { release = r })
+  fake.state.feed = [{ type: 'turn_started', session_id: 's1' }, { type: 'delta', session_id: 's1', text: 'Implementing' }]
+  fake.state.runningSessions = ['s1']
   const edits = { goal: 'g', tasks: [{ title: 't', done: 'd' }], stages: ['plan', 'build'] as never, verify: ['make test'] }
   await store.gate('plan', 'approve', undefined, edits)
-  await settle(store)
+  for (let i = 0; i < 20 && !store.running; i++) await new Promise((r) => setTimeout(r, 1))
   assert.deepEqual(fake.state.gateCalls[0], ['s1', 'plan', 'approve', { note: undefined, edits }])
   assert.equal(store.pipeline?.current, 'build')
-  assert.deepEqual(fake.state.sent.map((r) => r.message), ['Plan approved. Start the build stage with task 1.'])
+  assert.equal(store.running, true)
+  assert.equal(store.nextPrompt, 'Plan approved. Start the build stage with task 1.')
+  fake.state.runningSessions = []
+  release()
+  await settle(store)
+  assert.deepEqual(fake.state.sent, [])
+})
+
+test('the blocked gate takes retry and instruct with its note', async () => {
+  const blocked: FocusCard = { id: 'c5', kind: 'gate', stage: 'build', turn: 4, title: 'Build blocked', state: 'unseen', created_at: '2026-10-01T00:00:05Z', payload: { reason: 'repeated', iteration: 2, limit: 3 } }
+  const fake = fakeApi(pipeline('2026-10-01T00:00:05Z', [blocked], { current: 'build', open_gate: 'blocked' }))
+  fake.state.gateResult = { pipeline: pipeline('2026-10-01T00:00:06Z', [{ ...blocked, state: 'decided', decision: 'instruct' }], { current: 'build' }), next_prompt: 'skip the flaky test' }
+  const store = newStore(fake)
+  await store.load('s1')
+  assert.equal(await store.gate('blocked', 'instruct', 'skip the flaky test'), true)
+  await store.gate('blocked', 'retry')
+  assert.deepEqual(fake.state.gateCalls.map((c) => c.slice(1, 3).concat([(c[3] as { note?: string }).note])), [['blocked', 'instruct', 'skip the flaky test'], ['blocked', 'retry', undefined]])
+  await settle(store)
+  assert.deepEqual(fake.state.sent, [])
 })
 
 test('a 409 on a gate replaces the state with the server pipeline and sends nothing', async () => {
@@ -238,7 +271,7 @@ test('a 409 on a gate replaces the state with the server pipeline and sends noth
   assert.deepEqual(fake.state.sent, [])
 })
 
-test('deciding a decision card sends the answer turn', async () => {
+test('deciding a decision card sends nothing itself: the server runs the answer turn', async () => {
   const decision: FocusCard = { id: 'c3', kind: 'decision', stage: 'build', turn: 2, title: 'Which flag?', state: 'unseen', created_at: '2026-10-01T00:00:03Z', payload: { id: 'd1', question: 'Which flag?', options: ['--a', '--b'] } }
   const fake = fakeApi(pipeline('2026-10-01T00:00:03Z', [decision], { current: 'build' }))
   fake.state.cardResult = { pipeline: pipeline('2026-10-01T00:00:04Z', [{ ...decision, state: 'decided', decision: '--b' }], { current: 'build' }), next_prompt: 'Which flag? → --b' }
@@ -247,10 +280,11 @@ test('deciding a decision card sends the answer turn', async () => {
   await store.markCard('c3', 'decided', '--b')
   await settle(store)
   assert.deepEqual(fake.state.cardCalls[0], ['s1', 'c3', 'decided', '--b'])
-  assert.deepEqual(fake.state.sent.map((r) => r.message), ['Which flag? → --b'])
+  assert.deepEqual(fake.state.sent, [])
+  assert.equal(store.nextPrompt, 'Which flag? → --b')
 })
 
-test('change cards come from checkpoint diffs, one per file, acknowledged locally', async () => {
+test('change cards come from checkpoint diffs, one per turn, acknowledged locally', async () => {
   const storage = memoryStorage()
   const fake = fakeApi(pipeline('2026-10-01T00:00:03Z', [], { current: 'build' }))
   fake.state.history = [
@@ -270,15 +304,17 @@ test('change cards come from checkpoint diffs, one per file, acknowledged locall
   const store = newStore(fake, storage)
   await store.load('s1')
   await settle(store)
-  assert.deepEqual(store.deck.map((c) => [c.id, c.stage, c.turn]), [['change:u2:a.go', 'build', 2], ['change:u2:b.go', 'build', 2]])
-  await store.markCard('change:u2:a.go', 'decided', 'acknowledged')
-  assert.equal(store.cards.find((c) => c.id === 'change:u2:a.go')?.state, 'decided')
+  // One card for the turn, with both files (U1).
+  assert.deepEqual(store.deck.map((c) => [c.id, c.stage, c.turn]), [['change:u2', 'build', 2]])
+  assert.deepEqual((store.deck[0].payload as { files: { path: string }[] }).files.map((f) => f.path), ['a.go', 'b.go'])
+  await store.markCard('change:u2', 'decided', 'acknowledged')
+  assert.equal(store.cards.find((c) => c.id === 'change:u2')?.state, 'decided')
   assert.deepEqual(fake.state.cardCalls, [])
   // The acknowledgement survives a reload; diffs of a turn are fetched once.
   const again = newStore(fake, storage)
   await again.load('s1')
   await settle(again)
-  assert.equal(again.cards.find((c) => c.id === 'change:u2:a.go')?.state, 'decided')
+  assert.equal(again.cards.find((c) => c.id === 'change:u2')?.state, 'decided')
   await store.refreshChanges()
   assert.equal(fake.state.diffCalls, 2)
 })
@@ -319,24 +355,22 @@ test('an empty transcript the server answers as null still kicks off the goal', 
   assert.deepEqual(store.history.length >= 0, true)
 })
 
-test('a queued next_prompt survives a reload before it was sent', async () => {
+test('a typed instruction held by a running turn survives a reload, and goes out once', async () => {
   const storage = memoryStorage()
-  const fake = fakeApi(pipeline('2026-10-01T00:00:01Z', [gateCard()], { open_gate: 'plan' }))
+  const fake = fakeApi(pipeline('2026-10-01T00:00:02Z', [], { current: 'build' }))
   fake.state.history = [{ id: 'u0', role: 'user', content: 'earlier', timestamp: '' }]
-  fake.state.gateResult = { pipeline: pipeline('2026-10-01T00:00:02Z', [], { current: 'build' }), next_prompt: 'Start the build.' }
-  // Another turn runs, so the prompt waits; then the page goes away.
+  // The server's turn runs, so the instruction waits; then the page goes away.
   fake.state.runningSessions = ['s1']
   const first = newStore(fake, storage)
   await first.load('s1')
-  await first.gate('plan', 'approve')
+  await first.send('also rename it')
   first.dispose()
   assert.deepEqual(fake.state.sent, [])
-  // Reloaded once the turn ended: the prompt goes out, once.
   fake.state.runningSessions = []
   const second = newStore(fake, storage)
   await second.load('s1')
   await settle(second)
-  assert.deepEqual(fake.state.sent.map((r) => r.message), ['Start the build.'])
+  assert.deepEqual(fake.state.sent.map((r) => r.message), ['also rename it'])
   const third = newStore(fake, storage)
   await third.load('s1')
   await settle(third)
@@ -416,14 +450,13 @@ test('a turn started elsewhere is followed, and an instruction waits for it', as
   assert.deepEqual(fake.state.sent.map((r) => r.message), ['also do x'])
 })
 
-test('a prompt held back by a running turn goes out on the next poll once it ends', async () => {
-  const fake = fakeApi(pipeline('2026-10-01T00:00:01Z', [gateCard()], { open_gate: 'plan' }))
+test('an instruction held back by a running turn goes out on the next poll once it ends', async () => {
+  const fake = fakeApi(pipeline('2026-10-01T00:00:02Z', [], { current: 'build' }))
   fake.state.history = [{ id: 'u0', role: 'user', content: 'earlier', timestamp: '' }]
-  fake.state.gateResult = { pipeline: pipeline('2026-10-01T00:00:02Z', [], { current: 'build' }), next_prompt: 'Start the build.' }
   fake.state.runningSessions = ['s1']
   const store = newStore(fake)
   await store.load('s1')
-  await store.gate('plan', 'approve')
+  await store.send('Start the build.')
   assert.deepEqual(fake.state.sent, [])
   fake.state.runningSessions = []
   await store.poll()
@@ -451,5 +484,173 @@ test('a pipeline with a kickoff sends the kickoff, not the goal, as its first tu
   const store = newStore(fake)
   await store.load('s1')
   await settle(store)
+  assert.deepEqual(fake.state.sent.map((r) => r.message), ['Release: ship 2 changes\n- a\n- b'])
+})
+
+test('the driver\'s verification step shows on the progress line', async () => {
+  const fake = fakeApi(pipeline('2026-10-01T00:00:02Z', [], { current: 'build' }))
+  fake.state.history = [{ id: 'u0', role: 'user', content: 'earlier', timestamp: '' }]
+  let release: () => void = () => {}
+  fake.state.holdAttach = new Promise((r) => { release = r })
+  fake.state.feed = [
+    { type: 'status', session_id: 's1', phase: 'stream_open' },
+    { type: 'focus_progress', session_id: 's1', phase: 'verifying', command: 'make test', index: 1, total: 1 },
+  ]
+  const store = newStore(fake)
+  await store.load('s1')
+  await new Promise((r) => setTimeout(r, 0))
+  assert.equal(store.progress('build'), 'Implementing · verifying make test (1/1)')
+  release()
+  await settle(store)
+})
+
+test('questions thread by card; the answer streams in, then comes from the Q&A history', async () => {
+  const report: FocusCard = { id: 'c2', kind: 'report', stage: 'build', turn: 2, title: 'Done', state: 'seen', created_at: '2026-10-01T00:00:02Z' }
+  const fake = fakeApi(pipeline('2026-10-01T00:00:03Z', [gateCard(), report], { current: 'build', qa_session_id: 'qa1', qa_turns: { c1: [1] } }))
+  fake.state.history = [{ id: 'u0', role: 'user', content: 'earlier', timestamp: '' }]
+  fake.state.qaHistory = [
+    { id: 'q1', role: 'user', content: 'why?\n\n<console-context>\nCard c1\n</console-context>', timestamp: '' },
+    { id: 'q1a', role: 'assistant', content: 'Because.', timestamp: '' },
+  ]
+  const store = newStore(fake)
+  await store.load('s1')
+  await settle(store)
+  for (let i = 0; i < 10 && store.qaHistory.length === 0; i++) await new Promise((r) => setTimeout(r, 1))
+  assert.deepEqual(store.qaThread('c1'), [{ turn: 1, question: 'why?', answer: 'Because.' }])
+  assert.deepEqual(store.qaThread('c2'), [])
+
+  // A question about c2: the answer streams, then the history holds it.
+  fake.state.askResult = { qa_session_id: 'qa1', turn: 2 }
+  // The server records the turn on the pipeline as it accepts the question.
+  fake.state.pipeline = { ...fake.state.pipeline, qa_turns: { c1: [1], c2: [2] } }
+  fake.state.qaFeed = [{ type: 'turn_started' }, { type: 'delta', text: 'It is ' }, { type: 'delta', text: 'a report.' }]
+  // The server saves the turn before its feed ends.
+  fake.state.qaHistory = [
+    ...fake.state.qaHistory,
+    { id: 'q2', role: 'user', content: 'what is this?\n\n<console-context>\nCard c2\n</console-context>', timestamp: '' },
+    { id: 'q2a', role: 'assistant', content: 'It is a report.', timestamp: '' },
+  ]
+  const asked = store.ask('c2', '  what is this?  ')
+  assert.equal(await asked, true)
+  assert.deepEqual(fake.state.askCalls[0], ['s1', 'c2', 'what is this?'])
+  assert.deepEqual(store.pipeline?.qa_turns, { c1: [1], c2: [2] })
+  for (let i = 0; i < 20 && store.qaPending; i++) await new Promise((r) => setTimeout(r, 1))
+  assert.equal(store.qaPending, null)
+  assert.deepEqual(store.qaThread('c2'), [{ turn: 2, question: 'what is this?', answer: 'It is a report.' }])
+  // Q&A sent nothing to the pipeline's own session and changed no card.
+  assert.deepEqual(fake.state.sent, [])
+  assert.deepEqual(store.pipeline?.cards.map((c) => c.id), ['c1', 'c2'])
+})
+
+test('a question while one is being answered is refused', async () => {
+  const fake = fakeApi(pipeline('2026-10-01T00:00:03Z', [gateCard()], { current: 'build' }))
+  fake.state.history = [{ id: 'u0', role: 'user', content: 'earlier', timestamp: '' }]
+  const store = newStore(fake)
+  store.timing = { chaseTries: 1, chaseDelayMs: 1, qaAttachTries: 50, qaAttachDelayMs: 5, qaMaxWaitMs: 5000 }
+  await store.load('s1')
+  assert.equal(await store.ask('c1', 'first?'), true)
+  assert.equal(await store.ask('c1', 'second?'), false)
+  assert.equal(store.qaError, 'busy')
+  assert.equal(fake.state.askCalls.length, 1)
+  assert.deepEqual(store.qaThread('c1'), [{ turn: 1, question: 'first?', answer: '' }])
+  store.dispose()
+})
+
+test('an instruction the developer sends clears the pipeline prompt shown (f7)', async () => {
+  const fake = fakeApi(pipeline('2026-10-01T00:00:02Z', [], { current: 'build' }))
+  fake.state.history = [{ id: 'u0', role: 'user', content: 'earlier', timestamp: '' }]
+  const store = newStore(fake)
+  await store.load('s1')
+  store.applyEvent({ type: 'pipeline', session_id: 's1', pipeline: pipeline('2026-10-01T00:00:03Z', [], { current: 'build' }), next_prompt: 'Verification failed … fix it' })
+  assert.equal(store.nextPrompt, 'Verification failed … fix it')
+  let seen = ''
+  fake.api.streamChat = async (req, onEvent) => {
+    fake.state.sent.push(req)
+    seen = store.nextPrompt
+    onEvent({ type: 'done' })
+  }
+  await store.send('rename greet to hello')
+  await settle(store)
+  assert.equal(seen, '', 'the running turn is the developer\'s own')
+})
+
+test('a transient error clears once a later request succeeds (U3)', async () => {
+  const fake = fakeApi(pipeline('2026-10-01T00:00:02Z', [], { current: 'build' }))
+  fake.state.history = [{ id: 'u0', role: 'user', content: 'earlier', timestamp: '' }]
+  const store = newStore(fake)
+  await store.load('s1')
+  fake.state.failNextStream = true
+  await store.send('go')
+  await settle(store)
+  assert.match(store.actionError, /network down/)
+  // The stream comes back: the server's turn is followed, and the error goes.
+  fake.state.feed = [{ type: 'turn_started', session_id: 's1' }, { type: 'done', session_id: 's1' }]
+  fake.state.runningSessions = ['s1']
+  await store.poll()
+  await settle(store)
+  assert.equal(store.actionError, '')
+})
+
+test('a Q&A answer whose turn starts late is still followed to the end (R5)', async () => {
+  const fake = fakeApi(pipeline('2026-10-01T00:00:03Z', [gateCard()], { current: 'build' }))
+  fake.state.history = [{ id: 'u0', role: 'user', content: 'earlier', timestamp: '' }]
+  const store = newStore(fake)
+  store.timing = { chaseTries: 1, chaseDelayMs: 1, qaAttachTries: 3, qaAttachDelayMs: 2, qaMaxWaitMs: 5000 }
+  await store.load('s1')
+  // The answer turn waits behind something for longer than the old retry
+  // budget: no feed yet, and the activity lists it as not running.
+  assert.equal(await store.ask('c1', 'why?'), true)
+  await new Promise((r) => setTimeout(r, 40))
+  assert.ok(store.qaPending, 'still waiting for the answer')
+  fake.state.qaHistory = [
+    { id: 'q1', role: 'user', content: 'why?\n\n<console-context>\nfocus-card: c1\nCard c1\n</console-context>', timestamp: '' },
+    { id: 'q1a', role: 'assistant', content: 'Because.', timestamp: '' },
+  ]
+  fake.state.qaFeed = [{ type: 'turn_started' }, { type: 'delta', text: 'Because.' }, { type: 'done' }]
+  for (let i = 0; i < 100 && store.qaPending; i++) await new Promise((r) => setTimeout(r, 5))
+  assert.equal(store.qaPending, null)
+  assert.deepEqual(store.qaThread('c1'), [{ turn: 1, question: 'why?', answer: 'Because.' }])
+  store.dispose()
+})
+
+test('an instruction refused because a turn just started (409) stays queued, without an error', async () => {
+  const fake = fakeApi(pipeline('2026-10-01T00:00:02Z', [], { current: 'build' }))
+  fake.state.history = [{ id: 'u0', role: 'user', content: 'earlier', timestamp: '' }]
+  const store = newStore(fake)
+  await store.load('s1')
+  let refused = false
+  fake.api.streamChat = async (req) => {
+    if (!refused) {
+      refused = true
+      throw Object.assign(new Error('a turn is already running on this session'), { status: 409 })
+    }
+    fake.state.sent.push(req)
+  }
+  await store.send('also rename it')
+  await settle(store)
+  assert.equal(store.actionError, '')
+  await store.poll()
+  await settle(store)
+  assert.deepEqual(fake.state.sent.map((r) => r.message), ['also rename it'])
+})
+
+test('the kickoff is the one first message the console sends; every later prompt is the server\'s', async () => {
+  const storage = memoryStorage()
+  const fake = fakeApi({ ...pipeline('2026-10-01T00:00:00Z'), goal: 'Release: ship 2 changes', kickoff: 'Release: ship 2 changes\n- a\n- b' })
+  const store = newStore(fake, storage)
+  await store.load('s1')
+  await settle(store)
+  assert.deepEqual(fake.state.sent.map((r) => r.message), ['Release: ship 2 changes\n- a\n- b'])
+  // The plan comes back; approving it starts the build turn on the server.
+  fake.state.history = [{ id: 'u1', role: 'user', content: 'Release: ship 2 changes', timestamp: '' }]
+  fake.state.pipeline = pipeline('2026-10-01T00:00:01Z', [gateCard()], { open_gate: 'plan' })
+  fake.state.gateResult = { pipeline: pipeline('2026-10-01T00:00:02Z', [{ ...gateCard(), state: 'decided', decision: 'approve' }], { current: 'build' }), next_prompt: 'Plan approved. Start the build stage with task 1.' }
+  await store.load('s1')
+  await store.gate('plan', 'approve')
+  await settle(store)
+  // A reload does not send the kickoff again either.
+  const again = newStore(fake, storage)
+  await again.load('s1')
+  await settle(again)
   assert.deepEqual(fake.state.sent.map((r) => r.message), ['Release: ship 2 changes\n- a\n- b'])
 })

@@ -936,6 +936,13 @@ export type ChatEvent = {
   // pipeline: the session's focus pipeline after a turn changed it, and the
   // turn the server suggests sending next ('' when none).
   pipeline?: FocusPipeline
+  // focus_progress: the focus driver's verification step (P2) — phase
+  // "verifying" before command index/total runs, "verified" after it.
+  command?: string
+  index?: number
+  total?: number
+  passed?: boolean
+  exit_code?: number
   next_prompt?: string
   // done event usage
   usage?: {
@@ -2585,13 +2592,15 @@ export type FocusStageStatus = 'pending' | 'active' | 'done' | 'skipped' | 'bloc
 export type FocusCardKind = 'gate' | 'decision' | 'finding' | 'failure' | 'report' | 'change' | 'notice'
 export type FocusCardState = 'unseen' | 'seen' | 'decided'
 export type FocusGate = '' | 'plan' | 'triage' | 'pr' | 'merge' | 'blocked'
-export type FocusGateAction = 'approve' | 'request_changes' | 'stop'
+// retry and instruct answer only the blocked gate.
+export type FocusGateAction = 'approve' | 'request_changes' | 'stop' | 'retry' | 'instruct'
 
 export type FocusStage = {
   id: FocusStageId
   status: FocusStageStatus
   iteration: number
   limit?: number
+  turns?: number
 }
 
 export type FocusPlanTask = { title: string; done: string }
@@ -2606,7 +2615,30 @@ export type FocusPlan = {
 }
 
 export type FocusDecision = { id: string; question: string; options: string[] }
-export type FocusReport = { summary: string; decisions?: FocusDecision[]; risks?: string[] }
+export type FocusReport = { summary: string; decisions?: FocusDecision[]; risks?: string[]; tasks_done?: boolean }
+
+// One verification command's outcome, and a failure card's payload (P2).
+export type FocusVerificationResult = { command: string; exit_code: number; passed: boolean; timed_out?: boolean; excerpt?: string }
+export type FocusFailure = {
+  command: string
+  exit_code: number
+  timed_out?: boolean
+  excerpt?: string
+  iteration: number
+  results?: FocusVerificationResult[]
+}
+// The blocked gate card's payload: why the build loop stopped.
+export type FocusBlocked = {
+  reason: 'limit' | 'repeated' | 'no_progress' | 'interrupted' | 'turn_failed' | string
+  iteration: number
+  limit: number
+  failure?: FocusFailure
+  // interrupted / turn_failed: the turn that was owed, or the verification
+  // that was running, and the error that ended a failed turn.
+  prompt?: string
+  verify?: boolean
+  error?: string
+}
 export type FocusFinding = { id: string; severity: string; file: string; line: number; title: string; scenario: string }
 export type FocusPRDraft = { title: string; body: string }
 
@@ -2620,6 +2652,15 @@ export type FocusChangePayload = {
   deletions: number
   binary?: boolean
   patch?: string
+}
+
+// A change card's payload (U1): one turn's checkpoint diff, every file of
+// it, shown one file at a time and acknowledged together.
+export type FocusChangeTurnPayload = {
+  turn_id: string
+  additions: number
+  deletions: number
+  files: FocusChangePayload[]
 }
 
 export type FocusCard = {
@@ -2648,6 +2689,12 @@ export type FocusPipeline = {
   open_gate?: FocusGate
   cards: FocusCard[]
   pr?: FocusPRInfo
+  tasks_done?: boolean
+  awaiting_verification?: boolean
+  last_failure?: FocusFailure
+  // The hidden Q&A session (ADR §8) and, per card id, its turns about it.
+  qa_session_id?: string
+  qa_turns?: Record<string, number[]>
   updated_at: string
   // Set once the pipeline runs to its end.
   finished_at?: string
@@ -2693,11 +2740,15 @@ export type ReleaseTrainGroup = {
 export type ReleaseTrain = { groups: ReleaseTrainGroup[] }
 
 // Every mutating focus route answers this; next_prompt is the turn the
-// console sends next ('' when none). conflict marks a 409, whose pipeline is
-// the server's current state.
+// server started for it ('' when none), shown, never sent by the console
+// (P2). conflict marks a 409, whose pipeline is the server's current state.
 export type FocusActionResult = {
   pipeline: FocusPipeline
   next_prompt: string
   warning?: string
   conflict?: boolean
 }
+
+// POST /v1/focus/pipelines/{id}/qa: the question runs as Q&A turn `turn`
+// of the hidden session.
+export type FocusQAResult = { qa_session_id: string; turn: number }

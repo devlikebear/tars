@@ -9,7 +9,7 @@
   import { resolveRoute, type Route } from './lib/router'
   import { loadRouteComponent } from './lib/routeComponents'
   import { APIRequestError, getAuthWhoami, getConfigSchema, getEventsHistory, getHealthz, logoutAuth, patchConfigValues, streamEvents } from './lib/api'
-  import { defaultModeRedirect, focusChromeHidden, onboardingModeUpdate } from './lib/focus'
+  import { defaultModeRedirect, focusChromeHidden, focusOwnsShortcut, onboardingModeUpdate } from './lib/focus'
   import type { AuthWhoamiResponse } from './lib/types'
   import {
     companionAskHandoffReaction,
@@ -362,6 +362,8 @@
       if ((paletteOpen || helpOpen) && match.action !== 'palette') return
       // Chat-only shortcuts stay inert on other routes.
       if (chatOnlyActions.has(match.action) && route.view !== 'chat') return
+      // The focus pipeline screen uses `?` for its Q&A drawer.
+      if (focusOwnsShortcut(match.action, route)) return
       event.preventDefault()
       runShortcut(match)
       return

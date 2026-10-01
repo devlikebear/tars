@@ -152,7 +152,7 @@ func TestFocusReleaseTrainEmpty(t *testing.T) {
 
 func TestFocusCreateReleaseKindAndKickoff(t *testing.T) {
 	f := newWorktreeFixture(t)
-	h := newFocusPipelineHandler(f.store, f.c, zerolog.Nop())
+	h := newFocusPipelineHandler(f.store, f.c, nil, zerolog.Nop())
 
 	if rec := focusRequest(t, h, http.MethodPost, "/v1/focus/pipelines", `{"goal":"g","cwd":`+jsonString(f.repo)+`,"kind":"hotfix"}`, true); rec.Code != http.StatusBadRequest {
 		t.Fatalf("unknown kind: %d %s", rec.Code, rec.Body.String())
@@ -377,7 +377,7 @@ func TestFocusReleaseActiveReleaseConflict(t *testing.T) {
 		t.Fatalf("groups = %+v", out.Groups)
 	}
 
-	h := newFocusPipelineHandler(f.store, f.c, zerolog.Nop())
+	h := newFocusPipelineHandler(f.store, f.c, nil, zerolog.Nop())
 	body := `{"goal":"Release","kind":"release","cwd":` + jsonString(f.repo) + `,"release_items":[` + jsonString(feature.ID) + `]}`
 	rec := focusRequest(t, h, http.MethodPost, "/v1/focus/pipelines", body, true)
 	if rec.Code != http.StatusConflict {

@@ -62,7 +62,7 @@ Loops run automatically inside a stage; the developer acts only at gates. Stage 
 
 - **One skeleton, skippable stages.** The plan proposes which stages apply (a small fix may go build → PR → merge); the developer confirms at G1. No per-type templates.
 - **Release is outside the feature pipeline.** TARS releases by batching merged PRs into one release PR (v0.41.0, v0.42.0). A separate *release train* view (§9 P5) collects pipelines merged since the last release.
-- **Blocked.** Reaching a loop limit (defaults: build 3, review 2, PR 3) or repeating the same failure raises a *blocked* gate: try once more / give an instruction / open in Advanced.
+- **Blocked.** Reaching a loop limit (defaults: build 3, review 2, PR 3) or repeating the same failure raises a *blocked* gate: try once more / give an instruction / open in Advanced. Build also blocks on **no progress**: after 2 turns per planned task plus the build limit, passing turns whose report never sets `tasks_done` stop at the same gate instead of looping. A failure counts as "the same" when its first failing command and output excerpt match the previous one with numbers (durations, counts) ignored. Retry and instruct allow one more iteration.
 - **A decision card pauses the loop.** When the agent asks a question, that question is an implicit gate; answering continues the loop.
 
 ### 5. Facts come from deterministic sources
@@ -120,7 +120,7 @@ Ordered by priority:
 
 - pipeline model persisted next to the session as `pipeline.json`: stages with status (`pending` | `active` | `done` | `skipped` | `blocked`), iteration counts, gates, cards and their state, findings, PR info;
 - block parser and a **pure** state machine `Next(state, facts) → (state, action)` tested table-driven, like `initiative.Decide`;
-- a driver that reacts to turn completion: evaluates facts, then either enqueues the next automatic turn or stops at a gate. It runs server-side on top of background turns (#971), so loops continue when the console is closed; tool permissions needed while unattended go to the existing ops approval queue (#970).
+- a driver that reacts to turn completion: evaluates facts, then either enqueues the next automatic turn or stops at a gate. The developer's own messages — the first one (the goal, or a release pipeline's kickoff) and typed instructions — come from the console; every turn the pipeline asks for after that is sent by the server, which records it as owed (`pending_turn`) so a restart raises an *interrupted* gate instead of losing or silently resuming it. It runs server-side on top of background turns (#971), so loops continue when the console is closed; tool permissions needed while unattended go to the existing ops approval queue (#970).
 - tasks and the contract reuse the existing session `Plan`/`Task`/`TaskContract`; the durable work ledger is not used (it is built for the unattended scheduler).
 - API under `/v1/focus/…` and an SSE `pipeline` event for state changes.
 

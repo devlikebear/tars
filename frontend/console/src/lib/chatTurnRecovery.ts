@@ -45,3 +45,11 @@ export async function recoverDroppedTurn(deps: DroppedTurnDeps): Promise<void> {
   }
   if (!outcome.ended) await deps.settle()
 }
+
+// dropVerificationPlaceholder: a focus pipeline's verification feed (P2)
+// streams progress, not a reply, so the empty assistant message the panel
+// opened when it attached goes once the feed ends; a real reply stays.
+export function dropVerificationPlaceholder<M extends { id: string; text?: string }>(messages: M[], placeholderId: string, verificationFeed: boolean): M[] {
+  if (!verificationFeed) return messages
+  return messages.filter((m) => m.id !== placeholderId || !!m.text)
+}

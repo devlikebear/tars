@@ -335,3 +335,40 @@ func TestOpsHandlerReviewsToolPermissions(t *testing.T) {
 		t.Fatalf("emitted = %+v", emitted)
 	}
 }
+
+// d1 (focus P2 review): a server-driven focus turn in a session without a
+// mode asks before high-risk native tools (manual, via the ops queue); the
+// claude-code-cli fields stay as configured.
+func TestUnattendedFocusOptionsDefaultToManualForNativeTools(t *testing.T) {
+	f := newUnattendedFixture(t, "")
+	opts := f.perms.focusOptions(f.session, f.dir, focusTurnSource)
+	run := agentloop.RunOptions{ClaudeCodePermissionMode: "auto"}
+	opts.apply(&run)
+	if run.ToolAuthorizer == nil || run.ClaudeCodePermissionHandler != nil || run.ClaudeCodePermissionMode != "auto" {
+		t.Fatalf("empty mode: %+v", run)
+	}
+	f.answerNext(t, false)
+	d, err := run.ToolAuthorizer.Authorize(context.Background(), agentloop.ToolCallRequest{ToolName: "exec", ToolArgs: `{"command":"rm -rf build"}`})
+	if err != nil || d.Allow {
+		t.Fatalf("a high-risk tool must wait for the ops queue: %+v %v", d, err)
+	}
+	items, _ := f.ops.ListApprovals()
+	if len(items) != 1 || items[0].ToolPermission.Source != focusTurnSource || items[0].ToolPermission.Mode != chatPermissionModeManual {
+		t.Fatalf("queued = %+v", items)
+	}
+
+	// A session that picked auto runs ungated, as before; a set mode wins.
+	auto := newUnattendedFixture(t, chatPermissionModeAuto)
+	if auto.perms.focusOptions(auto.session, auto.dir, focusTurnSource).authorizer != nil {
+		t.Fatal("auto stays ungated")
+	}
+	plan := newUnattendedFixture(t, chatPermissionModePlan)
+	planOpts := plan.perms.focusOptions(plan.session, plan.dir, focusTurnSource)
+	if planOpts.handler == nil || planOpts.permissionMode != "plan" {
+		t.Fatalf("a set mode keeps its full options: %+v", planOpts)
+	}
+	var nilPerms *unattendedPermissions
+	if nilPerms.focusOptions("s", "", focusTurnSource).authorizer != nil {
+		t.Fatal("nil permissions must not gate")
+	}
+}

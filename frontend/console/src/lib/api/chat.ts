@@ -1,4 +1,4 @@
-import { requestJSON } from './client.ts'
+import { APIRequestError, requestJSON } from './client.ts'
 import type {
   APIErrorPayload,
   ChatEvent,
@@ -140,7 +140,8 @@ export async function streamChat(
     } catch {
       // ignore non-JSON error bodies
     }
-    throw new Error(message)
+    // The status tells a refused turn (409: one already runs) from a failure.
+    throw new APIRequestError(message, response.status)
   }
 
   await readChatStream(response, onEvent)

@@ -11,6 +11,11 @@ const (
 	reportFormat   = `<focus-report>{"summary":"…","decisions":[{"id":"d1","question":"…","options":["…","…"]}],"risks":["…"]}</focus-report>`
 	findingsFormat = `<focus-findings>[{"id":"f1","severity":"high|medium|low","file":"…","line":42,"title":"…","scenario":"…"}]</focus-findings>`
 	prFormat       = `<focus-pr>{"title":"…","body":"…"}</focus-pr>`
+	// buildReportFormat adds the build loop's tasks_done claim.
+	buildReportFormat = `<focus-report>{"summary":"…","tasks_done":false,"decisions":[{"id":"d1","question":"…","options":["…","…"]}],"risks":["…"]}</focus-report>`
+	buildTasksDone    = `Set "tasks_done" to true only when every approved task is complete. ` +
+		"After your reply the server runs the verification commands: a failure starts the next turn with its output, " +
+		"and the build ends when tasks_done is true and every command passes."
 )
 
 // stageInstructions are the specific instructions of each stage.
@@ -90,6 +95,9 @@ func requiredBlocks(stage StageID) string {
 			findingsFormat + "\n" + reportFormat + "\n" + tail
 	case StagePR:
 		return "End your reply with a PR draft block and a report block:\n" + prFormat + "\n" + reportFormat + "\n" + tail
+	case StageBuild:
+		return "End your reply with exactly one report block in this format (decisions and risks may be empty):\n" +
+			buildReportFormat + "\n" + buildTasksDone + "\n" + tail
 	default:
 		return "End your reply with exactly one report block in this format (decisions and risks may be empty):\n" +
 			reportFormat + "\n" + tail

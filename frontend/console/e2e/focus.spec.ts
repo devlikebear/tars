@@ -1,9 +1,11 @@
-// Focus mode (docs/decisions/focus-mode.md, P1b): a task started from the
-// focus home runs as a pipeline on an ordinary chat session. The mock LLM
-// answers the plan stage with a <focus-plan> block ([e2e:focus-plan]) and
-// later stages with a <focus-report> asking one decision
-// ([e2e:focus-report]); the markers ride in the goal, which every turn's
-// stage guidance repeats.
+// Focus mode (docs/decisions/focus-mode.md, P1b/P2): a task started from
+// the focus home runs as a pipeline on an ordinary chat session. The mock
+// LLM answers the plan stage with a <focus-plan> block ([e2e:focus-plan])
+// and later stages with a <focus-report> asking one decision
+// ([e2e:focus-report]), or a done report with none ([e2e:focus-loop]); the
+// markers ride in the goal, which every turn's stage guidance repeats. From
+// P2 the server sends every turn after the goal and runs the plan's
+// verification commands after each build turn.
 
 import { execFileSync } from 'node:child_process'
 import { mkdtempSync, realpathSync, writeFileSync } from 'node:fs'
@@ -38,6 +40,14 @@ type Pipeline = {
   cards: { id: string; kind: string; state: string; decision?: string }[]
 }
 
+// The server sends a pipeline's turns after the goal. In a session that never
+// picked a permission mode they ask before high-risk native tools through
+// the ops queue (focus P2, d1); these specs opt their sessions into auto, as
+// a developer who trusts the agent would, so the mock's file write runs.
+async function autoMode(page: Page, id: string) {
+  expect((await page.request.put(`/v1/admin/sessions/${encodeURIComponent(id)}/permission-mode`, { data: { mode: 'auto' } })).ok()).toBe(true)
+}
+
 async function pipelineOf(page: Page, id: string): Promise<Pipeline> {
   return (await page.request.get(`/v1/focus/pipelines/${encodeURIComponent(id)}`)).json()
 }
@@ -55,6 +65,7 @@ test('a focus task: plan gate, approve, report and decision cards, decide, then 
 
   await expect(page).toHaveURL(/\/console\/focus\/[^/]+$/)
   const id = sessionId(page)
+  await autoMode(page, id)
 
   // Focus mode hides the app sidebar and the companion; an isolated task
   // shows its own branch.
@@ -85,12 +96,14 @@ test('a focus task: plan gate, approve, report and decision cards, decide, then 
   await expect(gate.getByText('Add greet()')).toBeVisible()
   await expect(page.getByTestId('focus-step-plan')).toHaveAttribute('data-status', 'active')
 
-  // Skip PR review and add a verification command, then approve.
+  // Skip PR review and set the verification commands (they run on the
+  // server after each build turn), then approve.
   await page.getByTestId('focus-plan-stage-pr_review').uncheck()
-  await page.getByTestId('focus-plan-verify').fill('make test\ngo vet ./...')
+  await page.getByTestId('focus-plan-verify').fill('true\ngit status --short')
   await page.getByTestId('focus-gate-approve').click()
 
-  // The approval's next prompt runs the build turn: a report and a decision.
+  // The server runs the build turn the approval asks for: a report and a
+  // decision, which pauses the loop.
   await expect(page.getByTestId('focus-step-build')).toHaveAttribute('data-status', 'active')
   await expect(page.getByTestId('focus-step-pr_review')).toHaveAttribute('data-status', 'skipped')
   // Decision, report, and the change card of the file the turn wrote.
@@ -128,13 +141,18 @@ test('a focus task: plan gate, approve, report and decision cards, decide, then 
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true)
   expect(await page.locator('main').evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true)
 
-  // Key 2 picks the second option; the answer runs the next turn.
+  // Key 2 picks the second option; the server runs the answer turn. Its
+  // report says every task is done, verification passes, and review starts.
   await page.keyboard.press('2')
-  await expect(page.getByText('Applied the chosen greeting.')).toBeVisible()
+  await expect(page.getByTestId('focus-step-review')).toHaveAttribute('data-status', 'active', { timeout: 15_000 })
+  await expect(page.getByTestId('focus-step-build')).toHaveAttribute('data-status', 'done')
+  await expect(page.getByText('Reviewed the change.')).toBeVisible()
 
-  // The new report leads; marking it seen does not move the deck under the
-  // developer, and each arrow press is one card.
+  // The build history: the newest report leads (U2), marking it seen does
+  // not move the deck under the developer, and each arrow press is one card.
+  await page.getByTestId('focus-step-build').click()
   await expect(position(page)).toHaveText('1 / 4')
+  await expect(card(page).getByText('Applied the chosen greeting.')).toBeVisible()
   await page.keyboard.press('ArrowRight')
   await expect(position(page)).toHaveText('2 / 4')
   await page.keyboard.press('ArrowRight')
@@ -142,10 +160,12 @@ test('a focus task: plan gate, approve, report and decision cards, decide, then 
   await page.keyboard.press('ArrowLeft')
   await expect(position(page)).toHaveText('2 / 4')
 
+  await page.getByRole('button', { name: 'Back to the current stage' }).click()
+
   const p = await pipelineOf(page, id)
-  expect(p.current).toBe('build')
+  expect(p.current).toBe('review')
   expect(p.plan?.stages).toEqual(['plan', 'build', 'review', 'pr', 'merge'])
-  expect(p.plan?.verify).toEqual(['make test', 'go vet ./...'])
+  expect(p.plan?.verify).toEqual(['true', 'git status --short'])
   expect(p.cards.find((c) => c.kind === 'decision')).toMatchObject({ state: 'decided', decision: 'Hi there' })
   expect(p.cards.filter((c) => c.kind === 'gate')).toHaveLength(1)
 
@@ -176,6 +196,7 @@ test('the focus home lists the task and a stale gate action shows the current st
   const repo = newRepo('tars-e2e-focus-list-')
   const created = await (await page.request.post('/v1/focus/pipelines', { data: { goal, cwd: repo } })).json()
   const id = created.session_id as string
+  await autoMode(page, id)
 
   await page.goto(`/console/focus/${id}`)
   await expect(page.locator('[data-testid="focus-card"][data-kind="gate"]')).toBeVisible()
@@ -195,6 +216,7 @@ test('plan gate edits survive a question turn that re-reads the pipeline', async
   const repo = newRepo('tars-e2e-focus-edit-')
   const created = await (await page.request.post('/v1/focus/pipelines', { data: { goal, cwd: repo } })).json()
   const id = created.session_id as string
+  await autoMode(page, id)
   await page.goto(`/console/focus/${id}`)
   await expect(page.locator('[data-testid="focus-card"][data-kind="gate"]')).toBeVisible()
 
@@ -208,6 +230,57 @@ test('plan gate edits survive a question turn that re-reads the pipeline', async
 
   await expect(page.getByTestId('focus-plan-verify')).toHaveValue('make test\nmake lint')
   await expect(page.getByTestId('focus-plan-stage-review')).not.toBeChecked()
+})
+
+test('the build loop: a failed verification becomes a failure card and a fix turn, a pass moves to review, and Q&A answers about a card', async ({ page }) => {
+  const repo = newRepo('tars-e2e-focus-loop-')
+  const created = await (await page.request.post('/v1/focus/pipelines', { data: { goal: '[e2e:focus-plan] [e2e:focus-loop] Add a greeting', cwd: repo } })).json()
+  const id = created.session_id as string
+  await autoMode(page, id)
+  await page.goto(`/console/focus/${id}`)
+  await expect(page.locator('[data-testid="focus-card"][data-kind="gate"]')).toBeVisible()
+
+  // A verification command that fails the first time and passes after.
+  const verify = `sh -c 'test -f .e2e-verified || { touch .e2e-verified; echo "--- FAIL: TestGreet" >&2; exit 1; }'`
+  await page.getByTestId('focus-plan-verify').fill(verify)
+  await page.getByTestId('focus-gate-approve').click()
+
+  // Build turn → verification fails → failure card + fix turn → passes →
+  // review: all on the server, the console only follows.
+  await expect(page.getByTestId('focus-step-review')).toHaveAttribute('data-status', 'active', { timeout: 20_000 })
+  await expect(page.getByText('Reviewed the change.')).toBeVisible()
+  const p = await pipelineOf(page, id)
+  const failure = p.cards.find((c) => c.kind === 'failure')
+  expect(failure).toBeTruthy()
+  expect(p.stages.find((s) => s.id === 'build')?.status).toBe('done')
+  expect(p.open_gate ?? '').toBe('')
+
+  // The failure card sits in the build history with its command and output.
+  await page.getByTestId('focus-step-build').click()
+  const failureCard = page.locator('[data-testid="focus-card"][data-kind="failure"]')
+  for (let i = 0; i < 6 && !(await failureCard.isVisible()); i++) await page.keyboard.press('ArrowRight')
+  await expect(failureCard).toBeVisible()
+  await expect(failureCard.getByTestId('focus-failure-excerpt')).toContainText('--- FAIL: TestGreet')
+
+  // `?` opens the card's Q&A drawer; the answer threads under the card.
+  await page.keyboard.press('?')
+  const qaInput = page.getByTestId('focus-qa-input')
+  await expect(qaInput).toBeFocused()
+  await qaInput.fill('why did it fail?')
+  await qaInput.press('Enter')
+  const answer = page.getByTestId('focus-qa-answer')
+  await expect(answer).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByTestId('focus-qa-entry')).toHaveCount(1)
+  // The answer came from the hidden Q&A session, not the pipeline's.
+  const after = await (await page.request.get(`/v1/focus/pipelines/${encodeURIComponent(id)}`)).json()
+  expect(after.qa_session_id).toBeTruthy()
+  expect(after.qa_turns[failure!.id]).toEqual([1])
+  expect(after.cards).toHaveLength((await pipelineOf(page, id)).cards.length)
+
+  // Promote to instruction fills the stage input as a draft; nothing is sent.
+  await page.getByTestId('focus-qa-promote').click()
+  await expect(page.getByTestId('focus-instruction')).toHaveValue(/^About "Verification failed: sh -c/)
+  expect((await pipelineOf(page, id)).current).toBe('review')
 })
 
 // --- Korean (see e2e/workbench-ko.spec.ts) ---

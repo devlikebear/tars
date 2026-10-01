@@ -89,7 +89,7 @@ func executeChatLoop(
 		}
 	}
 
-	chatResp, err := loop.Run(ctx, state.llmMessages, agent.RunOptions{
+	runOptions := agent.RunOptions{
 		MaxIterations:   deps.maxIters,
 		Tools:           state.injectedSchemas,
 		BlockedTools:    state.blockedTools,
@@ -132,7 +132,13 @@ func executeChatLoop(
 		ClaudeCodePermissionHandler: chatPermissionHandlerFor(deps, state, stream),
 		ClaudeCodePermissionAllow:   chatClaudeCodeAlwaysRules(deps, state),
 		ToolAuthorizer:              chatToolGateFor(deps, state, stream, gateMode),
-	})
+	}
+	if state.unattendedSource != "" {
+		// No console answers this turn's prompts: like a cron turn, the
+		// session's mode decides and questions wait in the ops queue.
+		deps.tooling.Unattended.focusOptions(state.sessionID, state.cwd, state.unattendedSource).apply(&runOptions)
+	}
+	chatResp, err := loop.Run(ctx, state.llmMessages, runOptions)
 	if err != nil {
 		// A CLI provider can fail (timeout, cancel, crash) after saving the
 		// upstream session it started; keep it so the next turn resumes

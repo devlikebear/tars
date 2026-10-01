@@ -57,3 +57,15 @@ test('ChatPanel recovers a dropped turn and re-reads usage when the event stream
   const refresh = src.slice(src.indexOf('const refreshActiveSession'), src.indexOf('stopEventStream = streamEvents'))
   assert.match(refresh, /chatSession\.refreshUsage\(\)/, 'reconnect and refocus re-read the session cost')
 })
+
+test('a focus verification feed leaves no empty assistant bubble; other feeds keep theirs', async () => {
+  const { dropVerificationPlaceholder } = await import('../src/lib/chatTurnRecovery.ts')
+  const messages = [
+    { id: 'u1', role: 'user', text: 'go' },
+    { id: 'resumed', role: 'assistant', text: '' },
+  ]
+  assert.deepEqual(dropVerificationPlaceholder(messages, 'resumed', true).map((m) => m.id), ['u1'])
+  assert.deepEqual(dropVerificationPlaceholder(messages, 'resumed', false).map((m) => m.id), ['u1', 'resumed'])
+  const replied = [{ id: 'resumed', role: 'assistant', text: 'done' }]
+  assert.deepEqual(dropVerificationPlaceholder(replied, 'resumed', true), replied)
+})
