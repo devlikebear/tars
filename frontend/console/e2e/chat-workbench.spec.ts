@@ -234,9 +234,12 @@ test('session health judges a resumed claude-code-cli session by the CLI, a nati
     },
   )
   await page.reload()
-  if (!(await metrics.isVisible())) await healthToggle.click()
-
-  await expect(page.locator('.dock-right')).toContainText('Claude Code CLI manages this context')
+  // The dock restores its panels after load; deciding once could toggle the
+  // health panel shut just as it reopens (slow CI). Retry until it is open.
+  await expect(async () => {
+    if (!(await metrics.isVisible())) await healthToggle.click()
+    await expect(page.locator('.dock-right')).toContainText('Claude Code CLI manages this context', { timeout: 2_000 })
+  }).toPass({ timeout: 20_000 })
   await expect(metrics).toContainText('Permissions')
   await expect(metrics).not.toContainText('Risk tools')
   await expect(page.locator('.dock-right')).not.toContainText('Compact soon')
