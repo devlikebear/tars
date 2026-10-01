@@ -365,3 +365,16 @@ export function planEdits(plan: FocusPlan, edits: { skipped: ReadonlySet<string>
 export function defaultModeRedirect(mode: unknown, route: { view: string }): string | null {
   return mode === 'focus' && route.view === 'board' ? '/console/focus' : null
 }
+
+// --- Deck cursor ---
+
+// deckCursor is the card the deck shows after the deck changed: the pinned
+// card stays on screen while cards reorder under it (being seen moves a
+// card back), and the deck goes to its first card when a new card arrives,
+// the pinned one left, or none is pinned.
+export function deckCursor(known: ReadonlySet<string>, ids: string[], current: string | null): string | null {
+  if (ids.length === 0) return null
+  if (ids.some((id) => !known.has(id))) return ids[0]
+  if (current && ids.includes(current)) return current
+  return ids[0]
+}

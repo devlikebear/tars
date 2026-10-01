@@ -299,3 +299,13 @@ test('a new pipeline sends its goal as the first turn, once', async () => {
   await settle(again)
   assert.equal(fake.state.sent.length, 1)
 })
+
+test('an empty transcript the server answers as null still kicks off the goal', async () => {
+  const fake = fakeApi({ ...pipeline('2026-10-01T00:00:00Z'), goal: 'Ship it' })
+  fake.api.getHistory = async () => null as never
+  const store = newStore(fake)
+  await store.load('s1')
+  await settle(store)
+  assert.deepEqual(fake.state.sent.map((r) => r.message), ['Ship it'])
+  assert.deepEqual(store.history.length >= 0, true)
+})

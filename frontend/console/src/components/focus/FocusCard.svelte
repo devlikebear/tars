@@ -175,7 +175,10 @@
       <pre class="prose-pre" data-content>{pr.body}</pre>
     {:else if card.kind === 'report'}
       {@const r = card.payload as FocusReport | undefined}
-      <p class="prose summary" data-content>{r?.summary ?? card.title}</p>
+      <!-- The title is the summary's first line; show the rest only. -->
+      {#if r?.summary && r.summary.trim() !== card.title}
+        <p class="prose summary" data-content>{r.summary}</p>
+      {/if}
       {#if r?.risks?.length}
         <h4 class="label">{$t.focus.report.risks}</h4>
         <ul class="risks">

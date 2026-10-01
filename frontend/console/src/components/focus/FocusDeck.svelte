@@ -6,7 +6,7 @@
   // leaves the deck hands over to the first one.
   import { untrack } from 'svelte'
   import { t } from '../../i18n'
-  import { acknowledgeable, mustHandle } from '../../lib/focus'
+  import { acknowledgeable, deckCursor, mustHandle } from '../../lib/focus'
   import type { FocusCard as Card, FocusDecision, FocusGateAction, FocusPlan, SessionMessage } from '../../lib/types'
   import FocusCard from './FocusCard.svelte'
   import FocusRawSlice from './FocusRawSlice.svelte'
@@ -28,6 +28,17 @@
 
   let currentId = $state<string | null>(null)
   let showRaw = $state(false)
+  // The ids of the deck last time it changed; a new one moves the deck to
+  // its first card (lib/focus deckCursor).
+  let known = new Set<string>()
+
+  $effect(() => {
+    const ids = cards.map((c) => c.id)
+    untrack(() => {
+      currentId = deckCursor(known, ids, currentId)
+      known = new Set(ids)
+    })
+  })
 
   let index = $derived.by(() => {
     const at = currentId ? cards.findIndex((c) => c.id === currentId) : -1
@@ -55,8 +66,8 @@
   }
 
   function decide(card: Card, decision: string) {
-    // After a card is handled, the deck goes back to the first card, which
-    // is the next one needing attention.
+    // After a card is handled, the deck goes to its first card — the next
+    // one needing attention — once the decision lands.
     currentId = null
     onDecide(card, decision)
   }

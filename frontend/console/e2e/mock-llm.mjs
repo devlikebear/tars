@@ -15,6 +15,14 @@
 // (notes.md), and once the result comes back answers "All written." — a
 // turn that reads text, tool, text (see e2e/turn-order.spec.ts).
 
+//
+// Focus mode (docs/decisions/focus-mode.md) puts the goal in every turn's
+// <focus-stage> guidance, so markers in the goal reach every turn:
+// [e2e:focus-plan] answers a plan-stage turn with a <focus-plan> block, and
+// [e2e:focus-report] answers any later stage with a <focus-report> block
+// that asks one decision — unless the turn is that decision's answer
+// ("question → option"), which gets a report without one.
+
 import { createServer } from 'node:http'
 
 const WRITE3 = '[e2e:write3]'
@@ -66,10 +74,44 @@ function lastUserText(messages) {
   return ''
 }
 
+const FOCUS_PLAN = '[e2e:focus-plan]'
+const FOCUS_REPORT = '[e2e:focus-report]'
+
+function focusReply(text) {
+  const stage = text.match(/<focus-stage>[\s\S]*?current stage: ([a-z_]+)/)?.[1]
+  if (!stage) return null
+  if (stage === 'plan' && text.includes(FOCUS_PLAN)) {
+    const plan = {
+      goal: 'Add a greeting',
+      tasks: [{ title: 'Add greet()', done: 'greet() returns a greeting' }, { title: 'Test greet()', done: 'make test passes' }],
+      stages: ['plan', 'build', 'review', 'pr', 'pr_review', 'merge'],
+      verify: ['make test'],
+      e2e: [],
+      limits: { build: 3, review: 2, pr: 3 },
+    }
+    return `Here is the plan.\n\n<focus-plan>${JSON.stringify(plan)}</focus-plan>`
+  }
+  if (stage !== 'plan' && text.includes(FOCUS_REPORT)) {
+    const typed = text.slice(0, text.indexOf('<focus-stage>'))
+    const answered = typed.includes('→')
+    const report = answered
+      ? { summary: 'Applied the chosen greeting.', risks: [] }
+      : {
+          summary: 'Implemented greet() and its test.',
+          decisions: [{ id: 'd1', question: 'Which greeting should greet() return?', options: ['Hello', 'Hi there'] }],
+          risks: ['The greeting is not localized.'],
+        }
+    return `${answered ? 'Done.' : 'Implemented the greeting.'}\n\n<focus-report>${JSON.stringify(report)}</focus-report>`
+  }
+  return null
+}
+
 // The chat handler wraps the user's text in context blocks; keep only the
 // part after the last blank line, which is what the user typed.
 function replyFor(body) {
   const text = lastUserText(body.messages ?? []).trim()
+  const focus = focusReply(text)
+  if (focus) return focus
   // Review notes (#969) ride after the message; answer the first comment so
   // a spec can see the note arrived.
   if (text.includes('<review-notes>')) {

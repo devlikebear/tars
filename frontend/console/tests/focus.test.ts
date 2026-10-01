@@ -244,3 +244,17 @@ test('defaultModeRedirect lands /console on the focus home only when focus is th
   assert.equal(defaultModeRedirect('focus', { view: 'chat' }), null)
   assert.equal(defaultModeRedirect(undefined, { view: 'board' }), null)
 })
+
+test('deckCursor pins the card on screen and jumps to the first only when a card arrives or leaves', async () => {
+  const { deckCursor } = await import('../src/lib/focus.ts')
+  // Nothing known yet: the first card.
+  assert.equal(deckCursor(new Set(), ['c4', 'c2'], null), 'c4')
+  // c4 marked seen reorders the deck; the cursor stays on c4.
+  assert.equal(deckCursor(new Set(['c4', 'c2']), ['c2', 'c4'], 'c4'), 'c4')
+  // A new card arrives: go to the first (the highest priority).
+  assert.equal(deckCursor(new Set(['c2', 'c4']), ['c5', 'c2', 'c4'], 'c2'), 'c5')
+  // The pinned card left the deck (or none was pinned): the first.
+  assert.equal(deckCursor(new Set(['c2', 'c4']), ['c2'], 'c4'), 'c2')
+  assert.equal(deckCursor(new Set(['c2', 'c4']), ['c4', 'c2'], null), 'c4')
+  assert.equal(deckCursor(new Set(['c2']), [], 'c2'), null)
+})

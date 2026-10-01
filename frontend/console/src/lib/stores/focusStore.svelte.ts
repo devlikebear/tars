@@ -156,7 +156,8 @@ export class FocusStore {
     ])
     if (this.sessionId !== sessionId) return
     this.session = session
-    this.history = history
+    // A session without messages answers `null`.
+    this.history = history ?? []
     await this.refreshChanges()
     this.loading = false
     if (!this.streaming) {
@@ -298,11 +299,11 @@ export class FocusStore {
     if (!sessionId) return
     const [pipeline, history] = await Promise.all([
       this.api.getPipeline(sessionId).catch(() => null),
-      this.api.getHistory(sessionId).catch(() => null),
+      this.api.getHistory(sessionId).then((h) => h ?? []).catch(() => null),
     ])
     if (this.sessionId !== sessionId) return
     if (pipeline) this.adopt(pipeline)
-    if (history) this.history = history
+    if (history !== null) this.history = history ?? []
     await this.refreshChanges()
   }
 
@@ -318,7 +319,7 @@ export class FocusStore {
     } catch {
       return
     }
-    const turns = (list.turns ?? []).filter((t) => t.files > 0 && !t.skipped).slice(-changeTurnLimit)
+    const turns = (list?.turns ?? []).filter((t) => t.files > 0 && !t.skipped).slice(-changeTurnLimit)
     const out: ChangeTurn[] = []
     for (const entry of turns) {
       let diff = this.diffCache.get(entry.turn_id)
