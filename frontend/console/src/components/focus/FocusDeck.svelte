@@ -1,14 +1,16 @@
 <script lang="ts">
   // The card deck (ADR §3, §7): exactly one card at a time, ←/→ to move,
-  // `n / m`, 1–9 to choose a decision option, `o` to view the source turn.
+  // `n / m`, 1–9 to choose a decision option, `o` to view the source turn,
+  // `?` to ask about the card in its Q&A drawer (§8).
   // Informational cards can be acknowledged together. The deck keeps
   // showing the same card while the list changes under it; a card that
   // leaves the deck hands over to the first one.
   import { untrack } from 'svelte'
   import { t } from '../../i18n'
-  import { acknowledgeable, deckCursor, deckOrder, mustHandle } from '../../lib/focus'
+  import { acknowledgeable, deckCursor, deckOrder, mustHandle, type QAEntry } from '../../lib/focus'
   import type { FocusCard as Card, FocusDecision, FocusGateAction, FocusPlan, SessionMessage } from '../../lib/types'
   import FocusCard from './FocusCard.svelte'
+  import FocusQADrawer from './FocusQADrawer.svelte'
   import FocusRawSlice from './FocusRawSlice.svelte'
 
   interface Props {
@@ -22,9 +24,35 @@
     onDecide: (card: Card, decision: string) => void
     onSeen: (card: Card) => void
     onAcknowledgeRest: (cards: Card[]) => void
+    // Q&A about the card on screen; absent hides the drawer.
+    qaThread?: (cardId: string) => QAEntry[]
+    qaAnswering?: string | null
+    qaError?: string
+    onAsk?: (cardId: string, question: string) => Promise<boolean>
+    onPromote?: (card: Card, entry: QAEntry) => void
   }
 
-  let { cards, history, openGate, busy, running, baseDirs = [], onGate, onDecide, onSeen, onAcknowledgeRest }: Props = $props()
+  let {
+    cards,
+    history,
+    openGate,
+    busy,
+    running,
+    baseDirs = [],
+    onGate,
+    onDecide,
+    onSeen,
+    onAcknowledgeRest,
+    qaThread,
+    qaAnswering = null,
+    qaError = '',
+    onAsk,
+    onPromote,
+  }: Props = $props()
+
+  // The drawer stays open across cards once opened; `?` opens and focuses it.
+  let qaOpen = $state(false)
+  let qaInput = $state<HTMLTextAreaElement | null>(null)
 
   let currentId = $state<string | null>(null)
   let showRaw = $state(false)
@@ -96,6 +124,11 @@
     } else if (event.key === 'o' && current) {
       event.preventDefault()
       showRaw = !showRaw
+    } else if (event.key === '?' && current && onAsk) {
+      event.preventDefault()
+      qaOpen = true
+      // The drawer renders its box on open; focus it on the next frame.
+      requestAnimationFrame(() => qaInput?.focus())
     } else if (/^[1-9]$/.test(event.key) && current?.kind === 'decision' && current.state !== 'decided' && !busy) {
       const option = (current.payload as FocusDecision | undefined)?.options?.[Number(event.key) - 1]
       if (option) {
@@ -131,6 +164,21 @@
 
     {#if showRaw}
       <FocusRawSlice {history} turn={current.turn} {baseDirs} />
+    {/if}
+
+    {#if onAsk && qaThread}
+      {@const card = current}
+      <FocusQADrawer
+        cardId={card.id}
+        thread={qaThread(card.id)}
+        answering={qaAnswering === card.id}
+        error={qaError}
+        open={qaOpen}
+        bind:input={qaInput}
+        onToggle={() => { qaOpen = !qaOpen }}
+        onAsk={(question) => onAsk(card.id, question)}
+        onPromote={(entry) => onPromote?.(card, entry)}
+      />
     {/if}
 
     <p class="deck-keys mono">{$t.focus.deck.keys}</p>

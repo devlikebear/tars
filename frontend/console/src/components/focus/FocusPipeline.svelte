@@ -6,7 +6,7 @@
   import { onDestroy, untrack } from 'svelte'
   import { t } from '../../i18n'
   import * as api from '../../lib/api'
-  import { pipelinePhase, stepperItems } from '../../lib/focus'
+  import { pipelinePhase, promoteDraft, stepperItems, type QAEntry } from '../../lib/focus'
   import { shortCwdLabel } from '../../lib/sessionLabels'
   import { FocusStore } from '../../lib/stores/focusStore.svelte'
   import type { FocusCard, FocusGateAction, FocusPlan, FocusStageId } from '../../lib/types'
@@ -33,6 +33,7 @@
     card: api.focusCard,
     advance: api.focusAdvance,
     stop: api.focusStop,
+    ask: api.askFocusQuestion,
     activity: api.getChatActivity,
   }, typeof localStorage === 'undefined' ? null : localStorage)
 
@@ -51,6 +52,7 @@
   })
 
   let instruction = $state('')
+  let instructionBox = $state<HTMLTextAreaElement | null>(null)
   let menuOpen = $state(false)
   // The pipeline graph under the stage bar (ADR §9 P5).
   let showGraph = $state(false)
@@ -77,6 +79,17 @@
 
   function onDecide(card: FocusCard, decision: string) {
     void store.markCard(card.id, 'decided', decision)
+  }
+
+  // Promote to instruction (ADR §8): the answer becomes a draft in the stage
+  // input; the developer edits it and sends it.
+  function promote(card: FocusCard, entry: QAEntry) {
+    const draft = promoteDraft(card.title, entry, $t.focus.qa)
+    instruction = instruction.trim() ? `${instruction.trimEnd()}\n\n${draft}` : draft
+    requestAnimationFrame(() => {
+      instructionBox?.focus()
+      instructionBox?.setSelectionRange(instruction.length, instruction.length)
+    })
   }
 
   async function sendInstruction() {
@@ -189,6 +202,10 @@
     <!-- A running turn shows one line above the deck; the cards stay. -->
     {#if progress}
       <p class="progress-line mono" role="status" data-testid="focus-progress"><span class="pulse" aria-hidden="true"></span>{progress}</p>
+      {#if store.nextPrompt}
+        <!-- The turn the server sent for the pipeline: shown, not editable. -->
+        <p class="next-line" data-testid="focus-next-prompt"><span class="label">{$t.focus.progress.next}</span> <span data-content>{store.nextPrompt}</span></p>
+      {/if}
     {/if}
 
     <FocusDeck
@@ -202,6 +219,11 @@
       {onDecide}
       onSeen={(card) => void store.markSeen(card)}
       onAcknowledgeRest={(cards) => void store.acknowledgeRest(cards)}
+      qaThread={(id) => store.qaThread(id)}
+      qaAnswering={store.qaPending?.cardId ?? null}
+      qaError={store.qaError}
+      onAsk={(id, question) => store.ask(id, question)}
+      onPromote={promote}
     />
 
 
@@ -210,6 +232,7 @@
       <div class="instruction-row">
         <textarea
           id="focus-instruction"
+          bind:this={instructionBox}
           rows="2"
           bind:value={instruction}
           placeholder={$t.focus.screen.instructionPlaceholder}
@@ -375,6 +398,15 @@
     margin: 0;
     font-size: var(--text-sm);
     color: var(--text-secondary);
+  }
+
+  .next-line {
+    margin: 0;
+    font-size: var(--text-xs);
+    color: var(--text-tertiary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .pulse {

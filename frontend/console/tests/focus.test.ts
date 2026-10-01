@@ -10,6 +10,8 @@ import {
   pipelinePhase,
   planEdits,
   progressLine,
+  promoteDraft,
+  qaThreads,
   stepperItems,
   stripFocusBlocks,
   stripFocusStage,
@@ -331,4 +333,48 @@ test('routes: /console/focus/release is the release train, not a session', async
   assert.deepEqual(resolveRoute('/console/focus/release'), { view: 'focus', release: true })
   assert.deepEqual(resolveRoute('/console/focus/release/'), { view: 'focus', release: true })
   assert.deepEqual(resolveRoute('/console/focus/releases'), { view: 'focus', sessionId: 'releases' })
+})
+
+test('progressLine shows the verification step the driver streams', () => {
+  const events: ChatEvent[] = [
+    { type: 'status', phase: 'stream_open' },
+    { type: 'focus_progress', phase: 'verifying', command: 'make test', index: 1, total: 2 },
+  ]
+  assert.equal(progressLine(events, { stage: 'build' }), 'Implementing · verifying make test (1/2)')
+  // Between commands the last one finished; the next one is announced.
+  events.push({ type: 'focus_progress', phase: 'verified', command: 'make test', index: 1, total: 2, passed: false, exit_code: 1 })
+  assert.equal(progressLine(events, { stage: 'build' }), 'Implementing · verifying (1/2 done)')
+  events.push({ type: 'focus_progress', phase: 'verifying', command: 'npm run check', index: 2, total: 2 })
+  assert.equal(progressLine(events, { stage: 'build', text: focusKo.progress }), '구현 중 · npm run check 검증 중 (2/2)')
+})
+
+const qaHistory: SessionMessage[] = [
+  { id: 'u1', role: 'user', content: 'why make test?\n\n<console-context>\nCard c1 …\n</console-context>', timestamp: '' },
+  { id: 't1', role: 'tool', content: 'read', timestamp: '' },
+  { id: 'a1', role: 'assistant', content: 'Because it covers the parser.', timestamp: '' },
+  { id: 'u2', role: 'user', content: 'and c2?\n\n<console-context>\nCard c2\n</console-context>', timestamp: '' },
+  { id: 'a2', role: 'assistant', content: 'It is a notice.', timestamp: '' },
+  { id: 'u3', role: 'user', content: 'and the e2e?\n\n<console-context>\nCard c1\n</console-context>', timestamp: '' },
+]
+
+test('qaThreads threads Q&A turns by card, without the hidden context', () => {
+  const threads = qaThreads(qaHistory, { c1: [1, 3], c2: [2] })
+  assert.deepEqual(threads.c1, [
+    { turn: 1, question: 'why make test?', answer: 'Because it covers the parser.' },
+    // The last question is still being answered.
+    { turn: 3, question: 'and the e2e?', answer: '' },
+  ])
+  assert.deepEqual(threads.c2, [{ turn: 2, question: 'and c2?', answer: 'It is a notice.' }])
+  assert.deepEqual(qaThreads(qaHistory, undefined), {})
+  // A turn the history does not have yet (the answer is still streaming)
+  // is left out until it is read.
+  assert.deepEqual(qaThreads(qaHistory, { c3: [9] }), { c3: [] })
+})
+
+test('promoteDraft turns an answer into an editable instruction draft', () => {
+  const draft = promoteDraft('Verification failed: make test (exit 1)', { turn: 1, question: 'why?', answer: 'The fixture path is absolute.\n\nMore detail here.' })
+  assert.equal(draft, 'About "Verification failed: make test (exit 1)": The fixture path is absolute.\n\nMore detail here.')
+  const long = promoteDraft('t', { turn: 1, question: 'q', answer: 'x'.repeat(2000) })
+  assert.ok(long.length < 1300 && long.endsWith('…'))
+  assert.equal(promoteDraft('t', { turn: 1, question: 'q', answer: '  ' }, focusKo.qa), '"t" 관련: ')
 })

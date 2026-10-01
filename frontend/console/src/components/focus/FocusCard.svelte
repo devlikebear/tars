@@ -1,10 +1,12 @@
 <script lang="ts">
-  // One card of the deck (ADR §7) and its actions: a gate (G1 plan; later
-  // gates approve / request changes / stop), a decision (option buttons or a
+  // One card of the deck (ADR §7) and its actions: a gate (G1 plan; the
+  // blocked gate retry / instruct / stop; later gates approve / request
+  // changes / stop), a decision (option buttons or a
   // free answer), a finding (fix / dismiss), and the informational cards —
   // verification failure, report, change, notice — which are acknowledged.
   import { t } from '../../i18n'
   import type {
+    FocusBlocked,
     FocusCard,
     FocusChangePayload,
     FocusDecision,
@@ -33,13 +35,31 @@
   let note = $state('')
 
   let decided = $derived(card.state === 'decided')
-  let title = $derived(card.kind === 'gate' && card.stage === 'plan' ? $t.focus.gate.planTitle : card.title)
+  let isBlocked = $derived(card.kind === 'gate' && isBlockedPayload(card.payload))
+  let title = $derived(card.kind === 'gate' && card.stage === 'plan' ? $t.focus.gate.planTitle : isBlocked ? $t.focus.gate.blockedTitle : card.title)
   // The open gate's card is the newest undecided gate card.
   let gateOpen = $derived(card.kind === 'gate' && !decided && !!openGate)
   let isPRDraft = $derived(card.kind === 'report' && isDraft(card.payload))
 
   function isDraft(payload: unknown): payload is FocusPRDraft {
     return !!payload && typeof payload === 'object' && 'body' in payload && !('summary' in payload)
+  }
+
+  function isBlockedPayload(payload: unknown): payload is FocusBlocked {
+    return !!payload && typeof payload === 'object' && typeof (payload as FocusBlocked).reason === 'string'
+  }
+
+  function blockedReason(b: FocusBlocked): string {
+    switch (b.reason) {
+      case 'limit':
+        return $t.focus.gate.blockedReason.limit(b.iteration, b.limit)
+      case 'repeated':
+        return $t.focus.gate.blockedReason.repeated
+      case 'no_progress':
+        return $t.focus.gate.blockedReason.no_progress
+      default:
+        return b.reason
+    }
   }
 
   function asPlan(payload: unknown): FocusPlan | null {
@@ -51,13 +71,16 @@
     return Array.isArray(errors) ? errors.filter((e): e is string => typeof e === 'string') : []
   }
 
-  // Facts of a verification failure (P2): command, exit code, excerpt.
-  function failureFacts(payload: unknown): { command: string; exit: string; excerpt: string } {
+  // Facts of a verification failure (P2): command, exit code, excerpt, and
+  // the build round it ended.
+  function failureFacts(payload: unknown): { command: string; exit: string; excerpt: string; timedOut: boolean; round: number } {
     const p = (payload ?? {}) as Record<string, unknown>
     return {
       command: typeof p.command === 'string' ? p.command : '',
       exit: p.exit_code !== undefined ? String(p.exit_code) : '',
       excerpt: typeof p.excerpt === 'string' ? p.excerpt : typeof p.output === 'string' ? p.output : '',
+      timedOut: p.timed_out === true,
+      round: typeof p.iteration === 'number' ? p.iteration : 0,
     }
   }
 
@@ -76,6 +99,10 @@
         return $t.focus.gate.requestChanges
       case 'stop':
         return $t.focus.gate.stop
+      case 'retry':
+        return $t.focus.gate.retry
+      case 'instruct':
+        return $t.focus.gate.instruct
       case 'acknowledged':
         return $t.focus.card.acknowledged
       case 'fix':
@@ -111,6 +138,29 @@
           onRequestChanges={(text) => onGate('plan', 'request_changes', text)}
           onStop={() => onGate('plan', 'stop')}
         />
+      {:else if isBlocked}
+        {@const b = card.payload as FocusBlocked}
+        <p class="prose" data-testid="focus-blocked-reason">{blockedReason(b)}</p>
+        {#if b.failure}
+          {@const f = failureFacts(b.failure)}
+          {#if f.command}<p class="mono" data-content>$ {f.command}{f.timedOut ? ` → ${$t.focus.failure.timedOut}` : f.exit ? ` → ${f.exit}` : ''}</p>{/if}
+          {#if f.excerpt}<pre class="mono" data-content>{f.excerpt}</pre>{/if}
+        {/if}
+        {#if gateOpen && openGate === 'blocked'}
+          {#if asking}
+            <textarea rows="3" bind:value={note} placeholder={$t.focus.gate.instructPlaceholder} disabled={busy} data-testid="focus-blocked-note"></textarea>
+            <div class="actions">
+              <button type="button" class="btn btn-primary btn-sm" disabled={busy || !note.trim()} onclick={() => onGate('blocked', 'instruct', note.trim())} data-testid="focus-blocked-send">{$t.focus.gate.sendInstruct}</button>
+              <button type="button" class="btn btn-ghost btn-sm" onclick={() => { asking = false }}>{$t.focus.gate.cancel}</button>
+            </div>
+          {:else}
+            <div class="actions">
+              <button type="button" class="btn btn-primary" disabled={busy} onclick={() => onGate('blocked', 'retry')} data-testid="focus-blocked-retry">{$t.focus.gate.retry}</button>
+              <button type="button" class="btn btn-secondary" disabled={busy} onclick={() => { asking = true }} data-testid="focus-blocked-instruct">{$t.focus.gate.instruct}</button>
+              <button type="button" class="btn btn-danger" disabled={busy} onclick={() => onGate('blocked', 'stop')}>{$t.focus.gate.stop}</button>
+            </div>
+          {/if}
+        {/if}
       {:else if gateOpen}
         {#if asking}
           <textarea rows="3" bind:value={note} placeholder={$t.focus.gate.notePlaceholder} disabled={busy}></textarea>
@@ -168,8 +218,9 @@
       {/if}
     {:else if card.kind === 'failure'}
       {@const f = failureFacts(card.payload)}
-      {#if f.command}<p class="mono" data-content>$ {f.command}{f.exit ? ` → ${f.exit}` : ''}</p>{/if}
-      {#if f.excerpt}<pre class="mono" data-content>{f.excerpt}</pre>{/if}
+      {#if f.command}<p class="mono" data-content>$ {f.command}{f.timedOut ? ` → ${$t.focus.failure.timedOut}` : f.exit ? ` → ${f.exit}` : ''}</p>{/if}
+      {#if f.round}<p class="muted">{$t.focus.failure.round(f.round)}</p>{/if}
+      {#if f.excerpt}<pre class="mono" data-content data-testid="focus-failure-excerpt">{f.excerpt}</pre>{/if}
     {:else if card.kind === 'report' && isPRDraft}
       {@const pr = card.payload as FocusPRDraft}
       <h4 class="label">{$t.focus.report.prTitle}</h4>

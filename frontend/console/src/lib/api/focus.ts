@@ -6,6 +6,7 @@ import type {
   FocusListItem,
   FocusPipeline,
   FocusPlan,
+  FocusQAResult,
   FocusStageId,
   ReleaseTrain,
 } from '../types'
@@ -106,4 +107,14 @@ export function focusStop(sessionId: string): Promise<FocusActionResult> {
 
 export function getReleaseTrain(): Promise<ReleaseTrain> {
   return requestJSON<ReleaseTrain>('/v1/focus/release-train')
+}
+
+// askFocusQuestion asks the pipeline's Q&A session about one card (ADR §8).
+// The answer streams on GET /v1/chat/stream?session_id=<qa_session_id>.
+export function askFocusQuestion(sessionId: string, cardId: string, question: string): Promise<FocusQAResult> {
+  return requestJSON<FocusQAResult>(`${pipelinePath(sessionId)}/qa`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ card_id: cardId, question }),
+  })
 }

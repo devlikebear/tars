@@ -3,6 +3,7 @@
 // turn, folding the hidden <focus-*> blocks out of chat text, and mapping
 // cards back to the transcript turn they came from. Tested under Node.
 import { focusEn, type FocusTranslations } from '../i18n/sections/focus.ts'
+import { userVisibleText } from './consoleContext.ts'
 import type {
   ChatEvent,
   FocusCard,
@@ -152,8 +153,13 @@ export function progressLine(
   const running = new Map<string, RunningTool>()
   let waiting = false
   let last: 'writing' | 'thinking' | '' = ''
+  // The focus driver's verification step (P2), when the feed is one.
+  let verify: ChatEvent | null = null
   for (const event of events) {
     switch (event.type) {
+      case 'focus_progress':
+        verify = event
+        break
       case 'turn_started':
         running.clear()
         waiting = false
@@ -202,7 +208,11 @@ export function progressLine(
   const parts = [options.stage ? text.stages[options.stage] : text.working]
   const changed = Math.max(files.size, checkpointFiles)
   if (changed > 0) parts.push(text.filesChanged(changed))
-  if (waiting) {
+  if (verify) {
+    const at = verify.index ?? 0
+    const of = verify.total ?? 0
+    parts.push(verify.phase === 'verifying' ? text.verifying(verify.command ?? '', at, of) : text.verified(at, of))
+  } else if (waiting) {
     parts.push(text.waiting)
   } else if (running.size > 0) {
     parts.push(describeTool([...running.values()].at(-1)!, text))
@@ -210,6 +220,44 @@ export function progressLine(
     parts.push(text[last])
   }
   return parts.join(' · ')
+}
+
+// --- Q&A (ADR §8) ---
+
+// One question about a card and its answer ('' while it is being answered).
+export type QAEntry = { turn: number; question: string; answer: string }
+
+// qaThreads threads the Q&A session's transcript by card: qaTurns maps a
+// card id to the 1-based user turns asked about it. The question shows as
+// the developer typed it, without the card context the server added; the
+// answer is the turn's last assistant reply. Turns the history does not
+// have yet are left out.
+export function qaThreads(history: SessionMessage[], qaTurns: Record<string, number[]> | undefined): Record<string, QAEntry[]> {
+  const turns = new Map<number, QAEntry>()
+  let turn = 0
+  for (const m of history) {
+    if (m.role === 'user') {
+      turn++
+      turns.set(turn, { turn, question: userVisibleText(m.content).trim(), answer: '' })
+    } else if (m.role === 'assistant' && turn > 0 && m.content.trim()) {
+      turns.get(turn)!.answer = m.content.trim()
+    }
+  }
+  const out: Record<string, QAEntry[]> = {}
+  for (const [cardId, list] of Object.entries(qaTurns ?? {})) {
+    out[cardId] = list.map((n) => turns.get(n)).filter((e): e is QAEntry => !!e)
+  }
+  return out
+}
+
+const promoteAnswerChars = 1200
+
+// promoteDraft is the stage instruction an answer becomes when promoted:
+// the developer edits it before sending (ADR §8).
+export function promoteDraft(cardTitle: string, entry: QAEntry, text: FocusTranslations['qa'] = focusEn.qa): string {
+  let answer = entry.answer.trim()
+  if (answer.length > promoteAnswerChars) answer = answer.slice(0, promoteAnswerChars - 1).trimEnd() + '…'
+  return text.promoteDraft(cardTitle, answer)
 }
 
 // --- Hidden blocks ---
