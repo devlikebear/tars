@@ -215,6 +215,9 @@ func Schema() []FieldMeta {
 		f("channels_telegram_polling_enabled", "Channels", "bool", "Telegram Polling", "Enable Telegram long-polling for updates"),
 		fs("telegram_bot_token", "Channels", "Telegram Bot Token", "Bot token from @BotFather", true),
 
+		// ── Console ──────────────────────────────
+		fsel("console_default_mode", "Console", "Default Mode", "Console mode /console opens in: focus (development pipeline) or advanced (workbench); empty means advanced", []string{ConsoleModeAdvanced, ConsoleModeFocus}),
+
 		// ── Companion ────────────────────────────
 		f("companion_enabled", "Companion", "bool", "Enabled", "Show the floating TARS companion in the Console"),
 
@@ -587,6 +590,9 @@ func extractValue(yamlKey string, cfg Config) any {
 		return cfg.ChannelsTelegramPollingEnabled
 	case "telegram_bot_token":
 		return cfg.TelegramBotToken
+	// Console
+	case "console_default_mode":
+		return cfg.Console.DefaultMode
 	// Companion
 	case "companion_enabled":
 		return cfg.Companion.Enabled

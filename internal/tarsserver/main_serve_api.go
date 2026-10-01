@@ -70,6 +70,7 @@ type apiRouteHandlers struct {
 	checkpoints     http.Handler
 	worktrees       http.Handler
 	sessionFolders  http.Handler
+	focus           http.Handler
 	permissionMode  http.Handler
 	work            http.Handler
 	workers         http.Handler
@@ -468,7 +469,13 @@ func buildAPIMux(
 	chatTooling.OverrideService = overrideService
 	checkpointStore := openCheckpointStore(cfg.WorkspaceDir, logger)
 	chatTooling.Checkpoints = checkpointStore
-	attachCheckpointCleanup(checkpointStore, sessionStore, logger)
+	// The session store has one delete hook: everything kept beside a
+	// session goes with it through this chain.
+	attachSessionDeleteHooks(sessionStore,
+		checkpointCleanup(checkpointStore, sessionStore, logger),
+		focusPipelineCleanup(sessionStore, logger),
+	)
+	go sweepOrphanFocusPipelines(sessionStore, logger)
 	chatTooling.Notify = dispatcher.Emit
 	chatTooling.SessionCosts = sessionCostsFrom(deps.usageTracker)
 
@@ -712,6 +719,7 @@ func buildAPIMux(
 		sessions:       withWorktreeRetire(withSessionCreateIn(sessionHandler, sessionWorktrees), sessionWorktrees),
 		worktrees:      newSessionWorktreeHandler(sessionWorktrees),
 		sessionFolders: newSessionFoldersHandler(sessionWorktrees),
+		focus:          newFocusPipelineHandler(sessionStore, sessionWorktrees, logger),
 		checkpoints:    newCheckpointAPIHandler(checkpointStore, sessionStore, logger),
 		permissionMode: newPermissionModeHandler(sessionStore,
 			chatPermissionModeResolver{overrides: overrideService, configFlag: strings.TrimSpace(cfg.ClaudeCodeCLIPermissionMode)},
@@ -830,6 +838,10 @@ func registerAPIRoutes(mux *http.ServeMux, handlers apiRouteHandlers) {
 	}
 	if handlers.sessionFolders != nil {
 		mux.Handle("/v1/admin/session-folders", handlers.sessionFolders)
+	}
+	if handlers.focus != nil {
+		mux.Handle("/v1/focus/pipelines", handlers.focus)
+		mux.Handle("/v1/focus/pipelines/", handlers.focus)
 	}
 	if handlers.permissionMode != nil {
 		mux.Handle("/v1/admin/sessions/{id}/permission-mode", handlers.permissionMode)

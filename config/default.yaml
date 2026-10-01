@@ -100,6 +100,10 @@ work_ledger:
       poll_milliseconds: 2000
       max_poll_seconds: 1800
 
+console:
+  # focus | advanced; empty means advanced.
+  default_mode: ""
+
 companion:
   enabled: true
 

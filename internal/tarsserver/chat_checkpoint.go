@@ -59,20 +59,43 @@ func endChatCheckpoint(ctx context.Context, turn *checkpoint.Turn, stream *chatS
 	stream.checkpoint(entry)
 }
 
-// attachCheckpointCleanup drops a session's checkpoints when the session is
-// deleted, and sweeps out checkpoints of sessions that are already gone.
-func attachCheckpointCleanup(store *checkpoint.Store, sessions *session.Store, logger zerolog.Logger) {
-	if store == nil || sessions == nil {
+// attachSessionDeleteHooks installs hooks as the session store's one delete
+// hook, run in order. Nil hooks are skipped.
+func attachSessionDeleteHooks(sessions *session.Store, hooks ...func(sessionID string)) {
+	if sessions == nil {
+		return
+	}
+	live := make([]func(string), 0, len(hooks))
+	for _, h := range hooks {
+		if h != nil {
+			live = append(live, h)
+		}
+	}
+	if len(live) == 0 {
 		return
 	}
 	sessions.SetDeleteHook(func(sessionID string) {
+		for _, h := range live {
+			h(sessionID)
+		}
+	})
+}
+
+// checkpointCleanup returns the delete hook that drops a deleted session's
+// checkpoints, and sweeps out checkpoints of sessions that are already gone.
+// It returns nil without a checkpoint store.
+func checkpointCleanup(store *checkpoint.Store, sessions *session.Store, logger zerolog.Logger) func(string) {
+	if store == nil || sessions == nil {
+		return nil
+	}
+	hook := func(sessionID string) {
 		// The hook runs under the session index lock; git work does not.
 		go func() {
 			if err := store.DropSession(context.Background(), sessionID); err != nil {
 				logger.Warn().Err(err).Str("session_id", sessionID).Msg("checkpoint: drop deleted session failed")
 			}
 		}()
-	})
+	}
 	go func() {
 		all, err := sessions.ListAll()
 		if err != nil {
@@ -96,6 +119,7 @@ func attachCheckpointCleanup(store *checkpoint.Store, sessions *session.Store, l
 			logger.Warn().Err(err).Msg("checkpoint: sweep failed")
 		}
 	}()
+	return hook
 }
 
 // foldPathCase is set where volumes are case-insensitive by default.

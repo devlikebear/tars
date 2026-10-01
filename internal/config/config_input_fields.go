@@ -164,6 +164,7 @@ var configInputFields = []configInputField{
 	stringField("channels_telegram_dm_policy", []string{"CHANNELS_TELEGRAM_DM_POLICY", "TARS_CHANNELS_TELEGRAM_DM_POLICY"}, func(cfg *Config) *string { return &cfg.ChannelsTelegramDMPolicy }, lowerTrimmedString),
 	boolField("channels_telegram_polling_enabled", []string{"CHANNELS_TELEGRAM_POLLING_ENABLED", "TARS_CHANNELS_TELEGRAM_POLLING_ENABLED"}, func(cfg *Config) *bool { return &cfg.ChannelsTelegramPollingEnabled }),
 	stringField("telegram_bot_token", []string{"TELEGRAM_BOT_TOKEN", "TARS_TELEGRAM_BOT_TOKEN"}, func(cfg *Config) *string { return &cfg.TelegramBotToken }, strings.TrimSpace),
+	withYAMLPath(stringField("console_default_mode", []string{"CONSOLE_DEFAULT_MODE", "TARS_CONSOLE_DEFAULT_MODE"}, func(cfg *Config) *string { return &cfg.Console.DefaultMode }, consoleModeString), "console.default_mode"),
 	withYAMLPath(companionEnabledField("companion_enabled", []string{"COMPANION_ENABLED", "TARS_COMPANION_ENABLED"}), "companion.enabled"),
 	withYAMLPath(boolField("embodiment_enabled", []string{"EMBODIMENT_ENABLED", "TARS_EMBODIMENT_ENABLED"}, func(cfg *Config) *bool { return &cfg.Embodiment.Enabled }), "embodiment.enabled"),
 	withYAMLPath(embodimentProvidersField("embodiment_providers_json", []string{"EMBODIMENT_PROVIDERS_JSON", "TARS_EMBODIMENT_PROVIDERS_JSON"}), "embodiment.providers"),
@@ -474,6 +475,23 @@ func cloneUsagePriceOverrides(src map[string]UsagePrice) map[string]UsagePrice {
 
 func identityString(value string) string {
 	return value
+}
+
+// Console modes accepted by console_default_mode.
+const (
+	ConsoleModeFocus    = "focus"
+	ConsoleModeAdvanced = "advanced"
+)
+
+// consoleModeString keeps a known console mode, lower-cased; anything else
+// becomes empty, which the console reads as advanced.
+func consoleModeString(value string) string {
+	switch mode := lowerTrimmedString(value); mode {
+	case ConsoleModeFocus, ConsoleModeAdvanced:
+		return mode
+	default:
+		return ""
+	}
 }
 
 func lowerTrimmedString(value string) string {

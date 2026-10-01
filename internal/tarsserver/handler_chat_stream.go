@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/devlikebear/tars/internal/checkpoint"
+	"github.com/devlikebear/tars/internal/focuspipeline"
 	"github.com/devlikebear/tars/internal/llm"
 	"github.com/devlikebear/tars/internal/session"
 	"github.com/devlikebear/tars/internal/tool"
@@ -297,6 +298,17 @@ func (s *chatStreamWriter) checkpoint(entry checkpoint.Entry) {
 		"additions":       entry.Additions,
 		"deletions":       entry.Deletions,
 		"skipped":         entry.Skipped,
+	})
+}
+
+// pipeline reports the session's focus pipeline after a turn changed it, with
+// the turn the server suggests sending next (empty when none).
+func (s *chatStreamWriter) pipeline(p focuspipeline.Pipeline, nextPrompt string) {
+	s.send(map[string]any{
+		"type":        "pipeline",
+		"session_id":  s.sessionID,
+		"pipeline":    p,
+		"next_prompt": nextPrompt,
 	})
 }
 

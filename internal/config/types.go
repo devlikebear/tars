@@ -344,6 +344,15 @@ type ChannelConfig struct {
 	TelegramBotToken               string
 }
 
+// ConsoleConfig holds console-wide settings the browser console and the
+// desktop shell both read.
+type ConsoleConfig struct {
+	// DefaultMode is the console mode /console opens in: "focus" or
+	// "advanced". Empty means advanced, so existing installs keep the
+	// workbench until they opt in.
+	DefaultMode string
+}
+
 type CompanionConfig struct {
 	Enabled    bool
 	enabledSet bool
@@ -424,6 +433,7 @@ type Config struct {
 	WorkLedger WorkLedgerConfig
 	ChannelConfig
 	Companion  CompanionConfig
+	Console    ConsoleConfig
 	Embodiment EmbodimentConfig
 	Initiative InitiativeConfig
 	Jev        JevConfig
