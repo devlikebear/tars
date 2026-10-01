@@ -214,50 +214,94 @@ export function progressLine(
 
 // --- Hidden blocks ---
 
-const stageBlock = /\s*<focus-stage>[\s\S]*?<\/focus-stage>/g
+const stageOpen = '<focus-stage>'
+const stageClose = '</focus-stage>'
 
 // stripFocusStage takes the server's stage guidance off a stored user
-// message, leaving what the developer (or the console) typed.
+// message: only the block the server appends, the trailing
+// "\n\n<focus-stage>\n…</focus-stage>" (like splitReviewNotes). The user's
+// own mention of the tag stays.
 export function stripFocusStage(text: string): string {
-  if (!text.includes('<focus-stage>')) return text
-  return text.replace(stageBlock, '').trimEnd()
+  const trimmed = text.trimEnd()
+  if (!trimmed.endsWith(stageClose)) return text
+  const at = trimmed.lastIndexOf(`\n\n${stageOpen}\n`)
+  if (at >= 0) return trimmed.slice(0, at)
+  // A turn of guidance alone (an empty message).
+  return trimmed.trimStart().startsWith(`${stageOpen}\n`) && trimmed.indexOf(stageOpen) === trimmed.lastIndexOf(stageOpen) ? '' : text
 }
 
-const focusBlock = /<focus-(plan|report|findings|pr|stage)>[\s\S]*?<\/focus-\1>/g
-const openBlock = /<focus-(plan|report|findings|pr|stage)>[\s\S]*$/
-const partialTag = /<focus-[a-z_]*$/
-const fenceLine = /^\s*(```|~~~)/
+const tagPattern = /<(\/?)focus-([a-z_]+)>/g
+const partialTag = /<(?:\/?(?:f(?:o(?:c(?:u(?:s(?:-[a-z_]*)?)?)?)?)?)?)?$/
+
+// unfencedSegments are the [start, end) spans outside ``` fences, as the
+// server's parser sees them; text after an unclosed fence is not one.
+function unfencedSegments(text: string): [number, number][] {
+  const segs: [number, number][] = []
+  let inFence = false
+  let segStart = 0
+  let pos = 0
+  while (pos <= text.length) {
+    const lineEnd = text.indexOf('\n', pos)
+    const line = lineEnd >= 0 ? text.slice(pos, lineEnd) : text.slice(pos)
+    const next = lineEnd >= 0 ? lineEnd + 1 : text.length + 1
+    if (line.trim().startsWith('```')) {
+      if (inFence) segStart = Math.min(next, text.length)
+      else segs.push([segStart, pos])
+      inFence = !inFence
+    }
+    pos = next
+  }
+  if (!inFence) segs.push([segStart, text.length])
+  return segs
+}
 
 // stripFocusBlocks folds the <focus-*> blocks out of assistant text so a
-// bubble shows only the prose. A block still streaming (no close tag yet) is
-// hidden to the end. Text inside code fences — a reply quoting the format —
-// is left alone, as the server's parser ignores it too.
-export function stripFocusBlocks(text: string): string {
-  if (!text.includes('<focus-')) return text
-  const lines = text.split('\n')
-  const out: string[] = []
-  let chunk: string[] = []
-  let fenced = false
-  const flush = (last: boolean) => {
-    if (chunk.length === 0) return
-    let joined = chunk.join('\n').replace(focusBlock, '')
-    if (last) joined = joined.replace(openBlock, '').replace(partialTag, '')
-    out.push(joined)
-    chunk = []
-  }
-  for (const line of lines) {
-    if (fenceLine.test(line)) {
-      if (!fenced) flush(false)
-      fenced = !fenced
-      out.push(line)
-      continue
+// bubble shows only the prose. It pairs tags as the server's scanBlocks
+// does — a close tag closes the nearest preceding open tag of its kind — so
+// a mention of a tag before or after the real block stays, as does anything
+// inside code fences. While the message is still streaming, a block opened
+// but not yet closed is hidden to the end.
+export function stripFocusBlocks(text: string, options: { streaming?: boolean } = {}): string {
+  if (!text.includes('<focus-') && !options.streaming) return text
+  const spans: [number, number][] = []
+  let tailOpen = -1
+  for (const [segStart, segEnd] of unfencedSegments(text)) {
+    const part = text.slice(segStart, segEnd)
+    let openTag = ''
+    let openStart = -1
+    for (const m of part.matchAll(tagPattern)) {
+      const tag = m[2]
+      if (m[1] === '') {
+        openTag = tag
+        openStart = m.index
+        continue
+      }
+      if (openStart < 0 || tag !== openTag) continue
+      spans.push([segStart + openStart, segStart + m.index + m[0].length])
+      openTag = ''
+      openStart = -1
     }
-    if (fenced) out.push(line)
-    else chunk.push(line)
+    if (segEnd === text.length && openStart >= 0) tailOpen = segStart + openStart
   }
-  flush(true)
-  const result = out.join('\n')
-  return result === text ? text : result.trimEnd()
+  let end = text.length
+  if (options.streaming) {
+    if (tailOpen >= 0) {
+      end = tailOpen
+    } else {
+      const partial = text.match(partialTag)
+      if (partial && partial[0].length > 1) end = text.length - partial[0].length
+    }
+  }
+  if (spans.length === 0 && end === text.length) return text
+  let out = ''
+  let last = 0
+  for (const [from, to] of spans) {
+    if (from >= end) break
+    out += text.slice(last, from)
+    last = to
+  }
+  out += text.slice(last, Math.max(last, end))
+  return out.replace(/\n{3,}/g, '\n\n').trim()
 }
 
 // --- Transcript turns ---

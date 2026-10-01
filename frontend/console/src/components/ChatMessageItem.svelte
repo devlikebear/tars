@@ -33,11 +33,14 @@
     onCopy: (text: string) => void
     onForkMessage?: (message: ChatMessage) => void
     streamingStatus?: StreamingStatus | null
+    // The reply is still streaming: a focus block opened but not closed yet
+    // is hidden until it closes.
+    streaming?: boolean
     // The session's folders (toolBaseDirs): tool card paths inside show relative.
     toolBaseDir?: readonly string[]
   }
 
-  let { message, artifacts, onArtifactOpen, onCopy, onForkMessage, streamingStatus, toolBaseDir }: Props = $props()
+  let { message, artifacts, onArtifactOpen, onCopy, onForkMessage, streamingStatus, streaming = false, toolBaseDir }: Props = $props()
 
   let nowMs = $state(Date.now())
 
@@ -52,7 +55,7 @@
 
   // Focus mode's hidden blocks (<focus-plan> and the rest) never show in a
   // reply; copying takes what is shown.
-  let replyText = $derived(message.role === 'assistant' ? stripFocusBlocks(message.text) : message.text)
+  let replyText = $derived(message.role === 'assistant' ? stripFocusBlocks(message.text, { streaming }) : message.text)
   let tone = $derived(message.role === 'tool' ? toolCallTone(message) : 'done')
   let elapsedLabel = $derived(formatElapsedSeconds(message.toolStartedAt, message.toolFinishedAt, nowMs))
   let invocationPreview = $derived(formatToolInvocationPreview(message.toolName, message.toolArgs, toolBaseDir))

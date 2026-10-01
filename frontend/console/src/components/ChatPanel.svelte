@@ -260,6 +260,15 @@
     return ''
   })
 
+  // The reply bubble a running turn is still writing into.
+  let liveAssistantId = $derived.by(() => {
+    if (!chatBusy) return ''
+    for (let i = chatMessages.length - 1; i >= 0; i--) {
+      if (chatMessages[i].role === 'assistant') return chatMessages[i].id
+    }
+    return ''
+  })
+
   let streamingStatus = $derived.by(() => {
     if (!chatBusy || !chatStatusLine) return null
     return {
@@ -1614,6 +1623,7 @@
           onCopy={copyMessageText}
           onForkMessage={handleForkMessage}
           streamingStatus={msg.id === streamingAssistantId ? streamingStatus : null}
+          streaming={msg.id === liveAssistantId}
           toolBaseDir={toolBaseDirs(chatSession.activeSession, chatSession.cwd?.current)}
         />
       {/if}

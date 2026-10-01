@@ -137,11 +137,18 @@ test('progressLine: stage verb, files changed, current activity', () => {
   assert.equal(progressLine([], { stage: 'build', text: focusKo.progress }), '구현 중')
 })
 
-test('stripFocusStage drops the stage guidance block from a user message', () => {
+test('stripFocusStage drops only the trailing stage guidance block', () => {
   const guided = 'add a flag\n\n<focus-stage>\nFocus mode — current stage: plan.\n</focus-stage>'
   assert.equal(stripFocusStage(guided), 'add a flag')
   assert.equal(stripFocusStage('plain'), 'plain')
   assert.equal(stripFocusStage('<focus-stage>\nonly guidance\n</focus-stage>'), '')
+  // The user's own words mentioning the tag stay.
+  const typed = 'why does <focus-stage> show up? and what is </focus-stage>?'
+  assert.equal(stripFocusStage(typed), typed)
+  assert.equal(stripFocusStage(`${typed}\n\n<focus-stage>\nx\n</focus-stage>`), typed)
+  // A block that is not the trailing suffix stays.
+  const quoted = 'see:\n\n<focus-stage>\nx\n</focus-stage>\n\nthen more words'
+  assert.equal(stripFocusStage(quoted), quoted)
 })
 
 test('userVisibleText also drops <focus-stage>, between console context and review notes', () => {
@@ -156,14 +163,32 @@ test('stripFocusBlocks folds focus blocks out of assistant text, outside code fe
   const reply = 'Here is the plan.\n\n<focus-plan>{"goal":"x","tasks":[]}</focus-plan>'
   assert.equal(stripFocusBlocks(reply), 'Here is the plan.')
   assert.equal(stripFocusBlocks('a <focus-report>{}</focus-report> b <focus-findings>[]</focus-findings>'), 'a  b')
-  // An unclosed block (still streaming) is hidden to the end.
-  assert.equal(stripFocusBlocks('Done.\n<focus-report>{"summary":"ha'), 'Done.')
   // Quoting the format inside a fence stays visible.
   const quoted = 'Format:\n```\n<focus-pr>{"title":"…"}</focus-pr>\n```'
   assert.equal(stripFocusBlocks(quoted), quoted)
-  // Guidance in assistant text, should a model echo it, goes too.
   assert.equal(stripFocusBlocks('ok <focus-stage>x</focus-stage>'), 'ok')
   assert.equal(stripFocusBlocks('nothing here'), 'nothing here')
+})
+
+test('stripFocusBlocks pairs a close tag with the nearest open tag, like the server', () => {
+  // An inline mention of the tag before the real block keeps the prose.
+  const mention = 'I will end with a <focus-report> block as asked.\n\nDone.\n\n<focus-report>{"summary":"s"}</focus-report>'
+  assert.equal(stripFocusBlocks(mention), 'I will end with a <focus-report> block as asked.\n\nDone.')
+  // A mention after the block stays too.
+  const after = 'Done.\n\n<focus-report>{"summary":"s"}</focus-report>\n\nThe <focus-report> above is the summary.'
+  assert.equal(stripFocusBlocks(after), 'Done.\n\nThe <focus-report> above is the summary.')
+  // A stray mention of an unfinished block in a finished message stays.
+  assert.equal(stripFocusBlocks('Use <focus-plan> next time.'), 'Use <focus-plan> next time.')
+})
+
+test('stripFocusBlocks hides a block still streaming only while the message streams', () => {
+  const partial = 'Done.\n<focus-report>{"summary":"ha'
+  assert.equal(stripFocusBlocks(partial, { streaming: true }), 'Done.')
+  assert.equal(stripFocusBlocks('Done.\n<focus-rep', { streaming: true }), 'Done.')
+  // A finished message keeps it: the server found no block there either.
+  assert.equal(stripFocusBlocks(partial), partial)
+  // While streaming, a complete block before the open one is stripped too.
+  assert.equal(stripFocusBlocks('a <focus-plan>{}</focus-plan> b <focus-report>{"s', { streaming: true }), 'a  b')
 })
 
 const history: SessionMessage[] = [
