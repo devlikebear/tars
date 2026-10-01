@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/devlikebear/tars/internal/llm"
 	"github.com/devlikebear/tars/internal/session"
@@ -244,6 +245,10 @@ func handleChatRequest(w http.ResponseWriter, r *http.Request, deps chatHandlerD
 		deps.tooling.MemoryCache,
 		deps.tooling.PlanClarifyMode,
 	)
+
+	if p, next, ok := focusAfterTurn(state.store, state.sessionID, state.transcriptPath, chatResp.Message.Content, time.Now(), deps.logger); ok {
+		stream.pipeline(p, next)
+	}
 
 	stream.done(chatResp.Usage)
 	deps.logger.Debug().Str("session_id", state.sessionID).Msg("chat request complete")

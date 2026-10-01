@@ -351,7 +351,7 @@ func TestCheckpointCleanupFollowsSessions(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	attachCheckpointCleanup(f.store, f.sessions, zerolog.New(io.Discard))
+	attachSessionDeleteHooks(f.sessions, checkpointCleanup(f.store, f.sessions, zerolog.New(io.Discard)))
 	waitForTurns(t, f.store, gone.ID, 0)
 	if turns, err := f.store.List(f.sessionID); err != nil || len(turns) != 1 {
 		t.Fatalf("the sweep must keep a live session's checkpoints: %v %v", turns, err)
