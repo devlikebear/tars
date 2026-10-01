@@ -62,7 +62,7 @@ func executeChatLoop(
 		}
 		stream.tasksChanged(tasks)
 	}
-	loop, toolCallRecords := setupAgentLoop(chatClient, state.registry, state.sessionID, len(state.history), deps.tooling.UsageTracker, deps.logger, stream.status, afterToolHook)
+	loop, toolCallRecords := setupChatAgentLoop(chatClient, state.registry, state.sessionID, len(state.history), deps.tooling.UsageTracker, deps.logger, stream.status, afterToolHook, state.turnText)
 	ctx = apptool.WithCurrentSessionInfo(ctx, state.sessionID, state.sessionKind)
 	ctx = tool.WithLineEmitter(ctx, stream)
 
@@ -109,6 +109,7 @@ func executeChatLoop(
 				return
 			}
 			accumulated.WriteString(text)
+			state.turnText.write(text)
 			if !streamingAnnounced {
 				streamingAnnounced = true
 				stream.status("llm_stream", "streaming response", "", "", "", "")
@@ -192,16 +193,7 @@ func persistInterruptedTurn(state chatRunState, userMessage string, chatResp llm
 
 func persistToolCallRecords(state chatRunState, toolCalls []ToolCallRecord, now time.Time, logger zerolog.Logger) {
 	for _, tc := range toolCalls {
-		toolMsg := session.Message{
-			Role:        "tool",
-			Content:     tc.ToolResult,
-			Timestamp:   now,
-			ToolName:    tc.ToolName,
-			ToolCallID:  tc.ToolCallID,
-			ToolArgs:    tc.ToolArgs,
-			ToolIsError: tc.ToolIsError,
-		}
-		if err := session.AppendMessage(state.transcriptPath, toolMsg); err != nil {
+		if err := session.AppendMessage(state.transcriptPath, toolCallMessage(tc, now)); err != nil {
 			logger.Error().Err(err).Str("tool", tc.ToolName).Msg("append tool message failed")
 		}
 	}
@@ -209,16 +201,13 @@ func persistToolCallRecords(state chatRunState, toolCalls []ToolCallRecord, now 
 
 func persistChatResult(state chatRunState, userMessage string, chatResp llm.ChatResponse, toolCalls []ToolCallRecord, logger zerolog.Logger) {
 	now := time.Now().UTC()
-	// Persist tool call messages before the assistant response
-	persistToolCallRecords(state, toolCalls, now, logger)
-	assistantMsg := session.Message{
-		Role:      "assistant",
-		Content:   chatResp.Message.Content,
-		Timestamp: now,
-		// Persisted so a transcript replayed after a restart can hand the
-		// signed reasoning blocks back to the provider instead of rebuilding
-		// a turn the provider will not recognize.
-		ReasoningBlocks: toSessionReasoningBlocks(chatResp.Message.ReasoningBlocks),
+	// The turn's text and tools in the order they streamed; the reply last.
+	messages := chatTurnMessages(chatResp, toolCalls, state.turnText.take(), now)
+	assistantMsg := messages[len(messages)-1]
+	for _, msg := range messages[:len(messages)-1] {
+		if err := session.AppendMessage(state.transcriptPath, msg); err != nil {
+			logger.Error().Err(err).Str("role", msg.Role).Str("tool", msg.ToolName).Msg("append turn message failed")
+		}
 	}
 	if err := session.AppendMessage(state.transcriptPath, assistantMsg); err != nil {
 		logger.Error().Err(err).Msg("append assistant message failed")

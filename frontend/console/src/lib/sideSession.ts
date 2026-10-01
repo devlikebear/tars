@@ -26,18 +26,21 @@ export function historyMessages(history: SessionMessage[]): ChatMessage[] {
 }
 
 // applySideEvent folds one turn event into the panel's messages. replyId
-// names the bubble the turn's reply streams into; it is added on the first
-// text.
+// names the bubbles the turn's text streams into: one is added on the first
+// text, and another whenever text follows a tool call or an approval, so the
+// turn reads text, tools, text — as the main chat and the saved transcript
+// show it.
 export function applySideEvent(messages: ChatMessage[], event: ChatEvent, replyId: string): ChatMessage[] {
   switch (event.type) {
     case 'delta': {
       const chunk = event.text ?? ''
       if (!chunk) return messages
-      const idx = messages.findIndex((m) => m.id === replyId)
-      if (idx < 0) return [...messages, { id: replyId, role: 'assistant', text: chunk }]
-      const next = [...messages]
-      next[idx] = { ...next[idx], text: next[idx].text + chunk }
-      return next
+      const last = messages.at(-1)
+      if (last?.role === 'assistant' && last.id.startsWith(replyId)) {
+        return [...messages.slice(0, -1), { ...last, text: last.text + chunk }]
+      }
+      const id = messages.some((m) => m.id === replyId) ? `${replyId}-${messages.length}` : replyId
+      return [...messages, { id, role: 'assistant', text: chunk }]
     }
     case 'permission_request': {
       const approval = approvalFromEvent(event)

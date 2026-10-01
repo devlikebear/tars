@@ -687,6 +687,7 @@ pkg/session field HistorySnapshot.Messages
 pkg/session field HistorySnapshot.Tokens
 pkg/session field Message.Content
 pkg/session field Message.ID
+pkg/session field Message.Interim
 pkg/session field Message.ReasoningBlocks
 pkg/session field Message.Role
 pkg/session field Message.Timestamp

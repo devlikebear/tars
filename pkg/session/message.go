@@ -19,6 +19,13 @@ type Message struct {
 	// of an assistant turn that carries tool_use, so a turn rebuilt without
 	// them is not the same turn.
 	ReasoningBlocks []ReasoningBlock `json:"reasoning_blocks,omitempty"`
+	// Interim marks assistant text said partway through a turn, before the
+	// tool calls that follow it in the transcript. A turn is saved in the
+	// order it streamed — text, tools, text, tools, reply — and its reply is
+	// the last assistant message that is not interim. Transcripts written
+	// before this field have no interim messages: all of a turn's tools, then
+	// one reply holding all of its text.
+	Interim bool `json:"interim,omitempty"`
 }
 
 // ReasoningBlock mirrors llm.ReasoningBlock on the transcript.

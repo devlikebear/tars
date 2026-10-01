@@ -207,6 +207,7 @@ func handleChatRequest(w http.ResponseWriter, r *http.Request, deps chatHandlerD
 
 	recordTierRecommendationSignal(deps.tooling.UsageTracker, state, "requested", llm.Usage{})
 	checkpointTurn := beginChatCheckpoint(chatCtx, deps, state, req.Message)
+	state.turnText = newChatTurnText()
 	chatResp, deltaSent, toolCalls, err := executeChatLoop(chatCtx, deps, state, stream)
 	// Before the outcome branches: an error or a cancel leaves edits on disk too.
 	endChatCheckpoint(chatCtx, checkpointTurn, stream, deps.logger, state.sessionID)

@@ -793,6 +793,9 @@ export type SessionMessage = {
   tool_call_id?: string
   tool_args?: string
   tool_is_error?: boolean
+  // Assistant text said partway through a turn, before the tool calls that
+  // follow it; the turn's reply is its last assistant message without it.
+  interim?: boolean
 }
 
 export type OpsStatus = {

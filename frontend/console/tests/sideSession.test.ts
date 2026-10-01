@@ -67,3 +67,22 @@ test('tool lines keep their arguments so the side panel can label them like the 
   live = applySideEvent([], { type: 'status', phase: 'provider_tool', tool_name: 'Read', tool_call_id: 'p', tool_args_preview: '{"file_path":"/x"}' }, 'r')
   assert.equal(live[0].toolArgs, '{"file_path":"/x"}')
 })
+
+test('history keeps a turn\'s text and tool lines in stream order', () => {
+  const got = historyMessages([
+    { id: 'a1', role: 'assistant', content: 'Reading.', interim: true, timestamp: '' },
+    { id: 't1', role: 'tool', content: 'x', tool_name: 'Read', timestamp: '' },
+    { id: 'a2', role: 'assistant', content: 'Done.', timestamp: '' },
+  ])
+  assert.deepEqual(got.map((m) => `${m.role}:${m.text || m.toolName}`), ['assistant:Reading.', 'tool:Read', 'assistant:Done.'])
+})
+
+test('text after a tool call starts a new bubble, as the reopened turn shows it', () => {
+  let messages: ChatMessage[] = [{ id: 'u', role: 'user', text: 'go' }]
+  messages = applySideEvent(messages, { type: 'delta', text: 'Reading.' }, 'r')
+  messages = applySideEvent(messages, { type: 'status', phase: 'provider_tool', tool_name: 'Read', tool_call_id: 'p1' }, 'r')
+  messages = applySideEvent(messages, { type: 'delta', text: '\n\nDone' }, 'r')
+  messages = applySideEvent(messages, { type: 'delta', text: '.' }, 'r')
+  assert.deepEqual(messages.map((m) => `${m.role}:${m.text || m.toolName}`), ['user:go', 'assistant:Reading.', 'tool:Read', 'assistant:\n\nDone.'])
+  assert.equal(new Set(messages.map((m) => m.id)).size, messages.length)
+})

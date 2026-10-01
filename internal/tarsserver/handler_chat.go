@@ -370,6 +370,10 @@ func buildLLMMessageHistory(history []session.Message) []llm.ChatMessage {
 	llmMessages := make([]llm.ChatMessage, 0, len(history)+1)
 	pendingByID := map[string]toolReplayRecord{}
 	pendingOrder := make([]string, 0, 4)
+	// Interim text said between a turn's tool calls goes back to the model
+	// in the turn's reply, as in transcripts written before it was saved in
+	// place: one assistant message with every tool call, then the results.
+	var pendingInterim []string
 
 	appendToolOutput := func(toolCallIDs []string) {
 		if len(toolCallIDs) == 0 {
@@ -396,9 +400,12 @@ func buildLLMMessageHistory(history []session.Message) []llm.ChatMessage {
 	discardToolOutput := func() {
 		pendingByID = map[string]toolReplayRecord{}
 		pendingOrder = pendingOrder[:0]
+		pendingInterim = nil
 	}
 
 	appendAssistantWithPendingTools := func(m session.Message) {
+		m.Content = joinInterimText(pendingInterim, m.Content)
+		pendingInterim = nil
 		reasoningBlocks := toLLMReasoningBlocks(m.ReasoningBlocks)
 		if len(pendingOrder) == 0 {
 			llmMessages = append(llmMessages, llm.ChatMessage{
@@ -464,6 +471,12 @@ func buildLLMMessageHistory(history []session.Message) []llm.ChatMessage {
 				name:    m.ToolName,
 				args:    m.ToolArgs,
 				content: m.Content,
+			}
+			continue
+		}
+		if role == "assistant" && m.Interim {
+			if text := strings.TrimSpace(m.Content); text != "" {
+				pendingInterim = append(pendingInterim, text)
 			}
 			continue
 		}
@@ -958,6 +971,9 @@ type ToolCallRecord struct {
 	ToolIsError bool
 	// upstream marks a tool the provider ran itself (EventProviderTool).
 	upstream bool
+	// textBefore is the text the turn streamed between the previous tool
+	// call and this one, so the transcript can keep them in that order.
+	textBefore string
 }
 
 func setupAgentLoop(
@@ -969,6 +985,22 @@ func setupAgentLoop(
 	logger zerolog.Logger,
 	sendStatus func(string, string, string, string, string, string, ...bool),
 	afterTool func(ctx context.Context, evt agent.Event),
+) (*agent.Loop, *[]ToolCallRecord) {
+	return setupChatAgentLoop(client, registry, sessionID, historyLen, usageTracker, logger, sendStatus, afterTool, nil)
+}
+
+// setupChatAgentLoop is setupAgentLoop for a chat turn: each tool record
+// also takes the text turnText collected before the call.
+func setupChatAgentLoop(
+	client llm.Client,
+	registry *tool.Registry,
+	sessionID string,
+	historyLen int,
+	usageTracker *usage.Tracker,
+	logger zerolog.Logger,
+	sendStatus func(string, string, string, string, string, string, ...bool),
+	afterTool func(ctx context.Context, evt agent.Event),
+	turnText *chatTurnText,
 ) (*agent.Loop, *[]ToolCallRecord) {
 	toolCalls := &[]ToolCallRecord{}
 	if _, ok := registry.Get("session_status"); !ok {
@@ -1023,6 +1055,7 @@ func setupAgentLoop(
 				ToolArgs:    statusPreviewForTool(evt.ToolName, evt.ToolArgs, 500),
 				ToolResult:  statusPreviewForTool(evt.ToolName, evt.ToolResult, 500),
 				ToolIsError: evt.ToolIsError,
+				textBefore:  turnText.take(),
 			})
 			if afterTool != nil {
 				afterTool(ctx, evt)
@@ -1052,6 +1085,7 @@ func setupAgentLoop(
 				ToolResult:  providerToolPendingResult,
 				ToolIsError: false,
 				upstream:    true,
+				textBefore:  turnText.take(),
 			})
 		case agent.EventProviderToolResult:
 			sendStatus(

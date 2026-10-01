@@ -69,6 +69,11 @@ type chatRunState struct {
 
 	// interactivePermissions: the client answers permission_request events.
 	interactivePermissions bool
+
+	// turnText collects the text the turn streams between its tool calls,
+	// so persistChatResult saves them in stream order. nil saves the old
+	// layout: every tool, then the reply.
+	turnText *chatTurnText
 }
 
 func decodeChatRequestPayload(w http.ResponseWriter, r *http.Request) (chatRequestPayload, bool) {
