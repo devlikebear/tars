@@ -3,6 +3,7 @@ package tarsserver
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -424,9 +425,9 @@ func TestSessionWorktreeStoreRoundTrip(t *testing.T) {
 func TestWorktreeStreamEventAndRunningRegistry(t *testing.T) {
 	rec := httptest.NewRecorder()
 	stream := newChatStreamWriter(rec, "s1", zerolog.Nop())
-	stream.worktree(worktreeNotice{Worktree: session.SessionWorktree{Path: "/wt", Dir: "/wt/app", Branch: "tars/session-s1", Reason: "lease"}, Holder: "s0", Copied: []string{".env"}})
+	stream.worktree(worktreeNotice{Worktree: session.SessionWorktree{Path: "/wt", Dir: "/wt/app", Branch: "tars/session-s1", Reason: "lease"}, Holder: "s0", Copied: []string{".env"}, Pending: []string{"node_modules"}})
 	body := rec.Body.String()
-	for _, want := range []string{`"type":"worktree"`, `"branch":"tars/session-s1"`, `"lease_holder":"s0"`, `"copied":[".env"]`} {
+	for _, want := range []string{`"type":"worktree"`, `"branch":"tars/session-s1"`, `"lease_holder":"s0"`, `"copied":[".env"]`, `"pending":["node_modules"]`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("stream %s missing %s", body, want)
 		}
@@ -442,6 +443,71 @@ func TestWorktreeStreamEventAndRunningRegistry(t *testing.T) {
 	var nilRegistry *chatCancelRegistry
 	if nilRegistry.Running("s1") {
 		t.Fatal("nil registry")
+	}
+}
+
+// TestBackgroundIncludesAreAudited records the includes that finish after the
+// turn already started in the worktree.
+func TestBackgroundIncludesAreAudited(t *testing.T) {
+	f := newWorktreeFixture(t)
+	f.c.watchIncludes()
+	wt := session.SessionWorktree{Branch: "tars/session-s1", SourceDir: f.repo}
+	f.c.includeDone(sessionworktree.IncludeDone{SessionID: "s1", Worktree: wt, Copied: []string{"node_modules"}})
+	f.c.includeDone(sessionworktree.IncludeDone{SessionID: "s1", Worktree: wt, Skipped: []string{"dist: canceled"}})
+	if got := strings.Join(f.audit.results(), ","); got != "include_copied,include_skipped" {
+		t.Fatalf("audit = %s", got)
+	}
+	f.audit.mu.Lock()
+	defer f.audit.mu.Unlock()
+	first := f.audit.entries[0]
+	if first.SessionID != "s1" || first.CWD != f.repo || fmt.Sprint(first.Details["copied"]) != "[node_modules]" {
+		t.Fatalf("entry = %+v", first)
+	}
+	if fmt.Sprint(f.audit.entries[1].Details["skipped"]) != "[dist: canceled]" {
+		t.Fatalf("entry = %+v", f.audit.entries[1])
+	}
+}
+
+// TestIsolateCopiesDependencyFolders brings a gitignored folder into the
+// worktree as a copy the session can change freely.
+func TestIsolateCopiesDependencyFolders(t *testing.T) {
+	ctx := context.Background()
+	f := newWorktreeFixture(t)
+	for name, body := range map[string]string{
+		".gitignore":               ".env\nnode_modules/\n",
+		".tars/settings.json":      `{"worktree_include":[".env","node_modules","../outside"]}`,
+		"node_modules/pkg/main.js": "dep\n",
+	} {
+		path := filepath.Join(f.repo, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sess := f.session(t, "deps")
+	notice, err := f.c.isolate(ctx, sess, "manual", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(notice.Copied, ","); got != ".env,node_modules" {
+		t.Fatalf("copied = %s", got)
+	}
+	copyPath := filepath.Join(notice.Worktree.Path, "node_modules", "pkg", "main.js")
+	if err := os.WriteFile(copyPath, []byte("changed\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if raw, _ := os.ReadFile(filepath.Join(f.repo, "node_modules", "pkg", "main.js")); string(raw) != "dep\n" {
+		t.Fatal("changing the worktree's copy changed the checkout")
+	}
+	f.audit.mu.Lock()
+	details := f.audit.entries[len(f.audit.entries)-1].Details
+	f.audit.mu.Unlock()
+	// The loader already dropped "../outside" with a warning, so the copy
+	// never saw it.
+	if _, ok := details["skipped"]; ok {
+		t.Fatalf("details = %v", details)
 	}
 }
 

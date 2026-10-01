@@ -64,9 +64,12 @@ type Override struct {
 	ClaudeCodeCLIPermissionDeny []string `json:"claude_code_cli_permission_deny,omitempty"`
 	// WorktreeInclude lists gitignored files and folders, relative to the
 	// repository root, that a session worktree copies from the checkout
-	// (.env, local settings). Layers union. Only copying is offered: a
-	// settings file can come with a cloned repository, so it never names
-	// commands to run.
+	// (.env, local settings, dependency folders such as node_modules).
+	// Layers union. Only copying is offered: a settings file can come with
+	// a cloned repository, so it never names commands to run, and entries
+	// that leave the repository are dropped at load time. Folders are
+	// copied (copy-on-write clones where the file system has them), never
+	// linked; see internal/sessionworktree/include.go.
 	WorktreeInclude []string `json:"worktree_include,omitempty"`
 
 	// Presence records every override path the file explicitly touched.
@@ -101,7 +104,8 @@ var BlockedTopLevelFields = map[string]struct{}{
 	"hooks":          {},
 	"server_command": {},
 	// Commands to run in a new worktree would let a cloned repository run
-	// programs on the person's machine; worktree_include only copies files.
+	// programs on the person's machine; worktree_include only copies files
+	// and folders from inside the repository.
 	"worktree_setup": {},
 }
 

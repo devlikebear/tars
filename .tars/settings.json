@@ -1,0 +1,3 @@
+{
+  "worktree_include": ["frontend/console/node_modules"]
+}

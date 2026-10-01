@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -162,9 +163,10 @@ func assignTopLevel(o *Override, key string, raw json.RawMessage, file string) (
 		if err := json.Unmarshal(raw, &entries); err != nil {
 			return nil, err
 		}
-		o.WorktreeInclude = entries
+		kept, diags := validWorktreeInclude(entries, file)
+		o.WorktreeInclude = kept
 		o.Presence["worktree_include"] = true
-		return nil, nil
+		return diags, nil
 
 	case "mcp_servers_extra":
 		var entries []MCPServerExtra
@@ -239,4 +241,43 @@ func decodeToolConfigField(tc *session.SessionToolConfig, key string, raw json.R
 		return json.Unmarshal(raw, &tc.MCPCustom)
 	}
 	return fmt.Errorf("internal: missing decoder for tool_config.%s", key)
+}
+
+// validWorktreeInclude keeps the worktree_include entries that name a path
+// inside the repository: relative, without climbing out through "..", and
+// outside .git. The list comes from the repository itself, so an entry that
+// could read elsewhere on the machine is dropped with a warning. The copy
+// re-checks every entry and also refuses paths through symlinks.
+func validWorktreeInclude(entries []string, file string) ([]string, []Diagnostic) {
+	var kept []string
+	var diags []Diagnostic
+	for i, entry := range entries {
+		trimmed := strings.TrimSpace(entry)
+		if trimmed == "" {
+			continue
+		}
+		if worktreeIncludeInside(trimmed) {
+			kept = append(kept, trimmed)
+			continue
+		}
+		diags = append(diags, Diagnostic{
+			Path:     fmt.Sprintf("worktree_include[%d]", i),
+			Severity: SeverityWarn,
+			Message:  fmt.Sprintf("%q is not a path inside the repository; ignoring", trimmed),
+			File:     file,
+		})
+	}
+	return kept, diags
+}
+
+func worktreeIncludeInside(entry string) bool {
+	slashed := strings.ReplaceAll(entry, "\\", "/")
+	if strings.HasPrefix(slashed, "/") || filepath.IsAbs(entry) || filepath.VolumeName(entry) != "" {
+		return false
+	}
+	clean := path.Clean(slashed)
+	if clean == "." || clean == ".." || strings.HasPrefix(clean, "../") {
+		return false
+	}
+	return strings.SplitN(clean, "/", 2)[0] != ".git"
 }

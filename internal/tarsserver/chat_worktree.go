@@ -124,6 +124,8 @@ type worktreeNotice struct {
 	// Holder is the session that held the repository, when that was why.
 	Holder string
 	Copied []string
+	// Pending lists includes still being copied in the background.
+	Pending []string
 }
 
 // beginTurn runs before a turn in sessionID. It takes the repository lease,
@@ -205,8 +207,33 @@ func (c *chatWorktrees) isolate(ctx context.Context, sess session.Session, reaso
 	if len(created.Skipped) > 0 {
 		details["skipped"] = created.Skipped
 	}
+	if len(created.Pending) > 0 {
+		details["pending"] = created.Pending
+	}
 	c.record(current.ID, source, "isolated", details)
-	return &worktreeNotice{Worktree: created.Worktree, Holder: holder, Copied: created.Copied}, nil
+	return &worktreeNotice{Worktree: created.Worktree, Holder: holder, Copied: created.Copied, Pending: created.Pending}, nil
+}
+
+// watchIncludes records the includes that finish copying after the turn
+// already moved into its worktree.
+func (c *chatWorktrees) watchIncludes() {
+	if c == nil || c.manager == nil {
+		return
+	}
+	c.manager.OnIncludeDone(c.includeDone)
+}
+
+func (c *chatWorktrees) includeDone(done sessionworktree.IncludeDone) {
+	result := "include_skipped"
+	details := map[string]any{"branch": done.Worktree.Branch}
+	if len(done.Copied) > 0 {
+		result = "include_copied"
+		details["copied"] = done.Copied
+	}
+	if len(done.Skipped) > 0 {
+		details["skipped"] = done.Skipped
+	}
+	c.record(done.SessionID, done.Worktree.SourceDir, result, details)
 }
 
 func (c *chatWorktrees) include(sess session.Session) []string {
@@ -399,7 +426,7 @@ func newSessionWorktreeHandler(c *chatWorktrees) http.Handler {
 				notice, isoErr := c.isolate(r.Context(), sess, "manual", "")
 				err = isoErr
 				if notice != nil {
-					result = map[string]any{"branch": notice.Worktree.Branch, "copied": notice.Copied}
+					result = map[string]any{"branch": notice.Worktree.Branch, "copied": notice.Copied, "pending": notice.Pending}
 				}
 			case "apply", "keep", "discard":
 				result, err = c.finish(r.Context(), sessionID, body.Action)

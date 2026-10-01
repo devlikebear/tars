@@ -345,7 +345,9 @@ func TestKeepUsesTheConfiguredIdentityAndCopiesFolders(t *testing.T) {
 	if _, err := os.Lstat(filepath.Join(created.Worktree.Path, "local", "link.env")); !errors.Is(err, os.ErrNotExist) {
 		t.Fatal("a symlink inside a copied folder must not be copied")
 	}
-	if len(created.Skipped) != 1 || !strings.Contains(created.Skipped[0], "symlinks") {
+	// The top-level link is refused and the link inside local/, which
+	// points outside the repository, is dropped from the copy.
+	if len(created.Skipped) != 2 || !strings.Contains(strings.Join(created.Skipped, "|"), "top.link: symlinks are not followed") {
 		t.Fatalf("skipped = %v", created.Skipped)
 	}
 	write(t, filepath.Join(created.Worktree.Path, "x.txt"), "x\n")
