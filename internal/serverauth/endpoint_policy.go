@@ -67,6 +67,7 @@ var defaultEndpointPolicyRules = []EndpointPolicyRule{
 	userRule([]string{http.MethodPost}, "/v1/focus/pipelines/:id/cards/:card", "focus card state"),
 	userRule([]string{http.MethodPost}, "/v1/focus/pipelines/:id/advance", "focus manual stage pass"),
 	userRule([]string{http.MethodPost}, "/v1/focus/pipelines/:id/stop", "focus pipeline stop"),
+	userRule([]string{http.MethodGet}, "/v1/focus/release-train", "focus release train read"),
 	userRule([]string{http.MethodGet}, "/v1/admin/plans/archive", "plan archive"),
 
 	userRule(nil, "/v1/memory/assets", "memory assets"),
