@@ -325,6 +325,7 @@ Every route must map to a pillar. Rows marked *(target)* describe the #967 workb
 | `/console/system` | Observability | Overview: dashboard summary of all signals (was home until #971) |
 | Changes panel (dock, in chat) *(target, P1)* | Conversation | Turn/session checkpoint diffs, file and hunk revert, hunk comments |
 | Inline approval cards (in chat) *(P2)* | Conversation + Control | Approve/deny tool calls without leaving the session; `/console/approvals` stays for unattended runs |
+| `/console/focus`, `/console/focus/<session>` | Conversation | Focus mode (#1068): pipelines and one task's stepper and card deck over the same session |
 | `/console/chat`, `/console/sessions` | Conversation | Chat transcript, session list |
 | `/console/sessions/graph` | Conversation | Session lineage / fork history |
 | `/console/tasks` | Conversation | Work timeline / task contracts |
