@@ -123,8 +123,10 @@ export const focusEn = {
     cancel: 'Cancel',
     noPlan: 'The plan is missing from this card.',
     blockedTitle: 'Build blocked',
+    reviewBlockedTitle: 'Review blocked',
     blockedReason: {
       limit: (iteration: number, limit: number) => `Verification still fails after ${iteration} of ${limit} rounds.`,
+      reviewLimit: (iteration: number, limit: number) => `Review round ${iteration} of ${limit} still needed fixes or failed verification.`,
       repeated: 'The same verification failure came back twice in a row.',
       no_progress: 'Verification passes, but the reports never said every task is done.',
       interrupted: 'The server stopped while this turn was owed. Retry sends it.',
@@ -146,7 +148,11 @@ export const focusEn = {
   finding: {
     fix: 'Fix',
     dismiss: 'Dismiss',
+    ask: 'Ask',
     scenario: 'Failure scenario',
+    diff: 'Diff since the stage started',
+    severity: { high: 'high', medium: 'medium', low: 'low' } as Record<string, string>,
+    triage: (decided: number, total: number) => `${decided} / ${total} decided`,
   },
   report: {
     risks: 'Risks',
@@ -369,8 +375,10 @@ export const focusKo: FocusTranslations = {
     cancel: '취소',
     noPlan: '이 카드에 계획이 없습니다.',
     blockedTitle: '구현 막힘',
+    reviewBlockedTitle: '리뷰 막힘',
     blockedReason: {
       limit: (iteration: number, limit: number) => `${limit}회 중 ${iteration}회차까지 검증이 계속 실패했습니다.`,
+      reviewLimit: (iteration: number, limit: number) => `리뷰 ${limit}회 중 ${iteration}회차에도 고칠 것이 남았거나 검증이 실패했습니다.`,
       repeated: '같은 검증 실패가 연달아 두 번 나왔습니다.',
       no_progress: '검증은 통과하지만 모든 할 일을 끝냈다는 보고가 없었습니다.',
       interrupted: '보내야 할 턴이 남은 채로 서버가 멈췄습니다. 다시 시도하면 그 턴을 보냅니다.',
@@ -392,7 +400,11 @@ export const focusKo: FocusTranslations = {
   finding: {
     fix: '고치기',
     dismiss: '무시',
+    ask: '질문',
     scenario: '실패 시나리오',
+    diff: '단계 시작 이후 변경',
+    severity: { high: '높음', medium: '중간', low: '낮음' } as Record<string, string>,
+    triage: (decided: number, total: number) => `${total}개 중 ${decided}개 결정`,
   },
   report: {
     risks: '위험',

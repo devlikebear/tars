@@ -30,6 +30,8 @@
     qaError?: string
     onAsk?: (cardId: string, question: string) => Promise<boolean>
     onPromote?: (card: Card, entry: QAEntry) => void
+    // The open triage gate's progress (P3), null when none is open.
+    triage?: { decided: number; total: number } | null
   }
 
   let {
@@ -47,6 +49,7 @@
     qaAnswering = null,
     qaError = '',
     onAsk,
+    triage = null,
     onPromote,
   }: Props = $props()
 
@@ -112,6 +115,12 @@
     onDecide(card, decision)
   }
 
+  function openAsk() {
+    qaOpen = true
+    // The drawer renders its box on open; focus it on the next frame.
+    requestAnimationFrame(() => qaInput?.focus())
+  }
+
   function onKeydown(event: KeyboardEvent) {
     if (event.metaKey || event.ctrlKey || event.altKey) return
     const target = event.target as HTMLElement | null
@@ -127,9 +136,7 @@
       showRaw = !showRaw
     } else if (event.key === '?' && current && onAsk) {
       event.preventDefault()
-      qaOpen = true
-      // The drawer renders its box on open; focus it on the next frame.
-      requestAnimationFrame(() => qaInput?.focus())
+      openAsk()
     } else if (/^[1-9]$/.test(event.key) && current?.kind === 'decision' && current.state !== 'decided' && !busy) {
       const option = (current.payload as FocusDecision | undefined)?.options?.[Number(event.key) - 1]
       if (option) {
@@ -150,6 +157,9 @@
       <button type="button" class="btn btn-ghost btn-sm" aria-label={$t.focus.deck.prev} title={$t.focus.deck.prev} disabled={shown.length < 2} onclick={() => move(-1)} data-testid="focus-deck-prev">←</button>
       <span class="mono deck-pos" data-testid="focus-deck-position">{$t.focus.deck.position(index + 1, shown.length)}</span>
       <button type="button" class="btn btn-ghost btn-sm" aria-label={$t.focus.deck.next} title={$t.focus.deck.next} disabled={shown.length < 2} onclick={() => move(1)} data-testid="focus-deck-next">→</button>
+      {#if triage}
+        <span class="mono triage" data-testid="focus-triage-progress">{$t.focus.finding.triage(triage.decided, triage.total)}</span>
+      {/if}
       <span class="deck-spacer"></span>
       {#if rest.length > 1 && !mustHandle(current)}
         <button type="button" class="btn btn-ghost btn-sm" disabled={busy} onclick={() => onAcknowledgeRest(rest)} data-testid="focus-ack-rest">{$t.focus.deck.acknowledgeRest(rest.length)}</button>
@@ -160,7 +170,7 @@
     </div>
 
     {#key current.id}
-      <FocusCard card={current} {openGate} {busy} {onGate} onDecide={decide} />
+      <FocusCard card={current} {openGate} {busy} {onGate} onDecide={decide} onAsk={onAsk && qaThread ? openAsk : undefined} />
     {/key}
 
     {#if showRaw}
@@ -204,6 +214,11 @@
     min-width: 3.5em;
     text-align: center;
     font-size: var(--text-xs);
+  }
+
+  .triage {
+    font-size: var(--text-xs);
+    color: var(--warning);
   }
 
   .deck-spacer {

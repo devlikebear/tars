@@ -541,3 +541,48 @@ export function focusOwnsShortcut(action: string, route: { view: string; session
 export function focusChromeHidden(route: { view: string }): boolean {
   return route.view === 'focus'
 }
+
+// Triage progress (P3): how many finding cards of the open triage gate are
+// decided, or null when no triage is open.
+export function triageProgress(p: Pick<FocusPipeline, 'open_gate' | 'cards' | 'review'> | null | undefined): { decided: number; total: number } | null {
+  const ids = p?.review?.triage
+  if (!p || p.open_gate !== 'triage' || !ids?.length) return null
+  const decided = new Set(p.cards.filter((c) => c.state === 'decided').map((c) => c.id))
+  return { decided: ids.filter((id) => decided.has(id)).length, total: ids.length }
+}
+
+export type ExcerptLine = {
+  kind: 'hunk' | 'add' | 'del' | 'context' | 'meta'
+  text: string
+  // The new-file line number (added and context lines only).
+  line?: number
+  // The finding's own line.
+  target: boolean
+}
+
+const excerptHunk = /^@@ .*?\+(\d+)/
+
+// excerptLines reads a finding's diff excerpt (unified hunks from the
+// server) into lines with their new-file numbers, marking the finding line.
+export function excerptLines(excerpt: string, target: number): ExcerptLine[] {
+  if (!excerpt) return []
+  let next = 0
+  return excerpt.split('\n').map((text): ExcerptLine => {
+    const hunk = excerptHunk.exec(text)
+    if (hunk) {
+      next = Number(hunk[1])
+      return { kind: 'hunk', text, target: false }
+    }
+    switch (text[0]) {
+      case '+':
+      case ' ': {
+        const line = next++
+        return { kind: text[0] === '+' ? 'add' : 'context', text, line, target: target > 0 && line === target }
+      }
+      case '-':
+        return { kind: 'del', text, target: false }
+      default:
+        return { kind: 'meta', text, target: false }
+    }
+  })
+}
