@@ -97,3 +97,65 @@ func TestReleaseTime(t *testing.T) {
 		t.Fatalf("FinishedAt wins: %v", got)
 	}
 }
+
+// legacyFinished is a pipeline that finished before FinishedAt existed.
+func legacyFinished(updated time.Time) Pipeline {
+	p := withStatuses([]StageID{StagePlan, StageBuild, StageMerge}, StatusDone, StatusDone, StatusSkipped, StatusSkipped, StatusSkipped, StatusDone)
+	p.Current = StageMerge
+	p.UpdatedAt = updated
+	p.Cards = []Card{{ID: "c1", Kind: CardReport, State: CardUnseen}}
+	return p
+}
+
+// Item 4: the first mutation of a legacy finished pipeline stamps
+// FinishedAt from the time it last changed, before the mutation moves it.
+func TestStoreUpdateBackfillsFinishedAt(t *testing.T) {
+	store := NewStore(t.TempDir())
+	last := time.Date(2026, 1, 10, 0, 0, 0, 0, time.UTC)
+	if err := store.Save(legacyFinished(last)); err != nil {
+		t.Fatal(err)
+	}
+	later := last.Add(30 * 24 * time.Hour)
+	got, _, err := store.Update("s1", func(p Pipeline) (Pipeline, error) {
+		next, _, err := SetCardState(p, "c1", CardSeen, "", later)
+		return next, err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.FinishedAt == nil || !got.FinishedAt.Equal(last) || !got.UpdatedAt.Equal(later) {
+		t.Fatalf("finished=%v updated=%v", got.FinishedAt, got.UpdatedAt)
+	}
+	saved, _, _ := store.Get("s1")
+	if saved.FinishedAt == nil || !saved.FinishedAt.Equal(last) {
+		t.Fatalf("saved finished=%v", saved.FinishedAt)
+	}
+}
+
+func TestApplyBackfillsLegacyFinishedAt(t *testing.T) {
+	last := time.Date(2026, 1, 10, 0, 0, 0, 0, time.UTC)
+	p := legacyFinished(last)
+	got, _, _ := Apply(p, Event{Kind: EventTurnCompleted, Turn: 3}, last.Add(time.Hour))
+	if got.FinishedAt == nil || !got.FinishedAt.Equal(last) {
+		t.Fatalf("finished=%v, want the pre-mutation UpdatedAt", got.FinishedAt)
+	}
+	if p.FinishedAt != nil {
+		t.Fatal("Apply never modifies its input")
+	}
+}
+
+// Item 5: only merged work is releasable.
+func TestReleasable(t *testing.T) {
+	all := []StageID{StagePlan, StageBuild, StageReview, StagePR, StagePRReview, StageMerge}
+	local := []StageID{StagePlan, StageBuild, StageReview}
+	if !Releasable(withStatuses(all, StatusDone, StatusDone, StatusDone, StatusDone, StatusDone, StatusDone)) {
+		t.Fatal("merged is releasable")
+	}
+	noMerge := withStatuses(local, StatusDone, StatusDone, StatusDone, StatusSkipped, StatusSkipped, StatusSkipped)
+	if !Finished(noMerge) || Releasable(noMerge) {
+		t.Fatal("a plan that skipped merge finishes but is not releasable")
+	}
+	if Releasable(New("s1", "g", time.Unix(0, 0))) {
+		t.Fatal("a running pipeline is not releasable")
+	}
+}

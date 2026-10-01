@@ -121,7 +121,9 @@ func (s *Store) Update(sessionID string, fn func(Pipeline) (Pipeline, error)) (P
 	if err != nil || !ok {
 		return current, ok, err
 	}
-	next, err := fn(current)
+	// Every mutation path goes through here, so a legacy finished pipeline
+	// gets its FinishedAt before fn moves UpdatedAt.
+	next, err := fn(backfillFinished(current))
 	if err != nil {
 		return next, true, err
 	}

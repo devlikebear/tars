@@ -94,11 +94,11 @@ var noAction = Action{Kind: ActionNone}
 // unchanged. Apply never modifies p. The event that finishes the pipeline
 // stamps FinishedAt.
 func Apply(p Pipeline, ev Event, now time.Time) (Pipeline, Action, error) {
-	next, act, err := applyEvent(p, ev, now)
-	if err == nil {
-		next = stampFinished(next, now)
+	next, act, err := applyEvent(backfillFinished(p.clone()), ev, now)
+	if err != nil {
+		return p, act, err
 	}
-	return next, act, err
+	return stampFinished(next, now), act, nil
 }
 
 func applyEvent(p Pipeline, ev Event, now time.Time) (Pipeline, Action, error) {

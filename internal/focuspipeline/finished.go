@@ -56,3 +56,26 @@ func ReleaseTime(p Pipeline) time.Time {
 	}
 	return p.UpdatedAt
 }
+
+// Releasable reports whether a pipeline's work is in the default branch and
+// so belongs in a release: it finished with its merge stage done. A plan
+// that skipped merge finishes without being releasable.
+func Releasable(p Pipeline) bool {
+	if !Finished(p) {
+		return false
+	}
+	s, ok := p.Stage(StageMerge)
+	return ok && s.Status == StatusDone
+}
+
+// backfillFinished stamps a pipeline that finished before FinishedAt existed
+// with the time it last changed — its finish time at the latest — before a
+// mutation moves UpdatedAt.
+func backfillFinished(p Pipeline) Pipeline {
+	if p.FinishedAt != nil || !Finished(p) {
+		return p
+	}
+	at := p.UpdatedAt.UTC()
+	p.FinishedAt = &at
+	return p
+}
