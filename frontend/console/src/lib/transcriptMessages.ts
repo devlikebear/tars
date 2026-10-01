@@ -5,6 +5,7 @@
 // are drawn as they are. Pure, tested under Node.
 import type { ChatMessage } from './chatMessages.ts'
 import type { SessionMessage } from './types.ts'
+import { stripFocusBlocks } from './focus.ts'
 
 const hiddenSystemPrefixes = ['[HEARTBEAT]', '[COMPACTION SUMMARY]']
 
@@ -26,9 +27,10 @@ export function transcriptChatMessages(history: SessionMessage[]): ChatMessage[]
       })
       continue
     }
-    // A turn that ended on a tool call is saved with a blank reply; it has
-    // nothing to show.
-    if (msg.role === 'assistant' && !msg.content.trim()) continue
+    // A turn that ended on a tool call is saved with a blank reply, and a
+    // focus turn's reply may be nothing but its <focus-*> block; neither has
+    // anything to show.
+    if (msg.role === 'assistant' && !stripFocusBlocks(msg.content).trim()) continue
     out.push({
       id: msg.id || `hist-${out.length}`,
       sourceMessageId: msg.id,

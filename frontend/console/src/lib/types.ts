@@ -933,6 +933,10 @@ export type ChatEvent = {
   // goal chip in sync (auto_continue/satisfied/exhausted/judge_error/cleared).
   reason?: string
   goal?: SessionGoal | null
+  // pipeline: the session's focus pipeline after a turn changed it, and the
+  // turn the server suggests sending next ('' when none).
+  pipeline?: FocusPipeline
+  next_prompt?: string
   // done event usage
   usage?: {
     input_tokens: number
@@ -2571,4 +2575,98 @@ export type CodexUsageTier = {
 
 export type CodexUsageResponse = {
   tiers: CodexUsageTier[]
+}
+
+// --- Focus mode (docs/decisions/focus-mode.md) ---
+// Mirrors internal/focuspipeline's JSON.
+
+export type FocusStageId = 'plan' | 'build' | 'review' | 'pr' | 'pr_review' | 'merge'
+export type FocusStageStatus = 'pending' | 'active' | 'done' | 'skipped' | 'blocked'
+export type FocusCardKind = 'gate' | 'decision' | 'finding' | 'failure' | 'report' | 'change' | 'notice'
+export type FocusCardState = 'unseen' | 'seen' | 'decided'
+export type FocusGate = '' | 'plan' | 'triage' | 'pr' | 'merge' | 'blocked'
+export type FocusGateAction = 'approve' | 'request_changes' | 'stop'
+
+export type FocusStage = {
+  id: FocusStageId
+  status: FocusStageStatus
+  iteration: number
+  limit?: number
+}
+
+export type FocusPlanTask = { title: string; done: string }
+
+export type FocusPlan = {
+  goal: string
+  tasks: FocusPlanTask[]
+  stages: FocusStageId[]
+  verify: string[]
+  e2e?: string[]
+  limits?: Record<string, number>
+}
+
+export type FocusDecision = { id: string; question: string; options: string[] }
+export type FocusReport = { summary: string; decisions?: FocusDecision[]; risks?: string[] }
+export type FocusFinding = { id: string; severity: string; file: string; line: number; title: string; scenario: string }
+export type FocusPRDraft = { title: string; body: string }
+
+// A change card's payload: one file of a turn's checkpoint diff. The console
+// builds these from /v1/admin/sessions/{id}/checkpoints; the server has none.
+export type FocusChangePayload = {
+  turn_id: string
+  path: string
+  status: string
+  additions: number
+  deletions: number
+  binary?: boolean
+  patch?: string
+}
+
+export type FocusCard = {
+  id: string
+  kind: FocusCardKind
+  stage: FocusStageId
+  // 1-based count of user messages when the card's turn completed; 0 when
+  // it came from no turn.
+  turn: number
+  title: string
+  payload?: unknown
+  state: FocusCardState
+  decision?: string
+  created_at: string
+}
+
+export type FocusPRInfo = { number: number; url: string; state: string }
+
+export type FocusPipeline = {
+  version: number
+  session_id: string
+  goal: string
+  stages: FocusStage[]
+  current: FocusStageId
+  plan?: FocusPlan
+  open_gate?: FocusGate
+  cards: FocusCard[]
+  pr?: FocusPRInfo
+  updated_at: string
+}
+
+export type FocusListItem = {
+  session_id: string
+  title: string
+  goal: string
+  current: FocusStageId
+  open_gate: FocusGate
+  needs_input: number
+  updated_at: string
+}
+
+// Every mutating focus route answers this; next_prompt is the turn the
+// console sends next ('' when none). conflict marks a 409, whose pipeline is
+// the server's current state.
+export type FocusActionResult = {
+  pipeline: FocusPipeline
+  next_prompt: string
+  warning?: string
+  conflict?: boolean
 }

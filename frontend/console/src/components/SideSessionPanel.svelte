@@ -17,6 +17,7 @@
   import { t } from '../i18n'
   import ChatApprovalCard from './ChatApprovalCard.svelte'
   import MarkdownContent from './MarkdownContent.svelte'
+  import { stripFocusBlocks } from '../lib/focus'
 
   interface Props {
     activeSessionId: string | null
@@ -231,7 +232,7 @@
         {:else}
           <div class={`side-msg side-${message.role}`}>
             {#if message.role === 'assistant'}
-              <MarkdownContent text={message.text} />
+              <MarkdownContent text={stripFocusBlocks(message.text)} />
             {:else}
               {message.text}
             {/if}
