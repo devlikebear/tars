@@ -1330,3 +1330,51 @@ func TestUpdateMCPsReturnsFinalSaveDBError(t *testing.T) {
 		t.Fatalf("expected filesystem to be reported updated before save failure, got %+v", updated)
 	}
 }
+
+// TestUpdateSkipsEntriesAlreadyAtLatestVersion covers the up-to-date skip
+// in Update, UpdatePlugins and UpdateMCPs: an installed entry whose
+// version matches the registry is reported as skipped, not reinstalled.
+func TestUpdateSkipsEntriesAlreadyAtLatestVersion(t *testing.T) {
+	srv := newTestServer(t)
+	defer srv.Close()
+
+	tmpDir := t.TempDir()
+	inst := &Installer{
+		WorkspaceDir: tmpDir,
+		Registry: &Registry{
+			RegistryURL:  srv.URL + "/registry.json",
+			SkillBaseURL: srv.URL,
+			HTTPClient:   srv.Client(),
+		},
+	}
+	if err := inst.saveDB(&InstalledDB{
+		Skills:  []InstalledSkill{{Name: "project-start", Version: "0.6.0", Dir: filepath.Join(tmpDir, "skills", "project-start")}},
+		Plugins: []InstalledPlugin{{Name: "project-swarm", Version: "0.7.0", Dir: filepath.Join(tmpDir, "plugins", "project-swarm")}},
+		MCPs:    []InstalledMCP{{Name: "filesystem", Version: "0.1.0", Source: "tars-hub", Dir: filepath.Join(tmpDir, "mcp-servers", "filesystem"), Manifest: "tars.mcp.json"}},
+	}); err != nil {
+		t.Fatalf("save db: %v", err)
+	}
+
+	for _, tc := range []struct {
+		name   string
+		update func(context.Context) (UpdateResult, error)
+		entry  string
+	}{
+		{"skills", inst.Update, "project-start"},
+		{"plugins", inst.UpdatePlugins, "project-swarm"},
+		{"mcps", inst.UpdateMCPs, "filesystem"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			result, err := tc.update(context.Background())
+			if err != nil {
+				t.Fatalf("update: %v", err)
+			}
+			if len(result.Updated) != 0 || len(result.Failed) != 0 {
+				t.Fatalf("expected nothing updated or failed, got %+v", result)
+			}
+			if len(result.Skipped) != 1 || result.Skipped[0].Name != tc.entry || result.Skipped[0].Reason != reasonUpToDate {
+				t.Fatalf("expected %s skipped as %q, got %+v", tc.entry, reasonUpToDate, result.Skipped)
+			}
+		})
+	}
+}

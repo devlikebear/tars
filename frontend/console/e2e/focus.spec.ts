@@ -391,28 +391,43 @@ test('the PR stages: G3 opens the PR with an edited title, gh unavailable is pas
   await page.getByTestId('focus-pr-title').fill('feat: add a friendly greeting')
   await page.getByTestId('focus-pr-approve').click()
 
-  // The open turn runs; the probe cannot read a PR: pass by hand.
-  const unavailable = page.getByTestId('focus-gh-unavailable')
-  await expect(unavailable).toBeVisible({ timeout: 20_000 })
-  let p = await pipelineOf(page, id)
-  expect((p as Pipeline & { pr_draft?: { title: string } }).pr_draft?.title).toBe('feat: add a friendly greeting')
+  // The open turn runs; then the probe cannot read a PR. Await that exact
+  // server state — the stub's error recorded and no turn owed (#1082: a
+  // probe never runs while the write turn is owed) — not a banner timing.
+  type PRPipeline = Pipeline & { pr_draft?: { title: string }; pr_unavailable?: string; pending_turn?: string; worktree_end?: { action: string } }
+  const unavailableNow = async () => {
+    const q = (await pipelineOf(page, id)) as PRPipeline
+    return !q.pending_turn && (q.pr_unavailable ?? '').includes('e2e gh stub')
+  }
+  // passByHand clicks the banner's pass and requires the server to take it.
+  const passByHand = async () => {
+    await expect(page.getByTestId('focus-gh-unavailable')).toBeVisible()
+    const advanced = page.waitForResponse((r) => r.url().endsWith(`/v1/focus/pipelines/${id}/advance`) && r.request().method() === 'POST')
+    await page.getByTestId('focus-gh-pass').click()
+    expect((await advanced).status()).toBe(200)
+  }
+  await expect.poll(unavailableNow, { timeout: 20_000 }).toBe(true)
+  let p = (await pipelineOf(page, id)) as PRPipeline
+  expect(p.pr_draft?.title).toBe('feat: add a friendly greeting')
   // The e2e gh stub answered, not a host gh (TARS_FOCUS_GH_PATH).
-  expect((p as Pipeline & { pr_unavailable?: string }).pr_unavailable).toContain('e2e gh stub')
+  expect(p.pr_unavailable).toContain('e2e gh stub')
   expect(p.current).toBe('pr')
-  await page.getByTestId('focus-gh-pass').click()
+  await passByHand()
 
   // pr_review is skipped: merge opens G4 with its summary, no turn needed.
   await expect(page.getByTestId('focus-merge-summary')).toBeVisible()
-  p = await pipelineOf(page, id)
+  p = (await pipelineOf(page, id)) as PRPipeline
   expect(p.current).toBe('merge')
   expect(p.open_gate).toBe('merge')
   await page.getByTestId('focus-gate-approve-generic').click()
 
-  // The merge turn runs; gh still cannot confirm it: pass by hand.
-  await expect(unavailable).toBeVisible({ timeout: 20_000 })
-  await page.getByTestId('focus-gh-pass').click()
-  // Not isolated: no worktree, and the banner claims no worktree outcome.
-  await expect.poll(async () => ((await pipelineOf(page, id)) as Pipeline & { worktree_end?: { action: string } }).worktree_end?.action).toBe('none')
+  // The merge turn runs; then gh still cannot confirm it: pass by hand.
+  await expect.poll(unavailableNow, { timeout: 20_000 }).toBe(true)
+  await passByHand()
+  // The pass finished the pipeline and recorded the worktree outcome in the
+  // same request: not isolated, so no worktree, and the banner claims none.
+  p = (await pipelineOf(page, id)) as PRPipeline
+  expect(p.worktree_end?.action).toBe('none')
   await expect(page.getByTestId('focus-finished')).toHaveText('The pipeline is complete.')
   p = await pipelineOf(page, id)
   expect(p.stages.find((s) => s.id === 'merge')?.status).toBe('done')
