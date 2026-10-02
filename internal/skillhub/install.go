@@ -127,7 +127,7 @@ func (inst *Installer) InstallWithOptions(ctx context.Context, ref string, opts 
 		return inst.installTarsHub(ctx, src, entry)
 	}
 
-	preview, err := inst.buildPreviewFromSource(ctx, ref, src, entry)
+	preview, files, err := inst.buildPreviewFromSource(ctx, ref, src, entry)
 	if err != nil {
 		return nil, err
 	}
@@ -151,16 +151,11 @@ func (inst *Installer) InstallWithOptions(ctx context.Context, ref string, opts 
 		}
 	}
 
-	// Re-download to materialize: buildPreviewFromSource already paid the
-	// fetch cost once, so reuse those bytes by calling the same download
-	// helper again is wasteful. Instead, run the materialize path from the
-	// preview's files. We keep the bytes around in the preview because
-	// re-fetching could yield different content (commit advanced between
-	// preview and materialize), and the user just approved the *preview*.
-	files, err := inst.filesFromPreview(ctx, src, entry, preview)
-	if err != nil {
-		return nil, err
-	}
+	// Materialize the bytes the preview was built from rather than
+	// downloading again. A second download is not the content the user
+	// approved: upstream may have moved, and converters stamp the import
+	// time (imported_at, ATTRIBUTION.md) at second precision, so a
+	// confirmation that took longer than a second never matched.
 	sandboxReport, err := inst.runSkillInstallSandbox(ctx, entry, files)
 	if err != nil {
 		return nil, err
@@ -213,30 +208,6 @@ func (inst *Installer) installTarsHub(ctx context.Context, src HubSource, entry 
 		result.RequiresPlugin = entry.RequiresPlugin
 	}
 	return result, nil
-}
-
-// filesFromPreview re-runs the source-aware download to obtain the file
-// bodies. The preview only carries SHA256s; re-downloading is the
-// simplest correct path and matches what the user just approved (the
-// caller's mental model is "the install runs immediately after confirm").
-func (inst *Installer) filesFromPreview(ctx context.Context, src HubSource, entry *RegistryEntry, preview *DryRunResult) (map[string][]byte, error) {
-	files, _, err := inst.downloadSkillFilesFromSource(ctx, src, entry)
-	if err != nil {
-		return nil, err
-	}
-	// Verify the second download matches what the user approved. A
-	// post-approval mismatch is rare (commits between preview and
-	// confirm) but worth surfacing.
-	for _, fp := range preview.Files {
-		body, ok := files[fp.Path]
-		if !ok {
-			return nil, fmt.Errorf("post-confirm fetch dropped file %q", fp.Path)
-		}
-		if got := computeSHA256Hex(body); got != fp.SHA256 {
-			return nil, fmt.Errorf("post-confirm content for %q changed: expected sha256 %s, got %s", fp.Path, fp.SHA256, got)
-		}
-	}
-	return files, nil
 }
 
 func sortedFilePaths(files map[string][]byte) []string {

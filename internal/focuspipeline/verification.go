@@ -260,7 +260,11 @@ func FailTurn(p Pipeline, errText string, now time.Time) (Pipeline, bool) {
 // resumable reports whether a blocked reason resumes the cut-off step on
 // retry instead of starting a new round.
 func resumable(reason string) bool {
-	return reason == BlockedInterrupted || reason == BlockedTurnFailed
+	switch reason {
+	case BlockedInterrupted, BlockedTurnFailed, BlockedPRMissing, BlockedPRClosed, BlockedNotMerged:
+		return true
+	}
+	return false
 }
 
 // openBlockedFact is the payload of the open blocked gate's card.
@@ -311,6 +315,10 @@ func applyBlockedGate(p *Pipeline, ev Event, decide func()) (Pipeline, Action, e
 	prompt := note
 	if ev.Action == GateRetry {
 		prompt = retryPrompt(p.LastFailure)
+		if fact.Prompt != "" {
+			// The round the limit held back (a pr_review fix turn).
+			prompt = fact.Prompt
+		}
 	}
 	s.Limit = p.stageLimit(p.Current) + 1
 	s.Iteration++

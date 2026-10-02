@@ -680,8 +680,8 @@ func TestApplyPRDraft(t *testing.T) {
 		wantKinds  []string
 		wantAction string
 	}{
-		{"draft alone is enough", Blocks{PR: draft}, []string{CardReport}, ActionNone},
-		{"draft with report", Blocks{PR: draft, Report: &Report{Summary: "s"}}, []string{CardReport, CardReport}, ActionNone},
+		{"draft alone is enough", Blocks{PR: draft}, []string{CardGate}, ActionNone},
+		{"draft with report", Blocks{PR: draft, Report: &Report{Summary: "s"}}, []string{CardReport, CardGate}, ActionNone},
 		{"neither is missing", Blocks{}, []string{CardNotice}, ActionSendTurn},
 	}
 	for _, tt := range tests {
@@ -701,7 +701,7 @@ func TestApplyPRDraft(t *testing.T) {
 			if tt.blocks.PR != nil {
 				c := added[len(added)-1]
 				var d PRDraft
-				if c.Title != "PR draft" || c.Stage != StagePR || json.Unmarshal(c.Payload, &d) != nil || d.Title != "feat: focus" {
+				if c.Title != PRGateTitle || c.Stage != StagePR || json.Unmarshal(c.Payload, &d) != nil || d.Title != "feat: focus" {
 					t.Fatalf("draft card = %+v", c)
 				}
 			}

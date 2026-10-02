@@ -140,6 +140,15 @@ type PRInfo struct {
 	Number int    `json:"number"`
 	URL    string `json:"url"`
 	State  string `json:"state"`
+	// MergeState, Checks and the head are the latest probe's (P4).
+	MergeState string    `json:"merge_state,omitempty"`
+	Checks     []PRCheck `json:"checks,omitempty"`
+	HeadOID    string    `json:"head_oid,omitempty"`
+	HeadRef    string    `json:"head_ref,omitempty"`
+	// HeadSince is when HeadOID was first seen (the last push); NoCI holds
+	// while no probe of the PR has reported a check.
+	HeadSince *time.Time `json:"head_since,omitempty"`
+	NoCI      bool       `json:"no_ci,omitempty"`
 }
 
 // Pipeline is the persisted focus state of one session.
@@ -195,6 +204,21 @@ type Pipeline struct {
 	BaseCommit string `json:"base_commit,omitempty"`
 	// Review is the review loop's position in its round (P3).
 	Review ReviewState `json:"review,omitzero"`
+	// PRDraft is the draft G3 approved (P4, pr.go). PRWait is what the
+	// pipeline waits for after a write turn (PRWaitOpen, PRWaitFix,
+	// PRWaitMerge) and PRProbes how many probes found nothing meanwhile.
+	// PRFixCursor is the card count at the last fix turn: findings from
+	// there on are the next round's.
+	PRDraft     *PRDraft `json:"pr_draft,omitempty"`
+	PRWait      string   `json:"pr_wait,omitempty"`
+	PRProbes    int      `json:"pr_probes,omitempty"`
+	PRFixCursor int      `json:"pr_fix_cursor,omitempty"`
+	// PRUnavailable is the latest probe's error while gh cannot run; a
+	// probe that runs clears it.
+	PRUnavailable string `json:"pr_unavailable,omitempty"`
+	// WorktreeEnd is how the session worktree ended once the pipeline
+	// finished (server-recorded).
+	WorktreeEnd *WorktreeEnd `json:"worktree_end,omitempty"`
 }
 
 // KindRelease marks a release pipeline, which the release train never lists.
@@ -265,7 +289,20 @@ func (p Pipeline) clone() Pipeline {
 	}
 	if p.PR != nil {
 		pr := *p.PR
+		pr.Checks = append([]PRCheck(nil), p.PR.Checks...)
+		if p.PR.HeadSince != nil {
+			at := *p.PR.HeadSince
+			pr.HeadSince = &at
+		}
 		out.PR = &pr
+	}
+	if p.WorktreeEnd != nil {
+		end := *p.WorktreeEnd
+		out.WorktreeEnd = &end
+	}
+	if p.PRDraft != nil {
+		d := *p.PRDraft
+		out.PRDraft = &d
 	}
 	if p.FinishedAt != nil {
 		at := *p.FinishedAt

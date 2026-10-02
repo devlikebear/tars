@@ -174,13 +174,11 @@ func TestFailTurn(t *testing.T) {
 }
 
 func TestFinishedPipelineOwesNoTurn(t *testing.T) {
-	// The last stage's approval finishes the pipeline (P5 FinishedAt); its
-	// "complete" prompt is not a turn the server owes.
+	// The last stage's manual pass finishes the pipeline (P5 FinishedAt);
+	// its "complete" prompt is not a turn the server owes.
 	p := atStage(t, StageMerge)
 	p.Plan.Stages = []StageID{StagePlan, StageMerge}
-	p.OpenGate = GateMerge
-	p.addCard(CardGate, 1, "merge", nil, t0)
-	got, act, err := Apply(p, Event{Kind: EventGate, Gate: GateMerge, Action: GateApprove}, t0)
+	got, act, err := Apply(p, Event{Kind: EventAdvance, Stage: StageMerge}, t0)
 	if err != nil || got.Active() {
 		t.Fatalf("err %v active %v", err, got.Active())
 	}

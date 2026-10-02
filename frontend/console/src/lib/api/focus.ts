@@ -6,6 +6,7 @@ import type {
   FocusListItem,
   FocusPipeline,
   FocusPlan,
+  FocusPRDraft,
   FocusQAResult,
   FocusStageId,
   ReleaseTrain,
@@ -88,7 +89,7 @@ export function focusGate(
   sessionId: string,
   gate: string,
   action: FocusGateAction,
-  options: { note?: string; edits?: FocusPlan } = {},
+  options: { note?: string; edits?: FocusPlan; pr?: FocusPRDraft } = {},
 ): Promise<FocusActionResult> {
   return postAction(`${pipelinePath(sessionId)}/gates/${encodeURIComponent(gate)}`, { action, ...options })
 }

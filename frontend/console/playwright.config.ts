@@ -78,6 +78,9 @@ export default defineConfig({
         TARS_API_ALLOW_INSECURE_LOCAL_AUTH: 'true',
         // Serve the embedded build, never a Vite dev proxy.
         TARS_CONSOLE_DEV_URL: '',
+        // Focus PR stages probe this stub, never the host's gh or the
+        // network (GitHub runners have an authenticated gh).
+        TARS_FOCUS_GH_PATH: join(repoRoot, 'frontend', 'console', 'e2e', 'fake-gh.sh'),
       },
       reuseExistingServer: false,
       // The first `go run` compiles the binary.
