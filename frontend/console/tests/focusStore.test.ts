@@ -259,6 +259,20 @@ test('the PR gate posts its edited title and body with approve', async () => {
   await settle(store)
 })
 
+// Review round 2 (#1087): approving G4 names the card on screen, so a G4
+// the server reopened on a new head meanwhile refuses the approval.
+test('the merge gate posts the card it shows', async () => {
+  const old: FocusCard = { id: 'c5', kind: 'gate', stage: 'merge', turn: 0, title: 'Merge pull request', state: 'decided', decision: 'superseded', created_at: '2026-10-01T00:00:05Z', payload: {} }
+  const g4: FocusCard = { id: 'c7', kind: 'gate', stage: 'merge', turn: 0, title: 'Merge pull request', state: 'unseen', created_at: '2026-10-01T00:00:07Z', payload: {} }
+  const fake = fakeApi(pipeline('2026-10-01T00:00:07Z', [old, g4], { current: 'merge', open_gate: 'merge' }))
+  fake.state.gateResult = { pipeline: pipeline('2026-10-01T00:00:08Z', [old, { ...g4, state: 'decided', decision: 'approve' }], { current: 'merge', pr_wait: 'merge' }), next_prompt: 'Merge gate approved.' }
+  const store = newStore(fake)
+  await store.load('s1')
+  assert.equal(await store.gate('merge', 'approve'), true)
+  assert.deepEqual(fake.state.gateCalls[0], ['s1', 'merge', 'approve', { note: undefined, edits: undefined, card_id: 'c7' }])
+  await settle(store)
+})
+
 test('the blocked gate takes retry and instruct with its note', async () => {
   const blocked: FocusCard = { id: 'c5', kind: 'gate', stage: 'build', turn: 4, title: 'Build blocked', state: 'unseen', created_at: '2026-10-01T00:00:05Z', payload: { reason: 'repeated', iteration: 2, limit: 3 } }
   const fake = fakeApi(pipeline('2026-10-01T00:00:05Z', [blocked], { current: 'build', open_gate: 'blocked' }))

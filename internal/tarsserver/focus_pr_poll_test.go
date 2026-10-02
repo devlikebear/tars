@@ -570,3 +570,45 @@ func TestFocusG4ApproveAbortsOnACancelledRequest(t *testing.T) {
 		t.Fatalf("gate %q wait %q pending %q turns %d", p.OpenGate, p.PRWait, p.PendingTurn, turns.Load())
 	}
 }
+
+// Review round 2, f1: with pr_review skipped, a G4 the poller reopened on
+// a new head is not approved by a console still showing the old card.
+func TestFocusG4ApproveOnAReplacedCardIsRefused(t *testing.T) {
+	d, store, id, prober, _ := testPRDriver(t, always(foundPR(focuspipeline.PRStateOpen, focuspipeline.PRCheck{Name: "test", State: focuspipeline.CheckPass})))
+	var turns atomic.Int32
+	d.runTurn = func(context.Context, string, string) error { turns.Add(1); return nil }
+	first := prober.probe(context.Background(), "", 0)
+	applyFocus(t, store, id, focuspipeline.Event{Kind: focuspipeline.EventPRProbe, Probe: &first})
+	if _, _, err := focusStoreFor(store).Update(id, func(p focuspipeline.Pipeline) (focuspipeline.Pipeline, error) {
+		for i := range p.Stages {
+			if p.Stages[i].ID == focuspipeline.StagePRReview {
+				p.Stages[i].Status = focuspipeline.StatusSkipped
+			}
+		}
+		return p, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	seen := pipelineOf(t, store, id)
+	if seen.OpenGate != focuspipeline.GateMerge {
+		t.Fatalf("gate = %q", seen.OpenGate)
+	}
+	seenCard := seen.Cards[len(seen.Cards)-1].ID
+	// The poller sees the push and reopens G4 on h2 before the click.
+	moved := foundPR(focuspipeline.PRStateOpen, focuspipeline.PRCheck{Name: "test", State: focuspipeline.CheckPending})
+	moved.HeadOID = "h2"
+	reopened := applyFocus(t, store, id, focuspipeline.Event{Kind: focuspipeline.EventPRProbe, Probe: &moved})
+	if focuspipeline.MergeGateHead(reopened) != "h2" {
+		t.Fatalf("setup: G4 head = %q", focuspipeline.MergeGateHead(reopened))
+	}
+	prober.set(always(moved))
+	h := newFocusPipelineHandler(store, nil, d, zerolog.Nop())
+	rec := focusRequest(t, h, http.MethodPost, "/v1/focus/pipelines/"+id+"/gates/merge", `{"action":"approve","card_id":"`+seenCard+`"}`, true)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("approve: %d %s", rec.Code, rec.Body.String())
+	}
+	waitDriverIdle(t, d, id)
+	if p := pipelineOf(t, store, id); p.OpenGate != focuspipeline.GateMerge || p.PRWait != "" || turns.Load() != 0 {
+		t.Fatalf("gate %q wait %q turns %d", p.OpenGate, p.PRWait, turns.Load())
+	}
+}

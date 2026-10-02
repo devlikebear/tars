@@ -1,6 +1,7 @@
 package focuspipeline
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -94,6 +95,67 @@ func TestAnswersMayRun(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := AnswersMayRun(tt.p); got != tt.want {
 				t.Fatalf("AnswersMayRun = %v", got)
+			}
+		})
+	}
+}
+
+// Review round 2, f2: an answer carries the gate it was given at, so the
+// turn delivering it is a question even if it starts after that gate was
+// decided; its guidance is the gate's, not the approved write step's.
+func TestAnswerCarriesItsGate(t *testing.T) {
+	asks := &Report{Summary: "s", Decisions: []Decision{{ID: "d1", Question: "Squash?", Options: []string{"yes", "no"}}}}
+	p, _ := mustApply(t, atStage(t, StagePR), Event{Kind: EventTurnCompleted, Turn: 4, Blocks: Blocks{PR: testDraft, Report: asks}})
+	var cardID string
+	for _, c := range p.Cards {
+		if c.Kind == CardDecision {
+			cardID = c.ID
+		}
+	}
+	_, act, err := SetCardState(p, cardID, CardDecided, "yes", t0)
+	if err != nil || act.QuestionGate != GatePR {
+		t.Fatalf("act = %+v err %v", act, err)
+	}
+	none, _ := mustApply(t, atStage(t, StagePRReview), Event{Kind: EventTurnCompleted, Turn: 6, Blocks: Blocks{Report: asks}})
+	for _, c := range none.Cards {
+		if c.Kind == CardDecision {
+			cardID = c.ID
+		}
+	}
+	if _, act, _ := SetCardState(none, cardID, CardDecided, "yes", t0); act.QuestionGate != "" {
+		t.Fatalf("no gate open: question gate = %q", act.QuestionGate)
+	}
+}
+
+func TestQuestionGuidance(t *testing.T) {
+	tests := []struct {
+		name    string
+		p       func(t *testing.T) Pipeline
+		gate    string
+		without string
+		with    string
+	}{
+		{"G3 approved", func(t *testing.T) Pipeline {
+			p, _ := mustApply(t, drafted(t), Event{Kind: EventGate, Gate: GatePR, Action: GateApprove})
+			return p
+		}, GatePR, "gh pr create", "Do not open, push or merge"},
+		{"G4 approved", func(t *testing.T) Pipeline {
+			p, _ := mustApply(t, inMerge(t), Event{Kind: EventGate, Gate: GateMerge, Action: GateApprove})
+			return p
+		}, GateMerge, "gh pr merge", "Do not merge until the developer approves"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := tt.p(t)
+			if !strings.Contains(Guidance(p), tt.without) {
+				t.Fatalf("setup: guidance lacks %q", tt.without)
+			}
+			g := QuestionGuidance(p, tt.gate)
+			if strings.Contains(g, tt.without) || !strings.Contains(g, tt.with) {
+				t.Fatalf("question guidance:\n%s", g)
+			}
+			if got := QuestionGuidance(p, ""); got != Guidance(p) {
+				t.Fatal("no question gate: the stage's guidance")
 			}
 		})
 	}

@@ -90,6 +90,9 @@ type Event struct {
 	Action string
 	Edits  *Plan
 	Note   string
+	// CardID is the gate card the developer acted on (EventGate): when
+	// set, a gate replaced since (G4 reopened on a new head) refuses it.
+	CardID string
 	// Verification is the verification result (EventVerification).
 	Verification *Verification
 	// PR is G3's edited draft (EventGate on GatePR); Probe the probe's
@@ -105,6 +108,10 @@ type Action struct {
 	// Answers are the decision answers a send_turn delivers: the server
 	// merges queued answers and drops those whose stage moved on.
 	Answers []Answer
+	// QuestionGate is the question gate open when the answers were given:
+	// their turn is the developer's question even if it starts after that
+	// gate was decided.
+	QuestionGate string
 }
 
 var noAction = Action{Kind: ActionNone}
@@ -351,6 +358,11 @@ func applyGate(p Pipeline, ev Event, now time.Time) (Pipeline, Action, error) {
 	if p.OpenGate == GateNone || ev.Gate != p.OpenGate {
 		return p, noAction, ErrGateNotOpen
 	}
+	if ev.CardID != "" {
+		if i := p.openGateCard(); i < 0 || p.Cards[i].ID != ev.CardID {
+			return p, noAction, fmt.Errorf("%w: card %s is no longer the open gate", ErrGateNotOpen, ev.CardID)
+		}
+	}
 	if p.OpenGate == GateTriage && ev.Action != GateStop {
 		return p, noAction, fmt.Errorf("%w: triage closes when every finding is decided", ErrInvalidAction)
 	}
@@ -591,6 +603,7 @@ func SetCardState(p Pipeline, cardID, state, decision string, now time.Time) (Pi
 			// A gate waits for the developer (#1079): the answers go out
 			// now as the developer's question, like a typed instruction —
 			// the gate stays open and the pipeline owes nothing.
+			act.QuestionGate = next.OpenGate
 			return next, act, nil
 		}
 		return owe(next, act), act, nil

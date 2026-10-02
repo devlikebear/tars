@@ -89,7 +89,9 @@ export function focusGate(
   sessionId: string,
   gate: string,
   action: FocusGateAction,
-  options: { note?: string; edits?: FocusPlan; pr?: FocusPRDraft } = {},
+  // card_id is the gate card on screen: a gate the server replaced since
+  // (G4 reopened on a new head) refuses the action with 409.
+  options: { note?: string; edits?: FocusPlan; pr?: FocusPRDraft; card_id?: string } = {},
 ): Promise<FocusActionResult> {
   return postAction(`${pipelinePath(sessionId)}/gates/${encodeURIComponent(gate)}`, { action, ...options })
 }

@@ -86,7 +86,7 @@ func (f *fakeFocusTurns) run(ctx context.Context, sessionID, prompt string) erro
 			return ctx.Err()
 		}
 	}
-	message, mark := appendFocusGuidance(prompt, f.store, sessionID, zerolog.Nop())
+	message, mark := appendFocusGuidanceAt(prompt, f.store, sessionID, focusQuestionGateFrom(ctx), zerolog.Nop())
 	transcript := f.store.TranscriptPath(sessionID)
 	if err := session.AppendMessage(transcript, session.Message{Role: "user", Content: message, Timestamp: time.Now()}); err != nil {
 		return err

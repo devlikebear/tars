@@ -1100,3 +1100,22 @@ func TestQuestionTurnFinishingAfterItsGateClosed(t *testing.T) {
 		t.Fatalf("open G4: act %+v gate %q", act, got.OpenGate)
 	}
 }
+
+// Review round 2, f1: approving G4 names the card the developer saw; a G4
+// replaced meanwhile (reopened on a new head) refuses the approval.
+func TestG4ApproveNamesItsCard(t *testing.T) {
+	p := skippingPRReview(inMerge(t))
+	seen := p.Cards[p.openGateCard()].ID
+	p, _ = mustApply(t, p, Event{Kind: EventPRProbe, Probe: onHead(probeFound(PRCheck{Name: "test", State: CheckPending}), "h2")})
+	if p.OpenGate != GateMerge || p.Cards[p.openGateCard()].ID == seen {
+		t.Fatalf("setup: G4 not reopened: gate %q", p.OpenGate)
+	}
+	got, act, err := Apply(p, Event{Kind: EventGate, Gate: GateMerge, Action: GateApprove, CardID: seen}, t0)
+	if !errors.Is(err, ErrGateNotOpen) || act.Kind != ActionNone || got.OpenGate != GateMerge || got.PRWait != "" {
+		t.Fatalf("stale card: err %v act %+v gate %q wait %q", err, act, got.OpenGate, got.PRWait)
+	}
+	current := p.Cards[p.openGateCard()].ID
+	if _, act, err := Apply(p, Event{Kind: EventGate, Gate: GateMerge, Action: GateApprove, CardID: current}, t0); err != nil || act.Kind != ActionSendTurn {
+		t.Fatalf("current card: err %v act %+v", err, act)
+	}
+}
