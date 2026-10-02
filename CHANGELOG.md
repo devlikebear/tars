@@ -6,8 +6,11 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.43.2] - 2026-10-03
+
 ### Fixed
 
+- **Focus `pr_review`에서 SonarCloud 같은 봇의 안내 코멘트가 지적 카드가 되던 문제** (#1096, #1094) — SonarCloud의 "Quality Gate passed" 안내 코멘트가 `Review comment from sonarqubecloud` 지적 카드로 올라와, PR마다 이를 dismiss해야 G4가 열렸다. 봇 판별이 `[bot]`으로 끝나는 로그인만 봤는데, gh는 코멘트·리뷰 작성자를 GraphQL로 읽으면서 GitHub App 로그인을 `[bot]` 없이(`sonarqubecloud`) 주고, 코멘트·리뷰 작성자에는 `is_bot`·`type`도 싣지 않기 때문이다. 이제 봇 판별을 `internal/focuspipeline/pr.go`의 `isBotAuthor` 한 곳에 모았다: gh가 봇으로 표시했거나, 로그인이 `[bot]`으로 끝나거나, 상태 알림 앱 목록 `knownBotApps`(`sonarqubecloud`, `sonarcloud`, `codecov`, `github-actions`, `dependabot`, `renovate`, 대소문자·끝의 `[bot]` 무시)에 있으면 봇이다. 코드 리뷰를 하는 앱(Copilot 리뷰어 등)은 목록에 넣지 않아 그 리뷰는 계속 지적이 된다. 봇의 코멘트·리뷰는 변경 요청(`CHANGES_REQUESTED`)이 아니면 지적이 되지 않고, 실패한 품질 신호는 예전처럼 실패한 체크로 지적이 된다. 사람의 코멘트와 변경 요청, 수정 턴의 신뢰되지 않은 코멘트 인용 방식은 그대로다.
 - **30초 넘게 정리되는 턴을 Stop하면 콘솔만 먼저 쉬던 문제** — #1091 이후 `POST /v1/chat/cancel`은 턴이 세션 claim을 놓을 때까지 기다렸다가 답하지만, 그 대기는 30초까지다. 콘솔은 cancel이 답하면 바로 자기 턴 스트림을 끊었으므로, 체크포인트·transcript를 쓰느라 그보다 오래 걸리는 턴은 서버에서는 아직 도는데 콘솔에서는 끝난 것처럼 보였고, 그때 대기열을 다시 시작하면 `409 turn_running`으로 거절됐다. 이제 서버가 취소를 받았으면 스트림을 끊지 않고 `cancelled`로 스스로 끝날 때까지 기다리며, 세션이 아직 없거나 취소가 받아들여지지 않았을 때만 직접 끊는다(`lib/chatTurnRecovery.ts`의 `stopTurn`).
 
 ## [0.43.1] - 2026-10-02
