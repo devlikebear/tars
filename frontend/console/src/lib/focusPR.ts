@@ -47,10 +47,12 @@ export function prStageChip(p: FocusPipeline, stage: FocusStageId): PRStageChip 
 // ghUnavailable is the latest probe's error when the current stage cannot
 // get its facts from gh — the developer passes it by hand — else null. It
 // follows the latest probe (pr_unavailable), not the stage's notice card,
-// so one transient failure does not leave the banner up. A gate open
-// decides first.
+// so one transient failure does not leave the banner up. A gate open or a
+// turn still owed decides first.
 export function ghUnavailable(p: FocusPipeline): string | null {
-  if (p.open_gate || !p.pr_unavailable) return null
+  // A turn the pipeline owes (the write turn a gate approved, a fix) runs
+  // first: the server refuses a pass by hand meanwhile (#1082).
+  if (p.open_gate || !p.pr_unavailable || p.pending_turn) return null
   const stage = p.stages.find((s) => s.id === p.current)
   return stage?.status === 'active' ? p.pr_unavailable : null
 }

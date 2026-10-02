@@ -138,6 +138,10 @@ type InstalledMCP struct {
 	Manifest string `json:"manifest"`
 }
 
+// reasonUpToDate is the UpdateDiagnostic.Reason for an entry skipped
+// because the installed version is already the latest.
+const reasonUpToDate = "up to date"
+
 // UpdateDiagnostic captures a per-entry update outcome that is not a success.
 type UpdateDiagnostic struct {
 	Name   string

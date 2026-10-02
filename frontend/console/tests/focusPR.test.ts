@@ -54,6 +54,7 @@ test('ghUnavailable follows the latest probe, not the notice card', () => {
   assert.equal(ghUnavailable(p), 'gh not found')
   assert.equal(ghUnavailable({ ...p, pr_unavailable: undefined }), null, 'a later probe ran: the notice stays, the banner goes')
   assert.equal(ghUnavailable({ ...p, open_gate: 'pr' }), null, 'a gate decides first')
+  assert.equal(ghUnavailable({ ...p, pending_turn: 'Fix the accepted findings' }), null, 'a turn is owed: a pass now would be refused (409)')
   assert.equal(ghUnavailable({ ...p, stages: p.stages.map((s) => (s.id === 'pr' ? { ...s, status: 'blocked' as const } : s)) }), null)
 })
 
