@@ -134,6 +134,9 @@ type PRComment struct {
 	// ChangesRequested marks a review that requests changes; its body may
 	// be empty (the feedback is in inline comments).
 	ChangesRequested bool `json:"changes_requested,omitempty"`
+	// Bot: the probe's source marked the author a bot. gh gives comment and
+	// review authors only a login today, so isBotAuthor also reads the login.
+	Bot bool `json:"bot,omitempty"`
 }
 
 // PRFinding is a finding card's payload for a check or a comment: Key
@@ -552,7 +555,7 @@ func (p *Pipeline) addPRFindings(probe PRProbe, now time.Time) {
 	}
 	for _, c := range probe.Comments {
 		body := strings.TrimSpace(c.Body)
-		if c.ID == "" || isBot(c.Author) || (body == "" && !c.ChangesRequested) {
+		if c.ID == "" || isBotAuthor(c.Author, c.Bot) || (body == "" && !c.ChangesRequested) {
 			continue
 		}
 		title := "Review comment from " + orDash(c.Author)
@@ -573,8 +576,34 @@ func (p *Pipeline) addPRFindings(probe PRProbe, now time.Time) {
 	}
 }
 
-func isBot(author string) bool {
-	return strings.HasSuffix(strings.ToLower(author), "[bot]")
+// knownBotApps are GitHub App logins as gh reports them for comment and
+// review authors: GraphQL drops the "[bot]" suffix the REST API shows
+// (sonarqubecloud, not sonarqubecloud[bot]). Keep it small: apps that post
+// informational comments on this project's PRs or are common enough to
+// expect. The only list of its kind.
+var knownBotApps = map[string]bool{
+	"sonarqubecloud":                true,
+	"sonarcloud":                    true,
+	"codecov":                       true,
+	"github-actions":                true,
+	"dependabot":                    true,
+	"renovate":                      true,
+	"copilot-pull-request-reviewer": true,
+}
+
+// isBotAuthor reports whether a comment's author is a bot: flagged by the
+// probe, a "[bot]" login, or a known app. Bot comments are never findings
+// (#1094): they are informational, and a failing quality signal arrives as
+// a failing check.
+func isBotAuthor(author string, flagged bool) bool {
+	if flagged {
+		return true
+	}
+	login := strings.ToLower(strings.TrimSpace(author))
+	if name, ok := strings.CutSuffix(login, "[bot]"); ok {
+		return name != ""
+	}
+	return knownBotApps[login]
 }
 
 func (p Pipeline) findingKeys() map[string]bool {

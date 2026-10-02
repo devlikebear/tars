@@ -73,7 +73,7 @@ Loops run automatically inside a stage; the developer acts only at gates. Stage 
 |---|---|
 | Tests / verification passed | The existing `TaskContract` verification run (`handler_task_verification.go`): exit code + proof. The commands were approved by a human at G1, so this does not reopen the "repository config runs commands" problem that blocks `worktree_setup`. |
 | What changed | Turn checkpoint diffs (`internal/checkpoint`) |
-| PR / CI / review state | Server-side **read-only** `gh pr view --json …` probe |
+| PR / CI / review state | Server-side **read-only** `gh pr view --json …` probe. Bot comments and reviews (gh-flagged, a `[bot]` login, or a known app login such as `sonarqubecloud` — gh drops `[bot]` for GitHub Apps; the list is `knownBotApps` in `internal/focuspipeline/pr.go`) never become findings: they are informational, and a failing quality signal arrives as a failing check (#1094) |
 | Write actions (open PR, merge, push) | Executed by the agent with its own permissions, only after the developer passes the gate |
 
 ### 6. Structured blocks, parsed by the server
