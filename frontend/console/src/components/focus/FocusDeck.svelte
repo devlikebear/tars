@@ -8,7 +8,7 @@
   import { untrack } from 'svelte'
   import { t } from '../../i18n'
   import { acknowledgeable, deckCursor, deckOrder, mustHandle, type QAEntry } from '../../lib/focus'
-  import type { FocusCard as Card, FocusDecision, FocusGateAction, FocusPlan, SessionMessage } from '../../lib/types'
+  import type { FocusCard as Card, FocusDecision, FocusGateAction, FocusPlan, FocusPRDraft, SessionMessage } from '../../lib/types'
   import FocusCard from './FocusCard.svelte'
   import FocusQADrawer from './FocusQADrawer.svelte'
   import FocusRawSlice from './FocusRawSlice.svelte'
@@ -20,7 +20,7 @@
     busy: boolean
     running: boolean
     baseDirs?: string[]
-    onGate: (gate: string, action: FocusGateAction, note?: string, edits?: FocusPlan) => void
+    onGate: (gate: string, action: FocusGateAction, note?: string, edits?: FocusPlan, pr?: FocusPRDraft) => void
     onDecide: (card: Card, decision: string) => void
     onSeen: (card: Card) => void
     onAcknowledgeRest: (cards: Card[]) => void

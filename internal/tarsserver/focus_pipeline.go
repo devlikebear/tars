@@ -417,6 +417,8 @@ type focusGateRequest struct {
 	Action string              `json:"action"`
 	Note   string              `json:"note,omitempty"`
 	Edits  *focuspipeline.Plan `json:"edits,omitempty"`
+	// PR is G3's edited title and body.
+	PR *focuspipeline.PRDraft `json:"pr,omitempty"`
 }
 
 // gate applies a gate action. Approving the plan also writes the session's
@@ -440,6 +442,7 @@ func (a *focusAPI) gate(w http.ResponseWriter, r *http.Request) {
 			Gate:   gate,
 			Action: action,
 			Edits:  req.Edits,
+			PR:     req.PR,
 			Note:   req.Note,
 		}, now)
 		if err != nil {
@@ -551,6 +554,17 @@ func (a *focusAPI) advance(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	stage := focuspipeline.StageID(strings.TrimSpace(string(req.Stage)))
+	if a.driver.turnRunning(id) {
+		// A pass by hand never races a turn: passing merge ends the session
+		// worktree, which must not move under a running turn. Refused even
+		// when the pipeline cannot be re-read for the answer.
+		resp := map[string]any{"error": "a turn is running on the session"}
+		if p, ok, err := a.store().Get(id); err == nil && ok {
+			resp["pipeline"] = p
+		}
+		writeJSON(w, http.StatusConflict, resp)
+		return
+	}
 	a.applyEvent(w, r, id, focuspipeline.Event{Kind: focuspipeline.EventAdvance, Stage: stage}, focuspipeline.ErrCannotAdvance)
 }
 
@@ -570,11 +584,18 @@ func (a *focusAPI) stop(w http.ResponseWriter, r *http.Request) {
 // conflict error answers 409 with the unchanged pipeline.
 func (a *focusAPI) applyEvent(w http.ResponseWriter, r *http.Request, id string, ev focuspipeline.Event, conflict error) {
 	var act focuspipeline.Action
+	var prev focuspipeline.Pipeline
 	p, _, err := a.store().Update(id, func(p focuspipeline.Pipeline) (focuspipeline.Pipeline, error) {
+		prev = p
 		next, result, err := focuspipeline.Apply(p, ev, a.now())
 		act = result
 		return next, err
 	})
+	if err == nil {
+		// A manual pass of the merge stage finishes the pipeline: its
+		// worktree is kept (focus_pr_poll.go), after the store's lock.
+		a.driver.pipelineFinished(id, prev, p)
+	}
 	switch {
 	case errors.Is(err, conflict):
 		writeJSON(w, http.StatusConflict, map[string]any{"error": err.Error(), "pipeline": p})

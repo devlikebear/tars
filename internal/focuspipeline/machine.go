@@ -88,6 +88,10 @@ type Event struct {
 	Note   string
 	// Verification is the verification result (EventVerification).
 	Verification *Verification
+	// PR is G3's edited draft (EventGate on GatePR); Probe the probe's
+	// result (EventPRProbe).
+	PR    *PRDraft
+	Probe *PRProbe
 }
 
 // Action is what the server should do next.
@@ -110,6 +114,7 @@ func Apply(p Pipeline, ev Event, now time.Time) (Pipeline, Action, error) {
 	if err != nil {
 		return p, act, err
 	}
+	next, act = afterPREvent(p, next, ev, act, now.UTC())
 	return owe(stampFinished(next, now), act), act, nil
 }
 
@@ -150,6 +155,8 @@ func applyEvent(p Pipeline, ev Event, now time.Time) (Pipeline, Action, error) {
 		return next, Action{Kind: ActionSendTurn, Prompt: approvedPrompt(GateNone, stage)}, nil
 	case EventVerification:
 		return applyVerification(p, ev, now.UTC())
+	case EventPRProbe:
+		return applyProbe(p, ev, now.UTC())
 	case EventStop:
 		if !p.Active() && p.OpenGate != GateBlocked {
 			return p, noAction, ErrNotActive
@@ -201,8 +208,10 @@ func applyTurn(p Pipeline, ev Event, now time.Time) (Pipeline, Action) {
 			p.addCard(CardFinding, ev.Turn, f.Title, f, now)
 		}
 	}
-	if b.PR != nil {
-		// A report-kind card until P4 brings the G3 gate.
+	switch {
+	case b.PR != nil && p.Current == StagePR && p.PRWait == "":
+		p.openPRGate(*b.PR, ev.Turn, now)
+	case b.PR != nil:
 		p.addCard(CardReport, ev.Turn, PRDraftTitle, *b.PR, now)
 	}
 	missing := missingRequiredBlock(p, b)
@@ -229,13 +238,20 @@ func applyTurn(p Pipeline, ev Event, now time.Time) (Pipeline, Action) {
 	return p, act
 }
 
+// questionGates are the gates during which a turn is the developer's
+// question, not the stage's work: G1 (plan), P3's triage, G3 (PR draft) and
+// G4 (merge). Nothing is required of such a turn.
+var questionGates = map[string]bool{GatePlan: true, GateTriage: true, GatePR: true, GateMerge: true}
+
 // missingRequiredBlock reports whether the turn lacked the block its stage
-// requires. While the plan gate is open a turn is the developer's question,
-// not a new plan, so nothing is required.
+// requires.
 func missingRequiredBlock(p Pipeline, b Blocks) bool {
+	if questionGates[p.OpenGate] {
+		return false
+	}
 	switch p.Current {
 	case StagePlan:
-		return b.Plan == nil && p.OpenGate != GatePlan
+		return b.Plan == nil
 	case StagePR:
 		return b.Report == nil && b.Findings == nil && b.PR == nil
 	case StageReview:
@@ -345,6 +361,9 @@ func applyGate(p Pipeline, ev Event, now time.Time) (Pipeline, Action, error) {
 		}
 		p.skipUnplannedStages()
 	}
+	if gate == GatePR || gate == GateMerge {
+		return approvePRGate(&p, gate, ev, decide)
+	}
 	decide()
 	next := p.advance()
 	return p, Action{Kind: ActionSendTurn, Prompt: approvedPrompt(gate, next)}, nil
@@ -397,6 +416,7 @@ func (p *Pipeline) advance() StageID {
 	p.setStatus(p.Current, StatusDone)
 	p.TasksDone, p.AwaitingVerification, p.LastFailure = false, false, nil
 	p.Review = ReviewState{}
+	p.PRWait, p.PRProbes, p.PRUnavailable = "", 0, ""
 	for i := range p.Stages {
 		s := &p.Stages[i]
 		if s.Status != StatusPending {
@@ -416,6 +436,10 @@ func (p Pipeline) limitFor(id StageID) int {
 		if n, ok := p.Plan.Limits[string(id)]; ok && n > 0 {
 			return n
 		}
+	}
+	if id == StagePRReview {
+		// The plan's "pr" limit bounds the PR loop's fix rounds.
+		return p.limitFor(StagePR)
 	}
 	return DefaultLimits[id]
 }
@@ -534,7 +558,13 @@ func SetCardState(p Pipeline, cardID, state, decision string, now time.Time) (Pi
 		return owe(next, act), act, nil
 	}
 	if card.Kind == CardFinding && card.State == CardDecided {
+		// One decision path for findings: the review stage's triage gate
+		// (P3) closes when its round is decided; in pr_review the PR loop
+		// (P4) sends its fix round. Each is a no-op outside its own stage.
 		act := closeTriage(&next)
+		if act.Kind == ActionNone {
+			next, act = next.prFindingDecided(now.UTC())
+		}
 		return owe(next, act), act, nil
 	}
 	return next, noAction, nil

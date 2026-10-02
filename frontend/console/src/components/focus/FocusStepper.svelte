@@ -4,16 +4,20 @@
   // stage shows its card history.
   import { t } from '../../i18n'
   import type { StepperItem } from '../../lib/focus'
+  import type { PRStageChip } from '../../lib/focusPR'
   import type { FocusStageId } from '../../lib/types'
+  import FocusCIChips from './FocusCIChips.svelte'
 
   interface Props {
     items: StepperItem[]
     // The stage whose cards are shown.
     selected: FocusStageId | null
     onSelect: (stage: FocusStageId) => void
+    // The PR stages' PR number and CI counts (P4).
+    chips?: Partial<Record<FocusStageId, PRStageChip>>
   }
 
-  let { items, selected, onSelect }: Props = $props()
+  let { items, selected, onSelect, chips = {} }: Props = $props()
 
   function mark(item: StepperItem): string {
     switch (item.status) {
@@ -49,7 +53,16 @@
         {#if item.current && item.iteration > 1}
           <span class="step-iter" title={$t.focus.iteration(item.iteration)}>↻{item.iteration}</span>
         {/if}
+        {#if chips[item.id]?.ci}<FocusCIChips ci={chips[item.id]!.ci!} />{/if}
       </button>
+      {#if chips[item.id]}
+        {@const chip = chips[item.id]!}
+        {#if chip.url}
+          <a class="step-pr mono" href={chip.url} target="_blank" rel="noreferrer" data-testid={`focus-step-pr-${item.id}`}>#{chip.number}</a>
+        {:else}
+          <span class="step-pr mono" data-testid={`focus-step-pr-${item.id}`}>#{chip.number}</span>
+        {/if}
+      {/if}
     </li>
   {/each}
 </ol>
@@ -130,6 +143,16 @@
   .step.selected:not(.current) {
     background: var(--surface-elevated);
     border-color: var(--border-strong);
+  }
+
+  .step-pr {
+    margin-left: var(--space-1);
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
+  }
+
+  a.step-pr:hover {
+    color: var(--primary-text);
   }
 
   .step-iter {

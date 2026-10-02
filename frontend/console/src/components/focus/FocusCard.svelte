@@ -18,15 +18,18 @@
     FocusReport,
   } from '../../lib/types'
   import { excerptLines } from '../../lib/focus'
+  import { mergeSummary, prDraftOf } from '../../lib/focusPR'
   import FocusChangeCard from './FocusChangeCard.svelte'
+  import FocusMergeSummary from './FocusMergeSummary.svelte'
   import FocusPlanGate from './FocusPlanGate.svelte'
+  import FocusPRGate from './FocusPRGate.svelte'
 
   interface Props {
     card: FocusCard
     // The pipeline's open gate ('' when none).
     openGate: string
     busy: boolean
-    onGate: (gate: string, action: FocusGateAction, note?: string, edits?: FocusPlan) => void
+    onGate: (gate: string, action: FocusGateAction, note?: string, edits?: FocusPlan, pr?: FocusPRDraft) => void
     onDecide: (card: FocusCard, decision: string) => void
     // Opens the card's Q&A drawer; absent hides a finding's Ask.
     onAsk?: () => void
@@ -40,10 +43,17 @@
 
   let decided = $derived(card.state === 'decided')
   let isBlocked = $derived(card.kind === 'gate' && isBlockedPayload(card.payload))
+  // The PR gates (P4): G3's editable draft and G4's merge summary.
+  let prDraft = $derived(isBlocked ? null : prDraftOf(card))
+  let merge = $derived(isBlocked ? null : mergeSummary(card))
   let title = $derived(
     card.kind === 'gate' && card.stage === 'plan'
       ? $t.focus.gate.planTitle
-      : isBlocked
+      : prDraft
+        ? $t.focus.pr.draftTitle
+        : merge
+          ? $t.focus.pr.mergeTitle
+          : isBlocked
         ? blockedTitle(card.payload as FocusBlocked)
         : card.kind === 'change'
           ? $t.focus.change.turnTitle(card.turn)
@@ -64,6 +74,7 @@
   function blockedTitle(b: FocusBlocked): string {
     if (b.reason === 'interrupted') return $t.focus.gate.interruptedTitle
     if (b.reason === 'turn_failed') return $t.focus.gate.turnFailedTitle
+    if (b.reason === 'pr_missing' || b.reason === 'pr_closed' || b.reason === 'not_merged' || b.reason === 'pr_fix_limit') return $t.focus.gate.prBlockedTitle
     return card.stage === 'review' ? $t.focus.gate.reviewBlockedTitle : $t.focus.gate.blockedTitle
   }
 
@@ -79,6 +90,11 @@
         return $t.focus.gate.blockedReason.repeated
       case 'no_progress':
         return $t.focus.gate.blockedReason.no_progress
+      case 'pr_missing':
+      case 'pr_closed':
+      case 'not_merged':
+      case 'pr_fix_limit':
+        return $t.focus.gate.blockedReason[b.reason]
       default:
         return b.reason
     }
@@ -185,19 +201,32 @@
             </div>
           {/if}
         {/if}
-      {:else if gateOpen}
-        {#if asking}
-          <textarea rows="3" bind:value={note} placeholder={$t.focus.gate.notePlaceholder} disabled={busy}></textarea>
-          <div class="actions">
-            <button type="button" class="btn btn-secondary btn-sm" disabled={busy || !note.trim()} onclick={() => onGate(openGate, 'request_changes', note.trim())}>{$t.focus.gate.sendChanges}</button>
-            <button type="button" class="btn btn-ghost btn-sm" onclick={() => { asking = false }}>{$t.focus.gate.cancel}</button>
-          </div>
-        {:else}
-          <div class="actions">
-            <button type="button" class="btn btn-primary" disabled={busy} onclick={() => onGate(openGate, 'approve')}>{$t.focus.gate.approve}</button>
-            <button type="button" class="btn btn-secondary" disabled={busy} onclick={() => { asking = true }}>{$t.focus.gate.requestChanges}</button>
-            <button type="button" class="btn btn-danger" disabled={busy} onclick={() => onGate(openGate, 'stop')}>{$t.focus.gate.stop}</button>
-          </div>
+      {:else if prDraft}
+        <FocusPRGate
+          cardId={card.id}
+          draft={prDraft}
+          open={gateOpen && openGate === 'pr'}
+          {busy}
+          onApprove={(draft) => onGate('pr', 'approve', undefined, undefined, draft)}
+          onRequestChanges={(text) => onGate('pr', 'request_changes', text)}
+          onStop={() => onGate('pr', 'stop')}
+        />
+      {:else}
+        {#if merge}<FocusMergeSummary summary={merge} />{/if}
+        {#if gateOpen}
+          {#if asking}
+            <textarea rows="3" bind:value={note} placeholder={$t.focus.gate.notePlaceholder} disabled={busy}></textarea>
+            <div class="actions">
+              <button type="button" class="btn btn-secondary btn-sm" disabled={busy || !note.trim()} onclick={() => onGate(openGate, 'request_changes', note.trim())}>{$t.focus.gate.sendChanges}</button>
+              <button type="button" class="btn btn-ghost btn-sm" onclick={() => { asking = false }}>{$t.focus.gate.cancel}</button>
+            </div>
+          {:else}
+            <div class="actions">
+              <button type="button" class="btn btn-primary" disabled={busy} onclick={() => onGate(openGate, 'approve')} data-testid="focus-gate-approve-generic">{merge ? $t.focus.pr.merge : $t.focus.gate.approve}</button>
+              <button type="button" class="btn btn-secondary" disabled={busy} onclick={() => { asking = true }}>{$t.focus.gate.requestChanges}</button>
+              <button type="button" class="btn btn-danger" disabled={busy} onclick={() => onGate(openGate, 'stop')}>{$t.focus.gate.stop}</button>
+            </div>
+          {/if}
         {/if}
       {/if}
     {:else if card.kind === 'decision'}
@@ -239,6 +268,9 @@
       {#if f?.excerpt}
         <h4 class="label">{$t.focus.finding.diff}</h4>
         <pre class="mono excerpt" data-content data-testid="focus-finding-excerpt">{#each excerptLines(f.excerpt, f.line) as l, i (i)}<span class="ex-{l.kind}" class:ex-target={l.target}>{l.text}</span>{/each}</pre>
+      {/if}
+      {#if f?.key?.startsWith('comment:') && !f.trusted}
+        <p class="muted" data-testid="focus-finding-untrusted">{$t.focus.pr.untrusted}</p>
       {/if}
       {#if !decided}
         <div class="actions">

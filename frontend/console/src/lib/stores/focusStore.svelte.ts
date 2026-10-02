@@ -35,6 +35,7 @@ import type {
   FocusGateAction,
   FocusPipeline,
   FocusPlan,
+  FocusPRDraft,
   FocusQAResult,
   FocusStageId,
   Session,
@@ -50,7 +51,7 @@ export type FocusStoreApi = {
   getCheckpointDiff(sessionId: string, turnId: string, options?: { scope?: 'turn' }): Promise<CheckpointDiff>
   streamChat(request: ChatRequest, onEvent: (event: ChatEvent) => void, signal?: AbortSignal): Promise<void>
   attachChatStream(sessionId: string, onEvent: (event: ChatEvent) => void, signal?: AbortSignal): Promise<boolean>
-  gate(sessionId: string, gate: string, action: FocusGateAction, options: { note?: string; edits?: FocusPlan }): Promise<FocusActionResult>
+  gate(sessionId: string, gate: string, action: FocusGateAction, options: { note?: string; edits?: FocusPlan; pr?: FocusPRDraft }): Promise<FocusActionResult>
   card(sessionId: string, cardId: string, state: FocusCardState, decision?: string): Promise<FocusActionResult>
   advance(sessionId: string, stage: FocusStageId): Promise<FocusActionResult>
   stop(sessionId: string): Promise<FocusActionResult>
@@ -247,14 +248,28 @@ export class FocusStore {
     const sessionId = this.sessionId
     if (!sessionId || this.disposed || this.streaming || this.running || this.attaching) return
     if (!(await this.runningElsewhere(sessionId))) {
-      // Nothing runs: send what waited (a prompt queued while the activity
-      // still listed a turn that was ending).
+      // Nothing runs: re-read the pipeline — the server changes it without a
+      // turn (the PR stages' gh probe, P4), and a turn short enough to end
+      // between two activity checks is never followed — then send what
+      // waited (a prompt queued while the activity still listed a turn that
+      // was ending).
+      await this.refreshPipeline(sessionId)
       await this.flush()
       return
     }
     if (this.sessionId !== sessionId || this.disposed || this.streaming || this.running || this.attaching) return
     this.attaching = this.follow(sessionId)
     await this.attaching
+  }
+
+  // refreshPipeline re-reads everything a finished turn changed when the
+  // server's pipeline is newer than the one held: the pipeline alone would
+  // carry cards from a turn whose transcript (view raw) is not loaded yet.
+  private async refreshPipeline(sessionId: string): Promise<void> {
+    const pipeline = await this.api.getPipeline(sessionId).catch(() => null)
+    if (!pipeline || this.sessionId !== sessionId || this.disposed) return
+    if (this.pipeline && time(pipeline.updated_at) <= time(this.pipeline.updated_at)) return
+    await this.afterTurn()
   }
 
   private async runningElsewhere(sessionId: string): Promise<boolean> {
@@ -599,10 +614,12 @@ export class FocusStore {
     }
   }
 
-  async gate(gate: string, action: FocusGateAction, note?: string, edits?: FocusPlan): Promise<boolean> {
+  // pr is G3's edited title and body (P4).
+  async gate(gate: string, action: FocusGateAction, note?: string, edits?: FocusPlan, pr?: FocusPRDraft): Promise<boolean> {
     const sessionId = this.sessionId
     if (!sessionId) return false
-    const ok = await this.act(() => this.api.gate(sessionId, gate, action, { note, edits }))
+    const options = pr ? { note, edits, pr } : { note, edits }
+    const ok = await this.act(() => this.api.gate(sessionId, gate, action, options))
     if (ok) this.viewStage = null
     await this.flush()
     return ok

@@ -30,7 +30,11 @@
 // [e2e:focus-review] runs the review loop (P3): its plan adds an end-to-end
 // command, build reports done, the first review finds two issues in
 // base.txt, the fix turn ("Fix these findings…") reports, and the next
-// review round finds none. A Q&A question (console context, no stage) gets the generic
+// review round finds none. [e2e:focus-pr] answers the pr stage with a
+// <focus-pr> draft and a report, and the turns a PR gate sends (open the PR,
+// merge it) and the merge stage with a plain report; the server's gh probe
+// then finds no PR (no GitHub remote), so the developer passes those stages
+// by hand (P4). A Q&A question (console context, no stage) gets the generic
 // console-context answer below.
 
 import { createServer } from 'node:http'
@@ -104,6 +108,7 @@ function reviewReply(typed) {
   const summary = findings.length ? `Found ${findings.length} issues.` : 'Reviewed the change again.'
   return `${summary}\n\n<focus-findings>${JSON.stringify(findings)}</focus-findings>\n<focus-report>${JSON.stringify({ summary, risks: [] })}</focus-report>`
 }
+const FOCUS_PR = '[e2e:focus-pr]'
 
 function focusReply(text) {
   const stage = text.match(/<focus-stage>[\s\S]*?current stage: ([a-z_]+)/)?.[1]
@@ -122,6 +127,13 @@ function focusReply(text) {
     return `Here is the plan.\n\n<focus-plan>${JSON.stringify(plan)}</focus-plan>`
   }
   if (stage === 'review' && text.includes(FOCUS_REVIEW)) return reviewReply(typed)
+  if ((stage === 'pr' || stage === 'pr_review' || stage === 'merge') && text.includes(FOCUS_PR)) {
+    if (stage === 'pr' && !typed.includes('PR gate approved')) {
+      const draft = { title: 'feat: add a greeting', body: 'Adds greet() and its test.' }
+      return `Drafted the PR.\n\n<focus-pr>${JSON.stringify(draft)}</focus-pr>\n<focus-report>${JSON.stringify({ summary: 'Drafted the pull request.', risks: [] })}</focus-report>`
+    }
+    return `Done.\n\n<focus-report>${JSON.stringify({ summary: `Ran the ${stage} step.`, risks: [] })}</focus-report>`
+  }
   if (stage === 'pr' && (text.includes(FOCUS_REPORT) || text.includes(FOCUS_LOOP) || text.includes(FOCUS_REVIEW))) {
     const draft = { title: 'Add a greeting', body: 'Adds greet().' }
     return `Drafted the PR.\n\n<focus-pr>${JSON.stringify(draft)}</focus-pr>\n<focus-report>${JSON.stringify({ summary: 'Drafted the PR.', risks: [] })}</focus-report>`
