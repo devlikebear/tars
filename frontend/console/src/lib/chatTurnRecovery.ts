@@ -27,6 +27,14 @@ export function sendFailure(err: unknown): SendFailure {
   return 'dropped'
 }
 
+// refusedSendReturn says where a refused send goes back to. A message the
+// user typed goes back into the composer, unless they have started a new
+// draft there: it then waits first in the queue (paused), like a queued
+// message, so neither is overwritten.
+export function refusedSendReturn(opts: { queued: boolean; composerHasDraft: boolean }): 'queue' | 'composer' {
+  return opts.queued || opts.composerHasDraft ? 'queue' : 'composer'
+}
+
 export type ReattachOutcome = {
   // The server still had the turn running and the panel followed it again.
   attached: boolean

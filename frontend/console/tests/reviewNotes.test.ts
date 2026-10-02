@@ -75,3 +75,17 @@ test('a revert that wrote nothing leaves no note', async () => {
   await store.confirmRevert()
   assert.deepEqual(store.notes, [])
 })
+
+test('notes taken for a send the server refused come back, once, for the same session only', async () => {
+  const store = new ChangesStore(fakeApi(written('a.txt')))
+  await store.load('s1')
+  store.addNote({ turn_id: 't1', path: 'a.txt', comment: 'louder', kind: 'comment' })
+  const drafts = [...store.notes]
+  store.takeNotes()
+  store.addNote({ turn_id: 't1', path: 'b.txt', comment: 'added meanwhile', kind: 'comment' })
+  store.restoreNotes('s1', drafts)
+  store.restoreNotes('s1', drafts)
+  assert.deepEqual(store.notes.map((n) => n.path), ['a.txt', 'b.txt'], 'they go back first, not twice')
+  store.restoreNotes('s2', [{ id: 'other', turn_id: 't9', path: 'z.txt' }])
+  assert.deepEqual(store.notes.map((n) => n.path), ['a.txt', 'b.txt'], 'another session’s notes are not mixed in')
+})

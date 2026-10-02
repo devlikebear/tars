@@ -152,3 +152,42 @@ test('a queued message the server refuses goes back in the queue, paused', async
   await expect(assistant(page).filter({ hasText: 'Echo: behind it' })).toHaveCount(1)
   await expect(queue(page)).toHaveCount(0)
 })
+
+test('a message sent from the composer and refused comes back, never over a new draft', async ({ page }) => {
+  await holdTurn(page)
+  await pendingApproval(page).getByRole('button', { name: 'Allow write_file for this session' }).click()
+  await expect(assistant(page).filter({ hasText: 'Wrote 3 files.' })).toHaveCount(1)
+  // Sent, not queued: wait until the turn has settled.
+  await expect(composer(page)).not.toHaveAttribute('placeholder', /Queue a follow-up/)
+
+  // The next two sends are refused before a turn starts. While the second
+  // is in flight the user starts a new draft, which must survive.
+  let refused = 0
+  await page.route((url) => url.pathname === '/v1/chat', async (route) => {
+    if (route.request().method() !== 'POST' || refused >= 2) {
+      await route.fallback()
+      return
+    }
+    refused++
+    if (refused === 2) await composer(page).fill('a new draft')
+    await route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ error: 'a turn is already running on this session', code: 'turn_running' }) })
+  })
+
+  await composer(page).fill('sent directly')
+  await composer(page).press('Enter')
+  await expect(page.locator('.chat-log .chat-error').filter({ hasText: 'Your message is back in the composer' })).toHaveCount(1)
+  await expect(composer(page)).toHaveValue('sent directly')
+  await expect(page.locator('.chat-log .chat-user').filter({ hasText: 'sent directly' })).toHaveCount(0)
+
+  await composer(page).press('Enter')
+  await expect(page.locator('.chat-log .chat-error').filter({ hasText: 'It is back first in the queue, paused' })).toHaveCount(1)
+  await expect(composer(page)).toHaveValue('a new draft')
+  await expect(queue(page)).toContainText('Paused')
+  await expect(queue(page).locator('.queue-item').first()).toContainText('sent directly')
+  expect(refused).toBe(2)
+
+  await queue(page).getByRole('button', { name: 'Resume' }).click()
+  await expect(assistant(page).filter({ hasText: 'Echo: sent directly' })).toHaveCount(1)
+  await expect(queue(page)).toHaveCount(0)
+  await expect(composer(page)).toHaveValue('a new draft')
+})
