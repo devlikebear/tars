@@ -3,7 +3,10 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -362,6 +365,15 @@ func TestSkillCobra_AllSubcommandsExercise(t *testing.T) {
 	}
 	if !strings.Contains(stdout, "Installed skill") {
 		t.Errorf("install stdout missing success: %s", stdout)
+	}
+	// The installed SKILL.md is the previewed conversion, byte for byte.
+	installed, err := os.ReadFile(filepath.Join(workspace, "skills", "github", "SKILL.md"))
+	if err != nil {
+		t.Fatalf("read installed SKILL.md: %v", err)
+	}
+	sum := sha256.Sum256(installed)
+	if want := "SKILL.md  " + fmt.Sprintf("%dB  sha256:%s", len(installed), shortHash(hex.EncodeToString(sum[:]))); !strings.Contains(stdout, want) {
+		t.Errorf("preview does not show the installed SKILL.md hash %q:\n%s", want, stdout)
 	}
 
 	// list → exercises List closure.

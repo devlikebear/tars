@@ -6,6 +6,11 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+### Fixed
+
+- **외부 허브 스킬 설치가 확인 뒤에 `post-confirm content … changed`로 실패하던 문제** — openclaw·hermes·anthropic 스킬은 미리보기를 위해 한 번, 승인 뒤에 설치하려고 또 한 번 내려받고 두 번의 sha256을 비교했다. 그런데 변환기가 SKILL.md의 `imported_at`과 ATTRIBUTION.md에 현재 시각을 초 단위로 넣으므로, `tars skill install --from openclaw`에서 사람이 1초 넘게 생각하고 `y`를 누르면 거의 항상 실패했고, `--yes`를 쓰는 테스트도 두 번 받는 사이에 초가 넘어가면 CI에서 무작위로 깨졌다. 이제 미리보기를 만든 바로 그 바이트를 설치한다. 다시 받지 않으므로 사용자가 승인한 내용과 디스크에 쓰이는 내용이 항상 같다.
+- **`cmd/tars` 테스트가 네트워크를 쓰지 못하게 막음** — `TestMain`이 `http.DefaultTransport`를 loopback이 아닌 주소로는 연결하지 않는 것으로 바꾸고, 코드가 에러를 삼켰더라도 그런 시도가 있었으면 패키지를 실패시킨다. 외부 허브를 실제 GitHub 대신 httptest로 돌리는 것을 잊은 테스트가 upstream 변경에 따라 다른 PR의 CI를 깨뜨리지 않게 하기 위해서다.
+
 ## [0.42.2] - 2026-10-01
 
 ### Fixed
