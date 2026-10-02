@@ -8,6 +8,7 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ### Fixed
 
+- **대기열 메시지를 서버가 거절하면 조용히 사라지던 문제** — 대기열에서 꺼낸 메시지를 보냈는데 `POST /v1/chat`이 2xx가 아닌 답(특히 세션 claim이 아직 잡혀 있을 때의 `409 turn_running`: 취소 뒤 정리 중인 턴, focus driver 턴)을 주면, 콘솔은 이를 스트림이 끊긴 실행 중 턴으로 보고 transcript를 다시 불러왔다. 그러면서 거절된 메시지의 말풍선과 에러가 지워졌고, 메시지는 이미 대기열에서 빠진 뒤라 사용자가 쓴 글이 그대로 없어졌다. 이제 턴이 시작되기 전에 거절된 대기열 메시지는 대기열 맨 앞으로 그대로(파일·멘션 포함) 돌아가고 대기열이 일시정지되며, 왜 보내지 못했는지 에러로 보여 준다. 다시 시작은 사용자가 한다 — 자동 재시도나 대기는 없다.
 - **외부 허브 스킬 설치가 확인 뒤에 `post-confirm content … changed`로 실패하던 문제** — openclaw·hermes·anthropic 스킬은 미리보기를 위해 한 번, 승인 뒤에 설치하려고 또 한 번 내려받고 두 번의 sha256을 비교했다. 그런데 변환기가 SKILL.md의 `imported_at`과 ATTRIBUTION.md에 현재 시각을 초 단위로 넣으므로, `tars skill install --from openclaw`에서 사람이 1초 넘게 생각하고 `y`를 누르면 거의 항상 실패했고, `--yes`를 쓰는 테스트도 두 번 받는 사이에 초가 넘어가면 CI에서 무작위로 깨졌다. 이제 미리보기를 만든 바로 그 바이트를 설치한다. 다시 받지 않으므로 사용자가 승인한 내용과 디스크에 쓰이는 내용이 항상 같다.
 - **`cmd/tars` 테스트가 네트워크를 쓰지 못하게 막음** — `TestMain`이 `http.DefaultTransport`를 loopback이 아닌 주소로는 연결하지 않는 것으로 바꾸고, 코드가 에러를 삼켰더라도 그런 시도가 있었으면 패키지를 실패시킨다. 외부 허브를 실제 GitHub 대신 httptest로 돌리는 것을 잊은 테스트가 upstream 변경에 따라 다른 PR의 CI를 깨뜨리지 않게 하기 위해서다.
 

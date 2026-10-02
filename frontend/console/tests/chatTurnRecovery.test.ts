@@ -53,7 +53,7 @@ test('a failed reattach or history reload still settles', async () => {
 test('ChatPanel recovers a dropped turn and re-reads usage when the event stream comes back', () => {
   const src = readFileSync(new URL('../src/components/ChatPanel.svelte', import.meta.url), 'utf8')
   assert.match(src, /recoverDroppedTurn\(/, 'the send path recovers a dropped stream')
-  assert.match(src, /streamDropped\(err\)/, 'only a dropped stream, not a user stop, is recovered')
+  assert.match(src, /sendFailure\(err\)/, 'only a dropped stream, not a user stop, is recovered')
   const refresh = src.slice(src.indexOf('const refreshActiveSession'), src.indexOf('stopEventStream = streamEvents'))
   assert.match(refresh, /chatSession\.refreshUsage\(\)/, 'reconnect and refocus re-read the session cost')
 })
@@ -68,4 +68,23 @@ test('a focus verification feed leaves no empty assistant bubble; other feeds ke
   assert.deepEqual(dropVerificationPlaceholder(messages, 'resumed', false).map((m) => m.id), ['u1', 'resumed'])
   const replied = [{ id: 'resumed', role: 'assistant', text: 'done' }]
   assert.deepEqual(dropVerificationPlaceholder(replied, 'resumed', true), replied)
+})
+
+test('a send the server refused before the turn started is told from a dropped stream', async () => {
+  const { sendFailure } = await import('../src/lib/chatTurnRecovery.ts')
+  const { APIRequestError } = await import('../src/lib/api/client.ts')
+  assert.equal(sendFailure(new APIRequestError('turn_running', 409)), 'refused', 'one turn at a time: the claim is still held')
+  assert.equal(sendFailure(new APIRequestError('boom', 500)), 'refused', 'any non-2xx answer means no turn started')
+  assert.equal(sendFailure(new TypeError('network error')), 'dropped', 'a broken stream may have a turn running on')
+  assert.equal(sendFailure(new Error('chat stream body missing')), 'dropped')
+  assert.equal(sendFailure(new DOMException('aborted', 'AbortError')), 'stopped')
+})
+
+test('a refused queued send goes back in the queue instead of being recovered as a dropped turn', () => {
+  const src = readFileSync(new URL('../src/components/ChatPanel.svelte', import.meta.url), 'utf8')
+  const send = src.slice(src.indexOf('async function submitChat'), src.indexOf('async function afterTurn'))
+  assert.match(send, /sendFailure\(err\)/)
+  assert.match(send, /messageQueue\.putBack\(queueKey, queuedPayload\)/, 'the refused message is put back, not lost')
+  const refused = send.indexOf("=== 'refused'")
+  assert.ok(refused > 0 && refused < send.indexOf('recoverDroppedTurn('), 'refusal is handled before dropped-turn recovery')
 })

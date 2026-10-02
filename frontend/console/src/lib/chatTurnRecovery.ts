@@ -5,10 +5,26 @@
 // minutes of work. The cost is recorded when the provider call returns, so
 // it can only be read after the turn ends.
 
+import { APIRequestError } from './api/client.ts'
+
 // streamDropped tells a broken stream (network error, proxy reset) from the
 // user stopping the turn, which aborts the fetch on purpose.
 export function streamDropped(err: unknown): boolean {
   return !(err instanceof DOMException && err.name === 'AbortError')
+}
+
+// sendFailure tells why a send ended early:
+//   - stopped: the user aborted the fetch.
+//   - refused: POST /v1/chat answered non-2xx, so no turn started (409 while
+//     the session's claim is still held: a turn winding down after a cancel,
+//     a focus-driver turn). Nothing runs on in the server to recover.
+//   - dropped: the stream broke; the turn may still be running.
+export type SendFailure = 'stopped' | 'refused' | 'dropped'
+
+export function sendFailure(err: unknown): SendFailure {
+  if (!streamDropped(err)) return 'stopped'
+  if (err instanceof APIRequestError) return 'refused'
+  return 'dropped'
 }
 
 export type ReattachOutcome = {
