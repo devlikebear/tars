@@ -549,7 +549,7 @@ func TestWantsPRProbe(t *testing.T) {
 		{"pr gate open", drafted, false},
 		{"pr awaited", opening, true},
 		{"pr_review", func(t *testing.T) Pipeline { return inPRReview(t) }, true},
-		{"merge gate open", inMerge, false},
+		{"merge gate open", inMerge, true},
 		{"build", func(t *testing.T) Pipeline { return atStage(t, StageBuild) }, false},
 	}
 	for _, tt := range tests {
@@ -879,4 +879,87 @@ func withLateFinding(p Pipeline) Pipeline {
 		Key:     "comment:c9", Trusted: true,
 	}, t0)
 	return next
+}
+
+// --- #1087: G4 follows the PR head ---
+
+func TestG4FollowsThePRHead(t *testing.T) {
+	pass := PRCheck{Name: "test", State: CheckPass}
+	tests := []struct {
+		name        string
+		probe       *PRProbe
+		wantCurrent StageID
+		wantGate    string
+		wantHead    string
+		finished    bool
+	}{
+		{"same head keeps G4", probeFound(pass), StageMerge, GateMerge, "h1", false},
+		{"no head keeps G4", onHead(probeFound(pass), ""), StageMerge, GateMerge, "", false},
+		{"moved head closes G4", onHead(probeFound(PRCheck{Name: "test", State: CheckPending}), "h2"), StagePRReview, GateNone, "h2", false},
+		{"moved head already green still waits a probe", onHead(probeFound(pass), "h2"), StagePRReview, GateNone, "h2", false},
+		{"merged by hand finishes", func() *PRProbe { m := probeFound(pass); m.State = PRStateMerged; return m }(), StageMerge, GateNone, "h1", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := inMerge(t)
+			if !WantsPRProbe(p) {
+				t.Fatal("G4 open wants the probe")
+			}
+			got, act := mustApply(t, p, Event{Kind: EventPRProbe, Probe: tt.probe})
+			if act.Kind != ActionNone || got.Current != tt.wantCurrent || got.OpenGate != tt.wantGate || Finished(got) != tt.finished {
+				t.Fatalf("current %s gate %q finished %v act %+v", got.Current, got.OpenGate, Finished(got), act)
+			}
+			if got.PR.HeadOID != tt.wantHead {
+				t.Fatalf("head = %q, want %q", got.PR.HeadOID, tt.wantHead)
+			}
+			if tt.wantCurrent != StagePRReview {
+				return
+			}
+			g4 := p.Cards[p.openGateCard()]
+			if c := got.Cards[g4.idx(got)]; c.State != CardDecided || c.Decision != DecisionSuperseded {
+				t.Fatalf("old G4 card = %+v", c)
+			}
+			if !got.hasNotice(NoticeHeadMoved) {
+				t.Fatal("no notice says why G4 closed")
+			}
+			if s, _ := got.Stage(StageMerge); s.Status != StatusPending {
+				t.Fatalf("merge status = %s", s.Status)
+			}
+		})
+	}
+}
+
+// After a moved head, G4 reopens on the new head only once its checks pass,
+// and a dismissal made on the old head does not carry over.
+func TestG4ReopensOnTheNewHeadWhenGreen(t *testing.T) {
+	p := inPRReview(t, failing("pr-diff"), PRCheck{Name: "test", State: CheckPass})
+	p, _ = decideAll(t, p, FindingDismiss)
+	p, _ = mustApply(t, p, Event{Kind: EventPRProbe, Probe: probeFound(failing("pr-diff"), PRCheck{Name: "test", State: CheckPass})})
+	if p.OpenGate != GateMerge {
+		t.Fatalf("G4 on h1: gate %q", p.OpenGate)
+	}
+	// A push: h2's pr-diff still fails — a new finding, no G4.
+	p, _ = mustApply(t, p, Event{Kind: EventPRProbe, Probe: onHead(probeFound(failing("pr-diff")), "h2")})
+	p, _ = mustApply(t, p, Event{Kind: EventPRProbe, Probe: onHead(probeFound(failing("pr-diff")), "h2")})
+	if p.Current != StagePRReview || p.OpenGate != GateNone || len(cardsOf(p, CardFinding, StagePRReview)) != 2 {
+		t.Fatalf("h2 failing: current %s gate %q findings %d", p.Current, p.OpenGate, len(cardsOf(p, CardFinding, StagePRReview)))
+	}
+	p, _ = decideAll(t, p, FindingDismiss)
+	p, _ = mustApply(t, p, Event{Kind: EventPRProbe, Probe: onHead(probeFound(failing("pr-diff"), PRCheck{Name: "test", State: CheckPass}), "h2")})
+	if p.OpenGate != GateMerge {
+		t.Fatalf("G4 on h2: current %s gate %q", p.Current, p.OpenGate)
+	}
+	var summary MergeSummary
+	if err := json.Unmarshal(p.Cards[p.openGateCard()].Payload, &summary); err != nil || summary.PR == nil || summary.PR.HeadOID != "h2" {
+		t.Fatalf("G4 summary = %+v %v", summary, err)
+	}
+}
+
+func TestG4ApproveRefusedOnAMovedHead(t *testing.T) {
+	p := inMerge(t)
+	p.PR.HeadOID = "h2" // recorded without the gate closing: never merge on h1's facts
+	got, act, err := Apply(p, Event{Kind: EventGate, Gate: GateMerge, Action: GateApprove}, t0)
+	if !errors.Is(err, ErrHeadMoved) || act.Kind != ActionNone || got.OpenGate != GateMerge || got.PRWait != "" {
+		t.Fatalf("err %v act %+v gate %q wait %q", err, act, got.OpenGate, got.PRWait)
+	}
 }

@@ -85,6 +85,14 @@ const PRWaitProbes = 10
 // ErrInvalidProbe is a probe event without its facts.
 var ErrInvalidProbe = errors.New("invalid pr probe event")
 
+// ErrHeadMoved refuses G4's approval when the PR head is no longer the one
+// G4 was opened on (#1087): its facts are another commit's.
+var ErrHeadMoved = errors.New("the pull request head moved since the merge gate opened")
+
+// NoticeHeadMoved is the notice left when a push moved the PR head while
+// G4 was open: G4 closed and pr_review waits for the new head's checks.
+const NoticeHeadMoved = "pull request head moved: merge gate closed until the new head's checks pass"
+
 // PRProbe is what one `gh pr view` run found.
 type PRProbe struct {
 	Status string `json:"status"`
@@ -203,7 +211,14 @@ func WantsPRProbe(p Pipeline) bool {
 	// A turn still owed (the write turn a gate approved, a fix turn) has
 	// done nothing yet: a probe now would judge facts that are about to
 	// change. The post-turn hook starts the poller again.
-	if !p.Active() || p.OpenGate != GateNone || p.PendingTurn != "" {
+	if !p.Active() || p.PendingTurn != "" {
+		return false
+	}
+	if p.OpenGate == GateMerge {
+		// G4 shows one head's facts: a push must close it (#1087).
+		return p.Current == StageMerge && p.PRWait == ""
+	}
+	if p.OpenGate != GateNone {
 		return false
 	}
 	switch p.Current {
@@ -228,6 +243,9 @@ func (p *Pipeline) openPRGate(draft PRDraft, turn int, now time.Time) {
 // merge turn). Neither advances: the probe does.
 func approvePRGate(p *Pipeline, gate string, ev Event, decide func()) (Pipeline, Action, error) {
 	if gate == GateMerge {
+		if head := p.mergeGateHead(); p.PR != nil && head != "" && p.PR.HeadOID != "" && p.PR.HeadOID != head {
+			return *p, noAction, fmt.Errorf("%w: opened on %s, now %s", ErrHeadMoved, head, p.PR.HeadOID)
+		}
 		decide()
 		p.PRWait, p.PRProbes, p.PRUnavailable = PRWaitMerge, 0, ""
 		return *p, Action{Kind: ActionSendTurn, Prompt: mergePrompt(p.PR)}, nil
@@ -306,7 +324,11 @@ func applyProbe(p Pipeline, ev Event, now time.Time) (Pipeline, Action, error) {
 			}
 			break
 		}
+		gateHead := next.mergeGateHead()
 		next.recordPR(probe, now)
+		if next.headMovedUnderG4(gateHead, probe, now) {
+			break
+		}
 		next.applyFoundPR(probe, now)
 	default:
 		return p, noAction, fmt.Errorf("%w: status %q", ErrInvalidProbe, probe.Status)
@@ -419,6 +441,43 @@ func (p *Pipeline) applyFoundPR(probe PRProbe, now time.Time) {
 			p.waitedInVain(BlockedNotMerged, mergePrompt(p.PR), now)
 		}
 	}
+}
+
+// mergeGateHead is the head commit open G4 was opened on ("" when G4 is
+// not open or its card names none).
+func (p Pipeline) mergeGateHead() string {
+	if p.OpenGate != GateMerge {
+		return ""
+	}
+	i := p.openGateCard()
+	if i < 0 {
+		return ""
+	}
+	var s MergeSummary
+	if json.Unmarshal(p.Cards[i].Payload, &s) != nil || s.PR == nil {
+		return ""
+	}
+	return s.PR.HeadOID
+}
+
+// headMovedUnderG4 closes G4 when an open PR's head is no longer the one
+// G4 was opened on and returns pr_review to the new head (#1087). The new
+// head's findings land now; green is judged from the next probe, so G4
+// reopens on facts of the new head that pr_review has seen settle.
+func (p *Pipeline) headMovedUnderG4(gateHead string, probe PRProbe, now time.Time) bool {
+	if p.OpenGate != GateMerge || probe.State != PRStateOpen || probe.HeadOID == "" || gateHead == "" || probe.HeadOID == gateHead {
+		return false
+	}
+	supersedeOpenGate(p)
+	if !p.backToPRReview() {
+		// pr_review skipped: G4 reopens on the new head's summary.
+		p.addCard(CardGate, 0, MergeGateTitle, p.mergeSummary(), now)
+		p.OpenGate = GateMerge
+		return true
+	}
+	p.addCard(CardNotice, 0, NoticeHeadMoved, map[string]string{"from": gateHead, "to": probe.HeadOID}, now)
+	p.addPRFindings(probe, now)
+	return true
 }
 
 func (p Pipeline) currentIteration() int {

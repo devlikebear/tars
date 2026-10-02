@@ -2,9 +2,11 @@ package tarsserver
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -185,29 +187,102 @@ func TestFocusPRPollFoundFailingCheckOnce(t *testing.T) {
 	}
 }
 
-func TestFocusPRPollGreenOpensG4AndStops(t *testing.T) {
-	d, store, id, prober, finished := testPRDriver(t, always(foundPR(focuspipeline.PRStateOpen, focuspipeline.PRCheck{Name: "test", State: focuspipeline.CheckPass})))
+func TestFocusPRPollGreenOpensG4AndKeepsPolling(t *testing.T) {
+	green := foundPR(focuspipeline.PRStateOpen, focuspipeline.PRCheck{Name: "test", State: focuspipeline.CheckPass})
+	d, store, id, prober, finished := testPRDriver(t, always(green))
 	d.watchPR(id)
 	waitFor(t, "the merge gate", func() bool { return pipelineOf(t, store, id).OpenGate == focuspipeline.GateMerge })
-	waitFor(t, "the poller to stop", func() bool { return !d.polling(id) })
+	// #1087: G4 shows one head's facts, so the poller keeps watching it.
 	calls := prober.count()
-	time.Sleep(30 * time.Millisecond)
-	if prober.count() != calls {
-		t.Fatal("probed with the merge gate open")
+	waitFor(t, "probes while G4 is open", func() bool { return prober.count() >= calls+2 })
+	if p := pipelineOf(t, store, id); p.OpenGate != focuspipeline.GateMerge || !d.polling(id) {
+		t.Fatalf("gate %q polling %v", p.OpenGate, d.polling(id))
 	}
-	// Approving G4 starts the merge turn and the poll again; MERGED ends
-	// the pipeline and discards the worktree.
-	prober.set(always(foundPR(focuspipeline.PRStateMerged)))
+	// Approving G4 probes once more (same head: approved), starts the
+	// merge turn and the poll; MERGED ends the pipeline and discards the
+	// worktree.
 	h := newFocusPipelineHandler(store, nil, d, zerolog.Nop())
+	before := prober.count()
 	if rec := focusRequest(t, h, http.MethodPost, "/v1/focus/pipelines/"+id+"/gates/merge", `{"action":"approve"}`, true); rec.Code != http.StatusOK {
 		t.Fatalf("approve: %d %s", rec.Code, rec.Body.String())
 	}
+	if prober.count() <= before {
+		t.Fatal("approving G4 did not probe")
+	}
+	prober.set(always(foundPR(focuspipeline.PRStateMerged)))
 	waitFor(t, "the pipeline to finish", func() bool { return focuspipeline.Finished(pipelineOf(t, store, id)) })
 	waitDriverIdle(t, d, id)
 	waitFor(t, "the worktree to be discarded", func() bool {
 		seen := finished.seen()
 		return len(seen) == 1 && seen[0] == "discard"
 	})
+}
+
+// #1087: a push while G4 is open closes it and returns to pr_review, which
+// reopens G4 on the new head once its checks pass.
+func TestFocusPRPollMovedHeadClosesG4(t *testing.T) {
+	pass := focuspipeline.PRCheck{Name: "test", State: focuspipeline.CheckPass}
+	d, store, id, prober, _ := testPRDriver(t, always(foundPR(focuspipeline.PRStateOpen, pass)))
+	d.watchPR(id)
+	waitFor(t, "the merge gate", func() bool { return pipelineOf(t, store, id).OpenGate == focuspipeline.GateMerge })
+	pending := foundPR(focuspipeline.PRStateOpen, focuspipeline.PRCheck{Name: "test", State: focuspipeline.CheckPending})
+	pending.HeadOID = "h2"
+	prober.set(always(pending))
+	waitFor(t, "pr_review on the new head", func() bool {
+		p := pipelineOf(t, store, id)
+		return p.Current == focuspipeline.StagePRReview && p.OpenGate == focuspipeline.GateNone && p.PR.HeadOID == "h2"
+	})
+	green := foundPR(focuspipeline.PRStateOpen, pass)
+	green.HeadOID = "h2"
+	prober.set(always(green))
+	waitFor(t, "G4 on the new head", func() bool {
+		p := pipelineOf(t, store, id)
+		return p.OpenGate == focuspipeline.GateMerge && p.PR.HeadOID == "h2"
+	})
+}
+
+// #1087: approving G4 probes first; a moved head refuses with 409 and the
+// current pipeline, and no merge turn runs.
+func TestFocusG4ApproveRefusedWhenTheHeadMoved(t *testing.T) {
+	d, store, id, prober, _ := testPRDriver(t, always(foundPR(focuspipeline.PRStateOpen, focuspipeline.PRCheck{Name: "test", State: focuspipeline.CheckPass})))
+	var turns atomic.Int32
+	d.runTurn = func(context.Context, string, string) error { turns.Add(1); return nil }
+	// G4 opens from one probe, without a poller racing the approval.
+	applyFocus(t, store, id, focuspipeline.Event{Kind: focuspipeline.EventPRProbe, Probe: func() *focuspipeline.PRProbe {
+		p := prober.probe(context.Background(), "", 0)
+		return &p
+	}()})
+	if p := pipelineOf(t, store, id); p.OpenGate != focuspipeline.GateMerge {
+		t.Fatalf("gate = %q", p.OpenGate)
+	}
+	moved := foundPR(focuspipeline.PRStateOpen, focuspipeline.PRCheck{Name: "test", State: focuspipeline.CheckPending})
+	moved.HeadOID = "h2"
+	prober.set(always(moved))
+	h := newFocusPipelineHandler(store, nil, d, zerolog.Nop())
+	rec := focusRequest(t, h, http.MethodPost, "/v1/focus/pipelines/"+id+"/gates/merge", `{"action":"approve"}`, true)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("approve: %d %s", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		Error    string                 `json:"error"`
+		Pipeline focuspipeline.Pipeline `json:"pipeline"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(resp.Error, "head moved") || resp.Pipeline.Current != focuspipeline.StagePRReview || resp.Pipeline.OpenGate != focuspipeline.GateNone {
+		t.Fatalf("resp = %s", rec.Body.String())
+	}
+	if prober.numbers[len(prober.numbers)-1] != 7 {
+		t.Fatalf("approve probed %v, want the pinned PR", prober.numbers)
+	}
+	waitDriverIdle(t, d, id)
+	if n := turns.Load(); n != 0 {
+		t.Fatalf("merge turns = %d", n)
+	}
+	if p := pipelineOf(t, store, id); p.PRWait != "" || p.PendingTurn != "" {
+		t.Fatalf("wait %q pending %q", p.PRWait, p.PendingTurn)
+	}
 }
 
 func TestFocusPRPollMergedDiscards(t *testing.T) {

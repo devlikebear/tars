@@ -23,7 +23,7 @@ import (
 //	POST /v1/focus/pipelines                      {goal, cwd, isolate, title?, kind?, kickoff?, release_items?, release_since?} → 201 {session_id, pipeline}; 409 {error, session_id} when kind is release and the repository's release is still running
 //	GET  /v1/focus/pipelines                      → [{session_id, title, goal, current, open_gate, needs_input, updated_at}]
 //	GET  /v1/focus/pipelines/{id}                 → pipeline
-//	POST /v1/focus/pipelines/{id}/gates/{gate}    {action, note?, edits?} → {pipeline, next_prompt}
+//	POST /v1/focus/pipelines/{id}/gates/{gate}    {action, note?, edits?} → {pipeline, next_prompt}; 409 {error, pipeline} when the gate is not open, or when approving merge finds the PR head moved (the probe it runs first closes G4)
 //	POST /v1/focus/pipelines/{id}/cards/{card}    {state, decision?} → {pipeline, next_prompt}
 //	POST /v1/focus/pipelines/{id}/advance         {stage} → {pipeline, next_prompt}; 409 unless stage is the active current one with no gate open
 //	POST /v1/focus/pipelines/{id}/stop            → {pipeline, next_prompt: ""}; 409 when already finished or stopped
@@ -433,8 +433,14 @@ func (a *focusAPI) gate(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSONBody(w, r, &req) {
 		return
 	}
-	now := a.now()
 	action := strings.TrimSpace(req.Action)
+	if gate == focuspipeline.GateMerge && action == focuspipeline.GateApprove {
+		if p, moved := a.driver.refreshMergeGate(r.Context(), id); moved {
+			writeJSON(w, http.StatusConflict, map[string]any{"error": focuspipeline.ErrHeadMoved.Error(), "pipeline": p})
+			return
+		}
+	}
+	now := a.now()
 	var act focuspipeline.Action
 	p, _, err := a.store().Update(id, func(p focuspipeline.Pipeline) (focuspipeline.Pipeline, error) {
 		next, result, err := focuspipeline.Apply(p, focuspipeline.Event{
@@ -452,7 +458,7 @@ func (a *focusAPI) gate(w http.ResponseWriter, r *http.Request) {
 		return next, nil
 	})
 	switch {
-	case errors.Is(err, focuspipeline.ErrGateNotOpen):
+	case errors.Is(err, focuspipeline.ErrGateNotOpen), errors.Is(err, focuspipeline.ErrHeadMoved):
 		writeJSON(w, http.StatusConflict, map[string]any{"error": err.Error(), "pipeline": p})
 		return
 	case errors.Is(err, focuspipeline.ErrInvalidAction), errors.Is(err, focuspipeline.ErrInvalidEdits):
