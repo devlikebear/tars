@@ -75,3 +75,28 @@ export function arrangePickerEntries<T extends { name: string }>(entries: T[], f
   }
   return { shown, hidden }
 }
+
+export type PickerTicket = { id: number; typed: string }
+export type PickerSettle = { current: false } | { current: true; pathInput: string }
+
+// The picker's browse requests. Only the latest request's response lands, and
+// a landing listing fills the path box only if the user hasn't typed into it
+// since that request went out: the first (home) listing used to arrive between
+// typing a path and pressing Enter and replace what was typed, so Enter opened
+// the home folder instead.
+export class PickerRequests {
+  #latest = 0
+
+  start(pathInput: string): PickerTicket {
+    return { id: ++this.#latest, typed: pathInput }
+  }
+
+  settle(ticket: PickerTicket, pathInputNow: string, listedPath: string): PickerSettle {
+    if (ticket.id !== this.#latest) return { current: false }
+    return { current: true, pathInput: pathInputNow === ticket.typed ? listedPath : pathInputNow }
+  }
+
+  isCurrent(ticket: PickerTicket): boolean {
+    return ticket.id === this.#latest
+  }
+}

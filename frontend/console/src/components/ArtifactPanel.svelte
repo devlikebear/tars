@@ -5,7 +5,7 @@
   import { fileIcon } from '../lib/artifacts'
   import { listWorkspaceFiles, readWorkspaceFile, getSessionWorkDirs, updateSessionWorkDirs, openTerminalHere, browseFilesystem, createFilesystemDirectory, createWorkspaceDirectory, renameWorkspaceDirectory, APIRequestError, type WorkspaceFileEntry, type WorkspaceFileContent } from '../lib/api'
   import { renderHighlightedCodeBlock } from '../lib/markdown'
-  import { arrangePickerEntries, browseErrorReason, resolvePickerPath } from '../lib/folderPicker'
+  import { PickerRequests, arrangePickerEntries, browseErrorReason, resolvePickerPath } from '../lib/folderPicker'
   import type { SessionWorkDirs } from '../lib/types'
   import ArtifactPanelHeader from './ArtifactPanelHeader.svelte'
   import MarkdownContent from './MarkdownContent.svelte'
@@ -43,7 +43,7 @@
   let pickPathInput = $state('')
   let pickFilter = $state('')
   let pickShowHidden = $state(false)
-  let pickRequest = 0
+  const pickRequests = new PickerRequests()
   let pickArranged = $derived(arrangePickerEntries(pickFiles, pickFilter))
   let pickFiltering = $derived(pickFilter.trim() !== '')
 
@@ -133,12 +133,13 @@
   // A failed browse keeps the current listing and says why, so a mistyped
   // path or an unreadable folder doesn't lose the user's place.
   async function browsePick(path: string | undefined) {
-    const request = ++pickRequest
+    const request = pickRequests.start(pickPathInput)
     pickLoading = true
     pickActionError = ''
     try {
       const result = await browseFilesystem(path)
-      if (request !== pickRequest) return
+      const settled = pickRequests.settle(request, pickPathInput, result.path)
+      if (!settled.current) return
       pickFiles = result.entries.filter(e => e.is_dir).map(e => ({
         name: e.name,
         path: joinFilesystemPath(result.path, e.name),
@@ -147,14 +148,14 @@
       if (path === undefined) pickHome = result.path
       pickPath = result.path
       pickParent = result.parent
-      pickPathInput = result.path
+      pickPathInput = settled.pathInput
       pickFilter = ''
     } catch (err) {
-      if (request !== pickRequest) return
+      if (!pickRequests.isCurrent(request)) return
       const reason = browseErrorReason(err instanceof APIRequestError ? err.status : undefined)
       pickActionError = $t.artifactPanel.picker.errors[reason](path ?? '~')
     } finally {
-      if (request === pickRequest) pickLoading = false
+      if (pickRequests.isCurrent(request)) pickLoading = false
     }
   }
 
