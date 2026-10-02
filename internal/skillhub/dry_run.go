@@ -65,13 +65,17 @@ func (inst *Installer) PreviewInstall(ctx context.Context, ref string) (*DryRunR
 	if err != nil {
 		return nil, err
 	}
-	return inst.buildPreviewFromSource(ctx, ref, src, entry)
+	preview, _, err := inst.buildPreviewFromSource(ctx, ref, src, entry)
+	return preview, err
 }
 
-func (inst *Installer) buildPreviewFromSource(ctx context.Context, ref string, src HubSource, entry *RegistryEntry) (*DryRunResult, error) {
+// buildPreviewFromSource downloads and converts the skill once and returns
+// the preview together with the exact file bytes it describes. Install
+// materializes those bytes, so what lands on disk is what the user approved.
+func (inst *Installer) buildPreviewFromSource(ctx context.Context, ref string, src HubSource, entry *RegistryEntry) (*DryRunResult, map[string][]byte, error) {
 	files, warnings, err := inst.downloadSkillFilesFromSource(ctx, src, entry)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	result := &DryRunResult{
 		SourceID:        src.ID(),
@@ -110,7 +114,7 @@ func (inst *Installer) buildPreviewFromSource(ctx context.Context, ref string, s
 		result.LicenseSource = AttributionFilename
 		result.LicenseLabel = detectAttributionLabel(files[AttributionFilename])
 	}
-	return result, nil
+	return result, files, nil
 }
 
 func expectedChecksumMap(entry *RegistryEntry) map[string]string {

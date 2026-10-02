@@ -136,9 +136,9 @@ func TestInstallWithOptions_RequiresPluginPropagates(t *testing.T) {
 	}
 }
 
-// driftingSource lets the second materialize fetch return different
-// converted bytes than the preview — used to exercise the post-confirm
-// sha256-mismatch branch.
+// driftingSource returns different converted bytes on every conversion
+// after the first, the way a real converter does when it stamps the import
+// time or upstream moves between preview and confirm.
 type driftingSource struct {
 	externalStubSource
 	converted int
@@ -152,16 +152,47 @@ func (s *driftingSource) ConvertSkillContent(_ *RegistryEntry, _ []byte) ([]byte
 	return s.externalStubSource.converted, s.warnings, nil
 }
 
-func TestFilesFromPreview_DetectsPostConfirmDrift(t *testing.T) {
+// TestInstallWithOptions_MaterializesApprovedPreview pins the contract that
+// the bytes written to disk are the ones the user approved: the source is
+// fetched and converted once, and every installed file hashes to the
+// sha256 shown in the preview.
+func TestInstallWithOptions_MaterializesApprovedPreview(t *testing.T) {
 	stub := &driftingSource{externalStubSource: *newExternalStub()}
 	inst := newInstallerWithSource(t, stub)
 
-	_, err := inst.InstallWithOptions(context.Background(), "demo:foo", InstallOptions{Yes: true})
-	if err == nil {
-		t.Fatalf("expected post-confirm content mismatch error")
+	var approved *DryRunResult
+	_, err := inst.InstallWithOptions(context.Background(), "demo:foo", InstallOptions{
+		Confirm: func(p *DryRunResult) (bool, error) {
+			approved = p
+			return true, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("InstallWithOptions: %v", err)
 	}
-	if !strings.Contains(err.Error(), "post-confirm content for") {
-		t.Errorf("error %q does not mention post-confirm drift", err)
+	if approved == nil {
+		t.Fatalf("Confirm was not called")
+	}
+	if stub.converted != 1 {
+		t.Errorf("ConvertSkillContent called %d times, want 1 (no post-confirm re-download)", stub.converted)
+	}
+
+	skillDir := filepath.Join(inst.WorkspaceDir, "skills", "foo")
+	manifest, err := os.ReadFile(filepath.Join(skillDir, "SKILL.md"))
+	if err != nil {
+		t.Fatalf("read installed SKILL.md: %v", err)
+	}
+	if string(manifest) != string(stub.externalStubSource.converted) {
+		t.Errorf("installed SKILL.md = %q, want the previewed conversion %q", manifest, stub.externalStubSource.converted)
+	}
+	for _, fp := range approved.Files {
+		body, err := os.ReadFile(filepath.Join(skillDir, filepath.FromSlash(fp.Path)))
+		if err != nil {
+			t.Fatalf("read installed %s: %v", fp.Path, err)
+		}
+		if got := computeSHA256Hex(body); got != fp.SHA256 {
+			t.Errorf("installed %s sha256 = %s, preview showed %s", fp.Path, got, fp.SHA256)
+		}
 	}
 }
 
