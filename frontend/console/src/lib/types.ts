@@ -2740,6 +2740,8 @@ export type FocusPipeline = {
   pr_wait?: 'open' | 'fix' | 'merge'
   // The latest probe's error while gh cannot run; cleared by a probe that runs.
   pr_unavailable?: string
+  // The turn the server owes the pipeline (sent, not yet completed).
+  pending_turn?: string
   worktree_end?: FocusWorktreeEnd
   tasks_done?: boolean
   awaiting_verification?: boolean
