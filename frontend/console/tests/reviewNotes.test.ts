@@ -88,4 +88,37 @@ test('notes taken for a send the server refused come back, once, for the same se
   assert.deepEqual(store.notes.map((n) => n.path), ['a.txt', 'b.txt'], 'they go back first, not twice')
   store.restoreNotes('s2', [{ id: 'other', turn_id: 't9', path: 'z.txt' }])
   assert.deepEqual(store.notes.map((n) => n.path), ['a.txt', 'b.txt'], 'another session’s notes are not mixed in')
+  await store.load('s2')
+  assert.deepEqual(store.notes.map((n) => n.path), ['z.txt'], 'they wait for their own session')
+})
+
+test('draft notes stay with their session across a switch', async () => {
+  const store = new ChangesStore(fakeApi(written('a.txt')))
+  await store.load('s1')
+  store.addNote({ turn_id: 't1', path: 'a.txt', comment: 'louder', kind: 'comment' })
+  await store.load('s2')
+  assert.deepEqual(store.notes, [], 'another session starts with its own notes')
+  store.addNote({ turn_id: 't1', path: 'b.txt', comment: 'for s2', kind: 'comment' })
+  // A checkpoint event from a turn in another session switches too.
+  store.applyEvent({ session_id: 's1', user_message_id: 't2', files: 1, additions: 1, deletions: 0 })
+  assert.deepEqual(store.notes.map((n) => n.comment), ['louder'])
+  await store.load('s2')
+  assert.deepEqual(store.notes.map((n) => n.comment), ['for s2'])
+  store.takeNotes()
+  await store.load('s1')
+  await store.load('s2')
+  assert.deepEqual(store.notes, [], 'sent notes do not come back')
+  const added = store.notes.length
+  store.addNote({ turn_id: 't1', path: 'c.txt', comment: 'fresh', kind: 'comment' })
+  assert.equal(new Set(store.notes.map((n) => n.id)).size, added + 1)
+})
+
+test('opening a session switches the Changes store before reading its history', async () => {
+  const { readFileSync } = await import('node:fs')
+  const src = readFileSync(new URL('../src/components/ChatPanel.svelte', import.meta.url), 'utf8')
+  const load = src.slice(src.indexOf('async function loadHistoryInto'), src.indexOf('async function handleForkMessage'))
+  // A new session has no history to read; the switch must not wait on it,
+  // or the last session's notes stay on screen and go out with this one.
+  assert.ok(load.indexOf('changes.load(targetSessionId)') >= 0)
+  assert.ok(load.indexOf('changes.load(targetSessionId)') < load.indexOf('await getSessionHistory'))
 })

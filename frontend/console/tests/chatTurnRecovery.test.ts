@@ -108,7 +108,7 @@ test('a refused composer send is returned, not recovered as a dropped turn', () 
 test('Stop leaves the stream to the server once it took the cancel', async () => {
   // The cancel answers when the turn is told to stop, before it has wound
   // down and freed the session. Aborting then ended the turn in the console
-  // early: a queued message resumed at once was refused (409) and lost.
+  // early: a queued message resumed at once was refused (409).
   const { stopTurn } = await import('../src/lib/chatTurnRecovery.ts')
   const calls: string[] = []
   await stopTurn({
@@ -137,4 +137,30 @@ test('ChatPanel stops a turn through stopTurn', () => {
   const handler = src.slice(src.indexOf('async function handleCancel'), src.indexOf('// -- File attachments --'))
   assert.match(handler, /stopTurn\(/)
   assert.doesNotMatch(handler, /cancelChat\(/, 'the cancel goes through stopTurn, which decides on the abort')
+})
+
+test('recovery reports whether the history came back and the turn was found running', async () => {
+  let r = recorder({ attached: true, ended: false })
+  assert.deepEqual(await recoverDroppedTurn(r.deps), { reloaded: true, attached: true })
+  r = recorder(new TypeError('network error'))
+  r.deps.reloadHistory = async () => { throw new Error('offline') }
+  assert.deepEqual(await recoverDroppedTurn(r.deps), { reloaded: false, attached: false })
+})
+
+test('a dropped send counts as lost only when the reloaded history shows it never arrived', async () => {
+  const { droppedSendDelivery } = await import('../src/lib/chatTurnRecovery.ts')
+  const sent = 'rework the parser'
+  assert.equal(droppedSendDelivery({ reloaded: true, attached: true }, undefined, sent), 'delivered', 'its turn is running')
+  assert.equal(droppedSendDelivery({ reloaded: true, attached: false }, `${sent}\n\n<review-notes>\n1. a.txt\n</review-notes>`, sent), 'delivered', 'its turn ran during the gap')
+  assert.equal(droppedSendDelivery({ reloaded: true, attached: false }, 'an earlier message', sent), 'lost')
+  assert.equal(droppedSendDelivery({ reloaded: true, attached: false }, undefined, sent), 'lost', 'a new chat with nothing in it')
+  assert.equal(droppedSendDelivery({ reloaded: false, attached: false }, undefined, sent), 'unknown', 'the server is unreachable')
+})
+
+test('a dropped send that never arrived gives back its message and notes', () => {
+  const src = readFileSync(new URL('../src/components/ChatPanel.svelte', import.meta.url), 'utf8')
+  const send = src.slice(src.indexOf('async function submitChat'), src.indexOf('async function afterTurn'))
+  assert.match(send, /droppedSendDelivery\(/)
+  assert.match(send, /=== 'lost'/)
+  assert.match(send, /giveBackSend\(/)
 })
