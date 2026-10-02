@@ -11,7 +11,7 @@ for (const dir of ['alpha', 'beta', 'Workbench', '.cache', '.claude/worktrees/de
   mkdirSync(join(root, dir), { recursive: true })
 }
 
-async function openPicker(page: Page) {
+async function showPicker(page: Page) {
   await page.goto('/console/chat')
   await expect(page.locator('.dock-left .session-btn').first()).toBeVisible()
   await page.locator('.dock-left .new-chat-btn').click()
@@ -21,6 +21,11 @@ async function openPicker(page: Page) {
   await pane.getByRole('button', { name: '+', exact: true }).click()
   const picker = pane.locator('.pick-overlay')
   await expect(picker).toBeVisible()
+  return picker
+}
+
+async function openPicker(page: Page) {
+  const picker = await showPicker(page)
   // The picker opens at the server's home folder.
   await expect(picker.locator('.pick-current')).not.toHaveValue('')
   return picker
@@ -95,4 +100,26 @@ test('the filter narrows the list, dot folders included, and Enter opens the fir
   await expect(path).toHaveValue(join(root, 'beta'))
   await picker.getByRole('button', { name: 'Select Here' }).click()
   await expect(picker).toHaveCount(0)
+})
+
+test('a path typed while the home listing loads is not replaced by it', async ({ page }) => {
+  // Hold the picker's first listing (no ?path=) until a path is typed, then let
+  // it land before Enter: the order that sent Enter to the home folder.
+  let releaseHome!: () => void
+  const homeHeld = new Promise<void>(resolve => { releaseHome = resolve })
+  await page.route(url => url.pathname === '/v1/filesystem/browse' && !url.searchParams.has('path'), async route => {
+    await homeHeld
+    await route.continue()
+  })
+
+  const picker = await showPicker(page)
+  const path = picker.getByRole('textbox', { name: 'Folder path' })
+  await path.fill(root)
+  releaseHome()
+  // Select Here waits for a listing, so enabled means the home listing landed.
+  await expect(picker.getByRole('button', { name: 'Select Here' })).toBeEnabled()
+  await expect(path).toHaveValue(root)
+
+  await path.press('Enter')
+  await expect(names(picker)).toHaveText(['..', 'alpha', 'beta', 'Workbench'])
 })
