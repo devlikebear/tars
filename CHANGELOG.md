@@ -6,6 +6,22 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.43.0] - 2026-10-02
+
+### Added
+
+- **Focus mode — 채팅 세션을 개발 파이프라인으로 보는 콘솔 모드** (Epic #1068) — 한 세션의 일을 plan → build → review → pr → pr_review → merge 단계로 보여 주고, 사람은 단계 사이의 게이트에서 카드 하나씩 승인·결정만 한다. 지금의 작업대는 Advanced 보기로 그대로 남고 같은 세션을 오갈 수 있다. 설계와 규칙은 ADR `docs/decisions/focus-mode.md`에 있다.
+  - **파이프라인 모델과 API** (P1a, #1070) — 새 app 패키지 `internal/focuspipeline`가 파이프라인 모델, `<focus-*>` 블록 파서, 순수 상태 기계, 단계별 안내를 맡고 세션 옆 `<id>.pipeline.json`에 저장한다. `/v1/focus/pipelines`(생성·목록·조회, 게이트, 카드, advance, stop)를 추가했다. focus 턴에는 `<focus-stage>` 안내를 붙이고, 턴이 끝나면 블록을 읽어 SSE `pipeline` 이벤트로 보낸다. 세션을 지우면 파이프라인도 지운다. 콘솔 기본 모드 설정 `console.default_mode`(`focus` | `advanced`, 빈 값 = advanced)도 추가했다.
+  - **Focus 콘솔** (P1b, #1072) — `/console/focus` 홈(진행 중인 파이프라인, 폴더·목표·격리를 고르는 New task)과 `/console/focus/<id>`(단계 stepper, ←/→로 넘기는 카드 한 장 덱, 단계를 건너뛰고 verify 명령을 고칠 수 있는 plan 게이트 G1, 원래 턴을 보는 View raw, 단계 지시 입력, 수동 단계 통과, 중지)를 추가했다. 콘솔을 새로 고쳐도 `/v1/chat/stream` 재생으로 상태를 다시 만든다. `<focus-*>` 블록은 어디서든 사용자에게 보이는 글에서 빠진다. `console.default_mode`가 `focus`면 `/console`에 처음 들어올 때 Focus로 가고, 첫 온보딩은 값이 비어 있을 때만 `focus`를 쓴다.
+  - **릴리스 트레인과 파이프라인 그래프** (P5, #1073) — `GET /v1/focus/release-train`이 저장소의 마지막 릴리스(끝난 release 파이프라인, 없으면 최신 `v*` 태그) 이후 merge까지 끝난 파이프라인을 저장소별로 모아 준다. 태그는 5초 제한·5분 캐시의 `git fetch --tags`로 갱신하고, 실패하면 태그가 낡았을 수 있다고 알린다. `/console/focus/release`에서 릴리스 파이프라인을 시작하며(저장소당 진행 중인 릴리스는 하나, 두 번째는 409), stepper에서 단계 노드·반복 횟수가 붙은 루프 간선·build 작업을 보여 주는 파이프라인 그래프를 연다.
+  - **서버가 돌리는 build 루프와 Q&A** (P2, #1075) — build 턴이 끝날 때마다 서버가 승인된 계획의 `verify` 명령을 직접 돌린다. 실패하면 실패 카드와 수정 턴, 통과하고 `tasks_done`이면 다음 단계로 간다. 루프 한도·같은 실패 반복·진전 없음, 서버 재시작이나 실패한 턴은 멈춘 채 두지 않고 blocked 게이트(재시도 / 지시 / 중지)를 연다. 서버가 시작한 턴도 turn feed·취소·activity·worktree lease를 똑같이 써서 콘솔이 따라간다. 네이티브 provider에서 권한 모드가 없는 세션은 high-risk 도구 전에 ops 큐로 묻는다. 카드마다 `?`로 여는 Q&A 서랍은 파이프라인별 숨은 plan 모드(읽기 전용) 세션에서 답하고, 답을 단계 지시로 옮길 수 있다.
+  - **한 번에 하나씩 분류하는 review 루프** (P3, #1076) — review 턴의 `<focus-findings>`가 분류 게이트를 열고, 지적 카드마다 fix / dismiss / ask를 하나씩 정한다. 마지막 결정이 끝나면 받아들인 지적만 담은 수정 턴 → 검증 재실행 → 다음 review 라운드로 이어지고, 지적이 없고 검증이 통과하면 끝난다. dismiss한 지적은 다음 라운드에 다시 올라오지 않는다. 지적의 diff 발췌는 모델이 준 것을 버리고 서버가 파이프라인 base 커밋 기준 `git diff`로 저장소 안에서만 만든다. 분류 중에 입력한 글은 상태를 바꾸지 않는 질문으로 답한다.
+  - **PR 단계, CI review 루프, merge 게이트** (P4, #1077) — 에이전트의 `<focus-pr>` 초안이 제목·본문을 고칠 수 있는 G3을 열고, 승인하면 에이전트가 push와 `gh pr create`를 한다. 서버는 읽기 전용 `gh pr view`로 이 브랜치의 열린 PR만 찾아 번호를 고정하고, 60초마다 probe해 실패한 체크(CheckRun·StatusContext, head 커밋 기준)와 리뷰 코멘트를 지적 카드 → 분류 → 수정 턴으로 돌린다. 협업자가 아닌 사람의 코멘트는 수정 턴에 그대로 붙이지 않는다. G4 merge 게이트를 승인하면 에이전트가 머지하고, 세션 worktree는 머지된 head 외에 남은 작업이 없고 턴이 없을 때만 지우며 아니면 남긴다. `gh`가 없거나 로그인이 안 됐으면 notice 카드와 수동 통과로 진행한다.
+
+### Changed
+
+- **한 세션에 턴은 하나만** (#1075) — 예전에는 같은 세션에 두 번째 채팅 턴이 오면 첫 턴과 나란히 돌았다. 이제 턴은 준비를 시작하기 전에 세션을 하나만 잡고, 이미 턴이 도는 세션에 온 `POST /v1/chat`은 아무것도 쓰지 않고 `409 turn_running`으로 거절된다. 콘솔에서 보낸 턴과 서버가 시작한 focus 턴 모두 같은 규칙이다.
+
 ### Fixed
 
 - **외부 허브 스킬 설치가 확인 뒤에 `post-confirm content … changed`로 실패하던 문제** — openclaw·hermes·anthropic 스킬은 미리보기를 위해 한 번, 승인 뒤에 설치하려고 또 한 번 내려받고 두 번의 sha256을 비교했다. 그런데 변환기가 SKILL.md의 `imported_at`과 ATTRIBUTION.md에 현재 시각을 초 단위로 넣으므로, `tars skill install --from openclaw`에서 사람이 1초 넘게 생각하고 `y`를 누르면 거의 항상 실패했고, `--yes`를 쓰는 테스트도 두 번 받는 사이에 초가 넘어가면 CI에서 무작위로 깨졌다. 이제 미리보기를 만든 바로 그 바이트를 설치한다. 다시 받지 않으므로 사용자가 승인한 내용과 디스크에 쓰이는 내용이 항상 같다.
