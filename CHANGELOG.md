@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.43.3] - 2026-10-03
+
+### Fixed
+
+- **설정 화면의 Test connection이 CLI provider를 제대로 확인하지 못하고, 긴 결과가 카드 레이아웃을 찌그러뜨리던 문제** — 버튼은 기본 티어의 provider 하나만 모델 목록 API(`GET /v1/models`)로 확인했는데, `claude-code-cli`·`antigravity-cli`는 모델 목록이 없어 바이너리가 있는지만 알 수 있었고(로그인 여부는 모름), 예전 서버에서는 빨간 에러로 보였다. 이제 새 `POST /v1/admin/providers/test`가 풀의 **모든 별칭**을 동시에(기본 티어 별칭 먼저) 확인한다. `claude-code-cli`는 `claude --version`과 `claude auth status --json`(사용량 차감 없음, 계정 이메일 등은 돌려주지 않고 로그인 여부·인증 방식만)으로, `antigravity-cli`는 `agy --version`(최소 1.1.12 미만이면 주의)과 `agy models`(CLI 자체 Google 로그인 필요, 사용량 차감 없음)로, HTTP provider(openai-codex 포함)는 기존 모델 목록 조회로 확인한다. 결과는 `ok`/`info`(설정됐지만 확인 불가 — `auth` 하위 명령이 없는 오래된 claude)/`warn`/`error`와 문제 코드로 오고, 콘솔은 별칭마다 한 줄(별칭·종류·기본 배지·상태 배지, 요약, 경로나 provider 에러)을 i18n(en/ko) 문구로 보여 준다. 카드의 Quick Start 레이아웃은 두 열 grid에서 줄바꿈되는 flex로 바꿔, 좁은 카드(약 900px 창)에서는 컨트롤이 제목 아래로 내려가고 제목 열이 한 단어씩 찌그러지지 않으며, 연결 결과는 카드 전체 폭 아래 줄에서 줄바꿈된다. "Edit in wizard"도 i18n으로 옮겼다.
+
 ## [0.43.2] - 2026-10-03
 
 ### Fixed

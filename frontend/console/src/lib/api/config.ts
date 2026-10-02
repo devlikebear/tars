@@ -3,6 +3,7 @@ import type {
   ConfigFile,
   ConfigSchema,
   ProviderModelsInfo,
+  ProviderProbeResponse,
   ProvidersAPIInfo,
   RemoteAccessResponse,
 } from '../types'
@@ -22,6 +23,12 @@ export async function getProviderModels(providerAlias = ''): Promise<ProviderMod
   }
   const suffix = params.toString()
   return requestJSON<ProviderModelsInfo>(`/v1/models${suffix ? `?${suffix}` : ''}`)
+}
+
+// Tests every provider alias in the pool: model listing for HTTP providers,
+// install, version and sign-in for CLI providers (no usage spent).
+export async function testProviders(): Promise<ProviderProbeResponse> {
+  return requestJSON<ProviderProbeResponse>('/v1/admin/providers/test', { method: 'POST' })
 }
 
 export async function getProviders(): Promise<ProvidersAPIInfo> {

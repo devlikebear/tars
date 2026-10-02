@@ -86,6 +86,8 @@ type providerModelsService struct {
 	nowFn   func() time.Time
 	// findCLI resolves the local binary of a CLI-backed provider kind.
 	findCLI func(kind string) (string, error)
+	// runCLI runs a provider CLI for the connection probe.
+	runCLI providerCLIRunner
 }
 
 func newProviderModelsService(cfg config.Config, cache *providerModelsCache, fetcher llm.ModelFetcher, nowFn func() time.Time) *providerModelsService {
@@ -101,6 +103,7 @@ func newProviderModelsService(cfg config.Config, cache *providerModelsCache, fet
 		fetcher: fetcher,
 		nowFn:   nowFn,
 		findCLI: findProviderCLIPath,
+		runCLI:  runProviderCLI,
 	}
 }
 
@@ -403,6 +406,8 @@ func newProvidersModelsAPIHandler(service *providerModelsService, logger zerolog
 		}
 		writeJSON(w, http.StatusOK, service.providers())
 	})
+
+	mux.HandleFunc("/v1/admin/providers/test", handleProviderProbe(service))
 
 	mux.HandleFunc("/v1/models", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {

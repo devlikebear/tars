@@ -9,6 +9,7 @@ import { changesEn } from './sections/changes.ts'
 import { sideSessionEn } from './sections/sideSession.ts'
 import { sessionWorktreeEn } from './sections/sessionWorktree.ts'
 import { newChatFolderEn } from './sections/newChatFolder.ts'
+import { providerTestEn } from './sections/providerTest.ts'
 import { focusEn } from './sections/focus.ts'
 import { chatApprovalEn } from './sections/chatApproval.ts'
 import { sessionBoardEn } from './sections/sessionBoard.ts'
@@ -703,6 +704,7 @@ export const en = {
     selectNone: '(none)',
     workspaceResetSuccess: (removed) => `Workspace reset: ${removed} items removed. Restart TARS to reinitialize.`,
     failedResetWorkspace: 'Failed to reset workspace',
+    editInWizard: 'Edit in wizard',
   },
   cron: {
     eyebrow: 'Operate',
@@ -1671,6 +1673,7 @@ export const en = {
   sideSession: sideSessionEn,
   sessionWorktree: sessionWorktreeEn,
   newChatFolder: newChatFolderEn,
+  providerTest: providerTestEn,
   focus: focusEn,
   chatApproval: chatApprovalEn,
   sessionBoard: sessionBoardEn,

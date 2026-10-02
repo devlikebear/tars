@@ -1773,6 +1773,39 @@ export type ProviderPoolEntry = {
   kind: string
 }
 
+// POST /v1/admin/providers/test: one result per provider alias, the default
+// tier's alias first. CLI providers are checked without a model call.
+export type ProviderProbeStatus = 'ok' | 'info' | 'warn' | 'error'
+
+export type ProviderProbeProblem =
+  | ''
+  | 'cli_missing'
+  | 'not_logged_in'
+  | 'auth_unknown'
+  | 'auth_check_failed'
+  | 'version_old'
+  | 'models_failed'
+  | 'models_warning'
+  | 'models_empty'
+
+export type ProviderProbeResult = {
+  alias: string
+  kind: string
+  default: boolean
+  status: ProviderProbeStatus
+  problem?: ProviderProbeProblem
+  detail?: string
+  cli_path?: string
+  version?: string
+  min_version?: string
+  auth_method?: string
+  model_count?: number
+}
+
+export type ProviderProbeResponse = {
+  results: ProviderProbeResult[]
+}
+
 export type ProvidersAPIInfo = {
   current_provider: string
   current_model: string

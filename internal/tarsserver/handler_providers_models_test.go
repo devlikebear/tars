@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -21,6 +22,7 @@ import (
 )
 
 type fakeModelFetcher struct {
+	mu      sync.Mutex
 	calls   int
 	models  []string
 	err     error
@@ -50,6 +52,8 @@ func makePoolTestCfg(kind, model, authMode, baseURL string) config.Config {
 }
 
 func (f *fakeModelFetcher) FetchModels(_ context.Context, opts llm.ProviderOptions) ([]string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.calls++
 	f.lastOps = opts
 	if f.err != nil {

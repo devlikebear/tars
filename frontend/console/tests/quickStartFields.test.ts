@@ -98,10 +98,12 @@ test('quick start accepts provider credentials and reports progress', () => {
 
 test('Settings renders the Quick Start panel and LLM connection action', () => {
   assert.match(apiSource, /getProviderModels/)
+  assert.match(apiSource, /\/v1\/admin\/providers\/test/)
   assert.match(configSource, /quick-start-panel/)
   assert.match(configSource, /Quick Start/)
   assert.match(configSource, /quick-start-grid/)
-  assert.match(configSource, /Test connection/)
+  assert.match(configSource, /testProviders/)
+  assert.match(configSource, /\$t\.providerTest\.button/)
 })
 
 test('Quick Start routes structured provider editing to the wizard, not local editors (#931)', () => {

@@ -924,6 +924,7 @@ func registerAPIRoutes(mux *http.ServeMux, handlers apiRouteHandlers) {
 	mux.Handle("/v1/setup/status", handlers.setup)
 	mux.Handle("/v1/providers", handlers.providersModels)
 	mux.Handle("/v1/models", handlers.providersModels)
+	mux.Handle("/v1/admin/providers/test", handlers.providersModels)
 	mux.Handle("/v1/compact", handlers.compact)
 	mux.Handle("/v1/cron/jobs", handlers.cron)
 	mux.Handle("/v1/cron/jobs/", handlers.cron)
