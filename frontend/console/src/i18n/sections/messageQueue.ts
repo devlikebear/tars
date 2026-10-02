@@ -17,6 +17,7 @@ export const messageQueueEn = {
   queueTitle: 'Send when the running turn ends (Enter)',
   placeholderBusy: 'Queue a follow-up… it is sent when this turn ends',
   refused: (reason: string) => `Not sent: ${reason}. It is back first in the queue, paused.`,
+  refusedToComposer: (reason: string) => `Not sent: ${reason}. Your message is back in the composer.`,
 }
 
 export type MessageQueueTranslations = typeof messageQueueEn
@@ -38,4 +39,5 @@ export const messageQueueKo: MessageQueueTranslations = {
   queueTitle: '실행 중인 턴이 끝나면 보냅니다 (Enter)',
   placeholderBusy: '후속 메시지를 대기열에 넣으세요… 이 턴이 끝나면 보냅니다',
   refused: (reason: string) => `보내지 못했습니다: ${reason}. 대기열 맨 앞에 되돌리고 일시정지했습니다.`,
+  refusedToComposer: (reason: string) => `보내지 못했습니다: ${reason}. 메시지를 입력창에 되돌렸습니다.`,
 }
