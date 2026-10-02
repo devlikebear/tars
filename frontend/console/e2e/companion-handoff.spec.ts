@@ -11,7 +11,10 @@ test.use({ contextOptions: { reducedMotion: 'reduce' } })
 
 test('a companion question keeps its words as the message and the title', async ({ page }, testInfo) => {
   // A per-run suffix keeps --repeat-each runs from finding each other's sessions.
-  const words = `which session needs me first? (run ${testInfo.repeatEachIndex}-${Date.now().toString(36)})`
+  // Digits only: the first-turn tier card matches substrings, and a base-36
+  // stamp sometimes spelled one of its signals ("muqjprf5" has "pr"), which
+  // held the send behind the card.
+  const words = `which session needs me first? (run ${testInfo.repeatEachIndex}-${Date.now()})`
   await page.goto('/console')
   await page.getByRole('button', { name: 'Talk to TARS companion' }).click()
   await page.getByRole('textbox', { name: 'Ask TARS companion' }).fill(words)
