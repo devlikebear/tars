@@ -32,6 +32,16 @@ func drafted(t *testing.T) Pipeline {
 func opening(t *testing.T) Pipeline {
 	t.Helper()
 	p, _ := mustApply(t, drafted(t), Event{Kind: EventGate, Gate: GatePR, Action: GateApprove})
+	// The open turn ran: probes count from here (no probe while it is owed).
+	p, _ = mustApply(t, p, Event{Kind: EventTurnCompleted, Turn: 5, Blocks: Blocks{Report: &Report{Summary: "opened"}}})
+	return p
+}
+
+// merging is a pipeline whose G4 was approved and whose merge turn ran.
+func merging(t *testing.T) Pipeline {
+	t.Helper()
+	p, _ := mustApply(t, inMerge(t), Event{Kind: EventGate, Gate: GateMerge, Action: GateApprove})
+	p, _ = mustApply(t, p, Event{Kind: EventTurnCompleted, Turn: 9, Blocks: Blocks{Report: &Report{Summary: "merged"}}})
 	return p
 }
 
@@ -218,6 +228,8 @@ func TestUnavailableNoticeOncePerStage(t *testing.T) {
 	if p.Current != StagePRReview || p.PRWait != "" || act.Kind != ActionSendTurn {
 		t.Fatalf("manual pass: current %s wait %q act %+v", p.Current, p.PRWait, act)
 	}
+	// The turn the pass sends runs first; then the stage's own probe.
+	p, _ = mustApply(t, p, Event{Kind: EventTurnCompleted, Turn: 6, Blocks: Blocks{Report: &Report{Summary: "checked"}, Findings: []Finding{}}})
 	p, _ = mustApply(t, p, unavailable)
 	if n := len(cardsOf(p, CardNotice, StagePRReview)); n != 1 {
 		t.Fatalf("pr_review notices = %d", n)
@@ -429,6 +441,11 @@ func TestG4MergeGate(t *testing.T) {
 	if p.PRWait != PRWaitMerge || !strings.Contains(act.Prompt, "gh pr merge 12 --squash") || p.Current != StageMerge || !p.Active() {
 		t.Fatalf("approve: wait %q act %+v", p.PRWait, act)
 	}
+	// No probe counts until the merge turn ran.
+	if owed, _ := mustApply(t, p, Event{Kind: EventPRProbe, Probe: probeFound()}); owed.PR.State != PRStateOpen || len(owed.Cards) != len(p.Cards) {
+		t.Fatal("a probe counted while the merge turn was owed")
+	}
+	p, _ = mustApply(t, p, Event{Kind: EventTurnCompleted, Turn: 9, Blocks: Blocks{Report: &Report{Summary: "merged"}}})
 	// Still open: wait. Merged: the pipeline finishes.
 	p, _ = mustApply(t, p, Event{Kind: EventPRProbe, Probe: probeFound()})
 	if !p.Active() {
@@ -542,8 +559,7 @@ func TestWantsPRProbe(t *testing.T) {
 			}
 		})
 	}
-	merging, _ := mustApply(t, inMerge(t), Event{Kind: EventGate, Gate: GateMerge, Action: GateApprove})
-	if !WantsPRProbe(merging) {
+	if !WantsPRProbe(merging(t)) {
 		t.Fatal("a merge awaited wants the probe")
 	}
 }
@@ -593,7 +609,7 @@ func TestPinnedPRIgnoresOtherNumbers(t *testing.T) {
 
 func TestNoneWhileTheMergeIsAwaitedCounts(t *testing.T) {
 	// J5: a PR that vanished from the probe while the merge is awaited.
-	p, _ := mustApply(t, inMerge(t), Event{Kind: EventGate, Gate: GateMerge, Action: GateApprove})
+	p := merging(t)
 	for i := 0; i < PRWaitProbes; i++ {
 		p, _ = mustApply(t, p, Event{Kind: EventPRProbe, Probe: &PRProbe{Status: ProbeNone}})
 	}
@@ -671,9 +687,14 @@ func TestFindingAcceptedDuringAFixTurnGetsTheNextOne(t *testing.T) {
 	if act.Kind != ActionSendTurn || p.PRWait != PRWaitFix {
 		t.Fatalf("first fix: %+v", act)
 	}
+	// A probe cannot add findings while the fix turn is owed (#1082)…
 	probe := probeFound(failing("test"))
 	probe.Comments = []PRComment{{ID: "c9", Author: "alice", Body: "also rename x", Trusted: true}}
-	p, _ = mustApply(t, p, Event{Kind: EventPRProbe, Probe: probe})
+	if got, _ := mustApply(t, p, Event{Kind: EventPRProbe, Probe: probe}); len(got.Cards) != len(p.Cards) {
+		t.Fatal("a probe added findings during the fix turn")
+	}
+	// …but the decision logic still holds a finding that arrives late.
+	p = withLateFinding(p)
 	p, act = decideAll(t, p, FindingFix)
 	if act.Kind != ActionNone {
 		t.Fatalf("sent while a fix runs: %+v", act)
@@ -745,9 +766,7 @@ func TestAcceptedFixSurvivesAFormatReRequest(t *testing.T) {
 	// accepted meanwhile still gets its fix turn.
 	p := inPRReview(t, failing("test"))
 	p, _ = decideAll(t, p, FindingFix)
-	probe := probeFound(failing("test"))
-	probe.Comments = []PRComment{{ID: "c9", Author: "alice", Body: "also rename x", Trusted: true}}
-	p, _ = mustApply(t, p, Event{Kind: EventPRProbe, Probe: probe})
+	p = withLateFinding(p)
 	p, _ = decideAll(t, p, FindingFix)
 	p, act := mustApply(t, p, Event{Kind: EventTurnCompleted, Turn: 7}) // no block
 	if act.Kind != ActionSendTurn || !strings.Contains(act.Prompt, "did not end with a well-formed") {
@@ -817,4 +836,47 @@ func TestUnavailableDoesNotCarryIntoTheNextWait(t *testing.T) {
 	if approved.PRUnavailable != "" {
 		t.Fatalf("after G4: %q", approved.PRUnavailable)
 	}
+}
+
+func TestNoProbeWhileTheWriteTurnIsOwed(t *testing.T) {
+	// #1082: between an approval and its turn claiming the session, a probe
+	// would see nothing of the turn yet; its "unavailable" invited a manual
+	// pass the server then refused (409) because the turn had started.
+	p := drafted(t)
+	p, _ = mustApply(t, p, Event{Kind: EventGate, Gate: GatePR, Action: GateApprove})
+	if p.PendingTurn == "" || p.PRWait != PRWaitOpen {
+		t.Fatalf("setup: pending %q wait %q", p.PendingTurn, p.PRWait)
+	}
+	if WantsPRProbe(p) {
+		t.Fatal("probe wanted while the open turn is owed")
+	}
+	got, _ := mustApply(t, p, Event{Kind: EventPRProbe, Probe: &PRProbe{Status: ProbeUnavailable, Error: "not logged in"}})
+	if got.PRUnavailable != "" || len(got.Cards) != len(p.Cards) {
+		t.Fatalf("probe applied while owed: unavailable %q cards %d→%d", got.PRUnavailable, len(p.Cards), len(got.Cards))
+	}
+	// The turn completes: now the probe is wanted and counts.
+	done, _ := mustApply(t, p, Event{Kind: EventTurnCompleted, Turn: 5, Blocks: Blocks{Report: &Report{Summary: "opened"}}})
+	if !WantsPRProbe(done) {
+		t.Fatal("probe not wanted after the turn")
+	}
+	done, _ = mustApply(t, done, Event{Kind: EventPRProbe, Probe: &PRProbe{Status: ProbeUnavailable, Error: "not logged in"}})
+	if done.PRUnavailable != "not logged in" {
+		t.Fatalf("unavailable = %q", done.PRUnavailable)
+	}
+	// Same for the merge turn G4 sends.
+	m, _ := mustApply(t, inMerge(t), Event{Kind: EventGate, Gate: GateMerge, Action: GateApprove})
+	if WantsPRProbe(m) {
+		t.Fatal("probe wanted while the merge turn is owed")
+	}
+}
+
+// withLateFinding adds a trusted comment finding to pr_review, as a probe
+// would have.
+func withLateFinding(p Pipeline) Pipeline {
+	next := p.clone()
+	next.addCard(CardFinding, 0, "Review comment from alice", PRFinding{
+		Finding: Finding{ID: "comment:c9", Severity: "medium", Title: "Review comment from alice", Scenario: "also rename x"},
+		Key:     "comment:c9", Trusted: true,
+	}, t0)
+	return next
 }

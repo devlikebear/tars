@@ -200,7 +200,10 @@ func CountChecks(checks []PRCheck) CheckCounts {
 // WantsPRProbe reports whether the server should keep probing: the PR or
 // its merge is awaited, or pr_review is running.
 func WantsPRProbe(p Pipeline) bool {
-	if !p.Active() || p.OpenGate != GateNone {
+	// A turn still owed (the write turn a gate approved, a fix turn) has
+	// done nothing yet: a probe now would judge facts that are about to
+	// change. The post-turn hook starts the poller again.
+	if !p.Active() || p.OpenGate != GateNone || p.PendingTurn != "" {
 		return false
 	}
 	switch p.Current {
@@ -272,8 +275,10 @@ func applyProbe(p Pipeline, ev Event, now time.Time) (Pipeline, Action, error) {
 		return p, noAction, ErrInvalidProbe
 	}
 	probe := *ev.Probe
-	if !p.Active() || (p.OpenGate != GateNone && p.OpenGate != GateMerge) {
-		return p, noAction, nil // stale: a gate decides now, or the pipeline ended
+	if !p.Active() || (p.OpenGate != GateNone && p.OpenGate != GateMerge) || p.PendingTurn != "" {
+		// Stale: a gate decides now, the pipeline ended, or a probe started
+		// before the owed turn and would judge facts it has not changed yet.
+		return p, noAction, nil
 	}
 	next := p.clone()
 	switch probe.Status {
