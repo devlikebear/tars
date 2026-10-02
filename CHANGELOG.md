@@ -9,6 +9,7 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 ### Fixed
 
 - **대기열 메시지를 서버가 거절하면 조용히 사라지던 문제** — 대기열에서 꺼낸 메시지를 보냈는데 `POST /v1/chat`이 2xx가 아닌 답(특히 세션 claim이 아직 잡혀 있을 때의 `409 turn_running`: 취소 뒤 정리 중인 턴, focus driver 턴)을 주면, 콘솔은 이를 스트림이 끊긴 실행 중 턴으로 보고 transcript를 다시 불러왔다. 그러면서 거절된 메시지의 말풍선과 에러가 지워졌고, 메시지는 이미 대기열에서 빠진 뒤라 사용자가 쓴 글이 그대로 없어졌다. 이제 턴이 시작되기 전에 거절된 대기열 메시지는 대기열 맨 앞으로 그대로(파일·멘션 포함) 돌아가고 대기열이 일시정지되며, 왜 보내지 못했는지 에러로 보여 준다. 다시 시작은 사용자가 한다 — 자동 재시도나 대기는 없다.
+- **Stop 직후 대기열을 다시 시작하면 `409 turn_running`으로 거절되던 문제** — `POST /v1/chat/cancel`은 턴의 컨텍스트만 취소하고 바로 답했는데, 취소된 턴은 그 뒤에도 끝 체크포인트(shadow git 스냅샷)와 transcript를 쓰는 동안 세션 claim을 잡고 있었다. 콘솔은 취소 답을 받자마자 스트림을 끊고 한가한 상태가 되므로, 일시정지된 대기열의 Resume을 바로 누르면 아직 정리 중인 턴 때문에 거절됐다(E2E `message-queue.spec.ts`의 "Stop pauses the queue until it is resumed"가 단독 실행·전체 실행 모두에서 재현). 이제 취소는 턴이 세션을 놓을 때까지(최대 30초, 요청이 끊기면 그때까지) 기다렸다가 답하고, 답에 `ended`(제한 안에 끝났는지)를 싣는다. focus driver의 취소가 이미 하던 방식과 같다.
 
 ## [0.43.0] - 2026-10-02
 
