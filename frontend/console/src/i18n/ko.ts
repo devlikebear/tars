@@ -9,6 +9,7 @@ import { changesKo } from './sections/changes.ts'
 import { sideSessionKo } from './sections/sideSession.ts'
 import { sessionWorktreeKo } from './sections/sessionWorktree.ts'
 import { newChatFolderKo } from './sections/newChatFolder.ts'
+import { providerTestKo } from './sections/providerTest.ts'
 import { focusKo } from './sections/focus.ts'
 import { chatApprovalKo } from './sections/chatApproval.ts'
 import { sessionBoardKo } from './sections/sessionBoard.ts'
@@ -703,6 +704,7 @@ export const ko = {
     selectNone: '(없음)',
     workspaceResetSuccess: (removed) => `워크스페이스 초기화: ${removed}개 항목 제거됨. TARS를 재시작해 다시 초기화하세요.`,
     failedResetWorkspace: '워크스페이스 초기화 실패',
+    editInWizard: '마법사에서 편집',
   },
   cron: {
     eyebrow: '운영',
@@ -1669,6 +1671,7 @@ export const ko = {
   sideSession: sideSessionKo,
   sessionWorktree: sessionWorktreeKo,
   newChatFolder: newChatFolderKo,
+  providerTest: providerTestKo,
   focus: focusKo,
   chatApproval: chatApprovalKo,
   sessionBoard: sessionBoardKo,

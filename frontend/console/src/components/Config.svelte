@@ -2,11 +2,12 @@
   import { onMount } from 'svelte'
   import {
     getConfigSchema,
-    getProviderModels,
     patchConfigValues,
     resetWorkspace,
     restartServer,
+    testProviders,
   } from '../lib/api'
+  import { describeProviderProbe, type ProviderProbeRow } from '../lib/providerProbe'
   import { buildConfigImpactPreview } from '../lib/configImpact'
   import { buildConfigMetaBadges } from '../lib/configMetaBadges'
   import { buildQuickStartItems, quickStartProgress } from '../lib/quickStartFields'
@@ -46,8 +47,9 @@
   let fieldSaving = $state(false)
   let dirtyFields: Record<string, unknown> = $state({})
   let llmTestBusy = $state(false)
-  let llmTestResult = $state('')
-  let llmTestKind: 'success' | 'error' | '' = $state('')
+  // null until the first run; an empty list means the pool has no aliases.
+  let llmTestRows: ProviderProbeRow[] | null = $state(null)
+  let llmTestError = $state('')
 
   let hasDirtyFields = $derived(Object.keys(dirtyFields).length > 0)
   let quickStartItems = $derived(buildQuickStartItems(schema, values, dirtyFields))
@@ -255,23 +257,19 @@
     return !!envOverrideFor(field) && !configValuesEqual(effectiveValueFor(field), getDisplayValue(field))
   }
 
+  // Tests every provider alias in the pool, the default tier's first. CLI
+  // providers have no model list, so the server checks install, version and
+  // sign-in instead of reporting them as broken.
   async function testLLMConnection() {
     llmTestBusy = true
-    llmTestResult = ''
-    llmTestKind = ''
+    llmTestError = ''
     try {
-      const result = await getProviderModels()
-      const count = Array.isArray(result.models) ? result.models.length : 0
-      const provider = result.provider || 'provider'
-      if (result.source === 'cli') {
-        llmTestResult = `${provider}: CLI found at ${result.cli_path || 'PATH'}`
-      } else {
-        llmTestResult = count > 0 ? `${provider}: ${count} models available` : `${provider}: connection returned no model list`
-      }
-      llmTestKind = result.warning ? 'error' : 'success'
+      const response = await testProviders()
+      const strings = $t.providerTest
+      llmTestRows = (response.results || []).map((result) => describeProviderProbe(result, strings))
     } catch (e) {
-      llmTestResult = e instanceof Error ? e.message : 'Connection test failed'
-      llmTestKind = 'error'
+      llmTestRows = null
+      llmTestError = $t.providerTest.failed(e instanceof Error ? e.message : String(e))
     } finally {
       llmTestBusy = false
     }
@@ -512,7 +510,7 @@
                   {/if}
                   {#if jsonWizardLink(item.key)}
                     <button class="btn btn-secondary btn-sm" onclick={() => openJSONWizard(item.key)}>
-                      Edit in wizard
+                      {$t.config.editInWizard}
                     </button>
                   {:else}
                     <span class="yaml-key-hint" title="Documented in config/tars.config.example.yaml">YAML: {fieldPath(field)}</span>
@@ -530,13 +528,42 @@
               {/if}
               {#if item.key === 'llm_providers'}
                 <button class="btn btn-ghost btn-sm" disabled={llmTestBusy} onclick={testLLMConnection}>
-                  {llmTestBusy ? 'Testing...' : 'Test connection'}
+                  {llmTestBusy ? $t.providerTest.testing : $t.providerTest.button}
                 </button>
-                {#if llmTestResult}
-                  <span class={`quick-test-result test-${llmTestKind}`}>{llmTestResult}</span>
-                {/if}
               {/if}
             </div>
+            {#if item.key === 'llm_providers' && (llmTestRows !== null || llmTestError)}
+              <!-- Full card width under both columns, so long provider errors
+                   wrap here instead of squeezing the title column. -->
+              <div class="provider-test" role="status" aria-label={$t.providerTest.resultsLabel}>
+                {#if llmTestError}
+                  <p class="provider-test-error">{llmTestError}</p>
+                {:else if llmTestRows && llmTestRows.length === 0}
+                  <p class="provider-test-empty">{$t.providerTest.noProviders}</p>
+                {:else if llmTestRows}
+                  <ul class="provider-test-list">
+                    {#each llmTestRows as row (row.alias)}
+                      <li class={`provider-test-row tone-${row.tone}`}>
+                        <div class="provider-test-head">
+                          <span class="provider-test-alias">{row.alias}</span>
+                          <span class="provider-test-kind">{row.kind}</span>
+                          {#if row.isDefault}
+                            <span class="badge badge-default">{$t.providerTest.defaultBadge}</span>
+                          {/if}
+                          <span class={`badge badge-${row.tone} provider-test-status`}>{row.statusLabel}</span>
+                        </div>
+                        {#if row.summary}
+                          <p class="provider-test-summary">{row.summary}</p>
+                        {/if}
+                        {#if row.detail}
+                          <p class="provider-test-detail">{row.detail}</p>
+                        {/if}
+                      </li>
+                    {/each}
+                  </ul>
+                {/if}
+              </div>
+            {/if}
           </div>
         {/each}
       </div>
@@ -717,11 +744,15 @@
     grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
     gap: var(--space-3);
   }
+  /* Flex, not a two-column grid: the controls column wraps under the text
+     when the card is too narrow for both, so the title and description keep
+     a readable width instead of collapsing to a word per line. */
   .quick-start-card {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
+    display: flex;
+    flex-wrap: wrap;
     gap: var(--space-3);
-    align-items: start;
+    align-items: flex-start;
+    align-content: flex-start;
     min-height: 132px;
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-md);
@@ -734,7 +765,8 @@
   }
   .quick-start-card-main {
     display: flex;
-    min-width: 0;
+    flex: 1 1 9rem;
+    min-width: min(9rem, 100%);
     flex-direction: column;
     gap: 5px;
   }
@@ -750,15 +782,14 @@
     font-size: var(--text-sm);
     font-weight: 600;
   }
-  .quick-start-card p {
+  .quick-start-card-main > p {
     margin: 0;
     color: var(--text-tertiary);
     font-size: var(--text-xs);
     line-height: 1.45;
   }
   .quick-status,
-  .quick-default,
-  .quick-test-result {
+  .quick-default {
     width: fit-content;
     max-width: 100%;
     min-height: 18px;
@@ -799,24 +830,84 @@
   }
   .quick-start-control {
     display: flex;
+    flex: 0 1 auto;
     align-items: flex-end;
     flex-direction: column;
     gap: var(--space-2);
-    max-width: 260px;
+    min-width: 0;
+    max-width: min(320px, 100%);
+    margin-left: auto;
   }
-  .quick-test-result {
-    text-align: right;
-    word-break: break-word;
+
+  /* ── Provider connection test ────────────── */
+  .provider-test {
+    flex: 1 1 100%;
+    min-width: 0;
+    border-top: 1px solid var(--border-subtle);
+    padding-top: var(--space-2);
   }
-  .quick-test-result.test-success {
-    border-color: rgba(60, 180, 100, 0.28);
-    color: var(--green);
-    background: rgba(60, 180, 100, 0.08);
+  .provider-test-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    margin: 0;
+    padding: 0;
+    list-style: none;
   }
-  .quick-test-result.test-error {
-    border-color: rgba(220, 60, 60, 0.28);
-    color: var(--red);
-    background: rgba(220, 60, 60, 0.08);
+  .provider-test-row {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    border-left: 2px solid var(--border-default);
+    padding-left: var(--space-2);
+  }
+  .provider-test-row.tone-success { border-left-color: var(--success); }
+  .provider-test-row.tone-info { border-left-color: var(--info); }
+  .provider-test-row.tone-warning { border-left-color: var(--warning); }
+  .provider-test-row.tone-error { border-left-color: var(--error); }
+  .provider-test-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+  .provider-test-alias {
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    overflow-wrap: anywhere;
+  }
+  .provider-test-kind {
+    color: var(--text-tertiary);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+  }
+  .provider-test-status { margin-left: auto; }
+  .provider-test-summary,
+  .provider-test-empty {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: var(--text-xs);
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+  }
+  .provider-test-detail {
+    margin: 0;
+    color: var(--text-tertiary);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+  }
+  .provider-test-error {
+    margin: 0;
+    color: var(--error);
+    font-size: var(--text-xs);
+    overflow-wrap: anywhere;
   }
 
   /* ── Field metadata ──────────────────────── */
@@ -907,7 +998,7 @@
     gap: var(--space-1);
     justify-items: end;
     max-width: 320px;
-    min-width: 150px;
+    min-width: 0;
     text-align: right;
   }
   .structured-main {

@@ -6,8 +6,11 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.43.2] - 2026-10-03
+
 ### Fixed
 
+- **설정 화면의 Test connection이 CLI provider를 제대로 확인하지 못하고, 긴 결과가 카드 레이아웃을 찌그러뜨리던 문제** — 버튼은 기본 티어의 provider 하나만 모델 목록 API(`GET /v1/models`)로 확인했는데, `claude-code-cli`·`antigravity-cli`는 모델 목록이 없어 바이너리가 있는지만 알 수 있었고(로그인 여부는 모름), 예전 서버에서는 빨간 에러로 보였다. 이제 새 `POST /v1/admin/providers/test`가 풀의 **모든 별칭**을 동시에(기본 티어 별칭 먼저) 확인한다. `claude-code-cli`는 `claude --version`과 `claude auth status --json`(사용량 차감 없음, 계정 이메일 등은 돌려주지 않고 로그인 여부·인증 방식만)으로, `antigravity-cli`는 `agy --version`(최소 1.1.12 미만이면 주의)과 `agy models`(CLI 자체 Google 로그인 필요, 사용량 차감 없음)로, HTTP provider(openai-codex 포함)는 기존 모델 목록 조회로 확인한다. 결과는 `ok`/`info`(설정됐지만 확인 불가 — `auth` 하위 명령이 없는 오래된 claude)/`warn`/`error`와 문제 코드로 오고, 콘솔은 별칭마다 한 줄(별칭·종류·기본 배지·상태 배지, 요약, 경로나 provider 에러)을 i18n(en/ko) 문구로 보여 준다. 카드의 Quick Start 레이아웃은 두 열 grid에서 줄바꿈되는 flex로 바꿔, 좁은 카드(약 900px 창)에서는 컨트롤이 제목 아래로 내려가고 제목 열이 한 단어씩 찌그러지지 않으며, 연결 결과는 카드 전체 폭 아래 줄에서 줄바꿈된다. "Edit in wizard"도 i18n으로 옮겼다.
 - **30초 넘게 정리되는 턴을 Stop하면 콘솔만 먼저 쉬던 문제** — #1091 이후 `POST /v1/chat/cancel`은 턴이 세션 claim을 놓을 때까지 기다렸다가 답하지만, 그 대기는 30초까지다. 콘솔은 cancel이 답하면 바로 자기 턴 스트림을 끊었으므로, 체크포인트·transcript를 쓰느라 그보다 오래 걸리는 턴은 서버에서는 아직 도는데 콘솔에서는 끝난 것처럼 보였고, 그때 대기열을 다시 시작하면 `409 turn_running`으로 거절됐다. 이제 서버가 취소를 받았으면 스트림을 끊지 않고 `cancelled`로 스스로 끝날 때까지 기다리며, 세션이 아직 없거나 취소가 받아들여지지 않았을 때만 직접 끊는다(`lib/chatTurnRecovery.ts`의 `stopTurn`).
 
 ## [0.43.1] - 2026-10-02
