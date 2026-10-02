@@ -10,6 +10,7 @@ import (
 	"github.com/devlikebear/tars/internal/buildinfo"
 	"github.com/devlikebear/tars/internal/config"
 	"github.com/devlikebear/tars/internal/tarsserver"
+	"github.com/devlikebear/tars/internal/testutil"
 	"github.com/devlikebear/tars/pkg/tarsclient"
 )
 
@@ -84,7 +85,7 @@ func TestRootCommand_ServeSubcommandRejectsServeAPIFlag(t *testing.T) {
 }
 
 func TestRootCommand_AssistantSubcommandInvokesRunner(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	testutil.SetHome(t, t.TempDir())
 	t.Setenv("TARS_WORKSPACE_DIR", "")
 	original := assistantRunner
 	defer func() { assistantRunner = original }()

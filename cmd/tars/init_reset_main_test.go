@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/devlikebear/tars/internal/config"
+	"github.com/devlikebear/tars/internal/testutil"
 )
 
 // swapInitResetHooks swaps both the orchestrator hooks (server start /
@@ -55,7 +56,7 @@ llm_default_tier: standard
 
 func TestInitReset_BacksUpConfigAndRegeneratesSkeleton(t *testing.T) {
 	fakeHome := t.TempDir()
-	t.Setenv("HOME", fakeHome)
+	testutil.SetHome(t, fakeHome)
 	t.Setenv("TARS_PLUGINS_BUNDLED_DIR", filepath.Join(t.TempDir(), "no-such"))
 
 	wsAbs := filepath.Join(fakeHome, ".tars", "workspace")
@@ -111,7 +112,7 @@ func TestInitReset_BacksUpConfigAndRegeneratesSkeleton(t *testing.T) {
 
 func TestInitReset_WipeWorkspaceRenamesNotDeletes(t *testing.T) {
 	fakeHome := t.TempDir()
-	t.Setenv("HOME", fakeHome)
+	testutil.SetHome(t, fakeHome)
 	t.Setenv("TARS_PLUGINS_BUNDLED_DIR", filepath.Join(t.TempDir(), "no-such"))
 
 	wsAbs := filepath.Join(fakeHome, ".tars", "workspace")
@@ -155,7 +156,7 @@ func TestInitReset_WipeWorkspaceRenamesNotDeletes(t *testing.T) {
 
 func TestInitReset_RequiresConfirmationByDefault(t *testing.T) {
 	fakeHome := t.TempDir()
-	t.Setenv("HOME", fakeHome)
+	testutil.SetHome(t, fakeHome)
 	t.Setenv("TARS_PLUGINS_BUNDLED_DIR", filepath.Join(t.TempDir(), "no-such"))
 	wsAbs := filepath.Join(fakeHome, ".tars", "workspace")
 	_ = os.MkdirAll(wsAbs, 0o755)
@@ -188,7 +189,7 @@ func TestInitReset_RequiresConfirmationByDefault(t *testing.T) {
 
 func TestInitReset_YesAcceptsUppercase(t *testing.T) {
 	fakeHome := t.TempDir()
-	t.Setenv("HOME", fakeHome)
+	testutil.SetHome(t, fakeHome)
 	t.Setenv("TARS_PLUGINS_BUNDLED_DIR", filepath.Join(t.TempDir(), "no-such"))
 	wsAbs := filepath.Join(fakeHome, ".tars", "workspace")
 	_ = os.MkdirAll(wsAbs, 0o755)
@@ -212,7 +213,7 @@ func TestInitReset_YesAcceptsUppercase(t *testing.T) {
 
 func TestInitReset_PortInheritsFromExistingPlist(t *testing.T) {
 	fakeHome := t.TempDir()
-	t.Setenv("HOME", fakeHome)
+	testutil.SetHome(t, fakeHome)
 	t.Setenv("TARS_PLUGINS_BUNDLED_DIR", filepath.Join(t.TempDir(), "no-such"))
 	wsAbs := filepath.Join(fakeHome, ".tars", "workspace")
 	_ = os.MkdirAll(wsAbs, 0o755)
@@ -263,7 +264,7 @@ func TestInitReset_PortInheritsFromExistingPlist(t *testing.T) {
 
 func TestInitReset_ExplicitPortOverridesPlistInheritance(t *testing.T) {
 	fakeHome := t.TempDir()
-	t.Setenv("HOME", fakeHome)
+	testutil.SetHome(t, fakeHome)
 	t.Setenv("TARS_PLUGINS_BUNDLED_DIR", filepath.Join(t.TempDir(), "no-such"))
 	wsAbs := filepath.Join(fakeHome, ".tars", "workspace")
 	_ = os.MkdirAll(wsAbs, 0o755)
@@ -297,7 +298,7 @@ func TestInitReset_NoConfigStillProceeds(t *testing.T) {
 	// must not error — it just writes a fresh skeleton and starts the
 	// server. Useful for users who manually deleted ~/.tars/config.
 	fakeHome := t.TempDir()
-	t.Setenv("HOME", fakeHome)
+	testutil.SetHome(t, fakeHome)
 	t.Setenv("TARS_PLUGINS_BUNDLED_DIR", filepath.Join(t.TempDir(), "no-such"))
 
 	state := &initMockState{startResult: initStartResult{mode: "detached"}}
@@ -323,7 +324,7 @@ func TestInitReset_NoConfigStillProceeds(t *testing.T) {
 
 func TestReadExistingAPIAddrFromPlist_ParsesProgramArguments(t *testing.T) {
 	fakeHome := t.TempDir()
-	t.Setenv("HOME", fakeHome)
+	testutil.SetHome(t, fakeHome)
 	plistDir := filepath.Join(fakeHome, "Library", "LaunchAgents")
 	_ = os.MkdirAll(plistDir, 0o755)
 	plistPath := filepath.Join(plistDir, "io.tars.server.plist")
@@ -344,7 +345,7 @@ func TestReadExistingAPIAddrFromPlist_ParsesProgramArguments(t *testing.T) {
 
 func TestReadExistingAPIAddrFromPlist_NoFlagReturnsFalse(t *testing.T) {
 	fakeHome := t.TempDir()
-	t.Setenv("HOME", fakeHome)
+	testutil.SetHome(t, fakeHome)
 	plistDir := filepath.Join(fakeHome, "Library", "LaunchAgents")
 	_ = os.MkdirAll(plistDir, 0o755)
 	if err := os.WriteFile(filepath.Join(plistDir, "io.tars.server.plist"),
@@ -359,7 +360,7 @@ func TestReadExistingAPIAddrFromPlist_NoFlagReturnsFalse(t *testing.T) {
 
 func TestReadExistingAPIAddrFromPlist_MissingFileReturnsFalse(t *testing.T) {
 	fakeHome := t.TempDir()
-	t.Setenv("HOME", fakeHome)
+	testutil.SetHome(t, fakeHome)
 	if addr, ok := readExistingAPIAddrFromPlist(); ok {
 		t.Fatalf("expected ok=false when plist missing, got addr=%q", addr)
 	}
@@ -393,7 +394,7 @@ func TestRunInitResetCommand_CallsRunnerThroughCobra(t *testing.T) {
 	// Confirms `tars onboard reset` (alias) dispatches to the same
 	// runner. Uses a minimal stub via initResetRunner.
 	fakeHome := t.TempDir()
-	t.Setenv("HOME", fakeHome)
+	testutil.SetHome(t, fakeHome)
 
 	called := false
 	prev := initResetRunner

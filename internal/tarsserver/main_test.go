@@ -31,6 +31,7 @@ import (
 	"github.com/devlikebear/tars/internal/serverauth"
 	"github.com/devlikebear/tars/internal/session"
 	"github.com/devlikebear/tars/internal/skill"
+	"github.com/devlikebear/tars/internal/testutil"
 	"github.com/devlikebear/tars/internal/tool"
 	"github.com/rs/zerolog"
 	zlog "github.com/rs/zerolog/log"
@@ -89,7 +90,7 @@ func hasFlagForTest(args []string, name string) bool {
 
 func isolateRunEnv(t *testing.T) {
 	t.Helper()
-	t.Setenv("HOME", t.TempDir())
+	testutil.SetHome(t, t.TempDir())
 	for _, key := range []string{
 		"TARS_CONFIG",
 		"TARS_CONFIG_PATH",

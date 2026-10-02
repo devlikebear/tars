@@ -10,21 +10,12 @@ import (
 	"github.com/devlikebear/tars/internal/extensions"
 	"github.com/devlikebear/tars/internal/plugin"
 	"github.com/devlikebear/tars/internal/skill"
+	"github.com/devlikebear/tars/internal/testutil"
 )
 
 func TestBuildSkillSources_UsesPrimaryAndLegacyUserDirs(t *testing.T) {
 	home := t.TempDir()
-	prevHome, hadHome := os.LookupEnv("HOME")
-	if err := os.Setenv("HOME", home); err != nil {
-		t.Fatalf("set HOME: %v", err)
-	}
-	defer func() {
-		if hadHome {
-			_ = os.Setenv("HOME", prevHome)
-			return
-		}
-		_ = os.Unsetenv("HOME")
-	}()
+	testutil.SetHome(t, home)
 
 	cfg := config.Config{RuntimeConfig: config.RuntimeConfig{WorkspaceDir: filepath.Join(home, "workspace")}}
 	got := buildSkillSources(cfg)
@@ -39,17 +30,7 @@ func TestBuildSkillSources_UsesPrimaryAndLegacyUserDirs(t *testing.T) {
 
 func TestBuildPluginSources_UsesPrimaryAndLegacyUserDirs(t *testing.T) {
 	home := t.TempDir()
-	prevHome, hadHome := os.LookupEnv("HOME")
-	if err := os.Setenv("HOME", home); err != nil {
-		t.Fatalf("set HOME: %v", err)
-	}
-	defer func() {
-		if hadHome {
-			_ = os.Setenv("HOME", prevHome)
-			return
-		}
-		_ = os.Unsetenv("HOME")
-	}()
+	testutil.SetHome(t, home)
 
 	cfg := config.Config{RuntimeConfig: config.RuntimeConfig{WorkspaceDir: filepath.Join(home, "workspace")}}
 	got := buildPluginSources(cfg)

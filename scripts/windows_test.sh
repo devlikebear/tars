@@ -28,12 +28,10 @@ TEST_TIMEOUT="${TEST_TIMEOUT:-300s}"
 # twenty seconds and forcing a GC both fail to release it, and a goroutine
 # dump at that moment shows nothing of ours still running.
 EXCLUDED_PACKAGES=(
-  github.com/devlikebear/tars/cmd/tars                 # init/service/doctor assume launchd and unix workspace layout
   github.com/devlikebear/tars/internal/agentruntime    # command executor timeouts and effect receipt file modes
-  github.com/devlikebear/tars/internal/auth            # credential files asserted at mode 0600
   github.com/devlikebear/tars/internal/executionplane  # artifact URIs, symlinks, and POSIX runner assumptions
   github.com/devlikebear/tars/pkg/llm                  # claude-code-cli tests drive POSIX shell script stubs (was internal/llm before #928)
-  github.com/devlikebear/tars/internal/tarsserver      # sandboxes that shell out, plus macOS/Linux notifier paths
+  github.com/devlikebear/tars/internal/tarsserver      # ~21 tests: sandboxes and notifiers that shell out, owner-only config files, symlinks, sqlite past Close; focus PR poll tests flake
   github.com/devlikebear/tars/internal/workerprotocol  # ssh/container/symlink policy assumptions
   github.com/devlikebear/tars/internal/workscheduler   # sqlite holds the ledger file past Close — see above
 )
@@ -44,6 +42,8 @@ EXCLUDED_PACKAGES=(
 #   * read-only directory negative tests — Windows still permits creating
 #     files inside a directory marked read-only.
 #   * symlink creation — needs Developer Mode or elevation on Windows.
+#   * POSIX shell script stubs — a `#!/bin/sh` file without an .exe
+#     extension is not an executable on Windows.
 SKIPPED_TESTS=(
   TestWrite_DoesNotCorruptOnReadOnlyDir                                        # read-only directory
   TestManager_UpdateApprovalStatus_SetsReviewedAtAndPersists                   # mode 0600
@@ -58,6 +58,8 @@ SKIPPED_TESTS=(
   TestAppendInboxCandidateAndReviewActions                                     # unexamined
   TestExtractionInboxAppendListAndReview                                       # unexamined
   TestMirrorToWorkspace_CompanionFiles                                         # unexamined
+  TestCheckDoctorLLMRuntime_ClaudeCodeCLI                                      # POSIX shell stub
+  TestRemoteAccessCLIRendersLiveStatusURLAndOwnedMutations                     # POSIX shell stub
 )
 
 packages="$("${GO}" list ./...)"

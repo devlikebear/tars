@@ -8,11 +8,12 @@ import (
 	"testing"
 
 	"github.com/devlikebear/tars/internal/config"
+	"github.com/devlikebear/tars/internal/testutil"
 )
 
 func TestRootCommand_DoctorFailsForMissingStarterState(t *testing.T) {
 	fakeHome := t.TempDir()
-	t.Setenv("HOME", fakeHome)
+	testutil.SetHome(t, fakeHome)
 	clearDoctorEnv(t)
 
 	workspaceDir := filepath.Join(t.TempDir(), "doctor-workspace")
@@ -39,7 +40,7 @@ func TestRootCommand_DoctorFailsForMissingStarterState(t *testing.T) {
 
 func TestRootCommand_DoctorFixCreatesStarterWorkspaceButStillRequiresBYOK(t *testing.T) {
 	fakeHome := t.TempDir()
-	t.Setenv("HOME", fakeHome)
+	testutil.SetHome(t, fakeHome)
 	clearDoctorEnv(t)
 	t.Setenv("TARS_PLUGINS_BUNDLED_DIR", writeBundledPluginSource(t))
 
@@ -80,7 +81,7 @@ func TestRootCommand_DoctorFixCreatesStarterWorkspaceButStillRequiresBYOK(t *tes
 
 func TestRootCommand_DoctorPassesWhenStarterWorkspaceAndBYOKPresent(t *testing.T) {
 	fakeHome := t.TempDir()
-	t.Setenv("HOME", fakeHome)
+	testutil.SetHome(t, fakeHome)
 	clearDoctorEnv(t)
 	t.Setenv("OPENAI_API_KEY", "test-openai-key")
 	t.Setenv("TARS_PLUGINS_BUNDLED_DIR", writeBundledPluginSource(t))
@@ -114,7 +115,7 @@ func TestRootCommand_DoctorPassesWhenStarterWorkspaceAndBYOKPresent(t *testing.T
 
 func TestRootCommand_DoctorFixRestoresBundledWorkspacePlugin(t *testing.T) {
 	fakeHome := t.TempDir()
-	t.Setenv("HOME", fakeHome)
+	testutil.SetHome(t, fakeHome)
 	clearDoctorEnv(t)
 	t.Setenv("OPENAI_API_KEY", "test-openai-key")
 	t.Setenv("TARS_PLUGINS_BUNDLED_DIR", writeBundledPluginSource(t))
@@ -149,7 +150,7 @@ func TestRootCommand_DoctorFixRestoresBundledWorkspacePlugin(t *testing.T) {
 
 func TestRootCommand_DoctorFailsWhenClaudeCodeCLIIsMissing(t *testing.T) {
 	fakeHome := t.TempDir()
-	t.Setenv("HOME", fakeHome)
+	testutil.SetHome(t, fakeHome)
 	clearDoctorEnv(t)
 	t.Setenv("TARS_PLUGINS_BUNDLED_DIR", writeBundledPluginSource(t))
 	t.Setenv("CLAUDE_CODE_CLI_PATH", filepath.Join(t.TempDir(), "missing-claude"))
@@ -207,7 +208,7 @@ agentruntime_enabled: true
 
 func TestRootCommand_DoctorFailsWhenAgentRuntimeDefaultAgentUsesMissingWorkspaceCommand(t *testing.T) {
 	fakeHome := t.TempDir()
-	t.Setenv("HOME", fakeHome)
+	testutil.SetHome(t, fakeHome)
 	clearDoctorEnv(t)
 	t.Setenv("OPENAI_API_KEY", "test-openai-key")
 	t.Setenv("TARS_PLUGINS_BUNDLED_DIR", writeBundledPluginSource(t))
@@ -259,7 +260,7 @@ func TestRootCommand_DoctorFailsWhenAgentRuntimeDefaultAgentUsesMissingWorkspace
 
 func TestRootCommand_DoctorFailsWhenSemanticMemoryProviderIsUnsupported(t *testing.T) {
 	fakeHome := t.TempDir()
-	t.Setenv("HOME", fakeHome)
+	testutil.SetHome(t, fakeHome)
 	clearDoctorEnv(t)
 	t.Setenv("OPENAI_API_KEY", "test-openai-key")
 	t.Setenv("TARS_PLUGINS_BUNDLED_DIR", writeBundledPluginSource(t))

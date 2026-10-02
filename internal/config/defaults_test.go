@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/devlikebear/tars/internal/llmdefaults"
+	"github.com/devlikebear/tars/internal/testutil"
 )
 
 func TestConfigInputFields_ApplyFromEnvUsesConfiguredAliases(t *testing.T) {
@@ -760,7 +761,7 @@ func TestResolveConfigPath_DefaultCandidate(t *testing.T) {
 
 func TestResolveConfigPath_FixedPathFallback(t *testing.T) {
 	fakeHome := t.TempDir()
-	t.Setenv("HOME", fakeHome)
+	testutil.SetHome(t, fakeHome)
 
 	// No config/default.yaml in CWD, create fixed config.
 	emptyDir := t.TempDir()

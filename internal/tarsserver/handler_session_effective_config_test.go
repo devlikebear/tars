@@ -126,8 +126,11 @@ func TestEffectiveConfigAPI_CwdPutInvalidatesCache(t *testing.T) {
 	}
 
 	// PUT a new cwd (the extra dir). Service should be invalidated.
-	body := `{"current":"` + extra + `"}`
-	req := httptest.NewRequest(http.MethodPut, "/v1/admin/sessions/"+sess.ID+"/cwd", strings.NewReader(body))
+	body, err := json.Marshal(map[string]string{"current": extra})
+	if err != nil {
+		t.Fatalf("marshal body: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPut, "/v1/admin/sessions/"+sess.ID+"/cwd", strings.NewReader(string(body)))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Tars-Debug-Auth-Role", "admin")
 	req.RemoteAddr = "127.0.0.1:1"

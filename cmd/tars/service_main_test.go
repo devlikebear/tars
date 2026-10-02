@@ -11,6 +11,7 @@ import (
 
 	"github.com/devlikebear/tars/internal/config"
 	"github.com/devlikebear/tars/internal/launchagent"
+	"github.com/devlikebear/tars/internal/testutil"
 )
 
 func TestResolveServiceTargetUsesSharedDefaults(t *testing.T) {
@@ -52,7 +53,7 @@ func TestResolveServiceTargetReturnsPlistPathError(t *testing.T) {
 
 func TestStartInitServiceUsesDefaultServiceTarget(t *testing.T) {
 	fakeHome := t.TempDir()
-	t.Setenv("HOME", fakeHome)
+	testutil.SetHome(t, fakeHome)
 	clearDoctorEnv(t)
 	t.Setenv("OPENAI_API_KEY", "test-openai-key")
 	t.Setenv("TARS_PLUGINS_BUNDLED_DIR", writeBundledPluginSource(t))
@@ -105,7 +106,7 @@ func TestStartInitServiceUsesDefaultServiceTarget(t *testing.T) {
 
 func TestRootCommand_ServiceInstallWritesLaunchAgentPlist(t *testing.T) {
 	fakeHome := t.TempDir()
-	t.Setenv("HOME", fakeHome)
+	testutil.SetHome(t, fakeHome)
 
 	clearDoctorEnv(t)
 	t.Setenv("OPENAI_API_KEY", "test-openai-key")
@@ -171,7 +172,7 @@ func TestRootCommand_ServiceStartBootstrapsAndKickstartsLaunchAgent(t *testing.T
 	}
 
 	fakeHome := t.TempDir()
-	t.Setenv("HOME", fakeHome)
+	testutil.SetHome(t, fakeHome)
 	writeBrokenFixedConfig(t)
 
 	var calls [][]string
@@ -222,7 +223,7 @@ func TestRootCommand_ServiceStopBootsOutLaunchAgent(t *testing.T) {
 	}
 
 	fakeHome := t.TempDir()
-	t.Setenv("HOME", fakeHome)
+	testutil.SetHome(t, fakeHome)
 	writeBrokenFixedConfig(t)
 
 	var calls [][]string
@@ -270,7 +271,7 @@ func TestRootCommand_ServiceStatusReportsInstalledButNotLoaded(t *testing.T) {
 	}
 
 	fakeHome := t.TempDir()
-	t.Setenv("HOME", fakeHome)
+	testutil.SetHome(t, fakeHome)
 	writeBrokenFixedConfig(t)
 
 	serviceLaunchctlRun = func(_ context.Context, args ...string) (string, error) {
@@ -305,7 +306,7 @@ func TestRootCommand_ServiceStatusReportsInstalledButNotLoaded(t *testing.T) {
 
 func TestRootCommand_ServiceInstall_AllowNeedsSetupBypassesLLMDoctor(t *testing.T) {
 	fakeHome := t.TempDir()
-	t.Setenv("HOME", fakeHome)
+	testutil.SetHome(t, fakeHome)
 	clearDoctorEnv(t)
 
 	// Run init WITHOUT appending the LLM block — config stays in
@@ -364,7 +365,7 @@ func TestRootCommand_ServiceInstall_AllowNeedsSetupBypassesLLMDoctor(t *testing.
 
 func TestRootCommand_ServiceInstallWritesLaunchdIdentityEnvironment(t *testing.T) {
 	fakeHome := t.TempDir()
-	t.Setenv("HOME", fakeHome)
+	testutil.SetHome(t, fakeHome)
 
 	clearDoctorEnv(t)
 	t.Setenv("OPENAI_API_KEY", "test-openai-key")

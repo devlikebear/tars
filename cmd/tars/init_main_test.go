@@ -9,11 +9,12 @@ import (
 	"testing"
 
 	"github.com/devlikebear/tars/internal/config"
+	"github.com/devlikebear/tars/internal/testutil"
 )
 
 func TestRootCommand_InitCreatesStarterWorkspace(t *testing.T) {
 	fakeHome := t.TempDir()
-	t.Setenv("HOME", fakeHome)
+	testutil.SetHome(t, fakeHome)
 
 	bundledPluginsDir := writeBundledPluginSource(t)
 	t.Setenv("TARS_PLUGINS_BUNDLED_DIR", bundledPluginsDir)
@@ -119,7 +120,7 @@ func TestRootCommand_InitLocalReportsScaffoldErrors(t *testing.T) {
 
 func TestRootCommand_InitRefusesToOverwriteExistingConfig(t *testing.T) {
 	fakeHome := t.TempDir()
-	t.Setenv("HOME", fakeHome)
+	testutil.SetHome(t, fakeHome)
 
 	configPath := config.FixedConfigPath()
 	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
@@ -156,7 +157,7 @@ func TestRootCommand_InitRefusesToOverwriteExistingConfig(t *testing.T) {
 
 func TestRootCommand_InitMigratesLegacyConfig(t *testing.T) {
 	fakeHome := t.TempDir()
-	t.Setenv("HOME", fakeHome)
+	testutil.SetHome(t, fakeHome)
 	// Migration must not require the bundled plugins dir — the
 	// migrated workspace already has its own layout. Setting an empty
 	// value forces the resolver to fail if init tries to scaffold.
@@ -281,7 +282,8 @@ func TestUpdateMigratedWorkspaceDir_PatchesTopLevelKey(t *testing.T) {
 func TestUpdateMigratedWorkspaceDir_NoOpWhenAlreadyAbsolute(t *testing.T) {
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "config.yaml")
-	src := "runtime:\n    workspace_dir: /already/absolute\n"
+	// Absolute on this platform: "/already/absolute" is not absolute on Windows.
+	src := "runtime:\n    workspace_dir: " + filepath.Join(dir, "already-absolute") + "\n"
 	if err := os.WriteFile(configPath, []byte(src), 0o644); err != nil {
 		t.Fatalf("write src: %v", err)
 	}
@@ -333,7 +335,7 @@ func TestUpdateMigratedWorkspaceDirReportsWriteFailure(t *testing.T) {
 
 func TestRootCommand_InitMoveWorkspace(t *testing.T) {
 	fakeHome := t.TempDir()
-	t.Setenv("HOME", fakeHome)
+	testutil.SetHome(t, fakeHome)
 
 	bundledPluginsDir := writeBundledPluginSource(t)
 	t.Setenv("TARS_PLUGINS_BUNDLED_DIR", bundledPluginsDir)
@@ -417,7 +419,7 @@ func TestInitMove_AutoRestartsServiceWhenPlistPresent(t *testing.T) {
 	// confirm healthz — no manual `tars service stop && start`
 	// required.
 	fakeHome := t.TempDir()
-	t.Setenv("HOME", fakeHome)
+	testutil.SetHome(t, fakeHome)
 	t.Setenv("TARS_PLUGINS_BUNDLED_DIR", writeBundledPluginSource(t))
 
 	// Initialize a real config + workspace via `init`.
@@ -487,7 +489,7 @@ func TestInitMove_NoRestartFlagSkipsLaunchctl(t *testing.T) {
 	// --no-restart preserves the legacy behavior: patch config, print
 	// the manual restart instruction, and don't touch launchctl.
 	fakeHome := t.TempDir()
-	t.Setenv("HOME", fakeHome)
+	testutil.SetHome(t, fakeHome)
 	t.Setenv("TARS_PLUGINS_BUNDLED_DIR", writeBundledPluginSource(t))
 
 	workspaceDir := filepath.Join(t.TempDir(), "ws")
@@ -528,7 +530,7 @@ func TestInitMove_NoRestartFlagSkipsLaunchctl(t *testing.T) {
 
 func TestInitMove_NonDarwinPrintsRestartHint(t *testing.T) {
 	fakeHome := t.TempDir()
-	t.Setenv("HOME", fakeHome)
+	testutil.SetHome(t, fakeHome)
 	t.Setenv("TARS_PLUGINS_BUNDLED_DIR", writeBundledPluginSource(t))
 
 	workspaceDir := filepath.Join(t.TempDir(), "ws")
@@ -566,7 +568,7 @@ func TestInitMove_HealthzFailureBubblesUp(t *testing.T) {
 	// If the restarted server never becomes healthy, init move must
 	// surface the error rather than silently report success.
 	fakeHome := t.TempDir()
-	t.Setenv("HOME", fakeHome)
+	testutil.SetHome(t, fakeHome)
 	t.Setenv("TARS_PLUGINS_BUNDLED_DIR", writeBundledPluginSource(t))
 
 	workspaceDir := filepath.Join(t.TempDir(), "ws")

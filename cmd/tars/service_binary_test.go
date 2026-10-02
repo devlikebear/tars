@@ -13,6 +13,7 @@ import (
 	"github.com/devlikebear/tars/internal/buildinfo"
 	"github.com/devlikebear/tars/internal/config"
 	"github.com/devlikebear/tars/internal/launchagent"
+	"github.com/devlikebear/tars/internal/testutil"
 )
 
 func writeServicePlist(t *testing.T, binary string) string {
@@ -123,7 +124,7 @@ func TestServiceStartWarnsWhenThePlistRunsAnotherTars(t *testing.T) {
 	restore := overrideServiceTestHooks(t)
 	defer restore()
 	serviceRuntimeGOOS = "darwin"
-	t.Setenv("HOME", t.TempDir())
+	testutil.SetHome(t, t.TempDir())
 
 	dir := t.TempDir()
 	current := writeExecutable(t, dir, "tars-new")
@@ -149,7 +150,7 @@ func TestServiceStartWarnsWhenThePlistRunsAnotherTars(t *testing.T) {
 // no config, no plist. It used to fail with "service plist not found".
 func TestServiceStartInstallIfMissingSetsUpAFreshMachine(t *testing.T) {
 	fakeHome := t.TempDir()
-	t.Setenv("HOME", fakeHome)
+	testutil.SetHome(t, fakeHome)
 	clearDoctorEnv(t)
 	t.Setenv("TARS_PLUGINS_BUNDLED_DIR", writeBundledPluginSource(t))
 
@@ -213,7 +214,7 @@ func TestServiceStartInstallIfMissingSetsUpAFreshMachine(t *testing.T) {
 
 func TestDoctorWarnsWhenTheServiceRunsAnotherTars(t *testing.T) {
 	fakeHome := t.TempDir()
-	t.Setenv("HOME", fakeHome)
+	testutil.SetHome(t, fakeHome)
 	restore := overrideServiceTestHooks(t)
 	defer restore()
 	serviceRuntimeGOOS = "darwin"
@@ -276,7 +277,7 @@ func TestServiceBinaryVersionReadsTarsVersionOutput(t *testing.T) {
 // the existing config.
 func TestServiceStartInstallIfMissingReplacesAPlistWhoseBinaryIsGone(t *testing.T) {
 	fakeHome := t.TempDir()
-	t.Setenv("HOME", fakeHome)
+	testutil.SetHome(t, fakeHome)
 	clearDoctorEnv(t)
 	t.Setenv("TARS_PLUGINS_BUNDLED_DIR", writeBundledPluginSource(t))
 	runInitForTest(t, filepath.Join(t.TempDir(), "ws"))
@@ -324,7 +325,7 @@ func TestServiceStartInstallIfMissingReplacesAPlistWhoseBinaryIsGone(t *testing.
 
 func TestDoctorReportsTheServiceBinaryWhenItIsThisTars(t *testing.T) {
 	fakeHome := t.TempDir()
-	t.Setenv("HOME", fakeHome)
+	testutil.SetHome(t, fakeHome)
 	restore := overrideServiceTestHooks(t)
 	defer restore()
 	serviceRuntimeGOOS = "darwin"

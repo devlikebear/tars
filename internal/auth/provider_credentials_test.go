@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/devlikebear/tars/internal/testutil"
 )
 
 func TestResolveProviderCredential_APIKeyStrategy(t *testing.T) {
@@ -21,17 +23,17 @@ func TestResolveProviderCredential_APIKeyStrategy(t *testing.T) {
 		t.Fatalf("resolve provider credential: %v", err)
 	}
 	if cred.AccessToken != "api-key-123" {
-		t.Fatalf("expected api key token, got %+v", cred)
+		t.Fatalf("expected api key token, got %s", describeCredential(cred))
 	}
 	if cred.RefreshToken != "" || cred.SourcePath != "" {
-		t.Fatalf("expected api key credential without refresh metadata, got %+v", cred)
+		t.Fatalf("expected api key credential without refresh metadata, got %s", describeCredential(cred))
 	}
 }
 
 func TestResolveProviderCredential_OpenAICodexOAuthStrategy(t *testing.T) {
 	withCodexRefreshTokenStoreForTests(t, nil)
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	testutil.SetHome(t, home)
 	path := filepath.Join(home, ".codex", "auth.json")
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
@@ -49,10 +51,10 @@ func TestResolveProviderCredential_OpenAICodexOAuthStrategy(t *testing.T) {
 		t.Fatalf("resolve provider credential: %v", err)
 	}
 	if cred.AccessToken != "file-access" || cred.RefreshToken != "file-refresh" {
-		t.Fatalf("unexpected codex credential: %+v", cred)
+		t.Fatalf("unexpected codex credential: %s", describeCredential(cred))
 	}
 	if cred.Source != CredentialSourceFile || cred.SourcePath != path {
-		t.Fatalf("expected file-backed credential, got %+v", cred)
+		t.Fatalf("expected file-backed credential, got %s", describeCredential(cred))
 	}
 }
 
@@ -91,7 +93,7 @@ func TestRefreshProviderCredential_OpenAICodexStrategy(t *testing.T) {
 		t.Fatalf("refresh provider credential: %v", err)
 	}
 	if refreshed.AccessToken != "new-access" || refreshed.RefreshToken != "new-refresh" {
-		t.Fatalf("unexpected refreshed credential: %+v", refreshed)
+		t.Fatalf("unexpected refreshed credential: %s", describeCredential(refreshed))
 	}
 
 	data, err := os.ReadFile(path)
@@ -109,7 +111,7 @@ func TestRefreshProviderCredential_OpenAICodexStrategy(t *testing.T) {
 		t.Fatalf("parse auth file: %v", err)
 	}
 	if parsed.Tokens.AccessToken != "new-access" || parsed.Tokens.RefreshToken != "new-refresh" {
-		t.Fatalf("unexpected persisted auth file: %+v", parsed)
+		t.Fatalf("unexpected persisted auth file: access %s, refresh %s", redacted(parsed.Tokens.AccessToken), redacted(parsed.Tokens.RefreshToken))
 	}
 }
 

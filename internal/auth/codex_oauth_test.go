@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/devlikebear/tars/internal/testutil"
 )
 
 func TestResolveCodexCredential_EnvOnly(t *testing.T) {
@@ -25,10 +27,10 @@ func TestResolveCodexCredential_EnvOnly(t *testing.T) {
 		t.Fatalf("resolve codex credential: %v", err)
 	}
 	if cred.AccessToken != token {
-		t.Fatalf("expected env access token, got %q", cred.AccessToken)
+		t.Fatalf("expected env access token, got %s", redacted(cred.AccessToken))
 	}
 	if cred.RefreshToken != "refresh-env" {
-		t.Fatalf("expected env refresh token, got %q", cred.RefreshToken)
+		t.Fatalf("expected env refresh token, got %s", redacted(cred.RefreshToken))
 	}
 	if cred.AccountID != "acc-env" {
 		t.Fatalf("expected account id from jwt fallback, got %q", cred.AccountID)
@@ -41,7 +43,7 @@ func TestResolveCodexCredential_EnvOnly(t *testing.T) {
 func TestResolveCodexCredential_File(t *testing.T) {
 	withCodexRefreshTokenStoreForTests(t, nil)
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	testutil.SetHome(t, home)
 	t.Setenv("OPENAI_CODEX_OAUTH_TOKEN", "")
 	t.Setenv("OPENAI_CODEX_REFRESH_TOKEN", "")
 	t.Setenv("OPENAI_CODEX_ACCOUNT_ID", "")
@@ -58,10 +60,10 @@ func TestResolveCodexCredential_File(t *testing.T) {
 		t.Fatalf("resolve codex credential: %v", err)
 	}
 	if cred.AccessToken != "file-access" {
-		t.Fatalf("expected file access token, got %q", cred.AccessToken)
+		t.Fatalf("expected file access token, got %s", redacted(cred.AccessToken))
 	}
 	if cred.RefreshToken != "file-refresh" {
-		t.Fatalf("expected file refresh token, got %q", cred.RefreshToken)
+		t.Fatalf("expected file refresh token, got %s", redacted(cred.RefreshToken))
 	}
 	if cred.AccountID != "acc-file" {
 		t.Fatalf("expected file account id, got %q", cred.AccountID)
@@ -77,7 +79,7 @@ func TestResolveCodexCredential_File(t *testing.T) {
 func TestResolveCodexCredential_PrefersEnvOverFile(t *testing.T) {
 	withCodexRefreshTokenStoreForTests(t, nil)
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	testutil.SetHome(t, home)
 	path := filepath.Join(home, ".codex", "auth.json")
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
@@ -94,7 +96,7 @@ func TestResolveCodexCredential_PrefersEnvOverFile(t *testing.T) {
 		t.Fatalf("resolve codex credential: %v", err)
 	}
 	if cred.AccessToken != "env-access" {
-		t.Fatalf("expected env access token, got %q", cred.AccessToken)
+		t.Fatalf("expected env access token, got %s", redacted(cred.AccessToken))
 	}
 	if cred.Source != CodexCredentialSourceEnv {
 		t.Fatalf("expected env source, got %q", cred.Source)
@@ -133,16 +135,16 @@ func TestRefreshCodexCredential_RequestBody(t *testing.T) {
 		t.Fatalf("expected grant_type refresh_token, got %q", captured.Get("grant_type"))
 	}
 	if captured.Get("refresh_token") != "old-refresh" {
-		t.Fatalf("expected refresh token old-refresh, got %q", captured.Get("refresh_token"))
+		t.Fatalf("expected refresh token old-refresh, got %s", redacted(captured.Get("refresh_token")))
 	}
 	if captured.Get("client_id") != openAICodexOAuthClientID {
 		t.Fatalf("expected client_id %q, got %q", openAICodexOAuthClientID, captured.Get("client_id"))
 	}
 	if cred.AccessToken != "new-access" {
-		t.Fatalf("expected new access token, got %q", cred.AccessToken)
+		t.Fatalf("expected new access token, got %s", redacted(cred.AccessToken))
 	}
 	if cred.RefreshToken != "new-refresh" {
-		t.Fatalf("expected new refresh token, got %q", cred.RefreshToken)
+		t.Fatalf("expected new refresh token, got %s", redacted(cred.RefreshToken))
 	}
 }
 
@@ -214,10 +216,10 @@ func TestRefreshCodexCredential_PersistAtomic(t *testing.T) {
 		t.Fatalf("parse auth file: %v", err)
 	}
 	if parsed.Tokens.AccessToken != "new-access" {
-		t.Fatalf("expected persisted access token new-access, got %q", parsed.Tokens.AccessToken)
+		t.Fatalf("expected persisted access token new-access, got %s", redacted(parsed.Tokens.AccessToken))
 	}
 	if parsed.Tokens.RefreshToken != "new-refresh" {
-		t.Fatalf("expected persisted refresh token new-refresh, got %q", parsed.Tokens.RefreshToken)
+		t.Fatalf("expected persisted refresh token new-refresh, got %s", redacted(parsed.Tokens.RefreshToken))
 	}
 	if parsed.Tokens.AccountID != "acc-old" {
 		t.Fatalf("expected account id preserved, got %q", parsed.Tokens.AccountID)
@@ -280,7 +282,7 @@ func withCodexRefreshTokenStoreForTests(t *testing.T, store codexRefreshTokenSto
 
 func TestResolveCodexCredential_FilePrefersSecureStoreRefreshToken(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	testutil.SetHome(t, home)
 	t.Setenv("OPENAI_CODEX_OAUTH_TOKEN", "")
 	t.Setenv("OPENAI_CODEX_REFRESH_TOKEN", "")
 	t.Setenv("OPENAI_CODEX_ACCOUNT_ID", "")
@@ -301,7 +303,7 @@ func TestResolveCodexCredential_FilePrefersSecureStoreRefreshToken(t *testing.T)
 		t.Fatalf("resolve codex credential: %v", err)
 	}
 	if cred.RefreshToken != "secure-refresh" {
-		t.Fatalf("expected secure-store refresh token, got %q", cred.RefreshToken)
+		t.Fatalf("expected secure-store refresh token, got %s", redacted(cred.RefreshToken))
 	}
 }
 
@@ -351,7 +353,7 @@ func TestRefreshCodexCredential_PersistUsesSecureStoreWhenAvailable(t *testing.T
 	}
 	tokens, _ := parsed["tokens"].(map[string]any)
 	if _, ok := tokens["refresh_token"]; ok {
-		t.Fatalf("expected refresh_token to be scrubbed from auth file, got %+v", tokens)
+		t.Fatal("expected refresh_token to be scrubbed from auth file")
 	}
 }
 
@@ -403,6 +405,6 @@ func TestRefreshCodexCredential_PersistFallsBackToFileWhenSecureStoreFails(t *te
 		t.Fatalf("parse auth file: %v", err)
 	}
 	if parsed.Tokens.RefreshToken != "new-refresh" {
-		t.Fatalf("expected file fallback refresh token new-refresh, got %q", parsed.Tokens.RefreshToken)
+		t.Fatalf("expected file fallback refresh token new-refresh, got %s", redacted(parsed.Tokens.RefreshToken))
 	}
 }

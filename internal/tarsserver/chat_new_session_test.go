@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/devlikebear/tars/internal/session"
+	"github.com/devlikebear/tars/internal/testutil"
 )
 
 // passthrough stands in for the session API handler: it records the body a
@@ -173,8 +174,7 @@ func TestNewSessionRejectsBadRequestsWithoutCreating(t *testing.T) {
 
 func TestResolveChatFolderExpandsHome(t *testing.T) {
 	home := realDir(t, t.TempDir())
-	t.Setenv("HOME", home)
-	t.Setenv("USERPROFILE", home)
+	testutil.SetHome(t, home)
 	if err := os.Mkdir(filepath.Join(home, "proj"), 0o755); err != nil {
 		t.Fatal(err)
 	}
