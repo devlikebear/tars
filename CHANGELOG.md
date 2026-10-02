@@ -6,6 +6,10 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+### Fixed
+
+- **폴더 선택기를 열자마자 입력한 경로가 홈 폴더로 바뀌던 문제** — 선택기는 열릴 때 홈 폴더 목록을 요청하는데, 그 응답이 경로를 입력한 뒤 Enter를 누르기 전에 도착하면 경로 칸을 홈 폴더로 덮어써서 Enter가 홈 폴더를 열었다. 이제 목록 응답은 그 요청을 보낸 뒤 사용자가 경로 칸을 고치지 않았을 때만 칸을 바꾼다(`lib/folderPicker.ts`의 `PickerRequests`). 늦게 온 이전 요청의 응답은 예전처럼 버린다. 전체 콘솔 E2E에서 가끔 `workbench-ko.spec.ts`의 폴더 선택기 테스트가 실패하던 원인이었다.
+
 ## [0.43.0] - 2026-10-02
 
 ### Added

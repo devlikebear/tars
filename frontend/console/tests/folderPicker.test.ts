@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { arrangePickerEntries, browseErrorReason, isHiddenFolder, resolvePickerPath } from '../src/lib/folderPicker.ts'
+import { PickerRequests, arrangePickerEntries, browseErrorReason, isHiddenFolder, resolvePickerPath } from '../src/lib/folderPicker.ts'
 
 const home = '/w/home'
 
@@ -71,4 +71,35 @@ test('the filter matches part of the name, ignoring case, in both groups', () =>
 
   const none = arrangePickerEntries(entries, 'zzz')
   assert.deepEqual(none, { shown: [], hidden: [] })
+})
+
+test('a path typed while the first listing loads survives that listing', () => {
+  const requests = new PickerRequests()
+  const home = requests.start('')
+  // The user types a path before the home listing comes back…
+  const typed = '/w/repo'
+  // …and the home listing lands before Enter: it shows, but the box keeps the typing.
+  assert.deepEqual(requests.settle(home, typed, '/w/home'), { current: true, pathInput: typed })
+  const submitted = requests.start(typed)
+  assert.deepEqual(requests.settle(submitted, typed, '/w/repo'), { current: true, pathInput: '/w/repo' })
+})
+
+test('a listing that comes back after a newer request is dropped', () => {
+  const requests = new PickerRequests()
+  const home = requests.start('')
+  const submitted = requests.start('/w/repo')
+  // Responses arrive out of order: the submitted path first, then home.
+  assert.deepEqual(requests.settle(submitted, '/w/repo', '/w/repo'), { current: true, pathInput: '/w/repo' })
+  assert.deepEqual(requests.settle(home, '/w/repo', '/w/home'), { current: false })
+  assert.equal(requests.isCurrent(home), false)
+  assert.equal(requests.isCurrent(submitted), true)
+})
+
+test('an untouched path box follows the listing, normalized path included', () => {
+  const requests = new PickerRequests()
+  const home = requests.start('')
+  assert.deepEqual(requests.settle(home, '', '/w/home'), { current: true, pathInput: '/w/home' })
+  // A click into a subfolder: the box still shows the previous folder.
+  const child = requests.start('/w/home')
+  assert.deepEqual(requests.settle(child, '/w/home', '/w/home/src'), { current: true, pathInput: '/w/home/src' })
 })
