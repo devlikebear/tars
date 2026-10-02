@@ -46,6 +46,25 @@ export async function recoverDroppedTurn(deps: DroppedTurnDeps): Promise<void> {
   if (!outcome.ended) await deps.settle()
 }
 
+export type StopTurnDeps = {
+  sessionId: string
+  // POST /v1/chat/cancel: true when the server took the cancel.
+  cancel: (sessionId: string) => Promise<boolean>
+  // Aborts the panel's own stream of the turn.
+  abort: () => void
+}
+
+// stopTurn stops the session's running turn. The cancel answers as soon as
+// the turn is told to stop, before it has wound down and freed the session;
+// the turn's stream then ends with `cancelled`. Aborting the stream on the
+// answer ended the turn in the console too early: a queued message sent at
+// once (Resume) was refused with 409 and lost. So the stream is aborted only
+// when nothing on the server will end it: no session yet, or no cancel taken.
+export async function stopTurn(deps: StopTurnDeps): Promise<void> {
+  if (deps.sessionId && await deps.cancel(deps.sessionId)) return
+  deps.abort()
+}
+
 // dropVerificationPlaceholder: a focus pipeline's verification feed (P2)
 // streams progress, not a reply, so the empty assistant message the panel
 // opened when it attached goes once the feed ends; a real reply stays.

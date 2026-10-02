@@ -6,6 +6,10 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+### Fixed
+
+- **Stop 뒤 바로 Resume한 대기 메시지가 사라지던 문제** — 콘솔은 `POST /v1/chat/cancel`이 답하자마자 자기 턴 스트림을 끊었다. 그 답은 서버가 턴에 멈추라고 알린 시점이고, 턴이 정리를 마치고 세션 claim을 놓은 뒤 `cancelled`를 보내는 건 그다음이다. 그래서 콘솔은 턴이 끝난 줄 알고 큐를 멈췄고, 그 사이에 Resume을 누르면 아직 잡혀 있는 세션에 보내져 409로 거절되고 메시지가 없어졌다(e2e "Stop pauses the queue until it is resumed"가 전체 실행 4번에 1번꼴로 실패). 이제 서버가 취소를 받으면 스트림이 `cancelled`로 스스로 끝날 때까지 기다리고, 세션이 아직 없거나 취소가 받아들여지지 않았을 때만 직접 끊는다(`lib/chatTurnRecovery.ts`의 `stopTurn`).
+
 ## [0.42.2] - 2026-10-01
 
 ### Fixed
