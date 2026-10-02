@@ -70,6 +70,13 @@ function errorFields(err: unknown): { errorCode: string; error: string } {
 // The panel's two views: one turn, or everything the session changed up to it.
 export type ChangesScope = Extract<CheckpointScope, 'turn' | 'session'>
 
+// withoutCopies puts notes back ahead of the ones there, skipping any
+// already there.
+function withoutCopies(back: DraftNote[], there: DraftNote[]): DraftNote[] {
+  const present = new Set(there.map((note) => note.id))
+  return [...back.filter((note) => !present.has(note.id)), ...there]
+}
+
 export class ChangesStore {
   sessionId = $state<string | null>(null)
   // Oldest first, as the server keeps them.
@@ -87,6 +94,9 @@ export class ChangesStore {
   // Notes for the next chat message.
   notes = $state<DraftNote[]>([])
   private noteSeq = 0
+  // Notes of the sessions not shown, kept until the user comes back: a
+  // switch must not throw away comments written for another session.
+  private parkedNotes = new Map<string, DraftNote[]>()
 
   private api: ChangesApi
   private diffs = new Map<string, Promise<CheckpointDiff>>()
@@ -121,12 +131,12 @@ export class ChangesStore {
   async load(sessionId: string | null | undefined): Promise<void> {
     const next = sessionId?.trim() || null
     if (next !== this.sessionId) {
+      this.switchNotes(next)
       this.sessionId = next
       this.turns = []
       this.reverts = []
       this.pending = null
       this.last = null
-      this.notes = []
       this.error = ''
       this.selectedTurnId = null
       this.dropDiffs(() => true)
@@ -148,12 +158,12 @@ export class ChangesStore {
     const turnId = event.user_message_id?.trim()
     if (!sessionId || !turnId) return
     if (sessionId !== this.sessionId) {
+      this.switchNotes(sessionId)
       this.sessionId = sessionId
       this.turns = []
       this.reverts = []
       this.pending = null
       this.last = null
-      this.notes = []
       this.selectedTurnId = null
       this.dropDiffs(() => true)
     }
@@ -287,14 +297,25 @@ export class ChangesStore {
     this.notes = this.notes.filter((note) => note.id !== id)
   }
 
-  // restoreNotes brings back notes taken for a send the server refused
-  // before its turn started, ahead of any added since. Notes from another
-  // session, or already back, are left out.
+  // restoreNotes brings back notes taken for a send that never reached a
+  // turn, ahead of any added since and without copies. Notes of a session
+  // not shown now wait for it.
   restoreNotes(sessionId: string | null, drafts: DraftNote[]): void {
-    if (sessionId !== this.sessionId) return
-    const present = new Set(this.notes.map((note) => note.id))
-    const back = drafts.filter((note) => !present.has(note.id))
-    if (back.length) this.notes = [...back, ...this.notes]
+    if (!sessionId) return
+    if (sessionId !== this.sessionId) {
+      const parked = this.parkedNotes.get(sessionId) ?? []
+      this.parkedNotes.set(sessionId, withoutCopies(drafts, parked))
+      return
+    }
+    this.notes = withoutCopies(drafts, this.notes)
+  }
+
+  // switchNotes parks the shown session's notes and brings back the next
+  // session's.
+  private switchNotes(next: string | null): void {
+    if (this.sessionId && this.notes.length) this.parkedNotes.set(this.sessionId, this.notes)
+    this.notes = (next && this.parkedNotes.get(next)) || []
+    if (next) this.parkedNotes.delete(next)
   }
 
   // The notes to send with a message, as the server takes them. They are

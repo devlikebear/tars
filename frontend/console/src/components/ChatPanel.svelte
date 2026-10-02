@@ -8,7 +8,7 @@
   import { toolBaseDirs } from '../lib/cliToolLabels'
   import { changes } from '../lib/stores/changesStore'
   import { turnCardAnchors } from '../lib/changes'
-  import { dropVerificationPlaceholder, recoverDroppedTurn, refusedSendReturn, sendFailure, type ReattachOutcome } from '../lib/chatTurnRecovery'
+  import { droppedSendDelivery, dropVerificationPlaceholder, recoverDroppedTurn, refusedSendReturn, sendFailure, type ReattachOutcome } from '../lib/chatTurnRecovery'
   import type { DraftNote } from '../lib/stores/changes.svelte'
   import { extractArtifact, extractArtifactsFromHistory, mergeArtifact, type Artifact } from '../lib/artifacts'
   import { buildTierRecommendation, pinnedTierPayload, tierRecommendationPayload, type TierRecommendation } from '../lib/tierRecommendation'
@@ -1026,11 +1026,36 @@
       consoleContext = pendingConsoleContext
       pendingConsoleContext = ''
     }
+    // giveBackNotes and giveBackSend undo a send that never reached a turn:
+    // what was taken for it comes back, and so does the message.
+    const giveBackNotes = () => {
+      if (reviewNotes) changes.restoreNotes(draftNotes.sessionId, draftNotes.notes)
+      if (consoleContext && !pendingConsoleContext) pendingConsoleContext = consoleContext
+    }
+    const giveBackSend = (reason: string) => {
+      giveBackNotes()
+      const composerHasDraft = !!chatInput.trim() || attachedFiles.length > 0
+      if (refusedSendReturn({ queued: !!queuedPayload, composerHasDraft }) === 'composer') {
+        chatInput = message
+        attachedFiles = currentFiles
+        selectedMentions = currentMentions
+        chatError = $t.messageQueue.refusedToComposer(reason)
+      } else {
+        const item = queuedPayload ?? messageQueue.enqueue(queueKey, message, currentFiles, currentMentions)
+        if (item) messageQueue.putBack(queueKey, item)
+        chatError = $t.messageQueue.refused(reason)
+      }
+      chatMessages = [
+        ...chatMessages.filter((msg) => msg.id !== userId && msg.id !== assistantRef.id),
+        { id: `error-${Date.now()}`, role: 'error', text: chatError },
+      ]
+    }
     const ac = new AbortController()
     abortController = ac
     userStopped = false
     let failed = false
     let dropped = false
+    let dropReason = ''
     try {
       const chatAttachments = currentFiles.length > 0 ? await filesToAttachments(currentFiles) : undefined
       await streamChat(
@@ -1065,28 +1090,12 @@
         // reload would wipe the message. It goes back with what was taken
         // for it (review notes, console context), and the error says why.
         failed = true
-        const reason = err instanceof Error ? err.message : $t.chatThread.errors.sendFailed
-        if (reviewNotes) changes.restoreNotes(draftNotes.sessionId, draftNotes.notes)
-        if (consoleContext && !pendingConsoleContext) pendingConsoleContext = consoleContext
-        const composerHasDraft = !!chatInput.trim() || attachedFiles.length > 0
-        if (refusedSendReturn({ queued: !!queuedPayload, composerHasDraft }) === 'composer') {
-          chatInput = message
-          attachedFiles = currentFiles
-          selectedMentions = currentMentions
-          chatError = $t.messageQueue.refusedToComposer(reason)
-        } else {
-          const item = queuedPayload ?? messageQueue.enqueue(queueKey, message, currentFiles, currentMentions)
-          if (item) messageQueue.putBack(queueKey, item)
-          chatError = $t.messageQueue.refused(reason)
-        }
-        chatMessages = [
-          ...chatMessages.filter((msg) => msg.id !== userId && msg.id !== assistantRef.id),
-          { id: `error-${Date.now()}`, role: 'error', text: chatError },
-        ]
+        giveBackSend(err instanceof Error ? err.message : $t.chatThread.errors.sendFailed)
       } else {
         failed = true
         dropped = true
         chatError = err instanceof Error ? err.message : $t.chatThread.errors.sendFailed
+        dropReason = chatError
         chatMessages = [...chatMessages, { id: `error-${Date.now()}`, role: 'error', text: chatError }]
       }
     } finally {
@@ -1101,7 +1110,7 @@
     if (dropped) {
       // The turn runs on in the server; follow it again so its reply and
       // cost show up instead of what was there before it.
-      await recoverDroppedTurn({
+      const recovery = await recoverDroppedTurn({
         reloadHistory: async () => {
           const id = activeChatSessionId()
           if (id) await loadHistoryInto(id)
@@ -1109,6 +1118,13 @@
         reattach: resumeRunningTurn,
         settle: () => chatSession.turnSettled(),
       })
+      // A send that broke before the server took it is not in the reloaded
+      // transcript: give it back like a refused one. Unreachable, the
+      // bubble stays with its error and only the notes come back.
+      const lastUserText = chatMessages.findLast((msg) => msg.role === 'user')?.text
+      const delivery = droppedSendDelivery(recovery, lastUserText, message)
+      if (delivery === 'lost') giveBackSend(dropReason)
+      else if (delivery === 'unknown') giveBackNotes()
     }
     await afterTurn(failed)
   }
@@ -1525,12 +1541,15 @@
   let visibilityHandler: (() => void) | null = null
 
   async function loadHistoryInto(targetSessionId: string) {
+    // Before the history: a new session has none to read (the call fails),
+    // and the review notes of the session left behind must not follow the
+    // user here.
+    void changes.load(targetSessionId)
     const rebuilt: ChatMessage[] = [
       { id: 'system-init', role: 'system', text: $t.chat.systemInit.session(targetSessionId.slice(0, 8)) },
     ]
     rebuilt.push(...transcriptChatMessages(await getSessionHistory(targetSessionId)))
     chatMessages = rebuilt
-    void changes.load(targetSessionId)
     artifacts = extractArtifactsFromHistory(chatMessages, targetSessionId)
     if (artifacts.length > 0) chatSession.setArtifacts(artifacts)
   }
