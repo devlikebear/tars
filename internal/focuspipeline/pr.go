@@ -134,6 +134,9 @@ type PRComment struct {
 	// ChangesRequested marks a review that requests changes; its body may
 	// be empty (the feedback is in inline comments).
 	ChangesRequested bool `json:"changes_requested,omitempty"`
+	// Bot: the probe's source marked the author a bot. gh gives comment and
+	// review authors only a login today, so isBotAuthor also reads the login.
+	Bot bool `json:"bot,omitempty"`
 }
 
 // PRFinding is a finding card's payload for a check or a comment: Key
@@ -552,7 +555,9 @@ func (p *Pipeline) addPRFindings(probe PRProbe, now time.Time) {
 	}
 	for _, c := range probe.Comments {
 		body := strings.TrimSpace(c.Body)
-		if c.ID == "" || isBot(c.Author) || (body == "" && !c.ChangesRequested) {
+		// A bot's note is informational; a bot requesting changes reports a
+		// failure and stays a finding.
+		if c.ID == "" || (!c.ChangesRequested && isBotAuthor(c.Author, c.Bot)) || (body == "" && !c.ChangesRequested) {
 			continue
 		}
 		title := "Review comment from " + orDash(c.Author)
@@ -573,8 +578,34 @@ func (p *Pipeline) addPRFindings(probe PRProbe, now time.Time) {
 	}
 }
 
-func isBot(author string) bool {
-	return strings.HasSuffix(strings.ToLower(author), "[bot]")
+// knownBotApps are GitHub App logins as gh reports them for comment and
+// review authors: GraphQL drops the "[bot]" suffix the REST API shows
+// (sonarqubecloud, not sonarqubecloud[bot]). Only apps that post status
+// notes (a quality gate, coverage, a deploy, a dependency bump) belong here;
+// an app whose comments are code review (Copilot's reviewer) does not, so
+// its review stays a finding. Keep it small; the only list of its kind.
+var knownBotApps = map[string]bool{
+	"sonarqubecloud": true,
+	"sonarcloud":     true,
+	"codecov":        true,
+	"github-actions": true,
+	"dependabot":     true,
+	"renovate":       true,
+}
+
+// isBotAuthor reports whether a comment's author is a bot: flagged by the
+// probe, a "[bot]" login, or a known app. Bot comments are not findings
+// (#1094): they are informational, and a failing quality signal arrives as
+// a failing check. A bot's changes-requested review still is.
+func isBotAuthor(author string, flagged bool) bool {
+	if flagged {
+		return true
+	}
+	login := strings.ToLower(strings.TrimSpace(author))
+	if name, ok := strings.CutSuffix(login, "[bot]"); ok {
+		return name != ""
+	}
+	return knownBotApps[login]
 }
 
 func (p Pipeline) findingKeys() map[string]bool {

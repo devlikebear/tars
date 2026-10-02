@@ -410,11 +410,79 @@ func TestPRReviewGreen(t *testing.T) {
 }
 
 func TestBotCommentsAreNotFindings(t *testing.T) {
-	probe := probeFound()
-	probe.Comments = []PRComment{{ID: "c1", Author: "codecov[bot]", Body: "coverage"}, {ID: "c2", Author: "r", Body: "  "}}
+	// Bots post informational comments (a passed quality gate, a coverage
+	// report); a failing quality signal arrives as a failing check (#1094).
+	// gh reports a GitHub App's login without "[bot]" (sonarqubecloud), so
+	// known app logins count as bots too.
+	tests := []struct {
+		name    string
+		comment PRComment
+		finding bool
+	}{
+		{"sonarqubecloud quality gate", PRComment{ID: "c1", Author: "sonarqubecloud", Body: "Quality Gate passed"}, false},
+		{"known app in another case", PRComment{ID: "c2", Author: "SonarQubeCloud", Body: "Quality Gate passed"}, false},
+		{"codecov", PRComment{ID: "c3", Author: "codecov", Body: "coverage report"}, false},
+		{"codecov[bot]", PRComment{ID: "c4", Author: "codecov[bot]", Body: "coverage report"}, false},
+		{"github-actions", PRComment{ID: "c5", Author: "github-actions", Body: "deployed"}, false},
+		{"any [bot] login", PRComment{ID: "c6", Author: "renovate-helper[bot]", Body: "update"}, false},
+		{"flagged by gh", PRComment{ID: "c7", Author: "some-app", Bot: true, Body: "note"}, false},
+		// A bot requesting changes reports a failure: it stays a finding.
+		{"bot review requesting changes", PRComment{ID: "c8", Author: "sonarqubecloud", ChangesRequested: true}, true},
+		{"flagged bot requesting changes with a body", PRComment{ID: "c10", Author: "some-app", Bot: true, Body: "Fix the lint errors.", ChangesRequested: true}, true},
+		// Copilot's review is code feedback, not a status note.
+		{"copilot review", PRComment{ID: "h5", Author: "copilot-pull-request-reviewer", Body: "Pull request overview: the helper leaks a goroutine."}, true},
+		{"blank human comment", PRComment{ID: "c9", Author: "r", Body: "  "}, false},
+		{"human comment", PRComment{ID: "h1", Author: "reviewer", Body: "please rename this"}, true},
+		{"human named like a bot prefix", PRComment{ID: "h2", Author: "codecov-fan", Body: "nit"}, true},
+		{"human changes requested", PRComment{ID: "h3", Author: "alice", Body: "Rename the helper.", ChangesRequested: true, Trusted: true}, true},
+		{"human changes requested without a body", PRComment{ID: "h4", Author: "frank", ChangesRequested: true, Trusted: true}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			probe := probeFound(PRCheck{Name: "test", State: CheckPass})
+			probe.Comments = []PRComment{tt.comment}
+			p, _ := mustApply(t, opening(t), Event{Kind: EventPRProbe, Probe: probe})
+			findings := cardsOf(p, CardFinding, StagePRReview)
+			if got := len(findings) == 1; got != tt.finding || len(findings) > 1 {
+				t.Fatalf("findings = %+v, want finding %v", findings, tt.finding)
+			}
+			if !tt.finding {
+				// Nothing to decide: G4 opens on the green head.
+				if p.OpenGate != GateMerge {
+					t.Fatalf("gate = %q", p.OpenGate)
+				}
+				return
+			}
+			var f PRFinding
+			if err := json.Unmarshal(findings[0].Payload, &f); err != nil || f.Key != "comment:"+tt.comment.ID || f.Trusted != tt.comment.Trusted {
+				t.Fatalf("finding = %+v %v", f, err)
+			}
+		})
+	}
+}
+
+func TestBotCommentsDoNotHideFailingChecks(t *testing.T) {
+	probe := probeFound(failing("SonarCloud Code Analysis"))
+	probe.Comments = []PRComment{{ID: "c1", Author: "sonarqubecloud", Body: "Quality Gate failed"}}
 	p, _ := mustApply(t, opening(t), Event{Kind: EventPRProbe, Probe: probe})
-	if n := len(cardsOf(p, CardFinding, StagePRReview)); n != 0 {
-		t.Fatalf("findings = %d", n)
+	findings := cardsOf(p, CardFinding, StagePRReview)
+	if len(findings) != 1 || !strings.Contains(findings[0].Title, "SonarCloud Code Analysis") {
+		t.Fatalf("findings = %+v", findings)
+	}
+}
+
+func TestIsBotAuthor(t *testing.T) {
+	for login, want := range map[string]bool{
+		"sonarqubecloud": true, "sonarqubecloud[bot]": true, "Codecov": true, "github-actions[bot]": true,
+		"dependabot": true, "x[BOT]": true, "": false, "alice": false, "codecov-fan": false, "bot": false,
+		"copilot-pull-request-reviewer": false,
+	} {
+		if got := isBotAuthor(login, false); got != want {
+			t.Errorf("isBotAuthor(%q) = %v, want %v", login, got, want)
+		}
+	}
+	if !isBotAuthor("alice", true) {
+		t.Error("a flagged author is a bot")
 	}
 }
 
