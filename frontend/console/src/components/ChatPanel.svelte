@@ -8,7 +8,7 @@
   import { toolBaseDirs } from '../lib/cliToolLabels'
   import { changes } from '../lib/stores/changesStore'
   import { turnCardAnchors } from '../lib/changes'
-  import { dropVerificationPlaceholder, recoverDroppedTurn, refusedSendReturn, sendFailure, type ReattachOutcome } from '../lib/chatTurnRecovery'
+  import { dropVerificationPlaceholder, recoverDroppedTurn, refusedSendReturn, sendFailure, stopTurn, type ReattachOutcome } from '../lib/chatTurnRecovery'
   import type { DraftNote } from '../lib/stores/changes.svelte'
   import { extractArtifact, extractArtifactsFromHistory, mergeArtifact, type Artifact } from '../lib/artifacts'
   import { buildTierRecommendation, pinnedTierPayload, tierRecommendationPayload, type TierRecommendation } from '../lib/tierRecommendation'
@@ -1237,14 +1237,13 @@
 
   async function handleCancel() {
     userStopped = true
-    // Stop the turn running now. Its stream can end, and a queued message
-    // start the next turn, before the cancel request returns; reading
-    // abortController after the await would stop that next turn instead.
+    // The turn's stream ends by itself once the server has wound the turn
+    // down. If it must be aborted here, it is the turn running now: its
+    // stream can end, and a queued message start the next turn, before the
+    // cancel request returns; reading abortController after the await would
+    // stop that next turn instead.
     const running = abortController
-    if (chatSessionId) {
-      await cancelChat(chatSessionId)
-    }
-    running?.abort()
+    await stopTurn({ sessionId: chatSessionId, cancel: cancelChat, abort: () => running?.abort() })
   }
 
   // -- File attachments --

@@ -110,8 +110,17 @@ test('Stop pauses the queue until it is resumed', async ({ page }) => {
   await composer(page).fill('after the stop')
   await composer(page).press('Enter')
 
+  // The stopped turn ends when its stream does, with the server's
+  // `cancelled`. The console once aborted the stream as soon as the cancel
+  // answered, while the server was still winding the turn down: Resume then
+  // sent into a session still held and was refused (409).
+  const aborted: string[] = []
+  page.on('requestfailed', (req) => {
+    if (req.method() === 'POST' && new URL(req.url()).pathname === '/v1/chat') aborted.push(req.postData() ?? '')
+  })
   await page.locator('.chat-form-actions').getByRole('button', { name: 'Stop' }).click()
   await expect(queue(page)).toContainText('Paused')
+  expect(aborted).toEqual([])
   await expect(assistant(page).filter({ hasText: 'Echo: after the stop' })).toHaveCount(0)
 
   await queue(page).getByRole('button', { name: 'Resume' }).click()
