@@ -100,11 +100,12 @@ export type StopTurnDeps = {
   abort: () => void
 }
 
-// stopTurn stops the session's running turn. The cancel answers as soon as
-// the turn is told to stop, before it has wound down and freed the session;
-// the turn's stream then ends with `cancelled`. Aborting the stream on the
-// answer ended the turn in the console too early: a queued message sent at
-// once (Resume) was refused with 409 and lost. So the stream is aborted only
+// stopTurn stops the session's running turn. The cancel answers once the
+// turn has let go of the session, but waits at most 30s (#1091); a turn
+// still writing its checkpoint and transcript after that is still running,
+// and its stream ends with `cancelled` when it is done. Aborting the stream
+// on the answer ended such a turn in the console too early: a queued message
+// sent at once (Resume) was refused with 409. So the stream is aborted only
 // when nothing on the server will end it: no session yet, or no cancel taken.
 export async function stopTurn(deps: StopTurnDeps): Promise<void> {
   if (deps.sessionId && await deps.cancel(deps.sessionId)) return

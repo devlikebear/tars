@@ -106,9 +106,9 @@ test('a refused composer send is returned, not recovered as a dropped turn', () 
 })
 
 test('Stop leaves the stream to the server once it took the cancel', async () => {
-  // The cancel answers when the turn is told to stop, before it has wound
-  // down and freed the session. Aborting then ended the turn in the console
-  // early: a queued message resumed at once was refused (409).
+  // The cancel's answer can come before the turn has wound down and freed
+  // the session (its wait is bounded). Aborting then ended the turn in the
+  // console early: a queued message resumed at once was refused (409).
   const { stopTurn } = await import('../src/lib/chatTurnRecovery.ts')
   const calls: string[] = []
   await stopTurn({
