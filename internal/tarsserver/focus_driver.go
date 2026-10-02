@@ -415,10 +415,18 @@ func (d *focusDriver) loop(run *focusRun, after <-chan struct{}) {
 
 // stepAllowed re-reads the pipeline before a step: only an active pipeline
 // with no gate open gets a turn or a verification, and verification only
-// while one is awaited — a stopped pipeline never gets a fix turn.
+// while one is awaited — a stopped pipeline never gets a fix turn. Decision
+// answers also go out while a gate that takes questions is open (#1079):
+// held there, they were never sent.
 func (d *focusDriver) stepAllowed(sessionID string, act focuspipeline.Action) bool {
 	p, ok, err := focusStoreFor(d.sessions).Get(sessionID)
-	if err != nil || !ok || !p.Active() || p.OpenGate != focuspipeline.GateNone {
+	if err != nil || !ok {
+		return false
+	}
+	if act.Kind == focuspipeline.ActionSendTurn && len(act.Answers) > 0 {
+		return focuspipeline.AnswersMayRun(p)
+	}
+	if !p.Active() || p.OpenGate != focuspipeline.GateNone {
 		return false
 	}
 	return act.Kind != focuspipeline.ActionRunVerification || p.AwaitingVerification

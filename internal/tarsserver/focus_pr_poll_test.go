@@ -94,6 +94,19 @@ func applyFocus(t *testing.T, store *session.Store, id string, events ...focuspi
 // approved: the PR is awaited.
 func openingPRSession(t *testing.T, store *session.Store, id string) {
 	t.Helper()
+	prStageSession(t, store, id)
+	applyFocus(t, store, id,
+		focuspipeline.Event{Kind: focuspipeline.EventTurnCompleted, Turn: 3, Blocks: focuspipeline.Blocks{PR: &focuspipeline.PRDraft{Title: "feat: x", Body: "b"}}},
+		focuspipeline.Event{Kind: focuspipeline.EventGate, Gate: focuspipeline.GatePR, Action: focuspipeline.GateApprove},
+		// The open turn ran.
+		focuspipeline.Event{Kind: focuspipeline.EventTurnCompleted, Turn: 4, Blocks: focuspipeline.Blocks{Report: &focuspipeline.Report{Summary: "opened"}}},
+	)
+}
+
+// prStageSession moves a session's pipeline to the pr stage, round 1,
+// with every stage planned.
+func prStageSession(t *testing.T, store *session.Store, id string) {
+	t.Helper()
 	if _, _, err := focusStoreFor(store).Update(id, func(p focuspipeline.Pipeline) (focuspipeline.Pipeline, error) {
 		p.Plan.Stages = append([]focuspipeline.StageID(nil), focuspipeline.StageOrder...)
 		for i := range p.Stages {
@@ -111,12 +124,6 @@ func openingPRSession(t *testing.T, store *session.Store, id string) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	applyFocus(t, store, id,
-		focuspipeline.Event{Kind: focuspipeline.EventTurnCompleted, Turn: 3, Blocks: focuspipeline.Blocks{PR: &focuspipeline.PRDraft{Title: "feat: x", Body: "b"}}},
-		focuspipeline.Event{Kind: focuspipeline.EventGate, Gate: focuspipeline.GatePR, Action: focuspipeline.GateApprove},
-		// The open turn ran.
-		focuspipeline.Event{Kind: focuspipeline.EventTurnCompleted, Turn: 4, Blocks: focuspipeline.Blocks{Report: &focuspipeline.Report{Summary: "opened"}}},
-	)
 }
 
 func testPRDriver(t *testing.T, answer func(int) focuspipeline.PRProbe) (*focusDriver, *session.Store, string, *fakeProber, *recordedFinish) {

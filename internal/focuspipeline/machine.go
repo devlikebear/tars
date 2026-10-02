@@ -243,6 +243,13 @@ func applyTurn(p Pipeline, ev Event, now time.Time) (Pipeline, Action) {
 // G4 (merge). Nothing is required of such a turn.
 var questionGates = map[string]bool{GatePlan: true, GateTriage: true, GatePR: true, GateMerge: true}
 
+// AnswersMayRun reports whether a turn delivering decision answers may run
+// now: the pipeline is active and either no gate is open or the open gate
+// takes questions. Behind a blocked gate the answers wait.
+func AnswersMayRun(p Pipeline) bool {
+	return p.Active() && (p.OpenGate == GateNone || questionGates[p.OpenGate])
+}
+
 // missingRequiredBlock reports whether the turn lacked the block its stage
 // requires.
 func missingRequiredBlock(p Pipeline, b Blocks) bool {
@@ -555,6 +562,12 @@ func SetCardState(p Pipeline, cardID, state, decision string, now time.Time) (Pi
 			return next, noAction, nil
 		}
 		act := Action{Kind: ActionSendTurn, Prompt: AnswersPrompt(answers), Answers: answers}
+		if questionGates[next.OpenGate] {
+			// A gate waits for the developer (#1079): the answers go out
+			// now as the developer's question, like a typed instruction —
+			// the gate stays open and the pipeline owes nothing.
+			return next, act, nil
+		}
 		return owe(next, act), act, nil
 	}
 	if card.Kind == CardFinding && card.State == CardDecided {

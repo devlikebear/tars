@@ -1,6 +1,7 @@
 package tarsserver
 
 import (
+	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -170,5 +171,56 @@ func TestFocusReviewDecisionsAnsweredWhileIdle(t *testing.T) {
 		if c.Kind == focuspipeline.CardDecision && c.Stage != focuspipeline.StageReview {
 			t.Fatalf("a decision card outside review: %+v", c)
 		}
+	}
+}
+
+// #1079: a decision answered while G3 is open goes out right away as the
+// developer's question; G3 stays open and nothing is left owed.
+func TestFocusAnswerWhileG3IsOpenIsSent(t *testing.T) {
+	d, turns, store, id := testFocusDriver(t, func(int, string) string { return focusReport("noted", false) }, &fakeVerifier{result: passAll})
+	prStageSession(t, store, id)
+	p := applyFocus(t, store, id, focuspipeline.Event{Kind: focuspipeline.EventTurnCompleted, Turn: 3, Blocks: focuspipeline.Blocks{
+		PR:     &focuspipeline.PRDraft{Title: "feat: x", Body: "b"},
+		Report: &focuspipeline.Report{Summary: "drafted", Decisions: []focuspipeline.Decision{{ID: "d1", Question: "Rebase onto main?", Options: []string{"yes", "no"}}}},
+	}})
+	if p.OpenGate != focuspipeline.GatePR {
+		t.Fatalf("gate = %q", p.OpenGate)
+	}
+	var cardID string
+	for _, c := range p.Cards {
+		if c.Kind == focuspipeline.CardDecision {
+			cardID = c.ID
+		}
+	}
+	h := newFocusPipelineHandler(store, nil, d, zerolog.Nop())
+	if rec := focusRequest(t, h, http.MethodPost, "/v1/focus/pipelines/"+id+"/cards/"+cardID, `{"state":"decided","decision":"yes"}`, true); rec.Code != http.StatusOK {
+		t.Fatalf("answer: %d %s", rec.Code, rec.Body.String())
+	}
+	waitFor(t, "the answer turn", func() bool { return len(turns.seen()) == 1 })
+	waitDriverIdle(t, d, id)
+	if prompts := turns.seen(); len(prompts) != 1 || prompts[0] != "Rebase onto main? → yes" {
+		t.Fatalf("prompts = %q", prompts)
+	}
+	got := pipelineOf(t, store, id)
+	if got.OpenGate != focuspipeline.GatePR || got.PendingTurn != "" || got.Current != focuspipeline.StagePR {
+		t.Fatalf("gate %q pending %q current %s", got.OpenGate, got.PendingTurn, got.Current)
+	}
+}
+
+// Behind a blocked gate an answer still waits: blocked takes a retry or an
+// instruction, not a question.
+func TestFocusAnswerBehindABlockedGateIsHeld(t *testing.T) {
+	d, turns, store, id := testFocusDriver(t, asking, &fakeVerifier{result: passAll})
+	answers := addDecisionCards(t, store, id, focuspipeline.StageBuild, "Rename?")
+	if _, _, err := focusStoreFor(store).Update(id, func(p focuspipeline.Pipeline) (focuspipeline.Pipeline, error) {
+		p.OpenGate = focuspipeline.GateBlocked
+		return p, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	d.start(id, answerAction(answers...), "")
+	waitDriverIdle(t, d, id)
+	if prompts := turns.seen(); len(prompts) != 0 {
+		t.Fatalf("an answer ran behind the blocked gate: %q", prompts)
 	}
 }
