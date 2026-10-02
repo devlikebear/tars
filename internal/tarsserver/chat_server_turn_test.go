@@ -142,7 +142,7 @@ func TestRunServerChatTurnCancelAndErrors(t *testing.T) {
 		done <- err
 	}()
 	<-client.started
-	if !deps.cancelRegistry.Cancel(sess.ID) {
+	if _, ok := deps.cancelRegistry.Cancel(sess.ID); !ok {
 		t.Fatal("cancel found no turn")
 	}
 	if err := <-done; err == nil {

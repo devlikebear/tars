@@ -1427,23 +1427,7 @@ func newChatAPIHandlerWithRuntimeConfig(
 		handleChatTurnStream(w, r, turnFeeds)
 	})
 	mux.HandleFunc("/v1/chat/cancel", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			writeMethodNotAllowed(w)
-			return
-		}
-		sessionID := strings.TrimSpace(r.URL.Query().Get("session_id"))
-		if sessionID == "" {
-			writeError(w, http.StatusBadRequest, "", "session_id is required")
-			return
-		}
-		// Cancel both: the running turn, and the focus driver's run that
-		// would otherwise start the next one.
-		turnCancelled := cancelRegistry.Cancel(sessionID)
-		if tooling.Focus.cancel(sessionID) || turnCancelled {
-			writeJSON(w, http.StatusOK, map[string]bool{"cancelled": true})
-		} else {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "no active chat for session"})
-		}
+		handleChatCancel(w, r, cancelRegistry, tooling.Focus, chatCancelWait)
 	})
 	mux.HandleFunc("/v1/chat/activity", func(w http.ResponseWriter, r *http.Request) {
 		handleChatActivity(w, r, chatActivity)
