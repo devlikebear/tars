@@ -85,6 +85,14 @@ const PRWaitProbes = 10
 // ErrInvalidProbe is a probe event without its facts.
 var ErrInvalidProbe = errors.New("invalid pr probe event")
 
+// ErrHeadMoved refuses G4's approval when the PR head is no longer the one
+// G4 was opened on (#1087): its facts are another commit's.
+var ErrHeadMoved = errors.New("the pull request head moved since the merge gate opened")
+
+// NoticeHeadMoved is the notice left when a push moved the PR head while
+// G4 was open: G4 closed and pr_review waits for the new head's checks.
+const NoticeHeadMoved = "pull request head moved: merge gate closed until the new head's checks pass"
+
 // PRProbe is what one `gh pr view` run found.
 type PRProbe struct {
 	Status string `json:"status"`
@@ -126,6 +134,9 @@ type PRComment struct {
 	// ChangesRequested marks a review that requests changes; its body may
 	// be empty (the feedback is in inline comments).
 	ChangesRequested bool `json:"changes_requested,omitempty"`
+	// Bot: the probe's source marked the author a bot. gh gives comment and
+	// review authors only a login today, so isBotAuthor also reads the login.
+	Bot bool `json:"bot,omitempty"`
 }
 
 // PRFinding is a finding card's payload for a check or a comment: Key
@@ -203,7 +214,14 @@ func WantsPRProbe(p Pipeline) bool {
 	// A turn still owed (the write turn a gate approved, a fix turn) has
 	// done nothing yet: a probe now would judge facts that are about to
 	// change. The post-turn hook starts the poller again.
-	if !p.Active() || p.OpenGate != GateNone || p.PendingTurn != "" {
+	if !p.Active() || p.PendingTurn != "" {
+		return false
+	}
+	if p.OpenGate == GateMerge {
+		// G4 shows one head's facts: a push must close it (#1087).
+		return p.Current == StageMerge && p.PRWait == ""
+	}
+	if p.OpenGate != GateNone {
 		return false
 	}
 	switch p.Current {
@@ -228,6 +246,9 @@ func (p *Pipeline) openPRGate(draft PRDraft, turn int, now time.Time) {
 // merge turn). Neither advances: the probe does.
 func approvePRGate(p *Pipeline, gate string, ev Event, decide func()) (Pipeline, Action, error) {
 	if gate == GateMerge {
+		if head := p.mergeGateHead(); p.PR != nil && head != "" && p.PR.HeadOID != "" && p.PR.HeadOID != head {
+			return *p, noAction, fmt.Errorf("%w: opened on %s, now %s", ErrHeadMoved, head, p.PR.HeadOID)
+		}
 		decide()
 		p.PRWait, p.PRProbes, p.PRUnavailable = PRWaitMerge, 0, ""
 		return *p, Action{Kind: ActionSendTurn, Prompt: mergePrompt(p.PR)}, nil
@@ -306,7 +327,11 @@ func applyProbe(p Pipeline, ev Event, now time.Time) (Pipeline, Action, error) {
 			}
 			break
 		}
+		gateHead := next.mergeGateHead()
 		next.recordPR(probe, now)
+		if next.headMovedUnderG4(gateHead, probe, now) {
+			break
+		}
 		next.applyFoundPR(probe, now)
 	default:
 		return p, noAction, fmt.Errorf("%w: status %q", ErrInvalidProbe, probe.Status)
@@ -392,6 +417,12 @@ func (p *Pipeline) applyFoundPR(probe PRProbe, now time.Time) {
 		return
 	}
 	if probe.State == PRStateClosed {
+		if p.OpenGate == GateMerge {
+			// G4's PR is gone: G4 closes, and the stage it came from waits
+			// for the reopened PR, so G4 reopens only on its fresh facts.
+			supersedeOpenGate(p)
+			p.rewindFromMerge()
+		}
 		p.raiseBlocked(PRBlockedTitle, BlockedFact{
 			Reason: BlockedPRClosed, Iteration: p.currentIteration(), Limit: p.stageLimit(p.Current),
 			Prompt: fmt.Sprintf("Pull request #%d was closed without being merged. Reopen it with `gh pr reopen %d` (or open a new one with the approved title and body), push the branch, and report.", probe.Number, probe.Number),
@@ -419,6 +450,45 @@ func (p *Pipeline) applyFoundPR(probe PRProbe, now time.Time) {
 			p.waitedInVain(BlockedNotMerged, mergePrompt(p.PR), now)
 		}
 	}
+}
+
+// MergeGateHead is the head commit open G4 was opened on ("" when G4 is
+// not open or its card names none).
+func MergeGateHead(p Pipeline) string { return p.mergeGateHead() }
+
+func (p Pipeline) mergeGateHead() string {
+	if p.OpenGate != GateMerge {
+		return ""
+	}
+	i := p.openGateCard()
+	if i < 0 {
+		return ""
+	}
+	var s MergeSummary
+	if json.Unmarshal(p.Cards[i].Payload, &s) != nil || s.PR == nil {
+		return ""
+	}
+	return s.PR.HeadOID
+}
+
+// headMovedUnderG4 closes G4 when an open PR's head is no longer the one
+// G4 was opened on and returns pr_review to the new head (#1087). The new
+// head's findings land now; green is judged from the next probe, so G4
+// reopens on facts of the new head that pr_review has seen settle.
+func (p *Pipeline) headMovedUnderG4(gateHead string, probe PRProbe, now time.Time) bool {
+	if p.OpenGate != GateMerge || probe.State != PRStateOpen || probe.HeadOID == "" || gateHead == "" || probe.HeadOID == gateHead {
+		return false
+	}
+	supersedeOpenGate(p)
+	if !p.backToPRReview() {
+		// pr_review skipped: G4 reopens on the new head's summary.
+		p.addCard(CardGate, 0, MergeGateTitle, p.mergeSummary(), now)
+		p.OpenGate = GateMerge
+		return true
+	}
+	p.addCard(CardNotice, 0, NoticeHeadMoved, map[string]string{"from": gateHead, "to": probe.HeadOID}, now)
+	p.addPRFindings(probe, now)
+	return true
 }
 
 func (p Pipeline) currentIteration() int {
@@ -485,7 +555,9 @@ func (p *Pipeline) addPRFindings(probe PRProbe, now time.Time) {
 	}
 	for _, c := range probe.Comments {
 		body := strings.TrimSpace(c.Body)
-		if c.ID == "" || isBot(c.Author) || (body == "" && !c.ChangesRequested) {
+		// A bot's note is informational; a bot requesting changes reports a
+		// failure and stays a finding.
+		if c.ID == "" || (!c.ChangesRequested && isBotAuthor(c.Author, c.Bot)) || (body == "" && !c.ChangesRequested) {
 			continue
 		}
 		title := "Review comment from " + orDash(c.Author)
@@ -506,8 +578,34 @@ func (p *Pipeline) addPRFindings(probe PRProbe, now time.Time) {
 	}
 }
 
-func isBot(author string) bool {
-	return strings.HasSuffix(strings.ToLower(author), "[bot]")
+// knownBotApps are GitHub App logins as gh reports them for comment and
+// review authors: GraphQL drops the "[bot]" suffix the REST API shows
+// (sonarqubecloud, not sonarqubecloud[bot]). Only apps that post status
+// notes (a quality gate, coverage, a deploy, a dependency bump) belong here;
+// an app whose comments are code review (Copilot's reviewer) does not, so
+// its review stays a finding. Keep it small; the only list of its kind.
+var knownBotApps = map[string]bool{
+	"sonarqubecloud": true,
+	"sonarcloud":     true,
+	"codecov":        true,
+	"github-actions": true,
+	"dependabot":     true,
+	"renovate":       true,
+}
+
+// isBotAuthor reports whether a comment's author is a bot: flagged by the
+// probe, a "[bot]" login, or a known app. Bot comments are not findings
+// (#1094): they are informational, and a failing quality signal arrives as
+// a failing check. A bot's changes-requested review still is.
+func isBotAuthor(author string, flagged bool) bool {
+	if flagged {
+		return true
+	}
+	login := strings.ToLower(strings.TrimSpace(author))
+	if name, ok := strings.CutSuffix(login, "[bot]"); ok {
+		return name != ""
+	}
+	return knownBotApps[login]
 }
 
 func (p Pipeline) findingKeys() map[string]bool {
@@ -715,7 +813,9 @@ func afterPREvent(prev, next Pipeline, ev Event, act Action, now time.Time) (Pip
 		return next, act
 	}
 	entered := prev.Current != StageMerge
-	answered := ev.Kind == EventTurnCompleted && act.Kind == ActionNone
+	// A turn that leaves another owed (a late question while G4's request
+	// for changes is still to run) did not answer G4.
+	answered := ev.Kind == EventTurnCompleted && act.Kind == ActionNone && next.PendingTurn == ""
 	if !entered && !answered {
 		return next, act
 	}
@@ -724,7 +824,25 @@ func afterPREvent(prev, next Pipeline, ev Event, act Action, now time.Time) (Pip
 	}
 	next.addCard(CardGate, 0, MergeGateTitle, next.mergeSummary(), now)
 	next.OpenGate = GateMerge
+	// G4 needs no model turn: nothing is owed, so its probes count.
+	next.PendingTurn = ""
 	return next, noAction
+}
+
+// rewindFromMerge makes the stage before merge current again: pr_review,
+// or, when the plan skipped it, pr waiting for the PR to be found.
+func (p *Pipeline) rewindFromMerge() {
+	if p.backToPRReview() {
+		return
+	}
+	pr := p.stageRef(StagePR)
+	if pr == nil || pr.Status != StatusDone {
+		return
+	}
+	p.setStatus(StageMerge, StatusPending)
+	pr.Status = StatusActive
+	p.Current = StagePR
+	p.PRWait = PRWaitOpen
 }
 
 // backToPRReview reopens pr_review after a turn at the merge stage (G4's

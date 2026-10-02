@@ -389,7 +389,7 @@ func prepareChatRunState(r *http.Request, req chatRequestPayload, deps chatHandl
 	}
 	req.Message = appendConsoleContext(req.Message, req.ConsoleContext)
 	var focusMark *focusTurnMark
-	req.Message, focusMark = appendFocusGuidance(req.Message, reqStore, sessionID, deps.logger)
+	req.Message, focusMark = appendFocusGuidanceAt(req.Message, reqStore, sessionID, focusQuestionGateFrom(r.Context()), deps.logger)
 	req.Message, err = appendReviewNotes(r.Context(), deps.tooling.Checkpoints, sessionID, req.Message, req.ReviewNotes)
 	if err != nil {
 		return chatRunState{}, http.StatusBadRequest, err.Error(), err

@@ -23,7 +23,7 @@ import (
 //	POST /v1/focus/pipelines                      {goal, cwd, isolate, title?, kind?, kickoff?, release_items?, release_since?} → 201 {session_id, pipeline}; 409 {error, session_id} when kind is release and the repository's release is still running
 //	GET  /v1/focus/pipelines                      → [{session_id, title, goal, current, open_gate, needs_input, updated_at}]
 //	GET  /v1/focus/pipelines/{id}                 → pipeline
-//	POST /v1/focus/pipelines/{id}/gates/{gate}    {action, note?, edits?} → {pipeline, next_prompt}
+//	POST /v1/focus/pipelines/{id}/gates/{gate}    {action, note?, edits?, pr?, card_id?} → {pipeline, next_prompt}; 409 {error, pipeline} when the gate is not open, card_id is not the open gate's card, or approving merge finds the PR head moved (the probe it runs first closes G4)
 //	POST /v1/focus/pipelines/{id}/cards/{card}    {state, decision?} → {pipeline, next_prompt}
 //	POST /v1/focus/pipelines/{id}/advance         {stage} → {pipeline, next_prompt}; 409 unless stage is the active current one with no gate open
 //	POST /v1/focus/pipelines/{id}/stop            → {pipeline, next_prompt: ""}; 409 when already finished or stopped
@@ -59,6 +59,9 @@ func focusStoreFor(sessions *session.Store) *focuspipeline.Store {
 type focusTurnMark struct {
 	Stage     focuspipeline.StageID
 	Iteration int
+	// Gate is the gate open when the guidance was built: a turn started at
+	// a question gate completes as a question even after the gate closes.
+	Gate string
 }
 
 // errFocusStaleTurn aborts an update for a turn whose stage has moved on.
@@ -71,6 +74,30 @@ var errFocusStaleTurn = errors.New("focus: turn belongs to an earlier stage")
 // the block format it quotes must arrive whole. Slash commands keep their
 // arguments clean and do not feed the pipeline.
 func appendFocusGuidance(message string, sessions *session.Store, sessionID string, logger zerolog.Logger) (string, *focusTurnMark) {
+	return appendFocusGuidanceAt(message, sessions, sessionID, "", logger)
+}
+
+// focusQuestionGateKey carries, on a server turn's context, the question
+// gate its decision answers were given at (Action.QuestionGate).
+type focusQuestionGateKey struct{}
+
+func withFocusQuestionGate(ctx context.Context, gate string) context.Context {
+	if gate == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, focusQuestionGateKey{}, gate)
+}
+
+func focusQuestionGateFrom(ctx context.Context) string {
+	gate, _ := ctx.Value(focusQuestionGateKey{}).(string)
+	return gate
+}
+
+// appendFocusGuidanceAt is appendFocusGuidance for a turn that is the
+// developer's question at questionGate (decision answers given there):
+// the turn gets that gate's guidance and is marked with it, even when the
+// gate was decided before the turn started.
+func appendFocusGuidanceAt(message string, sessions *session.Store, sessionID, questionGate string, logger zerolog.Logger) (string, *focusTurnMark) {
 	store := focusStoreFor(sessions)
 	if store == nil || strings.HasPrefix(strings.TrimSpace(message), "/") {
 		return message, nil
@@ -84,12 +111,15 @@ func appendFocusGuidance(message string, sessions *session.Store, sessionID stri
 		return message, nil
 	}
 	p = focusRecordBaseCommit(sessions, sessionID, p, logger)
-	guidance := strings.TrimSpace(strings.ReplaceAll(focuspipeline.Guidance(p), focusStageClose, ""))
+	guidance := strings.TrimSpace(strings.ReplaceAll(focuspipeline.QuestionGuidance(p, questionGate), focusStageClose, ""))
 	if guidance == "" {
 		return message, nil
 	}
 	stage, _ := p.Stage(p.Current)
-	mark := &focusTurnMark{Stage: stage.ID, Iteration: stage.Iteration}
+	mark := &focusTurnMark{Stage: stage.ID, Iteration: stage.Iteration, Gate: p.OpenGate}
+	if questionGate != "" {
+		mark.Gate = questionGate
+	}
 	return strings.TrimRight(message, "\n") + "\n\n" + focusStageOpen + "\n" + guidance + "\n" + focusStageClose, mark
 }
 
@@ -111,9 +141,10 @@ func focusAfterTurn(sessions *session.Store, sessionID, transcriptPath, reply st
 			return p, errFocusStaleTurn
 		}
 		updated, act, err := focuspipeline.Apply(p, focuspipeline.Event{
-			Kind:   focuspipeline.EventTurnCompleted,
-			Turn:   turn,
-			Blocks: blocks,
+			Kind:         focuspipeline.EventTurnCompleted,
+			Turn:         turn,
+			Blocks:       blocks,
+			QuestionGate: mark.Gate,
 		}, now)
 		next = act
 		return updated, err
@@ -419,6 +450,9 @@ type focusGateRequest struct {
 	Edits  *focuspipeline.Plan `json:"edits,omitempty"`
 	// PR is G3's edited title and body.
 	PR *focuspipeline.PRDraft `json:"pr,omitempty"`
+	// CardID is the gate card the console showed: a gate replaced since
+	// (G4 reopened on a new head) refuses the action with 409.
+	CardID string `json:"card_id,omitempty"`
 }
 
 // gate applies a gate action. Approving the plan also writes the session's
@@ -433,8 +467,19 @@ func (a *focusAPI) gate(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSONBody(w, r, &req) {
 		return
 	}
-	now := a.now()
 	action := strings.TrimSpace(req.Action)
+	if gate == focuspipeline.GateMerge && action == focuspipeline.GateApprove {
+		p, moved := a.driver.refreshMergeGate(r.Context(), id)
+		if r.Context().Err() != nil {
+			// The head was not checked: never approve unchecked.
+			return
+		}
+		if moved {
+			writeJSON(w, http.StatusConflict, map[string]any{"error": focuspipeline.ErrHeadMoved.Error(), "pipeline": p})
+			return
+		}
+	}
+	now := a.now()
 	var act focuspipeline.Action
 	p, _, err := a.store().Update(id, func(p focuspipeline.Pipeline) (focuspipeline.Pipeline, error) {
 		next, result, err := focuspipeline.Apply(p, focuspipeline.Event{
@@ -444,6 +489,7 @@ func (a *focusAPI) gate(w http.ResponseWriter, r *http.Request) {
 			Edits:  req.Edits,
 			PR:     req.PR,
 			Note:   req.Note,
+			CardID: strings.TrimSpace(req.CardID),
 		}, now)
 		if err != nil {
 			return p, err
@@ -452,7 +498,7 @@ func (a *focusAPI) gate(w http.ResponseWriter, r *http.Request) {
 		return next, nil
 	})
 	switch {
-	case errors.Is(err, focuspipeline.ErrGateNotOpen):
+	case errors.Is(err, focuspipeline.ErrGateNotOpen), errors.Is(err, focuspipeline.ErrHeadMoved):
 		writeJSON(w, http.StatusConflict, map[string]any{"error": err.Error(), "pipeline": p})
 		return
 	case errors.Is(err, focuspipeline.ErrInvalidAction), errors.Is(err, focuspipeline.ErrInvalidEdits):

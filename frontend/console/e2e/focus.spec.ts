@@ -435,7 +435,8 @@ test('the PR stages: G3 opens the PR with an edited title, gh unavailable is pas
 
 test('the PR stages with gh: the PR is found, CI is green, G4 merges, and the merged pipeline finishes', async ({ page }) => {
   // The e2e gh stub answers from .git/e2e-gh in the repository: an open PR
-  // #7 from the checked-out branch with one passing check, then merged.
+  // #7 from the checked-out branch with one passing check and SonarCloud's
+  // informational comment, then merged.
   const repo = newRepo('tars-e2e-focus-merge-')
   const scenario = (s: string) => writeFileSync(join(repo, '.git', 'e2e-gh'), s)
   const created = await (await page.request.post('/v1/focus/pipelines', { data: { goal: '[e2e:focus-plan] [e2e:focus-loop] [e2e:focus-pr] Add a greeting', cwd: repo } })).json()
@@ -452,7 +453,7 @@ test('the PR stages with gh: the PR is found, CI is green, G4 merges, and the me
   await page.getByTestId('focus-pr-approve').click()
 
   // The open turn ends; the probe finds PR #7 green: pr_review passes and
-  // G4 opens with the facts.
+  // G4 opens with the facts. The bot's comment is no finding (#1094).
   const summary = page.getByTestId('focus-merge-summary')
   await expect(summary).toBeVisible({ timeout: 20_000 })
   await expect(summary).toContainText('PR #7')
@@ -460,6 +461,7 @@ test('the PR stages with gh: the PR is found, CI is green, G4 merges, and the me
   let p = await pipelineOf(page, id)
   expect(p.current).toBe('merge')
   expect(p.open_gate).toBe('merge')
+  expect(p.cards.filter((c) => c.kind === 'finding')).toEqual([])
 
   scenario('merged')
   await page.getByTestId('focus-gate-approve-generic').click()

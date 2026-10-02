@@ -133,7 +133,12 @@ func mergeAnswers(a, b focuspipeline.Action) focuspipeline.Action {
 		}
 		answers = append(answers, ans)
 	}
-	return focuspipeline.Action{Kind: focuspipeline.ActionSendTurn, Prompt: focuspipeline.AnswersPrompt(answers), Answers: answers}
+	// Answers given at the same question gate stay a question there.
+	gate := a.QuestionGate
+	if b.QuestionGate != gate {
+		gate = ""
+	}
+	return focuspipeline.Action{Kind: focuspipeline.ActionSendTurn, Prompt: focuspipeline.AnswersPrompt(answers), Answers: answers, QuestionGate: gate}
 }
 
 // foldLate appends late answers as context to the next turn the run owes;
@@ -383,7 +388,7 @@ func (d *focusDriver) loop(run *focusRun, after <-chan struct{}) {
 		}
 		switch act.Kind {
 		case focuspipeline.ActionSendTurn:
-			err := d.runTurn(run.ctx, run.sessionID, act.Prompt)
+			err := d.runTurn(withFocusQuestionGate(run.ctx, act.QuestionGate), run.sessionID, act.Prompt)
 			if errors.Is(err, errChatTurnBusy) && busy < focusBusyRetries {
 				busy++
 				run.pushFront(act)
@@ -415,10 +420,18 @@ func (d *focusDriver) loop(run *focusRun, after <-chan struct{}) {
 
 // stepAllowed re-reads the pipeline before a step: only an active pipeline
 // with no gate open gets a turn or a verification, and verification only
-// while one is awaited — a stopped pipeline never gets a fix turn.
+// while one is awaited — a stopped pipeline never gets a fix turn. Decision
+// answers also go out while a gate that takes questions is open (#1079):
+// held there, they were never sent.
 func (d *focusDriver) stepAllowed(sessionID string, act focuspipeline.Action) bool {
 	p, ok, err := focusStoreFor(d.sessions).Get(sessionID)
-	if err != nil || !ok || !p.Active() || p.OpenGate != focuspipeline.GateNone {
+	if err != nil || !ok {
+		return false
+	}
+	if act.Kind == focuspipeline.ActionSendTurn && len(act.Answers) > 0 {
+		return focuspipeline.AnswersMayRun(p)
+	}
+	if !p.Active() || p.OpenGate != focuspipeline.GateNone {
 		return false
 	}
 	return act.Kind != focuspipeline.ActionRunVerification || p.AwaitingVerification
@@ -452,7 +465,7 @@ func (d *focusDriver) currentAnswers(run *focusRun, act focuspipeline.Action, lo
 		return act, false
 	}
 	if len(late) > 0 {
-		act = focuspipeline.Action{Kind: focuspipeline.ActionSendTurn, Prompt: focuspipeline.AnswersPrompt(fresh), Answers: fresh}
+		act = focuspipeline.Action{Kind: focuspipeline.ActionSendTurn, Prompt: focuspipeline.AnswersPrompt(fresh), Answers: fresh, QuestionGate: act.QuestionGate}
 	}
 	return act, true
 }

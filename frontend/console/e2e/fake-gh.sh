@@ -6,7 +6,8 @@
 # the repository's git dir (.git/e2e-gh; a worktree's .git is a file, so the
 # git dir is asked for), written by the spec:
 #   (missing) unavailable — gh fails as if not logged in
-#   open      an open PR #7 from the checked-out branch, one passing check
+#   open      an open PR #7 from the checked-out branch, one passing check and
+#             SonarCloud's informational comment (a bot: never a finding, #1094)
 #   merged    the same PR, merged
 # Every call is appended to e2e-gh.log beside it.
 gitdir=$(git rev-parse --git-dir 2>/dev/null || echo .git)
@@ -22,4 +23,4 @@ case "$scenario" in
 esac
 head=$(git rev-parse HEAD)
 branch=$(git rev-parse --abbrev-ref HEAD)
-printf '{"number":7,"url":"https://example.test/pr/7","state":"%s","mergeStateStatus":"CLEAN","headRefOid":"%s","headRefName":"%s","author":{"login":"e2e"},"statusCheckRollup":[{"__typename":"CheckRun","name":"test","status":"COMPLETED","conclusion":"SUCCESS","startedAt":"2026-10-01T00:00:00Z"}],"reviews":[],"comments":[]}\n' "$state" "$head" "$branch"
+printf '{"number":7,"url":"https://example.test/pr/7","state":"%s","mergeStateStatus":"CLEAN","headRefOid":"%s","headRefName":"%s","author":{"login":"e2e"},"statusCheckRollup":[{"__typename":"CheckRun","name":"test","status":"COMPLETED","conclusion":"SUCCESS","startedAt":"2026-10-01T00:00:00Z"}],"reviews":[],"comments":[{"id":"IC_sonar","author":{"login":"sonarqubecloud"},"authorAssociation":"NONE","body":"Quality Gate passed","url":"https://example.test/pr/7#issuecomment-1"}]}\n' "$state" "$head" "$branch"

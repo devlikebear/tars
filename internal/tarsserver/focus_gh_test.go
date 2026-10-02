@@ -34,7 +34,11 @@ const ghViewFixture = `{
   ],
   "comments": [
     {"id": "IC_1", "author": {"login": "dave"}, "authorAssociation": "CONTRIBUTOR", "body": "Add a test for the empty case.", "url": "https://example.test/c/1"},
-    {"id": "IC_2", "author": {"login": "erin"}, "authorAssociation": "NONE", "body": "Pushed a fix.", "url": "https://example.test/c/2"}
+    {"id": "IC_2", "author": {"login": "erin"}, "authorAssociation": "NONE", "body": "Pushed a fix.", "url": "https://example.test/c/2"},
+    {"id": "IC_3", "author": {"login": "sonarqubecloud"}, "authorAssociation": "NONE", "body": "Quality Gate passed", "url": "https://example.test/c/3"},
+    {"id": "IC_4", "author": {"login": "codecov[bot]"}, "authorAssociation": "NONE", "body": "Coverage 81%", "url": "https://example.test/c/4"},
+    {"id": "IC_5", "author": {"login": "deployer", "is_bot": true}, "authorAssociation": "NONE", "body": "Preview ready", "url": "https://example.test/c/5"},
+    {"id": "IC_6", "author": {"login": "linter", "type": "Bot"}, "authorAssociation": "NONE", "body": "2 warnings", "url": "https://example.test/c/6"}
   ]
 }`
 
@@ -64,6 +68,13 @@ func TestParseFocusPRView(t *testing.T) {
 		{ID: "PRR_4", Author: "frank", ChangesRequested: true, Trusted: true},
 		{ID: "IC_1", Author: "dave", Body: "Add a test for the empty case.", URL: "https://example.test/c/1"},
 		{ID: "IC_2", Author: "erin", Body: "Pushed a fix.", URL: "https://example.test/c/2", Trusted: true},
+		// gh gives a comment author only a login today: a GitHub App's login
+		// has no "[bot]" (sonarqubecloud). The machine knows such logins;
+		// the parser flags only what gh marks a bot (is_bot / type Bot).
+		{ID: "IC_3", Author: "sonarqubecloud", Body: "Quality Gate passed", URL: "https://example.test/c/3"},
+		{ID: "IC_4", Author: "codecov[bot]", Body: "Coverage 81%", URL: "https://example.test/c/4"},
+		{ID: "IC_5", Author: "deployer", Body: "Preview ready", URL: "https://example.test/c/5", Bot: true},
+		{ID: "IC_6", Author: "linter", Body: "2 warnings", URL: "https://example.test/c/6", Bot: true},
 	}
 	if !reflect.DeepEqual(got.Comments, wantComments) {
 		t.Fatalf("comments = %+v", got.Comments)

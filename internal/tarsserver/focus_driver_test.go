@@ -86,7 +86,7 @@ func (f *fakeFocusTurns) run(ctx context.Context, sessionID, prompt string) erro
 			return ctx.Err()
 		}
 	}
-	message, mark := appendFocusGuidance(prompt, f.store, sessionID, zerolog.Nop())
+	message, mark := appendFocusGuidanceAt(prompt, f.store, sessionID, focusQuestionGateFrom(ctx), zerolog.Nop())
 	transcript := f.store.TranscriptPath(sessionID)
 	if err := session.AppendMessage(transcript, session.Message{Role: "user", Content: message, Timestamp: time.Now()}); err != nil {
 		return err
@@ -276,7 +276,7 @@ func TestFocusDriverCancel(t *testing.T) {
 		if len(running) != 1 || running[0].SessionID != id || d.feeds.get(id) == nil {
 			t.Fatal("verification shows as a running turn with a feed")
 		}
-		if !d.cancels.Cancel(id) { // what POST /v1/chat/cancel does first
+		if _, ok := d.cancels.Cancel(id); !ok { // what POST /v1/chat/cancel does first
 			t.Fatal("verification is not registered for cancel")
 		}
 		waitDriverIdle(t, d, id)
@@ -472,7 +472,8 @@ func TestChatCancelRegistryClaims(t *testing.T) {
 	}
 	// A cancel before the turn has its context fires once it has one, and
 	// the claim stays until the turn releases it.
-	if !r.Cancel("s") {
+	ended, cancelled := r.Cancel("s")
+	if !cancelled {
 		t.Fatal("cancel found no turn")
 	}
 	if !r.Running("s") {
@@ -487,6 +488,11 @@ func TestChatCancelRegistryClaims(t *testing.T) {
 	if r.Running("s") {
 		t.Fatal("released")
 	}
+	select {
+	case <-ended:
+	default:
+		t.Fatal("a cancel's ended channel closes when the turn releases the session")
+	}
 	_, again, ok := r.Claim("s")
 	if !ok {
 		t.Fatal("a released session can be claimed")
@@ -500,7 +506,10 @@ func TestChatCancelRegistryClaims(t *testing.T) {
 		t.Fatal("an empty id claims nothing")
 	}
 	var nilRegistry *chatCancelRegistry
-	if _, _, ok := nilRegistry.Claim("s"); !ok || nilRegistry.Cancel("s") {
+	if _, nilCancelled := nilRegistry.Cancel("s"); nilCancelled {
+		t.Fatal("nil registry cancels nothing")
+	}
+	if _, _, ok := nilRegistry.Claim("s"); !ok {
 		t.Fatal("nil registry")
 	}
 }

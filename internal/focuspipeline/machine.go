@@ -78,6 +78,10 @@ type Event struct {
 	// the turn a verification ran after (EventVerification).
 	Turn   int
 	Blocks Blocks
+	// QuestionGate is the question gate that was open when the completed
+	// turn started (EventTurnCompleted): a turn begun as the developer's
+	// question stays one even if the gate was decided while it ran.
+	QuestionGate string
 	// Stage is the stage to pass (EventAdvance); it must be Current, so a
 	// stale tab cannot pass the stage after it.
 	Stage StageID
@@ -86,6 +90,9 @@ type Event struct {
 	Action string
 	Edits  *Plan
 	Note   string
+	// CardID is the gate card the developer acted on (EventGate): when
+	// set, a gate replaced since (G4 reopened on a new head) refuses it.
+	CardID string
 	// Verification is the verification result (EventVerification).
 	Verification *Verification
 	// PR is G3's edited draft (EventGate on GatePR); Probe the probe's
@@ -101,6 +108,10 @@ type Action struct {
 	// Answers are the decision answers a send_turn delivers: the server
 	// merges queued answers and drops those whose stage moved on.
 	Answers []Answer
+	// QuestionGate is the question gate open when the answers were given:
+	// their turn is the developer's question even if it starts after that
+	// gate was decided.
+	QuestionGate string
 }
 
 var noAction = Action{Kind: ActionNone}
@@ -151,6 +162,9 @@ func applyEvent(p Pipeline, ev Event, now time.Time) (Pipeline, Action, error) {
 		}
 		next := p.clone()
 		next.UpdatedAt = now.UTC()
+		// Passing the stage by hand drops a turn it still owed (one cut
+		// off by a cancel): the next stage's own turn or gate replaces it.
+		next.PendingTurn = ""
 		stage := next.advance()
 		return next, Action{Kind: ActionSendTurn, Prompt: approvedPrompt(GateNone, stage)}, nil
 	case EventVerification:
@@ -179,6 +193,9 @@ func applyEvent(p Pipeline, ev Event, now time.Time) (Pipeline, Action, error) {
 func applyTurn(p Pipeline, ev Event, now time.Time) (Pipeline, Action) {
 	if !p.Active() {
 		return p, noAction
+	}
+	if questionGates[ev.QuestionGate] && p.OpenGate != ev.QuestionGate {
+		return lateQuestionTurn(p, ev, now)
 	}
 	if p.Current == StageReview && p.OpenGate == GateTriage {
 		return triageTurn(p, now)
@@ -238,10 +255,32 @@ func applyTurn(p Pipeline, ev Event, now time.Time) (Pipeline, Action) {
 	return p, act
 }
 
+// lateQuestionTurn completes a turn that started as the developer's question
+// at a gate decided while it ran: it is still a question, not the stage's
+// work — the turn the gate's decision owes stays owed, no block is
+// required, and only its report (and the decisions it asks) is recorded.
+func lateQuestionTurn(p Pipeline, ev Event, now time.Time) (Pipeline, Action) {
+	if r := ev.Blocks.Report; r != nil {
+		p.addCard(CardReport, ev.Turn, reportTitle(*r), *r, now)
+		for _, d := range r.Decisions {
+			p.addCard(CardDecision, ev.Turn, d.Question, d, now)
+		}
+	}
+	p.UpdatedAt = now
+	return p, noAction
+}
+
 // questionGates are the gates during which a turn is the developer's
 // question, not the stage's work: G1 (plan), P3's triage, G3 (PR draft) and
 // G4 (merge). Nothing is required of such a turn.
 var questionGates = map[string]bool{GatePlan: true, GateTriage: true, GatePR: true, GateMerge: true}
+
+// AnswersMayRun reports whether a turn delivering decision answers may run
+// now: the pipeline is active and either no gate is open or the open gate
+// takes questions. Behind a blocked gate the answers wait.
+func AnswersMayRun(p Pipeline) bool {
+	return p.Active() && (p.OpenGate == GateNone || questionGates[p.OpenGate])
+}
 
 // missingRequiredBlock reports whether the turn lacked the block its stage
 // requires.
@@ -318,6 +357,11 @@ func applyGate(p Pipeline, ev Event, now time.Time) (Pipeline, Action, error) {
 	}
 	if p.OpenGate == GateNone || ev.Gate != p.OpenGate {
 		return p, noAction, ErrGateNotOpen
+	}
+	if ev.CardID != "" {
+		if i := p.openGateCard(); i < 0 || p.Cards[i].ID != ev.CardID {
+			return p, noAction, fmt.Errorf("%w: card %s is no longer the open gate", ErrGateNotOpen, ev.CardID)
+		}
 	}
 	if p.OpenGate == GateTriage && ev.Action != GateStop {
 		return p, noAction, fmt.Errorf("%w: triage closes when every finding is decided", ErrInvalidAction)
@@ -555,6 +599,13 @@ func SetCardState(p Pipeline, cardID, state, decision string, now time.Time) (Pi
 			return next, noAction, nil
 		}
 		act := Action{Kind: ActionSendTurn, Prompt: AnswersPrompt(answers), Answers: answers}
+		if questionGates[next.OpenGate] {
+			// A gate waits for the developer (#1079): the answers go out
+			// now as the developer's question, like a typed instruction —
+			// the gate stays open and the pipeline owes nothing.
+			act.QuestionGate = next.OpenGate
+			return next, act, nil
+		}
 		return owe(next, act), act, nil
 	}
 	if card.Kind == CardFinding && card.State == CardDecided {

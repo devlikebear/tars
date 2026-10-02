@@ -110,8 +110,18 @@ func classifyFocusGHFailure(stderr string) focuspipeline.PRProbe {
 	return unavailablePR("%s", msg)
 }
 
+// ghAuthor is an author as gh prints it. The PR's author carries is_bot;
+// comment and review authors carry only a login today (gh selects their
+// subfields itself, so focusGHFields cannot ask for more). IsBot and Type
+// are read when present; the pipeline also recognises bots by login.
 type ghAuthor struct {
 	Login string `json:"login"`
+	IsBot bool   `json:"is_bot"`
+	Type  string `json:"type"`
+}
+
+func (a ghAuthor) bot() bool {
+	return a.IsBot || strings.EqualFold(a.Type, "Bot")
 }
 
 type ghPRView struct {
@@ -199,13 +209,13 @@ func parseFocusPRView(raw []byte) focuspipeline.PRProbe {
 			continue
 		}
 		probe.Comments = append(probe.Comments, focuspipeline.PRComment{
-			ID: r.ID, Author: r.Author.Login, Body: r.Body, ChangesRequested: requested,
+			ID: r.ID, Author: r.Author.Login, Body: r.Body, ChangesRequested: requested, Bot: r.Author.bot(),
 			Trusted: trustedCommenter(r.AuthorAssociation, r.Author.Login, v.Author.Login),
 		})
 	}
 	for _, c := range v.Comments {
 		probe.Comments = append(probe.Comments, focuspipeline.PRComment{
-			ID: c.ID, Author: c.Author.Login, Body: c.Body, URL: c.URL,
+			ID: c.ID, Author: c.Author.Login, Body: c.Body, URL: c.URL, Bot: c.Author.bot(),
 			Trusted: trustedCommenter(c.AuthorAssociation, c.Author.Login, v.Author.Login),
 		})
 	}
