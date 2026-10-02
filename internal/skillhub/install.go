@@ -138,17 +138,8 @@ func (inst *Installer) InstallWithOptions(ctx context.Context, ref string, opts 
 		return &InstallResult{DryRunPreview: preview}, nil
 	}
 
-	if !opts.Yes {
-		if opts.Confirm == nil {
-			return nil, fmt.Errorf("skillhub: external-hub install requires confirmation; pass --yes, --dry-run, or supply a Confirm callback")
-		}
-		ok, err := opts.Confirm(preview)
-		if err != nil {
-			return nil, err
-		}
-		if !ok {
-			return nil, ErrInstallAborted
-		}
+	if err := confirmExternalInstall(opts, preview); err != nil {
+		return nil, err
 	}
 
 	// Materialize the bytes the preview was built from rather than
@@ -156,27 +147,32 @@ func (inst *Installer) InstallWithOptions(ctx context.Context, ref string, opts 
 	// approved: upstream may have moved, and converters stamp the import
 	// time (imported_at, ATTRIBUTION.md) at second precision, so a
 	// confirmation that took longer than a second never matched.
-	sandboxReport, err := inst.runSkillInstallSandbox(ctx, entry, files)
+	result, err := inst.materializeSkill(ctx, src, entry, files)
 	if err != nil {
 		return nil, err
 	}
-	skillDir := inst.skillDir(entry.Name)
-	if err := materializePackageFiles(skillDir, files); err != nil {
-		return nil, err
-	}
-	if err := inst.addToDB(InstalledSkill{
-		Name:    entry.Name,
-		Version: entry.Version,
-		Source:  src.ID(),
-		Dir:     skillDir,
-	}); err != nil {
-		return nil, err
-	}
-	result := &InstallResult{Sandbox: sandboxReport, DryRunPreview: preview}
-	if entry.RequiresPlugin != "" && !inst.isPluginInstalled(entry.RequiresPlugin) {
-		result.RequiresPlugin = entry.RequiresPlugin
-	}
+	result.DryRunPreview = preview
 	return result, nil
+}
+
+// confirmExternalInstall returns nil when the install may proceed: --yes,
+// or a Confirm callback that approved the preview. A declined preview is
+// ErrInstallAborted.
+func confirmExternalInstall(opts InstallOptions, preview *DryRunResult) error {
+	if opts.Yes {
+		return nil
+	}
+	if opts.Confirm == nil {
+		return fmt.Errorf("skillhub: external-hub install requires confirmation; pass --yes, --dry-run, or supply a Confirm callback")
+	}
+	ok, err := opts.Confirm(preview)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return ErrInstallAborted
+	}
+	return nil
 }
 
 // installTarsHub is the original Install flow for the built-in source —
@@ -187,6 +183,12 @@ func (inst *Installer) installTarsHub(ctx context.Context, src HubSource, entry 
 	if err != nil {
 		return nil, err
 	}
+	return inst.materializeSkill(ctx, src, entry, files)
+}
+
+// materializeSkill runs the install sandbox over files, writes them into
+// the skill directory, and records the skill in the installed DB.
+func (inst *Installer) materializeSkill(ctx context.Context, src HubSource, entry *RegistryEntry, files map[string][]byte) (*InstallResult, error) {
 	sandboxReport, err := inst.runSkillInstallSandbox(ctx, entry, files)
 	if err != nil {
 		return nil, err
@@ -281,18 +283,25 @@ func (inst *Installer) syncDefaultSource() {
 func (inst *Installer) resolveSkillSource(ctx context.Context, sourceID, bareName string) (HubSource, *RegistryEntry, error) {
 	sources := inst.ensureSources()
 	if sourceID != "" {
-		src, ok := sources.Get(sourceID)
-		if !ok {
-			return nil, nil, fmt.Errorf("hub source %q is not registered (known: %s)",
-				sourceID, strings.Join(sources.IDs(), ", "))
-		}
-		entry, err := src.FindSkillByName(ctx, bareName)
-		if err != nil {
-			return nil, nil, err
-		}
-		return src, entry, nil
+		return findSkillInSource(ctx, sources, sourceID, bareName)
 	}
+	return findSkillInAnySource(ctx, sources, bareName)
+}
 
+func findSkillInSource(ctx context.Context, sources *SourceRegistry, sourceID, bareName string) (HubSource, *RegistryEntry, error) {
+	src, ok := sources.Get(sourceID)
+	if !ok {
+		return nil, nil, fmt.Errorf("hub source %q is not registered (known: %s)",
+			sourceID, strings.Join(sources.IDs(), ", "))
+	}
+	entry, err := src.FindSkillByName(ctx, bareName)
+	if err != nil {
+		return nil, nil, err
+	}
+	return src, entry, nil
+}
+
+func findSkillInAnySource(ctx context.Context, sources *SourceRegistry, bareName string) (HubSource, *RegistryEntry, error) {
 	type hit struct {
 		src   HubSource
 		entry *RegistryEntry
@@ -379,39 +388,12 @@ func (inst *Installer) Update(ctx context.Context) (UpdateResult, error) {
 	sources := inst.ensureSources()
 	var result UpdateResult
 	for i, skill := range db.Skills {
-		sourceID := strings.TrimSpace(skill.Source)
-		if sourceID == "" {
-			sourceID = DefaultSourceID
-		}
-		src, ok := sources.Get(sourceID)
-		if !ok {
-			result.Skipped = append(result.Skipped, UpdateDiagnostic{
-				Name:   skill.Name,
-				Reason: fmt.Sprintf("source %q is no longer registered", sourceID),
-			})
+		src, entry, skip := inst.resolveSkillUpdate(ctx, sources, skill)
+		if skip != nil {
+			result.Skipped = append(result.Skipped, *skip)
 			continue
 		}
-		entry, err := src.FindSkillByName(ctx, skill.Name)
-		if err != nil {
-			result.Skipped = append(result.Skipped, UpdateDiagnostic{Name: skill.Name, Err: err})
-			continue
-		}
-		if sourceID == DefaultSourceID && entry.Version == skill.Version {
-			result.Skipped = append(result.Skipped, UpdateDiagnostic{Name: skill.Name, Reason: "up to date"})
-			continue
-		}
-		files, _, err := inst.downloadSkillFilesFromSource(ctx, src, entry)
-		if err != nil {
-			updateErr := fmt.Errorf("update skill %q: %w", skill.Name, err)
-			result.Failed = append(result.Failed, UpdateDiagnostic{Name: skill.Name, Err: err})
-			return result, errors.Join(updateErr, inst.saveUpdatedDB(db, result, "skills"))
-		}
-		if _, err := inst.runSkillInstallSandbox(ctx, entry, files); err != nil {
-			updateErr := fmt.Errorf("update skill %q: %w", skill.Name, err)
-			result.Failed = append(result.Failed, UpdateDiagnostic{Name: skill.Name, Err: err})
-			return result, errors.Join(updateErr, inst.saveUpdatedDB(db, result, "skills"))
-		}
-		if err := materializePackageFiles(skill.Dir, files); err != nil {
+		if err := inst.reinstallSkill(ctx, src, entry, skill.Dir); err != nil {
 			updateErr := fmt.Errorf("update skill %q: %w", skill.Name, err)
 			result.Failed = append(result.Failed, UpdateDiagnostic{Name: skill.Name, Err: err})
 			return result, errors.Join(updateErr, inst.saveUpdatedDB(db, result, "skills"))
@@ -420,6 +402,44 @@ func (inst *Installer) Update(ctx context.Context) (UpdateResult, error) {
 		result.Updated = append(result.Updated, skill.Name)
 	}
 	return result, inst.saveUpdatedDB(db, result, "skills")
+}
+
+// resolveSkillUpdate finds the source and current registry entry for an
+// installed skill. A non-nil diagnostic means the skill is skipped: its
+// source is gone, the lookup failed, or a tars-hub skill is up to date.
+func (inst *Installer) resolveSkillUpdate(ctx context.Context, sources *SourceRegistry, skill InstalledSkill) (HubSource, *RegistryEntry, *UpdateDiagnostic) {
+	sourceID := strings.TrimSpace(skill.Source)
+	if sourceID == "" {
+		sourceID = DefaultSourceID
+	}
+	src, ok := sources.Get(sourceID)
+	if !ok {
+		return nil, nil, &UpdateDiagnostic{
+			Name:   skill.Name,
+			Reason: fmt.Sprintf("source %q is no longer registered", sourceID),
+		}
+	}
+	entry, err := src.FindSkillByName(ctx, skill.Name)
+	if err != nil {
+		return nil, nil, &UpdateDiagnostic{Name: skill.Name, Err: err}
+	}
+	if sourceID == DefaultSourceID && entry.Version == skill.Version {
+		return nil, nil, &UpdateDiagnostic{Name: skill.Name, Reason: "up to date"}
+	}
+	return src, entry, nil
+}
+
+// reinstallSkill downloads the skill again, runs the install sandbox, and
+// overwrites the files in dir.
+func (inst *Installer) reinstallSkill(ctx context.Context, src HubSource, entry *RegistryEntry, dir string) error {
+	files, _, err := inst.downloadSkillFilesFromSource(ctx, src, entry)
+	if err != nil {
+		return err
+	}
+	if _, err := inst.runSkillInstallSandbox(ctx, entry, files); err != nil {
+		return err
+	}
+	return materializePackageFiles(dir, files)
 }
 
 func (inst *Installer) skillDir(name string) string {
@@ -711,59 +731,88 @@ func (inst *Installer) downloadExternalSkillFiles(ctx context.Context, src HubSo
 	if err != nil {
 		return nil, nil, fmt.Errorf("fetch %s SKILL.md for %q: %w", src.ID(), entry.Name, err)
 	}
-
-	files := make(map[string][]byte, 4)
-	manifest := rawManifest
-	var warnings []string
-
-	if converter, ok := src.(SkillContentConverter); ok {
-		converted, convertWarnings, err := converter.ConvertSkillContent(entry, rawManifest)
-		if err != nil {
-			return nil, nil, fmt.Errorf("convert %s SKILL.md for %q: %w", src.ID(), entry.Name, err)
-		}
-		manifest = converted
-		warnings = append(warnings, convertWarnings...)
+	manifest, warnings, err := convertExternalManifest(src, entry, rawManifest)
+	if err != nil {
+		return nil, nil, err
 	}
+	files := make(map[string][]byte, 4)
 	files[skillManifest] = manifest
 
-	if lister, ok := src.(CompanionFileLister); ok {
-		paths, err := lister.ListCompanionFiles(ctx, entry)
-		if err != nil {
-			return nil, nil, fmt.Errorf("list %s companion files for %q: %w", src.ID(), entry.Name, err)
-		}
-		for _, rel := range paths {
-			rel = strings.TrimSpace(rel)
-			if rel == "" || rel == skillManifest {
-				continue
-			}
-			body, err := src.FetchSkillFile(ctx, entry, rel)
-			if err != nil {
-				return nil, nil, fmt.Errorf("fetch %s companion %q for %q: %w", src.ID(), rel, entry.Name, err)
-			}
-			files[rel] = body
-		}
+	if err := fetchCompanionFiles(ctx, src, entry, files); err != nil {
+		return nil, nil, err
 	}
-
-	if licenser, ok := src.(LicenseFetcher); ok {
-		body, label, err := licenser.FetchLicense(ctx, entry)
-		if err != nil {
-			return nil, nil, fmt.Errorf("fetch %s license for %q: %w", src.ID(), entry.Name, err)
-		}
-		attribution, err := BuildAttribution(AttributionInput{
-			SourceID:       src.ID(),
-			OriginalName:   entry.Name,
-			OriginalURL:    entry.Path,
-			OriginalAuthor: entry.Author,
-			LicenseLabel:   label,
-			LicenseBody:    body,
-		})
-		if err != nil {
-			return nil, nil, fmt.Errorf("build %s attribution for %q: %w", src.ID(), entry.Name, err)
-		}
+	attribution, err := buildExternalAttribution(ctx, src, entry)
+	if err != nil {
+		return nil, nil, err
+	}
+	if attribution != nil {
 		files[AttributionFilename] = attribution
 	}
-
 	return files, warnings, nil
+}
+
+// convertExternalManifest rewrites SKILL.md into TARS frontmatter when the
+// source has a converter, and passes it through unchanged otherwise.
+func convertExternalManifest(src HubSource, entry *RegistryEntry, raw []byte) ([]byte, []string, error) {
+	converter, ok := src.(SkillContentConverter)
+	if !ok {
+		return raw, nil, nil
+	}
+	converted, warnings, err := converter.ConvertSkillContent(entry, raw)
+	if err != nil {
+		return nil, nil, fmt.Errorf("convert %s SKILL.md for %q: %w", src.ID(), entry.Name, err)
+	}
+	return converted, warnings, nil
+}
+
+// fetchCompanionFiles adds every companion file the source lists (other
+// than SKILL.md itself) to files.
+func fetchCompanionFiles(ctx context.Context, src HubSource, entry *RegistryEntry, files map[string][]byte) error {
+	lister, ok := src.(CompanionFileLister)
+	if !ok {
+		return nil
+	}
+	paths, err := lister.ListCompanionFiles(ctx, entry)
+	if err != nil {
+		return fmt.Errorf("list %s companion files for %q: %w", src.ID(), entry.Name, err)
+	}
+	for _, rel := range paths {
+		rel = strings.TrimSpace(rel)
+		if rel == "" || rel == skillManifest {
+			continue
+		}
+		body, err := src.FetchSkillFile(ctx, entry, rel)
+		if err != nil {
+			return fmt.Errorf("fetch %s companion %q for %q: %w", src.ID(), rel, entry.Name, err)
+		}
+		files[rel] = body
+	}
+	return nil
+}
+
+// buildExternalAttribution renders ATTRIBUTION.md from the source's
+// license. It returns nil when the source has no LicenseFetcher.
+func buildExternalAttribution(ctx context.Context, src HubSource, entry *RegistryEntry) ([]byte, error) {
+	licenser, ok := src.(LicenseFetcher)
+	if !ok {
+		return nil, nil
+	}
+	body, label, err := licenser.FetchLicense(ctx, entry)
+	if err != nil {
+		return nil, fmt.Errorf("fetch %s license for %q: %w", src.ID(), entry.Name, err)
+	}
+	attribution, err := BuildAttribution(AttributionInput{
+		SourceID:       src.ID(),
+		OriginalName:   entry.Name,
+		OriginalURL:    entry.Path,
+		OriginalAuthor: entry.Author,
+		LicenseLabel:   label,
+		LicenseBody:    body,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("build %s attribution for %q: %w", src.ID(), entry.Name, err)
+	}
+	return attribution, nil
 }
 
 // SkillFileChecksums computes sha256 hashes for every file in the map.
