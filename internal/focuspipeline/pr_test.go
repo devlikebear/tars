@@ -963,3 +963,65 @@ func TestG4ApproveRefusedOnAMovedHead(t *testing.T) {
 		t.Fatalf("err %v act %+v gate %q wait %q", err, act, got.OpenGate, got.PRWait)
 	}
 }
+
+// skippingPRReview is p with pr_review skipped by the plan.
+func skippingPRReview(p Pipeline) Pipeline {
+	p = p.clone()
+	p.stageRef(StagePRReview).Status = StatusSkipped
+	return p
+}
+
+// A PR closed while G4 is open supersedes G4 and blocks the stage G4 came
+// from; the retry finds the reopened PR again and G4 reopens on its facts.
+func TestClosedPRWhileG4IsOpen(t *testing.T) {
+	tests := []struct {
+		name      string
+		p         func(t *testing.T) Pipeline
+		wantStage StageID
+	}{
+		{"pr_review planned", inMerge, StagePRReview},
+		{"pr_review skipped", func(t *testing.T) Pipeline { return skippingPRReview(inMerge(t)) }, StagePR},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := tt.p(t)
+			g4 := p.Cards[p.openGateCard()]
+			closed := probeFound(PRCheck{Name: "test", State: CheckPass})
+			closed.State = PRStateClosed
+			p, _ = mustApply(t, p, Event{Kind: EventPRProbe, Probe: closed})
+			if p.OpenGate != GateBlocked || p.Current != tt.wantStage {
+				t.Fatalf("closed: gate %q current %s", p.OpenGate, p.Current)
+			}
+			if c := p.Cards[g4.idx(p)]; c.State != CardDecided || c.Decision != DecisionSuperseded {
+				t.Fatalf("old G4 card = %+v", c)
+			}
+			if s, _ := p.Stage(StageMerge); s.Status != StatusPending {
+				t.Fatalf("merge status = %s", s.Status)
+			}
+			p, act := mustApply(t, p, Event{Kind: EventGate, Gate: GateBlocked, Action: GateRetry})
+			if act.Kind != ActionSendTurn || !strings.Contains(act.Prompt, "gh pr reopen 12") {
+				t.Fatalf("retry act = %+v", act)
+			}
+			p, _ = mustApply(t, p, Event{Kind: EventTurnCompleted, Turn: 10, Blocks: Blocks{Report: &Report{Summary: "reopened"}}})
+			if p.OpenGate != GateNone || !WantsPRProbe(p) {
+				t.Fatalf("after reopening: gate %q wants probe %v", p.OpenGate, WantsPRProbe(p))
+			}
+			green := onHead(probeFound(PRCheck{Name: "test", State: CheckPass}), "h2")
+			for range 2 {
+				p, _ = mustApply(t, p, Event{Kind: EventPRProbe, Probe: green})
+			}
+			if p.OpenGate != GateMerge || p.PR == nil || p.PR.Number != 12 || p.mergeGateHead() != "h2" {
+				t.Fatalf("G4 again: current %s gate %q pr %+v head %q", p.Current, p.OpenGate, p.PR, p.mergeGateHead())
+			}
+		})
+	}
+}
+
+func TestMergeGateHead(t *testing.T) {
+	if got := MergeGateHead(inMerge(t)); got != "h1" {
+		t.Fatalf("G4 head = %q", got)
+	}
+	if got := MergeGateHead(inPRReview(t)); got != "" {
+		t.Fatalf("no G4: head = %q", got)
+	}
+}

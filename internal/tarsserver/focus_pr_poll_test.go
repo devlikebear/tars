@@ -202,12 +202,8 @@ func TestFocusPRPollGreenOpensG4AndKeepsPolling(t *testing.T) {
 	// merge turn and the poll; MERGED ends the pipeline and discards the
 	// worktree.
 	h := newFocusPipelineHandler(store, nil, d, zerolog.Nop())
-	before := prober.count()
 	if rec := focusRequest(t, h, http.MethodPost, "/v1/focus/pipelines/"+id+"/gates/merge", `{"action":"approve"}`, true); rec.Code != http.StatusOK {
 		t.Fatalf("approve: %d %s", rec.Code, rec.Body.String())
-	}
-	if prober.count() <= before {
-		t.Fatal("approving G4 did not probe")
 	}
 	prober.set(always(foundPR(focuspipeline.PRStateMerged)))
 	waitFor(t, "the pipeline to finish", func() bool { return focuspipeline.Finished(pipelineOf(t, store, id)) })
@@ -242,8 +238,19 @@ func TestFocusPRPollMovedHeadClosesG4(t *testing.T) {
 }
 
 // #1087: approving G4 probes first; a moved head refuses with 409 and the
-// current pipeline, and no merge turn runs.
+// current pipeline, and no merge turn runs — also when the plan skipped
+// pr_review and the probe reopens G4 on the new head at once.
 func TestFocusG4ApproveRefusedWhenTheHeadMoved(t *testing.T) {
+	for _, skipped := range []bool{false, true} {
+		name := "pr_review planned"
+		if skipped {
+			name = "pr_review skipped"
+		}
+		t.Run(name, func(t *testing.T) { testG4ApproveOnAMovedHead(t, skipped) })
+	}
+}
+
+func testG4ApproveOnAMovedHead(t *testing.T, skipped bool) {
 	d, store, id, prober, _ := testPRDriver(t, always(foundPR(focuspipeline.PRStateOpen, focuspipeline.PRCheck{Name: "test", State: focuspipeline.CheckPass})))
 	var turns atomic.Int32
 	d.runTurn = func(context.Context, string, string) error { turns.Add(1); return nil }
@@ -254,6 +261,18 @@ func TestFocusG4ApproveRefusedWhenTheHeadMoved(t *testing.T) {
 	}()})
 	if p := pipelineOf(t, store, id); p.OpenGate != focuspipeline.GateMerge {
 		t.Fatalf("gate = %q", p.OpenGate)
+	}
+	if skipped {
+		if _, _, err := focusStoreFor(store).Update(id, func(p focuspipeline.Pipeline) (focuspipeline.Pipeline, error) {
+			for i := range p.Stages {
+				if p.Stages[i].ID == focuspipeline.StagePRReview {
+					p.Stages[i].Status = focuspipeline.StatusSkipped
+				}
+			}
+			return p, nil
+		}); err != nil {
+			t.Fatal(err)
+		}
 	}
 	moved := foundPR(focuspipeline.PRStateOpen, focuspipeline.PRCheck{Name: "test", State: focuspipeline.CheckPending})
 	moved.HeadOID = "h2"
@@ -270,8 +289,17 @@ func TestFocusG4ApproveRefusedWhenTheHeadMoved(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(resp.Error, "head moved") || resp.Pipeline.Current != focuspipeline.StagePRReview || resp.Pipeline.OpenGate != focuspipeline.GateNone {
+	wantCurrent, wantGate := focuspipeline.StagePRReview, focuspipeline.GateNone
+	if skipped {
+		// No pr_review to return to: G4 reopens on the new head's facts,
+		// for the developer to look at before approving again.
+		wantCurrent, wantGate = focuspipeline.StageMerge, focuspipeline.GateMerge
+	}
+	if !strings.Contains(resp.Error, "head moved") || resp.Pipeline.Current != wantCurrent || resp.Pipeline.OpenGate != wantGate {
 		t.Fatalf("resp = %s", rec.Body.String())
+	}
+	if skipped && focuspipeline.MergeGateHead(resp.Pipeline) != "h2" {
+		t.Fatalf("G4 head = %q", focuspipeline.MergeGateHead(resp.Pipeline))
 	}
 	if prober.numbers[len(prober.numbers)-1] != 7 {
 		t.Fatalf("approve probed %v, want the pinned PR", prober.numbers)

@@ -212,8 +212,10 @@ func (d *focusDriver) applyPRProbe(sessionID string, probe focuspipeline.PRProbe
 // refreshMergeGate probes the pipeline's pinned PR right before G4's
 // approval is applied (#1087): a push since the last poll closes G4, and
 // the approval is refused instead of merging on another head's facts. It
-// reports the pipeline after the probe and whether G4 closed because the
-// head moved. Without gh, a PR number, or an open G4 nothing is probed.
+// reports the pipeline after the probe and whether the head G4 shows
+// changed: G4 closed for pr_review, or — with pr_review skipped — reopened
+// on the new head, which the developer has not seen yet. Without gh, a PR
+// number, or an open G4 nothing is probed.
 func (d *focusDriver) refreshMergeGate(ctx context.Context, sessionID string) (focuspipeline.Pipeline, bool) {
 	if d == nil || d.probe == nil || d.sessions == nil {
 		return focuspipeline.Pipeline{}, false
@@ -231,8 +233,8 @@ func (d *focusDriver) refreshMergeGate(ctx context.Context, sessionID string) (f
 	if !ok {
 		return p, false
 	}
-	moved := prev.OpenGate == focuspipeline.GateMerge && updated.OpenGate != focuspipeline.GateMerge &&
-		updated.Current == focuspipeline.StagePRReview
+	head := focuspipeline.MergeGateHead(prev)
+	moved := head != "" && updated.Active() && focuspipeline.MergeGateHead(updated) != head
 	return updated, moved
 }
 

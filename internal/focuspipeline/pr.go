@@ -414,6 +414,12 @@ func (p *Pipeline) applyFoundPR(probe PRProbe, now time.Time) {
 		return
 	}
 	if probe.State == PRStateClosed {
+		if p.OpenGate == GateMerge {
+			// G4's PR is gone: G4 closes, and the stage it came from waits
+			// for the reopened PR, so G4 reopens only on its fresh facts.
+			supersedeOpenGate(p)
+			p.rewindFromMerge()
+		}
 		p.raiseBlocked(PRBlockedTitle, BlockedFact{
 			Reason: BlockedPRClosed, Iteration: p.currentIteration(), Limit: p.stageLimit(p.Current),
 			Prompt: fmt.Sprintf("Pull request #%d was closed without being merged. Reopen it with `gh pr reopen %d` (or open a new one with the approved title and body), push the branch, and report.", probe.Number, probe.Number),
@@ -443,8 +449,10 @@ func (p *Pipeline) applyFoundPR(probe PRProbe, now time.Time) {
 	}
 }
 
-// mergeGateHead is the head commit open G4 was opened on ("" when G4 is
+// MergeGateHead is the head commit open G4 was opened on ("" when G4 is
 // not open or its card names none).
+func MergeGateHead(p Pipeline) string { return p.mergeGateHead() }
+
 func (p Pipeline) mergeGateHead() string {
 	if p.OpenGate != GateMerge {
 		return ""
@@ -784,6 +792,22 @@ func afterPREvent(prev, next Pipeline, ev Event, act Action, now time.Time) (Pip
 	next.addCard(CardGate, 0, MergeGateTitle, next.mergeSummary(), now)
 	next.OpenGate = GateMerge
 	return next, noAction
+}
+
+// rewindFromMerge makes the stage before merge current again: pr_review,
+// or, when the plan skipped it, pr waiting for the PR to be found.
+func (p *Pipeline) rewindFromMerge() {
+	if p.backToPRReview() {
+		return
+	}
+	pr := p.stageRef(StagePR)
+	if pr == nil || pr.Status != StatusDone {
+		return
+	}
+	p.setStatus(StageMerge, StatusPending)
+	pr.Status = StatusActive
+	p.Current = StagePR
+	p.PRWait = PRWaitOpen
 }
 
 // backToPRReview reopens pr_review after a turn at the merge stage (G4's
