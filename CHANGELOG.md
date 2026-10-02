@@ -6,6 +6,10 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+### Fixed
+
+- **30초 넘게 정리되는 턴을 Stop하면 콘솔만 먼저 쉬던 문제** — #1091 이후 `POST /v1/chat/cancel`은 턴이 세션 claim을 놓을 때까지 기다렸다가 답하지만, 그 대기는 30초까지다. 콘솔은 cancel이 답하면 바로 자기 턴 스트림을 끊었으므로, 체크포인트·transcript를 쓰느라 그보다 오래 걸리는 턴은 서버에서는 아직 도는데 콘솔에서는 끝난 것처럼 보였고, 그때 대기열을 다시 시작하면 `409 turn_running`으로 거절됐다. 이제 서버가 취소를 받았으면 스트림을 끊지 않고 `cancelled`로 스스로 끝날 때까지 기다리며, 세션이 아직 없거나 취소가 받아들여지지 않았을 때만 직접 끊는다(`lib/chatTurnRecovery.ts`의 `stopTurn`).
+
 ## [0.43.1] - 2026-10-02
 
 ### Fixed

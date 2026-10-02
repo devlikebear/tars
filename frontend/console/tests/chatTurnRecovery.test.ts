@@ -105,6 +105,40 @@ test('a refused composer send is returned, not recovered as a dropped turn', () 
   assert.doesNotMatch(send, /failure === 'refused' && queuedPayload/, 'every refused send is handled, not only queued ones')
 })
 
+test('Stop leaves the stream to the server once it took the cancel', async () => {
+  // The cancel's answer can come before the turn has wound down and freed
+  // the session (its wait is bounded). Aborting then ended the turn in the
+  // console early: a queued message resumed at once was refused (409).
+  const { stopTurn } = await import('../src/lib/chatTurnRecovery.ts')
+  const calls: string[] = []
+  await stopTurn({
+    sessionId: 's1',
+    cancel: async (id) => { calls.push(`cancel ${id}`); return true },
+    abort: () => { calls.push('abort') },
+  })
+  assert.deepEqual(calls, ['cancel s1'])
+})
+
+test('Stop aborts the stream itself when the server took no cancel', async () => {
+  const { stopTurn } = await import('../src/lib/chatTurnRecovery.ts')
+  const calls: string[] = []
+  const abort = () => { calls.push('abort') }
+  // Refused or unreachable: nothing on the server will end the stream.
+  await stopTurn({ sessionId: 's1', cancel: async () => { calls.push('cancel'); return false }, abort })
+  assert.deepEqual(calls, ['cancel', 'abort'])
+  // No session yet: there is nothing to cancel on the server.
+  calls.length = 0
+  await stopTurn({ sessionId: '', cancel: async () => { calls.push('cancel'); return true }, abort })
+  assert.deepEqual(calls, ['abort'])
+})
+
+test('ChatPanel stops a turn through stopTurn', () => {
+  const src = readFileSync(new URL('../src/components/ChatPanel.svelte', import.meta.url), 'utf8')
+  const handler = src.slice(src.indexOf('async function handleCancel'), src.indexOf('// -- File attachments --'))
+  assert.match(handler, /stopTurn\(/)
+  assert.doesNotMatch(handler, /cancelChat\(/, 'the cancel goes through stopTurn, which decides on the abort')
+})
+
 test('recovery reports whether the history came back and the turn was found running', async () => {
   let r = recorder({ attached: true, ended: false })
   assert.deepEqual(await recoverDroppedTurn(r.deps), { reloaded: true, attached: true })
