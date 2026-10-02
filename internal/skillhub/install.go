@@ -424,7 +424,7 @@ func (inst *Installer) resolveSkillUpdate(ctx context.Context, sources *SourceRe
 		return nil, nil, &UpdateDiagnostic{Name: skill.Name, Err: err}
 	}
 	if sourceID == DefaultSourceID && entry.Version == skill.Version {
-		return nil, nil, &UpdateDiagnostic{Name: skill.Name, Reason: "up to date"}
+		return nil, nil, &UpdateDiagnostic{Name: skill.Name, Reason: reasonUpToDate}
 	}
 	return src, entry, nil
 }
@@ -618,7 +618,7 @@ func (inst *Installer) UpdatePlugins(ctx context.Context) (UpdateResult, error) 
 			continue
 		}
 		if entry.Version == plugin.Version {
-			result.Skipped = append(result.Skipped, UpdateDiagnostic{Name: plugin.Name, Reason: "up to date"})
+			result.Skipped = append(result.Skipped, UpdateDiagnostic{Name: plugin.Name, Reason: reasonUpToDate})
 			continue
 		}
 		files, err := inst.downloadPluginFiles(ctx, entry)
@@ -941,7 +941,7 @@ func (inst *Installer) UpdateMCPs(ctx context.Context) (UpdateResult, error) {
 			continue
 		}
 		if entry.Version == installed.Version {
-			result.Skipped = append(result.Skipped, UpdateDiagnostic{Name: installed.Name, Reason: "up to date"})
+			result.Skipped = append(result.Skipped, UpdateDiagnostic{Name: installed.Name, Reason: reasonUpToDate})
 			continue
 		}
 		nextInstalled, _, err := inst.installMCPEntry(ctx, entry)
