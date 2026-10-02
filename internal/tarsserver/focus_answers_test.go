@@ -224,3 +224,24 @@ func TestFocusAnswerBehindABlockedGateIsHeld(t *testing.T) {
 		t.Fatalf("an answer ran behind the blocked gate: %q", prompts)
 	}
 }
+
+// R2: the turn mark records a question gate open when guidance is built; a
+// question turn that finishes after G3 was approved keeps the owed open
+// turn and raises no format notice.
+func TestFocusQuestionTurnOutlivesItsGate(t *testing.T) {
+	_, _, store, id := testFocusDriver(t, asking, &fakeVerifier{result: passAll})
+	prStageSession(t, store, id)
+	applyFocus(t, store, id, focuspipeline.Event{Kind: focuspipeline.EventTurnCompleted, Turn: 3, Blocks: focuspipeline.Blocks{PR: &focuspipeline.PRDraft{Title: "feat: x", Body: "b"}}})
+	_, mark := appendFocusGuidance("why this title?", store, id, zerolog.Nop())
+	if mark == nil || mark.Gate != focuspipeline.GatePR {
+		t.Fatalf("mark = %+v", mark)
+	}
+	approved := applyFocus(t, store, id, focuspipeline.Event{Kind: focuspipeline.EventGate, Gate: focuspipeline.GatePR, Action: focuspipeline.GateApprove})
+	if approved.PendingTurn == "" {
+		t.Fatal("approving G3 owes the open turn")
+	}
+	p, act, ok := focusAfterTurn(store, id, store.TranscriptPath(id), "Because it says what changed.", mark, time.Now(), zerolog.Nop())
+	if !ok || act.Kind != focuspipeline.ActionNone || p.PendingTurn != approved.PendingTurn || len(p.Cards) != len(approved.Cards) {
+		t.Fatalf("ok %v act %+v pending %q cards %d→%d", ok, act, p.PendingTurn, len(approved.Cards), len(p.Cards))
+	}
+}

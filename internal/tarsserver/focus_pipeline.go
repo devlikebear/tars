@@ -59,6 +59,9 @@ func focusStoreFor(sessions *session.Store) *focuspipeline.Store {
 type focusTurnMark struct {
 	Stage     focuspipeline.StageID
 	Iteration int
+	// Gate is the gate open when the guidance was built: a turn started at
+	// a question gate completes as a question even after the gate closes.
+	Gate string
 }
 
 // errFocusStaleTurn aborts an update for a turn whose stage has moved on.
@@ -89,7 +92,7 @@ func appendFocusGuidance(message string, sessions *session.Store, sessionID stri
 		return message, nil
 	}
 	stage, _ := p.Stage(p.Current)
-	mark := &focusTurnMark{Stage: stage.ID, Iteration: stage.Iteration}
+	mark := &focusTurnMark{Stage: stage.ID, Iteration: stage.Iteration, Gate: p.OpenGate}
 	return strings.TrimRight(message, "\n") + "\n\n" + focusStageOpen + "\n" + guidance + "\n" + focusStageClose, mark
 }
 
@@ -111,9 +114,10 @@ func focusAfterTurn(sessions *session.Store, sessionID, transcriptPath, reply st
 			return p, errFocusStaleTurn
 		}
 		updated, act, err := focuspipeline.Apply(p, focuspipeline.Event{
-			Kind:   focuspipeline.EventTurnCompleted,
-			Turn:   turn,
-			Blocks: blocks,
+			Kind:         focuspipeline.EventTurnCompleted,
+			Turn:         turn,
+			Blocks:       blocks,
+			QuestionGate: mark.Gate,
 		}, now)
 		next = act
 		return updated, err
@@ -435,7 +439,12 @@ func (a *focusAPI) gate(w http.ResponseWriter, r *http.Request) {
 	}
 	action := strings.TrimSpace(req.Action)
 	if gate == focuspipeline.GateMerge && action == focuspipeline.GateApprove {
-		if p, moved := a.driver.refreshMergeGate(r.Context(), id); moved {
+		p, moved := a.driver.refreshMergeGate(r.Context(), id)
+		if r.Context().Err() != nil {
+			// The head was not checked: never approve unchecked.
+			return
+		}
+		if moved {
 			writeJSON(w, http.StatusConflict, map[string]any{"error": focuspipeline.ErrHeadMoved.Error(), "pipeline": p})
 			return
 		}

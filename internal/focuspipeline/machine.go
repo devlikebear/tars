@@ -78,6 +78,10 @@ type Event struct {
 	// the turn a verification ran after (EventVerification).
 	Turn   int
 	Blocks Blocks
+	// QuestionGate is the question gate that was open when the completed
+	// turn started (EventTurnCompleted): a turn begun as the developer's
+	// question stays one even if the gate was decided while it ran.
+	QuestionGate string
 	// Stage is the stage to pass (EventAdvance); it must be Current, so a
 	// stale tab cannot pass the stage after it.
 	Stage StageID
@@ -151,6 +155,9 @@ func applyEvent(p Pipeline, ev Event, now time.Time) (Pipeline, Action, error) {
 		}
 		next := p.clone()
 		next.UpdatedAt = now.UTC()
+		// Passing the stage by hand drops a turn it still owed (one cut
+		// off by a cancel): the next stage's own turn or gate replaces it.
+		next.PendingTurn = ""
 		stage := next.advance()
 		return next, Action{Kind: ActionSendTurn, Prompt: approvedPrompt(GateNone, stage)}, nil
 	case EventVerification:
@@ -179,6 +186,9 @@ func applyEvent(p Pipeline, ev Event, now time.Time) (Pipeline, Action, error) {
 func applyTurn(p Pipeline, ev Event, now time.Time) (Pipeline, Action) {
 	if !p.Active() {
 		return p, noAction
+	}
+	if questionGates[ev.QuestionGate] && p.OpenGate != ev.QuestionGate {
+		return lateQuestionTurn(p, ev, now)
 	}
 	if p.Current == StageReview && p.OpenGate == GateTriage {
 		return triageTurn(p, now)
@@ -236,6 +246,21 @@ func applyTurn(p Pipeline, ev Event, now time.Time) (Pipeline, Action) {
 	}
 	p.UpdatedAt = now
 	return p, act
+}
+
+// lateQuestionTurn completes a turn that started as the developer's question
+// at a gate decided while it ran: it is still a question, not the stage's
+// work — the turn the gate's decision owes stays owed, no block is
+// required, and only its report (and the decisions it asks) is recorded.
+func lateQuestionTurn(p Pipeline, ev Event, now time.Time) (Pipeline, Action) {
+	if r := ev.Blocks.Report; r != nil {
+		p.addCard(CardReport, ev.Turn, reportTitle(*r), *r, now)
+		for _, d := range r.Decisions {
+			p.addCard(CardDecision, ev.Turn, d.Question, d, now)
+		}
+	}
+	p.UpdatedAt = now
+	return p, noAction
 }
 
 // questionGates are the gates during which a turn is the developer's

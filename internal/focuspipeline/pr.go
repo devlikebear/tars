@@ -782,7 +782,9 @@ func afterPREvent(prev, next Pipeline, ev Event, act Action, now time.Time) (Pip
 		return next, act
 	}
 	entered := prev.Current != StageMerge
-	answered := ev.Kind == EventTurnCompleted && act.Kind == ActionNone
+	// A turn that leaves another owed (a late question while G4's request
+	// for changes is still to run) did not answer G4.
+	answered := ev.Kind == EventTurnCompleted && act.Kind == ActionNone && next.PendingTurn == ""
 	if !entered && !answered {
 		return next, act
 	}
@@ -791,6 +793,8 @@ func afterPREvent(prev, next Pipeline, ev Event, act Action, now time.Time) (Pip
 	}
 	next.addCard(CardGate, 0, MergeGateTitle, next.mergeSummary(), now)
 	next.OpenGate = GateMerge
+	// G4 needs no model turn: nothing is owed, so its probes count.
+	next.PendingTurn = ""
 	return next, noAction
 }
 

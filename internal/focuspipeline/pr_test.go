@@ -1025,3 +1025,78 @@ func TestMergeGateHead(t *testing.T) {
 		t.Fatalf("no G4: head = %q", got)
 	}
 }
+
+// R1: a turn left owed (a cancelled fix turn) must not survive a manual
+// advance into merge: G4 opens with nothing owed, so its probes count.
+func TestAdvanceIntoMergeClearsALeftoverOwedTurn(t *testing.T) {
+	p := inPRReview(t, PRCheck{Name: "test", State: CheckPending})
+	p.PendingTurn = "Fix these findings (cancelled)"
+	p, act := mustApply(t, p, Event{Kind: EventAdvance, Stage: StagePRReview})
+	if p.Current != StageMerge || p.OpenGate != GateMerge || p.PendingTurn != "" || act.Kind != ActionNone {
+		t.Fatalf("current %s gate %q pending %q act %+v", p.Current, p.OpenGate, p.PendingTurn, act)
+	}
+	if !WantsPRProbe(p) {
+		t.Fatal("G4 must be probed")
+	}
+	p, _ = mustApply(t, p, Event{Kind: EventPRProbe, Probe: onHead(probeFound(PRCheck{Name: "test", State: CheckPending}), "h2")})
+	if p.Current != StagePRReview || p.OpenGate != GateNone {
+		t.Fatalf("moved head was dropped: current %s gate %q", p.Current, p.OpenGate)
+	}
+}
+
+// R2: a question turn started while a gate was open but finishing after
+// the gate was decided is still the developer's question: it keeps the
+// turn the gate's decision owes and requires no block.
+func TestQuestionTurnFinishingAfterItsGateClosed(t *testing.T) {
+	tests := []struct {
+		name string
+		gate string
+		p    func(t *testing.T) Pipeline
+	}{
+		{"G4 approved", GateMerge, func(t *testing.T) Pipeline {
+			p, _ := mustApply(t, inMerge(t), Event{Kind: EventGate, Gate: GateMerge, Action: GateApprove})
+			return p
+		}},
+		{"G4 changes requested", GateMerge, func(t *testing.T) Pipeline {
+			// The late question must not count as the change turn: no
+			// rewind to pr_review before the requested change ran.
+			p, _ := mustApply(t, inMerge(t), Event{Kind: EventGate, Gate: GateMerge, Action: GateRequestChanges, Note: "rebase"})
+			return p
+		}},
+		{"G3 approved", GatePR, func(t *testing.T) Pipeline {
+			p, _ := mustApply(t, drafted(t), Event{Kind: EventGate, Gate: GatePR, Action: GateApprove})
+			return p
+		}},
+		{"triage closed", GateTriage, func(t *testing.T) Pipeline {
+			p, _ := reviewTurn(t, inReview(t), twoFindings())
+			for _, c := range findingCards(p) {
+				p, _ = decide(t, p, c.ID, FindingFix)
+			}
+			return p
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := tt.p(t)
+			if p.OpenGate != GateNone || p.PendingTurn == "" {
+				t.Fatalf("setup: gate %q pending %q", p.OpenGate, p.PendingTurn)
+			}
+			for _, blocks := range []Blocks{{}, {Report: &Report{Summary: "answered"}}} {
+				got, act := mustApply(t, p, Event{Kind: EventTurnCompleted, Turn: 30, Blocks: blocks, QuestionGate: tt.gate})
+				if act.Kind != ActionNone || got.PendingTurn != p.PendingTurn || got.PRWait != p.PRWait ||
+					got.Current != p.Current || got.OpenGate != GateNone || got.AwaitingVerification || got.Review.Fixing != p.Review.Fixing {
+					t.Fatalf("blocks %+v: act %+v pending %q wait %q current %s gate %q", blocks, act, got.PendingTurn, got.PRWait, got.Current, got.OpenGate)
+				}
+				if got.hasNotice(NoticeFormatMissing) {
+					t.Fatal("a question turn raised a format notice")
+				}
+			}
+		})
+	}
+	// Still open when it finishes: the usual question-gate turn.
+	p := inMerge(t)
+	got, act := mustApply(t, p, Event{Kind: EventTurnCompleted, Turn: 30, QuestionGate: GateMerge})
+	if act.Kind != ActionNone || got.OpenGate != GateMerge {
+		t.Fatalf("open G4: act %+v gate %q", act, got.OpenGate)
+	}
+}

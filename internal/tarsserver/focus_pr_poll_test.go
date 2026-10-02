@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -540,5 +541,32 @@ func TestFocusAdvanceRefusedWhileATurnRunsEvenUnreadable(t *testing.T) {
 	}
 	if pipelineOf(t, store, id).Current != focuspipeline.StagePR {
 		t.Fatal("passed under a running turn")
+	}
+}
+
+// R3: the approve-time probe must not fail open: a request whose context
+// ended during the probe applies nothing.
+func TestFocusG4ApproveAbortsOnACancelledRequest(t *testing.T) {
+	green := foundPR(focuspipeline.PRStateOpen, focuspipeline.PRCheck{Name: "test", State: focuspipeline.CheckPass})
+	d, store, id, prober, _ := testPRDriver(t, always(green))
+	var turns atomic.Int32
+	d.runTurn = func(context.Context, string, string) error { turns.Add(1); return nil }
+	applyFocus(t, store, id, focuspipeline.Event{Kind: focuspipeline.EventPRProbe, Probe: &green})
+	if p := pipelineOf(t, store, id); p.OpenGate != focuspipeline.GateMerge {
+		t.Fatalf("gate = %q", p.OpenGate)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	prober.set(func(int) focuspipeline.PRProbe {
+		cancel() // the client went away while gh ran
+		return focuspipeline.PRProbe{Status: focuspipeline.ProbeUnavailable, Error: "context canceled"}
+	})
+	h := newFocusPipelineHandler(store, nil, d, zerolog.Nop())
+	req := httptest.NewRequest(http.MethodPost, "/v1/focus/pipelines/"+id+"/gates/merge", strings.NewReader(`{"action":"approve"}`)).WithContext(ctx)
+	req.Header.Set("Tars-Debug-Auth-Role", "admin")
+	h.ServeHTTP(httptest.NewRecorder(), req)
+	waitDriverIdle(t, d, id)
+	p := pipelineOf(t, store, id)
+	if p.OpenGate != focuspipeline.GateMerge || p.PRWait != "" || p.PendingTurn != "" || turns.Load() != 0 {
+		t.Fatalf("gate %q wait %q pending %q turns %d", p.OpenGate, p.PRWait, p.PendingTurn, turns.Load())
 	}
 }
