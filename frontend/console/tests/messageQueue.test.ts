@@ -67,3 +67,32 @@ test('rekey moves a new chat queue to the session ID', () => {
   q.rekey('', 's9')
   assert.equal(q.items('s9').length, 2)
 })
+
+test('a refused send goes back first in line and pauses the queue', () => {
+  const q = new MessageQueueStore<string, string>()
+  q.enqueue('s', 'first', ['a.txt'], ['@x'])
+  q.enqueue('s', 'second')
+  const sent = q.take('s')!
+  q.enqueue('s', 'third')
+  q.putBack('s', sent)
+  assert.deepEqual(q.items('s').map((m) => m.text), ['first', 'second', 'third'])
+  assert.deepEqual([q.items('s')[0].id, q.items('s')[0].files, q.items('s')[0].mentions], [sent.id, ['a.txt'], ['@x']], 'it goes back exactly as queued')
+  assert.equal(q.paused('s'), true, 'nothing else goes out until the user resumes')
+  assert.equal(q.take('s'), null)
+  q.putBack('s', sent)
+  assert.equal(q.items('s').length, 3, 'putting back a message already there does not copy it')
+  q.resume('s')
+  assert.equal(q.take('s')?.text, 'first')
+})
+
+test('a refused last message brings its queue back, paused', () => {
+  const q = new MessageQueueStore()
+  q.enqueue('s', 'only')
+  const sent = q.take('s')!
+  assert.equal('s' in q.queues, false)
+  q.putBack('s', sent)
+  assert.deepEqual(q.items('s').map((m) => m.text), ['only'])
+  assert.equal(q.paused('s'), true)
+  q.putBack('', sent)
+  assert.equal('' in q.queues, false)
+})

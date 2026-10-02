@@ -8,7 +8,7 @@
   import { toolBaseDirs } from '../lib/cliToolLabels'
   import { changes } from '../lib/stores/changesStore'
   import { turnCardAnchors } from '../lib/changes'
-  import { dropVerificationPlaceholder, recoverDroppedTurn, streamDropped, type ReattachOutcome } from '../lib/chatTurnRecovery'
+  import { dropVerificationPlaceholder, recoverDroppedTurn, sendFailure, type ReattachOutcome } from '../lib/chatTurnRecovery'
   import type { DraftNote } from '../lib/stores/changes.svelte'
   import { extractArtifact, extractArtifactsFromHistory, mergeArtifact, type Artifact } from '../lib/artifacts'
   import { buildTierRecommendation, pinnedTierPayload, tierRecommendationPayload, type TierRecommendation } from '../lib/tierRecommendation'
@@ -40,7 +40,7 @@
   import { transcriptChatMessages } from '../lib/transcriptMessages'
   import TurnChangesCard from './TurnChangesCard.svelte'
   import SlashPopover from './SlashPopover.svelte'
-  import { messageQueue } from '../lib/stores/messageQueue.svelte'
+  import { messageQueue, type QueuedMessage } from '../lib/stores/messageQueue.svelte'
 
   interface Props {
     sessionId?: string
@@ -899,7 +899,7 @@
     allowPrompt?: boolean
     // A queued message to send in place of the composer, which is then
     // left as the user has it (#971).
-    queued?: { text: string; files: File[]; mentions: SelectedChatMention[] }
+    queued?: QueuedMessage<File, SelectedChatMention>
   }
 
   function isFirstUserTurn(): boolean {
@@ -1055,8 +1055,21 @@
         ac.signal,
       )
     } catch (err) {
-      if (!streamDropped(err)) {
+      const failure = sendFailure(err)
+      if (failure === 'stopped') {
         // User cancelled — no error to show
+      } else if (failure === 'refused' && queuedPayload) {
+        // No turn started, so there is nothing to recover: the transcript
+        // reload would wipe the message. It goes back first in the queue,
+        // which pauses, and the error says why.
+        failed = true
+        messageQueue.putBack(queueKey, queuedPayload)
+        const reason = err instanceof Error ? err.message : $t.chatThread.errors.sendFailed
+        chatError = $t.messageQueue.refused(reason)
+        chatMessages = [
+          ...chatMessages.filter((msg) => msg.id !== userId && msg.id !== assistantRef.id),
+          { id: `error-${Date.now()}`, role: 'error', text: chatError },
+        ]
       } else {
         failed = true
         dropped = true
@@ -1113,7 +1126,7 @@
       if (!next) return
       await submitChat({
         allowPrompt: false,
-        queued: { text: next.text, files: next.files as File[], mentions: next.mentions as SelectedChatMention[] },
+        queued: next as QueuedMessage<File, SelectedChatMention>,
       })
     }
   }

@@ -91,6 +91,16 @@ export class MessageQueueStore<F = unknown, M = unknown> {
     return next
   }
 
+  // putBack returns a taken message whose send the server refused before
+  // its turn started (409 while the session's claim is still held). It goes
+  // first in line and the queue pauses, so it is neither lost nor retried
+  // until the user resumes.
+  putBack(sessionId: string, item: QueuedMessage<F, M>): void {
+    if (!sessionId) return
+    const queue = this.get(sessionId)
+    this.put(sessionId, { items: [item, ...queue.items.filter((q) => q.id !== item.id)], paused: true })
+  }
+
   pause(sessionId: string): void {
     const queue = this.get(sessionId)
     if (queue.items.length) this.put(sessionId, { ...queue, paused: true })

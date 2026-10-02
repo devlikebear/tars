@@ -118,3 +118,37 @@ test('Stop pauses the queue until it is resumed', async ({ page }) => {
   await expect(assistant(page).filter({ hasText: 'Echo: after the stop' })).toHaveCount(1)
   await expect(queue(page)).toHaveCount(0)
 })
+
+test('a queued message the server refuses goes back in the queue, paused', async ({ page }) => {
+  await holdTurn(page)
+  await composer(page).fill('after the refusal')
+  await composer(page).press('Enter')
+  await composer(page).fill('behind it')
+  await composer(page).press('Enter')
+
+  // The session's claim can outlive a turn for a moment (a cancel winding
+  // down, a focus-driver turn): the server answers 409 and starts nothing.
+  let refused = 0
+  await page.route((url) => url.pathname === '/v1/chat', async (route) => {
+    if (route.request().method() === 'POST' && refused === 0 && /"message":"after the refusal"/.test(route.request().postData() ?? '')) {
+      refused++
+      await route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ error: 'a turn is already running on this session', code: 'turn_running' }) })
+      return
+    }
+    await route.fallback()
+  })
+
+  await pendingApproval(page).getByRole('button', { name: 'Allow write_file for this session' }).click()
+  await expect(assistant(page).filter({ hasText: 'Wrote 3 files.' })).toHaveCount(1)
+  await expect(page.locator('.chat-log .chat-error').filter({ hasText: 'Not sent: a turn is already running on this session' })).toHaveCount(1)
+  await expect(queue(page)).toContainText('Paused')
+  await expect(queue(page)).toContainText('2 queued messages')
+  await expect(queue(page).locator('.queue-item').first()).toContainText('after the refusal')
+  await expect(page.locator('.chat-log .chat-user').filter({ hasText: 'after the refusal' })).toHaveCount(0)
+  expect(refused).toBe(1)
+
+  await queue(page).getByRole('button', { name: 'Resume' }).click()
+  await expect(assistant(page).filter({ hasText: 'Echo: after the refusal' })).toHaveCount(1)
+  await expect(assistant(page).filter({ hasText: 'Echo: behind it' })).toHaveCount(1)
+  await expect(queue(page)).toHaveCount(0)
+})
