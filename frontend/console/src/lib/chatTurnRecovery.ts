@@ -52,12 +52,21 @@ export type DroppedTurnDeps = {
   settle: () => Promise<void>
 }
 
+export type DroppedTurnRecovery = {
+  // The thread was rebuilt from the transcript.
+  reloaded: boolean
+  // A turn was still running and the panel follows it again.
+  attached: boolean
+}
+
 // recoverDroppedTurn follows a turn whose stream broke. The turn is settled
 // exactly once: by its own end event if the panel sees one, here otherwise
 // (it ended during the gap, or the stream broke again).
-export async function recoverDroppedTurn(deps: DroppedTurnDeps): Promise<void> {
+export async function recoverDroppedTurn(deps: DroppedTurnDeps): Promise<DroppedTurnRecovery> {
+  let reloaded = false
   try {
     await deps.reloadHistory()
+    reloaded = true
   } catch {
     // The reattach and the settle below still bring the rest back.
   }
@@ -68,6 +77,19 @@ export async function recoverDroppedTurn(deps: DroppedTurnDeps): Promise<void> {
     // Still unreachable: settle with whatever the server can tell us.
   }
   if (!outcome.ended) await deps.settle()
+  return { reloaded, attached: outcome.attached }
+}
+
+// droppedSendDelivery tells, after recovery, whether a send whose stream
+// broke reached the server. Its turn running, or its message being the last
+// one the transcript has from the user (the server appends review notes and
+// console context after it), means it did. A transcript without it means
+// it never arrived: the reload has wiped its bubble, so the message and
+// what was taken for it must be given back. Unreachable: unknown.
+export function droppedSendDelivery(recovery: DroppedTurnRecovery, lastUserText: string | undefined, message: string): 'delivered' | 'lost' | 'unknown' {
+  if (recovery.attached) return 'delivered'
+  if (!recovery.reloaded) return 'unknown'
+  return lastUserText?.includes(message) ? 'delivered' : 'lost'
 }
 
 // dropVerificationPlaceholder: a focus pipeline's verification feed (P2)

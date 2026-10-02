@@ -219,3 +219,56 @@ test('review a turn: revert a hunk, comment on another, and send them back', asy
   await expect(sent).toContainText('Please rework')
   await expect(sent.locator('.review-notes-fold summary')).toHaveText('Review notes (2)')
 })
+
+// Review notes are only in the console until they are sent: they must
+// outlive a look at another session, and a send that never reached the
+// server.
+test('review notes survive a session switch and a send that never arrived', async ({ page }) => {
+  const dir = seedProject()
+  await newSessionIn(page, dir)
+  const url = page.url()
+  await composer(page).fill('Edit the files [e2e:write3]')
+  await composer(page).press('Enter')
+  await pendingApproval(page).getByRole('button', { name: 'Allow write_file for this session' }).click()
+  await expect(page.locator('.chat-msg.chat-assistant').last()).toContainText('Wrote 3 files.')
+  await turnSettled(page)
+
+  await card(page).getByRole('button', { name: 'Open in Changes' }).click()
+  const panel = changesPanel(page)
+  await panel.locator('.file-row', { hasText: 'base.txt' }).click()
+  await panel.getByRole('button', { name: 'Comment', exact: true }).first().click()
+  await panel.locator('.note-form textarea').fill('Say line two louder')
+  await panel.getByRole('button', { name: 'Add note' }).click()
+  const chips = page.locator('.chat-main .review-note-chip')
+  await expect(chips).toHaveCount(1)
+
+  // Another session has notes of its own; coming back brings these back.
+  await page.locator('.dock-left .new-chat-btn').click()
+  await expect(page).not.toHaveURL(url)
+  await expect(chips).toHaveCount(0)
+  await page.goBack()
+  await expect(page).toHaveURL(url)
+  await expect(chips).toHaveCount(1)
+
+  // The connection fails before the server takes the message: the message
+  // and its note come back instead of vanishing with the reload.
+  let failedOnce = false
+  await page.route((u) => u.pathname === '/v1/chat', async (route) => {
+    if (route.request().method() === 'POST' && !failedOnce) {
+      failedOnce = true
+      await route.abort('failed')
+      return
+    }
+    await route.fallback()
+  })
+  await composer(page).fill('Please rework')
+  await composer(page).press('Enter')
+  await expect(page.locator('.chat-log .chat-error').filter({ hasText: 'Your message is back in the composer' })).toHaveCount(1)
+  await expect(composer(page)).toHaveValue('Please rework')
+  await expect(chips).toHaveCount(1)
+  await expect(chips.first()).toContainText('Say line two louder')
+
+  await composer(page).press('Enter')
+  await expect(page.locator('.chat-msg.chat-assistant').last()).toContainText('Rework: Say line two louder')
+  await expect(chips).toHaveCount(0)
+})
