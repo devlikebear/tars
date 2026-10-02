@@ -192,8 +192,7 @@ func (d *focusDriver) sessionDir(sessionID string) string {
 	return strings.TrimSpace(sess.CurrentDir)
 }
 
-func (d *focusDriver) applyPRProbe(sessionID string, probe focuspipeline.PRProbe, log zerolog.Logger) {
-	var prev focuspipeline.Pipeline
+func (d *focusDriver) applyPRProbe(sessionID string, probe focuspipeline.PRProbe, log zerolog.Logger) (prev, updated focuspipeline.Pipeline, ok bool) {
 	updated, _, err := focusStoreFor(d.sessions).Update(sessionID, func(p focuspipeline.Pipeline) (focuspipeline.Pipeline, error) {
 		prev = p
 		next, _, err := focuspipeline.Apply(p, focuspipeline.Event{Kind: focuspipeline.EventPRProbe, Probe: &probe}, d.now())
@@ -201,12 +200,42 @@ func (d *focusDriver) applyPRProbe(sessionID string, probe focuspipeline.PRProbe
 	})
 	if err != nil {
 		log.Warn().Err(err).Msg("focus: apply PR probe")
-		return
+		return prev, updated, false
 	}
 	// Outside the store's lock: announcing and finishing the worktree reach
 	// the session store.
 	d.announce(sessionID, prev, updated)
 	d.pipelineFinished(sessionID, prev, updated)
+	return prev, updated, true
+}
+
+// refreshMergeGate probes the pipeline's pinned PR right before G4's
+// approval is applied (#1087): a push since the last poll closes G4, and
+// the approval is refused instead of merging on another head's facts. It
+// reports the pipeline after the probe and whether the head G4 shows
+// changed: G4 closed for pr_review, or — with pr_review skipped — reopened
+// on the new head, which the developer has not seen yet. Without gh, a PR
+// number, or an open G4 nothing is probed.
+func (d *focusDriver) refreshMergeGate(ctx context.Context, sessionID string) (focuspipeline.Pipeline, bool) {
+	if d == nil || d.probe == nil || d.sessions == nil {
+		return focuspipeline.Pipeline{}, false
+	}
+	p, found, err := focusStoreFor(d.sessions).Get(sessionID)
+	if err != nil || !found || p.OpenGate != focuspipeline.GateMerge || p.PR == nil || p.PR.Number <= 0 {
+		return p, false
+	}
+	probe := d.probe(ctx, d.sessionDir(sessionID), p.PR.Number)
+	if ctx.Err() != nil {
+		return p, false
+	}
+	log := d.logger.With().Str("session_id", sessionID).Logger()
+	prev, updated, ok := d.applyPRProbe(sessionID, probe, log)
+	if !ok {
+		return p, false
+	}
+	head := focuspipeline.MergeGateHead(prev)
+	moved := head != "" && updated.Active() && focuspipeline.MergeGateHead(updated) != head
+	return updated, moved
 }
 
 // pipelineFinished ends the session worktree of a pipeline that just

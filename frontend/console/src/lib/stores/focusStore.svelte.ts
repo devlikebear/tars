@@ -24,7 +24,7 @@
 // Q&A (ADR §8): questions about a card go to the pipeline's hidden Q&A
 // session; answers stream on that session's feed and thread by card from
 // its history and the pipeline's qa_turns.
-import { changeCards, deckFor, progressLine, qaThreads, turnIndex, turnStage, type ChangeTurn, type QAEntry } from '../focus.ts'
+import { changeCards, deckFor, openGateCardId, progressLine, qaThreads, turnIndex, turnStage, type ChangeTurn, type QAEntry } from '../focus.ts'
 import type { FocusTranslations } from '../../i18n/sections/focus.ts'
 import type {
   ChatEvent,
@@ -51,7 +51,7 @@ export type FocusStoreApi = {
   getCheckpointDiff(sessionId: string, turnId: string, options?: { scope?: 'turn' }): Promise<CheckpointDiff>
   streamChat(request: ChatRequest, onEvent: (event: ChatEvent) => void, signal?: AbortSignal): Promise<void>
   attachChatStream(sessionId: string, onEvent: (event: ChatEvent) => void, signal?: AbortSignal): Promise<boolean>
-  gate(sessionId: string, gate: string, action: FocusGateAction, options: { note?: string; edits?: FocusPlan; pr?: FocusPRDraft }): Promise<FocusActionResult>
+  gate(sessionId: string, gate: string, action: FocusGateAction, options: { note?: string; edits?: FocusPlan; pr?: FocusPRDraft; card_id?: string }): Promise<FocusActionResult>
   card(sessionId: string, cardId: string, state: FocusCardState, decision?: string): Promise<FocusActionResult>
   advance(sessionId: string, stage: FocusStageId): Promise<FocusActionResult>
   stop(sessionId: string): Promise<FocusActionResult>
@@ -618,7 +618,11 @@ export class FocusStore {
   async gate(gate: string, action: FocusGateAction, note?: string, edits?: FocusPlan, pr?: FocusPRDraft): Promise<boolean> {
     const sessionId = this.sessionId
     if (!sessionId) return false
-    const options = pr ? { note, edits, pr } : { note, edits }
+    const options: { note?: string; edits?: FocusPlan; pr?: FocusPRDraft; card_id?: string } = pr ? { note, edits, pr } : { note, edits }
+    // G4 shows one PR head's facts: name the card on screen so a G4 the
+    // server reopened on a new head meanwhile is not approved (#1087).
+    const shown = gate === 'merge' && this.pipeline ? openGateCardId(this.pipeline) : undefined
+    if (shown) options.card_id = shown
     const ok = await this.act(() => this.api.gate(sessionId, gate, action, options))
     if (ok) this.viewStage = null
     await this.flush()

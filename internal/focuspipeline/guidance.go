@@ -58,6 +58,23 @@ func stageInstruction(p Pipeline) string {
 	return stageInstructions[p.Current]
 }
 
+// QuestionGuidance is the guidance of a turn that is the developer's
+// question at gate: the gate's guidance even when the gate was decided
+// before the turn started, so a question asked at G3 or G4 is never told
+// to carry out the write step the approval started. With no question gate
+// it is the stage's Guidance.
+func QuestionGuidance(p Pipeline, gate string) string {
+	if !questionGates[gate] || p.OpenGate == gate {
+		return Guidance(p)
+	}
+	q := p.clone()
+	q.OpenGate = gate
+	if gate == GatePR || gate == GateMerge {
+		q.PRWait = ""
+	}
+	return Guidance(q)
+}
+
 // Guidance is the hidden instruction appended to a focus turn's user
 // message: the current stage, its instructions, the plan's done criteria and
 // verification commands, and the exact block the reply must end with. It is

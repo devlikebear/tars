@@ -549,7 +549,7 @@ func TestWantsPRProbe(t *testing.T) {
 		{"pr gate open", drafted, false},
 		{"pr awaited", opening, true},
 		{"pr_review", func(t *testing.T) Pipeline { return inPRReview(t) }, true},
-		{"merge gate open", inMerge, false},
+		{"merge gate open", inMerge, true},
 		{"build", func(t *testing.T) Pipeline { return atStage(t, StageBuild) }, false},
 	}
 	for _, tt := range tests {
@@ -879,4 +879,243 @@ func withLateFinding(p Pipeline) Pipeline {
 		Key:     "comment:c9", Trusted: true,
 	}, t0)
 	return next
+}
+
+// --- #1087: G4 follows the PR head ---
+
+func TestG4FollowsThePRHead(t *testing.T) {
+	pass := PRCheck{Name: "test", State: CheckPass}
+	tests := []struct {
+		name        string
+		probe       *PRProbe
+		wantCurrent StageID
+		wantGate    string
+		wantHead    string
+		finished    bool
+	}{
+		{"same head keeps G4", probeFound(pass), StageMerge, GateMerge, "h1", false},
+		{"no head keeps G4", onHead(probeFound(pass), ""), StageMerge, GateMerge, "", false},
+		{"moved head closes G4", onHead(probeFound(PRCheck{Name: "test", State: CheckPending}), "h2"), StagePRReview, GateNone, "h2", false},
+		{"moved head already green still waits a probe", onHead(probeFound(pass), "h2"), StagePRReview, GateNone, "h2", false},
+		{"merged by hand finishes", func() *PRProbe { m := probeFound(pass); m.State = PRStateMerged; return m }(), StageMerge, GateNone, "h1", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := inMerge(t)
+			if !WantsPRProbe(p) {
+				t.Fatal("G4 open wants the probe")
+			}
+			got, act := mustApply(t, p, Event{Kind: EventPRProbe, Probe: tt.probe})
+			if act.Kind != ActionNone || got.Current != tt.wantCurrent || got.OpenGate != tt.wantGate || Finished(got) != tt.finished {
+				t.Fatalf("current %s gate %q finished %v act %+v", got.Current, got.OpenGate, Finished(got), act)
+			}
+			if got.PR.HeadOID != tt.wantHead {
+				t.Fatalf("head = %q, want %q", got.PR.HeadOID, tt.wantHead)
+			}
+			if tt.wantCurrent != StagePRReview {
+				return
+			}
+			g4 := p.Cards[p.openGateCard()]
+			if c := got.Cards[g4.idx(got)]; c.State != CardDecided || c.Decision != DecisionSuperseded {
+				t.Fatalf("old G4 card = %+v", c)
+			}
+			if !got.hasNotice(NoticeHeadMoved) {
+				t.Fatal("no notice says why G4 closed")
+			}
+			if s, _ := got.Stage(StageMerge); s.Status != StatusPending {
+				t.Fatalf("merge status = %s", s.Status)
+			}
+		})
+	}
+}
+
+// After a moved head, G4 reopens on the new head only once its checks pass,
+// and a dismissal made on the old head does not carry over.
+func TestG4ReopensOnTheNewHeadWhenGreen(t *testing.T) {
+	p := inPRReview(t, failing("pr-diff"), PRCheck{Name: "test", State: CheckPass})
+	p, _ = decideAll(t, p, FindingDismiss)
+	p, _ = mustApply(t, p, Event{Kind: EventPRProbe, Probe: probeFound(failing("pr-diff"), PRCheck{Name: "test", State: CheckPass})})
+	if p.OpenGate != GateMerge {
+		t.Fatalf("G4 on h1: gate %q", p.OpenGate)
+	}
+	// A push: h2's pr-diff still fails — a new finding, no G4.
+	p, _ = mustApply(t, p, Event{Kind: EventPRProbe, Probe: onHead(probeFound(failing("pr-diff")), "h2")})
+	p, _ = mustApply(t, p, Event{Kind: EventPRProbe, Probe: onHead(probeFound(failing("pr-diff")), "h2")})
+	if p.Current != StagePRReview || p.OpenGate != GateNone || len(cardsOf(p, CardFinding, StagePRReview)) != 2 {
+		t.Fatalf("h2 failing: current %s gate %q findings %d", p.Current, p.OpenGate, len(cardsOf(p, CardFinding, StagePRReview)))
+	}
+	p, _ = decideAll(t, p, FindingDismiss)
+	p, _ = mustApply(t, p, Event{Kind: EventPRProbe, Probe: onHead(probeFound(failing("pr-diff"), PRCheck{Name: "test", State: CheckPass}), "h2")})
+	if p.OpenGate != GateMerge {
+		t.Fatalf("G4 on h2: current %s gate %q", p.Current, p.OpenGate)
+	}
+	var summary MergeSummary
+	if err := json.Unmarshal(p.Cards[p.openGateCard()].Payload, &summary); err != nil || summary.PR == nil || summary.PR.HeadOID != "h2" {
+		t.Fatalf("G4 summary = %+v %v", summary, err)
+	}
+}
+
+func TestG4ApproveRefusedOnAMovedHead(t *testing.T) {
+	p := inMerge(t)
+	p.PR.HeadOID = "h2" // recorded without the gate closing: never merge on h1's facts
+	got, act, err := Apply(p, Event{Kind: EventGate, Gate: GateMerge, Action: GateApprove}, t0)
+	if !errors.Is(err, ErrHeadMoved) || act.Kind != ActionNone || got.OpenGate != GateMerge || got.PRWait != "" {
+		t.Fatalf("err %v act %+v gate %q wait %q", err, act, got.OpenGate, got.PRWait)
+	}
+}
+
+// skippingPRReview is p with pr_review skipped by the plan.
+func skippingPRReview(p Pipeline) Pipeline {
+	p = p.clone()
+	p.stageRef(StagePRReview).Status = StatusSkipped
+	return p
+}
+
+// A PR closed while G4 is open supersedes G4 and blocks the stage G4 came
+// from; the retry finds the reopened PR again and G4 reopens on its facts.
+func TestClosedPRWhileG4IsOpen(t *testing.T) {
+	tests := []struct {
+		name      string
+		p         func(t *testing.T) Pipeline
+		wantStage StageID
+	}{
+		{"pr_review planned", inMerge, StagePRReview},
+		{"pr_review skipped", func(t *testing.T) Pipeline { return skippingPRReview(inMerge(t)) }, StagePR},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := tt.p(t)
+			g4 := p.Cards[p.openGateCard()]
+			closed := probeFound(PRCheck{Name: "test", State: CheckPass})
+			closed.State = PRStateClosed
+			p, _ = mustApply(t, p, Event{Kind: EventPRProbe, Probe: closed})
+			if p.OpenGate != GateBlocked || p.Current != tt.wantStage {
+				t.Fatalf("closed: gate %q current %s", p.OpenGate, p.Current)
+			}
+			if c := p.Cards[g4.idx(p)]; c.State != CardDecided || c.Decision != DecisionSuperseded {
+				t.Fatalf("old G4 card = %+v", c)
+			}
+			if s, _ := p.Stage(StageMerge); s.Status != StatusPending {
+				t.Fatalf("merge status = %s", s.Status)
+			}
+			p, act := mustApply(t, p, Event{Kind: EventGate, Gate: GateBlocked, Action: GateRetry})
+			if act.Kind != ActionSendTurn || !strings.Contains(act.Prompt, "gh pr reopen 12") {
+				t.Fatalf("retry act = %+v", act)
+			}
+			p, _ = mustApply(t, p, Event{Kind: EventTurnCompleted, Turn: 10, Blocks: Blocks{Report: &Report{Summary: "reopened"}}})
+			if p.OpenGate != GateNone || !WantsPRProbe(p) {
+				t.Fatalf("after reopening: gate %q wants probe %v", p.OpenGate, WantsPRProbe(p))
+			}
+			green := onHead(probeFound(PRCheck{Name: "test", State: CheckPass}), "h2")
+			for range 2 {
+				p, _ = mustApply(t, p, Event{Kind: EventPRProbe, Probe: green})
+			}
+			if p.OpenGate != GateMerge || p.PR == nil || p.PR.Number != 12 || p.mergeGateHead() != "h2" {
+				t.Fatalf("G4 again: current %s gate %q pr %+v head %q", p.Current, p.OpenGate, p.PR, p.mergeGateHead())
+			}
+		})
+	}
+}
+
+func TestMergeGateHead(t *testing.T) {
+	if got := MergeGateHead(inMerge(t)); got != "h1" {
+		t.Fatalf("G4 head = %q", got)
+	}
+	if got := MergeGateHead(inPRReview(t)); got != "" {
+		t.Fatalf("no G4: head = %q", got)
+	}
+}
+
+// R1: a turn left owed (a cancelled fix turn) must not survive a manual
+// advance into merge: G4 opens with nothing owed, so its probes count.
+func TestAdvanceIntoMergeClearsALeftoverOwedTurn(t *testing.T) {
+	p := inPRReview(t, PRCheck{Name: "test", State: CheckPending})
+	p.PendingTurn = "Fix these findings (cancelled)"
+	p, act := mustApply(t, p, Event{Kind: EventAdvance, Stage: StagePRReview})
+	if p.Current != StageMerge || p.OpenGate != GateMerge || p.PendingTurn != "" || act.Kind != ActionNone {
+		t.Fatalf("current %s gate %q pending %q act %+v", p.Current, p.OpenGate, p.PendingTurn, act)
+	}
+	if !WantsPRProbe(p) {
+		t.Fatal("G4 must be probed")
+	}
+	p, _ = mustApply(t, p, Event{Kind: EventPRProbe, Probe: onHead(probeFound(PRCheck{Name: "test", State: CheckPending}), "h2")})
+	if p.Current != StagePRReview || p.OpenGate != GateNone {
+		t.Fatalf("moved head was dropped: current %s gate %q", p.Current, p.OpenGate)
+	}
+}
+
+// R2: a question turn started while a gate was open but finishing after
+// the gate was decided is still the developer's question: it keeps the
+// turn the gate's decision owes and requires no block.
+func TestQuestionTurnFinishingAfterItsGateClosed(t *testing.T) {
+	tests := []struct {
+		name string
+		gate string
+		p    func(t *testing.T) Pipeline
+	}{
+		{"G4 approved", GateMerge, func(t *testing.T) Pipeline {
+			p, _ := mustApply(t, inMerge(t), Event{Kind: EventGate, Gate: GateMerge, Action: GateApprove})
+			return p
+		}},
+		{"G4 changes requested", GateMerge, func(t *testing.T) Pipeline {
+			// The late question must not count as the change turn: no
+			// rewind to pr_review before the requested change ran.
+			p, _ := mustApply(t, inMerge(t), Event{Kind: EventGate, Gate: GateMerge, Action: GateRequestChanges, Note: "rebase"})
+			return p
+		}},
+		{"G3 approved", GatePR, func(t *testing.T) Pipeline {
+			p, _ := mustApply(t, drafted(t), Event{Kind: EventGate, Gate: GatePR, Action: GateApprove})
+			return p
+		}},
+		{"triage closed", GateTriage, func(t *testing.T) Pipeline {
+			p, _ := reviewTurn(t, inReview(t), twoFindings())
+			for _, c := range findingCards(p) {
+				p, _ = decide(t, p, c.ID, FindingFix)
+			}
+			return p
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := tt.p(t)
+			if p.OpenGate != GateNone || p.PendingTurn == "" {
+				t.Fatalf("setup: gate %q pending %q", p.OpenGate, p.PendingTurn)
+			}
+			for _, blocks := range []Blocks{{}, {Report: &Report{Summary: "answered"}}} {
+				got, act := mustApply(t, p, Event{Kind: EventTurnCompleted, Turn: 30, Blocks: blocks, QuestionGate: tt.gate})
+				if act.Kind != ActionNone || got.PendingTurn != p.PendingTurn || got.PRWait != p.PRWait ||
+					got.Current != p.Current || got.OpenGate != GateNone || got.AwaitingVerification || got.Review.Fixing != p.Review.Fixing {
+					t.Fatalf("blocks %+v: act %+v pending %q wait %q current %s gate %q", blocks, act, got.PendingTurn, got.PRWait, got.Current, got.OpenGate)
+				}
+				if got.hasNotice(NoticeFormatMissing) {
+					t.Fatal("a question turn raised a format notice")
+				}
+			}
+		})
+	}
+	// Still open when it finishes: the usual question-gate turn.
+	p := inMerge(t)
+	got, act := mustApply(t, p, Event{Kind: EventTurnCompleted, Turn: 30, QuestionGate: GateMerge})
+	if act.Kind != ActionNone || got.OpenGate != GateMerge {
+		t.Fatalf("open G4: act %+v gate %q", act, got.OpenGate)
+	}
+}
+
+// Review round 2, f1: approving G4 names the card the developer saw; a G4
+// replaced meanwhile (reopened on a new head) refuses the approval.
+func TestG4ApproveNamesItsCard(t *testing.T) {
+	p := skippingPRReview(inMerge(t))
+	seen := p.Cards[p.openGateCard()].ID
+	p, _ = mustApply(t, p, Event{Kind: EventPRProbe, Probe: onHead(probeFound(PRCheck{Name: "test", State: CheckPending}), "h2")})
+	if p.OpenGate != GateMerge || p.Cards[p.openGateCard()].ID == seen {
+		t.Fatalf("setup: G4 not reopened: gate %q", p.OpenGate)
+	}
+	got, act, err := Apply(p, Event{Kind: EventGate, Gate: GateMerge, Action: GateApprove, CardID: seen}, t0)
+	if !errors.Is(err, ErrGateNotOpen) || act.Kind != ActionNone || got.OpenGate != GateMerge || got.PRWait != "" {
+		t.Fatalf("stale card: err %v act %+v gate %q wait %q", err, act, got.OpenGate, got.PRWait)
+	}
+	current := p.Cards[p.openGateCard()].ID
+	if _, act, err := Apply(p, Event{Kind: EventGate, Gate: GateMerge, Action: GateApprove, CardID: current}, t0); err != nil || act.Kind != ActionSendTurn {
+		t.Fatalf("current card: err %v act %+v", err, act)
+	}
 }

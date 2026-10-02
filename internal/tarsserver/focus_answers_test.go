@@ -1,6 +1,8 @@
 package tarsserver
 
 import (
+	"net/http"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -170,5 +172,128 @@ func TestFocusReviewDecisionsAnsweredWhileIdle(t *testing.T) {
 		if c.Kind == focuspipeline.CardDecision && c.Stage != focuspipeline.StageReview {
 			t.Fatalf("a decision card outside review: %+v", c)
 		}
+	}
+}
+
+// #1079: a decision answered while G3 is open goes out right away as the
+// developer's question; G3 stays open and nothing is left owed.
+func TestFocusAnswerWhileG3IsOpenIsSent(t *testing.T) {
+	d, turns, store, id := testFocusDriver(t, func(int, string) string { return focusReport("noted", false) }, &fakeVerifier{result: passAll})
+	prStageSession(t, store, id)
+	p := applyFocus(t, store, id, focuspipeline.Event{Kind: focuspipeline.EventTurnCompleted, Turn: 3, Blocks: focuspipeline.Blocks{
+		PR:     &focuspipeline.PRDraft{Title: "feat: x", Body: "b"},
+		Report: &focuspipeline.Report{Summary: "drafted", Decisions: []focuspipeline.Decision{{ID: "d1", Question: "Rebase onto main?", Options: []string{"yes", "no"}}}},
+	}})
+	if p.OpenGate != focuspipeline.GatePR {
+		t.Fatalf("gate = %q", p.OpenGate)
+	}
+	var cardID string
+	for _, c := range p.Cards {
+		if c.Kind == focuspipeline.CardDecision {
+			cardID = c.ID
+		}
+	}
+	h := newFocusPipelineHandler(store, nil, d, zerolog.Nop())
+	if rec := focusRequest(t, h, http.MethodPost, "/v1/focus/pipelines/"+id+"/cards/"+cardID, `{"state":"decided","decision":"yes"}`, true); rec.Code != http.StatusOK {
+		t.Fatalf("answer: %d %s", rec.Code, rec.Body.String())
+	}
+	waitFor(t, "the answer turn", func() bool { return len(turns.seen()) == 1 })
+	waitDriverIdle(t, d, id)
+	if prompts := turns.seen(); len(prompts) != 1 || prompts[0] != "Rebase onto main? → yes" {
+		t.Fatalf("prompts = %q", prompts)
+	}
+	got := pipelineOf(t, store, id)
+	if got.OpenGate != focuspipeline.GatePR || got.PendingTurn != "" || got.Current != focuspipeline.StagePR {
+		t.Fatalf("gate %q pending %q current %s", got.OpenGate, got.PendingTurn, got.Current)
+	}
+}
+
+// Behind a blocked gate an answer still waits: blocked takes a retry or an
+// instruction, not a question.
+func TestFocusAnswerBehindABlockedGateIsHeld(t *testing.T) {
+	d, turns, store, id := testFocusDriver(t, asking, &fakeVerifier{result: passAll})
+	answers := addDecisionCards(t, store, id, focuspipeline.StageBuild, "Rename?")
+	if _, _, err := focusStoreFor(store).Update(id, func(p focuspipeline.Pipeline) (focuspipeline.Pipeline, error) {
+		p.OpenGate = focuspipeline.GateBlocked
+		return p, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	d.start(id, answerAction(answers...), "")
+	waitDriverIdle(t, d, id)
+	if prompts := turns.seen(); len(prompts) != 0 {
+		t.Fatalf("an answer ran behind the blocked gate: %q", prompts)
+	}
+}
+
+// R2: the turn mark records a question gate open when guidance is built; a
+// question turn that finishes after G3 was approved keeps the owed open
+// turn and raises no format notice.
+func TestFocusQuestionTurnOutlivesItsGate(t *testing.T) {
+	_, _, store, id := testFocusDriver(t, asking, &fakeVerifier{result: passAll})
+	prStageSession(t, store, id)
+	applyFocus(t, store, id, focuspipeline.Event{Kind: focuspipeline.EventTurnCompleted, Turn: 3, Blocks: focuspipeline.Blocks{PR: &focuspipeline.PRDraft{Title: "feat: x", Body: "b"}}})
+	_, mark := appendFocusGuidance("why this title?", store, id, zerolog.Nop())
+	if mark == nil || mark.Gate != focuspipeline.GatePR {
+		t.Fatalf("mark = %+v", mark)
+	}
+	approved := applyFocus(t, store, id, focuspipeline.Event{Kind: focuspipeline.EventGate, Gate: focuspipeline.GatePR, Action: focuspipeline.GateApprove})
+	if approved.PendingTurn == "" {
+		t.Fatal("approving G3 owes the open turn")
+	}
+	p, act, ok := focusAfterTurn(store, id, store.TranscriptPath(id), "Because it says what changed.", mark, time.Now(), zerolog.Nop())
+	if !ok || act.Kind != focuspipeline.ActionNone || p.PendingTurn != approved.PendingTurn || len(p.Cards) != len(approved.Cards) {
+		t.Fatalf("ok %v act %+v pending %q cards %d→%d", ok, act, p.PendingTurn, len(approved.Cards), len(p.Cards))
+	}
+}
+
+// Review round 2, f2: an answer given at G3 that starts only after G3 was
+// approved is still the developer's question — its guidance is G3's (no
+// push), the owed open-PR turn stays owed, and no format re-request runs.
+func TestFocusAnswerStartedAfterItsGateWasApproved(t *testing.T) {
+	d, turns, store, id := testFocusDriver(t, func(int, string) string { return "Squash it, yes." }, &fakeVerifier{result: passAll})
+	prStageSession(t, store, id)
+	p := applyFocus(t, store, id, focuspipeline.Event{Kind: focuspipeline.EventTurnCompleted, Turn: 3, Blocks: focuspipeline.Blocks{
+		PR:     &focuspipeline.PRDraft{Title: "feat: x", Body: "b"},
+		Report: &focuspipeline.Report{Summary: "drafted", Decisions: []focuspipeline.Decision{{ID: "d1", Question: "Squash?", Options: []string{"yes", "no"}}}},
+	}})
+	var cardID string
+	for _, c := range p.Cards {
+		if c.Kind == focuspipeline.CardDecision {
+			cardID = c.ID
+		}
+	}
+	var answer focuspipeline.Action
+	if _, _, err := focusStoreFor(store).Update(id, func(p focuspipeline.Pipeline) (focuspipeline.Pipeline, error) {
+		next, act, err := focuspipeline.SetCardState(p, cardID, focuspipeline.CardDecided, "yes", time.Now())
+		answer = act
+		return next, err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// G3 is approved before the answer turn starts (it waited behind
+	// another turn).
+	approved := applyFocus(t, store, id, focuspipeline.Event{Kind: focuspipeline.EventGate, Gate: focuspipeline.GatePR, Action: focuspipeline.GateApprove})
+	d.start(id, answer, "")
+	waitFor(t, "the answer turn", func() bool { return len(turns.seen()) == 1 })
+	waitDriverIdle(t, d, id)
+	got := pipelineOf(t, store, id)
+	if got.PendingTurn != approved.PendingTurn || got.PRWait != focuspipeline.PRWaitOpen {
+		t.Fatalf("pending %q wait %q", got.PendingTurn, got.PRWait)
+	}
+	for _, c := range got.Cards {
+		if c.Kind == focuspipeline.CardNotice && c.Title == focuspipeline.NoticeFormatMissing {
+			t.Fatal("the answer turn raised a format notice")
+		}
+	}
+	if prompts := turns.seen(); len(prompts) != 1 {
+		t.Fatalf("a re-request followed the answer: %q", prompts)
+	}
+	transcript, err := os.ReadFile(store.TranscriptPath(id))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(transcript), "gh pr create") || !strings.Contains(string(transcript), "Do not open, push or merge") {
+		t.Fatalf("the answer turn got the approved write step's guidance:\n%s", transcript)
 	}
 }

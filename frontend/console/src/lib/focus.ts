@@ -38,6 +38,18 @@ const stateRank = { unseen: 0, seen: 1, decided: 2 } as const
 // first — in the order they were asked — and informational cards newest
 // first, so the latest report leads even after both were seen (a card on
 // screen is marked seen at once).
+// openGateCardId is the open gate's card: the latest undecided gate card,
+// as the server picks it (machine.go openGateCard). undefined when no gate
+// is open.
+export function openGateCardId(p: Pick<FocusPipeline, 'open_gate' | 'cards'>): string | undefined {
+  if (!p.open_gate) return undefined
+  for (let i = p.cards.length - 1; i >= 0; i--) {
+    const c = p.cards[i]
+    if (c.kind === 'gate' && c.state !== 'decided') return c.id
+  }
+  return undefined
+}
+
 export function orderCards(cards: FocusCard[]): FocusCard[] {
   return [...cards].sort((a, b) => {
     const decided = Number(a.state === 'decided') - Number(b.state === 'decided')
