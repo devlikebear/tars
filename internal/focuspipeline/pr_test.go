@@ -426,7 +426,11 @@ func TestBotCommentsAreNotFindings(t *testing.T) {
 		{"github-actions", PRComment{ID: "c5", Author: "github-actions", Body: "deployed"}, false},
 		{"any [bot] login", PRComment{ID: "c6", Author: "renovate-helper[bot]", Body: "update"}, false},
 		{"flagged by gh", PRComment{ID: "c7", Author: "some-app", Bot: true, Body: "note"}, false},
-		{"bot review requesting changes", PRComment{ID: "c8", Author: "sonarqubecloud", ChangesRequested: true}, false},
+		// A bot requesting changes reports a failure: it stays a finding.
+		{"bot review requesting changes", PRComment{ID: "c8", Author: "sonarqubecloud", ChangesRequested: true}, true},
+		{"flagged bot requesting changes with a body", PRComment{ID: "c10", Author: "some-app", Bot: true, Body: "Fix the lint errors.", ChangesRequested: true}, true},
+		// Copilot's review is code feedback, not a status note.
+		{"copilot review", PRComment{ID: "h5", Author: "copilot-pull-request-reviewer", Body: "Pull request overview: the helper leaks a goroutine."}, true},
 		{"blank human comment", PRComment{ID: "c9", Author: "r", Body: "  "}, false},
 		{"human comment", PRComment{ID: "h1", Author: "reviewer", Body: "please rename this"}, true},
 		{"human named like a bot prefix", PRComment{ID: "h2", Author: "codecov-fan", Body: "nit"}, true},
@@ -471,6 +475,7 @@ func TestIsBotAuthor(t *testing.T) {
 	for login, want := range map[string]bool{
 		"sonarqubecloud": true, "sonarqubecloud[bot]": true, "Codecov": true, "github-actions[bot]": true,
 		"dependabot": true, "x[BOT]": true, "": false, "alice": false, "codecov-fan": false, "bot": false,
+		"copilot-pull-request-reviewer": false,
 	} {
 		if got := isBotAuthor(login, false); got != want {
 			t.Errorf("isBotAuthor(%q) = %v, want %v", login, got, want)
