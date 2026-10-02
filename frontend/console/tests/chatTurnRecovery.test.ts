@@ -84,7 +84,23 @@ test('a refused queued send goes back in the queue instead of being recovered as
   const src = readFileSync(new URL('../src/components/ChatPanel.svelte', import.meta.url), 'utf8')
   const send = src.slice(src.indexOf('async function submitChat'), src.indexOf('async function afterTurn'))
   assert.match(send, /sendFailure\(err\)/)
-  assert.match(send, /messageQueue\.putBack\(queueKey, queuedPayload\)/, 'the refused message is put back, not lost')
+  assert.match(send, /const item = queuedPayload \?\?/, 'a refused queued message keeps its id')
+  assert.match(send, /messageQueue\.putBack\(queueKey, item\)/, 'the refused message is put back, not lost')
   const refused = send.indexOf("=== 'refused'")
   assert.ok(refused > 0 && refused < send.indexOf('recoverDroppedTurn('), 'refusal is handled before dropped-turn recovery')
+})
+
+test('a refused send goes back where nothing the user typed since is overwritten', async () => {
+  const { refusedSendReturn } = await import('../src/lib/chatTurnRecovery.ts')
+  assert.equal(refusedSendReturn({ queued: true, composerHasDraft: false }), 'queue', 'a queued message keeps its place in line')
+  assert.equal(refusedSendReturn({ queued: false, composerHasDraft: false }), 'composer', 'what the user just sent is back in front of them')
+  assert.equal(refusedSendReturn({ queued: false, composerHasDraft: true }), 'queue', 'a new draft is kept; the refused message waits first in the queue')
+})
+
+test('a refused composer send is returned, not recovered as a dropped turn', () => {
+  const src = readFileSync(new URL('../src/components/ChatPanel.svelte', import.meta.url), 'utf8')
+  const send = src.slice(src.indexOf('async function submitChat'), src.indexOf('async function afterTurn'))
+  assert.match(send, /refusedSendReturn\(/)
+  assert.match(send, /changes\.restoreNotes\(/, 'review notes taken for the send come back')
+  assert.doesNotMatch(send, /failure === 'refused' && queuedPayload/, 'every refused send is handled, not only queued ones')
 })

@@ -287,6 +287,16 @@ export class ChangesStore {
     this.notes = this.notes.filter((note) => note.id !== id)
   }
 
+  // restoreNotes brings back notes taken for a send the server refused
+  // before its turn started, ahead of any added since. Notes from another
+  // session, or already back, are left out.
+  restoreNotes(sessionId: string | null, drafts: DraftNote[]): void {
+    if (sessionId !== this.sessionId) return
+    const present = new Set(this.notes.map((note) => note.id))
+    const back = drafts.filter((note) => !present.has(note.id))
+    if (back.length) this.notes = [...back, ...this.notes]
+  }
+
   // The notes to send with a message, as the server takes them. They are
   // cleared: once sent they are part of the message.
   takeNotes(): ReviewNote[] {

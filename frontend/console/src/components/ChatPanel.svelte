@@ -8,7 +8,7 @@
   import { toolBaseDirs } from '../lib/cliToolLabels'
   import { changes } from '../lib/stores/changesStore'
   import { turnCardAnchors } from '../lib/changes'
-  import { dropVerificationPlaceholder, recoverDroppedTurn, sendFailure, type ReattachOutcome } from '../lib/chatTurnRecovery'
+  import { dropVerificationPlaceholder, recoverDroppedTurn, refusedSendReturn, sendFailure, type ReattachOutcome } from '../lib/chatTurnRecovery'
   import type { DraftNote } from '../lib/stores/changes.svelte'
   import { extractArtifact, extractArtifactsFromHistory, mergeArtifact, type Artifact } from '../lib/artifacts'
   import { buildTierRecommendation, pinnedTierPayload, tierRecommendationPayload, type TierRecommendation } from '../lib/tierRecommendation'
@@ -1016,6 +1016,8 @@
       { id: assistantRef.id, role: 'assistant', text: '' },
     ]
     void scrollToBottom()
+    // Kept to give back if the server refuses the send.
+    const draftNotes = { sessionId: changes.sessionId, notes: [...changes.notes] }
     const reviewNotes = !message.trimStart().startsWith('/') && changes.notes.length > 0 ? changes.takeNotes() : undefined
     // Sent once, with the next message the user typed (a slash command or a
     // queued message keeps waiting, as the server would drop it anyway).
@@ -1058,14 +1060,25 @@
       const failure = sendFailure(err)
       if (failure === 'stopped') {
         // User cancelled — no error to show
-      } else if (failure === 'refused' && queuedPayload) {
+      } else if (failure === 'refused') {
         // No turn started, so there is nothing to recover: the transcript
-        // reload would wipe the message. It goes back first in the queue,
-        // which pauses, and the error says why.
+        // reload would wipe the message. It goes back with what was taken
+        // for it (review notes, console context), and the error says why.
         failed = true
-        messageQueue.putBack(queueKey, queuedPayload)
         const reason = err instanceof Error ? err.message : $t.chatThread.errors.sendFailed
-        chatError = $t.messageQueue.refused(reason)
+        if (reviewNotes) changes.restoreNotes(draftNotes.sessionId, draftNotes.notes)
+        if (consoleContext && !pendingConsoleContext) pendingConsoleContext = consoleContext
+        const composerHasDraft = !!chatInput.trim() || attachedFiles.length > 0
+        if (refusedSendReturn({ queued: !!queuedPayload, composerHasDraft }) === 'composer') {
+          chatInput = message
+          attachedFiles = currentFiles
+          selectedMentions = currentMentions
+          chatError = $t.messageQueue.refusedToComposer(reason)
+        } else {
+          const item = queuedPayload ?? messageQueue.enqueue(queueKey, message, currentFiles, currentMentions)
+          if (item) messageQueue.putBack(queueKey, item)
+          chatError = $t.messageQueue.refused(reason)
+        }
         chatMessages = [
           ...chatMessages.filter((msg) => msg.id !== userId && msg.id !== assistantRef.id),
           { id: `error-${Date.now()}`, role: 'error', text: chatError },
