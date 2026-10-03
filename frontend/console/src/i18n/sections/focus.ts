@@ -160,6 +160,7 @@ export const focusEn = {
     triage: (decided: number, total: number) => `${decided} / ${total} decided`,
   },
   report: {
+    label: 'Stage report',
     risks: 'Risks',
     decisions: (n: number) => (n === 1 ? '1 decision follows' : `${n} decisions follow`),
     prTitle: 'Title',
@@ -447,6 +448,7 @@ export const focusKo: FocusTranslations = {
     triage: (decided: number, total: number) => `${total}개 중 ${decided}개 결정`,
   },
   report: {
+    label: '단계 보고',
     risks: '위험',
     decisions: (n: number) => `결정 ${n}개가 이어집니다`,
     prTitle: '제목',

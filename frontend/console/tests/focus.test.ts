@@ -12,6 +12,7 @@ import {
   planEdits,
   progressLine,
   promoteDraft,
+  reportCardText,
   qaThreads,
   focusOwnsShortcut,
   stepperItems,
@@ -468,4 +469,30 @@ test('stripFocusBlocks pairs tags like the server when a block quotes a tag in i
   assert.equal(stripFocusBlocks(same), 'Done.')
   const prose = 'I end with a <focus-report> block.\n\n<focus-report>{"summary":"ok"}</focus-report>'
   assert.equal(stripFocusBlocks(prose), 'I end with a <focus-report> block.')
+})
+
+test('reportCardText never repeats the summary under the heading (#1109)', () => {
+  // A one-line summary is the heading; nothing below it.
+  assert.deepEqual(reportCardText('Built the card.', 'Built the card.'), { heading: 'Built the card.', body: '' })
+  // Multi-line: the heading is the first line; the body carries only the rest.
+  assert.deepEqual(reportCardText('Built the card.', 'Built the card.\nTests pass.\n\nNo risks.'), {
+    heading: 'Built the card.',
+    body: 'Tests pass.\n\nNo risks.',
+  })
+  // Clipped long first line: a label heading, the whole summary below.
+  const long = 'Merged PR #1093 with gh pr merge 1093 --squash (no --delete-branch) after confirming the head was still the approved accepted commit.'
+  const clipped = Array.from(long).slice(0, 119).join('') + '…'
+  assert.deepEqual(reportCardText(clipped, long), { heading: null, body: long })
+  assert.deepEqual(reportCardText(clipped, `${long}\nSecond line.`), { heading: null, body: `${long}\nSecond line.` })
+  // A card stored by an earlier version: surrounding whitespace in the summary.
+  assert.deepEqual(reportCardText('Built the card.', '  Built the card.  \n  Tests pass.\n'), {
+    heading: 'Built the card.',
+    body: 'Tests pass.',
+  })
+  assert.deepEqual(reportCardText('Built the card.', '\n  Built the card.\n'), { heading: 'Built the card.', body: '' })
+  // No summary: keep the stored title.
+  assert.deepEqual(reportCardText('Stage report', ''), { heading: 'Stage report', body: '' })
+  assert.deepEqual(reportCardText('Stage report', undefined), { heading: 'Stage report', body: '' })
+  // A title unrelated to the summary keeps both as they are.
+  assert.deepEqual(reportCardText('Other', 'Summary text.'), { heading: 'Other', body: 'Summary text.' })
 })
