@@ -101,6 +101,24 @@ param(
     Copy-Item -LiteralPath $source -Destination $target -Force
   }
 
+  # Join-PathEntry returns $path with $dir appended, or $null when $path
+  # already lists it. Entries are compared without a trailing backslash and
+  # with environment variables expanded, so %LOCALAPPDATA%\Programs\TARS
+  # counts as the folder; the result keeps the other entries as written.
+  function Join-PathEntry([string]$path, [string]$dir) {
+    $want = $dir.TrimEnd('\')
+    $entries = @()
+    if ($path) {
+      $entries = @($path -split ';' | Where-Object { $_ })
+    }
+    foreach ($entry in $entries) {
+      if ([Environment]::ExpandEnvironmentVariables($entry).TrimEnd('\') -ieq $want) {
+        return $null
+      }
+    }
+    return (@($entries) + $dir) -join ';'
+  }
+
   function Expand-Release([string]$archive, [string]$dir) {
     $out = Join-Path $dir ([IO.Path]::GetFileNameWithoutExtension($archive))
     Expand-Archive -LiteralPath $archive -DestinationPath $out -Force
@@ -180,17 +198,27 @@ param(
   }
 
   if (-not $NoPath) {
-    $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
-    $entries = @()
-    if ($userPath) {
-      $entries = $userPath -split ';' | Where-Object { $_ }
+    # Read and write the raw registry value: the user PATH is usually
+    # REG_EXPAND_SZ with entries like %USERPROFILE%\..., which
+    # [Environment]::GetEnvironmentVariable expands and SetEnvironmentVariable
+    # would write back expanded, as a plain string.
+    $key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment', $true)
+    try {
+      $raw = [string]$key.GetValue('Path', '', [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+      $updated = Join-PathEntry $raw $InstallDir
+      if ($null -ne $updated) {
+        $key.SetValue('Path', $updated, [Microsoft.Win32.RegistryValueKind]::ExpandString)
+        # Writing the registry does not tell running programs; setting and
+        # clearing a variable through .NET broadcasts the change, so a
+        # terminal opened from Explorer afterwards sees the new PATH.
+        [Environment]::SetEnvironmentVariable('TARS_INSTALL_PATH_REFRESH', '1', 'User')
+        [Environment]::SetEnvironmentVariable('TARS_INSTALL_PATH_REFRESH', $null, 'User')
+        Write-Host "Added $InstallDir to your PATH. Open a new terminal to use 'tars'."
+      }
+    } finally {
+      $key.Close()
     }
-    $present = $entries | Where-Object { $_.TrimEnd('\') -ieq $InstallDir.TrimEnd('\') }
-    if (-not $present) {
-      [Environment]::SetEnvironmentVariable('Path', (($entries + $InstallDir) -join ';'), 'User')
-      Write-Host "Added $InstallDir to your PATH. Open a new terminal to use 'tars'."
-    }
-    if (-not (($env:Path -split ';') | Where-Object { $_.TrimEnd('\') -ieq $InstallDir.TrimEnd('\') })) {
+    if ($null -ne (Join-PathEntry $env:Path $InstallDir)) {
       $env:Path = "$env:Path;$InstallDir"
     }
   }
