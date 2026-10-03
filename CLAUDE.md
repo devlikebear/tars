@@ -279,7 +279,7 @@ Note that the Linux-only test jobs cannot cover `*_windows.go` files at all, so 
 
 See `docs/static-analysis.md` for the static-analysis layering and local workflow guards.
 
-`release-on-version-bump.yml` — triggered by `VERSION.txt` change on main. Builds console before binary. Also builds the desktop archives (`scripts/desktop_package.sh`: darwin arm64/amd64 on macos-14, linux/windows amd64 on ubuntu) and adds them to the release and `checksums.txt` — each archive must hold exactly one top-level entry for the self-updater.
+`release-on-version-bump.yml` — triggered by `VERSION.txt` change on main. Builds console before binary. Server archives are darwin arm64/amd64 `.tar.gz` plus windows amd64 `.zip` (`tars.exe` + `share/`, cross-built on macos-14; `verify-windows-asset` installs it with `install.ps1` on windows-latest before publishing). `install.ps1` (repo root, Windows PowerShell 5.1+) is the Windows installer: `%LOCALAPPDATA%\Programs\TARS`, user PATH, `-Desktop`/`-StartAtLogin`, checksum-verified, replaces running executables by renaming them to `.old`. Also builds the desktop archives (`scripts/desktop_package.sh`: darwin arm64/amd64 on macos-14, linux/windows amd64 on ubuntu) and adds them to the release and `checksums.txt` — each archive must hold exactly one top-level entry for the self-updater.
 
 ## Codebase Analysis
 

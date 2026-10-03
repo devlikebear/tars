@@ -58,7 +58,11 @@ RELEASE_GOARCH ?= $(shell $(GO) env GOARCH)
 # Release archives use the no-CGO fallback path so darwin packaging does not
 # depend on Objective-C hotkey bindings during CI cross-builds.
 RELEASE_CGO_ENABLED ?= 0
-RELEASE_ARCHIVE_NAME ?= tars_$(VERSION)_$(RELEASE_GOOS)_$(RELEASE_GOARCH).tar.gz
+# Windows archives are zips holding tars.exe, as internal/release's
+# AssetArchiveName and install.ps1 expect; every other platform gets a tarball.
+RELEASE_EXE := $(if $(filter windows,$(RELEASE_GOOS)),.exe,)
+RELEASE_ARCHIVE_EXT := $(if $(filter windows,$(RELEASE_GOOS)),.zip,.tar.gz)
+RELEASE_ARCHIVE_NAME ?= tars_$(VERSION)_$(RELEASE_GOOS)_$(RELEASE_GOARCH)$(RELEASE_ARCHIVE_EXT)
 RELEASE_STAGE_DIR ?= $(DIST_DIR)/release-$(RELEASE_GOOS)-$(RELEASE_GOARCH)
 AGENT_HARNESS_PACK ?= testdata/agent-harness/scenarios.json
 AGENT_HARNESS_MODE ?= deterministic
@@ -258,10 +262,15 @@ release-asset: console-build
 	mkdir -p "$(DIST_DIR)"
 	rm -rf "$(RELEASE_STAGE_DIR)"
 	mkdir -p "$(RELEASE_STAGE_DIR)/share/tars"
-	CGO_ENABLED=$(RELEASE_CGO_ENABLED) GOOS=$(RELEASE_GOOS) GOARCH=$(RELEASE_GOARCH) $(GO) build -ldflags "$(GO_LDFLAGS)" -o "$(RELEASE_STAGE_DIR)/tars" ./cmd/tars
+	CGO_ENABLED=$(RELEASE_CGO_ENABLED) GOOS=$(RELEASE_GOOS) GOARCH=$(RELEASE_GOARCH) $(GO) build -ldflags "$(GO_LDFLAGS)" -o "$(RELEASE_STAGE_DIR)/tars$(RELEASE_EXE)" ./cmd/tars
 	@if [ -d "./skills" ]; then cp -R "./skills" "$(RELEASE_STAGE_DIR)/share/tars/skills"; fi
 	@if [ -d "./plugins" ]; then cp -R "./plugins" "$(RELEASE_STAGE_DIR)/share/tars/plugins"; fi
+	rm -f "$(DIST_DIR)/$(RELEASE_ARCHIVE_NAME)"
+ifeq ($(RELEASE_GOOS),windows)
+	cd "$(RELEASE_STAGE_DIR)" && zip -qr "$(abspath $(DIST_DIR))/$(RELEASE_ARCHIVE_NAME)" tars.exe share
+else
 	tar -C "$(RELEASE_STAGE_DIR)" -czf "$(DIST_DIR)/$(RELEASE_ARCHIVE_NAME)" tars share
+endif
 
 # The desktop shell (desktop/) is its own Go module so the webview toolkit
 # stays out of the server's dependency graph; `go test ./...` at the root does

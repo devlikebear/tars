@@ -48,8 +48,10 @@ brew upgrade devlikebear/tap/tars
 tars service install && tars service start
 ```
 
-Elsewhere, take the archive for your platform from the GitHub release and
-put `tars` on `PATH` (Homebrew or `install.sh`).
+On Windows, `install.ps1 -Desktop` puts the app and `tars.exe` in one
+folder (`%LOCALAPPDATA%\Programs\TARS`), where the app looks first. Elsewhere,
+take the archive for your platform from the GitHub release and put `tars`
+on `PATH` (Homebrew or `install.sh`).
 
 ## Running
 

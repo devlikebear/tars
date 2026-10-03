@@ -290,6 +290,27 @@ keychain-only CLI login is shown as needing a compatible sign-in.
 curl -fsSL https://raw.githubusercontent.com/devlikebear/tars/main/install.sh | sh
 ```
 
+**Windows (PowerShell):**
+
+```powershell
+irm https://raw.githubusercontent.com/devlikebear/tars/main/install.ps1 | iex
+```
+
+This installs `tars.exe` into `%LOCALAPPDATA%\Programs\TARS` and adds that
+folder to your user `PATH`. No administrator rights are needed. To install
+the desktop app into the same folder as well, and start it in the tray
+when you sign in, pass options:
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/devlikebear/tars/main/install.ps1))) -Desktop -StartAtLogin
+```
+
+Both archives are checked against the release's `checksums.txt` first.
+Running the script again updates an install in place, even while the server
+or the app is running; restart them to use the new version. Windows has no
+`tars service`, so the desktop app starts `tars serve` for you, or run it
+yourself.
+
 ## Quick Start
 
 ```bash
