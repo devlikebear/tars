@@ -180,9 +180,9 @@ func TestSetupOnlyE2E_WizardSaveCycle(t *testing.T) {
 // + writing the file in place).
 func TestSetupOnlyE2E_MissingConfigFile_FirstInstall(t *testing.T) {
 	dir := t.TempDir()
-	// The missing-file fallback is config.Load(""), which derives
-	// AgentRuntimePersistenceDir from the home-based default workspace before
-	// the WorkspaceDir override; without this the test writes ~/.tars.
+	// Keep anything that still falls back to the home directory out of the
+	// real profile. TestLoadConfigForServe_WorkspaceDirOverrideLeavesHomeUntouched
+	// checks that the --workspace-dir path itself writes nothing there.
 	testutil.SetHome(t, dir)
 	workspaceDir := filepath.Join(dir, "workspace")
 	// Path's parent does NOT exist — simulates ~/.tars/config/ on a
@@ -275,5 +275,65 @@ func TestSetupOnlyE2E_MissingConfigFile_FirstInstall(t *testing.T) {
 	}
 	if status.NeedsSetup {
 		t.Fatalf("after wizard save on missing-file path, expected needs_setup=false, got body=%s", rec.Body.String())
+	}
+}
+
+// TestLoadConfigForServe_WorkspaceDirOverrideLeavesHomeUntouched boots the
+// first-install path (no config file, so config.Load("") fills defaults from
+// the home-based workspace) with --workspace-dir set, and the home directory
+// and the workspace in separate temp dirs. Workspace-derived paths must
+// follow the flag, and nothing may be created under home.
+func TestLoadConfigForServe_WorkspaceDirOverrideLeavesHomeUntouched(t *testing.T) {
+	home := t.TempDir()
+	testutil.SetHome(t, home)
+	for _, key := range []string{
+		"TARS_CONFIG", "TARS_CONFIG_PATH", "TARS_WORKSPACE_DIR",
+		"AGENTRUNTIME_PERSISTENCE_DIR", "TARS_AGENTRUNTIME_PERSISTENCE_DIR",
+		"AGENTRUNTIME_ARCHIVE_DIR", "TARS_AGENTRUNTIME_ARCHIVE_DIR",
+	} {
+		t.Setenv(key, "")
+	}
+	work := t.TempDir()
+	workspaceDir := filepath.Join(work, "workspace")
+	configPath := filepath.Join(work, "missing", "config.yaml")
+
+	opts := &options{ConfigPath: configPath, APIAddr: "127.0.0.1:0", WorkspaceDir: workspaceDir}
+	cfg, err := loadConfigForServe(opts)
+	if err != nil {
+		t.Fatalf("loadConfigForServe: %v", err)
+	}
+	for name, path := range map[string]string{
+		"AgentRuntimePersistenceDir": cfg.AgentRuntimePersistenceDir,
+		"AgentRuntimeArchiveDir":     cfg.AgentRuntimeArchiveDir,
+	} {
+		rel, err := filepath.Rel(workspaceDir, path)
+		if err != nil || rel == ".." || filepath.IsAbs(rel) || len(rel) >= 3 && rel[:3] == ".."+string(filepath.Separator) {
+			t.Fatalf("%s = %q, want a path under the workspace override %q", name, path, workspaceDir)
+		}
+	}
+
+	cfg.APIAuthMode = "off"
+	cfg.APIAllowInsecureLocalAuth = true
+	logger := zerolog.New(io.Discard)
+	base, err := buildBaseDeps(opts, cfg, time.Now, logger)
+	if err != nil {
+		t.Fatalf("buildBaseDeps: %v", err)
+	}
+	deps := base
+	deps.LLMReady = false
+	if _, err := buildAPIMux(opts, deps, time.Now, logger, io.Discard); err != nil {
+		t.Fatalf("buildAPIMux setup-only: %v", err)
+	}
+
+	entries, err := os.ReadDir(home)
+	if err != nil {
+		t.Fatalf("read home: %v", err)
+	}
+	if len(entries) != 0 {
+		names := make([]string, 0, len(entries))
+		for _, entry := range entries {
+			names = append(names, entry.Name())
+		}
+		t.Fatalf("serving with --workspace-dir created %v under home %s", names, home)
 	}
 }
