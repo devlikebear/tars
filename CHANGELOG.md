@@ -6,6 +6,11 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.44.1] - 2026-10-03
+
+### Fixed
+- Show the actual discovered model source in onboarding instead of the static catalog label for live, cached, fallback, or Claude alias recommendations.
+
 ## [0.44.0] - 2026-10-03
 
 ### Added

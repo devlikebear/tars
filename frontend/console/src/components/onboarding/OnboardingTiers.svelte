@@ -67,7 +67,9 @@
 
   <div class="onboarding-models-source">
     <div class="onboarding-models-source-text">
-      {#if liveModels.length > 0}
+      {#if selectedCandidate}
+        {selectedCandidate.source === 'live' ? $t.setupDiscovery.modelLive : selectedCandidate.source === 'cache' ? $t.setupDiscovery.modelCache : selectedCandidate.source === 'cli' ? $t.setupDiscovery.aliases : $t.setupDiscovery.modelFallback}
+      {:else if liveModels.length > 0}
         {$t.onboarding.step2.modelsSourceLive(liveModels.length)}
       {:else if modelSuggestions.length > 0}
         {$t.onboarding.step2.modelsSourceStatic(SNAPSHOT_DATE, modelSuggestions.length)}
@@ -86,7 +88,6 @@
   {/if}
 
   {#if selectedCandidate}
-    <p class="onboarding-hint">{selectedCandidate.source === 'live' ? $t.setupDiscovery.modelLive : selectedCandidate.source === 'cache' ? $t.setupDiscovery.modelCache : selectedCandidate.source === 'cli' ? $t.setupDiscovery.aliases : $t.setupDiscovery.modelFallback}</p>
     <button class="btn btn-ghost btn-sm" type="button" onclick={() => {
       for (const tier of ['heavy', 'standard', 'light'] as const) {
         if (!form.tiers[tier].model) form.tiers[tier].model = selectedCandidate?.recommended[tier] || ''

@@ -420,3 +420,5 @@ cd frontend/console && npm run check && npm run test:ci
 **Development resumed.** TARS is no longer archived and development has resumed. Latest tagged release is `v0.40.7`. TARS is pre-1.0; see the [stability policy](docs/public-agent-packages.md#stability-policy) for the public `pkg/` API guarantees.
 
 Module path: `github.com/devlikebear/tars`. MIT licensed. Contributions are welcome; see [Contributing](CONTRIBUTING.md).
+
+The setup model-source label identifies live provider catalogs, cached recommendations, bundled fallbacks, and Claude CLI aliases.
