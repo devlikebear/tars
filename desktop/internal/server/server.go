@@ -179,11 +179,19 @@ func Outdated(serverVersion, appVersion string) bool {
 	return false
 }
 
-// OutdatedMessage tells the user how to bring the server up to the app.
-func OutdatedMessage(serverVersion, appVersion string) string {
+// OutdatedMessage tells the user how to bring the server up to the app on
+// goos: on Windows the shell updates it itself (see serverupdate), elsewhere
+// Homebrew does.
+func OutdatedMessage(goos, serverVersion, appVersion string) string {
 	running := "an older release"
 	if v := strings.TrimSpace(serverVersion); v != "" {
 		running = v
+	}
+	if goos == "windows" {
+		return fmt.Sprintf("The TARS server is %s, older than this app (%s), so some of the app may not work.\n\n"+
+			"The app updates the server to the latest release once no chat is running. "+
+			"To update it now, choose Check for updates… in the tray menu, or run:\n\n"+
+			"  tars update", running, appVersion)
 	}
 	return fmt.Sprintf("The TARS server is %s, older than this app (%s), so some of the app may not work.\n\n"+
 		"Installing or updating the app does not update the server. With Homebrew:\n\n"+
