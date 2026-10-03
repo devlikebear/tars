@@ -44,18 +44,24 @@ func ReleaseTag(version string) string {
 	return "v" + strings.TrimSpace(version)
 }
 
+// AssetArchiveName is the server's release archive for goos/goarch; it must
+// match the Makefile's release-asset target.
 func AssetArchiveName(version, goos, goarch string) string {
-	return fmt.Sprintf("tars_%s_%s_%s.tar.gz", strings.TrimSpace(version), strings.TrimSpace(goos), strings.TrimSpace(goarch))
+	return fmt.Sprintf("tars_%s_%s_%s%s", strings.TrimSpace(version), strings.TrimSpace(goos), strings.TrimSpace(goarch), ArchiveExt(goos))
 }
 
 // DesktopArchiveName is the desktop shell's release archive for goos/goarch;
 // it must match scripts/desktop_package.sh.
 func DesktopArchiveName(version, goos, goarch string) string {
-	ext := ".tar.gz"
+	return fmt.Sprintf("tars-desktop_%s_%s_%s%s", strings.TrimSpace(version), strings.TrimSpace(goos), strings.TrimSpace(goarch), ArchiveExt(goos))
+}
+
+// ArchiveExt is .zip for Windows archives and .tar.gz elsewhere.
+func ArchiveExt(goos string) string {
 	if strings.TrimSpace(goos) == "windows" {
-		ext = ".zip"
+		return ".zip"
 	}
-	return fmt.Sprintf("tars-desktop_%s_%s_%s%s", strings.TrimSpace(version), strings.TrimSpace(goos), strings.TrimSpace(goarch), ext)
+	return ".tar.gz"
 }
 
 func ReleaseAssetURL(repoSlug, version, goos, goarch string) string {

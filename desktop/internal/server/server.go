@@ -331,8 +331,9 @@ func FindTARS(shellExe string, lookPath func(string) (string, error), installDir
 	return "", fmt.Errorf("tars executable not found next to the desktop app, on PATH or in %s: %w", strings.Join(installDirs, ", "), err)
 }
 
-// InstallDirs are where tars lands when installed by Homebrew or install.sh
-// on goos; home is the user's home directory ("" skips ~/.local/bin).
+// InstallDirs are where tars lands when installed by Homebrew, install.sh,
+// or install.ps1 on goos; home is the user's home directory ("" skips the
+// per-user folders).
 func InstallDirs(goos, home string) []string {
 	var dirs []string
 	switch goos {
@@ -340,6 +341,14 @@ func InstallDirs(goos, home string) []string {
 		dirs = []string{"/opt/homebrew/bin", "/usr/local/bin"}
 	case "linux":
 		dirs = []string{"/home/linuxbrew/.linuxbrew/bin", "/usr/local/bin"}
+	case "windows":
+		// install.ps1's default, %LOCALAPPDATA%\Programs\TARS. A shell it
+		// installed finds tars.exe next to itself; this covers a shell
+		// unpacked elsewhere before the new PATH reaches it.
+		if home == "" {
+			return nil
+		}
+		return []string{filepath.Join(home, "AppData", "Local", "Programs", "TARS")}
 	default:
 		return nil
 	}
