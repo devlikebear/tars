@@ -6,6 +6,11 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.44.3] - 2026-10-03
+
+### Fixed
+- The focus-mode release train no longer lists work that already shipped in a release made outside focus. Once a repository had one finished focus release, the train compared only against that release's cut-off and ignored later tags, so "since v0.44.1" still listed pipelines released in v0.43.1 and v0.43.2. A pipeline whose pull request's merge is in the latest `v*` tag is now left out: the probe records the merge commit (`merge_oid`), and pipelines finished before that are matched by their PR's squash or merge commit subject in the tag's history.
+
 ## [0.44.2] - 2026-10-03
 
 ### Fixed

@@ -145,6 +145,9 @@ type PRInfo struct {
 	Checks     []PRCheck `json:"checks,omitempty"`
 	HeadOID    string    `json:"head_oid,omitempty"`
 	HeadRef    string    `json:"head_ref,omitempty"`
+	// MergeOID is the commit the PR merged as (the squash or merge commit
+	// on the base branch); "" until it merges. The release train reads it.
+	MergeOID string `json:"merge_oid,omitempty"`
 	// HeadSince is when HeadOID was first seen (the last push); NoCI holds
 	// while no probe of the PR has reported a check.
 	HeadSince *time.Time `json:"head_since,omitempty"`

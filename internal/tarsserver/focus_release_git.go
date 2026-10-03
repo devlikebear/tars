@@ -5,6 +5,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -105,6 +107,39 @@ func gitLatestReleaseTag(ctx context.Context, repo string) (releaseTag, bool) {
 		return releaseTag{}, false
 	}
 	return releaseTag{name: name, at: at}, true
+}
+
+// gitTagHasCommit reports whether commit is in tag's history. A commit the
+// repository does not have is not: the tag's own history is all local.
+func gitTagHasCommit(ctx context.Context, repo, tag, commit string) bool {
+	_, err := runGit(ctx, releaseGitTimeout, repo, nil, "merge-base", "--is-ancestor", commit+"^{commit}", "refs/tags/"+tag+"^{commit}")
+	return err == nil
+}
+
+// mergeSubject matches the subject GitHub gives a pull request's commit on
+// the base branch: "title (#12)" for a squash or rebase, "Merge pull request
+// #12 from …" for a merge commit.
+var mergeSubject = regexp.MustCompile(`^(?:Merge pull request #(\d+) |.*\(#(\d+)\)$)`)
+
+// gitTagMergedPRs is the numbers of the pull requests whose merge is in
+// tag's history, read from commit subjects only — a body that mentions a
+// pull request does not ship it. Never nil.
+func gitTagMergedPRs(ctx context.Context, repo, tag string) map[int]bool {
+	prs := map[int]bool{}
+	out, err := runGit(ctx, releaseGitTimeout, repo, nil, "log", "--format=%s", "refs/tags/"+tag, "--")
+	if err != nil {
+		return prs
+	}
+	for _, subject := range strings.Split(out, "\n") {
+		m := mergeSubject.FindStringSubmatch(strings.TrimSpace(subject))
+		if m == nil {
+			continue
+		}
+		if n, err := strconv.Atoi(m[1] + m[2]); err == nil {
+			prs[n] = true
+		}
+	}
+	return prs
 }
 
 // tagFetchCache runs at most one tag fetch per repository per window;
