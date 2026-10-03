@@ -285,6 +285,15 @@ var configFieldImpactHints = map[string][]string{
 	"tools_message_enabled": {
 		"Changing message tool availability affects user-facing notification behavior.",
 	},
+	"tools_computer_use_enabled": {
+		"Enabling computer use lets chat drive desktop apps and sends on-screen text to the System One server at jev.base_url.",
+	},
+	"tools_computer_use_cua_driver_path": {
+		"Changing the cua-driver path changes which local binary receives GUI automation commands.",
+	},
+	"tools_computer_use_expose_values": {
+		"Sending element values exposes text field contents to the System One server.",
+	},
 	"tools_agentruntime_enabled": {
 		"Changing Agent Runtime tool availability affects whether chat can dispatch subagent runs.",
 	},

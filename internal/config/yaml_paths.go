@@ -87,6 +87,8 @@ func inferPreferredYAMLPathForKey(key string) string {
 		trimmed := strings.TrimPrefix(key, "tools_web_fetch_")
 		trimmed = strings.TrimSuffix(trimmed, "_json")
 		return "tools.web_fetch." + trimmed
+	case strings.HasPrefix(key, "tools_computer_use_"):
+		return "tools.computer_use." + strings.TrimPrefix(key, "tools_computer_use_")
 	case key == "tools_default_set":
 		return "tools.default_set"
 	case key == "tools_allow_high_risk_user":

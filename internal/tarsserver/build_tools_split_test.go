@@ -1,8 +1,12 @@
 package tarsserver
 
 import (
+	"context"
+	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/devlikebear/tars/internal/computeruse"
 	"github.com/devlikebear/tars/internal/config"
 )
 
@@ -70,5 +74,40 @@ func TestBuildOptionalChatTools_WebToolsFollowTheirFlags(t *testing.T) {
 		if !names[want] {
 			t.Errorf("tool %q missing when its flag is on; got %v", want, names)
 		}
+	}
+}
+
+func TestBuildOptionalChatTools_ComputerUseFollowsItsFlag(t *testing.T) {
+	cfg := config.Default()
+	cfg.WorkspaceDir = t.TempDir()
+	if toolNameSet(t, cfg)["computer_use"] {
+		t.Fatal("computer_use is registered by default; it must be opt-in")
+	}
+	cfg.ToolsComputerUseEnabled = true
+	if !toolNameSet(t, cfg)["computer_use"] {
+		t.Fatal("computer_use missing when tools.computer_use.enabled is on")
+	}
+}
+
+// With no System One server configured the tool stays registered and answers
+// "unavailable" instead of failing the turn or touching the screen.
+func TestComputerUseTool_UnavailableWithoutSystemOne(t *testing.T) {
+	cfg := config.Default()
+	cfg.ToolsComputerUseEnabled = true
+	cfg.Jev.BaseURL = ""
+	res := newComputerUseEngine(cfg).Run(context.Background(), computeruse.Request{Goal: "open settings"})
+	if res.Status != computeruse.StatusUnavailable || res.Hint == "" {
+		t.Fatalf("got %+v, want unavailable with a hint", res)
+	}
+}
+
+func TestComputerUseTool_UnavailableWithoutDriver(t *testing.T) {
+	cfg := config.Default()
+	cfg.ToolsComputerUseEnabled = true
+	cfg.Jev.BaseURL = "http://127.0.0.1:1"
+	cfg.ToolsComputerUseCuaDriverPath = filepath.Join(t.TempDir(), "no-such-cua-driver")
+	res := newComputerUseEngine(cfg).Run(context.Background(), computeruse.Request{Goal: "open settings"})
+	if res.Status != computeruse.StatusUnavailable || !strings.Contains(res.Reason, "cua-driver") {
+		t.Fatalf("got %+v, want unavailable naming cua-driver", res)
 	}
 }

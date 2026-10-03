@@ -9,6 +9,7 @@ import (
 	"math"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -38,18 +39,39 @@ func FindCuaDriverPath(configured string) (string, error) {
 		}
 		return path, nil
 	}
-	path, err := exec.LookPath("cua-driver")
-	if err != nil {
-		return "", fmt.Errorf("%w: cua-driver not found in PATH; install it or set %s", ErrDriverUnavailable, CuaDriverPathEnv)
+	if path, err := exec.LookPath("cua-driver"); err == nil {
+		return path, nil
 	}
-	return path, nil
+	// A server started by launchd gets a bare PATH, so also look where the
+	// installer and package managers put the binary.
+	for _, candidate := range cuaDriverFallbackPaths() {
+		if path, err := exec.LookPath(candidate); err == nil {
+			return path, nil
+		}
+	}
+	return "", fmt.Errorf("%w: cua-driver not found in PATH; install it or set %s", ErrDriverUnavailable, CuaDriverPathEnv)
+}
+
+func cuaDriverFallbackPaths() []string {
+	out := []string{}
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		out = append(out, filepath.Join(home, ".local", "bin", "cua-driver"))
+	}
+	return append(out,
+		"/opt/homebrew/bin/cua-driver",
+		"/usr/local/bin/cua-driver",
+		"/Applications/CuaDriver.app/Contents/MacOS/cua-driver",
+	)
 }
 
 // CuaDriver drives a GUI window through the cua-driver CLI, one subprocess per
 // tool call. The daemon holds the accessibility permissions; this process only
 // speaks JSON to the CLI.
 type CuaDriver struct {
-	path           string
+	path string
+	// configured is the path setting to resolve on every call when path is
+	// empty, so a driver installed after the server started is picked up.
+	configured     string
 	timeout        time.Duration
 	commandContext func(context.Context, string, ...string) *exec.Cmd
 }
@@ -61,6 +83,15 @@ func NewCuaDriver(path string, timeout time.Duration) *CuaDriver {
 		timeout = 15 * time.Second
 	}
 	return &CuaDriver{path: path, timeout: timeout, commandContext: exec.CommandContext}
+}
+
+// NewLazyCuaDriver returns a driver that looks the binary up on each call
+// (configured path, then CUA_DRIVER_PATH, then PATH) instead of once at
+// construction. A missing binary surfaces as ErrDriverUnavailable from Ping.
+func NewLazyCuaDriver(configured string, timeout time.Duration) *CuaDriver {
+	d := NewCuaDriver("", timeout)
+	d.configured = configured
+	return d
 }
 
 var _ Driver = (*CuaDriver)(nil)
@@ -84,9 +115,15 @@ func (d *CuaDriver) call(ctx context.Context, tool string, args map[string]any) 
 	if err != nil {
 		return nil, err
 	}
+	path := d.path
+	if path == "" {
+		if path, err = FindCuaDriverPath(d.configured); err != nil {
+			return nil, err
+		}
+	}
 	ctx, cancel := context.WithTimeout(ctx, d.timeout)
 	defer cancel()
-	cmd := d.commandContext(ctx, d.path, argv...)
+	cmd := d.commandContext(ctx, path, argv...)
 	configureCuaDriverProcess(cmd)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

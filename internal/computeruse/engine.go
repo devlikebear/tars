@@ -145,7 +145,7 @@ func (e *Engine) Run(ctx context.Context, req Request) Result {
 	// has no omitempty and a caller decoding "trace": null has to special-case it.
 	empty := func() *run { return &run{started: e.now()} }
 	if e.driver == nil || e.jev == nil {
-		return e.finish(empty(), Result{Status: StatusUnavailable, Reason: "computer_use is not configured", Hint: "set jev.api_key and install cua-driver"})
+		return e.finish(empty(), Result{Status: StatusUnavailable, Reason: "computer_use is not configured", Hint: "set jev.base_url (plus jev.api_key for hosted Jev) and install cua-driver"})
 	}
 	if err := e.driver.Ping(ctx); err != nil {
 		return e.finish(empty(), Result{Status: StatusUnavailable, Reason: err.Error(), Hint: "start the driver with `cua-driver serve` and grant Accessibility via `cua-driver permissions grant`"})
