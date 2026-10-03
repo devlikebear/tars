@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -589,6 +590,10 @@ func TestFindCuaDriverPath(t *testing.T) {
 	newBinary := func(t *testing.T, name string) (dir, path string) {
 		t.Helper()
 		dir = t.TempDir()
+		if runtime.GOOS == "windows" {
+			// LookPath only accepts files with an executable extension there.
+			name += ".exe"
+		}
 		path = filepath.Join(dir, name)
 		if err := os.WriteFile(path, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
 			t.Fatal(err)
@@ -653,7 +658,31 @@ func TestFindCuaDriverPath(t *testing.T) {
 		}
 	})
 
+	noFallbacks := func(t *testing.T, paths ...string) {
+		t.Helper()
+		prev := cuaDriverFallbacks
+		cuaDriverFallbacks = func() []string { return paths }
+		t.Cleanup(func() { cuaDriverFallbacks = prev })
+	}
+
+	// A launchd-started server has a bare PATH; the installer's location must
+	// still be found.
+	t.Run("well-known location used when PATH misses", func(t *testing.T) {
+		_, installed := newBinary(t, "cua-driver")
+		noFallbacks(t, filepath.Join(t.TempDir(), "absent"), installed)
+		t.Setenv(CuaDriverPathEnv, "")
+		t.Setenv("PATH", t.TempDir())
+		got, err := FindCuaDriverPath("")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != installed {
+			t.Fatalf("path = %q, want %q", got, installed)
+		}
+	})
+
 	t.Run("PATH miss names the env override", func(t *testing.T) {
+		noFallbacks(t)
 		t.Setenv(CuaDriverPathEnv, "")
 		t.Setenv("PATH", t.TempDir())
 		_, err := FindCuaDriverPath("")
@@ -797,5 +826,41 @@ func TestParseWindowState_AdoptsChildStaticTextLabel(t *testing.T) {
 	}
 	if row.Depth != 1 || byToken["s1:4"].Depth != 2 {
 		t.Errorf("depths: row=%d child=%d", row.Depth, byToken["s1:4"].Depth)
+	}
+}
+
+// A lazy driver looks the binary up per call, so a missing one is reported as
+// unavailable instead of failing server start, and a later install is found.
+func TestLazyCuaDriver_ResolvesPathPerCall(t *testing.T) {
+	prev := cuaDriverFallbacks
+	cuaDriverFallbacks = func() []string { return nil }
+	t.Cleanup(func() { cuaDriverFallbacks = prev })
+	t.Setenv(CuaDriverPathEnv, "")
+	t.Setenv("PATH", t.TempDir())
+
+	d := NewLazyCuaDriver("", time.Second)
+	var ran []string
+	d.commandContext = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		ran = append(ran, name)
+		return exec.CommandContext(ctx, name, args...)
+	}
+	if err := d.Ping(context.Background()); !errorsIs(err, ErrDriverUnavailable) {
+		t.Fatalf("err = %v, want ErrDriverUnavailable", err)
+	}
+	if len(ran) != 0 {
+		t.Fatalf("a command ran without a binary: %v", ran)
+	}
+
+	installed := filepath.Join(t.TempDir(), "cua-driver")
+	if runtime.GOOS == "windows" {
+		installed += ".exe"
+	}
+	if err := os.WriteFile(installed, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(CuaDriverPathEnv, installed)
+	_ = d.Ping(context.Background())
+	if len(ran) != 1 || ran[0] != installed {
+		t.Fatalf("ran = %v, want the newly installed %s", ran, installed)
 	}
 }

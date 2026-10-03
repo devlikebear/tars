@@ -153,7 +153,7 @@ func isBareContainer(el Element) bool {
 func ElementHash(snap Snapshot) string {
 	h := sha256.New()
 	for _, el := range snap.Elements {
-		fmt.Fprintf(h, "%s|%s|%s|%v|%s\n", el.Role, el.Label, el.Value, el.Enabled, selectedMark(el.Selected))
+		_, _ = fmt.Fprintf(h, "%s|%s|%s|%v|%s\n", el.Role, el.Label, el.Value, el.Enabled, selectedMark(el.Selected))
 	}
 	return hex.EncodeToString(h.Sum(nil))[:16]
 }

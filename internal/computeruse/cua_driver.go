@@ -44,7 +44,7 @@ func FindCuaDriverPath(configured string) (string, error) {
 	}
 	// A server started by launchd gets a bare PATH, so also look where the
 	// installer and package managers put the binary.
-	for _, candidate := range cuaDriverFallbackPaths() {
+	for _, candidate := range cuaDriverFallbacks() {
 		if path, err := exec.LookPath(candidate); err == nil {
 			return path, nil
 		}
@@ -52,7 +52,11 @@ func FindCuaDriverPath(configured string) (string, error) {
 	return "", fmt.Errorf("%w: cua-driver not found in PATH; install it or set %s", ErrDriverUnavailable, CuaDriverPathEnv)
 }
 
-func cuaDriverFallbackPaths() []string {
+// cuaDriverFallbacks is a variable so tests do not depend on what the host
+// happens to have installed.
+var cuaDriverFallbacks = defaultCuaDriverFallbacks
+
+func defaultCuaDriverFallbacks() []string {
 	out := []string{}
 	if home, err := os.UserHomeDir(); err == nil && home != "" {
 		out = append(out, filepath.Join(home, ".local", "bin", "cua-driver"))
