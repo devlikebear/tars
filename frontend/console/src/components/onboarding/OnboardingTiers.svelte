@@ -1,11 +1,13 @@
 <script lang="ts">
-  import { getProviderModels } from '../../lib/api'
+  import { discoverSetupProviders, getProviderModels } from '../../lib/api'
   import { SNAPSHOT_DATE, popularModelsForKind } from '../../lib/llm-catalog'
+  import type { SetupCandidate } from '../../lib/setupDiscovery'
   import type { OnboardingFormState } from '../../lib/onboarding'
   import { t } from '../../i18n'
   import FormField from './FormField.svelte'
 
   interface Props {
+    candidates?: SetupCandidate[]
     form: OnboardingFormState
     reentry: boolean
     allKnownAliases: string[]
@@ -14,6 +16,7 @@
     onNext: () => void
   }
   let {
+    candidates = [],
     form = $bindable(),
     reentry,
     allKnownAliases,
@@ -25,15 +28,21 @@
   let liveModels = $state<string[]>([])
   let liveRefreshError = $state<string>('')
   let liveRefreshing = $state<boolean>(false)
+  let refreshedCandidate = $state<SetupCandidate | null>(null)
+  let selectedCandidate = $derived(refreshedCandidate?.kind === form.provider.kind ? refreshedCandidate : candidates.find(candidate => candidate.kind === form.provider.kind))
   let modelSuggestions = $derived(
-    liveModels.length > 0 ? liveModels : popularModelsForKind(form.provider.kind),
+    liveModels.length > 0 ? liveModels : selectedCandidate?.models.length ? selectedCandidate.models : popularModelsForKind(form.provider.kind),
   )
 
   async function refreshLiveModels() {
     liveRefreshError = ''
     liveRefreshing = true
     try {
-      const info = await getProviderModels()
+      const local = form.provider.kind === 'claude-code-cli' || form.provider.kind === 'openai-codex'
+      const discovery = local ? await discoverSetupProviders() : null
+      const candidate = discovery?.candidates.find(value => value.kind === form.provider.kind)
+      const info = candidate || await getProviderModels(form.provider.alias)
+      if (candidate) refreshedCandidate = candidate
       const models = Array.isArray(info?.models)
         ? info.models.filter((m) => typeof m === 'string' && m.trim() !== '')
         : []
@@ -66,16 +75,24 @@
         {$t.onboarding.step2.modelsSourceStaticEmpty(SNAPSHOT_DATE)}
       {/if}
     </div>
-    {#if reentry}
       <button class="btn btn-ghost btn-sm" type="button" onclick={refreshLiveModels} disabled={liveRefreshing}>
         {liveRefreshing ? $t.onboarding.step2.refreshing : $t.onboarding.step2.refreshButton}
       </button>
-    {/if}
   </div>
   {#if liveRefreshError}
     <div class="onboarding-errors-inline">
       <strong>{$t.onboarding.errors.refreshFailed}</strong>: {liveRefreshError}
     </div>
+  {/if}
+
+  {#if selectedCandidate}
+    <p class="onboarding-hint">{selectedCandidate.source === 'live' ? $t.setupDiscovery.modelLive : selectedCandidate.source === 'cache' ? $t.setupDiscovery.modelCache : selectedCandidate.source === 'cli' ? $t.setupDiscovery.aliases : $t.setupDiscovery.modelFallback}</p>
+    <button class="btn btn-ghost btn-sm" type="button" onclick={() => {
+      for (const tier of ['heavy', 'standard', 'light'] as const) {
+        if (!form.tiers[tier].model) form.tiers[tier].model = selectedCandidate?.recommended[tier] || ''
+        if (!form.tiers[tier].provider) form.tiers[tier].provider = form.provider.alias
+      }
+    }}>{$t.setupDiscovery.applyModels}</button>
   {/if}
 
   <datalist id="onboarding-model-suggestions">

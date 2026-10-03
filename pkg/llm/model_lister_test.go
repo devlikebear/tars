@@ -3,6 +3,7 @@ package llm
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -378,5 +379,25 @@ func TestParseOpenAICodexModelSlugs_EmptyListIsAnError(t *testing.T) {
 	}
 	if _, err := parseOpenAICodexModelSlugs([]byte(`{"data":[{"id":"gpt-4o"}]}`)); err == nil {
 		t.Fatal("an OpenAI-platform-shaped body must not be mistaken for a Codex list")
+	}
+}
+
+func TestModelFetcher_OpenAICodex_FailedRefreshPreservesAuthRejection(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/token" {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = fmt.Fprint(w, `{"error":"invalid_grant"}`)
+			return
+		}
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer server.Close()
+	fetcher, _ := codexFetcherFor(t, server, func(cred auth.ProviderCredential) (auth.ProviderCredential, error) {
+		return auth.RefreshProviderCredential(context.Background(), auth.ProviderAuthConfig{Provider: "openai-codex", AuthMode: "oauth"}, cred, auth.ProviderRefreshOptions{TokenURL: server.URL + "/token", HTTPClient: server.Client()})
+	})
+	_, err := fetcher.FetchModels(context.Background(), ProviderOptions{Provider: "openai-codex"})
+	var providerErr *ProviderError
+	if !errors.As(err, &providerErr) || providerErr.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("lost auth rejection after failed refresh: %v", err)
 	}
 }

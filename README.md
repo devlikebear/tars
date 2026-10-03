@@ -267,6 +267,15 @@ not running. This installs the service and starter workspace if needed. Version
 0.43.4 fixes server discovery on case-insensitive volumes, where the app could
 mistake its own `TARS` executable for the `tars` server.
 
+The setup wizard detects locally installed Claude Code and Codex sign-ins.
+A single ready provider fills the empty first-run form automatically; when both
+are ready, choose one. Claude model tiers use `opus` / `sonnet` / `haiku`, and
+Codex recommendations come from the live provider catalog with cached fallback.
+Missing tools show installation or sign-in instructions. Existing settings and
+manual entries are preserved, and changes are saved only after review.
+Codex currently requires credentials readable from its file-based login; a
+keychain-only CLI login is shown as needing a compatible sign-in.
+
 
 **Curl:**
 
