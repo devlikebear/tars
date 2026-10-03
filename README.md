@@ -70,6 +70,8 @@ The primary interface is the browser console at `http://127.0.0.1:43180/console`
 
 See [docs/console.md](docs/console.md) for the detailed console page and panel inventory.
 
+Native `exec` uses POSIX shell syntax for quoted arguments, pipes, redirects, and chained commands in both foreground and background runs (Git sh/bash on Windows). Existing tool approvals still apply; shell command validation is defense in depth, not a sandbox. Tool cards show exit status and error output, and follow-up messages added after reconnecting to a running turn continue automatically when that turn finishes.
+
 ### Durable Work Ledger
 
 TARS opens a local SQLite Work Ledger at `workspace/_shared/work-ledger/work-ledger.db`. Versioned Work, Step, Attempt, Event, Approval, Artifact, Proof, CapabilityVersion, EvaluationRun, and CapabilityOutcome records use workspace-scoped idempotency keys and transactional state transitions. SQLite runs in WAL mode with foreign keys, full synchronous writes, checksummed migrations, and indexed read projections.

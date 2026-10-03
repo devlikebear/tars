@@ -6,6 +6,15 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.44.3] - 2026-10-03
+
+### Fixed
+
+- Native `exec` now preserves quoted arguments, pipelines, redirects, and chained commands in foreground and background runs (#1113). Both paths use the existing POSIX shell resolver, including Git sh/bash on Windows. Shell syntax validation checks blocked commands inside chains, substitutions, and supported command wrappers before execution.
+- Command cancellation and timeouts terminate the process group/tree and bound output-pipe cleanup. Background child processes are also cleaned up when their parent shell exits.
+- Native tool cards keep shortened arguments as valid JSON and show the actual exit status and error output before repeated command text, making long command failures diagnosable.
+- Follow-up messages queued after reconnecting to a running chat now send when it finishes. “Send now” works with one click after reconnecting, and external cancellation pauses the queue until it is resumed.
+
 ## [0.44.2] - 2026-10-03
 
 ### Fixed
