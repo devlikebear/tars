@@ -490,6 +490,15 @@ test('reportCardText never repeats the summary under the heading (#1109)', () =>
     body: 'Tests pass.',
   })
   assert.deepEqual(reportCardText('Built the card.', '\n  Built the card.\n'), { heading: 'Built the card.', body: '' })
+  // The server does not trim the first line: a Markdown hard break or a CRLF ending stays in the title.
+  assert.deepEqual(reportCardText('Built the card.  ', 'Built the card.  \nTests pass.'), {
+    heading: 'Built the card.',
+    body: 'Tests pass.',
+  })
+  assert.deepEqual(reportCardText('Built the card.\r', 'Built the card.\r\nTests pass.'), {
+    heading: 'Built the card.',
+    body: 'Tests pass.',
+  })
   // No summary: keep the stored title.
   assert.deepEqual(reportCardText('Stage report', ''), { heading: 'Stage report', body: '' })
   assert.deepEqual(reportCardText('Stage report', undefined), { heading: 'Stage report', body: '' })

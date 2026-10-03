@@ -638,9 +638,12 @@ export function reportCardText(title: string, summary: string | undefined | null
   if (!text) return { heading: title, body: '' }
   const nl = text.indexOf('\n')
   const first = (nl < 0 ? text : text.slice(0, nl)).trim()
-  if (first === title) {
-    return { heading: title, body: nl < 0 ? '' : text.slice(nl + 1).trim() }
+  // The server does not trim the first line, so a stored title can end with
+  // a Markdown hard break's spaces or a CRLF's \r.
+  const stored = title.trim()
+  if (first === stored) {
+    return { heading: stored, body: nl < 0 ? '' : text.slice(nl + 1).trim() }
   }
-  if (title.endsWith('…') && first.startsWith(title.slice(0, -1))) return { heading: null, body: text }
+  if (stored.endsWith('…') && first.startsWith(stored.slice(0, -1))) return { heading: null, body: text }
   return { heading: title, body: text }
 }

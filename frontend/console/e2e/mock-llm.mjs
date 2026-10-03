@@ -151,7 +151,8 @@ function focusReply(text) {
     const report = answered
       ? { summary: 'Applied the chosen greeting.', tasks_done: true, risks: [] }
       : {
-          summary: 'Implemented greet() and its test.',
+          // Two lines: the card's heading is the first, its body only the second (#1109).
+          summary: 'Implemented greet() and its test.\nThe test covers both punctuation marks.',
           decisions: [{ id: 'd1', question: 'Which greeting should greet() return?', options: ['Hello', 'Hi there'] }],
           risks: ['The greeting is not localized.'],
         }
