@@ -269,6 +269,13 @@ func TestInstallDirs(t *testing.T) {
 	if got := InstallDirs("darwin", ""); len(got) != 2 {
 		t.Fatalf("no home must skip ~/.local/bin: %v", got)
 	}
+	windows := InstallDirs("windows", `C:\Users\me`)
+	if want := filepath.Join(`C:\Users\me`, "AppData", "Local", "Programs", "TARS"); len(windows) != 1 || windows[0] != want {
+		t.Fatalf("windows install dirs = %v, want [%s] (install.ps1's default)", windows, want)
+	}
+	if got := InstallDirs("windows", ""); len(got) != 0 {
+		t.Fatalf("no home must give no windows install dirs: %v", got)
+	}
 }
 
 func TestResolvePrecedence(t *testing.T) {
