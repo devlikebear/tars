@@ -271,6 +271,7 @@ The setup wizard detects locally installed Claude Code and Codex sign-ins.
 A single ready provider fills the empty first-run form automatically; when both
 are ready, choose one. Claude model tiers use `opus` / `sonnet` / `haiku`, and
 Codex recommendations come from the live provider catalog with cached fallback.
+The setup model-source label identifies live provider catalogs, cached recommendations, bundled fallbacks, and Claude CLI aliases.
 Missing tools show installation or sign-in instructions. Existing settings and
 manual entries are preserved, and changes are saved only after review.
 Codex currently requires credentials readable from its file-based login; a

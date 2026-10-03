@@ -15,6 +15,7 @@ test('first run fills the only ready provider and models without saving', async 
   await expect(page.locator('.onboarding-grid select').first()).toHaveValue('claude-code-cli')
   await page.getByRole('button',{name:/Next.*Tier/i}).click()
   await expect(page.locator('.onboarding-tier').filter({has:page.locator('legend',{hasText:'standard'})}).locator('input[list]')).toHaveValue('sonnet')
+  await expect(page.locator('.onboarding-models-source-text')).toHaveText('Claude aliases follow the models recommended by your installed CLI.')
   expect(writes).toBe(0)
 })
 test('two ready providers wait for user choice and recommend live Codex models', async ({page})=>{
@@ -25,7 +26,7 @@ test('two ready providers wait for user choice and recommend live Codex models',
   await page.getByRole('button',{name:/Next.*Tier/i}).click()
   await expect(page.locator('.onboarding-tier input[list]')).toHaveCount(3)
   for(const input of await page.locator('.onboarding-tier input[list]').all()) await expect(input).toHaveValue('latest-model')
-  await expect(page.getByText('Models refreshed from the provider.')).toBeVisible()
+  await expect(page.locator('.onboarding-models-source-text')).toHaveText('Models refreshed from the provider.')
 })
 test('unavailable tools show installation and login guidance', async ({page})=>{
   await openWizard(page,[{...claude,installed:false,ready:false,problem:'cli_missing'},{...codex,ready:false,problem:'not_logged_in'}])
