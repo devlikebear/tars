@@ -129,6 +129,21 @@ test('Send now on a reattached turn needs only one click', async ({ page }) => {
   await expect(queue(page)).toHaveCount(0)
 })
 
+test('cancelling elsewhere pauses follow-ups in a reattached view', async ({ page }) => {
+  await holdTurn(page)
+  await page.reload()
+  await expect(pendingApproval(page)).toHaveCount(1)
+  await composer(page).fill('after an external stop')
+  await composer(page).press('Enter')
+  const sessionId = page.url().split('/').pop() ?? ''
+  const response = await page.request.post(`/v1/chat/cancel?session_id=${encodeURIComponent(sessionId)}`)
+  expect(response.ok()).toBe(true)
+  await expect(queue(page)).toContainText('Paused')
+  await expect(assistant(page).filter({ hasText: 'Echo: after an external stop' })).toHaveCount(0)
+  await queue(page).getByRole('button', { name: 'Resume' }).click()
+  await expect(assistant(page).filter({ hasText: 'Echo: after an external stop' })).toHaveCount(1)
+})
+
 test('Stop pauses the queue until it is resumed', async ({ page }) => {
   await holdTurn(page)
   await composer(page).fill('after the stop')

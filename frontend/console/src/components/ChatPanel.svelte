@@ -669,6 +669,9 @@
         break
       }
       case 'cancelled':
+        // A different view can stop this turn too. Only an explicit local
+        // Send now request should resume its queued follow-ups afterward.
+        userStopped = true
         applyChatStatus({ phase: 'cancelled' })
         stopChatStatusTicker()
         void chatSession.turnSettled()
