@@ -120,13 +120,8 @@ func NewExecToolWithOptions(policy PathPolicy, manager *ProcessManager, opts Exe
 				return execErrorResult(commandLine, "multi-line command is not allowed", -1, "", "", 0, false), nil
 			}
 
-			fields := strings.Fields(commandLine)
-			if len(fields) == 0 {
-				return execErrorResult(commandLine, missingCommandHint, -1, "", "", 0, false), nil
-			}
-			command := fields[0]
-			if _, blocked := blockedExecCommands[strings.ToLower(command)]; blocked {
-				return execErrorResult(commandLine, fmt.Sprintf("blocked command: %s", command), -1, "", "", 0, false), nil
+			if err := validateShellCommand(commandLine); err != nil {
+				return execErrorResult(commandLine, err.Error(), -1, "", "", 0, false), nil
 			}
 
 			if timeoutMS < minExecTimeoutMS {
@@ -159,8 +154,10 @@ func NewExecToolWithOptions(policy PathPolicy, manager *ProcessManager, opts Exe
 			runCtx, cancel := context.WithTimeout(ctx, time.Duration(timeoutMS)*time.Millisecond)
 			defer cancel()
 
-			cmd := exec.CommandContext(runCtx, command, fields[1:]...)
-			cmd.Dir = policy.PrimaryDir
+			cmd, err := newShellCommand(runCtx, policy.PrimaryDir, commandLine)
+			if err != nil {
+				return execErrorResult(commandLine, err.Error(), -1, "", "", 0, false), nil
+			}
 
 			stdoutPipe, err := cmd.StdoutPipe()
 			if err != nil {
@@ -175,6 +172,15 @@ func NewExecToolWithOptions(policy PathPolicy, manager *ProcessManager, opts Exe
 			if err := cmd.Start(); err != nil {
 				return execErrorResult(commandLine, err.Error(), -1, "", "", 0, false), nil
 			}
+
+			// A descendant can leave the process group while retaining these
+			// descriptors. WaitDelay does not manage manually read pipes, so
+			// cancellation must also unblock the readers before cmd.Wait.
+			stopPipeCancellation := context.AfterFunc(runCtx, func() {
+				_ = stdoutPipe.Close()
+				_ = stderrPipe.Close()
+			})
+			defer stopPipeCancellation()
 
 			streamer := ToolOutputStreamerFromContext(ctx)
 			var stdout, stderr bytes.Buffer
@@ -191,6 +197,7 @@ func NewExecToolWithOptions(policy PathPolicy, manager *ProcessManager, opts Exe
 			// output on busy CI runners.
 			wg.Wait()
 			runErr := cmd.Wait()
+			cleanupExecShellProcess(cmd)
 			durationMS := time.Since(start).Milliseconds()
 			timedOut := runCtx.Err() == context.DeadlineExceeded
 

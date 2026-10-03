@@ -109,10 +109,7 @@ func (m *ProcessManager) Start(ctx context.Context, workspaceDir, commandLine st
 	if m == nil {
 		return ProcessSnapshot{}, fmt.Errorf("process manager is not configured")
 	}
-	fields := strings.Fields(strings.TrimSpace(commandLine))
-	if len(fields) == 0 {
-		return ProcessSnapshot{}, fmt.Errorf("command is required")
-	}
+
 	if timeoutMS < minExecTimeoutMS {
 		timeoutMS = minExecTimeoutMS
 	}
@@ -120,8 +117,11 @@ func (m *ProcessManager) Start(ctx context.Context, workspaceDir, commandLine st
 		timeoutMS = defaultProcessMaxTimeoutMS
 	}
 	runCtx, cancel := context.WithTimeout(ctx, time.Duration(timeoutMS)*time.Millisecond)
-	cmd := exec.CommandContext(runCtx, fields[0], fields[1:]...)
-	cmd.Dir = workspaceDir
+	cmd, err := newShellCommand(runCtx, workspaceDir, commandLine)
+	if err != nil {
+		cancel()
+		return ProcessSnapshot{}, err
+	}
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -153,6 +153,9 @@ func (m *ProcessManager) Start(ctx context.Context, workspaceDir, commandLine st
 
 	go func() {
 		err := cmd.Wait()
+		cleanupExecShellProcess(cmd)
+		cancel()
+		_ = stdin.Close()
 		mp.mu.Lock()
 		mp.done = true
 		mp.endedAt = time.Now().UTC()
@@ -273,12 +276,7 @@ func (m *ProcessManager) Kill(sessionID string) (ProcessSnapshot, error) {
 	if mp.cancel != nil {
 		mp.cancel()
 	}
-	if mp.cmd != nil && mp.cmd.Process != nil {
-		if err := mp.cmd.Process.Kill(); err != nil {
-			mp.mu.Unlock()
-			return m.snapshot(mp, true), fmt.Errorf("kill process failed: %w", err)
-		}
-	}
+
 	mp.mu.Unlock()
 	return m.snapshot(mp, true), nil
 }
