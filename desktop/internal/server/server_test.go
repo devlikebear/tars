@@ -203,6 +203,49 @@ func TestFindTARS(t *testing.T) {
 	}
 }
 
+// A case-insensitive macOS volume resolves MacOS/tars to the shell MacOS/TARS.
+// A hard link reproduces the same file identity on case-sensitive CI too.
+func TestFindTARSSkipsDesktopItself(t *testing.T) {
+	name := "tars"
+	if runtime.GOOS == "windows" {
+		name = "tars.exe"
+	}
+	dir := t.TempDir()
+	shell := filepath.Join(dir, "TARS")
+	if err := os.WriteFile(shell, []byte("desktop"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	alias := filepath.Join(dir, name)
+	if _, err := os.Stat(alias); os.IsNotExist(err) {
+		if err := os.Link(shell, alias); err != nil {
+			t.Fatal(err)
+		}
+	}
+	brew := t.TempDir()
+	cli := filepath.Join(brew, name)
+	if err := os.WriteFile(cli, []byte("server"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	noPath := func(string) (string, error) { return "", errors.New("not found") }
+	for _, tc := range []struct {
+		name   string
+		lookup func(string) (string, error)
+	}{
+		{"Finder PATH", noPath},
+		{"PATH also points to desktop", func(string) (string, error) { return alias, nil }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := FindTARS(shell, tc.lookup, []string{dir, brew})
+			if err != nil || got != cli {
+				t.Fatalf("got %q, %v; want server %q", got, err, cli)
+			}
+			if got, err := FindTARS(shell, tc.lookup, []string{dir}); err == nil {
+				t.Fatalf("must reject desktop when no server exists, got %q", got)
+			}
+		})
+	}
+}
+
 func TestInstallDirs(t *testing.T) {
 	darwin := InstallDirs("darwin", "/Users/me")
 	for _, want := range []string{"/opt/homebrew/bin", "/usr/local/bin", filepath.Join("/Users/me", ".local", "bin")} {

@@ -296,6 +296,13 @@ func UnknownFlag(output string) bool {
 // Finder or the Dock gets launchd's minimal PATH, which misses Homebrew's and
 // install.sh's bin directories, so those are tried explicitly last.
 func FindTARS(shellExe string, lookPath func(string) (string, error), installDirs []string) (string, error) {
+	// Compare file identity, not spelling: on macOS, TARS and tars can
+	// name the same executable. Stat also follows symlink aliases.
+	shellInfo, _ := os.Stat(shellExe)
+	isShell := func(path string) bool {
+		info, err := os.Stat(path)
+		return err == nil && shellInfo != nil && os.SameFile(shellInfo, info)
+	}
 	name := "tars"
 	if runtime.GOOS == "windows" {
 		name = "tars.exe"
@@ -304,19 +311,22 @@ func FindTARS(shellExe string, lookPath func(string) (string, error), installDir
 		dir := filepath.Dir(shellExe)
 		// Inside a macOS bundle the shell lives in TARS.app/Contents/MacOS.
 		for _, candidate := range []string{filepath.Join(dir, name), filepath.Join(dir, "..", "..", "..", name)} {
-			if isFile(candidate) {
+			if isFile(candidate) && !isShell(candidate) {
 				return filepath.Clean(candidate), nil
 			}
 		}
 	}
 	path, err := lookPath(name)
-	if err == nil {
+	if err == nil && !isShell(path) {
 		return path, nil
 	}
 	for _, dir := range installDirs {
-		if candidate := filepath.Join(dir, name); isFile(candidate) {
+		if candidate := filepath.Join(dir, name); isFile(candidate) && !isShell(candidate) {
 			return candidate, nil
 		}
+	}
+	if err == nil {
+		err = errors.New("PATH resolves to the desktop app itself")
 	}
 	return "", fmt.Errorf("tars executable not found next to the desktop app, on PATH or in %s: %w", strings.Join(installDirs, ", "), err)
 }
