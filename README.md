@@ -262,6 +262,12 @@ brew install devlikebear/tap/tars                  # server + CLI
 brew install --cask devlikebear/tap/tars-desktop   # desktop app (macOS); pulls in the server too
 ```
 
+On macOS, choose **Start server** from the desktop tray menu when the server is
+not running. This installs the service and starter workspace if needed. Version
+0.43.4 fixes server discovery on case-insensitive volumes, where the app could
+mistake its own `TARS` executable for the `tars` server.
+
+
 **Curl:**
 
 ```bash

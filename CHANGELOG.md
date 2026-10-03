@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.43.4] - 2026-10-03
+
+### Fixed
+
+- **macOS 데스크톱의 Start server가 서버 대신 앱 자신을 실행해 30초 뒤 타임아웃되던 문제** — 대소문자를 구분하지 않는 파일시스템에서 서버 후보 `tars`가 앱 실행 파일 `TARS`와 같은 파일로 해석됐다. 이제 실행 파일 검색은 실제 파일 식별자를 비교해 앱 자신과 그 링크를 제외하고 Homebrew 등에서 실제 서버를 찾는다. 같은 파일을 가리키는 후보가 앱 옆, PATH, 설치 경로에 있는 경우와 서버가 없는 경우를 회귀 테스트로 검증했다.
+
 ## [0.43.3] - 2026-10-03
 
 ### Fixed
