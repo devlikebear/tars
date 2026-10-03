@@ -213,7 +213,7 @@ func loadRemoteAccessCLIConfig(opts remoteAccessOptions) (config.Config, error) 
 		if err != nil {
 			return config.Config{}, err
 		}
-		cfg.WorkspaceDir = workspaceDir
+		config.SetWorkspaceDir(&cfg, workspaceDir)
 	}
 	return cfg, nil
 }

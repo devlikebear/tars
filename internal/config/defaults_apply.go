@@ -267,7 +267,7 @@ func applyAgentRuntimeDefaults(cfg *Config, defaults Config) {
 		cfg.AgentRuntimeConsensusConcurrentRuns = defaults.AgentRuntimeConsensusConcurrentRuns
 	}
 	if strings.TrimSpace(cfg.AgentRuntimePersistenceDir) == "" {
-		cfg.AgentRuntimePersistenceDir = filepath.Join(strings.TrimSpace(cfg.WorkspaceDir), "_shared", "agentruntime")
+		cfg.AgentRuntimePersistenceDir = defaultAgentRuntimePersistenceDir(cfg.WorkspaceDir)
 	}
 	if cfg.AgentRuntimeArchiveRetentionDays <= 0 {
 		cfg.AgentRuntimeArchiveRetentionDays = defaults.AgentRuntimeArchiveRetentionDays
@@ -276,10 +276,37 @@ func applyAgentRuntimeDefaults(cfg *Config, defaults Config) {
 		cfg.AgentRuntimeArchiveMaxFileBytes = defaults.AgentRuntimeArchiveMaxFileBytes
 	}
 	if strings.TrimSpace(cfg.AgentRuntimeArchiveDir) == "" {
-		cfg.AgentRuntimeArchiveDir = filepath.Join(strings.TrimSpace(cfg.WorkspaceDir), "_shared", "agentruntime", "archive")
+		cfg.AgentRuntimeArchiveDir = defaultAgentRuntimeArchiveDir(cfg.WorkspaceDir)
 	}
 	if cfg.MCPCommandAllowlist == nil {
 		cfg.MCPCommandAllowlist = append([]string{}, defaults.MCPCommandAllowlist...)
+	}
+}
+
+func defaultAgentRuntimePersistenceDir(workspaceDir string) string {
+	return filepath.Join(strings.TrimSpace(workspaceDir), "_shared", "agentruntime")
+}
+
+func defaultAgentRuntimeArchiveDir(workspaceDir string) string {
+	return filepath.Join(defaultAgentRuntimePersistenceDir(workspaceDir), "archive")
+}
+
+// SetWorkspaceDir points a loaded config at another workspace, as the
+// --workspace-dir flag does after Load has filled in defaults. Paths whose
+// defaults were derived from the old workspace move with it; paths the
+// config set explicitly stay where they are. Assigning cfg.WorkspaceDir
+// directly would leave the derived paths under the old workspace.
+func SetWorkspaceDir(cfg *Config, workspaceDir string) {
+	if cfg == nil {
+		return
+	}
+	previous := cfg.WorkspaceDir
+	cfg.WorkspaceDir = workspaceDir
+	if cfg.AgentRuntimePersistenceDir == defaultAgentRuntimePersistenceDir(previous) {
+		cfg.AgentRuntimePersistenceDir = defaultAgentRuntimePersistenceDir(workspaceDir)
+	}
+	if cfg.AgentRuntimeArchiveDir == defaultAgentRuntimeArchiveDir(previous) {
+		cfg.AgentRuntimeArchiveDir = defaultAgentRuntimeArchiveDir(workspaceDir)
 	}
 }
 

@@ -1628,3 +1628,36 @@ func TestDefaultAndApplyDefaults_StayAlignedForCoreValues(t *testing.T) {
 		t.Fatalf("expected memory embed base URL alignment, got cfg=%q defaults=%q", cfg.MemoryEmbedBaseURL, defaults.MemoryEmbedBaseURL)
 	}
 }
+
+func TestSetWorkspaceDir_MovesDerivedDefaultsAndKeepsExplicitPaths(t *testing.T) {
+	oldWorkspace := filepath.Join(t.TempDir(), "old")
+	newWorkspace := filepath.Join(t.TempDir(), "new")
+
+	var cfg Config
+	cfg.WorkspaceDir = oldWorkspace
+	applyDefaults(&cfg)
+	SetWorkspaceDir(&cfg, newWorkspace)
+
+	if cfg.WorkspaceDir != newWorkspace {
+		t.Fatalf("workspace dir = %q, want %q", cfg.WorkspaceDir, newWorkspace)
+	}
+	if want := filepath.Join(newWorkspace, "_shared", "agentruntime"); cfg.AgentRuntimePersistenceDir != want {
+		t.Fatalf("persistence dir = %q, want %q", cfg.AgentRuntimePersistenceDir, want)
+	}
+	if want := filepath.Join(newWorkspace, "_shared", "agentruntime", "archive"); cfg.AgentRuntimeArchiveDir != want {
+		t.Fatalf("archive dir = %q, want %q", cfg.AgentRuntimeArchiveDir, want)
+	}
+
+	explicitPersistence := filepath.Join(t.TempDir(), "runs")
+	explicitArchive := filepath.Join(t.TempDir(), "archive")
+	cfg = Config{}
+	cfg.WorkspaceDir = oldWorkspace
+	cfg.AgentRuntimePersistenceDir = explicitPersistence
+	cfg.AgentRuntimeArchiveDir = explicitArchive
+	applyDefaults(&cfg)
+	SetWorkspaceDir(&cfg, newWorkspace)
+
+	if cfg.AgentRuntimePersistenceDir != explicitPersistence || cfg.AgentRuntimeArchiveDir != explicitArchive {
+		t.Fatalf("explicit paths moved: persistence=%q archive=%q", cfg.AgentRuntimePersistenceDir, cfg.AgentRuntimeArchiveDir)
+	}
+}

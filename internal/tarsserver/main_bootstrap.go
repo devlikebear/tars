@@ -108,7 +108,7 @@ func loadConfigForServe(opts *options) (config.Config, error) {
 		}
 	}
 	if strings.TrimSpace(opts.WorkspaceDir) != "" {
-		cfg.WorkspaceDir = strings.TrimSpace(opts.WorkspaceDir)
+		config.SetWorkspaceDir(&cfg, strings.TrimSpace(opts.WorkspaceDir))
 	}
 	// Decide where the wizard should save. Honor an explicit
 	// --config / TARS_CONFIG override; otherwise fall back to the
