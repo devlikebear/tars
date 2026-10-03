@@ -6,6 +6,13 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.45.0] - 2026-10-03
+
+### Added
+
+- **Computer use** (#973): the opt-in `computer_use` chat tool drives a desktop app toward a goal. Each step reads the window's accessibility tree through `cua-driver` and asks the System One server at `jev.base_url` which element to click, type into or set — no LLM call inside the loop. Text to type comes from the caller's `inputs` and is never sent to the server or written to the trace. An action that looks hard to undo, or typing into a secure field, always stops with `needs_confirmation` and a one-time resume token. Enable with `tools.computer_use.enabled: true`; the tool counts as high-risk, so session permission modes apply. The driven window's on-screen text is sent to `jev.base_url` — use a loopback server to keep it local. Verified on macOS only.
+- `tars doctor` reports whether computer use can run: the `cua-driver` binary and daemon, the System One server, and whether that server is remote.
+
 ## [0.44.3] - 2026-10-03
 
 ### Fixed

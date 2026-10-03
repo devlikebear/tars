@@ -238,6 +238,10 @@ tars remote url
 
 Remote Access requires `api_auth_mode: required`, configured admin/user passwords, and a logged-in Tailscale client. The Settings page shows both the saved YAML value and the effective runtime value when environment variables override config, so a local dev launch such as `TARS_API_AUTH_MODE=off` is visible before enabling remote access.
 
+### Computer Use
+
+`computer_use` is an opt-in chat tool (`tools.computer_use.enabled`, off by default) that drives a desktop app toward a one-sentence goal. Each step reads the window's accessibility tree through [cua-driver](https://github.com/trycua/cua) and asks a System One server (`jev.base_url` — hosted TypeSafe Jev or a local compatible server) which element to act on; no LLM runs inside the loop, so a step costs a fraction of a cent. Text to type is passed by the caller as named `inputs` and never sent to the server. Actions that look hard to undo always stop with `needs_confirmation` until you answer. The driven window's on-screen text is sent to `jev.base_url`, so use a loopback server to keep it on your machine. `tars doctor` checks the binary, the daemon, and where the server runs. Verified on macOS.
+
 ### Extensibility
 
 TARS favors **on-demand extension** over always-resident tool registrations. Domain-specific capabilities are shipped as skills (plus optional companion CLIs) from the [Skill Hub](https://github.com/devlikebear/tars-skills) rather than compiled into the TARS binary — this keeps the chat system prompt small no matter how many capabilities a user installs.

@@ -160,6 +160,15 @@ Both Chat Completions and Responses API surface these:
 | openai-codex | `reasoning: {effort: "<value>"}` (object) | `service_tier: "<value>"` |
 | gemini compat| skipped (label-gated in openai_compat) | skipped |
 
+## System One (not an LLM provider)
+
+`internal/jev` talks to a `/v1/systemone` server (hosted TypeSafe Jev, or a
+local compatible server such as Kev). It answers typed `choice`/`noul`/`score`
+questions with probabilities and generates no text, so it is configured under
+`jev.*`, not `llm_providers`, and never appears in a tier. Two features use it:
+the initiative loop (text signals, loopback only) and the `computer_use` tool
+(one decision per GUI step; the driven window's text is sent to the server).
+
 ## Forward-looking gaps (out of scope for ID-004)
 
 - Gemini-native structured output (`responseSchema`) and prompt caching — Phase 4 (not selected from #366 option matrix; revisit if Gemini usage grows).

@@ -1,0 +1,570 @@
+{
+  "_note": "Prefer `elements` — `tree_markdown` will continue to work but new fields will only be added to the structured side. Issue #22865: use `max_elements` / `max_depth` to bound the AX walk on apps with very large trees.",
+  "background_input": {
+    "exact_window": {
+      "pid": 2415,
+      "status": "matched",
+      "window_id": 3463
+    },
+    "observation": {
+      "frame_freshness": "unknown",
+      "one_shot_capture": "unavailable"
+    },
+    "routes": [
+      {
+        "route": "accessibility",
+        "status": "available"
+      },
+      {
+        "route": "window_pointer",
+        "status": "available"
+      },
+      {
+        "route": "pid_keyboard",
+        "status": "available"
+      }
+    ]
+  },
+  "capture_coverage": {
+    "browser_chrome": {
+      "status": "may_be_incomplete_in_window_scope"
+    },
+    "recovery": {
+      "act_target": {
+        "display_id": "primary",
+        "kind": "desktop"
+      },
+      "inspect": "get_desktop_state",
+      "verify": "get_desktop_state",
+      "when": "verified_window_action_ineffective"
+    }
+  },
+  "element_count": 32,
+  "elements": [
+    {
+      "depth": 0,
+      "element_index": 0,
+      "element_token": "s00000002:0",
+      "frame": {
+        "h": 948.0,
+        "w": 1512.0,
+        "x": 144.0,
+        "y": 130.0
+      },
+      "label": "Example Page - Browser",
+      "role": "AXWindow"
+    },
+    {
+      "depth": 2,
+      "element_index": 1,
+      "element_token": "s00000002:1",
+      "enabled": true,
+      "frame": {
+        "h": 34.0,
+        "w": 40.0,
+        "x": 144.0,
+        "y": 176.0
+      },
+      "label": "Back",
+      "parent_index": 0,
+      "role": "AXButton",
+      "selected": false
+    },
+    {
+      "depth": 2,
+      "element_index": 2,
+      "element_token": "s00000002:2",
+      "enabled": true,
+      "frame": {
+        "h": 34.0,
+        "w": 34.0,
+        "x": 222.0,
+        "y": 176.0
+      },
+      "label": "Reload",
+      "parent_index": 0,
+      "role": "AXButton",
+      "selected": false
+    },
+    {
+      "depth": 2,
+      "element_index": 3,
+      "element_token": "s00000002:3",
+      "enabled": true,
+      "frame": {
+        "h": 24.0,
+        "w": 24.0,
+        "x": 270.0,
+        "y": 181.0
+      },
+      "label": "Site information",
+      "parent_index": 0,
+      "role": "AXPopUpButton",
+      "selected": false
+    },
+    {
+      "depth": 2,
+      "element_index": 4,
+      "element_token": "s00000002:4",
+      "enabled": true,
+      "frame": {
+        "h": 24.0,
+        "w": 1063.0,
+        "x": 302.0,
+        "y": 181.0
+      },
+      "label": "Address and search bar",
+      "parent_index": 0,
+      "role": "AXTextField",
+      "selected": false,
+      "value": "https://example.com/search?q=example"
+    },
+    {
+      "depth": 2,
+      "element_index": 5,
+      "element_token": "s00000002:5",
+      "enabled": true,
+      "frame": {
+        "h": 24.0,
+        "w": 24.0,
+        "x": 1373.0,
+        "y": 181.0
+      },
+      "label": "Bookmark this tab",
+      "parent_index": 0,
+      "role": "AXButton",
+      "selected": false
+    },
+    {
+      "depth": 2,
+      "element_index": 6,
+      "element_token": "s00000002:6",
+      "enabled": true,
+      "frame": {
+        "h": 34.0,
+        "w": 34.0,
+        "x": 1418.0,
+        "y": 176.0
+      },
+      "label": "Extension 1",
+      "parent_index": 0,
+      "role": "AXPopUpButton",
+      "selected": false
+    },
+    {
+      "depth": 2,
+      "element_index": 7,
+      "element_token": "s00000002:7",
+      "enabled": true,
+      "frame": {
+        "h": 34.0,
+        "w": 34.0,
+        "x": 1454.0,
+        "y": 176.0
+      },
+      "label": "Extension 2",
+      "parent_index": 0,
+      "role": "AXPopUpButton",
+      "selected": false
+    },
+    {
+      "depth": 2,
+      "element_index": 8,
+      "element_token": "s00000002:8",
+      "enabled": true,
+      "frame": {
+        "h": 34.0,
+        "w": 34.0,
+        "x": 1490.0,
+        "y": 176.0
+      },
+      "label": "Extension 3",
+      "parent_index": 0,
+      "role": "AXPopUpButton",
+      "selected": false
+    },
+    {
+      "depth": 2,
+      "element_index": 9,
+      "element_token": "s00000002:9",
+      "enabled": true,
+      "frame": {
+        "h": 34.0,
+        "w": 34.0,
+        "x": 1526.0,
+        "y": 176.0
+      },
+      "label": "Extensions",
+      "parent_index": 0,
+      "role": "AXPopUpButton",
+      "selected": false
+    },
+    {
+      "depth": 2,
+      "element_index": 10,
+      "element_token": "s00000002:10",
+      "enabled": true,
+      "frame": {
+        "h": 34.0,
+        "w": 34.0,
+        "x": 1580.0,
+        "y": 176.0
+      },
+      "label": "Profile",
+      "parent_index": 0,
+      "role": "AXButton",
+      "selected": false
+    },
+    {
+      "depth": 2,
+      "element_index": 11,
+      "element_token": "s00000002:11",
+      "enabled": true,
+      "frame": {
+        "h": 34.0,
+        "w": 40.0,
+        "x": 1616.0,
+        "y": 176.0
+      },
+      "label": "Browser menu",
+      "parent_index": 0,
+      "role": "AXPopUpButton",
+      "selected": false
+    },
+    {
+      "depth": 1,
+      "element_index": 12,
+      "element_token": "s00000002:12",
+      "enabled": true,
+      "frame": {
+        "h": 34.0,
+        "w": 1512.0,
+        "x": 144.0,
+        "y": 216.0
+      },
+      "label": "Bookmarks",
+      "parent_index": 0,
+      "role": "AXToolbar",
+      "selected": false
+    },
+    {
+      "depth": 3,
+      "element_index": 13,
+      "element_token": "s00000002:13",
+      "enabled": true,
+      "frame": {
+        "h": 28.0,
+        "w": 28.0,
+        "x": 150.0,
+        "y": 216.0
+      },
+      "label": "Tab groups",
+      "parent_index": 12,
+      "role": "AXButton",
+      "selected": false
+    },
+    {
+      "depth": 2,
+      "element_index": 14,
+      "element_token": "s00000002:14",
+      "enabled": true,
+      "frame": {
+        "h": 28.0,
+        "w": 86.0,
+        "x": 196.0,
+        "y": 216.0
+      },
+      "label": "Item 14",
+      "parent_index": 12,
+      "role": "AXButton",
+      "selected": false
+    },
+    {
+      "depth": 2,
+      "element_index": 15,
+      "element_token": "s00000002:15",
+      "enabled": true,
+      "frame": {
+        "h": 28.0,
+        "w": 150.0,
+        "x": 286.0,
+        "y": 216.0
+      },
+      "label": "Item 15",
+      "parent_index": 12,
+      "role": "AXButton",
+      "selected": false
+    },
+    {
+      "depth": 2,
+      "element_index": 16,
+      "element_token": "s00000002:16",
+      "enabled": true,
+      "frame": {
+        "h": 28.0,
+        "w": 150.0,
+        "x": 440.0,
+        "y": 216.0
+      },
+      "label": "Item 16",
+      "parent_index": 12,
+      "role": "AXButton",
+      "selected": false
+    },
+    {
+      "depth": 2,
+      "element_index": 17,
+      "element_token": "s00000002:17",
+      "enabled": true,
+      "frame": {
+        "h": 28.0,
+        "w": 150.0,
+        "x": 594.0,
+        "y": 216.0
+      },
+      "label": "Item 17",
+      "parent_index": 12,
+      "role": "AXButton",
+      "selected": false
+    },
+    {
+      "depth": 2,
+      "element_index": 18,
+      "element_token": "s00000002:18",
+      "enabled": true,
+      "frame": {
+        "h": 28.0,
+        "w": 150.0,
+        "x": 748.0,
+        "y": 216.0
+      },
+      "label": "Item 18",
+      "parent_index": 12,
+      "role": "AXButton",
+      "selected": false
+    },
+    {
+      "depth": 2,
+      "element_index": 19,
+      "element_token": "s00000002:19",
+      "enabled": true,
+      "frame": {
+        "h": 28.0,
+        "w": 67.0,
+        "x": 902.0,
+        "y": 216.0
+      },
+      "label": "Item 19",
+      "parent_index": 12,
+      "role": "AXButton",
+      "selected": false
+    },
+    {
+      "depth": 2,
+      "element_index": 20,
+      "element_token": "s00000002:20",
+      "enabled": true,
+      "frame": {
+        "h": 28.0,
+        "w": 121.0,
+        "x": 973.0,
+        "y": 216.0
+      },
+      "label": "Item 20",
+      "parent_index": 12,
+      "role": "AXButton",
+      "selected": false
+    },
+    {
+      "depth": 2,
+      "element_index": 21,
+      "element_token": "s00000002:21",
+      "enabled": true,
+      "frame": {
+        "h": 28.0,
+        "w": 150.0,
+        "x": 1098.0,
+        "y": 216.0
+      },
+      "label": "Item 21",
+      "parent_index": 12,
+      "role": "AXButton",
+      "selected": false
+    },
+    {
+      "depth": 2,
+      "element_index": 22,
+      "element_token": "s00000002:22",
+      "enabled": true,
+      "frame": {
+        "h": 28.0,
+        "w": 83.0,
+        "x": 1252.0,
+        "y": 216.0
+      },
+      "label": "Item 22",
+      "parent_index": 12,
+      "role": "AXButton",
+      "selected": false
+    },
+    {
+      "depth": 2,
+      "element_index": 23,
+      "element_token": "s00000002:23",
+      "enabled": true,
+      "frame": {
+        "h": 28.0,
+        "w": 150.0,
+        "x": 1339.0,
+        "y": 216.0
+      },
+      "label": "Item 23",
+      "parent_index": 12,
+      "role": "AXButton",
+      "selected": false
+    },
+    {
+      "depth": 2,
+      "element_index": 24,
+      "element_token": "s00000002:24",
+      "enabled": true,
+      "frame": {
+        "h": 28.0,
+        "w": 28.0,
+        "x": 1508.0,
+        "y": 216.0
+      },
+      "label": "Hidden bookmarks menu",
+      "parent_index": 12,
+      "role": "AXPopUpButton",
+      "selected": false
+    },
+    {
+      "depth": 2,
+      "element_index": 25,
+      "element_token": "s00000002:25",
+      "enabled": true,
+      "frame": {
+        "h": 28.0,
+        "w": 94.0,
+        "x": 1554.0,
+        "y": 216.0
+      },
+      "label": "All bookmarks",
+      "parent_index": 12,
+      "role": "AXPopUpButton",
+      "selected": false
+    },
+    {
+      "depth": 1,
+      "element_index": 26,
+      "element_token": "s00000002:26",
+      "enabled": true,
+      "frame": {
+        "h": 827.0,
+        "w": 1512.0,
+        "x": 144.0,
+        "y": 251.0
+      },
+      "in_web_content": true,
+      "label": "Example Page",
+      "parent_index": 0,
+      "role": "AXWebArea",
+      "selected": false
+    },
+    {
+      "depth": 2,
+      "element_index": 27,
+      "element_token": "s00000002:27",
+      "enabled": true,
+      "frame": {
+        "h": 36.0,
+        "w": 110.0,
+        "x": 155.0,
+        "y": 313.0
+      },
+      "in_web_content": true,
+      "label": "Skip to main content",
+      "parent_index": 26,
+      "role": "AXLink",
+      "selected": false
+    },
+    {
+      "depth": 3,
+      "element_index": 28,
+      "element_token": "s00000002:28",
+      "enabled": true,
+      "frame": {
+        "h": 16.0,
+        "w": 105.0,
+        "x": 158.0,
+        "y": 317.0
+      },
+      "in_web_content": true,
+      "label": "Skip to main content",
+      "parent_index": 27,
+      "role": "AXStaticText",
+      "selected": false,
+      "value": "Skip to main content"
+    },
+    {
+      "depth": 2,
+      "element_index": 29,
+      "element_token": "s00000002:29",
+      "enabled": true,
+      "frame": {
+        "h": 36.0,
+        "w": 110.0,
+        "x": 155.0,
+        "y": 313.0
+      },
+      "in_web_content": true,
+      "label": "Accessibility help",
+      "parent_index": 26,
+      "role": "AXLink",
+      "selected": false
+    },
+    {
+      "depth": 3,
+      "element_index": 30,
+      "element_token": "s00000002:30",
+      "enabled": true,
+      "frame": {
+        "h": 16.0,
+        "w": 77.0,
+        "x": 172.0,
+        "y": 317.0
+      },
+      "in_web_content": true,
+      "label": "Accessibility help",
+      "parent_index": 29,
+      "role": "AXStaticText",
+      "selected": false,
+      "value": "Accessibility help"
+    },
+    {
+      "depth": 2,
+      "element_index": 31,
+      "element_token": "s00000002:31",
+      "enabled": true,
+      "frame": {
+        "h": 34.0,
+        "w": 92.0,
+        "x": 194.0,
+        "y": 287.0
+      },
+      "in_web_content": true,
+      "label": "Home",
+      "parent_index": 26,
+      "role": "AXLink",
+      "selected": false
+    }
+  ],
+  "elements_complete": false,
+  "pid": 2415,
+  "returned_element_count": 32,
+  "snapshot_id": "s00000002",
+  "total_element_count": 32,
+  "tree_markdown": "- [0] AXWindow \"Example Page - Browser\"\n        - [1] AXButton \"Back\"\n        - [2] AXButton \"Reload\"\n        - [3] AXPopUpButton \"Site information\"\n        - [4] AXTextField \"Address and search bar\" = \"https://example.com/search?q=example\"\n        - [5] AXButton \"Bookmark this tab\"\n        - [6] AXPopUpButton \"Extension 1\"\n        - [7] AXPopUpButton \"Extension 2\"\n        - [8] AXPopUpButton \"Extension 3\"\n        - [9] AXPopUpButton \"Extensions\"\n        - [10] AXButton \"Profile\"\n        - [11] AXPopUpButton \"Browser menu\"\n    - [12] AXToolbar \"Bookmarks\"\n            - [13] AXButton \"Tab groups\"\n        - [14] AXButton \"Item 14\"\n        - [15] AXButton \"Item 15\"\n        - [16] AXButton \"Item 16\"\n        - [17] AXButton \"Item 17\"\n        - [18] AXButton \"Item 18\"\n        - [19] AXButton \"Item 19\"\n        - [20] AXButton \"Item 20\"\n        - [21] AXButton \"Item 21\"\n        - [22] AXButton \"Item 22\"\n        - [23] AXButton \"Item 23\"\n        - [24] AXPopUpButton \"Hidden bookmarks menu\"\n        - [25] AXPopUpButton \"All bookmarks\"\n    - [26] AXWebArea \"Example Page\"\n        - [27] AXLink \"Skip to main content\"\n            - [28] AXStaticText \"Skip to main content\" = \"Skip to main content\"\n        - [29] AXLink \"Accessibility help\"\n            - [30] AXStaticText \"Accessibility help\" = \"Accessibility help\"\n        - [31] AXLink \"Home\"\n",
+  "window_id": 3463
+}

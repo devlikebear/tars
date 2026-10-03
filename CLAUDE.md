@@ -52,7 +52,8 @@ make console-e2e          # Playwright: rebuilt console + tars serve + mock LLM 
 | `serverauth` | Bearer token auth, SHA256, three tiers (legacy/user/admin), loopback bypass |
 | `config` | YAML → env override → defaults. 60+ fields |
 | `mcp` | Model Context Protocol client |
-| `jev` | `/v1/systemone` client for System One servers (hosted Jev or local Kev); shared with #973 |
+| `jev` | `/v1/systemone` client for System One servers (hosted Jev or local Kev); shared by initiative and computer use |
+| `computeruse` | GUI loop behind the `computer_use` tool: cua-driver accessibility snapshots + System One decisions (#973) |
 | `skill` | `.md` skill files with YAML frontmatter |
 
 **Layering (enforced — `make arch-check`):**
@@ -78,6 +79,15 @@ cmd/  →  app layer  →  core layer  →  pkg/
 - **사용자 원문(최근 메시지·USER.md)은 `jev.base_url`이 loopback일 때만** state에 들어간다(`jev.Client.IsLoopback`). 원격이면 메타데이터만 보내고 텍스트 신호는 꺼진다. ledger(`workspace/_shared/initiative/ledger.jsonl`)는 텍스트를 저장하지 않는다
 - 로컬 백엔드 권고는 Kev-0.8B(한국어 원문 AUC 0.92, 약 3.1GB). TARS는 모델 프로세스를 띄우지 않고 `tars doctor`가 도달 여부만 점검
 - 상태: `GET /v1/initiative/status`. 새 LLM 도구 없음, pulse와 분리
+
+**Computer use (Epic #973):**
+- 빌트인 채팅 툴 `computer_use(goal, app?, inputs?, max_steps?, resume?, confirm?)` 하나. `tools.computer_use.enabled` 기본 false. "도메인 기능을 빌트인 툴로 넣지 말 것" 원칙의 예외다 — 기본 꺼짐이라 프롬프트에 툴 1개만 늘고, 판단 인프라(`internal/jev`)를 initiative와 공유한다
+- 루프(`internal/computeruse/engine.go`)는 관찰(`cua-driver get_window_state`, 접근성 트리) → 판단(System One 1회: `op`/`target`/`input_key` choice + `risky`/`done` noul) → 게이트 → 실행 → 다음 관찰로 검증. **루프 안에서 LLM을 부르지 않는다.** 타이핑할 텍스트는 호출자가 `inputs`로 넘기고 System One은 키 이름만 고른다 — 값은 state·trace·로그 어디에도 남기지 않는다
+- 게이트: `done ≥ 0.85` 종료, op 신뢰도 < 0.70 또는 target 신뢰도 < 0.30(그리고 2위와의 차이 < 0.30)이면 한 번 `look` 뒤 stuck 집계, `risky ≥ 0.50`이거나 secure 필드 입력이면 **항상** `needs_confirmation` + 1회용 `resume` 토큰(프로세스 메모리, 10분)으로 멈춘다. `confirm` 없는 resume은 에러다 — 사용자 답 없이 실행도 폐기도 하지 않는다. stuck/no_change 3회, `max_steps`(기본 25, 상한 50), 전체 300초에서 끝난다
+- **화면 텍스트가 `jev.base_url`로 나간다** (initiative와 달리 loopback 조건이 없다 — 화면이 이 툴의 입력 전부라서). 원격이면 `tars doctor`가 그 사실을 표시한다. `expose_values: false`는 요소 값을 빼고, secure 필드 값은 설정과 무관하게 절대 보내지 않는다. 화면 내용은 state에만 넣고 질문 `instructions`에는 넣지 않는다(라벨이 지시문이 되지 않게)
+- `jev.base_url`이 비었거나 cua-driver가 없으면 툴은 등록된 채 `status: unavailable` + hint를 돌려준다. 바이너리는 호출마다 찾는다(설정 → `CUA_DRIVER_PATH` → PATH → `~/.local/bin`·`/opt/homebrew/bin`·`/usr/local/bin`·`/Applications/CuaDriver.app`): launchd로 뜬 서버는 PATH가 비어 있고, 나중에 설치해도 재시작이 필요 없다
+- `pkg/tools.IsHighRiskToolName`에 들어 있어 네이티브 provider의 세션 권한 모드(manual=묻기, plan=거부)가 그대로 적용된다
+- 테스트는 서브프로세스·네트워크 없이 `FakeDriver`/`FakeAsker`와 cua-driver 0.28.2 fixture로 돈다. 실제 Jev + cua-driver 라이브: `CU_APP=Calculator go test -tags integration ./internal/computeruse -run TestLive_Loop -v` (`TYPESAFE_API_KEY`, 데몬 없으면 skip). macOS만 검증됨
 
 **LLM Provider Pool:**
 - `LLMConfig`: `LLMProviders` (alias → settings), `LLMTiers` (name → binding), `LLMDefaultTier`, `LLMRoleDefaults`

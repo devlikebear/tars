@@ -144,6 +144,7 @@ func buildDoctorReport(opts doctorOptions) (doctorReport, error) {
 		checkDoctorSemanticMemory(&report, cfg, configPath)
 		checkDoctorEmbodiment(&report, cfg)
 		checkDoctorInitiative(&report, cfg)
+		checkDoctorComputerUse(&report, cfg)
 	}
 
 	if report.failureCount() > 0 {
