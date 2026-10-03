@@ -580,12 +580,40 @@ func statusPreview(value string, maxLen int) string {
 }
 
 func statusPreviewForTool(toolName string, value string, maxLen int) string {
+	if strings.EqualFold(strings.TrimSpace(toolName), "exec") {
+		var result struct {
+			ExitCode  *int   `json:"exit_code"`
+			Message   string `json:"message"`
+			Stderr    string `json:"stderr"`
+			Stdout    string `json:"stdout"`
+			Status    string `json:"status"`
+			SessionID string `json:"session_id"`
+		}
+		if json.Unmarshal([]byte(value), &result) == nil && result.ExitCode != nil {
+			parts := []string{fmt.Sprintf("exit_code=%d", *result.ExitCode)}
+			for _, text := range []string{result.Message, result.Stderr, result.Stdout, result.Status, result.SessionID} {
+				if strings.TrimSpace(text) != "" {
+					parts = append(parts, text)
+				}
+			}
+			return statusPreview(strings.Join(parts, " · "), maxLen)
+		}
+	}
 	if strings.EqualFold(strings.TrimSpace(toolName), "subagents_run") {
 		if compact, ok := compactSubagentsRunPreview(value); ok {
 			return secrets.RedactPreview(compact, 4000)
 		}
 	}
 	return statusPreview(value, maxLen)
+}
+
+// Keep native arguments parseable just like upstream CLI tool arguments.
+// The subagent preview has a separate compact representation.
+func nativeToolArgsPreview(toolName, value string, maxLen int) string {
+	if strings.EqualFold(strings.TrimSpace(toolName), "subagents_run") {
+		return statusPreviewForTool(toolName, value, maxLen)
+	}
+	return providerToolArgsPreview(toolName, value, maxLen)
 }
 
 func compactSubagentsRunPreview(value string) (string, bool) {
@@ -1035,7 +1063,7 @@ func setupChatAgentLoop(
 				"executing tool",
 				evt.ToolName,
 				evt.ToolCallID,
-				statusPreviewForTool(evt.ToolName, evt.ToolArgs, 180),
+				nativeToolArgsPreview(evt.ToolName, evt.ToolArgs, 180),
 				"",
 			)
 		case agent.EventAfterTool:
@@ -1044,7 +1072,7 @@ func setupChatAgentLoop(
 				"tool completed",
 				evt.ToolName,
 				evt.ToolCallID,
-				statusPreviewForTool(evt.ToolName, evt.ToolArgs, 180),
+				nativeToolArgsPreview(evt.ToolName, evt.ToolArgs, 180),
 				statusPreviewForTool(evt.ToolName, evt.ToolResult, 180),
 				evt.ToolIsError,
 			)
@@ -1052,7 +1080,7 @@ func setupChatAgentLoop(
 			*toolCalls = append(*toolCalls, ToolCallRecord{
 				ToolName:    evt.ToolName,
 				ToolCallID:  evt.ToolCallID,
-				ToolArgs:    statusPreviewForTool(evt.ToolName, evt.ToolArgs, 500),
+				ToolArgs:    nativeToolArgsPreview(evt.ToolName, evt.ToolArgs, 500),
 				ToolResult:  statusPreviewForTool(evt.ToolName, evt.ToolResult, 500),
 				ToolIsError: evt.ToolIsError,
 				textBefore:  turnText.take(),
