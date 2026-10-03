@@ -1,3 +1,4 @@
+import type { SetupDiscoveryResponse } from '../setupDiscovery.ts'
 import { requestJSON } from './client.ts'
 import type {
   ConfigFile,
@@ -85,4 +86,8 @@ export async function disableRemoteAccess(httpsPort?: number): Promise<RemoteAcc
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(httpsPort ? { https_port: httpsPort } : {}),
   })
+}
+
+export async function discoverSetupProviders(): Promise<SetupDiscoveryResponse> {
+  return requestJSON<SetupDiscoveryResponse>('/v1/admin/setup/discover')
 }

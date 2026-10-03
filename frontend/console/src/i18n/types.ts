@@ -1,3 +1,4 @@
+import type { SetupDiscoveryTranslations } from './sections/setupDiscovery.ts'
 import type { DockTranslations } from './sections/dock.ts'
 import type { TerminalTranslations } from './sections/terminal.ts'
 import type { ChatCommandsTranslations } from './sections/chatCommands.ts'
@@ -1614,6 +1615,7 @@ export type Translations = {
   sideSession: SideSessionTranslations
   sessionWorktree: SessionWorktreeTranslations
   newChatFolder: NewChatFolderTranslations
+  setupDiscovery: SetupDiscoveryTranslations
   providerTest: ProviderTestTranslations
   focus: FocusTranslations
   chatApproval: ChatApprovalTranslations

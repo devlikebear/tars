@@ -1,4 +1,8 @@
 <script lang="ts">
+  import { onMount } from 'svelte'
+  import { discoverSetupProviders } from '../../lib/api'
+  import { autoApplyDiscovery, applyDiscoveredProvider, type SetupCandidate } from '../../lib/setupDiscovery'
+
   import {
     availableAuthModesForKind,
     defaultBaseURLForKind,
@@ -15,6 +19,7 @@
   import FormField from './FormField.svelte'
 
   interface Props {
+    candidates?: SetupCandidate[]
     form: OnboardingFormState
     reentry: boolean
     existingAliases: string[]
@@ -23,6 +28,7 @@
     onNext: () => void
   }
   let {
+    candidates = $bindable([]),
     form = $bindable(),
     reentry,
     existingAliases,
@@ -30,6 +36,35 @@
     errors,
     onNext,
   }: Props = $props()
+
+  let scanning = $state(false)
+  let discoveryFailed = $state(false)
+  let automatic = $state(false)
+  let scanGeneration = 0
+  let readyCount = $derived(candidates.filter(candidate => candidate.ready).length)
+  async function scan() {
+    const generation = ++scanGeneration
+    scanning = true
+    discoveryFailed = false
+    try {
+      const result = await discoverSetupProviders()
+      if (generation !== scanGeneration) return
+      candidates = result.candidates
+      automatic = autoApplyDiscovery(form, candidates, reentry)
+    } catch {
+      if (generation === scanGeneration) discoveryFailed = true
+    } finally {
+      if (generation === scanGeneration) scanning = false
+    }
+  }
+  onMount(() => {
+    void scan()
+    return () => { scanGeneration++ }
+  })
+  function selectCandidate(candidate: SetupCandidate) {
+    applyDiscoveredProvider(form, candidate)
+    automatic = false
+  }
 
   let availableAuthModes = $derived(availableAuthModesForKind(form.provider.kind))
 
@@ -78,6 +113,34 @@
 <section class="card">
   <div class="card-header">
     <span class="card-title">{$t.onboarding.step1.cardTitle}</span>
+  </div>
+  <div class="setup-discovery" aria-live="polite">
+    <div class="setup-discovery-heading">
+      <strong>{$t.setupDiscovery.title}</strong>
+      <button class="btn btn-ghost btn-sm" type="button" onclick={scan} disabled={scanning}>{$t.setupDiscovery.rescan}</button>
+    </div>
+    {#if scanning}<p>{$t.setupDiscovery.scanning}</p>{/if}
+    {#if discoveryFailed}<p>{$t.setupDiscovery.failed}</p>{/if}
+    {#if automatic}<p>{$t.setupDiscovery.automatic}</p>{:else if readyCount > 1}<p>{$t.setupDiscovery.choose}</p>{/if}
+    {#each candidates as candidate}
+      <div class="setup-discovery-candidate">
+        <div><strong>{candidate.kind === 'claude-code-cli' ? 'Claude Code' : 'Codex'}</strong>
+          <span>{candidate.ready ? $t.setupDiscovery.ready : !candidate.installed ? $t.setupDiscovery.missing : $t.setupDiscovery.login}</span>
+          {#if candidate.version}<small>{candidate.version}</small>{/if}
+        </div>
+        {#if candidate.ready}
+          <button class="btn btn-ghost btn-sm" type="button" onclick={() => selectCandidate(candidate)}>
+            {form.provider.kind === candidate.kind ? $t.setupDiscovery.selected : $t.setupDiscovery.select}
+          </button>
+        {:else if !candidate.installed}
+          <a class="btn btn-ghost btn-sm" href={candidate.kind === 'claude-code-cli' ? 'https://code.claude.com/docs/en/setup' : 'https://developers.openai.com/codex/quickstart'} target="_blank" rel="noopener noreferrer">{$t.setupDiscovery.install}</a>
+        {:else}
+          <p>{candidate.problem === 'auth_unknown' ? $t.setupDiscovery.unknown : candidate.kind === 'claude-code-cli' ? $t.setupDiscovery.claudeLogin : $t.setupDiscovery.codexLogin}</p>
+          <code>{candidate.kind === 'claude-code-cli' ? 'claude auth login' : 'codex -c cli_auth_credentials_store="file" login'}</code>
+          <a href={candidate.kind === 'claude-code-cli' ? 'https://code.claude.com/docs/en/authentication' : 'https://developers.openai.com/codex/auth'} target="_blank" rel="noopener noreferrer">{$t.setupDiscovery.signIn}</a>
+        {/if}
+      </div>
+    {/each}
   </div>
   {#if reentry && existingAliases.length > 0}
     <div class="onboarding-provider-selector">
@@ -170,4 +233,10 @@
     margin: 0;
     padding-left: 1.2em;
   }
+
+  .setup-discovery { margin-bottom: 1.5rem; padding: 1rem; border: 1px solid var(--border, #333); border-radius: 8px; }
+  .setup-discovery-heading, .setup-discovery-candidate { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+  .setup-discovery-candidate { padding-top: .75rem; }
+  .setup-discovery-candidate span, .setup-discovery-candidate small { margin-left: .75rem; }
+  .setup-discovery p { margin: .5rem 0; }
 </style>

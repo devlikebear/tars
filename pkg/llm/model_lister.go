@@ -191,7 +191,10 @@ func (f *modelFetcher) fetchOpenAICodexModels(ctx context.Context, opts Provider
 	}
 	refreshed, refreshErr := f.refreshCredential(ctx, authConfig, cred, auth.ProviderRefreshOptions{PersistSource: true})
 	if refreshErr != nil {
-		return nil, refreshErr
+		// The model endpoint rejected this sign-in. Preserve that fact even
+		// when refresh returns an untyped error, so onboarding cannot mistake
+		// revoked credentials for an offline catalog and mark them ready.
+		return nil, &ProviderError{Provider: "openai-codex", Operation: "refresh", StatusCode: status, Message: "sign-in refresh failed", Cause: refreshErr}
 	}
 	models, _, err = f.fetchOpenAICodexModelSlugs(ctx, endpoint, refreshed)
 	if err != nil {

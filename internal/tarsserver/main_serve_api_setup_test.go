@@ -47,6 +47,7 @@ func TestRegisterSetupOnlyRoutes_ServesAllowedEndpoints(t *testing.T) {
 		"/v1/admin/remote-access/disable",
 		"/v1/providers",
 		"/v1/models",
+		"/v1/admin/setup/discover",
 		"/v1/events/stream",
 		"/console",
 		"/console/",

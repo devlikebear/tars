@@ -1,3 +1,4 @@
+import { setupDiscoveryKo } from './sections/setupDiscovery.ts'
 import type { Translations } from './types'
 import { dockKo } from './sections/dock.ts'
 import { terminalKo } from './sections/terminal.ts'
@@ -1671,6 +1672,7 @@ export const ko = {
   sideSession: sideSessionKo,
   sessionWorktree: sessionWorktreeKo,
   newChatFolder: newChatFolderKo,
+  setupDiscovery: setupDiscoveryKo,
   providerTest: providerTestKo,
   focus: focusKo,
   chatApproval: chatApprovalKo,

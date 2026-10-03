@@ -1,3 +1,4 @@
+import { setupDiscoveryEn } from './sections/setupDiscovery.ts'
 import type { Translations } from './types'
 import { dockEn } from './sections/dock.ts'
 import { terminalEn } from './sections/terminal.ts'
@@ -1673,6 +1674,7 @@ export const en = {
   sideSession: sideSessionEn,
   sessionWorktree: sessionWorktreeEn,
   newChatFolder: newChatFolderEn,
+  setupDiscovery: setupDiscoveryEn,
   providerTest: providerTestEn,
   focus: focusEn,
   chatApproval: chatApprovalEn,

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { SetupCandidate } from '../lib/setupDiscovery'
   import { onMount } from 'svelte'
   import {
     getConfigSchema,
@@ -66,6 +67,7 @@
   let mode = $state<WizardMode>('quick')
   let step = $state<SectionId>('provider')
   let form = $state<OnboardingFormState>(emptyOnboardingForm())
+  let discoveredCandidates = $state<SetupCandidate[]>([])
   let configValues = $state<Record<string, unknown>>({})
   let existingAliases = $derived(allAliasesFromConfigValues(configValues))
   let allKnownAliases = $derived(
@@ -325,6 +327,7 @@
 
   {#if step === 'provider'}
     <OnboardingProvider
+      bind:candidates={discoveredCandidates}
       bind:form
       {reentry}
       {existingAliases}
@@ -334,6 +337,7 @@
     />
   {:else if step === 'tiers'}
     <OnboardingTiers
+      candidates={discoveredCandidates}
       bind:form
       {reentry}
       {allKnownAliases}

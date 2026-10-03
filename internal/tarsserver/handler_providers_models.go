@@ -408,6 +408,16 @@ func newProvidersModelsAPIHandler(service *providerModelsService, logger zerolog
 	})
 
 	mux.HandleFunc("/v1/admin/providers/test", handleProviderProbe(service))
+	mux.HandleFunc("/v1/admin/setup/discover", func(w http.ResponseWriter, r *http.Request) {
+		if !requireMethod(w, r, http.MethodGet) {
+			return
+		}
+		if service == nil {
+			writeError(w, http.StatusServiceUnavailable, "discovery_unavailable", "Provider discovery is unavailable")
+			return
+		}
+		writeJSON(w, http.StatusOK, newSetupDiscovery(service).discover(r.Context()))
+	})
 
 	mux.HandleFunc("/v1/models", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {

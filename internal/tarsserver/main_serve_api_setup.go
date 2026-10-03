@@ -112,6 +112,7 @@ func registerSetupOnlyRoutes(mux *http.ServeMux, handlers setupOnlyHandlers) {
 	if handlers.providersModels != nil {
 		mux.Handle("/v1/providers", handlers.providersModels)
 		mux.Handle("/v1/models", handlers.providersModels)
+		mux.Handle("/v1/admin/setup/discover", handlers.providersModels)
 	}
 	if handlers.events != nil {
 		mux.Handle("/v1/events/stream", handlers.events)
