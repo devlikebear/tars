@@ -6,6 +6,11 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.44.2] - 2026-10-03
+
+### Fixed
+- A focus-mode report card no longer shows its summary twice (#1109). A multi-line summary keeps its first line as the heading and shows only the lines after it; a summary whose first line was clipped to 120 characters gets a "Stage report" heading with the full summary below (full text on hover). Cards stored by earlier versions render the same way.
+
 ## [0.44.1] - 2026-10-03
 
 ### Fixed

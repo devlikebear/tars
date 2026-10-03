@@ -617,3 +617,33 @@ export function excerptLines(excerpt: string, target: number): ExcerptLine[] {
     }
   })
 }
+
+/** What a report card shows: a heading (null = the generic label) and the body under it. */
+export interface ReportCardText {
+  heading: string | null
+  body: string
+}
+
+/**
+ * Splits a report card's text so the summary never shows twice (#1109). The
+ * server titles a report with the summary's first line, clipped to 120
+ * characters with "…" (`reportTitle` in internal/focuspipeline/machine.go).
+ * When the title is the whole first line, the body is the lines after it.
+ * When it is a clipped start of the first line, the heading becomes the
+ * generic label (null) and the body holds the whole summary. Works from the
+ * stored title, so cards saved by earlier versions render the same way.
+ */
+export function reportCardText(title: string, summary: string | undefined | null): ReportCardText {
+  const text = (summary ?? '').trim()
+  if (!text) return { heading: title, body: '' }
+  const nl = text.indexOf('\n')
+  const first = (nl < 0 ? text : text.slice(0, nl)).trim()
+  // The server does not trim the first line, so a stored title can end with
+  // a Markdown hard break's spaces or a CRLF's \r.
+  const stored = title.trim()
+  if (first === stored) {
+    return { heading: stored, body: nl < 0 ? '' : text.slice(nl + 1).trim() }
+  }
+  if (stored.endsWith('…') && first.startsWith(stored.slice(0, -1))) return { heading: null, body: text }
+  return { heading: title, body: text }
+}

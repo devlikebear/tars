@@ -17,7 +17,7 @@
     FocusPRDraft,
     FocusReport,
   } from '../../lib/types'
-  import { excerptLines } from '../../lib/focus'
+  import { excerptLines, reportCardText } from '../../lib/focus'
   import { mergeSummary, prDraftOf } from '../../lib/focusPR'
   import FocusChangeCard from './FocusChangeCard.svelte'
   import FocusMergeSummary from './FocusMergeSummary.svelte'
@@ -46,6 +46,12 @@
   // The PR gates (P4): G3's editable draft and G4's merge summary.
   let prDraft = $derived(isBlocked ? null : prDraftOf(card))
   let merge = $derived(isBlocked ? null : mergeSummary(card))
+  // A plain report's heading and body, split so the summary never shows twice (#1109).
+  let reportText = $derived(
+    card.kind === 'report' && !isDraft(card.payload)
+      ? reportCardText(card.title, (card.payload as FocusReport | undefined)?.summary)
+      : null,
+  )
   let title = $derived(
     card.kind === 'gate' && card.stage === 'plan'
       ? $t.focus.gate.planTitle
@@ -57,8 +63,12 @@
         ? blockedTitle(card.payload as FocusBlocked)
         : card.kind === 'change'
           ? $t.focus.change.turnTitle(card.turn)
-          : card.title,
+          : reportText
+            ? (reportText.heading ?? $t.focus.report.label)
+            : card.title,
   )
+  // The heading's hover text: the whole summary when the heading is the label.
+  let hoverTitle = $derived(reportText && reportText.heading === null ? reportText.body : title)
   // The open gate's card is the newest undecided gate card.
   let gateOpen = $derived(card.kind === 'gate' && !decided && !!openGate)
   let isPRDraft = $derived(card.kind === 'report' && isDraft(card.payload))
@@ -157,7 +167,7 @@
   <header class="card-head">
     <span class="badge kind-badge">{$t.focus.kinds[card.kind] ?? card.kind}</span>
     <!-- Not the global .card-title (label caps): a card's title is a sentence. -->
-    <h3 class="focus-card-title" title={title} data-content>{title}</h3>
+    <h3 class="focus-card-title" title={hoverTitle} data-content>{title}</h3>
     <span class="card-meta">
       {#if card.turn > 0}<span class="mono">{$t.focus.card.turn(card.turn)}</span>{/if}
       <span class="badge {card.state === 'unseen' ? 'badge-accent' : 'badge-default'}">{$t.focus.states[card.state]}</span>
@@ -294,9 +304,8 @@
       <pre class="prose-pre" data-content>{pr.body}</pre>
     {:else if card.kind === 'report'}
       {@const r = card.payload as FocusReport | undefined}
-      <!-- The title is the summary's first line; show the rest only. -->
-      {#if r?.summary && r.summary.trim() !== card.title}
-        <p class="prose summary" data-content>{r.summary}</p>
+      {#if reportText?.body}
+        <p class="prose summary" data-content>{reportText.body}</p>
       {/if}
       {#if r?.risks?.length}
         <h4 class="label">{$t.focus.report.risks}</h4>

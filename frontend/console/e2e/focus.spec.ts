@@ -115,7 +115,11 @@ test('a focus task: plan gate, approve, report and decision cards, decide, then 
   await page.keyboard.press('ArrowRight')
   await expect(position(page)).toHaveText('2 / 3')
   await expect(card(page)).toHaveAttribute('data-kind', 'report')
-  await expect(card(page).getByText('Implemented greet() and its test.')).toBeVisible()
+  // A two-line summary: the heading is the first line and the body only the rest (#1109).
+  await expect(card(page).locator('h3')).toHaveText('Implemented greet() and its test.')
+  await expect(card(page).locator('h3')).toHaveAttribute('title', 'Implemented greet() and its test.')
+  await expect(card(page).locator('p.summary')).toHaveText('The test covers both punctuation marks.')
+  await expect(card(page).getByText('Implemented greet() and its test.')).toHaveCount(1)
   // A card title reads as a sentence, not a caps label.
   await expect(card(page).locator('h3')).toHaveCSS('text-transform', 'none')
   await page.keyboard.press('ArrowRight')
