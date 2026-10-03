@@ -70,6 +70,14 @@ func TestLoadConfigForServe_WorkspaceDirOverrideAppliesEvenWhenFileMissing(t *te
 	if cfg.WorkspaceDir != override {
 		t.Fatalf("expected workspace_dir override %q, got %q", override, cfg.WorkspaceDir)
 	}
+	// Agent runtime state defaults to a path under the workspace. It must
+	// follow the flag, not stay under the default ~/.tars/workspace.
+	if want := filepath.Join(override, "_shared", "agentruntime"); cfg.AgentRuntimePersistenceDir != want {
+		t.Fatalf("expected agent runtime persistence dir %q, got %q", want, cfg.AgentRuntimePersistenceDir)
+	}
+	if want := filepath.Join(override, "_shared", "agentruntime", "archive"); cfg.AgentRuntimeArchiveDir != want {
+		t.Fatalf("expected agent runtime archive dir %q, got %q", want, cfg.AgentRuntimeArchiveDir)
+	}
 }
 
 func TestLoadConfigForServe_MissingFileAppliesEnvOverrides(t *testing.T) {

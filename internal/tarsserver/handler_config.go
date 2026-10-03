@@ -95,8 +95,8 @@ func handleGetConfigSchema(w http.ResponseWriter, configPath string, cfg config.
 		}
 		effectiveCfg = effectiveLoaded
 		if strings.TrimSpace(workspaceDir) != "" {
-			activeCfg.WorkspaceDir = workspaceDir
-			effectiveCfg.WorkspaceDir = workspaceDir
+			config.SetWorkspaceDir(&activeCfg, workspaceDir)
+			config.SetWorkspaceDir(&effectiveCfg, workspaceDir)
 		}
 	}
 	values := config.ConfigToMap(activeCfg)
