@@ -16,6 +16,12 @@ package tarsserver
 //     of its latest v* tag. Tags are made on the remote by CI, so they are
 //     fetched first (bounded, cached per repository); when that fails the
 //     local tags are used and the group is marked tags_stale.
+//   - Either way, a pipeline whose pull request's merge is in the latest v*
+//     tag shipped with it: releases are also made outside focus, and those
+//     leave no release pipeline behind. The merge is the commit the probe
+//     recorded (PRInfo.MergeOID), or for a pipeline that finished before it
+//     was recorded, a commit in the tag whose subject is that PR's squash or
+//     merge subject.
 //
 // active_release names a release pipeline still running for the repository;
 // POST /v1/focus/pipelines refuses a second one.
@@ -55,6 +61,9 @@ type releaseTrainGroup struct {
 	// ActiveRelease is the session of a release pipeline still running.
 	ActiveRelease string             `json:"active_release,omitempty"`
 	Items         []releaseTrainItem `json:"items"`
+	// taggedPRs are the pull requests merged in LastTag, read when first
+	// asked for.
+	taggedPRs map[int]bool
 }
 
 type releaseTrainResponse struct {
@@ -226,7 +235,7 @@ func (a *focusReleaseAPI) groups(ctx context.Context) ([]releaseTrainGroup, erro
 		}
 		g := group(lp.repo)
 		finished := focuspipeline.ReleaseTime(p)
-		if released(p.SessionID, finished, g, releases[lp.repo]) {
+		if released(p.SessionID, finished, g, releases[lp.repo]) || a.inLastTag(ctx, g, p.PR) {
 			continue
 		}
 		g.Items = append(g.Items, releaseTrainItem{
@@ -272,6 +281,20 @@ func released(sessionID string, finished time.Time, g *releaseTrainGroup, rel *r
 		return rel.covered[sessionID] || !finished.After(rel.cutoff)
 	}
 	return g.Since != nil && !finished.After(*g.Since)
+}
+
+// inLastTag reports whether pr's merge is in the group's latest tag.
+func (a *focusReleaseAPI) inLastTag(ctx context.Context, g *releaseTrainGroup, pr *focuspipeline.PRInfo) bool {
+	if g.LastTag == "" || pr == nil {
+		return false
+	}
+	if pr.MergeOID != "" {
+		return gitTagHasCommit(ctx, g.Repo, g.LastTag, pr.MergeOID)
+	}
+	if g.taggedPRs == nil {
+		g.taggedPRs = gitTagMergedPRs(ctx, g.Repo, g.LastTag)
+	}
+	return g.taggedPRs[pr.Number]
 }
 
 // releaseCreateMu serializes the active-release check with the create, so

@@ -107,6 +107,8 @@ type PRProbe struct {
 	// HeadOID and HeadRef are the PR's head commit and branch.
 	HeadOID string `json:"head_oid,omitempty"`
 	HeadRef string `json:"head_ref,omitempty"`
+	// MergeOID is the commit a merged PR landed as on its base branch.
+	MergeOID string `json:"merge_oid,omitempty"`
 	// LocalBranch is the branch checked out in the session's folder, set by
 	// the server: the first PR found must be an open one from this branch
 	// ("" when unknown: then only open is required).
@@ -395,7 +397,7 @@ func (p *Pipeline) recordPR(probe PRProbe, now time.Time) {
 	info := PRInfo{
 		Number: probe.Number, URL: probe.URL, State: probe.State, MergeState: probe.MergeState,
 		Checks:  append([]PRCheck(nil), probe.Checks...),
-		HeadOID: probe.HeadOID, HeadRef: probe.HeadRef,
+		HeadOID: probe.HeadOID, HeadRef: probe.HeadRef, MergeOID: probe.MergeOID,
 		// "No CI" holds only while no probe of the PR ever saw a check.
 		NoCI: len(probe.Checks) == 0 && (prev == nil || prev.NoCI),
 	}
