@@ -58,6 +58,7 @@ var AppPackages = []string{
 	"checkpoint",
 	"consoleauth",
 	"critic",
+	"computeruse",
 	"cron",
 	"embodiment",
 	"executionplane",
