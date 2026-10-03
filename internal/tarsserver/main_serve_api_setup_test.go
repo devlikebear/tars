@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/devlikebear/tars/internal/config"
+	"github.com/devlikebear/tars/internal/testutil"
 	"github.com/rs/zerolog"
 )
 
@@ -245,6 +246,10 @@ func TestBuildAPIMux_RoutesToSetupOnlyWhenLLMNotReady(t *testing.T) {
 
 func TestBuildAPIMux_WiresEmbodimentSubsystem(t *testing.T) {
 	dir := t.TempDir()
+	// config.Load("") fills AgentRuntimePersistenceDir from the default,
+	// home-based workspace before WorkspaceDir is overridden below, so the
+	// home must be a temp dir too or the test writes into the user's ~/.tars.
+	testutil.SetHome(t, dir)
 	cfg, err := config.Load("")
 	if err != nil {
 		t.Fatalf("load defaults: %v", err)

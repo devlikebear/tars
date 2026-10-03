@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/devlikebear/tars/internal/config"
+	"github.com/devlikebear/tars/internal/testutil"
 )
 
 func TestResolveAVFoundationAudioInput_Default(t *testing.T) {
@@ -36,7 +37,7 @@ func TestResolveAVFoundationAudioInput_Custom(t *testing.T) {
 }
 
 func TestResolveAssistantWorkspaceDirUsesCoreDefault(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	testutil.SetHome(t, t.TempDir())
 	if got := resolveAssistantWorkspaceDir(""); got != config.DefaultWorkspaceDir() {
 		t.Fatalf("expected assistant workspace default %q, got %q", config.DefaultWorkspaceDir(), got)
 	}

@@ -103,6 +103,8 @@ var SharedPackages = []string{
 	"shellexec",
 	"sysprompt",
 	"tarsclient",
+	// testutil holds helpers shared by tests; only _test.go files import it.
+	"testutil",
 	"textutil",
 	"usage",
 }

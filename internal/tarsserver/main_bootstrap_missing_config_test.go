@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/devlikebear/tars/internal/config"
+	"github.com/devlikebear/tars/internal/testutil"
 )
 
 func TestLoadConfigForServe_MissingFileFallsBackToDefault(t *testing.T) {
@@ -37,7 +38,7 @@ func TestLoadConfigForServe_EmptyConfigPathFallsBackToFixedPath(t *testing.T) {
 	// has somewhere concrete to land.
 	t.Setenv("TARS_CONFIG", "")
 	t.Setenv("TARS_CONFIG_PATH", "")
-	t.Setenv("HOME", t.TempDir())
+	testutil.SetHome(t, t.TempDir())
 
 	opts := &options{ConfigPath: ""}
 	cfg, err := loadConfigForServe(opts)
@@ -105,7 +106,7 @@ func TestLoadConfigForServe_MissingFileAppliesEnvOverrides(t *testing.T) {
 func TestLoadConfigForServe_FirstRunOnLoopbackWritesSkeleton(t *testing.T) {
 	t.Setenv("TARS_CONFIG", "")
 	t.Setenv("TARS_CONFIG_PATH", "")
-	t.Setenv("HOME", t.TempDir())
+	testutil.SetHome(t, t.TempDir())
 	t.Chdir(t.TempDir())
 
 	opts := &options{APIAddr: DefaultAPIAddr}
@@ -133,7 +134,7 @@ func TestLoadConfigForServe_FirstRunOnLoopbackWritesSkeleton(t *testing.T) {
 func TestLoadConfigForServe_FirstRunLeavesNonLoopbackAndExplicitPathsAlone(t *testing.T) {
 	t.Setenv("TARS_CONFIG", "")
 	t.Setenv("TARS_CONFIG_PATH", "")
-	t.Setenv("HOME", t.TempDir())
+	testutil.SetHome(t, t.TempDir())
 	t.Chdir(t.TempDir())
 
 	// Listening beyond loopback with auth off would open the server to the
@@ -163,7 +164,7 @@ func TestLoadConfigForServe_FirstRunLeavesNonLoopbackAndExplicitPathsAlone(t *te
 func TestLoadConfigForServe_FirstRunWithFixedPathFlagWritesSkeleton(t *testing.T) {
 	t.Setenv("TARS_CONFIG", "")
 	t.Setenv("TARS_CONFIG_PATH", "")
-	t.Setenv("HOME", t.TempDir())
+	testutil.SetHome(t, t.TempDir())
 	t.Chdir(t.TempDir())
 
 	// The LaunchAgent runs `tars serve --config ~/.tars/config/config.yaml`.

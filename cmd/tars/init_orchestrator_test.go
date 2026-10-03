@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/devlikebear/tars/internal/config"
+	"github.com/devlikebear/tars/internal/testutil"
 )
 
 // initMockState records calls into the swappable orchestrator hooks
@@ -55,7 +56,7 @@ func swapInitHooks(t *testing.T, state *initMockState) {
 
 func TestInit_OrchestratesEndToEnd(t *testing.T) {
 	fakeHome := t.TempDir()
-	t.Setenv("HOME", fakeHome)
+	testutil.SetHome(t, fakeHome)
 	t.Setenv("TARS_PLUGINS_BUNDLED_DIR", writeBundledPluginSource(t))
 
 	state := &initMockState{startResult: initStartResult{mode: "detached", pid: 1234, logPath: "/tmp/tars.log"}}
@@ -103,7 +104,7 @@ func TestInit_OrchestratesEndToEnd(t *testing.T) {
 
 func TestInit_PicksAlternatePortWhenDefaultBusy(t *testing.T) {
 	fakeHome := t.TempDir()
-	t.Setenv("HOME", fakeHome)
+	testutil.SetHome(t, fakeHome)
 	t.Setenv("TARS_PLUGINS_BUNDLED_DIR", writeBundledPluginSource(t))
 
 	state := &initMockState{startResult: initStartResult{mode: "detached"}}
@@ -152,7 +153,7 @@ func TestInit_PicksAlternatePortWhenDefaultBusy(t *testing.T) {
 
 func TestInit_NoServerSkipsOrchestration(t *testing.T) {
 	fakeHome := t.TempDir()
-	t.Setenv("HOME", fakeHome)
+	testutil.SetHome(t, fakeHome)
 	t.Setenv("TARS_PLUGINS_BUNDLED_DIR", writeBundledPluginSource(t))
 
 	state := &initMockState{}
@@ -180,7 +181,7 @@ func TestInit_NoServerSkipsOrchestration(t *testing.T) {
 
 func TestInit_NoBrowserSkipsOnlyBrowser(t *testing.T) {
 	fakeHome := t.TempDir()
-	t.Setenv("HOME", fakeHome)
+	testutil.SetHome(t, fakeHome)
 	t.Setenv("TARS_PLUGINS_BUNDLED_DIR", writeBundledPluginSource(t))
 
 	state := &initMockState{startResult: initStartResult{mode: "detached"}}
@@ -209,7 +210,7 @@ func TestInit_NoBrowserSkipsOnlyBrowser(t *testing.T) {
 
 func TestInit_ForceOverwritesExistingConfig(t *testing.T) {
 	fakeHome := t.TempDir()
-	t.Setenv("HOME", fakeHome)
+	testutil.SetHome(t, fakeHome)
 	t.Setenv("TARS_PLUGINS_BUNDLED_DIR", writeBundledPluginSource(t))
 
 	configPath := config.FixedConfigPath()
@@ -246,7 +247,7 @@ func TestInit_ForceOverwritesExistingConfig(t *testing.T) {
 
 func TestInit_HealthProbeFailureSurfacesLogPath(t *testing.T) {
 	fakeHome := t.TempDir()
-	t.Setenv("HOME", fakeHome)
+	testutil.SetHome(t, fakeHome)
 	t.Setenv("TARS_PLUGINS_BUNDLED_DIR", writeBundledPluginSource(t))
 
 	state := &initMockState{
@@ -272,7 +273,7 @@ func TestInit_HealthProbeFailureSurfacesLogPath(t *testing.T) {
 
 func TestInit_AcceptsExplicitAPIAddr(t *testing.T) {
 	fakeHome := t.TempDir()
-	t.Setenv("HOME", fakeHome)
+	testutil.SetHome(t, fakeHome)
 	t.Setenv("TARS_PLUGINS_BUNDLED_DIR", writeBundledPluginSource(t))
 
 	state := &initMockState{startResult: initStartResult{mode: "detached"}}
@@ -304,7 +305,7 @@ func TestInit_MigrationFlowsIntoOrchestrator(t *testing.T) {
 	// TARS_PLUGINS_BUNDLED_DIR at a non-existent path makes that
 	// failure observable.
 	fakeHome := t.TempDir()
-	t.Setenv("HOME", fakeHome)
+	testutil.SetHome(t, fakeHome)
 	t.Setenv("TARS_PLUGINS_BUNDLED_DIR", filepath.Join(t.TempDir(), "no-such-bundled-plugins"))
 
 	// Stage a legacy config in CWD (the migration probe scans relative
@@ -382,7 +383,7 @@ func TestInit_RejectsUnknownPositionalArgs(t *testing.T) {
 	// silently re-run init because cobra accepts arbitrary positional
 	// args by default. With cobra.NoArgs they must error loudly.
 	fakeHome := t.TempDir()
-	t.Setenv("HOME", fakeHome)
+	testutil.SetHome(t, fakeHome)
 	t.Setenv("TARS_PLUGINS_BUNDLED_DIR", writeBundledPluginSource(t))
 
 	state := &initMockState{}
@@ -412,7 +413,7 @@ func TestInit_FreshInstallTolerantOfMissingBundledPlugins(t *testing.T) {
 	// system boots fine without them; treat the missing dir as a
 	// soft condition for fresh installs too.
 	fakeHome := t.TempDir()
-	t.Setenv("HOME", fakeHome)
+	testutil.SetHome(t, fakeHome)
 	t.Setenv("TARS_PLUGINS_BUNDLED_DIR", filepath.Join(t.TempDir(), "no-such-bundled"))
 
 	state := &initMockState{startResult: initStartResult{mode: "detached"}}
@@ -441,7 +442,7 @@ func TestInit_DefaultDoesNotMigrateButHints(t *testing.T) {
 	// skeleton, and (c) print a hint pointing at --migrate so the
 	// user can discover the explicit path.
 	fakeHome := t.TempDir()
-	t.Setenv("HOME", fakeHome)
+	testutil.SetHome(t, fakeHome)
 	t.Setenv("TARS_PLUGINS_BUNDLED_DIR", writeBundledPluginSource(t))
 
 	legacyDir := t.TempDir()
@@ -498,7 +499,7 @@ func TestInit_MigrateWithoutLegacyErrors(t *testing.T) {
 	// --migrate must error when there is no legacy config to import,
 	// rather than silently falling back to the wizard skeleton.
 	fakeHome := t.TempDir()
-	t.Setenv("HOME", fakeHome)
+	testutil.SetHome(t, fakeHome)
 	t.Setenv("TARS_PLUGINS_BUNDLED_DIR", writeBundledPluginSource(t))
 
 	emptyDir := t.TempDir()
@@ -525,7 +526,7 @@ func TestInit_MigrateWithoutLegacyErrors(t *testing.T) {
 
 func TestInit_ForceAndMigrateAreMutuallyExclusive(t *testing.T) {
 	fakeHome := t.TempDir()
-	t.Setenv("HOME", fakeHome)
+	testutil.SetHome(t, fakeHome)
 	t.Setenv("TARS_PLUGINS_BUNDLED_DIR", writeBundledPluginSource(t))
 
 	workspaceDir := filepath.Join(t.TempDir(), "ws")
@@ -544,7 +545,7 @@ func TestInit_ForceAndMigrateAreMutuallyExclusive(t *testing.T) {
 
 func TestOnboardCommand_RunsInitOrchestrator(t *testing.T) {
 	fakeHome := t.TempDir()
-	t.Setenv("HOME", fakeHome)
+	testutil.SetHome(t, fakeHome)
 	t.Setenv("TARS_PLUGINS_BUNDLED_DIR", writeBundledPluginSource(t))
 
 	state := &initMockState{startResult: initStartResult{mode: "detached"}}

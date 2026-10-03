@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/devlikebear/tars/internal/session"
+	"github.com/devlikebear/tars/internal/testutil"
 	"github.com/rs/zerolog"
 )
 
@@ -84,8 +85,11 @@ func TestSessionCwdAPI_PutTransitionsAndEmits(t *testing.T) {
 
 	handler := newSessionAPIHandlerWithNotifier(store, zerolog.New(io.Discard), nil, sessionStyleValues{}, notify)
 
-	body := `{"current":"` + extra + `"}`
-	req := httptest.NewRequest(http.MethodPut, "/v1/admin/sessions/"+sess.ID+"/cwd", strings.NewReader(body))
+	body, err := json.Marshal(map[string]string{"current": extra})
+	if err != nil {
+		t.Fatalf("marshal body: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPut, "/v1/admin/sessions/"+sess.ID+"/cwd", strings.NewReader(string(body)))
 	req.Header.Set("Content-Type", "application/json")
 	req.RemoteAddr = "127.0.0.1:1"
 	req.Header.Set("Tars-Debug-Auth-Role", "admin")
@@ -213,8 +217,7 @@ func TestSessionCwdAPI_PutRejectsMissingOrNonDirectory(t *testing.T) {
 
 func TestExpandCwdHome(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("USERPROFILE", home)
+	testutil.SetHome(t, home)
 	cases := map[string]string{
 		"~":              home,
 		"~/src/repo":     filepath.Join(home, "src", "repo"),

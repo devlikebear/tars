@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/devlikebear/tars/internal/config"
+	"github.com/devlikebear/tars/internal/testutil"
 	"github.com/rs/zerolog"
 )
 
@@ -179,6 +180,10 @@ func TestSetupOnlyE2E_WizardSaveCycle(t *testing.T) {
 // + writing the file in place).
 func TestSetupOnlyE2E_MissingConfigFile_FirstInstall(t *testing.T) {
 	dir := t.TempDir()
+	// The missing-file fallback is config.Load(""), which derives
+	// AgentRuntimePersistenceDir from the home-based default workspace before
+	// the WorkspaceDir override; without this the test writes ~/.tars.
+	testutil.SetHome(t, dir)
 	workspaceDir := filepath.Join(dir, "workspace")
 	// Path's parent does NOT exist — simulates ~/.tars/config/ on a
 	// brand-new install. PatchYAML must mkdir it.
