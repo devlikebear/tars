@@ -74,6 +74,7 @@ var AppPackages = []string{
 	"reflection",
 	"release",
 	"remoteaccess",
+	"selfupdate",
 	"serverauth",
 	"sessionoverride",
 	"sessionworktree",

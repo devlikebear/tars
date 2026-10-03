@@ -21,3 +21,9 @@ func detach(cmd *exec.Cmd) {
 		HideWindow:    true,
 	}
 }
+
+// hideWindow keeps a console program the shell waits on, such as
+// `tars update`, from flashing a console window.
+func hideWindow(cmd *exec.Cmd) {
+	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: createNoWindow, HideWindow: true}
+}

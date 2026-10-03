@@ -22,7 +22,7 @@ cannot:
 - **`tars://` links** and **folders dropped on the app icon**.
 - **Chats in windows of their own**, from the tray or a link, reopened on
   the next start.
-- **Self-update** from GitHub releases.
+- **Self-update** from GitHub releases, and on Windows of the server too.
 
 The shell keeps no state beyond where its windows were and which chats had
 a window of their own. The server runs on its own, so closing the window
@@ -207,6 +207,20 @@ place of the running app, and is listed in the release's `checksums.txt`,
 which the updater verifies before installing. **Check for updates…** in the
 tray menu runs it; development builds (`dev`) do not update.
 
+On Windows the shell also keeps the server current, two minutes after it
+starts and then every six hours (`internal/serverupdate`). It runs
+`tars update --check --json` with the tars it starts the server with, and
+when a newer release exists runs `tars update --yes --json`, which replaces
+`tars.exe` and restarts the server onto it. A restart cuts off a chat turn
+and an unattended run waiting on an approval, so the update waits, retrying
+every fifteen minutes, until `/v1/chat/activity` shows nothing running and
+nothing waiting, or the activity cannot be read. The admin token goes to
+`tars update` through `TARS_ADMIN_API_TOKEN`, never the command line. The same
+check announces a newer shell once per version; clicking that notification,
+or **Check for updates…**, installs it, and that menu item also runs the
+server update at once. A server older than the shell (see Running) wakes the
+check early. macOS installs stay with Homebrew.
+
 The release signs the macOS bundle with a Developer ID and the hardened
 runtime, notarizes it and staples the ticket, so Gatekeeper opens the
 downloaded app (and the cask, which installs it quarantined) without a
@@ -232,6 +246,7 @@ job warns). For such a build, clear the quarantine flag yourself:
 | `internal/protocol` | `tars://` registration on Windows and Linux |
 | `internal/winstate` | saving and fitting the windows' places, the chat windows to reopen |
 | `internal/update` | picking the shell's archive out of a release |
+| `internal/serverupdate` | updating the server with `tars update` while it is idle (Windows) |
 | `internal/icon` | app and tray icons, drawn in code |
 | `frontend/` | the page shown while the server is down |
 
