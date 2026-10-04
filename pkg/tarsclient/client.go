@@ -101,7 +101,7 @@ func (c *Client) StreamChat(ctx context.Context, req ChatRequest, onStatus func(
 			return fmt.Errorf("decode sse event: %w", err)
 		}
 		switch evt.Type {
-		case "status":
+		case "status", "goal_event":
 			if onStatus != nil {
 				onStatus(evt)
 			}

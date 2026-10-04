@@ -1210,6 +1210,7 @@ pkg/tarsclient field ChannelReportMessage.Timestamp
 pkg/tarsclient field ChatEvent.Error
 pkg/tarsclient field ChatEvent.Message
 pkg/tarsclient field ChatEvent.Phase
+pkg/tarsclient field ChatEvent.Reason
 pkg/tarsclient field ChatEvent.SessionID
 pkg/tarsclient field ChatEvent.SkillName
 pkg/tarsclient field ChatEvent.SkillReason

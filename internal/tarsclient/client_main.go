@@ -39,6 +39,12 @@ func Run(ctx context.Context, _ io.Reader, stdout, stderr io.Writer, opts Option
 func sendMessage(ctx context.Context, client chatClient, session, message string, showStatus bool, verbose bool, stdout, stderr io.Writer) (chatResult, error) {
 	fmt.Fprint(stdout, "TARS > ")
 	res, err := client.stream(ctx, chatRequest{Message: message, SessionID: session}, func(evt chatEvent) {
+		// Goal events are printed even without --verbose: a judge error or an
+		// exhausted budget is why an unattended run stopped.
+		if evt.Type == "goal_event" {
+			fmt.Fprintf(stderr, "goal: %s\n", secrets.RedactText(formatGoalEvent(evt)))
+			return
+		}
 		if !showStatus {
 			return
 		}
@@ -86,4 +92,12 @@ func formatChatStatusEvent(evt chatEvent, verbose bool) string {
 		parts = append(parts, "result="+secrets.RedactText(toolResult))
 	}
 	return secrets.RedactText(strings.Join(parts, " | "))
+}
+
+func formatGoalEvent(evt chatEvent) string {
+	phase := strings.TrimSpace(evt.Phase)
+	if reason := strings.TrimSpace(evt.Reason); reason != "" {
+		return phase + " — " + reason
+	}
+	return phase
 }

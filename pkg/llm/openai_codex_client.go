@@ -425,6 +425,13 @@ func buildOpenAICodexRequestBody(messages []ChatMessage, opts ChatOptions, model
 		}
 	}
 
+	if needsCodexJSONHint(messages, opts.ResponseFormat) {
+		input = append(input, map[string]any{
+			"role":    "user",
+			"content": toCodexUserContent(ChatMessage{Role: "user", Content: codexJSONObjectHint}),
+		})
+	}
+
 	body := map[string]any{
 		"model":   strings.TrimSpace(model),
 		"store":   false,
@@ -465,6 +472,30 @@ func buildOpenAICodexRequestBody(messages []ChatMessage, opts ChatOptions, model
 		body["service_tier"] = tier
 	}
 	return body, nil
+}
+
+// codexJSONObjectHint is appended to the input when a json_object response
+// is requested and no input message says "json".
+const codexJSONObjectHint = "Respond with a JSON object."
+
+// needsCodexJSONHint reports whether a json_object request would be refused:
+// the Responses API answers 400 unless an input message contains the word
+// "json", and system messages do not count because they are sent as
+// instructions. Callers that put the format only in their system prompt (the
+// goal judge, the critic) failed on this provider alone.
+func needsCodexJSONHint(messages []ChatMessage, rf *ResponseFormat) bool {
+	if rf == nil || rf.Type != ResponseFormatJSONObject {
+		return false
+	}
+	for _, msg := range messages {
+		if strings.EqualFold(strings.TrimSpace(msg.Role), "system") {
+			continue
+		}
+		if strings.Contains(strings.ToLower(msg.Content), "json") {
+			return false
+		}
+	}
+	return true
 }
 
 // toCodexTextFormat converts ResponseFormat to the Responses API text.format
