@@ -89,7 +89,7 @@ func Schema() []FieldMeta {
 		fjson("usage_price_overrides_json", "Usage", "Price Overrides", "Optional per-model usage price override map"),
 
 		// ── Automation ───────────────────────────
-		f("agent_max_iterations", "Automation", "int", "Max Iterations", "Maximum agent loop iterations per request"),
+		f("agent_max_iterations", "Automation", "int", "Max Iterations", "Runaway backstop: the most tool rounds one turn may take. Stuck turns stop earlier on repeated calls or a streak of tool errors"),
 		f("cron_run_history_limit", "Automation", "int", "Cron History Limit", "Maximum run records kept per cron job"),
 		// Pulse (system watchdog) schema entries
 		f("pulse_enabled", "Automation", "bool", "Pulse Enabled", "Enable the pulse system watchdog"),

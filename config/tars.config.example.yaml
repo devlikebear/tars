@@ -188,10 +188,12 @@ usage:
 
 automation:
   agent:
-    # Max tool-call iterations the chat agent loop runs before forcing a
-    # final response. Bump this for multi-step workflows that chain many
-    # exec/edit/test calls (e.g. github-flow style implementations).
-    max_iterations: 20
+    # Runaway backstop: the most tool rounds one turn may take before the
+    # loop turns tools off and asks for a final answer. It is not a work
+    # budget — a turn that is making progress should never reach it. Stuck
+    # turns stop earlier: the same call repeated 3 times, or 8 tool calls in
+    # a row that failed.
+    max_iterations: 200
   pulse:
     enabled: true
     interval: 1m

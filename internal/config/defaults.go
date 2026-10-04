@@ -55,7 +55,7 @@ const (
 	defaultUsageLimitMonthlyUSD                = 150.0
 	defaultUsageDailyTokenBudget               = 0
 	defaultUsageLimitMode                      = "soft"
-	defaultAgentMaxIterations                  = 20
+	defaultAgentMaxIterations                  = 200
 	defaultExecMaxTimeoutMS                    = 300000
 	defaultProcessMaxTimeoutMSConfig           = 1800000
 	defaultCronRunHistoryLimit                 = 200

@@ -120,7 +120,7 @@ var configFieldImpactHints = map[string][]string{
 		"Changing embedding dimensions affects Memory vector compatibility with existing stored embeddings.",
 	},
 	"agent_max_iterations": {
-		"Higher iteration limits allow longer agent loops and can increase cost.",
+		"This is a backstop against runaway turns, not a work budget. A low value cuts long tasks off mid-way; a higher one lets a turn that keeps making tool calls run longer and cost more.",
 	},
 	"cron_run_history_limit": {
 		"Changing cron history retention affects Cron run evidence, troubleshooting, and workspace storage.",

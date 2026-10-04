@@ -72,7 +72,7 @@ llm:
 
 automation:
   agent:
-    max_iterations: 8
+    max_iterations: 200
 
 work_ledger:
   enabled: true
