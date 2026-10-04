@@ -15,6 +15,7 @@ import (
 
 	"github.com/devlikebear/tars/internal/ops"
 	"github.com/devlikebear/tars/internal/session"
+	"github.com/devlikebear/tars/internal/usage"
 )
 
 func gitInit(t *testing.T, dir, branch string) {
@@ -293,5 +294,35 @@ func TestSessionBoardCountsUnattendedApprovals(t *testing.T) {
 	board.queued = func() (map[string]int, error) { return nil, errors.New("ops unavailable") }
 	if s := statusOf()[f.session]; s.Status != boardStatusIdle {
 		t.Fatalf("an unreadable queue counts nothing, got %+v", s)
+	}
+}
+
+func TestSessionCostsFromReadsCostAndUnpricedCalls(t *testing.T) {
+	if sessionCostsFrom(nil) != nil {
+		t.Fatal("no tracker should mean no cost source")
+	}
+	now := time.Date(2026, 10, 4, 12, 0, 0, 0, time.UTC)
+	tracker, err := usage.NewTracker(t.TempDir(), usage.TrackerOptions{Now: func() time.Time { return now }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range []usage.Entry{
+		{Timestamp: now, Provider: "anthropic", Model: "m", InputTokens: 10, OutputTokens: 1, EstimatedCostUSD: 0.5, PricingKnown: true, SessionID: "priced"},
+		{Timestamp: now, Provider: "openai-codex", Model: "m", InputTokens: 10, OutputTokens: 1, SessionID: "unpriced"},
+		{Timestamp: now, Provider: "openai-codex", Model: "m", InputTokens: 10, OutputTokens: 1, SessionID: "unpriced"},
+	} {
+		if err := tracker.Record(entry); err != nil {
+			t.Fatal(err)
+		}
+	}
+	costs, err := sessionCostsFrom(tracker)()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := costs["priced"]; got.USD != 0.5 || got.UnpricedCalls != 0 {
+		t.Fatalf("priced session: %+v", got)
+	}
+	if got := costs["unpriced"]; got.USD != 0 || got.UnpricedCalls != 2 {
+		t.Fatalf("unpriced session: %+v", got)
 	}
 }
