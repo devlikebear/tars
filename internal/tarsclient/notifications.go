@@ -160,14 +160,6 @@ type eventStreamClient struct {
 	httpClient *http.Client
 }
 
-func newEventStreamClient(runtime runtimeClient) eventStreamClient {
-	return eventStreamClient{
-		serverURL:  runtime.serverURL,
-		apiToken:   runtime.apiToken,
-		httpClient: runtime.httpClient,
-	}
-}
-
 func (c eventStreamClient) client() *tarsclient.Client {
 	return tarsclient.New(tarsclient.Config{
 		ServerURL:  c.serverURL,

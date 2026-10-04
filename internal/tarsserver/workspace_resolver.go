@@ -61,15 +61,6 @@ func newWorkspaceSessionStoreResolver(baseWorkspaceDir string, defaultStore *ses
 	}
 }
 
-func resolveCronStoreForRequest(baseWorkspaceDir string, runHistoryLimit int, _ *http.Request) (*cron.Store, string, string, error) {
-	workspaceDir, err := ensureWorkspaceDir(baseWorkspaceDir)
-	if err != nil {
-		return nil, "", "", err
-	}
-	store := cron.NewStoreWithOptions(workspaceDir, cron.StoreOptions{RunHistoryLimit: runHistoryLimit})
-	return store, workspaceDir, defaultWorkspaceID, nil
-}
-
 type workspaceCronStoreResolver struct {
 	baseWorkspaceDir string
 	runHistoryLimit  int

@@ -298,24 +298,3 @@ func TestGeminiNativeClientChat_PreflightRejectsUnsupportedModel(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
-
-func containsKeyRecursive(v any, key string) bool {
-	switch typed := v.(type) {
-	case map[string]any:
-		for k, child := range typed {
-			if k == key {
-				return true
-			}
-			if containsKeyRecursive(child, key) {
-				return true
-			}
-		}
-	case []any:
-		for _, item := range typed {
-			if containsKeyRecursive(item, key) {
-				return true
-			}
-		}
-	}
-	return false
-}

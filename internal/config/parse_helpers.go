@@ -66,19 +66,6 @@ func parseMCPServersJSON(raw string, fallback []MCPServer) []MCPServer {
 	return out
 }
 
-func parseCSVList(raw string) []string {
-	parts := strings.Split(raw, ",")
-	out := make([]string, 0, len(parts))
-	for _, p := range parts {
-		v := strings.TrimSpace(p)
-		if v == "" {
-			continue
-		}
-		out = append(out, v)
-	}
-	return out
-}
-
 func parseJSONStringList(raw string, fallback []string) []string {
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" {

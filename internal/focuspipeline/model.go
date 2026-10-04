@@ -19,7 +19,6 @@ package focuspipeline
 import (
 	"encoding/json"
 	"maps"
-	"slices"
 	"time"
 )
 
@@ -41,11 +40,6 @@ const (
 
 // StageOrder is the fixed order of every pipeline's stages.
 var StageOrder = []StageID{StagePlan, StageBuild, StageReview, StagePR, StagePRReview, StageMerge}
-
-// ValidStage reports whether id is one of StageOrder.
-func ValidStage(id StageID) bool {
-	return slices.Contains(StageOrder, id)
-}
 
 // StageStatus is where a stage stands.
 type StageStatus string
