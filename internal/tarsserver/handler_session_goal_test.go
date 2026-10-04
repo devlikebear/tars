@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/devlikebear/tars/internal/ops"
 	"github.com/devlikebear/tars/internal/session"
 	"github.com/rs/zerolog"
 )
@@ -199,5 +200,29 @@ func TestSessionGoalAPI_PermissionModeComesWithTheGoal(t *testing.T) {
 	}
 	if rec.Code != http.StatusOK || resp.PermissionMode != "" {
 		t.Fatalf("expected the mode handed back on clear, got %d mode=%q", rec.Code, resp.PermissionMode)
+	}
+}
+
+func TestSessionGoalAPI_PermissionModeChangeIsAudited(t *testing.T) {
+	store := session.NewStore(t.TempDir())
+	sess, err := store.Create("regular")
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	var entries []ops.AutomationAuditEntry
+	handler := withGoalAudit(newSessionAPIHandler(store, zerolog.New(io.Discard)), func(e ops.AutomationAuditEntry) {
+		entries = append(entries, e)
+	})
+
+	adminGoalRequest(t, handler, http.MethodPut, sess.ID, `{"description":"x","permission_mode":"auto"}`)
+	adminGoalRequest(t, handler, http.MethodDelete, sess.ID, "")
+	if len(entries) != 2 {
+		t.Fatalf("expected the grant and the hand-back audited, got %+v", entries)
+	}
+	if entries[0].Details["to"] != "auto" || entries[0].Details["reason"] != "goal_set" {
+		t.Fatalf("unexpected grant entry: %+v", entries[0])
+	}
+	if entries[1].Details["from"] != "auto" || entries[1].Details["reason"] != "goal_cleared" {
+		t.Fatalf("unexpected hand-back entry: %+v", entries[1])
 	}
 }

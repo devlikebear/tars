@@ -17,7 +17,6 @@ import (
 	"github.com/devlikebear/tars/internal/config"
 	"github.com/devlikebear/tars/internal/llm"
 	"github.com/devlikebear/tars/internal/memory"
-	"github.com/devlikebear/tars/internal/ops"
 	"github.com/devlikebear/tars/internal/serverauth"
 	"github.com/devlikebear/tars/internal/session"
 	"github.com/devlikebear/tars/internal/sessionoverride"
@@ -63,12 +62,8 @@ func newSessionAPIHandlerWithWorkLedger(store *session.Store, ledger *workstore.
 	return newSessionAPIHandlerFullWithLocalSkillsAndWorkLedger(store, logger, nil, sessionStyleDefaultsFromConfig(config.Default()), nil, nil, nil, localSkillsHandlerDeps{}, ledger)
 }
 
-func newSessionAPIHandlerFullWithLocalSkillsAndWorkLedger(store *session.Store, logger zerolog.Logger, usageTracker *usage.Tracker, styleDefaults sessionStyleValues, notify sessionNotifier, overrideService *sessionoverride.Service, llmRouter llm.Router, localSkills localSkillsHandlerDeps, workLedger *workstore.Store, audits ...func(ops.AutomationAuditEntry)) http.Handler {
+func newSessionAPIHandlerFullWithLocalSkillsAndWorkLedger(store *session.Store, logger zerolog.Logger, usageTracker *usage.Tracker, styleDefaults sessionStyleValues, notify sessionNotifier, overrideService *sessionoverride.Service, llmRouter llm.Router, localSkills localSkillsHandlerDeps, workLedger *workstore.Store) http.Handler {
 	mux := http.NewServeMux()
-	var audit func(ops.AutomationAuditEntry)
-	if len(audits) > 0 {
-		audit = audits[0]
-	}
 	styleDefaults = effectiveSessionStyle(styleDefaults, nil)
 	attachSessionTasksWorkLedgerSync(store, workLedger, defaultWorkspaceID, logger)
 	baseWorkspaceDir := ""
@@ -1017,7 +1012,7 @@ func newSessionAPIHandlerFullWithLocalSkillsAndWorkLedger(store *session.Store, 
 			}
 			http.NotFound(w, r)
 		case len(pathParts) == 2 && pathParts[1] == "goal":
-			handleSessionGoal(w, r, reqStore, sessionID, audit)
+			handleSessionGoal(w, r, reqStore, sessionID)
 		case len(pathParts) == 2 && pathParts[1] == "critic":
 			handleSessionCritic(w, r, reqStore, sessionID)
 		default:

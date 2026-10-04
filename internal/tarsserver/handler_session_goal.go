@@ -1,6 +1,7 @@
 package tarsserver
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strings"
@@ -20,7 +21,8 @@ import (
 // PUT and DELETE also return the session's resulting "permission_mode".
 // Only user chats (the main session and ordinary chats) may carry a goal;
 // worker and subagent sessions return 400.
-func handleSessionGoal(w http.ResponseWriter, r *http.Request, reqStore *session.Store, sessionID string, audit func(ops.AutomationAuditEntry)) {
+func handleSessionGoal(w http.ResponseWriter, r *http.Request, reqStore *session.Store, sessionID string) {
+	audit := goalAuditFrom(r.Context())
 	if !requireMethod(w, r, http.MethodGet, http.MethodPut, http.MethodDelete) {
 		return
 	}
@@ -88,6 +90,24 @@ func handleSessionGoal(w http.ResponseWriter, r *http.Request, reqStore *session
 		auditGoalPermissionMode(audit, sessionID, before, updated.PermissionMode, "goal_cleared")
 		writeJSON(w, http.StatusOK, map[string]any{"goal": updated.Goal, "permission_mode": updated.PermissionMode})
 	}
+}
+
+type goalAuditKey struct{}
+
+// withGoalAudit gives the session handler's goal route the automation audit
+// to record permission mode changes in.
+func withGoalAudit(next http.Handler, audit func(ops.AutomationAuditEntry)) http.Handler {
+	if audit == nil {
+		return next
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), goalAuditKey{}, audit)))
+	})
+}
+
+func goalAuditFrom(ctx context.Context) func(ops.AutomationAuditEntry) {
+	audit, _ := ctx.Value(goalAuditKey{}).(func(ops.AutomationAuditEntry))
+	return audit
 }
 
 func sessionPermissionMode(store *session.Store, sessionID string) string {

@@ -712,7 +712,7 @@ func buildAPIMux(
 	memoryHandler := newMemoryAPIHandler(cfg.WorkspaceDir, buildMemoryBackend(cfg.WorkspaceDir, semanticMemoryConfigFromConfig(cfg), cfg.MemoryBackend), logger)
 	codexUsageHandler := newCodexRateLimitAPIHandler(deps.llmRouter, cfg.APIAuthMode)
 	agentRunsHandler := newAgentRunsAPIHandlerWithWorkLedgerAndInflightLimit(agentRuntime, workLedger, logger, cfg.APIMaxInflightAgentRuns)
-	sessionHandler := newSessionAPIHandlerFullWithLocalSkillsAndWorkLedger(sessionStore, logger, deps.usageTracker, sessionStyleDefaultsFromConfig(cfg), dispatcher.Emit, overrideService, deps.llmRouter, localSkillsHandlerDeps{provider: extensionsManager, workspaceDir: cfg.WorkspaceDir}, workLedger, auditTo(opsManager))
+	sessionHandler := newSessionAPIHandlerFullWithLocalSkillsAndWorkLedger(sessionStore, logger, deps.usageTracker, sessionStyleDefaultsFromConfig(cfg), dispatcher.Emit, overrideService, deps.llmRouter, localSkillsHandlerDeps{provider: extensionsManager, workspaceDir: cfg.WorkspaceDir}, workLedger)
 	workLedgerHandler := newWorkLedgerAPIHandler(workLedger, logger, workScheduler)
 	workerControlPlaneHandler := newWorkerControlPlaneAPIHandler(
 		workerController,
@@ -724,7 +724,7 @@ func buildAPIMux(
 		initiative:     initiativeSetup.Handler,
 		reflection:     reflectionSetup.Handler,
 		chat:           chatHandler,
-		sessions:       withWorktreeRetire(withSessionCreateIn(sessionHandler, sessionWorktrees), sessionWorktrees),
+		sessions:       withGoalAudit(withWorktreeRetire(withSessionCreateIn(sessionHandler, sessionWorktrees), sessionWorktrees), auditTo(opsManager)),
 		worktrees:      newSessionWorktreeHandler(sessionWorktrees),
 		sessionFolders: newSessionFoldersHandler(sessionWorktrees),
 		focus:          newFocusPipelineHandler(sessionStore, sessionWorktrees, focusDriver, logger),
