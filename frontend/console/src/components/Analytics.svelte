@@ -26,6 +26,8 @@
   let models: AnalyticsModelRow[] = $derived.by(() => analytics?.models ?? [])
   let skills: AnalyticsSkillRow[] = $derived.by(() => analytics?.skills ?? [])
   let hasUsage = $derived((analytics?.totals.total_tokens ?? 0) > 0)
+  // Days with calls no price was known for get a mark over their bar.
+  let hasUnpricedDays = $derived(daily.some((row) => (row.unpriced_calls ?? 0) > 0))
   let maxDailyTokens = $derived.by(() => Math.max(1, ...daily.map((row) => row.total_tokens)))
 
   export async function loadAnalytics(days = selectedDays) {
@@ -270,6 +272,9 @@
       <div class="chart-legend">
         <span><i class="legend-input"></i>{$t.analytics.chart.legendInput}</span>
         <span><i class="legend-output"></i>{$t.analytics.chart.legendOutput}</span>
+        {#if hasUnpricedDays}
+          <span><i class="legend-unpriced"></i>{$t.analytics.chart.legendUnpriced}</span>
+        {/if}
       </div>
     </div>
 
@@ -289,8 +294,9 @@
           {@const outputHeight = segmentHeight(row.output_tokens, row.total_tokens, totalHeight)}
           {@const x = barX(index)}
           {@const w = barWidth()}
+          {@const unpriced = row.unpriced_calls ?? 0}
           <g>
-            <title>{$t.analytics.chart.barTitle(row.day, fmtInt(row.input_tokens), fmtInt(row.output_tokens))}</title>
+            <title>{$t.analytics.chart.barTitle(row.day, fmtInt(row.input_tokens), fmtInt(row.output_tokens))}{unpriced > 0 ? `\n${$t.analytics.chart.barUnpriced(unpriced)}` : ''}</title>
             <rect
               class="input-bar"
               x={x}
@@ -307,6 +313,9 @@
               height={outputHeight}
               rx="3"
             />
+            {#if unpriced > 0}
+              <circle class="unpriced-mark" cx={x + w / 2} cy={chartBase - totalHeight - 7} r={Math.min(3, w / 2)} />
+            {/if}
           </g>
           {#if selectedDays === 7 || index === 0 || index === daily.length - 1}
             <text x={x + w / 2} y="202" text-anchor="middle">{shortDay(row.day)}</text>
@@ -479,6 +488,13 @@
     background: var(--success);
   }
 
+  .chart-legend i.legend-unpriced {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--warning);
+  }
+
   svg {
     display: block;
     width: 100%;
@@ -496,6 +512,10 @@
 
   .output-bar {
     fill: var(--success);
+  }
+
+  .unpriced-mark {
+    fill: var(--warning);
   }
 
   text {

@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.45.7] - 2026-10-04
+
+### Fixed
+
+- The analytics page's daily chart marks the days that had calls with no known price: a dot over the bar, a legend entry when any day has one, and the number of such calls in the bar's tooltip.
+
 ## [0.45.6] - 2026-10-04
 
 ### Fixed
