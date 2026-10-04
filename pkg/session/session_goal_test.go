@@ -235,3 +235,80 @@ func TestSessionGoal_JSONOmitemptyWhenAbsent(t *testing.T) {
 		t.Fatalf("expected goal field omitted when nil: %s", data)
 	}
 }
+
+func TestStoreSetGoal_PermissionModeGrantedAndRestored(t *testing.T) {
+	store := NewStore(t.TempDir())
+	sess, err := store.Create("chat")
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if err := store.SetPermissionMode(sess.ID, "manual"); err != nil {
+		t.Fatalf("set mode: %v", err)
+	}
+
+	updated, err := store.SetGoal(sess.ID, &SessionGoal{Description: "ship", PermissionMode: "auto"})
+	if err != nil {
+		t.Fatalf("set goal: %v", err)
+	}
+	if updated.PermissionMode != "auto" || updated.Goal.RestorePermissionMode != "manual" {
+		t.Fatalf("expected auto granted with manual to restore, got mode=%q goal=%+v", updated.PermissionMode, updated.Goal)
+	}
+
+	// Progress on the same active goal keeps the grant.
+	updated, err = store.UpdateGoalProgress(sess.ID, func(g *SessionGoal) *SessionGoal {
+		g.AutoContinueCount++
+		return g
+	})
+	if err != nil || updated.PermissionMode != "auto" {
+		t.Fatalf("expected grant kept during progress, got mode=%q err=%v", updated.PermissionMode, err)
+	}
+
+	// The goal ending hands the previous mode back, once.
+	updated, err = store.UpdateGoalProgress(sess.ID, func(g *SessionGoal) *SessionGoal {
+		g.Status = SessionGoalStatusExhausted
+		return g
+	})
+	if err != nil || updated.PermissionMode != "manual" || updated.Goal.PermissionMode != "" {
+		t.Fatalf("expected manual restored on exhausted, got mode=%q goal=%+v err=%v", updated.PermissionMode, updated.Goal, err)
+	}
+	if err := store.SetPermissionMode(sess.ID, "plan"); err != nil {
+		t.Fatalf("set mode: %v", err)
+	}
+	updated, err = store.ClearGoal(sess.ID)
+	if err != nil || updated.PermissionMode != "plan" {
+		t.Fatalf("expected a later mode left alone on clear, got mode=%q err=%v", updated.PermissionMode, err)
+	}
+}
+
+func TestStoreClearGoal_KeepsModeTheUserChangedDuringTheGoal(t *testing.T) {
+	store := NewStore(t.TempDir())
+	sess, err := store.Create("chat")
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if _, err := store.SetGoal(sess.ID, &SessionGoal{Description: "ship", PermissionMode: "auto"}); err != nil {
+		t.Fatalf("set goal: %v", err)
+	}
+	if err := store.SetPermissionMode(sess.ID, "plan"); err != nil {
+		t.Fatalf("set mode: %v", err)
+	}
+	updated, err := store.ClearGoal(sess.ID)
+	if err != nil || updated.PermissionMode != "plan" {
+		t.Fatalf("expected the user's plan mode kept, got mode=%q err=%v", updated.PermissionMode, err)
+	}
+}
+
+func TestStoreSetGoal_ReplacingAGoalRestoresBeforeGranting(t *testing.T) {
+	store := NewStore(t.TempDir())
+	sess, err := store.Create("chat")
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if _, err := store.SetGoal(sess.ID, &SessionGoal{Description: "first", PermissionMode: "auto"}); err != nil {
+		t.Fatalf("set first: %v", err)
+	}
+	updated, err := store.SetGoal(sess.ID, &SessionGoal{Description: "second"})
+	if err != nil || updated.PermissionMode != "" || updated.Goal.PermissionMode != "" {
+		t.Fatalf("expected the grant to end with the first goal, got mode=%q goal=%+v err=%v", updated.PermissionMode, updated.Goal, err)
+	}
+}

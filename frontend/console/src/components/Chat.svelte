@@ -18,6 +18,7 @@
   import type { Session } from '../lib/types'
   import { shortCwdLabel } from '../lib/sessionLabels'
   import { currentProjectFolder, newChatRequest, parseNewChatArgs } from '../lib/newChat'
+  import { parseGoalArgs } from '../lib/goalCommand'
   import { isArchived } from '../lib/sessionOrganization'
   import { chatSession } from '../lib/stores/chatSession'
   import { chatDock, isMobileLayout, type ChatDockPanelID } from '../lib/stores/chatDockStore.svelte'
@@ -409,12 +410,21 @@
       if (lower === 'clear' || lower === 'cancel') {
         const resp = await clearSessionGoal(selectedSessionId)
         chatSession.setGoal(resp.goal)
+        void chatSession.refreshPermission()
         showFeedback($t.chatCommands.goal.cleared)
         return
       }
-      const resp = await setSessionGoal(selectedSessionId, trimmed)
+      const parsed = parseGoalArgs(trimmed)
+      if (parsed.unknownFlag) {
+        showFeedback($t.chatCommands.goal.unknownFlag(parsed.unknownFlag))
+        return
+      }
+      const resp = await setSessionGoal(selectedSessionId, parsed.description, undefined, parsed.permissionMode)
       chatSession.setGoal(resp.goal)
-      if (resp.goal) {
+      void chatSession.refreshPermission()
+      if (resp.goal?.permission_mode && parsed.permissionMode) {
+        showFeedback($t.chatCommands.goal.setWithMode(resp.goal.description, $t.permissionMode.modes[parsed.permissionMode]))
+      } else if (resp.goal) {
         showFeedback($t.chatCommands.goal.set(resp.goal.description))
       } else {
         showFeedback($t.chatCommands.goal.clearedEmpty)

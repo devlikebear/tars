@@ -13,6 +13,10 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [0.45.9] - 2026-10-04
 
+### Added
+
+- **A goal can carry its permission mode.** `/goal --auto <description>` (or `--accept-edits`) approves that tool permission mode in the same step as the goal, so an unattended run is not stopped by permission prompts. The mode is the session's while the goal is active; when the goal ends (satisfied, budget exhausted, cleared or replaced) the session gets back the mode it had before, unless you changed the mode yourself in the meantime. `PUT /v1/admin/sessions/{id}/goal` takes `permission_mode`, and PUT and DELETE return the session's resulting `permission_mode`. Each change is recorded in the automation audit as `chat_permission_mode` with a `reason` (`goal_set`, `goal_cleared`, `goal_satisfied`, `goal_exhausted`). Without the flag a goal leaves the permission mode alone, as before.
+
 ### Fixed
 
 - The plan gate no longer stops a turn whose plan was approved in advance. The agent proposed its plan and waited for `go` even when the request said to go ahead without asking, or when a session goal (`/goal`) was set, so an unattended run needed one more message before any work started. With a pre-approval in the request or an active session goal, the agent now proposes, approves and executes in the same turn. Tool permission prompts are unchanged: they still follow the session's permission mode.
