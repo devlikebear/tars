@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -20,6 +21,8 @@ const (
 	CuaDriverPathEnv     = "CUA_DRIVER_PATH"
 	cuaDriverWaitDelay   = 3 * time.Second
 	cuaDriverMaxElements = 2000
+	// cuaDriverSession is the driver session label shared by every call.
+	cuaDriverSession = "tars-computer-use"
 
 	// A freshly launched app can answer before its window is mapped.
 	cuaLaunchPollAttempts = 10
@@ -75,7 +78,9 @@ type CuaDriver struct {
 	path string
 	// configured is the path setting to resolve on every call when path is
 	// empty, so a driver installed after the server started is picked up.
-	configured     string
+	configured string
+	// noSession is set once a driver refuses the session argument.
+	noSession      atomic.Bool
 	timeout        time.Duration
 	commandContext func(context.Context, string, ...string) *exec.Cmd
 }
@@ -115,6 +120,50 @@ func buildCuaArgs(tool string, args map[string]any) ([]string, error) {
 // stderr mentions the daemon is mapped to ErrDriverUnavailable so the engine
 // can report "unavailable" instead of "error".
 func (d *CuaDriver) call(ctx context.Context, tool string, args map[string]any) ([]byte, error) {
+	if d.noSession.Load() {
+		return d.run(ctx, tool, args)
+	}
+	out, err := d.run(ctx, tool, withCuaSession(args))
+	if err != nil && rejectsSessionArg(err) {
+		// A driver from before sessions existed: its snapshot cache is global,
+		// so the label is not needed there either.
+		d.noSession.Store(true)
+		return d.run(ctx, tool, args)
+	}
+	return out, err
+}
+
+// withCuaSession labels a call with the driver session every call of this
+// process shares. cua-driver (0.32) keeps a window's snapshot per session and
+// gives each CLI invocation its own implicit one, so without a shared label
+// the element tokens of get_window_state are already stale when the next
+// process tries to click one.
+func withCuaSession(args map[string]any) map[string]any {
+	out := make(map[string]any, len(args)+1)
+	for k, v := range args {
+		out[k] = v
+	}
+	out["session"] = cuaDriverSession
+	return out
+}
+
+func rejectsSessionArg(err error) bool {
+	if errors.Is(err, ErrDriverUnavailable) {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	if !strings.Contains(msg, "session") {
+		return false
+	}
+	for _, marker := range []string{"unknown", "unexpected", "additional", "not allowed", "unrecognized"} {
+		if strings.Contains(msg, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+func (d *CuaDriver) run(ctx context.Context, tool string, args map[string]any) ([]byte, error) {
 	argv, err := buildCuaArgs(tool, args)
 	if err != nil {
 		return nil, err
@@ -237,6 +286,7 @@ func parseWindowState(raw []byte) (Snapshot, error) {
 	if total := asInt(p["total_element_count"]); total > snap.TotalElements {
 		snap.TotalElements = total
 	}
+	snap.Texts = parseReadOnlyText(asString(p["tree_markdown"]))
 	items, _ := p["elements"].([]any)
 	// The driver's element_index / parent_index are its own 0-based numbering
 	// over a walk that skips non-actionable nodes, so parents are resolved in a
@@ -690,4 +740,72 @@ func (d *CuaDriver) PressKey(ctx context.Context, w Window, key string) (Effect,
 
 func (d *CuaDriver) Scroll(ctx context.Context, w Window, direction string) (Effect, error) {
 	return d.action(ctx, "scroll", map[string]any{"pid": w.PID, "window_id": w.WindowID, "direction": direction})
+}
+
+const (
+	maxReadOnlyTexts     = 80
+	maxReadOnlyTextRunes = 160
+)
+
+// parseReadOnlyText pulls the non-actionable lines out of the driver's
+// tree_markdown. Actionable nodes are numbered ("- [12] AXButton …") and
+// already arrive as elements; what is left is static text such as a
+// calculator's display or a dialog's message. The menu bar subtree is skipped
+// whole, like its elements are: it can hold recent file names.
+func parseReadOnlyText(tree string) []string {
+	if tree == "" {
+		return nil
+	}
+	var out []string
+	seen := map[string]struct{}{}
+	menuIndent := -1
+	for _, raw := range strings.Split(tree, "\n") {
+		line := strings.TrimLeft(raw, " \t")
+		indent := len(raw) - len(line)
+		if !strings.HasPrefix(line, "- ") {
+			continue
+		}
+		line = strings.TrimSpace(line[2:])
+		if menuIndent >= 0 {
+			if indent > menuIndent {
+				continue
+			}
+			menuIndent = -1
+		}
+		numbered := strings.HasPrefix(line, "[")
+		role := line
+		if numbered {
+			if end := strings.Index(line, "] "); end >= 0 {
+				role = line[end+2:]
+			}
+		}
+		if sp := strings.IndexByte(role, ' '); sp >= 0 {
+			role = role[:sp]
+		}
+		if IsMenuRole(role) {
+			menuIndent = indent
+			continue
+		}
+		if numbered {
+			continue
+		}
+		// Drop the trailing attribute block ("[id=… actions=[…]]"): ids and
+		// action lists are driver detail, not screen text.
+		if at := strings.Index(line, " [id="); at >= 0 {
+			line = strings.TrimSpace(line[:at])
+		}
+		if !strings.ContainsAny(line, "\"(=") {
+			continue // a bare role with no text
+		}
+		line = truncateRunes(line, maxReadOnlyTextRunes)
+		if _, dup := seen[line]; dup {
+			continue
+		}
+		seen[line] = struct{}{}
+		out = append(out, line)
+		if len(out) >= maxReadOnlyTexts {
+			break
+		}
+	}
+	return out
 }
