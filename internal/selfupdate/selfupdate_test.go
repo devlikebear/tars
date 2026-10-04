@@ -360,11 +360,11 @@ func TestVersionHelpers(t *testing.T) {
 		t.Fatal("Updatable misjudged a version")
 	}
 	for p, want := range map[string]bool{
-		"/opt/homebrew/bin/tars":                           true,
-		"/usr/local/Cellar/tars/1.0.0/bin/tars":            true,
-		"/home/linuxbrew/.linuxbrew/bin/tars":              true,
-		`C:\Users\me\AppData\Local\Programs\TARS\tars.exe`: false,
-		"/home/me/.local/bin/tars":                         false,
+		"/opt/homebrew/bin/tars":                true,
+		"/usr/local/Cellar/tars/1.0.0/bin/tars": true,
+		"/home/linuxbrew/.linuxbrew/bin/tars":   true,
+		`D:\Programs\TARS\tars.exe`:             false,
+		"/srv/tars/bin/tars":                    false,
 	} {
 		if got := ManagedByHomebrew(p); got != want {
 			t.Errorf("ManagedByHomebrew(%q) = %v", p, got)
