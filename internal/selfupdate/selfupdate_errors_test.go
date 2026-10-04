@@ -180,6 +180,30 @@ func TestInstallRefusesBadTarballs(t *testing.T) {
 	}
 }
 
+// A name that survives cleaning but still holds ".." is refused where the
+// path is used, in both archive formats.
+func TestInstallRefusesDotDotInsideAName(t *testing.T) {
+	if _, err := installLinuxArchive(t, tarGzArchive(t, []entry{{name: "share/tars/a..b", body: "x"}})); err == nil || !strings.Contains(err.Error(), "outside the archive") {
+		t.Fatalf("tar.gz: err = %v", err)
+	}
+
+	archive := zipArchive(t, []entry{{name: "share/tars/a..b", body: "x"}, {name: "tars.exe", body: "new"}})
+	gh := fakeGitHub{tag: "v1.3.0", assets: map[string][]byte{"tars_1.3.0_windows_amd64.zip": archive}}.serve(t)
+	exe := filepath.Join(t.TempDir(), "tars.exe")
+	writeExe(t, exe, "old")
+	opts := windowsOpts(gh, exe)
+	st, err := Check(context.Background(), opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Install(context.Background(), opts, st.Release); err == nil || !strings.Contains(err.Error(), "outside the archive") {
+		t.Fatalf("zip: err = %v", err)
+	}
+	if got := readFile(t, exe); got != "old" {
+		t.Fatalf("tars.exe = %q after a refused archive", got)
+	}
+}
+
 func TestInstallRefusesACorruptZip(t *testing.T) {
 	gh := fakeGitHub{tag: "v1.3.0", assets: map[string][]byte{"tars_1.3.0_windows_amd64.zip": []byte("not a zip")}}.serve(t)
 	exe := filepath.Join(t.TempDir(), "tars.exe")

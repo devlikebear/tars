@@ -455,7 +455,12 @@ func extractZip(archive, dest, binName string) error {
 		if rel == "" {
 			continue
 		}
+		// Checked again where the path is used: wanted refuses an escaping
+		// name, and this refuses any joined path that is not under dest.
 		target := filepath.Join(dest, rel)
+		if strings.Contains(f.Name, "..") || !strings.HasPrefix(target, filepath.Clean(dest)+string(os.PathSeparator)) {
+			return fmt.Errorf("archive entry %q is outside the archive", f.Name)
+		}
 		if f.FileInfo().IsDir() {
 			if err := os.MkdirAll(target, 0o755); err != nil {
 				return err
@@ -503,6 +508,9 @@ func extractTarGz(archive, dest, binName string) error {
 			continue
 		}
 		target := filepath.Join(dest, rel)
+		if strings.Contains(hdr.Name, "..") || !strings.HasPrefix(target, filepath.Clean(dest)+string(os.PathSeparator)) {
+			return fmt.Errorf("archive entry %q is outside the archive", hdr.Name)
+		}
 		switch hdr.Typeflag {
 		case tar.TypeDir:
 			if err := os.MkdirAll(target, 0o755); err != nil {
