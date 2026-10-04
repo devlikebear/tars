@@ -87,6 +87,9 @@ cmd/  →  app layer  →  core layer  →  pkg/
 - **화면 텍스트가 `jev.base_url`로 나간다** (initiative와 달리 loopback 조건이 없다 — 화면이 이 툴의 입력 전부라서). 원격이면 `tars doctor`가 그 사실을 표시한다. `expose_values: false`는 요소 값을 빼고, secure 필드 값은 설정과 무관하게 절대 보내지 않는다. 화면 내용은 state에만 넣고 질문 `instructions`에는 넣지 않는다(라벨이 지시문이 되지 않게)
 - `jev.base_url`이 비었거나 cua-driver가 없으면 툴은 등록된 채 `status: unavailable` + hint를 돌려준다. 바이너리는 호출마다 찾는다(설정 → `CUA_DRIVER_PATH` → PATH → `~/.local/bin`·`/opt/homebrew/bin`·`/usr/local/bin`·`/Applications/CuaDriver.app`): launchd로 뜬 서버는 PATH가 비어 있고, 나중에 설치해도 재시작이 필요 없다
 - `pkg/tools.IsHighRiskToolName`에 들어 있어 네이티브 provider의 세션 권한 모드(manual=묻기, plan=거부)가 그대로 적용된다
+- cua-driver 0.32는 스냅샷을 **세션별**로 보관하고 CLI 호출마다 암묵적 세션을 따로 만든다. 그래서 모든 호출에 같은 `session` 라벨(`tars-computer-use`)을 싣는다 — 없으면 다음 프로세스의 클릭이 `stale_element_token`으로 거부된다. 세션 인자를 모르는 구버전은 한 번 거부당한 뒤 라벨 없이 돈다
+- 드라이버의 `elements`에는 조작 가능한 노드만 온다. 계산기 표시창 같은 읽기 전용 텍스트는 `tree_markdown`에만 있어서 번호 없는 줄을 `Snapshot.Texts`로 뽑아(메뉴바 하위는 통째로 제외, 80줄·줄당 160자) state의 `TEXT ON SCREEN`과 화면 해시에 넣는다. `expose_values: false`면 state에서 뺀다
+- Kev-0.8B(로컬)는 배관 검증용으로만 쓸 수 있다: 맞는 요소를 골라도 신뢰도(op 0.4~0.6, target 0.2~0.3)가 게이트에 못 미쳐 실행 전에 `stuck`으로 끝난다(2026-10-04 계산기 실측)
 - 테스트는 서브프로세스·네트워크 없이 `FakeDriver`/`FakeAsker`와 cua-driver 0.28.2 fixture로 돈다. 실제 Jev + cua-driver 라이브: `CU_APP=Calculator go test -tags integration ./internal/computeruse -run TestLive_Loop -v` (`TYPESAFE_API_KEY`, 데몬 없으면 skip). macOS만 검증됨
 
 **LLM Provider Pool:**

@@ -118,6 +118,16 @@ func RenderState(req Request, snap Snapshot, trace []TraceStep, opts RenderOptio
 	if hidden := total - len(shown); hidden > 0 {
 		fmt.Fprintf(&b, "(…%d more elements not shown; choose look to see them)\n", hidden)
 	}
+	// Read-only text is content like a field's value is, so the same switch
+	// that withholds values withholds it.
+	if opts.ExposeValues && len(snap.Texts) > 0 {
+		b.WriteString("TEXT ON SCREEN (read-only):\n")
+		for _, line := range snap.Texts {
+			b.WriteString("  ")
+			b.WriteString(line)
+			b.WriteByte('\n')
+		}
+	}
 	return b.String(), shown
 }
 
@@ -154,6 +164,11 @@ func ElementHash(snap Snapshot) string {
 	h := sha256.New()
 	for _, el := range snap.Elements {
 		_, _ = fmt.Fprintf(h, "%s|%s|%s|%v|%s\n", el.Role, el.Label, el.Value, el.Enabled, selectedMark(el.Selected))
+	}
+	// Read-only text counts too: pressing a calculator key changes the display
+	// and nothing else, and that must not read as an action that did nothing.
+	for _, line := range snap.Texts {
+		_, _ = fmt.Fprintf(h, "t|%s\n", line)
 	}
 	return hex.EncodeToString(h.Sum(nil))[:16]
 }

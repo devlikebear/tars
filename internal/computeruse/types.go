@@ -36,8 +36,12 @@ type Window struct {
 // Snapshot is one observation of a window: the elements the driver returned,
 // how many it saw in total, and why the view is degraded, if it is.
 type Snapshot struct {
-	Window        Window
-	Elements      []Element
+	Window   Window
+	Elements []Element
+	// Texts are the window's read-only lines (static text, results, headings):
+	// nodes the driver leaves out of Elements because nothing can act on them,
+	// but which are often the only place an action's outcome shows.
+	Texts         []string
 	TotalElements int
 	Degraded      string
 }

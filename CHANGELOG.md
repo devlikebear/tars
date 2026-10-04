@@ -6,6 +6,13 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.45.1] - 2026-10-04
+
+### Fixed
+
+- `computer_use` could not act with cua-driver 0.32: every click, type and set was refused as `stale_element_token`. That driver keeps a window's snapshot per session and gives each CLI call its own, so the token from one call was unknown to the next. Every driver call now carries one shared session label; a driver that predates sessions and refuses the argument is retried without it.
+- `computer_use` now reads the window's read-only text (a calculator's display, a dialog's message), which the driver reports only in its tree text, not as elements. The loop could not see the result of its own actions, and an action that changed only such text counted as "screen did not change". `tools.computer_use.expose_values: false` withholds this text as it does field values.
+
 ## [0.45.0] - 2026-10-03
 
 ### Added
