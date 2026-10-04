@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.45.2] - 2026-10-04
+
+### Fixed
+
+- `computer_use` and `tars doctor` failed with "session has ended" once cua-driver had closed TARS's driver session (after it sat idle, or when the driver daemon restarted): the driver refuses that session label until it is started again. A call that hits this now restarts the session and retries once.
+
 ## [0.45.1] - 2026-10-04
 
 ### Fixed
