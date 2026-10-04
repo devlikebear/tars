@@ -811,6 +811,8 @@ export const en = {
       avgPerSession: 'Avg / session',
       tokensSuffix: 'tokens',
       estimatedCost: 'Estimated cost',
+      unpricedCost: 'no price',
+      unpricedHint: (calls: number) => `${calls} ${calls === 1 ? 'call' : 'calls'} used a model with no known price, so their cost is not included. Add rates under usage.price_overrides to count them.`,
       daysSuffix: (days: number) => `${days} days`,
     },
     chart: {

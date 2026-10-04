@@ -30,6 +30,8 @@ export type BoardSession = {
   branch?: string
   last_change?: BoardChange
   cost_usd: number
+  // Calls with no known price, left out of cost_usd. Absent before 0.45.6.
+  unpriced_calls?: number
   goal?: { status?: string }
 }
 

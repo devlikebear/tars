@@ -234,7 +234,13 @@
                   </span>
                 {/if}
                 <span class="fact">{timeFact(card)}</span>
-                {#if card.cost_usd > 0}<span class="fact">{$t.sessionBoard.cost(formatCost(card.cost_usd))}</span>{/if}
+                {#if (card.unpriced_calls ?? 0) > 0}
+                  <span class="fact" title={$t.sessionBoard.costUnpricedTitle(card.unpriced_calls ?? 0)}>
+                    {card.cost_usd > 0 ? $t.sessionBoard.cost(`${formatCost(card.cost_usd)}+`) : $t.sessionBoard.costUnpriced}
+                  </span>
+                {:else if card.cost_usd > 0}
+                  <span class="fact">{$t.sessionBoard.cost(formatCost(card.cost_usd))}</span>
+                {/if}
               </div>
             </button>
           {/each}

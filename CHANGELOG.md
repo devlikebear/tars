@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.45.6] - 2026-10-04
+
+### Fixed
+
+- The session board and the analytics page now mark usage with no known price, as the chat status bar does since 0.45.5. A board card shows "no price this month" (or the known part followed by `+`) instead of leaving the cost out, and the analytics total and per-model cost show "no price" instead of `$0.0000`, with the number of affected calls in the tooltip. `GET /v1/chat/board` sessions and `GET /v1/admin/analytics` totals, daily rows and model rows carry `unpriced_calls`.
+
 ## [0.45.5] - 2026-10-04
 
 ### Fixed

@@ -38,6 +38,8 @@ export const sessionBoardEn = {
   change: (files: number) => (files === 1 ? '1 file' : `${files} files`),
   changeTitle: 'Files changed by the latest turn that changed any',
   cost: (usd: string) => `$${usd} this month`,
+  costUnpriced: 'no price this month',
+  costUnpricedTitle: (calls: number) => `${calls} ${calls === 1 ? 'call' : 'calls'} this month used a model with no known price, so their cost is not included.`,
   runningFor: (age: string) => `running ${age}`,
   updated: (age: string) => `${age} ago`,
   age: {
@@ -104,6 +106,8 @@ export const sessionBoardKo: SessionBoardTranslations = {
   change: (files: number) => `파일 ${files}개`,
   changeTitle: '파일을 바꾼 가장 최근 턴의 변경',
   cost: (usd: string) => `이번 달 $${usd}`,
+  costUnpriced: '이번 달 단가 없음',
+  costUnpricedTitle: (calls: number) => `이번 달 호출 ${calls}회는 단가를 모르는 모델이라 비용에 들어 있지 않습니다.`,
   runningFor: (age: string) => `${age}째 실행 중`,
   updated: (age: string) => `${age} 전`,
   age: {
