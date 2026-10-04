@@ -2,29 +2,19 @@ package tarsclient
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
-	"net/http"
-	"net/url"
 	"strings"
 
 	"github.com/devlikebear/tars/internal/secrets"
 )
 
 type Options struct {
-	ServerURL  string
-	SessionID  string
-	APIToken   string
-	AdminToken string
-	Message    string
-	Verbose    bool
-}
-
-type localRuntimeState struct {
-	notifications   *notificationCenter
-	chatTrace       bool
-	chatTraceFilter string
+	ServerURL string
+	SessionID string
+	APIToken  string
+	Message   string
+	Verbose   bool
 }
 
 func Run(ctx context.Context, _ io.Reader, stdout, stderr io.Writer, opts Options) error {
@@ -44,78 +34,6 @@ func Run(ctx context.Context, _ io.Reader, stdout, stderr io.Writer, opts Option
 		return nil
 	}
 	return fmt.Errorf("interactive terminal UI has been removed; use the web console at /console or one-shot CLI commands")
-}
-
-func executeCommand(ctx context.Context, runtime runtimeClient, line, session string, stdout, stderr io.Writer) (bool, string, error) {
-	return executeCommandWithState(ctx, runtime, line, session, stdout, stderr, nil)
-}
-
-func executeCommandWithState(ctx context.Context, runtime runtimeClient, line, session string, stdout, stderr io.Writer, state *localRuntimeState) (bool, string, error) {
-	fields := strings.Fields(strings.TrimSpace(line))
-	return dispatchCommand(commandContext{
-		ctx:     ctx,
-		runtime: runtime,
-		fields:  fields,
-		line:    line,
-		session: session,
-		stdout:  stdout,
-		stderr:  stderr,
-		state:   state,
-	})
-}
-
-func helpText(advanced bool) string {
-	sessionSection := `
-Session:
-  /session
-  /compact [instructions]
-`
-	debugSection := ""
-	if advanced {
-		debugSection = `
-
-Debug:
-  single-main-session mode is enabled
-`
-	}
-	return strings.TrimSpace(`SYSTEM > commands` + sessionSection + `
-
-Runtime:
-  /providers
-  /models
-  /whoami
-  /pulse
-  /skills
-  /plugins
-  /mcp
-  /reload
-  /agents [--detail|-d]
-  /runs [limit]
-  /run {id}
-  /cancel-run {id}
-  /spawn [--agent ...] [--title ...] [--session ...] [--wait] {message}
-  /agentruntime {status|reload|restart|summary|runs [limit]|channels [limit]}
-  /browser {status|profiles|login|check|run}
-  /channels
-  /telegram {pairings|pairing approve {code}}
-  /usage {summary|limits|set-limits}
-  /ops {status|cleanup plan}
-  /schedule {list|add|done|remove}
-  /notify {list|filter|open|clear}
-
-Chat:
-  /trace [on|off|filter {all|llm|tool|error|system}]
-  /quit
-
-Use one-shot CLI commands outside the legacy TUI:
-  tars status
-  tars health
-  tars project ...
-  tars cron ...
-  tars approve ...
-` + debugSection + `
-
-Use /help advanced for debug notes.`)
 }
 
 func sendMessage(ctx context.Context, client chatClient, session, message string, showStatus bool, verbose bool, stdout, stderr io.Writer) (chatResult, error) {
@@ -168,73 +86,4 @@ func formatChatStatusEvent(evt chatEvent, verbose bool) string {
 		parts = append(parts, "result="+secrets.RedactText(toolResult))
 	}
 	return secrets.RedactText(strings.Join(parts, " | "))
-}
-
-func formatRuntimeError(err error) string {
-	if err == nil {
-		return ""
-	}
-	message := strings.TrimSpace(err.Error())
-	var apiErr *apiHTTPError
-	if !errors.As(err, &apiErr) || apiErr == nil {
-		return secrets.RedactText(message)
-	}
-	hint := runtimeErrorHint(apiErr)
-	if strings.TrimSpace(hint) == "" {
-		return secrets.RedactText(message)
-	}
-	return secrets.RedactText(message + "\nhint: " + hint)
-}
-
-func runtimeErrorHint(apiErr *apiHTTPError) string {
-	if apiErr == nil {
-		return ""
-	}
-	endpointPath := ""
-	if parsed, err := url.Parse(strings.TrimSpace(apiErr.Endpoint)); err == nil {
-		endpointPath = strings.TrimSpace(parsed.Path)
-	}
-	code := strings.ToLower(strings.TrimSpace(apiErr.Code))
-	switch code {
-	case "unauthorized":
-		if isAdminEndpointPath(endpointPath) {
-			return "admin endpoint requires admin token; retry with --admin-api-token (or TARS_ADMIN_API_TOKEN)"
-		}
-		return "set --api-token (or TARS_API_TOKEN), then retry"
-	case "forbidden":
-		if isAdminEndpointPath(endpointPath) {
-			return "this endpoint requires admin role; retry with --admin-api-token or ask admin"
-		}
-		return "your role is not allowed for this endpoint"
-	}
-	switch apiErr.Status {
-	case http.StatusUnauthorized:
-		return "verify API token and retry"
-	case http.StatusForbidden:
-		return "verify role permissions and retry"
-	default:
-		return ""
-	}
-}
-
-func isAdminEndpointPath(path string) bool {
-	trimmed := strings.TrimSpace(path)
-	switch {
-	case trimmed == "/v1/runtime/extensions/reload":
-		return true
-	case trimmed == "/v1/agentruntime/reload":
-		return true
-	case trimmed == "/v1/agentruntime/restart":
-		return true
-	case strings.HasPrefix(trimmed, "/v1/channels/webhook/inbound/"):
-		return true
-	case strings.HasPrefix(trimmed, "/v1/channels/telegram/webhook/"):
-		return true
-	case strings.HasPrefix(trimmed, "/v1/channels/telegram/pairings"):
-		return true
-	case trimmed == "/v1/usage/limits":
-		return true
-	default:
-		return false
-	}
 }
