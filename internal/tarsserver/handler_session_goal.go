@@ -10,7 +10,8 @@ import (
 // handleSessionGoal serves /v1/admin/sessions/{id}/goal — GET, PUT, DELETE.
 // PUT body: {"description": "...", "max_auto_continues": N?}
 // DELETE clears the goal. GET returns {"goal": SessionGoal|null}.
-// Only main-kind sessions are allowed to carry a goal; others return 400.
+// Only user chats (the main session and ordinary chats) may carry a goal;
+// worker and subagent sessions return 400.
 func handleSessionGoal(w http.ResponseWriter, r *http.Request, reqStore *session.Store, sessionID string) {
 	if !requireMethod(w, r, http.MethodGet, http.MethodPut, http.MethodDelete) {
 		return
@@ -48,7 +49,7 @@ func handleSessionGoal(w http.ResponseWriter, r *http.Request, reqStore *session
 			case errors.Is(err, session.ErrSessionNotFound):
 				writeJSON(w, http.StatusNotFound, map[string]string{"error": "session not found"})
 			case errors.Is(err, session.ErrSessionKindUnsupported):
-				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "only main sessions support goals"})
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "only chat sessions support goals"})
 			default:
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			}

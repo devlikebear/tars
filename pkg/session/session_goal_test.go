@@ -109,15 +109,32 @@ func TestStoreSetGoal_ClearsOnEmpty(t *testing.T) {
 	}
 }
 
-func TestStoreSetGoal_NonMainRejected(t *testing.T) {
+func TestStoreSetGoal_WorkerKindsRejected(t *testing.T) {
 	store := NewStore(t.TempDir())
-	sess, err := store.Create("worker-like")
+	for _, kind := range []string{"worker", "subagent"} {
+		sess, err := store.CreateWithOptions(kind+"-like", kind, true)
+		if err != nil {
+			t.Fatalf("create %s: %v", kind, err)
+		}
+		_, err = store.SetGoal(sess.ID, &SessionGoal{Description: "x"})
+		if !errors.Is(err, ErrSessionKindUnsupported) {
+			t.Fatalf("%s: expected ErrSessionKindUnsupported, got %v", kind, err)
+		}
+	}
+}
+
+func TestStoreSetGoal_OrdinaryChatAllowed(t *testing.T) {
+	store := NewStore(t.TempDir())
+	sess, err := store.Create("chat in a folder")
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	_, err = store.SetGoal(sess.ID, &SessionGoal{Description: "x"})
-	if !errors.Is(err, ErrSessionKindUnsupported) {
-		t.Fatalf("expected ErrSessionKindUnsupported, got %v", err)
+	updated, err := store.SetGoal(sess.ID, &SessionGoal{Description: "ship it"})
+	if err != nil {
+		t.Fatalf("set goal on an ordinary chat: %v", err)
+	}
+	if updated.Goal == nil || updated.Goal.Description != "ship it" {
+		t.Fatalf("expected goal stored, got %+v", updated.Goal)
 	}
 }
 

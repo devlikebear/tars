@@ -16,6 +16,7 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 ### Fixed
 
 - The plan gate no longer stops a turn whose plan was approved in advance. The agent proposed its plan and waited for `go` even when the request said to go ahead without asking, or when a session goal (`/goal`) was set, so an unattended run needed one more message before any work started. With a pre-approval in the request or an active session goal, the agent now proposes, approves and executes in the same turn. Tool permission prompts are unchanged: they still follow the session's permission mode.
+- A session goal can be set on any chat. `PUT /v1/admin/sessions/{id}/goal` (and `/goal` in the console) answered 400 "only main sessions support goals" for every chat except the single `main` session, so a chat started in a folder could not have one. Worker and subagent sessions are still refused.
 
 ## [0.45.8] - 2026-10-04
 

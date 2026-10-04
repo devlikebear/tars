@@ -89,7 +89,21 @@ func TestSessionGoalAPI_PutGetDeleteRoundTrip(t *testing.T) {
 	}
 }
 
-func TestSessionGoalAPI_NonMainRejected(t *testing.T) {
+func TestSessionGoalAPI_WorkerSessionRejected(t *testing.T) {
+	store := session.NewStore(t.TempDir())
+	sess, err := store.CreateWithOptions("worker", "worker", true)
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	handler := newSessionAPIHandler(store, zerolog.New(io.Discard))
+
+	rec := adminGoalRequest(t, handler, http.MethodPut, sess.ID, `{"description":"x"}`)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for a worker session, got %d body=%q", rec.Code, rec.Body.String())
+	}
+}
+
+func TestSessionGoalAPI_OrdinaryChatAllowed(t *testing.T) {
 	store := session.NewStore(t.TempDir())
 	sess, err := store.Create("regular")
 	if err != nil {
@@ -98,8 +112,8 @@ func TestSessionGoalAPI_NonMainRejected(t *testing.T) {
 	handler := newSessionAPIHandler(store, zerolog.New(io.Discard))
 
 	rec := adminGoalRequest(t, handler, http.MethodPut, sess.ID, `{"description":"x"}`)
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400 for non-main, got %d body=%q", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for an ordinary chat, got %d body=%q", rec.Code, rec.Body.String())
 	}
 }
 

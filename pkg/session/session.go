@@ -1169,8 +1169,9 @@ func (s *Store) SetPromptOverride(id string, override string) error {
 // goals).
 var ErrSessionKindUnsupported = errors.New("session: kind does not support goals")
 
-// SetGoal replaces the session's active goal. Only "main" sessions are
-// permitted. Passing nil or a goal with empty description clears it.
+// SetGoal replaces the session's active goal. Only user chats are permitted:
+// the "main" session and ordinary chats (empty kind). Worker and subagent
+// sessions are rejected. Passing nil or a goal with empty description clears it.
 func (s *Store) SetGoal(id string, goal *SessionGoal) (Session, error) {
 	unlock := lockPath(s.indexPath())
 	defer unlock()
@@ -1182,7 +1183,7 @@ func (s *Store) SetGoal(id string, goal *SessionGoal) (Session, error) {
 	if !ok {
 		return Session{}, ErrSessionNotFound
 	}
-	if strings.TrimSpace(sess.Kind) != "main" {
+	if kind := strings.TrimSpace(sess.Kind); kind != "" && kind != "main" {
 		return Session{}, ErrSessionKindUnsupported
 	}
 	now := time.Now().UTC()
