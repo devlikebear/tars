@@ -804,6 +804,8 @@ export type Translations = {
       title: string
       legendInput: string
       legendOutput: string
+      legendUnpriced: string
+      barUnpriced: (calls: number) => string
       ariaLabel: string
       loading: string
       emptyTitle: string

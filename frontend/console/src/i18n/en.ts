@@ -819,6 +819,8 @@ export const en = {
       title: 'Daily Tokens',
       legendInput: 'Input',
       legendOutput: 'Output',
+      legendUnpriced: 'Has calls with no price',
+      barUnpriced: (calls: number) => `${calls} ${calls === 1 ? 'call' : 'calls'} with no known price (not in the cost)`,
       ariaLabel: 'Daily input and output token chart',
       loading: 'Loading analytics...',
       emptyTitle: 'No usage yet',

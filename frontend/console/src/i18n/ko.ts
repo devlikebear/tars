@@ -819,6 +819,8 @@ export const ko = {
       title: '일별 토큰',
       legendInput: '입력',
       legendOutput: '출력',
+      legendUnpriced: '단가 없는 호출 있음',
+      barUnpriced: (calls: number) => `단가 없는 호출 ${calls}회 (비용 미포함)`,
       ariaLabel: '일별 입출력 토큰 차트',
       loading: '분석 데이터 불러오는 중...',
       emptyTitle: '사용 기록 없음',
