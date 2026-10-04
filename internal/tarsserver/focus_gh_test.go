@@ -42,6 +42,19 @@ const ghViewFixture = `{
   ]
 }`
 
+func TestParseFocusPRViewMergeCommit(t *testing.T) {
+	got := parseFocusPRView([]byte(`{"number": 7, "state": "MERGED", "mergeCommit": {"oid": "m1"}}`))
+	if got.Status != focuspipeline.ProbeFound || got.MergeOID != "m1" {
+		t.Fatalf("probe = %+v", got)
+	}
+	if open := parseFocusPRView([]byte(`{"number": 7, "state": "OPEN", "mergeCommit": null}`)); open.Status != focuspipeline.ProbeFound || open.MergeOID != "" {
+		t.Fatalf("open probe = %+v", open)
+	}
+	if !strings.Contains(focusGHFields, "mergeCommit") {
+		t.Fatalf("gh is not asked for the merge commit: %s", focusGHFields)
+	}
+}
+
 func TestParseFocusPRView(t *testing.T) {
 	got := parseFocusPRView([]byte(ghViewFixture))
 	if got.Status != focuspipeline.ProbeFound || got.Number != 42 || got.State != "OPEN" || got.MergeState != "BLOCKED" || got.URL == "" ||

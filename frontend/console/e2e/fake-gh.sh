@@ -14,8 +14,8 @@ gitdir=$(git rev-parse --git-dir 2>/dev/null || echo .git)
 echo "$*" >> "$gitdir/e2e-gh.log" 2>/dev/null
 scenario=$(cat "$gitdir/e2e-gh" 2>/dev/null)
 case "$scenario" in
-  open) state=OPEN ;;
-  merged) state=MERGED ;;
+  open) state=OPEN merge=null ;;
+  merged) state=MERGED merge='{"oid":"e2e0000000000000000000000000000000000000"}' ;;
   *)
     echo "e2e gh stub: not logged in" >&2
     exit 4
@@ -23,4 +23,4 @@ case "$scenario" in
 esac
 head=$(git rev-parse HEAD)
 branch=$(git rev-parse --abbrev-ref HEAD)
-printf '{"number":7,"url":"https://example.test/pr/7","state":"%s","mergeStateStatus":"CLEAN","headRefOid":"%s","headRefName":"%s","author":{"login":"e2e"},"statusCheckRollup":[{"__typename":"CheckRun","name":"test","status":"COMPLETED","conclusion":"SUCCESS","startedAt":"2026-10-01T00:00:00Z"}],"reviews":[],"comments":[{"id":"IC_sonar","author":{"login":"sonarqubecloud"},"authorAssociation":"NONE","body":"Quality Gate passed","url":"https://example.test/pr/7#issuecomment-1"}]}\n' "$state" "$head" "$branch"
+printf '{"number":7,"url":"https://example.test/pr/7","state":"%s","mergeStateStatus":"CLEAN","headRefOid":"%s","headRefName":"%s","mergeCommit":%s,"author":{"login":"e2e"},"statusCheckRollup":[{"__typename":"CheckRun","name":"test","status":"COMPLETED","conclusion":"SUCCESS","startedAt":"2026-10-01T00:00:00Z"}],"reviews":[],"comments":[{"id":"IC_sonar","author":{"login":"sonarqubecloud"},"authorAssociation":"NONE","body":"Quality Gate passed","url":"https://example.test/pr/7#issuecomment-1"}]}\n' "$state" "$head" "$branch" "$merge"

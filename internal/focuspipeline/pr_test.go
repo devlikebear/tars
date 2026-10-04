@@ -520,9 +520,9 @@ func TestG4MergeGate(t *testing.T) {
 		t.Fatal("finished before the merge")
 	}
 	merged := probeFound()
-	merged.State = PRStateMerged
+	merged.State, merged.MergeOID = PRStateMerged, "m1"
 	p, act = mustApply(t, p, Event{Kind: EventPRProbe, Probe: merged})
-	if !Finished(p) || p.FinishedAt == nil || p.PR.State != PRStateMerged || act.Kind != ActionNone || p.PendingTurn != "" {
+	if !Finished(p) || p.FinishedAt == nil || p.PR.State != PRStateMerged || p.PR.MergeOID != "m1" || act.Kind != ActionNone || p.PendingTurn != "" {
 		t.Fatalf("finished %v pr %+v act %+v", Finished(p), p.PR, act)
 	}
 	if !Releasable(p) {

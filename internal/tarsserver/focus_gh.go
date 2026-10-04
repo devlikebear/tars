@@ -25,7 +25,7 @@ import (
 // focusGHFields are the PR fields the probe asks for: the review facts,
 // plus the head commit and branch (which PR this is; what was merged) and
 // the author (whose comments are trusted).
-const focusGHFields = "number,url,state,mergeStateStatus,statusCheckRollup,reviews,comments,headRefOid,headRefName,author"
+const focusGHFields = "number,url,state,mergeStateStatus,statusCheckRollup,reviews,comments,headRefOid,headRefName,mergeCommit,author"
 
 // focusGHTimeout bounds one probe; gh reaches the network.
 var focusGHTimeout = 20 * time.Second
@@ -125,12 +125,16 @@ func (a ghAuthor) bot() bool {
 }
 
 type ghPRView struct {
-	Number            int      `json:"number"`
-	URL               string   `json:"url"`
-	State             string   `json:"state"`
-	MergeStateStatus  string   `json:"mergeStateStatus"`
-	HeadRefOid        string   `json:"headRefOid"`
-	HeadRefName       string   `json:"headRefName"`
+	Number           int    `json:"number"`
+	URL              string `json:"url"`
+	State            string `json:"state"`
+	MergeStateStatus string `json:"mergeStateStatus"`
+	HeadRefOid       string `json:"headRefOid"`
+	HeadRefName      string `json:"headRefName"`
+	// MergeCommit is null until the PR merges.
+	MergeCommit *struct {
+		OID string `json:"oid"`
+	} `json:"mergeCommit"`
 	Author            ghAuthor `json:"author"`
 	StatusCheckRollup []struct {
 		Typename   string `json:"__typename"`
@@ -184,6 +188,9 @@ func parseFocusPRView(raw []byte) focuspipeline.PRProbe {
 		Status: focuspipeline.ProbeFound, Number: v.Number, URL: v.URL,
 		State: strings.ToUpper(v.State), MergeState: v.MergeStateStatus,
 		HeadOID: v.HeadRefOid, HeadRef: v.HeadRefName,
+	}
+	if v.MergeCommit != nil {
+		probe.MergeOID = v.MergeCommit.OID
 	}
 	for _, c := range v.StatusCheckRollup {
 		check := focuspipeline.PRCheck{Name: c.Name, URL: c.DetailsURL, StartedAt: c.StartedAt}

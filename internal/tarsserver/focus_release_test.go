@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -488,5 +489,64 @@ func TestFocusReleaseTrainCachesTagFetch(t *testing.T) {
 	defer mu.Unlock()
 	if calls != 2 {
 		t.Fatalf("fetches after the window = %d, want 2", calls)
+	}
+}
+
+// commitRepo adds an empty commit with subject to repo and returns its id.
+func commitRepo(t *testing.T, repo, subject string) string {
+	t.Helper()
+	gitRun(t, repo, "commit", "-q", "--allow-empty", "-m", subject)
+	return strings.TrimSpace(gitRun(t, repo, "rev-parse", "HEAD"))
+}
+
+// mergedPipeline is a finished pipeline whose pull request merged.
+func mergedPipeline(sessionID string, at time.Time, pr focuspipeline.PRInfo) focuspipeline.Pipeline {
+	p := finishedPipeline(sessionID, at)
+	p.FinishedAt = &at
+	pr.State = focuspipeline.PRStateMerged
+	p.PR = &pr
+	return p
+}
+
+// A release made outside focus (a hand-made release PR, tagged by CI) ships
+// work no focus release lists: a pipeline whose merge is in the latest tag is
+// released, whatever the last focus release's cut-off says.
+func TestFocusReleaseTrainSkipsWorkInLatestTag(t *testing.T) {
+	f := newWorktreeFixture(t)
+	tagRepo(t, f.repo, "v0.1.0", time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
+	// The only focus release: finished long before the work below.
+	release := f.session(t, "Release")
+	saveFocus(t, f.store, releasePipeline(release.ID, nil, time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), true, time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)))
+
+	at := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)
+	squashed := f.session(t, "squash-merged, tagged by hand")
+	commitRepo(t, f.repo, "fix: a (#11)")
+	saveFocus(t, f.store, mergedPipeline(squashed.ID, at, focuspipeline.PRInfo{Number: 11}))
+	merged := f.session(t, "merge commit, tagged by hand")
+	commitRepo(t, f.repo, "Merge pull request #12 from acme/b")
+	saveFocus(t, f.store, mergedPipeline(merged.ID, at, focuspipeline.PRInfo{Number: 12}))
+	byCommit := f.session(t, "merge commit recorded, tagged by hand")
+	saveFocus(t, f.store, mergedPipeline(byCommit.ID, at, focuspipeline.PRInfo{Number: 13, MergeOID: commitRepo(t, f.repo, "fix: c")}))
+	// Mentions of another PR do not ship it: only a merge's own subject does.
+	commitRepo(t, f.repo, "chore: release\n\n- fix: d (#14)\n- follow-up to (#1)")
+	tagRepo(t, f.repo, "v0.2.0", time.Date(2026, 2, 2, 0, 0, 0, 0, time.UTC))
+
+	mentioned := f.session(t, "only mentioned in the tag")
+	saveFocus(t, f.store, mergedPipeline(mentioned.ID, at.Add(time.Minute), focuspipeline.PRInfo{Number: 14}))
+	// Merged after the tag: the next release's work.
+	fresh := f.session(t, "after the tag")
+	commitRepo(t, f.repo, "fix: e (#15)")
+	saveFocus(t, f.store, mergedPipeline(fresh.ID, at.Add(2*time.Minute), focuspipeline.PRInfo{Number: 15}))
+	freshByCommit := f.session(t, "after the tag, merge commit recorded")
+	// Its subject names a PR the tag holds; the recorded commit decides.
+	saveFocus(t, f.store, mergedPipeline(freshByCommit.ID, at.Add(3*time.Minute), focuspipeline.PRInfo{Number: 11, MergeOID: commitRepo(t, f.repo, "fix: f")}))
+
+	out := releaseTrainOf(t, f.store)
+	if len(out.Groups) != 1 || out.Groups[0].LastTag != "v0.2.0" {
+		t.Fatalf("groups = %+v", out.Groups)
+	}
+	want := []string{mentioned.ID, fresh.ID, freshByCommit.ID}
+	if ids := itemIDs(out.Groups[0]); !slices.Equal(ids, want) {
+		t.Fatalf("items = %v, want %v (work in v0.2.0 is released)", ids, want)
 	}
 }
