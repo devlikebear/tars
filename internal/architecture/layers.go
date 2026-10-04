@@ -51,7 +51,6 @@ var CorePackages = []string{
 // AppPackages orchestrate: they own storage, scheduling, process supervision,
 // HTTP surfaces, and the TARS-specific tool set. They may import core freely.
 var AppPackages = []string{
-	"a2a",
 	"agentruntime",
 	"apptool",
 	"assistant",
@@ -61,7 +60,6 @@ var AppPackages = []string{
 	"computeruse",
 	"cron",
 	"embodiment",
-	"executionplane",
 	"extensions",
 	"focuspipeline",
 	"goal",
@@ -81,7 +79,6 @@ var AppPackages = []string{
 	"sessionworktree",
 	"skillhub",
 	"tarsserver",
-	"workerprotocol",
 	"workscheduler",
 	"workstore",
 }

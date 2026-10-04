@@ -102,16 +102,6 @@ func WithWorkspaceID(ctx context.Context, workspaceID string) context.Context {
 	return context.WithValue(ctx, workspaceIDKey{}, trimmed)
 }
 
-func WorkspaceIDFromRequest(r *http.Request) string {
-	if r == nil {
-		return ""
-	}
-	if value := WorkspaceIDFromContext(r.Context()); value != "" {
-		return value
-	}
-	return strings.TrimSpace(r.Header.Get(debugWorkspaceHeader))
-}
-
 // WithRoleContext returns ctx carrying role, for work the server starts on
 // behalf of a request that has ended (a focus turn after a gate action).
 func WithRoleContext(ctx context.Context, role string) context.Context {

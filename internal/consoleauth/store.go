@@ -49,14 +49,6 @@ func WithNow(now func() time.Time) Option {
 	}
 }
 
-func WithRandomReader(reader io.Reader) Option {
-	return func(s *Store) {
-		if reader != nil {
-			s.randReader = reader
-		}
-	}
-}
-
 type UserRecord struct {
 	Hash      string    `json:"hash"`
 	CreatedAt time.Time `json:"created_at"`

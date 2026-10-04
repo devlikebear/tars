@@ -336,22 +336,6 @@ func detectPseudoToolContamination(response string) []string {
 	return slices.Compact(markers)
 }
 
-func sanitizeArtifactID(raw string) string {
-	id := strings.TrimSpace(raw)
-	if id == "" {
-		return "job"
-	}
-	var b strings.Builder
-	for _, r := range id {
-		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_' {
-			b.WriteRune(r)
-			continue
-		}
-		b.WriteRune('_')
-	}
-	return b.String()
-}
-
 func trimCronProjectArtifacts(dir string, historyLimit int) error {
 	if strings.TrimSpace(dir) == "" || historyLimit <= 0 {
 		return nil
@@ -382,10 +366,6 @@ func trimCronProjectArtifacts(dir string, historyLimit int) error {
 		}
 	}
 	return nil
-}
-
-func snapshotCronProjectFiles(_ string, _ string) (map[string]time.Time, error) {
-	return nil, nil
 }
 
 func verifyCronClaimedFileUpdates(workspaceDir string, job cron.Job, response string, baseline map[string]time.Time) error {
@@ -601,20 +581,6 @@ func deliverCronResult(
 	return nil
 }
 
-func lookupCronDeliverySession(store *session.Store, sessionID string) (*session.Session, error) {
-	if store == nil || strings.TrimSpace(sessionID) == "" {
-		return nil, nil
-	}
-	sess, err := store.Get(sessionID)
-	if err != nil {
-		if strings.Contains(strings.ToLower(strings.TrimSpace(err.Error())), "session not found") {
-			return nil, nil
-		}
-		return nil, err
-	}
-	return &sess, nil
-}
-
 func appendCronSessionMessage(store *session.Store, sessionID string, content string, now time.Time) error {
 	if store == nil || strings.TrimSpace(sessionID) == "" {
 		return nil
@@ -657,19 +623,6 @@ func cronReminderMessage(job cron.Job) string {
 		return strings.TrimSpace(job.Name)
 	}
 	return strings.TrimSpace(job.Prompt)
-}
-
-func buildCronSummaryContent(job cron.Job, response string) string {
-	status := "completed"
-	if strings.TrimSpace(response) == "" {
-		status = "completed"
-	}
-	return fmt.Sprintf(
-		"[CRON SUMMARY]\njob: %s\nstatus: %s\nresult: %s",
-		strings.TrimSpace(job.Name),
-		status,
-		trimForMemory(response, 220),
-	)
 }
 
 func buildCronNotificationEvent(job cron.Job, severity string, baseTitle string, details string, openPath string, sessionID string) notificationEvent {

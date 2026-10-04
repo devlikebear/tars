@@ -10,11 +10,6 @@ import (
 	"github.com/devlikebear/tars/internal/cron"
 )
 
-func validateAutonomousProjectSchedule(_, _ string) error {
-	// Project validation removed along with project system.
-	return nil
-}
-
 func NewCronListTool(store *cron.Store) Tool {
 	return Tool{
 		Name:        "cron_list",

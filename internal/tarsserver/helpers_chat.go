@@ -185,15 +185,6 @@ func compactionTaskInjectionMessages(injection string, now time.Time) []session.
 	}}
 }
 
-// buildLLMCompactionSummary continues to take a resolved llm.Client
-// because its caller (compactWithMemoryFlush) has already resolved the
-// router to a concrete client; passing the already-resolved client keeps
-// this pure-function boundary intact and testable.
-func buildLLMCompactionSummary(messages []session.Message, client llm.Client, now time.Time, instructions string, previousContext string) (string, error) {
-	summary, _, err := buildLLMCompactionSummaryWithContext(context.Background(), messages, client, now, instructions, previousContext)
-	return summary, err
-}
-
 func buildLLMCompactionSummaryWithContext(ctx context.Context, messages []session.Message, client llm.Client, now time.Time, instructions string, previousContext string) (string, bool, error) {
 	const inputTokenBudget = 8000
 

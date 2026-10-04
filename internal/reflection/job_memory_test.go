@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/devlikebear/tars/internal/llm"
 	"github.com/devlikebear/tars/internal/memory"
 	"github.com/devlikebear/tars/internal/session"
 )
@@ -45,45 +44,6 @@ func writeTranscript(t *testing.T, dir, id string, msgs []session.Message) {
 			t.Fatalf("encode: %v", err)
 		}
 	}
-}
-
-type fakeLLM struct {
-	chatCount int
-	response  string
-	err       error
-}
-
-func (f *fakeLLM) Ask(ctx context.Context, prompt string) (string, error) { return "", nil }
-func (f *fakeLLM) Chat(ctx context.Context, msgs []llm.ChatMessage, opts llm.ChatOptions) (llm.ChatResponse, error) {
-	f.chatCount++
-	if f.err != nil {
-		return llm.ChatResponse{}, f.err
-	}
-	return llm.ChatResponse{Message: llm.ChatMessage{Role: "assistant", Content: f.response}}, nil
-}
-
-// routerForFake wraps one fakeLLM into a three-tier router. All tiers
-// point at the same fake so the test can still assert call counts on it
-// regardless of which tier a role resolves to. RoleReflectionMemory is
-// mapped to light to exercise the role→tier lookup path.
-func routerForFake(t *testing.T, client *fakeLLM) llm.Router {
-	t.Helper()
-	entry := llm.TierEntry{Client: client, Provider: "fake", Model: "fake-model"}
-	router, err := llm.NewRouter(llm.RouterConfig{
-		Tiers: map[llm.Tier]llm.TierEntry{
-			llm.TierHeavy:    entry,
-			llm.TierStandard: entry,
-			llm.TierLight:    entry,
-		},
-		DefaultTier: llm.TierStandard,
-		RoleDefaults: map[llm.Role]llm.Tier{
-			llm.RoleReflectionMemory: llm.TierLight,
-		},
-	})
-	if err != nil {
-		t.Fatalf("build router: %v", err)
-	}
-	return router
 }
 
 func newTestWorkspace(t *testing.T) string {

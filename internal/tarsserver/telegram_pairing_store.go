@@ -254,13 +254,6 @@ func (s *telegramPairingStore) setLastUpdateID(updateID int64) error {
 	return s.persistLocked()
 }
 
-func (s *telegramPairingStore) allowedIdentity(userID int64) (telegramAllowedUser, bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	item, ok := s.allowedByUser[userID]
-	return item, ok
-}
-
 func (s *telegramPairingStore) resolveDefaultChatID() (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

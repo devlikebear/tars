@@ -3,7 +3,6 @@ package tarsserver
 import (
 	"context"
 	"fmt"
-	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -38,14 +37,6 @@ type watchdogRunResult struct {
 	InspectedJobs int               `json:"inspected_jobs"`
 	Summary       string            `json:"summary,omitempty"`
 	Findings      []watchdogFinding `json:"findings,omitempty"`
-}
-
-type watchdogStatus struct {
-	LastRunAt string            `json:"last_run_at,omitempty"`
-	LastError string            `json:"last_error,omitempty"`
-	Healthy   bool              `json:"healthy"`
-	Summary   string            `json:"summary,omitempty"`
-	Findings  []watchdogFinding `json:"findings,omitempty"`
 }
 
 type watchdogRuntimeState struct {
@@ -83,30 +74,12 @@ func (s *watchdogWorkspaceState) getOrCreate(workspaceID string) *watchdogRuntim
 	return created
 }
 
-func (s *watchdogWorkspaceState) get(workspaceID string) *watchdogRuntimeState {
-	if s == nil {
-		return nil
-	}
-	id := normalizeWorkspaceID(workspaceID)
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.items[id]
-}
-
 func (s *watchdogWorkspaceState) record(workspaceID string, ranAt time.Time, result watchdogRunResult, runErr error) {
 	state := s.getOrCreate(workspaceID)
 	if state == nil {
 		return
 	}
 	state.record(ranAt, result, runErr)
-}
-
-func (s *watchdogWorkspaceState) snapshot(workspaceID string) watchdogStatus {
-	state := s.get(workspaceID)
-	if state == nil {
-		return watchdogStatus{Healthy: true}
-	}
-	return state.snapshot()
 }
 
 func (s *watchdogRuntimeState) record(ranAt time.Time, result watchdogRunResult, runErr error) {
@@ -123,27 +96,6 @@ func (s *watchdogRuntimeState) record(ranAt time.Time, result watchdogRunResult,
 	} else {
 		s.lastErr = ""
 	}
-}
-
-func (s *watchdogRuntimeState) snapshot() watchdogStatus {
-	if s == nil {
-		return watchdogStatus{Healthy: true}
-	}
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	status := watchdogStatus{
-		Healthy:  true,
-		Findings: nil,
-	}
-	if !s.hasRun {
-		return status
-	}
-	status.LastRunAt = s.lastRunAt.Format(time.RFC3339)
-	status.LastError = s.lastErr
-	status.Healthy = s.last.Healthy
-	status.Summary = s.last.Summary
-	status.Findings = slices.Clone(s.last.Findings)
-	return status
 }
 
 func newWorkspaceWatchdogRunnerWithNotify(

@@ -134,11 +134,6 @@ func resolveInjectedToolPolicy(
 	}
 }
 
-// applySessionToolConfig filters tool names based on per-session configuration.
-func applySessionToolConfig(names []string, config session.SessionToolConfig) []string {
-	return resolveSessionToolPolicy(names, config, "session").Allowed
-}
-
 func resolveSessionToolPolicy(names []string, config session.SessionToolConfig, source string) tool.PolicyResolution {
 	useAllowTools := len(config.ToolsEnabled) > 0 || (config.ToolsCustom && len(config.ToolsAllowGroups) == 0)
 	policy := tool.Policy{
@@ -297,11 +292,6 @@ func shouldFilterHighRiskTools(authRole string, allowHighRiskUser bool) bool {
 	return strings.TrimSpace(strings.ToLower(authRole)) != serverauth.RoleAdmin
 }
 
-func filterHighRiskToolNamesForRole(names []string, authRole string, allowHighRiskUser bool) []string {
-	filtered, _ := filterHighRiskToolNamesForRoleDetailed(names, authRole, allowHighRiskUser)
-	return filtered
-}
-
 func filterHighRiskToolNamesForRoleDetailed(names []string, authRole string, allowHighRiskUser bool) ([]string, map[string]tool.BlockedToolError) {
 	if !shouldFilterHighRiskTools(authRole, allowHighRiskUser) {
 		return names, nil
@@ -384,21 +374,6 @@ func sessionExplicitlyAllowsTool(config *session.SessionToolConfig, name string)
 	return false
 }
 
-func knownToolsFromRegistry(registry *tool.Registry) map[string]struct{} {
-	out := map[string]struct{}{}
-	if registry == nil {
-		return out
-	}
-	for _, schema := range registry.Schemas() {
-		name := tool.CanonicalToolName(schema.Function.Name)
-		if name == "" {
-			continue
-		}
-		out[name] = struct{}{}
-	}
-	return out
-}
-
 func normalizeToolNames(names []string) []string {
 	out := make([]string, 0, len(names))
 	seen := map[string]struct{}{}
@@ -414,18 +389,6 @@ func normalizeToolNames(names []string) []string {
 		out = append(out, name)
 	}
 	return out
-}
-
-func defaultMinimalToolNames() []string {
-	return []string{
-		"memory",
-		"workspace",
-		"ops",
-		"cron",
-		"tasks",
-		"usage_report",
-		"session",
-	}
 }
 
 func mergeBlockedToolErrors(dst map[string]tool.BlockedToolError, src map[string]tool.BlockedToolError) {

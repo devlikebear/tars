@@ -37,15 +37,6 @@ type telegramMediaDownloader interface {
 	DownloadAndSave(ctx context.Context, chatID string, media telegramInboundMedia) (telegramSavedMedia, error)
 }
 
-type telegramMediaDownloadFunc func(ctx context.Context, chatID string, media telegramInboundMedia) (telegramSavedMedia, error)
-
-func (f telegramMediaDownloadFunc) DownloadAndSave(ctx context.Context, chatID string, media telegramInboundMedia) (telegramSavedMedia, error) {
-	if f == nil {
-		return telegramSavedMedia{}, fmt.Errorf("telegram media downloader is not configured")
-	}
-	return f(ctx, chatID, media)
-}
-
 type telegramHTTPMediaDownloader struct {
 	botToken     string
 	workspaceDir string

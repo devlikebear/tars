@@ -221,11 +221,6 @@ func sortedFilePaths(files map[string][]byte) []string {
 	return out
 }
 
-func hasAttribution(files map[string][]byte) bool {
-	_, ok := files[AttributionFilename]
-	return ok
-}
-
 // ensureSources lazily initializes the source registry when an Installer was
 // constructed without one (older tests, hand-built call sites). The default
 // registry has just the built-in tars-hub source, backed by inst.Registry so

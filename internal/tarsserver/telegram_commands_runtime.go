@@ -76,10 +76,6 @@ func (h *telegramCommandHandler) cmdStatus() string {
 	)
 }
 
-func (h *telegramCommandHandler) cmdSessions() string {
-	return blockInMainSessionMessage()
-}
-
 func (h *telegramCommandHandler) cmdSession() string {
 	return fmt.Sprintf("SYSTEM > session=%s", publicMainSessionLabel(h.mainSession))
 }

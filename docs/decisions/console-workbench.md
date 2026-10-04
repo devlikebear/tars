@@ -17,7 +17,7 @@ The goal is for TARS to be the maintainer's **primary daily AI development tool*
 - Ten pages (Agent Runtime, Memory, Extensions, …) are reachable only by typing a URL.
 - `Chat.svelte` is 2,167 lines with no shared session store. Most frontend tests are regex checks against `.svelte` source.
 
-The backend is mostly already there: the PTY terminal WebSocket, git read/write APIs, filesystem routes, tool-call SSE events, session cwd, managed worktrees (`internal/executionplane`), LaunchAgent service install, and the global hotkey.
+The backend is mostly already there: the PTY terminal WebSocket, git read/write APIs, filesystem routes, tool-call SSE events, session cwd, managed session worktrees (`internal/sessionworktree`), LaunchAgent service install, and the global hotkey.
 
 Industry tools (Claude Code Desktop, Codex app, Cursor, Zed, Conductor, Goose, OpenCode) have converged on the same patterns: a session board with status badges, session isolation, a diff review queue, plan/approval gates, a terminal panel, OS notifications, and keyboard-first control.
 
@@ -54,7 +54,7 @@ This ADR does **not** reverse:
 - The credential handling rules (masked, never echoed; long-tail tokens rotated in YAML).
 - The rule that a feature which does not need a browser belongs in a skill, a CLI command, or the YAML file. The workbench adds routes for **working with agents**, not for configuration.
 
-The frozen long-tail internal packages (embodiment, a2a, workstore, workscheduler, skillhub, plugin, remoteaccess) remain frozen. This ADR only concerns the console surface.
+The frozen long-tail internal packages (embodiment, workstore, workscheduler, skillhub, plugin, remoteaccess) remain frozen. This ADR only concerns the console surface.
 
 ### 3. Information architecture
 
@@ -97,7 +97,7 @@ Why not isolate every session: always-on worktrees drop gitignored files (`.env`
 
 ### 6. Windows scope is decided per phase, before the phase starts
 
-P1 checkpoints and P3 worktrees depend on git plumbing and on `internal/executionplane`. That package is excluded wholesale from `scripts/windows_test.sh` ("artifact URIs, symlinks, and POSIX runner assumptions"), and that exclusion list is debt, not policy.
+P1 checkpoints and P3 session worktrees depend on git plumbing. Their Windows support must be explicit; the exclusion list in `scripts/windows_test.sh` is debt, not policy.
 
 Before starting P1 or P3, the phase picks one of these and records the choice in its issue:
 
@@ -107,8 +107,8 @@ Before starting P1 or P3, the phase picks one of these and records the choice in
 
 No phase may add to the exclusion list.
 
-- **P1 chose (a), 2026-09-26.** Checkpoints live in `internal/checkpoint`, which does not depend on `internal/executionplane`, and its tests run in the windows-test job. They cover CRLF and autocrlf, Korean and space-containing paths, and files held open without sharing. The server wiring in `internal/tarsserver` stays covered by Linux CI and the E2E suite, as that package already is.
-- **P3 chose (a), 2026-09-29.** Session worktrees live in `internal/sessionworktree`, which drives the `git` CLI directly and does not use `internal/executionplane`, so the exclusion list is untouched. Its tests run in the windows-test job: paths with spaces, CRLF checkouts under `core.autocrlf=true` (apply keeps the checkout's line endings), and symlinks that are skipped rather than copied. The lease and the HTTP surface in `internal/tarsserver` are covered by Linux CI and the E2E suite.
+- **P1 chose (a), 2026-09-26.** Checkpoints live in `internal/checkpoint`, whose tests run in the windows-test job. They cover CRLF and autocrlf, Korean and space-containing paths, and files held open without sharing. The server wiring in `internal/tarsserver` stays covered by Linux CI and the E2E suite, as that package already is.
+- **P3 chose (a), 2026-09-29.** Session worktrees live in `internal/sessionworktree`, which drives the `git` CLI directly, so the exclusion list is untouched. Its tests run in the windows-test job: paths with spaces, CRLF checkouts under `core.autocrlf=true` (apply keeps the checkout's line endings), and symlinks that are skipped rather than copied. The lease and the HTTP surface in `internal/tarsserver` are covered by Linux CI and the E2E suite.
 
 ## Phases
 
