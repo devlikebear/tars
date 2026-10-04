@@ -130,7 +130,19 @@ func (d *CuaDriver) call(ctx context.Context, tool string, args map[string]any) 
 		d.noSession.Store(true)
 		return d.run(ctx, tool, args)
 	}
+	if err != nil && sessionEnded(err) {
+		// The driver ends an idle session (and every session when its daemon
+		// restarts) and then refuses the label until it is started again.
+		if _, startErr := d.run(ctx, "start_session", map[string]any{"session": cuaDriverSession}); startErr != nil {
+			return nil, err
+		}
+		return d.run(ctx, tool, withCuaSession(args))
+	}
 	return out, err
+}
+
+func sessionEnded(err error) bool {
+	return strings.Contains(strings.ToLower(err.Error()), "session has ended")
 }
 
 // withCuaSession labels a call with the driver session every call of this

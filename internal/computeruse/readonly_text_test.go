@@ -160,3 +160,51 @@ func TestCuaDriver_DropsSessionForADriverThatRejectsIt(t *testing.T) {
 		t.Fatalf("calls = %v, want one labelled attempt then unlabelled ones", seen)
 	}
 }
+
+// cua-driver refuses a label whose session it ended (idle, or a daemon
+// restart) until start_session revives it; the call must recover by itself.
+func TestCuaDriver_RevivesAnEndedSession(t *testing.T) {
+	if _, err := exec.LookPath("sh"); err != nil {
+		t.Skip("sh not available")
+	}
+	var tools []string
+	ended := true
+	d := NewCuaDriver("cua-driver", 5*time.Second)
+	d.commandContext = func(ctx context.Context, _ string, args ...string) *exec.Cmd {
+		tools = append(tools, args[0])
+		switch {
+		case args[0] == "start_session":
+			ended = false
+			return exec.CommandContext(ctx, "sh", "-c", `printf '%s' '{"active":true,"revived":true}'`)
+		case ended:
+			return exec.CommandContext(ctx, "sh", "-c", "echo \"session has ended; tool call 'click' was rejected. Call start_session\" >&2; exit 1")
+		}
+		return exec.CommandContext(ctx, "sh", "-c", `printf '%s' '{"effect":"confirmed"}'`)
+	}
+	eff, err := d.Click(context.Background(), Window{PID: 7, WindowID: 9}, "s1:3")
+	if err != nil || eff != EffectConfirmed {
+		t.Fatalf("eff=%v err=%v", eff, err)
+	}
+	if got := strings.Join(tools, " "); got != "click start_session click" {
+		t.Fatalf("calls = %q, want the click retried after start_session", got)
+	}
+}
+
+// When the session cannot be revived the caller gets the original refusal.
+func TestCuaDriver_ReportsTheRefusalWhenReviveFails(t *testing.T) {
+	if _, err := exec.LookPath("sh"); err != nil {
+		t.Skip("sh not available")
+	}
+	calls := 0
+	d := NewCuaDriver("cua-driver", 5*time.Second)
+	d.commandContext = func(ctx context.Context, _ string, args ...string) *exec.Cmd {
+		calls++
+		return exec.CommandContext(ctx, "sh", "-c", "echo 'session has ended' >&2; exit 1")
+	}
+	if _, err := d.Click(context.Background(), Window{PID: 7, WindowID: 9}, "s1:3"); err == nil || !strings.Contains(err.Error(), "session has ended") {
+		t.Fatalf("err = %v, want the session refusal", err)
+	}
+	if calls != 2 {
+		t.Fatalf("calls = %d, want the click and one start_session", calls)
+	}
+}
