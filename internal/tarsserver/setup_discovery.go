@@ -121,13 +121,20 @@ func (d *setupDiscovery) discover(ctx context.Context) setupDiscoveryResponse {
 }
 
 // recommendCodexModels keeps backend ordering: the first visible model is
-// its recommendation. Smaller variants are preferred for light work.
+// its recommendation. The largest variant is preferred for heavy work and
+// smaller ones for light work.
 func recommendCodexModels(models []string) map[string]string {
 	out := map[string]string{}
 	if len(models) == 0 {
 		return out
 	}
 	out["heavy"], out["standard"], out["light"] = models[0], models[0], models[0]
+	for _, model := range models {
+		if strings.Contains(model, "astra") {
+			out["heavy"] = model
+			break
+		}
+	}
 	for _, model := range models {
 		if strings.Contains(model, "sol") {
 			out["standard"] = model

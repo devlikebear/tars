@@ -269,6 +269,13 @@ func TestInstallDirs(t *testing.T) {
 	if got := InstallDirs("darwin", ""); len(got) != 2 {
 		t.Fatalf("no home must skip ~/.local/bin: %v", got)
 	}
+	windows := InstallDirs("windows", `C:\Users\me`)
+	if want := filepath.Join(`C:\Users\me`, "AppData", "Local", "Programs", "TARS"); len(windows) != 1 || windows[0] != want {
+		t.Fatalf("windows install dirs = %v, want [%s] (install.ps1's default)", windows, want)
+	}
+	if got := InstallDirs("windows", ""); len(got) != 0 {
+		t.Fatalf("no home must give no windows install dirs: %v", got)
+	}
 }
 
 func TestResolvePrecedence(t *testing.T) {
@@ -360,13 +367,22 @@ func TestOutdated(t *testing.T) {
 }
 
 func TestOutdatedMessage(t *testing.T) {
-	msg := OutdatedMessage("0.37.1", "0.42.2")
+	msg := OutdatedMessage("darwin", "0.37.1", "0.42.2")
 	for _, want := range []string{"0.37.1", "0.42.2", "brew upgrade devlikebear/tap/tars", "tars service install"} {
 		if !strings.Contains(msg, want) {
 			t.Fatalf("message %q misses %q", msg, want)
 		}
 	}
-	if !strings.Contains(OutdatedMessage("", "0.42.2"), "older") {
+	if !strings.Contains(OutdatedMessage("darwin", "", "0.42.2"), "older") {
 		t.Fatal("an unknown server version still reads as older")
+	}
+	win := OutdatedMessage("windows", "0.37.1", "0.42.2")
+	for _, want := range []string{"0.37.1", "0.42.2", "tars update", "Check for updates"} {
+		if !strings.Contains(win, want) {
+			t.Fatalf("windows message %q misses %q", win, want)
+		}
+	}
+	if strings.Contains(win, "brew") {
+		t.Fatalf("windows message mentions Homebrew: %q", win)
 	}
 }

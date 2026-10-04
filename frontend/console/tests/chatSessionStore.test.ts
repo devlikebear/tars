@@ -58,7 +58,7 @@ function fakeApi(overrides: Record<string, unknown> = {}) {
     },
     getUsageSummary: async (params: { sessionId?: string }) => {
       calls.push(`getUsageSummary:${params.sessionId}`)
-      return { period: 'month', group_by: 'provider', session_id: params.sessionId, total_calls: 2, total_cost_usd: 0.25, total_input_tokens: 300, total_output_tokens: 40 }
+      return { period: 'month', group_by: 'provider', session_id: params.sessionId, total_calls: 2, total_cost_usd: 0.25, total_input_tokens: 300, total_output_tokens: 40, total_unpriced_calls: 1 }
     },
     listAgentRuntimeSubagents: async () => {
       calls.push('listAgentRuntimeSubagents')
@@ -426,7 +426,7 @@ test('usage and the permission override load for the active session', async () =
   const { store, calls } = newStore()
   store.setActive('plan-session')
   await flush()
-  assert.deepEqual(store.usage, { costUSD: 0.25, calls: 2, inputTokens: 300, outputTokens: 40 })
+  assert.deepEqual(store.usage, { costUSD: 0.25, calls: 2, inputTokens: 300, outputTokens: 40, unpricedCalls: 1 })
   assert.equal(store.permissionModeOverride, 'plan')
   assert.ok(calls.includes('getUsageSummary:plan-session'))
   store.setActive('other')
@@ -447,15 +447,31 @@ test('a settled turn re-reads the session cost', async () => {
   assert.equal(store.usage?.costUSD, 0, 'nothing recorded before the first turn ends')
   cost = 1.5
   await store.turnSettled()
-  assert.deepEqual(store.usage, { costUSD: 1.5, calls: 1, inputTokens: 10, outputTokens: 90 })
+  assert.deepEqual(store.usage, { costUSD: 1.5, calls: 1, inputTokens: 10, outputTokens: 90, unpricedCalls: 0 })
 })
 
-test('tier options are fetched once', async () => {
-  const { store, calls } = newStore()
+// The store outlives a settings save, so each load reads the tiers again;
+// only calls that overlap share one request.
+test('tier options are read again on each load', async () => {
+  let model = 'old'
+  const { api, calls } = fakeApi({
+    listAgentRuntimeSubagents: async () => {
+      calls.push('listAgentRuntimeSubagents')
+      return { tiers: [{ name: 'heavy', kind: 'openai-codex', model }] }
+    },
+  })
+  const store = new ChatSessionStore(api as never, helpers as never)
+  await Promise.all([store.loadTierOptions(), store.loadTierOptions()])
+  assert.equal(calls.filter((c) => c === 'listAgentRuntimeSubagents').length, 1, 'overlapping loads share a request')
+  assert.equal(store.tierOptions[0].model, 'old')
+
+  model = 'new'
   await store.loadTierOptions()
+  assert.equal(store.tierOptions[0].model, 'new')
+
+  api.listAgentRuntimeSubagents = async () => { throw new Error('offline') }
   await store.loadTierOptions()
-  assert.equal(store.tierOptions.length, 2)
-  assert.equal(calls.filter((c) => c === 'listAgentRuntimeSubagents').length, 1)
+  assert.equal(store.tierOptions[0].model, 'new', 'a failed load keeps the last tiers')
 })
 
 function modeApi(initial: { mode: string; effective: string; source: string }, fail = false) {

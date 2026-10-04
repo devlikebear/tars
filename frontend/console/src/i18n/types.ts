@@ -117,6 +117,8 @@ export type Translations = {
     permissionDefault: string
     permissionHint: string
     costHint: string
+    costUnpriced: string
+    costUnpricedHint: (unpriced: number, calls: number) => string
     tokens: (count: string) => string
   }
   rail: {
@@ -794,12 +796,16 @@ export type Translations = {
       avgPerSession: string
       tokensSuffix: string
       estimatedCost: string
+      unpricedCost: string
+      unpricedHint: (calls: number) => string
       daysSuffix: (days: number) => string
     }
     chart: {
       title: string
       legendInput: string
       legendOutput: string
+      legendUnpriced: string
+      barUnpriced: (calls: number) => string
       ariaLabel: string
       loading: string
       emptyTitle: string

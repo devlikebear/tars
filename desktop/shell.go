@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -25,6 +26,7 @@ import (
 	"github.com/devlikebear/tars/desktop/internal/icon"
 	"github.com/devlikebear/tars/desktop/internal/links"
 	"github.com/devlikebear/tars/desktop/internal/server"
+	"github.com/devlikebear/tars/desktop/internal/serverupdate"
 	"github.com/devlikebear/tars/desktop/internal/tray"
 	"github.com/devlikebear/tars/desktop/internal/winstate"
 )
@@ -46,6 +48,12 @@ const (
 	// queuedNotificationPrefix marks an unattended run's question (#1033),
 	// answered through the ops approvals rather than the chat API.
 	queuedNotificationPrefix = "tars-unattended-"
+	// updateNotificationPrefix marks the update notifications; a click on
+	// one runs Check for updates….
+	updateNotificationPrefix = "tars-update-"
+	// serverUpdateTimeout bounds one `tars update`: the download, then the
+	// server's restart (tars waits up to a minute for it).
+	serverUpdateTimeout = 5 * time.Minute
 )
 
 type shell struct {
@@ -80,15 +88,24 @@ type shell struct {
 	// warnedServer is the server version last flagged as older than the
 	// app, so each one is reported once per run.
 	warnedServer *string
+	// announced is the release versions whose update notifications were
+	// sent this run, keyed by what they are for ("desktop", "server-wait").
+	announced map[string]string
+
+	// updateNow wakes the update loop before its timer.
+	updateNow chan struct{}
+	// updating serialises server updates between the loop and the tray.
+	updating sync.Mutex
 }
 
 func newShell(cfg server.Config) *shell {
 	s := &shell{
-		cfg:     cfg,
-		client:  activity.NewClient(cfg, nil),
-		probe:   &http.Client{Timeout: 2 * time.Second},
-		pollNow: make(chan struct{}, 1),
-		chats:   map[string]*application.WebviewWindow{},
+		cfg:       cfg,
+		client:    activity.NewClient(cfg, nil),
+		probe:     &http.Client{Timeout: 2 * time.Second},
+		pollNow:   make(chan struct{}, 1),
+		updateNow: make(chan struct{}, 1),
+		chats:     map[string]*application.WebviewWindow{},
 	}
 	// Without a config dir the places are kept for this run only.
 	path, _ := winstate.DefaultPath()
@@ -441,6 +458,9 @@ func (s *shell) start(args []string) {
 	s.registerNotifications()
 	go s.pollLoop()
 	go s.streamLoop()
+	if serverupdate.Enabled(runtime.GOOS) {
+		go s.updateLoop()
+	}
 	s.handleArgs(args)
 }
 
@@ -485,6 +505,12 @@ func (s *shell) registerNotificationCategories() {
 func (s *shell) onNotificationResponse(result notifications.NotificationResult) {
 	if result.Error != nil {
 		log.Printf("notification response: %v", result.Error)
+		return
+	}
+	if what, ok := strings.CutPrefix(result.Response.ID, updateNotificationPrefix); ok {
+		if what == "desktop" {
+			go s.checkUpdates()
+		}
 		return
 	}
 	if approvalID, ok := strings.CutPrefix(result.Response.ID, queuedNotificationPrefix); ok {
@@ -585,8 +611,11 @@ func (s *shell) checkServerVersion(serverVersion string) {
 	log.Printf("server %q is older than tars-desktop %s", serverVersion, version)
 	go s.app.Dialog.Warning().
 		SetTitle("The TARS server needs an update").
-		SetMessage(server.OutdatedMessage(serverVersion, version)).
+		SetMessage(server.OutdatedMessage(runtime.GOOS, serverVersion, version)).
 		Show()
+	if serverupdate.Enabled(runtime.GOOS) {
+		s.wakeUpdates()
+	}
 }
 
 // logOnce logs an error from a poll the first time it appears, not on
@@ -901,7 +930,13 @@ func openServerLog() (*os.File, error) {
 	return os.OpenFile(filepath.Join(dir, "server.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 }
 
+// checkUpdates is the tray's Check for updates…: the server first where the
+// shell updates it, then the shell itself, whose updater shows its window.
 func (s *shell) checkUpdates() {
+	if serverupdate.Enabled(runtime.GOOS) {
+		// A download and a restart can take minutes; keep the tray responsive.
+		go s.updateServer(true)
+	}
 	if !s.updates {
 		s.app.Dialog.Info().
 			SetTitle("Updates").
@@ -912,6 +947,146 @@ func (s *shell) checkUpdates() {
 	if err := s.app.Updater.CheckAndInstall(context.Background()); err != nil && !errors.Is(err, context.Canceled) {
 		log.Printf("update: %v", err)
 	}
+}
+
+// updateLoop checks for releases on a timer: the server is updated when idle
+// (see serverupdate), and a newer shell is announced, not installed, since
+// installing it restarts the app.
+func (s *shell) updateLoop() {
+	timer := time.NewTimer(serverupdate.FirstCheckAfter)
+	defer timer.Stop()
+	for {
+		select {
+		case <-timer.C:
+		case <-s.updateNow:
+		}
+		s.announceShellUpdate()
+		next := s.updateServer(false)
+		if !timer.Stop() {
+			select {
+			case <-timer.C:
+			default:
+			}
+		}
+		timer.Reset(next)
+	}
+}
+
+func (s *shell) wakeUpdates() {
+	select {
+	case s.updateNow <- struct{}{}:
+	default:
+	}
+}
+
+// updateServer checks for a server release and installs it when the server
+// is idle, returning when to check again. explicit is a click on Check for
+// updates…, which reports errors in a dialog instead of the log.
+func (s *shell) updateServer(explicit bool) time.Duration {
+	s.updating.Lock()
+	defer s.updating.Unlock()
+
+	fail := func(title string, err error) time.Duration {
+		if explicit {
+			s.showError(title, err)
+		} else {
+			s.logOnce("server update", err)
+		}
+		return serverupdate.CheckEvery
+	}
+	exe, _ := os.Executable()
+	home, _ := os.UserHomeDir()
+	bin, err := server.FindTARS(exe, exec.LookPath, server.InstallDirs(runtime.GOOS, home))
+	if err != nil {
+		return fail("Could not find the TARS server to update", err)
+	}
+	u := serverupdate.Updater{Bin: bin, Cfg: s.cfg, Run: runHidden}
+
+	ctx, cancel := context.WithTimeout(context.Background(), serverUpdateTimeout)
+	defer cancel()
+	check, err := u.Check(ctx)
+	if err != nil {
+		return fail("Could not check for a server update", err)
+	}
+	snap, activityErr := s.client.Activity(ctx)
+	step := serverupdate.Decide(check, snap, activityErr)
+	switch step {
+	case serverupdate.WaitForIdle:
+		if s.firstAnnouncement("server-wait", check.Latest) || explicit {
+			s.notify(updateNotificationPrefix+"server-wait",
+				fmt.Sprintf("TARS server %s is ready to install", check.Latest),
+				"It installs once no chat is running and nothing waits on an approval.")
+		}
+	case serverupdate.ApplyNow:
+		log.Printf("updating the server %s to %s", check.Current, check.Latest)
+		res, err := u.Apply(ctx)
+		if err != nil {
+			return fail("Could not update the TARS server", err)
+		}
+		body := "The server restarted on the new version."
+		if !res.Restarted {
+			body = "Start the server again to run it."
+			if res.Server == "not_running" {
+				body = "It runs the next time the server starts."
+			}
+		}
+		s.notify(updateNotificationPrefix+"server-done", fmt.Sprintf("TARS server updated to %s", res.Latest), body)
+		s.kick()
+	}
+	return serverupdate.Next(step)
+}
+
+// announceShellUpdate tells the user, once per release, that a newer
+// tars-desktop is available; clicking the notification installs it.
+func (s *shell) announceShellUpdate() {
+	if !s.updates {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	rel, err := s.app.Updater.Check(ctx)
+	if err != nil {
+		s.logOnce("desktop update check", err)
+		return
+	}
+	if rel == nil || !s.firstAnnouncement("desktop", rel.Version) {
+		return
+	}
+	s.notify(updateNotificationPrefix+"desktop",
+		fmt.Sprintf("tars-desktop %s is available", rel.Version),
+		"Click to install it, or choose Check for updates… in the tray menu.")
+}
+
+// firstAnnouncement records that what's notification for version is being
+// sent and reports whether it is the first this run.
+func (s *shell) firstAnnouncement(what, version string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.announced == nil {
+		s.announced = map[string]string{}
+	}
+	if s.announced[what] == version {
+		return false
+	}
+	s.announced[what] = version
+	return true
+}
+
+func (s *shell) notify(id, title, body string) {
+	if err := s.notifier.SendNotification(notifications.NotificationOptions{ID: id, Title: title, Body: body}); err != nil {
+		log.Printf("notify: %v", err)
+	}
+}
+
+// runHidden runs a tars command to completion without a console window.
+func runHidden(ctx context.Context, bin string, args, env []string) ([]byte, []byte, error) {
+	cmd := exec.CommandContext(ctx, bin, args...)
+	cmd.Env = append(os.Environ(), env...)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	hideWindow(cmd)
+	err := cmd.Run()
+	return stdout.Bytes(), stderr.Bytes(), err
 }
 
 func (s *shell) showError(title string, err error) {

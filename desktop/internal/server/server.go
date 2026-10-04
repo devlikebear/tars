@@ -179,11 +179,19 @@ func Outdated(serverVersion, appVersion string) bool {
 	return false
 }
 
-// OutdatedMessage tells the user how to bring the server up to the app.
-func OutdatedMessage(serverVersion, appVersion string) string {
+// OutdatedMessage tells the user how to bring the server up to the app on
+// goos: on Windows the shell updates it itself (see serverupdate), elsewhere
+// Homebrew does.
+func OutdatedMessage(goos, serverVersion, appVersion string) string {
 	running := "an older release"
 	if v := strings.TrimSpace(serverVersion); v != "" {
 		running = v
+	}
+	if goos == "windows" {
+		return fmt.Sprintf("The TARS server is %s, older than this app (%s), so some of the app may not work.\n\n"+
+			"The app updates the server to the latest release once no chat is running. "+
+			"To update it now, choose Check for updates… in the tray menu, or run:\n\n"+
+			"  tars update", running, appVersion)
 	}
 	return fmt.Sprintf("The TARS server is %s, older than this app (%s), so some of the app may not work.\n\n"+
 		"Installing or updating the app does not update the server. With Homebrew:\n\n"+
@@ -331,8 +339,9 @@ func FindTARS(shellExe string, lookPath func(string) (string, error), installDir
 	return "", fmt.Errorf("tars executable not found next to the desktop app, on PATH or in %s: %w", strings.Join(installDirs, ", "), err)
 }
 
-// InstallDirs are where tars lands when installed by Homebrew or install.sh
-// on goos; home is the user's home directory ("" skips ~/.local/bin).
+// InstallDirs are where tars lands when installed by Homebrew, install.sh,
+// or install.ps1 on goos; home is the user's home directory ("" skips the
+// per-user folders).
 func InstallDirs(goos, home string) []string {
 	var dirs []string
 	switch goos {
@@ -340,6 +349,14 @@ func InstallDirs(goos, home string) []string {
 		dirs = []string{"/opt/homebrew/bin", "/usr/local/bin"}
 	case "linux":
 		dirs = []string{"/home/linuxbrew/.linuxbrew/bin", "/usr/local/bin"}
+	case "windows":
+		// install.ps1's default, %LOCALAPPDATA%\Programs\TARS. A shell it
+		// installed finds tars.exe next to itself; this covers a shell
+		// unpacked elsewhere before the new PATH reaches it.
+		if home == "" {
+			return nil
+		}
+		return []string{filepath.Join(home, "AppData", "Local", "Programs", "TARS")}
 	default:
 		return nil
 	}

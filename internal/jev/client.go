@@ -38,6 +38,9 @@ type Answer struct {
 	Choice     string   `json:"choice,omitempty"`
 	Score      *float64 `json:"score,omitempty"`
 	Confidence *float64 `json:"confidence,omitempty"`
+	// Probabilities is the per-option distribution of a choice answer, when
+	// the server returns one.
+	Probabilities map[string]float64 `json:"probabilities,omitempty"`
 }
 
 type Usage struct {

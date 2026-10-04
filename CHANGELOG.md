@@ -6,10 +6,76 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
-## [0.44.3] - 2026-10-03
+### Added
+
+- **Windows 설치 릴리스와 `install.ps1`** — 릴리스에 Windows 서버 아카이브 `tars_<version>_windows_amd64.zip`(`tars.exe` + `share/`)을 추가했다. macOS 러너에서 CGO 없이 교차 빌드하고, 새 `verify-windows-asset` job이 windows-latest에서 `install.ps1`로 실제 설치한 뒤 `tars.exe --version`을 확인해야 릴리스가 게시된다. `checksums.txt`는 이제 모든 서버·데스크톱 아카이브를 담는다. 새 `install.ps1`(`irm https://raw.githubusercontent.com/devlikebear/tars/main/install.ps1 | iex`, Windows PowerShell 5.1 이상)은 관리자 권한 없이 `%LOCALAPPDATA%\Programs\TARS`에 설치하고 사용자 PATH에 추가하며, 설치 전에 아카이브를 `checksums.txt`로 검증한다. `-Desktop`은 데스크톱 앱을 같은 폴더에 함께 설치하고, `-StartAtLogin`은 로그인 시 트레이로 시작하는 바로가기를 만든다. 다시 실행하면 그 자리에서 업데이트하며, 실행 중인 `tars.exe`·`tars-desktop.exe`는 `.old`로 옮기고 교체한다(다음 실행 때 지움). 데스크톱 앱은 Windows에서 이 설치 폴더에서도 서버를 찾는다. 이 아카이브는 이 변경 이후의 다음 릴리스부터 올라간다.
+- **`tars update`와 Windows 자동 업데이트** — 새 `tars update`는 `install.ps1`·`install.sh`로 설치한 tars를 최신 릴리스로 바꾼다. 아카이브를 `checksums.txt`로 검증하고 `tars(.exe)`와 `share/`만 풀며(아카이브 밖을 가리키는 항목은 거부), 실행 중인 파일은 `.old`로 옮긴 뒤 교체한다(Windows는 실행 중인 파일을 덮어쓸 수 없지만 이름은 바꿀 수 있다). 그다음 `--server-url`에서 도는 서버를 `POST /v1/admin/restart`로 재시작해 `/v1/healthz`가 새 버전을 보고할 때까지 기다린다. `--check`는 확인만, `--yes`는 묻지 않고, `--json`은 결과를 JSON으로 낸다. 개발 빌드와 Homebrew 설치는 거부한다(Homebrew는 `brew upgrade`). Windows 데스크톱 앱은 시작 2분 뒤와 6시간마다 이를 실행해 서버를 최신으로 유지하되, 재시작이 진행 중인 채팅 턴이나 승인을 기다리는 무인 실행을 끊으므로 `/v1/chat/activity`에 아무것도 없을 때만 설치하고 그렇지 않으면 15분 뒤 다시 본다. 새 데스크톱 앱이 나오면 버전마다 한 번 알리고, 알림이나 트레이의 Check for updates…를 누르면 설치한다(이 메뉴는 서버 업데이트도 바로 실행한다). 서버가 앱보다 오래됐다는 Windows 안내에서는 Homebrew 명령 대신 `tars update`를 알려 준다.
+
+## [0.45.8] - 2026-10-04
 
 ### Fixed
 - The focus-mode release train no longer lists work that already shipped in a release made outside focus. Once a repository had one finished focus release, the train compared only against that release's cut-off and ignored later tags, so "since v0.44.1" still listed pipelines released in v0.43.1 and v0.43.2. A pipeline whose pull request's merge is in the latest `v*` tag is now left out: the probe records the merge commit (`merge_oid`), and pipelines finished before that are matched by their PR's squash or merge commit subject in the tag's history.
+
+## [0.45.7] - 2026-10-04
+
+### Fixed
+
+- The analytics page's daily chart marks the days that had calls with no known price: a dot over the bar, a legend entry when any day has one, and the number of such calls in the bar's tooltip.
+
+## [0.45.6] - 2026-10-04
+
+### Fixed
+
+- The session board and the analytics page now mark usage with no known price, as the chat status bar does since 0.45.5. A board card shows "no price this month" (or the known part followed by `+`) instead of leaving the cost out, and the analytics total and per-model cost show "no price" instead of `$0.0000`, with the number of affected calls in the tooltip. `GET /v1/chat/board` sessions and `GET /v1/admin/analytics` totals, daily rows and model rows carry `unpriced_calls`.
+
+## [0.45.5] - 2026-10-04
+
+### Fixed
+
+- Usage from a model with no known price was shown as `$0`, as if it had been measured. The built-in price table has no rate for the current `openai-codex` models, so every Codex call was recorded at zero cost and nothing said so. `GET /v1/usage/summary` now reports `total_unpriced_calls` (and `unpriced_calls` per row), and the chat status bar shows "no price" instead of `$0` — or the known part followed by `+` — with the count in its tooltip. Costs and spending limits are computed as before: unpriced calls still add nothing to them. Set rates under `usage.price_overrides` to have them counted.
+
+## [0.45.4] - 2026-10-04
+
+### Changed
+
+- The setup wizard's built-in `openai-codex` model suggestions, shown before a live list is fetched, now match what the ChatGPT backend lists as of 2026-10-04 (`gpt-6.1-sol`, `gpt-6-astra`, `gpt-6-sol`, `gpt-6-luna`, `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`, `gpt-5.5`). The two models offered before, `gpt-5.4` and `gpt-5.3-codex`, are no longer served.
+
+## [0.45.3] - 2026-10-04
+
+### Fixed
+
+- The chat status bar's tier picker kept showing the models from before a settings change, while turns already ran on the new ones. The console read the tier list once per page load; it now reads it again each time the status bar appears, so returning to the chat after saving settings shows the current models.
+- `openai-codex` model lists were missing `gpt-6.1-sol`, `gpt-6-sol` and `gpt-6-luna`. The ChatGPT backend shapes the list by the `client_version` it is sent, and `0.153.4` no longer gets the newer models (measured 2026-10-04: 5 models, against 8 for `0.160.0`). TARS now sends `0.160.0`.
+- The setup wizard's Codex recommendation picks an `astra` model for the heavy tier even when the backend lists another model first.
+
+## [0.45.2] - 2026-10-04
+
+### Fixed
+
+- `computer_use` and `tars doctor` failed with "session has ended" once cua-driver had closed TARS's driver session (after it sat idle, or when the driver daemon restarted): the driver refuses that session label until it is started again. A call that hits this now restarts the session and retries once.
+
+## [0.45.1] - 2026-10-04
+
+### Fixed
+
+- `computer_use` could not act with cua-driver 0.32: every click, type and set was refused as `stale_element_token`. That driver keeps a window's snapshot per session and gives each CLI call its own, so the token from one call was unknown to the next. Every driver call now carries one shared session label; a driver that predates sessions and refuses the argument is retried without it.
+- `computer_use` now reads the window's read-only text (a calculator's display, a dialog's message), which the driver reports only in its tree text, not as elements. The loop could not see the result of its own actions, and an action that changed only such text counted as "screen did not change". `tools.computer_use.expose_values: false` withholds this text as it does field values.
+
+## [0.45.0] - 2026-10-03
+
+### Added
+
+- **Computer use** (#973): the opt-in `computer_use` chat tool drives a desktop app toward a goal. Each step reads the window's accessibility tree through `cua-driver` and asks the System One server at `jev.base_url` which element to click, type into or set — no LLM call inside the loop. Text to type comes from the caller's `inputs` and is never sent to the server or written to the trace. An action that looks hard to undo, or typing into a secure field, always stops with `needs_confirmation` and a one-time resume token. Enable with `tools.computer_use.enabled: true`; the tool counts as high-risk, so session permission modes apply. The driven window's on-screen text is sent to `jev.base_url` — use a loopback server to keep it local. Verified on macOS only.
+- `tars doctor` reports whether computer use can run: the `cua-driver` binary and daemon, the System One server, and whether that server is remote.
+
+## [0.44.3] - 2026-10-03
+
+### Fixed
+
+- Native `exec` now preserves quoted arguments, pipelines, redirects, and chained commands in foreground and background runs (#1113). Both paths use the existing POSIX shell resolver, including Git sh/bash on Windows. Shell syntax validation checks blocked commands inside chains, substitutions, and supported command wrappers before execution.
+- Command cancellation and timeouts terminate the process group/tree and bound output-pipe cleanup. Background child processes are also cleaned up when their parent shell exits.
+- Native tool cards keep shortened arguments as valid JSON and show the actual exit status and error output before repeated command text, making long command failures diagnosable.
+- Follow-up messages queued after reconnecting to a running chat now send when it finishes. “Send now” works with one click after reconnecting, and external cancellation pauses the queue until it is resumed.
 
 ## [0.44.2] - 2026-10-03
 

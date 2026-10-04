@@ -39,9 +39,18 @@ export const wellKnownModelsByKind: Record<ProviderKind, string[]> = {
     'gpt-4o',
     'gpt-4o-mini',
   ],
+  // Not from OpenRouter: the ChatGPT backend's /codex/models as listed on
+  // 2026-10-04, in its own order. It retires slugs without notice, so this
+  // is only what the wizard offers before a live list is fetched.
   'openai-codex': [
-    'gpt-5.4',
-    'gpt-5.3-codex',
+    'gpt-6.1-sol',
+    'gpt-6-astra',
+    'gpt-6-sol',
+    'gpt-6-luna',
+    'gpt-5.6-sol',
+    'gpt-5.6-terra',
+    'gpt-5.6-luna',
+    'gpt-5.5',
   ],
   anthropic: [
     'claude-opus-4-7',

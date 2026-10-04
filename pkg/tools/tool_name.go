@@ -85,7 +85,7 @@ func IsHighRiskToolName(name string) bool {
 		return false
 	}
 	switch canonical {
-	case "exec", "process", "write_file", "edit_file", "apply_patch", "workspace", "project_skill":
+	case "exec", "process", "write_file", "edit_file", "apply_patch", "workspace", "project_skill", "computer_use":
 		return true
 	}
 	return strings.HasPrefix(canonical, "write_") || strings.HasPrefix(canonical, "edit_")

@@ -105,6 +105,45 @@ test('Send now stops the running turn and sends that message next', async ({ pag
   expect(aborted.filter((body) => /"message":"(first in line|jump the line)"/.test(body))).toEqual([])
 })
 
+test('a follow-up queued after reattaching sends when the turn ends', async ({ page }) => {
+  await holdTurn(page)
+  await page.reload()
+  await expect(pendingApproval(page)).toHaveCount(1)
+  await composer(page).fill('follow up after reattach')
+  await composer(page).press('Enter')
+  await expect(queue(page)).toContainText('1 queued message')
+  await pendingApproval(page).getByRole('button', { name: 'Allow write_file for this session' }).click()
+  await expect(assistant(page).filter({ hasText: 'Wrote 3 files.' })).toHaveCount(1)
+  await expect(assistant(page).filter({ hasText: 'Echo: follow up after reattach' })).toHaveCount(1)
+  await expect(queue(page)).toHaveCount(0)
+})
+
+test('Send now on a reattached turn needs only one click', async ({ page }) => {
+  await holdTurn(page)
+  await page.reload()
+  await expect(pendingApproval(page)).toHaveCount(1)
+  await composer(page).fill('send now after reattach')
+  await composer(page).press('Enter')
+  await queue(page).getByRole('button', { name: 'Send now' }).click()
+  await expect(assistant(page).filter({ hasText: 'Echo: send now after reattach' })).toHaveCount(1)
+  await expect(queue(page)).toHaveCount(0)
+})
+
+test('cancelling elsewhere pauses follow-ups in a reattached view', async ({ page }) => {
+  await holdTurn(page)
+  await page.reload()
+  await expect(pendingApproval(page)).toHaveCount(1)
+  await composer(page).fill('after an external stop')
+  await composer(page).press('Enter')
+  const sessionId = page.url().split('/').pop() ?? ''
+  const response = await page.request.post(`/v1/chat/cancel?session_id=${encodeURIComponent(sessionId)}`)
+  expect(response.ok()).toBe(true)
+  await expect(queue(page)).toContainText('Paused')
+  await expect(assistant(page).filter({ hasText: 'Echo: after an external stop' })).toHaveCount(0)
+  await queue(page).getByRole('button', { name: 'Resume' }).click()
+  await expect(assistant(page).filter({ hasText: 'Echo: after an external stop' })).toHaveCount(1)
+})
+
 test('Stop pauses the queue until it is resumed', async ({ page }) => {
   await holdTurn(page)
   await composer(page).fill('after the stop')

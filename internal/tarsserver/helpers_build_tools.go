@@ -63,6 +63,9 @@ func buildOptionalChatTools(cfg config.Config, agentRuntime *agentruntime.Runtim
 	if cfg.ToolsAgentRuntimeEnabled {
 		out = append(out, apptool.NewAgentRuntimeTool(agentRuntime, true))
 	}
+	if cfg.ToolsComputerUseEnabled {
+		out = append(out, apptool.NewComputerUseTool(newComputerUseEngine(cfg), true))
+	}
 	if cfg.ToolsApplyPatchEnabled {
 		out = append(out, tool.NewApplyPatchTool(cfg.WorkspaceDir, true))
 	}

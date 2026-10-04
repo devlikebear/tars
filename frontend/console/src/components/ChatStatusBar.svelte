@@ -7,6 +7,7 @@
   import { shortCwdLabel } from '../lib/sessionLabels'
   import { isPinnableTier, pinnableTiers } from '../lib/tierRecommendation'
   import { chatSession } from '../lib/stores/chatSession'
+  import type { SessionUsage } from '../lib/stores/chatSessionStore.svelte'
   import type { ChatTier } from '../lib/types'
   import type { PermissionMode } from '../lib/api'
 
@@ -90,6 +91,13 @@
   function formatCost(usd: number): string {
     if (usd === 0) return '$0'
     return usd < 0.01 ? `$${usd.toFixed(4)}` : `$${usd.toFixed(2)}`
+  }
+
+  // Calls with no known price are missing from the cost, so a bare "$0"
+  // (or a bare total) would read as a measured amount.
+  function costLabel(value: SessionUsage): string {
+    if (value.unpricedCalls <= 0) return formatCost(value.costUSD)
+    return value.costUSD === 0 ? $t.statusBar.costUnpriced : `${formatCost(value.costUSD)}+`
   }
 
   function formatTokens(count: number): string {
@@ -190,8 +198,12 @@
   {/if}
 
   {#if usage}
-    <span class="status-item status-cost" title={$t.statusBar.costHint} data-testid="status-cost">
-      <strong>{formatCost(usage.costUSD)}</strong>
+    <span
+      class="status-item status-cost"
+      title={usage.unpricedCalls > 0 ? $t.statusBar.costUnpricedHint(usage.unpricedCalls, usage.calls) : $t.statusBar.costHint}
+      data-testid="status-cost"
+    >
+      <strong>{costLabel(usage)}</strong>
       <span class="status-muted">{$t.statusBar.tokens(formatTokens(usage.inputTokens + usage.outputTokens))}</span>
     </span>
   {/if}

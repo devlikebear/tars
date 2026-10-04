@@ -669,6 +669,9 @@
         break
       }
       case 'cancelled':
+        // A different view can stop this turn too. Only an explicit local
+        // Send now request should resume its queued follow-ups afterward.
+        userStopped = true
         applyChatStatus({ phase: 'cancelled' })
         stopChatStatusTicker()
         void chatSession.turnSettled()
@@ -1592,7 +1595,11 @@
         autoTitled = true
         void scrollToBottom()
       } catch { /* ignore */ }
-      void resumeRunningTurn()
+      void resumeRunningTurn().then(async ({ attached, ended }) => {
+        // Follow-ups queued in this view need the same completion handling
+        // as turns submitted here, including a pending Send now request.
+        if (attached) await afterTurn(!ended)
+      })
     } else {
       chatMessages = [{ id: 'system-init', role: 'system', text: $t.chat.systemInit.tars }]
       void changes.load(null)

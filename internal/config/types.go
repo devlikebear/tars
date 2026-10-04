@@ -257,6 +257,17 @@ type ToolConfig struct {
 	ToolsApplyPatchEnabled            bool
 	ToolsMessageEnabled               bool
 	ToolsAgentRuntimeEnabled          bool
+	// ToolsComputerUse* configure the computer_use chat tool (#973): a GUI
+	// loop over a window's accessibility tree, decided by the System One
+	// server at jev.base_url and driven through the cua-driver binary.
+	ToolsComputerUseEnabled             bool
+	ToolsComputerUseCuaDriverPath       string
+	ToolsComputerUseMaxSteps            int
+	ToolsComputerUseStepTimeoutSeconds  int
+	ToolsComputerUseTotalTimeoutSeconds int
+	// ToolsComputerUseExposeValues sends element values (text field contents,
+	// checkbox state) to the System One server. Secure fields are never sent.
+	ToolsComputerUseExposeValues bool
 	// ToolsExecMaxTimeoutMS caps the per-call timeout the LLM can pass to
 	// the exec tool. Long-running commands (`make build`, `gh pr checks
 	// --watch`, `npm install`) need more than the historical 30s default;

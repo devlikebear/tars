@@ -70,6 +70,8 @@ The primary interface is the browser console at `http://127.0.0.1:43180/console`
 
 See [docs/console.md](docs/console.md) for the detailed console page and panel inventory.
 
+Native `exec` uses POSIX shell syntax for quoted arguments, pipes, redirects, and chained commands in both foreground and background runs (Git sh/bash on Windows). Existing tool approvals still apply; shell command validation is defense in depth, not a sandbox. Tool cards show exit status and error output, and follow-up messages added after reconnecting to a running turn continue automatically when that turn finishes.
+
 ### Durable Work Ledger
 
 TARS opens a local SQLite Work Ledger at `workspace/_shared/work-ledger/work-ledger.db`. Versioned Work, Step, Attempt, Event, Approval, Artifact, Proof, CapabilityVersion, EvaluationRun, and CapabilityOutcome records use workspace-scoped idempotency keys and transactional state transitions. SQLite runs in WAL mode with foreign keys, full synchronous writes, checksummed migrations, and indexed read projections.
@@ -236,6 +238,10 @@ tars remote url
 
 Remote Access requires `api_auth_mode: required`, configured admin/user passwords, and a logged-in Tailscale client. The Settings page shows both the saved YAML value and the effective runtime value when environment variables override config, so a local dev launch such as `TARS_API_AUTH_MODE=off` is visible before enabling remote access.
 
+### Computer Use
+
+`computer_use` is an opt-in chat tool (`tools.computer_use.enabled`, off by default) that drives a desktop app toward a one-sentence goal. Each step reads the window's accessibility tree through [cua-driver](https://github.com/trycua/cua) and asks a System One server (`jev.base_url` — hosted TypeSafe Jev or a local compatible server) which element to act on; no LLM runs inside the loop, so a step costs a fraction of a cent. Text to type is passed by the caller as named `inputs` and never sent to the server. Actions that look hard to undo always stop with `needs_confirmation` until you answer. The driven window's on-screen text is sent to `jev.base_url`, so use a loopback server to keep it on your machine. `tars doctor` checks the binary, the daemon, and where the server runs. Verified on macOS.
+
 ### Extensibility
 
 TARS favors **on-demand extension** over always-resident tool registrations. Domain-specific capabilities are shipped as skills (plus optional companion CLIs) from the [Skill Hub](https://github.com/devlikebear/tars-skills) rather than compiled into the TARS binary — this keeps the chat system prompt small no matter how many capabilities a user installs.
@@ -283,6 +289,36 @@ keychain-only CLI login is shown as needing a compatible sign-in.
 ```bash
 curl -fsSL https://raw.githubusercontent.com/devlikebear/tars/main/install.sh | sh
 ```
+
+**Windows (PowerShell):**
+
+```powershell
+irm https://raw.githubusercontent.com/devlikebear/tars/main/install.ps1 | iex
+```
+
+This installs `tars.exe` into `%LOCALAPPDATA%\Programs\TARS` and adds that
+folder to your user `PATH`. No administrator rights are needed. To install
+the desktop app into the same folder as well, and start it in the tray
+when you sign in, pass options:
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/devlikebear/tars/main/install.ps1))) -Desktop -StartAtLogin
+```
+
+Both archives are checked against the release's `checksums.txt` first.
+Running the script again updates an install in place, even while the server
+or the app is running; restart them to use the new version. Windows has no
+`tars service`, so the desktop app starts `tars serve` for you, or run it
+yourself.
+
+**Updating:** `tars update` replaces an `install.ps1` or `install.sh` install
+with the latest release, checks it against `checksums.txt`, and restarts the
+server running on `--server-url` onto it (`--check` only reports, `--yes`
+skips the question, `--admin-api-token` is needed when the server requires
+auth). On Windows the desktop app does this by itself: it checks every six
+hours and updates the server only while no chat is running and nothing waits
+on an approval. When a newer app is out, it tells you; click the
+notification to install it. Homebrew installs update with `brew upgrade`.
 
 ## Quick Start
 

@@ -98,6 +98,9 @@ jobs:
           for release_goarch in arm64 amd64; do
             make release-asset RELEASE_GOOS=darwin RELEASE_GOARCH="${release_goarch}" DIST_DIR=dist
           done
+          # Cross-compiled with CGO off like the darwin builds; verified by
+          # running it in verify-windows-asset.
+          make release-asset RELEASE_GOOS=windows RELEASE_GOARCH=amd64 DIST_DIR=dist
 
       - name: Verify archive version outputs
         env:
@@ -117,8 +120,46 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: release-archives
-          path: dist/*.tar.gz
+          path: |
+            dist/*.tar.gz
+            dist/*.zip
           if-no-files-found: error
+
+  # The Windows server archive is built on macOS, so run it on Windows before
+  # publishing, and install it with install.ps1 the way users will.
+  verify-windows-asset:
+    needs:
+      - prepare-release
+      - build-assets
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Download archives
+        uses: actions/download-artifact@v4
+        with:
+          name: release-archives
+          path: dist
+
+      - name: Install with install.ps1 and check the version
+        shell: pwsh
+        env:
+          VERSION: ${{ needs.prepare-release.outputs.version }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $archive = "dist/tars_${env:VERSION}_windows_amd64.zip"
+          $hash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $(Split-Path $archive -Leaf)" | Set-Content -LiteralPath dist/checksums.txt -Encoding ascii
+          $dir = Join-Path $env:RUNNER_TEMP 'tars-install'
+          # Windows PowerShell 5.1 is what `irm | iex` runs in on a stock machine.
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./install.ps1 -Version $env:VERSION -ArchivePath $archive -ChecksumsPath dist/checksums.txt -InstallDir $dir -NoPath
+          if ($LASTEXITCODE -ne 0) { throw "install.ps1 failed with exit code $LASTEXITCODE" }
+          $reported = & (Join-Path $dir 'tars.exe') --version
+          if (-not ("$reported" -like "tars $env:VERSION (*")) { throw "unexpected version output: $reported" }
+          $reported
 
   # Desktop shell archives. The self-updater picks tars-desktop_* assets out
   # of the same release and verifies them against checksums.txt.
@@ -258,6 +299,7 @@ jobs:
     needs:
       - prepare-release
       - build-assets
+      - verify-windows-asset
       - build-desktop-macos
       - build-desktop-linux-windows
     runs-on: ubuntu-latest
@@ -287,13 +329,12 @@ jobs:
           amd64_asset="dist/tars_${VERSION}_darwin_amd64.tar.gz"
           arm64_sha="$(shasum -a 256 "${arm64_asset}" | awk '{print $1}')"
           amd64_sha="$(shasum -a 256 "${amd64_asset}" | awk '{print $1}')"
-          {
-            printf '%s  %s\n' "${arm64_sha}" "$(basename "${arm64_asset}")"
-            printf '%s  %s\n' "${amd64_sha}" "$(basename "${amd64_asset}")"
-            for desktop_asset in dist/tars-desktop_*; do
-              printf '%s  %s\n' "$(shasum -a 256 "${desktop_asset}" | awk '{print $1}')" "$(basename "${desktop_asset}")"
-            done
-          } > dist/checksums.txt
+          # Every server (tars_*) and desktop (tars-desktop_*) archive; install.ps1
+          # and the desktop updater refuse an archive missing from this list.
+          for asset in dist/tars_* dist/tars-desktop_*; do
+            printf '%s  %s\n' "$(shasum -a 256 "${asset}" | awk '{print $1}')" "$(basename "${asset}")"
+          done > dist/checksums.txt
+          grep -Fq "  tars_${VERSION}_windows_amd64.zip" dist/checksums.txt
           printf 'version=%s\n' "${VERSION}" >> "${GITHUB_OUTPUT}"
           printf 'arm64_sha=%s\n' "${arm64_sha}" >> "${GITHUB_OUTPUT}"
           printf 'amd64_sha=%s\n' "${amd64_sha}" >> "${GITHUB_OUTPUT}"

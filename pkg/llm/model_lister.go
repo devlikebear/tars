@@ -255,12 +255,17 @@ func resolveOpenAICodexModelsURL(baseURL string) string {
 //	0.153.4  -> 200, 6 models, gpt-6-astra first
 //	1.0.0    -> 200, same 6
 //
+// Measured again on 2026-10-04, after the gpt-6 family widened:
+//
+//	0.153.4  -> 200, 5 models, no gpt-6.1-sol / gpt-6-sol / gpt-6-luna
+//	0.160.0  -> 200, 8 models, gpt-6.1-sol first
+//
 // And when tars is a library -- linetta's case -- buildinfo.Version is never
 // set at all, so every caller sent "dev" and got the 400. So the value must
 // be a real Codex CLI version, and a recent one: whichever CLI release was
 // last verified to list everything. Bump it when a new model the backend
 // serves to a newer CLI fails to appear here.
-const openAICodexClientVersion = "0.153.4"
+const openAICodexClientVersion = "0.160.0"
 
 // appendClientVersionQuery adds the client_version query the backend
 // requires (ModelsClient::append_client_version_query in codex-rs). A blank

@@ -15,6 +15,7 @@ import (
 
 	"github.com/devlikebear/tars/internal/ops"
 	"github.com/devlikebear/tars/internal/session"
+	"github.com/devlikebear/tars/internal/usage"
 )
 
 func gitInit(t *testing.T, dir, branch string) {
@@ -61,8 +62,8 @@ func TestSessionBoardShowsStatusRepoChangeAndCost(t *testing.T) {
 	endIdle := activity.begin(idle.ID)
 	endIdle()
 
-	board := newSessionBoard(fx.sessions, activity, fx.store, func() (map[string]float64, error) {
-		return map[string]float64{fx.sessionID: 1.25}, nil
+	board := newSessionBoard(fx.sessions, activity, fx.store, func() (map[string]boardCost, error) {
+		return map[string]boardCost{fx.sessionID: {USD: 1.25, UnpricedCalls: 3}}, nil
 	})
 	resp, err := board.build(ctx)
 	if err != nil {
@@ -99,8 +100,8 @@ func TestSessionBoardShowsStatusRepoChangeAndCost(t *testing.T) {
 	if got.LastChange == nil || got.LastChange.Files != 1 || got.LastChange.Additions != 1 || got.LastTurnAt == nil {
 		t.Fatalf("last change = %+v last turn = %v", got.LastChange, got.LastTurnAt)
 	}
-	if got.CostUSD != 1.25 {
-		t.Fatalf("cost = %v", got.CostUSD)
+	if got.CostUSD != 1.25 || got.UnpricedCalls != 3 {
+		t.Fatalf("cost = %v, unpriced = %d", got.CostUSD, got.UnpricedCalls)
 	}
 	if other := byID[idle.ID]; other.Status != boardStatusIdle || other.Repo != "" || other.LastChange != nil {
 		t.Fatalf("idle session = %+v", other)
@@ -142,7 +143,7 @@ func TestSessionBoardCachesRepoLookups(t *testing.T) {
 
 func TestSessionBoardWithoutCheckpointsOrCosts(t *testing.T) {
 	fx := newCheckpointFixture(t)
-	board := newSessionBoard(fx.sessions, nil, nil, func() (map[string]float64, error) {
+	board := newSessionBoard(fx.sessions, nil, nil, func() (map[string]boardCost, error) {
 		return nil, errors.New("usage unavailable")
 	})
 	resp, err := board.build(context.Background())
@@ -293,5 +294,35 @@ func TestSessionBoardCountsUnattendedApprovals(t *testing.T) {
 	board.queued = func() (map[string]int, error) { return nil, errors.New("ops unavailable") }
 	if s := statusOf()[f.session]; s.Status != boardStatusIdle {
 		t.Fatalf("an unreadable queue counts nothing, got %+v", s)
+	}
+}
+
+func TestSessionCostsFromReadsCostAndUnpricedCalls(t *testing.T) {
+	if sessionCostsFrom(nil) != nil {
+		t.Fatal("no tracker should mean no cost source")
+	}
+	now := time.Date(2026, 10, 4, 12, 0, 0, 0, time.UTC)
+	tracker, err := usage.NewTracker(t.TempDir(), usage.TrackerOptions{Now: func() time.Time { return now }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range []usage.Entry{
+		{Timestamp: now, Provider: "anthropic", Model: "m", InputTokens: 10, OutputTokens: 1, EstimatedCostUSD: 0.5, PricingKnown: true, SessionID: "priced"},
+		{Timestamp: now, Provider: "openai-codex", Model: "m", InputTokens: 10, OutputTokens: 1, SessionID: "unpriced"},
+		{Timestamp: now, Provider: "openai-codex", Model: "m", InputTokens: 10, OutputTokens: 1, SessionID: "unpriced"},
+	} {
+		if err := tracker.Record(entry); err != nil {
+			t.Fatal(err)
+		}
+	}
+	costs, err := sessionCostsFrom(tracker)()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := costs["priced"]; got.USD != 0.5 || got.UnpricedCalls != 0 {
+		t.Fatalf("priced session: %+v", got)
+	}
+	if got := costs["unpriced"]; got.USD != 0 || got.UnpricedCalls != 2 {
+		t.Fatalf("unpriced session: %+v", got)
 	}
 }
