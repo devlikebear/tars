@@ -125,17 +125,6 @@ func userRule(methods []string, pattern, note string) EndpointPolicyRule {
 	return EndpointPolicyRule{Methods: methods, Pattern: pattern, Access: EndpointAccessUser, Note: note}
 }
 
-func DefaultEndpointPolicyRules() []EndpointPolicyRule {
-	out := make([]EndpointPolicyRule, len(defaultEndpointPolicyRules))
-	for i, rule := range defaultEndpointPolicyRules {
-		out[i] = rule
-		if len(rule.Methods) > 0 {
-			out[i].Methods = append([]string(nil), rule.Methods...)
-		}
-	}
-	return out
-}
-
 func ResolveEndpointAccess(method, path string) EndpointAccess {
 	method = normalizeEndpointMethod(method)
 	path = normalizeEndpointPath(path)

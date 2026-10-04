@@ -306,17 +306,6 @@ func runHotkeyVoiceMode(
 	}
 }
 
-func handleTextTurn(ctx context.Context, deps *VoiceTurnDeps, text string, stdout io.Writer, stderr io.Writer) error {
-	if deps == nil {
-		return fmt.Errorf("voice dependencies are required")
-	}
-	result, err := RunTextTurn(ctx, *deps, text)
-	if err != nil {
-		return err
-	}
-	return writeTurnResult(deps, result, stdout, stderr)
-}
-
 func handleVoiceTurn(ctx context.Context, deps *VoiceTurnDeps, wavPath string, stdout io.Writer, stderr io.Writer) error {
 	if deps == nil {
 		return fmt.Errorf("voice dependencies are required")

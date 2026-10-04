@@ -90,10 +90,6 @@ func NewListDirToolWithPolicy(policy PathPolicy) Tool {
 	}
 }
 
-func collectDirEntries(workspaceDir, absPath string, recursive bool, maxEntries int) ([]listDirEntry, bool, error) {
-	return collectDirEntriesWithPolicy(SingleDirPolicy(workspaceDir), absPath, recursive, maxEntries)
-}
-
 func collectDirEntriesWithPolicy(policy PathPolicy, absPath string, recursive bool, maxEntries int) ([]listDirEntry, bool, error) {
 	if !recursive {
 		dirEntries, err := os.ReadDir(absPath)
@@ -137,10 +133,6 @@ func collectDirEntriesWithPolicy(policy PathPolicy, absPath string, recursive bo
 		return nil
 	})
 	return out, truncated, err
-}
-
-func buildListDirEntry(workspaceDir, absPath string, mode fs.FileMode) (listDirEntry, error) {
-	return buildListDirEntryWithPolicy(SingleDirPolicy(workspaceDir), absPath, mode)
 }
 
 func buildListDirEntryWithPolicy(policy PathPolicy, absPath string, mode fs.FileMode) (listDirEntry, error) {

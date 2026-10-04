@@ -123,33 +123,6 @@ func newBaseToolRegistryWithOptions(
 	return registry
 }
 
-func newAgentPromptRunner(
-	cfg config.Config,
-	workspaceDir string,
-	client llm.Client,
-	tracker *usage.Tracker,
-	maxIterations int,
-	logger zerolog.Logger,
-	semanticCfg ...memory.SemanticConfig,
-) func(ctx context.Context, runLabel string, promptText string) (string, error) {
-	runnerWithTools := newAgentPromptRunnerWithToolsAndMemory(
-		cfg,
-		workspaceDir,
-		client,
-		nil,
-		tracker,
-		maxIterations,
-		logger,
-		firstSemanticConfig(semanticCfg...),
-	)
-	if runnerWithTools == nil {
-		return nil
-	}
-	return func(ctx context.Context, runLabel string, promptText string) (string, error) {
-		return runnerWithTools(ctx, runLabel, promptText, nil, "", nil)
-	}
-}
-
 func newAgentPromptRunnerWithTools(
 	cfg config.Config,
 	workspaceDir string,

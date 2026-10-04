@@ -198,14 +198,6 @@ func (s *chatStreamWriter) fileChange(toolCallID string, change tool.FileChange)
 	s.send(payload)
 }
 
-func (s *chatStreamWriter) memoryRecall(count int) {
-	s.send(map[string]any{
-		"type":         "memory_recall",
-		"session_id":   s.sessionID,
-		"memory_count": count,
-	})
-}
-
 // tasksChanged broadcasts the current plan/task counts so the console can
 // keep the chat pulse-bar Tasks badge live without re-fetching after every
 // tool call.

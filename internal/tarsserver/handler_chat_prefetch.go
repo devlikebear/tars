@@ -1,7 +1,6 @@
 package tarsserver
 
 import (
-	"context"
 	"strings"
 	"time"
 
@@ -9,40 +8,9 @@ import (
 	"github.com/devlikebear/tars/internal/prompt"
 )
 
-const defaultPrefetchTimeout = 2 * time.Second
-
 type prefetchResult struct {
 	BuildResult prompt.BuildResult
 	Err         error
-}
-
-// startMemoryPrefetch launches a goroutine that searches memory asynchronously.
-// Results are sent to the returned channel when ready.
-func startMemoryPrefetch(ctx context.Context, state chatRunState, deps chatHandlerDeps) <-chan prefetchResult {
-	ch := make(chan prefetchResult, 1)
-	query := strings.TrimSpace(state.history[len(state.history)-1].Content)
-	if len(state.history) == 0 || query == "" {
-		close(ch)
-		return ch
-	}
-
-	go func() {
-		defer close(ch)
-		memService := buildSemanticMemoryService(state.requestWorkspaceDir, deps.tooling.MemorySemanticConfig)
-		result := prompt.BuildResultFor(prompt.BuildOptions{
-			WorkspaceDir:        state.requestWorkspaceDir,
-			Query:               query,
-			SessionID:           state.sessionID,
-			PlanClarifyMode:     deps.tooling.PlanClarifyMode,
-			MemorySearcher:      memService,
-			ForceRelevantMemory: shouldForceMemoryToolCall(query),
-		})
-		select {
-		case ch <- prefetchResult{BuildResult: result}:
-		case <-ctx.Done():
-		}
-	}()
-	return ch
 }
 
 // collectPrefetchResult waits for prefetch to complete within the given timeout.

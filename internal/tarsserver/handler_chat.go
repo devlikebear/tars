@@ -65,10 +65,6 @@ func createFallbackChatSession(store *session.Store) (string, error) {
 	return sess.ID, nil
 }
 
-func prepareChatContext(workspaceDir, userMessage string) (systemPrompt string, toolChoice *llm.ToolChoice, err error) {
-	return prepareChatContextWithExtensions(workspaceDir, "", userMessage, extensions.Snapshot{}, nil)
-}
-
 type preparedChatContext struct {
 	// SystemPrompt holds only the turn-stable region. Callers keep appending
 	// their own static sections to it and must emit SystemPromptTail last —
@@ -754,13 +750,6 @@ func compactPreviewCount(value any) int {
 	return 0
 }
 
-func resolveInvokedSkill(message string, manager *extensions.Manager) *skill.Definition {
-	if manager == nil {
-		return nil
-	}
-	return resolveInvokedSkillFromSnapshot(message, manager.Snapshot())
-}
-
 func resolveInvokedSkillFromSnapshot(message string, snapshot extensions.Snapshot) *skill.Definition {
 	trimmed := strings.TrimSpace(message)
 	if trimmed == "" || !strings.HasPrefix(trimmed, "/") {
@@ -839,13 +828,6 @@ func resolveCommandSelectionFromDefinitions(message string, commands []skill.Def
 		}
 	}
 	return commandSelection{Definition: invoked, Reason: "explicit_command"}
-}
-
-func findProjectStartSkill(manager *extensions.Manager) *skill.Definition {
-	if manager == nil {
-		return nil
-	}
-	return findProjectStartSkillInSnapshot(manager.Snapshot())
 }
 
 func findProjectStartSkillInSnapshot(snapshot extensions.Snapshot) *skill.Definition {

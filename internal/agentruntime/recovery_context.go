@@ -42,19 +42,6 @@ func RecoveryExecutionFromContext(ctx context.Context) *RecoveryExecutionPlan {
 	return cloneRecoveryExecutionPlan(plan)
 }
 
-func MatchRecoveryToolResult(plan *RecoveryExecutionPlan, toolName, toolArgs string) (RecoveryToolResult, bool) {
-	if plan == nil || plan.Mode != RecoveryModeReplayFromCheckpoint {
-		return RecoveryToolResult{}, false
-	}
-	signature := ToolCallSignature(toolName, toolArgs)
-	for _, result := range plan.ToolResults {
-		if result.Signature == signature {
-			return result, true
-		}
-	}
-	return RecoveryToolResult{}, false
-}
-
 // ConsumeRecoveryToolResult returns and removes the earliest recorded result
 // matching a tool call. Replay callers must consume results in order so two
 // identical calls do not both reuse the first effect receipt.

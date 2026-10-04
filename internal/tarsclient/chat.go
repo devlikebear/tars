@@ -9,6 +9,8 @@ import (
 	"github.com/devlikebear/tars/pkg/tarsclient"
 )
 
+type apiHTTPError = tarsclient.APIError
+
 type chatRequest = tarsclient.ChatRequest
 
 type chatEvent = tarsclient.ChatEvent

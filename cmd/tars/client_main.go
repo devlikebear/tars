@@ -47,11 +47,10 @@ func bindClientFlags(cmd *cobra.Command, opts *clientOptions) {
 
 func runClientCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, opts clientOptions) error {
 	return clientapp.Run(ctx, stdin, stdout, stderr, clientapp.Options{
-		ServerURL:  strings.TrimSpace(opts.serverURL),
-		SessionID:  strings.TrimSpace(opts.sessionID),
-		APIToken:   strings.TrimSpace(opts.apiToken),
-		AdminToken: strings.TrimSpace(opts.adminToken),
-		Message:    strings.TrimSpace(opts.message),
-		Verbose:    opts.verbose,
+		ServerURL: strings.TrimSpace(opts.serverURL),
+		SessionID: strings.TrimSpace(opts.sessionID),
+		APIToken:  strings.TrimSpace(opts.apiToken),
+		Message:   strings.TrimSpace(opts.message),
+		Verbose:   opts.verbose,
 	})
 }

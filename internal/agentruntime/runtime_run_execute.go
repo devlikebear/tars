@@ -366,14 +366,6 @@ func resolveRunAllowedTools(_ string, executorAllowed []string) []string {
 	return sanitizeStringList(executorAllowed)
 }
 
-func sanitizeStringListAsSet(values []string) map[string]struct{} {
-	out := map[string]struct{}{}
-	for _, value := range sanitizeStringList(values) {
-		out[value] = struct{}{}
-	}
-	return out
-}
-
 func (r *Runtime) appendSessionMessage(workspaceID, sessionID, role, content string, ts time.Time) error {
 	sessionStore := r.sessionStoreForWorkspace(workspaceID)
 	if r == nil || sessionStore == nil {

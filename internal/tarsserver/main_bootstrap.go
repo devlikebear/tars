@@ -9,14 +9,12 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/devlikebear/tars/internal/config"
 	"github.com/devlikebear/tars/internal/llm"
 	"github.com/devlikebear/tars/internal/onboarding"
 	"github.com/devlikebear/tars/internal/session"
 	"github.com/devlikebear/tars/internal/usage"
-	"github.com/rs/zerolog"
 )
 
 type runtimeDeps struct {
@@ -154,19 +152,6 @@ func isLoopbackListenAddr(addr string) bool {
 	}
 	ip := net.ParseIP(host)
 	return ip != nil && ip.IsLoopback()
-}
-
-// buildRuntimeDeps composes buildBaseDeps + buildLLMDeps. It exists as
-// the single entry point used by callers that want full runtime
-// dependencies (production boot, helpers_llm_router_test). The
-// onboarding setup-only path (Phase 2) calls the two pieces directly
-// so it can downgrade on init_llm failure instead of bailing.
-func buildRuntimeDeps(opts *options, cfg config.Config, nowFn func() time.Time, logger zerolog.Logger) (runtimeDeps, error) {
-	base, err := buildBaseDeps(opts, cfg, nowFn, logger)
-	if err != nil {
-		return runtimeDeps{}, err
-	}
-	return buildLLMDeps(base, cfg, logger)
 }
 
 func validateAPIAuthSecurity(cfg config.Config) error {
