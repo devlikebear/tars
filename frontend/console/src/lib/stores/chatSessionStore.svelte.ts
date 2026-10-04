@@ -169,7 +169,7 @@ export class ChatSessionStore {
   private permissionRequest = 0
   // Why the last pin could not be saved; '' when it was.
   tierPinError = $state('')
-  private tierOptionsRequested = false
+  private tierOptionsLoading = false
   // Bumped by every local pin change, so a session record fetched before
   // it cannot put the old pin back.
   private tierPinEdits = 0
@@ -324,17 +324,22 @@ export class ChatSessionStore {
     this.writePin(session.id, isPinnableTier(session.tier_pin ?? '') ? (session.tier_pin as ChatTier) : null)
   }
 
-  // The configured tiers, fetched once for the status bar picker.
+  // The configured tiers for the status bar picker. Read again on every
+  // mount of the bar: the store outlives a settings save and the server
+  // restart behind it, so a copy fetched once kept showing the old models
+  // while turns already ran on the new ones.
   async loadTierOptions(): Promise<void> {
-    if (this.tierOptionsRequested) return
-    this.tierOptionsRequested = true
+    if (this.tierOptionsLoading) return
+    this.tierOptionsLoading = true
     try {
       const resp = await this.api.listAgentRuntimeSubagents()
       this.tierOptions = resp.tiers ?? []
       this.defaultTier = resp.default_tier?.trim() ?? ''
       this.rebuildHealth()
     } catch {
-      this.tierOptionsRequested = false
+      // Keep the last known tiers; the next mount tries again.
+    } finally {
+      this.tierOptionsLoading = false
     }
   }
 

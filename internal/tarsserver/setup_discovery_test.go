@@ -124,6 +124,11 @@ func TestSetupDiscoveryRecommendationRoles(t *testing.T) {
 	if got["heavy"] != "latest-astra" || got["standard"] != "latest-sol" || got["light"] != "latest-luna" {
 		t.Fatalf("roles: %+v", got)
 	}
+	// The backend now lists a sol model ahead of astra.
+	got = recommendCodexModels([]string{"gpt-6.1-sol", "gpt-6-astra", "gpt-6-sol", "gpt-6-luna"})
+	if got["heavy"] != "gpt-6-astra" || got["standard"] != "gpt-6.1-sol" || got["light"] != "gpt-6-luna" {
+		t.Fatalf("roles with sol first: %+v", got)
+	}
 	if len(recommendCodexModels(nil)) != 0 {
 		t.Fatal("empty catalog should not invent a model")
 	}
