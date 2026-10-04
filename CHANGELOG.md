@@ -6,6 +6,14 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.45.3] - 2026-10-04
+
+### Fixed
+
+- The chat status bar's tier picker kept showing the models from before a settings change, while turns already ran on the new ones. The console read the tier list once per page load; it now reads it again each time the status bar appears, so returning to the chat after saving settings shows the current models.
+- `openai-codex` model lists were missing `gpt-6.1-sol`, `gpt-6-sol` and `gpt-6-luna`. The ChatGPT backend shapes the list by the `client_version` it is sent, and `0.153.4` no longer gets the newer models (measured 2026-10-04: 5 models, against 8 for `0.160.0`). TARS now sends `0.160.0`.
+- The setup wizard's Codex recommendation picks an `astra` model for the heavy tier even when the backend lists another model first.
+
 ## [0.45.2] - 2026-10-04
 
 ### Fixed

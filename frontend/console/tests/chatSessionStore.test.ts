@@ -450,12 +450,28 @@ test('a settled turn re-reads the session cost', async () => {
   assert.deepEqual(store.usage, { costUSD: 1.5, calls: 1, inputTokens: 10, outputTokens: 90 })
 })
 
-test('tier options are fetched once', async () => {
-  const { store, calls } = newStore()
+// The store outlives a settings save, so each load reads the tiers again;
+// only calls that overlap share one request.
+test('tier options are read again on each load', async () => {
+  let model = 'old'
+  const { api, calls } = fakeApi({
+    listAgentRuntimeSubagents: async () => {
+      calls.push('listAgentRuntimeSubagents')
+      return { tiers: [{ name: 'heavy', kind: 'openai-codex', model }] }
+    },
+  })
+  const store = new ChatSessionStore(api as never, helpers as never)
+  await Promise.all([store.loadTierOptions(), store.loadTierOptions()])
+  assert.equal(calls.filter((c) => c === 'listAgentRuntimeSubagents').length, 1, 'overlapping loads share a request')
+  assert.equal(store.tierOptions[0].model, 'old')
+
+  model = 'new'
   await store.loadTierOptions()
+  assert.equal(store.tierOptions[0].model, 'new')
+
+  api.listAgentRuntimeSubagents = async () => { throw new Error('offline') }
   await store.loadTierOptions()
-  assert.equal(store.tierOptions.length, 2)
-  assert.equal(calls.filter((c) => c === 'listAgentRuntimeSubagents').length, 1)
+  assert.equal(store.tierOptions[0].model, 'new', 'a failed load keeps the last tiers')
 })
 
 function modeApi(initial: { mode: string; effective: string; source: string }, fail = false) {
