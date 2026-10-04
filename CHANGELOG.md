@@ -15,6 +15,7 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 - **Remote workers, A2A delegation and the execution plane.** The `tars worker` command, the `/v1/workers` API, the Remote Execution card on the console's Approvals page, and the external `claude-code` scheduler harness are gone, with `internal/workerprotocol`, `internal/a2a` and `internal/executionplane` (about 19,500 lines). All of it was off by default. The durable work scheduler stays (`work_ledger.scheduler.enabled`): it now runs steps on the Agent Runtime directly. These `work_ledger.scheduler` keys no longer exist and are ignored if an old config file still has them: `execution_environment`, `execution_data_dir`, `artifact_paths`, `external_harness.*`, `remote_workers.*`, `a2a.*`. Ledger events these features recorded earlier stay in the database and show in the timeline under their raw type name. The `claude-code-cli` LLM provider is unaffected.
 - Dead code found by `deadcode` and `staticcheck -checks U1000`: about 3,600 lines. Most of it was the slash-command dispatcher, notification center and runtime client of the terminal UI that `tars` stopped offering (`internal/tarsclient` now holds only the one-shot `tars --message` path); the rest was unreachable helpers in the server (old cron project artifacts, telegram session commands, watchdog state readers, the unused skill resolver). No behavior changes.
+
 ## [0.45.9] - 2026-10-04
 
 ### Added
