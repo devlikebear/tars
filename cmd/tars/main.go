@@ -69,6 +69,7 @@ func newRootCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
 	cmd.AddCommand(newMCPCommand(stdout, stderr))
 	cmd.AddCommand(newPackCommand(stdin, stdout, stderr))
 	cmd.AddCommand(newWorkerCommand(stdin, stdout))
+	cmd.AddCommand(newUpdateCommand(stdin, stdout, stderr))
 	cmd.AddCommand(newVersionCommand(stdout))
 	return cmd
 }

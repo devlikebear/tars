@@ -290,6 +290,36 @@ keychain-only CLI login is shown as needing a compatible sign-in.
 curl -fsSL https://raw.githubusercontent.com/devlikebear/tars/main/install.sh | sh
 ```
 
+**Windows (PowerShell):**
+
+```powershell
+irm https://raw.githubusercontent.com/devlikebear/tars/main/install.ps1 | iex
+```
+
+This installs `tars.exe` into `%LOCALAPPDATA%\Programs\TARS` and adds that
+folder to your user `PATH`. No administrator rights are needed. To install
+the desktop app into the same folder as well, and start it in the tray
+when you sign in, pass options:
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/devlikebear/tars/main/install.ps1))) -Desktop -StartAtLogin
+```
+
+Both archives are checked against the release's `checksums.txt` first.
+Running the script again updates an install in place, even while the server
+or the app is running; restart them to use the new version. Windows has no
+`tars service`, so the desktop app starts `tars serve` for you, or run it
+yourself.
+
+**Updating:** `tars update` replaces an `install.ps1` or `install.sh` install
+with the latest release, checks it against `checksums.txt`, and restarts the
+server running on `--server-url` onto it (`--check` only reports, `--yes`
+skips the question, `--admin-api-token` is needed when the server requires
+auth). On Windows the desktop app does this by itself: it checks every six
+hours and updates the server only while no chat is running and nothing waits
+on an approval. When a newer app is out, it tells you; click the
+notification to install it. Homebrew installs update with `brew upgrade`.
+
 ## Quick Start
 
 ```bash
