@@ -9,7 +9,6 @@
   } from '../lib/api'
   import type { Approval, AutomationAuditEntry } from '../lib/types'
   import { t } from '../i18n'
-  import RemoteWorkers from './RemoteWorkers.svelte'
 
   let { onNavigate }: { onNavigate?: (path: string) => void } = $props()
 
@@ -180,7 +179,6 @@
     <div class="error-banner">{error}</div>
   {/if}
 
-  <RemoteWorkers />
 
   {#if loading}
     <div class="ops-loading">{$t.ops.loading}</div>

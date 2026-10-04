@@ -16,7 +16,6 @@ import type {
   ReflectionRunSummary,
   ReflectionSnapshot,
   UpdateCronJobRequest,
-  WorkerControlPlaneResponse,
 } from '../types'
 
 // --- Pulse (system watchdog, replaces heartbeat) ---
@@ -121,6 +120,3 @@ export async function listAutomationAudit(limit = 50, sessionId = ''): Promise<A
   return requestJSON<AutomationAuditListResponse>(`/v1/ops/automation-audit${suffix ? `?${suffix}` : ''}`)
 }
 
-export async function getWorkerControlPlane(): Promise<WorkerControlPlaneResponse> {
-  return requestJSON<WorkerControlPlaneResponse>('/v1/admin/workers')
-}

@@ -29,10 +29,8 @@ TEST_TIMEOUT="${TEST_TIMEOUT:-300s}"
 # dump at that moment shows nothing of ours still running.
 EXCLUDED_PACKAGES=(
   github.com/devlikebear/tars/internal/agentruntime    # command executor timeouts and effect receipt file modes
-  github.com/devlikebear/tars/internal/executionplane  # artifact URIs, symlinks, and POSIX runner assumptions
   github.com/devlikebear/tars/pkg/llm                  # claude-code-cli tests drive POSIX shell script stubs (was internal/llm before #928)
   github.com/devlikebear/tars/internal/tarsserver      # ~21 tests: sandboxes and notifiers that shell out, owner-only config files, symlinks, sqlite past Close; focus PR poll tests flake
-  github.com/devlikebear/tars/internal/workerprotocol  # ssh/container/symlink policy assumptions
   github.com/devlikebear/tars/internal/workscheduler   # sqlite holds the ledger file past Close — see above
 )
 
