@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.45.4] - 2026-10-04
+
+### Changed
+
+- The setup wizard's built-in `openai-codex` model suggestions, shown before a live list is fetched, now match what the ChatGPT backend lists as of 2026-10-04 (`gpt-6.1-sol`, `gpt-6-astra`, `gpt-6-sol`, `gpt-6-luna`, `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`, `gpt-5.5`). The two models offered before, `gpt-5.4` and `gpt-5.3-codex`, are no longer served.
+
 ## [0.45.3] - 2026-10-04
 
 ### Fixed
