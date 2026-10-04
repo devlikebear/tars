@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/devlikebear/tars/internal/agentruntime"
-	"github.com/devlikebear/tars/internal/executionplane"
 	"github.com/devlikebear/tars/internal/serverauth"
 	"github.com/devlikebear/tars/internal/usage"
 	"github.com/devlikebear/tars/internal/workscheduler"
@@ -311,14 +310,9 @@ func (executor *agentRuntimeWorkExecutor) Execute(ctx context.Context, execution
 			tier = strings.ToLower(strings.TrimSpace(info.Tier))
 		}
 	}
-	executionRoot := ""
-	if environment, ok := executionplane.EnvironmentFromContext(ctx); ok {
-		executionRoot = strings.TrimSpace(environment.RootDir)
-	}
 	run, err := subagentFlowSpawn(executor.runtime, ctx, agentruntime.SpawnRequest{
 		WorkspaceID: execution.Work.WorkspaceID, WorkID: execution.Work.ID, TaskID: execution.Claim.Step.ID,
-		ExecutionRoot: executionRoot,
-		Title:         firstNonEmptyString(task.Title, task.ID), Prompt: prompt, Agent: contract.Agent,
+		Title: firstNonEmptyString(task.Title, task.ID), Prompt: prompt, Agent: contract.Agent,
 		ParentRunID: contract.ParentRunID, RootRunID: contract.RootRunID,
 		ParentSessionID: contract.ParentSessionID, Depth: contract.Depth,
 		SessionKind: "subagent", SessionHidden: true, FlowID: contract.FlowID,
