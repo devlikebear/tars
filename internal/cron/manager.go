@@ -36,19 +36,6 @@ func NewManager(
 	}
 }
 
-func (m *Manager) Start(ctx context.Context) error {
-	ticker := time.NewTicker(m.interval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return nil
-		case <-ticker.C:
-			_ = m.Tick(ctx)
-		}
-	}
-}
-
 func (m *Manager) Tick(ctx context.Context) error {
 	if m == nil || m.store == nil || m.runJob == nil {
 		return nil
