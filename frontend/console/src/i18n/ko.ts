@@ -131,6 +131,8 @@ export const ko = {
     permissionDefault: '기본값',
     permissionHint: '이 세션의 Claude Code 권한 모드입니다. .tars/settings.local.json에서 정합니다. 이 모드가 허용하지 않는 도구 호출은 대화 안에서 승인을 묻습니다.',
     costHint: '이 세션의 이번 달 사용량입니다(사용량 추적기 추정치).',
+    costUnpriced: '단가 없음',
+    costUnpricedHint: (unpriced: number, calls: number) => `이 세션의 이번 달 사용량입니다. 호출 ${calls}회 중 ${unpriced}회는 단가를 모르는 모델이라 비용에 들어 있지 않습니다. usage.price_overrides에 단가를 넣으면 집계됩니다.`,
     tokens: (count: string) => `${count} 토큰`,
   },
   rail: {

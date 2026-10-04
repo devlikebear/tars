@@ -74,6 +74,18 @@ func applySummaryEntry(out *Summary, rows map[string]*SummaryRow, entry Entry, g
 	out.TotalCached += entry.CachedTokens
 	out.TotalCacheRead += entry.CacheReadTokens
 	out.TotalCacheWrite += entry.CacheWriteTokens
+
+	if entryUnpriced(entry) {
+		row.UnpricedCalls++
+		out.TotalUnpricedCalls++
+	}
+}
+
+// entryUnpriced reports a call whose tokens could not be priced: no rate for
+// its model and no cost from the provider. A call that spent nothing has
+// nothing missing.
+func entryUnpriced(entry Entry) bool {
+	return !entry.PricingKnown && entry.InputTokens+entry.OutputTokens > 0
 }
 
 func materializeSummaryRows(rows map[string]*SummaryRow) []SummaryRow {

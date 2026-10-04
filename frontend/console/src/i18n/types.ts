@@ -117,6 +117,8 @@ export type Translations = {
     permissionDefault: string
     permissionHint: string
     costHint: string
+    costUnpriced: string
+    costUnpricedHint: (unpriced: number, calls: number) => string
     tokens: (count: string) => string
   }
   rail: {

@@ -67,6 +67,8 @@ export type SessionUsage = {
   calls: number
   inputTokens: number
   outputTokens: number
+  // Calls whose tokens had no known price: costUSD leaves them out.
+  unpricedCalls: number
 }
 
 export type GoalEventText = ChatCommandsTranslations['goalEvents']
@@ -358,6 +360,7 @@ export class ChatSessionStore {
         calls: summary.total_calls,
         inputTokens: summary.total_input_tokens,
         outputTokens: summary.total_output_tokens,
+        unpricedCalls: summary.total_unpriced_calls ?? 0,
       }
     } catch {
       if (request === this.usageRequest) this.usage = null
