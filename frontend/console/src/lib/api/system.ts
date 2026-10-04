@@ -68,6 +68,8 @@ export type UsageSummary = {
   total_cost_usd: number
   total_input_tokens: number
   total_output_tokens: number
+  // Absent from servers older than 0.45.5.
+  total_unpriced_calls?: number
 }
 
 // Usage for one period, optionally restricted to a single chat session.

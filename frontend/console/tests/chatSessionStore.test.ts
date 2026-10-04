@@ -58,7 +58,7 @@ function fakeApi(overrides: Record<string, unknown> = {}) {
     },
     getUsageSummary: async (params: { sessionId?: string }) => {
       calls.push(`getUsageSummary:${params.sessionId}`)
-      return { period: 'month', group_by: 'provider', session_id: params.sessionId, total_calls: 2, total_cost_usd: 0.25, total_input_tokens: 300, total_output_tokens: 40 }
+      return { period: 'month', group_by: 'provider', session_id: params.sessionId, total_calls: 2, total_cost_usd: 0.25, total_input_tokens: 300, total_output_tokens: 40, total_unpriced_calls: 1 }
     },
     listAgentRuntimeSubagents: async () => {
       calls.push('listAgentRuntimeSubagents')
@@ -426,7 +426,7 @@ test('usage and the permission override load for the active session', async () =
   const { store, calls } = newStore()
   store.setActive('plan-session')
   await flush()
-  assert.deepEqual(store.usage, { costUSD: 0.25, calls: 2, inputTokens: 300, outputTokens: 40 })
+  assert.deepEqual(store.usage, { costUSD: 0.25, calls: 2, inputTokens: 300, outputTokens: 40, unpricedCalls: 1 })
   assert.equal(store.permissionModeOverride, 'plan')
   assert.ok(calls.includes('getUsageSummary:plan-session'))
   store.setActive('other')
@@ -447,7 +447,7 @@ test('a settled turn re-reads the session cost', async () => {
   assert.equal(store.usage?.costUSD, 0, 'nothing recorded before the first turn ends')
   cost = 1.5
   await store.turnSettled()
-  assert.deepEqual(store.usage, { costUSD: 1.5, calls: 1, inputTokens: 10, outputTokens: 90 })
+  assert.deepEqual(store.usage, { costUSD: 1.5, calls: 1, inputTokens: 10, outputTokens: 90, unpricedCalls: 0 })
 })
 
 // The store outlives a settings save, so each load reads the tiers again;

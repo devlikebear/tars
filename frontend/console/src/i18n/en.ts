@@ -131,6 +131,8 @@ export const en = {
     permissionDefault: 'default',
     permissionHint: 'Claude Code permission mode for this session, set in .tars/settings.local.json. Tool calls it does not allow ask for approval in the conversation.',
     costHint: 'This session this month, estimated by the usage tracker.',
+    costUnpriced: 'no price',
+    costUnpricedHint: (unpriced: number, calls: number) => `This session this month. ${unpriced} of ${calls} calls used a model with no known price, so their cost is not included. Add rates under usage.price_overrides to count them.`,
     tokens: (count: string) => `${count} tok`,
   },
   rail: {

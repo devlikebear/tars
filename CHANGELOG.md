@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.45.5] - 2026-10-04
+
+### Fixed
+
+- Usage from a model with no known price was shown as `$0`, as if it had been measured. The built-in price table has no rate for the current `openai-codex` models, so every Codex call was recorded at zero cost and nothing said so. `GET /v1/usage/summary` now reports `total_unpriced_calls` (and `unpriced_calls` per row), and the chat status bar shows "no price" instead of `$0` — or the known part followed by `+` — with the count in its tooltip. Costs and spending limits are computed as before: unpriced calls still add nothing to them. Set rates under `usage.price_overrides` to have them counted.
+
 ## [0.45.4] - 2026-10-04
 
 ### Changed

@@ -57,17 +57,20 @@ const (
 )
 
 type Summary struct {
-	Period          string       `json:"period"`
-	GroupBy         string       `json:"group_by"`
-	SessionID       string       `json:"session_id,omitempty"`
-	TotalCalls      int          `json:"total_calls"`
-	TotalCostUSD    float64      `json:"total_cost_usd"`
-	TotalInput      int          `json:"total_input_tokens"`
-	TotalOutput     int          `json:"total_output_tokens"`
-	TotalCached     int          `json:"total_cached_tokens"`
-	TotalCacheRead  int          `json:"total_cache_read_tokens"`
-	TotalCacheWrite int          `json:"total_cache_write_tokens"`
-	Rows            []SummaryRow `json:"rows"`
+	Period          string  `json:"period"`
+	GroupBy         string  `json:"group_by"`
+	SessionID       string  `json:"session_id,omitempty"`
+	TotalCalls      int     `json:"total_calls"`
+	TotalCostUSD    float64 `json:"total_cost_usd"`
+	TotalInput      int     `json:"total_input_tokens"`
+	TotalOutput     int     `json:"total_output_tokens"`
+	TotalCached     int     `json:"total_cached_tokens"`
+	TotalCacheRead  int     `json:"total_cache_read_tokens"`
+	TotalCacheWrite int     `json:"total_cache_write_tokens"`
+	// TotalUnpricedCalls counts the calls that spent tokens no price was
+	// known for. Their cost is missing from TotalCostUSD, not zero.
+	TotalUnpricedCalls int          `json:"total_unpriced_calls"`
+	Rows               []SummaryRow `json:"rows"`
 }
 
 type SummaryRow struct {
@@ -79,6 +82,7 @@ type SummaryRow struct {
 	CachedTokens     int     `json:"cached_tokens"`
 	CacheReadTokens  int     `json:"cache_read_tokens"`
 	CacheWriteTokens int     `json:"cache_write_tokens"`
+	UnpricedCalls    int     `json:"unpriced_calls"`
 }
 
 type DailyTokenSummary struct {
