@@ -107,6 +107,42 @@ type SessionGoal struct {
 	AutoContinueCount int        `json:"auto_continue_count"`
 	LastJudgedAt      *time.Time `json:"last_judged_at,omitempty"`
 	Status            string     `json:"status"`
+	// PermissionMode is the tool permission mode the user approved together
+	// with the goal, so the run is not stopped by permission prompts. While
+	// the goal is active it is the session's mode; RestorePermissionMode is
+	// what the session had before and gets back when the goal ends.
+	PermissionMode        string `json:"permission_mode,omitempty"`
+	RestorePermissionMode string `json:"restore_permission_mode,omitempty"`
+}
+
+// replaceGoal installs next as the session's goal and keeps the permission
+// mode granted with a goal in step: a goal that ends (cleared, replaced,
+// satisfied or exhausted) hands back the mode the session had before, unless
+// the user changed the mode in the meantime, and a new active goal that
+// carries a mode applies it.
+func replaceGoal(sess *Session, next *SessionGoal, sameGoal bool) {
+	prev := sess.Goal
+	continues := sameGoal && next.IsActive()
+	if prev != nil && prev.PermissionMode != "" && !continues {
+		if sess.PermissionMode == prev.PermissionMode {
+			sess.PermissionMode = prev.RestorePermissionMode
+		}
+		if sameGoal && next != nil {
+			next.PermissionMode = ""
+			next.RestorePermissionMode = ""
+		}
+	}
+	if next != nil && !sameGoal {
+		next.PermissionMode = strings.TrimSpace(next.PermissionMode)
+		next.RestorePermissionMode = ""
+		if next.PermissionMode != "" && next.IsActive() {
+			next.RestorePermissionMode = sess.PermissionMode
+			sess.PermissionMode = next.PermissionMode
+		} else {
+			next.PermissionMode = ""
+		}
+	}
+	sess.Goal = next
 }
 
 // NormalizeGoal trims and clamps fields, defaulting status/max where unset.
@@ -691,6 +727,16 @@ func (s *Store) CreateWithOptions(title string, kind string, hidden bool) (Sessi
 	return session, nil
 }
 
+// messageIndexByID returns the index of the message with the given id, or -1.
+func messageIndexByID(messages []Message, id string) int {
+	for i, msg := range messages {
+		if strings.TrimSpace(msg.ID) == id {
+			return i
+		}
+	}
+	return -1
+}
+
 // ForkFromMessage creates a new visible session whose transcript contains the
 // parent transcript prefix through the selected message.
 func (s *Store) ForkFromMessage(parentID string, messageID string, opts ForkOptions) (Session, error) {
@@ -728,13 +774,7 @@ func (s *Store) ForkFromMessage(parentID string, messageID string, opts ForkOpti
 	if err != nil {
 		return Session{}, fmt.Errorf("read parent transcript: %w", err)
 	}
-	forkIndex := -1
-	for i, msg := range messages {
-		if strings.TrimSpace(msg.ID) == messageID {
-			forkIndex = i
-			break
-		}
-	}
+	forkIndex := messageIndexByID(messages, messageID)
 	if forkIndex < 0 {
 		return Session{}, fmt.Errorf("message not found")
 	}
@@ -1169,8 +1209,9 @@ func (s *Store) SetPromptOverride(id string, override string) error {
 // goals).
 var ErrSessionKindUnsupported = errors.New("session: kind does not support goals")
 
-// SetGoal replaces the session's active goal. Only "main" sessions are
-// permitted. Passing nil or a goal with empty description clears it.
+// SetGoal replaces the session's active goal. Only user chats are permitted:
+// the "main" session and ordinary chats (empty kind). Worker and subagent
+// sessions are rejected. Passing nil or a goal with empty description clears it.
 func (s *Store) SetGoal(id string, goal *SessionGoal) (Session, error) {
 	unlock := lockPath(s.indexPath())
 	defer unlock()
@@ -1182,19 +1223,15 @@ func (s *Store) SetGoal(id string, goal *SessionGoal) (Session, error) {
 	if !ok {
 		return Session{}, ErrSessionNotFound
 	}
-	if strings.TrimSpace(sess.Kind) != "main" {
+	if kind := strings.TrimSpace(sess.Kind); kind != "" && kind != "main" {
 		return Session{}, ErrSessionKindUnsupported
 	}
 	now := time.Now().UTC()
 	normalized := NormalizeGoal(goal)
-	if normalized == nil {
-		sess.Goal = nil
-	} else {
-		if normalized.CreatedAt.IsZero() {
-			normalized.CreatedAt = now
-		}
-		sess.Goal = normalized
+	if normalized != nil && normalized.CreatedAt.IsZero() {
+		normalized.CreatedAt = now
 	}
+	replaceGoal(&sess, normalized, false)
 	sess.UpdatedAt = now
 	index[id] = sess
 	if err := s.saveIndex(index); err != nil {
@@ -1217,7 +1254,7 @@ func (s *Store) ClearGoal(id string) (Session, error) {
 		return Session{}, ErrSessionNotFound
 	}
 	if sess.Goal != nil {
-		sess.Goal = nil
+		replaceGoal(&sess, nil, false)
 		sess.UpdatedAt = time.Now().UTC()
 		index[id] = sess
 		if err := s.saveIndex(index); err != nil {
@@ -1362,11 +1399,7 @@ func (s *Store) UpdateGoalProgress(id string, mutate func(*SessionGoal) *Session
 	current := *sess.Goal
 	next := mutate(&current)
 	now := time.Now().UTC()
-	if next == nil {
-		sess.Goal = nil
-	} else {
-		sess.Goal = NormalizeGoal(next)
-	}
+	replaceGoal(&sess, NormalizeGoal(next), true)
 	sess.UpdatedAt = now
 	index[id] = sess
 	if err := s.saveIndex(index); err != nil {

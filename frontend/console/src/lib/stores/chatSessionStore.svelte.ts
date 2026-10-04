@@ -449,6 +449,8 @@ export class ChatSessionStore {
 
   applyGoalEvent(event: GoalEvent): void {
     this.goal = event.goal
+    // A goal that ended hands back the permission mode it was granted.
+    if (event.phase === 'satisfied' || event.phase === 'exhausted') void this.refreshPermission()
     const message = goalEventFeedback(event, this.helpers.goalEventText())
     if (message) this.notify(message)
   }

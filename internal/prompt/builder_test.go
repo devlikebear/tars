@@ -145,6 +145,7 @@ func TestBuild_PlanningSectionPresentForMainAgent(t *testing.T) {
 		"tasks(action=\"plan_propose\"",
 		"tasks(action=\"plan_approve\"",
 		"STOP and wait",
+		"do not stop when the plan is already approved",
 		"in_progress",
 		"completed",
 		"paused",
