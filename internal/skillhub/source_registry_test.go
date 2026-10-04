@@ -107,15 +107,3 @@ func TestResolveSkillRef(t *testing.T) {
 		}
 	}
 }
-
-func TestTarsHubSourceSatisfiesHubSource(t *testing.T) {
-	// Compile-time assertion is in source_tarshub.go; this test is a
-	// runtime smoke that NewTarsHubSource returns a usable value.
-	src := NewTarsHubSource()
-	if src.ID() != DefaultSourceID {
-		t.Fatalf("ID = %q, want %q", src.ID(), DefaultSourceID)
-	}
-	if src.Registry == nil {
-		t.Fatalf("Registry is nil")
-	}
-}

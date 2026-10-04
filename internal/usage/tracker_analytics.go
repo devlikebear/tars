@@ -120,10 +120,6 @@ func (t *Tracker) Analytics(days int) (Analytics, error) {
 	return out, nil
 }
 
-func normalizeAnalyticsDays(days int) int {
-	return clampAnalyticsDays(days)
-}
-
 // analyticsDaysHardCap is the maximum window length we ever materialize a
 // per-day accumulator slice for. clampAnalyticsDays already constrains the
 // admin/console-facing surface to one of {7, 30, 90}; this constant exists so

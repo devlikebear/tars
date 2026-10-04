@@ -1799,7 +1799,7 @@ func TestAgentRuntimeAPIHandler_ReloadRefreshesWorkspaceAgents(t *testing.T) {
 
 func TestChannelsAPIHandler_WebhookAndTelegramInbound(t *testing.T) {
 	runtime := newTestAgentRuntime(t)
-	h := newChannelsAPIHandler(runtime, zerolog.New(io.Discard))
+	h := newChannelsAPIHandlerFull(runtime, nil, nil, "pairing", false, nil, zerolog.New(io.Discard))
 
 	payload, _ := json.Marshal(map[string]any{"text": "hello"})
 	recWebhook := httptest.NewRecorder()
@@ -1832,7 +1832,7 @@ func TestChannelsAPI_TelegramSend_UserAllowed(t *testing.T) {
 			APIAuthMode:  "required",
 			APIUserToken: "user-token",
 		},
-	}, zerolog.New(io.Discard), newChannelsAPIHandlerWithTelegramSender(runtime, sender, zerolog.New(io.Discard)), io.Discard)
+	}, zerolog.New(io.Discard), newChannelsAPIHandlerFull(runtime, sender, nil, "pairing", false, nil, zerolog.New(io.Discard)), io.Discard)
 
 	body := bytes.NewBufferString(`{"chat_id":"chat-1","text":"hello"}`)
 	rec := httptest.NewRecorder()
@@ -1859,7 +1859,7 @@ func TestChannelsAPI_TelegramSendRejectsInvalidBody(t *testing.T) {
 	sender := telegramSendFunc(func(ctx context.Context, req telegramSendRequest) (telegramSendResult, error) {
 		return telegramSendResult{}, nil
 	})
-	h := newChannelsAPIHandlerWithTelegramSender(runtime, sender, zerolog.New(io.Discard))
+	h := newChannelsAPIHandlerFull(runtime, sender, nil, "pairing", false, nil, zerolog.New(io.Discard))
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/v1/channels/telegram/send", strings.NewReader("{"))
@@ -1890,14 +1890,7 @@ func TestChannelsAPI_TelegramPairings_Approve(t *testing.T) {
 	if err != nil {
 		t.Fatalf("issue pairing: %v", err)
 	}
-	h := newChannelsAPIHandlerWithTelegramPairings(
-		runtime,
-		nil,
-		pairings,
-		"pairing",
-		true,
-		zerolog.New(io.Discard),
-	)
+	h := newChannelsAPIHandlerFull(runtime, nil, pairings, "pairing", true, nil, zerolog.New(io.Discard))
 
 	recList := httptest.NewRecorder()
 	reqList := httptest.NewRequest(http.MethodGet, "/v1/channels/telegram/pairings", nil)
@@ -1940,14 +1933,7 @@ func TestChannelsAPI_TelegramPairingsApproveUnknownCodeReturnsNotFound(t *testin
 	if err != nil {
 		t.Fatalf("newTelegramPairingStore: %v", err)
 	}
-	h := newChannelsAPIHandlerWithTelegramPairings(
-		runtime,
-		nil,
-		pairings,
-		"pairing",
-		true,
-		zerolog.New(io.Discard),
-	)
+	h := newChannelsAPIHandlerFull(runtime, nil, pairings, "pairing", true, nil, zerolog.New(io.Discard))
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/v1/channels/telegram/pairings/approve", bytes.NewBufferString(`{"code":"missing"}`))

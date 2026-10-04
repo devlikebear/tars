@@ -8,7 +8,7 @@ func TestPushToTalkStateTransitions(t *testing.T) {
 	if !state.HandlePressed() {
 		t.Fatalf("expected first pressed event to start recording")
 	}
-	if !state.Recording() {
+	if !state.recording {
 		t.Fatalf("expected recording=true after pressed")
 	}
 	if state.HandlePressed() {
@@ -17,7 +17,7 @@ func TestPushToTalkStateTransitions(t *testing.T) {
 	if !state.HandleReleased() {
 		t.Fatalf("expected released event to stop recording")
 	}
-	if state.Recording() {
+	if state.recording {
 		t.Fatalf("expected recording=false after released")
 	}
 	if state.HandleReleased() {

@@ -21,29 +21,6 @@ type embodimentIngress interface {
 	IngestPayload(ctx context.Context, provider string, payload map[string]any) (embodiment.IngestResult, error)
 }
 
-func newChannelsAPIHandler(runtime *agentruntime.Runtime, logger zerolog.Logger) http.Handler {
-	return newChannelsAPIHandlerWithTelegramSender(runtime, nil, logger)
-}
-
-func newChannelsAPIHandlerWithTelegramSender(runtime *agentruntime.Runtime, sender telegramSender, logger zerolog.Logger) http.Handler {
-	return newChannelsAPIHandlerWithTelegramPairings(runtime, sender, nil, "pairing", false, logger)
-}
-
-func newChannelsAPIHandlerWithEmbodiment(runtime *agentruntime.Runtime, ingress embodimentIngress, logger zerolog.Logger) http.Handler {
-	return newChannelsAPIHandlerFull(runtime, nil, nil, "pairing", false, ingress, logger)
-}
-
-func newChannelsAPIHandlerWithTelegramPairings(
-	runtime *agentruntime.Runtime,
-	sender telegramSender,
-	pairings *telegramPairingStore,
-	dmPolicy string,
-	pollingEnabled bool,
-	logger zerolog.Logger,
-) http.Handler {
-	return newChannelsAPIHandlerFull(runtime, sender, pairings, dmPolicy, pollingEnabled, nil, logger)
-}
-
 func newChannelsAPIHandlerFull(
 	runtime *agentruntime.Runtime,
 	sender telegramSender,

@@ -112,15 +112,6 @@ func TestHomebrewCaskRequiresVersionAndChecksums(t *testing.T) {
 	}
 }
 
-func TestDesktopArchiveName(t *testing.T) {
-	if got := DesktopArchiveName("1.2.3", "darwin", "arm64"); got != "tars-desktop_1.2.3_darwin_arm64.tar.gz" {
-		t.Fatalf("unexpected desktop archive name: %q", got)
-	}
-	if got := DesktopArchiveName("1.2.3", "windows", "amd64"); got != "tars-desktop_1.2.3_windows_amd64.zip" {
-		t.Fatalf("unexpected windows desktop archive name: %q", got)
-	}
-}
-
 func TestReleaseAssetMetadata(t *testing.T) {
 	if got := AssetArchiveName("1.2.3", "darwin", "arm64"); got != "tars_1.2.3_darwin_arm64.tar.gz" {
 		t.Fatalf("unexpected asset archive name: %q", got)

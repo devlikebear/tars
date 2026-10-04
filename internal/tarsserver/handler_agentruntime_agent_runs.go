@@ -13,18 +13,6 @@ import (
 	"github.com/rs/zerolog"
 )
 
-func newAgentRunsAPIHandler(runtime *agentruntime.Runtime, logger zerolog.Logger) http.Handler {
-	return newAgentRunsAPIHandlerWithWorkLedgerAndInflightLimit(runtime, nil, logger, 4)
-}
-
-func newAgentRunsAPIHandlerWithInflightLimit(runtime *agentruntime.Runtime, logger zerolog.Logger, maxInflightAgentRuns int) http.Handler {
-	return newAgentRunsAPIHandlerWithWorkLedgerAndInflightLimit(runtime, nil, logger, maxInflightAgentRuns)
-}
-
-func newAgentRunsAPIHandlerWithWorkLedger(runtime *agentruntime.Runtime, ledger *workstore.Store, logger zerolog.Logger) http.Handler {
-	return newAgentRunsAPIHandlerWithWorkLedgerAndInflightLimit(runtime, ledger, logger, 4)
-}
-
 func newAgentRunsAPIHandlerWithWorkLedgerAndInflightLimit(runtime *agentruntime.Runtime, ledger *workstore.Store, logger zerolog.Logger, maxInflightAgentRuns int) http.Handler {
 	inflight := newInflightLimiter(maxInflightAgentRuns, 4)
 	mux := http.NewServeMux()

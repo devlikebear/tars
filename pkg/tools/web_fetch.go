@@ -104,14 +104,6 @@ func NewWebFetchToolWithOptions(opts WebFetchOptions) Tool {
 	}
 }
 
-func newWebFetchToolWithHTTP(enabled bool, httpClient *http.Client) Tool {
-	return NewWebFetchToolWithOptions(WebFetchOptions{
-		Enabled:           enabled,
-		AllowPrivateHosts: true,
-		HTTPClient:        httpClient,
-	})
-}
-
 func fetchWithSSRFGuard(
 	ctx context.Context,
 	httpClient *http.Client,

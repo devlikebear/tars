@@ -61,7 +61,7 @@ func TestWebhookInboundEmbodimentPerceptPersistsAndIngests(t *testing.T) {
 			CognitionResult: embodiment.CognitionResult{Triggered: true, RunID: "run_1"},
 		},
 	}
-	h := newChannelsAPIHandlerWithEmbodiment(runtime, ingress, zerolog.New(io.Discard))
+	h := newChannelsAPIHandlerFull(runtime, nil, nil, "pairing", false, ingress, zerolog.New(io.Discard))
 
 	payload, _ := json.Marshal(map[string]any{
 		"source":    "stackchan",
@@ -91,7 +91,7 @@ func TestWebhookInboundEmbodimentPerceptPersistsAndIngests(t *testing.T) {
 func TestWebhookInboundNonEmbodimentPayloadKeepsExistingBehavior(t *testing.T) {
 	runtime := newTestAgentRuntime(t)
 	ingress := &recordingEmbodimentIngress{known: map[string]bool{"stackchan": true}}
-	h := newChannelsAPIHandlerWithEmbodiment(runtime, ingress, zerolog.New(io.Discard))
+	h := newChannelsAPIHandlerFull(runtime, nil, nil, "pairing", false, ingress, zerolog.New(io.Discard))
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/v1/channels/webhook/inbound/general", strings.NewReader(`{"text":"plain webhook"}`))

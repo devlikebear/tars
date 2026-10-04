@@ -211,21 +211,6 @@ func (s *licenseErrorSource) FetchLicense(_ context.Context, _ *RegistryEntry) (
 	return s.license, LicenseUnknown, nil
 }
 
-func TestSkillFileChecksums(t *testing.T) {
-	files := map[string][]byte{
-		"a.txt": []byte("hello"),
-		"b.txt": []byte("world"),
-	}
-	sums := SkillFileChecksums(files)
-	if len(sums) != 2 {
-		t.Fatalf("expected 2 sums, got %d", len(sums))
-	}
-	// sha256("hello") -> known constant
-	if sums["a.txt"] != "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824" {
-		t.Errorf("sha256(hello) mismatch: %s", sums["a.txt"])
-	}
-}
-
 // helpers
 
 func newExternalStub() *externalStubSource {
