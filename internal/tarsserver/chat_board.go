@@ -33,17 +33,20 @@ type boardSession struct {
 	PendingApprovals int    `json:"pending_approvals"`
 	// QueuedApprovals are unattended runs' tool calls waiting in the ops
 	// queue.
-	QueuedApprovals int             `json:"queued_approvals"`
-	RunningSince    *time.Time      `json:"running_since,omitempty"`
-	LastTurnAt      *time.Time      `json:"last_turn_at,omitempty"`
-	UpdatedAt       time.Time       `json:"updated_at"`
-	PinnedAt        *time.Time      `json:"pinned_at,omitempty"`
-	Cwd             string          `json:"cwd,omitempty"`
-	Repo            string          `json:"repo,omitempty"`
-	Branch          string          `json:"branch,omitempty"`
-	LastChange      *boardChange    `json:"last_change,omitempty"`
-	CostUSD         float64         `json:"cost_usd"`
-	Goal            *boardGoalBrief `json:"goal,omitempty"`
+	QueuedApprovals int          `json:"queued_approvals"`
+	RunningSince    *time.Time   `json:"running_since,omitempty"`
+	LastTurnAt      *time.Time   `json:"last_turn_at,omitempty"`
+	UpdatedAt       time.Time    `json:"updated_at"`
+	PinnedAt        *time.Time   `json:"pinned_at,omitempty"`
+	Cwd             string       `json:"cwd,omitempty"`
+	Repo            string       `json:"repo,omitempty"`
+	Branch          string       `json:"branch,omitempty"`
+	LastChange      *boardChange `json:"last_change,omitempty"`
+	CostUSD         float64      `json:"cost_usd"`
+	// UnpricedCalls counts the session's calls with no known price; CostUSD
+	// leaves them out.
+	UnpricedCalls int             `json:"unpriced_calls"`
+	Goal          *boardGoalBrief `json:"goal,omitempty"`
 }
 
 // boardChange is the latest turn that changed files, from its checkpoint.
@@ -84,7 +87,7 @@ type sessionBoard struct {
 	sessions    *session.Store
 	activity    *chatActivity
 	checkpoints *checkpoint.Store
-	costs       func() (map[string]float64, error)
+	costs       func() (map[string]boardCost, error)
 	// queued counts each session's unattended approvals; nil counts none.
 	queued   func() (map[string]int, error)
 	branchOf func(ctx context.Context, dir string) string
@@ -94,12 +97,18 @@ type sessionBoard struct {
 	repos map[string]boardRepo
 }
 
+// boardCost is one session's cost for the board's period.
+type boardCost struct {
+	USD           float64
+	UnpricedCalls int
+}
+
 type boardRepo struct {
 	root, branch string
 	at           time.Time
 }
 
-func newSessionBoard(sessions *session.Store, activity *chatActivity, checkpoints *checkpoint.Store, costs func() (map[string]float64, error)) *sessionBoard {
+func newSessionBoard(sessions *session.Store, activity *chatActivity, checkpoints *checkpoint.Store, costs func() (map[string]boardCost, error)) *sessionBoard {
 	return &sessionBoard{
 		sessions:    sessions,
 		activity:    activity,
@@ -142,7 +151,8 @@ func (b *sessionBoard) build(ctx context.Context) (boardResponse, error) {
 			UpdatedAt:        s.UpdatedAt,
 			PinnedAt:         s.PinnedAt,
 			Cwd:              b.workingFolder(s),
-			CostUSD:          costs[s.ID],
+			CostUSD:          costs[s.ID].USD,
+			UnpricedCalls:    costs[s.ID].UnpricedCalls,
 		}
 		if started, ok := running[s.ID]; ok {
 			item.Status = boardStatusRunning
@@ -276,18 +286,18 @@ func (b *sessionBoard) handle(w http.ResponseWriter, r *http.Request) {
 
 // sessionCostsFrom reads this month's cost per session from the usage
 // tracker in one pass over the month's entries.
-func sessionCostsFrom(tracker *usage.Tracker) func() (map[string]float64, error) {
+func sessionCostsFrom(tracker *usage.Tracker) func() (map[string]boardCost, error) {
 	if tracker == nil {
 		return nil
 	}
-	return func() (map[string]float64, error) {
+	return func() (map[string]boardCost, error) {
 		summary, err := tracker.Summary(boardCostPeriod, "session")
 		if err != nil {
 			return nil, err
 		}
-		out := make(map[string]float64, len(summary.Rows))
+		out := make(map[string]boardCost, len(summary.Rows))
 		for _, row := range summary.Rows {
-			out[row.Key] = row.CostUSD
+			out[row.Key] = boardCost{USD: row.CostUSD, UnpricedCalls: row.UnpricedCalls}
 		}
 		return out, nil
 	}

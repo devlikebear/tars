@@ -39,3 +39,42 @@ func TestTracker_SummaryCountsUnpricedCalls(t *testing.T) {
 		t.Fatalf("rows: %+v", got.Rows)
 	}
 }
+
+func TestTracker_AnalyticsCountsUnpricedCalls(t *testing.T) {
+	now := time.Date(2026, 10, 4, 12, 0, 0, 0, time.UTC)
+	tracker, err := NewTracker(t.TempDir(), TrackerOptions{Now: func() time.Time { return now }})
+	if err != nil {
+		t.Fatalf("new tracker: %v", err)
+	}
+	for _, entry := range []Entry{
+		{Timestamp: now, Provider: "openai-codex", Model: "gpt-6-astra", InputTokens: 500, OutputTokens: 50},
+		{Timestamp: now, Provider: "anthropic", Model: "claude-sonnet-4-6", InputTokens: 100, OutputTokens: 10, EstimatedCostUSD: 0.01, PricingKnown: true},
+	} {
+		if err := tracker.Record(entry); err != nil {
+			t.Fatalf("record: %v", err)
+		}
+	}
+	got, err := tracker.Analytics(7)
+	if err != nil {
+		t.Fatalf("analytics: %v", err)
+	}
+	if got.Totals.UnpricedCalls != 1 {
+		t.Fatalf("totals unpriced = %d, want 1", got.Totals.UnpricedCalls)
+	}
+	daily := 0
+	for _, row := range got.Daily {
+		daily += row.UnpricedCalls
+	}
+	if daily != 1 {
+		t.Fatalf("daily unpriced = %d, want 1", daily)
+	}
+	for _, row := range got.Models {
+		want := 0
+		if row.Provider == "openai-codex" {
+			want = 1
+		}
+		if row.UnpricedCalls != want {
+			t.Fatalf("model %s/%s unpriced = %d, want %d", row.Provider, row.Model, row.UnpricedCalls, want)
+		}
+	}
+}

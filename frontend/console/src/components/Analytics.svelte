@@ -50,8 +50,16 @@
     return new Intl.NumberFormat('en').format(Math.round(value ?? 0))
   }
 
-  function fmtCost(value?: number): string {
-    return `$${(value ?? 0).toFixed(4)}`
+  // Calls with no known price are missing from the cost, so a bare amount
+  // would read as measured.
+  function fmtCost(value?: number, unpriced = 0): string {
+    const cost = value ?? 0
+    if (unpriced > 0 && cost === 0) return $t.analytics.summary.unpricedCost
+    return `$${cost.toFixed(4)}${unpriced > 0 ? '+' : ''}`
+  }
+
+  function costTitle(unpriced = 0): string | undefined {
+    return unpriced > 0 ? $t.analytics.summary.unpricedHint(unpriced) : undefined
   }
 
   function fmtAvg(value?: number): string {
@@ -167,7 +175,7 @@
     </div>
     <div class="summary-card card">
       <span>{$t.analytics.summary.estimatedCost}</span>
-      <strong>{fmtCost(analytics?.totals.cost_usd)}</strong>
+      <strong title={costTitle(analytics?.totals.unpriced_calls)}>{fmtCost(analytics?.totals.cost_usd, analytics?.totals.unpriced_calls)}</strong>
       <small>{$t.analytics.summary.daysSuffix(selectedDays)}</small>
     </div>
   </section>
@@ -338,7 +346,7 @@
                   <td>{fmtInt(row.sessions)}</td>
                   <td>{fmtInt(row.input_tokens)}</td>
                   <td>{fmtInt(row.output_tokens)}</td>
-                  <td>{fmtCost(row.cost_usd)}</td>
+                  <td title={costTitle(row.unpriced_calls)}>{fmtCost(row.cost_usd, row.unpriced_calls)}</td>
                 </tr>
               {/each}
             </tbody>

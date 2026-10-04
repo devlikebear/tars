@@ -1275,7 +1275,7 @@ type chatToolingOptions struct {
 	Notify func(context.Context, notificationEvent)
 	// SessionCosts returns this month's cost per chat session for the
 	// session board (#971). nil shows every cost as 0.
-	SessionCosts func() (map[string]float64, error)
+	SessionCosts func() (map[string]boardCost, error)
 	// Focus carries out focus pipelines' actions after turns and gate
 	// actions (verification, the next turn). nil leaves pipelines waiting
 	// for the console.

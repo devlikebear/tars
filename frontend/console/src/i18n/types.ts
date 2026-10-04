@@ -796,6 +796,8 @@ export type Translations = {
       avgPerSession: string
       tokensSuffix: string
       estimatedCost: string
+      unpricedCost: string
+      unpricedHint: (calls: number) => string
       daysSuffix: (days: number) => string
     }
     chart: {

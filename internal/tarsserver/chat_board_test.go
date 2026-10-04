@@ -61,8 +61,8 @@ func TestSessionBoardShowsStatusRepoChangeAndCost(t *testing.T) {
 	endIdle := activity.begin(idle.ID)
 	endIdle()
 
-	board := newSessionBoard(fx.sessions, activity, fx.store, func() (map[string]float64, error) {
-		return map[string]float64{fx.sessionID: 1.25}, nil
+	board := newSessionBoard(fx.sessions, activity, fx.store, func() (map[string]boardCost, error) {
+		return map[string]boardCost{fx.sessionID: {USD: 1.25, UnpricedCalls: 3}}, nil
 	})
 	resp, err := board.build(ctx)
 	if err != nil {
@@ -99,8 +99,8 @@ func TestSessionBoardShowsStatusRepoChangeAndCost(t *testing.T) {
 	if got.LastChange == nil || got.LastChange.Files != 1 || got.LastChange.Additions != 1 || got.LastTurnAt == nil {
 		t.Fatalf("last change = %+v last turn = %v", got.LastChange, got.LastTurnAt)
 	}
-	if got.CostUSD != 1.25 {
-		t.Fatalf("cost = %v", got.CostUSD)
+	if got.CostUSD != 1.25 || got.UnpricedCalls != 3 {
+		t.Fatalf("cost = %v, unpriced = %d", got.CostUSD, got.UnpricedCalls)
 	}
 	if other := byID[idle.ID]; other.Status != boardStatusIdle || other.Repo != "" || other.LastChange != nil {
 		t.Fatalf("idle session = %+v", other)
@@ -142,7 +142,7 @@ func TestSessionBoardCachesRepoLookups(t *testing.T) {
 
 func TestSessionBoardWithoutCheckpointsOrCosts(t *testing.T) {
 	fx := newCheckpointFixture(t)
-	board := newSessionBoard(fx.sessions, nil, nil, func() (map[string]float64, error) {
+	board := newSessionBoard(fx.sessions, nil, nil, func() (map[string]boardCost, error) {
 		return nil, errors.New("usage unavailable")
 	})
 	resp, err := board.build(context.Background())

@@ -811,6 +811,8 @@ export const ko = {
       avgPerSession: '세션당 평균',
       tokensSuffix: '토큰',
       estimatedCost: '예상 비용',
+      unpricedCost: '단가 없음',
+      unpricedHint: (calls: number) => `호출 ${calls}회는 단가를 모르는 모델이라 비용에 들어 있지 않습니다. usage.price_overrides에 단가를 넣으면 집계됩니다.`,
       daysSuffix: (days: number) => `${days}일`,
     },
     chart: {

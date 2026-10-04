@@ -108,6 +108,8 @@ export type AnalyticsTotals = {
   output_tokens: number
   total_tokens: number
   cost_usd: number
+  // Calls with no known price, left out of cost_usd. Absent before 0.45.6.
+  unpriced_calls?: number
   avg_tokens_per_session: number
 }
 
@@ -119,6 +121,8 @@ export type AnalyticsDailyRow = {
   output_tokens: number
   total_tokens: number
   cost_usd: number
+  // Calls with no known price, left out of cost_usd. Absent before 0.45.6.
+  unpriced_calls?: number
 }
 
 export type AnalyticsModelRow = {
@@ -130,6 +134,8 @@ export type AnalyticsModelRow = {
   output_tokens: number
   total_tokens: number
   cost_usd: number
+  // Calls with no known price, left out of cost_usd. Absent before 0.45.6.
+  unpriced_calls?: number
 }
 
 export type AnalyticsSkillRow = {

@@ -16,34 +16,39 @@ type Analytics struct {
 }
 
 type AnalyticsTotals struct {
-	Calls               int     `json:"calls"`
-	Sessions            int     `json:"sessions"`
-	InputTokens         int     `json:"input_tokens"`
-	OutputTokens        int     `json:"output_tokens"`
-	TotalTokens         int     `json:"total_tokens"`
-	CostUSD             float64 `json:"cost_usd"`
+	Calls        int     `json:"calls"`
+	Sessions     int     `json:"sessions"`
+	InputTokens  int     `json:"input_tokens"`
+	OutputTokens int     `json:"output_tokens"`
+	TotalTokens  int     `json:"total_tokens"`
+	CostUSD      float64 `json:"cost_usd"`
+	// UnpricedCalls counts calls whose tokens had no known price; CostUSD
+	// leaves them out.
+	UnpricedCalls       int     `json:"unpriced_calls"`
 	AvgTokensPerSession float64 `json:"avg_tokens_per_session"`
 }
 
 type AnalyticsDailyRow struct {
-	Day          string  `json:"day"`
-	Calls        int     `json:"calls"`
-	Sessions     int     `json:"sessions"`
-	InputTokens  int     `json:"input_tokens"`
-	OutputTokens int     `json:"output_tokens"`
-	TotalTokens  int     `json:"total_tokens"`
-	CostUSD      float64 `json:"cost_usd"`
+	Day           string  `json:"day"`
+	Calls         int     `json:"calls"`
+	Sessions      int     `json:"sessions"`
+	InputTokens   int     `json:"input_tokens"`
+	OutputTokens  int     `json:"output_tokens"`
+	TotalTokens   int     `json:"total_tokens"`
+	CostUSD       float64 `json:"cost_usd"`
+	UnpricedCalls int     `json:"unpriced_calls"`
 }
 
 type AnalyticsModelRow struct {
-	Provider     string  `json:"provider"`
-	Model        string  `json:"model"`
-	Calls        int     `json:"calls"`
-	Sessions     int     `json:"sessions"`
-	InputTokens  int     `json:"input_tokens"`
-	OutputTokens int     `json:"output_tokens"`
-	TotalTokens  int     `json:"total_tokens"`
-	CostUSD      float64 `json:"cost_usd"`
+	Provider      string  `json:"provider"`
+	Model         string  `json:"model"`
+	Calls         int     `json:"calls"`
+	Sessions      int     `json:"sessions"`
+	InputTokens   int     `json:"input_tokens"`
+	OutputTokens  int     `json:"output_tokens"`
+	TotalTokens   int     `json:"total_tokens"`
+	CostUSD       float64 `json:"cost_usd"`
+	UnpricedCalls int     `json:"unpriced_calls"`
 }
 
 type AnalyticsSkillRow struct {
@@ -196,6 +201,11 @@ func applyAnalyticsEntry(
 	modelAcc.row.OutputTokens += output
 	modelAcc.row.TotalTokens += total
 	modelAcc.row.CostUSD += entry.EstimatedCostUSD
+	if entryUnpriced(entry) {
+		totals.UnpricedCalls++
+		daily.row.UnpricedCalls++
+		modelAcc.row.UnpricedCalls++
+	}
 	if entry.SessionID != "" {
 		modelAcc.sessions[entry.SessionID] = struct{}{}
 	}
