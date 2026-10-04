@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -31,10 +32,13 @@ func TestRun_OneShot(t *testing.T) {
 					t.Errorf("unexpected request: %+v", req)
 				}
 				w.Header().Set("Content-Type", "text/event-stream")
-				fmt.Fprint(w, "data: {\"type\":\"status\",\"message\":\"working\"}\n\n")
-				fmt.Fprint(w, "data: {\"type\":\"delta\",\"text\":\"hello \"}\n\n")
-				fmt.Fprint(w, "data: {\"type\":\"delta\",\"text\":\"world\"}\n\n")
-				fmt.Fprint(w, "data: {\"type\":\"done\",\"session_id\":\"s-1\"}\n\n")
+				stream := "data: {\"type\":\"status\",\"message\":\"working\"}\n\n" +
+					"data: {\"type\":\"delta\",\"text\":\"hello \"}\n\n" +
+					"data: {\"type\":\"delta\",\"text\":\"world\"}\n\n" +
+					"data: {\"type\":\"done\",\"session_id\":\"s-1\"}\n\n"
+				if _, err := io.WriteString(w, stream); err != nil {
+					t.Errorf("write stream: %v", err)
+				}
 			}))
 			defer server.Close()
 			var stdout, stderr bytes.Buffer
