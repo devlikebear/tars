@@ -333,6 +333,7 @@ func formatSessionGoalPrompt(goal *session.SessionGoal) string {
 	b.WriteString("\n\nKeep working toward this goal across turns without waiting for the user. ")
 	b.WriteString("Once you are confident it is satisfied, say so plainly in your final reply — an independent judge will verify and clear the goal. ")
 	b.WriteString("If the goal is not yet satisfied, continue making concrete progress on the next step rather than asking for confirmation.\n")
+	b.WriteString("Setting this goal pre-approved your plans: when you draft a plan with the `tasks` tool, do not stop at plan_propose — approve it and start executing in the same turn.\n")
 	b.WriteString("Auto-continue budget remaining: ")
 	b.WriteString(strconv.Itoa(budget))
 	b.WriteString("/")

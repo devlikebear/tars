@@ -762,6 +762,8 @@ pkg/session field SessionGoal.CreatedAt
 pkg/session field SessionGoal.Description
 pkg/session field SessionGoal.LastJudgedAt
 pkg/session field SessionGoal.MaxAutoContinues
+pkg/session field SessionGoal.PermissionMode
+pkg/session field SessionGoal.RestorePermissionMode
 pkg/session field SessionGoal.Status
 pkg/session field SessionStyleControl.Autonomy
 pkg/session field SessionStyleControl.Caution

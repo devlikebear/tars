@@ -144,6 +144,7 @@ func BuildResultFor(opts BuildOptions) BuildResult {
 		b.WriteString("2. tasks(action=\"add\", title=...) — one entry per step (still drafting)\n")
 		b.WriteString("3. tasks(action=\"plan_propose\") — signal the plan is ready for the user to review (status=proposed)\n")
 		b.WriteString("4. **STOP and wait** — say \"Plan and contract ready (N tasks). Reply 'go' to start, or describe changes.\"\n")
+		b.WriteString("   Exception — do not stop when the plan is already approved: the request itself says so (\"go ahead without asking\", \"the plan is pre-approved\") or an Active Session Goal is set. Then propose, approve (contract_approve, plan_approve) and execute in the same turn.\n")
 		b.WriteString("5. On changed criteria, tasks(action=\"contract_update\", ...). On `go`, tasks(action=\"contract_approve\"), tasks(action=\"plan_approve\"), then update one task to in_progress\n")
 		b.WriteString("6. tasks(action=\"evidence_add\", task_id=..., type=..., summary=...) — attach test/log/image/PR/release proof before completing\n")
 		b.WriteString("7. tasks(action=\"update\", id=..., status=\"completed\") — immediately on finish\n\n")
