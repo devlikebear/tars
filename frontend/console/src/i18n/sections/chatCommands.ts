@@ -44,11 +44,15 @@ export const chatCommandsEn = {
       satisfied: 'satisfied',
       exhausted: 'exhausted',
     },
-    none: 'goal: (none) — usage: /goal <description> | /goal clear',
+    none: 'goal: (none) — usage: /goal [--auto | --accept-edits] <description> | /goal clear',
     show: (status: string, description: string, remaining: number, max: number) =>
       `goal [${status}]: ${description}\n  auto-continues remaining: ${remaining}/${max}`,
     cleared: 'goal cleared',
     set: (description: string) => `goal set: ${description}`,
+    // `mode` is a label from permissionMode.modes.
+    setWithMode: (description: string, mode: string) =>
+      `goal set: ${description}\n  permission mode: ${mode} until the goal ends`,
+    unknownFlag: (flag: string) => `goal: unknown option ${flag} — use --auto or --accept-edits`,
     clearedEmpty: 'goal cleared (empty description)',
     failed: (message: string) => `goal: ${message}`,
     failedFallback: 'failed',
@@ -87,7 +91,7 @@ export const chatCommandsEn = {
       new: { title: 'New chat', description: 'Start a new chat in a folder, this chat\'s folder by default, optionally in a worktree: /new [path] [--isolate].' },
       goal: {
         title: 'Session Goal',
-        description: 'Set/clear an autonomous session goal: /goal <description> | /goal clear | /goal status.',
+        description: 'Set/clear an autonomous session goal: /goal [--auto | --accept-edits] <description> | /goal clear | /goal status. The flag approves that permission mode until the goal ends.',
       },
     },
     // Skills and commands that ship without a description.
@@ -181,11 +185,13 @@ export const chatCommandsKo: ChatCommandsTranslations = {
       satisfied: '달성',
       exhausted: '소진',
     },
-    none: '목표: (없음) — 사용법: /goal <설명> | /goal clear',
+    none: '목표: (없음) — 사용법: /goal [--auto | --accept-edits] <설명> | /goal clear',
     show: (status, description, remaining, max) =>
       `목표 [${status}]: ${description}\n  남은 자동 계속: ${remaining}/${max}`,
     cleared: '목표 해제됨',
     set: (description) => `목표 설정됨: ${description}`,
+    setWithMode: (description, mode) => `목표 설정됨: ${description}\n  권한 모드: 목표가 끝날 때까지 ${mode}`,
+    unknownFlag: (flag) => `목표: 알 수 없는 옵션 ${flag} — --auto 또는 --accept-edits를 쓰세요`,
     clearedEmpty: '목표 해제됨 (빈 설명)',
     failed: (message) => `목표: ${message}`,
     failedFallback: '실패',
@@ -220,7 +226,7 @@ export const chatCommandsKo: ChatCommandsTranslations = {
       new: { title: '새 채팅', description: '폴더(기본은 이 채팅의 폴더)에서 새 채팅을 시작하고, 원하면 worktree로 격리합니다: /new [경로] [--isolate].' },
       goal: {
         title: '세션 목표',
-        description: '자율 세션 목표를 설정하거나 해제합니다: /goal <설명> | /goal clear | /goal status.',
+        description: '자율 세션 목표를 설정하거나 해제합니다: /goal [--auto | --accept-edits] <설명> | /goal clear | /goal status. 옵션을 주면 목표가 끝날 때까지 그 권한 모드를 함께 승인합니다.',
       },
     },
     noDescription: '설명이 없습니다.',
