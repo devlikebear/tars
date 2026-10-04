@@ -32,9 +32,16 @@ const (
 	EventProviderToolResult EventType = "provider_tool_result"
 	EventLoopEnd            EventType = "loop_end"
 	EventLoopError          EventType = "error"
-	DefaultMaxLoopIters               = 20
-	repeatedToolCallLimit             = 3
-	autoExecCommandFallback           = "pwd"
+	// DefaultMaxLoopIters is a runaway backstop, not a work budget: a turn
+	// that is making progress should never reach it. Stuck turns are caught
+	// earlier by the repeated-call and consecutive-error checks.
+	DefaultMaxLoopIters   = 200
+	repeatedToolCallLimit = 3
+	// consecutiveToolErrorLimit ends the tool phase of a turn after this many
+	// tool calls in a row came back as errors (failures and denials alike).
+	// One success resets the count.
+	consecutiveToolErrorLimit = 8
+	autoExecCommandFallback   = "pwd"
 )
 
 type Event struct {
@@ -174,6 +181,10 @@ func (l *Loop) Run(ctx context.Context, initial []llm.ChatMessage, opts RunOptio
 	lastToolOutcomeSig := ""
 	repeatedToolOutcomeCount := 0
 	repeatedInvalidExecCount := 0
+	consecutiveToolErrors := 0
+	// stopNotice is what the model is told when the loop takes its tools
+	// away; the default is the iteration limit.
+	stopNotice := iterationLimitNotice(maxIters)
 	execAutoCorrectUsed := false
 	l.emit(ctx, Event{Type: EventLoopStart, MessageCount: len(messages)})
 
@@ -184,6 +195,7 @@ func (l *Loop) Run(ctx context.Context, initial []llm.ChatMessage, opts RunOptio
 	seededResumeID := strings.TrimSpace(opts.ResumeSessionID)
 	activeResumeID := seededResumeID
 
+toolPhase:
 	for i := 0; i < maxIters; i++ {
 		l.emit(ctx, Event{Type: EventBeforeLLM, Iteration: i + 1, MessageCount: len(messages)})
 		live := &providerToolRelay{loop: l, ctx: ctx, iteration: i + 1}
@@ -482,8 +494,24 @@ func (l *Loop) Run(ctx context.Context, initial []llm.ChatMessage, opts RunOptio
 				Content:    redactedResult,
 				ToolCallID: call.ID,
 			})
+			if result.IsError {
+				consecutiveToolErrors++
+			} else {
+				consecutiveToolErrors = 0
+			}
+		}
+		// Checked once every call of this response has its result: a tool
+		// call left unanswered would make the transcript invalid.
+		if consecutiveToolErrors >= consecutiveToolErrorLimit {
+			stopNotice = consecutiveErrorNotice(consecutiveToolErrors)
+			break toolPhase
 		}
 	}
+
+	// The final call below runs with tools suppressed. Say why, or the model
+	// reports the missing tools as an outage instead of a limit it can
+	// continue past. The notice goes to this call only, not the transcript.
+	messages = append(messages, llm.ChatMessage{Role: "user", Content: stopNotice})
 
 	finalIter := maxIters + 1
 	l.emit(ctx, Event{Type: EventBeforeLLM, Iteration: finalIter, MessageCount: len(messages)})
@@ -702,4 +730,16 @@ func hasExecCommandArgument(rawArgs string) bool {
 		}
 	}
 	return false
+}
+
+const stopNoticeTail = "Tools are off for the rest of this turn only; nothing is broken. Do not call tools. " +
+	"Reply to the user now: what is done, what is left, and that they can reply to continue from here."
+
+func iterationLimitNotice(maxIters int) string {
+	return fmt.Sprintf("[system notice] This turn reached its limit of %d tool rounds. ", maxIters) + stopNoticeTail
+}
+
+func consecutiveErrorNotice(count int) string {
+	return fmt.Sprintf("[system notice] The last %d tool calls in a row failed, so this turn stops here. ", count) +
+		stopNoticeTail + " Say what kept failing and why, if you can tell."
 }
