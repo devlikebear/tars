@@ -691,6 +691,16 @@ func (s *Store) CreateWithOptions(title string, kind string, hidden bool) (Sessi
 	return session, nil
 }
 
+// messageIndexByID returns the index of the message with the given id, or -1.
+func messageIndexByID(messages []Message, id string) int {
+	for i, msg := range messages {
+		if strings.TrimSpace(msg.ID) == id {
+			return i
+		}
+	}
+	return -1
+}
+
 // ForkFromMessage creates a new visible session whose transcript contains the
 // parent transcript prefix through the selected message.
 func (s *Store) ForkFromMessage(parentID string, messageID string, opts ForkOptions) (Session, error) {
@@ -728,13 +738,7 @@ func (s *Store) ForkFromMessage(parentID string, messageID string, opts ForkOpti
 	if err != nil {
 		return Session{}, fmt.Errorf("read parent transcript: %w", err)
 	}
-	forkIndex := -1
-	for i, msg := range messages {
-		if strings.TrimSpace(msg.ID) == messageID {
-			forkIndex = i
-			break
-		}
-	}
+	forkIndex := messageIndexByID(messages, messageID)
 	if forkIndex < 0 {
 		return Session{}, fmt.Errorf("message not found")
 	}
