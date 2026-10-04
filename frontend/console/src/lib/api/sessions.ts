@@ -190,10 +190,14 @@ export async function setSessionGoal(
   sessionId: string,
   description: string,
   maxAutoContinues?: number,
+  permissionMode?: string,
 ): Promise<{ goal: SessionGoal | null }> {
   const body: Record<string, unknown> = { description }
   if (typeof maxAutoContinues === 'number' && maxAutoContinues > 0) {
     body.max_auto_continues = maxAutoContinues
+  }
+  if (permissionMode) {
+    body.permission_mode = permissionMode
   }
   return requestJSON<{ goal: SessionGoal | null }>(
     `/v1/admin/sessions/${encodeURIComponent(sessionId)}/goal`,

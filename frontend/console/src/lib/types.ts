@@ -666,6 +666,9 @@ export type SessionGoal = {
   auto_continue_count: number
   last_judged_at?: string
   status: SessionGoalStatus
+  // Tool permission mode approved together with the goal; the session gets
+  // its previous mode back when the goal ends.
+  permission_mode?: string
 }
 
 export type SessionCriticStatus = 'idle' | 'reviewing' | 'satisfied' | 'exhausted'

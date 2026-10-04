@@ -709,7 +709,7 @@ func buildAPIMux(
 		initiative:     initiativeSetup.Handler,
 		reflection:     reflectionSetup.Handler,
 		chat:           chatHandler,
-		sessions:       withWorktreeRetire(withSessionCreateIn(sessionHandler, sessionWorktrees), sessionWorktrees),
+		sessions:       withGoalAudit(withWorktreeRetire(withSessionCreateIn(sessionHandler, sessionWorktrees), sessionWorktrees), auditTo(opsManager)),
 		worktrees:      newSessionWorktreeHandler(sessionWorktrees),
 		sessionFolders: newSessionFoldersHandler(sessionWorktrees),
 		focus:          newFocusPipelineHandler(sessionStore, sessionWorktrees, focusDriver, logger),

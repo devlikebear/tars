@@ -57,11 +57,14 @@ func buildGoalAwareTurnEndHook(deps chatHandlerDeps, state chatRunState, stream 
 		}
 
 		if verdict.Satisfied {
-			if _, err := state.store.UpdateGoalProgress(state.sessionID, func(g *session.SessionGoal) *session.SessionGoal {
+			ended, err := state.store.UpdateGoalProgress(state.sessionID, func(g *session.SessionGoal) *session.SessionGoal {
 				g.Status = session.SessionGoalStatusSatisfied
 				return g
-			}); err != nil {
+			})
+			if err != nil {
 				deps.logger.Debug().Err(err).Str("session_id", state.sessionID).Msg("goal hook: mark satisfied failed")
+			} else {
+				auditGoalPermissionMode(auditTo(deps.tooling.OpsManager), state.sessionID, sess.PermissionMode, ended.PermissionMode, "goal_satisfied")
 			}
 			if _, err := state.store.ClearGoal(state.sessionID); err != nil {
 				deps.logger.Debug().Err(err).Str("session_id", state.sessionID).Msg("goal hook: clear after satisfied failed")
@@ -79,6 +82,8 @@ func buildGoalAwareTurnEndHook(deps chatHandlerDeps, state chatRunState, stream 
 			})
 			if err != nil {
 				deps.logger.Debug().Err(err).Str("session_id", state.sessionID).Msg("goal hook: mark exhausted failed")
+			} else {
+				auditGoalPermissionMode(auditTo(deps.tooling.OpsManager), state.sessionID, sess.PermissionMode, updated.PermissionMode, "goal_exhausted")
 			}
 			if stream != nil {
 				if updated.Goal != nil {

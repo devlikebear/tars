@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/devlikebear/tars/internal/ops"
 	"github.com/devlikebear/tars/internal/session"
 	"github.com/rs/zerolog"
 )
@@ -89,7 +90,21 @@ func TestSessionGoalAPI_PutGetDeleteRoundTrip(t *testing.T) {
 	}
 }
 
-func TestSessionGoalAPI_NonMainRejected(t *testing.T) {
+func TestSessionGoalAPI_WorkerSessionRejected(t *testing.T) {
+	store := session.NewStore(t.TempDir())
+	sess, err := store.CreateWithOptions("worker", "worker", true)
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	handler := newSessionAPIHandler(store, zerolog.New(io.Discard))
+
+	rec := adminGoalRequest(t, handler, http.MethodPut, sess.ID, `{"description":"x"}`)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for a worker session, got %d body=%q", rec.Code, rec.Body.String())
+	}
+}
+
+func TestSessionGoalAPI_OrdinaryChatAllowed(t *testing.T) {
 	store := session.NewStore(t.TempDir())
 	sess, err := store.Create("regular")
 	if err != nil {
@@ -98,8 +113,8 @@ func TestSessionGoalAPI_NonMainRejected(t *testing.T) {
 	handler := newSessionAPIHandler(store, zerolog.New(io.Discard))
 
 	rec := adminGoalRequest(t, handler, http.MethodPut, sess.ID, `{"description":"x"}`)
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400 for non-main, got %d body=%q", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for an ordinary chat, got %d body=%q", rec.Code, rec.Body.String())
 	}
 }
 
@@ -149,5 +164,65 @@ func TestSessionGoalAPI_PutEmptyDescriptionClears(t *testing.T) {
 	}
 	if resp.Goal != nil {
 		t.Fatalf("expected nil goal after empty put, got %+v", resp.Goal)
+	}
+}
+
+func TestSessionGoalAPI_PermissionModeComesWithTheGoal(t *testing.T) {
+	store := session.NewStore(t.TempDir())
+	sess, err := store.Create("regular")
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	handler := newSessionAPIHandler(store, zerolog.New(io.Discard))
+
+	rec := adminGoalRequest(t, handler, http.MethodPut, sess.ID, `{"description":"x","permission_mode":"yolo"}`)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for an unknown mode, got %d body=%q", rec.Code, rec.Body.String())
+	}
+
+	rec = adminGoalRequest(t, handler, http.MethodPut, sess.ID, `{"description":"x","permission_mode":"auto"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		PermissionMode string `json:"permission_mode"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.PermissionMode != "auto" {
+		t.Fatalf("expected the session in auto, got %q", resp.PermissionMode)
+	}
+
+	rec = adminGoalRequest(t, handler, http.MethodDelete, sess.ID, "")
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if rec.Code != http.StatusOK || resp.PermissionMode != "" {
+		t.Fatalf("expected the mode handed back on clear, got %d mode=%q", rec.Code, resp.PermissionMode)
+	}
+}
+
+func TestSessionGoalAPI_PermissionModeChangeIsAudited(t *testing.T) {
+	store := session.NewStore(t.TempDir())
+	sess, err := store.Create("regular")
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	var entries []ops.AutomationAuditEntry
+	handler := withGoalAudit(newSessionAPIHandler(store, zerolog.New(io.Discard)), func(e ops.AutomationAuditEntry) {
+		entries = append(entries, e)
+	})
+
+	adminGoalRequest(t, handler, http.MethodPut, sess.ID, `{"description":"x","permission_mode":"auto"}`)
+	adminGoalRequest(t, handler, http.MethodDelete, sess.ID, "")
+	if len(entries) != 2 {
+		t.Fatalf("expected the grant and the hand-back audited, got %+v", entries)
+	}
+	if entries[0].Details["to"] != "auto" || entries[0].Details["reason"] != "goal_set" {
+		t.Fatalf("unexpected grant entry: %+v", entries[0])
+	}
+	if entries[1].Details["from"] != "auto" || entries[1].Details["reason"] != "goal_cleared" {
+		t.Fatalf("unexpected hand-back entry: %+v", entries[1])
 	}
 }
