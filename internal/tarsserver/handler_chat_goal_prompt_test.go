@@ -34,6 +34,9 @@ func TestFormatSessionGoalPrompt_ActiveContainsDescriptionAndBudget(t *testing.T
 	if !strings.Contains(prompt, "3/5") {
 		t.Fatalf("missing remaining budget 3/5: %q", prompt)
 	}
+	if !strings.Contains(prompt, "do not stop at plan_propose") {
+		t.Fatalf("goal must pre-approve plans: %q", prompt)
+	}
 }
 
 func TestFormatSessionGoalPrompt_NegativeBudgetClampedToZero(t *testing.T) {
