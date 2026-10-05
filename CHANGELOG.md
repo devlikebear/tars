@@ -15,6 +15,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 - Unused console code: about 1,380 lines. The structured config editor's draft builders in `configStructured.ts` (the editor itself was removed earlier; only its helpers and their tests were left), API client functions and types nothing called, and 50 translation keys per language that no component read.
 
+## [0.46.2] - 2026-10-05
+
+### Fixed
+
+- A session's tool, skill or prompt settings changed after its first turn were ignored until the server restarted. The effective configuration is cached per session and was refreshed only when the working folder or a `.tars/settings*.json` file changed, not when the session's own configuration did, so enabling a tool in Session Config (or through `PATCH /v1/admin/sessions/{id}/config`) left the chat with the old tool list while `GET …/config` and `/v1/chat/tools` already showed the new one.
+
 ## [0.46.1] - 2026-10-05
 
 ### Fixed
