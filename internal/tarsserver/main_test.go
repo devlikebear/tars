@@ -3571,3 +3571,27 @@ func TestSessionAPI_TasksPOSTInvokesAggregator(t *testing.T) {
 		t.Fatalf("expected transition error, got %q", rec.Body.String())
 	}
 }
+
+// A server with no log.level runs at info, the documented default. It used
+// to run at debug and log every request and LLM payload.
+func TestParseLogLevelDefaultsToInfo(t *testing.T) {
+	for raw, want := range map[string]zerolog.Level{
+		"":        zerolog.InfoLevel,
+		"  ":      zerolog.InfoLevel,
+		"verbose": zerolog.InfoLevel,
+		"DEBUG":   zerolog.DebugLevel,
+		"trace":   zerolog.TraceLevel,
+		"warning": zerolog.WarnLevel,
+		"error":   zerolog.ErrorLevel,
+	} {
+		if got := parseLogLevel(raw); got != want {
+			t.Fatalf("parseLogLevel(%q) = %s, want %s", raw, got, want)
+		}
+	}
+	// --verbose still asks for debug.
+	warn := config.Config{}
+	warn.LogLevel = "warn"
+	if cfg := buildLoggerConfig(&options{Verbose: true}, warn); cfg.Level != "debug" {
+		t.Fatalf("--verbose should force debug, got %q", cfg.Level)
+	}
+}

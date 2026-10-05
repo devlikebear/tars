@@ -187,6 +187,10 @@ func parseLogLevel(s string) zerolog.Level {
 	case "error":
 		return zerolog.ErrorLevel
 	default:
-		return zerolog.DebugLevel
+		// No level configured, or one this server does not know. This used
+		// to be debug, against the documented default of info: a server
+		// with no log.level wrote every HTTP request and every LLM request
+		// and stream payload to its log.
+		return zerolog.InfoLevel
 	}
 }
