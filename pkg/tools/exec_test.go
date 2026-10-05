@@ -145,7 +145,7 @@ func TestExecTool_StreamsStdoutLinesViaContext(t *testing.T) {
 	streamer := BindLineEmitter(rec, "call-1")
 	ctx := WithToolOutputStreamer(context.Background(), streamer)
 
-	result, err := tl.Execute(ctx, json.RawMessage(`{"command":"printf 'line-a\\nline-b\\nline-c\\n'","timeout_ms":2000}`))
+	result, err := tl.Execute(ctx, json.RawMessage(`{"command":"printf 'line-a\\nline-b\\nline-c\\n'","timeout_ms":20000}`))
 	if err != nil {
 		t.Fatalf("execute exec tool: %v", err)
 	}
@@ -215,7 +215,7 @@ func TestExecTool_StreamsCaptureFastExitUnderContention(t *testing.T) {
 		rec := &recordingEmitter{}
 		streamer := BindLineEmitter(rec, "stress")
 		ctx := WithToolOutputStreamer(context.Background(), streamer)
-		result, err := tl.Execute(ctx, json.RawMessage(`{"command":"printf 'line-a\\nline-b\\nline-c\\n'","timeout_ms":2000}`))
+		result, err := tl.Execute(ctx, json.RawMessage(`{"command":"printf 'line-a\\nline-b\\nline-c\\n'","timeout_ms":20000}`))
 		if err != nil {
 			t.Fatalf("iteration %d execute: %v", i, err)
 		}

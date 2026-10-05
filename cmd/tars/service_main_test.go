@@ -493,3 +493,63 @@ func overrideServiceTestHooks(t *testing.T) func() {
 		serviceLaunchctlRun = originalLaunchctl
 	}
 }
+
+func TestRootCommand_ServiceStartRotatesAnOversizedLog(t *testing.T) {
+	restore := overrideServiceTestHooks(t)
+	defer restore()
+	serviceRuntimeGOOS = "darwin"
+
+	dir := t.TempDir()
+	plistPath := filepath.Join(dir, "io.tars.server.plist")
+	if err := os.WriteFile(plistPath, []byte("<plist/>"), 0o644); err != nil {
+		t.Fatalf("write plist: %v", err)
+	}
+	testutil.SetHome(t, t.TempDir())
+	writeBrokenFixedConfig(t)
+	serviceLaunchctlRun = func(context.Context, ...string) (string, error) { return "", nil }
+
+	big := filepath.Join(dir, "server.err.log")
+	small := filepath.Join(dir, "server.out.log")
+	for path, size := range map[string]int64{big: serviceLogRotateBytes + 1, small: 10} {
+		f, err := os.Create(path)
+		if err != nil {
+			t.Fatalf("create %s: %v", path, err)
+		}
+		if err := f.Truncate(size); err != nil {
+			t.Fatalf("size %s: %v", path, err)
+		}
+		if err := f.Close(); err != nil {
+			t.Fatalf("close %s: %v", path, err)
+		}
+	}
+	// An earlier rotation is replaced, not kept.
+	if err := os.WriteFile(big+".1", []byte("older"), 0o644); err != nil {
+		t.Fatalf("write old rotation: %v", err)
+	}
+
+	var stdout strings.Builder
+	cmd := newRootCommand(strings.NewReader(""), &stdout, io.Discard)
+	cmd.SetArgs([]string{"service", "start", "--label", "io.tars.server", "--domain", "gui/501", "--plist-path", plistPath, "--stdout-log", small, "--stderr-log", big})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("service start: %v", err)
+	}
+
+	if _, err := os.Stat(big); !os.IsNotExist(err) {
+		t.Fatalf("oversized log still in place: %v", err)
+	}
+	if info, err := os.Stat(big + ".1"); err != nil || info.Size() != serviceLogRotateBytes+1 {
+		t.Fatalf("rotated log: %v %v", info, err)
+	}
+	if _, err := os.Stat(small); err != nil {
+		t.Fatalf("small log was touched: %v", err)
+	}
+	if _, err := os.Stat(small + ".1"); !os.IsNotExist(err) {
+		t.Fatalf("small log was rotated: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "rotated "+big) {
+		t.Fatalf("rotation not reported: %s", stdout.String())
+	}
+	if rotateServiceLog("", 1) != "" || rotateServiceLog(dir, 0) != "" {
+		t.Fatal("an empty path or a directory must not rotate")
+	}
+}

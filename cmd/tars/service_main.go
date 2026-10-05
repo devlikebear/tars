@@ -220,6 +220,11 @@ func runServiceCommand(ctx context.Context, opts serviceOptions, stdout, _ io.Wr
 		if err := prepareServiceStart(target, opts, stdout); err != nil {
 			return err
 		}
+		for _, logPath := range []string{target.stdoutLog, target.stderrLog} {
+			if rotated := rotateServiceLog(logPath, serviceLogRotateBytes); rotated != "" {
+				_, _ = fmt.Fprintf(stdout, "rotated %s to %s\n", logPath, rotated)
+			}
+		}
 		summary, err := startLaunchAgent(ctx, target.label, target.plistPath, target.domain)
 		if err != nil {
 			return err
@@ -243,6 +248,31 @@ func runServiceCommand(ctx context.Context, opts serviceOptions, stdout, _ io.Wr
 	default:
 		return fmt.Errorf("unsupported service action: %s", strings.TrimSpace(opts.action))
 	}
+}
+
+// serviceLogRotateBytes is the size past which `tars service start` sets a
+// service log aside. launchd appends to these files and nothing else trims
+// them.
+const serviceLogRotateBytes = 32 << 20
+
+// rotateServiceLog renames a log larger than maxBytes to "<path>.1",
+// replacing the previous one, and returns the new name. launchd creates a
+// fresh file when it starts the job. Best effort: any failure leaves the log
+// where it is.
+func rotateServiceLog(path string, maxBytes int64) string {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return ""
+	}
+	info, err := os.Stat(path)
+	if err != nil || !info.Mode().IsRegular() || info.Size() <= maxBytes {
+		return ""
+	}
+	rotated := path + ".1"
+	if err := os.Rename(path, rotated); err != nil {
+		return ""
+	}
+	return rotated
 }
 
 // serviceInstallParams captures everything installLaunchAgent needs to
