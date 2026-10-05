@@ -453,7 +453,7 @@ func (s *Store) hunkMove(ctx context.Context, sh *shadowRepo, e Entry, se status
 	if se.status != "modified" {
 		return move{}, false, fmt.Errorf("%w: hunks can be reverted only in a modified file, and %s is %s", ErrInvalid, se.path, se.status)
 	}
-	out, _, err := s.git.run(ctx, sh.call(diffArgs(e.Start, e.End, []string{se.path}, "-U3")...))
+	out, _, err := s.git.run(ctx, sh.objectCall(diffArgs(e.Start, e.End, []string{se.path}, "-U3")...))
 	if err != nil {
 		return move{}, false, err
 	}
@@ -502,7 +502,7 @@ func (s *Store) hunkMove(ctx context.Context, sh *shadowRepo, e Entry, se status
 // blobAt reads path from a snapshot. Links and nested repositories are
 // recorded by name only, so they cannot be moved.
 func (s *Store) blobAt(ctx context.Context, sh *shadowRepo, commit, path string) (fileState, string, error) {
-	out, _, err := s.git.run(ctx, sh.call("ls-tree", "-z", commit, "--", path))
+	out, _, err := s.git.run(ctx, sh.objectCall("ls-tree", "-z", commit, "--", path))
 	if err != nil {
 		return fileState{}, "", err
 	}
@@ -523,7 +523,7 @@ func (s *Store) blobAt(ctx context.Context, sh *shadowRepo, commit, path string)
 	case fields[0] == "160000":
 		return fileState{}, "a nested repository", nil
 	}
-	data, _, err := s.git.run(ctx, sh.call("cat-file", "blob", fields[2]))
+	data, _, err := s.git.run(ctx, sh.objectCall("cat-file", "blob", fields[2]))
 	if err != nil {
 		return fileState{}, "", err
 	}

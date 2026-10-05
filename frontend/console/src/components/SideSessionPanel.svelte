@@ -50,7 +50,7 @@
   let controller: AbortController | null = null
   let loadToken = 0
 
-  let candidates = $derived(chatSession.sessions.filter((s) => s.id !== activeSessionId && !s.archived_at))
+  let candidates = $derived(chatSession.sessions.filter((s) => s.id !== activeSessionId && !s.archived_at && !s.hidden))
   let sideSession = $derived(chatSession.sessions.find((s) => s.id === sideId) ?? null)
 
   function remember(id: string) {

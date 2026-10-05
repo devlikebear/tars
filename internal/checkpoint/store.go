@@ -344,7 +344,7 @@ func (s *Store) appendEntry(ctx context.Context, sessionID string, e Entry) erro
 }
 
 func (s *Store) updateRef(ctx context.Context, sh *shadowRepo, ref, commit string) error {
-	_, _, err := s.git.run(ctx, sh.call("update-ref", ref, commit))
+	_, _, err := s.git.run(ctx, sh.objectCall("update-ref", ref, commit))
 	return err
 }
 
@@ -356,7 +356,7 @@ func (s *Store) deleteRefs(ctx context.Context, sh *shadowRepo, refs []string) e
 	for _, ref := range refs {
 		b.WriteString("delete " + ref + "\n")
 	}
-	call := sh.call("update-ref", "--stdin")
+	call := sh.objectCall("update-ref", "--stdin")
 	call.stdin = []byte(b.String())
 	_, _, err := s.git.run(ctx, call)
 	return err
