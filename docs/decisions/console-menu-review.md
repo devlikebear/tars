@@ -21,16 +21,16 @@ The verdicts lean on what was on screen, not on what the page could show in anot
 | Memory | `/console/memory` | improve | The inbox held ten candidates and every one was an agent's own completion report ("Verification complete", "Plan and contract ready"). |
 | Extensions | `/console/extensions` | keep | Empty here (no skills, no MCP servers). Skills are the extension path. |
 | System prompt | `/console/sysprompt` | keep | Four small files, clear. |
-| Overview (Mission Control) | `/console/system` | shrink | Repeats the board, Plans, Agent Runtime and Cron as five lists. Showed "5 active plans" that were plans of sessions that ended a day ago. |
+| Overview (Mission Control) | `/console/system` | shrink (done) | Repeats the board, Plans, Agent Runtime and Cron as five lists. Showed "5 active plans" that were plans of sessions that ended a day ago. |
 | Approvals | `/console/approvals` | improve | The subtitle described cleanup plans; the page is mostly the history of tool calls that waited for an answer. |
-| Pulse | `/console/pulse` | shrink | Status and the last decision are a few lines; most of the page is a static description of thresholds. |
+| Pulse | `/console/pulse` | shrink (done) | Status and the last decision are a few lines; most of the page is a static description of thresholds. |
 | Reflection | `/console/reflection` | keep | Small, accurate. |
 | Cron | `/console/cron` | keep | Empty here. |
 | Logs | `/console/logs` | improve | Opened at DEBUG: a page of `http request started`. The level filter matched one level only, so WARN hid the errors. |
 | Analytics | `/console/analytics` | keep | Reworked in 0.45.x. |
 | Config | `/console/config` | keep | Quick Start only, as decided in #931. |
 | Plans | `/console/tasks` (palette) | improve | Lists plans stuck in `executing` after their session stopped. |
-| Session lineage | `/console/sessions/graph` (palette) | **remove** | 30 sessions, 30 roots, 0 forks. Frozen out of the nav since #931. |
+| Session lineage | `/console/sessions/graph` (palette) | **remove** (done) | 30 sessions, 30 roots, 0 forks. Frozen out of the nav since #931. |
 | Channels | `/console/channels` (palette) | keep | Telegram pairing; small. |
 
 ## Plan
@@ -43,12 +43,15 @@ The verdicts lean on what was on screen, not on what the page could show in anot
 4. **Approvals subtitle** says what the page shows.
 5. **Shrink Mission Control.** Keep the status strip (Pulse, Reflection, disk, counts), notifications, recommendations, and delivery; remove the five duplicate lists (active plans, agent runs, cron jobs, sessions, "continue working") and their dedicated code and translations. Count-loading calls and tile links stay; per-session task loading is gone.
 
+6. **Plans that outlive their session are marked stalled.** A plan with pending or in-progress tasks that nothing has updated for 24 hours gets a "Stalled" badge, its own summary card and filter on the Plans page. The plan itself is not changed. On the reviewed server two of the five "active" plans were stalled.
+7. **Pulse leads with status.** The two blocks of reference text (what Pulse watches, the severity thresholds) are collapsed; status, last seen per signal, the last decision and recent ticks come first.
+
 ### Next, in this order
 
-1. **Plans that outlive their session.** A plan stays `executing` when its session just stops. Decide the rule (for example: no turn for 24 hours and no running turn means stale) and show such plans as stale on the Plans page and the Mission Control count, without changing the plan itself.
-2. **Memory inbox quality.** Reflection proposes an agent's completion reports as memories. Filter candidates whose source is the assistant's own status report before they reach the inbox.
-3. **Shrink Pulse.** Move the threshold reference behind a disclosure and lead with status, last decisions and signals.
-4. **Agent Runtime views.** Measure which of tree, Gantt and flow is opened; remove the ones that are not, and hide the cost cards when no run has a cost.
+1. **Memory inbox quality.** Reflection proposes an agent's completion reports as memories. Fixed separately (#1140): the assistant's reply is no longer mined for candidates.
+2. **Mission Control's "active plans" tile** still counts stalled plans; it should show them apart, as the Plans page does.
+3. **Agent Runtime views.** Measure which of tree, Gantt and flow is opened; remove the ones that are not, and hide the cost cards when no run has a cost.
+4. **The chat dock.** See below.
 
 ### Left alone on purpose
 
@@ -57,5 +60,5 @@ The verdicts lean on what was on screen, not on what the page could show in anot
 
 ## Found on the way
 
-- Runtime logging writes whole LLM request payloads at DEBUG; the runtime log on this server was 58 MB.
+- A server with no `log.level` ran at DEBUG, not the documented INFO, and logged every request and LLM payload: 58 MB of runtime log and a 264 MB service log on this server. Fixed separately (#1141).
 - The fork-insight endpoints the lineage page called (review and queue to the memory inbox) no longer have a console caller.

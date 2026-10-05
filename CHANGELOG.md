@@ -8,7 +8,7 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ### Changed
 
-- **Console menu review.** Every console page was opened on a live server and given a verdict (keep, improve, shrink, remove); the verdicts and the plan are in `docs/decisions/console-menu-review.md`. First changes: the Logs page opens at INFO instead of a wall of DEBUG request tracing, and a log level is now a floor (`level=warn` returns warnings and errors; it used to return warnings only). Agent Runtime no longer describes `subagents_orchestrate` as opt-in, and the Approvals subtitle says what the page lists. Mission Control is now focused on status and notifications, with active plans, agent runs, Cron jobs, sessions, and continue-working lists left to their dedicated pages.
+- **Console menu review.** Every console page was opened on a live server and given a verdict (keep, improve, shrink, remove); the verdicts and the plan are in `docs/decisions/console-menu-review.md`. First changes: the Logs page opens at INFO instead of a wall of DEBUG request tracing, and a log level is now a floor (`level=warn` returns warnings and errors; it used to return warnings only). Agent Runtime no longer describes `subagents_orchestrate` as opt-in, and the Approvals subtitle says what the page lists. Mission Control is now focused on status and notifications, with active plans, agent runs, Cron jobs, sessions, and continue-working lists left to their dedicated pages. The Plans page marks a plan with work left that nothing has touched for a day as stalled, and the Pulse page leads with status and keeps its reference text collapsed.
 
 ### Removed
 

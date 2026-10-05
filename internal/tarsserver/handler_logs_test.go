@@ -91,6 +91,8 @@ func TestFilterLogLines_LevelIsAMinimum(t *testing.T) {
 		`{"level":"warn","message":"w"}`,
 		`{"level":"error","message":"e"}`,
 		`{"message":"no level"}`,
+		`{"level":"trace","message":"t"}`,
+		`{"level":"fatal","message":"f"}`,
 	}
 	messages := func(level string) string {
 		var got []string
@@ -100,11 +102,12 @@ func TestFilterLogLines_LevelIsAMinimum(t *testing.T) {
 		return strings.Join(got, ",")
 	}
 	for level, want := range map[string]string{
-		"all":   "d,i,w,e,no level",
-		"debug": "d,i,w,e,no level",
-		"info":  "i,w,e,no level",
-		"warn":  "w,e",
-		"error": "e",
+		"all":   "d,i,w,e,no level,t,f",
+		"trace": "d,i,w,e,no level,t,f",
+		"debug": "d,i,w,e,no level,f",
+		"info":  "i,w,e,no level,f",
+		"warn":  "w,e,f",
+		"error": "e,f",
 	} {
 		if got := messages(level); got != want {
 			t.Fatalf("level %s: got %q, want %q", level, got, want)
