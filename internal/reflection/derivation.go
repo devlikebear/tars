@@ -12,15 +12,20 @@ import (
 // that used to live in internal/tarsserver/chat_memory_hook.go, which
 // ran per-turn; reflection now runs it in a nightly batch.
 //
+// Only the user's message is read. The assistant's reply used to be mined
+// too: any reply containing "completed" or "resolved" became a
+// task_completed or error_resolved candidate holding its first 220
+// characters. An agent ends almost every turn with such a report, so the
+// review queue filled with status lines ("Verification complete", "Plan and
+// contract ready") and nothing a later chat should recall. What an agent
+// decides is worth keeping it saves itself with the memory tool.
+//
 // The function is cheap (string matching only) and does not touch the
 // filesystem or the LLM. Persistence happens in the caller via the
 // memory inbox review queue.
 func deriveTurnExperiences(sessionID string, t turn, now time.Time) []memory.Experience {
-	out := make([]memory.Experience, 0, 2)
+	out := make([]memory.Experience, 0, 1)
 	if exp, ok := deriveUserExperience(sessionID, t.UserMessage, now); ok {
-		out = append(out, exp)
-	}
-	if exp, ok := deriveAssistantExperience(sessionID, t.AssistantMessage, now); ok {
 		out = append(out, exp)
 	}
 	return out
@@ -39,30 +44,6 @@ func deriveUserExperience(sessionID, userMessage string, now time.Time) (memory.
 		exp.Category = "preference"
 		exp.Summary = trimText(strings.TrimSpace(userMessage), 220)
 		exp.Tags = []string{"auto", "user-preference"}
-		return exp, exp.Summary != ""
-	default:
-		return memory.Experience{}, false
-	}
-}
-
-func deriveAssistantExperience(sessionID, assistantMessage string, now time.Time) (memory.Experience, bool) {
-	lower := strings.ToLower(strings.TrimSpace(assistantMessage))
-	exp := memory.Experience{
-		Timestamp:     now.UTC(),
-		SourceSession: strings.TrimSpace(sessionID),
-		Importance:    7,
-		Auto:          true,
-	}
-	switch {
-	case strings.Contains(lower, "completed") || strings.Contains(lower, "완료"):
-		exp.Category = "task_completed"
-		exp.Summary = trimText(strings.TrimSpace(assistantMessage), 220)
-		exp.Tags = []string{"auto", "task"}
-		return exp, exp.Summary != ""
-	case strings.Contains(lower, "fixed") || strings.Contains(lower, "resolved") || strings.Contains(lower, "해결"):
-		exp.Category = "error_resolved"
-		exp.Summary = trimText(strings.TrimSpace(assistantMessage), 220)
-		exp.Tags = []string{"auto", "error"}
 		return exp, exp.Summary != ""
 	default:
 		return memory.Experience{}, false
