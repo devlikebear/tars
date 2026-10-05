@@ -959,6 +959,7 @@ export type Translations = {
     title: string
     introBody: (interval: string) => string
     policySource: string
+    referenceSummary: string
     watchTargets: string
     whenSignalsAppear: string
     whenSignalsBody: string

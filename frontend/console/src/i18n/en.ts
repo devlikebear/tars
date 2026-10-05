@@ -896,6 +896,7 @@ export const en = {
     introBody: (interval) =>
       `TARS checks system health every ${interval} and turns threshold crossings into actionable signals.`,
     policySource: 'Policy source',
+    referenceSummary: 'What Pulse watches and what it does with a signal',
     watchTargets: 'Watch targets',
     whenSignalsAppear: 'When signals appear',
     whenSignalsBody:

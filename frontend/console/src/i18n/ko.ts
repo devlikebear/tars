@@ -896,6 +896,7 @@ export const ko = {
     introBody: (interval) =>
       `TARS는 ${interval}마다 시스템 상태를 확인하고 임계값 초과를 실행 가능한 신호로 변환합니다.`,
     policySource: '정책 출처',
+    referenceSummary: 'Pulse가 감시하는 것과 신호를 처리하는 방식',
     watchTargets: '감시 대상',
     whenSignalsAppear: '신호 발생 시',
     whenSignalsBody:
