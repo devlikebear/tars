@@ -88,15 +88,32 @@ func NewLoop(client llm.Client, registry *tool.Registry, hooks ...Hook) *Loop {
 	}
 }
 
+// toolChoiceForIteration applies a choice that forces a tool call (required,
+// or one named tool) to the first LLM call only. Forced on every call, the
+// model can never answer in text: it keeps calling tools until a loop guard
+// ends the turn with an error. Auto and none hold for the whole run.
+func toolChoiceForIteration(choice *llm.ToolChoice, iteration int) *llm.ToolChoice {
+	if choice == nil || iteration == 0 {
+		return choice
+	}
+	switch choice.Mode {
+	case llm.ToolChoiceModeRequired, llm.ToolChoiceModeSpecific:
+		return nil
+	}
+	return choice
+}
+
 type RunOptions struct {
 	MaxIterations    int
 	OnDelta          func(text string)
 	OnReasoningDelta func(text string)
 	Tools            []llm.ToolSchema
 	BlockedTools     map[string]tool.BlockedToolError
-	ToolChoice       *llm.ToolChoice
-	ResponseFormat   *llm.ResponseFormat
-	AutoExpandOnce   bool
+	// ToolChoice that forces a call (required/specific) holds for the first
+	// LLM call only; see toolChoiceForIteration.
+	ToolChoice     *llm.ToolChoice
+	ResponseFormat *llm.ResponseFormat
+	AutoExpandOnce bool
 	// OnTurnEnd is invoked when the LLM produces a turn with zero tool calls
 	// (i.e. the natural stopping point). It can request another iteration by
 	// returning a non-empty `injectInput` string, which will be appended as a
@@ -204,7 +221,7 @@ toolPhase:
 			OnReasoningDelta:         opts.OnReasoningDelta,
 			OnProviderTool:           live.report,
 			Tools:                    llmTools,
-			ToolChoice:               opts.ToolChoice,
+			ToolChoice:               toolChoiceForIteration(opts.ToolChoice, i),
 			ResponseFormat:           opts.ResponseFormat,
 			ResumeSessionID:          activeResumeID,
 			PersistSession:           opts.PersistUpstreamSession,
