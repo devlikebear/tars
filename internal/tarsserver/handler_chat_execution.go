@@ -67,6 +67,7 @@ func executeChatLoop(
 	ctx = tool.WithLineEmitter(ctx, stream)
 
 	deps.logger.Debug().Str("session_id", state.sessionID).Int("messages", len(state.llmMessages)).Msg("llm chat call start")
+	state.turnToolCalls = toolCallRecords
 	onTurnEnd := buildChatTurnEndHook(deps, state, stream)
 
 	// Resume the upstream provider session (claude-code-cli only today) when

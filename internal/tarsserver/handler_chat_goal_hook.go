@@ -2,7 +2,9 @@ package tarsserver
 
 import (
 	"context"
+	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/devlikebear/tars/internal/goal"
 	"github.com/devlikebear/tars/internal/llm"
@@ -144,8 +146,68 @@ func goalJudgeWindow(state chatRunState, lastResp llm.ChatResponse) []llm.ChatMe
 			break
 		}
 	}
+	if state.turnToolCalls != nil {
+		if evidence := goalJudgeToolEvidence(*state.turnToolCalls); evidence != "" {
+			window = append(window, llm.ChatMessage{Role: "tool", Content: evidence})
+		}
+	}
 	if strings.TrimSpace(lastResp.Message.Content) != "" {
 		window = append(window, lastResp.Message)
 	}
 	return window
+}
+
+const (
+	goalJudgeEvidenceCalls       = 6
+	goalJudgeEvidenceArgChars    = 120
+	goalJudgeEvidenceResultChars = 160
+)
+
+// goalJudgeToolEvidence lists the turn's last tool calls and how each ended,
+// so the judge can hold the assistant's report against what actually ran. A
+// reply alone can claim a passing test that failed or was never run. Sized
+// to stay under goal.MaxRecentMessageContentChars.
+func goalJudgeToolEvidence(records []ToolCallRecord) string {
+	if len(records) == 0 {
+		return ""
+	}
+	failed := 0
+	for _, record := range records {
+		if record.ToolIsError {
+			failed++
+		}
+	}
+	shown := records
+	if len(shown) > goalJudgeEvidenceCalls {
+		shown = shown[len(shown)-goalJudgeEvidenceCalls:]
+	}
+	var b strings.Builder
+	_, _ = fmt.Fprintf(&b, "Tool calls the assistant ran this turn: %d (%d failed). Last %d, oldest first:", len(records), failed, len(shown))
+	for _, record := range shown {
+		outcome := "ok"
+		if record.ToolIsError {
+			outcome = "FAILED"
+		}
+		_, _ = fmt.Fprintf(&b, "\n%s %s -> %s: %s",
+			record.ToolName,
+			goalJudgeClip(record.ToolArgs, goalJudgeEvidenceArgChars),
+			outcome,
+			goalJudgeClip(record.ToolResult, goalJudgeEvidenceResultChars),
+		)
+	}
+	return b.String()
+}
+
+// goalJudgeClip flattens text to one line of at most max bytes, cut on a
+// rune boundary (the judge's per-message cap counts bytes).
+func goalJudgeClip(text string, max int) string {
+	text = strings.Join(strings.Fields(text), " ")
+	if len(text) <= max {
+		return text
+	}
+	cut := max
+	for cut > 0 && !utf8.RuneStart(text[cut]) {
+		cut--
+	}
+	return text[:cut] + "…"
 }

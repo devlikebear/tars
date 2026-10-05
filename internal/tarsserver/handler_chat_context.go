@@ -20,6 +20,9 @@ import (
 )
 
 type chatRunState struct {
+	// turnToolCalls points at the running turn's tool call records, for
+	// the goal judge.
+	turnToolCalls         *[]ToolCallRecord
 	requestWorkspaceDir   string
 	workspaceID           string
 	store                 *session.Store

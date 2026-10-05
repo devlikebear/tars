@@ -64,6 +64,8 @@ func NewLLMJudger(router RouterClientFor, role llm.Role) *LLMJudger {
 
 const judgeSystemPrompt = `You are a strict judge. The user has set a goal for an AI assistant working in their session. Decide whether the goal has been clearly satisfied by the recent assistant work shown below. Be conservative: if the work is partial, ambiguous, in-progress, or still failing verification, answer "satisfied": false. Only answer "satisfied": true when the goal is unambiguously met.
 
+A [tool] entry, when present, lists what the assistant actually ran this turn and how each call ended. Trust it over the assistant's own account: a reply that reports success for a step whose call FAILED, or for verification that does not appear to have run, is not satisfied.
+
 Reply with a single JSON object on one line and nothing else, matching: {"satisfied": <true|false>, "reason": "<one short sentence>"}`
 
 // Judge runs the LLM call. It returns Satisfied=false with a non-nil error
