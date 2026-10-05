@@ -198,14 +198,14 @@ func goalJudgeToolEvidence(records []ToolCallRecord) string {
 	return b.String()
 }
 
-// goalJudgeClip flattens text to one line of at most max bytes, cut on a
+// goalJudgeClip flattens text to one line of at most limit bytes, cut on a
 // rune boundary (the judge's per-message cap counts bytes).
-func goalJudgeClip(text string, max int) string {
+func goalJudgeClip(text string, limit int) string {
 	text = strings.Join(strings.Fields(text), " ")
-	if len(text) <= max {
+	if len(text) <= limit {
 		return text
 	}
-	cut := max
+	cut := limit
 	for cut > 0 && !utf8.RuneStart(text[cut]) {
 		cut--
 	}
