@@ -72,3 +72,23 @@ func TestRun_WithoutMessage(t *testing.T) {
 		t.Fatalf("unexpected output: stdout=%q stderr=%q", stdout.String(), stderr.String())
 	}
 }
+
+func TestSendMessagePrintsGoalEventsWithoutVerbose(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		stream := "data: {\"type\":\"delta\",\"text\":\"done\"}\n\n" +
+			"data: {\"type\":\"goal_event\",\"phase\":\"judge_error\",\"reason\":\"judge: chat: status 400\"}\n\n" +
+			"data: {\"type\":\"done\",\"session_id\":\"s-1\"}\n\n"
+		if _, err := io.WriteString(w, stream); err != nil {
+			t.Errorf("write stream: %v", err)
+		}
+	}))
+	defer server.Close()
+	var stdout, stderr bytes.Buffer
+	if _, err := sendMessage(context.Background(), chatClient{serverURL: server.URL}, "s-1", "hello", false, false, &stdout, &stderr); err != nil {
+		t.Fatalf("send: %v", err)
+	}
+	if !strings.Contains(stderr.String(), "goal: judge_error — judge: chat: status 400") {
+		t.Fatalf("expected the goal event on stderr, got %q", stderr.String())
+	}
+}

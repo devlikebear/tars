@@ -70,6 +70,9 @@ type ChatEvent struct {
 	ToolResultPreview string `json:"tool_result_preview"`
 	SkillName         string `json:"skill_name"`
 	SkillReason       string `json:"skill_reason"`
+	// Reason accompanies a "goal_event": why the judge decided what it did,
+	// or the judge's error.
+	Reason string `json:"reason"`
 }
 
 type ChatResult struct {
