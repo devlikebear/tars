@@ -278,7 +278,7 @@ func newSubagentsOrchestrateTool(runtime *agentruntime.Runtime, scheduler *works
 						if title == "" {
 							title = "subagent"
 						}
-						providerOverride, overrideErr := normalizeProviderOverride(task.ProviderOverride)
+						providerOverride, overrideErr := resolveTaskProviderOverride(runtime, task.Tier, task.ProviderOverride)
 						if overrideErr != "" {
 							subagentFlowCancel(runtime, workspaceID, spawnedRuns)
 							taskMirror.markUnfinishedTasksCancelled(flowID, overrideErr)
@@ -387,7 +387,7 @@ func newSubagentsOrchestrateTool(runtime *agentruntime.Runtime, scheduler *works
 						if title == "" {
 							title = "subagent"
 						}
-						providerOverride, overrideErr := normalizeProviderOverride(task.ProviderOverride)
+						providerOverride, overrideErr := resolveTaskProviderOverride(runtime, task.Tier, task.ProviderOverride)
 						if overrideErr != "" {
 							_ = taskMirror.markTaskCancelled(flowID, stepID, strings.TrimSpace(task.ID), title, overrideErr)
 							taskMirror.markUnfinishedTasksCancelled(flowID, overrideErr)
