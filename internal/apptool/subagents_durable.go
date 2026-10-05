@@ -307,6 +307,32 @@ func dedupeStrings(values []string) []string {
 type agentRuntimeWorkExecutor struct {
 	runtime *agentruntime.Runtime
 	store   *workstore.Store
+	usage   RunUsageLookup
+}
+
+// RunUsageLookup reports the tokens and cost a finished run's LLM calls
+// spent. A run records neither on itself (only a consensus run sums its
+// variants), so without a lookup every attempt reported zero and a step's
+// max_tokens and max_cost_usd could never be reached.
+type RunUsageLookup func(run agentruntime.Run) (tokens int64, costUSD float64)
+
+// NewAgentRuntimeWorkExecutorWithUsage is NewAgentRuntimeWorkExecutor with
+// the lookup that fills in what each attempt spent.
+func NewAgentRuntimeWorkExecutorWithUsage(runtime *agentruntime.Runtime, store *workstore.Store, usage RunUsageLookup) workscheduler.Executor {
+	return &agentRuntimeWorkExecutor{runtime: runtime, store: store, usage: usage}
+}
+
+// executionResult turns a finished run into the attempt's result, adding the
+// run's own LLM spend to what the run document already accounts for.
+func (executor *agentRuntimeWorkExecutor) executionResult(run agentruntime.Run) (workscheduler.ExecutionResult, error) {
+	result, err := agentRunExecutionResult(run)
+	if err != nil || executor.usage == nil {
+		return result, err
+	}
+	tokens, costUSD := executor.usage(run)
+	result.Usage.Tokens += tokens
+	result.Usage.CostUSD += costUSD
+	return result, nil
 }
 
 func NewAgentRuntimeWorkExecutor(runtime *agentruntime.Runtime, stores ...*workstore.Store) workscheduler.Executor {
@@ -355,7 +381,7 @@ func (executor *agentRuntimeWorkExecutor) Execute(ctx context.Context, execution
 	if err != nil {
 		return workscheduler.ExecutionResult{}, err
 	}
-	return agentRunExecutionResult(final)
+	return executor.executionResult(final)
 }
 
 func (executor *agentRuntimeWorkExecutor) Recover(ctx context.Context, execution workscheduler.Execution) (workscheduler.ExecutionResult, bool, error) {
@@ -370,7 +396,7 @@ func (executor *agentRuntimeWorkExecutor) Recover(ctx context.Context, execution
 		}
 		run = final
 	}
-	result, err := agentRunExecutionResult(run)
+	result, err := executor.executionResult(run)
 	return result, true, err
 }
 

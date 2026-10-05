@@ -199,3 +199,36 @@ func TestAgentRunResultAndSchedulerActionContracts(t *testing.T) {
 		t.Fatalf("unavailable durable agent result=%s err=%v", resultTool.Text(), err)
 	}
 }
+
+// A plain run records no usage on itself; the executor adds what the lookup
+// reports so a step's token and cost budgets have something to count.
+func TestAgentRuntimeWorkExecutorAddsLookedUpRunUsage(t *testing.T) {
+	t.Parallel()
+
+	run := agentruntime.Run{ID: "run_7", Status: agentruntime.RunStatusCompleted}
+	without := &agentRuntimeWorkExecutor{}
+	result, err := without.executionResult(run)
+	if err != nil || result.Usage.Tokens != 0 || result.Usage.CostUSD != 0 {
+		t.Fatalf("without a lookup: result=%+v err=%v", result, err)
+	}
+
+	var asked string
+	with := NewAgentRuntimeWorkExecutorWithUsage(nil, nil, func(run agentruntime.Run) (int64, float64) {
+		asked = run.ID
+		return 4099, 0.25
+	}).(*agentRuntimeWorkExecutor)
+	result, err = with.executionResult(run)
+	if err != nil || asked != "run_7" || result.Usage.Tokens != 4099 || result.Usage.CostUSD != 0.25 || result.Usage.Iterations != 1 {
+		t.Fatalf("with a lookup: asked=%q result=%+v err=%v", asked, result, err)
+	}
+
+	// A consensus run's own accounting is kept and added to.
+	consensus := agentruntime.Run{
+		ID: "run_8", Status: agentruntime.RunStatusCompleted, ConsensusCostUSD: 0.4,
+		ConsensusVariants: []agentruntime.ConsensusVariantRecord{{TokensIn: 10, TokensOut: 5}},
+	}
+	result, err = with.executionResult(consensus)
+	if err != nil || result.Usage.Tokens != 4114 || result.Usage.CostUSD != 0.65 {
+		t.Fatalf("consensus plus lookup: result=%+v err=%v", result, err)
+	}
+}
