@@ -20,7 +20,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const schemaVersion = 7
+const schemaVersion = 8
 
 type Options struct {
 	Now   func() time.Time
@@ -444,6 +444,18 @@ CREATE INDEX idx_capability_outcomes_workspace_work
     ON capability_outcomes (workspace_id, work_id, created_at DESC);
 `
 
+// migrationV8 drops the copy of the whole runtime snapshot that every
+// agent-run revision carried in its metadata. Nothing read it, each revision
+// repeated all runs of the snapshot, and it made up most of a ledger file
+// (1.45 GB of 1.87 GB on one workspace). The run's own document, legacy_run,
+// stays.
+const migrationV8 = `
+UPDATE works
+SET metadata_json = CAST(json_remove(CAST(metadata_json AS TEXT), '$.legacy_snapshot') AS BLOB)
+WHERE source = 'agentruntime'
+    AND json_type(CAST(metadata_json AS TEXT), '$.legacy_snapshot') IS NOT NULL;
+`
+
 var schemaMigrations = []struct {
 	version int
 	sql     string
@@ -455,6 +467,7 @@ var schemaMigrations = []struct {
 	{version: 5, sql: migrationV5},
 	{version: 6, sql: migrationV6},
 	{version: 7, sql: migrationV7},
+	{version: 8, sql: migrationV8},
 }
 
 // sqliteFileURL builds the file: URI SQLite expects for path.
@@ -580,12 +593,27 @@ func (s *Store) migrate(ctx context.Context) error {
 		return fmt.Errorf("workstore: create migration table: %w", err)
 	}
 
+	// An existing ledger that has not had migration 8 yet is about to lose
+	// most of its bulk; a new one has nothing to give back.
+	reclaim := s.migrationRecorded(ctx, 7) && !s.migrationRecorded(ctx, 8)
 	for _, migration := range schemaMigrations {
 		if err := s.applyMigration(ctx, migration.version, migration.sql); err != nil {
 			return err
 		}
 	}
+	if reclaim {
+		// Hand the freed pages back to the file system once. VACUUM cannot
+		// run inside the migration's transaction, and a failure (no room for
+		// the rewrite) only leaves the file large: the pages are still reused.
+		_, _ = s.db.ExecContext(ctx, "VACUUM")
+	}
 	return nil
+}
+
+func (s *Store) migrationRecorded(ctx context.Context, version int) bool {
+	var recorded int
+	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM schema_migrations WHERE version = ?", version).Scan(&recorded)
+	return err == nil && recorded > 0
 }
 
 func (s *Store) applyMigration(ctx context.Context, version int, migrationSQL string) error {

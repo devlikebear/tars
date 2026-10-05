@@ -569,7 +569,6 @@ func (s *Store) importRuntimeRun(ctx context.Context, input AgentRuntimeImportIn
 		"run_checksum":    runChecksum,
 		"source_path":     input.SourcePath,
 		"legacy_run":      parsed.raw,
-		"legacy_snapshot": json.RawMessage(input.SnapshotJSON),
 	})
 	if err != nil {
 		return Work{}, fmt.Errorf("workstore: encode runtime run %q metadata: %w", run.ID, err)
