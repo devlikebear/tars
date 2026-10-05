@@ -2,6 +2,7 @@ package workstore
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -1199,5 +1200,61 @@ func TestListWorksScheduledKeepsOnlyWorksWithStepSchedules(t *testing.T) {
 	only, err := store.ListWorks(ctx, ListWorksFilter{WorkspaceID: "workspace-a", States: []WorkState{WorkStateRunning}, Scheduled: true})
 	if err != nil || len(only) != 1 || only[0].ID != scheduled.ID {
 		t.Fatalf("scheduled works=%+v err=%v", only, err)
+	}
+}
+
+// Agent-run revisions written before migration 8 carried a copy of the whole
+// runtime snapshot. The migration removes it and leaves the run's document.
+func TestMigration8StripsTheSnapshotCopyFromAgentRunWorks(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "ledger.db")
+	ctx := context.Background()
+	store := openTestStore(t, path)
+	create := func(key, source string) Work {
+		t.Helper()
+		work, err := store.CreateWork(ctx, CreateWorkInput{
+			WorkspaceID: "workspace-a", Kind: "agent-run", Source: source, SourceID: key, IdempotencyKey: key,
+			Title: key, ActorID: "tester",
+			MetadataJSON: json.RawMessage(`{"legacy_run":{"run_id":"` + key + `"},"legacy_snapshot":{"runs":[{"run_id":"a"},{"run_id":"b"}]}}`),
+		})
+		if err != nil {
+			t.Fatalf("create %s: %v", key, err)
+		}
+		return work
+	}
+	run := create("run_1", string(ImportSourceAgentRuntime))
+	other := create("other_1", "somewhere-else")
+	// Put the ledger back to before migration 8, as an existing file is.
+	if _, err := store.db.ExecContext(ctx, "DELETE FROM schema_migrations WHERE version = 8"); err != nil {
+		t.Fatalf("rewind migration: %v", err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+
+	reopened := openTestStore(t, path)
+	got, err := reopened.GetWork(ctx, "workspace-a", run.ID)
+	if err != nil {
+		t.Fatalf("get run work: %v", err)
+	}
+	var metadata map[string]json.RawMessage
+	if err := json.Unmarshal(got.MetadataJSON, &metadata); err != nil {
+		t.Fatalf("decode metadata %q: %v", got.MetadataJSON, err)
+	}
+	if _, kept := metadata["legacy_snapshot"]; kept {
+		t.Fatalf("expected the snapshot copy removed, got %s", got.MetadataJSON)
+	}
+	if string(metadata["legacy_run"]) != `{"run_id":"run_1"}` {
+		t.Fatalf("expected the run document kept, got %s", got.MetadataJSON)
+	}
+	projection, found, err := reopened.GetLegacyAgentRuntimeRunProjection(ctx, "workspace-a", "run_1")
+	if err != nil || !found || string(projection) != `{"run_id":"run_1"}` {
+		t.Fatalf("run projection after migration = %s found=%v err=%v", projection, found, err)
+	}
+	// Works from other sources are not this migration's business.
+	untouched, err := reopened.GetWork(ctx, "workspace-a", other.ID)
+	if err != nil || !strings.Contains(string(untouched.MetadataJSON), "legacy_snapshot") {
+		t.Fatalf("expected another source's metadata left alone, got %s err=%v", untouched.MetadataJSON, err)
 	}
 }
