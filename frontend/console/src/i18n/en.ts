@@ -1501,6 +1501,8 @@ export const en = {
     completed: 'Completed',
     readyToClose: 'Ready to close',
     readyToCloseHint: 'All tasks finished; close or archive from the session.',
+    stalled: 'Stalled',
+    stalledHint: 'No change for over a day. Continue or abort it in the session.',
     openPlan: 'Open plan',
     resolvePlan: 'Resolve in session',
     statusFallback: 'executing',

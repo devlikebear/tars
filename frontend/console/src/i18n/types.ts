@@ -1442,6 +1442,8 @@ export type Translations = {
     completed: string
     readyToClose: string
     readyToCloseHint: string
+    stalled: string
+    stalledHint: string
     openPlan: string
     resolvePlan: string
     statusFallback: string

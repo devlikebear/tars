@@ -1499,6 +1499,8 @@ export const ko = {
     completed: '완료됨',
     readyToClose: '정리 필요',
     readyToCloseHint: '모든 작업이 끝났습니다. 세션에서 닫거나 보관하세요.',
+    stalled: '멈춤',
+    stalledHint: '하루 넘게 변화가 없습니다. 세션에서 이어가거나 중단하세요.',
     openPlan: '계획 열기',
     resolvePlan: '세션에서 정리',
     statusFallback: '실행 중',
