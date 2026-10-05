@@ -46,18 +46,6 @@ func NormalizeExpression(raw string) (string, error) {
 	return s, nil
 }
 
-func ResolveSchedule(explicit string, natural string, timezone string, now time.Time) (string, error) {
-	explicit = strings.TrimSpace(explicit)
-	if explicit != "" {
-		return NormalizeExpression(explicit)
-	}
-	natural = strings.TrimSpace(natural)
-	if natural == "" {
-		return "", fmt.Errorf("natural or schedule is required")
-	}
-	return ParseNaturalSchedule(natural, timezone, now)
-}
-
 var tomorrowHourPattern = regexp.MustCompile(`(오전|오후)?\s*(\d{1,2})시`)
 var weeklyPattern = regexp.MustCompile(`매주\s*([월화수목금토일])요일?\s*(오전|오후)?\s*(\d{1,2})시`)
 var relativePattern = regexp.MustCompile(`(\d+)\s*(분|시간|일)\s*(뒤|후)`)

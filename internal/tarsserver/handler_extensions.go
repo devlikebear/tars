@@ -132,14 +132,6 @@ var (
 	runExtensionRepairCommand     = runExtensionRepairCommandDefault
 )
 
-func newExtensionsAPIHandler(provider extensionsProvider, logger zerolog.Logger, afterReload func() (bool, int)) http.Handler {
-	return newExtensionsAPIHandlerWithSessionStore(provider, logger, afterReload, nil)
-}
-
-func newExtensionsAPIHandlerWithSessionStore(provider extensionsProvider, logger zerolog.Logger, afterReload func() (bool, int), store *session.Store) http.Handler {
-	return newExtensionsAPIHandlerWithHealth(provider, logger, afterReload, store, extensionHealthOptions{})
-}
-
 func newExtensionsAPIHandlerWithHealth(provider extensionsProvider, logger zerolog.Logger, afterReload func() (bool, int), store *session.Store, healthOpts extensionHealthOptions) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/skills", func(w http.ResponseWriter, r *http.Request) {

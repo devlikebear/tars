@@ -14,7 +14,6 @@ import (
 
 	"github.com/devlikebear/tars/internal/apptool"
 	"github.com/devlikebear/tars/internal/buildinfo"
-	"github.com/devlikebear/tars/internal/config"
 	"github.com/devlikebear/tars/internal/llm"
 	"github.com/devlikebear/tars/internal/memory"
 	"github.com/devlikebear/tars/internal/serverauth"
@@ -29,38 +28,6 @@ import (
 // handlers (currently only the active-cwd transition). nil is allowed and
 // disables notifications.
 type sessionNotifier func(context.Context, notificationEvent)
-
-func newSessionAPIHandler(store *session.Store, logger zerolog.Logger) http.Handler {
-	return newSessionAPIHandlerWithUsage(store, logger, nil)
-}
-
-func newSessionAPIHandlerWithUsage(store *session.Store, logger zerolog.Logger, usageTracker *usage.Tracker) http.Handler {
-	return newSessionAPIHandlerWithUsageAndStyleDefaults(store, logger, usageTracker, sessionStyleDefaultsFromConfig(config.Default()))
-}
-
-func newSessionAPIHandlerWithUsageAndStyleDefaults(store *session.Store, logger zerolog.Logger, usageTracker *usage.Tracker, styleDefaults sessionStyleValues) http.Handler {
-	return newSessionAPIHandlerWithNotifier(store, logger, usageTracker, styleDefaults, nil)
-}
-
-func newSessionAPIHandlerWithNotifier(store *session.Store, logger zerolog.Logger, usageTracker *usage.Tracker, styleDefaults sessionStyleValues, notify sessionNotifier) http.Handler {
-	return newSessionAPIHandlerFull(store, logger, usageTracker, styleDefaults, notify, nil)
-}
-
-func newSessionAPIHandlerFull(store *session.Store, logger zerolog.Logger, usageTracker *usage.Tracker, styleDefaults sessionStyleValues, notify sessionNotifier, overrideService *sessionoverride.Service) http.Handler {
-	return newSessionAPIHandlerFullWithLLM(store, logger, usageTracker, styleDefaults, notify, overrideService, nil)
-}
-
-func newSessionAPIHandlerFullWithLLM(store *session.Store, logger zerolog.Logger, usageTracker *usage.Tracker, styleDefaults sessionStyleValues, notify sessionNotifier, overrideService *sessionoverride.Service, llmRouter llm.Router) http.Handler {
-	return newSessionAPIHandlerFullWithLocalSkills(store, logger, usageTracker, styleDefaults, notify, overrideService, llmRouter, localSkillsHandlerDeps{})
-}
-
-func newSessionAPIHandlerFullWithLocalSkills(store *session.Store, logger zerolog.Logger, usageTracker *usage.Tracker, styleDefaults sessionStyleValues, notify sessionNotifier, overrideService *sessionoverride.Service, llmRouter llm.Router, localSkills localSkillsHandlerDeps) http.Handler {
-	return newSessionAPIHandlerFullWithLocalSkillsAndWorkLedger(store, logger, usageTracker, styleDefaults, notify, overrideService, llmRouter, localSkills, nil)
-}
-
-func newSessionAPIHandlerWithWorkLedger(store *session.Store, ledger *workstore.Store, logger zerolog.Logger) http.Handler {
-	return newSessionAPIHandlerFullWithLocalSkillsAndWorkLedger(store, logger, nil, sessionStyleDefaultsFromConfig(config.Default()), nil, nil, nil, localSkillsHandlerDeps{}, ledger)
-}
 
 func newSessionAPIHandlerFullWithLocalSkillsAndWorkLedger(store *session.Store, logger zerolog.Logger, usageTracker *usage.Tracker, styleDefaults sessionStyleValues, notify sessionNotifier, overrideService *sessionoverride.Service, llmRouter llm.Router, localSkills localSkillsHandlerDeps, workLedger *workstore.Store) http.Handler {
 	mux := http.NewServeMux()

@@ -25,10 +25,3 @@ func (s *PushToTalkState) HandleReleased() bool {
 	s.recording = false
 	return true
 }
-
-func (s *PushToTalkState) Recording() bool {
-	if s == nil {
-		return false
-	}
-	return s.recording
-}

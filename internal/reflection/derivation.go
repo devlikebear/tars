@@ -1,7 +1,6 @@
 package reflection
 
 import (
-	"context"
 	"strings"
 	"time"
 
@@ -68,33 +67,6 @@ func deriveAssistantExperience(sessionID, assistantMessage string, now time.Time
 	default:
 		return memory.Experience{}, false
 	}
-}
-
-// appendExperienceIfNew persists an experience only if an identical
-// summary+category pair does not already exist. Returns true when a new
-// entry was written. Errors are swallowed — reflection jobs aggregate
-// errors via their JobResult.Details rather than propagating.
-func appendExperienceIfNew(ctx context.Context, backend memory.Backend, exp memory.Experience) bool {
-	if strings.TrimSpace(exp.Summary) == "" {
-		return false
-	}
-	existing, err := backend.SearchExperiences(ctx, memory.SearchOptions{
-		Query: strings.TrimSpace(exp.Summary),
-		Limit: 6,
-	})
-	if err == nil {
-		normalized := strings.ToLower(strings.TrimSpace(exp.Summary))
-		for _, item := range existing {
-			if strings.ToLower(strings.TrimSpace(item.Summary)) == normalized &&
-				strings.TrimSpace(item.Category) == strings.TrimSpace(exp.Category) {
-				return false
-			}
-		}
-	}
-	if err := backend.AppendExperience(ctx, exp); err != nil {
-		return false
-	}
-	return true
 }
 
 // trimText is a local copy of the tarsserver trimForMemory helper.

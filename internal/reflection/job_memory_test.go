@@ -267,22 +267,3 @@ func TestTrimText(t *testing.T) {
 		t.Errorf("got %q", got)
 	}
 }
-
-func TestAppendExperienceDedupes(t *testing.T) {
-	workspace := newTestWorkspace(t)
-	exp := memory.Experience{
-		Timestamp:     time.Now().UTC(),
-		Category:      "preference",
-		Summary:       "I prefer dark mode",
-		Tags:          []string{"auto"},
-		SourceSession: "s1",
-		Importance:    6,
-		Auto:          true,
-	}
-	if !appendExperienceIfNew(context.Background(), memory.NewFileBackend(workspace, nil), exp) {
-		t.Error("first append should succeed")
-	}
-	if appendExperienceIfNew(context.Background(), memory.NewFileBackend(workspace, nil), exp) {
-		t.Error("duplicate append should return false")
-	}
-}

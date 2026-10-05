@@ -151,8 +151,8 @@ func TestClampAnalyticsDaysBounds(t *testing.T) {
 			if got := clampAnalyticsDays(tt.days); got != tt.want {
 				t.Fatalf("clampAnalyticsDays(%d) = %d, want %d", tt.days, got, tt.want)
 			}
-			if got := normalizeAnalyticsDays(tt.days); got != tt.want {
-				t.Fatalf("normalizeAnalyticsDays(%d) = %d, want %d", tt.days, got, tt.want)
+			if got := clampAnalyticsDays(tt.days); got != tt.want {
+				t.Fatalf("clampAnalyticsDays(%d) = %d, want %d", tt.days, got, tt.want)
 			}
 		})
 	}

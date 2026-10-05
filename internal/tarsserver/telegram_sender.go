@@ -39,21 +39,6 @@ type telegramSender interface {
 	SendChatAction(ctx context.Context, req telegramChatActionRequest) error
 }
 
-type telegramSendFunc func(ctx context.Context, req telegramSendRequest) (telegramSendResult, error)
-
-func (f telegramSendFunc) Send(ctx context.Context, req telegramSendRequest) (telegramSendResult, error) {
-	if f == nil {
-		return telegramSendResult{}, fmt.Errorf("telegram sender is not configured")
-	}
-	return f(ctx, req)
-}
-
-func (f telegramSendFunc) SendChatAction(ctx context.Context, req telegramChatActionRequest) error {
-	_ = ctx
-	_ = req
-	return nil
-}
-
 type telegramHTTPSender struct {
 	botToken string
 	baseURL  string

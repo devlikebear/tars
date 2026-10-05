@@ -15,15 +15,6 @@ type telegramCommandExecutor interface {
 	Execute(ctx context.Context, line, currentSessionID string) (handled bool, result string, nextSessionID string, err error)
 }
 
-type telegramCommandExecFunc func(ctx context.Context, line, currentSessionID string) (handled bool, result string, nextSessionID string, err error)
-
-func (f telegramCommandExecFunc) Execute(ctx context.Context, line, currentSessionID string) (bool, string, string, error) {
-	if f == nil {
-		return false, "", "", nil
-	}
-	return f(ctx, line, currentSessionID)
-}
-
 type telegramCommandHandlerOptions struct {
 	Store          *session.Store
 	CronResolver   *workspaceCronStoreResolver

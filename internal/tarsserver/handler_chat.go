@@ -1322,65 +1322,6 @@ func skillNameOrEmpty(def *skill.Definition) string {
 	return strings.TrimSpace(def.Name)
 }
 
-func newChatAPIHandler(workspaceDir string, store *session.Store, client llm.Client, logger zerolog.Logger) http.Handler {
-	return newChatAPIHandlerWithRuntimeConfig(
-		workspaceDir,
-		store,
-		client,
-		nil,
-		logger,
-		agent.DefaultMaxLoopIters,
-		nil,
-		"",
-		defaultChatToolingOptions(),
-	)
-}
-
-func newChatAPIHandlerWithOptions(
-	workspaceDir string,
-	store *session.Store,
-	client llm.Client,
-	logger zerolog.Logger,
-	maxIterations int,
-	extraTools ...tool.Tool,
-) http.Handler {
-	return newChatAPIHandlerWithRuntimeConfig(
-		workspaceDir,
-		store,
-		client,
-		nil,
-		logger,
-		maxIterations,
-		nil,
-		"",
-		defaultChatToolingOptions(),
-		extraTools...,
-	)
-}
-
-func newChatAPIHandlerWithRuntime(
-	workspaceDir string,
-	store *session.Store,
-	client llm.Client,
-	logger zerolog.Logger,
-	maxIterations int,
-	activity *runtimeActivity,
-	extraTools ...tool.Tool,
-) http.Handler {
-	return newChatAPIHandlerWithRuntimeConfig(
-		workspaceDir,
-		store,
-		client,
-		nil,
-		logger,
-		maxIterations,
-		activity,
-		"",
-		defaultChatToolingOptions(),
-		extraTools...,
-	)
-}
-
 func newChatAPIHandlerWithRuntimeConfig(
 	workspaceDir string,
 	store *session.Store,

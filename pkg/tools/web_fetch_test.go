@@ -29,7 +29,7 @@ func TestWebFetchTool_ParsesHTML(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	t1 := newWebFetchToolWithHTTP(true, ts.Client())
+	t1 := NewWebFetchToolWithOptions(WebFetchOptions{Enabled: true, AllowPrivateHosts: true, HTTPClient: ts.Client()})
 	res, err := t1.Execute(context.Background(), json.RawMessage(`{"url":"`+ts.URL+`"}`))
 	if err != nil {
 		t.Fatalf("web_fetch execute: %v", err)

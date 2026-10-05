@@ -654,38 +654,6 @@ func TestBuildCronNotificationEvent_UsesFriendlySummaryAndOpenPath(t *testing.T)
 	}
 }
 
-func TestTrimCronProjectArtifacts_KeepsNewestFiles(t *testing.T) {
-	root := t.TempDir()
-	dir := filepath.Join(root, "projects", "proj_demo", "cron_runs")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatalf("mkdir cron_runs: %v", err)
-	}
-	names := []string{
-		"20260308T010000Z_job_a.md",
-		"20260308T010100Z_job_b.md",
-		"20260308T010200Z_job_c.md",
-	}
-	for _, name := range names {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte(name), 0o644); err != nil {
-			t.Fatalf("write %s: %v", name, err)
-		}
-	}
-	if err := trimCronProjectArtifacts(dir, 2); err != nil {
-		t.Fatalf("trim artifacts: %v", err)
-	}
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		t.Fatalf("read dir: %v", err)
-	}
-	if len(entries) != 2 {
-		t.Fatalf("expected 2 artifacts left, got %d", len(entries))
-	}
-	got := entries[0].Name() + "," + entries[1].Name()
-	if got != "20260308T010100Z_job_b.md,20260308T010200Z_job_c.md" {
-		t.Fatalf("unexpected remaining artifacts: %s", got)
-	}
-}
-
 func TestCronJobRunner_FailsWhenClaimedFileUpdateIsNotObserved(t *testing.T) {
 	root := t.TempDir()
 	store := session.NewStore(root)

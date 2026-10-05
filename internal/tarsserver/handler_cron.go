@@ -13,35 +13,6 @@ import (
 	"github.com/rs/zerolog"
 )
 
-func newCronAPIHandler(
-	store *cron.Store,
-	runPrompt func(ctx context.Context, prompt string) (string, error),
-	logger zerolog.Logger,
-) http.Handler {
-	var runJob func(ctx context.Context, job cron.Job) (string, error)
-	if runPrompt != nil {
-		runJob = func(ctx context.Context, job cron.Job) (string, error) {
-			return runPrompt(ctx, job.Prompt)
-		}
-	}
-	return newCronAPIHandlerWithRunner(store, runJob, logger)
-}
-
-func newCronAPIHandlerWithRunner(
-	store *cron.Store,
-	runJob func(ctx context.Context, job cron.Job) (string, error),
-	logger zerolog.Logger,
-) http.Handler {
-	baseWorkspaceDir := ""
-	runHistoryLimit := 0
-	if store != nil {
-		baseWorkspaceDir = store.WorkspaceDir()
-		runHistoryLimit = store.RunHistoryLimit()
-	}
-	resolver := newWorkspaceCronStoreResolver(baseWorkspaceDir, runHistoryLimit, store)
-	return newCronAPIHandlerWithRunnerAndResolver(resolver, runJob, logger)
-}
-
 func newCronAPIHandlerWithRunnerAndResolver(
 	resolver *workspaceCronStoreResolver,
 	runJob func(ctx context.Context, job cron.Job) (string, error),

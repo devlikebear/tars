@@ -87,7 +87,7 @@ func TestSessionAPI_StyleControlRoundTrip(t *testing.T) {
 		t.Fatalf("create session: %v", err)
 	}
 	defaults := sessionStyleValues{Directness: 78, Humor: 18, Caution: 66, Autonomy: 35}
-	handler := newSessionAPIHandlerWithUsageAndStyleDefaults(store, zerolog.New(io.Discard), nil, defaults)
+	handler := newSessionAPIHandlerWithNotifier(store, zerolog.New(io.Discard), nil, defaults, nil)
 
 	getReq := httptest.NewRequest(http.MethodGet, "/v1/admin/sessions/"+sess.ID+"/style", nil)
 	getReq.Header.Set("Tars-Debug-Auth-Role", "admin")

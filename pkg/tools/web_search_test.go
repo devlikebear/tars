@@ -29,7 +29,7 @@ func TestWebSearchTool_ParsesResults(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	t1 := newWebSearchToolWithHTTP(ts.URL, true, "key", ts.Client())
+	t1 := NewWebSearchToolWithOptions(WebSearchOptions{Enabled: true, Provider: "brave", BraveAPIKey: "key", BraveBaseURL: ts.URL, CacheTTL: 0, HTTPClient: ts.Client()})
 	res, err := t1.Execute(context.Background(), json.RawMessage(`{"query":"tars"}`))
 	if err != nil {
 		t.Fatalf("web_search execute: %v", err)

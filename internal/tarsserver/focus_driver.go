@@ -338,16 +338,6 @@ func (d *focusDriver) cancel(sessionID string) bool {
 	return true
 }
 
-// running reports whether the session has a run.
-func (d *focusDriver) running(sessionID string) bool {
-	if d == nil {
-		return false
-	}
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	return d.runs[sessionID] != nil
-}
-
 func (d *focusDriver) loop(run *focusRun, after <-chan struct{}) {
 	defer d.wg.Done()
 	defer close(run.done)
