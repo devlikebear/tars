@@ -215,3 +215,48 @@ func startDurableToolScheduler(t *testing.T, ledger *workstore.Store, workspaceI
 	})
 	return scheduler
 }
+
+func TestDurableFlowIDIsScopedToTheSessionAndNotReusedOnceFinished(t *testing.T) {
+	runtime, _ := newAgentRuntimeForSubagentToolTests(t, 4, 1, func(context.Context, string, string, []string, string) (string, error) {
+		return "findings", nil
+	})
+	ledger := openDurableToolLedger(t)
+	scheduler := startDurableToolScheduler(t, ledger, "ws-flow-id", runtime)
+	tool := NewDurableSubagentsOrchestrateTool(runtime, scheduler)
+	request := json.RawMessage(`{"flow_id":"research","steps":[{"id":"s1","mode":"parallel","tasks":[{"id":"a","prompt":"inspect"}]}]}`)
+	submit := func(sessionID string) (map[string]any, bool) {
+		t.Helper()
+		ctx := usage.WithCallMeta(serverauth.WithWorkspaceID(context.Background(), "ws-flow-id"), usage.CallMeta{Source: "chat", SessionID: sessionID})
+		result, err := tool.Execute(ctx, request)
+		if err != nil {
+			t.Fatalf("submit: %v", err)
+		}
+		var payload map[string]any
+		if err := json.Unmarshal([]byte(result.Text()), &payload); err != nil {
+			t.Fatalf("decode %q: %v", result.Text(), err)
+		}
+		return payload, result.IsError
+	}
+
+	first, failed := submit("session-a")
+	if failed || first["work_id"] == "" {
+		t.Fatalf("first submission = %+v", first)
+	}
+	waitCtx, cancel := context.WithTimeout(context.Background(), subagentTestEventTimeout)
+	defer cancel()
+	if _, err := scheduler.Wait(waitCtx, first["work_id"].(string)); err != nil {
+		t.Fatalf("wait first flow: %v", err)
+	}
+
+	// The same name in another session is another flow.
+	other, failed := submit("session-b")
+	if failed || other["work_id"] == first["work_id"] {
+		t.Fatalf("another session must get its own work, got %+v (first %v)", other, first["work_id"])
+	}
+
+	// Once finished, the name is not silently answered with the old work.
+	again, failed := submit("session-a")
+	if !failed || again["work_id"] != first["work_id"] || !strings.Contains(again["message"].(string), "Use a new flow_id") {
+		t.Fatalf("resubmitting a finished flow_id should be refused with a hint, got %+v", again)
+	}
+}

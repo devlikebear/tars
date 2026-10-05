@@ -89,8 +89,11 @@ func executeDurableSubagentFlow(ctx context.Context, runtime *agentruntime.Runti
 		source = "session"
 		sourceID = strings.TrimSpace(meta.SessionID)
 	}
+	// Stored timestamps have millisecond precision, so a work created by this
+	// call is never older than this instant.
+	submittedAt := time.Now().Truncate(time.Millisecond)
 	work, err := scheduler.Submit(ctx, workscheduler.SubmitInput{
-		WorkspaceID: workspaceID, IdempotencyKey: "subagent-flow:" + flowID,
+		WorkspaceID: workspaceID, IdempotencyKey: durableFlowIdempotencyKey(meta.SessionID, flowID),
 		Kind: "subagent_flow", Source: source, SourceID: sourceID,
 		CausationID: firstNonEmptyString(strings.TrimSpace(meta.RunID), flowID),
 		Title:       "Subagent flow " + flowID, Objective: fmt.Sprintf("Execute %d durable subagent tasks", len(stepSpecs)),
@@ -100,9 +103,24 @@ func executeDurableSubagentFlow(ctx context.Context, runtime *agentruntime.Runti
 	if err != nil {
 		return JSONTextResult(map[string]any{"message": err.Error()}, true), nil
 	}
+	// A flow_id names one flow of this session. Submitting it again returns
+	// the work it already made, which is right for a retried call while the
+	// flow is still going and wrong once it has finished or was cancelled:
+	// the caller would take the old result for a new run.
+	existing := work.CreatedAt.Before(submittedAt)
+	if existing && (work.State == workstore.WorkStateDone || work.State == workstore.WorkStateCancelled) {
+		return JSONTextResult(map[string]any{
+			"message": fmt.Sprintf("flow_id %q was already used in this session by work %s, which is %s. Nothing was submitted. Use a new flow_id to run the flow again.", flowID, work.ID, work.State),
+			"flow_id": flowID, "work_id": work.ID, "status": work.State,
+		}, true), nil
+	}
 	accepted := map[string]any{
 		"flow_id": flowID, "work_id": work.ID, "status": work.State,
 		"durable": true, "task_count": len(stepSpecs), "wait_for_completion": input.WaitForCompletion,
+	}
+	if existing {
+		accepted["existing"] = true
+		accepted["message"] = "this flow_id is already running in this session; no new work was submitted"
 	}
 	if !input.WaitForCompletion {
 		return JSONTextResult(accepted, false), nil
@@ -124,6 +142,16 @@ func executeDurableSubagentFlow(ctx context.Context, runtime *agentruntime.Runti
 	}
 	payload, failed := durableFlowOutput(contract, projection)
 	return JSONTextResult(payload, failed), nil
+}
+
+// durableFlowIdempotencyKey scopes a flow_id to the session that submitted
+// it. The key used to be the flow_id alone, so two sessions that picked the
+// same name shared one work and the second got the first one's result.
+func durableFlowIdempotencyKey(sessionID, flowID string) string {
+	if sessionID = strings.TrimSpace(sessionID); sessionID != "" {
+		return "subagent-flow:" + sessionID + ":" + flowID
+	}
+	return "subagent-flow:" + flowID
 }
 
 func durableFlowPolicy(input *subagentFlowSchedulePolicy) workstore.StepSchedulePolicy {

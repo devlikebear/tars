@@ -275,7 +275,8 @@ func (s *Scheduler) RunOnce(ctx context.Context) (int, error) {
 		}
 	}
 	works, err := s.store.ListWorks(ctx, workstore.ListWorksFilter{
-		WorkspaceID: s.workspaceID, States: []workstore.WorkState{workstore.WorkStateRunning}, Limit: 1000,
+		WorkspaceID: s.workspaceID, States: []workstore.WorkState{workstore.WorkStateRunning},
+		Scheduled: true, Limit: 1000,
 	})
 	if err != nil {
 		return 0, err

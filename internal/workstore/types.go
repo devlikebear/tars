@@ -645,8 +645,14 @@ type ListWorksFilter struct {
 	Source      string
 	SourceID    string
 	States      []WorkState
-	Limit       int
-	Offset      int
+	// Scheduled keeps only works that have step schedules, which is what a
+	// work submitted through the durable scheduler has and a projection of
+	// an agent run or a session does not. The scheduler polls with it: the
+	// projections carry megabytes of metadata each and must not be loaded
+	// on every pass.
+	Scheduled bool
+	Limit     int
+	Offset    int
 }
 
 type CreateWorkInput struct {
