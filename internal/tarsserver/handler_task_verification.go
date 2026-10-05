@@ -94,20 +94,7 @@ func badVerification(msg string) error {
 	return &verificationError{status: http.StatusBadRequest, msg: msg}
 }
 
-// runTaskVerification runs a session's approved contract verification
-// commands against one task (taskID, or the in-progress/first pending task
-// when empty), records each command's evidence on that task, and reports
-// whether all of them passed.
-func runTaskVerification(ctx context.Context, store *session.Store, sessionID, taskID string, timeout time.Duration) ([]taskVerificationResult, bool, error) {
-	run, err := verifySessionTask(ctx, store, sessionID, taskID, nil, timeout, nil)
-	if err != nil {
-		return nil, false, err
-	}
-	return run.results, run.allPassed, nil
-}
-
-// runTaskVerificationCommands is runTaskVerification for an explicit
-// subset of commands: the focus build loop runs the plan's verify commands
+// runTaskVerificationCommands verifies an explicit subset of commands: the focus build loop runs the plan's verify commands
 // and keeps the end-to-end ones for review. The contract must still be
 // approved; the commands go through the same verifier and evidence path.
 // excerpt, when set, makes the output excerpts (proofverifier.Options.Excerpt);

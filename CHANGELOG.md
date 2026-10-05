@@ -45,6 +45,8 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ### Removed
 
+- Remove unreachable internal credential wrappers, obsolete server CLI and verification/policy adapters, unused proof digest and reflection severity helpers, and the orphaned file-URI package with their exclusive tests.
+
 - The session lineage page (`/console/sessions/graph`). It drew the tree of forked chats and had been out of the nav since #931; on the reviewed server it showed 30 sessions and no fork. Forking a chat from a message is unchanged.
 
 ## [0.47.7] - 2026-10-05

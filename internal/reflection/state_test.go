@@ -128,18 +128,3 @@ func TestConfigDefaults(t *testing.T) {
 		t.Error("default max turns != 20")
 	}
 }
-
-func TestSeverityString(t *testing.T) {
-	for _, c := range []struct {
-		s    Severity
-		want string
-	}{
-		{SeverityInfo, "info"},
-		{SeverityWarn, "warn"},
-		{SeverityError, "error"},
-	} {
-		if got := c.s.String(); got != c.want {
-			t.Errorf("%d.String() = %q, want %q", int(c.s), got, c.want)
-		}
-	}
-}

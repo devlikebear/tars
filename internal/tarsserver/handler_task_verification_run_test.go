@@ -27,31 +27,6 @@ func verificationSession(t *testing.T, commands ...string) (*session.Store, stri
 
 func TestRunTaskVerification(t *testing.T) {
 	const pass, fail = "printf verification-ok", "go env -definitely-not-a-real-flag"
-	t.Run("all pass", func(t *testing.T) {
-		store, id := verificationSession(t, pass)
-		results, ok, err := runTaskVerification(context.Background(), store, id, "", 0)
-		if err != nil || !ok || len(results) != 1 || results[0].Status != "passed" || results[0].EvidenceID == "" {
-			t.Fatalf("results = %+v ok = %v err = %v", results, ok, err)
-		}
-		st, _ := store.GetTasks(id)
-		if len(st.Tasks[0].Evidence) != 1 || st.Tasks[0].Evidence[0].Command != pass {
-			t.Fatalf("evidence = %+v", st.Tasks[0].Evidence)
-		}
-	})
-	t.Run("one fails", func(t *testing.T) {
-		store, id := verificationSession(t, pass, fail)
-		results, ok, err := runTaskVerification(context.Background(), store, id, "2", 0)
-		if err != nil || ok || len(results) != 2 {
-			t.Fatalf("results = %+v ok = %v err = %v", results, ok, err)
-		}
-		if results[1].ExitCode == 0 || results[1].Status == "passed" || strings.TrimSpace(results[1].Output) == "" {
-			t.Fatalf("failed result = %+v", results[1])
-		}
-		st, _ := store.GetTasks(id)
-		if len(st.Tasks[0].Evidence) != 0 || len(st.Tasks[1].Evidence) != 2 {
-			t.Fatalf("evidence must land on the requested task: %+v", st.Tasks)
-		}
-	})
 	t.Run("explicit commands run only those", func(t *testing.T) {
 		store, id := verificationSession(t, pass, fail)
 		results, ok, err := runTaskVerificationCommands(context.Background(), store, id, "", []string{pass}, 0, nil)
@@ -63,12 +38,6 @@ func TestRunTaskVerification(t *testing.T) {
 		store, id := verificationSession(t, pass)
 		if _, _, err := runTaskVerificationCommands(context.Background(), store, id, "", []string{" "}, 0, nil); verificationErrorStatus(err) != http.StatusBadRequest {
 			t.Fatalf("blank commands: err = %v", err)
-		}
-		if _, _, err := runTaskVerification(context.Background(), store, "missing", "", 0); verificationErrorStatus(err) != http.StatusNotFound {
-			t.Fatalf("missing session: err = %v", err)
-		}
-		if _, _, err := runTaskVerification(context.Background(), store, id, "9", 0); verificationErrorStatus(err) != http.StatusBadRequest {
-			t.Fatalf("unknown task: err = %v", err)
 		}
 		unapproved, uid := verificationSession(t, pass)
 		_ = unapproved.SaveTasks(uid, session.SessionTasks{Contract: &session.TaskContract{Status: "draft", VerificationCommands: []string{pass}}, Tasks: []session.Task{{ID: "1"}}})
@@ -87,10 +56,5 @@ func TestFocusVerificationExcerptKeepsTheFailure(t *testing.T) {
 	}
 	if !strings.Contains(results[0].Output, "--- FAIL: TestGreet") {
 		t.Fatalf("the failure fell out of the excerpt:\n%.300s", results[0].Output)
-	}
-	// The shared default (the HTTP handler) keeps the head as before.
-	results, _, _ = runTaskVerification(context.Background(), store, id, "", 0)
-	if strings.Contains(results[0].Output, "--- FAIL: TestGreet") {
-		t.Fatal("the default excerpt changed")
 	}
 }

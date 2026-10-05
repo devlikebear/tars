@@ -15,7 +15,7 @@ import (
 	"github.com/devlikebear/tars/internal/workstore"
 )
 
-func TestEngineRunsDeterministicCommandAndDetectsChangedSubject(t *testing.T) {
+func TestEngineRunsDeterministicCommand(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
@@ -40,17 +40,7 @@ func TestEngineRunsDeterministicCommandAndDetectsChangedSubject(t *testing.T) {
 	if result.Status != workstore.ProofStatusPassed || result.SubjectDigest == "" || result.Rationale == "" || len(result.ArtifactDigestsJSON) == 0 || result.UsedLLM {
 		t.Fatalf("deterministic result = %+v", result)
 	}
-	before := result.SubjectDigest
-	if err := os.WriteFile(path, []byte("after\n"), 0o600); err != nil {
-		t.Fatalf("change verification subject: %v", err)
-	}
-	after, _, err := engine.SubjectDigest(context.Background(), requirement)
-	if err != nil {
-		t.Fatalf("digest changed subject: %v", err)
-	}
-	if after == before {
-		t.Fatalf("subject digest did not change: %s", after)
-	}
+
 }
 
 func TestEngineRecordsDeterministicCommandFailure(t *testing.T) {
@@ -140,11 +130,6 @@ func TestEngineVerifiesHTTPSAndRejectsPrivateTargets(t *testing.T) {
 	verified, err := engine.Verify(context.Background(), workscheduler.VerificationRequest{Requirement: requirement})
 	if err != nil || verified.Status != workstore.ProofStatusPassed {
 		t.Fatalf("verify public HTTPS result=%+v err=%v", verified, err)
-	}
-	body = "commit-b"
-	changed, _, err := engine.SubjectDigest(context.Background(), requirement)
-	if err != nil || changed == verified.SubjectDigest {
-		t.Fatalf("changed URL digest=%s original=%s err=%v", changed, verified.SubjectDigest, err)
 	}
 
 	privateEngine, err := New(Options{

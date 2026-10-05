@@ -759,11 +759,6 @@ func resolveInvokedSkillFromSnapshot(message string, snapshot extensions.Snapsho
 	return findInvocableSkillInSnapshot(snapshot, name)
 }
 
-func resolveSkillForMessage(message string, manager *extensions.Manager, workspaceDir, sessionID string) *skill.Definition {
-	resolved := resolveSkillSelection(message, manager, workspaceDir, sessionID)
-	return resolved.Definition
-}
-
 type skillSelection struct {
 	Definition *skill.Definition
 	Reason     string
