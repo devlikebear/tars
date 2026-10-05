@@ -13,10 +13,6 @@ import type {
   FocusWorktreeEnd,
 } from './types.ts'
 
-// The notice card the server raises when gh cannot run (pr.go
-// NoticeGHUnavailable).
-export const ghUnavailableTitle = 'gh unavailable'
-
 const prStages = new Set<FocusStageId>(['pr', 'pr_review', 'merge'])
 
 // ciCounts counts checks by state; skipped counts as passed, as the server

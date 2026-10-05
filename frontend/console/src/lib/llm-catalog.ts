@@ -22,7 +22,6 @@
 import type { ProviderKind } from './onboarding'
 
 export const SNAPSHOT_DATE = '2026-05-03'
-export const SNAPSHOT_SOURCE = 'OpenRouter /api/v1/models'
 
 // Per-kind well-known model ids, ordered by typical user preference
 // (newest / heaviest first). The wizard surfaces these as datalist

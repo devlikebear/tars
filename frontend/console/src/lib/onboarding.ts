@@ -114,7 +114,6 @@ export type OptionalSection = (typeof optionalSections)[number]
 export type WizardMode = 'quick' | 'full'
 
 export const requiredTiers = ['heavy', 'standard', 'light'] as const
-export type RequiredTier = (typeof requiredTiers)[number]
 
 export function emptyOnboardingForm(): OnboardingFormState {
   return {

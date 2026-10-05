@@ -36,9 +36,6 @@ export type Translations = {
       reload: string
       save: string
       cancel: string
-      delete: string
-      rename: string
-      compact: string
       dismiss: string
       close: string
       loading: string
@@ -46,9 +43,6 @@ export type Translations = {
       saving: string
     }
     states: {
-      connected: string
-      disconnected: string
-      never: string
       unknown: string
     }
   }
@@ -113,9 +107,6 @@ export type Translations = {
     tierPinFailed: (error: string) => string
     customTiersHint: string
     servedBy: (tier: string, model: string) => string
-    permission: string
-    permissionDefault: string
-    permissionHint: string
     costHint: string
     costUnpriced: string
     costUnpricedHint: (unpriced: number, calls: number) => string
@@ -160,8 +151,6 @@ export type Translations = {
   sessions: {
     title: string
     subtitle: string
-    showWorkers: string
-    searchPlaceholder: string
     sidebarSearchPlaceholder: string
     newChat: string
     filters: {
@@ -177,18 +166,12 @@ export type Translations = {
       recentTitle: string
       nameTitle: string
     }
-    loading: string
     sidebarLoading: string
-    searchingTranscripts: string
     sidebarSearchingTranscripts: string
     empty: string
-    noMatches: string
     sidebarEmpty: string
     sidebarNoMatches: string
     transcriptMatches: string
-    autoTitle: string
-    confirmDelete: string
-    clickAgainToConfirm: string
     snippetFallbackKind: string
     relativeTime: {
       secondsAgo: (n: number) => string
@@ -339,8 +322,6 @@ export type Translations = {
     mode: {
       quick: string
       full: string
-      switchToFull: string
-      switchToQuick: string
       quickHint: string
       fullHint: string
     }
@@ -516,12 +497,6 @@ export type Translations = {
       }
       jumpTo: (section: string) => string
     }
-    saved: {
-      title: string
-      body: string
-      laterButton: string
-      restartNowButton: string
-    }
     restart: {
       patchingTitle: string
       patchingBody: string
@@ -541,19 +516,11 @@ export type Translations = {
     setupOnlyBody: string
   }
   chat: {
-    pinned: string
-    statusStrip: {
-      pulseTicks: string
-      lastTick: string
-      unread: string
-      neverTick: string
-    }
     panels: {
       sessions: string
       sessionsTooltip: string
       files: string
       filesTooltip: string
-      filesCount: (count: number) => string
       config: string
       configTooltip: string
       context: string
@@ -566,7 +533,6 @@ export type Translations = {
       tasks: string
       tasksTooltip: string
       tasksProgressTooltip: (done: number, inProgress: number, pending: number) => string
-      tasksCount: (done: number, total: number) => string
       git: string
       gitTooltip: string
       changes: string
@@ -579,14 +545,12 @@ export type Translations = {
       cron: string
       cronTooltip: string
       health: string
-      healthCount: (count: number) => string
       terminal: string
       dockEmpty: string
     }
     session: {
       newChat: string
       healthBadge: string
-      healthBadgeTooltip: string
       actions: {
         rename: string
         aiTitle: string
@@ -657,7 +621,6 @@ export type Translations = {
       copyTitle: string
       forkFromHere: string
       forkFromHereTitle: string
-      reasoningSummary: string
       reasoningSummaryWithChars: (chars: number) => string
       roles: {
         system: string
@@ -735,7 +698,6 @@ export type Translations = {
     nextCompleted: string
     nextPaused: string
     nextSchedule: string
-    nextAt: (time: string) => string
     nextAfter: (relative: string) => string
     nextTick: string
     pause: string
@@ -849,7 +811,6 @@ export type Translations = {
     skipTask: string
     archive: {
       pastPlans: (count: number) => string
-      loading: string
       empty: string
       archivedAt: string
       createdAt: (value: string) => string
@@ -1299,26 +1260,16 @@ export type Translations = {
     loading: string
     skillsTitle: string
     skillsDefinition: string
-    pluginsTitle: string
-    pluginsDeprecated: string
-    pluginsAdvancedLegacy: string
-    pluginsDeprecatedTooltip: string
-    pluginsAdvancedTooltip: string
-    pluginsDefinition: string
-    pluginsPolicyNote: string
     mcpTitle: string
     mcpDefinition: string
     available: (n: number) => string
     noSkills: string
-    noPlugins: string
     noMCP: string
     install: string
     installing: string
     update: string
-    update_short: string
     updateBusy: string
     uninstall: string
-    uninstalling: string
     installed: string
     enable: string
     disable: string
@@ -1501,7 +1452,6 @@ export type Translations = {
     loadingForkInsights: string
     noForkInsights: string
     failedForkInsights: string
-    provenance: string
     messageIndex: (n: number) => string
   }
   plans: {

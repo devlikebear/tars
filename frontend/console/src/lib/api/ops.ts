@@ -2,7 +2,6 @@ import { requestJSON } from './client.ts'
 import type {
   Approval,
   AutomationAuditListResponse,
-  CleanupApplyResult,
   CleanupPlan,
   CreateCronJobRequest,
   CronJob,
@@ -92,14 +91,6 @@ export async function getOpsStatus(): Promise<OpsStatus> {
 
 export async function createCleanupPlan(): Promise<CleanupPlan> {
   return requestJSON<CleanupPlan>('/v1/ops/cleanup/plan', { method: 'POST' })
-}
-
-export async function applyCleanup(approvalId: string): Promise<CleanupApplyResult> {
-  return requestJSON<CleanupApplyResult>('/v1/ops/cleanup/apply', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ approval_id: approvalId }),
-  })
 }
 
 export async function listApprovals(): Promise<Approval[]> {
