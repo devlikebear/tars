@@ -42,7 +42,7 @@ func sendMessage(ctx context.Context, client chatClient, session, message string
 		// Goal events are printed even without --verbose: a judge error or an
 		// exhausted budget is why an unattended run stopped.
 		if evt.Type == "goal_event" {
-			fmt.Fprintf(stderr, "goal: %s\n", secrets.RedactText(formatGoalEvent(evt)))
+			_, _ = fmt.Fprintf(stderr, "goal: %s\n", secrets.RedactText(formatGoalEvent(evt)))
 			return
 		}
 		if !showStatus {
