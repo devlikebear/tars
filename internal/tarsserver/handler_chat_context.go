@@ -274,7 +274,7 @@ func buildSessionChatRunState(
 			deps.logger.Debug().Err(perr).Str("session_id", sessionID).Msg("drain pending critic feedback failed")
 		}
 	}
-	resolvedTools := resolveInjectedToolPolicy(registry, authRole, deps.tooling.ToolsAllowHighRiskUser, sessionToolConfigs...)
+	resolvedTools := resolveInjectedToolPolicyFor(registry, authRole, deps.tooling.ToolsAllowHighRiskUser, deps.tooling.WorkScheduler != nil, sessionToolConfigs...)
 	injectedSchemas := resolvedTools.Schemas
 	deps.logger.Debug().
 		Str("session_id", sessionID).

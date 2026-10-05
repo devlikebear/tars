@@ -727,3 +727,56 @@ func countStepState(steps []workstore.Step, state workstore.WorkState) int {
 	}
 	return count
 }
+
+// The ledger also holds running works the scheduler did not submit: the
+// projections of ordinary agent runs, including the runs its own steps spawn.
+// They have no scheduler adapter. One of them used to abort every pass, so a
+// flow released by a restart was never claimed again.
+func TestSchedulerIgnoresRunningWorksItDidNotSubmit(t *testing.T) {
+	t.Parallel()
+
+	store := openSchedulerTestStore(t)
+	const workspaceID = "workspace-foreign"
+	foreign, err := store.CreateWork(context.Background(), workstore.CreateWorkInput{
+		WorkspaceID: workspaceID, Kind: "agent-run", Source: "agentruntime",
+		IdempotencyKey: "agent-run:run_1", Title: "Agent run run_1",
+		InitialState: workstore.WorkStateRunning, ActorID: "agentruntime",
+	})
+	if err != nil {
+		t.Fatalf("create foreign work: %v", err)
+	}
+	foreignStep, err := store.CreateStep(context.Background(), workstore.CreateStepInput{
+		WorkspaceID: workspaceID, WorkID: foreign.ID, IdempotencyKey: "run", Title: "run",
+		State: workstore.WorkStateTodo, Position: 1, ActorID: "agentruntime",
+	})
+	if err != nil {
+		t.Fatalf("create foreign step: %v", err)
+	}
+
+	executor := &fakeExecutor{adapter: "fake", execute: func(context.Context, Execution) (ExecutionResult, error) {
+		return ExecutionResult{Succeeded: true, OutputJSON: json.RawMessage(`{"ok":true}`)}, nil
+	}}
+	scheduler := newTestScheduler(t, store, workspaceID, executor, 2)
+	work, err := scheduler.Submit(context.Background(), SubmitInput{
+		WorkspaceID: workspaceID, IdempotencyKey: "flow", SourceID: "flow",
+		Title: "Flow", Objective: "run next to a foreign work", Adapter: "fake", ActorID: "planner",
+		Steps: []StepSpec{{Key: "a", Title: "A", Position: 1, Policy: oneAttemptPolicy()}},
+	})
+	if err != nil {
+		t.Fatalf("submit flow: %v", err)
+	}
+
+	if claimed, err := scheduler.RunOnce(context.Background()); err != nil || claimed != 1 {
+		t.Fatalf("expected the flow's step to be claimed past the foreign work, claimed=%d err=%v", claimed, err)
+	}
+	if _, err := scheduler.Wait(context.Background(), work.ID); err != nil {
+		t.Fatalf("wait flow: %v", err)
+	}
+	projection, err := store.GetWorkProjection(context.Background(), workspaceID, foreign.ID)
+	if err != nil {
+		t.Fatalf("foreign projection: %v", err)
+	}
+	if got := projection.Steps[0]; got.ID != foreignStep.ID || got.State != workstore.WorkStateTodo {
+		t.Fatalf("the scheduler must leave a foreign step alone, got state %s", got.State)
+	}
+}
