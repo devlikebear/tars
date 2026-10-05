@@ -183,9 +183,12 @@ func rememberUpstreamSession(deps chatHandlerDeps, state chatRunState, upstream,
 }
 
 // persistInterruptedTurn saves what a failed or cancelled turn got done. A
-// partial reply is saved with every tool call, as before. Without one, only
-// the tools the upstream provider ran are saved: a CLI provider's turn can
-// run for minutes of tool work before a timeout, and that work is on disk.
+// partial reply is saved with every tool call, as before. Without one, the
+// tool calls are saved on their own: a turn can run for minutes of tool work
+// before a timeout, a cancel or a loop guard ends it, and that work is on
+// disk. This used to keep only the tools an upstream CLI provider ran, so a
+// native-provider turn that ended in an error left nothing but the user's
+// message: dozens of exec and edit calls with no trace in the session.
 // Tool messages with no assistant reply after them never reach the model
 // again (buildLLMMessageHistory drops them), so they only feed the console.
 func persistInterruptedTurn(state chatRunState, userMessage string, chatResp llm.ChatResponse, toolCalls []ToolCallRecord, logger zerolog.Logger) {
@@ -194,7 +197,7 @@ func persistInterruptedTurn(state chatRunState, userMessage string, chatResp llm
 		persistChatResult(state, userMessage, chatResp, toolCalls, logger)
 		return
 	}
-	persistToolCallRecords(state, upstreamToolCallRecords(toolCalls), time.Now().UTC(), logger)
+	persistToolCallRecords(state, toolCalls, time.Now().UTC(), logger)
 }
 
 func persistToolCallRecords(state chatRunState, toolCalls []ToolCallRecord, now time.Time, logger zerolog.Logger) {
