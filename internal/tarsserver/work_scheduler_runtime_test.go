@@ -36,8 +36,8 @@ func TestBuildWorkSchedulerHonorsRollbackAndValidatesLease(t *testing.T) {
 
 	cfg.WorkLedger.SchedulerEnabled = true
 	cfg.WorkLedger.Enabled = false
-	if scheduler, err = buildWorkSchedulerIfEnabled(cfg, ledger, runtime, zerolog.Nop()); err == nil || scheduler != nil {
-		t.Fatalf("scheduler without ledger scheduler=%v err=%v", scheduler, err)
+	if scheduler, err = buildWorkSchedulerIfEnabled(cfg, ledger, runtime, zerolog.Nop()); err != nil || scheduler != nil {
+		t.Fatalf("a server without the ledger should start without the scheduler, scheduler=%v err=%v", scheduler, err)
 	}
 
 	cfg.WorkLedger.Enabled = true
@@ -45,8 +45,8 @@ func TestBuildWorkSchedulerHonorsRollbackAndValidatesLease(t *testing.T) {
 		Enabled: false, WorkspaceDir: workspaceDir, SessionStore: session.NewStore(workspaceDir),
 	})
 	t.Cleanup(func() { _ = disabledRuntime.Close(context.Background()) })
-	if scheduler, err = buildWorkSchedulerIfEnabled(cfg, ledger, disabledRuntime, zerolog.Nop()); err == nil || scheduler != nil {
-		t.Fatalf("scheduler without agent runtime scheduler=%v err=%v", scheduler, err)
+	if scheduler, err = buildWorkSchedulerIfEnabled(cfg, ledger, disabledRuntime, zerolog.Nop()); err != nil || scheduler != nil {
+		t.Fatalf("a server without the agent runtime should start without the scheduler, scheduler=%v err=%v", scheduler, err)
 	}
 
 	cfg.WorkLedger.SchedulerLeaseSeconds = 10

@@ -220,7 +220,7 @@ func defaultConfigValues() Config {
 		},
 		WorkLedger: WorkLedgerConfig{
 			Enabled:                   true,
-			SchedulerEnabled:          false,
+			SchedulerEnabled:          true,
 			SchedulerMaxWorkers:       defaultWorkSchedulerMaxWorkers,
 			SchedulerLeaseSeconds:     defaultWorkSchedulerLeaseSeconds,
 			SchedulerHeartbeatSeconds: defaultWorkSchedulerHeartbeatSeconds,

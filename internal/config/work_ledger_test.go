@@ -92,7 +92,7 @@ func TestWorkSchedulerConfiguration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.WorkLedger.SchedulerEnabled || cfg.WorkLedger.SchedulerMaxWorkers != 4 || cfg.WorkLedger.SchedulerLeaseSeconds != 60 || cfg.WorkLedger.SchedulerHeartbeatSeconds != 20 || cfg.WorkLedger.SchedulerPollMilliseconds != 250 {
+	if !cfg.WorkLedger.SchedulerEnabled || cfg.WorkLedger.SchedulerMaxWorkers != 4 || cfg.WorkLedger.SchedulerLeaseSeconds != 60 || cfg.WorkLedger.SchedulerHeartbeatSeconds != 20 || cfg.WorkLedger.SchedulerPollMilliseconds != 250 {
 		t.Fatalf("defaults: %+v", cfg.WorkLedger)
 	}
 	path := filepath.Join(t.TempDir(), "config.yaml")
