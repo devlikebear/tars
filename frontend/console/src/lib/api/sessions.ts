@@ -278,14 +278,6 @@ export async function getSessionConfig(sessionId: string): Promise<SessionToolCo
   return requestJSON<SessionToolConfig>(`/v1/admin/sessions/${encodeURIComponent(sessionId)}/config`)
 }
 
-export async function updateSessionConfig(sessionId: string, config: SessionToolConfig): Promise<void> {
-  await requestJSON(`/v1/admin/sessions/${encodeURIComponent(sessionId)}/config`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(config),
-  })
-}
-
 export async function updateSessionLocalConfig(
   sessionId: string,
   config: SessionToolConfig,

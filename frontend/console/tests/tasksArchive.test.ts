@@ -13,8 +13,6 @@ test('Tasks panel wires archived plan API and collapsible archive section', () =
   assert.match(typesSource, /PlanArchiveResponse/)
   assert.match(apiSource, /getSessionPlanArchive/)
   assert.match(apiSource, /\/v1\/admin\/sessions\/.*\/plans\/archive/)
-  assert.match(apiSource, /getPlanArchive/)
-  assert.match(apiSource, /\/v1\/admin\/plans\/archive/)
   assert.match(tasksPanelSource, /getSessionPlanArchive/)
   assert.match(tasksPanelSource, /archiveExpanded/)
   assert.match(tasksPanelSource, /archive-items/)

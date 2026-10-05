@@ -392,10 +392,6 @@ export async function listChatFileMentions(
   )
 }
 
-export async function getSessionPrompt(sessionId: string): Promise<{ prompt_override: string }> {
-  return requestJSON<{ prompt_override: string }>(`/v1/admin/sessions/${encodeURIComponent(sessionId)}/prompt`)
-}
-
 export async function updateSessionPrompt(sessionId: string, promptOverride: string): Promise<void> {
   await requestJSON(`/v1/admin/sessions/${encodeURIComponent(sessionId)}/prompt`, {
     method: 'PUT',

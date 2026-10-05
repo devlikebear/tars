@@ -234,11 +234,6 @@ export type NotificationMessage = {
   open_path?: string
 }
 
-export type ProviderOverride = {
-  alias?: string
-  model?: string
-}
-
 export type ConsensusVariantRecord = {
   variant_idx: number
   alias?: string
@@ -830,13 +825,6 @@ export type CleanupPlan = {
     size_bytes: number
     reason?: string
   }>
-}
-
-export type CleanupApplyResult = {
-  approval_id: string
-  deleted_count: number
-  deleted_bytes: number
-  errors?: string[]
 }
 
 export type APIErrorPayload = {
@@ -1772,16 +1760,6 @@ export type ProviderModelsInfo = {
   cli_path?: string
 }
 
-export type ProviderAPIStatus = {
-  id: string
-  supports_live_models: boolean
-}
-
-export type ProviderPoolEntry = {
-  alias: string
-  kind: string
-}
-
 // POST /v1/admin/providers/test: one result per provider alias, the default
 // tier's alias first. CLI providers are checked without a model call.
 export type ProviderProbeStatus = 'ok' | 'info' | 'warn' | 'error'
@@ -1813,14 +1791,6 @@ export type ProviderProbeResult = {
 
 export type ProviderProbeResponse = {
   results: ProviderProbeResult[]
-}
-
-export type ProvidersAPIInfo = {
-  current_provider: string
-  current_model: string
-  auth_mode: string
-  providers: ProviderAPIStatus[]
-  pool: ProviderPoolEntry[]
 }
 
 // --- Browser auth / remote access ---
