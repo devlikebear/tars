@@ -501,6 +501,11 @@ func (s *Store) ImportAgentRuntimeSnapshot(ctx context.Context, input AgentRunti
 		return ImportResult{}, err
 	}
 	if found {
+		// A replayed snapshot adds nothing, but a ledger written before
+		// revisions were pruned may still hold its backlog.
+		if _, err := s.PruneSupersededAgentRunRevisions(ctx, input.WorkspaceID); err != nil {
+			return ImportResult{}, err
+		}
 		return importResult(marker, true), nil
 	}
 
@@ -556,6 +561,10 @@ func (s *Store) ImportAgentRuntimeSnapshot(ctx context.Context, input AgentRunti
 		ActorID:     input.ActorID,
 	})
 	if err != nil {
+		return ImportResult{}, err
+	}
+	// The revisions just written replace the ones before them.
+	if _, err := s.PruneSupersededAgentRunRevisions(ctx, input.WorkspaceID); err != nil {
 		return ImportResult{}, err
 	}
 	return importResult(marker, existed), nil

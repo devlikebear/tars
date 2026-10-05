@@ -51,8 +51,9 @@ func TestSyncAgentRuntimeRunsToWorkLedgerTracksLatestRevision(t *testing.T) {
 		t.Fatalf("synchronized run = %#v", projected)
 	}
 	works, err := ledger.ListWorks(ctx, workstore.ListWorksFilter{WorkspaceID: defaultWorkspaceID, Source: string(workstore.ImportSourceAgentRuntime)})
-	if err != nil || len(works) != 2 {
-		t.Fatalf("runtime revision works = %d err=%v, want 2", len(works), err)
+	// The running revision was replaced by the completed one and pruned.
+	if err != nil || len(works) != 1 || works[0].State != workstore.WorkStateDone {
+		t.Fatalf("runtime revision works = %+v err=%v, want the completed revision only", works, err)
 	}
 	if err := syncAgentRuntimeRunsToWorkLedger(ctx, nil, defaultWorkspaceID, runsPath, nil, "runtime-sync"); err != nil {
 		t.Fatalf("disabled runtime sync: %v", err)
