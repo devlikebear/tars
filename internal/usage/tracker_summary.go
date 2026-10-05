@@ -15,6 +15,10 @@ import (
 type SummaryFilter struct {
 	// SessionID keeps only calls tagged with this chat session.
 	SessionID string
+	// RunID keeps only calls made by this agent run. A subagent run's calls
+	// carry no session id; their run id is recorded as "<run id>:<agent>",
+	// which matches too.
+	RunID string
 }
 
 func (t *Tracker) Summary(period, groupBy string) (Summary, error) {
@@ -35,6 +39,7 @@ func (t *Tracker) SummaryFiltered(period, groupBy string, filter SummaryFilter) 
 
 	group := normalizeGroupBy(groupBy)
 	sessionID := strings.TrimSpace(filter.SessionID)
+	runID := strings.TrimSpace(filter.RunID)
 	out := Summary{
 		Period:    normalizedPeriod,
 		GroupBy:   group,
@@ -43,6 +48,9 @@ func (t *Tracker) SummaryFiltered(period, groupBy string, filter SummaryFilter) 
 	rows := map[string]*SummaryRow{}
 	for _, entry := range t.readEntriesInRange(start, now) {
 		if sessionID != "" && strings.TrimSpace(entry.SessionID) != sessionID {
+			continue
+		}
+		if runID != "" && !entryBelongsToRun(entry.RunID, runID) {
 			continue
 		}
 		applySummaryEntry(&out, rows, entry, group)
@@ -206,4 +214,9 @@ func firstNonEmptyTrimmed(value string, fallback string) string {
 		return fallback
 	}
 	return trimmed
+}
+
+func entryBelongsToRun(entryRunID, runID string) bool {
+	entryRunID = strings.TrimSpace(entryRunID)
+	return entryRunID == runID || strings.HasPrefix(entryRunID, runID+":")
 }
