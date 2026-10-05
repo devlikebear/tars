@@ -33,6 +33,8 @@ function fakeApi(overrides: Record<string, unknown> = {}) {
     listSessions: async () => { calls.push('listSessions'); return [session('a'), session('b')] },
     getSession: async (id: string) => { calls.push(`getSession:${id}`); return withPin(id) },
     getSessionHistory: async (id: string) => { calls.push(`getSessionHistory:${id}`); return [] },
+    // Not recorded in calls: it rides along with every health refresh.
+    getChatContext: async () => ({}),
     getSessionTasks: async (id: string) => {
       calls.push(`getSessionTasks:${id}`)
       return { tasks: [{ id: 't1', title: 'x', status: 'completed' }], plan: { goal: `plan-${id}` } }
@@ -176,6 +178,27 @@ test('setContextInfo rebuilds the health report with the latest context', async 
   const report = store.health as unknown as { sessionId: string; contextInfo: { history_tokens: number } }
   assert.equal(report.sessionId, 'a')
   assert.equal(report.contextInfo.history_tokens, 999)
+})
+
+test('opening a session loads its context usage for the health report', async () => {
+  const { store } = newStore({ getChatContext: async () => ({ history_tokens: 5000, compaction_trigger_tokens: 100000 }) })
+  store.setActive('a')
+  await flush()
+  const report = store.health as unknown as { contextInfo: { history_tokens: number } }
+  assert.equal(report.contextInfo.history_tokens, 5000)
+
+  // What a running turn reported is newer than the snapshot.
+  store.setContextInfo({ history_tokens: 7000, compaction_trigger_tokens: 100000 })
+  await store.refreshHealth()
+  assert.equal(store.contextInfo.history_tokens, 7000)
+})
+
+test('a failed context lookup leaves the health report without usage', async () => {
+  const { store } = newStore({ getChatContext: async () => { throw new Error('503') } })
+  store.setActive('a')
+  await flush()
+  assert.deepEqual(store.contextInfo, {})
+  assert.equal((store.health as unknown as { sessionId: string }).sessionId, 'a')
 })
 
 test('rebuildHealth words the report again after a language switch', async () => {
