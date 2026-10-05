@@ -8,7 +8,6 @@
     getPulseStatus,
     getReflectionStatus,
     getServerStatus,
-    getSessionTasks,
     getSyspromptFile,
     listAgentRuntimeRuns,
     listCronJobs,
@@ -25,10 +24,8 @@
     PulseSnapshot,
     ReflectionSnapshot,
     Session,
-    SessionTasks,
     SyspromptFile,
   } from '../lib/types'
-  import { isStaleCompletedPlan } from '../lib/plans'
   import { t } from '../i18n'
 
   interface Props {
@@ -56,7 +53,6 @@
   let serverVersion = $state('')
   let userFile: SyspromptFile | null = $state(null)
   let config: ConfigFile | null = $state(null)
-  let continueSession: { session: Session; tasks: SessionTasks } | null = $state(null)
   let unreadCount = $state(0)
   let loading = $state(true)
   let error = $state('')
@@ -64,16 +60,11 @@
   let pollTimer: ReturnType<typeof setInterval> | null = null
 
   let mainSessions = $derived(
-    sessions
-      .filter((session) => !session.hidden && (session.kind ?? 'main') === 'main')
-      .sort((a, b) => Date.parse(b.updated_at || '') - Date.parse(a.updated_at || '')),
+    sessions.filter((session) => !session.hidden && (session.kind ?? 'main') === 'main'),
   )
-  let recentMainSessions = $derived(mainSessions.slice(0, 6))
   let todaySessions = $derived(mainSessions.filter((session) => isToday(session.updated_at)))
-  let recentPlans = $derived(plans.slice(0, 4))
   let activeCronJobs = $derived(cronJobs.filter((job) => job.enabled && !isCronCompleted(job)))
   let failedCronJobs = $derived(cronJobs.filter((job) => !!job.last_run_error))
-  let recentAgentRuns = $derived(agentRuns.slice(0, 5))
   let activeAgentRuns = $derived(agentRuns.filter((run) => isAgentRunActive(run)))
   let releaseHref = $derived.by(() => {
     const version = serverVersion.trim().replace(/^v/, '')
@@ -195,16 +186,6 @@
     return $t.home.reflectionStates.idle
   }
 
-  function planProgressPercent(item: GlobalPlanItem): number {
-    const total = Math.max(0, item.summary?.total ?? item.tasks.length)
-    if (total === 0) return 0
-    return Math.max(0, Math.min(100, Math.round((planFinishedCount(item) / total) * 100)))
-  }
-
-  function planFinishedCount(item: GlobalPlanItem): number {
-    return (item.summary?.completed ?? 0) + (item.summary?.cancelled ?? 0)
-  }
-
   function isCronCompleted(job: CronJob): boolean {
     return isOneShotCron(job) && Boolean(job.last_run_at)
   }
@@ -214,60 +195,9 @@
     return job.delete_after_run === true || schedule.startsWith('at:')
   }
 
-  function cronStatusLabel(job: CronJob): string {
-    if (job.last_run_error) return $t.home.cron.status.failed
-    if (isCronCompleted(job)) return $t.home.cron.status.done
-    return job.enabled ? $t.home.cron.status.active : $t.home.cron.status.paused
-  }
-
-  function nextCronRunLabel(job: CronJob): string {
-    if (isCronCompleted(job)) return $t.home.cron.nextRun.completed
-    if (!job.enabled) return $t.home.cron.nextRun.paused
-    const schedule = job.schedule.trim()
-    if (schedule.toLowerCase().startsWith('at:')) return fmt(schedule.slice(3))
-    if (schedule.toLowerCase().startsWith('every:')) return job.last_run_at ? $t.home.cron.nextRun.after(relativeTime(job.last_run_at)) : $t.home.cron.nextRun.nextTick
-    return $t.home.cron.nextRun.cronSchedule
-  }
-
   function isAgentRunActive(run: AgentRuntimeRun): boolean {
     const status = run.status.trim().toLowerCase()
     return status === 'running' || status === 'queued' || status === 'pending' || status === 'in_progress'
-  }
-
-  function agentRunTime(run: AgentRuntimeRun): string {
-    return run.updated_at || run.completed_at || run.started_at || run.created_at || ''
-  }
-
-  function agentRunTitle(run: AgentRuntimeRun): string {
-    return run.prompt?.trim() || run.agent?.trim() || run.run_id
-  }
-
-  function planSummary(tasks: SessionTasks): string {
-    if (tasks.plan?.goal?.trim()) return tasks.plan.goal.trim()
-    const active = tasks.tasks.find((task) => task.status === 'in_progress') ?? tasks.tasks[0]
-    return active?.title?.trim() || $t.home.openSessionPlan
-  }
-
-  function openContinueSession() {
-    if (!continueSession) return
-    onNavigate(`/console/chat/${encodeURIComponent(continueSession.session.id)}`)
-  }
-
-  function openPlanSession(sessionId: string) {
-    onNavigate(`/console/chat?session=${encodeURIComponent(sessionId)}`)
-  }
-
-  async function loadContinueSession(candidates: Session[]) {
-    const results = await Promise.allSettled(
-      candidates.slice(0, 5).map(async (session) => ({
-        session,
-        tasks: await getSessionTasks(session.id),
-      })),
-    )
-    continueSession = results
-      .filter((result): result is PromiseFulfilledResult<{ session: Session; tasks: SessionTasks }> => result.status === 'fulfilled')
-      .map((result) => result.value)
-      .find((item) => !!item.tasks.plan || item.tasks.tasks.length > 0) ?? null
   }
 
   async function load(showLoading = true) {
@@ -314,11 +244,6 @@
       agentRuns = runsResult.status === 'fulfilled' ? runsResult.value : []
       userFile = userResult.status === 'fulfilled' ? userResult.value : null
       config = configResult.status === 'fulfilled' ? configResult.value : null
-      await loadContinueSession(
-        (sessionsResult.status === 'fulfilled' ? sessionsResult.value : [])
-          .filter((session) => !session.hidden && (session.kind ?? 'main') === 'main')
-          .sort((a, b) => Date.parse(b.updated_at || '') - Date.parse(a.updated_at || '')),
-      )
     } catch (err) {
       error = err instanceof Error ? err.message : $t.home.errorLoad
     } finally {
@@ -407,131 +332,6 @@
     </section>
 
     <div class="dashboard-grid">
-      <section class="dashboard-section plans-section">
-        <div class="section-heading">
-          <div>
-            <h3>{$t.home.plans.title}</h3>
-            <p>{$t.home.plans.subtitle}</p>
-          </div>
-          <button type="button" class="btn btn-ghost btn-sm" onclick={() => onNavigate('/console/tasks')}>{$t.home.plans.open}</button>
-        </div>
-        {#if recentPlans.length === 0}
-          <div class="empty-state"><p>{$t.home.plans.empty}</p></div>
-        {:else}
-          <div class="work-list">
-            {#each recentPlans as item}
-              {@const percent = planProgressPercent(item)}
-              {@const staleCompleted = isStaleCompletedPlan(item)}
-              <button type="button" class="work-row" class:ready-to-close={staleCompleted} onclick={() => openPlanSession(item.session.id)}>
-                <span class="work-topline">
-                  <strong>{compact(item.plan.goal, 120)}</strong>
-                  <span class="badge" class:badge-default={!staleCompleted} class:badge-warning={staleCompleted}>
-                    {staleCompleted ? $t.plans.readyToClose : (item.plan.status ?? $t.home.plans.executing)}
-                  </span>
-                </span>
-                <span class="mini-progress" aria-label={`${percent}% complete`}><span style={`width: ${percent}%`}></span></span>
-                <span class="work-meta">{planFinishedCount(item)}/{item.summary?.total ?? item.tasks.length} {$t.home.plans.doneSuffix} · {item.summary?.in_progress ?? 0} {$t.home.plans.activeSuffix} · {$t.home.plans.updated} {relativeTime(item.updated_at)}</span>
-                {#if staleCompleted}
-                  <span class="work-meta attention">{$t.plans.readyToCloseHint}</span>
-                {/if}
-              </button>
-            {/each}
-          </div>
-        {/if}
-      </section>
-
-      <section class="dashboard-section">
-        <div class="section-heading">
-          <div>
-            <h3>{$t.home.agentRuns.title}</h3>
-            <p>{$t.home.agentRuns.subtitle}</p>
-          </div>
-          <button type="button" class="btn btn-ghost btn-sm" onclick={() => onNavigate('/console/agentruntime')}>{$t.home.agentRuns.open}</button>
-        </div>
-        {#if recentAgentRuns.length === 0}
-          <div class="empty-state"><p>{$t.home.agentRuns.empty}</p></div>
-        {:else}
-          <div class="work-list">
-            {#each recentAgentRuns as run}
-              <button type="button" class="work-row" onclick={() => onNavigate(`/console/agentruntime/runs/${encodeURIComponent(run.run_id)}`)}>
-                <span class="work-topline">
-                  <strong>{compact(agentRunTitle(run), 120)}</strong>
-                  <span class="badge" class:badge-accent={isAgentRunActive(run)} class:badge-default={!isAgentRunActive(run)}>{run.status}</span>
-                </span>
-                <span class="work-meta">{run.agent || $t.home.agentRuns.agent} · {run.tier || $t.home.agentRuns.tier} · {relativeTime(agentRunTime(run))}</span>
-              </button>
-            {/each}
-          </div>
-        {/if}
-      </section>
-
-      <section class="dashboard-section">
-        <div class="section-heading">
-          <div>
-            <h3>{$t.home.cron.title}</h3>
-            <p>{$t.home.cron.subtitle}</p>
-          </div>
-          <button type="button" class="btn btn-ghost btn-sm" onclick={() => onNavigate('/console/cron')}>{$t.home.cron.open}</button>
-        </div>
-        {#if cronJobs.length === 0}
-          <div class="empty-state"><p>{$t.home.cron.empty}</p></div>
-        {:else}
-          <div class="work-list">
-            {#each cronJobs.slice(0, 5) as job}
-              <button type="button" class="work-row" onclick={() => onNavigate('/console/cron')}>
-                <span class="work-topline">
-                  <strong>{job.name || compact(job.prompt, 80)}</strong>
-                  <span class="badge" class:badge-error={!!job.last_run_error} class:badge-success={job.enabled && !job.last_run_error} class:badge-default={!job.enabled && !job.last_run_error}>{cronStatusLabel(job)}</span>
-                </span>
-                <span class="work-meta">{job.schedule} · {nextCronRunLabel(job)}</span>
-              </button>
-            {/each}
-          </div>
-        {/if}
-      </section>
-
-      <section class="dashboard-section sessions-section">
-        <div class="section-heading">
-          <div>
-            <h3>{$t.home.sessions.title}</h3>
-            <p>{$t.home.sessions.subtitle}</p>
-          </div>
-          <button type="button" class="btn btn-ghost btn-sm" onclick={() => onNavigate('/console/chat')}>{$t.home.sessions.open}</button>
-        </div>
-
-        {#if recentMainSessions.length === 0}
-          <div class="empty-state"><p>{$t.home.sessions.empty}</p></div>
-        {:else}
-          <div class="session-grid">
-            {#each recentMainSessions as session}
-              <button type="button" class="session-card" onclick={() => onNavigate(`/console/chat/${encodeURIComponent(session.id)}`)}>
-                <span class="session-title">{session.title || $t.home.sessions.untitled}</span>
-                <span class="session-meta">{relativeTime(session.updated_at)}</span>
-                <span class="session-id">{session.id}</span>
-              </button>
-            {/each}
-          </div>
-        {/if}
-      </section>
-
-      <section class="dashboard-section continue-section">
-        <div class="section-heading">
-          <div>
-            <h3>{$t.home.continue.title}</h3>
-            <p>{$t.home.continue.subtitle}</p>
-          </div>
-        </div>
-        {#if continueSession}
-          <button type="button" class="focus-card" onclick={openContinueSession}>
-            <span class="focus-kicker">{continueSession.session.title || $t.home.continue.untitled}</span>
-            <strong>{compact(planSummary(continueSession.tasks), 180)}</strong>
-            <span>{$t.home.continue.tasksTracked(continueSession.tasks.tasks.length)}</span>
-          </button>
-        {:else}
-          <div class="empty-state"><p>{$t.home.continue.empty}</p></div>
-        {/if}
-      </section>
-
       <section class="dashboard-section">
         <div class="section-heading">
           <div>
@@ -673,10 +473,7 @@
   }
 
   .status-tile,
-  .session-card,
-  .focus-card,
   .notification-row,
-  .work-row,
   .action-card {
     background: var(--surface);
     border: 1px solid var(--border-subtle);
@@ -704,11 +501,8 @@
 
   .status-label,
   .session-meta,
-  .session-id,
   .notification-message,
-  .work-meta,
-  .action-card span,
-  .focus-card span {
+  .action-card span {
     color: var(--text-tertiary);
     font-size: var(--text-xs);
   }
@@ -737,30 +531,13 @@
     min-width: 0;
   }
 
-  .sessions-section {
-    grid-row: span 2;
-  }
-
-  .plans-section {
-    grid-column: 1 / -1;
-  }
-
-  .session-grid,
   .action-grid,
-  .notification-list,
-  .work-list {
+  .notification-list {
     display: grid;
     gap: var(--space-3);
   }
 
-  .session-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .session-card,
-  .focus-card,
   .notification-row,
-  .work-row,
   .action-card {
     display: flex;
     flex-direction: column;
@@ -775,10 +552,7 @@
       background var(--duration-fast) var(--ease-out);
   }
 
-  .session-card:hover,
-  .focus-card:hover,
   .notification-row:hover:not(:disabled),
-  .work-row:hover,
   .action-card:hover {
     background: var(--surface-elevated);
     border-color: var(--border-strong);
@@ -788,23 +562,7 @@
     cursor: default;
   }
 
-  .work-row.ready-to-close {
-    border-color: color-mix(in srgb, var(--warning) 36%, var(--border-subtle));
-    background: color-mix(in srgb, var(--warning) 6%, var(--surface-card));
-  }
-
-  .work-row.ready-to-close:hover {
-    border-color: var(--warning);
-  }
-
-  .work-meta.attention {
-    color: var(--warning);
-  }
-
-  .session-title,
-  .focus-card strong,
   .notification-top strong,
-  .work-topline strong,
   .action-card strong {
     color: var(--text-primary);
     font-family: var(--font-display);
@@ -812,60 +570,16 @@
     font-weight: 600;
   }
 
-  .session-title,
   .notification-message {
     overflow: hidden;
     text-overflow: ellipsis;
   }
 
-  .session-id {
-    max-width: 100%;
-    font-family: var(--font-mono);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .focus-kicker,
   .action-card em {
     color: var(--primary);
     font-style: normal;
     font-size: var(--text-xs);
     font-weight: 600;
-  }
-
-  .work-topline {
-    display: flex;
-    width: 100%;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: var(--space-2);
-    min-width: 0;
-  }
-
-  .work-topline strong {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .work-meta {
-    line-height: 1.45;
-  }
-
-  .mini-progress {
-    display: block;
-    width: 100%;
-    height: 4px;
-    overflow: hidden;
-    border-radius: 999px;
-    background: var(--surface-inset);
-  }
-
-  .mini-progress span {
-    display: block;
-    height: 100%;
-    background: var(--primary);
   }
 
   .action-card {
@@ -890,13 +604,8 @@
 
   @media (max-width: 1100px) {
     .status-strip,
-    .dashboard-grid,
-    .session-grid {
+    .dashboard-grid {
       grid-template-columns: 1fr;
-    }
-
-    .sessions-section {
-      grid-row: auto;
     }
   }
 

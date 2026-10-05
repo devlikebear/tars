@@ -268,7 +268,6 @@
       home: tr.palette.pages.home,
       chat: tr.nav.items.chat,
       focus: tr.nav.items.focus,
-      'session-lineage': tr.nav.items.lineage,
       tasks: tr.nav.items.plans,
       agentruntime: tr.nav.items.agentruntime,
       memory: tr.nav.items.memory,
@@ -450,15 +449,6 @@
         {#key aiPrompt}
           <ChatRoute sessionId={route.sessionId} onNavigate={navigate} initialPrompt={aiPrompt} initialContext={aiContext} />
         {/key}
-      {:catch}
-        <div class="route-error">Could not load console page.</div>
-      {/await}
-    {:else if route.view === 'session-lineage'}
-      {#await loadRouteComponent('session-lineage')}
-        <div class="route-loading">Loading...</div>
-      {:then module}
-        {@const SessionLineageRoute = module.default}
-        <SessionLineageRoute onNavigate={navigate} />
       {:catch}
         <div class="route-error">Could not load console page.</div>
       {/await}

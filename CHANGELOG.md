@@ -6,9 +6,17 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+### Changed
+
+- **Console menu review.** Every console page was opened on a live server and given a verdict (keep, improve, shrink, remove); the verdicts and the plan are in `docs/decisions/console-menu-review.md`. First changes: the Logs page opens at INFO instead of a wall of DEBUG request tracing, and a log level is now a floor (`level=warn` returns warnings and errors; it used to return warnings only). Agent Runtime no longer describes `subagents_orchestrate` as opt-in, and the Approvals subtitle says what the page lists. Mission Control is now focused on status and notifications, with active plans, agent runs, Cron jobs, sessions, and continue-working lists left to their dedicated pages. The Plans page marks a plan with work left that nothing has touched for a day as stalled, and the Pulse page leads with status and keeps its reference text collapsed.
+
 ### Fixed
 
 - The memory inbox no longer fills with the agent's own status reports. Nightly reflection queued any assistant reply containing "completed" or "resolved" (or "완료", "해결") as a `task_completed` or `error_resolved` memory candidate, holding the reply's first 220 characters. Agents end most turns that way, so on a server used for coding all ten pending candidates were lines such as "Verification complete" and "Plan and contract ready". Only the user's message is read now (a stated preference is still queued); what an agent wants kept it saves with the memory tool. Candidates already in the inbox are not touched.
+
+### Removed
+
+- The session lineage page (`/console/sessions/graph`). It drew the tree of forked chats and had been out of the nav since #931; on the reviewed server it showed 30 sessions and no fork. Forking a chat from a message is unchanged.
 
 ### Added
 

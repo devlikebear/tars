@@ -17,7 +17,8 @@
 
   let snapshot = $state<LogsResponse | null>(null)
   let selectedFile = $state('runtime')
-  let selectedLevel: LevelFilter = $state('all')
+  // INFO and above by default: at DEBUG the stream is request tracing.
+  let selectedLevel: LevelFilter = $state('info')
   let selectedComponent = $state('')
   let lineCount = $state(100)
   let autoRefresh = $state(false)

@@ -125,3 +125,29 @@ test('Plans page makes aggregate cards clickable status filters', () => {
   assert.match(plansSource, /aria-pressed=\{activeSummaryFilter === card\.filter\}/)
   assert.match(plansSource, /\{#each filteredPlans as item/)
 })
+
+test('a plan with work left that nothing touched for a day is stalled', async () => {
+  const { isStalledPlan, aggregateStalledPlanCount, filterPlansBySummaryCard: filterPlans, STALLED_PLAN_AFTER_MS } = await import('../src/lib/plans.ts')
+  const now = Date.parse('2026-10-05T12:00:00Z')
+  const old = new Date(now - STALLED_PLAN_AFTER_MS - 1000).toISOString()
+  const recent = new Date(now - 60_000).toISOString()
+  const plan = (updated_at: string, summary: Record<string, number>, status = 'executing') => ({
+    session: { id: updated_at + status, title: 't', created_at: updated_at, updated_at },
+    plan: { goal: 'g', status },
+    tasks: [],
+    summary,
+    updated_at,
+  })
+  const working = { total: 3, completed: 1, in_progress: 1, pending: 1 }
+  const stalled = plan(old, working)
+  assert.equal(isStalledPlan(stalled, now), true)
+  // Still moving, finished, aborted, or with no timestamp: not stalled.
+  assert.equal(isStalledPlan(plan(recent, working), now), false)
+  assert.equal(isStalledPlan(plan(old, { total: 2, completed: 2 }), now), false)
+  assert.equal(isStalledPlan(plan(old, working, 'aborted'), now), false)
+  assert.equal(isStalledPlan({ ...stalled, updated_at: '' }, now), false)
+
+  const items = [stalled, plan(recent, working)]
+  assert.equal(aggregateStalledPlanCount(items, now), 1)
+  assert.deepEqual(filterPlans(items as never[], 'stalled', now), [stalled])
+})

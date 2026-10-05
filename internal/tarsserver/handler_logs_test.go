@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/rs/zerolog"
@@ -78,5 +79,38 @@ func TestLogsAPI_RejectsUnknownFileID(t *testing.T) {
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+// A level filter is a floor: WARN shows warnings and errors, not warnings
+// alone.
+func TestFilterLogLines_LevelIsAMinimum(t *testing.T) {
+	raw := []string{
+		`{"level":"debug","message":"d"}`,
+		`{"level":"info","message":"i"}`,
+		`{"level":"warn","message":"w"}`,
+		`{"level":"error","message":"e"}`,
+		`{"message":"no level"}`,
+		`{"level":"trace","message":"t"}`,
+		`{"level":"fatal","message":"f"}`,
+	}
+	messages := func(level string) string {
+		var got []string
+		for _, line := range filterLogLines(raw, level, "", 50) {
+			got = append(got, line.Message)
+		}
+		return strings.Join(got, ",")
+	}
+	for level, want := range map[string]string{
+		"all":   "d,i,w,e,no level,t,f",
+		"trace": "d,i,w,e,no level,t,f",
+		"debug": "d,i,w,e,no level,f",
+		"info":  "i,w,e,no level,f",
+		"warn":  "w,e,f",
+		"error": "e,f",
+	} {
+		if got := messages(level); got != want {
+			t.Fatalf("level %s: got %q, want %q", level, got, want)
+		}
 	}
 }

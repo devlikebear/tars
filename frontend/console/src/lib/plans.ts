@@ -1,10 +1,11 @@
 import type { GlobalPlanItem, SessionTask } from './types'
 
 export type PlanTaskStatusFilter = 'in_progress' | 'pending' | 'completed'
-export type PlanSummaryFilter = 'all' | 'ready_to_close' | PlanTaskStatusFilter
+export type PlanSummaryFilter = 'all' | 'ready_to_close' | 'stalled' | PlanTaskStatusFilter
 type PlanTaskStatus = PlanTaskStatusFilter | 'cancelled'
 
 type PlanStatusSource = {
+  updated_at?: string | null
   summary?: Record<string, number> | null
   tasks?: SessionTask[] | null
   plan?: { status?: string | null } | null
@@ -53,8 +54,28 @@ export function aggregateStaleCompletedPlanCount(items: readonly PlanStatusSourc
   return items.reduce((total, item) => total + (isStaleCompletedPlan(item) ? 1 : 0), 0)
 }
 
-export function filterPlansBySummaryCard<T extends GlobalPlanItem>(items: readonly T[], filter: PlanSummaryFilter): T[] {
+// A plan with work left that nothing has touched for this long has outlived
+// its session: the session stopped (a turn ran out, the user moved on) and
+// the plan was left reading "executing".
+export const STALLED_PLAN_AFTER_MS = 24 * 60 * 60 * 1000
+
+export function isStalledPlan(item: PlanStatusSource, nowMs: number = Date.now()): boolean {
+  if (isStaleCompletedPlan(item)) return false
+  const status = item.plan?.status?.trim().toLowerCase()
+  if (status === 'completed' || status === 'aborted') return false
+  if (statusCount(item, 'pending') + statusCount(item, 'in_progress') <= 0) return false
+  const updatedMs = Date.parse(item.updated_at ?? '')
+  if (!Number.isFinite(updatedMs)) return false
+  return nowMs - updatedMs >= STALLED_PLAN_AFTER_MS
+}
+
+export function aggregateStalledPlanCount(items: readonly PlanStatusSource[], nowMs: number = Date.now()): number {
+  return items.reduce((total, item) => total + (isStalledPlan(item, nowMs) ? 1 : 0), 0)
+}
+
+export function filterPlansBySummaryCard<T extends GlobalPlanItem>(items: readonly T[], filter: PlanSummaryFilter, nowMs: number = Date.now()): T[] {
   if (filter === 'all') return [...items]
   if (filter === 'ready_to_close') return items.filter(isStaleCompletedPlan)
+  if (filter === 'stalled') return items.filter((item) => isStalledPlan(item, nowMs))
   return items.filter((item) => planStatusCount(item, filter) > 0)
 }

@@ -41,7 +41,7 @@ test('page commands hide admin pages from the user role and navigate on run', ()
 // Titles that share a prefix (Chat / Channels) need a few letters to split.
 test('every page is the top result within four typed characters', () => {
   const english: Record<PageView, string> = {
-    home: 'Home', chat: 'Chat', 'session-lineage': 'Lineage', tasks: 'Plans', agentruntime: 'Agent Runtime',
+    home: 'Home', chat: 'Chat', tasks: 'Plans', agentruntime: 'Agent Runtime',
     memory: 'Memory', sysprompt: 'System Prompt', ops: 'Approvals', cron: 'Cron', logs: 'Logs',
     analytics: 'Analytics', config: 'Settings', extensions: 'Extensions', pulse: 'Pulse',
     reflection: 'Reflection', channels: 'Channels', onboarding: 'Setup Wizard',

@@ -327,7 +327,6 @@ Every route must map to a pillar. Rows marked *(target)* describe the #967 workb
 | Inline approval cards (in chat) *(P2)* | Conversation + Control | Approve/deny tool calls without leaving the session; `/console/approvals` stays for unattended runs |
 | `/console/focus`, `/console/focus/<session>`, `/console/focus/release` | Conversation | Focus mode (#1068): pipelines, one task's stepper, card deck and graph over the same session, and the release train |
 | `/console/chat`, `/console/sessions` | Conversation | Chat transcript, session list |
-| `/console/sessions/graph` | Conversation | Session lineage / fork history |
 | `/console/tasks` | Conversation | Work timeline / task contracts |
 | `/console/sysprompt`, `/console/workspace` | Conversation | System-prompt authoring (adjacent to chat behavior) |
 | `/console/memory` | Observability | Memory assets, inbox review |
