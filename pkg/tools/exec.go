@@ -51,10 +51,12 @@ type ExecToolOptions struct {
 }
 
 type execResponse struct {
-	Command    string `json:"command"`
-	Status     string `json:"status,omitempty"`
-	SessionID  string `json:"session_id,omitempty"`
-	ExitCode   int    `json:"exit_code"`
+	Command   string `json:"command"`
+	Status    string `json:"status,omitempty"`
+	SessionID string `json:"session_id,omitempty"`
+	// Nil while a background process is still running: it has no exit code
+	// yet, and 0 would read as success.
+	ExitCode   *int   `json:"exit_code,omitempty"`
 	Stdout     string `json:"stdout,omitempty"`
 	Stderr     string `json:"stderr,omitempty"`
 	DurationMS int64  `json:"duration_ms"`
@@ -146,8 +148,7 @@ func NewExecToolWithOptions(policy PathPolicy, manager *ProcessManager, opts Exe
 					Command:   commandLine,
 					Status:    "running",
 					SessionID: snap.SessionID,
-					ExitCode:  0,
-					Message:   "process started in background",
+					Message:   "process started in background; it has not finished. Use the process tool's wait action with this session_id for its exit code.",
 				}, false), nil
 			}
 
@@ -207,7 +208,7 @@ func NewExecToolWithOptions(policy PathPolicy, manager *ProcessManager, opts Exe
 			if runErr == nil {
 				return JSONTextResult(execResponse{
 					Command:    commandLine,
-					ExitCode:   0,
+					ExitCode:   exitCodePtr(0),
 					Stdout:     stdoutText,
 					Stderr:     stderrText,
 					DurationMS: durationMS,
@@ -248,10 +249,12 @@ func scanAndCapture(reader io.Reader, dst *bytes.Buffer, streamer ToolOutputStre
 	}
 }
 
+func exitCodePtr(code int) *int { return &code }
+
 func execErrorResult(commandLine, message string, exitCode int, stdout, stderr string, durationMS int64, timedOut bool) Result {
 	return JSONTextResult(execResponse{
 		Command:    commandLine,
-		ExitCode:   exitCode,
+		ExitCode:   exitCodePtr(exitCode),
 		Stdout:     stdout,
 		Stderr:     stderr,
 		DurationMS: durationMS,

@@ -24,8 +24,8 @@ func TestExecTool_RunsCommand(t *testing.T) {
 	if err := json.Unmarshal([]byte(result.Text()), &body); err != nil {
 		t.Fatalf("decode result: %v", err)
 	}
-	if body.ExitCode != 0 {
-		t.Fatalf("expected exit_code 0, got %d", body.ExitCode)
+	if exitCodeOf(body) != 0 {
+		t.Fatalf("expected exit_code 0, got %d", exitCodeOf(body))
 	}
 	if body.Stdout == "" {
 		t.Fatalf("expected stdout, got empty")
