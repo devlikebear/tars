@@ -1258,3 +1258,38 @@ func TestMigration8StripsTheSnapshotCopyFromAgentRunWorks(t *testing.T) {
 		t.Fatalf("expected another source's metadata left alone, got %s err=%v", untouched.MetadataJSON, err)
 	}
 }
+
+func TestWriteAheadLogIsLimitedAndEmptiedByCompaction(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "ledger.db")
+	store := openTestStore(t, path)
+
+	var limit int64
+	if err := store.db.QueryRowContext(ctx, "PRAGMA journal_size_limit").Scan(&limit); err != nil || limit != walSizeLimitBytes {
+		t.Fatalf("journal size limit = %d err=%v, want %d", limit, err, walSizeLimitBytes)
+	}
+
+	payload := `{"blob":"` + strings.Repeat("x", 2<<20) + `"}`
+	if _, err := store.CreateWork(ctx, CreateWorkInput{
+		WorkspaceID: "workspace-a", Kind: "run", Source: "tester", IdempotencyKey: "big",
+		Title: "big", ActorID: "tester", MetadataJSON: json.RawMessage(payload),
+	}); err != nil {
+		t.Fatalf("create large work: %v", err)
+	}
+	walSize := func() int64 {
+		info, err := os.Stat(path + "-wal")
+		if err != nil {
+			t.Fatalf("stat write-ahead log: %v", err)
+		}
+		return info.Size()
+	}
+	if size := walSize(); size < 2<<20 {
+		t.Fatalf("expected the write to go through the log, log is %d bytes", size)
+	}
+	store.compact(ctx)
+	if size := walSize(); size != 0 {
+		t.Fatalf("expected an empty log after compaction, got %d bytes", size)
+	}
+}

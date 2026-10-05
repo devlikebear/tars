@@ -518,6 +518,10 @@ func Open(ctx context.Context, path string, opts Options) (*Store, error) {
 	query.Add("_pragma", "foreign_keys(1)")
 	query.Add("_pragma", "busy_timeout(5000)")
 	query.Add("_pragma", "journal_mode(WAL)")
+	// Without a limit the write-ahead log keeps the size of the largest
+	// transaction it ever held: after one compaction of a grown ledger it
+	// stayed as large as the database itself.
+	query.Add("_pragma", fmt.Sprintf("journal_size_limit(%d)", walSizeLimitBytes))
 	query.Add("_pragma", "synchronous(FULL)")
 	dsnURL.RawQuery = query.Encode()
 	db, err := sql.Open("sqlite", dsnURL.String())
@@ -605,9 +609,24 @@ func (s *Store) migrate(ctx context.Context) error {
 		// Hand the freed pages back to the file system once. VACUUM cannot
 		// run inside the migration's transaction, and a failure (no room for
 		// the rewrite) only leaves the file large: the pages are still reused.
-		_, _ = s.db.ExecContext(ctx, "VACUUM")
+		s.compact(ctx)
 	}
+	// A log left large by an earlier version is cut back now rather than at
+	// some later checkpoint.
+	_, _ = s.db.ExecContext(ctx, "PRAGMA wal_checkpoint(TRUNCATE)")
 	return nil
+}
+
+// walSizeLimitBytes is how much of the write-ahead log file is kept after a
+// checkpoint.
+const walSizeLimitBytes = 64 << 20
+
+// compact rewrites the database file without its free pages and then empties
+// the write-ahead log the rewrite went through. Both are best effort: a
+// failure leaves the files large and the ledger correct.
+func (s *Store) compact(ctx context.Context) {
+	_, _ = s.db.ExecContext(ctx, "VACUUM")
+	_, _ = s.db.ExecContext(ctx, "PRAGMA wal_checkpoint(TRUNCATE)")
 }
 
 func (s *Store) migrationRecorded(ctx context.Context, version int) bool {

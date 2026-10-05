@@ -43,7 +43,7 @@ func (s *Store) PruneSupersededAgentRunRevisions(ctx context.Context, workspaceI
 	if pruned >= supersededRevisionVacuumThreshold {
 		// Best effort, as after migration 8: without it the file keeps its
 		// size and the freed pages are reused.
-		_, _ = s.db.ExecContext(ctx, "VACUUM")
+		s.compact(ctx)
 	}
 	return pruned, nil
 }
