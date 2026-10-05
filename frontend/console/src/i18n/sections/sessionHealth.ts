@@ -59,26 +59,24 @@ export const sessionHealthEn = {
       title: 'Context is near saturation',
       detail: (messageCount: number) =>
         `${messageCount} transcript messages are loaded. Compact or split before the next major task.`,
+      detailPercent: (percent: number) => `The context window is ${percent}% full. Compact or split before the next major task.`,
     },
     contextLong: {
       title: 'Context is getting long',
       detail: (messageCount: number) => `${messageCount} transcript messages are loaded.`,
+      detailPercent: (percent: number) => `The context window is ${percent}% full.`,
     },
     stalePlan: {
       title: 'Plan has gone stale',
       detail: (openTaskCount: number, ago: string) => `${openTaskCount} open task(s), last plan update ${ago}.`,
     },
     broadPermissions: {
-      title: 'Broad high-risk permissions',
-      detail: (toolCount: number) => `${toolCount} high-risk tool(s) are enabled for this session.`,
+      title: 'Auto mode skips permission checks',
+      detail: (toolCount: number) => `Auto mode lets ${toolCount} high-risk tool(s) run without asking.`,
     },
     cliBypassPermissions: {
       title: 'Claude Code skips permission checks',
       detail: 'Every tool call runs without asking (bypassPermissions).',
-    },
-    idlePermissions: {
-      title: 'High-risk tools still enabled',
-      detail: (toolCount: number) => `${toolCount} high-risk tool(s) remain enabled after the active task.`,
     },
     memoryNoise: {
       title: 'Prior context is noisy',
@@ -123,17 +121,13 @@ export const sessionHealthEn = {
       title: 'Review open tasks',
       detail: 'Close completed work, archive stale plan items, or rewrite the next step.',
     },
-    trimPermissions: {
-      title: 'Reduce session permissions',
-      detail: 'Keep only the tool groups needed for the current task before enabling more automation.',
+    choosePermissionMode: {
+      title: 'Pick a permission mode',
+      detail: 'Choose Ask, Accept edits, or Plan so high-risk tools cannot all run without review.',
     },
     chooseCliPermissionMode: {
       title: 'Pick a permission mode',
       detail: 'Choose Ask, Accept edits, or Plan in the status bar so risky calls stop for review.',
-    },
-    trimIdlePermissions: {
-      title: 'Trim idle permissions',
-      detail: 'Disable write or shell capabilities when the session is only being used for review.',
     },
     reviewPriorContext: {
       title: 'Review recalled memory',
@@ -204,26 +198,24 @@ export const sessionHealthKo: SessionHealthTranslations = {
       title: '컨텍스트 포화 임박',
       detail: (messageCount) =>
         `대화 메시지 ${messageCount}건이 로드되어 있습니다. 다음 주요 작업 전에 압축하거나 분할하세요.`,
+      detailPercent: (percent) => `컨텍스트 윈도우의 ${percent}%를 사용 중입니다. 다음 주요 작업 전에 압축하거나 분할하세요.`,
     },
     contextLong: {
       title: '컨텍스트가 길어지는 중',
       detail: (messageCount) => `대화 메시지 ${messageCount}건이 로드되어 있습니다.`,
+      detailPercent: (percent) => `컨텍스트 윈도우의 ${percent}%를 사용 중입니다.`,
     },
     stalePlan: {
       title: '오래된 계획',
       detail: (openTaskCount, ago) => `열린 작업 ${openTaskCount}건, 마지막 계획 업데이트 ${ago}.`,
     },
     broadPermissions: {
-      title: '광범위한 고위험 권한',
-      detail: (toolCount) => `이 세션에 고위험 도구 ${toolCount}개가 활성화되어 있습니다.`,
+      title: '자동 모드에서 권한 확인 생략',
+      detail: (toolCount) => `자동 모드에서는 고위험 도구 ${toolCount}개가 확인 없이 실행됩니다.`,
     },
     cliBypassPermissions: {
       title: '권한 확인 없이 도구 실행',
       detail: '모든 도구 호출이 묻지 않고 실행됩니다(bypassPermissions).',
-    },
-    idlePermissions: {
-      title: '고위험 도구가 아직 활성화됨',
-      detail: (toolCount) => `진행 중인 작업이 끝난 뒤에도 고위험 도구 ${toolCount}개가 활성화되어 있습니다.`,
     },
     memoryNoise: {
       title: '이전 컨텍스트에 잡음이 많음',
@@ -266,17 +258,13 @@ export const sessionHealthKo: SessionHealthTranslations = {
       title: '열린 작업 검토',
       detail: '완료된 작업은 닫고, 오래된 계획 항목은 보관하거나 다음 단계를 다시 작성하세요.',
     },
-    trimPermissions: {
-      title: '세션 권한 줄이기',
-      detail: '자동화를 더 켜기 전에 현재 작업에 필요한 도구 그룹만 남기세요.',
+    choosePermissionMode: {
+      title: '권한 모드 선택',
+      detail: '고위험 도구가 모두 검토 없이 실행되지 않도록 확인, 편집 허용 또는 계획 모드를 선택하세요.',
     },
     chooseCliPermissionMode: {
       title: '권한 모드 선택',
       detail: '상태 바에서 묻기·편집 허용·계획 중 하나를 골라 위험한 호출이 검토를 거치게 하세요.',
-    },
-    trimIdlePermissions: {
-      title: '유휴 권한 정리',
-      detail: '세션을 검토 용도로만 쓴다면 쓰기나 셸 기능을 끄세요.',
     },
     reviewPriorContext: {
       title: '회상된 메모리 검토',

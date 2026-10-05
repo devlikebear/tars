@@ -543,7 +543,7 @@ test('a failed mode switch falls back and reports it', async () => {
 // the pinned tier's kind, else the last turn's provider, else the default
 // tier's kind — and the Claude Code permission flag.
 test('the health report is told the provider and Claude Code flag of the next turn', async () => {
-  let built: { provider?: { kind?: string; claudeCodeFlag?: string } } = {}
+  let built: { provider?: { kind?: string; permissionMode?: string; claudeCodeFlag?: string } } = {}
   const { api } = fakeApi({
     listAgentRuntimeSubagents: async () => ({
       default_tier: 'standard',
@@ -565,7 +565,7 @@ test('the health report is told the provider and Claude Code flag of the next tu
   store.setActive('a')
   await store.loadTierOptions()
   await flush()
-  assert.deepEqual(built.provider, { kind: 'claude-code-cli', claudeCodeFlag: 'auto' }, 'default tier')
+  assert.deepEqual(built.provider, { kind: 'claude-code-cli', permissionMode: 'manual', claudeCodeFlag: 'auto' }, 'default tier')
 
   store.setContextInfo({ llm_tier: 'light', llm_provider: 'openai' })
   assert.equal(built.provider?.kind, 'openai', 'the last turn wins over the default tier')
@@ -575,7 +575,7 @@ test('the health report is told the provider and Claude Code flag of the next tu
 })
 
 test('the health report follows a permission mode switch', async () => {
-  let built: { provider?: { claudeCodeFlag?: string } } = {}
+  let built: { provider?: { permissionMode?: string; claudeCodeFlag?: string } } = {}
   let flag = 'bypassPermissions'
   const { api } = fakeApi({
     getPermissionMode: async () => ({ mode: '', effective: 'manual', claude_code_effective: 'auto', claude_code_flag: flag, source: 'config', modes: [] }),
@@ -594,6 +594,10 @@ test('the health report follows a permission mode switch', async () => {
   store.setActive('a')
   await flush()
   assert.equal(built.provider?.claudeCodeFlag, 'bypassPermissions')
+  assert.equal(built.provider?.permissionMode, 'manual')
+  await store.setPermissionMode('auto')
+  assert.equal(built.provider?.permissionMode, 'auto')
   await store.setPermissionMode('manual')
   assert.equal(built.provider?.claudeCodeFlag, 'default')
+  assert.equal(built.provider?.permissionMode, 'manual')
 })

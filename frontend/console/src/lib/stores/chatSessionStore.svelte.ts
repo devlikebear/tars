@@ -578,7 +578,7 @@ export class ChatSessionStore {
     const pinned = this.pinnedTier
     const kind = pinned ? kindOf(pinned) : this.contextInfo.llm_provider?.trim() || kindOf(this.defaultTier)
     const claudeCodeFlag = this.permission?.claude_code_flag?.trim()
-    return { kind, ...(claudeCodeFlag ? { claudeCodeFlag } : {}) }
+    return { kind, permissionMode: this.permission?.effective, ...(claudeCodeFlag ? { claudeCodeFlag } : {}) }
   }
 
   private resetSlices(): void {
