@@ -78,3 +78,18 @@ test('cleanupCandidateSessions excludes pinned archived main and worker sessions
     ['stale-new-chat'],
   )
 })
+
+test('the all filter leaves worker sessions to their own filter', () => {
+  const chat = makeSession('chat', { title: 'chat', updated_at: '2026-04-02T00:00:00Z' })
+  const main = makeSession('main', { kind: 'main', title: 'main', updated_at: '2026-04-01T00:00:00Z' })
+  const worker = makeSession('worker', { hidden: true, title: 'worker', updated_at: '2026-04-03T00:00:00Z' })
+
+  assert.deepEqual(
+    organizeSessions([chat, main, worker], { filterKind: 'all', sortBy: 'updated' }).map((s) => s.id),
+    ['chat', 'main'],
+  )
+  assert.deepEqual(
+    organizeSessions([chat, main, worker], { filterKind: 'worker', sortBy: 'updated' }).map((s) => s.id),
+    ['worker'],
+  )
+})

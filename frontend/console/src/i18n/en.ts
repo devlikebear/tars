@@ -1130,6 +1130,7 @@ export const en = {
       activeSessions: 'Active sessions',
       never: 'never',
       taskActive: (count) => `${count} task${count === 1 ? '' : 's'} active`,
+      plansStalled: (count) => `${count} stalled`,
       recent: 'recent',
       failed: (count) => `${count} failed`,
       total: (count) => `${count} total`,

@@ -52,7 +52,7 @@ func (s *Store) existingRefs(ctx context.Context, sh *shadowRepo, refs []string)
 }
 
 func (s *Store) refsUnder(ctx context.Context, sh *shadowRepo, prefix string) ([]string, error) {
-	out, _, err := s.git.run(ctx, sh.call("for-each-ref", "--format=%(refname)", prefix))
+	out, _, err := s.git.run(ctx, sh.objectCall("for-each-ref", "--format=%(refname)", prefix))
 	if err != nil {
 		return nil, err
 	}
@@ -184,12 +184,12 @@ func (s *Store) sweepShadow(ctx context.Context, key string, alive func(string) 
 	if live == 0 {
 		return removeAllWritable(gitDir)
 	}
-	out, _, err := s.git.run(ctx, sh.call("count-objects", "-v"))
+	out, _, err := s.git.run(ctx, sh.objectCall("count-objects", "-v"))
 	if err != nil {
 		return err
 	}
 	if looseObjects(string(out)) > looseObjectsBeforeGC {
-		if _, _, err := s.git.run(ctx, sh.call("gc", "--prune=now", "--quiet")); err != nil {
+		if _, _, err := s.git.run(ctx, sh.objectCall("gc", "--prune=now", "--quiet")); err != nil {
 			return err
 		}
 	}

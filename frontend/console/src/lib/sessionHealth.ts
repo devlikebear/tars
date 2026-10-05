@@ -71,6 +71,8 @@ export type SessionHealthContextInfo = {
 export type SessionHealthProvider = {
   // Provider kind, e.g. 'anthropic' or 'claude-code-cli'.
   kind?: string
+  // The effective native session permission mode.
+  permissionMode?: string
   // The --permission-mode claude-code-cli turns run with.
   claudeCodeFlag?: string
 }
@@ -158,8 +160,10 @@ export function buildSessionHealthReport(strings: SessionHealthTranslations, inp
       title: strings.notes.providerContext.title(cliName ?? providerKind),
       detail: strings.notes.providerContext.detail(messageCount),
     })
-  } else if (messageCount >= 160 || (contextTokenPercent ?? 0) >= 95) {
-    addSignal(signals, 'long_context', 'critical', signalText.contextSaturated.title, signalText.contextSaturated.detail(messageCount))
+  } else if (contextTokenPercent !== undefined ? contextTokenPercent >= 95 : messageCount >= 160) {
+    addSignal(signals, 'long_context', 'critical', signalText.contextSaturated.title, contextTokenPercent !== undefined
+      ? signalText.contextSaturated.detailPercent(contextTokenPercent)
+      : signalText.contextSaturated.detail(messageCount))
     addRecommendation(recommendations, {
       id: 'compact-long-context',
       severity: 'critical',
@@ -176,8 +180,10 @@ export function buildSessionHealthReport(strings: SessionHealthTranslations, inp
       action: 'review_fork_points',
       actionLabel: actionLabel.review_fork_points,
     })
-  } else if (messageCount >= 80 || (contextTokenPercent ?? 0) >= 75) {
-    addSignal(signals, 'long_context', 'warning', signalText.contextLong.title, signalText.contextLong.detail(messageCount))
+  } else if (contextTokenPercent !== undefined ? contextTokenPercent >= 75 : messageCount >= 80) {
+    addSignal(signals, 'long_context', 'warning', signalText.contextLong.title, contextTokenPercent !== undefined
+      ? signalText.contextLong.detailPercent(contextTokenPercent)
+      : signalText.contextLong.detail(messageCount))
     addRecommendation(recommendations, {
       id: 'compact-growing-context',
       severity: 'warning',
@@ -219,25 +225,15 @@ export function buildSessionHealthReport(strings: SessionHealthTranslations, inp
         actionLabel: actionLabel.choose_permission_mode,
       })
     }
-  } else if (hasSessionWork && highRiskToolCount >= 3) {
-    addSignal(signals, 'broad_permissions', 'error', signalText.broadPermissions.title, signalText.broadPermissions.detail(highRiskToolCount))
+  } else if (input.provider?.permissionMode === 'auto' && hasSessionWork && highRiskToolCount > 0) {
+    addSignal(signals, 'broad_permissions', 'warning', signalText.broadPermissions.title, signalText.broadPermissions.detail(highRiskToolCount))
     addRecommendation(recommendations, {
-      id: 'trim-permissions',
-      severity: 'error',
-      title: recommendationText.trimPermissions.title,
-      detail: recommendationText.trimPermissions.detail,
-      action: 'open_config',
-      actionLabel: actionLabel.open_config,
-    })
-  } else if (hasSessionWork && highRiskToolCount > 0 && openTaskCount === 0) {
-    addSignal(signals, 'broad_permissions', 'warning', signalText.idlePermissions.title, signalText.idlePermissions.detail(highRiskToolCount))
-    addRecommendation(recommendations, {
-      id: 'trim-idle-permissions',
+      id: 'choose-permission-mode',
       severity: 'warning',
-      title: recommendationText.trimIdlePermissions.title,
-      detail: recommendationText.trimIdlePermissions.detail,
-      action: 'open_config',
-      actionLabel: actionLabel.open_config,
+      title: recommendationText.choosePermissionMode.title,
+      detail: recommendationText.choosePermissionMode.detail,
+      action: 'choose_permission_mode',
+      actionLabel: actionLabel.choose_permission_mode,
     })
   }
 
