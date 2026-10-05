@@ -16,8 +16,6 @@ type (
 	CompactResult            = pkgsession.CompactResult
 	CompactionSummaryOptions = pkgsession.CompactionSummaryOptions
 	ForkOptions              = pkgsession.ForkOptions
-	ForkPromotionCandidate   = pkgsession.ForkPromotionCandidate
-	ForkPromotionOptions     = pkgsession.ForkPromotionOptions
 	HistorySnapshot          = pkgsession.HistorySnapshot
 	Message                  = pkgsession.Message
 	PendingCriticFeedback    = pkgsession.PendingCriticFeedback
@@ -93,7 +91,6 @@ var (
 	BuildCompactionSummaryWithOptions = pkgsession.BuildCompactionSummaryWithOptions
 	CompactTranscript                 = pkgsession.CompactTranscript
 	CompactTranscriptWithOptions      = pkgsession.CompactTranscriptWithOptions
-	DetectForkPromotionCandidates     = pkgsession.DetectForkPromotionCandidates
 	ErrCwdNotEligible                 = pkgsession.ErrCwdNotEligible
 	ErrCwdNotAbsolute                 = pkgsession.ErrCwdNotAbsolute
 	ErrCwdNotFound                    = pkgsession.ErrCwdNotFound

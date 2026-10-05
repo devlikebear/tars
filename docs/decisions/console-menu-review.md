@@ -61,4 +61,4 @@ The verdicts lean on what was on screen, not on what the page could show in anot
 ## Found on the way
 
 - A server with no `log.level` ran at DEBUG, not the documented INFO, and logged every request and LLM payload: 58 MB of runtime log and a 264 MB service log on this server. Fixed separately (#1141).
-- The fork-insight endpoints the lineage page called (review and queue to the memory inbox) no longer have a console caller.
+- The unused fork-insight endpoints (review and queue to the memory inbox) and their supporting implementation were removed. Forking a chat from a message remains supported.
