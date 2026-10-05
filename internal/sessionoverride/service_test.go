@@ -183,3 +183,37 @@ func TestService_Resolve_UnknownSession(t *testing.T) {
 		t.Fatal("expected error for unknown session")
 	}
 }
+
+// A change made through the session config API is the lowest merge layer; it
+// must show up on the next Resolve without a cwd or settings-file change.
+func TestService_Resolve_ReloadsWhenSessionConfigChanges(t *testing.T) {
+	svc, sess, _ := newServiceWithSession(t)
+	if _, _, err := svc.Resolve(sess.ID); err != nil {
+		t.Fatalf("first resolve: %v", err)
+	}
+
+	if err := svc.store.SetToolConfig(sess.ID, &session.SessionToolConfig{
+		ToolsCustom:  true,
+		ToolsEnabled: []string{"read_file", "subagents_orchestrate"},
+	}); err != nil {
+		t.Fatalf("set tool config: %v", err)
+	}
+	res, changed, err := svc.Resolve(sess.ID)
+	if err != nil {
+		t.Fatalf("second resolve: %v", err)
+	}
+	if !changed {
+		t.Fatal("expected changed=true after the session tool config changed")
+	}
+	if got := res.Effective.ToolConfig.ToolsEnabled; !reflect.DeepEqual(got, []string{"read_file", "subagents_orchestrate"}) {
+		t.Fatalf("expected the new tool config, got %v", got)
+	}
+
+	if err := svc.store.SetPromptOverride(sess.ID, "new prompt"); err != nil {
+		t.Fatalf("set prompt: %v", err)
+	}
+	res, _, err = svc.Resolve(sess.ID)
+	if err != nil || res.Effective.PromptOverride != "new prompt" {
+		t.Fatalf("expected the new prompt override, got %q err=%v", res.Effective.PromptOverride, err)
+	}
+}

@@ -1,6 +1,7 @@
 package sessionoverride
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -21,9 +22,10 @@ type Resolution struct {
 // Service resolves a session's EffectiveConfig from its base configuration
 // (sessions.json) plus any `.tars/` overrides at the session's active cwd.
 // Results are cached per-session keyed by (cwd, settings.json mtime,
-// settings.local.json mtime); a Resolve call detects file mutations and
-// reloads automatically. Cache entries are also dropped explicitly via
-// Invalidate when the active cwd transitions.
+// settings.local.json mtime, the session's own base configuration); a
+// Resolve call detects file mutations and base changes and reloads
+// automatically. Cache entries are also dropped explicitly via Invalidate
+// when the active cwd transitions.
 //
 // The zero value is not usable; callers must construct via NewService.
 type Service struct {
@@ -36,7 +38,11 @@ type cacheEntry struct {
 	cwd         string
 	sharedMtime int64 // unix nanos; 0 = file absent
 	localMtime  int64
-	resolution  Resolution
+	// base fingerprints the session's own tool config and prompt override,
+	// the lowest merge layer. Without it a change made through the session
+	// config API stayed invisible until the cwd or a settings file changed.
+	base       string
+	resolution Resolution
 }
 
 // NewService constructs a Service backed by the supplied session store.
@@ -62,16 +68,6 @@ func (s *Service) Resolve(sessionID string) (Resolution, bool, error) {
 	}
 	sharedMtime, localMtime := overrideFileMtimes(cwd)
 
-	s.mu.RLock()
-	if entry, ok := s.cache[sessionID]; ok &&
-		entry.cwd == cwd &&
-		entry.sharedMtime == sharedMtime &&
-		entry.localMtime == localMtime {
-		s.mu.RUnlock()
-		return entry.resolution, false, nil
-	}
-	s.mu.RUnlock()
-
 	sess, err := s.store.Get(sessionID)
 	if err != nil {
 		return Resolution{}, false, err
@@ -80,6 +76,18 @@ func (s *Service) Resolve(sessionID string) (Resolution, bool, error) {
 	if sess.ToolConfig != nil {
 		baseToolConfig = *sess.ToolConfig
 	}
+	base := baseFingerprint(baseToolConfig, sess.PromptOverride)
+
+	s.mu.RLock()
+	if entry, ok := s.cache[sessionID]; ok &&
+		entry.cwd == cwd &&
+		entry.sharedMtime == sharedMtime &&
+		entry.localMtime == localMtime &&
+		entry.base == base {
+		s.mu.RUnlock()
+		return entry.resolution, false, nil
+	}
+	s.mu.RUnlock()
 
 	shared, local, diags, err := Load(cwd)
 	if err != nil {
@@ -103,12 +111,22 @@ func (s *Service) Resolve(sessionID string) (Resolution, bool, error) {
 		cwd:         cwd,
 		sharedMtime: sharedMtime,
 		localMtime:  localMtime,
+		base:        base,
 		resolution:  resolution,
 	}
 	s.mu.Unlock()
 
-	changed := !hadPrior || prior.cwd != cwd || prior.sharedMtime != sharedMtime || prior.localMtime != localMtime
+	changed := !hadPrior || prior.cwd != cwd || prior.sharedMtime != sharedMtime || prior.localMtime != localMtime || prior.base != base
 	return resolution, changed, nil
+}
+
+// baseFingerprint identifies the session's own configuration layer.
+func baseFingerprint(toolConfig session.SessionToolConfig, promptOverride string) string {
+	raw, err := json.Marshal(toolConfig)
+	if err != nil {
+		return promptOverride
+	}
+	return string(raw) + "\x00" + promptOverride
 }
 
 // Invalidate drops any cached resolution for sessionID. Safe to call for
