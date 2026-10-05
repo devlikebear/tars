@@ -1128,6 +1128,7 @@ export const ko = {
       activeSessions: '활성 세션',
       never: '없음',
       taskActive: (count) => `활성 작업 ${count}개`,
+      plansStalled: (count) => `멈춘 계획 ${count}개`,
       recent: '최근',
       failed: (count) => `실패 ${count}개`,
       total: (count) => `총 ${count}개`,

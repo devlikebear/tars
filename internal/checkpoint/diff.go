@@ -221,7 +221,7 @@ func onePath(path string) []string {
 }
 
 func (s *Store) nameStatus(ctx context.Context, sh *shadowRepo, from, to string, paths []string) ([]statusEntry, error) {
-	out, _, err := s.git.run(ctx, sh.call(diffArgs(from, to, paths, "--name-status", "-z")...))
+	out, _, err := s.git.run(ctx, sh.objectCall(diffArgs(from, to, paths, "--name-status", "-z")...))
 	if err != nil {
 		return nil, err
 	}
@@ -268,7 +268,7 @@ type numstatEntry struct {
 }
 
 func (s *Store) numstat(ctx context.Context, sh *shadowRepo, from, to string, paths []string) ([]numstatEntry, error) {
-	out, _, err := s.git.run(ctx, sh.call(diffArgs(from, to, paths, "--numstat", "-z")...))
+	out, _, err := s.git.run(ctx, sh.objectCall(diffArgs(from, to, paths, "--numstat", "-z")...))
 	if err != nil {
 		return nil, err
 	}
@@ -301,7 +301,7 @@ func (s *Store) diffFiles(ctx context.Context, sh *shadowRepo, from, to, path st
 	if err != nil {
 		return nil, err
 	}
-	out, _, err := s.git.run(ctx, sh.call(diffArgs(from, to, onePath(path), "-U3")...))
+	out, _, err := s.git.run(ctx, sh.objectCall(diffArgs(from, to, onePath(path), "-U3")...))
 	if err != nil {
 		return nil, err
 	}
@@ -331,7 +331,7 @@ func (s *Store) diffFilesOneByOne(ctx context.Context, sh *shadowRepo, from, to 
 		if e.oldPath != "" {
 			paths = append(paths, e.oldPath)
 		}
-		out, _, err := s.git.run(ctx, sh.call(diffArgs(from, to, paths, "-U3")...))
+		out, _, err := s.git.run(ctx, sh.objectCall(diffArgs(from, to, paths, "-U3")...))
 		if err != nil {
 			return nil, err
 		}

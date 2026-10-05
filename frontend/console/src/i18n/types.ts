@@ -1071,6 +1071,7 @@ export type Translations = {
       activeSessions: string
       never: string
       taskActive: (count: number) => string
+      plansStalled: (count: number) => string
       recent: string
       failed: (count: number) => string
       total: (count: number) => string

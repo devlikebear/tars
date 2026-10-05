@@ -51,7 +51,7 @@ test('session health recommends compacting and splitting long sessions', () => {
 
   assert.equal(report.status, 'critical')
   assert.equal(report.badgeLabel, 'Critical')
-  assert.equal(report.summary, '2 critical session issue(s) need action before continuing.')
+  assert.equal(report.summary, '1 critical session issue(s) need action before continuing.')
   assert.ok(report.recommendations.some((item) => item.action === 'compact'))
   assert.ok(report.recommendations.some((item) => item.action === 'review_fork_points'))
   assert.ok(report.signals.some((item) => item.kind === 'long_context'))
@@ -85,28 +85,56 @@ test('session health detects stale plans with open tasks', () => {
   assert.ok(report.signals.some((item) => item.kind === 'stale_plan'))
 })
 
-test('session health warns when high risk tools are broadly enabled', () => {
-  const config: SessionToolConfig = {
-    tools_custom: true,
-    tools_enabled: ['read_file', 'write_file', 'edit_file', 'exec', 'git_status'],
+for (const permissionMode of ['manual', 'accept_edits', 'plan', '', undefined, 'unknown']) {
+  test(`native ${permissionMode} mode does not warn about enabled high-risk tools`, () => {
+    const report = buildSessionHealthReport(sessionHealthEn, {
+      messages: messages(8), tools, provider: { kind: 'anthropic', permissionMode },
+    })
+    assert.equal(report.status, 'healthy')
+    assert.ok(!report.signals.some((item) => item.kind === 'broad_permissions'))
+  })
+}
+
+for (const strings of [sessionHealthEn, sessionHealthKo]) {
+  for (const toolCount of [1, 3]) {
+    test(`native auto mode warns for ${toolCount} high-risk tools (${strings.status.healthy})`, () => {
+      const report = buildSessionHealthReport(strings, {
+        messages: messages(8), tools: tools.filter((tool) => tool.high_risk).slice(0, toolCount),
+        provider: { kind: 'anthropic', permissionMode: 'auto' },
+      })
+      assert.equal(report.status, 'watch')
+      const signal = report.signals.find((item) => item.kind === 'broad_permissions')
+      assert.equal(signal?.severity, 'warning')
+      assert.equal(signal?.detail, strings.signals.broadPermissions.detail(toolCount))
+      assert.ok(report.recommendations.some((item) => item.action === 'choose_permission_mode' && item.severity === 'warning'))
+    })
   }
 
-  const report = buildSessionHealthReport(sessionHealthEn, {
-    session: session(),
-    messages: messages(8),
-    tasks: { tasks: [] },
-    config,
-    tools,
-    now: new Date('2026-05-01T10:00:00Z'),
-  })
-
-  assert.equal(report.status, 'attention')
-  assert.ok(report.recommendations.some((item) => item.action === 'open_config'))
-  assert.ok(report.signals.some((item) => item.kind === 'broad_permissions'))
-})
+  for (const [count, percent, severity] of [
+    [83, 5.7, undefined], [160, 5.7, undefined], [80, undefined, 'warning'],
+    [160, undefined, 'critical'], [160, 75, 'warning'], [8, 94, 'warning'], [8, 95, 'critical'],
+  ] as const) {
+    test(`context ${count} messages at ${percent}% (${strings.status.healthy})`, () => {
+      const report = buildSessionHealthReport(strings, {
+        messages: messages(count),
+        contextInfo: percent === undefined ? {} : { history_tokens: percent * 100, compaction_trigger_tokens: 10000 },
+      })
+      const signal = report.signals.find((item) => item.kind === 'long_context')
+      assert.equal(signal?.severity, severity)
+      if (severity) {
+        const text = severity === 'critical' ? strings.signals.contextSaturated : strings.signals.contextLong
+        assert.equal(signal?.detail, percent === undefined ? text.detail(count) : text.detailPercent(percent))
+        if (percent !== undefined) assert.ok(signal?.detail.includes(`${percent}%`))
+      } else {
+        assert.equal(report.status, 'healthy')
+      }
+    })
+  }
+}
 
 test('session health does not flag permissions on an empty new session', () => {
   const report = buildSessionHealthReport(sessionHealthEn, {
+    provider: { kind: 'anthropic', permissionMode: 'auto' },
     session: session(),
     messages: [],
     tasks: { tasks: [] },
@@ -206,7 +234,7 @@ test('a native session keeps its length warning even with a stale upstream id', 
   })
 
   assert.ok(report.signals.some((item) => item.kind === 'long_context'))
-  assert.ok(report.signals.some((item) => item.kind === 'broad_permissions'))
+  assert.ok(!report.signals.some((item) => item.kind === 'broad_permissions'))
   assert.equal(report.metrics.highRiskToolCount, 3)
   assert.equal(report.metrics.cliPermissionMode, undefined)
   assert.deepEqual(report.notes, [])

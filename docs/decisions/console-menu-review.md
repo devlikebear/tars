@@ -51,12 +51,32 @@ The verdicts lean on what was on screen, not on what the page could show in anot
 1. **Memory inbox quality.** Reflection proposes an agent's completion reports as memories. Fixed separately (#1140): the assistant's reply is no longer mined for candidates.
 2. **Mission Control's "active plans" tile** still counts stalled plans; it should show them apart, as the Plans page does.
 3. **Agent Runtime views.** Measure which of tree, Gantt and flow is opened; remove the ones that are not, and hide the cost cards when no run has a cost.
-4. **The chat dock.** See below.
+4. **The chat dock.** Reviewed; see "Chat dock" below.
 
 ### Left alone on purpose
 
 - Extensions, Cron and Channels are empty on this server and kept: they are how the product is extended and reached.
-- The chat dock (tasks, changes, git, terminal, artifacts, session config, session cron, health, context) needs its own pass. It is the densest surface and the one used most.
+
+## Chat dock
+
+All fourteen dock panels were opened on a session that had done real work (83 messages, 45 changed files, its worktree since kept).
+
+| Panel | Verdict | Why |
+|-------|---------|-----|
+| Session list | improve | "All" listed every subagent worker session next to the chats: 13 of 32 rows on this server. |
+| Session health | improve | Said "action required" on a healthy session. See below. |
+| Changes | improve | "Could not load changes" for every turn once the session's worktree had ended. |
+| Side session | improve | Its picker offered the same worker sessions. |
+| Tasks, context, prior context, prompt, session config, git, files, terminal | keep | Each showed what it claims to and nothing else on the page does. |
+| Skill inbox, session cron | keep | Empty here; they stay for the same reason Extensions and Cron do. |
+
+Done:
+
+1. **Session health follows what can go wrong.** Context length is judged by the share of the window in use when that is known (83 messages at 5.7% is not long); the message count is the fallback. High-risk tools are on by default and the permission mode decides whether they run unasked, so a native-provider session is flagged only in auto mode, and as a warning.
+2. **A turn's changes stay readable after its worktree is gone.** Diffs between two checkpoint commits ran git inside the checkpointed folder; they run in the shadow repository now, which is where the commits are.
+3. **"All" is the chats.** Worker sessions are under their own filter and out of the side-session picker.
+
+Checked and left: the files panel showing one age for every file (a fresh worktree's files do share a modification time), and the git panel showing the original checkout for a session whose worktree ended (that is the folder the session is in again).
 
 ## Found on the way
 

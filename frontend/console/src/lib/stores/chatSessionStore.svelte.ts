@@ -25,6 +25,7 @@ import type {
   compactSession,
   getUsageSummary,
   listAgentRuntimeSubagents,
+  getChatContext,
   getSession,
   getSessionCwd,
   getSessionEffectiveConfig,
@@ -46,6 +47,7 @@ import type { AgentRuntimeTierOption, ChatContextInfo, ChatTier, Session, Sessio
 export type ChatSessionApi = {
   listSessions: typeof listSessions
   getSession: typeof getSession
+  getChatContext: typeof getChatContext
   getSessionHistory: typeof getSessionHistory
   getSessionTasks: typeof getSessionTasks
   getSessionEffectiveConfig: typeof getSessionEffectiveConfig
@@ -494,14 +496,19 @@ export class ChatSessionStore {
     const request = ++this.healthRequest
     this.healthLoading = true
     try {
-      const [session, history, taskState, config, toolsResp] = await Promise.all([
+      const [session, history, taskState, config, toolsResp, context] = await Promise.all([
         this.api.getSession(id),
         this.api.getSessionHistory(id),
         this.api.getSessionTasks(id),
         this.api.getSessionEffectiveConfig(id),
         this.api.listChatTools(id),
+        // Context usage otherwise arrives only with a turn's stream, and a
+        // session that was just opened would be judged by message count.
+        this.api.getChatContext(id).catch(() => null),
       ])
       if (request !== this.healthRequest || this.activeSessionId !== id) return
+      // A running turn's figures are newer than this snapshot.
+      if (context && !this.contextInfo.compaction_trigger_tokens) this.contextInfo = context
       this.activeSession = session
       this.healthInputs = {
         session,
@@ -578,7 +585,7 @@ export class ChatSessionStore {
     const pinned = this.pinnedTier
     const kind = pinned ? kindOf(pinned) : this.contextInfo.llm_provider?.trim() || kindOf(this.defaultTier)
     const claudeCodeFlag = this.permission?.claude_code_flag?.trim()
-    return { kind, ...(claudeCodeFlag ? { claudeCodeFlag } : {}) }
+    return { kind, permissionMode: this.permission?.effective, ...(claudeCodeFlag ? { claudeCodeFlag } : {}) }
   }
 
   private resetSlices(): void {

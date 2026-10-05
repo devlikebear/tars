@@ -148,6 +148,14 @@ func (sh *shadowRepo) call(args ...string) gitCall {
 	return gitCall{gitDir: sh.gitDir, workTree: sh.root, dir: sh.root, args: args}
 }
 
+// objectCall builds a git call that reads or writes only the shadow's own
+// objects and refs. It runs from the shadow instead of the root, so it still
+// works after the root is gone (a session worktree that was kept or
+// discarded).
+func (sh *shadowRepo) objectCall(args ...string) gitCall {
+	return gitCall{gitDir: sh.gitDir, dir: filepath.Dir(sh.gitDir), args: args}
+}
+
 // writeExcludes rewrites info/exclude for the next snapshot: the defaults,
 // the root repository's own info/exclude, TARS's data directory when it sits
 // inside the root, and the paths this snapshot must leave out.

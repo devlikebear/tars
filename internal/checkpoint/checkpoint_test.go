@@ -403,3 +403,24 @@ func TestParseHunks(t *testing.T) {
 		t.Fatalf("second = %+v", h)
 	}
 }
+
+// A session worktree is removed when it is kept or discarded; the turns it
+// ran must stay readable from the shadow alone.
+func TestDiffSurvivesRemovedRoot(t *testing.T) {
+	s := newTestStore(t, Options{})
+	root := filepath.Join(t.TempDir(), "worktree")
+	writeFile(t, root, "a.txt", "one\n")
+	runTurn(t, s, "sess", "turn", root, func() {
+		writeFile(t, root, "a.txt", "two\n")
+		writeFile(t, root, "b.txt", "new\n")
+	})
+	if err := os.RemoveAll(root); err != nil {
+		t.Fatal(err)
+	}
+	for _, scope := range []Scope{ScopeTurn, ScopeSession} {
+		files := filesByPath(mustDiff(t, s, "sess", "turn", scope).Files)
+		if len(files) != 2 || files["a.txt"].Status != "modified" || files["b.txt"].Status != "added" {
+			t.Fatalf("scope %s after the root was removed: %+v", scope, files)
+		}
+	}
+}

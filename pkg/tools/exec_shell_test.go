@@ -14,8 +14,8 @@ func TestExecTool_ShellQuotedPrintf(t *testing.T) {
 	requirePOSIXShell(t)
 
 	body := executeShellCommand(t, `printf '%s' 'hello world'`, false)
-	if body.ExitCode != 0 {
-		t.Fatalf("expected exit_code 0, got %d: %+v", body.ExitCode, body)
+	if exitCodeOf(body) != 0 {
+		t.Fatalf("expected exit_code 0, got %d: %+v", exitCodeOf(body), body)
 	}
 	if strings.TrimSpace(body.Stdout) != "hello world" {
 		t.Fatalf("expected quoted argument to remain intact, got %q", body.Stdout)
@@ -26,8 +26,8 @@ func TestExecTool_ShellSemicolon(t *testing.T) {
 	requirePOSIXShell(t)
 
 	body := executeShellCommand(t, `echo first; echo second`, false)
-	if body.ExitCode != 0 {
-		t.Fatalf("expected exit_code 0, got %d: %+v", body.ExitCode, body)
+	if exitCodeOf(body) != 0 {
+		t.Fatalf("expected exit_code 0, got %d: %+v", exitCodeOf(body), body)
 	}
 	if got := strings.Fields(body.Stdout); len(got) != 2 || got[0] != "first" || got[1] != "second" {
 		t.Fatalf("expected both semicolon-separated commands to run, got %q", body.Stdout)
@@ -38,8 +38,8 @@ func TestExecTool_ShellPipeline(t *testing.T) {
 	requirePOSIXShell(t)
 
 	body := executeShellCommand(t, `printf 'alpha\nbeta\n' | grep beta`, false)
-	if body.ExitCode != 0 {
-		t.Fatalf("expected exit_code 0, got %d: %+v", body.ExitCode, body)
+	if exitCodeOf(body) != 0 {
+		t.Fatalf("expected exit_code 0, got %d: %+v", exitCodeOf(body), body)
 	}
 	if strings.TrimSpace(body.Stdout) != "beta" {
 		t.Fatalf("expected pipeline output %q, got %q", "beta", body.Stdout)
@@ -71,6 +71,9 @@ func TestExecTool_ShellBackgroundQuotedCommand(t *testing.T) {
 	var body execResponse
 	if err := json.Unmarshal([]byte(result.Text()), &body); err != nil {
 		t.Fatalf("decode result: %v", err)
+	}
+	if body.ExitCode != nil || body.Status != "running" {
+		t.Fatalf("a process that just started has no exit code yet: %s", result.Text())
 	}
 
 	snap, timedOut, err := manager.Wait(context.Background(), body.SessionID, 2000)
@@ -117,4 +120,13 @@ func requirePOSIXShell(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("POSIX shell semantics are not available on Windows")
 	}
+}
+
+// exitCodeOf reads a finished command's exit code; -1 when the response
+// carries none.
+func exitCodeOf(body execResponse) int {
+	if body.ExitCode == nil {
+		return -1
+	}
+	return *body.ExitCode
 }

@@ -15,6 +15,13 @@ export function sessionKind(session: Session): 'session' | 'main' | 'worker' {
   return 'session'
 }
 
+// 'all' leaves out worker sessions (subagent runs): there is one per
+// delegated task, and they have their own filter.
+function matchesKind(session: Session, filterKind: SessionKindFilter): boolean {
+  const kind = sessionKind(session)
+  return filterKind === 'all' ? kind !== 'worker' : kind === filterKind
+}
+
 export function isArchived(session: Pick<Session, 'archived_at'>): boolean {
   return Boolean(session.archived_at?.trim())
 }
@@ -36,7 +43,7 @@ export function organizeSessions(
   let result = sessions.filter((session) => {
     const matchesFilter = options.filterKind === 'archived'
       ? isArchived(session)
-      : !isArchived(session) && (options.filterKind === 'all' || sessionKind(session) === options.filterKind)
+      : !isArchived(session) && matchesKind(session, options.filterKind)
     if (!matchesFilter) {
       return false
     }
