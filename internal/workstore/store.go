@@ -756,6 +756,9 @@ func (s *Store) ListWorks(ctx context.Context, filter ListWorksFilter) ([]Work, 
 		}
 		query += " AND state IN (" + strings.Join(placeholders, ",") + ")"
 	}
+	if filter.Scheduled {
+		query += " AND EXISTS (SELECT 1 FROM step_schedules schedule WHERE schedule.workspace_id = works.workspace_id AND schedule.work_id = works.id)"
+	}
 	limit := filter.Limit
 	if limit <= 0 {
 		limit = 100

@@ -1158,3 +1158,46 @@ func contains(values []string, target string) bool {
 	}
 	return false
 }
+
+// The scheduler polls with Scheduled: projections of agent runs and sessions
+// have no step schedules and must not come back.
+func TestListWorksScheduledKeepsOnlyWorksWithStepSchedules(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t, filepath.Join(t.TempDir(), "ledger.db"))
+	ctx := context.Background()
+	create := func(key string) (Work, Step) {
+		t.Helper()
+		work, err := store.CreateWork(ctx, CreateWorkInput{
+			WorkspaceID: "workspace-a", Kind: "run", Source: "agentruntime", IdempotencyKey: key,
+			Title: key, InitialState: WorkStateRunning, ActorID: "tester",
+		})
+		if err != nil {
+			t.Fatalf("create %s: %v", key, err)
+		}
+		step, err := store.CreateStep(ctx, CreateStepInput{
+			WorkspaceID: "workspace-a", WorkID: work.ID, IdempotencyKey: key + ":step", Title: "step", Position: 1, ActorID: "tester",
+		})
+		if err != nil {
+			t.Fatalf("create %s step: %v", key, err)
+		}
+		return work, step
+	}
+	create("projection")
+	scheduled, step := create("scheduled")
+	if _, err := store.ConfigureStepSchedule(ctx, ConfigureStepScheduleInput{
+		WorkspaceID: "workspace-a", WorkID: scheduled.ID, StepID: step.ID,
+		Policy: StepSchedulePolicy{MaxAttempts: 1, EscalationState: WorkStateReview}, ActorID: "tester",
+	}); err != nil {
+		t.Fatalf("configure schedule: %v", err)
+	}
+
+	all, err := store.ListWorks(ctx, ListWorksFilter{WorkspaceID: "workspace-a", States: []WorkState{WorkStateRunning}})
+	if err != nil || len(all) != 2 {
+		t.Fatalf("unfiltered works=%d err=%v", len(all), err)
+	}
+	only, err := store.ListWorks(ctx, ListWorksFilter{WorkspaceID: "workspace-a", States: []WorkState{WorkStateRunning}, Scheduled: true})
+	if err != nil || len(only) != 1 || only[0].ID != scheduled.ID {
+		t.Fatalf("scheduled works=%+v err=%v", only, err)
+	}
+}
