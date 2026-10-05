@@ -962,16 +962,6 @@ func markInterruptedProviderTools(records []ToolCallRecord) []ToolCallRecord {
 	return out
 }
 
-func upstreamToolCallRecords(records []ToolCallRecord) []ToolCallRecord {
-	var out []ToolCallRecord
-	for _, rec := range records {
-		if rec.upstream {
-			out = append(out, rec)
-		}
-	}
-	return out
-}
-
 // ToolCallRecord holds a tool invocation for transcript persistence.
 type ToolCallRecord struct {
 	ToolName    string
