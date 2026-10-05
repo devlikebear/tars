@@ -192,3 +192,22 @@ func newBaseToolRegistryWithSubagentTools(t *testing.T) *tool.Registry {
 	registry.Register(apptool.NewSubagentsOrchestrateTool(nil))
 	return registry
 }
+
+// subagents_orchestrate is off by default, but with the durable scheduler
+// running it submits durable work and is offered without session opt-in.
+func TestResolveInjectedToolPolicy_OffersOrchestrateOnlyWithDurableFlows(t *testing.T) {
+	registry := newBaseToolRegistryWithProcess(t.TempDir(), tool.SingleDirPolicy(t.TempDir()), tool.NewProcessManager())
+	registry.Register(apptool.NewSubagentsOrchestrateTool(nil))
+
+	without := toolNamesFromSchemas(resolveInjectedToolPolicyFor(registry, "admin", true, false).Schemas)
+	if hasToolName(without, "subagents_orchestrate") {
+		t.Fatalf("expected subagents_orchestrate hidden without the scheduler, got %+v", without)
+	}
+	with := toolNamesFromSchemas(resolveInjectedToolPolicyFor(registry, "admin", true, true).Schemas)
+	if !hasToolName(with, "subagents_orchestrate") {
+		t.Fatalf("expected subagents_orchestrate offered with the scheduler, got %+v", with)
+	}
+	if hasToolName(with, "process") {
+		t.Fatalf("the scheduler must not unhide other default-off tools, got %+v", with)
+	}
+}

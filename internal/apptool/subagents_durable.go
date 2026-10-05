@@ -62,6 +62,13 @@ func executeDurableSubagentFlow(ctx context.Context, runtime *agentruntime.Runti
 			if message != "" {
 				return JSONTextResult(map[string]any{"message": message}, true), nil
 			}
+			// The flow outlives this call, so a provider that cannot be
+			// resolved is refused now, while the caller can still fix it.
+			if err := runtime.CheckProviderOverride(task.Tier, normalized); err != nil {
+				return JSONTextResult(map[string]any{
+					"message": fmt.Sprintf("task %q: provider_override: %v. Omit provider_override to use the configured provider.", task.ID, err),
+				}, true), nil
+			}
 			task.ProviderOverride = normalized
 		}
 	}

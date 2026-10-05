@@ -17,11 +17,16 @@ func buildWorkSchedulerIfEnabled(cfg config.Config, ledger *workstore.Store, run
 	if !cfg.WorkLedger.SchedulerEnabled {
 		return nil, nil
 	}
+	// The scheduler is on by default, so a server that has what it needs
+	// switched off runs without it rather than refusing to start: subagent
+	// orchestration then stays on the request-bound path.
 	if !cfg.WorkLedger.Enabled || ledger == nil {
-		return nil, fmt.Errorf("durable work scheduler requires work_ledger.enabled")
+		logger.Warn().Msg("durable work scheduler is off: it requires work_ledger.enabled")
+		return nil, nil
 	}
 	if runtime == nil || !runtime.Enabled() {
-		return nil, fmt.Errorf("durable work scheduler requires agentruntime.enabled")
+		logger.Warn().Msg("durable work scheduler is off: it requires agentruntime.enabled")
+		return nil, nil
 	}
 	workerID := fmt.Sprintf("tarsd-%d-%d", os.Getpid(), time.Now().UnixNano())
 	return workscheduler.New(workscheduler.Options{

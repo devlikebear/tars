@@ -136,7 +136,7 @@ func newSubagentsOrchestrateTool(runtime *agentruntime.Runtime, scheduler *works
                 "title":{"type":"string"},
                 "prompt":{"type":"string","description":"Supports placeholders like {{task.backend.summary}} and {{task.backend.response}}."},
 					"tier":{"type":"string","enum":["heavy","standard","light"],"description":"Optional LLM tier override for this task. Falls back to agent tier, then default tier."},
-					"provider_override":{"type":"object","properties":{"alias":{"type":"string"},"model":{"type":"string"}},"required":["alias"],"additionalProperties":false},
+					"provider_override":{"type":"object","description":"Omit unless the user named a provider. alias must be one of the server's configured llm_providers aliases; there is no \"default\" alias.","properties":{"alias":{"type":"string"},"model":{"type":"string"}},"required":["alias"],"additionalProperties":false},
 					"depends_on":{"type":"array","items":{"type":"string"}}
 				  },
               "required":["id","prompt"],

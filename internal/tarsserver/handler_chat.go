@@ -1614,14 +1614,13 @@ func newChatAPIHandlerWithRuntimeConfig(
 				mainSessionID: strings.TrimSpace(mainSessionID),
 			},
 		)
-		injectedSchemas := resolveInjectedToolSchemas(
+		injectedSchemas := resolveInjectedToolPolicyFor(
 			registry,
-			tooling.ToolsDefaultSet,
-			nil,
 			"admin",
 			tooling.ToolsAllowHighRiskUser,
+			tooling.WorkScheduler != nil,
 			sessionToolConfigs...,
-		)
+		).Schemas
 		writeJSON(w, http.StatusOK, map[string]any{
 			"session_id":                      sessionID,
 			"system_prompt":                   systemPrompt,

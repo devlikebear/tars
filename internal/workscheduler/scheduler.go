@@ -280,6 +280,7 @@ func (s *Scheduler) RunOnce(ctx context.Context) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+	works = s.ownedWorks(works)
 	for _, work := range works {
 		if _, err := s.store.PromoteReadySteps(ctx, workstore.PromoteReadyStepsInput{
 			WorkspaceID: s.workspaceID, WorkID: work.ID, ActorID: s.actorID,
@@ -300,7 +301,10 @@ func (s *Scheduler) RunOnce(ctx context.Context) (int, error) {
 			}
 			executor, resolveErr := s.executorForWork(work)
 			if resolveErr != nil {
-				return claimed, resolveErr
+				// One work whose adapter this server does not run must not
+				// stop the others from being claimed.
+				s.reportError(resolveErr)
+				continue
 			}
 			claim, claimErr := s.store.ClaimReadyStep(ctx, workstore.ClaimReadyStepInput{
 				WorkspaceID: s.workspaceID, WorkID: work.ID, WorkerID: s.workerID,
@@ -955,16 +959,42 @@ func nextWorkState(current, target workstore.WorkState) (workstore.WorkState, bo
 	}
 }
 
-func (s *Scheduler) executorForWork(work workstore.Work) (Executor, error) {
+// ownedWorks keeps the works this scheduler submitted. The Work Ledger also
+// holds running works the scheduler has no part in: projections of ordinary
+// agent runs and sessions, including the runs its own steps spawn. They carry
+// no scheduler adapter, and must be neither promoted nor claimed.
+func (s *Scheduler) ownedWorks(works []workstore.Work) []workstore.Work {
+	owned := works[:0:0]
+	for _, work := range works {
+		if adapter, err := schedulerAdapter(work); err == nil && adapter != "" {
+			owned = append(owned, work)
+		}
+	}
+	return owned
+}
+
+// schedulerAdapter returns the executor adapter recorded when the work was
+// submitted through the scheduler, or "" for a work it did not submit.
+func schedulerAdapter(work workstore.Work) (string, error) {
+	if len(work.MetadataJSON) == 0 {
+		return "", nil
+	}
 	var metadata struct {
 		Scheduler struct {
 			Adapter string `json:"adapter"`
 		} `json:"scheduler"`
 	}
 	if err := json.Unmarshal(work.MetadataJSON, &metadata); err != nil {
-		return nil, fmt.Errorf("workscheduler: decode work scheduler metadata: %w", err)
+		return "", fmt.Errorf("workscheduler: decode work scheduler metadata: %w", err)
 	}
-	adapter := strings.TrimSpace(metadata.Scheduler.Adapter)
+	return strings.TrimSpace(metadata.Scheduler.Adapter), nil
+}
+
+func (s *Scheduler) executorForWork(work workstore.Work) (Executor, error) {
+	adapter, err := schedulerAdapter(work)
+	if err != nil {
+		return nil, err
+	}
 	executor, ok := s.executors[adapter]
 	if !ok {
 		return nil, fmt.Errorf("workscheduler: executor adapter %q is not configured for work %s", adapter, work.ID)

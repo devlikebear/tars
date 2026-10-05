@@ -77,7 +77,7 @@ automation:
 work_ledger:
   enabled: true
   scheduler:
-    enabled: false
+    enabled: true
     max_workers: 4
     lease_seconds: 60
     heartbeat_seconds: 20

@@ -200,6 +200,24 @@ func (r *Runtime) LookupAgent(name string) (AgentInfo, bool) {
 	return executor.Info(), true
 }
 
+// CheckProviderOverride reports whether override names a provider this server
+// can run. Callers that store a request for later (the durable scheduler)
+// use it to refuse a bad override when it is submitted, not when the step
+// finally runs. A nil override, or a runtime without a resolver, passes.
+func (r *Runtime) CheckProviderOverride(tier string, override *ProviderOverride) error {
+	if r == nil || override == nil {
+		return nil
+	}
+	r.mu.RLock()
+	resolve := r.opts.ResolveProviderOverride
+	r.mu.RUnlock()
+	if resolve == nil {
+		return nil
+	}
+	_, err := resolve(strings.TrimSpace(tier), override)
+	return err
+}
+
 func (r *Runtime) SubagentLimits() (maxThreads int, maxDepth int) {
 	if r == nil {
 		return 0, 0

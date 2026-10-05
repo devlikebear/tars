@@ -102,6 +102,20 @@ func resolveInjectedToolPolicy(
 	allowHighRiskUser bool,
 	sessionConfig ...session.SessionToolConfig,
 ) injectedToolPolicy {
+	return resolveInjectedToolPolicyFor(registry, authRole, allowHighRiskUser, false, sessionConfig...)
+}
+
+// resolveInjectedToolPolicyFor is resolveInjectedToolPolicy for a turn that
+// knows whether the durable work scheduler is running. With it,
+// subagents_orchestrate submits durable work and is offered without the
+// session having to enable it; without it the tool stays off by default.
+func resolveInjectedToolPolicyFor(
+	registry *tool.Registry,
+	authRole string,
+	allowHighRiskUser bool,
+	durableFlows bool,
+	sessionConfig ...session.SessionToolConfig,
+) injectedToolPolicy {
 	if registry == nil {
 		return injectedToolPolicy{}
 	}
@@ -119,7 +133,7 @@ func resolveInjectedToolPolicy(
 	}
 
 	var deprecatedBlocked map[string]tool.BlockedToolError
-	names, deprecatedBlocked = filterDefaultDeprecatedToolNames(names, activeSessionConfig)
+	names, deprecatedBlocked = filterDefaultDeprecatedToolNames(names, activeSessionConfig, durableFlows)
 	mergeBlockedToolErrors(blocked, deprecatedBlocked)
 
 	var highRiskBlocked map[string]tool.BlockedToolError
@@ -318,12 +332,13 @@ func isHighRiskToolName(name string) bool {
 	return tool.IsHighRiskToolName(name)
 }
 
-func filterDefaultDeprecatedToolNames(names []string, sessionConfig *session.SessionToolConfig) ([]string, map[string]tool.BlockedToolError) {
+func filterDefaultDeprecatedToolNames(names []string, sessionConfig *session.SessionToolConfig, durableFlows bool) ([]string, map[string]tool.BlockedToolError) {
 	filtered := make([]string, 0, len(names))
 	blocked := map[string]tool.BlockedToolError{}
 	for _, name := range names {
 		canonical := tool.CanonicalToolName(name)
-		if !isDefaultDeprecatedToolName(canonical) || sessionExplicitlyAllowsTool(sessionConfig, canonical) {
+		offered := durableFlows && canonical == "subagents_orchestrate"
+		if offered || !isDefaultDeprecatedToolName(canonical) || sessionExplicitlyAllowsTool(sessionConfig, canonical) {
 			filtered = append(filtered, name)
 			continue
 		}
