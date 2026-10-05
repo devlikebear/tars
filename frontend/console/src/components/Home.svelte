@@ -27,6 +27,7 @@
     SyspromptFile,
   } from '../lib/types'
   import { t } from '../i18n'
+  import { isStalledPlan } from '../lib/plans'
 
   interface Props {
     onNavigate: (path: string) => void
@@ -48,6 +49,10 @@
   let notifications: NotificationMessage[] = $state([])
   let sessions: Session[] = $state([])
   let plans: GlobalPlanItem[] = $state([])
+  // A plan nothing has touched for a day is not active work; the tile counts
+  // it apart, as the Plans page does.
+  let livePlans = $derived(plans.filter((item) => !isStalledPlan(item)))
+  let stalledPlanCount = $derived(plans.length - livePlans.length)
   let cronJobs: CronJob[] = $state([])
   let agentRuns: AgentRuntimeRun[] = $state([])
   let serverVersion = $state('')
@@ -306,8 +311,8 @@
       </button>
       <button type="button" class="status-tile" onclick={() => onNavigate('/console/tasks')}>
         <span class="status-label">{$t.home.statusStrip.activePlans}</span>
-        <strong>{plans.length}</strong>
-        <span>{$t.home.statusStrip.taskActive(plans.reduce((total, item) => total + (item.summary?.in_progress ?? 0), 0))}</span>
+        <strong>{livePlans.length}</strong>
+        <span>{$t.home.statusStrip.taskActive(livePlans.reduce((total, item) => total + (item.summary?.in_progress ?? 0), 0))}{stalledPlanCount > 0 ? ` · ${$t.home.statusStrip.plansStalled(stalledPlanCount)}` : ''}</span>
       </button>
       <button type="button" class="status-tile" onclick={() => onNavigate('/console/agentruntime')}>
         <span class="status-label">{$t.home.statusStrip.agentRuns}</span>
