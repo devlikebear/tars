@@ -74,7 +74,6 @@ type preparedChatContext struct {
 	// time). It closes the assembled system prompt so everything ahead of it
 	// stays a matchable provider cache prefix.
 	SystemPromptTail           string
-	ToolChoice                 *llm.ToolChoice
 	SystemPromptTokens         int
 	RelevantMemoryCount        int
 	RelevantMemoryTokens       int
@@ -90,14 +89,14 @@ func prepareChatContextWithExtensions(
 	extSnapshot extensions.Snapshot,
 	invokedSkill *skill.Definition,
 	semanticCfg ...memory.SemanticConfig,
-) (systemPrompt string, toolChoice *llm.ToolChoice, err error) {
+) (systemPrompt string, err error) {
 	details, err := prepareChatContextDetailsWithExtensions(workspaceDir, sessionID, userMessage, extSnapshot, invokedSkill, semanticCfg...)
 	if err != nil {
-		return "", nil, err
+		return "", err
 	}
 	// Single-string callers (telegram, previews) get the dynamic tail folded
 	// back on at the end — same order the split assembler produces.
-	return details.SystemPrompt + details.SystemPromptTail, details.ToolChoice, nil
+	return details.SystemPrompt + details.SystemPromptTail, nil
 }
 
 func prepareChatContextDetailsWithExtensions(
@@ -141,7 +140,7 @@ func prepareChatContextDetailsWithCache(
 	// so a cache hit and a cache miss produce byte-identical output.
 	if cached, ok := cache.Get(userMessage, sessionID); ok {
 		buildOpts.PresetRelevant = cached.Preset()
-		return buildContextFromResult(workspaceDir, prompt.BuildResultFor(buildOpts), extSnapshot, invokedSkill, forceRelevantMemory), nil
+		return buildContextFromResult(workspaceDir, prompt.BuildResultFor(buildOpts), extSnapshot, invokedSkill), nil
 	}
 
 	buildOpts.MemorySearcher = buildSemanticMemoryService(workspaceDir, semanticCfg)
@@ -150,7 +149,7 @@ func prepareChatContextDetailsWithCache(
 	// Populate cache with search result
 	cache.Put(userMessage, sessionID, memoryRecallFromResult(buildResult))
 
-	return buildContextFromResult(workspaceDir, buildResult, extSnapshot, invokedSkill, forceRelevantMemory), nil
+	return buildContextFromResult(workspaceDir, buildResult, extSnapshot, invokedSkill), nil
 }
 
 func buildContextFromResult(
@@ -158,7 +157,6 @@ func buildContextFromResult(
 	buildResult prompt.BuildResult,
 	extSnapshot extensions.Snapshot,
 	invokedSkill *skill.Definition,
-	forceRelevantMemory bool,
 ) preparedChatContext {
 	systemPrompt := buildResult.StaticPrompt
 	systemPrompt += "\n" + strings.TrimSpace(memoryToolSystemRule) + "\n"
@@ -179,14 +177,9 @@ func buildContextFromResult(
 			readPath,
 		)
 	}
-	var toolChoice *llm.ToolChoice
-	if forceRelevantMemory {
-		toolChoice = llm.ToolChoiceRequired()
-	}
 	return preparedChatContext{
 		SystemPrompt:               systemPrompt,
 		SystemPromptTail:           buildResult.DynamicTail,
-		ToolChoice:                 toolChoice,
 		SystemPromptTokens:         promptTokenEstimate(systemPrompt + buildResult.DynamicTail),
 		RelevantMemoryCount:        buildResult.RelevantMemoryCount,
 		RelevantMemoryTokens:       buildResult.RelevantTokens,

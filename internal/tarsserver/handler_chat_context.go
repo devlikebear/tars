@@ -38,7 +38,6 @@ type chatRunState struct {
 	transcriptPath        string
 	history               []session.Message
 	registry              *tool.Registry
-	toolChoice            *llm.ToolChoice
 	llmMessages           []llm.ChatMessage
 	injectedSchemas       []llm.ToolSchema
 	blockedTools          map[string]tool.BlockedToolError
@@ -199,7 +198,6 @@ func buildSessionChatRunState(
 	}
 	systemPrompt := contextDetails.SystemPrompt
 	systemPrompt = appendInvokedCommandPrompt(systemPrompt, requestWorkspaceDir, resolvedCommand.Definition)
-	toolChoice := contextDetails.ToolChoice
 	deps.logger.Debug().
 		Str("session_id", sessionID).
 		Int("history_messages", len(history)).
@@ -209,7 +207,6 @@ func buildSessionChatRunState(
 		Int("relevant_memory_tokens", contextDetails.RelevantMemoryTokens).
 		Int("system_prompt_len", len(systemPrompt)).
 		Int("system_prompt_tokens", promptTokenEstimate(systemPrompt)).
-		Str("tool_choice", toolChoice.String()).
 		Int("context_window", llmResolution.ContextWindow).
 		Msg("chat context assembled")
 
@@ -301,7 +298,6 @@ func buildSessionChatRunState(
 		transcriptPath:        transcriptPath,
 		history:               history,
 		registry:              registry,
-		toolChoice:            toolChoice,
 		llmMessages:           llmMessages,
 		injectedSchemas:       injectedSchemas,
 		blockedTools:          resolvedTools.Blocked,

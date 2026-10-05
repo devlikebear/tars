@@ -71,7 +71,7 @@ func (h *telegramInboundHandler) processMessage(
 	}
 	resolvedSkill := resolveSkillSelection(text, h.tooling.Extensions, h.workspaceDir, sessionID)
 	invokedSkill := resolvedSkill.Definition
-	systemPrompt, toolChoice, err := prepareChatContextWithExtensions(h.workspaceDir, sessionID, text, extSnapshot, invokedSkill, h.tooling.MemorySemanticConfig)
+	systemPrompt, err := prepareChatContextWithExtensions(h.workspaceDir, sessionID, text, extSnapshot, invokedSkill, h.tooling.MemorySemanticConfig)
 	if err != nil {
 		return "", sessionID, err
 	}
@@ -99,7 +99,6 @@ func (h *telegramInboundHandler) processMessage(
 		MaxIterations: resolveAgentMaxIterations(h.maxIterations),
 		Tools:         injectedSchemas,
 		BlockedTools:  resolvedTools.Blocked,
-		ToolChoice:    toolChoice,
 	}
 	h.tooling.Unattended.options(sessionID, h.workspaceDir, "telegram", "telegram").apply(&runOptions)
 	resp, err := loop.Run(runCtx, llmMessages, runOptions)

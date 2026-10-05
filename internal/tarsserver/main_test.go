@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -1202,7 +1203,7 @@ func TestPrepareChatContextWithExtensions_InvokedSkillHint(t *testing.T) {
 		SkillPrompt: skill.FormatAvailableSkills([]skill.Definition{def}),
 	}
 
-	systemPrompt, _, err := prepareChatContextWithExtensions(root, "", "/deploy 지금 배포", snapshot, &def)
+	systemPrompt, err := prepareChatContextWithExtensions(root, "", "/deploy 지금 배포", snapshot, &def)
 	if err != nil {
 		t.Fatalf("prepare chat context: %v", err)
 	}
@@ -1248,7 +1249,7 @@ func TestPrepareChatContextWithExtensions_PassesThroughAllSkillsWithoutProject(t
 		}),
 	}
 
-	systemPrompt, _, err := prepareChatContextWithExtensions(root, "sess-1", "/novelist start planning", snapshot, nil)
+	systemPrompt, err := prepareChatContextWithExtensions(root, "sess-1", "/novelist start planning", snapshot, nil)
 	if err != nil {
 		t.Fatalf("prepare chat context: %v", err)
 	}
@@ -1872,7 +1873,9 @@ func TestChatAPI_ToolCallSubagentsRun(t *testing.T) {
 	}
 }
 
-func TestChatAPI_MemoryQueryForcesToolChoiceRequired(t *testing.T) {
+// A message that mentions remembering widens what the prompt recalls; it
+// does not force a tool call. Forcing one kept the model from answering.
+func TestChatAPI_MemoryQueryDoesNotForceAToolCall(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "workspace")
 	if err := memory.EnsureWorkspace(root); err != nil {
 		t.Fatalf("ensure workspace: %v", err)
@@ -1898,8 +1901,8 @@ func TestChatAPI_MemoryQueryForcesToolChoiceRequired(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d body=%q", rec.Code, rec.Body.String())
 	}
-	if len(mockClient.seenToolChoices) == 0 || mockClient.seenToolChoices[0] != "required" {
-		t.Fatalf("expected tool_choice required, got %+v", mockClient.seenToolChoices)
+	if len(mockClient.seenToolChoices) == 0 || slices.Contains(mockClient.seenToolChoices, "required") {
+		t.Fatalf("expected no forced tool_choice, got %+v", mockClient.seenToolChoices)
 	}
 }
 

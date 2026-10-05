@@ -94,7 +94,6 @@ func executeChatLoop(
 		MaxIterations:   deps.maxIters,
 		Tools:           state.injectedSchemas,
 		BlockedTools:    state.blockedTools,
-		ToolChoice:      state.toolChoice,
 		OnTurnEnd:       onTurnEnd,
 		ResumeSessionID: resumeID,
 		// The session resumes this upstream session next turn, so the first
