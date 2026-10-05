@@ -23,7 +23,6 @@ import (
 	"github.com/devlikebear/tars/internal/cli"
 	"github.com/devlikebear/tars/internal/config"
 	"github.com/devlikebear/tars/internal/cron"
-	"github.com/devlikebear/tars/internal/envloader"
 	"github.com/devlikebear/tars/internal/extensions"
 	"github.com/devlikebear/tars/internal/llm"
 	"github.com/devlikebear/tars/internal/mcp"
@@ -35,48 +34,20 @@ import (
 	"github.com/devlikebear/tars/internal/testutil"
 	"github.com/devlikebear/tars/internal/tool"
 	"github.com/rs/zerolog"
-	zlog "github.com/rs/zerolog/log"
 )
 
 func run(args []string, stdout, stderr io.Writer) int {
-	envloader.Load(".env", ".env.secret")
-	// Mirror the bootstrap order in Serve(): pre-extract enough flags from
-	// args to load config + install the runtime logger before cobra runs
-	// RunE. Cobra parses the same flags again inside Execute(); the values
-	// agree because cmd.Flags().*Var binds back to the same opts pointer.
-	opts := &options{
+	err := Serve(context.Background(), ServeOptions{
 		ConfigPath:   flagValueForTest(args, "--config"),
 		WorkspaceDir: flagValueForTest(args, "--workspace-dir"),
 		LogFile:      flagValueForTest(args, "--log-file"),
 		Verbose:      hasFlagForTest(args, "--verbose"),
 		ConfigCheck:  hasFlagForTest(args, "--config-check"),
-	}
-	applyOptionDefaults(opts)
-
-	cfg, err := loadConfigForServe(opts)
+		APIAddr:      flagValueForTest(args, "--api-addr"),
+	}, stdout, stderr)
 	if err != nil {
-		panic(fmt.Sprintf("tars: load config: %v", err))
-	}
-
-	logger, cleanup := setupRuntimeLogger(buildLoggerConfig(opts, cfg), stderr)
-	defer cleanup()
-	zlog.Logger = logger
-
-	cmd, _ := newRootCmd(opts, cfg, stdout, stderr, time.Now)
-	cmd.SetArgs(args)
-
-	if err := cmd.Execute(); err != nil {
-		var ex *cli.ExitError
-		if errors.As(err, &ex) {
-			return ex.Code
-		}
-		logger.Error().Err(err).Msg("failed to parse flags")
-		if cli.IsFlagError(err) {
-			return 2
-		}
 		return 1
 	}
-
 	return 0
 }
 
@@ -512,21 +483,6 @@ func TestRun_CreatesWorkspaceAndDailyLog(t *testing.T) {
 	// HEARTBEAT.md is no longer created — pulse lives in config now.
 	if _, err := os.Stat(filepath.Join(root, "HEARTBEAT.md")); !os.IsNotExist(err) {
 		t.Fatalf("HEARTBEAT.md should not be created: err=%v", err)
-	}
-}
-
-func TestRun_HelpReturnsZero(t *testing.T) {
-	isolateRunEnv(t)
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-
-	code := run([]string{"--help"}, stdout, stderr)
-	if code != 0 {
-		t.Fatalf("expected exit code 0, got %d, stderr=%q", code, stderr.String())
-	}
-
-	if !strings.Contains(stdout.String(), "Usage:") {
-		t.Fatalf("expected help usage output, got %q", stdout.String())
 	}
 }
 

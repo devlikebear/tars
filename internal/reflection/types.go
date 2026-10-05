@@ -12,10 +12,7 @@
 // register it on a tool.Registry constructed with RegistryScopeReflection.
 package reflection
 
-import (
-	"fmt"
-	"time"
-)
+import "time"
 
 // JobResult captures the outcome of a single reflection job execution.
 // Jobs never panic; any error becomes Err and Success is false. Changed
@@ -46,27 +43,4 @@ type RunSummary struct {
 	// Err is set when reflection was unable to even start jobs (e.g.
 	// scheduler error). Individual job errors live on JobResult.
 	Err string `json:"err,omitempty"`
-}
-
-// Severity categorizes a reflection log entry's urgency. Used only for
-// exposition in state snapshots; reflection does not act on severity.
-type Severity int
-
-const (
-	SeverityInfo Severity = iota
-	SeverityWarn
-	SeverityError
-)
-
-func (s Severity) String() string {
-	switch s {
-	case SeverityInfo:
-		return "info"
-	case SeverityWarn:
-		return "warn"
-	case SeverityError:
-		return "error"
-	default:
-		return fmt.Sprintf("severity(%d)", int(s))
-	}
 }

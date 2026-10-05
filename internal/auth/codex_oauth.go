@@ -35,35 +35,6 @@ type CodexCredential struct {
 	SourcePath   string
 }
 
-type CodexResolveOptions struct {
-	CodexHome string
-}
-
-type CodexRefreshOptions struct {
-	TokenURL    string
-	HTTPClient  *http.Client
-	PersistFile bool
-}
-
-func ResolveCodexCredential(opts CodexResolveOptions) (CodexCredential, error) {
-	return ResolveProviderCredential(ProviderAuthConfig{
-		Provider:  "openai-codex",
-		AuthMode:  "oauth",
-		CodexHome: opts.CodexHome,
-	})
-}
-
-func RefreshCodexCredential(ctx context.Context, cred CodexCredential, opts CodexRefreshOptions) (CodexCredential, error) {
-	return RefreshProviderCredential(ctx, ProviderAuthConfig{
-		Provider: "openai-codex",
-		AuthMode: "oauth",
-	}, cred, ProviderRefreshOptions{
-		TokenURL:      opts.TokenURL,
-		HTTPClient:    opts.HTTPClient,
-		PersistSource: opts.PersistFile,
-	})
-}
-
 func refreshOpenAICodexCredential(ctx context.Context, cred CodexCredential, opts ProviderRefreshOptions) (CodexCredential, error) {
 	if strings.TrimSpace(cred.RefreshToken) == "" {
 		return CodexCredential{}, fmt.Errorf("openai-codex refresh token is required")

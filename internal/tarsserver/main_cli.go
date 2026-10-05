@@ -11,7 +11,6 @@ import (
 	"github.com/devlikebear/tars/internal/config"
 	"github.com/rs/zerolog"
 	zlog "github.com/rs/zerolog/log"
-	"github.com/spf13/cobra"
 )
 
 // recoverableLLMInitStages enumerate the buildLLMDeps failure stages
@@ -101,34 +100,4 @@ func runServerRuntime(parentCtx context.Context, opts *options, cfg config.Confi
 	}
 
 	return runServeAPICommand(parentCtx, opts, deps, nowFn, stdout, stderr, logger)
-}
-
-// newRootCmd builds the cobra command tree. The caller is expected to
-// have already loaded cfg and installed the runtime logger so the RunE
-// hook can focus on wiring the rest of the runtime.
-func newRootCmd(opts *options, cfg config.Config, stdout, stderr io.Writer, nowFn func() time.Time) (*cobra.Command, *options) {
-	if opts == nil {
-		opts = &options{}
-	}
-
-	cmd := &cobra.Command{
-		Use:           "tars",
-		Short:         "Main daemon for TARS",
-		SilenceErrors: true,
-		SilenceUsage:  true,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runServerRuntime(cmd.Context(), opts, cfg, stdout, stderr, nowFn, zlog.Logger)
-		},
-	}
-
-	cmd.SetOut(stdout)
-	cmd.SetErr(stderr)
-	cmd.Flags().StringVar(&opts.ConfigPath, "config", opts.ConfigPath, "path to config file")
-	cmd.Flags().StringVar(&opts.WorkspaceDir, "workspace-dir", opts.WorkspaceDir, "workspace directory override")
-	cmd.Flags().StringVar(&opts.LogFile, "log-file", opts.LogFile, "append json logs to file")
-	cmd.Flags().BoolVar(&opts.Verbose, "verbose", opts.Verbose, "enable verbose debug logging")
-	cmd.Flags().BoolVar(&opts.ConfigCheck, "config-check", opts.ConfigCheck, "validate config and runtime dependencies, then exit without starting the http api")
-	cmd.Flags().StringVar(&opts.APIAddr, "api-addr", opts.APIAddr, "http api listen address")
-
-	return cmd, opts
 }

@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/devlikebear/tars/internal/session"
 )
@@ -93,4 +94,14 @@ func TestFocusVerificationExcerptKeepsTheFailure(t *testing.T) {
 	if strings.Contains(results[0].Output, "--- FAIL: TestGreet") {
 		t.Fatal("the default excerpt changed")
 	}
+}
+
+// runTaskVerification runs the approved contract commands the way the HTTP
+// handler does, without a line emitter or a command subset.
+func runTaskVerification(ctx context.Context, store *session.Store, sessionID, taskID string, timeout time.Duration) ([]taskVerificationResult, bool, error) {
+	run, err := verifySessionTask(ctx, store, sessionID, taskID, nil, timeout, nil)
+	if err != nil {
+		return nil, false, err
+	}
+	return run.results, run.allPassed, nil
 }

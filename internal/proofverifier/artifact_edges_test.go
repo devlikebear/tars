@@ -55,10 +55,6 @@ func TestEngineVerifiesConfinedArtifactTreesAndExpectedDigests(t *testing.T) {
 	if err != nil || result.Status != workstore.ProofStatusPassed || !strings.Contains(result.Rationale, "verified 3 artifact files") {
 		t.Fatalf("artifact verification = %+v err=%v", result, err)
 	}
-	digest, artifacts, err := engine.SubjectDigest(context.Background(), requirement)
-	if err != nil || digest == "" || len(artifacts) == 0 || digest != result.SubjectDigest {
-		t.Fatalf("artifact subject digest=%q artifacts=%s err=%v", digest, artifacts, err)
-	}
 
 	requirement.InputJSON = []byte(`{"expected_digests":{"reports/a.txt":"` + digestBytes([]byte("alpha\n")) + `"}}`)
 	result, err = engine.Verify(context.Background(), workscheduler.VerificationRequest{Requirement: requirement})
@@ -83,9 +79,6 @@ func TestEngineVerifiesConfinedArtifactTreesAndExpectedDigests(t *testing.T) {
 		if err != nil || result.Status != workstore.ProofStatusFailed {
 			t.Fatalf("unsafe artifact path %q result=%+v err=%v", path, result, err)
 		}
-	}
-	if _, _, err := engine.SubjectDigest(context.Background(), workstore.ProofRequirement{}); err == nil {
-		t.Fatal("empty deterministic subject succeeded")
 	}
 	if !excludedDirectory(".git") || !excludedDirectory(".tars") || !excludedDirectory("node_modules") || excludedDirectory("src") {
 		t.Fatal("excluded directory policy mismatch")
@@ -122,9 +115,6 @@ func TestEngineRejectsArtifactAccessThroughEscapingDirectorySymlink(t *testing.T
 	result, err := engine.Verify(context.Background(), workscheduler.VerificationRequest{Requirement: requirement})
 	if err != nil || result.Status != workstore.ProofStatusFailed || !strings.Contains(result.Rationale, "escapes") {
 		t.Fatalf("escaping symlink result=%+v err=%v", result, err)
-	}
-	if _, _, err := engine.SubjectDigest(context.Background(), requirement); err == nil {
-		t.Fatal("escaping symlink produced a subject digest")
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/devlikebear/tars/internal/apptool"
+	"github.com/devlikebear/tars/internal/llm"
 	"github.com/devlikebear/tars/internal/session"
 	"github.com/devlikebear/tars/internal/tool"
 )
@@ -221,4 +222,10 @@ func TestResolveInjectedToolPolicy_OffersOrchestrateOnlyWithDurableFlows(t *test
 	if hasToolName(with, "subagents_plan") {
 		t.Fatalf("the scheduler must not unhide other default-off tools, got %+v", with)
 	}
+}
+
+// resolveInjectedToolSchemas is the schema list of the policy chat turns
+// use, in the argument shape these tests were written against.
+func resolveInjectedToolSchemas(registry *tool.Registry, _ string, _ any, authRole string, allowHighRiskUser bool, sessionConfig ...session.SessionToolConfig) []llm.ToolSchema {
+	return resolveInjectedToolPolicy(registry, authRole, allowHighRiskUser, sessionConfig...).Schemas
 }

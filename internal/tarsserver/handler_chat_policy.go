@@ -80,17 +80,6 @@ func buildChatToolRegistry(
 	return registry
 }
 
-func resolveInjectedToolSchemas(
-	registry *tool.Registry,
-	_ string, // toolsDefaultSet — deprecated, individual tool toggles + high-risk filter used instead
-	_ any, // activeProject — removed (was *project.Project)
-	authRole string,
-	allowHighRiskUser bool,
-	sessionConfig ...session.SessionToolConfig,
-) []llm.ToolSchema {
-	return resolveInjectedToolPolicy(registry, authRole, allowHighRiskUser, sessionConfig...).Schemas
-}
-
 type injectedToolPolicy struct {
 	Schemas []llm.ToolSchema
 	Blocked map[string]tool.BlockedToolError

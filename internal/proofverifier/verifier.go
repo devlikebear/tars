@@ -194,25 +194,6 @@ func (engine *Engine) Verify(ctx context.Context, request workscheduler.Verifica
 	}
 }
 
-// SubjectDigest recalculates the current deterministic subject without running
-// a verification command. Comparing it with Proof.SubjectDigest detects stale
-// file, commit, artifact, or URL evidence.
-func (engine *Engine) SubjectDigest(ctx context.Context, requirement workstore.ProofRequirement) (string, json.RawMessage, error) {
-	switch {
-	case len(requirement.Paths) > 0:
-		snapshot, err := engine.snapshotPaths(ctx, requirement.Paths)
-		return snapshot.SubjectDigest, snapshot.ArtifactDigestsJSON, err
-	case strings.TrimSpace(requirement.URL) != "":
-		result, err := engine.fetchURL(ctx, requirement.URL)
-		return result.SubjectDigest, result.ArtifactDigestsJSON, err
-	case strings.TrimSpace(requirement.Command) != "":
-		snapshot, err := engine.snapshotPaths(ctx, nil)
-		return snapshot.SubjectDigest, snapshot.ArtifactDigestsJSON, err
-	default:
-		return "", nil, fmt.Errorf("proofverifier: no deterministic subject is declared")
-	}
-}
-
 func (engine *Engine) verifyCommand(ctx context.Context, requirement workstore.ProofRequirement) (workscheduler.VerificationResult, error) {
 	before, err := engine.snapshotPaths(ctx, requirement.Paths)
 	if err != nil {

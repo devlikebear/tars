@@ -22,7 +22,7 @@ func TestResolveCodexCredential_EnvOnly(t *testing.T) {
 	t.Setenv("OPENAI_CODEX_REFRESH_TOKEN", "refresh-env")
 	t.Setenv("OPENAI_CODEX_ACCOUNT_ID", "")
 
-	cred, err := ResolveCodexCredential(CodexResolveOptions{})
+	cred, err := resolveCodexCredentialForTest(codexResolveTestOptions{})
 	if err != nil {
 		t.Fatalf("resolve codex credential: %v", err)
 	}
@@ -55,7 +55,7 @@ func TestResolveCodexCredential_File(t *testing.T) {
 		t.Fatalf("write auth file: %v", err)
 	}
 
-	cred, err := ResolveCodexCredential(CodexResolveOptions{})
+	cred, err := resolveCodexCredentialForTest(codexResolveTestOptions{})
 	if err != nil {
 		t.Fatalf("resolve codex credential: %v", err)
 	}
@@ -91,7 +91,7 @@ func TestResolveCodexCredential_PrefersEnvOverFile(t *testing.T) {
 	t.Setenv("OPENAI_CODEX_OAUTH_TOKEN", "env-access")
 	t.Setenv("OPENAI_CODEX_REFRESH_TOKEN", "env-refresh")
 	t.Setenv("OPENAI_CODEX_ACCOUNT_ID", "acc-env")
-	cred, err := ResolveCodexCredential(CodexResolveOptions{})
+	cred, err := resolveCodexCredentialForTest(codexResolveTestOptions{})
 	if err != nil {
 		t.Fatalf("resolve codex credential: %v", err)
 	}
@@ -120,10 +120,10 @@ func TestRefreshCodexCredential_RequestBody(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	cred, err := RefreshCodexCredential(context.Background(), CodexCredential{
+	cred, err := refreshCodexCredentialForTest(context.Background(), CodexCredential{
 		AccessToken:  "old-access",
 		RefreshToken: "old-refresh",
-	}, CodexRefreshOptions{
+	}, codexRefreshTestOptions{
 		TokenURL:    srv.URL,
 		HTTPClient:  srv.Client(),
 		PersistFile: false,
@@ -154,10 +154,10 @@ func TestRefreshCodexCredential_RequiresFields(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	_, err := RefreshCodexCredential(context.Background(), CodexCredential{
+	_, err := refreshCodexCredentialForTest(context.Background(), CodexCredential{
 		AccessToken:  "old-access",
 		RefreshToken: "old-refresh",
-	}, CodexRefreshOptions{
+	}, codexRefreshTestOptions{
 		TokenURL:    srv.URL,
 		HTTPClient:  srv.Client(),
 		PersistFile: false,
@@ -186,13 +186,13 @@ func TestRefreshCodexCredential_PersistAtomic(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	_, err := RefreshCodexCredential(context.Background(), CodexCredential{
+	_, err := refreshCodexCredentialForTest(context.Background(), CodexCredential{
 		AccessToken:  "old-access",
 		RefreshToken: "old-refresh",
 		AccountID:    "acc-old",
 		Source:       CodexCredentialSourceFile,
 		SourcePath:   path,
-	}, CodexRefreshOptions{
+	}, codexRefreshTestOptions{
 		TokenURL:    srv.URL,
 		HTTPClient:  srv.Client(),
 		PersistFile: true,
@@ -298,7 +298,7 @@ func TestResolveCodexCredential_FilePrefersSecureStoreRefreshToken(t *testing.T)
 		loadToken: "secure-refresh",
 	})
 
-	cred, err := ResolveCodexCredential(CodexResolveOptions{})
+	cred, err := resolveCodexCredentialForTest(codexResolveTestOptions{})
 	if err != nil {
 		t.Fatalf("resolve codex credential: %v", err)
 	}
@@ -325,13 +325,13 @@ func TestRefreshCodexCredential_PersistUsesSecureStoreWhenAvailable(t *testing.T
 	}))
 	defer srv.Close()
 
-	_, err := RefreshCodexCredential(context.Background(), CodexCredential{
+	_, err := refreshCodexCredentialForTest(context.Background(), CodexCredential{
 		AccessToken:  "old-access",
 		RefreshToken: "old-refresh",
 		AccountID:    "acc-old",
 		Source:       CodexCredentialSourceFile,
 		SourcePath:   path,
-	}, CodexRefreshOptions{
+	}, codexRefreshTestOptions{
 		TokenURL:    srv.URL,
 		HTTPClient:  srv.Client(),
 		PersistFile: true,
@@ -377,13 +377,13 @@ func TestRefreshCodexCredential_PersistFallsBackToFileWhenSecureStoreFails(t *te
 	}))
 	defer srv.Close()
 
-	_, err := RefreshCodexCredential(context.Background(), CodexCredential{
+	_, err := refreshCodexCredentialForTest(context.Background(), CodexCredential{
 		AccessToken:  "old-access",
 		RefreshToken: "old-refresh",
 		AccountID:    "acc-old",
 		Source:       CodexCredentialSourceFile,
 		SourcePath:   path,
-	}, CodexRefreshOptions{
+	}, codexRefreshTestOptions{
 		TokenURL:    srv.URL,
 		HTTPClient:  srv.Client(),
 		PersistFile: true,
@@ -407,4 +407,35 @@ func TestRefreshCodexCredential_PersistFallsBackToFileWhenSecureStoreFails(t *te
 	if parsed.Tokens.RefreshToken != "new-refresh" {
 		t.Fatalf("expected file fallback refresh token new-refresh, got %s", redacted(parsed.Tokens.RefreshToken))
 	}
+}
+
+// The Codex OAuth paths are reached in production through the provider
+// credential functions; these shorten the calls the tests above make.
+type codexResolveTestOptions struct {
+	CodexHome string
+}
+
+type codexRefreshTestOptions struct {
+	TokenURL    string
+	HTTPClient  *http.Client
+	PersistFile bool
+}
+
+func resolveCodexCredentialForTest(opts codexResolveTestOptions) (CodexCredential, error) {
+	return ResolveProviderCredential(ProviderAuthConfig{
+		Provider:  "openai-codex",
+		AuthMode:  "oauth",
+		CodexHome: opts.CodexHome,
+	})
+}
+
+func refreshCodexCredentialForTest(ctx context.Context, cred CodexCredential, opts codexRefreshTestOptions) (CodexCredential, error) {
+	return RefreshProviderCredential(ctx, ProviderAuthConfig{
+		Provider: "openai-codex",
+		AuthMode: "oauth",
+	}, cred, ProviderRefreshOptions{
+		TokenURL:      opts.TokenURL,
+		HTTPClient:    opts.HTTPClient,
+		PersistSource: opts.PersistFile,
+	})
 }

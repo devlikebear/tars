@@ -96,7 +96,6 @@ var SharedPackages = []string{
 	"buildinfo",
 	"cli",
 	"envloader",
-	"fileuri",
 	"jev",
 	"scheduleexpr",
 	"shellexec",
