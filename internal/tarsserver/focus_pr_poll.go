@@ -83,13 +83,6 @@ func (d *focusDriver) watchPR(sessionID string) {
 	go d.pollPR(sessionID, poller)
 }
 
-// polling reports whether the session has a PR poller.
-func (d *focusDriver) polling(sessionID string) bool {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	return d.pollers[sessionID] != nil
-}
-
 // resumePRPolls starts the pollers of pipelines a restart left waiting on
 // PR facts. It returns how many it started.
 func (d *focusDriver) resumePRPolls() int {

@@ -911,15 +911,10 @@ func TestCronRunner_DeliversToSessionAndDailyLog(t *testing.T) {
 	}
 
 	var seenPrompt string
-	runner := newCronJobRunner(
-		root,
-		store,
-		func(_ context.Context, _ string, prompt string, _ []string, _ string, _ *agentruntime.ProviderOverride) (string, error) {
-			seenPrompt = prompt
-			return "cron delivered", nil
-		},
-		zerolog.New(io.Discard),
-	)
+	runner := newCronJobRunnerWithNotify(root, store, func(_ context.Context, _ string, prompt string, _ []string, _ string, _ *agentruntime.ProviderOverride) (string, error) {
+		seenPrompt = prompt
+		return "cron delivered", nil
+	}, zerolog.New(io.Discard), nil, "", 0, nil, nil)
 	if runner == nil {
 		t.Fatalf("expected runner")
 	}
@@ -1110,7 +1105,7 @@ Save a memory note.
 		t.Fatalf("write standalone command: %v", err)
 	}
 
-	handler := newExtensionsAPIHandlerWithSessionStore(provider, zerolog.New(io.Discard), nil, store)
+	handler := newExtensionsAPIHandlerWithHealth(provider, zerolog.New(io.Discard), nil, store, extensionHealthOptions{})
 	req := httptest.NewRequest(http.MethodGet, "/v1/skills?session_id="+sess.ID, nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
@@ -1305,7 +1300,18 @@ func TestChatAPI_WithInjectedExtraTool(t *testing.T) {
 		},
 	}
 
-	handler := newChatAPIHandlerWithOptions(root, store, mockClient, logger, 8, extra)
+	handler := newChatAPIHandlerWithRuntimeConfig(
+		root,
+		store,
+		mockClient,
+		nil,
+		logger,
+		8,
+		nil,
+		"",
+		defaultChatToolingOptions(),
+		extra,
+	)
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat", strings.NewReader(`{"message":"use mcp tool"}`))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -1404,7 +1410,18 @@ func TestChatAPI_WithAutomationTools(t *testing.T) {
 		func(_ context.Context, _ cron.Job) (string, error) { return "ok", nil },
 	)
 
-	handler := newChatAPIHandlerWithRuntime(root, sessionStore, mockClient, logger, 8, nil, automationTools...)
+	handler := newChatAPIHandlerWithRuntimeConfig(
+		root,
+		sessionStore,
+		mockClient,
+		nil,
+		logger,
+		8,
+		nil,
+		"",
+		defaultChatToolingOptions(),
+		automationTools...,
+	)
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat", strings.NewReader(`{"message":"등록된 크론잡은?"}`))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -2143,7 +2160,17 @@ func TestChatAPI_UsesConfiguredMaxIterations(t *testing.T) {
 		},
 	}
 
-	handler := newChatAPIHandlerWithOptions(root, store, mockClient, logger, 2)
+	handler := newChatAPIHandlerWithRuntimeConfig(
+		root,
+		store,
+		mockClient,
+		nil,
+		logger,
+		2,
+		nil,
+		"",
+		defaultChatToolingOptions(),
+	)
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat", strings.NewReader(`{"message":"loop test"}`))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Tars-Debug-Auth-Role", "admin")

@@ -67,16 +67,6 @@ type focusTurnMark struct {
 // errFocusStaleTurn aborts an update for a turn whose stage has moved on.
 var errFocusStaleTurn = errors.New("focus: turn belongs to an earlier stage")
 
-// appendFocusGuidance puts the current stage's instructions after the user's
-// message as one <focus-stage> block when the session has an active
-// pipeline, and returns the mark the turn carries to focusAfterTurn (nil
-// when no guidance was added). Unlike <console-context> it has no size cap:
-// the block format it quotes must arrive whole. Slash commands keep their
-// arguments clean and do not feed the pipeline.
-func appendFocusGuidance(message string, sessions *session.Store, sessionID string, logger zerolog.Logger) (string, *focusTurnMark) {
-	return appendFocusGuidanceAt(message, sessions, sessionID, "", logger)
-}
-
 // focusQuestionGateKey carries, on a server turn's context, the question
 // gate its decision answers were given at (Action.QuestionGate).
 type focusQuestionGateKey struct{}

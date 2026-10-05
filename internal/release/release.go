@@ -50,12 +50,6 @@ func AssetArchiveName(version, goos, goarch string) string {
 	return fmt.Sprintf("tars_%s_%s_%s%s", strings.TrimSpace(version), strings.TrimSpace(goos), strings.TrimSpace(goarch), ArchiveExt(goos))
 }
 
-// DesktopArchiveName is the desktop shell's release archive for goos/goarch;
-// it must match scripts/desktop_package.sh.
-func DesktopArchiveName(version, goos, goarch string) string {
-	return fmt.Sprintf("tars-desktop_%s_%s_%s%s", strings.TrimSpace(version), strings.TrimSpace(goos), strings.TrimSpace(goarch), ArchiveExt(goos))
-}
-
 // ArchiveExt is .zip for Windows archives and .tar.gz elsewhere.
 func ArchiveExt(goos string) string {
 	if strings.TrimSpace(goos) == "windows" {

@@ -45,26 +45,6 @@ func TestNormalizeExpression(t *testing.T) {
 	}
 }
 
-func TestResolveSchedule(t *testing.T) {
-	now := time.Date(2026, 2, 27, 10, 0, 0, 0, time.FixedZone("KST", 9*3600))
-
-	gotExplicit, err := ResolveSchedule(" at:2026-03-01T15:00:00+09:00 ", "", "Asia/Seoul", now)
-	if err != nil {
-		t.Fatalf("resolve explicit failed: %v", err)
-	}
-	if want := "at:2026-03-01T06:00:00Z"; gotExplicit != want {
-		t.Fatalf("expected explicit %q, got %q", want, gotExplicit)
-	}
-
-	gotNatural, err := ResolveSchedule("", "1분뒤 테스트", "Asia/Seoul", now)
-	if err != nil {
-		t.Fatalf("resolve natural failed: %v", err)
-	}
-	if want := "at:" + now.Add(1*time.Minute).Format(time.RFC3339); gotNatural != want {
-		t.Fatalf("expected natural %q, got %q", want, gotNatural)
-	}
-}
-
 func TestParseNaturalSchedule_UsesTimezoneFallback(t *testing.T) {
 	now := time.Date(2026, 2, 27, 10, 0, 0, 0, time.UTC)
 

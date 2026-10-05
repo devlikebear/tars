@@ -19,16 +19,7 @@ func newLocalSkillsTestHandler(t *testing.T, root string, provider *mockExtensio
 	t.Helper()
 	store := session.NewStore(root)
 	deps := localSkillsHandlerDeps{provider: provider, workspaceDir: root}
-	handler := newSessionAPIHandlerFullWithLocalSkills(
-		store,
-		zerolog.New(io.Discard),
-		nil,
-		sessionStyleValues{},
-		nil,
-		nil,
-		nil,
-		deps,
-	)
+	handler := newSessionAPIHandlerFullWithLocalSkillsAndWorkLedger(store, zerolog.New(io.Discard), nil, sessionStyleValues{}, nil, nil, nil, deps, nil)
 	return store, handler
 }
 

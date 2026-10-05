@@ -72,9 +72,7 @@ func applyPostChatMemoryHooks(input chatMemoryHookInput) error {
 
 // appendRememberExperience writes a "remember" hot-path experience,
 // skipping the write when an identical (category, summary) tuple is
-// already recorded. This is an intentionally small dedup check —
-// broader auto-derived experiences are handled in the nightly
-// reflection job's appendExperienceIfNew helper.
+// already recorded. This is an intentionally small dedup check.
 func appendRememberExperience(workspaceDir string, exp memory.Experience) error {
 	if strings.TrimSpace(exp.Summary) == "" {
 		return nil

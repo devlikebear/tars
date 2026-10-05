@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/devlikebear/tars/internal/config"
 	"github.com/devlikebear/tars/internal/extensions"
 	"github.com/devlikebear/tars/internal/memory"
 	"github.com/devlikebear/tars/internal/session"
@@ -494,7 +495,7 @@ func TestSessionAPIHandler_ConfigPatchRecordsUsageSignal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new usage tracker: %v", err)
 	}
-	handler := newSessionAPIHandlerWithUsage(store, zerolog.Nop(), tracker)
+	handler := newSessionAPIHandlerFullWithLocalSkillsAndWorkLedger(store, zerolog.Nop(), tracker, sessionStyleDefaultsFromConfig(config.Default()), nil, nil, nil, localSkillsHandlerDeps{}, nil)
 
 	patchReq := httptest.NewRequest(http.MethodPatch, "/v1/admin/sessions/"+sess.ID+"/config", strings.NewReader(`{
 		"tools_custom": true,

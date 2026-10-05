@@ -810,17 +810,6 @@ func buildExternalAttribution(ctx context.Context, src HubSource, entry *Registr
 	return attribution, nil
 }
 
-// SkillFileChecksums computes sha256 hashes for every file in the map.
-// Used by the dry-run preview (Phase 3) and exposed here so the openclaw
-// adapter does not need to duplicate the helper.
-func SkillFileChecksums(files map[string][]byte) map[string]string {
-	out := make(map[string]string, len(files))
-	for path, body := range files {
-		out[path] = computeSHA256Hex(body)
-	}
-	return out
-}
-
 func (inst *Installer) downloadPluginFiles(ctx context.Context, entry *PluginEntry) (map[string][]byte, error) {
 	return inst.downloadVerifiedHubFiles(entry.Name, "plugin", entry.Files, pluginManifest, func(relPath string) ([]byte, error) {
 		return inst.Registry.FetchPluginFile(ctx, entry, relPath)

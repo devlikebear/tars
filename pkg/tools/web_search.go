@@ -268,14 +268,3 @@ func NewWebSearchToolWithOptions(opts WebSearchOptions) Tool {
 		},
 	}
 }
-
-func newWebSearchToolWithHTTP(baseURL string, enabled bool, apiKey string, httpClient *http.Client) Tool {
-	return NewWebSearchToolWithOptions(WebSearchOptions{
-		Enabled:      enabled,
-		Provider:     "brave",
-		BraveAPIKey:  apiKey,
-		BraveBaseURL: baseURL,
-		CacheTTL:     0,
-		HTTPClient:   httpClient,
-	})
-}

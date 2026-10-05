@@ -79,13 +79,6 @@ func newTerminalAPIHandler(workspaceDir string, store *session.Store, logger zer
 	}, logger)
 }
 
-func newTerminalAPIHandlerWithOpener(workspaceDir string, store *session.Store, opener terminalOpenFunc, logger zerolog.Logger) http.Handler {
-	return newTerminalAPIHandlerWithDeps(workspaceDir, store, terminalHandlerDeps{
-		OpenExternal: opener,
-		StartSession: startPTYTerminalSession,
-	}, logger)
-}
-
 func newTerminalAPIHandlerWithDeps(workspaceDir string, store *session.Store, deps terminalHandlerDeps, logger zerolog.Logger) http.Handler {
 	openExternal := deps.OpenExternal
 	if openExternal == nil {

@@ -10,11 +10,6 @@ type TarsHubSource struct {
 	Registry *Registry
 }
 
-// NewTarsHubSource returns a TarsHubSource backed by a default Registry.
-func NewTarsHubSource() *TarsHubSource {
-	return &TarsHubSource{Registry: NewRegistry()}
-}
-
 // ID returns the canonical built-in hub identifier.
 func (s *TarsHubSource) ID() string { return DefaultSourceID }
 

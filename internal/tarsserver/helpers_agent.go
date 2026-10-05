@@ -123,18 +123,6 @@ func newBaseToolRegistryWithOptions(
 	return registry
 }
 
-func newAgentPromptRunnerWithTools(
-	cfg config.Config,
-	workspaceDir string,
-	client llm.Client,
-	tracker *usage.Tracker,
-	maxIterations int,
-	logger zerolog.Logger,
-	extraTools ...tool.Tool,
-) agentRuntimePromptRunner {
-	return newAgentPromptRunnerWithToolsAndMemory(cfg, workspaceDir, client, nil, tracker, maxIterations, logger, memory.SemanticConfig{}, extraTools...)
-}
-
 func newAgentPromptRunnerWithToolsAndMemory(
 	cfg config.Config,
 	workspaceDir string,

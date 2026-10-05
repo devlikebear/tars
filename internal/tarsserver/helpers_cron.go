@@ -31,15 +31,6 @@ type cronRunTelemetry struct {
 
 type cronExternalReminderSender func(ctx context.Context, job cron.Job, reminderText string) error
 
-func newCronJobRunner(
-	workspaceDir string,
-	store *session.Store,
-	runPrompt agentRuntimePromptRunner,
-	logger zerolog.Logger,
-) func(ctx context.Context, job cron.Job) (string, error) {
-	return newCronJobRunnerWithNotify(workspaceDir, store, runPrompt, logger, nil, "", 0, nil, nil)
-}
-
 func newCronJobRunnerWithNotify(
 	workspaceDir string,
 	store *session.Store,
@@ -334,38 +325,6 @@ func detectPseudoToolContamination(response string) []string {
 	}
 	slices.Sort(markers)
 	return slices.Compact(markers)
-}
-
-func trimCronProjectArtifacts(dir string, historyLimit int) error {
-	if strings.TrimSpace(dir) == "" || historyLimit <= 0 {
-		return nil
-	}
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return err
-	}
-	files := make([]os.DirEntry, 0, len(entries))
-	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(strings.ToLower(entry.Name()), ".md") {
-			continue
-		}
-		files = append(files, entry)
-	}
-	if len(files) <= historyLimit {
-		return nil
-	}
-	slices.SortFunc(files, func(left, right os.DirEntry) int {
-		return strings.Compare(left.Name(), right.Name())
-	})
-	for _, entry := range files[:len(files)-historyLimit] {
-		if err := os.Remove(filepath.Join(dir, entry.Name())); err != nil && !os.IsNotExist(err) {
-			return err
-		}
-	}
-	return nil
 }
 
 func verifyCronClaimedFileUpdates(workspaceDir string, job cron.Job, response string, baseline map[string]time.Time) error {
