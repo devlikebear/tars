@@ -335,9 +335,18 @@ func isHighRiskToolName(name string) bool {
 func filterDefaultDeprecatedToolNames(names []string, sessionConfig *session.SessionToolConfig, durableFlows bool) ([]string, map[string]tool.BlockedToolError) {
 	filtered := make([]string, 0, len(names))
 	blocked := map[string]tool.BlockedToolError{}
+	// process is the other half of a background exec: without it the command
+	// can be started but never waited for, read or stopped. It was taken out
+	// of the default set when nothing called it (#510); nine days later
+	// `process wait` arrived and the system prompt began telling the model
+	// to use it (#813), with the tool still hidden. It now comes with exec.
+	withExec := false
+	for _, name := range names {
+		withExec = withExec || tool.CanonicalToolName(name) == "exec"
+	}
 	for _, name := range names {
 		canonical := tool.CanonicalToolName(name)
-		offered := durableFlows && canonical == "subagents_orchestrate"
+		offered := (durableFlows && canonical == "subagents_orchestrate") || (withExec && canonical == "process")
 		if offered || !isDefaultDeprecatedToolName(canonical) || sessionExplicitlyAllowsTool(sessionConfig, canonical) {
 			filtered = append(filtered, name)
 			continue

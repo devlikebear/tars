@@ -30,13 +30,11 @@ func TestResolveInjectedToolSchemas_AllowAdminHighRiskTools(t *testing.T) {
 
 	schemas := resolveInjectedToolSchemas(registry, "standard", nil, "admin", false)
 	names := toolNamesFromSchemas(schemas)
-	for _, expected := range []string{"exec", "write_file", "edit_file", "apply_patch"} {
+	// process comes with exec: a background exec needs it to be waited for.
+	for _, expected := range []string{"exec", "process", "write_file", "edit_file", "apply_patch"} {
 		if !hasToolName(names, expected) {
 			t.Fatalf("expected %s for admin role, got %+v", expected, names)
 		}
-	}
-	if hasToolName(names, "process") {
-		t.Fatalf("expected process to be deprecated from default admin injection, got %+v", names)
 	}
 }
 
@@ -45,13 +43,26 @@ func TestResolveInjectedToolSchemas_AllowHighRiskUserOverride(t *testing.T) {
 
 	schemas := resolveInjectedToolSchemas(registry, "standard", nil, "user", true)
 	names := toolNamesFromSchemas(schemas)
-	for _, expected := range []string{"exec", "write_file", "edit_file"} {
+	for _, expected := range []string{"exec", "process", "write_file", "edit_file"} {
 		if !hasToolName(names, expected) {
 			t.Fatalf("expected %s when tools_allow_high_risk_user=true, got %+v", expected, names)
 		}
 	}
-	if hasToolName(names, "process") {
-		t.Fatalf("expected process to remain deprecated even with high-risk user override, got %+v", names)
+}
+
+// Without exec there is nothing for process to manage, so it stays off unless
+// the session asks for it by name.
+func TestResolveInjectedToolSchemas_ProcessFollowsExec(t *testing.T) {
+	registry := newBaseToolRegistryWithProcess(t.TempDir(), tool.SingleDirPolicy(t.TempDir()), tool.NewProcessManager())
+
+	names := toolNamesFromSchemas(resolveInjectedToolSchemas(registry, "standard", nil, "admin", true, session.SessionToolConfig{
+		ToolsDisabled: []string{"exec"},
+	}))
+	if hasToolName(names, "exec") || hasToolName(names, "process") {
+		t.Fatalf("expected process to go with a disabled exec, got %+v", names)
+	}
+	if !hasToolName(names, "read_file") {
+		t.Fatalf("expected the rest of the tools untouched, got %+v", names)
 	}
 }
 
@@ -207,7 +218,7 @@ func TestResolveInjectedToolPolicy_OffersOrchestrateOnlyWithDurableFlows(t *test
 	if !hasToolName(with, "subagents_orchestrate") {
 		t.Fatalf("expected subagents_orchestrate offered with the scheduler, got %+v", with)
 	}
-	if hasToolName(with, "process") {
+	if hasToolName(with, "subagents_plan") {
 		t.Fatalf("the scheduler must not unhide other default-off tools, got %+v", with)
 	}
 }
