@@ -104,9 +104,11 @@ sourced evidence snippets.
 
 ## Operations
 
-Mission Control summarizes Pulse, Reflection, active plans, Agent Runtime runs,
-Cron jobs, disk pressure, sessions, notifications, setup actions, and
-release/PR shortcuts.
+Mission Control keeps a status strip for Pulse, Reflection, disk pressure, and
+plan, agent run, Cron job, and session counts, with links to their pages. Below
+it are recent notifications, recommended setup actions, and release/PR shortcuts.
+Active plan, agent run, Cron job, session, and "continue working" lists live on
+the dedicated Plans, Agent Runtime, Cron, and session/chat pages instead.
 
 Pulse is the watchdog surface for cron failures, stuck runs, stalled chats,
 disk pressure, delivery health, and reflection state. Reflection is the nightly

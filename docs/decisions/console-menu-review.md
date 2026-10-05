@@ -41,14 +41,14 @@ The verdicts lean on what was on screen, not on what the page could show in anot
 2. **Logs open at INFO, and a level is a floor.** `GET /v1/admin/logs?level=warn` returns warnings and errors. The page's default level is INFO.
 3. **Agent Runtime help text** no longer calls `subagents_orchestrate` opt-in: with the durable scheduler on it is offered by default.
 4. **Approvals subtitle** says what the page shows.
+5. **Shrink Mission Control.** Keep the status strip (Pulse, Reflection, disk, counts), notifications, recommendations, and delivery; remove the five duplicate lists (active plans, agent runs, cron jobs, sessions, "continue working") and their dedicated code and translations. Count-loading calls and tile links stay; per-session task loading is gone.
 
 ### Next, in this order
 
-5. **Shrink Mission Control.** Keep the status strip (Pulse, Reflection, disk, counts) and the notification feed; drop the five lists that have their own page (active plans, agent runs, cron jobs, sessions, "continue working"). The loading for them goes with them.
-6. **Plans that outlive their session.** A plan stays `executing` when its session just stops. Decide the rule (for example: no turn for 24 hours and no running turn means stale) and show such plans as stale on the Plans page and the Mission Control count, without changing the plan itself.
-7. **Memory inbox quality.** Reflection proposes an agent's completion reports as memories. Filter candidates whose source is the assistant's own status report before they reach the inbox.
-8. **Shrink Pulse.** Move the threshold reference behind a disclosure and lead with status, last decisions and signals.
-9. **Agent Runtime views.** Measure which of tree, Gantt and flow is opened; remove the ones that are not, and hide the cost cards when no run has a cost.
+1. **Plans that outlive their session.** A plan stays `executing` when its session just stops. Decide the rule (for example: no turn for 24 hours and no running turn means stale) and show such plans as stale on the Plans page and the Mission Control count, without changing the plan itself.
+2. **Memory inbox quality.** Reflection proposes an agent's completion reports as memories. Filter candidates whose source is the assistant's own status report before they reach the inbox.
+3. **Shrink Pulse.** Move the threshold reference behind a disclosure and lead with status, last decisions and signals.
+4. **Agent Runtime views.** Measure which of tree, Gantt and flow is opened; remove the ones that are not, and hide the cost cards when no run has a cost.
 
 ### Left alone on purpose
 
