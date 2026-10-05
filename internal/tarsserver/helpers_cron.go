@@ -711,7 +711,7 @@ func (m *workspaceCronManager) Tick(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	manager := cron.NewManager(store, m.runJob, m.interval, m.nowFn)
+	manager := cron.NewManager(store, m.runJob, m.nowFn)
 	if err := manager.Tick(ctx); err != nil {
 		m.logger.Warn().Err(err).Msg("cron manager tick failed")
 		return err
