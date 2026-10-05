@@ -409,7 +409,7 @@ func buildAPIMux(
 		return agents
 	}
 	_ = refreshAgentRuntimeExecutors("startup")
-	workScheduler, err := buildWorkSchedulerIfEnabled(cfg, workLedger, agentRuntime, logger)
+	workScheduler, err := buildWorkSchedulerIfEnabled(cfg, workLedger, agentRuntime, logger, deps.usageTracker)
 	if err != nil {
 		if workLedger != nil {
 			_ = workLedger.Close()

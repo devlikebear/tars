@@ -76,3 +76,35 @@ func TestTracker_SummaryGroupBySession(t *testing.T) {
 		t.Fatalf("rows should be keyed by session, costliest first: %v", keys)
 	}
 }
+
+// A subagent run's calls are recorded with no session and a run id of the
+// form "<run id>:<agent>"; a run filter has to find them by the run id.
+func TestTracker_SummaryFilteredByRun(t *testing.T) {
+	now := time.Date(2026, 9, 23, 12, 0, 0, 0, time.UTC)
+	tracker, err := NewTracker(t.TempDir(), TrackerOptions{Now: func() time.Time { return now }})
+	if err != nil {
+		t.Fatalf("new tracker: %v", err)
+	}
+	for _, entry := range []Entry{
+		{Timestamp: now, Provider: "openai", Model: "m", InputTokens: 100, OutputTokens: 10, EstimatedCostUSD: 0.01, Source: "agent_run", RunID: "run_4:explorer"},
+		{Timestamp: now, Provider: "openai", Model: "m", InputTokens: 50, OutputTokens: 5, EstimatedCostUSD: 0.02, Source: "agent_run", RunID: "run_4"},
+		{Timestamp: now, Provider: "openai", Model: "m", InputTokens: 999, OutputTokens: 99, EstimatedCostUSD: 0.5, Source: "agent_run", RunID: "run_45:explorer"},
+		{Timestamp: now, Provider: "openai", Model: "m", InputTokens: 7, OutputTokens: 7, EstimatedCostUSD: 0.3, Source: "chat", SessionID: "s1"},
+	} {
+		if err := tracker.Record(entry); err != nil {
+			t.Fatalf("record: %v", err)
+		}
+	}
+
+	got, err := tracker.SummaryFiltered("month", "", SummaryFilter{RunID: " run_4 "})
+	if err != nil {
+		t.Fatalf("summary: %v", err)
+	}
+	// run_45 shares the prefix "run_4" and must not be counted.
+	if got.TotalCalls != 2 || got.TotalInput != 150 || got.TotalOutput != 15 {
+		t.Fatalf("run_4 totals wrong: %+v", got)
+	}
+	if diff := got.TotalCostUSD - 0.03; diff > 1e-9 || diff < -1e-9 {
+		t.Fatalf("run_4 cost: got %v want 0.03", got.TotalCostUSD)
+	}
+}
