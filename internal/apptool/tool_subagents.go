@@ -145,7 +145,7 @@ func NewSubagentsRunTool(runtime *agentruntime.Runtime) Tool {
 					cancelSubagentRuns(runtime, workspaceID, spawnedRuns)
 					return JSONTextResult(map[string]any{"message": msg}, true), nil
 				}
-				providerOverride, overrideErr := normalizeProviderOverride(task.ProviderOverride)
+				providerOverride, overrideErr := resolveTaskProviderOverride(runtime, task.Tier, task.ProviderOverride)
 				if overrideErr != "" {
 					cancelSubagentRuns(runtime, workspaceID, spawnedRuns)
 					return JSONTextResult(map[string]any{"message": overrideErr}, true), nil
@@ -627,6 +627,38 @@ func normalizeProviderOverride(value *agentruntime.ProviderOverride) (*agentrunt
 		return nil, "provider_override.alias is required"
 	}
 	return override, ""
+}
+
+// resolveTaskProviderOverride is normalizeProviderOverride plus a check that
+// the server can run the named provider, made when the task is submitted.
+// Models tend to fill the optional field with a filler alias ("default",
+// "auto", "none") that is no provider at all; such an alias means "no
+// override" unless a provider really is configured under that name. Any other
+// unknown alias is refused with the reason.
+func resolveTaskProviderOverride(runtime *agentruntime.Runtime, tier string, value *agentruntime.ProviderOverride) (*agentruntime.ProviderOverride, string) {
+	override, message := normalizeProviderOverride(value)
+	if override == nil {
+		if value != nil && isPlaceholderProviderAlias(value.Alias) {
+			return nil, ""
+		}
+		return nil, message
+	}
+	err := runtime.CheckProviderOverride(tier, override)
+	if err == nil {
+		return override, ""
+	}
+	if isPlaceholderProviderAlias(override.Alias) {
+		return nil, ""
+	}
+	return nil, fmt.Sprintf("provider_override: %v. Omit provider_override to use the configured provider.", err)
+}
+
+func isPlaceholderProviderAlias(alias string) bool {
+	switch strings.ToLower(strings.TrimSpace(alias)) {
+	case "", "default", "auto", "none", "null":
+		return true
+	}
+	return false
 }
 
 func validateSafeSubagent(info agentruntime.AgentInfo) string {
