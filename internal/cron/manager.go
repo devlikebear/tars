@@ -10,29 +10,23 @@ import (
 )
 
 type Manager struct {
-	store    *Store
-	runJob   func(ctx context.Context, job Job) (string, error)
-	interval time.Duration
-	nowFn    func() time.Time
+	store  *Store
+	runJob func(ctx context.Context, job Job) (string, error)
+	nowFn  func() time.Time
 }
 
 func NewManager(
 	store *Store,
 	runJob func(ctx context.Context, job Job) (string, error),
-	interval time.Duration,
 	nowFn func() time.Time,
 ) *Manager {
-	if interval <= 0 {
-		interval = 30 * time.Second
-	}
 	if nowFn == nil {
 		nowFn = time.Now
 	}
 	return &Manager{
-		store:    store,
-		runJob:   runJob,
-		interval: interval,
-		nowFn:    nowFn,
+		store:  store,
+		runJob: runJob,
+		nowFn:  nowFn,
 	}
 }
 

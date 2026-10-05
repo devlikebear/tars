@@ -25,7 +25,7 @@ func TestManager_TickRunsDueJob(t *testing.T) {
 	mgr := NewManager(store, func(_ context.Context, job Job) (string, error) {
 		calls = append(calls, job.Prompt)
 		return "ok", nil
-	}, 100*time.Millisecond, func() time.Time {
+	}, func() time.Time {
 		return time.Date(2026, 2, 15, 19, 0, 0, 0, time.UTC)
 	})
 
@@ -76,7 +76,7 @@ func TestManager_TickSkipsNotDueAndDisabledJobs(t *testing.T) {
 	mgr := NewManager(store, func(_ context.Context, _ Job) (string, error) {
 		runCount++
 		return "ok", nil
-	}, 100*time.Millisecond, func() time.Time {
+	}, func() time.Time {
 		return time.Date(2026, 2, 15, 19, 0, 10, 0, time.UTC)
 	})
 
@@ -105,7 +105,7 @@ func TestManager_TickDeletesDeleteAfterRunJob(t *testing.T) {
 
 	mgr := NewManager(store, func(_ context.Context, _ Job) (string, error) {
 		return "ok", nil
-	}, 100*time.Millisecond, time.Now)
+	}, time.Now)
 	if err := mgr.Tick(context.Background()); err != nil {
 		t.Fatalf("tick: %v", err)
 	}
@@ -141,7 +141,7 @@ func TestManager_TickRunsCronExpressionAtBoundary(t *testing.T) {
 	mgr := NewManager(store, func(_ context.Context, _ Job) (string, error) {
 		runCount++
 		return "ok", nil
-	}, 100*time.Millisecond, func() time.Time { return base })
+	}, func() time.Time { return base })
 	if err := mgr.Tick(context.Background()); err != nil {
 		t.Fatalf("tick at boundary: %v", err)
 	}
@@ -174,7 +174,7 @@ func TestManager_TickRespectsCronTimezonePrefix(t *testing.T) {
 	mgr := NewManager(store, func(_ context.Context, _ Job) (string, error) {
 		runCount++
 		return "ok", nil
-	}, 100*time.Millisecond, func() time.Time {
+	}, func() time.Time {
 		return time.Date(2026, 2, 16, 0, 0, 0, 0, time.UTC)
 	})
 	if err := mgr.Tick(context.Background()); err != nil {
@@ -202,7 +202,7 @@ func TestManager_TickAppliesFailureBackoff(t *testing.T) {
 	failNow := time.Date(2026, 2, 16, 10, 0, 0, 0, time.UTC)
 	mgr := NewManager(store, func(_ context.Context, _ Job) (string, error) {
 		return "", managerErr("boom")
-	}, 100*time.Millisecond, func() time.Time { return failNow })
+	}, func() time.Time { return failNow })
 
 	if err := mgr.Tick(context.Background()); err != nil {
 		t.Fatalf("tick fail: %v", err)
@@ -222,7 +222,7 @@ func TestManager_TickAppliesFailureBackoff(t *testing.T) {
 	mgr = NewManager(store, func(_ context.Context, _ Job) (string, error) {
 		runCount++
 		return "ok", nil
-	}, 100*time.Millisecond, func() time.Time { return failNow.Add(10 * time.Second) })
+	}, func() time.Time { return failNow.Add(10 * time.Second) })
 	if err := mgr.Tick(context.Background()); err != nil {
 		t.Fatalf("tick during backoff: %v", err)
 	}
@@ -264,7 +264,7 @@ func TestManager_TickRunsDueJobsConcurrently(t *testing.T) {
 		}
 		releaseOnce.Do(func() { close(release) })
 		return "ok", nil
-	}, 100*time.Millisecond, time.Now)
+	}, time.Now)
 
 	if err := mgr.Tick(context.Background()); err != nil {
 		t.Fatalf("tick: %v", err)
@@ -295,7 +295,7 @@ func TestManager_TickRunsAtScheduleOnlyOnce(t *testing.T) {
 		}
 		runCount++
 		return "ok", nil
-	}, 100*time.Millisecond, func() time.Time {
+	}, func() time.Time {
 		return time.Date(2026, 2, 16, 10, 0, 1, 0, time.UTC)
 	})
 	if err := mgr.Tick(context.Background()); err != nil {
