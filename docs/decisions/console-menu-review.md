@@ -50,7 +50,7 @@ The verdicts lean on what was on screen, not on what the page could show in anot
 
 1. **Memory inbox quality.** Reflection proposes an agent's completion reports as memories. Fixed separately (#1140): the assistant's reply is no longer mined for candidates.
 2. **Mission Control's "active plans" tile** still counts stalled plans; it should show them apart, as the Plans page does.
-3. **Agent Runtime views.** Measure which of tree, Gantt and flow is opened; remove the ones that are not, and hide the cost cards when no run has a cost.
+3. **Agent Runtime views — done.** Removed the flow graph because tree shows the same parent/child structure; list, tree and Gantt remain. The cost card is hidden for runs with no recorded usage (no positive cost or token counts).
 4. **The chat dock.** See below.
 
 ### Left alone on purpose

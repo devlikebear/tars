@@ -1218,7 +1218,6 @@ export const en = {
       list: 'List',
       tree: 'Tree',
       gantt: 'Gantt',
-      flow: 'Flow',
     },
     visualAriaLabel: 'Agent Runtime visualization mode',
     costSummaryAriaLabel: 'Agent Runtime cost summary',

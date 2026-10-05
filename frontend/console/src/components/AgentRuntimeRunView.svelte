@@ -2,7 +2,7 @@
   import { onDestroy } from 'svelte'
   import { locale, t } from '../i18n'
   import AgentRuntimeCostFlow from './AgentRuntimeCostFlow.svelte'
-  import AgentRuntimeFlowGraph from './AgentRuntimeFlowGraph.svelte'
+  import { hasAgentRuntimeUsage, normalizeAgentRuntimeViewMode, type AgentRuntimeViewMode } from '../lib/agentruntime-view'
   import AgentRuntimeGantt from './AgentRuntimeGantt.svelte'
   import AgentRuntimeReplay from './AgentRuntimeReplay.svelte'
   import AgentRuntimeTree from './AgentRuntimeTree.svelte'
@@ -46,7 +46,6 @@
 
   type RunStatusFilter = 'all' | 'running' | 'done' | 'failed'
   type RunTimeRange = '24h' | '7d' | 'all'
-  type RunViewMode = 'list' | 'tree' | 'gantt' | 'flow'
   type PlanCostRow = {
     key: string
     label: string
@@ -64,7 +63,7 @@
   let selectedSubagentName = $state('')
   let runStatusFilter: RunStatusFilter = $state('all')
   let runTimeRange: RunTimeRange = $state('all')
-  let runViewMode: RunViewMode = $state('list')
+  let runViewMode: AgentRuntimeViewMode = $state('list')
   let runSearchInput = $state('')
   let loading = $state(false)
   let error = $state('')
@@ -116,11 +115,10 @@
     { value: 'all', label: $t.agentRuntime.rangeAll },
   ])
 
-  let runViewModeOptions = $derived<{ value: RunViewMode; label: string }[]>([
+  let runViewModeOptions = $derived<{ value: AgentRuntimeViewMode; label: string }[]>([
     { value: 'list', label: $t.agentRuntime.viewMode.list },
     { value: 'tree', label: $t.agentRuntime.viewMode.tree },
     { value: 'gantt', label: $t.agentRuntime.viewMode.gantt },
-    { value: 'flow', label: $t.agentRuntime.viewMode.flow },
   ])
 
   let activeTab = $derived(runId ? 'runs' : tab)
@@ -153,7 +151,6 @@
     return [...(selectedRun?.diff_timeline ?? [])]
       .sort((a, b) => runTimelineTimestamp(a) - runTimelineTimestamp(b))
   })
-  let costFlowRuns = $derived.by<AgentRuntimeRun[]>(() => selectedRun ? [selectedRun] : [])
   let replayEvents = $derived.by<AgentRuntimeRunEvent[]>(() => events)
   let selectedRunCheckpoints = $derived.by<AgentRuntimeRunCheckpoint[]>(() => selectedRun?.checkpoints ?? [])
   let selectedRestartCheckpoint = $derived.by<AgentRuntimeRunCheckpoint | null>(() => {
@@ -413,8 +410,8 @@
     void loadRuns()
   }
 
-  function setRunViewMode(mode: RunViewMode) {
-    runViewMode = mode
+  function setRunViewMode(mode: AgentRuntimeViewMode) {
+    runViewMode = normalizeAgentRuntimeViewMode(mode)
   }
 
   function openRunDetail(id: string) {
@@ -921,9 +918,7 @@
     {#if error}
       <div class="error-banner">{error}</div>
     {/if}
-    {#if runViewMode === 'flow' && runs.length > 0}
-      <AgentRuntimeFlowGraph {runs} onSelectRun={openRunDetail} />
-    {:else if runViewMode === 'tree' && runs.length > 0}
+    {#if runViewMode === 'tree' && runs.length > 0}
       <AgentRuntimeTree {runs} onSelectRun={openRunDetail} />
     {:else if runViewMode === 'gantt' && runs.length > 0}
       <AgentRuntimeGantt {runs} onSelectRun={openRunDetail} />
@@ -1415,9 +1410,9 @@
         </section>
       {/if}
 
-      {#if costFlowRuns.length > 0}
+      {#if hasAgentRuntimeUsage(selectedRun)}
         <div class="cost-flow-panel">
-          <AgentRuntimeCostFlow run={costFlowRuns[0]} />
+          <AgentRuntimeCostFlow run={selectedRun} />
         </div>
       {/if}
 

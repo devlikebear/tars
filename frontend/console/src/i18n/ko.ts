@@ -1216,7 +1216,6 @@ export const ko = {
       list: '목록',
       tree: '트리',
       gantt: '간트',
-      flow: '플로우',
     },
     visualAriaLabel: '에이전트 런타임 시각화 모드',
     costSummaryAriaLabel: '에이전트 런타임 비용 요약',
