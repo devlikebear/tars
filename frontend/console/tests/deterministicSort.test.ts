@@ -12,7 +12,6 @@ const sourceFiles = [
   'src/lib/sessionPermissionPreview.ts',
   'src/lib/configMetaBadges.ts',
   'src/components/Onboarding.svelte',
-  'src/components/AgentRuntimeFlowGraph.svelte',
   'src/components/SessionConfigPanel.svelte',
   'src/components/Config.svelte',
 ]

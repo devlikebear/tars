@@ -1,4 +1,4 @@
-// Agent Runtime run view and its graphs (AgentRuntimeRunView, Replay, CostFlow, FlowGraph, Tree, Gantt).
+// Agent Runtime run view and its graphs (AgentRuntimeRunView, Replay, CostFlow, Tree, Gantt).
 // The page chrome shared with the runs list (title, filters, errors) stays in `agentRuntime`.
 export const agentRuntimeRunEn = {
   // Words several views share, and the labels lib/agentruntime-graph.ts builds.
@@ -199,24 +199,6 @@ export const agentRuntimeRunEn = {
     diagramAriaLabel: 'Token and cost Sankey diagram',
     agentFallback: 'agent',
     runTotal: 'run total',
-  },
-  flowGraph: {
-    ariaLabel: 'Agent Runtime Svelte Flow live graph',
-    title: 'Live Graph',
-    counts: (nodes: number, edges: number) => `${nodes} nodes / ${edges} edges`,
-    replay: 'Replay',
-    filtersAriaLabel: 'Agent Runtime graph filters',
-    tier: 'Tier',
-    status: 'Status',
-    session: 'Session',
-    all: 'All',
-    statusOptions: {
-      running: 'Running',
-      done: 'Done',
-      error: 'Error',
-      pending: 'Pending',
-    },
-    empty: 'No runs match the current graph filters.',
   },
   tree: {
     ariaLabel: 'Agent Runtime Mini Tree',
@@ -432,24 +414,6 @@ export const agentRuntimeRunKo: AgentRuntimeRunTranslations = {
     diagramAriaLabel: '토큰·비용 Sankey 다이어그램',
     agentFallback: '에이전트',
     runTotal: '실행 합계',
-  },
-  flowGraph: {
-    ariaLabel: '에이전트 런타임 라이브 그래프',
-    title: '라이브 그래프',
-    counts: (nodes, edges) => `노드 ${nodes}개 / 엣지 ${edges}개`,
-    replay: '리플레이',
-    filtersAriaLabel: '에이전트 런타임 그래프 필터',
-    tier: '티어',
-    status: '상태',
-    session: '세션',
-    all: '전체',
-    statusOptions: {
-      running: '실행 중',
-      done: '완료',
-      error: '오류',
-      pending: '대기 중',
-    },
-    empty: '현재 그래프 필터와 일치하는 실행이 없습니다.',
   },
   tree: {
     ariaLabel: '에이전트 런타임 미니 트리',

@@ -122,8 +122,10 @@ func TestLoop_Run_WithToolCallAndHooks(t *testing.T) {
 	if len(client.seenToolCounts) != 2 || client.seenToolCounts[0] != 1 || client.seenToolCounts[1] != 1 {
 		t.Fatalf("expected tools to be forwarded to each llm call, got %+v", client.seenToolCounts)
 	}
-	if len(client.seenToolChoice) != 2 || client.seenToolChoice[0] != "required" || client.seenToolChoice[1] != "required" {
-		t.Fatalf("expected tool choice to be forwarded to each llm call, got %+v", client.seenToolChoice)
+	// Forcing a tool call on every call would leave the model unable to
+	// answer in text, so "required" holds for the first call only.
+	if len(client.seenToolChoice) != 2 || client.seenToolChoice[0] != "required" || client.seenToolChoice[1] == "required" {
+		t.Fatalf("expected a forced tool choice on the first llm call only, got %+v", client.seenToolChoice)
 	}
 
 	secondCall := client.seenInputs[1]
@@ -1282,5 +1284,25 @@ func TestLoop_Run_ForwardsClaudeCodePermissionAllow(t *testing.T) {
 	}
 	if len(client.seenAllow) != 1 || len(client.seenAllow[0]) != 1 || client.seenAllow[0][0] != "Bash(npm test:*)" {
 		t.Fatalf("allow rules forwarded = %v", client.seenAllow)
+	}
+}
+
+func TestToolChoiceForIteration(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		choice    *llm.ToolChoice
+		iteration int
+		want      string
+	}{
+		{"nil stays nil", nil, 3, (*llm.ToolChoice)(nil).String()},
+		{"required on the first call", llm.ToolChoiceRequired(), 0, "required"},
+		{"required is dropped afterwards", llm.ToolChoiceRequired(), 1, (*llm.ToolChoice)(nil).String()},
+		{"a named tool is dropped afterwards", llm.ToolChoiceSpecific("exec"), 2, (*llm.ToolChoice)(nil).String()},
+		{"auto holds", llm.ToolChoiceAuto(), 5, "auto"},
+		{"none holds", llm.ToolChoiceNone(), 5, "none"},
+	} {
+		if got := toolChoiceForIteration(tc.choice, tc.iteration).String(); got != tc.want {
+			t.Errorf("%s: got %q, want %q", tc.name, got, tc.want)
+		}
 	}
 }

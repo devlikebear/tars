@@ -101,7 +101,6 @@ func newCronPromptRunnerWithSessionContext(fallback agentRuntimePromptRunner, de
 		runOptions := agent.RunOptions{
 			MaxIterations: deps.maxIters,
 			Tools:         tools,
-			ToolChoice:    state.toolChoice,
 		}
 		deps.tooling.Unattended.options(state.sessionID, state.cwd, "cron", runLabel).apply(&runOptions)
 		resp, err := loop.Run(runCtx, state.llmMessages, runOptions)

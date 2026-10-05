@@ -2,11 +2,14 @@ package tarsserver
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
+	"github.com/devlikebear/tars/internal/goal"
 	"github.com/devlikebear/tars/internal/llm"
 	"github.com/devlikebear/tars/internal/session"
 	"github.com/rs/zerolog"
@@ -207,5 +210,43 @@ func TestAutoContinueMessage(t *testing.T) {
 	long := autoContinueMessage(strings.Repeat("x", autoContinueReasonMaxLen+50))
 	if !strings.Contains(long, strings.Repeat("x", autoContinueReasonMaxLen)+"…") || strings.Contains(long, strings.Repeat("x", autoContinueReasonMaxLen+1)) {
 		t.Fatalf("a long reason should be cut at %d characters", autoContinueReasonMaxLen)
+	}
+}
+
+func TestGoalJudgeWindowCarriesToolEvidence(t *testing.T) {
+	_, state, _, _, _ := newGoalHookFixture(t, `{"satisfied": true, "reason": "ok"}`)
+	reply := llm.ChatResponse{Message: llm.ChatMessage{Role: "assistant", Content: "all tests pass"}}
+
+	if window := goalJudgeWindow(state, reply); len(window) != 2 {
+		t.Fatalf("no tool calls: want the request and the reply, got %+v", window)
+	}
+
+	records := []ToolCallRecord{}
+	for i := 0; i < 8; i++ {
+		records = append(records, ToolCallRecord{ToolName: "read_file", ToolArgs: fmt.Sprintf(`{"path":"f%d.go"}`, i), ToolResult: "package x"})
+	}
+	records = append(records, ToolCallRecord{
+		ToolName:    "exec",
+		ToolArgs:    `{"command":"make test"}`,
+		ToolResult:  "FAIL\n" + strings.Repeat("한", 400),
+		ToolIsError: true,
+	})
+	state.turnToolCalls = &records
+
+	window := goalJudgeWindow(state, reply)
+	if len(window) != 3 || window[0].Role != "user" || window[1].Role != "tool" || window[2].Content != "all tests pass" {
+		t.Fatalf("want request, tool evidence, reply; got %+v", window)
+	}
+	evidence := window[1].Content
+	for _, want := range []string{"9 (1 failed)", "Last 6", `exec {"command":"make test"} -> FAILED: FAIL 한`, `f3.go`} {
+		if !strings.Contains(evidence, want) {
+			t.Fatalf("evidence lacks %q:\n%s", want, evidence)
+		}
+	}
+	if strings.Contains(evidence, "f2.go") {
+		t.Fatalf("evidence should hold only the last calls:\n%s", evidence)
+	}
+	if len(evidence) > goal.MaxRecentMessageContentChars || !utf8.ValidString(evidence) {
+		t.Fatalf("evidence is %d bytes (cap %d), valid utf8 %v", len(evidence), goal.MaxRecentMessageContentChars, utf8.ValidString(evidence))
 	}
 }

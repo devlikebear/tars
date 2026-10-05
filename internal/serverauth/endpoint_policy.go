@@ -45,7 +45,6 @@ var defaultEndpointPolicyRules = []EndpointPolicyRule{
 	userRule([]string{http.MethodGet, http.MethodPatch, http.MethodDelete}, "/v1/admin/sessions/:id", "console session metadata"),
 	userRule([]string{http.MethodGet}, "/v1/admin/sessions/:id/history", "console session history"),
 	userRule([]string{http.MethodPost}, "/v1/admin/sessions/:id/fork", "console session fork"),
-	userRule([]string{http.MethodGet, http.MethodPost}, "/v1/admin/sessions/:id/promotions", "fork promotion review"),
 	userRule([]string{http.MethodPost}, "/v1/admin/sessions/:id/compact", "manual session compaction"),
 	userRule([]string{http.MethodGet, http.MethodPost}, "/v1/admin/sessions/:id/tasks", "session task workflow"),
 	userRule([]string{http.MethodGet}, "/v1/admin/sessions/:id/plans/archive", "session plan archive"),

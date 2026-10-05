@@ -1160,7 +1160,6 @@ export type Translations = {
       list: string
       tree: string
       gantt: string
-      flow: string
     }
     visualAriaLabel: string
     costSummaryAriaLabel: string

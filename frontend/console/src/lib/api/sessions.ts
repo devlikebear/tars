@@ -2,8 +2,6 @@ import { requestJSON } from './client.ts'
 import type { NewChatOptions } from '../newChat.ts'
 import type {
   ChatTier,
-  ForkPromotionListResponse,
-  ForkPromotionResult,
   Session,
   SessionAutomationConsent,
   SessionCleanupMode,
@@ -75,18 +73,6 @@ export async function forkSessionFromMessage(sessionId: string, messageId: strin
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ message_id: messageId, fork_reason: forkReason || 'Forked from chat transcript' }),
-  })
-}
-
-export async function getForkPromotions(sessionId: string): Promise<ForkPromotionListResponse> {
-  return requestJSON<ForkPromotionListResponse>(`/v1/admin/sessions/${encodeURIComponent(sessionId)}/promotions`)
-}
-
-export async function promoteForkInsights(sessionId: string, candidateIds: string[]): Promise<ForkPromotionResult> {
-  return requestJSON<ForkPromotionResult>(`/v1/admin/sessions/${encodeURIComponent(sessionId)}/promotions`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ candidate_ids: candidateIds }),
   })
 }
 

@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -1202,7 +1203,7 @@ func TestPrepareChatContextWithExtensions_InvokedSkillHint(t *testing.T) {
 		SkillPrompt: skill.FormatAvailableSkills([]skill.Definition{def}),
 	}
 
-	systemPrompt, _, err := prepareChatContextWithExtensions(root, "", "/deploy 지금 배포", snapshot, &def)
+	systemPrompt, err := prepareChatContextWithExtensions(root, "", "/deploy 지금 배포", snapshot, &def)
 	if err != nil {
 		t.Fatalf("prepare chat context: %v", err)
 	}
@@ -1248,7 +1249,7 @@ func TestPrepareChatContextWithExtensions_PassesThroughAllSkillsWithoutProject(t
 		}),
 	}
 
-	systemPrompt, _, err := prepareChatContextWithExtensions(root, "sess-1", "/novelist start planning", snapshot, nil)
+	systemPrompt, err := prepareChatContextWithExtensions(root, "sess-1", "/novelist start planning", snapshot, nil)
 	if err != nil {
 		t.Fatalf("prepare chat context: %v", err)
 	}
@@ -1872,7 +1873,9 @@ func TestChatAPI_ToolCallSubagentsRun(t *testing.T) {
 	}
 }
 
-func TestChatAPI_MemoryQueryForcesToolChoiceRequired(t *testing.T) {
+// A message that mentions remembering widens what the prompt recalls; it
+// does not force a tool call. Forcing one kept the model from answering.
+func TestChatAPI_MemoryQueryDoesNotForceAToolCall(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "workspace")
 	if err := memory.EnsureWorkspace(root); err != nil {
 		t.Fatalf("ensure workspace: %v", err)
@@ -1898,8 +1901,8 @@ func TestChatAPI_MemoryQueryForcesToolChoiceRequired(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d body=%q", rec.Code, rec.Body.String())
 	}
-	if len(mockClient.seenToolChoices) == 0 || mockClient.seenToolChoices[0] != "required" {
-		t.Fatalf("expected tool_choice required, got %+v", mockClient.seenToolChoices)
+	if len(mockClient.seenToolChoices) == 0 || slices.Contains(mockClient.seenToolChoices, "required") {
+		t.Fatalf("expected no forced tool_choice, got %+v", mockClient.seenToolChoices)
 	}
 }
 
@@ -2486,115 +2489,6 @@ func TestSessionAPI_ForkFromMessage(t *testing.T) {
 	}
 	if childHistory[2].ID != parentHistory[2].ID || childHistory[2].Content != "fork here please" {
 		t.Fatalf("unexpected fork point message: %+v", childHistory[2])
-	}
-}
-
-func TestSessionAPI_PromoteForkInsightsQueuesMemoryInboxCandidates(t *testing.T) {
-	root := filepath.Join(t.TempDir(), "workspace")
-	if err := memory.EnsureWorkspace(root); err != nil {
-		t.Fatalf("ensure workspace: %v", err)
-	}
-
-	logger := zerolog.New(io.Discard)
-	store := session.NewStore(root)
-	parent, err := store.Create("Parent session")
-	if err != nil {
-		t.Fatalf("create parent: %v", err)
-	}
-	transcriptPath := store.TranscriptPath(parent.ID)
-	for _, msg := range []session.Message{
-		{Role: "user", Content: "setup context", Timestamp: time.Now().UTC()},
-		{Role: "assistant", Content: "context ready", Timestamp: time.Now().UTC().Add(time.Second)},
-	} {
-		if err := session.AppendMessage(transcriptPath, msg); err != nil {
-			t.Fatalf("append parent message: %v", err)
-		}
-	}
-	parentHistory, err := session.ReadMessages(transcriptPath)
-	if err != nil {
-		t.Fatalf("read parent history: %v", err)
-	}
-	child, err := store.ForkFromMessage(parent.ID, parentHistory[1].ID, session.ForkOptions{Reason: "find reusable decision"})
-	if err != nil {
-		t.Fatalf("fork from message: %v", err)
-	}
-	if err := session.AppendMessage(store.TranscriptPath(child.ID), session.Message{
-		Role:      "assistant",
-		Content:   "Decision: keep fork promotions in Memory Inbox instead of mutating parent transcripts.",
-		Timestamp: time.Now().UTC().Add(2 * time.Second),
-	}); err != nil {
-		t.Fatalf("append child message: %v", err)
-	}
-	if err := session.AppendMessage(store.TranscriptPath(child.ID), session.Message{
-		Role:      "user",
-		Content:   "I prefer reviewing promoted fork insights before they become durable memory.",
-		Timestamp: time.Now().UTC().Add(3 * time.Second),
-	}); err != nil {
-		t.Fatalf("append child message: %v", err)
-	}
-
-	handler := newSessionAPIHandler(store, logger)
-	listReq := httptest.NewRequest(http.MethodGet, "/v1/admin/sessions/"+child.ID+"/promotions", nil)
-	listReq.Header.Set("Tars-Debug-Auth-Role", "admin")
-	listRec := httptest.NewRecorder()
-	handler.ServeHTTP(listRec, listReq)
-	if listRec.Code != http.StatusOK {
-		t.Fatalf("expected promotion list 200, got %d body=%q", listRec.Code, listRec.Body.String())
-	}
-	var listPayload struct {
-		Candidates []session.ForkPromotionCandidate `json:"candidates"`
-	}
-	if err := json.Unmarshal(listRec.Body.Bytes(), &listPayload); err != nil {
-		t.Fatalf("decode promotion list: %v", err)
-	}
-	if len(listPayload.Candidates) != 2 {
-		t.Fatalf("expected 2 promotion candidates, got %+v", listPayload.Candidates)
-	}
-
-	body := fmt.Sprintf(`{"candidate_ids":[%q]}`, listPayload.Candidates[0].ID)
-	promoteReq := httptest.NewRequest(http.MethodPost, "/v1/admin/sessions/"+child.ID+"/promotions", strings.NewReader(body))
-	promoteReq.Header.Set("Content-Type", "application/json")
-	promoteReq.Header.Set("Tars-Debug-Auth-Role", "admin")
-	promoteRec := httptest.NewRecorder()
-	handler.ServeHTTP(promoteRec, promoteReq)
-	if promoteRec.Code != http.StatusOK {
-		t.Fatalf("expected promotion post 200, got %d body=%q", promoteRec.Code, promoteRec.Body.String())
-	}
-	var promotePayload struct {
-		PromotedCount int                      `json:"promoted_count"`
-		SkippedCount  int                      `json:"skipped_count"`
-		Candidates    []memory.MemoryCandidate `json:"candidates"`
-	}
-	if err := json.Unmarshal(promoteRec.Body.Bytes(), &promotePayload); err != nil {
-		t.Fatalf("decode promotion result: %v", err)
-	}
-	if promotePayload.PromotedCount != 1 || promotePayload.SkippedCount != 0 || len(promotePayload.Candidates) != 1 {
-		t.Fatalf("unexpected promotion result: %+v", promotePayload)
-	}
-	candidate := promotePayload.Candidates[0]
-	if candidate.Status != memory.MemoryCandidateStatusPending {
-		t.Fatalf("expected pending memory candidate, got %+v", candidate)
-	}
-	if candidate.Provenance.Source != "fork_promotion" || candidate.Provenance.SessionID != child.ID {
-		t.Fatalf("expected fork promotion provenance, got %+v", candidate.Provenance)
-	}
-	if !strings.Contains(candidate.Provenance.SourceSummary, parent.ID) {
-		t.Fatalf("expected parent provenance in source summary, got %q", candidate.Provenance.SourceSummary)
-	}
-
-	inbox, err := memory.ListMemoryCandidates(root, memory.MemoryCandidateListOptions{Status: memory.MemoryCandidateStatusPending})
-	if err != nil {
-		t.Fatalf("list memory inbox: %v", err)
-	}
-	if len(inbox) != 1 || inbox[0].ID != candidate.ID {
-		t.Fatalf("expected promoted candidate in memory inbox, got %+v", inbox)
-	}
-	parentAfter, err := session.ReadMessages(store.TranscriptPath(parent.ID))
-	if err != nil {
-		t.Fatalf("read parent after promotion: %v", err)
-	}
-	if len(parentAfter) != len(parentHistory) {
-		t.Fatalf("expected parent transcript unchanged, got %+v", parentAfter)
 	}
 }
 

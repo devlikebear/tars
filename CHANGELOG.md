@@ -11,6 +11,13 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 - **Windows 설치 릴리스와 `install.ps1`** — 릴리스에 Windows 서버 아카이브 `tars_<version>_windows_amd64.zip`(`tars.exe` + `share/`)을 추가했다. macOS 러너에서 CGO 없이 교차 빌드하고, 새 `verify-windows-asset` job이 windows-latest에서 `install.ps1`로 실제 설치한 뒤 `tars.exe --version`을 확인해야 릴리스가 게시된다. `checksums.txt`는 이제 모든 서버·데스크톱 아카이브를 담는다. 새 `install.ps1`(`irm https://raw.githubusercontent.com/devlikebear/tars/main/install.ps1 | iex`, Windows PowerShell 5.1 이상)은 관리자 권한 없이 `%LOCALAPPDATA%\Programs\TARS`에 설치하고 사용자 PATH에 추가하며, 설치 전에 아카이브를 `checksums.txt`로 검증한다. `-Desktop`은 데스크톱 앱을 같은 폴더에 함께 설치하고, `-StartAtLogin`은 로그인 시 트레이로 시작하는 바로가기를 만든다. 다시 실행하면 그 자리에서 업데이트하며, 실행 중인 `tars.exe`·`tars-desktop.exe`는 `.old`로 옮기고 교체한다(다음 실행 때 지움). 데스크톱 앱은 Windows에서 이 설치 폴더에서도 서버를 찾는다. 이 아카이브는 이 변경 이후의 다음 릴리스부터 올라간다.
 - **`tars update`와 Windows 자동 업데이트** — 새 `tars update`는 `install.ps1`·`install.sh`로 설치한 tars를 최신 릴리스로 바꾼다. 아카이브를 `checksums.txt`로 검증하고 `tars(.exe)`와 `share/`만 풀며(아카이브 밖을 가리키는 항목은 거부), 실행 중인 파일은 `.old`로 옮긴 뒤 교체한다(Windows는 실행 중인 파일을 덮어쓸 수 없지만 이름은 바꿀 수 있다). 그다음 `--server-url`에서 도는 서버를 `POST /v1/admin/restart`로 재시작해 `/v1/healthz`가 새 버전을 보고할 때까지 기다린다. `--check`는 확인만, `--yes`는 묻지 않고, `--json`은 결과를 JSON으로 낸다. 개발 빌드와 Homebrew 설치는 거부한다(Homebrew는 `brew upgrade`). Windows 데스크톱 앱은 시작 2분 뒤와 6시간마다 이를 실행해 서버를 최신으로 유지하되, 재시작이 진행 중인 채팅 턴이나 승인을 기다리는 무인 실행을 끊으므로 `/v1/chat/activity`에 아무것도 없을 때만 설치하고 그렇지 않으면 15분 뒤 다시 본다. 새 데스크톱 앱이 나오면 버전마다 한 번 알리고, 알림이나 트레이의 Check for updates…를 누르면 설치한다(이 메뉴는 서버 업데이트도 바로 실행한다). 서버가 앱보다 오래됐다는 Windows 안내에서는 Homebrew 명령 대신 `tars update`를 알려 준다.
 
+### Changed
+
+- **Console Agent Runtime views.** Removed the flow graph because tree shows the same parent/child structure; list, tree and Gantt remain. The run-detail cost card is now hidden when the run has no recorded positive cost or token counts.
+### Removed
+
+- Removed the unused fork-insight promotion feature: GET/POST `/v1/admin/sessions/{id}/promotions`, candidate extraction and Memory Inbox queuing, and console API helpers and types. Forking a chat from a message remains supported.
+
 ### Fixed
 
 - Session health no longer flags healthy native sessions for message count when context usage is known, or for default high-risk tools gated by permission modes. Context warnings show the measured percentage; only auto mode warns about high-risk tools running without asking and recommends choosing a permission mode. CLI behavior is unchanged.
@@ -18,6 +25,10 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 - The sidebar's "All" filter and the side-session picker no longer list subagent worker sessions (13 of 32 rows on the reviewed server). They are under the "Worker" filter.
 - Mission Control's "Active plans" tile counts plans nothing has touched for a day apart ("2 stalled"), as the Plans page does.
 - `exec` with `background: true` no longer answers `exit_code: 0` for a process that has only started. The start response carries no exit code and says to use `process` `wait` for it.
+- A goal turn can end with a report again. A message containing words such as "memory", "earlier", "history", "이전" or "자세히" set `tool_choice: required` on every LLM call of the turn, so the model could never answer in text: it finished the work, then repeated its last command until the repeated-call guard ended the turn with an error and no reply. The agent loop now applies a forced tool choice to the first call only, and chat no longer forces one for those words at all (they still widen what the prompt recalls).
+- The goal judge sees what the turn's tool calls did. It read only the request and the last reply, so a reply could claim a passing test that failed or never ran. It now also gets the turn's last six tool calls with their outcome and the number that failed, and is told to trust that over the reply.
+- `tars service start` sets a service log larger than 32 MB aside as `<log>.1` (replacing the previous one). launchd appends to these files and nothing trimmed them; on a server in daily use the stderr log had reached 307 MB.
+
 
 ## [0.48.0] - 2026-10-05
 

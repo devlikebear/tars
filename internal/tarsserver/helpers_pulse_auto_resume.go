@@ -150,7 +150,6 @@ func (c *sessionAutoResumeController) runAutoResumeTurn(ctx context.Context, can
 		MaxIterations: c.chatDeps.maxIters,
 		Tools:         state.injectedSchemas,
 		BlockedTools:  state.blockedTools,
-		ToolChoice:    state.toolChoice,
 	})
 	if err != nil {
 		return "", err
