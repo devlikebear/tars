@@ -70,7 +70,7 @@ The console becomes a workbench:
   | Build | Agent Runtime, Memory, Extensions, Sysprompt |
   | System | Ops, Pulse, Reflection, Cron, Logs, Analytics |
 
-  Config and Onboarding stay reachable from System and the palette. Channels, lineage, and tasks remain routes, reached through the palette and in-context links.
+  Config and Onboarding stay reachable from System and the palette. Channels and tasks remain routes (the lineage route was removed in the 2026-10 menu review, `console-menu-review.md`), reached through the palette and in-context links.
 - **`⌘K` command palette** reaches every page (hidden ones included) in at most two keystrokes. It also toggles panels, searches and switches sessions, and runs slash commands.
 - **Approvals and diffs live inside the conversation.** Changing files or approving a tool call must never require leaving the chat.
 

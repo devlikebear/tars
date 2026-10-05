@@ -59,7 +59,6 @@ export type Translations = {
       focus: string
       overview: string
       chat: string
-      lineage: string
       plans: string
       memory: string
       sysprompt: string
@@ -1424,35 +1423,6 @@ export type Translations = {
       AGENTS: string
       TOOLS: string
     }
-  }
-  sessionLineage: {
-    title: string
-    subtitle: string
-    refresh: string
-    summaryAriaLabel: string
-    graphAriaLabel: string
-    statSessions: string
-    statRoots: string
-    statForks: string
-    loading: string
-    empty: string
-    failedLoad: string
-    timeUnknown: string
-    forkPoint: string
-    parentLabel: (name: string) => string
-    indexLabel: (n: number) => string
-    reviewInsights: string
-    reviewLoading: string
-    forkInsightsLabel: string
-    queueSelected: (count: number) => string
-    queuing: string
-    queuedSummary: (promoted: number, skipped: number) => string
-    failedQueue: string
-    openMemoryInbox: string
-    loadingForkInsights: string
-    noForkInsights: string
-    failedForkInsights: string
-    messageIndex: (n: number) => string
   }
   plans: {
     kicker: string

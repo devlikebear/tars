@@ -374,7 +374,6 @@ These routes stay reachable through ⌘K and in-context links (not listed in the
 
 | Page | Path | Purpose |
 |------|------|---------|
-| Lineage | `/console/sessions/graph` | Root/forked session tree with fork previews and chat navigation |
 | Plans | `/console/tasks` | Active plans across sessions with progress and chat links |
 | Channels | `/console/channels` | Telegram pairing requests: approve, revoke, and review the DM policy |
 

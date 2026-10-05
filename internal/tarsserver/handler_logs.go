@@ -234,6 +234,26 @@ func normalizeLogLevelFilter(level string) string {
 	}
 }
 
+// logLevelRank orders levels so a filter keeps its own level and everything
+// more severe: asking for WARN must not hide the errors. A line with no level
+// or one this server does not know ranks as info.
+func logLevelRank(level string) int {
+	switch normalizeLogLevelFilter(level) {
+	case "trace":
+		return 0
+	case "debug":
+		return 1
+	case "warn":
+		return 3
+	case "error":
+		return 4
+	case "fatal", "panic":
+		return 5
+	default:
+		return 2
+	}
+}
+
 func scanLineCount(requested int, level string, component string) int {
 	if requested <= 0 {
 		requested = defaultLogsLineCount
@@ -305,7 +325,7 @@ func filterLogLines(rawLines []string, level string, component string, limit int
 		if line.Raw == "" {
 			continue
 		}
-		if level != "all" && line.Level != level {
+		if level != "all" && logLevelRank(line.Level) < logLevelRank(level) {
 			continue
 		}
 		if component != "" && !strings.Contains(strings.ToLower(line.Component), component) {
