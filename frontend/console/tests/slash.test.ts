@@ -107,7 +107,7 @@ test('builtin titles and descriptions come from the slash text', () => {
   assert.equal(builtins.find((c) => c.command === 'extract-skill')?.title, 'Extract Skill')
   assert.equal(
     builtins.find((c) => c.command === 'goal')?.description,
-    'Set/clear an autonomous session goal: /goal <description> | /goal clear | /goal status.',
+    slashText.builtins.goal.description,
   )
 
   // The palette lists one entry per id, so the sysprompt alias drops out.

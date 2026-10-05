@@ -5,7 +5,6 @@ import type {
   ConfigSchema,
   ProviderModelsInfo,
   ProviderProbeResponse,
-  ProvidersAPIInfo,
   RemoteAccessResponse,
 } from '../types'
 
@@ -30,18 +29,6 @@ export async function getProviderModels(providerAlias = ''): Promise<ProviderMod
 // install, version and sign-in for CLI providers (no usage spent).
 export async function testProviders(): Promise<ProviderProbeResponse> {
   return requestJSON<ProviderProbeResponse>('/v1/admin/providers/test', { method: 'POST' })
-}
-
-export async function getProviders(): Promise<ProvidersAPIInfo> {
-  return requestJSON<ProvidersAPIInfo>('/v1/providers')
-}
-
-export async function saveConfig(content: string): Promise<void> {
-  await requestJSON<{ ok: string }>('/v1/admin/config', {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ content }),
-  })
 }
 
 export async function restartServer(): Promise<{ ok: string; mode: string; info: string }> {

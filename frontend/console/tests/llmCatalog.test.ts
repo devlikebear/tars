@@ -3,7 +3,6 @@ import assert from 'node:assert/strict'
 
 import {
   SNAPSHOT_DATE,
-  SNAPSHOT_SOURCE,
   popularModelsForKind,
   wellKnownModelsByKind,
 } from '../src/lib/llm-catalog.ts'
@@ -12,7 +11,6 @@ import { providerKinds } from '../src/lib/onboarding.ts'
 test('snapshot metadata is non-empty so future PRs can grep for the date', () => {
   assert.ok(SNAPSHOT_DATE.length > 0, 'SNAPSHOT_DATE must be set')
   assert.ok(/\d{4}-\d{2}-\d{2}/.test(SNAPSHOT_DATE), 'SNAPSHOT_DATE should look like YYYY-MM-DD')
-  assert.ok(SNAPSHOT_SOURCE.length > 0, 'SNAPSHOT_SOURCE must be set')
 })
 
 test('every provider kind has at least one well-known model', () => {

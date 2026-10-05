@@ -81,11 +81,6 @@ export async function getGlobalPlans(active = true): Promise<GlobalPlansResponse
   return normalizeGlobalPlans(data)
 }
 
-export async function getPlanArchive(limit = 50): Promise<PlanArchiveResponse> {
-  const data = await requestJSON<Partial<PlanArchiveResponse>>(`/v1/admin/plans/archive?limit=${limit}`)
-  return normalizePlanArchive(data)
-}
-
 export async function getSessionPlanArchive(sessionId: string, limit = 20): Promise<PlanArchiveResponse> {
   const data = await requestJSON<Partial<PlanArchiveResponse>>(
     `/v1/admin/sessions/${encodeURIComponent(sessionId)}/plans/archive?limit=${limit}`,

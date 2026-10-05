@@ -57,10 +57,6 @@ export async function listAgentRuntimeSubagents(): Promise<AgentRuntimeSubagents
 	return requestJSON<AgentRuntimeSubagentsResponse>('/v1/agentruntime/subagents')
 }
 
-export async function getAgentRuntimeSubagent(name: string): Promise<AgentRuntimeSubagent> {
-	return requestJSON<AgentRuntimeSubagent>(`/v1/agentruntime/subagents/${encodeURIComponent(name)}`)
-}
-
 export async function updateAgentRuntimeSubagentTier(name: string, defaultTier: string): Promise<AgentRuntimeSubagent> {
 	return requestJSON<AgentRuntimeSubagent>(`/v1/agentruntime/subagents/${encodeURIComponent(name)}`, {
 		method: 'PATCH',
