@@ -3,6 +3,7 @@ package agentruntime
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -21,11 +22,14 @@ func (r *Runtime) Spawn(ctx context.Context, req SpawnRequest) (Run, error) {
 	if err != nil {
 		return Run{}, err
 	}
-	req.ExecutionRoot = executionRoot
 	sessionStore := r.sessionStoreForWorkspace(req.WorkspaceID)
 	if sessionStore == nil {
 		return Run{}, fmt.Errorf("session store is not configured")
 	}
+	if executionRoot == "" {
+		executionRoot = parentSessionExecutionRoot(sessionStore, req.ParentSessionID)
+	}
+	req.ExecutionRoot = executionRoot
 	selectedAgent, executor, err := r.resolveExecutor(req.Agent)
 	if err != nil {
 		return Run{}, err
@@ -50,6 +54,33 @@ func (r *Runtime) Spawn(ctx context.Context, req SpawnRequest) (Run, error) {
 		r.executeRun(runCtx, state.run.ID)
 	}()
 	return accepted, nil
+}
+
+// parentSessionExecutionRoot is the folder a run spawned by a chat session
+// works in when the request names none: the folder the session was pointed at. Without it
+// a subagent ran in the TARS workspace and could not see the project its
+// parent was working on. A session with no cwd of its own, or one whose
+// folder is gone, leaves the root empty and the run in the workspace.
+func parentSessionExecutionRoot(store *session.Store, parentSessionID string) string {
+	parentSessionID = strings.TrimSpace(parentSessionID)
+	if store == nil || parentSessionID == "" {
+		return ""
+	}
+	parent, err := store.Get(parentSessionID)
+	if err != nil {
+		return ""
+	}
+	cwd := filepath.Clean(strings.TrimSpace(parent.CurrentDir))
+	// A session that was not pointed at a folder has its artifact folder
+	// (<workspace>/artifacts/<id>) as cwd; that is not a project to work in.
+	if cwd == "." || (filepath.Base(cwd) == parent.ID && filepath.Base(filepath.Dir(cwd)) == "artifacts") {
+		return ""
+	}
+	root, err := normalizeExecutionRoot(cwd)
+	if err != nil {
+		return ""
+	}
+	return root
 }
 
 func resolveSpawnSessionID(sessionStore *session.Store, req SpawnRequest, info AgentInfo, selectedAgent string) (string, error) {

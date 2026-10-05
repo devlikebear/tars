@@ -15,7 +15,13 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ### Changed
 
-- **The durable work scheduler is on by default.** With Agent Runtime enabled, a subagent flow submitted with `subagents_orchestrate` is stored in the Work Ledger and runs independently of the chat turn that submitted it: steps are retried by policy, can be cancelled or resumed from the Tasks panel, and continue after a server restart. Only read-only prompt agents may run as flow steps, so a step that restarts never repeats a write. A server with the Work Ledger or Agent Runtime switched off now starts without the scheduler (it used to refuse to start when the scheduler was enabled) and logs why. Set `work_ledger.scheduler.enabled: false` to go back to flows that live and die with the chat request; the ledger is kept.
+- **The durable work scheduler is on by default.** With Agent Runtime enabled, a subagent flow submitted with `subagents_orchestrate` is stored in the Work Ledger and runs independently of the chat turn that submitted it: steps are retried by policy, can be cancelled or resumed from the Tasks panel, and continue after a server restart. Only read-only prompt agents may run as flow steps, so a step that restarts never repeats a write. `subagents_orchestrate` is offered to the model whenever the scheduler is running; without the scheduler it stays off unless a session enables it. A server with the Work Ledger or Agent Runtime switched off now starts without the scheduler (it used to refuse to start when the scheduler was enabled) and logs why. Set `work_ledger.scheduler.enabled: false` to go back to flows that live and die with the chat request; the ledger is kept.
+- **A subagent works in its parent session's folder.** A run spawned from a chat that was pointed at a folder (or isolated in a worktree) now starts in that folder. It used to start in the TARS workspace, so an `explorer` asked about the project answered that the files did not exist. A chat with no folder of its own still runs its subagents in the workspace.
+
+### Fixed
+
+- The scheduler stalled as soon as the ledger held a running work it had not submitted, which is always: every agent run is recorded there, including the runs the scheduler's own steps start. Each pass stopped at the first such work with "executor adapter is not configured", so nothing was claimed, and a flow released by a restart stayed `ready` forever. The scheduler now only looks at works it submitted, and no longer promotes other works' steps.
+- A `provider_override` that names an unknown provider is refused when the flow is submitted, with the reason, instead of failing the step later and parking the whole flow in review. The tool's schema now says to omit it unless the user named a provider.
 
 ## [0.46.1] - 2026-10-05
 
