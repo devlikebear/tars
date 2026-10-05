@@ -31,9 +31,9 @@ test('Ctrl+K opens the palette from the composer and reaches a page the nav hide
 test('the palette works off the chat route and Escape returns focus', async ({ page }) => {
   await page.goto('/console/pulse')
   await openPalette(page)
-  await paletteInput(page).fill('lineage')
+  await paletteInput(page).fill('plans')
   await page.keyboard.press('Enter')
-  await expect(page).toHaveURL(/\/console\/sessions\/graph$/)
+  await expect(page).toHaveURL(/\/console\/tasks$/)
 
   await page.goto('/console/chat')
   await composer(page).click()

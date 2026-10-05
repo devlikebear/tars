@@ -4,7 +4,7 @@
 //
 // Paths and role gating come from the command palette's page table, so the
 // nav, the palette, and App.svelte's route gating cannot drift apart. Pages
-// that are not listed here (lineage, plans, channels, onboarding) stay
+// that are not listed here (plans, channels, onboarding) stay
 // reachable through ⌘K and in-context links.
 
 import { pageEntries, type PageView } from './commands.ts'

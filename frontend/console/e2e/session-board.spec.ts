@@ -74,6 +74,15 @@ test('the board is home and follows a session from needs input to its change', a
 
 test('the system overview moved under System', async ({ page }) => {
   await page.goto('/console/system')
+  const home = page.locator('.home')
+  await expect(home.getByRole('heading', { name: 'Mission Control', level: 2 })).toBeVisible()
+  for (const name of ['Recent notifications', 'Recommended actions', 'Delivery']) {
+    await expect(home.getByRole('heading', { name, exact: true })).toBeVisible()
+  }
+  for (const name of ['Active plans', 'Agent runs', 'Cron jobs', 'Active sessions', 'Continue working on...']) {
+    await expect(home.getByRole('heading', { name, exact: true })).toHaveCount(0)
+  }
+  await expect(home.locator('.status-strip .status-tile')).toHaveCount(7)
   const nav = page.getByRole('navigation', { name: 'Main navigation' })
   await expect(nav.getByRole('link', { name: 'Overview' })).toHaveClass(/active/)
   await nav.getByRole('link', { name: 'Sessions' }).click()

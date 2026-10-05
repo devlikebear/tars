@@ -4,8 +4,10 @@
   import {
     aggregatePlanStatusCount,
     aggregateStaleCompletedPlanCount,
+    aggregateStalledPlanCount,
     filterPlansBySummaryCard,
     isStaleCompletedPlan,
+    isStalledPlan,
     type PlanSummaryFilter,
   } from '../lib/plans'
   import type { GlobalPlanItem } from '../lib/types'
@@ -34,6 +36,7 @@
     { filter: 'pending', label: $t.plans.pending, count: aggregatePlanStatusCount(plans, 'pending') },
     { filter: 'completed', label: $t.plans.completed, count: aggregatePlanStatusCount(plans, 'completed') },
     { filter: 'ready_to_close', label: $t.plans.readyToClose, count: aggregateStaleCompletedPlanCount(plans) },
+    { filter: 'stalled', label: $t.plans.stalled, count: aggregateStalledPlanCount(plans) },
   ])
 
   async function load() {
@@ -130,16 +133,17 @@
       {#each filteredPlans as item (item.session.id)}
         {@const percent = progressPercent(item)}
         {@const staleCompleted = isStaleCompletedPlan(item)}
-        <button class="plan-card card" class:ready-to-close={staleCompleted} type="button" onclick={() => openSession(item.session.id)}>
+        {@const stalled = isStalledPlan(item)}
+        <button class="plan-card card" class:ready-to-close={staleCompleted || stalled} type="button" onclick={() => openSession(item.session.id)}>
           <span class="card-topline">
             <span class="session-title">{item.session.title}</span>
-            <span class="badge" class:badge-default={!staleCompleted} class:badge-warning={staleCompleted}>
-              {staleCompleted ? $t.plans.readyToClose : sessionKind(item)}
+            <span class="badge" class:badge-default={!staleCompleted && !stalled} class:badge-warning={staleCompleted || stalled}>
+              {staleCompleted ? $t.plans.readyToClose : stalled ? $t.plans.stalled : sessionKind(item)}
             </span>
           </span>
           <strong class="plan-goal">{item.plan.goal}</strong>
           <span class="plan-meta">
-            <span>{staleCompleted ? $t.plans.readyToCloseHint : (item.plan.status ?? $t.plans.statusFallback)}</span>
+            <span>{staleCompleted ? $t.plans.readyToCloseHint : stalled ? $t.plans.stalledHint : (item.plan.status ?? $t.plans.statusFallback)}</span>
             <span>{$t.plans.updatedAt(formatTime(item.updated_at))}</span>
           </span>
           <span class="progress-track" aria-label={$t.plans.progressAria(percent)}>
@@ -150,7 +154,7 @@
             <span>{$t.plans.activeSuffix(item.summary?.in_progress ?? 0)}</span>
             <span>{$t.plans.pendingSuffix(item.summary?.pending ?? 0)}</span>
           </span>
-          <span class="plan-action">{staleCompleted ? $t.plans.resolvePlan : $t.plans.openPlan}</span>
+          <span class="plan-action">{staleCompleted || stalled ? $t.plans.resolvePlan : $t.plans.openPlan}</span>
         </button>
       {/each}
     </section>

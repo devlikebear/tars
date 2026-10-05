@@ -318,31 +318,36 @@
         </div>
       </div>
 
-      <div class="pulse-intro-grid">
-        <div>
-          <div class="pulse-intro-label">{$t.pulse.watchTargets}</div>
-          <ul class="pulse-intro-list">
-            {#each pulseWatchItems as item}
-              <li>
-                <strong>{item.label}</strong>
-                <span>{item.detail}</span>
-              </li>
-            {/each}
-          </ul>
-        </div>
-        <div>
-          <div class="pulse-intro-label">{$t.pulse.whenSignalsAppear}</div>
-          <p class="pulse-intro-copy">{$t.pulse.whenSignalsBody}</p>
-          <div class="pulse-intro-decisions">
-            {#each pulseDecisionRows as row}
-              <div>
-                <span class="badge {row.badgeClass}">{row.action}</span>
-                <span>{row.detail}</span>
-              </div>
-            {/each}
+      <!-- Reference text, closed by default: the page leads with status. -->
+      <details class="pulse-reference">
+        <summary>{$t.pulse.referenceSummary}</summary>
+        <div class="pulse-intro-grid">
+          <div>
+            <div class="pulse-intro-label">{$t.pulse.watchTargets}</div>
+            <ul class="pulse-intro-list">
+              {#each pulseWatchItems as item}
+                <li>
+                  <strong>{item.label}</strong>
+                  <span>{item.detail}</span>
+                </li>
+              {/each}
+            </ul>
           </div>
+          <div>
+            <div class="pulse-intro-label">{$t.pulse.whenSignalsAppear}</div>
+            <p class="pulse-intro-copy">{$t.pulse.whenSignalsBody}</p>
+            <div class="pulse-intro-decisions">
+              {#each pulseDecisionRows as row}
+                <div>
+                  <span class="badge {row.badgeClass}">{row.action}</span>
+                  <span>{row.detail}</span>
+                </div>
+              {/each}
+            </div>
+          </div>
+      
         </div>
-      </div>
+      </details>
     </section>
 
     <!-- Status summary -->
@@ -374,10 +379,11 @@
       </dl>
 
       <div class="pulse-severity-guide">
-        <div class="pulse-guide-header">
-          <strong>{$t.pulse.severityGuideTitle}</strong>
-          <span>{$t.pulse.severityGuideNote}</span>
-        </div>
+        <details class="pulse-reference">
+          <summary>
+            <strong>{$t.pulse.severityGuideTitle}</strong>
+            <span>{$t.pulse.severityGuideNote}</span>
+          </summary>
         <div class="pulse-guide-grid">
           {#each severityGuideRows(config) as row}
             <div class="pulse-guide-row">
@@ -393,6 +399,7 @@
             </div>
           {/each}
         </div>
+        </details>
         <div class="pulse-last-seen">
           <span class="pulse-last-seen-title">{$t.pulse.lastSeenTitle}</span>
           <div>
@@ -598,6 +605,17 @@
 </div>
 
 <style>
+  .pulse-reference > summary {
+    cursor: pointer;
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+    display: flex;
+    gap: var(--space-2);
+    align-items: baseline;
+  }
+  .pulse-reference[open] > summary {
+    margin-bottom: var(--space-3);
+  }
   .pulse {
     display: grid;
     gap: var(--space-4);
@@ -794,22 +812,15 @@
     border-top: 1px solid var(--border-subtle);
   }
 
-  .pulse-guide-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-3);
-    color: var(--text-secondary);
-  }
 
-  .pulse-guide-header strong {
+  .pulse-reference > summary strong {
     color: var(--text-primary);
     font-family: var(--font-display);
     font-size: var(--text-sm);
     font-weight: 500;
   }
 
-  .pulse-guide-header span {
+  .pulse-reference > summary span {
     color: var(--text-ghost);
     font-size: var(--text-xs);
   }

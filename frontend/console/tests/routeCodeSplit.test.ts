@@ -8,7 +8,6 @@ const viteConfigSource = readFileSync(new URL('../vite.config.ts', import.meta.u
 
 const lazyRouteComponents = [
   'Chat',
-  'SessionLineageGraph',
   'Plans',
   'MemoryCenter',
   'SyspromptCenter',

@@ -59,7 +59,6 @@ export type Translations = {
       focus: string
       overview: string
       chat: string
-      lineage: string
       plans: string
       memory: string
       sysprompt: string
@@ -960,6 +959,7 @@ export type Translations = {
     title: string
     introBody: (interval: string) => string
     policySource: string
+    referenceSummary: string
     watchTargets: string
     whenSignalsAppear: string
     whenSignalsBody: string
@@ -1080,52 +1080,6 @@ export type Translations = {
     }
     pulseStates: { error: string; active: string; idle: string }
     reflectionStates: { failing: string; healthy: string; idle: string }
-    plans: {
-      title: string
-      subtitle: string
-      open: string
-      empty: string
-      executing: string
-      doneSuffix: string
-      activeSuffix: string
-      updated: string
-    }
-    agentRuns: {
-      title: string
-      subtitle: string
-      open: string
-      empty: string
-      agent: string
-      tier: string
-    }
-    cron: {
-      title: string
-      subtitle: string
-      open: string
-      empty: string
-      status: { failed: string; done: string; active: string; paused: string }
-      nextRun: {
-        completed: string
-        paused: string
-        nextTick: string
-        cronSchedule: string
-        after: (relative: string) => string
-      }
-    }
-    sessions: {
-      title: string
-      subtitle: string
-      open: string
-      empty: string
-      untitled: string
-    }
-    continue: {
-      title: string
-      subtitle: string
-      untitled: string
-      tasksTracked: (count: number) => string
-      empty: string
-    }
     notifications: {
       title: string
       unreadSuffix: (count: number) => string
@@ -1164,7 +1118,6 @@ export type Translations = {
     }
     disk: { unknown: string; usedSuffix: string }
     errorLoad: string
-    openSessionPlan: string
   }
   agentRuntime: {
     title: string
@@ -1425,35 +1378,6 @@ export type Translations = {
       TOOLS: string
     }
   }
-  sessionLineage: {
-    title: string
-    subtitle: string
-    refresh: string
-    summaryAriaLabel: string
-    graphAriaLabel: string
-    statSessions: string
-    statRoots: string
-    statForks: string
-    loading: string
-    empty: string
-    failedLoad: string
-    timeUnknown: string
-    forkPoint: string
-    parentLabel: (name: string) => string
-    indexLabel: (n: number) => string
-    reviewInsights: string
-    reviewLoading: string
-    forkInsightsLabel: string
-    queueSelected: (count: number) => string
-    queuing: string
-    queuedSummary: (promoted: number, skipped: number) => string
-    failedQueue: string
-    openMemoryInbox: string
-    loadingForkInsights: string
-    noForkInsights: string
-    failedForkInsights: string
-    messageIndex: (n: number) => string
-  }
   plans: {
     kicker: string
     title: string
@@ -1471,6 +1395,8 @@ export type Translations = {
     completed: string
     readyToClose: string
     readyToCloseHint: string
+    stalled: string
+    stalledHint: string
     openPlan: string
     resolvePlan: string
     statusFallback: string

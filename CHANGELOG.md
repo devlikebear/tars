@@ -6,10 +6,19 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+### Changed
+
+- **Console menu review.** Every console page was opened on a live server and given a verdict (keep, improve, shrink, remove); the verdicts and the plan are in `docs/decisions/console-menu-review.md`. First changes: the Logs page opens at INFO instead of a wall of DEBUG request tracing, and a log level is now a floor (`level=warn` returns warnings and errors; it used to return warnings only). Agent Runtime no longer describes `subagents_orchestrate` as opt-in, and the Approvals subtitle says what the page lists. Mission Control is now focused on status and notifications, with active plans, agent runs, Cron jobs, sessions, and continue-working lists left to their dedicated pages. The Plans page marks a plan with work left that nothing has touched for a day as stalled, and the Pulse page leads with status and keeps its reference text collapsed.
+
 ### Fixed
 
 - The memory inbox no longer fills with the agent's own status reports. Nightly reflection queued any assistant reply containing "completed" or "resolved" (or "완료", "해결") as a `task_completed` or `error_resolved` memory candidate, holding the reply's first 220 characters. Agents end most turns that way, so on a server used for coding all ten pending candidates were lines such as "Verification complete" and "Plan and contract ready". Only the user's message is read now (a stated preference is still queued); what an agent wants kept it saves with the memory tool. Candidates already in the inbox are not touched.
+- A session goal's auto-continue tells the agent why the judge is not satisfied. The judge reads only the request and the agent's last reply, and the continue message was a fixed "keep working toward the goal". An agent that had finished and ended its turn without a report was told to keep working with no hint of what was missing; it re-ran its last check until the repeated-call guard ended the turn with an error, leaving the goal active. The message now carries the judge's reason and says that finished work wants a report of what was done and the verification results, not a repeat.
 - **A server with no `log.level` logged at DEBUG, not at the documented default of INFO.** Every HTTP request and every LLM request and stream payload (secrets redacted, prompts not) went to the runtime log and to the service's stderr log. On a server in daily use the runtime log was 58 MB and the launchd stderr log, which nothing rotates, 264 MB. An unset or unknown level is now INFO. Set `log.level: debug` (or run `tars serve --verbose`) to get the old output.
+
+### Removed
+
+- The session lineage page (`/console/sessions/graph`). It drew the tree of forked chats and had been out of the nav since #931; on the reviewed server it showed 30 sessions and no fork. Forking a chat from a message is unchanged.
 
 ### Added
 
