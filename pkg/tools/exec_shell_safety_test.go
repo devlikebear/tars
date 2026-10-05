@@ -55,7 +55,7 @@ func TestExecShellCancellation(t *testing.T) {
 				}
 				if background {
 					snap, timeout, err := manager.Wait(context.Background(), body.SessionID, 2000)
-					if err != nil || timeout || !snap.Done || snap.ExitCode == 0 {
+					if err != nil || timeout || !snap.Done || snap.ExitCode == nil || *snap.ExitCode == 0 {
 						t.Fatalf("wait: %+v %v", snap, err)
 					}
 				} else if !r.IsError || body.TimedOut == cancelNow {
@@ -95,7 +95,7 @@ func TestExecShellBackgroundKill(t *testing.T) {
 		t.Fatal(err)
 	}
 	ended, timedOut, err := manager.Wait(context.Background(), snap.SessionID, 2000)
-	if err != nil || timedOut || !ended.Done || ended.ExitCode == 0 {
+	if err != nil || timedOut || !ended.Done || ended.ExitCode == nil || *ended.ExitCode == 0 {
 		t.Fatalf("kill did not settle process: %+v %v", ended, err)
 	}
 	time.Sleep(650 * time.Millisecond)

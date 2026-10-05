@@ -74,7 +74,7 @@ func TestExecTool_ShellBackgroundQuotedCommand(t *testing.T) {
 	}
 
 	snap, timedOut, err := manager.Wait(context.Background(), body.SessionID, 2000)
-	if err != nil || timedOut || snap.ExitCode != 0 {
+	if err != nil || timedOut || snap.ExitCode == nil || *snap.ExitCode != 0 {
 		t.Fatalf("completion: %+v %v", snap, err)
 	}
 	contents, err := os.ReadFile(outputPath)

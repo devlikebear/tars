@@ -63,11 +63,14 @@ func (t *tailBuffer) String() string {
 }
 
 type ProcessSnapshot struct {
-	SessionID   string `json:"session_id"`
-	Command     string `json:"command"`
-	Running     bool   `json:"running"`
-	Done        bool   `json:"done"`
-	ExitCode    int    `json:"exit_code,omitempty"`
+	SessionID string `json:"session_id"`
+	Command   string `json:"command"`
+	Running   bool   `json:"running"`
+	Done      bool   `json:"done"`
+	// ExitCode is set once the process has finished, zero included: a
+	// caller asked to report the exit code must be able to tell "0" from
+	// "still running".
+	ExitCode    *int   `json:"exit_code,omitempty"`
 	StartedAt   string `json:"started_at,omitempty"`
 	CompletedAt string `json:"completed_at,omitempty"`
 	Stdout      string `json:"stdout,omitempty"`
@@ -334,8 +337,11 @@ func (m *ProcessManager) snapshot(mp *managedProcess, withOutput bool) ProcessSn
 		Command:   mp.command,
 		Running:   !mp.done,
 		Done:      mp.done,
-		ExitCode:  mp.exitCode,
 		StartedAt: mp.startedAt.Format(time.RFC3339),
+	}
+	if mp.done {
+		exitCode := mp.exitCode
+		snap.ExitCode = &exitCode
 	}
 	if !mp.endedAt.IsZero() {
 		snap.CompletedAt = mp.endedAt.Format(time.RFC3339)

@@ -128,6 +128,13 @@ func TestProcessTool_WaitCompletes(t *testing.T) {
 	if strings.Contains(waitRes.Text(), `"wait_timed_out":true`) {
 		t.Fatalf("did not expect wait_timed_out, got %s", waitRes.Text())
 	}
+	// A clean exit is reported as 0, not left out.
+	if !strings.Contains(waitRes.Text(), `"exit_code":0`) {
+		t.Fatalf("expected exit_code 0 in a finished wait, got %s", waitRes.Text())
+	}
+	if strings.Contains(res.Text(), `"exit_code"`) && strings.Contains(res.Text(), `"running":true`) {
+		t.Fatalf("a running process has no exit code yet, got %s", res.Text())
+	}
 	if elapsed > 3*time.Second {
 		t.Fatalf("expected wait to return promptly when process exits, elapsed=%s", elapsed)
 	}
