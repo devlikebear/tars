@@ -172,7 +172,12 @@ func TestExecTool_StreamsStderrSeparately(t *testing.T) {
 
 	// `ls` against a non-existent path reliably writes to stderr without
 	// needing shell quoting (which strings.Fields would mangle).
-	result, err := tl.Execute(ctx, json.RawMessage(`{"command":"ls /nonexistent-path-for-test","timeout_ms":2000}`))
+	//
+	// The timeout is far above what `ls` needs: at 2s a loaded Windows
+	// runner killed the command before it had written anything (the test
+	// took 2.69s and saw no stderr line), which is a timeout, not the
+	// behavior under test.
+	result, err := tl.Execute(ctx, json.RawMessage(`{"command":"ls /nonexistent-path-for-test","timeout_ms":20000}`))
 	if err != nil {
 		t.Fatalf("execute exec tool: %v", err)
 	}
