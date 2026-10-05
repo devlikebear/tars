@@ -22,6 +22,11 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 - The scheduler stalled as soon as the ledger held a running work it had not submitted, which is always: every agent run is recorded there, including the runs the scheduler's own steps start. Each pass stopped at the first such work with "executor adapter is not configured", so nothing was claimed, and a flow released by a restart stayed `ready` forever. The scheduler now only looks at works it submitted, and no longer promotes other works' steps.
 - A `provider_override` that names an unknown provider is refused when the flow is submitted, with the reason, instead of failing the step later and parking the whole flow in review. The tool's schema now says to omit it unless the user named a provider.
+## [0.46.2] - 2026-10-05
+
+### Fixed
+
+- A session's tool, skill or prompt settings changed after its first turn were ignored until the server restarted. The effective configuration is cached per session and was refreshed only when the working folder or a `.tars/settings*.json` file changed, not when the session's own configuration did, so enabling a tool in Session Config (or through `PATCH /v1/admin/sessions/{id}/config`) left the chat with the old tool list while `GET …/config` and `/v1/chat/tools` already showed the new one.
 
 ## [0.46.1] - 2026-10-05
 
