@@ -3,6 +3,7 @@ package apptool
 import (
 	"context"
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -147,7 +148,7 @@ func TestDurableSubagentsOrchestrateSupportsShortSynchronousWrapper(t *testing.T
 
 func openDurableToolLedger(t *testing.T) *workstore.Store {
 	t.Helper()
-	store, err := workstore.Open(context.Background(), filepath.Join(t.TempDir(), "ledger.db"), workstore.Options{})
+	store, err := workstore.Open(context.Background(), filepath.Join(durableToolLedgerDir(t), "ledger.db"), workstore.Options{})
 	if err != nil {
 		t.Fatalf("open durable tool ledger: %v", err)
 	}
@@ -157,6 +158,34 @@ func openDurableToolLedger(t *testing.T) *workstore.Store {
 		}
 	})
 	return store
+}
+
+// durableToolLedgerDir is a temporary directory whose removal waits for the
+// ledger file to be let go. t.TempDir fails the test on the first refusal,
+// and on Windows ledger.db can stay locked for a moment after the store has
+// closed and the scheduler has stopped ("being used by another process");
+// the tests in this file are about the flow, not about that moment.
+func durableToolLedgerDir(t *testing.T) string {
+	t.Helper()
+	dir, err := os.MkdirTemp("", "durable-tool-ledger-")
+	if err != nil {
+		t.Fatalf("create durable tool ledger dir: %v", err)
+	}
+	t.Cleanup(func() {
+		deadline := time.Now().Add(5 * time.Second)
+		for {
+			err := os.RemoveAll(dir)
+			if err == nil {
+				return
+			}
+			if time.Now().After(deadline) {
+				t.Errorf("remove durable tool ledger dir: %v", err)
+				return
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+	})
+	return dir
 }
 
 func createPromotedDurableToolCapability(t *testing.T, store *workstore.Store, workspaceID, name string) workstore.CapabilityVersion {
@@ -252,6 +281,11 @@ func TestDurableFlowIDIsScopedToTheSessionAndNotReusedOnceFinished(t *testing.T)
 	other, failed := submit("session-b")
 	if failed || other["work_id"] == first["work_id"] {
 		t.Fatalf("another session must get its own work, got %+v (first %v)", other, first["work_id"])
+	}
+	// Let it finish: a flow still running when the test ends is torn down
+	// mid-step.
+	if _, err := scheduler.Wait(waitCtx, other["work_id"].(string)); err != nil {
+		t.Fatalf("wait second flow: %v", err)
 	}
 
 	// Once finished, the name is not silently answered with the old work.
