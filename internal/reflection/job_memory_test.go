@@ -130,9 +130,11 @@ func TestMemoryJobQueuesMemoryCandidates(t *testing.T) {
 	if !result.Changed {
 		t.Errorf("expected Changed=true")
 	}
+	// The stated preference is queued; the assistant's "Task completed."
+	// is a status report, not a memory.
 	candidatesAdded := result.Details["candidates_added"].(int)
-	if candidatesAdded < 2 {
-		t.Errorf("candidates_added = %d, want >= 2", candidatesAdded)
+	if candidatesAdded != 1 {
+		t.Errorf("candidates_added = %d, want 1", candidatesAdded)
 	}
 	candidates, err := memory.ListMemoryCandidates(workspace, memory.MemoryCandidateListOptions{
 		Status: memory.MemoryCandidateStatusPending,
@@ -140,8 +142,8 @@ func TestMemoryJobQueuesMemoryCandidates(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list candidates: %v", err)
 	}
-	if len(candidates) < 2 {
-		t.Fatalf("pending candidates = %d, want >= 2", len(candidates))
+	if len(candidates) != 1 {
+		t.Fatalf("pending candidates = %d, want 1", len(candidates))
 	}
 	for _, candidate := range candidates {
 		if candidate.Provenance.SessionID != "sess1" {
@@ -245,17 +247,18 @@ func TestDeriveUserExperiencePreference(t *testing.T) {
 	}
 }
 
-func TestDeriveAssistantExperienceCompletion(t *testing.T) {
-	_, ok := deriveAssistantExperience("s1", "Task completed successfully", time.Now())
-	if !ok {
-		t.Error("should detect completion")
+// An agent's own status report is not a memory: it used to be queued for
+// review whenever it said "completed" or "resolved".
+func TestDeriveTurnExperiencesIgnoresTheAssistantsStatusReport(t *testing.T) {
+	for _, reply := range []string{"Task completed successfully", "Issue resolved", "검증까지 모두 완료했습니다"} {
+		got := deriveTurnExperiences("s1", turn{UserMessage: "run the checks", AssistantMessage: reply}, time.Now())
+		if len(got) != 0 {
+			t.Errorf("reply %q should not become a candidate, got %+v", reply, got)
+		}
 	}
-}
-
-func TestDeriveAssistantExperienceResolved(t *testing.T) {
-	_, ok := deriveAssistantExperience("s1", "Issue resolved", time.Now())
-	if !ok {
-		t.Error("should detect resolution")
+	got := deriveTurnExperiences("s1", turn{UserMessage: "I prefer tabs over spaces", AssistantMessage: "Noted, completed."}, time.Now())
+	if len(got) != 1 || got[0].Category != "preference" {
+		t.Errorf("a stated preference is still a candidate, got %+v", got)
 	}
 }
 
