@@ -110,6 +110,11 @@ func TestGoalHook_NotSatisfiedAutoContinues(t *testing.T) {
 	if !strings.Contains(input, "auto-continue") {
 		t.Fatalf("expected auto-continue payload, got %q", input)
 	}
+	// The agent is told why the judge is not satisfied, and that finished
+	// work wants a report rather than a repeat.
+	if !strings.Contains(input, "not satisfied yet: wip") || !strings.Contains(input, "do not repeat it") {
+		t.Fatalf("expected the judge's reason and the report hint, got %q", input)
+	}
 	sess, err := store.Get(sessionID)
 	if err != nil {
 		t.Fatalf("get: %v", err)
@@ -189,5 +194,18 @@ func TestGoalHook_RespectsConcurrentClear(t *testing.T) {
 	}
 	if input != "" {
 		t.Fatalf("expected stop when goal was cleared mid-turn, got %q", input)
+	}
+}
+
+func TestAutoContinueMessage(t *testing.T) {
+	if got := autoContinueMessage("  "); !strings.Contains(got, "take the next concrete step") || strings.Contains(got, "not satisfied yet") {
+		t.Fatalf("without a reason the plain message is used, got %q", got)
+	}
+	if got := autoContinueMessage("no verification\n results  shown."); !strings.Contains(got, "not satisfied yet: no verification results shown. If the work is done") {
+		t.Fatalf("the reason should be on one line, got %q", got)
+	}
+	long := autoContinueMessage(strings.Repeat("x", autoContinueReasonMaxLen+50))
+	if !strings.Contains(long, strings.Repeat("x", autoContinueReasonMaxLen)+"…") || strings.Contains(long, strings.Repeat("x", autoContinueReasonMaxLen+1)) {
+		t.Fatalf("a long reason should be cut at %d characters", autoContinueReasonMaxLen)
 	}
 }
