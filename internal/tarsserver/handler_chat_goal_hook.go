@@ -9,10 +9,30 @@ import (
 	"github.com/devlikebear/tars/internal/session"
 )
 
-// autoContinueInjectedMessage is the user-role message appended when the
-// agent loop is told to continue chasing an unmet goal. Kept short so it
-// does not bias the LLM's plan and is easy to recognize in transcripts.
-const autoContinueInjectedMessage = "(auto-continue: keep working toward the active session goal; take the next concrete step.)"
+// autoContinueMessage is the user-role message appended when the agent loop
+// is told to continue chasing an unmet goal. Kept short so it does not bias
+// the LLM's plan and is easy to recognize in transcripts.
+//
+// It carries the judge's reason. The judge reads only the request and the
+// assistant's last reply, so an agent that finished the work and ended its
+// turn without saying so was told "keep working" with no hint of what was
+// missing: it re-ran its last check until the repeated-call guard ended the
+// turn with an error. With the reason it can answer with the report.
+func autoContinueMessage(reason string) string {
+	reason = strings.Join(strings.Fields(reason), " ")
+	if reason == "" {
+		return "(auto-continue: keep working toward the active session goal; take the next concrete step.)"
+	}
+	if len(reason) > autoContinueReasonMaxLen {
+		reason = reason[:autoContinueReasonMaxLen] + "…"
+	}
+	return "(auto-continue: the goal judge is not satisfied yet: " + reason +
+		" If the work is done, do not repeat it: reply with what was done and the verification results. Otherwise take the next concrete step.)"
+}
+
+// autoContinueReasonMaxLen bounds the judge's reason inside the injected
+// message.
+const autoContinueReasonMaxLen = 400
 
 // buildGoalAwareTurnEndHook returns an agent.RunOptions.OnTurnEnd callback
 // that consults the goal judge after each natural stopping point. The hook
@@ -106,7 +126,7 @@ func buildGoalAwareTurnEndHook(deps chatHandlerDeps, state chatRunState, stream 
 		if stream != nil {
 			stream.goalEvent("auto_continue", verdict.Reason, updated.Goal)
 		}
-		return autoContinueInjectedMessage, nil
+		return autoContinueMessage(verdict.Reason), nil
 	}
 }
 
