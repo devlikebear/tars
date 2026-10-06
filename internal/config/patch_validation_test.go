@@ -41,6 +41,10 @@ func TestPatchPreservesPermissions(t *testing.T) {
 	if err := os.WriteFile(path, []byte("log_level: info\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
+	before, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := PatchYAML(path, map[string]any{"log_level": "debug"}); err != nil {
 		t.Fatal(err)
 	}
@@ -48,7 +52,7 @@ func TestPatchPreservesPermissions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Mode().Perm() != 0600 {
+	if info.Mode().Perm() != before.Mode().Perm() {
 		t.Fatal("permissions changed")
 	}
 	files, _ := filepath.Glob(filepath.Join(filepath.Dir(path), ".config-*"))
