@@ -5,6 +5,9 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -63,6 +66,40 @@ func TestCheckDoctorComputerUse_DefaultProbeReportsMissingBinary(t *testing.T) {
 	checkDoctorComputerUse(&report, cfg)
 	if len(report.checks) == 0 || report.checks[0].status != "warn" || !strings.Contains(report.checks[0].detail, "binary not found") {
 		t.Fatalf("checks = %+v", report.checks)
+	}
+}
+
+// TestCheckDoctorComputerUse_NeverExecsRealDriver proves TestMain's hermetic
+// probe override (network_guard_test.go) is actually wired in: it puts a
+// working "cua-driver" stub on PATH that records a marker file the instant
+// it runs, points CUA_DRIVER_PATH and the configured path at nothing so the
+// default probe's PATH fallback is what would find the stub, and asserts the
+// marker is never written. If checkDoctorComputerUse ever went back to
+// calling defaultDoctorComputerUseProbe() directly, the stub would run and
+// this test would fail.
+func TestCheckDoctorComputerUse_NeverExecsRealDriver(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX shell stub; Windows cua-driver lookup is covered in internal/computeruse")
+	}
+	binDir := t.TempDir()
+	marker := filepath.Join(t.TempDir(), "ran")
+	stub := filepath.Join(binDir, "cua-driver")
+	script := "#!/bin/sh\necho ran >> " + marker + "\nexit 0\n"
+	if err := os.WriteFile(stub, []byte(script), 0o755); err != nil {
+		t.Fatalf("write cua-driver stub: %v", err)
+	}
+	t.Setenv("PATH", binDir)
+	t.Setenv("CUA_DRIVER_PATH", "")
+
+	cfg := config.Config{ToolConfig: config.ToolConfig{ToolsComputerUseEnabled: true}}
+	var report doctorReport
+	checkDoctorComputerUse(&report, cfg)
+
+	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+		t.Fatalf("cua-driver stub was executed (marker stat err = %v); test hermeticity is broken", err)
+	}
+	if len(report.checks) == 0 || report.checks[0].status != "warn" || !strings.Contains(report.checks[0].detail, "binary not found") {
+		t.Fatalf("checks = %+v, want warn containing %q", report.checks, "binary not found")
 	}
 }
 
