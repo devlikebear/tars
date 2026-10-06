@@ -139,6 +139,9 @@ test('the folder picker is Korean, errors included', async ({ page }) => {
   await pane.getByRole('button', { name: '+', exact: true }).click()
   const picker = pane.locator('.pick-overlay')
   const path = picker.getByRole('textbox', { name: '폴더 경로' })
+  // Opening the picker starts an initial home browse. Wait for it to
+  // settle before submitting a path, rather than racing its loading state.
+  await expect(picker.locator('.pick-toolbar button').first()).toBeEnabled()
   await path.fill(root)
   await path.press('Enter')
   await expect(picker.getByRole('button', { name: '숨김 폴더 (1)' })).toBeVisible()

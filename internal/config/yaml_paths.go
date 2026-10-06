@@ -177,7 +177,9 @@ func normalizePatchedConfigValue(key string, value any) any {
 	}
 	var cfg Config
 	field.apply(&cfg, yamlValueString(value))
-	return extractValue(key, cfg)
+	result := extractValue(key, cfg)
+
+	return result
 }
 
 func setConfigYAMLValue(dst map[string]any, key string, value any) {
@@ -273,17 +275,8 @@ func isAliasKeyedConfigField(resolvedKey string) bool {
 	return resolvedKey == "llm_providers"
 }
 
-// replaceTopMergeInner authoritatively replaces dst's top-level key
-// set with src's, but for keys present in both where both values are
-// maps, it merges inner keys (preserving inner fields like api_key
-// that the patch omits). Top-level keys present in dst but not in src
-// are deleted.
-//
-// Used for "alias-keyed" config fields (e.g. llm_providers) where the
-// editor sends the full authoritative alias map: aliases not in the
-// patch should be removed from disk, but per-alias fields not in the
-// patch (such as api_key when the user opts to keep the existing
-// credential) should still be preserved.
+// replaceTopMergeInner replaces the full provider alias/object set.
+// Only an omitted api_key survives from a matching existing alias.
 func replaceTopMergeInner(dst, src map[string]any) {
 	for k := range dst {
 		if _, ok := src[k]; !ok {
@@ -299,7 +292,12 @@ func replaceTopMergeInner(dst, src map[string]any) {
 		srcInner, srcIsMap := srcVal.(map[string]any)
 		dstInner, dstIsMap := dstVal.(map[string]any)
 		if srcIsMap && dstIsMap {
-			maps.Copy(dstInner, srcInner)
+			if _, supplied := srcInner["api_key"]; !supplied {
+				if secret, exists := dstInner["api_key"]; exists {
+					srcInner["api_key"] = secret
+				}
+			}
+			dst[k] = srcInner
 		} else {
 			dst[k] = srcVal
 		}

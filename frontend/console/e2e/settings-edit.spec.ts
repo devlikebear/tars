@@ -1,0 +1,20 @@
+import { expect, test } from '@playwright/test'
+
+test('settings edits and saves individual fields without wizard', async ({ page, request }) => {
+  await page.addInitScript(() => localStorage.setItem('tars_console_locale', 'en'))
+  await page.goto('/console/config')
+  await page.getByRole('textbox', { name: 'Search settings' }).fill('log_level')
+  const original = await request.get('/v1/admin/config/schema').then(r => r.json())
+  const card = page.locator('.quick-start-card').filter({ hasText: 'Log Level' })
+  await expect(card).toBeVisible()
+  await card.locator('select').selectOption('debug')
+  await page.locator('.page-header-right').getByRole('button', { name: 'Save', exact: true }).click()
+  await expect(page.getByText('Saved; restart required to apply. Environment overrides take precedence.').first()).toBeVisible()
+  const saved = await request.get('/v1/admin/config/schema').then(r => r.json())
+  expect(saved.values.log_level).toBe('debug')
+  expect(saved.runtime_values.log_level).toBe(original.runtime_values.log_level)
+  expect(saved.pending_restart_keys).toContain('log_level')
+  const invalid = await request.patch('/v1/admin/config/values', { data: { updates: { log_level: true } } })
+  expect(invalid.status()).toBe(400)
+  await request.patch('/v1/admin/config/values', { data: { updates: { log_level: original.values.log_level } } })
+})

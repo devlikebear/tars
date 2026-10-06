@@ -2,6 +2,7 @@ package tarsserver
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"os"
 	"os/exec"
@@ -69,13 +70,19 @@ func newConfigAPIHandler(configPath string, cfg config.Config, workspaceDir stri
 	return mux
 }
 
+var configRuntimeStartedAt = time.Now().UTC().Format(time.RFC3339Nano)
+
 type configSchemaResponse struct {
-	Path            string                            `json:"path"`
-	UpdatedAt       string                            `json:"updated_at,omitempty"`
-	Fields          []config.FieldMeta                `json:"fields"`
-	Values          map[string]any                    `json:"values"`
-	EffectiveValues map[string]any                    `json:"effective_values,omitempty"`
-	EnvOverrides    map[string]config.EnvOverrideMeta `json:"env_overrides,omitempty"`
+	RuntimeStartedAt   string                            `json:"runtime_started_at"`
+	RuntimeValues      map[string]any                    `json:"runtime_values"`
+	PendingRestartKeys []string                          `json:"pending_restart_keys"`
+	ProcessID          int                               `json:"process_id"`
+	Path               string                            `json:"path"`
+	UpdatedAt          string                            `json:"updated_at,omitempty"`
+	Fields             []config.FieldMeta                `json:"fields"`
+	Values             map[string]any                    `json:"values"`
+	EffectiveValues    map[string]any                    `json:"effective_values,omitempty"`
+	EnvOverrides       map[string]config.EnvOverrideMeta `json:"env_overrides,omitempty"`
 }
 
 func handleGetConfigSchema(w http.ResponseWriter, configPath string, cfg config.Config, workspaceDir string) {
@@ -104,6 +111,9 @@ func handleGetConfigSchema(w http.ResponseWriter, configPath string, cfg config.
 
 	// Mask sensitive values
 	schema := config.Schema()
+	runtimeValues := config.ConfigToMap(cfg)
+	pendingKeys := config.ConfigMapsDiffer(runtimeValues, effectiveValues)
+	maskSensitiveConfigValues(schema, runtimeValues)
 	maskSensitiveConfigValues(schema, values)
 	maskSensitiveConfigValues(schema, effectiveValues)
 
@@ -113,6 +123,8 @@ func handleGetConfigSchema(w http.ResponseWriter, configPath string, cfg config.
 	}
 
 	writeJSON(w, http.StatusOK, configSchemaResponse{
+		RuntimeStartedAt: configRuntimeStartedAt,
+		RuntimeValues:    runtimeValues, PendingRestartKeys: pendingKeys, ProcessID: os.Getpid(),
 		Path:            configPath,
 		UpdatedAt:       updatedAt,
 		Fields:          schema,
@@ -123,6 +135,11 @@ func handleGetConfigSchema(w http.ResponseWriter, configPath string, cfg config.
 }
 
 func maskSensitiveConfigValues(schema []config.FieldMeta, values map[string]any) {
+	for _, provider := range anyProviderMaps(values["llm_providers"]) {
+		if key, ok := provider["api_key"].(string); ok && key != "" {
+			provider["api_key"] = maskString(key)
+		}
+	}
 	sensitiveKeys := map[string]bool{}
 	for _, f := range schema {
 		if f.Sensitive {
@@ -136,6 +153,13 @@ func maskSensitiveConfigValues(schema []config.FieldMeta, values map[string]any)
 			}
 		}
 	}
+}
+
+func anyProviderMaps(value any) map[string]map[string]any {
+	if providers, ok := value.(map[string]map[string]any); ok {
+		return providers
+	}
+	return nil
 }
 
 func maskString(s string) string {
@@ -165,6 +189,11 @@ func handlePatchConfigValues(w http.ResponseWriter, r *http.Request, configPath 
 	}
 
 	if err := config.PatchYAML(configPath, req.Updates); err != nil {
+		var inputErr *config.PatchValidationError
+		if errors.As(err, &inputErr) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
 		logger.Error().Err(err).Str("path", configPath).Msg("failed to patch config")
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return

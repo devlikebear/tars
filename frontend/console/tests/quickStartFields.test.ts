@@ -106,11 +106,8 @@ test('Settings renders the Quick Start panel and LLM connection action', () => {
   assert.match(configSource, /\$t\.providerTest\.button/)
 })
 
-test('Quick Start routes structured provider editing to the wizard, not local editors (#931)', () => {
-  // Provider/tier structured editors moved to the onboarding wizard reentry;
-  // Config.svelte only deep links there. Other json fields get a YAML-key hint.
-  assert.match(configSource, /jsonWizardLink/)
-  assert.match(configSource, /onboarding\?reentry=1&section=provider/)
-  assert.match(configSource, /onboarding\?reentry=1&section=tiers/)
-  assert.doesNotMatch(configSource, /openEmbodimentProviderEditor|EMBODIMENT_PROVIDER_PRESETS/)
+test('Settings edits structured providers locally without requiring wizard', () => {
+  assert.match(configSource, /JSON\.parse\(editValue\)/)
+  assert.match(configSource, /startEdit\(field\)/)
+  assert.doesNotMatch(configSource, /openJSONWizard/)
 })

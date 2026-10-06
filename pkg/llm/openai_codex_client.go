@@ -108,8 +108,8 @@ func newOpenAICodexClientWithConfig(
 	if mode == "" {
 		mode = "oauth"
 	}
-	if mode != "oauth" && mode != "api-key" {
-		return nil, fmt.Errorf("%s unsupported auth mode: %s", openAICodexProviderLabel, authMode)
+	if err := ValidateProviderAuthMode("openai-codex", mode); err != nil {
+		return nil, err
 	}
 
 	client := &OpenAICodexClient{

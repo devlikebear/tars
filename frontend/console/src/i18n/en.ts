@@ -650,6 +650,19 @@ export const en = {
     button: 'Re-run setup wizard →',
   },
   config: {
+    confirmRestart: 'Confirm restart',
+    reconnect: 'Reconnect',
+
+    searchSettings: 'Search settings',
+    sectionSettings: 'Section',
+    allSections: 'All sections',
+    savedPending: 'Saved; restart required to apply. Environment overrides take precedence.',
+    applied: 'Runtime matches effective configuration.',
+    saveApply: 'Save and apply',
+    reconnecting: 'Restart requested; checking reconnection and runtime settings…',
+    reconnectFailed: 'Could not confirm restart. Check the server, address and authentication; retry reconnecting or restart manually. Saved settings are retained.',
+    invalidValue: 'Invalid value',
+
     pageTitle: 'Settings',
     save: 'Save',
     saving: 'Saving...',

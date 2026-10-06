@@ -335,6 +335,7 @@ pkg/llm func ToolChoiceNone
 pkg/llm func ToolChoiceRequired
 pkg/llm func ToolChoiceSpecific
 pkg/llm func UpstreamSessionIDFromError
+pkg/llm func ValidateProviderAuthMode
 pkg/llm func WithSelectionMetadata
 pkg/llm method AnthropicClient.Ask
 pkg/llm method AnthropicClient.Chat

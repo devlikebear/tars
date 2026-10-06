@@ -18,7 +18,7 @@
 </div>
 
 > [!IMPORTANT]
-> **Development resumed.** TARS is no longer archived. Latest tagged release is `v0.50.0` (2026-10-06). The narrower console navigation described below shipped in `v0.36.0`. This README tracks `main`; see the [changelog](CHANGELOG.md) for tagged-release behavior.
+> **Development resumed.** TARS is no longer archived. Latest tagged release is `v0.51.0` (2026-10-06). The narrower console navigation described below shipped in `v0.36.0`. This README tracks `main`; see the [changelog](CHANGELOG.md) for tagged-release behavior.
 
 TARS is a local agent runtime for people who want an inspectable AI workbench without handing workspace control to a hosted service. It packages a browser console, API server, CLI, background jobs, memory, and extension system into one Go binary.
 
@@ -35,7 +35,7 @@ The name comes from the TARS in *Interstellar* — practical, direct, dependable
 
 | | OpenClaw | Hermes Agent | TARS |
 |---|---|---|---|
-| **Release used** | Stable `v2026.7.1` | Stable `v0.19.1` (`v2026.7.30`) | `v0.50.0` (latest tagged release) |
+| **Release used** | Stable `v2026.7.1` | Stable `v0.19.1` (`v2026.7.30`) | `v0.51.0` (latest tagged release) |
 | **Packaging** | TypeScript Gateway plus web/native apps and plugins | Python agent/gateway plus TUI, web, and desktop surfaces | Go single binary with embedded browser console and CLI |
 | **Delegation / harnesses** | Native subagents, Codex runtime, and ACP-backed external harness sessions | Isolated `delegate_task` children, live transcripts, MoA, and coding-runtime adapters | Native Agent Runtime plus an opt-in bounded Claude Code execution adapter, model tiers, tool policy, depth limits, and experimental consensus |
 | **Durable async work** | Background-task ledger plus SQLite-backed automations | Durable Kanban/goals, delegated-result recovery, and delivery-obligation ledger | SQLite Work Ledger plus a dependency scheduler with leases, retries, budgets, and operator escalation |
@@ -157,7 +157,7 @@ llm:
     agentruntime_planner: heavy
 ```
 
-System roles such as chat, pulse, reflection, compaction, cleanup, and agent runtime agents map to tiers. Background work defaults to `light`, Chat can recommend a tier before the first expensive turn, and runtime logs record the resolved `role`, `tier`, `provider`, `model`, and `source` for traceability. Tier bindings are edited through the onboarding wizard — the Settings Quick Start card for `llm.tiers` reports readiness and hands off to it with "Edit in wizard".
+System roles such as chat, pulse, reflection, compaction, cleanup, and agent runtime agents map to tiers. Background work defaults to `light`, Chat can recommend a tier before the first expensive turn, and runtime logs record the resolved `role`, `tier`, `provider`, `model`, and `source` for traceability. Tier bindings and providers can be edited directly in Settings; the onboarding wizard remains available for guided setup. Search or filter settings, edit typed fields or advanced JSON, then choose Save or Save and apply. Saved YAML, environment-effective values and running values are shown separately. Applying changes that require a server restart asks for explicit confirmation and checks the new runtime after reconnecting. Masked or omitted provider credentials are preserved; environment overrides remain authoritative.
 
 ### Background Surfaces
 
@@ -455,6 +455,6 @@ cd frontend/console && npm run check && npm run test:ci
 
 ## Status
 
-**Development resumed.** TARS is no longer archived and development has resumed. Latest tagged release is `v0.50.0`. TARS is pre-1.0; see the [stability policy](docs/public-agent-packages.md#stability-policy) for the public `pkg/` API guarantees.
+**Development resumed.** TARS is no longer archived and development has resumed. Latest tagged release is `v0.51.0`. TARS is pre-1.0; see the [stability policy](docs/public-agent-packages.md#stability-policy) for the public `pkg/` API guarantees.
 
 Module path: `github.com/devlikebear/tars`. MIT licensed. Contributions are welcome; see [Contributing](CONTRIBUTING.md).

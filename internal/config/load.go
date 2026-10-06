@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"gopkg.in/yaml.v3"
 )
@@ -72,9 +73,13 @@ func SaveRaw(path string, content []byte) error {
 	return os.WriteFile(path, content, 0644)
 }
 
+var patchMu sync.Mutex
+
 // PatchYAML reads the YAML file at path, merges the given key-value updates,
-// and writes the result back. Unknown keys are ignored.
+// and atomically writes the result back. Unknown keys are rejected.
 func PatchYAML(path string, updates map[string]any) error {
+	patchMu.Lock()
+	defer patchMu.Unlock()
 	if path == "" {
 		return fmt.Errorf("config path is empty")
 	}
@@ -82,38 +87,41 @@ func PatchYAML(path string, updates map[string]any) error {
 	// Read existing content or start fresh
 	existing := map[string]any{}
 	raw, err := os.ReadFile(path)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
 	if err == nil {
-		_ = yaml.Unmarshal(raw, &existing)
+		if err := yaml.Unmarshal(raw, &existing); err != nil {
+			return err
+		}
+	}
+	if existing == nil {
+		existing = map[string]any{}
 	}
 
 	// Merge updates (only known keys)
 	for key, value := range updates {
 		resolvedKey := normalizeConfigUpdateKey(key, value)
 		if resolvedKey == "" {
-			continue
+			return &PatchValidationError{Message: "unknown config key: " + key}
 		}
-		patchedValue := normalizePatchedConfigValue(resolvedKey, value)
-		// For two-level map values (e.g. llm_providers: alias → fields),
-		// merge the patch into the existing value BEFORE deleting it so
-		// that fields the patch omits (notably api_key, which the wizard
-		// drops when the user opts to keep the existing credential) are
-		// preserved on disk.
-		//
-		// Alias-keyed fields (llm_providers) authoritatively replace the
-		// top-level alias set: aliases present on disk but not in the
-		// patch are removed. This keeps rename and delete operations
-		// from the editor consistent with what the user sees. Inner
-		// fields still merge so api_key omission still preserves the
-		// on-disk credential. Other map-shaped fields keep the additive
-		// merge.
-		if newMap := anyToStringMap(patchedValue); newMap != nil {
-			if existingMap := readConfigYAMLMap(existing, resolvedKey); existingMap != nil {
-				if isAliasKeyedConfigField(resolvedKey) {
-					replaceTopMergeInner(existingMap, newMap)
-				} else {
+		if err := validatePatchValue(resolvedKey, value); err != nil {
+			return err
+		}
+		var patchedValue any
+		if resolvedKey == "llm_providers" {
+			providers, err := mergeRawProviderEdit(existing, value)
+			if err != nil {
+				return err
+			}
+			patchedValue = providers
+		} else {
+			patchedValue = normalizePatchedConfigValue(resolvedKey, value)
+			if newMap := anyToStringMap(patchedValue); newMap != nil {
+				if existingMap := readConfigYAMLMap(existing, resolvedKey); existingMap != nil {
 					nestedMapMerge(existingMap, newMap)
+					patchedValue = existingMap
 				}
-				patchedValue = existingMap
 			}
 		}
 		deleteConfigYAMLRepresentations(existing, resolvedKey)
@@ -132,7 +140,10 @@ func PatchYAML(path string, updates map[string]any) error {
 			return fmt.Errorf("create config dir %s: %w", dir, err)
 		}
 	}
-	return os.WriteFile(path, out, 0644)
+	if err := validateCandidate(existing); err != nil {
+		return err
+	}
+	return atomicConfigWrite(path, out)
 }
 
 func ResolveConfigPath(raw string) string {
