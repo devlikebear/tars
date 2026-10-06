@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/devlikebear/tars/internal/focuspipeline"
+	"github.com/devlikebear/tars/internal/ops"
 	"github.com/devlikebear/tars/internal/serverauth"
 	"github.com/devlikebear/tars/internal/session"
 	"github.com/rs/zerolog"
@@ -56,8 +57,12 @@ type focusDriver struct {
 	// The PR stages (focus_pr_poll.go): the gh probe, how often it runs,
 	// how a finished pipeline's worktree ends, and where attention-worthy
 	// changes are announced.
-	probe          focusPRProber
-	prPoll         time.Duration
+	probe  focusPRProber
+	prPoll time.Duration
+	// goalTick is how often the goal watcher looks; audit records its
+	// decisions in the ops automation audit (nil records none).
+	goalTick       time.Duration
+	audit          func(ops.AutomationAuditEntry)
 	finishWorktree func(ctx context.Context, sessionID, action string) error
 	notify         func(context.Context, notificationEvent)
 	// localBranch is the branch checked out in a folder; discardCheck says
@@ -71,7 +76,11 @@ type focusDriver struct {
 	qaBusy map[string]bool
 	// pollers holds each session's running PR poller.
 	pollers map[string]*focusPoller
-	wg      sync.WaitGroup
+	// goals holds the sessions whose pipeline is in goal mode
+	// (focus_goal.go); goalWatching says their watcher runs.
+	goals        map[string]bool
+	goalWatching bool
+	wg           sync.WaitGroup
 }
 
 // focusTurnRunner runs one turn on a session (runServerChatTurn in the
@@ -206,6 +215,8 @@ func newFocusDriver(logger zerolog.Logger) *focusDriver {
 		now:      time.Now,
 		idlePoll: 100 * time.Millisecond,
 		prPoll:   focusPRPollInterval,
+		goalTick: focusGoalTick,
+		goals:    map[string]bool{},
 		runs:     map[string]*focusRun{},
 		qaBusy:   map[string]bool{},
 		pollers:  map[string]*focusPoller{},
@@ -244,6 +255,9 @@ func (d *focusDriver) bind(deps chatHandlerDeps) {
 	// Pipelines a restart left waiting on PR facts poll again.
 	if n := d.resumePRPolls(); n > 0 {
 		d.logger.Info().Int("count", n).Msg("focus: resumed PR polls")
+	}
+	if n := d.resumeGoals(); n > 0 {
+		d.logger.Info().Int("count", n).Msg("focus: resumed pipelines in goal mode")
 	}
 }
 
@@ -556,7 +570,7 @@ func focusVerifyCommands(p focuspipeline.Pipeline) []string {
 		return nil
 	}
 	lists := [][]string{p.Plan.Verify}
-	if p.Current == focuspipeline.StageReview {
+	if p.CurrentKind() == focuspipeline.StageReview {
 		lists = append(lists, p.Plan.E2E)
 	}
 	var commands []string

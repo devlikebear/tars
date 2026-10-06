@@ -13,11 +13,12 @@
     FocusDecision,
     FocusFinding,
     FocusGateAction,
+    FocusPipeline,
     FocusPlan,
     FocusPRDraft,
     FocusReport,
   } from '../../lib/types'
-  import { excerptLines, reportCardText } from '../../lib/focus'
+  import { excerptLines, reportCardText, stageKindOf, stageLabel } from '../../lib/focus'
   import { mergeSummary, prDraftOf } from '../../lib/focusPR'
   import FocusChangeCard from './FocusChangeCard.svelte'
   import FocusMergeSummary from './FocusMergeSummary.svelte'
@@ -33,9 +34,14 @@
     onDecide: (card: FocusCard, decision: string) => void
     // Opens the card's Q&A drawer; absent hides a finding's Ask.
     onAsk?: () => void
+    // The card's pipeline: a template's stages and their names.
+    pipeline?: FocusPipeline | null
   }
 
-  let { card, openGate, busy, onGate, onDecide, onAsk }: Props = $props()
+  let { card, openGate, busy, onGate, onDecide, onAsk, pipeline = null }: Props = $props()
+
+  // A template's review stage ("revise", "check") blocks like review.
+  let isReview = $derived(stageKindOf(pipeline?.stages, card.stage) === 'review')
 
   let answer = $state('')
   let asking = $state(false)
@@ -85,7 +91,8 @@
     if (b.reason === 'interrupted') return $t.focus.gate.interruptedTitle
     if (b.reason === 'turn_failed') return $t.focus.gate.turnFailedTitle
     if (b.reason === 'pr_missing' || b.reason === 'pr_closed' || b.reason === 'not_merged' || b.reason === 'pr_fix_limit') return $t.focus.gate.prBlockedTitle
-    return card.stage === 'review' ? $t.focus.gate.reviewBlockedTitle : $t.focus.gate.blockedTitle
+    if (pipeline?.template) return $t.focus.gate.stageBlockedTitle(stageLabel(pipeline, card.stage, $t.focus))
+    return isReview ? $t.focus.gate.reviewBlockedTitle : $t.focus.gate.blockedTitle
   }
 
   function blockedReason(b: FocusBlocked): string {
@@ -95,7 +102,7 @@
       case 'turn_failed':
         return $t.focus.gate.blockedReason.turn_failed
       case 'limit':
-        return card.stage === 'review' ? $t.focus.gate.blockedReason.reviewLimit(b.iteration, b.limit) : $t.focus.gate.blockedReason.limit(b.iteration, b.limit)
+        return isReview ? $t.focus.gate.blockedReason.reviewLimit(b.iteration, b.limit) : $t.focus.gate.blockedReason.limit(b.iteration, b.limit)
       case 'repeated':
         return $t.focus.gate.blockedReason.repeated
       case 'no_progress':
@@ -180,6 +187,7 @@
         <FocusPlanGate
           cardId={card.id}
           plan={asPlan(card.payload)}
+          {pipeline}
           open={gateOpen && openGate === 'plan'}
           {busy}
           onApprove={(edits) => onGate('plan', 'approve', undefined, edits)}

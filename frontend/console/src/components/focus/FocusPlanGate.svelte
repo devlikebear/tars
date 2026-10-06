@@ -5,8 +5,8 @@
   // edited plan as `edits`.
   import { untrack } from 'svelte'
   import { t } from '../../i18n'
-  import { planEdits } from '../../lib/focus'
-  import type { FocusPlan, FocusStageId } from '../../lib/types'
+  import { planEdits, stageLabel } from '../../lib/focus'
+  import type { FocusPipeline, FocusPlan, FocusStageId } from '../../lib/types'
 
   interface Props {
     // The gate card: a new card (a revised plan) resets the edits; the same
@@ -19,11 +19,14 @@
     onApprove: (edits: FocusPlan) => void
     onRequestChanges: (note: string) => void
     onStop: () => void
+    // The pipeline: the stages of its template can be skipped, plan cannot.
+    pipeline?: FocusPipeline | null
   }
 
-  let { cardId, plan, open, busy, onApprove, onRequestChanges, onStop }: Props = $props()
+  let { cardId, plan, open, busy, onApprove, onRequestChanges, onStop, pipeline = null }: Props = $props()
 
-  const optionalStages: FocusStageId[] = ['build', 'review', 'pr', 'pr_review', 'merge']
+  const devStages: FocusStageId[] = ['build', 'review', 'pr', 'pr_review', 'merge']
+  let optionalStages = $derived(pipeline ? pipeline.stages.map((s) => s.id).filter((id) => id !== 'plan') : devStages)
 
   let skipped = $state(new Set<string>())
   let verify = $state('')
@@ -87,7 +90,7 @@
         {#each optionalStages as stage (stage)}
           <label class="stage-toggle" class:off={skipped.has(stage)}>
             <input type="checkbox" checked={!skipped.has(stage)} disabled={!open || busy} onchange={() => toggle(stage)} data-testid={`focus-plan-stage-${stage}`} />
-            {$t.focus.stages[stage]}
+            {stageLabel(pipeline, stage, $t.focus)}
           </label>
         {/each}
       </div>

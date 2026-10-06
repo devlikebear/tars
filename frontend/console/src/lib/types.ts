@@ -2446,7 +2446,10 @@ export type CodexUsageResponse = {
 // --- Focus mode (docs/decisions/focus-mode.md) ---
 // Mirrors internal/focuspipeline's JSON.
 
-export type FocusStageId = 'plan' | 'build' | 'review' | 'pr' | 'pr_review' | 'merge'
+// The development stages. Every stage runs with one of them as its kind; a
+// template's own stages (a novel's "draft") keep their own id.
+export type FocusStageKind = 'plan' | 'build' | 'review' | 'pr' | 'pr_review' | 'merge'
+export type FocusStageId = FocusStageKind | (string & {})
 export type FocusStageStatus = 'pending' | 'active' | 'done' | 'skipped' | 'blocked'
 export type FocusCardKind = 'gate' | 'decision' | 'finding' | 'failure' | 'report' | 'change' | 'notice'
 export type FocusCardState = 'unseen' | 'seen' | 'decided'
@@ -2460,9 +2463,39 @@ export type FocusStage = {
   iteration: number
   limit?: number
   turns?: number
+  // A template's stage: the behaviour it runs with (absent = its id) and
+  // the template's name for it.
+  kind?: FocusStageKind
+  label?: string
 }
 
-export type FocusPlanTask = { title: string; done: string }
+// stage is the work stage a task belongs to, in a template with several.
+export type FocusPlanTask = { title: string; done: string; stage?: FocusStageId }
+
+// A pipeline's shape (GET /v1/focus/templates): the built-in ones and the
+// workspace's focus-templates/*.yaml.
+export type FocusTemplateStage = { id: FocusStageId; kind?: FocusStageKind; label?: string }
+export type FocusTemplate = {
+  id: string
+  name: string
+  description?: string
+  stages: FocusTemplateStage[]
+  builtin: boolean
+  source?: string
+}
+export type FocusTemplateList = { templates: FocusTemplate[]; diagnostics: { source: string; error: string }[] }
+
+// Goal mode: the server decides every gate and pushes the pipeline to its
+// end; pushes of max_pushes are the retries it has spent.
+export type FocusGoalMode = {
+  enabled: boolean
+  pushes: number
+  max_pushes: number
+  decisions?: number
+  started_at?: string
+  ended_at?: string
+  end_reason?: 'finished' | 'stopped' | 'exhausted' | 'pr_closed' | 'cancelled' | 'disabled'
+}
 
 export type FocusPlan = {
   goal: string
@@ -2618,6 +2651,9 @@ export type FocusPipeline = {
   kind?: string
   // The first turn when it says more than the goal.
   kickoff?: string
+  // The template the stages came from; absent is the development one.
+  template?: string
+  goal_mode?: FocusGoalMode
 }
 
 export type FocusListItem = {
@@ -2628,6 +2664,9 @@ export type FocusListItem = {
   open_gate: FocusGate
   needs_input: number
   updated_at: string
+  current_label?: string
+  template?: string
+  goal_mode?: boolean
 }
 
 // The release train (GET /v1/focus/release-train): pipelines finished since

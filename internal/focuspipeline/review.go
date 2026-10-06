@@ -195,8 +195,8 @@ func (p Pipeline) reviewVerificationPassed(turn int, now time.Time) (Pipeline, A
 		stage := p.advance()
 		return p, Action{Kind: ActionSendTurn, Prompt: reviewDonePrompt(stage)}, nil
 	}
-	s := p.stageRef(StageReview)
-	limit := p.stageLimit(StageReview)
+	s := p.stageRef(p.Current)
+	limit := p.stageLimit(p.Current)
 	if s.Iteration >= limit {
 		p.block(BlockedLimit, nil, turn, now)
 		return p, noAction, nil
@@ -208,9 +208,9 @@ func (p Pipeline) reviewVerificationPassed(turn int, now time.Time) (Pipeline, A
 }
 
 func (p Pipeline) reviewVerificationFailed(v Verification, turn int, now time.Time) (Pipeline, Action, error) {
-	s := p.stageRef(StageReview)
+	s := p.stageRef(p.Current)
 	fact := failureFact(v, s.Iteration)
-	limit := p.stageLimit(StageReview)
+	limit := p.stageLimit(p.Current)
 	switch {
 	case p.LastFailure != nil && p.LastFailure.key() == fact.key():
 		p.block(BlockedRepeated, &fact, turn, now)
@@ -248,16 +248,16 @@ func reviewRetry(p *Pipeline, action string) string {
 		p.Review.Fixing = true
 		return ""
 	}
-	s, _ := p.Stage(StageReview)
-	return reviewAgainRetryPrompt(s.Iteration, p.stageLimit(StageReview))
+	s, _ := p.Stage(p.Current)
+	return reviewAgainRetryPrompt(s.Iteration, p.stageLimit(p.Current))
 }
 
 func reviewAgainRetryPrompt(iteration, limit int) string {
 	return fmt.Sprintf("Try once more. Review the changes again (round %d of %d) and report findings.", iteration, limit)
 }
 
-func blockedTitle(stage StageID) string {
-	if stage == StageReview {
+func blockedTitle(kind StageID) string {
+	if kind == StageReview {
 		return ReviewBlockedTitle
 	}
 	return BlockedTitle
@@ -275,7 +275,11 @@ func reviewGuidance(p Pipeline) (instructions, blocks string) {
 		return "Triage in progress: the developer is deciding the reported findings one at a time. " +
 			"Answer the developer's question only; do not edit files and do not report findings in this turn.", ""
 	}
+	stage, _ := p.Stage(p.Current)
 	if p.Review.Fixing {
+		if stage.FixInstructions != "" {
+			return stage.FixInstructions + " Fix only the findings listed in this message (or the verification failure it quotes).", reportBlock()
+		}
 		return "Fix only the findings listed in this message (or the verification failure it quotes); " +
 				"do not change anything else. Run the verification commands yourself before you finish.",
 			reportBlock()
@@ -284,11 +288,18 @@ func reviewGuidance(p Pipeline) (instructions, blocks string) {
 	if base := strings.TrimSpace(p.BaseCommit); base != "" {
 		what = fmt.Sprintf("Review the diff since the stage started (`git diff %s...HEAD`, and `git diff %s` for changes not yet committed)", base, base)
 	}
-	return what + "; do not edit files in this turn. " +
-			"Report every finding in the <focus-findings> block (an empty array when there are none). " +
+	const report = "Report every finding in the <focus-findings> block (an empty array when there are none). "
+	if stage.Instructions != "" {
+		// A template's review: its own instructions say what a finding is.
+		return stage.Instructions + " Do not edit files in this turn. " + report +
+				"Each finding needs its file and line; put what is wrong and why in \"scenario\"." +
+				dismissedList(p.Review.Dismissed),
+			p.requiredBlocks(StageReview)
+	}
+	return what + "; do not edit files in this turn. " + report +
 			"Each finding needs its file and line and a concrete failure scenario (inputs or state → wrong output or crash)." +
 			dismissedList(p.Review.Dismissed),
-		requiredBlocks(StageReview)
+		p.requiredBlocks(StageReview)
 }
 
 func dismissedList(dismissed []DismissedFinding) string {

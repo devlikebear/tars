@@ -46,6 +46,7 @@ func (d *focusDriver) bindPR(tooling chatToolingOptions) {
 	d.localBranch = gitLocalBranch
 	d.discardCheck = gitDiscardCheck
 	d.notify = tooling.Notify
+	d.audit = auditTo(tooling.OpsManager)
 	if c := tooling.Worktrees; c != nil {
 		d.finishWorktree = func(ctx context.Context, sessionID, action string) error {
 			_, err := c.finish(ctx, sessionID, action)

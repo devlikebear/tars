@@ -8,8 +8,8 @@ import (
 // Finished reports whether a pipeline ran to its end, which makes it part
 // of the next release (ADR §9 P5): no stage is still active, blocked
 // (stopped or over its limit), or pending, and its last stage is done —
-// merge, or, for a plan that leaves merge out, the last planned stage in
-// StageOrder.
+// merge, or, for a plan that leaves merge out (or a template without it),
+// the last planned stage.
 func Finished(p Pipeline) bool {
 	for _, s := range p.Stages {
 		switch s.Status {
@@ -27,13 +27,10 @@ func lastStageDone(p Pipeline) bool {
 	if p.Plan == nil {
 		return false
 	}
-	for i := len(StageOrder) - 1; i >= 0; i-- {
-		id := StageOrder[i]
-		if !slices.Contains(p.Plan.Stages, id) {
-			continue
+	for i := len(p.Stages) - 1; i >= 0; i-- {
+		if s := p.Stages[i]; slices.Contains(p.Plan.Stages, s.ID) {
+			return s.Status == StatusDone
 		}
-		s, ok := p.Stage(id)
-		return ok && s.Status == StatusDone
 	}
 	return false
 }

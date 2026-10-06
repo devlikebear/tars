@@ -10,6 +10,10 @@
 //     gate actions
 //   - guidance.go the stage instructions appended to each focus turn
 //   - store.go   <workspace>/sessions/<id>.pipeline.json
+//   - template.go the stage lists a pipeline can start from (development,
+//     writing, research, and the workspace's own)
+//   - goal.go    goal mode: the fixed policy that decides the gates when
+//     nobody is at them
 //
 // Stage transitions are decided by facts (blocks, gate actions, and from P2
 // on verification exit codes) and never by asking the model whether a stage
@@ -19,6 +23,7 @@ package focuspipeline
 import (
 	"encoding/json"
 	"maps"
+	"strings"
 	"time"
 )
 
@@ -38,7 +43,9 @@ const (
 	StageMerge    StageID = "merge"
 )
 
-// StageOrder is the fixed order of every pipeline's stages.
+// StageOrder is the order of the development template's stages, the
+// default every pipeline had before templates (template.go). A stage of
+// another template keeps one of these as its Kind.
 var StageOrder = []StageID{StagePlan, StageBuild, StageReview, StagePR, StagePRReview, StageMerge}
 
 // StageStatus is where a stage stands.
@@ -93,6 +100,24 @@ type Stage struct {
 	// Turns counts the focus turns completed in the stage (build's
 	// no-progress cap).
 	Turns int `json:"turns,omitempty"`
+	// Kind is the behaviour the stage runs with (template.go): one of the
+	// development stages. Empty means the stage's own id, which is every
+	// pipeline from before templates.
+	Kind StageID `json:"kind,omitempty"`
+	// Label is the template's name for the stage, shown as written.
+	Label string `json:"label,omitempty"`
+	// Instructions replace the kind's default stage instructions, and
+	// FixInstructions a review-kind stage's fix-turn instructions.
+	Instructions    string `json:"instructions,omitempty"`
+	FixInstructions string `json:"fix_instructions,omitempty"`
+}
+
+// KindOf is the behaviour the stage runs with: its Kind, or its id.
+func (s Stage) KindOf() StageID {
+	if s.Kind != "" {
+		return s.Kind
+	}
+	return s.ID
 }
 
 // Card is one item of the focus deck.
@@ -127,6 +152,9 @@ type Plan struct {
 type PlanTask struct {
 	Title string `json:"title"`
 	Done  string `json:"done"`
+	// Stage is the work stage the task belongs to, for templates with more
+	// than one; empty means every work stage.
+	Stage StageID `json:"stage,omitempty"`
 }
 
 // PRInfo is the pull request a pipeline opened (P4).
@@ -216,6 +244,12 @@ type Pipeline struct {
 	// WorktreeEnd is how the session worktree ended once the pipeline
 	// finished (server-recorded).
 	WorktreeEnd *WorktreeEnd `json:"worktree_end,omitempty"`
+	// Template is the id of the template the stages came from (template.go);
+	// empty is the development template.
+	Template string `json:"template,omitempty"`
+	// GoalMode is the pipeline's goal mode (goal.go): the server decides
+	// every gate itself and pushes the pipeline to its end.
+	GoalMode *GoalMode `json:"goal_mode,omitempty"`
 }
 
 // KindRelease marks a release pipeline, which the release train never lists.
@@ -224,13 +258,27 @@ const KindRelease = "release"
 // New starts a pipeline for a session: every stage pending but plan, which
 // is active.
 func New(sessionID, goal string, now time.Time) Pipeline {
-	stages := make([]Stage, 0, len(StageOrder))
-	for _, id := range StageOrder {
-		stages = append(stages, Stage{ID: id, Status: StatusPending})
+	return NewFromTemplate(sessionID, goal, DevTemplate(), now)
+}
+
+// NewFromTemplate starts a pipeline with a template's stages. The stages
+// are copied into the pipeline, so editing the template later never changes
+// a pipeline that is running. tpl must be valid (Template.Validate).
+func NewFromTemplate(sessionID, goal string, tpl Template, now time.Time) Pipeline {
+	stages := make([]Stage, 0, len(tpl.Stages))
+	for _, ts := range tpl.Stages {
+		stage := Stage{
+			ID: ts.ID, Status: StatusPending, Label: strings.TrimSpace(ts.Label),
+			Instructions: strings.TrimSpace(ts.Instructions), FixInstructions: strings.TrimSpace(ts.FixInstructions),
+		}
+		if ts.Kind != "" && ts.Kind != ts.ID {
+			stage.Kind = ts.Kind
+		}
+		stages = append(stages, stage)
 	}
 	stages[0].Status = StatusActive
 	stages[0].Iteration = 1
-	return Pipeline{
+	p := Pipeline{
 		Version:   Version,
 		SessionID: sessionID,
 		Goal:      goal,
@@ -239,6 +287,42 @@ func New(sessionID, goal string, now time.Time) Pipeline {
 		Cards:     []Card{},
 		UpdatedAt: now.UTC(),
 	}
+	if tpl.ID != DevTemplateID {
+		p.Template = tpl.ID
+	}
+	return p
+}
+
+// CurrentKind is the behaviour of the current stage.
+func (p Pipeline) CurrentKind() StageID {
+	s, _ := p.Stage(p.Current)
+	return s.KindOf()
+}
+
+// workStages counts the pipeline's build-kind stages.
+func (p Pipeline) workStages() int {
+	n := 0
+	for _, s := range p.Stages {
+		if s.KindOf() == StageBuild {
+			n++
+		}
+	}
+	return n
+}
+
+// stageTasks are the plan's tasks of a work stage: those naming it and
+// those naming none.
+func (p Pipeline) stageTasks(id StageID) []PlanTask {
+	if p.Plan == nil {
+		return nil
+	}
+	var out []PlanTask
+	for _, t := range p.Plan.Tasks {
+		if t.Stage == "" || t.Stage == id {
+			out = append(out, t)
+		}
+	}
+	return out
 }
 
 // Stage returns the stage with id, or false.
@@ -316,6 +400,14 @@ func (p Pipeline) clone() Pipeline {
 		out.LastFailure = &f
 	}
 	out.Review = p.Review.clone()
+	if p.GoalMode != nil {
+		g := *p.GoalMode
+		if g.EndedAt != nil {
+			at := *g.EndedAt
+			g.EndedAt = &at
+		}
+		out.GoalMode = &g
+	}
 	if p.QATurns != nil {
 		out.QATurns = make(map[string][]int, len(p.QATurns))
 		for k, v := range p.QATurns {

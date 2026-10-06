@@ -12,7 +12,9 @@ import type {
   FocusChangeTurnPayload,
   FocusPipeline,
   FocusPlan,
+  FocusStage,
   FocusStageId,
+  FocusStageKind,
   FocusStageStatus,
   SessionMessage,
 } from './types.ts'
@@ -82,6 +84,40 @@ export function deckFor(cards: FocusCard[], stage: FocusStageId): FocusCard[] {
 
 // --- Stepper ---
 
+const stageKinds: readonly string[] = ['plan', 'build', 'review', 'pr', 'pr_review', 'merge']
+
+// stageKindOf is the behaviour a stage runs with: its kind, or its id when
+// that is a development stage; null for an id the pipeline does not hold.
+export function stageKindOf(stages: Pick<FocusStage, 'id' | 'kind'>[] | undefined, id: FocusStageId | null | undefined): FocusStageKind | null {
+  const stage = stages?.find((s) => s.id === id)
+  if (stage?.kind) return stage.kind
+  return id && stageKinds.includes(id) ? (id as FocusStageKind) : null
+}
+
+type TemplateText = { name: string; description: string; stages: Record<string, string> }
+export type StageLabelText = { stages: FocusTranslations['stages']; templates?: FocusTranslations['templates'] }
+
+// templateText is the console's own wording of a built-in template, when
+// it has one; a workspace template is shown as written.
+export function templateText(id: string | undefined, templates: FocusTranslations['templates'] | undefined): TemplateText | null {
+  return (templates as Record<string, TemplateText> | undefined)?.[id || 'dev'] ?? null
+}
+
+// stageLabel names a stage: the console's wording for a built-in template's
+// stage, else the template's own label, else the development stage's name,
+// else the id.
+export function stageLabel(
+  p: { stages?: Pick<FocusStage, 'id' | 'label'>[]; template?: string } | null | undefined,
+  id: FocusStageId,
+  text: StageLabelText,
+): string {
+  const own = p?.template ? templateText(p.template, text.templates)?.stages[id] : undefined
+  if (own) return own
+  const label = p?.stages?.find((s) => s.id === id)?.label
+  if (label) return label
+  return (text.stages as Record<string, string>)[id] ?? id
+}
+
 export type StepperItem = {
   id: FocusStageId
   label: string
@@ -90,10 +126,14 @@ export type StepperItem = {
   current: boolean
 }
 
-export function stepperItems(p: FocusPipeline, labels: FocusTranslations['stages'] = focusEn.stages): StepperItem[] {
+export function stepperItems(
+  p: FocusPipeline,
+  labels: FocusTranslations['stages'] = focusEn.stages,
+  templates: FocusTranslations['templates'] = focusEn.templates,
+): StepperItem[] {
   return p.stages.map((s) => ({
     id: s.id,
-    label: labels[s.id] ?? s.id,
+    label: stageLabel(p, s.id, { stages: labels, templates }),
     status: s.status,
     iteration: s.iteration,
     current: s.id === p.current,
@@ -164,7 +204,8 @@ function describeTool(tool: RunningTool, text: FocusTranslations['progress']): s
 // "Implementing · 3 files changed · running tests".
 export function progressLine(
   events: ChatEvent[],
-  options: { stage?: FocusStageId; text?: FocusTranslations['progress'] } = {},
+  // lead replaces the stage's phrase: a template's stage has no "Implementing".
+  options: { stage?: FocusStageKind; text?: FocusTranslations['progress']; lead?: string } = {},
 ): string {
   const text = options.text ?? focusEn.progress
   const files = new Set<string>()
@@ -224,7 +265,7 @@ export function progressLine(
         break
     }
   }
-  const parts = [options.stage ? text.stages[options.stage] : text.working]
+  const parts = [options.lead || (options.stage ? text.stages[options.stage] : text.working)]
   const changed = Math.max(files.size, checkpointFiles)
   if (changed > 0) parts.push(text.filesChanged(changed))
   if (verify) {
@@ -430,7 +471,7 @@ export function turnIndex(history: SessionMessage[], messageId: string): number 
   return 0
 }
 
-const stageLine = /<focus-stage>[\s\S]*?current stage: ([a-z_]+)/
+const stageLine = /<focus-stage>[\s\S]*?current stage: ([a-z][a-z0-9_]*)/
 
 // turnStage reads which stage a user message's guidance was written for.
 export function turnStage(content: string): FocusStageId | null {

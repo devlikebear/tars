@@ -28,6 +28,8 @@ import (
 //	POST /v1/focus/pipelines/{id}/advance         {stage} → {pipeline, next_prompt}; 409 unless stage is the active current one with no gate open
 //	POST /v1/focus/pipelines/{id}/stop            → {pipeline, next_prompt: ""}; 409 when already finished or stopped
 //	POST /v1/focus/pipelines/{id}/qa              {card_id, question} → 202 {qa_session_id, turn} (focus_qa.go)
+//	POST /v1/focus/pipelines/{id}/goal            {enabled, max_pushes?} → {pipeline}; turning it on needs the admin token (focus_goal.go)
+//	GET  /v1/focus/templates                      → {templates, diagnostics}; POST /v1/focus/pipelines takes {template, goal_mode, goal_max_pushes}
 //
 // Every chat turn of a session with a pipeline gets the stage's guidance
 // appended to the user message as a <focus-stage> block, and the reply's
@@ -276,6 +278,8 @@ func newFocusPipelineHandler(sessions *session.Store, worktrees *chatWorktrees, 
 	mux.HandleFunc("POST /v1/focus/pipelines/{id}/advance", api.advance)
 	mux.HandleFunc("POST /v1/focus/pipelines/{id}/stop", api.stop)
 	mux.HandleFunc("POST /v1/focus/pipelines/{id}/qa", api.qa)
+	mux.HandleFunc("POST /v1/focus/pipelines/{id}/goal", api.goal)
+	mux.HandleFunc("GET /v1/focus/templates", api.templates)
 	return mux
 }
 
@@ -292,6 +296,13 @@ type focusCreateRequest struct {
 	// Kickoff is the first turn when it says more than the goal; stage
 	// guidance repeats only the goal.
 	Kickoff string `json:"kickoff,omitempty"`
+	// Template is the id of the pipeline's template (GET
+	// /v1/focus/templates); empty is the development one.
+	Template string `json:"template,omitempty"`
+	// GoalMode starts the pipeline in goal mode (focus_goal.go), with
+	// GoalMaxPushes as its push budget (0 = the default).
+	GoalMode      bool `json:"goal_mode,omitempty"`
+	GoalMaxPushes int  `json:"goal_max_pushes,omitempty"`
 	// ReleaseItems and ReleaseSince (kind release only) are the release
 	// train's list and cut-off the release ships.
 	ReleaseItems []string   `json:"release_items,omitempty"`
@@ -323,6 +334,15 @@ func (a *focusAPI) create(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "sessions in folders are unavailable"})
 		return
 	}
+	tpl, ok := focuspipeline.FindTemplate(focusTemplateDir(a.sessions), req.Template)
+	if !ok {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unknown focus template"})
+		return
+	}
+	if kind == focuspipeline.KindRelease && tpl.ID != focuspipeline.DevTemplateID {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "a release runs the development template"})
+		return
+	}
 	title := strings.TrimSpace(req.Title)
 	if title == "" {
 		title = focusTitleFromGoal(goal)
@@ -347,7 +367,10 @@ func (a *focusAPI) create(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, folderErrorStatus(err), map[string]string{"error": err.Error()})
 		return
 	}
-	p := focuspipeline.New(sess.ID, goal, a.now())
+	p := focuspipeline.NewFromTemplate(sess.ID, goal, tpl, a.now())
+	if req.GoalMode {
+		p = focuspipeline.StartGoal(p, req.GoalMaxPushes, a.now())
+	}
 	p.Kind = kind
 	p.Kickoff = strings.TrimSpace(req.Kickoff)
 	if kind == focuspipeline.KindRelease {
@@ -363,6 +386,9 @@ func (a *focusAPI) create(w http.ResponseWriter, r *http.Request) {
 		_ = a.sessions.Delete(sess.ID)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "save pipeline failed"})
 		return
+	}
+	if req.GoalMode {
+		p = a.driver.goalStarted(sess.ID, p)
 	}
 	writeJSON(w, http.StatusCreated, map[string]any{"session_id": sess.ID, "pipeline": p})
 }
@@ -383,6 +409,12 @@ type focusListItem struct {
 	OpenGate   string                `json:"open_gate"`
 	NeedsInput int                   `json:"needs_input"`
 	UpdatedAt  time.Time             `json:"updated_at"`
+	// CurrentLabel is the template's name for the current stage ("" for
+	// the development stages), Template its id, GoalMode whether goal mode
+	// is on.
+	CurrentLabel string `json:"current_label,omitempty"`
+	Template     string `json:"template,omitempty"`
+	GoalMode     bool   `json:"goal_mode,omitempty"`
 }
 
 func (a *focusAPI) list(w http.ResponseWriter, _ *http.Request) {
@@ -398,16 +430,86 @@ func (a *focusAPI) list(w http.ResponseWriter, _ *http.Request) {
 			continue // its session is gone; the sweep removes the file
 		}
 		out = append(out, focusListItem{
-			SessionID:  p.SessionID,
-			Title:      sess.Title,
-			Goal:       p.Goal,
-			Current:    p.Current,
-			OpenGate:   p.OpenGate,
-			NeedsInput: p.NeedsInput(),
-			UpdatedAt:  p.UpdatedAt,
+			SessionID:    p.SessionID,
+			Title:        sess.Title,
+			Goal:         p.Goal,
+			Current:      p.Current,
+			OpenGate:     p.OpenGate,
+			NeedsInput:   p.NeedsInput(),
+			UpdatedAt:    p.UpdatedAt,
+			CurrentLabel: focusCurrentLabel(p),
+			Template:     p.Template,
+			GoalMode:     p.GoalActive(),
 		})
 	}
 	writeJSON(w, http.StatusOK, out)
+}
+
+func focusCurrentLabel(p focuspipeline.Pipeline) string {
+	stage, _ := p.Stage(p.Current)
+	return stage.Label
+}
+
+// focusTemplateDir is the workspace folder user templates are read from.
+func focusTemplateDir(sessions *session.Store) string {
+	if sessions == nil {
+		return ""
+	}
+	return filepath.Join(sessions.WorkspaceDir(), focuspipeline.TemplateDirName)
+}
+
+// templates lists the templates a pipeline can start from: the built-in
+// ones, then the workspace's, with a diagnostic for each file not loaded.
+func (a *focusAPI) templates(w http.ResponseWriter, _ *http.Request) {
+	templates, diagnostics := focuspipeline.LoadTemplates(focusTemplateDir(a.sessions))
+	if diagnostics == nil {
+		diagnostics = []focuspipeline.TemplateDiagnostic{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"templates": templates, "diagnostics": diagnostics})
+}
+
+type focusGoalRequest struct {
+	Enabled   bool `json:"enabled"`
+	MaxPushes int  `json:"max_pushes,omitempty"`
+}
+
+// goal turns goal mode on or off. Turning it on hands every gate and tool
+// permission of the session to the server, so it needs the admin token,
+// like starting a task in a folder.
+func (a *focusAPI) goal(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	current, ok := a.load(w, id)
+	if !ok {
+		return
+	}
+	var req focusGoalRequest
+	if !decodeJSONBody(w, r, &req) {
+		return
+	}
+	if !req.Enabled {
+		p, ended := a.driver.endGoal(id, focuspipeline.GoalEndDisabled)
+		if !ended {
+			p = current // goal mode was not on
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"pipeline": p})
+		return
+	}
+	if serverauth.RoleFromRequest(r) != serverauth.RoleAdmin {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "goal mode needs the admin token"})
+		return
+	}
+	if focuspipeline.Finished(current) || (!current.Active() && current.OpenGate != focuspipeline.GateBlocked) {
+		writeJSON(w, http.StatusConflict, map[string]any{"error": "the pipeline is finished or stopped", "pipeline": current})
+		return
+	}
+	p, _, err := a.store().Update(id, func(p focuspipeline.Pipeline) (focuspipeline.Pipeline, error) {
+		return focuspipeline.StartGoal(p, req.MaxPushes, a.now()), nil
+	})
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"pipeline": a.driver.goalStarted(id, p)})
 }
 
 // load reads the pipeline of a live session, writing 404 otherwise.
@@ -457,21 +559,54 @@ func (a *focusAPI) gate(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSONBody(w, r, &req) {
 		return
 	}
+	p, act, warning, err := focusApplyGate(r.Context(), a.sessions, a.driver, a.logger, a.now, id, gate, req, serverauth.RoleFromRequest(r))
+	switch {
+	case errors.Is(err, errFocusGateUnchecked):
+		// The head was not checked: never approve unchecked.
+		return
+	case errors.Is(err, focuspipeline.ErrGateNotOpen), errors.Is(err, focuspipeline.ErrHeadMoved):
+		writeJSON(w, http.StatusConflict, map[string]any{"error": err.Error(), "pipeline": p})
+		return
+	case errors.Is(err, focuspipeline.ErrInvalidAction), errors.Is(err, focuspipeline.ErrInvalidEdits):
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error(), "pipeline": p})
+		return
+	case err != nil:
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	resp := focusActionResponse(p, act)
+	if warning != "" {
+		resp["warning"] = warning
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// errFocusGateUnchecked is a merge approval whose head check was cut off
+// (the request ended): nothing was applied.
+var errFocusGateUnchecked = errors.New("focus: merge gate head was not checked")
+
+// focusApplyGate applies a gate action the way the console's buttons do —
+// the developer's request, or goal mode deciding for them (focus_goal.go):
+// approving merge probes the PR head first (ErrHeadMoved with the current
+// pipeline when it moved), approving the plan writes the session's tasks
+// (warning says when that failed), and the turn the action asks for is
+// started as role. On error the pipeline returned is the unchanged one.
+func focusApplyGate(ctx context.Context, sessions *session.Store, driver *focusDriver, logger zerolog.Logger, clock func() time.Time, id, gate string, req focusGateRequest, role string) (focuspipeline.Pipeline, focuspipeline.Action, string, error) {
+	none := focuspipeline.Action{Kind: focuspipeline.ActionNone}
+	store := focusStoreFor(sessions)
 	action := strings.TrimSpace(req.Action)
 	if gate == focuspipeline.GateMerge && action == focuspipeline.GateApprove {
-		p, moved := a.driver.refreshMergeGate(r.Context(), id)
-		if r.Context().Err() != nil {
-			// The head was not checked: never approve unchecked.
-			return
+		p, moved := driver.refreshMergeGate(ctx, id)
+		if ctx.Err() != nil {
+			return p, none, "", errFocusGateUnchecked
 		}
 		if moved {
-			writeJSON(w, http.StatusConflict, map[string]any{"error": focuspipeline.ErrHeadMoved.Error(), "pipeline": p})
-			return
+			return p, none, "", focuspipeline.ErrHeadMoved
 		}
 	}
-	now := a.now()
-	var act focuspipeline.Action
-	p, _, err := a.store().Update(id, func(p focuspipeline.Pipeline) (focuspipeline.Pipeline, error) {
+	now := clock()
+	act := none
+	p, _, err := store.Update(id, func(p focuspipeline.Pipeline) (focuspipeline.Pipeline, error) {
 		next, result, err := focuspipeline.Apply(p, focuspipeline.Event{
 			Kind:   focuspipeline.EventGate,
 			Gate:   gate,
@@ -487,51 +622,42 @@ func (a *focusAPI) gate(w http.ResponseWriter, r *http.Request) {
 		act = result
 		return next, nil
 	})
-	switch {
-	case errors.Is(err, focuspipeline.ErrGateNotOpen), errors.Is(err, focuspipeline.ErrHeadMoved):
-		writeJSON(w, http.StatusConflict, map[string]any{"error": err.Error(), "pipeline": p})
-		return
-	case errors.Is(err, focuspipeline.ErrInvalidAction), errors.Is(err, focuspipeline.ErrInvalidEdits):
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error(), "pipeline": p})
-		return
-	case err != nil:
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
-		return
+	if err != nil {
+		return p, none, "", err
 	}
-	resp := focusActionResponse(p, act)
+	warning := ""
 	if gate == focuspipeline.GatePlan && action == focuspipeline.GateApprove && p.Plan != nil {
-		if warning, updated, failed := a.writePlanTasks(id, *p.Plan, now); failed {
-			resp = focusActionResponse(updated, act)
-			resp["warning"] = warning
+		if text, updated, failed := focusWritePlanTasks(sessions, logger, clock, id, *p.Plan, now); failed {
+			p, warning = updated, text
 		}
 	}
 	// After the tasks are written: the build turn the approval starts
 	// reads them.
-	a.driver.start(id, act, serverauth.RoleFromRequest(r))
-	writeJSON(w, http.StatusOK, resp)
+	driver.start(id, act, role)
+	return p, act, warning, nil
 }
 
 // focusNoticeTasksNotSaved titles the card raised when an approved plan's
 // session tasks could not be written.
 const focusNoticeTasksNotSaved = "plan approved, but session tasks were not saved"
 
-// writePlanTasks writes the approved plan's session tasks and contract. It
+// focusWritePlanTasks writes the approved plan's session tasks and contract. It
 // runs after the pipeline update committed and released the folder lock:
 // saving tasks fires the session store's hooks, which take the session index
 // lock, while a session delete holds that lock and calls into the pipeline
 // store, so the two locks are never held together. On failure the approval
 // stands and a notice card says the tasks are missing.
-func (a *focusAPI) writePlanTasks(id string, plan focuspipeline.Plan, now time.Time) (string, focuspipeline.Pipeline, bool) {
-	err := a.sessions.SaveTasks(id, focuspipeline.SessionTasks(plan, now))
+func focusWritePlanTasks(sessions *session.Store, logger zerolog.Logger, clock func() time.Time, id string, plan focuspipeline.Plan, now time.Time) (string, focuspipeline.Pipeline, bool) {
+	err := sessions.SaveTasks(id, focuspipeline.SessionTasks(plan, now))
 	if err == nil {
 		return "", focuspipeline.Pipeline{}, false
 	}
-	a.logger.Error().Err(err).Str("session_id", id).Msg("focus: save tasks of approved plan failed")
-	updated, _, uerr := a.store().Update(id, func(p focuspipeline.Pipeline) (focuspipeline.Pipeline, error) {
-		return focuspipeline.AddNotice(p, focusNoticeTasksNotSaved, map[string]any{"errors": []string{err.Error()}}, a.now()), nil
+	logger.Error().Err(err).Str("session_id", id).Msg("focus: save tasks of approved plan failed")
+	updated, _, uerr := focusStoreFor(sessions).Update(id, func(p focuspipeline.Pipeline) (focuspipeline.Pipeline, error) {
+		return focuspipeline.AddNotice(p, focusNoticeTasksNotSaved, map[string]any{"errors": []string{err.Error()}}, clock()), nil
 	})
 	if uerr != nil {
-		a.logger.Error().Err(uerr).Str("session_id", id).Msg("focus: record tasks notice failed")
+		logger.Error().Err(uerr).Str("session_id", id).Msg("focus: record tasks notice failed")
 	}
 	return focusNoticeTasksNotSaved + ": " + err.Error(), updated, true
 }
@@ -550,12 +676,7 @@ func (a *focusAPI) card(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSONBody(w, r, &req) {
 		return
 	}
-	var act focuspipeline.Action
-	p, _, err := a.store().Update(id, func(p focuspipeline.Pipeline) (focuspipeline.Pipeline, error) {
-		next, action, err := focuspipeline.SetCardState(p, cardID, strings.TrimSpace(req.State), req.Decision, a.now())
-		act = action
-		return next, err
-	})
+	p, act, err := focusDecideCard(a.sessions, a.driver, a.now, id, cardID, req, serverauth.RoleFromRequest(r))
 	switch {
 	case errors.Is(err, focuspipeline.ErrCardNotFound):
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
@@ -570,8 +691,23 @@ func (a *focusAPI) card(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
-	a.driver.start(id, act, serverauth.RoleFromRequest(r))
 	writeJSON(w, http.StatusOK, focusActionResponse(p, act))
+}
+
+// focusDecideCard sets a card's state — the developer's click, or goal
+// mode deciding for them — and starts the turn the decision asks for.
+func focusDecideCard(sessions *session.Store, driver *focusDriver, clock func() time.Time, id, cardID string, req focusCardRequest, role string) (focuspipeline.Pipeline, focuspipeline.Action, error) {
+	act := focuspipeline.Action{Kind: focuspipeline.ActionNone}
+	p, _, err := focusStoreFor(sessions).Update(id, func(p focuspipeline.Pipeline) (focuspipeline.Pipeline, error) {
+		next, action, err := focuspipeline.SetCardState(p, cardID, strings.TrimSpace(req.State), req.Decision, clock())
+		act = action
+		return next, err
+	})
+	if err != nil {
+		return p, act, err
+	}
+	driver.start(id, act, role)
+	return p, act, nil
 }
 
 type focusAdvanceRequest struct {

@@ -6,6 +6,11 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+### Added
+
+- **Focus 템플릿** — 포커스 파이프라인이 개발 워크플로(계획 → 구현 → 리뷰 → PR → PR 리뷰 → 머지) 하나만 지원하던 것을 템플릿으로 넓혔다. 템플릿은 단계 목록이고 각 단계는 여섯 개발 단계 중 하나의 동작(kind)으로 돈다: 이름·개수·단계별 지시문은 템플릿이 정하고, 단계 전환은 지금처럼 사실(계획 승인, 검증 명령 종료 코드, 지적 triage, PR 상태)로만 결정된다. 내장 템플릿은 `dev`(기본, 기존과 동일), `writing`(구상 → 초고 → 퇴고), `research`(범위 → 조사 → 보고서 → 검증). 자기 템플릿은 `<workspace>/focus-templates/*.yaml`(또는 `.yml`, `.json`)로 추가한다 — `name`, `stages[].{id, kind, label, instructions, fix_instructions}`; 첫 단계는 `plan`, `build`·`review` kind는 원하는 id로 여러 개 둘 수 있다. 잘못된 파일은 건너뛰고 새 작업 화면에 개수를 알린다. 새 작업 화면에 템플릿 선택이 생겼고 스테퍼·그래프·계획 게이트가 템플릿의 단계를 보여 준다. `GET /v1/focus/templates`, `POST /v1/focus/pipelines`의 `template`.
+- **Focus 목표 모드** — 목표를 한 번 주면 끝까지 간다. 목표 모드인 파이프라인은 서버가 게이트를 스스로 결정한다: 계획·PR 초안·머지를 승인하고(머지 게이트는 지금처럼 CI가 초록일 때만 열린다), 리뷰 지적은 `low`만 dismiss하고 나머지는 고치게 하며, CI 실패·리뷰 코멘트는 고치게 하고, 에이전트의 질문에는 "스스로 정하라"고 답한다. 반복 한도·같은 실패 반복·실패한 턴·서버 재시작·형식 없는 응답으로 멈추면 다시 민다. 재시도는 예산(기본 20회)에서 빠지고, 다 쓰면 그 자리에서 멈춰 알림을 보낸다. 실패한 턴은 30초부터 두 배씩(최대 15분) 기다렸다 다시 시도한다. 목표 모드 동안 세션 권한 모드는 `auto`이고 끝나면 이전 값으로 돌아간다. 새 작업 화면의 체크박스나 파이프라인 헤더의 **◎ 목표 모드** 토글로 켜고(admin 권한 필요), 토글·파이프라인 중지·실행 중인 턴의 Stop으로 끈다. 모든 자동 결정은 automation audit(`focus_goal_mode`)에 남는다. `POST /v1/focus/pipelines/{id}/goal`.
+
 ## [0.51.0] - 2026-10-06
 
 ### Added

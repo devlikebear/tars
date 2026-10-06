@@ -55,7 +55,11 @@ func stageInstruction(p Pipeline) string {
 	if text, ok := prWaitInstructions[p.PRWait]; ok {
 		return text
 	}
-	return stageInstructions[p.Current]
+	stage, _ := p.Stage(p.Current)
+	if stage.Instructions != "" {
+		return stage.Instructions
+	}
+	return stageInstructions[stage.KindOf()]
 }
 
 // QuestionGuidance is the guidance of a turn that is the developer's
@@ -93,27 +97,40 @@ func Guidance(p Pipeline) string {
 	if goal := strings.TrimSpace(p.Goal); goal != "" {
 		fmt.Fprintf(&b, "Goal: %s\n", goal)
 	}
-	instructions, blocks := stageInstruction(p), requiredBlocks(stage.ID)
-	if stage.ID == StageReview {
+	instructions, blocks := stageInstruction(p), p.requiredBlocks(stage.KindOf())
+	if stage.KindOf() == StageReview {
 		instructions, blocks = reviewGuidance(p)
 	}
 	if p.PRWait != "" {
 		// The write turn reports; a new draft or findings would be noise.
-		blocks = requiredBlocks(StageMerge)
+		blocks = p.requiredBlocks(StageMerge)
 	}
 	b.WriteString(instructions)
 	b.WriteString("\n")
+	if p.GoalActive() && !questionGates[p.OpenGate] {
+		b.WriteString(goalGuidance)
+		b.WriteString("\n")
+	}
 	if p.Plan != nil && stage.ID != StagePlan {
-		writePlan(&b, *p.Plan)
+		p.writePlan(&b, stage)
 	}
 	b.WriteString("\n")
 	b.WriteString(blocks)
 	return strings.TrimRight(b.String(), "\n")
 }
 
-func writePlan(b *strings.Builder, plan Plan) {
-	b.WriteString("\nApproved tasks and their done criteria:\n")
-	for i, task := range plan.Tasks {
+// writePlan lists the approved tasks and commands. A work stage of a
+// template with several lists only its own tasks.
+func (p Pipeline) writePlan(b *strings.Builder, stage Stage) {
+	plan := *p.Plan
+	tasks := plan.Tasks
+	if stage.KindOf() == StageBuild && p.workStages() > 1 {
+		tasks = p.stageTasks(stage.ID)
+		b.WriteString("\nApproved tasks of this stage and their done criteria:\n")
+	} else {
+		b.WriteString("\nApproved tasks and their done criteria:\n")
+	}
+	for i, task := range tasks {
 		fmt.Fprintf(b, "%d. %s — done when: %s\n", i+1, task.Title, orDash(task.Done))
 	}
 	if len(plan.Verify) > 0 {
@@ -134,11 +151,40 @@ func writePlan(b *strings.Builder, plan Plan) {
 const blockTail = "Put the block at the very end of your reply, outside any code fence, with valid JSON between the tags. " +
 	"If you include the block more than once, only the last one counts."
 
-func requiredBlocks(stage StageID) string {
+// planBlockFormat is the plan block of the pipeline's template: its stage
+// ids, a limit for each loop, and, with several work stages, the stage a
+// task belongs to.
+func (p Pipeline) planBlockFormat() string {
+	if p.Template == "" {
+		return planFormat
+	}
+	ids := make([]string, 0, len(p.Stages))
+	var limits []string
+	work := ""
+	for _, s := range p.Stages {
+		ids = append(ids, fmt.Sprintf("%q", s.ID))
+		switch kind := s.KindOf(); kind {
+		case StageBuild, StageReview, StagePR:
+			limits = append(limits, fmt.Sprintf("%q:%d", s.ID, DefaultLimits[kind]))
+			if kind == StageBuild && work == "" {
+				work = string(s.ID)
+			}
+		}
+	}
+	task := `{"title":"…","done":"…"}`
+	if p.workStages() > 1 {
+		task = fmt.Sprintf(`{"title":"…","done":"…","stage":%q}`, work)
+	}
+	return fmt.Sprintf(`<focus-plan>{"goal":"…","tasks":[%s],"stages":[%s],"verify":[],"limits":{%s}}</focus-plan>`,
+		task, strings.Join(ids, ","), strings.Join(limits, ","))
+}
+
+// requiredBlocks is the block request of a stage kind.
+func (p Pipeline) requiredBlocks(kind StageID) string {
 	const tail = blockTail
-	switch stage {
+	switch kind {
 	case StagePlan:
-		return "End your reply with exactly one plan block in this format:\n" + planFormat + "\n" + tail
+		return "End your reply with exactly one plan block in this format:\n" + p.planBlockFormat() + "\n" + tail
 	case StageReview, StagePRReview:
 		return "End your reply with a findings block (an empty array when there are none) and a report block:\n" +
 			findingsFormat + "\n" + reportFormat + "\n" + tail

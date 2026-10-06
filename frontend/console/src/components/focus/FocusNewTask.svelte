@@ -2,12 +2,16 @@
   // "New task" on the focus home: a folder (recent ones, or a path the
   // server checks as it will on create — the same picker as New chat in a
   // folder), a one-line goal, and, in a git repository, isolation in a
-  // worktree. Creating it starts a session with a pipeline; the pipeline
-  // screen then sends the goal as the first turn.
+  // worktree. A template picks the pipeline's stages (development unless
+  // another is chosen), and goal mode lets the server decide every gate.
+  // Creating it starts a session with a pipeline; the pipeline screen then
+  // sends the goal as the first turn.
   import { onDestroy, onMount } from 'svelte'
   import { t } from '../../i18n'
-  import { APIRequestError, checkSessionFolder, createFocusPipeline, listRecentSessionFolders, type SessionFolder } from '../../lib/api'
+  import { APIRequestError, checkSessionFolder, createFocusPipeline, listFocusTemplates, listRecentSessionFolders, type SessionFolder } from '../../lib/api'
+  import { stageLabel, templateText } from '../../lib/focus'
   import { shortCwdLabel } from '../../lib/sessionLabels'
+  import type { FocusTemplate } from '../../lib/types'
 
   interface Props {
     onCreated: (sessionId: string) => void
@@ -26,6 +30,10 @@
   let path = $state('')
   let goal = $state('')
   let isolate = $state(false)
+  let templates = $state<FocusTemplate[]>([])
+  let templatesSkipped = $state(0)
+  let templateId = $state('dev')
+  let goalMode = $state(false)
   let check = $state<Check>({ state: 'idle' })
   let busy = $state(false)
   let error = $state('')
@@ -34,12 +42,31 @@
 
   let folder = $derived(check.state === 'ok' ? check.folder : null)
   let canStart = $derived(!!folder && !!goal.trim() && !busy)
+  let template = $derived(templates.find((item) => item.id === templateId) ?? null)
+
+  // A built-in template is shown in the console's language; a workspace
+  // one as written.
+  function templateName(item: FocusTemplate): string {
+    return (item.builtin && templateText(item.id, $t.focus.templates)?.name) || item.name
+  }
+
+  function templateDescription(item: FocusTemplate): string {
+    return (item.builtin && templateText(item.id, $t.focus.templates)?.description) || item.description || ''
+  }
+
+  function templateStages(item: FocusTemplate): string {
+    return item.stages.map((s) => stageLabel({ template: item.builtin ? item.id : undefined, stages: item.stages }, s.id, $t.focus)).join(' → ')
+  }
 
   onMount(async () => {
+    void listRecentSessionFolders().then((list) => { recent = list }).catch(() => { recent = [] })
     try {
-      recent = await listRecentSessionFolders()
+      const listed = await listFocusTemplates()
+      templates = listed.templates
+      templatesSkipped = listed.diagnostics.length
     } catch {
-      recent = []
+      // An older server: only the development pipeline.
+      templates = []
     }
   })
 
@@ -92,7 +119,13 @@
     busy = true
     error = ''
     try {
-      const created = await createFocusPipeline({ goal: goal.trim(), cwd: folder.path, isolate: isolate && !!folder.repo_root })
+      const created = await createFocusPipeline({
+        goal: goal.trim(),
+        cwd: folder.path,
+        isolate: isolate && !!folder.repo_root,
+        ...(template && template.id !== 'dev' ? { template: template.id } : {}),
+        ...(goalMode ? { goal_mode: true } : {}),
+      })
       onCreated(created.session_id)
     } catch (err) {
       error = $t.focus.newTask.failed(err instanceof Error ? err.message : String(err))
@@ -135,12 +168,37 @@
     <input id="focus-new-goal" type="text" bind:value={goal} placeholder={$t.focus.newTask.goalPlaceholder} data-testid="focus-new-goal" />
   </div>
 
+  {#if templates.length > 1}
+    <div class="field">
+      <label class="label" for="focus-new-template">{$t.focus.newTask.template}</label>
+      <select id="focus-new-template" bind:value={templateId} data-testid="focus-new-template">
+        {#each templates as item (item.id)}
+          <option value={item.id}>{templateName(item)}{item.builtin ? '' : ` · ${$t.focus.newTask.templateCustom}`}</option>
+        {/each}
+      </select>
+      {#if template}
+        <p class="status" data-testid="focus-new-template-stages">
+          {#if templateDescription(template)}<span data-content>{templateDescription(template)}</span> · {/if}{$t.focus.newTask.templateStages(templateStages(template))}
+        </p>
+      {/if}
+      {#if templatesSkipped > 0}<p class="status error">{$t.focus.newTask.templateSkipped(templatesSkipped)}</p>{/if}
+    </div>
+  {/if}
+
   {#if folder?.repo_root}
     <label class="check">
       <input type="checkbox" bind:checked={isolate} data-testid="focus-new-isolate" />
       {$t.focus.newTask.isolate}
     </label>
   {/if}
+
+  <div class="field">
+    <label class="check">
+      <input type="checkbox" bind:checked={goalMode} data-testid="focus-new-goal-mode" />
+      {$t.focus.newTask.goalMode}
+    </label>
+    {#if goalMode}<p class="status" data-testid="focus-new-goal-hint">{$t.focus.newTask.goalModeHint}</p>{/if}
+  </div>
 
   {#if error}<p class="status error">{error}</p>{/if}
 
@@ -180,9 +238,19 @@
     font-size: var(--text-base);
   }
 
-  input[type='text']:focus {
+  input[type='text']:focus,
+  select:focus {
     outline: none;
     border-color: var(--primary);
+  }
+
+  select {
+    padding: var(--space-2) var(--space-3);
+    background: var(--surface-inset);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-md);
+    color: var(--text-primary);
+    font-size: var(--text-base);
   }
 
   .recent {

@@ -6,7 +6,7 @@
   import { onDestroy, onMount } from 'svelte'
   import { t } from '../../i18n'
   import { getFocusPipeline, listFocusPipelines } from '../../lib/api'
-  import { pipelinePhase, type PipelinePhase } from '../../lib/focus'
+  import { pipelinePhase, stageLabel, type PipelinePhase } from '../../lib/focus'
   import type { FocusListItem } from '../../lib/types'
   import FocusNewTask from './FocusNewTask.svelte'
 
@@ -92,7 +92,8 @@
               {#if item.goal && item.goal !== item.title}<span class="task-goal" data-content>{item.goal}</span>{/if}
             </span>
             <span class="task-facts">
-              <span class="badge badge-default">{$t.focus.stages[item.current] ?? item.current}</span>
+              <span class="badge badge-default">{stageLabel({ template: item.template, stages: [{ id: item.current, label: item.current_label }] }, item.current, $t.focus)}</span>
+              {#if item.goal_mode}<span class="badge badge-accent" data-testid="focus-task-goal">{$t.focus.screen.goal}</span>{/if}
               {#if phase === 'finished'}
                 <span class="badge badge-success">{$t.focus.home.finished}</span>
               {:else if phase === 'stopped'}

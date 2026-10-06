@@ -166,7 +166,7 @@ func applyEvent(p Pipeline, ev Event, now time.Time) (Pipeline, Action, error) {
 		// off by a cancel): the next stage's own turn or gate replaces it.
 		next.PendingTurn = ""
 		stage := next.advance()
-		return next, Action{Kind: ActionSendTurn, Prompt: approvedPrompt(GateNone, stage)}, nil
+		return next, Action{Kind: ActionSendTurn, Prompt: next.approvedPrompt(GateNone, stage)}, nil
 	case EventVerification:
 		return applyVerification(p, ev, now.UTC())
 	case EventPRProbe:
@@ -197,7 +197,8 @@ func applyTurn(p Pipeline, ev Event, now time.Time) (Pipeline, Action) {
 	if questionGates[ev.QuestionGate] && p.OpenGate != ev.QuestionGate {
 		return lateQuestionTurn(p, ev, now)
 	}
-	if p.Current == StageReview && p.OpenGate == GateTriage {
+	kind := p.CurrentKind()
+	if kind == StageReview && p.OpenGate == GateTriage {
 		return triageTurn(p, now)
 	}
 	b := ev.Blocks
@@ -205,11 +206,14 @@ func applyTurn(p Pipeline, ev Event, now time.Time) (Pipeline, Action) {
 	// A turn completed: the turn the server owed (if any) is not owed any
 	// more. Asked before this turn's cards land on top of the last one.
 	p.PendingTurn = ""
+	if p.GoalMode != nil {
+		p.GoalMode.Failures = 0
+	}
 	priorNotice := lastCardIsFormatNotice(p)
 	if p.Current == StagePlan && b.Plan != nil {
 		supersedeOpenGate(&p)
 		plan := clonePlan(*b.Plan)
-		plan.Stages = normalizeStages(plan.Stages)
+		plan = p.fitPlan(plan)
 		p.Plan = &plan
 		p.addCard(CardGate, ev.Turn, "Approve plan", plan, now)
 		p.OpenGate = GatePlan
@@ -220,7 +224,7 @@ func applyTurn(p Pipeline, ev Event, now time.Time) (Pipeline, Action) {
 			p.addCard(CardDecision, ev.Turn, d.Question, d, now)
 		}
 	}
-	if p.Current != StageReview {
+	if kind != StageReview {
 		for _, f := range b.Findings {
 			p.addCard(CardFinding, ev.Turn, f.Title, f, now)
 		}
@@ -232,18 +236,18 @@ func applyTurn(p Pipeline, ev Event, now time.Time) (Pipeline, Action) {
 		p.addCard(CardReport, ev.Turn, PRDraftTitle, *b.PR, now)
 	}
 	missing := missingRequiredBlock(p, b)
-	if p.Current == StageBuild && !missing {
+	if kind == StageBuild && !missing {
 		act = buildTurnAction(&p, b)
-	} else if p.Current == StageBuild {
+	} else if kind == StageBuild {
 		buildTurnAction(&p, Blocks{})
-	} else if p.Current == StageReview && !missing {
+	} else if kind == StageReview && !missing {
 		act = reviewTurnAction(&p, b, ev.Turn, now)
 	}
 	if missing {
 		p.addCard(CardNotice, ev.Turn, NoticeFormatMissing, map[string]any{"errors": nonNil(b.Errors)}, now)
-		build, _ := p.Stage(StageBuild)
+		build, _ := p.Stage(p.Current)
 		switch {
-		case p.Current == StageBuild && build.Turns >= buildTurnCap(p):
+		case kind == StageBuild && build.Turns >= buildTurnCap(p):
 			p.block(BlockedNoProgress, nil, ev.Turn, now)
 		case !priorNotice:
 			act = Action{Kind: ActionSendTurn, Prompt: reRequestPrompt(p)}
@@ -288,7 +292,7 @@ func missingRequiredBlock(p Pipeline, b Blocks) bool {
 	if questionGates[p.OpenGate] {
 		return false
 	}
-	switch p.Current {
+	switch p.CurrentKind() {
 	case StagePlan:
 		return b.Plan == nil
 	case StagePR:
@@ -317,7 +321,7 @@ func reRequestPrompt(p Pipeline) string {
 	switch {
 	case p.Current == StagePlan:
 		tag = TagPlan
-	case p.Current == StageReview && !p.Review.Fixing:
+	case p.CurrentKind() == StageReview && !p.Review.Fixing:
 		tag = TagFindings
 	}
 	return fmt.Sprintf("Your last reply did not end with a well-formed <%s> block. Reply again, following the <focus-stage> instructions, and end with exactly one <%s>…</%s> block containing valid JSON.", tag, tag, tag)
@@ -398,6 +402,7 @@ func applyGate(p Pipeline, ev Event, now time.Time) (Pipeline, Action, error) {
 			if err != nil {
 				return p, noAction, fmt.Errorf("%w: %v", ErrInvalidEdits, err)
 			}
+			plan = p.fitPlan(plan)
 			p.Plan = &plan
 		}
 		if p.Plan == nil {
@@ -410,7 +415,7 @@ func applyGate(p Pipeline, ev Event, now time.Time) (Pipeline, Action, error) {
 	}
 	decide()
 	next := p.advance()
-	return p, Action{Kind: ActionSendTurn, Prompt: approvedPrompt(gate, next)}, nil
+	return p, Action{Kind: ActionSendTurn, Prompt: p.approvedPrompt(gate, next)}, nil
 }
 
 func requestChangesPrompt(gate, note string) string {
@@ -425,19 +430,49 @@ func requestChangesPrompt(gate, note string) string {
 	return lead + " " + note
 }
 
-func approvedPrompt(gate string, next StageID) string {
+func (p Pipeline) approvedPrompt(gate string, next StageID) string {
 	lead := "Approved."
 	if gate == GatePlan {
 		lead = "Plan approved."
 	}
-	switch next {
-	case "":
+	stage, _ := p.Stage(next)
+	switch {
+	case next == "":
 		return lead + " The pipeline is complete."
-	case StageBuild:
-		return lead + " Start the build stage with task 1."
+	case stage.KindOf() == StageBuild:
+		return fmt.Sprintf("%s Start the %s stage with task 1.", lead, next)
 	default:
 		return fmt.Sprintf("%s Start the %s stage.", lead, next)
 	}
+}
+
+// fitPlan fits a parsed plan to the pipeline's template: its stages are the
+// pipeline's own, in pipeline order, plan always among them (none listed
+// means every stage), and a task names a work stage of the pipeline or
+// none.
+func (p Pipeline) fitPlan(plan Plan) Plan {
+	want := map[StageID]bool{StagePlan: true}
+	for _, id := range plan.Stages {
+		want[StageID(strings.TrimSpace(string(id)))] = true
+	}
+	all := len(plan.Stages) == 0
+	stages := make([]StageID, 0, len(p.Stages))
+	work := map[StageID]bool{}
+	for _, s := range p.Stages {
+		if all || want[s.ID] {
+			stages = append(stages, s.ID)
+		}
+		if s.KindOf() == StageBuild {
+			work[s.ID] = true
+		}
+	}
+	plan.Stages = stages
+	for i := range plan.Tasks {
+		if !work[plan.Tasks[i].Stage] {
+			plan.Tasks[i].Stage = ""
+		}
+	}
+	return plan
 }
 
 // skipUnplannedStages marks the stages the plan leaves out as skipped.
@@ -485,7 +520,8 @@ func (p Pipeline) limitFor(id StageID) int {
 		// The plan's "pr" limit bounds the PR loop's fix rounds.
 		return p.limitFor(StagePR)
 	}
-	return DefaultLimits[id]
+	stage, _ := p.Stage(id)
+	return DefaultLimits[stage.KindOf()]
 }
 
 func (p *Pipeline) setStatus(id StageID, status StageStatus) {

@@ -105,11 +105,8 @@ func (f FailureFact) key() string {
 // report claiming tasks_done before the loop blocks: two turns per task
 // plus the loop limit.
 func buildTurnCap(p Pipeline) int {
-	tasks := 1
-	if p.Plan != nil && len(p.Plan.Tasks) > 0 {
-		tasks = len(p.Plan.Tasks)
-	}
-	return 2*tasks + p.stageLimit(StageBuild)
+	tasks := max(1, len(p.stageTasks(p.Current)))
+	return 2*tasks + p.stageLimit(p.Current)
 }
 
 func (p Pipeline) stageLimit(id StageID) int {
@@ -132,7 +129,7 @@ func (p *Pipeline) stageRef(id StageID) *Stage {
 // without decisions runs verification; a decision pauses the loop until it
 // is answered.
 func buildTurnAction(p *Pipeline, b Blocks) Action {
-	if s := p.stageRef(StageBuild); s != nil {
+	if s := p.stageRef(p.Current); s != nil {
 		s.Turns++
 	}
 	if b.Report == nil || len(b.Report.Decisions) > 0 {
@@ -148,14 +145,14 @@ func applyVerification(p Pipeline, ev Event, now time.Time) (Pipeline, Action, e
 	if ev.Verification == nil {
 		return p, noAction, fmt.Errorf("%w: no results", ErrInvalidVerification)
 	}
-	if !p.Active() || (p.Current != StageBuild && p.Current != StageReview) || p.OpenGate != GateNone || !p.AwaitingVerification {
+	if kind := p.CurrentKind(); !p.Active() || (kind != StageBuild && kind != StageReview) || p.OpenGate != GateNone || !p.AwaitingVerification {
 		return p, noAction, nil // stale: the loop has moved on
 	}
 	next := p.clone()
 	next.AwaitingVerification = false
 	next.UpdatedAt = now
 	v := *ev.Verification
-	if next.Current == StageReview {
+	if next.CurrentKind() == StageReview {
 		if v.Passed {
 			return next.reviewVerificationPassed(ev.Turn, now)
 		}
@@ -173,7 +170,7 @@ func (p Pipeline) verificationPassed(turn int, now time.Time) (Pipeline, Action,
 		stage := p.advance()
 		return p, Action{Kind: ActionSendTurn, Prompt: buildDonePrompt(stage)}, nil
 	}
-	build, _ := p.Stage(StageBuild)
+	build, _ := p.Stage(p.Current)
 	if build.Turns >= buildTurnCap(p) {
 		p.block(BlockedNoProgress, nil, turn, now)
 		return p, noAction, nil
@@ -182,10 +179,10 @@ func (p Pipeline) verificationPassed(turn int, now time.Time) (Pipeline, Action,
 }
 
 func (p Pipeline) verificationFailed(v Verification, turn int, now time.Time) (Pipeline, Action, error) {
-	build := p.stageRef(StageBuild)
+	build := p.stageRef(p.Current)
 	fact := failureFact(v, build.Iteration)
 	repeated := p.LastFailure != nil && p.LastFailure.key() == fact.key()
-	limit := p.stageLimit(StageBuild)
+	limit := p.stageLimit(p.Current)
 	switch {
 	case repeated:
 		p.block(BlockedRepeated, &fact, turn, now)
@@ -208,7 +205,7 @@ func (p *Pipeline) block(reason string, failure *FailureFact, turn int, now time
 	if failure != nil {
 		p.LastFailure = failure
 	}
-	p.raiseBlocked(blockedTitle(p.Current), BlockedFact{
+	p.raiseBlocked(blockedTitle(p.CurrentKind()), BlockedFact{
 		Reason: reason, Iteration: stage.Iteration, Limit: p.stageLimit(p.Current), Failure: failure,
 	}, turn, now)
 }
@@ -323,7 +320,7 @@ func applyBlockedGate(p *Pipeline, ev Event, decide func()) (Pipeline, Action, e
 	s.Limit = p.stageLimit(p.Current) + 1
 	s.Iteration++
 	s.Turns = 0
-	if p.Current == StageReview {
+	if p.CurrentKind() == StageReview {
 		if retry := reviewRetry(p, ev.Action); retry != "" {
 			prompt = retry
 		}

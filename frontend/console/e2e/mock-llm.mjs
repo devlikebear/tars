@@ -109,12 +109,31 @@ function reviewReply(typed) {
   return `${summary}\n\n<focus-findings>${JSON.stringify(findings)}</focus-findings>\n<focus-report>${JSON.stringify({ summary, risks: [] })}</focus-report>`
 }
 const FOCUS_PR = '[e2e:focus-pr]'
+// [e2e:focus-template] plays any template (focusTemplates.spec.ts): the plan
+// lists the stages the guidance's plan format names, and every later stage
+// is answered by the block its guidance asks for — a done report for a work
+// stage, findings (one high, one low, then none) for a review stage.
+const FOCUS_TEMPLATE = '[e2e:focus-template]'
+
+function templateReply(stage, typed, guidance) {
+  const report = (summary, extra = {}) => `${summary}\n\n<focus-report>${JSON.stringify({ summary, risks: [], ...extra })}</focus-report>`
+  if (stage === 'plan') {
+    const stages = JSON.parse(`[${guidance.match(/"stages":\[([^\]]*)\]/)?.[1] ?? '"plan"'}]`)
+    const plan = { goal: 'Write a short story', tasks: [{ title: 'Write chapter one', done: 'chapter-1.md holds the scene' }], stages, verify: ['git status --short'] }
+    return `Here is the outline.\n\n<focus-plan>${JSON.stringify(plan)}</focus-plan>`
+  }
+  if (typed.startsWith('Fix these findings')) return report('Revised the passages.')
+  if (guidance.includes('"tasks_done"')) return report('Wrote the chapter.', { tasks_done: true })
+  if (guidance.includes('<focus-findings>')) return reviewReply(typed)
+  return report(`Ran the ${stage} step.`)
+}
 
 function focusReply(text) {
-  const stage = text.match(/<focus-stage>[\s\S]*?current stage: ([a-z_]+)/)?.[1]
+  const stage = text.match(/<focus-stage>[\s\S]*?current stage: ([a-z][a-z0-9_]*)/)?.[1]
   if (!stage) return null
   const typed = text.slice(0, text.indexOf('<focus-stage>'))
   if (typed.includes(FOCUS_ASK)) return 'The verification commands look right.'
+  if (text.includes(FOCUS_TEMPLATE)) return templateReply(stage, typed, text.slice(text.indexOf('<focus-stage>')))
   if (stage === 'plan' && text.includes(FOCUS_PLAN)) {
     const plan = {
       goal: 'Add a greeting',
@@ -169,7 +188,7 @@ function focusReply(text) {
 const focusLongPath = `src/${'deeply-nested-folder/'.repeat(12)}greet.ts`
 
 function focusBuildTool(text) {
-  const stage = text.match(/<focus-stage>[\s\S]*?current stage: ([a-z_]+)/)?.[1]
+  const stage = text.match(/<focus-stage>[\s\S]*?current stage: ([a-z][a-z0-9_]*)/)?.[1]
   const typed = stage ? text.slice(0, text.indexOf('<focus-stage>')) : ''
   return stage === 'build' && text.includes(FOCUS_REPORT) && !typed.includes('→') && !typed.includes(FOCUS_ASK)
 }

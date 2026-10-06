@@ -157,8 +157,8 @@ func decodeObject(body string, v any) error {
 	return json.Unmarshal([]byte(body), v)
 }
 
-// parsePlan decodes a plan and normalizes its stages: known ids only, in
-// pipeline order, plan always first; none listed means every stage.
+// parsePlan decodes a plan and cleans it. Its stages are fitted to the
+// pipeline's template when the plan reaches a pipeline (Pipeline.fitPlan).
 func parsePlan(body string) (Plan, error) {
 	var plan Plan
 	if err := decodeObject(body, &plan); err != nil {
@@ -183,25 +183,10 @@ func normalizePlan(plan Plan) (Plan, error) {
 	plan.Tasks = tasks
 	plan.Verify = cleanStrings(plan.Verify)
 	plan.E2E = cleanStrings(plan.E2E)
-	plan.Stages = normalizeStages(plan.Stages)
+	for i := range plan.Tasks {
+		plan.Tasks[i].Stage = StageID(strings.TrimSpace(string(plan.Tasks[i].Stage)))
+	}
 	return plan, nil
-}
-
-func normalizeStages(listed []StageID) []StageID {
-	if len(listed) == 0 {
-		return append([]StageID(nil), StageOrder...)
-	}
-	want := map[StageID]bool{StagePlan: true}
-	for _, id := range listed {
-		want[StageID(strings.TrimSpace(string(id)))] = true
-	}
-	out := make([]StageID, 0, len(StageOrder))
-	for _, id := range StageOrder {
-		if want[id] {
-			out = append(out, id)
-		}
-	}
-	return out
 }
 
 func cleanStrings(values []string) []string {

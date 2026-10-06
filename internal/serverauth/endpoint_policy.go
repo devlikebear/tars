@@ -66,6 +66,11 @@ var defaultEndpointPolicyRules = []EndpointPolicyRule{
 	userRule([]string{http.MethodPost}, "/v1/focus/pipelines/:id/cards/:card", "focus card state"),
 	userRule([]string{http.MethodPost}, "/v1/focus/pipelines/:id/advance", "focus manual stage pass"),
 	userRule([]string{http.MethodPost}, "/v1/focus/pipelines/:id/stop", "focus pipeline stop"),
+	// Goal mode: turning it on is admin-only in the handler (it hands every
+	// gate and tool permission to the server); anyone at the console may
+	// turn it off.
+	userRule([]string{http.MethodPost}, "/v1/focus/pipelines/:id/goal", "focus goal mode"),
+	userRule([]string{http.MethodGet}, "/v1/focus/templates", "focus template list"),
 	userRule([]string{http.MethodGet}, "/v1/focus/release-train", "focus release train read"),
 	userRule([]string{http.MethodGet}, "/v1/admin/plans/archive", "plan archive"),
 
