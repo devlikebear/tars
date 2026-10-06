@@ -16,4 +16,4 @@ Last reviewed: 2026-10-06. Start an isolated instance with `make build` then `bi
 - Reach: `tools.computer_use` in YAML and `tars doctor --config <config>`.
 - Drive: check default `enabled: true`, `backend: llm`; set `enabled: false` to disable or `backend: jev` with `jev.base_url` to switch. Set `expose_values: false` to withhold field contents.
 - Healthy result: doctor reports the selected LLM tier/model or Jev location and missing driver guidance. Jev keeps confidence gates. Missing setup returns `unavailable`; no computer action runs.
-- Evidence: doctor output and `go test ./internal/config ./cmd/tars -run 'TestComputerUse|TestCheckDoctorComputerUse' -v`.
+- Evidence: configured-model compatibility without GUI access: `TARS_COMPUTER_USE_MODEL_CONFIG=<config> go test -tags integration ./internal/tarsserver -run TestConfiguredLightRecordedObservation -v` (synthetic screen data only). Doctor output and `go test ./internal/config ./cmd/tars -run 'TestComputerUse|TestCheckDoctorComputerUse' -v`.

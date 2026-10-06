@@ -12,6 +12,7 @@ import (
 
 	"github.com/devlikebear/tars/internal/computeruse"
 	"github.com/devlikebear/tars/internal/config"
+	"github.com/devlikebear/tars/pkg/llm"
 )
 
 // Uses the existing configured LLM credentials and real cua-driver daemon.
@@ -78,5 +79,55 @@ func TestLiveComputerUseLight(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("computer_use missing")
+	}
+}
+
+// This test sends only the synthetic observations below, never reads the host
+// GUI, and never executes a driver action. It checks configured provider/auth
+// compatibility separately from OS permissions and real-screen export.
+func TestConfiguredLightRecordedObservation(t *testing.T) {
+	path := os.Getenv("TARS_COMPUTER_USE_MODEL_CONFIG")
+	if path == "" {
+		t.Skip("TARS_COMPUTER_USE_MODEL_CONFIG is required")
+	}
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.WorkspaceDir = t.TempDir()
+	router, err := buildLLMRouter(cfg, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	client, resolution, err := router.ClientFor(llm.RoleComputerUse)
+	if err != nil {
+		t.Fatal(err)
+	}
+	backend := computeruse.NewLLMBackend(client, resolution.Model, nil)
+	screen := computeruse.Snapshot{Window: computeruse.Window{App: "Synthetic Calculator"}, Elements: []computeruse.Element{
+		{Index: 1, Role: "AXButton", Label: "2", Enabled: true},
+		{Index: 2, Role: "AXButton", Label: "Clear", Enabled: true},
+	}, Texts: []string{`AXStaticText = "0"`}}
+	request := computeruse.Request{Goal: "Press 2 so the calculator display is 2. Finish only when the current display is 2."}
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+	state, shown := computeruse.RenderState(request, screen, nil, computeruse.RenderOptions{ExposeValues: true})
+	d, spent, err := backend.Decide(ctx, state, computeruse.BuildQuestions(shown, nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("configured model=%s tier=%s decision=%+v usage=%+v", resolution.Model, resolution.Tier, d, spent)
+	if d.Op != computeruse.OpClick || d.TargetIndex != 1 || d.Probabilistic || spent.InputTokens == 0 {
+		t.Fatalf("incorrect synthetic action: %+v usage=%+v", d, spent)
+	}
+	screen.Texts = []string{`AXStaticText = "2"`}
+	state, shown = computeruse.RenderState(request, screen, []computeruse.TraceStep{{Step: 1, Op: "click", Target: "AXButton '2'", Effect: "confirmed"}}, computeruse.RenderOptions{ExposeValues: true})
+	d, spent, err = backend.Decide(ctx, state, computeruse.BuildQuestions(shown, nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("synthetic final observation decision=%+v usage=%+v", d, spent)
+	if d.Op != computeruse.OpDone || d.Done != 1 {
+		t.Fatalf("visible completion not recognized: %+v", d)
 	}
 }
