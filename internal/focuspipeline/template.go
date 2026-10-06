@@ -234,11 +234,19 @@ func LoadTemplates(dir string) ([]Template, []TemplateDiagnostic) {
 	if strings.TrimSpace(dir) == "" {
 		return out, nil
 	}
-	entries, err := os.ReadDir(dir)
+	// Stat first: reading a file as a folder reports "not found" on Windows.
+	info, err := os.Stat(dir)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return out, nil
 		}
+		return out, []TemplateDiagnostic{{Source: TemplateDirName, Error: err.Error()}}
+	}
+	if !info.IsDir() {
+		return out, []TemplateDiagnostic{{Source: TemplateDirName, Error: "not a folder"}}
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
 		return out, []TemplateDiagnostic{{Source: TemplateDirName, Error: err.Error()}}
 	}
 	names := make([]string, 0, len(entries))
