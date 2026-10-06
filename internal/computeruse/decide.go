@@ -78,6 +78,8 @@ func num(p *float64) float64 {
 }
 
 type Decision struct {
+	// Probabilistic is true only for backends returning probability scores.
+	Probabilistic    bool
 	Op               string
 	OpConfidence     float64
 	TargetIndex      int
@@ -140,7 +142,7 @@ func ParseDecision(resp jev.Response) (Decision, error) {
 	if err != nil {
 		return Decision{}, err
 	}
-	d := Decision{Op: op.Choice, OpConfidence: num(op.Confidence), TargetConfidence: num(target.Confidence),
+	d := Decision{Probabilistic: true, Op: op.Choice, OpConfidence: num(op.Confidence), TargetConfidence: num(target.Confidence),
 		TargetMargin: choiceMargin(target), Risky: num(risky.Noul), Done: num(done.Noul)}
 	if strings.HasPrefix(target.Choice, "e") {
 		if n, err := strconv.Atoi(target.Choice[1:]); err == nil && n > 0 {
@@ -172,4 +174,21 @@ func Compatible(op, role string) bool {
 	default:
 		return true
 	}
+}
+
+// LLM self-reported risk cannot override known destructive or external effects.
+func requiresConfirmation(op, label string) bool {
+	if op == OpPressEnter {
+		return true
+	} // the focused control may submit
+	if op != OpClick && op != OpSetValue {
+		return false
+	}
+	label = strings.ToLower(label)
+	for _, word := range []string{"send", "submit", "delete", "erase", "remove", "purchase", "buy", "pay", "checkout", "publish", "grant", "allow", "install", "uninstall", "전송", "보내", "제출", "삭제", "결제", "구매", "게시", "허용", "설치"} {
+		if strings.Contains(label, word) {
+			return true
+		}
+	}
+	return false
 }

@@ -19,14 +19,14 @@ const computerUseMaxSteps = 50
 
 // NewComputerUseTool is the single chat entry point to the GUI loop (#973).
 // The model states a goal once; every step after that is decided by the
-// System One server, with no LLM call inside the loop.
+// configured light LLM or optional System One backend.
 func NewComputerUseTool(engine ComputerUseEngine, enabled bool) Tool {
 	return Tool{
 		Name: "computer_use",
 		Description: "Drive a desktop app's GUI toward a goal by reading its accessibility tree and clicking, typing and scrolling. " +
 			"State the goal as one sentence describing the end state; the loop picks each step itself. " +
 			"Text to type must be passed in inputs (name → text) and referred to by name in the goal; it cannot invent text. " +
-			"The window's on-screen text is sent to the configured System One server (TypeSafe Jev when hosted); input values are not. " +
+			"The window's on-screen text is sent to the configured LLM provider by default, or the System One server when the Jev backend is selected; input values are not. " +
 			"An action that looks hard to undo (delete, send, pay, change settings) stops with status needs_confirmation, a proposed_action and a resume token: " +
 			"show the proposed action to the user, and only after they answer call again with resume and confirm (true runs it and continues, false cancels). " +
 			"Other statuses: done, stuck, max_steps, cancelled, unavailable, error.",

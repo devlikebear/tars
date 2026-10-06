@@ -189,6 +189,8 @@ func defaultConfigValues() Config {
 			ToolsWebSearchPerplexityBaseURL:     defaultPerplexityBaseURL,
 			ToolsWebSearchCacheTTLSeconds:       defaultToolsWebSearchCacheTTLSeconds,
 			ToolsExecMaxTimeoutMS:               defaultExecMaxTimeoutMS,
+			ToolsComputerUseEnabled:             true,
+			ToolsComputerUseBackend:             "llm",
 			ToolsComputerUseMaxSteps:            25,
 			ToolsComputerUseStepTimeoutSeconds:  15,
 			ToolsComputerUseTotalTimeoutSeconds: 300,

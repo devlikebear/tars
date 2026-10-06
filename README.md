@@ -18,7 +18,7 @@
 </div>
 
 > [!IMPORTANT]
-> **Development resumed.** TARS is no longer archived. Latest tagged release is `v0.49.0` (2026-10-05). The narrower console navigation described below shipped in `v0.36.0`. This README tracks `main`; see the [changelog](CHANGELOG.md) for tagged-release behavior.
+> **Development resumed.** TARS is no longer archived. Latest tagged release is `v0.50.0` (2026-10-06). The narrower console navigation described below shipped in `v0.36.0`. This README tracks `main`; see the [changelog](CHANGELOG.md) for tagged-release behavior.
 
 TARS is a local agent runtime for people who want an inspectable AI workbench without handing workspace control to a hosted service. It packages a browser console, API server, CLI, background jobs, memory, and extension system into one Go binary.
 
@@ -35,7 +35,7 @@ The name comes from the TARS in *Interstellar* — practical, direct, dependable
 
 | | OpenClaw | Hermes Agent | TARS |
 |---|---|---|---|
-| **Release used** | Stable `v2026.7.1` | Stable `v0.19.1` (`v2026.7.30`) | `v0.49.0` (latest tagged release) |
+| **Release used** | Stable `v2026.7.1` | Stable `v0.19.1` (`v2026.7.30`) | `v0.50.0` (latest tagged release) |
 | **Packaging** | TypeScript Gateway plus web/native apps and plugins | Python agent/gateway plus TUI, web, and desktop surfaces | Go single binary with embedded browser console and CLI |
 | **Delegation / harnesses** | Native subagents, Codex runtime, and ACP-backed external harness sessions | Isolated `delegate_task` children, live transcripts, MoA, and coding-runtime adapters | Native Agent Runtime plus an opt-in bounded Claude Code execution adapter, model tiers, tool policy, depth limits, and experimental consensus |
 | **Durable async work** | Background-task ledger plus SQLite-backed automations | Durable Kanban/goals, delegated-result recovery, and delivery-obligation ledger | SQLite Work Ledger plus a dependency scheduler with leases, retries, budgets, and operator escalation |
@@ -240,7 +240,9 @@ Remote Access requires `api_auth_mode: required`, configured admin/user password
 
 ### Computer Use
 
-`computer_use` is an opt-in chat tool (`tools.computer_use.enabled`, off by default) that drives a desktop app toward a one-sentence goal. Each step reads the window's accessibility tree through [cua-driver](https://github.com/trycua/cua) and asks a System One server (`jev.base_url` — hosted TypeSafe Jev or a local compatible server) which element to act on; no LLM runs inside the loop, so a step costs a fraction of a cent. Text to type is passed by the caller as named `inputs` and never sent to the server. Actions that look hard to undo always stop with `needs_confirmation` until you answer. The driven window's on-screen text is sent to `jev.base_url`, so use a loopback server to keep it on your machine. `tars doctor` checks the binary, the daemon, and where the server runs. Verified on macOS.
+`computer_use` is enabled by default and drives a desktop app toward a one-sentence goal. Each step reads the window's accessibility tree through [cua-driver](https://github.com/trycua/cua), asks the existing LLM router's `computer_use` role (default: `light`) for one structured action, validates it, and observes the next screen after acting. It reuses your configured provider credentials; calls count toward that provider's billing or subscription limits. No separate Jev key is needed. Text to type is passed as named `inputs`; only the key names reach the model. Risky actions and secure-field typing pause with `needs_confirmation` until you answer. Screen text goes to the configured LLM provider. Install and start cua-driver and grant its OS permissions; without a driver the tool returns `unavailable` with setup guidance. `tars doctor` checks the driver and selected backend. The native driver path is supported on macOS; other platforms still need verification.
+
+Set `tools.computer_use.enabled: false` to disable it. To use Jev instead, set `tools.computer_use.backend: jev` and configure `jev.base_url` plus `jev.api_key` for hosted Jev (or a local compatible server). Jev keeps its probability-based gates; LLM decisions use schema validation, confirmation, and post-action observation rather than generated confidence numbers. Override `llm.role_defaults.computer_use` to select a different tier. The `antigravity-cli` provider cannot disable its built-in tools for decision-only calls and is unavailable for this role; use another tier/provider or Jev.
 
 ### Extensibility
 
@@ -381,7 +383,7 @@ The narrowing is recorded as normative policy in [`frontend/console/DESIGN.md`](
 
 ### Screenshots
 
-Captured from a running `tars serve` built from an August 2026 snapshot of `main` — one per sidebar page, in the order the sidebar lists them. The workspace is a throwaway one, so the counters are small. (The sidebar footer in that snapshot still showed `v0.35.0`; current `VERSION.txt` is `0.49.0`.)
+Captured from a running `tars serve` built from an August 2026 snapshot of `main` — one per sidebar page, in the order the sidebar lists them. The workspace is a throwaway one, so the counters are small. (The sidebar footer in that snapshot still showed `v0.35.0`; current `VERSION.txt` is `0.50.0`.)
 
 **Chat** — `/console/chat`
 
@@ -453,6 +455,6 @@ cd frontend/console && npm run check && npm run test:ci
 
 ## Status
 
-**Development resumed.** TARS is no longer archived and development has resumed. Latest tagged release is `v0.49.0`. TARS is pre-1.0; see the [stability policy](docs/public-agent-packages.md#stability-policy) for the public `pkg/` API guarantees.
+**Development resumed.** TARS is no longer archived and development has resumed. Latest tagged release is `v0.50.0`. TARS is pre-1.0; see the [stability policy](docs/public-agent-packages.md#stability-policy) for the public `pkg/` API guarantees.
 
 Module path: `github.com/devlikebear/tars`. MIT licensed. Contributions are welcome; see [Contributing](CONTRIBUTING.md).

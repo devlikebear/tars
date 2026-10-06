@@ -485,7 +485,7 @@ func buildAPIMux(
 		}
 		return buildAutomationTools(resolvedStore, cronRunner)
 	}
-	chatTools := buildOptionalChatTools(cfg, agentRuntime)
+	chatTools := buildOptionalChatTools(cfg, agentRuntime, deps.llmRouter, deps.usageTracker)
 	if cfg.ChannelsTelegramEnabled {
 		chatTools = append(chatTools, telegramSendTool)
 	}

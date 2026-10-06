@@ -143,6 +143,7 @@ llm:
       reasoning_effort: minimal
   default_tier: standard
   role_defaults:
+    computer_use: light
     chat_main: standard
     context_compactor: light
     memory_hook: light
@@ -314,7 +315,7 @@ jev:
   # User messages and USER.md are sent ONLY when this host is loopback
   # (127.0.0.1, ::1, localhost). A remote server gets metadata only, which
   # leaves the three text signals off.
-  # tools.computer_use also asks this server, and sends it the driven window's
+  # tools.computer_use with backend: jev also asks this server, and sends it the driven window's
   # on-screen text whatever the host is (that is the tool's whole input).
   base_url: ""        # e.g. http://127.0.0.1:8009
   # Hosted Jev only. Also read from JEV_API_KEY or TYPESAFE_API_KEY.
@@ -367,17 +368,17 @@ tools:
     enabled: false
   agentruntime:
     enabled: false
-  # computer_use (#973): one chat tool that drives a desktop app toward a goal.
-  # Each step reads the window's accessibility tree through cua-driver
-  # (https://github.com/trycua/cua, `cua-driver serve` must be running and
-  # granted Accessibility) and asks the System One server at jev.base_url which
-  # element to act on. No LLM runs inside the loop.
-  # PRIVACY: the on-screen text of the driven window is sent to jev.base_url.
-  # With a hosted server (https://api.typesafe.ai) that text leaves this
-  # machine; point jev.base_url at a loopback server to keep it local.
-  # Actions that look hard to undo always stop for confirmation.
+  # computer_use is enabled by default. Each step reads an accessibility tree
+  # through cua-driver (https://github.com/trycua/cua) and asks the configured
+  # computer_use LLM role (light by default) for one validated action.
+  # It reuses existing provider credentials and billing/subscription limits.
+  # backend: jev selects the optional System One service at jev.base_url.
+  # PRIVACY: screen text is sent to the selected backend. Named inputs are
+  # never included in model requests; secure field values are never sent.
+  # Hard-to-undo actions stop for confirmation. Missing driver -> unavailable.
   computer_use:
-    enabled: false
+    enabled: true               # false explicitly disables the tool
+    backend: llm                # llm | jev
     cua_driver_path: ""          # empty: CUA_DRIVER_PATH, then PATH
     max_steps: 25                # per call, hard cap 50
     step_timeout_seconds: 15     # each cua-driver call

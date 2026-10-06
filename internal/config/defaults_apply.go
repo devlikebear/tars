@@ -391,6 +391,12 @@ func applyLLMPoolDefaults(cfg *Config) {
 	}
 
 	cfg.LLMRoleDefaults = normalizeLLMRoleDefaults(cfg.LLMRoleDefaults)
+	if cfg.LLMRoleDefaults == nil {
+		cfg.LLMRoleDefaults = map[string]string{}
+	}
+	if cfg.LLMRoleDefaults["computer_use"] == "" {
+		cfg.LLMRoleDefaults["computer_use"] = "light"
+	}
 }
 
 // normalizeLLMRoleDefaults lowercases + trims both keys and values and

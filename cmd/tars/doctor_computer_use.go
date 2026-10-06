@@ -58,6 +58,29 @@ func checkDoctorComputerUseWith(report *doctorReport, cfg config.Config, probe d
 		}
 	}
 
+	if cfg.ToolsComputerUseBackend == "" || cfg.ToolsComputerUseBackend == "llm" {
+		tier := cfg.LLMRoleDefaults["computer_use"]
+		if tier == "" {
+			tier = "light"
+		}
+		resolved, err := config.ResolveLLMTier(&cfg, tier)
+		if err != nil {
+			report.add("warn", name, "LLM decision backend is not configured: "+err.Error())
+			return
+		}
+		if resolved.Kind == "antigravity-cli" {
+			report.add("warn", name, "antigravity-cli cannot disable native tools for decision-only calls; select another computer_use role tier")
+			return
+		}
+		if healthy {
+			report.add("ok", name, fmt.Sprintf("cua-driver %s, LLM %s/%s (%s tier): screen text is sent to the configured provider; usage follows its billing or subscription limits", path, resolved.Kind, resolved.Model, tier))
+		}
+		return
+	}
+	if cfg.ToolsComputerUseBackend != "jev" {
+		report.add("warn", name, "unknown computer use backend: select llm or jev")
+		return
+	}
 	base := strings.TrimSpace(cfg.Jev.BaseURL)
 	if base == "" {
 		report.add("warn", name, "jev.base_url is empty: no System One server to decide steps")

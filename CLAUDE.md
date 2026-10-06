@@ -53,7 +53,7 @@ make console-e2e          # Playwright: rebuilt console + tars serve + mock LLM 
 | `config` | YAML → env override → defaults. 60+ fields |
 | `mcp` | Model Context Protocol client |
 | `jev` | `/v1/systemone` client for System One servers (hosted Jev or local Kev); shared by initiative and computer use |
-| `computeruse` | GUI loop behind the `computer_use` tool: cua-driver accessibility snapshots + System One decisions (#973) |
+| `computeruse` | GUI loop behind the `computer_use` tool: cua-driver accessibility snapshots + light LLM decisions (optional Jev) |
 | `skill` | `.md` skill files with YAML frontmatter |
 
 **Layering (enforced — `make arch-check`):**
@@ -81,16 +81,14 @@ cmd/  →  app layer  →  core layer  →  pkg/
 - 상태: `GET /v1/initiative/status`. 새 LLM 도구 없음, pulse와 분리
 
 **Computer use (Epic #973):**
-- 빌트인 채팅 툴 `computer_use(goal, app?, inputs?, max_steps?, resume?, confirm?)` 하나. `tools.computer_use.enabled` 기본 false. "도메인 기능을 빌트인 툴로 넣지 말 것" 원칙의 예외다 — 기본 꺼짐이라 프롬프트에 툴 1개만 늘고, 판단 인프라(`internal/jev`)를 initiative와 공유한다
-- 루프(`internal/computeruse/engine.go`)는 관찰(`cua-driver get_window_state`, 접근성 트리) → 판단(System One 1회: `op`/`target`/`input_key` choice + `risky`/`done` noul) → 게이트 → 실행 → 다음 관찰로 검증. **루프 안에서 LLM을 부르지 않는다.** 타이핑할 텍스트는 호출자가 `inputs`로 넘기고 System One은 키 이름만 고른다 — 값은 state·trace·로그 어디에도 남기지 않는다
-- 게이트: `done ≥ 0.85` 종료, op 신뢰도 < 0.70 또는 target 신뢰도 < 0.30(그리고 2위와의 차이 < 0.30)이면 한 번 `look` 뒤 stuck 집계, `risky ≥ 0.50`이거나 secure 필드 입력이면 **항상** `needs_confirmation` + 1회용 `resume` 토큰(프로세스 메모리, 10분)으로 멈춘다. `confirm` 없는 resume은 에러다 — 사용자 답 없이 실행도 폐기도 하지 않는다. stuck/no_change 3회, `max_steps`(기본 25, 상한 50), 전체 300초에서 끝난다
-- **화면 텍스트가 `jev.base_url`로 나간다** (initiative와 달리 loopback 조건이 없다 — 화면이 이 툴의 입력 전부라서). 원격이면 `tars doctor`가 그 사실을 표시한다. `expose_values: false`는 요소 값을 빼고, secure 필드 값은 설정과 무관하게 절대 보내지 않는다. 화면 내용은 state에만 넣고 질문 `instructions`에는 넣지 않는다(라벨이 지시문이 되지 않게)
-- `jev.base_url`이 비었거나 cua-driver가 없으면 툴은 등록된 채 `status: unavailable` + hint를 돌려준다. 바이너리는 호출마다 찾는다(설정 → `CUA_DRIVER_PATH` → PATH → `~/.local/bin`·`/opt/homebrew/bin`·`/usr/local/bin`·`/Applications/CuaDriver.app`): launchd로 뜬 서버는 PATH가 비어 있고, 나중에 설치해도 재시작이 필요 없다
-- `pkg/tools.IsHighRiskToolName`에 들어 있어 네이티브 provider의 세션 권한 모드(manual=묻기, plan=거부)가 그대로 적용된다
-- cua-driver 0.32는 스냅샷을 **세션별**로 보관하고 CLI 호출마다 암묵적 세션을 따로 만든다. 그래서 모든 호출에 같은 `session` 라벨(`tars-computer-use`)을 싣는다 — 없으면 다음 프로세스의 클릭이 `stale_element_token`으로 거부된다. 세션 인자를 모르는 구버전은 한 번 거부당한 뒤 라벨 없이 돈다. 드라이버는 유휴 세션(과 데몬 재시작 시 모든 세션)을 끝내고 그 라벨을 `session has ended`로 거부하므로, 그 에러를 만나면 `start_session`으로 되살린 뒤 한 번 재시도한다
-- 드라이버의 `elements`에는 조작 가능한 노드만 온다. 계산기 표시창 같은 읽기 전용 텍스트는 `tree_markdown`에만 있어서 번호 없는 줄을 `Snapshot.Texts`로 뽑아(메뉴바 하위는 통째로 제외, 80줄·줄당 160자) state의 `TEXT ON SCREEN`과 화면 해시에 넣는다. `expose_values: false`면 state에서 뺀다
-- Kev-0.8B(로컬)는 배관 검증용으로만 쓸 수 있다: 맞는 요소를 골라도 신뢰도(op 0.4~0.6, target 0.2~0.3)가 게이트에 못 미쳐 실행 전에 `stuck`으로 끝난다(2026-10-04 계산기 실측)
-- 테스트는 서브프로세스·네트워크 없이 `FakeDriver`/`FakeAsker`와 cua-driver 0.28.2 fixture로 돈다. 실제 Jev + cua-driver 라이브: `CU_APP=Calculator go test -tags integration ./internal/computeruse -run TestLive_Loop -v` (`TYPESAFE_API_KEY`, 데몬 없으면 skip). macOS만 검증됨
+- One built-in chat tool: `computer_use(goal, app?, inputs?, max_steps?, resume?, confirm?)`. Enabled by default; `tools.computer_use.backend: llm` uses the `computer_use` role, mapped to light by default. Existing provider authentication and tracked router clients are reused. Explicit `enabled: false` disables it. `backend: jev` selects the optional System One endpoint under `jev.*`; initiative remains unchanged.
+- `internal/computeruse/engine.go`: observe (cua-driver accessibility tree) -> decide -> validate/gate -> act -> observe again. LLM responses are strict JSON with only supplied op/target/input_key choices and boolean risky/done. No generated confidence numbers are used. Jev retains its op/target probability thresholds and target margin gate.
+- Both paths preserve risky and secure-field confirmation (`needs_confirmation`, one-use in-memory resume token, 10-minute TTL). The LLM path also confirms Return and known send/delete/purchase/permission controls even if the model calls them safe. Caller-supplied input values are read only during driver execution; requests expose only input key names. `expose_values: false` withholds field contents and read-only text; secure values are always withheld.
+- Screen text is sent to the selected backend (configured LLM provider by default; `jev.base_url` for Jev). Doctor reports the chosen backend and driver availability. Missing backend or driver returns `unavailable` with setup guidance. Driver lookup is per call: configured path -> `CUA_DRIVER_PATH` -> PATH -> known install locations.
+- LLM decisions cannot execute tools: ToolChoiceNone, Claude Code empty harness tool list (`--tools ""`), strict MCP and no Chrome. antigravity-cli cannot enforce decision-only calls and is unavailable for this role. All actions run through the existing driver and chat permission gates.
+- Budgets: default 25 steps, hard cap 50, 300s total; repeated stuck/no_change/look loops stop. Backend/model/input/output tokens and cost are returned; LLM calls go through the existing usage tracker. Unknown LLM pricing never uses Jev's unit price.
+- cua-driver 0.32+ snapshots are session-scoped. Every call shares `tars-computer-use`; old drivers retry without the session argument, ended sessions revive with `start_session`. Read-only `tree_markdown` lines populate screen text/hash (menu bar excluded, 80 lines, 160 chars per line).
+- Unit tests use FakeDriver/FakeAsker and recorded fixtures. `internal/tarsserver/computer_use*_e2e_test.go` covers both backends through a real subprocess + HTTP provider. Live LLM tool test: `TARS_COMPUTER_USE_LIVE_CONFIG=<config> CUA_DRIVER_PATH=<driver> go test -tags integration ./internal/tarsserver -run TestLiveComputerUseLight -v`. Jev live test remains `CU_APP=Calculator go test -tags integration ./internal/computeruse -run TestLive_Loop -v`. Native driver verification is macOS-only. See `docs/feature-map.md` for public entry points.
 
 **LLM Provider Pool:**
 - `LLMConfig`: `LLMProviders` (alias → settings), `LLMTiers` (name → binding), `LLMDefaultTier`, `LLMRoleDefaults`

@@ -171,12 +171,13 @@ var configInputFields = []configInputField{
 	withYAMLPath(intField("jev_timeout_seconds", []string{"JEV_TIMEOUT_SECONDS", "TARS_JEV_TIMEOUT_SECONDS"}, func(cfg *Config) *int { return &cfg.Jev.TimeoutSeconds }, parsePositiveInt), "jev.timeout_seconds"),
 	boolField("tools_message_enabled", []string{"TOOLS_MESSAGE_ENABLED", "TARS_TOOLS_MESSAGE_ENABLED"}, func(cfg *Config) *bool { return &cfg.ToolsMessageEnabled }),
 	boolField("tools_agentruntime_enabled", []string{"TOOLS_AGENTRUNTIME_ENABLED", "TARS_TOOLS_AGENTRUNTIME_ENABLED"}, func(cfg *Config) *bool { return &cfg.ToolsAgentRuntimeEnabled }),
-	boolField("tools_computer_use_enabled", []string{"TOOLS_COMPUTER_USE_ENABLED", "TARS_TOOLS_COMPUTER_USE_ENABLED"}, func(cfg *Config) *bool { return &cfg.ToolsComputerUseEnabled }),
+	stringField("tools_computer_use_backend", []string{"TOOLS_COMPUTER_USE_BACKEND", "TARS_TOOLS_COMPUTER_USE_BACKEND"}, func(cfg *Config) *string { return &cfg.ToolsComputerUseBackend }, func(s string) string { return strings.ToLower(strings.TrimSpace(s)) }),
+	boolFieldWithPresence("tools_computer_use_enabled", []string{"TOOLS_COMPUTER_USE_ENABLED", "TARS_TOOLS_COMPUTER_USE_ENABLED"}, func(cfg *Config) *bool { return &cfg.ToolsComputerUseEnabled }, func(cfg *Config) *bool { return &cfg.computerUseEnabledSet }),
 	stringField("tools_computer_use_cua_driver_path", []string{"TOOLS_COMPUTER_USE_CUA_DRIVER_PATH", "TARS_TOOLS_COMPUTER_USE_CUA_DRIVER_PATH"}, func(cfg *Config) *string { return &cfg.ToolsComputerUseCuaDriverPath }, strings.TrimSpace),
 	intField("tools_computer_use_max_steps", []string{"TOOLS_COMPUTER_USE_MAX_STEPS", "TARS_TOOLS_COMPUTER_USE_MAX_STEPS"}, func(cfg *Config) *int { return &cfg.ToolsComputerUseMaxSteps }, parsePositiveInt),
 	intField("tools_computer_use_step_timeout_seconds", []string{"TOOLS_COMPUTER_USE_STEP_TIMEOUT_SECONDS", "TARS_TOOLS_COMPUTER_USE_STEP_TIMEOUT_SECONDS"}, func(cfg *Config) *int { return &cfg.ToolsComputerUseStepTimeoutSeconds }, parsePositiveInt),
 	intField("tools_computer_use_total_timeout_seconds", []string{"TOOLS_COMPUTER_USE_TOTAL_TIMEOUT_SECONDS", "TARS_TOOLS_COMPUTER_USE_TOTAL_TIMEOUT_SECONDS"}, func(cfg *Config) *int { return &cfg.ToolsComputerUseTotalTimeoutSeconds }, parsePositiveInt),
-	boolField("tools_computer_use_expose_values", []string{"TOOLS_COMPUTER_USE_EXPOSE_VALUES", "TARS_TOOLS_COMPUTER_USE_EXPOSE_VALUES"}, func(cfg *Config) *bool { return &cfg.ToolsComputerUseExposeValues }),
+	boolFieldWithPresence("tools_computer_use_expose_values", []string{"TOOLS_COMPUTER_USE_EXPOSE_VALUES", "TARS_TOOLS_COMPUTER_USE_EXPOSE_VALUES"}, func(cfg *Config) *bool { return &cfg.ToolsComputerUseExposeValues }, func(cfg *Config) *bool { return &cfg.computerUseExposeValuesSet }),
 	boolField("skills_enabled", []string{"SKILLS_ENABLED", "TARS_SKILLS_ENABLED"}, func(cfg *Config) *bool { return &cfg.SkillsEnabled }),
 	boolField("skills_watch", []string{"SKILLS_WATCH", "TARS_SKILLS_WATCH"}, func(cfg *Config) *bool { return &cfg.SkillsWatch }),
 	intField("skills_watch_debounce_ms", []string{"SKILLS_WATCH_DEBOUNCE_MS", "TARS_SKILLS_WATCH_DEBOUNCE_MS"}, func(cfg *Config) *int { return &cfg.SkillsWatchDebounceMS }, parsePositiveInt),
@@ -488,4 +489,17 @@ func consoleModeString(value string) string {
 
 func lowerTrimmedString(value string) string {
 	return strings.TrimSpace(strings.ToLower(value))
+}
+
+// boolFieldWithPresence preserves explicit false for default-enabled settings.
+func boolFieldWithPresence(key string, env []string, accessor, presence func(*Config) *bool) configInputField {
+	return configInputField{yamlKey: key, envKeys: env,
+		apply: func(cfg *Config, raw string) { *accessor(cfg) = parseBool(raw, *accessor(cfg)); *presence(cfg) = true },
+		merge: func(dst *Config, src Config) {
+			if *presence(&src) {
+				*accessor(dst) = *accessor(&src)
+				*presence(dst) = true
+			}
+		},
+	}
 }

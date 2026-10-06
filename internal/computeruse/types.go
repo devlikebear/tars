@@ -75,11 +75,13 @@ type Request struct {
 
 // TraceStep records one observe-decide-act cycle.
 type TraceStep struct {
-	Step       int     `json:"step"`
-	Op         string  `json:"op"`
-	Target     string  `json:"target,omitempty"`
-	InputKey   string  `json:"input_key,omitempty"`
-	Confidence float64 `json:"confidence"`
+	Backend      string  `json:"backend,omitempty"`
+	OutputTokens int     `json:"output_tokens,omitempty"`
+	Step         int     `json:"step"`
+	Op           string  `json:"op"`
+	Target       string  `json:"target,omitempty"`
+	InputKey     string  `json:"input_key,omitempty"`
+	Confidence   float64 `json:"confidence"`
 	// TargetConfidence is Jev's confidence in the element choice, which a wide
 	// screen spreads thin independently of how sure the op is.
 	TargetConfidence float64 `json:"target_confidence"`
@@ -104,6 +106,12 @@ type ProposedAction struct {
 
 // Usage is what the run cost.
 type Usage struct {
+	Backend        string  `json:"backend,omitempty"`
+	Model          string  `json:"model,omitempty"`
+	InputTokens    int     `json:"input_tokens"`
+	OutputTokens   int     `json:"output_tokens"`
+	PricingKnown   bool    `json:"pricing_known"`
+	Calls          int     `json:"calls"`
 	JevInputTokens int     `json:"jev_input_tokens"`
 	EstUSD         float64 `json:"est_usd"`
 	ElapsedMS      int64   `json:"elapsed_ms"`

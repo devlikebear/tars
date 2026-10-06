@@ -22,7 +22,7 @@ func TestCheckDoctorComputerUse(t *testing.T) {
 	up := func(context.Context, string) error { return nil }
 	down := func(context.Context, string) error { return errors.New("daemon not running") }
 	enabled := func(base string) config.Config {
-		return config.Config{ToolConfig: config.ToolConfig{ToolsComputerUseEnabled: true}, Jev: config.JevConfig{BaseURL: base}}
+		return config.Config{ToolConfig: config.ToolConfig{ToolsComputerUseEnabled: true, ToolsComputerUseBackend: "jev"}, Jev: config.JevConfig{BaseURL: base}}
 	}
 
 	cases := []struct {
@@ -63,5 +63,20 @@ func TestCheckDoctorComputerUse_DefaultProbeReportsMissingBinary(t *testing.T) {
 	checkDoctorComputerUse(&report, cfg)
 	if len(report.checks) == 0 || report.checks[0].status != "warn" || !strings.Contains(report.checks[0].detail, "binary not found") {
 		t.Fatalf("checks = %+v", report.checks)
+	}
+}
+
+func TestCheckDoctorComputerUseLLMWithoutJev(t *testing.T) {
+	cfg := config.Default()
+	cfg.LLMProviders = map[string]config.LLMProviderSettings{"test": {Kind: "openai", APIKey: "test-only"}}
+	cfg.LLMTiers = map[string]config.LLMTierBinding{"light": {Provider: "test", Model: "light-test"}}
+	probe := doctorComputerUseProbe{
+		findDriver: func(string) (string, error) { return "/opt/bin/cua-driver", nil },
+		pingDriver: func(context.Context, string) error { return nil },
+	}
+	var report doctorReport
+	checkDoctorComputerUseWith(&report, cfg, probe)
+	if len(report.checks) != 1 || report.checks[0].status != "ok" || !strings.Contains(report.checks[0].detail, "light-test") {
+		t.Fatalf("checks: %+v", report.checks)
 	}
 }

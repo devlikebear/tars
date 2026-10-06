@@ -1099,3 +1099,16 @@ func TestClaudeCodeCLIClientChat_SettingsCarryAllowRules(t *testing.T) {
 		t.Fatalf("settings = %s", raw)
 	}
 }
+
+func TestClaudeCodeHarnessExplicitEmptyToolsDisablesBuiltins(t *testing.T) {
+	args, err := appendClaudeCodeHarnessArgs(nil, &ClaudeCodeHarnessOptions{Tools: []string{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, arg := range args {
+		if arg == "--tools" && i+1 < len(args) && args[i+1] == "" {
+			return
+		}
+	}
+	t.Fatalf("explicit empty tool set did not disable builtin tools: %q", args)
+}

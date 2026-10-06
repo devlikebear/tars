@@ -13,6 +13,7 @@ import (
 	"github.com/devlikebear/tars/internal/memory"
 	"github.com/devlikebear/tars/internal/tool"
 	"github.com/devlikebear/tars/internal/usage"
+	"github.com/devlikebear/tars/pkg/llm"
 )
 
 func buildAutomationTools(
@@ -55,7 +56,7 @@ func buildChatToolingOptions(
 	}
 }
 
-func buildOptionalChatTools(cfg config.Config, agentRuntime *agentruntime.Runtime) []tool.Tool {
+func buildOptionalChatTools(cfg config.Config, agentRuntime *agentruntime.Runtime, router llm.Router, tracker *usage.Tracker) []tool.Tool {
 	out := []tool.Tool{}
 	if cfg.ToolsMessageEnabled {
 		out = append(out, apptool.NewMessageTool(agentRuntime, true))
@@ -64,7 +65,7 @@ func buildOptionalChatTools(cfg config.Config, agentRuntime *agentruntime.Runtim
 		out = append(out, apptool.NewAgentRuntimeTool(agentRuntime, true))
 	}
 	if cfg.ToolsComputerUseEnabled {
-		out = append(out, apptool.NewComputerUseTool(newComputerUseEngine(cfg), true))
+		out = append(out, apptool.NewComputerUseTool(newComputerUseEngine(cfg, router, tracker), true))
 	}
 	if cfg.ToolsApplyPatchEnabled {
 		out = append(out, tool.NewApplyPatchTool(cfg.WorkspaceDir, true))

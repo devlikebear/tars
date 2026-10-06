@@ -60,6 +60,9 @@ const (
 	// transition). Standard by default — needs enough capability to spot
 	// non-trivial gaps but does not require heavy reasoning.
 	RoleCritic Role = "critic"
+
+	// RoleComputerUse selects the next validated desktop action. Light by default.
+	RoleComputerUse Role = "computer_use"
 )
 
 // AllRoles returns the exhaustive list of roles in canonical order.
@@ -77,6 +80,7 @@ func AllRoles() []Role {
 		RoleAgentRuntimePlanner,
 		RoleGoalJudge,
 		RoleCritic,
+		RoleComputerUse,
 	}
 }
 

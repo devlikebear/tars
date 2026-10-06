@@ -151,7 +151,8 @@ func Schema() []FieldMeta {
 		f("tools_apply_patch_enabled", "Tools", "bool", "Apply Patch", "Enable apply-patch tool"),
 		f("tools_message_enabled", "Tools", "bool", "Message Tool", "Enable message/notification tool"),
 		f("tools_agentruntime_enabled", "Tools", "bool", "Agent Runtime Tool", "Enable agent runtime dispatch tool"),
-		f("tools_computer_use_enabled", "Tools", "bool", "Computer Use", "Enable the computer_use tool: drives a desktop app through its accessibility tree. Screen text is sent to the System One server at jev.base_url"),
+		f("tools_computer_use_backend", "Tools", "string", "Computer Use Backend", "Decision backend: llm (configured light tier by default) or jev (jev.base_url)"),
+		f("tools_computer_use_enabled", "Tools", "bool", "Computer Use", "Enable the computer_use tool: drives a desktop app through its accessibility tree. Screen text is sent to the configured LLM provider by default, or jev.base_url with backend: jev"),
 		f("tools_computer_use_cua_driver_path", "Tools", "string", "cua-driver Path", "Path to the cua-driver binary; empty uses CUA_DRIVER_PATH, then PATH"),
 		f("tools_computer_use_max_steps", "Tools", "int", "Computer Use Max Steps", "Default step budget of one computer_use call (hard cap 50)"),
 		f("tools_computer_use_step_timeout_seconds", "Tools", "int", "Computer Use Step Timeout (sec)", "Timeout of each cua-driver call"),
@@ -460,6 +461,8 @@ func extractValue(yamlKey string, cfg Config) any {
 		return cfg.ToolsWebFetchAllowPrivateHosts
 	case "tools_apply_patch_enabled":
 		return cfg.ToolsApplyPatchEnabled
+	case "tools_computer_use_backend":
+		return cfg.ToolsComputerUseBackend
 	case "tools_computer_use_enabled":
 		return cfg.ToolsComputerUseEnabled
 	case "tools_computer_use_cua_driver_path":
