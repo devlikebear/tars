@@ -33,14 +33,16 @@
   let values: Record<string, unknown> = $state({})
   let effectiveValues: Record<string, unknown> = $state({})
   let envOverrides: Record<string, ConfigEnvOverride> = $state({})
+  let search = $state('')
+  let section = $state('')
+  let pendingKeys: string[] = $state([])
+  let runtimeStartedAt = $state('')
+  let processID = $state(0)
   let loading = $state(true)
   let error = $state('')
   let success = $state('')
 
-  // -- Quick Start field editing. Since the #931 freeze this page is Quick
-  //    Start checks only: the full field inspector and the YAML read view are
-  //    gone, and everything outside Quick Start is documented file-first in
-  //    config/tars.config.example.yaml. --
+  // -- Schema-based editing; Quick Start progress remains available. --
   let editingKey: string | null = $state(null)
   let editValue: string = $state('')
   let editBool: boolean = $state(false)
@@ -52,8 +54,8 @@
   let llmTestError = $state('')
 
   let hasDirtyFields = $derived(Object.keys(dirtyFields).length > 0)
-  let quickStartItems = $derived(buildQuickStartItems(schema, values, dirtyFields))
-  let quickStartStats = $derived(quickStartProgress(quickStartItems))
+  let quickStartItems = $derived(schema.filter(f => (!section || f.section === section) && `${f.label} ${f.key} ${f.description}`.toLowerCase().includes(search.toLowerCase())).map(field => ({ field, key: field.key, title: field.label, description: field.description, value: getDisplayValue(field), dirty: isDirty(field.key), status: { kind: 'ready', label: field.section, message: field.path } })))
+  let quickStartStats = $derived(quickStartProgress(buildQuickStartItems(schema, values, dirtyFields)))
   let showDiff = $state(false)
 
   let diffEntries = $derived.by(() => {
@@ -63,14 +65,15 @@
         key,
         label: field?.label || key,
         path: field?.path || key,
-        oldVal: stringifyConfigValue(values[key]),
-        newVal: stringifyConfigValue(newVal),
+        oldVal: field?.sensitive || key === 'llm_providers' ? '••••' : stringifyConfigValue(values[key]),
+        newVal: field?.sensitive || key === 'llm_providers' ? '••••' : stringifyConfigValue(newVal),
         impact: buildConfigImpactPreview(field, values[key], newVal).items,
       }
     })
   })
 
   // -- Restart --
+  let saveAndApply = $state(false)
   let restartBusy = $state(false)
   let restartConfirm = $state(false)
 
@@ -80,9 +83,29 @@
     error = ''
     success = ''
     try {
-      const result = await restartServer()
-      success = `Restart initiated (${result.mode}). ${result.info}. Page will reconnect shortly.`
+      const previousRuntime = runtimeStartedAt
+      await restartServer()
       restartConfirm = false
+      success = $t.config.reconnecting
+      let recovered = false
+      for (let attempt = 0; attempt < 30; attempt++) {
+        await new Promise(resolve => setTimeout(resolve, 1000))
+        try {
+          const status = await getConfigSchema(AbortSignal.timeout(2000))
+          if (status.runtime_started_at && status.runtime_started_at !== previousRuntime) {
+            runtimeStartedAt = status.runtime_started_at
+            processID = status.process_id || 0
+            pendingKeys = status.pending_restart_keys || []
+            values = status.values
+            effectiveValues = status.effective_values || {}
+            envOverrides = status.env_overrides || {}
+            success = pendingKeys.length ? $t.config.savedPending : $t.config.applied
+            recovered = true
+            break
+          }
+        } catch { /* Retry while the server is restarting. */ }
+      }
+      if (!recovered) throw new Error($t.config.reconnectFailed)
     } catch (e) {
       error = e instanceof Error ? e.message : 'Failed to restart server'
     } finally {
@@ -121,6 +144,9 @@
       values = schemaResp.values
       effectiveValues = schemaResp.effective_values || {}
       envOverrides = schemaResp.env_overrides || {}
+      pendingKeys = schemaResp.pending_restart_keys || []
+      runtimeStartedAt = schemaResp.runtime_started_at || ''
+      processID = schemaResp.process_id || 0
       dirtyFields = {}
     } catch (e) {
       error = e instanceof Error ? e.message : 'Failed to load config'
@@ -134,6 +160,8 @@
     const current = dirtyFields[field.key] !== undefined ? dirtyFields[field.key] : values[field.key]
     if (field.type === 'bool') {
       editBool = !!current
+    } else if (field.type === 'json') {
+      editValue = JSON.stringify(current ?? {}, null, 2)
     } else if (field.type === 'string_list') {
       if (Array.isArray(current)) {
         editValue = current.map((item) => String(item)).join('\n')
@@ -153,20 +181,30 @@
 
   function commitEdit(field: ConfigFieldMeta) {
     if (editingKey === null) return // already committed (e.g. Enter then blur)
+    if (field.sensitive && editValue === '') { cancelEdit(); return }
     let parsed: unknown
     if (field.type === 'bool') {
       parsed = editBool
+    } else if (field.type === 'json') {
+      try {
+        parsed = JSON.parse(editValue)
+        if (field.key === 'llm_providers' && parsed && typeof parsed === 'object') {
+          for (const provider of Object.values(parsed as Record<string, Record<string, unknown>>)) {
+            if (typeof provider.api_key === 'string' && provider.api_key.includes('*')) delete provider.api_key
+          }
+        }
+      } catch { error = $t.config.invalidValue; return }
     } else if (field.type === 'string_list') {
       parsed = editValue
         .split(/\r?\n|,/)
         .map((item) => item.trim())
         .filter(Boolean)
     } else if (field.type === 'int') {
-      parsed = editValue.trim() === '' ? 0 : parseInt(editValue, 10)
-      if (isNaN(parsed as number)) { cancelEdit(); return }
+      parsed = editValue.trim() === '' ? 0 : Number(editValue)
+      if (!Number.isFinite(parsed) || (field.type === 'int' && !Number.isInteger(parsed))) { error = $t.config.invalidValue; return }
     } else if (field.type === 'float') {
-      parsed = editValue.trim() === '' ? 0 : parseFloat(editValue)
-      if (isNaN(parsed as number)) { cancelEdit(); return }
+      parsed = editValue.trim() === '' ? 0 : Number(editValue)
+      if (!Number.isFinite(parsed)) { error = $t.config.invalidValue; return }
     } else {
       parsed = editValue
     }
@@ -282,7 +320,7 @@
     success = ''
     try {
       await patchConfigValues(dirtyFields)
-      success = 'Config saved. Restart TARS to apply changes.'
+      success = $t.config.savedPending
       dirtyFields = {}
       // Reload to get fresh values
       const schemaResp = await getConfigSchema()
@@ -290,6 +328,11 @@
       values = schemaResp.values
       effectiveValues = schemaResp.effective_values || {}
       envOverrides = schemaResp.env_overrides || {}
+      pendingKeys = schemaResp.pending_restart_keys || []
+      runtimeStartedAt = schemaResp.runtime_started_at || ''
+      processID = schemaResp.process_id || 0
+      if (saveAndApply) restartConfirm = true
+      saveAndApply = false
     } catch (e) {
       error = e instanceof Error ? e.message : 'Failed to save config'
     } finally {
@@ -312,7 +355,7 @@
   }
 
   function handleFieldKeydown(e: KeyboardEvent, field: ConfigFieldMeta) {
-    const multiline = field.type === 'string_list'
+    const multiline = field.type === 'string_list' || field.type === 'json'
     if (e.key === 'Enter' && (!multiline || e.metaKey || e.ctrlKey)) {
       e.preventDefault()
       commitEdit(field)
@@ -335,20 +378,6 @@
     return field.path || field.key
   }
 
-  // Deep link for structured fields that keep a UI editor elsewhere.
-  // Provider/tier editing lives in the onboarding wizard reentry; every
-  // other structured field is documented file-first (DESIGN.md #931).
-  function jsonWizardLink(key: string): string | null {
-    if (key === 'llm_providers') return '/console/onboarding?reentry=1&section=provider'
-    if (key === 'llm_tiers') return '/console/onboarding?reentry=1&section=tiers'
-    return null
-  }
-
-  function openJSONWizard(key: string) {
-    const link = jsonWizardLink(key)
-    if (link) onNavigate?.(link)
-  }
-
   onMount(() => { load() })
 </script>
 
@@ -365,7 +394,7 @@
       {#if hasDirtyFields}
         <button class="badge badge-warning diff-badge" onclick={() => { showDiff = !showDiff }} title={$t.config.viewChangesTooltip}>{$t.config.changedSuffix(Object.keys(dirtyFields).length)}</button>
         <button class="btn btn-ghost btn-sm" onclick={handleDiscardFields}>{$t.config.discard}</button>
-        <button class="btn btn-primary btn-sm" disabled={fieldSaving} onclick={handleSaveFields}>
+        <button class="btn btn-primary btn-sm" disabled={fieldSaving} onclick={() => { saveAndApply = false; handleSaveFields() }}>
           {fieldSaving ? $t.config.saving : $t.config.save}
         </button>
       {/if}
@@ -386,6 +415,14 @@
     </div>
   {/if}
 
+  <div class="card">
+    <label>{$t.config.searchSettings}<input aria-label={$t.config.searchSettings} bind:value={search} /></label>
+    <label>{$t.config.sectionSettings}<select aria-label={$t.config.sectionSettings} bind:value={section}><option value="">{$t.config.allSections}</option>{#each [...new Set(schema.map(f => f.section))] as name}<option value={name}>{name}</option>{/each}</select></label>
+    <p>{pendingKeys.length ? $t.config.savedPending : $t.config.applied}</p>
+    {#if restartConfirm}<p role="alert">{$t.config.savedPending}</p><button class="btn btn-primary" disabled={restartBusy} onclick={handleRestart}>{$t.config.confirmRestart}</button><button class="btn btn-ghost" onclick={() => { restartConfirm = false }}>{$t.config.discard}</button>{/if}
+    <button class="btn btn-secondary" disabled={restartBusy} onclick={load}>{$t.config.reconnect}</button>
+    {#if hasDirtyFields}<button class="btn btn-primary" disabled={fieldSaving || restartBusy} onclick={() => { saveAndApply = true; handleSaveFields() }}>{$t.config.saveApply}</button>{/if}
+  </div>
   <RemoteAccessCard />
 
   {#if loading}
@@ -470,7 +507,7 @@
                 </select>
               {:else if editingKey === field.key}
                 <div class="field-edit">
-                  {#if field.type === 'string_list'}
+                  {#if field.type === 'string_list' || field.type === 'json'}
                     <textarea
                       class="field-textarea"
                       bind:value={editValue}
@@ -508,13 +545,7 @@
                       {/each}
                     </span>
                   {/if}
-                  {#if jsonWizardLink(item.key)}
-                    <button class="btn btn-secondary btn-sm" onclick={() => openJSONWizard(item.key)}>
-                      {$t.config.editInWizard}
-                    </button>
-                  {:else}
-                    <span class="yaml-key-hint" title="Documented in config/tars.config.example.yaml">YAML: {fieldPath(field)}</span>
-                  {/if}
+                  <button class="btn btn-secondary btn-sm" onclick={() => startEdit(field)}>{$t.config.clickToEdit}</button>
                 </div>
               {:else}
                 <button

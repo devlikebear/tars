@@ -6,6 +6,16 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.51.0] - 2026-10-06
+
+### Added
+
+- Direct Console settings editing: search and filter typed fields, edit providers and tier bindings without the wizard, and inspect saved, environment-effective and running values. Save separately or apply with an explicitly confirmed server restart and connection recovery guidance.
+
+### Fixed
+
+- Settings PATCH validates types and the complete candidate before atomic persistence. Provider edits preserve omitted or masked credentials and literal environment references across flat, nested and mixed YAML; invalid aliases, role bindings and authentication modes are rejected before saving.
+
 ## [0.50.0] - 2026-10-06
 
 ### Changed

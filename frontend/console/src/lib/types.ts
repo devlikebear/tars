@@ -1711,6 +1711,10 @@ export type ConfigEnvOverride = {
 }
 
 export type ConfigSchema = {
+  runtime_started_at?: string
+  runtime_values?: Record<string, unknown>
+  pending_restart_keys?: string[]
+  process_id?: number
   path: string
   updated_at?: string
   fields: ConfigFieldMeta[]

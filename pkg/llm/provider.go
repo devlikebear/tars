@@ -438,6 +438,9 @@ func NewProvider(opts ProviderOptions) (Client, error) {
 	authOpts := opts
 	authOpts.Provider = provider
 	authConfig := providerAuthConfig(authOpts)
+	if err := ValidateProviderAuthMode(provider, authConfig.AuthMode); err != nil {
+		return nil, err
+	}
 	zlog.Debug().
 		Str("provider", provider).
 		Str("auth_mode", authConfig.AuthMode).

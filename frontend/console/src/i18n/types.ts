@@ -635,6 +635,18 @@ export type Translations = {
     button: string
   }
   config: {
+    confirmRestart: string
+    reconnect: string
+    searchSettings: string
+    sectionSettings: string
+    allSections: string
+    savedPending: string
+    applied: string
+    saveApply: string
+    reconnecting: string
+    reconnectFailed: string
+    invalidValue: string
+
     pageTitle: string
     save: string
     saving: string

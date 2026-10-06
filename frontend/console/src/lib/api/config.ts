@@ -12,8 +12,8 @@ export async function getConfig(): Promise<ConfigFile> {
   return requestJSON<ConfigFile>('/v1/admin/config')
 }
 
-export async function getConfigSchema(): Promise<ConfigSchema> {
-  return requestJSON<ConfigSchema>('/v1/admin/config/schema')
+export async function getConfigSchema(signal?: AbortSignal): Promise<ConfigSchema> {
+  return requestJSON<ConfigSchema>('/v1/admin/config/schema', { signal })
 }
 
 export async function getProviderModels(providerAlias = ''): Promise<ProviderModelsInfo> {

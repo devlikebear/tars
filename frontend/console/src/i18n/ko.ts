@@ -650,6 +650,19 @@ export const ko = {
     button: '설정 마법사 다시 실행 →',
   },
   config: {
+    confirmRestart: '재시작 확인',
+    reconnect: '다시 연결',
+
+    searchSettings: '설정 검색',
+    sectionSettings: '분류',
+    allSections: '전체 분류',
+    savedPending: '저장됨 · 적용하려면 재시작이 필요합니다. 환경변수가 우선 적용됩니다.',
+    applied: '실행 중 서버와 적용 대상 설정이 일치합니다.',
+    saveApply: '저장 후 적용',
+    reconnecting: '재시작 요청됨 · 연결 복구와 실행 설정을 확인 중입니다…',
+    reconnectFailed: '재시작을 확인할 수 없습니다. 서버 상태·주소·인증 정보를 확인하고 다시 연결하거나 수동 재시작하세요. 저장한 설정은 유지됩니다.',
+    invalidValue: '올바르지 않은 값입니다',
+
     pageTitle: '설정',
     save: '저장',
     saving: '저장 중...',

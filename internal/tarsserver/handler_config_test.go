@@ -52,9 +52,8 @@ llm:
 		"updates": map[string]any{
 			"llm_tiers": map[string]any{
 				"heavy":    map[string]any{"provider": "codex", "model": "gpt-5.5"},
-				"standard": map[string]any{"provider": "codex", "model": "gpt-5.4"},
+				"standard": map[string]any{"provider": "codex", "model": "gpt-5.4-updated"},
 				"light":    map[string]any{"provider": "codex", "model": "gpt-5.4-mini"},
-				"turbo":    map[string]any{"provider": "codex", "model": "gpt-5.4"},
 			},
 		},
 	})
@@ -79,8 +78,9 @@ llm:
 	if !ok {
 		t.Fatalf("expected llm_tiers map, got %#v", payload.Values["llm_tiers"])
 	}
-	if _, ok := tiers["turbo"]; !ok {
-		t.Fatalf("expected patched turbo tier in schema values, got %#v", tiers)
+	standard, ok := tiers["standard"].(map[string]any)
+	if !ok || standard["model"] != "gpt-5.4-updated" {
+		t.Fatalf("expected patched standard model in schema values, got %#v", tiers)
 	}
 	if got := payload.Values["workspace_dir"]; got != workspaceDir {
 		t.Fatalf("expected runtime workspace override %q, got %#v", workspaceDir, got)
