@@ -66,12 +66,13 @@ esac
 	cfg := config.Default()
 	cfg.WorkspaceDir = t.TempDir()
 	cfg.ToolsComputerUseEnabled = true
+	cfg.ToolsComputerUseBackend = "jev"
 	cfg.ToolsComputerUseCuaDriverPath = stub
 	cfg.Jev.BaseURL = srv.URL
 
 	var out computeruse.Result
 	found := false
-	for _, tl := range buildOptionalChatTools(cfg, nil) {
+	for _, tl := range buildOptionalChatTools(cfg, nil, nil, nil) {
 		if tl.Name != "computer_use" {
 			continue
 		}

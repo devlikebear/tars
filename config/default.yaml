@@ -61,6 +61,7 @@ llm:
   # for the canonical list.
   role_defaults:
     chat_main: standard
+    computer_use: light
     context_compactor: light
     memory_hook: light
     reflection_memory: light
@@ -110,3 +111,10 @@ jev:
   base_url: ""
   model: ""
   timeout_seconds: 10
+
+# Computer use reuses the configured light LLM tier and credentials.
+# The cua-driver daemon must be installed and granted macOS permissions.
+tools:
+  computer_use:
+    enabled: true
+    backend: llm

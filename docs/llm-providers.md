@@ -166,8 +166,14 @@ Both Chat Completions and Responses API surface these:
 local compatible server such as Kev). It answers typed `choice`/`noul`/`score`
 questions with probabilities and generates no text, so it is configured under
 `jev.*`, not `llm_providers`, and never appears in a tier. Two features use it:
-the initiative loop (text signals, loopback only) and the `computer_use` tool
-(one decision per GUI step; the driven window's text is sent to the server).
+the initiative loop (text signals, loopback only) and the optional Jev backend of `computer_use` (`tools.computer_use.backend: jev`).
+Computer use is enabled by default and otherwise uses the `computer_use` LLM role,
+defaulting to light and reusing existing credentials. The driven window's text
+is sent to whichever backend is selected. LLM decisions do not claim calibrated
+confidence; action validation, confirmation and subsequent observation gate them.
+The antigravity-cli provider is unavailable for this role because it cannot disable
+its native tools for decision-only calls. Claude Code uses an explicit empty
+harness tool list (`--tools ""`) to disable built-ins.
 
 ## Forward-looking gaps (out of scope for ID-004)
 

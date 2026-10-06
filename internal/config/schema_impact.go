@@ -286,7 +286,7 @@ var configFieldImpactHints = map[string][]string{
 		"Changing message tool availability affects user-facing notification behavior.",
 	},
 	"tools_computer_use_enabled": {
-		"Enabling computer use lets chat drive desktop apps and sends on-screen text to the System One server at jev.base_url.",
+		"Enabling computer use lets chat drive desktop apps and sends on-screen text to the selected decision backend (configured LLM by default; optional Jev).",
 	},
 	"tools_computer_use_cua_driver_path": {
 		"Changing the cua-driver path changes which local binary receives GUI automation commands.",

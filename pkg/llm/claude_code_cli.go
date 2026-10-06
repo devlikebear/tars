@@ -708,7 +708,7 @@ func appendClaudeCodeHarnessArgs(args []string, options *ClaudeCodeHarnessOption
 	if err != nil {
 		return nil, fmt.Errorf("harness tools: %w", err)
 	}
-	if len(tools) > 0 {
+	if options.Tools != nil {
 		args = append(args, "--tools", strings.Join(tools, ","))
 	}
 	allowed, err := normalizedClaudeCodeRules(options.AllowedTools)

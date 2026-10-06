@@ -89,7 +89,7 @@ type run struct {
 // Engine drives one GUI window through observe → decide → gate → act cycles.
 type Engine struct {
 	driver   Driver
-	jev      Asker
+	backend  DecisionBackend
 	cfg      Config
 	mu       sync.Mutex
 	pending  map[string]*run
@@ -126,7 +126,11 @@ func NewEngine(driver Driver, asker Asker, cfg Config) *Engine {
 	if cfg.InputTokenUSD <= 0 {
 		cfg.InputTokenUSD = def.InputTokenUSD
 	}
-	return &Engine{driver: driver, jev: asker, cfg: cfg, pending: map[string]*run{}, now: time.Now, newToken: randomToken}
+	var backend DecisionBackend
+	if asker != nil {
+		backend = jevBackend{asker: asker, inputTokenUSD: cfg.InputTokenUSD}
+	}
+	return &Engine{driver: driver, backend: backend, cfg: cfg, pending: map[string]*run{}, now: time.Now, newToken: randomToken}
 }
 
 func randomToken() string {
@@ -144,8 +148,8 @@ func (e *Engine) Run(ctx context.Context, req Request) Result {
 	// Every exit goes through finish so Result.Trace is never nil: the field
 	// has no omitempty and a caller decoding "trace": null has to special-case it.
 	empty := func() *run { return &run{started: e.now()} }
-	if e.driver == nil || e.jev == nil {
-		return e.finish(empty(), Result{Status: StatusUnavailable, Reason: "computer_use is not configured", Hint: "set jev.base_url (plus jev.api_key for hosted Jev) and install cua-driver"})
+	if e.driver == nil || e.backend == nil {
+		return e.finish(empty(), Result{Status: StatusUnavailable, Reason: "computer_use is not configured", Hint: "configure the LLM decision backend (or jev.base_url for backend: jev) and install cua-driver"})
 	}
 	if err := e.driver.Ping(ctx); err != nil {
 		return e.finish(empty(), Result{Status: StatusUnavailable, Reason: err.Error(), Hint: "start the driver with `cua-driver serve` and grant Accessibility via `cua-driver permissions grant`"})
@@ -255,19 +259,15 @@ func (e *Engine) loop(ctx context.Context, r *run, confirmedFirst bool) Result {
 		state, shown := RenderState(r.req, snap, r.trace, RenderOptions{ExposeValues: e.cfg.ExposeValues})
 		r.lastShown = shown
 		start := e.now()
-		resp, err := e.jev.Ask(ctx, state, BuildQuestions(shown, inputKeys(r.req.Inputs)))
+		d, spent, err := e.backend.Decide(ctx, state, BuildQuestions(shown, inputKeys(r.req.Inputs)))
+		e.addUsage(r, spent)
 		if err != nil {
-			return e.finish(r, Result{Status: StatusError, Reason: "jev: " + err.Error()})
-		}
-		r.usage.JevInputTokens += resp.Usage.InputTokens
-		d, err := ParseDecision(resp)
-		if err != nil {
-			return e.finish(r, Result{Status: StatusError, Reason: err.Error()})
+			return e.finish(r, Result{Status: StatusError, Reason: "decision: " + err.Error()})
 		}
 		r.step++
 		ts := TraceStep{Step: r.step, Op: d.Op, InputKey: d.InputKey, Confidence: d.OpConfidence, TargetConfidence: d.TargetConfidence,
 			TargetMargin: d.TargetMargin, Risky: d.Risky, Done: d.Done,
-			LatencyMS: e.now().Sub(start).Milliseconds(), InputTokens: resp.Usage.InputTokens}
+			LatencyMS: e.now().Sub(start).Milliseconds(), InputTokens: spent.InputTokens, OutputTokens: spent.OutputTokens, Backend: spent.Backend}
 		r.lastActed = false
 		// eN is the element's own Index, not its position: RenderState filters
 		// menus and bare containers without renumbering, so shown[N-1] is a
@@ -292,7 +292,7 @@ func (e *Engine) loop(ctx context.Context, r *run, confirmedFirst bool) Result {
 			r.stuck++
 		// Looking is read-only, so an unsure look is not the guess this gate
 		// exists to stop: only acting ops are held to a confidence bar.
-		case d.Op != OpLook && (d.OpConfidence < e.cfg.ActConfidence || (NeedsTarget(d.Op) && !e.targetConfident(d))):
+		case d.Probabilistic && d.Op != OpLook && (d.OpConfidence < e.cfg.ActConfidence || (NeedsTarget(d.Op) && !e.targetConfident(d))):
 			if !r.looked {
 				r.looked = true
 				r.consecLooks++
@@ -314,13 +314,16 @@ func (e *Engine) loop(ctx context.Context, r *run, confirmedFirst bool) Result {
 				r.nextOpts.Query = el.Label
 			}
 			ts.Effect = "look"
+		case NeedsTarget(d.Op) && !el.Enabled:
+			ts.Effect, ts.Note = "skipped", "target_disabled"
+			r.stuck++
 		case NeedsTarget(d.Op) && !Compatible(d.Op, el.Role):
 			ts.Effect, ts.Note = "skipped", "incompatible"
 			r.stuck++
 		case d.Op == OpType && d.InputKey == "":
 			ts.Effect, ts.Note = "skipped", "no_input_key"
 			r.stuck++
-		case d.Risky >= e.cfg.RiskyThreshold || (d.Op == OpType && el.Secure):
+		case d.Risky >= e.cfg.RiskyThreshold || (d.Op == OpType && el.Secure) || (!d.Probabilistic && requiresConfirmation(d.Op, el.Label)):
 			// Secure fields are typeable (Compatible says yes) but never without
 			// the caller's say-so, regardless of Jev's risk reading.
 			r.proposed = &ProposedAction{Op: d.Op, Target: ts.Target, InputKey: d.InputKey, Risky: d.Risky}
@@ -446,7 +449,7 @@ func (e *Engine) finish(r *run, res Result) Result {
 	// back (execute rewrites the pending step's effect on resume).
 	res.Trace = append(make([]TraceStep, 0, len(r.trace)), r.trace...)
 	r.usage.ElapsedMS = e.now().Sub(r.started).Milliseconds()
-	r.usage.EstUSD = float64(r.usage.JevInputTokens) * e.cfg.InputTokenUSD
+
 	res.Usage = r.usage
 	for i, el := range r.lastShown {
 		if i >= maxLastScreen {
@@ -464,4 +467,22 @@ func inputKeys(in map[string]string) []string {
 	}
 	sort.Strings(keys)
 	return keys
+}
+
+// NewEngineWithBackend shares all driver, confirmation and observation gates.
+func NewEngineWithBackend(driver Driver, backend DecisionBackend, cfg Config) *Engine {
+	e := NewEngine(driver, nil, cfg)
+	e.backend = backend
+	return e
+}
+func (e *Engine) addUsage(r *run, spent DecisionUsage) {
+	r.usage.Backend, r.usage.Model = spent.Backend, spent.Model
+	r.usage.InputTokens += spent.InputTokens
+	r.usage.OutputTokens += spent.OutputTokens
+	if spent.Backend == "jev" {
+		r.usage.JevInputTokens += spent.InputTokens
+	}
+	r.usage.EstUSD += spent.EstUSD
+	r.usage.PricingKnown = spent.PricingKnown && (r.usage.PricingKnown || r.usage.Calls == 0)
+	r.usage.Calls++
 }

@@ -1,6 +1,5 @@
-// Package computeruse drives a native GUI toward a plain-language goal
-// without an LLM in the loop: an accessibility-tree Driver observes the
-// window, TypeSafe's Jev picks one operation and one target per step, and
-// deterministic gates decide whether to act, look closer, stop, or ask the
-// caller to confirm a risky action.
+// Package computeruse drives a native GUI toward a plain-language goal.
+// An accessibility-tree Driver observes the window; a configured light LLM
+// or optional Jev selects one operation and target per step. Deterministic
+// gates validate actions, observe effects and ask for risky-action confirmation.
 package computeruse

@@ -24,6 +24,9 @@ func Load(path string) (Config, error) {
 
 	applyEnv(&cfg)
 	applyDefaults(&cfg)
+	if cfg.ToolsComputerUseBackend != "llm" && cfg.ToolsComputerUseBackend != "jev" {
+		return Config{}, fmt.Errorf("tools.computer_use.backend must be llm or jev")
+	}
 	return cfg, nil
 }
 
@@ -42,6 +45,9 @@ func LoadFile(path string) (Config, error) {
 	}
 
 	applyDefaults(&cfg)
+	if cfg.ToolsComputerUseBackend != "llm" && cfg.ToolsComputerUseBackend != "jev" {
+		return Config{}, fmt.Errorf("tools.computer_use.backend must be llm or jev")
+	}
 	return cfg, nil
 }
 

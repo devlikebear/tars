@@ -119,6 +119,7 @@ pkg/llm const ResponseFormatText
 pkg/llm const RoleAgentRuntimeDefault
 pkg/llm const RoleAgentRuntimePlanner
 pkg/llm const RoleChatMain
+pkg/llm const RoleComputerUse
 pkg/llm const RoleContextCompactor
 pkg/llm const RoleCritic
 pkg/llm const RoleGoalJudge
