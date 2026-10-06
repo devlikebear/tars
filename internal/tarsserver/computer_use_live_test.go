@@ -50,6 +50,27 @@ func TestLiveComputerUseLight(t *testing.T) {
 		if err := json.Unmarshal([]byte(out.Content[0].Text), &res); err != nil {
 			t.Fatal(err)
 		}
+		// The test goal explicitly authorizes clearing Calculator's current
+		// number. Exercise the confirmation flow without approving any other
+		// control or weakening the production risk gate.
+		if res.Status == computeruse.StatusNeedsConfirmation {
+			if res.ProposedAction == nil || res.ProposedAction.Op != "click" ||
+				(res.ProposedAction.Target != "AXButton '모두 지우기'" && res.ProposedAction.Target != "AXButton 'All Clear'" && res.ProposedAction.Target != "AXButton 'Clear'") {
+				t.Fatalf("unexpected confirmation: %+v", res.ProposedAction)
+			}
+			args, err := json.Marshal(map[string]any{"resume": res.Resume, "confirm": true})
+			if err != nil {
+				t.Fatal(err)
+			}
+			out, err = tool.Execute(ctx, args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Log(out.Content[0].Text)
+			if err := json.Unmarshal([]byte(out.Content[0].Text), &res); err != nil {
+				t.Fatal(err)
+			}
+		}
 		if res.Status != computeruse.StatusDone {
 			t.Fatalf("computer use did not finish: %s %s", res.Status, res.Reason)
 		}
