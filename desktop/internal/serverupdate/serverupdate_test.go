@@ -96,7 +96,7 @@ func TestDecideOnlyRestartsAnIdleServer(t *testing.T) {
 	if Next(WaitForIdle) != RetryBusyEvery || Next(ApplyNow) != CheckEvery || Next(UpToDate) != CheckEvery {
 		t.Fatal("Next misjudged a step")
 	}
-	if !Enabled("windows") || Enabled("darwin") || Enabled("linux") {
-		t.Fatal("Enabled is Windows only")
+	if !Enabled("windows") || !Enabled("darwin") || Enabled("linux") {
+		t.Fatal("Enabled is Windows and macOS")
 	}
 }

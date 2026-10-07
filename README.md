@@ -317,10 +317,11 @@ yourself.
 with the latest release, checks it against `checksums.txt`, and restarts the
 server running on `--server-url` onto it (`--check` only reports, `--yes`
 skips the question, `--admin-api-token` is needed when the server requires
-auth). On Windows the desktop app does this by itself: it checks every six
-hours and updates the server only while no chat is running and nothing waits
-on an approval. When a newer app is out, it tells you; click the
-notification to install it. Homebrew installs update with `brew upgrade`.
+auth). The desktop app does this by itself on Windows and macOS: it checks
+every six hours and updates the server only while no chat is running and
+nothing waits on an approval. When a newer app is out, it tells you; click
+the notification to install it. Homebrew installs update with `brew upgrade`,
+which the macOS desktop app runs for you and then restarts the service.
 
 ## Quick Start
 

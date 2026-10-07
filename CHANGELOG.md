@@ -6,6 +6,10 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+### Added
+
+- **The macOS desktop app now updates the server.** Updating the desktop app left a Homebrew-installed server at its old version, with only a dialog telling you to run `brew upgrade`. The app now does it: two minutes after it starts and every six hours (and at once from **Check for updates…**) it runs `brew update` and asks Homebrew whether `devlikebear/tap/tars` is outdated; if so, and no chat is running and nothing waits on an approval, it runs `brew upgrade` and restarts the launchd service onto the new version. A server that launchd does not run is updated but not restarted, and the notification says so. A formula pinned with `brew pin` is left alone. A macOS install made with `install.sh` is updated with `tars update`, as on Windows. This works against servers of any version, since the app drives Homebrew itself.
+
 ## [0.52.0] - 2026-10-07
 
 ### Added

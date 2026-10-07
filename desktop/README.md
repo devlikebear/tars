@@ -41,11 +41,12 @@ brew install --cask devlikebear/tap/tars-desktop
 The cask installs the formula only when it is missing: a server installed
 earlier stays at its version. The app compares the server's version (from
 `/v1/healthz`) with its own and, once per server version, says when the
-server is older, with the commands to update it:
+server is older. It then updates the server itself once no chat is running
+(see Updates below); the commands to do it by hand are:
 
 ```bash
 brew upgrade devlikebear/tap/tars
-tars service install && tars service start
+tars service stop && tars service start
 ```
 
 On Windows, `install.ps1 -Desktop` puts the app and `tars.exe` in one
@@ -219,7 +220,21 @@ nothing waiting, or the activity cannot be read. The admin token goes to
 check announces a newer shell once per version; clicking that notification,
 or **Check for updates…**, installs it, and that menu item also runs the
 server update at once. A server older than the shell (see Running) wakes the
-check early. macOS installs stay with Homebrew.
+check early.
+
+On macOS the same check runs, and what it does depends on how tars was
+installed. A Homebrew install (the tars the shell found resolves into a
+Homebrew prefix) is updated with Homebrew, since `tars update` refuses one:
+the check is `brew update` then `brew outdated --json=v2 --formula
+devlikebear/tap/tars`, and the update `brew upgrade --formula
+devlikebear/tap/tars`, under the same idle rule. Afterwards the shell
+restarts the server with `tars service stop` and the Start server command,
+but only when `tars service status` says launchd has the service loaded: a
+server started by hand keeps running the old version until it is restarted,
+and the notification says so. A formula pinned with `brew pin` is left
+alone. brew is looked for on PATH, then in `/opt/homebrew/bin` and
+`/usr/local/bin`. An `install.sh` install is updated with `tars update`, as
+on Windows. Linux installs are not updated by the shell.
 
 The release signs the macOS bundle with a Developer ID and the hardened
 runtime, notarizes it and staples the ticket, so Gatekeeper opens the
@@ -246,7 +261,7 @@ job warns). For such a build, clear the quarantine flag yourself:
 | `internal/protocol` | `tars://` registration on Windows and Linux |
 | `internal/winstate` | saving and fitting the windows' places, the chat windows to reopen |
 | `internal/update` | picking the shell's archive out of a release |
-| `internal/serverupdate` | updating the server with `tars update` while it is idle (Windows) |
+| `internal/serverupdate` | updating the server while it is idle: `tars update` (Windows, `install.sh`), Homebrew (macOS) |
 | `internal/icon` | app and tray icons, drawn in code |
 | `frontend/` | the page shown while the server is down |
 
