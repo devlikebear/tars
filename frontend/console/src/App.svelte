@@ -437,7 +437,7 @@
         <div class="route-loading">Loading...</div>
       {:then module}
         {@const FocusRoute = module.default}
-        <FocusRoute sessionId={route.sessionId} release={route.release === true} onNavigate={navigate} />
+        <FocusRoute sessionId={route.sessionId} release={route.release === true} templates={route.templates === true} onNavigate={navigate} />
       {:catch}
         <div class="route-error">Could not load console page.</div>
       {/await}

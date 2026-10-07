@@ -65,6 +65,7 @@
     <div class="home-actions">
       <button type="button" class="btn btn-ghost btn-sm" onclick={() => onNavigate('/console')}>{$t.focus.home.advanced}</button>
       <button type="button" class="btn btn-ghost btn-sm" onclick={() => onNavigate('/console/focus/release')} data-testid="focus-release-open">{$t.focus.release.open}</button>
+      <button type="button" class="btn btn-ghost btn-sm" onclick={() => onNavigate('/console/focus/templates')} data-testid="focus-templates-open">{$t.focus.templateEditor.open}</button>
       {#if !creating}
         <button type="button" class="btn btn-primary" onclick={() => { creating = true }} data-testid="focus-new-task-open">{$t.focus.home.newTask}</button>
       {/if}

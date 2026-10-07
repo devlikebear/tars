@@ -292,6 +292,23 @@ func FindTemplate(dir, id string) (Template, bool) {
 	return Template{}, false
 }
 
+// normalizeTemplate trims every text field of t, whether it came from a
+// file on disk or an API request; it never touches Builtin or Source.
+func normalizeTemplate(t Template) Template {
+	t.ID = strings.TrimSpace(t.ID)
+	t.Name = strings.TrimSpace(t.Name)
+	t.Description = strings.TrimSpace(t.Description)
+	for i := range t.Stages {
+		s := &t.Stages[i]
+		s.ID = StageID(strings.TrimSpace(string(s.ID)))
+		s.Kind = StageID(strings.TrimSpace(string(s.Kind)))
+		s.Label = strings.TrimSpace(s.Label)
+		s.Instructions = strings.TrimSpace(s.Instructions)
+		s.FixInstructions = strings.TrimSpace(s.FixInstructions)
+	}
+	return t
+}
+
 func readTemplateFile(path string) (Template, error) {
 	info, err := os.Stat(path)
 	if err != nil {
@@ -313,24 +330,180 @@ func readTemplateFile(path string) (Template, error) {
 	if err != nil {
 		return Template{}, fmt.Errorf("%w: %v", ErrInvalidTemplate, err)
 	}
-	t.ID = strings.TrimSpace(t.ID)
+	t = normalizeTemplate(t)
 	if t.ID == "" {
 		base := filepath.Base(path)
 		t.ID = strings.TrimSuffix(base, filepath.Ext(base))
 	}
-	t.Name = strings.TrimSpace(t.Name)
-	t.Description = strings.TrimSpace(t.Description)
 	t.Builtin, t.Source = false, ""
-	for i := range t.Stages {
-		s := &t.Stages[i]
-		s.ID = StageID(strings.TrimSpace(string(s.ID)))
-		s.Kind = StageID(strings.TrimSpace(string(s.Kind)))
-		s.Label = strings.TrimSpace(s.Label)
-		s.Instructions = strings.TrimSpace(s.Instructions)
-		s.FixInstructions = strings.TrimSpace(s.FixInstructions)
-	}
 	if err := t.Validate(); err != nil {
 		return Template{}, err
 	}
 	return t, nil
+}
+
+// RenderTemplateYAML renders t as the YAML a saved user template file
+// holds: normalized, never built-in, never carrying a source path.
+func RenderTemplateYAML(t Template) ([]byte, error) {
+	t = normalizeTemplate(t)
+	t.Builtin, t.Source = false, ""
+	raw, err := yaml.Marshal(t)
+	if err != nil {
+		return nil, fmt.Errorf("%w: render yaml: %v", ErrInvalidTemplate, err)
+	}
+	return raw, nil
+}
+
+// templateFilePath is the file a template this package writes lives at:
+// always its id plus .yaml, so a later SaveTemplate or DeleteTemplate can
+// find it without reading every file in dir.
+func templateFilePath(dir, id string) string {
+	return filepath.Join(dir, id+".yaml")
+}
+
+// removeTemplateFiles removes id's template file under every extension
+// LoadTemplates reads, reporting whether any file existed. This is a
+// fallback for when existingTemplateSource found no recorded file (the id
+// never existed) — once a template has been loaded at least once, its
+// real Source is known and that exact file is removed instead of this
+// guess, because a hand-authored template is never required to be named
+// after its own id.
+func removeTemplateFiles(dir, id string) bool {
+	removed := false
+	for _, ext := range []string{".yaml", ".yml", ".json"} {
+		if err := os.Remove(filepath.Join(dir, id+ext)); err == nil {
+			removed = true
+		}
+	}
+	return removed
+}
+
+// existingTemplateSource returns the file name id's current, already-saved
+// user template is actually stored under (LoadTemplates' Source), or ""
+// when id is not a loaded user template. SaveTemplate and DeleteTemplate
+// use this instead of assuming "<id>.yaml": a hand-authored template file
+// can declare any id regardless of its own filename, so guessing the name
+// orphans the real file (left on disk under its old name, permanently
+// failing to load as a duplicate id) and, for a delete, can even let the
+// orphan's stale content reappear once the newer file is gone.
+func existingTemplateSource(dir, id string) string {
+	if id == "" {
+		return ""
+	}
+	existing, _ := LoadTemplates(dir)
+	for _, e := range existing {
+		if !e.Builtin && e.ID == id {
+			return e.Source
+		}
+	}
+	return ""
+}
+
+// PrepareTemplateSave normalizes and validates t as a candidate to save to
+// dir under originalID (see SaveTemplate's rules on built-in and taken
+// ids), without writing anything. A draft endpoint uses this to check an
+// AI-proposed template before it is shown to the user, so a bad draft
+// fails before any file is touched.
+func PrepareTemplateSave(dir, originalID string, t Template) (Template, error) {
+	originalID = strings.TrimSpace(originalID)
+	t = normalizeTemplate(t)
+	t.Builtin, t.Source = false, ""
+	if err := t.Validate(); err != nil {
+		return Template{}, err
+	}
+	for _, b := range BuiltinTemplates() {
+		if b.ID == t.ID {
+			return Template{}, fmt.Errorf("%w: id %q is a built-in template and cannot be replaced", ErrInvalidTemplate, t.ID)
+		}
+	}
+	existing, _ := LoadTemplates(dir)
+	for _, e := range existing {
+		if e.Builtin || e.ID == originalID {
+			continue
+		}
+		if e.ID == t.ID {
+			return Template{}, fmt.Errorf("%w: id %q is already taken", ErrInvalidTemplate, t.ID)
+		}
+	}
+	return t, nil
+}
+
+// SaveTemplate validates t and writes it to dir as a user template
+// (<workspace>/focus-templates/<id>.yaml), creating dir if needed. t's id
+// can never be a built-in one or another user template's. originalID is
+// the id of the template being edited ("" for a new one); once the new
+// file is written, SaveTemplate removes originalID's previous file — by
+// its recorded Source, not a guessed "<id>.yaml" (existingTemplateSource)
+// — whenever that differs from the file just written, whether because the
+// id changed (a rename) or because the template was hand-authored under a
+// different file name to begin with. It returns the normalized template
+// actually saved.
+func SaveTemplate(dir, originalID string, t Template) (Template, error) {
+	if strings.TrimSpace(dir) == "" {
+		return Template{}, fmt.Errorf("%w: no workspace to save templates in", ErrInvalidTemplate)
+	}
+	originalID = strings.TrimSpace(originalID)
+	// Looked up before anything is written: once the new file exists, an
+	// id shared with a hand-authored file (same id, mismatched name) would
+	// make LoadTemplates report the old one as a diagnostic instead of
+	// resolving it, hiding the very file this needs to remove.
+	oldSource := existingTemplateSource(dir, originalID)
+	t, err := PrepareTemplateSave(dir, originalID, t)
+	if err != nil {
+		return Template{}, err
+	}
+	raw, err := RenderTemplateYAML(t)
+	if err != nil {
+		return Template{}, err
+	}
+	if len(raw) > maxTemplateFileBytes {
+		return Template{}, fmt.Errorf("%w: file is larger than %d bytes", ErrInvalidTemplate, maxTemplateFileBytes)
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return Template{}, fmt.Errorf("create %s: %w", TemplateDirName, err)
+	}
+	path := templateFilePath(dir, t.ID)
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, raw, 0o600); err != nil {
+		return Template{}, fmt.Errorf("write template: %w", err)
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return Template{}, fmt.Errorf("write template: %w", err)
+	}
+	if oldSource != "" {
+		if oldPath := filepath.Join(dir, oldSource); oldPath != path {
+			_ = os.Remove(oldPath)
+		}
+	} else if originalID != "" && originalID != t.ID {
+		// No recorded source (e.g. the id was never actually loaded) but
+		// still a rename by the caller's account: fall back to the old
+		// convention-based guess rather than leaving nothing cleaned up.
+		removeTemplateFiles(dir, originalID)
+	}
+	t.Source = t.ID + ".yaml"
+	return t, nil
+}
+
+// DeleteTemplate removes a user template of dir by id. A built-in or
+// unknown id is an error. The file removed is the one LoadTemplates
+// actually read it from (existingTemplateSource), not a guessed
+// "<id>.yaml" — the same reasoning as SaveTemplate's cleanup.
+func DeleteTemplate(dir, id string) error {
+	id = strings.TrimSpace(id)
+	for _, b := range BuiltinTemplates() {
+		if b.ID == id {
+			return fmt.Errorf("%w: id %q is a built-in template and cannot be deleted", ErrInvalidTemplate, id)
+		}
+	}
+	if source := existingTemplateSource(dir, id); source != "" {
+		if err := os.Remove(filepath.Join(dir, source)); err != nil {
+			return fmt.Errorf("%w: id %q not found", ErrInvalidTemplate, id)
+		}
+		return nil
+	}
+	if !removeTemplateFiles(dir, id) {
+		return fmt.Errorf("%w: id %q not found", ErrInvalidTemplate, id)
+	}
+	return nil
 }

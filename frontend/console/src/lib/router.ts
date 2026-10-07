@@ -6,8 +6,9 @@ export type Route =
   | { view: 'board' }
   | { view: 'home' }
   | { view: 'chat'; sessionId?: string }
-  // Focus mode: the focus home, one session's pipeline, or the release train.
-  | { view: 'focus'; sessionId?: string; release?: boolean }
+  // Focus mode: the focus home, one session's pipeline, the release train,
+  // or the natural-language template editor.
+  | { view: 'focus'; sessionId?: string; release?: boolean; templates?: boolean }
   | { view: 'tasks' }
   | { view: 'agentruntime'; runId?: string; tab?: 'runs' | 'subagents' }
   | { view: 'memory' }
@@ -59,8 +60,10 @@ export function resolveRoute(pathname: string): Route {
 
   if (path === focusPrefix || path.startsWith(`${focusPrefix}/`)) {
     const sessionId = decodeURIComponent(path.slice(focusPrefix.length + 1).split('/')[0]?.trim() || '')
-    // Session ids never read "release", so it names the release train.
+    // Session ids never read "release" or "templates", so they name the
+    // release train and the template editor respectively.
     if (sessionId === 'release') return { view: 'focus', release: true }
+    if (sessionId === 'templates') return { view: 'focus', templates: true }
     return sessionId ? { view: 'focus', sessionId } : { view: 'focus' }
   }
 
