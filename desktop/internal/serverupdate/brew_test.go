@@ -60,8 +60,8 @@ func TestForPicksHomebrewOnlyForAHomebrewInstallOnMacOS(t *testing.T) {
 	}
 	// install.sh on macOS and install.ps1 on Windows update with `tars update`.
 	for _, tc := range []struct{ goos, bin string }{
-		{"darwin", "/Users/me/.local/bin/tars"},
-		{"windows", `C:\Users\me\AppData\Local\Programs\TARS\tars.exe`},
+		{"darwin", "/opt/tars/bin/tars"},
+		{"windows", `C:\TARS\tars.exe`},
 		{"windows", `C:\homebrew\tars.exe`},
 	} {
 		src, err := For(tc.goos, tc.bin, tc.bin, none, cfg, nil)
@@ -69,7 +69,7 @@ func TestForPicksHomebrewOnlyForAHomebrewInstallOnMacOS(t *testing.T) {
 			t.Fatalf("%s %s = %#v, %v", tc.goos, tc.bin, src, err)
 		}
 	}
-	if !ManagedByHomebrew("/home/linuxbrew/.linuxbrew/Cellar/tars/1/bin/tars") || ManagedByHomebrew("/Users/me/.local/bin/tars") {
+	if !ManagedByHomebrew("/opt/linuxbrew/Cellar/tars/1/bin/tars") || ManagedByHomebrew("/opt/tars/bin/tars") {
 		t.Fatal("ManagedByHomebrew")
 	}
 	if got := BrewDirs("darwin"); len(got) != 2 || got[0] != "/opt/homebrew/bin" {
