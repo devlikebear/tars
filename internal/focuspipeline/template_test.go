@@ -517,3 +517,22 @@ func TestDeleteTemplateAfterEditingAMismatchedFilenameDoesNotResurrectIt(t *test
 		t.Fatalf("files left behind: %v", entries)
 	}
 }
+
+// TestRemoveTemplateFilesRejectsAnUnsafeID documents the guard CodeQL's
+// path-injection query asked for: removeTemplateFiles never builds a
+// filesystem path from an id that is not already known-safe, even though
+// every public caller already goes through Template.Validate first.
+func TestRemoveTemplateFilesRejectsAnUnsafeID(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "..yaml"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"../escape", "a/b", "..", ""} {
+		if removeTemplateFiles(dir, id) {
+			t.Fatalf("id %q: removeTemplateFiles touched the filesystem", id)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(dir, "..yaml")); err != nil {
+		t.Fatalf("an unrelated file was removed: %v", err)
+	}
+}

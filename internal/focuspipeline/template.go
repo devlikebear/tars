@@ -368,7 +368,18 @@ func templateFilePath(dir, id string) string {
 // real Source is known and that exact file is removed instead of this
 // guess, because a hand-authored template is never required to be named
 // after its own id.
+//
+// id is re-checked against templateIDPattern right here, next to the
+// filesystem calls it guards (a caller's Template.Validate already
+// guarantees this for a saved template, but a static path-injection
+// scanner cannot see across that call boundary, and a future caller might
+// not go through Validate at all): the pattern allows no "/" or "..", so
+// it is a complete guard against filepath.Join(dir, id+ext) ever
+// resolving outside dir.
 func removeTemplateFiles(dir, id string) bool {
+	if !templateIDPattern.MatchString(id) {
+		return false
+	}
 	removed := false
 	for _, ext := range []string{".yaml", ".yml", ".json"} {
 		if err := os.Remove(filepath.Join(dir, id+ext)); err == nil {
@@ -461,6 +472,13 @@ func SaveTemplate(dir, originalID string, t Template) (Template, error) {
 	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return Template{}, fmt.Errorf("create %s: %w", TemplateDirName, err)
+	}
+	// t.Validate() (via PrepareTemplateSave above) already guarantees
+	// t.ID matches templateIDPattern — no "/" or "..", so this can never
+	// resolve outside dir. Re-checked right here, next to the writes it
+	// guards, the same reasoning as removeTemplateFiles's local check.
+	if !templateIDPattern.MatchString(t.ID) {
+		return Template{}, fmt.Errorf("%w: id %q is not safe to save", ErrInvalidTemplate, t.ID)
 	}
 	path := templateFilePath(dir, t.ID)
 	tmp := path + ".tmp"
