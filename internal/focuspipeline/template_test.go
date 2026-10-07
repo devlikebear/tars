@@ -2,10 +2,13 @@ package focuspipeline
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 func TestBuiltinTemplatesAreValid(t *testing.T) {
@@ -287,5 +290,249 @@ stages:
 	}
 	if _, err := readTemplateFile(big); !errors.Is(err, ErrInvalidTemplate) {
 		t.Fatalf("oversized file: %v", err)
+	}
+}
+
+func novelTemplate(id string) Template {
+	return Template{ID: id, Name: "Novel", Description: "d", Stages: []TemplateStage{
+		{ID: StagePlan},
+		{ID: "draft", Kind: StageBuild, Instructions: "write"},
+	}}
+}
+
+func TestSaveTemplateRoundTripsThroughLoadTemplates(t *testing.T) {
+	dir := t.TempDir()
+	saved, err := SaveTemplate(dir, "", novelTemplate("novel"))
+	if err != nil {
+		t.Fatalf("SaveTemplate: %v", err)
+	}
+	if saved.Builtin || saved.Source != "novel.yaml" {
+		t.Fatalf("saved = %+v", saved)
+	}
+	path := filepath.Join(dir, "novel.yaml")
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("file not written: %v", err)
+	}
+	if entries, _ := os.ReadDir(dir); len(entries) != 1 {
+		t.Fatalf("a leftover .tmp file: %v", entries)
+	}
+	tpl, ok := FindTemplate(dir, "novel")
+	if !ok || tpl.Name != "Novel" || len(tpl.Stages) != 2 || tpl.Stages[1].Instructions != "write" {
+		t.Fatalf("round trip = %+v %v", tpl, ok)
+	}
+}
+
+func TestSaveTemplateRejectsBuiltinID(t *testing.T) {
+	dir := t.TempDir()
+	if _, err := SaveTemplate(dir, "", novelTemplate("research")); !errors.Is(err, ErrInvalidTemplate) || !strings.Contains(err.Error(), "built-in") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestSaveTemplateRejectsTakenID(t *testing.T) {
+	dir := t.TempDir()
+	if _, err := SaveTemplate(dir, "", novelTemplate("novel")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := SaveTemplate(dir, "", novelTemplate("novel")); !errors.Is(err, ErrInvalidTemplate) || !strings.Contains(err.Error(), "already taken") {
+		t.Fatalf("second save with a different originalID: %v", err)
+	}
+	// Editing the same template back (originalID == its own id) is fine.
+	if _, err := SaveTemplate(dir, "novel", novelTemplate("novel")); err != nil {
+		t.Fatalf("re-saving under its own originalID: %v", err)
+	}
+}
+
+func TestSaveTemplateRenameRemovesThePreviousFile(t *testing.T) {
+	dir := t.TempDir()
+	if _, err := SaveTemplate(dir, "", novelTemplate("novel")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := SaveTemplate(dir, "novel", novelTemplate("novella")); err != nil {
+		t.Fatalf("rename: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "novel.yaml")); !os.IsNotExist(err) {
+		t.Fatalf("old file still there: %v", err)
+	}
+	if _, ok := FindTemplate(dir, "novel"); ok {
+		t.Fatal("renamed template still found under its old id")
+	}
+	if tpl, ok := FindTemplate(dir, "novella"); !ok || tpl.Name != "Novel" {
+		t.Fatalf("novella = %+v %v", tpl, ok)
+	}
+}
+
+func TestSaveTemplateRejectsInvalidID(t *testing.T) {
+	dir := t.TempDir()
+	// The id pattern (no "/", no "..") is what keeps a saved template's
+	// path inside dir; Validate rejects these before any file is touched.
+	for _, id := range []string{"../escape", "a/b", "Has Spaces"} {
+		if _, err := SaveTemplate(dir, "", novelTemplate(id)); !errors.Is(err, ErrInvalidTemplate) {
+			t.Fatalf("id %q: err = %v", id, err)
+		}
+	}
+	if entries, _ := os.ReadDir(dir); len(entries) != 0 {
+		t.Fatalf("a file escaped validation: %v", entries)
+	}
+}
+
+func TestSaveTemplateRejectsOversizedTemplate(t *testing.T) {
+	dir := t.TempDir()
+	tpl := novelTemplate("novel")
+	tpl.Stages[1].Instructions = strings.Repeat("a", maxTemplateInstruction)
+	for i := 0; i < 20; i++ {
+		tpl.Stages = append(tpl.Stages, TemplateStage{ID: StageID(fmt.Sprintf("s%d", i)), Kind: StageBuild, Instructions: strings.Repeat("b", maxTemplateInstruction)})
+	}
+	if _, err := SaveTemplate(dir, "", tpl); !errors.Is(err, ErrInvalidTemplate) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestDeleteTemplate(t *testing.T) {
+	dir := t.TempDir()
+	if _, err := SaveTemplate(dir, "", novelTemplate("novel")); err != nil {
+		t.Fatal(err)
+	}
+	if err := DeleteTemplate(dir, "novel"); err != nil {
+		t.Fatalf("DeleteTemplate: %v", err)
+	}
+	if _, ok := FindTemplate(dir, "novel"); ok {
+		t.Fatal("deleted template still found")
+	}
+	if err := DeleteTemplate(dir, "novel"); !errors.Is(err, ErrInvalidTemplate) || !strings.Contains(err.Error(), "not found") {
+		t.Fatalf("deleting again: %v", err)
+	}
+	if err := DeleteTemplate(dir, "research"); !errors.Is(err, ErrInvalidTemplate) || !strings.Contains(err.Error(), "built-in") {
+		t.Fatalf("deleting a built-in: %v", err)
+	}
+}
+
+func TestRenderTemplateYAML(t *testing.T) {
+	raw, err := RenderTemplateYAML(novelTemplate("novel"))
+	if err != nil {
+		t.Fatalf("RenderTemplateYAML: %v", err)
+	}
+	var back Template
+	if err := yaml.Unmarshal(raw, &back); err != nil {
+		t.Fatalf("round trip: %v", err)
+	}
+	if back.ID != "novel" || back.Name != "Novel" || len(back.Stages) != 2 {
+		t.Fatalf("back = %+v", back)
+	}
+	if strings.Contains(string(raw), "builtin") || strings.Contains(string(raw), "source") {
+		t.Fatalf("rendered yaml leaks internal fields:\n%s", raw)
+	}
+}
+
+// writeRaw hand-authors a template file whose name does not match the id
+// declared inside it — LoadTemplates has always allowed this (the id
+// comes from the file's own "id" field, falling back to the file name
+// only when that field is empty).
+func writeRaw(t *testing.T, dir, name, body string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestSaveTemplateOfMismatchedFilenameRemovesTheOldFile covers a save
+// (same id, no rename) of a template whose file name never matched its
+// id: SaveTemplate must remove that old file once the new "<id>.yaml" is
+// written, or the old one lingers forever as a same-id diagnostic.
+func TestSaveTemplateOfMismatchedFilenameRemovesTheOldFile(t *testing.T) {
+	dir := t.TempDir()
+	writeRaw(t, dir, "my-blog.yaml", "id: blog\nname: Blog\nstages:\n  - id: plan\n  - id: draft\n    kind: build\n")
+
+	tpl, ok := FindTemplate(dir, "blog")
+	if !ok {
+		t.Fatal("blog not found before edit")
+	}
+	tpl.Name = "Blog v2"
+	if _, err := SaveTemplate(dir, tpl.ID, tpl); err != nil {
+		t.Fatalf("SaveTemplate: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(dir, "my-blog.yaml")); !os.IsNotExist(err) {
+		t.Fatalf("the mismatched-name file was not removed: %v", err)
+	}
+	templates, diags := LoadTemplates(dir)
+	if len(diags) != 0 {
+		t.Fatalf("a stale file produced a diagnostic: %+v", diags)
+	}
+	got, ok := FindTemplate(dir, "blog")
+	if !ok || got.Name != "Blog v2" || got.Source != "blog.yaml" {
+		t.Fatalf("blog = %+v %v (templates=%v)", got, ok, templates)
+	}
+}
+
+// TestDeleteTemplateOfMismatchedFilenameRemovesTheRealFile covers deleting
+// a never-edited, hand-authored template directly: the file removed must
+// be the one it actually loads from, not a guessed "<id>.yaml".
+func TestDeleteTemplateOfMismatchedFilenameRemovesTheRealFile(t *testing.T) {
+	dir := t.TempDir()
+	writeRaw(t, dir, "my-blog.yaml", "id: blog\nname: Blog\nstages:\n  - id: plan\n  - id: draft\n    kind: build\n")
+
+	if err := DeleteTemplate(dir, "blog"); err != nil {
+		t.Fatalf("DeleteTemplate: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "my-blog.yaml")); !os.IsNotExist(err) {
+		t.Fatalf("the real file was not removed: %v", err)
+	}
+	if _, ok := FindTemplate(dir, "blog"); ok {
+		t.Fatal("deleted template still found")
+	}
+}
+
+// TestDeleteTemplateAfterEditingAMismatchedFilenameDoesNotResurrectIt is
+// the full regression for the finding: editing, then deleting, a
+// mismatched-filename template must leave nothing behind that can load
+// again as "blog" with the stale pre-edit content.
+func TestDeleteTemplateAfterEditingAMismatchedFilenameDoesNotResurrectIt(t *testing.T) {
+	dir := t.TempDir()
+	writeRaw(t, dir, "my-blog.yaml", "id: blog\nname: Blog Original\nstages:\n  - id: plan\n  - id: draft\n    kind: build\n")
+
+	tpl, _ := FindTemplate(dir, "blog")
+	tpl.Name = "Blog Edited"
+	if _, err := SaveTemplate(dir, tpl.ID, tpl); err != nil {
+		t.Fatalf("SaveTemplate: %v", err)
+	}
+	if err := DeleteTemplate(dir, "blog"); err != nil {
+		t.Fatalf("DeleteTemplate: %v", err)
+	}
+
+	templates, diags := LoadTemplates(dir)
+	for _, got := range templates {
+		if got.ID == "blog" {
+			t.Fatalf("deleted template resurrected: %+v", got)
+		}
+	}
+	if len(diags) != 0 {
+		t.Fatalf("a stale file left a diagnostic: %+v", diags)
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("files left behind: %v", entries)
+	}
+}
+
+// TestRemoveTemplateFilesRejectsAnUnsafeID documents the guard CodeQL's
+// path-injection query asked for: removeTemplateFiles never builds a
+// filesystem path from an id that is not already known-safe, even though
+// every public caller already goes through Template.Validate first.
+func TestRemoveTemplateFilesRejectsAnUnsafeID(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "..yaml"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"../escape", "a/b", "..", ""} {
+		if removeTemplateFiles(dir, id) {
+			t.Fatalf("id %q: removeTemplateFiles touched the filesystem", id)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(dir, "..yaml")); err != nil {
+		t.Fatalf("an unrelated file was removed: %v", err)
 	}
 }

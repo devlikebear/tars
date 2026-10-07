@@ -36,6 +36,9 @@
 // then finds no PR (no GitHub remote), so the developer passes those stages
 // by hand (P4). A Q&A question (console context, no stage) gets the generic
 // console-context answer below.
+// [e2e:focus-template-edit] answers POST /v1/focus/templates/draft (natural-
+// language template editing, focus_template_edit.go) — see
+// focusTemplateDraftReply below.
 
 import { createServer } from 'node:http'
 
@@ -193,10 +196,62 @@ function focusBuildTool(text) {
   return stage === 'build' && text.includes(FOCUS_REPORT) && !typed.includes('→') && !typed.includes(FOCUS_ASK)
 }
 
+// focus_template_edit.go's draft route sends no <focus-stage> wrapper, just
+// the json payload {request, existing_ids, base?, previous_draft?} as the
+// whole user message. [e2e:focus-template-edit] in the request text (see
+// focusTemplates.spec.ts) switches on a second word in the same text to
+// answer create, edit (add an illustration stage) or delete deterministically.
+// A real model would also see base/previous_draft/existing_ids; this mock
+// does not need them since each call names what it wants directly.
+const FOCUS_TEMPLATE_EDIT = '[e2e:focus-template-edit]'
+
+function focusTemplateDraftReply(text) {
+  if (!text.includes(FOCUS_TEMPLATE_EDIT)) return null
+  let payload
+  try {
+    payload = JSON.parse(text)
+  } catch {
+    return null
+  }
+  const request = String(payload?.request ?? '')
+  if (!request.includes(FOCUS_TEMPLATE_EDIT)) return null
+  if (request.includes('delete')) {
+    return JSON.stringify({ action: 'delete', summary: 'Removed the template.' })
+  }
+  if (request.includes('illustration')) {
+    return JSON.stringify({
+      action: 'save',
+      name: 'Lighthouse story',
+      description: 'Outline, draft, illustrate, revise.',
+      stages: [
+        { id: 'plan', label: 'Outline' },
+        { id: 'draft', kind: 'build', label: 'Draft', instructions: 'Write the chapters.' },
+        { id: 'illustrate', kind: 'build', label: 'Illustrate', instructions: 'Describe one illustration per chapter.' },
+        { id: 'revise', kind: 'review', label: 'Revise', instructions: 'Check continuity and tone.' },
+      ],
+      summary: 'Added an illustration stage before revise.',
+    })
+  }
+  return JSON.stringify({
+    action: 'save',
+    id: 'lighthouse-story',
+    name: 'Lighthouse story',
+    description: 'Outline, draft, revise.',
+    stages: [
+      { id: 'plan', label: 'Outline' },
+      { id: 'draft', kind: 'build', label: 'Draft', instructions: 'Write the chapters.' },
+      { id: 'revise', kind: 'review', label: 'Revise', instructions: 'Check continuity and tone.' },
+    ],
+    summary: 'A three-stage story template: outline, draft, revise.',
+  })
+}
+
 // The chat handler wraps the user's text in context blocks; keep only the
 // part after the last blank line, which is what the user typed.
 function replyFor(body) {
   const text = lastUserText(body.messages ?? []).trim()
+  const templateDraft = focusTemplateDraftReply(text)
+  if (templateDraft) return templateDraft
   const focus = focusReply(text)
   if (focus) return focus
   // Review notes (#969) ride after the message; answer the first comment so

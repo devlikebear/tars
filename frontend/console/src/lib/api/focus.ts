@@ -9,6 +9,9 @@ import type {
   FocusPRDraft,
   FocusQAResult,
   FocusStageId,
+  FocusTemplate,
+  FocusTemplateDraftRequest,
+  FocusTemplateDraftResponse,
   FocusTemplateList,
   ReleaseTrain,
 } from '../types'
@@ -116,6 +119,36 @@ export function focusStop(sessionId: string): Promise<FocusActionResult> {
 
 export function listFocusTemplates(): Promise<FocusTemplateList> {
   return requestJSON<FocusTemplateList>('/v1/focus/templates')
+}
+
+// --- AI-assisted template editing (natural language → draft → save/delete) ---
+//
+// draftFocusTemplate only asks the server to propose a change; it writes
+// nothing. saveFocusTemplate and deleteFocusTemplate need the admin token,
+// like starting a pipeline in a folder.
+
+function templatePath(id: string): string {
+  return `/v1/focus/templates/${encodeURIComponent(id)}`
+}
+
+export function draftFocusTemplate(request: FocusTemplateDraftRequest): Promise<FocusTemplateDraftResponse> {
+  return requestJSON<FocusTemplateDraftResponse>('/v1/focus/templates/draft', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
+  })
+}
+
+export function saveFocusTemplate(template: FocusTemplate, originalId?: string): Promise<FocusTemplate> {
+  return requestJSON<FocusTemplate>(templatePath(template.id), {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ template, ...(originalId ? { original_id: originalId } : {}) }),
+  })
+}
+
+export function deleteFocusTemplate(id: string): Promise<{ deleted: boolean }> {
+  return requestJSON<{ deleted: boolean }>(templatePath(id), { method: 'DELETE' })
 }
 
 // setFocusGoal turns a pipeline's goal mode on or off. Turning it on needs

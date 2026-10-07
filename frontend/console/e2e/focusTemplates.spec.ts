@@ -127,3 +127,136 @@ test('a workspace template file is offered, and goal mode can be turned on and o
     .toBe('finished')
   expect((await pipelineOf(page, id)).stages.map((s) => s.status)).toEqual(['done', 'done'])
 })
+
+// --- AI-assisted template editing (ADR §4.1 follow-up) ---
+//
+// [e2e:focus-template-edit] drives frontend/console/e2e/mock-llm.mjs's
+// focusTemplateDraftReply, which switches on a second word in the same
+// request text — see its comment for exactly what each reply holds. The
+// scenario cleans up the template it creates so later specs in this file
+// (and this file's own earlier specs) see the same built-in-only baseline.
+const templateEditMarker = '[e2e:focus-template-edit]'
+
+test('AI-assisted template editing: create, appear in the New task picker, edit, and delete', async ({ page }) => {
+  await page.goto('/console/focus/templates')
+  await expect(page.getByTestId('focus-templates')).toBeVisible()
+
+  // Create: the draft never writes a file until Save.
+  await page.getByTestId('focus-templates-new').click()
+  await page.getByTestId('focus-templates-request').fill(`${templateEditMarker} a three-stage story template: outline, draft, revise`)
+  await page.getByTestId('focus-templates-draft').click()
+  await expect(page.getByTestId('focus-templates-preview')).toBeVisible()
+  await expect(page.getByTestId('focus-templates-preview-summary')).toContainText('three-stage story template')
+  await expect(page.getByTestId('focus-templates-preview-stage')).toHaveCount(3)
+  await expect(page.locator('[data-testid="focus-templates-preview-stage"][data-change="added"]')).toHaveCount(3)
+  let listed = await (await page.request.get('/v1/focus/templates')).json()
+  expect(listed.templates.map((t: { id: string }) => t.id)).not.toContain('lighthouse-story')
+
+  await page.getByTestId('focus-templates-save').click()
+  await expect(page.getByTestId('focus-templates-editor')).toHaveCount(0)
+  const row = page.locator('[data-testid="focus-templates-row"][data-template-id="lighthouse-story"]')
+  await expect(row).toBeVisible()
+  await expect(row).toContainText('Lighthouse story')
+  await expect(row).toContainText('custom')
+
+  // The saved template is offered where any focus task starts.
+  await page.goto('/console/focus')
+  await page.getByTestId('focus-new-task-open').click()
+  const picker = page.getByTestId('focus-new-template')
+  await expect(picker.locator('option', { hasText: 'Lighthouse story' })).toHaveCount(1)
+  await picker.selectOption('lighthouse-story')
+  await expect(page.getByTestId('focus-new-template-stages')).toContainText('Stages: Outline → Draft → Revise')
+
+  // Edit: a follow-up natural-language request adds a stage.
+  await page.goto('/console/focus/templates')
+  await row.getByTestId('focus-templates-edit').click()
+  await expect(page.getByTestId('focus-templates-editor')).toContainText('Lighthouse story')
+  await page.getByTestId('focus-templates-request').fill(`${templateEditMarker} add an illustration stage before revise`)
+  await page.getByTestId('focus-templates-draft').click()
+  await expect(page.getByTestId('focus-templates-preview-summary')).toContainText('Added an illustration stage')
+  const addedStage = page.locator('[data-testid="focus-templates-preview-stage"][data-change="added"]')
+  await expect(addedStage).toHaveCount(1)
+  await expect(addedStage).toContainText('Illustrate')
+  await expect(page.locator('[data-testid="focus-templates-preview-stage"][data-change="unchanged"]')).toHaveCount(3)
+  await page.getByTestId('focus-templates-save').click()
+  await expect(row).toContainText('Outline, draft, illustrate, revise.')
+
+  // Delete: drafted and confirmed, same as save.
+  await row.getByTestId('focus-templates-edit').click()
+  await page.getByTestId('focus-templates-request').fill(`${templateEditMarker} please delete this template`)
+  await page.getByTestId('focus-templates-draft').click()
+  await expect(page.getByTestId('focus-templates-preview')).toContainText('lighthouse-story')
+  await page.getByTestId('focus-templates-save').click()
+  await expect(row).toHaveCount(0)
+  listed = await (await page.request.get('/v1/focus/templates')).json()
+  expect(listed.templates.map((t: { id: string }) => t.id)).not.toContain('lighthouse-story')
+})
+
+test.describe('Korean', () => {
+  test.use({ locale: 'ko-KR' })
+
+  test('the template editor chrome is Korean', async ({ page }) => {
+    await page.goto('/console/focus/templates')
+    await expect(page.getByTestId('focus-templates')).toBeVisible()
+    await page.getByTestId('focus-templates-new').click()
+    await page.getByTestId('focus-templates-request').fill(`${templateEditMarker} a three-stage story template: outline, draft, revise`)
+    await page.getByTestId('focus-templates-draft').click()
+    await expect(page.getByTestId('focus-templates-preview')).toBeVisible()
+
+    const chrome = await chromeTexts(page.getByTestId('focus-templates'))
+    expect(chrome.length).toBeGreaterThan(5)
+    expect(chrome.filter(untranslated)).toEqual([])
+
+    await page.getByTestId('focus-templates-save').click()
+    const row = page.locator('[data-testid="focus-templates-row"][data-template-id="lighthouse-story"]')
+    await expect(row).toBeVisible()
+    await row.getByTestId('focus-templates-edit').click()
+    await page.getByTestId('focus-templates-request').fill(`${templateEditMarker} please delete this template`)
+    await page.getByTestId('focus-templates-draft').click()
+    await page.getByTestId('focus-templates-save').click()
+    await expect(row).toHaveCount(0)
+  })
+})
+
+// A copy of e2e/focus.spec.ts's Korean helpers: each spec file stays
+// self-contained rather than importing another spec's internals. The
+// word-length and whitespace-run quantifiers are capped (no real English
+// word or UI whitespace run is longer than this) rather than left
+// unbounded, so the pattern cannot be flagged for superlinear backtracking
+// on pathological input.
+const keptInEnglish = ['TARS', 'Git', 'PR', 'cwd', 'diff', 'Ctrl', 'Cmd', 'Enter', 'Esc']
+const englishRun = /[A-Za-z]{2,30}[ \t]{1,4}[A-Za-z]{2,30}/
+
+function untranslated(text: string): boolean {
+  let rest = text
+  for (const name of keptInEnglish) rest = rest.replaceAll(name, ' ')
+  return englishRun.test(rest)
+}
+
+// Not async: scope.evaluate(...) already returns the Promise this
+// declares, so there is nothing here an await would add.
+function chromeTexts(scope: ReturnType<Page['getByTestId']>): Promise<string[]> {
+  return scope.evaluate((root) => {
+    const seen = new Set<string>()
+    const add = (value: string | null | undefined) => {
+      const text = value?.replace(/\s+/g, ' ').trim()
+      if (text) seen.add(text)
+    }
+    const content = '.markdown-body, pre, code, .chat-msg, [data-content]'
+    const ownText = (el: Element) => {
+      const copy = el.cloneNode(true) as Element
+      copy.querySelectorAll(content).forEach((node) => node.remove())
+      return copy.textContent
+    }
+    root.querySelectorAll('button, label, h1, h2, h3, h4, th, legend, summary, p, .badge').forEach((el) => {
+      if (!el.closest(content)) add(ownText(el))
+    })
+    root.querySelectorAll('[title], [aria-label], [placeholder]').forEach((el) => {
+      if (el.closest(content)) return
+      add(el.getAttribute('title'))
+      add(el.getAttribute('aria-label'))
+      add(el.getAttribute('placeholder'))
+    })
+    return [...seen]
+  })
+}
