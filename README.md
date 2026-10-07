@@ -18,7 +18,7 @@
 </div>
 
 > [!IMPORTANT]
-> **Development resumed.** TARS is no longer archived. Latest tagged release is `v0.52.0` (2026-10-06). The narrower console navigation described below shipped in `v0.36.0`. This README tracks `main`; see the [changelog](CHANGELOG.md) for tagged-release behavior.
+> **Development resumed.** TARS is no longer archived. Latest tagged release is `v0.52.0` (2026-10-07). The narrower console navigation described below shipped in `v0.36.0`. This README tracks `main`; see the [changelog](CHANGELOG.md) for tagged-release behavior.
 
 TARS is a local agent runtime for people who want an inspectable AI workbench without handing workspace control to a hosted service. It packages a browser console, API server, CLI, background jobs, memory, and extension system into one Go binary.
 
