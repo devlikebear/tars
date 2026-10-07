@@ -28,11 +28,17 @@ func defaultDoctorComputerUseProbe() doctorComputerUseProbe {
 	}
 }
 
+// doctorComputerUseProbeFor builds the probe checkDoctorComputerUse uses. It
+// is a package variable, not a constant call, so cmd/tars tests can swap in a
+// hermetic probe (TestMain in network_guard_test.go) that never execs a real
+// cua-driver binary — the production default is untouched.
+var doctorComputerUseProbeFor = defaultDoctorComputerUseProbe
+
 // checkDoctorComputerUse reports whether the computer_use tool can run: the
 // cua-driver binary, its daemon, and the System One server that decides each
 // step — and whether that server is remote, since it receives screen text.
 func checkDoctorComputerUse(report *doctorReport, cfg config.Config) {
-	checkDoctorComputerUseWith(report, cfg, defaultDoctorComputerUseProbe())
+	checkDoctorComputerUseWith(report, cfg, doctorComputerUseProbeFor())
 }
 
 func checkDoctorComputerUseWith(report *doctorReport, cfg config.Config, probe doctorComputerUseProbe) {
