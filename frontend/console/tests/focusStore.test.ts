@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import { compileSvelteModule } from './helpers/compileSvelteModule.ts'
+import { stashKickoffAttachments } from '../src/lib/focusKickoff.ts'
 import type * as FocusStoreModule from '../src/lib/stores/focusStore.svelte.ts'
 import type { ChatEvent, ChatRequest, FocusActionResult, FocusCard, FocusPipeline, SessionMessage } from '../src/lib/types.ts'
 
@@ -512,6 +513,32 @@ test('a pipeline with a kickoff sends the kickoff, not the goal, as its first tu
   await store.load('s1')
   await settle(store)
   assert.deepEqual(fake.state.sent.map((r) => r.message), ['Release: ship 2 changes\n- a\n- b'])
+})
+
+test('an image pasted into the goal field (FocusNewTask) rides the first turn as an attachment', async () => {
+  stashKickoffAttachments('s1', [{ name: 'clipboard-1.png', mime_type: 'image/png', data: 'AA==' }])
+  const fake = fakeApi(pipeline('2026-10-01T00:00:00Z'))
+  const store = newStore(fake)
+  await store.load('s1')
+  await settle(store)
+  assert.deepEqual(fake.state.sent[0]?.attachments, [{ name: 'clipboard-1.png', mime_type: 'image/png', data: 'AA==' }])
+
+  // Taken once: a later instruction (and a reload, which would otherwise
+  // find nothing new to kick off) never resends it.
+  fake.state.pipeline = pipeline('2026-10-01T00:00:02Z', [], { current: 'build' })
+  fake.state.history = [{ id: 'u0', role: 'user', content: 'g', timestamp: '' }]
+  await store.send('also do this')
+  await settle(store)
+  assert.equal(fake.state.sent.length, 2)
+  assert.equal(fake.state.sent[1]?.attachments, undefined)
+})
+
+test('a pipeline with no stashed images sends the first turn without attachments, as before', async () => {
+  const fake = fakeApi(pipeline('2026-10-01T00:00:00Z'))
+  const store = newStore(fake)
+  await store.load('s1')
+  await settle(store)
+  assert.equal(fake.state.sent[0]?.attachments, undefined)
 })
 
 test('the driver\'s verification step shows on the progress line', async () => {

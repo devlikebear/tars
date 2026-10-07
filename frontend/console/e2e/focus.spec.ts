@@ -479,6 +479,53 @@ test('the PR stages with gh: the PR is found, CI is green, G4 merges, and the me
   expect(calls.at(-1)).toMatch(/^pr view 7 --json /)
 })
 
+test('an image pasted into the new task goal field rides the first turn as an attachment (#1097)', async ({ page }) => {
+  const repo = newRepo('tars-e2e-focus-image-')
+  await page.goto('/console/focus')
+  await page.getByTestId('focus-new-task-open').click()
+  await page.getByTestId('focus-new-folder').fill(repo)
+  await expect(page.getByTestId('focus-new-folder-status')).toHaveText('Git repository')
+  const goalField = page.getByTestId('focus-new-goal')
+  await goalField.fill(goal)
+
+  // A real OS paste of a screenshot is a DataTransfer carrying an image
+  // File; synthesize that rather than relying on the OS clipboard, which
+  // CI has none of.
+  await goalField.evaluate((el) => {
+    const data = new DataTransfer()
+    data.items.add(new File([new Uint8Array([1, 2, 3, 4])], 'ignored.png', { type: 'image/png' }))
+    el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }))
+  })
+  await expect(page.getByTestId('focus-new-image')).toHaveCount(1)
+  // The goal text pasting an image must not touch is still there.
+  await expect(goalField).toHaveValue(goal)
+
+  const firstTurn = page.waitForRequest((req) => req.method() === 'POST' && new URL(req.url()).pathname === '/v1/chat')
+  await page.getByTestId('focus-new-start').click()
+  const body = (await firstTurn).postDataJSON() as { attachments?: { name: string; mime_type: string; data: string }[] }
+  expect(body.attachments).toHaveLength(1)
+  expect(body.attachments?.[0].mime_type).toBe('image/png')
+  expect(body.attachments?.[0].data.length).toBeGreaterThan(0)
+
+  // Removing it before starting drops it from the first turn.
+  await page.goto('/console/focus')
+  await page.getByTestId('focus-new-task-open').click()
+  await page.getByTestId('focus-new-folder').fill(repo)
+  await expect(page.getByTestId('focus-new-folder-status')).toHaveText('Git repository')
+  await page.getByTestId('focus-new-goal').fill(goal)
+  await page.getByTestId('focus-new-goal').evaluate((el) => {
+    const data = new DataTransfer()
+    data.items.add(new File([new Uint8Array([1, 2, 3, 4])], 'ignored.png', { type: 'image/png' }))
+    el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }))
+  })
+  await page.getByTestId('focus-new-image-remove').click()
+  await expect(page.getByTestId('focus-new-image')).toHaveCount(0)
+  const secondTurn = page.waitForRequest((req) => req.method() === 'POST' && new URL(req.url()).pathname === '/v1/chat')
+  await page.getByTestId('focus-new-start').click()
+  const secondBody = (await secondTurn).postDataJSON() as { attachments?: unknown[] }
+  expect(secondBody.attachments ?? []).toHaveLength(0)
+})
+
 // --- Korean (see e2e/workbench-ko.spec.ts) ---
 
 const keptInEnglish = ['TARS', 'Git', 'PR', 'cwd', 'diff', 'Ctrl', 'Cmd', 'Enter', 'Esc']

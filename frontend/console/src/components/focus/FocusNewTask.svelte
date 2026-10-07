@@ -11,6 +11,8 @@
   import { APIRequestError, checkSessionFolder, createFocusPipeline, listFocusTemplates, listRecentSessionFolders, type SessionFolder } from '../../lib/api'
   import { stageLabel, templateText } from '../../lib/focus'
   import { shortCwdLabel } from '../../lib/sessionLabels'
+  import { clipboardImageFiles, filesToAttachments } from '../../lib/chatAttachments'
+  import { stashKickoffAttachments } from '../../lib/focusKickoff'
   import type { FocusTemplate } from '../../lib/types'
 
   interface Props {
@@ -39,6 +41,55 @@
   let error = $state('')
   let timer: ReturnType<typeof setTimeout> | null = null
   let checkSeq = 0
+
+  // Images pasted into the goal field (#1097): held here until start()
+  // converts them and hands them to the pipeline's first turn — the
+  // session the server will attach them to doesn't exist yet.
+  let images = $state<File[]>([])
+  let imagePreviews = $state(new Map<string, string>())
+
+  // A per-File identity, not a name/size/lastModified string: two paste
+  // events in the same millisecond can otherwise produce two
+  // clipboard-<ts>.<ext> Files with identical name, size and lastModified,
+  // colliding on one key (one blob URL overwriting the other, and a keyed
+  // {#each} seeing a duplicate key). A WeakMap keyed on the File object
+  // itself can't collide this way, however fast two pastes land.
+  let imageIds = new WeakMap<File, string>()
+  let nextImageId = 0
+
+  function imageKey(file: File): string {
+    let id = imageIds.get(file)
+    if (id === undefined) {
+      id = `img-${nextImageId++}`
+      imageIds.set(file, id)
+    }
+    return id
+  }
+
+  function addImages(files: File[]) {
+    for (const file of files) {
+      images = [...images, file]
+      imagePreviews = new Map([...imagePreviews, [imageKey(file), URL.createObjectURL(file)]])
+    }
+  }
+
+  function removeImage(index: number) {
+    const file = images[index]
+    const key = imageKey(file)
+    const preview = imagePreviews.get(key)
+    if (preview) URL.revokeObjectURL(preview)
+    imagePreviews.delete(key)
+    imagePreviews = new Map(imagePreviews)
+    images = images.filter((_, i) => i !== index)
+  }
+
+  function onGoalPaste(e: ClipboardEvent) {
+    if (!e.clipboardData) return
+    const files = clipboardImageFiles(e.clipboardData.items, images.length)
+    if (files.length === 0) return
+    e.preventDefault()
+    addImages(files)
+  }
 
   let folder = $derived(check.state === 'ok' ? check.folder : null)
   let canStart = $derived(!!folder && !!goal.trim() && !busy)
@@ -72,6 +123,7 @@
 
   onDestroy(() => {
     if (timer) clearTimeout(timer)
+    for (const url of imagePreviews.values()) URL.revokeObjectURL(url)
   })
 
   function checkError(err: unknown): string {
@@ -119,6 +171,10 @@
     busy = true
     error = ''
     try {
+      // Converted before the session exists: a conversion failure (a Blob
+      // read error) must not leave an orphaned pipeline on the server with
+      // no way back to it.
+      const attachments = images.length > 0 ? await filesToAttachments(images) : null
       const created = await createFocusPipeline({
         goal: goal.trim(),
         cwd: folder.path,
@@ -126,6 +182,7 @@
         ...(template && template.id !== 'dev' ? { template: template.id } : {}),
         ...(goalMode ? { goal_mode: true } : {}),
       })
+      if (attachments) stashKickoffAttachments(created.session_id, attachments)
       onCreated(created.session_id)
     } catch (err) {
       error = $t.focus.newTask.failed(err instanceof Error ? err.message : String(err))
@@ -165,7 +222,17 @@
 
   <div class="field">
     <label class="label" for="focus-new-goal">{$t.focus.newTask.goal}</label>
-    <input id="focus-new-goal" type="text" bind:value={goal} placeholder={$t.focus.newTask.goalPlaceholder} data-testid="focus-new-goal" />
+    <input id="focus-new-goal" type="text" bind:value={goal} onpaste={onGoalPaste} placeholder={$t.focus.newTask.goalPlaceholder} data-testid="focus-new-goal" />
+    {#if images.length > 0}
+      <div class="images" data-testid="focus-new-images">
+        {#each images as file, i (imageKey(file))}
+          <div class="image-card" data-testid="focus-new-image">
+            <img class="image-thumb" src={imagePreviews.get(imageKey(file))} alt={file.name} />
+            <button type="button" class="image-remove" aria-label={$t.focus.newTask.removeImage} title={$t.focus.newTask.removeImage} data-testid="focus-new-image-remove" onclick={() => removeImage(i)}>&times;</button>
+          </div>
+        {/each}
+      </div>
+    {/if}
   </div>
 
   {#if templates.length > 1}
@@ -291,6 +358,52 @@
 
   .status.error {
     color: var(--error);
+  }
+
+  .images {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    margin-top: var(--space-1);
+  }
+
+  .image-card {
+    position: relative;
+    width: 48px;
+    height: 48px;
+    flex-shrink: 0;
+  }
+
+  .image-thumb {
+    width: 48px;
+    height: 48px;
+    object-fit: cover;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-subtle);
+  }
+
+  .image-remove {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    background: var(--surface-base);
+    border: 1px solid var(--border-subtle);
+    border-radius: 50%;
+    color: var(--text-ghost);
+    cursor: pointer;
+    font-size: 12px;
+    width: 18px;
+    height: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    line-height: 1;
+  }
+
+  .image-remove:hover {
+    color: var(--error);
+    border-color: var(--error);
   }
 
   .check {
