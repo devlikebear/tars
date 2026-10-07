@@ -25,8 +25,10 @@
 // session; answers stream on that session's feed and thread by card from
 // its history and the pipeline's qa_turns.
 import { changeCards, deckFor, openGateCardId, progressLine, qaThreads, stageKindOf, turnIndex, turnStage, type ChangeTurn, type QAEntry } from '../focus.ts'
+import { takeKickoffAttachments } from '../focusKickoff.ts'
 import type { FocusTranslations } from '../../i18n/sections/focus.ts'
 import type {
+  ChatAttachment,
   ChatEvent,
   ChatRequest,
   FocusActionResult,
@@ -62,7 +64,10 @@ export type FocusStoreApi = {
   activity?(): Promise<{ running?: { session_id: string }[] | null }>
 }
 
-type QueuedPrompt = { key: string; prompt: string }
+// attachments rides only on the first turn (the goal's pasted images); a
+// typed instruction never carries them, so the field is optional and
+// omitted for every other entry.
+type QueuedPrompt = { key: string; prompt: string; attachments?: ChatAttachment[] }
 
 export type FocusStorage = {
   getItem(key: string): string | null
@@ -354,7 +359,9 @@ export class FocusStore {
     if (!p || !this.historyKnown || this.running || this.streaming || this.history.length > 0 || p.cards.length > 0) return
     const first = p.kickoff?.trim() ? p.kickoff : p.goal
     if (p.current !== 'plan' || !first.trim()) return
-    this.queuePrompt(`first\n${p.session_id}`, first)
+    // Pasted into the goal field before the session existed (FocusNewTask);
+    // picked up once, here, and never again for this session id.
+    this.queuePrompt(`first\n${p.session_id}`, first, takeKickoffAttachments(p.session_id))
   }
 
   // applyEvent folds one chat stream event (sent or replayed) into the state.
@@ -401,7 +408,10 @@ export class FocusStore {
       const parsed = JSON.parse(this.storage?.getItem(this.pendingName()) ?? '[]')
       if (!Array.isArray(parsed)) return []
       const sent = this.sentKeys()
-      return parsed.filter((e): e is QueuedPrompt => typeof e?.key === 'string' && typeof e?.prompt === 'string' && !sent.includes(e.key))
+      return parsed.filter(
+        (e): e is QueuedPrompt =>
+          typeof e?.key === 'string' && typeof e?.prompt === 'string' && (e.attachments === undefined || Array.isArray(e.attachments)) && !sent.includes(e.key),
+      )
     } catch {
       return []
     }
@@ -415,9 +425,9 @@ export class FocusStore {
     }
   }
 
-  private queuePrompt(key: string, prompt: string) {
+  private queuePrompt(key: string, prompt: string, attachments?: ChatAttachment[]) {
     if (this.sentKeys().includes(key) || this.pending.some((e) => e.key === key)) return
-    this.pending = [...this.pending, { key, prompt }]
+    this.pending = [...this.pending, attachments && attachments.length > 0 ? { key, prompt, attachments } : { key, prompt }]
     this.savePending()
   }
 
@@ -479,7 +489,7 @@ export class FocusStore {
       this.markSent(entry)
     }
     try {
-      await this.api.streamChat({ message: entry.prompt, session_id: sessionId }, (event) => {
+      await this.api.streamChat({ message: entry.prompt, session_id: sessionId, attachments: entry.attachments }, (event) => {
         accept()
         if (!this.disposed) this.applyEvent(event)
       })

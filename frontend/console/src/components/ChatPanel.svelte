@@ -3,7 +3,7 @@
   import { t } from '../i18n'
   import type { ChatThreadTranslations } from '../i18n/sections/chatThread'
   import { streamChat, attachChatStream, cancelChat, getSessionHistory, renameSession, streamEvents, listChatFileMentions, listAgentRuntimeSubagents, listSkills, listChatTools, getSessionEffectiveConfig, forkSessionFromMessage } from '../lib/api'
-  import type { AgentRuntimeSubagent, ChatAttachment, ChatContextInfo, ChatEvent, ChatTier, ChatTierRecommendationRequest, CommandDef, Session, SessionGoal, SessionMessage, SkillDef } from '../lib/types'
+  import type { AgentRuntimeSubagent, ChatContextInfo, ChatEvent, ChatTier, ChatTierRecommendationRequest, CommandDef, Session, SessionGoal, SessionMessage, SkillDef } from '../lib/types'
   import { chatSession } from '../lib/stores/chatSession'
   import { toolBaseDirs } from '../lib/cliToolLabels'
   import { changes } from '../lib/stores/changesStore'
@@ -33,6 +33,7 @@
   import type { ChatMessage } from '../lib/chatMessages'
   import { isProviderToolPhase, providerToolCard, settleInterruptedProviderTools, settleProviderToolCard } from '../lib/providerToolCards'
   import { fileChangeFromEvent, mergeToolFileChange } from '../lib/toolFileChanges'
+  import { clipboardImageFile, filesToAttachments } from '../lib/chatAttachments'
   import { approvalFromEvent, resolveApproval, withdrawPendingApprovals, type ChatApproval } from '../lib/chatApproval'
   import ChatApprovalCard from './ChatApprovalCard.svelte'
   import ChatUnattendedApprovals from './ChatUnattendedApprovals.svelte'
@@ -1335,24 +1336,6 @@
     }
   }
 
-  async function filesToAttachments(files: File[]): Promise<ChatAttachment[]> {
-    const results: ChatAttachment[] = []
-    for (const file of files) {
-      const buffer = await file.arrayBuffer()
-      const bytes = new Uint8Array(buffer)
-      let binary = ''
-      for (let i = 0; i < bytes.byteLength; i++) {
-        binary += String.fromCharCode(bytes[i])
-      }
-      results.push({
-        name: file.name,
-        mime_type: file.type || 'application/octet-stream',
-        data: btoa(binary),
-      })
-    }
-    return results
-  }
-
   function copyMessageText(text: string) {
     navigator.clipboard.writeText(text).catch(() => {})
   }
@@ -1512,12 +1495,8 @@
       const item = items[i]
       if (item.type.startsWith('image/')) {
         e.preventDefault()
-        const file = item.getAsFile()
-        if (file && attachedFiles.length < 5) {
-          const name = `clipboard-${Date.now()}.${item.type.split('/')[1] || 'png'}`
-          const renamed = new File([file], name, { type: file.type })
-          addFiles([renamed])
-        }
+        const file = clipboardImageFile(item, attachedFiles.length)
+        if (file) addFiles([file])
         return
       }
       if (item.kind === 'file') {
