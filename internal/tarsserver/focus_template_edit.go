@@ -76,9 +76,20 @@ Rules: the first stage must have id "plan" and kind "plan". A stage's kind is on
 Action "delete" removes an existing template: set id to the one being deleted and omit name, description and stages.
 Action "save" creates a new template or replaces the "base" given to you; when "base" is a built-in template (its "builtin" field is true), you may not reuse its id — choose a new one, since built-in templates are never changed in place. When a "previous_draft" is given, refine that draft instead of starting over.`
 
+// requireFocusTemplateAdmin writes the 403 all three routes share and
+// reports false when the caller is not admin, so each handler can just
+// "if !requireFocusTemplateAdmin(w, r) { return }" instead of repeating
+// the check and its message.
+func requireFocusTemplateAdmin(w http.ResponseWriter, r *http.Request) bool {
+	if serverauth.RoleFromRequest(r) == serverauth.RoleAdmin {
+		return true
+	}
+	writeJSON(w, http.StatusForbidden, map[string]string{"error": "editing focus templates needs the admin token"})
+	return false
+}
+
 func (a *focusTemplateEditAPI) draft(w http.ResponseWriter, r *http.Request) {
-	if serverauth.RoleFromRequest(r) != serverauth.RoleAdmin {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "editing focus templates needs the admin token"})
+	if !requireFocusTemplateAdmin(w, r) {
 		return
 	}
 	var req focusTemplateDraftRequest
@@ -130,8 +141,7 @@ type focusTemplateSaveRequest struct {
 }
 
 func (a *focusTemplateEditAPI) save(w http.ResponseWriter, r *http.Request) {
-	if serverauth.RoleFromRequest(r) != serverauth.RoleAdmin {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "editing focus templates needs the admin token"})
+	if !requireFocusTemplateAdmin(w, r) {
 		return
 	}
 	id := strings.TrimSpace(r.PathValue("id"))
@@ -155,8 +165,7 @@ func (a *focusTemplateEditAPI) save(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *focusTemplateEditAPI) delete(w http.ResponseWriter, r *http.Request) {
-	if serverauth.RoleFromRequest(r) != serverauth.RoleAdmin {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "editing focus templates needs the admin token"})
+	if !requireFocusTemplateAdmin(w, r) {
 		return
 	}
 	id := strings.TrimSpace(r.PathValue("id"))
@@ -274,49 +283,62 @@ func normalizeFocusTemplateDraft(dir string, templates []focuspipeline.Template,
 	}
 	switch action {
 	case "delete":
-		if id == "" {
-			return focusTemplateDraftResponse{}, fmt.Errorf("delete needs an id")
-		}
-		found, builtin := false, false
-		for _, t := range templates {
-			if t.ID == id {
-				found, builtin = true, t.Builtin
-			}
-		}
-		if !found {
-			return focusTemplateDraftResponse{}, fmt.Errorf("id %q not found", id)
-		}
-		if builtin {
-			return focusTemplateDraftResponse{}, fmt.Errorf("id %q is a built-in template and cannot be deleted", id)
-		}
-		return focusTemplateDraftResponse{Action: "delete", OriginalID: id, Summary: strings.TrimSpace(d.Summary)}, nil
+		return normalizeFocusTemplateDeleteDraft(templates, id, d.Summary)
 	case "save":
-		tpl := focuspipeline.Template{ID: id, Name: d.Name, Description: d.Description, Stages: d.Stages}
-		originalID, copied := "", false
-		if base != nil {
-			originalID = base.ID
-			if base.Builtin {
-				originalID, copied = "", true
-				if tpl.ID == "" || tpl.ID == base.ID {
-					tpl.ID = uniqueFocusTemplateID(templates, base.ID)
-				}
-			}
-		}
-		saved, err := focuspipeline.PrepareTemplateSave(dir, originalID, tpl)
-		if err != nil {
-			return focusTemplateDraftResponse{}, err
-		}
-		var warnings []string
-		if copied {
-			warnings = append(warnings, fmt.Sprintf("%q is a built-in template, so the edit was saved as a new template %q instead of replacing it.", base.ID, saved.ID))
-		}
-		return focusTemplateDraftResponse{
-			Action: "save", Template: &saved, OriginalID: originalID,
-			Summary: strings.TrimSpace(d.Summary), Warnings: warnings, CopiedFromBuiltin: copied,
-		}, nil
+		return normalizeFocusTemplateSaveDraft(dir, templates, base, id, d)
 	default:
 		return focusTemplateDraftResponse{}, fmt.Errorf("action must be save or delete, got %q", d.Action)
 	}
+}
+
+// normalizeFocusTemplateDeleteDraft validates a "delete" action's id
+// against the loaded templates: known, and not a built-in.
+func normalizeFocusTemplateDeleteDraft(templates []focuspipeline.Template, id, summary string) (focusTemplateDraftResponse, error) {
+	if id == "" {
+		return focusTemplateDraftResponse{}, fmt.Errorf("delete needs an id")
+	}
+	found, builtin := false, false
+	for _, t := range templates {
+		if t.ID == id {
+			found, builtin = true, t.Builtin
+		}
+	}
+	if !found {
+		return focusTemplateDraftResponse{}, fmt.Errorf("id %q not found", id)
+	}
+	if builtin {
+		return focusTemplateDraftResponse{}, fmt.Errorf("id %q is a built-in template and cannot be deleted", id)
+	}
+	return focusTemplateDraftResponse{Action: "delete", OriginalID: id, Summary: strings.TrimSpace(summary)}, nil
+}
+
+// normalizeFocusTemplateSaveDraft validates a "save" action with
+// focuspipeline.PrepareTemplateSave (no file is written), copying rather
+// than replacing when base is a built-in template.
+func normalizeFocusTemplateSaveDraft(dir string, templates []focuspipeline.Template, base *focuspipeline.Template, id string, d focusTemplateLLMDraft) (focusTemplateDraftResponse, error) {
+	tpl := focuspipeline.Template{ID: id, Name: d.Name, Description: d.Description, Stages: d.Stages}
+	originalID, copied := "", false
+	if base != nil {
+		originalID = base.ID
+		if base.Builtin {
+			originalID, copied = "", true
+			if tpl.ID == "" || tpl.ID == base.ID {
+				tpl.ID = uniqueFocusTemplateID(templates, base.ID)
+			}
+		}
+	}
+	saved, err := focuspipeline.PrepareTemplateSave(dir, originalID, tpl)
+	if err != nil {
+		return focusTemplateDraftResponse{}, err
+	}
+	var warnings []string
+	if copied {
+		warnings = append(warnings, fmt.Sprintf("%q is a built-in template, so the edit was saved as a new template %q instead of replacing it.", base.ID, saved.ID))
+	}
+	return focusTemplateDraftResponse{
+		Action: "save", Template: &saved, OriginalID: originalID,
+		Summary: strings.TrimSpace(d.Summary), Warnings: warnings, CopiedFromBuiltin: copied,
+	}, nil
 }
 
 // uniqueFocusTemplateID returns an id derived from base that none of

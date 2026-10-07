@@ -219,9 +219,13 @@ test.describe('Korean', () => {
 })
 
 // A copy of e2e/focus.spec.ts's Korean helpers: each spec file stays
-// self-contained rather than importing another spec's internals.
+// self-contained rather than importing another spec's internals. The
+// word-length and whitespace-run quantifiers are capped (no real English
+// word or UI whitespace run is longer than this) rather than left
+// unbounded, so the pattern cannot be flagged for superlinear backtracking
+// on pathological input.
 const keptInEnglish = ['TARS', 'Git', 'PR', 'cwd', 'diff', 'Ctrl', 'Cmd', 'Enter', 'Esc']
-const englishRun = /[A-Za-z]{2,}[ \t]+[A-Za-z]{2,}/
+const englishRun = /[A-Za-z]{2,30}[ \t]{1,4}[A-Za-z]{2,30}/
 
 function untranslated(text: string): boolean {
   let rest = text
@@ -229,7 +233,9 @@ function untranslated(text: string): boolean {
   return englishRun.test(rest)
 }
 
-async function chromeTexts(scope: ReturnType<Page['getByTestId']>): Promise<string[]> {
+// Not async: scope.evaluate(...) already returns the Promise this
+// declares, so there is nothing here an await would add.
+function chromeTexts(scope: ReturnType<Page['getByTestId']>): Promise<string[]> {
   return scope.evaluate((root) => {
     const seen = new Set<string>()
     const add = (value: string | null | undefined) => {
