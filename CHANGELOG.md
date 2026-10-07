@@ -6,6 +6,8 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.52.0] - 2026-10-07
+
 ### Added
 
 - **Focus 템플릿** — 포커스 파이프라인이 개발 워크플로(계획 → 구현 → 리뷰 → PR → PR 리뷰 → 머지) 하나만 지원하던 것을 템플릿으로 넓혔다. 템플릿은 단계 목록이고 각 단계는 여섯 개발 단계 중 하나의 동작(kind)으로 돈다: 이름·개수·단계별 지시문은 템플릿이 정하고, 단계 전환은 지금처럼 사실(계획 승인, 검증 명령 종료 코드, 지적 triage, PR 상태)로만 결정된다. 내장 템플릿은 `dev`(기본, 기존과 동일), `writing`(구상 → 초고 → 퇴고), `research`(범위 → 조사 → 보고서 → 검증). 자기 템플릿은 `<workspace>/focus-templates/*.yaml`(또는 `.yml`, `.json`)로 추가한다 — `name`, `stages[].{id, kind, label, instructions, fix_instructions}`; 첫 단계는 `plan`, `build`·`review` kind는 원하는 id로 여러 개 둘 수 있다. 잘못된 파일은 건너뛰고 새 작업 화면에 개수를 알린다. 새 작업 화면에 템플릿 선택이 생겼고 스테퍼·그래프·계획 게이트가 템플릿의 단계를 보여 준다. `GET /v1/focus/templates`, `POST /v1/focus/pipelines`의 `template`.
