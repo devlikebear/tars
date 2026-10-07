@@ -1,12 +1,12 @@
-// Package serverupdate keeps a release install of the tars server current
-// from the desktop shell, by running `tars update` (#1104's archives).
+// Package serverupdate keeps the tars server current from the desktop shell:
+// a release install by running `tars update` (#1104's archives), a Homebrew
+// install by running `brew upgrade` and restarting the launchd service
+// (brew.go).
 //
 // The shell checks on a timer. An update restarts the server, which cuts off
 // a chat turn in progress and an unattended run waiting on an approval, so
 // it is applied only while the server is idle; otherwise it waits for the
-// next check. Updating a Homebrew install is left to Homebrew: `tars update`
-// refuses it, and on macOS the shell keeps telling the user to run
-// `brew upgrade` instead (see server.OutdatedMessage).
+// next check.
 package serverupdate
 
 import (
@@ -32,10 +32,10 @@ const (
 	FirstCheckAfter = 2 * time.Minute
 )
 
-// Enabled reports whether the shell updates the server on goos: Windows,
-// where install.ps1 is the install path. Homebrew owns macOS installs.
+// Enabled reports whether the shell updates the server on goos: Windows
+// (install.ps1) and macOS (Homebrew, or install.sh). See For.
 func Enabled(goos string) bool {
-	return goos == "windows"
+	return goos == "windows" || goos == "darwin"
 }
 
 // Run runs bin with args and extra environment, returning its stdout and

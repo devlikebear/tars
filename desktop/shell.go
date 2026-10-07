@@ -51,9 +51,10 @@ const (
 	// updateNotificationPrefix marks the update notifications; a click on
 	// one runs Check for updates….
 	updateNotificationPrefix = "tars-update-"
-	// serverUpdateTimeout bounds one `tars update`: the download, then the
-	// server's restart (tars waits up to a minute for it).
-	serverUpdateTimeout = 5 * time.Minute
+	// serverUpdateTimeout bounds one server update: `tars update`'s download
+	// and restart (tars waits up to a minute for it), or Homebrew's
+	// `brew update` and `brew upgrade`.
+	serverUpdateTimeout = 10 * time.Minute
 )
 
 type shell struct {
@@ -1000,7 +1001,14 @@ func (s *shell) updateServer(explicit bool) time.Duration {
 	if err != nil {
 		return fail("Could not find the TARS server to update", err)
 	}
-	u := serverupdate.Updater{Bin: bin, Cfg: s.cfg, Run: runHidden}
+	resolved, err := filepath.EvalSymlinks(bin)
+	if err != nil {
+		resolved = bin
+	}
+	u, err := serverupdate.For(runtime.GOOS, bin, resolved, findBrew, s.cfg, runHidden)
+	if err != nil {
+		return fail("Could not update the TARS server", err)
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), serverUpdateTimeout)
 	defer cancel()
@@ -1079,6 +1087,21 @@ func (s *shell) notify(id, title, body string) {
 }
 
 // runHidden runs a tars command to completion without a console window.
+// findBrew is the brew executable, or "": on PATH, else where Homebrew
+// installs it (an app opened from Finder has launchd's PATH).
+func findBrew() string {
+	if path, err := exec.LookPath("brew"); err == nil {
+		return path
+	}
+	for _, dir := range serverupdate.BrewDirs(runtime.GOOS) {
+		candidate := filepath.Join(dir, "brew")
+		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+			return candidate
+		}
+	}
+	return ""
+}
+
 func runHidden(ctx context.Context, bin string, args, env []string) ([]byte, []byte, error) {
 	cmd := exec.CommandContext(ctx, bin, args...)
 	cmd.Env = append(os.Environ(), env...)

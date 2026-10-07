@@ -368,10 +368,14 @@ func TestOutdated(t *testing.T) {
 
 func TestOutdatedMessage(t *testing.T) {
 	msg := OutdatedMessage("darwin", "0.37.1", "0.42.2")
-	for _, want := range []string{"0.37.1", "0.42.2", "brew upgrade devlikebear/tap/tars", "tars service install"} {
+	for _, want := range []string{"0.37.1", "0.42.2", "Check for updates", "brew upgrade devlikebear/tap/tars", "tars service start"} {
 		if !strings.Contains(msg, want) {
 			t.Fatalf("message %q misses %q", msg, want)
 		}
+	}
+	// Elsewhere Homebrew is the user's to run.
+	if linux := OutdatedMessage("linux", "0.37.1", "0.42.2"); !strings.Contains(linux, "tars service install") || strings.Contains(linux, "Check for updates") {
+		t.Fatalf("linux message %q", linux)
 	}
 	if !strings.Contains(OutdatedMessage("darwin", "", "0.42.2"), "older") {
 		t.Fatal("an unknown server version still reads as older")
