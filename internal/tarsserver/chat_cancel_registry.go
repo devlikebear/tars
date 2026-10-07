@@ -7,6 +7,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/devlikebear/tars/internal/focuspipeline"
 )
 
 // chatCancelWait bounds how long POST /v1/chat/cancel waits for the
@@ -140,6 +142,8 @@ func handleChatCancel(w http.ResponseWriter, r *http.Request, registry *chatCanc
 	// Cancel both: the running turn, and the focus driver's run that
 	// would otherwise start the next one.
 	turnEnded, turnCancelled := registry.Cancel(sessionID)
+	// Stop is the person's word: goal mode must not push the turn again.
+	focus.endGoal(sessionID, focuspipeline.GoalEndCancelled)
 	if !focus.cancel(sessionID) && !turnCancelled {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "no active chat for session"})
 		return

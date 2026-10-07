@@ -9,6 +9,7 @@ import type {
   FocusPRDraft,
   FocusQAResult,
   FocusStageId,
+  FocusTemplateList,
   ReleaseTrain,
 } from '../types'
 
@@ -43,6 +44,11 @@ export type FocusCreateRequest = {
   title?: string
   kind?: 'release'
   kickoff?: string
+  // The pipeline's template (absent = development), and goal mode: the
+  // server decides every gate and runs to the end.
+  template?: string
+  goal_mode?: boolean
+  goal_max_pushes?: number
   // A release's list and the cut-off it started from (the group's since).
   release_items?: string[]
   release_since?: string
@@ -106,6 +112,16 @@ export function focusAdvance(sessionId: string, stage: FocusStageId): Promise<Fo
 
 export function focusStop(sessionId: string): Promise<FocusActionResult> {
   return postAction(`${pipelinePath(sessionId)}/stop`, {})
+}
+
+export function listFocusTemplates(): Promise<FocusTemplateList> {
+  return requestJSON<FocusTemplateList>('/v1/focus/templates')
+}
+
+// setFocusGoal turns a pipeline's goal mode on or off. Turning it on needs
+// the admin token.
+export function setFocusGoal(sessionId: string, enabled: boolean): Promise<FocusActionResult> {
+  return postAction(`${pipelinePath(sessionId)}/goal`, { enabled })
 }
 
 export function getReleaseTrain(): Promise<ReleaseTrain> {

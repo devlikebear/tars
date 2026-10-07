@@ -835,6 +835,7 @@ func registerAPIRoutes(mux *http.ServeMux, handlers apiRouteHandlers) {
 	if handlers.focus != nil {
 		mux.Handle("/v1/focus/pipelines", handlers.focus)
 		mux.Handle("/v1/focus/pipelines/", handlers.focus)
+		mux.Handle("/v1/focus/templates", handlers.focus)
 	}
 	if handlers.focusRelease != nil {
 		mux.Handle("/v1/focus/release-train", handlers.focusRelease)

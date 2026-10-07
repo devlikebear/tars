@@ -8,7 +8,7 @@
   import { untrack } from 'svelte'
   import { t } from '../../i18n'
   import { acknowledgeable, deckCursor, deckOrder, mustHandle, type QAEntry } from '../../lib/focus'
-  import type { FocusCard as Card, FocusDecision, FocusGateAction, FocusPlan, FocusPRDraft, SessionMessage } from '../../lib/types'
+  import type { FocusCard as Card, FocusDecision, FocusGateAction, FocusPipeline, FocusPlan, FocusPRDraft, SessionMessage } from '../../lib/types'
   import FocusCard from './FocusCard.svelte'
   import FocusQADrawer from './FocusQADrawer.svelte'
   import FocusRawSlice from './FocusRawSlice.svelte'
@@ -32,6 +32,8 @@
     onPromote?: (card: Card, entry: QAEntry) => void
     // The open triage gate's progress (P3), null when none is open.
     triage?: { decided: number; total: number } | null
+    // The pipeline the cards belong to: its stages name a template's.
+    pipeline?: FocusPipeline | null
   }
 
   let {
@@ -50,6 +52,7 @@
     qaError = '',
     onAsk,
     triage = null,
+    pipeline = null,
     onPromote,
   }: Props = $props()
 
@@ -170,7 +173,7 @@
     </div>
 
     {#key current.id}
-      <FocusCard card={current} {openGate} {busy} {onGate} onDecide={decide} onAsk={onAsk && qaThread ? openAsk : undefined} />
+      <FocusCard card={current} {openGate} {busy} {onGate} {pipeline} onDecide={decide} onAsk={onAsk && qaThread ? openAsk : undefined} />
     {/key}
 
     {#if showRaw}

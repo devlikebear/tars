@@ -7,12 +7,13 @@
 // tests check it under Node without a DOM.
 import type { Edge, Node } from '@xyflow/svelte'
 import type { FocusTranslations } from '../i18n/sections/focus.ts'
-import type { FocusPipeline, FocusStage, FocusStageId, FocusStageStatus } from './types.ts'
+import { stageKindOf, stageLabel } from './focus.ts'
+import type { FocusPipeline, FocusStage, FocusStageId, FocusStageKind, FocusStageStatus } from './types.ts'
 
 // The stages that loop, the ones with a loop limit (focuspipeline
 // DefaultLimits): build (implement → test), review (review → verify → fix),
 // and pr (PR review → verify → fix).
-export const LOOP_STAGES: FocusStageId[] = ['build', 'review', 'pr']
+export const LOOP_STAGES: FocusStageKind[] = ['build', 'review', 'pr']
 
 export type FocusGraphNodeData = {
   kind: 'stage' | 'task'
@@ -31,7 +32,7 @@ export type FocusGraphEdge = Edge<{ kind: 'forward' | 'loop' }>
 // canvas.
 export type FocusGraph = { nodes: FocusGraphNode[]; edges: FocusGraphEdge[]; width: number; height: number }
 
-export type FocusGraphLabels = { stages: FocusTranslations['stages'] }
+export type FocusGraphLabels = { stages: FocusTranslations['stages']; templates?: FocusTranslations['templates'] }
 
 export type FocusGraphOptions = {
   // Stages per row; the rest wrap to rows below. Default: all in one row.
@@ -70,15 +71,24 @@ function loopLabel(stage: FocusStage): string | undefined {
 }
 
 export function buildFocusGraph(p: FocusPipeline, labels: FocusGraphLabels, options: FocusGraphOptions = {}): FocusGraph {
-  const tasks = p.plan?.tasks ?? []
+  const kindOf = (stage: FocusStage) => stageKindOf(p.stages, stage.id)
+  // Each task sits in its work stage: the one it names, else the first.
+  const firstWork = p.stages.find((s) => kindOf(s) === 'build')?.id
+  const tasksOf = (stage: FocusStage) =>
+    (p.plan?.tasks ?? [])
+      .map((task, n) => ({ task, n }))
+      .filter(({ task }) => {
+        const home = task.stage && p.stages.some((s) => s.id === task.stage && kindOf(s) === 'build') ? task.stage : firstWork
+        return kindOf(stage) === 'build' && home === stage.id
+      })
   const columns = Math.max(1, Math.min(options.columns ?? p.stages.length, p.stages.length))
   const nodes: FocusGraphNode[] = []
   const edges: FocusGraphEdge[] = []
   const sizeOf = (stage: FocusStage) => {
-    const holdsTasks = stage.id === 'build' && tasks.length > 0
+    const count = tasksOf(stage).length
     return {
-      width: holdsTasks ? buildWidth : stageWidth,
-      height: holdsTasks ? taskTop + tasks.length * (taskHeight + taskGap) + taskInset : stageHeight,
+      width: count > 0 ? buildWidth : stageWidth,
+      height: count > 0 ? taskTop + count * (taskHeight + taskGap) + taskInset : stageHeight,
     }
   }
   // Each row is as tall as its tallest stage.
@@ -102,7 +112,6 @@ export function buildFocusGraph(p: FocusPipeline, labels: FocusGraphLabels, opti
   const graphWidth = columnX(columnWidths.length - 1) + (columnWidths.at(-1) ?? 0)
 
   p.stages.forEach((stage, i) => {
-    const isBuild = stage.id === 'build'
     const { width, height } = sizeOf(stage)
     const current = stage.id === p.current
     const row = rowOf(i)
@@ -114,7 +123,7 @@ export function buildFocusGraph(p: FocusPipeline, labels: FocusGraphLabels, opti
       height,
       data: {
         kind: 'stage',
-        label: labels.stages[stage.id] ?? stage.id,
+        label: stageLabel(p, stage.id, labels),
         status: stage.status,
         iteration: stage.iteration,
         limit: stage.limit,
@@ -125,14 +134,14 @@ export function buildFocusGraph(p: FocusPipeline, labels: FocusGraphLabels, opti
       selectable: false,
     })
 
-    if (isBuild) {
-      tasks.forEach((task, n) => {
+    tasksOf(stage).forEach(({ task, n }, row) => {
+      {
         nodes.push({
           id: `task-${n}`,
           type: 'focusTask',
-          parentId: stageId('build'),
+          parentId: stageId(stage.id),
           extent: 'parent',
-          position: { x: taskInset, y: taskTop + n * (taskHeight + taskGap) },
+          position: { x: taskInset, y: taskTop + row * (taskHeight + taskGap) },
           width: width - taskInset * 2,
           height: taskHeight,
           data: { kind: 'task', label: `${n + 1}. ${task.title}` },
@@ -140,8 +149,8 @@ export function buildFocusGraph(p: FocusPipeline, labels: FocusGraphLabels, opti
           draggable: false,
           selectable: false,
         })
-      })
-    }
+      }
+    })
 
     if (i > 0) {
       const prev = p.stages[i - 1]
@@ -160,7 +169,8 @@ export function buildFocusGraph(p: FocusPipeline, labels: FocusGraphLabels, opti
       })
     }
 
-    if (LOOP_STAGES.includes(stage.id) && stage.status !== 'skipped') {
+    const kind = kindOf(stage)
+    if (kind && LOOP_STAGES.includes(kind) && stage.status !== 'skipped') {
       edges.push({
         id: `loop-${stage.id}`,
         source: stageId(stage.id),

@@ -6,7 +6,7 @@
   import { onDestroy, untrack } from 'svelte'
   import { t } from '../../i18n'
   import * as api from '../../lib/api'
-  import { pipelinePhase, promoteDraft, stepperItems, triageProgress, type QAEntry } from '../../lib/focus'
+  import { pipelinePhase, promoteDraft, stageLabel, stepperItems, triageProgress, type QAEntry } from '../../lib/focus'
   import { finishedText, finishOutcome, ghUnavailable, prStageChip, type PRStageChip } from '../../lib/focusPR'
   import { shortCwdLabel } from '../../lib/sessionLabels'
   import { FocusStore } from '../../lib/stores/focusStore.svelte'
@@ -34,6 +34,7 @@
     card: api.focusCard,
     advance: api.focusAdvance,
     stop: api.focusStop,
+    goal: api.setFocusGoal,
     ask: api.askFocusQuestion,
     activity: api.getChatActivity,
   }, typeof localStorage === 'undefined' ? null : localStorage)
@@ -60,7 +61,14 @@
 
   let pipeline = $derived(store.pipeline)
   let phase = $derived(pipeline ? pipelinePhase(pipeline) : 'active')
-  let steps = $derived(pipeline ? stepperItems(pipeline, $t.focus.stages) : [])
+  let steps = $derived(pipeline ? stepperItems(pipeline, $t.focus.stages, $t.focus.templates) : [])
+  // Goal mode: on, or how it ended when that left the pipeline unfinished.
+  let goal = $derived(pipeline?.goal_mode ?? null)
+  let goalOn = $derived(!!goal?.enabled)
+  let goalEnded = $derived.by(() => {
+    const reason = goal && !goal.enabled && phase !== 'finished' ? goal.end_reason : undefined
+    return reason === 'exhausted' || reason === 'pr_closed' || reason === 'cancelled' ? $t.focus.screen.goalEnded[reason] : ''
+  })
   let viewing = $derived(store.stage)
   let openGate = $derived(pipeline?.open_gate ?? '')
   // The PR stages (P4): CI chips on the stepper, gh unavailable → pass by
@@ -81,7 +89,9 @@
   let worktree = $derived(store.session?.worktree ?? null)
   let cwd = $derived(store.session?.worktree?.source_dir || store.session?.current_dir || '')
   let baseDirs = $derived([store.session?.worktree?.path, store.session?.current_dir].filter((d): d is string => !!d))
-  let progress = $derived(store.running ? store.progress(pipeline?.current, $t.focus.progress) : '')
+  let progress = $derived(
+    store.running ? store.progress(pipeline?.current, $t.focus.progress, pipeline?.template ? stageLabel(pipeline, pipeline.current, $t.focus) : undefined) : '',
+  )
   let noticeText = $derived(store.notice === 'stale' ? $t.focus.screen.stale : store.notice ? $t.focus.screen.warning(store.notice) : '')
 
   function selectStage(stage: FocusStageId) {
@@ -119,6 +129,11 @@
       event.preventDefault()
       void sendInstruction()
     }
+  }
+
+  async function toggleGoal() {
+    if (!goalOn && !confirm($t.focus.screen.goalConfirm)) return
+    await store.setGoal(!goalOn)
   }
 
   async function stop() {
@@ -164,6 +179,27 @@
         onclick={() => onNavigate(`/console/chat/${encodeURIComponent(sessionId)}`)}
       >{$t.focus.screen.viewAdvanced}</button>
       <button type="button" class="btn btn-ghost btn-sm" onclick={() => onNavigate('/console')} data-testid="focus-open-board">{$t.focus.home.advanced}</button>
+      {#if pipeline && goal && (phase === 'active' || goalOn)}
+        <button
+          type="button"
+          class="btn btn-sm {goalOn ? 'btn-primary' : 'btn-ghost'}"
+          aria-pressed={goalOn}
+          title={goalOn ? $t.focus.screen.goalOnTitle(goal.pushes, goal.max_pushes) : $t.focus.screen.goalOffTitle}
+          disabled={store.busy}
+          onclick={() => void toggleGoal()}
+          data-testid="focus-goal-toggle"
+        ><span aria-hidden="true">◎</span> {$t.focus.screen.goal}{#if goalOn && goal.pushes > 0} <span class="goal-count">{goal.pushes}/{goal.max_pushes}</span>{/if}</button>
+      {:else if pipeline && phase === 'active'}
+        <button
+          type="button"
+          class="btn btn-ghost btn-sm"
+          aria-pressed="false"
+          title={$t.focus.screen.goalOffTitle}
+          disabled={store.busy}
+          onclick={() => void toggleGoal()}
+          data-testid="focus-goal-toggle"
+        ><span aria-hidden="true">◎</span> {$t.focus.screen.goal}</button>
+      {/if}
       {#if pipeline && phase === 'active'}
         <div class="menu">
           <button type="button" class="btn btn-ghost btn-sm" aria-haspopup="menu" aria-expanded={menuOpen} aria-label={$t.focus.screen.more} title={$t.focus.screen.more} onclick={() => { menuOpen = !menuOpen }}>⋯</button>
@@ -182,6 +218,7 @@
   {:else if store.error}
     <p class="banner error">{$t.focus.screen.loadFailed(store.error)}</p>
   {:else if pipeline}
+    {#if goalEnded}<p class="banner" data-testid="focus-goal-ended">{goalEnded}</p>{/if}
     <div class="stage-bar">
       <FocusStepper items={steps} selected={viewing} onSelect={selectStage} chips={prChips} />
       <button
@@ -201,7 +238,7 @@
 
     {#if store.viewStage && store.viewStage !== pipeline.current}
       <p class="history-line">
-        <span class="label">{$t.focus.screen.history($t.focus.stages[store.viewStage])}</span>
+        <span class="label">{$t.focus.screen.history(stageLabel(pipeline, store.viewStage, $t.focus))}</span>
         <button type="button" class="btn btn-ghost btn-sm" onclick={() => store.showStage(null)}>{$t.focus.screen.backToCurrent}</button>
       </p>
     {/if}
@@ -248,6 +285,7 @@
       onAsk={(id, question) => store.ask(id, question)}
       onPromote={promote}
       triage={triageProgress(pipeline)}
+      {pipeline}
     />
 
 
@@ -290,6 +328,14 @@
     flex-wrap: wrap;
     align-items: center;
     gap: var(--space-2) var(--space-3);
+  }
+
+  /* Retries used of the budget, on the goal toggle: the button's own colour. */
+  .goal-count {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    color: inherit;
+    opacity: 0.8;
   }
 
   .focus-header > .btn {

@@ -24,7 +24,7 @@
 // Q&A (ADR §8): questions about a card go to the pipeline's hidden Q&A
 // session; answers stream on that session's feed and thread by card from
 // its history and the pipeline's qa_turns.
-import { changeCards, deckFor, openGateCardId, progressLine, qaThreads, turnIndex, turnStage, type ChangeTurn, type QAEntry } from '../focus.ts'
+import { changeCards, deckFor, openGateCardId, progressLine, qaThreads, stageKindOf, turnIndex, turnStage, type ChangeTurn, type QAEntry } from '../focus.ts'
 import type { FocusTranslations } from '../../i18n/sections/focus.ts'
 import type {
   ChatEvent,
@@ -55,6 +55,8 @@ export type FocusStoreApi = {
   card(sessionId: string, cardId: string, state: FocusCardState, decision?: string): Promise<FocusActionResult>
   advance(sessionId: string, stage: FocusStageId): Promise<FocusActionResult>
   stop(sessionId: string): Promise<FocusActionResult>
+  // Goal mode on or off (POST …/goal).
+  goal?(sessionId: string, enabled: boolean): Promise<FocusActionResult>
   ask?(sessionId: string, cardId: string, question: string): Promise<FocusQAResult>
   // Turns running now, across sessions (GET /v1/chat/activity).
   activity?(): Promise<{ running?: { session_id: string }[] | null }>
@@ -179,8 +181,10 @@ export class FocusStore {
     return stage ? deckFor(this.cards, stage) : []
   }
 
-  progress(stage?: FocusStageId, text?: FocusTranslations['progress']): string {
-    return progressLine(this.turnEvents, { stage, text })
+  // lead is a template stage's own name, shown instead of the development
+  // stage's phrase.
+  progress(stage?: FocusStageId, text?: FocusTranslations['progress'], lead?: string): string {
+    return progressLine(this.turnEvents, { stage: stageKindOf(this.pipeline?.stages, stage) ?? undefined, text, lead })
   }
 
   async load(sessionId: string): Promise<void> {
@@ -683,6 +687,14 @@ export class FocusStore {
     const sessionId = this.sessionId
     if (!sessionId) return false
     return this.act(() => this.api.stop(sessionId))
+  }
+
+  // setGoal turns the pipeline's goal mode on or off.
+  async setGoal(enabled: boolean): Promise<boolean> {
+    const sessionId = this.sessionId
+    const goal = this.api.goal
+    if (!sessionId || !goal) return false
+    return this.act(() => goal(sessionId, enabled))
   }
 
   showStage(stage: FocusStageId | null) {

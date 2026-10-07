@@ -21,7 +21,7 @@
   // The pane's width decides how many stages share a row, so the fitted
   // zoom never drops below GRAPH_MIN_ZOOM (text stays >= 11px on screen).
   let paneWidth = $state(0)
-  let labels = $derived({ stages: $t.focus.stages })
+  let labels = $derived({ stages: $t.focus.stages, templates: $t.focus.templates })
   let columns = $derived(paneWidth > 0 ? focusGraphColumns(pipeline, labels, paneWidth) : 0)
   let graph = $derived(buildFocusGraph(pipeline, labels, { columns: columns || undefined }))
   // Tall enough for the content at zoom 1 (fitView zooms at most to 1).

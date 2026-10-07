@@ -128,19 +128,20 @@ func TestParseBlocks(t *testing.T) {
 			},
 		},
 		{
-			name: "plan stages normalized",
+			name: "plan stages fitted to the pipeline",
 			text: `<focus-plan>{"goal":"g","tasks":[{"title":"t","done":"d"}],"stages":["merge","build","bogus","build"]}</focus-plan>`,
 			check: func(t *testing.T, b Blocks) {
 				if b.Plan == nil {
 					t.Fatalf("plan missing: %+v", b)
 				}
 				want := []StageID{StagePlan, StageBuild, StageMerge}
-				if len(b.Plan.Stages) != len(want) {
-					t.Fatalf("stages = %v", b.Plan.Stages)
+				got := New("s", "g", t0).fitPlan(*b.Plan).Stages
+				if len(got) != len(want) {
+					t.Fatalf("stages = %v", got)
 				}
 				for i := range want {
-					if b.Plan.Stages[i] != want[i] {
-						t.Fatalf("stages = %v", b.Plan.Stages)
+					if got[i] != want[i] {
+						t.Fatalf("stages = %v", got)
 					}
 				}
 			},
@@ -149,7 +150,7 @@ func TestParseBlocks(t *testing.T) {
 			name: "plan without stages keeps every stage",
 			text: `<focus-plan>{"goal":"g","tasks":[{"title":"t","done":"d"}]}</focus-plan>`,
 			check: func(t *testing.T, b Blocks) {
-				if b.Plan == nil || len(b.Plan.Stages) != len(StageOrder) {
+				if b.Plan == nil || len(New("s", "g", t0).fitPlan(*b.Plan).Stages) != len(StageOrder) {
 					t.Fatalf("plan = %+v", b.Plan)
 				}
 			},

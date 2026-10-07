@@ -67,7 +67,7 @@ func focusEnrichFindings(sessions *session.Store, sessionID string, blocks focus
 		return blocks
 	}
 	p, ok, err := focusStoreFor(sessions).Get(sessionID)
-	if err != nil || !ok || p.Current != focuspipeline.StageReview {
+	if err != nil || !ok || p.CurrentKind() != focuspipeline.StageReview {
 		return blocks
 	}
 	dir, err := sessions.GetCurrentDir(sessionID)

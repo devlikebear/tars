@@ -61,11 +61,48 @@ Loops run automatically inside a stage; the developer acts only at gates. Stage 
 | ⑥ merge | — | **G4 merge** | merged → session worktree cleaned up |
 
 - **G4 follows the PR head.** G4 shows the facts of the head commit it opened on, so the server keeps probing while it is open: when the open PR's head differs, G4 is superseded with a notice and pr_review resumes on the new head, reopening G4 only after a later probe finds that head green. Approving G4 probes first and answers 409 with the current pipeline if the head moved (#1087).
-- **One skeleton, skippable stages.** The plan proposes which stages apply (a small fix may go build → PR → merge); the developer confirms at G1. No per-type templates.
+- **One machine, skippable stages, templates for other kinds of work.** The plan proposes which stages apply (a small fix may go build → PR → merge); the developer confirms at G1. The six stages above are the *development* template; other work (writing, research) gets its own stage list from a template, run by the same machine (§4.1).
 - **Release is outside the feature pipeline.** TARS releases by batching merged PRs into one release PR (v0.41.0, v0.42.0). A separate *release train* view (§9 P5) collects pipelines merged since the last release.
 - **Blocked.** Reaching a loop limit (defaults: build 3, review 2, PR 3) or repeating the same failure raises a *blocked* gate: try once more / give an instruction / open in Advanced. Build also blocks on **no progress**: after 2 turns per planned task plus the build limit, passing turns whose report never sets `tasks_done` stop at the same gate instead of looping. A failure counts as "the same" when its first failing command and output excerpt match the previous one with numbers (durations, counts) ignored. Retry and instruct allow one more iteration.
 - **Review loop (P3).** The review diff starts at the pipeline's *base commit*: HEAD of the session folder recorded at the pipeline's first turn, before any change, so review sees the build stage's work (`git diff <base>...HEAD`, plus uncommitted changes). Each finding card carries the server's excerpt of that diff around its `file:line`; the model never supplies it. Triage closes only through card decisions (`fix` | `dismiss`); gate actions other than stop are refused on it, and a turn sent while it is open is the developer's question — no block required, its findings ignored, nothing changes. Dismissed findings (file, line, title) carry across the stage's rounds: the re-review guidance lists them as already dismissed, and a finding reported again with the same file and title is dropped. One fix turn carries every accepted finding, then verification runs the verify **and** end-to-end commands. Passing after fixes starts a new review round (the limit counts rounds); passing with nothing fixed ends the stage. A verification failure in review becomes a failure card and a fix turn, like build; the same failure twice, or more failures in one round than the limit, blocks with *Review blocked*, whose retry starts a new round and whose instruction is sent as a fix turn.
 - **A decision card pauses the loop.** When the agent asks a question, that question is an implicit gate; answering continues the loop. The questions one turn asked are answered as one turn (the last answer sends them all), answers queued while a turn runs merge into one, and an answer whose stage or round has ended is never sent as a turn of a later stage: it rides in the next turn as context, or leaves a notice when none follows. An answer given while a gate that takes questions is open (G1, triage, G3, G4) goes out right away as the developer's question, like a typed instruction: the gate stays open and the pipeline owes nothing; only behind a *blocked* gate does it wait (#1079).
+
+### 4.1 Templates
+
+Added 2026-10-06, when the re-evaluation criterion below ("a real need for per-task-type pipelines that stage skipping cannot express") was met: a novel or a research report has no PR and no merge, wants two work stages in a row, and needs to be told different things at each stage.
+
+- A **template** is an ordered list of stages. Each stage has an id, a label, optional instructions, and a **kind** — one of the six development stages — which is the behaviour it runs with. `plan` proposes the plan and waits at G1; `build` works through tasks and exits on `tasks_done` + passing verification; `review` reports findings, triages, fixes and verifies; `pr`, `pr_review`, `merge` are the pull request stages. So a template changes what stages are called, how many work and review stages there are, and what each turn is told, while **every transition is still decided by the same facts**. No template can add a new kind of transition.
+- Rules (`Template.Validate`): the first stage is `plan`; `plan`, `pr`, `pr_review` and `merge` appear at most once and keep their own id (the machine addresses them by it); `pr_review` and `merge` need `pr` before them; any number of `build`- and `review`-kind stages under ids of their own; at most 12 stages; instructions at most 4000 bytes and free of `<focus-…>` tags.
+- Built in: `dev` (the six stages, the default — a pipeline without a template is exactly what it was), `writing` (outline → draft → revise) and `research` (scope → research → report → check). A workspace adds its own as `<workspace>/focus-templates/*.yaml|*.yml|*.json`; a file that does not validate is skipped with a diagnostic, and a file never replaces a built-in template. Templates hold text only — no commands — so reading them from the workspace opens nothing that `worktree_setup` keeps closed. Verification commands still come from the plan and G1.
+- A pipeline **copies** its template's stages (`Stage.kind`, `label`, `instructions`, `fix_instructions`) when it starts, so editing a template never changes a running pipeline, and `pipeline.json` stays self-describing.
+- With more than one work stage, a plan task names its stage (`"stage":"report"`); a work stage's guidance lists, and its no-progress cap counts, only its own tasks. The plan block's format in the guidance is generated from the template's stage ids. A pipeline without a merge stage finishes at its last planned stage and is never part of the release train.
+- API: `GET /v1/focus/templates` → `{templates, diagnostics}`; `POST /v1/focus/pipelines` takes `template`. The console's New task form picks one; the stepper, graph and plan gate show the template's stages. Built-in templates are worded by the console in its language (`focus.templates` in the i18n section); a workspace template is shown as written.
+
+### 4.2 Goal mode
+
+Added 2026-10-06. Some tasks should simply run to the end: the developer states the goal once and does not want to sit at the gates.
+
+- A pipeline in **goal mode** has no human gate. A watcher on the server (`internal/tarsserver/focus_goal.go`) looks at each such pipeline every 2 seconds and, when nothing is running on it, takes the step a person at the screen would have to take, through the same functions the console's buttons call.
+- The decisions are a **fixed policy** (`focuspipeline.NextGoalStep`, pure and table-tested), not a model's opinion of whether the work is done — stages still exit on facts:
+
+  | Waiting on | Goal mode does |
+  |---|---|
+  | G1 plan, G3 PR draft | approves as proposed |
+  | G4 merge | approves (it only opens on green checks; the head is re-probed first) |
+  | G2 triage | fixes every finding except `low` severity, which it dismisses |
+  | a `pr_review` finding (failed check, review comment) | fixes it |
+  | a decision card (the agent's question) | answers "decide yourself, say what you chose and why" |
+  | a blocked gate (loop limit, repeated failure, no progress, a failed or interrupted turn, a PR that did not appear) | retries — a **push** |
+  | a turn owed but nothing running (a dropped step) | raises the interrupted gate, then retries it |
+  | nothing owed and nothing decided (a reply without its block, twice) | sends a turn — a push |
+
+- **Pushes have a budget** (`max_pushes`, default 20, at most 100). When it is spent goal mode ends where it stands: the gate stays open for the developer, a notice card and a notification say so. A failed turn is retried after a backoff (30s, doubling to 15 minutes per consecutive failure), so an outage or a rate limit is not hammered. A pull request someone closed ends goal mode: that is a decision, not a glitch.
+- **What it does not do.** With gh unavailable on the server the PR stages wait to be passed by hand, as without goal mode: there are no facts to decide on. A verification command that can never pass uses up the budget; nothing in the policy rewrites an approved plan. The user-facing description and the template file format are in `docs/focus-templates.md`.
+- **Restart-safe.** A restart raises the interrupted gate as before; pipelines in goal mode are picked up again at startup and that gate is retried.
+- **Tool permissions.** While goal mode is on the session's permission mode is `auto`; the mode it had is restored when goal mode ends, unless the developer changed it meanwhile. Every decision is written to the ops automation audit (`focus_goal_mode`).
+- **Stopping it.** Stop pipeline, the goal toggle, and `POST /v1/chat/cancel` (the Stop button on a running turn) all end goal mode — it never pushes a turn a person stopped. Typing an instruction does not end it: the person's turn runs and goal mode carries on after it.
+- Turning goal mode on hands every gate, the merge included, and every tool permission to the server, so it needs the **admin** token (`POST /v1/focus/pipelines/{id}/goal {enabled, max_pushes?}`, or `goal_mode` on create); anyone at the console may turn it off. In goal mode the turn guidance tells the agent not to ask questions.
+- This is deliberately separate from the session goal (`/goal`, #970): that one asks a judge model after every turn whether the goal is met, which is exactly the combined judgement this ADR does not put on a transition.
 
 ### 5. Facts come from deterministic sources
 
@@ -155,4 +192,6 @@ From P2 on, focus mode is developed **in focus mode** — the most honest test o
 
 - Developers routinely switch to Advanced mid-stage to understand what happened — the cards are not carrying enough.
 - Block-format failures exceed occasional re-requests on the primary provider.
-- A real need for per-task-type pipelines appears that stage skipping cannot express.
+- ~~A real need for per-task-type pipelines appears that stage skipping cannot express.~~ Met on 2026-10-06: see §4.1.
+- A template needs a transition the six kinds cannot express (a stage that exits on something other than a plan approval, verification, triage or PR facts).
+- Goal mode routinely spends its whole push budget on one stage: the policy is retrying something a retry cannot fix.
