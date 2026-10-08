@@ -267,6 +267,10 @@ func TestFocusDriverReviewRunsEndToEndAndTriages(t *testing.T) {
 	d, turns, store, _ := testFocusDriver(t, reply, &fakeVerifier{result: passAll})
 	verifier := &recordingVerifier{}
 	d.verify = verifier.verify
+	// The plan's e2e item ("make console-e2e") is checked through the same
+	// recording fake here: this test cares that both lists ran, in order,
+	// not that one of them is really computer_use underneath.
+	d.e2e = focusE2ERunner(verifier.verify)
 	sess := reviewingFocusSession(t, store, "", "")
 	h := newFocusPipelineHandler(store, nil, d, zerolog.Nop())
 

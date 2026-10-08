@@ -62,6 +62,11 @@ type VerificationResult struct {
 	TimedOut bool   `json:"timed_out,omitempty"`
 	// Excerpt is the tail of the command's output.
 	Excerpt string `json:"excerpt,omitempty"`
+	// Skipped is an end-to-end goal (focus_e2e.go) that never ran its
+	// check at all — no computer_use backend or driver configured — rather
+	// than one that ran and failed. It counts as passed: the stage is not
+	// blocked on a capability the environment does not have.
+	Skipped bool `json:"skipped,omitempty"`
 }
 
 // FailureFact is a failed verification as a failure card shows it.

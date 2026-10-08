@@ -310,19 +310,32 @@ func (p Pipeline) workStages() int {
 	return n
 }
 
-// stageTasks are the plan's tasks of a work stage: those naming it and
-// those naming none.
+// stageTasks are the plan's tasks of a work stage: those naming it, and,
+// for the pipeline's first build-kind stage, those naming none (a plan the
+// agent did not tag defaults to the first work stage, not every one of them).
 func (p Pipeline) stageTasks(id StageID) []PlanTask {
 	if p.Plan == nil {
 		return nil
 	}
+	unassigned := id == p.firstWorkStage()
 	var out []PlanTask
 	for _, t := range p.Plan.Tasks {
-		if t.Stage == "" || t.Stage == id {
+		if t.Stage == id || (t.Stage == "" && unassigned) {
 			out = append(out, t)
 		}
 	}
 	return out
+}
+
+// firstWorkStage is the id of the pipeline's first build-kind stage, the
+// one an untagged task is assigned to when there is more than one.
+func (p Pipeline) firstWorkStage() StageID {
+	for _, s := range p.Stages {
+		if s.KindOf() == StageBuild {
+			return s.ID
+		}
+	}
+	return ""
 }
 
 // Stage returns the stage with id, or false.

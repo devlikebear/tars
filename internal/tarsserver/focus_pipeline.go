@@ -380,6 +380,9 @@ func (a *focusAPI) create(w http.ResponseWriter, r *http.Request) {
 			since := req.ReleaseSince.UTC()
 			p.ReleaseSince = &since
 		}
+		// This pipeline's whole job is a release; its own release stage
+		// would be a release releasing itself.
+		p = focuspipeline.SkipStage(p, focuspipeline.ReleaseStageID)
 	}
 	if err := a.store().Save(p); err != nil {
 		// Never leave a focus session without its pipeline.

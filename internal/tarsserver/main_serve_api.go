@@ -460,6 +460,11 @@ func buildAPIMux(
 	}
 	chatTooling.Worktrees = sessionWorktrees
 	focusDriver := newFocusDriver(logger)
+	// The same engine behind the computer_use chat tool, independent of
+	// tools.computer_use.enabled (that flag only gates the chat tool's
+	// registration): it never fails to construct, answering "unavailable"
+	// itself when no backend or driver is configured.
+	focusDriver.e2e = newFocusE2ERunner(newComputerUseEngine(cfg, deps.llmRouter, deps.usageTracker))
 	chatTooling.Focus = focusDriver
 	chatTooling.OverrideService = overrideService
 	checkpointStore := openCheckpointStore(cfg.WorkspaceDir, logger)

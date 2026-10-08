@@ -5,7 +5,12 @@ import (
 	"testing"
 )
 
-// atStage returns an approved pipeline whose current stage is id.
+// atStage returns an approved pipeline whose current stage is id, as if its
+// plan had named exactly StageOrder's stages: a stage of the dev template
+// outside that list (its release stage) is skipped, same as a real plan
+// that left it out (skipUnplannedStages), not pending. Order is the
+// pipeline's own (p.Stages), not the fixed StageOrder, since that stage is
+// not in it.
 func atStage(t *testing.T, id StageID) Pipeline {
 	t.Helper()
 	p := New("s1", "ship focus mode", t0)
@@ -13,13 +18,20 @@ func atStage(t *testing.T, id StageID) Pipeline {
 		return p
 	}
 	p.Plan = testPlan(StageOrder...)
+	keep := map[StageID]bool{}
+	for _, s := range StageOrder {
+		keep[s] = true
+	}
+	target := indexOf(p, id)
 	for i := range p.Stages {
 		switch {
 		case p.Stages[i].ID == id:
 			p.Stages[i].Status = StatusActive
 			p.Stages[i].Iteration = 1
 			p.Stages[i].Limit = p.limitFor(id)
-		case indexOf(p.Stages[i].ID) < indexOf(id):
+		case !keep[p.Stages[i].ID]:
+			p.Stages[i].Status = StatusSkipped
+		case indexOf(p, p.Stages[i].ID) < target:
 			p.Stages[i].Status = StatusDone
 		default:
 			p.Stages[i].Status = StatusPending
@@ -29,9 +41,9 @@ func atStage(t *testing.T, id StageID) Pipeline {
 	return p
 }
 
-func indexOf(id StageID) int {
-	for i, s := range StageOrder {
-		if s == id {
+func indexOf(p Pipeline, id StageID) int {
+	for i, s := range p.Stages {
+		if s.ID == id {
 			return i
 		}
 	}
