@@ -18,6 +18,15 @@ const (
 		"and the build ends when tasks_done is true and every command passes."
 )
 
+// languageGuidance keeps what the developer reads in the developer's
+// language: the guidance itself and the server's own turn messages are
+// English, and without it a Korean request got an English plan.
+const languageGuidance = "Language: write your reply and every human-readable value in the blocks (goal, task titles and " +
+	"done criteria, summaries, decisions and their options, risks, finding titles and scenarios) in the language the " +
+	"developer writes in — the language of the Goal above and of their messages in this conversation, not the " +
+	"language of these instructions. Keep code, commands, file paths, identifiers and stage ids as they are, and " +
+	"write a pull request title and body in the language the repository's commits and pull requests use."
+
 // stagePlanInstructions is the generic plan stage's instructions, reused as
 // the base of the dev template's plan stage (template.go), which adds how
 // to use its second build-kind (release) stage's "stage" tag.
@@ -124,6 +133,8 @@ func Guidance(p Pipeline) string {
 		blocks = p.requiredBlocks(StageMerge)
 	}
 	b.WriteString(instructions)
+	b.WriteString("\n")
+	b.WriteString(languageGuidance)
 	b.WriteString("\n")
 	if p.GoalActive() && !questionGates[p.OpenGate] {
 		b.WriteString(goalGuidance)
