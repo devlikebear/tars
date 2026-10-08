@@ -6,6 +6,16 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.54.0] - 2026-10-08
+
+### Added
+
+- **Edit Focus templates in plain language.** A new page, `/console/focus/templates`, lists the Focus mode templates and lets you describe a change in words ("add a security review stage after build"). TARS drafts the result, shows a per-stage before/after, and writes nothing until you save; you can keep refining the draft, discard it, or delete a template of your own. Editing a built-in template always produces a copy under a new id, so built-ins are never replaced or removed. Saving and deleting need the admin role. `POST /v1/focus/templates/draft`, `PUT`/`DELETE /v1/focus/templates/{id}`.
+
+### Fixed
+
+- **Sign out no longer traps you on a server with auth off.** With `api.auth_mode: off`, **Sign out** switched the console to the login form although no password account exists in that mode, so no password could pass and repeated tries hit "Too many attempts"; only reloading the window got you back. The console now asks the server after signing out and shows the login form only when a login is required, and the header offers no sign-out while auth is off.
+
 ## [0.53.0] - 2026-10-07
 
 ### Added
