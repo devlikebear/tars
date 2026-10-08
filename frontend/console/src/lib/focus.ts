@@ -351,7 +351,7 @@ export function stripFocusStage(text: string): string {
   return trimmed.trimStart().startsWith(`${stageOpen}\n`) && trimmed.indexOf(stageOpen) === trimmed.lastIndexOf(stageOpen) ? '' : text
 }
 
-const tagPattern = /<(\/?)focus-([a-z_]+)>/g
+const tagPattern = /<(\/?)focus-([a-z_-]+)>/g
 // The start of a focus tag cut off by streaming: "</", or "<" or "</"
 // followed by a prefix of "focus-<name>". Every alternative is non-empty.
 const partialTag = /<(?:\/|\/?(?:f|fo|foc|focu|focus|focus-[a-z_]+|focus-))$/

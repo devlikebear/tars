@@ -106,8 +106,17 @@
         <pre class="mono" data-content>{plan.verify.join('\n')}</pre>
       {/if}
       {#if plan.e2e?.length}
+        {#if plan.e2e_setup?.length}
+          <h4 class="label">{$t.focus.gate.e2eSetup}</h4>
+          <pre class="mono" data-content>{plan.e2e_setup.join('\n')}</pre>
+        {/if}
         <h4 class="label">{$t.focus.gate.e2e}</h4>
         <pre class="mono" data-content>{plan.e2e.join('\n')}</pre>
+        {#if !plan.e2e_setup?.length}<p class="hint" data-testid="focus-plan-e2e-no-setup">{$t.focus.gate.e2eNoSetup}</p>{/if}
+        {#if plan.e2e_teardown?.length}
+          <h4 class="label">{$t.focus.gate.e2eTeardown}</h4>
+          <pre class="mono" data-content>{plan.e2e_teardown.join('\n')}</pre>
+        {/if}
       {/if}
     </section>
 

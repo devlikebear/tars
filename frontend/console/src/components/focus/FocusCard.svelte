@@ -122,7 +122,9 @@
   }
 
   function errorsOf(payload: unknown): string[] {
-    const errors = (payload as { errors?: unknown } | null)?.errors
+    // "plan edited" lists what changed as `changes`.
+    const p = payload as { errors?: unknown; changes?: unknown } | null
+    const errors = p?.errors ?? p?.changes
     return Array.isArray(errors) ? errors.filter((e): e is string => typeof e === 'string') : []
   }
 

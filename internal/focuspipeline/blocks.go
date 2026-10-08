@@ -22,6 +22,8 @@ type Blocks struct {
 	Report   *Report
 	Findings []Finding
 	PR       *PRDraft
+	// PlanEdit edits the approved plan (planedit.go).
+	PlanEdit *PlanEdit
 	// Errors are diagnostics for blocks that were present but malformed.
 	Errors []string
 }
@@ -65,7 +67,7 @@ type Finding struct {
 
 // tagPattern matches any focus open or close tag; group 1 is "/" for a
 // close tag, group 2 the name after "focus-".
-var tagPattern = regexp.MustCompile(`<(/?)focus-([a-z_]+)>`)
+var tagPattern = regexp.MustCompile(`<(/?)focus-([a-z_-]+)>`)
 
 // rawBlock is one complete block outside code fences.
 type rawBlock struct {
@@ -89,6 +91,17 @@ func ParseBlocks(text string) Blocks {
 				continue
 			}
 			out.Plan = &plan
+		case TagPlanEdit:
+			var edit PlanEdit
+			if err := decodeObject(b.body, &edit); err != nil {
+				out.Errors = append(out.Errors, fmt.Sprintf("%s: %v", b.tag, err))
+				continue
+			}
+			if edit.Empty() {
+				out.Errors = append(out.Errors, fmt.Sprintf("%s: names no field to change", b.tag))
+				continue
+			}
+			out.PlanEdit = &edit
 		case TagReport:
 			var report Report
 			if err := decodeObject(b.body, &report); err != nil {
@@ -183,6 +196,8 @@ func normalizePlan(plan Plan) (Plan, error) {
 	plan.Tasks = tasks
 	plan.Verify = cleanStrings(plan.Verify)
 	plan.E2E = cleanStrings(plan.E2E)
+	plan.E2ESetup = cleanStrings(plan.E2ESetup)
+	plan.E2ETeardown = cleanStrings(plan.E2ETeardown)
 	for i := range plan.Tasks {
 		plan.Tasks[i].Stage = StageID(strings.TrimSpace(string(plan.Tasks[i].Stage)))
 	}
