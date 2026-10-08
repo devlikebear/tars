@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.55.0] - 2026-10-08
+
+### Added
+
+- **Focus mode's `dev` template ends with a release stage, and its end-to-end checks now run through `computer_use`.** The built-in `dev` template now ends `… → merge → release`: the agent checks out the latest default branch, bumps the version the repository's own way, and follows its release process. A plan's `e2e` list is now plain-language goals (`"@App do the thing"`) run through the same engine as the `computer_use` chat tool, rather than shell commands — a missing backend or driver now skips the check instead of failing the stage.
+
 ## [0.54.0] - 2026-10-08
 
 ### Added
