@@ -20,6 +20,7 @@ type scriptedLLMClient struct {
 	seenToolChoice []string
 	seenResumeIDs  []string
 	seenWorkDirs   []string
+	seenAddDirs    [][]string
 	seenPersist    []bool
 	seenHandlers   []llm.ClaudeCodePermissionHandler
 	seenAllow      [][]string
@@ -39,6 +40,7 @@ func (c *scriptedLLMClient) Chat(ctx context.Context, messages []llm.ChatMessage
 	c.seenToolChoice = append(c.seenToolChoice, opts.ToolChoice.String())
 	c.seenResumeIDs = append(c.seenResumeIDs, opts.ResumeSessionID)
 	c.seenWorkDirs = append(c.seenWorkDirs, opts.WorkDir)
+	c.seenAddDirs = append(c.seenAddDirs, opts.AddDirs)
 	c.seenPersist = append(c.seenPersist, opts.PersistSession)
 	c.seenHandlers = append(c.seenHandlers, opts.ClaudeCodePermissionHandler)
 	c.seenAllow = append(c.seenAllow, opts.ClaudeCodePermissionAllow)
@@ -1236,6 +1238,7 @@ func TestLoop_Run_ForwardsWorkDirAndPersistence(t *testing.T) {
 	loop := NewLoop(client, tool.NewRegistry())
 	_, err := loop.Run(context.Background(), []llm.ChatMessage{{Role: "user", Content: "hi"}}, RunOptions{
 		WorkDir:                "/repo",
+		AddDirs:                []string{"/other", "/third"},
 		PersistUpstreamSession: true,
 	})
 	if err != nil {
@@ -1244,6 +1247,21 @@ func TestLoop_Run_ForwardsWorkDirAndPersistence(t *testing.T) {
 	if len(client.seenWorkDirs) != 1 || client.seenWorkDirs[0] != "/repo" || !client.seenPersist[0] {
 		t.Fatalf("work dirs %v, persist %v", client.seenWorkDirs, client.seenPersist)
 	}
+	if len(client.seenAddDirs) != 1 || !slicesEqual(client.seenAddDirs[0], []string{"/other", "/third"}) {
+		t.Fatalf("add dirs %v", client.seenAddDirs)
+	}
+}
+
+func slicesEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // The chat server's permission handler reaches every iteration, so a prompt

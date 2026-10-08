@@ -139,6 +139,10 @@ type RunOptions struct {
 	// WorkDir is forwarded to ChatOptions on every iteration: the directory
 	// a CLI-backed provider runs in, such as a chat session's cwd.
 	WorkDir string
+	// AddDirs is forwarded to ChatOptions.AddDirs on every iteration: more
+	// folders a CLI-backed provider should be able to reach besides WorkDir,
+	// such as a chat session's other registered work dirs.
+	AddDirs []string
 	// ClaudeCodeMCPServers is forwarded to ChatOptions on every iteration so
 	// the claude-code-cli provider can inject the same MCP server set per
 	// turn. Other providers ignore it.
@@ -226,6 +230,7 @@ toolPhase:
 			ResumeSessionID:          activeResumeID,
 			PersistSession:           opts.PersistUpstreamSession,
 			WorkDir:                  opts.WorkDir,
+			AddDirs:                  opts.AddDirs,
 			ClaudeCodeMCPServers:     opts.ClaudeCodeMCPServers,
 			ClaudeCodePermissionMode: opts.ClaudeCodePermissionMode,
 			ClaudeCodeSkills:         opts.ClaudeCodeSkills,

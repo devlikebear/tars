@@ -230,6 +230,11 @@ type ChatOptions struct {
 	// provider's configured directory stays available through --add-dir.
 	// Empty keeps the configured directory.
 	WorkDir string
+	// AddDirs lists more folders a CLI-backed provider should be able to
+	// reach for this call, besides the configured workspace and WorkDir.
+	// claude-code-cli passes one --add-dir per non-empty unique entry not
+	// already covered by those two. Other providers ignore the field.
+	AddDirs []string
 	// ClaudeCodeMCPServers, when non-empty, asks the claude-code-cli provider
 	// to materialize a Claude Code MCP config file (`{"mcpServers": {...}}`)
 	// for the duration of one Chat call and pass it via `--mcp-config`. Other

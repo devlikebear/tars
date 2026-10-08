@@ -135,6 +135,68 @@ func TestNewSessionIsolated(t *testing.T) {
 	}
 }
 
+func TestNewSessionWithExtraDirs(t *testing.T) {
+	f := newWorktreeFixture(t)
+	h := withSessionCreateIn(&passthrough{}, f.c)
+	primary := realDir(t, t.TempDir())
+	extra1 := realDir(t, t.TempDir())
+	extra2 := realDir(t, t.TempDir())
+
+	body := `{"title":"Multi","cwd":` + jsonString(primary) + `,"extra_dirs":[` +
+		jsonString(extra1) + `,` + jsonString(extra2) + `,` + jsonString(extra1) + `]}`
+	rec := postNewSession(t, h, body, true)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("code=%d body=%s", rec.Code, rec.Body.String())
+	}
+	sess := decodeSession(t, rec)
+	if sess.CurrentDir != primary {
+		t.Fatalf("current dir = %q, want primary %q", sess.CurrentDir, primary)
+	}
+	// The store always adds the session's own artifact dir too (every
+	// session's "required" work dir), so assert the three requested folders
+	// are present and the repeated extra1 did not add a second entry: one
+	// extra artifact dir plus the three requested is exactly four.
+	want := map[string]bool{primary: true, extra1: true, extra2: true}
+	if len(sess.WorkDirs) != len(want)+1 {
+		t.Fatalf("work dirs = %v, want the artifact dir plus exactly %v (duplicate extra_dirs entry must not duplicate)", sess.WorkDirs, want)
+	}
+	for d := range want {
+		found := false
+		for _, got := range sess.WorkDirs {
+			found = found || got == d
+		}
+		if !found {
+			t.Fatalf("work dir %q missing from %v", d, sess.WorkDirs)
+		}
+	}
+}
+
+func TestNewSessionIsolatedWithExtraDirsOnlyIsolatesPrimary(t *testing.T) {
+	f := newWorktreeFixture(t)
+	h := withSessionCreateIn(&passthrough{}, f.c)
+	extra := realDir(t, t.TempDir())
+
+	body := `{"cwd":` + jsonString(f.repo) + `,"isolate":true,"extra_dirs":[` + jsonString(extra) + `]}`
+	rec := postNewSession(t, h, body, true)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("code=%d body=%s", rec.Code, rec.Body.String())
+	}
+	sess := decodeSession(t, rec)
+	if sess.Worktree == nil || sess.Worktree.SourceDir != f.repo {
+		t.Fatalf("session = %+v", sess)
+	}
+	if sess.CurrentDir != sess.Worktree.Dir {
+		t.Fatalf("current dir = %q, want the worktree %q", sess.CurrentDir, sess.Worktree.Dir)
+	}
+	found := false
+	for _, d := range sess.WorkDirs {
+		found = found || d == extra
+	}
+	if !found {
+		t.Fatalf("extra dir %q not reachable, work dirs = %v", extra, sess.WorkDirs)
+	}
+}
+
 func TestNewSessionRejectsBadRequestsWithoutCreating(t *testing.T) {
 	f := newWorktreeFixture(t)
 	h := withSessionCreateIn(&passthrough{}, f.c)
@@ -142,6 +204,13 @@ func TestNewSessionRejectsBadRequestsWithoutCreating(t *testing.T) {
 	file := filepath.Join(plain, "file.txt")
 	if err := os.WriteFile(file, []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
+	}
+	extra := realDir(t, t.TempDir())
+
+	// maxSessionFolders is 8 (cwd + extras); 8 distinct extras plus cwd is 9.
+	manyExtras := make([]string, 8)
+	for i := range manyExtras {
+		manyExtras[i] = jsonString(realDir(t, t.TempDir()))
 	}
 
 	cases := []struct {
@@ -157,6 +226,10 @@ func TestNewSessionRejectsBadRequestsWithoutCreating(t *testing.T) {
 		{"a file", `{"cwd":` + jsonString(file) + `}`, true, http.StatusBadRequest},
 		{"isolate outside a repository", `{"cwd":` + jsonString(plain) + `,"isolate":true}`, true, http.StatusBadRequest},
 		{"bad json", `{"cwd":`, true, http.StatusBadRequest},
+		{"extra_dirs without cwd", `{"extra_dirs":[` + jsonString(extra) + `]}`, true, http.StatusBadRequest},
+		{"missing extra dir", `{"cwd":` + jsonString(plain) + `,"extra_dirs":[` + jsonString(filepath.Join(plain, "nope")) + `]}`, true, http.StatusNotFound},
+		{"an extra dir is a file", `{"cwd":` + jsonString(plain) + `,"extra_dirs":[` + jsonString(file) + `]}`, true, http.StatusBadRequest},
+		{"too many folders", `{"cwd":` + jsonString(plain) + `,"extra_dirs":[` + strings.Join(manyExtras, ",") + `]}`, true, http.StatusBadRequest},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

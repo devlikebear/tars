@@ -202,6 +202,34 @@ test('a focus task: plan gate, approve, report and decision cards, decide, then 
   await expect(page.getByTestId('focus-pipeline')).toBeVisible()
 })
 
+// A task can reach more than one folder: the primary stays the only
+// active/isolated one, but the extras become registered work dirs the
+// session can read and write through its tools (#1147 et al.).
+test('a new task with an extra folder registers both as the session\'s work dirs', async ({ page }) => {
+  const repo = newRepo('tars-e2e-focus-multi-primary-')
+  const extra = newRepo('tars-e2e-focus-multi-extra-')
+  await page.goto('/console/focus')
+  await page.getByTestId('focus-new-task-open').click()
+  await page.getByTestId('focus-new-folder').fill(repo)
+  await expect(page.getByTestId('focus-new-folder-status')).toHaveText('Git repository')
+
+  await page.getByTestId('focus-new-extra-add').click()
+  await page.getByTestId('focus-new-extra-folder').fill(extra)
+  await expect(page.getByTestId('focus-new-extra-status')).toHaveText('Git repository')
+
+  await page.getByTestId('focus-new-goal').fill(goal)
+  await page.getByTestId('focus-new-start').click()
+
+  await expect(page).toHaveURL(/\/console\/focus\/[^/]+$/)
+  const id = sessionId(page)
+  const sess = await (await page.request.get(`/v1/admin/sessions/${encodeURIComponent(id)}`)).json()
+  const workDirs = (sess.work_dirs as string[]) ?? []
+  expect(workDirs.some((d) => d === repo)).toBe(true)
+  expect(workDirs.some((d) => d === extra)).toBe(true)
+  // The primary alone is the active cwd.
+  expect(sess.current_dir).toBe(repo)
+})
+
 test('the focus home lists the task and a stale gate action shows the current state', async ({ page }) => {
   const repo = newRepo('tars-e2e-focus-list-')
   const created = await (await page.request.post('/v1/focus/pipelines', { data: { goal, cwd: repo } })).json()

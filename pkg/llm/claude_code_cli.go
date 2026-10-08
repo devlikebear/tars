@@ -198,6 +198,19 @@ func (c *ClaudeCodeCLIClient) sessionArgs(opts ChatOptions, resumeID string) []s
 		"--model", c.model,
 		"--add-dir", c.workDir,
 	}
+	// AddDirs reaches more folders beyond the configured workspace and the
+	// process directory (a chat session's other work dirs, for a focus
+	// pipeline given more than one folder): one --add-dir per non-empty
+	// unique entry, skipping ones already covered above.
+	seen := map[string]bool{c.workDir: true, strings.TrimSpace(opts.WorkDir): true}
+	for _, dir := range opts.AddDirs {
+		dir = strings.TrimSpace(dir)
+		if dir == "" || seen[dir] {
+			continue
+		}
+		seen[dir] = true
+		args = append(args, "--add-dir", dir)
+	}
 	switch {
 	case resumeID != "":
 		// --resume requires session-persistence to be enabled so Claude Code
