@@ -29,12 +29,12 @@ func wingetFileMap(t *testing.T) map[string]string {
 func TestWingetManifestsLayout(t *testing.T) {
 	files := wingetFileMap(t)
 	want := []string{
-		"d/devlikebear/TARS/1.2.3/devlikebear.TARS.yaml",
-		"d/devlikebear/TARS/1.2.3/devlikebear.TARS.installer.yaml",
-		"d/devlikebear/TARS/1.2.3/devlikebear.TARS.locale.en-US.yaml",
-		"d/devlikebear/TARS/Desktop/1.2.3/devlikebear.TARS.Desktop.yaml",
-		"d/devlikebear/TARS/Desktop/1.2.3/devlikebear.TARS.Desktop.installer.yaml",
-		"d/devlikebear/TARS/Desktop/1.2.3/devlikebear.TARS.Desktop.locale.en-US.yaml",
+		"d/Devlikebear/TARS/1.2.3/Devlikebear.TARS.yaml",
+		"d/Devlikebear/TARS/1.2.3/Devlikebear.TARS.installer.yaml",
+		"d/Devlikebear/TARS/1.2.3/Devlikebear.TARS.locale.en-US.yaml",
+		"d/Devlikebear/TARS/Desktop/1.2.3/Devlikebear.TARS.Desktop.yaml",
+		"d/Devlikebear/TARS/Desktop/1.2.3/Devlikebear.TARS.Desktop.installer.yaml",
+		"d/Devlikebear/TARS/Desktop/1.2.3/Devlikebear.TARS.Desktop.locale.en-US.yaml",
 	}
 	if len(files) != len(want) {
 		t.Fatalf("got %d files, want %d: %v", len(files), len(want), files)
@@ -47,9 +47,9 @@ func TestWingetManifestsLayout(t *testing.T) {
 }
 
 func TestWingetServerInstallerKeepsShareNextToExecutable(t *testing.T) {
-	got := wingetFileMap(t)["d/devlikebear/TARS/1.2.3/devlikebear.TARS.installer.yaml"]
+	got := wingetFileMap(t)["d/Devlikebear/TARS/1.2.3/Devlikebear.TARS.installer.yaml"]
 	for _, want := range []string{
-		"PackageIdentifier: devlikebear.TARS\n",
+		"PackageIdentifier: Devlikebear.TARS\n",
 		"PackageVersion: 1.2.3\n",
 		"InstallerType: zip\n",
 		"NestedInstallerType: portable\n",
@@ -68,11 +68,11 @@ func TestWingetServerInstallerKeepsShareNextToExecutable(t *testing.T) {
 }
 
 func TestWingetDesktopInstallerDependsOnServer(t *testing.T) {
-	got := wingetFileMap(t)["d/devlikebear/TARS/Desktop/1.2.3/devlikebear.TARS.Desktop.installer.yaml"]
+	got := wingetFileMap(t)["d/Devlikebear/TARS/Desktop/1.2.3/Devlikebear.TARS.Desktop.installer.yaml"]
 	for _, want := range []string{
-		"PackageIdentifier: devlikebear.TARS.Desktop\n",
+		"PackageIdentifier: Devlikebear.TARS.Desktop\n",
 		"- RelativeFilePath: tars-desktop.exe\n  PortableCommandAlias: tars-desktop\n",
-		"PackageDependencies:\n  - PackageIdentifier: devlikebear.TARS\n",
+		"PackageDependencies:\n  - PackageIdentifier: Devlikebear.TARS\n",
 		"InstallerUrl: https://github.com/devlikebear/tars/releases/download/v1.2.3/tars-desktop_1.2.3_windows_amd64.zip\n",
 		"InstallerSha256: " + strings.ToUpper(testDesktopSHA) + "\n",
 	} {
@@ -84,13 +84,13 @@ func TestWingetDesktopInstallerDependsOnServer(t *testing.T) {
 
 func TestWingetLocaleAndVersionManifests(t *testing.T) {
 	files := wingetFileMap(t)
-	version := files["d/devlikebear/TARS/1.2.3/devlikebear.TARS.yaml"]
+	version := files["d/Devlikebear/TARS/1.2.3/Devlikebear.TARS.yaml"]
 	for _, want := range []string{"DefaultLocale: en-US\n", "ManifestType: version\n", "ManifestVersion: " + wingetManifestVersion + "\n"} {
 		if !strings.Contains(version, want) {
 			t.Errorf("version manifest missing %q:\n%s", want, version)
 		}
 	}
-	locale := files["d/devlikebear/TARS/Desktop/1.2.3/devlikebear.TARS.Desktop.locale.en-US.yaml"]
+	locale := files["d/Devlikebear/TARS/Desktop/1.2.3/Devlikebear.TARS.Desktop.locale.en-US.yaml"]
 	for _, want := range []string{
 		"PackageName: TARS Desktop\n",
 		"Publisher: devlikebear\n",

@@ -376,7 +376,7 @@ func TestVersionHelpers(t *testing.T) {
 		}
 	}
 	for p, want := range map[string]bool{
-		`D:\fake\AppData\Local\Microsoft\WinGet\Packages\devlikebear.TARS_Microsoft.Winget.Source_8wekyb3d8bbwe\tars.exe`: true,
+		`D:\fake\AppData\Local\Microsoft\WinGet\Packages\Devlikebear.TARS_Microsoft.Winget.Source_8wekyb3d8bbwe\tars.exe`: true,
 		`d:\fake\appdata\local\microsoft\winget\links\tars.exe`:                                                           true,
 		"D:/fake/AppData/Local/Microsoft/WinGet/Packages/x/tars.exe":                                                      true,
 		`D:\fake\AppData\Local\Programs\TARS\tars.exe`:                                                                    false,

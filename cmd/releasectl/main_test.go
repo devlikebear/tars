@@ -66,8 +66,8 @@ func TestWriteWingetManifestsWritesBothPackages(t *testing.T) {
 		}
 	})
 	for _, rel := range []string{
-		"d/devlikebear/TARS/1.2.3/devlikebear.TARS.installer.yaml",
-		"d/devlikebear/TARS/Desktop/1.2.3/devlikebear.TARS.Desktop.installer.yaml",
+		"d/Devlikebear/TARS/1.2.3/Devlikebear.TARS.installer.yaml",
+		"d/Devlikebear/TARS/Desktop/1.2.3/Devlikebear.TARS.Desktop.installer.yaml",
 	} {
 		path := filepath.Join(out, filepath.FromSlash(rel))
 		data, err := os.ReadFile(path)

@@ -114,7 +114,7 @@ func main() {
 	// A winget install is upgraded by winget; replacing the exe in place would
 	// leave winget's record of the installed version stale.
 	if exe, _ := os.Executable(); serverupdate.ManagedByWinget(exe) {
-		log.Print("updates disabled: installed with winget; run: winget upgrade devlikebear.TARS.Desktop")
+		log.Print("updates disabled: installed with winget; run: winget upgrade Devlikebear.TARS.Desktop")
 	} else if update.Enabled(version) {
 		if provider, err := update.Provider(); err != nil {
 			log.Printf("updates disabled: %v", err)

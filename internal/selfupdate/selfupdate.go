@@ -55,7 +55,7 @@ var (
 	// ErrHomebrew means Homebrew owns the binary and must update it.
 	ErrHomebrew = errors.New("this tars is managed by Homebrew; update it with: brew upgrade devlikebear/tap/tars")
 	// ErrWinget means winget owns the binary and must update it.
-	ErrWinget = errors.New("this tars is managed by winget; update it with: winget upgrade devlikebear.TARS")
+	ErrWinget = errors.New("this tars is managed by winget; update it with: winget upgrade Devlikebear.TARS")
 	// ErrNoAsset means the latest release has no archive for this platform.
 	ErrNoAsset = errors.New("the latest release has no archive for this platform")
 )

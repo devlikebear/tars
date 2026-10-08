@@ -497,13 +497,13 @@ jobs:
           # The repository is several gigabytes; only the publisher's
           # manifests are needed.
           git clone --depth 1 --filter=blob:none --sparse "https://github.com/${login}/winget-pkgs.git" winget-pkgs
-          git -C winget-pkgs sparse-checkout set manifests/d/devlikebear
+          git -C winget-pkgs sparse-checkout set manifests/d/Devlikebear
           git -C winget-pkgs config user.name "${login}"
           git -C winget-pkgs config user.email "${login}@users.noreply.github.com"
 
           # The app depends on the server, so winget-pkgs can only validate
           # its pull request once the server's is merged.
-          for entry in "devlikebear.TARS:d/devlikebear/TARS" "devlikebear.TARS.Desktop:d/devlikebear/TARS/Desktop"; do
+          for entry in "Devlikebear.TARS:d/Devlikebear/TARS" "Devlikebear.TARS.Desktop:d/Devlikebear/TARS/Desktop"; do
             id="${entry%%:*}"
             dir="${entry#*:}"
             branch="${id}-${VERSION}"

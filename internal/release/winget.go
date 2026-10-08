@@ -10,8 +10,8 @@ import (
 // The winget package identifiers. winget-pkgs lays manifests out by
 // publisher and package, so the Desktop package is a sibling directory.
 const (
-	WingetServerID  = "devlikebear.TARS"
-	WingetDesktopID = "devlikebear.TARS.Desktop"
+	WingetServerID  = "Devlikebear.TARS"
+	WingetDesktopID = "Devlikebear.TARS.Desktop"
 
 	// wingetManifestVersion is the manifest schema both packages are written
 	// against. Zip with a nested portable installer needs 1.4.0 or later.
@@ -28,7 +28,7 @@ type WingetFile struct {
 }
 
 // WingetManifests renders the winget-pkgs manifests of a release: the
-// server (devlikebear.TARS) and the desktop app (devlikebear.TARS.Desktop),
+// server (Devlikebear.TARS) and the desktop app (Devlikebear.TARS.Desktop),
 // each as the version, installer and default-locale files.
 //
 // Both release zips are installed as portable packages: winget unpacks the
@@ -92,7 +92,7 @@ func WingetManifests(repoSlug, version, serverSHA, desktopSHA string) ([]WingetF
 	return files, nil
 }
 
-// wingetManifestDir is winget-pkgs' d/devlikebear/TARS/Desktop/<version>
+// wingetManifestDir is winget-pkgs' d/Devlikebear/TARS/Desktop/<version>
 // layout: the lowercase first letter of the publisher, then one segment per
 // identifier part, then the version.
 func wingetManifestDir(id, version string) string {

@@ -72,7 +72,7 @@ func TestForPicksHomebrewOnlyForAHomebrewInstallOnMacOS(t *testing.T) {
 	// A winget install is left to winget, whether tars was found by its
 	// Links alias or by the package directory the alias points into.
 	links := `D:\fake\AppData\Local\Microsoft\WinGet\Links\tars.exe`
-	pkg := `D:\fake\AppData\Local\Microsoft\WinGet\Packages\devlikebear.TARS_Microsoft.Winget.Source_8wekyb3d8bbwe\tars.exe`
+	pkg := `D:\fake\AppData\Local\Microsoft\WinGet\Packages\Devlikebear.TARS_Microsoft.Winget.Source_8wekyb3d8bbwe\tars.exe`
 	if _, err := For("windows", links, pkg, none, cfg, nil); !errors.Is(err, ErrManagedByWinget) {
 		t.Fatalf("winget install via Links: %v", err)
 	}

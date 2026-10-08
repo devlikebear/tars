@@ -6,7 +6,7 @@ import (
 )
 
 // WingetPackage is the winget identifier of the tars server.
-const WingetPackage = "devlikebear.TARS"
+const WingetPackage = "Devlikebear.TARS"
 
 // ErrManagedByWinget is a tars installed by winget. `tars update` refuses it,
 // since replacing the executable in place would leave winget's record of the
