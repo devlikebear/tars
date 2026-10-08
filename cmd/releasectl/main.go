@@ -4,6 +4,8 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/devlikebear/tars/internal/release"
 )
@@ -21,6 +23,8 @@ func main() {
 		homebrewFormula(os.Args[2:])
 	case "homebrew-cask":
 		homebrewCask(os.Args[2:])
+	case "winget-manifests":
+		wingetManifests(os.Args[2:])
 	default:
 		usage()
 		os.Exit(2)
@@ -76,6 +80,46 @@ func homebrewCask(args []string) {
 	}
 }
 
+// wingetManifests writes the winget-pkgs manifests of a release under --out,
+// at the paths they have below winget-pkgs' manifests/ directory.
+func wingetManifests(args []string) {
+	fs := flag.NewFlagSet("winget-manifests", flag.ExitOnError)
+	repoSlug := fs.String("repo", "devlikebear/tars", "GitHub repo slug")
+	version := fs.String("version", "", "release version without v prefix")
+	serverSHA := fs.String("server-sha", "", "SHA256 for the windows amd64 server archive")
+	desktopSHA := fs.String("desktop-sha", "", "SHA256 for the windows amd64 desktop archive")
+	out := fs.String("out", "", "directory to write the manifests under (a winget-pkgs checkout's manifests/)")
+	_ = fs.Parse(args)
+
+	if err := writeWingetManifests(*out, *repoSlug, *version, *serverSHA, *desktopSHA); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
+
+func writeWingetManifests(out, repoSlug, version, serverSHA, desktopSHA string) error {
+	if strings.TrimSpace(out) == "" {
+		return fmt.Errorf("--out is required")
+	}
+	files, err := release.WingetManifests(repoSlug, version, serverSHA, desktopSHA)
+	if err != nil {
+		return err
+	}
+	for _, f := range files {
+		target := filepath.Join(out, filepath.FromSlash(f.Path))
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			return err
+		}
+		if err := os.WriteFile(target, []byte(f.Content), 0o644); err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintln(os.Stdout, target); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: releasectl <validate-release|homebrew-formula|homebrew-cask> [flags]")
+	fmt.Fprintln(os.Stderr, "usage: releasectl <validate-release|homebrew-formula|homebrew-cask|winget-manifests> [flags]")
 }

@@ -56,6 +56,43 @@ func TestReleaseCommandsRenderValidatedBundleAndFormula(t *testing.T) {
 	}
 }
 
+func TestWriteWingetManifestsWritesBothPackages(t *testing.T) {
+	out := t.TempDir()
+	server := strings.Repeat("a", 64)
+	desktop := strings.Repeat("b", 64)
+	stdout, _ := captureReleaseCommandOutput(t, func() {
+		if err := writeWingetManifests(out, "devlikebear/tars", "1.2.3", server, desktop); err != nil {
+			t.Error(err)
+		}
+	})
+	for _, rel := range []string{
+		"d/devlikebear/TARS/1.2.3/devlikebear.TARS.installer.yaml",
+		"d/devlikebear/TARS/Desktop/1.2.3/devlikebear.TARS.Desktop.installer.yaml",
+	} {
+		path := filepath.Join(out, filepath.FromSlash(rel))
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("manifest %s not written: %v", rel, err)
+		}
+		if !strings.Contains(string(data), "NestedInstallerType: portable") {
+			t.Errorf("%s is not a portable installer manifest:\n%s", rel, data)
+		}
+		if !strings.Contains(stdout, path) {
+			t.Errorf("stdout does not list %s:\n%s", path, stdout)
+		}
+	}
+}
+
+func TestWriteWingetManifestsRequiresOutAndValidInput(t *testing.T) {
+	sha := strings.Repeat("a", 64)
+	if err := writeWingetManifests(" ", "devlikebear/tars", "1.2.3", sha, sha); err == nil {
+		t.Fatal("expected an error without --out")
+	}
+	if err := writeWingetManifests(t.TempDir(), "devlikebear/tars", "1.2.3", "", sha); err == nil {
+		t.Fatal("expected an error without a server checksum")
+	}
+}
+
 func captureReleaseCommandOutput(t *testing.T, run func()) (string, string) {
 	t.Helper()
 	oldStdout, oldStderr := os.Stdout, os.Stderr

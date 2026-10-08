@@ -362,7 +362,12 @@ func InstallDirs(goos, home string) []string {
 		if home == "" {
 			return nil
 		}
-		return []string{filepath.Join(home, "AppData", "Local", "Programs", "TARS")}
+		// winget puts its portable commands, tars.exe among them, in Links.
+		local := filepath.Join(home, "AppData", "Local")
+		return []string{
+			filepath.Join(local, "Programs", "TARS"),
+			filepath.Join(local, "Microsoft", "WinGet", "Links"),
+		}
 	default:
 		return nil
 	}

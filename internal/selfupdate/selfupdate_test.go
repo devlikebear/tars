@@ -195,6 +195,11 @@ func TestCheckRefusesWhatItCannotUpdate(t *testing.T) {
 		t.Fatalf("homebrew: err = %v", err)
 	}
 
+	wingetLink := windowsOpts(srv, `D:\fake\AppData\Local\Microsoft\WinGet\Links\tars.exe`)
+	if _, err := Check(context.Background(), wingetLink); !errors.Is(err, ErrWinget) {
+		t.Fatalf("winget: err = %v", err)
+	}
+
 	// Until a release carries the Windows archive, Check says so plainly.
 	if _, err := Check(context.Background(), windowsOpts(srv, `C:\TARS\tars.exe`)); !errors.Is(err, ErrNoAsset) {
 		t.Fatalf("missing asset: err = %v", err)
@@ -368,6 +373,18 @@ func TestVersionHelpers(t *testing.T) {
 	} {
 		if got := ManagedByHomebrew(p); got != want {
 			t.Errorf("ManagedByHomebrew(%q) = %v", p, got)
+		}
+	}
+	for p, want := range map[string]bool{
+		`D:\fake\AppData\Local\Microsoft\WinGet\Packages\devlikebear.TARS_Microsoft.Winget.Source_8wekyb3d8bbwe\tars.exe`: true,
+		`d:\fake\appdata\local\microsoft\winget\links\tars.exe`:                                                           true,
+		"D:/fake/AppData/Local/Microsoft/WinGet/Packages/x/tars.exe":                                                      true,
+		`D:\fake\AppData\Local\Programs\TARS\tars.exe`:                                                                    false,
+		`D:\Tools\WinGet\tars.exe`:                                                                                        false,
+		"/opt/homebrew/bin/tars":                                                                                          false,
+	} {
+		if got := ManagedByWinget(p); got != want {
+			t.Errorf("ManagedByWinget(%q) = %v", p, got)
 		}
 	}
 }

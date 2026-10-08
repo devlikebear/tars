@@ -270,8 +270,10 @@ func TestInstallDirs(t *testing.T) {
 		t.Fatalf("no home must skip ~/.local/bin: %v", got)
 	}
 	windows := InstallDirs("windows", `C:\Users\me`)
-	if want := filepath.Join(`C:\Users\me`, "AppData", "Local", "Programs", "TARS"); len(windows) != 1 || windows[0] != want {
-		t.Fatalf("windows install dirs = %v, want [%s] (install.ps1's default)", windows, want)
+	wantScript := filepath.Join(`C:\Users\me`, "AppData", "Local", "Programs", "TARS")
+	wantWinget := filepath.Join(`C:\Users\me`, "AppData", "Local", "Microsoft", "WinGet", "Links")
+	if len(windows) != 2 || windows[0] != wantScript || windows[1] != wantWinget {
+		t.Fatalf("windows install dirs = %v, want [%s %s] (install.ps1's default, then winget's Links)", windows, wantScript, wantWinget)
 	}
 	if got := InstallDirs("windows", ""); len(got) != 0 {
 		t.Fatalf("no home must give no windows install dirs: %v", got)
