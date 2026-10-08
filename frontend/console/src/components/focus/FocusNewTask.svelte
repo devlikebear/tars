@@ -6,7 +6,7 @@
   // another is chosen), and goal mode lets the server decide every gate.
   // Creating it starts a session with a pipeline; the pipeline screen then
   // sends the goal as the first turn.
-  import { onDestroy, onMount } from 'svelte'
+  import { onDestroy, onMount, tick } from 'svelte'
   import { t } from '../../i18n'
   import { APIRequestError, checkSessionFolder, createFocusPipeline, listFocusTemplates, listRecentSessionFolders, type SessionFolder } from '../../lib/api'
   import { stageLabel, templateText } from '../../lib/focus'
@@ -14,6 +14,7 @@
   import { clipboardImageFiles, filesToAttachments } from '../../lib/chatAttachments'
   import { stashKickoffAttachments } from '../../lib/focusKickoff'
   import type { FocusTemplate } from '../../lib/types'
+  import FolderPickerDialog from '../FolderPickerDialog.svelte'
 
   interface Props {
     onCreated: (sessionId: string) => void
@@ -41,6 +42,10 @@
   let error = $state('')
   let timer: ReturnType<typeof setTimeout> | null = null
   let checkSeq = 0
+  // The folder picker dialog (#picker), opened by "Browse…" next to the
+  // folder field — the same server-backed browser as the Files panel's "+",
+  // shared via FolderPickerDialog.
+  let showBrowser = $state(false)
 
   // Images pasted into the goal field (#1097): held here until start()
   // converts them and hands them to the pipeline's first turn — the
@@ -166,6 +171,37 @@
     if (!item.repo_root) isolate = false
   }
 
+  function openBrowser() {
+    showBrowser = true
+  }
+
+  function closeBrowser() {
+    showBrowser = false
+  }
+
+  // The dialog hands back an absolute, server-verified folder path — run the
+  // same check a typed path gets, right away rather than debounced.
+  function onBrowsePicked(picked: string) {
+    showBrowser = false
+    if (timer) clearTimeout(timer)
+    error = ''
+    path = picked
+    void runCheck(picked)
+  }
+
+  function onBrowserKeydown(e: KeyboardEvent) {
+    if (e.key === 'Escape') {
+      e.preventDefault()
+      closeBrowser()
+    }
+  }
+
+  let browserModalEl: HTMLDivElement | undefined = $state()
+
+  $effect(() => {
+    if (showBrowser) void tick().then(() => browserModalEl?.focus())
+  })
+
   async function start() {
     if (!canStart || !folder) return
     busy = true
@@ -211,7 +247,10 @@
 
   <div class="field">
     <label class="label" for="focus-new-folder">{$t.focus.newTask.folder}</label>
-    <input id="focus-new-folder" class="mono" type="text" bind:value={path} oninput={onPathInput} placeholder={$t.focus.newTask.folderPlaceholder} data-testid="focus-new-folder" autocomplete="off" />
+    <div class="folder-row">
+      <input id="focus-new-folder" class="mono" type="text" bind:value={path} oninput={onPathInput} placeholder={$t.focus.newTask.folderPlaceholder} data-testid="focus-new-folder" autocomplete="off" />
+      <button type="button" class="btn btn-ghost btn-sm" title={$t.focus.newTask.browseTitle} onclick={openBrowser} data-testid="focus-new-folder-browse">{$t.focus.newTask.browse}</button>
+    </div>
     <p class="status" class:error={check.state === 'error'} data-testid="focus-new-folder-status">
       {#if check.state === 'checking'}{$t.focus.newTask.checking}
       {:else if check.state === 'error'}{check.message}
@@ -275,6 +314,25 @@
   </div>
 </form>
 
+{#if showBrowser}
+  <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+  <div class="browse-backdrop" onclick={closeBrowser}>
+    <div
+      class="browse-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-label={$t.focus.newTask.browseTitle}
+      tabindex="-1"
+      data-testid="focus-new-folder-dialog"
+      bind:this={browserModalEl}
+      onclick={(e) => e.stopPropagation()}
+      onkeydown={onBrowserKeydown}
+    >
+      <FolderPickerDialog initialPath={folder?.path} onSelect={onBrowsePicked} onCancel={closeBrowser} />
+    </div>
+  </div>
+{/if}
+
 <style>
   .new-task {
     display: flex;
@@ -296,6 +354,17 @@
     gap: var(--space-1);
   }
 
+  .folder-row {
+    display: flex;
+    gap: var(--space-2);
+    align-items: stretch;
+  }
+
+  .folder-row input[type='text'] {
+    flex: 1;
+    min-width: 0;
+  }
+
   input[type='text'] {
     padding: var(--space-2) var(--space-3);
     background: var(--surface-inset);
@@ -303,6 +372,30 @@
     border-radius: var(--radius-md);
     color: var(--text-primary);
     font-size: var(--text-base);
+  }
+
+  .browse-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: var(--space-4);
+  }
+
+  .browse-modal {
+    background: var(--surface-elevated);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    width: 100%;
+    max-width: 560px;
+    height: 70vh;
+    max-height: 640px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
   }
 
   input[type='text']:focus,

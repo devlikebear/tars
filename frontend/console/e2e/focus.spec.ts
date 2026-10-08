@@ -526,6 +526,58 @@ test('an image pasted into the new task goal field rides the first turn as an at
   expect(secondBody.attachments ?? []).toHaveLength(0)
 })
 
+test('Browse… opens the shared folder dialog; choosing a folder in it fills the field and checks it', async ({ page }) => {
+  const repo = newRepo('tars-e2e-focus-browse-')
+  await page.goto('/console/focus')
+  await page.getByTestId('focus-new-task-open').click()
+
+  // No folder checked yet: the dialog opens at the server's home folder.
+  await page.getByTestId('focus-new-folder-browse').click()
+  const dialog = page.getByTestId('focus-new-folder-dialog')
+  await expect(dialog).toBeVisible()
+  const dialogPath = dialog.getByRole('textbox', { name: 'Folder path' })
+  await expect(dialogPath).not.toHaveValue('')
+
+  await dialogPath.fill(repo)
+  await dialogPath.press('Enter')
+  await expect(dialogPath).toHaveValue(repo)
+  await dialog.getByRole('button', { name: 'Select Here' }).click()
+  await expect(dialog).toHaveCount(0)
+
+  await expect(page.getByTestId('focus-new-folder')).toHaveValue(repo)
+  await expect(page.getByTestId('focus-new-folder-status')).toHaveText('Git repository')
+
+  await page.getByTestId('focus-new-goal').fill(goal)
+  await page.getByTestId('focus-new-start').click()
+  await expect(page).toHaveURL(/\/console\/focus\/[^/]+$/)
+})
+
+test('Escape in the folder dialog leaves the new-task form as it was', async ({ page }) => {
+  const repo = newRepo('tars-e2e-focus-browse-cancel-')
+  await page.goto('/console/focus')
+  await page.getByTestId('focus-new-task-open').click()
+  await page.getByTestId('focus-new-folder').fill(repo)
+  await expect(page.getByTestId('focus-new-folder-status')).toHaveText('Git repository')
+
+  // Opens at the folder already checked, not at home.
+  await page.getByTestId('focus-new-folder-browse').click()
+  const dialog = page.getByTestId('focus-new-folder-dialog')
+  await expect(dialog).toBeVisible()
+  await expect(dialog.getByRole('textbox', { name: 'Folder path' })).toHaveValue(repo)
+
+  await page.keyboard.press('Escape')
+  await expect(dialog).toHaveCount(0)
+  await expect(page.getByTestId('focus-new-folder')).toHaveValue(repo)
+  await expect(page.getByTestId('focus-new-folder-status')).toHaveText('Git repository')
+
+  // The dialog's own Cancel button closes it the same way.
+  await page.getByTestId('focus-new-folder-browse').click()
+  await expect(dialog).toBeVisible()
+  await dialog.getByRole('button', { name: 'Cancel' }).click()
+  await expect(dialog).toHaveCount(0)
+  await expect(page.getByTestId('focus-new-folder')).toHaveValue(repo)
+})
+
 // --- Korean (see e2e/workbench-ko.spec.ts) ---
 
 const keptInEnglish = ['TARS', 'Git', 'PR', 'cwd', 'diff', 'Ctrl', 'Cmd', 'Enter', 'Esc']
