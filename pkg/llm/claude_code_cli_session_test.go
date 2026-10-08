@@ -79,6 +79,53 @@ printf '%s\n' '{"type":"result","subtype":"success","is_error":false,"stop_reaso
 	}
 }
 
+// AddDirs reaches more folders beyond the configured workspace and the
+// process directory: one --add-dir per non-empty unique entry, with no
+// duplicate for an entry that already equals one of those two.
+func TestClaudeCodeCLIClientChat_AddDirsAddsAnExtraFlagPerFolder(t *testing.T) {
+	workspace := t.TempDir()
+	project := t.TempDir()
+	extra1 := t.TempDir()
+	extra2 := t.TempDir()
+	argsPath := filepath.Join(workspace, "claude-args.txt")
+	scriptPath := filepath.Join(workspace, "claude")
+	script := strings.TrimSpace(`#!/bin/sh
+printf '%s\n' "$@" > `+shellQuote(argsPath)+`
+printf '%s\n' '{"type":"result","subtype":"success","is_error":false,"stop_reason":"end_turn","usage":{"input_tokens":1,"output_tokens":1},"result":"hi"}'
+`) + "\n"
+	if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("write cli stub: %v", err)
+	}
+	t.Setenv("CLAUDE_CODE_CLI_PATH", scriptPath)
+	client, err := NewProvider(ProviderOptions{Provider: "claude-code-cli", Model: "sonnet", WorkDir: workspace})
+	if err != nil {
+		t.Fatalf("new provider: %v", err)
+	}
+	opts := ChatOptions{
+		WorkDir: project,
+		// workspace and project are already covered by --add-dir and the
+		// process directory; extra1 repeats and must not duplicate.
+		AddDirs: []string{extra1, workspace, project, extra2, extra1, "  "},
+	}
+	if _, err := client.Chat(context.Background(), []ChatMessage{{Role: "user", Content: "hi"}}, opts); err != nil {
+		t.Fatalf("chat: %v", err)
+	}
+	args, err := os.ReadFile(argsPath)
+	if err != nil {
+		t.Fatalf("read args: %v", err)
+	}
+	got := extractFlagValues(string(args), "--add-dir")
+	want := []string{workspace, extra1, extra2}
+	if len(got) != len(want) {
+		t.Fatalf("--add-dir values = %v, want %v", got, want)
+	}
+	for i, v := range want {
+		if got[i] != v {
+			t.Fatalf("--add-dir[%d] = %q, want %q (full: %v)", i, got[i], v, got)
+		}
+	}
+}
+
 // A --resume of a session the CLI never saved fails the same way every time.
 // Chat does not retry it; it starts a fresh session with the whole
 // transcript so the turn still succeeds, and reports the new session ID.

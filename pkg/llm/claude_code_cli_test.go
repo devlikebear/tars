@@ -577,6 +577,19 @@ func extractFlagValue(args, flag string) string {
 	return ""
 }
 
+// extractFlagValues is extractFlagValue for a flag that may repeat (e.g.
+// --add-dir once per extra folder), returning every value in order.
+func extractFlagValues(args, flag string) []string {
+	var out []string
+	lines := strings.Split(args, "\n")
+	for i, ln := range lines {
+		if ln == flag && i+1 < len(lines) {
+			out = append(out, lines[i+1])
+		}
+	}
+	return out
+}
+
 // TestResolveClaudeCodePermissionMode verifies the recognized-values whitelist
 // and the auto fallback for empty/unknown input.
 func TestResolveClaudeCodePermissionMode(t *testing.T) {

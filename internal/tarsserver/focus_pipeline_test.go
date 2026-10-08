@@ -107,6 +107,48 @@ func TestFocusCreate(t *testing.T) {
 	}
 }
 
+func TestFocusCreateWithExtraDirs(t *testing.T) {
+	f := newWorktreeFixture(t)
+	h := newFocusPipelineHandler(f.store, f.c, nil, zerolog.Nop())
+	extra := realDir(t, t.TempDir())
+
+	if rec := focusRequest(t, h, http.MethodPost, "/v1/focus/pipelines",
+		`{"goal":"g","cwd":`+jsonString(f.repo)+`,"extra_dirs":[`+jsonString(filepath.Join(extra, "nope"))+`]}`, true,
+	); rec.Code != http.StatusNotFound {
+		t.Fatalf("missing extra dir: %d %s", rec.Code, rec.Body.String())
+	}
+	if list, _ := f.store.List(); len(list) != 0 {
+		t.Fatalf("a failed extra_dirs create left sessions: %+v", list)
+	}
+
+	rec := focusRequest(t, h, http.MethodPost, "/v1/focus/pipelines",
+		`{"goal":"g","cwd":`+jsonString(f.repo)+`,"isolate":true,"extra_dirs":[`+jsonString(extra)+`]}`, true,
+	)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create: %d %s", rec.Code, rec.Body.String())
+	}
+	var out struct {
+		SessionID string `json:"session_id"`
+	}
+	decodeInto(t, rec, &out)
+	sess, err := f.store.Get(out.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// isolate only moves the primary folder into a worktree; the extra
+	// folder stays reachable as-is.
+	if sess.Worktree == nil || sess.CurrentDir != sess.Worktree.Dir {
+		t.Fatalf("session not isolated on the primary: %+v", sess)
+	}
+	found := false
+	for _, d := range sess.WorkDirs {
+		found = found || d == extra
+	}
+	if !found {
+		t.Fatalf("extra dir %q not reachable, work dirs = %v", extra, sess.WorkDirs)
+	}
+}
+
 func TestFocusListAndGet(t *testing.T) {
 	f := newWorktreeFixture(t)
 	h := newFocusPipelineHandler(f.store, f.c, nil, zerolog.Nop())

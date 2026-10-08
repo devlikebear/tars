@@ -44,6 +44,9 @@ export type FocusCreateRequest = {
   goal: string
   cwd: string
   isolate?: boolean
+  // More folders the session can reach besides cwd, which stays the only
+  // active/isolated one.
+  extra_dirs?: string[]
   title?: string
   kind?: 'release'
   kickoff?: string

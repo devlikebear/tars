@@ -79,6 +79,7 @@ func executeChatLoop(
 	permissionMode := strings.TrimSpace(deps.tooling.ClaudeCodeCLIPermissionMode)
 	gateMode := chatPermissionModeManual
 	var permissionDeny []string
+	var addDirs []string
 	if state.store != nil {
 		if priorSess, lookupErr := state.store.Get(state.sessionID); lookupErr == nil {
 			resumeID = strings.TrimSpace(priorSess.UpstreamSessionID)
@@ -87,6 +88,14 @@ func executeChatLoop(
 			permissionMode = chatPermissionModeResolver{overrides: deps.tooling.OverrideService, configFlag: permissionMode}.claudeCodeFlag(priorSess)
 			gateMode = gateModeFor(priorSess)
 			permissionDeny = effectiveClaudeCodePermissionDeny(deps.tooling.OverrideService, priorSess)
+			// A focus pipeline (or any session) given more than one folder
+			// registers them all as WorkDirs; everything but the active cwd
+			// goes to the provider as extra --add-dir reach.
+			for _, dir := range priorSess.WorkDirs {
+				if dir != "" && dir != state.cwd {
+					addDirs = append(addDirs, dir)
+				}
+			}
 		}
 	}
 
@@ -100,6 +109,7 @@ func executeChatLoop(
 		// call must save it; and the CLI works in the session's directory.
 		PersistUpstreamSession:   true,
 		WorkDir:                  state.cwd,
+		AddDirs:                  addDirs,
 		ClaudeCodeMCPServers:     state.claudeCodeMCPServers,
 		ClaudeCodePermissionMode: permissionMode,
 		ClaudeCodeSkills:         state.claudeCodeSkills,
