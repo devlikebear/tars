@@ -6,6 +6,17 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.56.0] - 2026-10-08
+
+### Added
+
+- **A Focus task can reach more than one folder.** Focus mode (and folder-scoped chat creation) now accepts extra folders alongside the primary one. The primary folder stays the only *active* one — it's the one isolation, the git/PR probe, and the release train work from — while the extra folders are registered as reachable work dirs: read/write access for the session's tools and, for claude-code-cli, an extra `--add-dir` per folder. The New Task form gains an "Add folder" list (up to 7 extras) below the primary folder field. ([#1170](https://github.com/devlikebear/tars/pull/1170))
+- **Release jobs submit TARS and TARS Desktop to winget.** The Windows zips are rendered into `microsoft/winget-pkgs` manifests as portable packages `Devlikebear.TARS` (`tars.exe` plus `share/`) and `Devlikebear.TARS.Desktop` (depends on the server). A new `update-winget` release job opens one pull request per package from the `WINGET_TOKEN` owner's fork, and only warns when that secret is missing. `releasectl winget-manifests --out DIR` renders the same manifests for a manual submission. ([#1169](https://github.com/devlikebear/tars/pull/1169))
+
+### Changed
+
+- **A winget install is upgraded by winget only.** `tars update` refuses a `tars.exe` under `Microsoft\WinGet\Packages` and points to `winget upgrade Devlikebear.TARS`; the desktop app skips its own update and the server's there, as it does for Homebrew, and looks for `tars.exe` in winget's package folder. ([#1169](https://github.com/devlikebear/tars/pull/1169))
+
 ## [0.55.0] - 2026-10-08
 
 ### Added
