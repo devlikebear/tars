@@ -8,6 +8,7 @@
   import Login from './components/Login.svelte'
   import { resolveRoute, type Route } from './lib/router'
   import { loadRouteComponent } from './lib/routeComponents'
+  import { canSignOut, loginRequiredFor } from './lib/authGate'
   import { APIRequestError, getAuthWhoami, getConfigSchema, getEventsHistory, getHealthz, logoutAuth, patchConfigValues, streamEvents } from './lib/api'
   import { defaultModeRedirect, focusChromeHidden, focusOwnsShortcut, onboardingModeUpdate } from './lib/focus'
   import type { AuthWhoamiResponse } from './lib/types'
@@ -140,7 +141,7 @@
     authLoading = true
     try {
       authInfo = await getAuthWhoami()
-      loginRequired = authInfo.auth_mode === 'required' && !authInfo.authenticated
+      loginRequired = loginRequiredFor(authInfo)
     } catch (err) {
       authInfo = null
       loginRequired = err instanceof APIRequestError && err.status === 401
@@ -215,6 +216,19 @@
       await logoutAuth()
     } catch {
       // Cookie may already be invalid; local UI state still needs to reset.
+    }
+    // Ask the server who we are now rather than assuming the login form:
+    // with auth off the caller is still the admin and no password exists,
+    // so the form could never be passed.
+    let after: AuthWhoamiResponse | null = null
+    try {
+      after = await getAuthWhoami()
+    } catch {
+      // Unreachable or 401: treat as signed out below.
+    }
+    if (after && !loginRequiredFor(after)) {
+      authInfo = after
+      return
     }
     stopGlobalStream?.()
     stopGlobalStream = null
@@ -424,7 +438,7 @@
     hideNav={focusChrome}
     onNavigate={navigate}
     onUnreadChange={(count) => { unreadCount = count }}
-    onLogout={handleLogout}
+    onLogout={canSignOut(authInfo) ? handleLogout : undefined}
   >
     {#if route.view === 'onboarding'}
       <Onboarding onComplete={handleOnboardingComplete} reentry={route.reentry === true} />
