@@ -78,7 +78,7 @@ AGENT_HARNESS_COMMIT ?= $(GIT_COMMIT)
 	agent-harness-eval agent-harness-baseline \
 	build build-bins windows-build-check windows-test release-asset clean tidy fmt vet lint \
 	lint-diff arch-check api-snapshot api-check ci-static-analysis-check github-actions-hardening-check codeql-workflow-check sonarcloud-workflow-check \
-	ensure-console-assets console-install console-build console-e2e \
+	ensure-console-assets console-install console-build console-e2e console-screenshots \
 	desktop-test desktop-cover desktop-build desktop-package \
 	browser-install \
 	install install-server install-assistant uninstall uninstall-server uninstall-assistant reinstall \
@@ -121,6 +121,7 @@ help:
 	@echo "  make console-install - npm ci in frontend/console"
 	@echo "  make console-build - build the embedded Svelte console assets"
 	@echo "  make console-e2e   - Playwright E2E: rebuild console, run tars serve + mock LLM"
+	@echo "  make console-screenshots - capture README/tars-site screenshots + demo video (not CI)"
 	@echo "  make desktop-test  - vet + test the desktop shell module (desktop/)"
 	@echo "  make desktop-build - build the desktop shell to $(BIN_DIR)/tars-desktop"
 	@echo "  make desktop-package DESKTOP_GOOS=... DESKTOP_GOARCH=... - desktop release archive to $(DIST_DIR)"
@@ -257,6 +258,16 @@ console-build: console-install
 # Playwright browser once: `cd frontend/console && ./node_modules/.bin/playwright install chromium`.
 console-e2e: console-build
 	cd frontend/console && npm run test:e2e
+
+# console-screenshots captures README/tars-site media: it walks the console
+# in Chromium (playwright.capture.config.ts + e2e/capture/capture.spec.ts),
+# saving named PNGs and a recorded video, then scripts/process_captures.sh
+# converts them into docs/screenshots/*.webp and a demo mp4/webm/poster.
+# Not part of console-e2e or CI — run by hand when the UI has changed
+# enough to need new marketing media, then review the output by eye.
+console-screenshots: console-build
+	cd frontend/console && npx playwright test -c playwright.capture.config.ts
+	./scripts/process_captures.sh
 
 release-asset: console-build
 	mkdir -p "$(DIST_DIR)"
