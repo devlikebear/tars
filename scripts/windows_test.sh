@@ -53,9 +53,6 @@ SKIPPED_TESTS=(
   TestTracker_UpdateLimitsPreservesExistingFileAndMemoryWhenAtomicTempCannotBeCreated # read-only directory
   TestEngineRejectsArtifactAccessThroughEscapingDirectorySymlink               # symlink privilege
   TestEngineVerifiesConfinedArtifactTreesAndExpectedDigests                    # symlink privilege
-  TestAppendInboxCandidateAndReviewActions                                     # unexamined
-  TestExtractionInboxAppendListAndReview                                       # unexamined
-  TestMirrorToWorkspace_CompanionFiles                                         # unexamined
   TestCheckDoctorLLMRuntime_ClaudeCodeCLI                                      # POSIX shell stub
   TestRemoteAccessCLIRendersLiveStatusURLAndOwnedMutations                     # POSIX shell stub
 )
