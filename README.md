@@ -384,7 +384,7 @@ The narrowing is recorded as normative policy in [`frontend/console/DESIGN.md`](
 
 ### Screenshots
 
-Captured from a running `tars serve` built from an August 2026 snapshot of `main` — one per sidebar page, in the order the sidebar lists them. The workspace is a throwaway one, so the counters are small. (The sidebar footer in that snapshot still showed `v0.35.0`; current `VERSION.txt` is `0.50.0`.)
+Captured from a running `tars serve` built from an August 2026 snapshot of `main` — one per sidebar page, in the order the sidebar lists them. The workspace is a throwaway one, so the counters are small. (The sidebar footer in that snapshot still showed `v0.35.0`; current `VERSION.txt` is `0.53.0`.)
 
 **Chat** — `/console/chat`
 
