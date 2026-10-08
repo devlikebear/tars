@@ -126,6 +126,19 @@ func TestBuild_IdentitySection(t *testing.T) {
 	}
 }
 
+func TestBuild_LanguageSection(t *testing.T) {
+	// A Korean request used to get an English plan: nothing told the model
+	// which language the plan's fields are for.
+	for _, sub := range []bool{false, true} {
+		result := Build(BuildOptions{WorkspaceDir: t.TempDir(), SubAgent: sub})
+		for _, want := range []string{"## Language", "language of the user's request", "task titles"} {
+			if !strings.Contains(result, want) {
+				t.Errorf("subagent=%v: prompt lacks %q", sub, want)
+			}
+		}
+	}
+}
+
 func TestBuild_PlanningSectionPresentForMainAgent(t *testing.T) {
 	root := t.TempDir()
 	result := Build(BuildOptions{WorkspaceDir: root})
@@ -278,22 +291,22 @@ func TestBuildResult_PrioritizesHigherOrderStaticSections(t *testing.T) {
 	}
 
 	// Floor must stay above the always-on scaffolding (Response Formatting +
-	// Planning + Long-running Commands, plus the Current Time tail, which is
-	// charged up front even though it renders last). Each addition to
-	// that scaffolding forces a bump here; 850 accommodates the
-	// post-Phase-2 layout while still keeping the prioritization
+	// Language + Planning + Long-running Commands, plus the Current Time
+	// tail, which is charged up front even though it renders last). Each
+	// addition to that scaffolding forces a bump here; 1000 accommodates
+	// the Language section while still keeping the prioritization
 	// assertion meaningful (USER fits, IDENTITY/TOOLS get clamped).
 	result := BuildResultFor(BuildOptions{
 		WorkspaceDir:       root,
-		StaticBudgetTokens: 850,
-		TotalBudgetTokens:  850,
+		StaticBudgetTokens: 1000,
+		TotalBudgetTokens:  1000,
 	})
 
 	if !strings.Contains(result.Prompt, files["USER.md"][:120]) {
 		t.Fatalf("expected user section to survive tight budget, got %q", result.Prompt)
 	}
-	if result.TotalTokens > 850 {
-		t.Fatalf("expected total tokens <= 850, got %d", result.TotalTokens)
+	if result.TotalTokens > 1000 {
+		t.Fatalf("expected total tokens <= 1000, got %d", result.TotalTokens)
 	}
 }
 
@@ -308,22 +321,22 @@ func TestBuildResult_ClampsRelevantMemoryToRemainingTotalBudget(t *testing.T) {
 
 	// Budget here is a stress test for the clamping logic, not a target
 	// for production. The total floor must accommodate the always-on
-	// scaffolding (Response Formatting + Planning + Long-running Commands +
-	// Current Time ≈ ~430 tokens) plus the static USER section, otherwise
-	// relevant memory has nothing left to clamp. 850 keeps the assertion
+	// scaffolding (Response Formatting + Language + Planning + Long-running
+	// Commands + Current Time) plus the static USER section, otherwise
+	// relevant memory has nothing left to clamp. 1150 keeps the assertion
 	// meaningful with headroom for future tweaks.
 	result := BuildResultFor(BuildOptions{
 		WorkspaceDir:         root,
 		Query:                "what coffee do i prefer?",
 		StaticBudgetTokens:   460,
 		RelevantBudgetTokens: 80,
-		TotalBudgetTokens:    1000,
+		TotalBudgetTokens:    1150,
 	})
 
-	if result.TotalTokens > 1000 {
-		t.Fatalf("expected total tokens <= 1000, got %d", result.TotalTokens)
+	if result.TotalTokens > 1150 {
+		t.Fatalf("expected total tokens <= 1150, got %d", result.TotalTokens)
 	}
-	if result.RelevantTokens > 0 && result.StaticTokens+result.RelevantTokens > 1000 {
+	if result.RelevantTokens > 0 && result.StaticTokens+result.RelevantTokens > 1150 {
 		t.Fatalf("expected relevant memory to fit remaining budget, got static=%d relevant=%d", result.StaticTokens, result.RelevantTokens)
 	}
 }

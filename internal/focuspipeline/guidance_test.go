@@ -76,6 +76,9 @@ func TestGuidance(t *testing.T) {
 					t.Errorf("guidance has %q:\n%s", n, got)
 				}
 			}
+			if !strings.Contains(got, "in the language the developer writes in") {
+				t.Errorf("guidance lacks the language rule:\n%s", got)
+			}
 			if strings.Contains(got, "</focus-stage>") {
 				t.Error("guidance must not close its own wrapper")
 			}
