@@ -271,7 +271,13 @@ export function progressLine(
   if (verify) {
     const at = verify.index ?? 0
     const of = verify.total ?? 0
-    parts.push(verify.phase === 'verifying' ? text.verifying(verify.command ?? '', at, of) : text.verified(at, of))
+    if (verify.phase === 'verifying') {
+      parts.push(text.verifying(verify.command ?? '', at, of))
+    } else if (verify.e2e_skipped) {
+      parts.push(text.verifiedSkipped(at, of))
+    } else {
+      parts.push(text.verified(at, of))
+    }
   } else if (waiting) {
     parts.push(text.waiting)
   } else if (running.size > 0) {

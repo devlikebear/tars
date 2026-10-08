@@ -111,6 +111,51 @@ func TestNextGoalStepApprovesGates(t *testing.T) {
 	}
 }
 
+// TestNextGoalStepRunsReleaseStage is TestNextGoalStepApprovesGates' plan
+// but with the dev template's release stage kept in: the merge that ended
+// goal mode there instead hands off to it, and only its own turn finishes
+// the pipeline.
+func TestNextGoalStepRunsReleaseStage(t *testing.T) {
+	p := StartGoal(planned(t, StagePlan, StageBuild, StagePR, StageMerge, ReleaseStageID), 0, t0)
+	p, _, _ = Apply(p, Event{Kind: EventGate, Gate: GatePlan, Action: GateApprove}, t0)
+	p, _, _ = Apply(p, Event{Kind: EventTurnCompleted, Turn: 2, Blocks: Blocks{Report: &Report{Summary: "done", TasksDone: true}}}, t0)
+	p, _, _ = Apply(p, Event{Kind: EventVerification, Turn: 2, Verification: &Verification{Passed: true}}, t0)
+	p, _, _ = Apply(p, Event{Kind: EventTurnCompleted, Turn: 3, Blocks: Blocks{PR: &PRDraft{Title: "feat: x"}, Report: &Report{Summary: "draft"}}}, t0)
+	p, _, _ = Apply(p, Event{Kind: EventGate, Gate: GatePR, Action: GateApprove}, t0)
+	p, _, _ = Apply(p, Event{Kind: EventTurnCompleted, Turn: 4, Blocks: Blocks{Report: &Report{Summary: "opened"}}}, t0)
+	probe := PRProbe{Status: ProbeFound, Number: 7, State: PRStateOpen, HeadOID: "abc", Checks: []PRCheck{{Name: "ci", State: CheckPass}}}
+	p, _, err := Apply(p, Event{Kind: EventPRProbe, Probe: &probe}, t0)
+	if err != nil || p.OpenGate != GateMerge {
+		t.Fatalf("probe: %v gate=%q", err, p.OpenGate)
+	}
+	step := NextGoalStep(p, t0)
+	p, _, _ = Apply(p, Event{Kind: EventGate, Gate: GateMerge, Action: GateApprove, CardID: step.CardID}, t0)
+	p, _, _ = Apply(p, Event{Kind: EventTurnCompleted, Turn: 5, Blocks: Blocks{Report: &Report{Summary: "merged"}}}, t0)
+
+	merged := PRProbe{Status: ProbeFound, Number: 7, State: PRStateMerged, HeadOID: "abc"}
+	p, act, err := Apply(p, Event{Kind: EventPRProbe, Probe: &merged}, t0)
+	if err != nil || Finished(p) || p.Current != ReleaseStageID || !p.Active() ||
+		act.Kind != ActionSendTurn || !strings.Contains(act.Prompt, "release stage") {
+		t.Fatalf("merge should hand off to release: current=%s finished=%v act=%+v", p.Current, Finished(p), act)
+	}
+	if p.PendingTurn != act.Prompt {
+		t.Fatalf("release turn not owed: pending=%q", p.PendingTurn)
+	}
+	if step := NextGoalStep(p, t0); step.Kind == GoalEnd {
+		t.Fatalf("goal mode ended before the release stage ran: %+v", step)
+	}
+
+	// The release stage runs like any other build stage.
+	p, _, _ = Apply(p, Event{Kind: EventTurnCompleted, Turn: 6, Blocks: Blocks{Report: &Report{Summary: "released", TasksDone: true}}}, t0)
+	p, _, _ = Apply(p, Event{Kind: EventVerification, Turn: 6, Verification: &Verification{Passed: true}}, t0)
+	if !Finished(p) || !Releasable(p) {
+		t.Fatalf("release stage should finish the pipeline: finished=%v releasable=%v", Finished(p), Releasable(p))
+	}
+	if step := NextGoalStep(p, later); step.Kind != GoalEnd || step.Reason != GoalEndFinished {
+		t.Fatalf("step after release = %+v", step)
+	}
+}
+
 func TestNextGoalStepTriagesBySeverity(t *testing.T) {
 	p := goalBuilding(t, StagePlan, StageBuild, StageReview)
 	p, _, _ = Apply(p, Event{Kind: EventTurnCompleted, Turn: 2, Blocks: Blocks{Report: &Report{Summary: "done", TasksDone: true}}}, t0)

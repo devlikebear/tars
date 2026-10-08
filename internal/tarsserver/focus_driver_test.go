@@ -141,6 +141,9 @@ func testFocusDriver(t *testing.T, reply func(int, string) string, verifier *fak
 	turns := &fakeFocusTurns{t: t, store: store, driver: d, reply: reply}
 	d.runTurn = turns.run
 	d.verify = verifier.verify
+	// Same signature as verify: a test that puts an e2e item in the plan
+	// does not care it is computer_use underneath, only that it is checked.
+	d.e2e = focusE2ERunner(verifier.verify)
 	return d, turns, store, sess.ID
 }
 

@@ -8,9 +8,11 @@ Three templates ship with the server:
 
 | Id | Stages | For |
 |---|---|---|
-| `dev` | plan → build → review → pr → pr_review → merge | Development (the default) |
+| `dev` | plan → build → review → pr → pr_review → merge → release | Development (the default) |
 | `writing` | plan (outline) → draft → revise | Fiction and long-form writing |
 | `research` | plan (scope) → research → report → check | Researching a question and writing it up |
+
+The `dev` template's last stage, `release`, ships the work its merge just landed: bump the version the way the repository does and follow its release process (a direct commit, or a pull request, whichever the repository uses). It is a `build` stage like any other — no new gate — so the plan can leave it out of `stages` for a change that should not trigger its own release, and a pipeline the release train (`docs/decisions/focus-mode.md` §9 P5) started from already skips it, since that pipeline's whole job is a release.
 
 Pick one in **New task** on the focus home, or pass `template` to `POST /v1/focus/pipelines`.
 
@@ -63,6 +65,8 @@ Rules:
 A file that breaks a rule is skipped; `GET /v1/focus/templates` lists it under `diagnostics` with the reason, and the New task form says how many files were skipped.
 
 With more than one `build` stage, the plan assigns each task to a stage (`"stage": "write"`), and each stage works only on its own tasks. Verification commands are optional: with none, a stage ends as soon as its report says the tasks are done.
+
+A plan's end-to-end checks (`e2e`, re-run after verification in the review stage) are plain-language goals for TARS's own `computer_use`, never shell commands: `"@AppName do the thing"` names the app, or the frontmost window without it. A GUI check that needs a shell command — a Playwright script, for example — belongs in the verification commands instead. An end-to-end goal that fails is a failed verification like any other; one that could not run at all (no `computer_use` backend or driver configured) is skipped, not failed, so a stage never blocks on a capability the environment does not have.
 
 A pipeline copies its template when it starts, so editing the file changes new tasks only.
 

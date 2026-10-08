@@ -48,11 +48,11 @@ func TestNew(t *testing.T) {
 	if p.Version != 1 || p.SessionID != "s1" || p.Goal != "ship it" || p.Current != StagePlan || p.OpenGate != GateNone {
 		t.Fatalf("pipeline = %+v", p)
 	}
-	if len(p.Stages) != len(StageOrder) {
+	if last := len(p.Stages) - 1; len(p.Stages) != len(StageOrder)+1 || p.Stages[last].ID != ReleaseStageID {
 		t.Fatalf("stages = %+v", p.Stages)
 	}
 	for i, s := range p.Stages {
-		if s.ID != StageOrder[i] {
+		if i < len(StageOrder) && s.ID != StageOrder[i] {
 			t.Fatalf("stage %d = %s", i, s.ID)
 		}
 		want := StatusPending
@@ -231,6 +231,7 @@ func TestApplyPlanApprove(t *testing.T) {
 			wantStatus: map[StageID]StageStatus{
 				StagePlan: StatusDone, StageBuild: StatusActive, StageReview: StatusPending,
 				StagePR: StatusPending, StagePRReview: StatusPending, StageMerge: StatusPending,
+				ReleaseStageID: StatusSkipped,
 			},
 			wantLimit:  5,
 			wantPrompt: "Plan approved. Start the build stage with task 1.",
@@ -242,6 +243,7 @@ func TestApplyPlanApprove(t *testing.T) {
 			wantStatus: map[StageID]StageStatus{
 				StagePlan: StatusDone, StageBuild: StatusActive, StageReview: StatusSkipped,
 				StagePR: StatusPending, StagePRReview: StatusSkipped, StageMerge: StatusPending,
+				ReleaseStageID: StatusSkipped,
 			},
 			wantLimit:  5,
 			wantPrompt: "Plan approved. Start the build stage with task 1.",
@@ -254,6 +256,7 @@ func TestApplyPlanApprove(t *testing.T) {
 			wantStatus: map[StageID]StageStatus{
 				StagePlan: StatusDone, StageBuild: StatusSkipped, StageReview: StatusSkipped,
 				StagePR: StatusActive, StagePRReview: StatusSkipped, StageMerge: StatusPending,
+				ReleaseStageID: StatusSkipped,
 			},
 			wantLimit:  3,
 			wantPrompt: "Plan approved. Start the pr stage.",
@@ -528,6 +531,7 @@ func TestApplyAdvance(t *testing.T) {
 			wantStatus: map[StageID]StageStatus{
 				StagePlan: StatusDone, StageBuild: StatusDone, StageReview: StatusActive,
 				StagePR: StatusPending, StagePRReview: StatusPending, StageMerge: StatusPending,
+				ReleaseStageID: StatusSkipped,
 			},
 			wantPrompt: "Approved. Start the review stage.",
 		},
@@ -539,6 +543,7 @@ func TestApplyAdvance(t *testing.T) {
 			wantStatus: map[StageID]StageStatus{
 				StagePlan: StatusDone, StageBuild: StatusDone, StageReview: StatusSkipped,
 				StagePR: StatusActive, StagePRReview: StatusSkipped, StageMerge: StatusPending,
+				ReleaseStageID: StatusSkipped,
 			},
 			wantPrompt: "Approved. Start the pr stage.",
 		},
@@ -550,6 +555,7 @@ func TestApplyAdvance(t *testing.T) {
 			wantStatus: map[StageID]StageStatus{
 				StagePlan: StatusDone, StageBuild: StatusDone, StageReview: StatusSkipped,
 				StagePR: StatusSkipped, StagePRReview: StatusSkipped, StageMerge: StatusSkipped,
+				ReleaseStageID: StatusSkipped,
 			},
 			wantPrompt: "Approved. The pipeline is complete.",
 		},

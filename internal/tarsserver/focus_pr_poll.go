@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/devlikebear/tars/internal/focuspipeline"
+	"github.com/devlikebear/tars/internal/serverauth"
 	"github.com/rs/zerolog"
 )
 
@@ -187,9 +188,11 @@ func (d *focusDriver) sessionDir(sessionID string) string {
 }
 
 func (d *focusDriver) applyPRProbe(sessionID string, probe focuspipeline.PRProbe, log zerolog.Logger) (prev, updated focuspipeline.Pipeline, ok bool) {
+	var act focuspipeline.Action
 	updated, _, err := focusStoreFor(d.sessions).Update(sessionID, func(p focuspipeline.Pipeline) (focuspipeline.Pipeline, error) {
 		prev = p
-		next, _, err := focuspipeline.Apply(p, focuspipeline.Event{Kind: focuspipeline.EventPRProbe, Probe: &probe}, d.now())
+		next, a, err := focuspipeline.Apply(p, focuspipeline.Event{Kind: focuspipeline.EventPRProbe, Probe: &probe}, d.now())
+		act = a
 		return next, err
 	})
 	if err != nil {
@@ -200,6 +203,17 @@ func (d *focusDriver) applyPRProbe(sessionID string, probe focuspipeline.PRProbe
 	// the session store.
 	d.announce(sessionID, prev, updated)
 	d.pipelineFinished(sessionID, prev, updated)
+	// Almost always ActionNone: a probe only ever sends a turn when it
+	// finds the PR already merged and a template stage follows merge (a
+	// release stage), which is a build turn like any other. Guarded on act
+	// itself, not just left to d.start's own check: d.start unconditionally
+	// calls d.watchPR first, which — called from inside this very poller's
+	// goroutine while it still wants more probes — would push a wake into
+	// its own channel and collapse the next d.sleep(poller, d.prPoll) to
+	// zero, turning the 60s poll interval into a busy loop.
+	if act.Kind != focuspipeline.ActionNone {
+		d.start(sessionID, act, serverauth.RoleAdmin)
+	}
 	return prev, updated, true
 }
 

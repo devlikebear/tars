@@ -530,6 +530,48 @@ func TestG4MergeGate(t *testing.T) {
 	}
 }
 
+// TestMergeActivatesReleaseStage is TestG4MergeGate's PR, but the approved
+// plan kept the dev template's release stage: the merge that finished the
+// pipeline there instead hands it its own starting turn, same as any other
+// build stage, and only the release stage's own completion finishes it.
+func TestMergeActivatesReleaseStage(t *testing.T) {
+	p := planned(t, StagePlan, StageBuild, StagePR, StagePRReview, StageMerge, ReleaseStageID)
+	p, _, _ = Apply(p, Event{Kind: EventGate, Gate: GatePlan, Action: GateApprove}, t0)
+	p, _, _ = Apply(p, Event{Kind: EventTurnCompleted, Turn: 2, Blocks: Blocks{Report: &Report{Summary: "done", TasksDone: true}}}, t0)
+	p, _, _ = Apply(p, Event{Kind: EventVerification, Turn: 2, Verification: &Verification{Passed: true}}, t0)
+	p, _, _ = Apply(p, Event{Kind: EventTurnCompleted, Turn: 3, Blocks: Blocks{PR: testDraft, Report: &Report{Summary: "drafted"}}}, t0)
+	p, _, _ = Apply(p, Event{Kind: EventGate, Gate: GatePR, Action: GateApprove}, t0)
+	p, _, _ = Apply(p, Event{Kind: EventTurnCompleted, Turn: 4, Blocks: Blocks{Report: &Report{Summary: "opened"}}}, t0)
+	p, _, err := Apply(p, Event{Kind: EventPRProbe, Probe: probeFound(PRCheck{Name: "test", State: CheckPending})}, t0)
+	if err != nil || p.Current != StagePRReview {
+		t.Fatalf("pending check: %v current=%s", err, p.Current)
+	}
+	p, _, err = Apply(p, Event{Kind: EventPRProbe, Probe: probeFound(PRCheck{Name: "test", State: CheckPass})}, t0)
+	if err != nil || p.OpenGate != GateMerge {
+		t.Fatalf("green: %v gate=%q", err, p.OpenGate)
+	}
+	p, _, _ = Apply(p, Event{Kind: EventGate, Gate: GateMerge, Action: GateApprove, CardID: p.Cards[p.openGateCard()].ID}, t0)
+	p, _, _ = Apply(p, Event{Kind: EventTurnCompleted, Turn: 5, Blocks: Blocks{Report: &Report{Summary: "merged"}}}, t0)
+
+	merged := probeFound()
+	merged.State, merged.MergeOID = PRStateMerged, "m1"
+	p, act, err := Apply(p, Event{Kind: EventPRProbe, Probe: merged}, t0)
+	if err != nil || Finished(p) || p.Current != ReleaseStageID || !p.Active() ||
+		act.Kind != ActionSendTurn || !strings.Contains(act.Prompt, "release stage") || p.PendingTurn != act.Prompt {
+		t.Fatalf("merge should hand off to release: current=%s finished=%v act=%+v pending=%q", p.Current, Finished(p), act, p.PendingTurn)
+	}
+	if s, _ := p.Stage(StageMerge); s.Status != StatusDone {
+		t.Fatalf("merge stage = %+v", s)
+	}
+
+	// The release stage finishes the pipeline like any other build stage.
+	p, _, _ = Apply(p, Event{Kind: EventTurnCompleted, Turn: 6, Blocks: Blocks{Report: &Report{Summary: "released", TasksDone: true}}}, t0)
+	p, _, err = Apply(p, Event{Kind: EventVerification, Turn: 6, Verification: &Verification{Passed: true}}, t0)
+	if err != nil || !Finished(p) || !Releasable(p) || p.PendingTurn != "" {
+		t.Fatalf("release stage should finish the pipeline: finished=%v releasable=%v pending=%q", Finished(p), Releasable(p), p.PendingTurn)
+	}
+}
+
 func TestG4RequestChangesGoesBackToPRReview(t *testing.T) {
 	// J3: the turn may have pushed; G4 reopens only on fresh CI facts.
 	p, act := mustApply(t, inMerge(t), Event{Kind: EventGate, Gate: GateMerge, Action: GateRequestChanges, Note: "rebase first"})

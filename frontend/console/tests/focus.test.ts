@@ -378,6 +378,21 @@ test('progressLine shows the verification step the driver streams', () => {
   assert.equal(progressLine(events, { stage: 'build', text: focusKo.progress }), '구현 중 · npm run check 검증 중 (2/2)')
 })
 
+test('progressLine marks a skipped end-to-end goal (no computer_use backend), not a failure', () => {
+  const events: ChatEvent[] = [
+    { type: 'focus_progress', phase: 'verifying', command: '@Notes write a note', index: 1, total: 1 },
+    { type: 'focus_progress', phase: 'verified', command: '@Notes write a note', index: 1, total: 1, passed: true, e2e_skipped: true },
+  ]
+  assert.equal(
+    progressLine(events, { stage: 'review' }),
+    'Reviewing · verifying (1/1, computer_use unavailable — skipped)',
+  )
+  assert.equal(
+    progressLine(events, { stage: 'review', text: focusKo.progress }),
+    '리뷰 중 · 검증 중 (1/1, computer_use 미설정 — 건너뜀)',
+  )
+})
+
 const qaHistory: SessionMessage[] = [
   { id: 'u1', role: 'user', content: 'why make test?\n\n<console-context>\nCard c1 …\n</console-context>', timestamp: '' },
   { id: 't1', role: 'tool', content: 'read', timestamp: '' },

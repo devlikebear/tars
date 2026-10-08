@@ -50,6 +50,9 @@ type focusDriver struct {
 	sessions *session.Store
 	runTurn  focusTurnRunner
 	verify   focusVerifier
+	// e2e runs one of the plan's end-to-end items through computer use
+	// (focus_e2e.go); nil only in a test that never calls bind.
+	e2e      focusE2ERunner
 	feeds    *chatTurnFeeds
 	activity *chatActivity
 	cancels  *chatCancelRegistry
@@ -89,6 +92,11 @@ type focusTurnRunner func(ctx context.Context, sessionID, message string) error
 
 // focusVerifier runs one verification command for a session.
 type focusVerifier func(ctx context.Context, sessionID, command string) (focuspipeline.VerificationResult, error)
+
+// focusE2ERunner runs one of the plan's end-to-end items for a session
+// (focus_e2e.go): a plain-language goal for TARS's own computer_use engine,
+// never a shell command.
+type focusE2ERunner func(ctx context.Context, sessionID, goal string) (focuspipeline.VerificationResult, error)
 
 // focusVerifyTimeout bounds one verification command: longer than a full
 // `make test` of this repository.
@@ -518,7 +526,8 @@ func (d *focusDriver) runVerification(run *focusRun, log zerolog.Logger) (focusp
 	if err != nil || !found || !p.AwaitingVerification {
 		return none, true
 	}
-	commands := focusVerifyCommands(p)
+	verifyCmds, e2eGoals := focusVerifyCommands(p)
+	total := len(verifyCmds) + len(e2eGoals)
 
 	feed, endFeed := d.feeds.begin(run.sessionID)
 	defer endFeed()
@@ -527,13 +536,17 @@ func (d *focusDriver) runVerification(run *focusRun, log zerolog.Logger) (focusp
 	stream.feed = feed
 	stream.status("stream_open", "stream connected", "", "", "", "")
 
-	v := focuspipeline.Verification{Passed: true, Results: make([]focuspipeline.VerificationResult, 0, len(commands))}
-	for i, command := range commands {
-		stream.focusProgress("verifying", command, i+1, len(commands), nil)
-		result, err := d.verify(run.ctx, run.sessionID, command)
+	v := focuspipeline.Verification{Passed: true, Results: make([]focuspipeline.VerificationResult, 0, total)}
+	i := 0
+	// runOne reports false on a cancelled run (verification stops there);
+	// true otherwise, whichever way the step itself came out.
+	runOne := func(command string, call func() (focuspipeline.VerificationResult, error)) bool {
+		i++
+		stream.focusProgress("verifying", command, i, total, nil)
+		result, err := call()
 		if run.ctx.Err() != nil {
 			stream.cancelled()
-			return none, true
+			return false
 		}
 		if err != nil {
 			// A command that could not run at all is a failed fact, not a
@@ -544,7 +557,22 @@ func (d *focusDriver) runVerification(run *focusRun, log zerolog.Logger) (focusp
 			v.Passed = false
 		}
 		v.Results = append(v.Results, result)
-		stream.focusProgress("verified", command, i+1, len(commands), &result)
+		stream.focusProgress("verified", command, i, total, &result)
+		return true
+	}
+	for _, command := range verifyCmds {
+		if !runOne(command, func() (focuspipeline.VerificationResult, error) {
+			return d.verify(run.ctx, run.sessionID, command)
+		}) {
+			return none, true
+		}
+	}
+	for _, goal := range e2eGoals {
+		if !runOne(goal, func() (focuspipeline.VerificationResult, error) {
+			return d.e2e(run.ctx, run.sessionID, goal)
+		}) {
+			return none, true
+		}
 	}
 
 	turn := countUserTurns(d.sessions.TranscriptPath(run.sessionID))
@@ -563,23 +591,26 @@ func (d *focusDriver) runVerification(run *focusRun, log zerolog.Logger) (focusp
 	return act, true
 }
 
-// focusVerifyCommands are the commands a verification runs: the plan's
-// verify commands, and in review its end-to-end commands after them.
-func focusVerifyCommands(p focuspipeline.Pipeline) []string {
+// focusVerifyCommands are a verification's shell commands (the plan's
+// verify list) and, in review, its end-to-end goals after them (the plan's
+// e2e list — computer_use goals, never shell commands; see focus_e2e.go).
+func focusVerifyCommands(p focuspipeline.Pipeline) (verify, e2e []string) {
 	if p.Plan == nil {
-		return nil
+		return nil, nil
 	}
-	lists := [][]string{p.Plan.Verify}
+	verify = cleanedCommands(p.Plan.Verify)
 	if p.CurrentKind() == focuspipeline.StageReview {
-		lists = append(lists, p.Plan.E2E)
+		e2e = cleanedCommands(p.Plan.E2E)
 	}
-	var commands []string
-	for _, list := range lists {
-		for _, c := range list {
-			if c = strings.TrimSpace(c); c != "" {
-				commands = append(commands, c)
-			}
+	return verify, e2e
+}
+
+func cleanedCommands(list []string) []string {
+	var out []string
+	for _, c := range list {
+		if c = strings.TrimSpace(c); c != "" {
+			out = append(out, c)
 		}
 	}
-	return commands
+	return out
 }

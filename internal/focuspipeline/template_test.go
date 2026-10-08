@@ -24,6 +24,26 @@ func TestBuiltinTemplatesAreValid(t *testing.T) {
 	}
 }
 
+func TestDevTemplateEndsWithRelease(t *testing.T) {
+	tpl := DevTemplate()
+	want := append(append([]StageID{}, StageOrder...), ReleaseStageID)
+	if len(tpl.Stages) != len(want) {
+		t.Fatalf("stages = %+v", tpl.Stages)
+	}
+	for i, id := range want {
+		s := tpl.Stages[i]
+		if s.ID != id {
+			t.Fatalf("stage %d = %+v, want %s", i, s, id)
+		}
+		if id == ReleaseStageID && (s.Kind != StageBuild || s.Label != "Release" || s.Instructions == "") {
+			t.Fatalf("release stage = %+v", s)
+		}
+	}
+	if tpl.Stages[0].Instructions == "" || !strings.Contains(tpl.Stages[0].Instructions, "\"stage\":\"release\"") {
+		t.Fatalf("plan stage should explain the release tag: %q", tpl.Stages[0].Instructions)
+	}
+}
+
 func TestTemplateValidate(t *testing.T) {
 	stages := func(s ...TemplateStage) []TemplateStage { return s }
 	plan := TemplateStage{ID: StagePlan}
@@ -100,6 +120,65 @@ func TestNewFromTemplate(t *testing.T) {
 	}
 	if dev := New("s1", "g", t0); dev.Template != "" || dev.Stages[1].Kind != "" || dev.Stages[1].Label != "" {
 		t.Fatalf("dev pipeline = %+v", dev)
+	}
+}
+
+// The dev template's build and release stages are both build-kind, so an
+// untagged task defaults to build (the first of the two) and a task tagged
+// "stage":"release" is the release stage's alone.
+func TestDevTemplateSplitsTasksAcrossBuildAndRelease(t *testing.T) {
+	plan := &Plan{Goal: "g", Tasks: []PlanTask{
+		{Title: "code it", Done: "tests pass"},
+		{Title: "tag the release", Done: "v1.2.3", Stage: "release"},
+	}, Stages: []StageID{StagePlan, StageBuild, ReleaseStageID}}
+	p, _, err := Apply(New("s1", "g", t0), Event{Kind: EventTurnCompleted, Turn: 1, Blocks: Blocks{Plan: plan}}, t0)
+	if err != nil || p.OpenGate != GatePlan {
+		t.Fatalf("plan turn: %v", err)
+	}
+	p, _, err = Apply(p, Event{Kind: EventGate, Gate: GatePlan, Action: GateApprove}, t0)
+	if err != nil || p.Current != StageBuild {
+		t.Fatalf("approve: %v current=%s", err, p.Current)
+	}
+	if g := Guidance(p); !strings.Contains(g, "Approved tasks of this stage") || !strings.Contains(g, "code it") || strings.Contains(g, "tag the release") {
+		t.Fatalf("build guidance:\n%s", g)
+	}
+	p, _, err = Apply(p, Event{Kind: EventTurnCompleted, Turn: 2, Blocks: Blocks{Report: &Report{Summary: "done", TasksDone: true}}}, t0)
+	if err != nil {
+		t.Fatalf("build turn: %v", err)
+	}
+	p, _, err = Apply(p, Event{Kind: EventVerification, Turn: 2, Verification: &Verification{Passed: true}}, t0)
+	if err != nil || p.Current != ReleaseStageID {
+		t.Fatalf("after build: %v current=%s", err, p.Current)
+	}
+	if g := Guidance(p); !strings.Contains(g, "Approved tasks of this stage") || !strings.Contains(g, "tag the release") || strings.Contains(g, "code it") {
+		t.Fatalf("release guidance:\n%s", g)
+	}
+}
+
+// writePlan skips the "approved tasks" header entirely rather than show it
+// with nothing under it: every task defaulted to build here, so release has
+// none of its own.
+func TestDevTemplateReleaseGuidanceOmitsEmptyTaskList(t *testing.T) {
+	plan := &Plan{Goal: "g", Tasks: []PlanTask{{Title: "code it", Done: "tests pass"}},
+		Stages: []StageID{StagePlan, StageBuild, ReleaseStageID}}
+	p, _, err := Apply(New("s1", "g", t0), Event{Kind: EventTurnCompleted, Turn: 1, Blocks: Blocks{Plan: plan}}, t0)
+	if err != nil {
+		t.Fatalf("plan turn: %v", err)
+	}
+	p, _, err = Apply(p, Event{Kind: EventGate, Gate: GatePlan, Action: GateApprove}, t0)
+	if err != nil {
+		t.Fatalf("approve: %v", err)
+	}
+	p, _, err = Apply(p, Event{Kind: EventTurnCompleted, Turn: 2, Blocks: Blocks{Report: &Report{Summary: "done", TasksDone: true}}}, t0)
+	if err != nil {
+		t.Fatalf("build turn: %v", err)
+	}
+	p, _, err = Apply(p, Event{Kind: EventVerification, Turn: 2, Verification: &Verification{Passed: true}}, t0)
+	if err != nil || p.Current != ReleaseStageID {
+		t.Fatalf("after build: %v current=%s", err, p.Current)
+	}
+	if g := Guidance(p); strings.Contains(g, "Approved tasks") {
+		t.Fatalf("release guidance should not show an empty task header:\n%s", g)
 	}
 }
 

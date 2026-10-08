@@ -93,6 +93,7 @@ export const focusEn = {
     pr: 'PR',
     pr_review: 'PR review',
     merge: 'Merge',
+    release: 'Release',
   },
   status: {
     pending: 'pending',
@@ -219,6 +220,7 @@ export const focusEn = {
       pr: 'Drafting the PR',
       pr_review: 'Checking the PR',
       merge: 'Preparing the merge',
+      release: 'Releasing',
     },
     working: 'Working',
     filesChanged: (n: number) => (n === 1 ? '1 file changed' : `${n} files changed`),
@@ -231,6 +233,7 @@ export const focusEn = {
     waiting: 'waiting for approval',
     verifying: (command: string, index: number, total: number) => `verifying ${command} (${index}/${total})`,
     verified: (index: number, total: number) => `verifying (${index}/${total} done)`,
+    verifiedSkipped: (index: number, total: number) => `verifying (${index}/${total}, computer_use unavailable — skipped)`,
     next: 'Sent by the pipeline',
   },
   failure: {
@@ -411,6 +414,7 @@ export const focusKo: FocusTranslations = {
     pr: 'PR',
     pr_review: 'PR 리뷰',
     merge: '머지',
+    release: '릴리즈',
   },
   status: {
     pending: '대기',
@@ -537,6 +541,7 @@ export const focusKo: FocusTranslations = {
       pr: 'PR 작성 중',
       pr_review: 'PR 확인 중',
       merge: '머지 준비 중',
+      release: '릴리즈 중',
     },
     working: '작업 중',
     filesChanged: (n: number) => `파일 ${n}개 변경`,
@@ -549,6 +554,7 @@ export const focusKo: FocusTranslations = {
     waiting: '승인 대기 중',
     verifying: (command: string, index: number, total: number) => `${command} 검증 중 (${index}/${total})`,
     verified: (index: number, total: number) => `검증 중 (${index}/${total} 완료)`,
+    verifiedSkipped: (index: number, total: number) => `검증 중 (${index}/${total}, computer_use 미설정 — 건너뜀)`,
     next: '파이프라인이 보낸 지시',
   },
   failure: {

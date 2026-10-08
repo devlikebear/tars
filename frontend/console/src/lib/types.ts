@@ -912,6 +912,11 @@ export type ChatEvent = {
   total?: number
   passed?: boolean
   exit_code?: number
+  // e2e_skipped (focus_progress, "verified" phase only): an end-to-end
+  // goal that never ran at all — no computer_use backend or driver
+  // configured. Distinct from checkpoint's unrelated `skipped` (a reason
+  // string) above.
+  e2e_skipped?: boolean
   next_prompt?: string
   // done event usage
   usage?: {
@@ -2510,7 +2515,10 @@ export type FocusDecision = { id: string; question: string; options: string[] }
 export type FocusReport = { summary: string; decisions?: FocusDecision[]; risks?: string[]; tasks_done?: boolean }
 
 // One verification command's outcome, and a failure card's payload (P2).
-export type FocusVerificationResult = { command: string; exit_code: number; passed: boolean; timed_out?: boolean; excerpt?: string }
+// skipped is an end-to-end goal (computer_use) that never ran at all — no
+// backend or driver configured — rather than one that ran and failed; it
+// counts as passed.
+export type FocusVerificationResult = { command: string; exit_code: number; passed: boolean; timed_out?: boolean; excerpt?: string; skipped?: boolean }
 export type FocusFailure = {
   command: string
   exit_code: number
