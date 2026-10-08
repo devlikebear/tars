@@ -69,6 +69,19 @@ func TestForPicksHomebrewOnlyForAHomebrewInstallOnMacOS(t *testing.T) {
 			t.Fatalf("%s %s = %#v, %v", tc.goos, tc.bin, src, err)
 		}
 	}
+	// A winget install is left to winget, whether tars was found by its
+	// Links alias or by the package directory the alias points into.
+	links := `D:\fake\AppData\Local\Microsoft\WinGet\Links\tars.exe`
+	pkg := `D:\fake\AppData\Local\Microsoft\WinGet\Packages\Devlikebear.TARS_Microsoft.Winget.Source_8wekyb3d8bbwe\tars.exe`
+	if _, err := For("windows", links, pkg, none, cfg, nil); !errors.Is(err, ErrManagedByWinget) {
+		t.Fatalf("winget install via Links: %v", err)
+	}
+	if _, err := For("windows", links, links, none, cfg, nil); !errors.Is(err, ErrManagedByWinget) {
+		t.Fatalf("winget install, alias not resolved: %v", err)
+	}
+	if !ManagedByWinget(pkg) || ManagedByWinget(`C:\TARS\tars.exe`) {
+		t.Fatal("ManagedByWinget")
+	}
 	if !ManagedByHomebrew("/opt/linuxbrew/Cellar/tars/1/bin/tars") || ManagedByHomebrew("/opt/tars/bin/tars") {
 		t.Fatal("ManagedByHomebrew")
 	}

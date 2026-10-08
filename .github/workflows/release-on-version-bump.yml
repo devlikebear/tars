@@ -311,6 +311,8 @@ jobs:
       amd64_sha: ${{ steps.checksums.outputs.amd64_sha }}
       desktop_arm64_sha: ${{ steps.checksums.outputs.desktop_arm64_sha }}
       desktop_amd64_sha: ${{ steps.checksums.outputs.desktop_amd64_sha }}
+      windows_sha: ${{ steps.checksums.outputs.windows_sha }}
+      desktop_windows_sha: ${{ steps.checksums.outputs.desktop_windows_sha }}
     steps:
       - name: Download built archives
         uses: actions/download-artifact@v4
@@ -340,6 +342,8 @@ jobs:
           printf 'amd64_sha=%s\n' "${amd64_sha}" >> "${GITHUB_OUTPUT}"
           printf 'desktop_arm64_sha=%s\n' "$(shasum -a 256 "dist/tars-desktop_${VERSION}_darwin_arm64.tar.gz" | awk '{print $1}')" >> "${GITHUB_OUTPUT}"
           printf 'desktop_amd64_sha=%s\n' "$(shasum -a 256 "dist/tars-desktop_${VERSION}_darwin_amd64.tar.gz" | awk '{print $1}')" >> "${GITHUB_OUTPUT}"
+          printf 'windows_sha=%s\n' "$(shasum -a 256 "dist/tars_${VERSION}_windows_amd64.zip" | awk '{print $1}')" >> "${GITHUB_OUTPUT}"
+          printf 'desktop_windows_sha=%s\n' "$(shasum -a 256 "dist/tars-desktop_${VERSION}_windows_amd64.zip" | awk '{print $1}')" >> "${GITHUB_OUTPUT}"
 
       - name: Publish GitHub release
         env:
@@ -429,3 +433,96 @@ jobs:
           fi
           git commit -m "tars ${{ needs.publish-release.outputs.version }}"
           git push origin HEAD:main
+
+  # microsoft/winget-pkgs takes one pull request per package version, checked
+  # by its bots and reviewed by its moderators. The first version of a package
+  # is a human-reviewed submission, so a missing token skips this job with a
+  # warning instead of failing the release like update-homebrew does.
+  update-winget:
+    needs: publish-release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check the winget-pkgs token
+        id: token
+        env:
+          WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${WINGET_TOKEN}" ]; then
+            echo "configured=false" >> "${GITHUB_OUTPUT}"
+            echo "::warning::WINGET_TOKEN is not set (a classic token with public_repo): not submitting this release to microsoft/winget-pkgs."
+          else
+            echo "configured=true" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Checkout TARS repository
+        if: steps.token.outputs.configured == 'true'
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        if: steps.token.outputs.configured == 'true'
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Render winget manifests
+        if: steps.token.outputs.configured == 'true'
+        env:
+          VERSION: ${{ needs.publish-release.outputs.version }}
+          SERVER_SHA: ${{ needs.publish-release.outputs.windows_sha }}
+          DESKTOP_SHA: ${{ needs.publish-release.outputs.desktop_windows_sha }}
+        run: |
+          set -euo pipefail
+          go run ./cmd/releasectl winget-manifests \
+            --repo "${GITHUB_REPOSITORY}" \
+            --version "${VERSION}" \
+            --server-sha "${SERVER_SHA}" \
+            --desktop-sha "${DESKTOP_SHA}" \
+            --out "${RUNNER_TEMP}/winget-manifests"
+
+      - name: Open the winget-pkgs pull requests
+        if: steps.token.outputs.configured == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.WINGET_TOKEN }}
+          VERSION: ${{ needs.publish-release.outputs.version }}
+        run: |
+          set -euo pipefail
+          login="$(gh api user --jq .login)"
+          gh repo fork microsoft/winget-pkgs --clone=false
+          gh repo sync "${login}/winget-pkgs" --source microsoft/winget-pkgs --branch master
+          gh auth setup-git
+          # The repository is several gigabytes; only the publisher's
+          # manifests are needed.
+          git clone --depth 1 --filter=blob:none --sparse "https://github.com/${login}/winget-pkgs.git" winget-pkgs
+          git -C winget-pkgs sparse-checkout set manifests/d/Devlikebear
+          git -C winget-pkgs config user.name "${login}"
+          git -C winget-pkgs config user.email "${login}@users.noreply.github.com"
+
+          # The app depends on the server, so winget-pkgs can only validate
+          # its pull request once the server's is merged.
+          for entry in "Devlikebear.TARS:d/Devlikebear/TARS" "Devlikebear.TARS.Desktop:d/Devlikebear/TARS/Desktop"; do
+            id="${entry%%:*}"
+            dir="${entry#*:}"
+            branch="${id}-${VERSION}"
+            if [ -n "$(gh pr list --repo microsoft/winget-pkgs --state open --author "${login}" --search "${id} version ${VERSION} in:title" --json number --jq '.[].number')" ]; then
+              echo "${id} ${VERSION} already has an open pull request"
+              continue
+            fi
+            kind="New version"
+            if ! ls "winget-pkgs/manifests/${dir}" 2>/dev/null | grep -Eq '^[0-9]'; then
+              kind="New package"
+            fi
+            git -C winget-pkgs switch --force-create "${branch}"
+            mkdir -p "winget-pkgs/manifests/${dir}/${VERSION}"
+            cp "${RUNNER_TEMP}/winget-manifests/${dir}/${VERSION}/"* "winget-pkgs/manifests/${dir}/${VERSION}/"
+            git -C winget-pkgs add "manifests/${dir}/${VERSION}"
+            git -C winget-pkgs commit -m "${kind}: ${id} version ${VERSION}"
+            git -C winget-pkgs push --force origin "${branch}"
+            gh pr create --repo microsoft/winget-pkgs --base master --head "${login}:${branch}" \
+              --title "${kind}: ${id} version ${VERSION}" \
+              --body "Release https://github.com/${GITHUB_REPOSITORY}/releases/tag/v${VERSION}, rendered by \`releasectl winget-manifests\`. The installer is a zip with a nested portable executable, so the server's \`share/\` directory stays next to \`tars.exe\`."
+            git -C winget-pkgs switch --detach origin/master
+          done

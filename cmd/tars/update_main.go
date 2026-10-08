@@ -52,7 +52,7 @@ func newUpdateCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command 
 		Short: "Update tars to the latest release and restart the running server",
 		Long: "Replace this tars with the latest GitHub release, verified against the release's checksums.txt, " +
 			"then restart a server running on --server-url so it runs the new version.\n\n" +
-			"For installs made with install.ps1 or install.sh. Homebrew installs update with `brew upgrade`.",
+			"For installs made with install.ps1 or install.sh. Homebrew installs update with `brew upgrade`, winget installs with `winget upgrade Devlikebear.TARS`.",
 		Args: cobra.NoArgs,
 		// A failed download or check is not a usage mistake.
 		SilenceUsage: true,

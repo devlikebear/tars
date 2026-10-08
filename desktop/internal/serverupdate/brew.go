@@ -67,9 +67,13 @@ var ErrNoBrew = errors.New("tars was installed with Homebrew, but brew was not f
 
 // For picks how the server at tarsBin is updated on goos. resolved is
 // tarsBin with symlinks followed; findBrew returns the brew executable or
-// "". A Homebrew install is updated with brew; any other install with
+// "". A Homebrew install is updated with brew; a winget install is not
+// updated by the shell at all (ErrManagedByWinget); any other install with
 // `tars update` (install.ps1 on Windows, install.sh on macOS).
 func For(goos, tarsBin, resolved string, findBrew func() string, cfg server.Config, run Run) (Source, error) {
+	if goos == "windows" && (ManagedByWinget(resolved) || ManagedByWinget(tarsBin)) {
+		return nil, ErrManagedByWinget
+	}
 	if goos == "darwin" && ManagedByHomebrew(resolved) {
 		brew := findBrew()
 		if brew == "" {
