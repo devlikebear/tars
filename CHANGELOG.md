@@ -6,9 +6,11 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.57.1] - 2026-10-09
+
 ### Fixed
 
-- **Plans come back in the language you asked in.** A Korean request got an English plan, in Focus mode (plan card, reports, findings) and in ordinary chats (`tasks` plan and contract): the instructions around the request are English and nothing said which language the answer is for. Focus stage guidance and the system prompt now say to write replies and plan fields in the language of the request; code, commands and paths stay as they are, and a pull request draft follows the repository's own language.
+- **Plans come back in the language you asked in.** A Korean request got an English plan, in Focus mode (plan card, reports, findings) and in ordinary chats (`tasks` plan and contract): the instructions around the request are English and nothing said which language the answer is for. Focus stage guidance and the system prompt now say to write replies and plan fields in the language of the request; code, commands and paths stay as they are, and a pull request draft follows the repository's own language. ([#1176](https://github.com/devlikebear/tars/pull/1176))
 
 ## [0.57.0] - 2026-10-08
 
