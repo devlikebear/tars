@@ -390,6 +390,12 @@ test('the review loop: findings are triaged one at a time, a fix turn and verifi
   expect(p.stages.find((s) => s.id === 'review')?.iteration).toBe(2)
   expect(p.current).toBe('pr')
 
+  // The plan's end-to-end goal ran, on the e2e cua-driver stub (CUA_DRIVER_PATH)
+  // rather than being skipped or reaching a driver installed on the host.
+  const driverCalls = readFileSync(join(process.env.TARS_E2E_WORKSPACE!, 'e2e-cua-driver.log'), 'utf8').trim().split('\n')
+  expect(driverCalls).toContain('get_window_state')
+  expect(driverCalls.every((tool) => tool === 'list_windows' || tool === 'get_window_state')).toBe(true)
+
   // The fix turn named the accepted finding only.
   const history = await (await page.request.get(`/v1/admin/sessions/${encodeURIComponent(id)}/history`)).json() as { role: string; content: string }[]
   const fix = history.find((m) => m.role === 'user' && m.content.startsWith('Fix these findings'))

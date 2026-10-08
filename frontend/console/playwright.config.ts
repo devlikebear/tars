@@ -81,6 +81,10 @@ export default defineConfig({
         // Focus PR stages probe this stub, never the host's gh or the
         // network (GitHub runners have an authenticated gh).
         TARS_FOCUS_GH_PATH: join(repoRoot, 'frontend', 'console', 'e2e', 'fake-gh.sh'),
+        // A plan's end-to-end goals drive this stub, never a cua-driver
+        // installed on the host — that one reads the real screen.
+        CUA_DRIVER_PATH: join(repoRoot, 'frontend', 'console', 'e2e', 'fake-cua-driver.sh'),
+        TARS_E2E_CUA_LOG: join(workspace, 'e2e-cua-driver.log'),
       },
       reuseExistingServer: false,
       // The first `go run` compiles the binary.
