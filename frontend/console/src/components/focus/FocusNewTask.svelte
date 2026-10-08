@@ -44,8 +44,23 @@
   let checkSeq = 0
   // The folder picker dialog (#picker), opened by "Browse…" next to the
   // folder field — the same server-backed browser as the Files panel's "+",
-  // shared via FolderPickerDialog.
-  let showBrowser = $state(false)
+  // shared via FolderPickerDialog. Each extra-folder row has its own
+  // Browse… too; the target says which field the open dialog fills.
+  type BrowseTarget = { kind: 'primary' } | { kind: 'extra'; id: number }
+  let browseTarget = $state<BrowseTarget | null>(null)
+  let browseOpener: HTMLElement | null = null
+
+  // Extra folders (beyond the primary one above): each row checks itself
+  // live, same as the primary field, but an empty row is just not sent —
+  // only a non-empty path has to resolve before Start is enabled. Capped
+  // at maxExtraDirs so the total (primary + extras) stays within the
+  // server's limit.
+  const maxExtraDirs = 7
+  type ExtraRow = { id: number; path: string; check: Check }
+  let extraDirs = $state<ExtraRow[]>([])
+  let nextExtraId = 0
+  const extraTimers = new Map<number, ReturnType<typeof setTimeout>>()
+  const extraCheckSeq = new Map<number, number>()
 
   // Images pasted into the goal field (#1097): held here until start()
   // converts them and hands them to the pipeline's first turn — the
@@ -97,7 +112,10 @@
   }
 
   let folder = $derived(check.state === 'ok' ? check.folder : null)
-  let canStart = $derived(!!folder && !!goal.trim() && !busy)
+  // Every extra row with a non-empty path must resolve to 'ok' (an empty
+  // row is just not sent, so it never blocks Start).
+  let extraDirsValid = $derived(extraDirs.every((row) => row.path.trim() === '' || row.check.state === 'ok'))
+  let canStart = $derived(!!folder && !!goal.trim() && extraDirsValid && !busy)
   let template = $derived(templates.find((item) => item.id === templateId) ?? null)
 
   // A built-in template is shown in the console's language; a workspace
@@ -128,6 +146,7 @@
 
   onDestroy(() => {
     if (timer) clearTimeout(timer)
+    for (const t of extraTimers.values()) clearTimeout(t)
     for (const url of imagePreviews.values()) URL.revokeObjectURL(url)
   })
 
@@ -171,36 +190,114 @@
     if (!item.repo_root) isolate = false
   }
 
-  function openBrowser() {
-    showBrowser = true
+  function openBrowser(target: BrowseTarget, e: MouseEvent) {
+    browseOpener = e.currentTarget as HTMLElement
+    browseTarget = target
   }
 
+  // Focus goes back to the button that opened the dialog, so a keyboard
+  // user lands where they were instead of at the top of the page.
   function closeBrowser() {
-    showBrowser = false
+    browseTarget = null
+    const opener = browseOpener
+    browseOpener = null
+    void tick().then(() => opener?.focus())
+  }
+
+  // The dialog opens at the folder its field already holds, else at the
+  // primary folder, else (undefined) at the server's home folder.
+  function browseStartPath(): string | undefined {
+    const target = browseTarget
+    if (target?.kind === 'extra') {
+      const row = extraDirs.find((item) => item.id === target.id)
+      if (row?.check.state === 'ok') return row.check.folder.path
+    }
+    return folder?.path
   }
 
   // The dialog hands back an absolute, server-verified folder path — run the
   // same check a typed path gets, right away rather than debounced.
   function onBrowsePicked(picked: string) {
-    showBrowser = false
+    const target = browseTarget
+    closeBrowser()
+    if (!target) return
+    if (target.kind === 'extra') {
+      const pending = extraTimers.get(target.id)
+      if (pending) clearTimeout(pending)
+      extraDirs = extraDirs.map((row) => (row.id === target.id ? { ...row, path: picked } : row))
+      void runExtraCheck(target.id, picked)
+      return
+    }
     if (timer) clearTimeout(timer)
     error = ''
     path = picked
     void runCheck(picked)
   }
 
+  // On the window, not the modal: opening a folder replaces the list, which
+  // drops focus to <body>, and a keydown there never reaches the modal. A
+  // field inside the dialog that uses Escape itself stops the event first.
   function onBrowserKeydown(e: KeyboardEvent) {
-    if (e.key === 'Escape') {
-      e.preventDefault()
-      closeBrowser()
-    }
+    if (!browseTarget || e.key !== 'Escape') return
+    e.preventDefault()
+    closeBrowser()
   }
 
   let browserModalEl: HTMLDivElement | undefined = $state()
 
   $effect(() => {
-    if (showBrowser) void tick().then(() => browserModalEl?.focus())
+    if (browseTarget) void tick().then(() => browserModalEl?.focus())
   })
+
+  function addExtraRow(initialPath = '', initialCheck: Check = { state: 'idle' }) {
+    if (extraDirs.length >= maxExtraDirs) return
+    extraDirs = [...extraDirs, { id: nextExtraId++, path: initialPath, check: initialCheck }]
+  }
+
+  // A recent folder is already a checked SessionFolder, so the row starts
+  // 'ok' instead of re-running the live check.
+  function addExtraFromRecent(item: SessionFolder) {
+    if (folder?.path === item.path || extraDirs.some((row) => row.path === item.path)) return
+    addExtraRow(item.path, { state: 'ok', folder: item })
+  }
+
+  function removeExtraRow(id: number) {
+    const t = extraTimers.get(id)
+    if (t) clearTimeout(t)
+    extraTimers.delete(id)
+    extraCheckSeq.delete(id)
+    extraDirs = extraDirs.filter((row) => row.id !== id)
+  }
+
+  function setExtraCheck(id: number, next: Check) {
+    extraDirs = extraDirs.map((row) => (row.id === id ? { ...row, check: next } : row))
+  }
+
+  async function runExtraCheck(id: number, value: string) {
+    const seq = (extraCheckSeq.get(id) ?? 0) + 1
+    extraCheckSeq.set(id, seq)
+    setExtraCheck(id, { state: 'checking' })
+    try {
+      const found = await checkSessionFolder(value)
+      if (extraCheckSeq.get(id) !== seq) return
+      setExtraCheck(id, { state: 'ok', folder: found })
+    } catch (err) {
+      if (extraCheckSeq.get(id) === seq) setExtraCheck(id, { state: 'error', message: checkError(err) })
+    }
+  }
+
+  function onExtraPathInput(id: number, value: string) {
+    const existing = extraTimers.get(id)
+    if (existing) clearTimeout(existing)
+    extraCheckSeq.set(id, (extraCheckSeq.get(id) ?? 0) + 1)
+    const trimmed = value.trim()
+    if (!trimmed) {
+      setExtraCheck(id, { state: 'idle' })
+      return
+    }
+    setExtraCheck(id, { state: 'checking' })
+    extraTimers.set(id, setTimeout(() => void runExtraCheck(id, trimmed), 250))
+  }
 
   async function start() {
     if (!canStart || !folder) return
@@ -211,10 +308,14 @@
       // read error) must not leave an orphaned pipeline on the server with
       // no way back to it.
       const attachments = images.length > 0 ? await filesToAttachments(images) : null
+      const extraPaths = extraDirs
+        .map((row) => row.path.trim())
+        .filter((p) => p !== '')
       const created = await createFocusPipeline({
         goal: goal.trim(),
         cwd: folder.path,
         isolate: isolate && !!folder.repo_root,
+        ...(extraPaths.length > 0 ? { extra_dirs: extraPaths } : {}),
         ...(template && template.id !== 'dev' ? { template: template.id } : {}),
         ...(goalMode ? { goal_mode: true } : {}),
       })
@@ -236,10 +337,21 @@
       <span class="label">{$t.focus.newTask.recent}</span>
       <div class="recent">
         {#each recent as item (item.path)}
-          <button type="button" class="folder" class:selected={folder?.path === item.path} title={item.path} onclick={() => pick(item)}>
-            <span class="mono" data-content>{shortCwdLabel(item.path)}</span>
-            {#if item.repo_root}<span class="tag">git</span>{/if}
-          </button>
+          <span class="folder-chip">
+            <button type="button" class="folder" class:selected={folder?.path === item.path} title={item.path} onclick={() => pick(item)}>
+              <span class="mono" data-content>{shortCwdLabel(item.path)}</span>
+              {#if item.repo_root}<span class="tag">git</span>{/if}
+            </button>
+            <button
+              type="button"
+              class="folder-add"
+              title={$t.focus.newTask.addExtraFolderTitle}
+              aria-label={$t.focus.newTask.addExtraFolderTitle}
+              disabled={extraDirs.length >= maxExtraDirs}
+              onclick={() => addExtraFromRecent(item)}
+              data-testid="focus-new-recent-add-extra"
+            >+</button>
+          </span>
         {/each}
       </div>
     </div>
@@ -249,7 +361,7 @@
     <label class="label" for="focus-new-folder">{$t.focus.newTask.folder}</label>
     <div class="folder-row">
       <input id="focus-new-folder" class="mono" type="text" bind:value={path} oninput={onPathInput} placeholder={$t.focus.newTask.folderPlaceholder} data-testid="focus-new-folder" autocomplete="off" />
-      <button type="button" class="btn btn-ghost btn-sm" title={$t.focus.newTask.browseTitle} onclick={openBrowser} data-testid="focus-new-folder-browse">{$t.focus.newTask.browse}</button>
+      <button type="button" class="btn btn-ghost btn-sm" title={$t.focus.newTask.browseTitle} onclick={(e) => openBrowser({ kind: 'primary' }, e)} data-testid="focus-new-folder-browse">{$t.focus.newTask.browse}</button>
     </div>
     <p class="status" class:error={check.state === 'error'} data-testid="focus-new-folder-status">
       {#if check.state === 'checking'}{$t.focus.newTask.checking}
@@ -257,6 +369,36 @@
       {:else if folder}{folder.repo_root ? $t.focus.newTask.inRepo : $t.focus.newTask.notRepo}
       {/if}
     </p>
+  </div>
+
+  <div class="field">
+    <span class="label">{$t.focus.newTask.extraFolders}</span>
+    <p class="status">{$t.focus.newTask.extraFoldersHint}</p>
+    {#each extraDirs as row (row.id)}
+      <div class="extra-row">
+        <input
+          class="mono"
+          type="text"
+          bind:value={row.path}
+          oninput={() => onExtraPathInput(row.id, row.path)}
+          placeholder={$t.focus.newTask.folderPlaceholder}
+          data-testid="focus-new-extra-folder"
+          autocomplete="off"
+        />
+        <button type="button" class="btn btn-ghost btn-sm" title={$t.focus.newTask.browseTitle} onclick={(e) => openBrowser({ kind: 'extra', id: row.id }, e)} data-testid="focus-new-extra-browse">{$t.focus.newTask.browse}</button>
+        <button type="button" class="btn btn-ghost icon" aria-label={$t.focus.newTask.removeFolder} title={$t.focus.newTask.removeFolder} onclick={() => removeExtraRow(row.id)} data-testid="focus-new-extra-remove">&times;</button>
+      </div>
+      <p class="status" class:error={row.check.state === 'error'} data-testid="focus-new-extra-status">
+        {#if row.check.state === 'checking'}{$t.focus.newTask.checking}
+        {:else if row.check.state === 'error'}{row.check.message}
+        {:else if row.check.state === 'ok'}{row.check.folder.repo_root ? $t.focus.newTask.inRepo : $t.focus.newTask.notRepo}
+        {/if}
+      </p>
+    {/each}
+    <div class="actions">
+      <button type="button" class="btn btn-ghost" disabled={extraDirs.length >= maxExtraDirs} onclick={() => addExtraRow()} data-testid="focus-new-extra-add">{$t.focus.newTask.addFolder}</button>
+      {#if extraDirs.length >= maxExtraDirs}<span class="status" data-testid="focus-new-extra-limit">{$t.focus.newTask.tooManyFolders}</span>{/if}
+    </div>
   </div>
 
   <div class="field">
@@ -314,7 +456,9 @@
   </div>
 </form>
 
-{#if showBrowser}
+<svelte:window onkeydown={onBrowserKeydown} />
+
+{#if browseTarget}
   <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
   <div class="browse-backdrop" onclick={closeBrowser}>
     <div
@@ -326,9 +470,8 @@
       data-testid="focus-new-folder-dialog"
       bind:this={browserModalEl}
       onclick={(e) => e.stopPropagation()}
-      onkeydown={onBrowserKeydown}
     >
-      <FolderPickerDialog initialPath={folder?.path} onSelect={onBrowsePicked} onCancel={closeBrowser} />
+      <FolderPickerDialog initialPath={browseStartPath()} onSelect={onBrowsePicked} onCancel={closeBrowser} />
     </div>
   </div>
 {/if}
@@ -434,6 +577,57 @@
   .folder.selected {
     border-color: var(--primary);
     background: var(--primary-muted);
+  }
+
+  .folder-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+  }
+
+  .folder-add {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    background: transparent;
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-sm);
+    color: var(--text-tertiary);
+    cursor: pointer;
+    line-height: 1;
+  }
+
+  .folder-add:hover {
+    color: var(--text-primary);
+    border-color: var(--primary);
+  }
+
+  .folder-add:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .extra-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .extra-row input {
+    flex: 1;
+  }
+
+  .btn.icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    line-height: 1;
   }
 
   .tag {

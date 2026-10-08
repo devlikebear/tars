@@ -78,6 +78,9 @@
   }
 
   async function submitPickPath() {
+    // `~` needs the home folder, which is still on its way when the dialog
+    // opened somewhere else.
+    if (!pickHome) await homeLoaded
     const resolved = resolvePickerPath(pickPathInput, pickHome)
     if (!resolved.ok) {
       if (resolved.reason === 'empty') {
@@ -95,10 +98,11 @@
     if (e.key === 'Enter') {
       e.preventDefault()
       void submitPickPath()
-    } else if (e.key === 'Escape') {
-      // Reverts the typed edit — must not also bubble to an ancestor's
-      // Escape-to-close (FocusNewTask's modal wraps this dialog), or
-      // reverting a typo would close the whole picker.
+    } else if (e.key === 'Escape' && (pickPathInput !== pickPath || pickActionError)) {
+      // Reverts the typed edit — must not also reach an enclosing modal's
+      // Escape-to-close (FocusNewTask wraps this dialog), or reverting a
+      // typo would close the whole picker. With nothing to revert the key
+      // is left alone, so Escape still closes from this field.
       e.preventDefault()
       e.stopPropagation()
       pickPathInput = pickPath
@@ -153,12 +157,14 @@
     }
   }
 
+  let homeLoaded: Promise<void> = Promise.resolve()
+
   onMount(() => {
     if (initialPath) {
       void browsePick(initialPath)
       // The home folder for `~` expansion, fetched in the background —
       // opening at initialPath must not wait on a second round trip.
-      void browseFilesystem(undefined).then((result) => { pickHome = pickHome || result.path }).catch(() => {})
+      homeLoaded = browseFilesystem(undefined).then((result) => { pickHome = pickHome || result.path }).catch(() => {})
     } else {
       void browsePick(undefined)
     }
@@ -447,6 +453,7 @@
     display: block;
     font-family: var(--font-mono);
     font-size: var(--text-xs);
+    font-weight: 500;
     color: var(--text-primary);
     overflow: hidden;
     text-overflow: ellipsis;

@@ -273,6 +273,20 @@ func TestInstallDirs(t *testing.T) {
 	if want := filepath.Join(`C:\Users\me`, "AppData", "Local", "Programs", "TARS"); len(windows) != 1 || windows[0] != want {
 		t.Fatalf("windows install dirs = %v, want [%s] (install.ps1's default)", windows, want)
 	}
+	// A winget install unpacks into Packages\<id>_<source>; the server's
+	// folder is found, the desktop app's own sibling package is not.
+	home := t.TempDir()
+	packages := filepath.Join(home, "AppData", "Local", "Microsoft", "WinGet", "Packages")
+	serverPkg := filepath.Join(packages, "Devlikebear.TARS_Microsoft.Winget.Source_8wekyb3d8bbwe")
+	for _, dir := range []string{serverPkg, filepath.Join(packages, "Devlikebear.TARS.Desktop_Microsoft.Winget.Source_8wekyb3d8bbwe")} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	withWinget := InstallDirs("windows", home)
+	if len(withWinget) != 2 || withWinget[1] != serverPkg {
+		t.Fatalf("windows install dirs with winget = %v, want the install.ps1 dir then %s", withWinget, serverPkg)
+	}
 	if got := InstallDirs("windows", ""); len(got) != 0 {
 		t.Fatalf("no home must give no windows install dirs: %v", got)
 	}

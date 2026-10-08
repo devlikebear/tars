@@ -1,6 +1,22 @@
 # Feature Map
 
-Last reviewed: 2026-10-06. Start an isolated instance with `make build` then `bin/tars serve --config <sandbox-config>`; use a throwaway workspace for verification.
+Last reviewed: 2026-10-08. Start an isolated instance with `make build` then `bin/tars serve --config <sandbox-config>`; use a throwaway workspace for verification.
+
+## Focus mode
+
+### Natural-language template editing
+- Kind: console screen + admin API
+- Reach: `/console/focus/templates` (linked from the focus home), or directly `POST /v1/focus/templates/draft` → review → `PUT`/`DELETE /v1/focus/templates/{id}` (admin token required for all three; see `docs/decisions/focus-mode.md` §4.1.1).
+- Drive: open the template editor, click "New template", describe one in plain language (e.g. "a changelog template: gather commits, write the entry, check it reads well"), click Draft, review the per-stage diff, then Save. Click Edit on a saved template and describe a change (e.g. "add an illustration stage before revise") to refine it; describe wanting it removed to get a delete draft, then confirm. Editing a built-in template (Development/Writing/Research) always drafts a copy under a new id instead of replacing it.
+- Healthy result: the draft response never touches `<workspace>/focus-templates/`; only Save/Delete does. A saved template appears in the New task template picker immediately. A built-in base produces `copied_from_builtin: true` and a warning naming the new id. A model response that cannot be validated retries once, then fails with 400 rather than saving something broken.
+- Evidence: `go test ./internal/focuspipeline -run Template -v` (file-level save/delete rules) and `go test ./internal/tarsserver -run FocusTemplate -v` (draft retry, tool-attempt rejection, admin gating). Console: `cd frontend/console && node --experimental-strip-types --test tests/focusTemplateEdit.test.ts`. End-to-end against the mock LLM (`[e2e:focus-template-edit]`): `make console-e2e` (`frontend/console/e2e/focusTemplates.spec.ts`, English and Korean).
+
+### Multiple folders per task
+- Kind: API / console UI
+- Reach: `POST /v1/focus/pipelines` and `POST /v1/admin/sessions` take `extra_dirs: string[]` alongside `cwd`; the focus home's New task form shows an "Add folder" list below the primary folder field (`FocusNewTask.svelte`).
+- Drive: start a task with a primary folder and one extra folder (console: fill the primary field, click Add folder, fill the extra row, Start). The primary is the only one that can be isolated (checking Isolate in a worktree never touches the extras).
+- Healthy result: `GET /v1/admin/sessions/{id}` shows both folders in `work_dirs` and only the primary as `current_dir`; a chat turn backed by claude-code-cli adds one `--add-dir` per extra folder (not for the active cwd or the configured workspace, both already covered). A folder that does not exist, or more than 8 total (primary + extras), fails the create before anything is made.
+- Evidence: `go test ./internal/tarsserver -run 'TestNewSessionWithExtraDirs|TestFocusCreateWithExtraDirs|TestChatAPI_PassesExtraWorkDirsAsAddDirs' -v`, `go test ./pkg/llm -run TestClaudeCodeCLIClientChat_AddDirsAddsAnExtraFlagPerFolder -v`; console: `cd frontend/console && npx playwright test e2e/focus.spec.ts -g "registers both as the session"`.
 
 ## Computer use
 

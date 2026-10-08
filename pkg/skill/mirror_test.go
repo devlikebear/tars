@@ -3,6 +3,7 @@ package skill
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -103,7 +104,8 @@ func TestMirrorToWorkspace_CompanionFiles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stat helper.sh: %v", err)
 	}
-	if info.Mode()&0o111 == 0 {
+	// Windows has no executable bit; every file reads back as 0666.
+	if runtime.GOOS != "windows" && info.Mode()&0o111 == 0 {
 		t.Fatalf("helper.sh should be executable, got %v", info.Mode())
 	}
 

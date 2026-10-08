@@ -29,6 +29,12 @@ import (
 // DevTemplateID is the default template: the development loop.
 const DevTemplateID = "dev"
 
+// ReleaseStageID is the dev template's last stage (template.go's
+// DevTemplate): ships the work merge just finished. A pipeline started
+// from the release train (Pipeline.Kind == KindRelease) skips it — that
+// pipeline's whole job is a release, not another one at its own end.
+const ReleaseStageID StageID = "release"
+
 // TemplateDirName is the workspace folder user templates are read from.
 const TemplateDirName = "focus-templates"
 
@@ -154,17 +160,54 @@ func kindOrID(kind, id StageID) StageID {
 	return id
 }
 
+// devPlanInstructions is the dev template's plan stage: the generic plan
+// instructions plus how to use the new release stage's "stage" tag, since
+// the dev template now has two build-kind stages.
+const devPlanInstructions = stagePlanInstructions +
+	" Tasks need no \"stage\" tag by default (they run in the build stage); " +
+	"tag a task \"stage\":\"release\" only when it belongs to the release stage that ships the merged work."
+
+// releaseInstructions is the dev template's last stage: the pull request
+// merged into the default branch, now ship it. Generic on purpose — the
+// dev template runs against any repository, not just this one.
+const releaseInstructions = "The pull request merged into the default branch. Prepare a release from it: " +
+	"fetch and check out the latest default branch, bump the version the way this repository does " +
+	"(a version file, package manifest, or git tag) and follow its release process — commit and push directly " +
+	"if the repository releases from a plain push to the default branch, or open a pull request if it gates " +
+	"releases through one. If you cannot find a release process in the repository, say so in the report " +
+	"instead of inventing one. Report the version, tag, or pull request you produced."
+
 // DevTemplate is the development loop: plan → build → review → pr →
-// pr_review → merge, with each kind's default instructions.
+// pr_review → merge → release, with each kind's default instructions.
 func DevTemplate() Template {
-	stages := make([]TemplateStage, 0, len(StageOrder))
+	stages := make([]TemplateStage, 0, len(StageOrder)+1)
 	for _, id := range StageOrder {
-		stages = append(stages, TemplateStage{ID: id})
+		stage := TemplateStage{ID: id}
+		if id == StagePlan {
+			stage.Instructions = devPlanInstructions
+		}
+		stages = append(stages, stage)
 	}
+	stages = append(stages, TemplateStage{
+		ID: ReleaseStageID, Kind: StageBuild, Label: "Release", Instructions: releaseInstructions,
+	})
 	return Template{
 		ID: DevTemplateID, Name: "Development", Builtin: true, Stages: stages,
-		Description: "Plan, build, review, pull request, CI review, merge.",
+		Description: "Plan, build, review, pull request, CI review, merge, release.",
 	}
+}
+
+// SkipStage marks one of a freshly created pipeline's pending stages
+// skipped (a release pipeline's own release stage; template.go's
+// ReleaseStageID doc). It does nothing to a stage already active, done or
+// not part of the pipeline.
+func SkipStage(p Pipeline, id StageID) Pipeline {
+	for i := range p.Stages {
+		if p.Stages[i].ID == id && p.Stages[i].Status == StatusPending {
+			p.Stages[i].Status = StatusSkipped
+		}
+	}
+	return p
 }
 
 // BuiltinTemplates are the templates shipped with the server, the
@@ -292,6 +335,23 @@ func FindTemplate(dir, id string) (Template, bool) {
 	return Template{}, false
 }
 
+// normalizeTemplate trims every text field of t, whether it came from a
+// file on disk or an API request; it never touches Builtin or Source.
+func normalizeTemplate(t Template) Template {
+	t.ID = strings.TrimSpace(t.ID)
+	t.Name = strings.TrimSpace(t.Name)
+	t.Description = strings.TrimSpace(t.Description)
+	for i := range t.Stages {
+		s := &t.Stages[i]
+		s.ID = StageID(strings.TrimSpace(string(s.ID)))
+		s.Kind = StageID(strings.TrimSpace(string(s.Kind)))
+		s.Label = strings.TrimSpace(s.Label)
+		s.Instructions = strings.TrimSpace(s.Instructions)
+		s.FixInstructions = strings.TrimSpace(s.FixInstructions)
+	}
+	return t
+}
+
 func readTemplateFile(path string) (Template, error) {
 	info, err := os.Stat(path)
 	if err != nil {
@@ -313,24 +373,198 @@ func readTemplateFile(path string) (Template, error) {
 	if err != nil {
 		return Template{}, fmt.Errorf("%w: %v", ErrInvalidTemplate, err)
 	}
-	t.ID = strings.TrimSpace(t.ID)
+	t = normalizeTemplate(t)
 	if t.ID == "" {
 		base := filepath.Base(path)
 		t.ID = strings.TrimSuffix(base, filepath.Ext(base))
 	}
-	t.Name = strings.TrimSpace(t.Name)
-	t.Description = strings.TrimSpace(t.Description)
 	t.Builtin, t.Source = false, ""
-	for i := range t.Stages {
-		s := &t.Stages[i]
-		s.ID = StageID(strings.TrimSpace(string(s.ID)))
-		s.Kind = StageID(strings.TrimSpace(string(s.Kind)))
-		s.Label = strings.TrimSpace(s.Label)
-		s.Instructions = strings.TrimSpace(s.Instructions)
-		s.FixInstructions = strings.TrimSpace(s.FixInstructions)
-	}
 	if err := t.Validate(); err != nil {
 		return Template{}, err
 	}
 	return t, nil
+}
+
+// RenderTemplateYAML renders t as the YAML a saved user template file
+// holds: normalized, never built-in, never carrying a source path.
+func RenderTemplateYAML(t Template) ([]byte, error) {
+	t = normalizeTemplate(t)
+	t.Builtin, t.Source = false, ""
+	raw, err := yaml.Marshal(t)
+	if err != nil {
+		return nil, fmt.Errorf("%w: render yaml: %v", ErrInvalidTemplate, err)
+	}
+	return raw, nil
+}
+
+// templateFilePath is the file a template this package writes lives at:
+// always its id plus .yaml, so a later SaveTemplate or DeleteTemplate can
+// find it without reading every file in dir.
+func templateFilePath(dir, id string) string {
+	return filepath.Join(dir, id+".yaml")
+}
+
+// removeTemplateFiles removes id's template file under every extension
+// LoadTemplates reads, reporting whether any file existed. This is a
+// fallback for when existingTemplateSource found no recorded file (the id
+// never existed) — once a template has been loaded at least once, its
+// real Source is known and that exact file is removed instead of this
+// guess, because a hand-authored template is never required to be named
+// after its own id.
+//
+// id is re-checked against templateIDPattern right here, next to the
+// filesystem calls it guards (a caller's Template.Validate already
+// guarantees this for a saved template, but a static path-injection
+// scanner cannot see across that call boundary, and a future caller might
+// not go through Validate at all): the pattern allows no "/" or "..", so
+// it is a complete guard against filepath.Join(dir, id+ext) ever
+// resolving outside dir.
+func removeTemplateFiles(dir, id string) bool {
+	if !templateIDPattern.MatchString(id) {
+		return false
+	}
+	removed := false
+	for _, ext := range []string{".yaml", ".yml", ".json"} {
+		if err := os.Remove(filepath.Join(dir, id+ext)); err == nil {
+			removed = true
+		}
+	}
+	return removed
+}
+
+// existingTemplateSource returns the file name id's current, already-saved
+// user template is actually stored under (LoadTemplates' Source), or ""
+// when id is not a loaded user template. SaveTemplate and DeleteTemplate
+// use this instead of assuming "<id>.yaml": a hand-authored template file
+// can declare any id regardless of its own filename, so guessing the name
+// orphans the real file (left on disk under its old name, permanently
+// failing to load as a duplicate id) and, for a delete, can even let the
+// orphan's stale content reappear once the newer file is gone.
+func existingTemplateSource(dir, id string) string {
+	if id == "" {
+		return ""
+	}
+	existing, _ := LoadTemplates(dir)
+	for _, e := range existing {
+		if !e.Builtin && e.ID == id {
+			return e.Source
+		}
+	}
+	return ""
+}
+
+// PrepareTemplateSave normalizes and validates t as a candidate to save to
+// dir under originalID (see SaveTemplate's rules on built-in and taken
+// ids), without writing anything. A draft endpoint uses this to check an
+// AI-proposed template before it is shown to the user, so a bad draft
+// fails before any file is touched.
+func PrepareTemplateSave(dir, originalID string, t Template) (Template, error) {
+	originalID = strings.TrimSpace(originalID)
+	t = normalizeTemplate(t)
+	t.Builtin, t.Source = false, ""
+	if err := t.Validate(); err != nil {
+		return Template{}, err
+	}
+	for _, b := range BuiltinTemplates() {
+		if b.ID == t.ID {
+			return Template{}, fmt.Errorf("%w: id %q is a built-in template and cannot be replaced", ErrInvalidTemplate, t.ID)
+		}
+	}
+	existing, _ := LoadTemplates(dir)
+	for _, e := range existing {
+		if e.Builtin || e.ID == originalID {
+			continue
+		}
+		if e.ID == t.ID {
+			return Template{}, fmt.Errorf("%w: id %q is already taken", ErrInvalidTemplate, t.ID)
+		}
+	}
+	return t, nil
+}
+
+// SaveTemplate validates t and writes it to dir as a user template
+// (<workspace>/focus-templates/<id>.yaml), creating dir if needed. t's id
+// can never be a built-in one or another user template's. originalID is
+// the id of the template being edited ("" for a new one); once the new
+// file is written, SaveTemplate removes originalID's previous file — by
+// its recorded Source, not a guessed "<id>.yaml" (existingTemplateSource)
+// — whenever that differs from the file just written, whether because the
+// id changed (a rename) or because the template was hand-authored under a
+// different file name to begin with. It returns the normalized template
+// actually saved.
+func SaveTemplate(dir, originalID string, t Template) (Template, error) {
+	if strings.TrimSpace(dir) == "" {
+		return Template{}, fmt.Errorf("%w: no workspace to save templates in", ErrInvalidTemplate)
+	}
+	originalID = strings.TrimSpace(originalID)
+	// Looked up before anything is written: once the new file exists, an
+	// id shared with a hand-authored file (same id, mismatched name) would
+	// make LoadTemplates report the old one as a diagnostic instead of
+	// resolving it, hiding the very file this needs to remove.
+	oldSource := existingTemplateSource(dir, originalID)
+	t, err := PrepareTemplateSave(dir, originalID, t)
+	if err != nil {
+		return Template{}, err
+	}
+	raw, err := RenderTemplateYAML(t)
+	if err != nil {
+		return Template{}, err
+	}
+	if len(raw) > maxTemplateFileBytes {
+		return Template{}, fmt.Errorf("%w: file is larger than %d bytes", ErrInvalidTemplate, maxTemplateFileBytes)
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return Template{}, fmt.Errorf("create %s: %w", TemplateDirName, err)
+	}
+	// t.Validate() (via PrepareTemplateSave above) already guarantees
+	// t.ID matches templateIDPattern — no "/" or "..", so this can never
+	// resolve outside dir. Re-checked right here, next to the writes it
+	// guards, the same reasoning as removeTemplateFiles's local check.
+	if !templateIDPattern.MatchString(t.ID) {
+		return Template{}, fmt.Errorf("%w: id %q is not safe to save", ErrInvalidTemplate, t.ID)
+	}
+	path := templateFilePath(dir, t.ID)
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, raw, 0o600); err != nil {
+		return Template{}, fmt.Errorf("write template: %w", err)
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return Template{}, fmt.Errorf("write template: %w", err)
+	}
+	if oldSource != "" {
+		if oldPath := filepath.Join(dir, oldSource); oldPath != path {
+			_ = os.Remove(oldPath)
+		}
+	} else if originalID != "" && originalID != t.ID {
+		// No recorded source (e.g. the id was never actually loaded) but
+		// still a rename by the caller's account: fall back to the old
+		// convention-based guess rather than leaving nothing cleaned up.
+		removeTemplateFiles(dir, originalID)
+	}
+	t.Source = t.ID + ".yaml"
+	return t, nil
+}
+
+// DeleteTemplate removes a user template of dir by id. A built-in or
+// unknown id is an error. The file removed is the one LoadTemplates
+// actually read it from (existingTemplateSource), not a guessed
+// "<id>.yaml" — the same reasoning as SaveTemplate's cleanup.
+func DeleteTemplate(dir, id string) error {
+	id = strings.TrimSpace(id)
+	for _, b := range BuiltinTemplates() {
+		if b.ID == id {
+			return fmt.Errorf("%w: id %q is a built-in template and cannot be deleted", ErrInvalidTemplate, id)
+		}
+	}
+	if source := existingTemplateSource(dir, id); source != "" {
+		if err := os.Remove(filepath.Join(dir, source)); err != nil {
+			return fmt.Errorf("%w: id %q not found", ErrInvalidTemplate, id)
+		}
+		return nil
+	}
+	if !removeTemplateFiles(dir, id) {
+		return fmt.Errorf("%w: id %q not found", ErrInvalidTemplate, id)
+	}
+	return nil
 }

@@ -118,6 +118,11 @@ func prStageSession(t *testing.T, store *session.Store, id string) {
 				p.Stages[i].Status = focuspipeline.StatusDone
 			case focuspipeline.StagePR:
 				p.Stages[i].Status, p.Stages[i].Iteration, p.Stages[i].Limit = focuspipeline.StatusActive, 1, 3
+			case focuspipeline.ReleaseStageID:
+				// Not part of this plan (p.Plan.Stages above is StageOrder,
+				// which does not list it), same as a real plan that left it
+				// out: skipped, not pending.
+				p.Stages[i].Status = focuspipeline.StatusSkipped
 			default:
 				p.Stages[i].Status = focuspipeline.StatusPending
 			}
@@ -169,6 +174,26 @@ func findingCount(p focuspipeline.Pipeline) int {
 		}
 	}
 	return n
+}
+
+// TestFocusPRPollRespectsItsInterval is f1's regression test: applyPRProbe
+// must not make the poller probe back-to-back. Before the fix, its
+// unconditional d.start call re-armed the very poller running it (d.start
+// -> d.watchPR -> finds itself in d.pollers, wakes its own channel),
+// collapsing the wait before the next probe to ~0 regardless of d.prPoll.
+func TestFocusPRPollRespectsItsInterval(t *testing.T) {
+	pending := focuspipeline.PRCheck{Name: "test", State: focuspipeline.CheckPending}
+	d, _, id, prober, _ := testPRDriver(t, always(foundPR(focuspipeline.PRStateOpen, pending)))
+	const interval = 100 * time.Millisecond
+	d.prPoll = interval
+	d.watchPR(id)
+	waitFor(t, "the first probe", func() bool { return prober.count() >= 1 })
+	time.Sleep(6 * interval)
+	// A healthy poller fires at most once per interval: 6 intervals of
+	// slack is at most ~7 probes total, never dozens or more.
+	if n := prober.count(); n > 8 {
+		t.Fatalf("poller busy-looped: %d probes in %v with a %v interval", n, 6*interval, interval)
+	}
 }
 
 func TestFocusPRPollFoundFailingCheckOnce(t *testing.T) {

@@ -304,6 +304,7 @@ func applyProbe(p Pipeline, ev Event, now time.Time) (Pipeline, Action, error) {
 		return p, noAction, nil
 	}
 	next := p.clone()
+	act := noAction
 	switch probe.Status {
 	case ProbeUnavailable:
 		if !WantsPRProbe(next) {
@@ -334,12 +335,12 @@ func applyProbe(p Pipeline, ev Event, now time.Time) (Pipeline, Action, error) {
 		if next.headMovedUnderG4(gateHead, probe, now) {
 			break
 		}
-		next.applyFoundPR(probe, now)
+		act = next.applyFoundPR(probe, now)
 	default:
 		return p, noAction, fmt.Errorf("%w: status %q", ErrInvalidProbe, probe.Status)
 	}
 	next.UpdatedAt = now
-	return next, noAction, nil
+	return next, act, nil
 }
 
 // nothingFound counts a probe that found no PR of this pipeline while a
@@ -413,10 +414,17 @@ func (p *Pipeline) recordPR(probe PRProbe, now time.Time) {
 	p.PR = &info
 }
 
-func (p *Pipeline) applyFoundPR(probe PRProbe, now time.Time) {
+// applyFoundPR applies a probe that found this pipeline's PR. It returns
+// noAction except when the PR turns out already merged and a template
+// stage after merge (a release stage) is pending: that stage is a build
+// turn like any other, so it is sent its starting turn here, the one place
+// a probe (not a live turn or gate) activates a stage of its own.
+func (p *Pipeline) applyFoundPR(probe PRProbe, now time.Time) Action {
 	if probe.State == PRStateMerged {
-		p.finishMerged()
-		return
+		if next := p.finishMerged(); next != "" {
+			return Action{Kind: ActionSendTurn, Prompt: p.approvedPrompt(GateNone, next)}
+		}
+		return noAction
 	}
 	if probe.State == PRStateClosed {
 		if p.OpenGate == GateMerge {
@@ -429,12 +437,12 @@ func (p *Pipeline) applyFoundPR(probe PRProbe, now time.Time) {
 			Reason: BlockedPRClosed, Iteration: p.currentIteration(), Limit: p.stageLimit(p.Current),
 			Prompt: fmt.Sprintf("Pull request #%d was closed without being merged. Reopen it with `gh pr reopen %d` (or open a new one with the approved title and body), push the branch, and report.", probe.Number, probe.Number),
 		}, 0, now)
-		return
+		return noAction
 	}
 	switch p.Current {
 	case StagePR:
 		if p.PRWait != PRWaitOpen || p.OpenGate != GateNone {
-			return
+			return noAction
 		}
 		p.advance()
 		p.addPRFindings(probe, now)
@@ -452,6 +460,7 @@ func (p *Pipeline) applyFoundPR(probe PRProbe, now time.Time) {
 			p.waitedInVain(BlockedNotMerged, mergePrompt(p.PR), now)
 		}
 	}
+	return noAction
 }
 
 // MergeGateHead is the head commit open G4 was opened on ("" when G4 is
@@ -498,9 +507,13 @@ func (p Pipeline) currentIteration() int {
 	return s.Iteration
 }
 
-// finishMerged ends the pipeline on a merged PR, whatever PR stage it was
-// in: merged is the fact the rest of the stages lead to.
-func (p *Pipeline) finishMerged() {
+// finishMerged ends the pipeline's PR stages on a merged PR, whatever PR
+// stage it was in: merged is the fact review, pr and pr_review lead to.
+// Merge itself is done the same way, but a stage after it (a template's
+// release stage) is pending work still owed, not a fact this merge
+// settles, so it is activated instead of left behind. It returns that
+// stage's id, or "" when merge was the pipeline's last stage.
+func (p *Pipeline) finishMerged() StageID {
 	supersedeOpenGate(p)
 	for i := range p.Stages {
 		s := &p.Stages[i]
@@ -510,6 +523,7 @@ func (p *Pipeline) finishMerged() {
 	}
 	p.Current = StageMerge
 	p.PRWait, p.PRProbes, p.PendingTurn = "", 0, ""
+	return p.advance()
 }
 
 func indexOfStage(id StageID) int {

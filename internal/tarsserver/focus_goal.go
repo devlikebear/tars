@@ -223,10 +223,25 @@ func (d *focusDriver) endGoal(sessionID, reason string) (focuspipeline.Pipeline,
 	if d == nil || d.sessions == nil || strings.TrimSpace(sessionID) == "" {
 		return focuspipeline.Pipeline{}, false
 	}
-	var prev *focuspipeline.GoalMode
+	store := focusStoreFor(d.sessions)
+	// Restore the permission mode before the Update below ever makes
+	// GoalActive() false: Update's own store lock is folder-wide (its own
+	// doc comment: fn must never call back into the session store), so the
+	// restore cannot happen inside the Update closure — it has to run
+	// around it instead. Doing it first, not after, closes the window a
+	// concurrent reader (a poll, a console refresh) could catch between
+	// "goal mode just ended" and "the permission mode is back to what it
+	// was": TestFocusGoalRunsToTheEnd caught exactly that window flaking
+	// under CI's slower, coverage-instrumented run.
+	if before, ok, err := store.Get(sessionID); err == nil && ok && before.GoalMode != nil && before.GoalMode.PermissionSet {
+		if sess, err := d.sessions.Get(sessionID); err == nil && sess.PermissionMode == focusGoalPermissionMode {
+			if err := d.sessions.SetPermissionMode(sessionID, before.GoalMode.RestorePermission); err != nil {
+				d.logger.Warn().Err(err).Str("session_id", sessionID).Msg("focus goal: restore the permission mode")
+			}
+		}
+	}
 	ended := false
-	p, found, err := focusStoreFor(d.sessions).Update(sessionID, func(p focuspipeline.Pipeline) (focuspipeline.Pipeline, error) {
-		prev = p.GoalMode
+	p, found, err := store.Update(sessionID, func(p focuspipeline.Pipeline) (focuspipeline.Pipeline, error) {
 		next, ok := focuspipeline.EndGoal(p, reason, d.now())
 		ended = ok
 		return next, nil
@@ -234,13 +249,6 @@ func (d *focusDriver) endGoal(sessionID, reason string) (focuspipeline.Pipeline,
 	d.unwatchGoal(sessionID)
 	if err != nil || !found || !ended {
 		return p, false
-	}
-	if prev != nil && prev.PermissionSet {
-		if sess, err := d.sessions.Get(sessionID); err == nil && sess.PermissionMode == focusGoalPermissionMode {
-			if err := d.sessions.SetPermissionMode(sessionID, prev.RestorePermission); err != nil {
-				d.logger.Warn().Err(err).Str("session_id", sessionID).Msg("focus goal: restore the permission mode")
-			}
-		}
 	}
 	d.logger.Info().Str("session_id", sessionID).Str("reason", reason).Msg("focus goal: ended")
 	d.auditGoal(sessionID, "ended", map[string]any{"reason": reason, "pushes": p.GoalMode.Pushes})

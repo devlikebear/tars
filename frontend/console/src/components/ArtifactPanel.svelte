@@ -99,13 +99,15 @@
     pickingDir = false
   }
 
+  // Closes only once the folder is saved, so a failed save leaves the
+  // picker open instead of looking like it worked.
   async function selectPickedDir(absPath: string) {
-    pickingDir = false
     if (!sessionId) return
     const dirs = Array.from(new Set([...workDirs.work_dirs, absPath]))
     await updateSessionWorkDirs(sessionId, { work_dirs: dirs, current_dir: absPath })
     workDirs = { work_dirs: dirs, current_dir: absPath }
     onWorkDirsChange?.()
+    pickingDir = false
     currentPath = '.'
     await browseDir('.')
   }

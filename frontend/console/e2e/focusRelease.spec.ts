@@ -143,7 +143,8 @@ test('the pipeline graph opens from the stage bar with plan tasks inside the bui
   expect(shown.buttonBg).toBe('rgb(27, 31, 35)')
   await page.setViewportSize({ width: 1400, height: 900 })
 
-  await expect(graph.getByTestId('focus-graph-stage')).toHaveCount(6)
+  // plan, build, review, pr, pr_review, merge, release.
+  await expect(graph.getByTestId('focus-graph-stage')).toHaveCount(7)
   await expect(graph.locator('[data-testid="focus-graph-stage"][data-status="active"]')).toContainText('Build')
   expect(await graph.getByTestId('focus-graph-task').count()).toBeGreaterThan(0)
 

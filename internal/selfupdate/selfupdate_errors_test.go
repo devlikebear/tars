@@ -82,6 +82,10 @@ func TestInstallRefusesBeforeDownloading(t *testing.T) {
 	if err := Install(context.Background(), brew, rel); !errors.Is(err, ErrHomebrew) {
 		t.Fatalf("homebrew: err = %v", err)
 	}
+	winget := Options{GOOS: "windows", ExePath: `D:\fake\AppData\Local\Microsoft\WinGet\Packages\Devlikebear.TARS_Microsoft.Winget.Source_8wekyb3d8bbwe\tars.exe`}
+	if err := Install(context.Background(), winget, rel); !errors.Is(err, ErrWinget) {
+		t.Fatalf("winget: err = %v", err)
+	}
 }
 
 func TestInstallReportsFailedDownloads(t *testing.T) {

@@ -912,6 +912,11 @@ export type ChatEvent = {
   total?: number
   passed?: boolean
   exit_code?: number
+  // e2e_skipped (focus_progress, "verified" phase only): an end-to-end
+  // goal that never ran at all — no computer_use backend or driver
+  // configured. Distinct from checkpoint's unrelated `skipped` (a reason
+  // string) above.
+  e2e_skipped?: boolean
   next_prompt?: string
   // done event usage
   usage?: {
@@ -2474,7 +2479,17 @@ export type FocusPlanTask = { title: string; done: string; stage?: FocusStageId 
 
 // A pipeline's shape (GET /v1/focus/templates): the built-in ones and the
 // workspace's focus-templates/*.yaml.
-export type FocusTemplateStage = { id: FocusStageId; kind?: FocusStageKind; label?: string }
+export type FocusTemplateStage = {
+  id: FocusStageId
+  kind?: FocusStageKind
+  label?: string
+  // instructions replace the kind's default guidance for the stage's
+  // turns; fix_instructions those of a review-kind stage's fix turn. Both
+  // are absent on GET /v1/focus/templates' built-in list unless drafting
+  // or editing a template (focus_template_edit.go).
+  instructions?: string
+  fix_instructions?: string
+}
 export type FocusTemplate = {
   id: string
   name: string
@@ -2484,6 +2499,31 @@ export type FocusTemplate = {
   source?: string
 }
 export type FocusTemplateList = { templates: FocusTemplate[]; diagnostics: { source: string; error: string }[] }
+
+// AI-assisted template editing (natural language → draft → PUT/DELETE,
+// internal/tarsserver/focus_template_edit.go). The draft route never
+// writes a file; the console shows the proposal and asks the user to save
+// or delete it.
+export type FocusTemplateDraftRequest = {
+  request: string
+  // The template being edited or deleted; absent asks for a new one.
+  base_id?: string
+  // A previous draft response's template, for a follow-up refinement
+  // ("tighten the review stage") instead of starting over from base_id.
+  draft?: FocusTemplate
+}
+export type FocusTemplateDraftResponse = {
+  action: 'save' | 'delete'
+  template?: FocusTemplate
+  // The template a "save" replaces (base_id, unless that was a built-in
+  // template — see copied_from_builtin) or a "delete" removes.
+  original_id?: string
+  summary?: string
+  warnings?: string[]
+  // True when base_id named a built-in template: the draft is a new,
+  // separate template rather than a replacement of the built-in one.
+  copied_from_builtin?: boolean
+}
 
 // Goal mode: the server decides every gate and pushes the pipeline to its
 // end; pushes of max_pushes are the retries it has spent.
@@ -2510,7 +2550,10 @@ export type FocusDecision = { id: string; question: string; options: string[] }
 export type FocusReport = { summary: string; decisions?: FocusDecision[]; risks?: string[]; tasks_done?: boolean }
 
 // One verification command's outcome, and a failure card's payload (P2).
-export type FocusVerificationResult = { command: string; exit_code: number; passed: boolean; timed_out?: boolean; excerpt?: string }
+// skipped is an end-to-end goal (computer_use) that never ran at all — no
+// backend or driver configured — rather than one that ran and failed; it
+// counts as passed.
+export type FocusVerificationResult = { command: string; exit_code: number; passed: boolean; timed_out?: boolean; excerpt?: string; skipped?: boolean }
 export type FocusFailure = {
   command: string
   exit_code: number

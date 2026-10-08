@@ -7,7 +7,7 @@ import (
 
 // Block formats the agent must follow, quoted verbatim in the guidance.
 const (
-	planFormat     = `<focus-plan>{"goal":"…","tasks":[{"title":"…","done":"…"}],"stages":["plan","build","review","pr","pr_review","merge"],"verify":["make test"],"e2e":["…"],"limits":{"build":3,"review":2,"pr":3}}</focus-plan>`
+	planFormat     = `<focus-plan>{"goal":"…","tasks":[{"title":"…","done":"…"}],"stages":["plan","build","review","pr","pr_review","merge","release"],"verify":["make test"],"e2e":["@App do the thing in plain language"],"limits":{"build":3,"review":2,"pr":3,"release":3}}</focus-plan>`
 	reportFormat   = `<focus-report>{"summary":"…","decisions":[{"id":"d1","question":"…","options":["…","…"]}],"risks":["…"]}</focus-report>`
 	findingsFormat = `<focus-findings>[{"id":"f1","severity":"high|medium|low","file":"…","line":42,"title":"…","scenario":"…"}]</focus-findings>`
 	prFormat       = `<focus-pr>{"title":"…","body":"…"}</focus-pr>`
@@ -18,12 +18,20 @@ const (
 		"and the build ends when tasks_done is true and every command passes."
 )
 
+// stagePlanInstructions is the generic plan stage's instructions, reused as
+// the base of the dev template's plan stage (template.go), which adds how
+// to use its second build-kind (release) stage's "stage" tag.
+const stagePlanInstructions = "Do not edit files. Read the code you need, then propose a plan: small tasks in order, " +
+	"each with what \"done\" means; which stages apply (a small fix may skip review or pr_review); " +
+	"the verification commands that prove the work (shell commands); any end-to-end checks as plain-language goals " +
+	"for TARS's own computer_use, not shell commands — \"@AppName do the thing\" names the app, otherwise it acts on " +
+	"the frontmost window; a GUI check that needs a shell command (a Playwright script, for example) belongs in the " +
+	"verification commands instead, not here; loop limits. " +
+	"The developer approves or edits the plan before any change is made."
+
 // stageInstructions are the specific instructions of each stage.
 var stageInstructions = map[StageID]string{
-	StagePlan: "Do not edit files. Read the code you need, then propose a plan: small tasks in order, " +
-		"each with what \"done\" means; which stages apply (a small fix may skip review or pr_review); " +
-		"the verification commands that prove the work (and end-to-end commands, if any); loop limits. " +
-		"The developer approves or edits the plan before any change is made.",
+	StagePlan: stagePlanInstructions,
 	StageBuild: "Implement the approved tasks in order, keeping changes focused. " +
 		"Run the verification commands yourself before you finish. " +
 		"If you need a decision from the developer, ask it as a decision in the report instead of guessing.",
@@ -124,11 +132,16 @@ func Guidance(p Pipeline) string {
 func (p Pipeline) writePlan(b *strings.Builder, stage Stage) {
 	plan := *p.Plan
 	tasks := plan.Tasks
-	if stage.KindOf() == StageBuild && p.workStages() > 1 {
+	ofThisStage := stage.KindOf() == StageBuild && p.workStages() > 1
+	if ofThisStage {
 		tasks = p.stageTasks(stage.ID)
-		b.WriteString("\nApproved tasks of this stage and their done criteria:\n")
-	} else {
-		b.WriteString("\nApproved tasks and their done criteria:\n")
+	}
+	if len(tasks) > 0 {
+		if ofThisStage {
+			b.WriteString("\nApproved tasks of this stage and their done criteria:\n")
+		} else {
+			b.WriteString("\nApproved tasks and their done criteria:\n")
+		}
 	}
 	for i, task := range tasks {
 		fmt.Fprintf(b, "%d. %s — done when: %s\n", i+1, task.Title, orDash(task.Done))
@@ -140,7 +153,7 @@ func (p Pipeline) writePlan(b *strings.Builder, stage Stage) {
 		}
 	}
 	if len(plan.E2E) > 0 {
-		b.WriteString("End-to-end commands:\n")
+		b.WriteString("End-to-end goals (computer_use):\n")
 		for _, cmd := range plan.E2E {
 			fmt.Fprintf(b, "- %s\n", cmd)
 		}

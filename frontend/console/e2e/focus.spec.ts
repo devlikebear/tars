@@ -8,7 +8,7 @@
 // verification commands after each build turn.
 
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test, type Locator, type Page } from '@playwright/test'
@@ -200,6 +200,34 @@ test('a focus task: plan gate, approve, report and decision cards, decide, then 
   await page.getByTestId('focus-view-button').click()
   await expect(page).toHaveURL(new RegExp(`/console/focus/${id}$`))
   await expect(page.getByTestId('focus-pipeline')).toBeVisible()
+})
+
+// A task can reach more than one folder: the primary stays the only
+// active/isolated one, but the extras become registered work dirs the
+// session can read and write through its tools (#1147 et al.).
+test('a new task with an extra folder registers both as the session\'s work dirs', async ({ page }) => {
+  const repo = newRepo('tars-e2e-focus-multi-primary-')
+  const extra = newRepo('tars-e2e-focus-multi-extra-')
+  await page.goto('/console/focus')
+  await page.getByTestId('focus-new-task-open').click()
+  await page.getByTestId('focus-new-folder').fill(repo)
+  await expect(page.getByTestId('focus-new-folder-status')).toHaveText('Git repository')
+
+  await page.getByTestId('focus-new-extra-add').click()
+  await page.getByTestId('focus-new-extra-folder').fill(extra)
+  await expect(page.getByTestId('focus-new-extra-status')).toHaveText('Git repository')
+
+  await page.getByTestId('focus-new-goal').fill(goal)
+  await page.getByTestId('focus-new-start').click()
+
+  await expect(page).toHaveURL(/\/console\/focus\/[^/]+$/)
+  const id = sessionId(page)
+  const sess = await (await page.request.get(`/v1/admin/sessions/${encodeURIComponent(id)}`)).json()
+  const workDirs = (sess.work_dirs as string[]) ?? []
+  expect(workDirs.some((d) => d === repo)).toBe(true)
+  expect(workDirs.some((d) => d === extra)).toBe(true)
+  // The primary alone is the active cwd.
+  expect(sess.current_dir).toBe(repo)
 })
 
 test('the focus home lists the task and a stale gate action shows the current state', async ({ page }) => {
@@ -575,6 +603,67 @@ test('Escape in the folder dialog leaves the new-task form as it was', async ({ 
   await expect(dialog).toBeVisible()
   await dialog.getByRole('button', { name: 'Cancel' }).click()
   await expect(dialog).toHaveCount(0)
+  await expect(page.getByTestId('focus-new-folder')).toHaveValue(repo)
+})
+
+test('Escape closes the folder dialog wherever focus is, after a field has used it for itself', async ({ page }) => {
+  const repo = newRepo('tars-e2e-focus-browse-escape-')
+  mkdirSync(join(repo, 'sub'))
+  await page.goto('/console/focus')
+  await page.getByTestId('focus-new-task-open').click()
+  await page.getByTestId('focus-new-folder').fill(repo)
+  await expect(page.getByTestId('focus-new-folder-status')).toHaveText('Git repository')
+
+  const browse = page.getByTestId('focus-new-folder-browse')
+  const dialog = page.getByTestId('focus-new-folder-dialog')
+  const dialogPath = dialog.getByRole('textbox', { name: 'Folder path' })
+
+  // Opening a folder replaces the list under the pointer, so focus falls
+  // out of the dialog — Escape still closes it.
+  await browse.click()
+  await dialog.getByRole('button', { name: 'sub' }).click()
+  await expect(dialogPath).toHaveValue(join(repo, 'sub'))
+  await page.keyboard.press('Escape')
+  await expect(dialog).toHaveCount(0)
+  // Focus is back on the button that opened it.
+  await expect(browse).toBeFocused()
+
+  // In the path field the first Escape puts the typed edit back, and only
+  // the next one — with nothing left to revert — closes the dialog.
+  await browse.click()
+  await expect(dialogPath).toHaveValue(repo)
+  await dialogPath.fill(join(repo, 'typo'))
+  await dialogPath.press('Escape')
+  await expect(dialog).toBeVisible()
+  await expect(dialogPath).toHaveValue(repo)
+  await dialogPath.press('Escape')
+  await expect(dialog).toHaveCount(0)
+  await expect(page.getByTestId('focus-new-folder')).toHaveValue(repo)
+})
+
+test('an extra folder row has its own Browse… that fills that row', async ({ page }) => {
+  const repo = newRepo('tars-e2e-focus-browse-extra-main-')
+  const extra = newRepo('tars-e2e-focus-browse-extra-')
+  await page.goto('/console/focus')
+  await page.getByTestId('focus-new-task-open').click()
+  await page.getByTestId('focus-new-folder').fill(repo)
+  await expect(page.getByTestId('focus-new-folder-status')).toHaveText('Git repository')
+
+  await page.getByTestId('focus-new-extra-add').click()
+  await page.getByTestId('focus-new-extra-browse').click()
+  const dialog = page.getByTestId('focus-new-folder-dialog')
+  const dialogPath = dialog.getByRole('textbox', { name: 'Folder path' })
+  // An empty row opens at the primary folder.
+  await expect(dialogPath).toHaveValue(repo)
+  await dialogPath.fill(extra)
+  await dialogPath.press('Enter')
+  await expect(dialogPath).toHaveValue(extra)
+  await dialog.getByRole('button', { name: 'Select Here' }).click()
+  await expect(dialog).toHaveCount(0)
+
+  await expect(page.getByTestId('focus-new-extra-folder')).toHaveValue(extra)
+  await expect(page.getByTestId('focus-new-extra-status')).toHaveText('Git repository')
+  // The primary folder is untouched.
   await expect(page.getByTestId('focus-new-folder')).toHaveValue(repo)
 })
 

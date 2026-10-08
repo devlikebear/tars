@@ -3,6 +3,7 @@ package memory
 import (
 	"context"
 	"os"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -138,6 +139,10 @@ func requireMemoryFileMode(t *testing.T, path string, want os.FileMode) {
 	info, err := os.Stat(path)
 	if err != nil {
 		t.Fatalf("stat %s: %v", path, err)
+	}
+	if runtime.GOOS == "windows" {
+		// Windows Chmod only toggles the read-only bit; modes always read back as 0666.
+		return
 	}
 	if got := info.Mode().Perm(); got != want {
 		t.Fatalf("expected %s mode %04o, got %04o", path, want, got)

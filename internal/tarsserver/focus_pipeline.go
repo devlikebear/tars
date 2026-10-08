@@ -20,7 +20,7 @@ import (
 // A pipeline is a sidecar of an ordinary chat session,
 // <workspace>/sessions/<id>.pipeline.json:
 //
-//	POST /v1/focus/pipelines                      {goal, cwd, isolate, title?, kind?, kickoff?, release_items?, release_since?} → 201 {session_id, pipeline}; 409 {error, session_id} when kind is release and the repository's release is still running
+//	POST /v1/focus/pipelines                      {goal, cwd, isolate, extra_dirs?, title?, kind?, kickoff?, release_items?, release_since?} → 201 {session_id, pipeline}; 409 {error, session_id} when kind is release and the repository's release is still running. extra_dirs adds more folders the session can reach besides cwd, which stays the only active/isolated one
 //	GET  /v1/focus/pipelines                      → [{session_id, title, goal, current, open_gate, needs_input, updated_at}]
 //	GET  /v1/focus/pipelines/{id}                 → pipeline
 //	POST /v1/focus/pipelines/{id}/gates/{gate}    {action, note?, edits?, pr?, card_id?} → {pipeline, next_prompt}; 409 {error, pipeline} when the gate is not open, card_id is not the open gate's card, or approving merge finds the PR head moved (the probe it runs first closes G4)
@@ -30,6 +30,7 @@ import (
 //	POST /v1/focus/pipelines/{id}/qa              {card_id, question} → 202 {qa_session_id, turn} (focus_qa.go)
 //	POST /v1/focus/pipelines/{id}/goal            {enabled, max_pushes?} → {pipeline}; turning it on needs the admin token (focus_goal.go)
 //	GET  /v1/focus/templates                      → {templates, diagnostics}; POST /v1/focus/pipelines takes {template, goal_mode, goal_max_pushes}
+//	POST /v1/focus/templates/draft                {request, base_id?, draft?} → AI-drafted save/delete (focus_template_edit.go); PUT/DELETE /v1/focus/templates/{id} actually save or remove
 //
 // Every chat turn of a session with a pipeline gets the stage's guidance
 // appended to the user message as a <focus-stage> block, and the reply's
@@ -289,7 +290,11 @@ type focusCreateRequest struct {
 	Goal    string `json:"goal"`
 	Cwd     string `json:"cwd"`
 	Isolate bool   `json:"isolate,omitempty"`
-	Title   string `json:"title,omitempty"`
+	// ExtraDirs adds more folders the pipeline's session can reach
+	// (registered work dirs) besides Cwd, which stays the only active cwd —
+	// isolation, the git/PR probe and the release train all work from Cwd.
+	ExtraDirs []string `json:"extra_dirs,omitempty"`
+	Title     string   `json:"title,omitempty"`
 	// Kind is "" (feature work) or "release" (started from the release
 	// train, which never lists release pipelines).
 	Kind string `json:"kind,omitempty"`
@@ -362,7 +367,7 @@ func (a *focusAPI) create(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	sess, err := a.worktrees.createIn(r.Context(), newSessionRequest{Title: title, Cwd: req.Cwd, Isolate: req.Isolate})
+	sess, err := a.worktrees.createIn(r.Context(), newSessionRequest{Title: title, Cwd: req.Cwd, Isolate: req.Isolate, ExtraDirs: req.ExtraDirs})
 	if err != nil {
 		writeJSON(w, folderErrorStatus(err), map[string]string{"error": err.Error()})
 		return
@@ -379,6 +384,9 @@ func (a *focusAPI) create(w http.ResponseWriter, r *http.Request) {
 			since := req.ReleaseSince.UTC()
 			p.ReleaseSince = &since
 		}
+		// This pipeline's whole job is a release; its own release stage
+		// would be a release releasing itself.
+		p = focuspipeline.SkipStage(p, focuspipeline.ReleaseStageID)
 	}
 	if err := a.store().Save(p); err != nil {
 		// Never leave a focus session without its pipeline.

@@ -61,49 +61,50 @@ type serveAPIRuntime struct {
 }
 
 type apiRouteHandlers struct {
-	pulse           http.Handler
-	initiative      http.Handler
-	reflection      http.Handler
-	chat            http.Handler
-	sessions        http.Handler
-	checkpoints     http.Handler
-	worktrees       http.Handler
-	sessionFolders  http.Handler
-	focus           http.Handler
-	focusRelease    http.Handler
-	permissionMode  http.Handler
-	work            http.Handler
-	memory          http.Handler
-	console         http.Handler
-	usage           http.Handler
-	logs            http.Handler
-	ops             http.Handler
-	status          http.Handler
-	auth            http.Handler
-	remoteAccess    http.Handler
-	healthz         http.Handler
-	setup           http.Handler
-	providersModels http.Handler
-	compact         http.Handler
-	cron            http.Handler
-	mcp             http.Handler
-	extensions      http.Handler
-	agentRuns       http.Handler
-	agentSubagents  http.Handler
-	agentRuntime    http.Handler
-	channels        http.Handler
-	embodiment      http.Handler
-	events          http.Handler
-	config          http.Handler
-	skillhub        http.Handler
-	skillCreator    http.Handler
-	skillExtraction http.Handler
-	mcpCreator      http.Handler
-	git             http.Handler
-	filesystem      http.Handler
-	workspaceFiles  http.Handler
-	terminal        http.Handler
-	codexUsage      http.Handler
+	pulse             http.Handler
+	initiative        http.Handler
+	reflection        http.Handler
+	chat              http.Handler
+	sessions          http.Handler
+	checkpoints       http.Handler
+	worktrees         http.Handler
+	sessionFolders    http.Handler
+	focus             http.Handler
+	focusTemplateEdit http.Handler
+	focusRelease      http.Handler
+	permissionMode    http.Handler
+	work              http.Handler
+	memory            http.Handler
+	console           http.Handler
+	usage             http.Handler
+	logs              http.Handler
+	ops               http.Handler
+	status            http.Handler
+	auth              http.Handler
+	remoteAccess      http.Handler
+	healthz           http.Handler
+	setup             http.Handler
+	providersModels   http.Handler
+	compact           http.Handler
+	cron              http.Handler
+	mcp               http.Handler
+	extensions        http.Handler
+	agentRuns         http.Handler
+	agentSubagents    http.Handler
+	agentRuntime      http.Handler
+	channels          http.Handler
+	embodiment        http.Handler
+	events            http.Handler
+	config            http.Handler
+	skillhub          http.Handler
+	skillCreator      http.Handler
+	skillExtraction   http.Handler
+	mcpCreator        http.Handler
+	git               http.Handler
+	filesystem        http.Handler
+	workspaceFiles    http.Handler
+	terminal          http.Handler
+	codexUsage        http.Handler
 }
 
 func runServeAPICommand(
@@ -459,6 +460,11 @@ func buildAPIMux(
 	}
 	chatTooling.Worktrees = sessionWorktrees
 	focusDriver := newFocusDriver(logger)
+	// The same engine behind the computer_use chat tool, independent of
+	// tools.computer_use.enabled (that flag only gates the chat tool's
+	// registration): it never fails to construct, answering "unavailable"
+	// itself when no backend or driver is configured.
+	focusDriver.e2e = newFocusE2ERunner(newComputerUseEngine(cfg, deps.llmRouter, deps.usageTracker))
 	chatTooling.Focus = focusDriver
 	chatTooling.OverrideService = overrideService
 	checkpointStore := openCheckpointStore(cfg.WorkspaceDir, logger)
@@ -705,16 +711,17 @@ func buildAPIMux(
 	sessionHandler := newSessionAPIHandlerFullWithLocalSkillsAndWorkLedger(sessionStore, logger, deps.usageTracker, sessionStyleDefaultsFromConfig(cfg), dispatcher.Emit, overrideService, deps.llmRouter, localSkillsHandlerDeps{provider: extensionsManager, workspaceDir: cfg.WorkspaceDir}, workLedger)
 	workLedgerHandler := newWorkLedgerAPIHandler(workLedger, logger, workScheduler)
 	registerAPIRoutes(mux, apiRouteHandlers{
-		pulse:          pulseSetup.Handler,
-		initiative:     initiativeSetup.Handler,
-		reflection:     reflectionSetup.Handler,
-		chat:           chatHandler,
-		sessions:       withGoalAudit(withWorktreeRetire(withSessionCreateIn(sessionHandler, sessionWorktrees), sessionWorktrees), auditTo(opsManager)),
-		worktrees:      newSessionWorktreeHandler(sessionWorktrees),
-		sessionFolders: newSessionFoldersHandler(sessionWorktrees),
-		focus:          newFocusPipelineHandler(sessionStore, sessionWorktrees, focusDriver, logger),
-		focusRelease:   newFocusReleaseHandler(sessionStore, logger),
-		checkpoints:    newCheckpointAPIHandler(checkpointStore, sessionStore, logger),
+		pulse:             pulseSetup.Handler,
+		initiative:        initiativeSetup.Handler,
+		reflection:        reflectionSetup.Handler,
+		chat:              chatHandler,
+		sessions:          withGoalAudit(withWorktreeRetire(withSessionCreateIn(sessionHandler, sessionWorktrees), sessionWorktrees), auditTo(opsManager)),
+		worktrees:         newSessionWorktreeHandler(sessionWorktrees),
+		sessionFolders:    newSessionFoldersHandler(sessionWorktrees),
+		focus:             newFocusPipelineHandler(sessionStore, sessionWorktrees, focusDriver, logger),
+		focusTemplateEdit: newFocusTemplateEditHandler(sessionStore, deps.llmRouter, logger),
+		focusRelease:      newFocusReleaseHandler(sessionStore, logger),
+		checkpoints:       newCheckpointAPIHandler(checkpointStore, sessionStore, logger),
 		permissionMode: newPermissionModeHandler(sessionStore,
 			chatPermissionModeResolver{overrides: overrideService, configFlag: strings.TrimSpace(cfg.ClaudeCodeCLIPermissionMode)},
 			auditTo(opsManager)),
@@ -836,6 +843,9 @@ func registerAPIRoutes(mux *http.ServeMux, handlers apiRouteHandlers) {
 		mux.Handle("/v1/focus/pipelines", handlers.focus)
 		mux.Handle("/v1/focus/pipelines/", handlers.focus)
 		mux.Handle("/v1/focus/templates", handlers.focus)
+	}
+	if handlers.focusTemplateEdit != nil {
+		mux.Handle("/v1/focus/templates/", handlers.focusTemplateEdit)
 	}
 	if handlers.focusRelease != nil {
 		mux.Handle("/v1/focus/release-train", handlers.focusRelease)

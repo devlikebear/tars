@@ -319,6 +319,9 @@ func (s *chatStreamWriter) focusProgress(phase, command string, index, total int
 	if result != nil {
 		event["passed"] = result.Passed
 		event["exit_code"] = result.ExitCode
+		if result.Skipped {
+			event["e2e_skipped"] = true
+		}
 	}
 	s.send(event)
 }

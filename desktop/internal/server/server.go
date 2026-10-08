@@ -362,7 +362,13 @@ func InstallDirs(goos, home string) []string {
 		if home == "" {
 			return nil
 		}
-		return []string{filepath.Join(home, "AppData", "Local", "Programs", "TARS")}
+		// winget unpacks the whole zip into Packages\<id>_<source> and adds
+		// that folder to PATH (a portable zip with extra files gets no Links
+		// alias), so the shell finds tars.exe there before PATH reaches it.
+		local := filepath.Join(home, "AppData", "Local")
+		dirs := []string{filepath.Join(local, "Programs", "TARS")}
+		wingetTARS, _ := filepath.Glob(filepath.Join(local, "Microsoft", "WinGet", "Packages", "Devlikebear.TARS_*"))
+		return append(dirs, wingetTARS...)
 	default:
 		return nil
 	}

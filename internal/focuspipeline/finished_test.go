@@ -6,7 +6,10 @@ import (
 )
 
 // withStatuses builds a pipeline whose stages have the given statuses, in
-// StageOrder, and an optional plan.
+// StageOrder, and an optional plan. The dev template's release stage, which
+// StageOrder does not list, is left at New's default (pending) when plan is
+// nil, and skipped otherwise, same as a real plan that left it out
+// (skipUnplannedStages): these statuses only ever name StageOrder's six.
 func withStatuses(plan []StageID, statuses ...StageStatus) Pipeline {
 	p := New("s1", "g", time.Unix(0, 0))
 	for i, st := range statuses {
@@ -14,6 +17,15 @@ func withStatuses(plan []StageID, statuses ...StageStatus) Pipeline {
 	}
 	if plan != nil {
 		p.Plan = &Plan{Stages: plan}
+		keep := map[StageID]bool{}
+		for _, id := range plan {
+			keep[id] = true
+		}
+		for i := len(statuses); i < len(p.Stages); i++ {
+			if !keep[p.Stages[i].ID] {
+				p.Stages[i].Status = StatusSkipped
+			}
+		}
 	}
 	return p
 }

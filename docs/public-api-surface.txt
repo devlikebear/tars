@@ -36,6 +36,7 @@ pkg/agentloop field Event.ToolReceiptID
 pkg/agentloop field Event.ToolReplayed
 pkg/agentloop field Event.ToolResult
 pkg/agentloop field Event.Type
+pkg/agentloop field RunOptions.AddDirs
 pkg/agentloop field RunOptions.AfterLLM
 pkg/agentloop field RunOptions.AfterTool
 pkg/agentloop field RunOptions.AutoExpandOnce
@@ -142,6 +143,7 @@ pkg/llm field ChatMessage.ReasoningContent
 pkg/llm field ChatMessage.Role
 pkg/llm field ChatMessage.ToolCallID
 pkg/llm field ChatMessage.ToolCalls
+pkg/llm field ChatOptions.AddDirs
 pkg/llm field ChatOptions.ClaudeCodeHarness
 pkg/llm field ChatOptions.ClaudeCodeMCPServers
 pkg/llm field ChatOptions.ClaudeCodePermissionAllow

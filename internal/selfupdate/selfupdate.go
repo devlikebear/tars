@@ -54,6 +54,8 @@ var (
 	ErrDevelopmentBuild = errors.New("this tars is a development build and does not update itself")
 	// ErrHomebrew means Homebrew owns the binary and must update it.
 	ErrHomebrew = errors.New("this tars is managed by Homebrew; update it with: brew upgrade devlikebear/tap/tars")
+	// ErrWinget means winget owns the binary and must update it.
+	ErrWinget = errors.New("this tars is managed by winget; update it with: winget upgrade Devlikebear.TARS")
 	// ErrNoAsset means the latest release has no archive for this platform.
 	ErrNoAsset = errors.New("the latest release has no archive for this platform")
 )
@@ -124,6 +126,16 @@ func ManagedByHomebrew(exePath string) bool {
 	return strings.Contains(p, "/Cellar/") || strings.Contains(p, "/homebrew/") || strings.Contains(p, "/linuxbrew/")
 }
 
+// ManagedByWinget reports whether exePath is a winget portable install: the
+// package directory under %LOCALAPPDATA%\Microsoft\WinGet\Packages, or the
+// Links alias winget puts on PATH. Replacing that executable in place would
+// leave winget's record of the installed version stale. Backslashes are
+// folded so a Windows path is recognised wherever the check runs.
+func ManagedByWinget(exePath string) bool {
+	p := strings.ToLower(strings.ReplaceAll(exePath, `\`, "/"))
+	return strings.Contains(p, "/microsoft/winget/packages/") || strings.Contains(p, "/microsoft/winget/links/")
+}
+
 // Newer reports whether candidate is a later release than current.
 func Newer(candidate, current string) bool {
 	c, ok := parseVersion(candidate)
@@ -170,6 +182,9 @@ func Check(ctx context.Context, opts Options) (Status, error) {
 	}
 	if ManagedByHomebrew(opts.ExePath) {
 		return Status{}, ErrHomebrew
+	}
+	if ManagedByWinget(opts.ExePath) {
+		return Status{}, ErrWinget
 	}
 	rel, err := Latest(ctx, opts)
 	if err != nil {
@@ -244,6 +259,9 @@ func Install(ctx context.Context, opts Options, rel Release) error {
 	}
 	if ManagedByHomebrew(exe) {
 		return ErrHomebrew
+	}
+	if ManagedByWinget(exe) {
+		return ErrWinget
 	}
 	dir := filepath.Dir(exe)
 	// A previous update's old binary: gone once nothing runs it any more.

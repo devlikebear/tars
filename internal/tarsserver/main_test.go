@@ -2155,6 +2155,7 @@ type mockLLMClient struct {
 	seenTools       [][]string
 	seenToolChoices []string
 	seenWorkDirs    []string
+	seenAddDirs     [][]string
 	seenPersist     []bool
 	seenAllow       [][]string
 }
@@ -2184,6 +2185,7 @@ func (m *mockLLMClient) Chat(ctx context.Context, messages []llm.ChatMessage, op
 	m.seenTools = append(m.seenTools, toolNames)
 	m.seenToolChoices = append(m.seenToolChoices, opts.ToolChoice.String())
 	m.seenWorkDirs = append(m.seenWorkDirs, opts.WorkDir)
+	m.seenAddDirs = append(m.seenAddDirs, opts.AddDirs)
 	m.seenPersist = append(m.seenPersist, opts.PersistSession)
 	m.seenAllow = append(m.seenAllow, opts.ClaudeCodePermissionAllow)
 

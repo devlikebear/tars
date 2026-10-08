@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -20,18 +21,22 @@ import (
 
 // A new chat in a folder, isolated or not, in one call.
 //
-// POST /v1/admin/sessions takes two optional fields besides title:
+// POST /v1/admin/sessions takes three optional fields besides title:
 //
-//	{"title": "...", "cwd": "/abs/or/~/path", "isolate": true}
+//	{"title": "...", "cwd": "/abs/or/~/path", "isolate": true, "extra_dirs": ["/abs/or/~/other", ...]}
 //
-// With cwd the session starts working in that folder (it becomes its only
-// registered work dir and the active cwd); with isolate it also moves into a
-// worktree of its own before the first turn, as the header's ⑂ chip would.
-// The request fails before anything is created when the folder does not
-// exist or isolate names a folder outside a git repository, and a worktree
-// that cannot be made removes the session again, so a caller never gets half
-// of what it asked for. Without cwd and isolate the request goes to the
-// session handler as it always has.
+// With cwd the session starts working in that folder (it becomes the
+// session's active cwd); with isolate it also moves into a worktree of its
+// own before the first turn, as the header's ⑂ chip would. extra_dirs adds
+// more folders the session can reach (registered work dirs) without making
+// any of them the active cwd or isolating them — only the primary (cwd)
+// folder is ever isolated. The request fails before anything is created
+// when any folder (cwd or an extra) does not exist, isolate names a cwd
+// outside a git repository, or the folder count (cwd + extra_dirs) exceeds
+// maxSessionFolders, and a worktree that cannot be made removes the session
+// again, so a caller never gets half of what it asked for. Without cwd,
+// isolate and extra_dirs the request goes to the session handler as it
+// always has.
 //
 // Choosing an arbitrary folder is what PUT .../workdirs does, which only the
 // admin token may; so does a create that carries one, even though a plain
@@ -46,6 +51,10 @@ const (
 	worktreeReasonNewChat = "new_chat"
 	// recentFolderLimit is how many recent folders the picker offers.
 	recentFolderLimit = 8
+	// maxSessionFolders caps a session's folder count (cwd + extra_dirs):
+	// each one gets its own --add-dir for CLI providers and a path-policy
+	// entry, so an unbounded list would grow every chat turn's process args.
+	maxSessionFolders = 8
 )
 
 var (
@@ -55,6 +64,8 @@ var (
 	errFolderNotDirectory  = errors.New("path is not a folder")
 	errFolderNotRepository = errors.New("folder is not in a git repository, so it cannot be isolated")
 	errIsolateNeedsFolder  = errors.New("isolate needs a cwd")
+	errExtraDirNeedsCwd    = errors.New("extra_dirs needs a cwd")
+	errTooManyFolders      = fmt.Errorf("too many folders (max %d)", maxSessionFolders)
 )
 
 // chatFolder is a folder a chat can start in.
@@ -106,7 +117,8 @@ func folderErrorStatus(err error) int {
 		return http.StatusNotFound
 	case errors.Is(err, errFolderRequired), errors.Is(err, errFolderNotAbsolute),
 		errors.Is(err, errFolderNotDirectory), errors.Is(err, errFolderNotRepository),
-		errors.Is(err, errIsolateNeedsFolder):
+		errors.Is(err, errIsolateNeedsFolder), errors.Is(err, errExtraDirNeedsCwd),
+		errors.Is(err, errTooManyFolders):
 		return http.StatusBadRequest
 	default:
 		return http.StatusInternalServerError
@@ -117,6 +129,9 @@ type newSessionRequest struct {
 	Title   string `json:"title,omitempty"`
 	Cwd     string `json:"cwd,omitempty"`
 	Isolate bool   `json:"isolate,omitempty"`
+	// ExtraDirs adds more folders the session can reach (registered work
+	// dirs) besides Cwd, which stays the only active/isolated one.
+	ExtraDirs []string `json:"extra_dirs,omitempty"`
 }
 
 // withSessionCreateIn handles POST /v1/admin/sessions when it names a folder
@@ -142,7 +157,7 @@ func withSessionCreateIn(next http.Handler, c *chatWorktrees) http.Handler {
 				return
 			}
 		}
-		if strings.TrimSpace(req.Cwd) == "" && !req.Isolate {
+		if strings.TrimSpace(req.Cwd) == "" && !req.Isolate && len(req.ExtraDirs) == 0 {
 			r.Body = io.NopCloser(bytes.NewReader(raw))
 			next.ServeHTTP(w, r)
 			return
@@ -160,10 +175,13 @@ func withSessionCreateIn(next http.Handler, c *chatWorktrees) http.Handler {
 	})
 }
 
-// createIn makes a session working in req.Cwd, isolated when asked, or
-// nothing at all.
+// createIn makes a session working in req.Cwd, reaching req.ExtraDirs too,
+// isolated (req.Cwd only) when asked, or nothing at all.
 func (c *chatWorktrees) createIn(ctx context.Context, req newSessionRequest) (session.Session, error) {
 	if strings.TrimSpace(req.Cwd) == "" {
+		if len(req.ExtraDirs) > 0 {
+			return session.Session{}, errExtraDirNeedsCwd
+		}
 		return session.Session{}, errIsolateNeedsFolder
 	}
 	folder, err := resolveChatFolder(ctx, req.Cwd)
@@ -172,6 +190,10 @@ func (c *chatWorktrees) createIn(ctx context.Context, req newSessionRequest) (se
 	}
 	if req.Isolate && folder.RepoRoot == "" {
 		return session.Session{}, errFolderNotRepository
+	}
+	dirs, err := resolveSessionFolders(ctx, folder.Path, req.ExtraDirs)
+	if err != nil {
+		return session.Session{}, err
 	}
 	title := strings.TrimSpace(req.Title)
 	if title == "" {
@@ -185,7 +207,7 @@ func (c *chatWorktrees) createIn(ctx context.Context, req newSessionRequest) (se
 		_ = c.store.Delete(created.ID)
 		return session.Session{}, cause
 	}
-	if err := c.store.SetWorkDirs(created.ID, []string{folder.Path}, folder.Path); err != nil {
+	if err := c.store.SetWorkDirs(created.ID, dirs, folder.Path); err != nil {
 		return undo(err)
 	}
 	if req.Isolate {
@@ -198,6 +220,34 @@ func (c *chatWorktrees) createIn(ctx context.Context, req newSessionRequest) (se
 		}
 	}
 	return c.store.Get(created.ID)
+}
+
+// resolveSessionFolders checks primary and every extra dir with
+// resolveChatFolder (so a typo or missing folder fails before anything is
+// created), dedupes extras against the primary and each other in the order
+// given, and caps the total at maxSessionFolders. The primary is always
+// first, so callers can rely on dirs[0] being the active cwd.
+func resolveSessionFolders(ctx context.Context, primary string, extraDirs []string) ([]string, error) {
+	dirs := []string{primary}
+	seen := map[string]bool{primary: true}
+	for _, raw := range extraDirs {
+		if strings.TrimSpace(raw) == "" {
+			continue
+		}
+		extra, err := resolveChatFolder(ctx, raw)
+		if err != nil {
+			return nil, err
+		}
+		if seen[extra.Path] {
+			continue
+		}
+		seen[extra.Path] = true
+		dirs = append(dirs, extra.Path)
+	}
+	if len(dirs) > maxSessionFolders {
+		return nil, errTooManyFolders
+	}
+	return dirs, nil
 }
 
 // sessionArtifactFolder reports whether cwd is still sess's own artifact
