@@ -6,6 +6,18 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.57.0] - 2026-10-08
+
+### Added
+
+- **An approved Focus plan can be edited.** After the plan gate, the goal and the check lists (`verify`, `e2e`, `e2e_setup`, `e2e_teardown`) can still change; tasks, stages and limits cannot, and no stage moves. Ask in the chat — the agent uses the new `focus_plan_edit` tool, or a `<focus-plan-edit>` block on CLI providers — or call `POST /v1/focus/pipelines/{id}/plan`. Each edit leaves a "plan edited" card listing what changed. ([#1173](https://github.com/devlikebear/tars/pull/1173))
+- **Focus end-to-end goals check the work's own build.** `computer_use` only drives what is on screen, so a plan can now list `e2e_setup` shell commands, run in the working folder before the goals on every verification to build and launch the change, and `e2e_teardown` to stop it afterwards. A plan with goals but no setup is flagged on the plan card. ([#1173](https://github.com/devlikebear/tars/pull/1173))
+- **Pick a folder from a dialog in Focus mode's New task.** A Browse button next to the folder field opens the folder dialog the Files panel uses; typing a path and the recent-folder chips work as before. ([#1172](https://github.com/devlikebear/tars/pull/1172))
+
+### Changed
+
+- **End-to-end goals no longer run after a failed verification or setup command** in a Focus review: the failed command is the failure, instead of a goal reporting on a stale screen. ([#1173](https://github.com/devlikebear/tars/pull/1173))
+
 ## [0.56.0] - 2026-10-08
 
 ### Added
