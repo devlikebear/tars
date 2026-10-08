@@ -2543,6 +2543,9 @@ export type FocusPlan = {
   stages: FocusStageId[]
   verify: string[]
   e2e?: string[]
+  // Shell commands the server runs before and after the e2e goals.
+  e2e_setup?: string[]
+  e2e_teardown?: string[]
   limits?: Record<string, number>
 }
 

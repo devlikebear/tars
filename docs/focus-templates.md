@@ -68,6 +68,8 @@ With more than one `build` stage, the plan assigns each task to a stage (`"stage
 
 A plan's end-to-end checks (`e2e`, re-run after verification in the review stage) are plain-language goals for TARS's own `computer_use`, never shell commands: `"@AppName do the thing"` names the app, or the frontmost window without it. A GUI check that needs a shell command — a Playwright script, for example — belongs in the verification commands instead. An end-to-end goal that fails is a failed verification like any other; one that could not run at all (no `computer_use` backend or driver configured) is skipped, not failed, so a stage never blocks on a capability the environment does not have.
 
+`computer_use` drives only what is on screen. When a goal checks the work's own changes, the plan also lists `e2e_setup` — shell commands run in the working folder before the goals, every time, that build it and open that build — and `e2e_teardown` to stop it afterwards. Without them a goal checks whatever copy of the app is already running. After approval the goal and these lists can still be changed: ask in the chat (the agent uses `focus_plan_edit` or a `<focus-plan-edit>` block) or `POST /v1/focus/pipelines/{id}/plan`.
+
 A pipeline copies its template when it starts, so editing the file changes new tasks only.
 
 ## Goal mode

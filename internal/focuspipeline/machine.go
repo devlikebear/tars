@@ -194,6 +194,15 @@ func applyTurn(p Pipeline, ev Event, now time.Time) (Pipeline, Action) {
 	if !p.Active() {
 		return p, noAction
 	}
+	// The developer's plan edit applies whatever the turn was (a question
+	// at a gate included): it changes no stage and asks for nothing.
+	if ev.Blocks.PlanEdit != nil {
+		if edited, _, err := EditPlan(p, *ev.Blocks.PlanEdit, now); err == nil {
+			p = edited
+		} else {
+			p.addCard(CardNotice, ev.Turn, NoticeFormatMissing, map[string]any{"errors": []string{TagPlanEdit + ": " + err.Error()}}, now)
+		}
+	}
 	if questionGates[ev.QuestionGate] && p.OpenGate != ev.QuestionGate {
 		return lateQuestionTurn(p, ev, now)
 	}

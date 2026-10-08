@@ -527,7 +527,8 @@ func (d *focusDriver) runVerification(run *focusRun, log zerolog.Logger) (focusp
 		return none, true
 	}
 	verifyCmds, e2eGoals := focusVerifyCommands(p)
-	total := len(verifyCmds) + len(e2eGoals)
+	setup, teardown := focusE2ESetup(p, e2eGoals)
+	total := len(verifyCmds) + len(setup) + len(e2eGoals)
 
 	feed, endFeed := d.feeds.begin(run.sessionID)
 	defer endFeed()
@@ -567,11 +568,33 @@ func (d *focusDriver) runVerification(run *focusRun, log zerolog.Logger) (focusp
 			return none, true
 		}
 	}
-	for _, goal := range e2eGoals {
-		if !runOne(goal, func() (focuspipeline.VerificationResult, error) {
-			return d.e2e(run.ctx, run.sessionID, goal)
-		}) {
-			return none, true
+	// The end-to-end goals check this folder's build, not whatever copy of
+	// the app happens to be on screen: the plan's setup commands build and
+	// launch it first, every time. A goal never runs after a failed
+	// verify or setup command — it would only report on a stale screen.
+	if v.Passed && len(e2eGoals) > 0 {
+		if len(teardown) > 0 {
+			defer d.e2eTeardown(run.sessionID, teardown, log)
+		}
+		for _, command := range setup {
+			if !runOne(command, func() (focuspipeline.VerificationResult, error) {
+				return d.verify(run.ctx, run.sessionID, command)
+			}) {
+				return none, true
+			}
+			if !v.Passed {
+				break
+			}
+		}
+		for _, goal := range e2eGoals {
+			if !v.Passed {
+				break
+			}
+			if !runOne(goal, func() (focuspipeline.VerificationResult, error) {
+				return d.e2e(run.ctx, run.sessionID, goal)
+			}) {
+				return none, true
+			}
 		}
 	}
 
@@ -603,6 +626,33 @@ func focusVerifyCommands(p focuspipeline.Pipeline) (verify, e2e []string) {
 		e2e = cleanedCommands(p.Plan.E2E)
 	}
 	return verify, e2e
+}
+
+// focusE2ESetup are the shell commands around the end-to-end goals: none
+// when no goal runs.
+func focusE2ESetup(p focuspipeline.Pipeline, goals []string) (setup, teardown []string) {
+	if p.Plan == nil || len(goals) == 0 {
+		return nil, nil
+	}
+	return cleanedCommands(p.Plan.E2ESetup), cleanedCommands(p.Plan.E2ETeardown)
+}
+
+// focusE2ETeardownTimeout bounds one teardown command.
+const focusE2ETeardownTimeout = 2 * time.Minute
+
+// e2eTeardown runs the plan's teardown commands after the end-to-end
+// goals, whatever their result and also when the run was cancelled — what
+// the setup launched must not outlive the check. A failing teardown is
+// logged, never a verification fact.
+func (d *focusDriver) e2eTeardown(sessionID string, commands []string, log zerolog.Logger) {
+	for _, command := range commands {
+		ctx, cancel := context.WithTimeout(context.WithoutCancel(d.ctx), focusE2ETeardownTimeout)
+		result, err := d.verify(ctx, sessionID, command)
+		cancel()
+		if err != nil || !result.Passed {
+			log.Warn().Err(err).Str("command", command).Int("exit_code", result.ExitCode).Msg("focus: end-to-end teardown command failed")
+		}
+	}
 }
 
 func cleanedCommands(list []string) []string {
