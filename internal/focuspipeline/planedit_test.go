@@ -66,6 +66,15 @@ func TestEditPlanRefusals(t *testing.T) {
 	if err != nil || changed || len(got.Cards) != len(p.Cards) {
 		t.Fatalf("no-op edit: changed = %v err = %v", changed, err)
 	}
+
+	// A failure of a check the plan keeps stays remembered; a list put in
+	// another order is still a change.
+	p.Plan.Verify = []string{"make test", "make lint"}
+	p.LastFailure = &FailureFact{Command: "make lint", ExitCode: 1}
+	got, changed, err = EditPlan(p, PlanEdit{Verify: strs("make lint", "make test")}, t0)
+	if err != nil || !changed || got.LastFailure == nil || !strings.Contains(string(lastCard(t, got).Payload), "verify: reordered") {
+		t.Fatalf("reorder: changed = %v err = %v card = %s", changed, err, lastCard(t, got).Payload)
+	}
 }
 
 func TestPlanEditBlockAppliesInATurn(t *testing.T) {
