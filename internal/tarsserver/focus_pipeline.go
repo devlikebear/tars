@@ -29,6 +29,7 @@ import (
 //	POST /v1/focus/pipelines/{id}/stop            → {pipeline, next_prompt: ""}; 409 when already finished or stopped
 //	POST /v1/focus/pipelines/{id}/qa              {card_id, question} → 202 {qa_session_id, turn} (focus_qa.go)
 //	POST /v1/focus/pipelines/{id}/goal            {enabled, max_pushes?} → {pipeline}; turning it on needs the admin token (focus_goal.go)
+//	POST /v1/focus/pipelines/{id}/plan            {goal?, verify?, e2e?, e2e_setup?, e2e_teardown?} → {pipeline, changed}; edits the approved plan, 409 before G1 or once finished (focus_plan_edit.go)
 //	GET  /v1/focus/templates                      → {templates, diagnostics}; POST /v1/focus/pipelines takes {template, goal_mode, goal_max_pushes}
 //	POST /v1/focus/templates/draft                {request, base_id?, draft?} → AI-drafted save/delete (focus_template_edit.go); PUT/DELETE /v1/focus/templates/{id} actually save or remove
 //
@@ -149,6 +150,10 @@ func focusAfterTurn(sessions *session.Store, sessionID, transcriptPath, reply st
 	if err != nil {
 		logger.Warn().Err(err).Str("session_id", sessionID).Msg("focus: update pipeline after turn failed")
 		return focuspipeline.Pipeline{}, none, false
+	}
+	if ok && blocks.PlanEdit != nil {
+		// Outside the pipeline store's lock, like focusWritePlanTasks.
+		focusPlanEdited(sessions, p, "focus_turn", nil, logger)
 	}
 	return p, next, ok
 }
@@ -280,6 +285,7 @@ func newFocusPipelineHandler(sessions *session.Store, worktrees *chatWorktrees, 
 	mux.HandleFunc("POST /v1/focus/pipelines/{id}/stop", api.stop)
 	mux.HandleFunc("POST /v1/focus/pipelines/{id}/qa", api.qa)
 	mux.HandleFunc("POST /v1/focus/pipelines/{id}/goal", api.goal)
+	mux.HandleFunc("POST /v1/focus/pipelines/{id}/plan", api.planEdit)
 	mux.HandleFunc("GET /v1/focus/templates", api.templates)
 	return mux
 }

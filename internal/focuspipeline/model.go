@@ -140,12 +140,19 @@ type Card struct {
 
 // Plan is what the plan stage proposes and G1 approves.
 type Plan struct {
-	Goal   string         `json:"goal"`
-	Tasks  []PlanTask     `json:"tasks"`
-	Stages []StageID      `json:"stages"`
-	Verify []string       `json:"verify"`
-	E2E    []string       `json:"e2e,omitempty"`
-	Limits map[string]int `json:"limits,omitempty"`
+	Goal   string     `json:"goal"`
+	Tasks  []PlanTask `json:"tasks"`
+	Stages []StageID  `json:"stages"`
+	Verify []string   `json:"verify"`
+	E2E    []string   `json:"e2e,omitempty"`
+	// E2ESetup are shell commands run in the session's folder before the
+	// end-to-end goals, every time: they build the working tree and bring
+	// the app under test to the screen, so the goals never check a copy
+	// that was installed or started before the change. E2ETeardown are
+	// run after the goals, whatever their result.
+	E2ESetup    []string       `json:"e2e_setup,omitempty"`
+	E2ETeardown []string       `json:"e2e_teardown,omitempty"`
+	Limits      map[string]int `json:"limits,omitempty"`
 }
 
 // PlanTask is one task of a plan and what "done" means for it.
@@ -436,6 +443,8 @@ func clonePlan(p Plan) Plan {
 	out.Stages = append([]StageID(nil), p.Stages...)
 	out.Verify = append([]string(nil), p.Verify...)
 	out.E2E = append([]string(nil), p.E2E...)
+	out.E2ESetup = append([]string(nil), p.E2ESetup...)
+	out.E2ETeardown = append([]string(nil), p.E2ETeardown...)
 	out.Limits = maps.Clone(p.Limits)
 	return out
 }

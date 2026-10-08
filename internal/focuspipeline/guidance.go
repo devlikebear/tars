@@ -7,7 +7,7 @@ import (
 
 // Block formats the agent must follow, quoted verbatim in the guidance.
 const (
-	planFormat     = `<focus-plan>{"goal":"…","tasks":[{"title":"…","done":"…"}],"stages":["plan","build","review","pr","pr_review","merge","release"],"verify":["make test"],"e2e":["@App do the thing in plain language"],"limits":{"build":3,"review":2,"pr":3,"release":3}}</focus-plan>`
+	planFormat     = `<focus-plan>{"goal":"…","tasks":[{"title":"…","done":"…"}],"stages":["plan","build","review","pr","pr_review","merge","release"],"verify":["make test"],"e2e":["@App do the thing in plain language"],"e2e_setup":["build and launch the changed app from this folder"],"e2e_teardown":["stop it"],"limits":{"build":3,"review":2,"pr":3,"release":3}}</focus-plan>`
 	reportFormat   = `<focus-report>{"summary":"…","decisions":[{"id":"d1","question":"…","options":["…","…"]}],"risks":["…"]}</focus-report>`
 	findingsFormat = `<focus-findings>[{"id":"f1","severity":"high|medium|low","file":"…","line":42,"title":"…","scenario":"…"}]</focus-findings>`
 	prFormat       = `<focus-pr>{"title":"…","body":"…"}</focus-pr>`
@@ -26,8 +26,18 @@ const stagePlanInstructions = "Do not edit files. Read the code you need, then p
 	"the verification commands that prove the work (shell commands); any end-to-end checks as plain-language goals " +
 	"for TARS's own computer_use, not shell commands — \"@AppName do the thing\" names the app, otherwise it acts on " +
 	"the frontmost window; a GUI check that needs a shell command (a Playwright script, for example) belongs in the " +
-	"verification commands instead, not here; loop limits. " +
+	"verification commands instead, not here; " + e2eSetupInstructions + " loop limits. " +
 	"The developer approves or edits the plan before any change is made."
+
+// e2eSetupInstructions say what computer_use does not do by itself: it
+// drives what is on screen, which without a setup is whatever copy of the
+// app was installed or started before the change.
+const e2eSetupInstructions = "computer_use only drives what is already on screen — it never builds or launches anything — " +
+	"so when an end-to-end goal checks this work's changes, also list in \"e2e_setup\" the shell commands that build the working folder " +
+	"and bring that build to the screen (start a long-running server in the background with its output redirected, on a port " +
+	"of its own, wait until it answers, then open its window), and in \"e2e_teardown\" the commands that stop it; the server runs " +
+	"them in the working folder before and after the goals every time, and each goal must name what e2e_setup opened — " +
+	"never an installed or already running copy of the app, which does not have the changes;"
 
 // stageInstructions are the specific instructions of each stage.
 var stageInstructions = map[StageID]string{
@@ -121,6 +131,9 @@ func Guidance(p Pipeline) string {
 	}
 	if p.Plan != nil && stage.ID != StagePlan {
 		p.writePlan(&b, stage)
+		b.WriteString("\n")
+		b.WriteString(planEditGuidance)
+		b.WriteString("\n")
 	}
 	b.WriteString("\n")
 	b.WriteString(blocks)
@@ -153,10 +166,31 @@ func (p Pipeline) writePlan(b *strings.Builder, stage Stage) {
 		}
 	}
 	if len(plan.E2E) > 0 {
-		b.WriteString("End-to-end goals (computer_use):\n")
+		writeCommands(b, "End-to-end setup (shell, run by the server in this folder before the goals):\n", plan.E2ESetup)
+		b.WriteString("End-to-end goals (computer_use, run by the server after verification):\n")
 		for _, cmd := range plan.E2E {
 			fmt.Fprintf(b, "- %s\n", cmd)
 		}
+		writeCommands(b, "End-to-end teardown (shell):\n", plan.E2ETeardown)
+		if len(plan.E2ESetup) == 0 {
+			b.WriteString(e2eNoSetupNote)
+		}
+	}
+}
+
+// e2eNoSetupNote warns that goals without a setup see only what is already
+// on screen.
+const e2eNoSetupNote = "No end-to-end setup is listed: the goals run against whatever is on screen, which is an installed or " +
+	"already running copy unless something launched this folder's build. A goal failing because the screen shows a copy " +
+	"without the changes is not a defect in the code — report it and ask the developer to change the plan.\n"
+
+func writeCommands(b *strings.Builder, title string, commands []string) {
+	if len(commands) == 0 {
+		return
+	}
+	b.WriteString(title)
+	for _, cmd := range commands {
+		fmt.Fprintf(b, "- %s\n", cmd)
 	}
 }
 

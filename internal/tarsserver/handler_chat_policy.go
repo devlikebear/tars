@@ -39,6 +39,12 @@ func buildChatToolRegistry(
 	// Tasks aggregator (session-scoped plan + tasks)
 	registry.Register(apptool.NewTasksTool(reqStore, requestWorkspaceDir, func() string { return sessionID }))
 
+	// Focus mode: the approved plan's edit tool, only for a session that
+	// has one (focus_plan_edit.go).
+	if focusPlanEditable(reqStore, sessionID) {
+		registry.Register(apptool.NewFocusPlanEditTool(newFocusPlanEditor(reqStore, sessionID, deps.tooling.Focus, deps.logger)))
+	}
+
 	// Session aggregator + subagents
 	registry.Register(apptool.NewSessionTool(reqStore, deps.tooling.AgentRuntime, func(_ context.Context) (tool.SessionStatus, error) {
 		return tool.SessionStatus{
