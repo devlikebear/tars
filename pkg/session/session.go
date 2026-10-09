@@ -1793,6 +1793,9 @@ func (s *Store) Delete(id string) error {
 	}
 
 	_ = os.Remove(s.TranscriptPath(id))
+	// The task file is the session's too; left behind, it was read again
+	// by everything that lists sessions with plans.
+	_ = os.Remove(s.tasksPath(id))
 	s.notifyDeleted(id)
 
 	return nil

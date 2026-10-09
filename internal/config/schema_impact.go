@@ -147,6 +147,12 @@ var configFieldImpactHints = map[string][]string{
 	"pulse_min_severity": {
 		"Raising the floor reduces notification noise; lowering it surfaces more signals.",
 	},
+	"session_auto_archive_days": {
+		"Sessions not updated for this many days are archived (hidden from the lists, nothing removed); 0 turns it off. Pinned sessions are never archived.",
+	},
+	"session_auto_delete_days": {
+		"Sessions archived and untouched for this many days are deleted with their transcript, tasks, checkpoints and ledger records; 0 turns it off. This cannot be undone.",
+	},
 	"pulse_decider": {
 		"rules classifies each tick in Go at no cost; llm asks the pulse_decider role's tier once per change in the signals.",
 	},

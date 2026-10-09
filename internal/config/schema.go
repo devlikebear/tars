@@ -40,6 +40,8 @@ func Schema() []FieldMeta {
 		f("workspace_dir", "Runtime", "string", "Workspace Directory", "Directory for workspace data and sessions"),
 		fsel("plan_clarify_mode", "Runtime", "Plan Clarify Mode", "How TARS handles ambiguous multi-step requests before drafting a plan: smart = LLM evaluates ambiguity itself; auto = always plan immediately; ask = always ask 1–3 clarifying questions first.", []string{"smart", "auto", "ask"}),
 		f("session_default_id", "Runtime", "string", "Default Session ID", "Override the default session identifier"),
+		f("session_auto_archive_days", "Runtime", "int", "Auto-archive Sessions (days)", "Archive a session not updated for this many days; 0 turns it off"),
+		f("session_auto_delete_days", "Runtime", "int", "Auto-delete Archived Sessions (days)", "Delete a session archived and untouched for this many days, with everything kept beside it; 0 turns it off"),
 		fsel("session_telegram_scope", "Runtime", "Telegram Session Scope", "Session scoping for Telegram messages", []string{"main", "per-chat"}),
 		f("style_directness_default", "Runtime", "int", "Style Directness Default", "Global default for the directness slider used in session style controls"),
 		f("style_humor_default", "Runtime", "int", "Style Humor Default", "Global default for the humor slider used in session style controls"),
@@ -273,6 +275,10 @@ func extractValue(yamlKey string, cfg Config) any {
 		return cfg.PlanClarifyMode
 	case "session_default_id":
 		return cfg.SessionDefaultID
+	case "session_auto_archive_days":
+		return cfg.SessionAutoArchiveDays
+	case "session_auto_delete_days":
+		return cfg.SessionAutoDeleteDays
 	case "session_telegram_scope":
 		return cfg.SessionTelegramScope
 	case "style_directness_default":

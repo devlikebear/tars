@@ -100,6 +100,8 @@ func defaultConfigValues() Config {
 		RuntimeConfig: RuntimeConfig{
 			WorkspaceDir:           DefaultWorkspaceDir(),
 			SessionTelegramScope:   defaultSessionTelegramScope,
+			SessionAutoArchiveDays: 7,
+			SessionAutoDeleteDays:  30,
 			StyleDirectnessDefault: defaultStyleDirectness,
 			StyleHumorDefault:      defaultStyleHumor,
 			StyleCautionDefault:    defaultStyleCaution,
