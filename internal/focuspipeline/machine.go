@@ -460,6 +460,9 @@ func (p Pipeline) approvedPrompt(gate string, next StageID) string {
 // means every stage), and a task names a work stage of the pipeline or
 // none.
 func (p Pipeline) fitPlan(plan Plan) Plan {
+	if !p.E2E {
+		plan.E2E, plan.E2ESetup, plan.E2ETeardown = nil, nil, nil
+	}
 	want := map[StageID]bool{StagePlan: true}
 	for _, id := range plan.Stages {
 		want[StageID(strings.TrimSpace(string(id)))] = true

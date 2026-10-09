@@ -124,7 +124,9 @@ func TestGuidanceCoversPlanEditAndEndToEndSetup(t *testing.T) {
 		!strings.Contains(g, "- make build && ./bin/app &") || !strings.Contains(g, "- pkill app") {
 		t.Fatalf("guidance with setup:\n%s", g)
 	}
-	if plan := Guidance(New("s1", "goal", t0)); !strings.Contains(plan, `"e2e_setup"`) || !strings.Contains(plan, "never builds or launches") || strings.Contains(plan, "<focus-plan-edit>") {
+	optedIn := New("s1", "goal", t0)
+	optedIn.E2E = true
+	if plan := Guidance(optedIn); !strings.Contains(plan, `"e2e_setup"`) || !strings.Contains(plan, "never builds or launches") || strings.Contains(plan, "<focus-plan-edit>") {
 		t.Fatalf("plan guidance:\n%s", plan)
 	}
 }

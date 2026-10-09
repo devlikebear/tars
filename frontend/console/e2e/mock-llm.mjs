@@ -143,7 +143,7 @@ function focusReply(text) {
       tasks: [{ title: 'Add greet()', done: 'greet() returns a greeting' }, { title: 'Test greet()', done: 'make test passes' }],
       stages: ['plan', 'build', 'review', 'pr', 'pr_review', 'merge'],
       verify: ['make test'],
-      e2e: text.includes(FOCUS_REVIEW) ? ['The greeting is shown'] : [],
+      e2e: text.includes(FOCUS_REVIEW) ? ['@E2EApp The greeting is shown'] : [],
       limits: { build: 3, review: 2, pr: 3 },
     }
     return `Here is the plan.\n\n<focus-plan>${JSON.stringify(plan)}</focus-plan>`
@@ -258,7 +258,7 @@ function computerUseDecision(messages) {
   if (typeof system?.content !== 'string' || !system.content.startsWith('You select the next single GUI action')) return null
   let state = ''
   try { state = JSON.parse(lastUserText(messages)).state ?? '' } catch { /* not an observation */ }
-  if (!state.includes('APP: E2E App')) return 'mock-llm: this screen did not come from the e2e cua-driver stub'
+  if (!state.includes('APP: E2EApp')) return 'mock-llm: this screen did not come from the e2e cua-driver stub'
   return JSON.stringify({ op: 'done', target: 'none', input_key: 'none', risky: false, done: true })
 }
 

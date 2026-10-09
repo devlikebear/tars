@@ -2534,7 +2534,7 @@ export type FocusGoalMode = {
   decisions?: number
   started_at?: string
   ended_at?: string
-  end_reason?: 'finished' | 'stopped' | 'exhausted' | 'pr_closed' | 'cancelled' | 'disabled'
+  end_reason?: 'finished' | 'stopped' | 'exhausted' | 'pr_closed' | 'e2e_failed' | 'cancelled' | 'disabled'
 }
 
 export type FocusPlan = {
@@ -2699,6 +2699,8 @@ export type FocusPipeline = {
   kickoff?: string
   // The template the stages came from; absent is the development one.
   template?: string
+  // True when the pipeline opted in to end-to-end goals (computer use).
+  e2e_enabled?: boolean
   goal_mode?: FocusGoalMode
 }
 

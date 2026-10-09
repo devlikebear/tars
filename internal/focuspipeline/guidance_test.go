@@ -14,6 +14,7 @@ import (
 func atStage(t *testing.T, id StageID) Pipeline {
 	t.Helper()
 	p := New("s1", "ship focus mode", t0)
+	p.E2E = true
 	if id == StagePlan {
 		return p
 	}

@@ -43,6 +43,11 @@ const (
 	GoalEndStopped   = "stopped"
 	GoalEndExhausted = "exhausted"
 	GoalEndPRClosed  = "pr_closed"
+	// GoalEndE2EFailed: the review is blocked on an end-to-end goal. A
+	// retry sends the agent after a failure that is usually not in the
+	// code (the wrong window, something the accessibility tree cannot
+	// show), so the gate is left to the developer.
+	GoalEndE2EFailed = "e2e_failed"
 	GoalEndCancelled = "cancelled"
 	GoalEndDisabled  = "disabled"
 )
@@ -150,7 +155,7 @@ func EndGoal(p Pipeline, reason string, now time.Time) (Pipeline, bool) {
 	// restore before this).
 	next.GoalMode.PermissionSet, next.GoalMode.RestorePermission = false, ""
 	switch reason {
-	case GoalEndExhausted, GoalEndPRClosed, GoalEndCancelled:
+	case GoalEndExhausted, GoalEndPRClosed, GoalEndE2EFailed, GoalEndCancelled:
 		next.addCard(CardNotice, 0, NoticeGoalEnded, map[string]any{
 			"reason": reason, "pushes": next.GoalMode.Pushes, "max_pushes": next.GoalMode.MaxPushes,
 		}, at)
@@ -273,6 +278,9 @@ func goalBlockedStep(p Pipeline, g GoalMode, spent bool, now time.Time) GoalStep
 	if fact.Reason == BlockedPRClosed {
 		// Someone closed the pull request: that is a decision, not a glitch.
 		return GoalStep{Kind: GoalEnd, Reason: GoalEndPRClosed}
+	}
+	if fact.Failure != nil && fact.Failure.E2E {
+		return GoalStep{Kind: GoalEnd, Reason: GoalEndE2EFailed}
 	}
 	if spent {
 		return GoalStep{Kind: GoalEnd, Reason: GoalEndExhausted}

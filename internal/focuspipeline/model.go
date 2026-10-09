@@ -254,6 +254,12 @@ type Pipeline struct {
 	// Template is the id of the template the stages came from (template.go);
 	// empty is the development template.
 	Template string `json:"template,omitempty"`
+	// E2E opts the pipeline in to end-to-end goals: the plan may list them
+	// (e2e, e2e_setup, e2e_teardown) and review runs them through
+	// computer_use after the verification commands. Off by default — the
+	// shell commands in verify are the checks; a plan's end-to-end fields
+	// are dropped and never run.
+	E2E bool `json:"e2e_enabled,omitempty"`
 	// GoalMode is the pipeline's goal mode (goal.go): the server decides
 	// every gate itself and pushes the pipeline to its end.
 	GoalMode *GoalMode `json:"goal_mode,omitempty"`

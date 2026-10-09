@@ -264,7 +264,7 @@ func (d *focusDriver) announceGoalEnd(sessionID string, p focuspipeline.Pipeline
 	switch reason {
 	case focuspipeline.GoalEndFinished:
 		title = "Goal reached"
-	case focuspipeline.GoalEndExhausted, focuspipeline.GoalEndPRClosed:
+	case focuspipeline.GoalEndExhausted, focuspipeline.GoalEndPRClosed, focuspipeline.GoalEndE2EFailed:
 		title, severity = "Goal mode stopped", "warning"
 	default:
 		return // the developer's own stop needs no announcement

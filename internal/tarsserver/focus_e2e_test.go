@@ -14,12 +14,14 @@ import (
 // fakeCuaDriver is the minimal computeruse.Driver a "done on the first
 // decision" run needs: one window, one empty (non-degraded) snapshot.
 type fakeCuaDriver struct {
-	resolvedApp string
+	resolvedApp  string
+	resolveCalls int
 }
 
 func (f *fakeCuaDriver) Ping(context.Context) error { return nil }
 func (f *fakeCuaDriver) ResolveWindow(_ context.Context, app string) (computeruse.Window, error) {
 	f.resolvedApp = app
+	f.resolveCalls++
 	return computeruse.Window{}, nil
 }
 func (f *fakeCuaDriver) Snapshot(context.Context, computeruse.Window, computeruse.SnapshotOpts) (computeruse.Snapshot, error) {
@@ -110,6 +112,7 @@ func TestFocusVerifyCommandsSplitsVerifyAndE2E(t *testing.T) {
 	now := time.Now()
 	plan := &focuspipeline.Plan{Verify: []string{"make test", " "}, E2E: []string{"@Notes write a note", ""}}
 	building := focuspipeline.New("s1", "g", now)
+	building.E2E = true
 	building.Plan = plan
 	if verify, e2e := focusVerifyCommands(building); len(verify) != 1 || verify[0] != "make test" || e2e != nil {
 		t.Fatalf("build stage: verify=%v e2e=%v", verify, e2e)
@@ -122,6 +125,29 @@ func TestFocusVerifyCommandsSplitsVerifyAndE2E(t *testing.T) {
 	}
 	if verify, e2e := focusVerifyCommands(focuspipeline.New("s2", "g", now)); verify != nil || e2e != nil {
 		t.Fatalf("no plan: verify=%v e2e=%v", verify, e2e)
+	}
+	// A pipeline that did not opt in never runs a goal, whatever its plan holds.
+	plain := reviewing
+	plain.E2E = false
+	if verify, e2e := focusVerifyCommands(plain); len(verify) != 1 || e2e != nil {
+		t.Fatalf("default pipeline in review: verify=%v e2e=%v", verify, e2e)
+	}
+}
+
+// A goal that names no app would act on whatever window is in front of the
+// developer, so it fails without touching the screen.
+func TestNewFocusE2ERunnerRefusesAGoalWithoutAnApp(t *testing.T) {
+	driver := &fakeCuaDriver{}
+	run := newFocusE2ERunner(computeruse.NewEngineWithBackend(driver, fakeDoneBackend{}, computeruse.DefaultConfig()))
+	result, err := run(context.Background(), "s1", "open the console and start a new task")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Passed || result.Skipped || !result.E2E || result.ExitCode != -1 || !strings.Contains(result.Excerpt, "names no app") {
+		t.Fatalf("result = %+v", result)
+	}
+	if driver.resolvedApp != "" || driver.resolveCalls != 0 {
+		t.Fatalf("the engine was run anyway: %+v", driver)
 	}
 }
 
