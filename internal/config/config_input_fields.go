@@ -64,6 +64,7 @@ var configInputFields = []configInputField{
 	stringField("pulse_active_hours", []string{"PULSE_ACTIVE_HOURS", "TARS_PULSE_ACTIVE_HOURS"}, func(cfg *Config) *string { return &cfg.PulseActiveHours }, strings.TrimSpace),
 	stringField("pulse_timezone", []string{"PULSE_TIMEZONE", "TARS_PULSE_TIMEZONE"}, func(cfg *Config) *string { return &cfg.PulseTimezone }, strings.TrimSpace),
 	stringField("pulse_min_severity", []string{"PULSE_MIN_SEVERITY", "TARS_PULSE_MIN_SEVERITY"}, func(cfg *Config) *string { return &cfg.PulseMinSeverity }, lowerTrimmedString),
+	stringField("pulse_decider", []string{"PULSE_DECIDER", "TARS_PULSE_DECIDER"}, func(cfg *Config) *string { return &cfg.PulseDecider }, lowerTrimmedString),
 	withYAMLPath(stringListField("pulse_allowed_autofixes_json", []string{"PULSE_ALLOWED_AUTOFIXES_JSON", "TARS_PULSE_ALLOWED_AUTOFIXES_JSON"}, func(cfg *Config) *[]string { return &cfg.PulseAllowedAutofixes }, parseJSONStringList), "automation.pulse.allowed_autofixes"),
 	boolField("pulse_notify_telegram", []string{"PULSE_NOTIFY_TELEGRAM", "TARS_PULSE_NOTIFY_TELEGRAM"}, func(cfg *Config) *bool { return &cfg.PulseNotifyTelegram }),
 	boolField("pulse_notify_session_events", []string{"PULSE_NOTIFY_SESSION_EVENTS", "TARS_PULSE_NOTIFY_SESSION_EVENTS"}, func(cfg *Config) *bool { return &cfg.PulseNotifySessionEvents }),

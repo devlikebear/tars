@@ -147,6 +147,9 @@ var configFieldImpactHints = map[string][]string{
 	"pulse_min_severity": {
 		"Raising the floor reduces notification noise; lowering it surfaces more signals.",
 	},
+	"pulse_decider": {
+		"rules classifies each tick in Go at no cost; llm asks the pulse_decider role's tier once per change in the signals.",
+	},
 	"pulse_allowed_autofixes_json": {
 		"Changing the Pulse autofix allowlist controls which deterministic autofix actions may run.",
 	},
