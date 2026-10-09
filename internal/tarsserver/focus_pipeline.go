@@ -30,7 +30,7 @@ import (
 //	POST /v1/focus/pipelines/{id}/qa              {card_id, question} → 202 {qa_session_id, turn} (focus_qa.go)
 //	POST /v1/focus/pipelines/{id}/goal            {enabled, max_pushes?} → {pipeline}; turning it on needs the admin token (focus_goal.go)
 //	POST /v1/focus/pipelines/{id}/plan            {goal?, verify?, e2e?, e2e_setup?, e2e_teardown?} → {pipeline, changed}; edits the approved plan, 409 before G1 or once finished (focus_plan_edit.go)
-//	GET  /v1/focus/templates                      → {templates, diagnostics}; POST /v1/focus/pipelines takes {template, goal_mode, goal_max_pushes}
+//	GET  /v1/focus/templates                      → {templates, diagnostics}; POST /v1/focus/pipelines takes {template, goal_mode, goal_max_pushes, e2e}
 //	POST /v1/focus/templates/draft                {request, base_id?, draft?} → AI-drafted save/delete (focus_template_edit.go); PUT/DELETE /v1/focus/templates/{id} actually save or remove
 //
 // Every chat turn of a session with a pipeline gets the stage's guidance
@@ -314,6 +314,10 @@ type focusCreateRequest struct {
 	// GoalMaxPushes as its push budget (0 = the default).
 	GoalMode      bool `json:"goal_mode,omitempty"`
 	GoalMaxPushes int  `json:"goal_max_pushes,omitempty"`
+	// E2E opts the pipeline in to end-to-end goals run through computer_use
+	// (focus_e2e.go). Off unless asked for: the plan's verify commands are
+	// the checks.
+	E2E bool `json:"e2e,omitempty"`
 	// ReleaseItems and ReleaseSince (kind release only) are the release
 	// train's list and cut-off the release ships.
 	ReleaseItems []string   `json:"release_items,omitempty"`
@@ -379,6 +383,7 @@ func (a *focusAPI) create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p := focuspipeline.NewFromTemplate(sess.ID, goal, tpl, a.now())
+	p.E2E = req.E2E
 	if req.GoalMode {
 		p = focuspipeline.StartGoal(p, req.GoalMaxPushes, a.now())
 	}

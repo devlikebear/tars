@@ -38,6 +38,7 @@ type Pipeline = {
   plan?: { stages: string[]; verify: string[] }
   stages: { id: string; status: string; iteration?: number }[]
   cards: { id: string; kind: string; state: string; decision?: string }[]
+  e2e_enabled?: boolean
 }
 
 // The server sends a pipeline's turns after the goal. In a session that never
@@ -51,6 +52,25 @@ async function autoMode(page: Page, id: string) {
 async function pipelineOf(page: Page, id: string): Promise<Pipeline> {
   return (await page.request.get(`/v1/focus/pipelines/${encodeURIComponent(id)}`)).json()
 }
+
+test('end-to-end goals are off unless the new task turns them on', async ({ page }) => {
+  const repo = newRepo('tars-e2e-focus-optin-')
+  const plain = await (await page.request.post('/v1/focus/pipelines', { data: { goal: 'no goals', cwd: repo } })).json()
+  expect(plain.pipeline.e2e_enabled ?? false).toBe(false)
+
+  await page.goto('/console/focus')
+  await page.getByTestId('focus-new-task-open').click()
+  await page.getByTestId('focus-new-folder').fill(repo)
+  await expect(page.getByTestId('focus-new-folder-status')).toHaveText('Git repository')
+  await page.getByTestId('focus-new-goal').fill(goal)
+  await expect(page.getByTestId('focus-new-e2e')).not.toBeChecked()
+  await expect(page.getByTestId('focus-new-e2e-hint')).toHaveCount(0)
+  await page.getByTestId('focus-new-e2e').check()
+  await expect(page.getByTestId('focus-new-e2e-hint')).toBeVisible()
+  await page.getByTestId('focus-new-start').click()
+  await expect(page).toHaveURL(/\/console\/focus\/[^/]+$/)
+  expect((await pipelineOf(page, sessionId(page))).e2e_enabled).toBe(true)
+})
 
 test('a focus task: plan gate, approve, report and decision cards, decide, then Advanced shows the same session', async ({ page }) => {
   const repo = newRepo('tars-e2e-focus-')
@@ -336,7 +356,7 @@ const reviewGoal = '[e2e:focus-plan] [e2e:focus-review] Add a greeting'
 // verification command; it returns the session id once triage is open.
 async function startReview(page: Page, approveInUI: boolean): Promise<string> {
   const repo = newRepo('tars-e2e-focus-review-')
-  const created = await (await page.request.post('/v1/focus/pipelines', { data: { goal: reviewGoal, cwd: repo } })).json()
+  const created = await (await page.request.post('/v1/focus/pipelines', { data: { goal: reviewGoal, cwd: repo, e2e: true } })).json()
   const id = created.session_id as string
   await autoMode(page, id)
   // The console sends the goal as the first turn; it records the base commit.

@@ -28,10 +28,21 @@ import (
 func newFocusE2ERunner(engine *computeruse.Engine) focusE2ERunner {
 	return func(ctx context.Context, sessionID, goal string) (focuspipeline.VerificationResult, error) {
 		app, text := splitE2EGoal(goal)
+		if app == "" {
+			// Without an app computer_use acts on the frontmost window: a
+			// verification run on the developer's own desktop would read
+			// and click whatever they happen to have open.
+			return focuspipeline.VerificationResult{Command: goal, ExitCode: -1, E2E: true, Excerpt: e2eNoAppExcerpt}, nil
+		}
 		res := engine.Run(ctx, computeruse.Request{Goal: text, App: app})
 		return e2eVerificationResult(goal, res), nil
 	}
 }
+
+// e2eNoAppExcerpt is the failure of a goal that names no app.
+const e2eNoAppExcerpt = "not run: the goal names no app. Start it with \"@AppName \" (the app e2e_setup opened) — " +
+	"without one computer_use would act on whatever window is in front. This is a problem with the plan, not the code: " +
+	"report it and ask the developer to edit the goal."
 
 // splitE2EGoal splits a plan e2e item's leading "@AppName" from its goal
 // text. Without one, app is "" (computer_use acts on the frontmost
@@ -54,7 +65,7 @@ func splitE2EGoal(item string) (app, goal string) {
 // (its "@AppName" prefix included, if any) so a failure card names exactly
 // what the plan asked for.
 func e2eVerificationResult(command string, res computeruse.Result) focuspipeline.VerificationResult {
-	r := focuspipeline.VerificationResult{Command: command, Excerpt: e2eExcerpt(res)}
+	r := focuspipeline.VerificationResult{Command: command, E2E: true, Excerpt: e2eExcerpt(res)}
 	switch res.Status {
 	case computeruse.StatusDone:
 		r.Passed = true

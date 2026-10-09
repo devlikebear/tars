@@ -12,7 +12,7 @@ tool=$1
 [ -n "$TARS_E2E_CUA_LOG" ] && echo "$tool" >> "$TARS_E2E_CUA_LOG" 2>/dev/null
 case "$tool" in
   list_windows)
-    printf '{"windows":[{"app_name":"E2E App","title":"Greeting","pid":4242,"window_id":7,"z_index":1,"is_on_screen":true,"bounds":{"x":0,"y":0,"width":800,"height":600}}]}\n'
+    printf '{"windows":[{"app_name":"E2EApp","title":"Greeting","pid":4242,"window_id":7,"z_index":1,"is_on_screen":true,"bounds":{"x":0,"y":0,"width":800,"height":600}}]}\n'
     ;;
   get_window_state)
     printf '{"element_count":2,"tree_markdown":"- AXWindow \\"Greeting\\"\\n  - AXStaticText = \\"Hello, e2e\\"\\n  - [0] AXButton \\"OK\\"","elements":[{"element_index":0,"element_token":"e2e-ok","role":"AXButton","label":"OK","enabled":true,"depth":1},{"element_index":1,"element_token":"e2e-text","role":"AXStaticText","label":"Hello, e2e","enabled":true,"depth":1}]}\n'

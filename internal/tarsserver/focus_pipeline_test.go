@@ -46,7 +46,9 @@ func focusSession(t *testing.T, store *session.Store, goal string) session.Sessi
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := focusStoreFor(store).Save(focuspipeline.New(sess.ID, goal, time.Now())); err != nil {
+	p := focuspipeline.New(sess.ID, goal, time.Now())
+	p.E2E = true // these tests cover a pipeline that opted in to end-to-end goals
+	if err := focusStoreFor(store).Save(p); err != nil {
 		t.Fatal(err)
 	}
 	return sess
@@ -91,6 +93,17 @@ func TestFocusCreate(t *testing.T) {
 	decodeInto(t, rec, &out)
 	if out.SessionID == "" || out.Pipeline.Goal != goal || out.Pipeline.Current != focuspipeline.StagePlan {
 		t.Fatalf("out = %+v", out)
+	}
+	if out.Pipeline.E2E {
+		t.Fatal("end-to-end goals must be off unless the request asks for them")
+	}
+	withE2E := focusRequest(t, h, http.MethodPost, "/v1/focus/pipelines", `{"goal":"with goals","cwd":`+jsonString(f.repo)+`,"e2e":true}`, true)
+	var opted struct {
+		Pipeline focuspipeline.Pipeline `json:"pipeline"`
+	}
+	decodeInto(t, withE2E, &opted)
+	if withE2E.Code != http.StatusCreated || !opted.Pipeline.E2E {
+		t.Fatalf("create with e2e: %d %+v", withE2E.Code, opted.Pipeline)
 	}
 	sess, err := f.store.Get(out.SessionID)
 	if err != nil {

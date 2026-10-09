@@ -12,7 +12,9 @@ func inReview(t *testing.T) Pipeline {
 	t.Helper()
 	plan := testPlan(StagePlan, StageBuild, StageReview, StagePR)
 	plan.E2E = []string{"make console-e2e"}
-	p, _, err := Apply(New("s1", "goal", t0), Event{Kind: EventTurnCompleted, Turn: 1, Blocks: Blocks{Plan: plan}}, t0)
+	fresh := New("s1", "goal", t0)
+	fresh.E2E = true
+	p, _, err := Apply(fresh, Event{Kind: EventTurnCompleted, Turn: 1, Blocks: Blocks{Plan: plan}}, t0)
 	if err != nil {
 		t.Fatal(err)
 	}

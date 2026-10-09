@@ -48,6 +48,9 @@ func EditPlan(p Pipeline, edit PlanEdit, now time.Time) (next Pipeline, changed 
 	if p.Plan == nil || p.Current == StagePlan || Finished(p) {
 		return p, false, ErrNoApprovedPlan
 	}
+	if !p.E2E && (edit.E2E != nil || edit.E2ESetup != nil || edit.E2ETeardown != nil) {
+		return p, false, fmt.Errorf("%w: end-to-end goals are off for this pipeline; put the check in verify as a shell command", ErrInvalidEdits)
+	}
 	if edit.Goal != nil && strings.TrimSpace(*edit.Goal) == "" {
 		return p, false, fmt.Errorf("%w: goal must not be empty", ErrInvalidEdits)
 	}
@@ -124,8 +127,15 @@ func listChanges(name string, before, after []string) []string {
 }
 
 // planEditGuidance tells a turn after G1 how the approved plan changes.
-const planEditGuidance = "The approved plan changes only when the developer asks for it in this conversation " +
-	"(a new goal, or a verification command or end-to-end goal to add, drop or reword): then call the focus_plan_edit tool if you have it, " +
-	"or else add this block before the others, with only the fields that change (a list replaces the whole list; [] clears it):\n" +
-	`<focus-plan-edit>{"goal":"…","verify":["…"],"e2e":["…"],"e2e_setup":["…"],"e2e_teardown":["…"]}</focus-plan-edit>` + "\n" +
-	"Never edit the plan on your own to get past a failing check."
+// The end-to-end fields are named only to a pipeline that has them.
+func (p Pipeline) planEditGuidance() string {
+	what, fields := "a verification command", ""
+	if p.E2E {
+		what, fields = "a verification command or end-to-end goal", `,"e2e":["…"],"e2e_setup":["…"],"e2e_teardown":["…"]`
+	}
+	return "The approved plan changes only when the developer asks for it in this conversation " +
+		"(a new goal, or " + what + " to add, drop or reword): then call the focus_plan_edit tool if you have it, " +
+		"or else add this block before the others, with only the fields that change (a list replaces the whole list; [] clears it):\n" +
+		`<focus-plan-edit>{"goal":"…","verify":["…"]` + fields + `}</focus-plan-edit>` + "\n" +
+		"Never edit the plan on your own to get past a failing check."
+}
