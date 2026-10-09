@@ -6,6 +6,10 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+### Fixed
+
+- **Session cost on `claude-code-cli` is no longer counted many times over.** The CLI reports a session's running total on every resumed turn, and TARS added that total to the ledger each time, so a ten-turn session showed the sum of ten growing totals — about $440 for a session that cost $19. Each turn is now recorded with what it added. The status bar, the board's monthly cost, usage limits and analytics all read the corrected figure; rows already in the ledger keep their old values, and the first resumed turn after a server restart is recorded without a cost.
+
 ## [0.57.1] - 2026-10-09
 
 ### Fixed
