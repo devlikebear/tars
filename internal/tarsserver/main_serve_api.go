@@ -53,11 +53,14 @@ type serveAPIRuntime struct {
 	reflectionRuntime       *reflection.Runtime
 	initiativeRuntime       *initiative.Runtime
 	workLedger              *workstore.Store
-	workScheduler           *workscheduler.Scheduler
-	telegramPoller          *telegramUpdatePoller
-	remoteAccessRunner      remoteaccess.Runner
-	remoteAccessTargetURL   string
-	focusDriver             *focusDriver
+	// workLedgerMaintenance waits for the ledger's background pass to stop;
+	// nil until startBackgrounds runs.
+	workLedgerMaintenance func()
+	workScheduler         *workscheduler.Scheduler
+	telegramPoller        *telegramUpdatePoller
+	remoteAccessRunner    remoteaccess.Runner
+	remoteAccessTargetURL string
+	focusDriver           *focusDriver
 }
 
 type apiRouteHandlers struct {
@@ -993,6 +996,8 @@ func startBackgrounds(ctx context.Context, runtime *serveAPIRuntime, logger zero
 	}
 	cfg := runtime.cfg
 
+	runtime.workLedgerMaintenance = startWorkLedgerMaintenance(ctx, runtime.workLedger, logger)
+
 	if err := runBackgroundStartupStep(logger, "remote_access_reconcile", func() error {
 		reconcileRemoteAccessOnStart(ctx, runtime, logger)
 		return nil
@@ -1216,6 +1221,10 @@ func shutdownRuntime(ctx context.Context, runtime *serveAPIRuntime) {
 	}
 	if runtime.server != nil {
 		_ = runtime.server.Shutdown(ctx)
+	}
+	if runtime.workLedgerMaintenance != nil {
+		// Its context is the serve context, already cancelled on this path.
+		runtime.workLedgerMaintenance()
 	}
 	if runtime.workLedger != nil {
 		_ = runtime.workLedger.Close()

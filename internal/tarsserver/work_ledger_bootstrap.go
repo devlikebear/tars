@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/devlikebear/tars/internal/workstore"
 	"github.com/rs/zerolog"
@@ -77,7 +78,9 @@ func bootstrapWorkLedger(ctx context.Context, opts workLedgerBootstrapOptions) (
 	if err := importAgentRuntimeSource(ctx, store, workspaceDir, runtimeDir, actorID, opts.Logger, &report); err != nil {
 		return fail(err)
 	}
-	report.Doctor, err = store.Doctor(ctx, defaultWorkspaceID)
+	// Startup waits only for the checks that do not read every stored
+	// document; runWorkLedgerMaintenance does the rest once the API is up.
+	report.Doctor, err = store.DoctorStructure(ctx, defaultWorkspaceID)
 	if err != nil {
 		return fail(fmt.Errorf("work ledger bootstrap: doctor failed: %w", err))
 	}
@@ -92,6 +95,72 @@ func bootstrapWorkLedger(ctx context.Context, opts workLedgerBootstrapOptions) (
 		Int("quarantined_sources", report.QuarantinedSources).
 		Msg("work ledger bootstrap completed")
 	return store, report, nil
+}
+
+// workLedgerMaintenanceReport is what one background pass after startup did.
+type workLedgerMaintenanceReport struct {
+	SessionRevisionsPruned int
+	Content                workstore.DoctorReport
+}
+
+// startWorkLedgerMaintenance runs runWorkLedgerMaintenance in the background
+// and returns a function that waits for it to stop once ctx is cancelled.
+// Call it before closing the store.
+func startWorkLedgerMaintenance(ctx context.Context, store *workstore.Store, logger zerolog.Logger) (wait func()) {
+	if store == nil {
+		return func() {}
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_, _ = runWorkLedgerMaintenance(ctx, store, logger)
+	}()
+	return func() { <-done }
+}
+
+// runWorkLedgerMaintenance does the ledger work whose cost grows with what is
+// stored, which is why it does not run before the API listens: on a ledger
+// of 11.8 GB it took the server two and a half minutes to answer, and every
+// "start server" during the wait began it again.
+//
+// It clears the backlog of superseded session revisions that ledgers written
+// before they were pruned still hold, then reads every stored page and
+// document. A finding is logged as an error; it cannot stop a server that is
+// already serving, and the same finding does not stop the ledger's readers.
+func runWorkLedgerMaintenance(ctx context.Context, store *workstore.Store, logger zerolog.Logger) (workLedgerMaintenanceReport, error) {
+	var report workLedgerMaintenanceReport
+	started := time.Now()
+	pruned, err := store.PruneSupersededSessionRevisions(ctx, defaultWorkspaceID)
+	if err != nil {
+		if ctx.Err() == nil {
+			logger.Error().Err(err).Msg("work ledger maintenance: prune superseded session revisions failed")
+		}
+		return report, err
+	}
+	report.SessionRevisionsPruned = pruned
+	report.Content, err = store.DoctorContent(ctx, defaultWorkspaceID)
+	if err != nil {
+		return report, err
+	}
+	if ctx.Err() != nil {
+		// A check cut short by shutdown reports the cancellation, not the ledger.
+		return report, ctx.Err()
+	}
+	event := logger.Info()
+	if !report.Content.Healthy {
+		event = logger.Error().Int("issues", len(report.Content.Issues))
+		for _, check := range report.Content.Checks {
+			if !check.OK {
+				event = event.Str("failed_check_"+check.Name, check.Detail)
+			}
+		}
+	}
+	event.
+		Int("session_revisions_pruned", pruned).
+		Bool("healthy", report.Content.Healthy).
+		Dur("duration", time.Since(started)).
+		Msg("work ledger maintenance completed")
+	return report, nil
 }
 
 func importLegacySessionSources(ctx context.Context, store *workstore.Store, workspaceDir, actorID string, logger zerolog.Logger, report *workLedgerBootstrapReport) error {

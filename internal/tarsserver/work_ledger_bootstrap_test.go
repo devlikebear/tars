@@ -2,6 +2,7 @@ package tarsserver
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -343,4 +344,95 @@ func mustReadFile(t *testing.T, path string) []byte {
 		t.Fatalf("read %q: %v", path, err)
 	}
 	return data
+}
+
+// Startup must not wait for the checks that read everything stored: on a
+// large ledger they kept the API from listening for minutes.
+func TestBootstrapWorkLedgerLeavesContentChecksToMaintenance(t *testing.T) {
+	t.Parallel()
+
+	workspaceDir := t.TempDir()
+	sessionsDir := filepath.Join(workspaceDir, "sessions")
+	mustMkdirAll(t, sessionsDir)
+	mustWriteFile(t, filepath.Join(sessionsDir, "sessions.json"), []byte(`{"session-1":{"id":"session-1","title":"Focus run"}}`))
+	tasksPath := filepath.Join(sessionsDir, "session-1.tasks.json")
+	opts := workLedgerBootstrapOptions{WorkspaceDir: workspaceDir, Logger: zerolog.Nop()}
+
+	// Three starts, each after the task file changed.
+	var store *workstore.Store
+	for revision := 1; revision <= 3; revision++ {
+		mustWriteFile(t, tasksPath, []byte(fmt.Sprintf(`{"tasks":[{"id":"task-1","title":"Revision %d","status":"pending"}]}`, revision)))
+		opened, report, err := bootstrapWorkLedger(context.Background(), opts)
+		if err != nil {
+			t.Fatalf("bootstrap revision %d: %v", revision, err)
+		}
+		if report.LegacySessionsImported != 1 || !report.Doctor.Healthy {
+			t.Fatalf("bootstrap revision %d report = %#v", revision, report)
+		}
+		for _, check := range report.Doctor.Checks {
+			switch check.Name {
+			case "quick_check", "json", "proofs":
+				t.Fatalf("startup ran the %s check, which reads everything stored", check.Name)
+			}
+		}
+		if revision < 3 {
+			if err := opened.Close(); err != nil {
+				t.Fatalf("close revision %d store: %v", revision, err)
+			}
+			continue
+		}
+		store = opened
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	// Only the newest revision of the session is kept.
+	works, err := store.ListWorks(context.Background(), workstore.ListWorksFilter{WorkspaceID: defaultWorkspaceID})
+	if err != nil || len(works) != 1 {
+		t.Fatalf("works=%d err=%v, want the session's newest revision only", len(works), err)
+	}
+
+	report, err := runWorkLedgerMaintenance(context.Background(), store, zerolog.Nop())
+	if err != nil {
+		t.Fatalf("run maintenance: %v", err)
+	}
+	if !report.Content.Healthy || report.SessionRevisionsPruned != 0 {
+		t.Fatalf("maintenance report = %#v", report)
+	}
+	ran := map[string]bool{}
+	for _, check := range report.Content.Checks {
+		ran[check.Name] = true
+	}
+	if !ran["quick_check"] || !ran["json"] || !ran["proofs"] {
+		t.Fatalf("maintenance checks = %v, want quick_check, json and proofs", ran)
+	}
+}
+
+func TestStartWorkLedgerMaintenanceStopsWithItsContext(t *testing.T) {
+	t.Parallel()
+
+	startWorkLedgerMaintenance(context.Background(), nil, zerolog.Nop())()
+
+	store, _, err := bootstrapWorkLedger(context.Background(), workLedgerBootstrapOptions{WorkspaceDir: t.TempDir(), Logger: zerolog.Nop()})
+	if err != nil {
+		t.Fatalf("bootstrap: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	wait := startWorkLedgerMaintenance(ctx, store, zerolog.Nop())
+	cancel()
+	wait()
+	// Nothing of the pass is still using the store.
+	if err := store.Close(); err != nil {
+		t.Fatalf("close after maintenance: %v", err)
+	}
+
+	cancelled, cancelNow := context.WithCancel(context.Background())
+	cancelNow()
+	reopened, _, err := bootstrapWorkLedger(context.Background(), workLedgerBootstrapOptions{WorkspaceDir: t.TempDir(), Logger: zerolog.Nop()})
+	if err != nil {
+		t.Fatalf("bootstrap: %v", err)
+	}
+	t.Cleanup(func() { _ = reopened.Close() })
+	if _, err := runWorkLedgerMaintenance(cancelled, reopened, zerolog.Nop()); err == nil {
+		t.Fatal("expected a cancelled maintenance pass to report the cancellation")
+	}
 }

@@ -6,10 +6,25 @@ migrations, and `0600` database permissions.
 
 The default path is `<workspace>/_shared/work-ledger/work-ledger.db`. On startup,
 TARS imports the current `sessions/sessions.json`, per-session `*.tasks.json`,
-and Agent Runtime `runs.json` documents as checksum-addressed, append-only
-revisions. Import never deletes or rewrites a source file. Session task saves
-and Agent Runtime snapshots continue to update their compatibility stores and
-then synchronize the new revision to the ledger.
+and Agent Runtime `runs.json` documents as checksum-addressed revisions. Import
+never deletes or rewrites a source file. Session task saves and Agent Runtime
+snapshots continue to update their compatibility stores and then synchronize
+the new revision to the ledger.
+
+Only the newest revision of each session and of each agent run is kept. A
+revision is a full copy of its source document (and, for a session, one proof
+per evidence record), so keeping every one made a ledger of 851 session
+revisions grow to 11.8 GB. An import deletes the revisions it replaces, with
+the steps, evidence artifacts, proofs and events they own; a revision that
+something else was attached to afterwards (an attempt, an approval, a schedule,
+a receipt, a capability record, an evaluation, a child Work) is kept.
+
+Startup waits for `Store.DoctorStructure` only. The checks that read everything
+stored (`Store.DoctorContent`: SQLite quick-check, JSON validity, proof
+lifecycle) run in the background once the API is listening, after clearing any
+backlog of superseded session revisions left by an older version
+(`work ledger maintenance completed` in the log; an unhealthy result is logged
+as an error and does not stop the server).
 
 ## Safety rules
 
@@ -96,6 +111,13 @@ manual incident recovery. A healthy report requires:
 
 `Doctor` is read-only. It reports issue codes and record IDs but does not repair
 or delete data automatically.
+
+`Doctor` holds off ledger writes while it runs and reads every stored document,
+so its time grows with the size of the ledger. `DoctorStructure` runs the checks
+that do not read stored documents (foreign keys, migrations, timestamps, the
+dependency graph, schedules, receipts, capabilities, import references) and
+`DoctorContent` the ones that do (quick-check, JSON, proofs) without holding off
+writes; together they are the full doctor.
 
 ## Quarantine a corrupt legacy source
 

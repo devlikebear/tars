@@ -332,8 +332,27 @@ type fileDigest struct {
 	SizeBytes int64  `json:"size_bytes"`
 }
 
+// maxListedArtifacts is how many per-file digests one proof may carry. A
+// proof is stored once in the session's task file and again in the work
+// ledger for every revision of it, so a list of the whole repository (1,749
+// files, 274 KB per verification command) grew task files to tens of
+// megabytes and the ledger to gigabytes.
+const maxListedArtifacts = 256
+
+// treeDigest stands in for the per-file list when it is not recorded: the
+// subject digest already commits to every path, digest and size in it.
+type treeDigest struct {
+	Path      string `json:"path"`
+	Digest    string `json:"digest"`
+	SizeBytes int64  `json:"size_bytes"`
+	Files     int    `json:"files"`
+}
+
 type pathSnapshot struct {
-	SubjectDigest       string
+	SubjectDigest string
+	// ArtifactDigestsJSON lists each file when the requirement declared its
+	// paths and they hold at most maxListedArtifacts files. A snapshot of the
+	// whole workspace, or a longer list, is one treeDigest entry instead.
 	ArtifactDigestsJSON json.RawMessage
 	ByPath              map[string]string
 	Count               int
@@ -398,11 +417,21 @@ func (engine *Engine) snapshotPaths(ctx context.Context, requested []string) (pa
 		return pathSnapshot{}, fmt.Errorf("encode artifact digests: %w", err)
 	}
 	byPath := make(map[string]string, len(ordered))
+	var totalBytes int64
 	for _, item := range ordered {
 		byPath[item.Path] = item.Digest
+		totalBytes += item.SizeBytes
+	}
+	subjectDigest := digestBytes(encoded)
+	recorded := json.RawMessage(encoded)
+	if len(requested) == 0 || len(ordered) > maxListedArtifacts {
+		recorded, err = json.Marshal([]treeDigest{{Path: ".", Digest: subjectDigest, SizeBytes: totalBytes, Files: len(ordered)}})
+		if err != nil {
+			return pathSnapshot{}, fmt.Errorf("encode artifact tree digest: %w", err)
+		}
 	}
 	return pathSnapshot{
-		SubjectDigest: digestBytes(encoded), ArtifactDigestsJSON: encoded,
+		SubjectDigest: subjectDigest, ArtifactDigestsJSON: recorded,
 		ByPath: byPath, Count: len(ordered),
 	}, nil
 }

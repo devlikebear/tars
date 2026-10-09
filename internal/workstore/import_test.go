@@ -409,31 +409,33 @@ func TestGetLegacySessionTasksProjectionUsesInsertionOrderWhenTimestampsTie(t *t
 	}
 }
 
-func TestImportLegacySessionCreatesNewAppendOnlySnapshotWhenSourceChanges(t *testing.T) {
+func TestImportLegacySessionKeepsOnlyTheNewestRevisionWhenSourceChanges(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
 	store := openTestStore(t, filepath.Join(t.TempDir(), "ledger.db"))
 	sessionJSON := []byte(`{"id":"session-1","title":"Session","created_at":"2026-08-01T00:00:00Z","updated_at":"2026-08-01T00:00:00Z"}`)
-	firstTasks := []byte(`{"tasks":[{"id":"task-1","title":"First","status":"pending"}]}`)
-	secondTasks := []byte(`{"tasks":[{"id":"task-1","title":"First","status":"completed"},{"id":"task-2","title":"Second","status":"pending"}]}`)
+	otherSessionJSON := []byte(`{"id":"session-2","title":"Other","created_at":"2026-08-01T00:00:00Z","updated_at":"2026-08-01T00:00:00Z"}`)
+	evidence := `{"id":"ev_1","type":"test_result","title":"Verification: make test","command":"make test","status":"passed"}`
+	firstTasks := []byte(`{"tasks":[{"id":"task-1","title":"First","status":"pending","evidence":[` + evidence + `]}]}`)
+	secondTasks := []byte(`{"tasks":[{"id":"task-1","title":"First","status":"completed","evidence":[` + evidence + `]},{"id":"task-2","title":"Second","status":"pending"}]}`)
+	importSession := func(session, tasks []byte) ImportResult {
+		t.Helper()
+		result, err := store.ImportLegacySession(ctx, LegacySessionImportInput{
+			WorkspaceID: "workspace-a", SessionJSON: session, TasksJSON: tasks,
+			SourcePath: "/legacy/session.json", ActorID: "migration",
+		})
+		if err != nil {
+			t.Fatalf("import snapshot: %v", err)
+		}
+		return result
+	}
 
-	first, err := store.ImportLegacySession(ctx, LegacySessionImportInput{
-		WorkspaceID: "workspace-a", SessionJSON: sessionJSON, TasksJSON: firstTasks,
-		SourcePath: "/legacy/session-1.json", ActorID: "migration",
-	})
-	if err != nil {
-		t.Fatalf("import first snapshot: %v", err)
-	}
-	second, err := store.ImportLegacySession(ctx, LegacySessionImportInput{
-		WorkspaceID: "workspace-a", SessionJSON: sessionJSON, TasksJSON: secondTasks,
-		SourcePath: "/legacy/session-1.json", ActorID: "migration",
-	})
-	if err != nil {
-		t.Fatalf("import changed snapshot: %v", err)
-	}
-	if first.Marker.Checksum == second.Marker.Checksum || first.WorkIDs[0] == second.WorkIDs[0] {
-		t.Fatalf("changed source did not create an append-only revision: first=%#v second=%#v", first, second)
+	other := importSession(otherSessionJSON, firstTasks)
+	first := importSession(sessionJSON, firstTasks)
+	second := importSession(sessionJSON, secondTasks)
+	if first.Marker.Checksum == second.Marker.Checksum || first.WorkIDs[0] == second.WorkIDs[0] || second.AlreadyImported {
+		t.Fatalf("changed source did not create a new revision: first=%#v second=%#v", first, second)
 	}
 	works, err := store.ListWorks(ctx, ListWorksFilter{WorkspaceID: "workspace-a"})
 	if err != nil {
@@ -443,8 +445,94 @@ func TestImportLegacySessionCreatesNewAppendOnlySnapshotWhenSourceChanges(t *tes
 	if err != nil {
 		t.Fatalf("list markers: %v", err)
 	}
+	// One work and one marker per session: the first revision of session-1
+	// is gone, the other session is untouched.
 	if len(works) != 2 || len(markers) != 2 {
-		t.Fatalf("append-only counts = works:%d markers:%d, want 2/2", len(works), len(markers))
+		t.Fatalf("counts = works:%d markers:%d, want 2/2", len(works), len(markers))
+	}
+	for _, work := range works {
+		if work.ID == first.WorkIDs[0] {
+			t.Fatalf("superseded revision %s was kept", work.ID)
+		}
+		if work.ID != second.WorkIDs[0] && work.ID != other.WorkIDs[0] {
+			t.Fatalf("unexpected work %s", work.ID)
+		}
+	}
+	// Nothing the superseded revision owned is left behind.
+	for table, want := range map[string]int{"steps": 3, "proofs": 2, "artifacts": 2} {
+		var rows, orphans int
+		if err := store.db.QueryRowContext(ctx, "SELECT COUNT(*), COALESCE(SUM(work_id NOT IN (SELECT id FROM works)), 0) FROM "+table).Scan(&rows, &orphans); err != nil || rows != want || orphans != 0 {
+			t.Fatalf("%s rows=%d orphans=%d err=%v, want %d rows and no orphans", table, rows, orphans, err, want)
+		}
+	}
+	var orphanEvents int
+	if err := store.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM events WHERE work_id NOT IN (SELECT id FROM works)").Scan(&orphanEvents); err != nil || orphanEvents != 0 {
+		t.Fatalf("orphan events=%d err=%v", orphanEvents, err)
+	}
+	projection, found, err := store.GetLegacySessionTasksProjection(ctx, "workspace-a", "session-1")
+	if err != nil || !found || !jsonEqual(projection, secondTasks) {
+		t.Fatalf("projection = %s found=%t err=%v, want the newest revision", projection, found, err)
+	}
+	report, err := store.Doctor(ctx, "workspace-a")
+	if err != nil || !report.Healthy {
+		t.Fatalf("doctor after pruning: healthy=%v err=%v report=%+v", report.Healthy, err, report)
+	}
+	if again := importSession(sessionJSON, secondTasks); !again.AlreadyImported {
+		t.Fatal("expected the newest revision to be recognized as already imported")
+	}
+}
+
+// A ledger written before session revisions were pruned holds every one of
+// them; PruneSupersededSessionRevisions clears that backlog.
+func TestPruneSupersededSessionRevisionsClearsABacklogAndKeepsAttachedRevisions(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := openTestStore(t, filepath.Join(t.TempDir(), "ledger.db"))
+	// An import now prunes as it goes, so build the backlog by importing
+	// each revision as its own session and then pointing them all at one.
+	var workIDs []string
+	for index := 0; index < 4; index++ {
+		sessionJSON := []byte(fmt.Sprintf(`{"id":"backlog-%d","title":"Session"}`, index))
+		tasksJSON := []byte(fmt.Sprintf(`{"tasks":[{"id":"task-1","title":"Revision %d","status":"pending","evidence":[{"id":"ev_1","type":"test_result","status":"passed"}]}]}`, index))
+		result, err := store.ImportLegacySession(ctx, LegacySessionImportInput{
+			WorkspaceID: "workspace-a", SessionJSON: sessionJSON, TasksJSON: tasksJSON, ActorID: "migration",
+		})
+		if err != nil {
+			t.Fatalf("import revision %d: %v", index, err)
+		}
+		workIDs = append(workIDs, result.WorkIDs[0])
+	}
+	if _, err := store.db.ExecContext(ctx, "UPDATE works SET source_id = 'session-1' WHERE source = ?", ImportSourceLegacySession); err != nil {
+		t.Fatalf("stack revisions on one session: %v", err)
+	}
+	// Something attached to the second revision after its import.
+	if _, err := store.db.ExecContext(ctx, "UPDATE works SET parent_work_id = ? WHERE id = ?", workIDs[1], workIDs[3]); err != nil {
+		t.Fatalf("attach a child work: %v", err)
+	}
+
+	pruned, err := store.PruneSupersededSessionRevisions(ctx, "workspace-a")
+	if err != nil || pruned != 2 {
+		t.Fatalf("pruned=%d err=%v, want the 2 unattached superseded revisions", pruned, err)
+	}
+	works, err := store.ListWorks(ctx, ListWorksFilter{WorkspaceID: "workspace-a"})
+	if err != nil || len(works) != 2 {
+		t.Fatalf("works=%d err=%v, want the newest revision and the one with a child", len(works), err)
+	}
+	for _, work := range works {
+		if work.ID != workIDs[1] && work.ID != workIDs[3] {
+			t.Fatalf("kept the wrong revision %s", work.ID)
+		}
+	}
+	report, err := store.Doctor(ctx, "workspace-a")
+	if err != nil || !report.Healthy {
+		t.Fatalf("doctor after backlog prune: healthy=%v err=%v report=%+v", report.Healthy, err, report)
+	}
+	if again, err := store.PruneSupersededSessionRevisions(ctx, "workspace-a"); err != nil || again != 0 {
+		t.Fatalf("second prune removed %d err=%v, want nothing left to prune", again, err)
+	}
+	if _, err := store.PruneSupersededSessionRevisions(ctx, " "); err == nil {
+		t.Fatal("expected a workspace id to be required")
 	}
 }
 
