@@ -98,6 +98,7 @@ func Schema() []FieldMeta {
 		f("pulse_active_hours", "Automation", "string", "Pulse Active Hours", "Pulse active hours window (HH:MM-HH:MM)"),
 		f("pulse_timezone", "Automation", "string", "Pulse Timezone", "Timezone for pulse active hours"),
 		fsel("pulse_min_severity", "Automation", "Pulse Min Severity", "Minimum severity for notifications", []string{"info", "warn", "error", "critical"}),
+		fsel("pulse_decider", "Automation", "Pulse Decider", "How a tick with signals is classified: rules (no model) or llm", []string{"rules", "llm"}),
 		f("pulse_allowed_autofixes_json", "Automation", "string_list", "Pulse Autofix Allowlist", "Autofixes the decider may invoke"),
 		f("pulse_notify_telegram", "Automation", "bool", "Pulse Notify Telegram", "Forward pulse notifications to telegram"),
 		f("pulse_notify_session_events", "Automation", "bool", "Pulse Notify Session Events", "Forward pulse notifications to the session event stream"),
@@ -368,6 +369,8 @@ func extractValue(yamlKey string, cfg Config) any {
 		return cfg.PulseTimezone
 	case "pulse_min_severity":
 		return cfg.PulseMinSeverity
+	case "pulse_decider":
+		return cfg.PulseDecider
 	case "pulse_allowed_autofixes_json":
 		return cfg.PulseAllowedAutofixes
 	case "pulse_notify_telegram":

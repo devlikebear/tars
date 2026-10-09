@@ -112,9 +112,12 @@ func (d *Decider) Decide(ctx context.Context, signals []Signal) (Decision, error
 	}
 
 	prompt := buildDeciderPrompt(signals, d.policy)
+	if deciderRepliesInText(resolution.Provider) {
+		return d.decideInText(ctx, client, prompt)
+	}
 	messages := []llm.ChatMessage{
 		{Role: "system", Content: pulseSystemPrompt},
-		{Role: "user", Content: prompt},
+		{Role: "user", Content: prompt + "\nCall pulse_decide exactly once with your classification."},
 	}
 	opts := llm.ChatOptions{
 		Tools:      []llm.ToolSchema{PulseDecideToolSchema()},
@@ -130,21 +133,89 @@ func (d *Decider) Decide(ctx context.Context, signals []Signal) (Decision, error
 	return parseDecideResponse(resp.Message, d.policy)
 }
 
+// deciderRepliesInText reports provider kinds that cannot be handed the
+// pulse_decide tool: CLI-backed providers run their own tool loop and never
+// see TARS tool schemas, so a tool-call request to them always came back
+// without one. They are asked for the same fields as one JSON object.
+func deciderRepliesInText(kind string) bool {
+	_, declared := llm.CapabilitiesFor(kind)
+	return declared && !llm.SupportsCapability(kind, llm.CapToolCalling)
+}
+
+// decideInText asks for the classification as a JSON object in the reply
+// text. The call is decision-only: none of the provider's own tools, one
+// turn, no project settings, which also keeps a CLI call small.
+func (d *Decider) decideInText(ctx context.Context, client llm.Client, prompt string) (Decision, error) {
+	messages := []llm.ChatMessage{
+		{Role: "system", Content: pulseTextSystemPrompt},
+		{Role: "user", Content: prompt + "\nReply with the JSON object only."},
+	}
+	resp, err := client.Chat(ctx, messages, llm.ChatOptions{
+		ToolChoice:               llm.ToolChoiceNone(),
+		ResponseFormat:           &llm.ResponseFormat{Type: llm.ResponseFormatJSONObject},
+		ClaudeCodePermissionMode: "plan",
+		ClaudeCodeHarness:        &llm.ClaudeCodeHarnessOptions{Tools: []string{}, SafeMode: true, StrictMCP: true, DisableChrome: true, MaxTurns: 1},
+	})
+	if err != nil {
+		return Decision{}, fmt.Errorf("pulse llm chat: %w", err)
+	}
+	object, ok := firstJSONObject(resp.Message.Content)
+	if !ok {
+		return Decision{}, fmt.Errorf("decider reply had no JSON object")
+	}
+	return parseDecisionArguments(object, d.policy)
+}
+
+// firstJSONObject returns the first complete JSON object in text, so a
+// reply wrapped in a code fence or a sentence still parses.
+func firstJSONObject(text string) (string, bool) {
+	start := strings.IndexByte(text, '{')
+	for start >= 0 {
+		var raw json.RawMessage
+		if err := json.NewDecoder(strings.NewReader(text[start:])).Decode(&raw); err == nil {
+			return string(raw), true
+		}
+		next := strings.IndexByte(text[start+1:], '{')
+		if next < 0 {
+			break
+		}
+		start += next + 1
+	}
+	return "", false
+}
+
+const pulseActions = `
+  - "ignore"  : the situation is benign, transient, or already resolving
+  - "notify"  : the user should be alerted, but no automatic action is appropriate
+  - "autofix" : an allowed autofix can safely resolve the issue
+`
+
+const pulseRules = `Rules:
+  - Always choose the least invasive action that addresses the signals.
+  - Only select "autofix" when the named autofix is in the allowed list.
+  - For stalled_chat signals, select "autofix" only when signal details include can_auto_resume=true.
+  - Set severity conservatively; prefer "warn" unless signals clearly exceed it.`
+
+// pulseTextSystemPrompt is pulseSystemPrompt for providers that cannot be
+// given the pulse_decide tool: the same classification and fields, as JSON.
+const pulseTextSystemPrompt = `You are the pulse watchdog classifier for the TARS system.
+You receive a bundle of signals from cron, agent runtime, disk, and telegram delivery.
+Your ONLY job is to reply with one JSON object choosing one of three actions:
+` + pulseActions + `
+Fields: "action" (ignore|notify|autofix) and "severity" (info|warn|error|critical) are required.
+"title" (short headline, required for notify), "summary" (1-3 sentences) and
+"autofix_name" (required for autofix, one of the allowed autofixes) are optional.
+
+` + pulseRules + `
+  - Do not use any tools. Reply with the JSON object and nothing else.`
+
 // pulseSystemPrompt is intentionally terse. The LLM here is a classifier,
 // not a general assistant: its only job is to pick one of three actions.
 const pulseSystemPrompt = `You are the pulse watchdog classifier for the TARS system.
 You receive a bundle of signals from cron, agent runtime, disk, and telegram delivery.
 Your ONLY job is to call the pulse_decide tool with one of three actions:
-
-  - "ignore"  : the situation is benign, transient, or already resolving
-  - "notify"  : the user should be alerted, but no automatic action is appropriate
-  - "autofix" : an allowed autofix can safely resolve the issue
-
-Rules:
-  - Always choose the least invasive action that addresses the signals.
-  - Only select "autofix" when the named autofix is in the allowed list.
-  - For stalled_chat signals, select "autofix" only when signal details include can_auto_resume=true.
-  - Set severity conservatively; prefer "warn" unless signals clearly exceed it.
+` + pulseActions + `
+` + pulseRules + `
   - Do not call any other tools. Do not include freeform commentary.`
 
 func buildDeciderPrompt(signals []Signal, policy DeciderPolicy) string {
@@ -165,7 +236,6 @@ func buildDeciderPrompt(signals []Signal, policy DeciderPolicy) string {
 		fmt.Fprintf(&b, "allowed_autofixes: %s\n", strings.Join(policy.AllowedAutofixes, ", "))
 	}
 	fmt.Fprintf(&b, "min_severity: %s\n", policy.MinSeverity)
-	b.WriteString("\nCall pulse_decide exactly once with your classification.")
 	return b.String()
 }
 
@@ -184,6 +254,12 @@ func parseDecideResponse(msg llm.ChatMessage, policy DeciderPolicy) (Decision, e
 	if call == nil {
 		return Decision{}, fmt.Errorf("decider did not call %s", PulseDecideToolName)
 	}
+	return parseDecisionArguments(call.Arguments, policy)
+}
+
+// parseDecisionArguments validates one classification, whether it arrived
+// as pulse_decide arguments or as the JSON object of a text reply.
+func parseDecisionArguments(arguments string, policy DeciderPolicy) (Decision, error) {
 	var raw struct {
 		Action      string         `json:"action"`
 		Severity    string         `json:"severity"`
@@ -192,7 +268,7 @@ func parseDecideResponse(msg llm.ChatMessage, policy DeciderPolicy) (Decision, e
 		Details     map[string]any `json:"details"`
 		AutofixName string         `json:"autofix_name"`
 	}
-	if err := json.Unmarshal([]byte(call.Arguments), &raw); err != nil {
+	if err := json.Unmarshal([]byte(arguments), &raw); err != nil {
 		return Decision{}, fmt.Errorf("parse pulse_decide arguments: %w", err)
 	}
 	action, err := ParseAction(raw.Action)

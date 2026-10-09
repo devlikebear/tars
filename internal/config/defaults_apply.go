@@ -394,8 +394,13 @@ func applyLLMPoolDefaults(cfg *Config) {
 	if cfg.LLMRoleDefaults == nil {
 		cfg.LLMRoleDefaults = map[string]string{}
 	}
-	if cfg.LLMRoleDefaults["computer_use"] == "" {
-		cfg.LLMRoleDefaults["computer_use"] = "light"
+	// Roles whose calls are small classifications run on the light tier
+	// unless the config says otherwise; without this they fell through to
+	// the default tier (standard).
+	for _, role := range []string{"computer_use", "pulse_decider"} {
+		if cfg.LLMRoleDefaults[role] == "" {
+			cfg.LLMRoleDefaults[role] = "light"
+		}
 	}
 }
 

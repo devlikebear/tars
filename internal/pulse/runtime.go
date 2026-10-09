@@ -21,6 +21,24 @@ type Config struct {
 	Timeout     time.Duration // decider LLM call timeout, default 2m
 	ActiveHours string        // "HH:MM-HH:MM" in Timezone, default "00:00-24:00"
 	Timezone    string        // IANA name or "Local"; default "Local"
+	// UseLLM hands classification to the LLM decider. Off by default: the
+	// rules in DecideByRules decide from the signals' own facts, at no cost.
+	UseLLM bool
+	// RedecideAfter is how long an unchanged set of signals is left alone
+	// before it is classified (and so notified or fixed) again. Default 6h.
+	RedecideAfter time.Duration
+}
+
+// retryAfterFailure is the first wait before an unchanged set of signals
+// is retried after a tick that failed or fixed nothing; it doubles per
+// attempt up to RedecideAfter.
+const retryAfterFailure = 5 * time.Minute
+
+func (c Config) effectiveRedecideAfter() time.Duration {
+	if c.RedecideAfter <= 0 {
+		return 6 * time.Hour
+	}
+	return c.RedecideAfter
 }
 
 func (c Config) effectiveInterval() time.Duration {
@@ -60,6 +78,12 @@ type Runtime struct {
 	stopCh   chan struct{}
 	doneCh   chan struct{}
 	tickHook func(outcome TickOutcome) // test hook
+
+	// What the last acted-on tick saw, so the same situation is not
+	// classified, notified or fixed again every interval.
+	lastFingerprint string
+	lastDecidedAt   time.Time
+	unsettled       int // consecutive ticks on this fingerprint that failed or fixed nothing
 }
 
 // NewRuntime constructs a runtime. Call Start to begin the tick loop.
@@ -205,9 +229,9 @@ func (r *Runtime) record(outcome TickOutcome) {
 // runTick is the synchronous per-tick pipeline. It never panics; any
 // error becomes a field on the returned outcome. The decider call is
 // wrapped in a timeout so a hung LLM does not block subsequent ticks.
-func (r *Runtime) runTick(parentCtx context.Context) TickOutcome {
+func (r *Runtime) runTick(parentCtx context.Context) (outcome TickOutcome) {
 	now := time.Now()
-	outcome := TickOutcome{At: now}
+	outcome = TickOutcome{At: now}
 
 	// 1. Active hours gate.
 	if ok, reason := r.withinActiveHours(now); !ok {
@@ -228,23 +252,46 @@ func (r *Runtime) runTick(parentCtx context.Context) TickOutcome {
 		return outcome
 	}
 
-	// 3. Decide (with timeout).
-	if r.deps.Decider == nil {
-		outcome.Err = "no_decider"
+	// 3. The same situation as the last acted-on tick is left alone: one
+	// stalled session used to be classified again every minute for as long
+	// as it stayed stalled.
+	fingerprint := Fingerprint(signals)
+	if r.recentlyDecided(fingerprint, now) {
+		outcome.Skipped = true
+		outcome.SkipReason = "signals_unchanged"
 		return outcome
 	}
-	decideCtx, cancel := context.WithTimeout(parentCtx, r.cfg.effectiveTimeout())
-	defer cancel()
-	outcome.DeciderInvoked = true
-	decision, err := r.deps.Decider.Decide(decideCtx, signals)
-	if err != nil {
-		outcome.Err = fmt.Sprintf("decider: %s", err.Error())
-		return outcome
+	defer func() {
+		r.noteDecided(fingerprint, now, outcome.Err == "" && outcome.AutofixErr == "" && !outcome.autofixIdle)
+	}()
+
+	// 4. Decide: by rule, or by the LLM when configured (with timeout).
+	var decision Decision
+	if !r.cfg.UseLLM {
+		policy := DeciderPolicy{}
+		if r.deps.Decider != nil {
+			policy = r.deps.Decider.policy
+		}
+		decision = DecideByRules(signals, policy)
+	} else {
+		if r.deps.Decider == nil {
+			outcome.Err = "no_decider"
+			return outcome
+		}
+		decideCtx, cancel := context.WithTimeout(parentCtx, r.cfg.effectiveTimeout())
+		defer cancel()
+		outcome.DeciderInvoked = true
+		var err error
+		decision, err = r.deps.Decider.Decide(decideCtx, signals)
+		if err != nil {
+			outcome.Err = fmt.Sprintf("decider: %s", err.Error())
+			return outcome
+		}
 	}
 	dc := decision
 	outcome.Decision = &dc
 
-	// 4. Act on decision.
+	// 5. Act on decision.
 	switch decision.Action {
 	case ActionIgnore:
 		// nothing to do
@@ -274,10 +321,47 @@ func (r *Runtime) runAutofix(ctx context.Context, outcome *TickOutcome, decision
 		return
 	}
 	outcome.AutofixOK = true
+	outcome.autofixIdle = !result.Changed
 	if outcome.Decision.Details == nil {
 		outcome.Decision.Details = map[string]any{}
 	}
 	outcome.Decision.Details["autofix_result"] = result
+}
+
+// recentlyDecided reports whether fingerprint is the situation the last
+// acted-on tick saw, and too recently to act on again: RedecideAfter when
+// that tick settled, a doubling retry wait when it failed or fixed nothing.
+func (r *Runtime) recentlyDecided(fingerprint string, now time.Time) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if fingerprint != r.lastFingerprint || r.lastDecidedAt.IsZero() {
+		return false
+	}
+	wait := r.cfg.effectiveRedecideAfter()
+	if r.unsettled > 0 {
+		retry := retryAfterFailure
+		for i := 1; i < r.unsettled && retry < wait; i++ {
+			retry *= 2
+		}
+		if retry < wait {
+			wait = retry
+		}
+	}
+	return now.Sub(r.lastDecidedAt) < wait
+}
+
+func (r *Runtime) noteDecided(fingerprint string, now time.Time, settled bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if fingerprint != r.lastFingerprint {
+		r.unsettled = 0
+	}
+	r.lastFingerprint, r.lastDecidedAt = fingerprint, now
+	if settled {
+		r.unsettled = 0
+	} else {
+		r.unsettled++
+	}
 }
 
 // withinActiveHours returns (true, "") if now is inside the configured
