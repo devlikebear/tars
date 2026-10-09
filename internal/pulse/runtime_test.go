@@ -29,8 +29,9 @@ func buildRuntime(t *testing.T, resp llm.ChatResponse, llmErr error) (*Runtime, 
 	reg.Register(&fakeAutofix{name: "compress_old_logs"})
 
 	// These tests exercise the LLM decider tick by tick, so the wait on
-	// unchanged signals is switched off.
-	rt := NewRuntime(Config{Enabled: true, Interval: time.Millisecond, Timeout: time.Second, UseLLM: true, RedecideAfter: time.Nanosecond},
+	// unchanged signals is switched off (a 1ns wait was not enough: two
+	// ticks land on the same clock reading on Windows).
+	rt := NewRuntime(Config{Enabled: true, Interval: time.Millisecond, Timeout: time.Second, UseLLM: true, RedecideAfter: -1},
 		Dependencies{
 			Scanner:   scanner,
 			Decider:   decider,

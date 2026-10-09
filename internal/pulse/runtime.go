@@ -25,7 +25,8 @@ type Config struct {
 	// rules in DecideByRules decide from the signals' own facts, at no cost.
 	UseLLM bool
 	// RedecideAfter is how long an unchanged set of signals is left alone
-	// before it is classified (and so notified or fixed) again. Default 6h.
+	// before it is classified (and so notified or fixed) again. Default 6h;
+	// negative acts on every tick.
 	RedecideAfter time.Duration
 }
 
@@ -332,6 +333,9 @@ func (r *Runtime) runAutofix(ctx context.Context, outcome *TickOutcome, decision
 // acted-on tick saw, and too recently to act on again: RedecideAfter when
 // that tick settled, a doubling retry wait when it failed or fixed nothing.
 func (r *Runtime) recentlyDecided(fingerprint string, now time.Time) bool {
+	if r.cfg.RedecideAfter < 0 {
+		return false
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if fingerprint != r.lastFingerprint || r.lastDecidedAt.IsZero() {
