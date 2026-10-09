@@ -279,6 +279,10 @@ func (s *Store) ImportLegacySession(ctx context.Context, input LegacySessionImpo
 	if err != nil {
 		return ImportResult{}, err
 	}
+	// The revision just written replaces this session's earlier ones.
+	if _, err := s.pruneSupersededRevisions(ctx, input.WorkspaceID, session.ID, sessionRevisions); err != nil {
+		return ImportResult{}, err
+	}
 	return importResult(marker, existed), nil
 }
 

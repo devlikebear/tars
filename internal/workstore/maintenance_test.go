@@ -920,3 +920,77 @@ func doctorCheckOK(report DoctorReport, name string) bool {
 	}
 	return false
 }
+
+// Startup waits for DoctorStructure only, so it must not read stored
+// documents; what it leaves out is what DoctorContent reports.
+func TestDoctorStructureAndContentSplitTheFullDoctor(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := openTestStore(t, filepath.Join(t.TempDir(), "ledger.db"))
+	result, err := store.ImportLegacySession(ctx, LegacySessionImportInput{
+		WorkspaceID: "workspace-a", ActorID: "migration",
+		SessionJSON: []byte(`{"id":"session-1","title":"Session"}`),
+		TasksJSON:   []byte(`{"tasks":[{"id":"task-1","title":"First","status":"pending"}]}`),
+	})
+	if err != nil {
+		t.Fatalf("import session: %v", err)
+	}
+	checkNames := func(report DoctorReport) map[string]bool {
+		names := make(map[string]bool, len(report.Checks))
+		for _, check := range report.Checks {
+			names[check.Name] = true
+		}
+		return names
+	}
+	full, err := store.Doctor(ctx, "workspace-a")
+	if err != nil || !full.Healthy {
+		t.Fatalf("full doctor healthy=%v err=%v", full.Healthy, err)
+	}
+	structure, err := store.DoctorStructure(ctx, "workspace-a")
+	if err != nil || !structure.Healthy {
+		t.Fatalf("structure doctor healthy=%v err=%v", structure.Healthy, err)
+	}
+	content, err := store.DoctorContent(ctx, "workspace-a")
+	if err != nil || !content.Healthy {
+		t.Fatalf("content doctor healthy=%v err=%v", content.Healthy, err)
+	}
+	structureNames, contentNames := checkNames(structure), checkNames(content)
+	for _, name := range []string{"quick_check", "json", "proofs"} {
+		if structureNames[name] || !contentNames[name] {
+			t.Fatalf("check %q: structure=%v content=%v, want content only", name, structureNames[name], contentNames[name])
+		}
+	}
+	if len(structure.Checks)+len(content.Checks) != len(full.Checks) {
+		t.Fatalf("structure %d + content %d checks, full doctor runs %d", len(structure.Checks), len(content.Checks), len(full.Checks))
+	}
+	for name := range checkNames(full) {
+		if structureNames[name] == contentNames[name] {
+			t.Fatalf("check %q must run in exactly one scope", name)
+		}
+	}
+
+	// A broken document is a content finding.
+	if _, err := store.db.ExecContext(ctx, "UPDATE works SET metadata_json = '{' WHERE id = ?", result.WorkIDs[0]); err != nil {
+		t.Fatalf("corrupt work metadata: %v", err)
+	}
+	if structure, err = store.DoctorStructure(ctx, "workspace-a"); err != nil || !structure.Healthy {
+		t.Fatalf("structure doctor read a stored document: healthy=%v err=%v report=%+v", structure.Healthy, err, structure)
+	}
+	if content, err = store.DoctorContent(ctx, "workspace-a"); err != nil || content.Healthy || !hasDoctorIssue(content, "invalid_json", "work", result.WorkIDs[0]) {
+		t.Fatalf("content doctor missed the broken document: err=%v report=%+v", err, content)
+	}
+
+	// A marker naming a missing work is a structure finding.
+	if _, err := store.db.ExecContext(ctx, `UPDATE import_markers SET work_ids_json = '["work-missing"]'`); err != nil {
+		t.Fatalf("break import reference: %v", err)
+	}
+	if structure, err = store.DoctorStructure(ctx, "workspace-a"); err != nil || structure.Healthy || len(structure.Issues) != 1 || structure.Issues[0].Code != "missing_import_work" {
+		t.Fatalf("structure doctor missed the dangling import reference: err=%v report=%+v", err, structure)
+	}
+	for _, doctor := range []func(context.Context, string) (DoctorReport, error){store.DoctorStructure, store.DoctorContent} {
+		if _, err := doctor(ctx, " "); err == nil {
+			t.Fatal("expected a workspace id to be required")
+		}
+	}
+}
