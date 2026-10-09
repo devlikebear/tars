@@ -106,6 +106,22 @@ type workLedgerMaintenanceReport struct {
 // startWorkLedgerMaintenance runs runWorkLedgerMaintenance in the background
 // and returns a function that waits for it to stop once ctx is cancelled.
 // Call it before closing the store.
+// workLedgerSessionCleanup is the session store's delete hook for the
+// ledger: a deleted session's imported task revisions go with it.
+func workLedgerSessionCleanup(store *workstore.Store, logger zerolog.Logger) func(string) {
+	if store == nil {
+		return nil
+	}
+	return func(sessionID string) {
+		// The hook runs under the session index lock; the ledger write does not.
+		go func() {
+			if _, err := store.DeleteSessionRevisions(context.Background(), defaultWorkspaceID, sessionID); err != nil {
+				logger.Warn().Err(err).Str("session_id", sessionID).Msg("work ledger: delete revisions of deleted session failed")
+			}
+		}()
+	}
+}
+
 func startWorkLedgerMaintenance(ctx context.Context, store *workstore.Store, logger zerolog.Logger) (wait func()) {
 	if store == nil {
 		return func() {}

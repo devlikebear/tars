@@ -56,6 +56,10 @@ type serveAPIRuntime struct {
 	// workLedgerMaintenance waits for the ledger's background pass to stop;
 	// nil until startBackgrounds runs.
 	workLedgerMaintenance func()
+	// sessionRetention archives and deletes old sessions in the background
+	// (session_retention.go); sessionRetentionWait waits for it to stop.
+	sessionRetention      *sessionRetention
+	sessionRetentionWait  func()
 	workScheduler         *workscheduler.Scheduler
 	telegramPoller        *telegramUpdatePoller
 	remoteAccessRunner    remoteaccess.Runner
@@ -477,7 +481,20 @@ func buildAPIMux(
 	attachSessionDeleteHooks(sessionStore,
 		checkpointCleanup(checkpointStore, sessionStore, logger),
 		focusPipelineCleanup(sessionStore, logger),
+		workLedgerSessionCleanup(workLedger, logger),
 	)
+	retention := &sessionRetention{
+		store:     sessionStore,
+		policy:    sessionRetentionPolicyFromDays(cfg.SessionAutoArchiveDays, cfg.SessionAutoDeleteDays),
+		defaultID: cfg.SessionDefaultID,
+		retire:    sessionWorktrees.retire,
+		notify:    dispatcher.Emit,
+		audit: func(entry ops.AutomationAuditEntry) {
+			_, _ = opsManager.RecordAutomationAudit(entry)
+		},
+		logger:    logger,
+		statePath: filepath.Join(cfg.WorkspaceDir, "_shared", "session-retention.json"),
+	}
 	go sweepOrphanFocusPipelines(sessionStore, logger)
 	// Synchronous, before the API serves: no driver run exists yet.
 	if n := interruptFocusPipelines(sessionStore, time.Now(), logger); n > 0 {
@@ -797,6 +814,7 @@ func buildAPIMux(
 		remoteAccessRunner:      remoteaccess.ExecRunner{},
 		remoteAccessTargetURL:   remoteaccess.DefaultTargetURL,
 		focusDriver:             focusDriver,
+		sessionRetention:        retention,
 	}, nil
 }
 
@@ -997,6 +1015,7 @@ func startBackgrounds(ctx context.Context, runtime *serveAPIRuntime, logger zero
 	cfg := runtime.cfg
 
 	runtime.workLedgerMaintenance = startWorkLedgerMaintenance(ctx, runtime.workLedger, logger)
+	runtime.sessionRetentionWait = runtime.sessionRetention.start(ctx)
 
 	if err := runBackgroundStartupStep(logger, "remote_access_reconcile", func() error {
 		reconcileRemoteAccessOnStart(ctx, runtime, logger)
@@ -1221,6 +1240,10 @@ func shutdownRuntime(ctx context.Context, runtime *serveAPIRuntime) {
 	}
 	if runtime.server != nil {
 		_ = runtime.server.Shutdown(ctx)
+	}
+	if runtime.sessionRetentionWait != nil {
+		// A delete in flight finishes before the ledger it writes to closes.
+		runtime.sessionRetentionWait()
 	}
 	if runtime.workLedgerMaintenance != nil {
 		// Its context is the serve context, already cancelled on this path.

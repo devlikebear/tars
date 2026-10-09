@@ -33,18 +33,26 @@ type AgentRuntimeAgent struct {
 }
 
 type RuntimeConfig struct {
-	WorkspaceDir           string
-	SessionDefaultID       string
-	SessionTelegramScope   string
-	StyleDirectnessDefault int
-	StyleHumorDefault      int
-	StyleCautionDefault    int
-	StyleAutonomyDefault   int
-	LogLevel               string
-	LogFile                string
-	LogRotateMaxSizeMB     int
-	LogRotateMaxDays       int
-	LogRotateMaxBackups    int
+	WorkspaceDir     string
+	SessionDefaultID string
+	// SessionAutoArchiveDays archives a session not updated for this many
+	// days; SessionAutoDeleteDays deletes one archived and untouched for
+	// this many more. 0 turns that step off.
+	SessionAutoArchiveDays int
+	SessionAutoDeleteDays  int
+	// Whether each was set explicitly, so an explicit 0 survives merging.
+	sessionAutoArchiveDaysSet bool
+	sessionAutoDeleteDaysSet  bool
+	SessionTelegramScope      string
+	StyleDirectnessDefault    int
+	StyleHumorDefault         int
+	StyleCautionDefault       int
+	StyleAutonomyDefault      int
+	LogLevel                  string
+	LogFile                   string
+	LogRotateMaxSizeMB        int
+	LogRotateMaxDays          int
+	LogRotateMaxBackups       int
 	// PlanClarifyMode controls whether the LLM asks clarifying questions
 	// before drafting a plan. One of "smart" (default), "auto", or "ask".
 	// See internal/prompt/builder.go for behavior per mode.

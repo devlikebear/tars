@@ -61,6 +61,19 @@ func (s *Store) PruneSupersededSessionRevisions(ctx context.Context, workspaceID
 	return s.pruneAndCompact(ctx, workspaceID, sessionRevisions)
 }
 
+// DeleteSessionRevisions deletes every ledger record imported from one
+// session's task file, the newest included: the session was deleted, so no
+// reader will ask for it and its source file is gone. The guards of
+// PruneSupersededSessionRevisions apply here too — a revision something was
+// attached to afterwards stays.
+func (s *Store) DeleteSessionRevisions(ctx context.Context, workspaceID, sessionID string) (int, error) {
+	workspaceID, sessionID = strings.TrimSpace(workspaceID), strings.TrimSpace(sessionID)
+	if workspaceID == "" || sessionID == "" {
+		return 0, fmt.Errorf("workstore: workspace id and session id are required to delete session revisions")
+	}
+	return s.pruneRevisions(ctx, workspaceID, sessionID, sessionRevisions, 1)
+}
+
 func (s *Store) pruneAndCompact(ctx context.Context, workspaceID string, revisions supersededRevisions) (int, error) {
 	pruned, err := s.pruneSupersededRevisions(ctx, workspaceID, "", revisions)
 	if err != nil {
@@ -104,6 +117,12 @@ var sessionRevisions = supersededRevisions{
 // pruneSupersededRevisions deletes every revision but the newest of each
 // record of one source, or of the single record sourceID when it is set.
 func (s *Store) pruneSupersededRevisions(ctx context.Context, workspaceID, sourceID string, revisions supersededRevisions) (int, error) {
+	return s.pruneRevisions(ctx, workspaceID, sourceID, revisions, 2)
+}
+
+// pruneRevisions deletes the revisions ranked fromRank and older, newest
+// first: 2 keeps the newest, 1 keeps none.
+func (s *Store) pruneRevisions(ctx context.Context, workspaceID, sourceID string, revisions supersededRevisions, fromRank int) (int, error) {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -118,6 +137,7 @@ func (s *Store) pruneSupersededRevisions(ctx context.Context, workspaceID, sourc
 		onlySource = " AND source_id = ?"
 		selectArgs = append(selectArgs, sourceID)
 	}
+	selectArgs = append(selectArgs, fromRank)
 	selectSuperseded := `
 		INSERT INTO pruned_revisions (id)
 		SELECT id FROM (
@@ -127,7 +147,7 @@ func (s *Store) pruneSupersededRevisions(ctx context.Context, workspaceID, sourc
 			FROM works
 			WHERE workspace_id = ? AND source = ?` + onlySource + `
 		) AS revision
-		WHERE revision_rank > 1
+		WHERE revision_rank >= ?
 			AND NOT EXISTS (SELECT 1 FROM works child WHERE child.parent_work_id = revision.id)
 			AND NOT EXISTS (
 				SELECT 1 FROM evaluation_runs evaluation

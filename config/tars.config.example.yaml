@@ -16,6 +16,15 @@ runtime:
   session:
     default_id: ""
     telegram_scope: main
+    # A session not updated for this many days is archived: hidden from the
+    # lists, nothing removed, and unarchiving brings it back. 0 turns it off.
+    auto_archive_days: 7
+    # A session archived and untouched for this many days is deleted with its
+    # transcript, tasks, pipeline, checkpoints and ledger records (worktree
+    # changes are committed to its branch first; files under artifacts/ stay).
+    # A pinned session and the main session are never archived or deleted.
+    # This cannot be undone; 0 turns it off.
+    auto_delete_days: 30
   style:
     # Global defaults for per-session TARS style sliders.
     directness_default: 70
