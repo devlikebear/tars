@@ -68,6 +68,16 @@ func TestFingerprintIgnoresDriftingNumbers(t *testing.T) {
 	if got := Fingerprint(signal(10, "s1", true)); got == base {
 		t.Fatal("an autofix becoming ready must read as a new situation")
 	}
+	listed := func(ids ...string) []Signal {
+		sessions := make([]map[string]any, 0, len(ids))
+		for _, id := range ids {
+			sessions = append(sessions, map[string]any{"session_id": id})
+		}
+		return []Signal{{Kind: SignalKindStalledChat, Severity: SeverityWarn, Details: map[string]any{"sessions": sessions}}}
+	}
+	if Fingerprint(listed("a", "b", "c")) != Fingerprint(listed("a", "c", "b")) {
+		t.Fatal("the same sessions in another order must not read as a new situation")
+	}
 	escalated := signal(10, "s1", false)
 	escalated[0].Severity = SeverityError
 	if got := Fingerprint(escalated); got == base {

@@ -93,14 +93,19 @@ func withoutNumbers(v any) any {
 		}
 		return out
 	case []any:
-		out := make([]any, 0, len(t))
+		// A list is compared as a set: the same sessions listed in another
+		// order are the same situation.
+		items := make([]string, 0, len(t))
 		for _, child := range t {
 			if _, number := child.(float64); number {
 				continue
 			}
-			out = append(out, withoutNumbers(child))
+			if raw, err := json.Marshal(withoutNumbers(child)); err == nil {
+				items = append(items, string(raw))
+			}
 		}
-		return out
+		slices.Sort(items)
+		return items
 	default:
 		return v
 	}
