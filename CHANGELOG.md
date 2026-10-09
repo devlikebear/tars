@@ -6,6 +6,8 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.58.0] - 2026-10-09
+
 ### Changed
 
 - **Focus end-to-end goals are off unless a task turns them on.** A plan's checks are now its `verify` shell commands only; a check of the running app goes there as a script (a Playwright spec, `curl` against the build). The New task screen has an "End-to-end goals" checkbox (`e2e: true` on `POST /v1/focus/pipelines`) for work that wants TARS's `computer_use` to drive the screen after them. Without it a pipeline is not told about `e2e`, drops the fields from a plan that lists them, and never runs a goal. They were on for every task, and two days of runs showed why that was wrong as a default: a goal costs a model call per step, runs on your own desktop, reads only the accessibility tree (so it could not confirm what a screenshot or a video shows, and lost everything past the first few hundred elements of a long page), and kept a review looping on failures no code change could fix. ([#1179](https://github.com/devlikebear/tars/pull/1179))
