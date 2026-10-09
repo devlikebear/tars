@@ -70,16 +70,28 @@ export function normalizeCompanionLocale(locale?: string | null): CompanionLocal
 // Order: approvals waiting (pending, then queued), then recent failures,
 // then running turns. A failure is listed ahead of a running turn on
 // purpose — of the two, it is the more urgent signal.
+//
+// `activeSessionId` is the session the chat route currently has on screen
+// (undefined/null when nothing is, e.g. the board). Its pending approval
+// and running turn are left out of lines, the badge, and the mood: that
+// session's own approval card is already visible in its thread, and its
+// running turn is already visible as the streaming reply, so CASE would
+// otherwise duplicate what the user is already looking at (and, worse,
+// cover the very panel they are using — #1194). Queued (unattended)
+// approvals have no card in any thread, so they still show for the active
+// session too; switching to another session brings its own lines back.
 export function companionState(
   activity: ActivityMap,
   failures: CompanionFailure[],
   now: number,
   text: CompanionLineText,
+  activeSessionId?: string | null,
 ): CompanionSnapshot {
   const entries = Object.entries(activity).sort(([a], [b]) => a.localeCompare(b))
+  const visibleEntries = entries.filter(([sessionId]) => sessionId !== activeSessionId)
   const lines: CompanionLine[] = []
 
-  for (const [sessionId, state] of entries) {
+  for (const [sessionId, state] of visibleEntries) {
     if (state.pending > 0) {
       lines.push({
         key: `pending:${sessionId}`,
@@ -108,7 +120,7 @@ export function companionState(
       path: failure.sessionId ? `/console/chat/${failure.sessionId}` : '/console/ops',
     })
   }
-  for (const [sessionId, state] of entries) {
+  for (const [sessionId, state] of visibleEntries) {
     if (state.running) {
       lines.push({
         key: `running:${sessionId}`,
@@ -119,7 +131,7 @@ export function companionState(
     }
   }
 
-  const pendingTotal = entries.reduce((sum, [, s]) => sum + s.pending, 0)
+  const pendingTotal = visibleEntries.reduce((sum, [, s]) => sum + s.pending, 0)
   const queuedTotal = entries.reduce((sum, [, s]) => sum + s.queued, 0)
   const badge = pendingTotal + queuedTotal + activeFailures.length
   const mood: CompanionMood =
@@ -127,7 +139,7 @@ export function companionState(
       ? 'error'
       : pendingTotal + queuedTotal > 0
         ? 'warn'
-        : entries.some(([, s]) => s.running)
+        : visibleEntries.some(([, s]) => s.running)
           ? 'focus'
           : 'idle'
 
@@ -184,6 +196,15 @@ export function companionWaitingKeys(lines: CompanionLine[]): Set<string> {
 export function companionShouldOpen(primed: boolean, prevWaitingKeys: ReadonlySet<string>, lines: CompanionLine[]): boolean {
   if (!primed) return false
   return lines.some((line) => line.kind !== 'running' && !prevWaitingKeys.has(line.key))
+}
+
+// companionShouldAutoClose is true once a bubble that opened itself has
+// nothing left to show it for (its last approval wait or failure is gone —
+// answered, navigated to, dismissed, or expired). A bubble the user opened
+// by hand (`autoOpened: false`) is never closed by this: only the thing
+// that opened it on its own closes it on its own.
+export function companionShouldAutoClose(autoOpened: boolean, lines: CompanionLine[]): boolean {
+  return autoOpened && companionWaitingKeys(lines).size === 0
 }
 
 export interface CompanionHandoff {

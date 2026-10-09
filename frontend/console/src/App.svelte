@@ -56,6 +56,11 @@
   let zenActive = $derived(zenMode.active && route.view === 'chat' && !needsSetup && !loginRequired)
   let focusChrome = $derived(focusChromeHidden(route))
   let showCompanion = $derived(!focusChrome && shouldShowCompanion({ enabled: companionEnabled, needsSetup, loginRequired, zenActive }))
+  // The session the chat route has on screen right now — same signal
+  // sessionActivity.setViewing uses to mark a session as seen (#971).
+  // CASE leaves this session's own pending approval and running turn out
+  // of its lines/badge: its thread already shows them (#1194).
+  let activeChatSessionId = $derived(route.view === 'chat' ? chatSession.activeSessionId : null)
 
   function navigate(path: string) {
     landing = false
@@ -250,7 +255,7 @@
   })
   sessionActivity.onOpenSession = (id) => navigate(`/console/chat/${encodeURIComponent(id)}`)
   $effect(() => {
-    const viewing = route.view === 'chat' ? chatSession.activeSessionId : null
+    const viewing = activeChatSessionId
     untrack(() => sessionActivity.setViewing(viewing))
   })
 
@@ -576,6 +581,7 @@
       <CompanionPet
         activity={sessionActivity.activity}
         failures={companionFailures}
+        activeSessionId={activeChatSessionId}
         routeView={route.view}
         onNavigate={navigate}
         onDismissFailure={handleDismissCompanionFailure}

@@ -2,6 +2,7 @@
   import { onDestroy } from 'svelte'
   import { t } from '../i18n'
   import {
+    companionShouldAutoClose,
     companionShouldOpen,
     companionState,
     companionWaitingKeys,
@@ -13,13 +14,26 @@
   interface Props {
     activity?: ActivityMap
     failures?: CompanionFailure[]
+    // The session the chat route currently has on screen — its own
+    // pending approval and running turn are already visible there, so
+    // CASE leaves them out (queued approvals still show; they have no
+    // card in any thread).
+    activeSessionId?: string | null
     routeView?: string
     onNavigate?: (path: string) => void
     onDismissFailure?: (key: string) => void
     onAsk?: (prompt: string) => void
   }
 
-  let { activity = {}, failures = [], routeView = 'home', onNavigate, onDismissFailure, onAsk }: Props = $props()
+  let {
+    activity = {},
+    failures = [],
+    activeSessionId = null,
+    routeView = 'home',
+    onNavigate,
+    onDismissFailure,
+    onAsk,
+  }: Props = $props()
   let open = $state(false)
   let draft = $state('')
   // Reactive, not a one-off Date.now(): an expiring failure must actually
@@ -36,15 +50,28 @@
   // fresh login) is already-there, not new, so it must not pop the bubble
   // open — only a wait that appears after that counts as new.
   let primed = false
+  // Whether the *current* open=true came from the bubble opening itself,
+  // not from the user clicking the button. Only a self-opened bubble ever
+  // closes itself; the user's own open is left alone either way.
+  let autoOpened = false
   let failureTimer: ReturnType<typeof setInterval> | null = null
-  let snapshot = $derived(companionState(activity, failures, now, $t.companion.lines))
+  let snapshot = $derived(companionState(activity, failures, now, $t.companion.lines, activeSessionId))
   let hasFailureLines = $derived(snapshot.lines.some((line) => line.kind === 'failure'))
 
   // The bubble opens by itself only for a new approval wait or a new
-  // failure — never for a running turn or one finishing.
+  // failure — never for a running turn or one finishing — and closes
+  // itself again once the thing that opened it is gone (answered,
+  // navigated to, dismissed, or expired).
   $effect(() => {
     const lines = snapshot.lines
-    if (companionShouldOpen(primed, prevWaitingKeys, lines)) open = true
+    if (companionShouldOpen(primed, prevWaitingKeys, lines)) {
+      open = true
+      autoOpened = true
+    }
+    if (companionShouldAutoClose(autoOpened, lines)) {
+      open = false
+      autoOpened = false
+    }
     prevWaitingKeys = companionWaitingKeys(lines)
     primed = true
   })
@@ -70,10 +97,13 @@
 
   function toggleOpen() {
     open = !open
+    // Whatever opened or closed it now was the user's own click.
+    autoOpened = false
   }
 
   function closeBubble() {
     open = false
+    autoOpened = false
   }
 
   function goToLine(line: CompanionLine) {
@@ -82,6 +112,7 @@
     // instead of sitting there once the user has already gone to look.
     if (line.kind === 'failure') onDismissFailure?.(line.key)
     open = false
+    autoOpened = false
   }
 
   function dismissFailure(key: string) {

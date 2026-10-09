@@ -6,12 +6,14 @@ import {
   companionEnabledFromConfigValues,
   companionFailureFromEvent,
   companionHandoffForAsk,
+  companionShouldAutoClose,
   companionShouldOpen,
   companionState,
   companionWaitingKeys,
   pruneFailures,
   shouldShowCompanion,
   type CompanionFailure,
+  type CompanionLine,
 } from '../src/lib/companion.ts'
 import { companionEn } from '../src/i18n/sections/companion.ts'
 import type { ActivityMap } from '../src/lib/sessionBoard.ts'
@@ -39,6 +41,7 @@ test('console app wires the floating companion to live chat activity', () => {
   assert.match(appSource, /companionFailureFromEvent/)
   assert.match(appSource, /activity=\{sessionActivity\.activity\}/)
   assert.match(appSource, /failures=\{companionFailures\}/)
+  assert.match(appSource, /activeSessionId=\{activeChatSessionId\}/)
   assert.match(appSource, /onNavigate=\{navigate\}/)
   assert.match(appSource, /onDismissFailure=\{handleDismissCompanionFailure\}/)
   assert.match(appSource, /onAsk=\{handleCompanionAsk\}/)
@@ -130,6 +133,37 @@ test('a running turn alone is the focus mood with a line and no badge', () => {
   ])
 })
 
+test('the session the chat route is currently showing is left out of pending and running — its own thread already shows them (#1194)', () => {
+  const activity: ActivityMap = {
+    active: { running: true, pending: 1, queued: 0, title: 'On screen' },
+    other: { running: false, pending: 1, queued: 0, title: 'Elsewhere' },
+  }
+  const snapshot = companionState(activity, [], now, text, 'active')
+  assert.equal(snapshot.mood, 'warn')
+  assert.equal(snapshot.badge, 1)
+  assert.deepEqual(snapshot.lines, [
+    { key: 'pending:other', kind: 'pending', label: text.pending(1, 'Elsewhere'), path: '/console/chat/other' },
+  ])
+
+  // Moving away from "active" (no activeSessionId filter, or a different
+  // one) brings its lines back.
+  const afterLeaving = companionState(activity, [], now, text, null)
+  assert.deepEqual(afterLeaving.lines, [
+    { key: 'pending:active', kind: 'pending', label: text.pending(1, 'On screen'), path: '/console/chat/active' },
+    { key: 'pending:other', kind: 'pending', label: text.pending(1, 'Elsewhere'), path: '/console/chat/other' },
+    { key: 'running:active', kind: 'running', label: text.running('On screen'), path: '/console/chat/active' },
+  ])
+})
+
+test('a queued (unattended) approval still shows for the currently active session — it has no card in any thread', () => {
+  const activity: ActivityMap = { active: { running: false, pending: 0, queued: 1, title: 'On screen' } }
+  const snapshot = companionState(activity, [], now, text, 'active')
+  assert.equal(snapshot.badge, 1)
+  assert.deepEqual(snapshot.lines, [
+    { key: 'queued:active', kind: 'queued', label: text.queued(1, 'On screen'), path: '/console/ops' },
+  ])
+})
+
 test('a recent failure is the error mood, outranking warn and focus', () => {
   const failures: CompanionFailure[] = [{ key: 'failure:1', sessionId: 's4', label: 'Cron failed', at: now }]
   const activity: ActivityMap = { s4: { running: true, pending: 1, queued: 0, title: 'Mixed session' } }
@@ -147,6 +181,14 @@ test('a sessionless failure points at Ops', () => {
   const failures: CompanionFailure[] = [{ key: 'failure:2', label: 'Watchdog failed', at: now }]
   const snapshot = companionState({}, failures, now, text)
   assert.equal(snapshot.lines[0].path, '/console/ops')
+})
+
+test('a failure for the currently active session still shows — unlike pending/running, it has no card in that thread', () => {
+  const failures: CompanionFailure[] = [{ key: 'failure:3', sessionId: 'active', label: 'Cron failed', at: now }]
+  const snapshot = companionState({}, failures, now, text, 'active')
+  assert.deepEqual(snapshot.lines, [
+    { key: 'failure:3', kind: 'failure', label: text.failure('Cron failed'), path: '/console/chat/active' },
+  ])
 })
 
 test('failures older than 30 minutes are dropped, and only the newest 5 are kept', () => {
@@ -227,6 +269,25 @@ test('the bubble opens itself only for a new approval wait or a new failure', ()
   // Unprimed, the same mixed lines still do not open — the mount guard
   // applies regardless of what is in prevWaitingKeys.
   assert.equal(companionShouldOpen(false, afterPending, mixedLines), false)
+})
+
+test('a bubble that opened itself closes itself once there is nothing left to show it for (#1194)', () => {
+  const pendingLines = companionState({ s1: { running: false, pending: 1, queued: 0, title: 't' } }, [], now, text).lines
+  const runningLines = companionState({ s1: { running: true, pending: 0, queued: 0, title: 't' } }, [], now, text).lines
+  const noLines: CompanionLine[] = []
+
+  // Self-opened (autoOpened: true) and the wait is answered/dismissed/
+  // expired: nothing but a running line, or nothing at all, is left.
+  assert.equal(companionShouldAutoClose(true, noLines), true)
+  assert.equal(companionShouldAutoClose(true, runningLines), true)
+
+  // Self-opened, but the wait that opened it (or another one) is still there.
+  assert.equal(companionShouldAutoClose(true, pendingLines), false)
+
+  // The user opened it by hand (autoOpened: false): never auto-closed,
+  // whether or not anything is waiting.
+  assert.equal(companionShouldAutoClose(false, noLines), false)
+  assert.equal(companionShouldAutoClose(false, pendingLines), false)
 })
 
 test('companion ask hands off the user words, with the guidance kept apart', () => {
