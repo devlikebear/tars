@@ -24,6 +24,7 @@ import { sessionHealthEn } from './sections/sessionHealth.ts'
 import { contextPanelsEn } from './sections/contextPanels.ts'
 import { tasksPanelEn } from './sections/tasksPanel.ts'
 import { agentRuntimeRunEn } from './sections/agentRuntimeRun.ts'
+import { companionEn } from './sections/companion.ts'
 
 export const en = {
   common: {
@@ -1540,4 +1541,5 @@ export const en = {
   contextPanels: contextPanelsEn,
   tasksPanel: tasksPanelEn,
   agentRuntimeRun: agentRuntimeRunEn,
+  companion: companionEn,
 } satisfies Translations

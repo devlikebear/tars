@@ -13,14 +13,12 @@
   import { defaultModeRedirect, focusChromeHidden, focusOwnsShortcut, onboardingModeUpdate } from './lib/focus'
   import type { AuthWhoamiResponse } from './lib/types'
   import {
-    companionAskHandoffReaction,
     companionEnabledFromConfigValues,
+    companionFailureFromEvent,
     companionHandoffForAsk,
-    companionReactionForStimulus,
-    companionReactionFromEvent,
+    pruneFailures,
     shouldShowCompanion,
-    type CompanionReaction,
-    type CompanionStimulus,
+    type CompanionFailure,
   } from './lib/companion'
   import { locale } from './i18n'
   import { zenMode } from './lib/zenMode.svelte'
@@ -52,9 +50,8 @@
   // True until the user navigates: only the landing on /console follows
   // console_default_mode, so the board stays reachable from the nav.
   let landing = true
-  let companionReaction = $state<CompanionReaction | null>(null)
+  let companionFailures = $state<CompanionFailure[]>([])
   let stopGlobalStream: (() => void) | null = null
-  let companionReactionTimer: ReturnType<typeof setTimeout> | null = null
   let authRole = $derived(authInfo?.auth_role ?? '')
   let zenActive = $derived(zenMode.active && route.view === 'chat' && !needsSetup && !loginRequired)
   let focusChrome = $derived(focusChromeHidden(route))
@@ -87,12 +84,13 @@
     stopGlobalStream = streamEvents(
       (event) => {
         if (!event.coalesced) unreadCount++
-        // A new approval question: refresh live activity now, not on the
-        // next poll, so badges and notifications follow at once. An
-        // unattended run's question and its review arrive as ops events.
-        if (event.category === 'approval' || event.category === 'ops') void sessionActivity.poll()
-        const reaction = companionReactionFromEvent(event, $locale)
-        if (reaction) showCompanionReaction(reaction)
+        // A new approval question or a cron run ending: refresh live
+        // activity now, not on the next poll, so badges and CASE's bubble
+        // follow at once. An unattended run's question and its review
+        // arrive as ops events.
+        if (event.category === 'approval' || event.category === 'ops' || event.category === 'cron') void sessionActivity.poll()
+        const failure = companionFailureFromEvent(event, Date.now())
+        if (failure) companionFailures = pruneFailures([...companionFailures, failure], Date.now())
       },
       () => {
         serverHealth = 'disconnected'
@@ -103,26 +101,15 @@
     )
   }
 
-  function showCompanionReaction(reaction: CompanionReaction) {
-    if (companionReactionTimer) {
-      clearTimeout(companionReactionTimer)
-      companionReactionTimer = null
-    }
-    companionReaction = reaction
-    companionReactionTimer = setTimeout(() => {
-      companionReaction = null
-      companionReactionTimer = null
-    }, 9000)
-  }
-
-  function handleCompanionStimulus(stimulus: CompanionStimulus) {
-    showCompanionReaction(companionReactionForStimulus(stimulus, route.view, $locale))
-  }
-
   function handleCompanionAsk(prompt: string) {
-    showCompanionReaction(companionAskHandoffReaction($locale))
     const handoff = companionHandoffForAsk(prompt, route.view, $locale)
     navigateWithPrompt(handoff.prompt, handoff.context)
+  }
+
+  // Looking at a failure (clicking its line) or using its × both count as
+  // handling it: it leaves CASE's list instead of sitting there forever.
+  function handleDismissCompanionFailure(key: string) {
+    companionFailures = companionFailures.filter((failure) => failure.key !== key)
   }
 
   async function checkSetupAndMaybeRedirect() {
@@ -419,7 +406,6 @@
   onDestroy(() => {
     stopGlobalStream?.()
     sessionActivity.stop()
-    if (companionReactionTimer) clearTimeout(companionReactionTimer)
   })
 </script>
 
@@ -587,7 +573,14 @@
       <SessionBoard onNavigate={navigate} onNewChat={() => requestChat({ kind: 'new-session' })} />
     {/if}
     {#if showCompanion}
-      <CompanionPet reaction={companionReaction} routeView={route.view} locale={$locale} onStimulus={handleCompanionStimulus} onAsk={handleCompanionAsk} />
+      <CompanionPet
+        activity={sessionActivity.activity}
+        failures={companionFailures}
+        routeView={route.view}
+        onNavigate={navigate}
+        onDismissFailure={handleDismissCompanionFailure}
+        onAsk={handleCompanionAsk}
+      />
     {/if}
   </Shell>
   {#if paletteOpen}

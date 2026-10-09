@@ -5,8 +5,8 @@
 
 import { expect, test } from '@playwright/test'
 
-// The pet floats and nods; reduced motion keeps its button still enough for
-// Playwright's stability check, however earlier specs made it react.
+// The pet floats; reduced motion keeps its button still enough for
+// Playwright's stability check.
 test.use({ contextOptions: { reducedMotion: 'reduce' } })
 
 test('a companion question keeps its words as the message and the title', async ({ page }, testInfo) => {
@@ -16,9 +16,9 @@ test('a companion question keeps its words as the message and the title', async 
   // held the send behind the card.
   const words = `which session needs me first? (run ${testInfo.repeatEachIndex}-${Date.now()})`
   await page.goto('/console')
-  await page.getByRole('button', { name: 'Talk to TARS companion' }).click()
-  await page.getByRole('textbox', { name: 'Ask TARS companion' }).fill(words)
-  await page.getByRole('button', { name: 'Send companion prompt' }).click()
+  await page.getByRole('button', { name: 'Talk to CASE' }).click()
+  await page.getByRole('textbox', { name: 'Ask CASE' }).fill(words)
+  await page.getByRole('button', { name: 'Send to CASE' }).click()
 
   await expect(page).toHaveURL(/\/console\/chat/)
   const composer = page.locator('.chat-main textarea')
@@ -63,7 +63,7 @@ test('a companion question keeps its words as the message and the title', async 
   await expect(card).not.toContainText('companion inside the Console')
 })
 
-// The companion's bubble opens by itself on ops, cron, and usage events, so
+// CASE's bubble opens by itself on a new approval wait or a new failure, so
 // it must never sit on the chat rail: a covered rail icon cannot be clicked
 // until the bubble goes (seen as a 45 s stall in workbench-ko after the
 // unattended-approvals spec left cron and ops events behind).
@@ -71,7 +71,7 @@ test('the open companion bubble leaves every chat rail icon clickable', async ({
   await page.goto('/console/chat')
   await page.locator('.dock-left .new-chat-btn').click()
   await expect(page).toHaveURL(/\/console\/chat\/[^/]+$/)
-  await page.getByRole('button', { name: 'Talk to TARS companion' }).click()
+  await page.getByRole('button', { name: 'Talk to CASE' }).click()
   await expect(page.locator('.companion-bubble')).toBeVisible()
 
   const covered = await page.locator('.chat-rail button').evaluateAll((buttons) =>

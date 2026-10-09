@@ -1,123 +1,142 @@
 <script lang="ts">
   import { onDestroy } from 'svelte'
+  import { t } from '../i18n'
   import {
-    companionReactionForStimulus,
-    companionUiText,
-    type CompanionReaction,
-    type CompanionStimulus,
+    companionShouldOpen,
+    companionState,
+    companionWaitingKeys,
+    type CompanionFailure,
+    type CompanionLine,
   } from '../lib/companion'
+  import type { ActivityMap } from '../lib/sessionBoard'
 
   interface Props {
-    reaction?: CompanionReaction | null
+    activity?: ActivityMap
+    failures?: CompanionFailure[]
     routeView?: string
-    locale?: string
-    onStimulus?: (stimulus: CompanionStimulus) => void
+    onNavigate?: (path: string) => void
+    onDismissFailure?: (key: string) => void
     onAsk?: (prompt: string) => void
   }
 
-  let { reaction = null, routeView = 'home', locale = 'en', onStimulus, onAsk }: Props = $props()
+  let { activity = {}, failures = [], routeView = 'home', onNavigate, onDismissFailure, onAsk }: Props = $props()
   let open = $state(false)
   let draft = $state('')
-  let localReaction = $state<CompanionReaction>(companionReactionForStimulus('poke', 'home', 'en'))
-  let dismissedReaction = $state<CompanionReaction | null>(null)
-  let manualPriority = $state(false)
-  let activeAction = $state<CompanionStimulus | null>(null)
-  let feedbackTick = $state(0)
-  let priorityTimer: ReturnType<typeof setTimeout> | null = null
-  let labels = $derived(companionUiText(locale))
-  let activeReaction = $derived(manualPriority ? localReaction : reaction || localReaction)
-  let eventReactionVisible = $derived(reaction !== null && reaction !== dismissedReaction)
-  let bubbleVisible = $derived(open || eventReactionVisible || manualPriority)
+  // Reactive, not a one-off Date.now(): an expiring failure must actually
+  // drop out of the snapshot over time, not only when a new activity poll
+  // or SSE event happens to re-run this. The effect below keeps it moving
+  // for as long as a failure is on screen.
+  let now = $state(Date.now())
+  // Plain variables, not $state: they are bookkeeping for the effects
+  // below, not something the template reads, so updating them must not
+  // re-trigger the effect that reads them.
+  let prevWaitingKeys = new Set<string>()
+  // False until the first evaluation has run once: whatever is already
+  // waiting the first time CASE renders (a reload, leaving zen mode, a
+  // fresh login) is already-there, not new, so it must not pop the bubble
+  // open — only a wait that appears after that counts as new.
+  let primed = false
+  let failureTimer: ReturnType<typeof setInterval> | null = null
+  let snapshot = $derived(companionState(activity, failures, now, $t.companion.lines))
+  let hasFailureLines = $derived(snapshot.lines.some((line) => line.kind === 'failure'))
 
+  // The bubble opens by itself only for a new approval wait or a new
+  // failure — never for a running turn or one finishing.
   $effect(() => {
-    if (!manualPriority && !reaction) {
-      localReaction = companionReactionForStimulus('poke', routeView, locale)
+    const lines = snapshot.lines
+    if (companionShouldOpen(primed, prevWaitingKeys, lines)) open = true
+    prevWaitingKeys = companionWaitingKeys(lines)
+    primed = true
+  })
+
+  // A failure's 30-minute window only closes when something re-evaluates
+  // the snapshot. Run a timer that refreshes `now` while a failure is
+  // showing, so an untouched failure actually disappears from the badge
+  // and the bubble once it expires, instead of waiting on the next
+  // unrelated activity poll or event. The timer stops itself once there is
+  // nothing left to expire, and never starts at all when nothing failed.
+  $effect(() => {
+    if (hasFailureLines) {
+      if (!failureTimer) failureTimer = setInterval(() => { now = Date.now() }, 60_000)
+    } else if (failureTimer) {
+      clearInterval(failureTimer)
+      failureTimer = null
     }
+  })
+
+  onDestroy(() => {
+    if (failureTimer) clearInterval(failureTimer)
   })
 
   function toggleOpen() {
     open = !open
   }
 
-  function trigger(stimulus: CompanionStimulus) {
-    localReaction = companionReactionForStimulus(stimulus, routeView, locale)
-    dismissedReaction = null
-    manualPriority = true
-    activeAction = stimulus
-    feedbackTick += 1
-    open = true
-    if (priorityTimer) clearTimeout(priorityTimer)
-    priorityTimer = setTimeout(() => {
-      manualPriority = false
-      activeAction = null
-      priorityTimer = null
-    }, 9000)
-    onStimulus?.(stimulus)
-  }
-
   function closeBubble() {
     open = false
-    if (reaction) dismissedReaction = reaction
-    manualPriority = false
-    activeAction = null
+  }
+
+  function goToLine(line: CompanionLine) {
+    onNavigate?.(line.path)
+    // Looking at a failure counts as handling it: it leaves the list
+    // instead of sitting there once the user has already gone to look.
+    if (line.kind === 'failure') onDismissFailure?.(line.key)
+    open = false
+  }
+
+  function dismissFailure(key: string) {
+    onDismissFailure?.(key)
   }
 
   function submitAsk() {
     const text = draft.trim()
     if (!text) return
-    localReaction = {
-      mood: 'focus',
-      message: locale?.toLowerCase().startsWith('ko') ? '그 자극을 채팅으로 넘길게요.' : 'Opening chat with that stimulus.',
-      detail: locale?.toLowerCase().startsWith('ko')
-        ? '일반 TARS 대화 경로에 현재 맥락을 붙여서 가져갑니다.'
-        : 'I will carry this into the normal TARS conversation path.',
-    }
-    manualPriority = true
-    activeAction = null
-    feedbackTick += 1
     onAsk?.(text)
     draft = ''
   }
-
-  onDestroy(() => {
-    if (priorityTimer) clearTimeout(priorityTimer)
-  })
 </script>
 
-<div class={`companion-pet mood-${activeReaction.mood}`} class:companion-reacting={manualPriority} class:beside-rail={routeView === 'chat'}>
-  {#if bubbleVisible}
-    {#key feedbackTick}
-      <section class="companion-bubble" aria-live="polite">
-        <div class="companion-bubble-header">
-          <span class="companion-state">{labels.moods[activeReaction.mood]}</span>
-          <button type="button" class="companion-close" aria-label={labels.closeAria} onclick={closeBubble}>&times;</button>
-        </div>
-        <p>{activeReaction.message}</p>
-        {#if activeReaction.detail}
-          <small>{activeReaction.detail}</small>
-        {/if}
-        {#if activeAction}
-          <span class="companion-feedback-strip">{labels.feedbackAck(labels.actions[activeAction])}</span>
-        {/if}
-        <div class="companion-actions">
-          <button type="button" class:active={activeAction === 'poke'} aria-pressed={activeAction === 'poke'} onclick={() => trigger('poke')}>{labels.actions.poke}</button>
-          <button type="button" class:active={activeAction === 'suggest'} aria-pressed={activeAction === 'suggest'} onclick={() => trigger('suggest')}>{labels.actions.suggest}</button>
-          <button type="button" class:active={activeAction === 'feedback'} aria-pressed={activeAction === 'feedback'} onclick={() => trigger('feedback')}>{labels.actions.feedback}</button>
-        </div>
-        <form class="companion-ask" onsubmit={(event) => { event.preventDefault(); submitAsk() }}>
-          <input
-            type="text"
-            bind:value={draft}
-            placeholder={labels.inputPlaceholder}
-            aria-label={labels.inputAria}
-          />
-          <button type="submit" disabled={!draft.trim()} aria-label={labels.sendAria}>{labels.send}</button>
-        </form>
-      </section>
-    {/key}
+<div class={`companion-pet mood-${snapshot.mood}`} class:beside-rail={routeView === 'chat'}>
+  {#if open}
+    <section class="companion-bubble" aria-live="polite">
+      <div class="companion-bubble-header">
+        <span class="companion-state">{$t.companion.header}</span>
+        <button type="button" class="companion-close" aria-label={$t.companion.closeAria} onclick={closeBubble}>&times;</button>
+      </div>
+      {#if snapshot.lines.length === 0}
+        <p class="companion-empty">{$t.companion.emptyLine}</p>
+      {:else}
+        <ul class="companion-lines">
+          {#each snapshot.lines as line (line.key)}
+            <li class="companion-line-row">
+              <button type="button" class={`companion-line companion-line-${line.kind}`} onclick={() => goToLine(line)}>
+                {line.label}
+              </button>
+              {#if line.kind === 'failure'}
+                <button
+                  type="button"
+                  class="companion-line-dismiss"
+                  aria-label={$t.companion.dismissFailureAria}
+                  onclick={() => dismissFailure(line.key)}
+                >&times;</button>
+              {/if}
+            </li>
+          {/each}
+        </ul>
+      {/if}
+      <form class="companion-ask" onsubmit={(event) => { event.preventDefault(); submitAsk() }}>
+        <input
+          type="text"
+          bind:value={draft}
+          placeholder={$t.companion.inputPlaceholder}
+          aria-label={$t.companion.inputAria}
+        />
+        <button type="submit" disabled={!draft.trim()} aria-label={$t.companion.sendAria}>{$t.companion.send}</button>
+      </form>
+    </section>
   {/if}
 
-  <button type="button" class="companion-button" aria-label={labels.buttonAria} onclick={toggleOpen}>
+  <button type="button" class="companion-button" aria-label={$t.companion.buttonAria} onclick={toggleOpen}>
     <span class="companion-shadow"></span>
     <span class="companion-body" aria-hidden="true">
       <span class="companion-antenna"></span>
@@ -127,6 +146,9 @@
       </span>
       <span class="companion-glow"></span>
     </span>
+    {#if snapshot.badge > 0}
+      <span class="companion-badge" aria-label={$t.companion.badgeAria(snapshot.badge)}>{snapshot.badge}</span>
+    {/if}
   </button>
 </div>
 
@@ -144,7 +166,7 @@
 
   /* On the chat workbench the panel rail runs down the right edge, inside the
      shell's padding. Keep the pet and its bubble left of it: the bubble opens
-     by itself on ops, cron, and usage events and would cover the rail's
+     by itself on a new approval wait or failure and would cover the rail's
      lower icons until it closes. Below 900px the rail is a row above the chat. */
   @media (min-width: 901px) {
     .companion-pet.beside-rail {
@@ -165,12 +187,6 @@
     animation: companionFloat 4.8s var(--ease-out) infinite;
   }
 
-  .companion-reacting .companion-button {
-    animation:
-      companionNod 520ms var(--ease-out),
-      companionFloat 4.8s var(--ease-out) 520ms infinite;
-  }
-
   .companion-button:focus-visible {
     outline: 2px solid var(--primary);
     outline-offset: 3px;
@@ -189,14 +205,6 @@
     box-shadow:
       0 12px 28px rgba(0, 0, 0, 0.42),
       inset 0 1px 0 rgba(255, 255, 255, 0.06);
-  }
-
-  .companion-reacting .companion-body {
-    border-color: rgba(var(--primary-rgb), 0.68);
-    box-shadow:
-      0 16px 34px rgba(0, 0, 0, 0.46),
-      0 0 0 3px rgba(var(--primary-rgb), 0.12),
-      inset 0 1px 0 rgba(255, 255, 255, 0.08);
   }
 
   .companion-antenna {
@@ -277,6 +285,22 @@
     filter: blur(2px);
   }
 
+  .companion-badge {
+    position: absolute;
+    top: -4px;
+    right: 2px;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 4px;
+    border-radius: 999px;
+    background: var(--danger);
+    color: var(--on-danger, #fff);
+    font-size: 0.68rem;
+    line-height: 18px;
+    text-align: center;
+    box-shadow: 0 0 0 2px var(--surface-elevated);
+  }
+
   .companion-bubble {
     width: min(300px, calc(100vw - 32px));
     border: 1px solid rgba(var(--primary-rgb), 0.32);
@@ -312,62 +336,64 @@
     cursor: pointer;
   }
 
-  .companion-bubble p {
+  .companion-empty {
     margin: 0;
-    color: var(--primary-text);
-    font-size: 0.86rem;
-    line-height: 1.45;
-  }
-
-  .companion-bubble small {
-    display: block;
-    margin-top: var(--space-1);
     color: var(--muted-text);
-    font-size: 0.73rem;
-    line-height: 1.35;
+    font-size: 0.82rem;
+    line-height: 1.4;
   }
 
-  .companion-feedback-strip {
-    display: block;
-    margin-top: var(--space-2);
-    border: 1px solid rgba(var(--primary-rgb), 0.24);
-    border-radius: var(--radius-sm);
-    background: rgba(var(--primary-rgb), 0.1);
-    color: var(--primary-text);
-    font-size: 0.72rem;
-    line-height: 1.25;
-    padding: 5px var(--space-2);
-    animation: companionPulse 680ms var(--ease-out);
-  }
-
-  .companion-actions {
+  .companion-lines {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: var(--space-1);
-    margin-top: var(--space-3);
+    margin: 0;
+    padding: 0;
+    list-style: none;
   }
 
-  .companion-actions button,
-  .companion-ask button {
-    min-height: 30px;
+  .companion-line-row {
+    display: flex;
+    align-items: stretch;
+    gap: var(--space-1);
+  }
+
+  .companion-line {
+    flex: 1;
+    min-width: 0;
+    text-align: left;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    background: var(--surface-muted);
+    color: var(--primary-text);
+    cursor: pointer;
+    font-size: 0.78rem;
+    line-height: 1.3;
+    padding: var(--space-1) var(--space-2);
+  }
+
+  .companion-line:hover {
+    border-color: rgba(var(--primary-rgb), 0.42);
+  }
+
+  .companion-line-failure {
+    border-color: rgba(229, 62, 62, 0.4);
+  }
+
+  .companion-line-dismiss {
+    flex: 0 0 auto;
+    width: 24px;
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-sm);
     background: var(--surface-muted);
     color: var(--secondary-text);
     cursor: pointer;
-    font-size: 0.75rem;
+    font-size: 0.78rem;
+    line-height: 1;
   }
 
-  .companion-actions button:hover,
-  .companion-actions button.active,
-  .companion-ask button:hover:not(:disabled) {
-    border-color: rgba(var(--primary-rgb), 0.42);
+  .companion-line-dismiss:hover {
+    border-color: rgba(229, 62, 62, 0.4);
     color: var(--primary-text);
-  }
-
-  .companion-actions button.active {
-    background: rgba(var(--primary-rgb), 0.16);
-    box-shadow: inset 0 0 0 1px rgba(var(--primary-rgb), 0.2);
   }
 
   .companion-ask {
@@ -387,6 +413,21 @@
     font-size: 0.78rem;
   }
 
+  .companion-ask button {
+    min-height: 30px;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    background: var(--surface-muted);
+    color: var(--secondary-text);
+    cursor: pointer;
+    font-size: 0.75rem;
+  }
+
+  .companion-ask button:hover:not(:disabled) {
+    border-color: rgba(var(--primary-rgb), 0.42);
+    color: var(--primary-text);
+  }
+
   .companion-ask button:disabled {
     cursor: default;
     opacity: 0.5;
@@ -397,13 +438,6 @@
     50% { transform: translateY(-7px); }
   }
 
-  @keyframes companionNod {
-    0% { transform: translateY(0) rotate(0deg) scale(1); }
-    35% { transform: translateY(-6px) rotate(-2deg) scale(1.04); }
-    70% { transform: translateY(1px) rotate(2deg) scale(0.99); }
-    100% { transform: translateY(0) rotate(0deg) scale(1); }
-  }
-
   @keyframes companionBubbleIn {
     from {
       opacity: 0;
@@ -412,17 +446,6 @@
     to {
       opacity: 1;
       transform: translateY(0) scale(1);
-    }
-  }
-
-  @keyframes companionPulse {
-    0% {
-      opacity: 0.35;
-      transform: translateY(3px);
-    }
-    100% {
-      opacity: 1;
-      transform: translateY(0);
     }
   }
 
@@ -443,14 +466,11 @@
     }
   }
 
-  /* Reduced motion stops every animation here, including the reacting
-     nod+float, whose selector would otherwise outrank a bare .companion-button. */
+  /* Reduced motion stops every animation here. */
   @media (prefers-reduced-motion: reduce) {
     .companion-button,
-    .companion-reacting .companion-button,
     .companion-eye,
-    .companion-bubble,
-    .companion-feedback-strip {
+    .companion-bubble {
       animation: none;
     }
   }
