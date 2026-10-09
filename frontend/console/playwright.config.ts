@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { defineConfig, devices } from '@playwright/test'
+import { mockLLMWebServer, tarsServeWebServer } from './e2e/webServers.ts'
 
 const tarsPort = Number(process.env.TARS_E2E_PORT || 43290)
 const mockPort = Number(process.env.TARS_E2E_MOCK_LLM_PORT || 43291)
@@ -65,32 +66,7 @@ export default defineConfig({
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'], viewport: { width: 1400, height: 900 }, locale: 'en-US' } }],
   webServer: [
-    {
-      command: 'node e2e/mock-llm.mjs',
-      url: `http://127.0.0.1:${mockPort}/health`,
-      env: { TARS_E2E_MOCK_LLM_PORT: String(mockPort) },
-      reuseExistingServer: false,
-      timeout: 15_000,
-    },
-    {
-      command: `go run ./cmd/tars serve --workspace-dir "${workspace}" --config "${join(workspace, 'config', 'tars.config.yaml')}" --api-addr 127.0.0.1:${tarsPort}`,
-      cwd: repoRoot,
-      url: `http://127.0.0.1:${tarsPort}/console`,
-      env: {
-        TARS_API_AUTH_MODE: 'off',
-        TARS_DASHBOARD_AUTH_MODE: 'off',
-        TARS_API_ALLOW_INSECURE_LOCAL_AUTH: 'true',
-        // Serve the embedded build, never a Vite dev proxy.
-        TARS_CONSOLE_DEV_URL: '',
-        // Focus PR stages probe this stub, never the host's gh or the
-        // network (GitHub runners have an authenticated gh).
-        TARS_FOCUS_GH_PATH: join(repoRoot, 'frontend', 'console', 'e2e', 'fake-gh.sh'),
-      },
-      reuseExistingServer: false,
-      // The first `go run` compiles the binary.
-      timeout: 240_000,
-      stdout: 'ignore',
-      stderr: 'pipe',
-    },
+    mockLLMWebServer(mockPort),
+    tarsServeWebServer({ repoRoot, workspace, tarsPort }),
   ],
 })
