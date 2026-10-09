@@ -6,6 +6,8 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.59.0] - 2026-10-09
+
 ### Added
 
 - **Old sessions are archived, then deleted, by themselves.** A session not touched for 7 days is archived: hidden from the lists, nothing removed, and unarchiving brings it back. A session that stays archived and untouched for 30 more days is deleted. Pinned sessions and the main session are never touched, nor is a Focus pipeline still running in goal mode or waiting on its pull request, and a session used again after it was archived is not deleted. You get a notification three days before a deletion, and after upgrading nothing is deleted for the first three days, so a session you archived by hand long ago is not gone the moment the server starts. Set `runtime.session.auto_archive_days` / `auto_delete_days` to change the ages; 0 turns that step off. Every step is in the automation audit (`session_retention`). ([#1185](https://github.com/devlikebear/tars/pull/1185))
