@@ -138,6 +138,7 @@ func buildPulseRuntime(in pulseSetupInputs) pulseSetup {
 		Timeout:     timeout,
 		ActiveHours: in.Config.PulseActiveHours,
 		Timezone:    in.Config.PulseTimezone,
+		UseLLM:      strings.EqualFold(strings.TrimSpace(in.Config.PulseDecider), "llm"),
 	}, pulse.Dependencies{
 		Scanner:   scanner,
 		Decider:   decider,

@@ -42,6 +42,8 @@ export const focusEn = {
     templateSkipped: (n: number) => (n === 1 ? '1 template file could not be loaded' : `${n} template files could not be loaded`),
     goalMode: 'Goal mode: run to the end without asking',
     goalModeHint: 'The plan, findings, the pull request, the merge and every tool permission are approved automatically, and a stop is retried until the goal is done.',
+    e2e: 'End-to-end goals: let computer use check the screen',
+    e2eHint: 'Off, the plan\'s shell commands are the only checks. On, the plan may add plain-language goals that TARS drives on this desktop after them: each one calls the model step by step, takes over the named app\'s window, and can read text and controls but not images or video.',
     start: 'Start task',
     starting: 'Starting…',
     cancel: 'Cancel',
@@ -78,6 +80,7 @@ export const focusEn = {
     goalEnded: {
       exhausted: 'Goal mode stopped: its retries are used up. Decide the open gate, or turn goal mode on again.',
       pr_closed: 'Goal mode stopped: the pull request was closed.',
+      e2e_failed: 'Goal mode stopped: an end-to-end goal keeps failing. That is rarely fixed by another try — check the goal, or edit the plan to drop it.',
       cancelled: 'Goal mode stopped: the turn was cancelled.',
     },
   },
@@ -415,6 +418,8 @@ export const focusKo: FocusTranslations = {
     templateSkipped: (n: number) => `템플릿 파일 ${n}개를 불러오지 못했습니다`,
     goalMode: '목표 모드: 묻지 않고 끝까지 진행',
     goalModeHint: '계획, 지적, PR, 머지와 모든 도구 권한을 자동으로 승인하고, 중간에 멈추면 목표를 마칠 때까지 다시 시도합니다.',
+    e2e: '종단 검증: 컴퓨터 유즈로 화면을 확인',
+    e2eHint: '끄면 계획의 셸 명령만으로 검증합니다. 켜면 계획에 자연어 목표를 넣을 수 있고, TARS가 셸 명령 뒤에 이 데스크톱에서 직접 조작해 확인합니다. 목표마다 단계별로 모델을 호출하고, 지정한 앱의 창을 조작하며, 글자와 컨트롤은 읽지만 이미지나 영상 내용은 볼 수 없습니다.',
     start: '작업 시작',
     starting: '시작하는 중…',
     cancel: '취소',
@@ -451,6 +456,7 @@ export const focusKo: FocusTranslations = {
     goalEnded: {
       exhausted: '목표 모드가 멈췄습니다: 재시도 횟수를 다 썼습니다. 열린 게이트를 직접 결정하거나 목표 모드를 다시 켜세요.',
       pr_closed: '목표 모드가 멈췄습니다: PR이 닫혔습니다.',
+      e2e_failed: '목표 모드가 멈췄습니다: 종단 검증 목표가 계속 실패합니다. 다시 시도해도 대개 해결되지 않으니 목표를 확인하거나 계획에서 빼세요.',
       cancelled: '목표 모드가 멈췄습니다: 턴이 취소됐습니다.',
     },
   },

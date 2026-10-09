@@ -67,13 +67,17 @@ type VerificationResult struct {
 	// than one that ran and failed. It counts as passed: the stage is not
 	// blocked on a capability the environment does not have.
 	Skipped bool `json:"skipped,omitempty"`
+	// E2E marks an end-to-end goal's result, as opposed to a shell command's.
+	E2E bool `json:"e2e,omitempty"`
 }
 
 // FailureFact is a failed verification as a failure card shows it.
 type FailureFact struct {
-	Command   string               `json:"command"`
-	ExitCode  int                  `json:"exit_code"`
-	TimedOut  bool                 `json:"timed_out,omitempty"`
+	Command  string `json:"command"`
+	ExitCode int    `json:"exit_code"`
+	TimedOut bool   `json:"timed_out,omitempty"`
+	// E2E is true when the failed check is an end-to-end goal.
+	E2E       bool                 `json:"e2e,omitempty"`
 	Excerpt   string               `json:"excerpt,omitempty"`
 	Iteration int                  `json:"iteration"`
 	Results   []VerificationResult `json:"results,omitempty"`
@@ -340,7 +344,7 @@ func failureFact(v Verification, iteration int) FailureFact {
 	fact := FailureFact{Iteration: iteration, Results: append([]VerificationResult(nil), v.Results...)}
 	for _, r := range v.Results {
 		if !r.Passed {
-			fact.Command, fact.ExitCode, fact.TimedOut = r.Command, r.ExitCode, r.TimedOut
+			fact.Command, fact.ExitCode, fact.TimedOut, fact.E2E = r.Command, r.ExitCode, r.TimedOut, r.E2E
 			fact.Excerpt = tailRunes(strings.TrimSpace(r.Excerpt), excerptRunes)
 			break
 		}

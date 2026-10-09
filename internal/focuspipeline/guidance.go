@@ -7,10 +7,13 @@ import (
 
 // Block formats the agent must follow, quoted verbatim in the guidance.
 const (
-	planFormat     = `<focus-plan>{"goal":"…","tasks":[{"title":"…","done":"…"}],"stages":["plan","build","review","pr","pr_review","merge","release"],"verify":["make test"],"e2e":["@App do the thing in plain language"],"e2e_setup":["build and launch the changed app from this folder"],"e2e_teardown":["stop it"],"limits":{"build":3,"review":2,"pr":3,"release":3}}</focus-plan>`
+	planFormat     = `<focus-plan>{"goal":"…","tasks":[{"title":"…","done":"…"}],"stages":["plan","build","review","pr","pr_review","merge","release"],"verify":["make test"],"limits":{"build":3,"review":2,"pr":3,"release":3}}</focus-plan>`
 	reportFormat   = `<focus-report>{"summary":"…","decisions":[{"id":"d1","question":"…","options":["…","…"]}],"risks":["…"]}</focus-report>`
 	findingsFormat = `<focus-findings>[{"id":"f1","severity":"high|medium|low","file":"…","line":42,"title":"…","scenario":"…"}]</focus-findings>`
-	prFormat       = `<focus-pr>{"title":"…","body":"…"}</focus-pr>`
+	// planE2EFields are the plan block's end-to-end fields, shown only to a
+	// pipeline that opted in to end-to-end goals (Pipeline.E2E).
+	planE2EFields = `"e2e":["@App do the thing in plain language"],"e2e_setup":["build and launch the changed app from this folder"],"e2e_teardown":["stop it"],`
+	prFormat      = `<focus-pr>{"title":"…","body":"…"}</focus-pr>`
 	// buildReportFormat adds the build loop's tasks_done claim.
 	buildReportFormat = `<focus-report>{"summary":"…","tasks_done":false,"decisions":[{"id":"d1","question":"…","options":["…","…"]}],"risks":["…"]}</focus-report>`
 	buildTasksDone    = `Set "tasks_done" to true only when every approved task is complete. ` +
@@ -18,16 +21,33 @@ const (
 		"and the build ends when tasks_done is true and every command passes."
 )
 
+// languageGuidance keeps what the developer reads in the developer's
+// language: the guidance itself and the server's own turn messages are
+// English, and without it a Korean request got an English plan.
+const languageGuidance = "Language: write your reply and every human-readable value in the blocks (goal, task titles and " +
+	"done criteria, summaries, decisions and their options, risks, finding titles and scenarios) in the language the " +
+	"developer writes in — the language of the Goal above and of their messages in this conversation, not the " +
+	"language of these instructions. Keep code, commands, file paths, identifiers and stage ids as they are, and " +
+	"write a pull request title and body in the language the repository's commits and pull requests use."
+
 // stagePlanInstructions is the generic plan stage's instructions, reused as
 // the base of the dev template's plan stage (template.go), which adds how
 // to use its second build-kind (release) stage's "stage" tag.
 const stagePlanInstructions = "Do not edit files. Read the code you need, then propose a plan: small tasks in order, " +
 	"each with what \"done\" means; which stages apply (a small fix may skip review or pr_review); " +
-	"the verification commands that prove the work (shell commands); any end-to-end checks as plain-language goals " +
-	"for TARS's own computer_use, not shell commands — \"@AppName do the thing\" names the app, otherwise it acts on " +
-	"the frontmost window; a GUI check that needs a shell command (a Playwright script, for example) belongs in the " +
-	"verification commands instead, not here; " + e2eSetupInstructions + " loop limits. " +
+	"the verification commands that prove the work (shell commands, judged by their exit code — a check of the " +
+	"running app or its screens goes here too, as a script: a Playwright spec, or curl against the build); loop limits. " +
 	"The developer approves or edits the plan before any change is made."
+
+// e2ePlanInstructions are added to the plan stage of a pipeline that opted
+// in to end-to-end goals (Pipeline.E2E). They are off by default: a goal
+// is driven by a model on the developer's own desktop, costs a model call
+// per step, and can only read what the accessibility tree exposes.
+const e2ePlanInstructions = "This pipeline also runs end-to-end goals after the verification commands: list any in \"e2e\" as " +
+	"plain-language goals for TARS's own computer_use, not shell commands. Every goal must start with \"@AppName \" naming the " +
+	"app whose window it drives — a goal without one is not run, because it would act on whatever window happens to be in front. " +
+	"computer_use reads the window's accessibility tree: a goal can check text and controls, never what an image or a video " +
+	"shows, and should check one thing. " + e2eSetupInstructions
 
 // e2eSetupInstructions say what computer_use does not do by itself: it
 // drives what is on screen, which without a setup is whatever copy of the
@@ -37,7 +57,7 @@ const e2eSetupInstructions = "computer_use only drives what is already on screen
 	"and bring that build to the screen (start a long-running server in the background with its output redirected, on a port " +
 	"of its own, wait until it answers, then open its window), and in \"e2e_teardown\" the commands that stop it; the server runs " +
 	"them in the working folder before and after the goals every time, and each goal must name what e2e_setup opened — " +
-	"never an installed or already running copy of the app, which does not have the changes;"
+	"never an installed or already running copy of the app, which does not have the changes."
 
 // stageInstructions are the specific instructions of each stage.
 var stageInstructions = map[StageID]string{
@@ -74,10 +94,14 @@ func stageInstruction(p Pipeline) string {
 		return text
 	}
 	stage, _ := p.Stage(p.Current)
-	if stage.Instructions != "" {
-		return stage.Instructions
+	text := stage.Instructions
+	if text == "" {
+		text = stageInstructions[stage.KindOf()]
 	}
-	return stageInstructions[stage.KindOf()]
+	if p.E2E && stage.KindOf() == StagePlan {
+		text += " " + e2ePlanInstructions
+	}
+	return text
 }
 
 // QuestionGuidance is the guidance of a turn that is the developer's
@@ -125,6 +149,8 @@ func Guidance(p Pipeline) string {
 	}
 	b.WriteString(instructions)
 	b.WriteString("\n")
+	b.WriteString(languageGuidance)
+	b.WriteString("\n")
 	if p.GoalActive() && !questionGates[p.OpenGate] {
 		b.WriteString(goalGuidance)
 		b.WriteString("\n")
@@ -132,7 +158,7 @@ func Guidance(p Pipeline) string {
 	if p.Plan != nil && stage.ID != StagePlan {
 		p.writePlan(&b, stage)
 		b.WriteString("\n")
-		b.WriteString(planEditGuidance)
+		b.WriteString(p.planEditGuidance())
 		b.WriteString("\n")
 	}
 	b.WriteString("\n")
@@ -165,7 +191,7 @@ func (p Pipeline) writePlan(b *strings.Builder, stage Stage) {
 			fmt.Fprintf(b, "- %s\n", cmd)
 		}
 	}
-	if len(plan.E2E) > 0 {
+	if p.E2E && len(plan.E2E) > 0 {
 		writeCommands(b, "End-to-end setup (shell, run by the server in this folder before the goals):\n", plan.E2ESetup)
 		b.WriteString("End-to-end goals (computer_use, run by the server after verification):\n")
 		for _, cmd := range plan.E2E {
@@ -202,6 +228,14 @@ const blockTail = "Put the block at the very end of your reply, outside any code
 // ids, a limit for each loop, and, with several work stages, the stage a
 // task belongs to.
 func (p Pipeline) planBlockFormat() string {
+	format := p.planBlockBase()
+	if !p.E2E {
+		return format
+	}
+	return strings.Replace(format, `"limits":`, planE2EFields+`"limits":`, 1)
+}
+
+func (p Pipeline) planBlockBase() string {
 	if p.Template == "" {
 		return planFormat
 	}

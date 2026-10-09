@@ -90,7 +90,7 @@ func Build(opts BuildOptions) string {
 // line, so no prefix ever matched and the entire static body was re-charged
 // at write rates on every single turn.
 //
-// Static (in order): Response Formatting, Planning, Long-running Commands,
+// Static (in order): Response Formatting, Language, Planning, Long-running Commands,
 // workspace bootstrap sections, Working Directories.
 // Dynamic (BuildResult.DynamicTail, appended last): "## Prior Context"
 // recall, then "## Current Time".
@@ -112,6 +112,13 @@ func BuildResultFor(opts BuildOptions) BuildResult {
 	b.WriteString("- When explaining architecture, flows, relationships, or processes, use Mermaid diagrams (```mermaid) proactively.\n")
 	b.WriteString("- Prefer visual explanations (diagrams, tables) over long text when possible.\n")
 	b.WriteString("\n")
+
+	// Most of this prompt is English; without this a Korean request got an
+	// English plan. Sub-agents get it too: their task text is the request.
+	b.WriteString("## Language\n\n")
+	b.WriteString("Write in the language of the user's request: replies, questions, and everything the user reads in tool arguments — plan goal, scope, done criteria, task titles, evidence summaries. ")
+	b.WriteString("If the user switches language, follow the latest message; an explicit language preference (USER.md or a direct instruction) wins. ")
+	b.WriteString("The language of this prompt, of tool output or of files you read does not decide it. Keep code, commands, paths and identifiers unchanged.\n\n")
 
 	// Planning section is for the main agent only — sub-agents are spawned to
 	// execute a single task and should not create their own plans.

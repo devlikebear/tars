@@ -33,6 +33,10 @@ export function tarsServeWebServer(opts: { repoRoot: string; workspace: string; 
       // network (GitHub runners have an authenticated gh; a capture run
       // has no PR to look at either way).
       TARS_FOCUS_GH_PATH: join(repoRoot, 'frontend', 'console', 'e2e', 'fake-gh.sh'),
+      // A plan's end-to-end goals drive this stub, never a cua-driver
+      // installed on the host — that one reads the real screen.
+      CUA_DRIVER_PATH: join(repoRoot, 'frontend', 'console', 'e2e', 'fake-cua-driver.sh'),
+      TARS_E2E_CUA_LOG: join(workspace, 'e2e-cua-driver.log'),
     },
     reuseExistingServer: false,
     // The first `go run` compiles the binary.

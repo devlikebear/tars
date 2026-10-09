@@ -369,51 +369,86 @@ func (s *Store) Doctor(ctx context.Context, workspaceID string) (DoctorReport, e
 	}
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
-	report := DoctorReport{
+	report := s.newDoctorReport(workspaceID)
+	s.doctorContentChecks(ctx, &report)
+	s.doctorStructureChecks(ctx, &report)
+	return report, nil
+}
+
+// DoctorStructure runs the doctor checks whose cost follows the number of
+// records, not their size: migrations, foreign keys, lifecycle timestamps,
+// the dependency graph, schedules, effect receipts, capabilities and import
+// references. Server startup waits for these only; reading every stored
+// page and document (DoctorContent) took over a minute on a 12 GB ledger
+// and kept the API from listening.
+func (s *Store) DoctorStructure(ctx context.Context, workspaceID string) (DoctorReport, error) {
+	if strings.TrimSpace(workspaceID) == "" {
+		return DoctorReport{}, fmt.Errorf("workstore: workspace id is required")
+	}
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	report := s.newDoctorReport(workspaceID)
+	s.doctorStructureChecks(ctx, &report)
+	return report, nil
+}
+
+// DoctorContent runs the doctor checks that read everything stored: SQLite's
+// quick_check, the validity of every JSON document and the lifecycle of
+// every proof. Each is one read of a consistent snapshot, so unlike Doctor
+// it does not hold off writers while it runs.
+func (s *Store) DoctorContent(ctx context.Context, workspaceID string) (DoctorReport, error) {
+	if strings.TrimSpace(workspaceID) == "" {
+		return DoctorReport{}, fmt.Errorf("workstore: workspace id is required")
+	}
+	report := s.newDoctorReport(workspaceID)
+	s.doctorContentChecks(ctx, &report)
+	return report, nil
+}
+
+func (s *Store) newDoctorReport(workspaceID string) DoctorReport {
+	return DoctorReport{
 		WorkspaceID: workspaceID, SchemaVersion: schemaVersion,
 		CheckedAt: s.now().UTC(), Healthy: true,
-		Checks: make([]DoctorCheck, 0, 9), Issues: make([]DoctorIssue, 0),
+		Checks: make([]DoctorCheck, 0, 11), Issues: make([]DoctorIssue, 0),
 	}
-	addCheck := func(name string, err error) {
-		check := DoctorCheck{Name: name, OK: err == nil}
-		if err != nil {
-			check.Detail = err.Error()
-			report.Healthy = false
-		}
-		report.Checks = append(report.Checks, check)
-	}
+}
 
-	addCheck("quick_check", quickCheckDB(ctx, s.db))
-	addCheck("foreign_keys", foreignKeyCheckDB(ctx, s.db))
-	addCheck("migrations", verifyMigrationsDB(ctx, s.db, true))
-	jsonIssues, err := s.doctorJSONIssues(ctx, workspaceID)
-	report.Issues = append(report.Issues, jsonIssues...)
-	addCheck("json", err)
-	invariantIssues, err := s.doctorTerminalIssues(ctx, workspaceID)
-	report.Issues = append(report.Issues, invariantIssues...)
-	addCheck("terminal_timestamps", err)
-	dependencyIssues, err := s.doctorDependencyIssues(ctx, workspaceID)
-	report.Issues = append(report.Issues, dependencyIssues...)
-	addCheck("dependency_graph", err)
-	scheduleIssues, err := s.doctorScheduleIssues(ctx, workspaceID)
-	report.Issues = append(report.Issues, scheduleIssues...)
-	addCheck("step_schedules", err)
-	effectIssues, err := s.doctorEffectReceiptIssues(ctx, workspaceID)
-	report.Issues = append(report.Issues, effectIssues...)
-	addCheck("effect_receipts", err)
-	proofIssues, err := s.doctorProofIssues(ctx, workspaceID)
-	report.Issues = append(report.Issues, proofIssues...)
-	addCheck("proofs", err)
-	capabilityIssues, err := s.doctorCapabilityIssues(ctx, workspaceID)
-	report.Issues = append(report.Issues, capabilityIssues...)
-	addCheck("capabilities", err)
-	importIssues, err := s.doctorImportIssues(ctx, workspaceID)
-	report.Issues = append(report.Issues, importIssues...)
-	addCheck("import_references", err)
+func (report *DoctorReport) addCheck(name string, issues []DoctorIssue, err error) {
+	check := DoctorCheck{Name: name, OK: err == nil}
+	if err != nil {
+		check.Detail = err.Error()
+		report.Healthy = false
+	}
+	report.Checks = append(report.Checks, check)
+	report.Issues = append(report.Issues, issues...)
 	if len(report.Issues) > 0 {
 		report.Healthy = false
 	}
-	return report, nil
+}
+
+func (s *Store) doctorContentChecks(ctx context.Context, report *DoctorReport) {
+	report.addCheck("quick_check", nil, quickCheckDB(ctx, s.db))
+	issues, err := s.doctorJSONIssues(ctx, report.WorkspaceID)
+	report.addCheck("json", issues, err)
+	issues, err = s.doctorProofIssues(ctx, report.WorkspaceID)
+	report.addCheck("proofs", issues, err)
+}
+
+func (s *Store) doctorStructureChecks(ctx context.Context, report *DoctorReport) {
+	report.addCheck("foreign_keys", nil, foreignKeyCheckDB(ctx, s.db))
+	report.addCheck("migrations", nil, verifyMigrationsDB(ctx, s.db, true))
+	issues, err := s.doctorTerminalIssues(ctx, report.WorkspaceID)
+	report.addCheck("terminal_timestamps", issues, err)
+	issues, err = s.doctorDependencyIssues(ctx, report.WorkspaceID)
+	report.addCheck("dependency_graph", issues, err)
+	issues, err = s.doctorScheduleIssues(ctx, report.WorkspaceID)
+	report.addCheck("step_schedules", issues, err)
+	issues, err = s.doctorEffectReceiptIssues(ctx, report.WorkspaceID)
+	report.addCheck("effect_receipts", issues, err)
+	issues, err = s.doctorCapabilityIssues(ctx, report.WorkspaceID)
+	report.addCheck("capabilities", issues, err)
+	issues, err = s.doctorImportIssues(ctx, report.WorkspaceID)
+	report.addCheck("import_references", issues, err)
 }
 
 func (s *Store) QuarantineSource(ctx context.Context, input QuarantineInput) (QuarantineRecord, error) {
@@ -905,14 +940,19 @@ func (s *Store) doctorImportIssues(ctx context.Context, workspaceID string) ([]D
 	var issues []DoctorIssue
 	for _, marker := range markers {
 		for _, workID := range marker.WorkIDs {
-			if _, err := s.GetWork(ctx, workspaceID, workID); errors.Is(err, ErrNotFound) {
+			// Existence only: reading the work would load its imported
+			// document, megabytes for a session with a long task file.
+			var exists bool
+			err := s.db.QueryRowContext(ctx, "SELECT EXISTS (SELECT 1 FROM works WHERE workspace_id = ? AND id = ?)", workspaceID, workID).Scan(&exists)
+			if err != nil {
+				return issues, fmt.Errorf("workstore: doctor import reference %s: %w", workID, err)
+			}
+			if !exists {
 				issues = append(issues, DoctorIssue{
 					Code: "missing_import_work", RecordType: "import_marker",
 					RecordID: marker.ID, Field: "work_ids_json",
 					Detail: "referenced work does not exist: " + workID,
 				})
-			} else if err != nil {
-				return issues, err
 			}
 		}
 	}

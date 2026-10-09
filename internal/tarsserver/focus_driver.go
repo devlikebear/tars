@@ -616,13 +616,14 @@ func (d *focusDriver) runVerification(run *focusRun, log zerolog.Logger) (focusp
 
 // focusVerifyCommands are a verification's shell commands (the plan's
 // verify list) and, in review, its end-to-end goals after them (the plan's
-// e2e list — computer_use goals, never shell commands; see focus_e2e.go).
+// e2e list — computer_use goals, never shell commands; see focus_e2e.go),
+// which only a pipeline that opted in to them (Pipeline.E2E) has.
 func focusVerifyCommands(p focuspipeline.Pipeline) (verify, e2e []string) {
 	if p.Plan == nil {
 		return nil, nil
 	}
 	verify = cleanedCommands(p.Plan.Verify)
-	if p.CurrentKind() == focuspipeline.StageReview {
+	if p.E2E && p.CurrentKind() == focuspipeline.StageReview {
 		e2e = cleanedCommands(p.Plan.E2E)
 	}
 	return verify, e2e

@@ -2,6 +2,8 @@ package session
 
 import (
 	"encoding/json"
+	"fmt"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -458,4 +460,75 @@ func stringContains(s, substr string) bool {
 		}
 	}
 	return false
+}
+
+func TestSessionTasks_CompactsWholeWorkspaceArtifactDigests(t *testing.T) {
+	store := NewStore(t.TempDir())
+	sess, err := store.Create("digests")
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	type fileDigest struct {
+		Path      string `json:"path"`
+		Digest    string `json:"digest"`
+		SizeBytes int64  `json:"size_bytes"`
+	}
+	whole := make([]fileDigest, 0, 1749)
+	for index := 0; index < 1749; index++ {
+		whole = append(whole, fileDigest{
+			Path:      fmt.Sprintf("internal/pkg%04d/file.go", index),
+			Digest:    fmt.Sprintf("sha256:%064d", index),
+			SizeBytes: 10,
+		})
+	}
+	wholeJSON, _ := json.Marshal(whole)
+	declaredJSON, _ := json.Marshal(whole[:3])
+	evidence := func(id string, digests json.RawMessage, subject string) TaskEvidence {
+		return TaskEvidence{ID: id, Type: EvidenceTypeTestResult, Command: "make test", ArtifactDigestsJSON: digests, SubjectDigest: subject}
+	}
+	tasks := SessionTasks{Tasks: []Task{{ID: "task-1", Title: "work", Status: "pending"}}}
+	for index := 0; index < 20; index++ {
+		tasks.Tasks[0].Evidence = append(tasks.Tasks[0].Evidence, evidence(fmt.Sprintf("ev_%d", index+1), wholeJSON, "sha256:subject"))
+	}
+	tasks.Tasks[0].Evidence = append(tasks.Tasks[0].Evidence,
+		evidence("ev_declared", declaredJSON, "sha256:declared"),
+		evidence("ev_unsigned", wholeJSON, ""),
+	)
+	if err := store.SaveTasks(sess.ID, tasks); err != nil {
+		t.Fatalf("save tasks: %v", err)
+	}
+
+	info, err := os.Stat(store.tasksPath(sess.ID))
+	if err != nil {
+		t.Fatalf("stat tasks file: %v", err)
+	}
+	// 20 whole-workspace lists were 4 MB; one is kept (no subject digest).
+	if info.Size() > 2*int64(len(wholeJSON)) {
+		t.Fatalf("tasks file is %d bytes; the workspace list of %d bytes was kept for every verification", info.Size(), len(wholeJSON))
+	}
+	got, err := store.GetTasks(sess.ID)
+	if err != nil {
+		t.Fatalf("get tasks: %v", err)
+	}
+	saved := got.Tasks[0].Evidence
+	var tree []struct {
+		Path      string `json:"path"`
+		Digest    string `json:"digest"`
+		SizeBytes int64  `json:"size_bytes"`
+		Files     int    `json:"files"`
+	}
+	if err := json.Unmarshal(saved[0].ArtifactDigestsJSON, &tree); err != nil {
+		t.Fatalf("decode compacted digests: %v", err)
+	}
+	if len(tree) != 1 || tree[0].Path != "." || tree[0].Digest != "sha256:subject" || tree[0].Files != 1749 || tree[0].SizeBytes != 17490 {
+		t.Fatalf("compacted digests = %s", saved[0].ArtifactDigestsJSON)
+	}
+	var declared []fileDigest
+	if err := json.Unmarshal(saved[20].ArtifactDigestsJSON, &declared); err != nil || len(declared) != 3 {
+		t.Fatalf("declared artifact list = %s (err %v), want its 3 files", saved[20].ArtifactDigestsJSON, err)
+	}
+	var unsigned []fileDigest
+	if err := json.Unmarshal(saved[21].ArtifactDigestsJSON, &unsigned); err != nil || len(unsigned) != 1749 {
+		t.Fatalf("list without a subject digest has %d entries (err %v), want it untouched", len(unsigned), err)
+	}
 }

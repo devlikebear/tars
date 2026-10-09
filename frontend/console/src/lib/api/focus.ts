@@ -55,6 +55,8 @@ export type FocusCreateRequest = {
   template?: string
   goal_mode?: boolean
   goal_max_pushes?: number
+  // Opt in to end-to-end goals run through computer use; off when absent.
+  e2e?: boolean
   // A release's list and the cut-off it started from (the group's since).
   release_items?: string[]
   release_since?: string

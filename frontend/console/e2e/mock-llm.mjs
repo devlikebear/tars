@@ -28,7 +28,7 @@
 // findings and a plain report, and a PR turn a draft without a question, so
 // those pipelines rest in the pr stage.
 // [e2e:focus-review] runs the review loop (P3): its plan adds an end-to-end
-// command, build reports done, the first review finds two issues in
+// goal (see computerUseDecision below), build reports done, the first review finds two issues in
 // base.txt, the fix turn ("Fix these findings…") reports, and the next
 // review round finds none. [e2e:focus-pr] answers the pr stage with a
 // <focus-pr> draft and a report, and the turns a PR gate sends (open the PR,
@@ -143,7 +143,7 @@ function focusReply(text) {
       tasks: [{ title: 'Add greet()', done: 'greet() returns a greeting' }, { title: 'Test greet()', done: 'make test passes' }],
       stages: ['plan', 'build', 'review', 'pr', 'pr_review', 'merge'],
       verify: ['make test'],
-      e2e: text.includes(FOCUS_REVIEW) ? ['git status --short'] : [],
+      e2e: text.includes(FOCUS_REVIEW) ? ['@E2EApp The greeting is shown'] : [],
       limits: { build: 3, review: 2, pr: 3 },
     }
     return `Here is the plan.\n\n<focus-plan>${JSON.stringify(plan)}</focus-plan>`
@@ -248,7 +248,23 @@ function focusTemplateDraftReply(text) {
 
 // The chat handler wraps the user's text in context blocks; keep only the
 // part after the last blank line, which is what the user typed.
+// A computer_use decision call (internal/computeruse/llm.go): the system
+// prompt asks for one JSON action and the user message is {state, questions}.
+// The goal counts as reached when the screen is the one e2e/fake-cua-driver.sh
+// serves; any other screen gets prose, which the engine rejects, so a run that
+// reached a real driver fails instead of passing.
+function computerUseDecision(messages) {
+  const system = messages.find((m) => m?.role === 'system')
+  if (typeof system?.content !== 'string' || !system.content.startsWith('You select the next single GUI action')) return null
+  let state = ''
+  try { state = JSON.parse(lastUserText(messages)).state ?? '' } catch { /* not an observation */ }
+  if (!state.includes('APP: E2EApp')) return 'mock-llm: this screen did not come from the e2e cua-driver stub'
+  return JSON.stringify({ op: 'done', target: 'none', input_key: 'none', risky: false, done: true })
+}
+
 function replyFor(body) {
+  const decision = computerUseDecision(body.messages ?? [])
+  if (decision) return decision
   const text = lastUserText(body.messages ?? []).trim()
   const templateDraft = focusTemplateDraftReply(text)
   if (templateDraft) return templateDraft

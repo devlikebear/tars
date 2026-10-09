@@ -37,6 +37,8 @@
   let templatesSkipped = $state(0)
   let templateId = $state('dev')
   let goalMode = $state(false)
+  // End-to-end goals (computer_use) are opt-in per task.
+  let e2e = $state(false)
   let check = $state<Check>({ state: 'idle' })
   let busy = $state(false)
   let error = $state('')
@@ -318,6 +320,7 @@
         ...(extraPaths.length > 0 ? { extra_dirs: extraPaths } : {}),
         ...(template && template.id !== 'dev' ? { template: template.id } : {}),
         ...(goalMode ? { goal_mode: true } : {}),
+        ...(e2e ? { e2e: true } : {}),
       })
       if (attachments) stashKickoffAttachments(created.session_id, attachments)
       onCreated(created.session_id)
@@ -446,6 +449,14 @@
       {$t.focus.newTask.goalMode}
     </label>
     {#if goalMode}<p class="status" data-testid="focus-new-goal-hint">{$t.focus.newTask.goalModeHint}</p>{/if}
+  </div>
+
+  <div class="field">
+    <label class="check">
+      <input type="checkbox" bind:checked={e2e} data-testid="focus-new-e2e" />
+      {$t.focus.newTask.e2e}
+    </label>
+    {#if e2e}<p class="status" data-testid="focus-new-e2e-hint">{$t.focus.newTask.e2eHint}</p>{/if}
   </div>
 
   {#if error}<p class="status error">{error}</p>{/if}

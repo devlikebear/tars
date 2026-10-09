@@ -14,6 +14,7 @@ import (
 func atStage(t *testing.T, id StageID) Pipeline {
 	t.Helper()
 	p := New("s1", "ship focus mode", t0)
+	p.E2E = true
 	if id == StagePlan {
 		return p
 	}
@@ -75,6 +76,9 @@ func TestGuidance(t *testing.T) {
 				if strings.Contains(got, n) {
 					t.Errorf("guidance has %q:\n%s", n, got)
 				}
+			}
+			if !strings.Contains(got, "in the language the developer writes in") {
+				t.Errorf("guidance lacks the language rule:\n%s", got)
 			}
 			if strings.Contains(got, "</focus-stage>") {
 				t.Error("guidance must not close its own wrapper")

@@ -16,22 +16,10 @@ TEST_TIMEOUT="${TEST_TIMEOUT:-300s}"
 # Packages whose Windows failures are broad enough that listing individual
 # tests would be unmaintainable. Excluding a package loses its passing tests
 # too, so prefer SKIPPED_TESTS whenever the count is small.
-#
-# internal/workscheduler is here for a reason worth knowing. It used to hang,
-# which was a deadlock in its own error callback and is fixed. What remains is
-# a teardown failure with no fix on this side: after sql.DB.Close() returns
-# without error, the sqlite driver still holds the ledger's Windows file
-# handle, and Windows refuses to unlink an open file, so t.TempDir()'s
-# RemoveAll fails. It only shows under parallel load, it strikes whichever
-# test happens to finish at the wrong moment, and it is invisible on Linux
-# because unlinking an open file is allowed there. Retrying the removal for
-# twenty seconds and forcing a GC both fail to release it, and a goroutine
-# dump at that moment shows nothing of ours still running.
 EXCLUDED_PACKAGES=(
   github.com/devlikebear/tars/internal/agentruntime    # command executor timeouts and effect receipt file modes
   github.com/devlikebear/tars/pkg/llm                  # claude-code-cli tests drive POSIX shell script stubs (was internal/llm before #928)
   github.com/devlikebear/tars/internal/tarsserver      # ~21 tests: sandboxes and notifiers that shell out, owner-only config files, symlinks, sqlite past Close; focus PR poll tests flake
-  github.com/devlikebear/tars/internal/workscheduler   # sqlite holds the ledger file past Close — see above
 )
 
 # Individual tests in packages that otherwise pass. Verified causes:

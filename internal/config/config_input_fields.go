@@ -17,6 +17,8 @@ var configInputFields = []configInputField{
 	stringField("workspace_dir", []string{"TARS_WORKSPACE_DIR"}, func(cfg *Config) *string { return &cfg.WorkspaceDir }, identityString),
 	stringField("plan_clarify_mode", []string{"PLAN_CLARIFY_MODE", "TARS_PLAN_CLARIFY_MODE"}, func(cfg *Config) *string { return &cfg.PlanClarifyMode }, lowerTrimmedString),
 	stringField("session_default_id", []string{"SESSION_DEFAULT_ID", "TARS_SESSION_DEFAULT_ID"}, func(cfg *Config) *string { return &cfg.SessionDefaultID }, strings.TrimSpace),
+	nonNegativeIntFieldWithPresence("session_auto_archive_days", []string{"SESSION_AUTO_ARCHIVE_DAYS", "TARS_SESSION_AUTO_ARCHIVE_DAYS"}, func(cfg *Config) *int { return &cfg.SessionAutoArchiveDays }, func(cfg *Config) *bool { return &cfg.sessionAutoArchiveDaysSet }),
+	nonNegativeIntFieldWithPresence("session_auto_delete_days", []string{"SESSION_AUTO_DELETE_DAYS", "TARS_SESSION_AUTO_DELETE_DAYS"}, func(cfg *Config) *int { return &cfg.SessionAutoDeleteDays }, func(cfg *Config) *bool { return &cfg.sessionAutoDeleteDaysSet }),
 	stringField("session_telegram_scope", []string{"SESSION_TELEGRAM_SCOPE", "TARS_SESSION_TELEGRAM_SCOPE"}, func(cfg *Config) *string { return &cfg.SessionTelegramScope }, lowerTrimmedString),
 	withYAMLPath(styleDefaultField("style_directness_default", []string{"STYLE_DIRECTNESS_DEFAULT", "TARS_STYLE_DIRECTNESS_DEFAULT"}, func(cfg *Config) *int { return &cfg.StyleDirectnessDefault }), "runtime.style.directness_default"),
 	withYAMLPath(styleDefaultField("style_humor_default", []string{"STYLE_HUMOR_DEFAULT", "TARS_STYLE_HUMOR_DEFAULT"}, func(cfg *Config) *int { return &cfg.StyleHumorDefault }), "runtime.style.humor_default"),
@@ -64,6 +66,7 @@ var configInputFields = []configInputField{
 	stringField("pulse_active_hours", []string{"PULSE_ACTIVE_HOURS", "TARS_PULSE_ACTIVE_HOURS"}, func(cfg *Config) *string { return &cfg.PulseActiveHours }, strings.TrimSpace),
 	stringField("pulse_timezone", []string{"PULSE_TIMEZONE", "TARS_PULSE_TIMEZONE"}, func(cfg *Config) *string { return &cfg.PulseTimezone }, strings.TrimSpace),
 	stringField("pulse_min_severity", []string{"PULSE_MIN_SEVERITY", "TARS_PULSE_MIN_SEVERITY"}, func(cfg *Config) *string { return &cfg.PulseMinSeverity }, lowerTrimmedString),
+	stringField("pulse_decider", []string{"PULSE_DECIDER", "TARS_PULSE_DECIDER"}, func(cfg *Config) *string { return &cfg.PulseDecider }, lowerTrimmedString),
 	withYAMLPath(stringListField("pulse_allowed_autofixes_json", []string{"PULSE_ALLOWED_AUTOFIXES_JSON", "TARS_PULSE_ALLOWED_AUTOFIXES_JSON"}, func(cfg *Config) *[]string { return &cfg.PulseAllowedAutofixes }, parseJSONStringList), "automation.pulse.allowed_autofixes"),
 	boolField("pulse_notify_telegram", []string{"PULSE_NOTIFY_TELEGRAM", "TARS_PULSE_NOTIFY_TELEGRAM"}, func(cfg *Config) *bool { return &cfg.PulseNotifyTelegram }),
 	boolField("pulse_notify_session_events", []string{"PULSE_NOTIFY_SESSION_EVENTS", "TARS_PULSE_NOTIFY_SESSION_EVENTS"}, func(cfg *Config) *bool { return &cfg.PulseNotifySessionEvents }),
@@ -492,6 +495,24 @@ func lowerTrimmedString(value string) string {
 }
 
 // boolFieldWithPresence preserves explicit false for default-enabled settings.
+// nonNegativeIntFieldWithPresence is an int field whose explicit 0 means
+// something (off) and so must win over a non-zero default: intField's merge
+// drops zeros, which would turn "0" back into the default.
+func nonNegativeIntFieldWithPresence(key string, env []string, accessor func(*Config) *int, presence func(*Config) *bool) configInputField {
+	return configInputField{yamlKey: key, envKeys: env,
+		apply: func(cfg *Config, raw string) {
+			*accessor(cfg) = parseNonNegativeInt(raw, *accessor(cfg))
+			*presence(cfg) = true
+		},
+		merge: func(dst *Config, src Config) {
+			if *presence(&src) {
+				*accessor(dst) = *accessor(&src)
+				*presence(dst) = true
+			}
+		},
+	}
+}
+
 func boolFieldWithPresence(key string, env []string, accessor, presence func(*Config) *bool) configInputField {
 	return configInputField{yamlKey: key, envKeys: env,
 		apply: func(cfg *Config, raw string) { *accessor(cfg) = parseBool(raw, *accessor(cfg)); *presence(cfg) = true },

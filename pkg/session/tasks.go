@@ -420,7 +420,42 @@ func normalizeTaskEvidence(ev TaskEvidence) TaskEvidence {
 	ev.ObservedAt = strings.TrimSpace(ev.ObservedAt)
 	ev.CreatedAt = strings.TrimSpace(ev.CreatedAt)
 	ev.UpdatedAt = strings.TrimSpace(ev.UpdatedAt)
+	ev.ArtifactDigestsJSON = compactArtifactDigests(ev.ArtifactDigestsJSON, ev.SubjectDigest)
 	return ev
+}
+
+// maxEvidenceArtifactDigests is how many per-file digests one evidence
+// record keeps as a list; it matches the proof verifier's limit.
+const maxEvidenceArtifactDigests = 256
+
+// compactArtifactDigests replaces an evidence record's list of every file in
+// the workspace with one entry for the whole tree. Verification commands
+// used to record the full list (about 270 KB for this repository) on each
+// run, which grew task files to tens of megabytes. The subject digest was
+// computed over that list, so it stands for it; a record without one, or
+// with a list that cannot be read, is left as it is.
+func compactArtifactDigests(raw json.RawMessage, subjectDigest string) json.RawMessage {
+	// A list short enough to keep is far smaller than this; skip decoding it.
+	if len(raw) <= 16<<10 || subjectDigest == "" {
+		return raw
+	}
+	var files []struct {
+		SizeBytes int64 `json:"size_bytes"`
+	}
+	if err := json.Unmarshal(raw, &files); err != nil || len(files) <= maxEvidenceArtifactDigests {
+		return raw
+	}
+	var total int64
+	for _, file := range files {
+		total += file.SizeBytes
+	}
+	compacted, err := json.Marshal([]map[string]any{{
+		"path": ".", "digest": subjectDigest, "size_bytes": total, "files": len(files),
+	}})
+	if err != nil {
+		return raw
+	}
+	return compacted
 }
 
 func (s *Store) tasksPath(sessionID string) string {

@@ -18,7 +18,7 @@
 </div>
 
 > [!IMPORTANT]
-> **Development resumed.** TARS is no longer archived. Latest tagged release is `v0.57.0` (2026-10-08). This README tracks `main`; see the [changelog](CHANGELOG.md) for tagged-release behavior.
+> **Development resumed.** TARS is no longer archived. Latest tagged release is `v0.59.0` (2026-10-09). This README tracks `main`; see the [changelog](CHANGELOG.md) for tagged-release behavior.
 
 TARS is a local agent runtime for people who want an inspectable AI workbench without handing workspace control to a hosted service. It packages a browser console, API server, CLI, background jobs, memory, and extension system into one Go binary.
 
@@ -35,7 +35,7 @@ The name comes from the TARS in *Interstellar* — practical, direct, dependable
 
 | | OpenClaw | Hermes Agent | TARS |
 |---|---|---|---|
-| **Release used** | Stable `v2026.7.1` | Stable `v0.19.1` (`v2026.7.30`) | `v0.57.0` (latest tagged release) |
+| **Release used** | Stable `v2026.7.1` | Stable `v0.19.1` (`v2026.7.30`) | `v0.59.0` (latest tagged release) |
 | **Packaging** | TypeScript Gateway plus web/native apps and plugins | Python agent/gateway plus TUI, web, and desktop surfaces | Go single binary with embedded browser console and CLI |
 | **Delegation / harnesses** | Native subagents, Codex runtime, and ACP-backed external harness sessions | Isolated `delegate_task` children, live transcripts, MoA, and coding-runtime adapters | Native Agent Runtime plus an opt-in bounded Claude Code execution adapter, model tiers, tool policy, depth limits, and experimental consensus |
 | **Durable async work** | Background-task ledger plus SQLite-backed automations | Durable Kanban/goals, delegated-result recovery, and delivery-obligation ledger | SQLite Work Ledger plus a dependency scheduler with leases, retries, budgets, and operator escalation |
@@ -84,7 +84,7 @@ Each session has a **permission mode** — `manual` (ask), `accept_edits`, `plan
 
 TARS opens a local SQLite Work Ledger at `workspace/_shared/work-ledger/work-ledger.db`. Versioned Work, Step, Attempt, Event, Approval, Artifact, Proof, CapabilityVersion, EvaluationRun, and CapabilityOutcome records use workspace-scoped idempotency keys and transactional state transitions. SQLite runs in WAL mode with foreign keys, full synchronous writes, checksummed migrations, and indexed read projections.
 
-During the compatibility window, startup imports existing Session Goal/Plan/Task/Contract/Evidence and Agent Runtime `runs.json` records without deleting or rewriting those files. Session task saves and Agent Runtime snapshots append new ledger revisions; existing task/run API shapes read the latest projection with a legacy fallback.
+During the compatibility window, startup imports existing Session Goal/Plan/Task/Contract/Evidence and Agent Runtime `runs.json` records without deleting or rewriting those files. Session task saves and Agent Runtime snapshots keep only the newest ledger revision unless an attempt, approval, schedule, receipt, or child work is attached to an older one; existing task/run API shapes read the latest projection with a legacy fallback.
 
 The durable dependency scheduler is on by default (`work_ledger.scheduler.enabled`) and runs whenever Agent Runtime is enabled; without Agent Runtime the server starts and the scheduler stays off. `subagents_orchestrate` calls submit the complete DAG, return a `work_id`, and continue independently from the originating request. Atomic leases and heartbeats prevent duplicate valid claims; recovery reconnects supported Agent Runtime attempts or deterministically reclaims them into the configured retry, replan, decompose, review, or blocked policy. Scheduled attempts execute through native Agent Runtime in the configured workspace. Mutating local tools write pending and committed effect receipts around invocation, so checkpoint replay can suppress a completed effect and require a human decision for an ambiguous unsafe effect. Proof-gated Steps record worker output as `reported`, run declared command/artifact/HTTPS verification under a separate identity and environment, and stop in review or blocked when evidence is missing, failed, or stale. The Tasks timeline follows scheduler events live and allows an operator to cancel work or resume a reviewed/blocked step with a durable reason.
 
@@ -184,7 +184,7 @@ Provider `kind` is `anthropic`, `openai`, `openai-codex`, `gemini`, `gemini-nati
 
 Two isolated surfaces run independently from user chat:
 
-- **Pulse** — 1-minute watchdog scanning cron failures, stuck runs, stalled chats, disk pressure, Telegram delivery health, and reflection status. LLM classifier picks `ignore` / `notify` / `autofix`. The Console renders recent signals as incident cards with likely cause, evidence, recommended action, safe navigation, and re-check controls, while repeated chat-attention notifications are grouped with occurrence counts instead of inflating unread rows. Autofixes are whitelisted in config, cleanup-like autofixes are opt-in, and stalled-chat continuation requires per-session auto-resume consent.
+- **Pulse** — 1-minute watchdog scanning cron failures, stuck runs, stalled chats, disk pressure, Telegram delivery health, and reflection status. Deterministic Go rules pick `ignore` / `notify` / `autofix` by default (`automation.pulse.decider: rules`) from the severity and autofix-eligibility the signals already carry; `decider: llm` opts back into a model (light tier, `pulse_decide` only), asked just when a signal's fingerprint changes or after a 6-hour re-decide window. The Console renders recent signals as incident cards with likely cause, evidence, recommended action, safe navigation, and re-check controls, while repeated chat-attention notifications are grouped with occurrence counts instead of inflating unread rows. Autofixes are whitelisted in config, cleanup-like autofixes are opt-in, and stalled-chat continuation requires per-session auto-resume consent.
 - **Reflection** — Nightly batch (default 02:00–05:00) running memory reflection (Memory Inbox candidate extraction) and stale empty-session pruning.
 
 Both use the `light` tier by default and have no access to user-facing tools (enforced at compile time via `RegistryScope`).
@@ -498,6 +498,6 @@ cd frontend/console && npm run check && npm run test:ci
 
 ## Status
 
-**Development resumed.** TARS is no longer archived and development has resumed. Latest tagged release is `v0.57.0`. TARS is pre-1.0; see the [stability policy](docs/public-agent-packages.md#stability-policy) for the public `pkg/` API guarantees.
+**Development resumed.** TARS is no longer archived and development has resumed. Latest tagged release is `v0.59.0`. TARS is pre-1.0; see the [stability policy](docs/public-agent-packages.md#stability-policy) for the public `pkg/` API guarantees.
 
 Module path: `github.com/devlikebear/tars`. MIT licensed. Contributions are welcome; see [Contributing](CONTRIBUTING.md).
