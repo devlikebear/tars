@@ -41,7 +41,7 @@ make console-e2e          # Playwright: rebuilt console + tars serve + mock LLM 
 | `agentruntime` | Agent execution: state machine, max 4 subagents, `workspace/_shared/agentruntime/` |
 | `session` | File-based chat in `workspace/sessions/`. Kinds: `main` (visible), `worker` (hidden) |
 | `cron` | Tick-based scheduler (30s). `@at` one-time + cron exprs. History capped 50/job |
-| `pulse` | Watchdog (1-min): cron failures, stuck runs, disk, telegram, reflection → `pulse_decide` |
+| `pulse` | Watchdog (1-min): cron failures, stuck runs, disk, telegram, reflection → Go rules (`DecideByRules`); an unchanged set of signals is acted on once, not every tick |
 | `reflection` | Nightly (02:00-05:00): experience extraction + empty session cleanup |
 | `initiative` | Speak-first loop (1-min, off by default, shadow only): Go signals + System One text signals → pure policy → ledger |
 | `ops` | System health, cleanup planning + approval workflow |
@@ -70,7 +70,7 @@ cmd/  →  app layer  →  core layer  →  pkg/
 **System Surface constraints:**
 - Two isolated registries: `RegistryScopeUser` (chat/agents) vs system (pulse/reflection)
 - `RegistryScopeUser` forbids `ops_`, `pulse_`, `reflection_` prefixes — panics at register time
-- Pulse uses narrow Go interfaces only; LLM calls only `pulse_decide`
+- Pulse uses narrow Go interfaces only. It classifies a tick in Go by default (`automation.pulse.decider: rules`) — the signals already carry severity, the autofix candidate and whether it may run, so **do not put a model back on the default path**: a per-minute classifier on a stalled session cost about 870 calls in 16 hours. `decider: llm` is opt-in, runs on the `pulse_decider` role (light), calls only `pulse_decide` (a JSON reply on CLI providers, which cannot be given TARS tools), and only when the signals' fingerprint changes (`pulse.Fingerprint`, numbers left out) or after `RedecideAfter` (6h; failed or idle ticks retry from 5m, doubling)
 - Reflection has **no LLM tool surface** — deterministic Go only
 
 **Initiative (Epic #997):**

@@ -202,6 +202,10 @@ automation:
     active_hours: "00:00-24:00"
     timezone: Local
     min_severity: warn
+    # rules (default): a tick with signals is classified in Go from the
+    # signals' own facts, with no model call. llm: ask the pulse_decider
+    # role's tier (light by default), once per change in the signals.
+    decider: rules
     allowed_autofixes:
       - compress_old_logs
       - auto_continue_chat

@@ -3,8 +3,11 @@
 // Pulse is one half of the system surface (the other being reflection).
 // Every tick (1 minute by default) it deterministically collects signals
 // from cron, agent runtime, ops, and telegram delivery, and — only when some
-// threshold is exceeded — asks an LLM to classify the situation into one
-// of three actions: ignore, notify the user, or run a whitelisted autofix.
+// threshold is exceeded — classifies the situation into one of three
+// actions: ignore, notify the user, or run a whitelisted autofix. The
+// classification is a Go rule over the signals' own facts (DecideByRules);
+// an LLM decider is opt-in. Either way a situation that has not changed
+// since the last acted-on tick is left alone (Fingerprint).
 //
 // Pulse is strictly separated from the user surface: its LLM calls may
 // only invoke the pulse_decide tool, and its Go runtime directly calls
@@ -145,4 +148,8 @@ type TickOutcome struct {
 	AutofixErr      string    `json:"autofix_err,omitempty"`
 	NotifyDelivered bool      `json:"notify_delivered,omitempty"`
 	Err             string    `json:"err,omitempty"`
+
+	// autofixIdle marks an autofix that ran and changed nothing, so the
+	// same signals are retried sooner than a settled tick would be.
+	autofixIdle bool
 }

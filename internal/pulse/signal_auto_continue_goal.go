@@ -3,6 +3,7 @@ package pulse
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -100,6 +101,10 @@ func (s *Scanner) scanAutoContinueGoals(ctx context.Context, now time.Time) *Sig
 	if len(candidates) == 0 {
 		return nil
 	}
+	// Same order every tick, whatever order the store listed them in.
+	slices.SortStableFunc(candidates, func(a, b AutoContinueGoalCandidate) int {
+		return strings.Compare(a.SessionID, b.SessionID)
+	})
 	primary := candidates[0]
 	canContinue := false
 	for _, c := range candidates {
