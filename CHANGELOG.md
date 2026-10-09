@@ -6,6 +6,18 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.58.1] - 2026-10-09
+
+### Changed
+
+- **The work ledger keeps only the newest revision of a session**, as it already did for agent runs. Every save of a session's tasks used to be stored as a new full copy; one workspace had 851 revisions of 99 sessions in an 11.8 GB ledger. A revision with something attached to it afterwards (an attempt, approval, schedule, receipt, or child work) is kept. ([#1183](https://github.com/devlikebear/tars/pull/1183))
+- **Evidence for a check over the whole workspace records one tree digest** instead of a digest per file. The digest still changes when any file does; a check with declared paths lists them as before, up to 256 files. ([#1183](https://github.com/devlikebear/tars/pull/1183))
+
+### Fixed
+
+- **The server starts in seconds on a workspace with Focus sessions.** `tars serve` took about two and a half minutes to listen, and starting it again during the wait began the wait over, so the desktop window sat on "Waiting for the TARS server". Startup read the whole work ledger before listening, and the ledger had grown because every verification command stored a digest of every file in the workspace and every task save was kept. Startup now waits only for the ledger's structural checks; the content check and the one-time cleanup of old revisions run after the server is up. Measured on a copy of the affected workspace: 80 s before listening became 4.7 s on the first start (plus about 38 s of background cleanup, once) and 0.4 s after that, and the ledger went from 11.8 GB to 266 MB. ([#1183](https://github.com/devlikebear/tars/pull/1183))
+- **The work ledger no longer leaks a file handle when a query is cancelled.** A ledger query whose context was cancelled just as it returned its first row left its statement unfinalized in the sqlite driver, and a connection with an unfinalized statement keeps the database file open even after it is closed. The scheduler polls with a context that is cancelled on shutdown and chat turns cancel theirs, so a long-running server slowly collected open handles on `ledger.db` (and such a query could hold a read transaction that keeps the write-ahead log from being checkpointed); on Windows the file could not be removed or replaced after the store was closed. Fixed by moving `modernc.org/sqlite` from 1.39.1 to 1.42.2, which closes those rows. ([#1182](https://github.com/devlikebear/tars/pull/1182))
+
 ## [0.58.0] - 2026-10-09
 
 ### Changed
@@ -16,7 +28,6 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ### Fixed
 
-- **The work ledger no longer leaks a file handle when a query is cancelled.** A ledger query whose context was cancelled just as it returned its first row left its statement unfinalized in the sqlite driver, and a connection with an unfinalized statement keeps the database file open even after it is closed. The scheduler polls with a context that is cancelled on shutdown and chat turns cancel theirs, so a long-running server slowly collected open handles on `ledger.db` (and such a query could hold a read transaction that keeps the write-ahead log from being checkpointed); on Windows the file could not be removed or replaced after the store was closed. Fixed by moving `modernc.org/sqlite` from 1.39.1 to 1.42.2, which closes those rows. ([#1182](https://github.com/devlikebear/tars/pull/1182))
 - **Session cost on `claude-code-cli` is no longer counted many times over.** The CLI reports a session's running total on every resumed turn, and TARS added that total to the ledger each time, so a ten-turn session showed the sum of ten growing totals — about $440 for a session that cost $19. Each turn is now recorded with what it added. The status bar, the board's monthly cost, usage limits and analytics all read the corrected figure; rows already in the ledger keep their old values, and the first resumed turn after a server restart is recorded without a cost. ([#1180](https://github.com/devlikebear/tars/pull/1180))
 - **Pulse no longer calls a model every minute.** While any session sat stalled or failed, the watchdog asked the LLM to classify the same signals on every tick — on a `claude-code-cli` setup that was a full Claude Code run per minute on the standard tier (about 870 calls in 16 hours), and every one failed because a CLI provider cannot be handed the `pulse_decide` tool. Pulse now decides in Go from what the signals already say (run the allowed autofix that is ready, compress logs on a disk warning, notify at or above the minimum severity, otherwise ignore) and acts on a situation once: unchanged signals are left alone for 6 hours, with a short doubling retry after a tick that failed or fixed nothing. `automation.pulse.decider: llm` brings the model back for those who want it — on the light tier by default (`pulse_decider` used to fall through to the default tier), asked only when the signals change, and with a JSON reply on CLI providers so it works there. ([#1178](https://github.com/devlikebear/tars/pull/1178))
 
