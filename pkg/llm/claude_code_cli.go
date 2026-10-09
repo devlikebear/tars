@@ -167,6 +167,9 @@ func (c *ClaudeCodeCLIClient) Chat(ctx context.Context, messages []ChatMessage, 
 		resumeID = ""
 		resp, err = run(resumeID, buildClaudeCodeCLIPrompt(messages))
 	}
+	// The reported cost is the upstream session's running total; charge
+	// this call its own part (claude_code_cli_cost.go).
+	resp.Usage.CostUSD = claudeCodeSessionCosts.callCost(resumeID, resp.SessionID, resp.Usage.CostUSD)
 	if err != nil {
 		// The API requests made before the failure are spent either way.
 		err = withPartialUsage(err, resp.Usage, resp.spentByModel)
