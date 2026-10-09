@@ -18,7 +18,7 @@
 </div>
 
 > [!IMPORTANT]
-> **Development resumed.** TARS is no longer archived. Latest tagged release is `v0.54.0` (2026-10-08). The narrower console navigation described below shipped in `v0.36.0`. This README tracks `main`; see the [changelog](CHANGELOG.md) for tagged-release behavior.
+> **Development resumed.** TARS is no longer archived. Latest tagged release is `v0.59.0` (2026-10-09). This README tracks `main`; see the [changelog](CHANGELOG.md) for tagged-release behavior.
 
 TARS is a local agent runtime for people who want an inspectable AI workbench without handing workspace control to a hosted service. It packages a browser console, API server, CLI, background jobs, memory, and extension system into one Go binary.
 
@@ -35,7 +35,7 @@ The name comes from the TARS in *Interstellar* — practical, direct, dependable
 
 | | OpenClaw | Hermes Agent | TARS |
 |---|---|---|---|
-| **Release used** | Stable `v2026.7.1` | Stable `v0.19.1` (`v2026.7.30`) | `v0.54.0` (latest tagged release) |
+| **Release used** | Stable `v2026.7.1` | Stable `v0.19.1` (`v2026.7.30`) | `v0.59.0` (latest tagged release) |
 | **Packaging** | TypeScript Gateway plus web/native apps and plugins | Python agent/gateway plus TUI, web, and desktop surfaces | Go single binary with embedded browser console and CLI |
 | **Delegation / harnesses** | Native subagents, Codex runtime, and ACP-backed external harness sessions | Isolated `delegate_task` children, live transcripts, MoA, and coding-runtime adapters | Native Agent Runtime plus an opt-in bounded Claude Code execution adapter, model tiers, tool policy, depth limits, and experimental consensus |
 | **Durable async work** | Background-task ledger plus SQLite-backed automations | Durable Kanban/goals, delegated-result recovery, and delivery-obligation ledger | SQLite Work Ledger plus a dependency scheduler with leases, retries, budgets, and operator escalation |
@@ -72,11 +72,19 @@ See [docs/console.md](docs/console.md) for the detailed console page and panel i
 
 Native `exec` uses POSIX shell syntax for quoted arguments, pipes, redirects, and chained commands in both foreground and background runs (Git sh/bash on Windows). Existing tool approvals still apply; shell command validation is defense in depth, not a sandbox. Tool cards show exit status and error output, and follow-up messages added after reconnecting to a running turn continue automatically when that turn finishes.
 
+A chat turn's context lives apart from the request that started it, so a turn keeps running after the console navigates away, refreshes, or disconnects — `POST /v1/chat/cancel` is the only way to stop it. Every event a turn sends is kept in a per-session feed and replayed when a console reattaches, including approval cards still waiting on an answer. The same feed backs the dock's **Side session** panel, so a second session can be watched and answered alongside the active one.
+
+### Session Worktrees & Permissions
+
+A chat session's active working directory can be a plain checkout or, when another session already holds the write lease on that git repository, an automatically isolated **session worktree** (`tars/session-<id>` branch) — shown as an ⑂ chip in the chat header, with **isolate**, **apply** (patch the checkout), **keep** (commit the branch), and **discard** actions. `.tars/worktree_include` copies gitignored files or folders (`.env`, `node_modules`) into a new worktree with copy-on-write where the filesystem supports it, so an isolated session still has what it needs to run.
+
+Each session has a **permission mode** — `manual` (ask), `accept_edits`, `plan`, or `auto` — set from the status bar, `⇧Tab` in the composer, or pinned for a task with `/goal`. A cron run, Telegram turn, or subagent started by a session that isn't `auto` asks before a risky tool call too: the question queues as an Ops approval, a notification goes out, and an unanswered question expires after 30 minutes rather than blocking forever. See [docs/console.md](docs/console.md) for the full session-override (`.tars/`) and permission-mode reference.
+
 ### Durable Work Ledger
 
 TARS opens a local SQLite Work Ledger at `workspace/_shared/work-ledger/work-ledger.db`. Versioned Work, Step, Attempt, Event, Approval, Artifact, Proof, CapabilityVersion, EvaluationRun, and CapabilityOutcome records use workspace-scoped idempotency keys and transactional state transitions. SQLite runs in WAL mode with foreign keys, full synchronous writes, checksummed migrations, and indexed read projections.
 
-During the compatibility window, startup imports existing Session Goal/Plan/Task/Contract/Evidence and Agent Runtime `runs.json` records without deleting or rewriting those files. Session task saves and Agent Runtime snapshots append new ledger revisions; existing task/run API shapes read the latest projection with a legacy fallback.
+During the compatibility window, startup imports existing Session Goal/Plan/Task/Contract/Evidence and Agent Runtime `runs.json` records without deleting or rewriting those files. Session task saves and Agent Runtime snapshots keep only the newest ledger revision unless an attempt, approval, schedule, receipt, or child work is attached to an older one; existing task/run API shapes read the latest projection with a legacy fallback.
 
 The durable dependency scheduler is on by default (`work_ledger.scheduler.enabled`) and runs whenever Agent Runtime is enabled; without Agent Runtime the server starts and the scheduler stays off. `subagents_orchestrate` calls submit the complete DAG, return a `work_id`, and continue independently from the originating request. Atomic leases and heartbeats prevent duplicate valid claims; recovery reconnects supported Agent Runtime attempts or deterministically reclaims them into the configured retry, replan, decompose, review, or blocked policy. Scheduled attempts execute through native Agent Runtime in the configured workspace. Mutating local tools write pending and committed effect receipts around invocation, so checkpoint replay can suppress a completed effect and require a human decision for an ambiguous unsafe effect. Proof-gated Steps record worker output as `reported`, run declared command/artifact/HTTPS verification under a separate identity and environment, and stop in review or blocked when evidence is missing, failed, or stale. The Tasks timeline follows scheduler events live and allows an operator to cancel work or resume a reviewed/blocked step with a durable reason.
 
@@ -123,6 +131,17 @@ Tier resolution priority: task `tier` > agent YAML `tier` > config default.
 
 The Console Agent Runtime page keeps run history, run topology, event replay, versioned recovery checkpoints, explicit Retry/Replay/Resume actions, checkpoint safety decisions, cost/token flow, file attention, git diff attribution, and subagent profile management in one operational surface. See [docs/console.md](docs/console.md), [checkpoint recovery](docs/agent-harness/checkpoint-recovery.md), and [docs/tutorials/22-agentruntime.md](docs/tutorials/22-agentruntime.md) for details.
 
+### Focus Mode
+
+Focus mode runs one task as a **template** — an ordered list of stages, each one of plan / build / review / pr / pr_review / merge. The built-in `dev` template (plan → build → review → pr → pr_review → merge → release) is the default; `writing` and `research` ship too, and workspace-local templates (`<workspace>/focus-templates/*.yaml`) or ones drafted in plain language at `/console/focus/templates` add more without ever replacing a built-in. Stage transitions are decided by facts, not a model's opinion: plan approval, a verification command's exit code, finding triage, and the PR's real CI/review state (`gh pr view`, read-only, polled every 60s).
+
+- **Gates** (plan, PR draft, PR review, merge) wait for a developer decision unless the task is in **goal mode** — nobody at the gates, fixed policy (approve G1/G3/G4, fix everything but `low` findings, retry on a stuck gate), a push budget (default 20), and backoff on repeated turn failures.
+- An **approved plan can still be edited** — goal, `verify`, `e2e`, `e2e_setup`, `e2e_teardown` — without moving a stage, through `focus_plan_edit`, a `<focus-plan-edit>` block, or `POST /v1/focus/pipelines/{id}/plan`; every edit leaves a "plan edited" card.
+- **End-to-end checks are plain-language goals** ("`@App do the thing`") run through the same engine as the `computer_use` chat tool, so `computer_use` only drives what's already on screen. A plan's `e2e_setup` shell commands build the working folder and bring that build to the screen before each check; `e2e_teardown` stops it afterward.
+- The console's Focus page (`/console/focus`) shows the stage stepper, a card deck (gate/report/decision/change cards) you can page through, and a graph view; `/console/focus/release` is the release train.
+
+See [docs/decisions/focus-mode.md](docs/decisions/focus-mode.md) and [docs/focus-templates.md](docs/focus-templates.md) for the full design and template schema.
+
 ### 3-Tier Model Routing
 
 Route workloads to different models for cost and quality optimization:
@@ -159,11 +178,13 @@ llm:
 
 System roles such as chat, pulse, reflection, compaction, cleanup, and agent runtime agents map to tiers. Background work defaults to `light`, Chat can recommend a tier before the first expensive turn, and runtime logs record the resolved `role`, `tier`, `provider`, `model`, and `source` for traceability. Tier bindings and providers can be edited directly in Settings; the onboarding wizard remains available for guided setup. Search or filter settings, edit typed fields or advanced JSON, then choose Save or Save and apply. Saved YAML, environment-effective values and running values are shown separately. Applying changes that require a server restart asks for explicit confirmation and checks the new runtime after reconnecting. Masked or omitted provider credentials are preserved; environment overrides remain authoritative.
 
+Provider `kind` is `anthropic`, `openai`, `openai-codex`, `gemini`, `gemini-native`, or one of two providers that reuse a local CLI's own sign-in instead of an API key: `claude-code-cli` (the local `claude` CLI; multi-turn chats resume the CLI's own session via `--resume` to avoid repaying for system prompt and transcript, and tool calls stream as the same native-looking cards) and `antigravity-cli` (the local `agy` CLI; no credentials pass through TARS at all — the CLI uses its own Google sign-in). Both reuse that CLI's existing subscription usage rather than metered API billing, and `claude-code-cli` is single-user only — never expose a server using it to more than one person. See [docs/llm-providers.md](docs/llm-providers.md) for setup and the full provider/tier reference.
+
 ### Background Surfaces
 
 Two isolated surfaces run independently from user chat:
 
-- **Pulse** — 1-minute watchdog scanning cron failures, stuck runs, stalled chats, disk pressure, Telegram delivery health, and reflection status. LLM classifier picks `ignore` / `notify` / `autofix`. The Console renders recent signals as incident cards with likely cause, evidence, recommended action, safe navigation, and re-check controls, while repeated chat-attention notifications are grouped with occurrence counts instead of inflating unread rows. Autofixes are whitelisted in config, cleanup-like autofixes are opt-in, and stalled-chat continuation requires per-session auto-resume consent.
+- **Pulse** — 1-minute watchdog scanning cron failures, stuck runs, stalled chats, disk pressure, Telegram delivery health, and reflection status. Deterministic Go rules pick `ignore` / `notify` / `autofix` by default (`automation.pulse.decider: rules`) from the severity and autofix-eligibility the signals already carry; `decider: llm` opts back into a model (light tier, `pulse_decide` only), asked just when a signal's fingerprint changes or after a 6-hour re-decide window. The Console renders recent signals as incident cards with likely cause, evidence, recommended action, safe navigation, and re-check controls, while repeated chat-attention notifications are grouped with occurrence counts instead of inflating unread rows. Autofixes are whitelisted in config, cleanup-like autofixes are opt-in, and stalled-chat continuation requires per-session auto-resume consent.
 - **Reflection** — Nightly batch (default 02:00–05:00) running memory reflection (Memory Inbox candidate extraction) and stale empty-session pruning.
 
 Both use the `light` tier by default and have no access to user-facing tools (enforced at compile time via `RegistryScope`).
@@ -271,9 +292,7 @@ brew install --cask devlikebear/tap/tars-desktop   # desktop app (macOS); pulls 
 ```
 
 On macOS, choose **Start server** from the desktop tray menu when the server is
-not running. This installs the service and starter workspace if needed. Version
-0.43.4 fixes server discovery on case-insensitive volumes, where the app could
-mistake its own `TARS` executable for the `tars` server.
+not running. This installs the service and starter workspace if needed.
 
 The setup wizard detects locally installed Claude Code and Codex sign-ins.
 A single ready provider fills the empty first-run form automatically; when both
@@ -313,6 +332,19 @@ or the app is running; restart them to use the new version. Windows has no
 `tars service`, so the desktop app starts `tars serve` for you, or run it
 yourself.
 
+**Winget (Windows):**
+
+```powershell
+winget install Devlikebear.TARS
+winget install Devlikebear.TARS.Desktop   # depends on the server
+```
+
+Each release publishes `tars.exe` plus `share/` as a portable winget package,
+so no separate archive download or PATH edit is needed. A winget install is
+upgraded only by winget (`winget upgrade Devlikebear.TARS`); `tars update`
+and the desktop app's own self-update both refuse to touch a winget-managed
+install and point you at `winget upgrade` instead.
+
 **Updating:** `tars update` replaces an `install.ps1` or `install.sh` install
 with the latest release, checks it against `checksums.txt`, and restarts the
 server running on `--server-url` onto it (`--check` only reports, `--yes`
@@ -322,6 +354,8 @@ every six hours and updates the server only while no chat is running and
 nothing waits on an approval. When a newer app is out, it tells you; click
 the notification to install it. Homebrew installs update with `brew upgrade`,
 which the macOS desktop app runs for you and then restarts the service.
+Winget installs update only with `winget upgrade`, on both the server and
+the desktop app.
 
 ## Quick Start
 
@@ -355,17 +389,19 @@ For local console development, set `TARS_CONSOLE_DEV_URL=http://127.0.0.1:5173` 
 
 ## Console Pages
 
-The console runs at `http://127.0.0.1:43180/console`. The sidebar groups daily pages under **Work**, **Build**, and **System** (regrouped on `main` after `v0.37.1`; tagged `v0.37.1` and earlier still show Work / Operate / Setup). Mission Control remains the landing route. The footer keeps server, Pulse, Reflection, and active session status visible with direct jumps to each detail page. ⌘K opens the command palette for every route, including ones hidden from the sidebar.
+The console runs at `http://127.0.0.1:43180/console`. The sidebar groups pages under **Work**, **Build**, and **System**. `/console` itself is the session board — every chat, grouped by the folder it works in, with live needs-input/running/done status (the Mission Control status-strip-and-delivery overview moved to `/console/system`, under System as **Overview**). The footer keeps server, Pulse, Reflection, and active session status visible with direct jumps to each detail page. ⌘K opens the command palette for every route, including ones hidden from the sidebar.
 
 | Group | Page | Path | Purpose |
 |-------|------|------|---------|
-| — | Mission Control | `/console` | Landing screen: status, notifications, and recommended setup actions; full plan, run, job, and session lists live on their own pages |
+| Work | Sessions | `/console` | The session board: every chat grouped by working folder, with live status and filters |
+| Work | Focus | `/console/focus` | Goal-driven pipelines (plan → build → review → pr → pr_review → merge, template-selectable) with gate approvals, goal mode, and the progress graph |
 | Work | Chat | `/console/chat` | Agent chat, tool calls, files, terminal, Git, Changes, tasks, session policy, and memory context |
 | Build | Agent Runtime | `/console/agentruntime` | Run history, topology views, replay, restart, costs, file attention, and subagent profiles |
 | Build | Memory | `/console/memory` | Review memory candidates, edit stored knowledge, and test recall paths |
 | Build | Extensions | `/console/extensions` | Skills, plugins, MCP packages, hub installs, diagnostics, and local drafts |
 | Build | System Prompt | `/console/sysprompt` | Edit USER.md, IDENTITY.md, AGENTS.md, and TOOLS.md |
-| System | Approvals | `/console/approvals` | Review cleanup plans and approved Git mutations before apply, plus the sanitized Remote Execution view |
+| System | Overview | `/console/system` | Mission Control: Pulse/Reflection/disk status strip, recent notifications, recommended actions, and delivery (version, PRs) |
+| System | Approvals | `/console/approvals` | Review cleanup plans and queued unattended tool-call approvals before TARS applies them, plus the automation audit |
 | System | Pulse | `/console/pulse` | Watchdog status, incident cards, and run-now trigger |
 | System | Reflection | `/console/reflection` | Nightly batch status and run-now trigger |
 | System | Cron | `/console/cron` | Manage global scheduled jobs with delivery targets, pause/resume, run-now, delete, and run history |
@@ -384,42 +420,48 @@ The narrowing is recorded as normative policy in [`frontend/console/DESIGN.md`](
 
 ### Screenshots
 
-Captured from a running `tars serve` built from an August 2026 snapshot of `main` — one per sidebar page, in the order the sidebar lists them. The workspace is a throwaway one, so the counters are small. (The sidebar footer in that snapshot still showed `v0.35.0`; current `VERSION.txt` is `0.53.0`.)
+Captured from a running `tars serve` built from a `v0.57.0`-era snapshot of `main` with `make console-screenshots` ([frontend/console/e2e/capture](frontend/console/e2e/capture)) — a throwaway workspace and a deterministic mock model, so the counters are small and the text in the transcript is a scripted demo, not a real model's output. A short demo video walking through the same screens is on the [project homepage](https://tars.marvin-42.com).
+
+**Sessions** — `/console`
+
+![TARS console session board: sessions grouped by the folder they work in, with live status filters](docs/screenshots/console-board.webp)
+
+The landing page. Every chat, grouped by the repository or folder it works in, with Needs input / Running / Done / Idle filters and live status per card.
+
+**Focus** — `/console/focus`
+
+![TARS console Focus page: a pipeline's stage stepper (Plan, Build, Review done, PR active) and its latest report card](docs/screenshots/console-focus.webp)
+
+A goal-driven pipeline mid-run: the stage stepper across the top, the latest card from the deck, and a box to steer the current stage. Templates, goal mode, and approved-plan edits are described below.
 
 **Chat** — `/console/chat`
 
-![TARS console Chat page: session list on the left, a two-turn conversation in the middle, dockable panel tabs across the top](docs/screenshots/console-chat.webp)
+![TARS console Chat page: session list on the left, a short exchange with a write_file tool call in the middle, the Files panel on the right](docs/screenshots/console-chat.webp)
 
-Panel tabs across the top dock Sessions, Files, Git, Tasks, Health and the rest beside the transcript; the header carries session health and the active working directory.
+Panel tabs across the top dock Sessions, Files, Git, Tasks, Health and the rest beside the transcript; tool calls render as inline cards, and the header carries session health and the active working directory.
+
+**Overview** — `/console/system`
+
+![TARS console Overview ("Mission Control") page: Pulse/Reflection/disk/session status strip, recent notifications, recommended actions, and delivery](docs/screenshots/console-overview.webp)
+
+The status strip, recent notifications, recommended setup actions, and current version/PR shortcuts in one place — what used to live at `/console` before the session board took over as the landing page.
 
 **Approvals** — `/console/approvals`
 
-![TARS console Approvals page showing the review queue, what triggers an approval, and the Remote Execution panel](docs/screenshots/console-approvals.webp)
+![TARS console Approvals page showing the review queue, what triggers an approval, and the automation audit](docs/screenshots/console-approvals.webp)
 
-The review queue, with what puts something in it and what each decision does. Remote execution sits on the same page, reporting disabled because it is off by default.
-
-**Logs** — `/console/logs`
-
-![TARS console Logs page tailing the runtime log filtered to INFO level](docs/screenshots/console-logs.webp)
-
-File, level, component, and line count are all filters; any line expands to the raw JSON record behind it.
-
-**Pulse** — `/console/pulse`
-
-![TARS console Pulse page listing watch targets, the ignore/notify/autofix actions, and current watchdog status](docs/screenshots/console-pulse.webp)
-
-What the watchdog watches and what it is allowed to do about it. The counters are live: this run classified a disk-pressure signal as `notify` rather than `autofix`.
+Cleanup plans and queued unattended tool-call approvals wait here for review before TARS applies them; the automation audit below records every automated decision. A session's own in-chat tool approvals stay inline in the transcript instead.
 
 **Settings** — `/console/config`
 
 ![TARS console Settings page showing the Quick Start readiness cards, 9 of 10 ready](docs/screenshots/console-settings.webp)
 
-Quick Start, and only Quick Start. Each card is one gate between you and a working install, with a readiness badge and a note when the change needs a restart.
+Quick Start readiness cards sit below the schema search and Remote Access. Each card is one gate between you and a working install, with a readiness badge and a note when the change needs a restart.
 
 ## Requirements
 
 - Go 1.25.6+ (for building from source)
-- LLM provider credentials (Anthropic, OpenAI, Gemini, or Claude Code CLI)
+- LLM provider credentials (Anthropic, OpenAI, Gemini, or a local Claude Code/Antigravity CLI sign-in)
 - Optional: Gemini API key for semantic memory embeddings
 - Optional: Node.js for Playwright browser automation
 
@@ -456,6 +498,6 @@ cd frontend/console && npm run check && npm run test:ci
 
 ## Status
 
-**Development resumed.** TARS is no longer archived and development has resumed. Latest tagged release is `v0.54.0`. TARS is pre-1.0; see the [stability policy](docs/public-agent-packages.md#stability-policy) for the public `pkg/` API guarantees.
+**Development resumed.** TARS is no longer archived and development has resumed. Latest tagged release is `v0.59.0`. TARS is pre-1.0; see the [stability policy](docs/public-agent-packages.md#stability-policy) for the public `pkg/` API guarantees.
 
 Module path: `github.com/devlikebear/tars`. MIT licensed. Contributions are welcome; see [Contributing](CONTRIBUTING.md).

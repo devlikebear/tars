@@ -26,3 +26,6 @@ dist-ssr
 # Playwright E2E output
 test-results
 playwright-report
+
+# make console-screenshots output (raw PNGs, recorded video, encoded media)
+e2e/capture/output
