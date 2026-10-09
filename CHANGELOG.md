@@ -6,6 +6,10 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+### Fixed
+
+- **Pulse no longer calls a model every minute.** While any session sat stalled or failed, the watchdog asked the LLM to classify the same signals on every tick — on a `claude-code-cli` setup that was a full Claude Code run per minute on the standard tier (about 870 calls in 16 hours), and every one failed because a CLI provider cannot be handed the `pulse_decide` tool. Pulse now decides in Go from what the signals already say (run the allowed autofix that is ready, compress logs on a disk warning, notify at or above the minimum severity, otherwise ignore) and acts on a situation once: unchanged signals are left alone for 6 hours, with a short doubling retry after a tick that failed or fixed nothing. `automation.pulse.decider: llm` brings the model back for those who want it — on the light tier by default (`pulse_decider` used to fall through to the default tier), asked only when the signals change, and with a JSON reply on CLI providers so it works there. ([#1178](https://github.com/devlikebear/tars/pull/1178))
+
 ## [0.57.1] - 2026-10-09
 
 ### Fixed

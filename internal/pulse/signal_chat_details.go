@@ -1,5 +1,10 @@
 package pulse
 
+import (
+	"slices"
+	"strings"
+)
+
 type chatSignalCandidate interface {
 	chatSignalDetails() chatSignalCandidateDetails
 	canAutoResumeCandidate() bool
@@ -56,6 +61,13 @@ func newChatSignalDetails[T chatSignalCandidate](
 	if len(candidates) == 0 {
 		return nil
 	}
+	// The session store lists sessions in no fixed order. Sorted, the same
+	// sessions always produce the same details (and so the same Fingerprint),
+	// whichever one the store happened to return first.
+	candidates = slices.Clone(candidates)
+	slices.SortStableFunc(candidates, func(a, b T) int {
+		return strings.Compare(a.chatSignalDetails().sessionID, b.chatSignalDetails().sessionID)
+	})
 	primary := candidates[0].chatSignalDetails()
 	details := map[string]any{
 		countKey:              len(candidates),

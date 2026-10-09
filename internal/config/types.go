@@ -195,12 +195,15 @@ type AutomationConfig struct {
 
 	// Pulse is the system-surface watchdog. All fields default to
 	// conservative values so it runs silently until signals appear.
-	PulseEnabled                  bool
-	PulseInterval                 string // duration string, e.g. "1m"
-	PulseTimeout                  string // duration string, e.g. "2m"
-	PulseActiveHours              string
-	PulseTimezone                 string
-	PulseMinSeverity              string
+	PulseEnabled     bool
+	PulseInterval    string // duration string, e.g. "1m"
+	PulseTimeout     string // duration string, e.g. "2m"
+	PulseActiveHours string
+	PulseTimezone    string
+	PulseMinSeverity string
+	// PulseDecider is "rules" (default: classify from the signals' own
+	// facts, no model) or "llm" (ask the pulse_decider role's tier).
+	PulseDecider                  string
 	PulseAllowedAutofixes         []string
 	PulseNotifyTelegram           bool
 	PulseNotifySessionEvents      bool
