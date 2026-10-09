@@ -1794,8 +1794,15 @@ func (s *Store) Delete(id string) error {
 
 	_ = os.Remove(s.TranscriptPath(id))
 	// The task file is the session's too; left behind, it was read again
-	// by everything that lists sessions with plans.
-	_ = os.Remove(s.tasksPath(id))
+	// by everything that lists sessions with plans. The id was found in the
+	// index, but it also names the file: only a plain name inside the
+	// store's directory is removed.
+	if !strings.Contains(id, "..") && !strings.ContainsAny(id, `/\`) {
+		root := filepath.Clean(s.dir) + string(filepath.Separator)
+		if path := filepath.Clean(s.tasksPath(id)); strings.HasPrefix(path, root) {
+			_ = os.Remove(path)
+		}
+	}
 	s.notifyDeleted(id)
 
 	return nil
