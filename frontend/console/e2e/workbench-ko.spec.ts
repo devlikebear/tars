@@ -76,6 +76,60 @@ test('the chat workbench chrome is Korean', async ({ page }) => {
   expect(texts.filter(untranslated)).toEqual([])
 })
 
+// CASE (CompanionPet.svelte) floats outside .dock-left/.chat-main/.chat-rail,
+// so chromeTexts above never reaches it, and its own words — the bubble's
+// header, empty-state line, a failure line, and the input — are <p> text
+// and aria-label/placeholder attributes chromeTexts' own-text selector list
+// does not read either. This collects those directly instead.
+async function caseTexts(scope: Locator): Promise<string[]> {
+  return scope.evaluate((root) => {
+    const seen = new Set<string>()
+    const add = (value: string | null | undefined) => {
+      const text = value?.replace(/\s+/g, ' ').trim()
+      if (text) seen.add(text)
+    }
+    root.querySelectorAll('button, p, span.companion-state').forEach((el) => add(el.textContent))
+    root.querySelectorAll('[aria-label], [placeholder]').forEach((el) => {
+      add(el.getAttribute('aria-label'))
+      add(el.getAttribute('placeholder'))
+    })
+    return [...seen]
+  })
+}
+
+test("CASE's bubble is Korean, the empty state and a failure line included", async ({ page }) => {
+  await newSession(page)
+  const pet = page.locator('.companion-pet')
+  await pet.getByRole('button', { name: 'CASE에게 말 걸기' }).click()
+  const bubble = pet.locator('.companion-bubble')
+  await expect(bubble).toBeVisible()
+  await expect(bubble.locator('.companion-empty')).toBeVisible()
+  const emptyTexts = await caseTexts(pet)
+
+  // A failure line and its badge (#1192's e2e event channel) add their own
+  // words — "Failed: …" and the dismiss/badge aria-labels — the empty
+  // state above never shows.
+  const res = await page.request.post('/v1/e2e/events', {
+    data: {
+      type: 'notification',
+      category: 'ops',
+      severity: 'error',
+      title: '오류',
+      message: '점검 실패',
+      timestamp: new Date().toISOString(),
+    },
+  })
+  expect(res.ok()).toBeTruthy()
+  await expect(bubble.locator('.companion-line-failure')).toBeVisible()
+  await expect(pet.locator('.companion-badge')).toBeVisible()
+  const failureTexts = await caseTexts(pet)
+
+  const found = [...emptyTexts, ...failureTexts].filter(untranslated)
+  expect(found).toEqual([])
+
+  await page.locator('.companion-line-dismiss').click()
+})
+
 const dockPanels = ['artifacts', 'changes', 'git', 'tasks', 'context', 'prior', 'prompt', 'config', 'skillExtraction', 'cron', 'health'] as const
 
 test('every dock panel is Korean', async ({ page }) => {

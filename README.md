@@ -65,7 +65,7 @@ The primary interface is the browser console at `http://127.0.0.1:43180/console`
 - Durable memory through `MEMORY.md`, reviewed experiences, daily logs, semantic search, structured compaction, and a Memory Inbox review queue.
 - Explicit context injection through `@` file/directory mentions, `/` command autocomplete, and user-invocable skills.
 - Configurable system prompts through `USER.md`, `IDENTITY.md`, `AGENTS.md`, and `TOOLS.md`.
-- A locale-aware companion surface for Poke, Suggest, Feedback, runtime signals, and bounded handoff into Chat.
+- CASE, an always-floating companion that badges and shows what is waiting on you across sessions (approvals, running turns, recent failures), reacting with expression and motion, with a bounded handoff into Chat for typed questions.
 
 See [docs/console.md](docs/console.md) for the detailed console page and panel inventory.
 
@@ -238,7 +238,7 @@ embodiment:
       max_triggers_per_hour: 60
 ```
 
-Providers may also use the existing webhook inbox path `/v1/channels/webhook/inbound/{provider}` or the direct percept path `/v1/embodiment/percept/{provider}`. TARS persists the Percept in the channel inbox first, then routes self-sensory Percepts through the embodiment gate and agent runtime. Successful percept intake also publishes an ephemeral live Console companion signal so camera and microphone providers can make the pet react without creating desktop notifications. Body actions map to provider capabilities (`speak` → `speech`, `express` → `expression`, `move` → `motion`, `led` → `led`); unsupported capabilities are dropped gracefully instead of failing the cognition loop. MCP providers receive actions through their existing MCP server, so this does not add any built-in LLM tool surface.
+Providers may also use the existing webhook inbox path `/v1/channels/webhook/inbound/{provider}` or the direct percept path `/v1/embodiment/percept/{provider}`. TARS persists the Percept in the channel inbox first, then routes self-sensory Percepts through the embodiment gate and agent runtime. Successful percept intake also publishes a `category: "embodiment"` notification event like any other (stored in `/v1/events/history`, counted toward unread, eligible for a desktop notification) — the Console does not route it to CASE, the floating companion: CASE shows only chat activity, recent failures, and server-sent `category: "companion"` cues. Body actions map to provider capabilities (`speak` → `speech`, `express` → `expression`, `move` → `motion`, `led` → `led`); unsupported capabilities are dropped gracefully instead of failing the cognition loop. MCP providers receive actions through their existing MCP server, so this does not add any built-in LLM tool surface.
 
 ### Remote Access
 
