@@ -142,8 +142,11 @@ func (s *initiativeSpeaker) Speak(ctx context.Context, req initiative.SpeakReque
 	path := s.store.TranscriptPath(s.mainSessionID)
 	before, err := session.ReadMessages(path)
 	if err != nil {
+		// No compose call has happened yet — read_error, not write_error:
+		// the latter is documented (initiative.SpeakOutcome.Reason) to
+		// always mean a compose call was made (tars#1220 review f2).
 		s.logger.Warn().Err(err).Str("session_id", s.mainSessionID).Msg("initiative: read transcript before speak failed")
-		return initiative.SpeakOutcome{Reason: "write_error"}, err
+		return initiative.SpeakOutcome{Reason: "read_error"}, err
 	}
 
 	text, err := s.composer.Compose(ctx, initiative.ComposeInput{

@@ -413,6 +413,47 @@ func TestInitiativeSpeakerWriteErrorWhenAppendFails(t *testing.T) {
 	}
 }
 
+// TestInitiativeSpeakerReadErrorBeforeComposeNeverCallsCompose covers
+// review finding f2: the transcript read Speak takes *before* Compose, to
+// establish the Superseded check's message-count baseline, can itself
+// fail (a directory already sitting at the transcript path here, same
+// disk/permission stand-in as the write_error test above). Unlike
+// write_error, Composed must stay false here — Compose is never reached —
+// so the reason is "read_error", not "write_error": the two must stay
+// distinguishable, since SpeakOutcome.Reason's own doc says write_error
+// always means a compose call was made.
+func TestInitiativeSpeakerReadErrorBeforeComposeNeverCallsCompose(t *testing.T) {
+	store := session.NewStore(t.TempDir())
+	main, err := store.EnsureMain()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(store.TranscriptPath(main.ID), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	client := &speakStubClient{resp: speakTextResponse("Welcome back!")}
+	called := false
+	speaker := &initiativeSpeaker{
+		mainSessionID: main.ID, store: store,
+		composer: &initiative.SpeechComposer{Client: client},
+		notify:   func(context.Context, notificationEvent) { called = true },
+		logger:   zerolog.Nop(), claim: alwaysClaims,
+	}
+	outcome, err := speaker.Speak(context.Background(), initiative.SpeakRequest{Intent: initiative.IntentGreet, Now: time.Now()})
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if outcome.Composed || outcome.Delivered || outcome.Superseded || outcome.Reason != "read_error" {
+		t.Fatalf("outcome = %+v, want Composed=false with reason read_error", outcome)
+	}
+	if len(client.messages) != 0 {
+		t.Fatal("compose must not be called when the pre-compose baseline read fails")
+	}
+	if called {
+		t.Fatal("companion event must not fire")
+	}
+}
+
 // TestInitiativeSpeakerTouchFailureStillDelivers covers the fix for
 // review finding f1: AppendMessage succeeds but the follow-up Touch fails
 // (here because mainSessionID was never registered in the store's index,

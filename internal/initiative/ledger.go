@@ -42,8 +42,12 @@ type Entry struct {
 	// DeliveryReason explains Delivery with a fixed reason code — never
 	// user or assistant text (tars#1003's rule applies here too):
 	// no_console (unreachable); backoff, daily_speak_cap,
-	// speak_unavailable, busy (skipped); compose_error, compose_empty,
-	// compose_tool_attempt, write_error (error); delivered (delivered).
+	// speak_unavailable, read_error, busy (skipped, Composed false — no
+	// compose call was made); busy, user_spoke (skipped, Composed true —
+	// Superseded: Compose ran but the text was discarded unwritten, not a
+	// failure, see SpeakOutcome.Superseded); compose_error, compose_empty,
+	// compose_tool_attempt, write_error (error, Composed true — Compose
+	// ran and failed, or the write itself did); delivered (delivered).
 	DeliveryReason string `json:"delivery_reason,omitempty"`
 	Body           string `json:"body,omitempty"`
 	LatencyMS      int64  `json:"latency_ms"`
@@ -172,9 +176,17 @@ func historyFrom(entries []Entry, now time.Time, loc *time.Location) History {
 			if e.At.After(h.LastSpeakCallAt) {
 				h.LastSpeakCallAt = e.At
 			}
-			if e.Delivery == DeliveryDelivered {
+			// Mirrors applyLocked's own switch (runtime.go): a Superseded
+			// attempt (Composed true, Delivery skipped — the claim was
+			// lost, or the user had already spoken) is neither a success
+			// nor a failure, so a restart must not treat it as one either
+			// — otherwise historyFrom would fabricate backoff from a
+			// ledger applyLocked itself never would have (tars#1220
+			// review).
+			switch e.Delivery {
+			case DeliveryDelivered:
 				h.SpeakFailCount = 0
-			} else {
+			case DeliveryError:
 				h.SpeakFailCount++
 			}
 		}

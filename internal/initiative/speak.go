@@ -35,6 +35,15 @@ const (
 	// for "no compose call was made" — the meaning (the main session's
 	// claim was unavailable) is the same either side of Compose.
 	deliveryReasonUserSpoke = "user_spoke"
+	// deliveryReasonReadError is the pre-compose counterpart to
+	// write_error (tars#1220 review f2): the main session's transcript
+	// could not even be read to establish the message-count baseline the
+	// Superseded check needs, so Compose is never called at all —
+	// Composed stays false, unlike write_error, which always implies a
+	// compose call happened (the after-claim recheck or the final
+	// AppendMessage failing, both only reachable once Compose has
+	// returned).
+	deliveryReasonReadError = "read_error"
 )
 
 // Speaker composes and delivers one greet/check_in utterance: a tool-free
@@ -99,8 +108,11 @@ type SpeakOutcome struct {
 	// compose call was made — or after, with Superseded true), "user_spoke"
 	// (Superseded true, see above), speak_unavailable (no composer
 	// configured, or the provider cannot do a tool-free call — no compose
-	// call), compose_error, compose_empty, compose_tool_attempt, or
-	// write_error (a compose call was made).
+	// call), compose_error, compose_empty, compose_tool_attempt (a compose
+	// call was made and failed), read_error (the main session's transcript
+	// could not be read to establish the Superseded check's baseline — no
+	// compose call was made), or write_error (a compose call was made, but
+	// either the after-claim recheck read or the final append failed).
 	Reason string
 }
 

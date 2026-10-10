@@ -71,3 +71,34 @@ func TestHistoryFromCountsTodaysSpeech(t *testing.T) {
 		t.Fatalf("history = %+v", h)
 	}
 }
+
+// TestHistoryFromSupersededDoesNotCountAsFailure checks that restoring
+// history from the ledger agrees with applyLocked's own live accounting
+// (tars#1220 review f1): a Superseded attempt (Composed true, Delivery
+// skipped — the claim was lost, or the user had already spoken) is
+// neither reset to 0 nor counted as a failure on restart, exactly like
+// applyLocked treats it while the runtime is actually running. Before this
+// fix, historyFrom's own if/else (Delivered → 0, anything else → ++)
+// still counted DeliverySkipped as a failure, so a server restart after a
+// run of harmless Superseded attempts would fabricate backoff for a
+// backend that was composing successfully every time.
+func TestHistoryFromSupersededDoesNotCountAsFailure(t *testing.T) {
+	now := at(15, 0)
+	entries := []Entry{
+		// One real compose failure: counts toward SpeakFailCount.
+		{At: at(9, 0), Decision: Decision{Intent: IntentGreet, Speak: true}, Composed: true, Delivery: DeliveryError},
+		// Two Superseded attempts after it (claim lost, then the user
+		// spoke first) — Compose ran both times but the text was
+		// discarded unwritten. SpeakFailCount must stay at 1, not climb
+		// to 3.
+		{At: at(10, 0), Decision: Decision{Intent: IntentCheckIn, Speak: true}, Composed: true, Delivery: DeliverySkipped, DeliveryReason: deliveryReasonBusy},
+		{At: at(11, 0), Decision: Decision{Intent: IntentCheckIn, Speak: true}, Composed: true, Delivery: DeliverySkipped, DeliveryReason: deliveryReasonUserSpoke},
+	}
+	h := historyFrom(entries, now, seoul)
+	if h.SpeakFailCount != 1 {
+		t.Fatalf("SpeakFailCount = %d, want 1 (Superseded attempts must not count as failures)", h.SpeakFailCount)
+	}
+	if h.SpeakCallsToday != 3 {
+		t.Fatalf("SpeakCallsToday = %d, want 3 (every Composed attempt counts, Superseded included)", h.SpeakCallsToday)
+	}
+}
