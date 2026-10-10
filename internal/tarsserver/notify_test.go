@@ -195,6 +195,120 @@ func TestNotificationEvent_JSONShape(t *testing.T) {
 	}
 }
 
+// TestNotificationEvent_ExpressionOmittedByDefault locks in that most
+// events (job_id/open_path's existing pattern) never grow an "expression"
+// key just because the field exists on the struct (#1192).
+func TestNotificationEvent_ExpressionOmittedByDefault(t *testing.T) {
+	evt := newNotificationEvent("cron", "info", "Cron done", "job complete")
+	raw, err := json.Marshal(evt)
+	if err != nil {
+		t.Fatalf("marshal event: %v", err)
+	}
+	if strings.Contains(string(raw), "expression") {
+		t.Fatalf("expected no expression key when unset, got %s", raw)
+	}
+}
+
+// TestNotificationEvent_ExpressionSerializes is the companion wire format
+// (#1192): category companion carries expression, an optional message line
+// and an optional session_id, all through the existing field set.
+func TestNotificationEvent_ExpressionSerializes(t *testing.T) {
+	evt := newNotificationEvent(companionEventCategory, "info", "", "ready when you are")
+	evt.Expression = "greeting"
+	evt.SessionID = "sess_123"
+	raw, err := json.Marshal(evt)
+	if err != nil {
+		t.Fatalf("marshal event: %v", err)
+	}
+	var decoded notificationEvent
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		t.Fatalf("unmarshal event: %v", err)
+	}
+	if decoded.Expression != "greeting" {
+		t.Fatalf("expected expression greeting, got %q", decoded.Expression)
+	}
+	if decoded.Category != companionEventCategory {
+		t.Fatalf("expected category companion, got %q", decoded.Category)
+	}
+	if decoded.SessionID != "sess_123" {
+		t.Fatalf("expected session_id to round-trip, got %q", decoded.SessionID)
+	}
+	if decoded.Message != "ready when you are" {
+		t.Fatalf("expected message to round-trip, got %q", decoded.Message)
+	}
+}
+
+// TestNotificationDispatcher_CompanionEventSkipsStoreAndDesktopNotify is
+// the core of #1192's server change: a companion event reaches live
+// subscribers only — it is not a general alert, so it must not land in
+// /v1/events/history, count toward unread, or fire a desktop notification
+// (even with zero subscribers, where every other category would).
+func TestNotificationDispatcher_CompanionEventSkipsStoreAndDesktopNotify(t *testing.T) {
+	store, err := newNotificationStore(t.TempDir()+"/notifications.json", 1000)
+	if err != nil {
+		t.Fatalf("newNotificationStore: %v", err)
+	}
+	broker := newEventBroker()
+	_, ch, unsubscribe := broker.subscribe()
+	defer unsubscribe()
+
+	fake := &fakeDesktopNotifier{}
+	dispatcher := newNotificationDispatcher(broker, fake, true, zerolog.New(io.Discard))
+	dispatcher.store = store
+
+	evt := newNotificationEvent(companionEventCategory, "info", "", "ready when you are")
+	evt.Expression = "greeting"
+	evt.SessionID = "sess_123"
+	dispatcher.Emit(context.Background(), evt)
+
+	select {
+	case received := <-ch:
+		if received.Expression != "greeting" {
+			t.Fatalf("expected subscriber to receive expression, got %q", received.Expression)
+		}
+		if received.Category != companionEventCategory {
+			t.Fatalf("expected subscriber to receive companion category, got %q", received.Category)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("expected subscriber to receive the companion event")
+	}
+
+	if len(fake.calls) != 0 {
+		t.Fatalf("expected no desktop notify for a companion event, got %d calls", len(fake.calls))
+	}
+	view, err := store.history("user", 100)
+	if err != nil {
+		t.Fatalf("history: %v", err)
+	}
+	if len(view.Items) != 0 {
+		t.Fatalf("expected companion event to skip the notification store, got %+v", view.Items)
+	}
+}
+
+// TestNotificationDispatcher_CompanionEventCategoryIsCaseInsensitive
+// guards the EqualFold check against a caller that cases the category
+// differently than the companionEventCategory constant.
+func TestNotificationDispatcher_CompanionEventCategoryIsCaseInsensitive(t *testing.T) {
+	store, err := newNotificationStore(t.TempDir()+"/notifications.json", 1000)
+	if err != nil {
+		t.Fatalf("newNotificationStore: %v", err)
+	}
+	broker := newEventBroker()
+	dispatcher := newNotificationDispatcher(broker, &fakeDesktopNotifier{}, true, zerolog.New(io.Discard))
+	dispatcher.store = store
+
+	evt := newNotificationEvent("Companion", "info", "", "hi")
+	dispatcher.Emit(context.Background(), evt)
+
+	view, err := store.history("user", 100)
+	if err != nil {
+		t.Fatalf("history: %v", err)
+	}
+	if len(view.Items) != 0 {
+		t.Fatalf("expected a differently-cased companion category to still skip the store, got %+v", view.Items)
+	}
+}
+
 func TestBuildTerminalNotifierArgs_IncludesOpenPath(t *testing.T) {
 	evt := newNotificationEvent("cron", "info", "Cron completed", "episode updated")
 	evt.JobID = "job_demo"

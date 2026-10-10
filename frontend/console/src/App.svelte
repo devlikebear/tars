@@ -16,10 +16,12 @@
     companionEnabledFromConfigValues,
     companionFailureFromEvent,
     companionHandoffForAsk,
+    companionServerCueFromEvent,
     companionWarningFromEvent,
     pruneFailures,
     shouldShowCompanion,
     type CompanionFailure,
+    type CompanionServerCue,
   } from './lib/companion'
   import { locale } from './i18n'
   import { zenMode } from './lib/zenMode.svelte'
@@ -56,6 +58,14 @@
   // (not a boolean) so CompanionPet can tell a fresh warning apart from
   // the same prop re-read on an unrelated re-render (#1191).
   let companionWarningAt = $state<number | null>(null)
+  // The latest validated category "companion" SSE event
+  // (companionServerCueFromEvent), with its own timestamp token
+  // (`companionServerCueAt`) for the same reason `companionWarningAt`
+  // above is a timestamp, not the event itself: CompanionPet must tell a
+  // fresh companion event apart from the same prop re-read on an
+  // unrelated re-render (#1192).
+  let companionServerCue = $state<CompanionServerCue | null>(null)
+  let companionServerCueAt = $state<number | null>(null)
   let stopGlobalStream: (() => void) | null = null
   let authRole = $derived(authInfo?.auth_role ?? '')
   let zenActive = $derived(zenMode.active && route.view === 'chat' && !needsSetup && !loginRequired)
@@ -93,16 +103,31 @@
     stopGlobalStream?.()
     stopGlobalStream = streamEvents(
       (event) => {
-        if (!event.coalesced) unreadCount++
-        // A new approval question or a cron run ending: refresh live
-        // activity now, not on the next poll, so badges and CASE's bubble
-        // follow at once. An unattended run's question and its review
-        // arrive as ops events.
-        if (event.category === 'approval' || event.category === 'ops' || event.category === 'cron') void sessionActivity.poll()
-        const failure = companionFailureFromEvent(event, Date.now())
-        if (failure) companionFailures = pruneFailures([...companionFailures, failure], Date.now())
-        // CASE's `wary` cue (#1191): a warning that is not (yet) a failure.
-        if (companionWarningFromEvent(event)) companionWarningAt = Date.now()
+        // A category "companion" event (#1192) is CASE's own face/bubble,
+        // not a general alert: it never reaches the notification
+        // list/unread count (the server never stores it either — see
+        // notify.go's Emit), never becomes a failure/warning line
+        // (companionFailureFromEvent/companionWarningFromEvent already
+        // guard this too), and never triggers an activity re-poll.
+        const isCompanionEvent = (event.category || '').trim().toLowerCase() === 'companion'
+        if (!isCompanionEvent) {
+          if (!event.coalesced) unreadCount++
+          // A new approval question or a cron run ending: refresh live
+          // activity now, not on the next poll, so badges and CASE's bubble
+          // follow at once. An unattended run's question and its review
+          // arrive as ops events.
+          if (event.category === 'approval' || event.category === 'ops' || event.category === 'cron') void sessionActivity.poll()
+          const failure = companionFailureFromEvent(event, Date.now())
+          if (failure) companionFailures = pruneFailures([...companionFailures, failure], Date.now())
+          // CASE's `wary` cue (#1191): a warning that is not (yet) a failure.
+          if (companionWarningFromEvent(event)) companionWarningAt = Date.now()
+          return
+        }
+        const serverCue = companionServerCueFromEvent(event, Date.now(), activeChatSessionId)
+        if (serverCue) {
+          companionServerCue = serverCue
+          companionServerCueAt = Date.now()
+        }
       },
       () => {
         serverHealth = 'disconnected'
@@ -591,6 +616,8 @@
         activeSessionId={activeChatSessionId}
         routeView={route.view}
         warningAt={companionWarningAt}
+        serverCue={companionServerCue}
+        serverCueAt={companionServerCueAt}
         onNavigate={navigate}
         onDismissFailure={handleDismissCompanionFailure}
         onAsk={handleCompanionAsk}

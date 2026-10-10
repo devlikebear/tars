@@ -10,7 +10,11 @@ import {
   COMPANION_INPUT_THROTTLE_MS,
   COMPANION_JUST_ARRIVED_HIDDEN_MS,
   COMPANION_LONG_QUIET_MS,
+  COMPANION_SERVER_CUE_LINE_MS,
+  COMPANION_SERVER_CUE_NO_LINE_MS,
+  COMPANION_SERVER_EVENT_MAX_AGE_MS,
   companionActionFor,
+  companionCueDismissServer,
   companionCueTick,
   companionCuesFor,
   companionEnabledFromConfigValues,
@@ -24,6 +28,7 @@ import {
   companionIsLongQuiet,
   companionJustArrived,
   companionNextIdle,
+  companionServerCueFromEvent,
   companionShouldAutoClose,
   companionShouldOpen,
   companionShouldRecordInput,
@@ -37,6 +42,7 @@ import {
   type CompanionExpressionCues,
   type CompanionFailure,
   type CompanionLine,
+  type CompanionServerCue,
 } from '../src/lib/companion.ts'
 import { companionEn } from '../src/i18n/sections/companion.ts'
 import type { ActivityMap } from '../src/lib/sessionBoard.ts'
@@ -199,6 +205,21 @@ test('a failure line can be dismissed without navigating, and navigating away di
   assert.match(componentSource, /if \(line\.kind === 'failure'\) onDismissFailure\?\.\(line\.key\)/)
 })
 
+// Review finding (#1192): a server line with a session_id is a button
+// whose accessible name must be its own text (the server's message), same
+// as every other .companion-line button here — an aria-label would hide
+// that text from assistive tech instead of adding to it.
+test('the session-linked server line has no aria-label overriding its own text', () => {
+  const buttonBlockStart = componentSource.indexOf('class="companion-line companion-line-server"')
+  assert.notEqual(buttonBlockStart, -1, 'expected the session-linked server line button in CompanionPet.svelte')
+  const buttonBlockEnd = componentSource.indexOf('</button>', buttonBlockStart)
+  const buttonBlock = componentSource.slice(buttonBlockStart, buttonBlockEnd)
+  assert.doesNotMatch(buttonBlock, /aria-label/)
+  assert.match(buttonBlock, /\{serverLine\.line\}/)
+  assert.doesNotMatch(componentSource, /serverLineAria/)
+  assert.doesNotMatch(appSource, /serverLineAria/)
+})
+
 test('the companion text addresses the user, not itself', () => {
   assert.equal(companionEn.emptyLine, 'Nothing is waiting on you right now.')
   assert.equal(companionEn.badgeAria(3), '3 waiting on you')
@@ -305,26 +326,32 @@ test('companionExpression picks neutral with no lines and no cues', () => {
   assert.equal(companionExpression({ lines: [] }, {}), 'neutral')
 })
 
-test('companionExpression: a cue alone (no lines) picks its own expression, in warning > justFinished > justArrived > longQuiet order', () => {
+test('companionExpression: a cue alone (no lines) picks its own expression, in server > warning > justFinished > justArrived > longQuiet order', () => {
   const noLines: CompanionLine[] = []
+  assert.equal(companionExpression({ lines: noLines }, { server: 'sleepy' }), 'sleepy')
   assert.equal(companionExpression({ lines: noLines }, { warning: true }), 'wary')
   assert.equal(companionExpression({ lines: noLines }, { justFinished: true }), 'happy')
   assert.equal(companionExpression({ lines: noLines }, { justArrived: true }), 'greeting')
   assert.equal(companionExpression({ lines: noLines }, { longQuiet: true }), 'sleepy')
 
-  // Higher-priority cues outrank lower ones when several fire at once.
-  const all: CompanionExpressionCues = { warning: true, justFinished: true, justArrived: true, longQuiet: true }
-  assert.equal(companionExpression({ lines: noLines }, all), 'wary')
+  // Higher-priority cues outrank lower ones when several fire at once —
+  // a server-requested expression outranks every cosmetic cue (#1192).
+  const all: CompanionExpressionCues = { server: 'happy', warning: true, justFinished: true, justArrived: true, longQuiet: true }
+  assert.equal(companionExpression({ lines: noLines }, all), 'happy')
+  assert.equal(
+    companionExpression({ lines: noLines }, { warning: true, justFinished: true, justArrived: true, longQuiet: true }),
+    'wary',
+  )
   assert.equal(companionExpression({ lines: noLines }, { justFinished: true, justArrived: true, longQuiet: true }), 'happy')
   assert.equal(companionExpression({ lines: noLines }, { justArrived: true, longQuiet: true }), 'greeting')
 })
 
-test('companionExpression: real state in lines always outranks every cue', () => {
+test('companionExpression: real state in lines always outranks every cue, including a server-requested one', () => {
   const failureLine: CompanionLine = { key: 'failure:1', kind: 'failure', label: 'x', path: '/console/ops' }
   const pendingLine: CompanionLine = { key: 'pending:s1', kind: 'pending', label: 'x', path: '/console/chat/s1' }
   const queuedLine: CompanionLine = { key: 'queued:s1', kind: 'queued', label: 'x', path: '/console/ops' }
   const runningLine: CompanionLine = { key: 'running:s1', kind: 'running', label: 'x', path: '/console/chat/s1' }
-  const allCues: CompanionExpressionCues = { warning: true, justFinished: true, justArrived: true, longQuiet: true }
+  const allCues: CompanionExpressionCues = { server: 'greeting', warning: true, justFinished: true, justArrived: true, longQuiet: true }
 
   assert.equal(companionExpression({ lines: [failureLine, runningLine] }, allCues), 'upset')
   assert.equal(companionExpression({ lines: [pendingLine, runningLine] }, allCues), 'alert')
@@ -390,6 +417,10 @@ test('companionWarningFromEvent is true only for a warn-severity notification', 
   assert.equal(companionWarningFromEvent({ type: 'notification', category: 'pulse', severity: 'info', title: 'x', message: '', timestamp: '' }), false)
   assert.equal(companionWarningFromEvent({ type: 'notification', category: 'pulse', severity: 'error', title: 'x', message: '', timestamp: '' }), false)
   assert.equal(companionWarningFromEvent({ type: 'keepalive', category: '', severity: 'warn', title: '', message: '', timestamp: '' }), false)
+  // A category "companion" event is never a warning line, no matter what
+  // severity it happens to carry — #1192 routes it through
+  // companionServerCueFromEvent instead.
+  assert.equal(companionWarningFromEvent({ type: 'notification', category: 'companion', severity: 'warn', title: '', message: 'hi', timestamp: '' }), false)
 })
 
 test('companionJustArrived fires only once a tab has been hidden ten minutes or more', () => {
@@ -444,14 +475,140 @@ test('companionCueTick: a higher-priority signal replaces a lower one, a lower o
   assert.deepEqual(companionCueTick(COMPANION_CUE_NONE, now, {}), COMPANION_CUE_NONE)
 })
 
-test('companionCuesFor maps the single active cue (at most one of three) plus longQuiet', () => {
+test('companionCueTick: a server cue outranks every other cue, holds for the line/no-line duration, and a newer one replaces an older one', () => {
+  // server outranks warning even though warning already shows.
+  let state = companionCueTick(COMPANION_CUE_NONE, now, { warning: true })
+  const bodyOnly: CompanionServerCue = { expression: 'greeting' }
+  state = companionCueTick(state, now + 1_000, { server: bodyOnly })
+  assert.deepEqual(state, { cue: 'server', expiresAt: now + 1_000 + COMPANION_SERVER_CUE_NO_LINE_MS, server: bodyOnly })
+
+  // A lower-priority signal (warning) does not interrupt the still-active
+  // server cue.
+  state = companionCueTick(state, now + 1_500, { warning: true })
+  assert.equal(state.cue, 'server')
+
+  // A line gets the much longer duration, not the body_only one.
+  const withLine: CompanionServerCue = { expression: 'alert', line: 'approve this', sessionId: 's1' }
+  state = companionCueTick(state, now + 2_000, { server: withLine })
+  assert.deepEqual(state, { cue: 'server', expiresAt: now + 2_000 + COMPANION_SERVER_CUE_LINE_MS, server: withLine })
+
+  // Its own duration elapsing with nothing new firing clears it, same as
+  // every other cue.
+  const expiresAt = state.expiresAt as number
+  state = companionCueTick(state, expiresAt + 1, {})
+  assert.deepEqual(state, COMPANION_CUE_NONE)
+})
+
+// Review finding (#1192): a later body_only companion event must not
+// silently erase a still-showing line before its 5-minute hold, a
+// dismiss, or a click — only a *newer line* may replace one.
+test('companionCueTick: a still-showing server line only yields to a newer line, never to a later body_only event', () => {
+  const withLine: CompanionServerCue = { expression: 'alert', line: 'approve X', sessionId: 's1' }
+  let state = companionCueTick(COMPANION_CUE_NONE, now, { server: withLine })
+  assert.deepEqual(state, { cue: 'server', expiresAt: now + COMPANION_SERVER_CUE_LINE_MS, server: withLine })
+
+  // A later body_only event (same 'server' priority) does not touch the
+  // still-showing line or its expiry — it is ignored outright.
+  const bodyOnly: CompanionServerCue = { expression: 'neutral' }
+  state = companionCueTick(state, now + 3_000, { server: bodyOnly })
+  assert.deepEqual(state, { cue: 'server', expiresAt: now + COMPANION_SERVER_CUE_LINE_MS, server: withLine })
+
+  // A later event that itself has a line is a legitimate update and still
+  // replaces — including replacing another still-showing line — with its
+  // own fresh duration.
+  const newerLine: CompanionServerCue = { expression: 'happy', line: 'all done', sessionId: 's2' }
+  state = companionCueTick(state, now + 4_000, { server: newerLine })
+  assert.deepEqual(state, { cue: 'server', expiresAt: now + 4_000 + COMPANION_SERVER_CUE_LINE_MS, server: newerLine })
+
+  // Once the line expires on its own, a later body_only event starts a
+  // fresh (no-line) cue as normal — the hold-the-line rule only applies
+  // while a line is actually still showing.
+  const afterExpiry = (now + 4_000 + COMPANION_SERVER_CUE_LINE_MS) + 1
+  state = companionCueTick(state, afterExpiry, { server: bodyOnly })
+  assert.deepEqual(state, { cue: 'server', expiresAt: afterExpiry + COMPANION_SERVER_CUE_NO_LINE_MS, server: bodyOnly })
+})
+
+test('companionCueDismissServer clears an active server cue but leaves any other cue alone', () => {
+  const serverState: CompanionCueState = { cue: 'server', expiresAt: now + 1000, server: { expression: 'happy', line: 'done' } }
+  assert.deepEqual(companionCueDismissServer(serverState), COMPANION_CUE_NONE)
+
+  const warningState: CompanionCueState = { cue: 'warning', expiresAt: now + 1000 }
+  assert.deepEqual(companionCueDismissServer(warningState), warningState)
+  assert.deepEqual(companionCueDismissServer(COMPANION_CUE_NONE), COMPANION_CUE_NONE)
+})
+
+test('companionServerCueFromEvent validates a category "companion" event into a CompanionServerCue, or ignores the whole event', () => {
+  const freshTimestamp = new Date(now).toISOString()
+  const base = { type: 'notification', category: 'companion', severity: 'info', title: '', timestamp: freshTimestamp }
+
+  // A valid expression with a line and session_id, nobody looking at that session.
+  assert.deepEqual(
+    companionServerCueFromEvent({ ...base, message: 'approval needed', expression: 'alert', session_id: 's1' }, now, 's2'),
+    { expression: 'alert', line: 'approval needed', sessionId: 's1' },
+  )
+
+  // body_only: no message at all is expression-only, regardless of session_id.
+  assert.deepEqual(
+    companionServerCueFromEvent({ ...base, message: '', expression: 'greeting', session_id: 's1' }, now, null),
+    { expression: 'greeting' },
+  )
+
+  // The session named is the one already on screen: its own thread already
+  // shows the message, so only the expression carries over.
+  assert.deepEqual(
+    companionServerCueFromEvent({ ...base, message: 'already visible', expression: 'happy', session_id: 's1' }, now, 's1'),
+    { expression: 'happy' },
+  )
+
+  // No session_id at all: always a line (when there is a message), never suppressed.
+  assert.deepEqual(
+    companionServerCueFromEvent({ ...base, message: 'no session here', expression: 'wary' }, now, 's1'),
+    { expression: 'wary', line: 'no session here' },
+  )
+
+  // An expression not in COMPANION_EXPRESSIONS ignores the whole event.
+  assert.equal(companionServerCueFromEvent({ ...base, message: 'x', expression: 'curious' }, now, null), null)
+  assert.equal(companionServerCueFromEvent({ ...base, message: 'x', expression: '' }, now, null), null)
+
+  // Not category "companion": not this function's event at all.
+  assert.equal(companionServerCueFromEvent({ ...base, category: 'pulse', message: 'x', expression: 'alert' }, now, null), null)
+
+  // A keepalive frame is never a companion event even if it somehow carried fields.
+  assert.equal(companionServerCueFromEvent({ type: 'keepalive', category: 'companion', severity: '', title: '', message: 'x', timestamp: freshTimestamp, expression: 'alert' }, now, null), null)
+
+  // A coalesced replay is ignored (companion events are never stored/coalesced
+  // server-side, but this guards a redelivery regardless).
+  assert.equal(companionServerCueFromEvent({ ...base, message: 'x', expression: 'alert', coalesced: true }, now, null), null)
+
+  // A missing or unparseable timestamp ignores the event.
+  assert.equal(companionServerCueFromEvent({ ...base, timestamp: '', message: 'x', expression: 'alert' }, now, null), null)
+  assert.equal(companionServerCueFromEvent({ ...base, timestamp: 'not-a-date', message: 'x', expression: 'alert' }, now, null), null)
+
+  // Older than COMPANION_SERVER_EVENT_MAX_AGE_MS (a reconnect/replay) is ignored.
+  const staleTimestamp = new Date(now - COMPANION_SERVER_EVENT_MAX_AGE_MS - 1).toISOString()
+  assert.equal(companionServerCueFromEvent({ ...base, timestamp: staleTimestamp, message: 'x', expression: 'alert' }, now, null), null)
+  // Exactly at the boundary still counts.
+  const boundaryTimestamp = new Date(now - COMPANION_SERVER_EVENT_MAX_AGE_MS).toISOString()
+  assert.notEqual(companionServerCueFromEvent({ ...base, timestamp: boundaryTimestamp, message: 'x', expression: 'alert' }, now, null), null)
+
+  // The line is plain text only, whitespace-normalized and clipped to 140
+  // chars like every other label in this file (clipText) — never HTML.
+  const long = `<b>bold</b> ${'a'.repeat(200)}`
+  const clipped = companionServerCueFromEvent({ ...base, message: long, expression: 'neutral' }, now, null)
+  assert.ok(clipped?.line && clipped.line.length <= 140)
+  assert.equal(clipped?.line, long.slice(0, 137).trim() + '...')
+})
+
+test('companionCuesFor maps the single active cue (at most one of four) plus longQuiet', () => {
   assert.deepEqual(companionCuesFor(COMPANION_CUE_NONE, false), {
+    server: undefined,
     warning: false,
     justFinished: false,
     justArrived: false,
     longQuiet: false,
   })
   assert.deepEqual(companionCuesFor({ cue: 'warning', expiresAt: now }, false), {
+    server: undefined,
     warning: true,
     justFinished: false,
     justArrived: false,
@@ -459,10 +616,20 @@ test('companionCuesFor maps the single active cue (at most one of three) plus lo
   })
   // longQuiet is independent of the transient cue.
   assert.deepEqual(companionCuesFor({ cue: 'justFinished', expiresAt: now }, true), {
+    server: undefined,
     warning: false,
     justFinished: true,
     justArrived: false,
     longQuiet: true,
+  })
+  // A 'server' cue surfaces its own expression (#1192), not a fixed one.
+  const serverState: CompanionCueState = { cue: 'server', expiresAt: now, server: { expression: 'greeting', line: 'hi', sessionId: 's1' } }
+  assert.deepEqual(companionCuesFor(serverState, false), {
+    server: 'greeting',
+    warning: false,
+    justFinished: false,
+    justArrived: false,
+    longQuiet: false,
   })
 })
 
@@ -568,6 +735,17 @@ test('companionFailureFromEvent only turns error/critical severities into failur
     now,
   )
   assert.equal(critical?.sessionId, undefined)
+
+  // A category "companion" event is never a failure line either, even with
+  // severity error/critical (#1192 routes it through
+  // companionServerCueFromEvent instead).
+  assert.equal(
+    companionFailureFromEvent(
+      { type: 'notification', category: 'companion', severity: 'critical', title: '', message: 'uh oh', timestamp: '2026-05-19T00:00:00Z' },
+      now,
+    ),
+    null,
+  )
 })
 
 test('the bubble opens itself only for a new approval wait or a new failure', () => {
@@ -620,6 +798,13 @@ test('a bubble that opened itself closes itself once there is nothing left to sh
   // whether or not anything is waiting.
   assert.equal(companionShouldAutoClose(false, noLines), false)
   assert.equal(companionShouldAutoClose(false, pendingLines), false)
+
+  // A showing server line (#1192) keeps a self-opened bubble up even once
+  // every approval/failure line has cleared, until it is itself dismissed
+  // or expires — only then does the usual rule apply again.
+  assert.equal(companionShouldAutoClose(true, noLines, true), false)
+  assert.equal(companionShouldAutoClose(true, noLines, false), true)
+  assert.equal(companionShouldAutoClose(true, noLines), true) // defaults to false
 })
 
 test('companion ask hands off the user words, with the guidance kept apart', () => {

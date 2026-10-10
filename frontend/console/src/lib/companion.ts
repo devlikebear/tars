@@ -69,6 +69,10 @@ export type CompanionSnapshot = {
 // only reads them when nothing in `lines` already says more — a real wait
 // or failure always outranks a cue.
 export type CompanionExpressionCues = {
+  // A validated category "companion" SSE event's own expression (#1192),
+  // outranking every cue below — it is an explicit server request, not a
+  // cosmetic nudge.
+  server?: CompanionExpression
   // A warning-severity event just arrived (not yet a failure).
   warning?: boolean
   // A turn just finished successfully.
@@ -175,13 +179,14 @@ export function companionState(
   return { badge, lines }
 }
 
-// companionExpression turns CASE's snapshot (and the optional cues #1191
-// fills in from real events) into one of the eight expressions (#1190).
-// What the snapshot's `lines` already say always outranks a cue:
-// a real failure or wait is never overridden by "just said hello". Order
-// within `lines`: failure > pending/queued approval > running turn — the
-// same urgency order `companionState` lists them in. Order within `cues`:
-// warning > justFinished > justArrived > longQuiet.
+// companionExpression turns CASE's snapshot (and the optional cues #1191/
+// #1192 fill in from real events) into one of the eight expressions
+// (#1190). What the snapshot's `lines` already say always outranks a cue:
+// a real failure or wait is never overridden by a server-requested face or
+// "just said hello". Order within `lines`: failure > pending/queued
+// approval > running turn — the same urgency order `companionState` lists
+// them in. Order within `cues`: server > warning > justFinished >
+// justArrived > longQuiet.
 export function companionExpression(
   snapshot: Pick<CompanionSnapshot, 'lines'>,
   cues?: CompanionExpressionCues,
@@ -189,6 +194,7 @@ export function companionExpression(
   if (snapshot.lines.some((line) => line.kind === 'failure')) return 'upset'
   if (snapshot.lines.some((line) => line.kind === 'pending' || line.kind === 'queued')) return 'alert'
   if (snapshot.lines.some((line) => line.kind === 'running')) return 'working'
+  if (cues?.server) return cues.server
   if (cues?.warning) return 'wary'
   if (cues?.justFinished) return 'happy'
   if (cues?.justArrived) return 'greeting'
@@ -202,27 +208,58 @@ export function companionExpression(
 // no DOM. CompanionPet.svelte is the only impure shell that calls these on
 // a real clock and real events.
 
-export type CompanionCueKind = 'warning' | 'justFinished' | 'justArrived'
+// 'server' (#1192) is the one cue that is not a fixed Go-to-expression
+// mapping: a category "companion" SSE event names its own expression (and
+// optionally a bubble line + session_id), carried on CompanionCueState.server
+// rather than inferred from the cue kind the way warning→wary etc. are in
+// companionExpression.
+export type CompanionCueKind = 'server' | 'warning' | 'justFinished' | 'justArrived'
+
+// What a validated companion event (companionServerCueFromEvent) hands to
+// companionCueTick: the expression to show, and — when the event carried a
+// non-empty line that was not about the session currently on screen — the
+// bubble line and where clicking it goes.
+export type CompanionServerCue = {
+  expression: CompanionExpression
+  line?: string
+  sessionId?: string
+}
 
 export type CompanionCueState = {
   cue: CompanionCueKind | null
   expiresAt: number | null
+  // Only set while cue === 'server'.
+  server?: CompanionServerCue
 }
 
 export const COMPANION_CUE_NONE: CompanionCueState = { cue: null, expiresAt: null }
 
 // How long each transient cue holds the expression before fading back to
-// whatever `snapshot.lines` or the next cue says.
-export const COMPANION_CUE_DURATIONS_MS: Record<CompanionCueKind, number> = {
+// whatever `snapshot.lines` or the next cue says. 'server' is not here: a
+// body_only companion event (no line) holds for COMPANION_SERVER_CUE_NO_LINE_MS,
+// while one with a line holds for up to COMPANION_SERVER_CUE_LINE_MS or until
+// the user dismisses it (companionCueDismissServer) or a newer line
+// replaces it (companionCueTick) — whichever is first. A later body_only
+// event never cuts a still-showing line short (companionCueTick).
+export const COMPANION_CUE_DURATIONS_MS: Record<Exclude<CompanionCueKind, 'server'>, number> = {
   warning: 5_000,
   justFinished: 5_000,
   justArrived: 6_000,
 }
 
+export const COMPANION_SERVER_CUE_NO_LINE_MS = 6_000
+export const COMPANION_SERVER_CUE_LINE_MS = 5 * 60 * 1000
+
 // Same order companionExpression checks them in: a higher-priority signal
 // firing while a lower one is still showing replaces it; a same-or-lower
-// one does not interrupt an unexpired cue.
+// one does not interrupt an unexpired cue. 'server' outranks the rest —
+// it is an explicit request from the server, not a cosmetic nudge. Within
+// 'server' itself, companionCueTick adds one more rule this table does
+// not capture: a still-showing *line* only yields to a newer line, never
+// to a later body_only event (#1192 review) — otherwise an unread
+// companion message could vanish before its hold/dismiss/click.
 const cuePriority: Record<CompanionCueKind, number> = {
+  server: 4,
   warning: 3,
   justFinished: 2,
   justArrived: 1,
@@ -230,25 +267,53 @@ const cuePriority: Record<CompanionCueKind, number> = {
 
 // companionCueTick advances the cue state machine by one step. `signals`
 // are edges — "this just happened on this tick" — not level state; the
-// caller (companionTurnsJustFinished, companionWarningFromEvent, the
-// mount/visibility handling in the component) computes those edges.
+// caller (companionTurnsJustFinished, companionWarningFromEvent,
+// companionServerCueFromEvent, the mount/visibility handling in the
+// component) computes those edges.
 export function companionCueTick(
   state: CompanionCueState,
   now: number,
-  signals: { warning?: boolean; justFinished?: boolean; justArrived?: boolean },
+  signals: { warning?: boolean; justFinished?: boolean; justArrived?: boolean; server?: CompanionServerCue | null },
 ): CompanionCueState {
   let next = state
   if (next.expiresAt !== null && now >= next.expiresAt) next = COMPANION_CUE_NONE
 
-  const fired = (Object.keys(cuePriority) as CompanionCueKind[]).filter((kind) => signals[kind])
+  const fired = (Object.keys(cuePriority) as CompanionCueKind[]).filter((kind) =>
+    kind === 'server' ? !!signals.server : signals[kind],
+  )
   if (fired.length > 0) {
     const best = fired.reduce((a, b) => (cuePriority[b] > cuePriority[a] ? b : a))
     const currentPriority = next.cue ? cuePriority[next.cue] : 0
     if (cuePriority[best] >= currentPriority) {
-      next = { cue: best, expiresAt: now + COMPANION_CUE_DURATIONS_MS[best] }
+      if (best === 'server' && signals.server) {
+        // A still-showing line holds until the user dismisses it, it
+        // expires, or a *newer line* replaces it — a later body_only
+        // companion event (same 'server' priority) must not silently
+        // erase an unread line before any of those happen. A new event
+        // that itself has a line is a legitimate update and still
+        // replaces (including replacing another line).
+        const showingLine = next.cue === 'server' && !!next.server?.line
+        const newHasLine = !!signals.server.line
+        if (!showingLine || newHasLine) {
+          const duration = newHasLine ? COMPANION_SERVER_CUE_LINE_MS : COMPANION_SERVER_CUE_NO_LINE_MS
+          next = { cue: 'server', expiresAt: now + duration, server: signals.server }
+        }
+      } else {
+        next = { cue: best, expiresAt: now + COMPANION_CUE_DURATIONS_MS[best as Exclude<CompanionCueKind, 'server'>] }
+      }
     }
   }
   return next
+}
+
+// companionCueDismissServer clears an active server cue early — the user
+// closed the bubble, or clicked the server line to navigate — rather than
+// waiting for COMPANION_SERVER_CUE_LINE_MS/COMPANION_SERVER_CUE_NO_LINE_MS
+// to pass. A no-op when the active cue is not 'server' (closing the bubble
+// while e.g. 'warning' is showing must not cut that cue short).
+export function companionCueDismissServer(state: CompanionCueState): CompanionCueState {
+  if (state.cue !== 'server') return state
+  return COMPANION_CUE_NONE
 }
 
 // companionTurnsJustFinished is true when some session's running turn (not
@@ -273,10 +338,13 @@ export function companionTurnsJustFinished(
 
 // companionWarningFromEvent turns a qualifying SSE notification (severity
 // warn — not yet a failure) into a cue-tick edge. Anything else (info,
-// error, critical, a coalesced replay with no new occurrence) is not a new
-// warning signal.
+// error, critical, a coalesced replay with no new occurrence, or a
+// category "companion" event — #1192 routes those through
+// companionServerCueFromEvent instead, never through this generic warning
+// path) is not a new warning signal.
 export function companionWarningFromEvent(event: NotificationMessage): boolean {
   if (!event || event.type === 'keepalive') return false
+  if (isCompanionEvent(event)) return false
   return (event.severity || '').trim().toLowerCase() === 'warn'
 }
 
@@ -328,11 +396,12 @@ export function companionShouldRecordInput(
 }
 
 // companionCuesFor assembles the CompanionExpressionCues companionExpression
-// reads: one of the three transient, edge-triggered cues (mutually
+// reads: one of the four transient, edge-triggered cues (mutually
 // exclusive by construction — companionCueTick holds at most one at a
 // time) plus the level-triggered longQuiet.
 export function companionCuesFor(cueState: CompanionCueState, longQuiet: boolean): CompanionExpressionCues {
   return {
+    server: cueState.cue === 'server' ? cueState.server?.expression : undefined,
     warning: cueState.cue === 'warning',
     justFinished: cueState.cue === 'justFinished',
     justArrived: cueState.cue === 'justArrived',
@@ -467,9 +536,12 @@ export function companionFailedSessionIds(failures: CompanionFailure[], now: num
 
 // companionFailureFromEvent turns a qualifying SSE notification (severity
 // error/critical) into a failure line. Everything else (info, warn,
-// success, embodiment) is not a failure and returns null.
+// success, embodiment, or a category "companion" event — #1192 routes
+// those through companionServerCueFromEvent instead, regardless of the
+// severity it happens to carry) is not a failure and returns null.
 export function companionFailureFromEvent(event: NotificationMessage, now: number): CompanionFailure | null {
   if (!event || event.type === 'keepalive') return null
+  if (isCompanionEvent(event)) return null
   const severity = (event.severity || '').trim().toLowerCase()
   if (severity !== 'error' && severity !== 'critical') return null
   const title = clipText(event.title || event.category || 'failure', 70)
@@ -501,12 +573,71 @@ export function companionShouldOpen(primed: boolean, prevWaitingKeys: ReadonlySe
 }
 
 // companionShouldAutoClose is true once a bubble that opened itself has
-// nothing left to show it for (its last approval wait or failure is gone —
-// answered, navigated to, dismissed, or expired). A bubble the user opened
-// by hand (`autoOpened: false`) is never closed by this: only the thing
-// that opened it on its own closes it on its own.
-export function companionShouldAutoClose(autoOpened: boolean, lines: CompanionLine[]): boolean {
-  return autoOpened && companionWaitingKeys(lines).size === 0
+// nothing left to show it for (its last approval wait, failure or server
+// line is gone — answered, navigated to, dismissed, or expired). A bubble
+// the user opened by hand (`autoOpened: false`) is never closed by this:
+// only the thing that opened it on its own closes it on its own.
+// `hasServerLine` (#1192) keeps a self-opened bubble up while a companion
+// event's line is still showing, even once every approval/failure line it
+// may have opened alongside has cleared.
+export function companionShouldAutoClose(autoOpened: boolean, lines: CompanionLine[], hasServerLine = false): boolean {
+  return autoOpened && companionWaitingKeys(lines).size === 0 && !hasServerLine
+}
+
+// --- Server-driven cue (#1192): the wire format a category "companion"
+// SSE event uses (internal/tarsserver notificationEvent.Expression) and
+// the pure validation that turns one into a CompanionServerCue, or null
+// when the whole event should be ignored.
+
+const COMPANION_EVENT_CATEGORY = 'companion'
+const COMPANION_SERVER_LINE_MAX_LEN = 140
+// A reconnect or a slow consumer must not play a stale companion event
+// minutes after the fact — there is no /v1/events/history replay for this
+// category (the server never persists it), but this still guards a
+// buffered/delayed delivery.
+export const COMPANION_SERVER_EVENT_MAX_AGE_MS = 60_000
+
+function isCompanionEvent(event: NotificationMessage): boolean {
+  return (event.category || '').trim().toLowerCase() === COMPANION_EVENT_CATEGORY
+}
+
+// companionServerCueFromEvent validates a category "companion" SSE event
+// and turns it into a CompanionServerCue, or null to ignore the whole
+// event. Ignored: anything not category "companion", an expression not in
+// COMPANION_EXPRESSIONS, a coalesced replay, a missing/unparseable
+// timestamp, or one older than COMPANION_SERVER_EVENT_MAX_AGE_MS.
+//
+// A non-empty `message` becomes the bubble line (plain text only — never
+// rendered as HTML — and clipped like every other label here) unless
+// `session_id` names the session already on screen (`activeSessionId`):
+// that session's own thread already shows the message, so only the
+// expression carries over, same as companionState already leaves out the
+// active session's own pending/running lines. An empty `message` (the
+// body_only case) always returns expression-only, regardless of
+// session_id.
+export function companionServerCueFromEvent(
+  event: NotificationMessage,
+  now: number,
+  activeSessionId?: string | null,
+): CompanionServerCue | null {
+  if (!event || event.type === 'keepalive') return null
+  if (!isCompanionEvent(event)) return null
+  if (event.coalesced) return null
+  const expression = (event.expression || '').trim()
+  if (!COMPANION_EXPRESSIONS.includes(expression as CompanionExpression)) return null
+  const at = Date.parse(event.timestamp)
+  if (!Number.isFinite(at)) return null
+  if (now - at > COMPANION_SERVER_EVENT_MAX_AGE_MS) return null
+
+  const resolved = expression as CompanionExpression
+  const rawLine = (event.message || '').trim()
+  if (!rawLine) return { expression: resolved }
+
+  const sessionId = (event.session_id || '').trim() || undefined
+  if (sessionId && sessionId === (activeSessionId || undefined)) return { expression: resolved }
+
+  const line = clipText(rawLine, COMPANION_SERVER_LINE_MAX_LEN)
+  return sessionId ? { expression: resolved, line, sessionId } : { expression: resolved, line }
 }
 
 export interface CompanionHandoff {

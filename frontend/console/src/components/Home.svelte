@@ -259,6 +259,11 @@
   function startEventStream() {
     stopStream?.()
     stopStream = streamEvents((event) => {
+      // A category "companion" event (#1192) is CASE's own face/bubble,
+      // never a general notification — the server never stores it either
+      // (notify.go's Emit), so it must not join this "recent
+      // notifications" list or its unread count.
+      if ((event.category || '').trim().toLowerCase() === 'companion') return
       notifications = [event, ...notifications.filter((item) => item.id !== event.id)].slice(0, 10)
       if (!event.coalesced) unreadCount++
       if (event.category === 'pulse') {

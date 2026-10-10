@@ -232,6 +232,10 @@ export type NotificationMessage = {
   job_id?: string
   session_id?: string
   open_path?: string
+  // One of lib/companion.ts's COMPANION_EXPRESSIONS, set only on a
+  // category "companion" event (#1192). The console ignores the whole
+  // event when this holds a value it does not recognize.
+  expression?: string
 }
 
 export type ConsensusVariantRecord = {

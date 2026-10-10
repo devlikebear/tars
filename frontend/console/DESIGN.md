@@ -514,6 +514,25 @@ The six old moods (`idle`/`spark`/`focus`/`warn`/`error`/`success`) are gone; th
 
 `warning`/`justFinished`/`justArrived` are edges, not level state: `companionCueTick` holds at most one of the three at a time (a higher-priority signal — in that same order — replaces a still-showing lower one; a same-or-lower one never interrupts) and each expires on its own after a few seconds (`COMPANION_CUE_DURATIONS_MS`), falling back to whatever `snapshot.lines` or `longQuiet` says next. `companionCuesFor` assembles the `CompanionExpressionCues` `companionExpression` reads. None of this ever outranks a real line — `snapshot.lines` still wins, as above.
 
+### Server-driven cue (#1192)
+
+A `category: "companion"` SSE event lets the server (initiative, #1000, out of scope here) tell CASE what to show, through the same cue machine above rather than a separate path: it is a fifth `CompanionCueKind`, `'server'`, outranking `warning`/`justFinished`/`justArrived`/`longQuiet` — real waiting/failure/running state in `snapshot.lines` still outranks it.
+
+Wire format — one optional field added to the shared notification shape (`notify.go`'s `notificationEvent`, the same pattern `job_id`/`open_path` already use), carried over `/v1/events/stream` only:
+
+| Field | Meaning |
+|---|---|
+| `category` | `"companion"` |
+| `expression` | one of `COMPANION_EXPRESSIONS` — an unrecognized value drops the *whole* event, not just the face |
+| `message` | optional. The bubble's one line, shown as plain text only (never `{@html}`), clipped to 140 chars |
+| `session_id` | optional. Where clicking that line goes (`/console/chat/<id>`) |
+
+The console validates every field on receipt (`companionServerCueFromEvent`, pure): besides an unknown `expression`, an event older than 60s (`COMPANION_SERVER_EVENT_MAX_AGE_MS` — a reconnect/replay guard) or a `coalesced` replay is dropped outright, and a `session_id` matching the session already on screen keeps only the expression — that thread already shows the message, so the line is suppressed (same rule `companionState` applies to the active session's own pending/running lines).
+
+A body_only event (no `message`) only changes the face: it never opens the bubble or touches the badge, and the cue fades after `COMPANION_SERVER_CUE_NO_LINE_MS` (6s). An event with a line opens the bubble by itself, same trigger as a new approval wait or failure, and the line sits above the "waiting on you" list — tinted with the brand colour (`.companion-line-server`), not the neutral/failure borders those use, so it reads as CASE talking rather than another queue item. It holds for up to `COMPANION_SERVER_CUE_LINE_MS` (5 minutes), until the user dismisses it — closing the bubble, or clicking the line when it has a `session_id` (which also navigates there) — or until a *newer line* replaces it, whichever comes first; a later body_only companion event never cuts a still-showing line short (`companionCueTick`'s server sub-rule, #1192 review). A line with no `session_id` is a static row (`.companion-line-server-static`) that only closing removes.
+
+Server-side, this category never reaches the general notification path: `notificationDispatcher.Emit` special-cases `category: "companion"` to publish straight to the live broker, skipping the notification store (`/v1/events/history`, unread count) and the desktop notifier — it is CASE's own face, not a general alert. The console mirrors this on receipt: `companionFailureFromEvent`/`companionWarningFromEvent` return nothing for a companion event regardless of the `severity` it happens to carry, and `App.svelte`/`Home.svelte` route it to the cue machine instead of their "recent notifications" list or unread counter.
+
 ### Actions (#1191)
 
 A one-shot animation plays exactly once when the expression *changes* into one of five, and does not replay while that expression holds (`companionActionFor(previousExpression, expression)` in `lib/companion.ts`, a pure table lookup; the component tracks `previousExpression` and clears the action on its own CSS `animationend`, matched by name so an unrelated animation bubbling up — blink, breathe — never clears it early):

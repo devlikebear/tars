@@ -778,6 +778,8 @@ func buildAPIMux(
 		terminal:        terminalHandler,
 		codexUsage:      codexUsageHandler,
 	})
+	// Empty outside an `-tags e2e` build (see e2e_hooks.go/e2e_events.go).
+	applyE2ERouteHooks(mux, broker)
 
 	server := &http.Server{
 		Addr:    opts.APIAddr,
