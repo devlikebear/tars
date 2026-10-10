@@ -9,6 +9,7 @@ import (
 	"github.com/devlikebear/tars/internal/computeruse"
 	"github.com/devlikebear/tars/internal/config"
 	"github.com/devlikebear/tars/internal/jev"
+	"github.com/devlikebear/tars/pkg/llm"
 )
 
 const doctorCuaDriverTimeout = 5 * time.Second
@@ -74,7 +75,7 @@ func checkDoctorComputerUseWith(report *doctorReport, cfg config.Config, probe d
 			report.add("warn", name, "LLM decision backend is not configured: "+err.Error())
 			return
 		}
-		if resolved.Kind == "antigravity-cli" {
+		if !llm.SupportsDecisionOnly(resolved.Kind) {
 			report.add("warn", name, "antigravity-cli cannot disable native tools for decision-only calls; select another computer_use role tier")
 			return
 		}

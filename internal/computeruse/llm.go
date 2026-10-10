@@ -44,12 +44,7 @@ func (b *LLMBackend) Decide(ctx context.Context, state string, qs map[string]jev
 	if err != nil {
 		return Decision{}, spent, fmt.Errorf("computeruse: encode observation: %w", err)
 	}
-	resp, err := b.client.Chat(ctx, []llm.ChatMessage{{Role: "system", Content: decisionPrompt}, {Role: "user", Content: string(payload)}}, llm.ChatOptions{
-		ToolChoice:               llm.ToolChoiceNone(),
-		ResponseFormat:           &llm.ResponseFormat{Type: llm.ResponseFormatJSONObject},
-		ClaudeCodePermissionMode: "plan",
-		ClaudeCodeHarness:        &llm.ClaudeCodeHarnessOptions{Tools: []string{}, SafeMode: true, StrictMCP: true, DisableChrome: true, MaxTurns: 1},
-	})
+	resp, err := b.client.Chat(ctx, []llm.ChatMessage{{Role: "system", Content: decisionPrompt}, {Role: "user", Content: string(payload)}}, llm.DecisionOnlyChatOptions())
 	if err != nil {
 		if partial, ok := llm.PartialUsageFromError(err); ok {
 			b.meter(&spent, partial.Usage)
@@ -57,7 +52,7 @@ func (b *LLMBackend) Decide(ctx context.Context, state string, qs map[string]jev
 		return Decision{}, spent, err
 	}
 	b.meter(&spent, resp.Usage)
-	if len(resp.Message.ToolCalls) > 0 || len(resp.ProviderExecutedTools) > 0 {
+	if llm.AttemptedTools(resp) {
 		return Decision{}, spent, fmt.Errorf("computeruse: decision response attempted tools")
 	}
 	d, err := parseLLMDecision(resp.Message.Content, qs)

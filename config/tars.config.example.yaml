@@ -300,7 +300,7 @@ embodiment:
 
 initiative:
   # Lets TARS decide when to speak first (tars#997). Go computes exact
-  # signals (time, idle, console, pacing); a System One server reads the
+  # signals (time, idle, console, pacing); a text-signal backend reads the
   # user's recent words for three fuzzy ones (asked for quiet, seems
   # strained, special day); a fixed policy picks greet / check_in /
   # body_only / none. Every decision lands in
@@ -309,28 +309,47 @@ initiative:
   # shadow records what TARS would say and never sends a message. The only
   # action it takes is a silent body expression when body_provider is set.
   mode: shadow
+  # llm (default) asks the configured LLM under the "initiative" role
+  # (light tier by default, tars#1219) with strict JSON booleans — no
+  # probability. jev asks a /v1/systemone server under jev.* instead, with
+  # the thresholds below. User text (recent messages, USER.md) is sent
+  # only when: backend llm and the initiative role resolves to the exact
+  # same provider pool alias as chat (chat_main role, else
+  # llm_default_tier) — that text already went to that provider during the
+  # chat turn that produced it; or backend jev and jev.base_url is
+  # loopback. Otherwise only metadata goes and the three text signals are
+  # skipped (GET /v1/initiative/status and `tars doctor` show which and
+  # why).
+  backend: llm
   tick: 1m
   quiet_hours: "23:00-07:00"
   # IANA name for quiet hours; empty uses the server's local zone.
   timezone: ""
   daily_cap: 6
   cooldown: 45m
+  # Caps text-signal backend calls (llm or jev) per local day, independent
+  # of daily_cap (spoken initiatives) — call-budget protection, same spirit
+  # as pulse's per-tick classifier guard.
+  daily_text_calls: 60
   # Embodiment provider name (see embodiment.providers) for idle expressions.
   body_provider: ""
-  # System One probability needed for each text signal (measured on
-  # Kev-0.8B with Korean messages, tars#998).
+  # jev-only: probability needed for each text signal (measured on
+  # Kev-0.8B with Korean messages, tars#998). The llm backend never
+  # produces a probability, so these do not apply to it.
   thresholds:
     quiet_requested: 0.55
     user_strained: 0.60
     special_day: 0.55
 
 jev:
-  # A server speaking the /v1/systemone protocol. A local Kev-0.8B works:
+  # A server speaking the /v1/systemone protocol — only used by
+  # initiative.backend: jev (optional; llm is the default) and
+  # tools.computer_use.backend: jev. A local Kev-0.8B works:
   #   git clone https://github.com/jaredpalmer/kev && cd kev && uv sync --extra serve
   #   uv run --extra serve python -m kev.serve --run jaredpalmer/kev-0.8b --port 8009
-  # User messages and USER.md are sent ONLY when this host is loopback
-  # (127.0.0.1, ::1, localhost). A remote server gets metadata only, which
-  # leaves the three text signals off.
+  # For initiative, user messages and USER.md are sent ONLY when this host
+  # is loopback (127.0.0.1, ::1, localhost). A remote server gets metadata
+  # only, which leaves the three text signals off.
   # tools.computer_use with backend: jev also asks this server, and sends it the driven window's
   # on-screen text whatever the host is (that is the tool's whole input).
   base_url: ""        # e.g. http://127.0.0.1:8009

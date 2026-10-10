@@ -41,3 +41,44 @@ func TestDecide(t *testing.T) {
 		})
 	}
 }
+
+// TestJustArrivedAndBusyStillHonorsQuietRequest guards the exact scenario
+// the no-separate-Busy-gate design relies on: Decide checks quiet_requested
+// before JustArrived, so a text read that discovers the user asked for
+// quiet must still turn a greet into silence even while the user is typing
+// (Busy) and just connected (JustArrived) — nothing may skip reading text
+// here just because the user looks busy.
+func TestJustArrivedAndBusyStillHonorsQuietRequest(t *testing.T) {
+	g := GoSignals{JustArrived: true, Busy: true, Reachable: true}
+	d := Decide(g, TextSignals{QuietRequested: true})
+	if d.Intent != IntentNone || d.Speak || d.Reason != "quiet_requested" {
+		t.Fatalf("Decide = %+v, want none/quiet_requested", d)
+	}
+}
+
+func TestTextSignalsMatter(t *testing.T) {
+	tests := []struct {
+		name   string
+		g      GoSignals
+		matter bool
+	}{
+		{"quiet hours blocks regardless of text", GoSignals{QuietHours: true}, false},
+		{"cooldown blocks regardless of text", GoSignals{CooldownActive: true}, false},
+		{"daily cap blocks regardless of text", GoSignals{DailyCapReached: true}, false},
+		{"busy with no arrival blocks regardless of text", GoSignals{Busy: true, Reachable: true}, false},
+		{"unreachable idle stays none regardless of text", GoSignals{IdleAtDesk: true}, false},
+		{"just arrived depends on quiet_requested even while busy", GoSignals{JustArrived: true, Busy: true, Reachable: true}, true},
+		{"just arrived depends on text", GoSignals{JustArrived: true, Reachable: true}, true},
+		{"long session depends on quiet_requested", GoSignals{LongSession: true, Reachable: true}, true},
+		{"reachable idle depends on strain and quiet_requested", GoSignals{Reachable: true}, true},
+		{"idle at desk with a body depends on text", GoSignals{IdleAtDesk: true, BodyAvailable: true, Reachable: true}, true},
+		{"long absence depends on quiet_requested", GoSignals{LongAbsence: true, Reachable: true}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := textSignalsMatter(tt.g); got != tt.matter {
+				t.Fatalf("textSignalsMatter(%+v) = %v, want %v", tt.g, got, tt.matter)
+			}
+		})
+	}
+}

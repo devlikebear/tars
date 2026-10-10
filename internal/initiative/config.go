@@ -39,6 +39,10 @@ type Config struct {
 	Cooldown     time.Duration
 	BodyProvider string
 	Thresholds   Thresholds
+	// DailyTextCalls caps how many text-signal backend calls (jev or llm)
+	// the runtime makes per local day, independent of DailyCap (spoken
+	// initiatives). tars#1219.
+	DailyTextCalls int
 }
 
 // WithDefaults fills zero values. P1 only knows shadow mode.
@@ -55,6 +59,9 @@ func (c Config) WithDefaults() Config {
 	}
 	if c.Cooldown <= 0 {
 		c.Cooldown = 45 * time.Minute
+	}
+	if c.DailyTextCalls <= 0 {
+		c.DailyTextCalls = 60
 	}
 	if strings.TrimSpace(c.QuietHours) == "" {
 		c.QuietHours = "23:00-07:00"

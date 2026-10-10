@@ -32,7 +32,7 @@ func (f *fakeSystemOne) Ask(_ context.Context, state string, qs map[string]jev.Q
 
 func TestTextReaderAppliesThresholdsAndCaches(t *testing.T) {
 	fake := &fakeSystemOne{probs: map[string]float64{"quiet_requested": 0.56, "user_strained": 0.59, "special_day": 0.9}}
-	r := newTextReader(fake, Config{}.WithDefaults().Thresholds)
+	r := newJevTextReader(fake, Config{}.WithDefaults().Thresholds)
 	got, err := r.Read(context.Background(), "k1", "state", textQuestionsFor(at(9, 0)))
 	if err != nil || !got.QuietRequested || got.UserStrained || !got.SpecialDay || got.Source != "systemone" {
 		t.Fatalf("got %+v err=%v", got, err)
@@ -51,17 +51,17 @@ func TestTextReaderAppliesThresholdsAndCaches(t *testing.T) {
 
 func TestTextReaderSkipsWithoutKeyOrClient(t *testing.T) {
 	fake := &fakeSystemOne{}
-	if got, _ := newTextReader(fake, Thresholds{}).Read(context.Background(), "", "s", textQuestionsFor(at(9, 0))); got.Source != "skipped" || fake.calls != 0 {
+	if got, _ := newJevTextReader(fake, Thresholds{}).Read(context.Background(), "", "s", textQuestionsFor(at(9, 0))); got.Source != "skipped" || fake.calls != 0 {
 		t.Fatalf("got %+v", got)
 	}
-	if got, _ := newTextReader(nil, Thresholds{}).Read(context.Background(), "k", "s", textQuestionsFor(at(9, 0))); got.Source != "skipped" {
+	if got, _ := newJevTextReader(nil, Thresholds{}).Read(context.Background(), "k", "s", textQuestionsFor(at(9, 0))); got.Source != "skipped" {
 		t.Fatalf("got %+v", got)
 	}
 }
 
 func TestTextReaderErrorIsNotCached(t *testing.T) {
 	fake := &fakeSystemOne{err: errors.New("down")}
-	r := newTextReader(fake, Config{}.WithDefaults().Thresholds)
+	r := newJevTextReader(fake, Config{}.WithDefaults().Thresholds)
 	got, err := r.Read(context.Background(), "k", "s", textQuestionsFor(at(9, 0)))
 	if err == nil || got.Source != "error" || got.QuietRequested {
 		t.Fatalf("got %+v err=%v", got, err)
@@ -73,7 +73,7 @@ func TestTextReaderErrorIsNotCached(t *testing.T) {
 }
 
 func TestTextReaderMissingAnswerIsFalse(t *testing.T) {
-	r := newTextReader(&fakeSystemOne{probs: map[string]float64{}}, Config{}.WithDefaults().Thresholds)
+	r := newJevTextReader(&fakeSystemOne{probs: map[string]float64{}}, Config{}.WithDefaults().Thresholds)
 	got, err := r.Read(context.Background(), "k", "s", textQuestionsFor(at(9, 0)))
 	if err != nil || got.QuietRequested || got.UserStrained || got.SpecialDay {
 		t.Fatalf("got %+v err=%v", got, err)
@@ -97,7 +97,7 @@ func TestTextQuestionsNameTodayForSpecialDay(t *testing.T) {
 func TestTextReaderSendsTheGivenQuestions(t *testing.T) {
 	var asked map[string]jev.Question
 	fake := &recordingSystemOne{onAsk: func(qs map[string]jev.Question) { asked = qs }}
-	r := newTextReader(fake, Config{}.WithDefaults().Thresholds)
+	r := newJevTextReader(fake, Config{}.WithDefaults().Thresholds)
 	if _, err := r.Read(context.Background(), "k", "s", textQuestionsFor(at(9, 0))); err != nil {
 		t.Fatal(err)
 	}

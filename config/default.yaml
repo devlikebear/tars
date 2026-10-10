@@ -97,10 +97,12 @@ embodiment:
 initiative:
   enabled: false
   mode: shadow
+  backend: llm
   tick: 1m
   quiet_hours: "23:00-07:00"
   daily_cap: 6
   cooldown: 45m
+  daily_text_calls: 60
   body_provider: ""
   thresholds:
     quiet_requested: 0.55

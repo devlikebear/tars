@@ -12,6 +12,66 @@ import (
 	"github.com/rs/zerolog"
 )
 
+// TestResolveInitiativeLLMBackendSameAndDifferentProvider checks the
+// provider-alias comparison end to end through a real router built from
+// config.ResolveLLMTier — not just the pure PlanText table — including the
+// "same kind, different alias" case where a naive kind-only comparison
+// would wrongly send text.
+func TestResolveInitiativeLLMBackendSameAndDifferentProvider(t *testing.T) {
+	cfg := config.Config{LLMConfig: config.LLMConfig{
+		LLMDefaultTier:  "standard",
+		LLMRoleDefaults: map[string]string{"initiative": "light"},
+		LLMProviders: map[string]config.LLMProviderSettings{
+			"shared": {Kind: "openai", BaseURL: "http://shared.example", APIKey: "k"},
+			"other":  {Kind: "openai", BaseURL: "http://other.example", APIKey: "k2"},
+		},
+		LLMTiers: map[string]config.LLMTierBinding{
+			"heavy":    {Provider: "shared", Model: "heavy-model"},
+			"standard": {Provider: "shared", Model: "chat-model"},
+			"light":    {Provider: "shared", Model: "light-model"},
+		},
+	}}
+	router, err := buildLLMRouter(cfg, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, _, client, model := resolveInitiativeLLMBackend(cfg, router)
+	if !plan.SendsText || plan.Reason != "llm_same_provider" || client == nil || model != "light-model" {
+		t.Fatalf("same-provider plan = %+v client=%v model=%q", plan, client, model)
+	}
+
+	cfg.LLMTiers["light"] = config.LLMTierBinding{Provider: "other", Model: "light-model"}
+	router2, err := buildLLMRouter(cfg, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan2, _, client2, _ := resolveInitiativeLLMBackend(cfg, router2)
+	if plan2.SendsText || plan2.Reason != "llm_other_provider" || client2 == nil {
+		t.Fatalf("different-provider (same kind) plan = %+v client=%v", plan2, client2)
+	}
+}
+
+func TestResolveInitiativeLLMBackendMissingRoleTier(t *testing.T) {
+	cfg := config.Config{LLMConfig: config.LLMConfig{
+		LLMDefaultTier:  "standard",
+		LLMRoleDefaults: map[string]string{"initiative": "missing-tier"},
+		LLMProviders:    map[string]config.LLMProviderSettings{"shared": {Kind: "openai", BaseURL: "http://shared.example", APIKey: "k"}},
+		LLMTiers: map[string]config.LLMTierBinding{
+			"heavy":    {Provider: "shared", Model: "heavy-model"},
+			"standard": {Provider: "shared", Model: "chat-model"},
+			"light":    {Provider: "shared", Model: "light-model"},
+		},
+	}}
+	router, err := buildLLMRouter(cfg, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, _, client, _ := resolveInitiativeLLMBackend(cfg, router)
+	if plan.Usable || plan.Reason != "llm_unavailable" || client != nil {
+		t.Fatalf("plan = %+v client=%v", plan, client)
+	}
+}
+
 func TestSessionObserverToleratesMissingFiles(t *testing.T) {
 	store := session.NewStore(t.TempDir())
 	obs := newSessionInitiativeObserver(sessionObserverDeps{Store: store, WorkspaceDir: t.TempDir()})
@@ -84,14 +144,29 @@ func TestBuildInitiativeRuntimeDisabled(t *testing.T) {
 
 func TestBuildInitiativeRuntimeGatesTextByLoopback(t *testing.T) {
 	for base, loopback := range map[string]bool{"http://127.0.0.1:8009": true, "https://api.typesafe.ai": false} {
-		cfg := config.Config{Initiative: config.InitiativeConfig{Enabled: true}, Jev: config.JevConfig{BaseURL: base}}
+		cfg := config.Config{Initiative: config.InitiativeConfig{Enabled: true, Backend: "jev"}, Jev: config.JevConfig{BaseURL: base}}
 		setup := buildInitiativeRuntime(initiativeSetupInputs{Config: cfg, WorkspaceDir: t.TempDir(), Logger: zerolog.Nop()})
 		if setup.Runtime == nil {
 			t.Fatal("expected a runtime when enabled")
 		}
-		if b := setup.Runtime.Snapshot().Backend; !b.Configured || b.Loopback != loopback {
+		if b := setup.Runtime.Snapshot().Backend; !b.Configured || b.Loopback != loopback || b.Backend != "jev" || b.SendsText != loopback {
 			t.Fatalf("%s backend = %+v", base, b)
 		}
+	}
+}
+
+// TestBuildInitiativeRuntimeLLMBackendDefault checks the default backend
+// ("llm", no explicit Backend) degrades to unusable without a router (e.g.
+// setup-only mode) instead of panicking or silently falling back to jev.
+func TestBuildInitiativeRuntimeLLMBackendDefault(t *testing.T) {
+	cfg := config.Config{Initiative: config.InitiativeConfig{Enabled: true}}
+	setup := buildInitiativeRuntime(initiativeSetupInputs{Config: cfg, WorkspaceDir: t.TempDir(), Logger: zerolog.Nop()})
+	if setup.Runtime == nil {
+		t.Fatal("expected a runtime when enabled")
+	}
+	b := setup.Runtime.Snapshot().Backend
+	if b.Backend != "llm" || b.Configured || b.SendsText || b.TextReason != "llm_unavailable" {
+		t.Fatalf("backend = %+v", b)
 	}
 }
 
