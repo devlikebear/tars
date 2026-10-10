@@ -25,6 +25,8 @@ cd frontend/console && npm run test:ci # stable frontend CI test slice
 make console-e2e          # Playwright: rebuilt console + tars serve + mock LLM (browser once: cd frontend/console && ./node_modules/.bin/playwright install chromium)
 ```
 
+**Verification scope:** what you run before a PR (and what a focus plan lists in `verify`) should cover what CI's `pr-diff` job runs for the files you changed, not only the tests you edited. A change to a global console element — `frontend/console/src/App.svelte`, an always-mounted component (`Shell.svelte`, `CompanionPet.svelte`, `CommandPalette.svelte`), `app.css`, or shared layout/dock/rail code — needs the full `make console-e2e`: in #1194 a bubble shown on every screen covered buttons in other screens, the three edited specs passed, and 9 other tests failed in CI.
+
 ## Architecture
 
 **Go CLI** (`cmd/tars`) → Cobra: `serve`, `service`, `init`, `doctor`, `status`, `health`, `cron`, `approve`, `assistant`, `skill`, `plugin`, `mcp`, `version`. Root opens `/console`; `tars --message` = one-shot chat.

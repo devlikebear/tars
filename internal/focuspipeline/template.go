@@ -162,10 +162,22 @@ func kindOrID(kind, id StageID) StageID {
 
 // devPlanInstructions is the dev template's plan stage: the generic plan
 // instructions plus how to use the new release stage's "stage" tag, since
-// the dev template now has two build-kind stages.
+// the dev template now has two build-kind stages, and how wide the
+// verification must be.
 const devPlanInstructions = stagePlanInstructions +
 	" Tasks need no \"stage\" tag by default (they run in the build stage); " +
-	"tag a task \"stage\":\"release\" only when it belongs to the release stage that ships the merged work."
+	"tag a task \"stage\":\"release\" only when it belongs to the release stage that ships the merged work." +
+	devVerifyScopeInstructions
+
+// devVerifyScopeInstructions widen the verification only for a change that
+// reaches past its own files: a plan that listed just the tests it edited
+// passed locally and in review, then failed the pull request's full suite
+// (#1197). It is conditional on purpose — the commands run after every
+// build turn, so asking every plan for the full CI scope would slow them all.
+const devVerifyScopeInstructions = " Match the verification to what the change can break: when it touches code other " +
+	"parts share (an app shell or layout, a component or style present on every screen, a shared helper), list the " +
+	"full suite the repository's CI runs on pull requests — its instructions usually name the preflight commands — " +
+	"not only the tests you edit."
 
 // releaseInstructions is the dev template's last stage: the pull request
 // merged into the default branch, now ship it. Generic on purpose — the
