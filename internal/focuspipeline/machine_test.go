@@ -401,6 +401,12 @@ func TestApplyTurnCompletedInBuild(t *testing.T) {
 		if got.NeedsInput() != 2 {
 			t.Fatalf("needs input = %d", got.NeedsInput())
 		}
+		// Passing the stage without answering leaves the questions
+		// behind: a finished stage's cards wait for nobody.
+		got.setStatus(StageBuild, StatusDone)
+		if got.NeedsInput() != 0 {
+			t.Fatalf("needs input after the stage is done = %d", got.NeedsInput())
+		}
 	})
 	t.Run("findings become cards", func(t *testing.T) {
 		got, _, err := Apply(p, Event{Kind: EventTurnCompleted, Turn: 4, Blocks: Blocks{Report: &Report{Summary: "s"}, Findings: []Finding{{ID: "f1", Severity: "high", File: "a.go", Line: 3, Title: "nil deref"}}}}, t0)

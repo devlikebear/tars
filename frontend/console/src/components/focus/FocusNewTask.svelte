@@ -64,7 +64,7 @@
   const extraTimers = new Map<number, ReturnType<typeof setTimeout>>()
   const extraCheckSeq = new Map<number, number>()
 
-  // Images pasted into the goal field (#1097): held here until start()
+  // Images pasted into the goal field (#1159): held here until start()
   // converts them and hands them to the pipeline's first turn — the
   // session the server will attach them to doesn't exist yet.
   let images = $state<File[]>([])
