@@ -28,7 +28,7 @@ func buildSetupOnlyAPIMux(opts *options, deps runtimeDeps, nowFn func() time.Tim
 	}
 	healthzHandler := newHealthzAPIHandler(nowFn, dashboardAuthHealthzStatus(cfg), func() bool { return config.NeedsSetup(cfg) })
 	setupHandler := apihandlers.NewSetupHandler(opts.ConfigPath, cfg, logger)
-	configHandler := newConfigAPIHandler(opts.ConfigPath, cfg, cfg.WorkspaceDir, logger)
+	configHandler := apihandlers.NewConfigHandler(opts.ConfigPath, cfg, cfg.WorkspaceDir, execRestart, logger)
 	authHandler := newAuthAPIHandler(cfg.APIAuthMode, cfg.WorkspaceDir)
 	remoteAccessHandler := apihandlers.NewRemoteAccessHandler(apihandlers.RemoteAccessOptions{
 		Config:     cfg,

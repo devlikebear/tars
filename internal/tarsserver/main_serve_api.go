@@ -641,7 +641,7 @@ func buildAPIMux(
 		return nil, err
 	}
 	usageHandler := apihandlers.NewUsageHandler(deps.usageTracker, cfg.APIAuthMode, logger)
-	logsHandler := newLogsAPIHandler(cfg.WorkspaceDir, normalizeRuntimeLogFilePath(buildLoggerConfig(opts, cfg).FilePath), logger)
+	logsHandler := apihandlers.NewLogsHandler(cfg.WorkspaceDir, apihandlers.NormalizeRuntimeLogFilePath(buildLoggerConfig(opts, cfg).FilePath), logger)
 	opsHandler := newOpsAPIHandler(opsManager, logger, dispatcher.Emit, sessionStore)
 	statusHandler := newStatusAPIHandler(cfg.WorkspaceDir, sessionStore, mainSessionID, logger)
 	authHandler := newAuthAPIHandler(cfg.APIAuthMode, cfg.WorkspaceDir)
@@ -724,7 +724,7 @@ func buildAPIMux(
 	mcpCreatorHandler := newMCPServerCreatorAPIHandler(cfg.WorkspaceDir, logger, nil, deps.llmRouter)
 	gitHandler := apihandlers.NewGitHandler(cfg.WorkspaceDir, sessionStore, opsManager, logger)
 	eventsHandler := notification.NewEventsAPIHandler(broker, notificationStore, logger)
-	configHandler := newConfigAPIHandler(resolvedConfigPath, cfg, cfg.WorkspaceDir, logger)
+	configHandler := apihandlers.NewConfigHandler(resolvedConfigPath, cfg, cfg.WorkspaceDir, execRestart, logger)
 	filesystemHandler := newFilesystemBrowseHandler(logger)
 	workspaceFilesHandler := newWorkspaceFilesHandler(cfg.WorkspaceDir, logger)
 	terminalHandler := newTerminalAPIHandler(cfg.WorkspaceDir, sessionStore, logger)
