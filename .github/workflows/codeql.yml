@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - main
+      # TEMPORARY, remove before merge: pull request scans report only the
+      # changed lines, so the model pack can only be judged on a full scan.
+      - chore/codeql-path-barriers
   pull_request:
     branches:
       - main
