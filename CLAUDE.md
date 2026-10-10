@@ -56,6 +56,7 @@ make console-e2e          # Playwright: rebuilt console + tars serve + mock LLM 
 | `mcp` | Model Context Protocol client |
 | `jev` | `/v1/systemone` client for System One servers (hosted Jev or local Kev); shared by initiative and computer use |
 | `computeruse` | GUI loop behind the `computer_use` tool: cua-driver accessibility snapshots + light LLM decisions (optional Jev) |
+| `httpapi` | JSON request/response helpers for HTTP handlers (`WriteJSON`, `WriteError`, `RequireMethod`, `DecodeJSONBody`, …). Standard library only. `tarsserver` keeps same-named unexported wrappers for the handlers still in it — **a handler written in a new package calls `httpapi` directly** (#1204) |
 | `focusprobe` | Read-only facts a focus pipeline decides on: git, `gh pr view`, finding diff excerpts, failure excerpts. No chat, session or HTTP. First package split out of `tarsserver` (#1204) — **new focus code that needs no chat internals goes here, not into `tarsserver`** |
 | `skill` | `.md` skill files with YAML frontmatter |
 
