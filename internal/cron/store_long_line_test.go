@@ -1,6 +1,7 @@
 package cron
 
 import (
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -26,5 +27,36 @@ func TestLoadRunsReadsRecordOverScannerLimit(t *testing.T) {
 	}
 	if len(runs) != 2 || runs[0].Response != long || runs[1].Response != "short" {
 		t.Fatalf("loaded %d runs", len(runs))
+	}
+}
+
+func TestLoadRunsSkipsBlankLinesAndFailsOnCorruptOnes(t *testing.T) {
+	store := NewStore(t.TempDir())
+	if err := store.appendRunRecord(RunRecord{JobID: "job-1", Response: "ok"}); err != nil {
+		t.Fatalf("append: %v", err)
+	}
+	path := runPath(store.runsDir, "job-1")
+	appendRaw := func(raw string) {
+		t.Helper()
+		f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0o644)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := f.WriteString(raw); err != nil {
+			t.Fatal(err)
+		}
+		if err := f.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	appendRaw("\n   \n" + `{"job_id":"job-1","response":"no newline"}`)
+	runs, err := store.loadRuns("job-1")
+	if err != nil || len(runs) != 2 || runs[1].Response != "no newline" {
+		t.Fatalf("runs = %d, err=%v", len(runs), err)
+	}
+
+	appendRaw("\n{not json\n")
+	if _, err := store.loadRuns("job-1"); err == nil || !strings.Contains(err.Error(), "decode cron run") {
+		t.Fatalf("err = %v, want a decode error", err)
 	}
 }
