@@ -261,8 +261,11 @@ console:
   # default_mode: advanced
 
 companion:
-  # Shows the always-floating Console companion. It is visual-only in this
-  # version; proactive suggestion/speech loops stay separately gated.
+  # Shows CASE, the always-floating Console companion: it badges and opens
+  # its bubble for approvals waiting across sessions, recent failures, and
+  # running turns, with expression/motion reacting to that state, and can
+  # take a server-sent category "companion" SSE cue (expression + optional
+  # line). No LLM calls of its own.
   enabled: true
 
 embodiment:
