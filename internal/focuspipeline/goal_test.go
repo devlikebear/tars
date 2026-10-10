@@ -112,11 +112,11 @@ func TestNextGoalStepApprovesGates(t *testing.T) {
 }
 
 // TestNextGoalStepRunsReleaseStage is TestNextGoalStepApprovesGates' plan
-// but with the dev template's release stage kept in: the merge that ended
+// but of a template with a stage after merge: the merge that ended
 // goal mode there instead hands off to it, and only its own turn finishes
 // the pipeline.
 func TestNextGoalStepRunsReleaseStage(t *testing.T) {
-	p := StartGoal(planned(t, StagePlan, StageBuild, StagePR, StageMerge, ReleaseStageID), 0, t0)
+	p := StartGoal(plannedFrom(t, shipTemplate(), StagePlan, StageBuild, StagePR, StageMerge, shipStage), 0, t0)
 	p, _, _ = Apply(p, Event{Kind: EventGate, Gate: GatePlan, Action: GateApprove}, t0)
 	p, _, _ = Apply(p, Event{Kind: EventTurnCompleted, Turn: 2, Blocks: Blocks{Report: &Report{Summary: "done", TasksDone: true}}}, t0)
 	p, _, _ = Apply(p, Event{Kind: EventVerification, Turn: 2, Verification: &Verification{Passed: true}}, t0)
@@ -134,7 +134,7 @@ func TestNextGoalStepRunsReleaseStage(t *testing.T) {
 
 	merged := PRProbe{Status: ProbeFound, Number: 7, State: PRStateMerged, HeadOID: "abc"}
 	p, act, err := Apply(p, Event{Kind: EventPRProbe, Probe: &merged}, t0)
-	if err != nil || Finished(p) || p.Current != ReleaseStageID || !p.Active() ||
+	if err != nil || Finished(p) || p.Current != shipStage || !p.Active() ||
 		act.Kind != ActionSendTurn || !strings.Contains(act.Prompt, "release stage") {
 		t.Fatalf("merge should hand off to release: current=%s finished=%v act=%+v", p.Current, Finished(p), act)
 	}

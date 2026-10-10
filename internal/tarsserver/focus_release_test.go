@@ -173,10 +173,10 @@ func TestFocusCreateReleaseKindAndKickoff(t *testing.T) {
 	if p.Kind != focuspipeline.KindRelease || p.Goal != "Release: ship 2 changes" || p.Kickoff != "Release: ship 2 changes\n- a\n- b" {
 		t.Fatalf("pipeline = %+v", p)
 	}
-	// A release pipeline is itself the release: its own release stage
-	// would be a release releasing itself, so it starts skipped.
-	if s, ok := p.Stage(focuspipeline.ReleaseStageID); !ok || s.Status != focuspipeline.StatusSkipped {
-		t.Fatalf("release stage = %+v", s)
+	// A release pipeline is the dev template as it is: its build stage does
+	// the release, and there is no stage after merge.
+	if last := p.Stages[len(p.Stages)-1]; last.ID != focuspipeline.StageMerge {
+		t.Fatalf("last stage = %+v, want merge", last)
 	}
 	// The guidance repeats the one-line goal, never the kickoff list.
 	guidance := focuspipeline.Guidance(p)

@@ -417,9 +417,6 @@ func (a *focusAPI) create(w http.ResponseWriter, r *http.Request) {
 			since := req.ReleaseSince.UTC()
 			p.ReleaseSince = &since
 		}
-		// This pipeline's whole job is a release; its own release stage
-		// would be a release releasing itself.
-		p = focuspipeline.SkipStage(p, focuspipeline.ReleaseStageID)
 	}
 	first := focuspipeline.Action{Kind: focuspipeline.ActionNone}
 	if req.Start {

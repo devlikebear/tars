@@ -118,11 +118,6 @@ func prStageSession(t *testing.T, store *session.Store, id string) {
 				p.Stages[i].Status = focuspipeline.StatusDone
 			case focuspipeline.StagePR:
 				p.Stages[i].Status, p.Stages[i].Iteration, p.Stages[i].Limit = focuspipeline.StatusActive, 1, 3
-			case focuspipeline.ReleaseStageID:
-				// Not part of this plan (p.Plan.Stages above is StageOrder,
-				// which does not list it), same as a real plan that left it
-				// out: skipped, not pending.
-				p.Stages[i].Status = focuspipeline.StatusSkipped
 			default:
 				p.Stages[i].Status = focuspipeline.StatusPending
 			}

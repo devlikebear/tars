@@ -29,12 +29,6 @@ import (
 // DevTemplateID is the default template: the development loop.
 const DevTemplateID = "dev"
 
-// ReleaseStageID is the dev template's last stage (template.go's
-// DevTemplate): ships the work merge just finished. A pipeline started
-// from the release train (Pipeline.Kind == KindRelease) skips it — that
-// pipeline's whole job is a release, not another one at its own end.
-const ReleaseStageID StageID = "release"
-
 // TemplateDirName is the workspace folder user templates are read from.
 const TemplateDirName = "focus-templates"
 
@@ -161,13 +155,8 @@ func kindOrID(kind, id StageID) StageID {
 }
 
 // devPlanInstructions is the dev template's plan stage: the generic plan
-// instructions plus how to use the new release stage's "stage" tag, since
-// the dev template now has two build-kind stages, and how wide the
-// verification must be.
-const devPlanInstructions = stagePlanInstructions +
-	" Tasks need no \"stage\" tag by default (they run in the build stage); " +
-	"tag a task \"stage\":\"release\" only when it belongs to the release stage that ships the merged work." +
-	devVerifyScopeInstructions
+// instructions plus how wide the verification must be.
+const devPlanInstructions = stagePlanInstructions + devVerifyScopeInstructions
 
 // devVerifyScopeInstructions widen the verification only for a change that
 // reaches past its own files: a plan that listed just the tests it edited
@@ -179,20 +168,18 @@ const devVerifyScopeInstructions = " Match the verification to what the change c
 	"full suite the repository's CI runs on pull requests — its instructions usually name the preflight commands — " +
 	"not only the tests you edit."
 
-// releaseInstructions is the dev template's last stage: the pull request
-// merged into the default branch, now ship it. Generic on purpose — the
-// dev template runs against any repository, not just this one.
-const releaseInstructions = "The pull request merged into the default branch. Prepare a release from it: " +
-	"fetch and check out the latest default branch, bump the version the way this repository does " +
-	"(a version file, package manifest, or git tag) and follow its release process — commit and push directly " +
-	"if the repository releases from a plain push to the default branch, or open a pull request if it gates " +
-	"releases through one. If you cannot find a release process in the repository, say so in the report " +
-	"instead of inventing one. Report the version, tag, or pull request you produced."
-
 // DevTemplate is the development loop: plan → build → review → pr →
-// pr_review → merge → release, with each kind's default instructions.
+// pr_review → merge, with each kind's default instructions.
+//
+// It ends at merge on purpose. It had a seventh stage, "release", for a few
+// days (#1166): every pipeline then cut its own release, five in two days.
+// Merged work is released in batches by the release train instead
+// (tarsserver/focus_release.go), which starts a pipeline of this same
+// template whose build stage is the release. A repository that does want a
+// release per task can say so with a user template: a build-kind stage after
+// merge works as it did.
 func DevTemplate() Template {
-	stages := make([]TemplateStage, 0, len(StageOrder)+1)
+	stages := make([]TemplateStage, 0, len(StageOrder))
 	for _, id := range StageOrder {
 		stage := TemplateStage{ID: id}
 		if id == StagePlan {
@@ -200,26 +187,10 @@ func DevTemplate() Template {
 		}
 		stages = append(stages, stage)
 	}
-	stages = append(stages, TemplateStage{
-		ID: ReleaseStageID, Kind: StageBuild, Label: "Release", Instructions: releaseInstructions,
-	})
 	return Template{
 		ID: DevTemplateID, Name: "Development", Builtin: true, Stages: stages,
-		Description: "Plan, build, review, pull request, CI review, merge, release.",
+		Description: "Plan, build, review, pull request, CI review, merge.",
 	}
-}
-
-// SkipStage marks one of a freshly created pipeline's pending stages
-// skipped (a release pipeline's own release stage; template.go's
-// ReleaseStageID doc). It does nothing to a stage already active, done or
-// not part of the pipeline.
-func SkipStage(p Pipeline, id StageID) Pipeline {
-	for i := range p.Stages {
-		if p.Stages[i].ID == id && p.Stages[i].Status == StatusPending {
-			p.Stages[i].Status = StatusSkipped
-		}
-	}
-	return p
 }
 
 // BuiltinTemplates are the templates shipped with the server, the
