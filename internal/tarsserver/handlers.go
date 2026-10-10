@@ -2,41 +2,14 @@ package tarsserver
 
 import (
 	"bufio"
-	"encoding/json"
 	"errors"
 	"net"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/devlikebear/tars/internal/serverauth"
 	"github.com/rs/zerolog"
 )
-
-func writeJSON(w http.ResponseWriter, code int, body any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(code)
-	_ = json.NewEncoder(w).Encode(body)
-}
-
-func writeError(w http.ResponseWriter, status int, code, message string) {
-	normalizedCode := strings.TrimSpace(code)
-	if normalizedCode == "" {
-		normalizedCode = strings.ToLower(strings.ReplaceAll(http.StatusText(status), " ", "_"))
-	}
-	normalizedMessage := strings.TrimSpace(message)
-	if normalizedMessage == "" {
-		normalizedMessage = normalizedCode
-	}
-	writeJSON(w, status, map[string]string{
-		"error": normalizedMessage,
-		"code":  normalizedCode,
-	})
-}
-
-func writeMethodNotAllowed(w http.ResponseWriter) {
-	writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
-}
 
 type statusRecorder struct {
 	http.ResponseWriter

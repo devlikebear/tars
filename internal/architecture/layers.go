@@ -97,6 +97,8 @@ var SharedPackages = []string{
 	"buildinfo",
 	"cli",
 	"envloader",
+	// httpapi is the JSON request/response helpers; standard library only.
+	"httpapi",
 	"jev",
 	"scheduleexpr",
 	"shellexec",
