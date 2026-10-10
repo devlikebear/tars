@@ -1,4 +1,4 @@
-package tarsserver
+package apihandlers
 
 import (
 	"bytes"
@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/devlikebear/tars/internal/httpapi"
 	"github.com/rs/zerolog"
 )
 
@@ -51,10 +52,10 @@ type logsAPIResponse struct {
 	Component      string          `json:"component"`
 }
 
-func newLogsAPIHandler(workspaceDir string, runtimeLogPath string, logger zerolog.Logger) http.Handler {
+func NewLogsHandler(workspaceDir string, runtimeLogPath string, logger zerolog.Logger) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/admin/logs", func(w http.ResponseWriter, r *http.Request) {
-		if !requireMethod(w, r, http.MethodGet) {
+		if !httpapi.RequireMethod(w, r, http.MethodGet) {
 			return
 		}
 
@@ -65,7 +66,7 @@ func newLogsAPIHandler(workspaceDir string, runtimeLogPath string, logger zerolo
 		}
 		selected, ok := findLogFileOption(files, fileID)
 		if !ok {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unknown log file"})
+			httpapi.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "unknown log file"})
 			return
 		}
 
@@ -82,12 +83,12 @@ func newLogsAPIHandler(workspaceDir string, runtimeLogPath string, logger zerolo
 		rawLines, err := tailLogFileLines(selected.Path, scanLineCount(lineCount, level, component))
 		if err != nil {
 			logger.Error().Err(err).Str("file_id", fileID).Str("path", selected.Path).Msg("read log file failed")
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "read log file failed"})
+			httpapi.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": "read log file failed"})
 			return
 		}
 
 		lines := filterLogLines(rawLines, level, component, lineCount)
-		writeJSON(w, http.StatusOK, logsAPIResponse{
+		httpapi.WriteJSON(w, http.StatusOK, logsAPIResponse{
 			Files:          files,
 			SelectedFile:   selected.ID,
 			Lines:          lines,
@@ -106,7 +107,7 @@ func buildLogFileOptions(workspaceDir string, runtimeLogPath string) []logFileOp
 	add := func(id, label, path string) {
 		id = strings.TrimSpace(id)
 		label = strings.TrimSpace(label)
-		path = normalizeRuntimeLogFilePath(path)
+		path = NormalizeRuntimeLogFilePath(path)
 		if id == "" || path == "" {
 			return
 		}
@@ -203,7 +204,7 @@ func parseLogsLineCount(w http.ResponseWriter, r *http.Request) (int, bool) {
 	}
 	lines, err := strconv.Atoi(raw)
 	if err != nil || lines <= 0 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "lines must be a positive integer"})
+		httpapi.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "lines must be a positive integer"})
 		return 0, false
 	}
 	if lines > maxLogsLineCount {
@@ -218,7 +219,7 @@ func parseLogsLevel(w http.ResponseWriter, r *http.Request) (string, bool) {
 	case "all", "trace", "debug", "info", "warn", "error":
 		return level, true
 	default:
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "level must be ALL, TRACE, DEBUG, INFO, WARN, or ERROR"})
+		httpapi.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "level must be ALL, TRACE, DEBUG, INFO, WARN, or ERROR"})
 		return "", false
 	}
 }
@@ -394,4 +395,14 @@ func firstStringField(payload map[string]any, keys ...string) string {
 		}
 	}
 	return ""
+}
+
+// NormalizeRuntimeLogFilePath is the runtime log file a configured path
+// means: a path ending in "/" names a folder, and the file in it is tars.log.
+func NormalizeRuntimeLogFilePath(path string) string {
+	trimmed := strings.TrimSpace(path)
+	if trimmed != "" && strings.HasSuffix(trimmed, "/") {
+		return trimmed + "tars.log"
+	}
+	return trimmed
 }

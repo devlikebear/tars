@@ -1,13 +1,14 @@
 package initiative
 
 import (
-	"bufio"
 	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/devlikebear/tars/internal/textutil"
 )
 
 const defaultLedgerMaxBytes = 5 << 20
@@ -97,7 +98,11 @@ func (l *Ledger) Append(e Entry) error {
 	return err
 }
 
-// Recent returns up to n entries from the current file, newest last.
+// Recent returns up to n entries from the current file, newest last. A line
+// that is not an entry (cut off by a crash, corrupt, oversized) is skipped
+// and the rest are kept: pacing state is rebuilt from this file, so one bad
+// line must not hide the day's count and the cooldown. On a read error the
+// entries read before it are returned with the error.
 func (l *Ledger) Recent(n int) ([]Entry, error) {
 	if l == nil {
 		return nil, nil
@@ -113,18 +118,17 @@ func (l *Ledger) Recent(n int) ([]Entry, error) {
 	}
 	defer func() { _ = f.Close() }()
 	var out []Entry
-	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 64*1024), 1<<20)
-	for sc.Scan() {
+	readErr := textutil.EachLine(f, func(line []byte) error {
 		var e Entry
-		if json.Unmarshal(sc.Bytes(), &e) == nil {
+		if json.Unmarshal(line, &e) == nil {
 			out = append(out, e)
 		}
-	}
+		return nil
+	})
 	if len(out) > n {
 		out = out[len(out)-n:]
 	}
-	return out, sc.Err()
+	return out, readErr
 }
 
 // historyFrom rebuilds pacing state from recorded entries, so a restart

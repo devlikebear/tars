@@ -1,4 +1,4 @@
-package tarsserver
+package apihandlers
 
 import (
 	"bytes"
@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -47,7 +48,7 @@ llm:
 	}
 
 	workspaceDir := filepath.Join(dir, "workspace")
-	h := newConfigAPIHandler(configPath, cfg, workspaceDir, zerolog.Nop())
+	h := NewConfigHandler(configPath, cfg, workspaceDir, nil, zerolog.Nop())
 	patchBody, _ := json.Marshal(map[string]any{
 		"updates": map[string]any{
 			"llm_tiers": map[string]any{
@@ -116,7 +117,7 @@ api:
 		t.Fatalf("test setup expected env override to be effective, got %q", cfg.APIAuthMode)
 	}
 
-	h := newConfigAPIHandler(configPath, cfg, filepath.Join(dir, "workspace"), zerolog.Nop())
+	h := NewConfigHandler(configPath, cfg, filepath.Join(dir, "workspace"), nil, zerolog.Nop())
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/v1/admin/config/schema", nil)
 	h.ServeHTTP(rec, req)
@@ -147,6 +148,12 @@ func TestConfigAPI_ResetWorkspaceReportsPartialFailures(t *testing.T) {
 	if os.Getuid() == 0 {
 		t.Skip("permission-based removal failure is not reliable as root")
 	}
+	if runtime.GOOS == "windows" {
+		// A read-only folder mode does not stop a delete on Windows. This test
+		// first ran there when the handler left internal/tarsserver, which
+		// scripts/windows_test.sh excludes as a whole.
+		t.Skip("relies on POSIX directory permissions to make a removal fail")
+	}
 	dir := t.TempDir()
 	workspaceDir := filepath.Join(dir, "workspace")
 	if err := os.MkdirAll(workspaceDir, 0o755); err != nil {
@@ -163,7 +170,7 @@ func TestConfigAPI_ResetWorkspaceReportsPartialFailures(t *testing.T) {
 	}
 	defer func() { _ = os.Chmod(workspaceDir, 0o700) }()
 
-	h := newConfigAPIHandler("", config.Config{}, workspaceDir, zerolog.New(io.Discard))
+	h := NewConfigHandler("", config.Config{}, workspaceDir, nil, zerolog.New(io.Discard))
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/v1/admin/reset/workspace", nil)
 	h.ServeHTTP(rec, req)

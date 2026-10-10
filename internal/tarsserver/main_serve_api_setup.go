@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/devlikebear/tars/internal/apihandlers"
 	"github.com/devlikebear/tars/internal/config"
 	"github.com/devlikebear/tars/internal/llm"
 	"github.com/rs/zerolog"
@@ -26,10 +27,10 @@ func buildSetupOnlyAPIMux(opts *options, deps runtimeDeps, nowFn func() time.Tim
 		return nil, err
 	}
 	healthzHandler := newHealthzAPIHandler(nowFn, dashboardAuthHealthzStatus(cfg), func() bool { return config.NeedsSetup(cfg) })
-	setupHandler := newSetupAPIHandler(opts.ConfigPath, cfg, logger)
-	configHandler := newConfigAPIHandler(opts.ConfigPath, cfg, cfg.WorkspaceDir, logger)
+	setupHandler := apihandlers.NewSetupHandler(opts.ConfigPath, cfg, logger)
+	configHandler := apihandlers.NewConfigHandler(opts.ConfigPath, cfg, cfg.WorkspaceDir, execRestart, logger)
 	authHandler := newAuthAPIHandler(cfg.APIAuthMode, cfg.WorkspaceDir)
-	remoteAccessHandler := newRemoteAccessAPIHandler(remoteAccessHandlerOptions{
+	remoteAccessHandler := apihandlers.NewRemoteAccessHandler(apihandlers.RemoteAccessOptions{
 		Config:     cfg,
 		ConfigPath: opts.ConfigPath,
 		Logger:     logger,

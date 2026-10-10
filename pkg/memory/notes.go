@@ -1,7 +1,6 @@
 package memory
 
 import (
-	"bufio"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,6 +8,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/devlikebear/tars/internal/textutil"
 )
 
 var memoryNoteLine = regexp.MustCompile(`^- ([0-9]{4}-[0-9]{2}-[0-9]{2}T[^ ]+) (.*)$`)
@@ -53,29 +54,29 @@ func ListMemoryNotesByPrefix(root string, prefix string, limit int) ([]MemoryNot
 		current = nil
 	}
 
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		line := scanner.Text()
+	scanErr := textutil.EachLine(file, func(raw []byte) error {
+		line := string(raw)
 		matches := memoryNoteLine.FindStringSubmatch(line)
 		if len(matches) == 3 {
 			flush()
 			timestamp, err := time.Parse(time.RFC3339, matches[1])
 			if err != nil {
-				continue
+				return nil
 			}
 			current = &MemoryNote{
 				Timestamp: timestamp.UTC(),
 				Text:      strings.TrimSpace(matches[2]),
 			}
-			continue
+			return nil
 		}
 		if current != nil {
 			current.Text += "\n" + line
 		}
-	}
+		return nil
+	})
 	flush()
-	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("scan memory notes: %w", err)
+	if scanErr != nil {
+		return nil, fmt.Errorf("scan memory notes: %w", scanErr)
 	}
 
 	sort.Slice(notes, func(i, j int) bool {

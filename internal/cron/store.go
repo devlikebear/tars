@@ -1,7 +1,7 @@
 package cron
 
 import (
-	"bufio"
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/devlikebear/tars/internal/atomicwrite"
+	"github.com/devlikebear/tars/internal/textutil"
 )
 
 const defaultRunHistoryLimit = 200
@@ -532,20 +533,25 @@ func (s *Store) loadRuns(jobID string) ([]RunRecord, error) {
 	defer f.Close()
 
 	records := make([]RunRecord, 0, 64)
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" {
-			continue
+	var decodeErr error
+	scanErr := textutil.EachLine(f, func(raw []byte) error {
+		line := bytes.TrimSpace(raw)
+		if len(line) == 0 {
+			return nil
 		}
 		var rec RunRecord
-		if err := json.Unmarshal([]byte(line), &rec); err != nil {
-			return nil, fmt.Errorf("decode cron run: %w", err)
+		if err := json.Unmarshal(line, &rec); err != nil {
+			decodeErr = fmt.Errorf("decode cron run: %w", err)
+			return decodeErr
 		}
 		records = append(records, rec)
+		return nil
+	})
+	if decodeErr != nil {
+		return nil, decodeErr
 	}
-	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("scan cron runs: %w", err)
+	if scanErr != nil {
+		return nil, fmt.Errorf("scan cron runs: %w", scanErr)
 	}
 	return records, nil
 }

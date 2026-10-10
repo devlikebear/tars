@@ -1,4 +1,4 @@
-package tarsserver
+package apihandlers
 
 import (
 	"encoding/json"
@@ -21,7 +21,7 @@ func TestConfigRuntimeStatusAndSecretMask(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := newConfigAPIHandler(path, cfg, "", zerolog.Nop())
+	h := NewConfigHandler(path, cfg, "", nil, zerolog.Nop())
 	patch := httptest.NewRecorder()
 	h.ServeHTTP(patch, httptest.NewRequest(http.MethodPatch, "/v1/admin/config/values", strings.NewReader(`{"updates":{"log_level":"debug"}}`)))
 	if patch.Code != 200 {

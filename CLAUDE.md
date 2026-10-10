@@ -58,6 +58,7 @@ make console-e2e          # Playwright: rebuilt console + tars serve + mock LLM 
 | `computeruse` | GUI loop behind the `computer_use` tool: cua-driver accessibility snapshots + light LLM decisions (optional Jev) |
 | `httpapi` | JSON request/response helpers for HTTP handlers (`WriteJSON`, `WriteError`, `RequireMethod`, `DecodeJSONBody`, …). Standard library only. `tarsserver` keeps same-named unexported wrappers for the handlers still in it — **a handler written in a new package calls `httpapi` directly** (#1204) |
 | `notification` | Events to people: `Event`, the SSE `Broker`, the history `Store` with per-role read state, the desktop notifier, and the `Dispatcher` that feeds all three; serves `/v1/events/*`. No chat, session or pipeline knowledge — callers build an `Event` and call `Dispatcher.Emit` |
+| `apihandlers` | HTTP route groups that stand on their own (git, remote access, setup, usage, config, logs): a domain package + `httpapi`, nothing from the server. One file per group; a handler that needs chat turns, the session API or the server runtime stays in `tarsserver`. Tests here run on Windows, unlike `tarsserver`'s |
 | `focusprobe` | Read-only facts a focus pipeline decides on: git, `gh pr view`, finding diff excerpts, failure excerpts. No chat, session or HTTP. First package split out of `tarsserver` (#1204) — **new focus code that needs no chat internals goes here, not into `tarsserver`** |
 | `skill` | `.md` skill files with YAML frontmatter |
 
@@ -71,6 +72,12 @@ cmd/  →  app layer  →  core layer  →  pkg/
 - Membership lives in `internal/architecture/layers.go`. **A new `internal/` package fails the test until it is classified** there — that is deliberate, not an obstacle to route around.
 - TARS-specific tools go in `internal/apptool`; generic primitives stay in `internal/tool`. Putting an app-coupled tool in core puts its dependencies into every consumer of `pkg/agentloop`.
 - Decision and re-evaluation criteria: `docs/decisions/repository-layering.md`
+- **Moving code out of `internal/tarsserver`** (#1204; paused 2026-10-11 at about 38,800 lines, see `docs/decisions/product-focus.md` rule 4). What the six moves taught, in the order it bites:
+  - Measure first. Copy the files to a scratch package and read the compiler's `undefined:` errors on both sides (`go test -c -gcflags=-e -o /dev/null`), tests included. File-name guesses were wrong about focus
+  - `make test-cover-diff` counts a renamed line as changed, and coverage is per package. Renaming every use in the files that stay failed the gate at 62%: keep the old unexported names in `tarsserver` as aliases or one-line wrappers (`notification_aliases.go`, `handler_transport_helpers.go`). Functions that were only reached through server tests need tests of their own in the new package
+  - `scripts/windows_test.sh` excludes `tarsserver` as a whole, so every test that leaves it runs on Windows for the first time. Look for `#!/bin/sh` stand-ins, symlinks and directory modes before pushing, and skip those with the reason
+  - Files behind a build tag do not compile in the default build: run `go vet -tags e2e ./internal/tarsserver/`
+  - A dismissed code-scanning alert is tied to its file path. Moving the file reopens it under a new number, on `main`, after the merge; the pull request shows only alerts whose path crosses changed lines. List dismissed alerts for the files before moving, and list open alerts on `main` after its scan. Update the row in `.github/codeql/extensions/` when a modeled function moves — a stale package path fails silently
 
 **System Surface constraints:**
 - Two isolated registries: `RegistryScopeUser` (chat/agents) vs system (pulse/reflection)

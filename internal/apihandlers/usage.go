@@ -1,25 +1,26 @@
-package tarsserver
+package apihandlers
 
 import (
 	"net/http"
 	"strconv"
 	"strings"
 
+	"github.com/devlikebear/tars/internal/httpapi"
 	"github.com/devlikebear/tars/internal/serverauth"
 	"github.com/devlikebear/tars/internal/usage"
 	"github.com/rs/zerolog"
 )
 
-func newUsageAPIHandler(tracker *usage.Tracker, authMode string, logger zerolog.Logger) http.Handler {
+func NewUsageHandler(tracker *usage.Tracker, authMode string, logger zerolog.Logger) http.Handler {
 	normalizedAuthMode := serverauth.NormalizeMode(strings.TrimSpace(strings.ToLower(authMode)))
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/v1/usage/summary", func(w http.ResponseWriter, r *http.Request) {
 		if tracker == nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "usage tracker is not configured"})
+			httpapi.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": "usage tracker is not configured"})
 			return
 		}
-		if !requireMethod(w, r, http.MethodGet) {
+		if !httpapi.RequireMethod(w, r, http.MethodGet) {
 			return
 		}
 		period := strings.TrimSpace(r.URL.Query().Get("period"))
@@ -27,11 +28,11 @@ func newUsageAPIHandler(tracker *usage.Tracker, authMode string, logger zerolog.
 		filter := usage.SummaryFilter{SessionID: r.URL.Query().Get("session_id")}
 		summary, err := tracker.SummaryFiltered(period, groupBy, filter)
 		if err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			httpapi.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 			return
 		}
 		status, _ := tracker.CheckLimitStatus()
-		writeJSON(w, http.StatusOK, map[string]any{
+		httpapi.WriteJSON(w, http.StatusOK, map[string]any{
 			"summary":      summary,
 			"limits":       tracker.Limits(),
 			"limit_status": status,
@@ -40,18 +41,18 @@ func newUsageAPIHandler(tracker *usage.Tracker, authMode string, logger zerolog.
 
 	mux.HandleFunc("/v1/usage/limits", func(w http.ResponseWriter, r *http.Request) {
 		if tracker == nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "usage tracker is not configured"})
+			httpapi.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": "usage tracker is not configured"})
 			return
 		}
-		if !requireMethod(w, r, http.MethodGet, http.MethodPatch) {
+		if !httpapi.RequireMethod(w, r, http.MethodGet, http.MethodPatch) {
 			return
 		}
 		switch r.Method {
 		case http.MethodGet:
-			writeJSON(w, http.StatusOK, tracker.Limits())
+			httpapi.WriteJSON(w, http.StatusOK, tracker.Limits())
 		case http.MethodPatch:
 			if normalizedAuthMode != serverauth.ModeOff && strings.TrimSpace(serverauth.RoleFromContext(r.Context())) != serverauth.RoleAdmin {
-				writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+				httpapi.WriteJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
 				return
 			}
 			var req struct {
@@ -61,7 +62,7 @@ func newUsageAPIHandler(tracker *usage.Tracker, authMode string, logger zerolog.
 				DailyTokens *int     `json:"daily_tokens,omitempty"`
 				Mode        *string  `json:"mode,omitempty"`
 			}
-			if !decodeJSONBody(w, r, &req) {
+			if !httpapi.DecodeJSONBody(w, r, &req) {
 				return
 			}
 			next := tracker.Limits()
@@ -83,35 +84,35 @@ func newUsageAPIHandler(tracker *usage.Tracker, authMode string, logger zerolog.
 			updated, err := tracker.UpdateLimits(next)
 			if err != nil {
 				logger.Error().Err(err).Msg("update usage limits failed")
-				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "update usage limits failed"})
+				httpapi.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": "update usage limits failed"})
 				return
 			}
-			writeJSON(w, http.StatusOK, updated)
+			httpapi.WriteJSON(w, http.StatusOK, updated)
 		}
 	})
 
 	mux.HandleFunc("/v1/admin/usage/today", func(w http.ResponseWriter, r *http.Request) {
 		if tracker == nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "usage tracker is not configured"})
+			httpapi.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": "usage tracker is not configured"})
 			return
 		}
-		if !requireMethod(w, r, http.MethodGet) {
+		if !httpapi.RequireMethod(w, r, http.MethodGet) {
 			return
 		}
 		today, err := tracker.TodayTokens()
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "usage today failed"})
+			httpapi.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": "usage today failed"})
 			return
 		}
-		writeJSON(w, http.StatusOK, today)
+		httpapi.WriteJSON(w, http.StatusOK, today)
 	})
 
 	mux.HandleFunc("/v1/admin/analytics", func(w http.ResponseWriter, r *http.Request) {
 		if tracker == nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "usage tracker is not configured"})
+			httpapi.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": "usage tracker is not configured"})
 			return
 		}
-		if !requireMethod(w, r, http.MethodGet) {
+		if !httpapi.RequireMethod(w, r, http.MethodGet) {
 			return
 		}
 		days, ok := parseAnalyticsDays(w, r)
@@ -120,27 +121,27 @@ func newUsageAPIHandler(tracker *usage.Tracker, authMode string, logger zerolog.
 		}
 		analytics, err := tracker.Analytics(days)
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "analytics failed"})
+			httpapi.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": "analytics failed"})
 			return
 		}
-		writeJSON(w, http.StatusOK, analytics)
+		httpapi.WriteJSON(w, http.StatusOK, analytics)
 	})
 
 	mux.HandleFunc("/v1/usage/signals", func(w http.ResponseWriter, r *http.Request) {
 		if tracker == nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "usage tracker is not configured"})
+			httpapi.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": "usage tracker is not configured"})
 			return
 		}
-		if !requireMethod(w, r, http.MethodGet) {
+		if !httpapi.RequireMethod(w, r, http.MethodGet) {
 			return
 		}
 		period := strings.TrimSpace(r.URL.Query().Get("period"))
 		signals, err := tracker.Signals(period)
 		if err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			httpapi.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{
+		httpapi.WriteJSON(w, http.StatusOK, map[string]any{
 			"signals": signals,
 		})
 	})
@@ -155,14 +156,14 @@ func parseAnalyticsDays(w http.ResponseWriter, r *http.Request) (int, bool) {
 	}
 	days, err := strconv.Atoi(raw)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "days must be one of 7, 30, or 90"})
+		httpapi.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "days must be one of 7, 30, or 90"})
 		return 0, false
 	}
 	switch days {
 	case 7, 30, 90:
 		return days, true
 	default:
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "days must be one of 7, 30, or 90"})
+		httpapi.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "days must be one of 7, 30, or 90"})
 		return 0, false
 	}
 }

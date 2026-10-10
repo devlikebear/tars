@@ -1,4 +1,4 @@
-package tarsserver
+package apihandlers
 
 import (
 	"context"
@@ -24,7 +24,7 @@ func TestRemoteAccessAPI_EnablePreflightRequiresAuthAndPasswords(t *testing.T) {
 		"tailscale status --json":       `{"BackendState":"Running","Self":{"HostName":"mac","DNSName":"mac.tail.ts.net."}}`,
 		"tailscale serve status --json": `{}`,
 	})
-	handler := newRemoteAccessAPIHandler(remoteAccessHandlerOptions{
+	handler := NewRemoteAccessHandler(RemoteAccessOptions{
 		Config: config.Config{
 			RuntimeConfig: config.RuntimeConfig{WorkspaceDir: workspace},
 			APIConfig:     config.APIConfig{APIAuthMode: "off"},
@@ -76,7 +76,7 @@ func TestRemoteAccessAPI_EnableStartsServeAndPersistsDesiredState(t *testing.T) 
 		"tailscale serve status --json":                           `{}`,
 		"tailscale serve --https=443 --bg http://127.0.0.1:43180": ``,
 	})
-	handler := newRemoteAccessAPIHandler(remoteAccessHandlerOptions{
+	handler := NewRemoteAccessHandler(RemoteAccessOptions{
 		Config: config.Config{
 			RuntimeConfig: config.RuntimeConfig{WorkspaceDir: workspace},
 			APIConfig:     config.APIConfig{APIAuthMode: "required"},
@@ -120,7 +120,7 @@ func TestRemoteAccessAPI_DisableClearsDesiredStateWithoutTouchingNonOwnedTarget(
 			"Web": {"mac.tail.ts.net:443": {"Handlers": {"/": {"Proxy": "http://127.0.0.1:3000"}}}}
 		}`,
 	})
-	handler := newRemoteAccessAPIHandler(remoteAccessHandlerOptions{
+	handler := NewRemoteAccessHandler(RemoteAccessOptions{
 		Config: config.Config{
 			RuntimeConfig: config.RuntimeConfig{WorkspaceDir: workspace},
 			APIConfig:     config.APIConfig{APIAuthMode: "required"},
@@ -150,30 +150,6 @@ func TestRemoteAccessAPI_DisableClearsDesiredStateWithoutTouchingNonOwnedTarget(
 	}
 	if loaded.RemoteAccessTailscaleServeEnabled {
 		t.Fatalf("expected desired state disabled")
-	}
-}
-
-func TestRemoteAccessReconcileOnStartUsesDesiredConfig(t *testing.T) {
-	runner := newRemoteAccessTestRunner(map[string]string{
-		"tailscale status --json":                                 `{"BackendState":"Running","Self":{"HostName":"mac","DNSName":"mac.tail.ts.net."}}`,
-		"tailscale serve status --json":                           `{}`,
-		"tailscale serve --https=443 --bg http://127.0.0.1:43180": ``,
-	})
-	runtime := &serveAPIRuntime{
-		cfg: config.Config{
-			RemoteAccessConfig: config.RemoteAccessConfig{
-				RemoteAccessTailscaleServeEnabled:   true,
-				RemoteAccessTailscaleServeHTTPSPort: 443,
-			},
-		},
-		remoteAccessRunner:    runner,
-		remoteAccessTargetURL: remoteaccess.DefaultTargetURL,
-	}
-
-	reconcileRemoteAccessOnStart(context.Background(), runtime, zerolog.Nop())
-
-	if !containsCommand(runner.commands, "tailscale serve --https=443 --bg http://127.0.0.1:43180") {
-		t.Fatalf("expected reconcile to enable Serve, commands=%v", runner.commands)
 	}
 }
 

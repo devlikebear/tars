@@ -1,4 +1,4 @@
-package tarsserver
+package apihandlers
 
 import (
 	"context"
@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	gitrepo "github.com/devlikebear/tars/internal/git"
+	"github.com/devlikebear/tars/internal/httpapi"
 	"github.com/devlikebear/tars/internal/ops"
 	"github.com/devlikebear/tars/internal/session"
 	"github.com/rs/zerolog"
@@ -17,25 +18,25 @@ import (
 
 var errGitMutationRootOutsideSession = errors.New("git mutation root is outside the session workspace")
 
-func newGitAPIHandler(workspaceDir string, store *session.Store, manager *ops.Manager, logger zerolog.Logger) http.Handler {
+func NewGitHandler(workspaceDir string, store *session.Store, manager *ops.Manager, logger zerolog.Logger) http.Handler {
 	client := gitrepo.NewClient()
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/status", func(w http.ResponseWriter, r *http.Request) {
-		if !requireMethod(w, r, http.MethodGet) {
+		if !httpapi.RequireMethod(w, r, http.MethodGet) {
 			return
 		}
 		status, err := gitStatusForRequest(r.Context(), client, workspaceDir, store, r)
 		if err != nil {
 			logger.Warn().Err(err).Msg("git status failed")
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			httpapi.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			return
 		}
-		writeJSON(w, http.StatusOK, status)
+		httpapi.WriteJSON(w, http.StatusOK, status)
 	})
 
 	mux.HandleFunc("/diff", func(w http.ResponseWriter, r *http.Request) {
-		if !requireMethod(w, r, http.MethodGet) {
+		if !httpapi.RequireMethod(w, r, http.MethodGet) {
 			return
 		}
 		diff, err := gitDiffForRequest(r.Context(), client, workspaceDir, store, r)
@@ -43,11 +44,11 @@ func newGitAPIHandler(workspaceDir string, store *session.Store, manager *ops.Ma
 			writeGitAPIError(w, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, diff)
+		httpapi.WriteJSON(w, http.StatusOK, diff)
 	})
 
 	mux.HandleFunc("/log", func(w http.ResponseWriter, r *http.Request) {
-		if !requireMethod(w, r, http.MethodGet) {
+		if !httpapi.RequireMethod(w, r, http.MethodGet) {
 			return
 		}
 		limit, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("limit")))
@@ -56,11 +57,11 @@ func newGitAPIHandler(workspaceDir string, store *session.Store, manager *ops.Ma
 			writeGitAPIError(w, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, log)
+		httpapi.WriteJSON(w, http.StatusOK, log)
 	})
 
 	mux.HandleFunc("/branches", func(w http.ResponseWriter, r *http.Request) {
-		if !requireMethod(w, r, http.MethodGet) {
+		if !httpapi.RequireMethod(w, r, http.MethodGet) {
 			return
 		}
 		branches, err := gitBranchesForRequest(r.Context(), client, workspaceDir, store, r)
@@ -68,16 +69,16 @@ func newGitAPIHandler(workspaceDir string, store *session.Store, manager *ops.Ma
 			writeGitAPIError(w, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, branches)
+		httpapi.WriteJSON(w, http.StatusOK, branches)
 	})
 
 	mux.HandleFunc("/commit", func(w http.ResponseWriter, r *http.Request) {
-		if !requireMethod(w, r, http.MethodGet) {
+		if !httpapi.RequireMethod(w, r, http.MethodGet) {
 			return
 		}
 		hash := strings.TrimSpace(r.URL.Query().Get("hash"))
 		if hash == "" {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "hash is required"})
+			httpapi.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "hash is required"})
 			return
 		}
 		detail, err := gitCommitForRequest(r.Context(), client, workspaceDir, store, r, hash)
@@ -85,11 +86,11 @@ func newGitAPIHandler(workspaceDir string, store *session.Store, manager *ops.Ma
 			writeGitAPIError(w, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, detail)
+		httpapi.WriteJSON(w, http.StatusOK, detail)
 	})
 
 	mux.HandleFunc("/worktrees", func(w http.ResponseWriter, r *http.Request) {
-		if !requireMethod(w, r, http.MethodGet) {
+		if !httpapi.RequireMethod(w, r, http.MethodGet) {
 			return
 		}
 		trees, err := gitWorktreesForRequest(r.Context(), client, workspaceDir, store, r)
@@ -97,15 +98,15 @@ func newGitAPIHandler(workspaceDir string, store *session.Store, manager *ops.Ma
 			writeGitAPIError(w, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, trees)
+		httpapi.WriteJSON(w, http.StatusOK, trees)
 	})
 
 	mux.HandleFunc("/mutations", func(w http.ResponseWriter, r *http.Request) {
 		if manager == nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "ops manager is not configured"})
+			httpapi.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": "ops manager is not configured"})
 			return
 		}
-		if !requireMethod(w, r, http.MethodPost) {
+		if !httpapi.RequireMethod(w, r, http.MethodPost) {
 			return
 		}
 		var req struct {
@@ -120,11 +121,11 @@ func newGitAPIHandler(workspaceDir string, store *session.Store, manager *ops.Ma
 			NewBranch    string `json:"new_branch"`
 			Reason       string `json:"reason"`
 		}
-		if !decodeJSONBody(w, r, &req) {
+		if !httpapi.DecodeJSONBody(w, r, &req) {
 			return
 		}
 		sessionID := strings.TrimSpace(req.SessionID)
-		if !sessionAllowsApprovedGitMutation(store, sessionID) {
+		if !SessionAllowsApprovedGitMutation(store, sessionID) {
 			root := strings.TrimSpace(req.Root)
 			_, _ = manager.RecordAutomationAudit(ops.AutomationAuditEntry{
 				Actor:     "git",
@@ -134,13 +135,13 @@ func newGitAPIHandler(workspaceDir string, store *session.Store, manager *ops.Ma
 				CWD:       root,
 				Result:    "blocked",
 			})
-			writeJSON(w, http.StatusForbidden, map[string]string{"error": "session has not enabled approved git mutations"})
+			httpapi.WriteJSON(w, http.StatusForbidden, map[string]string{"error": "session has not enabled approved git mutations"})
 			return
 		}
 		root, err := gitMutationRootForRequest(r.Context(), client, workspaceDir, store, sessionID, req.Root)
 		if err != nil {
 			if errors.Is(err, errGitMutationRootOutsideSession) {
-				writeJSON(w, http.StatusForbidden, map[string]string{"error": err.Error()})
+				httpapi.WriteJSON(w, http.StatusForbidden, map[string]string{"error": err.Error()})
 				return
 			}
 			writeGitAPIError(w, err)
@@ -159,10 +160,10 @@ func newGitAPIHandler(workspaceDir string, store *session.Store, manager *ops.Ma
 			Reason:       strings.TrimSpace(req.Reason),
 		})
 		if err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			httpapi.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 			return
 		}
-		writeJSON(w, http.StatusOK, plan)
+		httpapi.WriteJSON(w, http.StatusOK, plan)
 	})
 
 	return http.StripPrefix("/v1/git", mux)
@@ -170,10 +171,10 @@ func newGitAPIHandler(workspaceDir string, store *session.Store, manager *ops.Ma
 
 func writeGitAPIError(w http.ResponseWriter, err error) {
 	if errors.Is(err, gitrepo.ErrNotRepository) {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not a git repository"})
+		httpapi.WriteJSON(w, http.StatusNotFound, map[string]string{"error": "not a git repository"})
 		return
 	}
-	writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	httpapi.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 }
 
 func gitStatusForRequest(ctx context.Context, client *gitrepo.Client, workspaceDir string, store *session.Store, r *http.Request) (gitrepo.Status, error) {
@@ -394,7 +395,7 @@ func gitTargetDirs(workspaceDir string, store *session.Store, r *http.Request) [
 	return targets
 }
 
-func sessionAllowsApprovedGitMutation(store *session.Store, sessionID string) bool {
+func SessionAllowsApprovedGitMutation(store *session.Store, sessionID string) bool {
 	if store == nil {
 		return false
 	}

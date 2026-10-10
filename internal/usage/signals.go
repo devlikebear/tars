@@ -1,7 +1,7 @@
 package usage
 
 import (
-	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/devlikebear/tars/internal/textutil"
 )
 
 type SignalEntry struct {
@@ -165,18 +167,19 @@ func readSignalFile(path string) []SignalEntry {
 	}
 	defer file.Close()
 	var entries []SignalEntry
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" {
-			continue
+	scanErr := textutil.EachLine(file, func(raw []byte) error {
+		line := bytes.TrimSpace(raw)
+		if len(line) == 0 {
+			return nil
 		}
 		var item SignalEntry
-		if err := json.Unmarshal([]byte(line), &item); err != nil {
-			continue
+		if err := json.Unmarshal(line, &item); err != nil {
+			return nil
 		}
 		entries = append(entries, normalizeSignalEntry(item, time.Now))
-	}
+		return nil
+	})
+	_ = scanErr // best effort: keep the entries read before a read error
 	return entries
 }
 

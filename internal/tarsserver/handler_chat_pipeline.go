@@ -148,9 +148,26 @@ type chatTurnOrigin struct {
 type errChatTurnRejected struct {
 	status int
 	msg    string
+	// cause is what made preparing the turn fail. The HTTP answer carries
+	// only msg; the server's own callers (the focus driver's blocked gate)
+	// get the cause too, so "auto compaction failed" says why (#1231). It is
+	// an error from reading or building the session — a path, a decode
+	// position — never message text.
+	cause error
 }
 
-func (e *errChatTurnRejected) Error() string { return e.msg }
+func (e *errChatTurnRejected) Error() string {
+	if e.cause == nil {
+		return e.msg
+	}
+	detail := strings.TrimSpace(e.cause.Error())
+	if detail == "" || detail == e.msg {
+		return e.msg
+	}
+	return e.msg + ": " + detail
+}
+
+func (e *errChatTurnRejected) Unwrap() error { return e.cause }
 
 // runChatTurn is one chat turn from the prepared request to "done": the
 // console request and the server's own turns (runServerChatTurn) share it,
@@ -197,7 +214,7 @@ func runChatTurn(w http.ResponseWriter, r *http.Request, req chatRequestPayload,
 	state, status, errMessage, err := prepareChatRunState(r, req, deps)
 	if err != nil {
 		writeError(w, status, "", errMessage)
-		return llm.ChatResponse{}, &errChatTurnRejected{status: status, msg: errMessage}
+		return llm.ChatResponse{}, &errChatTurnRejected{status: status, msg: errMessage, cause: err}
 	}
 	if state.sessionID != claimKey {
 		// The request named no live session; it runs in a new one.

@@ -52,6 +52,7 @@ var CorePackages = []string{
 // HTTP surfaces, and the TARS-specific tool set. They may import core freely.
 var AppPackages = []string{
 	"agentruntime",
+	"apihandlers",
 	"apptool",
 	"assistant",
 	"checkpoint",

@@ -392,3 +392,67 @@ func TestAppendAndReadMessagePreservesInitiativeMetadata(t *testing.T) {
 		t.Fatalf("ordinary message must have no initiative metadata, got %+v", messages[1].Initiative)
 	}
 }
+
+// A message longer than bufio.Scanner's 64KB line limit used to make the
+// whole transcript unreadable ("token too long", #1231).
+func TestReadMessages_LineOverScannerLimit(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "transcript.jsonl")
+	long := strings.Repeat("tool output line\n", 300*1024/17)
+	if len(long) < 290*1024 {
+		t.Fatalf("test message is only %d bytes", len(long))
+	}
+	for _, msg := range []Message{
+		{Role: "user", Content: "before"},
+		{Role: "tool", Content: long},
+		{Role: "assistant", Content: "after"},
+	} {
+		if err := AppendMessage(path, msg); err != nil {
+			t.Fatalf("append %s: %v", msg.Role, err)
+		}
+	}
+
+	got, err := ReadMessages(path)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("read %d messages, want 3", len(got))
+	}
+	if got[0].Content != "before" || got[1].Content != long || got[2].Content != "after" {
+		t.Fatalf("contents changed: lens %d/%d/%d", len(got[0].Content), len(got[1].Content), len(got[2].Content))
+	}
+	for i, msg := range got {
+		if msg.ID == "" {
+			t.Fatalf("message %d has no id", i)
+		}
+	}
+}
+
+func TestReadMessages_LastLineWithoutNewline(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "transcript.jsonl")
+	raw := `{"id":"m1","role":"user","content":"one"}` + "\n\n" +
+		`{"role":"assistant","content":"two"}`
+	if err := os.WriteFile(path, []byte(raw), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got, err := ReadMessages(path)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if len(got) != 2 || got[0].ID != "m1" || got[1].Content != "two" {
+		t.Fatalf("messages = %+v", got)
+	}
+	if got[1].ID == "" {
+		t.Fatal("the legacy last line got no virtual id")
+	}
+}
+
+func TestReadMessages_CorruptLineStillFails(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "transcript.jsonl")
+	if err := os.WriteFile(path, []byte(`{"role":"user","content":"ok"}`+"\n{not json\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ReadMessages(path); err == nil || !strings.Contains(err.Error(), "unmarshal message") {
+		t.Fatalf("err = %v, want an unmarshal error", err)
+	}
+}
