@@ -68,6 +68,20 @@ const (
 	// questions (quiet_requested, user_strained, special_day) with strict
 	// JSON booleans. Light by default (tars#1219).
 	RoleInitiative Role = "initiative"
+
+	// RoleInitiativeSpeak composes the 1-3 lines of a live-mode greet/
+	// check_in utterance (tars#1220's System 2), tool-free. Unlike every
+	// other role above, it has no entry in the light-tier default map
+	// (internal/config's defaultLightRoles-equivalent list): it falls back
+	// to whatever tier chat itself uses (RoleChatMain, or the default
+	// tier), not light, so an unprompted word sounds like the same voice
+	// the user already talks to, and — just as importantly — so its
+	// resolved provider pool alias has a real chance of matching chat's
+	// (same alias is what the same-provider text-sending rule, mirrored
+	// from tars#1219 §3, checks). Calls are capped by
+	// initiative.daily_speak_calls (default 12/day), so the heavier tier's
+	// cost stays negligible.
+	RoleInitiativeSpeak Role = "initiative_speak"
 )
 
 // AllRoles returns the exhaustive list of roles in canonical order.
@@ -87,6 +101,7 @@ func AllRoles() []Role {
 		RoleCritic,
 		RoleComputerUse,
 		RoleInitiative,
+		RoleInitiativeSpeak,
 	}
 }
 

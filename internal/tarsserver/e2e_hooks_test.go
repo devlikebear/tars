@@ -27,25 +27,25 @@ func TestApplyE2ERouteHooks_RunsEveryRegisteredHook(t *testing.T) {
 	t.Cleanup(func() { e2eRouteHooks = original })
 
 	var gotMux *http.ServeMux
-	var gotBroker *eventBroker
+	var gotDeps e2eRouteDeps
 	calls := 0
-	e2eRouteHooks = []func(*http.ServeMux, *eventBroker){
-		func(mux *http.ServeMux, broker *eventBroker) {
+	e2eRouteHooks = []func(*http.ServeMux, e2eRouteDeps){
+		func(mux *http.ServeMux, deps e2eRouteDeps) {
 			calls++
 			gotMux = mux
-			gotBroker = broker
+			gotDeps = deps
 		},
 	}
 
 	mux := http.NewServeMux()
-	broker := newEventBroker()
-	applyE2ERouteHooks(mux, broker)
+	deps := e2eRouteDeps{Broker: newEventBroker()}
+	applyE2ERouteHooks(mux, deps)
 
 	if calls != 1 {
 		t.Fatalf("expected the registered hook to run once, got %d calls", calls)
 	}
-	if gotMux != mux || gotBroker != broker {
-		t.Fatalf("expected the hook to receive the same mux/broker passed in")
+	if gotMux != mux || gotDeps.Broker != deps.Broker {
+		t.Fatalf("expected the hook to receive the same mux/deps passed in")
 	}
 }
 
@@ -56,5 +56,5 @@ func TestApplyE2ERouteHooks_NoopWhenEmpty(t *testing.T) {
 	e2eRouteHooks = nil
 	t.Cleanup(func() { e2eRouteHooks = original })
 
-	applyE2ERouteHooks(http.NewServeMux(), newEventBroker())
+	applyE2ERouteHooks(http.NewServeMux(), e2eRouteDeps{Broker: newEventBroker()})
 }

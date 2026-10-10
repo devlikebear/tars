@@ -230,3 +230,44 @@ func TestCompactTranscriptWithOptions_KeepsToolBlocksBehindUserBoundary(t *testi
 		}
 	}
 }
+
+// TestCompactTranscriptKeepsInitiativeMetadataOnRecentMessages checks that
+// an initiative-authored assistant message kept in the "recent" window
+// (not summarized away) keeps its Initiative metadata intact — compaction
+// treats it as an ordinary message, per tars#1220.
+func TestCompactTranscriptKeepsInitiativeMetadataOnRecentMessages(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "transcript.jsonl")
+
+	for i := 0; i < 10; i++ {
+		role := "user"
+		if i%2 == 1 {
+			role = "assistant"
+		}
+		if err := AppendMessage(path, Message{
+			Role: role, Content: fmt.Sprintf("message %02d content", i),
+			Timestamp: time.Date(2026, 2, 14, 12, 0, i, 0, time.UTC),
+		}); err != nil {
+			t.Fatalf("append message %d: %v", i, err)
+		}
+	}
+	if err := AppendMessage(path, Message{
+		Role: "assistant", Content: "Welcome back!",
+		Timestamp:  time.Date(2026, 2, 14, 12, 0, 10, 0, time.UTC),
+		Initiative: &MessageInitiative{Intent: "greet", EntryID: "entry-9"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := CompactTranscript(path, 5, time.Date(2026, 2, 14, 13, 0, 0, 0, time.UTC)); err != nil {
+		t.Fatalf("compact transcript: %v", err)
+	}
+	messages, err := ReadMessages(path)
+	if err != nil {
+		t.Fatalf("read compacted transcript: %v", err)
+	}
+	last := messages[len(messages)-1]
+	if last.Content != "Welcome back!" || last.Initiative == nil || last.Initiative.Intent != "greet" || last.Initiative.EntryID != "entry-9" {
+		t.Fatalf("last message = %+v, want the initiative message with metadata intact", last)
+	}
+}
