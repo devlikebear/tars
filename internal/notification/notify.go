@@ -1,4 +1,4 @@
-package tarsserver
+package notification
 
 import (
 	"context"
@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/devlikebear/tars/internal/httpapi"
 	"github.com/devlikebear/tars/internal/serverauth"
 	"github.com/devlikebear/tars/internal/shellexec"
 	"github.com/rs/zerolog"
@@ -32,7 +33,7 @@ const companionEventCategory = "companion"
 
 var notificationAppleScriptPath = "/usr/bin/osascript"
 
-type notificationEvent struct {
+type Event struct {
 	ID          int64  `json:"id,omitempty"`
 	Type        string `json:"type"`
 	Category    string `json:"category"`
@@ -56,8 +57,8 @@ type notificationEvent struct {
 	Expression string `json:"expression,omitempty"`
 }
 
-func newNotificationEvent(category, severity, title, message string) notificationEvent {
-	return notificationEvent{
+func NewEvent(category, severity, title, message string) Event {
+	return Event{
 		Type:      notificationEventType,
 		Category:  strings.TrimSpace(category),
 		Severity:  strings.TrimSpace(severity),
@@ -67,28 +68,28 @@ func newNotificationEvent(category, severity, title, message string) notificatio
 	}
 }
 
-type eventBroker struct {
+type Broker struct {
 	mu     sync.RWMutex
 	nextID int
 	subs   map[int]eventSubscription
 }
 
 type eventSubscription struct {
-	ch chan notificationEvent
+	ch chan Event
 }
 
-func newEventBroker() *eventBroker {
-	return &eventBroker{
+func NewBroker() *Broker {
+	return &Broker{
 		subs: map[int]eventSubscription{},
 	}
 }
 
-func (b *eventBroker) subscribe() (int, <-chan notificationEvent, func()) {
+func (b *Broker) Subscribe() (int, <-chan Event, func()) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.nextID++
 	id := b.nextID
-	ch := make(chan notificationEvent, 32)
+	ch := make(chan Event, 32)
 	b.subs[id] = eventSubscription{ch: ch}
 	unsubscribe := func() {
 		b.mu.Lock()
@@ -101,7 +102,7 @@ func (b *eventBroker) subscribe() (int, <-chan notificationEvent, func()) {
 	return id, ch, unsubscribe
 }
 
-func (b *eventBroker) publish(evt notificationEvent) {
+func (b *Broker) Publish(evt Event) {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 	for _, sub := range b.subs {
@@ -113,14 +114,14 @@ func (b *eventBroker) publish(evt notificationEvent) {
 	}
 }
 
-func (b *eventBroker) subscriberCount() int {
+func (b *Broker) SubscriberCount() int {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 	return len(b.subs)
 }
 
-type desktopNotifier interface {
-	Notify(ctx context.Context, evt notificationEvent) error
+type DesktopNotifier interface {
+	Notify(ctx context.Context, evt Event) error
 }
 
 type commandNotifier struct {
@@ -128,14 +129,14 @@ type commandNotifier struct {
 	logger  zerolog.Logger
 }
 
-func newCommandNotifier(command string, logger zerolog.Logger) desktopNotifier {
+func NewCommandNotifier(command string, logger zerolog.Logger) DesktopNotifier {
 	return &commandNotifier{
 		command: strings.TrimSpace(command),
 		logger:  logger,
 	}
 }
 
-func (n *commandNotifier) Notify(ctx context.Context, evt notificationEvent) error {
+func (n *commandNotifier) Notify(ctx context.Context, evt Event) error {
 	title := strings.TrimSpace(evt.Title)
 	message := strings.TrimSpace(evt.Message)
 	if title == "" || message == "" {
@@ -162,11 +163,11 @@ func (n *commandNotifier) Notify(ctx context.Context, evt notificationEvent) err
 	return n.notifyAuto(ctx, evt)
 }
 
-func (n *commandNotifier) notifyAuto(ctx context.Context, evt notificationEvent) error {
+func (n *commandNotifier) notifyAuto(ctx context.Context, evt Event) error {
 	return n.notifyAutoForGOOS(ctx, evt, runtime.GOOS)
 }
 
-func (n *commandNotifier) notifyAutoForGOOS(ctx context.Context, evt notificationEvent, goos string) error {
+func (n *commandNotifier) notifyAutoForGOOS(ctx context.Context, evt Event, goos string) error {
 	title := strings.TrimSpace(evt.Title)
 	message := strings.TrimSpace(evt.Message)
 	switch goos {
@@ -187,7 +188,7 @@ func (n *commandNotifier) notifyAutoForGOOS(ctx context.Context, evt notificatio
 	}
 }
 
-func buildTerminalNotifierArgs(evt notificationEvent) []string {
+func buildTerminalNotifierArgs(evt Event) []string {
 	args := []string{
 		"-title", strings.TrimSpace(evt.Title),
 		"-message", strings.TrimSpace(evt.Message),
@@ -201,7 +202,7 @@ func buildTerminalNotifierArgs(evt notificationEvent) []string {
 	return args
 }
 
-func notificationGroupID(evt notificationEvent) string {
+func notificationGroupID(evt Event) string {
 	category := sanitizeNotificationIDPart(evt.Category)
 	if category == "" {
 		category = "general"
@@ -235,21 +236,21 @@ func notificationOpenCommand(rawPath string) string {
 	return "open '" + escaped + "'"
 }
 
-type notificationDispatcher struct {
-	broker                  *eventBroker
-	store                   *notificationStore
-	notifier                desktopNotifier
+type Dispatcher struct {
+	broker                  *Broker
+	store                   *Store
+	notifier                DesktopNotifier
 	notifyWhenNoSubscribers bool
 	logger                  zerolog.Logger
 }
 
-func newNotificationDispatcher(
-	broker *eventBroker,
-	notifier desktopNotifier,
+func NewDispatcher(
+	broker *Broker,
+	notifier DesktopNotifier,
 	notifyWhenNoSubscribers bool,
 	logger zerolog.Logger,
-) *notificationDispatcher {
-	return &notificationDispatcher{
+) *Dispatcher {
+	return &Dispatcher{
 		broker:                  broker,
 		notifier:                notifier,
 		notifyWhenNoSubscribers: notifyWhenNoSubscribers,
@@ -257,7 +258,13 @@ func newNotificationDispatcher(
 	}
 }
 
-func (d *notificationDispatcher) Emit(ctx context.Context, evt notificationEvent) {
+// SetStore makes the dispatcher record every event it emits in store. Call
+// it before the dispatcher is shared; it is not safe to call while Emit runs.
+func (d *Dispatcher) SetStore(store *Store) {
+	d.store = store
+}
+
+func (d *Dispatcher) Emit(ctx context.Context, evt Event) {
 	if d == nil {
 		return
 	}
@@ -272,7 +279,7 @@ func (d *notificationDispatcher) Emit(ctx context.Context, evt notificationEvent
 	// the broker right now.
 	if strings.EqualFold(strings.TrimSpace(evt.Category), companionEventCategory) {
 		if d.broker != nil {
-			d.broker.publish(evt)
+			d.broker.Publish(evt)
 		}
 		return
 	}
@@ -288,7 +295,7 @@ func (d *notificationDispatcher) Emit(ctx context.Context, evt notificationEvent
 		}
 	}
 	if d.broker != nil {
-		d.broker.publish(evt)
+		d.broker.Publish(evt)
 	}
 	if coalesced {
 		return
@@ -296,7 +303,7 @@ func (d *notificationDispatcher) Emit(ctx context.Context, evt notificationEvent
 	if !d.notifyWhenNoSubscribers || d.notifier == nil {
 		return
 	}
-	if d.broker != nil && d.broker.subscriberCount() > 0 && !strings.EqualFold(strings.TrimSpace(evt.Category), "cron") {
+	if d.broker != nil && d.broker.SubscriberCount() > 0 && !strings.EqualFold(strings.TrimSpace(evt.Category), "cron") {
 		return
 	}
 	notifyCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
@@ -315,13 +322,13 @@ func (d *notificationDispatcher) Emit(ctx context.Context, evt notificationEvent
 	}
 }
 
-func newEventStreamHandler(broker *eventBroker, logger zerolog.Logger) http.Handler {
+func newEventStreamHandler(broker *Broker, logger zerolog.Logger) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !requireMethod(w, r, http.MethodGet) {
+		if !httpapi.RequireMethod(w, r, http.MethodGet) {
 			return
 		}
 		if broker == nil {
-			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "event broker is not configured"})
+			httpapi.WriteJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "event broker is not configured"})
 			return
 		}
 		flusher, ok := w.(http.Flusher)
@@ -336,13 +343,13 @@ func newEventStreamHandler(broker *eventBroker, logger zerolog.Logger) http.Hand
 		w.Header().Set("X-Accel-Buffering", "no")
 		w.WriteHeader(http.StatusOK)
 
-		_, ch, unsubscribe := broker.subscribe()
+		_, ch, unsubscribe := broker.Subscribe()
 		defer unsubscribe()
 
 		ping := time.NewTicker(10 * time.Second)
 		defer ping.Stop()
 
-		writeEvent := func(evt notificationEvent) error {
+		writeEvent := func(evt Event) error {
 			payload, err := json.Marshal(evt)
 			if err != nil {
 				return err
@@ -353,7 +360,7 @@ func newEventStreamHandler(broker *eventBroker, logger zerolog.Logger) http.Hand
 			flusher.Flush()
 			return nil
 		}
-		connected := newNotificationEvent("system", "info", "event stream connected", "subscribed to runtime notifications")
+		connected := NewEvent("system", "info", "event stream connected", "subscribed to runtime notifications")
 		_ = writeEvent(connected)
 
 		for {
@@ -378,23 +385,23 @@ func newEventStreamHandler(broker *eventBroker, logger zerolog.Logger) http.Hand
 	})
 }
 
-func newEventsAPIHandler(broker *eventBroker, store *notificationStore, logger zerolog.Logger) http.Handler {
+func NewEventsAPIHandler(broker *Broker, store *Store, logger zerolog.Logger) http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("/v1/events/stream", newEventStreamHandler(broker, logger))
 
 	mux.HandleFunc("/v1/events/history", func(w http.ResponseWriter, r *http.Request) {
-		if !requireMethod(w, r, http.MethodGet) {
+		if !httpapi.RequireMethod(w, r, http.MethodGet) {
 			return
 		}
 		if store == nil {
-			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "notification store is not configured"})
+			httpapi.WriteJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "notification store is not configured"})
 			return
 		}
 		limit := defaultNotificationHistoryLimit
 		if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
 			v, err := strconv.Atoi(raw)
 			if err != nil || v <= 0 {
-				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "limit must be a positive integer"})
+				httpapi.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "limit must be a positive integer"})
 				return
 			}
 			limit = v
@@ -403,10 +410,10 @@ func newEventsAPIHandler(broker *eventBroker, store *notificationStore, logger z
 		view, err := store.history(role, limit)
 		if err != nil {
 			logger.Error().Err(err).Msg("load notification history failed")
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "load notification history failed"})
+			httpapi.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": "load notification history failed"})
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{
+		httpapi.WriteJSON(w, http.StatusOK, map[string]any{
 			"items":        view.Items,
 			"unread_count": view.UnreadCount,
 			"read_cursor":  view.ReadCursor,
@@ -415,27 +422,27 @@ func newEventsAPIHandler(broker *eventBroker, store *notificationStore, logger z
 	})
 
 	mux.HandleFunc("/v1/events/read", func(w http.ResponseWriter, r *http.Request) {
-		if !requireMethod(w, r, http.MethodPost) {
+		if !httpapi.RequireMethod(w, r, http.MethodPost) {
 			return
 		}
 		if store == nil {
-			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "notification store is not configured"})
+			httpapi.WriteJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "notification store is not configured"})
 			return
 		}
 		var req struct {
 			LastID int64 `json:"last_id"`
 		}
-		if !decodeJSONBody(w, r, &req) {
+		if !httpapi.DecodeJSONBody(w, r, &req) {
 			return
 		}
 		role := normalizeNotificationRoleKey(serverauth.RoleFromRequest(r))
 		view, err := store.markRead(role, req.LastID)
 		if err != nil {
 			logger.Error().Err(err).Msg("mark notifications read failed")
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "mark notifications read failed"})
+			httpapi.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": "mark notifications read failed"})
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{
+		httpapi.WriteJSON(w, http.StatusOK, map[string]any{
 			"acknowledged": true,
 			"read_cursor":  view.ReadCursor,
 			"unread_count": view.UnreadCount,

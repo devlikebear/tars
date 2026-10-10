@@ -32,7 +32,7 @@ func registerE2EEventsRoute(mux *http.ServeMux, broker *eventBroker) {
 		if !decodeJSONBody(w, r, &evt) {
 			return
 		}
-		broker.publish(evt)
+		broker.Publish(evt)
 		writeJSON(w, http.StatusOK, map[string]bool{"published": true})
 	})
 }

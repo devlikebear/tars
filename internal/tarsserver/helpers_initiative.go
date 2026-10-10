@@ -284,7 +284,7 @@ func buildInitiativeRuntime(in initiativeSetupInputs) initiativeSetup {
 
 	observerDeps := sessionObserverDeps{Store: in.SessionStore, WorkspaceDir: in.WorkspaceDir}
 	if in.Broker != nil {
-		observerDeps.SubscriberCount = in.Broker.subscriberCount
+		observerDeps.SubscriberCount = in.Broker.SubscriberCount
 	}
 	if in.Activity != nil {
 		observerDeps.ChatBusy = in.Activity.isChatBusy

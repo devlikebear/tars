@@ -1,4 +1,4 @@
-package tarsserver
+package notification
 
 import (
 	"encoding/json"
@@ -11,22 +11,22 @@ import (
 )
 
 const (
-	notificationHistoryMax          = 1000
+	HistoryMax                      = 1000
 	defaultNotificationHistoryLimit = 100
 	pulseNotificationCoalesceWindow = 30 * time.Minute
 )
 
-type notificationStore struct {
+type Store struct {
 	mu               sync.Mutex
 	path             string
 	max              int
 	nextID           int64
-	items            []notificationEvent
+	items            []Event
 	readCursorByRole map[string]int64
 }
 
 type notificationHistoryView struct {
-	Items       []notificationEvent
+	Items       []Event
 	UnreadCount int
 	ReadCursor  int64
 	LastID      int64
@@ -38,22 +38,22 @@ type notificationReadView struct {
 }
 
 type notificationAppendResult struct {
-	Event     notificationEvent
+	Event     Event
 	Coalesced bool
 }
 
-func newNotificationStore(path string, max int) (*notificationStore, error) {
+func NewStore(path string, max int) (*Store, error) {
 	trimmedPath := strings.TrimSpace(path)
 	if trimmedPath == "" {
 		return nil, fmt.Errorf("notification store path is required")
 	}
 	if max <= 0 {
-		max = notificationHistoryMax
+		max = HistoryMax
 	}
-	store := &notificationStore{
+	store := &Store{
 		path:             trimmedPath,
 		max:              max,
-		items:            make([]notificationEvent, 0, max),
+		items:            make([]Event, 0, max),
 		readCursorByRole: map[string]int64{},
 	}
 	if err := store.load(); err != nil {
@@ -62,7 +62,7 @@ func newNotificationStore(path string, max int) (*notificationStore, error) {
 	return store, nil
 }
 
-func (s *notificationStore) append(evt notificationEvent) (notificationAppendResult, error) {
+func (s *Store) append(evt Event) (notificationAppendResult, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -87,17 +87,17 @@ func (s *notificationStore) append(evt notificationEvent) (notificationAppendRes
 	return notificationAppendResult{Event: evt}, nil
 }
 
-func (s *notificationStore) coalescePulseNotificationLocked(evt notificationEvent) (notificationEvent, bool) {
+func (s *Store) coalescePulseNotificationLocked(evt Event) (Event, bool) {
 	if !isPulseNotification(evt) {
-		return notificationEvent{}, false
+		return Event{}, false
 	}
 	evtTime, ok := notificationEventTime(evt)
 	if !ok {
-		return notificationEvent{}, false
+		return Event{}, false
 	}
 	key := pulseNotificationCoalesceKey(evt)
 	if key == "" {
-		return notificationEvent{}, false
+		return Event{}, false
 	}
 	for i := len(s.items) - 1; i >= 0; i-- {
 		current := s.items[i]
@@ -106,10 +106,10 @@ func (s *notificationStore) coalescePulseNotificationLocked(evt notificationEven
 		}
 		currentTime, ok := notificationEventTime(current)
 		if !ok {
-			return notificationEvent{}, false
+			return Event{}, false
 		}
 		if evtTime.Before(currentTime) || evtTime.Sub(currentTime) > pulseNotificationCoalesceWindow {
-			return notificationEvent{}, false
+			return Event{}, false
 		}
 		merged := current
 		if merged.Occurrences <= 0 {
@@ -127,10 +127,10 @@ func (s *notificationStore) coalescePulseNotificationLocked(evt notificationEven
 		}
 		return merged, true
 	}
-	return notificationEvent{}, false
+	return Event{}, false
 }
 
-func (s *notificationStore) history(role string, limit int) (notificationHistoryView, error) {
+func (s *Store) history(role string, limit int) (notificationHistoryView, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -144,7 +144,7 @@ func (s *notificationStore) history(role string, limit int) (notificationHistory
 	if len(s.items) > limit {
 		start = len(s.items) - limit
 	}
-	items := append([]notificationEvent(nil), s.items[start:]...)
+	items := append([]Event(nil), s.items[start:]...)
 	normalizedRole := normalizeNotificationRoleKey(role)
 	readCursor := s.readCursorByRole[normalizedRole]
 	lastID := s.lastIDLocked()
@@ -165,7 +165,7 @@ func (s *notificationStore) history(role string, limit int) (notificationHistory
 	}, nil
 }
 
-func (s *notificationStore) markRead(role string, lastID int64) (notificationReadView, error) {
+func (s *Store) markRead(role string, lastID int64) (notificationReadView, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -198,7 +198,7 @@ func (s *notificationStore) markRead(role string, lastID int64) (notificationRea
 	}, nil
 }
 
-func (s *notificationStore) load() error {
+func (s *Store) load() error {
 	if err := os.MkdirAll(filepath.Dir(s.path), 0o755); err != nil {
 		return fmt.Errorf("create notification store directory: %w", err)
 	}
@@ -213,9 +213,9 @@ func (s *notificationStore) load() error {
 		return nil
 	}
 	var payload struct {
-		NextID           int64               `json:"next_id"`
-		Items            []notificationEvent `json:"items"`
-		ReadCursorByRole map[string]int64    `json:"read_cursor_by_role"`
+		NextID           int64            `json:"next_id"`
+		Items            []Event          `json:"items"`
+		ReadCursorByRole map[string]int64 `json:"read_cursor_by_role"`
 	}
 	if err := json.Unmarshal(data, &payload); err != nil {
 		return fmt.Errorf("decode notification store: %w", err)
@@ -238,14 +238,14 @@ func (s *notificationStore) load() error {
 	return nil
 }
 
-func (s *notificationStore) persist() error {
+func (s *Store) persist() error {
 	payload := struct {
-		NextID           int64               `json:"next_id"`
-		Items            []notificationEvent `json:"items"`
-		ReadCursorByRole map[string]int64    `json:"read_cursor_by_role"`
+		NextID           int64            `json:"next_id"`
+		Items            []Event          `json:"items"`
+		ReadCursorByRole map[string]int64 `json:"read_cursor_by_role"`
 	}{
 		NextID:           s.nextID,
-		Items:            append([]notificationEvent(nil), s.items...),
+		Items:            append([]Event(nil), s.items...),
 		ReadCursorByRole: map[string]int64{},
 	}
 	for role, cursor := range s.readCursorByRole {
@@ -265,7 +265,7 @@ func (s *notificationStore) persist() error {
 	return nil
 }
 
-func (s *notificationStore) lastIDLocked() int64 {
+func (s *Store) lastIDLocked() int64 {
 	var last int64
 	for _, item := range s.items {
 		if item.ID > last {
@@ -275,11 +275,11 @@ func (s *notificationStore) lastIDLocked() int64 {
 	return last
 }
 
-func isPulseNotification(evt notificationEvent) bool {
+func isPulseNotification(evt Event) bool {
 	return strings.EqualFold(strings.TrimSpace(evt.Category), "pulse")
 }
 
-func pulseNotificationCoalesceKey(evt notificationEvent) string {
+func pulseNotificationCoalesceKey(evt Event) string {
 	if !isPulseNotification(evt) {
 		return ""
 	}
@@ -298,7 +298,7 @@ func pulseNotificationCoalesceKey(evt notificationEvent) string {
 	return strings.Join(parts, "\x00")
 }
 
-func pulseNotificationFamilyKey(evt notificationEvent) string {
+func pulseNotificationFamilyKey(evt Event) string {
 	title := strings.ToLower(strings.TrimSpace(evt.Title))
 	message := strings.ToLower(strings.TrimSpace(evt.Message))
 	text := title + " " + message
@@ -329,7 +329,7 @@ func pulseNotificationFamilyKey(evt notificationEvent) string {
 	return title
 }
 
-func notificationEventTime(evt notificationEvent) (time.Time, bool) {
+func notificationEventTime(evt Event) (time.Time, bool) {
 	raw := strings.TrimSpace(evt.LastSeen)
 	if raw == "" {
 		raw = strings.TrimSpace(evt.Timestamp)

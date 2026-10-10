@@ -21,6 +21,7 @@ import (
 	"github.com/devlikebear/tars/internal/initiative"
 	"github.com/devlikebear/tars/internal/llm"
 	"github.com/devlikebear/tars/internal/mcp"
+	"github.com/devlikebear/tars/internal/notification"
 	"github.com/devlikebear/tars/internal/ops"
 	"github.com/devlikebear/tars/internal/pulse"
 	"github.com/devlikebear/tars/internal/reflection"
@@ -197,9 +198,9 @@ func buildAPIMux(
 	cronStoreResolver := newWorkspaceCronStoreResolver(cfg.WorkspaceDir, cfg.CronRunHistoryLimit, cronStore)
 	activity := &runtimeActivity{}
 	broker := newEventBroker()
-	notificationStore, err := newNotificationStore(
+	notificationStore, err := notification.NewStore(
 		filepath.Join(strings.TrimSpace(cfg.AgentRuntimePersistenceDir), "notifications.json"),
-		notificationHistoryMax,
+		notification.HistoryMax,
 	)
 	if err != nil {
 		return nil, err
@@ -209,13 +210,13 @@ func buildAPIMux(
 		return nil, err
 	}
 	providerModelsService := newProviderModelsService(cfg, providerModelsCache, llm.NewModelFetcher(), nowFn)
-	dispatcher := newNotificationDispatcher(
+	dispatcher := notification.NewDispatcher(
 		broker,
-		newCommandNotifier(cfg.NotifyCommand, logger),
+		notification.NewCommandNotifier(cfg.NotifyCommand, logger),
 		cfg.NotifyWhenNoClients,
 		logger,
 	)
-	dispatcher.store = notificationStore
+	dispatcher.SetStore(notificationStore)
 	// Tool approvals queued by unattended turns belong to turns that did
 	// not survive the restart; close them so the queue shows only live ones.
 	if expired, err := opsManager.ExpirePendingToolPermissions(); err != nil {
@@ -710,7 +711,7 @@ func buildAPIMux(
 		logger,
 	)
 	embodimentHandler := newEmbodimentAPIHandler(agentRuntime, embodimentSubsystem, logger, func(_ context.Context, evt notificationEvent) {
-		broker.publish(evt)
+		broker.Publish(evt)
 	})
 	hubInstaller := skillhub.NewInstaller(cfg.WorkspaceDir)
 	_ = hubInstaller.Sources.Register(openclaw.New())
@@ -721,7 +722,7 @@ func buildAPIMux(
 	skillExtractionHandler := newSkillExtractionAPIHandler(cfg.WorkspaceDir, sessionStore, deps.llmRouter, logger, extensionsManager, workLedger)
 	mcpCreatorHandler := newMCPServerCreatorAPIHandler(cfg.WorkspaceDir, logger, nil, deps.llmRouter)
 	gitHandler := newGitAPIHandler(cfg.WorkspaceDir, sessionStore, opsManager, logger)
-	eventsHandler := newEventsAPIHandler(broker, notificationStore, logger)
+	eventsHandler := notification.NewEventsAPIHandler(broker, notificationStore, logger)
 	configHandler := newConfigAPIHandler(resolvedConfigPath, cfg, cfg.WorkspaceDir, logger)
 	filesystemHandler := newFilesystemBrowseHandler(logger)
 	workspaceFilesHandler := newWorkspaceFilesHandler(cfg.WorkspaceDir, logger)
