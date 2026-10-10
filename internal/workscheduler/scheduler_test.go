@@ -115,7 +115,7 @@ func TestSchedulerFinalizesExecutorStateOnlyAfterAttemptCommit(t *testing.T) {
 		if !committed {
 			t.Fatalf("finalizer ran before durable attempt commit: %+v", projection.Attempts)
 		}
-	case <-time.After(time.Second):
+	case <-time.After(testWait):
 		t.Fatal("executor finalizer was not called")
 	}
 }
@@ -510,7 +510,7 @@ func TestSchedulerCancelStopsActiveExecution(t *testing.T) {
 	}
 	select {
 	case <-started:
-	case <-time.After(time.Second):
+	case <-time.After(testWait):
 		t.Fatal("executor did not start")
 	}
 	projection, err := scheduler.Cancel(context.Background(), work.ID, "operator", "no longer needed")
@@ -560,7 +560,7 @@ func TestSchedulerRecoversReconnectableClaim(t *testing.T) {
 		if got != claim.Attempt.ID {
 			t.Fatalf("recovered attempt=%s want=%s", got, claim.Attempt.ID)
 		}
-	case <-time.After(time.Second):
+	case <-time.After(testWait):
 		t.Fatal("recover executor was not called")
 	}
 	projection, err := recovered.Wait(context.Background(), work.ID)
@@ -706,9 +706,16 @@ func oneAttemptPolicy() workstore.StepSchedulePolicy {
 	return workstore.StepSchedulePolicy{MaxAttempts: 1, EscalationState: workstore.WorkStateReview}
 }
 
+// testWait is how long a test waits for something that must happen. It only
+// bounds a failure: a passing test returns as soon as the thing happens. At
+// one and two seconds these waits expired on a loaded Windows runner while
+// the scheduler was still doing its work (TestSchedulerRetriesThenRequestsReview
+// ran alongside the other parallel tests and gave up 2s into a retry).
+const testWait = 30 * time.Second
+
 func eventually(t *testing.T, condition func() bool) {
 	t.Helper()
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(testWait)
 	for time.Now().Before(deadline) {
 		if condition() {
 			return

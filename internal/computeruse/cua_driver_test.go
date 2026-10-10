@@ -14,6 +14,12 @@ import (
 
 func errorsIs(err, target error) bool { return errors.Is(err, target) }
 
+// testDriverTimeout is the per-call timeout of drivers whose test is not
+// about timing out. Each scripted call starts a real `sh`, and at one second
+// a loaded Windows runner did not get the shell started in time
+// ("cua-driver list_windows timed out after 1s").
+const testDriverTimeout = 15 * time.Second
+
 func TestBuildCuaArgs(t *testing.T) {
 	args, err := buildCuaArgs("click", map[string]any{"pid": 7, "element_token": "s1:3"})
 	if err != nil {
@@ -137,7 +143,7 @@ func fakeCommand(t *testing.T, stdout string, fail bool) func(context.Context, s
 }
 
 func TestCuaDriver_PingMapsDaemonDownToUnavailable(t *testing.T) {
-	d := NewCuaDriver("cua-driver", time.Second)
+	d := NewCuaDriver("cua-driver", testDriverTimeout)
 	d.commandContext = fakeCommand(t, "", true)
 	err := d.Ping(context.Background())
 	if err == nil || !strings.Contains(err.Error(), "daemon") || !errorsIs(err, ErrDriverUnavailable) {
@@ -197,7 +203,7 @@ func TestCuaDriver_ActionArgKeysMatchDescribeSchema(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			var argv []string
-			d := NewCuaDriver("cua-driver", time.Second)
+			d := NewCuaDriver("cua-driver", testDriverTimeout)
 			d.commandContext = recordingCommand(t, `{"effect":"confirmed","elements":[]}`, &argv)
 			if err := tc.run(d); err != nil {
 				t.Fatal(err)
@@ -218,7 +224,7 @@ func TestCuaDriver_ActionArgKeysMatchDescribeSchema(t *testing.T) {
 // decode the payload rather than trust the exit status.
 func TestCuaDriver_PingRejectsExitZeroErrorEnvelope(t *testing.T) {
 	var argv []string
-	d := NewCuaDriver("cua-driver", time.Second)
+	d := NewCuaDriver("cua-driver", testDriverTimeout)
 	d.commandContext = recordingCommand(t,
 		`{"code":"daemon_not_running","suggestion":"start it with cua-driver serve"}`, &argv)
 	err := d.Ping(context.Background())
@@ -232,7 +238,7 @@ func TestCuaDriver_PingRejectsExitZeroErrorEnvelope(t *testing.T) {
 
 func TestCuaDriver_PingAcceptsHealthyPayload(t *testing.T) {
 	var argv []string
-	d := NewCuaDriver("cua-driver", time.Second)
+	d := NewCuaDriver("cua-driver", testDriverTimeout)
 	d.commandContext = recordingCommand(t, `{"current_space_id":1,"windows":[]}`, &argv)
 	if err := d.Ping(context.Background()); err != nil {
 		t.Fatalf("err = %v", err)
@@ -323,7 +329,7 @@ func TestRankWindows_DropsOverlayAndMenuBarSurfaces(t *testing.T) {
 
 func TestCuaDriver_ResolveWindowSkipsOverlayForRealWindow(t *testing.T) {
 	var argv []string
-	d := NewCuaDriver("cua-driver", time.Second)
+	d := NewCuaDriver("cua-driver", testDriverTimeout)
 	d.commandContext = recordingCommand(t, `{"windows":[
 		{"window_id":1,"pid":1,"app_name":"Cua Driver","z_index":100,"bounds":{"width":2560,"height":1440}},
 		{"window_id":2,"pid":2,"app_name":"MenuBar","z_index":90,"bounds":{"width":1800,"height":39}},
@@ -339,7 +345,7 @@ func TestCuaDriver_ResolveWindowSkipsOverlayForRealWindow(t *testing.T) {
 
 func TestCuaDriver_ResolveWindowPicksHighestZ(t *testing.T) {
 	var argv []string
-	d := NewCuaDriver("cua-driver", time.Second)
+	d := NewCuaDriver("cua-driver", testDriverTimeout)
 	d.commandContext = recordingCommand(t,
 		`{"windows":[{"window_id":1,"pid":5,"app_name":"A","z_index":2},{"window_id":9,"pid":5,"app_name":"A","z_index":8}]}`, &argv)
 	w, err := d.ResolveWindow(context.Background(), "")
@@ -355,7 +361,7 @@ func TestCuaDriver_ResolveWindowPicksHighestZ(t *testing.T) {
 // be mistaken for a frontmost signal.
 func TestCuaDriver_ResolveWindowRefusesToGuessWithoutZ(t *testing.T) {
 	var argv []string
-	d := NewCuaDriver("cua-driver", time.Second)
+	d := NewCuaDriver("cua-driver", testDriverTimeout)
 	d.commandContext = recordingCommand(t,
 		`{"windows":[{"window_id":1,"pid":5,"z_index":null},{"window_id":2,"pid":5,"z_index":null}]}`, &argv)
 	_, err := d.ResolveWindow(context.Background(), "")
@@ -367,7 +373,7 @@ func TestCuaDriver_ResolveWindowRefusesToGuessWithoutZ(t *testing.T) {
 // A single window needs no stacking order: there is nothing to infer.
 func TestCuaDriver_ResolveWindowAcceptsLoneWindowWithoutZ(t *testing.T) {
 	var argv []string
-	d := NewCuaDriver("cua-driver", time.Second)
+	d := NewCuaDriver("cua-driver", testDriverTimeout)
 	d.commandContext = recordingCommand(t, `{"windows":[{"window_id":4,"pid":5,"z_index":null}]}`, &argv)
 	w, err := d.ResolveWindow(context.Background(), "")
 	if err != nil {
@@ -380,7 +386,7 @@ func TestCuaDriver_ResolveWindowAcceptsLoneWindowWithoutZ(t *testing.T) {
 
 func TestCuaDriver_ResolveAppWindowPicksHighestZFromLaunch(t *testing.T) {
 	var argv []string
-	d := NewCuaDriver("cua-driver", time.Second)
+	d := NewCuaDriver("cua-driver", testDriverTimeout)
 	d.commandContext = recordingCommand(t,
 		`{"pid":5,"name":"Example","launch_state":"window_ready","windows":[{"window_id":1,"pid":5,"z_index":2},{"window_id":9,"pid":5,"z_index":8}]}`, &argv)
 	w, err := d.ResolveWindow(context.Background(), "Example")
@@ -436,7 +442,7 @@ func countTool(tools []string, name string) int {
 // instead of failing the race.
 func TestCuaDriver_ResolveAppWindowPollsUntilWindowAppears(t *testing.T) {
 	var tools []string
-	d := NewCuaDriver("cua-driver", time.Second)
+	d := NewCuaDriver("cua-driver", testDriverTimeout)
 	d.commandContext = scriptedCommand(t, map[string][]string{
 		// First list_windows is the already-running probe (no match), then the polls.
 		"list_windows": {
@@ -465,7 +471,7 @@ func TestCuaDriver_ResolveAppWindowPollsUntilWindowAppears(t *testing.T) {
 // launch, so nothing can steal focus.
 func TestCuaDriver_ResolveAppWindowPrefersRunningApp(t *testing.T) {
 	var tools []string
-	d := NewCuaDriver("cua-driver", time.Second)
+	d := NewCuaDriver("cua-driver", testDriverTimeout)
 	d.commandContext = scriptedCommand(t, map[string][]string{
 		"list_windows": {`{"windows":[
 			{"window_id":1,"pid":5,"app_name":"Example","z_index":2},
@@ -499,7 +505,7 @@ func TestCuaDriver_ResolveAppWindowLaunchesAliasByBundleID(t *testing.T) {
 		t.Run(tc.app, func(t *testing.T) {
 			var tools []string
 			var launchArgs string
-			d := NewCuaDriver("cua-driver", time.Second)
+			d := NewCuaDriver("cua-driver", testDriverTimeout)
 			inner := scriptedCommand(t, map[string][]string{
 				"list_windows": {`{"windows":[]}`},
 				"launch_app":   {`{"pid":5,"name":"Localized","windows":[{"window_id":2,"pid":5,"z_index":1}]}`},
@@ -558,7 +564,7 @@ func TestCuaDriver_NoWindowErrorReportsLaunchState(t *testing.T) {
 // A cancelled context must abandon the poll rather than sleep out the budget.
 func TestCuaDriver_ResolveAppWindowPollRespectsContext(t *testing.T) {
 	var argv []string
-	d := NewCuaDriver("cua-driver", time.Second)
+	d := NewCuaDriver("cua-driver", testDriverTimeout)
 	d.commandContext = recordingCommand(t, `{"pid":5,"name":"Example","windows":[]}`, &argv)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -699,7 +705,7 @@ func TestFindCuaDriverPath(t *testing.T) {
 }
 
 func TestCuaDriver_ClickParsesEffect(t *testing.T) {
-	d := NewCuaDriver("cua-driver", time.Second)
+	d := NewCuaDriver("cua-driver", testDriverTimeout)
 	d.commandContext = fakeCommand(t, `{"structuredContent":{"effect":"confirmed"}}`, false)
 	eff, err := d.Click(context.Background(), Window{PID: 1, WindowID: 2}, "s1:3")
 	if err != nil || eff != EffectConfirmed {
