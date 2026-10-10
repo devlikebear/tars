@@ -519,6 +519,12 @@ func resolveWorkspaceSkillPaths(provider extensionsProvider, workspaceDir, name 
 		if err != nil || relFile == "." || relFile == ".." || strings.HasPrefix(relFile, ".."+string(filepath.Separator)) {
 			return "", "", fmt.Errorf("skill file %q escapes %q", absFile, skillsRoot)
 		}
+		// The checks above read the paths as written. A symlink at
+		// <skills>/<name> can still point elsewhere, and a write to its
+		// SKILL.md would land there, so compare again with symlinks resolved.
+		if !workspacePathWithinRoot(skillsRoot, absDir) || !workspacePathWithinRoot(skillsRoot, absFile) {
+			return "", "", fmt.Errorf("skill path %q leaves %q through a symlink", absDir, skillsRoot)
+		}
 		return absDir, absFile, nil
 	}
 
