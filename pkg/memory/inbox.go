@@ -1,7 +1,7 @@
 package memory
 
 import (
-	"bufio"
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -15,6 +15,7 @@ import (
 	"unicode"
 
 	"github.com/devlikebear/tars/internal/atomicwrite"
+	"github.com/devlikebear/tars/internal/textutil"
 )
 
 const (
@@ -206,20 +207,20 @@ func readMemoryCandidates(root string) ([]MemoryCandidate, error) {
 	defer file.Close()
 
 	var items []MemoryCandidate
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" {
-			continue
+	scanErr := textutil.EachLine(file, func(raw []byte) error {
+		line := bytes.TrimSpace(raw)
+		if len(line) == 0 {
+			return nil
 		}
 		var item MemoryCandidate
-		if err := json.Unmarshal([]byte(line), &item); err != nil {
-			continue
+		if err := json.Unmarshal(line, &item); err != nil {
+			return nil
 		}
 		items = append(items, normalizeMemoryCandidate(item, time.Now().UTC()))
-	}
-	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("scan memory inbox: %w", err)
+		return nil
+	})
+	if scanErr != nil {
+		return nil, fmt.Errorf("scan memory inbox: %w", scanErr)
 	}
 	if items == nil {
 		return []MemoryCandidate{}, nil

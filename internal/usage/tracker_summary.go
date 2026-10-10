@@ -1,13 +1,15 @@
 package usage
 
 import (
-	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/devlikebear/tars/internal/textutil"
 )
 
 // SummaryFilter narrows the entries a summary counts. The zero value keeps
@@ -136,18 +138,19 @@ func readUsageFile(path string) []Entry {
 	defer file.Close()
 
 	entries := []Entry{}
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" {
-			continue
+	scanErr := textutil.EachLine(file, func(raw []byte) error {
+		line := bytes.TrimSpace(raw)
+		if len(line) == 0 {
+			return nil
 		}
 		var item Entry
-		if err := json.Unmarshal([]byte(line), &item); err != nil {
-			continue
+		if err := json.Unmarshal(line, &item); err != nil {
+			return nil
 		}
 		entries = append(entries, item)
-	}
+		return nil
+	})
+	_ = scanErr // best effort: keep the entries read before a read error
 	return entries
 }
 

@@ -1,7 +1,7 @@
 package skill
 
 import (
-	"bufio"
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -16,6 +16,7 @@ import (
 
 	"github.com/devlikebear/tars/internal/atomicwrite"
 	"github.com/devlikebear/tars/internal/session"
+	"github.com/devlikebear/tars/internal/textutil"
 )
 
 const (
@@ -375,20 +376,20 @@ func readExtractionCandidates(root string) ([]ExtractionCandidate, error) {
 	}
 	defer file.Close()
 	var items []ExtractionCandidate
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" {
-			continue
+	scanErr := textutil.EachLine(file, func(raw []byte) error {
+		line := bytes.TrimSpace(raw)
+		if len(line) == 0 {
+			return nil
 		}
 		var item ExtractionCandidate
-		if err := json.Unmarshal([]byte(line), &item); err != nil {
-			continue
+		if err := json.Unmarshal(line, &item); err != nil {
+			return nil
 		}
 		items = append(items, normalizeExtractionCandidate(item, time.Now().UTC()))
-	}
-	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("scan skill extraction inbox: %w", err)
+		return nil
+	})
+	if scanErr != nil {
+		return nil, fmt.Errorf("scan skill extraction inbox: %w", scanErr)
 	}
 	if items == nil {
 		return []ExtractionCandidate{}, nil

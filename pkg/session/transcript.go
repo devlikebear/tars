@@ -1,7 +1,6 @@
 package session
 
 import (
-	"bufio"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
@@ -11,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/devlikebear/tars/internal/textutil"
 )
 
 // AppendMessage appends a single message as one JSON line to the JSONL file at path.
@@ -80,15 +81,18 @@ func ReadMessages(path string) ([]Message, error) {
 	defer f.Close()
 
 	var messages []Message
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		line := scanner.Bytes()
+	// One message is one line of any length: a tool result or a pasted file
+	// passes bufio.Scanner's 64KB line limit, and a transcript that cannot
+	// be read cannot run another turn (#1231).
+	var decodeErr error
+	err = textutil.EachLine(f, func(line []byte) error {
 		if len(line) == 0 {
-			continue
+			return nil
 		}
 		var msg Message
 		if err := json.Unmarshal(line, &msg); err != nil {
-			return nil, fmt.Errorf("unmarshal message: %w", err)
+			decodeErr = fmt.Errorf("unmarshal message: %w", err)
+			return decodeErr
 		}
 		if strings.TrimSpace(msg.ID) == "" {
 			msg.ID = virtualMessageID(path, len(messages), msg)
@@ -96,8 +100,12 @@ func ReadMessages(path string) ([]Message, error) {
 			msg.ID = strings.TrimSpace(msg.ID)
 		}
 		messages = append(messages, msg)
+		return nil
+	})
+	if decodeErr != nil {
+		return nil, decodeErr
 	}
-	if err := scanner.Err(); err != nil {
+	if err != nil {
 		return nil, fmt.Errorf("scan transcript: %w", err)
 	}
 	return messages, nil
