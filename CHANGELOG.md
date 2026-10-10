@@ -10,6 +10,11 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 - **Add your own finding to a Focus review.** In the review and PR review stages the pipeline screen has an "Add a finding" input: a title, and optionally a scenario, file, line and severity. The finding becomes a card marked as yours in the round already running — the open triage, or the next one when a turn is still working — and is listed in the same fix turn as the agent's accepted findings. "Add to fix" adds it already decided, so it needs no second click; in PR review that sends the fix round at once when nothing else waits for a decision. Until now a problem you found reading the diff had to go through a decision card's answer (which the fix prompt left out) or a typed instruction (which only produced findings to decide again). Also `POST /v1/focus/pipelines/{id}/findings`; goal mode treats these like any finding. ([#1196](https://github.com/devlikebear/tars/issues/1196))
 
+### Fixed
+
+- **Qwen-family models on LM Studio (and other local OpenAI-compatible servers) answer instead of returning an empty reply.** Chat sends its prompt as two system messages, and the chat templates of these models reject a second one ("System message must be at the beginning"), so every turn failed. The `openai`, `kimi` and `gemini` providers now send the system messages a request opens with as one, joined with a blank line; a system message later in the conversation stays where it is.
+- **An error a server reports inside a streamed reply fails the turn.** LM Studio answers 200 and then sends `event: error` with the reason. That chunk was read as an empty one, so the turn ended with an empty assistant message, zero tokens and no error. A streamed chunk with a top-level `error`, or one belonging to an SSE `error` event, is now returned as a provider error with the server's message.
+
 ## [0.60.0] - 2026-10-10
 
 ### Added
