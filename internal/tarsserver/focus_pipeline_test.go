@@ -1,7 +1,9 @@
 package tarsserver
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -708,5 +710,138 @@ func TestFocusSlashCommandTurnLeavesPipelineAlone(t *testing.T) {
 	}
 	if p, _, _ := focusStoreFor(store).Get(sess.ID); len(p.Cards) != 0 {
 		t.Fatalf("cards = %+v", p.Cards)
+	}
+}
+
+// createFocusDriver is a driver bound to a fake turn runner over the
+// worktree fixture's session store, for creates that start the first turn.
+func createFocusDriver(t *testing.T, store *session.Store, reply string) (*focusDriver, *fakeFocusTurns) {
+	t.Helper()
+	d := newFocusDriver(zerolog.Nop())
+	t.Cleanup(func() { d.Close(context.Background()) })
+	d.idlePoll = 5 * time.Millisecond
+	d.goalTick = 5 * time.Millisecond
+	d.sessions = store
+	d.feeds = newChatTurnFeeds()
+	d.activity = newChatActivity(store, nil)
+	d.cancels = newChatCancelRegistry()
+	turns := &fakeFocusTurns{t: t, store: store, driver: d, reply: func(int, string) string { return reply }}
+	d.runTurn = turns.run
+	return d, turns
+}
+
+type focusCreated struct {
+	SessionID string                 `json:"session_id"`
+	Pipeline  focuspipeline.Pipeline `json:"pipeline"`
+	Started   bool                   `json:"started"`
+}
+
+// A create never starts the pipeline by itself: the caller sends the first
+// turn (the console does, with its attachments) unless it asks with start.
+func TestFocusCreateLeavesTheFirstTurnToTheCaller(t *testing.T) {
+	f := newWorktreeFixture(t)
+	d, turns := createFocusDriver(t, f.store, focusPlanReply)
+	h := newFocusPipelineHandler(f.store, f.c, d, zerolog.Nop())
+
+	rec := focusRequest(t, h, http.MethodPost, "/v1/focus/pipelines", `{"goal":"g","kickoff":"g, in detail","cwd":`+jsonString(f.repo)+`}`, true)
+	var out focusCreated
+	decodeInto(t, rec, &out)
+	if rec.Code != http.StatusCreated || out.Started || out.Pipeline.PendingTurn != "" {
+		t.Fatalf("create = %d %s", rec.Code, rec.Body.String())
+	}
+	time.Sleep(50 * time.Millisecond)
+	if d.running(out.SessionID) || len(turns.seen()) != 0 {
+		t.Fatalf("a create without start ran turns: %q", turns.seen())
+	}
+}
+
+func TestFocusCreateStartSendsTheFirstTurn(t *testing.T) {
+	f := newWorktreeFixture(t)
+	d, turns := createFocusDriver(t, f.store, focusPlanReply)
+	h := newFocusPipelineHandler(f.store, f.c, d, zerolog.Nop())
+
+	rec := focusRequest(t, h, http.MethodPost, "/v1/focus/pipelines", `{"goal":"g","kickoff":" g, in detail ","start":true,"cwd":`+jsonString(f.repo)+`}`, true)
+	var out focusCreated
+	decodeInto(t, rec, &out)
+	if rec.Code != http.StatusCreated || !out.Started {
+		t.Fatalf("create = %d %s", rec.Code, rec.Body.String())
+	}
+	// The response already marks the turn as owed, so a console opening the
+	// pipeline before the turn claims the session sends no kickoff itself.
+	if out.Pipeline.PendingTurn != "g, in detail" {
+		t.Fatalf("pending turn of the created pipeline = %q", out.Pipeline.PendingTurn)
+	}
+	waitFor(t, "the plan gate", func() bool { return pipelineOf(t, f.store, out.SessionID).OpenGate == focuspipeline.GatePlan })
+	waitDriverIdle(t, d, out.SessionID)
+	if got := turns.seen(); len(got) != 1 || got[0] != "g, in detail" {
+		t.Fatalf("turns = %q", got)
+	}
+	if p := pipelineOf(t, f.store, out.SessionID); p.PendingTurn != "" {
+		t.Fatalf("the completed first turn is still owed: %q", p.PendingTurn)
+	}
+
+	// With no kickoff the goal is the first turn.
+	rec = focusRequest(t, h, http.MethodPost, "/v1/focus/pipelines", `{"goal":"just the goal","start":true,"cwd":`+jsonString(f.repo)+`}`, true)
+	var plain focusCreated
+	decodeInto(t, rec, &plain)
+	waitFor(t, "the goal turn", func() bool { return len(turns.seen()) == 2 })
+	waitDriverIdle(t, d, plain.SessionID)
+	if got := turns.seen(); got[1] != "just the goal" {
+		t.Fatalf("turns = %q", got)
+	}
+}
+
+// A first turn that fails must not leave the pipeline silently idle.
+func TestFocusCreateStartFailedFirstTurnRaisesTheBlockedGate(t *testing.T) {
+	f := newWorktreeFixture(t)
+	d, turns := createFocusDriver(t, f.store, focusPlanReply)
+	turns.fail = func(int) error { return errors.New("provider down") }
+	h := newFocusPipelineHandler(f.store, f.c, d, zerolog.Nop())
+
+	rec := focusRequest(t, h, http.MethodPost, "/v1/focus/pipelines", `{"goal":"g","start":true,"cwd":`+jsonString(f.repo)+`}`, true)
+	var out focusCreated
+	decodeInto(t, rec, &out)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create = %d %s", rec.Code, rec.Body.String())
+	}
+	waitFor(t, "the blocked gate", func() bool { return pipelineOf(t, f.store, out.SessionID).OpenGate == focuspipeline.GateBlocked })
+	waitDriverIdle(t, d, out.SessionID)
+	if got := turns.seen(); len(got) != 1 {
+		t.Fatalf("turns = %q", got)
+	}
+}
+
+func TestFocusCreateStartNeedsADriver(t *testing.T) {
+	f := newWorktreeFixture(t)
+	h := newFocusPipelineHandler(f.store, f.c, nil, zerolog.Nop())
+	rec := focusRequest(t, h, http.MethodPost, "/v1/focus/pipelines", `{"goal":"g","start":true,"cwd":`+jsonString(f.repo)+`}`, true)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("start without a driver = %d %s", rec.Code, rec.Body.String())
+	}
+	if list, _ := f.store.List(); len(list) != 0 {
+		t.Fatalf("a refused start left sessions: %+v", list)
+	}
+}
+
+// start and goal mode together send one first turn, not one each.
+func TestFocusCreateStartWithGoalModeSendsOneFirstTurn(t *testing.T) {
+	f := newWorktreeFixture(t)
+	d, turns := createFocusDriver(t, f.store, focusPlanReply)
+	turns.block = func(n int) bool { return n > 1 } // hold whatever goal mode sends next
+	h := newFocusPipelineHandler(f.store, f.c, d, zerolog.Nop())
+
+	rec := focusRequest(t, h, http.MethodPost, "/v1/focus/pipelines", `{"goal":"ship it","start":true,"goal_mode":true,"cwd":`+jsonString(f.repo)+`}`, true)
+	var out focusCreated
+	decodeInto(t, rec, &out)
+	if rec.Code != http.StatusCreated || !out.Pipeline.GoalActive() {
+		t.Fatalf("create = %d %s", rec.Code, rec.Body.String())
+	}
+	waitFor(t, "goal mode to move past the plan", func() bool { return len(turns.seen()) >= 2 })
+	got := turns.seen()
+	if got[0] != "ship it" || got[1] == "ship it" {
+		t.Fatalf("turns = %q", got)
+	}
+	if p := pipelineOf(t, f.store, out.SessionID); p.Current == focuspipeline.StagePlan {
+		t.Fatalf("goal mode never approved the plan: %+v", p.Stages)
 	}
 }

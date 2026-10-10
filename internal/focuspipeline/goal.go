@@ -261,11 +261,7 @@ func NextGoalStep(p Pipeline, now time.Time) GoalStep {
 	if len(p.Cards) == 0 && p.Current == StagePlan {
 		// Nothing has run yet (a pipeline started with no console open):
 		// the first turn is the goal itself.
-		kickoff := strings.TrimSpace(p.Kickoff)
-		if kickoff == "" {
-			kickoff = strings.TrimSpace(p.Goal)
-		}
-		return GoalStep{Kind: GoalNudge, Prompt: kickoff}
+		return GoalStep{Kind: GoalNudge, Prompt: p.FirstTurn()}
 	}
 	if spent {
 		return GoalStep{Kind: GoalEnd, Reason: GoalEndExhausted}
@@ -344,3 +340,12 @@ func (p Pipeline) goalNudgePrompt() string {
 const goalGuidance = "Goal mode: nobody is watching this pipeline and its gates are approved automatically. " +
 	"Do not ask the developer questions — decide yourself, say what you chose and why in the report's summary, " +
 	"and keep going until the goal is done."
+
+// FirstTurn is the text of a pipeline's first turn: its kickoff, or the
+// goal when it has none.
+func (p Pipeline) FirstTurn() string {
+	if kickoff := strings.TrimSpace(p.Kickoff); kickoff != "" {
+		return kickoff
+	}
+	return strings.TrimSpace(p.Goal)
+}

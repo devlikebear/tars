@@ -50,6 +50,10 @@ export type FocusCreateRequest = {
   title?: string
   kind?: 'release'
   kickoff?: string
+  // Have the server send the first turn. The console never sets it: it sends
+  // the first turn itself, with the goal field's attachments (focusStore
+  // kickoff), and skips that for a pipeline whose pending_turn is set.
+  start?: boolean
   // The pipeline's template (absent = development), and goal mode: the
   // server decides every gate and runs to the end.
   template?: string

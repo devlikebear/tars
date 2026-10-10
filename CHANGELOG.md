@@ -6,6 +6,10 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+### Added
+
+- **`POST /v1/focus/pipelines` takes `start: true` to have the server send the first turn.** A pipeline created outside the console (API, script, desktop) used to sit at `plan:active` with no turn, because the first turn is a chat request the console sends. With `start: true` the server driver sends the kickoff (or the goal) like every later turn, the response says `started: true`, and the pipeline holds the text as `pending_turn` until the turn completes — a first turn that fails raises the blocked gate instead of leaving the pipeline idle. Without `start` nothing changes: the caller sends the first turn, as the console still does so pasted images ride along. The console sends no kickoff to a pipeline whose `pending_turn` is set, so a server-started pipeline never gets two. ([#1195](https://github.com/devlikebear/tars/issues/1195))
+
 ### Changed
 
 - **The console companion bot (CASE) tells you what is waiting on you, instead of showing fixed scripted buttons.** The Poke/Suggest/Feedback buttons and their canned replies are gone; the bubble is now a list of lines (approvals waiting, unattended approvals waiting, running turns, recent failures) built from `GET /v1/chat/activity` and the event stream — clicking a line opens that session or Ops. With nothing waiting, the bubble is empty and only the input stays, which still hands a typed question off to the full chat. The bubble opens by itself only for a new approval wait or a new failure, closes itself again once that is resolved, and leaves out the pending approval and running turn of the session the chat route already has on screen (its thread shows those on its own). ([#1189](https://github.com/devlikebear/tars/issues/1189))

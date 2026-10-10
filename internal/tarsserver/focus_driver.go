@@ -291,6 +291,11 @@ func (d *focusDriver) Close(ctx context.Context) {
 	}
 }
 
+// canRunTurns reports whether the driver is bound to the chat turn path.
+func (d *focusDriver) canRunTurns() bool {
+	return d != nil && d.runTurn != nil && d.sessions != nil
+}
+
 // start carries out act for sessionID: queued on the session's run when
 // one is going, else in a new run. role is the role of the person whose
 // action led here; the run's turns run as that role.
