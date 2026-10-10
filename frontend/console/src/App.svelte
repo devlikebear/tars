@@ -16,6 +16,7 @@
     companionEnabledFromConfigValues,
     companionFailureFromEvent,
     companionHandoffForAsk,
+    companionWarningFromEvent,
     pruneFailures,
     shouldShowCompanion,
     type CompanionFailure,
@@ -51,6 +52,10 @@
   // console_default_mode, so the board stays reachable from the nav.
   let landing = true
   let companionFailures = $state<CompanionFailure[]>([])
+  // The timestamp of the latest warn-severity SSE event — a new value
+  // (not a boolean) so CompanionPet can tell a fresh warning apart from
+  // the same prop re-read on an unrelated re-render (#1191).
+  let companionWarningAt = $state<number | null>(null)
   let stopGlobalStream: (() => void) | null = null
   let authRole = $derived(authInfo?.auth_role ?? '')
   let zenActive = $derived(zenMode.active && route.view === 'chat' && !needsSetup && !loginRequired)
@@ -96,6 +101,8 @@
         if (event.category === 'approval' || event.category === 'ops' || event.category === 'cron') void sessionActivity.poll()
         const failure = companionFailureFromEvent(event, Date.now())
         if (failure) companionFailures = pruneFailures([...companionFailures, failure], Date.now())
+        // CASE's `wary` cue (#1191): a warning that is not (yet) a failure.
+        if (companionWarningFromEvent(event)) companionWarningAt = Date.now()
       },
       () => {
         serverHealth = 'disconnected'
@@ -583,6 +590,7 @@
         failures={companionFailures}
         activeSessionId={activeChatSessionId}
         routeView={route.view}
+        warningAt={companionWarningAt}
         onNavigate={navigate}
         onDismissFailure={handleDismissCompanionFailure}
         onAsk={handleCompanionAsk}
