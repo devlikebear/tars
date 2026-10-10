@@ -209,23 +209,37 @@ func resolvePathWithPolicy(policy PathPolicy, rawPath string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("resolve target path: %w", err)
 	}
+	if !pathWithinPolicy(policy, candidateAbs) {
+		return "", fmt.Errorf("path outside allowed directories: %s", rawPath)
+	}
+	resolved, err := filepath.EvalSymlinks(candidateAbs)
+	if err == nil {
+		// The path as written is inside an allowed directory, but a symlink
+		// on the way may lead out of all of them.
+		if !pathWithinPolicy(policy, resolved) {
+			return "", fmt.Errorf("resolved path escapes allowed directories: %s", rawPath)
+		}
+		return resolved, nil
+	}
+	if os.IsNotExist(err) {
+		return candidateAbs, nil
+	}
+	return "", fmt.Errorf("resolve symlink: %w", err)
+}
+
+// pathWithinPolicy reports whether pathAbs is inside one of the policy's
+// directories, as written or with the directory's own symlinks resolved.
+func pathWithinPolicy(policy PathPolicy, pathAbs string) bool {
 	for _, dir := range policy.AllowedDirs {
 		rootAbs, rootCanonical, err := resolveWorkspaceRoot(dir)
 		if err != nil {
 			continue
 		}
-		if pathWithinWorkspace(rootAbs, candidateAbs) || pathWithinWorkspace(rootCanonical, candidateAbs) {
-			resolved, err := filepath.EvalSymlinks(candidateAbs)
-			if err == nil {
-				return resolved, nil
-			}
-			if os.IsNotExist(err) {
-				return candidateAbs, nil
-			}
-			return "", fmt.Errorf("resolve symlink: %w", err)
+		if pathWithinWorkspace(rootAbs, pathAbs) || pathWithinWorkspace(rootCanonical, pathAbs) {
+			return true
 		}
 	}
-	return "", fmt.Errorf("path outside allowed directories: %s", rawPath)
+	return false
 }
 
 // resolveWritePathWithPolicy is the write-safe variant.

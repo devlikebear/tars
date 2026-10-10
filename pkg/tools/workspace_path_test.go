@@ -225,3 +225,54 @@ func TestPolicyRelativePath_HandlesPathsInsideAndOutsidePrimary(t *testing.T) {
 		t.Fatalf("outside primary should remain absolute: got %q want %q", got, outsidePath)
 	}
 }
+
+// An absolute path is held to the same rule as a relative one: a symlink
+// inside an allowed directory must not lead out of every allowed directory.
+func TestResolvePathWithPolicy_RejectsAbsoluteSymlinkEscape(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink semantics differ on windows")
+	}
+	root := tempRoot(t)
+	outsideDir := tempRoot(t)
+	if err := os.WriteFile(filepath.Join(outsideDir, "secret.txt"), []byte("classified"), 0o644); err != nil {
+		t.Fatalf("seed outside: %v", err)
+	}
+	if err := os.Symlink(outsideDir, filepath.Join(root, "leak")); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+	policy := SingleDirPolicy(root)
+
+	// The relative form was already refused.
+	if _, err := resolvePathWithPolicy(policy, filepath.Join("leak", "secret.txt")); err == nil {
+		t.Fatal("relative path through the symlink was accepted")
+	}
+	got, err := resolvePathWithPolicy(policy, filepath.Join(root, "leak", "secret.txt"))
+	if err == nil {
+		t.Fatalf("absolute path through the symlink resolved to %s", got)
+	}
+}
+
+// A symlink from one allowed directory into another stays inside the policy.
+func TestResolvePathWithPolicy_AllowsAbsoluteSymlinkBetweenAllowedDirs(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink semantics differ on windows")
+	}
+	root := tempRoot(t)
+	other := tempRoot(t)
+	target := filepath.Join(other, "notes.txt")
+	if err := os.WriteFile(target, []byte("notes"), 0o644); err != nil {
+		t.Fatalf("seed other: %v", err)
+	}
+	if err := os.Symlink(other, filepath.Join(root, "shared")); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+	policy := NewPathPolicy(root, []string{other}, "")
+
+	got, err := resolvePathWithPolicy(policy, filepath.Join(root, "shared", "notes.txt"))
+	if err != nil {
+		t.Fatalf("symlink into another allowed directory was refused: %v", err)
+	}
+	if got != target {
+		t.Fatalf("resolved = %s, want %s", got, target)
+	}
+}
