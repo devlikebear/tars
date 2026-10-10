@@ -20,7 +20,7 @@ import (
 // A pipeline is a sidecar of an ordinary chat session,
 // <workspace>/sessions/<id>.pipeline.json:
 //
-//	POST /v1/focus/pipelines                      {goal, cwd, isolate, extra_dirs?, title?, kind?, kickoff?, release_items?, release_since?} → 201 {session_id, pipeline}; 409 {error, session_id} when kind is release and the repository's release is still running. extra_dirs adds more folders the session can reach besides cwd, which stays the only active/isolated one
+//	POST /v1/focus/pipelines                      {goal, cwd, isolate, extra_dirs?, title?, kind?, kickoff?, start?, release_items?, release_since?} → 201 {session_id, pipeline, started}; 409 {error, session_id} when kind is release and the repository's release is still running. extra_dirs adds more folders the session can reach besides cwd, which stays the only active/isolated one
 //	GET  /v1/focus/pipelines                      → [{session_id, title, goal, current, open_gate, needs_input, updated_at}]
 //	GET  /v1/focus/pipelines/{id}                 → pipeline
 //	POST /v1/focus/pipelines/{id}/gates/{gate}    {action, note?, edits?, pr?, card_id?} → {pipeline, next_prompt}; 409 {error, pipeline} when the gate is not open, card_id is not the open gate's card, or approving merge finds the PR head moved (the probe it runs first closes G4)
@@ -40,6 +40,18 @@ import (
 // the pipeline asks for next (focusDriver): it runs the plan's verification
 // after a build turn and starts the next turn itself; next_prompt is only
 // shown.
+//
+// Who sends the first turn (kickoff, or goal without one): creating a
+// pipeline does not start it. By default the caller sends it as an ordinary
+// chat turn on session_id — the console does, because its first turn can
+// carry pasted images the create request has no field for. A caller with
+// no chat client of its own (a script, the desktop shell) passes
+// start: true and the server driver sends it, exactly as it sends every
+// later turn; the response then says started: true and the pipeline holds
+// the text as pending_turn until that turn completes. A client that sends
+// first turns itself must not send one to a pipeline with pending_turn set.
+// A pipeline in goal mode gets its first turn from the goal watcher either
+// way.
 
 const (
 	focusStageOpen  = "<focus-stage>"
@@ -307,6 +319,10 @@ type focusCreateRequest struct {
 	// Kickoff is the first turn when it says more than the goal; stage
 	// guidance repeats only the goal.
 	Kickoff string `json:"kickoff,omitempty"`
+	// Start has the server driver send the first turn (Kickoff, else Goal)
+	// instead of leaving it to the caller. The console leaves it off: it
+	// sends the first turn itself, with the goal field's attachments.
+	Start bool `json:"start,omitempty"`
 	// Template is the id of the pipeline's template (GET
 	// /v1/focus/templates); empty is the development one.
 	Template string `json:"template,omitempty"`
@@ -347,6 +363,10 @@ func (a *focusAPI) create(w http.ResponseWriter, r *http.Request) {
 	}
 	if a.worktrees == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "sessions in folders are unavailable"})
+		return
+	}
+	if req.Start && !a.driver.canRunTurns() {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "the server cannot start the first turn"})
 		return
 	}
 	tpl, ok := focuspipeline.FindTemplate(focusTemplateDir(a.sessions), req.Template)
@@ -399,6 +419,14 @@ func (a *focusAPI) create(w http.ResponseWriter, r *http.Request) {
 		// would be a release releasing itself.
 		p = focuspipeline.SkipStage(p, focuspipeline.ReleaseStageID)
 	}
+	first := focuspipeline.Action{Kind: focuspipeline.ActionNone}
+	if req.Start {
+		// Owed from the first save: a failed first turn raises the blocked
+		// gate, a restart the interrupted one, and no client sends a second
+		// kickoff while it is set.
+		first = focuspipeline.Action{Kind: focuspipeline.ActionSendTurn, Prompt: p.FirstTurn()}
+		p.PendingTurn = first.Prompt
+	}
 	if err := a.store().Save(p); err != nil {
 		// Never leave a focus session without its pipeline.
 		a.worktrees.retire(context.WithoutCancel(r.Context()), sess)
@@ -406,10 +434,13 @@ func (a *focusAPI) create(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "save pipeline failed"})
 		return
 	}
+	// Before the goal watcher looks: it must find the run, not a turn owed
+	// with nothing running.
+	a.driver.start(sess.ID, first, serverauth.RoleFromRequest(r))
 	if req.GoalMode {
 		p = a.driver.goalStarted(sess.ID, p)
 	}
-	writeJSON(w, http.StatusCreated, map[string]any{"session_id": sess.ID, "pipeline": p})
+	writeJSON(w, http.StatusCreated, map[string]any{"session_id": sess.ID, "pipeline": p, "started": req.Start})
 }
 
 func focusTitleFromGoal(goal string) string {
