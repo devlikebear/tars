@@ -68,6 +68,14 @@ func newJobID() string {
 	return "job_" + hex.EncodeToString(b[:])
 }
 
+// runPath is the job's run-history file. A job id names that file, and
+// callers pass ids taken from requests, so an id that is not a plain name —
+// it holds a path separator or ".." — gets no path: "" opens nothing, where a
+// joined path would have left the runs directory.
 func runPath(runsDir, jobID string) string {
-	return filepath.Join(runsDir, strings.TrimSpace(jobID)+".jsonl")
+	id := strings.TrimSpace(jobID)
+	if strings.Contains(id, "..") || strings.ContainsAny(id, `/\`) {
+		return ""
+	}
+	return filepath.Join(runsDir, id+".jsonl")
 }

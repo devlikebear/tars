@@ -457,3 +457,49 @@ func TestStore_TryStartRunGuardsConcurrentExecution(t *testing.T) {
 type assertErr string
 
 func (e assertErr) Error() string { return string(e) }
+
+// A job id names the job's run-history file. One that is not a plain name
+// must not reach a file outside the runs directory.
+func TestRunFileOfAJobIDThatIsNotAPlainName(t *testing.T) {
+	root := t.TempDir()
+	store := NewStore(root)
+	// The file a traversing id would reach: <root>/cron/outside.jsonl, one
+	// level above the runs directory.
+	outside := filepath.Join(root, "cron", "outside.jsonl")
+	if err := os.MkdirAll(filepath.Dir(outside), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	seeded := `{"job_id":"leaked","response":"leaked"}` + "\n"
+	if err := os.WriteFile(outside, []byte(seeded), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, id := range []string{"../outside", `..\outside`, "a/b", `a\b`, "..", " ../outside "} {
+		if path := runPath(store.runsDir, id); path != "" {
+			t.Errorf("runPath(%q) = %q, want no path", id, path)
+		}
+	}
+
+	runs, err := store.loadRuns("../outside")
+	if err != nil {
+		t.Fatalf("loadRuns: %v", err)
+	}
+	if len(runs) != 0 {
+		t.Fatalf("loadRuns read a file outside the runs directory: %+v", runs)
+	}
+	if err := store.appendRunRecord(RunRecord{JobID: "../outside", Response: "x"}); err == nil {
+		t.Fatal("appendRunRecord wrote for an id that leaves the runs directory")
+	}
+	if err := store.deleteRunFile("../outside"); err != nil {
+		t.Fatalf("deleteRunFile: %v", err)
+	}
+	raw, err := os.ReadFile(outside)
+	if err != nil || string(raw) != seeded {
+		t.Fatalf("the outside file was changed: %q, %v", raw, err)
+	}
+
+	// An ordinary id is unaffected.
+	if want := filepath.Join(root, "cron", "runs", "job_abc.jsonl"); runPath(store.runsDir, " job_abc ") != want {
+		t.Errorf("runPath(job_abc) = %q, want %q", runPath(store.runsDir, " job_abc "), want)
+	}
+}
