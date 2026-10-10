@@ -3,6 +3,7 @@ package tarsserver
 import (
 	"bytes"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"mime"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 	"unicode/utf8"
 
@@ -123,7 +125,12 @@ func canonicalWorkspacePath(path string) string {
 			}
 			return filepath.Clean(out)
 		}
-		if !os.IsNotExist(err) {
+		// A component that is a regular file (ENOTDIR) ends the walk the
+		// same way a missing one does: nothing below it can be a symlink, so
+		// resolve what is above it. Giving up here returned the path as
+		// written, which then never matched a root whose own symlinks were
+		// resolved (macOS temp folders live under the /var symlink).
+		if !os.IsNotExist(err) && !errors.Is(err, syscall.ENOTDIR) {
 			return filepath.Clean(path)
 		}
 		parent := filepath.Dir(current)
