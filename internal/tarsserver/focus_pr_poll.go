@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/devlikebear/tars/internal/focuspipeline"
+	"github.com/devlikebear/tars/internal/focusprobe"
 	"github.com/devlikebear/tars/internal/serverauth"
 	"github.com/rs/zerolog"
 )
@@ -43,7 +44,7 @@ type focusPoller struct {
 // bindPR connects the PR stages to the server: gh, the session worktrees
 // and the events stream.
 func (d *focusDriver) bindPR(tooling chatToolingOptions) {
-	d.probe = probeFocusPR
+	d.probe = focusprobe.ProbePR
 	d.localBranch = gitLocalBranch
 	d.discardCheck = gitDiscardCheck
 	d.notify = tooling.Notify
@@ -315,29 +316,29 @@ func gitDiscardCheck(ctx context.Context, dir, head string) string {
 	if strings.TrimSpace(head) == "" {
 		return "the merged pull request's head commit is unknown"
 	}
-	if !isGitObjectID(head) {
+	if !focusprobe.IsGitObjectID(head) {
 		return "the merged pull request's head is not a commit id"
 	}
-	status, err := runGit(ctx, releaseGitTimeout, dir, nil, "status", "--porcelain")
+	status, err := focusprobe.RunGit(ctx, focusprobe.GitTimeout, dir, nil, "status", "--porcelain")
 	if err != nil {
 		return "git status failed in the worktree"
 	}
 	if status != "" {
 		return "the worktree has uncommitted changes"
 	}
-	local, err := runGit(ctx, releaseGitTimeout, dir, nil, "rev-parse", "HEAD")
+	local, err := focusprobe.RunGit(ctx, focusprobe.GitTimeout, dir, nil, "rev-parse", "HEAD")
 	if err != nil {
 		return "the worktree's HEAD is unreadable"
 	}
 	if local == head {
 		return ""
 	}
-	if _, err := runGit(ctx, releaseGitTimeout, dir, nil, "cat-file", "-e", head+"^{commit}"); err != nil {
+	if _, err := focusprobe.RunGit(ctx, focusprobe.GitTimeout, dir, nil, "cat-file", "-e", head+"^{commit}"); err != nil {
 		// The PR head gained commits elsewhere (GitHub's "Update branch"):
 		// nothing local to compare against, so the work may well be in it.
 		return "the merged head is not in the local repository; fetch it to compare"
 	}
-	if _, err := runGit(ctx, releaseGitTimeout, dir, nil, "merge-base", "--is-ancestor", "HEAD", head); err == nil {
+	if _, err := focusprobe.RunGit(ctx, focusprobe.GitTimeout, dir, nil, "merge-base", "--is-ancestor", "HEAD", head); err == nil {
 		return ""
 	}
 	return "the worktree has commits that are not in the merged pull request"
@@ -346,7 +347,7 @@ func gitDiscardCheck(ctx context.Context, dir, head string) string {
 // gitLocalBranch is the branch checked out in dir, "" when detached or
 // unreadable.
 func gitLocalBranch(ctx context.Context, dir string) string {
-	branch, err := runGit(ctx, releaseGitTimeout, dir, nil, "rev-parse", "--abbrev-ref", "HEAD")
+	branch, err := focusprobe.RunGit(ctx, focusprobe.GitTimeout, dir, nil, "rev-parse", "--abbrev-ref", "HEAD")
 	if err != nil || branch == "HEAD" {
 		return ""
 	}

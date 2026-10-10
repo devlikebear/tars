@@ -36,6 +36,7 @@ import (
 	"time"
 
 	"github.com/devlikebear/tars/internal/focuspipeline"
+	"github.com/devlikebear/tars/internal/focusprobe"
 	"github.com/devlikebear/tars/internal/session"
 	"github.com/rs/zerolog"
 )
@@ -68,12 +69,6 @@ type releaseTrainGroup struct {
 
 type releaseTrainResponse struct {
 	Groups []releaseTrainGroup `json:"groups"`
-}
-
-// releaseTag is a repository's latest v* tag and its date.
-type releaseTag struct {
-	name string
-	at   time.Time
 }
 
 // releaseRepos resolves the repository a session's work lands in, caching
@@ -180,16 +175,16 @@ type focusReleaseAPI struct {
 	sessions  *session.Store
 	logger    zerolog.Logger
 	repoRoot  func(ctx context.Context, dir string) string
-	latestTag func(ctx context.Context, repo string) (releaseTag, bool)
-	fetches   *tagFetchCache
+	latestTag func(ctx context.Context, repo string) (focusprobe.ReleaseTag, bool)
+	fetches   *focusprobe.TagFetchCache
 }
 
 func newFocusReleaseHandler(sessions *session.Store, logger zerolog.Logger) http.Handler {
-	return newFocusReleaseAPI(sessions, logger, gitFetchTags).handler()
+	return newFocusReleaseAPI(sessions, logger, focusprobe.FetchTags).handler()
 }
 
 func newFocusReleaseAPI(sessions *session.Store, logger zerolog.Logger, fetch func(ctx context.Context, repo string) bool) *focusReleaseAPI {
-	return &focusReleaseAPI{sessions: sessions, logger: logger, repoRoot: gitMainCheckout, latestTag: gitLatestReleaseTag, fetches: newTagFetchCache(fetch)}
+	return &focusReleaseAPI{sessions: sessions, logger: logger, repoRoot: focusprobe.MainCheckout, latestTag: focusprobe.LatestReleaseTag, fetches: focusprobe.NewTagFetchCache(fetch)}
 }
 
 func (a *focusReleaseAPI) handler() http.Handler {
@@ -265,10 +260,10 @@ func (a *focusReleaseAPI) newGroup(ctx context.Context, repo string, rel *repoRe
 	if rel != nil {
 		g.ActiveRelease = rel.active
 	}
-	g.TagsStale = !a.fetches.fetched(ctx, repo)
+	g.TagsStale = !a.fetches.Fetched(ctx, repo)
 	if tag, found := a.latestTag(ctx, repo); found {
-		since := tag.at.UTC()
-		g.LastTag, g.Since = tag.name, &since
+		since := tag.At.UTC()
+		g.LastTag, g.Since = tag.Name, &since
 	}
 	return g
 }
@@ -289,10 +284,10 @@ func (a *focusReleaseAPI) inLastTag(ctx context.Context, g *releaseTrainGroup, p
 		return false
 	}
 	if pr.MergeOID != "" {
-		return gitTagHasCommit(ctx, g.Repo, g.LastTag, pr.MergeOID)
+		return focusprobe.TagHasCommit(ctx, g.Repo, g.LastTag, pr.MergeOID)
 	}
 	if g.taggedPRs == nil {
-		g.taggedPRs = gitTagMergedPRs(ctx, g.Repo, g.LastTag)
+		g.taggedPRs = focusprobe.TagMergedPRs(ctx, g.Repo, g.LastTag)
 	}
 	return g.taggedPRs[pr.Number]
 }
@@ -333,4 +328,6 @@ func releaseItemsOf(ids []string) []string {
 
 // repoRoot is how the create path resolves a folder's repository for its
 // one-release-at-a-time check.
-func (a *focusAPI) repoRoot() func(ctx context.Context, dir string) string { return gitMainCheckout }
+func (a *focusAPI) repoRoot() func(ctx context.Context, dir string) string {
+	return focusprobe.MainCheckout
+}

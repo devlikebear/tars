@@ -62,6 +62,7 @@ var AppPackages = []string{
 	"embodiment",
 	"extensions",
 	"focuspipeline",
+	"focusprobe",
 	"goal",
 	"initiative",
 	"launchagent",

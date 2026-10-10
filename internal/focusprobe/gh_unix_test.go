@@ -1,6 +1,6 @@
 //go:build !windows
 
-package tarsserver
+package focusprobe
 
 import (
 	"os"

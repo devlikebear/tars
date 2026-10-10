@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/devlikebear/tars/internal/focuspipeline"
+	"github.com/devlikebear/tars/internal/focusprobe"
 	"github.com/devlikebear/tars/internal/session"
 	"github.com/rs/zerolog"
 )
@@ -467,7 +468,7 @@ func TestFocusReleaseTrainCachesTagFetch(t *testing.T) {
 		return true
 	})
 	clock := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
-	api.fetches.now = func() time.Time { return clock }
+	api.fetches.Now = func() time.Time { return clock }
 	h := api.handler()
 
 	var wg sync.WaitGroup
@@ -488,7 +489,7 @@ func TestFocusReleaseTrainCachesTagFetch(t *testing.T) {
 	}
 	mu.Unlock()
 
-	clock = clock.Add(releaseFetchWindow + time.Second)
+	clock = clock.Add(focusprobe.FetchWindow + time.Second)
 	_ = focusRequest(t, h, http.MethodGet, "/v1/focus/release-train", "", false)
 	mu.Lock()
 	defer mu.Unlock()
