@@ -1,3 +1,4 @@
+import type { ActivityMap } from './sessionBoard'
 import type { NotificationMessage } from './types'
 
 export type CompanionVisibilityInput = {
@@ -7,134 +8,49 @@ export type CompanionVisibilityInput = {
   zenActive?: boolean
 }
 
-export type CompanionStimulus = 'poke' | 'suggest' | 'feedback'
+// The six moods stay fixed for this phase; facial expressions and
+// animation per mood belong to a later phase (face rework, then actions).
 export type CompanionMood = 'idle' | 'spark' | 'focus' | 'warn' | 'error' | 'success'
 export type CompanionLocale = 'en' | 'ko'
 
-export type CompanionReaction = {
+// What CASE's bubble shows: one line per thing waiting on the user. `path`
+// is where clicking the line goes, via lib/router.ts.
+export type CompanionLineKind = 'pending' | 'queued' | 'running' | 'failure'
+
+export type CompanionLine = {
+  key: string
+  kind: CompanionLineKind
+  label: string
+  path: string
+}
+
+// A recent failure noticed from the SSE stream (cron, pulse, watchdog,
+// ops error/critical events). Kept for 30 minutes, newest 5 at most.
+export type CompanionFailure = {
+  key: string
+  sessionId?: string
+  label: string
+  at: number
+}
+
+export type CompanionSnapshot = {
   mood: CompanionMood
-  message: string
-  detail?: string
+  // Count badge shown on the bot: approvals waiting (chat + unattended) +
+  // recent failures. Running turns are not counted — they are not waiting
+  // on the user.
+  badge: number
+  lines: CompanionLine[]
 }
 
-type CompanionStimulusReactionKey = CompanionStimulus | 'suggest:pulse' | 'feedback:chat'
-type CompanionStimulusReactionFactory = (area: string) => CompanionReaction
-
-export type CompanionUiText = {
-  actions: Record<CompanionStimulus, string>
-  moods: Record<CompanionMood, string>
-  buttonAria: string
-  closeAria: string
-  inputPlaceholder: string
-  inputAria: string
-  sendAria: string
-  send: string
-  feedbackAck: (action: string) => string
+export type CompanionLineText = {
+  pending: (count: number, title: string) => string
+  queued: (count: number, title: string) => string
+  running: (title: string) => string
+  failure: (label: string) => string
 }
 
-const companionText: Record<CompanionLocale, CompanionUiText> = {
-  en: {
-    actions: {
-      poke: 'Poke',
-      suggest: 'Suggest',
-      feedback: 'Feedback',
-    },
-    moods: {
-      idle: 'idle',
-      spark: 'spark',
-      focus: 'focus',
-      warn: 'warn',
-      error: 'error',
-      success: 'success',
-    },
-    buttonAria: 'Talk to TARS companion',
-    closeAria: 'Close companion bubble',
-    inputPlaceholder: 'Ask TARS...',
-    inputAria: 'Ask TARS companion',
-    sendAria: 'Send companion prompt',
-    send: 'Ask',
-    feedbackAck: (action) => `${action} received`,
-  },
-  ko: {
-    actions: {
-      poke: '콕 찌르기',
-      suggest: '제안',
-      feedback: '피드백',
-    },
-    moods: {
-      idle: '대기',
-      spark: '반응',
-      focus: '집중',
-      warn: '주의',
-      error: '오류',
-      success: '좋음',
-    },
-    buttonAria: 'TARS 컴패니언에게 말 걸기',
-    closeAria: '컴패니언 말풍선 닫기',
-    inputPlaceholder: 'TARS에게 묻기...',
-    inputAria: 'TARS 컴패니언에게 묻기',
-    sendAria: '컴패니언 프롬프트 보내기',
-    send: '묻기',
-    feedbackAck: (action) => `${action} 반응 완료`,
-  },
-}
-
-const companionStimulusReactions: Record<CompanionLocale, Record<CompanionStimulusReactionKey, CompanionStimulusReactionFactory>> = {
-  en: {
-    poke: (area) => ({
-      mood: 'spark',
-      message: `Awake. I am watching ${area} with you.`,
-      detail: 'Tap Suggest for a next move, or ask me directly.',
-    }),
-    suggest: (area) => ({
-      mood: 'focus',
-      message: `Next move: inspect the freshest signal in ${area}, then ask one narrow follow-up.`,
-      detail: 'Small prompts make the companion sharper.',
-    }),
-    'suggest:pulse': () => ({
-      mood: 'focus',
-      message: 'Pulse is already the signal board. Check the newest warn or error first.',
-      detail: 'Then decide whether the next move is observe, fix, or silence noise.',
-    }),
-    feedback: (area) => ({
-      mood: 'success',
-      message: `Feedback: ${area} looks ready for a focused checkpoint.`,
-      detail: 'Name the result you want and I will help compress it.',
-    }),
-    'feedback:chat': () => ({
-      mood: 'success',
-      message: 'Quick review: the chat loop is healthy when the next ask is specific and testable.',
-      detail: 'If it feels vague, ask me to turn it into a tiny checklist.',
-    }),
-  },
-  ko: {
-    poke: (area) => ({
-      mood: 'spark',
-      message: `여기 있어요. 지금 ${area} 화면을 같이 보고 있어요.`,
-      detail: '다음 수가 필요하면 제안, 상태 점검이 필요하면 피드백을 눌러요.',
-    }),
-    suggest: (area) => ({
-      mood: 'focus',
-      message: `다음 수: ${area}에서 가장 새 신호를 하나 고르고, 작은 질문 하나로 좁혀봐요.`,
-      detail: '짧고 구체적인 자극일수록 제가 더 선명하게 반응해요.',
-    }),
-    'suggest:pulse': () => ({
-      mood: 'focus',
-      message: '펄스는 이미 신호판이에요. 가장 최근 경고나 오류부터 볼게요.',
-      detail: '그 다음은 관찰, 수정, 소음 무시 중 하나로 좁히면 좋아요.',
-    }),
-    feedback: (area) => ({
-      mood: 'success',
-      message: `피드백: ${area}는 집중 체크포인트로 정리할 준비가 됐어요.`,
-      detail: '원하는 결과를 한 문장으로 말해주면 제가 압축해볼게요.',
-    }),
-    'feedback:chat': () => ({
-      mood: 'success',
-      message: '빠른 점검: 다음 요청이 구체적이고 검증 가능하면 채팅 루프가 건강해요.',
-      detail: '애매하면 작은 체크리스트로 바꿔달라고 말해줘요.',
-    }),
-  },
-}
+const failureWindowMs = 30 * 60 * 1000
+const maxFailures = 5
 
 export function shouldShowCompanion(input: CompanionVisibilityInput): boolean {
   return !!input.enabled && !input.needsSetup && !input.loginRequired && !input.zenActive
@@ -145,53 +61,150 @@ export function companionEnabledFromConfigValues(values?: Record<string, unknown
   return values.companion_enabled === true
 }
 
-export function companionUiText(locale?: string | null): CompanionUiText {
-  return companionText[normalizeCompanionLocale(locale)]
-}
-
 export function normalizeCompanionLocale(locale?: string | null): CompanionLocale {
   return (locale || '').trim().toLowerCase().startsWith('ko') ? 'ko' : 'en'
 }
 
-export function companionReactionForStimulus(stimulus: CompanionStimulus, routeView?: string, locale?: string | null): CompanionReaction {
-  const lang = normalizeCompanionLocale(locale)
-  const area = companionAreaLabel(routeView, lang)
-  return companionStimulusReactions[lang][companionStimulusReactionKey(stimulus, routeView)](area)
+// companionState turns a chat-activity snapshot and recent failures into
+// CASE's mood, badge count, and bubble lines. Pure: no fetch, no LLM call.
+// Order: approvals waiting (pending, then queued), then recent failures,
+// then running turns. A failure is listed ahead of a running turn on
+// purpose — of the two, it is the more urgent signal.
+//
+// `activeSessionId` is the session the chat route currently has on screen
+// (undefined/null when nothing is, e.g. the board). Its pending approval
+// and running turn are left out of lines, the badge, and the mood: that
+// session's own approval card is already visible in its thread, and its
+// running turn is already visible as the streaming reply, so CASE would
+// otherwise duplicate what the user is already looking at (and, worse,
+// cover the very panel they are using — #1194). Queued (unattended)
+// approvals have no card in any thread, so they still show for the active
+// session too; switching to another session brings its own lines back.
+export function companionState(
+  activity: ActivityMap,
+  failures: CompanionFailure[],
+  now: number,
+  text: CompanionLineText,
+  activeSessionId?: string | null,
+): CompanionSnapshot {
+  const entries = Object.entries(activity).sort(([a], [b]) => a.localeCompare(b))
+  const visibleEntries = entries.filter(([sessionId]) => sessionId !== activeSessionId)
+  const lines: CompanionLine[] = []
+
+  for (const [sessionId, state] of visibleEntries) {
+    if (state.pending > 0) {
+      lines.push({
+        key: `pending:${sessionId}`,
+        kind: 'pending',
+        label: text.pending(state.pending, state.title),
+        path: `/console/chat/${sessionId}`,
+      })
+    }
+  }
+  for (const [sessionId, state] of entries) {
+    if (state.queued > 0) {
+      lines.push({
+        key: `queued:${sessionId}`,
+        kind: 'queued',
+        label: text.queued(state.queued, state.title),
+        path: '/console/ops',
+      })
+    }
+  }
+  const activeFailures = pruneFailures(failures, now)
+  for (const failure of activeFailures) {
+    lines.push({
+      key: failure.key,
+      kind: 'failure',
+      label: text.failure(failure.label),
+      path: failure.sessionId ? `/console/chat/${failure.sessionId}` : '/console/ops',
+    })
+  }
+  for (const [sessionId, state] of visibleEntries) {
+    if (state.running) {
+      lines.push({
+        key: `running:${sessionId}`,
+        kind: 'running',
+        label: text.running(state.title),
+        path: `/console/chat/${sessionId}`,
+      })
+    }
+  }
+
+  const pendingTotal = visibleEntries.reduce((sum, [, s]) => sum + s.pending, 0)
+  const queuedTotal = entries.reduce((sum, [, s]) => sum + s.queued, 0)
+  const badge = pendingTotal + queuedTotal + activeFailures.length
+  const mood: CompanionMood =
+    activeFailures.length > 0
+      ? 'error'
+      : pendingTotal + queuedTotal > 0
+        ? 'warn'
+        : visibleEntries.some(([, s]) => s.running)
+          ? 'focus'
+          : 'idle'
+
+  return { mood, badge, lines }
 }
 
-export function companionReactionFromEvent(event: NotificationMessage, locale?: string | null): CompanionReaction | null {
-  if (!event || event.type === 'keepalive') return null
-  const lang = normalizeCompanionLocale(locale)
-  const category = (event.category || '').trim().toLowerCase()
-  const severity = (event.severity || '').trim().toLowerCase()
-  const title = clipText(event.title || event.category || 'Runtime signal', 70)
-  const message = clipText(event.message || '', 120)
+// pruneFailures drops anything older than 30 minutes, de-duplicates by
+// key — a replayed SSE event (a reconnect, or /v1/events/history replay)
+// must not render as two bubble lines for the same failure, which would
+// also break Svelte's keyed each — and keeps only the newest 5, so the
+// bubble never grows into a log. A duplicate key keeps its latest
+// occurrence's content and moves to that occurrence's position, so the
+// newest-5 cut still means newest.
+export function pruneFailures(failures: CompanionFailure[], now: number): CompanionFailure[] {
+  const fresh = failures.filter((failure) => now - failure.at <= failureWindowMs)
+  const byKey = new Map<string, CompanionFailure>()
+  for (const failure of fresh) {
+    byKey.delete(failure.key)
+    byKey.set(failure.key, failure)
+  }
+  return Array.from(byKey.values()).slice(-maxFailures)
+}
 
-  if (category === 'embodiment') {
-    return companionReactionFromEmbodimentMessage(title, message, lang)
+// companionFailureFromEvent turns a qualifying SSE notification (severity
+// error/critical) into a failure line. Everything else (info, warn,
+// success, embodiment) is not a failure and returns null.
+export function companionFailureFromEvent(event: NotificationMessage, now: number): CompanionFailure | null {
+  if (!event || event.type === 'keepalive') return null
+  const severity = (event.severity || '').trim().toLowerCase()
+  if (severity !== 'error' && severity !== 'critical') return null
+  const title = clipText(event.title || event.category || 'failure', 70)
+  const sessionId = event.session_id ? event.session_id.trim() : ''
+  return {
+    key: `failure:${event.id ?? `${event.category}:${event.timestamp}:${title}`}`,
+    sessionId: sessionId || undefined,
+    label: title,
+    at: now,
   }
-  if (severity === 'critical' || severity === 'error') {
-    return {
-      mood: 'error',
-      message: lang === 'ko' ? `확인 필요: ${title}.` : `Needs attention: ${title}.`,
-      detail: message,
-    }
-  }
-  if (severity === 'warn' || category === 'pulse' || category === 'watchdog') {
-    return {
-      mood: 'warn',
-      message: lang === 'ko' ? `신호 감지: ${title}.` : `Signal noticed: ${title}.`,
-      detail: message,
-    }
-  }
-  if (category === 'cron' || category === 'ops' || category === 'usage') {
-    return {
-      mood: 'focus',
-      message: lang === 'ko' ? `콘솔 업데이트: ${title}.` : `Console update: ${title}.`,
-      detail: message,
-    }
-  }
-  return null
+}
+
+// companionWaitingKeys is the set of line keys that count as "something is
+// waiting" (approvals and failures, not running turns) — the input to
+// companionShouldOpen on the next tick.
+export function companionWaitingKeys(lines: CompanionLine[]): Set<string> {
+  return new Set(lines.filter((line) => line.kind !== 'running').map((line) => line.key))
+}
+
+// companionShouldOpen is true only when a line not present before is a new
+// approval wait or a new failure: running turns and turns finishing never
+// reopen the bubble by themselves. `primed` must be false for the very
+// first evaluation after the component mounts, so whatever was already
+// waiting when CASE first renders (e.g. the page was just reloaded) is
+// treated as already-there, not new, and does not pop the bubble open.
+export function companionShouldOpen(primed: boolean, prevWaitingKeys: ReadonlySet<string>, lines: CompanionLine[]): boolean {
+  if (!primed) return false
+  return lines.some((line) => line.kind !== 'running' && !prevWaitingKeys.has(line.key))
+}
+
+// companionShouldAutoClose is true once a bubble that opened itself has
+// nothing left to show it for (its last approval wait or failure is gone —
+// answered, navigated to, dismissed, or expired). A bubble the user opened
+// by hand (`autoOpened: false`) is never closed by this: only the thing
+// that opened it on its own closes it on its own.
+export function companionShouldAutoClose(autoOpened: boolean, lines: CompanionLine[]): boolean {
+  return autoOpened && companionWaitingKeys(lines).size === 0
 }
 
 export interface CompanionHandoff {
@@ -220,70 +233,6 @@ export function companionHandoffForAsk(raw: string, routeView?: string, locale?:
         'Answer briefly, give one practical next action, and do not run tools unless I explicitly ask.',
       ]
   return { prompt, context: context.join('\n') }
-}
-
-export function companionAskHandoffReaction(locale?: string | null): CompanionReaction {
-  return normalizeCompanionLocale(locale) === 'ko'
-    ? {
-        mood: 'focus',
-        message: '전체 TARS 채팅으로 넘길게요.',
-        detail: '컴패니언이 현재 콘솔 맥락을 붙여서 이어갑니다.',
-      }
-    : {
-        mood: 'focus',
-        message: 'Opening the full TARS chat.',
-        detail: 'The companion will hand this off with console context attached.',
-      }
-}
-
-function companionReactionFromEmbodimentMessage(title: string, message: string, locale: CompanionLocale): CompanionReaction {
-  const lower = message.toLowerCase()
-  const summary = stripEmbodimentPrefix(message)
-  if (lower.includes('vision') || lower.includes('camera') || lower.includes('image')) {
-    return {
-      mood: 'focus',
-      message: locale === 'ko' ? `몸 신호를 봤어요: ${summary}` : `I saw a body signal: ${summary}`,
-      detail: title,
-    }
-  }
-  if (lower.includes('audio') || lower.includes('voice') || lower.includes('sound') || lower.includes('owner')) {
-    return {
-      mood: 'focus',
-      message: locale === 'ko' ? `소리를 들었어요: ${summary}` : `I heard a body signal: ${summary}`,
-      detail: title,
-    }
-  }
-  return {
-    mood: 'focus',
-    message: locale === 'ko' ? `몸 신호 수신: ${summary}` : `Body signal received: ${summary}`,
-    detail: title,
-  }
-}
-
-function stripEmbodimentPrefix(message: string): string {
-  const trimmed = message.trim()
-  const colon = trimmed.indexOf(':')
-  if (colon > 0 && isEmbodimentMessagePrefix(trimmed.slice(0, colon))) {
-    return clipText(trimmed.slice(colon + 1).trim() || 'percept received', 90)
-  }
-  return clipText(trimmed || 'percept received', 90)
-}
-
-function companionStimulusReactionKey(stimulus: CompanionStimulus, routeView?: string): CompanionStimulusReactionKey {
-  if (stimulus === 'suggest' && routeView === 'pulse') return 'suggest:pulse'
-  if (stimulus === 'feedback' && routeView === 'chat') return 'feedback:chat'
-  return stimulus
-}
-
-function isEmbodimentMessagePrefix(value: string): boolean {
-  for (let i = 0; i < value.length; i += 1) {
-    const code = value.charCodeAt(i)
-    const isUpper = code >= 65 && code <= 90
-    const isLower = code >= 97 && code <= 122
-    const isSeparator = code === 32 || code === 45 || code === 95
-    if (!isUpper && !isLower && !isSeparator) return false
-  }
-  return true
 }
 
 function companionAreaLabel(routeView?: string, locale: CompanionLocale = 'en'): string {

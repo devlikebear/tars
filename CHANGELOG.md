@@ -6,6 +6,10 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+### Changed
+
+- **The console companion bot (CASE) tells you what is waiting on you, instead of showing fixed scripted buttons.** The Poke/Suggest/Feedback buttons and their canned replies are gone; the bubble is now a list of lines (approvals waiting, unattended approvals waiting, running turns, recent failures) built from `GET /v1/chat/activity` and the event stream — clicking a line opens that session or Ops. With nothing waiting, the bubble is empty and only the input stays, which still hands a typed question off to the full chat. The bubble opens by itself only for a new approval wait or a new failure, closes itself again once that is resolved, and leaves out the pending approval and running turn of the session the chat route already has on screen (its thread shows those on its own). ([#1189](https://github.com/devlikebear/tars/issues/1189))
+
 ## [0.59.0] - 2026-10-09
 
 ### Added

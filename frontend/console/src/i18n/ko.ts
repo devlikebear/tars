@@ -24,6 +24,7 @@ import { sessionHealthKo } from './sections/sessionHealth.ts'
 import { contextPanelsKo } from './sections/contextPanels.ts'
 import { tasksPanelKo } from './sections/tasksPanel.ts'
 import { agentRuntimeRunKo } from './sections/agentRuntimeRun.ts'
+import { companionKo } from './sections/companion.ts'
 
 export const ko = {
   common: {
@@ -1538,4 +1539,5 @@ export const ko = {
   contextPanels: contextPanelsKo,
   tasksPanel: tasksPanelKo,
   agentRuntimeRun: agentRuntimeRunKo,
+  companion: companionKo,
 } satisfies Translations

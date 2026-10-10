@@ -11,7 +11,7 @@ const sectionsDir = new URL('../src/i18n/sections/', import.meta.url)
 const keptInEnglish = [
   'Svelte Flow', 'Mini Tree', 'openai-codex', 'TARS', 'Git', 'MCP', 'Pulse', 'LLM', 'cwd', 'CWD', 'JSON',
   'YAML', 'Light', 'Standard', 'Heavy', 'Ctrl', 'Cmd', 'Alt', 'Shift', 'Enter', 'Esc', 'HEAD', 'Codex',
-  'HUD', 'diff', 'USD',
+  'HUD', 'diff', 'USD', 'CASE',
 ]
 const englishRun = /[A-Za-z]{2,}[ \t]+[A-Za-z]{2,}/
 const slashSyntax = /\/[a-z-]+(?:\s+[a-z-]+)?/g

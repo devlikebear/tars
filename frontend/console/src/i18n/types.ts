@@ -23,6 +23,7 @@ import type { SessionHealthTranslations } from './sections/sessionHealth.ts'
 import type { ContextPanelsTranslations } from './sections/contextPanels.ts'
 import type { TasksPanelTranslations } from './sections/tasksPanel.ts'
 import type { AgentRuntimeRunTranslations } from './sections/agentRuntimeRun.ts'
+import type { CompanionTranslations } from './sections/companion.ts'
 
 // Big chat panels keep their strings in ./sections/<area>.ts. Each section's
 // English object is its type, so the Korean object must match it key for key.
@@ -1480,4 +1481,5 @@ export type Translations = {
   contextPanels: ContextPanelsTranslations
   tasksPanel: TasksPanelTranslations
   agentRuntimeRun: AgentRuntimeRunTranslations
+  companion: CompanionTranslations
 }
