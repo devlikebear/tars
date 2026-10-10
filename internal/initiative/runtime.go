@@ -283,8 +283,9 @@ func (r *Runtime) loadHistoryLocked(now time.Time) {
 	r.histLoaded = true
 	entries, err := r.deps.Ledger.Recent(historyWindow)
 	if err != nil {
-		r.deps.Logger.Warn().Err(err).Msg("initiative: read ledger history failed")
-		return
+		// Keep what was read: an empty history would forget today's count
+		// and the cooldown.
+		r.deps.Logger.Warn().Err(err).Int("entries", len(entries)).Msg("initiative: read ledger history failed")
 	}
 	r.hist = historyFrom(entries, now, r.cfg.Location)
 }

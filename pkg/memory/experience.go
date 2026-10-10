@@ -1,7 +1,7 @@
 package memory
 
 import (
-	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/devlikebear/tars/internal/textutil"
 )
 
 const (
@@ -92,23 +94,23 @@ func SearchExperiences(root string, opts SearchOptions) ([]Experience, error) {
 	}
 
 	rows := make([]Experience, 0, limit)
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" {
-			continue
+	scanErr := textutil.EachLine(file, func(raw []byte) error {
+		line := bytes.TrimSpace(raw)
+		if len(line) == 0 {
+			return nil
 		}
 		var item Experience
-		if err := json.Unmarshal([]byte(line), &item); err != nil {
-			continue
+		if err := json.Unmarshal(line, &item); err != nil {
+			return nil
 		}
 		if !matchesExperience(item, query, category) {
-			continue
+			return nil
 		}
 		rows = append(rows, normalizeExperience(item))
-	}
-	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("scan experiences log: %w", err)
+		return nil
+	})
+	if scanErr != nil {
+		return nil, fmt.Errorf("scan experiences log: %w", scanErr)
 	}
 
 	sort.Slice(rows, func(i, j int) bool {

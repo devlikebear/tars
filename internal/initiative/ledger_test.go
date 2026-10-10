@@ -71,3 +71,39 @@ func TestHistoryFromCountsTodaysSpeech(t *testing.T) {
 		t.Fatalf("history = %+v", h)
 	}
 }
+
+// A line that is not an entry — corrupt, cut off, or far over any size an
+// entry has — is skipped; the entries around it still restore pacing state.
+func TestLedgerRecentSkipsUnreadableLines(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "ledger.jsonl")
+	l := OpenLedger(path, 0)
+	if err := l.Append(Entry{At: at(9, 0), Called: true, Decision: Decision{Intent: IntentGreet, Speak: true}}); err != nil {
+		t.Fatal(err)
+	}
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	junk := "{not json\n" + strings.Repeat("x", 2<<20) + "\n" + `{"at":"broken` + "\n"
+	if _, err := f.WriteString(junk); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.Append(Entry{At: at(10, 0), Called: true, Decision: Decision{Intent: IntentCheckIn, Speak: true}}); err != nil {
+		t.Fatal(err)
+	}
+
+	recent, err := l.Recent(10)
+	if err != nil {
+		t.Fatalf("recent: %v", err)
+	}
+	if len(recent) != 2 || !recent[0].At.Equal(at(9, 0)) || !recent[1].At.Equal(at(10, 0)) {
+		t.Fatalf("recent = %+v, want the two real entries", recent)
+	}
+	h := historyFrom(recent, at(15, 0), seoul)
+	if h.Today != 2 || h.TextCallsToday != 2 || !h.LastCheckInAt.Equal(at(10, 0)) {
+		t.Fatalf("history = %+v", h)
+	}
+}

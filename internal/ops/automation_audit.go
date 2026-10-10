@@ -1,7 +1,7 @@
 package ops
 
 import (
-	"bufio"
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -11,6 +11,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/devlikebear/tars/internal/textutil"
 )
 
 type AutomationAuditEntry struct {
@@ -83,24 +85,24 @@ func (m *Manager) ListAutomationAudit(opts AutomationAuditListOptions) ([]Automa
 
 	filterSessionID := strings.TrimSpace(opts.SessionID)
 	items := []AutomationAuditEntry{}
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" {
-			continue
+	scanErr := textutil.EachLine(file, func(raw []byte) error {
+		line := bytes.TrimSpace(raw)
+		if len(line) == 0 {
+			return nil
 		}
 		var entry AutomationAuditEntry
-		if err := json.Unmarshal([]byte(line), &entry); err != nil {
-			continue
+		if err := json.Unmarshal(line, &entry); err != nil {
+			return nil
 		}
 		entry = m.normalizeAutomationAuditEntry(entry)
 		if filterSessionID != "" && entry.SessionID != filterSessionID {
-			continue
+			return nil
 		}
 		items = append(items, entry)
-	}
-	if err := scanner.Err(); err != nil {
-		return nil, err
+		return nil
+	})
+	if scanErr != nil {
+		return nil, scanErr
 	}
 	sort.SliceStable(items, func(i, j int) bool {
 		if items[i].Timestamp.Equal(items[j].Timestamp) {

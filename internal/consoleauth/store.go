@@ -1,7 +1,7 @@
 package consoleauth
 
 import (
-	"bufio"
+	"bytes"
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/base64"
@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/devlikebear/tars/internal/atomicwrite"
+	"github.com/devlikebear/tars/internal/textutil"
 	"golang.org/x/crypto/argon2"
 )
 
@@ -521,17 +522,17 @@ func readJSONL(path string, each func([]byte) error) error {
 	}
 	defer file.Close()
 
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" {
-			continue
+	scanErr := textutil.EachLine(file, func(raw []byte) error {
+		line := bytes.TrimSpace(raw)
+		if len(line) == 0 {
+			return nil
 		}
-		if err := each([]byte(line)); err != nil {
+		if err := each(line); err != nil {
 			return err
 		}
-	}
-	return scanner.Err()
+		return nil
+	})
+	return scanErr
 }
 
 func writeJSONL[T any](path string, items []T) error {
