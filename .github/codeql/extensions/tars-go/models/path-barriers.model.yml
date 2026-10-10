@@ -1,0 +1,24 @@
+# Tells CodeQL's go/path-injection query which TARS functions confine a path
+# to the folders a caller is allowed to touch. CodeQL recognizes a few
+# standard-library checks on its own; it does not follow these helpers.
+#
+# A function listed here is trusted by the scanner from then on: a path it
+# returns (or a branch its check guards) is never reported. Add one only when
+# it rejects ".." and re-checks the path after resolving symlinks, and when a
+# test proves both.
+extensions:
+  # The first result is a path inside the allowed folders, or the call failed.
+  - addsTo:
+      pack: codeql/go-all
+      extensible: barrierModel
+    data:
+      - ["github.com/devlikebear/tars/pkg/tools", "", False, "resolvePathWithPolicy", "", "", "ReturnValue", "path-injection", "manual"]
+      - ["github.com/devlikebear/tars/pkg/tools", "", False, "resolveWritePathWithPolicy", "", "", "ReturnValue", "path-injection", "manual"]
+      - ["github.com/devlikebear/tars/pkg/tools", "", False, "resolveWorkspacePath", "", "", "ReturnValue", "path-injection", "manual"]
+      - ["github.com/devlikebear/tars/pkg/tools", "", False, "resolveWorkspaceWritePath", "", "", "ReturnValue", "path-injection", "manual"]
+      # A regular file under the repository top level, both with symlinks resolved.
+      - ["github.com/devlikebear/tars/internal/tarsserver", "", False, "focusInsideRepo", "", "", "ReturnValue", "path-injection", "manual"]
+      # The folder and SKILL.md of a workspace skill, both under <workspace>/skills
+      # as written and with symlinks resolved. The name is kebab-case only.
+      - ["github.com/devlikebear/tars/internal/tarsserver", "", False, "resolveWorkspaceSkillPaths", "", "", "ReturnValue", "path-injection", "manual"]
+      - ["github.com/devlikebear/tars/internal/tarsserver", "", False, "resolveWorkspaceSkillPaths", "", "", "ReturnValue[1]", "path-injection", "manual"]

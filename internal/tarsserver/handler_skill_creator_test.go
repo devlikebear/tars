@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -691,3 +692,64 @@ func skillCreatorContainsString(values []string, want string) bool {
 type ioDiscard struct{}
 
 func (ioDiscard) Write(p []byte) (int, error) { return len(p), nil }
+
+// A skill folder that is a symlink out of <workspace>/skills must not be
+// handed to the handlers: writing its SKILL.md would write wherever the link
+// points.
+func TestResolveWorkspaceSkillPaths_RejectsSymlinkedSkillDir(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink semantics differ on windows")
+	}
+	workspaceDir := t.TempDir()
+	skillsRoot := filepath.Join(workspaceDir, "skills")
+	if err := os.MkdirAll(skillsRoot, 0o755); err != nil {
+		t.Fatalf("setup skills root: %v", err)
+	}
+	outside := t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(skillsRoot, "linked")); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+
+	if dir, file, err := resolveWorkspaceSkillPaths(nil, workspaceDir, "linked"); err == nil {
+		t.Fatalf("symlinked skill folder resolved to %q / %q", dir, file)
+	}
+
+	// The same folder reached through the snapshot is refused as well.
+	provider := &mockExtensionsProvider{
+		snapshot: extensions.Snapshot{
+			Skills: []skill.Definition{{
+				Name:     "linked",
+				Source:   skill.SourceWorkspace,
+				FilePath: filepath.Join(skillsRoot, "linked", "SKILL.md"),
+			}},
+		},
+	}
+	if dir, file, err := resolveWorkspaceSkillPaths(provider, workspaceDir, "linked"); err == nil {
+		t.Fatalf("symlinked skill folder from the snapshot resolved to %q / %q", dir, file)
+	}
+
+	// So is a real folder whose SKILL.md is a symlink out.
+	if err := os.MkdirAll(filepath.Join(skillsRoot, "file-link"), 0o755); err != nil {
+		t.Fatalf("setup file-link skill: %v", err)
+	}
+	target := filepath.Join(outside, "elsewhere.md")
+	if err := os.WriteFile(target, []byte("# Elsewhere\n"), 0o644); err != nil {
+		t.Fatalf("seed outside file: %v", err)
+	}
+	if err := os.Symlink(target, filepath.Join(skillsRoot, "file-link", "SKILL.md")); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+	if dir, file, err := resolveWorkspaceSkillPaths(nil, workspaceDir, "file-link"); err == nil {
+		t.Fatalf("symlinked SKILL.md resolved to %q / %q", dir, file)
+	}
+
+	// A real folder next to it still resolves, whether or not it exists yet.
+	if err := os.MkdirAll(filepath.Join(skillsRoot, "real"), 0o755); err != nil {
+		t.Fatalf("setup real skill: %v", err)
+	}
+	for _, name := range []string{"real", "not-created-yet"} {
+		if _, _, err := resolveWorkspaceSkillPaths(nil, workspaceDir, name); err != nil {
+			t.Fatalf("skill %q was refused: %v", name, err)
+		}
+	}
+}

@@ -3,7 +3,6 @@ package session
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
@@ -58,15 +57,15 @@ func TestStore_Delete_TraversalIDIsNoOp(t *testing.T) {
 }
 
 func TestStore_TranscriptPath_AnchorsUnderStoreDir(t *testing.T) {
-	// Even when callers pass an id with dot-segments, the path is constructed
-	// as filepath.Join(s.dir, id + ".jsonl"). filepath.Join collapses, so
-	// "../escape" produces a path one level above s.dir + ".jsonl" suffix.
-	// Verify the suffix is preserved so a caller cannot smuggle an arbitrary
-	// filename through (e.g. id="../etc/passwd" yields ".../etc/passwd.jsonl",
-	// not ".../etc/passwd").
+	// An id with dot-segments used to be joined as it was, so "../etc/passwd"
+	// gave a path one level above s.dir, limited only by its ".jsonl" suffix.
+	// It now gives no path at all; a plain id is anchored under s.dir.
 	store := NewStore("/var/tars/store")
-	got := store.TranscriptPath("../etc/passwd")
-	if !strings.HasSuffix(got, ".jsonl") {
-		t.Fatalf("expected .jsonl suffix to survive, got %q", got)
+	if got := store.TranscriptPath("../etc/passwd"); got != "" {
+		t.Fatalf("expected no path for an id that leaves the store, got %q", got)
+	}
+	want := filepath.Join("/var/tars/store", "sessions", "abc.jsonl")
+	if got := store.TranscriptPath("abc"); got != want {
+		t.Fatalf("TranscriptPath(abc) = %q, want %q", got, want)
 	}
 }
