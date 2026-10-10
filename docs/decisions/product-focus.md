@@ -1,6 +1,6 @@
 # ADR: The product is the focus pipeline and goal mode
 
-- Status: Proposed
+- Status: Accepted
 - Decision date: 2026-10-10
 - Scope: [#1204](https://github.com/devlikebear/tars/issues/1204) item 1. Items 2 (`internal/tarsserver` split) and 3 (release cadence) follow from this record.
 
