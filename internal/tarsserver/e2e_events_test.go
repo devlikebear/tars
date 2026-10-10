@@ -21,7 +21,7 @@ func TestRegisterE2EEventsRoute_PublishesToStream(t *testing.T) {
 	broker := newEventBroker()
 	registerE2EEventsRoute(mux, broker)
 
-	_, ch, unsubscribe := broker.subscribe()
+	_, ch, unsubscribe := broker.Subscribe()
 	defer unsubscribe()
 
 	body := []byte(`{"type":"notification","category":"companion","expression":"greeting","message":"welcome back","session_id":"sess_e2e"}`)

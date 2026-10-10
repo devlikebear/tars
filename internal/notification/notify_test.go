@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -310,6 +311,7 @@ func TestNotificationDispatcher_CompanionEventCategoryIsCaseInsensitive(t *testi
 }
 
 func TestBuildTerminalNotifierArgs_IncludesOpenPath(t *testing.T) {
+	skipPOSIXNotifierTestOnWindows(t)
 	evt := NewEvent("cron", "info", "Cron completed", "episode updated")
 	evt.JobID = "job_demo"
 	evt.OpenPath = "/tmp/cron.md"
@@ -345,6 +347,7 @@ func TestCommandNotifier_RunsConfiguredCommandThroughSystemShell(t *testing.T) {
 }
 
 func TestCommandNotifier_NotifyAutoUsesTerminalNotifierPath(t *testing.T) {
+	skipPOSIXNotifierTestOnWindows(t)
 	prependFakeExecutable(t, "terminal-notifier", "#!/bin/sh\nexit 0\n")
 
 	notifier := NewCommandNotifier("", zerolog.New(io.Discard)).(*commandNotifier)
@@ -355,6 +358,7 @@ func TestCommandNotifier_NotifyAutoUsesTerminalNotifierPath(t *testing.T) {
 }
 
 func TestCommandNotifier_NotifyAutoFallsBackToOsascriptPath(t *testing.T) {
+	skipPOSIXNotifierTestOnWindows(t)
 	dir := t.TempDir()
 	t.Setenv("PATH", dir)
 	scriptPath := writeExecutable(t, dir, "osascript", "#!/bin/sh\nexit 0\n")
@@ -370,6 +374,7 @@ func TestCommandNotifier_NotifyAutoFallsBackToOsascriptPath(t *testing.T) {
 }
 
 func TestCommandNotifier_NotifyAutoUsesNotifySendPath(t *testing.T) {
+	skipPOSIXNotifierTestOnWindows(t)
 	prependFakeExecutable(t, "notify-send", "#!/bin/sh\nexit 0\n")
 
 	notifier := NewCommandNotifier("", zerolog.New(io.Discard)).(*commandNotifier)
@@ -394,4 +399,16 @@ func writeExecutable(t *testing.T, dir string, name string, content string) stri
 		t.Fatalf("write fake executable: %v", err)
 	}
 	return path
+}
+
+// skipPOSIXNotifierTestOnWindows skips a test of the macOS and Linux desktop
+// notifiers (terminal-notifier, osascript, notify-send). They are driven
+// through "#!/bin/sh" stand-ins and POSIX paths, which Windows cannot run;
+// these tests first ran there when the package left internal/tarsserver,
+// which scripts/windows_test.sh excludes as a whole.
+func skipPOSIXNotifierTestOnWindows(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("exercises the macOS and Linux notifier commands through POSIX stand-ins")
+	}
 }
