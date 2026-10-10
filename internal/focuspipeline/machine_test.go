@@ -35,6 +35,34 @@ func planned(t *testing.T, stages ...StageID) Pipeline {
 	return p
 }
 
+// shipStage is a build-kind stage after merge. The dev template ended with
+// one, "release", until #1204; a user template still can, and these tests
+// keep that path covered.
+const shipStage StageID = "release"
+
+// shipTemplate is the dev template plus shipStage, as a user template.
+func shipTemplate() Template {
+	tpl := DevTemplate()
+	tpl.ID, tpl.Name, tpl.Builtin = "dev-ship", "Development with release", false
+	tpl.Stages = append(tpl.Stages, TemplateStage{
+		ID: shipStage, Kind: StageBuild, Label: "Release", Instructions: "Release the merged work.",
+	})
+	return tpl
+}
+
+// plannedFrom is planned for a pipeline of the given template.
+func plannedFrom(t *testing.T, tpl Template, stages ...StageID) Pipeline {
+	t.Helper()
+	p, _, err := Apply(NewFromTemplate("s1", "goal", tpl, t0), Event{Kind: EventTurnCompleted, Turn: 1, Blocks: Blocks{Plan: testPlan(stages...)}}, t0)
+	if err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if p.OpenGate != GatePlan {
+		t.Fatalf("open gate = %q", p.OpenGate)
+	}
+	return p
+}
+
 func statuses(p Pipeline) map[StageID]StageStatus {
 	out := map[StageID]StageStatus{}
 	for _, s := range p.Stages {
@@ -48,7 +76,7 @@ func TestNew(t *testing.T) {
 	if p.Version != 1 || p.SessionID != "s1" || p.Goal != "ship it" || p.Current != StagePlan || p.OpenGate != GateNone {
 		t.Fatalf("pipeline = %+v", p)
 	}
-	if last := len(p.Stages) - 1; len(p.Stages) != len(StageOrder)+1 || p.Stages[last].ID != ReleaseStageID {
+	if last := len(p.Stages) - 1; len(p.Stages) != len(StageOrder) || p.Stages[last].ID != StageMerge {
 		t.Fatalf("stages = %+v", p.Stages)
 	}
 	for i, s := range p.Stages {
@@ -231,7 +259,6 @@ func TestApplyPlanApprove(t *testing.T) {
 			wantStatus: map[StageID]StageStatus{
 				StagePlan: StatusDone, StageBuild: StatusActive, StageReview: StatusPending,
 				StagePR: StatusPending, StagePRReview: StatusPending, StageMerge: StatusPending,
-				ReleaseStageID: StatusSkipped,
 			},
 			wantLimit:  5,
 			wantPrompt: "Plan approved. Start the build stage with task 1.",
@@ -243,7 +270,6 @@ func TestApplyPlanApprove(t *testing.T) {
 			wantStatus: map[StageID]StageStatus{
 				StagePlan: StatusDone, StageBuild: StatusActive, StageReview: StatusSkipped,
 				StagePR: StatusPending, StagePRReview: StatusSkipped, StageMerge: StatusPending,
-				ReleaseStageID: StatusSkipped,
 			},
 			wantLimit:  5,
 			wantPrompt: "Plan approved. Start the build stage with task 1.",
@@ -256,7 +282,6 @@ func TestApplyPlanApprove(t *testing.T) {
 			wantStatus: map[StageID]StageStatus{
 				StagePlan: StatusDone, StageBuild: StatusSkipped, StageReview: StatusSkipped,
 				StagePR: StatusActive, StagePRReview: StatusSkipped, StageMerge: StatusPending,
-				ReleaseStageID: StatusSkipped,
 			},
 			wantLimit:  3,
 			wantPrompt: "Plan approved. Start the pr stage.",
@@ -537,7 +562,6 @@ func TestApplyAdvance(t *testing.T) {
 			wantStatus: map[StageID]StageStatus{
 				StagePlan: StatusDone, StageBuild: StatusDone, StageReview: StatusActive,
 				StagePR: StatusPending, StagePRReview: StatusPending, StageMerge: StatusPending,
-				ReleaseStageID: StatusSkipped,
 			},
 			wantPrompt: "Approved. Start the review stage.",
 		},
@@ -549,7 +573,6 @@ func TestApplyAdvance(t *testing.T) {
 			wantStatus: map[StageID]StageStatus{
 				StagePlan: StatusDone, StageBuild: StatusDone, StageReview: StatusSkipped,
 				StagePR: StatusActive, StagePRReview: StatusSkipped, StageMerge: StatusPending,
-				ReleaseStageID: StatusSkipped,
 			},
 			wantPrompt: "Approved. Start the pr stage.",
 		},
@@ -561,7 +584,6 @@ func TestApplyAdvance(t *testing.T) {
 			wantStatus: map[StageID]StageStatus{
 				StagePlan: StatusDone, StageBuild: StatusDone, StageReview: StatusSkipped,
 				StagePR: StatusSkipped, StagePRReview: StatusSkipped, StageMerge: StatusSkipped,
-				ReleaseStageID: StatusSkipped,
 			},
 			wantPrompt: "Approved. The pipeline is complete.",
 		},

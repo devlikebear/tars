@@ -7,7 +7,7 @@ import (
 
 // Block formats the agent must follow, quoted verbatim in the guidance.
 const (
-	planFormat     = `<focus-plan>{"goal":"…","tasks":[{"title":"…","done":"…"}],"stages":["plan","build","review","pr","pr_review","merge","release"],"verify":["make test"],"limits":{"build":3,"review":2,"pr":3,"release":3}}</focus-plan>`
+	planFormat     = `<focus-plan>{"goal":"…","tasks":[{"title":"…","done":"…"}],"stages":["plan","build","review","pr","pr_review","merge"],"verify":["make test"],"limits":{"build":3,"review":2,"pr":3,"release":3}}</focus-plan>`
 	reportFormat   = `<focus-report>{"summary":"…","decisions":[{"id":"d1","question":"…","options":["…","…"]}],"risks":["…"]}</focus-report>`
 	findingsFormat = `<focus-findings>[{"id":"f1","severity":"high|medium|low","file":"…","line":42,"title":"…","scenario":"…"}]</focus-findings>`
 	// planE2EFields are the plan block's end-to-end fields, shown only to a
@@ -32,7 +32,7 @@ const languageGuidance = "Language: write your reply and every human-readable va
 
 // stagePlanInstructions is the generic plan stage's instructions, reused as
 // the base of the dev template's plan stage (template.go), which adds how
-// to use its second build-kind (release) stage's "stage" tag.
+// wide the verification must be.
 const stagePlanInstructions = "Do not edit files. Read the code you need, then propose a plan: small tasks in order, " +
 	"each with what \"done\" means; which stages apply (a small fix may skip review or pr_review); " +
 	"the verification commands that prove the work (shell commands, judged by their exit code — a check of the " +

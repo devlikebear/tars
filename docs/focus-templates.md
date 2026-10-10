@@ -8,11 +8,11 @@ Three templates ship with the server:
 
 | Id | Stages | For |
 |---|---|---|
-| `dev` | plan → build → review → pr → pr_review → merge → release | Development (the default) |
+| `dev` | plan → build → review → pr → pr_review → merge | Development (the default) |
 | `writing` | plan (outline) → draft → revise | Fiction and long-form writing |
 | `research` | plan (scope) → research → report → check | Researching a question and writing it up |
 
-The `dev` template's last stage, `release`, ships the work its merge just landed: bump the version the way the repository does and follow its release process (a direct commit, or a pull request, whichever the repository uses). It is a `build` stage like any other — no new gate — so the plan can leave it out of `stages` for a change that should not trigger its own release, and a pipeline the release train (`docs/decisions/focus-mode.md` §9 P5) started from already skips it, since that pipeline's whole job is a release.
+The `dev` template ends at merge. Merged work is released in batches by the release train (`docs/decisions/focus-mode.md` §9 P5), which starts a `dev` pipeline whose build stage is the release. For a few days the template had a seventh stage, `release`, and every pipeline cut its own release — five in two days (#1204). A repository that wants a release per task can still have one: add a `build`-kind stage after `merge` in a user template, and it runs as any build stage does.
 
 Pick one in **New task** on the focus home, or pass `template` to `POST /v1/focus/pipelines`.
 

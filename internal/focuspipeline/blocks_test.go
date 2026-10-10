@@ -150,7 +150,7 @@ func TestParseBlocks(t *testing.T) {
 			name: "plan without stages keeps every stage",
 			text: `<focus-plan>{"goal":"g","tasks":[{"title":"t","done":"d"}]}</focus-plan>`,
 			check: func(t *testing.T, b Blocks) {
-				if b.Plan == nil || len(New("s", "g", t0).fitPlan(*b.Plan).Stages) != len(StageOrder)+1 {
+				if b.Plan == nil || len(New("s", "g", t0).fitPlan(*b.Plan).Stages) != len(StageOrder) {
 					t.Fatalf("plan = %+v", b.Plan)
 				}
 			},

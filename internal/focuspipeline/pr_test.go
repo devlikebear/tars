@@ -531,11 +531,11 @@ func TestG4MergeGate(t *testing.T) {
 }
 
 // TestMergeActivatesReleaseStage is TestG4MergeGate's PR, but the approved
-// plan kept the dev template's release stage: the merge that finished the
+// plan is of a template with a stage after merge: the merge that finished the
 // pipeline there instead hands it its own starting turn, same as any other
 // build stage, and only the release stage's own completion finishes it.
 func TestMergeActivatesReleaseStage(t *testing.T) {
-	p := planned(t, StagePlan, StageBuild, StagePR, StagePRReview, StageMerge, ReleaseStageID)
+	p := plannedFrom(t, shipTemplate(), StagePlan, StageBuild, StagePR, StagePRReview, StageMerge, shipStage)
 	p, _, _ = Apply(p, Event{Kind: EventGate, Gate: GatePlan, Action: GateApprove}, t0)
 	p, _, _ = Apply(p, Event{Kind: EventTurnCompleted, Turn: 2, Blocks: Blocks{Report: &Report{Summary: "done", TasksDone: true}}}, t0)
 	p, _, _ = Apply(p, Event{Kind: EventVerification, Turn: 2, Verification: &Verification{Passed: true}}, t0)
@@ -556,7 +556,7 @@ func TestMergeActivatesReleaseStage(t *testing.T) {
 	merged := probeFound()
 	merged.State, merged.MergeOID = PRStateMerged, "m1"
 	p, act, err := Apply(p, Event{Kind: EventPRProbe, Probe: merged}, t0)
-	if err != nil || Finished(p) || p.Current != ReleaseStageID || !p.Active() ||
+	if err != nil || Finished(p) || p.Current != shipStage || !p.Active() ||
 		act.Kind != ActionSendTurn || !strings.Contains(act.Prompt, "release stage") || p.PendingTurn != act.Prompt {
 		t.Fatalf("merge should hand off to release: current=%s finished=%v act=%+v pending=%q", p.Current, Finished(p), act, p.PendingTurn)
 	}

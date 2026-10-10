@@ -41,6 +41,13 @@ Release metadata rules:
 - Tag releases as `vX.Y.Z`
 - Merging a release PR to `main` is the release approval event: it creates the tag, publishes the GitHub Release, updates the Homebrew tap, and powers the curl installer
 
+Release cadence:
+
+- **One release a week.** Changes land on `main` as they are ready and wait there. The focus release train on the focus home lists what merged since the last tag and starts the release PR.
+- **Between releases, use `main`.** Dogfooding runs a build of `main` (`make build`, `make dev-serve`), not a tag.
+- **An out-of-cadence release needs one of three reasons:** it fixes data loss, a security problem, or a build that does not start or install. A feature someone is waiting for is not one.
+- A release reaches Homebrew, winget, the curl and PowerShell installers and the desktop self-updater. Each one is a chance to break an install, which is why they are batched.
+
 ## Required Checks
 
 Run these locally before merging:
