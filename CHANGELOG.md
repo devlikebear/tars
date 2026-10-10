@@ -16,8 +16,8 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ### Fixed
 
-- **Qwen-family models on LM Studio (and other local OpenAI-compatible servers) answer instead of returning an empty reply.** Chat sends its prompt as two system messages, and the chat templates of these models reject a second one ("System message must be at the beginning"), so every turn failed. The `openai`, `kimi` and `gemini` providers now send the system messages a request opens with as one, joined with a blank line; a system message later in the conversation stays where it is.
-- **An error a server reports inside a streamed reply fails the turn.** LM Studio answers 200 and then sends `event: error` with the reason. That chunk was read as an empty one, so the turn ended with an empty assistant message, zero tokens and no error. A streamed chunk with a top-level `error`, or one belonging to an SSE `error` event, is now returned as a provider error with the server's message.
+- **Qwen-family models on LM Studio (and other local OpenAI-compatible servers) answer instead of returning an empty reply.** Chat sends its prompt as two system messages, and the chat templates of these models reject a second one ("System message must be at the beginning"), so every turn failed. The `openai`, `kimi` and `gemini` providers now send the system messages a request opens with as one, joined with a blank line; a system message later in the conversation stays where it is. ([#1211](https://github.com/devlikebear/tars/pull/1211))
+- **An error a server reports inside a streamed reply fails the turn.** LM Studio answers 200 and then sends `event: error` with the reason. That chunk was read as an empty one, so the turn ended with an empty assistant message, zero tokens and no error. A streamed chunk with a top-level `error`, or one belonging to an SSE `error` event, is now returned as a provider error with the server's message. ([#1211](https://github.com/devlikebear/tars/pull/1211))
 
 ## [0.60.0] - 2026-10-10
 
