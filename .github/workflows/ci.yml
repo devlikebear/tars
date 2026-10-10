@@ -18,6 +18,31 @@ permissions:
   contents: read
 
 jobs:
+  # Lists the files this change touches and decides which jobs it needs
+  # (scripts/ci_changes.sh). Jobs skip on an explicit 'false' only, so a failure
+  # here runs everything. The skipping is done per job, not with workflow path
+  # filters: a required check whose workflow never starts stays pending and
+  # blocks the merge, while a skipped job counts as passed.
+  changes:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      code: ${{ steps.detect.outputs.code }}
+      desktop: ${{ steps.detect.outputs.desktop }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Classify changed files
+        id: detect
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: ./scripts/ci_changes.sh
+
   format:
     runs-on: ubuntu-latest
     steps:
@@ -31,6 +56,9 @@ jobs:
 
       - name: Check gofmt
         run: make fmt-check
+
+      - name: Test the CI change classifier
+        run: make ci-changes-test
 
   security:
     runs-on: ubuntu-latest
@@ -52,6 +80,8 @@ jobs:
         run: make security-scan
 
   windows-build:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -69,6 +99,8 @@ jobs:
   # builds or tests it. Linux needs the GTK 4 / WebKitGTK 6.0 headers for
   # the webview; the Windows build cross-compiles without cgo.
   desktop:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.desktop != 'false' }}
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
@@ -93,6 +125,8 @@ jobs:
           test "$(tar -tzf dist/tars-desktop_0.0.0-ci_linux_amd64.tar.gz)" = tars-desktop
 
   desktop-macos:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.desktop != 'false' }}
     runs-on: macos-14
     steps:
       - name: Checkout
@@ -116,6 +150,8 @@ jobs:
           dist/TARS.app/Contents/MacOS/TARS --version | grep -F "tars-desktop 0.0.0-ci"
 
   windows-test:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
     runs-on: windows-latest
     timeout-minutes: 20
     defaults:
@@ -139,9 +175,9 @@ jobs:
         run: ./scripts/windows_test.sh
 
   test:
-    if: github.event_name == 'push'
+    needs: [security, changes]
+    if: ${{ !cancelled() && github.event_name == 'push' && needs.security.result == 'success' && needs.changes.outputs.code != 'false' }}
     runs-on: ubuntu-latest
-    needs: security
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -181,17 +217,10 @@ jobs:
       - name: Run deterministic agent harness scenarios
         run: make agent-harness-eval
 
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2 # v6
-        with:
-          files: coverage.out
-          token: ${{ secrets.CODECOV_TOKEN }}
-          fail_ci_if_error: false
-
   pr-diff:
-    if: github.event_name == 'pull_request'
+    needs: [security, changes]
+    if: ${{ !cancelled() && github.event_name == 'pull_request' && needs.security.result == 'success' && needs.changes.outputs.code != 'false' }}
     runs-on: ubuntu-latest
-    needs: security
     steps:
       - name: Checkout PR head
         uses: actions/checkout@v6

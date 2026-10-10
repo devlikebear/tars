@@ -4,7 +4,6 @@ set -euo pipefail
 ROOT="$(git rev-parse --show-toplevel)"
 CI_FILE="$ROOT/.github/workflows/ci.yml"
 RELEASE_FILE="$ROOT/.github/workflows/release-on-version-bump.yml"
-SONAR_FILE="$ROOT/.github/workflows/sonarcloud.yml"
 MAKEFILE="$ROOT/Makefile"
 SECURITY_SCRIPT="$ROOT/scripts/security_scan.sh"
 
@@ -44,8 +43,6 @@ forbid_top_level_permissions() {
 
 require_pattern "$CI_FILE" '^permissions:$' 'CI workflow has explicit default permissions'
 require_pattern "$CI_FILE" '^  contents: read$' 'CI workflow defaults to read-only repository contents'
-require_pattern "$CI_FILE" 'codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2' 'Codecov action is pinned to the v6 commit SHA'
-forbid_pattern "$CI_FILE" 'codecov/codecov-action@v6' 'CI workflow uses a floating Codecov action tag'
 require_pattern "$SECURITY_SCRIPT" 'go -C tools tool github.com/zricethezav/gitleaks/v8 detect' 'gitleaks runs through the go.mod tool lock'
 forbid_pattern "$CI_FILE" 'go install github.com/zricethezav/gitleaks' 'CI workflow installs gitleaks outside go.mod'
 forbid_pattern "$CI_FILE" '@latest' 'CI workflow installs tools with @latest'
@@ -57,12 +54,6 @@ forbid_top_level_permissions "$RELEASE_FILE" 'release workflow uses broad top-le
 require_pattern "$RELEASE_FILE" '^    permissions:$' 'release workflow declares permissions at job scope'
 require_pattern "$RELEASE_FILE" '^      contents: write$' 'release publish job has write contents permission'
 require_pattern "$RELEASE_FILE" '^      contents: read$' 'release read-only jobs have read contents permission'
-
-forbid_top_level_permissions "$SONAR_FILE" 'SonarCloud workflow uses top-level permissions'
-require_pattern "$SONAR_FILE" '^    permissions:$' 'SonarCloud workflow declares permissions at job scope'
-require_pattern "$SONAR_FILE" '^      pull-requests: read$' 'SonarCloud job can read pull request metadata'
-require_pattern "$SONAR_FILE" 'SonarSource/sonarqube-scan-action@c7ee0f9df90b7aa20e8dcf9695dcfe2e7da5b4f2' 'SonarCloud action is pinned to the v7 commit SHA'
-forbid_pattern "$SONAR_FILE" 'SonarSource/sonarqube-scan-action@v7' 'SonarCloud workflow uses a floating scan action tag'
 
 if [[ "$status" -ne 0 ]]; then
   exit "$status"

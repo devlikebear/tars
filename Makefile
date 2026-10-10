@@ -77,9 +77,9 @@ AGENT_HARNESS_COMMIT ?= $(GIT_COMMIT)
 	test test-v test-one test-nocache test-race test-cover test-cover-check test-diff test-cover-diff \
 	agent-harness-eval agent-harness-baseline \
 	build build-bins windows-build-check windows-test release-asset clean tidy fmt vet lint \
-	lint-diff arch-check api-snapshot api-check ci-static-analysis-check github-actions-hardening-check codeql-workflow-check sonarcloud-workflow-check \
+	lint-diff arch-check api-snapshot api-check ci-static-analysis-check github-actions-hardening-check codeql-workflow-check ci-changes-test \
 	ensure-console-assets console-install console-build console-e2e console-screenshots \
-	desktop-test desktop-cover desktop-build desktop-package \
+	desktop-test desktop-build desktop-package \
 	browser-install \
 	install install-server install-assistant uninstall uninstall-server uninstall-assistant reinstall \
 	restart restart-server restart-assistant reload-config reload-server-config reload-assistant-config \
@@ -147,7 +147,7 @@ help:
 	@echo "  make ci-static-analysis-check - verify CI static-analysis guardrails"
 	@echo "  make github-actions-hardening-check - verify GitHub Actions security hardening guardrails"
 	@echo "  make codeql-workflow-check - verify CodeQL code-scanning workflow guardrails"
-	@echo "  make sonarcloud-workflow-check - verify SonarCloud evaluation workflow guardrails"
+	@echo "  make ci-changes-test - test the script that decides which CI jobs a change needs"
 	@echo "  make tidy          - go mod tidy"
 	@echo "  make clean         - remove build artifacts"
 	@echo ""
@@ -292,13 +292,6 @@ DESKTOP_GOARCH ?= $(shell $(GO) env GOARCH)
 
 desktop-test:
 	cd desktop && $(GO) vet ./... && $(GO) test ./...
-
-# desktop-cover writes desktop/coverage.out for SonarCloud. The logic lives
-# in desktop/internal and tests without cgo; main.go and shell.go only wire
-# Wails and need a display, so they are excluded from coverage in
-# sonar-project.properties.
-desktop-cover:
-	cd desktop && CGO_ENABLED=0 $(GO) test -coverprofile=coverage.out ./internal/...
 
 desktop-build:
 	mkdir -p $(BIN_DIR)
@@ -527,8 +520,8 @@ github-actions-hardening-check:
 codeql-workflow-check:
 	./scripts/verify_codeql_workflow.sh
 
-sonarcloud-workflow-check:
-	./scripts/verify_sonarcloud_workflow.sh
+ci-changes-test:
+	./scripts/ci_changes_test.sh
 
 tidy:
 	$(GO) mod tidy

@@ -25,6 +25,7 @@ import (
 //	GET  /v1/focus/pipelines/{id}                 → pipeline
 //	POST /v1/focus/pipelines/{id}/gates/{gate}    {action, note?, edits?, pr?, card_id?} → {pipeline, next_prompt}; 409 {error, pipeline} when the gate is not open, card_id is not the open gate's card, or approving merge finds the PR head moved (the probe it runs first closes G4)
 //	POST /v1/focus/pipelines/{id}/cards/{card}    {state, decision?} → {pipeline, next_prompt}
+//	POST /v1/focus/pipelines/{id}/findings        {title, scenario?, file?, line?, severity?, decision?} → 201 {pipeline, next_prompt, card_id}; the developer's own finding joins the review triage or the pr_review fix round (decision "fix" = decided from the start); 400 without a title, 409 {error, pipeline} outside those stages or behind a blocked/merge gate; allowed while a turn runs (focus_finding.go)
 //	POST /v1/focus/pipelines/{id}/advance         {stage} → {pipeline, next_prompt}; 409 unless stage is the active current one with no gate open
 //	POST /v1/focus/pipelines/{id}/stop            → {pipeline, next_prompt: ""}; 409 when already finished or stopped
 //	POST /v1/focus/pipelines/{id}/qa              {card_id, question} → 202 {qa_session_id, turn} (focus_qa.go)
@@ -293,6 +294,7 @@ func newFocusPipelineHandler(sessions *session.Store, worktrees *chatWorktrees, 
 	mux.HandleFunc("GET /v1/focus/pipelines/{id}", api.get)
 	mux.HandleFunc("POST /v1/focus/pipelines/{id}/gates/{gate}", api.gate)
 	mux.HandleFunc("POST /v1/focus/pipelines/{id}/cards/{card}", api.card)
+	mux.HandleFunc("POST /v1/focus/pipelines/{id}/findings", api.addFinding)
 	mux.HandleFunc("POST /v1/focus/pipelines/{id}/advance", api.advance)
 	mux.HandleFunc("POST /v1/focus/pipelines/{id}/stop", api.stop)
 	mux.HandleFunc("POST /v1/focus/pipelines/{id}/qa", api.qa)

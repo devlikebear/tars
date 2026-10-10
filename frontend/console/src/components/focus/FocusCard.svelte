@@ -280,6 +280,7 @@
           <span class="badge {f.severity === 'high' ? 'badge-error' : f.severity === 'medium' ? 'badge-warning' : 'badge-default'}" data-testid="focus-finding-severity">{$t.focus.finding.severity[f.severity] ?? f.severity}</span>
         {/if}
         {#if f?.file}<span class="mono" data-content data-testid="focus-finding-loc">{f.file}{f.line ? `:${f.line}` : ''}</span>{/if}
+        {#if f?.source === 'developer'}<span class="badge badge-accent" data-testid="focus-finding-developer">{$t.focus.finding.fromDeveloper}</span>{/if}
       </p>
       {#if f?.scenario}
         <h4 class="label">{$t.focus.finding.scenario}</h4>

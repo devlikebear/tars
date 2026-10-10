@@ -14,7 +14,7 @@ make api-check            # PR preflight: fail when the checked-in pkg/* API sna
 make security-scan        # PR preflight: scan tracked files/history for secrets and local-path leaks (gitleaks + absolute home-dir paths + private key blocks) — no machine-local absolute paths or key-shaped strings in tests/fixtures
 make ci-static-analysis-check # PR preflight: CI static-analysis guardrails
 make codeql-workflow-check # PR preflight: CodeQL code-scanning workflow guardrails
-make sonarcloud-workflow-check # PR preflight: SonarCloud evaluation workflow guardrails
+make ci-changes-test      # test scripts/ci_changes.sh, which decides which CI jobs a change needs
 make test-one TEST_NAME=TestFoo PKG=./internal/tarsserver/
 make test-race / make test-cover
 make fmt / make fmt-check / make vet / make lint / make tidy / make security-scan
@@ -186,6 +186,7 @@ cmd/  →  app layer  →  core layer  →  pkg/
 - (옵트인한 파이프라인에서) plan의 `e2e`는 셸 명령이 아니라 TARS 자체 `computer_use`(`internal/computeruse`) 자연어 목표다 — `"@App ..."`로 앱을 지정한다(필수). review 단계 검증에서 `verify` 뒤에 그 엔진으로 돌리고(`focus_driver.go`의 `focusVerifyCommands`/`runVerification`, `focus_e2e.go`), `done`=통과, `stuck`·`max_steps`·`needs_confirmation`·`error`=실패, `unavailable`(백엔드·드라이버 미설정)=`VerificationResult.Skipped`(통과 취급, 콘솔 진행줄엔 "건너뜀"으로 표시)로 매핑한다. 엔진은 `computer_use` 채팅 도구와 같은 것(`newComputerUseEngine`)을 `tools.computer_use.enabled` 설정과 무관하게 쓴다. Playwright처럼 셸 명령이 필요한 e2e는 `verify`로 넣어야 한다. 콘솔 E2E 서버는 `CUA_DRIVER_PATH`로 `frontend/console/e2e/fake-cua-driver.sh`(고정된 창 하나만 답하고 동작 도구는 거절, 호출은 `TARS_E2E_CUA_LOG`에 기록)를 쓰고 mock LLM이 그 화면에만 done을 답한다 — 호스트에 설치된 cua-driver로 실제 화면을 읽지 않는다
 - **e2e는 작업 폴더의 빌드를 본다** (`Plan.E2ESetup`/`E2ETeardown`): `computer_use`는 화면에 떠 있는 것만 조작하고 빌드·실행은 하지 않는다. 그래서 설치돼 있던 예전 버전을 검사하며 리뷰가 끝없이 돌던 사고가 있었다. plan의 `e2e_setup`(셸)은 세션 cwd에서 e2e 목표 **직전에 매번** 돌아 작업 트리를 빌드하고 그 빌드를 화면에 띄우며(서버는 백그라운드 + 출력 리다이렉트 + 전용 포트), `e2e_teardown`은 목표 뒤에 결과·취소와 무관하게 돈다(실패는 로그만). 순서는 `verify` → `e2e_setup` → `e2e` → `e2e_teardown`이고, verify나 setup이 실패하면 목표는 돌리지 않는다(낡은 화면에 대한 보고가 될 뿐이므로) — 실패한 명령이 그대로 실패 사실이 된다. setup이 없는 plan은 guidance와 G1 카드에 "화면에 떠 있는 것을 본다"는 경고가 붙는다
 - **승인된 plan 수정** (`focuspipeline/planedit.go` `EditPlan`, `tarsserver/focus_plan_edit.go`): G1 뒤에도 goal·`verify`·`e2e`·`e2e_setup`·`e2e_teardown`을 고칠 수 있다(tasks·stages·limits는 불가, 단계 전환 없음 — 다음 검증이 고친 목록을 읽는다). 입구는 셋이고 함수는 하나다: `POST /v1/focus/pipelines/{id}/plan`, 네이티브 provider의 `focus_plan_edit` 도구(승인된 plan이 있는 세션에만 등록 — 다른 채팅의 시스템 프롬프트를 늘리지 않는다), 모든 provider에서 되는 `<focus-plan-edit>{…}</focus-plan-edit>` 블록(CLI provider에는 TARS 도구가 없다). 수정은 `plan edited` notice 카드(무엇이 바뀌었는지)를 남기고 세션 TaskContract의 goal·명령도 맞춘다; API·도구 경로는 automation audit `focus_plan_edit`도 남긴다. guidance는 "개발자가 대화에서 요청했을 때만, 실패하는 검증을 넘기려고 스스로 고치지 말 것"이라고 적는다 — 이건 모델 지시일 뿐 서버 강제가 아니므로 목표 모드에서 검증 목록이 바뀌었는지는 notice 카드로 확인한다
+- **사람이 넣는 finding** (#1196, `focuspipeline/finding_add.go` `AddFinding`, `tarsserver/focus_finding.go`): `POST /v1/focus/pipelines/{id}/findings` `{title, scenario?, file?, line?, severity?, decision?}`가 `source: developer` finding 카드를 만든다. 새 전환이 아니라 기존 finding 경로의 입구다 — 결정(fix/dismiss, 목표 모드 정책 포함)과 수정 프롬프트는 에이전트 finding과 같은 코드를 탄다. review kind 단계에서는 blocked 게이트가 없으면 언제든 되고(triage가 열려 있으면 합류, 아니면 `Review.Triage`에 남아 다음 triage — 도는 리뷰 턴이 여는 것, 수정 뒤 다음 라운드, 또는 아무것도 안 고친 검증이 통과했을 때 단계를 끝내는 대신 여는 것 — 를 기다린다), `pr_review`에서는 게이트가 없을 때 되어 모으는 중인 수정 라운드에 들어간다. 그 밖(다른 단계, blocked, G4, 끝난 파이프라인)은 409. 턴이 도는 중에도 받는다(카드는 턴이 아니다). `decision: "fix"`는 처음부터 결정된 카드로 만든다 — 그것만 남은 라운드면 클릭 없이 수정 턴이 나간다. `<focus-findings>` 파서는 모델이 보낸 `source`를 지운다. **`Review.Triage`는 "아직 닫힌 triage를 거치지 않은 finding 카드"다 — triage가 열려 있을 때만 차 있다고 가정하지 말 것**. 콘솔은 `FocusAddFinding.svelte`(보이는 조건은 `lib/focus.ts` `findingEntry`)
 - 머신 코드에서 단계는 id가 아니라 **kind로 분기**한다(`p.CurrentKind()`, `Stage.KindOf()`); id로 비교해도 되는 건 고정 id 넷(plan·pr·pr_review·merge)뿐. work 단계가 여럿이면 계획 task의 `stage`로 소속을 정하고 그 단계 안내·no-progress 상한은 자기 task만 센다
 - **첫 턴은 누가 보내나** (#1195): `POST /v1/focus/pipelines`는 기본적으로 파이프라인을 만들기만 하고 첫 턴(kickoff, 없으면 goal)은 호출자가 채팅 턴으로 보낸다 — 콘솔이 그렇게 한다(goal 칸에 붙여 넣은 이미지가 첫 턴에 실려야 해서, `focusStore` `kickoff`). 콘솔 밖 호출자는 `start: true`를 주면 서버 드라이버가 첫 턴을 보낸다(응답 `started: true`, 그 텍스트는 턴이 끝날 때까지 `pending_turn`). 콘솔은 `pending_turn`이 있는 파이프라인에 kickoff를 보내지 않는다 — **콘솔 생성 요청에 `start`를 넣지 말 것**(첨부가 빠진 턴이 먼저 나간다)
 - API: `GET /v1/focus/templates`, `POST /v1/focus/pipelines`의 `template`. 콘솔은 내장 템플릿을 자기 언어로 보여 주고(`focus.templates` i18n) 사용자 템플릿은 쓴 그대로 보여 준다(`lib/focus.ts` `stageLabel`)
@@ -278,27 +279,27 @@ TARS 기능 변경 시 홈페이지 콘텐츠도 갱신 필요 (매 변경마다
 ## CI
 
 `.github/workflows/ci.yml`:
+0. **changes** — `scripts/ci_changes.sh` lists the change's files through the GitHub API and sets `code` / `desktop`. A change that touches only documentation (`docs/**` except `public-api-surface.txt`, top-level `*.md`, `LICENSE`) skips windows-build, windows-test, pr-diff, test and (on pull requests) CodeQL; desktop / desktop-macos run only when `desktop/`, the `Makefile`, `scripts/desktop_package.sh` or the workflow changed. format and security always run. Jobs skip only on an explicit `false`, so a failed classifier runs everything. **Skip per job, never with workflow `paths` filters**: a required check whose workflow never starts stays pending and blocks the merge, while a skipped job counts as passed. A new top-level file or directory that no build or test reads must be added to `is_doc` to be skipped (`make ci-changes-test`)
 1. **format** — `make fmt-check` (`gofmt -l` over the tree). Fails the build on any unformatted file. `.golangci.yml` enables only `govet`/`ineffassign`/`revive`, so no linter covers formatting — this job is the only guard
 2. **security** — gitleaks + ripgrep secrets scan
 3. **windows-build** — `make windows-build-check`, cross-compiling the whole module for Windows on ubuntu
 4. **windows-test** — `scripts/windows_test.sh` on `windows-latest`. The only job that runs tests on Windows; everything else is Linux
 5. **pr-diff** — pull requests run Svelte console checks, `npm run test:ci`, `make console-e2e` (Playwright specs in `frontend/console/e2e/` against the real server and `e2e/mock-llm.mjs`; report uploaded on failure), `make lint-diff` (with new-line `errcheck`/`staticcheck`), and `make test-cover-diff` against the PR base SHA
 6. **desktop** / **desktop-macos** — `make desktop-test`, then package the Linux + Windows archives (ubuntu) and the `.app` bundle (macos-14, `codesign --verify`, `--version` check)
-7. **test** — pushes to main run Node 24 → frontend console checks/test slice → Playwright → Go test + coverage threshold → Codecov
+7. **test** — pushes to main run Node 24 → frontend console checks/test slice → Playwright → Go test + coverage threshold
 
 `scripts/windows_test.sh` carries two lists of Windows-failing tests — packages excluded wholesale, and individual tests skipped in otherwise-green packages. **Both are debt, not policy**: shrink them rather than adding to them. Reproduce the job locally on Windows with `make windows-test`.
 
-Note that the Linux-only test jobs cannot cover `*_windows.go` files at all, so SonarCloud's `new_coverage` gate reads low on PRs that add platform-split code.
+Note that the Linux-only test jobs cannot cover `*_windows.go` files at all, so `make test-cover-diff` cannot count lines in platform-split files.
 
 `.github/workflows/codeql.yml`:
 1. **Analyze (go)** — CodeQL autobuild + analysis for Go source
 2. **Analyze (javascript-typescript)** — buildless CodeQL analysis for Svelte/TypeScript/JavaScript
 3. **Analyze (actions)** — buildless CodeQL analysis for GitHub Actions workflows
 
-`.github/workflows/sonarcloud.yml`:
-1. **Check SonarCloud configuration** — skip cleanly unless `SONAR_TOKEN`, `SONAR_PROJECT_KEY`, and `SONAR_ORGANIZATION` are configured
-2. **Generate Go coverage** — when configured, run `make test-cover` and publish `coverage.out`
-3. **Run SonarCloud scan** — non-blocking evaluation mode; do not make this a required merge gate until the baseline and quality gate policy are reviewed
+The three Analyze checks are required and come from a matrix, so on a documentation-only pull request the job still runs and skips its steps (a matrix job skipped at job level never reports those names). Pushes to main and the weekly scan always analyze.
+
+SonarCloud and Codecov were removed in #1206: Sonar's quality gate was failing and non-blocking, and both repeated coverage that `test-cover-diff` (80% of changed lines) and `test-cover-check` (60% total) already gate. Do not add a reporting-only check back — a check either blocks the merge or does not run.
 
 See `docs/static-analysis.md` for the static-analysis layering and local workflow guards.
 

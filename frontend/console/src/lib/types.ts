@@ -2591,9 +2591,23 @@ export type FocusFinding = {
   key?: string
   url?: string
   trusted?: boolean
+  // 'developer' on a finding the developer added (POST …/findings).
+  source?: string
 }
 
-// The review loop's round (P3): the finding cards of the open triage gate,
+// POST /v1/focus/pipelines/{id}/findings: the developer's own finding.
+// decision 'fix' adds it decided; absent, it is decided on its card.
+export type FocusFindingInput = {
+  title: string
+  scenario?: string
+  file?: string
+  line?: number
+  severity?: string
+  decision?: 'fix'
+}
+
+// The review loop's round (P3): the finding cards of the open triage gate
+// (or, while none is open, the developer's findings waiting for the next),
 // whether a fix turn is owed, whether fixes landed this round, and the
 // round's verification failures.
 export type FocusReviewState = { triage?: string[]; fixing?: boolean; fixed?: boolean; failures?: number }
