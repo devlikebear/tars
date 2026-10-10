@@ -6,6 +6,10 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+### Added
+
+- **Add your own finding to a Focus review.** In the review and PR review stages the pipeline screen has an "Add a finding" input: a title, and optionally a scenario, file, line and severity. The finding becomes a card marked as yours in the round already running — the open triage, or the next one when a turn is still working — and is listed in the same fix turn as the agent's accepted findings. "Add to fix" adds it already decided, so it needs no second click; in PR review that sends the fix round at once when nothing else waits for a decision. Until now a problem you found reading the diff had to go through a decision card's answer (which the fix prompt left out) or a typed instruction (which only produced findings to decide again). Also `POST /v1/focus/pipelines/{id}/findings`; goal mode treats these like any finding. ([#1196](https://github.com/devlikebear/tars/issues/1196))
+
 ### Changed
 
 - **The console companion bot (CASE) tells you what is waiting on you, instead of showing fixed scripted buttons.** The Poke/Suggest/Feedback buttons and their canned replies are gone; the bubble is now a list of lines (approvals waiting, unattended approvals waiting, running turns, recent failures) built from `GET /v1/chat/activity` and the event stream — clicking a line opens that session or Ops. With nothing waiting, the bubble is empty and only the input stays, which still hands a typed question off to the full chat. The bubble opens by itself only for a new approval wait or a new failure, closes itself again once that is resolved, and leaves out the pending approval and running turn of the session the chat route already has on screen (its thread shows those on its own). ([#1189](https://github.com/devlikebear/tars/issues/1189))

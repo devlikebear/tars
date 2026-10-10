@@ -34,6 +34,7 @@ import type {
   FocusActionResult,
   FocusCard,
   FocusCardState,
+  FocusFindingInput,
   FocusGateAction,
   FocusPipeline,
   FocusPlan,
@@ -56,6 +57,8 @@ export type FocusStoreApi = {
   gate(sessionId: string, gate: string, action: FocusGateAction, options: { note?: string; edits?: FocusPlan; pr?: FocusPRDraft; card_id?: string }): Promise<FocusActionResult>
   card(sessionId: string, cardId: string, state: FocusCardState, decision?: string): Promise<FocusActionResult>
   advance(sessionId: string, stage: FocusStageId): Promise<FocusActionResult>
+  // The developer's own finding (POST …/findings).
+  addFinding?(sessionId: string, finding: FocusFindingInput): Promise<FocusActionResult>
   stop(sessionId: string): Promise<FocusActionResult>
   // Goal mode on or off (POST …/goal).
   goal?(sessionId: string, enabled: boolean): Promise<FocusActionResult>
@@ -651,6 +654,18 @@ export class FocusStore {
       return true
     }
     const ok = await this.act(() => this.api.card(sessionId, cardId, state, decision))
+    await this.flush()
+    return ok
+  }
+
+  // addFinding adds the developer's own finding to the current review or
+  // pr_review round. The server sends the fix turn it may ask for.
+  async addFinding(finding: FocusFindingInput): Promise<boolean> {
+    const sessionId = this.sessionId
+    const add = this.api.addFinding
+    if (!sessionId || !add) return false
+    const ok = await this.act(() => add(sessionId, finding))
+    if (ok) this.viewStage = null
     await this.flush()
     return ok
   }

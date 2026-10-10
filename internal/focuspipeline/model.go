@@ -14,6 +14,8 @@
 //     writing, research, and the workspace's own)
 //   - goal.go    goal mode: the fixed policy that decides the gates when
 //     nobody is at them
+//   - finding_add.go the developer's own findings, joining a review or
+//     pr_review round
 //
 // Stage transitions are decided by facts (blocks, gate actions, and from P2
 // on verification exit codes) and never by asking the model whether a stage

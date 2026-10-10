@@ -66,6 +66,8 @@ function fakeApi(initial: FocusPipeline) {
     qaFeed: null as ChatEvent[] | null,
     askCalls: [] as unknown[][],
     askResult: { qa_session_id: 'qa1', turn: 1 },
+    findingCalls: [] as unknown[][],
+    findingResult: null as FocusActionResult | null,
   }
   const api = {
     getPipeline: async () => state.pipeline,
@@ -107,6 +109,10 @@ function fakeApi(initial: FocusPipeline) {
     card: async (...args: unknown[]) => {
       state.cardCalls.push(args)
       return state.cardResult ?? { pipeline: state.pipeline, next_prompt: '' }
+    },
+    addFinding: async (...args: unknown[]) => {
+      state.findingCalls.push(args)
+      return state.findingResult ?? { pipeline: state.pipeline, next_prompt: '' }
     },
     advance: async () => ({ pipeline: state.pipeline, next_prompt: '' }),
     stop: async () => ({ pipeline: state.pipeline, next_prompt: '' }),
@@ -297,6 +303,24 @@ test('a 409 on a gate replaces the state with the server pipeline and sends noth
   assert.equal(store.pipeline?.current, 'build')
   assert.equal(store.notice, 'stale')
   assert.deepEqual(fake.state.sent, [])
+})
+
+test('adding a finding of the developer\'s own posts it and adopts the pipeline; a refusal shows the current state', async () => {
+  const agent: FocusCard = { id: 'c3', kind: 'finding', stage: 'review', turn: 3, title: 'nil deref', state: 'unseen', created_at: '2026-10-01T00:00:03Z' }
+  const mine: FocusCard = { id: 'c4', kind: 'finding', stage: 'review', turn: 0, title: 'stale row', state: 'decided', decision: 'fix', created_at: '2026-10-01T00:00:04Z', payload: { id: 'dev-c4', severity: 'high', file: 'a.go', line: 3, title: 'stale row', scenario: '', source: 'developer' } }
+  const fake = fakeApi(pipeline('2026-10-01T00:00:03Z', [agent], { current: 'review', open_gate: 'triage', review: { triage: ['c3'] } }))
+  fake.state.findingResult = { pipeline: pipeline('2026-10-01T00:00:04Z', [agent, mine], { current: 'review', open_gate: 'triage', review: { triage: ['c3', 'c4'] } }), next_prompt: '' }
+  const store = newStore(fake)
+  await store.load('s1')
+  assert.equal(await store.addFinding({ title: 'stale row', file: 'a.go', line: 3, severity: 'high', decision: 'fix' }), true)
+  assert.deepEqual(fake.state.findingCalls[0], ['s1', { title: 'stale row', file: 'a.go', line: 3, severity: 'high', decision: 'fix' }])
+  assert.deepEqual(store.pipeline?.review?.triage, ['c3', 'c4'])
+  assert.deepEqual(fake.state.sent, [], 'the console sends no turn for it')
+
+  fake.state.findingResult = { pipeline: pipeline('2026-10-01T00:00:05Z', [agent, mine], { current: 'pr' }), next_prompt: '', conflict: true }
+  assert.equal(await store.addFinding({ title: 'too late' }), false)
+  assert.equal(store.notice, 'stale')
+  assert.equal(store.pipeline?.current, 'pr')
 })
 
 test('deciding a decision card sends nothing itself: the server runs the answer turn', async () => {

@@ -21,6 +21,7 @@ import {
   turnIndex,
   turnSlice,
   triageProgress,
+  findingEntry,
   turnStage,
 } from '../src/lib/focus.ts'
 import { userVisibleText } from '../src/lib/consoleContext.ts'
@@ -456,6 +457,22 @@ test('triageProgress counts the decided findings of the open triage gate', () =>
   assert.equal(triageProgress(pipeline({ current: 'review', cards, review: { triage: ['c1'] } })), null, 'no gate, no progress')
   assert.equal(triageProgress(pipeline({ current: 'review', open_gate: 'triage', cards })), null, 'no triage list')
   assert.equal(triageProgress(null), null)
+})
+
+test('findingEntry offers the developer\'s own finding only where a round takes it', () => {
+  const at = (current: string, open_gate: FocusPipeline['open_gate'] = '', status = 'active', kind?: string) =>
+    findingEntry(pipeline({ current, open_gate, stages: [{ id: current, status, iteration: 1, ...(kind ? { kind } : {}) }] } as Partial<FocusPipeline>))
+  assert.equal(at('review'), 'review', 'a review or fix turn runs: it waits for the next triage')
+  assert.equal(at('review', 'triage'), 'review')
+  assert.equal(at('revise', 'triage', 'active', 'review'), 'review', 'a template stage of review kind')
+  assert.equal(at('pr_review'), 'pr_review')
+  assert.equal(at('review', 'blocked', 'blocked'), null)
+  assert.equal(at('review', '', 'blocked'), null, 'stopped')
+  assert.equal(at('pr_review', 'blocked'), null)
+  assert.equal(at('merge', 'merge'), null)
+  assert.equal(at('build'), null)
+  assert.equal(at('review', '', 'done'), null, 'finished')
+  assert.equal(findingEntry(null), null)
 })
 
 test('excerptLines classifies diff lines and marks the finding line in new-file numbering', () => {
