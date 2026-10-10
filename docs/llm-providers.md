@@ -160,6 +160,24 @@ Both Chat Completions and Responses API surface these:
 | openai-codex | `reasoning: {effort: "<value>"}` (object) | `service_tier: "<value>"` |
 | gemini compat| skipped (label-gated in openai_compat) | skipped |
 
+### System messages and in-stream errors (OpenAI-compatible)
+
+Applies to the `openai`, `kimi` and `gemini` labels, including local servers
+(LM Studio, llama.cpp) reached through `kind: openai` with a `base_url`.
+
+- **The system messages a request opens with are sent as one**, joined with a
+  blank line. Chat sends the stable prompt and the per-turn tail as two system
+  messages so the Anthropic client can cache the first; the chat templates of
+  Qwen-family models raise "System message must be at the beginning" on a
+  second one.
+- **A system message later in the conversation stays where it is** (a cron
+  note in the transcript, critic feedback before the last user message). It is
+  not moved to the front. A template that accepts a system message only at
+  the start rejects such a request, and that now surfaces as an error.
+- **An error sent inside a 200 event stream fails the call**: a `data:` chunk
+  with a top-level `error`, or any chunk of an SSE `event: error`. It comes
+  back as a `ProviderError` with operation `stream`.
+
 ## System One (not an LLM provider)
 
 `internal/jev` talks to a `/v1/systemone` server (hosted TypeSafe Jev, or a
