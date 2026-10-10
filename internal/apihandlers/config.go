@@ -1,4 +1,4 @@
-package tarsserver
+package apihandlers
 
 import (
 	"encoding/json"
@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/devlikebear/tars/internal/config"
+	"github.com/devlikebear/tars/internal/httpapi"
 	"github.com/devlikebear/tars/internal/launchagent"
 	"github.com/devlikebear/tars/internal/memory"
 	"github.com/rs/zerolog"
@@ -25,21 +26,27 @@ var (
 	restartLaunchctlRun = runRestartLaunchctl
 )
 
-func newConfigAPIHandler(configPath string, cfg config.Config, workspaceDir string, logger zerolog.Logger) http.Handler {
+// RestartFunc replaces the running server with a fresh copy of exe.
+type RestartFunc func(exe string, args []string, env []string) error
+
+// NewConfigHandler serves the config and reset routes. restart is how the
+// server re-executes itself after a restart request; with nil the request
+// is answered and nothing restarts.
+func NewConfigHandler(configPath string, cfg config.Config, workspaceDir string, restart RestartFunc, logger zerolog.Logger) http.Handler {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/v1/admin/reset/workspace", func(w http.ResponseWriter, r *http.Request) {
-		if !requireMethod(w, r, http.MethodPost) {
+		if !httpapi.RequireMethod(w, r, http.MethodPost) {
 			return
 		}
 		handleResetWorkspace(w, workspaceDir, logger)
 	})
 
 	mux.HandleFunc("/v1/admin/restart", func(w http.ResponseWriter, r *http.Request) {
-		if !requireMethod(w, r, http.MethodPost) {
+		if !httpapi.RequireMethod(w, r, http.MethodPost) {
 			return
 		}
-		handleRestart(w, logger)
+		handleRestart(w, restart, logger)
 	})
 
 	mux.HandleFunc("/v1/admin/config", func(w http.ResponseWriter, r *http.Request) {
@@ -54,14 +61,14 @@ func newConfigAPIHandler(configPath string, cfg config.Config, workspaceDir stri
 	})
 
 	mux.HandleFunc("/v1/admin/config/values", func(w http.ResponseWriter, r *http.Request) {
-		if !requireMethod(w, r, http.MethodPatch) {
+		if !httpapi.RequireMethod(w, r, http.MethodPatch) {
 			return
 		}
 		handlePatchConfigValues(w, r, configPath, logger)
 	})
 
 	mux.HandleFunc("/v1/admin/config/schema", func(w http.ResponseWriter, r *http.Request) {
-		if !requireMethod(w, r, http.MethodGet) {
+		if !httpapi.RequireMethod(w, r, http.MethodGet) {
 			return
 		}
 		handleGetConfigSchema(w, configPath, cfg, workspaceDir)
@@ -91,13 +98,13 @@ func handleGetConfigSchema(w http.ResponseWriter, configPath string, cfg config.
 	if strings.TrimSpace(configPath) != "" {
 		loaded, err := config.LoadFile(configPath)
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			httpapi.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			return
 		}
 		activeCfg = loaded
 		effectiveLoaded, err := config.Load(configPath)
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			httpapi.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			return
 		}
 		effectiveCfg = effectiveLoaded
@@ -122,7 +129,7 @@ func handleGetConfigSchema(w http.ResponseWriter, configPath string, cfg config.
 		updatedAt = info.ModTime().UTC().Format(time.RFC3339)
 	}
 
-	writeJSON(w, http.StatusOK, configSchemaResponse{
+	httpapi.WriteJSON(w, http.StatusOK, configSchemaResponse{
 		RuntimeStartedAt: configRuntimeStartedAt,
 		RuntimeValues:    runtimeValues, PendingRestartKeys: pendingKeys, ProcessID: os.Getpid(),
 		Path:            configPath,
@@ -172,7 +179,7 @@ func maskString(s string) string {
 
 func handlePatchConfigValues(w http.ResponseWriter, r *http.Request, configPath string, logger zerolog.Logger) {
 	if configPath == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "no config file path configured"})
+		httpapi.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "no config file path configured"})
 		return
 	}
 
@@ -180,40 +187,40 @@ func handlePatchConfigValues(w http.ResponseWriter, r *http.Request, configPath 
 		Updates map[string]any `json:"updates"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		httpapi.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 		return
 	}
 	if len(req.Updates) == 0 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "no updates provided"})
+		httpapi.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "no updates provided"})
 		return
 	}
 
 	if err := config.PatchYAML(configPath, req.Updates); err != nil {
 		var inputErr *config.PatchValidationError
 		if errors.As(err, &inputErr) {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			httpapi.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 			return
 		}
 		logger.Error().Err(err).Str("path", configPath).Msg("failed to patch config")
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		httpapi.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
 
 	logger.Info().Int("fields", len(req.Updates)).Str("path", configPath).Msg("config values patched")
-	writeJSON(w, http.StatusOK, map[string]string{"ok": "true"})
+	httpapi.WriteJSON(w, http.StatusOK, map[string]string{"ok": "true"})
 }
 
 // handleRestart attempts to restart the TARS server process.
 // Service mode (macOS launchd): uses launchctl kickstart -k.
 // Direct mode: re-execs the same binary with the same arguments.
-func handleRestart(w http.ResponseWriter, logger zerolog.Logger) {
+func handleRestart(w http.ResponseWriter, restart RestartFunc, logger zerolog.Logger) {
 	mode := detectRunMode()
 	logger.Info().Str("mode", mode).Msg("server restart requested")
 
 	switch mode {
 	case "launchd":
 		label, domain := launchdServiceIdentity()
-		writeJSON(w, http.StatusOK, map[string]string{
+		httpapi.WriteJSON(w, http.StatusOK, map[string]string{
 			"ok":   "true",
 			"mode": "launchd",
 			"info": "restarting via launchctl",
@@ -228,7 +235,7 @@ func handleRestart(w http.ResponseWriter, logger zerolog.Logger) {
 		}()
 
 	default:
-		writeJSON(w, http.StatusOK, map[string]string{
+		httpapi.WriteJSON(w, http.StatusOK, map[string]string{
 			"ok":   "true",
 			"mode": "exec",
 			"info": "re-executing process",
@@ -242,7 +249,11 @@ func handleRestart(w http.ResponseWriter, logger zerolog.Logger) {
 				return
 			}
 			logger.Info().Str("exe", exe).Strs("args", os.Args).Msg("re-executing")
-			if err := execRestart(exe, os.Args, os.Environ()); err != nil {
+			if restart == nil {
+				logger.Warn().Msg("restart requested but no restart function is configured")
+				return
+			}
+			if err := restart(exe, os.Args, os.Environ()); err != nil {
 				logger.Error().Err(err).Msg("exec restart failed")
 			}
 		}()
@@ -304,7 +315,7 @@ type workspaceResetResponse struct {
 
 func handleResetWorkspace(w http.ResponseWriter, workspaceDir string, logger zerolog.Logger) {
 	if workspaceDir == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "workspace directory not configured"})
+		httpapi.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "workspace directory not configured"})
 		return
 	}
 
@@ -313,7 +324,7 @@ func handleResetWorkspace(w http.ResponseWriter, workspaceDir string, logger zer
 	preserve := map[string]bool{"config": true}
 	entries, err := os.ReadDir(workspaceDir)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "read workspace directory failed"})
+		httpapi.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": "read workspace directory failed"})
 		return
 	}
 
@@ -371,17 +382,17 @@ func handleResetWorkspace(w http.ResponseWriter, workspaceDir string, logger zer
 			Strs("items", removedItems).
 			Str("workspace", workspaceDir).
 			Msg("workspace reset incomplete")
-		writeJSON(w, http.StatusInternalServerError, response)
+		httpapi.WriteJSON(w, http.StatusInternalServerError, response)
 		return
 	}
 
 	logger.Info().Int("removed", removed).Strs("items", removedItems).Str("workspace", workspaceDir).Msg("workspace reset to initial state")
-	writeJSON(w, http.StatusOK, response)
+	httpapi.WriteJSON(w, http.StatusOK, response)
 }
 
 func handleGetConfig(w http.ResponseWriter, configPath string, logger zerolog.Logger) {
 	if configPath == "" {
-		writeJSON(w, http.StatusOK, map[string]string{
+		httpapi.WriteJSON(w, http.StatusOK, map[string]string{
 			"path":    "",
 			"content": "",
 		})
@@ -391,11 +402,11 @@ func handleGetConfig(w http.ResponseWriter, configPath string, logger zerolog.Lo
 	raw, err := config.LoadRaw(configPath)
 	if err != nil {
 		logger.Error().Err(err).Str("path", configPath).Msg("failed to read config file")
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to read config file"})
+		httpapi.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to read config file"})
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]string{
+	httpapi.WriteJSON(w, http.StatusOK, map[string]string{
 		"path":    configPath,
 		"content": string(raw),
 	})
@@ -403,7 +414,7 @@ func handleGetConfig(w http.ResponseWriter, configPath string, logger zerolog.Lo
 
 func handlePutConfig(w http.ResponseWriter, r *http.Request, configPath string, logger zerolog.Logger) {
 	if configPath == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "no config file path configured"})
+		httpapi.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "no config file path configured"})
 		return
 	}
 
@@ -411,16 +422,16 @@ func handlePutConfig(w http.ResponseWriter, r *http.Request, configPath string, 
 		Content string `json:"content"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		httpapi.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 		return
 	}
 
 	if err := config.SaveRaw(configPath, []byte(req.Content)); err != nil {
 		logger.Error().Err(err).Str("path", configPath).Msg("failed to save config file")
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		httpapi.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
 
 	logger.Info().Str("path", configPath).Msg("config file saved")
-	writeJSON(w, http.StatusOK, map[string]string{"ok": "true"})
+	httpapi.WriteJSON(w, http.StatusOK, map[string]string{"ok": "true"})
 }

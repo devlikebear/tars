@@ -1,4 +1,4 @@
-package tarsserver
+package apihandlers
 
 import (
 	"encoding/json"
@@ -26,7 +26,7 @@ func TestLogsAPI_TailsAndFiltersRuntimeLog(t *testing.T) {
 		t.Fatalf("write log: %v", err)
 	}
 
-	handler := newLogsAPIHandler(workspaceDir, runtimeLogPath, zerolog.Nop())
+	handler := NewLogsHandler(workspaceDir, runtimeLogPath, zerolog.Nop())
 	req := httptest.NewRequest(http.MethodGet, "/v1/admin/logs?file=runtime&lines=2&level=error&component=runtime", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
@@ -72,7 +72,7 @@ func TestLogsAPI_TailsAndFiltersRuntimeLog(t *testing.T) {
 }
 
 func TestLogsAPI_RejectsUnknownFileID(t *testing.T) {
-	handler := newLogsAPIHandler(t.TempDir(), "", zerolog.Nop())
+	handler := NewLogsHandler(t.TempDir(), "", zerolog.Nop())
 	req := httptest.NewRequest(http.MethodGet, "/v1/admin/logs?file=../secret&lines=50", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/devlikebear/tars/internal/apihandlers"
 	"github.com/devlikebear/tars/internal/cli"
 	"github.com/devlikebear/tars/internal/config"
 	"github.com/devlikebear/tars/internal/envloader"
@@ -123,7 +124,7 @@ func setupRuntimeLogger(cfg loggerConfig, stderr io.Writer) (zerolog.Logger, fun
 	}
 	logWriter := io.Writer(consoleWriter)
 
-	trimmedLogPath := normalizeRuntimeLogFilePath(cfg.FilePath)
+	trimmedLogPath := apihandlers.NormalizeRuntimeLogFilePath(cfg.FilePath)
 
 	var closers []func()
 	if trimmedLogPath != "" {
@@ -164,14 +165,6 @@ func setupRuntimeLogger(cfg loggerConfig, stderr io.Writer) (zerolog.Logger, fun
 		}
 	}
 	return logger, cleanup
-}
-
-func normalizeRuntimeLogFilePath(path string) string {
-	trimmed := strings.TrimSpace(path)
-	if trimmed != "" && strings.HasSuffix(trimmed, "/") {
-		return trimmed + "tars.log"
-	}
-	return trimmed
 }
 
 func parseLogLevel(s string) zerolog.Level {
