@@ -1,4 +1,4 @@
-package tarsserver
+package notification
 
 import (
 	"bytes"
@@ -16,13 +16,13 @@ import (
 
 func TestNotificationStore_AppendAndRestore(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "notifications.json")
-	store, err := newNotificationStore(path, 1000)
+	store, err := NewStore(path, 1000)
 	if err != nil {
-		t.Fatalf("newNotificationStore: %v", err)
+		t.Fatalf("NewStore: %v", err)
 	}
 
 	for i := 0; i < 1005; i++ {
-		result, err := store.append(newNotificationEvent("cron", "info", "title", "msg"))
+		result, err := store.append(NewEvent("cron", "info", "title", "msg"))
 		if err != nil {
 			t.Fatalf("append: %v", err)
 		}
@@ -35,9 +35,9 @@ func TestNotificationStore_AppendAndRestore(t *testing.T) {
 		t.Fatalf("markRead: %v", err)
 	}
 
-	restored, err := newNotificationStore(path, 1000)
+	restored, err := NewStore(path, 1000)
 	if err != nil {
-		t.Fatalf("restore newNotificationStore: %v", err)
+		t.Fatalf("restore NewStore: %v", err)
 	}
 	snapshot, err := restored.history("user", 1000)
 	if err != nil {
@@ -62,13 +62,13 @@ func TestNotificationStore_AppendAndRestore(t *testing.T) {
 
 func TestNotificationStore_ReadCursorByRole(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "notifications.json")
-	store, err := newNotificationStore(path, 1000)
+	store, err := NewStore(path, 1000)
 	if err != nil {
-		t.Fatalf("newNotificationStore: %v", err)
+		t.Fatalf("NewStore: %v", err)
 	}
 
 	for i := 0; i < 3; i++ {
-		if _, err := store.append(newNotificationEvent("heartbeat", "info", "hb", "ok")); err != nil {
+		if _, err := store.append(NewEvent("heartbeat", "info", "hb", "ok")); err != nil {
 			t.Fatalf("append: %v", err)
 		}
 	}
@@ -96,13 +96,13 @@ func TestNotificationStore_ReadCursorByRole(t *testing.T) {
 
 func TestNotificationStore_HistoryUnreadCountUsesAllRetainedItems(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "notifications.json")
-	store, err := newNotificationStore(path, 1000)
+	store, err := NewStore(path, 1000)
 	if err != nil {
-		t.Fatalf("newNotificationStore: %v", err)
+		t.Fatalf("NewStore: %v", err)
 	}
 
 	for i := 0; i < 4; i++ {
-		if _, err := store.append(newNotificationEvent("cron", "info", "title", "msg")); err != nil {
+		if _, err := store.append(NewEvent("cron", "info", "title", "msg")); err != nil {
 			t.Fatalf("append: %v", err)
 		}
 	}
@@ -124,13 +124,13 @@ func TestNotificationStore_HistoryUnreadCountUsesAllRetainedItems(t *testing.T) 
 
 func TestNotificationStore_CoalescesRepeatedPulseNotifications(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "notifications.json")
-	store, err := newNotificationStore(path, 1000)
+	store, err := NewStore(path, 1000)
 	if err != nil {
-		t.Fatalf("newNotificationStore: %v", err)
+		t.Fatalf("NewStore: %v", err)
 	}
 
 	base := time.Date(2026, 5, 8, 13, 0, 0, 0, time.UTC)
-	first := newNotificationEvent("pulse", "warn", "Chat sessions need attention", "3 sessions are stalled")
+	first := NewEvent("pulse", "warn", "Chat sessions need attention", "3 sessions are stalled")
 	first.Timestamp = base.Format(time.RFC3339)
 	firstResult, err := store.append(first)
 	if err != nil {
@@ -140,7 +140,7 @@ func TestNotificationStore_CoalescesRepeatedPulseNotifications(t *testing.T) {
 		t.Fatal("first pulse notification should not coalesce")
 	}
 
-	duplicate := newNotificationEvent("pulse", "warn", "Chat sessions stalled or failed without auto-resume", "4 halted chats need review")
+	duplicate := NewEvent("pulse", "warn", "Chat sessions stalled or failed without auto-resume", "4 halted chats need review")
 	duplicate.Timestamp = base.Add(time.Minute).Format(time.RFC3339)
 	duplicateResult, err := store.append(duplicate)
 	if err != nil {
@@ -170,7 +170,7 @@ func TestNotificationStore_CoalescesRepeatedPulseNotifications(t *testing.T) {
 		t.Fatalf("grouped duplicate should count as one unread item, got %d", view.UnreadCount)
 	}
 
-	escalated := newNotificationEvent("pulse", "error", "Chat sessions need attention", "severity changed")
+	escalated := NewEvent("pulse", "error", "Chat sessions need attention", "severity changed")
 	escalated.Timestamp = base.Add(2 * time.Minute).Format(time.RFC3339)
 	escalatedResult, err := store.append(escalated)
 	if err != nil {
@@ -180,7 +180,7 @@ func TestNotificationStore_CoalescesRepeatedPulseNotifications(t *testing.T) {
 		t.Fatal("severity changes must remain visible as a new notification")
 	}
 
-	later := newNotificationEvent("pulse", "warn", "Chat sessions need attention", "still stalled later")
+	later := NewEvent("pulse", "warn", "Chat sessions need attention", "still stalled later")
 	later.Timestamp = base.Add(32 * time.Minute).Format(time.RFC3339)
 	laterResult, err := store.append(later)
 	if err != nil {
@@ -192,17 +192,17 @@ func TestNotificationStore_CoalescesRepeatedPulseNotifications(t *testing.T) {
 }
 
 func TestEventsAPI_HistoryAndRead(t *testing.T) {
-	store, err := newNotificationStore(filepath.Join(t.TempDir(), "notifications.json"), 1000)
+	store, err := NewStore(filepath.Join(t.TempDir(), "notifications.json"), 1000)
 	if err != nil {
-		t.Fatalf("newNotificationStore: %v", err)
+		t.Fatalf("NewStore: %v", err)
 	}
-	broker := newEventBroker()
-	dispatcher := newNotificationDispatcher(broker, nil, false, zerolog.New(io.Discard))
+	broker := NewBroker()
+	dispatcher := NewDispatcher(broker, nil, false, zerolog.New(io.Discard))
 	dispatcher.store = store
-	dispatcher.Emit(context.Background(), newNotificationEvent("cron", "info", "event-1", "hello"))
-	dispatcher.Emit(context.Background(), newNotificationEvent("cron", "error", "event-2", "boom"))
+	dispatcher.Emit(context.Background(), NewEvent("cron", "info", "event-1", "hello"))
+	dispatcher.Emit(context.Background(), NewEvent("cron", "error", "event-2", "boom"))
 
-	h := newEventsAPIHandler(broker, store, zerolog.New(io.Discard))
+	h := NewEventsAPIHandler(broker, store, zerolog.New(io.Discard))
 
 	recHistory := httptest.NewRecorder()
 	reqHistory := httptest.NewRequest(http.MethodGet, "/v1/events/history?limit=1", nil)
@@ -212,10 +212,10 @@ func TestEventsAPI_HistoryAndRead(t *testing.T) {
 		t.Fatalf("history expected 200, got %d body=%s", recHistory.Code, recHistory.Body.String())
 	}
 	var historyPayload struct {
-		Items       []notificationEvent `json:"items"`
-		UnreadCount int                 `json:"unread_count"`
-		ReadCursor  int64               `json:"read_cursor"`
-		LastID      int64               `json:"last_id"`
+		Items       []Event `json:"items"`
+		UnreadCount int     `json:"unread_count"`
+		ReadCursor  int64   `json:"read_cursor"`
+		LastID      int64   `json:"last_id"`
 	}
 	if err := json.Unmarshal(recHistory.Body.Bytes(), &historyPayload); err != nil {
 		t.Fatalf("decode history payload: %v", err)

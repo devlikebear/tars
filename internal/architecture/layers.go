@@ -66,6 +66,7 @@ var AppPackages = []string{
 	"goal",
 	"initiative",
 	"launchagent",
+	"notification",
 	"onboarding",
 	"ops",
 	"plugin",

@@ -84,7 +84,7 @@ Frozen does not mean removed. Nothing is deleted by this record. An area that st
 1. A `feat:` pull request outside Core needs a sentence saying which pipeline behaviour requires it. Without one it waits.
 2. New `internal/` packages are Core or they are not added. `internal/architecture/layers.go` already forces a decision per package; this adds a second question to it.
 3. The README opens with the pipeline: what a task looks like from plan to merge, then goal mode. The rest moves below it.
-4. The `tarsserver` split (#1204 item 2) starts with the focus handlers, because that is the code that will change most.
+4. The `tarsserver` split (#1204 item 2) goes by measured coupling, not by which code changes most. This rule first said "start with the focus handlers"; a dependency map of the package (2026-10-10, in a comment on #1204) showed that to be the wrong order. The focus files that read git and `gh` moved first (`internal/focusprobe`), but the rest of focus needs 26 names from the chat internals and its tests lean on server fixtures, while about twenty handler groups need only the shared JSON helpers. Those leaves move first; the core (chat, focus, Telegram, sessions) waits until the interfaces between them are decided.
 5. The freeze runs to **2026-12-31**, then this record is re-evaluated.
 
 ## Consequences
