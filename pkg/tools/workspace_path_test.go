@@ -225,3 +225,76 @@ func TestPolicyRelativePath_HandlesPathsInsideAndOutsidePrimary(t *testing.T) {
 		t.Fatalf("outside primary should remain absolute: got %q want %q", got, outsidePath)
 	}
 }
+
+// An absolute path is held to the same rule as a relative one: a symlink
+// inside an allowed directory must not lead out of every allowed directory.
+func TestResolvePathWithPolicy_RejectsAbsoluteSymlinkEscape(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink semantics differ on windows")
+	}
+	root := tempRoot(t)
+	outsideDir := tempRoot(t)
+	if err := os.WriteFile(filepath.Join(outsideDir, "secret.txt"), []byte("classified"), 0o644); err != nil {
+		t.Fatalf("seed outside: %v", err)
+	}
+	if err := os.Symlink(outsideDir, filepath.Join(root, "leak")); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+	policy := SingleDirPolicy(root)
+
+	// The relative form was already refused.
+	if _, err := resolvePathWithPolicy(policy, filepath.Join("leak", "secret.txt")); err == nil {
+		t.Fatal("relative path through the symlink was accepted")
+	}
+	got, err := resolvePathWithPolicy(policy, filepath.Join(root, "leak", "secret.txt"))
+	if err == nil {
+		t.Fatalf("absolute path through the symlink resolved to %s", got)
+	}
+}
+
+// A symlink from one allowed directory into another stays inside the policy.
+func TestResolvePathWithPolicy_AllowsAbsoluteSymlinkBetweenAllowedDirs(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink semantics differ on windows")
+	}
+	root := tempRoot(t)
+	other := tempRoot(t)
+	target := filepath.Join(other, "notes.txt")
+	if err := os.WriteFile(target, []byte("notes"), 0o644); err != nil {
+		t.Fatalf("seed other: %v", err)
+	}
+	if err := os.Symlink(other, filepath.Join(root, "shared")); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+	policy := NewPathPolicy(root, []string{other}, "")
+
+	got, err := resolvePathWithPolicy(policy, filepath.Join(root, "shared", "notes.txt"))
+	if err != nil {
+		t.Fatalf("symlink into another allowed directory was refused: %v", err)
+	}
+	if got != target {
+		t.Fatalf("resolved = %s, want %s", got, target)
+	}
+}
+
+// An absolute path inside an allowed directory that does not exist yet has
+// no symlinks to resolve and is returned as written; one outside every
+// allowed directory is refused before anything is resolved.
+func TestResolvePathWithPolicy_AbsolutePathWithoutSymlinks(t *testing.T) {
+	root := tempRoot(t)
+	policy := SingleDirPolicy(root)
+
+	missing := filepath.Join(root, "not-yet", "file.txt")
+	got, err := resolvePathWithPolicy(policy, missing)
+	if err != nil {
+		t.Fatalf("missing path inside the workspace was refused: %v", err)
+	}
+	if got != missing {
+		t.Fatalf("resolved = %s, want %s", got, missing)
+	}
+
+	outside := filepath.Join(tempRoot(t), "file.txt")
+	if _, err := resolvePathWithPolicy(policy, outside); err == nil || !strings.Contains(err.Error(), "outside allowed directories") {
+		t.Fatalf("path outside the workspace: err = %v", err)
+	}
+}
