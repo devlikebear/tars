@@ -121,6 +121,12 @@ test('live mode speaks once, shows it in the thread, and stays quiet on the very
   const afterTick2 = await history(page, sessionId)
   expect(afterTick2.length).toBe(afterTick1.length)
 
+  // The earlier click already cleared tick 1's line (companion-events.spec.ts
+  // establishes that a server line's own click removes it) — confirm that
+  // baseline before tick 3, so the same assertion right after it actually
+  // means something.
+  await expect(serverLine(page)).toHaveCount(0)
+
   // 25 hours later: past cooldown, read as a long-absence check-in. The
   // console is now looking at the main session itself, so the companion
   // event must not pop a new bubble line (P4's rule) — the new message
@@ -130,6 +136,11 @@ test('live mode speaks once, shows it in the thread, and stays quiet on the very
   expect(entry3.speak).toBe(true)
   expect(entry3.delivery).toBe('delivered')
   expect(entry3.intent).toBe('check_in')
+
+  // The bubble must not have opened a new line for this one: session_id
+  // on the companion event matches the session already on screen, so only
+  // CASE's expression carries over (lib/companion.ts's own-session rule).
+  await expect(serverLine(page)).toHaveCount(0)
 
   await expect(page.locator('.chat-msg.chat-assistant')).toHaveCount(2)
   const secondSpokenMsg = page.locator('.chat-msg.chat-assistant').last()

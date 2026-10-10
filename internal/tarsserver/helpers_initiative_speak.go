@@ -183,6 +183,18 @@ func composeFailureReason(err error) string {
 // message), tagged with the Initiative metadata the ledger entry
 // correlates to, then touches the session so it sorts/retains like any
 // other fresh activity.
+//
+// Only a failed AppendMessage is reported as an error — the message was
+// never persisted, so write_error is the true outcome. A failed Touch
+// afterward (session index I/O, the session deleted concurrently, …) is
+// logged and swallowed instead of returned: the message is already real
+// and sitting in the transcript at that point, so reporting it as a
+// failed write would make the runtime record delivery: error for a speak
+// that actually succeeded, skip the companion event for it, and — since a
+// non-delivered entry never starts the cooldown — go on to compose a
+// second message on the very next eligible tick. handler_chat_execution.go's
+// persistChatResult treats the same AppendMessage/Touch pair the same way,
+// for the same reason.
 func (s *initiativeSpeaker) writeMessage(req initiative.SpeakRequest, text string) error {
 	msg := session.Message{
 		Role:      "assistant",
@@ -197,7 +209,10 @@ func (s *initiativeSpeaker) writeMessage(req initiative.SpeakRequest, text strin
 	if err := session.AppendMessage(path, msg); err != nil {
 		return err
 	}
-	return s.store.Touch(s.mainSessionID, req.Now)
+	if err := s.store.Touch(s.mainSessionID, req.Now); err != nil {
+		s.logger.Warn().Err(err).Str("session_id", s.mainSessionID).Msg("initiative: touch session after speak failed")
+	}
+	return nil
 }
 
 // sendCompanionEvent sends CASE's category "companion" event (#1192's wire

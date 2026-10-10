@@ -3,6 +3,7 @@ package tarsserver
 import (
 	"context"
 	"errors"
+	"os"
 	"testing"
 	"time"
 
@@ -259,6 +260,94 @@ func TestInitiativeSpeakerComposeFailureReasons(t *testing.T) {
 				t.Fatalf("outcome = %+v, want Composed with reason %q", outcome, c.wantCode)
 			}
 		})
+	}
+}
+
+// TestInitiativeSpeakerWriteErrorWhenAppendFails covers the write_error
+// outcome (tars#1220 review finding f3): Compose succeeds, but the
+// transcript itself cannot be written (its path is a directory here,
+// standing in for a disk/permission failure). Composed must stay true (an
+// LLM call did happen and counts toward the daily cap/backoff) while
+// Delivered stays false, and no companion event fires for words that were
+// never actually saved anywhere.
+func TestInitiativeSpeakerWriteErrorWhenAppendFails(t *testing.T) {
+	store := session.NewStore(t.TempDir())
+	main, err := store.EnsureMain()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// AppendMessage opens TranscriptPath for writing; a directory sitting
+	// at that exact path makes the open fail, as a real disk/permission
+	// error would, without needing OS-specific permission tricks.
+	if err := os.MkdirAll(store.TranscriptPath(main.ID), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	client := &speakStubClient{resp: speakTextResponse("Welcome back!")}
+	var events []notificationEvent
+	speaker := &initiativeSpeaker{
+		mainSessionID: main.ID, store: store,
+		composer: &initiative.SpeechComposer{Client: client},
+		notify:   func(_ context.Context, evt notificationEvent) { events = append(events, evt) },
+		logger:   zerolog.Nop(), claim: alwaysClaims,
+	}
+	outcome, err := speaker.Speak(context.Background(), initiative.SpeakRequest{Intent: initiative.IntentGreet, Now: time.Now()})
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if !outcome.Composed || outcome.Delivered || outcome.Reason != "write_error" {
+		t.Fatalf("outcome = %+v, want Composed with reason write_error", outcome)
+	}
+	if len(events) != 0 {
+		t.Fatalf("companion events = %d, want 0 (never actually written)", len(events))
+	}
+}
+
+// TestInitiativeSpeakerTouchFailureStillDelivers covers the fix for
+// review finding f1: AppendMessage succeeds but the follow-up Touch fails
+// (here because mainSessionID was never registered in the store's index,
+// so Touch's own session lookup errors — the same shape a session deleted
+// concurrently, or a session-index I/O error, would take). The message is
+// already real at that point, so the outcome must still be Delivered, the
+// companion event must still fire, and the message must still be the one
+// in the transcript — matching persistChatResult's own
+// AppendMessage-succeeds/Touch-fails handling in handler_chat_execution.go
+// (log and keep going), not a dropped delivery that would let the next
+// eligible tick compose and write a second greeting on top of this one.
+func TestInitiativeSpeakerTouchFailureStillDelivers(t *testing.T) {
+	store := session.NewStore(t.TempDir())
+	// Creates the store's sessions/ directory (lazily created by the
+	// store, not by NewStore) without registering unregisteredSessionID
+	// below — AppendMessage only needs the directory to exist; Touch is
+	// what looks the id up in the index and is the one that must fail.
+	if _, err := store.EnsureMain(); err != nil {
+		t.Fatal(err)
+	}
+	const unregisteredSessionID = "not-in-the-index"
+	client := &speakStubClient{resp: speakTextResponse("Welcome back!")}
+	var events []notificationEvent
+	speaker := &initiativeSpeaker{
+		mainSessionID: unregisteredSessionID, store: store,
+		composer: &initiative.SpeechComposer{Client: client},
+		notify:   func(_ context.Context, evt notificationEvent) { events = append(events, evt) },
+		logger:   zerolog.Nop(), claim: alwaysClaims,
+	}
+	now := time.Date(2026, 9, 29, 9, 0, 0, 0, time.UTC)
+	outcome, err := speaker.Speak(context.Background(), initiative.SpeakRequest{Intent: initiative.IntentGreet, EntryID: "entry-1", Now: now})
+	if err != nil {
+		t.Fatalf("Speak: %v, want no error (the write itself succeeded)", err)
+	}
+	if !outcome.Delivered || !outcome.Composed || outcome.Reason != "" {
+		t.Fatalf("outcome = %+v, want Delivered despite the Touch failure", outcome)
+	}
+	msgs, err := session.ReadMessages(store.TranscriptPath(unregisteredSessionID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(msgs) != 1 || msgs[0].Content != "Welcome back!" {
+		t.Fatalf("transcript = %+v, want the message actually written", msgs)
+	}
+	if len(events) != 1 || events[0].SessionID != unregisteredSessionID {
+		t.Fatalf("companion events = %+v, want exactly 1 for the delivered message", events)
 	}
 }
 
