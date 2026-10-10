@@ -238,7 +238,11 @@ func (s *Store) SaveTasks(sessionID string, tasks SessionTasks) error {
 	if err != nil {
 		return fmt.Errorf("marshal tasks: %w", err)
 	}
-	if err := atomicwrite.Write(s.tasksPath(sessionID), raw); err != nil {
+	path := s.tasksPath(sessionID)
+	if path == "" {
+		return fmt.Errorf("write tasks: invalid session id %q", sessionID)
+	}
+	if err := atomicwrite.Write(path, raw); err != nil {
 		return fmt.Errorf("write tasks: %w", err)
 	}
 	s.notifyTasksSaved(sessionID, normalized)
@@ -458,7 +462,12 @@ func compactArtifactDigests(raw json.RawMessage, subjectDigest string) json.RawM
 	return compacted
 }
 
+// tasksPath is the session's tasks file, or "" for an id that is not a plain
+// name (see TranscriptPath).
 func (s *Store) tasksPath(sessionID string) string {
+	if strings.Contains(sessionID, "..") || strings.ContainsAny(sessionID, `/\`) {
+		return ""
+	}
 	return filepath.Join(s.dir, sessionID+".tasks.json")
 }
 
