@@ -343,6 +343,18 @@ func (r *Runtime) deliverLocked(ctx context.Context, entry *Entry, obs Observati
 		entry.Delivery = DeliveryDelivered
 		entry.DeliveryReason = deliveryReasonDelivered
 		r.clearError()
+	case outcome.Superseded:
+		// Compose ran (and counts below toward SpeakCallsToday like any
+		// other Composed attempt) but the text was deliberately discarded
+		// unwritten — the claim was unavailable, or the user's own
+		// message already landed first. Skipped, not Error: applyLocked
+		// must not treat this as a compose failure (no SpeakFailCount
+		// increase) or as a delivered speak (no cooldown/daily-cap pacing).
+		entry.Delivery = DeliverySkipped
+		entry.DeliveryReason = outcome.Reason
+		if entry.DeliveryReason == "" {
+			entry.DeliveryReason = deliveryReasonBusy
+		}
 	case outcome.Composed:
 		entry.Delivery = DeliveryError
 		entry.DeliveryReason = outcome.Reason
@@ -416,10 +428,21 @@ func (r *Runtime) applyLocked(e Entry) {
 	if e.Composed {
 		r.hist.SpeakCallsToday++
 		r.hist.LastSpeakCallAt = e.At
-		if e.Delivery == DeliveryDelivered {
+		switch e.Delivery {
+		case DeliveryDelivered:
 			r.hist.SpeakFailCount = 0
-		} else {
+		case DeliveryError:
 			r.hist.SpeakFailCount++
+		case DeliverySkipped:
+			// Composed is only ever true alongside DeliverySkipped for a
+			// Superseded attempt (tars#1220 review): Compose ran and
+			// produced real text, but the claim was unavailable or the
+			// user had already spoken, so it was discarded unwritten —
+			// not a compose failure. Leave SpeakFailCount exactly as is:
+			// neither reset (nothing was actually delivered) nor
+			// incremented (nothing actually failed), so a run of
+			// superseded attempts does not fabricate backoff for a
+			// backend that is composing successfully every time.
 		}
 	}
 	// A tick worth a ledger line is one where something changed (the

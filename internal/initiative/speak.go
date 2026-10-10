@@ -25,6 +25,16 @@ const (
 	deliveryReasonBusy             = "busy"
 	deliveryReasonComposeError     = "compose_error"
 	deliveryReasonDelivered        = "delivered"
+	// deliveryReasonUserSpoke is Superseded's other reason (tars#1220
+	// review): Compose finished, the claim was taken, but the main
+	// session's message count had already grown while Compose was in
+	// flight (claim-less) — the user spoke first, so the composed text is
+	// discarded unwritten. deliveryReasonBusy covers Superseded's other
+	// case (the claim itself could not be taken: a real turn started
+	// instead), reusing the same code pre-compose's "busy" already used
+	// for "no compose call was made" — the meaning (the main session's
+	// claim was unavailable) is the same either side of Compose.
+	deliveryReasonUserSpoke = "user_spoke"
 )
 
 // Speaker composes and delivers one greet/check_in utterance: a tool-free
@@ -73,11 +83,24 @@ type SpeakOutcome struct {
 	// daily speak-call cap and the speak backoff schedule, independent of
 	// Delivered.
 	Composed bool
-	// Reason explains the outcome when it is not delivered: busy (another
-	// turn holds the main session's claim — no compose call was made),
-	// speak_unavailable (no composer configured, or the provider cannot do
-	// a tool-free call — no compose call), compose_error, compose_empty,
-	// compose_tool_attempt, or write_error (a compose call was made).
+	// Superseded is true when Compose succeeded but the composed text was
+	// deliberately discarded unwritten, never an error (tars#1220 review):
+	// either the main session's claim could not be taken (a real turn
+	// started while composing, Reason "busy") or it could, but the
+	// session's message count had already grown since before Compose
+	// started (the user spoke first, Reason "user_spoke"). The runtime
+	// (deliverLocked/applyLocked) must count this attempt toward
+	// DailySpeakCalls like any other Composed call, but never toward the
+	// speak backoff schedule (SpeakFailCount) or cooldown/daily-cap pacing
+	// (spoken()) — Compose ran, but nothing was actually said.
+	Superseded bool
+	// Reason explains the outcome when it is not delivered: busy (the
+	// main session's claim was unavailable, either before Compose — no
+	// compose call was made — or after, with Superseded true), "user_spoke"
+	// (Superseded true, see above), speak_unavailable (no composer
+	// configured, or the provider cannot do a tool-free call — no compose
+	// call), compose_error, compose_empty, compose_tool_attempt, or
+	// write_error (a compose call was made).
 	Reason string
 }
 

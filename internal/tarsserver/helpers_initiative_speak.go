@@ -112,22 +112,39 @@ type initiativeSpeaker struct {
 	// appended. nil (before the chat handler binds it, or when there is no
 	// chat handler at all — setup-only mode) always reports busy: writing
 	// to the main session without a working claim mechanism would risk
-	// exactly the interleaving the claim exists to prevent.
+	// exactly the interleaving the claim exists to prevent. Only held
+	// around the write itself (see Speak) — never around Compose, which is
+	// the slow step (a real LLM call, potentially tens of seconds on
+	// claude-code-cli) and must not block a user's own message to the main
+	// session for its duration (tars#1220 review).
 	claim func(sessionID string) (*chatCancelEntry, func(), bool)
 }
 
 var _ initiative.Speaker = (*initiativeSpeaker)(nil)
 
-// Speak implements initiative.Speaker.
+// Speak implements initiative.Speaker. The main session's claim is taken
+// only around the write, not around Compose: claim → Compose → write would
+// hold the claim for the whole LLM call, and on a slow backend that could
+// block a user's own message for tens of seconds behind an invisible
+// background job (tars#1220 review). Instead: read the transcript's
+// message count, Compose with no claim held, then claim and re-read the
+// count. A claim that cannot be taken (a real turn started while composing)
+// or a count that grew (the user's own message landed first) both discard
+// the composed text without writing it — SpeakOutcome.Superseded, not an
+// error: Compose still counts toward the daily speak-call cap and backoff
+// schedule's call count (a real LLM call happened), but the runtime must
+// not treat either as a compose failure (no backoff increase) or as
+// cooldown/daily-cap pacing (nothing was actually said).
 func (s *initiativeSpeaker) Speak(ctx context.Context, req initiative.SpeakRequest) (initiative.SpeakOutcome, error) {
 	if s == nil || s.claim == nil {
 		return initiative.SpeakOutcome{Reason: "busy"}, nil
 	}
-	_, release, ok := s.claim(s.mainSessionID)
-	if !ok {
-		return initiative.SpeakOutcome{Reason: "busy"}, nil
+	path := s.store.TranscriptPath(s.mainSessionID)
+	before, err := session.ReadMessages(path)
+	if err != nil {
+		s.logger.Warn().Err(err).Str("session_id", s.mainSessionID).Msg("initiative: read transcript before speak failed")
+		return initiative.SpeakOutcome{Reason: "write_error"}, err
 	}
-	defer release()
 
 	text, err := s.composer.Compose(ctx, initiative.ComposeInput{
 		Intent:     req.Intent,
@@ -140,6 +157,24 @@ func (s *initiativeSpeaker) Speak(ctx context.Context, req initiative.SpeakReque
 	})
 	if err != nil {
 		return initiative.SpeakOutcome{Composed: true, Reason: composeFailureReason(err)}, err
+	}
+
+	_, release, ok := s.claim(s.mainSessionID)
+	if !ok {
+		return initiative.SpeakOutcome{Composed: true, Superseded: true, Reason: "busy"}, nil
+	}
+	defer release()
+
+	after, err := session.ReadMessages(path)
+	if err != nil {
+		s.logger.Warn().Err(err).Str("session_id", s.mainSessionID).Msg("initiative: read transcript after speak compose failed")
+		return initiative.SpeakOutcome{Composed: true, Reason: "write_error"}, err
+	}
+	if len(after) > len(before) {
+		// The user (or something else) already wrote to the main session
+		// while Compose was in flight — never append a stale greeting
+		// behind their own, already-sent message.
+		return initiative.SpeakOutcome{Composed: true, Superseded: true, Reason: "user_spoke"}, nil
 	}
 
 	if err := s.writeMessage(req, text); err != nil {

@@ -258,6 +258,63 @@ func TestLiveSpeakBusyClaimSkipsWithoutCountingAsComposed(t *testing.T) {
 	}
 }
 
+// TestLiveSpeakSupersededCountsComposeCallButNotFailureOrCooldown checks
+// the claim-reorder requirement (tars#1220 review finding f2): a
+// Superseded outcome (Compose ran, but the claim was lost to a real turn,
+// or the user had already spoken, so the text was discarded unwritten)
+// counts as a real compose attempt toward DailySpeakCalls (an LLM call
+// actually happened) but must not be mistaken for a compose failure (no
+// SpeakFailCount increase — so the next tick is not backed off) or for a
+// delivered speak (no cooldown/daily-spoken-count advance — spoken() stays
+// false, so a second, uncomposed tick right after must still want to
+// speak).
+func TestLiveSpeakSupersededCountsComposeCallButNotFailureOrCooldown(t *testing.T) {
+	now := at(9, 0)
+	speaker := &fakeSpeaker{outcomes: []SpeakOutcome{
+		{Composed: true, Superseded: true, Reason: deliveryReasonBusy},
+		{Composed: true, Superseded: true, Reason: deliveryReasonUserSpoke},
+	}}
+	r := liveRuntime(t, &now, speaker, nil)
+	r.deps.Observer = &fakeObserver{obs: Observation{
+		ConsoleConnectedAt: now.Add(-time.Minute),
+		RecentUser:         []UserMessage{{At: now.Add(-25 * time.Hour)}},
+	}}
+
+	e := r.RunOnce(context.Background())
+	if e.Delivery != DeliverySkipped || e.DeliveryReason != deliveryReasonBusy || !e.Composed {
+		t.Fatalf("entry = %+v, want skipped/busy with Composed=true (the claim-lost case)", e)
+	}
+	if r.hist.SpeakCallsToday != 1 {
+		t.Fatalf("hist.SpeakCallsToday = %d, want 1 (Compose ran)", r.hist.SpeakCallsToday)
+	}
+	if r.hist.SpeakFailCount != 0 {
+		t.Fatalf("hist.SpeakFailCount = %d, want 0 (discarding is not a compose failure)", r.hist.SpeakFailCount)
+	}
+	if r.hist.Today != 0 || !r.hist.LastSpokeAt.IsZero() {
+		t.Fatalf("hist = %+v, a superseded speak must not count toward cooldown/daily-spoken pacing", r.hist)
+	}
+
+	// No backoff in effect (SpeakFailCount is still 0), so the very next
+	// minute's tick must try to compose again rather than skip.
+	now = now.Add(time.Minute)
+	e2 := r.RunOnce(context.Background())
+	if e2.Delivery != DeliverySkipped || e2.DeliveryReason != deliveryReasonUserSpoke || !e2.Composed {
+		t.Fatalf("entry 2 = %+v, want skipped/user_spoke with Composed=true (the user-already-spoke case), not backed off", e2)
+	}
+	if speaker.callCount() != 2 {
+		t.Fatalf("speaker calls = %d, want 2 (no backoff held it back)", speaker.callCount())
+	}
+	if r.hist.SpeakCallsToday != 2 {
+		t.Fatalf("hist.SpeakCallsToday = %d, want 2", r.hist.SpeakCallsToday)
+	}
+	if r.hist.SpeakFailCount != 0 {
+		t.Fatalf("hist.SpeakFailCount = %d, want still 0", r.hist.SpeakFailCount)
+	}
+	if r.hist.Today != 0 {
+		t.Fatalf("hist.Today = %d, want 0 (still nothing actually delivered)", r.hist.Today)
+	}
+}
+
 // TestLiveSpeakRestartRestoresBackoffFromLedger checks that a fresh Runtime
 // over a ledger holding consecutive compose errors resumes the backoff
 // schedule instead of calling immediately.

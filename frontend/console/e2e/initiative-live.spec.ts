@@ -97,6 +97,22 @@ test('live mode speaks once, shows it in the thread, and stays quiet on the very
 
   await expect(serverLine(page)).toBeVisible()
   await expect(serverLine(page)).toHaveText(SPOKEN_TEXT)
+
+  // Regression guard (PR #1229 review): the line must keep showing, not
+  // just flash once past this one assertion. Wait past a full
+  // sessionActivity poll cycle (4s, lib/stores/sessionActivity.svelte.ts)
+  // — whose response can legitimately flip CASE's *expression* to
+  // 'working' if some other session has a running turn
+  // (lib/companion.ts companionExpression: a real running line always
+  // outranks a cue for the face) — and past more than two of the
+  // component's own 1s cue timer ticks (CompanionPet.svelte's cueTimer),
+  // which is what actually re-evaluates the cue's 5-minute expiry
+  // (COMPANION_SERVER_CUE_LINE_MS). Neither one may clear the bubble's
+  // *line*: hasServerLine gates companionShouldAutoClose specifically so
+  // a still-showing line survives both.
+  await page.waitForTimeout(4500)
+  await expect(serverLine(page)).toBeVisible()
+  await expect(serverLine(page)).toHaveText(SPOKEN_TEXT)
   await page.screenshot({ path: testInfo.outputPath('initiative-bubble.png') })
 
   // Clicking the line goes to the main session and shows the same words,

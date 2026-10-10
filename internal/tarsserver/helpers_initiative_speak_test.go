@@ -185,7 +185,12 @@ func TestInitiativeSpeakerDeliversAssistantMessageAndCompanionEvent(t *testing.T
 	}
 }
 
-func TestInitiativeSpeakerBusyWhenClaimFails(t *testing.T) {
+// TestInitiativeSpeakerNoClaimAtAllIsBusyWithNoCompose covers the one case
+// where Compose genuinely never runs: no claim function at all (s.claim ==
+// nil, e.g. before the chat handler binds it, or setup-only mode — see
+// initiativeSpeaker.claim's doc comment). Speak must fail fast here,
+// before ever calling the composer.
+func TestInitiativeSpeakerNoClaimAtAllIsBusyWithNoCompose(t *testing.T) {
 	store := session.NewStore(t.TempDir())
 	main, err := store.EnsureMain()
 	if err != nil {
@@ -197,23 +202,122 @@ func TestInitiativeSpeakerBusyWhenClaimFails(t *testing.T) {
 		mainSessionID: main.ID, store: store,
 		composer: &initiative.SpeechComposer{Client: client},
 		notify:   func(context.Context, notificationEvent) { called = true },
-		logger:   zerolog.Nop(), claim: neverClaims,
+		logger:   zerolog.Nop(),
 	}
 	outcome, err := speaker.Speak(context.Background(), initiative.SpeakRequest{Intent: initiative.IntentGreet})
 	if err != nil {
 		t.Fatalf("Speak: %v", err)
 	}
-	if outcome.Delivered || outcome.Composed || outcome.Reason != "busy" {
+	if outcome.Delivered || outcome.Composed || outcome.Superseded || outcome.Reason != "busy" {
 		t.Fatalf("outcome = %+v, want busy with no compose", outcome)
 	}
 	if len(client.messages) != 0 {
-		t.Fatal("compose must not be called when the claim fails")
+		t.Fatal("compose must not be called with no claim function at all")
 	}
 	if called {
-		t.Fatal("companion event must not fire when the claim fails")
+		t.Fatal("companion event must not fire")
 	}
 	if msgs, _ := session.ReadMessages(store.TranscriptPath(main.ID)); len(msgs) != 0 {
-		t.Fatal("no message must be written when the claim fails")
+		t.Fatal("no message must be written")
+	}
+}
+
+// TestInitiativeSpeakerComposesWithoutClaimThenDiscardsIfTurnStarted
+// covers review finding f2's first case (tars#1220): a real chat turn
+// starts in the main session while Compose is in flight. Compose must
+// still run (and be counted — a real LLM call happened, so it counts
+// toward DailySpeakCalls) with no claim held the whole time, and only
+// then does Speak try to claim the session to write — by which point the
+// turn holds it, so Speak discards the composed text instead of writing
+// it or blocking the turn. Composed=true + Superseded=true + reason
+// "busy" is how the runtime (deliverLocked/applyLocked) tells this apart
+// from an actual compose failure: counted toward the call cap, never
+// toward the backoff schedule.
+func TestInitiativeSpeakerComposesWithoutClaimThenDiscardsIfTurnStarted(t *testing.T) {
+	store := session.NewStore(t.TempDir())
+	main, err := store.EnsureMain()
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := &speakStubClient{resp: speakTextResponse("Welcome back!")}
+	called := false
+	speaker := &initiativeSpeaker{
+		mainSessionID: main.ID, store: store,
+		composer: &initiative.SpeechComposer{Client: client},
+		notify:   func(context.Context, notificationEvent) { called = true },
+		logger:   zerolog.Nop(), claim: neverClaims,
+	}
+	outcome, err := speaker.Speak(context.Background(), initiative.SpeakRequest{Intent: initiative.IntentGreet})
+	if err != nil {
+		t.Fatalf("Speak: %v, want no error (discarding is not a failure)", err)
+	}
+	if outcome.Delivered || !outcome.Composed || !outcome.Superseded || outcome.Reason != "busy" {
+		t.Fatalf("outcome = %+v, want Composed+Superseded with reason busy", outcome)
+	}
+	if len(client.messages) == 0 {
+		t.Fatal("compose must run with no claim held, before Speak ever tries to claim")
+	}
+	if called {
+		t.Fatal("companion event must not fire for a discarded speak")
+	}
+	if msgs, _ := session.ReadMessages(store.TranscriptPath(main.ID)); len(msgs) != 0 {
+		t.Fatal("no message must be written when the turn beat the claim")
+	}
+}
+
+// TestInitiativeSpeakerComposesThenDiscardsIfUserAlreadySpoke covers
+// review finding f2's second case: the claim itself is free by the time
+// Compose finishes, but a message already landed in the main session
+// while composing (a turn that started and finished entirely during
+// Compose, or any other writer) — the user spoke first. The message-count
+// comparison (not a timestamp — this spec uses deterministic e2e clocks
+// that Speak never controls) is what catches this once the claim is held:
+// a higher count than the one read before Compose started means Speak
+// must still discard the text instead of appending a now-stale greeting
+// behind it.
+func TestInitiativeSpeakerComposesThenDiscardsIfUserAlreadySpoke(t *testing.T) {
+	store := session.NewStore(t.TempDir())
+	main, err := store.EnsureMain()
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := &speakStubClient{resp: speakTextResponse("Welcome back!")}
+	called := false
+	// claimAfterUserMessage simulates a turn that both started and
+	// finished writing to the main session while Compose was running: by
+	// the time Speak tries to claim, the turn is done (the claim is free)
+	// but it already appended a real message.
+	claimAfterUserMessage := func(string) (*chatCancelEntry, func(), bool) {
+		if err := session.AppendMessage(store.TranscriptPath(main.ID), session.Message{Role: "user", Content: "hi there"}); err != nil {
+			t.Fatal(err)
+		}
+		return nil, func() {}, true
+	}
+	speaker := &initiativeSpeaker{
+		mainSessionID: main.ID, store: store,
+		composer: &initiative.SpeechComposer{Client: client},
+		notify:   func(context.Context, notificationEvent) { called = true },
+		logger:   zerolog.Nop(), claim: claimAfterUserMessage,
+	}
+	outcome, err := speaker.Speak(context.Background(), initiative.SpeakRequest{Intent: initiative.IntentGreet})
+	if err != nil {
+		t.Fatalf("Speak: %v, want no error (discarding is not a failure)", err)
+	}
+	if outcome.Delivered || !outcome.Composed || !outcome.Superseded || outcome.Reason != "user_spoke" {
+		t.Fatalf("outcome = %+v, want Composed+Superseded with reason user_spoke", outcome)
+	}
+	if len(client.messages) == 0 {
+		t.Fatal("compose must run before the message-count check can even happen")
+	}
+	if called {
+		t.Fatal("companion event must not fire for a discarded speak")
+	}
+	msgs, err := session.ReadMessages(store.TranscriptPath(main.ID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(msgs) != 1 || msgs[0].Role != "user" {
+		t.Fatalf("transcript = %+v, want only the user's own message (no initiative text appended)", msgs)
 	}
 }
 
@@ -264,23 +368,30 @@ func TestInitiativeSpeakerComposeFailureReasons(t *testing.T) {
 }
 
 // TestInitiativeSpeakerWriteErrorWhenAppendFails covers the write_error
-// outcome (tars#1220 review finding f3): Compose succeeds, but the
-// transcript itself cannot be written (its path is a directory here,
-// standing in for a disk/permission failure). Composed must stay true (an
-// LLM call did happen and counts toward the daily cap/backoff) while
-// Delivered stays false, and no companion event fires for words that were
-// never actually saved anywhere.
+// outcome (tars#1220 review finding f3, re-verified after the claim
+// reorder in finding f2): Compose succeeds with no claim held, but the
+// transcript itself cannot be written once Speak holds the claim and goes
+// to check for new messages/append. The directory is created inside the
+// claim callback, not before Speak runs, so the baseline read (taken
+// before Compose, with no claim held) still succeeds against a normal
+// empty transcript — the failure is specifically at the claimed write
+// step, standing in for a disk/permission error there (a directory
+// sitting at that exact path makes the open fail, without needing
+// OS-specific permission tricks). Composed must stay true (an LLM call
+// did happen and counts toward the daily cap/backoff) while Delivered
+// stays false, and no companion event fires for words that were never
+// actually saved anywhere.
 func TestInitiativeSpeakerWriteErrorWhenAppendFails(t *testing.T) {
 	store := session.NewStore(t.TempDir())
 	main, err := store.EnsureMain()
 	if err != nil {
 		t.Fatal(err)
 	}
-	// AppendMessage opens TranscriptPath for writing; a directory sitting
-	// at that exact path makes the open fail, as a real disk/permission
-	// error would, without needing OS-specific permission tricks.
-	if err := os.MkdirAll(store.TranscriptPath(main.ID), 0o755); err != nil {
-		t.Fatal(err)
+	claimThenBreakTranscript := func(string) (*chatCancelEntry, func(), bool) {
+		if err := os.MkdirAll(store.TranscriptPath(main.ID), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		return nil, func() {}, true
 	}
 	client := &speakStubClient{resp: speakTextResponse("Welcome back!")}
 	var events []notificationEvent
@@ -288,13 +399,13 @@ func TestInitiativeSpeakerWriteErrorWhenAppendFails(t *testing.T) {
 		mainSessionID: main.ID, store: store,
 		composer: &initiative.SpeechComposer{Client: client},
 		notify:   func(_ context.Context, evt notificationEvent) { events = append(events, evt) },
-		logger:   zerolog.Nop(), claim: alwaysClaims,
+		logger:   zerolog.Nop(), claim: claimThenBreakTranscript,
 	}
 	outcome, err := speaker.Speak(context.Background(), initiative.SpeakRequest{Intent: initiative.IntentGreet, Now: time.Now()})
 	if err == nil {
 		t.Fatal("expected an error")
 	}
-	if !outcome.Composed || outcome.Delivered || outcome.Reason != "write_error" {
+	if !outcome.Composed || outcome.Delivered || outcome.Superseded || outcome.Reason != "write_error" {
 		t.Fatalf("outcome = %+v, want Composed with reason write_error", outcome)
 	}
 	if len(events) != 0 {
