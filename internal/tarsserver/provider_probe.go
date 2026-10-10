@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/devlikebear/tars/internal/focusprobe"
 	"github.com/devlikebear/tars/internal/llmdefaults"
 )
 
@@ -78,8 +79,8 @@ func runProviderCLI(ctx context.Context, path string, args ...string) ([]byte, e
 	defer cancel()
 	cmd := exec.CommandContext(ctx, path, args...) // NOSONAR: the binary is the provider's own CLI resolved like a chat turn does; the arguments are fixed.
 	cmd.Env = append(os.Environ(), "NO_COLOR=1")
-	cmd.WaitDelay = releaseKillGrace
-	killProcessGroupOnCancel(cmd, releaseKillGrace)
+	cmd.WaitDelay = focusprobe.KillGrace
+	focusprobe.KillProcessGroupOnCancel(cmd, focusprobe.KillGrace)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	err := cmd.Run()

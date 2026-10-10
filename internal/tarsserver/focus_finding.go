@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/devlikebear/tars/internal/focuspipeline"
+	"github.com/devlikebear/tars/internal/focusprobe"
 	"github.com/devlikebear/tars/internal/serverauth"
 )
 
@@ -47,7 +48,7 @@ func (a *focusAPI) addFinding(w http.ResponseWriter, r *http.Request) {
 		// The card shows the diff around file:line like the agent's
 		// findings. Git runs here, outside the pipeline store's lock.
 		if dir, err := a.sessions.GetCurrentDir(id); err == nil {
-			finding = focusFindingExcerpts(r.Context(), dir, current.BaseCommit, []focuspipeline.Finding{finding})[0]
+			finding = focusprobe.FindingExcerpts(r.Context(), dir, current.BaseCommit, []focuspipeline.Finding{finding})[0]
 		}
 	}
 	act := focuspipeline.Action{Kind: focuspipeline.ActionNone}

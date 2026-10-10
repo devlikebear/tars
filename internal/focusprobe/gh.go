@@ -1,4 +1,4 @@
-package tarsserver
+package focusprobe
 
 import (
 	"bytes"
@@ -30,9 +30,9 @@ const focusGHFields = "number,url,state,mergeStateStatus,statusCheckRollup,revie
 // focusGHTimeout bounds one probe; gh reaches the network.
 var focusGHTimeout = 20 * time.Second
 
-// focusPRProber probes PR number in dir, or with number 0 the PR of the
+// PRProber probes PR number in dir, or with number 0 the PR of the
 // branch checked out there.
-type focusPRProber func(ctx context.Context, dir string, number int) focuspipeline.PRProbe
+type PRProber func(ctx context.Context, dir string, number int) focuspipeline.PRProbe
 
 // focusGHPathEnv names the gh binary the probe runs instead of gh from
 // PATH. The console E2E points it at a stub (frontend/console/e2e/fake-gh.sh)
@@ -47,9 +47,9 @@ func focusGHBinary() string {
 	return "gh"
 }
 
-// probeFocusPR is the server's prober: gh from the person's PATH, or the
+// ProbePR is the server's prober: gh from the person's PATH, or the
 // binary TARS_FOCUS_GH_PATH names.
-func probeFocusPR(ctx context.Context, dir string, number int) focuspipeline.PRProbe {
+func ProbePR(ctx context.Context, dir string, number int) focuspipeline.PRProbe {
 	return runFocusGH(ctx, dir, focusGHBinary(), number)
 }
 
@@ -77,8 +77,8 @@ func runFocusGH(ctx context.Context, dir, bin string, number int) focuspipeline.
 	cmd.Dir = dir
 	// Never wait on a prompt nobody can answer.
 	cmd.Env = append(os.Environ(), "GH_PROMPT_DISABLED=1", "GH_NO_UPDATE_NOTIFIER=1", "GIT_TERMINAL_PROMPT=0", "NO_COLOR=1")
-	cmd.WaitDelay = releaseKillGrace
-	killProcessGroupOnCancel(cmd, releaseKillGrace)
+	cmd.WaitDelay = KillGrace
+	KillProcessGroupOnCancel(cmd, KillGrace)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	err = cmd.Run()

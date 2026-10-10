@@ -17,7 +17,7 @@ extensions:
       - ["github.com/devlikebear/tars/pkg/tools", "", False, "resolveWorkspacePath", "", "", "ReturnValue", "path-injection", "manual"]
       - ["github.com/devlikebear/tars/pkg/tools", "", False, "resolveWorkspaceWritePath", "", "", "ReturnValue", "path-injection", "manual"]
       # A regular file under the repository top level, both with symlinks resolved.
-      - ["github.com/devlikebear/tars/internal/tarsserver", "", False, "focusInsideRepo", "", "", "ReturnValue", "path-injection", "manual"]
+      - ["github.com/devlikebear/tars/internal/focusprobe", "", False, "focusInsideRepo", "", "", "ReturnValue", "path-injection", "manual"]
       # The folder and SKILL.md of a workspace skill, both under <workspace>/skills
       # as written and with symlinks resolved. The name is kebab-case only.
       - ["github.com/devlikebear/tars/internal/tarsserver", "", False, "resolveWorkspaceSkillPaths", "", "", "ReturnValue", "path-injection", "manual"]

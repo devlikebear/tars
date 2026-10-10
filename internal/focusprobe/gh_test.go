@@ -1,4 +1,4 @@
-package tarsserver
+package focusprobe
 
 import (
 	"reflect"
