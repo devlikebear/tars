@@ -14,7 +14,7 @@ make api-check            # PR preflight: fail when the checked-in pkg/* API sna
 make security-scan        # PR preflight: scan tracked files/history for secrets and local-path leaks (gitleaks + absolute home-dir paths + private key blocks) — no machine-local absolute paths or key-shaped strings in tests/fixtures
 make ci-static-analysis-check # PR preflight: CI static-analysis guardrails
 make codeql-workflow-check # PR preflight: CodeQL code-scanning workflow guardrails
-make sonarcloud-workflow-check # PR preflight: SonarCloud evaluation workflow guardrails
+make ci-changes-test      # test scripts/ci_changes.sh, which decides which CI jobs a change needs
 make test-one TEST_NAME=TestFoo PKG=./internal/tarsserver/
 make test-race / make test-cover
 make fmt / make fmt-check / make vet / make lint / make tidy / make security-scan
@@ -278,27 +278,27 @@ TARS 기능 변경 시 홈페이지 콘텐츠도 갱신 필요 (매 변경마다
 ## CI
 
 `.github/workflows/ci.yml`:
+0. **changes** — `scripts/ci_changes.sh` lists the change's files through the GitHub API and sets `code` / `desktop`. A change that touches only documentation (`docs/**` except `public-api-surface.txt`, top-level `*.md`, `LICENSE`) skips windows-build, windows-test, pr-diff, test and (on pull requests) CodeQL; desktop / desktop-macos run only when `desktop/`, the `Makefile`, `scripts/desktop_package.sh` or the workflow changed. format and security always run. Jobs skip only on an explicit `false`, so a failed classifier runs everything. **Skip per job, never with workflow `paths` filters**: a required check whose workflow never starts stays pending and blocks the merge, while a skipped job counts as passed. A new top-level file or directory that no build or test reads must be added to `is_doc` to be skipped (`make ci-changes-test`)
 1. **format** — `make fmt-check` (`gofmt -l` over the tree). Fails the build on any unformatted file. `.golangci.yml` enables only `govet`/`ineffassign`/`revive`, so no linter covers formatting — this job is the only guard
 2. **security** — gitleaks + ripgrep secrets scan
 3. **windows-build** — `make windows-build-check`, cross-compiling the whole module for Windows on ubuntu
 4. **windows-test** — `scripts/windows_test.sh` on `windows-latest`. The only job that runs tests on Windows; everything else is Linux
 5. **pr-diff** — pull requests run Svelte console checks, `npm run test:ci`, `make console-e2e` (Playwright specs in `frontend/console/e2e/` against the real server and `e2e/mock-llm.mjs`; report uploaded on failure), `make lint-diff` (with new-line `errcheck`/`staticcheck`), and `make test-cover-diff` against the PR base SHA
 6. **desktop** / **desktop-macos** — `make desktop-test`, then package the Linux + Windows archives (ubuntu) and the `.app` bundle (macos-14, `codesign --verify`, `--version` check)
-7. **test** — pushes to main run Node 24 → frontend console checks/test slice → Playwright → Go test + coverage threshold → Codecov
+7. **test** — pushes to main run Node 24 → frontend console checks/test slice → Playwright → Go test + coverage threshold
 
 `scripts/windows_test.sh` carries two lists of Windows-failing tests — packages excluded wholesale, and individual tests skipped in otherwise-green packages. **Both are debt, not policy**: shrink them rather than adding to them. Reproduce the job locally on Windows with `make windows-test`.
 
-Note that the Linux-only test jobs cannot cover `*_windows.go` files at all, so SonarCloud's `new_coverage` gate reads low on PRs that add platform-split code.
+Note that the Linux-only test jobs cannot cover `*_windows.go` files at all, so `make test-cover-diff` cannot count lines in platform-split files.
 
 `.github/workflows/codeql.yml`:
 1. **Analyze (go)** — CodeQL autobuild + analysis for Go source
 2. **Analyze (javascript-typescript)** — buildless CodeQL analysis for Svelte/TypeScript/JavaScript
 3. **Analyze (actions)** — buildless CodeQL analysis for GitHub Actions workflows
 
-`.github/workflows/sonarcloud.yml`:
-1. **Check SonarCloud configuration** — skip cleanly unless `SONAR_TOKEN`, `SONAR_PROJECT_KEY`, and `SONAR_ORGANIZATION` are configured
-2. **Generate Go coverage** — when configured, run `make test-cover` and publish `coverage.out`
-3. **Run SonarCloud scan** — non-blocking evaluation mode; do not make this a required merge gate until the baseline and quality gate policy are reviewed
+The three Analyze checks are required and come from a matrix, so on a documentation-only pull request the job still runs and skips its steps (a matrix job skipped at job level never reports those names). Pushes to main and the weekly scan always analyze.
+
+SonarCloud and Codecov were removed in #1206: Sonar's quality gate was failing and non-blocking, and both repeated coverage that `test-cover-diff` (80% of changed lines) and `test-cover-check` (60% total) already gate. Do not add a reporting-only check back — a check either blocks the merge or does not run.
 
 See `docs/static-analysis.md` for the static-analysis layering and local workflow guards.
 
