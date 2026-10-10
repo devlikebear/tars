@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/devlikebear/tars/internal/focusprobe"
 	"github.com/devlikebear/tars/internal/session"
 )
 
@@ -82,7 +83,7 @@ func TestRunTaskVerification(t *testing.T) {
 func TestFocusVerificationExcerptKeepsTheFailure(t *testing.T) {
 	const noisy = `for i in $(seq 1 400); do echo "ok  pkg/a$i 0.1s"; done; echo "--- FAIL: TestGreet"; for i in $(seq 1 400); do echo "ok  pkg/z$i 0.1s"; done; exit 1`
 	store, id := verificationSession(t, noisy)
-	results, ok, err := runTaskVerificationCommands(context.Background(), store, id, "", []string{noisy}, 0, focusFailureExcerpt)
+	results, ok, err := runTaskVerificationCommands(context.Background(), store, id, "", []string{noisy}, 0, focusprobe.FailureExcerpt)
 	if err != nil || ok || len(results) != 1 {
 		t.Fatalf("results = %+v ok = %v err = %v", results, ok, err)
 	}

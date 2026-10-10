@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/devlikebear/tars/internal/focuspipeline"
+	"github.com/devlikebear/tars/internal/focusprobe"
 	"github.com/devlikebear/tars/internal/ops"
 	"github.com/devlikebear/tars/internal/serverauth"
 	"github.com/devlikebear/tars/internal/session"
@@ -60,7 +61,7 @@ type focusDriver struct {
 	// The PR stages (focus_pr_poll.go): the gh probe, how often it runs,
 	// how a finished pipeline's worktree ends, and where attention-worthy
 	// changes are announced.
-	probe  focusPRProber
+	probe  focusprobe.PRProber
 	prPoll time.Duration
 	// goalTick is how often the goal watcher looks; audit records its
 	// decisions in the ops automation audit (nil records none).
@@ -250,7 +251,7 @@ func (d *focusDriver) bind(deps chatHandlerDeps) {
 		return err
 	}
 	d.verify = func(ctx context.Context, sessionID, command string) (focuspipeline.VerificationResult, error) {
-		results, _, err := runTaskVerificationCommands(ctx, deps.store, sessionID, "", []string{command}, focusVerifyTimeout, focusFailureExcerpt)
+		results, _, err := runTaskVerificationCommands(ctx, deps.store, sessionID, "", []string{command}, focusVerifyTimeout, focusprobe.FailureExcerpt)
 		if err != nil || len(results) == 0 {
 			return focuspipeline.VerificationResult{Command: command}, err
 		}

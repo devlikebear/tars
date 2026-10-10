@@ -1,4 +1,4 @@
-package tarsserver
+package focusprobe
 
 import (
 	"regexp"
@@ -17,13 +17,13 @@ const (
 	focusExcerptAfter  = 8
 )
 
-// focusFailureExcerpt is the proof excerpt of a focus build-loop
+// FailureExcerpt is the proof excerpt of a focus build-loop
 // verification command (proofverifier.Options.Excerpt): the lines around
 // each failure line, wherever they sit in the output — `go test ./...`
 // prints a failing package's detail between hundreds of "ok" lines — or,
 // with no failure line, the tail, which holds a run's summary. It never
 // exceeds limit bytes and always ends on whole UTF-8.
-func focusFailureExcerpt(text string, limit int) string {
+func FailureExcerpt(text string, limit int) string {
 	if len(text) <= limit {
 		return text
 	}
