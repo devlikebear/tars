@@ -301,6 +301,8 @@ Note that the Linux-only test jobs cannot cover `*_windows.go` files at all, so 
 
 The three Analyze checks are required and come from a matrix, so on a documentation-only pull request the job still runs and skips its steps (a matrix job skipped at job level never reports those names). Pushes to main and the weekly scan always analyze.
 
+`.github/codeql/extensions/tars-go/` is a CodeQL model pack (loaded automatically) that names the path resolvers whose result is confined, as `path-injection` barriers — CodeQL does not follow TARS's own resolvers and does not recognize a `filepath.Rel` containment check, so without it every file tool is reported. A listed function is trusted by the scanner from then on: add a row only for one that rejects `..`, re-checks after resolving symlinks, and has a test for both (`resolvePathWithPolicy` failed the second until #1212). A pull request scan is diff-informed and always shows 0 results, so a pack change is checked on a full branch scan, and a misspelled row fails silently. Details: `docs/static-analysis.md` → Path barriers.
+
 SonarCloud and Codecov were removed in #1206: Sonar's quality gate was failing and non-blocking, and both repeated coverage that `test-cover-diff` (80% of changed lines) and `test-cover-check` (60% total) already gate. Do not add a reporting-only check back — a check either blocks the merge or does not run.
 
 See `docs/static-analysis.md` for the static-analysis layering and local workflow guards.

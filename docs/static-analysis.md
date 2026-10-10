@@ -35,6 +35,44 @@ Run the local guard before changing the workflow:
 make codeql-workflow-check
 ```
 
+### Path barriers
+
+`go/path-injection` reports every filesystem call whose path can be traced to
+a request or a tool argument. CodeQL understands a few standard-library checks
+written inline (`filepath.IsLocal`, `strings.HasPrefix`, a `..` test, a regexp
+match), but it does not follow TARS's own resolvers, and a containment check
+written with `filepath.Rel` is not one it recognizes. Before the model pack,
+every file tool was reported, and 65 alerts had been dismissed by hand.
+
+`.github/codeql/extensions/tars-go/` is a CodeQL model pack that names the
+functions whose result is a confined path. Code scanning loads a pack in that
+folder without any workflow setting. Its 5 rows closed 16 of the 41 open
+`go/path-injection` alerts (#1206).
+
+A function listed there is trusted by the scanner from then on, so the bar is:
+
+- it rejects `..` and absolute paths outside its root,
+- it checks again after resolving symlinks, and
+- a test proves both, including the symlink case.
+
+`resolvePathWithPolicy` did not meet the second point until #1212, which is
+how that bug was found. Read the function before adding a row for it.
+
+Two things to know when checking a change to the pack:
+
+- **A pull request scan cannot show the effect.** Pull requests are analyzed
+  diff-informed: only alerts on changed lines are reported, so every pull
+  request shows 0 results. Compare full scans instead — push the branch with a
+  temporary `push` trigger for it in `codeql.yml`, then
+  `gh api 'repos/devlikebear/tars/code-scanning/alerts?state=open&ref=refs/heads/<branch>'`.
+- **A wrong row fails silently.** A misspelled package, function or kind is
+  not an error; the alerts just stay.
+
+What stays open after the pack is one of two kinds, and neither is modeled:
+a check inside a resolver while it is still validating (the `os.Lstat` in
+`resolveWorkspaceWritePath`), and a path whose "user-controlled" part is a
+folder the person chose for the session, which is the feature and not a leak.
+
 ## Which jobs a change runs
 
 The `changes` job in `ci.yml` and `codeql.yml` runs `scripts/ci_changes.sh`,
