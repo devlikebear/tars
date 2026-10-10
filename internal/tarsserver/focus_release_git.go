@@ -33,6 +33,15 @@ var (
 // releaseSSHOptions keep ssh from prompting or waiting long to connect.
 const releaseSSHOptions = "-o BatchMode=yes -o ConnectTimeout=5"
 
+// gitObjectID matches a full or abbreviated commit id. Commit ids that reach
+// git as bare arguments come from outside this process — gh's JSON, the
+// pipeline file — and a value starting with "-" would be read as an option.
+var gitObjectID = regexp.MustCompile(`^[0-9a-fA-F]{7,64}$`)
+
+func isGitObjectID(id string) bool {
+	return gitObjectID.MatchString(id)
+}
+
 func runGit(ctx context.Context, timeout time.Duration, dir string, env []string, args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
@@ -112,6 +121,9 @@ func gitLatestReleaseTag(ctx context.Context, repo string) (releaseTag, bool) {
 // gitTagHasCommit reports whether commit is in tag's history. A commit the
 // repository does not have is not: the tag's own history is all local.
 func gitTagHasCommit(ctx context.Context, repo, tag, commit string) bool {
+	if !isGitObjectID(commit) {
+		return false
+	}
 	_, err := runGit(ctx, releaseGitTimeout, repo, nil, "merge-base", "--is-ancestor", commit+"^{commit}", "refs/tags/"+tag+"^{commit}")
 	return err == nil
 }
