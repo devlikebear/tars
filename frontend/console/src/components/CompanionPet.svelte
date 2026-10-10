@@ -3,6 +3,7 @@
   import { t } from '../i18n'
   import {
     companionActionFor,
+    companionCueDismissServer,
     companionCueTick,
     companionCuesFor,
     companionExpression,
@@ -26,6 +27,7 @@
     type CompanionFailure,
     type CompanionIdleKind,
     type CompanionLine,
+    type CompanionServerCue,
   } from '../lib/companion'
   import type { ActivityMap } from '../lib/sessionBoard'
 
@@ -42,6 +44,13 @@
     // (companionWarningFromEvent), or null/undefined for none yet. Only the
     // value *changing* counts as a new signal — see the $effect below.
     warningAt?: number | null
+    // The latest validated category "companion" SSE event
+    // (companionServerCueFromEvent), or null/undefined for none yet
+    // (#1192). `serverCueAt` is the edge marker — same pattern as
+    // `warningAt` above — since `serverCue` itself is a fresh object on
+    // every SSE event and so cannot be compared by identity across renders.
+    serverCue?: CompanionServerCue | null
+    serverCueAt?: number | null
     onNavigate?: (path: string) => void
     onDismissFailure?: (key: string) => void
     onAsk?: (prompt: string) => void
@@ -53,6 +62,8 @@
     activeSessionId = null,
     routeView = 'home',
     warningAt = null,
+    serverCue = null,
+    serverCueAt = null,
     onNavigate,
     onDismissFailure,
     onAsk,
@@ -99,14 +110,26 @@
   let liveCue = $derived(
     cueState.expiresAt !== null && now >= cueState.expiresAt ? null : cueState.cue,
   )
-  let cues = $derived(companionCuesFor({ cue: liveCue, expiresAt: cueState.expiresAt }, longQuiet))
+  // `cueState.server` fades along with `liveCue` once `now` passes
+  // `expiresAt` — without this, the server line/expression would keep
+  // reading from a cueState the ticking clock already considers expired.
+  let liveServer = $derived(
+    cueState.expiresAt !== null && now >= cueState.expiresAt ? undefined : cueState.server,
+  )
+  let cues = $derived(companionCuesFor({ cue: liveCue, expiresAt: cueState.expiresAt, server: liveServer }, longQuiet))
   let expression = $derived(companionExpression(snapshot, cues))
+  // The bubble's server line (#1192): only set while the cue is live and
+  // the event actually carried a line (body_only cues are expression-only
+  // and never show here).
+  let serverLine = $derived(liveCue === 'server' && liveServer?.line ? liveServer : undefined)
+  let hasServerLine = $derived(!!serverLine)
 
   // Starts empty, not a read of the `activity` prop: an empty map has no
   // `running` entries to compare against, so the first effect run below
   // never finds a false "just finished" transition at mount.
   let prevActivityForCue: ActivityMap = {}
   let lastSeenWarningAt: number | null = null
+  let lastSeenServerCueAt: number | null = null
   let hiddenAt: number | null = null
   let cueTimer: ReturnType<typeof setInterval> | null = null
 
@@ -148,7 +171,7 @@
       open = true
       autoOpened = true
     }
-    if (companionShouldAutoClose(autoOpened, lines)) {
+    if (companionShouldAutoClose(autoOpened, lines, hasServerLine)) {
       open = false
       autoOpened = false
     }
@@ -192,6 +215,23 @@
     if (warningAt != null && warningAt !== lastSeenWarningAt) {
       lastSeenWarningAt = warningAt
       cueState = companionCueTick(cueState, Date.now(), { warning: true })
+    }
+  })
+
+  // `serverCueAt` is the edge marker for `serverCue` (#1192), same pattern
+  // as `warningAt` above. A line opens the bubble by itself, same as a new
+  // approval wait or failure; a body_only cue (no line) only changes the
+  // face.
+  $effect(() => {
+    if (serverCueAt != null && serverCueAt !== lastSeenServerCueAt) {
+      lastSeenServerCueAt = serverCueAt
+      if (serverCue) {
+        cueState = companionCueTick(cueState, Date.now(), { server: serverCue })
+        if (serverCue.line) {
+          open = true
+          autoOpened = true
+        }
+      }
     }
   })
 
@@ -419,6 +459,10 @@
   function closeBubble() {
     open = false
     autoOpened = false
+    // The user closing the bubble dismisses a showing server line too
+    // (#1192) — a no-op when the active cue is not 'server', so this never
+    // cuts a warning/justFinished/justArrived cue short.
+    cueState = companionCueDismissServer(cueState)
   }
 
   function goToLine(line: CompanionLine) {
@@ -426,6 +470,16 @@
     // Looking at a failure counts as handling it: it leaves the list
     // instead of sitting there once the user has already gone to look.
     if (line.kind === 'failure') onDismissFailure?.(line.key)
+    open = false
+    autoOpened = false
+  }
+
+  // The server line (#1192) only ever has a click action when the event
+  // carried a session_id — otherwise it is dismissed by closing the
+  // bubble only, same as the component props' doc comment promises.
+  function goToServerLine() {
+    if (serverLine?.sessionId) onNavigate?.(`/console/chat/${serverLine.sessionId}`)
+    cueState = companionCueDismissServer(cueState)
     open = false
     autoOpened = false
   }
@@ -449,8 +503,31 @@
         <span class="companion-state">{$t.companion.header}</span>
         <button type="button" class="companion-close" aria-label={$t.companion.closeAria} onclick={closeBubble}>&times;</button>
       </div>
+      {#if serverLine}
+        <!-- The server-requested line (#1192): visually distinct from the
+             "waiting on you" lines below — it is CASE saying something, not
+             a queue item — and shown above them. A session_id makes it a
+             button that navigates there and clears the line; without one
+             it only goes away when the bubble is closed. -->
+        <div class="companion-server-line-row">
+          {#if serverLine.sessionId}
+            <!-- No aria-label: the button's own text (the server's
+                 message) is the accessible name, same as every other
+                 .companion-line button in this list — a label here would
+                 replace that text for assistive tech instead of adding to
+                 it. -->
+            <button type="button" class="companion-line companion-line-server" onclick={goToServerLine}>
+              {serverLine.line}
+            </button>
+          {:else}
+            <p class="companion-line companion-line-server companion-line-server-static">{serverLine.line}</p>
+          {/if}
+        </div>
+      {/if}
       {#if snapshot.lines.length === 0}
-        <p class="companion-empty">{$t.companion.emptyLine}</p>
+        {#if !serverLine}
+          <p class="companion-empty">{$t.companion.emptyLine}</p>
+        {/if}
       {:else}
         <ul class="companion-lines">
           {#each snapshot.lines as line (line.key)}
@@ -1069,6 +1146,23 @@
 
   .companion-line-failure {
     border-color: rgba(229, 62, 62, 0.4);
+  }
+
+  /* The server-requested line (#1192): CASE talking, not a queue item —
+     tinted with the brand colour instead of the neutral/failure borders
+     the waiting lines use, and sits above them with its own gap. */
+  .companion-server-line-row {
+    margin-bottom: var(--space-1);
+  }
+
+  .companion-line-server {
+    border-color: rgba(var(--primary-rgb), 0.5);
+    background: color-mix(in srgb, var(--primary) 14%, var(--surface-muted));
+  }
+
+  .companion-line-server-static {
+    margin: 0;
+    cursor: default;
   }
 
   .companion-line-dismiss {

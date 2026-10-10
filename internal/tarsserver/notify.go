@@ -22,6 +22,14 @@ import (
 const notificationEventType = "notification"
 const keepaliveEventType = "keepalive"
 
+// companionEventCategory marks an event meant for CASE's face and bubble
+// (#1192), not for the general notification list. Emit never persists or
+// desktop-notifies these — they only ever reach subscribers of the live
+// broker (see Emit below). The event that actually sends one (initiative,
+// #1000) is out of scope here; this is just the wire format and the
+// dispatcher's special-case.
+const companionEventCategory = "companion"
+
 var notificationAppleScriptPath = "/usr/bin/osascript"
 
 type notificationEvent struct {
@@ -41,6 +49,11 @@ type notificationEvent struct {
 	// RequestID names the permission request an "approval" notification is
 	// about (see chat_activity.go).
 	RequestID string `json:"request_id,omitempty"`
+	// Expression names one of CASE's faces (lib/companion.ts
+	// COMPANION_EXPRESSIONS) for a companionEventCategory event. The
+	// console ignores the whole event when this is set to a value it does
+	// not recognize (#1192).
+	Expression string `json:"expression,omitempty"`
 }
 
 func newNotificationEvent(category, severity, title, message string) notificationEvent {
@@ -251,6 +264,17 @@ func (d *notificationDispatcher) Emit(ctx context.Context, evt notificationEvent
 	evt.Type = notificationEventType
 	if strings.TrimSpace(evt.Timestamp) == "" {
 		evt.Timestamp = time.Now().UTC().Format(time.RFC3339)
+	}
+	// A companion event (#1192) is CASE's live face/bubble, not something
+	// to list in /v1/events/history, count toward unread, or push as a
+	// desktop notification — it is not the general alert the rest of this
+	// method is built for. It only ever reaches whoever is subscribed to
+	// the broker right now.
+	if strings.EqualFold(strings.TrimSpace(evt.Category), companionEventCategory) {
+		if d.broker != nil {
+			d.broker.publish(evt)
+		}
+		return
 	}
 	coalesced := false
 	if d.store != nil {

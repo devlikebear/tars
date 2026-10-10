@@ -20,7 +20,12 @@ export function mockLLMWebServer(mockPort: number) {
 export function tarsServeWebServer(opts: { repoRoot: string; workspace: string; tarsPort: number }) {
   const { repoRoot, workspace, tarsPort } = opts
   return {
-    command: `go run ./cmd/tars serve --workspace-dir "${workspace}" --config "${join(workspace, 'config', 'tars.config.yaml')}" --api-addr 127.0.0.1:${tarsPort}`,
+    // `-tags e2e` builds in POST /v1/e2e/events (internal/tarsserver
+    // e2e_events.go), the only way a spec can make the real server emit
+    // an arbitrary notification — e.g. a companion expression/line
+    // (#1192) — on the real /v1/events/stream. A production build never
+    // has this tag, so that route does not exist outside this harness.
+    command: `go run -tags e2e ./cmd/tars serve --workspace-dir "${workspace}" --config "${join(workspace, 'config', 'tars.config.yaml')}" --api-addr 127.0.0.1:${tarsPort}`,
     cwd: repoRoot,
     url: `http://127.0.0.1:${tarsPort}/console`,
     env: {
