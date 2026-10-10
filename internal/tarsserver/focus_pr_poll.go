@@ -315,6 +315,9 @@ func gitDiscardCheck(ctx context.Context, dir, head string) string {
 	if strings.TrimSpace(head) == "" {
 		return "the merged pull request's head commit is unknown"
 	}
+	if !isGitObjectID(head) {
+		return "the merged pull request's head is not a commit id"
+	}
 	status, err := runGit(ctx, releaseGitTimeout, dir, nil, "status", "--porcelain")
 	if err != nil {
 		return "git status failed in the worktree"

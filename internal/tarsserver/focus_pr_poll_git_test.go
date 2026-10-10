@@ -102,3 +102,57 @@ func TestGitLocalBranch(t *testing.T) {
 		t.Fatalf("detached = %q", got)
 	}
 }
+
+func TestIsGitObjectID(t *testing.T) {
+	for id, want := range map[string]bool{
+		"91cf959d": true,
+		"91cf959d0c0d6a3c4a2f3b1e5d7c9a8b6f4e2d10": true,
+		"ABCDEF1":             true,
+		"":                    false,
+		"abc123":              false, // shorter than git's shortest abbreviation
+		"HEAD":                false,
+		"--help":              false,
+		"-n":                  false,
+		"91cf959d --output=x": false,
+		"91cf959g":            false,
+	} {
+		if got := isGitObjectID(id); got != want {
+			t.Errorf("isGitObjectID(%q) = %v, want %v", id, got, want)
+		}
+	}
+}
+
+// A head that is not a commit id never reaches git, where one starting with
+// "-" would be read as an option.
+func TestGitDiscardCheckRejectsOptionShapedHead(t *testing.T) {
+	dir := gitRepo(t)
+	commitFile(t, dir, "b.txt", "b\n")
+	for _, head := range []string{"--help", "-h", "main"} {
+		if reason := gitDiscardCheck(context.Background(), dir, head); reason != "the merged pull request's head is not a commit id" {
+			t.Errorf("head %q: reason = %q", head, reason)
+		}
+	}
+}
+
+func TestGitTagHasCommit(t *testing.T) {
+	ctx := context.Background()
+	dir := gitRepo(t)
+	tagged := commitFile(t, dir, "b.txt", "b\n")
+	gitIn(t, dir, "tag", "v1.0.0")
+	later := commitFile(t, dir, "c.txt", "c\n")
+
+	if !gitTagHasCommit(ctx, dir, "v1.0.0", tagged) {
+		t.Error("the tagged commit is not in its own tag")
+	}
+	if !gitTagHasCommit(ctx, dir, "v1.0.0", tagged[:8]) {
+		t.Error("an abbreviated commit id is refused")
+	}
+	if gitTagHasCommit(ctx, dir, "v1.0.0", later) {
+		t.Error("a commit after the tag is reported as in it")
+	}
+	for _, commit := range []string{"", "--help", "-h", "v1.0.0"} {
+		if gitTagHasCommit(ctx, dir, "v1.0.0", commit) {
+			t.Errorf("commit %q is reported as in the tag", commit)
+		}
+	}
+}

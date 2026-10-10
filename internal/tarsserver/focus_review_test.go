@@ -394,3 +394,24 @@ func TestFocusFindingExcerptsStayInTheRepository(t *testing.T) {
 		t.Errorf("read past the cap: %q", got[2].Excerpt)
 	}
 }
+
+// A base that is not a commit id must not reach git: `git diff --output=F`
+// writes the diff to F, so a tampered pipeline file could otherwise make the
+// server write wherever it liked.
+func TestFocusFindingExcerptsIgnoresOptionShapedBase(t *testing.T) {
+	repo, _ := focusReviewRepo(t)
+	content, _ := os.ReadFile(filepath.Join(repo, "b.go"))
+	writeRepoFile(t, repo, "b.go", strings.Replace(string(content), "line 5\n", "line five\n", 1))
+
+	leak := filepath.Join(t.TempDir(), "leak")
+	got := focusFindingExcerpts(context.Background(), repo, "--output="+leak, []focuspipeline.Finding{
+		{ID: "f1", File: "b.go", Line: 5},
+	})
+	if _, err := os.Stat(leak); err == nil {
+		t.Fatal("the base was passed to git as an option and wrote a file")
+	}
+	// It falls back to HEAD, like a pipeline with no recorded base.
+	if !strings.Contains(got[0].Excerpt, "line five") {
+		t.Fatalf("excerpt = %q, want the change against HEAD", got[0].Excerpt)
+	}
+}

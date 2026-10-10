@@ -95,7 +95,9 @@ func focusFindingExcerpts(ctx context.Context, dir, base string, findings []focu
 		return out
 	}
 	dir = top
-	if base = strings.TrimSpace(base); base == "" {
+	// The base is the commit id recorded when the pipeline started. Anything
+	// else in the pipeline file is not passed to git.
+	if base = strings.TrimSpace(base); !isGitObjectID(base) {
 		base = "HEAD"
 	}
 	diffs := map[string]string{}
