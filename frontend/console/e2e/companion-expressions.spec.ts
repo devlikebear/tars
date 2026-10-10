@@ -21,7 +21,9 @@ test("CASE's eight expressions are shapes, not a glow colour, and read apart fro
   const body = page.locator('.companion-pet .companion-body')
   await expect(body).toBeVisible()
   // The default, idle state (no activity, no failures) is neutral — the
-  // one shape this test clones and relabels into the other seven.
+  // one shape this test clones and relabels into the other seven. Every
+  // mount greets first (#1191's `justArrived` cue) for a few seconds; this
+  // retries (10s default) past that before cloning.
   await expect(body).toHaveClass(/expr-neutral/)
 
   await page.evaluate((expressions) => {

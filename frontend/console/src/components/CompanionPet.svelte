@@ -1,13 +1,30 @@
 <script lang="ts">
-  import { onDestroy } from 'svelte'
+  import { onDestroy, onMount } from 'svelte'
   import { t } from '../i18n'
   import {
+    companionActionFor,
+    companionCueTick,
+    companionCuesFor,
     companionExpression,
+    companionFailedSessionIds,
+    companionGazeApplies,
+    companionGazeOffset,
+    companionIdleEligible,
+    companionIsLongQuiet,
+    companionJustArrived,
+    companionNextIdle,
     companionShouldAutoClose,
     companionShouldOpen,
+    companionShouldRecordInput,
     companionState,
+    companionTurnsJustFinished,
     companionWaitingKeys,
+    COMPANION_CUE_NONE,
+    type CompanionAction,
+    type CompanionCueState,
+    type CompanionExpression,
     type CompanionFailure,
+    type CompanionIdleKind,
     type CompanionLine,
   } from '../lib/companion'
   import type { ActivityMap } from '../lib/sessionBoard'
@@ -21,6 +38,10 @@
     // card in any thread).
     activeSessionId?: string | null
     routeView?: string
+    // The timestamp of the latest warn-severity SSE event App.svelte saw
+    // (companionWarningFromEvent), or null/undefined for none yet. Only the
+    // value *changing* counts as a new signal — see the $effect below.
+    warningAt?: number | null
     onNavigate?: (path: string) => void
     onDismissFailure?: (key: string) => void
     onAsk?: (prompt: string) => void
@@ -31,6 +52,7 @@
     failures = [],
     activeSessionId = null,
     routeView = 'home',
+    warningAt = null,
     onNavigate,
     onDismissFailure,
     onAsk,
@@ -40,7 +62,8 @@
   // Reactive, not a one-off Date.now(): an expiring failure must actually
   // drop out of the snapshot over time, not only when a new activity poll
   // or SSE event happens to re-run this. The effect below keeps it moving
-  // for as long as a failure is on screen.
+  // for as long as a failure is on screen, and the cue timer below keeps
+  // it moving for as long as a cue or the long-quiet check needs it.
   let now = $state(Date.now())
   // Plain variables, not $state: they are bookkeeping for the effects
   // below, not something the template reads, so updating them must not
@@ -58,10 +81,62 @@
   let failureTimer: ReturnType<typeof setInterval> | null = null
   let snapshot = $derived(companionState(activity, failures, now, $t.companion.lines, activeSessionId))
   let hasFailureLines = $derived(snapshot.lines.some((line) => line.kind === 'failure'))
-  // CASE's face (#1190). Cues beyond `snapshot.lines` (a just-finished turn,
-  // a warning event, a long quiet stretch, a just-arrived user) are P3
-  // (#1191) scope — this component does not fill them in yet.
-  let expression = $derived(companionExpression(snapshot))
+
+  // --- Cues (#1191): companionCueTick/companionCuesFor turn real events
+  // (a turn finishing, a warning, a long-hidden tab becoming visible, a
+  // long quiet stretch) into the cues companionExpression reads when
+  // `snapshot.lines` has nothing stronger to say.
+  let cueState = $state<CompanionCueState>(COMPANION_CUE_NONE)
+  let lastInputAt = $state(Date.now())
+  let hasWaitingLines = $derived(snapshot.lines.length > 0)
+  let longQuiet = $derived(companionIsLongQuiet(now, lastInputAt, hasWaitingLines))
+  // `cueState` only changes when a new edge fires (justFinished/warning/
+  // justArrived, below) — nothing re-runs companionCueTick on every tick
+  // of `now` to notice its own expiry passing. Reading the expiry against
+  // the ticking `now` here, instead of trusting `cueState.cue` as already
+  // cleared, is what makes a cue actually fade back to neutral (or
+  // whatever `longQuiet` says) on its own once its few seconds are up.
+  let liveCue = $derived(
+    cueState.expiresAt !== null && now >= cueState.expiresAt ? null : cueState.cue,
+  )
+  let cues = $derived(companionCuesFor({ cue: liveCue, expiresAt: cueState.expiresAt }, longQuiet))
+  let expression = $derived(companionExpression(snapshot, cues))
+
+  // Starts empty, not a read of the `activity` prop: an empty map has no
+  // `running` entries to compare against, so the first effect run below
+  // never finds a false "just finished" transition at mount.
+  let prevActivityForCue: ActivityMap = {}
+  let lastSeenWarningAt: number | null = null
+  let hiddenAt: number | null = null
+  let cueTimer: ReturnType<typeof setInterval> | null = null
+
+  // --- Motion (#1191): one-shot actions on an expression change, idle
+  // play while neutral and idle, and the cursor-gaze eye offset. All three
+  // are off under `prefers-reduced-motion: reduce` — their timers/listeners
+  // are never even started, not merely visually suppressed.
+  let prefersReducedMotion = $state(false)
+  let action = $state<CompanionAction | null>(null)
+  let idlePlay = $state<CompanionIdleKind | null>(null)
+  let gazeOffset = $state<{ x: number; y: number }>({ x: 0, y: 0 })
+  let previousExpression: CompanionExpression | null = null
+  let figureEl: HTMLSpanElement | null = null
+  let idleTimer: ReturnType<typeof setTimeout> | null = null
+  let idleFireAt: number | null = null
+  let rafHandle: number | null = null
+  let pendingPointer: { x: number; y: number } | null = null
+
+  const ACTION_ANIMATION_NAMES = new Set([
+    'companionActBounce',
+    'companionActNod',
+    'companionActShake',
+    'companionActTilt',
+    'companionAntennaWave',
+  ])
+  const IDLE_ANIMATION_NAMES: Record<string, CompanionIdleKind> = {
+    companionLookAround: 'look',
+    companionYawn: 'yawn',
+    companionWink: 'wink',
+  }
 
   // The bubble opens by itself only for a new approval wait or a new
   // failure — never for a running turn or one finishing — and closes
@@ -96,8 +171,243 @@
     }
   })
 
+  // A running turn (in some other session) disappearing from `activity`
+  // without landing in a recent failure is a finished turn — companionCueTick
+  // fires `justFinished` once for that edge.
+  $effect(() => {
+    const finished = companionTurnsJustFinished(
+      prevActivityForCue,
+      activity,
+      activeSessionId,
+      companionFailedSessionIds(failures, Date.now()),
+    )
+    prevActivityForCue = activity
+    if (finished) cueState = companionCueTick(cueState, Date.now(), { justFinished: true })
+  })
+
+  // `warningAt` is a timestamp, not a boolean: only the value *changing* to
+  // something new is a fresh warning signal — the same timestamp re-read
+  // on an unrelated re-render must not replay the cue.
+  $effect(() => {
+    if (warningAt != null && warningAt !== lastSeenWarningAt) {
+      lastSeenWarningAt = warningAt
+      cueState = companionCueTick(cueState, Date.now(), { warning: true })
+    }
+  })
+
+  // A one-shot action plays exactly once per expression *change* into one
+  // of the five action expressions, and not again while that expression
+  // holds (companionActionFor returns null for a no-op transition).
+  $effect(() => {
+    const current = expression
+    const next = companionActionFor(previousExpression, current)
+    previousExpression = current
+    if (next && !prefersReducedMotion) action = next
+  })
+
+  // Idle play is only ever started while `expression === 'neutral'`
+  // (companionIdleEligible, in fireIdle below), but a real event can move
+  // `expression` off neutral while a look/yawn/wink is still mid-flight —
+  // unlike the one-shot actions above (whose keyframes never touch a
+  // property an expr-* rule also sets), look/yawn/wink animate the same
+  // eye/mouth width, height and border-radius an expression's own shape
+  // depends on, so a stale idlePlay must clear immediately here, not wait
+  // for its own `animationend` — which will not come anyway, since the CSS
+  // for these classes is itself scoped to `.expr-neutral` and losing that
+  // class cancels the animation (`animationcancel`) instead of finishing
+  // it. Without this, CASE's face would show a look/yawn/wink shape
+  // fighting a real alert/upset/etc. expression for the rest of its
+  // ~0.5-1.4s, and the stale class could even replay unprompted the next
+  // time CASE returns to neutral.
+  $effect(() => {
+    if (expression !== 'neutral' && idlePlay) idlePlay = null
+  })
+
+  function tickNow() {
+    now = Date.now()
+  }
+
+  function startCueTimer() {
+    if (cueTimer) return
+    cueTimer = setInterval(tickNow, 1_000)
+  }
+
+  function stopCueTimer() {
+    if (cueTimer) {
+      clearInterval(cueTimer)
+      cueTimer = null
+    }
+  }
+
+  function scheduleIdle(delayMs: number) {
+    if (idleTimer) clearTimeout(idleTimer)
+    idleFireAt = Date.now() + delayMs
+    idleTimer = setTimeout(fireIdle, delayMs)
+  }
+
+  function fireIdle() {
+    idleTimer = null
+    idleFireAt = null
+    const next = companionNextIdle(Math.random)
+    if (!prefersReducedMotion && companionIdleEligible(expression, snapshot.lines.length, open)) {
+      idlePlay = next.kind
+    }
+    scheduleIdle(next.delayMs)
+  }
+
+  function pauseIdle() {
+    if (idleTimer) {
+      clearTimeout(idleTimer)
+      idleTimer = null
+    }
+  }
+
+  // Resumes the *same* schedule from wherever it left off (the absolute
+  // `idleFireAt` survives the pause), rather than rolling a fresh delay —
+  // pausing on a hidden tab must not reset how soon CASE plays next.
+  function resumeIdle() {
+    if (prefersReducedMotion || idleTimer) return
+    if (idleFireAt === null) {
+      scheduleIdle(companionNextIdle(Math.random).delayMs)
+      return
+    }
+    idleTimer = setTimeout(fireIdle, Math.max(0, idleFireAt - Date.now()))
+  }
+
+  function applyGaze() {
+    rafHandle = null
+    if (!pendingPointer || !figureEl) return
+    if (!companionGazeApplies(expression)) {
+      gazeOffset = { x: 0, y: 0 }
+      return
+    }
+    const rect = figureEl.getBoundingClientRect()
+    gazeOffset = companionGazeOffset({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }, pendingPointer)
+  }
+
+  function onPointerMove(event: PointerEvent) {
+    pendingPointer = { x: event.clientX, y: event.clientY }
+    if (rafHandle !== null) return
+    rafHandle = requestAnimationFrame(applyGaze)
+  }
+
+  function startGaze() {
+    window.addEventListener('pointermove', onPointerMove, { passive: true })
+  }
+
+  function stopGaze() {
+    window.removeEventListener('pointermove', onPointerMove)
+    if (rafHandle !== null) {
+      cancelAnimationFrame(rafHandle)
+      rafHandle = null
+    }
+    pendingPointer = null
+    gazeOffset = { x: 0, y: 0 }
+  }
+
+  function startDecorativeMotion() {
+    if (prefersReducedMotion) return
+    resumeIdle()
+    startGaze()
+  }
+
+  function stopDecorativeMotion() {
+    pauseIdle()
+    stopGaze()
+  }
+
+  function handleBodyAnimationEnd(event: AnimationEvent) {
+    if (ACTION_ANIMATION_NAMES.has(event.animationName)) action = null
+    const idleKind = IDLE_ANIMATION_NAMES[event.animationName]
+    if (idleKind && idlePlay === idleKind) idlePlay = null
+  }
+
+  function handleVisibilityChange() {
+    if (document.hidden) {
+      hiddenAt = Date.now()
+      stopCueTimer()
+      stopDecorativeMotion()
+      stopInputTracking()
+      return
+    }
+    const wasHiddenForMs = hiddenAt !== null ? Date.now() - hiddenAt : 0
+    hiddenAt = null
+    now = Date.now()
+    if (companionJustArrived(wasHiddenForMs)) {
+      cueState = companionCueTick(cueState, now, { justArrived: true })
+    }
+    startCueTimer()
+    startDecorativeMotion()
+    startInputTracking()
+  }
+
+  // "Input" for longQuiet/sleepy is any sign of a present reader, not only
+  // clicks and keystrokes: a drifting pointer or a scroll counts too — a
+  // reader who is only looking, not clicking, must not have CASE doze off
+  // under them. pointermove/wheel fire far more than once a second, so
+  // companionShouldRecordInput throttles the $state write to at most once
+  // per second (pure, tested); the very first event after a long quiet
+  // stretch always passes, which is what wakes a sleeping CASE immediately.
+  function handleInput() {
+    const eventNow = Date.now()
+    if (companionShouldRecordInput(lastInputAt, eventNow)) lastInputAt = eventNow
+  }
+
+  // This tracking runs regardless of reduced motion — longQuiet/sleepy is
+  // an expression change (shape only), not an action, so it does not lean
+  // on the cursor-gaze pointermove listener (startGaze/stopGaze), which is
+  // off under reduced motion. It still stops while the tab is hidden, same
+  // as every other listener here.
+  function startInputTracking() {
+    window.addEventListener('pointerdown', handleInput, { passive: true })
+    window.addEventListener('keydown', handleInput)
+    window.addEventListener('pointermove', handleInput, { passive: true })
+    window.addEventListener('wheel', handleInput, { passive: true })
+  }
+
+  function stopInputTracking() {
+    window.removeEventListener('pointerdown', handleInput)
+    window.removeEventListener('keydown', handleInput)
+    window.removeEventListener('pointermove', handleInput)
+    window.removeEventListener('wheel', handleInput)
+  }
+
+  function handleReducedMotionChange(event: MediaQueryListEvent) {
+    prefersReducedMotion = event.matches
+    if (prefersReducedMotion) {
+      stopDecorativeMotion()
+      action = null
+      idlePlay = null
+    } else if (!document.hidden) {
+      startDecorativeMotion()
+    }
+  }
+
+  onMount(() => {
+    const media = window.matchMedia('(prefers-reduced-motion: reduce)')
+    prefersReducedMotion = media.matches
+    media.addEventListener('change', handleReducedMotionChange)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    startInputTracking()
+
+    // Opening the console is itself an arrival.
+    cueState = companionCueTick(cueState, Date.now(), { justArrived: true })
+    startCueTimer()
+    startDecorativeMotion()
+
+    return () => {
+      media.removeEventListener('change', handleReducedMotionChange)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      stopInputTracking()
+      stopCueTimer()
+      stopDecorativeMotion()
+    }
+  })
+
   onDestroy(() => {
     if (failureTimer) clearInterval(failureTimer)
+    if (idleTimer) clearTimeout(idleTimer)
+    if (rafHandle !== null) cancelAnimationFrame(rafHandle)
   })
 
   function toggleOpen() {
@@ -172,23 +482,35 @@
     </section>
   {/if}
 
+  <!-- The hit area: fixed size and position, no animation or transform of
+       its own, so an action or idle play never grows or moves the clickable
+       region over a neighbouring button (#1194 was exactly this, for the
+       bubble). Everything that moves lives inside .companion-figure, which
+       is pointer-events: none. -->
   <button type="button" class="companion-button" aria-label={$t.companion.buttonAria} onclick={toggleOpen}>
-    <span class="companion-shadow"></span>
-    <span class={`companion-body expr-${expression}`} aria-hidden="true">
-      <span class="companion-antenna"></span>
-      <span class="companion-brows">
-        <span class="companion-brow companion-brow-left"></span>
-        <span class="companion-brow companion-brow-right"></span>
+    <span class="companion-figure" bind:this={figureEl}>
+      <span class="companion-shadow"></span>
+      <span
+        class={`companion-body expr-${expression}${action ? ` act-${action}` : ''}${idlePlay ? ` play-${idlePlay}` : ''}`}
+        aria-hidden="true"
+        onanimationend={handleBodyAnimationEnd}
+      >
+        <span class="companion-antenna"></span>
+        <span class="companion-brows">
+          <span class="companion-brow companion-brow-left"></span>
+          <span class="companion-brow companion-brow-right"></span>
+        </span>
+        <span class="companion-eyes" style={`--eye-x: ${gazeOffset.x}px; --eye-y: ${gazeOffset.y}px;`}>
+          <span class="companion-eye companion-eye-left"></span>
+          <span class="companion-eye companion-eye-right"></span>
+        </span>
+        <span class="companion-mouth"></span>
+        <span class="companion-zzz" aria-hidden="true">z</span>
       </span>
-      <span class="companion-eyes">
-        <span class="companion-eye companion-eye-left"></span>
-        <span class="companion-eye companion-eye-right"></span>
-      </span>
-      <span class="companion-mouth"></span>
+      {#if snapshot.badge > 0}
+        <span class="companion-badge" aria-label={$t.companion.badgeAria(snapshot.badge)}>{snapshot.badge}</span>
+      {/if}
     </span>
-    {#if snapshot.badge > 0}
-      <span class="companion-badge" aria-label={$t.companion.badgeAria(snapshot.badge)}>{snapshot.badge}</span>
-    {/if}
   </button>
 </div>
 
@@ -214,6 +536,12 @@
     }
   }
 
+  /* Everything that moves lives in .companion-figure below, not here: the
+     float, every one-shot action and idle play, and the antenna/breathing
+     loops. .companion-button keeps a fixed size and no animation or
+     transform of its own, so it is always what actually receives clicks
+     (#1194 was a bubble covering a neighbouring button; this is the same
+     hazard for motion). */
   .companion-button {
     position: relative;
     width: 74px;
@@ -224,13 +552,25 @@
     cursor: pointer;
     display: grid;
     place-items: end center;
-    animation: companionFloat 4.8s var(--ease-out) infinite;
   }
 
   .companion-button:focus-visible {
     outline: 2px solid var(--primary);
     outline-offset: 3px;
     border-radius: var(--radius-lg);
+  }
+
+  .companion-figure {
+    /* pointer-events: none keeps the whole floating/animated figure out
+       of hit-testing, so .companion-button's own unanimated box is always
+       what receives clicks. */
+    position: relative;
+    width: 100%;
+    height: 100%;
+    display: grid;
+    place-items: end center;
+    pointer-events: none;
+    animation: companionFloat 4.8s var(--ease-out) infinite;
   }
 
   .companion-body {
@@ -321,6 +661,20 @@
     animation: companionBlink 5.6s infinite;
   }
 
+  /* Cursor gaze (#1191): the eyes lean a few px toward a nearby pointer.
+     `translate` is a separate property from `transform`, so it composes
+     with whatever an expression's own `transform` already does (working's
+     glance, upset's pinch) instead of replacing it — the component sets
+     `--eye-x`/`--eye-y` on .companion-eyes (lib/companion.ts
+     `companionGazeOffset`), already clamped and zeroed past 200px.
+     Scoped to the four expressions whose eyes are pupil-shaped: this
+     selector, not just the component's `companionGazeApplies` check, is
+     what actually keeps a stale non-zero offset from applying to
+     happy/upset/sleepy/greeting's curve/line/star eyes. */
+  .companion-body:not(.expr-happy):not(.expr-upset):not(.expr-sleepy):not(.expr-greeting) .companion-eye {
+    translate: var(--eye-x, 0px) var(--eye-y, 0px);
+  }
+
   .companion-mouth {
     position: absolute;
     top: 38px;
@@ -333,6 +687,21 @@
     transform: translateX(-50%);
   }
 
+  /* The sleepy 'z' — hidden everywhere else, shown only by .expr-sleepy
+     below. pointer-events: none like the rest of .companion-figure's
+     contents; it is decoration, never a hit target. */
+  .companion-zzz {
+    position: absolute;
+    top: 0;
+    right: -8px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    line-height: 1;
+    color: var(--primary-text);
+    opacity: 0;
+    pointer-events: none;
+  }
+
   /* neutral (idle, the default): the base shapes above as-is. The rule
      below only reaffirms the base mouth width so every expression has its
      own .expr-<name> rule to point at. */
@@ -343,7 +712,10 @@
   /* working (a turn is running): eyes glance up and to one side (a
      definite look, not a 3px nudge), the mouth closes to a small pursed
      line, and the antenna tip becomes a ring instead of a filled dot —
-     three shapes differ from neutral at once. */
+     three shapes differ from neutral at once. The tip also pulses slowly
+     for as long as the turn runs (#1191) — the one continuous, repeating
+     motion among the eight expressions, as opposed to the one-shot
+     actions the other five play once on arrival. */
   .expr-working .companion-eye {
     transform: translate(4px, -3px);
   }
@@ -356,6 +728,7 @@
     box-sizing: border-box;
     background: transparent;
     border: 2px solid var(--primary-text);
+    animation: companionAntennaPulse 1.8s ease-in-out infinite;
   }
 
   /* alert (something is waiting on you): eyes open wide and stop
@@ -486,11 +859,17 @@
   }
 
   /* sleepy (quiet for a while): both eyes close to a thin line, a tiny
-     mouth, the antenna tip dims. */
+     mouth, the antenna tip dims. A slow breathing scale on the body and a
+     drifting 'z' (#1191) are the other continuous expression, alongside
+     working's antenna pulse. */
   .expr-sleepy .companion-eye {
     height: 2px;
     box-shadow: none;
     animation: none;
+  }
+
+  .expr-sleepy.companion-body {
+    animation: companionBreathe 3.6s ease-in-out infinite;
   }
 
   .expr-sleepy .companion-mouth {
@@ -504,6 +883,11 @@
   .expr-sleepy .companion-antenna::after {
     opacity: 0.4;
     box-shadow: none;
+  }
+
+  .expr-sleepy .companion-zzz {
+    opacity: 0.75;
+    animation: companionZzzFloat 2.4s ease-in-out infinite;
   }
 
   /* greeting (returning, or saying hello): each eye becomes a four-point
@@ -533,6 +917,54 @@
   .expr-greeting .companion-antenna::after {
     background: var(--success);
     box-shadow: 0 0 20px rgba(63, 212, 180, 0.9);
+  }
+
+  .companion-body.act-bounce {
+    /* Actions (#1191): a one-shot class the component (lib/companion.ts
+       `companionActionFor`) adds exactly once per transition into its
+       expression, and clears on its own `animationend`. Each plays on
+       .companion-body except wave below, which moves the antenna instead
+       — that one reads as CASE's own gesture, not the body nudging it. */
+    animation: companionActBounce 0.5s var(--ease-out);
+  }
+
+  .companion-body.act-nod {
+    animation: companionActNod 0.6s var(--ease-out);
+  }
+
+  .companion-body.act-shake {
+    animation: companionActShake 0.5s var(--ease-out);
+  }
+
+  .companion-body.act-tilt {
+    animation: companionActTilt 0.6s var(--ease-out);
+  }
+
+  .companion-body.act-wave .companion-antenna {
+    animation: companionAntennaWave 0.6s var(--ease-out);
+  }
+
+  .companion-body.expr-neutral.play-look .companion-eye {
+    /* Idle play (#1191): look/yawn/wink, a few seconds apart while CASE
+       is neutral and idle (lib/companion.ts `companionNextIdle`).
+       Decoration only — it never touches the expression or the badge.
+       The component only ever adds these classes alongside `expr-neutral`
+       (companionIdleEligible), but `idlePlay` is JS state that does not
+       clear itself the instant a real event moves `expression` on while
+       the idle animation is still running — requiring `.expr-neutral`
+       here too, not just on `idlePlay`, is what actually stops a stale
+       look/yawn/wink from fighting a real expression's own mouth/eye
+       shape for the rest of its ~0.5-1.4s. Same guarantee gaze gets from
+       its own `:not(.expr-*)` selector below. */
+    animation: companionLookAround 1.4s ease-in-out;
+  }
+
+  .companion-body.expr-neutral.play-yawn .companion-mouth {
+    animation: companionYawn 1.2s ease-in-out;
+  }
+
+  .companion-body.expr-neutral.play-wink .companion-eye-right {
+    animation: companionWink 0.5s ease-in-out;
   }
 
   .companion-shadow {
@@ -714,6 +1146,80 @@
     47% { transform: scaleY(0.12); }
   }
 
+  /* working's continuous antenna pulse. */
+  @keyframes companionAntennaPulse {
+    0%, 100% { opacity: 1; transform: translateX(-50%) scale(1); }
+    50% { opacity: 0.55; transform: translateX(-50%) scale(1.25); }
+  }
+
+  /* sleepy's continuous breathing + drifting 'z'. */
+  @keyframes companionBreathe {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.035); }
+  }
+
+  @keyframes companionZzzFloat {
+    0% { opacity: 0; transform: translateY(0); }
+    30% { opacity: 0.75; }
+    100% { opacity: 0; transform: translateY(-10px); }
+  }
+
+  /* One-shot actions (#1191), one per expression that has one: alert
+     bounces, happy nods, upset shakes, wary tilts, greeting's antenna
+     waves. */
+  @keyframes companionActBounce {
+    0%, 100% { transform: translateY(0); }
+    30% { transform: translateY(-10px); }
+    55% { transform: translateY(0); }
+    75% { transform: translateY(-4px); }
+  }
+
+  @keyframes companionActNod {
+    0%, 100% { transform: rotate(0deg); }
+    35% { transform: rotate(8deg); }
+    70% { transform: rotate(-4deg); }
+  }
+
+  @keyframes companionActShake {
+    0%, 100% { transform: translateX(0); }
+    20% { transform: translateX(-5px); }
+    40% { transform: translateX(5px); }
+    60% { transform: translateX(-3px); }
+    80% { transform: translateX(3px); }
+  }
+
+  @keyframes companionActTilt {
+    0%, 100% { transform: rotate(0deg); }
+    40% { transform: rotate(-9deg); }
+    75% { transform: rotate(4deg); }
+  }
+
+  @keyframes companionAntennaWave {
+    0%, 100% { transform: translateX(-50%) rotate(0deg); }
+    25% { transform: translateX(-50%) rotate(18deg); }
+    50% { transform: translateX(-50%) rotate(-14deg); }
+    75% { transform: translateX(-50%) rotate(10deg); }
+  }
+
+  /* Idle play (#1191): look/yawn/wink, each a few hundred ms to a second
+     and a half, purely decorative. */
+  @keyframes companionLookAround {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-3px); }
+    50% { transform: translateX(0); }
+    75% { transform: translateX(3px); }
+  }
+
+  @keyframes companionYawn {
+    0%, 100% { height: 2px; width: 14px; border-radius: 999px; }
+    50% { height: 10px; width: 10px; border-radius: 50%; }
+  }
+
+  @keyframes companionWink {
+    0%, 100% { transform: scaleY(1); }
+    50% { transform: scaleY(0.1); }
+  }
+
   @media (max-width: 700px) {
     .companion-pet {
       right: var(--space-3);
@@ -726,11 +1232,25 @@
     }
   }
 
-  /* Reduced motion stops every animation here. */
+  /* Reduced motion stops every animation here — every selector listed
+     above with a repeating or one-shot animation gets its own `animation:
+     none` entry here, named exactly (tests/companionPet.test.ts checks
+     this one-for-one). */
   @media (prefers-reduced-motion: reduce) {
-    .companion-button,
+    .companion-figure,
     .companion-eye,
-    .companion-bubble {
+    .companion-bubble,
+    .expr-working .companion-antenna::after,
+    .expr-sleepy.companion-body,
+    .expr-sleepy .companion-zzz,
+    .companion-body.act-bounce,
+    .companion-body.act-nod,
+    .companion-body.act-shake,
+    .companion-body.act-tilt,
+    .companion-body.act-wave .companion-antenna,
+    .companion-body.expr-neutral.play-look .companion-eye,
+    .companion-body.expr-neutral.play-yawn .companion-mouth,
+    .companion-body.expr-neutral.play-wink .companion-eye-right {
       animation: none;
     }
   }

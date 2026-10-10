@@ -64,8 +64,8 @@ export type CompanionSnapshot = {
 }
 
 // Optional inputs for the expressions that are not driven by `lines`
-// (#1190: the expression type and its picture exist now; the timers and
-// events that fill these cues in are P3/#1191 scope). `companionExpression`
+// (#1190 drew the four pictures; #1191's companionCueTick/companionCuesFor
+// below fill these in from real events and timers). `companionExpression`
 // only reads them when nothing in `lines` already says more — a real wait
 // or failure always outranks a cue.
 export type CompanionExpressionCues = {
@@ -175,9 +175,9 @@ export function companionState(
   return { badge, lines }
 }
 
-// companionExpression turns CASE's snapshot (and, once P3/#1191 wires them
-// up, optional cues about recent events) into one of the eight expressions
-// (#1190). What the snapshot's `lines` already say always outranks a cue:
+// companionExpression turns CASE's snapshot (and the optional cues #1191
+// fills in from real events) into one of the eight expressions (#1190).
+// What the snapshot's `lines` already say always outranks a cue:
 // a real failure or wait is never overridden by "just said hello". Order
 // within `lines`: failure > pending/queued approval > running turn — the
 // same urgency order `companionState` lists them in. Order within `cues`:
@@ -196,6 +196,246 @@ export function companionExpression(
   return 'neutral'
 }
 
+// --- Cues (#1191): the timers/events that fill in CompanionExpressionCues.
+// Everything below is a pure function of an explicit `now` (and, for
+// idle/gaze, an injected random source) — no Date.now(), no Math.random,
+// no DOM. CompanionPet.svelte is the only impure shell that calls these on
+// a real clock and real events.
+
+export type CompanionCueKind = 'warning' | 'justFinished' | 'justArrived'
+
+export type CompanionCueState = {
+  cue: CompanionCueKind | null
+  expiresAt: number | null
+}
+
+export const COMPANION_CUE_NONE: CompanionCueState = { cue: null, expiresAt: null }
+
+// How long each transient cue holds the expression before fading back to
+// whatever `snapshot.lines` or the next cue says.
+export const COMPANION_CUE_DURATIONS_MS: Record<CompanionCueKind, number> = {
+  warning: 5_000,
+  justFinished: 5_000,
+  justArrived: 6_000,
+}
+
+// Same order companionExpression checks them in: a higher-priority signal
+// firing while a lower one is still showing replaces it; a same-or-lower
+// one does not interrupt an unexpired cue.
+const cuePriority: Record<CompanionCueKind, number> = {
+  warning: 3,
+  justFinished: 2,
+  justArrived: 1,
+}
+
+// companionCueTick advances the cue state machine by one step. `signals`
+// are edges — "this just happened on this tick" — not level state; the
+// caller (companionTurnsJustFinished, companionWarningFromEvent, the
+// mount/visibility handling in the component) computes those edges.
+export function companionCueTick(
+  state: CompanionCueState,
+  now: number,
+  signals: { warning?: boolean; justFinished?: boolean; justArrived?: boolean },
+): CompanionCueState {
+  let next = state
+  if (next.expiresAt !== null && now >= next.expiresAt) next = COMPANION_CUE_NONE
+
+  const fired = (Object.keys(cuePriority) as CompanionCueKind[]).filter((kind) => signals[kind])
+  if (fired.length > 0) {
+    const best = fired.reduce((a, b) => (cuePriority[b] > cuePriority[a] ? b : a))
+    const currentPriority = next.cue ? cuePriority[next.cue] : 0
+    if (cuePriority[best] >= currentPriority) {
+      next = { cue: best, expiresAt: now + COMPANION_CUE_DURATIONS_MS[best] }
+    }
+  }
+  return next
+}
+
+// companionTurnsJustFinished is true when some session's running turn (not
+// the one the chat route has on screen — that session's own thread already
+// shows it ending) has disappeared from `activity` between two snapshots
+// without landing in `failedSessionIds` — i.e. it finished, not failed.
+export function companionTurnsJustFinished(
+  prevActivity: ActivityMap,
+  activity: ActivityMap,
+  activeSessionId: string | null | undefined,
+  failedSessionIds: ReadonlySet<string>,
+): boolean {
+  for (const [sessionId, prevState] of Object.entries(prevActivity)) {
+    if (!prevState.running) continue
+    if (sessionId === activeSessionId) continue
+    if (activity[sessionId]?.running) continue
+    if (failedSessionIds.has(sessionId)) continue
+    return true
+  }
+  return false
+}
+
+// companionWarningFromEvent turns a qualifying SSE notification (severity
+// warn — not yet a failure) into a cue-tick edge. Anything else (info,
+// error, critical, a coalesced replay with no new occurrence) is not a new
+// warning signal.
+export function companionWarningFromEvent(event: NotificationMessage): boolean {
+  if (!event || event.type === 'keepalive') return false
+  return (event.severity || '').trim().toLowerCase() === 'warn'
+}
+
+export const COMPANION_JUST_ARRIVED_HIDDEN_MS = 10 * 60 * 1000
+export const COMPANION_LONG_QUIET_MS = 5 * 60 * 1000
+
+// companionJustArrived is true once a tab hidden for at least ten minutes
+// becomes visible again — not for a quick tab switch. The very first
+// render (the console just opened) is always a arrival too, but that needs
+// no computation: the component fires the signal once on mount.
+export function companionJustArrived(hiddenForMs: number, thresholdMs = COMPANION_JUST_ARRIVED_HIDDEN_MS): boolean {
+  return hiddenForMs >= thresholdMs
+}
+
+// companionIsLongQuiet is level state, not an edge: true for as long as
+// there has been no input — a click, a keystroke, the pointer moving, a
+// scroll — for five minutes, and nothing is waiting (a waiting line means
+// CASE has something more important to show than "asleep"). The component
+// clears it immediately on the next input event rather than waiting for
+// this to be recomputed.
+export function companionIsLongQuiet(
+  now: number,
+  lastInputAt: number,
+  hasWaitingLines: boolean,
+  thresholdMs = COMPANION_LONG_QUIET_MS,
+): boolean {
+  if (hasWaitingLines) return false
+  return now - lastInputAt >= thresholdMs
+}
+
+export const COMPANION_INPUT_THROTTLE_MS = 1_000
+
+// companionShouldRecordInput decides whether an input event is worth
+// writing `lastInputAt` for. "Input" for longQuiet/sleepy purposes is any
+// sign of a present reader, not only clicks and keystrokes — a pointer
+// drifting across the screen or a scroll both count, same as the pointer/
+// key input companionIsLongQuiet's doc comment already describes. Those
+// two fire far more than once a second, so every event writing reactive
+// state would be wasteful; at most one write per `throttleMs` is enough
+// granularity for a five-minute threshold. The first input after a long
+// quiet stretch always passes (now - lastInputAt is large), which is what
+// wakes a sleeping CASE immediately rather than on the next throttle tick.
+export function companionShouldRecordInput(
+  lastInputAt: number,
+  now: number,
+  throttleMs = COMPANION_INPUT_THROTTLE_MS,
+): boolean {
+  return now - lastInputAt >= throttleMs
+}
+
+// companionCuesFor assembles the CompanionExpressionCues companionExpression
+// reads: one of the three transient, edge-triggered cues (mutually
+// exclusive by construction — companionCueTick holds at most one at a
+// time) plus the level-triggered longQuiet.
+export function companionCuesFor(cueState: CompanionCueState, longQuiet: boolean): CompanionExpressionCues {
+  return {
+    warning: cueState.cue === 'warning',
+    justFinished: cueState.cue === 'justFinished',
+    justArrived: cueState.cue === 'justArrived',
+    longQuiet,
+  }
+}
+
+// --- Actions (#1191): a one-shot animation class that plays once when the
+// expression changes to one of these, and does not replay while that same
+// expression holds.
+export type CompanionAction = 'bounce' | 'nod' | 'shake' | 'tilt' | 'wave'
+
+const actionForExpression: Partial<Record<CompanionExpression, CompanionAction>> = {
+  alert: 'bounce',
+  happy: 'nod',
+  upset: 'shake',
+  wary: 'tilt',
+  greeting: 'wave',
+}
+
+// companionActionFor returns the action to play for a transition into
+// `expression`, or null when there is none (neutral/working/sleepy have no
+// one-shot action — working and sleepy are continuous CSS states instead)
+// or the expression did not actually change (no replay while it holds).
+export function companionActionFor(
+  previousExpression: CompanionExpression | null,
+  expression: CompanionExpression,
+): CompanionAction | null {
+  if (previousExpression === expression) return null
+  return actionForExpression[expression] ?? null
+}
+
+// --- Idle play (#1191): a short, decorative-only look/yawn/wink while
+// CASE is neutral, idle, and its bubble is closed. Never changes the
+// expression or the badge — it is cosmetic.
+export type CompanionIdleKind = 'look' | 'yawn' | 'wink'
+
+const COMPANION_IDLE_KINDS: readonly CompanionIdleKind[] = ['look', 'yawn', 'wink']
+const COMPANION_IDLE_MIN_DELAY_MS = 60_000
+const COMPANION_IDLE_MAX_DELAY_MS = 180_000
+
+export type CompanionIdlePlay = { delayMs: number; kind: CompanionIdleKind }
+
+// companionNextIdle picks the next idle play's delay (60s–180s) and kind
+// (look/yawn/wink), both from an injected `random` (`() => number` in
+// [0, 1), i.e. `Math.random` in the component, a fixed sequence in tests)
+// so the schedule is deterministic under test.
+export function companionNextIdle(random: () => number): CompanionIdlePlay {
+  const span = COMPANION_IDLE_MAX_DELAY_MS - COMPANION_IDLE_MIN_DELAY_MS
+  const delayMs = COMPANION_IDLE_MIN_DELAY_MS + Math.floor(random() * span)
+  const kindIndex = Math.min(COMPANION_IDLE_KINDS.length - 1, Math.floor(random() * COMPANION_IDLE_KINDS.length))
+  return { delayMs, kind: COMPANION_IDLE_KINDS[kindIndex] }
+}
+
+// companionIdleEligible: idle play only happens when CASE has nothing to
+// say — neutral expression, no waiting/running lines, bubble closed.
+export function companionIdleEligible(expression: CompanionExpression, lineCount: number, bubbleOpen: boolean): boolean {
+  return expression === 'neutral' && lineCount === 0 && !bubbleOpen
+}
+
+// --- Gaze (#1191): the eyes lean a few px toward a nearby pointer.
+export const COMPANION_GAZE_RADIUS_PX = 200
+export const COMPANION_GAZE_MAX_OFFSET_PX = 3
+
+// Expressions whose eyes are not pupil-shaped (a curve, a flat line, a
+// star) — leaning them toward the pointer would not read as a gaze, so
+// gaze offset never applies here.
+export const COMPANION_GAZE_EXCLUDED_EXPRESSIONS: readonly CompanionExpression[] = [
+  'happy',
+  'upset',
+  'sleepy',
+  'greeting',
+]
+
+export type CompanionGazeOffset = { x: number; y: number }
+
+// companionGazeApplies is false for the four expressions above; true for
+// the rest (neutral, working, alert, wary all keep eye shapes a small
+// lean still reads on).
+export function companionGazeApplies(expression: CompanionExpression): boolean {
+  return !COMPANION_GAZE_EXCLUDED_EXPRESSIONS.includes(expression)
+}
+
+// companionGazeOffset computes how far the eyes lean toward `pointer` from
+// CASE's `center`: 0 past `radius` px away, scaling linearly up to
+// `maxOffset` px at the radius's edge. Pure geometry — no DOM, no clamping
+// surprises: the result is always within [-maxOffset, maxOffset] on both
+// axes.
+export function companionGazeOffset(
+  center: { x: number; y: number },
+  pointer: { x: number; y: number },
+  radius = COMPANION_GAZE_RADIUS_PX,
+  maxOffset = COMPANION_GAZE_MAX_OFFSET_PX,
+): CompanionGazeOffset {
+  const dx = pointer.x - center.x
+  const dy = pointer.y - center.y
+  const dist = Math.hypot(dx, dy)
+  if (dist > radius || radius <= 0) return { x: 0, y: 0 }
+  const scale = maxOffset / radius
+  const clamp = (v: number) => Math.max(-maxOffset, Math.min(maxOffset, v))
+  return { x: clamp(dx * scale), y: clamp(dy * scale) }
+}
+
 // pruneFailures drops anything older than 30 minutes, de-duplicates by
 // key — a replayed SSE event (a reconnect, or /v1/events/history replay)
 // must not render as two bubble lines for the same failure, which would
@@ -211,6 +451,18 @@ export function pruneFailures(failures: CompanionFailure[], now: number): Compan
     byKey.set(failure.key, failure)
   }
   return Array.from(byKey.values()).slice(-maxFailures)
+}
+
+// companionFailedSessionIds is the set of sessions a recent failure
+// belongs to. companionTurnsJustFinished uses it so a turn that
+// disappeared from `activity` because it failed is never read as "just
+// finished" — that is upset, not happy.
+export function companionFailedSessionIds(failures: CompanionFailure[], now: number): Set<string> {
+  const ids = new Set<string>()
+  for (const failure of pruneFailures(failures, now)) {
+    if (failure.sessionId) ids.add(failure.sessionId)
+  }
+  return ids
 }
 
 // companionFailureFromEvent turns a qualifying SSE notification (severity

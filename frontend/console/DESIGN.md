@@ -499,9 +499,52 @@ What picks the expression — `companionExpression(snapshot, cues?)`, pure, test
 2. Only when there is no such line, an optional `cues` argument picks the rest, in order: `warning` → `wary`, `justFinished` → `happy`, `justArrived` → `greeting`, `longQuiet` → `sleepy`.
 3. Nothing at all → `neutral`.
 
-`companionExpression` takes `cues` as an argument today but `CompanionPet.svelte` does not fill it in — the timers and events that would set `warning`/`justFinished`/`justArrived`/`longQuiet`, and the motion (nod, shake, doze) that goes with each expression, are P3 (#1191) scope. The six old moods (`idle`/`spark`/`focus`/`warn`/`error`/`success`) are gone; they mapped onto these eight one-to-one or were never produced (`spark`, `success`) and would otherwise be dead code sitting next to the real thing.
+The six old moods (`idle`/`spark`/`focus`/`warn`/`error`/`success`) are gone; they mapped onto these eight one-to-one or were never produced (`spark`, `success`) and would otherwise be dead code sitting next to the real thing.
 
 `prefers-reduced-motion: reduce` stops the float and blink, same as any other decorative animation here — the expression itself is read from shape alone, not from the motion that goes with it.
+
+### Cues (#1191)
+
+`CompanionPet.svelte` fills in the `cues` argument from real events and timers, each a pure function in `lib/companion.ts` the component calls on a real clock:
+
+- **`warning`**: a warn-severity SSE event (`companionWarningFromEvent`) — something is off, but not yet a failure. Never opens the bubble.
+- **`justFinished`**: another session's running turn disappears from `GET /v1/chat/activity` without landing in a recent failure (`companionTurnsJustFinished`/`companionFailedSessionIds`) — it finished, not failed. The session the chat route has on screen is left out, same rule as `companionState`'s lines.
+- **`justArrived`**: the console is opened, or a tab hidden for ten minutes or more (`COMPANION_JUST_ARRIVED_HIDDEN_MS`) becomes visible again (`companionJustArrived`). A quick tab switch is not an arrival.
+- **`longQuiet`**: no input for five minutes (`COMPANION_LONG_QUIET_MS`) with nothing waiting (`companionIsLongQuiet`) — level state, not an edge, so it clears the instant an input event arrives, before the next timer tick even runs. "Input" is a click, a keystroke, a drifting pointer, or a scroll (`pointerdown`/`keydown`/`pointermove`/`wheel`) — a reader who is only looking, not clicking, must not have CASE doze off under them. `pointermove`/`wheel` fire far more than once a second, so the write to `lastInputAt` is throttled to at most once a second (`companionShouldRecordInput`, pure, injected clock) rather than on every event; the first input after a long quiet stretch always passes the throttle, which is what wakes a sleeping CASE immediately. This tracking is a separate listener set from cursor gaze's own `pointermove` (`startInputTracking`/`stopInputTracking`, not `startGaze`/`stopGaze`): it runs under `prefers-reduced-motion: reduce` too (a longQuiet→`sleepy` transition is a shape change, not a motion) and only stops while the tab is hidden.
+
+`warning`/`justFinished`/`justArrived` are edges, not level state: `companionCueTick` holds at most one of the three at a time (a higher-priority signal — in that same order — replaces a still-showing lower one; a same-or-lower one never interrupts) and each expires on its own after a few seconds (`COMPANION_CUE_DURATIONS_MS`), falling back to whatever `snapshot.lines` or `longQuiet` says next. `companionCuesFor` assembles the `CompanionExpressionCues` `companionExpression` reads. None of this ever outranks a real line — `snapshot.lines` still wins, as above.
+
+### Actions (#1191)
+
+A one-shot animation plays exactly once when the expression *changes* into one of five, and does not replay while that expression holds (`companionActionFor(previousExpression, expression)` in `lib/companion.ts`, a pure table lookup; the component tracks `previousExpression` and clears the action on its own CSS `animationend`, matched by name so an unrelated animation bubbling up — blink, breathe — never clears it early):
+
+| Expression | Action | Where it plays |
+|---|---|---|
+| `alert` | bounce | `.companion-body` |
+| `happy` | nod | `.companion-body` |
+| `upset` | shake | `.companion-body` |
+| `wary` | tilt | `.companion-body` |
+| `greeting` | wave | `.companion-antenna` (CASE's own gesture, not the body nudging it) |
+
+`working` and `sleepy` have no one-shot action; they are the two *continuous* states instead, repeating for as long as they hold: working's antenna tip pulses, sleepy's body breathes (a slow scale) alongside a drifting `z` (`.companion-zzz`, hidden everywhere else, CSS only).
+
+### Idle play (#1191)
+
+While CASE is `neutral`, nothing is waiting, and the bubble is closed (`companionIdleEligible`), it plays a short look-around, yawn, or wink every 60–180 seconds (`companionNextIdle(random)`, pure — the delay and the kind both come from an injected `() => number` so the schedule is deterministic under test; the component injects `Math.random`). Purely decorative: it never changes the expression or the badge. A real event can still move `expression` off neutral while a look/yawn/wink is mid-flight, and unlike the one-shot actions above, these animate the same eye/mouth width, height and border-radius an expr-* rule also sets — so staying alongside `expr-neutral` is enforced twice, not just intended: the CSS itself is scoped (`.companion-body.expr-neutral.play-look .companion-eye`, and so on), and the component clears `idlePlay` the instant `expression` leaves neutral rather than waiting for the animation's own end (which would not come anyway — losing `.expr-neutral` cancels it instead of finishing it).
+
+### Cursor gaze (#1191)
+
+When the pointer is within 200px of CASE's centre, the eyes lean up to 3px toward it, scaling linearly with distance and clamped at both ends (`companionGazeOffset`, pure geometry — no DOM). `CompanionPet.svelte` batches `pointermove` into one `requestAnimationFrame` via a `passive` listener and writes `--eye-x`/`--eye-y` custom properties on `.companion-eyes`; the eyes consume them with the separate `translate` property (not `transform`), so the lean composes with whatever an expression's own `transform` already does (working's glance, upset's pinch) instead of replacing it. Four expressions whose eyes are not pupil-shaped — `happy`, `upset`, `sleepy`, `greeting` (a curve, a flat line, a star) — never get a lean; that is a CSS selector guarantee (`.companion-body:not(.expr-happy):not(.expr-upset):not(.expr-sleepy):not(.expr-greeting) .companion-eye`), not just the component's own `companionGazeApplies` check, so a stale offset can never leak onto one of those four.
+
+### Stop conditions (#1191)
+
+- **Hidden tab** (`document.hidden`): every timer (the cue/long-quiet tick, the idle schedule) and listener (cursor gaze's `pointermove`, and the input-tracking `pointerdown`/`keydown`/`pointermove`/`wheel` set) stops. The idle schedule resumes from the same absolute fire time it had before pausing, not a freshly rolled delay, so hiding the tab never resets how soon CASE plays next; the cue/long-quiet tick just restarts, since cue expiry is computed from wall-clock timestamps that stay valid regardless of whether anything was ticking while hidden.
+- **`prefers-reduced-motion: reduce`**: actions, idle play and cursor gaze are off, and their timers/listeners are never even started — not merely hidden by CSS. Cue-driven expression changes (`happy`/`wary`/`greeting`/`sleepy`) still happen; only the motion that would otherwise go with them does not. Every new `animation`/`transition` selector this adds is named, one for one, in the `prefers-reduced-motion: reduce` block — `tests/companionPet.test.ts` checks this for the whole stylesheet, including these.
+- **Unmount**: every timer and listener started in `onMount` is cleared in its cleanup.
+
+### Hit area (#1191)
+
+`.companion-button` — the clickable element — has no animation or transform of its own and never changes size: the float, every action, idle play and the antenna/breathing loops all live on `.companion-figure` inside it, which is `pointer-events: none`. A `z` or any other decoration is `pointer-events: none` too. This is the same hazard #1194 hit with the bubble covering a neighbouring button, applied to motion: nothing CASE does to itself may grow or move its own hit area over a screen element next to it.
 
 ## Components
 

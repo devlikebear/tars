@@ -4,16 +4,36 @@ import { readFileSync } from 'node:fs'
 
 import {
   COMPANION_EXPRESSIONS,
+  COMPANION_CUE_DURATIONS_MS,
+  COMPANION_CUE_NONE,
+  COMPANION_GAZE_EXCLUDED_EXPRESSIONS,
+  COMPANION_INPUT_THROTTLE_MS,
+  COMPANION_JUST_ARRIVED_HIDDEN_MS,
+  COMPANION_LONG_QUIET_MS,
+  companionActionFor,
+  companionCueTick,
+  companionCuesFor,
   companionEnabledFromConfigValues,
+  companionFailedSessionIds,
   companionExpression,
   companionFailureFromEvent,
+  companionGazeApplies,
+  companionGazeOffset,
   companionHandoffForAsk,
+  companionIdleEligible,
+  companionIsLongQuiet,
+  companionJustArrived,
+  companionNextIdle,
   companionShouldAutoClose,
   companionShouldOpen,
+  companionShouldRecordInput,
   companionState,
+  companionTurnsJustFinished,
   companionWaitingKeys,
+  companionWarningFromEvent,
   pruneFailures,
   shouldShowCompanion,
+  type CompanionCueState,
   type CompanionExpressionCues,
   type CompanionFailure,
   type CompanionLine,
@@ -49,6 +69,91 @@ test('console app wires the floating companion to live chat activity', () => {
   assert.match(appSource, /onDismissFailure=\{handleDismissCompanionFailure\}/)
   assert.match(appSource, /onAsk=\{handleCompanionAsk\}/)
   assert.match(appSource, /routeView=\{route\.view\}/)
+  // The warn-cue signal (#1191): App turns a qualifying SSE event into a
+  // timestamp and passes it down.
+  assert.match(appSource, /companionWarningFromEvent/)
+  assert.match(appSource, /warningAt=\{companionWarningAt\}/)
+})
+
+test('CASE pauses all its motion timers and listeners when the tab is hidden, and resumes them when it is visible again (#1191)', () => {
+  assert.match(componentSource, /document\.addEventListener\('visibilitychange'/)
+  assert.match(componentSource, /document\.removeEventListener\('visibilitychange'/)
+  assert.match(componentSource, /document\.hidden/)
+  // The idle schedule resumes from where it left off (an absolute fire
+  // time), not a freshly rolled delay — pausing on a hidden tab must not
+  // reset how soon CASE plays next.
+  assert.match(componentSource, /idleFireAt/)
+})
+
+test('CASE turns off actions, idle play and cursor gaze under prefers-reduced-motion, without starting their timers at all', () => {
+  assert.match(componentSource, /matchMedia\('\(prefers-reduced-motion: reduce\)'\)/)
+  assert.match(componentSource, /prefersReducedMotion/)
+})
+
+test('CASE batches pointermove into one requestAnimationFrame via a passive listener, for the cursor gaze', () => {
+  assert.match(componentSource, /addEventListener\('pointermove', onPointerMove, \{ passive: true \}\)/)
+  assert.match(componentSource, /requestAnimationFrame\(/)
+  assert.match(componentSource, /cancelAnimationFrame\(/)
+})
+
+test('"input" for longQuiet/sleepy also counts a drifting pointer and a scroll, throttled and passive, independent of reduced motion and the gaze listener', () => {
+  // A dedicated listener set (not startGaze/onPointerMove, which is off
+  // under reduced motion) covers pointerdown/keydown/pointermove/wheel.
+  assert.match(componentSource, /function startInputTracking\(\)/)
+  assert.match(componentSource, /addEventListener\('pointerdown', handleInput, \{ passive: true \}\)/)
+  assert.match(componentSource, /addEventListener\('keydown', handleInput\)/)
+  assert.match(componentSource, /addEventListener\('pointermove', handleInput, \{ passive: true \}\)/)
+  assert.match(componentSource, /addEventListener\('wheel', handleInput, \{ passive: true \}\)/)
+  // The write to `lastInputAt` is throttled through the pure
+  // companionShouldRecordInput, not done unconditionally on every event.
+  assert.match(componentSource, /companionShouldRecordInput\(lastInputAt, eventNow\)/)
+
+  // Started unconditionally from onMount — no reduced-motion guard around
+  // it, unlike startDecorativeMotion/startGaze.
+  const mountStart = componentSource.indexOf('onMount(() => {')
+  const mountBody = componentSource.slice(mountStart, componentSource.indexOf('return () => {', mountStart))
+  assert.match(mountBody, /startInputTracking\(\)/)
+  assert.doesNotMatch(mountBody, /if \(prefersReducedMotion\)/)
+
+  // Pauses with the tab and cleans up on destroy, same as every other
+  // listener here.
+  assert.match(componentSource, /function stopInputTracking\(\)/)
+  assert.match(componentSource, /stopInputTracking\(\)/)
+  assert.match(componentSource, /removeEventListener\('pointermove', handleInput\)/)
+  assert.match(componentSource, /removeEventListener\('wheel', handleInput\)/)
+})
+
+test('idle play never outlives a real expression change: cleared in JS, and its CSS only ever matches alongside expr-neutral', () => {
+  // The component clears `idlePlay` the instant `expression` leaves
+  // neutral, rather than waiting for the look/yawn/wink animation's own
+  // `animationend` — which would not come anyway once the CSS below stops
+  // matching (that cancels the animation instead of finishing it).
+  assert.match(componentSource, /expression !== 'neutral' && idlePlay\) idlePlay = null/)
+
+  // Every play-* selector requires .expr-neutral on the same element as
+  // .companion-body, not just the play-* class: a stale `idlePlay` left
+  // over from before an unrelated code path could set it (or a future
+  // change that forgets the effect above) must still never apply a
+  // look/yawn/wink animation on top of a real, non-neutral expression's
+  // own eye/mouth shape.
+  const style = componentSource.slice(componentSource.indexOf('<style>'))
+  const rules = companionLeafRules(style)
+  const playSelectors = rules
+    .flatMap((rule) => rule.selectors)
+    .filter((sel) => /\.play-(look|yawn|wink)\b/.test(sel))
+  assert.ok(playSelectors.length > 0, 'expected at least one play-* selector to check')
+  for (const sel of playSelectors) {
+    assert.match(sel, /\.expr-neutral/, `${sel} does not require .expr-neutral`)
+  }
+})
+
+test('CASE cleans up every timer and listener it starts when it is destroyed', () => {
+  assert.match(componentSource, /onMount\(/)
+  assert.match(componentSource, /return \(\) => \{/)
+  assert.match(componentSource, /clearInterval\(cueTimer\)/)
+  assert.match(componentSource, /clearTimeout\(idleTimer\)/)
+  assert.match(componentSource, /removeEventListener\('pointerdown', handleInput\)/)
+  assert.match(componentSource, /removeEventListener\('keydown', handleInput\)/)
 })
 
 test('the three fixed-script buttons and their reactions are gone', () => {
@@ -240,6 +345,182 @@ test('every expression has its own face shape rule in the component styles', () 
   for (const expression of COMPANION_EXPRESSIONS) {
     assert.match(componentSource, new RegExp(`\\.expr-${expression}\\b`), `no .expr-${expression} rule in CompanionPet.svelte`)
   }
+})
+
+test('companionFailedSessionIds collects session ids from recent failures only', () => {
+  const failures: CompanionFailure[] = [
+    { key: 'failure:1', sessionId: 's1', label: 'x', at: now },
+    { key: 'failure:2', label: 'no session', at: now },
+    { key: 'failure:old', sessionId: 's9', label: 'old', at: now - 31 * 60 * 1000 },
+  ]
+  const ids = companionFailedSessionIds(failures, now)
+  assert.deepEqual([...ids], ['s1'])
+})
+
+test('companionTurnsJustFinished is true only for another session\'s running turn ending without a failure', () => {
+  const prev: ActivityMap = {
+    s1: { running: true, pending: 0, queued: 0, title: 't1' },
+    s2: { running: true, pending: 0, queued: 0, title: 't2' },
+  }
+  // Both still running: no transition for either.
+  const bothStillRunning: ActivityMap = {
+    s1: { running: true, pending: 0, queued: 0, title: 't1' },
+    s2: { running: true, pending: 0, queued: 0, title: 't2' },
+  }
+  assert.equal(companionTurnsJustFinished(prev, bothStillRunning, null, new Set()), false)
+
+  // s1 stopped running (s2 still running) and is not in the failed set: finished.
+  const oneDone: ActivityMap = { s2: { running: true, pending: 0, queued: 0, title: 't2' } }
+  assert.equal(companionTurnsJustFinished(prev, oneDone, null, new Set()), true)
+
+  // s1 stopped running but is in the failed set: that is upset, not happy.
+  assert.equal(companionTurnsJustFinished(prev, oneDone, null, new Set(['s1'])), false)
+
+  // The session the chat route has on screen ending is left out — its own
+  // thread already shows the reply arriving. s2 is still running, so this
+  // only suppresses s1's own transition, not a real one elsewhere.
+  assert.equal(companionTurnsJustFinished(prev, oneDone, 's1', new Set()), false)
+
+  // Nothing was running before: no transition to detect.
+  assert.equal(companionTurnsJustFinished({}, {}, null, new Set()), false)
+})
+
+test('companionWarningFromEvent is true only for a warn-severity notification', () => {
+  assert.equal(companionWarningFromEvent({ type: 'notification', category: 'pulse', severity: 'warn', title: 'x', message: '', timestamp: '' }), true)
+  assert.equal(companionWarningFromEvent({ type: 'notification', category: 'pulse', severity: 'info', title: 'x', message: '', timestamp: '' }), false)
+  assert.equal(companionWarningFromEvent({ type: 'notification', category: 'pulse', severity: 'error', title: 'x', message: '', timestamp: '' }), false)
+  assert.equal(companionWarningFromEvent({ type: 'keepalive', category: '', severity: 'warn', title: '', message: '', timestamp: '' }), false)
+})
+
+test('companionJustArrived fires only once a tab has been hidden ten minutes or more', () => {
+  assert.equal(companionJustArrived(COMPANION_JUST_ARRIVED_HIDDEN_MS - 1), false)
+  assert.equal(companionJustArrived(COMPANION_JUST_ARRIVED_HIDDEN_MS), true)
+  assert.equal(companionJustArrived(60_000), false)
+})
+
+test('companionIsLongQuiet is level state: quiet for five minutes with nothing waiting, clears the instant something is waiting', () => {
+  assert.equal(companionIsLongQuiet(now, now - COMPANION_LONG_QUIET_MS, false), true)
+  assert.equal(companionIsLongQuiet(now, now - (COMPANION_LONG_QUIET_MS - 1), false), false)
+  // A waiting line always wins, no matter how long the input has been quiet.
+  assert.equal(companionIsLongQuiet(now, now - COMPANION_LONG_QUIET_MS * 10, true), false)
+})
+
+test('companionShouldRecordInput throttles to at most once per second, but always passes after a long gap', () => {
+  assert.equal(companionShouldRecordInput(now, now), false)
+  assert.equal(companionShouldRecordInput(now, now + COMPANION_INPUT_THROTTLE_MS - 1), false)
+  assert.equal(companionShouldRecordInput(now, now + COMPANION_INPUT_THROTTLE_MS), true)
+  // Waking a sleeping CASE: the gap since the last recorded input is huge
+  // (minutes, not under a second), so the very first pointermove/wheel/
+  // click/keystroke after a long quiet stretch always passes, not just
+  // every-other one once the throttle window happens to align.
+  assert.equal(companionShouldRecordInput(now - COMPANION_LONG_QUIET_MS, now), true)
+})
+
+test('companionCueTick: a higher-priority signal replaces a lower one, a lower one never interrupts, and each cue expires on its own', () => {
+  let state: CompanionCueState = COMPANION_CUE_NONE
+
+  // justArrived starts the cue and sets its own expiry.
+  state = companionCueTick(state, now, { justArrived: true })
+  assert.deepEqual(state, { cue: 'justArrived', expiresAt: now + COMPANION_CUE_DURATIONS_MS.justArrived })
+
+  // A lower-or-equal-priority signal does not interrupt it before it expires.
+  state = companionCueTick(state, now + 1_000, { justArrived: true })
+  assert.equal(state.cue, 'justArrived')
+
+  // A higher-priority signal (justFinished) replaces it immediately.
+  state = companionCueTick(state, now + 2_000, { justFinished: true })
+  assert.deepEqual(state, { cue: 'justFinished', expiresAt: now + 2_000 + COMPANION_CUE_DURATIONS_MS.justFinished })
+
+  // warning outranks justFinished the same way.
+  state = companionCueTick(state, now + 2_500, { warning: true, justArrived: true })
+  assert.equal(state.cue, 'warning')
+
+  // Once its own duration has elapsed with nothing new firing, it clears.
+  const expiresAt = state.expiresAt as number
+  state = companionCueTick(state, expiresAt + 1, {})
+  assert.deepEqual(state, COMPANION_CUE_NONE)
+
+  // No signal on an already-empty state stays empty.
+  assert.deepEqual(companionCueTick(COMPANION_CUE_NONE, now, {}), COMPANION_CUE_NONE)
+})
+
+test('companionCuesFor maps the single active cue (at most one of three) plus longQuiet', () => {
+  assert.deepEqual(companionCuesFor(COMPANION_CUE_NONE, false), {
+    warning: false,
+    justFinished: false,
+    justArrived: false,
+    longQuiet: false,
+  })
+  assert.deepEqual(companionCuesFor({ cue: 'warning', expiresAt: now }, false), {
+    warning: true,
+    justFinished: false,
+    justArrived: false,
+    longQuiet: false,
+  })
+  // longQuiet is independent of the transient cue.
+  assert.deepEqual(companionCuesFor({ cue: 'justFinished', expiresAt: now }, true), {
+    warning: false,
+    justFinished: true,
+    justArrived: false,
+    longQuiet: true,
+  })
+})
+
+test('companionActionFor plays once on a transition into an action expression, and not again while it holds', () => {
+  assert.equal(companionActionFor(null, 'alert'), 'bounce')
+  assert.equal(companionActionFor('neutral', 'alert'), 'bounce')
+  assert.equal(companionActionFor('alert', 'alert'), null) // same expression: no replay
+  assert.equal(companionActionFor('neutral', 'happy'), 'nod')
+  assert.equal(companionActionFor('neutral', 'upset'), 'shake')
+  assert.equal(companionActionFor('neutral', 'wary'), 'tilt')
+  assert.equal(companionActionFor('neutral', 'greeting'), 'wave')
+  // working and sleepy are continuous CSS states, not one-shot actions.
+  assert.equal(companionActionFor('neutral', 'working'), null)
+  assert.equal(companionActionFor('neutral', 'sleepy'), null)
+  assert.equal(companionActionFor('alert', 'neutral'), null)
+})
+
+test('companionNextIdle picks a 60–180s delay and a look/yawn/wink kind from an injected random source, deterministically', () => {
+  assert.deepEqual(companionNextIdle(() => 0), { delayMs: 60_000, kind: 'look' })
+  assert.deepEqual(companionNextIdle(() => 0.999), { delayMs: 179_880, kind: 'wink' })
+  const mid = companionNextIdle(() => 0.5)
+  assert.equal(mid.delayMs, 120_000)
+  assert.equal(mid.kind, 'yawn')
+})
+
+test('companionIdleEligible requires neutral, nothing waiting, and a closed bubble', () => {
+  assert.equal(companionIdleEligible('neutral', 0, false), true)
+  assert.equal(companionIdleEligible('working', 0, false), false)
+  assert.equal(companionIdleEligible('neutral', 1, false), false)
+  assert.equal(companionIdleEligible('neutral', 0, true), false)
+})
+
+test('companionGazeOffset is 0 past the radius and scales up to maxOffset at its edge, both axes clamped', () => {
+  const center = { x: 100, y: 100 }
+  assert.deepEqual(companionGazeOffset(center, { x: 100, y: 100 }), { x: 0, y: 0 })
+  // Exactly at the pointer: no lean.
+  assert.deepEqual(companionGazeOffset(center, { x: 500, y: 100 }), { x: 0, y: 0 }) // far outside 200px radius
+  // Straight right, halfway to the radius: half the max offset.
+  const half = companionGazeOffset(center, { x: 200, y: 100 })
+  assert.equal(Math.round(half.x), 2) // 100px of 200px radius -> ~1.5px rounds to 2 at this geometry
+  assert.equal(half.y, 0)
+  // Straight right, at the radius edge: full max offset, still clamped.
+  const edge = companionGazeOffset(center, { x: 300, y: 100 })
+  assert.equal(edge.x, 3)
+  // Diagonal pointer still keeps each axis within [-max, max].
+  const diag = companionGazeOffset(center, { x: 50, y: 50 })
+  assert.ok(diag.x >= -3 && diag.x <= 3)
+  assert.ok(diag.y >= -3 && diag.y <= 3)
+})
+
+test('companionGazeApplies is false only for the four non-pupil expressions', () => {
+  for (const expression of COMPANION_GAZE_EXCLUDED_EXPRESSIONS) {
+    assert.equal(companionGazeApplies(expression), false)
+  }
+  assert.equal(companionGazeApplies('neutral'), true)
+  assert.equal(companionGazeApplies('working'), true)
+  assert.equal(companionGazeApplies('alert'), true)
+  assert.equal(companionGazeApplies('wary'), true)
 })
 
 test('failures older than 30 minutes are dropped, and only the newest 5 are kept', () => {
