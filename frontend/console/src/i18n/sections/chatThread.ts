@@ -5,6 +5,10 @@ export const chatThreadEn = {
   panel: {
     ariaLabel: 'Chat',
   },
+  // A bubble badge (ChatMessageItem) marking a message TARS wrote on its
+  // own (tars#1220's live mode: a delivered greet/check_in), so the user
+  // can tell it from a reply to something they said.
+  spokeFirst: 'TARS spoke first',
   // The streaming status has its own EN/KR toggle, so ChatPanel reads steps,
   // phases, compacted, and forking from chatThreadEn or chatThreadKo by the
   // toggle, not from $t. progressAria follows the console locale.
@@ -179,6 +183,7 @@ export const chatThreadKo: ChatThreadTranslations = {
   panel: {
     ariaLabel: '채팅',
   },
+  spokeFirst: 'TARS가 먼저 말함',
   streaming: {
     progressAria: '진행 단계',
     steps: {

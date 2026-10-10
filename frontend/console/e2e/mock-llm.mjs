@@ -262,9 +262,38 @@ function computerUseDecision(messages) {
   return JSON.stringify({ op: 'done', target: 'none', input_key: 'none', risky: false, done: true })
 }
 
+// The initiative text-signal backend (internal/initiative/llmsignals.go):
+// a strict-JSON, tool-free call over {state, questions}. Always answers
+// "nothing special" so a live-mode tick's decision depends only on the Go
+// signals an e2e spec controls (the fake transcript it writes, the console
+// connection), not on anything this mock would have to interpret from the
+// rendered state text.
+function initiativeTextSignalDecision(messages) {
+  const system = messages.find((m) => m?.role === 'system')
+  if (typeof system?.content !== 'string' || !system.content.startsWith("You answer three fixed yes/no questions")) return null
+  return JSON.stringify({ quiet_requested: false, user_strained: false, special_day: false })
+}
+
+// The live-mode speak composer (internal/initiative/compose.go): a
+// tool-free call that writes 1-3 lines for a greet/check_in (tars#1220).
+// Fixed text so a spec can assert the companion bubble and the main
+// session's assistant message carry exactly this. Not exported — this
+// file starts listening the moment it loads (see server.listen below), so
+// a spec imports nothing from it and keeps its own copy of the literal.
+const INITIATIVE_SPEAK_TEXT = 'Welcome back! Hope the trip went well.'
+function initiativeSpeakDecision(messages) {
+  const system = messages.find((m) => m?.role === 'system')
+  if (typeof system?.content !== 'string' || !system.content.startsWith('You are TARS, speaking first and unprompted')) return null
+  return INITIATIVE_SPEAK_TEXT
+}
+
 function replyFor(body) {
   const decision = computerUseDecision(body.messages ?? [])
   if (decision) return decision
+  const textSignal = initiativeTextSignalDecision(body.messages ?? [])
+  if (textSignal) return textSignal
+  const speak = initiativeSpeakDecision(body.messages ?? [])
+  if (speak) return speak
   const text = lastUserText(body.messages ?? []).trim()
   const templateDraft = focusTemplateDraftReply(text)
   if (templateDraft) return templateDraft

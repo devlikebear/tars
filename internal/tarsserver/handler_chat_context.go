@@ -368,9 +368,12 @@ func prepareChatRunState(r *http.Request, req chatRequestPayload, deps chatHandl
 	// session's first message, where there is no history to compact, so the
 	// explicit, pinned, or default tier is the right one to size against here.
 	compactionOpts := deps.tooling.Compaction
-	pinnedTier := sessionTierPin(reqStore.Get(sessionID))
+	priorSess, priorSessErr := reqStore.Get(sessionID)
+	pinnedTier := sessionTierPin(priorSess, priorSessErr)
+	var turnProviderKind string
 	if _, sizing, resolveErr := deps.resolveChatClientForTier(chatRequestedTier(req, pinnedTier)); resolveErr == nil {
 		compactionOpts = applyTierContextWindow(compactionOpts, sizing, deps.logger)
+		turnProviderKind = sizing.Provider
 	}
 	compactionInfo, err := maybeAutoCompactSession(requestWorkspaceDir, transcriptPath, sessionID, reqStore, deps.router, deps.logger, compactionOpts, deps.tooling.MemorySemanticConfig)
 	if err != nil {
@@ -388,6 +391,11 @@ func prepareChatRunState(r *http.Request, req chatRequestPayload, deps chatHandl
 		return chatRunState{}, http.StatusBadRequest, err.Error(), err
 	}
 	req.Message = appendConsoleContext(req.Message, req.ConsoleContext)
+	// A resuming CLI provider (claude-code-cli/antigravity-cli) never
+	// replays the transcript, so an initiative-authored message it never
+	// generated itself needs to ride along on the next user turn once,
+	// the same way console context/review notes do (tars#1220).
+	req.Message = maybeAppendInitiativeContext(req.Message, transcriptPath, turnProviderKind, priorSess.UpstreamSessionID, deps.logger)
 	var focusMark *focusTurnMark
 	req.Message, focusMark = appendFocusGuidanceAt(req.Message, reqStore, sessionID, focusQuestionGateFrom(r.Context()), deps.logger)
 	req.Message, err = appendReviewNotes(r.Context(), deps.tooling.Checkpoints, sessionID, req.Message, req.ReviewNotes)

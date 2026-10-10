@@ -20,8 +20,8 @@ func init() {
 // notifier). It lets an e2e spec make the real server emit a companion
 // event (or any other category) on the real /v1/events/stream, the same
 // path #1000's initiative sender will use.
-func registerE2EEventsRoute(mux *http.ServeMux, broker *eventBroker) {
-	if mux == nil || broker == nil {
+func registerE2EEventsRoute(mux *http.ServeMux, deps e2eRouteDeps) {
+	if mux == nil || deps.Broker == nil {
 		return
 	}
 	mux.HandleFunc("/v1/e2e/events", func(w http.ResponseWriter, r *http.Request) {
@@ -32,7 +32,7 @@ func registerE2EEventsRoute(mux *http.ServeMux, broker *eventBroker) {
 		if !decodeJSONBody(w, r, &evt) {
 			return
 		}
-		broker.Publish(evt)
+		deps.Broker.Publish(evt)
 		writeJSON(w, http.StatusOK, map[string]bool{"published": true})
 	})
 }

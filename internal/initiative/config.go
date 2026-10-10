@@ -7,6 +7,14 @@ import (
 
 const (
 	ModeShadow = "shadow"
+	ModeLive   = "live"
+
+	// defaultBackoffStart/defaultBackoffMax bound the exponential backoff a
+	// failed speak attempt or a failed text-signal read falls back to, so a
+	// stuck backend is retried on a widening schedule instead of every tick
+	// (tars#1220).
+	defaultBackoffStart = 5 * time.Minute
+	defaultBackoffMax   = 60 * time.Minute
 
 	typingWindow     = 3 * time.Minute
 	arrivalGap       = 4 * time.Hour
@@ -43,11 +51,19 @@ type Config struct {
 	// the runtime makes per local day, independent of DailyCap (spoken
 	// initiatives). tars#1219.
 	DailyTextCalls int
+	// DailySpeakCalls caps how many System 2 speak-composer LLM calls live
+	// mode makes per local day. tars#1220.
+	DailySpeakCalls int
 }
 
-// WithDefaults fills zero values. P1 only knows shadow mode.
+// WithDefaults fills zero values. Mode defaults to shadow when unset, but an
+// explicit live is kept — callers are expected to have already validated
+// Mode is shadow or live (config.Load does this); WithDefaults itself never
+// rejects an unknown mode, it simply does not treat it as live.
 func (c Config) WithDefaults() Config {
-	c.Mode = ModeShadow
+	if strings.TrimSpace(c.Mode) == "" {
+		c.Mode = ModeShadow
+	}
 	if c.Tick <= 0 {
 		c.Tick = time.Minute
 	}
@@ -62,6 +78,9 @@ func (c Config) WithDefaults() Config {
 	}
 	if c.DailyTextCalls <= 0 {
 		c.DailyTextCalls = 60
+	}
+	if c.DailySpeakCalls <= 0 {
+		c.DailySpeakCalls = 12
 	}
 	if strings.TrimSpace(c.QuietHours) == "" {
 		c.QuietHours = "23:00-07:00"
@@ -78,6 +97,11 @@ func (c Config) WithDefaults() Config {
 	c.BodyProvider = strings.TrimSpace(c.BodyProvider)
 	return c
 }
+
+// Live reports whether the runtime should actually compose and deliver
+// speech (greet/check_in), as opposed to shadow mode's record-only
+// behavior. Any mode other than exactly ModeLive is treated as shadow.
+func (c Config) Live() bool { return c.Mode == ModeLive }
 
 // inQuietWindow reports whether t falls in an "HH:MM-HH:MM" window that may
 // wrap past midnight. An empty or malformed window is never quiet.

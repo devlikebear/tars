@@ -37,4 +37,8 @@ export type ChatMessage = {
     cache_read_tokens: number
     cache_write_tokens: number
   }
+  // Set when TARS wrote this message on its own, not in reply to a chat
+  // turn (tars#1220's live mode). Only the "spoke first" badge reads it —
+  // everything else treats the message like any other assistant reply.
+  spokeFirst?: boolean
 }

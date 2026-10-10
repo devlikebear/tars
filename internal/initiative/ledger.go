@@ -12,10 +12,15 @@ import (
 
 const defaultLedgerMaxBytes = 5 << 20
 
-// Entry is one recorded decision. It never holds user text: only signals,
-// probabilities and the outcome, so the ledger is safe to keep and to use
-// as tuning data (tars#1003).
+// Entry is one recorded decision. It never holds user text or composed
+// speech: only signals, probabilities and the outcome, so the ledger is
+// safe to keep and to use as tuning data (tars#1003).
 type Entry struct {
+	// ID identifies this entry so a delivered speak attempt's assistant
+	// message can reference it (its Initiative metadata) without storing
+	// the words twice. Always set, even on a tick that decides none.
+	// tars#1220.
+	ID   string    `json:"id,omitempty"`
 	At   time.Time `json:"at"`
 	Mode string    `json:"mode"`
 	Decision
@@ -24,10 +29,25 @@ type Entry struct {
 	// Called reports whether this tick actually invoked the text-signal
 	// backend (success or error) — as opposed to a cached, skipped, or
 	// never-attempted reading — and counts toward the daily call cap.
-	Called    bool   `json:"called"`
-	Body      string `json:"body,omitempty"`
-	LatencyMS int64  `json:"latency_ms"`
-	Error     string `json:"error,omitempty"`
+	Called bool `json:"called"`
+	// Composed reports whether this tick actually invoked the speak
+	// composer (live mode only, success or failure) — counts toward
+	// DailySpeakCalls and the speak backoff schedule, independent of
+	// Delivery. tars#1220.
+	Composed bool `json:"composed,omitempty"`
+	// Delivery is live mode's outcome for a Speak intent: delivered,
+	// unreachable, skipped, or error. Empty in shadow mode and on every
+	// tick that did not decide to speak. tars#1220.
+	Delivery string `json:"delivery,omitempty"`
+	// DeliveryReason explains Delivery with a fixed reason code — never
+	// user or assistant text (tars#1003's rule applies here too):
+	// no_console (unreachable); backoff, daily_speak_cap,
+	// speak_unavailable, busy (skipped); compose_error, compose_empty,
+	// compose_tool_attempt, write_error (error); delivered (delivered).
+	DeliveryReason string `json:"delivery_reason,omitempty"`
+	Body           string `json:"body,omitempty"`
+	LatencyMS      int64  `json:"latency_ms"`
+	Error          string `json:"error,omitempty"`
 }
 
 // Ledger is an append-only JSONL file that rotates to <path>.1 when full.
@@ -105,11 +125,20 @@ func (l *Ledger) Recent(n int) ([]Entry, error) {
 
 // historyFrom rebuilds pacing state from recorded entries, so a restart
 // keeps the daily cap, cooldown and spacing.
+//
+// Whether a Speak entry counts toward Today/LastSpokeAt/LastCheckInAt uses
+// the entry's own recorded Mode, not the runtime's current configuration:
+// a shadow entry (or one from before tars#1220, which is always "shadow")
+// always counts as spoken (shadow has no delivery concept, every Speak
+// decision is the pacing truth), while a live entry counts only when it
+// was actually Delivery == DeliveryDelivered. This keeps historyFrom and
+// applyLocked agreeing even across a mode change, since both key off the
+// same per-entry Mode.
 func historyFrom(entries []Entry, now time.Time, loc *time.Location) History {
 	var h History
 	today := now.In(loc).Format("2006-01-02")
 	for _, e := range entries {
-		if e.Speak {
+		if e.spoken() {
 			if e.At.In(loc).Format("2006-01-02") == today {
 				h.Today++
 			}
@@ -130,7 +159,39 @@ func historyFrom(entries []Entry, now time.Time, loc *time.Location) History {
 			if e.At.After(h.LastTextCallAt) {
 				h.LastTextCallAt = e.At
 			}
+			if e.Text.Source == "error" {
+				h.TextReadFailCount++
+			} else {
+				h.TextReadFailCount = 0
+			}
+		}
+		if e.Composed {
+			if e.At.In(loc).Format("2006-01-02") == today {
+				h.SpeakCallsToday++
+			}
+			if e.At.After(h.LastSpeakCallAt) {
+				h.LastSpeakCallAt = e.At
+			}
+			if e.Delivery == DeliveryDelivered {
+				h.SpeakFailCount = 0
+			} else {
+				h.SpeakFailCount++
+			}
 		}
 	}
 	return h
+}
+
+// spoken reports whether e counts as an actually-spoken initiative for
+// pacing purposes (Today, LastSpokeAt, LastCheckInAt, cooldown, daily cap).
+// See historyFrom's comment for why this keys off e.Mode rather than the
+// runtime's current configuration.
+func (e Entry) spoken() bool {
+	if !e.Speak {
+		return false
+	}
+	if e.Mode != ModeLive {
+		return true
+	}
+	return e.Delivery == DeliveryDelivered
 }

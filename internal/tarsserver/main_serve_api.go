@@ -405,6 +405,8 @@ func buildAPIMux(
 		TelegramPairings: telegramPairings,
 		Embodiment:       embodimentSubsystem,
 		Router:           deps.llmRouter,
+		MainSessionID:    mainSessionID,
+		Notify:           dispatcher.Emit,
 		Logger:           logger,
 		Now:              nowFn,
 	})
@@ -446,6 +448,7 @@ func buildAPIMux(
 		cfg.PlanClarifyMode,
 		sessionStyleDefaultsFromConfig(cfg),
 	)
+	chatTooling.InitiativeSpeak = initiativeSetup.Speaker
 	chatTooling.OpsManager = opsManager
 	chatTooling.Unattended = unattended
 	chatTooling.ExecMaxTimeoutMS = cfg.ToolsExecMaxTimeoutMS
@@ -781,7 +784,7 @@ func buildAPIMux(
 		codexUsage:      codexUsageHandler,
 	})
 	// Empty outside an `-tags e2e` build (see e2e_hooks.go/e2e_events.go).
-	applyE2ERouteHooks(mux, broker)
+	applyE2ERouteHooks(mux, e2eRouteDeps{Broker: broker, InitiativeRuntime: initiativeSetup.Runtime})
 
 	server := &http.Server{
 		Addr:    opts.APIAddr,

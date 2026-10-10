@@ -354,3 +354,41 @@ func TestLoadHistorySnapshot_ReportsTokensAndCompactionUsage(t *testing.T) {
 		t.Fatalf("expected compaction summary at head, got %+v", snapshot.Messages[0])
 	}
 }
+
+// TestAppendAndReadMessagePreservesInitiativeMetadata is tars#1220's
+// round-trip check: an initiative-authored assistant message's metadata
+// (intent, ledger entry id) survives a JSONL append/read cycle exactly
+// like every other optional field (ReasoningBlocks, Interim), and an
+// ordinary message's Initiative stays nil.
+func TestAppendAndReadMessagePreservesInitiativeMetadata(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "transcript.jsonl")
+
+	spoken := Message{
+		Role: "assistant", Content: "Welcome back!",
+		Timestamp:  time.Date(2026, 9, 29, 9, 0, 0, 0, time.UTC),
+		Initiative: &MessageInitiative{Intent: "greet", EntryID: "entry-1"},
+	}
+	reply := Message{Role: "user", Content: "thanks", Timestamp: time.Date(2026, 9, 29, 9, 1, 0, 0, time.UTC)}
+
+	if err := AppendMessage(path, spoken); err != nil {
+		t.Fatalf("append spoken: %v", err)
+	}
+	if err := AppendMessage(path, reply); err != nil {
+		t.Fatalf("append reply: %v", err)
+	}
+
+	messages, err := ReadMessages(path)
+	if err != nil {
+		t.Fatalf("read messages: %v", err)
+	}
+	if len(messages) != 2 {
+		t.Fatalf("expected 2 messages, got %d", len(messages))
+	}
+	if messages[0].Initiative == nil || messages[0].Initiative.Intent != "greet" || messages[0].Initiative.EntryID != "entry-1" {
+		t.Fatalf("spoken message initiative = %+v", messages[0].Initiative)
+	}
+	if messages[1].Initiative != nil {
+		t.Fatalf("ordinary message must have no initiative metadata, got %+v", messages[1].Initiative)
+	}
+}

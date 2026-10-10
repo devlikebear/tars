@@ -26,6 +26,29 @@ type Message struct {
 	// before this field have no interim messages: all of a turn's tools, then
 	// one reply holding all of its text.
 	Interim bool `json:"interim,omitempty"`
+	// Initiative marks an assistant message TARS wrote on its own, not in
+	// reply to a chat turn (tars#1220: the initiative loop's live mode).
+	// nil for every ordinary assistant message — a normal chat reply, a
+	// cron/telegram-triggered turn, a focus turn. Every other consumer
+	// (transcript replay, compaction, search, retention, goal judging,
+	// focus) treats this message exactly like any other role "assistant"
+	// text; the field is metadata for the console's "TARS spoke first"
+	// badge and nothing else.
+	Initiative *MessageInitiative `json:"initiative,omitempty"`
+}
+
+// MessageInitiative is the metadata an initiative-authored assistant
+// message carries. It never holds the composed words themselves — those
+// live only in Content, same as any other message; the initiative ledger
+// (internal/initiative) also never stores them, only this message does.
+type MessageInitiative struct {
+	// Intent is "greet" or "check_in" (internal/initiative.Intent as a
+	// plain string, so this package does not import internal/initiative).
+	Intent string `json:"intent"`
+	// EntryID references the internal/initiative ledger entry this speak
+	// attempt recorded, for correlating the message with its delivery
+	// outcome without storing the words twice.
+	EntryID string `json:"entry_id,omitempty"`
 }
 
 // ReasoningBlock mirrors llm.ReasoningBlock on the transcript.
