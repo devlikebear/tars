@@ -3,6 +3,7 @@ package llm
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -223,8 +224,19 @@ func (c *OpenAICompatibleClient) chatStreaming(ctx context.Context, req *http.Re
 		toolCallsByIndex    = map[int]ToolCall{}
 	)
 	scanner := createSSEScanner(resp.Body)
+	// eventName is the SSE event the next data line belongs to; a blank line
+	// ends the event.
+	eventName := ""
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			eventName = ""
+			continue
+		}
+		if name, ok := strings.CutPrefix(line, "event:"); ok {
+			eventName = strings.TrimSpace(name)
+			continue
+		}
 		if !strings.HasPrefix(line, "data:") {
 			continue
 		}
@@ -256,9 +268,19 @@ func (c *OpenAICompatibleClient) chatStreaming(ctx context.Context, req *http.Re
 				Usage        *openAICompatibleUsage `json:"usage"`
 			} `json:"choices"`
 			Usage *openAICompatibleUsage `json:"usage"`
+			// Error and Message carry a failure reported inside a 200
+			// stream (see openAIStreamError).
+			Error   json.RawMessage `json:"error"`
+			Message string          `json:"message"`
 		}
 		if err := json.Unmarshal([]byte(payload), &parsed); err != nil {
+			if eventName == "error" {
+				return ChatResponse{}, newProviderError(c.label, "stream", errors.New(payload))
+			}
 			return ChatResponse{}, newProviderError(c.label, "parse", fmt.Errorf("decode stream response: %w", err))
+		}
+		if msg := openAIStreamError(eventName, parsed.Error, parsed.Message, payload); msg != "" {
+			return ChatResponse{}, newProviderError(c.label, "stream", errors.New(msg))
 		}
 		// Usage arrives on the final chunk (often with empty choices) when
 		// stream_options.include_usage is set; Moonshot puts it inside the
@@ -329,6 +351,36 @@ func (c *OpenAICompatibleClient) chatStreaming(ctx context.Context, req *http.Re
 		Usage:      usage,
 		StopReason: stopReason,
 	}, nil
+}
+
+// openAIStreamError returns the message of an error a server reported inside
+// a streamed response, or "" when the chunk is not an error. A server that
+// fails after it has answered 200 can only say so in the stream: LM Studio
+// sends `event: error` with `data: {"error":{"message":…},"message":…}`
+// (a chat template rejecting the request, for one), and other servers send a
+// data chunk whose only key is "error". Read as an ordinary chunk either one
+// has no choices, and the turn would end as an empty reply with no error.
+func openAIStreamError(eventName string, rawError json.RawMessage, topMessage, payload string) string {
+	reported := len(rawError) > 0 && string(rawError) != "null"
+	if !reported && eventName != "error" {
+		return ""
+	}
+	if reported {
+		var detail struct {
+			Message string `json:"message"`
+		}
+		if err := json.Unmarshal(rawError, &detail); err == nil && strings.TrimSpace(detail.Message) != "" {
+			return strings.TrimSpace(detail.Message)
+		}
+		var text string
+		if err := json.Unmarshal(rawError, &text); err == nil && strings.TrimSpace(text) != "" {
+			return strings.TrimSpace(text)
+		}
+	}
+	if msg := strings.TrimSpace(topMessage); msg != "" {
+		return msg
+	}
+	return payload
 }
 
 // openAICompatibleUsage is the Chat Completions usage object, shared by the
@@ -517,10 +569,43 @@ func toOpenAIContent(msg ChatMessage) any {
 	return blocks
 }
 
+// mergeLeadingSystemMessages joins the system messages a conversation opens
+// with into one, separated by a blank line. Callers send the stable prompt
+// and the per-turn tail as two system messages (the Anthropic client caches
+// the first), which OpenAI reads as one prompt anyway — but the chat
+// templates of Qwen-family models served by LM Studio, llama.cpp and the
+// like raise "System message must be at the beginning" on a second one.
+//
+// Only the opening run is merged. A system message later in the conversation
+// (a cron note, critic feedback before the last user message) stays where it
+// is: moving it to the front would change what it refers to. A system message
+// with content blocks ends the run, since its content is not plain text.
+func mergeLeadingSystemMessages(messages []ChatMessage) []ChatMessage {
+	run := 0
+	for run < len(messages) && strings.TrimSpace(messages[run].Role) == "system" && len(messages[run].ContentBlocks) == 0 {
+		run++
+	}
+	if run < 2 {
+		return messages
+	}
+	parts := make([]string, 0, run)
+	for _, m := range messages[:run] {
+		if strings.TrimSpace(m.Content) != "" {
+			parts = append(parts, m.Content)
+		}
+	}
+	merged := messages[0]
+	merged.Content = strings.Join(parts, "\n\n")
+	out := make([]ChatMessage, 0, len(messages)-run+1)
+	out = append(out, merged)
+	return append(out, messages[run:]...)
+}
+
 func toOpenAIWireMessages(messages []ChatMessage, includeKimiReasoningContent bool) []openAIWireMessage {
 	if len(messages) == 0 {
 		return nil
 	}
+	messages = mergeLeadingSystemMessages(messages)
 	assistantToolCalls := map[string]struct{}{}
 	for _, m := range messages {
 		if strings.TrimSpace(m.Role) != "assistant" {
