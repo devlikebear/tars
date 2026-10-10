@@ -1794,21 +1794,24 @@ func (s *Store) Delete(id string) error {
 
 	_ = os.Remove(s.TranscriptPath(id))
 	// The task file is the session's too; left behind, it was read again
-	// by everything that lists sessions with plans. The id was found in the
-	// index, but it also names the file: only a plain name inside the
-	// store's directory is removed.
-	if !strings.Contains(id, "..") && !strings.ContainsAny(id, `/\`) {
-		root := filepath.Clean(s.dir) + string(filepath.Separator)
-		if path := filepath.Clean(s.tasksPath(id)); strings.HasPrefix(path, root) {
-			_ = os.Remove(path)
-		}
+	// by everything that lists sessions with plans. tasksPath gives no path
+	// for an id that is not a plain name inside the store's directory.
+	if path := s.tasksPath(id); path != "" {
+		_ = os.Remove(path)
 	}
 	s.notifyDeleted(id)
 
 	return nil
 }
 
+// TranscriptPath is the session's transcript file. A session id names its
+// files, and callers pass ids taken from requests, so an id that is not a
+// plain name — it holds a path separator or ".." — gets no path: "" opens
+// nothing, where a joined path would have left the store's directory.
 func (s *Store) TranscriptPath(id string) string {
+	if strings.Contains(id, "..") || strings.ContainsAny(id, `/\`) {
+		return ""
+	}
 	return filepath.Join(s.dir, id+".jsonl")
 }
 
