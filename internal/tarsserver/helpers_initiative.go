@@ -17,6 +17,7 @@ import (
 	"github.com/devlikebear/tars/internal/initiative"
 	"github.com/devlikebear/tars/internal/jev"
 	"github.com/devlikebear/tars/internal/session"
+	"github.com/devlikebear/tars/pkg/llm"
 	"github.com/rs/zerolog"
 )
 
@@ -221,8 +222,12 @@ type initiativeSetupInputs struct {
 	Activity         *runtimeActivity
 	TelegramPairings *telegramPairingStore
 	Embodiment       *embodiment.Subsystem
-	Logger           zerolog.Logger
-	Now              func() time.Time
+	// Router resolves the "llm" text-signal backend (RoleInitiative) and
+	// the chat provider it is compared against (RoleChatMain). nil in
+	// setup-only mode, in which case the llm backend is simply unavailable.
+	Router llm.Router
+	Logger zerolog.Logger
+	Now    func() time.Time
 }
 
 type initiativeSetup struct {
@@ -231,8 +236,10 @@ type initiativeSetup struct {
 }
 
 // buildInitiativeRuntime wires the initiative loop (tars#997). When it is
-// disabled only the status handler exists. User text reaches the System One
-// only when its base URL is loopback.
+// disabled only the status handler exists. User text reaches the
+// text-signal backend only when initiative.PlanText says so: for jev, only
+// a loopback base URL; for llm (the default), only when the initiative
+// role resolves to the same provider pool alias chat uses (tars#1219).
 func buildInitiativeRuntime(in initiativeSetupInputs) initiativeSetup {
 	c := in.Config.Initiative
 	if !c.Enabled {
@@ -248,14 +255,15 @@ func buildInitiativeRuntime(in initiativeSetupInputs) initiativeSetup {
 		}
 	}
 	cfg := initiative.Config{
-		Enabled:      true,
-		Mode:         c.Mode,
-		Tick:         parsePulseDuration(c.Tick, time.Minute),
-		QuietHours:   c.QuietHours,
-		Location:     loc,
-		DailyCap:     c.DailyCap,
-		Cooldown:     parsePulseDuration(c.Cooldown, 45*time.Minute),
-		BodyProvider: c.BodyProvider,
+		Enabled:        true,
+		Mode:           c.Mode,
+		Tick:           parsePulseDuration(c.Tick, time.Minute),
+		QuietHours:     c.QuietHours,
+		Location:       loc,
+		DailyCap:       c.DailyCap,
+		Cooldown:       parsePulseDuration(c.Cooldown, 45*time.Minute),
+		BodyProvider:   c.BodyProvider,
+		DailyTextCalls: c.DailyTextCalls,
 		Thresholds: initiative.Thresholds{
 			QuietRequested: c.QuietRequestedThreshold,
 			UserStrained:   c.UserStrainedThreshold,
@@ -267,17 +275,12 @@ func buildInitiativeRuntime(in initiativeSetupInputs) initiativeSetup {
 		Logger: logger,
 		Now:    in.Now,
 	}
-	if base := strings.TrimSpace(in.Config.Jev.BaseURL); base != "" {
-		client := jev.New(jev.Options{
-			BaseURL: base,
-			APIKey:  in.Config.Jev.APIKey,
-			Model:   in.Config.Jev.Model,
-			Timeout: time.Duration(in.Config.Jev.TimeoutSeconds) * time.Second,
-		})
-		deps.SystemOne = client
-		deps.IncludeText = client.IsLoopback()
-		deps.Backend = initiative.BackendInfo{Configured: true, Loopback: client.IsLoopback(), Host: hostOf(base)}
-	}
+	plan, systemOne, textLLM, textLLMModel := resolveInitiativeTextBackend(in.Config, in.Router)
+	deps.SystemOne = systemOne
+	deps.TextLLM = textLLM
+	deps.TextLLMModel = textLLMModel
+	deps.IncludeText = plan.SendsText
+	deps.Backend = initiativeBackendInfoFromPlan(plan)
 
 	observerDeps := sessionObserverDeps{Store: in.SessionStore, WorkspaceDir: in.WorkspaceDir}
 	if in.Broker != nil {
@@ -311,4 +314,110 @@ func hostOf(raw string) string {
 		return ""
 	}
 	return u.Host
+}
+
+// resolveInitiativeTextBackend resolves the configured text-signal backend
+// (initiative.backend: llm | jev, default llm) into a BackendPlan plus the
+// client the runtime should use (at most one of the SystemOne/llm.Client
+// return values is non-nil). It never performs network I/O itself — only
+// config lookups and llm.Router.ClientFor, which returns an
+// already-constructed, already usage-tracked client.
+func resolveInitiativeTextBackend(cfg config.Config, router llm.Router) (initiative.BackendPlan, initiative.SystemOne, llm.Client, string) {
+	backend := strings.ToLower(strings.TrimSpace(cfg.Initiative.Backend))
+	if backend == "jev" {
+		return resolveInitiativeJevBackend(cfg)
+	}
+	return resolveInitiativeLLMBackend(cfg, router)
+}
+
+func resolveInitiativeJevBackend(cfg config.Config) (initiative.BackendPlan, initiative.SystemOne, llm.Client, string) {
+	base := strings.TrimSpace(cfg.Jev.BaseURL)
+	if base == "" {
+		return initiative.PlanText(initiative.PlanInput{Backend: "jev"}), nil, nil, ""
+	}
+	client := jev.New(jev.Options{
+		BaseURL: base,
+		APIKey:  cfg.Jev.APIKey,
+		Model:   cfg.Jev.Model,
+		Timeout: time.Duration(cfg.Jev.TimeoutSeconds) * time.Second,
+	})
+	plan := initiative.PlanText(initiative.PlanInput{
+		Backend: "jev", JevConfigured: true, JevLoopback: client.IsLoopback(), JevHost: hostOf(base), JevModel: cfg.Jev.Model,
+	})
+	return plan, client, nil, ""
+}
+
+func resolveInitiativeLLMBackend(cfg config.Config, router llm.Router) (initiative.BackendPlan, initiative.SystemOne, llm.Client, string) {
+	in := initiative.PlanInput{Backend: "llm", LLMChatProviderAlias: chatProviderAlias(cfg)}
+	if router == nil {
+		return initiative.PlanText(in), nil, nil, ""
+	}
+	tier := strings.TrimSpace(cfg.LLMRoleDefaults[string(llm.RoleInitiative)])
+	if tier == "" {
+		tier = "light"
+	}
+	resolved, err := config.ResolveLLMTier(&cfg, tier)
+	if err != nil {
+		return initiative.PlanText(in), nil, nil, ""
+	}
+	in.LLMResolved = true
+	in.LLMKind = resolved.Kind
+	in.LLMProviderAlias = resolved.ProviderAlias
+	in.LLMModel = resolved.Model
+	in.LLMTier = tier
+	in.LLMSupportsDecisionOnly = llm.SupportsDecisionOnly(resolved.Kind)
+	plan := initiative.PlanText(in)
+	if !plan.Usable {
+		return plan, nil, nil, ""
+	}
+	client, _, err := router.ClientFor(llm.RoleInitiative)
+	if err != nil {
+		plan.Usable, plan.SendsText, plan.Reason = false, false, "llm_unavailable"
+		return plan, nil, nil, ""
+	}
+	return plan, nil, client, resolved.Model
+}
+
+// chatProviderAlias resolves the provider pool alias behind the chat
+// role's tier (RoleChatMain if mapped, else the default tier). Matching
+// provider *alias* — not just kind, and not kind+base_url — is
+// deliberately the strictest check available: two provider pool entries of
+// the same kind (even the same base URL) can hold different credentials,
+// and reusing an alias is the one signal that always means "the exact same
+// credential/endpoint the user's words already went to during the chat
+// turn that produced them."
+func chatProviderAlias(cfg config.Config) string {
+	tier := strings.TrimSpace(cfg.LLMRoleDefaults[string(llm.RoleChatMain)])
+	if tier == "" {
+		tier = strings.TrimSpace(cfg.LLMDefaultTier)
+	}
+	if tier == "" {
+		return ""
+	}
+	resolved, err := config.ResolveLLMTier(&cfg, tier)
+	if err != nil {
+		return ""
+	}
+	return resolved.ProviderAlias
+}
+
+// initiativeBackendInfoFromPlan carries a BackendPlan into the runtime's
+// status shape. Loopback/Host remain jev-specific (network reachability);
+// the llm backend reports through Kind/Provider/Model/Tier instead.
+func initiativeBackendInfoFromPlan(plan initiative.BackendPlan) initiative.BackendInfo {
+	info := initiative.BackendInfo{
+		Backend:    plan.Backend,
+		Configured: plan.Usable,
+		Kind:       plan.Kind,
+		Provider:   plan.Provider,
+		Model:      plan.Model,
+		Tier:       plan.Tier,
+		SendsText:  plan.SendsText,
+		TextReason: plan.Reason,
+	}
+	if plan.Backend == "jev" {
+		info.Loopback = plan.SendsText
+		info.Host = plan.Provider
+	}
+	return info
 }

@@ -8,6 +8,11 @@ type History struct {
 	LastSpokeAt   time.Time
 	LastCheckInAt time.Time
 	LastBodyAt    time.Time
+	// TextCallsToday and LastTextCallAt track the daily text-signal
+	// backend call cap (tars#1219), independent of Today (spoken
+	// initiatives).
+	TextCallsToday int
+	LastTextCallAt time.Time
 }
 
 func deriveGoSignals(cfg Config, obs Observation, hist History) GoSignals {

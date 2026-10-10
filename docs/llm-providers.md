@@ -183,15 +183,30 @@ Applies to the `openai`, `kimi` and `gemini` labels, including local servers
 `internal/jev` talks to a `/v1/systemone` server (hosted TypeSafe Jev, or a
 local compatible server such as Kev). It answers typed `choice`/`noul`/`score`
 questions with probabilities and generates no text, so it is configured under
-`jev.*`, not `llm_providers`, and never appears in a tier. Two features use it:
-the initiative loop (text signals, loopback only) and the optional Jev backend of `computer_use` (`tools.computer_use.backend: jev`).
-Computer use is enabled by default and otherwise uses the `computer_use` LLM role,
-defaulting to light and reusing existing credentials. The driven window's text
-is sent to whichever backend is selected. LLM decisions do not claim calibrated
-confidence; action validation, confirmation and subsequent observation gate them.
-The antigravity-cli provider is unavailable for this role because it cannot disable
-its native tools for decision-only calls. Claude Code uses an explicit empty
-harness tool list (`--tools ""`) to disable built-ins.
+`jev.*`, not `llm_providers`, and never appears in a tier. Two features can use
+it, both via an opt-in `backend: jev`: the initiative loop's text signals
+(`initiative.backend`, default `llm`) and `computer_use` (`tools.computer_use.backend`,
+default `llm`).
+
+Both features default to an LLM role instead: `computer_use` (tier light by
+default) and, since tars#1219, `initiative` (tier light by default) for the
+initiative loop's three atomic text signals — `quiet_requested`,
+`user_strained`, `special_day`, answered as strict JSON booleans, never a
+probability (the jev-only `initiative.thresholds` do not apply to the llm
+backend). Both LLM roles reuse existing credentials and the tracked router,
+and share the same decision-only isolation (`pkg/llm.DecisionOnlyChatOptions`):
+`ToolChoiceNone`, and on Claude Code an explicit empty harness tool list
+(`--tools ""`) with `plan` permission mode, strict MCP and Chrome disabled.
+`pkg/llm.SupportsDecisionOnly` excludes antigravity-cli from both roles
+because it cannot disable its native tools for a single call. For
+`computer_use`, the driven window's text is sent to whichever backend is
+selected; for initiative, the user's own words (recent messages, USER.md) are
+sent only when `backend: jev` and `jev.base_url` is loopback, or `backend: llm`
+and the `initiative` role resolves to the exact same provider pool alias as
+chat — otherwise the three text signals are skipped entirely (`GET
+/v1/initiative/status` and `tars doctor` report which and why). LLM decisions
+do not claim calibrated confidence; for computer_use, action validation,
+confirmation and subsequent observation gate them.
 
 ## Forward-looking gaps (out of scope for ID-004)
 

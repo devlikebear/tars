@@ -29,7 +29,7 @@ func newComputerUseEngine(cfg config.Config, router llm.Router, tracker *usage.T
 			return computeruse.NewEngineWithBackend(driver, nil, engineCfg)
 		}
 		client, resolution, err := router.ClientFor(llm.RoleComputerUse)
-		if err != nil || resolution.Provider == "antigravity-cli" {
+		if err != nil || !llm.SupportsDecisionOnly(resolution.Provider) {
 			return computeruse.NewEngineWithBackend(driver, nil, engineCfg)
 		}
 		var cost computeruse.LLMCost

@@ -124,6 +124,7 @@ pkg/llm const RoleComputerUse
 pkg/llm const RoleContextCompactor
 pkg/llm const RoleCritic
 pkg/llm const RoleGoalJudge
+pkg/llm const RoleInitiative
 pkg/llm const RoleMemoryHook
 pkg/llm const RolePulseDecider
 pkg/llm const RoleReflectionKB
@@ -308,7 +309,9 @@ pkg/llm field Usage.OutputTokens
 pkg/llm func AllCapabilities
 pkg/llm func AllRoles
 pkg/llm func AllTiers
+pkg/llm func AttemptedTools
 pkg/llm func CapabilitiesFor
+pkg/llm func DecisionOnlyChatOptions
 pkg/llm func DeclaredProviderKinds
 pkg/llm func DefaultClientConfig
 pkg/llm func FindAntigravityCLIPath
@@ -332,6 +335,7 @@ pkg/llm func PartialUsageFromError
 pkg/llm func RecommendTierForTask
 pkg/llm func SelectionMetadataFromContext
 pkg/llm func SupportsCapability
+pkg/llm func SupportsDecisionOnly
 pkg/llm func ToolChoiceAuto
 pkg/llm func ToolChoiceNone
 pkg/llm func ToolChoiceRequired

@@ -403,6 +403,7 @@ func buildAPIMux(
 		Activity:         activity,
 		TelegramPairings: telegramPairings,
 		Embodiment:       embodimentSubsystem,
+		Router:           deps.llmRouter,
 		Logger:           logger,
 		Now:              nowFn,
 	})

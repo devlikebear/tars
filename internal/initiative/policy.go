@@ -42,3 +42,37 @@ func none(reason string) Decision { return Decision{Intent: IntentNone, Reason: 
 func speak(intent Intent, reason string) Decision {
 	return Decision{Intent: intent, Speak: true, Reason: reason}
 }
+
+// textSignalsMatter reports whether some combination of the three atomic
+// text-signal booleans would change what Decide actually does (Intent and
+// Speak — not the Reason string, which may legitimately vary between two
+// "none" outcomes such as quiet_requested vs quiet_hours without changing
+// behavior) compared to assuming every text signal is false (what an
+// unread tick already falls back to). When nothing would change, reading
+// the user's own words would only relabel an already-fixed outcome, so the
+// text-signal backend is not worth calling this tick (tars#1219) — this is
+// what lets a quiet-hours, cooldown, daily-cap or (when not arriving)
+// merely-typing tick skip the call without hard-coding any of those cases
+// here: Decide already returns the same Intent/Speak for every text
+// combination in each of them.
+//
+// JustArrived deliberately is NOT given the same treatment as Busy: it is
+// checked before Busy in Decide, so on a tick that is both just-arrived and
+// busy, a true quiet_requested still overrides the greet (Decide checks
+// quiet_requested first of all) — skipping the read because of Busy would
+// silently drop that override and greet through a requested quiet.
+func textSignalsMatter(g GoSignals) bool {
+	base := Decide(g, TextSignals{})
+	for mask := 1; mask < 8; mask++ {
+		t := TextSignals{
+			QuietRequested: mask&1 != 0,
+			UserStrained:   mask&2 != 0,
+			SpecialDay:     mask&4 != 0,
+		}
+		d := Decide(g, t)
+		if d.Intent != base.Intent || d.Speak != base.Speak {
+			return true
+		}
+	}
+	return false
+}

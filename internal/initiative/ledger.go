@@ -19,11 +19,15 @@ type Entry struct {
 	At   time.Time `json:"at"`
 	Mode string    `json:"mode"`
 	Decision
-	Signals   GoSignals   `json:"signals"`
-	Text      TextSignals `json:"text"`
-	Body      string      `json:"body,omitempty"`
-	LatencyMS int64       `json:"latency_ms"`
-	Error     string      `json:"error,omitempty"`
+	Signals GoSignals   `json:"signals"`
+	Text    TextSignals `json:"text"`
+	// Called reports whether this tick actually invoked the text-signal
+	// backend (success or error) — as opposed to a cached, skipped, or
+	// never-attempted reading — and counts toward the daily call cap.
+	Called    bool   `json:"called"`
+	Body      string `json:"body,omitempty"`
+	LatencyMS int64  `json:"latency_ms"`
+	Error     string `json:"error,omitempty"`
 }
 
 // Ledger is an append-only JSONL file that rotates to <path>.1 when full.
@@ -118,6 +122,14 @@ func historyFrom(entries []Entry, now time.Time, loc *time.Location) History {
 		}
 		if e.Intent == IntentBodyOnly && e.At.After(h.LastBodyAt) {
 			h.LastBodyAt = e.At
+		}
+		if e.Called {
+			if e.At.In(loc).Format("2006-01-02") == today {
+				h.TextCallsToday++
+			}
+			if e.At.After(h.LastTextCallAt) {
+				h.LastTextCallAt = e.At
+			}
 		}
 	}
 	return h

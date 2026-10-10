@@ -63,6 +63,11 @@ const (
 
 	// RoleComputerUse selects the next validated desktop action. Light by default.
 	RoleComputerUse Role = "computer_use"
+
+	// RoleInitiative answers the initiative loop's atomic text-signal
+	// questions (quiet_requested, user_strained, special_day) with strict
+	// JSON booleans. Light by default (tars#1219).
+	RoleInitiative Role = "initiative"
 )
 
 // AllRoles returns the exhaustive list of roles in canonical order.
@@ -81,6 +86,7 @@ func AllRoles() []Role {
 		RoleGoalJudge,
 		RoleCritic,
 		RoleComputerUse,
+		RoleInitiative,
 	}
 }
 

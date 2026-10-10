@@ -223,12 +223,14 @@ func Schema() []FieldMeta {
 		// ── Initiative ───────────────────────────
 		f("initiative_enabled", "Initiative", "bool", "Enabled", "Let TARS decide when to speak first (shadow mode records decisions only)"),
 		fsel("initiative_mode", "Initiative", "Mode", "shadow records decisions without speaking", []string{"shadow"}),
+		fsel("initiative_backend", "Initiative", "Text-Signal Backend", "llm asks the configured initiative role (light tier by default); jev asks jev.base_url", []string{"llm", "jev"}),
 		f("initiative_tick", "Initiative", "string", "Tick", "How often to evaluate (e.g. 1m)"),
 		f("initiative_quiet_hours", "Initiative", "string", "Quiet Hours", "HH:MM-HH:MM window with no initiatives"),
 		f("initiative_timezone", "Initiative", "string", "Timezone", "IANA timezone for quiet hours (empty = server local)"),
 		f("initiative_daily_cap", "Initiative", "int", "Daily Cap", "Maximum spoken initiatives per day"),
 		f("initiative_cooldown", "Initiative", "string", "Cooldown", "Minimum gap between spoken initiatives"),
 		f("initiative_body_provider", "Initiative", "string", "Body Provider", "Embodiment provider for silent expressions"),
+		f("initiative_daily_text_calls", "Initiative", "int", "Daily Text-Signal Calls", "Maximum text-signal backend calls (llm or jev) per local day"),
 		f("initiative_threshold_quiet_requested", "Initiative", "float", "Quiet Requested Threshold", "System One probability that counts as a quiet request"),
 		f("initiative_threshold_user_strained", "Initiative", "float", "User Strained Threshold", "System One probability that counts as strain"),
 		f("initiative_threshold_special_day", "Initiative", "float", "Special Day Threshold", "System One probability that counts as a special day"),
@@ -594,6 +596,8 @@ func extractValue(yamlKey string, cfg Config) any {
 		return cfg.Initiative.Enabled
 	case "initiative_mode":
 		return cfg.Initiative.Mode
+	case "initiative_backend":
+		return cfg.Initiative.Backend
 	case "initiative_tick":
 		return cfg.Initiative.Tick
 	case "initiative_quiet_hours":
@@ -606,6 +610,8 @@ func extractValue(yamlKey string, cfg Config) any {
 		return cfg.Initiative.Cooldown
 	case "initiative_body_provider":
 		return cfg.Initiative.BodyProvider
+	case "initiative_daily_text_calls":
+		return cfg.Initiative.DailyTextCalls
 	case "initiative_threshold_quiet_requested":
 		return cfg.Initiative.QuietRequestedThreshold
 	case "initiative_threshold_user_strained":
