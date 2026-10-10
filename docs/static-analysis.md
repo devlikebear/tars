@@ -10,6 +10,7 @@ The primary CI workflow keeps the PR path focused on changed code:
 - Svelte console type checks and the stable frontend CI test slice
 - `make lint-diff` for new Go lint findings since the PR base
 - `make test-cover-diff` for changed Go package tests and changed-line coverage
+  (80% of changed lines; pushes to `main` also require 60% in total)
 
 This avoids duplicating the full push-only coverage workflow on every PR while
 still blocking regressions introduced by the branch.
@@ -34,36 +35,44 @@ Run the local guard before changing the workflow:
 make codeql-workflow-check
 ```
 
-## SonarCloud Evaluation
+## Which jobs a change runs
 
-`.github/workflows/sonarcloud.yml` is an optional evaluation workflow. It runs
-on pull requests, pushes to `main`, and manual dispatch, but it exits
-successfully with a notice until the repository has all required configuration:
+The `changes` job in `ci.yml` and `codeql.yml` runs `scripts/ci_changes.sh`,
+which lists the files of the pull request or push through the GitHub API and
+sets two outputs:
 
-```bash
-gh secret set SONAR_TOKEN --repo devlikebear/tars
-gh variable set SONAR_PROJECT_KEY --repo devlikebear/tars --body '<sonar-project-key>'
-gh variable set SONAR_ORGANIZATION --repo devlikebear/tars --body '<sonar-organization>'
-```
+| Output | `false` when | Jobs skipped |
+| --- | --- | --- |
+| `code` | every file is documentation: `docs/**` (except `docs/public-api-surface.txt`), a top-level `*.md`, `LICENSE` | `windows-build`, `windows-test`, `pr-diff`, `test`, and CodeQL on pull requests |
+| `desktop` | nothing under `desktop/` changed, nor the `Makefile`, `scripts/desktop_package.sh`, this script or `ci.yml` | `desktop`, `desktop-macos` |
 
-Once configured, the workflow generates Go coverage with `make test-cover` and
-uploads it through `sonar.go.coverage.reportPaths=coverage.out`.
+`format` and `security` always run. Jobs skip only on an explicit `false`: if
+the script fails or cannot list the files, every job runs.
 
-Frontend LCOV coverage is intentionally deferred because the console currently
-uses Node's built-in test runner and has no stable `lcov.info` producing command.
-Svelte-specific correctness remains anchored in `svelte-check` and the stable
-frontend CI test slice in `.github/workflows/ci.yml`.
+The skipping is per job, not a workflow `paths` filter. A required check whose
+workflow never starts stays pending and blocks the merge; a skipped job counts
+as passed. CodeQL's three required checks come from a matrix, and a matrix job
+skipped at job level never reports those names, so that job always starts and
+skips its steps instead.
 
-The SonarCloud scan is deliberately non-blocking while the baseline is
-evaluated:
-
-- the workflow does not wait for the Sonar quality gate
-- the scanner step uses `continue-on-error: true`
-- the check should not be configured as a required merge gate until the first
-  baseline is reviewed and the quality gate policy is agreed
-
-Run the local guard before changing the workflow:
+Markdown below the top level counts as code, because skills and prompts are
+Markdown files that tests read. Run the classifier's tests after changing it:
 
 ```bash
-make sonarcloud-workflow-check
+make ci-changes-test
 ```
+
+## Removed: SonarCloud and Codecov
+
+Both were removed in [#1206](https://github.com/devlikebear/tars/issues/1206).
+SonarCloud ran in a non-blocking evaluation mode: its quality gate on `main`
+was failing and nothing acted on it, while the workflow ran the whole Go test
+suite again on every pull request and push. Codecov uploaded on `main` only
+and could not fail a build. Coverage is gated by `make test-cover-diff` and
+`make test-cover-check`, and security findings come from CodeQL.
+
+The two reviews under `docs/static-analysis/` are kept as a record of what the
+first SonarCloud baseline found.
+
+A check either blocks the merge or does not run. Do not add a reporting-only
+check back.

@@ -397,6 +397,19 @@ test('a new pipeline sends its goal as the first turn, once', async () => {
   assert.equal(fake.state.sent.length, 1)
 })
 
+test('a pipeline the server starts (start: true) gets no kickoff from the console', async () => {
+  // Created over the API with start: the server owes the first turn
+  // (pending_turn) and sends it; a console opening the pipeline before that
+  // turn shows in the activity or the transcript must not send a second one.
+  const fake = fakeApi({ ...pipeline('2026-10-01T00:00:00Z'), goal: 'Add a --dry-run flag', pending_turn: 'Add a --dry-run flag' })
+  const store = newStore(fake)
+  await store.load('s1')
+  await settle(store)
+  await store.poll()
+  await settle(store)
+  assert.equal(fake.state.sent.length, 0)
+})
+
 test('an empty transcript the server answers as null still kicks off the goal', async () => {
   const fake = fakeApi({ ...pipeline('2026-10-01T00:00:00Z'), goal: 'Ship it' })
   fake.api.getHistory = async () => null as never

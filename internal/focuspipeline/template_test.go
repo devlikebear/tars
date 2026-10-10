@@ -47,6 +47,26 @@ func TestDevTemplateEndsWithRelease(t *testing.T) {
 	}
 }
 
+// A plan that verified only the tests it edited missed a regression the
+// pull request's full suite caught (#1197). The dev plan asks for the CI
+// scope when the change is shared code; templates without code do not.
+func TestDevPlanAsksForCIScopeOnSharedChanges(t *testing.T) {
+	plan := DevTemplate().Stages[0].Instructions
+	for _, want := range []string{"code other parts share", "CI runs on pull requests", "not only the tests you edit"} {
+		if !strings.Contains(plan, want) {
+			t.Fatalf("dev plan instructions miss %q: %q", want, plan)
+		}
+	}
+	for _, tpl := range BuiltinTemplates() {
+		if tpl.ID == DevTemplateID {
+			continue
+		}
+		if strings.Contains(tpl.Stages[0].Instructions, "CI runs on pull requests") {
+			t.Fatalf("template %s should not carry the dev verification scope", tpl.ID)
+		}
+	}
+}
+
 func TestTemplateValidate(t *testing.T) {
 	stages := func(s ...TemplateStage) []TemplateStage { return s }
 	plan := TemplateStage{ID: StagePlan}

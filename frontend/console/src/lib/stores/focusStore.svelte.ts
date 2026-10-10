@@ -356,10 +356,12 @@ export class FocusStore {
   }
 
   // kickoff sends the goal (or the pipeline's kickoff text, when it has one)
-  // as the first turn of a pipeline that has none.
+  // as the first turn of a pipeline that has none. A pipeline created with
+  // start: true (API, desktop) already owes that turn (pending_turn): the
+  // server sends it, so this screen only follows it.
   private kickoff() {
     const p = this.pipeline
-    if (!p || !this.historyKnown || this.running || this.streaming || this.history.length > 0 || p.cards.length > 0) return
+    if (!p || p.pending_turn || !this.historyKnown || this.running || this.streaming || this.history.length > 0 || p.cards.length > 0) return
     const first = p.kickoff?.trim() ? p.kickoff : p.goal
     if (p.current !== 'plan' || !first.trim()) return
     // Pasted into the goal field before the session existed (FocusNewTask);

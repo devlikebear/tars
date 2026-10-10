@@ -371,11 +371,16 @@ func (p Pipeline) Active() bool {
 }
 
 // NeedsInput counts the cards waiting for the developer: unseen gates,
-// decisions and findings.
+// decisions and findings. A card of a stage that is done or skipped no
+// longer waits: the developer passed the stage (approved its gate, say)
+// instead of answering, and nothing will act on an answer now.
 func (p Pipeline) NeedsInput() int {
 	n := 0
 	for _, c := range p.Cards {
 		if c.State != CardUnseen {
+			continue
+		}
+		if s, ok := p.Stage(c.Stage); ok && (s.Status == StatusDone || s.Status == StatusSkipped) {
 			continue
 		}
 		switch c.Kind {

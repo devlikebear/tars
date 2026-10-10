@@ -3,7 +3,9 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
 import {
+  COMPANION_EXPRESSIONS,
   companionEnabledFromConfigValues,
+  companionExpression,
   companionFailureFromEvent,
   companionHandoffForAsk,
   companionShouldAutoClose,
@@ -12,6 +14,7 @@ import {
   companionWaitingKeys,
   pruneFailures,
   shouldShowCompanion,
+  type CompanionExpressionCues,
   type CompanionFailure,
   type CompanionLine,
 } from '../src/lib/companion.ts'
@@ -98,35 +101,36 @@ test('the companion text addresses the user, not itself', () => {
   assert.doesNotMatch(companionEn.badgeAria(1), /waiting on me/)
 })
 
-test('an empty activity snapshot is the idle mood with no badge and no lines', () => {
+test('an empty activity snapshot is the neutral expression with no badge and no lines', () => {
   const snapshot = companionState({}, [], now, text)
-  assert.deepEqual(snapshot, { mood: 'idle', badge: 0, lines: [] })
+  assert.deepEqual(snapshot, { badge: 0, lines: [] })
+  assert.equal(companionExpression(snapshot), 'neutral')
 })
 
-test('a pending chat approval is a warn-mood line to that session', () => {
+test('a pending chat approval is an alert-expression line to that session', () => {
   const activity: ActivityMap = { s1: { running: false, pending: 2, queued: 0, title: 'Refactor session' } }
   const snapshot = companionState(activity, [], now, text)
-  assert.equal(snapshot.mood, 'warn')
+  assert.equal(companionExpression(snapshot), 'alert')
   assert.equal(snapshot.badge, 2)
   assert.deepEqual(snapshot.lines, [
     { key: 'pending:s1', kind: 'pending', label: text.pending(2, 'Refactor session'), path: '/console/chat/s1' },
   ])
 })
 
-test('a queued unattended approval is a warn-mood line to Ops', () => {
+test('a queued unattended approval is an alert-expression line to Ops', () => {
   const activity: ActivityMap = { s2: { running: false, pending: 0, queued: 1, title: 'Nightly cron' } }
   const snapshot = companionState(activity, [], now, text)
-  assert.equal(snapshot.mood, 'warn')
+  assert.equal(companionExpression(snapshot), 'alert')
   assert.equal(snapshot.badge, 1)
   assert.deepEqual(snapshot.lines, [
     { key: 'queued:s2', kind: 'queued', label: text.queued(1, 'Nightly cron'), path: '/console/ops' },
   ])
 })
 
-test('a running turn alone is the focus mood with a line and no badge', () => {
+test('a running turn alone is the working expression with a line and no badge', () => {
   const activity: ActivityMap = { s3: { running: true, pending: 0, queued: 0, title: 'Long task' } }
   const snapshot = companionState(activity, [], now, text)
-  assert.equal(snapshot.mood, 'focus')
+  assert.equal(companionExpression(snapshot), 'working')
   assert.equal(snapshot.badge, 0)
   assert.deepEqual(snapshot.lines, [
     { key: 'running:s3', kind: 'running', label: text.running('Long task'), path: '/console/chat/s3' },
@@ -139,7 +143,7 @@ test('the session the chat route is currently showing is left out of pending and
     other: { running: false, pending: 1, queued: 0, title: 'Elsewhere' },
   }
   const snapshot = companionState(activity, [], now, text, 'active')
-  assert.equal(snapshot.mood, 'warn')
+  assert.equal(companionExpression(snapshot), 'alert')
   assert.equal(snapshot.badge, 1)
   assert.deepEqual(snapshot.lines, [
     { key: 'pending:other', kind: 'pending', label: text.pending(1, 'Elsewhere'), path: '/console/chat/other' },
@@ -164,11 +168,11 @@ test('a queued (unattended) approval still shows for the currently active sessio
   ])
 })
 
-test('a recent failure is the error mood, outranking warn and focus', () => {
+test('a recent failure is the upset expression, outranking alert and working', () => {
   const failures: CompanionFailure[] = [{ key: 'failure:1', sessionId: 's4', label: 'Cron failed', at: now }]
   const activity: ActivityMap = { s4: { running: true, pending: 1, queued: 0, title: 'Mixed session' } }
   const snapshot = companionState(activity, failures, now, text)
-  assert.equal(snapshot.mood, 'error')
+  assert.equal(companionExpression(snapshot), 'upset')
   assert.equal(snapshot.badge, 2)
   assert.deepEqual(snapshot.lines, [
     { key: 'pending:s4', kind: 'pending', label: text.pending(1, 'Mixed session'), path: '/console/chat/s4' },
@@ -189,6 +193,53 @@ test('a failure for the currently active session still shows — unlike pending/
   assert.deepEqual(snapshot.lines, [
     { key: 'failure:3', kind: 'failure', label: text.failure('Cron failed'), path: '/console/chat/active' },
   ])
+})
+
+test('companionExpression picks neutral with no lines and no cues', () => {
+  assert.equal(companionExpression({ lines: [] }), 'neutral')
+  assert.equal(companionExpression({ lines: [] }, {}), 'neutral')
+})
+
+test('companionExpression: a cue alone (no lines) picks its own expression, in warning > justFinished > justArrived > longQuiet order', () => {
+  const noLines: CompanionLine[] = []
+  assert.equal(companionExpression({ lines: noLines }, { warning: true }), 'wary')
+  assert.equal(companionExpression({ lines: noLines }, { justFinished: true }), 'happy')
+  assert.equal(companionExpression({ lines: noLines }, { justArrived: true }), 'greeting')
+  assert.equal(companionExpression({ lines: noLines }, { longQuiet: true }), 'sleepy')
+
+  // Higher-priority cues outrank lower ones when several fire at once.
+  const all: CompanionExpressionCues = { warning: true, justFinished: true, justArrived: true, longQuiet: true }
+  assert.equal(companionExpression({ lines: noLines }, all), 'wary')
+  assert.equal(companionExpression({ lines: noLines }, { justFinished: true, justArrived: true, longQuiet: true }), 'happy')
+  assert.equal(companionExpression({ lines: noLines }, { justArrived: true, longQuiet: true }), 'greeting')
+})
+
+test('companionExpression: real state in lines always outranks every cue', () => {
+  const failureLine: CompanionLine = { key: 'failure:1', kind: 'failure', label: 'x', path: '/console/ops' }
+  const pendingLine: CompanionLine = { key: 'pending:s1', kind: 'pending', label: 'x', path: '/console/chat/s1' }
+  const queuedLine: CompanionLine = { key: 'queued:s1', kind: 'queued', label: 'x', path: '/console/ops' }
+  const runningLine: CompanionLine = { key: 'running:s1', kind: 'running', label: 'x', path: '/console/chat/s1' }
+  const allCues: CompanionExpressionCues = { warning: true, justFinished: true, justArrived: true, longQuiet: true }
+
+  assert.equal(companionExpression({ lines: [failureLine, runningLine] }, allCues), 'upset')
+  assert.equal(companionExpression({ lines: [pendingLine, runningLine] }, allCues), 'alert')
+  assert.equal(companionExpression({ lines: [queuedLine] }, allCues), 'alert')
+  assert.equal(companionExpression({ lines: [runningLine] }, allCues), 'working')
+})
+
+test('COMPANION_EXPRESSIONS lists exactly the eight expressions once each', () => {
+  assert.equal(COMPANION_EXPRESSIONS.length, 8)
+  assert.equal(new Set(COMPANION_EXPRESSIONS).size, 8)
+  assert.deepEqual(
+    [...COMPANION_EXPRESSIONS].sort(),
+    ['alert', 'greeting', 'happy', 'neutral', 'sleepy', 'upset', 'wary', 'working'],
+  )
+})
+
+test('every expression has its own face shape rule in the component styles', () => {
+  for (const expression of COMPANION_EXPRESSIONS) {
+    assert.match(componentSource, new RegExp(`\\.expr-${expression}\\b`), `no .expr-${expression} rule in CompanionPet.svelte`)
+  }
 })
 
 test('failures older than 30 minutes are dropped, and only the newest 5 are kept', () => {
@@ -316,25 +367,65 @@ test('companion_enabled gates visibility from config values', () => {
   assert.equal(companionEnabledFromConfigValues(undefined), false)
 })
 
-test('companion honours prefers-reduced-motion for every animated selector', () => {
+// A leaf rule is "selector-list { declarations }". Scanning the whole text
+// with this flat regex still isolates a rule nested one level inside a
+// wrapper (@media, @keyframes): the wrapper's own "{" cannot be absorbed by
+// the selector-list capture ([^{}]+), so the match only ever starts at the
+// innermost selector list.
+function companionLeafRules(text: string): { selectors: string[]; body: string }[] {
+  return Array.from(text.matchAll(/([^{}]+)\{([^{}]*)\}/g)).map((rule) => ({
+    selectors: rule[1].split(',').map((s) => s.trim()).filter(Boolean),
+    body: rule[2],
+  }))
+}
+
+function companionDeclarations(body: string): { prop: string; value: string }[] {
+  return body
+    .split(';')
+    .map((d) => d.trim())
+    .filter(Boolean)
+    .map((d) => {
+      const i = d.indexOf(':')
+      return i < 0 ? null : { prop: d.slice(0, i).trim(), value: d.slice(i + 1).trim() }
+    })
+    .filter((d): d is { prop: string; value: string } => d !== null)
+}
+
+function companionSelectorsWhere(
+  rules: { selectors: string[]; body: string }[],
+  prop: string,
+  matches: (value: string) => boolean,
+): Set<string> {
+  const set = new Set<string>()
+  for (const rule of rules) {
+    for (const decl of companionDeclarations(rule.body)) {
+      if (decl.prop === prop && matches(decl.value)) for (const sel of rule.selectors) set.add(sel)
+    }
+  }
+  return set
+}
+
+test('companion honours prefers-reduced-motion for every animated or transitioning selector', () => {
   const style = componentSource.slice(componentSource.indexOf('<style>'))
   const reducedStart = style.indexOf('@media (prefers-reduced-motion: reduce)')
   assert.ok(reducedStart > 0, 'reduced-motion block is missing')
-  const reduced = style.slice(reducedStart)
-  const reducedSelectors = new Set(
-    (reduced.match(/\{([^{}]*)\{\s*animation:\s*none/)?.[1] ?? '')
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean),
-  )
-  // A rule is "selector { ... animation: ... }" outside @keyframes and the reduced block.
-  const animated = new Set<string>()
-  for (const rule of style.slice(0, reducedStart).matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
-    if (!/(^|;|\s)animation\s*:/.test(rule[2])) continue
-    for (const sel of rule[1].split(',')) animated.add(sel.trim())
+  const outsideRules = companionLeafRules(style.slice(0, reducedStart))
+  const reducedRules = companionLeafRules(style.slice(reducedStart))
+
+  // "animation: none" / "transition: none" outside the reduced block is a
+  // static override (e.g. an expression that skips the blink), not a
+  // repeating animation — it is not required to appear in the reduced
+  // block too.
+  const animatedSelectors = companionSelectorsWhere(outsideRules, 'animation', (v) => v !== 'none')
+  const transitioningSelectors = companionSelectorsWhere(outsideRules, 'transition', (v) => v !== 'none')
+  const reducedAnimated = companionSelectorsWhere(reducedRules, 'animation', (v) => v === 'none')
+  const reducedTransitioned = companionSelectorsWhere(reducedRules, 'transition', (v) => v === 'none')
+
+  assert.ok(animatedSelectors.size > 0, 'expected at least one animated selector to check against')
+  for (const sel of animatedSelectors) {
+    assert.ok(reducedAnimated.has(sel), `reduced motion does not stop the animation on ${sel}`)
   }
-  assert.ok(animated.size > 0)
-  for (const sel of animated) {
-    assert.ok(reducedSelectors.has(sel), `reduced motion does not stop ${sel}`)
+  for (const sel of transitioningSelectors) {
+    assert.ok(reducedTransitioned.has(sel), `reduced motion does not stop the transition on ${sel}`)
   }
 })

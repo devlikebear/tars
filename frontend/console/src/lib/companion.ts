@@ -8,10 +8,32 @@ export type CompanionVisibilityInput = {
   zenActive?: boolean
 }
 
-// The six moods stay fixed for this phase; facial expressions and
-// animation per mood belong to a later phase (face rework, then actions).
-export type CompanionMood = 'idle' | 'spark' | 'focus' | 'warn' | 'error' | 'success'
 export type CompanionLocale = 'en' | 'ko'
+
+// CASE's face (#1190). Shape — eyes, mouth, eyebrows, antenna — carries the
+// expression; glow colour is a hint, never the only signal (DESIGN.md
+// Motion). `companionExpression` below is the one place that turns state
+// into one of these.
+export type CompanionExpression =
+  | 'neutral'
+  | 'working'
+  | 'alert'
+  | 'happy'
+  | 'upset'
+  | 'wary'
+  | 'sleepy'
+  | 'greeting'
+
+export const COMPANION_EXPRESSIONS: readonly CompanionExpression[] = [
+  'neutral',
+  'working',
+  'alert',
+  'happy',
+  'upset',
+  'wary',
+  'sleepy',
+  'greeting',
+]
 
 // What CASE's bubble shows: one line per thing waiting on the user. `path`
 // is where clicking the line goes, via lib/router.ts.
@@ -34,12 +56,27 @@ export type CompanionFailure = {
 }
 
 export type CompanionSnapshot = {
-  mood: CompanionMood
   // Count badge shown on the bot: approvals waiting (chat + unattended) +
   // recent failures. Running turns are not counted — they are not waiting
   // on the user.
   badge: number
   lines: CompanionLine[]
+}
+
+// Optional inputs for the expressions that are not driven by `lines`
+// (#1190: the expression type and its picture exist now; the timers and
+// events that fill these cues in are P3/#1191 scope). `companionExpression`
+// only reads them when nothing in `lines` already says more — a real wait
+// or failure always outranks a cue.
+export type CompanionExpressionCues = {
+  // A warning-severity event just arrived (not yet a failure).
+  warning?: boolean
+  // A turn just finished successfully.
+  justFinished?: boolean
+  // The user (or a notification) just arrived after being away.
+  justArrived?: boolean
+  // The console has been quiet for a while with nothing waiting.
+  longQuiet?: boolean
 }
 
 export type CompanionLineText = {
@@ -66,20 +103,20 @@ export function normalizeCompanionLocale(locale?: string | null): CompanionLocal
 }
 
 // companionState turns a chat-activity snapshot and recent failures into
-// CASE's mood, badge count, and bubble lines. Pure: no fetch, no LLM call.
-// Order: approvals waiting (pending, then queued), then recent failures,
-// then running turns. A failure is listed ahead of a running turn on
-// purpose — of the two, it is the more urgent signal.
+// CASE's badge count and bubble lines. Pure: no fetch, no LLM call. Order:
+// approvals waiting (pending, then queued), then recent failures, then
+// running turns. A failure is listed ahead of a running turn on purpose —
+// of the two, it is the more urgent signal.
 //
 // `activeSessionId` is the session the chat route currently has on screen
 // (undefined/null when nothing is, e.g. the board). Its pending approval
-// and running turn are left out of lines, the badge, and the mood: that
-// session's own approval card is already visible in its thread, and its
-// running turn is already visible as the streaming reply, so CASE would
-// otherwise duplicate what the user is already looking at (and, worse,
-// cover the very panel they are using — #1194). Queued (unattended)
-// approvals have no card in any thread, so they still show for the active
-// session too; switching to another session brings its own lines back.
+// and running turn are left out of lines and the badge: that session's own
+// approval card is already visible in its thread, and its running turn is
+// already visible as the streaming reply, so CASE would otherwise
+// duplicate what the user is already looking at (and, worse, cover the
+// very panel they are using — #1194). Queued (unattended) approvals have
+// no card in any thread, so they still show for the active session too;
+// switching to another session brings its own lines back.
 export function companionState(
   activity: ActivityMap,
   failures: CompanionFailure[],
@@ -134,16 +171,29 @@ export function companionState(
   const pendingTotal = visibleEntries.reduce((sum, [, s]) => sum + s.pending, 0)
   const queuedTotal = entries.reduce((sum, [, s]) => sum + s.queued, 0)
   const badge = pendingTotal + queuedTotal + activeFailures.length
-  const mood: CompanionMood =
-    activeFailures.length > 0
-      ? 'error'
-      : pendingTotal + queuedTotal > 0
-        ? 'warn'
-        : visibleEntries.some(([, s]) => s.running)
-          ? 'focus'
-          : 'idle'
 
-  return { mood, badge, lines }
+  return { badge, lines }
+}
+
+// companionExpression turns CASE's snapshot (and, once P3/#1191 wires them
+// up, optional cues about recent events) into one of the eight expressions
+// (#1190). What the snapshot's `lines` already say always outranks a cue:
+// a real failure or wait is never overridden by "just said hello". Order
+// within `lines`: failure > pending/queued approval > running turn — the
+// same urgency order `companionState` lists them in. Order within `cues`:
+// warning > justFinished > justArrived > longQuiet.
+export function companionExpression(
+  snapshot: Pick<CompanionSnapshot, 'lines'>,
+  cues?: CompanionExpressionCues,
+): CompanionExpression {
+  if (snapshot.lines.some((line) => line.kind === 'failure')) return 'upset'
+  if (snapshot.lines.some((line) => line.kind === 'pending' || line.kind === 'queued')) return 'alert'
+  if (snapshot.lines.some((line) => line.kind === 'running')) return 'working'
+  if (cues?.warning) return 'wary'
+  if (cues?.justFinished) return 'happy'
+  if (cues?.justArrived) return 'greeting'
+  if (cues?.longQuiet) return 'sleepy'
+  return 'neutral'
 }
 
 // pruneFailures drops anything older than 30 minutes, de-duplicates by

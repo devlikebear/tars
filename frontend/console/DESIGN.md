@@ -474,6 +474,35 @@ Rationale: generous rounding reads as approachable consumer software. Tight 2–
 
 Motion is decoration, never the only signal. Every repeating or decorative animation (floating, blinking, pulses, enter animations) stops under `prefers-reduced-motion: reduce`; the state it hints at must still read from text, colour or position. A reduced-motion block must name every animated selector on its own, not lean on a bare base selector that a more specific rule would otherwise outrank. `tests/companionPet.test.ts` checks this for the companion pet (CASE).
 
+### CASE's expressions
+
+CASE's face (`CompanionPet.svelte`) is CSS and markup only — no image, font icon, or animation-library asset, ever. Eyebrows, eyes, mouth and the antenna tip are always in the DOM; one class on `.companion-body`, `expr-<name>`, decided by the pure function `companionExpression` in `lib/companion.ts`, changes their shape. There is no colour-only face part: the old glow dot next to the mouth read as a second mouth and is gone. When a state colour is useful it rides only on the antenna tip — two expressions that only differed in that colour would be the same expression, not two, so nothing else on the face carries colour as its only difference. Eyebrows stay invisible unless they carry meaning (`alert`/`upset`/`wary`); everywhere else a faint brow line was noise above eyes that already read fine without it.
+
+Eight expressions:
+
+| Expression | Eyes | Mouth | Brows | Antenna tip |
+|---|---|---|---|---|
+| `neutral` | default oval, blinking | short flat line | hidden | default (filled, signal green) |
+| `working` | both glance up and to one side | small, closed/pursed | hidden | a ring (hollow), not a filled dot |
+| `alert` | wide open, stop blinking | round "oh" | both lift | warning colour, brightens |
+| `happy` | curve upward (closed, joyful) | wide smile | hidden | success colour |
+| `upset` | pinch inward, flatten | frown | both furrow down | error colour |
+| `wary` | one eye narrows to a squint | tilts | one lifts, thick and sharply angled | warning colour |
+| `sleepy` | both close to a thin line | tiny dot | hidden | dims |
+| `greeting` | each a four-point sparkle (clip-path star) | wide smile | hidden | success colour, brightens |
+
+`working` and `wary` are each told apart from their nearest neighbour (`neutral`, `alert`) by at least two shape changes at once, not a single small nudge — a 3px eye shift alone did not read at the companion's actual on-screen size. `greeting`'s sparkle is a clip-path star, not a plain "+": a cross read as a broken eye rather than a glint.
+
+What picks the expression — `companionExpression(snapshot, cues?)`, pure, tested in `tests/companionPet.test.ts`:
+
+1. `snapshot.lines` (from `companionState`, i.e. real waiting/running/failed state) always wins over a cue: a failure line → `upset`, a pending/queued approval line → `alert`, a running-turn line → `working`.
+2. Only when there is no such line, an optional `cues` argument picks the rest, in order: `warning` → `wary`, `justFinished` → `happy`, `justArrived` → `greeting`, `longQuiet` → `sleepy`.
+3. Nothing at all → `neutral`.
+
+`companionExpression` takes `cues` as an argument today but `CompanionPet.svelte` does not fill it in — the timers and events that would set `warning`/`justFinished`/`justArrived`/`longQuiet`, and the motion (nod, shake, doze) that goes with each expression, are P3 (#1191) scope. The six old moods (`idle`/`spark`/`focus`/`warn`/`error`/`success`) are gone; they mapped onto these eight one-to-one or were never produced (`spark`, `success`) and would otherwise be dead code sitting next to the real thing.
+
+`prefers-reduced-motion: reduce` stops the float and blink, same as any other decorative animation here — the expression itself is read from shape alone, not from the motion that goes with it.
+
 ## Components
 
 ### Buttons

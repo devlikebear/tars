@@ -592,7 +592,7 @@ test('the PR stages with gh: the PR is found, CI is green, G4 merges, and the me
   expect(calls.at(-1)).toMatch(/^pr view 7 --json /)
 })
 
-test('an image pasted into the new task goal field rides the first turn as an attachment (#1097)', async ({ page }) => {
+test('an image pasted into the new task goal field rides the first turn as an attachment (#1159)', async ({ page }) => {
   const repo = newRepo('tars-e2e-focus-image-')
   await page.goto('/console/focus')
   await page.getByTestId('focus-new-task-open').click()
