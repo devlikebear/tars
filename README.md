@@ -2,7 +2,7 @@
   <p>
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="docs/brand/tars-readme-header-dark.png" />
-      <img src="docs/brand/tars-readme-header.png" alt="TARS — local AI agent runtime" width="560" />
+      <img src="docs/brand/tars-readme-header.png" alt="TARS — a development task from plan to merged pull request, on your machine" width="560" />
     </picture>
   </p>
   <p>
@@ -12,40 +12,76 @@
     <a href="go.mod"><img src="https://img.shields.io/github/go-mod/go-version/devlikebear/tars" alt="Go" /></a>
     <a href="https://github.com/devlikebear/tars/releases"><img src="https://img.shields.io/github/v/release/devlikebear/tars" alt="Release" /></a>
   </p>
-  <p><strong>TARS is a local AI agent runtime that runs on your machine, under your control.</strong></p>
+  <p><strong>TARS runs a development task from plan to merged pull request, on your own machine.</strong></p>
   <p><strong>Homepage:</strong> <a href="https://tars.marvin-42.com">tars.marvin-42.com</a> — project overview, features, and quickstart.</p>
 </div>
 
-> [!IMPORTANT]
-> **Development resumed.** TARS is no longer archived. Latest tagged release is `v0.59.0` (2026-10-09). This README tracks `main`; see the [changelog](CHANGELOG.md) for tagged-release behavior.
+You give TARS a goal and a folder. It plans the work, makes the change, reviews it, opens the pull request, watches CI, and merges. You decide at the gates: the plan, the pull request, the merge. Or you turn on goal mode and nobody has to be there.
 
-TARS is a local agent runtime for people who want an inspectable AI workbench without handing workspace control to a hosted service. It packages a browser console, API server, CLI, background jobs, memory, and extension system into one Go binary.
+It runs locally as one Go binary with a browser console, uses the model providers you already have (the Claude Code CLI on your subscription, or Anthropic, OpenAI and Gemini API keys), and keeps every session, tool call and decision where you can read it.
 
-The core promise is direct control:
+## A task, start to finish
 
-- Run agent chat, subagents, cron jobs, watchdog checks, and reflection on your own machine.
-- Inspect sessions, tool calls, memory candidates, run history, approvals, usage, logs, and config from the console.
-- Route work across heavy, standard, and light model tiers with role-level defaults and traceable runtime logs.
-- Extend behavior with skills, companion CLIs, plugins, MCP servers, Telegram, webhooks, and local APIs without bloating the default prompt.
+Focus mode runs one task as a pipeline of stages.
+
+| Stage | What happens | What moves it on |
+| --- | --- | --- |
+| **plan** | The agent reads the code and proposes the tasks, which stages apply, and the commands that prove the work. Nothing is edited. | You approve or edit the plan |
+| **build** | The agent makes the change | The plan's verification commands exit 0 |
+| **review** | The agent reviews the diff since the task began and lists findings | You fix or dismiss each finding, and verification passes again |
+| **pr** | The agent drafts the pull request | You approve the draft; it pushes and opens the pull request |
+| **pr_review** | TARS watches CI and review comments; a failed check or a requested change becomes a finding | Checks are green and findings are closed |
+| **merge** | The pull request is ready | You approve; it merges |
+
+**No stage ends because a model said it was done.** TARS reads the facts itself: the exit code of your verification commands, and the pull request's real CI and review state from a read-only `gh pr view`. A small fix can skip stages; the plan says which.
+
+![TARS focus mode: the stage stepper and the card deck of one task](docs/screenshots/console-focus.webp)
+
+### Goal mode
+
+Goal mode walks the same gates with nobody at them, on a fixed policy: approve the plan, the pull request and the merge; fix every review finding except the ones marked `low`; retry a stuck gate. It has a push budget (20 by default) and backs off when turns fail. When the budget runs out or someone closes the pull request, it stops and the gates are yours again.
+
+It never asks a model whether the work is finished. The same facts decide.
+
+### Other kinds of work
+
+The development pipeline is one template. `writing` and `research` ship too, and you can add your own as a short YAML file or by describing the stages in plain language at `/console/focus/templates`.
+
+### Releases
+
+A task ends at merge. Merged work is released in batches: the release train lists what merged since the last tag and starts one release for all of it.
+
+More on focus mode: [the design](docs/decisions/focus-mode.md) and [templates](docs/focus-templates.md).
+
+## What else is in the box
+
+Focus mode stands on a general agent runtime, and the rest of it is there to use:
+
+- **A chat workbench** with sessions, per-session folders and worktrees, permission modes, and tool cards for everything the agent runs
+- **Model routing** across heavy, standard and light tiers, with role-level defaults
+- **Unattended work**: cron jobs, a watchdog, and an approval queue for tool calls nobody was there to answer
+- **Memory, skills, plugins and MCP servers**, loaded when used so they do not grow every prompt
+- **A desktop shell** with a tray, notifications and approve/reject buttons
+
+Each has a section under [Key Features](#key-features).
+
+> [!NOTE]
+> **Where the work is going.** The focus pipeline and goal mode are the product; the other areas are maintained or frozen. [The decision](docs/decisions/product-focus.md) lists which is which. Computer use, the speak-first initiative loop, reflection and a few providers are frozen: they work and get no new features.
 
 The name comes from the TARS in *Interstellar* — practical, direct, dependable when things get complicated. TARS aims for that. Not affiliated with the film; the name is borrowed.
 
-## Comparison
-
-| | OpenClaw | Hermes Agent | TARS |
-|---|---|---|---|
-| **Release used** | Stable `v2026.7.1` | Stable `v0.19.1` (`v2026.7.30`) | `v0.59.0` (latest tagged release) |
-| **Packaging** | TypeScript Gateway plus web/native apps and plugins | Python agent/gateway plus TUI, web, and desktop surfaces | Go single binary with embedded browser console and CLI |
-| **Delegation / harnesses** | Native subagents, Codex runtime, and ACP-backed external harness sessions | Isolated `delegate_task` children, live transcripts, MoA, and coding-runtime adapters | Native Agent Runtime plus an opt-in bounded Claude Code execution adapter, model tiers, tool policy, depth limits, and experimental consensus |
-| **Durable async work** | Background-task ledger plus SQLite-backed automations | Durable Kanban/goals, delegated-result recovery, and delivery-obligation ledger | SQLite Work Ledger plus a dependency scheduler with leases, retries, budgets, and operator escalation |
-| **Restart behavior** | Persistent automation/task records; the latest beta adds broader crash recovery | Gateway auto-resume and durable delegation/delivery recovery | Opt-in staged flows reconnect or reclaim attempts; standalone runs restore as canceled and then expose capability-bounded Retry, Replay, or provider Resume |
-| **Proof of completion** | Completion handoff asks the parent to verify; task audit surfaces unhealthy work | Goal completion contracts and recorded verification evidence | Proof-gated Steps separate worker reports from deterministic independent verification, provenance, and stale evidence |
-| **Scheduling** | Persistent Automations, cron alias, heartbeat monitors | Cron, blueprints, watchdog/no-agent jobs | Session cron, Pulse, Reflection, and a durable dependency scheduler |
-| **Skills / learning** | Skills and plugin catalog | On-demand skills, `/learn`, background review, and Curator | On-demand skills, reviewed memory extraction, skill creation, and Skill Hub |
-
-Verified on **2026-08-02** from official project documentation and release pages. OpenClaw `v2026.7.2-beta.6` capabilities are treated as pre-release, not stable. See the [status-separated market scan](docs/agent-harness/market-scan-2026-08-02.md) and [reproducible evaluation baseline](docs/agent-harness/README.md) for sources, limitations, and the TARS evolution roadmap.
-
 ## Key Features
+
+### Focus Mode
+
+Focus mode runs one task as a **template** — an ordered list of stages, each one of plan / build / review / pr / pr_review / merge. The built-in `dev` template (plan → build → review → pr → pr_review → merge) is the default; `writing` and `research` ship too, and workspace-local templates (`<workspace>/focus-templates/*.yaml`) or ones drafted in plain language at `/console/focus/templates` add more without ever replacing a built-in. Stage transitions are decided by facts, not a model's opinion: plan approval, a verification command's exit code, finding triage, and the PR's real CI/review state (`gh pr view`, read-only, polled every 60s).
+
+- **Gates** (plan, PR draft, PR review, merge) wait for a developer decision unless the task is in **goal mode** — nobody at the gates, fixed policy (approve G1/G3/G4, fix everything but `low` findings, retry on a stuck gate), a push budget (default 20), and backoff on repeated turn failures.
+- An **approved plan can still be edited** — goal, `verify`, `e2e`, `e2e_setup`, `e2e_teardown` — without moving a stage, through `focus_plan_edit`, a `<focus-plan-edit>` block, or `POST /v1/focus/pipelines/{id}/plan`; every edit leaves a "plan edited" card.
+- **End-to-end checks are plain-language goals** ("`@App do the thing`") run through the same engine as the `computer_use` chat tool, so `computer_use` only drives what's already on screen. A plan's `e2e_setup` shell commands build the working folder and bring that build to the screen before each check; `e2e_teardown` stops it afterward.
+- The console's Focus page (`/console/focus`) shows the stage stepper, a card deck (gate/report/decision/change cards) you can page through, and a graph view; `/console/focus/release` is the release train.
+
+See [docs/decisions/focus-mode.md](docs/decisions/focus-mode.md) and [docs/focus-templates.md](docs/focus-templates.md) for the full design and template schema.
 
 ### Public Agent Packages
 
@@ -129,17 +165,6 @@ Experimental consensus mode remains hidden from the default `subagents_run` sche
 Tier resolution priority: task `tier` > agent YAML `tier` > config default.
 
 The Console Agent Runtime page keeps run history, run topology, event replay, versioned recovery checkpoints, explicit Retry/Replay/Resume actions, checkpoint safety decisions, cost/token flow, file attention, git diff attribution, and subagent profile management in one operational surface. See [docs/console.md](docs/console.md), [checkpoint recovery](docs/agent-harness/checkpoint-recovery.md), and [docs/tutorials/22-agentruntime.md](docs/tutorials/22-agentruntime.md) for details.
-
-### Focus Mode
-
-Focus mode runs one task as a **template** — an ordered list of stages, each one of plan / build / review / pr / pr_review / merge. The built-in `dev` template (plan → build → review → pr → pr_review → merge → release) is the default; `writing` and `research` ship too, and workspace-local templates (`<workspace>/focus-templates/*.yaml`) or ones drafted in plain language at `/console/focus/templates` add more without ever replacing a built-in. Stage transitions are decided by facts, not a model's opinion: plan approval, a verification command's exit code, finding triage, and the PR's real CI/review state (`gh pr view`, read-only, polled every 60s).
-
-- **Gates** (plan, PR draft, PR review, merge) wait for a developer decision unless the task is in **goal mode** — nobody at the gates, fixed policy (approve G1/G3/G4, fix everything but `low` findings, retry on a stuck gate), a push budget (default 20), and backoff on repeated turn failures.
-- An **approved plan can still be edited** — goal, `verify`, `e2e`, `e2e_setup`, `e2e_teardown` — without moving a stage, through `focus_plan_edit`, a `<focus-plan-edit>` block, or `POST /v1/focus/pipelines/{id}/plan`; every edit leaves a "plan edited" card.
-- **End-to-end checks are plain-language goals** ("`@App do the thing`") run through the same engine as the `computer_use` chat tool, so `computer_use` only drives what's already on screen. A plan's `e2e_setup` shell commands build the working folder and bring that build to the screen before each check; `e2e_teardown` stops it afterward.
-- The console's Focus page (`/console/focus`) shows the stage stepper, a card deck (gate/report/decision/change cards) you can page through, and a graph view; `/console/focus/release` is the release train.
-
-See [docs/decisions/focus-mode.md](docs/decisions/focus-mode.md) and [docs/focus-templates.md](docs/focus-templates.md) for the full design and template schema.
 
 ### 3-Tier Model Routing
 
@@ -485,6 +510,21 @@ make lint-diff
 make test-cover-diff
 cd frontend/console && npm run check && npm run test:ci
 ```
+
+## Comparison with other agent runtimes
+
+| | OpenClaw | Hermes Agent | TARS |
+|---|---|---|---|
+| **Release used** | Stable `v2026.7.1` | Stable `v0.19.1` (`v2026.7.30`) | `v0.59.0` (latest tagged release) |
+| **Packaging** | TypeScript Gateway plus web/native apps and plugins | Python agent/gateway plus TUI, web, and desktop surfaces | Go single binary with embedded browser console and CLI |
+| **Delegation / harnesses** | Native subagents, Codex runtime, and ACP-backed external harness sessions | Isolated `delegate_task` children, live transcripts, MoA, and coding-runtime adapters | Native Agent Runtime plus an opt-in bounded Claude Code execution adapter, model tiers, tool policy, depth limits, and experimental consensus |
+| **Durable async work** | Background-task ledger plus SQLite-backed automations | Durable Kanban/goals, delegated-result recovery, and delivery-obligation ledger | SQLite Work Ledger plus a dependency scheduler with leases, retries, budgets, and operator escalation |
+| **Restart behavior** | Persistent automation/task records; the latest beta adds broader crash recovery | Gateway auto-resume and durable delegation/delivery recovery | Opt-in staged flows reconnect or reclaim attempts; standalone runs restore as canceled and then expose capability-bounded Retry, Replay, or provider Resume |
+| **Proof of completion** | Completion handoff asks the parent to verify; task audit surfaces unhealthy work | Goal completion contracts and recorded verification evidence | Proof-gated Steps separate worker reports from deterministic independent verification, provenance, and stale evidence |
+| **Scheduling** | Persistent Automations, cron alias, heartbeat monitors | Cron, blueprints, watchdog/no-agent jobs | Session cron, Pulse, Reflection, and a durable dependency scheduler |
+| **Skills / learning** | Skills and plugin catalog | On-demand skills, `/learn`, background review, and Curator | On-demand skills, reviewed memory extraction, skill creation, and Skill Hub |
+
+Verified on **2026-08-02** from official project documentation and release pages. OpenClaw `v2026.7.2-beta.6` capabilities are treated as pre-release, not stable. See the [status-separated market scan](docs/agent-harness/market-scan-2026-08-02.md) and [reproducible evaluation baseline](docs/agent-harness/README.md) for sources, limitations, and the TARS evolution roadmap.
 
 ## Documentation
 
