@@ -1,4 +1,4 @@
-package tarsserver
+package apihandlers
 
 import (
 	"encoding/json"
@@ -16,7 +16,7 @@ import (
 func newTestSetupHandler(t *testing.T, configPath string, cfg config.Config) http.Handler {
 	t.Helper()
 	logger := zerolog.New(io.Discard)
-	return newSetupAPIHandler(configPath, cfg, logger)
+	return NewSetupHandler(configPath, cfg, logger)
 }
 
 func TestSetupStatus_NeedsSetup_EmptyConfig(t *testing.T) {

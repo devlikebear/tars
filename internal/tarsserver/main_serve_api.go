@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/devlikebear/tars/internal/agentruntime"
+	"github.com/devlikebear/tars/internal/apihandlers"
 	"github.com/devlikebear/tars/internal/cli"
 	"github.com/devlikebear/tars/internal/config"
 	"github.com/devlikebear/tars/internal/cron"
@@ -639,19 +640,19 @@ func buildAPIMux(
 		}
 		return nil, err
 	}
-	usageHandler := newUsageAPIHandler(deps.usageTracker, cfg.APIAuthMode, logger)
+	usageHandler := apihandlers.NewUsageHandler(deps.usageTracker, cfg.APIAuthMode, logger)
 	logsHandler := newLogsAPIHandler(cfg.WorkspaceDir, normalizeRuntimeLogFilePath(buildLoggerConfig(opts, cfg).FilePath), logger)
 	opsHandler := newOpsAPIHandler(opsManager, logger, dispatcher.Emit, sessionStore)
 	statusHandler := newStatusAPIHandler(cfg.WorkspaceDir, sessionStore, mainSessionID, logger)
 	authHandler := newAuthAPIHandler(cfg.APIAuthMode, cfg.WorkspaceDir)
 	resolvedConfigPath := config.ResolveConfigPath(opts.ConfigPath)
-	remoteAccessHandler := newRemoteAccessAPIHandler(remoteAccessHandlerOptions{
+	remoteAccessHandler := apihandlers.NewRemoteAccessHandler(apihandlers.RemoteAccessOptions{
 		Config:     cfg,
 		ConfigPath: resolvedConfigPath,
 		Logger:     logger,
 	})
 	healthzHandler := newHealthzAPIHandler(nowFn, dashboardAuthHealthzStatus(cfg), func() bool { return config.NeedsSetup(cfg) })
-	setupHandler := newSetupAPIHandler(opts.ConfigPath, cfg, logger)
+	setupHandler := apihandlers.NewSetupHandler(opts.ConfigPath, cfg, logger)
 	providersModelsHandler := newProvidersModelsAPIHandler(providerModelsService, logger)
 	compactHandler := newCompactAPIHandler(cfg.WorkspaceDir, sessionStore, deps.llmRouter, logger)
 	cronHandler := newCronAPIHandlerWithRunnerAndResolver(cronStoreResolver, cronRunner, logger)
@@ -721,7 +722,7 @@ func buildAPIMux(
 	skillCreatorHandler := newSkillCreatorAPIHandler(cfg.WorkspaceDir, logger, nil, extensionsManager)
 	skillExtractionHandler := newSkillExtractionAPIHandler(cfg.WorkspaceDir, sessionStore, deps.llmRouter, logger, extensionsManager, workLedger)
 	mcpCreatorHandler := newMCPServerCreatorAPIHandler(cfg.WorkspaceDir, logger, nil, deps.llmRouter)
-	gitHandler := newGitAPIHandler(cfg.WorkspaceDir, sessionStore, opsManager, logger)
+	gitHandler := apihandlers.NewGitHandler(cfg.WorkspaceDir, sessionStore, opsManager, logger)
 	eventsHandler := notification.NewEventsAPIHandler(broker, notificationStore, logger)
 	configHandler := newConfigAPIHandler(resolvedConfigPath, cfg, cfg.WorkspaceDir, logger)
 	filesystemHandler := newFilesystemBrowseHandler(logger)

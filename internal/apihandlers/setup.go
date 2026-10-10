@@ -1,4 +1,4 @@
-package tarsserver
+package apihandlers
 
 import (
 	"fmt"
@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/devlikebear/tars/internal/config"
+	"github.com/devlikebear/tars/internal/httpapi"
 	"github.com/rs/zerolog"
 )
 
@@ -60,17 +61,17 @@ type setupCheck struct {
 	Message string `json:"message"`
 }
 
-// newSetupAPIHandler returns the /v1/setup/status handler. It reloads
+// NewSetupHandler returns the /v1/setup/status handler. It reloads
 // config from configPath when set so that the wizard sees changes
 // patched via /v1/admin/config/values immediately. When configPath is
 // empty (or read fails) it falls back to the cfg captured at boot.
 //
 // API key fields are never returned — only provider aliases and tier
 // bindings (which carry no secret material).
-func newSetupAPIHandler(configPath string, cfg config.Config, logger zerolog.Logger) http.Handler {
+func NewSetupHandler(configPath string, cfg config.Config, logger zerolog.Logger) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/setup/status", func(w http.ResponseWriter, r *http.Request) {
-		if !requireMethod(w, r, http.MethodGet) {
+		if !httpapi.RequireMethod(w, r, http.MethodGet) {
 			return
 		}
 		handleGetSetupStatus(w, configPath, cfg, logger)
@@ -102,7 +103,7 @@ func handleGetSetupStatus(w http.ResponseWriter, configPath string, fallback con
 		Capabilities: buildCapabilityStatus(active),
 	}
 	resp.Checks = buildSetupChecks(resp)
-	writeJSON(w, http.StatusOK, resp)
+	httpapi.WriteJSON(w, http.StatusOK, resp)
 }
 
 func buildCapabilityStatus(cfg config.Config) setupCapabilityStatus {

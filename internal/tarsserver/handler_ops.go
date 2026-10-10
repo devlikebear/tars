@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/devlikebear/tars/internal/apihandlers"
 	"github.com/devlikebear/tars/internal/ops"
 	"github.com/devlikebear/tars/internal/session"
 	"github.com/rs/zerolog"
@@ -156,7 +157,7 @@ func newOpsAPIHandler(manager *ops.Manager, logger zerolog.Logger, emit func(con
 				err = approvalErr
 				break
 			}
-			if approval.Type == "git_mutation" && approval.GitMutation != nil && !sessionAllowsApprovedGitMutation(store, approval.GitMutation.SessionID) {
+			if approval.Type == "git_mutation" && approval.GitMutation != nil && !apihandlers.SessionAllowsApprovedGitMutation(store, approval.GitMutation.SessionID) {
 				_, _ = manager.RecordAutomationAudit(ops.AutomationAuditEntry{
 					Actor:     "git",
 					Action:    "git." + approval.GitMutation.Action,

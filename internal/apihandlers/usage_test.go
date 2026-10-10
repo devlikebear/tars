@@ -1,4 +1,4 @@
-package tarsserver
+package apihandlers
 
 import (
 	"encoding/json"
@@ -38,7 +38,7 @@ func TestUsageAPI_SummaryAndLimits(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("record usage: %v", err)
 	}
-	handler := newUsageAPIHandler(tracker, "off", zerolog.Nop())
+	handler := NewUsageHandler(tracker, "off", zerolog.Nop())
 
 	reqSummary := httptest.NewRequest(http.MethodGet, "/v1/usage/summary?period=today&group_by=provider", nil)
 	recSummary := httptest.NewRecorder()
@@ -92,7 +92,7 @@ func TestUsageAPI_TodayTokens(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("record usage: %v", err)
 	}
-	handler := newUsageAPIHandler(tracker, "off", zerolog.Nop())
+	handler := NewUsageHandler(tracker, "off", zerolog.Nop())
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/admin/usage/today", nil)
 	rec := httptest.NewRecorder()
@@ -124,7 +124,7 @@ func TestUsageAPI_Signals(t *testing.T) {
 		t.Fatalf("record signal: %v", err)
 	}
 
-	handler := newUsageAPIHandler(tracker, "off", zerolog.Nop())
+	handler := NewUsageHandler(tracker, "off", zerolog.Nop())
 	req := httptest.NewRequest(http.MethodGet, "/v1/usage/signals?period=today", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
@@ -164,7 +164,7 @@ func TestUsageAPI_Analytics(t *testing.T) {
 		t.Fatalf("record usage: %v", err)
 	}
 
-	handler := newUsageAPIHandler(tracker, "off", zerolog.Nop())
+	handler := NewUsageHandler(tracker, "off", zerolog.Nop())
 	req := httptest.NewRequest(http.MethodGet, "/v1/admin/analytics?days=7", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
@@ -194,7 +194,7 @@ func TestUsageAPI_SummaryFiltersBySession(t *testing.T) {
 			t.Fatalf("record usage: %v", err)
 		}
 	}
-	handler := newUsageAPIHandler(tracker, "off", zerolog.Nop())
+	handler := NewUsageHandler(tracker, "off", zerolog.Nop())
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/usage/summary?period=month&session_id=sess-a", nil)
 	rec := httptest.NewRecorder()

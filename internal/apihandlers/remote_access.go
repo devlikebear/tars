@@ -1,4 +1,4 @@
-package tarsserver
+package apihandlers
 
 import (
 	"context"
@@ -10,6 +10,7 @@ import (
 
 	"github.com/devlikebear/tars/internal/config"
 	"github.com/devlikebear/tars/internal/consoleauth"
+	"github.com/devlikebear/tars/internal/httpapi"
 	"github.com/devlikebear/tars/internal/remoteaccess"
 	"github.com/rs/zerolog"
 )
@@ -22,7 +23,7 @@ type remoteAccessAPIHandler struct {
 	targetURL  string
 }
 
-type remoteAccessHandlerOptions struct {
+type RemoteAccessOptions struct {
 	Config     config.Config
 	ConfigPath string
 	Logger     zerolog.Logger
@@ -45,7 +46,7 @@ type remoteAccessAPIStatusResponse struct {
 	Checks           []remoteAccessPreflightCheck `json:"checks"`
 }
 
-func newRemoteAccessAPIHandler(opts remoteAccessHandlerOptions) http.Handler {
+func NewRemoteAccessHandler(opts RemoteAccessOptions) http.Handler {
 	if strings.TrimSpace(opts.TargetURL) == "" {
 		opts.TargetURL = remoteaccess.DefaultTargetURL
 	}
@@ -75,33 +76,33 @@ func (h *remoteAccessAPIHandler) ServeHTTP(w http.ResponseWriter, r *http.Reques
 }
 
 func (h *remoteAccessAPIHandler) handleStatus(w http.ResponseWriter, r *http.Request) {
-	if !requireMethod(w, r, http.MethodGet) {
+	if !httpapi.RequireMethod(w, r, http.MethodGet) {
 		return
 	}
 	status, checks, err := h.detectWithChecks(r.Context(), h.currentHTTPSPort())
 	if err != nil {
-		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error(), "code": "remote_access_status_failed"})
+		httpapi.WriteJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error(), "code": "remote_access_status_failed"})
 		return
 	}
-	writeJSON(w, http.StatusOK, h.statusResponse(status, checks))
+	httpapi.WriteJSON(w, http.StatusOK, h.statusResponse(status, checks))
 }
 
 func (h *remoteAccessAPIHandler) handleEnable(w http.ResponseWriter, r *http.Request) {
-	if !requireMethod(w, r, http.MethodPost) {
+	if !httpapi.RequireMethod(w, r, http.MethodPost) {
 		return
 	}
 	port, err := h.requestedHTTPSPort(r, h.currentHTTPSPort())
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error(), "code": "invalid_remote_access_request"})
+		httpapi.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error(), "code": "invalid_remote_access_request"})
 		return
 	}
 	status, checks, err := h.detectWithChecks(r.Context(), port)
 	if err != nil {
-		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error(), "code": "remote_access_status_failed"})
+		httpapi.WriteJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error(), "code": "remote_access_status_failed"})
 		return
 	}
 	if failed := failedRemoteAccessChecks(checks); len(failed) > 0 {
-		writeJSON(w, http.StatusConflict, map[string]any{
+		httpapi.WriteJSON(w, http.StatusConflict, map[string]any{
 			"error":  "remote access preflight failed",
 			"code":   "remote_access_preflight_failed",
 			"checks": checks,
@@ -110,53 +111,53 @@ func (h *remoteAccessAPIHandler) handleEnable(w http.ResponseWriter, r *http.Req
 		return
 	}
 	if err := remoteaccess.Enable(r.Context(), h.remoteOptions(port)); err != nil {
-		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error(), "code": "remote_access_enable_failed"})
+		httpapi.WriteJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error(), "code": "remote_access_enable_failed"})
 		return
 	}
 	if err := h.patchDesiredState(true, port); err != nil {
 		h.logger.Error().Err(err).Str("path", h.configPath).Msg("failed to persist remote access enabled state")
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error(), "code": "remote_access_persist_failed"})
+		httpapi.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error(), "code": "remote_access_persist_failed"})
 		return
 	}
 	status, checks, err = h.detectWithChecks(r.Context(), port)
 	if err != nil {
-		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "warning": err.Error()})
+		httpapi.WriteJSON(w, http.StatusOK, map[string]any{"ok": true, "warning": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, h.statusResponse(status, checks))
+	httpapi.WriteJSON(w, http.StatusOK, h.statusResponse(status, checks))
 }
 
 func (h *remoteAccessAPIHandler) handleDisable(w http.ResponseWriter, r *http.Request) {
-	if !requireMethod(w, r, http.MethodPost) {
+	if !httpapi.RequireMethod(w, r, http.MethodPost) {
 		return
 	}
 	port, err := h.requestedHTTPSPort(r, h.currentHTTPSPort())
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error(), "code": "invalid_remote_access_request"})
+		httpapi.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error(), "code": "invalid_remote_access_request"})
 		return
 	}
 	status, err := remoteaccess.Detect(r.Context(), h.remoteOptions(port))
 	if err != nil {
-		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error(), "code": "remote_access_status_failed"})
+		httpapi.WriteJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error(), "code": "remote_access_status_failed"})
 		return
 	}
 	if status.Installed && status.ServeActive && status.OwnedByTARS {
 		if err := remoteaccess.Disable(r.Context(), h.remoteOptions(port)); err != nil {
-			writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error(), "code": "remote_access_disable_failed"})
+			httpapi.WriteJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error(), "code": "remote_access_disable_failed"})
 			return
 		}
 	}
 	if err := h.patchDesiredState(false, port); err != nil {
 		h.logger.Error().Err(err).Str("path", h.configPath).Msg("failed to persist remote access disabled state")
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error(), "code": "remote_access_persist_failed"})
+		httpapi.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error(), "code": "remote_access_persist_failed"})
 		return
 	}
 	status, checks, err := h.detectWithChecks(r.Context(), port)
 	if err != nil {
-		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "warning": err.Error()})
+		httpapi.WriteJSON(w, http.StatusOK, map[string]any{"ok": true, "warning": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, h.statusResponse(status, checks))
+	httpapi.WriteJSON(w, http.StatusOK, h.statusResponse(status, checks))
 }
 
 func (h *remoteAccessAPIHandler) detectWithChecks(ctx context.Context, port int) (remoteaccess.Status, []remoteAccessPreflightCheck, error) {
