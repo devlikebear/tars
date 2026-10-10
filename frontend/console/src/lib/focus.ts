@@ -629,6 +629,18 @@ export function triageProgress(p: Pick<FocusPipeline, 'open_gate' | 'cards' | 'r
   return { decided: ids.filter((id) => decided.has(id)).length, total: ids.length }
 }
 
+// findingEntry says whether the developer can add a finding of their own
+// now, and to which round — the server's rule (focuspipeline.AddFinding):
+// a review-kind stage with no gate or the triage gate open, or pr_review
+// with no gate open. null anywhere else.
+export function findingEntry(p: Pick<FocusPipeline, 'stages' | 'current' | 'open_gate'> | null | undefined): 'review' | 'pr_review' | null {
+  if (!p || p.stages.find((s) => s.id === p.current)?.status !== 'active') return null
+  const gate = p.open_gate ?? ''
+  const kind = stageKindOf(p.stages, p.current)
+  if (kind === 'review') return gate === '' || gate === 'triage' ? 'review' : null
+  return kind === 'pr_review' && gate === '' ? 'pr_review' : null
+}
+
 export type ExcerptLine = {
   kind: 'hunk' | 'add' | 'del' | 'context' | 'meta'
   text: string

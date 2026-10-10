@@ -15,6 +15,9 @@ import (
 // passing after fixes starts a new review round; passing with nothing fixed
 // ends the stage. A failure loops through a fix turn; the loop limit, or
 // the same failure twice, blocks.
+//
+// The developer's own findings (finding_add.go) join the same round: the
+// open triage gate, or — added while none is open — the next one.
 
 // Finding card decisions.
 const (
@@ -28,7 +31,9 @@ const ReviewBlockedTitle = "Review blocked"
 // ReviewState is the review loop's position within one round. It is reset
 // when the stage ends.
 type ReviewState struct {
-	// Triage lists the finding cards of the open triage gate.
+	// Triage lists the finding cards of the open triage gate. While no
+	// triage is open it holds the findings the developer added meanwhile:
+	// they wait for the next triage, which closing empties.
 	Triage []string `json:"triage,omitempty"`
 	// Fixing is set while the turn owed or running is a fix turn, which
 	// reports instead of reviewing.
@@ -57,10 +62,13 @@ func (r ReviewState) clone() ReviewState {
 	return r
 }
 
-// nextRound is the state a new review round starts from: only the
-// dismissals carry over.
+// nextRound is the state a new review round starts from: the dismissals
+// carry over, and so do the developer's findings still waiting for a triage.
 func (r ReviewState) nextRound() ReviewState {
-	return ReviewState{Dismissed: append([]DismissedFinding(nil), r.Dismissed...)}
+	return ReviewState{
+		Triage:    append([]string(nil), r.Triage...),
+		Dismissed: append([]DismissedFinding(nil), r.Dismissed...),
+	}
 }
 
 // dismissed reports whether f matches a finding dismissed earlier, by file
@@ -93,18 +101,25 @@ func reviewTurnAction(p *Pipeline, b Blocks, turn int, now time.Time) Action {
 		p.AwaitingVerification = true
 		return Action{Kind: ActionRunVerification}
 	}
-	findings := slices.DeleteFunc(slices.Clone(b.Findings), p.Review.dismissed)
-	if len(findings) == 0 {
-		p.AwaitingVerification = true
-		return Action{Kind: ActionRunVerification}
-	}
-	p.Review.Triage = p.Review.Triage[:0]
-	for _, f := range findings {
+	// The developer's findings added since the last triage are already in
+	// Triage; the turn's own join them.
+	for _, f := range slices.DeleteFunc(slices.Clone(b.Findings), p.Review.dismissed) {
 		p.addCard(CardFinding, turn, f.Title, f, now)
 		p.Review.Triage = append(p.Review.Triage, p.Cards[len(p.Cards)-1].ID)
 	}
+	if len(p.Review.Triage) == 0 {
+		p.AwaitingVerification = true
+		return Action{Kind: ActionRunVerification}
+	}
+	return p.openTriage()
+}
+
+// openTriage opens the triage gate on the round's finding cards. It closes
+// again at once when every card is decided already (the developer's own
+// findings, added as "fix"), with the action that asks for.
+func (p *Pipeline) openTriage() Action {
 	p.OpenGate = GateTriage
-	return noAction
+	return closeTriage(p)
 }
 
 // validFindingDecision normalizes a finding card's decision.
@@ -167,7 +182,7 @@ func fixFindingsPrompt(findings []Finding) string {
 	var b strings.Builder
 	b.WriteString("Fix these findings:\n")
 	for i, f := range findings {
-		fmt.Fprintf(&b, "%d. [%s] %s — %s\n", i+1, orDash(f.Severity), findingLocation(f), strings.TrimSpace(f.Title))
+		fmt.Fprintf(&b, "%d. [%s] %s — %s%s\n", i+1, orDash(f.Severity), findingLocation(f), strings.TrimSpace(f.Title), developerMark(f))
 		if s := strings.TrimSpace(f.Scenario); s != "" {
 			fmt.Fprintf(&b, "   Scenario: %s\n", s)
 		}
@@ -192,6 +207,11 @@ func findingLocation(f Finding) string {
 func (p Pipeline) reviewVerificationPassed(turn int, now time.Time) (Pipeline, Action, error) {
 	p.LastFailure = nil
 	if !p.Review.Fixed {
+		if len(p.Review.Triage) > 0 {
+			// The developer added a finding while this verification ran:
+			// the stage does not end past it.
+			return p, p.openTriage(), nil
+		}
 		stage := p.advance()
 		return p, Action{Kind: ActionSendTurn, Prompt: reviewDonePrompt(stage)}, nil
 	}

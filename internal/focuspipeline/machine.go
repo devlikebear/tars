@@ -556,6 +556,11 @@ func (p Pipeline) openGateCard() int {
 	return -1
 }
 
+// nextCardID is the id addCard gives the next card.
+func (p Pipeline) nextCardID() string {
+	return fmt.Sprintf("c%d", len(p.Cards)+1)
+}
+
 func (p *Pipeline) addCard(kind string, turn int, title string, payload any, now time.Time) {
 	raw, err := json.Marshal(payload)
 	if err != nil {
@@ -563,7 +568,7 @@ func (p *Pipeline) addCard(kind string, turn int, title string, payload any, now
 	}
 	stage, _ := p.Stage(p.Current)
 	p.Cards = append(p.Cards, Card{
-		ID:        fmt.Sprintf("c%d", len(p.Cards)+1),
+		ID:        p.nextCardID(),
 		Kind:      kind,
 		Stage:     p.Current,
 		Turn:      turn,

@@ -2,6 +2,7 @@ import { APIRequestError, requestJSON } from './client.ts'
 import type {
   FocusActionResult,
   FocusCardState,
+  FocusFindingInput,
   FocusGateAction,
   FocusListItem,
   FocusPipeline,
@@ -116,6 +117,12 @@ export function focusGate(
 
 export function focusCard(sessionId: string, cardId: string, state: FocusCardState, decision?: string): Promise<FocusActionResult> {
   return postAction(`${pipelinePath(sessionId)}/cards/${encodeURIComponent(cardId)}`, decision ? { state, decision } : { state })
+}
+
+// The developer's own finding: it joins the review triage or the pr_review
+// fix round. 409 (no round would take it now) is a conflict result.
+export function focusAddFinding(sessionId: string, finding: FocusFindingInput): Promise<FocusActionResult> {
+  return postAction(`${pipelinePath(sessionId)}/findings`, finding)
 }
 
 export function focusAdvance(sessionId: string, stage: FocusStageId): Promise<FocusActionResult> {

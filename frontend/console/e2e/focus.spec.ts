@@ -37,7 +37,8 @@ type Pipeline = {
   open_gate?: string
   plan?: { stages: string[]; verify: string[] }
   stages: { id: string; status: string; iteration?: number }[]
-  cards: { id: string; kind: string; state: string; decision?: string }[]
+  cards: { id: string; kind: string; state: string; decision?: string; payload?: unknown }[]
+  review?: { triage?: string[] }
   e2e_enabled?: boolean
 }
 
@@ -427,6 +428,64 @@ test('the review loop: findings are triaged one at a time, a fix turn and verifi
   expect(again.status()).toBe(409)
 })
 
+// The developer's own finding (#1196): added during triage as "fix", it is a
+// decided card of the same round and rides the fix turn — no second decision,
+// no detour through a decision card's answer.
+test('the review loop: a finding the developer adds joins the triage and the fix turn', async ({ page }) => {
+  const id = await startReview(page, true)
+  const finding = page.locator('[data-testid="focus-card"][data-kind="finding"]')
+  const progress = page.getByTestId('focus-triage-progress')
+  await expect(progress).toHaveText('0 / 2 decided')
+
+  await page.getByTestId('focus-add-finding').click()
+  await expect(page.getByTestId('focus-add-finding-title')).toBeFocused()
+  await expect(page.getByTestId('focus-add-finding-fix')).toBeDisabled()
+  await page.getByTestId('focus-add-finding-title').fill('Greeting is not capitalised')
+  await page.getByTestId('focus-add-finding-scenario').fill('greet() prints "hello" → should read "Hello"')
+  await page.getByTestId('focus-add-finding-file').fill('base.txt')
+  await page.getByTestId('focus-add-finding-line').fill('2')
+  await page.getByTestId('focus-add-finding-severity').selectOption('high')
+  await page.getByTestId('focus-add-finding-fix').click()
+
+  // Decided from the start: triage counts it and stays open on the agent's two.
+  await expect(progress).toHaveText('1 / 3 decided')
+  await expect(page.getByTestId('focus-add-finding-form')).toHaveCount(0)
+  let p = await pipelineOf(page, id)
+  expect(p.open_gate).toBe('triage')
+  const mine = p.cards.find((c) => (c.payload as { source?: string } | undefined)?.source === 'developer')
+  expect(mine).toMatchObject({ kind: 'finding', stage: 'review', state: 'decided', decision: 'fix', title: 'Greeting is not capitalised' })
+  expect(p.review?.triage).toContain(mine!.id)
+
+  // Its card — decided, so last in the deck: marked as the developer's, with
+  // the same diff excerpt the agent's findings get.
+  await page.getByTestId('focus-deck-prev').click()
+  await expect(finding.getByTestId('focus-finding-developer')).toHaveText('added by you')
+  await expect(finding.getByTestId('focus-finding-loc')).toHaveText('base.txt:2')
+  await expect(finding.getByTestId('focus-finding-excerpt')).toContainText('+hello')
+  await expect(finding.getByTestId('focus-finding-fix')).toHaveCount(0)
+  await page.getByTestId('focus-deck-next').click()
+
+  // Both of the agent's are dismissed: the fix turn is the developer's alone.
+  await expect(finding.getByTestId('focus-finding-developer')).toHaveCount(0)
+  await finding.getByTestId('focus-finding-dismiss').click()
+  await expect(progress).toHaveText('2 / 3 decided')
+  await finding.getByTestId('focus-finding-dismiss').click()
+  await expect(page.getByTestId('focus-step-review')).toHaveAttribute('data-status', 'done', { timeout: 30_000 })
+
+  const history = await (await page.request.get(`/v1/admin/sessions/${encodeURIComponent(id)}/history`)).json() as { role: string; content: string }[]
+  const fix = history.find((m) => m.role === 'user' && m.content.startsWith('Fix these findings'))
+  expect(fix?.content).toContain('[high] base.txt:2 — Greeting is not capitalised (added by the developer)')
+  expect(fix?.content).toContain('Scenario: greet() prints "hello" → should read "Hello"')
+  expect(fix?.content).not.toContain('Greeting has no punctuation')
+
+  // Past review nothing would take a finding: no input, and the API says 409.
+  p = await pipelineOf(page, id)
+  expect(p.current).toBe('pr')
+  await expect(page.getByTestId('focus-add-finding')).toHaveCount(0)
+  const late = await page.request.post(`/v1/focus/pipelines/${encodeURIComponent(id)}/findings`, { data: { title: 'too late' } })
+  expect(late.status()).toBe(409)
+})
+
 test('the PR stages: G3 opens the PR with an edited title, gh unavailable is passed by hand, G4 merges, and the pipeline finishes', async ({ page }) => {
   // No GitHub remote: the server's gh probe cannot read a PR (gh missing,
   // logged out, or no remote all come back unavailable), which is the path
@@ -759,6 +818,9 @@ test.describe('Korean', () => {
     await expect(finding).toBeVisible()
     await expect(page.getByTestId('focus-triage-progress')).toHaveText('2개 중 0개 결정')
     await expect(finding.getByTestId('focus-finding-severity')).toHaveText('높음')
+    // The developer's own finding form (#1196).
+    await page.getByTestId('focus-add-finding').click()
+    await expect(page.getByTestId('focus-add-finding-fix')).toHaveText('추가하고 고치기')
     const screen = await chromeTexts(page.getByTestId('focus-pipeline'))
     expect(screen.filter(untranslated)).toEqual([])
   })

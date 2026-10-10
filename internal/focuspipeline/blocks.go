@@ -63,6 +63,10 @@ type Finding struct {
 	// Excerpt is the diff around File:Line since the pipeline's base
 	// commit, added by the server (never by the model) for the card.
 	Excerpt string `json:"excerpt,omitempty"`
+	// Source is FindingSourceDeveloper on a finding the developer added
+	// (finding_add.go), set by the server; empty on the agent's and the PR
+	// probe's.
+	Source string `json:"source,omitempty"`
 }
 
 // tagPattern matches any focus open or close tag; group 1 is "/" for a
@@ -138,6 +142,7 @@ func ParseBlocks(text string) Blocks {
 			}
 			for i := range findings {
 				findings[i].Excerpt = "" // the server's alone, never the model's
+				findings[i].Source = ""  // likewise: a model cannot speak as the developer
 			}
 			out.Findings = findings
 		}

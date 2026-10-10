@@ -6,11 +6,12 @@
   import { onDestroy, untrack } from 'svelte'
   import { t } from '../../i18n'
   import * as api from '../../lib/api'
-  import { pipelinePhase, promoteDraft, stageLabel, stepperItems, triageProgress, type QAEntry } from '../../lib/focus'
+  import { findingEntry, pipelinePhase, promoteDraft, stageLabel, stepperItems, triageProgress, type QAEntry } from '../../lib/focus'
   import { finishedText, finishOutcome, ghUnavailable, prStageChip, type PRStageChip } from '../../lib/focusPR'
   import { shortCwdLabel } from '../../lib/sessionLabels'
   import { FocusStore } from '../../lib/stores/focusStore.svelte'
   import type { FocusCard, FocusGateAction, FocusPlan, FocusPRDraft, FocusStageId } from '../../lib/types'
+  import FocusAddFinding from './FocusAddFinding.svelte'
   import FocusDeck from './FocusDeck.svelte'
   import FocusGraph from './FocusGraph.svelte'
   import FocusStepper from './FocusStepper.svelte'
@@ -33,6 +34,7 @@
     gate: api.focusGate,
     card: api.focusCard,
     advance: api.focusAdvance,
+    addFinding: api.focusAddFinding,
     stop: api.focusStop,
     goal: api.setFocusGoal,
     ask: api.askFocusQuestion,
@@ -85,6 +87,9 @@
   let ghError = $derived(pipeline ? ghUnavailable(pipeline) : null)
   let outcome = $derived(pipeline ? finishOutcome(pipeline) : null)
   let prWait = $derived(pipeline && phase === 'active' && !pipeline.open_gate ? pipeline.pr_wait ?? '' : '')
+  // The developer's own finding (#1196): offered where a round takes it,
+  // on the current stage's deck only.
+  let addFindingTo = $derived(pipeline && viewing === pipeline.current ? findingEntry(pipeline) : null)
   let canMarkDone = $derived(!!pipeline && phase === 'active' && !openGate && pipeline.current !== 'plan' && !store.running && !store.busy)
   let worktree = $derived(store.session?.worktree ?? null)
   let cwd = $derived(store.session?.worktree?.source_dir || store.session?.current_dir || '')
@@ -288,6 +293,9 @@
       {pipeline}
     />
 
+    {#if addFindingTo}
+      <FocusAddFinding kind={addFindingTo} busy={store.busy} onAdd={(finding) => store.addFinding(finding)} />
+    {/if}
 
     <form class="instruction" onsubmit={(e) => { e.preventDefault(); void sendInstruction() }}>
       <label class="label" for="focus-instruction">{$t.focus.screen.instruction}</label>

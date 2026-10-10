@@ -1,6 +1,6 @@
 # Feature Map
 
-Last reviewed: 2026-10-08. Start an isolated instance with `make build` then `bin/tars serve --config <sandbox-config>`; use a throwaway workspace for verification.
+Last reviewed: 2026-10-10. Start an isolated instance with `make build` then `bin/tars serve --config <sandbox-config>`; use a throwaway workspace for verification.
 
 ## Focus mode
 
@@ -17,6 +17,13 @@ Last reviewed: 2026-10-08. Start an isolated instance with `make build` then `bi
 - Drive: start a task with a primary folder and one extra folder (console: fill the primary field, click Add folder, fill the extra row, Start). The primary is the only one that can be isolated (checking Isolate in a worktree never touches the extras).
 - Healthy result: `GET /v1/admin/sessions/{id}` shows both folders in `work_dirs` and only the primary as `current_dir`; a chat turn backed by claude-code-cli adds one `--add-dir` per extra folder (not for the active cwd or the configured workspace, both already covered). A folder that does not exist, or more than 8 total (primary + extras), fails the create before anything is made.
 - Evidence: `go test ./internal/tarsserver -run 'TestNewSessionWithExtraDirs|TestFocusCreateWithExtraDirs|TestChatAPI_PassesExtraWorkDirsAsAddDirs' -v`, `go test ./pkg/llm -run TestClaudeCodeCLIClientChat_AddDirsAddsAnExtraFlagPerFolder -v`; console: `cd frontend/console && npx playwright test e2e/focus.spec.ts -g "registers both as the session"`.
+
+### The developer's own findings
+- Kind: API / console UI
+- Reach: `POST /v1/focus/pipelines/{id}/findings` (`{title, scenario?, file?, line?, severity?, decision?}`); on the pipeline screen, **+ Add a finding** under the card deck during the review and PR review stages (`FocusAddFinding.svelte`). Rules: `docs/decisions/focus-mode.md` §4.
+- Drive: run a task to its review stage, wait for the triage cards, click Add a finding, give a title (and a file and line to get the diff excerpt), then **Add to fix**; decide the agent's findings.
+- Healthy result: triage progress counts the new card as decided (`1 / 3 decided`), its card carries the *added by you* badge, and the fix turn's prompt ("Fix these findings: …") lists it with `(added by the developer)`. Outside review/pr_review, behind a blocked gate or at the merge gate the input is hidden and the API answers 409 with the current pipeline; no title is 400.
+- Evidence: `go test ./internal/focuspipeline -run 'AddFinding|AddedFinding|DeveloperFindings' -v`, `go test ./internal/tarsserver -run TestFocusDeveloperFinding -v`; console: `cd frontend/console && npx playwright test e2e/focus.spec.ts -g "developer adds"`.
 
 ## Computer use
 
