@@ -72,6 +72,35 @@ func TestBuildSpeechMessagesOmitsTextWhenNotSendsText(t *testing.T) {
 	}
 }
 
+// TestBuildSpeechMessagesUsesIdentitySpeakFirstSectionWhenPresent checks
+// tars#1221: when IDENTITY.md has a "When I speak first" / "먼저 말할 때"
+// section, that section alone is the tone guidance — not the rest of the
+// file, which may describe far more than how TARS talks when speaking
+// first.
+func TestBuildSpeechMessagesUsesIdentitySpeakFirstSectionWhenPresent(t *testing.T) {
+	identity := "# IDENTITY.md\n\n## Communication Style\nTerse in chat.\n\n## When I speak first\nWarm, brief, one line.\n"
+	in := ComposeInput{Intent: IntentGreet, Now: at(9, 0), Location: seoul, Identity: identity}
+	msgs := buildSpeechMessages(in)
+	if !strings.Contains(msgs[0].Content, "Warm, brief, one line.") {
+		t.Fatalf("system message missing the speak-first section: %q", msgs[0].Content)
+	}
+	if strings.Contains(msgs[0].Content, "Terse in chat.") {
+		t.Fatalf("system message should use only the speak-first section, not the rest of IDENTITY.md: %q", msgs[0].Content)
+	}
+}
+
+// TestBuildSpeechMessagesFallsBackToWholeIdentityWithoutSection is the
+// absence case: no recognized heading means the whole file is used, as
+// before tars#1221.
+func TestBuildSpeechMessagesFallsBackToWholeIdentityWithoutSection(t *testing.T) {
+	identity := "# IDENTITY.md\n\n## Communication Style\nTerse in chat.\n"
+	in := ComposeInput{Intent: IntentGreet, Now: at(9, 0), Location: seoul, Identity: identity}
+	msgs := buildSpeechMessages(in)
+	if !strings.Contains(msgs[0].Content, "Terse in chat.") {
+		t.Fatalf("system message should fall back to the whole file: %q", msgs[0].Content)
+	}
+}
+
 func TestComposeIsolationMatchesDecisionOnlyMinusJSON(t *testing.T) {
 	client := &stubChatClient{resp: contentResponse("Welcome back!")}
 	composer := &SpeechComposer{Client: client, Model: "sonnet"}

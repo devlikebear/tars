@@ -232,6 +232,7 @@ func Schema() []FieldMeta {
 		f("initiative_body_provider", "Initiative", "string", "Body Provider", "Embodiment provider for silent expressions"),
 		f("initiative_daily_text_calls", "Initiative", "int", "Daily Text-Signal Calls", "Maximum text-signal backend calls (llm or jev) per local day"),
 		f("initiative_daily_speak_calls", "Initiative", "int", "Daily Speak Calls", "Maximum live-mode speak-composer LLM calls per local day"),
+		f("initiative_reply_window", "Initiative", "string", "Reply Window", "How long after a delivered speak a reply still counts (e.g. 30m)"),
 		f("initiative_threshold_quiet_requested", "Initiative", "float", "Quiet Requested Threshold", "System One probability that counts as a quiet request"),
 		f("initiative_threshold_user_strained", "Initiative", "float", "User Strained Threshold", "System One probability that counts as strain"),
 		f("initiative_threshold_special_day", "Initiative", "float", "Special Day Threshold", "System One probability that counts as a special day"),
@@ -613,6 +614,10 @@ func extractValue(yamlKey string, cfg Config) any {
 		return cfg.Initiative.BodyProvider
 	case "initiative_daily_text_calls":
 		return cfg.Initiative.DailyTextCalls
+	case "initiative_daily_speak_calls":
+		return cfg.Initiative.DailySpeakCalls
+	case "initiative_reply_window":
+		return cfg.Initiative.ReplyWindow
 	case "initiative_threshold_quiet_requested":
 		return cfg.Initiative.QuietRequestedThreshold
 	case "initiative_threshold_user_strained":

@@ -77,7 +77,15 @@ func buildSpeechMessages(in ComposeInput) []llm.ChatMessage {
 	now := in.Now.In(loc)
 	var sys strings.Builder
 	sys.WriteString(speechSystemPrompt)
-	if identity := truncateRunes(strings.TrimSpace(in.Identity), maxSpeechIdentity); identity != "" {
+	// IDENTITY.md's speaking-first section ("When I speak first" /
+	// "먼저 말할 때", tars#1221), when present, is the tone guidance — not
+	// the whole file, which may cover far more than how TARS talks when it
+	// speaks first. Its absence falls back to the whole file, as before.
+	identitySource := in.Identity
+	if section, ok := IdentitySpeakFirstSection(in.Identity); ok {
+		identitySource = section
+	}
+	if identity := truncateRunes(strings.TrimSpace(identitySource), maxSpeechIdentity); identity != "" {
 		sys.WriteString("\n\nYour voice (from IDENTITY.md):\n")
 		sys.WriteString(identity)
 	}
@@ -107,7 +115,7 @@ func buildSpeechMessages(in ComposeInput) []llm.ChatMessage {
 				fmt.Fprintf(&user, "- %q (%s)\n", truncateRunes(strings.TrimSpace(m.Text), maxMessageRunes), ago(in.Now.Sub(m.At)))
 			}
 		}
-		if profile := truncateRunes(strings.TrimSpace(in.Profile), maxSpeechProfile); profile != "" {
+		if profile := prioritizedProfile(in.Profile, maxSpeechProfile); profile != "" {
 			user.WriteString("profile:\n")
 			user.WriteString(profile)
 			user.WriteString("\n")

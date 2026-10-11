@@ -49,6 +49,34 @@ func TestTextReaderAppliesThresholdsAndCaches(t *testing.T) {
 	}
 }
 
+// TestQuietRequestedReadsUserSpeakFirstSection is tars#1221's end-to-end
+// contract for the text-signal side: USER.md's "Speaking first" /
+// "먼저 말하기" section, rendered into the state by RenderState, actually
+// reaches the backend's Ask call — proving quiet_requested's question can
+// answer from a preference written there, not only from something said in
+// chat.
+func TestQuietRequestedReadsUserSpeakFirstSection(t *testing.T) {
+	cfg := Config{Location: seoul}.WithDefaults()
+	now := at(9, 0)
+	profile := "# USER.md\n\n## Speaking first\n오후에는 말 걸지 마.\n"
+	state, key := RenderState(cfg, Observation{Now: now, Profile: profile}, true)
+	if key == "" {
+		t.Fatal("expected a text key once the profile carries text")
+	}
+	fake := &fakeSystemOne{probs: map[string]float64{"quiet_requested": 0.9}}
+	reader := newJevTextReader(fake, cfg.Thresholds)
+	got, err := reader.Read(context.Background(), key, state, textQuestionsFor(now))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(fake.state, "오후에는 말 걸지 마.") {
+		t.Fatalf("backend never received the speak-first section: %q", fake.state)
+	}
+	if !got.QuietRequested {
+		t.Fatalf("got = %+v, want quiet_requested true", got)
+	}
+}
+
 func TestTextReaderSkipsWithoutKeyOrClient(t *testing.T) {
 	fake := &fakeSystemOne{}
 	if got, _ := newJevTextReader(fake, Thresholds{}).Read(context.Background(), "", "s", textQuestionsFor(at(9, 0))); got.Source != "skipped" || fake.calls != 0 {

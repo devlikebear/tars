@@ -227,6 +227,44 @@ func TestSessionObserverReadsEveryVisibleSession(t *testing.T) {
 	}
 }
 
+// TestSessionObserverTracksMainUserAt is reply tracking's observer
+// contract (tars#1221): Observation.MainUserAt is the newest user message
+// in the configured main session specifically, even when a different
+// (non-main) session has a newer one — a delivered greet/check_in is only
+// ever written to the main session, so only a reply there counts.
+func TestSessionObserverTracksMainUserAt(t *testing.T) {
+	store := session.NewStore(t.TempDir())
+	now := time.Date(2026, 9, 29, 14, 0, 0, 0, time.UTC)
+	main, err := store.EnsureMain()
+	if err != nil {
+		t.Fatal(err)
+	}
+	project, err := store.Create("tars workbench")
+	if err != nil {
+		t.Fatal(err)
+	}
+	appendAndTouch(t, store, main.ID, session.Message{Role: "user", Content: "main reply", Timestamp: now.Add(-10 * time.Minute)})
+	appendAndTouch(t, store, project.ID, session.Message{Role: "user", Content: "project is newer", Timestamp: now.Add(-time.Minute)})
+
+	got, err := newSessionInitiativeObserver(sessionObserverDeps{Store: store, MainSessionID: main.ID}).Observe(context.Background(), now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.MainUserAt.Equal(now.Add(-10 * time.Minute)) {
+		t.Fatalf("MainUserAt = %v, want the main session's own message time", got.MainUserAt)
+	}
+
+	// Without a configured MainSessionID, MainUserAt stays unknown — no
+	// session is assumed to be "the" main one.
+	without, err := newSessionInitiativeObserver(sessionObserverDeps{Store: store}).Observe(context.Background(), now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !without.MainUserAt.IsZero() {
+		t.Fatalf("MainUserAt = %v, want zero with no MainSessionID configured", without.MainUserAt)
+	}
+}
+
 // TestSessionObserverIgnoresInitiativeMessagesAsUserActivity is the
 // regression test for tars#1220's observer bug: an initiative-authored
 // assistant message (and the session Touch that comes with delivering it)

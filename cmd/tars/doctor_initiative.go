@@ -114,14 +114,24 @@ func checkDoctorInitiativeSpeak(report *doctorReport, cfg config.Config) {
 	found, summary := initiativeLastDeliverySummary(cfg)
 	if !found {
 		report.add("ok", "initiative speak", "no delivery recorded yet")
-		return
+	} else {
+		line := fmt.Sprintf("last delivery: %s (%s) at %s, spoken today: %d",
+			summary.delivery, summary.intent, summary.at.Format(time.RFC3339), summary.spokenToday)
+		if summary.reason != "" && summary.reason != summary.delivery {
+			line += ", reason: " + summary.reason
+		}
+		report.add("ok", "initiative speak", line)
 	}
-	line := fmt.Sprintf("last delivery: %s (%s) at %s, spoken today: %d",
-		summary.delivery, summary.intent, summary.at.Format(time.RFC3339), summary.spokenToday)
-	if summary.reason != "" && summary.reason != summary.delivery {
-		line += ", reason: " + summary.reason
+
+	o := summary.outcomes
+	report.add("ok", "initiative replies", fmt.Sprintf(
+		"today: %d replied, %d ignored, %d stopped (recent: %d/%d/%d); cooldown now %s",
+		o.Today.Replied, o.Today.Ignored, o.Today.Stopped,
+		o.Recent.Replied, o.Recent.Ignored, o.Recent.Stopped,
+		time.Duration(o.EffectiveCooldownSeconds*float64(time.Second)).Round(time.Second)))
+	if o.StoppedToday {
+		report.add("ok", "initiative replies", "a reply asked for quiet today: no more speaking until tomorrow")
 	}
-	report.add("ok", "initiative speak", line)
 }
 
 type initiativeDeliverySummary struct {
@@ -130,29 +140,54 @@ type initiativeDeliverySummary struct {
 	delivery    string
 	reason      string
 	spokenToday int
+	// outcomes is reply tracking's aggregate (tars#1221), computed by the
+	// same initiative.SummarizeOutcomes GET /v1/initiative/status uses —
+	// one function, two readers.
+	outcomes initiative.OutcomeSummary
+}
+
+// initiativeReplyCooldown parses initiative.Cooldown the same way the
+// running server does (helpers_initiative.go's parsePulseDuration), so
+// doctor's reported cooldown-in-force matches live behavior even though
+// doctor never imports internal/tarsserver.
+func initiativeReplyCooldown(raw string) time.Duration {
+	d, err := time.ParseDuration(strings.TrimSpace(raw))
+	if err != nil || d <= 0 {
+		return 45 * time.Minute
+	}
+	return d
 }
 
 // initiativeLastDeliverySummary reads the initiative ledger directly (the
 // server process may not be running) and reports the last Speak-intent
-// tick's delivery outcome and today's spoken count — the same two facts
-// GET /v1/initiative/status exposes from the live Runtime. It never reads
-// or returns composed text: the ledger does not store it (tars#1003).
+// tick's delivery outcome, today's spoken count, and reply tracking's
+// aggregate (tars#1221) — the same facts GET /v1/initiative/status exposes
+// from the live Runtime. It never reads or returns composed text: the
+// ledger does not store it (tars#1003).
 func initiativeLastDeliverySummary(cfg config.Config) (bool, initiativeDeliverySummary) {
-	if strings.TrimSpace(cfg.WorkspaceDir) == "" {
-		return false, initiativeDeliverySummary{}
-	}
-	ledger := initiative.OpenLedger(filepath.Join(cfg.WorkspaceDir, "_shared", "initiative", "ledger.jsonl"), 0)
-	entries, err := ledger.Recent(500)
-	if err != nil || len(entries) == 0 {
-		return false, initiativeDeliverySummary{}
-	}
 	loc := time.Local
 	if tz := strings.TrimSpace(cfg.Initiative.Timezone); tz != "" {
 		if l, lerr := time.LoadLocation(tz); lerr == nil {
 			loc = l
 		}
 	}
-	today := time.Now().In(loc).Format("2006-01-02")
+	now := time.Now().In(loc)
+	baseCooldown := initiativeReplyCooldown(cfg.Initiative.Cooldown)
+	// emptyOutcomes is what every early-return path below reports: no
+	// entries read yet, so no streak and no stopped timestamp — but still
+	// the real configured cooldown (tars#1221 review), not a zero value
+	// that would otherwise make a brand-new ledger report "cooldown now
+	// 0s" instead of the base cooldown actually in force.
+	emptyOutcomes := initiative.SummarizeOutcomes(nil, now, loc, baseCooldown, 0, time.Time{})
+	if strings.TrimSpace(cfg.WorkspaceDir) == "" {
+		return false, initiativeDeliverySummary{outcomes: emptyOutcomes}
+	}
+	ledger := initiative.OpenLedger(filepath.Join(cfg.WorkspaceDir, "_shared", "initiative", "ledger.jsonl"), 0)
+	entries, err := ledger.Recent(500)
+	if err != nil || len(entries) == 0 {
+		return false, initiativeDeliverySummary{outcomes: emptyOutcomes}
+	}
+	today := now.Format("2006-01-02")
 	var out initiativeDeliverySummary
 	var found bool
 	for _, e := range entries {
@@ -165,6 +200,8 @@ func initiativeLastDeliverySummary(cfg config.Config) (bool, initiativeDeliveryS
 			out.at, out.intent, out.delivery, out.reason = e.At, string(e.Intent), e.Delivery, e.DeliveryReason
 		}
 	}
+	consecutiveIgnored, lastStoppedAt, _ := initiative.ReplyState(entries)
+	out.outcomes = initiative.SummarizeOutcomes(entries, now, loc, baseCooldown, consecutiveIgnored, lastStoppedAt)
 	return found, out
 }
 

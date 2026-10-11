@@ -165,4 +165,15 @@ test('live mode speaks once, shows it in the thread, and stays quiet on the very
 
   const afterTick3 = await history(page, sessionId)
   expect(afterTick3.length).toBe(afterTick2.length + 1)
+
+  // Reply tracking (tars#1221): tick 1's greet never got a reply — no
+  // message was ever sent to the main session for it, only the earlier
+  // side-session one. By the time tick 3 fires (25h later, far past the
+  // default 30m reply_window), resolveRepliesLocked must already have
+  // settled it as "ignored" — surfaced with no words attached, through
+  // the same status API `tars doctor` also reads from the ledger.
+  const status = await page.request.get('/v1/initiative/status')
+  expect(status.ok()).toBeTruthy()
+  const statusBody = await status.json()
+  expect(statusBody.outcomes.recent.ignored).toBeGreaterThanOrEqual(1)
 })

@@ -28,6 +28,12 @@ const defaultUserTemplate = `# USER.md
 - Name:
 - Preferred language:
 - Key preferences and working style notes.
+
+## Speaking first
+- Free-form notes on when TARS speaking first (unprompted greetings,
+  check-ins) is and isn't welcome, e.g. "don't message me in the
+  afternoon" or "weekends: greeting only". Read alongside the initiative
+  config's quiet hours and frequency limits, not instead of them.
 `
 
 const defaultIdentityTemplate = `# IDENTITY.md
@@ -43,6 +49,11 @@ You are TARS, a personal AI assistant.
 - Preferred tone, verbosity, and interaction style.
 - Behavioral boundaries and topics to avoid.
 - Traits that should consistently come through in responses.
+
+## When I speak first
+- How TARS should sound the moment it speaks before being asked
+  (greetings, check-ins) — keep this brief; it is read in place of the
+  rest of this file for that one moment, not in addition to it.
 `
 
 const defaultToolsTemplate = `# TOOLS.md

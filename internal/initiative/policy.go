@@ -8,6 +8,8 @@ func Decide(g GoSignals, t TextSignals) Decision {
 	switch {
 	case t.QuietRequested:
 		return none("quiet_requested")
+	case g.StoppedToday:
+		return none("stopped_today")
 	case g.QuietHours:
 		return none("quiet_hours")
 	case g.CooldownActive:

@@ -53,6 +53,20 @@ type Entry struct {
 	Body           string `json:"body,omitempty"`
 	LatencyMS      int64  `json:"latency_ms"`
 	Error          string `json:"error,omitempty"`
+	// Kind distinguishes a normal tick entry ("") from a reply-tracking
+	// outcome entry ("outcome", tars#1221): a separate ledger line recorded
+	// when a previously delivered speak (Ref, an earlier entry's ID)
+	// resolves to Outcome. An outcome entry carries no
+	// Decision/Signals/Text/Delivery of its own and never holds user or
+	// assistant text, the same tars#1003 rule every other Entry field
+	// follows.
+	Kind string `json:"kind,omitempty"`
+	// Ref is the ID of the delivered-speak entry this outcome resolves,
+	// set only when Kind == "outcome".
+	Ref string `json:"ref,omitempty"`
+	// Outcome is replied, ignored, or stopped — set only when Kind ==
+	// "outcome". See OutcomeReplied/OutcomeIgnored/OutcomeStopped.
+	Outcome string `json:"outcome,omitempty"`
 }
 
 // Ledger is an append-only JSONL file that rotates to <path>.1 when full.
@@ -195,6 +209,7 @@ func historyFrom(entries []Entry, now time.Time, loc *time.Location) History {
 			}
 		}
 	}
+	h.ConsecutiveIgnored, h.LastStoppedAt, h.PendingReplies = ReplyState(entries)
 	return h
 }
 
