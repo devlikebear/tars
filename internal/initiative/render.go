@@ -55,7 +55,7 @@ func RenderState(cfg Config, obs Observation, includeText bool) (string, string)
 			textParts = append(textParts, text)
 		}
 	}
-	if profile := truncateRunes(strings.TrimSpace(obs.Profile), maxProfileRunes); profile != "" {
+	if profile := prioritizedProfile(obs.Profile, maxProfileRunes); profile != "" {
 		lines = append(lines, "profile:", profile)
 		textParts = append(textParts, profile)
 	}

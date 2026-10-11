@@ -11,6 +11,8 @@ func TestDecide(t *testing.T) {
 		reason string
 	}{
 		{"quiet request wins over everything", GoSignals{JustArrived: true, Reachable: true}, TextSignals{QuietRequested: true}, IntentNone, "quiet_requested"},
+		{"stopped today wins over arrival", GoSignals{StoppedToday: true, JustArrived: true, Reachable: true}, TextSignals{}, IntentNone, "stopped_today"},
+		{"quiet request still wins over stopped today", GoSignals{StoppedToday: true, JustArrived: true, Reachable: true}, TextSignals{QuietRequested: true}, IntentNone, "quiet_requested"},
 		{"quiet hours", GoSignals{QuietHours: true, JustArrived: true, Reachable: true}, TextSignals{}, IntentNone, "quiet_hours"},
 		{"cooldown", GoSignals{CooldownActive: true, JustArrived: true, Reachable: true}, TextSignals{}, IntentNone, "cooldown"},
 		{"daily cap", GoSignals{DailyCapReached: true, JustArrived: true, Reachable: true}, TextSignals{}, IntentNone, "daily_cap"},

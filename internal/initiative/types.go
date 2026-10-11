@@ -25,7 +25,12 @@ type Observation struct {
 	RecentUser []UserMessage // oldest first
 	// LastUserAt is the newest user message anywhere, even when it is too
 	// old to be in RecentUser. Zero means unknown; RecentUser then decides.
-	LastUserAt         time.Time
+	LastUserAt time.Time
+	// MainUserAt is the newest user message timestamp in the main session
+	// specifically (zero when none) — reply tracking (tars#1221) only
+	// counts a reply there, since that is the one session a delivered
+	// greet/check_in is ever written to.
+	MainUserAt         time.Time
 	ConsoleConnectedAt time.Time // zero when no console is subscribed
 	ChatBusy           bool
 	TelegramPaired     bool
@@ -46,6 +51,11 @@ type GoSignals struct {
 	DailyCapReached   bool `json:"daily_cap_reached"`
 	CheckedInRecently bool `json:"checked_in_recently"`
 	BodyRecently      bool `json:"body_recently"`
+	// StoppedToday reports whether a reply-tracking "stopped" outcome
+	// (tars#1221) was recorded earlier the same local day — set from
+	// History.LastStoppedAt. True blocks every Speak decision for the
+	// rest of that day, the same hard-gate shape as QuietHours/CooldownActive.
+	StoppedToday bool `json:"stopped_today"`
 }
 
 type TextSignals struct {

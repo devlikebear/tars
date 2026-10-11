@@ -32,8 +32,13 @@ const (
 // sessionObserverDeps are the live sources the initiative observer reads.
 // Every function is optional; a missing one reads as false or zero.
 type sessionObserverDeps struct {
-	Store           *session.Store
-	WorkspaceDir    string
+	Store        *session.Store
+	WorkspaceDir string
+	// MainSessionID identifies the one session reply tracking (tars#1221)
+	// reads for Observation.MainUserAt — a delivered greet/check_in is
+	// only ever written there (helpers_initiative_speak.go), so only a
+	// reply in that session counts.
+	MainSessionID   string
 	SubscriberCount func() int
 	ChatBusy        func() bool
 	TelegramPaired  func() bool
@@ -119,6 +124,11 @@ func (o *sessionInitiativeObserver) readSessions(now time.Time, obs *initiative.
 		all = append(all, activity.UserMessages...)
 		if activity.LastActivityAt.After(newestActivity) {
 			newestActivity = activity.LastActivityAt
+		}
+		if o.deps.MainSessionID != "" && sess.ID == o.deps.MainSessionID {
+			if n := len(activity.UserMessages); n > 0 {
+				obs.MainUserAt = activity.UserMessages[n-1].At
+			}
 		}
 	}
 	for path := range o.transcripts {
@@ -306,6 +316,7 @@ func buildInitiativeRuntime(in initiativeSetupInputs) initiativeSetup {
 		BodyProvider:    c.BodyProvider,
 		DailyTextCalls:  c.DailyTextCalls,
 		DailySpeakCalls: c.DailySpeakCalls,
+		ReplyWindow:     parsePulseDuration(c.ReplyWindow, 30*time.Minute),
 		Thresholds: initiative.Thresholds{
 			QuietRequested: c.QuietRequestedThreshold,
 			UserStrained:   c.UserStrainedThreshold,
@@ -342,7 +353,7 @@ func buildInitiativeRuntime(in initiativeSetupInputs) initiativeSetup {
 		deps.Speaker = speaker
 	}
 
-	observerDeps := sessionObserverDeps{Store: in.SessionStore, WorkspaceDir: in.WorkspaceDir}
+	observerDeps := sessionObserverDeps{Store: in.SessionStore, WorkspaceDir: in.WorkspaceDir, MainSessionID: strings.TrimSpace(in.MainSessionID)}
 	if in.Broker != nil {
 		observerDeps.SubscriberCount = in.Broker.SubscriberCount
 	}

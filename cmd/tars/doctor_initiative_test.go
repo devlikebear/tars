@@ -131,26 +131,35 @@ func TestCheckDoctorInitiativeLiveSpeakBackend(t *testing.T) {
 	for i, c := range report.checks {
 		names[i] = c.name
 	}
-	if len(report.checks) != 3 {
-		t.Fatalf("checks = %+v, want initiative + two initiative-speak checks", names)
+	if len(report.checks) != 4 {
+		t.Fatalf("checks = %+v, want initiative + two initiative-speak checks + one initiative-replies check", names)
 	}
 	if report.checks[0].name != "initiative" || !strings.Contains(report.checks[0].detail, "live mode") {
 		t.Fatalf("first check = %+v, want live mode in the detail", report.checks[0])
 	}
-	foundBackend, foundDelivery := false, false
+	foundBackend, foundDelivery, foundReplies := false, false, false
 	for _, c := range report.checks[1:] {
-		if c.name != "initiative speak" {
+		switch c.name {
+		case "initiative speak":
+			if strings.Contains(c.detail, "chat-model") {
+				foundBackend = true
+			}
+			if strings.Contains(c.detail, "no delivery recorded yet") {
+				foundDelivery = true
+			}
+		case "initiative replies":
+			// Review fix: an empty ledger (no deliveries yet) must still
+			// report the real configured cooldown (default 45m here,
+			// Cooldown left unset), not "cooldown now 0s".
+			if strings.Contains(c.detail, "0 replied") && strings.Contains(c.detail, "cooldown now 45m0s") {
+				foundReplies = true
+			}
+		default:
 			t.Fatalf("unexpected check name %q", c.name)
 		}
-		if strings.Contains(c.detail, "chat-model") {
-			foundBackend = true
-		}
-		if strings.Contains(c.detail, "no delivery recorded yet") {
-			foundDelivery = true
-		}
 	}
-	if !foundBackend || !foundDelivery {
-		t.Fatalf("checks = %+v, want a speak backend line and a no-delivery-yet line", report.checks[1:])
+	if !foundBackend || !foundDelivery || !foundReplies {
+		t.Fatalf("checks = %+v, want a speak backend line, a no-delivery-yet line, and a reply-outcomes line", report.checks[1:])
 	}
 }
 
@@ -194,5 +203,64 @@ func TestInitiativeLastDeliverySummaryReadsLedgerNotCurrentProcess(t *testing.T)
 	found, summary := initiativeLastDeliverySummary(config.Config{RuntimeConfig: config.RuntimeConfig{WorkspaceDir: workspace}})
 	if !found || summary.delivery != "delivered" || summary.intent != "greet" || summary.spokenToday != 1 {
 		t.Fatalf("summary = %+v found=%v", summary, found)
+	}
+}
+
+// TestInitiativeLastDeliverySummaryReadsReplyOutcomes checks that doctor's
+// reply-tracking aggregate (tars#1221) is read straight from the ledger —
+// the same facts, computed by the same initiative.SummarizeOutcomes GET
+// /v1/initiative/status uses from the live Runtime.
+func TestInitiativeLastDeliverySummaryReadsReplyOutcomes(t *testing.T) {
+	workspace := t.TempDir()
+	dir := workspace + "/_shared/initiative"
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	lines := []string{
+		fmt.Sprintf(`{"id":"e1","at":%q,"mode":"live","intent":"greet","speak":true,"delivery":"delivered","delivery_reason":"delivered"}`, now.Add(-time.Hour).Format(time.RFC3339)),
+		fmt.Sprintf(`{"at":%q,"mode":"live","kind":"outcome","ref":"e1","outcome":"ignored"}`, now.Add(-50*time.Minute).Format(time.RFC3339)),
+		fmt.Sprintf(`{"id":"e2","at":%q,"mode":"live","intent":"check_in","speak":true,"delivery":"delivered","delivery_reason":"delivered"}`, now.Add(-30*time.Minute).Format(time.RFC3339)),
+		fmt.Sprintf(`{"at":%q,"mode":"live","kind":"outcome","ref":"e2","outcome":"stopped"}`, now.Add(-20*time.Minute).Format(time.RFC3339)),
+	}
+	if err := os.WriteFile(dir+"/ledger.jsonl", []byte(strings.Join(lines, "\n")+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, summary := initiativeLastDeliverySummary(config.Config{
+		RuntimeConfig: config.RuntimeConfig{WorkspaceDir: workspace},
+		Initiative:    config.InitiativeConfig{Cooldown: "45m"},
+	})
+	if summary.outcomes.Today.Ignored != 1 || summary.outcomes.Today.Stopped != 1 {
+		t.Fatalf("outcomes = %+v, want 1 ignored and 1 stopped today", summary.outcomes)
+	}
+	if !summary.outcomes.StoppedToday {
+		t.Fatal("StoppedToday = false, want true")
+	}
+	if want := (45 * time.Minute).Seconds(); summary.outcomes.EffectiveCooldownSeconds != want {
+		t.Fatalf("EffectiveCooldownSeconds = %v, want %v (the later stopped outcome resets the streak the earlier ignored started)", summary.outcomes.EffectiveCooldownSeconds, want)
+	}
+}
+
+// TestInitiativeLastDeliverySummaryReportsConfiguredCooldownWithEmptyLedger
+// is the regression guard for the review finding: a brand-new live-mode
+// setup with no deliveries yet (empty or missing ledger) must still report
+// the real configured cooldown, not a zero value that would read as
+// "cooldown disabled" in `tars doctor`'s output.
+func TestInitiativeLastDeliverySummaryReportsConfiguredCooldownWithEmptyLedger(t *testing.T) {
+	want := (2 * time.Hour).Seconds()
+
+	// No workspace at all.
+	if _, summary := initiativeLastDeliverySummary(config.Config{
+		Initiative: config.InitiativeConfig{Cooldown: "2h"},
+	}); summary.outcomes.EffectiveCooldownSeconds != want {
+		t.Fatalf("no workspace: EffectiveCooldownSeconds = %v, want %v", summary.outcomes.EffectiveCooldownSeconds, want)
+	}
+
+	// A workspace with no ledger file yet.
+	if _, summary := initiativeLastDeliverySummary(config.Config{
+		RuntimeConfig: config.RuntimeConfig{WorkspaceDir: t.TempDir()},
+		Initiative:    config.InitiativeConfig{Cooldown: "2h"},
+	}); summary.outcomes.EffectiveCooldownSeconds != want {
+		t.Fatalf("no ledger file: EffectiveCooldownSeconds = %v, want %v", summary.outcomes.EffectiveCooldownSeconds, want)
 	}
 }

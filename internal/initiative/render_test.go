@@ -72,6 +72,25 @@ func TestRenderStateWithoutTextHasNoKey(t *testing.T) {
 	}
 }
 
+// TestRenderStatePrioritizesUserSpeakFirstSection is tars#1221's state
+// contract: USER.md's "Speaking first" / "먼저 말하기" section must reach
+// the text-signal state (so quiet_requested's question can read a request
+// written there, not just one said in chat) even when the rest of the
+// profile would otherwise push it past the truncation limit.
+func TestRenderStatePrioritizesUserSpeakFirstSection(t *testing.T) {
+	cfg := Config{Location: seoul}.WithDefaults()
+	now := at(9, 0)
+	profile := "# USER.md\n\n## Preferences\n" + strings.Repeat("filler ", 200) +
+		"\n\n## Speaking first\n오후에는 말 걸지 마."
+	state, key := RenderState(cfg, Observation{Now: now, Profile: profile}, true)
+	if !strings.Contains(state, "오후에는 말 걸지 마.") {
+		t.Fatalf("state is missing the user's speak-first preferences: %q", state)
+	}
+	if key == "" {
+		t.Fatal("expected a text key once the profile carries text")
+	}
+}
+
 func TestRenderStateTruncatesLongText(t *testing.T) {
 	cfg := Config{Location: seoul}.WithDefaults()
 	now := at(9, 0)

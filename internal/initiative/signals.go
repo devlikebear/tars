@@ -25,6 +25,16 @@ type History struct {
 	SpeakCallsToday int
 	LastSpeakCallAt time.Time
 	SpeakFailCount  int
+	// ConsecutiveIgnored, LastStoppedAt and PendingReplies are reply
+	// tracking's pacing state (tars#1221): how many delivered speaks in a
+	// row resolved to "ignored" (drives the cooldown multiplier,
+	// EffectiveCooldown — reset to 0 by a "replied" or "stopped"
+	// outcome), the most recent "stopped" outcome's timestamp (drives
+	// GoSignals.StoppedToday for the rest of that local day), and every
+	// delivered speak not yet resolved to an outcome.
+	ConsecutiveIgnored int
+	LastStoppedAt      time.Time
+	PendingReplies     []PendingReply
 }
 
 func deriveGoSignals(cfg Config, obs Observation, hist History) GoSignals {
@@ -47,10 +57,11 @@ func deriveGoSignals(cfg Config, obs Observation, hist History) GoSignals {
 	g.LongSession = !lastUser.IsZero() && since(lastUser) <= longSessionTail && activeSpan(obs.RecentUser) >= longSession
 	g.LongAbsence = !lastUser.IsZero() && since(lastUser) >= longAbsence
 	g.IdleAtDesk = consoleUp && !lastUser.IsZero() && since(lastUser) >= idleMin && since(lastUser) <= idleMax
-	g.CooldownActive = !hist.LastSpokeAt.IsZero() && since(hist.LastSpokeAt) < cfg.Cooldown
+	g.CooldownActive = !hist.LastSpokeAt.IsZero() && since(hist.LastSpokeAt) < EffectiveCooldown(cfg.Cooldown, hist.ConsecutiveIgnored)
 	g.DailyCapReached = hist.Today >= cfg.DailyCap
 	g.CheckedInRecently = !hist.LastCheckInAt.IsZero() && since(hist.LastCheckInAt) < checkInSpacing
 	g.BodyRecently = !hist.LastBodyAt.IsZero() && since(hist.LastBodyAt) < bodySpacing
+	g.StoppedToday = !hist.LastStoppedAt.IsZero() && sameLocalDay(hist.LastStoppedAt, now, cfg.Location)
 	return g
 }
 

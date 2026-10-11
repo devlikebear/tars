@@ -110,6 +110,12 @@ type Snapshot struct {
 	SpokenToday int     `json:"spoken_today"`
 	LastError   string  `json:"last_error,omitempty"`
 	Recent      []Entry `json:"recent"`
+	// Outcomes is reply tracking's aggregate (tars#1221): today's and the
+	// recent window's replied/ignored/stopped counts, plus the cooldown
+	// currently in force and whether a "stopped" outcome blocks the rest
+	// of today. Always present (zero-valued when reply tracking has
+	// nothing yet, or in shadow mode, which never records outcomes).
+	Outcomes OutcomeSummary `json:"outcomes"`
 }
 
 // Runtime evaluates one tick at a time. In shadow mode it records what it
@@ -134,6 +140,12 @@ type Runtime struct {
 	textCallsToday  int
 	speakCallsToday int
 	spokenToday     int
+	// consecutiveIgnored and lastStoppedAt mirror the authoritative
+	// hist fields of the same name (tars#1221), the same way
+	// textCallsToday/speakCallsToday/spokenToday already mirror History —
+	// so Snapshot can report them without touching hist under mu.
+	consecutiveIgnored int
+	lastStoppedAt      time.Time
 	// lastEntry is the most recently recorded entry, kept for parity with
 	// speakCallsToday/textCallsToday though Snapshot reads lastDelivery
 	// below for its reporting (tars#1220).
@@ -255,23 +267,59 @@ func (r *Runtime) runOnce(ctx context.Context, now time.Time) Entry {
 	entry.Signals = g
 
 	// The backend is worth calling only when some combination of text
-	// signals could change this tick's actual outcome (textSignalsMatter),
-	// the daily call cap still has room, and a run of consecutive failures
-	// has not put the read on backoff — all three naturally skip a tick a
-	// hard rule (quiet hours, cooldown, daily cap), plain busy typing, or a
-	// stuck backend has already fixed the outcome for, without
-	// special-casing any of them here. Calling the backend at all is what
-	// the caller must opt into (textSignalsMatter also returns false under
-	// the zero-value Config).
+	// signals could change this tick's actual outcome (textSignalsMatter)
+	// or a pending reply would resolve this tick and needs this message's
+	// quiet_requested reading to tell replied from stopped apart
+	// (pendingReplyNeedsText, tars#1221) — and, either way, only when the
+	// daily call cap still has room and a run of consecutive failures has
+	// not put the read on backoff. These naturally skip a tick a hard rule
+	// (quiet hours, cooldown, daily cap), plain busy typing, or a stuck
+	// backend has already fixed the outcome for, without special-casing
+	// any of them here. Calling the backend at all is what the caller
+	// must opt into (textSignalsMatter also returns false under the
+	// zero-value Config).
 	text := TextSignals{Source: "skipped"}
-	if textSignalsMatter(g) && r.hist.TextCallsToday < r.cfg.DailyTextCalls && r.textReadEligible(now) {
+	// textStatus classifies what this tick's read actually achieved —
+	// consulted only by resolveRepliesLocked, for a pending reply within
+	// its window (tars#1221 review): TextReadUnavailable by default (no
+	// read attempted at all), refined below to
+	// TextReadTemporarilyUnavailable or TextReadOK whenever a read is
+	// actually attempted. A tick where no pending reply needs this
+	// distinction (pendingReplyNeedsText false and textSignalsMatter
+	// false) never looks at it.
+	textStatus := TextReadUnavailable
+	needsText := textSignalsMatter(g) || pendingReplyNeedsText(r.hist.PendingReplies, obs.MainUserAt, r.cfg.ReplyWindow)
+	switch {
+	case !needsText:
+		// No combination of text signals matters and no pending reply is
+		// within its window — textStatus is not consulted either way.
+	case r.hist.TextCallsToday >= r.cfg.DailyTextCalls:
+		// Daily call cap exhausted: structurally unavailable for the rest
+		// of today, same as not sendsText — waiting won't help.
+	case !r.textReadEligible(now):
+		// Read-failure backoff in effect: may succeed once it lifts.
+		textStatus = TextReadTemporarilyUnavailable
+	default:
 		state, key := RenderState(r.cfg, obs, r.deps.IncludeText)
 		text, err = r.text.Read(ctx, key, state, textQuestionsFor(now.In(r.cfg.Location)))
-		if err != nil {
+		switch {
+		case err != nil:
 			entry.Error = describeSystemOneError(err)
 			r.noteErrorLocked(entry.Error)
-		} else if text.Source == r.text.source {
+			textStatus = TextReadTemporarilyUnavailable
+		case text.Source == r.text.source:
 			r.clearError()
+			textStatus = TextReadOK
+		case text.Source == "cache":
+			// A cached answer is still a trustworthy prior read, even
+			// though it does not count as a fresh call below.
+			textStatus = TextReadOK
+		default:
+			// "skipped" from within Read itself: either sendsText is
+			// false (RenderState never includes text) or there was
+			// nothing to render this tick — either way, structurally no
+			// quiet_requested answer is coming from this tick's attempt.
+			textStatus = TextReadUnavailable
 		}
 		entry.Called = text.Source == r.text.source || text.Source == "error"
 	}
@@ -286,9 +334,65 @@ func (r *Runtime) runOnce(ctx context.Context, now time.Time) Entry {
 	case entry.Speak && r.cfg.Live():
 		r.deliverLocked(ctx, &entry, obs)
 	}
+	r.resolveRepliesLocked(now, obs, text, textStatus)
 	entry.LatencyMS = time.Since(start).Milliseconds()
 	r.applyLocked(entry)
 	return entry
+}
+
+// resolveRepliesLocked resolves every pending delivered speak that this
+// tick's observation (a main-session reply, or the reply window simply
+// elapsing) now settles, records each as a separate outcome Entry, and
+// updates the consecutive-ignored/last-stopped pacing state (tars#1221).
+// textStatus (tars#1221 review) tells ResolveReplies whether this tick's
+// quietRequested is trustworthy, so a transient read failure or backoff
+// leaves a reply within its window pending rather than locking in the
+// wrong outcome. Always a no-op in shadow mode: shadow never delivers, so
+// r.hist.PendingReplies never gains an entry (see applyLocked).
+func (r *Runtime) resolveRepliesLocked(now time.Time, obs Observation, text TextSignals, textStatus TextReadStatus) {
+	resolved, remaining := ResolveReplies(r.hist.PendingReplies, obs.MainUserAt, textStatus, text.QuietRequested, now, r.cfg.ReplyWindow)
+	r.hist.PendingReplies = remaining
+	for _, res := range resolved {
+		r.applyOutcomeLocked(Entry{
+			ID:      nextEntryID(now),
+			At:      now,
+			Mode:    r.cfg.Mode,
+			Kind:    entryKindOutcome,
+			Ref:     res.EntryID,
+			Outcome: res.Outcome,
+		})
+	}
+}
+
+// applyOutcomeLocked records one resolved reply outcome: updates the
+// consecutive-ignored streak and last-stopped timestamp the same way
+// ReplyState would replay them from the ledger, appends the entry to the
+// ledger, and keeps it in Snapshot's recent window. Unlike applyLocked,
+// it never touches lastReason/lastDelivery/lastDeliveryReason — those
+// drive the *next tick entry's* own dedup check, which an outcome entry
+// (Kind == entryKindOutcome, no Reason/Delivery of its own) must not
+// affect.
+func (r *Runtime) applyOutcomeLocked(e Entry) {
+	switch e.Outcome {
+	case OutcomeReplied, OutcomeStopped:
+		r.hist.ConsecutiveIgnored = 0
+	case OutcomeIgnored:
+		r.hist.ConsecutiveIgnored++
+	}
+	if e.Outcome == OutcomeStopped && e.At.After(r.hist.LastStoppedAt) {
+		r.hist.LastStoppedAt = e.At
+	}
+	if err := r.deps.Ledger.Append(e); err != nil {
+		r.deps.Logger.Warn().Err(err).Msg("initiative: ledger append failed")
+	}
+	r.snapMu.Lock()
+	r.consecutiveIgnored = r.hist.ConsecutiveIgnored
+	r.lastStoppedAt = r.hist.LastStoppedAt
+	r.recent = append(r.recent, e)
+	if len(r.recent) > recentKept {
+		r.recent = r.recent[len(r.recent)-recentKept:]
+	}
+	r.snapMu.Unlock()
 }
 
 // textReadEligible reports whether the text-signal backend may be called
@@ -445,6 +549,13 @@ func (r *Runtime) applyLocked(e Entry) {
 			// backend that is composing successfully every time.
 		}
 	}
+	if e.Delivery == DeliveryDelivered {
+		// Starts this delivered speak's reply-tracking window (tars#1221):
+		// resolveRepliesLocked (earlier this same tick, before this entry
+		// existed) never sees it; the earliest it can resolve is next
+		// tick.
+		r.hist.PendingReplies = append(r.hist.PendingReplies, PendingReply{EntryID: e.ID, At: e.At})
+	}
 	// A tick worth a ledger line is one where something changed (the
 	// decision's reason, or live mode's delivery outcome/reason) or where
 	// a real backend call happened (text-signal read or speak compose) —
@@ -472,6 +583,8 @@ func (r *Runtime) rememberLocked(e Entry) {
 	r.textCallsToday = r.hist.TextCallsToday
 	r.speakCallsToday = r.hist.SpeakCallsToday
 	r.spokenToday = r.hist.Today
+	r.consecutiveIgnored = r.hist.ConsecutiveIgnored
+	r.lastStoppedAt = r.hist.LastStoppedAt
 	r.lastEntry = e
 	if e.Delivery != "" {
 		r.lastDeliverySummary = &DeliverySummary{
@@ -509,6 +622,10 @@ func (r *Runtime) loadHistoryLocked(now time.Time) {
 		r.deps.Logger.Warn().Err(err).Int("entries", len(entries)).Msg("initiative: read ledger history failed")
 	}
 	r.hist = historyFrom(entries, now, r.cfg.Location)
+	r.snapMu.Lock()
+	r.consecutiveIgnored = r.hist.ConsecutiveIgnored
+	r.lastStoppedAt = r.hist.LastStoppedAt
+	r.snapMu.Unlock()
 	// Restore the last delivery summary too, so a restart's first
 	// Snapshot/doctor report isn't blank until the next Speak-intent tick.
 	for i := len(entries) - 1; i >= 0; i-- {
@@ -570,6 +687,7 @@ func (r *Runtime) Snapshot() Snapshot {
 	speakBackend := r.deps.SpeakBackend
 	speakBackend.CallsToday = r.speakCallsToday
 	speakBackend.DailyCallCap = r.cfg.DailySpeakCalls
+	outcomes := SummarizeOutcomes(r.recent, r.deps.Now(), r.cfg.Location, r.cfg.Cooldown, r.consecutiveIgnored, r.lastStoppedAt)
 	return Snapshot{
 		Enabled:      r.cfg.Enabled,
 		Mode:         r.cfg.Mode,
@@ -579,5 +697,6 @@ func (r *Runtime) Snapshot() Snapshot {
 		SpokenToday:  r.spokenToday,
 		LastError:    r.lastError,
 		Recent:       append([]Entry{}, r.recent...),
+		Outcomes:     outcomes,
 	}
 }

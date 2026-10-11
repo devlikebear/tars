@@ -54,6 +54,11 @@ type Config struct {
 	// DailySpeakCalls caps how many System 2 speak-composer LLM calls live
 	// mode makes per local day. tars#1220.
 	DailySpeakCalls int
+	// ReplyWindow is how long after a delivered speak a main-session user
+	// message still counts as a reply to it (tars#1221): within the
+	// window, replied (or stopped, when that message reads as a quiet
+	// request) — past it with no message, ignored.
+	ReplyWindow time.Duration
 }
 
 // WithDefaults fills zero values. Mode defaults to shadow when unset, but an
@@ -81,6 +86,9 @@ func (c Config) WithDefaults() Config {
 	}
 	if c.DailySpeakCalls <= 0 {
 		c.DailySpeakCalls = 12
+	}
+	if c.ReplyWindow <= 0 {
+		c.ReplyWindow = 30 * time.Minute
 	}
 	if strings.TrimSpace(c.QuietHours) == "" {
 		c.QuietHours = "23:00-07:00"

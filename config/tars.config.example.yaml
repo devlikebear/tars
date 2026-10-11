@@ -324,17 +324,22 @@ initiative:
   # tars#1192) only while the console is connected — the console is the
   # only delivery channel; with none, TARS stays silent and the ledger
   # records delivery: unreachable, with no compose call. Any other value
-  # fails to load.
+  # fails to load. Tone comes from IDENTITY.md's "When I speak first" /
+  # "먼저 말할 때" section when present (else the whole file, as before
+  # tars#1221); numeric settings (quiet hours, frequency) always live here
+  # in config, never parsed from markdown.
   mode: shadow
   # llm (default) asks the configured LLM under the "initiative" role
   # (light tier by default, tars#1219) with strict JSON booleans — no
   # probability. jev asks a /v1/systemone server under jev.* instead, with
-  # the thresholds below. User text (recent messages, USER.md) is sent
-  # only when: backend llm and the initiative role resolves to the exact
-  # same provider pool alias as chat (chat_main role, else
-  # llm_default_tier) — that text already went to that provider during the
-  # chat turn that produced it; or backend jev and jev.base_url is
-  # loopback. Otherwise only metadata goes and the three text signals are
+  # the thresholds below. User text (recent messages, USER.md — including
+  # USER.md's "Speaking first" / "먼저 말하기" section, prioritized ahead of
+  # truncation so it survives a long profile, tars#1221) is sent only
+  # when: backend llm and the initiative role resolves to the exact same
+  # provider pool alias as chat (chat_main role, else llm_default_tier) —
+  # that text already went to that provider during the chat turn that
+  # produced it; or backend jev and jev.base_url is loopback. Otherwise
+  # only metadata goes and the three text signals are
   # skipped (GET /v1/initiative/status and `tars doctor` show which and
   # why).
   backend: llm
@@ -354,6 +359,19 @@ initiative:
   # schedule (5m doubling to a 60m cap) instead of without bound; daily_cap
   # and the cooldown count only an actually delivered speak.
   daily_speak_calls: 12
+  # How long after a delivered (live mode) speak a main-session user
+  # message still counts as a reply to it (tars#1221): within the window,
+  # the outcome is replied (or stopped, when that reply reads as a quiet
+  # request — reusing the same quiet_requested text signal, never a new
+  # keyword match or LLM call); past it with no reply, ignored. Consecutive
+  # ignored outcomes double the cooldown actually in force (capped at 8x
+  # cooldown, reset by one replied), and a stopped outcome silences the
+  # rest of that local day regardless of daily_cap/cooldown. Outcomes never
+  # store the reply's words — only the result — and GET
+  # /v1/initiative/status / `tars doctor` show today's and the recent
+  # replied/ignored/stopped counts, the cooldown now in force, and whether
+  # today is stopped.
+  reply_window: 30m
   # Embodiment provider name (see embodiment.providers) for idle expressions.
   body_provider: ""
   # jev-only: probability needed for each text signal (measured on

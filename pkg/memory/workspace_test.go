@@ -63,6 +63,13 @@ func TestEnsureWorkspace(t *testing.T) {
 	if !strings.Contains(string(userFile), "User Profile") {
 		t.Fatalf("expected default USER template, got %q", string(userFile))
 	}
+	// The "Speaking first" heading (tars#1221) must match exactly what
+	// internal/initiative.UserSpeakFirstSection recognizes — duplicated
+	// literally here rather than imported, since pkg/memory (core) must
+	// never import initiative (an app package).
+	if !strings.Contains(string(userFile), "## Speaking first") {
+		t.Fatalf("expected USER template to carry a Speaking first section, got %q", string(userFile))
+	}
 
 	identityFile, err := os.ReadFile(filepath.Join(root, "IDENTITY.md"))
 	if err != nil {
@@ -73,6 +80,12 @@ func TestEnsureWorkspace(t *testing.T) {
 	}
 	if !strings.Contains(string(identityFile), "Communication Style") {
 		t.Fatalf("expected IDENTITY template to absorb persona guidance, got %q", string(identityFile))
+	}
+	// The "When I speak first" heading (tars#1221) must match exactly what
+	// internal/initiative.IdentitySpeakFirstSection recognizes — same
+	// duplication rationale as USER.md's check above.
+	if !strings.Contains(string(identityFile), "## When I speak first") {
+		t.Fatalf("expected IDENTITY template to carry a When I speak first section, got %q", string(identityFile))
 	}
 
 	toolsFile, err := os.ReadFile(filepath.Join(root, "TOOLS.md"))

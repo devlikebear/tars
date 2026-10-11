@@ -11,7 +11,8 @@ func TestInitiativeStatusDisabled(t *testing.T) {
 	h := newInitiativeAPIHandler(nil)
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/initiative/status", nil))
-	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"enabled":false`) || !strings.Contains(rec.Body.String(), `"recent":[]`) {
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"enabled":false`) || !strings.Contains(rec.Body.String(), `"recent":[]`) ||
+		!strings.Contains(rec.Body.String(), `"outcomes":{`) {
 		t.Fatalf("status %d body %s", rec.Code, rec.Body.String())
 	}
 	rec = httptest.NewRecorder()

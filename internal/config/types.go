@@ -432,7 +432,11 @@ type InitiativeConfig struct {
 	// to deliver still counts here, so a stuck backend cannot be retried
 	// without bound even while cooldown/daily-cap (which count delivered
 	// speech only) stay open. tars#1220.
-	DailySpeakCalls         int
+	DailySpeakCalls int
+	// ReplyWindow is how long after a delivered speak a main-session user
+	// message still counts as a reply to it, for reply tracking's
+	// replied/ignored/stopped outcome (tars#1221).
+	ReplyWindow             string
 	QuietRequestedThreshold float64
 	UserStrainedThreshold   float64
 	SpecialDayThreshold     float64
