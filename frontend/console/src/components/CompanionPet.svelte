@@ -17,6 +17,7 @@
     companionShouldAutoClose,
     companionShouldOpen,
     companionShouldRecordInput,
+    companionAskContext,
     companionState,
     companionTurnsJustFinished,
     companionWaitingKeys,
@@ -29,6 +30,16 @@
     type CompanionLine,
     type CompanionServerCue,
   } from '../lib/companion'
+  import {
+    companionAskExpressionOverride,
+    isMainSessionBusy,
+    suppressRunningLine,
+    type CompanionAskErrorKind,
+  } from '../lib/companionAsk'
+  import { companionAsk } from '../lib/stores/companionAsk'
+  import { chatCommands } from '../lib/stores/chatCommandQueue.svelte'
+  import { sessionActivity } from '../lib/stores/sessionActivity'
+  import { locale as localeStore } from '../i18n'
   import type { ActivityMap } from '../lib/sessionBoard'
 
   interface Props {
@@ -37,7 +48,9 @@
     // The session the chat route currently has on screen — its own
     // pending approval and running turn are already visible there, so
     // CASE leaves them out (queued approvals still show; they have no
-    // card in any thread).
+    // card in any thread). Also decides where a bubble question goes
+    // (tars#1236): on the main session, it is forwarded into that thread
+    // instead of answered in the bubble.
     activeSessionId?: string | null
     routeView?: string
     // The timestamp of the latest warn-severity SSE event App.svelte saw
@@ -53,7 +66,6 @@
     serverCueAt?: number | null
     onNavigate?: (path: string) => void
     onDismissFailure?: (key: string) => void
-    onAsk?: (prompt: string) => void
   }
 
   let {
@@ -66,10 +78,14 @@
     serverCueAt = null,
     onNavigate,
     onDismissFailure,
-    onAsk,
   }: Props = $props()
   let open = $state(false)
   let draft = $state('')
+  // The text submitAsk cleared from `draft` for a question forwarded into
+  // the main session's own thread (tars#1236 requirement 5) — restored if
+  // that send turns out refused/failed. The board path (companionAsk.ask)
+  // restores its own draft directly from its returned promise instead.
+  let pendingThreadDraft = ''
   // Reactive, not a one-off Date.now(): an expiring failure must actually
   // drop out of the snapshot over time, not only when a new activity poll
   // or SSE event happens to re-run this. The effect below keeps it moving
@@ -92,6 +108,17 @@
   let failureTimer: ReturnType<typeof setInterval> | null = null
   let snapshot = $derived(companionState(activity, failures, now, $t.companion.lines, activeSessionId))
   let hasFailureLines = $derived(snapshot.lines.some((line) => line.kind === 'failure'))
+  // The main session's own "running" line is dropped from what the
+  // bubble *renders* while CASE's own bubble turn is streaming on it
+  // (tars#1236 requirement 6) — the Q&A block below already shows that.
+  // Only relevant when asking from elsewhere: when the main session is
+  // the one on screen, companionState's own activeSessionId exclusion
+  // already leaves its lines out entirely. Approval ("pending"/"queued")
+  // lines are never touched — those still need the ordinary waiting-list
+  // treatment. `snapshot` itself (badge, hasWaitingLines, idle gating)
+  // stays unfiltered: `companionWaitingKeys` already ignores "running"
+  // lines regardless, so nothing else here needs this list.
+  let displayLines = $derived(suppressRunningLine(snapshot.lines, companionAsk.busy ? companionAsk.mainSessionId : null))
 
   // --- Cues (#1191): companionCueTick/companionCuesFor turn real events
   // (a turn finishing, a warning, a long-hidden tab becoming visible, a
@@ -117,12 +144,20 @@
     cueState.expiresAt !== null && now >= cueState.expiresAt ? undefined : cueState.server,
   )
   let cues = $derived(companionCuesFor({ cue: liveCue, expiresAt: cueState.expiresAt, server: liveServer }, longQuiet))
-  let expression = $derived(companionExpression(snapshot, cues))
+  // CASE's own bubble turn (tars#1236) forces `working` while it streams,
+  // unless something more urgent is already showing (companionExpression
+  // keeps that same priority for everything else).
+  let expression = $derived(companionAskExpressionOverride(snapshot.lines, companionAsk.busy) ?? companionExpression(snapshot, cues))
   // The bubble's server line (#1192): only set while the cue is live and
   // the event actually carried a line (body_only cues are expression-only
   // and never show here).
   let serverLine = $derived(liveCue === 'server' && liveServer?.line ? liveServer : undefined)
   let hasServerLine = $derived(!!serverLine)
+  // Holds the bubble open the same way a server line does (tars#1236
+  // requirement 3): the last question/answer stays until the user closes
+  // it or asks again, never pushed out by another line auto-closing the
+  // bubble.
+  let holdOpenForAsk = $derived(companionAsk.hasContent)
 
   // Starts empty, not a read of the `activity` prop: an empty map has no
   // `running` entries to compare against, so the first effect run below
@@ -171,7 +206,7 @@
       open = true
       autoOpened = true
     }
-    if (companionShouldAutoClose(autoOpened, lines, hasServerLine)) {
+    if (companionShouldAutoClose(autoOpened, lines, hasServerLine || holdOpenForAsk)) {
       open = false
       autoOpened = false
     }
@@ -198,11 +233,17 @@
   // without landing in a recent failure is a finished turn — companionCueTick
   // fires `justFinished` once for that edge.
   $effect(() => {
+    // The main session is also excluded (tars#1236 requirement 6): its
+    // turns may be CASE's own bubble question, which already shows that
+    // ending in the bubble itself — initiative's own live-mode speak
+    // (#1220) has its own, separate companion-event channel for this, so
+    // nothing else relies on this cue firing for the main session.
     const finished = companionTurnsJustFinished(
       prevActivityForCue,
       activity,
       activeSessionId,
       companionFailedSessionIds(failures, Date.now()),
+      companionAsk.mainSessionId,
     )
     prevActivityForCue = activity
     if (finished) cueState = companionCueTick(cueState, Date.now(), { justFinished: true })
@@ -429,6 +470,9 @@
     media.addEventListener('change', handleReducedMotionChange)
     document.addEventListener('visibilitychange', handleVisibilityChange)
     startInputTracking()
+    // Warms companionAsk.mainSessionId early so the first question does
+    // not wait on it, and so the busy check below has something to read.
+    void companionAsk.ensureMainSession()
 
     // Opening the console is itself an arrival.
     cueState = companionCueTick(cueState, Date.now(), { justArrived: true })
@@ -463,6 +507,13 @@
     // (#1192) — a no-op when the active cue is not 'server', so this never
     // cuts a warning/justFinished/justArrived cue short.
     cueState = companionCueDismissServer(cueState)
+    // Closing clears the last question/answer too (tars#1236 requirement
+    // 3: it stays until closed or replaced by a new question). The main
+    // session's own turn, if still running, is unaffected — only CASE's
+    // own fetch is aborted; the turn itself keeps running and lands in
+    // the transcript either way (chat turns outlive the request that
+    // started them, #971).
+    companionAsk.reset()
   }
 
   function goToLine(line: CompanionLine) {
@@ -488,12 +539,85 @@
     onDismissFailure?.(key)
   }
 
+  // Clears the current question/answer without closing the bubble — the
+  // dismiss (×) on the Q&A block itself.
+  function dismissAsk() {
+    companionAsk.reset()
+  }
+
+  // "Continue in chat" (a truncated answer) and "Open the main session"
+  // (the busy notice) both go here. Not shown while already viewing the
+  // main session — that would navigate to the screen already on screen.
+  function goToMainSession() {
+    if (!companionAsk.mainSessionId) return
+    onNavigate?.(`/console/chat/${companionAsk.mainSessionId}`)
+    open = false
+    autoOpened = false
+  }
+
+  function askErrorText(kind: CompanionAskErrorKind | null): string {
+    switch (kind) {
+      case 'busy':
+        return $t.companion.ask.errors.busy
+      case 'network':
+        return $t.companion.ask.errors.network
+      case 'limit':
+        return $t.companion.ask.errors.limit
+      default:
+        return $t.companion.ask.errors.error
+    }
+  }
+
+  // submitAsk sends CASE's bubble question as a normal chat turn on the
+  // main session (tars#1236) — never a new session. Viewing that session
+  // already forwards it into ChatPanel's own thread instead of answering
+  // in the bubble (requirement 5): routed through the existing
+  // cross-component chatCommands queue, the same path `App.svelte` uses
+  // for other commands only the mounted chat workbench can run.
   function submitAsk() {
     const text = draft.trim()
     if (!text) return
-    onAsk?.(text)
+    // A second question submitted while the first is still streaming
+    // (board or in-thread — both set companionAsk.busy) would otherwise
+    // start a second, overlapping send that corrupts the shown question/
+    // answer (#1236 review); the submit button's own `disabled` mirrors
+    // this, but Enter in the input bypasses that.
+    if (companionAsk.busy) return
+    const { prompt, context } = companionAskContext(text, routeView, $localeStore)
     draft = ''
+    if (activeSessionId && companionAsk.mainSessionId && activeSessionId === companionAsk.mainSessionId) {
+      pendingThreadDraft = text
+      chatCommands.request({ kind: 'companion-ask', text: prompt, context })
+      return
+    }
+    const busy = isMainSessionBusy(activity, companionAsk.mainSessionId)
+    // The bubble already shows this turn's own result — its "done" line
+    // and board unread badge would otherwise re-announce it as if
+    // something else had finished on the main session (requirement 6).
+    // The in-thread path above needs neither: sessionActivity.viewing
+    // already equals the main session there, which announce() already
+    // treats as looked-at.
+    if (!busy) sessionActivity.suppressNextDoneNotify(companionAsk.mainSessionId)
+    void companionAsk.ask(prompt, context, busy).then((ok) => {
+      if (!ok) draft = text
+      if (ok) sessionActivity.markSeen(companionAsk.mainSessionId)
+    })
   }
+
+  // Mirrors the thread-path outcome back into the composer (the board
+  // path above restores it directly from its own returned promise):
+  // ChatPanel.sendCompanionMessage reports through companionAsk.inThread/
+  // status rather than a return value, since the request travels through
+  // the fire-and-forget chatCommands queue.
+  $effect(() => {
+    if (!pendingThreadDraft || !companionAsk.inThread) return
+    if (companionAsk.status === 'error') {
+      draft = pendingThreadDraft
+      pendingThreadDraft = ''
+    } else if (companionAsk.status === 'done') {
+      pendingThreadDraft = ''
+    }
+  })
 </script>
 
 <div class="companion-pet" class:beside-rail={routeView === 'chat'}>
@@ -524,13 +648,44 @@
           {/if}
         </div>
       {/if}
-      {#if snapshot.lines.length === 0}
-        {#if !serverLine}
+      {#if companionAsk.hasContent}
+        <!-- CASE's bubble question-and-answer (tars#1236): the last one,
+             held until closed (dismissAsk) or replaced by a new question
+             — companionShouldAutoClose above is told to leave the bubble
+             open for as long as this is showing, same as a server line. -->
+        <div class="companion-qa">
+          {#if companionAsk.inThread}
+            <!-- Already looking at the main session (requirement 5): the
+                 thread itself streams the answer, so the bubble names it
+                 instead of drawing it twice. -->
+            <p class="companion-qa-note">{$t.companion.ask.inThreadNote}</p>
+          {:else}
+            <p class="companion-qa-question" title={companionAsk.question}>{companionAsk.question}</p>
+            <p class="companion-qa-answer">
+              {companionAsk.answer}{#if companionAsk.busy}<span class="companion-qa-cursor" aria-hidden="true"></span>{/if}
+            </p>
+            {#if companionAsk.truncated && companionAsk.status !== 'error'}
+              <button type="button" class="companion-qa-link" onclick={goToMainSession}>{$t.companion.ask.continueInChat}</button>
+            {/if}
+          {/if}
+          {#if companionAsk.status === 'error'}
+            <p class="companion-qa-error">
+              {askErrorText(companionAsk.errorKind)}
+              {#if companionAsk.errorKind === 'busy' && !companionAsk.inThread}
+                <button type="button" class="companion-qa-link" onclick={goToMainSession}>{$t.companion.ask.openMainSession}</button>
+              {/if}
+            </p>
+          {/if}
+          <button type="button" class="companion-qa-dismiss" aria-label={$t.companion.ask.dismissAria} onclick={dismissAsk}>&times;</button>
+        </div>
+      {/if}
+      {#if displayLines.length === 0}
+        {#if !serverLine && !companionAsk.hasContent}
           <p class="companion-empty">{$t.companion.emptyLine}</p>
         {/if}
       {:else}
         <ul class="companion-lines">
-          {#each snapshot.lines as line (line.key)}
+          {#each displayLines as line (line.key)}
             <li class="companion-line-row">
               <button type="button" class={`companion-line companion-line-${line.kind}`} onclick={() => goToLine(line)}>
                 {line.label}
@@ -554,7 +709,7 @@
           placeholder={$t.companion.inputPlaceholder}
           aria-label={$t.companion.inputAria}
         />
-        <button type="submit" disabled={!draft.trim()} aria-label={$t.companion.sendAria}>{$t.companion.send}</button>
+        <button type="submit" disabled={!draft.trim() || companionAsk.busy} aria-label={$t.companion.sendAria}>{$t.companion.send}</button>
       </form>
     </section>
   {/if}
@@ -1182,6 +1337,107 @@
     color: var(--primary-text);
   }
 
+  /* CASE's bubble question-and-answer (tars#1236) — a normal chat turn on
+     the main session, shown inline instead of in a new session. Sits
+     above the waiting lines, same position the server line uses, and the
+     two can show together (independent signals). */
+  .companion-qa {
+    position: relative;
+    display: grid;
+    /* A grid track sizes to its content's min-content width by default,
+       which for an unbroken run of characters (a long token, a URL) is
+       the whole string — min-width: 0 here plus overflow-wrap below on
+       the text rows is what actually lets them wrap instead of pushing
+       the bubble wider than the rail beside it. */
+    min-width: 0;
+    gap: var(--space-1);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    background: var(--surface-muted);
+    padding: var(--space-2);
+    padding-right: calc(var(--space-2) + 20px);
+    margin-bottom: var(--space-2);
+  }
+
+  .companion-qa-question {
+    margin: 0;
+    color: var(--muted-text);
+    font-size: 0.72rem;
+    font-weight: 600;
+    overflow-wrap: anywhere;
+    /* A long question is clamped to 2 lines rather than pushing the
+       answer down the bubble; the full text is the `title` tooltip. */
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .companion-qa-answer,
+  .companion-qa-note {
+    margin: 0;
+    /* Body text, not --primary-text (the signal-green accent tint used
+       for badges/links elsewhere) — the answer is prose, not a signal. */
+    color: var(--text-primary);
+    font-size: 0.8rem;
+    line-height: 1.4;
+    overflow-wrap: anywhere;
+    /* Plain text only (tars#1236 requirement 3) — never {@html} — so a
+       literal newline in the streamed answer still reads as one. */
+    white-space: pre-wrap;
+  }
+
+  .companion-qa-cursor {
+    display: inline-block;
+    width: 2px;
+    height: 0.85em;
+    margin-left: 2px;
+    vertical-align: -0.1em;
+    background: var(--primary);
+    animation: companionQACursor 1s step-end infinite;
+  }
+
+  .companion-qa-error {
+    margin: 0;
+    color: rgb(229, 62, 62);
+    font-size: 0.74rem;
+    line-height: 1.4;
+  }
+
+  .companion-qa-link {
+    border: 0;
+    background: transparent;
+    color: var(--primary);
+    cursor: pointer;
+    font-size: 0.74rem;
+    padding: 0;
+    text-decoration: underline;
+  }
+
+  .companion-qa-dismiss {
+    position: absolute;
+    top: var(--space-2);
+    right: var(--space-2);
+    width: 18px;
+    height: 18px;
+    border: 0;
+    background: transparent;
+    color: var(--muted-text);
+    cursor: pointer;
+    font-size: 0.78rem;
+    line-height: 1;
+  }
+
+  .companion-qa-dismiss:hover {
+    color: var(--primary-text);
+  }
+
+  @keyframes companionQACursor {
+    0%, 50% { opacity: 1; }
+    50.01%, 100% { opacity: 0; }
+  }
+
   .companion-ask {
     display: grid;
     grid-template-columns: minmax(0, 1fr) 34px;
@@ -1344,7 +1600,8 @@
     .companion-body.act-wave .companion-antenna,
     .companion-body.expr-neutral.play-look .companion-eye,
     .companion-body.expr-neutral.play-yawn .companion-mouth,
-    .companion-body.expr-neutral.play-wink .companion-eye-right {
+    .companion-body.expr-neutral.play-wink .companion-eye-right,
+    .companion-qa-cursor {
       animation: none;
     }
   }

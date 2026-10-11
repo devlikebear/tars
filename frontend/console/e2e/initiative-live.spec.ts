@@ -123,6 +123,10 @@ test('live mode speaks once, shows it in the thread, and stays quiet on the very
   await expect(spokenMsg).toContainText(SPOKEN_TEXT)
   await expect(spokenMsg.locator('.chat-spoke-first-badge')).toBeVisible()
   await page.screenshot({ path: testInfo.outputPath('initiative-thread.png') })
+  // The main session is shared across this run's specs (tars#1236's own
+  // companion-handoff.spec.ts writes real turns there too) — count from
+  // here, not from an assumed-empty thread.
+  const assistantCountAfterTick1 = await page.locator('.chat-msg.chat-assistant').count()
 
   const afterTick1 = await history(page, sessionId)
   expect(afterTick1.length).toBe(before.length + 1)
@@ -158,7 +162,7 @@ test('live mode speaks once, shows it in the thread, and stays quiet on the very
   // CASE's expression carries over (lib/companion.ts's own-session rule).
   await expect(serverLine(page)).toHaveCount(0)
 
-  await expect(page.locator('.chat-msg.chat-assistant')).toHaveCount(2)
+  await expect(page.locator('.chat-msg.chat-assistant')).toHaveCount(assistantCountAfterTick1 + 1)
   const secondSpokenMsg = page.locator('.chat-msg.chat-assistant').last()
   await expect(secondSpokenMsg).toContainText(SPOKEN_TEXT)
   await expect(secondSpokenMsg.locator('.chat-spoke-first-badge')).toBeVisible()

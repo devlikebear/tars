@@ -1,66 +1,133 @@
-// Companion handoff: asking the floating companion opens the full chat with
-// the user's words in the composer. The companion's guidance (tone, console
-// area, no tools) goes to the model as console_context, so the bubble, the
-// session title and the board show only what the user typed.
+// CASE's bubble question-and-answer (tars#1236): asking the floating
+// companion no longer opens a new session — it sends a normal chat turn
+// to the *main* session (light tier, this turn only) and streams the
+// answer into the bubble itself, without leaving the screen the user was
+// on. A long answer is cut in the bubble; "Continue in chat" opens the
+// main session, where the full turn is already there. Asking while the
+// main session is busy elsewhere refuses to send.
 
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 
 // The pet floats; reduced motion keeps its button still enough for
 // Playwright's stability check.
 test.use({ contextOptions: { reducedMotion: 'reduce' } })
 
-test('a companion question keeps its words as the message and the title', async ({ page }, testInfo) => {
-  // A per-run suffix keeps --repeat-each runs from finding each other's sessions.
-  // Digits only: the first-turn tier card matches substrings, and a base-36
-  // stamp sometimes spelled one of its signals ("muqjprf5" has "pr"), which
-  // held the send behind the card.
-  const words = `which session needs me first? (run ${testInfo.repeatEachIndex}-${Date.now()})`
+async function sessionList(page: Page): Promise<{ id: string; title: string; kind?: string; tier_pin?: string }[]> {
+  const res = await page.request.get('/v1/admin/sessions')
+  const body = await res.json()
+  return Array.isArray(body) ? body : body.sessions ?? []
+}
+
+async function mainSessionId(page: Page): Promise<string> {
+  const list = await sessionList(page)
+  const main = list.find((s) => s.kind === 'main')
+  if (!main) throw new Error('no main session found')
+  return main.id
+}
+
+async function historyOf(page: Page, sessionId: string): Promise<{ role: string; content: string }[]> {
+  const res = await page.request.get(`/v1/admin/sessions/${sessionId}/history`)
+  return res.json()
+}
+
+test('asking CASE from the board answers in the bubble: no new session, the main session own turn, light tier', async ({ page }, testInfo) => {
+  // Long enough (well under companionAskContext's 600-char clip) that the
+  // mock's echoed reply ("Companion at ...: <words>") exceeds the bubble's
+  // truncation length, so the same turn also exercises "Continue in chat".
+  const words = `${testInfo.repeatEachIndex}-${Date.now()}-${'x'.repeat(500)}`
+
   await page.goto('/console')
+  const sessionsBefore = await sessionList(page)
+  const mainId = await mainSessionId(page)
+  const mainBefore = (await sessionList(page)).find((s) => s.id === mainId)
+
   await page.getByRole('button', { name: 'Talk to CASE' }).click()
   await page.getByRole('textbox', { name: 'Ask CASE' }).fill(words)
+  const chatRequest = page.waitForRequest((req) => req.url().includes('/v1/chat') && req.method() === 'POST')
   await page.getByRole('button', { name: 'Send to CASE' }).click()
 
-  await expect(page).toHaveURL(/\/console\/chat/)
-  const composer = page.locator('.chat-main textarea')
-  await expect(composer).toHaveValue(words)
-  await expect(page.locator('.console-context-chip')).toBeVisible()
-  // The session list refreshes when the turn ends. Slow the title save so
-  // it lands after a refresh that does not wait for it would have read the
-  // list (seen on slow CI runners); the sidebar must still get the title.
-  await page.route('**/v1/admin/sessions/*', async (route) => {
-    if (route.request().method() === 'PATCH') await new Promise((resolve) => setTimeout(resolve, 300))
-    await route.fallback()
-  })
-  await composer.press('Enter')
+  // No screen change (tars#1236 requirement 1).
+  await expect(page).toHaveURL(/\/console\/?$/)
 
-  // The model got the guidance: the mock names the console area it read.
-  const reply = page.locator('.chat-log .chat-assistant').last()
-  await expect(reply).toContainText(`Companion at the Console (board): ${words}`)
-  await expect(page.locator('.console-context-chip')).toHaveCount(0)
-  const bubble = page.locator('.chat-log .chat-user .chat-text').last()
-  await expect(bubble).toHaveText(words)
+  // This turn's own request: the main session, light tier, no pin — the
+  // session's tier_pin (checked again below) must stay whatever it was.
+  const body = (await chatRequest).postDataJSON() as {
+    session_id?: string
+    tier_recommendation?: { chosen_tier?: string; pin?: boolean }
+  }
+  expect(body.session_id).toBe('main')
+  expect(body.tier_recommendation?.chosen_tier).toBe('light')
+  expect(body.tier_recommendation?.pin).toBeFalsy()
 
-  // The session is titled with the user's words, never the guidance.
-  let sessionId = ''
-  await expect.poll(async () => {
-    const res = await page.request.get('/v1/admin/sessions')
-    if (!res.ok()) return ''
-    const body = await res.json()
-    const list: { id: string; title: string }[] = Array.isArray(body) ? body : body.sessions ?? []
-    const found = list.find((s) => s.title === words)
-    sessionId = found?.id ?? ''
-    return list.some((s) => s.title.includes('companion inside the Console')) ? 'guidance in a title' : sessionId ? 'found' : ''
-  }).toBe('found')
-  await expect(page.locator('.dock-left .session-title').filter({ hasText: words })).toHaveCount(1)
+  await expect(page.locator('.companion-qa-question')).toHaveText(words)
+  await expect(page.locator('.companion-qa-answer')).toContainText('Companion at', { timeout: 15_000 })
+  const link = page.getByRole('button', { name: 'Continue in chat' })
+  await expect(link).toBeVisible({ timeout: 15_000 })
 
-  // Reloaded from the transcript, the bubble is still only the user's words.
-  await page.goto(`/console/chat/${sessionId}`)
+  // The main session got a real user/assistant pair; no new session exists.
+  // The checkpoint/history write can lag a beat behind the bubble's own
+  // streamed text (which only waits on its own fetch), so retry.
+  await expect(async () => {
+    const history = await historyOf(page, mainId)
+    const userMsg = history.findLast((m) => m.role === 'user')
+    const assistantMsg = history.findLast((m) => m.role === 'assistant')
+    expect(userMsg?.content).toContain(words)
+    expect(assistantMsg?.content).toContain(`Companion at the Console (board): ${words}`)
+  }).toPass({ timeout: 15_000 })
+
+  const sessionsAfter = await sessionList(page)
+  expect(sessionsAfter.length).toBe(sessionsBefore.length)
+
+  const mainAfter = (await sessionList(page)).find((s) => s.id === mainId)
+  expect(mainAfter?.tier_pin ?? '').toBe(mainBefore?.tier_pin ?? '')
+
+  // "Continue in chat" opens the main session; the same question/answer
+  // is already there (the full answer — only the bubble truncated it).
+  await link.click()
+  await expect(page).toHaveURL(new RegExp(`/console/chat/${mainId}$`))
   await expect(page.locator('.chat-log .chat-user .chat-text').last()).toHaveText(words)
+  await expect(page.locator('.chat-log .chat-assistant').last()).toContainText(
+    `Companion at the Console (board): ${words}`,
+    { timeout: 15_000 },
+  )
+})
 
+test('CASE does not send while the main session is busy, and keeps the typed question', async ({ page }) => {
+  const mainId = await mainSessionId(page)
+
+  // Faking GET /v1/chat/activity (what sessionActivity.svelte.ts polls,
+  // and what isMainSessionBusy reads) rather than starting a real turn on
+  // the shared main session: this run's other specs (initiative-live.spec.ts)
+  // read that session's own history/thread and do not expect this test's
+  // traffic in it.
+  await page.route('**/v1/chat/activity', async (route) => {
+    const res = await route.fetch()
+    const body = await res.json()
+    body.running = [
+      ...(body.running ?? []),
+      { session_id: mainId, session_title: 'main', started_at: new Date().toISOString() },
+    ]
+    await route.fulfill({ response: res, json: body })
+  })
+
+  // A fresh navigation re-mounts the app so its activity poll picks up the
+  // faked-busy main session immediately, instead of waiting on the next
+  // 4s timer tick.
+  const activityResponse = page.waitForResponse((res) => res.url().includes('/v1/chat/activity'))
   await page.goto('/console')
-  const card = page.locator(`.session-card[data-session-id="${sessionId}"]`)
-  await expect(card).toContainText(words)
-  await expect(card).not.toContainText('companion inside the Console')
+  await activityResponse
+
+  await page.getByRole('button', { name: 'Talk to CASE' }).click()
+  await page.getByRole('textbox', { name: 'Ask CASE' }).fill('are you there?')
+  await page.getByRole('button', { name: 'Send to CASE' }).click()
+
+  await expect(page.locator('.companion-qa-error')).toContainText('busy', { timeout: 10_000 })
+  await expect(page.getByRole('textbox', { name: 'Ask CASE' })).toHaveValue('are you there?')
+  await expect(page).toHaveURL(/\/console\/?$/)
+
+  // Nothing was actually sent — the real server never saw a turn either.
+  const history = await historyOf(page, mainId)
+  expect(history.some((m) => m.content.includes('are you there?'))).toBe(false)
 })
 
 // CASE's bubble opens by itself on a new approval wait or a new failure, so

@@ -10,6 +10,11 @@ export type ChatCommand =
   | { kind: 'new-session' }
   | { kind: 'toggle-terminal' }
   | { kind: 'switch-session'; index: number }
+  // CASE's bubble, asked while the main session is already on screen
+  // (tars#1236 requirement 5): Chat.svelte forwards it to
+  // ChatPanel.sendCompanionMessage instead of navigating anywhere — the
+  // user is already looking at the thread it answers in.
+  | { kind: 'companion-ask'; text: string; context: string }
 
 export class ChatCommandQueue {
   pending = $state<ChatCommand[]>([])

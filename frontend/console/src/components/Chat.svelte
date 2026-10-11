@@ -23,6 +23,7 @@
   import { chatSession } from '../lib/stores/chatSession'
   import { chatDock, isMobileLayout, type ChatDockPanelID } from '../lib/stores/chatDockStore.svelte'
   import { chatCommands, type ChatCommand } from '../lib/stores/chatCommandQueue.svelte'
+  import { companionAsk } from '../lib/stores/companionAsk'
   import { loadChatComponent } from '../lib/chatComponents'
   import ChatRail from './ChatRail.svelte'
   import ChatStatusBar from './ChatStatusBar.svelte'
@@ -33,12 +34,9 @@
     sessionId?: string
     onNavigate: (path: string) => void
     initialPrompt?: string
-    // Guidance for the model that goes with the first message (see
-    // lib/consoleContext.ts), e.g. from the companion handoff.
-    initialContext?: string
   }
 
-  let { sessionId, onNavigate, initialPrompt, initialContext }: Props = $props()
+  let { sessionId, onNavigate, initialPrompt }: Props = $props()
 
   // The route owns which session is active; the shared store owns its state.
   $effect(() => {
@@ -53,6 +51,7 @@
 
   type ChatPanelHandle = {
     sendMessageText: (text: string) => Promise<void>
+    sendCompanionMessage: (text: string, context: string) => Promise<boolean>
     clearThread: () => void
     exportAsMarkdown: () => string
   }
@@ -187,6 +186,19 @@
         if (id) openSessionById(id)
         return
       }
+      case 'companion-ask':
+        // The outcome goes to companionAsk.inThread/status, not this
+        // return value — CompanionPet watches that store, not this queue.
+        // ChatPanel is still lazy-loading in the rare case chatPanelRef is
+        // unset this early; report the failure directly so the bubble
+        // does not wait forever and the typed text comes back.
+        if (!chatPanelRef) {
+          companionAsk.beginInThread(command.text)
+          companionAsk.finishInThread(false, 'error')
+          return
+        }
+        await chatPanelRef.sendCompanionMessage(command.text, command.context)
+        return
     }
   }
 
@@ -535,7 +547,6 @@
             bind:this={chatPanelRef}
             sessionId={selectedSessionId || undefined}
             {initialPrompt}
-            {initialContext}
             onToolComplete={handleToolComplete}
             onSlashCommand={handleSlashCommand}
             onSessionForked={handleSessionForked}

@@ -15,7 +15,6 @@
   import {
     companionEnabledFromConfigValues,
     companionFailureFromEvent,
-    companionHandoffForAsk,
     companionServerCueFromEvent,
     companionWarningFromEvent,
     pruneFailures,
@@ -23,7 +22,6 @@
     type CompanionFailure,
     type CompanionServerCue,
   } from './lib/companion'
-  import { locale } from './i18n'
   import { zenMode } from './lib/zenMode.svelte'
   import { t } from './i18n'
   import CommandPalette from './components/CommandPalette.svelte'
@@ -45,7 +43,6 @@
   let needsSetup = $state(false)
   let unreadCount = $state(0)
   let aiPrompt = $state('')
-  let aiContext = $state('')
   let authLoading = $state(true)
   let authInfo = $state<AuthWhoamiResponse | null>(null)
   let loginRequired = $state(false)
@@ -85,11 +82,12 @@
     route = resolveRoute(path)
   }
 
-  // context is guidance for the model that the user did not type (the
-  // companion handoff); ChatPanel sends it beside the prompt, not in it.
-  function navigateWithPrompt(prompt: string, context = '') {
+  // Used by MemoryRoute's "Ask AI" to open the chat with a prompt
+  // prefilled (tars#1236 removed the companion handoff, the only other
+  // caller, which also carried a hidden console_context — CASE no longer
+  // navigates anywhere to ask a question, see CompanionPet.svelte).
+  function navigateWithPrompt(prompt: string) {
     aiPrompt = prompt
-    aiContext = context
     navigate('/console/chat')
   }
 
@@ -136,11 +134,6 @@
         serverHealth = 'ok'
       },
     )
-  }
-
-  function handleCompanionAsk(prompt: string) {
-    const handoff = companionHandoffForAsk(prompt, route.view, $locale)
-    navigateWithPrompt(handoff.prompt, handoff.context)
   }
 
   // Looking at a failure (clicking its line) or using its × both count as
@@ -484,7 +477,7 @@
       {:then module}
         {@const ChatRoute = module.default}
         {#key aiPrompt}
-          <ChatRoute sessionId={route.sessionId} onNavigate={navigate} initialPrompt={aiPrompt} initialContext={aiContext} />
+          <ChatRoute sessionId={route.sessionId} onNavigate={navigate} initialPrompt={aiPrompt} />
         {/key}
       {:catch}
         <div class="route-error">Could not load console page.</div>
@@ -620,7 +613,6 @@
         serverCueAt={companionServerCueAt}
         onNavigate={navigate}
         onDismissFailure={handleDismissCompanionFailure}
-        onAsk={handleCompanionAsk}
       />
     {/if}
   </Shell>
