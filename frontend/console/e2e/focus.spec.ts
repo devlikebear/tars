@@ -88,10 +88,10 @@ test('a focus task: plan gate, approve, report and decision cards, decide, then 
   const id = sessionId(page)
   await autoMode(page, id)
 
-  // Focus mode hides the app sidebar and the companion; an isolated task
-  // shows its own branch.
+  // Focus mode hides the app sidebar, but not the companion (tars#1247):
+  // an isolated task shows its own branch.
   await expect(page.getByRole('navigation', { name: 'Main navigation' })).toHaveCount(0)
-  await expect(page.getByRole('button', { name: 'Talk to CASE' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Talk to CASE' })).toBeVisible()
   await expect(page.getByTestId('focus-worktree-chip')).toContainText(`tars/session-${id}`)
 
   // At a narrow width the path shrinks to one line and the branch chip and

@@ -608,8 +608,11 @@ export function deckOrder(shown: string[], sorted: string[]): string[] {
   return shown.every((id) => now.has(id)) ? shown : sorted
 }
 
-// focusChromeHidden: focus mode hides the app sidebar and the companion
-// (ADR §3); its own header leads back to the tasks, Advanced and the board.
+// focusChromeHidden: focus mode hides the app sidebar (ADR §3); its own
+// header leads back to the tasks, Advanced and the board. CASE (the
+// companion) is no longer part of this hiding — it shows on focus routes
+// too (tars#1247), gated only by its own settings/onboarding/login/zen
+// rule (lib/companion.ts's shouldShowCompanion).
 // focusOwnsShortcut: on the pipeline screen `?` asks about the card on
 // screen (ADR §7), so the global shortcut help yields it there.
 export function focusOwnsShortcut(action: string, route: { view: string; sessionId?: string }): boolean {
