@@ -36,6 +36,7 @@ export function transcriptChatMessages(history: SessionMessage[]): ChatMessage[]
       sourceMessageId: msg.id,
       role: msg.role as ChatMessage['role'],
       text: msg.content,
+      ...(msg.initiative ? { spokeFirst: true } : {}),
     })
   }
   return out

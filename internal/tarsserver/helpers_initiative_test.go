@@ -142,6 +142,18 @@ func TestBuildInitiativeRuntimeDisabled(t *testing.T) {
 	}
 }
 
+// TestBuildInitiativeRuntimeLiveButDisabled checks that an explicit
+// mode: live does nothing when enabled is false (tars#1220): no runtime at
+// all, same as shadow, so Start never ticks and nothing can ever compose or
+// deliver speech.
+func TestBuildInitiativeRuntimeLiveButDisabled(t *testing.T) {
+	cfg := config.Config{Initiative: config.InitiativeConfig{Enabled: false, Mode: "live"}}
+	setup := buildInitiativeRuntime(initiativeSetupInputs{Config: cfg, Logger: zerolog.Nop()})
+	if setup.Runtime != nil || setup.Handler == nil {
+		t.Fatalf("setup = %+v", setup)
+	}
+}
+
 func TestBuildInitiativeRuntimeGatesTextByLoopback(t *testing.T) {
 	for base, loopback := range map[string]bool{"http://127.0.0.1:8009": true, "https://api.typesafe.ai": false} {
 		cfg := config.Config{Initiative: config.InitiativeConfig{Enabled: true, Backend: "jev"}, Jev: config.JevConfig{BaseURL: base}}
@@ -212,6 +224,38 @@ func TestSessionObserverReadsEveryVisibleSession(t *testing.T) {
 	}
 	if !got.LastUserAt.Equal(now.Add(-2 * time.Minute)) {
 		t.Fatalf("last user at = %v", got.LastUserAt)
+	}
+}
+
+// TestSessionObserverIgnoresInitiativeMessagesAsUserActivity is the
+// regression test for tars#1220's observer bug: an initiative-authored
+// assistant message (and the session Touch that comes with delivering it)
+// must not look like the user being active on the next tick — neither as
+// a (nonexistent) user message, nor through the no-user-message fallback
+// that otherwise uses the newest session activity as LastUserAt's upper
+// bound.
+func TestSessionObserverIgnoresInitiativeMessagesAsUserActivity(t *testing.T) {
+	store := session.NewStore(t.TempDir())
+	now := time.Date(2026, 9, 29, 14, 0, 0, 0, time.UTC)
+	main, err := store.EnsureMain()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// No user ever spoke in this session (or anywhere else); TARS spoke
+	// first a moment ago.
+	appendAndTouch(t, store, main.ID, session.Message{
+		Role: "assistant", Content: "Welcome back!", Timestamp: now.Add(-time.Minute),
+		Initiative: &session.MessageInitiative{Intent: "greet", EntryID: "e1"},
+	})
+	got, err := newSessionInitiativeObserver(sessionObserverDeps{Store: store}).Observe(context.Background(), now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.LastUserAt.IsZero() {
+		t.Fatalf("LastUserAt = %v, want zero — an initiative message is not user activity", got.LastUserAt)
+	}
+	if len(got.RecentUser) != 0 {
+		t.Fatalf("RecentUser = %+v, want none", got.RecentUser)
 	}
 }
 

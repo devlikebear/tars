@@ -36,6 +36,32 @@ if (!process.env.TARS_E2E_WORKSPACE) {
     '  enabled: false',
     'reflection:',
     '  enabled: false',
+    // Live mode (tars#1220), but the real ticker is set to a day so it
+    // never fires on its own during a run of specs lasting minutes —
+    // initiative only ever advances through the e2e-only tick route
+    // (internal/tarsserver/e2e_initiative.go, `-tags e2e` only). Letting
+    // the real ticker fire on this shared server risked a CASE bubble
+    // from initiative interrupting an unrelated spec mid-run, the #1194
+    // class of bug noted in CLAUDE.md's verification-scope section.
+    'initiative:',
+    '  enabled: true',
+    '  mode: live',
+    '  tick: 24h',
+    // Fixed to UTC so a spec's explicit tick timestamp (the e2e tick
+    // route's "at") behaves the same regardless of the CI runner's own
+    // system timezone. A degenerate start==end window is never quiet
+    // (initiative.inQuietWindow) — unlike an empty string, which the
+    // config merge (config_input_fields.go's stringField) discards as
+    // "unset" and falls back to the real default ("23:00-07:00"), this is
+    // how a spec's tick timestamp, relative to whenever it actually runs,
+    // dodges quiet hours with no reasoning about real wall-clock time.
+    '  timezone: UTC',
+    '  quiet_hours: "00:00-00:00"',
+    '  daily_cap: 10',
+    // Long enough that a spec's "+1 minute, must not speak again" tick
+    // stays inside the window, short enough that a "+25 hours" tick is
+    // comfortably past it.
+    '  cooldown: 5m',
     '',
   ].join('\n'))
   process.env.TARS_E2E_WORKSPACE = workspace

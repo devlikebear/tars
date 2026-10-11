@@ -13,6 +13,18 @@ type History struct {
 	// initiatives).
 	TextCallsToday int
 	LastTextCallAt time.Time
+	// TextReadFailCount is how many text-signal backend calls have failed
+	// in a row, ending at LastTextCallAt — the input to the read backoff
+	// schedule (tars#1220 addendum to #1219: an always-failing backend
+	// must not be retried every tick). Reset to 0 by a successful call.
+	TextReadFailCount int
+	// SpeakCallsToday, LastSpeakCallAt and SpeakFailCount are the speak
+	// composer's equivalents (tars#1220): the daily DailySpeakCalls cap and
+	// the speak backoff schedule, independent of Today (which live mode
+	// only increments on an actually delivered speak).
+	SpeakCallsToday int
+	LastSpeakCallAt time.Time
+	SpeakFailCount  int
 }
 
 func deriveGoSignals(cfg Config, obs Observation, hist History) GoSignals {

@@ -273,3 +273,33 @@ func TestChatTurnText_NilIsInert(t *testing.T) {
 		t.Fatalf("second take = %q", got)
 	}
 }
+
+// TestBuildLLMMessageHistory_ConsecutiveAssistantMessagesSurvive checks
+// tars#1220's requirement that an initiative-authored assistant message
+// followed later by a normal turn's assistant reply, with no tool calls
+// and no user message between them (the user has not replied yet), comes
+// through as two separate assistant ChatMessages rather than erroring or
+// silently merging — buildLLMMessageHistory has no special-casing for
+// repeated roles, so two assistant entries in the transcript become two
+// assistant entries in the LLM history, same as it already does for a
+// user message with nothing between it and the next.
+func TestBuildLLMMessageHistory_ConsecutiveAssistantMessagesSurvive(t *testing.T) {
+	history := []session.Message{
+		{Role: "assistant", Content: "Welcome back!", Initiative: &session.MessageInitiative{Intent: "greet"}},
+		{Role: "user", Content: "thanks"},
+		{Role: "assistant", Content: "You're welcome."},
+	}
+	got := buildLLMMessageHistory(history)
+	if len(got) != 3 {
+		t.Fatalf("messages = %+v, want 3", got)
+	}
+	if got[0].Role != "assistant" || got[0].Content != "Welcome back!" {
+		t.Fatalf("first message = %+v", got[0])
+	}
+	if got[1].Role != "user" || got[1].Content != "thanks" {
+		t.Fatalf("second message = %+v", got[1])
+	}
+	if got[2].Role != "assistant" || got[2].Content != "You're welcome." {
+		t.Fatalf("third message = %+v", got[2])
+	}
+}

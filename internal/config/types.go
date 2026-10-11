@@ -408,7 +408,11 @@ type ExtensionConfig struct {
 // InitiativeConfig controls when TARS speaks first (tars#997).
 type InitiativeConfig struct {
 	Enabled bool
-	Mode    string
+	// Mode is "shadow" (record decisions only, never speak) or "live"
+	// (actually compose and deliver greet/check_in through the console).
+	// Any other value is a load error (see Load/LoadFile). Enabled false
+	// means nothing happens regardless of Mode. tars#1220.
+	Mode string
 	// Backend selects the text-signal reader: "llm" (the configured
 	// initiative role, light tier by default) or "jev" (jev.base_url). See
 	// tars#1219.
@@ -422,7 +426,13 @@ type InitiativeConfig struct {
 	// DailyTextCalls caps how many text-signal calls either backend makes
 	// per local day, independent of DailyCap (which counts spoken
 	// initiatives, not reads).
-	DailyTextCalls          int
+	DailyTextCalls int
+	// DailySpeakCalls caps how many System 2 (speak composer) LLM calls live
+	// mode makes per local day, independent of DailyCap: a call that fails
+	// to deliver still counts here, so a stuck backend cannot be retried
+	// without bound even while cooldown/daily-cap (which count delivered
+	// speech only) stay open. tars#1220.
+	DailySpeakCalls         int
 	QuietRequestedThreshold float64
 	UserStrainedThreshold   float64
 	SpecialDayThreshold     float64

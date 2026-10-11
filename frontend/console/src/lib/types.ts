@@ -782,6 +782,11 @@ export type SessionMessage = {
   // Assistant text said partway through a turn, before the tool calls that
   // follow it; the turn's reply is its last assistant message without it.
   interim?: boolean
+  // Set when TARS wrote this message on its own, not in reply to a chat
+  // turn (tars#1220's live mode: a delivered greet/check_in). intent is
+  // "greet" or "check_in"; entry_id correlates it with the initiative
+  // ledger but is not otherwise used by the console.
+  initiative?: { intent: string; entry_id?: string }
 }
 
 export type OpsStatus = {

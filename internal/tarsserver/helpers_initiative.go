@@ -48,12 +48,12 @@ type sessionInitiativeObserver struct {
 	deps        sessionObserverDeps
 	mu          sync.Mutex
 	connectedAt time.Time
-	transcripts map[string]*fileCache[[]initiative.UserMessage]
+	transcripts map[string]*fileCache[sessionActivitySnapshot]
 	profile     fileCache[string]
 }
 
 func newSessionInitiativeObserver(deps sessionObserverDeps) *sessionInitiativeObserver {
-	return &sessionInitiativeObserver{deps: deps, transcripts: map[string]*fileCache[[]initiative.UserMessage]{}}
+	return &sessionInitiativeObserver{deps: deps, transcripts: map[string]*fileCache[sessionActivitySnapshot]{}}
 }
 
 func (o *sessionInitiativeObserver) Observe(_ context.Context, now time.Time) (initiative.Observation, error) {
@@ -102,9 +102,6 @@ func (o *sessionInitiativeObserver) readSessions(now time.Time, obs *initiative.
 		if sess.Hidden || strings.TrimSpace(sess.Kind) == "worker" {
 			continue
 		}
-		if sess.UpdatedAt.After(newestActivity) {
-			newestActivity = sess.UpdatedAt
-		}
 		if now.Sub(sess.UpdatedAt) > observerSessionHorizon {
 			continue
 		}
@@ -112,14 +109,17 @@ func (o *sessionInitiativeObserver) readSessions(now time.Time, obs *initiative.
 		seen[path] = true
 		cache := o.transcripts[path]
 		if cache == nil {
-			cache = &fileCache[[]initiative.UserMessage]{}
+			cache = &fileCache[sessionActivitySnapshot]{}
 			o.transcripts[path] = cache
 		}
-		msgs, err := cache.load(path, readUserMessages)
+		activity, err := cache.load(path, readSessionActivity)
 		if err != nil {
 			return err
 		}
-		all = append(all, msgs...)
+		all = append(all, activity.UserMessages...)
+		if activity.LastActivityAt.After(newestActivity) {
+			newestActivity = activity.LastActivityAt
+		}
 	}
 	for path := range o.transcripts {
 		if !seen[path] {
@@ -145,19 +145,43 @@ func (o *sessionInitiativeObserver) readSessions(now time.Time, obs *initiative.
 	return nil
 }
 
-// readUserMessages keeps what the user actually typed: synthetic pulse
-// resumes are written with the user role but are not the user speaking.
-func readUserMessages(path string) ([]initiative.UserMessage, error) {
+// sessionActivitySnapshot is what one transcript file read contributes to
+// the observer: the user's own messages, and the newest timestamp counted
+// as "activity" for the no-user-message-in-horizon fallback (tars#1220).
+type sessionActivitySnapshot struct {
+	UserMessages []initiative.UserMessage
+	// LastActivityAt excludes initiative-authored assistant messages (see
+	// readSessionActivity) — TARS speaking first must never look like the
+	// user being active to the very runtime deciding whether to speak
+	// again, or its own greeting would read as "busy typing" or "just
+	// arrived" on the next tick.
+	LastActivityAt time.Time
+}
+
+// readSessionActivity reads one transcript once for both the user's own
+// messages (synthetic pulse resumes excluded, same as before) and the
+// newest non-initiative activity timestamp used as LastUserAt's fallback
+// upper bound. An initiative-authored assistant message
+// (Message.Initiative != nil, tars#1220) counts toward neither: it is not
+// something the user said, and it must not look like fresh activity either
+// — only a real message (from the user, a normal assistant reply, cron,
+// telegram, …) advances LastActivityAt.
+func readSessionActivity(path string) (sessionActivitySnapshot, error) {
 	msgs, err := session.ReadMessages(path)
 	if err != nil {
-		return nil, err
+		return sessionActivitySnapshot{}, err
 	}
-	var out []initiative.UserMessage
+	var out sessionActivitySnapshot
 	for _, m := range msgs {
-		if m.Role != "user" || strings.HasPrefix(strings.TrimSpace(m.Content), "[PULSE") {
+		if m.Role == "user" && !strings.HasPrefix(strings.TrimSpace(m.Content), "[PULSE") {
+			out.UserMessages = append(out.UserMessages, initiative.UserMessage{At: m.Timestamp, Text: m.Content})
+		}
+		if m.Initiative != nil {
 			continue
 		}
-		out = append(out, initiative.UserMessage{At: m.Timestamp, Text: m.Content})
+		if m.Timestamp.After(out.LastActivityAt) {
+			out.LastActivityAt = m.Timestamp
+		}
 	}
 	return out, nil
 }
@@ -222,10 +246,20 @@ type initiativeSetupInputs struct {
 	Activity         *runtimeActivity
 	TelegramPairings *telegramPairingStore
 	Embodiment       *embodiment.Subsystem
-	// Router resolves the "llm" text-signal backend (RoleInitiative) and
-	// the chat provider it is compared against (RoleChatMain). nil in
-	// setup-only mode, in which case the llm backend is simply unavailable.
+	// Router resolves the "llm" text-signal backend (RoleInitiative), the
+	// live-mode speak composer (RoleInitiativeSpeak), and the chat provider
+	// both are compared against (RoleChatMain). nil in setup-only mode, in
+	// which case neither backend is usable.
 	Router llm.Router
+	// MainSessionID is where a delivered speak writes its assistant
+	// message (tars#1220). Resolved before buildInitiativeRuntime runs
+	// (main_serve_api.go), so it is always available here.
+	MainSessionID string
+	// Notify publishes the companion event CASE's bubble reacts to.
+	// Available before buildInitiativeRuntime runs too; only the chat
+	// cancel registry (claim) is bound later, once the chat handler
+	// exists — see initiativeSetup.Speaker.
+	Notify func(context.Context, notificationEvent)
 	Logger zerolog.Logger
 	Now    func() time.Time
 }
@@ -233,6 +267,13 @@ type initiativeSetupInputs struct {
 type initiativeSetup struct {
 	Runtime *initiative.Runtime
 	Handler http.Handler
+	// Speaker is non-nil whenever live mode has a usable speak backend
+	// (Config.Enabled and a resolvable RoleInitiativeSpeak client); its
+	// claim field still needs the chat cancel registry, bound by the
+	// caller once newChatAPIHandlerWithRuntimeConfig creates one (the same
+	// late-binding chatWorktrees.running already uses, since that registry
+	// does not exist yet when buildInitiativeRuntime runs).
+	Speaker *initiativeSpeaker
 }
 
 // buildInitiativeRuntime wires the initiative loop (tars#997). When it is
@@ -255,15 +296,16 @@ func buildInitiativeRuntime(in initiativeSetupInputs) initiativeSetup {
 		}
 	}
 	cfg := initiative.Config{
-		Enabled:        true,
-		Mode:           c.Mode,
-		Tick:           parsePulseDuration(c.Tick, time.Minute),
-		QuietHours:     c.QuietHours,
-		Location:       loc,
-		DailyCap:       c.DailyCap,
-		Cooldown:       parsePulseDuration(c.Cooldown, 45*time.Minute),
-		BodyProvider:   c.BodyProvider,
-		DailyTextCalls: c.DailyTextCalls,
+		Enabled:         true,
+		Mode:            c.Mode,
+		Tick:            parsePulseDuration(c.Tick, time.Minute),
+		QuietHours:      c.QuietHours,
+		Location:        loc,
+		DailyCap:        c.DailyCap,
+		Cooldown:        parsePulseDuration(c.Cooldown, 45*time.Minute),
+		BodyProvider:    c.BodyProvider,
+		DailyTextCalls:  c.DailyTextCalls,
+		DailySpeakCalls: c.DailySpeakCalls,
 		Thresholds: initiative.Thresholds{
 			QuietRequested: c.QuietRequestedThreshold,
 			UserStrained:   c.UserStrainedThreshold,
@@ -281,6 +323,24 @@ func buildInitiativeRuntime(in initiativeSetupInputs) initiativeSetup {
 	deps.TextLLMModel = textLLMModel
 	deps.IncludeText = plan.SendsText
 	deps.Backend = initiativeBackendInfoFromPlan(plan)
+
+	var speaker *initiativeSpeaker
+	speakPlan, speakClient, speakModel := resolveInitiativeSpeakBackend(in.Config, in.Router)
+	deps.SpeakSendsText = speakPlan.SendsText
+	deps.SpeakBackend = initiativeBackendInfoFromPlan(speakPlan)
+	if speakClient != nil {
+		speaker = &initiativeSpeaker{
+			workspaceDir:  in.WorkspaceDir,
+			mainSessionID: strings.TrimSpace(in.MainSessionID),
+			store:         in.SessionStore,
+			composer:      &initiative.SpeechComposer{Client: speakClient, Model: speakModel},
+			sendsText:     speakPlan.SendsText,
+			location:      loc,
+			notify:        in.Notify,
+			logger:        logger,
+		}
+		deps.Speaker = speaker
+	}
 
 	observerDeps := sessionObserverDeps{Store: in.SessionStore, WorkspaceDir: in.WorkspaceDir}
 	if in.Broker != nil {
@@ -305,7 +365,7 @@ func buildInitiativeRuntime(in initiativeSetupInputs) initiativeSetup {
 	deps.Observer = newSessionInitiativeObserver(observerDeps)
 
 	runtime := initiative.NewRuntime(cfg, deps)
-	return initiativeSetup{Runtime: runtime, Handler: newInitiativeAPIHandler(runtime)}
+	return initiativeSetup{Runtime: runtime, Handler: newInitiativeAPIHandler(runtime), Speaker: speaker}
 }
 
 func hostOf(raw string) string {

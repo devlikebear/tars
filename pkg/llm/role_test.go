@@ -18,6 +18,7 @@ func TestAllRolesContainsExpected(t *testing.T) {
 		RoleCritic,
 		RoleComputerUse,
 		RoleInitiative,
+		RoleInitiativeSpeak,
 	}
 	if len(roles) != len(want) {
 		t.Fatalf("AllRoles length = %d, want %d", len(roles), len(want))

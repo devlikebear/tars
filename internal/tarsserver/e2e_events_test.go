@@ -19,7 +19,7 @@ import (
 func TestRegisterE2EEventsRoute_PublishesToStream(t *testing.T) {
 	mux := http.NewServeMux()
 	broker := newEventBroker()
-	registerE2EEventsRoute(mux, broker)
+	registerE2EEventsRoute(mux, e2eRouteDeps{Broker: broker})
 
 	_, ch, unsubscribe := broker.Subscribe()
 	defer unsubscribe()
@@ -48,7 +48,7 @@ func TestRegisterE2EEventsRoute_PublishesToStream(t *testing.T) {
 func TestRegisterE2EEventsRoute_RejectsNonPost(t *testing.T) {
 	mux := http.NewServeMux()
 	broker := newEventBroker()
-	registerE2EEventsRoute(mux, broker)
+	registerE2EEventsRoute(mux, e2eRouteDeps{Broker: broker})
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/e2e/events", nil)
 	rec := httptest.NewRecorder()

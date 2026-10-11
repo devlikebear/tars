@@ -1240,6 +1240,13 @@ type chatToolingOptions struct {
 	// actions (verification, the next turn). nil leaves pipelines waiting
 	// for the console.
 	Focus *focusDriver
+	// InitiativeSpeak is live mode's speak-and-deliver implementation
+	// (tars#1220); nil when live mode has no usable speak backend. Its
+	// claim field is late-bound right below, once cancelRegistry exists —
+	// buildInitiativeRuntime runs before this handler is built, so it
+	// cannot wire that itself (same reason Worktrees.running is bound
+	// here, not where chatWorktrees is constructed).
+	InitiativeSpeak *initiativeSpeaker
 }
 
 type chatCompactionOptions struct {
@@ -1320,6 +1327,9 @@ func newChatAPIHandlerWithRuntimeConfig(
 
 	if tooling.Worktrees != nil {
 		tooling.Worktrees.running = cancelRegistry.Running
+	}
+	if tooling.InitiativeSpeak != nil {
+		tooling.InitiativeSpeak.claim = cancelRegistry.Claim
 	}
 	permissions := newChatPermissionBroker()
 	permissions.always = newChatAlwaysRuleStore(workspaceDir)

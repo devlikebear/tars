@@ -18,6 +18,7 @@ type (
 	ForkOptions              = pkgsession.ForkOptions
 	HistorySnapshot          = pkgsession.HistorySnapshot
 	Message                  = pkgsession.Message
+	MessageInitiative        = pkgsession.MessageInitiative
 	PendingCriticFeedback    = pkgsession.PendingCriticFeedback
 	Plan                     = pkgsession.Plan
 	ReasoningBlock           = pkgsession.ReasoningBlock

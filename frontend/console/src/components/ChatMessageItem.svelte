@@ -15,7 +15,7 @@
   import { totalFileChanges } from '../lib/toolFileChanges'
   import { buildSubagentProgress } from '../lib/subagentProgress'
   import { splitReviewNotes } from '../lib/changes'
-  import { splitConsoleContext } from '../lib/consoleContext'
+  import { splitConsoleContext, splitInitiativeContext } from '../lib/consoleContext'
   import { stripFocusBlocks, stripFocusStage } from '../lib/focus'
 
   interface StreamingStatus {
@@ -126,6 +126,9 @@
         <img class="chat-avatar" src="/console/tars-avatar.png" alt="" width="22" height="22" />
       {/if}
       <span class="chat-role">{roleLabel(message.role)}</span>
+      {#if message.role === 'assistant' && message.spokeFirst}
+        <span class="chat-spoke-first-badge" title={$t.chatThread.spokeFirst}>{$t.chatThread.spokeFirst}</span>
+      {/if}
     </div>
     {#if message.role === 'assistant'}
       {#if message.reasoningText}
@@ -149,7 +152,7 @@
       {/if}
     {:else}
       {@const split = splitReviewNotes(message.text)}
-      {@const typed = splitConsoleContext(stripFocusStage(split.text)).text}
+      {@const typed = splitConsoleContext(splitInitiativeContext(stripFocusStage(split.text)).text).text}
       <div class="chat-text">{typed || '\u2026'}</div>
       {#if split.count > 0}
         <details class="review-notes-fold">
@@ -412,6 +415,20 @@
 
   .chat-assistant .chat-role {
     color: var(--text-secondary);
+  }
+
+  /* "TARS spoke first" (tars#1220): a quiet signal-green tint distinct from
+     the role label and the usage badge, so it reads as provenance, not a
+     status/warning. Small and understated — the message content remains
+     the focus. */
+  .chat-spoke-first-badge {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: rgba(var(--primary-rgb), 0.92);
+    background: rgba(var(--primary-rgb), 0.12);
+    border: 1px solid rgba(var(--primary-rgb), 0.28);
+    padding: 1px 6px;
+    border-radius: var(--radius-sm);
   }
 
   .chat-msg-footer {

@@ -125,6 +125,7 @@ pkg/llm const RoleContextCompactor
 pkg/llm const RoleCritic
 pkg/llm const RoleGoalJudge
 pkg/llm const RoleInitiative
+pkg/llm const RoleInitiativeSpeak
 pkg/llm const RoleMemoryHook
 pkg/llm const RolePulseDecider
 pkg/llm const RoleReflectionKB
@@ -680,6 +681,7 @@ pkg/session field HistorySnapshot.Messages
 pkg/session field HistorySnapshot.Tokens
 pkg/session field Message.Content
 pkg/session field Message.ID
+pkg/session field Message.Initiative
 pkg/session field Message.Interim
 pkg/session field Message.ReasoningBlocks
 pkg/session field Message.Role
@@ -688,6 +690,8 @@ pkg/session field Message.ToolArgs
 pkg/session field Message.ToolCallID
 pkg/session field Message.ToolIsError
 pkg/session field Message.ToolName
+pkg/session field MessageInitiative.EntryID
+pkg/session field MessageInitiative.Intent
 pkg/session field PendingCriticFeedback.Feedback
 pkg/session field PendingCriticFeedback.QueuedAt
 pkg/session field PendingCriticFeedback.Round
@@ -921,6 +925,7 @@ pkg/session type CompactionSummaryOptions
 pkg/session type ForkOptions
 pkg/session type HistorySnapshot
 pkg/session type Message
+pkg/session type MessageInitiative
 pkg/session type PendingCriticFeedback
 pkg/session type Plan
 pkg/session type ReasoningBlock

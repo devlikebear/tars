@@ -31,6 +31,9 @@ func Load(path string) (Config, error) {
 	if cfg.Initiative.Backend != "llm" && cfg.Initiative.Backend != "jev" {
 		return Config{}, fmt.Errorf("initiative.backend must be llm or jev")
 	}
+	if cfg.Initiative.Mode != "shadow" && cfg.Initiative.Mode != "live" {
+		return Config{}, fmt.Errorf("initiative.mode must be shadow or live")
+	}
 	return cfg, nil
 }
 
@@ -54,6 +57,9 @@ func LoadFile(path string) (Config, error) {
 	}
 	if cfg.Initiative.Backend != "llm" && cfg.Initiative.Backend != "jev" {
 		return Config{}, fmt.Errorf("initiative.backend must be llm or jev")
+	}
+	if cfg.Initiative.Mode != "shadow" && cfg.Initiative.Mode != "live" {
+		return Config{}, fmt.Errorf("initiative.mode must be shadow or live")
 	}
 	return cfg, nil
 }
