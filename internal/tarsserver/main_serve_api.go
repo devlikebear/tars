@@ -404,6 +404,7 @@ func buildAPIMux(
 		Broker:           broker,
 		Activity:         activity,
 		TelegramPairings: telegramPairings,
+		TelegramSender:   telegramSender,
 		Embodiment:       embodimentSubsystem,
 		Router:           deps.llmRouter,
 		MainSessionID:    mainSessionID,

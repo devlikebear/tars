@@ -50,9 +50,25 @@ type Entry struct {
 	// compose_tool_attempt, write_error (error, Composed true — Compose
 	// ran and failed, or the write itself did); delivered (delivered).
 	DeliveryReason string `json:"delivery_reason,omitempty"`
-	Body           string `json:"body,omitempty"`
-	LatencyMS      int64  `json:"latency_ms"`
-	Error          string `json:"error,omitempty"`
+	// Channel is which transport a Delivered speak used: "console" or
+	// "telegram" (tars#1221 P2c). Empty whenever Delivery is not
+	// "delivered". Go chooses the channel before any compose call:
+	// console whenever connected (so "console" is recorded on every
+	// console delivery regardless of Config.Telegram — review f3, this
+	// field is not telegram-only), else "telegram" only when
+	// Config.Telegram is on and a default paired chat resolves. Never
+	// both, and never "telegram" when Config.Telegram is off.
+	Channel string `json:"channel,omitempty"`
+	// ChannelError is a fixed reason code for a channel-specific send
+	// failure that happened AFTER the main session's write already
+	// succeeded (so Delivery stays "delivered" — tars#1003/#1220's "the
+	// ledger never holds words" rule: never the error text, a chat id, or
+	// a token). Empty on success. Only ever set when Channel ==
+	// "telegram" today.
+	ChannelError string `json:"channel_error,omitempty"`
+	Body         string `json:"body,omitempty"`
+	LatencyMS    int64  `json:"latency_ms"`
+	Error        string `json:"error,omitempty"`
 	// Kind distinguishes a normal tick entry ("") from a reply-tracking
 	// outcome entry ("outcome", tars#1221): a separate ledger line recorded
 	// when a previously delivered speak (Ref, an earlier entry's ID)

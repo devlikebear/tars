@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -120,8 +122,16 @@ func checkDoctorInitiativeSpeak(report *doctorReport, cfg config.Config) {
 		if summary.reason != "" && summary.reason != summary.delivery {
 			line += ", reason: " + summary.reason
 		}
+		if summary.channel != "" {
+			line += ", channel: " + summary.channel
+			if summary.channelError != "" {
+				line += " (channel_error: " + summary.channelError + ")"
+			}
+		}
 		report.add("ok", "initiative speak", line)
 	}
+
+	checkDoctorInitiativeTelegram(report, cfg)
 
 	o := summary.outcomes
 	report.add("ok", "initiative replies", fmt.Sprintf(
@@ -140,6 +150,12 @@ type initiativeDeliverySummary struct {
 	delivery    string
 	reason      string
 	spokenToday int
+	// channel/channelError mirror Entry.Channel/ChannelError (tars#1221
+	// P2c) — which transport the last delivery used, and a fixed code
+	// for a channel send failure after the main-session write already
+	// succeeded. Never the composed words, a chat id, or a token.
+	channel      string
+	channelError string
 	// outcomes is reply tracking's aggregate (tars#1221), computed by the
 	// same initiative.SummarizeOutcomes GET /v1/initiative/status uses —
 	// one function, two readers.
@@ -198,6 +214,7 @@ func initiativeLastDeliverySummary(cfg config.Config) (bool, initiativeDeliveryS
 		if e.Delivery != "" {
 			found = true
 			out.at, out.intent, out.delivery, out.reason = e.At, string(e.Intent), e.Delivery, e.DeliveryReason
+			out.channel, out.channelError = e.Channel, e.ChannelError
 		}
 	}
 	consecutiveIgnored, lastStoppedAt, _ := initiative.ReplyState(entries)
@@ -223,4 +240,77 @@ func initiativeChatProviderAlias(cfg config.Config) string {
 		return ""
 	}
 	return resolved.ProviderAlias
+}
+
+// telegramPairingStoreFileName mirrors
+// internal/tarsserver.telegramPairingStoreFile — doctor runs standalone
+// and does not import the server package (see initiativeChatProviderAlias
+// above), so this file name and its minimal on-disk shape are duplicated
+// rather than shared.
+const telegramPairingStoreFileName = "telegram_pairings.json"
+
+// checkDoctorInitiativeTelegram reports one line on tars#1221 P2c's
+// Telegram delivery opt-in: whether it is on, and — only when it is,
+// since the setting means nothing otherwise — how many Telegram chats are
+// currently paired (none/one/several), which is exactly what deciding a
+// default chat to deliver to needs (the same "exactly one" rule
+// internal/tarsserver's resolveDefaultChatID applies). It reads the
+// pairing store file directly rather than resolving a true default chat
+// id, since doctor never imports internal/tarsserver and a chat id is not
+// something to print anyway (tars#1003). File-read errors are reported as
+// unknown, never fatal to the rest of doctor.
+func checkDoctorInitiativeTelegram(report *doctorReport, cfg config.Config) {
+	if !cfg.Initiative.Telegram {
+		report.add("ok", "initiative telegram", "opted out: console only when away")
+		return
+	}
+	// channels.telegram.enabled gates this independently of the opt-in
+	// (review f2): a bot_token and a prior pairing can both still be on
+	// disk after the channel itself was turned off, and neither makes
+	// delivery ready while it stays off (the matching runtime gate is
+	// helpers_initiative.go's TelegramReady).
+	if !cfg.ChannelsTelegramEnabled {
+		report.add("warn", "initiative telegram", "opted in but channels.telegram.enabled is false: unreachable when away")
+		return
+	}
+	if strings.TrimSpace(cfg.TelegramBotToken) == "" {
+		report.add("warn", "initiative telegram", "opted in but channels.telegram.bot_token is empty: unreachable when away")
+		return
+	}
+	path := filepath.Join(strings.TrimSpace(cfg.AgentRuntimePersistenceDir), telegramPairingStoreFileName)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			report.add("warn", "initiative telegram", "opted in but no chat is paired yet: unreachable when away (pair with /pair in a Telegram DM)")
+			return
+		}
+		report.add("warn", "initiative telegram", "opted in but the pairing store could not be read: "+err.Error())
+		return
+	}
+	var payload struct {
+		Allowed []struct {
+			ChatID string `json:"chat_id"`
+		} `json:"allowed"`
+	}
+	if strings.TrimSpace(string(data)) != "" {
+		if err := json.Unmarshal(data, &payload); err != nil {
+			report.add("warn", "initiative telegram", "opted in but the pairing store is unreadable: "+err.Error())
+			return
+		}
+	}
+	paired := 0
+	for _, a := range payload.Allowed {
+		if strings.TrimSpace(a.ChatID) != "" {
+			paired++
+		}
+	}
+	switch paired {
+	case 0:
+		report.add("warn", "initiative telegram", "opted in but no chat is paired yet: unreachable when away (pair with /pair in a Telegram DM)")
+	case 1:
+		report.add("ok", "initiative telegram", "opted in, one paired chat: ready to deliver when away")
+	default:
+		report.add("warn", "initiative telegram", fmt.Sprintf(
+			"opted in but %d chats are paired with no single default: unreachable when away until only one remains", paired))
+	}
 }

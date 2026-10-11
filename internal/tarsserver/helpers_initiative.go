@@ -42,7 +42,20 @@ type sessionObserverDeps struct {
 	SubscriberCount func() int
 	ChatBusy        func() bool
 	TelegramPaired  func() bool
-	BodyAvailable   func() bool
+	// TelegramReady reports whether a live-mode speak can actually be
+	// delivered over Telegram right now (tars#1221 P2c): a sender is
+	// configured AND exactly one default paired chat resolves. Stricter
+	// than TelegramPaired, which also counts several paired chats with
+	// none chosen as reachable (that is enough for GoSignals.Reachable,
+	// but not enough to pick a send target).
+	TelegramReady func() bool
+	// TelegramReplySession resolves the session a Telegram reply to the
+	// default paired chat lands in, when session_telegram_scope is
+	// "per-user" (tars#1221 P2c requirement 5) — "" when the scope is
+	// "main" (replies already land in the main session) or no single
+	// default chat resolves.
+	TelegramReplySession func() string
+	BodyAvailable        func() bool
 }
 
 // sessionInitiativeObserver builds an initiative.Observation from every
@@ -79,6 +92,9 @@ func (o *sessionInitiativeObserver) Observe(_ context.Context, now time.Time) (i
 	if o.deps.TelegramPaired != nil {
 		obs.TelegramPaired = o.deps.TelegramPaired()
 	}
+	if o.deps.TelegramReady != nil {
+		obs.TelegramReady = o.deps.TelegramReady()
+	}
 	if o.deps.BodyAvailable != nil {
 		obs.BodyAvailable = o.deps.BodyAvailable()
 	}
@@ -103,6 +119,14 @@ func (o *sessionInitiativeObserver) readSessions(now time.Time, obs *initiative.
 	var all []initiative.UserMessage
 	var newestActivity time.Time
 	seen := map[string]bool{}
+	// telegramReplySessionID is the per-user session a Telegram reply to
+	// the default paired chat lands in (tars#1221 P2c requirement 5) —
+	// "" when session_telegram_scope is "main" or no single default chat
+	// resolves. Resolved once per tick, not per session.
+	telegramReplySessionID := ""
+	if o.deps.TelegramReplySession != nil {
+		telegramReplySessionID = o.deps.TelegramReplySession()
+	}
 	for _, sess := range sessions {
 		if sess.Hidden || strings.TrimSpace(sess.Kind) == "worker" {
 			continue
@@ -125,9 +149,19 @@ func (o *sessionInitiativeObserver) readSessions(now time.Time, obs *initiative.
 		if activity.LastActivityAt.After(newestActivity) {
 			newestActivity = activity.LastActivityAt
 		}
-		if o.deps.MainSessionID != "" && sess.ID == o.deps.MainSessionID {
-			if n := len(activity.UserMessages); n > 0 {
-				obs.MainUserAt = activity.UserMessages[n-1].At
+		if n := len(activity.UserMessages); n > 0 {
+			ts := activity.UserMessages[n-1].At
+			// Both branches take the max rather than assign outright:
+			// which session is visited first in this unordered List()
+			// loop is not guaranteed, and under session_telegram_scope:
+			// per-user the two session ids are different sessions whose
+			// newest message could come from either side.
+			if o.deps.MainSessionID != "" && sess.ID == o.deps.MainSessionID && ts.After(obs.MainUserAt) {
+				obs.MainUserAt = ts
+			}
+			if telegramReplySessionID != "" && sess.ID == telegramReplySessionID &&
+				telegramReplySessionID != o.deps.MainSessionID && ts.After(obs.MainUserAt) {
+				obs.MainUserAt = ts
 			}
 		}
 	}
@@ -265,6 +299,12 @@ type initiativeSetupInputs struct {
 	// message (tars#1220). Resolved before buildInitiativeRuntime runs
 	// (main_serve_api.go), so it is always available here.
 	MainSessionID string
+	// TelegramSender performs a live-mode speak's Telegram delivery
+	// (tars#1221 P2c) — the same sender channels.telegram's other paths
+	// use (counting wrapper included). nil (Telegram not configured)
+	// means the telegram channel is never picked regardless of
+	// Config.Initiative.Telegram or pairing state.
+	TelegramSender telegramSender
 	// Notify publishes the companion event CASE's bubble reacts to.
 	// Available before buildInitiativeRuntime runs too; only the chat
 	// cancel registry (claim) is bound later, once the chat handler
@@ -317,6 +357,7 @@ func buildInitiativeRuntime(in initiativeSetupInputs) initiativeSetup {
 		DailyTextCalls:  c.DailyTextCalls,
 		DailySpeakCalls: c.DailySpeakCalls,
 		ReplyWindow:     parsePulseDuration(c.ReplyWindow, 30*time.Minute),
+		Telegram:        c.Telegram,
 		Thresholds: initiative.Thresholds{
 			QuietRequested: c.QuietRequestedThreshold,
 			UserStrained:   c.UserStrainedThreshold,
@@ -335,20 +376,33 @@ func buildInitiativeRuntime(in initiativeSetupInputs) initiativeSetup {
 	deps.IncludeText = plan.SendsText
 	deps.Backend = initiativeBackendInfoFromPlan(plan)
 
+	// telegramReplyResolver resolves the per-user session a Telegram reply
+	// to the default paired chat lands in (tars#1221 P2c requirement 5) —
+	// nil when session_telegram_scope is not "per-user" or pairing is
+	// unavailable, so both the speaker (dual-write) and the observer
+	// (reply tracking) share one definition of "which session".
+	telegramReplyResolver := telegramReplySessionResolver(in.Config, in.TelegramPairings)
+
 	var speaker *initiativeSpeaker
 	speakPlan, speakClient, speakModel := resolveInitiativeSpeakBackend(in.Config, in.Router)
 	deps.SpeakSendsText = speakPlan.SendsText
 	deps.SpeakBackend = initiativeBackendInfoFromPlan(speakPlan)
 	if speakClient != nil {
 		speaker = &initiativeSpeaker{
-			workspaceDir:  in.WorkspaceDir,
-			mainSessionID: strings.TrimSpace(in.MainSessionID),
-			store:         in.SessionStore,
-			composer:      &initiative.SpeechComposer{Client: speakClient, Model: speakModel},
-			sendsText:     speakPlan.SendsText,
-			location:      loc,
-			notify:        in.Notify,
-			logger:        logger,
+			workspaceDir:         in.WorkspaceDir,
+			mainSessionID:        strings.TrimSpace(in.MainSessionID),
+			store:                in.SessionStore,
+			composer:             &initiative.SpeechComposer{Client: speakClient, Model: speakModel},
+			sendsText:            speakPlan.SendsText,
+			location:             loc,
+			notify:               in.Notify,
+			logger:               logger,
+			telegram:             in.TelegramSender,
+			telegramReplySession: telegramReplyResolver,
+		}
+		if in.TelegramPairings != nil {
+			pairings := in.TelegramPairings
+			speaker.telegramDefaultChatID = pairings.resolveDefaultChatID
 		}
 		deps.Speaker = speaker
 	}
@@ -365,6 +419,25 @@ func buildInitiativeRuntime(in initiativeSetupInputs) initiativeSetup {
 		observerDeps.TelegramPaired = func() bool {
 			id, err := pairings.resolveDefaultChatID()
 			return err != nil || id != "" // several paired chats still means reachable
+		}
+		// TelegramReady additionally requires channels.telegram.enabled
+		// (review f1): a sender and a prior pairing can both still exist
+		// on disk after the user turns the channel off, and neither
+		// should resurrect it for initiative's proactive delivery.
+		if in.TelegramSender != nil && in.Config.ChannelsTelegramEnabled {
+			observerDeps.TelegramReady = func() bool {
+				id, err := pairings.resolveDefaultChatID()
+				return err == nil && id != ""
+			}
+		}
+	}
+	if telegramReplyResolver != nil {
+		observerDeps.TelegramReplySession = func() string {
+			id, err := telegramReplyResolver()
+			if err != nil {
+				return ""
+			}
+			return id
 		}
 	}
 	if in.Embodiment != nil && cfg.BodyProvider != "" {
@@ -491,4 +564,32 @@ func initiativeBackendInfoFromPlan(plan initiative.BackendPlan) initiative.Backe
 		info.Host = plan.Provider
 	}
 	return info
+}
+
+// telegramReplySessionResolver returns a resolver for the session a
+// Telegram reply to the default paired chat lands in (tars#1221 P2c
+// requirement 5), or nil when that question never applies: pairing is
+// unavailable, or session_telegram_scope (telegram_inbound_session.go's
+// normalizeTelegramSessionScope) is not "per-user" — under the default
+// "main" scope a Telegram reply already lands in the main session, the
+// same session reply tracking already follows. Under "per-user", the
+// resolver finds the Telegram user bound to that one default chat
+// (resolveDefaultUserID, the same single-chat rule resolveDefaultChatID
+// uses) and returns their session id — "" with a nil error when no
+// default chat is paired yet, the same multiple-paired-chats error
+// resolveDefaultChatID returns otherwise.
+func telegramReplySessionResolver(cfg config.Config, pairings *telegramPairingStore) func() (string, error) {
+	if pairings == nil {
+		return nil
+	}
+	if normalizeTelegramSessionScope(cfg.SessionTelegramScope) != "per-user" {
+		return nil
+	}
+	return func() (string, error) {
+		userID, err := pairings.resolveDefaultUserID()
+		if err != nil || userID == 0 {
+			return "", err
+		}
+		return strings.TrimSpace(pairings.sessionID(userID)), nil
+	}
 }

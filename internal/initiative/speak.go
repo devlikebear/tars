@@ -15,6 +15,14 @@ const (
 	DeliveryError       = "error"
 )
 
+// Delivery channels a Delivered speak can use (tars#1221 P2c). Go picks at
+// most one per tick: console whenever connected, else telegram only when
+// opted in (Config.Telegram) and Observation.TelegramReady. Never both.
+const (
+	ChannelConsole  = "console"
+	ChannelTelegram = "telegram"
+)
+
 // Delivery reason codes. Never user or assistant text (tars#1003's "the
 // ledger never holds words" rule applies here too) — just a fixed label.
 const (
@@ -44,6 +52,21 @@ const (
 	// AppendMessage failing, both only reachable once Compose has
 	// returned).
 	deliveryReasonReadError = "read_error"
+	// deliveryReasonTelegramUnavailable is Unreachable's reason when
+	// Config.Telegram is on but no single default paired chat resolves
+	// (none paired, or more than one with no default chosen) — the same
+	// "no compose call" shape as no_console, just a different cause
+	// (tars#1221 P2c).
+	deliveryReasonTelegramUnavailable = "telegram_unavailable"
+)
+
+// Channel-send failure reason codes (ChannelError on an Entry and
+// SpeakOutcome): fixed codes only, never the underlying error text, a chat
+// id or a token (tars#1003's rule). A channel error never changes
+// Delivery — the main session's write already succeeded by the time a
+// channel send can fail.
+const (
+	channelErrorSendFailed = "send_failed"
 )
 
 // Speaker composes and delivers one greet/check_in utterance: a tool-free
@@ -79,6 +102,11 @@ type SpeakRequest struct {
 	SendsText  bool
 	RecentUser []UserMessage
 	Profile    string
+	// Channel is which transport this attempt must use once the main
+	// session write succeeds: ChannelConsole or ChannelTelegram
+	// (tars#1221 P2c). The runtime decides this before calling Speak —
+	// Speak itself only acts on it, never re-decides.
+	Channel string
 }
 
 // SpeakOutcome is what Speak managed to do.
@@ -114,6 +142,12 @@ type SpeakOutcome struct {
 	// compose call was made), or write_error (a compose call was made, but
 	// either the after-claim recheck read or the final append failed).
 	Reason string
+	// ChannelError is a fixed reason code for a channel-specific send
+	// failure after the main session's write already succeeded (tars#1221
+	// P2c) — never set unless Delivered is true. The runtime records it
+	// on the Entry alongside Delivery=delivered; it never changes
+	// Delivered, Composed, Superseded or Reason, and never un-delivers.
+	ChannelError string
 }
 
 // backoffDuration returns how long to wait before the next attempt after

@@ -436,7 +436,14 @@ type InitiativeConfig struct {
 	// ReplyWindow is how long after a delivered speak a main-session user
 	// message still counts as a reply to it, for reply tracking's
 	// replied/ignored/stopped outcome (tars#1221).
-	ReplyWindow             string
+	ReplyWindow string
+	// Telegram opts in to delivering a live-mode speak over Telegram's
+	// default paired chat when the console is not connected (tars#1221
+	// P2c). Default false: a real message goes to the user's phone, so
+	// this is never turned on silently. Off (the default), delivery
+	// behaves exactly as before Telegram existed as a channel — console
+	// or nothing.
+	Telegram                bool
 	QuietRequestedThreshold float64
 	UserStrainedThreshold   float64
 	SpecialDayThreshold     float64

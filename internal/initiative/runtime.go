@@ -96,6 +96,12 @@ type DeliverySummary struct {
 	Intent   string    `json:"intent"`
 	Delivery string    `json:"delivery"`
 	Reason   string    `json:"reason,omitempty"`
+	// Channel/ChannelError mirror Entry's fields (tars#1221 P2c) — which
+	// transport the delivery used, and a fixed code for a channel send
+	// failure after the main-session write already succeeded. Never the
+	// composed words, a chat id, or a token.
+	Channel      string `json:"channel,omitempty"`
+	ChannelError string `json:"channel_error,omitempty"`
 }
 
 type Snapshot struct {
@@ -407,14 +413,29 @@ func (r *Runtime) textReadEligible(now time.Time) bool {
 }
 
 // deliverLocked decides whether to call the speak composer this tick and
-// records the outcome on entry.Delivery/DeliveryReason/Composed. Called
-// only when entry.Speak and live mode. It never calls Speak when the
-// console is not connected (Observation.ConsoleConnectedAt) — the words
-// are never composed for a tick nobody can see.
+// records the outcome on entry.Delivery/DeliveryReason/Composed/Channel.
+// Called only when entry.Speak and live mode. The channel is picked before
+// any compose call: console whenever connected, else telegram only when
+// Config.Telegram is on and Observation.TelegramReady — never both, and
+// never telegram when Config.Telegram is off (that leaves the entry
+// byte-for-byte what it was before this field existed: unreachable,
+// no_console, no Channel). Neither channel composes for a tick nobody can
+// see.
 func (r *Runtime) deliverLocked(ctx context.Context, entry *Entry, obs Observation) {
-	if obs.ConsoleConnectedAt.IsZero() {
+	channel := ""
+	switch {
+	case !obs.ConsoleConnectedAt.IsZero():
+		channel = ChannelConsole
+	case r.cfg.Telegram && obs.TelegramReady:
+		channel = ChannelTelegram
+	}
+	if channel == "" {
 		entry.Delivery = DeliveryUnreachable
-		entry.DeliveryReason = deliveryReasonNoConsole
+		if r.cfg.Telegram {
+			entry.DeliveryReason = deliveryReasonTelegramUnavailable
+		} else {
+			entry.DeliveryReason = deliveryReasonNoConsole
+		}
 		return
 	}
 	if r.deps.Speaker == nil {
@@ -439,6 +460,7 @@ func (r *Runtime) deliverLocked(ctx context.Context, entry *Entry, obs Observati
 		SendsText:  r.deps.SpeakSendsText,
 		RecentUser: obs.RecentUser,
 		Profile:    obs.Profile,
+		Channel:    channel,
 	}
 	outcome, err := r.deps.Speaker.Speak(ctx, req)
 	entry.Composed = outcome.Composed
@@ -446,6 +468,8 @@ func (r *Runtime) deliverLocked(ctx context.Context, entry *Entry, obs Observati
 	case outcome.Delivered:
 		entry.Delivery = DeliveryDelivered
 		entry.DeliveryReason = deliveryReasonDelivered
+		entry.Channel = channel
+		entry.ChannelError = outcome.ChannelError
 		r.clearError()
 	case outcome.Superseded:
 		// Compose ran (and counts below toward SpeakCallsToday like any
@@ -589,6 +613,7 @@ func (r *Runtime) rememberLocked(e Entry) {
 	if e.Delivery != "" {
 		r.lastDeliverySummary = &DeliverySummary{
 			At: e.At, Intent: string(e.Intent), Delivery: e.Delivery, Reason: e.DeliveryReason,
+			Channel: e.Channel, ChannelError: e.ChannelError,
 		}
 	}
 	r.recent = append(r.recent, e)
@@ -633,6 +658,7 @@ func (r *Runtime) loadHistoryLocked(now time.Time) {
 			r.snapMu.Lock()
 			r.lastDeliverySummary = &DeliverySummary{
 				At: e.At, Intent: string(e.Intent), Delivery: e.Delivery, Reason: e.DeliveryReason,
+				Channel: e.Channel, ChannelError: e.ChannelError,
 			}
 			r.snapMu.Unlock()
 			break
