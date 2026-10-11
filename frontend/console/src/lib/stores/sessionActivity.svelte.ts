@@ -65,6 +65,14 @@ export class SessionActivityStore {
   private inflight: Promise<void> | null = null
   text: NotificationText | null = null
   onOpenSession: ((id: string) => void) | null = null
+  // Sessions whose next "done" change must not announce a browser
+  // notification — a caller that already knows the completion came from
+  // itself and already shows the result some other way sets this right
+  // before starting that turn (CASE's own bubble question asked from
+  // elsewhere, tars#1236 review f4 — asked while already viewing the
+  // session is already covered by the `viewing` check below). One-shot,
+  // consumed whether or not a "done" change for it ever actually arrives.
+  private suppressDoneNotify = new Set<string>()
 
   constructor(api: SessionActivityApi, env: SessionActivityEnv) {
     this.api = api
@@ -117,6 +125,12 @@ export class SessionActivityStore {
   setViewing(id: string | null): void {
     this.viewing = id
     this.markSeen(id)
+  }
+
+  // Arms the one-shot "done" notification suppression documented on
+  // suppressDoneNotify above. A no-op for an empty id.
+  suppressNextDoneNotify(id: string | null | undefined): void {
+    if (id) this.suppressDoneNotify.add(id)
   }
 
   running(id: string): boolean {
@@ -190,6 +204,7 @@ export class SessionActivityStore {
     if (!n || !this.notifyEnabled || !this.text || n.permission() !== 'granted') return
     // The user is already looking at it.
     if (change.sessionId === this.viewing && this.env.visible()) return
+    if (change.kind === 'done' && this.suppressDoneNotify.delete(change.sessionId)) return
     const title = change.title || change.sessionId
     const heading = change.kind === 'needs_input' ? this.text.needsInput(title) : this.text.done(title)
     const body = change.kind === 'needs_input' ? this.text.body.needsInput : this.text.body.done

@@ -26,6 +26,20 @@ export const companionEn = {
     running: (title: string) => `Running: ${title || 'a session'}`,
     failure: (label: string) => `Failed: ${label}`,
   },
+  // CASE's bubble question-and-answer (tars#1236): a normal chat turn on
+  // the main session, answered inline instead of in a new session.
+  ask: {
+    inThreadNote: 'Answering in this chat.',
+    continueInChat: 'Continue in chat',
+    openMainSession: 'Open the main session',
+    dismissAria: 'Dismiss this answer',
+    errors: {
+      busy: 'The main session is busy right now.',
+      network: "Couldn't reach TARS. Try again.",
+      limit: 'Usage limit reached. Try again later.',
+      error: "CASE couldn't answer. Try again.",
+    },
+  },
 }
 
 export type CompanionTranslations = typeof companionEn
@@ -46,5 +60,17 @@ export const companionKo: CompanionTranslations = {
     queued: (count: number, title: string) => `무인 실행 승인 대기 ${count}건 · ${title || '세션'}`,
     running: (title: string) => `실행 중: ${title || '세션'}`,
     failure: (label: string) => `실패: ${label}`,
+  },
+  ask: {
+    inThreadNote: '이 채팅에서 답하고 있어요.',
+    continueInChat: '채팅에서 이어가기',
+    openMainSession: '메인 세션 열기',
+    dismissAria: '이 답 지우기',
+    errors: {
+      busy: '메인 세션이 지금 작업 중이에요.',
+      network: 'TARS에 연결할 수 없어요. 다시 시도해줘.',
+      limit: '사용량 한도에 도달했어요. 잠시 후 다시 시도해줘.',
+      error: 'CASE가 답하지 못했어요. 다시 시도해줘.',
+    },
   },
 }

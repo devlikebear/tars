@@ -105,6 +105,22 @@ test('a refused composer send is returned, not recovered as a dropped turn', () 
   assert.doesNotMatch(send, /failure === 'refused' && queuedPayload/, 'every refused send is handled, not only queued ones')
 })
 
+// A companion-originated turn (tars#1236 review, round 2) whose stream
+// drops but recovers to a delivered reply (droppedSendDelivery's
+// 'delivered') must not report a failure to CASE's bubble — `failed`
+// itself starts true for any drop and stays that way so afterTurn's
+// queue-pause is untouched, but the bubble reads `deliveredAfterDrop`
+// too, not `failed` alone.
+test('a dropped companion send that recovers to a delivered reply reports success to the bubble, not a failure', () => {
+  const src = readFileSync(new URL('../src/components/ChatPanel.svelte', import.meta.url), 'utf8')
+  const send = src.slice(src.indexOf('async function submitChat'), src.indexOf('async function afterTurn'))
+  assert.match(send, /delivery === 'delivered'\) deliveredAfterDrop = true/)
+  assert.match(send, /companionAsk\.finishInThread\(!failed \|\| deliveredAfterDrop, companionErrorKind\)/)
+  // afterTurn's own queue-pause decision still reads the unmodified `failed`
+  // — only the bubble's own report is corrected, nothing else.
+  assert.match(send, /await afterTurn\(failed\)/)
+})
+
 test('Stop leaves the stream to the server once it took the cancel', async () => {
   // The cancel's answer can come before the turn has wound down and freed
   // the session (its wait is bounded). Aborting then ended the turn in the

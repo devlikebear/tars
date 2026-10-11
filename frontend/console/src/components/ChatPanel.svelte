@@ -5,6 +5,8 @@
   import { streamChat, attachChatStream, cancelChat, getSessionHistory, renameSession, streamEvents, listChatFileMentions, listAgentRuntimeSubagents, listSkills, listChatTools, getSessionEffectiveConfig, forkSessionFromMessage } from '../lib/api'
   import type { AgentRuntimeSubagent, ChatContextInfo, ChatEvent, ChatTier, ChatTierRecommendationRequest, CommandDef, Session, SessionGoal, SessionMessage, SkillDef } from '../lib/types'
   import { chatSession } from '../lib/stores/chatSession'
+  import { companionAsk } from '../lib/stores/companionAsk'
+  import { classifyCompanionAskError, companionAskTierRecommendation, type CompanionAskErrorKind } from '../lib/companionAsk'
   import { toolBaseDirs } from '../lib/cliToolLabels'
   import { changes } from '../lib/stores/changesStore'
   import { turnCardAnchors } from '../lib/changes'
@@ -46,9 +48,6 @@
   interface Props {
     sessionId?: string
     initialPrompt?: string
-    // Console context for the first message (the companion handoff): sent
-    // as console_context beside it, so the bubble and title stay the user's.
-    initialContext?: string
     autoSend?: boolean
     // Session state (artifacts, draft, context info, tasks, goal, streaming)
     // goes to the shared chatSession store. These props stay because each
@@ -59,7 +58,7 @@
     onSessionForked?: (session: Session) => void
   }
 
-  let { sessionId, initialPrompt, initialContext, autoSend, onToolComplete, onArtifactOpen, onSlashCommand, onSessionForked }: Props = $props()
+  let { sessionId, initialPrompt, autoSend, onToolComplete, onArtifactOpen, onSlashCommand, onSessionForked }: Props = $props()
 
   let artifacts: Artifact[] = $state([])
 
@@ -90,8 +89,6 @@
   // The last message of each turn, mapped to the turn whose change card it carries.
   let turnCards = $derived(turnCardAnchors(chatMessages))
   let autoTitled = $state(false)
-  // Hidden guidance waiting for the next typed message; see initialContext.
-  let pendingConsoleContext = $state('')
   let autoSendDone = false
   let abortController: AbortController | null = $state(null)
 
@@ -299,7 +296,6 @@
     if (autoSend && initialPrompt && !autoSendDone && !chatBusy) {
       autoSendDone = true
       chatInput = initialPrompt
-      pendingConsoleContext = initialContext?.trim() ?? ''
       tick().then(() => submitChat({ allowPrompt: false }))
     }
   })
@@ -904,6 +900,15 @@
     // A queued message to send in place of the composer, which is then
     // left as the user has it (#971).
     queued?: QueuedMessage<File, SelectedChatMention>
+    // CASE's bubble question, asked while already looking at this (main)
+    // session (tars#1236 requirement 5): `text` is sent in place of the
+    // composer/queue (it is not the user's draft — neither is touched)
+    // and `context` rides as console_context. Reuses the same send/
+    // stopped/refused/dropped handling as every other turn instead of a
+    // separate code path, so Stop and a dropped connection are not
+    // mistaken for a failure (#1236 review). Outcome goes to
+    // companionAsk.beginInThread/finishInThread, not the return value.
+    companion?: { text: string; context: string }
   }
 
   function isFirstUserTurn(): boolean {
@@ -960,49 +965,62 @@
 
   async function submitChat(options: SubmitChatOptions = {}) {
     const queuedPayload = options.queued
-    const message = (queuedPayload ? queuedPayload.text : chatInput).trim()
+    const companion = options.companion
+    const message = companion ? companion.text.trim() : (queuedPayload ? queuedPayload.text : chatInput).trim()
     if (!message) return
+    if (companion) companionAsk.beginInThread(message)
     if (chatBusy) {
+      if (companion) {
+        companionAsk.finishInThread(false, 'busy')
+        return
+      }
       if (!queuedPayload) queueComposer()
       return
     }
-    const parsedSlash = parseLeadingSlashCommand(message)
-    if (parsedSlash && await executeBuiltinSlashCommand(parsedSlash.command, parsedSlash.args, !queuedPayload)) {
-      return
+    if (!companion) {
+      const parsedSlash = parseLeadingSlashCommand(message)
+      if (parsedSlash && await executeBuiltinSlashCommand(parsedSlash.command, parsedSlash.args, !queuedPayload)) {
+        return
+      }
     }
 
     let tierRecommendation = options.recommendation
-    // A pinned tier applies to every turn, not just the first. The server
-    // keeps it on the session too; sending it covers a pin not saved yet.
-    const pinnedTier = chatSession.pinnedTier
-    if (!tierRecommendation && pinnedTier) {
-      tierRecommendation = pinnedTierPayload(pinnedTier)
-    }
-    if (!tierRecommendation && isFirstUserTurn()) {
-      const recommendation = buildTierRecommendation(message)
-      if (recommendation.should_prompt && options.allowPrompt !== false) {
-        pendingTierRecommendation = recommendation
-        pendingTierMessage = message
-        applyChatStatus({ phase: '', message: '' })
-        return
+    if (!companion) {
+      // A pinned tier applies to every turn, not just the first. The server
+      // keeps it on the session too; sending it covers a pin not saved yet.
+      const pinnedTier = chatSession.pinnedTier
+      if (!tierRecommendation && pinnedTier) {
+        tierRecommendation = pinnedTierPayload(pinnedTier)
       }
-      tierRecommendation = tierRecommendationPayload(recommendation, recommendation.recommended_tier)
+      if (!tierRecommendation && isFirstUserTurn()) {
+        const recommendation = buildTierRecommendation(message)
+        if (recommendation.should_prompt && options.allowPrompt !== false) {
+          pendingTierRecommendation = recommendation
+          pendingTierMessage = message
+          applyChatStatus({ phase: '', message: '' })
+          return
+        }
+        tierRecommendation = tierRecommendationPayload(recommendation, recommendation.recommended_tier)
+      }
     }
 
     chatBusy = true
     chatError = ''
     applyChatStatus({ phase: 'connecting' })
-    if (!queuedPayload) chatInput = ''
+    if (!queuedPayload && !companion) chatInput = ''
     pendingTierRecommendation = null
     pendingTierMessage = ''
     autoScroll = true
     publishContextInfo({})
 
-    const currentFiles = [...(queuedPayload ? queuedPayload.files : attachedFiles)]
-    const currentMentions = filterSelectedMentionsForMessage(queuedPayload ? queuedPayload.mentions : selectedMentions, message)
+    // A companion-originated turn (tars#1236) has no attachments/mentions
+    // of its own, and its text is not the composer's or the queue's —
+    // neither is touched below.
+    const currentFiles = companion ? [] : [...(queuedPayload ? queuedPayload.files : attachedFiles)]
+    const currentMentions = companion ? [] : filterSelectedMentionsForMessage(queuedPayload ? queuedPayload.mentions : selectedMentions, message)
     const fileMentions = currentMentions.filter(isFileOrDirectoryMention)
     const subagentMentions = currentMentions.filter((mention) => mention.kind === 'subagent')
-    if (!queuedPayload) {
+    if (!queuedPayload && !companion) {
       attachedFiles = []
       selectedMentions = []
       closeMentionMenu()
@@ -1022,22 +1040,29 @@
     void scrollToBottom()
     // Kept to give back if the server refuses the send.
     const draftNotes = { sessionId: changes.sessionId, notes: [...changes.notes] }
-    const reviewNotes = !message.trimStart().startsWith('/') && changes.notes.length > 0 ? changes.takeNotes() : undefined
-    // Sent once, with the next message the user typed (a slash command or a
-    // queued message keeps waiting, as the server would drop it anyway).
-    let consoleContext: string | undefined
-    if (pendingConsoleContext && !queuedPayload && !message.trimStart().startsWith('/')) {
-      consoleContext = pendingConsoleContext
-      pendingConsoleContext = ''
-    }
+    const reviewNotes = !companion && !message.trimStart().startsWith('/') && changes.notes.length > 0 ? changes.takeNotes() : undefined
     // giveBackNotes and giveBackSend undo a send that never reached a turn:
     // what was taken for it comes back, and so does the message.
     const giveBackNotes = () => {
       if (reviewNotes) changes.restoreNotes(draftNotes.sessionId, draftNotes.notes)
-      if (consoleContext && !pendingConsoleContext) pendingConsoleContext = consoleContext
     }
+    // companionErrorKind carries the fine-grained reason (busy/network/
+    // limit/error) a refused or dropped companion send reports to
+    // companionAsk — set in the catch block below, read once after.
+    let companionErrorKind: CompanionAskErrorKind | undefined
     const giveBackSend = (reason: string) => {
       giveBackNotes()
+      if (companion) {
+        // The bubble owns restoring what the user typed there (CompanionPet's
+        // own pendingThreadDraft effect) — this turn never touched the
+        // composer or the queue, so neither gets anything back.
+        chatError = reason
+        chatMessages = [
+          ...chatMessages.filter((msg) => msg.id !== userId && msg.id !== assistantRef.id),
+          { id: `error-${Date.now()}`, role: 'error', text: chatError },
+        ]
+        return
+      }
       const composerHasDraft = !!chatInput.trim() || attachedFiles.length > 0
       if (refusedSendReturn({ queued: !!queuedPayload, composerHasDraft }) === 'composer') {
         chatInput = message
@@ -1060,6 +1085,11 @@
     let failed = false
     let dropped = false
     let dropReason = ''
+    // A dropped connection that recovers to a fully delivered turn
+    // (#1236 review f1 round 2): `failed` stays true below so afterTurn's
+    // queue-pause decision is untouched, but the companion bubble must
+    // not report a failure for a question the thread actually answered.
+    let deliveredAfterDrop = false
     try {
       const chatAttachments = currentFiles.length > 0 ? await filesToAttachments(currentFiles) : undefined
       await streamChat(
@@ -1079,7 +1109,7 @@
           tier_recommendation: tierRecommendation,
           // A slash command keeps its arguments clean; the notes wait.
           review_notes: reviewNotes,
-          console_context: consoleContext,
+          console_context: companion?.context,
           interactive_permissions: true,
         },
         (event) => handleChatEvent(event, assistantRef, { id: userId }),
@@ -1094,10 +1124,12 @@
         // reload would wipe the message. It goes back with what was taken
         // for it (review notes, console context), and the error says why.
         failed = true
+        if (companion) companionErrorKind = classifyCompanionAskError(err)
         giveBackSend(err instanceof Error ? err.message : $t.chatThread.errors.sendFailed)
       } else {
         failed = true
         dropped = true
+        if (companion) companionErrorKind = classifyCompanionAskError(err)
         chatError = err instanceof Error ? err.message : $t.chatThread.errors.sendFailed
         dropReason = chatError
         chatMessages = [...chatMessages, { id: `error-${Date.now()}`, role: 'error', text: chatError }]
@@ -1129,7 +1161,18 @@
       const delivery = droppedSendDelivery(recovery, lastUserText, message)
       if (delivery === 'lost') giveBackSend(dropReason)
       else if (delivery === 'unknown') giveBackNotes()
+      // 'delivered': the connection dropped but the server kept the turn
+      // running and resumeRunningTurn (reattach above) followed it to a
+      // real reply, already in the thread under its own assistant-resumed-*
+      // message — a success, not a failure, for the companion bubble.
+      else if (delivery === 'delivered') deliveredAfterDrop = true
     }
+    // Stop (failure === 'stopped' above) never sets `failed`, so it reads
+    // as a plain `done` here — a cancelled companion turn is not an error
+    // in the bubble, just over (#1236 review). A dropped connection that
+    // recovered to a delivered reply reads as `done` too, not the stale
+    // `failed` a drop always starts with.
+    if (companion) companionAsk.finishInThread(!failed || deliveredAfterDrop, companionErrorKind)
     await afterTurn(failed)
   }
 
@@ -1365,6 +1408,28 @@
     await submitChat()
   }
 
+  // sendCompanionMessage sends a question CASE's bubble collected while
+  // the user is already looking at this (main) session (tars#1236
+  // requirement 5) — the answer streams into this thread instead of the
+  // bubble. A thin wrapper around submitChat's `companion` option
+  // (#1236 review): sending this way, rather than a separate duplicated
+  // send path, means Stop and a dropped connection get the same
+  // stopped/refused/dropped handling (and dropped-turn reattach) every
+  // other turn gets, instead of both reading as a plain failure. The
+  // light-tier decision mirrors companionAsk.ask — same pure function,
+  // this component's own activeSession/tierOptions instead of a fresh
+  // fetch, since they are already loaded here. Resolves to whether the
+  // turn actually finished (not stopped/refused/lost); the caller
+  // (CompanionPet, via chatCommands) reads companionAsk's own state for
+  // the busy/error notice rather than this return value.
+  export async function sendCompanionMessage(text: string, context: string): Promise<boolean> {
+    const trimmed = text.trim()
+    if (!trimmed) return false
+    const tierRecommendation = companionAskTierRecommendation(chatSession.activeSession ?? {}, chatSession.tierOptions, chatSession.defaultTier)
+    await submitChat({ companion: { text: trimmed, context }, recommendation: tierRecommendation })
+    return companionAsk.status === 'done'
+  }
+
   export function clearThread() {
     chatInput = ''
     chatError = ''
@@ -1585,7 +1650,6 @@
     }
     if (initialPrompt && !autoSend) {
       chatInput = initialPrompt
-      pendingConsoleContext = initialContext?.trim() ?? ''
       tick().then(() => textareaEl?.focus())
     }
 
@@ -1674,14 +1738,6 @@
   </div>
   {#if chatError}
     <div class="error-banner" style="margin-bottom: var(--space-3)">{chatError}</div>
-  {/if}
-  {#if pendingConsoleContext}
-    <div class="review-notes">
-      <span class="review-note-chip console-context-chip" title={$t.chatThread.consoleContext.title}>
-        <span class="review-note-text">{$t.chatThread.consoleContext.chip}</span>
-        <button type="button" class="review-note-remove" aria-label={$t.chatThread.consoleContext.remove} title={$t.chatThread.consoleContext.remove} onclick={() => (pendingConsoleContext = '')}>×</button>
-      </span>
-    </div>
   {/if}
   {#if changes.notes.length > 0}
     <div class="review-notes" role="list" aria-label={$t.changes.notes.chipsLabel}>

@@ -318,17 +318,22 @@ export function companionCueDismissServer(state: CompanionCueState): CompanionCu
 
 // companionTurnsJustFinished is true when some session's running turn (not
 // the one the chat route has on screen — that session's own thread already
-// shows it ending) has disappeared from `activity` between two snapshots
-// without landing in `failedSessionIds` — i.e. it finished, not failed.
+// shows it ending, nor `extraExcludedSessionId` — the main session while
+// CASE's own bubble turn on it is in flight, tars#1236 requirement 6: the
+// bubble already shows that turn ending) has disappeared from `activity`
+// between two snapshots without landing in `failedSessionIds` — i.e. it
+// finished, not failed.
 export function companionTurnsJustFinished(
   prevActivity: ActivityMap,
   activity: ActivityMap,
   activeSessionId: string | null | undefined,
   failedSessionIds: ReadonlySet<string>,
+  extraExcludedSessionId?: string | null,
 ): boolean {
   for (const [sessionId, prevState] of Object.entries(prevActivity)) {
     if (!prevState.running) continue
     if (sessionId === activeSessionId) continue
+    if (sessionId === extraExcludedSessionId) continue
     if (activity[sessionId]?.running) continue
     if (failedSessionIds.has(sessionId)) continue
     return true
@@ -640,17 +645,19 @@ export function companionServerCueFromEvent(
   return sessionId ? { expression: resolved, line, sessionId } : { expression: resolved, line }
 }
 
-export interface CompanionHandoff {
-  // The chat message: the user's own words, so the bubble and the session
-  // title show what they typed.
+// CompanionAskContext is what a question typed into CASE's bubble becomes
+// (tars#1236): `prompt` is sent as the chat message (the user's own
+// words, so the main session's transcript shows exactly what they typed),
+// `context` is guidance for the model only, sent as `console_context` (see
+// lib/consoleContext.ts) — the companion tone, the console area, and no
+// tools unless asked. The turn runs on the main session, not a new one;
+// see lib/companionAsk.ts for the request/tier logic built on top of this.
+export interface CompanionAskContext {
   prompt: string
-  // Guidance for the model only, sent as `console_context` (see
-  // lib/consoleContext.ts): the companion tone, the console area, and no
-  // tools unless asked.
   context: string
 }
 
-export function companionHandoffForAsk(raw: string, routeView?: string, locale?: string | null): CompanionHandoff {
+export function companionAskContext(raw: string, routeView?: string, locale?: string | null): CompanionAskContext {
   const lang = normalizeCompanionLocale(locale)
   const prompt = clipText(raw.trim(), 600)
   const route = (routeView || 'unknown').trim()

@@ -49,9 +49,13 @@ test('the chat thread shows and titles only what the user typed', () => {
   const item = readFileSync(new URL('../src/components/ChatMessageItem.svelte', import.meta.url), 'utf8')
   assert.match(item, /splitConsoleContext\(/)
   const panel = readFileSync(new URL('../src/components/ChatPanel.svelte', import.meta.url), 'utf8')
-  // The handoff's guidance goes to the server beside the message, once.
+  // CASE's bubble question (tars#1236, sendCompanionMessage) is the one
+  // remaining console_context sender — the new-session handoff that used
+  // to carry it through a composer-visible `initialContext` prop is gone,
+  // along with its chip.
   assert.match(panel, /console_context:/)
-  assert.match(panel, /initialContext/)
+  assert.doesNotMatch(panel, /initialContext/)
+  assert.doesNotMatch(panel, /console-context-chip/)
   const chat = readFileSync(new URL('../src/components/Chat.svelte', import.meta.url), 'utf8')
-  assert.match(chat, /\{initialContext\}/)
+  assert.doesNotMatch(chat, /initialContext/)
 })

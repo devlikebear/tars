@@ -265,6 +265,32 @@ test('no notification for the session on screen, or with notifications off', asy
   assert.equal(h.store['tars.sessionBoard.notify'], '0')
 })
 
+// CASE's own bubble question (tars#1236 requirement 6, review f4): a
+// caller that already shows a turn's own result some other way arms this
+// once right before that turn starts, so its "done" does not re-announce
+// as if some unrelated session had finished.
+test('suppressNextDoneNotify skips exactly one "done" announcement for that session', async () => {
+  const h = harness([runningS1, quiet, runningS1, quiet])
+  h.setPermission('granted')
+  await h.activity.enableNotifications()
+  await h.activity.poll()
+  h.activity.suppressNextDoneNotify('s1')
+  await h.activity.poll()
+  assert.equal(h.shown.length, 0, 'the suppressed completion does not announce')
+  await h.activity.poll()
+  await h.activity.poll()
+  assert.deepEqual(h.shown.map((s) => s.tag), ['tars-done-s1'], 'the next, unrelated completion still does')
+})
+
+test('markSeen (the companion-ask board path reuses it) clears the board\'s unread status', () => {
+  const h = harness([quiet])
+  const sess = session({ id: 's1', last_turn_at: '2026-09-29T11:00:00Z' })
+  assert.equal(boardStatus(sess, h.activity.seen), 'done_unread')
+  h.setNow(t('2026-09-29T12:00:00Z'))
+  h.activity.markSeen('s1')
+  assert.equal(boardStatus(sess, h.activity.seen), 'idle')
+})
+
 test('a finished turn on screen counts as seen; a failed poll keeps state', async () => {
   const h = harness([runningS1, quiet])
   await h.activity.poll()

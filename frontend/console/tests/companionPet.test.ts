@@ -23,7 +23,7 @@ import {
   companionFailureFromEvent,
   companionGazeApplies,
   companionGazeOffset,
-  companionHandoffForAsk,
+  companionAskContext,
   companionIdleEligible,
   companionIsLongQuiet,
   companionJustArrived,
@@ -73,7 +73,6 @@ test('console app wires the floating companion to live chat activity', () => {
   assert.match(appSource, /activeSessionId=\{activeChatSessionId\}/)
   assert.match(appSource, /onNavigate=\{navigate\}/)
   assert.match(appSource, /onDismissFailure=\{handleDismissCompanionFailure\}/)
-  assert.match(appSource, /onAsk=\{handleCompanionAsk\}/)
   assert.match(appSource, /routeView=\{route\.view\}/)
   // The warn-cue signal (#1191): App turns a qualifying SSE event into a
   // timestamp and passes it down.
@@ -410,6 +409,14 @@ test('companionTurnsJustFinished is true only for another session\'s running tur
 
   // Nothing was running before: no transition to detect.
   assert.equal(companionTurnsJustFinished({}, {}, null, new Set()), false)
+
+  // The main session (tars#1236 requirement 6, review f4): excluded the
+  // same way as the session on screen, even when it is not on screen —
+  // CASE's own bubble question already shows that turn ending.
+  assert.equal(companionTurnsJustFinished(prev, oneDone, null, new Set(), 's1'), false)
+  // s2 (still running above) finishing instead is unaffected by excluding s1.
+  const s2Done: ActivityMap = { s1: { running: true, pending: 0, queued: 0, title: 't1' } }
+  assert.equal(companionTurnsJustFinished(prev, s2Done, null, new Set(), 's1'), true)
 })
 
 test('companionWarningFromEvent is true only for a warn-severity notification', () => {
@@ -807,24 +814,29 @@ test('a bubble that opened itself closes itself once there is nothing left to sh
   assert.equal(companionShouldAutoClose(true, noLines), true) // defaults to false
 })
 
-test('companion ask hands off the user words, with the guidance kept apart', () => {
-  const handoff = companionHandoffForAsk('  what should I inspect?  ', 'agentruntime')
-  // The message (and so the bubble and the session title) is the user's own words.
-  assert.equal(handoff.prompt, 'what should I inspect?')
-  assert.match(handoff.context, /TARS companion/i)
-  assert.match(handoff.context, /agentruntime/i)
-  assert.match(handoff.context, /do not run tools/i)
-  assert.doesNotMatch(handoff.context, /what should I inspect/)
+test('companion ask context keeps the user words apart from the guidance (tars#1236)', () => {
+  // The turn stays on the main session (tars#1236) — no new-session
+  // handoff, no initialContext prop, both removed from App.svelte/
+  // ChatPanel.svelte. companionAskContext only builds the message/
+  // console_context pair; CompanionPet.svelte sends it.
+  const built = companionAskContext('  what should I inspect?  ', 'agentruntime')
+  // The message (and so the bubble and the main session's transcript) is the user's own words.
+  assert.equal(built.prompt, 'what should I inspect?')
+  assert.match(built.context, /TARS companion/i)
+  assert.match(built.context, /agentruntime/i)
+  assert.match(built.context, /do not run tools/i)
+  assert.doesNotMatch(built.context, /what should I inspect/)
 
-  const korean = companionHandoffForAsk('어디를 보면 돼?', 'pulse', 'ko')
+  const korean = companionAskContext('어디를 보면 돼?', 'pulse', 'ko')
   assert.equal(korean.prompt, '어디를 보면 돼?')
   assert.match(korean.context, /TARS 콘솔/)
   assert.match(korean.context, /\(pulse\)/)
   assert.doesNotMatch(korean.context, /어디를 보면 돼/)
 
-  assert.equal(companionHandoffForAsk('x'.repeat(900), 'board').prompt.length <= 600, true)
-  assert.match(appSource, /companionHandoffForAsk\(/)
-  assert.match(appSource, /initialContext=\{aiContext\}/)
+  assert.equal(companionAskContext('x'.repeat(900), 'board').prompt.length <= 600, true)
+  assert.doesNotMatch(appSource, /companionHandoffForAsk\(/)
+  assert.doesNotMatch(appSource, /initialContext=\{aiContext\}/)
+  assert.doesNotMatch(componentSource, /onAsk\?:/)
 })
 
 test('companion_enabled gates visibility from config values', () => {
