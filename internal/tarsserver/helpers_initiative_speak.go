@@ -118,6 +118,25 @@ type initiativeSpeaker struct {
 	// claude-code-cli) and must not block a user's own message to the main
 	// session for its duration (tars#1220 review).
 	claim func(sessionID string) (*chatCancelEntry, func(), bool)
+
+	// telegram sends the composed text to Telegram (tars#1221 P2c). nil
+	// means Telegram is not configured at all (channels.telegram has no
+	// bot token) — Speak must then never be asked for ChannelTelegram in
+	// the first place (the runtime only picks that channel when
+	// Observation.TelegramReady, which already requires a sender).
+	telegram telegramSender
+	// telegramDefaultChatID re-resolves the default paired chat at send
+	// time — never cached from the tick that decided to speak, since
+	// pairing can change between decide and send. nil alongside a nil
+	// telegram.
+	telegramDefaultChatID func() (string, error)
+	// telegramReplySession resolves the session a Telegram reply to that
+	// default chat lands in, when session_telegram_scope is "per-user"
+	// (tars#1221 P2c requirement 5) — nil under the default "main" scope,
+	// where that session is mainSessionID already. Used to also write the
+	// composed message there, tagged the same way as the main session's
+	// copy, so the model answering that reply knows what it said.
+	telegramReplySession func() (string, error)
 }
 
 var _ initiative.Speaker = (*initiativeSpeaker)(nil)
@@ -180,9 +199,19 @@ func (s *initiativeSpeaker) Speak(ctx context.Context, req initiative.SpeakReque
 		return initiative.SpeakOutcome{Composed: true, Superseded: true, Reason: "user_spoke"}, nil
 	}
 
-	if err := s.writeMessage(req, text); err != nil {
+	if err := s.writeMessage(s.mainSessionID, req, text); err != nil {
 		s.logger.Warn().Err(err).Str("session_id", s.mainSessionID).Msg("initiative: write speak message failed")
 		return initiative.SpeakOutcome{Composed: true, Reason: "write_error"}, err
+	}
+
+	// The main session's write has succeeded — this attempt is delivered
+	// from here on regardless of what the channel step below does
+	// (tars#1221 P2c requirement 3): a channel send failure only ever
+	// sets ChannelError, never Reason, never Delivered=false.
+	if req.Channel == initiative.ChannelTelegram {
+		s.writeTelegramReplySessionCopy(req, text)
+		channelErr := s.sendTelegram(ctx, text)
+		return initiative.SpeakOutcome{Composed: true, Delivered: true, ChannelError: channelErr}, nil
 	}
 
 	s.sendCompanionEvent(ctx, req.Intent, text)
@@ -233,7 +262,7 @@ func composeFailureReason(err error) string {
 // second message on the very next eligible tick. handler_chat_execution.go's
 // persistChatResult treats the same AppendMessage/Touch pair the same way,
 // for the same reason.
-func (s *initiativeSpeaker) writeMessage(req initiative.SpeakRequest, text string) error {
+func (s *initiativeSpeaker) writeMessage(sessionID string, req initiative.SpeakRequest, text string) error {
 	msg := session.Message{
 		Role:      "assistant",
 		Content:   text,
@@ -243,14 +272,62 @@ func (s *initiativeSpeaker) writeMessage(req initiative.SpeakRequest, text strin
 			EntryID: req.EntryID,
 		},
 	}
-	path := s.store.TranscriptPath(s.mainSessionID)
+	path := s.store.TranscriptPath(sessionID)
 	if err := session.AppendMessage(path, msg); err != nil {
 		return err
 	}
-	if err := s.store.Touch(s.mainSessionID, req.Now); err != nil {
-		s.logger.Warn().Err(err).Str("session_id", s.mainSessionID).Msg("initiative: touch session after speak failed")
+	if err := s.store.Touch(sessionID, req.Now); err != nil {
+		s.logger.Warn().Err(err).Str("session_id", sessionID).Msg("initiative: touch session after speak failed")
 	}
 	return nil
+}
+
+// writeTelegramReplySessionCopy also writes the composed message into the
+// Telegram per-user reply session (tars#1221 P2c requirement 5), when one
+// resolves and differs from the main session: under
+// session_telegram_scope: per-user, a reply to this speak lands in that
+// session, not the main one, and telegram_inbound_process.go always
+// resends the whole transcript (never a resumed upstream session), so
+// that session's own history needs the same assistant message too —
+// otherwise the model answering the reply has no idea what it is
+// replying to. Best effort: a failure here is logged and never changes
+// the outcome (the message already exists at least once, in the main
+// session) or Delivered/ChannelError.
+func (s *initiativeSpeaker) writeTelegramReplySessionCopy(req initiative.SpeakRequest, text string) {
+	if s.telegramReplySession == nil {
+		return
+	}
+	sessionID, err := s.telegramReplySession()
+	if err != nil || sessionID == "" || sessionID == s.mainSessionID {
+		return
+	}
+	if err := s.writeMessage(sessionID, req, text); err != nil {
+		s.logger.Warn().Err(err).Str("session_id", sessionID).Msg("initiative: write telegram reply-session copy failed")
+	}
+}
+
+// sendTelegram sends the composed text to Telegram's default paired chat
+// as plain text (tars#1221 P2c) — no parse_mode, so the console's/CLI's
+// markdown-ish formatting never risks a parse error silently dropping the
+// message. Called only after the main session's write has already
+// succeeded, so a failure here never un-delivers: it returns a fixed
+// channel-error reason code and nothing else (tars#1003's rule — never
+// the underlying error text, the chat id, or the bot token, even though
+// the sender already strips the token from its own errors).
+func (s *initiativeSpeaker) sendTelegram(ctx context.Context, text string) string {
+	if s.telegram == nil || s.telegramDefaultChatID == nil {
+		return "send_failed"
+	}
+	chatID, err := s.telegramDefaultChatID()
+	if err != nil || strings.TrimSpace(chatID) == "" {
+		s.logger.Warn().Str("session_id", s.mainSessionID).Msg("initiative: telegram default chat unavailable at send time")
+		return "send_failed"
+	}
+	if _, err := s.telegram.Send(ctx, telegramSendRequest{ChatID: chatID, Text: text}); err != nil {
+		s.logger.Warn().Str("session_id", s.mainSessionID).Msg("initiative: telegram delivery failed")
+		return "send_failed"
+	}
+	return ""
 }
 
 // sendCompanionEvent sends CASE's category "companion" event (#1192's wire

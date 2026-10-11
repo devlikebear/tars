@@ -286,6 +286,68 @@ func TestTelegramInbound_ProcessMessageNoSkillRoutingWithoutProjectSystem(t *tes
 	}
 }
 
+// TestTelegramInbound_ResendsFullHistoryWithoutInitiativeContextBlock
+// (tars#1221 P2c requirement 5): a Telegram turn never resumes an
+// upstream session (telegram_inbound_process.go always rebuilds the LLM
+// messages from the transcript via loadSessionHistory/buildLLMMessages),
+// so an initiative-authored assistant message already sitting in that
+// transcript must reach the model exactly once, as ordinary history —
+// never wrapped in the <initiative-context> block prepareChatRunState
+// adds for a resuming CLI provider's *next* user turn. This holds even
+// when the configured chat provider's kind is one of the resume kinds
+// (claude-code-cli/antigravity-cli): the telegram path never looks at
+// provider kind or UpstreamSessionID at all.
+func TestTelegramInbound_ResendsFullHistoryWithoutInitiativeContextBlock(t *testing.T) {
+	workspace := t.TempDir()
+	store := session.NewStore(workspace)
+	mainSession, err := store.Create("telegram:main")
+	if err != nil {
+		t.Fatalf("create main session: %v", err)
+	}
+	if err := session.AppendMessage(store.TranscriptPath(mainSession.ID), session.Message{
+		Role: "assistant", Content: "Welcome back!", Timestamp: time.Now(),
+		Initiative: &session.MessageInitiative{Intent: "greet", EntryID: "e1"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// A provider kind that resumes upstream sessions elsewhere in the
+	// chat handler (prepareChatRunState) — irrelevant here, since the
+	// telegram path has no notion of ChatOptions.ResumeSessionID at all.
+	if err := store.SetUpstreamSessionID(mainSession.ID, "upstream-sess-1"); err != nil {
+		t.Fatalf("set upstream session id: %v", err)
+	}
+
+	mockLLM := &mockLLMClient{response: llm.ChatResponse{Message: llm.ChatMessage{Role: "assistant", Content: "hi there"}}}
+	handler := newTelegramInboundHandler(workspace, store, mockLLM, nil, nil, nil, "open", zerolog.New(io.Discard))
+	handler.sessionScope = "main"
+	handler.mainSessionID = mainSession.ID
+	manager := newTestSkillManager(t, t.TempDir(), workspace)
+	handler.tooling.Extensions = manager
+
+	if _, gotSessionID, err := handler.processMessage(context.Background(), 11, "alice", "101", "", "thanks"); err != nil {
+		t.Fatalf("processMessage: %v", err)
+	} else if gotSessionID != mainSession.ID {
+		t.Fatalf("session = %q, want main session %q", gotSessionID, mainSession.ID)
+	}
+
+	if len(mockLLM.seenMessages) != 1 {
+		t.Fatalf("LLM calls = %d, want 1", len(mockLLM.seenMessages))
+	}
+	sent := mockLLM.seenMessages[0]
+	greetCount := 0
+	for _, m := range sent {
+		if strings.Contains(m.Content, "Welcome back!") {
+			greetCount++
+		}
+		if strings.Contains(m.Content, initiativeContextOpen) {
+			t.Fatalf("message %+v must never carry an <initiative-context> block on a telegram turn", m)
+		}
+	}
+	if greetCount != 1 {
+		t.Fatalf("the initiative greeting appeared %d times in the sent history, want exactly 1 (plain resend, no duplicate)", greetCount)
+	}
+}
+
 func TestTelegramInbound_DropsNonPrivateChat(t *testing.T) {
 	workspace := t.TempDir()
 	store := session.NewStore(workspace)

@@ -149,3 +149,47 @@ func TestTelegramPairingStore_ResolveDefaultChatID(t *testing.T) {
 		t.Fatalf("expected multiple chat id error, got chat_id=%q err=%v", chatID, err)
 	}
 }
+
+// TestTelegramPairingStore_ResolveDefaultUserID mirrors
+// TestTelegramPairingStore_ResolveDefaultChatID (tars#1221 P2c): the
+// user-id counterpart the per-user reply-session resolver needs, under
+// the same "exactly one paired chat" rule.
+func TestTelegramPairingStore_ResolveDefaultUserID(t *testing.T) {
+	now := time.Date(2026, 2, 21, 12, 0, 0, 0, time.UTC)
+	nowFn := func() time.Time { return now }
+	path := filepath.Join(t.TempDir(), "telegram_pairings.json")
+	store, err := newTelegramPairingStore(path, nowFn)
+	if err != nil {
+		t.Fatalf("newTelegramPairingStore: %v", err)
+	}
+
+	userID, err := store.resolveDefaultUserID()
+	if err != nil || userID != 0 {
+		t.Fatalf("resolveDefaultUserID without allowed users = %d, %v, want 0, nil", userID, err)
+	}
+
+	issued, _, err := store.issue(telegramPairingIdentity{UserID: 11, ChatID: "101", Username: "alice"}, telegramPairingTTL)
+	if err != nil {
+		t.Fatalf("issue first user: %v", err)
+	}
+	if _, err := store.approve(issued.Code); err != nil {
+		t.Fatalf("approve first user: %v", err)
+	}
+	userID, err = store.resolveDefaultUserID()
+	if err != nil || userID != 11 {
+		t.Fatalf("resolveDefaultUserID one allowed user = %d, %v, want 11, nil", userID, err)
+	}
+
+	now = now.Add(time.Minute)
+	issued2, _, err := store.issue(telegramPairingIdentity{UserID: 22, ChatID: "202", Username: "bob"}, telegramPairingTTL)
+	if err != nil {
+		t.Fatalf("issue second user: %v", err)
+	}
+	if _, err := store.approve(issued2.Code); err != nil {
+		t.Fatalf("approve second user: %v", err)
+	}
+	userID, err = store.resolveDefaultUserID()
+	if err == nil || !strings.Contains(err.Error(), "multiple paired telegram chats") {
+		t.Fatalf("expected multiple chat id error, got user_id=%d err=%v", userID, err)
+	}
+}

@@ -372,6 +372,25 @@ initiative:
   # replied/ignored/stopped counts, the cooldown now in force, and whether
   # today is stopped.
   reply_window: 30m
+  # Opt-in (tars#1221 P2c): when a live-mode speak is decided and the
+  # console is NOT connected, deliver it to Telegram's default paired chat
+  # instead (channels.telegram must be enabled and paired — see below
+  # — and resolve to exactly one chat; more than one paired chat with none
+  # chosen is also unreachable). Default false, and off means byte-for-byte
+  # the old behavior: no console means unreachable, no compose call. ON
+  # MEANS A REAL MESSAGE GOES TO YOUR PHONE — turn this on only if you want
+  # that. The console and Telegram never both receive the same speak,
+  # Go picks one channel per tick. Telegram sends the composed lines as
+  # plain text (no markdown parsing). The main session always gets the
+  # same assistant message either way, and delivery still counts once that
+  # session write succeeds — a Telegram send failure never un-delivers it,
+  # only the channel result (channel/channel_error, never the text) is
+  # marked failed. session_telegram_scope: per-user means a reply
+  # typed back on Telegram lands in that Telegram user's own session, not
+  # the main one — reply tracking (replied/ignored/stopped) only follows
+  # that session when it is the one paired to the default chat that
+  # received the speak; a different paired chat's reply is not tracked.
+  telegram: false
   # Embodiment provider name (see embodiment.providers) for idle expressions.
   body_provider: ""
   # jev-only: probability needed for each text signal (measured on

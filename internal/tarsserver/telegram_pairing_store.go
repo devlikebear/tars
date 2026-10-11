@@ -261,6 +261,40 @@ func (s *telegramPairingStore) resolveDefaultChatID() (string, error) {
 	if s.pruneExpiredLocked(now) {
 		_ = s.persistLocked()
 	}
+	allowed, err := s.defaultAllowedLocked()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(allowed.ChatID), nil
+}
+
+// resolveDefaultUserID is resolveDefaultChatID's user-id counterpart
+// (tars#1221 P2c): the Telegram user id bound to that same single default
+// chat, so a caller can find that user's own session
+// (telegram_inbound_session.go's sessionID, under
+// session_telegram_scope: per-user). Zero with a nil error means no chat
+// is paired yet, the same "nothing to resolve" case resolveDefaultChatID
+// reports as "". The same multiple-paired-chats error is returned
+// otherwise — there is no single default to resolve a user for either.
+func (s *telegramPairingStore) resolveDefaultUserID() (int64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := s.nowFn().UTC()
+	if s.pruneExpiredLocked(now) {
+		_ = s.persistLocked()
+	}
+	allowed, err := s.defaultAllowedLocked()
+	if err != nil {
+		return 0, err
+	}
+	return allowed.UserID, nil
+}
+
+// defaultAllowedLocked returns the single paired telegram user a
+// default (chat-id-omitting) call targets: zero value when none are
+// paired, the lone entry when exactly one is, and an error when more than
+// one is paired with no way to choose. Called with s.mu already held.
+func (s *telegramPairingStore) defaultAllowedLocked() (telegramAllowedUser, error) {
 	allowed := make([]telegramAllowedUser, 0, len(s.allowedByUser))
 	for _, item := range s.allowedByUser {
 		if strings.TrimSpace(item.ChatID) == "" {
@@ -269,15 +303,15 @@ func (s *telegramPairingStore) resolveDefaultChatID() (string, error) {
 		allowed = append(allowed, item)
 	}
 	if len(allowed) == 0 {
-		return "", nil
+		return telegramAllowedUser{}, nil
 	}
 	if len(allowed) == 1 {
-		return strings.TrimSpace(allowed[0].ChatID), nil
+		return allowed[0], nil
 	}
 	sort.Slice(allowed, func(i, j int) bool {
 		return strings.TrimSpace(allowed[i].ApprovedAt) > strings.TrimSpace(allowed[j].ApprovedAt)
 	})
-	return "", fmt.Errorf("chat_id is required: multiple paired telegram chats found")
+	return telegramAllowedUser{}, fmt.Errorf("chat_id is required: multiple paired telegram chats found")
 }
 
 func (s *telegramPairingStore) load() error {

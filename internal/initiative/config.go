@@ -59,6 +59,11 @@ type Config struct {
 	// window, replied (or stopped, when that message reads as a quiet
 	// request) — past it with no message, ignored.
 	ReplyWindow time.Duration
+	// Telegram opts in to delivering a live-mode speak over Telegram's
+	// default paired chat when the console is not connected (tars#1221
+	// P2c). False (the default) means deliverLocked behaves exactly as
+	// before this field existed.
+	Telegram bool
 }
 
 // WithDefaults fills zero values. Mode defaults to shadow when unset, but an

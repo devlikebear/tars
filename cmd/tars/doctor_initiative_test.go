@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -131,13 +132,13 @@ func TestCheckDoctorInitiativeLiveSpeakBackend(t *testing.T) {
 	for i, c := range report.checks {
 		names[i] = c.name
 	}
-	if len(report.checks) != 4 {
-		t.Fatalf("checks = %+v, want initiative + two initiative-speak checks + one initiative-replies check", names)
+	if len(report.checks) != 5 {
+		t.Fatalf("checks = %+v, want initiative + two initiative-speak checks + initiative-telegram + initiative-replies check", names)
 	}
 	if report.checks[0].name != "initiative" || !strings.Contains(report.checks[0].detail, "live mode") {
 		t.Fatalf("first check = %+v, want live mode in the detail", report.checks[0])
 	}
-	foundBackend, foundDelivery, foundReplies := false, false, false
+	foundBackend, foundDelivery, foundTelegram, foundReplies := false, false, false, false
 	for _, c := range report.checks[1:] {
 		switch c.name {
 		case "initiative speak":
@@ -146,6 +147,12 @@ func TestCheckDoctorInitiativeLiveSpeakBackend(t *testing.T) {
 			}
 			if strings.Contains(c.detail, "no delivery recorded yet") {
 				foundDelivery = true
+			}
+		case "initiative telegram":
+			// Telegram is false by default — this leaves foundTelegram
+			// true. tars#1221 P2c.
+			if c.status == "ok" && strings.Contains(c.detail, "opted out") {
+				foundTelegram = true
 			}
 		case "initiative replies":
 			// Review fix: an empty ledger (no deliveries yet) must still
@@ -158,8 +165,8 @@ func TestCheckDoctorInitiativeLiveSpeakBackend(t *testing.T) {
 			t.Fatalf("unexpected check name %q", c.name)
 		}
 	}
-	if !foundBackend || !foundDelivery || !foundReplies {
-		t.Fatalf("checks = %+v, want a speak backend line, a no-delivery-yet line, and a reply-outcomes line", report.checks[1:])
+	if !foundBackend || !foundDelivery || !foundTelegram || !foundReplies {
+		t.Fatalf("checks = %+v, want a speak backend line, a no-delivery-yet line, an opted-out telegram line, and a reply-outcomes line", report.checks[1:])
 	}
 }
 
@@ -262,5 +269,90 @@ func TestInitiativeLastDeliverySummaryReportsConfiguredCooldownWithEmptyLedger(t
 		Initiative:    config.InitiativeConfig{Cooldown: "2h"},
 	}); summary.outcomes.EffectiveCooldownSeconds != want {
 		t.Fatalf("no ledger file: EffectiveCooldownSeconds = %v, want %v", summary.outcomes.EffectiveCooldownSeconds, want)
+	}
+}
+
+// TestCheckDoctorInitiativeTelegram covers tars#1221 P2c's doctor line:
+// opted out is the quiet default; opted in needs both a bot token and a
+// resolvable single default chat to read "ready".
+func TestCheckDoctorInitiativeTelegram(t *testing.T) {
+	only := func(t *testing.T, r doctorReport) doctorCheck {
+		t.Helper()
+		if len(r.checks) != 1 || r.checks[0].name != "initiative telegram" {
+			t.Fatalf("checks = %+v", r.checks)
+		}
+		return r.checks[0]
+	}
+
+	var off doctorReport
+	checkDoctorInitiativeTelegram(&off, config.Config{})
+	if c := only(t, off); c.status != "ok" || !strings.Contains(c.detail, "opted out") {
+		t.Fatalf("opted out = %+v", c)
+	}
+
+	// Review finding f2: channels.telegram.enabled is checked before
+	// bot_token/pairing — opted in with the channel itself still off
+	// (the zero value here) must report that, not fall through to the
+	// bot_token or pairing checks below.
+	var channelDisabled doctorReport
+	checkDoctorInitiativeTelegram(&channelDisabled, config.Config{Initiative: config.InitiativeConfig{Telegram: true}})
+	if c := only(t, channelDisabled); c.status != "warn" || !strings.Contains(c.detail, "channels.telegram.enabled") {
+		t.Fatalf("channel disabled = %+v", c)
+	}
+
+	var noToken doctorReport
+	checkDoctorInitiativeTelegram(&noToken, config.Config{
+		Initiative:    config.InitiativeConfig{Telegram: true},
+		ChannelConfig: config.ChannelConfig{ChannelsTelegramEnabled: true},
+	})
+	if c := only(t, noToken); c.status != "warn" || !strings.Contains(c.detail, "bot_token") {
+		t.Fatalf("no bot token = %+v", c)
+	}
+
+	persistenceDir := t.TempDir()
+	cfgWithToken := config.Config{
+		Initiative:    config.InitiativeConfig{Telegram: true},
+		ChannelConfig: config.ChannelConfig{ChannelsTelegramEnabled: true},
+	}
+	cfgWithToken.TelegramBotToken = "token-123"
+	cfgWithToken.AgentRuntimePersistenceDir = persistenceDir
+
+	var noPairingFile doctorReport
+	checkDoctorInitiativeTelegram(&noPairingFile, cfgWithToken)
+	if c := only(t, noPairingFile); c.status != "warn" || !strings.Contains(c.detail, "no chat is paired") {
+		t.Fatalf("no pairing file = %+v", c)
+	}
+
+	writePairings := func(t *testing.T, allowed string) {
+		t.Helper()
+		path := filepath.Join(persistenceDir, "telegram_pairings.json")
+		if err := os.WriteFile(path, []byte(`{"allowed":[`+allowed+`]}`), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	writePairings(t, `{"user_id":1,"chat_id":"101"}`)
+	var onePaired doctorReport
+	checkDoctorInitiativeTelegram(&onePaired, cfgWithToken)
+	if c := only(t, onePaired); c.status != "ok" || !strings.Contains(c.detail, "ready") {
+		t.Fatalf("one paired chat = %+v", c)
+	}
+
+	// Review finding f2's exact regression scenario: bot_token still set
+	// and a chat already paired on disk, but channels.telegram.enabled is
+	// false — must report the channel as the blocker, never "ready".
+	cfgChannelDisabledWithPairing := cfgWithToken
+	cfgChannelDisabledWithPairing.ChannelsTelegramEnabled = false
+	var disabledWithPairing doctorReport
+	checkDoctorInitiativeTelegram(&disabledWithPairing, cfgChannelDisabledWithPairing)
+	if c := only(t, disabledWithPairing); c.status != "warn" || !strings.Contains(c.detail, "channels.telegram.enabled") || strings.Contains(c.detail, "ready") {
+		t.Fatalf("channel disabled with a bot_token and a paired chat = %+v, want the channel-disabled warning, never ready", c)
+	}
+
+	writePairings(t, `{"user_id":1,"chat_id":"101"},{"user_id":2,"chat_id":"202"}`)
+	var manyPaired doctorReport
+	checkDoctorInitiativeTelegram(&manyPaired, cfgWithToken)
+	if c := only(t, manyPaired); c.status != "warn" || !strings.Contains(c.detail, "2 chats") {
+		t.Fatalf("multiple paired chats = %+v", c)
 	}
 }

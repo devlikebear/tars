@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/devlikebear/tars/internal/config"
+	"github.com/devlikebear/tars/internal/initiative"
 	"github.com/devlikebear/tars/internal/session"
 	"github.com/rs/zerolog"
 )
@@ -182,6 +183,71 @@ func TestBuildInitiativeRuntimeLLMBackendDefault(t *testing.T) {
 	}
 }
 
+// TestBuildInitiativeRuntimeTelegramNeverReadyWhenChannelDisabled is the
+// regression test for review finding f1: channels.telegram.enabled: false
+// must keep Telegram delivery unreachable even when a bot_token-backed
+// sender is wired up and a chat is already paired on disk — turning the
+// channel off must win over both.
+func TestBuildInitiativeRuntimeTelegramNeverReadyWhenChannelDisabled(t *testing.T) {
+	workspace := t.TempDir()
+	store := session.NewStore(workspace)
+	main, err := store.EnsureMain()
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 9, 29, 9, 0, 0, 0, time.UTC)
+	// A message >24h old makes GoSignals.LongAbsence true; one paired
+	// chat makes GoSignals.Reachable true (TelegramPaired), so Decide
+	// reaches the long_absence check_in/Speak branch regardless of
+	// ChannelsTelegramEnabled — that flag only gates TelegramReady.
+	appendAndTouch(t, store, main.ID, session.Message{Role: "user", Content: "see you later", Timestamp: now.Add(-25 * time.Hour)})
+
+	pairings, err := newTelegramPairingStore(filepath.Join(t.TempDir(), "telegram_pairings.json"), func() time.Time { return now })
+	if err != nil {
+		t.Fatalf("newTelegramPairingStore: %v", err)
+	}
+	issued, _, err := pairings.issue(telegramPairingIdentity{UserID: 11, ChatID: "101", Username: "alice"}, telegramPairingTTL)
+	if err != nil {
+		t.Fatalf("issue: %v", err)
+	}
+	if _, err := pairings.approve(issued.Code); err != nil {
+		t.Fatalf("approve: %v", err)
+	}
+
+	sender := &fakeInitiativeTelegramSender{}
+	cfg := config.Config{
+		RuntimeConfig: config.RuntimeConfig{WorkspaceDir: workspace},
+		Initiative: config.InitiativeConfig{
+			Enabled: true, Mode: "live", Telegram: true,
+			DailyCap: 6, Cooldown: "45m", DailySpeakCalls: 12,
+		},
+		ChannelConfig: config.ChannelConfig{ChannelsTelegramEnabled: false},
+	}
+	setup := buildInitiativeRuntime(initiativeSetupInputs{
+		Config:           cfg,
+		WorkspaceDir:     workspace,
+		SessionStore:     store,
+		TelegramPairings: pairings,
+		TelegramSender:   sender,
+		MainSessionID:    main.ID,
+		Logger:           zerolog.Nop(),
+		Now:              func() time.Time { return now },
+	})
+	if setup.Runtime == nil {
+		t.Fatal("expected a runtime when enabled")
+	}
+	e := setup.Runtime.RunOnce(context.Background())
+	if e.Delivery != initiative.DeliveryUnreachable {
+		t.Fatalf("entry = %+v, want unreachable (channel disabled must win over a configured sender + pairing)", e)
+	}
+	if e.Channel != "" {
+		t.Fatalf("entry channel = %q, want empty — channels.telegram.enabled: false must never pick telegram", e.Channel)
+	}
+	if len(sender.calls) != 0 {
+		t.Fatalf("telegram sends = %d, want 0 — disabled channel must never call Send even with a configured sender", len(sender.calls))
+	}
+}
+
 func appendAndTouch(t *testing.T, store *session.Store, id string, msgs ...session.Message) {
 	t.Helper()
 	var last time.Time
@@ -262,6 +328,93 @@ func TestSessionObserverTracksMainUserAt(t *testing.T) {
 	}
 	if !without.MainUserAt.IsZero() {
 		t.Fatalf("MainUserAt = %v, want zero with no MainSessionID configured", without.MainUserAt)
+	}
+}
+
+// TestSessionObserverFoldsTelegramReplySessionIntoMainUserAt (tars#1221
+// P2c requirement 5): under session_telegram_scope: per-user, a reply to
+// a Telegram-delivered speak lands in that user's own session, not the
+// main one. TelegramReplySession must still let reply tracking see it —
+// the newer of the two sessions' own messages wins, in either visiting
+// order.
+func TestSessionObserverFoldsTelegramReplySessionIntoMainUserAt(t *testing.T) {
+	store := session.NewStore(t.TempDir())
+	now := time.Date(2026, 9, 29, 14, 0, 0, 0, time.UTC)
+	main, err := store.EnsureMain()
+	if err != nil {
+		t.Fatal(err)
+	}
+	telegramSess, err := store.Create("telegram:alice")
+	if err != nil {
+		t.Fatal(err)
+	}
+	appendAndTouch(t, store, main.ID, session.Message{Role: "user", Content: "old main reply", Timestamp: now.Add(-time.Hour)})
+	appendAndTouch(t, store, telegramSess.ID, session.Message{Role: "user", Content: "replied on telegram", Timestamp: now.Add(-time.Minute)})
+
+	obs := newSessionInitiativeObserver(sessionObserverDeps{
+		Store: store, MainSessionID: main.ID,
+		TelegramReplySession: func() string { return telegramSess.ID },
+	})
+	got, err := obs.Observe(context.Background(), now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.MainUserAt.Equal(now.Add(-time.Minute)) {
+		t.Fatalf("MainUserAt = %v, want the newer telegram-session reply", got.MainUserAt)
+	}
+
+	// Without TelegramReplySession configured (e.g. scope "main", or
+	// pairing unavailable), that session's reply must not count — this is
+	// the known limitation when the resolver is absent.
+	withoutResolver, err := newSessionInitiativeObserver(sessionObserverDeps{
+		Store: store, MainSessionID: main.ID,
+	}).Observe(context.Background(), now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !withoutResolver.MainUserAt.Equal(now.Add(-time.Hour)) {
+		t.Fatalf("MainUserAt = %v, want only the main session's own reply with no resolver", withoutResolver.MainUserAt)
+	}
+}
+
+// TestTelegramReplySessionResolverGating (tars#1221 P2c requirement 5):
+// the resolver only ever applies under session_telegram_scope: per-user
+// with pairing available — nil (never consulted) under the default
+// "main" scope or with no pairing store, since a reply already lands in
+// the main session in both of those cases.
+func TestTelegramReplySessionResolverGating(t *testing.T) {
+	pairings, err := newTelegramPairingStore(filepath.Join(t.TempDir(), "telegram_pairings.json"), nil)
+	if err != nil {
+		t.Fatalf("newTelegramPairingStore: %v", err)
+	}
+	if r := telegramReplySessionResolver(config.Config{}, pairings); r != nil {
+		t.Fatal("default (main) scope must never resolve a reply session")
+	}
+	if r := telegramReplySessionResolver(config.Config{RuntimeConfig: config.RuntimeConfig{SessionTelegramScope: "per-user"}}, nil); r != nil {
+		t.Fatal("no pairing store must never resolve a reply session")
+	}
+	cfg := config.Config{RuntimeConfig: config.RuntimeConfig{SessionTelegramScope: "per-user"}}
+	resolver := telegramReplySessionResolver(cfg, pairings)
+	if resolver == nil {
+		t.Fatal("per-user scope with pairings must produce a resolver")
+	}
+	// No chat paired yet: "" with no error, same shape as resolveDefaultChatID.
+	if id, err := resolver(); err != nil || id != "" {
+		t.Fatalf("resolver with nothing paired = %q, %v, want \"\", nil", id, err)
+	}
+	issued, _, err := pairings.issue(telegramPairingIdentity{UserID: 11, ChatID: "101", Username: "alice"}, telegramPairingTTL)
+	if err != nil {
+		t.Fatalf("issue: %v", err)
+	}
+	if _, err := pairings.approve(issued.Code); err != nil {
+		t.Fatalf("approve: %v", err)
+	}
+	if err := pairings.bindSession(11, "telegram-sess-1"); err != nil {
+		t.Fatalf("bindSession: %v", err)
+	}
+	id, err := resolver()
+	if err != nil || id != "telegram-sess-1" {
+		t.Fatalf("resolver = %q, %v, want telegram-sess-1, nil", id, err)
 	}
 }
 
