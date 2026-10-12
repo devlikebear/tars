@@ -93,6 +93,23 @@ export type CompanionLineText = {
 const failureWindowMs = 30 * 60 * 1000
 const maxFailures = 5
 
+// The session(s) the console currently has on screen — a single id (the
+// chat route's own session), several (the focus pipeline screen: its own
+// session plus its hidden Q&A session while the drawer has asked a
+// question, tars#1247), or none. companionState/companionTurnsJustFinished/
+// companionServerCueFromEvent below all take this instead of a single id so
+// the focus pipeline screen gets the same "already visible there, do not
+// duplicate it in the bubble" treatment the chat route always had.
+export type CompanionViewedSessionIds = string | null | undefined | ReadonlySet<string> | readonly string[]
+
+const EMPTY_VIEWED_SESSIONS: ReadonlySet<string> = new Set()
+
+function viewedSessionIdSet(viewed: CompanionViewedSessionIds): ReadonlySet<string> {
+  if (!viewed) return EMPTY_VIEWED_SESSIONS
+  if (typeof viewed === 'string') return new Set([viewed])
+  return viewed instanceof Set ? viewed : new Set(viewed)
+}
+
 export function shouldShowCompanion(input: CompanionVisibilityInput): boolean {
   return !!input.enabled && !input.needsSetup && !input.loginRequired && !input.zenActive
 }
@@ -112,24 +129,28 @@ export function normalizeCompanionLocale(locale?: string | null): CompanionLocal
 // running turns. A failure is listed ahead of a running turn on purpose —
 // of the two, it is the more urgent signal.
 //
-// `activeSessionId` is the session the chat route currently has on screen
-// (undefined/null when nothing is, e.g. the board). Its pending approval
-// and running turn are left out of lines and the badge: that session's own
-// approval card is already visible in its thread, and its running turn is
-// already visible as the streaming reply, so CASE would otherwise
-// duplicate what the user is already looking at (and, worse, cover the
-// very panel they are using — #1194). Queued (unattended) approvals have
-// no card in any thread, so they still show for the active session too;
-// switching to another session brings its own lines back.
+// `viewedSessionIds` are the session(s) the console currently has on
+// screen (undefined/null/empty when none is, e.g. the board) — the chat
+// route's own session, or the focus pipeline screen's session plus its
+// Q&A session (tars#1247). Their pending approval and running turn are
+// left out of lines and the badge: that session's own approval card is
+// already visible in its thread (or the pipeline deck/Q&A drawer), and its
+// running turn is already visible as the streaming reply (or the
+// pipeline's own progress line), so CASE would otherwise duplicate what
+// the user is already looking at (and, worse, cover the very panel they
+// are using — #1194). Queued (unattended) approvals have no card in any
+// thread, so they still show for a viewed session too; leaving changes
+// which sessions' lines come back.
 export function companionState(
   activity: ActivityMap,
   failures: CompanionFailure[],
   now: number,
   text: CompanionLineText,
-  activeSessionId?: string | null,
+  viewedSessionIds?: CompanionViewedSessionIds,
 ): CompanionSnapshot {
+  const viewed = viewedSessionIdSet(viewedSessionIds)
   const entries = Object.entries(activity).sort(([a], [b]) => a.localeCompare(b))
-  const visibleEntries = entries.filter(([sessionId]) => sessionId !== activeSessionId)
+  const visibleEntries = entries.filter(([sessionId]) => !viewed.has(sessionId))
   const lines: CompanionLine[] = []
 
   for (const [sessionId, state] of visibleEntries) {
@@ -317,7 +338,7 @@ export function companionCueDismissServer(state: CompanionCueState): CompanionCu
 }
 
 // companionTurnsJustFinished is true when some session's running turn (not
-// the one the chat route has on screen — that session's own thread already
+// one in `viewedSessionIds` — that session's own thread/screen already
 // shows it ending, nor `extraExcludedSessionId` — the main session while
 // CASE's own bubble turn on it is in flight, tars#1236 requirement 6: the
 // bubble already shows that turn ending) has disappeared from `activity`
@@ -326,13 +347,14 @@ export function companionCueDismissServer(state: CompanionCueState): CompanionCu
 export function companionTurnsJustFinished(
   prevActivity: ActivityMap,
   activity: ActivityMap,
-  activeSessionId: string | null | undefined,
+  viewedSessionIds: CompanionViewedSessionIds,
   failedSessionIds: ReadonlySet<string>,
   extraExcludedSessionId?: string | null,
 ): boolean {
+  const viewed = viewedSessionIdSet(viewedSessionIds)
   for (const [sessionId, prevState] of Object.entries(prevActivity)) {
     if (!prevState.running) continue
-    if (sessionId === activeSessionId) continue
+    if (viewed.has(sessionId)) continue
     if (sessionId === extraExcludedSessionId) continue
     if (activity[sessionId]?.running) continue
     if (failedSessionIds.has(sessionId)) continue
@@ -614,16 +636,16 @@ function isCompanionEvent(event: NotificationMessage): boolean {
 //
 // A non-empty `message` becomes the bubble line (plain text only — never
 // rendered as HTML — and clipped like every other label here) unless
-// `session_id` names the session already on screen (`activeSessionId`):
-// that session's own thread already shows the message, so only the
-// expression carries over, same as companionState already leaves out the
-// active session's own pending/running lines. An empty `message` (the
+// `session_id` names a session already on screen (`viewedSessionIds`):
+// that session's own thread/screen already shows the message, so only the
+// expression carries over, same as companionState already leaves out a
+// viewed session's own pending/running lines. An empty `message` (the
 // body_only case) always returns expression-only, regardless of
 // session_id.
 export function companionServerCueFromEvent(
   event: NotificationMessage,
   now: number,
-  activeSessionId?: string | null,
+  viewedSessionIds?: CompanionViewedSessionIds,
 ): CompanionServerCue | null {
   if (!event || event.type === 'keepalive') return null
   if (!isCompanionEvent(event)) return null
@@ -639,7 +661,7 @@ export function companionServerCueFromEvent(
   if (!rawLine) return { expression: resolved }
 
   const sessionId = (event.session_id || '').trim() || undefined
-  if (sessionId && sessionId === (activeSessionId || undefined)) return { expression: resolved }
+  if (sessionId && viewedSessionIdSet(viewedSessionIds).has(sessionId)) return { expression: resolved }
 
   const line = clipText(rawLine, COMPANION_SERVER_LINE_MAX_LEN)
   return sessionId ? { expression: resolved, line, sessionId } : { expression: resolved, line }

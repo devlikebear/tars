@@ -10,6 +10,7 @@
   import { finishedText, finishOutcome, ghUnavailable, prStageChip, type PRStageChip } from '../../lib/focusPR'
   import { shortCwdLabel } from '../../lib/sessionLabels'
   import { FocusStore } from '../../lib/stores/focusStore.svelte'
+  import { focusViewedSession } from '../../lib/stores/focusViewedSession.svelte'
   import type { FocusCard, FocusGateAction, FocusPlan, FocusPRDraft, FocusStageId } from '../../lib/types'
   import FocusAddFinding from './FocusAddFinding.svelte'
   import FocusDeck from './FocusDeck.svelte'
@@ -50,9 +51,17 @@
     untrack(() => void store.load(id))
   })
 
+  // CASE's "already on screen" exclusion (tars#1247): this pipeline's own
+  // session, plus its hidden Q&A session once the drawer has one, so
+  // neither pollutes the bubble while this screen already shows them.
+  $effect(() => {
+    focusViewedSession.set(sessionId, store.pipeline?.qa_session_id ?? null)
+  })
+
   onDestroy(() => {
     clearInterval(pollTimer)
     store.dispose()
+    focusViewedSession.clear()
   })
 
   let instruction = $state('')

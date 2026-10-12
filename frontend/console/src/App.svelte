@@ -36,6 +36,7 @@
   import { chatCommands, type ChatCommand } from './lib/stores/chatCommandQueue.svelte'
   import { overlays } from './lib/stores/overlays.svelte'
   import { sessionActivity } from './lib/stores/sessionActivity'
+  import { focusViewedSession } from './lib/stores/focusViewedSession.svelte'
 
   let currentPath = $state('/console')
   let route = $state<Route>({ view: 'board' })
@@ -67,12 +68,31 @@
   let authRole = $derived(authInfo?.auth_role ?? '')
   let zenActive = $derived(zenMode.active && route.view === 'chat' && !needsSetup && !loginRequired)
   let focusChrome = $derived(focusChromeHidden(route))
-  let showCompanion = $derived(!focusChrome && shouldShowCompanion({ enabled: companionEnabled, needsSetup, loginRequired, zenActive }))
+  // CASE shows on focus routes too (tars#1247) — only the sidebar stays
+  // hidden there (hideNav, below). Settings off, onboarding, login and zen
+  // still hide it, same as before.
+  let showCompanion = $derived(shouldShowCompanion({ enabled: companionEnabled, needsSetup, loginRequired, zenActive }))
   // The session the chat route has on screen right now — same signal
   // sessionActivity.setViewing uses to mark a session as seen (#971).
   // CASE leaves this session's own pending approval and running turn out
   // of its lines/badge: its thread already shows them (#1194).
   let activeChatSessionId = $derived(route.view === 'chat' ? chatSession.activeSessionId : null)
+  // The focus pipeline screen's own session plus its Q&A session
+  // (tars#1247), written by FocusPipeline.svelte via focusViewedSession —
+  // same "already visible there" treatment as activeChatSessionId above,
+  // widened to companionState's set-shaped parameter since a pipeline can
+  // have two sessions on screen at once.
+  let focusViewedSessionIds = $derived.by(() => {
+    if (route.view !== 'focus') return null
+    const ids = [focusViewedSession.sessionId, focusViewedSession.qaSessionId].filter((id): id is string => !!id)
+    return ids.length ? new Set(ids) : null
+  })
+  // What CASE is told is "on screen" right now, across every route it
+  // shows on: a single chat session, the focus pipeline's session set, or
+  // nothing (the board, and every other route).
+  let companionViewedSessionIds = $derived(
+    route.view === 'chat' ? activeChatSessionId : route.view === 'focus' ? focusViewedSessionIds : null,
+  )
 
   function navigate(path: string) {
     landing = false
@@ -121,7 +141,7 @@
           if (companionWarningFromEvent(event)) companionWarningAt = Date.now()
           return
         }
-        const serverCue = companionServerCueFromEvent(event, Date.now(), activeChatSessionId)
+        const serverCue = companionServerCueFromEvent(event, Date.now(), companionViewedSessionIds)
         if (serverCue) {
           companionServerCue = serverCue
           companionServerCueAt = Date.now()
@@ -280,7 +300,10 @@
   })
   sessionActivity.onOpenSession = (id) => navigate(`/console/chat/${encodeURIComponent(id)}`)
   $effect(() => {
-    const viewing = activeChatSessionId
+    // The focus pipeline screen counts as seen too (tars#1247) — its own
+    // session, same as the chat route's. The hidden Q&A session is not a
+    // board/sidebar entry, so it has nothing to mark seen here.
+    const viewing = route.view === 'chat' ? activeChatSessionId : route.view === 'focus' ? focusViewedSession.sessionId : null
     untrack(() => sessionActivity.setViewing(viewing))
   })
 
@@ -463,14 +486,33 @@
     {:else if route.view === 'home'}
       <Home onNavigate={navigate} />
     {:else if route.view === 'focus'}
-      {#await loadRouteComponent('focus')}
-        <div class="route-loading">Loading...</div>
-      {:then module}
-        {@const FocusRoute = module.default}
-        <FocusRoute sessionId={route.sessionId} release={route.release === true} templates={route.templates === true} onNavigate={navigate} />
-      {:catch}
-        <div class="route-error">Could not load console page.</div>
-      {/await}
+      <!-- Every focus screen (home/new task, pipeline, release train,
+           templates) centers an 880px column with `margin: 0 auto` inside
+           whatever width it is given — this wrapper reserves only as much
+           of CASE's own corner on the right (tars#1247) as the centered
+           column would otherwise land under, so a wide window keeps the
+           column exactly centered (CASE already clears it on its own) and
+           only a narrower one nudges it left. Below ~1216px even the
+           minimum non-zero gutter would squeeze the column under 880px,
+           so there the reservation switches to just the button's own
+           footprint and an open bubble free-floats over content instead,
+           same as it already does on every other route (see the CSS
+           below for the exact numbers and DESIGN.md's Focus "Chrome" item
+           for which buttons that can cover there, and why that is fine).
+           The reservation depends only on viewport width and whether CASE
+           shows at all, never on whether the bubble is currently open, so
+           a self-opened bubble never shifts a button out from under a
+           click in flight. -->
+      <div class="focus-companion-space" class:case-visible={showCompanion}>
+        {#await loadRouteComponent('focus')}
+          <div class="route-loading">Loading...</div>
+        {:then module}
+          {@const FocusRoute = module.default}
+          <FocusRoute sessionId={route.sessionId} release={route.release === true} templates={route.templates === true} onNavigate={navigate} />
+        {:catch}
+          <div class="route-error">Could not load console page.</div>
+        {/await}
+      </div>
     {:else if route.view === 'chat'}
       {#await loadRouteComponent('chat')}
         <div class="route-loading">Loading...</div>
@@ -606,7 +648,7 @@
       <CompanionPet
         activity={sessionActivity.activity}
         failures={companionFailures}
-        activeSessionId={activeChatSessionId}
+        viewedSessionIds={companionViewedSessionIds}
         routeView={route.view}
         warningAt={companionWarningAt}
         serverCue={companionServerCue}
@@ -645,5 +687,55 @@
 
   .route-error {
     color: var(--danger);
+  }
+
+  /* Reserves CASE's own corner on every focus screen (tars#1247) — see
+     the comment at the focus route above. Two pieces, both derived from
+     CompanionPet.svelte's actual geometry via app.css's shared
+     `--case-button-width`/`--case-bubble-width` tokens (never a number
+     copied by hand, so this cannot quietly drift out of sync with it):
+
+     `--case-bubble-share` is the bubble's full footprint at and above
+     901px — CASE's right offset (--space-5) + its bubble width + a gap —
+     the same geometry the chat workbench's own `.beside-rail` reserves.
+     The focus column already centers itself with `margin: 0 auto`, so
+     the *only* padding actually needed is enough to pull a centered
+     880px column's own right edge left of that share: solving for the
+     viewport width V where the column's centered right edge, after
+     adding padding P, lands exactly at the bubble share
+     (`(V - P + 880) / 2 = V - share` ⟺ `P = 880 + 2*share - V`) gives the
+     formula below. A wide enough window (>= 880 + 2*share, currently
+     ~1552px) already centers clear on its own, hence `max(0px, …)`: at
+     1440px wide that is ~112px of padding — half that (56px) of actual
+     leftward shift, not the full bubble share.
+
+     Below the viewport width where that same formula would squeeze the
+     centered column under 880px itself (solving `V - P(V) = 880` with
+     the formula above gives V ≈ 1216px) there is no point reserving the
+     bubble's full width any more — continuing to would only narrow an
+     already-narrow column further for no reason, since a column that
+     thin no longer reads as "centered" either. Below that width the
+     reservation becomes just `--case-button-share` (the button's own
+     footprint), and an open bubble free-floats over whatever is under
+     it there, exactly like it already does on every non-focus route —
+     DESIGN.md's Focus "Chrome" item names which buttons that can cover
+     and why that is an accepted tradeoff (closing the bubble clears
+     them). */
+  .focus-companion-space {
+    box-sizing: border-box;
+    width: 100%;
+    min-height: 100%;
+    --case-bubble-share: calc(var(--space-5) + var(--case-bubble-width) + var(--space-4));
+    --case-button-share: calc(var(--space-5) + var(--case-button-width) + var(--space-2));
+  }
+
+  .focus-companion-space.case-visible {
+    padding-right: max(0px, calc(880px + (2 * var(--case-bubble-share)) - 100vw));
+  }
+
+  @media (max-width: 1215px) {
+    .focus-companion-space.case-visible {
+      padding-right: var(--case-button-share);
+    }
   }
 </style>

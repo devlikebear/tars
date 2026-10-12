@@ -70,7 +70,7 @@ test('console app wires the floating companion to live chat activity', () => {
   assert.match(appSource, /companionFailureFromEvent/)
   assert.match(appSource, /activity=\{sessionActivity\.activity\}/)
   assert.match(appSource, /failures=\{companionFailures\}/)
-  assert.match(appSource, /activeSessionId=\{activeChatSessionId\}/)
+  assert.match(appSource, /viewedSessionIds=\{companionViewedSessionIds\}/)
   assert.match(appSource, /onNavigate=\{navigate\}/)
   assert.match(appSource, /onDismissFailure=\{handleDismissCompanionFailure\}/)
   assert.match(appSource, /routeView=\{route\.view\}/)
@@ -284,6 +284,35 @@ test('the session the chat route is currently showing is left out of pending and
   ])
 })
 
+test('the focus pipeline screen can leave out several sessions at once — its own session and its Q&A session (tars#1247)', () => {
+  const activity: ActivityMap = {
+    pipeline: { running: true, pending: 1, queued: 0, title: 'Pipeline session' },
+    qa: { running: true, pending: 0, queued: 0, title: 'Q&A session' },
+    other: { running: false, pending: 1, queued: 0, title: 'Elsewhere' },
+  }
+  // A Set, as App.svelte builds it from focusViewedSession.
+  const bySet = companionState(activity, [], now, text, new Set(['pipeline', 'qa']))
+  assert.deepEqual(bySet.lines, [
+    { key: 'pending:other', kind: 'pending', label: text.pending(1, 'Elsewhere'), path: '/console/chat/other' },
+  ])
+  // A plain array works the same way.
+  const byArray = companionState(activity, [], now, text, ['pipeline', 'qa'])
+  assert.deepEqual(byArray.lines, bySet.lines)
+  // Queued approvals still show for a viewed session too — same rule as
+  // the single-id case.
+  const withQueued = companionState(
+    { ...activity, pipeline: { ...activity.pipeline, queued: 1 } },
+    [],
+    now,
+    text,
+    new Set(['pipeline', 'qa']),
+  )
+  assert.deepEqual(withQueued.lines, [
+    { key: 'pending:other', kind: 'pending', label: text.pending(1, 'Elsewhere'), path: '/console/chat/other' },
+    { key: 'queued:pipeline', kind: 'queued', label: text.queued(1, 'Pipeline session'), path: '/console/ops' },
+  ])
+})
+
 test('a queued (unattended) approval still shows for the currently active session — it has no card in any thread', () => {
   const activity: ActivityMap = { active: { running: false, pending: 0, queued: 1, title: 'On screen' } }
   const snapshot = companionState(activity, [], now, text, 'active')
@@ -417,6 +446,25 @@ test('companionTurnsJustFinished is true only for another session\'s running tur
   // s2 (still running above) finishing instead is unaffected by excluding s1.
   const s2Done: ActivityMap = { s1: { running: true, pending: 0, queued: 0, title: 't1' } }
   assert.equal(companionTurnsJustFinished(prev, s2Done, null, new Set(), 's1'), true)
+})
+
+test('companionTurnsJustFinished takes several viewed sessions at once, for the focus pipeline screen + its Q&A session (tars#1247)', () => {
+  const prev: ActivityMap = {
+    pipeline: { running: true, pending: 0, queued: 0, title: 'Pipeline' },
+    qa: { running: true, pending: 0, queued: 0, title: 'Q&A' },
+    other: { running: true, pending: 0, queued: 0, title: 'Elsewhere' },
+  }
+  // Both viewed sessions ending is left out either way.
+  const bothViewedDone: ActivityMap = { other: { running: true, pending: 0, queued: 0, title: 'Elsewhere' } }
+  assert.equal(companionTurnsJustFinished(prev, bothViewedDone, new Set(['pipeline', 'qa']), new Set()), false)
+  assert.equal(companionTurnsJustFinished(prev, bothViewedDone, ['pipeline', 'qa'], new Set()), false)
+
+  // The unviewed session ending is still a real transition.
+  const otherDone: ActivityMap = {
+    pipeline: { running: true, pending: 0, queued: 0, title: 'Pipeline' },
+    qa: { running: true, pending: 0, queued: 0, title: 'Q&A' },
+  }
+  assert.equal(companionTurnsJustFinished(prev, otherDone, new Set(['pipeline', 'qa']), new Set()), true)
 })
 
 test('companionWarningFromEvent is true only for a warn-severity notification', () => {
@@ -571,6 +619,18 @@ test('companionServerCueFromEvent validates a category "companion" event into a 
   assert.deepEqual(
     companionServerCueFromEvent({ ...base, message: 'no session here', expression: 'wary' }, now, 's1'),
     { expression: 'wary', line: 'no session here' },
+  )
+
+  // The focus pipeline screen's viewed set (tars#1247): a line about its
+  // Q&A session is suppressed the same way as a single viewed id, a line
+  // about a different session is not.
+  assert.deepEqual(
+    companionServerCueFromEvent({ ...base, message: 'already visible', expression: 'happy', session_id: 'qa' }, now, new Set(['pipeline', 'qa'])),
+    { expression: 'happy' },
+  )
+  assert.deepEqual(
+    companionServerCueFromEvent({ ...base, message: 'approval needed', expression: 'alert', session_id: 's1' }, now, new Set(['pipeline', 'qa'])),
+    { expression: 'alert', line: 'approval needed', sessionId: 's1' },
   )
 
   // An expression not in COMPANION_EXPRESSIONS ignores the whole event.
@@ -837,6 +897,16 @@ test('companion ask context keeps the user words apart from the guidance (tars#1
   assert.doesNotMatch(appSource, /companionHandoffForAsk\(/)
   assert.doesNotMatch(appSource, /initialContext=\{aiContext\}/)
   assert.doesNotMatch(componentSource, /onAsk\?:/)
+})
+
+test('asking CASE on the focus route never forwards into a chat thread — there is no mounted ChatPanel there to drain it (tars#1247)', () => {
+  // The forward (tars#1236 requirement 5) is gated to the chat route: on
+  // focus, `viewedSessionIds` is the pipeline's session set, not
+  // necessarily the main session, and even when it matched there is
+  // nothing mounted to receive the chatCommands queue entry.
+  const submitAskSource = componentSource.slice(componentSource.indexOf('function submitAsk'), componentSource.indexOf('function submitAsk') + 1200)
+  assert.match(submitAskSource, /routeView === 'chat'/)
+  assert.match(submitAskSource, /viewingMainSessionInChat/)
 })
 
 test('companion_enabled gates visibility from config values', () => {

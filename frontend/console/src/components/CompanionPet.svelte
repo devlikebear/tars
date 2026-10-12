@@ -29,6 +29,7 @@
     type CompanionIdleKind,
     type CompanionLine,
     type CompanionServerCue,
+    type CompanionViewedSessionIds,
   } from '../lib/companion'
   import {
     companionAskExpressionOverride,
@@ -45,13 +46,16 @@
   interface Props {
     activity?: ActivityMap
     failures?: CompanionFailure[]
-    // The session the chat route currently has on screen — its own
-    // pending approval and running turn are already visible there, so
-    // CASE leaves them out (queued approvals still show; they have no
-    // card in any thread). Also decides where a bubble question goes
+    // The session(s) the current route has on screen — the chat route's
+    // own session, or the focus pipeline screen's session + its Q&A
+    // session (tars#1247). Their own pending approval and running turn
+    // are already visible there, so CASE leaves them out (queued
+    // approvals still show; they have no card in any thread). On the chat
+    // route specifically, this also decides where a bubble question goes
     // (tars#1236): on the main session, it is forwarded into that thread
-    // instead of answered in the bubble.
-    activeSessionId?: string | null
+    // instead of answered in the bubble — see routeView below, which
+    // gates that forward to the chat route only.
+    viewedSessionIds?: CompanionViewedSessionIds
     routeView?: string
     // The timestamp of the latest warn-severity SSE event App.svelte saw
     // (companionWarningFromEvent), or null/undefined for none yet. Only the
@@ -71,7 +75,7 @@
   let {
     activity = {},
     failures = [],
-    activeSessionId = null,
+    viewedSessionIds = null,
     routeView = 'home',
     warningAt = null,
     serverCue = null,
@@ -106,13 +110,13 @@
   // closes itself; the user's own open is left alone either way.
   let autoOpened = false
   let failureTimer: ReturnType<typeof setInterval> | null = null
-  let snapshot = $derived(companionState(activity, failures, now, $t.companion.lines, activeSessionId))
+  let snapshot = $derived(companionState(activity, failures, now, $t.companion.lines, viewedSessionIds))
   let hasFailureLines = $derived(snapshot.lines.some((line) => line.kind === 'failure'))
   // The main session's own "running" line is dropped from what the
   // bubble *renders* while CASE's own bubble turn is streaming on it
   // (tars#1236 requirement 6) — the Q&A block below already shows that.
   // Only relevant when asking from elsewhere: when the main session is
-  // the one on screen, companionState's own activeSessionId exclusion
+  // the one on screen, companionState's own viewedSessionIds exclusion
   // already leaves its lines out entirely. Approval ("pending"/"queued")
   // lines are never touched — those still need the ordinary waiting-list
   // treatment. `snapshot` itself (badge, hasWaitingLines, idle gating)
@@ -241,7 +245,7 @@
     const finished = companionTurnsJustFinished(
       prevActivityForCue,
       activity,
-      activeSessionId,
+      viewedSessionIds,
       companionFailedSessionIds(failures, Date.now()),
       companionAsk.mainSessionId,
     )
@@ -570,10 +574,16 @@
 
   // submitAsk sends CASE's bubble question as a normal chat turn on the
   // main session (tars#1236) — never a new session. Viewing that session
-  // already forwards it into ChatPanel's own thread instead of answering
-  // in the bubble (requirement 5): routed through the existing
-  // cross-component chatCommands queue, the same path `App.svelte` uses
-  // for other commands only the mounted chat workbench can run.
+  // on the chat route already forwards it into ChatPanel's own thread
+  // instead of answering in the bubble (requirement 5): routed through the
+  // existing cross-component chatCommands queue, the same path
+  // `App.svelte` uses for other commands only the mounted chat workbench
+  // can run. `chatCommands` has nothing to drain on a focus route
+  // (tars#1247) — `viewedSessionIds` there is the pipeline's own
+  // session(s), not necessarily the main session, and even when it is,
+  // there is no mounted ChatPanel to forward to — so the forward is gated
+  // to `routeView === 'chat'`, where `viewedSessionIds` is always the
+  // single chat-route session id.
   function submitAsk() {
     const text = draft.trim()
     if (!text) return
@@ -585,7 +595,12 @@
     if (companionAsk.busy) return
     const { prompt, context } = companionAskContext(text, routeView, $localeStore)
     draft = ''
-    if (activeSessionId && companionAsk.mainSessionId && activeSessionId === companionAsk.mainSessionId) {
+    const viewingMainSessionInChat =
+      routeView === 'chat' &&
+      typeof viewedSessionIds === 'string' &&
+      !!companionAsk.mainSessionId &&
+      viewedSessionIds === companionAsk.mainSessionId
+    if (viewingMainSessionInChat) {
       pendingThreadDraft = text
       chatCommands.request({ kind: 'companion-ask', text: prompt, context })
       return
@@ -776,7 +791,7 @@
      hazard for motion). */
   .companion-button {
     position: relative;
-    width: 74px;
+    width: var(--case-button-width);
     height: 86px;
     border: 0;
     background: transparent;
@@ -1226,7 +1241,7 @@
   }
 
   .companion-bubble {
-    width: min(300px, calc(100vw - 32px));
+    width: min(var(--case-bubble-width), calc(100vw - 32px));
     border: 1px solid rgba(var(--primary-rgb), 0.32);
     border-radius: var(--radius-lg);
     background: color-mix(in srgb, var(--surface-elevated) 94%, black);

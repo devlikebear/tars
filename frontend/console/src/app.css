@@ -75,6 +75,11 @@
 
   /* layout */
   --chat-rail-width: 44px;
+  /* CASE's own geometry (CompanionPet.svelte), shared here so a layout
+     that reserves space for it (App.svelte's focus-screen gutter) cannot
+     drift out of sync with the actual button/bubble size. */
+  --case-button-width: 74px;
+  --case-bubble-width: 300px;
 
   /* radius — tight, tool-like */
   --radius-sm: 2px;

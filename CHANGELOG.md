@@ -6,6 +6,10 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+### Changed
+
+- **CASE now shows on the focus screens too.** The companion button and bubble appear on the focus home, pipeline, new-task and template screens (the sidebar stays hidden there); the focus pipeline screen's own session and its hidden Q&A session count as "already on screen" the same way the chat route's active session always has, so their pending/running lines and finished-turn cue stay out of CASE. Each focus screen's column only gives up as much of its own centering as CASE's bubble would otherwise land under — nothing above ≈1552px wide, scaling down to none at all below ≈1216px, where an open bubble free-floats over content like it already does everywhere else (a left-aligned row like a gate's Approve or a finding's Fix/Dismiss stays clear regardless; a right-aligned one like the stage instruction's Send can be covered there — closing the bubble clears it). ([#1247](https://github.com/devlikebear/tars/issues/1247))
+
 ## [0.61.0] - 2026-10-11
 
 ### Added
