@@ -35,6 +35,21 @@ type Message struct {
 	// text; the field is metadata for the console's "TARS spoke first"
 	// badge and nothing else.
 	Initiative *MessageInitiative `json:"initiative,omitempty"`
+	// Origin marks a role "user" message the server wrote on its own, not
+	// typed by a person (tars#1249): "focus" for the focus driver's
+	// kickoff/gate/fix prompts, "focus_qa" for its read-only Q&A turns,
+	// "pulse" for a pulse auto-resume prompt (goal-mode auto-continue
+	// included — it runs through the same auto-resume turn), "agent_run"
+	// for an agentruntime run's own prompt (most runs land in a hidden
+	// session the observer never scans, but a fixed-session-routed run —
+	// e.g. embodiment's Cognition.Trigger, which defaults to the main
+	// session — writes straight into a visible one). Empty for a person's
+	// own message — the console's chat input, a Telegram reply — and for
+	// every non-user role. A transcript written before this field has no
+	// Origin on any message; readers that care treat an empty Origin on an
+	// old transcript as a person's message (the same default as a
+	// transcript that predates the field entirely), not as "unknown".
+	Origin string `json:"origin,omitempty"`
 }
 
 // MessageInitiative is the metadata an initiative-authored assistant

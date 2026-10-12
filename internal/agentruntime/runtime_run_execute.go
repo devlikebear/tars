@@ -375,7 +375,21 @@ func (r *Runtime) appendSessionMessage(workspaceID, sessionID, role, content str
 		return nil
 	}
 	path := sessionStore.TranscriptPath(sessionID)
-	if err := session.AppendMessage(path, session.Message{Role: role, Content: content, Timestamp: ts.UTC()}); err != nil {
+	msg := session.Message{Role: role, Content: content, Timestamp: ts.UTC()}
+	if role == "user" {
+		// Origin "agent_run" (tars#1249): this is the run's own prompt, not
+		// something a person typed. Most runs land in a hidden/worker
+		// session the initiative observer never scans (spawned by the
+		// local_agent/local_workflow chat tools, always SessionHidden:
+		// true) — but a "fixed" session-routing agent, or a caller that
+		// passes an existing session id with no hidden flag (embodiment's
+		// Cognition.Trigger defaults to the main session,
+		// internal/embodiment/cognition.go), writes this straight into a
+		// visible session, where it would otherwise look like the user
+		// typing.
+		msg.Origin = "agent_run"
+	}
+	if err := session.AppendMessage(path, msg); err != nil {
 		return err
 	}
 	return sessionStore.Touch(sessionID, ts.UTC())

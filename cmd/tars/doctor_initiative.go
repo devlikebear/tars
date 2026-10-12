@@ -37,9 +37,38 @@ func checkDoctorInitiative(report *doctorReport, cfg config.Config) {
 	} else {
 		checkDoctorInitiativeLLM(report, cfg, mode)
 	}
+	checkDoctorInitiativePresence(report, cfg)
 	if mode == initiative.ModeLive {
 		checkDoctorInitiativeSpeak(report, cfg)
 	}
+}
+
+// checkDoctorInitiativePresence reports the console presence signal's last
+// timestamp and whether the console reads as present right now (tars#1249)
+// — read directly from presence.json (the server process may not be
+// running), the same two facts GET /v1/initiative/status exposes. Never a
+// session id or any message text: presence.json holds neither.
+func checkDoctorInitiativePresence(report *doctorReport, cfg config.Config) {
+	if strings.TrimSpace(cfg.WorkspaceDir) == "" {
+		return
+	}
+	path := filepath.Join(cfg.WorkspaceDir, "_shared", "initiative", "presence.json")
+	state, err := initiative.LoadPresenceState(path)
+	if err != nil {
+		report.add("warn", "initiative presence", "presence.json unreadable: "+err.Error())
+		return
+	}
+	if state.LastAt.IsZero() {
+		report.add("ok", "initiative presence", "no presence signal recorded yet")
+		return
+	}
+	now := time.Now()
+	age := now.Sub(state.LastAt).Round(time.Second)
+	if state.Present(now) {
+		report.add("ok", "initiative presence", fmt.Sprintf("present now (last signal %s ago)", age))
+		return
+	}
+	report.add("ok", "initiative presence", fmt.Sprintf("not present (last signal %s ago)", age))
 }
 
 func checkDoctorInitiativeJev(report *doctorReport, cfg config.Config, mode string) {

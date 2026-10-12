@@ -23,10 +23,10 @@ const (
 func RenderState(cfg Config, obs Observation, includeText bool) (string, string) {
 	now := obs.Now.In(cfg.Location)
 	lines := []string{"now: " + now.Format("Mon 2006-01-02 15:04")}
-	if obs.ConsoleConnectedAt.IsZero() {
-		lines = append(lines, "console: not connected")
+	if consolePresent(obs) {
+		lines = append(lines, "console: connected "+ago(obs.Now.Sub(obs.ConsolePresentAt)))
 	} else {
-		lines = append(lines, "console: connected "+ago(obs.Now.Sub(obs.ConsoleConnectedAt)))
+		lines = append(lines, "console: not connected")
 	}
 	if n := len(obs.RecentUser); n > 0 {
 		lines = append(lines, "last_user_message: "+ago(obs.Now.Sub(obs.RecentUser[n-1].At)))

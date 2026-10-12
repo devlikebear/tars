@@ -78,9 +78,9 @@ func TestConsoleWinsOverTelegramWhenBothAvailable(t *testing.T) {
 	speaker := &fakeSpeaker{outcomes: []SpeakOutcome{{Delivered: true, Composed: true}}}
 	r := telegramLiveRuntime(t, &now, speaker, true)
 	r.deps.Observer = &fakeObserver{obs: Observation{
-		ConsoleConnectedAt: now.Add(-time.Hour),
-		TelegramReady:      true,
-		RecentUser:         []UserMessage{{At: now.Add(-25 * time.Hour)}},
+		ConsolePresentAt: now, ConsoleArrivedAt: now.Add(-time.Hour),
+		TelegramReady: true,
+		RecentUser:    []UserMessage{{At: now.Add(-25 * time.Hour)}},
 	}}
 	e := r.RunOnce(context.Background())
 	if e.Channel != ChannelConsole {

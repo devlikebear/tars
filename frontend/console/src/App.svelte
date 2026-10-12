@@ -23,6 +23,7 @@
     type CompanionServerCue,
   } from './lib/companion'
   import { zenMode } from './lib/zenMode.svelte'
+  import { startConsolePresence, stopConsolePresence } from './lib/presence'
   import { t } from './i18n'
   import CommandPalette from './components/CommandPalette.svelte'
   import ShortcutHelp from './components/ShortcutHelp.svelte'
@@ -195,6 +196,10 @@
       .catch(() => {})
     startGlobalStream()
     sessionActivity.start()
+    // Independent of companionEnabled (tars#1249): the presence signal
+    // must go even with CASE turned off in config, so it starts here
+    // rather than inside CompanionPet.
+    startConsolePresence()
   }
 
   // Console settings from the server config: the companion, and the mode
@@ -270,6 +275,7 @@
     stopGlobalStream?.()
     stopGlobalStream = null
     sessionActivity.stop()
+    stopConsolePresence()
     authInfo = null
     loginRequired = true
     unreadCount = 0
@@ -459,6 +465,7 @@
   onDestroy(() => {
     stopGlobalStream?.()
     sessionActivity.stop()
+    stopConsolePresence()
   })
 </script>
 

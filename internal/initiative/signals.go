@@ -44,7 +44,7 @@ func deriveGoSignals(cfg Config, obs Observation, hist History) GoSignals {
 		lastUser = obs.RecentUser[n-1].At
 	}
 	since := func(ts time.Time) time.Duration { return now.Sub(ts) }
-	consoleUp := !obs.ConsoleConnectedAt.IsZero()
+	consoleUp := consolePresent(obs)
 
 	g := GoSignals{
 		QuietHours:    inQuietWindow(cfg.QuietHours, now.In(cfg.Location)),
@@ -52,8 +52,8 @@ func deriveGoSignals(cfg Config, obs Observation, hist History) GoSignals {
 		Reachable:     consoleUp || obs.TelegramPaired,
 		BodyAvailable: obs.BodyAvailable,
 	}
-	g.JustArrived = consoleUp && since(obs.ConsoleConnectedAt) <= arrivalFreshness &&
-		(lastUser.IsZero() || obs.ConsoleConnectedAt.Sub(lastUser) >= arrivalGap)
+	g.JustArrived = consoleUp && since(obs.ConsoleArrivedAt) <= arrivalFreshness &&
+		(lastUser.IsZero() || obs.ConsoleArrivedAt.Sub(lastUser) >= arrivalGap)
 	g.LongSession = !lastUser.IsZero() && since(lastUser) <= longSessionTail && activeSpan(obs.RecentUser) >= longSession
 	g.LongAbsence = !lastUser.IsZero() && since(lastUser) >= longAbsence
 	g.IdleAtDesk = consoleUp && !lastUser.IsZero() && since(lastUser) >= idleMin && since(lastUser) <= idleMax

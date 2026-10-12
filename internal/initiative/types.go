@@ -34,9 +34,25 @@ type Observation struct {
 	// (tars#1221 P2c): a reply there lands in that Telegram user's own
 	// session, not the main one, so the adapter folds that session's
 	// newest user message in too (whichever is newer).
-	MainUserAt         time.Time
-	ConsoleConnectedAt time.Time // zero when no console is subscribed
-	ChatBusy           bool
+	MainUserAt time.Time
+	// ConsolePresentAt is the last time the console told the server a
+	// person was actually there (tars#1249's presence signal, POST
+	// /v1/console/presence) — not merely that something is subscribed to
+	// /v1/events/stream, which stays open for hours on an unattended tab
+	// or the desktop tray's own subscription. Zero means no presence
+	// signal has ever been recorded. consolePresent treats a signal older
+	// than presenceTTL the same as zero: a quiet console reads as "not at
+	// the desk" again once pings stop, whether or not the SSE connection
+	// itself is still open.
+	ConsolePresentAt time.Time
+	// ConsoleArrivedAt is when the current unbroken run of presence
+	// signals began (RecordPresence) — the timestamp of the first signal
+	// after a gap of presenceTTL or more, or of the very first signal
+	// ever. JustArrived reads this instead of ConsolePresentAt, which
+	// keeps advancing on every fresh ping and would otherwise never stay
+	// "just arrived" for long.
+	ConsoleArrivedAt time.Time
+	ChatBusy         bool
 	// TelegramPaired is true when at least one Telegram chat is paired —
 	// used only for GoSignals.Reachable, which treats several paired
 	// chats with none chosen as still reachable (tars#1219/#1220).

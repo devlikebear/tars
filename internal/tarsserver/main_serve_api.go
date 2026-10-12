@@ -72,6 +72,7 @@ type serveAPIRuntime struct {
 type apiRouteHandlers struct {
 	pulse             http.Handler
 	initiative        http.Handler
+	consolePresence   http.Handler
 	reflection        http.Handler
 	chat              http.Handler
 	sessions          http.Handler
@@ -397,11 +398,12 @@ func buildAPIMux(
 		Now:              nowFn,
 		ActionDispatcher: embodiment.NewMCPTransport(mcpClient, logger),
 	})
+	presenceStore := initiative.OpenPresenceStore(filepath.Join(cfg.WorkspaceDir, "_shared", "initiative", "presence.json"))
 	initiativeSetup := buildInitiativeRuntime(initiativeSetupInputs{
 		Config:           cfg,
 		WorkspaceDir:     cfg.WorkspaceDir,
 		SessionStore:     sessionStore,
-		Broker:           broker,
+		Presence:         presenceStore,
 		Activity:         activity,
 		TelegramPairings: telegramPairings,
 		TelegramSender:   telegramSender,
@@ -740,6 +742,7 @@ func buildAPIMux(
 	registerAPIRoutes(mux, apiRouteHandlers{
 		pulse:             pulseSetup.Handler,
 		initiative:        initiativeSetup.Handler,
+		consolePresence:   newConsolePresenceAPIHandler(presenceStore, nowFn, logger),
 		reflection:        reflectionSetup.Handler,
 		chat:              chatHandler,
 		sessions:          withGoalAudit(withWorktreeRetire(withSessionCreateIn(sessionHandler, sessionWorktrees), sessionWorktrees), auditTo(opsManager)),
@@ -786,7 +789,7 @@ func buildAPIMux(
 		codexUsage:      codexUsageHandler,
 	})
 	// Empty outside an `-tags e2e` build (see e2e_hooks.go/e2e_events.go).
-	applyE2ERouteHooks(mux, e2eRouteDeps{Broker: broker, InitiativeRuntime: initiativeSetup.Runtime})
+	applyE2ERouteHooks(mux, e2eRouteDeps{Broker: broker, InitiativeRuntime: initiativeSetup.Runtime, Presence: presenceStore})
 
 	server := &http.Server{
 		Addr:    opts.APIAddr,
@@ -855,6 +858,9 @@ func registerAPIRoutes(mux *http.ServeMux, handlers apiRouteHandlers) {
 	}
 	mux.Handle("/v1/pulse/", handlers.pulse)
 	mux.Handle("/v1/initiative/", handlers.initiative)
+	if handlers.consolePresence != nil {
+		mux.Handle("/v1/console/presence", handlers.consolePresence)
+	}
 	mux.Handle("/v1/reflection/", handlers.reflection)
 	mux.Handle("/v1/chat", handlers.chat)
 	mux.Handle("/v1/chat/", handlers.chat)
