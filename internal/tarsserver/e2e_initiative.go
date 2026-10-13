@@ -19,6 +19,15 @@ type e2eInitiativeTickRequest struct {
 	// At is the RFC3339 timestamp the tick runs as "now" (Runtime.RunOnceAt,
 	// tars#1220). Missing/empty uses the real wall clock.
 	At string `json:"at"`
+	// PresenceAt is zero or more RFC3339 timestamps (tars#1249) recorded
+	// into the presence tracker, in order, before the tick runs — a
+	// spec's stand-in for the console actually sending POST
+	// /v1/console/presence at those moments. Each one is folded through
+	// initiative.RecordPresence exactly like a real signal (a gap of
+	// presenceTTL or more starts a new arrival), so a spec drives arrival
+	// detection the same way the real endpoint does, just without a
+	// browser tab open at that synthetic time.
+	PresenceAt []string `json:"presence_at,omitempty"`
 }
 
 // registerE2EInitiativeTickRoute wires POST /v1/e2e/initiative/tick: a
@@ -51,6 +60,19 @@ func registerE2EInitiativeTickRoute(mux *http.ServeMux, deps e2eRouteDeps) {
 				return
 			}
 			now = parsed
+		}
+		if deps.Presence != nil {
+			for _, raw := range req.PresenceAt {
+				parsed, err := time.Parse(time.RFC3339, raw)
+				if err != nil {
+					writeError(w, http.StatusBadRequest, "", "presence_at must be RFC3339")
+					return
+				}
+				if _, err := deps.Presence.Record(parsed); err != nil {
+					writeError(w, http.StatusInternalServerError, "", "record presence failed")
+					return
+				}
+			}
 		}
 		entry := deps.InitiativeRuntime.RunOnceAt(r.Context(), now)
 		writeJSON(w, http.StatusOK, entry)

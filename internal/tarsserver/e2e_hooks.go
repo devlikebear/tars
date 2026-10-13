@@ -15,6 +15,12 @@ type e2eRouteDeps struct {
 	// InitiativeRuntime is nil when initiative is disabled (the common
 	// case in most e2e specs); a hook that needs it checks for nil itself.
 	InitiativeRuntime *initiative.Runtime
+	// Presence is the same console presence tracker (tars#1249) the real
+	// POST /v1/console/presence handler writes to — the initiative tick
+	// hook accepts synthetic presence_at timestamps so a spec can drive a
+	// tick as if the console had just sent a signal, without actually
+	// loading a browser tab at that exact synthetic time.
+	Presence *initiative.PresenceStore
 }
 
 // e2eRouteHooks lets a file built only with `-tags e2e` (see

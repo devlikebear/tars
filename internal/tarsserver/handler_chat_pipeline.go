@@ -211,7 +211,7 @@ func runChatTurn(w http.ResponseWriter, r *http.Request, req chatRequestPayload,
 		Int("message_len", len(strings.TrimSpace(req.Message))).
 		Msg("chat request accepted")
 
-	state, status, errMessage, err := prepareChatRunState(r, req, deps)
+	state, status, errMessage, err := prepareChatRunState(r, req, deps, origin)
 	if err != nil {
 		writeError(w, status, "", errMessage)
 		return llm.ChatResponse{}, &errChatTurnRejected{status: status, msg: errMessage, cause: err}

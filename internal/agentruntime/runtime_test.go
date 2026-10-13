@@ -1190,3 +1190,60 @@ func TestRuntimeArchive_RotateAndRetention(t *testing.T) {
 		t.Fatalf("expected archive files to be created")
 	}
 }
+
+// TestRuntimeAppendsOriginAgentRunForUserPrompt is the regression test for
+// the review finding on tars#1249: a run bound directly to an existing
+// (visible) session — e.g. embodiment's Cognition.Trigger, which defaults
+// to the main session when no percept session is set — writes its own
+// prompt as role "user" through appendSessionMessage. That message must
+// carry Origin "agent_run" so it reads as server-made, not as a person
+// typing, even though it landed in a visible session rather than a
+// hidden/worker one.
+func TestRuntimeAppendsOriginAgentRunForUserPrompt(t *testing.T) {
+	store := session.NewStore(t.TempDir())
+	main, err := store.EnsureMain()
+	if err != nil {
+		t.Fatalf("EnsureMain: %v", err)
+	}
+	rt := NewRuntime(RuntimeOptions{
+		Enabled:      true,
+		SessionStore: store,
+		RunPrompt: func(_ context.Context, _ string, prompt string) (string, error) {
+			return "ack: " + prompt, nil
+		},
+	})
+	t.Cleanup(func() { closeAgentRuntime(t, rt) })
+
+	// No SessionHidden: true here, matching embodiment.Cognition.Trigger's
+	// own SpawnRequest — the run is bound straight to the existing main
+	// session, not a fresh hidden one.
+	run, err := rt.Spawn(context.Background(), SpawnRequest{SessionID: main.ID, Prompt: "percept triggered this"})
+	if err != nil {
+		t.Fatalf("spawn: %v", err)
+	}
+	if run.SessionID != main.ID {
+		t.Fatalf("run.SessionID = %q, want the main session %q", run.SessionID, main.ID)
+	}
+	waitCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if _, err := rt.Wait(waitCtx, run.ID); err != nil {
+		t.Fatalf("wait: %v", err)
+	}
+
+	msgs, err := session.ReadMessages(store.TranscriptPath(main.ID))
+	if err != nil {
+		t.Fatalf("read messages: %v", err)
+	}
+	var found bool
+	for _, m := range msgs {
+		if m.Role == "user" && m.Content == "percept triggered this" {
+			found = true
+			if m.Origin != "agent_run" {
+				t.Fatalf("message origin = %q, want %q", m.Origin, "agent_run")
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("the run's prompt was never found as a role=user message in %+v", msgs)
+	}
+}

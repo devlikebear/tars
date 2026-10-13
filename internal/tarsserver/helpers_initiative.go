@@ -38,10 +38,16 @@ type sessionObserverDeps struct {
 	// reads for Observation.MainUserAt — a delivered greet/check_in is
 	// only ever written there (helpers_initiative_speak.go), so only a
 	// reply in that session counts.
-	MainSessionID   string
-	SubscriberCount func() int
-	ChatBusy        func() bool
-	TelegramPaired  func() bool
+	MainSessionID string
+	// Presence returns the console presence tracker's last recorded state
+	// (tars#1249: POST /v1/console/presence) — replacing the old
+	// subscriber-count signal, which read "something is still subscribed
+	// to /v1/events/stream" (a desktop tray subscription, or a tab left
+	// open for hours with nobody there) rather than "a person is actually
+	// at the console".
+	Presence       func() initiative.PresenceState
+	ChatBusy       func() bool
+	TelegramPaired func() bool
 	// TelegramReady reports whether a live-mode speak can actually be
 	// delivered over Telegram right now (tars#1221 P2c): a sender is
 	// configured AND exactly one default paired chat resolves. Stricter
@@ -65,7 +71,6 @@ type sessionObserverDeps struct {
 type sessionInitiativeObserver struct {
 	deps        sessionObserverDeps
 	mu          sync.Mutex
-	connectedAt time.Time
 	transcripts map[string]*fileCache[sessionActivitySnapshot]
 	profile     fileCache[string]
 }
@@ -78,13 +83,10 @@ func (o *sessionInitiativeObserver) Observe(_ context.Context, now time.Time) (i
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	obs := initiative.Observation{Now: now}
-	if o.deps.SubscriberCount != nil && o.deps.SubscriberCount() > 0 {
-		if o.connectedAt.IsZero() {
-			o.connectedAt = now
-		}
-		obs.ConsoleConnectedAt = o.connectedAt
-	} else {
-		o.connectedAt = time.Time{}
+	if o.deps.Presence != nil {
+		state := o.deps.Presence()
+		obs.ConsolePresentAt = state.LastAt
+		obs.ConsoleArrivedAt = state.ArrivedAt
 	}
 	if o.deps.ChatBusy != nil {
 		obs.ChatBusy = o.deps.ChatBusy()
@@ -203,24 +205,49 @@ type sessionActivitySnapshot struct {
 }
 
 // readSessionActivity reads one transcript once for both the user's own
-// messages (synthetic pulse resumes excluded, same as before) and the
-// newest non-initiative activity timestamp used as LastUserAt's fallback
-// upper bound. An initiative-authored assistant message
-// (Message.Initiative != nil, tars#1220) counts toward neither: it is not
-// something the user said, and it must not look like fresh activity either
-// — only a real message (from the user, a normal assistant reply, cron,
-// telegram, …) advances LastActivityAt.
+// messages and the newest non-initiative activity timestamp used as
+// LastUserAt's fallback upper bound. An initiative-authored assistant
+// message (Message.Initiative != nil, tars#1220) counts toward neither: it
+// is not something the user said, and it must not look like fresh activity
+// either — its own greeting must never read as "busy typing" or "just
+// arrived" to the next tick.
+//
+// A role "user" message the server started on its own (Message.Origin,
+// tars#1249 — the focus driver's kickoff/gate/fix prompts, "focus_qa",
+// "pulse"; a synthetic pulse auto-resume prompt predating Origin is still
+// read the same way through its "[PULSE" content prefix, kept for
+// transcripts written before this field) is not something a person typed
+// either, so it is excluded from UserMessages the same as an
+// initiative-authored reply. serverTurn also carries forward across that
+// turn's own assistant/tool reply messages up to (not including) the next
+// role "user" message, so the turn's own reply does not advance
+// LastActivityAt — otherwise a focus pipeline running unattended for days
+// would still look like someone is at the desk through this fallback
+// alone. It deliberately does not carry forward onto role "system"
+// messages: those are standalone notices unrelated to any turn — cron's
+// own `[CRON]`/`[REMINDER]` note (appendCronSessionMessage) chief among
+// them — appended independently of whichever user message happens to
+// precede them in the file, so a cron note landing in a session right
+// after a focus-origin turn (no human message in between) would otherwise
+// be excluded from this fallback for a reason that has nothing to do with
+// the note itself. A transcript with no Origin on any message (written
+// before this field existed) reads every role "user" message as a
+// person's, same as before.
 func readSessionActivity(path string) (sessionActivitySnapshot, error) {
 	msgs, err := session.ReadMessages(path)
 	if err != nil {
 		return sessionActivitySnapshot{}, err
 	}
 	var out sessionActivitySnapshot
+	serverTurn := false
 	for _, m := range msgs {
-		if m.Role == "user" && !strings.HasPrefix(strings.TrimSpace(m.Content), "[PULSE") {
-			out.UserMessages = append(out.UserMessages, initiative.UserMessage{At: m.Timestamp, Text: m.Content})
+		if m.Role == "user" {
+			serverTurn = strings.TrimSpace(m.Origin) != "" || strings.HasPrefix(strings.TrimSpace(m.Content), "[PULSE")
+			if !serverTurn {
+				out.UserMessages = append(out.UserMessages, initiative.UserMessage{At: m.Timestamp, Text: m.Content})
+			}
 		}
-		if m.Initiative != nil {
+		if m.Initiative != nil || (serverTurn && m.Role != "system") {
 			continue
 		}
 		if m.Timestamp.After(out.LastActivityAt) {
@@ -283,10 +310,15 @@ func (a embodimentBodyActor) Express(ctx context.Context, provider, emotion stri
 }
 
 type initiativeSetupInputs struct {
-	Config           config.Config
-	WorkspaceDir     string
-	SessionStore     *session.Store
-	Broker           *eventBroker
+	Config       config.Config
+	WorkspaceDir string
+	SessionStore *session.Store
+	// Presence is the console presence tracker (tars#1249: POST
+	// /v1/console/presence) the observer reads for arrival/"at the
+	// console right now" instead of the SSE broker's subscriber count.
+	// nil (never expected outside a test) means the observer never sees
+	// console presence at all.
+	Presence         *initiative.PresenceStore
 	Activity         *runtimeActivity
 	TelegramPairings *telegramPairingStore
 	Embodiment       *embodiment.Subsystem
@@ -334,7 +366,7 @@ type initiativeSetup struct {
 func buildInitiativeRuntime(in initiativeSetupInputs) initiativeSetup {
 	c := in.Config.Initiative
 	if !c.Enabled {
-		return initiativeSetup{Handler: newInitiativeAPIHandler(nil)}
+		return initiativeSetup{Handler: newInitiativeAPIHandler(nil, in.Presence, in.Now)}
 	}
 	logger := in.Logger.With().Str("component", "initiative").Logger()
 	loc := time.Local
@@ -408,8 +440,8 @@ func buildInitiativeRuntime(in initiativeSetupInputs) initiativeSetup {
 	}
 
 	observerDeps := sessionObserverDeps{Store: in.SessionStore, WorkspaceDir: in.WorkspaceDir, MainSessionID: strings.TrimSpace(in.MainSessionID)}
-	if in.Broker != nil {
-		observerDeps.SubscriberCount = in.Broker.SubscriberCount
+	if in.Presence != nil {
+		observerDeps.Presence = in.Presence.Current
 	}
 	if in.Activity != nil {
 		observerDeps.ChatBusy = in.Activity.isChatBusy
@@ -449,7 +481,7 @@ func buildInitiativeRuntime(in initiativeSetupInputs) initiativeSetup {
 	deps.Observer = newSessionInitiativeObserver(observerDeps)
 
 	runtime := initiative.NewRuntime(cfg, deps)
-	return initiativeSetup{Runtime: runtime, Handler: newInitiativeAPIHandler(runtime), Speaker: speaker}
+	return initiativeSetup{Runtime: runtime, Handler: newInitiativeAPIHandler(runtime, in.Presence, in.Now), Speaker: speaker}
 }
 
 func hostOf(raw string) string {

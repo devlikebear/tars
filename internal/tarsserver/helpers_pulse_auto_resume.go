@@ -118,7 +118,10 @@ func (c *sessionAutoResumeController) runAutoResumeTurn(ctx context.Context, can
 		return "", err
 	}
 	now := c.nowTime().UTC()
-	userMsg := session.Message{Role: "user", Content: prompt, Timestamp: now}
+	// Origin "pulse" marks this as a server-started turn (tars#1249): the
+	// initiative observer's activity reader excludes it from
+	// LastUserAt/Busy/RecentUser, same as a focus driver turn.
+	userMsg := session.Message{Role: "user", Content: prompt, Timestamp: now, Origin: "pulse"}
 	if err := session.AppendMessage(state.transcriptPath, userMsg); err != nil {
 		return "", err
 	}

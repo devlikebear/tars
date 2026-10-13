@@ -341,7 +341,7 @@ func formatSessionGoalPrompt(goal *session.SessionGoal) string {
 	return b.String()
 }
 
-func prepareChatRunState(r *http.Request, req chatRequestPayload, deps chatHandlerDeps) (chatRunState, int, string, error) {
+func prepareChatRunState(r *http.Request, req chatRequestPayload, deps chatHandlerDeps, origin chatTurnOrigin) (chatRunState, int, string, error) {
 	reqStore, requestWorkspaceDir, workspaceID, err := resolveSessionStoreForRequest(deps.workspaceDir, deps.store, r)
 	if err != nil {
 		deps.logger.Error().Err(err).Msg("resolve workspace session store failed")
@@ -435,7 +435,15 @@ func prepareChatRunState(r *http.Request, req chatRequestPayload, deps chatHandl
 		}
 	}
 
-	userMsg := session.Message{Role: "user", Content: req.Message, Timestamp: time.Now().UTC()}
+	userMsg := session.Message{
+		Role:      "user",
+		Content:   req.Message,
+		Timestamp: time.Now().UTC(),
+		// Origin marks a turn the server started on its own, not typed by a
+		// person (tars#1249) — the initiative observer's activity reader
+		// (readSessionActivity) excludes it from LastUserAt/Busy/RecentUser.
+		Origin: strings.TrimSpace(origin.unattended),
+	}
 	// Known before saving, so the turn's checkpoint and the console can
 	// refer to this message.
 	if id, idErr := session.NewMessageID(userMsg.Timestamp); idErr == nil {

@@ -40,14 +40,14 @@ func liveReplyRuntime(t *testing.T, now *time.Time, one SystemOne, includeText b
 func TestReplyTrackingRepliedWithinWindow(t *testing.T) {
 	now := at(9, 0)
 	r, observer := liveReplyRuntime(t, &now, nil, false)
-	observer.obs = Observation{ConsoleConnectedAt: now, LastUserAt: now.Add(-5 * time.Hour)}
+	observer.obs = Observation{ConsolePresentAt: now, ConsoleArrivedAt: now, LastUserAt: now.Add(-5 * time.Hour)}
 	e1 := r.RunOnceAt(context.Background(), now)
 	if e1.Intent != IntentGreet || e1.Delivery != DeliveryDelivered {
 		t.Fatalf("tick1 = %+v, want a delivered greet", e1)
 	}
 
 	now = now.Add(5 * time.Minute)
-	observer.obs = Observation{ConsoleConnectedAt: e1.At, MainUserAt: now, LastUserAt: now}
+	observer.obs = Observation{ConsolePresentAt: e1.At, ConsoleArrivedAt: e1.At, MainUserAt: now, LastUserAt: now}
 	r.RunOnceAt(context.Background(), now)
 
 	snap := r.Snapshot()
@@ -62,14 +62,14 @@ func TestReplyTrackingRepliedWithinWindow(t *testing.T) {
 func TestReplyTrackingIgnoredAfterWindowElapses(t *testing.T) {
 	now := at(9, 0)
 	r, observer := liveReplyRuntime(t, &now, nil, false)
-	observer.obs = Observation{ConsoleConnectedAt: now, LastUserAt: now.Add(-5 * time.Hour)}
+	observer.obs = Observation{ConsolePresentAt: now, ConsoleArrivedAt: now, LastUserAt: now.Add(-5 * time.Hour)}
 	e1 := r.RunOnceAt(context.Background(), now)
 	if e1.Delivery != DeliveryDelivered {
 		t.Fatalf("tick1 = %+v, want a delivered speak", e1)
 	}
 
 	now = now.Add(30 * time.Minute) // the default reply window (30m) elapses
-	observer.obs = Observation{ConsoleConnectedAt: e1.At}
+	observer.obs = Observation{ConsolePresentAt: e1.At, ConsoleArrivedAt: e1.At}
 	r.RunOnceAt(context.Background(), now)
 
 	snap := r.Snapshot()
@@ -89,7 +89,7 @@ func TestReplyTrackingStoppedBlocksRestOfDay(t *testing.T) {
 	now := at(9, 0)
 	fake := &fakeSystemOne{probs: map[string]float64{"quiet_requested": 0.9}}
 	r, observer := liveReplyRuntime(t, &now, fake, true)
-	observer.obs = Observation{ConsoleConnectedAt: now, LastUserAt: now.Add(-5 * time.Hour)}
+	observer.obs = Observation{ConsolePresentAt: now, ConsoleArrivedAt: now, LastUserAt: now.Add(-5 * time.Hour)}
 	e1 := r.RunOnceAt(context.Background(), now)
 	if e1.Delivery != DeliveryDelivered {
 		t.Fatalf("tick1 = %+v, want a delivered speak", e1)
@@ -97,7 +97,7 @@ func TestReplyTrackingStoppedBlocksRestOfDay(t *testing.T) {
 
 	now = now.Add(5 * time.Minute)
 	observer.obs = Observation{
-		ConsoleConnectedAt: e1.At, MainUserAt: now, LastUserAt: now,
+		ConsolePresentAt: e1.At, ConsoleArrivedAt: e1.At, MainUserAt: now, LastUserAt: now,
 		RecentUser: []UserMessage{{At: now, Text: "조용히 해줘"}},
 	}
 	r.RunOnceAt(context.Background(), now)
@@ -112,7 +112,7 @@ func TestReplyTrackingStoppedBlocksRestOfDay(t *testing.T) {
 	// needed to reach that decision (no pending reply, and every text
 	// combination already yields the same Intent/Speak).
 	now = now.Add(6 * time.Hour)
-	observer.obs = Observation{ConsoleConnectedAt: now, LastUserAt: now.Add(-5 * time.Hour)}
+	observer.obs = Observation{ConsolePresentAt: now, ConsoleArrivedAt: now, LastUserAt: now.Add(-5 * time.Hour)}
 	e3 := r.RunOnceAt(context.Background(), now)
 	if e3.Intent != IntentNone || e3.Reason != "stopped_today" || e3.Called {
 		t.Fatalf("tick3 = %+v, want a silent stopped_today decision with no backend call", e3)
@@ -130,7 +130,7 @@ func TestReplyTrackingWaitsThroughTextReadBackoffThenResolves(t *testing.T) {
 	now := at(9, 0)
 	fake := &fakeSystemOne{err: errors.New("backend down")}
 	r, observer := liveReplyRuntime(t, &now, fake, true)
-	observer.obs = Observation{ConsoleConnectedAt: now, LastUserAt: now.Add(-5 * time.Hour)}
+	observer.obs = Observation{ConsolePresentAt: now, ConsoleArrivedAt: now, LastUserAt: now.Add(-5 * time.Hour)}
 	e1 := r.RunOnceAt(context.Background(), now)
 	if e1.Delivery != DeliveryDelivered {
 		t.Fatalf("tick1 = %+v, want a delivered speak", e1)
@@ -142,7 +142,7 @@ func TestReplyTrackingWaitsThroughTextReadBackoffThenResolves(t *testing.T) {
 	// The reply arrives, but this tick's read errors: the outcome must
 	// not be finalized yet.
 	now = replyAt
-	observer.obs = Observation{ConsoleConnectedAt: e1.At, MainUserAt: replyAt, LastUserAt: replyAt, RecentUser: recentUser}
+	observer.obs = Observation{ConsolePresentAt: e1.At, ConsoleArrivedAt: e1.At, MainUserAt: replyAt, LastUserAt: replyAt, RecentUser: recentUser}
 	r.RunOnceAt(context.Background(), now)
 	if fake.calls != 1 {
 		t.Fatalf("calls = %d, want exactly one attempt", fake.calls)
@@ -154,7 +154,7 @@ func TestReplyTrackingWaitsThroughTextReadBackoffThenResolves(t *testing.T) {
 	// One minute later is still inside the 5m read-failure backoff: the
 	// backend must not be called again, and the reply stays pending.
 	now = replyAt.Add(time.Minute)
-	observer.obs = Observation{ConsoleConnectedAt: e1.At, MainUserAt: replyAt, LastUserAt: replyAt, RecentUser: recentUser}
+	observer.obs = Observation{ConsolePresentAt: e1.At, ConsoleArrivedAt: e1.At, MainUserAt: replyAt, LastUserAt: replyAt, RecentUser: recentUser}
 	r.RunOnceAt(context.Background(), now)
 	if fake.calls != 1 {
 		t.Fatalf("calls = %d, want still exactly one attempt (backoff must hold)", fake.calls)
@@ -164,7 +164,7 @@ func TestReplyTrackingWaitsThroughTextReadBackoffThenResolves(t *testing.T) {
 	fake.err = nil
 	fake.probs = map[string]float64{"quiet_requested": 0}
 	now = replyAt.Add(6 * time.Minute)
-	observer.obs = Observation{ConsoleConnectedAt: e1.At, MainUserAt: replyAt, LastUserAt: replyAt, RecentUser: recentUser}
+	observer.obs = Observation{ConsolePresentAt: e1.At, ConsoleArrivedAt: e1.At, MainUserAt: replyAt, LastUserAt: replyAt, RecentUser: recentUser}
 	r.RunOnceAt(context.Background(), now)
 	if fake.calls != 2 {
 		t.Fatalf("calls = %d, want a retry once the backoff lifted", fake.calls)

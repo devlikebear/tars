@@ -76,8 +76,8 @@ func TestLiveSpeakUnreachableWithoutConsoleNeverComposes(t *testing.T) {
 	speaker := &fakeSpeaker{}
 	r := liveRuntime(t, &now, speaker, nil)
 	// Reachable via Telegram (so Decide's long_absence check_in fires) but
-	// the console itself is not connected (ConsoleConnectedAt zero): the
-	// delivery channel is console-only, so this must still be unreachable.
+	// the console itself has no presence signal (ConsolePresentAt zero):
+	// the delivery channel is console-only, so this must still be unreachable.
 	r.deps.Observer = &fakeObserver{obs: Observation{
 		TelegramPaired: true,
 		RecentUser:     []UserMessage{{At: now.Add(-25 * time.Hour)}},
@@ -114,8 +114,8 @@ func TestLiveSpeakDeliveredWritesAssistantMessageAndCounts(t *testing.T) {
 	speaker := &fakeSpeaker{outcomes: []SpeakOutcome{{Delivered: true, Composed: true}}}
 	r := liveRuntime(t, &now, speaker, nil)
 	r.deps.Observer = &fakeObserver{obs: Observation{
-		ConsoleConnectedAt: now.Add(-time.Minute),
-		RecentUser:         []UserMessage{{At: now.Add(-14 * time.Hour), Text: "잘 자"}},
+		ConsolePresentAt: now.Add(-time.Minute), ConsoleArrivedAt: now.Add(-time.Minute),
+		RecentUser: []UserMessage{{At: now.Add(-14 * time.Hour), Text: "잘 자"}},
 	}}
 	e := r.RunOnce(context.Background())
 	if e.Delivery != DeliveryDelivered || !e.Composed {
@@ -142,14 +142,14 @@ func TestLiveSpeakComposeFailureBacksOffAndStopsCalling(t *testing.T) {
 	now := at(9, 0)
 	speaker := &fakeSpeaker{outcomes: []SpeakOutcome{{Composed: true}}, errs: []error{errors.New("boom")}}
 	r := liveRuntime(t, &now, speaker, nil)
-	r.deps.Observer = &fakeObserver{obs: Observation{ConsoleConnectedAt: now.Add(-time.Minute)}}
+	r.deps.Observer = &fakeObserver{obs: Observation{ConsolePresentAt: now.Add(-time.Minute), ConsoleArrivedAt: now.Add(-time.Minute)}}
 	// Force a greet decision every tick by keeping JustArrived true: easier
 	// is to directly use check_in via long_absence with Reachable through
 	// the console. We use arrival once, then rely on long_absence staying
 	// true across backoff ticks since nothing is ever delivered.
 	r.deps.Observer = &fakeObserver{obs: Observation{
-		ConsoleConnectedAt: now.Add(-time.Minute),
-		RecentUser:         []UserMessage{{At: now.Add(-25 * time.Hour)}},
+		ConsolePresentAt: now.Add(-time.Minute), ConsoleArrivedAt: now.Add(-time.Minute),
+		RecentUser: []UserMessage{{At: now.Add(-25 * time.Hour)}},
 	}}
 	e := r.RunOnce(context.Background())
 	if e.Delivery != DeliveryError || !e.Composed {
@@ -188,22 +188,26 @@ func TestLiveSpeakDailyCapStopsComposing(t *testing.T) {
 	now := at(9, 0)
 	speaker := &fakeSpeaker{outcomes: []SpeakOutcome{{Composed: true}}, errs: []error{errors.New("boom")}}
 	ledger := OpenLedger(filepath.Join(t.TempDir(), "ledger.jsonl"), 0)
+	observer := &fakeObserver{obs: Observation{
+		ConsolePresentAt: now.Add(-time.Minute), ConsoleArrivedAt: now.Add(-time.Minute),
+		RecentUser: []UserMessage{{At: now.Add(-25 * time.Hour)}},
+	}}
 	deps := Dependencies{
-		Observer: &fakeObserver{obs: Observation{
-			ConsoleConnectedAt: now.Add(-time.Minute),
-			RecentUser:         []UserMessage{{At: now.Add(-25 * time.Hour)}},
-		}},
-		Ledger: ledger, Logger: zerolog.Nop(), Now: func() time.Time { return now }, Speaker: speaker,
+		Observer: observer,
+		Ledger:   ledger, Logger: zerolog.Nop(), Now: func() time.Time { return now }, Speaker: speaker,
 	}
 	r := NewRuntime(Config{Enabled: true, Mode: ModeLive, Location: seoul, DailySpeakCalls: 2}, deps)
 	// Tick 1: compose fails (count=1). Advance past backoff (5m) each time
-	// so the cap -- not backoff -- is what stops tick 3.
+	// so the cap -- not backoff -- is what stops tick 3. The console keeps
+	// pinging every tick (ConsolePresentAt tracks now) — this test is about
+	// the daily cap/backoff, not presence staleness.
 	for i := 0; i < 2; i++ {
 		e := r.RunOnce(context.Background())
 		if e.Delivery != DeliveryError {
 			t.Fatalf("tick %d = %+v, want composed error", i, e)
 		}
 		now = now.Add(10 * time.Minute)
+		observer.obs.ConsolePresentAt = now
 	}
 	if speaker.callCount() != 2 {
 		t.Fatalf("calls = %d, want 2 (cap)", speaker.callCount())
@@ -225,8 +229,8 @@ func TestLiveSpeakUnavailableWhenNoSpeakerConfigured(t *testing.T) {
 	ledger := OpenLedger(filepath.Join(t.TempDir(), "ledger.jsonl"), 0)
 	deps := Dependencies{
 		Observer: &fakeObserver{obs: Observation{
-			ConsoleConnectedAt: now.Add(-time.Minute),
-			RecentUser:         []UserMessage{{At: now.Add(-14 * time.Hour), Text: "잘 자"}},
+			ConsolePresentAt: now.Add(-time.Minute), ConsoleArrivedAt: now.Add(-time.Minute),
+			RecentUser: []UserMessage{{At: now.Add(-14 * time.Hour), Text: "잘 자"}},
 		}},
 		Ledger: ledger, Logger: zerolog.Nop(), Now: func() time.Time { return now },
 	}
@@ -246,8 +250,8 @@ func TestLiveSpeakBusyClaimSkipsWithoutCountingAsComposed(t *testing.T) {
 	speaker := &fakeSpeaker{outcomes: []SpeakOutcome{{Reason: deliveryReasonBusy}}}
 	r := liveRuntime(t, &now, speaker, nil)
 	r.deps.Observer = &fakeObserver{obs: Observation{
-		ConsoleConnectedAt: now.Add(-time.Minute),
-		RecentUser:         []UserMessage{{At: now.Add(-14 * time.Hour), Text: "잘 자"}},
+		ConsolePresentAt: now.Add(-time.Minute), ConsoleArrivedAt: now.Add(-time.Minute),
+		RecentUser: []UserMessage{{At: now.Add(-14 * time.Hour), Text: "잘 자"}},
 	}}
 	e := r.RunOnce(context.Background())
 	if e.Delivery != DeliverySkipped || e.DeliveryReason != deliveryReasonBusy || e.Composed {
@@ -276,8 +280,8 @@ func TestLiveSpeakSupersededCountsComposeCallButNotFailureOrCooldown(t *testing.
 	}}
 	r := liveRuntime(t, &now, speaker, nil)
 	r.deps.Observer = &fakeObserver{obs: Observation{
-		ConsoleConnectedAt: now.Add(-time.Minute),
-		RecentUser:         []UserMessage{{At: now.Add(-25 * time.Hour)}},
+		ConsolePresentAt: now.Add(-time.Minute), ConsoleArrivedAt: now.Add(-time.Minute),
+		RecentUser: []UserMessage{{At: now.Add(-25 * time.Hour)}},
 	}}
 
 	e := r.RunOnce(context.Background())
@@ -331,8 +335,8 @@ func TestLiveSpeakRestartRestoresBackoffFromLedger(t *testing.T) {
 	speaker := &fakeSpeaker{outcomes: []SpeakOutcome{{Composed: true}}, errs: []error{errors.New("boom")}}
 	r := liveRuntime(t, &now, speaker, ledger)
 	r.deps.Observer = &fakeObserver{obs: Observation{
-		ConsoleConnectedAt: now.Add(-time.Minute),
-		RecentUser:         []UserMessage{{At: now.Add(-14 * time.Hour), Text: "잘 자"}},
+		ConsolePresentAt: now.Add(-time.Minute), ConsoleArrivedAt: now.Add(-time.Minute),
+		RecentUser: []UserMessage{{At: now.Add(-14 * time.Hour), Text: "잘 자"}},
 	}}
 	e := r.RunOnce(context.Background())
 	if e.Delivery != DeliverySkipped || e.DeliveryReason != deliveryReasonBackoff {
@@ -352,8 +356,8 @@ func TestLiveSpeakConcurrentTicksDeliverOnlyOnce(t *testing.T) {
 	speaker := &fakeSpeaker{outcomes: []SpeakOutcome{{Delivered: true, Composed: true}}}
 	r := liveRuntime(t, &now, speaker, nil)
 	r.deps.Observer = &fakeObserver{obs: Observation{
-		ConsoleConnectedAt: now.Add(-time.Minute),
-		RecentUser:         []UserMessage{{At: now.Add(-14 * time.Hour), Text: "잘 자"}},
+		ConsolePresentAt: now.Add(-time.Minute), ConsoleArrivedAt: now.Add(-time.Minute),
+		RecentUser: []UserMessage{{At: now.Add(-14 * time.Hour), Text: "잘 자"}},
 	}}
 	var wg sync.WaitGroup
 	entries := make([]Entry, 2)
@@ -421,8 +425,8 @@ func TestSnapshotReportsDeliveryAndSpeakBackend(t *testing.T) {
 	ledger := OpenLedger(filepath.Join(t.TempDir(), "ledger.jsonl"), 0)
 	deps := Dependencies{
 		Observer: &fakeObserver{obs: Observation{
-			ConsoleConnectedAt: now.Add(-time.Minute),
-			RecentUser:         []UserMessage{{At: now.Add(-14 * time.Hour), Text: "잘 자"}},
+			ConsolePresentAt: now.Add(-time.Minute), ConsoleArrivedAt: now.Add(-time.Minute),
+			RecentUser: []UserMessage{{At: now.Add(-14 * time.Hour), Text: "잘 자"}},
 		}},
 		Ledger: ledger, Logger: zerolog.Nop(), Now: func() time.Time { return now }, Speaker: speaker,
 		SpeakBackend: BackendInfo{Backend: "llm", Kind: "anthropic", Provider: "shared", Model: "haiku", Tier: "light", SendsText: true, TextReason: "llm_same_provider"},

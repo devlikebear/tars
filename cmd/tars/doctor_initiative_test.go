@@ -196,6 +196,62 @@ func TestCheckDoctorInitiativeLiveSpeakUnavailable(t *testing.T) {
 	}
 }
 
+// TestCheckDoctorInitiativePresence checks requirement #4: doctor reports
+// the last console presence signal's age and whether it reads as present
+// right now (tars#1249), reading presence.json directly — no running
+// server needed — and never a session id or message text.
+func TestCheckDoctorInitiativePresence(t *testing.T) {
+	workspace := t.TempDir()
+	cfg := config.Config{
+		RuntimeConfig: config.RuntimeConfig{WorkspaceDir: workspace},
+		Initiative:    config.InitiativeConfig{Enabled: true, Backend: "jev"},
+		Jev:           config.JevConfig{BaseURL: ""},
+	}
+	findPresence := func(r doctorReport) *doctorCheck {
+		for i := range r.checks {
+			if r.checks[i].name == "initiative presence" {
+				return &r.checks[i]
+			}
+		}
+		return nil
+	}
+
+	// No presence.json at all yet.
+	var none doctorReport
+	checkDoctorInitiative(&none, cfg)
+	if c := findPresence(none); c == nil || c.status != "ok" || !strings.Contains(c.detail, "no presence signal recorded") {
+		t.Fatalf("no-file presence check = %+v", c)
+	}
+
+	// A fresh signal reads as present now.
+	path := filepath.Join(workspace, "_shared", "initiative", "presence.json")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(fmt.Sprintf(`{"last_at":%q,"arrived_at":%q}`, time.Now().Format(time.RFC3339), time.Now().Format(time.RFC3339))), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var present doctorReport
+	checkDoctorInitiative(&present, cfg)
+	if c := findPresence(present); c == nil || c.status != "ok" || !strings.Contains(c.detail, "present now") {
+		t.Fatalf("fresh presence check = %+v", c)
+	}
+	if c := findPresence(present); c != nil && (strings.Contains(c.detail, "session") || strings.Contains(c.detail, "\"")) {
+		t.Fatalf("presence detail leaks text/identifiers: %q", c.detail)
+	}
+
+	// A stale signal (past presenceTTL) reads as not present.
+	stale := time.Now().Add(-time.Hour).Format(time.RFC3339)
+	if err := os.WriteFile(path, []byte(fmt.Sprintf(`{"last_at":%q,"arrived_at":%q}`, stale, stale)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var notPresent doctorReport
+	checkDoctorInitiative(&notPresent, cfg)
+	if c := findPresence(notPresent); c == nil || c.status != "ok" || !strings.Contains(c.detail, "not present") {
+		t.Fatalf("stale presence check = %+v", c)
+	}
+}
+
 func TestInitiativeLastDeliverySummaryReadsLedgerNotCurrentProcess(t *testing.T) {
 	workspace := t.TempDir()
 	ledgerPath := workspace + "/_shared/initiative/ledger.jsonl"

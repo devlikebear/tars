@@ -10,8 +10,8 @@ func TestRenderStateIncludesRecentTextWhenLocal(t *testing.T) {
 	cfg := Config{Location: seoul}.WithDefaults()
 	now := at(9, 0)
 	obs := Observation{
-		Now:                now,
-		ConsoleConnectedAt: now.Add(-2 * time.Minute),
+		Now:              now,
+		ConsolePresentAt: now.Add(-2 * time.Minute), ConsoleArrivedAt: now.Add(-2 * time.Minute),
 		RecentUser: []UserMessage{
 			{At: now.Add(-5 * time.Hour), Text: "too old to include"},
 			{At: now.Add(-5 * time.Minute), Text: "오늘은 메시지 그만 보내줘"},

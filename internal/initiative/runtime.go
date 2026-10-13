@@ -415,16 +415,17 @@ func (r *Runtime) textReadEligible(now time.Time) bool {
 // deliverLocked decides whether to call the speak composer this tick and
 // records the outcome on entry.Delivery/DeliveryReason/Composed/Channel.
 // Called only when entry.Speak and live mode. The channel is picked before
-// any compose call: console whenever connected, else telegram only when
-// Config.Telegram is on and Observation.TelegramReady — never both, and
-// never telegram when Config.Telegram is off (that leaves the entry
-// byte-for-byte what it was before this field existed: unreachable,
-// no_console, no Channel). Neither channel composes for a tick nobody can
-// see.
+// any compose call: console whenever a presence signal is fresh
+// (consolePresent, tars#1249 — not merely subscribed to the SSE stream),
+// else telegram only when Config.Telegram is on and Observation.TelegramReady
+// — never both, and never telegram when Config.Telegram is off (that leaves
+// the entry byte-for-byte what it was before this field existed:
+// unreachable, no_console, no Channel). Neither channel composes for a tick
+// nobody can see.
 func (r *Runtime) deliverLocked(ctx context.Context, entry *Entry, obs Observation) {
 	channel := ""
 	switch {
-	case !obs.ConsoleConnectedAt.IsZero():
+	case consolePresent(obs):
 		channel = ChannelConsole
 	case r.cfg.Telegram && obs.TelegramReady:
 		channel = ChannelTelegram

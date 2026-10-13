@@ -77,12 +77,17 @@ func TestSessionObserverToleratesMissingFiles(t *testing.T) {
 	store := session.NewStore(t.TempDir())
 	obs := newSessionInitiativeObserver(sessionObserverDeps{Store: store, WorkspaceDir: t.TempDir()})
 	got, err := obs.Observe(context.Background(), time.Now())
-	if err != nil || len(got.RecentUser) != 0 || got.Profile != "" || !got.ConsoleConnectedAt.IsZero() {
+	if err != nil || len(got.RecentUser) != 0 || got.Profile != "" || !got.ConsolePresentAt.IsZero() {
 		t.Fatalf("observation = %+v err=%v", got, err)
 	}
 }
 
-func TestSessionObserverReadsUserMessagesAndConsole(t *testing.T) {
+// TestSessionObserverReadsUserMessagesAndPresence checks that the observer
+// is a plain pass-through of the presence tracker's current state
+// (tars#1249) — it holds no decay/staleness logic of its own (that lives in
+// consolePresent/presenceTTL inside internal/initiative), unlike the old
+// SubscriberCount-based "sticks while subscribed" behavior it replaces.
+func TestSessionObserverReadsUserMessagesAndPresence(t *testing.T) {
 	store := session.NewStore(t.TempDir())
 	sess, err := store.Create("main")
 	if err != nil {
@@ -107,12 +112,12 @@ func TestSessionObserverReadsUserMessagesAndConsole(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(workspace, "USER.md"), []byte("birthday: Sep 29"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	subscribers := 1
+	presence := initiative.PresenceState{LastAt: now, ArrivedAt: now}
 	obs := newSessionInitiativeObserver(sessionObserverDeps{
 		Store: store, WorkspaceDir: workspace,
-		SubscriberCount: func() int { return subscribers },
-		ChatBusy:        func() bool { return true },
-		TelegramPaired:  func() bool { return true },
+		Presence:       func() initiative.PresenceState { return presence },
+		ChatBusy:       func() bool { return true },
+		TelegramPaired: func() bool { return true },
 	})
 
 	got, err := obs.Observe(context.Background(), now)
@@ -122,17 +127,19 @@ func TestSessionObserverReadsUserMessagesAndConsole(t *testing.T) {
 	if len(got.RecentUser) != 1 || got.RecentUser[0].Text != "오늘 너무 피곤해" {
 		t.Fatalf("recent user = %+v", got.RecentUser)
 	}
-	if got.Profile != "birthday: Sep 29" || !got.ChatBusy || !got.TelegramPaired || !got.ConsoleConnectedAt.Equal(now) {
+	if got.Profile != "birthday: Sep 29" || !got.ChatBusy || !got.TelegramPaired ||
+		!got.ConsolePresentAt.Equal(now) || !got.ConsoleArrivedAt.Equal(now) {
 		t.Fatalf("observation = %+v", got)
 	}
 
-	later, _ := obs.Observe(context.Background(), now.Add(time.Minute))
-	if !later.ConsoleConnectedAt.Equal(now) {
-		t.Fatalf("console connection time must stick while connected, got %v", later.ConsoleConnectedAt)
-	}
-	subscribers = 0
-	if gone, _ := obs.Observe(context.Background(), now.Add(2*time.Minute)); !gone.ConsoleConnectedAt.IsZero() {
-		t.Fatal("console connection must reset when no subscriber is left")
+	// The observer reflects whatever the tracker reports this tick, with
+	// no memory of its own — unlike the old SubscriberCount path, which
+	// kept ConsoleConnectedAt fixed at first-subscribe time for as long as
+	// something stayed subscribed, the actual bug tars#1249 fixes.
+	presence = initiative.PresenceState{}
+	gone, _ := obs.Observe(context.Background(), now.Add(2*time.Minute))
+	if !gone.ConsolePresentAt.IsZero() || !gone.ConsoleArrivedAt.IsZero() {
+		t.Fatalf("observation = %+v, want the observer to pass through the tracker's current (now empty) state", gone)
 	}
 }
 
@@ -465,5 +472,145 @@ func TestSessionObserverKnowsLastUserBeyondTheTextLookback(t *testing.T) {
 	}
 	if len(got.RecentUser) != 0 || !got.LastUserAt.Equal(old) {
 		t.Fatalf("observation = %+v", got)
+	}
+}
+
+// TestSessionObserverExcludesServerOriginTurnsAsUserActivity is the
+// regression test for tars#1249's requirement #3: a role "user" message
+// the server started on its own (Message.Origin — the focus driver's
+// kickoff/gate/fix prompts, a pulse auto-resume) must not look like the
+// user being active, either as a UserMessages entry or through the
+// no-user-message fallback — same treatment as an initiative-authored
+// assistant message. Its attached assistant reply (no Origin of its own)
+// is excluded too, up to the next real user message.
+func TestSessionObserverExcludesServerOriginTurnsAsUserActivity(t *testing.T) {
+	store := session.NewStore(t.TempDir())
+	now := time.Date(2026, 9, 29, 14, 0, 0, 0, time.UTC)
+	main, err := store.EnsureMain()
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := store.TranscriptPath(main.ID)
+	for _, m := range []session.Message{
+		{Role: "user", Content: "kickoff the plan", Timestamp: now.Add(-3 * time.Hour), Origin: "focus"},
+		{Role: "assistant", Content: "working on it", Timestamp: now.Add(-3*time.Hour + time.Minute)},
+		{Role: "user", Content: "fix the failing test", Timestamp: now.Add(-2 * time.Hour), Origin: "focus"},
+		{Role: "assistant", Content: "fixed", Timestamp: now.Add(-2*time.Hour + time.Minute)},
+	} {
+		if err := session.AppendMessage(path, m); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := store.Touch(main.ID, now.Add(-2*time.Hour+time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	got, err := newSessionInitiativeObserver(sessionObserverDeps{Store: store}).Observe(context.Background(), now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.RecentUser) != 0 {
+		t.Fatalf("RecentUser = %+v, want none — every user message here is server-origin", got.RecentUser)
+	}
+	if !got.LastUserAt.IsZero() {
+		t.Fatalf("LastUserAt = %v, want zero — no real user message, and the fallback must not count the focus turns' own replies either", got.LastUserAt)
+	}
+}
+
+// TestSessionObserverReadsRealUserMessageAmongServerOriginTurns checks the
+// positive case alongside the exclusion above: a real user message between
+// two server-origin turns is still counted, and its own timestamp — not a
+// neighboring focus turn's — is what LastUserAt reports.
+func TestSessionObserverReadsRealUserMessageAmongServerOriginTurns(t *testing.T) {
+	store := session.NewStore(t.TempDir())
+	now := time.Date(2026, 9, 29, 14, 0, 0, 0, time.UTC)
+	main, err := store.EnsureMain()
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := store.TranscriptPath(main.ID)
+	for _, m := range []session.Message{
+		{Role: "user", Content: "kickoff the plan", Timestamp: now.Add(-3 * time.Hour), Origin: "focus"},
+		{Role: "assistant", Content: "working on it", Timestamp: now.Add(-3*time.Hour + time.Minute)},
+		{Role: "user", Content: "actually hold on", Timestamp: now.Add(-time.Hour)},
+		{Role: "assistant", Content: "sure, pausing", Timestamp: now.Add(-time.Hour + time.Minute)},
+	} {
+		if err := session.AppendMessage(path, m); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := store.Touch(main.ID, now.Add(-time.Hour+time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	got, err := newSessionInitiativeObserver(sessionObserverDeps{Store: store}).Observe(context.Background(), now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.RecentUser) != 1 || got.RecentUser[0].Text != "actually hold on" {
+		t.Fatalf("RecentUser = %+v, want only the real user message", got.RecentUser)
+	}
+	if !got.LastUserAt.Equal(now.Add(-time.Hour)) {
+		t.Fatalf("LastUserAt = %v, want %v (the real message, not a focus turn)", got.LastUserAt, now.Add(-time.Hour))
+	}
+}
+
+// TestSessionObserverTreatsOldTranscriptsWithNoOriginAsHuman checks the
+// backward-compatibility rule: a transcript written before Message.Origin
+// existed has no Origin on any message, and must read every role "user"
+// message as a person's, exactly as it always did.
+func TestSessionObserverTreatsOldTranscriptsWithNoOriginAsHuman(t *testing.T) {
+	store := session.NewStore(t.TempDir())
+	now := time.Date(2026, 9, 29, 14, 0, 0, 0, time.UTC)
+	main, err := store.EnsureMain()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// No Origin field at all — simulating a pre-tars#1249 transcript.
+	appendAndTouch(t, store, main.ID, session.Message{Role: "user", Content: "hello", Timestamp: now.Add(-time.Minute)})
+	got, err := newSessionInitiativeObserver(sessionObserverDeps{Store: store}).Observe(context.Background(), now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.RecentUser) != 1 || !got.LastUserAt.Equal(now.Add(-time.Minute)) {
+		t.Fatalf("observation = %+v, want the pre-Origin message read as human", got)
+	}
+}
+
+// TestSessionObserverCronNoticeAfterFocusTurnStillCountsAsActivity is the
+// regression test for the review finding: a cron notice (role "system",
+// appendCronSessionMessage) appended after a focus-origin user message
+// with no real user message in between must still advance the
+// no-user-message fallback (LastActivityAt) — it is a standalone notice
+// unrelated to that focus turn, not part of its reply, so it must count
+// exactly as it did before Message.Origin existed, regardless of what
+// preceded it.
+func TestSessionObserverCronNoticeAfterFocusTurnStillCountsAsActivity(t *testing.T) {
+	store := session.NewStore(t.TempDir())
+	now := time.Date(2026, 9, 29, 14, 0, 0, 0, time.UTC)
+	main, err := store.EnsureMain()
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := store.TranscriptPath(main.ID)
+	cronAt := now.Add(-time.Hour)
+	for _, m := range []session.Message{
+		{Role: "user", Content: "kickoff the plan", Timestamp: now.Add(-3 * time.Hour), Origin: "focus"},
+		{Role: "assistant", Content: "working on it", Timestamp: now.Add(-3*time.Hour + time.Minute)},
+		{Role: "system", Content: "[REMINDER]\njob: daily check\nmessage: ping", Timestamp: cronAt},
+	} {
+		if err := session.AppendMessage(path, m); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := store.Touch(main.ID, cronAt); err != nil {
+		t.Fatal(err)
+	}
+	// No visible session anywhere has a real user message within the
+	// observer's horizon, so LastUserAt falls back to LastActivityAt.
+	got, err := newSessionInitiativeObserver(sessionObserverDeps{Store: store}).Observe(context.Background(), now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.LastUserAt.Equal(cronAt) {
+		t.Fatalf("LastUserAt = %v, want the cron notice's own time %v (it must count even though the preceding user message was focus-origin)", got.LastUserAt, cronAt)
 	}
 }

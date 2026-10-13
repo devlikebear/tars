@@ -60,7 +60,7 @@ func (fx runtimeFixture) build(t *testing.T, now *time.Time) (*Runtime, *Ledger)
 
 func TestRunOnceGreetsOnArrivalInShadow(t *testing.T) {
 	now := at(9, 0)
-	r, ledger := runtimeFixture{obs: Observation{ConsoleConnectedAt: now.Add(-time.Minute),
+	r, ledger := runtimeFixture{obs: Observation{ConsolePresentAt: now.Add(-time.Minute), ConsoleArrivedAt: now.Add(-time.Minute),
 		RecentUser: []UserMessage{{At: now.Add(-14 * time.Hour), Text: "잘 자"}}}, include: true}.build(t, &now)
 	e := r.RunOnce(context.Background())
 	if e.Intent != IntentGreet || !e.Speak || e.Mode != ModeShadow || e.Reason != "arrived" {
@@ -92,7 +92,7 @@ func TestRunOnceRemoteBackendSendsNoUserText(t *testing.T) {
 func TestRunOnceQuietRequestFromSystemOne(t *testing.T) {
 	now := at(14, 0)
 	fake := &fakeSystemOne{probs: map[string]float64{"quiet_requested": 0.9}}
-	r, _ := runtimeFixture{obs: Observation{ConsoleConnectedAt: now.Add(-time.Minute),
+	r, _ := runtimeFixture{obs: Observation{ConsolePresentAt: now.Add(-time.Minute), ConsoleArrivedAt: now.Add(-time.Minute),
 		RecentUser: []UserMessage{{At: now.Add(-90 * time.Minute), Text: "오늘은 메시지 그만"}}}, one: fake, include: true}.build(t, &now)
 	e := r.RunOnce(context.Background())
 	if e.Reason != "quiet_requested" || e.Speak || !strings.Contains(fake.state, "오늘은 메시지 그만") {
@@ -112,7 +112,7 @@ func TestRunOnceSkipsSystemOneUnderHardLimits(t *testing.T) {
 func TestRunOnceSystemOneErrorKeepsGoing(t *testing.T) {
 	now := at(14, 0)
 	fake := &fakeSystemOne{err: errors.New("connection refused")}
-	r, _ := runtimeFixture{obs: Observation{ConsoleConnectedAt: now.Add(-time.Minute), Profile: "likes tea",
+	r, _ := runtimeFixture{obs: Observation{ConsolePresentAt: now.Add(-time.Minute), ConsoleArrivedAt: now.Add(-time.Minute), Profile: "likes tea",
 		RecentUser: []UserMessage{{At: now.Add(-5 * time.Hour), Text: "hi"}}}, one: fake, include: true}.build(t, &now)
 	e := r.RunOnce(context.Background())
 	if e.Intent != IntentGreet || e.Text.Source != "error" || !strings.Contains(e.Error, "connection refused") {
@@ -136,7 +136,7 @@ func TestRunOnceObserveErrorIsReported(t *testing.T) {
 func TestRunOnceBodyOnlyExpressesAndIsSpaced(t *testing.T) {
 	now := at(14, 0)
 	body := &fakeBody{}
-	r, _ := runtimeFixture{obs: Observation{ConsoleConnectedAt: now.Add(-3 * time.Hour), BodyAvailable: true,
+	r, _ := runtimeFixture{obs: Observation{ConsolePresentAt: now, ConsoleArrivedAt: now.Add(-3 * time.Hour), BodyAvailable: true,
 		RecentUser: []UserMessage{{At: now.Add(-20 * time.Minute)}}}, body: body, include: true}.build(t, &now)
 	if e := r.RunOnce(context.Background()); e.Intent != IntentBodyOnly || e.Body != "delivered" {
 		t.Fatalf("entry = %+v", e)
@@ -156,7 +156,7 @@ func TestRuntimeRestoresHistoryFromLedger(t *testing.T) {
 	for i := range 6 {
 		_ = ledger.Append(Entry{At: at(8+i, 0), Decision: Decision{Intent: IntentCheckIn, Speak: true}})
 	}
-	r, _ := runtimeFixture{obs: Observation{ConsoleConnectedAt: now.Add(-time.Minute),
+	r, _ := runtimeFixture{obs: Observation{ConsolePresentAt: now.Add(-time.Minute), ConsoleArrivedAt: now.Add(-time.Minute),
 		RecentUser: []UserMessage{{At: now.Add(-10 * time.Hour)}}}, ledger: ledger}.build(t, &now)
 	if e := r.RunOnce(context.Background()); e.Reason != "daily_cap" {
 		t.Fatalf("restart must restore the daily cap, got %+v", e)
@@ -177,7 +177,7 @@ func TestRepeatedTicksOnUnchangedObservationCallBackendOnce(t *testing.T) {
 	// purpose, so only the profile line keeps the state's hash key
 	// non-empty — this fixture is otherwise identical to
 	// TestRunOnceGreetsOnArrivalInShadow.
-	r, _ := runtimeFixture{obs: Observation{ConsoleConnectedAt: now.Add(-time.Minute), Profile: "likes tea",
+	r, _ := runtimeFixture{obs: Observation{ConsolePresentAt: now.Add(-time.Minute), ConsoleArrivedAt: now.Add(-time.Minute), Profile: "likes tea",
 		RecentUser: []UserMessage{{At: now.Add(-14 * time.Hour), Text: "잘 자"}}}, one: fake, include: true}.build(t, &now)
 	for range 100 {
 		r.RunOnce(context.Background())
@@ -304,7 +304,7 @@ func TestDailyCapResetsAtLocalMidnight(t *testing.T) {
 	for i := range 6 {
 		_ = ledger.Append(Entry{At: at(8+i, 0), Decision: Decision{Intent: IntentGreet, Speak: true}})
 	}
-	r, _ := runtimeFixture{obs: Observation{ConsoleConnectedAt: now.Add(-time.Minute),
+	r, _ := runtimeFixture{obs: Observation{ConsolePresentAt: now.Add(-time.Minute), ConsoleArrivedAt: now.Add(-time.Minute),
 		RecentUser: []UserMessage{{At: now.Add(-10 * time.Hour)}}}, ledger: ledger}.build(t, &now)
 	if e := r.RunOnce(context.Background()); e.Intent != IntentGreet {
 		t.Fatalf("a new day must reset the cap, got %+v", e)
@@ -380,7 +380,7 @@ func (f *failingBody) Express(context.Context, string, string) (string, error) {
 func TestFailedBodyExpressionIsSpacedToo(t *testing.T) {
 	now := at(14, 0)
 	body := &failingBody{}
-	r, _ := runtimeFixture{obs: Observation{ConsoleConnectedAt: now.Add(-3 * time.Hour), BodyAvailable: true,
+	r, _ := runtimeFixture{obs: Observation{ConsolePresentAt: now, ConsoleArrivedAt: now.Add(-3 * time.Hour), BodyAvailable: true,
 		RecentUser: []UserMessage{{At: now.Add(-20 * time.Minute)}}}, body: body, include: true}.build(t, &now)
 	r.RunOnce(context.Background())
 	now = now.Add(5 * time.Minute)
@@ -393,7 +393,7 @@ func TestFailedBodyExpressionIsSpacedToo(t *testing.T) {
 func TestSystemOneErrorBodyIsNotRecorded(t *testing.T) {
 	now := at(14, 0)
 	fake := &fakeSystemOne{err: &jev.HTTPError{Status: 422, Message: `{"detail":[{"input":"recent_user_messages: 오늘 너무 피곤해"}]}`}}
-	r, ledger := runtimeFixture{obs: Observation{ConsoleConnectedAt: now.Add(-time.Minute), Profile: "likes tea",
+	r, ledger := runtimeFixture{obs: Observation{ConsolePresentAt: now.Add(-time.Minute), ConsoleArrivedAt: now.Add(-time.Minute), Profile: "likes tea",
 		RecentUser: []UserMessage{{At: now.Add(-5 * time.Hour), Text: "오늘 너무 피곤해"}}}, one: fake, include: true}.build(t, &now)
 	e := r.RunOnce(context.Background())
 	if strings.Contains(e.Error, "피곤") || !strings.Contains(e.Error, "422") {
@@ -424,7 +424,7 @@ func TestLLMProviderErrorBodyIsNotRecorded(t *testing.T) {
 	}}
 	ledger := OpenLedger(filepath.Join(t.TempDir(), "ledger.jsonl"), 0)
 	deps := Dependencies{
-		Observer: &fakeObserver{obs: Observation{ConsoleConnectedAt: now.Add(-time.Minute), Profile: "likes tea",
+		Observer: &fakeObserver{obs: Observation{ConsolePresentAt: now.Add(-time.Minute), ConsoleArrivedAt: now.Add(-time.Minute), Profile: "likes tea",
 			RecentUser: []UserMessage{{At: now.Add(-5 * time.Hour), Text: "오늘 너무 피곤해"}}}},
 		TextLLM: client, IncludeText: true, Ledger: ledger, Logger: zerolog.Nop(), Now: func() time.Time { return now },
 	}

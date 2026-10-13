@@ -6,6 +6,16 @@
 // only — see webServers.ts) because the real ticker is set to 24h
 // (playwright.config.ts) precisely so it never fires on its own mid-suite
 // and interrupts an unrelated spec (the #1194 class of bug).
+//
+// tars#1249: arrival and "at the console right now" come from the console's
+// presence signal (POST /v1/console/presence), not the SSE subscriber
+// count. The real browser does send real signals as this spec navigates
+// (App.svelte's onMount), but those land at real wall-clock time while
+// every tick below runs at a synthetic "now" hours or days away — so each
+// tick() call also drives the e2e-only presence_at list (the same route's
+// synthetic stand-in for the real endpoint, internal/tarsserver/
+// e2e_initiative.go), landing presence signals at the moments that matter
+// to that tick's own decision instead.
 
 import { expect, test, type Page } from '@playwright/test'
 
@@ -36,8 +46,8 @@ async function history(page: Page, sessionId: string): Promise<HistoryMessage[]>
   return (await res.json()) ?? []
 }
 
-async function tick(page: Page, at: string) {
-  const res = await page.request.post('/v1/e2e/initiative/tick', { data: { at } })
+async function tick(page: Page, at: string, presenceAt: string[] = []) {
+  const res = await page.request.post('/v1/e2e/initiative/tick', { data: { at, presence_at: presenceAt } })
   expect(res.ok()).toBeTruthy()
   return res.json()
 }
@@ -59,6 +69,18 @@ const now = Date.now()
 const TICK_1 = new Date(now + 5 * 60 * 60_000).toISOString() // +5h: an arrival after the message above
 const TICK_2 = new Date(now + 5 * 60 * 60_000 + 60_000).toISOString() // +1m after tick 1: inside the cooldown
 const TICK_3 = new Date(now + 30 * 60 * 60_000 + 60_000).toISOString() // +25h after tick 2: a long absence
+
+// TICK_3 needs two presence_at entries, not one (tars#1249): a single
+// signal exactly at TICK_3 would itself read as a fresh arrival (the real
+// browser's last actual signal is hours earlier, well past presenceTTL),
+// turning this into another greet instead of the long-absence check_in
+// this tick is meant to exercise. Starting the arrival 11 minutes before
+// TICK_3 — just past arrivalFreshness (10m) — and continuing it 5 minutes
+// before TICK_3 — well under presenceTTL (10m), so the same arrival keeps
+// going rather than starting a new one — keeps the console "present"
+// (Reachable) right up to TICK_3 without being "just arrived" there.
+const TICK_3_ARRIVE = new Date(Date.parse(TICK_3) - 11 * 60_000).toISOString()
+const TICK_3_CONTINUE = new Date(Date.parse(TICK_3) - 5 * 60_000).toISOString()
 
 test('live mode speaks once, shows it in the thread, and stays quiet on the very next tick', async ({ page }, testInfo) => {
   const sessionId = await mainSessionId(page)
@@ -91,7 +113,7 @@ test('live mode speaks once, shows it in the thread, and stays quiet on the very
   await gotoAndWaitForStream(page, '/console')
   await expect(body(page)).toBeVisible()
 
-  const entry1 = await tick(page, TICK_1)
+  const entry1 = await tick(page, TICK_1, [TICK_1])
   expect(entry1.speak).toBe(true)
   expect(entry1.delivery).toBe('delivered')
 
@@ -135,7 +157,7 @@ test('live mode speaks once, shows it in the thread, and stays quiet on the very
 
   // One minute later is well inside the cooldown: no second compose call,
   // no second message.
-  const entry2 = await tick(page, TICK_2)
+  const entry2 = await tick(page, TICK_2, [TICK_2])
   expect(entry2.speak).toBe(false)
   expect(entry2.reason).toBe('cooldown')
   const afterTick2 = await history(page, sessionId)
@@ -152,7 +174,7 @@ test('live mode speaks once, shows it in the thread, and stays quiet on the very
   // event must not pop a new bubble line (P4's rule) — the new message
   // shows up in the thread on its own instead, through the same session
   // SSE refresh every other background actor already uses.
-  const entry3 = await tick(page, TICK_3)
+  const entry3 = await tick(page, TICK_3, [TICK_3_ARRIVE, TICK_3_CONTINUE])
   expect(entry3.speak).toBe(true)
   expect(entry3.delivery).toBe('delivered')
   expect(entry3.intent).toBe('check_in')
