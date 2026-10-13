@@ -515,7 +515,7 @@ cd frontend/console && npm run check && npm run test:ci
 
 | | OpenClaw | Hermes Agent | TARS |
 |---|---|---|---|
-| **Release used** | Stable `v2026.7.1` | Stable `v0.19.1` (`v2026.7.30`) | `v0.59.0` (latest tagged release) |
+| **Release used** | Stable `v2026.7.1` | Stable `v0.19.1` (`v2026.7.30`) | `v0.61.0` (latest tagged release) |
 | **Packaging** | TypeScript Gateway plus web/native apps and plugins | Python agent/gateway plus TUI, web, and desktop surfaces | Go single binary with embedded browser console and CLI |
 | **Delegation / harnesses** | Native subagents, Codex runtime, and ACP-backed external harness sessions | Isolated `delegate_task` children, live transcripts, MoA, and coding-runtime adapters | Native Agent Runtime plus an opt-in bounded Claude Code execution adapter, model tiers, tool policy, depth limits, and experimental consensus |
 | **Durable async work** | Background-task ledger plus SQLite-backed automations | Durable Kanban/goals, delegated-result recovery, and delivery-obligation ledger | SQLite Work Ledger plus a dependency scheduler with leases, retries, budgets, and operator escalation |
@@ -537,6 +537,6 @@ Verified on **2026-08-02** from official project documentation and release pages
 
 ## Status
 
-**Development resumed.** TARS is no longer archived and development has resumed. Latest tagged release is `v0.59.0`. TARS is pre-1.0; see the [stability policy](docs/public-agent-packages.md#stability-policy) for the public `pkg/` API guarantees.
+**Development resumed.** TARS is no longer archived and development has resumed. Latest tagged release is `v0.61.0`. TARS is pre-1.0; see the [stability policy](docs/public-agent-packages.md#stability-policy) for the public `pkg/` API guarantees.
 
 Module path: `github.com/devlikebear/tars`. MIT licensed. Contributions are welcome; see [Contributing](CONTRIBUTING.md).
