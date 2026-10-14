@@ -16,6 +16,12 @@
     onNavigate: (path: string) => void
     onUnreadChange?: (count: number) => void
     onLogout?: () => void
+    // Update notice (tars#1257): App.svelte owns the decision (own vs.
+    // server-reported console_build) and the dismissed-build memory;
+    // Shell only renders the banner and forwards the two clicks.
+    consoleUpdateAvailable?: boolean
+    onReloadConsole?: () => void
+    onDismissConsoleUpdate?: () => void
     children: Snippet
   }
 
@@ -30,6 +36,9 @@
     onNavigate,
     onUnreadChange,
     onLogout,
+    consoleUpdateAvailable = false,
+    onReloadConsole,
+    onDismissConsoleUpdate,
     children,
   }: Props = $props()
 
@@ -68,6 +77,16 @@
       <div class="setup-only-banner" role="alert">
         <strong>{$t.shell.setupOnlyKicker}</strong>
         <span>{$t.shell.setupOnlyBody}</span>
+      </div>
+    {/if}
+    {#if consoleUpdateAvailable}
+      <div class="console-update-banner" role="status">
+        <button type="button" class="console-update-reload" onclick={onReloadConsole}>
+          {$t.shell.consoleUpdateMessage}
+        </button>
+        <button type="button" class="console-update-dismiss" aria-label={$t.shell.consoleUpdateDismissAria} onclick={onDismissConsoleUpdate}>
+          ×
+        </button>
       </div>
     {/if}
     <main class="shell-content" class:zen={zenActive}>
@@ -110,6 +129,49 @@
     text-transform: uppercase;
     letter-spacing: 0.04em;
     font-size: 11px;
+  }
+
+  /* Update notice (tars#1257): same recipe as .setup-only-banner above —
+     a small, full-width, in-flow line inside .shell-main, so it never
+     overlays Nav (fixed, outside .shell-main) or anything inside the
+     route content it sits above. */
+  .console-update-banner {
+    background: rgba(var(--primary-rgb), 0.12);
+    border-bottom: 1px solid var(--primary);
+    color: var(--primary-text);
+    padding: var(--space-2) var(--space-4);
+    font-size: 13px;
+    display: flex;
+    gap: var(--space-3);
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .console-update-reload {
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--primary-text);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    text-align: left;
+  }
+  .console-update-reload:hover {
+    text-decoration: underline;
+  }
+
+  .console-update-dismiss {
+    background: none;
+    border: none;
+    padding: 0 var(--space-1);
+    color: var(--text-secondary);
+    font-size: 15px;
+    line-height: 1;
+    cursor: pointer;
+  }
+  .console-update-dismiss:hover {
+    color: var(--text-primary);
   }
 
   .shell-content {

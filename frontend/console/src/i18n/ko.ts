@@ -529,6 +529,9 @@ export const ko = {
   shell: {
     setupOnlyKicker: 'Setup-only mode',
     setupOnlyBody: 'LLM 설정이 완료되지 않아 콘솔 기능이 제한됩니다. 마법사를 완료하면 정상 모드로 전환됩니다.',
+    consoleUpdateMessage: 'TARS가 업데이트됐어요 — 새로고침',
+    consoleUpdateReload: '새로고침',
+    consoleUpdateDismissAria: '업데이트 안내 닫기',
   },
   chat: {
     panels: {

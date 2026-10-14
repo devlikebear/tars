@@ -1312,7 +1312,7 @@ func newStatusAPIHandler(workspaceDir string, store *session.Store, mainSessionI
 	})
 }
 
-func newHealthzAPIHandler(nowFn func() time.Time, dashboardAuthStatus map[string]any, needsSetupFn func() bool) http.Handler {
+func newHealthzAPIHandler(nowFn func() time.Time, dashboardAuthStatus map[string]any, needsSetupFn func() bool, consoleBuildFn func() string) http.Handler {
 	if nowFn == nil {
 		nowFn = time.Now
 	}
@@ -1337,6 +1337,18 @@ func newHealthzAPIHandler(nowFn func() time.Time, dashboardAuthStatus map[string
 		// outdated server. Remote callers do not need it.
 		if isLoopbackLoginRemoteAddr(r.RemoteAddr) && !serverauth.HasTailscaleIdentityHeader(r) {
 			body["version"] = buildinfo.Version
+		}
+		// console_build (tars#1257) identifies the currently-served console
+		// bundle, not the server. It is already derivable by any caller
+		// from the public /console/ index.html, so — unlike version — it
+		// goes to every caller, loopback or remote, so a remotely-accessed
+		// console can show the update notice too. Empty (Vite dev proxy,
+		// unbuilt placeholder) means "no notice": the field is omitted
+		// rather than sent as "".
+		if consoleBuildFn != nil {
+			if build := consoleBuildFn(); build != "" {
+				body["console_build"] = build
+			}
 		}
 		writeJSON(w, http.StatusOK, body)
 	})

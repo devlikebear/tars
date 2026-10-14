@@ -22,11 +22,11 @@ import (
 // for the branch.
 func buildSetupOnlyAPIMux(opts *options, deps runtimeDeps, nowFn func() time.Time, logger zerolog.Logger, _ io.Writer) (*serveAPIRuntime, error) {
 	cfg := deps.cfg
-	consoleHandler, err := newConsoleHandler(logger)
+	consoleHandler, consoleBuild, err := newConsoleHandler(logger)
 	if err != nil {
 		return nil, err
 	}
-	healthzHandler := newHealthzAPIHandler(nowFn, dashboardAuthHealthzStatus(cfg), func() bool { return config.NeedsSetup(cfg) })
+	healthzHandler := newHealthzAPIHandler(nowFn, dashboardAuthHealthzStatus(cfg), func() bool { return config.NeedsSetup(cfg) }, func() string { return consoleBuild })
 	setupHandler := apihandlers.NewSetupHandler(opts.ConfigPath, cfg, logger)
 	configHandler := apihandlers.NewConfigHandler(opts.ConfigPath, cfg, cfg.WorkspaceDir, execRestart, logger)
 	authHandler := newAuthAPIHandler(cfg.APIAuthMode, cfg.WorkspaceDir)
