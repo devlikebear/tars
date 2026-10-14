@@ -179,7 +179,11 @@ func (c *GeminiNativeClient) chatStreamingResponse(ctx context.Context, contents
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("x-goog-api-key", c.apiKey)
 
-	resp, err := c.httpClient.Do(httpReq)
+	// A stream may legitimately stay silent past HTTPTimeout (Gemini does not
+	// stream function-call arguments, so a long call arrives in one late
+	// chunk). Like the other providers, drop Client.Timeout here and let ctx
+	// bound the call.
+	resp, err := transportHTTPClient(c.httpClient, true).Do(httpReq)
 	if err != nil {
 		return ChatResponse{}, wrapGeminiHTTPError("stream", err)
 	}
@@ -202,7 +206,7 @@ func (c *GeminiNativeClient) chatStreamingResponse(ctx context.Context, contents
 		stopReasonRaw string
 		usage         Usage
 		toolCalls     []ToolCall
-		seenToolCalls = map[string]struct{}{}
+		seenServerIDs = map[string]struct{}{}
 	)
 
 	scanner := bufio.NewScanner(resp.Body)
@@ -242,7 +246,7 @@ func (c *GeminiNativeClient) chatStreamingResponse(ctx context.Context, contents
 			continue
 		}
 
-		for idx, part := range candidate.Content.Parts {
+		for _, part := range candidate.Content.Parts {
 			if part == nil {
 				continue
 			}
@@ -254,17 +258,22 @@ func (c *GeminiNativeClient) chatStreamingResponse(ctx context.Context, contents
 			if part.FunctionCall == nil || strings.TrimSpace(part.FunctionCall.Name) == "" {
 				continue
 			}
-			call := geminiNativeFunctionCallToToolCall(part, idx)
-			key := strings.TrimSpace(call.ID)
-			if key == "" {
-				key = call.Name + "|" + call.Arguments
+			// Only a server-provided ID identifies a repeated call. Calls
+			// without one are distinct parallel calls, possibly in separate
+			// chunks, so their synthesized ID counts across the whole stream.
+			if serverID := strings.TrimSpace(part.FunctionCall.ID); serverID != "" {
+				if _, exists := seenServerIDs[serverID]; exists {
+					continue
+				}
+				seenServerIDs[serverID] = struct{}{}
 			}
-			if _, exists := seenToolCalls[key]; exists {
-				continue
-			}
-			seenToolCalls[key] = struct{}{}
-			toolCalls = append(toolCalls, call)
+			toolCalls = append(toolCalls, geminiNativeFunctionCallToToolCall(part, len(toolCalls)))
 		}
+	}
+	if err := scanner.Err(); err != nil {
+		// A body cut mid-stream (connection reset, ctx deadline, a line over
+		// the buffer limit) must not pass for a complete, possibly empty, turn.
+		return ChatResponse{}, newProviderError("gemini-native", "stream", fmt.Errorf("read stream response: %w", err))
 	}
 
 	stopReason := normalizeGeminiNativeStopReason(stopReasonRaw, len(toolCalls) > 0)
