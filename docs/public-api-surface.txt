@@ -176,6 +176,7 @@ pkg/llm field ClaudeCodeHarnessOptions.DisableChrome
 pkg/llm field ClaudeCodeHarnessOptions.IsolateEnvironment
 pkg/llm field ClaudeCodeHarnessOptions.MaxBudgetUSD
 pkg/llm field ClaudeCodeHarnessOptions.MaxTurns
+pkg/llm field ClaudeCodeHarnessOptions.Restricted
 pkg/llm field ClaudeCodeHarnessOptions.SafeMode
 pkg/llm field ClaudeCodeHarnessOptions.StrictMCP
 pkg/llm field ClaudeCodeHarnessOptions.Tools

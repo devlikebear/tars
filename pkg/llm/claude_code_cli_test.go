@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -1124,4 +1125,23 @@ func TestClaudeCodeHarnessExplicitEmptyToolsDisablesBuiltins(t *testing.T) {
 		}
 	}
 	t.Fatalf("explicit empty tool set did not disable builtin tools: %q", args)
+}
+
+func TestAppendClaudeCodeHarnessArgs_restricted(t *testing.T) {
+	args, err := appendClaudeCodeHarnessArgs(nil, &ClaudeCodeHarnessOptions{Restricted: true, StrictMCP: true, Tools: []string{}})
+	if err != nil {
+		t.Fatalf("append: %v", err)
+	}
+	got := strings.Join(args, " ")
+	for _, want := range []string{"--restricted", "--strict-mcp-config", `--tools `} {
+		if !strings.Contains(got+" ", want) {
+			t.Fatalf("args = %q, want %q", got, want)
+		}
+	}
+	if strings.Contains(got, "--safe-mode") {
+		t.Fatalf("Restricted must not imply --safe-mode: %q", got)
+	}
+	if args, _ := appendClaudeCodeHarnessArgs(nil, &ClaudeCodeHarnessOptions{}); slices.Contains(args, "--restricted") {
+		t.Fatalf("--restricted without the option: %q", args)
+	}
 }
