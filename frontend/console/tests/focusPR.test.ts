@@ -36,13 +36,25 @@ test('prStageChip shows the PR on the PR stages it reached', () => {
   const p = pipeline({ pr: 'done', pr_review: 'active', merge: 'pending' }, 'pr_review', {
     pr: { number: 12, url: 'https://example.test/pr/12', state: 'OPEN', checks },
   })
-  assert.deepEqual(prStageChip(p, 'pr'), { number: 12, url: 'https://example.test/pr/12', ci: null })
-  assert.deepEqual(prStageChip(p, 'pr_review'), { number: 12, url: 'https://example.test/pr/12', ci: { passed: 2, failed: 1, pending: 1 } })
+  assert.deepEqual(prStageChip(p, 'pr'), { number: 12, url: 'https://example.test/pr/12', ci: null, conflict: false })
+  assert.deepEqual(prStageChip(p, 'pr_review'), { number: 12, url: 'https://example.test/pr/12', ci: { passed: 2, failed: 1, pending: 1 }, conflict: false })
   assert.equal(prStageChip(p, 'merge'), null, 'a pending stage shows nothing')
   assert.equal(prStageChip(p, 'build'), null)
   assert.equal(prStageChip(pipeline({}, 'pr'), 'pr'), null, 'no PR yet')
   const noChecks = pipeline({ merge: 'active' }, 'merge', { pr: { number: 3, url: '', state: 'OPEN' } })
-  assert.deepEqual(prStageChip(noChecks, 'merge'), { number: 3, url: '', ci: null })
+  assert.deepEqual(prStageChip(noChecks, 'merge'), { number: 3, url: '', ci: null, conflict: false })
+})
+
+test('prStageChip flags a merge conflict (#1253) on pr_review and merge, not on pr', () => {
+  const dirty = pipeline({ pr: 'done', pr_review: 'active', merge: 'pending' }, 'pr_review', {
+    pr: { number: 12, url: 'https://example.test/pr/12', state: 'OPEN', merge_state: 'DIRTY' },
+  })
+  assert.equal(prStageChip(dirty, 'pr')?.conflict, false, 'the pr stage does not show a merge state yet')
+  assert.equal(prStageChip(dirty, 'pr_review')?.conflict, true)
+  const clean = pipeline({ pr: 'done', pr_review: 'active' }, 'pr_review', {
+    pr: { number: 12, url: '', state: 'OPEN', merge_state: 'CLEAN' },
+  })
+  assert.equal(prStageChip(clean, 'pr_review')?.conflict, false)
 })
 
 function notice(stage: FocusStageId, state: FocusCard['state'] = 'unseen'): FocusCard {

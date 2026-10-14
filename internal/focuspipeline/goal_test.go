@@ -239,6 +239,31 @@ func TestNextGoalStepFixesPRFindings(t *testing.T) {
 	}
 }
 
+// TestNextGoalStepFixesMergeConflict is requirement 4 (#1253): a merge
+// conflict finding is fixed by the existing pr_review branch, with no new
+// GoalStep kind or branch in goal.go.
+func TestNextGoalStepFixesMergeConflict(t *testing.T) {
+	p := goalBuilding(t, StagePlan, StageBuild, StagePR, StagePRReview, StageMerge)
+	p, _, _ = Apply(p, Event{Kind: EventTurnCompleted, Turn: 2, Blocks: Blocks{Report: &Report{Summary: "done", TasksDone: true}}}, t0)
+	p, _, _ = Apply(p, Event{Kind: EventVerification, Turn: 2, Verification: &Verification{Passed: true}}, t0)
+	p, _, _ = Apply(p, Event{Kind: EventTurnCompleted, Turn: 3, Blocks: Blocks{PR: &PRDraft{Title: "feat: x"}}}, t0)
+	p, _, _ = Apply(p, Event{Kind: EventGate, Gate: GatePR, Action: GateApprove}, t0)
+	p, _, _ = Apply(p, Event{Kind: EventTurnCompleted, Turn: 4, Blocks: Blocks{Report: &Report{Summary: "opened"}}}, t0)
+	conflicted := PRProbe{Status: ProbeFound, Number: 7, State: PRStateOpen, HeadOID: "abc", MergeState: MergeStateDirty}
+	p, _, err := Apply(p, Event{Kind: EventPRProbe, Probe: &conflicted}, t0)
+	if err != nil || p.Current != StagePRReview {
+		t.Fatalf("probe: %v current=%s", err, p.Current)
+	}
+	step := NextGoalStep(p, t0)
+	if step.Kind != GoalCard || step.Decision != FindingFix {
+		t.Fatalf("conflict finding step = %+v", step)
+	}
+	p, act, err := SetCardState(p, step.CardID, CardDecided, step.Decision, t0)
+	if err != nil || act.Kind != ActionSendTurn || p.PRWait != PRWaitFix || !strings.Contains(act.Prompt, "`git merge`") {
+		t.Fatalf("fix: %v %+v wait=%q", err, act, p.PRWait)
+	}
+}
+
 func TestNextGoalStepRetriesBlockedGates(t *testing.T) {
 	p := goalBuilding(t, StagePlan, StageBuild)
 	fail := &Verification{Results: []VerificationResult{{Command: "make test", ExitCode: 1, Excerpt: "boom"}}}

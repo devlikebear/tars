@@ -11,6 +11,10 @@
 
   let { summary }: Props = $props()
   let hasChecks = $derived(summary.checks.passed + summary.checks.failed + summary.checks.pending > 0)
+  // A merge conflict with the base branch (#1253) blocks merge regardless
+  // of the checks; it gets its own chip and a warning line instead of the
+  // raw merge_state text.
+  let isConflict = $derived(summary.merge_state === 'DIRTY')
 </script>
 
 <div class="merge-summary" data-testid="focus-merge-summary">
@@ -28,10 +32,18 @@
   {/if}
   <p class="facts">
     <span class="label">{$t.focus.pr.checks}</span>
-    {#if hasChecks}<FocusCIChips ci={summary.checks} />{:else}<span class="muted">{$t.focus.pr.noChecks}</span>{/if}
+    {#if hasChecks || isConflict}
+      <FocusCIChips ci={summary.checks} conflict={isConflict} />
+    {:else}
+      <span class="muted">{$t.focus.pr.noChecks}</span>
+    {/if}
   </p>
   <p class="muted">{$t.focus.pr.findings(summary.fixed, summary.dismissed, summary.undecided)}</p>
-  {#if summary.merge_state}<p class="muted mono">{$t.focus.pr.mergeState(summary.merge_state)}</p>{/if}
+  {#if isConflict}
+    <p class="warning" data-testid="focus-merge-conflict">{$t.focus.pr.conflict}</p>
+  {:else if summary.merge_state}
+    <p class="muted mono">{$t.focus.pr.mergeState(summary.merge_state)}</p>
+  {/if}
   <p class="hint">{$t.focus.pr.mergeHint}</p>
 </div>
 
@@ -62,5 +74,11 @@
   .hint {
     font-size: var(--text-xs);
     color: var(--text-tertiary);
+  }
+
+  .warning {
+    font-size: var(--text-xs);
+    font-weight: 600;
+    color: var(--error);
   }
 </style>

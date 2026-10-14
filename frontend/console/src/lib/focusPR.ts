@@ -15,6 +15,11 @@ import type {
 
 const prStages = new Set<FocusStageId>(['pr', 'pr_review', 'merge'])
 
+// MergeStateDirty is the gh mergeStateStatus value a merge conflict with
+// the base branch reports (#1253), matching internal/focuspipeline's
+// MergeStateDirty.
+export const MergeStateDirty = 'DIRTY'
+
 // ciCounts counts checks by state; skipped counts as passed, as the server
 // does.
 export function ciCounts(checks: FocusPRCheck[] | undefined): FocusCICounts {
@@ -27,17 +32,18 @@ export function ciCounts(checks: FocusPRCheck[] | undefined): FocusCICounts {
   return counts
 }
 
-export type PRStageChip = { number: number; url: string; ci: FocusCICounts | null }
+export type PRStageChip = { number: number; url: string; ci: FocusCICounts | null; conflict: boolean }
 
 // prStageChip is what a PR stage of the stepper shows: the PR number once
-// known, and on pr_review and merge the CI counts. Stages not reached yet
-// show nothing.
+// known, the CI counts and a merge-conflict flag (#1253) on pr_review and
+// merge. Stages not reached yet show nothing.
 export function prStageChip(p: FocusPipeline, stage: FocusStageId): PRStageChip | null {
   if (!prStages.has(stage) || !p.pr || p.pr.number <= 0) return null
   const status = p.stages.find((s) => s.id === stage)?.status
   if (status !== 'active' && status !== 'done' && status !== 'blocked') return null
   const ci = stage !== 'pr' && p.pr.checks?.length ? ciCounts(p.pr.checks) : null
-  return { number: p.pr.number, url: p.pr.url, ci }
+  const conflict = stage !== 'pr' && p.pr.merge_state === MergeStateDirty
+  return { number: p.pr.number, url: p.pr.url, ci, conflict }
 }
 
 // ghUnavailable is the latest probe's error when the current stage cannot
