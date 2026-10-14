@@ -592,6 +592,47 @@ test('the PR stages with gh: the PR is found, CI is green, G4 merges, and the me
   expect(calls.at(-1)).toMatch(/^pr view 7 --json /)
 })
 
+// #1253: a PR gh reports as DIRTY (merge conflict with the base branch) gets
+// a finding card instead of G4 — gh runs no checks on a conflicting PR, so
+// without this fix zero checks would look like "no CI" and open G4 anyway.
+test('the PR stages with gh: a merge conflict becomes a finding, not G4, until it is dismissed', async ({ page }) => {
+  const repo = newRepo('tars-e2e-focus-conflict-')
+  const scenario = (s: string) => writeFileSync(join(repo, '.git', 'e2e-gh'), s)
+  const created = await (await page.request.post('/v1/focus/pipelines', { data: { goal: '[e2e:focus-plan] [e2e:focus-loop] [e2e:focus-pr] Add a greeting', cwd: repo } })).json()
+  const id = created.session_id as string
+  await autoMode(page, id)
+  await page.goto(`/console/focus/${id}`)
+  await expect(page.locator('[data-testid="focus-card"][data-kind="gate"]')).toBeVisible()
+  await page.getByTestId('focus-plan-stage-review').uncheck()
+  await page.getByTestId('focus-plan-verify').fill('true')
+  await page.getByTestId('focus-gate-approve').click()
+
+  await expect(page.getByTestId('focus-pr-gate')).toBeVisible({ timeout: 20_000 })
+  scenario('conflict')
+  await page.getByTestId('focus-pr-approve').click()
+
+  // The open turn ends; the probe finds PR #7 DIRTY with no checks: a
+  // conflict finding, not G4 (zero checks must not look like "no CI").
+  const finding = page.locator('[data-testid="focus-card"][data-kind="finding"]')
+  await expect(finding).toBeVisible({ timeout: 20_000 })
+  await expect(finding).toContainText('conflict')
+  await expect(page.getByTestId('focus-merge-summary')).toHaveCount(0)
+  await expect(page.getByTestId('focus-ci-conflict')).toBeVisible()
+  let p = await pipelineOf(page, id)
+  expect(p.current).toBe('pr_review')
+  expect(p.open_gate).not.toBe('merge')
+  const conflicts = p.cards.filter((c) => c.kind === 'finding')
+  expect(conflicts).toHaveLength(1)
+
+  // Dismissing it and a clean probe opens G4 as usual.
+  scenario('open')
+  await finding.getByTestId('focus-finding-dismiss').click()
+  await expect(page.getByTestId('focus-merge-summary')).toBeVisible({ timeout: 20_000 })
+  p = await pipelineOf(page, id)
+  expect(p.current).toBe('merge')
+  expect(p.open_gate).toBe('merge')
+})
+
 test('an image pasted into the new task goal field rides the first turn as an attachment (#1159)', async ({ page }) => {
   const repo = newRepo('tars-e2e-focus-image-')
   await page.goto('/console/focus')

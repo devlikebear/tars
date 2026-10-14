@@ -6,12 +6,16 @@
 
   interface Props {
     ci: FocusCICounts
+    // A merge conflict with the base branch (#1253), shown ahead of the CI
+    // counts: it blocks merge regardless of what the checks say.
+    conflict?: boolean
   }
 
-  let { ci }: Props = $props()
+  let { ci, conflict = false }: Props = $props()
 </script>
 
 <span class="ci-chips" data-testid="focus-ci-chips">
+  {#if conflict}<span class="ci-chip conflict" title={$t.focus.pr.conflict} data-testid="focus-ci-conflict">⚠</span>{/if}
   {#if ci.passed}<span class="ci-chip pass" title={$t.focus.pr.ciPassed(ci.passed)}>✓{ci.passed}</span>{/if}
   {#if ci.failed}<span class="ci-chip fail" title={$t.focus.pr.ciFailed(ci.failed)}>✕{ci.failed}</span>{/if}
   {#if ci.pending}<span class="ci-chip pending" title={$t.focus.pr.ciPending(ci.pending)}>…{ci.pending}</span>{/if}
@@ -36,7 +40,8 @@
     color: var(--primary-text);
   }
 
-  .ci-chip.fail {
+  .ci-chip.fail,
+  .ci-chip.conflict {
     background: var(--error-muted);
     color: var(--error);
   }

@@ -53,7 +53,9 @@
         {#if item.current && item.iteration > 1}
           <span class="step-iter" title={$t.focus.iteration(item.iteration)}>↻{item.iteration}</span>
         {/if}
-        {#if chips[item.id]?.ci}<FocusCIChips ci={chips[item.id]!.ci!} />{/if}
+        {#if chips[item.id]?.ci || chips[item.id]?.conflict}
+          <FocusCIChips ci={chips[item.id]!.ci ?? { passed: 0, failed: 0, pending: 0 }} conflict={chips[item.id]!.conflict} />
+        {/if}
       </button>
       {#if chips[item.id]}
         {@const chip = chips[item.id]!}

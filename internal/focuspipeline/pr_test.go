@@ -1229,3 +1229,144 @@ func TestG4ApproveNamesItsCard(t *testing.T) {
 		t.Fatalf("current card: err %v act %+v", err, act)
 	}
 }
+
+// dirty and unknownMergeState set a probe's merge state (#1253).
+func dirty(probe *PRProbe) *PRProbe {
+	probe.MergeState = MergeStateDirty
+	return probe
+}
+
+func unknownMergeState(probe *PRProbe) *PRProbe {
+	probe.MergeState = MergeStateUnknown
+	return probe
+}
+
+// TestMergeStateGatesGreen is the issue's pure-function table: DIRTY is
+// never green (checks or not), UNKNOWN waits, and anything else does not
+// change the existing check-based judgment (#1253).
+func TestMergeStateGatesGreen(t *testing.T) {
+	pass := PRCheck{Name: "test", State: CheckPass}
+	tests := []struct {
+		name  string
+		probe *PRProbe
+		want  StageID
+	}{
+		{"DIRTY with no checks is not green", dirty(probeFound()), StagePRReview},
+		{"DIRTY with a passing check is not green", dirty(probeFound(pass)), StagePRReview},
+		{"UNKNOWN waits even with a passing check", unknownMergeState(probeFound(pass)), StagePRReview},
+		{"CLEAN with a passing check is green", probeFound(pass), StageMerge},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := inPRReview(t, PRCheck{Name: "test", State: CheckPending})
+			got, _ := mustApply(t, p, Event{Kind: EventPRProbe, Probe: tt.probe})
+			if got.Current != tt.want {
+				t.Fatalf("current = %s, want %s", got.Current, tt.want)
+			}
+		})
+	}
+}
+
+// TestConflictFindingOncePerHead: a DIRTY probe adds one conflict finding
+// per head commit; a re-probe on the same head adds none, a new head adds
+// one fresh; dismissing it lets pr_review go green on the next probe
+// (#1253).
+func TestConflictFindingOncePerHead(t *testing.T) {
+	p := inPRReview(t, PRCheck{Name: "test", State: CheckPending})
+	p, _ = mustApply(t, p, Event{Kind: EventPRProbe, Probe: dirty(probeFound())})
+	findings := cardsOf(p, CardFinding, StagePRReview)
+	if len(findings) != 1 || !strings.Contains(findings[0].Title, "conflict") {
+		t.Fatalf("findings = %+v", findings)
+	}
+	// A re-probe on the same head adds nothing.
+	p, _ = mustApply(t, p, Event{Kind: EventPRProbe, Probe: dirty(probeFound())})
+	if n := len(cardsOf(p, CardFinding, StagePRReview)); n != 1 {
+		t.Fatalf("findings after a re-probe on the same head = %d", n)
+	}
+	// Dismissing it lets the next probe (same head, still dirty... but
+	// the dismissal resolves this head) judge green by the ordinary rule.
+	p, _ = decideAll(t, p, FindingDismiss)
+	got, _ := mustApply(t, p, Event{Kind: EventPRProbe, Probe: dirty(probeFound(PRCheck{Name: "test", State: CheckPass}))})
+	if got.Current != StageMerge {
+		t.Fatalf("after dismiss: current = %s", got.Current)
+	}
+	// A new head still conflicting is a fresh finding, and green again.
+	pushed, _ := mustApply(t, p, Event{Kind: EventPRProbe, Probe: onHead(dirty(probeFound()), "h2")})
+	if pushed.Current != StagePRReview || len(cardsOf(pushed, CardFinding, StagePRReview)) != 2 {
+		t.Fatalf("new head: current %s findings %d", pushed.Current, len(cardsOf(pushed, CardFinding, StagePRReview)))
+	}
+}
+
+// TestConflictFixPromptMergesNotRebases checks the fix turn's instruction
+// for a conflict finding (#1253).
+func TestConflictFixPromptMergesNotRebases(t *testing.T) {
+	p := inPRReview(t, PRCheck{Name: "test", State: CheckPending})
+	p, _ = mustApply(t, p, Event{Kind: EventPRProbe, Probe: dirty(probeFound())})
+	_, act := decideAll(t, p, FindingFix)
+	if act.Kind != ActionSendTurn || !strings.Contains(act.Prompt, "`git merge`") || !strings.Contains(act.Prompt, "not `git rebase` or a force push") {
+		t.Fatalf("fix prompt = %q", act.Prompt)
+	}
+}
+
+// TestConflictUnderG4ClosesItAndReturnsToPRReview is requirement 3: a
+// conflict that appears on the unchanged head after G4 opened (main moved)
+// closes G4 and returns to pr_review for a fresh decision, matching the
+// request-changes -> pr_review flow (#1253).
+func TestConflictUnderG4ClosesItAndReturnsToPRReview(t *testing.T) {
+	p := inMerge(t)
+	g4 := p.Cards[p.openGateCard()]
+	p, act := mustApply(t, p, Event{Kind: EventPRProbe, Probe: dirty(probeFound(PRCheck{Name: "test", State: CheckPass}))})
+	if act.Kind != ActionNone || p.Current != StagePRReview || p.OpenGate != GateNone {
+		t.Fatalf("current %s gate %q act %+v", p.Current, p.OpenGate, act)
+	}
+	if c := p.Cards[g4.idx(p)]; c.State != CardDecided || c.Decision != DecisionSuperseded {
+		t.Fatalf("old G4 card = %+v", c)
+	}
+	if !p.hasNotice(NoticeMergeConflict) {
+		t.Fatal("no notice says why G4 closed")
+	}
+	findings := cardsOf(p, CardFinding, StagePRReview)
+	if len(findings) != 1 || !strings.Contains(findings[0].Title, "conflict") {
+		t.Fatalf("findings = %+v", findings)
+	}
+	if s, _ := p.Stage(StageMerge); s.Status != StatusPending {
+		t.Fatalf("merge status = %s", s.Status)
+	}
+	// A further probe on the same still-dirty head does not add a second
+	// finding or notice.
+	p, _ = mustApply(t, p, Event{Kind: EventPRProbe, Probe: dirty(probeFound(PRCheck{Name: "test", State: CheckPass}))})
+	if n := len(cardsOf(p, CardFinding, StagePRReview)); n != 1 {
+		t.Fatalf("findings after a repeat probe = %d", n)
+	}
+	// Dismissing and a clean probe reopens G4 on the fresh facts.
+	p, _ = decideAll(t, p, FindingDismiss)
+	p, _ = mustApply(t, p, Event{Kind: EventPRProbe, Probe: probeFound(PRCheck{Name: "test", State: CheckPass})})
+	if p.OpenGate != GateMerge {
+		t.Fatalf("after dismiss and a clean probe: gate %q current %s", p.OpenGate, p.Current)
+	}
+}
+
+// TestConflictUnderG4WithPRReviewSkippedReopensOnce covers a template that
+// skips pr_review: there is no stage to return to, so G4 reopens once on
+// the conflict summary, and repeat probes do not reopen it again (#1253).
+func TestConflictUnderG4WithPRReviewSkippedReopensOnce(t *testing.T) {
+	p := skippingPRReview(inMerge(t))
+	g4 := p.Cards[p.openGateCard()]
+	p, _ = mustApply(t, p, Event{Kind: EventPRProbe, Probe: dirty(probeFound(PRCheck{Name: "test", State: CheckPass}))})
+	if p.OpenGate != GateMerge || p.Current != StageMerge {
+		t.Fatalf("current %s gate %q", p.Current, p.OpenGate)
+	}
+	reopened := p.Cards[p.openGateCard()].ID
+	if reopened == g4.ID {
+		t.Fatal("G4 did not reopen on the conflict")
+	}
+	var summary MergeSummary
+	if json.Unmarshal(p.Cards[p.openGateCard()].Payload, &summary) != nil || summary.MergeState != MergeStateDirty {
+		t.Fatalf("summary = %+v", summary)
+	}
+	// A repeat probe on the same dirty head does not reopen G4 again.
+	p, _ = mustApply(t, p, Event{Kind: EventPRProbe, Probe: dirty(probeFound(PRCheck{Name: "test", State: CheckPass}))})
+	if p.Cards[p.openGateCard()].ID != reopened {
+		t.Fatal("G4 reopened again on an unchanged conflict")
+	}
+}
