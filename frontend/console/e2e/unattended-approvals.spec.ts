@@ -36,7 +36,25 @@ test('a cron run in Ask mode waits for the needs-input bar', async ({ page, cont
     await expect(bar).toContainText('A cron run needs input')
     await expect(bar).toContainText(preview)
     await bar.getByRole('button', { name: button }).click()
-    await expect(bar).toHaveCount(0, { timeout: 15_000 })
+    // Not a wait for the bar to empty (toHaveCount(0)): the next
+    // write_file's approval can exist before this click's own response
+    // does — a captured trace showed a reject recorded and the next
+    // approval already pending 62ms later — so the bar can go straight
+    // from this question to the next one without ever being empty, and
+    // toHaveCount(0) would then time out waiting for a gap that never
+    // happens. ChatUnattendedApprovals.svelte has no per-item id in the
+    // DOM to key on, so the question's own preview text is the
+    // identifier: waiting for the item carrying it to be gone holds
+    // whether the bar truly empties (the last of the three questions) or
+    // is immediately replaced by the next one's preview. A plain
+    // `not.toContainText` doesn't fit the "truly empties" half — it
+    // requires a matching element to assert against and errors
+    // ("element(s) not found") once the bar has none left, which is
+    // exactly the last question's case — so this filters to the item(s)
+    // still carrying the old preview and waits for that count to hit
+    // zero, a count assertion that is satisfied by zero elements either
+    // way.
+    await expect(bar.filter({ hasText: preview })).toHaveCount(0, { timeout: 15_000 })
   }
   // The session board counts the queued question as needs input.
   await expect(bar).toHaveCount(1, { timeout: 15_000 })
