@@ -714,6 +714,9 @@ func appendClaudeCodeHarnessArgs(args []string, options *ClaudeCodeHarnessOption
 	if options.SafeMode {
 		args = append(args, "--safe-mode")
 	}
+	if options.Restricted {
+		args = append(args, "--restricted")
+	}
 	if options.StrictMCP {
 		args = append(args, "--strict-mcp-config")
 	}

@@ -295,7 +295,15 @@ type ChatOptions struct {
 // or budget-bounding CLI flags. It cannot inject settings, hooks, environment
 // variables, plugins, MCP servers, credentials, or arbitrary arguments.
 type ClaudeCodeHarnessOptions struct {
-	SafeMode           bool
+	SafeMode bool
+	// Restricted passes --restricted: no user, project or local settings
+	// files (so none of their hooks or enabled plugins), none of the
+	// command-running built-ins or WebFetch unless Tools names them, and file
+	// tools confined to the working directories. Unlike SafeMode it keeps the
+	// MCP servers given with --mcp-config, so an embedding app can switch the
+	// person's own setup off while still handing Claude Code its own tools;
+	// pair it with StrictMCP to drop every other MCP configuration.
+	Restricted         bool
 	StrictMCP          bool
 	DisableChrome      bool
 	IsolateEnvironment bool

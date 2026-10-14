@@ -6,6 +6,10 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+### Added
+
+- **`ClaudeCodeHarnessOptions.Restricted` passes Claude Code's `--restricted`.** It ignores the person's user, project and local settings files (their hooks and enabled plugins with them), drops the command-running built-ins and WebFetch unless `Tools` names them, and confines file tools to the working directories — while, unlike `SafeMode`, keeping the MCP servers given with `--mcp-config`. An embedding app that hands Claude Code its own tools over MCP (Linetta's built-in agent) can now switch the person's own setup off without losing those tools; `SafeMode` there leaves the model with no tools at all.
+
 ### Fixed
 
 - **gemini-native streaming no longer fails after 30 seconds, no longer passes a cut-off stream as a finished turn, and keeps parallel tool calls.** A streamed turn whose first chunk took longer than `HTTPTimeout` (30s by default) failed with a request error — common when the model composes a long function call, since Gemini does not stream function-call arguments. Streaming now drops the client timeout like the Anthropic and OpenAI providers do and is bounded by the caller's context. A stream that ends with a read error (connection reset, deadline, a line over the 1MB buffer) now returns a `stream` provider error instead of a partial or empty response. Two function calls without server IDs in separate chunks no longer both become `tool_call_0` with the second dropped: synthesized IDs count across the whole stream, and only server-provided IDs are deduplicated.
