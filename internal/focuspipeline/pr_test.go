@@ -1302,7 +1302,7 @@ func TestConflictFindingOncePerHead(t *testing.T) {
 func TestConflictFixPromptMergesNotRebases(t *testing.T) {
 	p := inPRReview(t, PRCheck{Name: "test", State: CheckPending})
 	p, _ = mustApply(t, p, Event{Kind: EventPRProbe, Probe: dirty(probeFound())})
-	p, act := decideAll(t, p, FindingFix)
+	_, act := decideAll(t, p, FindingFix)
 	if act.Kind != ActionSendTurn || !strings.Contains(act.Prompt, "`git merge`") || !strings.Contains(act.Prompt, "not `git rebase` or a force push") {
 		t.Fatalf("fix prompt = %q", act.Prompt)
 	}
