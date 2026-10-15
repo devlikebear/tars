@@ -258,15 +258,18 @@ func Schema() []FieldMeta {
 }
 
 // ConfigToMap converts a Config to a flat map keyed by YAML keys.
+//
+// Values are read from cfg itself. They used to be read after merging each
+// field into an empty Config, but a presence field's merge copies only an
+// explicitly set value, so defaults such as session_auto_archive_days (7)
+// and tools_computer_use_enabled (true) came out as 0/false (#1237).
 func ConfigToMap(cfg Config) map[string]any {
 	m := map[string]any{}
 	for _, field := range configInputFields {
 		if field.yamlKey == "" {
 			continue
 		}
-		var probe Config
-		field.merge(&probe, cfg)
-		m[field.yamlKey] = extractValue(field.yamlKey, probe)
+		m[field.yamlKey] = extractValue(field.yamlKey, cfg)
 	}
 	return m
 }
