@@ -6,6 +6,8 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.62.0] - 2026-10-15
+
 ### Added
 
 - **`ClaudeCodeHarnessOptions.Restricted` passes Claude Code's `--restricted`.** It ignores the person's user, project and local settings files (their hooks and enabled plugins with them), drops the command-running built-ins and WebFetch unless `Tools` names them, and confines file tools to the working directories — while, unlike `SafeMode`, keeping the MCP servers given with `--mcp-config`. An embedding app that hands Claude Code its own tools over MCP (Linetta's built-in agent) can now switch the person's own setup off without losing those tools; `SafeMode` there leaves the model with no tools at all.
