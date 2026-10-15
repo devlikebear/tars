@@ -62,8 +62,13 @@ node_modules/
 .playwright*
 .serena/
 
-# Local-only working docs (plans, code reviews) — kept on disk, not tracked
-docs/plans/
+# Local-only working docs (plans, code reviews) — kept on disk, not tracked,
+# except the shared Focus × Crew / CASE plans below.
+docs/plans/*
+!docs/plans/HANDOFF.md
+!docs/plans/design-system/
+!docs/plans/case-companion/
+!docs/plans/focus-crew/
 docs/code-review/
 
 # for tars: local .tars state stays untracked; the shared session settings
