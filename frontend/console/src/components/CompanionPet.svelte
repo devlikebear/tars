@@ -192,7 +192,7 @@
     'companionActNod',
     'companionActShake',
     'companionActTilt',
-    'companionAntennaWave',
+    'companionPawWave',
   ])
   const IDLE_ANIMATION_NAMES: Record<string, CompanionIdleKind> = {
     companionLookAround: 'look',
@@ -742,16 +742,27 @@
         aria-hidden="true"
         onanimationend={handleBodyAnimationEnd}
       >
-        <span class="companion-antenna"></span>
-        <span class="companion-brows">
-          <span class="companion-brow companion-brow-left"></span>
-          <span class="companion-brow companion-brow-right"></span>
+        <span class="companion-ear companion-ear-left"></span>
+        <span class="companion-ear companion-ear-right"></span>
+        <span class="companion-torso"></span>
+        <span class="companion-laptop"></span>
+        <span class="companion-head">
+          <span class="companion-skull"></span>
+          <span class="companion-brows">
+            <span class="companion-brow companion-brow-left"></span>
+            <span class="companion-brow companion-brow-right"></span>
+          </span>
+          <span class="companion-patch companion-patch-left"></span>
+          <span class="companion-patch companion-patch-right"></span>
+          <span class="companion-eyes" style={`--eye-x: ${gazeOffset.x}px; --eye-y: ${gazeOffset.y}px;`}>
+            <span class="companion-eye companion-eye-left"></span>
+            <span class="companion-eye companion-eye-right"></span>
+          </span>
+          <span class="companion-nose"></span>
+          <span class="companion-mouth"></span>
         </span>
-        <span class="companion-eyes" style={`--eye-x: ${gazeOffset.x}px; --eye-y: ${gazeOffset.y}px;`}>
-          <span class="companion-eye companion-eye-left"></span>
-          <span class="companion-eye companion-eye-right"></span>
-        </span>
-        <span class="companion-mouth"></span>
+        <span class="companion-paw"></span>
+        <span class="companion-gem"></span>
         <span class="companion-zzz" aria-hidden="true">z</span>
       </span>
       {#if snapshot.badge > 0}
@@ -784,7 +795,7 @@
   }
 
   /* Everything that moves lives in .companion-figure below, not here: the
-     float, every one-shot action and idle play, and the antenna/breathing
+     float, every one-shot action and idle play, and the chip/breathing
      loops. .companion-button keeps a fixed size and no animation or
      transform of its own, so it is always what actually receives clicks
      (#1194 was a bubble covering a neighbouring button; this is the same
@@ -820,362 +831,429 @@
     animation: companionFloat 4.8s var(--ease-out) infinite;
   }
 
+  /* CASE is an on-call meerkat (case-companion phase 1). The figure is
+     drawn on a 64×64 grid of plain spans — no image, SVG or font icon
+     (DESIGN.md "CASE's expressions"). The colours are local to this
+     component, never global tokens: nothing outside CASE uses them. */
   .companion-body {
+    --case-head: #e3c48f;
+    --case-torso: #d9b97e;
+    --case-ear: #b8955e;
+    --case-patch: #6b5434;
+    --case-eye: #f5ebdd;
+    --case-nose: #2a1c14;
+    --case-laptop: #3a3a34;
+    --case-gem-neutral: #8a877d;
+    --case-gem-working: #f2a93b;
+    --case-gem-alert: #ff7a59;
+    --case-gem-happy: #9bd77a;
+    --case-gem-sleepy: #4a4842;
     position: relative;
     width: 64px;
-    height: 58px;
-    border: 1px solid rgba(var(--primary-rgb), 0.45);
-    border-radius: var(--radius-lg);
-    background:
-      linear-gradient(180deg, rgba(var(--primary-rgb), 0.18), rgba(var(--primary-rgb), 0.04)),
-      var(--surface-elevated);
-    box-shadow:
-      0 12px 28px rgba(0, 0, 0, 0.42),
-      inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    height: 64px;
+    transform-origin: 50% 100%;
   }
 
-  .companion-antenna {
+  .companion-body span {
     position: absolute;
-    top: -16px;
-    left: 50%;
-    width: 2px;
-    height: 14px;
-    transform: translateX(-50%);
-    background: var(--primary-text);
+    display: block;
   }
 
-  .companion-antenna::after {
+  .companion-ear {
+    top: 14.5px;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--case-ear);
+  }
+
+  .companion-ear-left {
+    left: 15.5px;
+  }
+
+  .companion-ear-right {
+    left: 41.5px;
+  }
+
+  .companion-torso {
+    left: 24px;
+    top: 43px;
+    width: 16px;
+    height: 17px;
+    border-radius: 5px 5px 2px 2px;
+    background: var(--case-torso);
+  }
+
+  /* working's laptop: hidden everywhere else. */
+  .companion-body .companion-laptop {
+    display: none;
+    left: 20px;
+    top: 46px;
+    width: 24px;
+    height: 9px;
+    border-radius: 1px;
+    background: var(--case-laptop);
+  }
+
+  .companion-laptop::after {
     content: '';
     position: absolute;
-    top: -6px;
-    left: 50%;
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    transform: translateX(-50%);
-    background: var(--primary);
-    box-shadow: 0 0 14px rgba(var(--primary-rgb), 0.7);
+    left: 2px;
+    top: 2px;
+    width: 20px;
+    height: 1.5px;
+    background: var(--case-gem-working);
   }
 
-  /* CASE's face (#1190): eyebrows, eyes, mouth and the antenna tip are
-     always in the DOM — only the `.expr-<name>` class on `.companion-body`
-     (from lib/companion.ts `companionExpression`) changes, and every block
-     below changes shape, never only colour, so the eight expressions read
-     as different faces rather than one face with a different light on it.
-     When a state colour is useful it rides only on the antenna tip
-     (`.companion-antenna::after`) — nowhere else on the face carries
-     colour as its only difference, so there is no second "mouth" made of
-     a colour chip sitting next to the real one. */
+  .companion-head {
+    left: 20px;
+    top: 9px;
+    width: 24px;
+    height: 34px;
+    transform-origin: 50% 90%;
+  }
 
-  .companion-brows {
-    position: absolute;
-    top: 12px;
-    left: 50%;
-    display: flex;
-    width: 38px;
-    justify-content: space-between;
-    transform: translateX(-50%);
+  .companion-skull {
+    left: 0;
+    top: 0;
+    width: 24px;
+    height: 34px;
+    border-radius: 50% 50% 46% 46% / 40% 40% 60% 60%;
+    background: var(--case-head);
+  }
+
+  .companion-patch {
+    top: 11.5px;
+    width: 9px;
+    height: 11px;
+    border-radius: 50%;
+    background: var(--case-patch);
+  }
+
+  .companion-patch-left {
+    left: 2.5px;
+  }
+
+  .companion-patch-right {
+    left: 12.5px;
+  }
+
+  /* .companion-brows and .companion-eyes are full-head layers so the
+     brows/eyes inside them keep head coordinates; .companion-eyes also
+     carries the cursor-gaze custom properties. */
+  .companion-brows,
+  .companion-eyes {
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
   }
 
   .companion-brow {
-    width: 9px;
+    top: 8px;
+    width: 8px;
     height: 2px;
-    border-radius: 999px;
-    background: var(--primary-text);
+    border-radius: 1px;
+    background: var(--case-patch);
     /* Hidden by default: a brow only means something on alert/upset/wary
        below. Everywhere else it is a faint line sitting above the eyes
        for no reason, so it stays invisible instead of being noise. */
     opacity: 0;
   }
 
-  .companion-eyes {
-    position: absolute;
-    top: 20px;
-    left: 50%;
-    display: flex;
-    width: 38px;
-    justify-content: space-between;
-    transform: translateX(-50%);
+  .companion-brow-left {
+    left: 2px;
+  }
+
+  .companion-brow-right {
+    left: 14px;
   }
 
   .companion-eye {
-    position: relative;
-    width: 9px;
-    height: 12px;
-    border-radius: 999px;
-    background: var(--primary-text);
-    box-shadow: 0 0 12px color-mix(in srgb, var(--primary-text) 75%, transparent);
+    top: 15px;
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: var(--case-eye);
     animation: companionBlink 5.6s infinite;
   }
 
-  /* Cursor gaze (#1191): the eyes lean a few px toward a nearby pointer.
-     `translate` is a separate property from `transform`, so it composes
-     with whatever an expression's own `transform` already does (working's
-     glance, upset's pinch) instead of replacing it — the component sets
-     `--eye-x`/`--eye-y` on .companion-eyes (lib/companion.ts
-     `companionGazeOffset`), already clamped and zeroed past 200px.
-     Scoped to the four expressions whose eyes are pupil-shaped: this
-     selector, not just the component's `companionGazeApplies` check, is
-     what actually keeps a stale non-zero offset from applying to
-     happy/upset/sleepy/greeting's curve/line/star eyes. */
-  .companion-body:not(.expr-happy):not(.expr-upset):not(.expr-sleepy):not(.expr-greeting) .companion-eye {
-    translate: var(--eye-x, 0px) var(--eye-y, 0px);
+  .companion-eye-left {
+    left: 5px;
   }
 
-  .companion-mouth {
-    position: absolute;
-    top: 38px;
-    left: 50%;
-    width: 14px;
-    height: 2px;
-    border-radius: 999px;
-    background: var(--primary-text);
-    opacity: 0.85;
-    transform: translateX(-50%);
+  .companion-eye-right {
+    left: 15px;
+  }
+
+  /* Cursor gaze (#1191): the pupils lean toward a nearby pointer.
+     `translate` is a separate property from `transform`, so it composes
+     with an expression's own `transform` (working's downward glance,
+     wary's side-eye) instead of replacing it, and the blink animates
+     `scale`, a third one. The component sets `--eye-x`/`--eye-y` on
+     .companion-eyes (lib/companion.ts `companionGazeOffset`, already
+     clamped to 3px); a pupil sits inside a 9px eye patch, so the lean is
+     scaled down to stay inside it. Scoped to the four expressions whose
+     eyes are pupil-shaped: this selector, not just the component's
+     `companionGazeApplies` check, is what keeps a stale offset off
+     happy/upset/sleepy/greeting's arc/small/closed eyes. */
+  .companion-body:not(.expr-happy):not(.expr-upset):not(.expr-sleepy):not(.expr-greeting) .companion-eye {
+    translate: calc(var(--eye-x, 0px) * 0.6) calc(var(--eye-y, 0px) * 0.6);
+  }
+
+  .companion-nose {
+    left: 10px;
+    top: 25px;
+    width: 0;
+    height: 0;
+    border-left: 2px solid transparent;
+    border-right: 2px solid transparent;
+    border-top: 2.5px solid var(--case-nose);
+  }
+
+  /* No mouth by default — only happy/greeting smile, upset frowns, and
+     the idle yawn opens one. */
+  .companion-body .companion-mouth {
+    display: none;
+    left: 9px;
+    top: 27.5px;
+    width: 6px;
+    height: 3px;
+    border-bottom: 1.5px solid var(--case-nose);
+    border-radius: 0 0 50% 50%;
+  }
+
+  /* greeting's raised front paw: hidden everywhere else. */
+  .companion-body .companion-paw {
+    display: none;
+    left: 38px;
+    top: 34px;
+    width: 4px;
+    height: 15px;
+    border-radius: 2px;
+    background: var(--case-torso);
+    transform: rotate(35deg);
+    transform-origin: 50% 100%;
+  }
+
+  /* The chest chip: the one place a state colour rides (DESIGN.md). */
+  .companion-gem {
+    left: 29px;
+    top: 50px;
+    width: 6px;
+    height: 4px;
+    border-radius: 1px;
+    background: var(--case-gem-neutral);
   }
 
   /* The sleepy 'z' — hidden everywhere else, shown only by .expr-sleepy
      below. pointer-events: none like the rest of .companion-figure's
      contents; it is decoration, never a hit target. */
-  .companion-zzz {
-    position: absolute;
-    top: 0;
-    right: -8px;
+  .companion-body .companion-zzz {
+    display: none;
+    right: 9px;
+    top: 4px;
     font-family: var(--font-mono);
-    font-size: 10px;
+    font-size: 8px;
+    font-weight: 600;
     line-height: 1;
-    color: var(--primary-text);
-    opacity: 0;
+    color: var(--text-secondary);
     pointer-events: none;
   }
 
-  /* neutral (idle, the default): the base shapes above as-is. The rule
-     below only reaffirms the base mouth width so every expression has its
-     own .expr-<name> rule to point at. */
-  .expr-neutral .companion-mouth {
-    width: 14px;
+  /* neutral (idle, the default): round pupils, no brows, no mouth, a
+     grey chip — the base shapes above as-is. */
+  .expr-neutral .companion-gem {
+    background: var(--case-gem-neutral);
   }
 
-  /* working (a turn is running): eyes glance up and to one side (a
-     definite look, not a 3px nudge), the mouth closes to a small pursed
-     line, and the antenna tip becomes a ring instead of a filled dot —
-     three shapes differ from neutral at once. The tip also pulses slowly
-     for as long as the turn runs (#1191) — the one continuous, repeating
-     motion among the eight expressions, as opposed to the one-shot
-     actions the other five play once on arrival. */
+  /* working (a turn is running): the pupils drop to the laptop it now
+     holds, and the chip turns amber and pulses for as long as the turn
+     runs (#1191) — one of the two continuous states, as opposed to the
+     one-shot actions the other five play once on arrival. */
   .expr-working .companion-eye {
-    transform: translate(4px, -3px);
+    width: 3.6px;
+    height: 3.6px;
+    transform: translate(-1px, 2px);
   }
 
-  .expr-working .companion-mouth {
-    width: 6px;
+  .expr-working .companion-laptop {
+    display: block;
   }
 
-  .expr-working .companion-antenna::after {
-    box-sizing: border-box;
-    background: transparent;
-    border: 2px solid var(--primary-text);
-    animation: companionAntennaPulse 1.8s ease-in-out infinite;
+  .expr-working .companion-gem {
+    background: var(--case-gem-working);
+    animation: companionGemPulse 1.8s ease-in-out infinite;
   }
 
-  /* alert (something is waiting on you): eyes open wide and stop
-     blinking, both brows lift, the mouth is a round "oh", the antenna
-     tip turns warning-coloured and brightens. */
+  /* alert (something is waiting on you): big eyes that stop blinking,
+     both brows lift, the ears prick up, an orange chip. */
   .expr-alert .companion-eye {
-    width: 12px;
-    height: 14px;
+    width: 6px;
+    height: 6px;
+    transform: translate(-1px, -1.5px);
     animation: none;
   }
 
   .expr-alert .companion-brow {
-    opacity: 0.75;
-    transform: translateY(-1px);
-  }
-
-  .expr-alert .companion-mouth {
-    top: 34px;
-    width: 10px;
-    height: 10px;
-    background: transparent;
-    border: 2px solid var(--primary-text);
-    border-radius: 50%;
     opacity: 1;
   }
 
-  .expr-alert .companion-antenna::after {
-    background: var(--warning);
-    box-shadow: 0 0 18px rgba(245, 197, 66, 0.9);
+  .expr-alert .companion-brow-left {
+    transform: translateY(-1.5px) rotate(-8deg);
   }
 
-  /* happy (a turn just finished): eyes curve upward, a wide smile, the
-     antenna tip turns the same colour as a finished-OK state. */
-  .expr-happy .companion-eye {
-    width: 10px;
-    height: 6px;
+  .expr-alert .companion-brow-right {
+    transform: translateY(-1.5px) rotate(8deg);
+  }
+
+  .expr-alert .companion-ear {
+    transform: translateY(-2px);
+  }
+
+  .expr-alert .companion-gem {
+    background: var(--case-gem-alert);
+  }
+
+  /* happy (a turn just finished): ∩ arc eyes and a smile, a green chip. */
+  .expr-happy .companion-eye,
+  .expr-greeting .companion-eye-left {
+    width: 5px;
+    height: 3px;
     background: transparent;
-    box-shadow: none;
-    border-radius: 0 0 999px 999px;
-    border-bottom: 2px solid var(--primary-text);
+    border-top: 2px solid var(--case-eye);
+    border-radius: 50% 50% 0 0;
+    transform: translate(-0.5px, 0.5px);
     animation: none;
   }
 
-  .expr-happy .companion-mouth {
-    top: 33px;
-    width: 18px;
-    height: 9px;
-    background: transparent;
-    border-bottom: 2px solid var(--primary-text);
-    border-radius: 0 0 999px 999px;
-    opacity: 1;
+  .expr-happy .companion-mouth,
+  .expr-greeting .companion-mouth {
+    display: block;
   }
 
-  .expr-happy .companion-antenna::after {
-    background: var(--success);
-    box-shadow: 0 0 14px rgba(63, 212, 180, 0.6);
+  .expr-happy .companion-gem {
+    background: var(--case-gem-happy);
   }
 
-  /* upset (a failure): eyes pinch inward and flatten, both brows furrow
-     down, the mouth curves into a frown, the antenna tip turns
-     error-coloured. */
+  /* upset (a failure): small eyes, brows furrowed down toward the middle,
+     a frown — alert's chip colour, so it differs from alert in eye size,
+     brow direction and mouth at once (DESIGN.md). */
   .expr-upset .companion-eye {
-    width: 10px;
-    height: 4px;
-    border-radius: 2px;
-    box-shadow: none;
+    width: 3.4px;
+    height: 3.4px;
+    transform: translate(0.3px, 1px);
     animation: none;
   }
 
-  .expr-upset .companion-eye-left {
-    transform: rotate(-14deg);
-  }
-
-  .expr-upset .companion-eye-right {
-    transform: rotate(14deg);
+  .expr-upset .companion-brow {
+    top: 9px;
+    opacity: 1;
   }
 
   .expr-upset .companion-brow-left {
-    opacity: 0.85;
-    transform: rotate(18deg) translate(1px, 1px);
+    transform: rotate(22deg);
   }
 
   .expr-upset .companion-brow-right {
-    opacity: 0.85;
-    transform: rotate(-18deg) translate(-1px, 1px);
+    transform: rotate(-22deg);
   }
 
   .expr-upset .companion-mouth {
-    top: 36px;
-    width: 16px;
-    height: 7px;
-    background: transparent;
-    border-top: 2px solid var(--primary-text);
-    border-radius: 999px 999px 0 0;
-    opacity: 1;
+    display: block;
+    top: 29px;
+    border-bottom: 0;
+    border-top: 1.5px solid var(--case-nose);
+    border-radius: 50% 50% 0 0;
   }
 
-  .expr-upset .companion-antenna::after {
-    background: var(--error);
-    box-shadow: 0 0 12px rgba(255, 93, 93, 0.55);
+  .expr-upset .companion-gem {
+    background: var(--case-gem-alert);
   }
 
-  /* wary (a warning): one eyebrow lifts — thick, long and sharply angled,
-     not a faint tilt — while that same side's eye narrows to a squint.
-     The other eye and the mouth stay close to neutral on purpose: a
-     symmetric change reads as "surprised", not "suspicious". */
-  .expr-wary .companion-eye-right {
-    height: 2px;
-    box-shadow: none;
+  /* wary (a warning): squinted eyes glancing sideways, one brow raised
+     and one lowered — asymmetric on purpose, a symmetric change reads as
+     "surprised", not "suspicious". */
+  .expr-wary .companion-eye {
+    width: 4.4px;
+    height: 2.2px;
+    transform: translate(1.5px, 1px);
     animation: none;
+  }
+
+  .expr-wary .companion-brow {
+    width: 9px;
+    opacity: 1;
   }
 
   .expr-wary .companion-brow-left {
-    width: 13px;
-    height: 3px;
-    opacity: 1;
-    transform: rotate(-26deg) translate(1px, -3px);
+    transform: translateY(-1px) rotate(-14deg);
   }
 
-  .expr-wary .companion-mouth {
-    width: 12px;
-    transform: translateX(-50%) rotate(6deg);
+  .expr-wary .companion-brow-right {
+    top: 10px;
+    transform: rotate(-6deg);
   }
 
-  .expr-wary .companion-antenna::after {
-    background: var(--warning);
-    box-shadow: 0 0 14px rgba(245, 197, 66, 0.6);
+  .expr-wary .companion-gem {
+    background: var(--case-gem-working);
   }
 
-  /* sleepy (quiet for a while): both eyes close to a thin line, a tiny
-     mouth, the antenna tip dims. A slow breathing scale on the body and a
-     drifting 'z' (#1191) are the other continuous expression, alongside
-     working's antenna pulse. */
+  /* sleepy (quiet for a while): eyes shut to a line, the head droops, a
+     dark chip. A slow breathing scale on the body and a drifting 'z'
+     (#1191) are the other continuous expression, alongside working's
+     chip pulse. */
   .expr-sleepy .companion-eye {
-    height: 2px;
-    box-shadow: none;
+    width: 5px;
+    height: 1.5px;
+    border-radius: 1px;
+    transform: translate(-0.5px, 1.5px);
     animation: none;
+  }
+
+  .expr-sleepy .companion-head {
+    transform: rotate(-5deg);
   }
 
   .expr-sleepy.companion-body {
     animation: companionBreathe 3.6s ease-in-out infinite;
   }
 
-  .expr-sleepy .companion-mouth {
-    top: 37px;
-    width: 4px;
-    height: 4px;
-    border-radius: 50%;
-    opacity: 0.6;
-  }
-
-  .expr-sleepy .companion-antenna::after {
-    opacity: 0.4;
-    box-shadow: none;
+  .expr-sleepy .companion-gem {
+    background: var(--case-gem-sleepy);
   }
 
   .expr-sleepy .companion-zzz {
-    opacity: 0.75;
+    display: block;
     animation: companionZzzFloat 2.4s ease-in-out infinite;
   }
 
-  /* greeting (returning, or saying hello): each eye becomes a four-point
-     sparkle — a clip-path star, not a "+" (that one read as a broken eye,
-     not a glint) — a wide smile, the antenna tip brightens. */
-  .expr-greeting .companion-eye {
-    width: 11px;
-    height: 11px;
-    background: var(--primary-text);
-    box-shadow: none;
-    border-radius: 0;
+  /* greeting (returning, or saying hello): a wink (one arc eye, shared
+     with happy above, one wide-open eye), a smile, and a raised paw. */
+  .expr-greeting .companion-eye-right {
+    width: 4.4px;
+    height: 4.4px;
     animation: none;
-    clip-path: polygon(50% 0%, 63% 37%, 100% 50%, 63% 63%, 50% 100%, 37% 63%, 0% 50%, 37% 37%);
-    filter: drop-shadow(0 0 5px color-mix(in srgb, var(--primary-text) 70%, transparent));
   }
 
-  .expr-greeting .companion-mouth {
-    top: 33px;
-    width: 18px;
-    height: 8px;
-    background: transparent;
-    border-bottom: 2px solid var(--primary-text);
-    border-radius: 0 0 999px 999px;
-    opacity: 1;
+  .expr-greeting .companion-paw {
+    display: block;
   }
 
-  .expr-greeting .companion-antenna::after {
-    background: var(--success);
-    box-shadow: 0 0 20px rgba(63, 212, 180, 0.9);
+  .expr-greeting .companion-gem {
+    background: var(--case-gem-happy);
   }
 
   .companion-body.act-bounce {
     /* Actions (#1191): a one-shot class the component (lib/companion.ts
        `companionActionFor`) adds exactly once per transition into its
-       expression, and clears on its own `animationend`. Each plays on
-       .companion-body except wave below, which moves the antenna instead
-       — that one reads as CASE's own gesture, not the body nudging it. */
+       expression, and clears on its own `animationend`. bounce, shake
+       and tilt move the whole meerkat; nod moves only the head and wave
+       only the raised paw — CASE's own gestures. */
     animation: companionActBounce 0.5s var(--ease-out);
   }
 
-  .companion-body.act-nod {
+  .companion-body.act-nod .companion-head {
     animation: companionActNod 0.6s var(--ease-out);
   }
 
@@ -1187,8 +1265,8 @@
     animation: companionActTilt 0.6s var(--ease-out);
   }
 
-  .companion-body.act-wave .companion-antenna {
-    animation: companionAntennaWave 0.6s var(--ease-out);
+  .companion-body.act-wave .companion-paw {
+    animation: companionPawWave 0.6s var(--ease-out) 2;
   }
 
   .companion-body.expr-neutral.play-look .companion-eye {
@@ -1202,11 +1280,17 @@
        here too, not just on `idlePlay`, is what actually stops a stale
        look/yawn/wink from fighting a real expression's own mouth/eye
        shape for the rest of its ~0.5-1.4s. Same guarantee gaze gets from
-       its own `:not(.expr-*)` selector below. */
+       its own `:not(.expr-*)` selector above. */
     animation: companionLookAround 1.4s ease-in-out;
   }
 
   .companion-body.expr-neutral.play-yawn .companion-mouth {
+    display: block;
+    left: 10px;
+    top: 27px;
+    border: 0;
+    border-radius: 50%;
+    background: var(--case-nose);
     animation: companionYawn 1.2s ease-in-out;
   }
 
@@ -1217,8 +1301,8 @@
   .companion-shadow {
     position: absolute;
     bottom: 0;
-    width: 54px;
-    height: 10px;
+    width: 34px;
+    height: 6px;
     border-radius: 50%;
     background: rgba(0, 0, 0, 0.36);
     filter: blur(2px);
@@ -1507,14 +1591,14 @@
   }
 
   @keyframes companionBlink {
-    0%, 44%, 50%, 100% { transform: scaleY(1); }
-    47% { transform: scaleY(0.12); }
+    0%, 44%, 50%, 100% { scale: 1 1; }
+    47% { scale: 1 0.12; }
   }
 
-  /* working's continuous antenna pulse. */
-  @keyframes companionAntennaPulse {
-    0%, 100% { opacity: 1; transform: translateX(-50%) scale(1); }
-    50% { opacity: 0.55; transform: translateX(-50%) scale(1.25); }
+  /* working's continuous chip pulse. */
+  @keyframes companionGemPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.45; }
   }
 
   /* sleepy's continuous breathing + drifting 'z'. */
@@ -1526,31 +1610,31 @@
   @keyframes companionZzzFloat {
     0% { opacity: 0; transform: translateY(0); }
     30% { opacity: 0.75; }
-    100% { opacity: 0; transform: translateY(-10px); }
+    100% { opacity: 0; transform: translateY(-8px); }
   }
 
   /* One-shot actions (#1191), one per expression that has one: alert
-     bounces, happy nods, upset shakes, wary tilts, greeting's antenna
-     waves. */
+     bounces, happy nods, upset shakes, wary tilts, greeting waves its
+     paw. */
   @keyframes companionActBounce {
     0%, 100% { transform: translateY(0); }
-    30% { transform: translateY(-10px); }
+    30% { transform: translateY(-8px); }
     55% { transform: translateY(0); }
-    75% { transform: translateY(-4px); }
+    75% { transform: translateY(-3px); }
   }
 
   @keyframes companionActNod {
     0%, 100% { transform: rotate(0deg); }
     35% { transform: rotate(8deg); }
-    70% { transform: rotate(-4deg); }
+    70% { transform: rotate(-3deg); }
   }
 
   @keyframes companionActShake {
     0%, 100% { transform: translateX(0); }
-    20% { transform: translateX(-5px); }
-    40% { transform: translateX(5px); }
-    60% { transform: translateX(-3px); }
-    80% { transform: translateX(3px); }
+    20% { transform: translateX(-4px); }
+    40% { transform: translateX(4px); }
+    60% { transform: translateX(-2px); }
+    80% { transform: translateX(2px); }
   }
 
   @keyframes companionActTilt {
@@ -1559,30 +1643,30 @@
     75% { transform: rotate(4deg); }
   }
 
-  @keyframes companionAntennaWave {
-    0%, 100% { transform: translateX(-50%) rotate(0deg); }
-    25% { transform: translateX(-50%) rotate(18deg); }
-    50% { transform: translateX(-50%) rotate(-14deg); }
-    75% { transform: translateX(-50%) rotate(10deg); }
+  @keyframes companionPawWave {
+    0%, 100% { transform: rotate(35deg); }
+    25% { transform: rotate(10deg); }
+    50% { transform: rotate(40deg); }
+    75% { transform: rotate(10deg); }
   }
 
   /* Idle play (#1191): look/yawn/wink, each a few hundred ms to a second
      and a half, purely decorative. */
   @keyframes companionLookAround {
     0%, 100% { transform: translateX(0); }
-    25% { transform: translateX(-3px); }
+    25% { transform: translateX(-1.5px); }
     50% { transform: translateX(0); }
-    75% { transform: translateX(3px); }
+    75% { transform: translateX(1.5px); }
   }
 
   @keyframes companionYawn {
-    0%, 100% { height: 2px; width: 14px; border-radius: 999px; }
-    50% { height: 10px; width: 10px; border-radius: 50%; }
+    0%, 100% { width: 3px; height: 1px; }
+    50% { width: 4px; height: 4px; }
   }
 
   @keyframes companionWink {
-    0%, 100% { transform: scaleY(1); }
-    50% { transform: scaleY(0.1); }
+    0%, 100% { scale: 1 1; }
+    50% { scale: 1 0.1; }
   }
 
   @media (max-width: 700px) {
@@ -1605,14 +1689,14 @@
     .companion-figure,
     .companion-eye,
     .companion-bubble,
-    .expr-working .companion-antenna::after,
+    .expr-working .companion-gem,
     .expr-sleepy.companion-body,
     .expr-sleepy .companion-zzz,
     .companion-body.act-bounce,
-    .companion-body.act-nod,
+    .companion-body.act-nod .companion-head,
     .companion-body.act-shake,
     .companion-body.act-tilt,
-    .companion-body.act-wave .companion-antenna,
+    .companion-body.act-wave .companion-paw,
     .companion-body.expr-neutral.play-look .companion-eye,
     .companion-body.expr-neutral.play-yawn .companion-mouth,
     .companion-body.expr-neutral.play-wink .companion-eye-right,

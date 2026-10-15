@@ -6,6 +6,10 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+### Changed
+
+- **CASE is now an on-call meerkat.** The companion keeps its eight expressions, its one-shot actions (alert bounces, happy nods with its head, upset shakes, wary tilts, greeting waves a raised paw), its idle play and its cursor gaze, but they are drawn on a meerkat instead of the antenna robot: ears, eye patches, a nose, a torso, a laptop while a turn runs, and a chest chip that is now the only place a state colour shows (grey, amber, orange, green, dark grey). Still CSS and spans only, the same button size, and the same expression logic. All motion still stops under `prefers-reduced-motion: reduce`.
+
 ## [0.62.0] - 2026-10-15
 
 ### Added
