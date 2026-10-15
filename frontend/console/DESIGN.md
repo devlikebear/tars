@@ -732,6 +732,10 @@ A centered `text-tertiary` block with `body-sm` typography, padded `3xl`. Always
 
 `error-muted` background, `error` text, full-width inline. Use for synchronous form validation errors and API failure surfacing. Do not use a banner for confirmation messages — that's what `success`-tinted toasts/badges are for.
 
+### Update notice (Shell, tars#1257)
+
+A small, closable, full-width inline line inside `.shell-main` (`Shell.svelte`), same recipe as the setup-only banner above it — `rgba(primary, 0.12)` background, 1px `primary` border-bottom, `primary-text` text, `space-2`/`space-4` padding, `body-sm` — but informational rather than a warning: it tells the tab that the server is now serving a different console build than the one it loaded. The entire message doubles as the action button ("TARS was updated — Reload" / "TARS가 업데이트됐어요 — 새로고침") on the left, `primary-text`, underlines on hover; a plain `text-secondary` `×` sits on the right. In flow (not fixed), inside `.shell-main`, so it never overlays Nav (fixed, outside `.shell-main`) or any button on the route content below it — the thing #1194's bubble-over-a-button regression taught this feature to avoid. Clicking the message reloads the page at once (never automatic — it would discard whatever the user is mid-typing); clicking `×` hides it and remembers that build for the tab so the same build never shows again, but a newer one still will. Never shown under the Vite dev server (`make dev-console`) — a dev server has no stable bundle to track.
+
 ## Onboarding wizard
 
 The wizard (`src/components/Onboarding.svelte`) is a section-router shell that delegates each section to a child component under `src/components/onboarding/`. The shell owns the form state and the cross-section orchestration; each child owns its own UI and emits navigation callbacks (`onNext`, `onBack`, `onSkip`).

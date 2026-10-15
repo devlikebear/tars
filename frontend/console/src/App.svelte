@@ -11,6 +11,7 @@
   import { canSignOut, loginRequiredFor } from './lib/authGate'
   import { APIRequestError, getAuthWhoami, getConfigSchema, getEventsHistory, getHealthz, logoutAuth, patchConfigValues, streamEvents } from './lib/api'
   import { defaultModeRedirect, focusChromeHidden, focusOwnsShortcut, onboardingModeUpdate } from './lib/focus'
+  import { getOwnConsoleBuild, shouldShowUpdateNotice } from './lib/consoleUpdate'
   import type { AuthWhoamiResponse } from './lib/types'
   import {
     companionEnabledFromConfigValues,
@@ -66,6 +67,21 @@
   let companionServerCue = $state<CompanionServerCue | null>(null)
   let companionServerCueAt = $state<number | null>(null)
   let stopGlobalStream: (() => void) | null = null
+  // Update notice (tars#1257): this tab's own console_build (read once
+  // from the meta tag the server injected into this tab's index.html —
+  // never changes for the life of the tab), the build value currently
+  // shown in the notice (null = hidden), and the build the user last
+  // dismissed the notice for (so the same new build doesn't come back).
+  let ownConsoleBuild = ''
+  let consoleUpdateBuild = $state<string | null>(null)
+  let dismissedConsoleBuild: string | undefined = undefined
+  // Whether the tab is currently hidden, tracked (same pattern as
+  // lib/presence.ts's hiddenAt, #1249) so the update-notice check only
+  // runs on a real hidden->visible transition, not on every
+  // visibilitychange event that fires while the tab was already visible
+  // — a multi-page browser context (e.g. a test opening a second tab)
+  // can emit one of those without an actual transition.
+  let consoleBuildTabHidden = false
   let authRole = $derived(authInfo?.auth_role ?? '')
   let zenActive = $derived(zenMode.active && route.view === 'chat' && !needsSetup && !loginRequired)
   let focusChrome = $derived(focusChromeHidden(route))
@@ -154,6 +170,13 @@
       () => {
         serverHealth = 'ok'
       },
+      () => {
+        // The stream reconnecting (not its first open) is one of the two
+        // check points the issue calls for (tars#1257) — a server
+        // restart always drops this connection, so this is how a tab
+        // notices without polling.
+        void checkConsoleBuild()
+      },
     )
   }
 
@@ -161,6 +184,34 @@
   // handling it: it leaves CASE's list instead of sitting there forever.
   function handleDismissCompanionFailure(key: string) {
     companionFailures = companionFailures.filter((failure) => failure.key !== key)
+  }
+
+  // checkConsoleBuild is the other half of the update notice (tars#1257):
+  // shouldShowUpdateNotice owns the decision, this just supplies its
+  // inputs and fetch. Called on stream reconnect and on the tab
+  // becoming visible again (onMount below) — never on a timer; a server
+  // restart (the only real cause of a build change) always trips one of
+  // those two.
+  async function checkConsoleBuild() {
+    try {
+      const health = await getHealthz()
+      const served = health.console_build ?? ''
+      if (shouldShowUpdateNotice(ownConsoleBuild, served, dismissedConsoleBuild, import.meta.env.DEV)) {
+        consoleUpdateBuild = served
+      }
+    } catch {
+      // healthz fetch failed — the SSE stream already surfaces the
+      // disconnect; nothing more to show here.
+    }
+  }
+
+  function handleReloadConsole() {
+    window.location.reload()
+  }
+
+  function handleDismissConsoleUpdate() {
+    if (consoleUpdateBuild) dismissedConsoleBuild = consoleUpdateBuild
+    consoleUpdateBuild = null
   }
 
   async function checkSetupAndMaybeRedirect() {
@@ -442,12 +493,35 @@
 
   onMount(() => {
     syncFromBrowser()
+    // Read once: the meta tag the server injected into this exact page
+    // load never changes for the life of the tab (tars#1257).
+    ownConsoleBuild = getOwnConsoleBuild()
+    // Starting hidden (presence.ts's pendingFirstVisible case — a
+    // background tab restored by the browser, or a desktop shell window
+    // created hidden at login) means the first visibilitychange this tab
+    // ever sees is itself the hidden->visible transition.
+    consoleBuildTabHidden = document.visibilityState === 'hidden'
     const onPopState = () => syncFromBrowser()
     window.addEventListener('popstate', onPopState)
     window.addEventListener('keydown', onGlobalKeydown)
     // Coming back to a tab that shows a chat is looking at it.
     const onVisible = () => {
-      if (document.visibilityState === 'visible') sessionActivity.markSeen(sessionActivity.viewing)
+      if (document.visibilityState !== 'visible') {
+        consoleBuildTabHidden = true
+        return
+      }
+      sessionActivity.markSeen(sessionActivity.viewing)
+      // The tab becoming visible again is the update notice's other
+      // check point (tars#1257) — a tab left open overnight through a
+      // server restart has no reconnect to catch it if the stream never
+      // dropped. Gated on an actual hidden->visible transition (like
+      // lib/presence.ts's hiddenAt tracking, #1249) — not every
+      // visibilitychange event that fires while already visible, which
+      // a multi-page browser context can emit without a real transition.
+      if (consoleBuildTabHidden) {
+        consoleBuildTabHidden = false
+        void checkConsoleBuild()
+      }
     }
     document.addEventListener('visibilitychange', onVisible)
 
@@ -485,6 +559,9 @@
     onNavigate={navigate}
     onUnreadChange={(count) => { unreadCount = count }}
     onLogout={canSignOut(authInfo) ? handleLogout : undefined}
+    consoleUpdateAvailable={consoleUpdateBuild !== null}
+    onReloadConsole={handleReloadConsole}
+    onDismissConsoleUpdate={handleDismissConsoleUpdate}
   >
     {#if route.view === 'onboarding'}
       <Onboarding onComplete={handleOnboardingComplete} reentry={route.reentry === true} />

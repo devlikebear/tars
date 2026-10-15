@@ -1844,6 +1844,12 @@ export type HealthzResponse = {
   time: string
   needs_setup: boolean
   dashboard_auth?: Record<string, unknown>
+  // console_build (tars#1257) identifies the console bundle the server
+  // is currently serving — unlike version, it goes to every caller,
+  // loopback or remote, since it's already derivable from the public
+  // /console/ index.html. Absent for the Vite dev proxy and the unbuilt
+  // placeholder (see lib/consoleUpdate.ts's shouldShowUpdateNotice).
+  console_build?: string
 }
 
 export type SetupTierStatus = {

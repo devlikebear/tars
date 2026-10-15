@@ -2749,7 +2749,7 @@ func TestStatusAPI(t *testing.T) {
 
 func TestHealthzAPI(t *testing.T) {
 	now := time.Date(2026, 2, 18, 8, 0, 0, 0, time.UTC)
-	handler := newHealthzAPIHandler(func() time.Time { return now }, nil, nil)
+	handler := newHealthzAPIHandler(func() time.Time { return now }, nil, nil, nil)
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/v1/healthz", nil)
@@ -2792,7 +2792,7 @@ func TestHealthzAPI(t *testing.T) {
 // the server it shows is older (a Homebrew cask does not upgrade an already
 // installed formula). Only same-machine callers learn it.
 func TestHealthzAPI_ReportsVersionToLoopbackOnly(t *testing.T) {
-	handler := newHealthzAPIHandler(time.Now, nil, nil)
+	handler := newHealthzAPIHandler(time.Now, nil, nil, nil)
 	versionOf := func(req *http.Request) (string, bool) {
 		rec := httptest.NewRecorder()
 		handler.ServeHTTP(rec, req)
@@ -2836,7 +2836,7 @@ func TestHealthzAPI_ReflectsNeedsSetup(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			handler := newHealthzAPIHandler(func() time.Time { return now }, nil, tc.fn)
+			handler := newHealthzAPIHandler(func() time.Time { return now }, nil, tc.fn, nil)
 			rec := httptest.NewRecorder()
 			req := httptest.NewRequest(http.MethodGet, "/v1/healthz", nil)
 			handler.ServeHTTP(rec, req)
@@ -2862,7 +2862,7 @@ func TestHealthzAPI_IncludesDashboardAuthWarning(t *testing.T) {
 		"mode":          "off",
 		"public_access": "loopback-only",
 		"warning":       "dashboard auth off is restricted to loopback requests",
-	}, nil)
+	}, nil, nil)
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/v1/healthz", nil)
@@ -2881,6 +2881,56 @@ func TestHealthzAPI_IncludesDashboardAuthWarning(t *testing.T) {
 	}
 	if got := strings.TrimSpace(asString(dashboardAuth["public_access"])); got != "loopback-only" {
 		t.Fatalf("expected public_access loopback-only, got %q", got)
+	}
+}
+
+// console_build (tars#1257) identifies the served console bundle, not the
+// server, and is already derivable by anyone from the public
+// /console/index.html — unlike version, it goes to every caller,
+// loopback or remote, so a remotely-accessed console can show the update
+// notice too.
+func TestHealthzAPI_ReportsConsoleBuildToEveryCaller(t *testing.T) {
+	handler := newHealthzAPIHandler(time.Now, nil, nil, func() string { return "abc123def456" })
+	consoleBuildOf := func(req *http.Request) (string, bool) {
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		var payload map[string]any
+		if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		v, ok := payload["console_build"].(string)
+		return v, ok
+	}
+
+	local := httptest.NewRequest(http.MethodGet, "/v1/healthz", nil)
+	local.RemoteAddr = "127.0.0.1:50000"
+	if v, ok := consoleBuildOf(local); !ok || v != "abc123def456" {
+		t.Fatalf("loopback console_build = %q (present %v), want abc123def456", v, ok)
+	}
+
+	remote := httptest.NewRequest(http.MethodGet, "/v1/healthz", nil)
+	remote.RemoteAddr = "100.64.0.7:50000"
+	if v, ok := consoleBuildOf(remote); !ok || v != "abc123def456" {
+		t.Fatalf("remote console_build = %q (present %v), want abc123def456 (unlike version, remote callers do learn this)", v, ok)
+	}
+}
+
+// An empty value (dev proxy, unbuilt placeholder) must not become a
+// visible "" field — the console's own shouldShowUpdateNotice logic
+// treats an absent field the same as dev mode: never show the notice.
+func TestHealthzAPI_OmitsConsoleBuildWhenEmpty(t *testing.T) {
+	handler := newHealthzAPIHandler(time.Now, nil, nil, func() string { return "" })
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/healthz", nil)
+	req.RemoteAddr = "127.0.0.1:50000"
+	handler.ServeHTTP(rec, req)
+
+	var payload map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if _, ok := payload["console_build"]; ok {
+		t.Fatalf("expected console_build to be omitted when empty, got %+v", payload)
 	}
 }
 

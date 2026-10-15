@@ -529,6 +529,9 @@ export const en = {
   shell: {
     setupOnlyKicker: 'Setup-only mode',
     setupOnlyBody: 'LLM is not configured yet, so console features are restricted. Complete the wizard to switch to normal mode.',
+    consoleUpdateMessage: 'TARS was updated — Reload',
+    consoleUpdateReload: 'Reload',
+    consoleUpdateDismissAria: 'Dismiss update notice',
   },
   chat: {
     panels: {

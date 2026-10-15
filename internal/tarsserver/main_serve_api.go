@@ -636,7 +636,7 @@ func buildAPIMux(
 		chatTooling,
 		chatTools...,
 	)
-	consoleHandler, err := newConsoleHandler(logger)
+	consoleHandler, consoleBuild, err := newConsoleHandler(logger)
 	if err != nil {
 		if workScheduler != nil {
 			workScheduler.Close()
@@ -646,6 +646,10 @@ func buildAPIMux(
 		}
 		return nil, err
 	}
+	// consoleBuildState lets the e2e-only hook (e2e_console_build.go)
+	// override what healthz reports without restarting the process, so a
+	// Playwright spec can simulate a new server build landing (tars#1257).
+	consoleBuildTracker := newConsoleBuildState(consoleBuild)
 	usageHandler := apihandlers.NewUsageHandler(deps.usageTracker, cfg.APIAuthMode, logger)
 	logsHandler := apihandlers.NewLogsHandler(cfg.WorkspaceDir, apihandlers.NormalizeRuntimeLogFilePath(buildLoggerConfig(opts, cfg).FilePath), logger)
 	opsHandler := newOpsAPIHandler(opsManager, logger, dispatcher.Emit, sessionStore)
@@ -657,7 +661,7 @@ func buildAPIMux(
 		ConfigPath: resolvedConfigPath,
 		Logger:     logger,
 	})
-	healthzHandler := newHealthzAPIHandler(nowFn, dashboardAuthHealthzStatus(cfg), func() bool { return config.NeedsSetup(cfg) })
+	healthzHandler := newHealthzAPIHandler(nowFn, dashboardAuthHealthzStatus(cfg), func() bool { return config.NeedsSetup(cfg) }, consoleBuildTracker.Get)
 	setupHandler := apihandlers.NewSetupHandler(opts.ConfigPath, cfg, logger)
 	providersModelsHandler := newProvidersModelsAPIHandler(providerModelsService, logger)
 	compactHandler := newCompactAPIHandler(cfg.WorkspaceDir, sessionStore, deps.llmRouter, logger)
@@ -789,7 +793,7 @@ func buildAPIMux(
 		codexUsage:      codexUsageHandler,
 	})
 	// Empty outside an `-tags e2e` build (see e2e_hooks.go/e2e_events.go).
-	applyE2ERouteHooks(mux, e2eRouteDeps{Broker: broker, InitiativeRuntime: initiativeSetup.Runtime, Presence: presenceStore})
+	applyE2ERouteHooks(mux, e2eRouteDeps{Broker: broker, InitiativeRuntime: initiativeSetup.Runtime, Presence: presenceStore, ConsoleBuild: consoleBuildTracker})
 
 	server := &http.Server{
 		Addr:    opts.APIAddr,

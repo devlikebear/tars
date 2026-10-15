@@ -21,6 +21,11 @@ type e2eRouteDeps struct {
 	// tick as if the console had just sent a signal, without actually
 	// loading a browser tab at that exact synthetic time.
 	Presence *initiative.PresenceStore
+	// ConsoleBuild is the same mutable holder the real healthz handler
+	// reads console_build from (tars#1257) — the console-build tick hook
+	// overrides it so a spec can simulate a new server build landing
+	// without restarting the process.
+	ConsoleBuild *consoleBuildState
 }
 
 // e2eRouteHooks lets a file built only with `-tags e2e` (see

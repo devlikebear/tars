@@ -514,6 +514,9 @@ export type Translations = {
   shell: {
     setupOnlyKicker: string
     setupOnlyBody: string
+    consoleUpdateMessage: string
+    consoleUpdateReload: string
+    consoleUpdateDismissAria: string
   }
   chat: {
     panels: {

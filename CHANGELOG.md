@@ -10,6 +10,7 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ### Added
 
+- **An open console tab now notices when the server starts serving a new console build and offers to reload.** `/v1/healthz`'s new `console_build` (the embedded `index.html`'s content hash, not the version — stable across two `main` builds only when the bundle itself hasn't changed) goes to every caller, unlike the loopback-only `version`. The server injects it into every served `index.html` as a meta tag so a tab learns its own value from the page it loaded; on the next SSE stream reconnect or the tab becoming visible again, a changed value shows a small, dismissible "TARS was updated — Reload" banner that never reloads on its own. Never shown under the Vite dev server. ([#1257](https://github.com/devlikebear/tars/issues/1257))
 - **`ClaudeCodeHarnessOptions.Restricted` passes Claude Code's `--restricted`.** It ignores the person's user, project and local settings files (their hooks and enabled plugins with them), drops the command-running built-ins and WebFetch unless `Tools` names them, and confines file tools to the working directories — while, unlike `SafeMode`, keeping the MCP servers given with `--mcp-config`. An embedding app that hands Claude Code its own tools over MCP (Linetta's built-in agent) can now switch the person's own setup off without losing those tools; `SafeMode` there leaves the model with no tools at all.
 
 ### Fixed
