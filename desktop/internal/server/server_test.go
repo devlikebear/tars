@@ -143,6 +143,11 @@ func TestPlanStart(t *testing.T) {
 	if !reflect.DeepEqual(got.Args, []string{"service", "start", "--install-if-missing", "--api-addr", "127.0.0.1:43185"}) {
 		t.Fatalf("darwin custom port = %+v", got)
 	}
+	// The server TARS.app ships takes the service over from another tars.
+	got = PlanStart("darwin", "/Applications/TARS.app/Contents/Helpers/tars", Config{URL: DefaultURL})
+	if !reflect.DeepEqual(got.Args, []string{"service", "start", "--install-if-missing", "--adopt"}) {
+		t.Fatalf("darwin bundled = %+v", got)
+	}
 	if got := PlanStart("linux", "tars", Config{URL: DefaultURL}); !reflect.DeepEqual(got, StartPlan{Binary: "tars", Args: []string{"serve"}, Detached: true}) {
 		t.Fatalf("linux default = %+v", got)
 	}
@@ -178,6 +183,28 @@ func TestFindTARS(t *testing.T) {
 	}
 	if got, err := FindTARS(filepath.Join(macOS, "TARS"), noPath, nil); err != nil || got != filepath.Join(bundle, name) {
 		t.Fatalf("beside the app bundle = %q, %v", got, err)
+	}
+
+	// The server the bundle ships wins over one beside the bundle or on PATH.
+	helpers := filepath.Join(bundle, "TARS.app", "Contents", HelpersDir)
+	if err := os.MkdirAll(helpers, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(helpers, name), []byte("x"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	brewPath := func(string) (string, error) { return "/opt/homebrew/bin/tars", nil }
+	got, err := FindTARS(filepath.Join(macOS, "TARS"), brewPath, nil)
+	if err != nil || got != filepath.Join(helpers, name) {
+		t.Fatalf("inside the app bundle = %q, %v", got, err)
+	}
+	if !Bundled(got) {
+		t.Fatalf("Bundled(%q) = false", got)
+	}
+	for _, other := range []string{"/opt/homebrew/bin/tars", filepath.Join(bundle, name), "/Applications/TARS.app/Contents/MacOS/TARS"} {
+		if Bundled(other) {
+			t.Fatalf("Bundled(%q) = true", other)
+		}
 	}
 
 	onPath := func(string) (string, error) { return "/usr/local/bin/tars", nil }

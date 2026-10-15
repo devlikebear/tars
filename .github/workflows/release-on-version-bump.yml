@@ -163,14 +163,24 @@ jobs:
 
   # Desktop shell archives. The self-updater picks tars-desktop_* assets out
   # of the same release and verifies them against checksums.txt.
+  # TARS.app carries the tars server (Contents/Helpers/tars): the same binary
+  # as this release's tars_*_darwin_* archive, so it waits for build-assets.
   build-desktop-macos:
-    needs: prepare-release
+    needs:
+      - prepare-release
+      - build-assets
     runs-on: macos-14
     permissions:
       contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+
+      - name: Download server archives
+        uses: actions/download-artifact@v4
+        with:
+          name: release-archives
+          path: ${{ runner.temp }}/server-archives
 
       - name: Set up Go
         uses: actions/setup-go@v6
@@ -244,10 +254,14 @@ jobs:
         run: |
           set -euo pipefail
           for desktop_goarch in arm64 amd64; do
-            ./scripts/desktop_package.sh darwin "${desktop_goarch}" "${VERSION}" dist
+            server_dir="${RUNNER_TEMP}/server-${desktop_goarch}"
+            mkdir -p "${server_dir}"
+            tar -xzf "${RUNNER_TEMP}/server-archives/tars_${VERSION}_darwin_${desktop_goarch}.tar.gz" -C "${server_dir}"
+            DESKTOP_SERVER_BINARY="${server_dir}/tars" ./scripts/desktop_package.sh darwin "${desktop_goarch}" "${VERSION}" dist
           done
           tar -xzf "dist/tars-desktop_${VERSION}_darwin_arm64.tar.gz" -C "${RUNNER_TEMP}"
           "${RUNNER_TEMP}/TARS.app/Contents/MacOS/TARS" --version | grep -F "tars-desktop ${VERSION} "
+          "${RUNNER_TEMP}/TARS.app/Contents/Helpers/tars" --version | grep -F "tars ${VERSION} ("
 
       - name: Remove signing assets
         if: always() && steps.apple_assets.outcome == 'success'
@@ -394,8 +408,8 @@ jobs:
           token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
           path: homebrew-tap
 
-      # The tars-desktop cask depends on the tars formula, so
-      # `brew install --cask devlikebear/tap/tars-desktop` installs both.
+      # TARS.app ships the tars server, so the tars-desktop cask is the whole
+      # install; the tars formula stays as the command-line-only install.
       - name: Render formula and cask
         env:
           VERSION: ${{ needs.publish-release.outputs.version }}

@@ -102,7 +102,9 @@ func HomebrewFormula(repoSlug, version, arm64SHA, amd64SHA string) (string, erro
       Install them separately when needed:
         brew install ffmpeg whisper-cpp
 
-      For the desktop app (tray, approval notifications, its own window):
+      This formula is the command-line install. The desktop app (tray,
+      approval notifications, its own window) ships its own tars, so with
+      it you do not need this formula:
         brew install --cask devlikebear/tap/tars-desktop
     EOS
   end
@@ -114,9 +116,10 @@ end
 `, repoSlug, version, ReleaseAssetURL(repoSlug, version, "darwin", "arm64"), arm64SHA, ReleaseAssetURL(repoSlug, version, "darwin", "amd64"), amd64SHA), nil
 }
 
-// HomebrewCask renders the tap's tars-desktop cask. It depends on the tars
-// formula because the app only shows the console of a local server, so
-// `brew install --cask devlikebear/tap/tars-desktop` installs both.
+// HomebrewCask renders the tap's tars-desktop cask. TARS.app carries the
+// tars server (Contents/Helpers/tars), so the cask is the whole install:
+// the app, and a bin/tars link to the server it ships. The tars formula
+// stays as the command-line install for machines without the app.
 func HomebrewCask(repoSlug, version, arm64SHA, amd64SHA string) (string, error) {
 	if err := ValidateVersion(version); err != nil {
 		return "", err
@@ -150,16 +153,32 @@ func HomebrewCask(repoSlug, version, arm64SHA, amd64SHA string) (string, error) 
 
   # The app replaces itself from GitHub releases (tray: Check for updates).
   auto_updates true
-  depends_on formula: "devlikebear/tap/tars"
   depends_on :macos
 
   app "TARS.app"
 
-  zap trash: [
-    "~/Library/Application Support/tars-desktop",
-    "~/Library/Caches/com.devlikebear.tars.desktop",
-    "~/Library/WebKit/com.devlikebear.tars.desktop",
-  ]
+  # TARS.app ships the tars server and command-line tool. The formula
+  # devlikebear/tap/tars installs the same command without the app; when it
+  # is installed it keeps bin/tars, and linking over it would fail.
+  binary "#{appdir}/TARS.app/Contents/Helpers/tars" unless (HOMEBREW_PREFIX/"opt/tars").exist?
+
+  zap launchctl: "io.tars.server",
+      trash:     [
+        "~/Library/Application Support/tars-desktop",
+        "~/Library/Caches/com.devlikebear.tars.desktop",
+        "~/Library/LaunchAgents/io.tars.server.plist",
+        "~/Library/WebKit/com.devlikebear.tars.desktop",
+      ]
+
+  caveats <<~EOS
+    TARS.app includes the tars server and the tars command; nothing else
+    needs installing.
+
+    If the formula devlikebear/tap/tars is installed, it keeps the tars
+    command on PATH (the app still runs its own server). To use the app's:
+      brew uninstall devlikebear/tap/tars
+      brew reinstall --cask devlikebear/tap/tars-desktop
+  EOS
 end
 `, repoSlug, version, arm64SHA, amd64SHA), nil
 }

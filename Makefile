@@ -79,7 +79,7 @@ AGENT_HARNESS_COMMIT ?= $(GIT_COMMIT)
 	build build-bins windows-build-check windows-test release-asset clean tidy fmt vet lint \
 	lint-diff arch-check api-snapshot api-check ci-static-analysis-check github-actions-hardening-check codeql-workflow-check ci-changes-test \
 	ensure-console-assets console-install console-build console-e2e console-screenshots \
-	desktop-test desktop-build desktop-package \
+	desktop-test desktop-build desktop-package desktop-server \
 	browser-install \
 	install install-server install-assistant uninstall uninstall-server uninstall-assistant reinstall \
 	restart restart-server restart-assistant reload-config reload-server-config reload-assistant-config \
@@ -299,6 +299,15 @@ desktop-build:
 
 desktop-package:
 	./scripts/desktop_package.sh "$(DESKTOP_GOOS)" "$(DESKTOP_GOARCH)" "$(VERSION)" "$(DIST_DIR)"
+
+# The tars server TARS.app ships in Contents/Helpers (macOS). Built like the
+# release archive's (no cgo, so it cross-compiles to the other architecture);
+# scripts/desktop_package.sh runs this unless DESKTOP_SERVER_BINARY names a
+# server that is already built.
+DESKTOP_SERVER_OUT ?= $(DIST_DIR)/desktop-server/tars
+desktop-server: ensure-console-assets
+	mkdir -p "$(dir $(DESKTOP_SERVER_OUT))"
+	CGO_ENABLED=$(RELEASE_CGO_ENABLED) GOOS=$(DESKTOP_GOOS) GOARCH=$(DESKTOP_GOARCH) $(GO) build -ldflags "$(GO_LDFLAGS)" -o "$(DESKTOP_SERVER_OUT)" ./cmd/tars
 
 browser-install:
 	npm ci --ignore-scripts

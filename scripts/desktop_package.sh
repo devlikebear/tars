@@ -13,6 +13,12 @@
 # darwin must be built on macOS and linux on Linux (both need cgo for the
 # webview); windows cross-compiles from anywhere without cgo.
 #
+# TARS.app also carries the tars server, in Contents/Helpers/tars, so the
+# app is the whole install on macOS. DESKTOP_SERVER_BINARY names a server
+# already built for <goarch> (the release reuses its tars_* archive's);
+# without it the server is built here (`make desktop-server`, which needs the
+# console assets and so Node when they are not built yet).
+#
 # macOS signing: with DESKTOP_CODESIGN_IDENTITY set, the bundle is signed
 # with that identity and the hardened runtime; otherwise it is ad-hoc signed,
 # which runs locally but Gatekeeper refuses it once it is downloaded.
@@ -54,8 +60,18 @@ build() {
 case "${goos}" in
   darwin)
     app="${stage}/TARS.app"
-    mkdir -p "${app}/Contents/MacOS" "${app}/Contents/Resources"
+    mkdir -p "${app}/Contents/MacOS" "${app}/Contents/Resources" "${app}/Contents/Helpers"
     CGO_ENABLED=1 build "" "${app}/Contents/MacOS/TARS"
+
+    # Not Contents/MacOS/tars: on a case-insensitive volume that is the
+    # shell, TARS (desktop/internal/server.HelpersDir).
+    helper="${app}/Contents/Helpers/tars"
+    server_bin="${DESKTOP_SERVER_BINARY:-}"
+    if [ -z "${server_bin}" ]; then
+      server_bin="${stage}/server/tars"
+      make -C "${root}" desktop-server DESKTOP_GOOS=darwin DESKTOP_GOARCH="${goarch}" VERSION="${version}" DESKTOP_SERVER_OUT="${server_bin}"
+    fi
+    install -m 0755 "${server_bin}" "${helper}"
     sed "s/@VERSION@/${version}/g" "${desktop}/build/darwin/Info.plist" > "${app}/Contents/Info.plist"
 
     (cd "${desktop}" && go run ./tools/appicon -size 1024 -out "${stage}/appicon.png")
@@ -68,7 +84,9 @@ case "${goos}" in
     done
     iconutil -c icns -o "${app}/Contents/Resources/icon.icns" "${iconset}"
 
+    # Nested code is signed before the bundle that contains it.
     if [ -n "${DESKTOP_CODESIGN_IDENTITY:-}" ]; then
+      codesign --force --options runtime --timestamp --sign "${DESKTOP_CODESIGN_IDENTITY}" "${helper}"
       codesign --force --options runtime --timestamp --sign "${DESKTOP_CODESIGN_IDENTITY}" "${app}"
       codesign --verify --strict --verbose=2 "${app}"
       if [ -n "${DESKTOP_NOTARY_KEY_PATH:-}" ]; then
@@ -89,6 +107,7 @@ case "${goos}" in
       echo "DESKTOP_NOTARY_KEY_PATH needs DESKTOP_CODESIGN_IDENTITY: an ad-hoc signature cannot be notarized" >&2
       exit 2
     else
+      codesign --force --sign - "${helper}"
       codesign --force --sign - "${app}"
     fi
     tar -C "${stage}" -czf "${outdir}/${base}.tar.gz" TARS.app

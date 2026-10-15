@@ -8,6 +8,12 @@ Minimum path to run TARS and verify the main features.
 
 ```bash
 brew tap devlikebear/tap
+brew install --cask devlikebear/tap/tars-desktop   # macOS desktop app; includes the server and the tars command
+```
+
+For the server and CLI without the desktop app:
+
+```bash
 brew install devlikebear/tap/tars
 ```
 

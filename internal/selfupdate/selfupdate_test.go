@@ -195,6 +195,12 @@ func TestCheckRefusesWhatItCannotUpdate(t *testing.T) {
 		t.Fatalf("homebrew: err = %v", err)
 	}
 
+	bundled := windowsOpts(srv, "/Applications/TARS.app/Contents/Helpers/tars")
+	bundled.GOOS, bundled.GOARCH = "darwin", "arm64"
+	if _, err := Check(context.Background(), bundled); !errors.Is(err, ErrAppBundle) {
+		t.Fatalf("app bundle: err = %v", err)
+	}
+
 	wingetLink := windowsOpts(srv, `D:\fake\AppData\Local\Microsoft\WinGet\Links\tars.exe`)
 	if _, err := Check(context.Background(), wingetLink); !errors.Is(err, ErrWinget) {
 		t.Fatalf("winget: err = %v", err)
@@ -373,6 +379,15 @@ func TestVersionHelpers(t *testing.T) {
 	} {
 		if got := ManagedByHomebrew(p); got != want {
 			t.Errorf("ManagedByHomebrew(%q) = %v", p, got)
+		}
+	}
+	for p, want := range map[string]bool{
+		"/Applications/TARS.app/Contents/Helpers/tars": true,
+		"/opt/homebrew/bin/tars":                       false,
+		"/srv/tars.app/tars":                           false,
+	} {
+		if got := ManagedByAppBundle(p); got != want {
+			t.Errorf("ManagedByAppBundle(%q) = %v", p, got)
 		}
 	}
 	for p, want := range map[string]bool{

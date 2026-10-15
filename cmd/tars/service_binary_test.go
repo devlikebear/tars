@@ -323,6 +323,84 @@ func TestServiceStartInstallIfMissingReplacesAPlistWhoseBinaryIsGone(t *testing.
 	}
 }
 
+// The desktop app ships its own server. A plist left by an earlier install
+// (Homebrew's tars) must start that one from then on, on the same port.
+func TestServiceStartAdoptSwitchesAPlistThatRunsAnotherTars(t *testing.T) {
+	fakeHome := t.TempDir()
+	testutil.SetHome(t, fakeHome)
+	clearDoctorEnv(t)
+	t.Setenv("TARS_PLUGINS_BUNDLED_DIR", writeBundledPluginSource(t))
+	runInitForTest(t, filepath.Join(t.TempDir(), "ws"))
+
+	restore := overrideServiceTestHooks(t)
+	defer restore()
+	serviceRuntimeGOOS = "darwin"
+	serviceUserHomeDir = func() (string, error) { return fakeHome, nil }
+	dir := t.TempDir()
+	current := writeExecutable(t, dir, "tars")
+	other := writeExecutable(t, dir, "brew-tars")
+	serviceExecutablePath = func() (string, error) { return current, nil }
+	overrideServiceBinaryVersion(t, map[string]string{other: buildinfo.Version})
+	serviceLaunchctlRun = func(context.Context, ...string) (string, error) { return "", nil }
+
+	plistDir := filepath.Join(fakeHome, "Library", "LaunchAgents")
+	if err := os.MkdirAll(plistDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	plistPath := filepath.Join(plistDir, "io.tars.server.plist")
+	writePlist := func(binary string) {
+		t.Helper()
+		content := launchagent.BuildPlist(launchagent.Config{
+			Label:            launchagent.DefaultServerLabel,
+			DefaultLabel:     launchagent.DefaultServerLabel,
+			ProgramArguments: []string{binary, "serve", "--config", "/x/config.yaml", "--api-addr", "127.0.0.1:43185"},
+		})
+		if err := os.WriteFile(plistPath, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	start := func(args ...string) string {
+		t.Helper()
+		var stdout strings.Builder
+		cmd := newRootCommand(strings.NewReader(""), &stdout, io.Discard)
+		cmd.SetArgs(append([]string{"service", "start"}, args...))
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("start %v: %v\n%s", args, err, stdout.String())
+		}
+		return stdout.String()
+	}
+	plistArgs := func() []string {
+		t.Helper()
+		data, err := os.ReadFile(plistPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		args, _ := launchagent.ProgramArgumentsFromPlist(data)
+		return args
+	}
+
+	// Without --adopt the plist is left alone.
+	writePlist(other)
+	start()
+	if args := plistArgs(); args[0] != other {
+		t.Fatalf("plain start rewrote the plist: %v", args)
+	}
+
+	out := start("--adopt")
+	if !strings.Contains(out, "the service ran "+other+"; switching it to "+current) {
+		t.Fatalf("output:\n%s", out)
+	}
+	args := plistArgs()
+	if args[0] != current || args[len(args)-2] != "--api-addr" || args[len(args)-1] != "127.0.0.1:43185" {
+		t.Fatalf("plist args = %v, want %s on the old port", args, current)
+	}
+
+	// A plist that already runs this tars is not rewritten.
+	if out := start("--adopt"); strings.Contains(out, "switching") || strings.Contains(out, "service installed") {
+		t.Fatalf("adopting the same binary reinstalled:\n%s", out)
+	}
+}
+
 func TestDoctorReportsTheServiceBinaryWhenItIsThisTars(t *testing.T) {
 	fakeHome := t.TempDir()
 	testutil.SetHome(t, fakeHome)

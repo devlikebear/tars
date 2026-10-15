@@ -45,6 +45,9 @@ type serviceBinaryState struct {
 	ServiceVersion string // "" when unknown
 	CurrentBinary  string
 	CurrentVersion string
+	// APIAddr is the --api-addr the plist starts the server with, "" when
+	// it has none. A reinstall keeps it.
+	APIAddr string
 }
 
 func inspectServiceBinary(plistPath string) (serviceBinaryState, error) {
@@ -63,6 +66,11 @@ func inspectServiceBinary(plistPath string) (serviceBinaryState, error) {
 	}
 	state.Installed = true
 	state.ServiceBinary = args[0]
+	for i, arg := range args[:len(args)-1] {
+		if arg == "--api-addr" {
+			state.APIAddr = strings.TrimSpace(args[i+1])
+		}
+	}
 
 	current, err := serviceExecutablePath()
 	if err != nil {
