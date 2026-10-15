@@ -50,6 +50,11 @@ type serviceOptions struct {
 	// failing on a missing plist, and reinstall a plist whose binary is gone.
 	// The desktop app's Start server uses it.
 	installIfMissing bool
+	// adopt makes `start` reinstall a plist that runs another tars, so the
+	// service runs this one. The desktop app uses it for the server it
+	// ships: a plist left by an earlier Homebrew install would keep
+	// starting that one.
+	adopt bool
 }
 
 type launchctlStatus struct {
@@ -122,7 +127,8 @@ func newServiceCommand(stdout, stderr io.Writer) *cobra.Command {
 	}
 	bindServiceFlags(startCmd, &opts)
 	startCmd.Flags().BoolVar(&opts.installIfMissing, "install-if-missing", opts.installIfMissing, "install the LaunchAgent (and a starter config) first when it is missing or its binary is gone")
-	startCmd.Flags().StringVar(&opts.apiAddr, "api-addr", opts.apiAddr, "with --install-if-missing: bake --api-addr 127.0.0.1:<port> into a new plist")
+	startCmd.Flags().BoolVar(&opts.adopt, "adopt", opts.adopt, "reinstall the LaunchAgent first when it runs another tars executable, so the service runs this one")
+	startCmd.Flags().StringVar(&opts.apiAddr, "api-addr", opts.apiAddr, "with --install-if-missing or --adopt: bake --api-addr 127.0.0.1:<port> into the new plist (default: the old plist's)")
 
 	stopCmd := &cobra.Command{
 		Use:          "stop",
@@ -376,23 +382,30 @@ func installLaunchAgent(params serviceInstallParams, doctorOut io.Writer) (strin
 // runs another tars than this one, and with --install-if-missing installs
 // the plist (writing the starter config and workspace when there is no
 // config yet) if it is missing or names a binary that no longer exists.
+// With --adopt a plist that runs another tars is reinstalled for this one
+// instead of warned about. A reinstall keeps the old plist's --api-addr.
 func prepareServiceStart(target serviceTarget, opts serviceOptions, stdout io.Writer) error {
 	state, err := inspectServiceBinary(target.plistPath)
 	if err != nil {
 		// Best effort: an unreadable plist is launchctl's to report.
 		return nil
 	}
-	needsInstall := !state.Installed || state.Missing
-	if !opts.installIfMissing || !needsInstall {
+	needsInstall := opts.installIfMissing && (!state.Installed || state.Missing)
+	adopt := opts.adopt && state.Installed && !state.Missing && !state.SameBinary
+	if !needsInstall && !adopt {
 		if warning := state.Warning(); warning != "" {
 			_, _ = fmt.Fprintf(stdout, "warning: %s\n", warning)
 		}
 		return nil
 	}
-	if state.Missing {
+	switch {
+	case state.Missing:
 		_, _ = fmt.Fprintf(stdout, "the service ran %s, which no longer exists; reinstalling it for %s\n", state.ServiceBinary, state.CurrentBinary)
+	case adopt:
+		_, _ = fmt.Fprintf(stdout, "the service ran %s; switching it to %s\n", state.ServiceBinary, state.CurrentBinary)
 	}
-	if err := ensureStarterConfig(opts.apiAddr, stdout); err != nil {
+	apiAddr := firstNonEmpty(opts.apiAddr, state.APIAddr)
+	if err := ensureStarterConfig(apiAddr, stdout); err != nil {
 		return err
 	}
 	summary, err := installLaunchAgent(serviceInstallParams{
@@ -402,7 +415,7 @@ func prepareServiceStart(target serviceTarget, opts serviceOptions, stdout io.Wr
 		stderrLog:        target.stderrLog,
 		domain:           target.domain,
 		launchPath:       opts.launchPath,
-		apiAddr:          opts.apiAddr,
+		apiAddr:          apiAddr,
 		keepAlive:        true,
 		runAtLoad:        true,
 		skipLLMChecks:    true,

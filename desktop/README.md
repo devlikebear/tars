@@ -31,23 +31,25 @@ pulse.
 
 ## Installing
 
-On macOS, the Homebrew cask installs the app together with the server
-formula it depends on:
+On macOS the app is the whole install: `TARS.app` carries the tars server
+in `Contents/Helpers/tars`, and the Homebrew cask links that to `bin/tars`:
 
 ```bash
 brew install --cask devlikebear/tap/tars-desktop
 ```
 
-The cask installs the formula only when it is missing: a server installed
-earlier stays at its version. The app compares the server's version (from
-`/v1/healthz`) with its own and, once per server version, says when the
-server is older. It then updates the server itself once no chat is running
-(see Updates below); the commands to do it by hand are:
+The server sits in `Contents/Helpers`, not next to the shell in
+`Contents/MacOS`: the shell there is named `TARS`, which on a
+case-insensitive volume is the same file as `tars`. The formula
+`devlikebear/tap/tars` stays as the command-line install for machines
+without the app. When it is installed the cask leaves its `bin/tars` alone
+(linking over it would fail), and the app still runs its own server; to
+switch the command to the app's, `brew uninstall devlikebear/tap/tars` and
+`brew reinstall --cask devlikebear/tap/tars-desktop`.
 
-```bash
-brew upgrade devlikebear/tap/tars
-tars service stop && tars service start
-```
+Updating the app updates the server with it. The app compares the running
+server's version (from `/v1/healthz`) with its own and, once no chat is
+running, restarts the service on the server it ships (see Releases below).
 
 On Windows, `install.ps1 -Desktop` puts the app and `tars.exe` in one
 folder (`%LOCALAPPDATA%\Programs\TARS`), where the app looks first. Elsewhere,
@@ -68,8 +70,11 @@ console as soon as the server is up. **Start server** in the tray menu runs
 `<user config dir>/tars-desktop/server.log`). On a machine where
 `tars init` never ran, `--install-if-missing` writes the starter config and
 workspace and installs the LaunchAgent first, so the console opens on the
-setup wizard; a tars from before the flag gets a plain `tars service start`. The `tars`
-executable is looked up next to the shell, beside the `.app` bundle, on
+setup wizard; a tars from before the flag gets a plain `tars service start`.
+The server the app ships also passes `--adopt`: a LaunchAgent left by an
+earlier install (Homebrew's formula) is reinstalled to run the app's server,
+on the port it had. The `tars` executable is looked up inside the bundle
+(`Contents/Helpers`), next to the shell, beside the `.app` bundle, on
 `PATH`, then in Homebrew's and `install.sh`'s bin directories
 (`/opt/homebrew/bin`, `/usr/local/bin`, `~/.local/bin`): an app opened from
 Finder or the Dock gets launchd's minimal `PATH`, which has none of them.
@@ -199,7 +204,7 @@ release:
 
 | Archive | Contains |
 |---------|----------|
-| `tars-desktop_<v>_darwin_arm64.tar.gz`, `_darwin_amd64.tar.gz` | `TARS.app` |
+| `tars-desktop_<v>_darwin_arm64.tar.gz`, `_darwin_amd64.tar.gz` | `TARS.app` (with the server of the same release's `tars_<v>_darwin_*` archive in `Contents/Helpers/tars`) |
 | `tars-desktop_<v>_linux_amd64.tar.gz` | `tars-desktop` |
 | `tars-desktop_<v>_windows_amd64.zip` | `tars-desktop.exe` |
 
@@ -223,7 +228,14 @@ server update at once. A server older than the shell (see Running) wakes the
 check early.
 
 On macOS the same check runs, and what it does depends on how tars was
-installed. A Homebrew install (the tars the shell found resolves into a
+installed. The server the app ships (found in, or resolving into,
+`TARS.app/Contents/Helpers`) is replaced by the app's own update, so there
+is nothing to download: when the running server is older than the app, the
+shell restarts the service on the bundled server under the same idle rule,
+without the outdated-server dialog. `tars update` refuses that binary, since
+swapping it would break the bundle's signature. A server started by hand is
+not restarted; the shell says so once per release. A Homebrew install (the
+tars the shell found resolves into a
 Homebrew prefix) is updated with Homebrew, since `tars update` refuses one:
 the check is `brew update` then `brew outdated --json=v2 --formula
 devlikebear/tap/tars`, and the update `brew upgrade --formula

@@ -50,12 +50,12 @@ func TestForPicksHomebrewOnlyForAHomebrewInstallOnMacOS(t *testing.T) {
 	found := func() string { return brewBin }
 	none := func() string { return "" }
 
-	src, err := For("darwin", tarsBin, "/opt/homebrew/Cellar/tars/0.49.1/bin/tars", found, cfg, nil)
+	src, err := For("darwin", tarsBin, "/opt/homebrew/Cellar/tars/0.49.1/bin/tars", found, cfg, App{}, nil)
 	b, ok := src.(Brew)
 	if err != nil || !ok || b.Brew != brewBin || b.Tars != tarsBin || b.Start.Args[0] != "service" {
 		t.Fatalf("homebrew install = %#v, %v", src, err)
 	}
-	if _, err := For("darwin", "/usr/local/bin/tars", "/usr/local/Cellar/tars/0.49.1/bin/tars", none, cfg, nil); !errors.Is(err, ErrNoBrew) {
+	if _, err := For("darwin", "/usr/local/bin/tars", "/usr/local/Cellar/tars/0.49.1/bin/tars", none, cfg, App{}, nil); !errors.Is(err, ErrNoBrew) {
 		t.Fatalf("homebrew install without brew: %v", err)
 	}
 	// install.sh on macOS and install.ps1 on Windows update with `tars update`.
@@ -64,7 +64,7 @@ func TestForPicksHomebrewOnlyForAHomebrewInstallOnMacOS(t *testing.T) {
 		{"windows", `C:\TARS\tars.exe`},
 		{"windows", `C:\homebrew\tars.exe`},
 	} {
-		src, err := For(tc.goos, tc.bin, tc.bin, none, cfg, nil)
+		src, err := For(tc.goos, tc.bin, tc.bin, none, cfg, App{}, nil)
 		if u, ok := src.(Updater); err != nil || !ok || u.Bin != tc.bin {
 			t.Fatalf("%s %s = %#v, %v", tc.goos, tc.bin, src, err)
 		}
@@ -73,10 +73,10 @@ func TestForPicksHomebrewOnlyForAHomebrewInstallOnMacOS(t *testing.T) {
 	// Links alias or by the package directory the alias points into.
 	links := `D:\fake\AppData\Local\Microsoft\WinGet\Links\tars.exe`
 	pkg := `D:\fake\AppData\Local\Microsoft\WinGet\Packages\Devlikebear.TARS_Microsoft.Winget.Source_8wekyb3d8bbwe\tars.exe`
-	if _, err := For("windows", links, pkg, none, cfg, nil); !errors.Is(err, ErrManagedByWinget) {
+	if _, err := For("windows", links, pkg, none, cfg, App{}, nil); !errors.Is(err, ErrManagedByWinget) {
 		t.Fatalf("winget install via Links: %v", err)
 	}
-	if _, err := For("windows", links, links, none, cfg, nil); !errors.Is(err, ErrManagedByWinget) {
+	if _, err := For("windows", links, links, none, cfg, App{}, nil); !errors.Is(err, ErrManagedByWinget) {
 		t.Fatalf("winget install, alias not resolved: %v", err)
 	}
 	if !ManagedByWinget(pkg) || ManagedByWinget(`C:\TARS\tars.exe`) {

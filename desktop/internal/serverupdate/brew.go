@@ -67,12 +67,16 @@ var ErrNoBrew = errors.New("tars was installed with Homebrew, but brew was not f
 
 // For picks how the server at tarsBin is updated on goos. resolved is
 // tarsBin with symlinks followed; findBrew returns the brew executable or
-// "". A Homebrew install is updated with brew; a winget install is not
-// updated by the shell at all (ErrManagedByWinget); any other install with
-// `tars update` (install.ps1 on Windows, install.sh on macOS).
-func For(goos, tarsBin, resolved string, findBrew func() string, cfg server.Config, run Run) (Source, error) {
+// "". The server TARS.app ships is restarted on the app's release (Bundled);
+// a Homebrew install is updated with brew; a winget install is not updated
+// by the shell at all (ErrManagedByWinget); any other install with `tars
+// update` (install.ps1 on Windows, install.sh on macOS).
+func For(goos, tarsBin, resolved string, findBrew func() string, cfg server.Config, app App, run Run) (Source, error) {
 	if goos == "windows" && (ManagedByWinget(resolved) || ManagedByWinget(tarsBin)) {
 		return nil, ErrManagedByWinget
+	}
+	if goos == "darwin" && (server.Bundled(resolved) || server.Bundled(tarsBin)) {
+		return Bundled{Tars: tarsBin, App: app, Start: server.PlanStart(goos, tarsBin, cfg), Run: run}, nil
 	}
 	if goos == "darwin" && ManagedByHomebrew(resolved) {
 		brew := findBrew()
@@ -156,11 +160,11 @@ func (b Brew) Apply(ctx context.Context) (Result, error) {
 		return Result{}, err
 	}
 	res := Result{Current: check.Current, Latest: check.Latest, Updated: true}
-	if !b.serviceLoaded(ctx) {
+	if !serviceLoaded(ctx, b.Run, b.Tars) {
 		res.Server = "not_running"
 		return res, nil
 	}
-	if err := b.restart(ctx); err != nil {
+	if err := restartService(ctx, b.Run, b.Tars, b.Start); err != nil {
 		return res, fmt.Errorf("the server was updated to %s but did not restart: %w", check.Latest, err)
 	}
 	res.Restarted = true
@@ -169,8 +173,8 @@ func (b Brew) Apply(ctx context.Context) (Result, error) {
 
 // serviceLoaded reports whether launchd has the server's service loaded:
 // only then is restarting it the shell's to do.
-func (b Brew) serviceLoaded(ctx context.Context) bool {
-	stdout, _, err := b.Run(ctx, b.Tars, []string{"service", "status"}, nil)
+func serviceLoaded(ctx context.Context, run Run, tarsBin string) bool {
+	stdout, _, err := run(ctx, tarsBin, []string{"service", "status"}, nil)
 	if err != nil {
 		return false
 	}
@@ -182,19 +186,19 @@ func (b Brew) serviceLoaded(ctx context.Context) bool {
 	return false
 }
 
-// restart stops the service and starts it again the way the shell's Start
-// server does, falling back for a tars too old for its flags.
-func (b Brew) restart(ctx context.Context) error {
+// restartService stops the service and starts it again the way the shell's
+// Start server does, falling back for a tars too old for its flags.
+func restartService(ctx context.Context, run Run, tarsBin string, start server.StartPlan) error {
 	tars := func(args []string) (string, error) {
-		stdout, stderr, err := b.Run(ctx, b.Tars, args, nil)
+		stdout, stderr, err := run(ctx, tarsBin, args, nil)
 		return string(stdout) + string(stderr), err
 	}
 	if out, err := tars([]string{"service", "stop"}); err != nil {
 		return fmt.Errorf("tars service stop: %w: %s", err, lastLine(strings.TrimSpace(out)))
 	}
-	out, err := tars(b.Start.Args)
-	if err != nil && b.Start.Fallback != nil && server.UnknownFlag(out) {
-		out, err = tars(b.Start.Fallback)
+	out, err := tars(start.Args)
+	if err != nil && start.Fallback != nil && server.UnknownFlag(out) {
+		out, err = tars(start.Fallback)
 	}
 	if err != nil {
 		return fmt.Errorf("tars service start: %w: %s", err, lastLine(strings.TrimSpace(out)))

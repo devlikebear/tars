@@ -40,7 +40,7 @@ func TestBrewLiveCheck(t *testing.T) {
 		path, _ := exec.LookPath("brew")
 		return path
 	}
-	src, err := For("darwin", tars, resolved, findBrew, server.Config{URL: server.DefaultURL}, run)
+	src, err := For("darwin", tars, resolved, findBrew, server.Config{URL: server.DefaultURL}, App{}, run)
 	if err != nil {
 		t.Fatal(err)
 	}

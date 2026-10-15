@@ -283,16 +283,22 @@ type StartPlan struct {
 //
 // On macOS the service is installed first when it is missing, as on a
 // machine where `tars init` never ran (a fresh Homebrew install); a tars
-// from before --install-if-missing gets the plain start as a fallback.
+// from before --install-if-missing gets the plain start as a fallback. The
+// server the app ships (see Bundled) also takes over a service that still
+// starts another tars, such as an earlier Homebrew install's.
 func PlanStart(goos, tarsBinary string, cfg Config) StartPlan {
 	var addr []string
 	if u, err := url.Parse(cfg.URL); err == nil && u.Host != "" && cfg.URL != DefaultURL {
 		addr = []string{"--api-addr", u.Host}
 	}
 	if goos == "darwin" {
+		args := []string{"service", "start", "--install-if-missing"}
+		if Bundled(tarsBinary) {
+			args = append(args, "--adopt")
+		}
 		return StartPlan{
 			Binary:   tarsBinary,
-			Args:     append([]string{"service", "start", "--install-if-missing"}, addr...),
+			Args:     append(args, addr...),
 			Fallback: []string{"service", "start"},
 		}
 	}
@@ -305,10 +311,23 @@ func UnknownFlag(output string) bool {
 	return strings.Contains(output, "unknown flag")
 }
 
-// FindTARS locates the tars executable: next to the shell first (a release
-// archive ships both), then on PATH, then in installDirs. An app opened from
-// Finder or the Dock gets launchd's minimal PATH, which misses Homebrew's and
-// install.sh's bin directories, so those are tried explicitly last.
+// HelpersDir is where TARS.app carries the tars server, next to
+// Contents/MacOS. It cannot sit in Contents/MacOS: the shell there is named
+// TARS, and on a case-insensitive volume tars is the same file.
+const HelpersDir = "Helpers"
+
+// Bundled reports whether tarsBinary is the server a macOS app bundle
+// ships. The app's own update replaces it, so nothing else may: not
+// Homebrew, not `tars update`.
+func Bundled(tarsBinary string) bool {
+	return strings.Contains(filepath.ToSlash(tarsBinary), ".app/Contents/"+HelpersDir+"/")
+}
+
+// FindTARS locates the tars executable: the one the app bundle ships first
+// (macOS, see HelpersDir), then next to the shell (a release archive ships
+// both), then on PATH, then in installDirs. An app opened from Finder or the
+// Dock gets launchd's minimal PATH, which misses Homebrew's and install.sh's
+// bin directories, so those are tried explicitly last.
 func FindTARS(shellExe string, lookPath func(string) (string, error), installDirs []string) (string, error) {
 	// Compare file identity, not spelling: on macOS, TARS and tars can
 	// name the same executable. Stat also follows symlink aliases.
@@ -324,7 +343,11 @@ func FindTARS(shellExe string, lookPath func(string) (string, error), installDir
 	if shellExe != "" {
 		dir := filepath.Dir(shellExe)
 		// Inside a macOS bundle the shell lives in TARS.app/Contents/MacOS.
-		for _, candidate := range []string{filepath.Join(dir, name), filepath.Join(dir, "..", "..", "..", name)} {
+		for _, candidate := range []string{
+			filepath.Join(dir, "..", HelpersDir, name),
+			filepath.Join(dir, name),
+			filepath.Join(dir, "..", "..", "..", name),
+		} {
 			if isFile(candidate) && !isShell(candidate) {
 				return filepath.Clean(candidate), nil
 			}

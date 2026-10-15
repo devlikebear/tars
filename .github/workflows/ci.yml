@@ -138,6 +138,14 @@ jobs:
           go-version-file: desktop/go.mod
           cache-dependency-path: desktop/go.sum
 
+      # TARS.app carries the tars server, whose build embeds the console.
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/console/package-lock.json
+
       - name: Vet the desktop shell
         run: cd desktop && go vet ./...
 
@@ -146,8 +154,9 @@ jobs:
           make desktop-package DESKTOP_GOOS=darwin DESKTOP_GOARCH=arm64 VERSION=0.0.0-ci DIST_DIR=dist
           tar -xzf dist/tars-desktop_0.0.0-ci_darwin_arm64.tar.gz -C dist
           plutil -lint dist/TARS.app/Contents/Info.plist
-          codesign --verify --deep dist/TARS.app
+          codesign --verify --deep --strict dist/TARS.app
           dist/TARS.app/Contents/MacOS/TARS --version | grep -F "tars-desktop 0.0.0-ci"
+          dist/TARS.app/Contents/Helpers/tars --version | grep -F "tars 0.0.0-ci ("
 
   windows-test:
     needs: changes

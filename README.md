@@ -311,12 +311,13 @@ The Extensions console validates MCP draft names before requesting generated fil
 
 ```bash
 brew tap devlikebear/tap
-brew install devlikebear/tap/tars                  # server + CLI
-brew install --cask devlikebear/tap/tars-desktop   # desktop app (macOS); pulls in the server too
+brew install --cask devlikebear/tap/tars-desktop   # macOS: desktop app with the server and the tars command
+brew install devlikebear/tap/tars                  # or the server + CLI alone, without the app
 ```
 
-On macOS, choose **Start server** from the desktop tray menu when the server is
-not running. This installs the service and starter workspace if needed.
+The desktop app carries its own server, so it is the only thing to install on
+macOS. Choose **Start server** from the tray menu when the server is not
+running. This installs the service and starter workspace if needed.
 
 The setup wizard detects locally installed Claude Code and Codex sign-ins.
 A single ready provider fills the empty first-run form automatically; when both
@@ -376,8 +377,10 @@ skips the question, `--admin-api-token` is needed when the server requires
 auth). The desktop app does this by itself on Windows and macOS: it checks
 every six hours and updates the server only while no chat is running and
 nothing waits on an approval. When a newer app is out, it tells you; click
-the notification to install it. Homebrew installs update with `brew upgrade`,
-which the macOS desktop app runs for you and then restarts the service.
+the notification to install it. On macOS the app's own update brings its
+server along, and the app restarts the service onto it. Homebrew formula
+installs update with `brew upgrade`, which the macOS desktop app runs for you
+and then restarts the service.
 Winget installs update only with `winget upgrade`, on both the server and
 the desktop app.
 

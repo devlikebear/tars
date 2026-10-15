@@ -56,6 +56,10 @@ var (
 	ErrHomebrew = errors.New("this tars is managed by Homebrew; update it with: brew upgrade devlikebear/tap/tars")
 	// ErrWinget means winget owns the binary and must update it.
 	ErrWinget = errors.New("this tars is managed by winget; update it with: winget upgrade Devlikebear.TARS")
+	// ErrAppBundle means the binary is the server inside TARS.app, which the
+	// app's own update replaces; swapping it in place would break the
+	// bundle's code signature.
+	ErrAppBundle = errors.New("this tars is part of TARS.app; update the app (tray: Check for updates…, or brew upgrade --cask devlikebear/tap/tars-desktop)")
 	// ErrNoAsset means the latest release has no archive for this platform.
 	ErrNoAsset = errors.New("the latest release has no archive for this platform")
 )
@@ -126,6 +130,12 @@ func ManagedByHomebrew(exePath string) bool {
 	return strings.Contains(p, "/Cellar/") || strings.Contains(p, "/homebrew/") || strings.Contains(p, "/linuxbrew/")
 }
 
+// ManagedByAppBundle reports whether exePath is inside a macOS application
+// bundle, as the server the desktop app ships (TARS.app/Contents/Helpers).
+func ManagedByAppBundle(exePath string) bool {
+	return strings.Contains(filepath.ToSlash(exePath), ".app/Contents/")
+}
+
 // ManagedByWinget reports whether exePath is a winget portable install: the
 // package directory under %LOCALAPPDATA%\Microsoft\WinGet\Packages, or the
 // Links alias winget puts on PATH. Replacing that executable in place would
@@ -179,6 +189,9 @@ func parseVersion(v string) ([3]int, bool) {
 func Check(ctx context.Context, opts Options) (Status, error) {
 	if !Updatable(opts.CurrentVersion) {
 		return Status{}, ErrDevelopmentBuild
+	}
+	if ManagedByAppBundle(opts.ExePath) {
+		return Status{}, ErrAppBundle
 	}
 	if ManagedByHomebrew(opts.ExePath) {
 		return Status{}, ErrHomebrew
@@ -256,6 +269,9 @@ func Install(ctx context.Context, opts Options, rel Release) error {
 	exe := strings.TrimSpace(opts.ExePath)
 	if exe == "" {
 		return errors.New("the tars executable path is unknown")
+	}
+	if ManagedByAppBundle(exe) {
+		return ErrAppBundle
 	}
 	if ManagedByHomebrew(exe) {
 		return ErrHomebrew

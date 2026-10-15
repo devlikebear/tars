@@ -86,17 +86,22 @@ func TestHomebrewCaskInstallsDesktopWithServer(t *testing.T) {
 		`sha256 arm:   "desk-arm64-sha",`,
 		`intel: "desk-amd64-sha"`,
 		`url "https://github.com/devlikebear/tars/releases/download/v#{version}/tars-desktop_#{version}_darwin_#{arch}.tar.gz"`,
-		// The desktop app only shows the console of a local server, so the
-		// cask pulls in the server formula: one command installs both.
-		`depends_on formula: "devlikebear/tap/tars"`,
 		// The app replaces itself from GitHub releases.
 		"auto_updates true",
 		`app "TARS.app"`,
+		// TARS.app ships the server, so the cask puts its tars on PATH
+		// unless the formula's is there already.
+		`binary "#{appdir}/TARS.app/Contents/Helpers/tars" unless (HOMEBREW_PREFIX/"opt/tars").exist?`,
+		`launchctl: "io.tars.server"`,
 	}
 	for _, snippet := range wantSnippets {
 		if !strings.Contains(cask, snippet) {
 			t.Fatalf("cask missing snippet %q:\n%s", snippet, cask)
 		}
+	}
+	// One install: the cask no longer pulls in the server formula.
+	if strings.Contains(cask, "depends_on formula") {
+		t.Fatalf("cask still depends on the formula:\n%s", cask)
 	}
 }
 

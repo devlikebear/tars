@@ -610,6 +610,13 @@ func (s *shell) checkServerVersion(serverVersion string) {
 	s.warnedServer = &serverVersion
 	s.mu.Unlock()
 	log.Printf("server %q is older than tars-desktop %s", serverVersion, version)
+	if bin, err := findTARS(); err == nil && runtime.GOOS == "darwin" && server.Bundled(bin) {
+		// The app ships its server, so an older one is only the service
+		// not restarted since the app's update. That needs no dialog: the
+		// update loop restarts it once no chat is running.
+		s.wakeUpdates()
+		return
+	}
 	go s.app.Dialog.Warning().
 		SetTitle("The TARS server needs an update").
 		SetMessage(server.OutdatedMessage(runtime.GOOS, serverVersion, version)).
@@ -873,10 +880,16 @@ func (s *shell) startChatIn(dir string, isolate bool) {
 	s.showConsole(chatPath(id))
 }
 
-func (s *shell) startServer() {
+// findTARS is the tars executable the shell starts and updates: the one its
+// bundle ships (macOS), else the one installed on the machine.
+func findTARS() (string, error) {
 	exe, _ := os.Executable()
 	home, _ := os.UserHomeDir()
-	bin, err := server.FindTARS(exe, exec.LookPath, server.InstallDirs(runtime.GOOS, home))
+	return server.FindTARS(exe, exec.LookPath, server.InstallDirs(runtime.GOOS, home))
+}
+
+func (s *shell) startServer() {
+	bin, err := findTARS()
 	if err != nil {
 		s.showError("Could not start the TARS server", err)
 		return
@@ -995,9 +1008,7 @@ func (s *shell) updateServer(explicit bool) time.Duration {
 		}
 		return serverupdate.CheckEvery
 	}
-	exe, _ := os.Executable()
-	home, _ := os.UserHomeDir()
-	bin, err := server.FindTARS(exe, exec.LookPath, server.InstallDirs(runtime.GOOS, home))
+	bin, err := findTARS()
 	if err != nil {
 		return fail("Could not find the TARS server to update", err)
 	}
@@ -1005,7 +1016,11 @@ func (s *shell) updateServer(explicit bool) time.Duration {
 	if err != nil {
 		resolved = bin
 	}
-	u, err := serverupdate.For(runtime.GOOS, bin, resolved, findBrew, s.cfg, runHidden)
+	app := serverupdate.App{Version: version, ServerVersion: func(ctx context.Context) (string, error) {
+		h, err := server.Probe(ctx, s.probe, s.cfg)
+		return h.Version, err
+	}}
+	u, err := serverupdate.For(runtime.GOOS, bin, resolved, findBrew, s.cfg, app, runHidden)
 	if err != nil {
 		return fail("Could not update the TARS server", err)
 	}
@@ -1031,14 +1046,28 @@ func (s *shell) updateServer(explicit bool) time.Duration {
 		if err != nil {
 			return fail("Could not update the TARS server", err)
 		}
+		title := fmt.Sprintf("TARS server updated to %s", res.Latest)
 		body := "The server restarted on the new version."
-		if !res.Restarted {
-			body = "Start the server again to run it."
-			if res.Server == "not_running" {
-				body = "It runs the next time the server starts."
+		switch {
+		case res.Restarted:
+		case !res.Updated && !res.Available:
+			// The update went away between the check and the install.
+			return serverupdate.Next(step)
+		case !res.Updated:
+			// Nothing was installed and nothing restarted: the app's own
+			// server is current, but a server someone started by hand
+			// still runs the old release. Said once per release.
+			if !s.firstAnnouncement("server-manual", res.Latest) && !explicit {
+				return serverupdate.Next(step)
 			}
+			title = fmt.Sprintf("The TARS server is older than the app (%s)", res.Latest)
+			body = "It was not started by the app. Restart it to run the app's version."
+		case res.Server == "not_running":
+			body = "It runs the next time the server starts."
+		default:
+			body = "Start the server again to run it."
 		}
-		s.notify(updateNotificationPrefix+"server-done", fmt.Sprintf("TARS server updated to %s", res.Latest), body)
+		s.notify(updateNotificationPrefix+"server-done", title, body)
 		s.kick()
 	}
 	return serverupdate.Next(step)
