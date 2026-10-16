@@ -15,6 +15,9 @@ type FieldMeta struct {
 	RequiresRestart bool     `json:"requires_restart"`
 	Sensitive       bool     `json:"sensitive,omitempty"`
 	Options         []string `json:"options,omitempty"`
+	// Tier is basic, advanced, file or remove; see schema_tier.go.
+	Tier     string           `json:"tier"`
+	ShowWhen []FieldCondition `json:"show_when,omitempty"`
 }
 
 func f(key, section, typ, label, desc string) FieldMeta {
@@ -35,14 +38,14 @@ func fjson(key, section, label, desc string) FieldMeta {
 
 // Schema returns metadata for all configuration fields, grouped for UI display.
 func Schema() []FieldMeta {
-	return withConfigFieldMeta(withConfigImpactHints([]FieldMeta{
+	return withConfigFieldTiers(withConfigFieldMeta(withConfigImpactHints([]FieldMeta{
 		// ── Runtime ──────────────────────────────
 		f("workspace_dir", "Runtime", "string", "Workspace Directory", "Directory for workspace data and sessions"),
 		fsel("plan_clarify_mode", "Runtime", "Plan Clarify Mode", "How TARS handles ambiguous multi-step requests before drafting a plan: smart = LLM evaluates ambiguity itself; auto = always plan immediately; ask = always ask 1–3 clarifying questions first.", []string{"smart", "auto", "ask"}),
 		f("session_default_id", "Runtime", "string", "Default Session ID", "Override the default session identifier"),
 		f("session_auto_archive_days", "Runtime", "int", "Auto-archive Sessions (days)", "Archive a session not updated for this many days; 0 turns it off"),
 		f("session_auto_delete_days", "Runtime", "int", "Auto-delete Archived Sessions (days)", "Delete a session archived and untouched for this many days, with everything kept beside it; 0 turns it off"),
-		fsel("session_telegram_scope", "Runtime", "Telegram Session Scope", "Session scoping for Telegram messages", []string{"main", "per-chat"}),
+		fsel("session_telegram_scope", "Runtime", "Telegram Session Scope", "Session scoping for Telegram messages", []string{"main", "per-user"}),
 		f("style_directness_default", "Runtime", "int", "Style Directness Default", "Global default for the directness slider used in session style controls"),
 		f("style_humor_default", "Runtime", "int", "Style Humor Default", "Global default for the humor slider used in session style controls"),
 		f("style_caution_default", "Runtime", "int", "Style Caution Default", "Global default for the caution slider used in session style controls"),
@@ -254,7 +257,7 @@ func Schema() []FieldMeta {
 		f("plugins_extra_dirs_json", "Extensions", "string_list", "Plugins Extra Dirs", "Additional directories searched for user plugin definitions"),
 		f("plugins_bundled_dir", "Extensions", "string", "Plugins Directory", "Directory for bundled plugin files"),
 		f("plugins_allow_mcp_servers", "Extensions", "bool", "Allow MCP in Plugins", "Allow plugins to register MCP servers"),
-	}))
+	})))
 }
 
 // ConfigToMap converts a Config to a flat map keyed by YAML keys.

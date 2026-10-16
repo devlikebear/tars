@@ -1718,6 +1718,10 @@ export type ConfigFieldMeta = {
   requires_restart?: boolean
   sensitive?: boolean
   options?: string[]
+  // basic | advanced | file | remove (#1240, docs/config-field-tiers.md)
+  tier?: string
+  // Shown when any condition holds; values compare as strings ("true"/"false" for bools)
+  show_when?: { key: string; values: string[] }[]
 }
 
 export type ConfigEnvOverride = {
