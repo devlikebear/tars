@@ -83,7 +83,7 @@ func newBaseToolRegistryWithOptions(
 ) *tool.Registry {
 	registry := tool.NewRegistryWithScope(tool.RegistryScopeUser)
 	semantic := firstSemanticConfig(semanticCfg...)
-	backend := buildMemoryBackend(workspaceDir, semantic, memoryBackendFile)
+	backend := buildMemoryBackend(workspaceDir, semantic)
 
 	// Memory & workspace aggregators
 	// The app is the one place with a transcript store, so it is the one place

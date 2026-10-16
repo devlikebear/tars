@@ -102,26 +102,6 @@ func applyCoreDefaults(cfg *Config, defaults Config) {
 	if cfg.CronRunHistoryLimit <= 0 {
 		cfg.CronRunHistoryLimit = defaults.CronRunHistoryLimit
 	}
-	cfg.AssistantHotkey = strings.TrimSpace(cfg.AssistantHotkey)
-	if cfg.AssistantHotkey == "" {
-		cfg.AssistantHotkey = defaults.AssistantHotkey
-	}
-	cfg.AssistantWhisperBin = strings.TrimSpace(cfg.AssistantWhisperBin)
-	if cfg.AssistantWhisperBin == "" {
-		cfg.AssistantWhisperBin = defaults.AssistantWhisperBin
-	}
-	cfg.AssistantFFmpegBin = strings.TrimSpace(cfg.AssistantFFmpegBin)
-	if cfg.AssistantFFmpegBin == "" {
-		cfg.AssistantFFmpegBin = defaults.AssistantFFmpegBin
-	}
-	cfg.AssistantTTSBin = strings.TrimSpace(cfg.AssistantTTSBin)
-	if cfg.AssistantTTSBin == "" {
-		cfg.AssistantTTSBin = defaults.AssistantTTSBin
-	}
-	cfg.ScheduleTimezone = strings.TrimSpace(cfg.ScheduleTimezone)
-	if cfg.ScheduleTimezone == "" {
-		cfg.ScheduleTimezone = defaults.ScheduleTimezone
-	}
 }
 
 func normalizeStyleDefault(value int, fallback int) int {

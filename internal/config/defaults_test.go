@@ -46,21 +46,21 @@ func TestConfigInputFieldByYAMLKey_AppliesNormalizationAndMergeRules(t *testing.
 		t.Fatalf("expected non-empty merge source to override destination, got %q", dst.SessionTelegramScope)
 	}
 
-	boolField, ok := configInputFieldByYAMLKey("assistant_enabled")
+	boolField, ok := configInputFieldByYAMLKey("notify_when_no_clients")
 	if !ok {
-		t.Fatal("expected assistant_enabled field metadata")
+		t.Fatal("expected notify_when_no_clients field metadata")
 	}
 
-	dst = Config{AssistantConfig: AssistantConfig{AssistantEnabled: true}}
+	dst = Config{AutomationConfig: AutomationConfig{NotifyWhenNoClients: true}}
 	boolField.merge(&dst, Config{})
-	if !dst.AssistantEnabled {
+	if !dst.NotifyWhenNoClients {
 		t.Fatal("expected false merge source to preserve destination for bool fields")
 	}
 
 	var boolCfg Config
 	boolField.apply(&boolCfg, "true")
-	if !boolCfg.AssistantEnabled {
-		t.Fatal("expected bool parser to set assistant_enabled from input field")
+	if !boolCfg.NotifyWhenNoClients {
+		t.Fatal("expected bool parser to set notify_when_no_clients from input field")
 	}
 
 	priceField, ok := configInputFieldByYAMLKey("usage_price_overrides_json")
@@ -1590,12 +1590,6 @@ func TestApplyDefaults_UsesSharedDefaults(t *testing.T) {
 
 	applyDefaults(&cfg)
 
-	if cfg.ScheduleTimezone != "Asia/Seoul" {
-		t.Fatalf("expected schedule timezone default Asia/Seoul, got %q", cfg.ScheduleTimezone)
-	}
-	if cfg.AssistantHotkey != "Ctrl+Option+Space" {
-		t.Fatalf("expected assistant hotkey default, got %q", cfg.AssistantHotkey)
-	}
 	if cfg.ToolsWebSearchPerplexityBaseURL != "https://api.perplexity.ai/chat/completions" {
 		t.Fatalf("expected perplexity base url default, got %q", cfg.ToolsWebSearchPerplexityBaseURL)
 	}

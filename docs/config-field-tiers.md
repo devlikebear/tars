@@ -11,9 +11,9 @@ Where the console shows each field of `/console/config` (#1240). The schema
 | basic | Most people touch it at least once; shown up front | 30 |
 | advanced | Inside a collapsed Advanced group | 78 |
 | file | Not in the console; YAML and `config/tars.config.example.yaml` only | 66 |
-| remove | Nothing reads it or it was replaced; to be removed, hidden until then | 7 |
+| remove | Nothing reads it or it was replaced; to be removed, hidden until then | 0 |
 
-Total: 181 fields in 20 sections.
+Total: 174 fields in 19 sections.
 
 `show_when` lists conditions on other fields; the field shows when any one holds
 and the field it names is itself shown.
@@ -71,7 +71,6 @@ and the field it names is itself shown.
 
 | YAML path | Tier | Shown when | Why |
 |---|---|---|---|
-| `memory.backend` | remove |  | file is the only accepted value; the server only validates it |
 | `memory.semantic.enabled` | basic |  |  |
 | `memory.embed.provider` | basic | `memory.semantic.enabled` = true |  |
 | `memory.embed.base_url` | advanced | `memory.semantic.enabled` = true |  |
@@ -122,17 +121,6 @@ and the field it names is itself shown.
 | `automation.reflection.max_turns_per_session` | file |  | internal tuning value |
 | `automation.notify.command` | advanced |  |  |
 | `automation.notify.when_no_clients` | advanced |  |  |
-| `automation.schedule.timezone` | remove |  | loaded and defaulted, but nothing outside internal/config reads it |
-
-## Assistant
-
-| YAML path | Tier | Shown when | Why |
-|---|---|---|---|
-| `assistant.enabled` | remove |  | nothing reads it; tars assistant uses its own flags |
-| `assistant.hotkey` | remove |  | nothing reads it; tars assistant uses its own flags |
-| `assistant.whisper_bin` | remove |  | nothing reads it; tars assistant uses its own flags |
-| `assistant.ffmpeg_bin` | remove |  | nothing reads it; tars assistant uses its own flags |
-| `assistant.tts_bin` | remove |  | nothing reads it; tars assistant uses its own flags |
 
 ## Compaction
 

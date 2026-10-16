@@ -45,7 +45,7 @@ function subsystemImpactHints(field: ConfigFieldMeta): string[] {
   if (key.startsWith('reflection_')) {
     return ['Affected subsystem: Reflection. Changes can alter nightly memory extraction and cleanup timing.']
   }
-  if (key.startsWith('cron_') || key.startsWith('schedule_')) {
+  if (key.startsWith('cron_')) {
     return ['Affected subsystem: Cron scheduling. Changes can alter job timing, history retention, or timezone interpretation.']
   }
   if (key.startsWith('memory_')) {
@@ -68,9 +68,6 @@ function subsystemImpactHints(field: ConfigFieldMeta): string[] {
   }
   if (key.startsWith('compaction_')) {
     return ['Affected subsystem: Compaction. Changes can alter when and how long transcripts are compressed.']
-  }
-  if (key.startsWith('assistant_')) {
-    return ['Affected subsystem: Assistant. Changes can alter voice activation and audio processing.']
   }
   if (key.startsWith('log_')) {
     return ['Affected subsystem: Logging. Changes can alter observability, retention, and troubleshooting detail.']

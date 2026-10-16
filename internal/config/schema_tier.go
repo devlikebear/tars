@@ -113,7 +113,6 @@ var configFieldTiers = map[string]fieldTier{
 	"llm_role_defaults": advanced(),
 
 	// Memory
-	"memory_backend":          remove("file is the only accepted value; the server only validates it"),
 	"memory_semantic_enabled": basic(),
 	"memory_embed_provider":   basic(semanticOn),
 	"memory_embed_api_key":    basic(semanticOn),
@@ -158,14 +157,6 @@ var configFieldTiers = map[string]fieldTier{
 	"reflection_max_turns_per_session":   fileOnly(noteTuning),
 	"notify_command":                     advanced(),
 	"notify_when_no_clients":             advanced(),
-	"schedule_timezone":                  remove("loaded and defaulted, but nothing outside internal/config reads it"),
-
-	// Assistant: `tars assistant` takes its own flags and never reads these.
-	"assistant_enabled":     remove("nothing reads it; tars assistant uses its own flags"),
-	"assistant_hotkey":      remove("nothing reads it; tars assistant uses its own flags"),
-	"assistant_whisper_bin": remove("nothing reads it; tars assistant uses its own flags"),
-	"assistant_ffmpeg_bin":  remove("nothing reads it; tars assistant uses its own flags"),
-	"assistant_tts_bin":     remove("nothing reads it; tars assistant uses its own flags"),
 
 	// Compaction
 	"compaction_trigger_tokens":       advanced(),

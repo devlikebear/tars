@@ -59,16 +59,11 @@ const (
 	defaultExecMaxTimeoutMS                    = 300000
 	defaultProcessMaxTimeoutMSConfig           = 1800000
 	defaultCronRunHistoryLimit                 = 200
-	defaultAssistantHotkey                     = "Ctrl+Option+Space"
-	defaultAssistantWhisperBin                 = "whisper-cli"
-	defaultAssistantFFmpegBin                  = "ffmpeg"
-	defaultAssistantTTSBin                     = "say"
 	defaultCompactionTriggerTokens             = 100000
 	defaultCompactionKeepRecentTokens          = 12000
 	defaultCompactionKeepRecentFraction        = 0.30
 	defaultCompactionLLMMode                   = "auto"
 	defaultCompactionLLMTimeoutSeconds         = 15
-	defaultScheduleTimezone                    = "Asia/Seoul"
 	defaultToolsDefaultSet                     = "standard"
 	defaultToolsWebSearchProvider              = "brave"
 	defaultPerplexityModel                     = "sonar"
@@ -123,7 +118,6 @@ func defaultConfigValues() Config {
 		// tiers so first-run works without any local config.
 		LLMConfig: LLMConfig{},
 		MemoryConfig: MemoryConfig{
-			MemoryBackend:         "file",
 			MemorySemanticEnabled: false,
 			MemoryEmbedProvider:   defaultMemoryEmbedProvider,
 			MemoryEmbedBaseURL:    llmdefaults.GeminiNativeBaseURL,
@@ -141,7 +135,6 @@ func defaultConfigValues() Config {
 			AgentMaxIterations:  defaultAgentMaxIterations,
 			CronRunHistoryLimit: defaultCronRunHistoryLimit,
 			NotifyWhenNoClients: true,
-			ScheduleTimezone:    defaultScheduleTimezone,
 
 			// Pulse watchdog defaults — see internal/pulse for semantics.
 			PulseEnabled:                    true,
@@ -170,13 +163,6 @@ func defaultConfigValues() Config {
 			ReflectionEmptySessionAge:     "24h",
 			ReflectionMemoryLookbackHours: 24,
 			ReflectionMaxTurnsPerSession:  20,
-		},
-		AssistantConfig: AssistantConfig{
-			AssistantEnabled:    true,
-			AssistantHotkey:     defaultAssistantHotkey,
-			AssistantWhisperBin: defaultAssistantWhisperBin,
-			AssistantFFmpegBin:  defaultAssistantFFmpegBin,
-			AssistantTTSBin:     defaultAssistantTTSBin,
 		},
 		CompactionConfig: CompactionConfig{
 			CompactionTriggerTokens:      defaultCompactionTriggerTokens,
