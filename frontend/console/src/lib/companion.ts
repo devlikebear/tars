@@ -10,7 +10,7 @@ export type CompanionVisibilityInput = {
 
 export type CompanionLocale = 'en' | 'ko'
 
-// CASE's face (#1190). Shape — eyes, mouth, eyebrows, antenna — carries the
+// CASE's face (#1190). Shape — eyes, mouth, eyebrows, pose — carries the
 // expression; glow colour is a hint, never the only signal (DESIGN.md
 // Motion). `companionExpression` below is the one place that turns state
 // into one of these.

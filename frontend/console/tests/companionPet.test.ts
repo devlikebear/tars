@@ -402,6 +402,44 @@ test('every expression has its own face shape rule in the component styles', () 
   }
 })
 
+test('CASE is a meerkat drawn from spans: every part is in the markup, and no antenna is left (case-companion phase 1)', () => {
+  const bodyMarkup = componentSource.slice(componentSource.indexOf('class={`companion-body'), componentSource.indexOf('{#if snapshot.badge > 0}'))
+  for (const part of [
+    'companion-ear-left',
+    'companion-ear-right',
+    'companion-torso',
+    'companion-laptop',
+    'companion-head',
+    'companion-skull',
+    'companion-brow-left',
+    'companion-brow-right',
+    'companion-patch-left',
+    'companion-patch-right',
+    'companion-eyes',
+    'companion-eye-left',
+    'companion-eye-right',
+    'companion-nose',
+    'companion-mouth',
+    'companion-paw',
+    'companion-gem',
+    'companion-zzz',
+  ]) {
+    assert.match(bodyMarkup, new RegExp(`class="[^"]*\\b${part}\\b`), `${part} is missing from .companion-body`)
+  }
+  assert.doesNotMatch(bodyMarkup, /<img|<svg/)
+  assert.doesNotMatch(componentSource, /companion-antenna/)
+})
+
+test('a state colour rides only on the chest chip (and working\'s laptop screen), never on the face', () => {
+  const style = componentSource.slice(componentSource.indexOf('<style>')).replace(/\/\*[\s\S]*?\*\//g, '')
+  for (const rule of companionLeafRules(style)) {
+    if (!/var\(--case-gem-/.test(rule.body)) continue
+    for (const sel of rule.selectors) {
+      assert.match(sel, /\.companion-(gem|laptop)\b/, `${sel} carries a state colour outside the chest chip`)
+    }
+  }
+})
+
 test('companionFailedSessionIds collects session ids from recent failures only', () => {
   const failures: CompanionFailure[] = [
     { key: 'failure:1', sessionId: 's1', label: 'x', at: now },

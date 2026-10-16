@@ -476,22 +476,26 @@ Motion is decoration, never the only signal. Every repeating or decorative anima
 
 ### CASE's expressions
 
-CASE's face (`CompanionPet.svelte`) is CSS and markup only — no image, font icon, or animation-library asset, ever. Eyebrows, eyes, mouth and the antenna tip are always in the DOM; one class on `.companion-body`, `expr-<name>`, decided by the pure function `companionExpression` in `lib/companion.ts`, changes their shape. There is no colour-only face part: the old glow dot next to the mouth read as a second mouth and is gone. When a state colour is useful it rides only on the antenna tip — two expressions that only differed in that colour would be the same expression, not two, so nothing else on the face carries colour as its only difference. Eyebrows stay invisible unless they carry meaning (`alert`/`upset`/`wary`); everywhere else a faint brow line was noise above eyes that already read fine without it.
+CASE is an on-call meerkat (case-companion phase 1): it stands watch, and its chest chip shows the state. It is CSS and markup only (`CompanionPet.svelte`): plain spans on a 64×64 grid, with no image, SVG, font icon or animation-library asset, ever. The design reference is `docs/plans/case-companion/design/html/case-face.html`. Every part is always in the DOM. One class on `.companion-body`, `expr-<name>`, changes their shape. That class comes from the pure function `companionExpression` in `lib/companion.ts`.
+
+Parts: ears (`.companion-ear-left/right`), torso, head (`.companion-head` holding skull, brows, eye patches, eyes, nose and mouth), working's laptop, greeting's raised paw, the chest chip (`.companion-gem`) and sleepy's `z`. The meerkat's colours are local custom properties on `.companion-body` (`--case-*`), never global tokens.
+
+A state colour rides only on the chest chip (and working's laptop screen line). Nothing on the face carries colour as its only difference: two expressions that differed only in chip colour would be one expression, not two. `tests/companionPet.test.ts` checks that no other selector uses a `--case-gem-*` colour. Brows stay invisible unless they carry meaning (`alert`/`upset`/`wary`). Elsewhere a faint brow line is just noise. The eye patches are always there, and the pupils inside them change shape.
 
 Eight expressions:
 
-| Expression | Eyes | Mouth | Brows | Antenna tip |
+| Expression | Eyes | Brows | Mouth · pose | Chip |
 |---|---|---|---|---|
-| `neutral` | default oval, blinking | short flat line | hidden | default (filled, signal green) |
-| `working` | both glance up and to one side | small, closed/pursed | hidden | a ring (hollow), not a filled dot |
-| `alert` | wide open, stop blinking | round "oh" | both lift | warning colour, brightens |
-| `happy` | curve upward (closed, joyful) | wide smile | hidden | success colour |
-| `upset` | pinch inward, flatten | frown | both furrow down | error colour |
-| `wary` | one eye narrows to a squint | tilts | one lifts, thick and sharply angled | warning colour |
-| `sleepy` | both close to a thin line | tiny dot | hidden | dims |
-| `greeting` | each a four-point sparkle (clip-path star) | wide smile | hidden | success colour, brightens |
+| `neutral` | round pupils, blinking | hidden | none | grey |
+| `working` | small pupils glancing down | hidden | holds a laptop | amber, pulsing |
+| `alert` | big, stop blinking | both lift | ears prick up | orange |
+| `happy` | ∩ arcs | hidden | smile | green |
+| `upset` | small | both furrow down toward the middle | frown | orange |
+| `wary` | squint, glancing sideways | one raised, one lowered | none | amber |
+| `sleepy` | shut to a line | hidden | head droops, a `z` floats | dark grey |
+| `greeting` | a wink (one arc, one wide) | hidden | smile, raised paw | green |
 
-`working` and `wary` are each told apart from their nearest neighbour (`neutral`, `alert`) by at least two shape changes at once, not a single small nudge — a 3px eye shift alone did not read at the companion's actual on-screen size. `greeting`'s sparkle is a clip-path star, not a plain "+": a cross read as a broken eye rather than a glint.
+Each expression differs from its nearest neighbour in at least two shapes, not just a small nudge. `alert` and `upset` share the chip colour, so they differ in eye size, brow direction and mouth all at once.
 
 What picks the expression — `companionExpression(snapshot, cues?)`, pure, tested in `tests/companionPet.test.ts`:
 
@@ -554,12 +558,12 @@ A one-shot animation plays exactly once when the expression *changes* into one o
 | Expression | Action | Where it plays |
 |---|---|---|
 | `alert` | bounce | `.companion-body` |
-| `happy` | nod | `.companion-body` |
+| `happy` | nod | `.companion-head` |
 | `upset` | shake | `.companion-body` |
 | `wary` | tilt | `.companion-body` |
-| `greeting` | wave | `.companion-antenna` (CASE's own gesture, not the body nudging it) |
+| `greeting` | wave | `.companion-paw`, the raised front paw (CASE's own gesture, not the body nudging it) |
 
-`working` and `sleepy` have no one-shot action; they are the two *continuous* states instead, repeating for as long as they hold: working's antenna tip pulses, sleepy's body breathes (a slow scale) alongside a drifting `z` (`.companion-zzz`, hidden everywhere else, CSS only).
+`working` and `sleepy` have no one-shot action; they are the two *continuous* states instead, repeating for as long as they hold: working's chest chip pulses, sleepy's body breathes (a slow scale) alongside a drifting `z` (`.companion-zzz`, hidden everywhere else, CSS only).
 
 ### Idle play (#1191)
 
@@ -567,7 +571,7 @@ While CASE is `neutral`, nothing is waiting, and the bubble is closed (`companio
 
 ### Cursor gaze (#1191)
 
-When the pointer is within 200px of CASE's centre, the eyes lean up to 3px toward it, scaling linearly with distance and clamped at both ends (`companionGazeOffset`, pure geometry — no DOM). `CompanionPet.svelte` batches `pointermove` into one `requestAnimationFrame` via a `passive` listener and writes `--eye-x`/`--eye-y` custom properties on `.companion-eyes`; the eyes consume them with the separate `translate` property (not `transform`), so the lean composes with whatever an expression's own `transform` already does (working's glance, upset's pinch) instead of replacing it. Four expressions whose eyes are not pupil-shaped — `happy`, `upset`, `sleepy`, `greeting` (a curve, a flat line, a star) — never get a lean; that is a CSS selector guarantee (`.companion-body:not(.expr-happy):not(.expr-upset):not(.expr-sleepy):not(.expr-greeting) .companion-eye`), not just the component's own `companionGazeApplies` check, so a stale offset can never leak onto one of those four.
+When the pointer is within 200px of CASE's centre, the eyes lean up to 3px toward it, scaling linearly with distance and clamped at both ends (`companionGazeOffset`, pure geometry — no DOM). `CompanionPet.svelte` batches `pointermove` into one `requestAnimationFrame` via a `passive` listener and writes `--eye-x`/`--eye-y` custom properties on `.companion-eyes`; the eyes consume them with the separate `translate` property (not `transform`), so the lean composes with whatever an expression's own `transform` already does (working's downward glance, wary's side-eye) instead of replacing it; the blink animates `scale`, a third independent property. The pupils sit inside 9px eye patches, so the stylesheet scales the lean to 60% to keep them inside. Four expressions whose eyes are not pupil-shaped — `happy`, `upset`, `sleepy`, `greeting` (arcs, small dots, closed lines, a wink) — never get a lean; that is a CSS selector guarantee (`.companion-body:not(.expr-happy):not(.expr-upset):not(.expr-sleepy):not(.expr-greeting) .companion-eye`), not just the component's own `companionGazeApplies` check, so a stale offset can never leak onto one of those four.
 
 ### Stop conditions (#1191)
 
@@ -577,7 +581,7 @@ When the pointer is within 200px of CASE's centre, the eyes lean up to 3px towar
 
 ### Hit area (#1191)
 
-`.companion-button` — the clickable element — has no animation or transform of its own and never changes size: the float, every action, idle play and the antenna/breathing loops all live on `.companion-figure` inside it, which is `pointer-events: none`. A `z` or any other decoration is `pointer-events: none` too. This is the same hazard #1194 hit with the bubble covering a neighbouring button, applied to motion: nothing CASE does to itself may grow or move its own hit area over a screen element next to it.
+`.companion-button` — the clickable element — has no animation or transform of its own and never changes size: the float, every action, idle play and the chip/breathing loops all live on `.companion-figure` inside it, which is `pointer-events: none`. A `z` or any other decoration is `pointer-events: none` too. This is the same hazard #1194 hit with the bubble covering a neighbouring button, applied to motion: nothing CASE does to itself may grow or move its own hit area over a screen element next to it.
 
 ## Components
 

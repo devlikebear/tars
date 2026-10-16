@@ -1,4 +1,4 @@
-// CASE's eight expressions (#1190): eyes, mouth, eyebrows and antenna
+// CASE's eight expressions (#1190): eyes, mouth, eyebrows and pose
 // change shape per expression, not just the glow colour. This spec builds
 // a side-by-side gallery of all eight purely in the page's DOM — cloning
 // the real `.companion-body` and relabelling its `expr-<name>` class — so
