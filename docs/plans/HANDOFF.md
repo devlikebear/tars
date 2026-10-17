@@ -7,7 +7,7 @@
 
 | 계획 | 한 줄 요약 | 문서 | 상태 |
 |---|---|---|---|
-| **세컨드 오피니언 리뷰** | Focus review 단계에서 **다른 모델**이 같은 변경을 읽기 전용으로 한 번 더 리뷰하고, 그 지적이 기존 finding 카드로 들어간다. 파이프라인별 옵트인, 기본 꺼짐 | [`second-opinion-review/plan.md`](./second-opinion-review/plan.md) | 계획 확정, 미착수 |
+| **세컨드 오피니언 리뷰** | Focus review 단계에서 **다른 모델**이 같은 변경을 읽기 전용으로 한 번 더 리뷰하고, 그 지적이 기존 finding 카드로 들어간다. 파이프라인별 옵트인, 기본 꺼짐 | [`second-opinion-review/plan.md`](./second-opinion-review/plan.md) · 이슈 #1281 | 계획 확정, 미착수 |
 | **CASE Companion** | 이니셔티브 컴패니언 CASE를 "당직 미어캣"으로 리디자인하고, 어디서나 TARS 전체 상황을 묻는 Bridge와 돌아왔을 때 요약을 붙인다 | `docs/plans/case-companion/` (3 phase) | P1 머지(#1265), 수동 확인 대기 · P2·P3 미착수 |
 | ~~Focus × Crew~~ | 봇 크루(소환·채용·허들·상호검토·해산) | `docs/plans/focus-crew/` | **철회 (2026-10-17)** — 이유는 [`focus-crew/roadmap.md`](./focus-crew/roadmap.md)의 "철회 결정". 문서는 기록으로만 남는다 |
 
@@ -61,6 +61,7 @@ docs/plans/
 ### 다음 작업: 세컨드 오피니언 리뷰 (권장)
 - 읽을 것: [`second-opinion-review/plan.md`](./second-opinion-review/plan.md) → `docs/decisions/focus-mode.md` §4(파이프라인·게이트)·§4.2(목표 모드)·§5(사실)·§8(Q&A) → `internal/focuspipeline/review.go`, `finding_add.go`, `verification.go`(`Interrupt`) → `internal/tarsserver/focus_qa.go`, `focus_driver.go`
 - Focus는 `docs/decisions/product-focus.md`의 Core 영역이다. PR 본문에 파이프라인 근거 한 문장을 쓴다: "한 모델이 놓친 결함을 머지 전에 다른 모델이 잡는다."
+- 진행은 이슈 #1281에서 관리한다. 작업 단위가 끝나면 이슈 체크리스트를 갱신하고, 구현 PR 본문에 `Closes #1281`을 쓴다.
 
 ### CASE Phase 2·3 — 착수 전 확인 필요
 `docs/decisions/product-focus.md`는 Companion을 "#1191–#1193을 이미 정한 범위대로 끝내고, 에픽이 닫히면 동결"로 정했고 에픽 #1188은 닫혔다. Bridge(P2)와 돌아왔을 때 요약(P3)은 그 뒤에 범위를 넓히는 일이라, 진행하려면 ADR의 Companion 항목을 먼저 고쳐야 한다. 또 P2는 채팅 도구 `tars_status`를 새로 추가하므로 CLAUDE.md의 Extension pattern("builtin 도구를 늘리지 말 것")과도 맞춰야 한다. 아래 8절의 열린 질문으로 사용자에게 확인한다.
