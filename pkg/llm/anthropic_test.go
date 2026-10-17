@@ -3,6 +3,7 @@ package llm
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -596,7 +597,10 @@ func TestApplyAnthropicRollingCacheBreakpoints_LongHistoryUsesRollingWindow(t *t
 	}
 }
 
-func TestApplyAnthropicRollingCacheBreakpoints_MidToolLoopKeepsStablePlacement(t *testing.T) {
+// Mid tool loop the newest marker rides the latest tool result, so the next
+// iteration reads the whole turn so far; the second slot stays on the newest
+// completed turn, which the next turn falls back on.
+func TestApplyAnthropicRollingCacheBreakpoints_MidToolLoopMarksLatestToolResult(t *testing.T) {
 	messages := []ChatMessage{
 		userMsg("q1"), assistMsg("r1"),
 		userMsg("q2"), assistMsg("r2"),
@@ -606,13 +610,90 @@ func TestApplyAnthropicRollingCacheBreakpoints_MidToolLoopKeepsStablePlacement(t
 	}
 	wire := toAnthropicWireMessages(messages)
 	applyAnthropicRollingCacheBreakpoints(wire, messages, 2)
-	if marked := wireCacheMarkedIndexes(t, wire); len(marked) != 2 || marked[0] != 1 || marked[1] != 3 {
-		t.Fatalf("expected breakpoints frozen on completed turns, got %v", marked)
+	if marked := wireCacheMarkedIndexes(t, wire); len(marked) != 2 || marked[0] != 3 || marked[1] != 6 {
+		t.Fatalf("expected the newest completed turn and the latest tool result, got %v", marked)
 	}
-	for _, idx := range []int{4, 5, 6} {
+	for _, idx := range []int{4, 5} {
 		if anthropicWireMessageMarked(wire[idx]) {
-			t.Fatalf("message %d must stay unmarked during the tool loop", idx)
+			t.Fatalf("message %d must stay unmarked: only the newest tool result carries the loop's marker", idx)
 		}
+	}
+}
+
+// The first turn of a conversation has no completed turn to mark. Its tool
+// loop must still cache, or every iteration re-sends the turn uncached.
+func TestApplyAnthropicRollingCacheBreakpoints_FirstTurnToolLoopIsCached(t *testing.T) {
+	messages := []ChatMessage{
+		userMsg("q1"),
+		{Role: "assistant", ToolCalls: []ToolCall{{ID: "c1", Name: "read", Arguments: "{}"}}},
+		{Role: "tool", ToolCallID: "c1", Content: "scene one"},
+	}
+	wire := toAnthropicWireMessages(messages)
+	applyAnthropicRollingCacheBreakpoints(wire, messages, 2)
+	if marked := wireCacheMarkedIndexes(t, wire); len(marked) != 1 || marked[0] != 2 {
+		t.Fatalf("expected the tool result to carry the only message marker, got %v", marked)
+	}
+}
+
+// Parallel calls send back several results in a row. One marker on the last
+// of them covers the whole exchange; marking each would spend the budget on
+// positions nothing reads from.
+func TestApplyAnthropicRollingCacheBreakpoints_ParallelToolResultsMarkOnlyTheLast(t *testing.T) {
+	messages := []ChatMessage{
+		userMsg("q1"),
+		{Role: "assistant", ToolCalls: []ToolCall{
+			{ID: "c1", Name: "read", Arguments: "{}"},
+			{ID: "c2", Name: "read", Arguments: "{}"},
+		}},
+		{Role: "tool", ToolCallID: "c1", Content: "scene one"},
+		{Role: "tool", ToolCallID: "c2", Content: "scene two"},
+	}
+	wire := toAnthropicWireMessages(messages)
+	applyAnthropicRollingCacheBreakpoints(wire, messages, 2)
+	if marked := wireCacheMarkedIndexes(t, wire); len(marked) != 1 || marked[0] != 3 {
+		t.Fatalf("expected a single marker on the last tool result, got %v", marked)
+	}
+}
+
+// Each iteration's marker must land past the previous one and close enough
+// behind it for the provider's 20-block lookback to find the warm entry.
+func TestApplyAnthropicRollingCacheBreakpoints_ToolLoopMarkerAdvancesEachIteration(t *testing.T) {
+	newestMarked := func(messages []ChatMessage) int {
+		wire := toAnthropicWireMessages(messages)
+		applyAnthropicRollingCacheBreakpoints(wire, messages, 2)
+		marked := wireCacheMarkedIndexes(t, wire)
+		if len(marked) == 0 {
+			t.Fatalf("expected a marker for %d messages", len(messages))
+		}
+		return marked[len(marked)-1]
+	}
+	messages := []ChatMessage{userMsg("q1")}
+	previous := -1
+	for i := range 5 {
+		id := fmt.Sprintf("c%d", i)
+		messages = append(messages,
+			ChatMessage{Role: "assistant", ToolCalls: []ToolCall{{ID: id, Name: "read", Arguments: "{}"}}},
+			ChatMessage{Role: "tool", ToolCallID: id, Content: "out"},
+		)
+		newest := newestMarked(messages)
+		if newest != len(messages)-1 {
+			t.Fatalf("iteration %d: newest marker %d must sit on the latest tool result %d", i, newest, len(messages)-1)
+		}
+		if previous >= 0 && newest-previous > 20 {
+			t.Fatalf("iteration %d: marker moved %d positions, past the provider's lookback", i, newest-previous)
+		}
+		previous = newest
+	}
+}
+
+// A tail that is a fresh prompt gets no marker: a one-shot call never sends
+// it again, so a write there is never read.
+func TestApplyAnthropicRollingCacheBreakpoints_FreshPromptTailStaysUnmarked(t *testing.T) {
+	messages := []ChatMessage{userMsg("q1"), assistMsg("r1"), userMsg("q2")}
+	wire := toAnthropicWireMessages(messages)
+	applyAnthropicRollingCacheBreakpoints(wire, messages, 2)
+	if anthropicWireMessageMarked(wire[2]) {
+		t.Fatal("a fresh user prompt at the tail must not be marked")
 	}
 }
 
