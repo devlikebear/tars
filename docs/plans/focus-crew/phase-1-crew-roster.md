@@ -1,5 +1,7 @@
 # Phase 1 — 크루 모델과 편성 (D2)
 
+> **철회됨 (2026-10-17).** 진행하지 않는다. 이유는 [roadmap.md](./roadmap.md)의 "철회 결정".
+
 > Roadmap: [roadmap.md](./roadmap.md) · 참조: [codebase-analysis.md](./codebase-analysis.md)
 > 목표: 새 태스크를 만들면 TARS가 크루를 제안(소환 + 채용)하고, 사용자가 확인하면 파이프라인이 크루를 품은 채 시작한다. **턴 실행은 아직 기존과 동일**하다.
 

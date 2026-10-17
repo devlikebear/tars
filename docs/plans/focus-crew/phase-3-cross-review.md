@@ -1,5 +1,7 @@
 # Phase 3 — Review 상호검토 (D4)
 
+> **축소 채택 (2026-10-17).** 이 문서 그대로는 진행하지 않는다. 독립 리뷰만 크루 없이 [`../second-opinion-review/plan.md`](../second-opinion-review/plan.md)로 다시 썼다.
+
 > Roadmap: [roadmap.md](./roadmap.md) · 선행: Phase 2 (봇 세션·crew log 재사용)
 > 목표: review 단계에서 **다른 엔진의 리뷰어 봇**이 독립 리뷰를 하고, 리뷰어끼리 서로의 발견을 판정한다. 결과는 기존 finding 카드에 합의/이견 배지로 붙고, G2 트리아지는 기존 그대로.
 
