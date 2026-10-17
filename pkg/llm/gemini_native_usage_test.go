@@ -45,6 +45,29 @@ func TestGeminiNativeUsage_ReportsCachedAndThinkingTokens(t *testing.T) {
 	})
 }
 
+// Google's OpenAI-compatibility endpoint leaves reasoning out of
+// completion_tokens but counts it in total_tokens (a live gemini-3-flash
+// reply: prompt 5510, completion 1, total 5636). Reasoning is billed as output.
+func TestGeminiOpenAICompatUsage_CountsHiddenReasoningAsOutput(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":5510,"completion_tokens":1,"total_tokens":5636,"prompt_tokens_details":{"cached_tokens":3471}}}`))
+	}))
+	t.Cleanup(srv.Close)
+	client, err := NewProvider(ProviderOptions{Provider: "gemini", BaseURL: srv.URL + "/v1beta/openai", APIKey: "k", Model: "gemini-3-flash-preview"})
+	if err != nil {
+		t.Fatalf("new provider: %v", err)
+	}
+	resp, err := client.Chat(context.Background(), []ChatMessage{{Role: "user", Content: "hi"}}, ChatOptions{})
+	if err != nil {
+		t.Fatalf("chat: %v", err)
+	}
+	want := Usage{InputTokens: 5510, OutputTokens: 126, CachedTokens: 3471}
+	if resp.Usage != want {
+		t.Fatalf("usage = %+v, want %+v", resp.Usage, want)
+	}
+}
+
 func TestGeminiNativeThinkingConfig_WireShape(t *testing.T) {
 	cases := []struct {
 		name   string
