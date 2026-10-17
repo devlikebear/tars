@@ -68,7 +68,7 @@ func TestParseAntigravityCLIStream_HappyPath(t *testing.T) {
 	if resp.Turns != 1 {
 		t.Errorf("turns = %d, want 1", resp.Turns)
 	}
-	if resp.Usage.InputTokens != 10418 || resp.Usage.OutputTokens != 589 || resp.Usage.CacheReadTokens != 8113 {
+	if resp.Usage.InputTokens != 10418 || resp.Usage.OutputTokens != 589 || resp.Usage.CachedTokens != 8113 {
 		t.Errorf("usage = %+v", resp.Usage)
 	}
 	// The CLI reports no per-call cost.
@@ -504,7 +504,7 @@ func TestExtractAntigravityCLIUsage(t *testing.T) {
 		"cache_read_tokens": float64(8113),
 		"total_tokens":      float64(11007),
 	})
-	if usage.InputTokens != 10418 || usage.OutputTokens != 589 || usage.CacheReadTokens != 8113 {
+	if usage.InputTokens != 10418 || usage.OutputTokens != 589 || usage.CachedTokens != 8113 {
 		t.Errorf("usage = %+v", usage)
 	}
 	// A missing or wrongly-shaped usage object must not panic.

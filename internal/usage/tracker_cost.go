@@ -70,9 +70,11 @@ func defaultPriceTable() map[string]ModelPrice {
 		// Fallback for gateway-hosted or unrecognized Anthropic-kind models
 		// (e.g. config/default.yaml routes MiniMax through kind: anthropic);
 		// Sonnet-class mid rates so unknown traffic still gets an estimate.
-		"anthropic/*":     {InputPer1MUSD: 3.00, OutputPer1MUSD: 15.00, CacheReadPer1MUSD: 0.30, CacheWritePer1MUSD: 3.75},
-		"gemini/*":        {InputPer1MUSD: 0.30, OutputPer1MUSD: 2.50},
-		"gemini-native/*": {InputPer1MUSD: 0.30, OutputPer1MUSD: 2.50},
+		"anthropic/*": {InputPer1MUSD: 3.00, OutputPer1MUSD: 15.00, CacheReadPer1MUSD: 0.30, CacheWritePer1MUSD: 3.75},
+		// Gemini 2.5 Flash rates. Implicit caching bills cached prompt tokens
+		// at a tenth of input.
+		"gemini/*":        {InputPer1MUSD: 0.30, OutputPer1MUSD: 2.50, CacheReadPer1MUSD: 0.03},
+		"gemini-native/*": {InputPer1MUSD: 0.30, OutputPer1MUSD: 2.50, CacheReadPer1MUSD: 0.03},
 	}
 }
 

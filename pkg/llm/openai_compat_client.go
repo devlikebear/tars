@@ -393,6 +393,7 @@ func openAIStreamError(eventName string, rawError json.RawMessage, topMessage, p
 type openAICompatibleUsage struct {
 	PromptTokens        int `json:"prompt_tokens"`
 	CompletionTokens    int `json:"completion_tokens"`
+	TotalTokens         int `json:"total_tokens"`
 	PromptTokensDetails struct {
 		CachedTokens int `json:"cached_tokens"`
 	} `json:"prompt_tokens_details"`
@@ -408,9 +409,13 @@ func (u openAICompatibleUsage) toUsage() Usage {
 	if cached == 0 {
 		cached = u.CachedTokens
 	}
+	// OpenAI counts reasoning inside completion_tokens, so total is prompt +
+	// completion. Gemini's shim leaves reasoning out of completion_tokens and
+	// only total_tokens carries it; it is billed as output either way.
+	output := max(u.CompletionTokens, u.TotalTokens-u.PromptTokens)
 	return Usage{
 		InputTokens:      u.PromptTokens,
-		OutputTokens:     u.CompletionTokens,
+		OutputTokens:     output,
 		CachedTokens:     cached,
 		CacheReadTokens:  u.CacheReadTokens,
 		CacheWriteTokens: u.CacheWriteTokens,

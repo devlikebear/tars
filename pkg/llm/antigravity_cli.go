@@ -539,10 +539,13 @@ func extractAntigravityCLIUsage(raw any) Usage {
 	if !ok {
 		return Usage{}
 	}
+	// input_tokens already counts the cache reads (total_tokens is input +
+	// output), so they go in CachedTokens, the field cost estimates subtract
+	// from input, not CacheReadTokens, which they add on top.
 	return Usage{
-		InputTokens:     asInt(stats["input_tokens"]),
-		OutputTokens:    asInt(stats["output_tokens"]),
-		CacheReadTokens: asInt(stats["cache_read_tokens"]),
+		InputTokens:  asInt(stats["input_tokens"]),
+		OutputTokens: asInt(stats["output_tokens"]),
+		CachedTokens: asInt(stats["cache_read_tokens"]),
 	}
 }
 

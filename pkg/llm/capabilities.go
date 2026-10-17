@@ -144,11 +144,12 @@ var providerCapabilities = map[string]map[Capability]bool{
 		CapMultimodalInput:     true,
 	},
 	"gemini-native": {
-		CapToolCalling:       true,
-		CapStreaming:         true,
-		CapReasoningEffort:   true,
-		CapThinkingRoundTrip: true,
-		CapMultimodalInput:   true,
+		CapToolCalling:         true,
+		CapStreaming:           true,
+		CapReasoningEffort:     true,
+		CapThinkingRoundTrip:   true,
+		CapCacheUsageReporting: true,
+		CapMultimodalInput:     true,
 	},
 	// openai-codex sends prompt_cache_key the way the Codex CLI does on
 	// the same backend (its session id, here hashed).

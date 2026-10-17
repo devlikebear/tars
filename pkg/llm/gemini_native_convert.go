@@ -78,10 +78,10 @@ type geminiThinkingConfig struct {
 }
 
 const (
-	geminiThinkingMinimal = "THINKING_LEVEL_MINIMAL"
-	geminiThinkingLow     = "THINKING_LEVEL_LOW"
-	geminiThinkingMedium  = "THINKING_LEVEL_MEDIUM"
-	geminiThinkingHigh    = "THINKING_LEVEL_HIGH"
+	geminiThinkingMinimal = "MINIMAL"
+	geminiThinkingLow     = "LOW"
+	geminiThinkingMedium  = "MEDIUM"
+	geminiThinkingHigh    = "HIGH"
 )
 
 type geminiGenerateResponse struct {
@@ -94,9 +94,32 @@ type geminiCandidate struct {
 	FinishReason string         `json:"finishReason"`
 }
 
+// geminiUsageMetadata mirrors the API's UsageMetadata. promptTokenCount
+// already includes cachedContentTokenCount, and thoughtsTokenCount is billed
+// as output but reported apart from candidatesTokenCount.
 type geminiUsageMetadata struct {
-	PromptTokenCount     int32 `json:"promptTokenCount"`
-	CandidatesTokenCount int32 `json:"candidatesTokenCount"`
+	PromptTokenCount        int32 `json:"promptTokenCount"`
+	CachedContentTokenCount int32 `json:"cachedContentTokenCount"`
+	CandidatesTokenCount    int32 `json:"candidatesTokenCount"`
+	ThoughtsTokenCount      int32 `json:"thoughtsTokenCount"`
+}
+
+// merge keeps the latest non-zero value of each field. Streamed chunks carry
+// running totals, and an early chunk may report only some of them.
+func (m *geminiUsageMetadata) merge(chunk *geminiUsageMetadata) {
+	if chunk == nil {
+		return
+	}
+	for _, field := range []struct{ dst, src *int32 }{
+		{&m.PromptTokenCount, &chunk.PromptTokenCount},
+		{&m.CachedContentTokenCount, &chunk.CachedContentTokenCount},
+		{&m.CandidatesTokenCount, &chunk.CandidatesTokenCount},
+		{&m.ThoughtsTokenCount, &chunk.ThoughtsTokenCount},
+	} {
+		if *field.src > 0 {
+			*field.dst = *field.src
+		}
+	}
 }
 
 type geminiModelInfo struct {
@@ -206,7 +229,8 @@ func extractGeminiNativeUsage(metadata *geminiUsageMetadata) Usage {
 	}
 	return Usage{
 		InputTokens:  int(metadata.PromptTokenCount),
-		OutputTokens: int(metadata.CandidatesTokenCount),
+		OutputTokens: int(metadata.CandidatesTokenCount + metadata.ThoughtsTokenCount),
+		CachedTokens: int(metadata.CachedContentTokenCount),
 	}
 }
 
