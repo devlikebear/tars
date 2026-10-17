@@ -79,14 +79,17 @@ function offersTool(body, name) {
 
 const port = Number(process.env.TARS_E2E_MOCK_LLM_PORT || 43291)
 
+// The server closes the user turn with a <turn-context> block (recall and
+// clock); the replies below read only what was typed before it.
 function lastUserText(messages) {
   for (let i = messages.length - 1; i >= 0; i--) {
     const m = messages[i]
     if (m?.role !== 'user') continue
-    if (typeof m.content === 'string') return m.content
-    if (Array.isArray(m.content)) {
-      return m.content.filter((p) => p?.type === 'text').map((p) => p.text).join(' ')
-    }
+    let text = ''
+    if (typeof m.content === 'string') text = m.content
+    else if (Array.isArray(m.content)) text = m.content.filter((p) => p?.type === 'text').map((p) => p.text).join(' ')
+    else continue
+    return text.replace(/\n\n<turn-context>\n[\s\S]*\n<\/turn-context>$/, '')
   }
   return ''
 }
