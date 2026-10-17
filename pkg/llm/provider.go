@@ -211,6 +211,13 @@ type ChatOptions struct {
 	ThinkingBudget int
 	// ServiceTier controls provider-side latency tier when supported.
 	ServiceTier string
+	// CacheKey groups requests that share a growing prefix, such as the
+	// turns of one chat session, so providers that route by a caller key
+	// (CapPromptCacheKey: openai and openai-codex send prompt_cache_key)
+	// send them to the same prompt cache. The value is hashed before it
+	// leaves the process; callers pass their own stable identifier. Empty
+	// sends nothing. Providers without the capability ignore it.
+	CacheKey string
 	// ResumeSessionID, when non-empty, asks providers that expose a resumable
 	// upstream session (currently claude-code-cli and antigravity-cli) to continue that
 	// session instead of replaying the full transcript. The caller is

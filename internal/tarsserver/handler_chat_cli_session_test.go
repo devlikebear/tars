@@ -70,6 +70,41 @@ func TestChatAPI_PassesSessionDirectoryAndPersistsUpstreamSession(t *testing.T) 
 	}
 }
 
+// A chat turn hands the session id to the provider as its prompt-cache key,
+// so OpenAI-family providers route every turn of one session to the same
+// cache (the client hashes it before sending).
+func TestChatAPI_PassesSessionIDAsCacheKey(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+	store := session.NewStore(root)
+	sess, err := store.Create("cached session")
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	client := &mockLLMClient{response: llm.ChatResponse{Message: llm.ChatMessage{Role: "assistant", Content: "ok"}}}
+	handler := newChatAPIHandler(root, store, client, zerolog.New(io.Discard))
+
+	raw, err := json.Marshal(map[string]any{"session_id": sess.ID, "message": "hello"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat", bytes.NewReader(raw))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%q", rec.Code, rec.Body.String())
+	}
+	if len(client.seenCacheKeys) == 0 {
+		t.Fatal("expected an LLM call")
+	}
+	if client.seenCacheKeys[0] != sess.ID {
+		t.Fatalf("cache key = %q, want the session id %q", client.seenCacheKeys[0], sess.ID)
+	}
+}
+
 // A session given more than one folder (as a focus pipeline's extra_dirs
 // does) reaches a CLI-backed provider through ChatOptions.AddDirs: every
 // registered work dir besides the active cwd.

@@ -442,6 +442,11 @@ func buildOpenAICodexRequestBody(messages []ChatMessage, opts ChatOptions, model
 	if len(instructions) > 0 {
 		body["instructions"] = strings.Join(instructions, "\n\n")
 	}
+	// The Codex CLI sends its session id here on the same backend; a stable
+	// key per chat session keeps its turns on one prompt cache.
+	if key := promptCacheKey(opts.CacheKey); key != "" {
+		body["prompt_cache_key"] = key
+	}
 
 	if len(opts.Tools) > 0 {
 		tools, err := convertOpenAICodexTools(opts.Tools, nameMap)
