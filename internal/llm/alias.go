@@ -68,6 +68,7 @@ const (
 	CapCacheUsageReporting   = pkgllm.CapCacheUsageReporting
 	CapJSONSchemaResponse    = pkgllm.CapJSONSchemaResponse
 	CapMultimodalInput       = pkgllm.CapMultimodalInput
+	CapPromptCacheKey        = pkgllm.CapPromptCacheKey
 	CapPromptCaching         = pkgllm.CapPromptCaching
 	CapReasoningEffort       = pkgllm.CapReasoningEffort
 	CapServiceTier           = pkgllm.CapServiceTier

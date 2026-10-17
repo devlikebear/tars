@@ -467,6 +467,36 @@ func TestConformance_ServiceTierReachesTheRequestOnlyWhereDeclared(t *testing.T)
 	}
 }
 
+// openai-codex is not in the stub table (it needs OAuth credentials); its
+// declaration is checked against its request body in prompt_cache_key_test.go.
+func TestConformance_PromptCacheKeyReachesTheRequestOnlyWhereDeclared(t *testing.T) {
+	for _, provider := range conformanceProviders() {
+		t.Run(provider.kind, func(t *testing.T) {
+			plain := newConformanceStub(t, provider, provider.okBody)
+			if _, err := plain.client(t, ProviderOptions{}).Chat(context.Background(), conformanceUserTurn(), ChatOptions{}); err != nil {
+				t.Fatalf("baseline chat: %v", err)
+			}
+
+			keyed := newConformanceStub(t, provider, provider.okBody)
+			if _, err := keyed.client(t, ProviderOptions{}).Chat(context.Background(), conformanceUserTurn(), ChatOptions{CacheKey: "session-1"}); err != nil {
+				t.Fatalf("cache key chat: %v", err)
+			}
+
+			if strings.Contains(keyed.lastRaw, "session-1") {
+				t.Fatalf("%s sent the raw cache key; it must be hashed", provider.kind)
+			}
+			changed := plain.lastRaw != keyed.lastRaw
+			declared := SupportsCapability(provider.kind, CapPromptCacheKey)
+			if declared && keyed.lastBody["prompt_cache_key"] != promptCacheKey("session-1") {
+				t.Fatalf("%s declares prompt_cache_key but sent %v", provider.kind, keyed.lastBody["prompt_cache_key"])
+			}
+			if !declared && changed {
+				t.Fatalf("%s does not declare prompt_cache_key but the request changed — update the capability matrix", provider.kind)
+			}
+		})
+	}
+}
+
 func TestConformance_MultimodalInputReachesTheRequest(t *testing.T) {
 	for _, provider := range conformanceProviders() {
 		t.Run(provider.kind, func(t *testing.T) {

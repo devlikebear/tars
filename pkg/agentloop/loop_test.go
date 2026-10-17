@@ -24,6 +24,7 @@ type scriptedLLMClient struct {
 	seenPersist    []bool
 	seenHandlers   []llm.ClaudeCodePermissionHandler
 	seenAllow      [][]string
+	seenCacheKeys  []string
 }
 
 func (c *scriptedLLMClient) Ask(ctx context.Context, prompt string) (string, error) {
@@ -44,6 +45,7 @@ func (c *scriptedLLMClient) Chat(ctx context.Context, messages []llm.ChatMessage
 	c.seenPersist = append(c.seenPersist, opts.PersistSession)
 	c.seenHandlers = append(c.seenHandlers, opts.ClaudeCodePermissionHandler)
 	c.seenAllow = append(c.seenAllow, opts.ClaudeCodePermissionAllow)
+	c.seenCacheKeys = append(c.seenCacheKeys, opts.CacheKey)
 	resp := c.responses[c.callIndex]
 	c.callIndex++
 	return resp, nil
@@ -1249,6 +1251,43 @@ func TestLoop_Run_ForwardsWorkDirAndPersistence(t *testing.T) {
 	}
 	if len(client.seenAddDirs) != 1 || !slicesEqual(client.seenAddDirs[0], []string{"/other", "/third"}) {
 		t.Fatalf("add dirs %v", client.seenAddDirs)
+	}
+}
+
+// Every call a turn makes carries the caller's prompt-cache key, the final
+// tool-suppressed answer after the iteration budget included: a call without
+// it would route to a different cache than the iterations it follows.
+func TestLoop_Run_ForwardsCacheKeyToEveryCall(t *testing.T) {
+	reg := tool.NewRegistry()
+	reg.Register(tool.NewSessionStatusTool(func(_ context.Context) (tool.SessionStatus, error) {
+		return tool.SessionStatus{SessionID: "sess-1"}, nil
+	}))
+	toolCall := llm.ChatResponse{Message: llm.ChatMessage{
+		Role:      "assistant",
+		ToolCalls: []llm.ToolCall{{ID: "call_1", Name: "session_status", Arguments: `{}`}},
+	}}
+	client := &scriptedLLMClient{
+		responses: []llm.ChatResponse{
+			toolCall,
+			{Message: llm.ChatMessage{Role: "assistant", Content: "done"}},
+		},
+	}
+	loop := NewLoop(client, reg)
+	_, err := loop.Run(context.Background(), []llm.ChatMessage{{Role: "user", Content: "hi"}}, RunOptions{
+		MaxIterations: 1,
+		Tools:         reg.Schemas(),
+		CacheKey:      "sess-1",
+	})
+	if err != nil {
+		t.Fatalf("loop run: %v", err)
+	}
+	if len(client.seenCacheKeys) != 2 {
+		t.Fatalf("expected an iteration and the final answer, got %d calls", len(client.seenCacheKeys))
+	}
+	for i, key := range client.seenCacheKeys {
+		if key != "sess-1" {
+			t.Fatalf("call %d cache key = %q, want sess-1", i, key)
+		}
 	}
 }
 

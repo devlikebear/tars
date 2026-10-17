@@ -60,6 +60,12 @@ const (
 	// CapMultimodalInput: ChatMessage.Blocks with images or documents reach
 	// the request.
 	CapMultimodalInput Capability = "multimodal_input"
+
+	// CapPromptCacheKey: ChatOptions.CacheKey reaches the request as a
+	// routing key for the provider's implicit prompt cache (OpenAI's
+	// prompt_cache_key). Kinds whose endpoints reject unknown fields
+	// (gemini's OpenAI shim, kimi) must not declare it.
+	CapPromptCacheKey Capability = "prompt_cache_key"
 )
 
 // AllCapabilities lists every capability in a stable order, so the
@@ -76,6 +82,7 @@ func AllCapabilities() []Capability {
 		CapServiceTier,
 		CapSessionResume,
 		CapMultimodalInput,
+		CapPromptCacheKey,
 	}
 }
 
@@ -107,6 +114,7 @@ var providerCapabilities = map[string]map[Capability]bool{
 		CapJSONSchemaResponse:  true,
 		CapServiceTier:         true,
 		CapMultimodalInput:     true,
+		CapPromptCacheKey:      true,
 	},
 	// kimi honors both knobs, but drops them on tool-calling turns —
 	// openai_compat_client.go excludes them when opts.Tools is non-empty,
@@ -142,12 +150,15 @@ var providerCapabilities = map[string]map[Capability]bool{
 		CapThinkingRoundTrip: true,
 		CapMultimodalInput:   true,
 	},
+	// openai-codex sends prompt_cache_key the way the Codex CLI does on
+	// the same backend (its session id, here hashed).
 	"openai-codex": {
 		CapToolCalling:         true,
 		CapStreaming:           true,
 		CapCacheUsageReporting: true,
 		CapJSONSchemaResponse:  true,
 		CapMultimodalInput:     true,
+		CapPromptCacheKey:      true,
 	},
 	// CLI-backed providers run their own tool loop against their own
 	// permission policy. TARS observes what they executed; it does not

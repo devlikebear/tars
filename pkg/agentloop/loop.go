@@ -143,6 +143,10 @@ type RunOptions struct {
 	// folders a CLI-backed provider should be able to reach besides WorkDir,
 	// such as a chat session's other registered work dirs.
 	AddDirs []string
+	// CacheKey is forwarded to ChatOptions.CacheKey on every call the loop
+	// makes, the final tool-suppressed answer included, so all of a turn's
+	// requests share one prompt-cache routing key (see llm.ChatOptions).
+	CacheKey string
 	// ClaudeCodeMCPServers is forwarded to ChatOptions on every iteration so
 	// the claude-code-cli provider can inject the same MCP server set per
 	// turn. Other providers ignore it.
@@ -231,6 +235,7 @@ toolPhase:
 			PersistSession:           opts.PersistUpstreamSession,
 			WorkDir:                  opts.WorkDir,
 			AddDirs:                  opts.AddDirs,
+			CacheKey:                 opts.CacheKey,
 			ClaudeCodeMCPServers:     opts.ClaudeCodeMCPServers,
 			ClaudeCodePermissionMode: opts.ClaudeCodePermissionMode,
 			ClaudeCodeSkills:         opts.ClaudeCodeSkills,
@@ -553,6 +558,7 @@ toolPhase:
 		// entirely on there being no tools to call.
 		Tools:      llmTools,
 		ToolChoice: llm.ToolChoiceNone(),
+		CacheKey:   opts.CacheKey,
 	})
 	// Dropping the tools is what used to make a text answer structural rather
 	// than a request the provider might ignore. Keep that guarantee as a
@@ -567,6 +573,7 @@ toolPhase:
 			OnReasoningDelta: opts.OnReasoningDelta,
 			Tools:            nil,
 			ToolChoice:       llm.ToolChoiceNone(),
+			CacheKey:         opts.CacheKey,
 		})
 	}
 	if finalErr == nil {

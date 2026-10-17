@@ -110,6 +110,11 @@ func (c *OpenAICompatibleClient) buildChatRequest(messages []ChatMessage, opts C
 			reqBody["service_tier"] = tier
 		}
 	}
+	// Only OpenAI itself takes prompt_cache_key: gemini's shim and kimi
+	// reject fields they do not know (see CapPromptCacheKey).
+	if key := promptCacheKey(opts.CacheKey); key != "" && SupportsCapability(c.label, CapPromptCacheKey) {
+		reqBody["prompt_cache_key"] = key
+	}
 	if len(opts.Tools) > 0 {
 		reqBody["tools"] = opts.Tools
 		if tc := toOpenAICompatibleToolChoice(opts.ToolChoice, c.label, opts.Tools); tc != nil {

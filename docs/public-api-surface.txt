@@ -42,6 +42,7 @@ pkg/agentloop field RunOptions.AfterTool
 pkg/agentloop field RunOptions.AutoExpandOnce
 pkg/agentloop field RunOptions.BeforeTool
 pkg/agentloop field RunOptions.BlockedTools
+pkg/agentloop field RunOptions.CacheKey
 pkg/agentloop field RunOptions.ClaudeCodeMCPServers
 pkg/agentloop field RunOptions.ClaudeCodePermissionAllow
 pkg/agentloop field RunOptions.ClaudeCodePermissionDeny
@@ -105,6 +106,7 @@ pkg/agentloop type ToolReplayResult
 pkg/llm const CapCacheUsageReporting
 pkg/llm const CapJSONSchemaResponse
 pkg/llm const CapMultimodalInput
+pkg/llm const CapPromptCacheKey
 pkg/llm const CapPromptCaching
 pkg/llm const CapReasoningEffort
 pkg/llm const CapServiceTier
@@ -146,6 +148,7 @@ pkg/llm field ChatMessage.Role
 pkg/llm field ChatMessage.ToolCallID
 pkg/llm field ChatMessage.ToolCalls
 pkg/llm field ChatOptions.AddDirs
+pkg/llm field ChatOptions.CacheKey
 pkg/llm field ChatOptions.ClaudeCodeHarness
 pkg/llm field ChatOptions.ClaudeCodeMCPServers
 pkg/llm field ChatOptions.ClaudeCodePermissionAllow

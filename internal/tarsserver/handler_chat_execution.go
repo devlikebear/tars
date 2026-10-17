@@ -105,6 +105,7 @@ func executeChatLoop(
 		BlockedTools:    state.blockedTools,
 		OnTurnEnd:       onTurnEnd,
 		ResumeSessionID: resumeID,
+		CacheKey:        state.sessionID,
 		// The session resumes this upstream session next turn, so the first
 		// call must save it; and the CLI works in the session's directory.
 		PersistUpstreamSession:   true,
