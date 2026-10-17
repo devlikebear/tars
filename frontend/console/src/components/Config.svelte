@@ -20,6 +20,7 @@
     defaultConfigTabId,
     groupFieldsByTab,
     isConfigTabId,
+    isFieldShown,
   } from '../lib/configSections'
   import type { ConfigTabId } from '../lib/configSections'
   import { searchConfigFields, type ConfigQuickFilter } from '../lib/configSearch'
@@ -82,8 +83,17 @@
     onNavigate?.(`/console/config/${id}`)
   }
 
+  // RemoteAccessCard is the one editor for these two fields (shown on the
+  // Channels & Remote tab); keep them out of the generic field-row list and
+  // out of search results too, or a result would jump to a row that no
+  // longer renders and the generic row would race the card's own save.
+  const REMOTE_ACCESS_FIELD_KEYS = new Set(['remote_access_tailscale_serve_enabled', 'remote_access_tailscale_serve_https_port'])
+  function isGenericRow(field: ConfigFieldMeta): boolean {
+    return !REMOTE_ACCESS_FIELD_KEYS.has(field.key)
+  }
+
   let tabFields = $derived(groupFieldsByTab(schema, displayValues))
-  let currentTabFields = $derived(tabFields.find((t2) => t2.id === activeTab)?.fields ?? [])
+  let currentTabFields = $derived((tabFields.find((t2) => t2.id === activeTab)?.fields ?? []).filter(isGenericRow))
   let currentBasic = $derived(basicFields(currentTabFields))
   let currentAdvanced = $derived(advancedFields(currentTabFields))
   let advancedOpen = $derived(expandedAdvanced.has(activeTab))
@@ -106,11 +116,17 @@
     activeFilters = next
   }
 
+  // searchConfigFields only hides file/remove-tier fields on its own; a
+  // field still hidden by its own show_when (e.g. the Telegram session
+  // scope while the Telegram channel is off) has no row to jump to, so
+  // filter those out here before searching, same as isGenericRow above.
+  let searchableFields = $derived(schema.filter((f) => isFieldShown(f, displayValues, schema) && isGenericRow(f)))
+
   let searchActive = $derived(search.trim().length > 0 || activeFilters.size > 0)
   let searchResult = $derived(
     searchActive
       ? searchConfigFields({
-          fields: schema,
+          fields: searchableFields,
           query: search,
           localize: (field) => localizeConfigField(field, $t.config),
           values: displayValues,
@@ -609,6 +625,7 @@
   onSaveAndRestart={() => { saveAndApply = true; handleSaveFields() }}
   onViewChanges={() => { showDiff = !showDiff }}
   onConfirmRestart={handleRestart}
+  onCancelRestart={() => { restartConfirm = false }}
 />
 
 <style>

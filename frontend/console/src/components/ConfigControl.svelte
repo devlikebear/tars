@@ -66,6 +66,12 @@
   function commit() {
     error = null
     if (field.type === 'bool' || field.type === 'select') return // committed immediately on change
+    // Untouched: blurring (e.g. tabbing through) without editing must not
+    // re-parse and re-emit the field's own displayed text — for llm_providers
+    // that text has each provider's api_key already masked by the server,
+    // and re-parsing would strip it via stripMaskedProviderKeys below even
+    // though the user changed nothing, marking the field dirty for no reason.
+    if (draft === syncedText) return
     if (field.sensitive && draft === '') return // untouched secret; keep current value
     let parsed: unknown
     if (field.type === 'json') {
@@ -152,6 +158,13 @@
   </div>
 {:else}
   <div class="config-control-stack">
+    <!-- `value` + `oninput`, not `bind:value`: Svelte's two-way bind:value
+         special-cases type="number" inputs (is_numberlike_input/to_number
+         in its runtime) and assigns `draft` a number or null instead of a
+         string whenever the type below resolves to "number" — breaking the
+         string-only parsing (draft.trim()) in commit() below. Reading
+         e.currentTarget.value directly keeps draft a string for every
+         field type, number included. -->
     <input
       type={field.sensitive ? 'password' : (field.type === 'int' || field.type === 'float' ? 'number' : 'text')}
       step={field.type === 'float' ? '0.01' : undefined}
@@ -159,7 +172,8 @@
       class:dirty
       class:invalid={!!error}
       placeholder={maskedPlaceholder()}
-      bind:value={draft}
+      value={draft}
+      oninput={(e) => { draft = (e.currentTarget as HTMLInputElement).value }}
       onkeydown={handleKeydown}
       onblur={commit}
       autocomplete="off"

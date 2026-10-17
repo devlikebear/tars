@@ -17,6 +17,7 @@
     onSaveAndRestart: () => void
     onViewChanges: () => void
     onConfirmRestart: () => void
+    onCancelRestart: () => void
   }
 
   let {
@@ -29,6 +30,7 @@
     onSaveAndRestart,
     onViewChanges,
     onConfirmRestart,
+    onCancelRestart,
   }: Props = $props()
 </script>
 
@@ -36,6 +38,9 @@
   <div class="config-save-bar" role="region" aria-label={$t.config.savedPending}>
     <span class="config-save-bar-notice">{$t.config.savedPending}</span>
     <div class="config-save-bar-actions">
+      <button type="button" class="btn btn-ghost btn-sm" disabled={restartBusy} onclick={onCancelRestart}>
+        {$t.config.restart.cancel}
+      </button>
       <button type="button" class="btn btn-primary btn-sm" disabled={restartBusy} onclick={onConfirmRestart}>
         {restartBusy ? $t.config.restart.restarting : $t.config.confirmRestart}
       </button>

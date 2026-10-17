@@ -30,3 +30,36 @@ test('save/apply confirms restart and checks new runtime rather than saved value
   assert.match(source, /AbortSignal\.timeout/)
   assert.match(source, /\$t\.config\.reconnectFailed/)
 })
+
+// Review findings (tars PR #1283, round 1): a bind:value number input
+// silently broke int/float commits, the restart confirmation had no
+// cancel, search and the field grid could surface a show_when-hidden or
+// RemoteAccessCard-owned field with no row to land on, and blurring
+// llm_providers without editing it stripped the masked api_key anyway.
+const saveBarSource = readFileSync(new URL('../src/components/ConfigSaveBar.svelte', import.meta.url), 'utf8')
+
+test('the int/float/text input commits via oninput, not bind:value, so Svelte cannot coerce draft away from a string', () => {
+  // The textarea (json/string_list) legitimately keeps bind:value — it is
+  // never type="number", so Svelte's input-coercion special case never
+  // applies to it. Only the single <input> (int/float/text/sensitive)
+  // control is at risk, and that one must read e.currentTarget.value.
+  assert.match(controlSource, /oninput=\{\(e\) => \{ draft = \(e\.currentTarget as HTMLInputElement\)\.value \}\}/)
+  const inputBlock = controlSource.slice(controlSource.indexOf('<input\n'), controlSource.indexOf('/>', controlSource.indexOf('<input\n')))
+  assert.doesNotMatch(inputBlock, /bind:value/)
+})
+
+test('an untouched control commits nothing on blur', () => {
+  assert.match(controlSource, /if \(draft === syncedText\) return/)
+})
+
+test('the restart confirmation can be cancelled', () => {
+  assert.match(saveBarSource, /onCancelRestart/)
+  assert.match(saveBarSource, /\$t\.config\.restart\.cancel/)
+})
+
+test('search and the field grid exclude show_when-hidden and RemoteAccessCard-owned fields', () => {
+  assert.match(source, /isFieldShown/)
+  assert.match(source, /REMOTE_ACCESS_FIELD_KEYS/)
+  assert.match(source, /function isGenericRow/)
+  assert.doesNotMatch(source, /fields: schema,/)
+})

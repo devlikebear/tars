@@ -122,6 +122,7 @@ export const configEn = {
     description: 'Apply config changes by restarting the TARS process. Service mode uses launchctl, dev mode re-execs the process.',
     confirm: 'Click again to confirm',
     restarting: 'Restarting...',
+    cancel: 'Cancel',
   },
 
   dangerZone: {
@@ -421,6 +422,7 @@ export const configKo: ConfigTranslations = {
     description: 'TARS 프로세스를 재시작해 설정 변경을 적용합니다. 서비스 모드는 launchctl을, 개발 모드는 프로세스 재실행을 씁니다.',
     confirm: '다시 클릭해 확인',
     restarting: '재시작 중...',
+    cancel: '취소',
   },
 
   dangerZone: {
