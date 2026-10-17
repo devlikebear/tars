@@ -58,12 +58,14 @@ export const wellKnownModelsByKind: Record<ProviderKind, string[]> = {
     'claude-haiku-4-5',
   ],
   gemini: [
+    'gemini-3.8-flash',
     'gemini-3.1-pro-preview',
     'gemini-3.1-flash-lite-preview',
     'gemini-2.5-pro',
     'gemini-2.5-flash',
   ],
   'gemini-native': [
+    'gemini-3.8-flash',
     'gemini-3.1-pro-preview',
     'gemini-3.1-flash-lite-preview',
     'gemini-2.5-pro',
