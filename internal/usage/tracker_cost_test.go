@@ -290,8 +290,8 @@ func TestEstimateCost_WildcardOnlyProviderDoesNotWarn(t *testing.T) {
 func TestEstimateCost_GeminiCachedPromptTokensPriceAtCacheRate(t *testing.T) {
 	tracker := newCostTestTracker(t)
 	for _, provider := range []string{"gemini", "gemini-native"} {
-		got, ok := tracker.EstimateCost(provider, "gemini-2.5-flash", llm.Usage{InputTokens: 1_000_000, CachedTokens: 800_000})
-		want := 0.2*0.30 + 0.8*0.03
+		got, ok := tracker.EstimateCost(provider, "gemini-3.8-flash", llm.Usage{InputTokens: 1_000_000, CachedTokens: 800_000})
+		want := 0.2*0.75 + 0.8*0.075
 		if !ok || math.Abs(got-want) > 1e-9 {
 			t.Fatalf("%s: cost = %v ok=%v, want %v", provider, got, ok, want)
 		}
