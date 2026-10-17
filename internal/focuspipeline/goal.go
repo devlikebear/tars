@@ -250,7 +250,7 @@ func NextGoalStep(p Pipeline, now time.Time) GoalStep {
 	if !stalled {
 		return wait
 	}
-	if p.PendingTurn != "" || p.AwaitingVerification {
+	if p.PendingTurn != "" || p.AwaitingVerification || p.Review.SecondOpinionOwed {
 		// The step the pipeline owes was dropped (nothing runs): raise the
 		// interrupted gate, whose retry resumes exactly that step.
 		return GoalStep{Kind: GoalInterrupt}

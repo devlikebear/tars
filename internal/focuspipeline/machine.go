@@ -20,6 +20,9 @@ const (
 	// EventVerification is the result of the verification a build turn
 	// asked for (ActionRunVerification).
 	EventVerification = "verification"
+	// EventSecondOpinion is the result of the second opinion review a
+	// review turn asked for (ActionSecondOpinion, second_opinion.go).
+	EventSecondOpinion = "second_opinion"
 )
 
 // Gate actions.
@@ -36,6 +39,9 @@ const (
 	// ActionRunVerification asks the server to run the plan's verify
 	// commands and feed the result back as EventVerification.
 	ActionRunVerification = "run_verification"
+	// ActionSecondOpinion asks the server to run the second opinion review
+	// of the round and feed the result back as EventSecondOpinion.
+	ActionSecondOpinion = "second_opinion"
 )
 
 // NoticeFormatMissing is the title of the card a turn without its required
@@ -99,6 +105,9 @@ type Event struct {
 	// result (EventPRProbe).
 	PR    *PRDraft
 	Probe *PRProbe
+	// SecondOpinion is the second opinion review's result
+	// (EventSecondOpinion).
+	SecondOpinion *SecondOpinionResult
 }
 
 // Action is what the server should do next.
@@ -171,6 +180,8 @@ func applyEvent(p Pipeline, ev Event, now time.Time) (Pipeline, Action, error) {
 		return applyVerification(p, ev, now.UTC())
 	case EventPRProbe:
 		return applyProbe(p, ev, now.UTC())
+	case EventSecondOpinion:
+		return applySecondOpinionEvent(p, ev, now.UTC())
 	case EventStop:
 		if !p.Active() && p.OpenGate != GateBlocked {
 			return p, noAction, ErrNotActive
@@ -182,6 +193,7 @@ func applyEvent(p Pipeline, ev Event, now time.Time) (Pipeline, Action, error) {
 		}
 		next.OpenGate = GateNone
 		next.AwaitingVerification, next.PendingTurn = false, ""
+		next.Review.SecondOpinionOwed = false
 		next.setStatus(next.Current, StatusBlocked)
 		next.UpdatedAt = now.UTC()
 		return next, noAction, nil
@@ -398,6 +410,7 @@ func applyGate(p Pipeline, ev Event, now time.Time) (Pipeline, Action, error) {
 	case GateStop:
 		p.setStatus(p.Current, StatusBlocked)
 		p.AwaitingVerification, p.PendingTurn = false, ""
+		p.Review.SecondOpinionOwed = false
 		decide()
 		return p, noAction, nil
 	case GateRequestChanges:

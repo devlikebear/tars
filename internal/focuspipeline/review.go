@@ -47,6 +47,11 @@ type ReviewState struct {
 	// Dismissed are the findings dismissed in earlier rounds of the stage:
 	// listed in the review guidance, and dropped when reported again.
 	Dismissed []DismissedFinding `json:"dismissed,omitempty"`
+	// SecondOpinionOwed is set while the round waits for its second opinion
+	// review (second_opinion.go): the review turn's findings are cards
+	// already, and triage or verification follows the second opinion's
+	// result (EventSecondOpinion).
+	SecondOpinionOwed bool `json:"second_opinion_owed,omitempty"`
 }
 
 // DismissedFinding identifies a dismissed finding across rounds.
@@ -107,6 +112,18 @@ func reviewTurnAction(p *Pipeline, b Blocks, turn int, now time.Time) Action {
 		p.addCard(CardFinding, turn, f.Title, f, now)
 		p.Review.Triage = append(p.Review.Triage, p.Cards[len(p.Cards)-1].ID)
 	}
+	if p.secondOpinionDue() {
+		// The round waits for the second opinion; its result takes the
+		// same tail (second_opinion.go).
+		p.Review.SecondOpinionOwed = true
+		return Action{Kind: ActionSecondOpinion}
+	}
+	return p.reviewFindingsDone()
+}
+
+// reviewFindingsDone is the end of a review round's reporting: with no
+// finding card waiting, verification runs; otherwise triage opens.
+func (p *Pipeline) reviewFindingsDone() Action {
 	if len(p.Review.Triage) == 0 {
 		p.AwaitingVerification = true
 		return Action{Kind: ActionRunVerification}
@@ -171,18 +188,18 @@ func closeTriage(p *Pipeline) Action {
 		return Action{Kind: ActionRunVerification}
 	}
 	p.Review.Fixing = true
-	return Action{Kind: ActionSendTurn, Prompt: fixFindingsPrompt(accepted)}
+	return Action{Kind: ActionSendTurn, Prompt: fixFindingsPrompt(accepted, p.secondOpinionTier())}
 }
 
 func (p Pipeline) cardIndex(id string) int {
 	return slices.IndexFunc(p.Cards, func(c Card) bool { return c.ID == id })
 }
 
-func fixFindingsPrompt(findings []Finding) string {
+func fixFindingsPrompt(findings []Finding, secondOpinionTier string) string {
 	var b strings.Builder
 	b.WriteString("Fix these findings:\n")
 	for i, f := range findings {
-		fmt.Fprintf(&b, "%d. [%s] %s — %s%s\n", i+1, orDash(f.Severity), findingLocation(f), strings.TrimSpace(f.Title), developerMark(f))
+		fmt.Fprintf(&b, "%d. [%s] %s — %s%s%s\n", i+1, orDash(f.Severity), findingLocation(f), strings.TrimSpace(f.Title), developerMark(f), secondOpinionMark(f, secondOpinionTier))
 		if s := strings.TrimSpace(f.Scenario); s != "" {
 			fmt.Fprintf(&b, "   Scenario: %s\n", s)
 		}
