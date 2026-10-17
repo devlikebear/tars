@@ -71,10 +71,11 @@ func defaultPriceTable() map[string]ModelPrice {
 		// (e.g. config/default.yaml routes MiniMax through kind: anthropic);
 		// Sonnet-class mid rates so unknown traffic still gets an estimate.
 		"anthropic/*": {InputPer1MUSD: 3.00, OutputPer1MUSD: 15.00, CacheReadPer1MUSD: 0.30, CacheWritePer1MUSD: 3.75},
-		// Gemini 2.5 Flash rates. Implicit caching bills cached prompt tokens
-		// at a tenth of input.
-		"gemini/*":        {InputPer1MUSD: 0.30, OutputPer1MUSD: 2.50, CacheReadPer1MUSD: 0.03},
-		"gemini-native/*": {InputPer1MUSD: 0.30, OutputPer1MUSD: 2.50, CacheReadPer1MUSD: 0.03},
+		// gemini-3.8-flash, the default model, at its rates through
+		// 2026-12-31. Google doubles all three on 2027-01-01. Implicit caching
+		// bills cached prompt tokens at a tenth of input.
+		"gemini/*":        {InputPer1MUSD: 0.75, OutputPer1MUSD: 3.75, CacheReadPer1MUSD: 0.075},
+		"gemini-native/*": {InputPer1MUSD: 0.75, OutputPer1MUSD: 3.75, CacheReadPer1MUSD: 0.075},
 	}
 }
 

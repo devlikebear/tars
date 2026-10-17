@@ -29,10 +29,12 @@ const (
 	ClaudeCodeCLIModel  = "sonnet"
 	GeminiBaseURL       = "https://generativelanguage.googleapis.com/v1beta/openai"
 	GeminiNativeBaseURL = "https://generativelanguage.googleapis.com/v1beta"
-	GeminiModel         = "gemini-2.5-flash"
-	AnthropicBaseURL    = "https://api.anthropic.com"
-	AnthropicModel      = "claude-haiku-4-5-20251001"
-	KimiBaseURL         = "https://api.moonshot.cn/v1"
+	// gemini-2.5 models stopped serving API keys that had not used them
+	// before (a 404 naming gemini-3.8-flash, confirmed live on 2026-10-17).
+	GeminiModel      = "gemini-3.8-flash"
+	AnthropicBaseURL = "https://api.anthropic.com"
+	AnthropicModel   = "claude-haiku-4-5-20251001"
+	KimiBaseURL      = "https://api.moonshot.cn/v1"
 
 	OpenAICodexOAuthProvider = "openai-codex"
 	ClaudeOAuthProvider      = "claude-code"
