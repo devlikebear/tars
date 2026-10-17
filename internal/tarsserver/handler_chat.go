@@ -151,19 +151,13 @@ func buildContextFromResult(
 		systemPrompt += "- Skill body content is not preloaded in the prompt.\n"
 		systemPrompt += "- If you need a skill, call read_file with the listed skill path first.\n"
 	}
-	if invokedSkill != nil {
-		readPath := skillRuntimeReadPathForPrompt(workspaceDir, invokedSkill.RuntimePath)
-		systemPrompt += "\n## Invoked Skill\n"
-		systemPrompt += fmt.Sprintf(
-			"User invoked /%s.\nBefore responding, call read_file on path %q to load this skill.\n",
-			strings.TrimSpace(invokedSkill.Name),
-			readPath,
-		)
-	}
+	// Only the turns that invoke a skill carry this, so it rides on the user
+	// turn with the recall and clock rather than moving the system prompt.
+	tail := joinTurnContext(formatInvokedSkillPrompt(workspaceDir, invokedSkill), buildResult.DynamicTail)
 	return preparedChatContext{
 		SystemPrompt:               systemPrompt,
-		SystemPromptTail:           buildResult.DynamicTail,
-		SystemPromptTokens:         promptTokenEstimate(systemPrompt + buildResult.DynamicTail),
+		SystemPromptTail:           tail,
+		SystemPromptTokens:         promptTokenEstimate(systemPrompt + tail),
 		RelevantMemoryCount:        buildResult.RelevantMemoryCount,
 		RelevantMemoryTokens:       buildResult.RelevantTokens,
 		RelevantMemorySection:      buildResult.RelevantSection,
@@ -172,18 +166,38 @@ func buildContextFromResult(
 	}
 }
 
-func appendInvokedCommandPrompt(systemPrompt, workspaceDir string, command *skill.Definition) string {
-	if command == nil {
-		return systemPrompt
+func formatInvokedSkillPrompt(workspaceDir string, invokedSkill *skill.Definition) string {
+	if invokedSkill == nil {
+		return ""
 	}
-	readPath := skillRuntimeReadPathForPrompt(workspaceDir, command.RuntimePath)
-	systemPrompt += "\n## Invoked Command\n"
-	systemPrompt += fmt.Sprintf(
-		"User invoked /%s.\nBefore responding, call read_file on path %q to load this command.\nCommands are explicit-only and should not be used unless the user invokes them.\n",
-		strings.TrimSpace(command.Name),
-		readPath,
+	return fmt.Sprintf(
+		"## Invoked Skill\nUser invoked /%s.\nBefore responding, call read_file on path %q to load this skill.\n",
+		strings.TrimSpace(invokedSkill.Name),
+		skillRuntimeReadPathForPrompt(workspaceDir, invokedSkill.RuntimePath),
 	)
-	return systemPrompt
+}
+
+func formatInvokedCommandPrompt(workspaceDir string, command *skill.Definition) string {
+	if command == nil {
+		return ""
+	}
+	return fmt.Sprintf(
+		"## Invoked Command\nUser invoked /%s.\nBefore responding, call read_file on path %q to load this command.\nCommands are explicit-only and should not be used unless the user invokes them.\n",
+		strings.TrimSpace(command.Name),
+		skillRuntimeReadPathForPrompt(workspaceDir, command.RuntimePath),
+	)
+}
+
+// joinTurnContext joins the sections that belong to this turn only, skipping
+// empty ones. The result goes in the user turn's <turn-context> block.
+func joinTurnContext(sections ...string) string {
+	parts := make([]string, 0, len(sections))
+	for _, section := range sections {
+		if trimmed := strings.TrimSpace(section); trimmed != "" {
+			parts = append(parts, trimmed)
+		}
+	}
+	return strings.Join(parts, "\n\n")
 }
 
 func skillPromptForChatContext(workspaceDir string, extSnapshot extensions.Snapshot) string {
@@ -284,28 +298,6 @@ func systemPromptTokens(msgs []llm.ChatMessage) int {
 		total += promptTokenEstimate(msg.Content)
 	}
 	return total
-}
-
-// insertSystemMessageBeforeUser inserts an extra system-role message
-// immediately before the final user message in msgs. If no user message is
-// found (defensive) the system message is appended to the end. The original
-// slice header is not mutated; a new slice is returned.
-func insertSystemMessageBeforeUser(msgs []llm.ChatMessage, content string) []llm.ChatMessage {
-	if strings.TrimSpace(content) == "" {
-		return msgs
-	}
-	insertAt := len(msgs)
-	for i := len(msgs) - 1; i >= 0; i-- {
-		if strings.EqualFold(strings.TrimSpace(msgs[i].Role), "user") {
-			insertAt = i
-			break
-		}
-	}
-	out := make([]llm.ChatMessage, 0, len(msgs)+1)
-	out = append(out, msgs[:insertAt]...)
-	out = append(out, llm.ChatMessage{Role: "system", Content: content})
-	out = append(out, msgs[insertAt:]...)
-	return out
 }
 
 // toSessionReasoningBlocks and toLLMReasoningBlocks convert between the
