@@ -19,7 +19,6 @@ import (
 // fatal — onboarding cannot heal it from the wizard.
 var recoverableLLMInitStages = map[string]struct{}{
 	"init_llm":             {},
-	"init_memory_backend":  {},
 	"init_semantic_memory": {},
 }
 

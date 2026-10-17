@@ -183,7 +183,6 @@ llm:
     permission_mode: auto
 
 memory:
-  backend: file
   semantic:
     enabled: false
   embed:
@@ -248,15 +247,6 @@ automation:
   notify:
     command: ""
     when_no_clients: true
-  schedule:
-    timezone: Asia/Seoul
-
-assistant:
-  enabled: true
-  hotkey: "Ctrl+Option+Space"
-  whisper_bin: whisper-cli
-  ffmpeg_bin: ffmpeg
-  tts_bin: say
 
 console:
   # The mode /console opens in (docs/decisions/focus-mode.md):

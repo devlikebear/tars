@@ -98,9 +98,6 @@ var configFieldImpactHints = map[string][]string{
 	"usage_price_overrides_json": {
 		"Changing price overrides affects usage analytics, budget enforcement, and cost comparisons.",
 	},
-	"memory_backend": {
-		"Changing memory backend affects durable recall storage and may require migration before restart.",
-	},
 	"memory_semantic_enabled": {
 		"Semantic memory changes recall behavior and embedding API usage.",
 	},
@@ -212,24 +209,6 @@ var configFieldImpactHints = map[string][]string{
 	},
 	"notify_when_no_clients": {
 		"Changing this controls whether notifications fire when no console clients are connected.",
-	},
-	"schedule_timezone": {
-		"Changing schedule timezone affects Cron and scheduled trigger interpretation.",
-	},
-	"assistant_enabled": {
-		"Changing assistant availability affects voice assistant hotkey and audio workflows.",
-	},
-	"assistant_hotkey": {
-		"Changing the assistant hotkey affects global activation behavior.",
-	},
-	"assistant_whisper_bin": {
-		"Changing Whisper path affects speech-to-text execution.",
-	},
-	"assistant_ffmpeg_bin": {
-		"Changing FFmpeg path affects assistant audio processing.",
-	},
-	"assistant_tts_bin": {
-		"Changing TTS path affects assistant speech output.",
 	},
 	"compaction_trigger_tokens": {
 		"Changing trigger tokens affects when long chat transcripts auto-compact.",

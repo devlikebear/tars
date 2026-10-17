@@ -176,7 +176,6 @@ type LLMTierBinding struct {
 }
 
 type MemoryConfig struct {
-	MemoryBackend         string
 	MemorySemanticEnabled bool
 	MemoryEmbedProvider   string
 	MemoryEmbedBaseURL    string
@@ -199,7 +198,6 @@ type AutomationConfig struct {
 	CronRunHistoryLimit int
 	NotifyCommand       string
 	NotifyWhenNoClients bool
-	ScheduleTimezone    string
 
 	// Pulse is the system-surface watchdog. All fields default to
 	// conservative values so it runs silently until signals appear.
@@ -234,14 +232,6 @@ type AutomationConfig struct {
 	ReflectionEmptySessionAge     string // duration string, e.g. "24h"
 	ReflectionMemoryLookbackHours int
 	ReflectionMaxTurnsPerSession  int
-}
-
-type AssistantConfig struct {
-	AssistantEnabled    bool
-	AssistantHotkey     string
-	AssistantWhisperBin string
-	AssistantFFmpegBin  string
-	AssistantTTSBin     string
 }
 
 type CompactionConfig struct {
@@ -466,7 +456,6 @@ type Config struct {
 	MemoryConfig
 	UsageConfig
 	AutomationConfig
-	AssistantConfig
 	CompactionConfig
 	ToolConfig
 	AgentRuntimeConfig

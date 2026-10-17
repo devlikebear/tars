@@ -77,7 +77,6 @@ func Schema() []FieldMeta {
 		fjson("llm_role_defaults", "LLM", "Role Defaults", "Map of runtime role name to tier alias (for example chat_main -> standard)"),
 
 		// ── Memory ───────────────────────────────
-		fsel("memory_backend", "Memory", "Backend", "Memory backend implementation", []string{"file"}),
 		f("memory_semantic_enabled", "Memory", "bool", "Semantic Memory", "Enable semantic memory with vector embeddings"),
 		fsel("memory_embed_provider", "Memory", "Embed Provider", "Embedding provider", memory.SupportedEmbedProviders()),
 		f("memory_embed_base_url", "Memory", "string", "Embed Base URL", "Base URL for embedding API"),
@@ -123,14 +122,6 @@ func Schema() []FieldMeta {
 		f("reflection_max_turns_per_session", "Automation", "int", "Max Turns Per Session", "Cap on turns reflection processes per session per run"),
 		f("notify_command", "Automation", "string", "Notify Command", "Shell command executed for notifications"),
 		f("notify_when_no_clients", "Automation", "bool", "Notify When No Clients", "Send notifications even when no SSE clients connected"),
-		f("schedule_timezone", "Automation", "string", "Schedule Timezone", "Default timezone for scheduled triggers"),
-
-		// ── Assistant ────────────────────────────
-		f("assistant_enabled", "Assistant", "bool", "Enabled", "Enable voice assistant feature"),
-		f("assistant_hotkey", "Assistant", "string", "Hotkey", "Global hotkey to activate assistant"),
-		f("assistant_whisper_bin", "Assistant", "string", "Whisper Binary", "Path to whisper CLI for speech-to-text"),
-		f("assistant_ffmpeg_bin", "Assistant", "string", "FFmpeg Binary", "Path to ffmpeg for audio processing"),
-		f("assistant_tts_bin", "Assistant", "string", "TTS Binary", "Path to text-to-speech binary"),
 
 		// ── Compaction ───────────────────────────
 		f("compaction_trigger_tokens", "Compaction", "int", "Trigger Tokens", "Estimated transcript tokens that trigger auto-compaction"),
@@ -342,8 +333,6 @@ func extractValue(yamlKey string, cfg Config) any {
 	case "llm_role_defaults":
 		return cloneStringMap(cfg.LLMRoleDefaults)
 	// Memory
-	case "memory_backend":
-		return cfg.MemoryBackend
 	case "memory_semantic_enabled":
 		return cfg.MemorySemanticEnabled
 	case "memory_embed_provider":
@@ -426,19 +415,6 @@ func extractValue(yamlKey string, cfg Config) any {
 		return cfg.NotifyCommand
 	case "notify_when_no_clients":
 		return cfg.NotifyWhenNoClients
-	case "schedule_timezone":
-		return cfg.ScheduleTimezone
-	// Assistant
-	case "assistant_enabled":
-		return cfg.AssistantEnabled
-	case "assistant_hotkey":
-		return cfg.AssistantHotkey
-	case "assistant_whisper_bin":
-		return cfg.AssistantWhisperBin
-	case "assistant_ffmpeg_bin":
-		return cfg.AssistantFFmpegBin
-	case "assistant_tts_bin":
-		return cfg.AssistantTTSBin
 	// Compaction
 	case "compaction_trigger_tokens":
 		return cfg.CompactionTriggerTokens

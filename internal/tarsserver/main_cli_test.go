@@ -17,7 +17,6 @@ func TestIsRecoverableLLMInitError(t *testing.T) {
 		{name: "ensure_workspace", err: &runtimeDepsError{stage: "ensure_workspace", err: errors.New("x")}, want: false},
 		{name: "init_usage", err: &runtimeDepsError{stage: "init_usage", err: errors.New("x")}, want: false},
 		{name: "init_llm", err: &runtimeDepsError{stage: "init_llm", err: errors.New("x")}, want: true},
-		{name: "init_memory_backend", err: &runtimeDepsError{stage: "init_memory_backend", err: errors.New("x")}, want: true},
 		{name: "init_semantic_memory", err: &runtimeDepsError{stage: "init_semantic_memory", err: errors.New("x")}, want: true},
 		{name: "wrapped init_llm", err: wrap(&runtimeDepsError{stage: "init_llm", err: errors.New("x")}), want: true},
 	}

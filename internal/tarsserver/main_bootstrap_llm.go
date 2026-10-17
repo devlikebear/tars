@@ -13,8 +13,7 @@ import (
 // and adds the LLM-bound fields: router, agent prompt runner, and the
 // runPrompt closure. It is the recoverable failure boundary for the
 // onboarding setup-only mode (Phase 2): when this returns an
-// *runtimeDepsError with stage init_llm / init_memory_backend /
-// init_semantic_memory, the caller may downgrade to setup-only
+// *runtimeDepsError with stage init_llm / init_semantic_memory, the caller may downgrade to setup-only
 // instead of exiting.
 //
 // On success the returned runtimeDeps is the same struct passed in
@@ -29,9 +28,6 @@ func buildLLMDeps(base runtimeDeps, cfg config.Config, logger zerolog.Logger) (r
 		return runtimeDeps{}, &runtimeDepsError{stage: "init_llm", err: err}
 	}
 	semanticCfg := semanticMemoryConfigFromConfig(cfg)
-	if err := validateMemoryBackend(cfg.MemoryBackend); err != nil {
-		return runtimeDeps{}, &runtimeDepsError{stage: "init_memory_backend", err: err}
-	}
 	if err := memory.ValidateSemanticConfig(semanticCfg); err != nil {
 		return runtimeDeps{}, &runtimeDepsError{stage: "init_semantic_memory", err: err}
 	}

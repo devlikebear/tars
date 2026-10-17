@@ -32,8 +32,6 @@ func inferPreferredYAMLPathForKey(key string) string {
 		return "automation.notify.command"
 	case "notify_when_no_clients":
 		return "automation.notify.when_no_clients"
-	case "schedule_timezone":
-		return "automation.schedule.timezone"
 	case "usage_price_overrides_json":
 		return "usage.price_overrides"
 	case "mcp_command_allowlist_json":
@@ -75,8 +73,6 @@ func inferPreferredYAMLPathForKey(key string) string {
 		return "automation.pulse." + strings.TrimPrefix(key, "pulse_")
 	case strings.HasPrefix(key, "reflection_"):
 		return "automation.reflection." + strings.TrimPrefix(key, "reflection_")
-	case strings.HasPrefix(key, "assistant_"):
-		return "assistant." + strings.TrimPrefix(key, "assistant_")
 	case strings.HasPrefix(key, "compaction_"):
 		return "compaction." + strings.TrimPrefix(key, "compaction_")
 	case strings.HasPrefix(key, "tools_web_search_perplexity_"):
