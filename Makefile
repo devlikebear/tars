@@ -22,7 +22,16 @@ COVER_MIN ?= 60
 DIFF_COVER_MIN ?= 80
 DIFF_HEAD ?=
 GOLANGCI_LINT_VERSION ?= v2.12.2
-GOLANGCI_LINT ?= $(GO) run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
+# golangci-lint v2.12.2's bundled go/types reads the running Go toolchain's
+# standard library export data and rejects a newer format than it knows —
+# an installed Go ahead of go.mod's `go` directive (GOTOOLCHAIN=auto only
+# upgrades, never downgrades) fails with "export data version N is greater
+# than maximum supported version" before a single file is linted. Pin the
+# toolchain this one invocation uses to exactly what go.mod declares (what
+# CI's setup-go already installs via go-version-file), so lint-diff/lint
+# behave the same regardless of which Go is ambient on a given machine;
+# GOTOOLCHAIN=goX.Y.Z downloads that version on first use if missing.
+GOLANGCI_LINT ?= GOTOOLCHAIN=go$(shell $(GO) list -m -f '{{.GoVersion}}') $(GO) run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
 TARS_CONFIG ?= ./workspace/config/tars.config.yaml
 ROOT_DIR := $(abspath .)
 TARS_BIN := $(abspath $(BIN_DIR)/tars$(GOEXE))
