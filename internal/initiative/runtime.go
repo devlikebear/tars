@@ -539,6 +539,9 @@ func (r *Runtime) applyLocked(e Entry) {
 		if e.Intent == IntentCheckIn {
 			r.hist.LastCheckInAt = e.At
 		}
+		if e.Intent == IntentGreet {
+			r.hist.LastGreetAt = e.At
+		}
 	}
 	if e.Intent == IntentBodyOnly {
 		// A failed attempt is spaced like a delivered one, so an offline

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/devlikebear/tars/internal/config"
+	"github.com/devlikebear/tars/internal/initiative"
 )
 
 func TestCheckDoctorInitiative(t *testing.T) {
@@ -132,18 +133,22 @@ func TestCheckDoctorInitiativeLiveSpeakBackend(t *testing.T) {
 	for i, c := range report.checks {
 		names[i] = c.name
 	}
-	if len(report.checks) != 5 {
-		t.Fatalf("checks = %+v, want initiative + two initiative-speak checks + initiative-telegram + initiative-replies check", names)
+	if len(report.checks) != 6 {
+		t.Fatalf("checks = %+v, want initiative + three initiative-speak checks (backend, greeted-today, delivery) + initiative-telegram + initiative-replies check", names)
 	}
 	if report.checks[0].name != "initiative" || !strings.Contains(report.checks[0].detail, "live mode") {
 		t.Fatalf("first check = %+v, want live mode in the detail", report.checks[0])
 	}
-	foundBackend, foundDelivery, foundTelegram, foundReplies := false, false, false, false
+	foundBackend, foundGreetedToday, foundDelivery, foundTelegram, foundReplies := false, false, false, false, false
 	for _, c := range report.checks[1:] {
 		switch c.name {
 		case "initiative speak":
 			if strings.Contains(c.detail, "chat-model") {
 				foundBackend = true
+			}
+			// tars#1269: an empty ledger has no greet recorded yet today.
+			if strings.Contains(c.detail, "greeted today: no") {
+				foundGreetedToday = true
 			}
 			if strings.Contains(c.detail, "no delivery recorded yet") {
 				foundDelivery = true
@@ -165,8 +170,94 @@ func TestCheckDoctorInitiativeLiveSpeakBackend(t *testing.T) {
 			t.Fatalf("unexpected check name %q", c.name)
 		}
 	}
-	if !foundBackend || !foundDelivery || !foundTelegram || !foundReplies {
-		t.Fatalf("checks = %+v, want a speak backend line, a no-delivery-yet line, an opted-out telegram line, and a reply-outcomes line", report.checks[1:])
+	if !foundBackend || !foundGreetedToday || !foundDelivery || !foundTelegram || !foundReplies {
+		t.Fatalf("checks = %+v, want a speak backend line, a greeted-today line, a no-delivery-yet line, an opted-out telegram line, and a reply-outcomes line", report.checks[1:])
+	}
+}
+
+// TestInitiativeLastDeliverySummaryGreetedToday checks requirement #4's
+// doctor side (tars#1269): a greet already delivered today in the ledger
+// is reflected in summary.greetedToday, read directly from the ledger file
+// (no running Runtime needed) — the same live/shadow spoken() rule
+// historyFrom and applyLocked use. Like the sibling reply-outcome test
+// above (tars#1268), the clock is pinned and passed explicitly rather than
+// letting the ledger entry's timestamp (written once, here) and the
+// function's own "today" comparison each read a separate time.Now(): two
+// such calls can disagree right at local midnight, which is exactly the
+// windows-test flake #1268 fixed for this function's other callers — a
+// fixed now closes the same hole for greetedToday, including right across
+// the boundary.
+func TestInitiativeLastDeliverySummaryGreetedToday(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		now  time.Time
+		want bool
+	}{
+		{"midday", time.Date(2026, 10, 17, 12, 0, 0, 0, time.UTC), true},
+		{"just before midnight", time.Date(2026, 10, 17, 23, 59, 0, 0, time.UTC), true},
+		{"just after midnight", time.Date(2026, 10, 17, 0, 15, 0, 0, time.UTC), false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			workspace := t.TempDir()
+			ledgerDir := filepath.Join(workspace, "_shared", "initiative")
+			if err := os.MkdirAll(ledgerDir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			now := tc.now
+			ledger := initiative.OpenLedger(filepath.Join(ledgerDir, "ledger.jsonl"), 0)
+			if err := ledger.Append(initiative.Entry{
+				// Always an hour before now, same as the sibling tests above:
+				// a greet delivered earlier the same day by the clock now
+				// pins — "just after midnight" puts this entry in the
+				// previous local day on purpose.
+				At:       now.Add(-time.Hour),
+				Mode:     initiative.ModeLive,
+				Decision: initiative.Decision{Intent: initiative.IntentGreet, Speak: true, Reason: "arrived"},
+				Delivery: initiative.DeliveryDelivered,
+			}); err != nil {
+				t.Fatal(err)
+			}
+			cfg := config.Config{
+				RuntimeConfig: config.RuntimeConfig{WorkspaceDir: workspace},
+				Initiative:    config.InitiativeConfig{Timezone: "UTC"},
+			}
+			_, summary := initiativeLastDeliverySummary(cfg, now)
+			if summary.greetedToday != tc.want {
+				t.Fatalf("greetedToday = %v, want %v", summary.greetedToday, tc.want)
+			}
+		})
+	}
+}
+
+// TestCheckDoctorInitiativeGreetedTodayNoDeliveryYet checks the "no"
+// reporting path through the full checkDoctorInitiative entry point: an
+// empty ledger has no greet recorded for any day, so this assertion has no
+// wall-clock dependency to race (unlike a "yes" assertion, which would need
+// the ledger entry and checkDoctorInitiative's own time.Now() call to agree
+// on today — see TestInitiativeLastDeliverySummaryGreetedToday above for
+// that boundary, tested with an explicit clock instead).
+func TestCheckDoctorInitiativeGreetedTodayNoDeliveryYet(t *testing.T) {
+	cfg := config.Config{
+		RuntimeConfig: config.RuntimeConfig{WorkspaceDir: t.TempDir()},
+		Initiative:    config.InitiativeConfig{Enabled: true, Backend: "llm", Mode: "live"},
+		LLMConfig: config.LLMConfig{
+			LLMDefaultTier: "standard",
+			LLMProviders: map[string]config.LLMProviderSettings{
+				"shared": {Kind: "openai", BaseURL: "http://shared.example", APIKey: "k"},
+			},
+			LLMTiers: map[string]config.LLMTierBinding{"standard": {Provider: "shared", Model: "chat-model"}},
+		},
+	}
+	var report doctorReport
+	checkDoctorInitiative(&report, cfg)
+	found := false
+	for _, c := range report.checks {
+		if c.name == "initiative speak" && strings.Contains(c.detail, "greeted today: no") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("checks = %+v, want a greeted-today: no line", report.checks)
 	}
 }
 

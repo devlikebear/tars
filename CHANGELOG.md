@@ -6,6 +6,10 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+### Fixed
+
+- **Initiative in live mode could greet twice in one evening.** A greet only required a presence gap followed by a fresh arrival, so coming back to the desk more than once after being away — even for a few minutes — re-triggered "welcome back" every time, each one usually ignored. A greet now delivers at most once per local calendar day; a second same-day arrival falls through to whatever else the tick would otherwise decide (a check-in, a silent body expression, or nothing) instead of being replaced with a new "nothing happened" reason, and a greet that was never actually delivered (console unreachable, speak composer unavailable) does not count, so the next arrival still greets. Restores correctly after a restart; no new LLM calls. ([#1269](https://github.com/devlikebear/tars/issues/1269))
+
 ### Changed
 
 - **CASE is now an on-call meerkat.** The companion keeps its eight expressions, its one-shot actions (alert bounces, happy nods with its head, upset shakes, wary tilts, greeting waves a raised paw), its idle play and its cursor gaze, but they are drawn on a meerkat instead of the antenna robot: ears, eye patches, a nose, a torso, a laptop while a turn runs, and a chest chip that is now the only place a state colour shows (grey, amber, orange, green, dark grey). Still CSS and spans only, the same button size, and the same expression logic. All motion still stops under `prefers-reduced-motion: reduce`.

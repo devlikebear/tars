@@ -443,3 +443,171 @@ func TestLLMProviderErrorBodyIsNotRecorded(t *testing.T) {
 		t.Fatal("status holds user text")
 	}
 }
+
+// TestRunOnceGreetedTodayBlocksSecondArrivalSameDay drives a shadow-mode
+// runtime through a greeted arrival, a second arrival later the same local
+// day, and the next local day's first arrival (tars#1269). The second
+// arrival must not greet, but — unlike the other hard gates — it must not
+// record its own "none(greeted_today)" either: with nothing else pending,
+// Decide falls all the way through to "nothing", and GoSignals.GreetedToday
+// on the recorded entry is what actually shows the greet was suppressed.
+func TestRunOnceGreetedTodayBlocksSecondArrivalSameDay(t *testing.T) {
+	now := at(9, 0)
+	observer := &fakeObserver{obs: Observation{
+		ConsolePresentAt: now.Add(-time.Minute), ConsoleArrivedAt: now.Add(-time.Minute),
+		RecentUser: []UserMessage{{At: now.Add(-14 * time.Hour)}},
+	}}
+	ledger := OpenLedger(filepath.Join(t.TempDir(), "ledger.jsonl"), 0)
+	deps := Dependencies{Observer: observer, Ledger: ledger, Logger: zerolog.Nop(), Now: func() time.Time { return now }}
+	r := NewRuntime(Config{Enabled: true, Location: seoul}, deps)
+
+	e1 := r.RunOnce(context.Background())
+	if e1.Intent != IntentGreet || e1.Reason != "arrived" || e1.Signals.GreetedToday {
+		t.Fatalf("first arrival = %+v", e1)
+	}
+
+	// A second arrival 7h later, well past the 45m default cooldown and
+	// the 4h arrival gap, with nothing else (not busy, no long session or
+	// absence, not idle at the desk) pending.
+	now = at(16, 0)
+	observer.obs.ConsolePresentAt = now.Add(-time.Minute)
+	observer.obs.ConsoleArrivedAt = now.Add(-time.Minute)
+	observer.obs.RecentUser = []UserMessage{{At: now.Add(-14 * time.Hour)}}
+	e2 := r.RunOnce(context.Background())
+	if e2.Intent != IntentNone || e2.Reason != "nothing" || !e2.Signals.GreetedToday {
+		t.Fatalf("second arrival same day = %+v, want none/nothing with GreetedToday recorded", e2)
+	}
+
+	// The next local day's first arrival greets again.
+	now = at(9, 0).Add(24 * time.Hour)
+	observer.obs.ConsolePresentAt = now.Add(-time.Minute)
+	observer.obs.ConsoleArrivedAt = now.Add(-time.Minute)
+	observer.obs.RecentUser = []UserMessage{{At: now.Add(-14 * time.Hour)}}
+	e3 := r.RunOnce(context.Background())
+	if e3.Intent != IntentGreet || e3.Reason != "arrived" || e3.Signals.GreetedToday {
+		t.Fatalf("next day's first arrival = %+v", e3)
+	}
+}
+
+// TestRunOnceGreetedTodayStillAllowsOtherDecisions checks that a second
+// same-day arrival still reaches check_in/body_only when the rest of the
+// tick's signals call for it (tars#1269 requirement: GreetedToday is not a
+// hard gate like StoppedToday/QuietHours — it only narrows Decide's arrival
+// case).
+func TestRunOnceGreetedTodayStillAllowsOtherDecisions(t *testing.T) {
+	now := at(9, 0)
+	observer := &fakeObserver{obs: Observation{
+		ConsolePresentAt: now.Add(-time.Minute), ConsoleArrivedAt: now.Add(-time.Minute),
+		RecentUser: []UserMessage{{At: now.Add(-14 * time.Hour)}},
+	}}
+	ledger := OpenLedger(filepath.Join(t.TempDir(), "ledger.jsonl"), 0)
+	fake := &fakeSystemOne{probs: map[string]float64{"user_strained": 0.9}}
+	deps := Dependencies{Observer: observer, SystemOne: fake, IncludeText: true, Ledger: ledger,
+		Logger: zerolog.Nop(), Now: func() time.Time { return now }}
+	r := NewRuntime(Config{Enabled: true, Location: seoul}, deps)
+
+	if e := r.RunOnce(context.Background()); e.Intent != IntentGreet {
+		t.Fatalf("first arrival = %+v", e)
+	}
+
+	// A second arrival, still the same local day, but the user now reads
+	// as strained (and has not been checked in on recently): the arrival
+	// case is unmatched (GreetedToday), so the switch falls through to
+	// the strain check-in case instead of stopping at "nothing".
+	now = at(16, 0)
+	observer.obs.ConsolePresentAt = now.Add(-time.Minute)
+	observer.obs.ConsoleArrivedAt = now.Add(-time.Minute)
+	observer.obs.RecentUser = []UserMessage{{At: now.Add(-time.Hour), Text: "힘들다"}}
+	e := r.RunOnce(context.Background())
+	if e.Intent != IntentCheckIn || e.Reason != "strained" || !e.Signals.GreetedToday {
+		t.Fatalf("second arrival with strain = %+v, want check_in/strained with GreetedToday recorded", e)
+	}
+}
+
+// TestLiveGreetSkippedDeliveryDoesNotBlockNextArrival checks requirement
+// #1/#2's live-mode rule from the ledger entry's own documentation: only an
+// actually Delivered greet counts toward GreetedToday. With no Speaker
+// configured, deliverLocked always records Delivery=skipped,
+// reason=speak_unavailable and never actually says anything — so a second
+// arrival the same day must still be free to greet (tars#1269).
+func TestLiveGreetSkippedDeliveryDoesNotBlockNextArrival(t *testing.T) {
+	now := at(9, 0)
+	observer := &fakeObserver{obs: Observation{
+		ConsolePresentAt: now.Add(-time.Minute), ConsoleArrivedAt: now.Add(-time.Minute),
+		RecentUser: []UserMessage{{At: now.Add(-14 * time.Hour)}},
+	}}
+	ledger := OpenLedger(filepath.Join(t.TempDir(), "ledger.jsonl"), 0)
+	deps := Dependencies{Observer: observer, Ledger: ledger, Logger: zerolog.Nop(), Now: func() time.Time { return now }}
+	r := NewRuntime(Config{Enabled: true, Mode: ModeLive, Location: seoul}, deps)
+
+	e1 := r.RunOnce(context.Background())
+	if e1.Intent != IntentGreet || e1.Delivery != DeliverySkipped || e1.DeliveryReason != deliveryReasonSpeakUnavailable {
+		t.Fatalf("first tick = %+v", e1)
+	}
+
+	now = now.Add(2 * time.Hour)
+	observer.obs.ConsolePresentAt = now.Add(-time.Minute)
+	observer.obs.ConsoleArrivedAt = now.Add(-time.Minute)
+	observer.obs.RecentUser = []UserMessage{{At: now.Add(-14 * time.Hour)}}
+	e2 := r.RunOnce(context.Background())
+	if e2.Intent != IntentGreet || e2.Delivery != DeliverySkipped || e2.DeliveryReason != deliveryReasonSpeakUnavailable {
+		t.Fatalf("second arrival same day = %+v, want another skipped greet attempt (not blocked)", e2)
+	}
+}
+
+// TestLiveGreetDeliveredBlocksSecondArrivalSameDay is
+// TestLiveGreetSkippedDeliveryDoesNotBlockNextArrival's counterpart: once a
+// greet is actually delivered, a second arrival the same day does not
+// deliver another one.
+func TestLiveGreetDeliveredBlocksSecondArrivalSameDay(t *testing.T) {
+	now := at(9, 0)
+	speaker := &fakeSpeaker{outcomes: []SpeakOutcome{{Delivered: true, Composed: true}}}
+	r := liveRuntime(t, &now, speaker, nil)
+	r.deps.Observer = &fakeObserver{obs: Observation{
+		ConsolePresentAt: now.Add(-time.Minute), ConsoleArrivedAt: now.Add(-time.Minute),
+		RecentUser: []UserMessage{{At: now.Add(-14 * time.Hour)}},
+	}}
+
+	e1 := r.RunOnce(context.Background())
+	if e1.Intent != IntentGreet || e1.Delivery != DeliveryDelivered {
+		t.Fatalf("first tick = %+v", e1)
+	}
+
+	now = now.Add(2 * time.Hour)
+	r.deps.Observer = &fakeObserver{obs: Observation{
+		ConsolePresentAt: now.Add(-time.Minute), ConsoleArrivedAt: now.Add(-time.Minute),
+		RecentUser: []UserMessage{{At: now.Add(-14 * time.Hour)}},
+	}}
+	e2 := r.RunOnce(context.Background())
+	if e2.Intent != IntentNone || e2.Reason != "nothing" || !e2.Signals.GreetedToday {
+		t.Fatalf("second arrival same day = %+v, want none/nothing with GreetedToday recorded", e2)
+	}
+	if speaker.callCount() != 1 {
+		t.Fatalf("speaker calls = %d, want exactly 1 (second arrival must not compose again)", speaker.callCount())
+	}
+}
+
+// TestGreetedTodayRestoresAfterRestart checks requirement #4: a fresh
+// Runtime over a ledger that already has today's delivered greet restores
+// GreetedToday from historyFrom and blocks a same-day arrival, exactly as
+// the still-running original runtime would.
+func TestGreetedTodayRestoresAfterRestart(t *testing.T) {
+	now := at(9, 0)
+	ledger := OpenLedger(filepath.Join(t.TempDir(), "ledger.jsonl"), 0)
+	if err := ledger.Append(Entry{At: now, Mode: ModeLive, Decision: Decision{Intent: IntentGreet, Speak: true, Reason: "arrived"}, Delivery: DeliveryDelivered}); err != nil {
+		t.Fatal(err)
+	}
+
+	restartNow := at(16, 0)
+	observer := &fakeObserver{obs: Observation{
+		ConsolePresentAt: restartNow.Add(-time.Minute), ConsoleArrivedAt: restartNow.Add(-time.Minute),
+		RecentUser: []UserMessage{{At: restartNow.Add(-14 * time.Hour)}},
+	}}
+	deps := Dependencies{Observer: observer, Ledger: ledger, Logger: zerolog.Nop(), Now: func() time.Time { return restartNow }}
+	r := NewRuntime(Config{Enabled: true, Mode: ModeLive, Location: seoul}, deps)
+
+	e := r.RunOnce(context.Background())
+	if e.Intent != IntentNone || e.Reason != "nothing" || !e.Signals.GreetedToday {
+		t.Fatalf("restarted runtime = %+v, want none/nothing with GreetedToday restored from the ledger", e)
+	}
+}

@@ -143,6 +143,11 @@ func checkDoctorInitiativeSpeak(report *doctorReport, cfg config.Config) {
 	}
 
 	found, summary := initiativeLastDeliverySummary(cfg, time.Now())
+	if summary.greetedToday {
+		report.add("ok", "initiative speak", "greeted today: yes (no more greets until local midnight)")
+	} else {
+		report.add("ok", "initiative speak", "greeted today: no")
+	}
 	if !found {
 		report.add("ok", "initiative speak", "no delivery recorded yet")
 	} else {
@@ -189,6 +194,15 @@ type initiativeDeliverySummary struct {
 	// same initiative.SummarizeOutcomes GET /v1/initiative/status uses —
 	// one function, two readers.
 	outcomes initiative.OutcomeSummary
+	// greetedToday mirrors GoSignals.GreetedToday (tars#1269): whether a
+	// greet already counted as spoken (live mode only when actually
+	// delivered, shadow mode per the same Entry.spoken() rule
+	// historyFrom and applyLocked use) earlier the same local day.
+	// doctor cannot call historyFrom itself (unexported, and doctor runs
+	// standalone without a live Runtime), so this loop mirrors its
+	// per-entry logic rather than sharing it — same boundary this file's
+	// spokenToday count already crosses.
+	greetedToday bool
 }
 
 // initiativeReplyCooldown parses initiative.Cooldown the same way the
@@ -237,9 +251,12 @@ func initiativeLastDeliverySummary(cfg config.Config, now time.Time) (bool, init
 	var out initiativeDeliverySummary
 	var found bool
 	for _, e := range entries {
-		if e.Speak && (e.Mode != initiative.ModeLive || e.Delivery == initiative.DeliveryDelivered) &&
-			e.At.In(loc).Format("2006-01-02") == today {
+		spoken := e.Speak && (e.Mode != initiative.ModeLive || e.Delivery == initiative.DeliveryDelivered)
+		if spoken && e.At.In(loc).Format("2006-01-02") == today {
 			out.spokenToday++
+			if e.Intent == initiative.IntentGreet {
+				out.greetedToday = true
+			}
 		}
 		if e.Delivery != "" {
 			found = true
