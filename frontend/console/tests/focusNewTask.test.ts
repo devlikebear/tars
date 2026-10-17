@@ -58,3 +58,24 @@ test('createFocusPipeline omits extra_dirs when the task has no extra folders', 
 
   assert.deepEqual(requests[0].body, { goal: 'g', cwd: '/repo' })
 })
+
+// The second opinion review is sent only when the task opts in, as {tier}.
+test('createFocusPipeline sends second_opinion when the task opts in', async () => {
+  const originalFetch = globalThis.fetch
+  const bodies: unknown[] = []
+  globalThis.fetch = async (_input, init) => {
+    bodies.push(init?.body ? JSON.parse(String(init.body)) : undefined)
+    return new Response(JSON.stringify({ session_id: 's1', pipeline: {}, second_opinion_warning: 'same_model_as_chat' }), {
+      status: 201,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+  let created: Awaited<ReturnType<typeof createFocusPipeline>>
+  try {
+    created = await createFocusPipeline({ goal: 'g', cwd: '/repo', second_opinion: { tier: 'heavy' } })
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+  assert.deepEqual(bodies[0], { goal: 'g', cwd: '/repo', second_opinion: { tier: 'heavy' } })
+  assert.equal(created.second_opinion_warning, 'same_model_as_chat')
+})
