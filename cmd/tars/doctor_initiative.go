@@ -142,7 +142,7 @@ func checkDoctorInitiativeSpeak(report *doctorReport, cfg config.Config) {
 		report.add("ok", "initiative speak", fmt.Sprintf("%s/%s (%s tier)", resolved.Kind, resolved.Model, tier))
 	}
 
-	found, summary := initiativeLastDeliverySummary(cfg)
+	found, summary := initiativeLastDeliverySummary(cfg, time.Now())
 	if !found {
 		report.add("ok", "initiative speak", "no delivery recorded yet")
 	} else {
@@ -208,15 +208,16 @@ func initiativeReplyCooldown(raw string) time.Duration {
 // tick's delivery outcome, today's spoken count, and reply tracking's
 // aggregate (tars#1221) — the same facts GET /v1/initiative/status exposes
 // from the live Runtime. It never reads or returns composed text: the
-// ledger does not store it (tars#1003).
-func initiativeLastDeliverySummary(cfg config.Config) (bool, initiativeDeliverySummary) {
+// ledger does not store it (tars#1003). now decides which local day counts
+// as "today"; doctor passes time.Now().
+func initiativeLastDeliverySummary(cfg config.Config, now time.Time) (bool, initiativeDeliverySummary) {
 	loc := time.Local
 	if tz := strings.TrimSpace(cfg.Initiative.Timezone); tz != "" {
 		if l, lerr := time.LoadLocation(tz); lerr == nil {
 			loc = l
 		}
 	}
-	now := time.Now().In(loc)
+	now = now.In(loc)
 	baseCooldown := initiativeReplyCooldown(cfg.Initiative.Cooldown)
 	// emptyOutcomes is what every early-return path below reports: no
 	// entries read yet, so no streak and no stopped timestamp — but still

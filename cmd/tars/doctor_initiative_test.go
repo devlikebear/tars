@@ -258,12 +258,15 @@ func TestInitiativeLastDeliverySummaryReadsLedgerNotCurrentProcess(t *testing.T)
 	if err := os.MkdirAll(workspace+"/_shared/initiative", 0o755); err != nil {
 		t.Fatal(err)
 	}
-	now := time.Now()
+	now := time.Date(2026, 10, 17, 12, 0, 0, 0, time.UTC)
 	line := fmt.Sprintf(`{"at":%q,"mode":"live","intent":"greet","speak":true,"delivery":"delivered","delivery_reason":"delivered"}`, now.Format(time.RFC3339))
 	if err := os.WriteFile(ledgerPath, []byte(line+"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	found, summary := initiativeLastDeliverySummary(config.Config{RuntimeConfig: config.RuntimeConfig{WorkspaceDir: workspace}})
+	found, summary := initiativeLastDeliverySummary(config.Config{
+		RuntimeConfig: config.RuntimeConfig{WorkspaceDir: workspace},
+		Initiative:    config.InitiativeConfig{Timezone: "UTC"},
+	}, now)
 	if !found || summary.delivery != "delivered" || summary.intent != "greet" || summary.spokenToday != 1 {
 		t.Fatalf("summary = %+v found=%v", summary, found)
 	}
@@ -272,35 +275,52 @@ func TestInitiativeLastDeliverySummaryReadsLedgerNotCurrentProcess(t *testing.T)
 // TestInitiativeLastDeliverySummaryReadsReplyOutcomes checks that doctor's
 // reply-tracking aggregate (tars#1221) is read straight from the ledger —
 // the same facts, computed by the same initiative.SummarizeOutcomes GET
-// /v1/initiative/status uses from the live Runtime.
+// /v1/initiative/status uses from the live Runtime. The clock is pinned so
+// "today" does not depend on when the test runs: at 00:15 the outcomes
+// written 20–50 minutes earlier belong to yesterday.
 func TestInitiativeLastDeliverySummaryReadsReplyOutcomes(t *testing.T) {
-	workspace := t.TempDir()
-	dir := workspace + "/_shared/initiative"
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	now := time.Now()
-	lines := []string{
-		fmt.Sprintf(`{"id":"e1","at":%q,"mode":"live","intent":"greet","speak":true,"delivery":"delivered","delivery_reason":"delivered"}`, now.Add(-time.Hour).Format(time.RFC3339)),
-		fmt.Sprintf(`{"at":%q,"mode":"live","kind":"outcome","ref":"e1","outcome":"ignored"}`, now.Add(-50*time.Minute).Format(time.RFC3339)),
-		fmt.Sprintf(`{"id":"e2","at":%q,"mode":"live","intent":"check_in","speak":true,"delivery":"delivered","delivery_reason":"delivered"}`, now.Add(-30*time.Minute).Format(time.RFC3339)),
-		fmt.Sprintf(`{"at":%q,"mode":"live","kind":"outcome","ref":"e2","outcome":"stopped"}`, now.Add(-20*time.Minute).Format(time.RFC3339)),
-	}
-	if err := os.WriteFile(dir+"/ledger.jsonl", []byte(strings.Join(lines, "\n")+"\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	_, summary := initiativeLastDeliverySummary(config.Config{
-		RuntimeConfig: config.RuntimeConfig{WorkspaceDir: workspace},
-		Initiative:    config.InitiativeConfig{Cooldown: "45m"},
-	})
-	if summary.outcomes.Today.Ignored != 1 || summary.outcomes.Today.Stopped != 1 {
-		t.Fatalf("outcomes = %+v, want 1 ignored and 1 stopped today", summary.outcomes)
-	}
-	if !summary.outcomes.StoppedToday {
-		t.Fatal("StoppedToday = false, want true")
-	}
-	if want := (45 * time.Minute).Seconds(); summary.outcomes.EffectiveCooldownSeconds != want {
-		t.Fatalf("EffectiveCooldownSeconds = %v, want %v (the later stopped outcome resets the streak the earlier ignored started)", summary.outcomes.EffectiveCooldownSeconds, want)
+	for _, tc := range []struct {
+		name      string
+		now       time.Time
+		wantToday int
+	}{
+		{"midday", time.Date(2026, 10, 17, 12, 0, 0, 0, time.UTC), 1},
+		{"just before midnight", time.Date(2026, 10, 17, 23, 59, 0, 0, time.UTC), 1},
+		{"just after midnight", time.Date(2026, 10, 17, 0, 15, 0, 0, time.UTC), 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			workspace := t.TempDir()
+			dir := workspace + "/_shared/initiative"
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			now := tc.now
+			lines := []string{
+				fmt.Sprintf(`{"id":"e1","at":%q,"mode":"live","intent":"greet","speak":true,"delivery":"delivered","delivery_reason":"delivered"}`, now.Add(-time.Hour).Format(time.RFC3339)),
+				fmt.Sprintf(`{"at":%q,"mode":"live","kind":"outcome","ref":"e1","outcome":"ignored"}`, now.Add(-50*time.Minute).Format(time.RFC3339)),
+				fmt.Sprintf(`{"id":"e2","at":%q,"mode":"live","intent":"check_in","speak":true,"delivery":"delivered","delivery_reason":"delivered"}`, now.Add(-30*time.Minute).Format(time.RFC3339)),
+				fmt.Sprintf(`{"at":%q,"mode":"live","kind":"outcome","ref":"e2","outcome":"stopped"}`, now.Add(-20*time.Minute).Format(time.RFC3339)),
+			}
+			if err := os.WriteFile(dir+"/ledger.jsonl", []byte(strings.Join(lines, "\n")+"\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			_, summary := initiativeLastDeliverySummary(config.Config{
+				RuntimeConfig: config.RuntimeConfig{WorkspaceDir: workspace},
+				Initiative:    config.InitiativeConfig{Cooldown: "45m", Timezone: "UTC"},
+			}, now)
+			if summary.outcomes.Recent.Ignored != 1 || summary.outcomes.Recent.Stopped != 1 {
+				t.Fatalf("outcomes = %+v, want 1 ignored and 1 stopped recently", summary.outcomes)
+			}
+			if summary.outcomes.Today.Ignored != tc.wantToday || summary.outcomes.Today.Stopped != tc.wantToday {
+				t.Fatalf("outcomes = %+v, want %d ignored and %d stopped today", summary.outcomes, tc.wantToday, tc.wantToday)
+			}
+			if want := tc.wantToday == 1; summary.outcomes.StoppedToday != want {
+				t.Fatalf("StoppedToday = %v, want %v", summary.outcomes.StoppedToday, want)
+			}
+			if want := (45 * time.Minute).Seconds(); summary.outcomes.EffectiveCooldownSeconds != want {
+				t.Fatalf("EffectiveCooldownSeconds = %v, want %v (the later stopped outcome resets the streak the earlier ignored started)", summary.outcomes.EffectiveCooldownSeconds, want)
+			}
+		})
 	}
 }
 
@@ -315,7 +335,7 @@ func TestInitiativeLastDeliverySummaryReportsConfiguredCooldownWithEmptyLedger(t
 	// No workspace at all.
 	if _, summary := initiativeLastDeliverySummary(config.Config{
 		Initiative: config.InitiativeConfig{Cooldown: "2h"},
-	}); summary.outcomes.EffectiveCooldownSeconds != want {
+	}, time.Now()); summary.outcomes.EffectiveCooldownSeconds != want {
 		t.Fatalf("no workspace: EffectiveCooldownSeconds = %v, want %v", summary.outcomes.EffectiveCooldownSeconds, want)
 	}
 
@@ -323,7 +343,7 @@ func TestInitiativeLastDeliverySummaryReportsConfiguredCooldownWithEmptyLedger(t
 	if _, summary := initiativeLastDeliverySummary(config.Config{
 		RuntimeConfig: config.RuntimeConfig{WorkspaceDir: t.TempDir()},
 		Initiative:    config.InitiativeConfig{Cooldown: "2h"},
-	}); summary.outcomes.EffectiveCooldownSeconds != want {
+	}, time.Now()); summary.outcomes.EffectiveCooldownSeconds != want {
 		t.Fatalf("no ledger file: EffectiveCooldownSeconds = %v, want %v", summary.outcomes.EffectiveCooldownSeconds, want)
 	}
 }
