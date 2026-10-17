@@ -36,6 +36,7 @@ type geminiFunctionCall struct {
 }
 
 type geminiFunctionResp struct {
+	ID       string         `json:"id,omitempty"`
 	Name     string         `json:"name"`
 	Response map[string]any `json:"response"`
 }
@@ -270,9 +271,16 @@ func toGeminiNativeContents(messages []ChatMessage) []*geminiContent {
 
 	out := make([]*geminiContent, 0, len(messages))
 	toolNameByID := map[string]string{}
+	// responses is the user turn answering the latest model turn's calls.
+	// Gemini wants every answer to parallel calls in that one turn, so
+	// consecutive tool messages add parts to it rather than turns of their own.
+	var responses *geminiContent
 
 	for _, msg := range messages {
 		role := strings.ToLower(strings.TrimSpace(msg.Role))
+		if role != "tool" {
+			responses = nil
+		}
 		switch role {
 		case "system":
 			continue
@@ -317,19 +325,23 @@ func toGeminiNativeContents(messages []ChatMessage) []*geminiContent {
 			}
 			out = append(out, &geminiContent{Role: "model", Parts: parts})
 		case "tool":
-			toolName := strings.TrimSpace(toolNameByID[strings.TrimSpace(msg.ToolCallID)])
+			callID := strings.TrimSpace(msg.ToolCallID)
+			toolName := strings.TrimSpace(toolNameByID[callID])
 			if toolName == "" {
 				toolName = "tool_call"
 			}
-			out = append(out, &geminiContent{
-				Role: "user",
-				Parts: []*geminiPart{{
-					FunctionResponse: &geminiFunctionResp{
-						Name:     toolName,
-						Response: parseGeminiNativeToolResponse(msg.Content),
-					},
-				}},
-			})
+			part := &geminiPart{
+				FunctionResponse: &geminiFunctionResp{
+					ID:       callID,
+					Name:     toolName,
+					Response: parseGeminiNativeToolResponse(msg.Content),
+				},
+			}
+			if responses == nil {
+				responses = &geminiContent{Role: "user"}
+				out = append(out, responses)
+			}
+			responses.Parts = append(responses.Parts, part)
 		}
 	}
 
