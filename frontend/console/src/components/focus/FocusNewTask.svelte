@@ -4,12 +4,14 @@
   // folder), a one-line goal, and, in a git repository, isolation in a
   // worktree. A template picks the pipeline's stages (development unless
   // another is chosen), and goal mode lets the server decide every gate.
+  // End-to-end goals and the second opinion review (another tier reviews
+  // the first round of each review stage) are opt-in, off by default.
   // Creating it starts a session with a pipeline; the pipeline screen then
   // sends the goal as the first turn.
   import { onDestroy, onMount, tick } from 'svelte'
   import { t } from '../../i18n'
-  import { APIRequestError, checkSessionFolder, createFocusPipeline, listFocusTemplates, listRecentSessionFolders, type SessionFolder } from '../../lib/api'
-  import { stageLabel, templateText } from '../../lib/focus'
+  import { APIRequestError, checkSessionFolder, createFocusPipeline, listAgentRuntimeSubagents, listFocusTemplates, listRecentSessionFolders, type SessionFolder } from '../../lib/api'
+  import { defaultSecondOpinionTier, secondOpinionTierChoices, stageLabel, templateText, type SecondOpinionTierChoice } from '../../lib/focus'
   import { shortCwdLabel } from '../../lib/sessionLabels'
   import { clipboardImageFiles, filesToAttachments } from '../../lib/chatAttachments'
   import { stashKickoffAttachments } from '../../lib/focusKickoff'
@@ -39,6 +41,13 @@
   let goalMode = $state(false)
   // End-to-end goals (computer_use) are opt-in per task.
   let e2e = $state(false)
+  // The second opinion review is opt-in per task, on a tier picked here.
+  let secondOpinion = $state(false)
+  let secondOpinionTier = $state('')
+  let secondOpinionChoices = $state<SecondOpinionTierChoice[]>([])
+  let secondOpinionLoaded = $state(false)
+  let secondOpinionRequested = false
+  let secondOpinionChoice = $derived(secondOpinionChoices.find((c) => c.name === secondOpinionTier) ?? null)
   let check = $state<Check>({ state: 'idle' })
   let busy = $state(false)
   let error = $state('')
@@ -117,7 +126,24 @@
   // Every extra row with a non-empty path must resolve to 'ok' (an empty
   // row is just not sent, so it never blocks Start).
   let extraDirsValid = $derived(extraDirs.every((row) => row.path.trim() === '' || row.check.state === 'ok'))
-  let canStart = $derived(!!folder && !!goal.trim() && extraDirsValid && !busy)
+  let canStart = $derived(!!folder && !!goal.trim() && extraDirsValid && !busy && (!secondOpinion || !!secondOpinionChoice))
+
+  // The tiers load the first time the box is ticked.
+  $effect(() => {
+    if (!secondOpinion || secondOpinionRequested) return
+    secondOpinionRequested = true
+    void listAgentRuntimeSubagents()
+      .then((resp) => {
+        secondOpinionChoices = secondOpinionTierChoices(resp.tiers ?? [], resp.default_tier ?? '')
+        if (!secondOpinionTier) secondOpinionTier = defaultSecondOpinionTier(secondOpinionChoices)
+      })
+      .catch(() => {
+        secondOpinionChoices = []
+      })
+      .finally(() => {
+        secondOpinionLoaded = true
+      })
+  })
   let template = $derived(templates.find((item) => item.id === templateId) ?? null)
 
   // A built-in template is shown in the console's language; a workspace
@@ -321,6 +347,7 @@
         ...(template && template.id !== 'dev' ? { template: template.id } : {}),
         ...(goalMode ? { goal_mode: true } : {}),
         ...(e2e ? { e2e: true } : {}),
+        ...(secondOpinion && secondOpinionChoice ? { second_opinion: { tier: secondOpinionChoice.name } } : {}),
       })
       if (attachments) stashKickoffAttachments(created.session_id, attachments)
       onCreated(created.session_id)
@@ -457,6 +484,27 @@
       {$t.focus.newTask.e2e}
     </label>
     {#if e2e}<p class="status" data-testid="focus-new-e2e-hint">{$t.focus.newTask.e2eHint}</p>{/if}
+  </div>
+
+  <div class="field">
+    <label class="check">
+      <input type="checkbox" bind:checked={secondOpinion} data-testid="focus-new-second-opinion" />
+      {$t.focus.newTask.secondOpinion}
+    </label>
+    {#if secondOpinion}
+      <p class="status" data-testid="focus-new-second-opinion-hint">{$t.focus.newTask.secondOpinionHint}</p>
+      {#if secondOpinionChoices.length > 0}
+        <label class="label" for="focus-new-second-opinion-tier">{$t.focus.newTask.secondOpinionTier}</label>
+        <select id="focus-new-second-opinion-tier" bind:value={secondOpinionTier} data-testid="focus-new-second-opinion-tier">
+          {#each secondOpinionChoices as choice (choice.name)}
+            <option value={choice.name}>{$t.focus.newTask.secondOpinionTierOption(choice.name, choice.provider, choice.model)}</option>
+          {/each}
+        </select>
+        {#if secondOpinionChoice?.sameAsChat}<p class="status warn" data-testid="focus-new-second-opinion-same">{$t.focus.newTask.secondOpinionSameModel}</p>{/if}
+      {:else if secondOpinionLoaded}
+        <p class="status error" data-testid="focus-new-second-opinion-none">{$t.focus.newTask.secondOpinionNoTiers}</p>
+      {/if}
+    {/if}
   </div>
 
   {#if error}<p class="status error">{error}</p>{/if}
@@ -656,6 +704,10 @@
 
   .status.error {
     color: var(--error);
+  }
+
+  .status.warn {
+    color: var(--warning);
   }
 
   .images {

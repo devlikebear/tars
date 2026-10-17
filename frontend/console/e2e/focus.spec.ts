@@ -486,6 +486,110 @@ test('the review loop: a finding the developer adds joins the triage and the fix
   expect(late.status()).toBe(409)
 })
 
+// The second opinion review (docs/decisions/focus-mode.md §5.1): opt-in on
+// New task, off by default. The mock LLM's [e2e:focus-second-opinion]
+// answers the hidden worker session's review with one finding the stage's
+// own review already has (base.txt:2, same title) and one new one
+// (base.txt:15); [e2e:focus-second-opinion-noblock] answers with no block.
+const secondOpinionGoal = '[e2e:focus-plan] [e2e:focus-review] [e2e:focus-second-opinion] Add a greeting'
+
+type SecondOpinionFinding = { file: string; line: number; title: string; source?: string; confirmed_by?: string[] }
+
+// startSecondOpinion creates a review-loop pipeline with the second opinion
+// on heavy through the API, approves the plan, and returns once triage opens.
+async function startSecondOpinion(page: Page, taskGoal: string): Promise<string> {
+  const repo = newRepo('tars-e2e-focus-so-')
+  const res = await page.request.post('/v1/focus/pipelines', { data: { goal: taskGoal, cwd: repo, second_opinion: { tier: 'heavy' } } })
+  expect(res.status()).toBe(201)
+  const id = (await res.json()).session_id as string
+  await autoMode(page, id)
+  await page.goto(`/console/focus/${id}`)
+  await expect(page.locator('[data-testid="focus-card"][data-kind="gate"]')).toBeVisible({ timeout: 15_000 })
+  writeFileSync(join(repo, 'base.txt'), 'base\nhello\n')
+  const plan = (await pipelineOf(page, id)).plan!
+  expect((await page.request.post(`/v1/focus/pipelines/${encodeURIComponent(id)}/gates/plan`, { data: { action: 'approve', edits: { ...plan, verify: ['true'] } } })).ok()).toBe(true)
+  await expect.poll(async () => (await pipelineOf(page, id)).open_gate ?? '', { timeout: 30_000 }).toBe('triage')
+  return id
+}
+
+test('the second opinion review: off by default, its findings join the triage with badges and ride the fix turn', async ({ page }) => {
+  const repo = newRepo('tars-e2e-focus-so-ui-')
+  await page.goto('/console/focus')
+  await page.getByTestId('focus-new-task-open').click()
+  await page.getByTestId('focus-new-folder').fill(repo)
+  await expect(page.getByTestId('focus-new-folder-status')).toHaveText('Git repository')
+  await page.getByTestId('focus-new-goal').fill(secondOpinionGoal)
+  await expect(page.getByTestId('focus-new-second-opinion')).not.toBeChecked()
+  await expect(page.getByTestId('focus-new-second-opinion-tier')).toHaveCount(0)
+  await page.getByTestId('focus-new-second-opinion').check()
+  await expect(page.getByTestId('focus-new-second-opinion-hint')).toBeVisible()
+  // The E2E config maps every tier to the mock's one model: the console says
+  // a second look from the chat's own model adds less (it still starts).
+  await expect(page.getByTestId('focus-new-second-opinion-tier')).toHaveValue('heavy')
+  await expect(page.getByTestId('focus-new-second-opinion-same')).toBeVisible()
+  await page.getByTestId('focus-new-start').click()
+  await expect(page).toHaveURL(/\/console\/focus\/[^/]+$/)
+  const id = sessionId(page)
+  await autoMode(page, id)
+  expect((await pipelineOf(page, id)) as unknown as { second_opinion?: { tier: string } }).toMatchObject({ second_opinion: { tier: 'heavy' } })
+
+  await expect(page.locator('[data-testid="focus-card"][data-kind="gate"]')).toBeVisible({ timeout: 15_000 })
+  writeFileSync(join(repo, 'base.txt'), 'base\nhello\n')
+  await page.getByTestId('focus-plan-verify').fill('true')
+  await page.getByTestId('focus-gate-approve').click()
+  await expect.poll(async () => (await pipelineOf(page, id)).open_gate ?? '', { timeout: 30_000 }).toBe('triage')
+
+  // The stage's own two findings and the second opinion's new one; the one
+  // both reported is one card, marked.
+  const progress = page.getByTestId('focus-triage-progress')
+  await expect(progress).toHaveText('0 / 3 decided')
+  const p = await pipelineOf(page, id)
+  const findings = p.cards.filter((c) => c.kind === 'finding').map((c) => c.payload as SecondOpinionFinding)
+  expect(findings.map((f) => `${f.file}:${f.line}`)).toEqual(['base.txt:2', 'base.txt:1', 'base.txt:15'])
+  expect(findings[0].confirmed_by).toEqual(['second_opinion'])
+  expect(findings[2].source).toBe('second_opinion')
+
+  const finding = page.locator('[data-testid="focus-card"][data-kind="finding"]')
+  await expect(finding.getByTestId('focus-finding-loc')).toHaveText('base.txt:2')
+  await expect(finding.getByTestId('focus-finding-confirmed')).toHaveText('both reviews')
+  await expect(finding.getByTestId('focus-finding-second-opinion')).toHaveCount(0)
+  await finding.getByTestId('focus-finding-fix').click()
+  for (const done of ['2 / 3 decided', '3 / 3 decided']) {
+    const loc = await finding.getByTestId('focus-finding-loc').textContent()
+    if (loc === 'base.txt:15') {
+      await expect(finding.getByTestId('focus-finding-second-opinion')).toHaveText('second opinion')
+      await finding.getByTestId('focus-finding-fix').click()
+    } else {
+      await expect(finding.getByTestId('focus-finding-second-opinion')).toHaveCount(0)
+      await finding.getByTestId('focus-finding-dismiss').click()
+    }
+    if (done !== '3 / 3 decided') await expect(progress).toHaveText(done)
+  }
+
+  // The fix turn names where each finding came from; the round after it has
+  // no second opinion, and review ends.
+  await expect(page.getByTestId('focus-step-review')).toHaveAttribute('data-status', 'done', { timeout: 30_000 })
+  const history = await (await page.request.get(`/v1/admin/sessions/${encodeURIComponent(id)}/history`)).json() as { role: string; content: string }[]
+  const fix = history.find((m) => m.role === 'user' && m.content.startsWith('Fix these findings'))
+  expect(fix?.content).toContain('base.txt:15 — Farewell line is missing (second opinion: heavy)')
+  expect(fix?.content).toContain('base.txt:2 — Greeting has no punctuation\n')
+  // The review ran in its own hidden session, never in the pipeline's.
+  expect(history.some((m) => m.content.includes('You are giving a second opinion'))).toBe(false)
+  const done = await pipelineOf(page, id) as unknown as { second_opinion: { session_id: string; done: string[] } }
+  expect(done.second_opinion.done).toEqual(['review'])
+  const worker = await (await page.request.get(`/v1/admin/sessions/${encodeURIComponent(done.second_opinion.session_id)}/history`)).json() as { role: string; content: string }[]
+  expect(worker.filter((m) => m.role === 'user')).toHaveLength(1)
+})
+
+test('the second opinion review: a reply without its block leaves a notice and the round goes on', async ({ page }) => {
+  const id = await startSecondOpinion(page, '[e2e:focus-plan] [e2e:focus-review] [e2e:focus-second-opinion-noblock] Add a greeting')
+  const p = await pipelineOf(page, id)
+  expect(p.cards.filter((c) => c.kind === 'finding')).toHaveLength(2)
+  const notice = p.cards.find((c) => c.kind === 'notice' && (c as { title?: string }).title === 'second opinion not received')
+  expect(notice?.payload).toEqual({ reason: 'no_block', tier: 'heavy' })
+  await expect(page.getByTestId('focus-triage-progress')).toHaveText('0 / 2 decided')
+})
+
 test('the PR stages: G3 opens the PR with an edited title, gh unavailable is passed by hand, G4 merges, and the pipeline finishes', async ({ page }) => {
   // No GitHub remote: the server's gh probe cannot read a PR (gh missing,
   // logged out, or no remote all come back unavailable), which is the path
@@ -849,6 +953,26 @@ test.describe('Korean', () => {
     await expect(page.locator('[data-testid="focus-card"][data-kind="gate"]')).toBeVisible()
     const screen = await chromeTexts(page.getByTestId('focus-pipeline'))
     expect(screen.length).toBeGreaterThan(5)
+    expect(screen.filter(untranslated)).toEqual([])
+  })
+
+  test('the second opinion badges and New task option are Korean', async ({ page }) => {
+    await page.goto('/console/focus')
+    await page.getByTestId('focus-new-task-open').click()
+    await page.getByTestId('focus-new-second-opinion').check()
+    await expect(page.getByTestId('focus-new-second-opinion-same')).toBeVisible()
+    const form = await chromeTexts(page.getByTestId('focus-new-task'))
+    expect(form.filter(untranslated)).toEqual([])
+
+    const id = await startSecondOpinion(page, secondOpinionGoal)
+    await page.goto(`/console/focus/${id}`)
+    const finding = page.locator('[data-testid="focus-card"][data-kind="finding"]')
+    await expect(finding.getByTestId('focus-finding-confirmed')).toHaveText('두 리뷰 모두 지적')
+    await finding.getByTestId('focus-finding-fix').click()
+    await expect(page.getByTestId('focus-triage-progress')).toHaveText('3개 중 1개 결정')
+    if ((await finding.getByTestId('focus-finding-loc').textContent()) !== 'base.txt:15') await finding.getByTestId('focus-finding-dismiss').click()
+    await expect(finding.getByTestId('focus-finding-second-opinion')).toHaveText('세컨드 오피니언')
+    const screen = await chromeTexts(page.getByTestId('focus-pipeline'))
     expect(screen.filter(untranslated)).toEqual([])
   })
 

@@ -18,7 +18,7 @@
     FocusPRDraft,
     FocusReport,
   } from '../../lib/types'
-  import { excerptLines, reportCardText, stageKindOf, stageLabel } from '../../lib/focus'
+  import { excerptLines, findingReviewBadges, reportCardText, secondOpinionNotice, stageKindOf, stageLabel } from '../../lib/focus'
   import { mergeSummary, prDraftOf } from '../../lib/focusPR'
   import FocusChangeCard from './FocusChangeCard.svelte'
   import FocusMergeSummary from './FocusMergeSummary.svelte'
@@ -53,6 +53,8 @@
   let prDraft = $derived(isBlocked ? null : prDraftOf(card))
   let merge = $derived(isBlocked ? null : mergeSummary(card))
   // A plain report's heading and body, split so the summary never shows twice (#1109).
+  // The second opinion review's notices, in the console's language.
+  let soNotice = $derived(secondOpinionNotice(card, $t.focus.notice))
   let reportText = $derived(
     card.kind === 'report' && !isDraft(card.payload)
       ? reportCardText(card.title, (card.payload as FocusReport | undefined)?.summary)
@@ -71,7 +73,9 @@
           ? $t.focus.change.turnTitle(card.turn)
           : reportText
             ? (reportText.heading ?? $t.focus.report.label)
-            : card.title,
+            : soNotice
+              ? soNotice.title
+              : card.title,
   )
   // The heading's hover text: the whole summary when the heading is the label.
   let hoverTitle = $derived(reportText && reportText.heading === null ? reportText.body : title)
@@ -98,6 +102,7 @@
   function blockedReason(b: FocusBlocked): string {
     switch (b.reason) {
       case 'interrupted':
+        if (b.second_opinion) return $t.focus.gate.blockedReason.interruptedSecondOpinion
         return b.verify ? $t.focus.gate.blockedReason.interruptedVerify : $t.focus.gate.blockedReason.interrupted
       case 'turn_failed':
         return $t.focus.gate.blockedReason.turn_failed
@@ -281,6 +286,8 @@
         {/if}
         {#if f?.file}<span class="mono" data-content data-testid="focus-finding-loc">{f.file}{f.line ? `:${f.line}` : ''}</span>{/if}
         {#if f?.source === 'developer'}<span class="badge badge-accent" data-testid="focus-finding-developer">{$t.focus.finding.fromDeveloper}</span>{/if}
+        {#if findingReviewBadges(f).secondOpinion}<span class="badge badge-accent" data-testid="focus-finding-second-opinion">{$t.focus.finding.fromSecondOpinion}</span>{/if}
+        {#if findingReviewBadges(f).confirmed}<span class="badge badge-accent" data-testid="focus-finding-confirmed">{$t.focus.finding.confirmedBySecondOpinion}</span>{/if}
       </p>
       {#if f?.scenario}
         <h4 class="label">{$t.focus.finding.scenario}</h4>
@@ -331,6 +338,7 @@
       <FocusChangeCard change={card.payload as FocusChangeTurnPayload} />
     {:else if card.kind === 'notice'}
       {@const errors = errorsOf(card.payload)}
+      {#if soNotice}<p class="prose" data-testid="focus-second-opinion-notice">{soNotice.body}</p>{/if}
       {#if errors.length}
         <h4 class="label">{$t.focus.notice.errors}</h4>
         <ul class="risks">

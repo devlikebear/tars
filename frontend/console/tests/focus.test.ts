@@ -23,6 +23,10 @@ import {
   triageProgress,
   findingEntry,
   turnStage,
+  defaultSecondOpinionTier,
+  findingReviewBadges,
+  secondOpinionNotice,
+  secondOpinionTierChoices,
 } from '../src/lib/focus.ts'
 import { userVisibleText } from '../src/lib/consoleContext.ts'
 import { focusKo } from '../src/i18n/sections/focus.ts'
@@ -536,4 +540,46 @@ test('reportCardText never repeats the summary under the heading (#1109)', () =>
   assert.deepEqual(reportCardText('Stage report', undefined), { heading: 'Stage report', body: '' })
   // A title unrelated to the summary keeps both as they are.
   assert.deepEqual(reportCardText('Other', 'Summary text.'), { heading: 'Other', body: 'Summary text.' })
+})
+
+test('progressLine: the second opinion review step names its tier', () => {
+  const events: ChatEvent[] = [{ type: 'focus_progress', phase: 'second_opinion', command: 'heavy', index: 1, total: 1 } as ChatEvent]
+  assert.equal(progressLine(events, { stage: 'review' }), 'Reviewing · second opinion review · heavy')
+  assert.equal(progressLine(events, { stage: 'review', text: focusKo.progress }), '리뷰 중 · 세컨드 오피니언 리뷰 중 · heavy')
+})
+
+test('findingReviewBadges: a second opinion finding and a confirmed one', () => {
+  assert.deepEqual(findingReviewBadges({ id: 's', severity: 'high', file: 'a', line: 1, title: 't', scenario: '', source: 'second_opinion' }), { secondOpinion: true, confirmed: false })
+  assert.deepEqual(findingReviewBadges({ id: 'f', severity: 'high', file: 'a', line: 1, title: 't', scenario: '', confirmed_by: ['second_opinion'] }), { secondOpinion: false, confirmed: true })
+  assert.deepEqual(findingReviewBadges({ id: 'd', severity: 'high', file: 'a', line: 1, title: 't', scenario: '', source: 'developer' }), { secondOpinion: false, confirmed: false })
+  assert.deepEqual(findingReviewBadges(undefined), { secondOpinion: false, confirmed: false })
+})
+
+test('secondOpinionTierChoices: pinnable tiers, the chat default marked, unusable ones left out', () => {
+  const choices = secondOpinionTierChoices([
+    { name: 'heavy', provider_alias: 'anth', model: 'opus' },
+    { name: 'standard', provider_alias: 'anth', model: 'sonnet' },
+    { name: 'light', provider_alias: 'agy', model: 'flash', kind: 'antigravity-cli' },
+    { name: 'custom', provider_alias: 'oai', model: 'gpt' },
+  ], 'heavy')
+  assert.deepEqual(choices, [
+    { name: 'heavy', provider: 'anth', model: 'opus', sameAsChat: true },
+    { name: 'standard', provider: 'anth', model: 'sonnet', sameAsChat: false },
+  ])
+  assert.equal(defaultSecondOpinionTier(choices), 'standard')
+  assert.equal(defaultSecondOpinionTier([{ name: 'light', provider: 'p', model: 'm', sameAsChat: true }]), 'light')
+  assert.equal(defaultSecondOpinionTier([]), '')
+  assert.deepEqual(secondOpinionTierChoices([{ name: 'heavy', error: 'unknown provider' }], 'heavy'), [])
+})
+
+test('secondOpinionNotice: the review\'s notices in the console language', () => {
+  const failed = { kind: 'notice' as const, title: 'second opinion not received', payload: { reason: 'no_block', tier: 'light' } }
+  assert.equal(secondOpinionNotice(failed)?.title, 'Second opinion not received')
+  assert.match(secondOpinionNotice(failed)?.body ?? '', /expected format/)
+  assert.equal(secondOpinionNotice(failed, focusKo.notice)?.title, '세컨드 오피니언을 받지 못함')
+  const capped = { kind: 'notice' as const, title: 'second opinion findings capped', payload: { dropped: 3, tier: 'heavy' } }
+  assert.equal(secondOpinionNotice(capped)?.body, '3 more heavy findings were left out.')
+  assert.equal(secondOpinionNotice({ kind: 'notice', title: 'report format missing', payload: {} }), null)
+  assert.equal(secondOpinionNotice({ kind: 'report', title: 'second opinion not received', payload: {} }), null)
+  assert.match(secondOpinionNotice({ kind: 'notice', title: 'second opinion not received', payload: { reason: 'weird' } })?.body ?? '', /error/)
 })

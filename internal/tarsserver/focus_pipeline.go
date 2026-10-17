@@ -31,7 +31,7 @@ import (
 //	POST /v1/focus/pipelines/{id}/qa              {card_id, question} → 202 {qa_session_id, turn} (focus_qa.go)
 //	POST /v1/focus/pipelines/{id}/goal            {enabled, max_pushes?} → {pipeline}; turning it on needs the admin token (focus_goal.go)
 //	POST /v1/focus/pipelines/{id}/plan            {goal?, verify?, e2e?, e2e_setup?, e2e_teardown?} → {pipeline, changed}; edits the approved plan, 409 before G1 or once finished (focus_plan_edit.go)
-//	GET  /v1/focus/templates                      → {templates, diagnostics}; POST /v1/focus/pipelines takes {template, goal_mode, goal_max_pushes, e2e}
+//	GET  /v1/focus/templates                      → {templates, diagnostics}; POST /v1/focus/pipelines takes {template, goal_mode, goal_max_pushes, e2e, second_opinion?: {tier}} — second_opinion opts in to the second opinion review (heavy|standard|light; 400 when the tier cannot be used, 503 when the server cannot run it, second_opinion_warning "same_model_as_chat" in the 201) (focus_second_opinion.go)
 //	POST /v1/focus/templates/draft                {request, base_id?, draft?} → AI-drafted save/delete (focus_template_edit.go); PUT/DELETE /v1/focus/templates/{id} actually save or remove
 //
 // Every chat turn of a session with a pipeline gets the stage's guidance
@@ -205,16 +205,34 @@ func focusPipelineCleanup(sessions *session.Store, logger zerolog.Logger) func(s
 		if err := store.Delete(sessionID); err != nil {
 			logger.Warn().Err(err).Str("session_id", sessionID).Msg("focus: delete pipeline of deleted session failed")
 		}
-		if qa := strings.TrimSpace(p.QASessionID); ok && qa != "" {
-			// The hook runs under the session index lock: delete the
-			// pipeline's hidden Q&A session after it is released.
+		if !ok {
+			return
+		}
+		// The hook runs under the session index lock: delete the pipeline's
+		// hidden Q&A and second opinion sessions after it is released.
+		for _, hidden := range focusHiddenSessions(p) {
 			go func() {
-				if err := sessions.Delete(qa); err != nil && !isSessionNotFound(err) {
-					logger.Warn().Err(err).Str("session_id", qa).Msg("focus: delete Q&A session of deleted session failed")
+				if err := sessions.Delete(hidden); err != nil && !isSessionNotFound(err) {
+					logger.Warn().Err(err).Str("session_id", hidden).Msg("focus: delete hidden session of deleted session failed")
 				}
 			}()
 		}
 	}
+}
+
+// focusHiddenSessions are the worker sessions a pipeline made: its Q&A
+// session and its second opinion session.
+func focusHiddenSessions(p focuspipeline.Pipeline) []string {
+	var out []string
+	if qa := strings.TrimSpace(p.QASessionID); qa != "" {
+		out = append(out, qa)
+	}
+	if p.SecondOpinion != nil {
+		if so := strings.TrimSpace(p.SecondOpinion.SessionID); so != "" {
+			out = append(out, so)
+		}
+	}
+	return out
 }
 
 // interruptFocusPipelines runs at startup, before any driver run: a
@@ -336,6 +354,9 @@ type focusCreateRequest struct {
 	// (focus_e2e.go). Off unless asked for: the plan's verify commands are
 	// the checks.
 	E2E bool `json:"e2e,omitempty"`
+	// SecondOpinion opts the pipeline in to the second opinion review
+	// (focus_second_opinion.go): {tier: heavy|standard|light}. Absent is off.
+	SecondOpinion *focusSecondOpinionRequest `json:"second_opinion,omitempty"`
 	// ReleaseItems and ReleaseSince (kind release only) are the release
 	// train's list and cut-off the release ships.
 	ReleaseItems []string   `json:"release_items,omitempty"`
@@ -380,6 +401,11 @@ func (a *focusAPI) create(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "a release runs the development template"})
 		return
 	}
+	secondOpinion, secondOpinionWarning, status, err := a.driver.checkSecondOpinion(req.SecondOpinion)
+	if err != nil {
+		writeJSON(w, status, map[string]string{"error": err.Error()})
+		return
+	}
 	title := strings.TrimSpace(req.Title)
 	if title == "" {
 		title = focusTitleFromGoal(goal)
@@ -406,6 +432,7 @@ func (a *focusAPI) create(w http.ResponseWriter, r *http.Request) {
 	}
 	p := focuspipeline.NewFromTemplate(sess.ID, goal, tpl, a.now())
 	p.E2E = req.E2E
+	p.SecondOpinion = secondOpinion
 	if req.GoalMode {
 		p = focuspipeline.StartGoal(p, req.GoalMaxPushes, a.now())
 	}
@@ -439,7 +466,11 @@ func (a *focusAPI) create(w http.ResponseWriter, r *http.Request) {
 	if req.GoalMode {
 		p = a.driver.goalStarted(sess.ID, p)
 	}
-	writeJSON(w, http.StatusCreated, map[string]any{"session_id": sess.ID, "pipeline": p, "started": req.Start})
+	resp := map[string]any{"session_id": sess.ID, "pipeline": p, "started": req.Start}
+	if secondOpinionWarning != "" {
+		resp["second_opinion_warning"] = secondOpinionWarning
+	}
+	writeJSON(w, http.StatusCreated, resp)
 }
 
 func focusTitleFromGoal(goal string) string {

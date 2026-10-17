@@ -5,10 +5,12 @@
 import { focusEn, type FocusTranslations } from '../i18n/sections/focus.ts'
 import { userVisibleText } from './consoleContext.ts'
 import type {
+  AgentRuntimeTierOption,
   ChatEvent,
   FocusCard,
   FocusCardKind,
   FocusChangePayload,
+  FocusFinding,
   FocusChangeTurnPayload,
   FocusPipeline,
   FocusPlan,
@@ -271,7 +273,9 @@ export function progressLine(
   if (verify) {
     const at = verify.index ?? 0
     const of = verify.total ?? 0
-    if (verify.phase === 'verifying') {
+    if (verify.phase === 'second_opinion') {
+      parts.push(text.secondOpinion(verify.command ?? ''))
+    } else if (verify.phase === 'verifying') {
       parts.push(text.verifying(verify.command ?? '', at, of))
     } else if (verify.e2e_skipped) {
       parts.push(text.verifiedSkipped(at, of))
@@ -708,4 +712,61 @@ export function reportCardText(title: string, summary: string | undefined | null
   }
   if (stored.endsWith('…') && first.startsWith(stored.slice(0, -1))) return { heading: null, body: text }
   return { heading: title, body: text }
+}
+
+// --- Second opinion review (docs/decisions/focus-mode.md §5.1) ---
+
+// The tiers a pipeline's second opinion can run on (the pinnable ones), each
+// with its provider and model, and whether that is the chat default's own
+// provider and model — a second look from the same model adds little. A tier
+// that does not resolve, or runs on antigravity-cli (which cannot keep the
+// review read-only), is left out: the server would refuse it.
+export type SecondOpinionTierChoice = { name: string; provider: string; model: string; sameAsChat: boolean }
+
+const secondOpinionTiers = ['heavy', 'standard', 'light']
+
+export function secondOpinionTierChoices(options: readonly AgentRuntimeTierOption[], defaultTier: string): SecondOpinionTierChoice[] {
+  const usable = (o: AgentRuntimeTierOption | undefined): o is AgentRuntimeTierOption => !!o && !o.error && o.kind !== 'antigravity-cli'
+  const chat = options.find((o) => o.name === defaultTier.trim())
+  const out: SecondOpinionTierChoice[] = []
+  for (const name of secondOpinionTiers) {
+    const option = options.find((o) => o.name === name)
+    if (!usable(option)) continue
+    const provider = option.provider_alias ?? ''
+    const model = option.model ?? ''
+    out.push({ name, provider, model, sameAsChat: !!chat && !chat.error && chat.provider_alias === provider && chat.model === model })
+  }
+  return out
+}
+
+// defaultSecondOpinionTier is the first tier that is not the chat's own
+// model, else the first one ("" with none).
+export function defaultSecondOpinionTier(choices: readonly SecondOpinionTierChoice[]): string {
+  return (choices.find((c) => !c.sameAsChat) ?? choices[0])?.name ?? ''
+}
+
+// findingReviewBadges: a finding the second opinion reported, and one the
+// stage's own review reported that the second opinion reported too.
+export function findingReviewBadges(f: FocusFinding | null | undefined): { secondOpinion: boolean; confirmed: boolean } {
+  return {
+    secondOpinion: f?.source === 'second_opinion',
+    confirmed: (f?.confirmed_by ?? []).includes('second_opinion'),
+  }
+}
+
+// The notices the second opinion review leaves (focuspipeline's
+// NoticeSecondOpinionFailed / NoticeSecondOpinionCapped), localized: the
+// card's title and its one line, or null for any other card.
+export function secondOpinionNotice(card: Pick<FocusCard, 'kind' | 'title' | 'payload'>, text: FocusTranslations['notice'] = focusEn.notice): { title: string; body: string } | null {
+  if (card.kind !== 'notice') return null
+  const p = (card.payload ?? {}) as { reason?: unknown; tier?: unknown; dropped?: unknown }
+  const tier = typeof p.tier === 'string' ? p.tier : ''
+  if (card.title === 'second opinion not received') {
+    const reason = typeof p.reason === 'string' ? p.reason : 'error'
+    return { title: text.secondOpinionFailed, body: text.secondOpinionReason[reason] ?? text.secondOpinionReason.error }
+  }
+  if (card.title === 'second opinion findings capped') {
+    return { title: text.secondOpinionCapped, body: text.secondOpinionDropped(typeof p.dropped === 'number' ? p.dropped : 0, tier) }
+  }
+  return null
 }

@@ -64,9 +64,13 @@ type Finding struct {
 	// commit, added by the server (never by the model) for the card.
 	Excerpt string `json:"excerpt,omitempty"`
 	// Source is FindingSourceDeveloper on a finding the developer added
-	// (finding_add.go), set by the server; empty on the agent's and the PR
-	// probe's.
+	// (finding_add.go) and FindingSourceSecondOpinion on one the second
+	// opinion review reported (second_opinion.go), set by the server; empty
+	// on the agent's and the PR probe's.
 	Source string `json:"source,omitempty"`
+	// ConfirmedBy lists the other reviews that reported the same finding
+	// (FindingSourceSecondOpinion), set by the server.
+	ConfirmedBy []string `json:"confirmed_by,omitempty"`
 }
 
 // tagPattern matches any focus open or close tag; group 1 is "/" for a
@@ -143,6 +147,7 @@ func ParseBlocks(text string) Blocks {
 			for i := range findings {
 				findings[i].Excerpt = "" // the server's alone, never the model's
 				findings[i].Source = ""  // likewise: a model cannot speak as the developer
+				findings[i].ConfirmedBy = nil
 			}
 			out.Findings = findings
 		}

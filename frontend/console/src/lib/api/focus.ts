@@ -62,6 +62,8 @@ export type FocusCreateRequest = {
   goal_max_pushes?: number
   // Opt in to end-to-end goals run through computer use; off when absent.
   e2e?: boolean
+  // Opt in to the second opinion review on a pinnable tier; off when absent.
+  second_opinion?: { tier: string }
   // A release's list and the cut-off it started from (the group's since).
   release_items?: string[]
   release_since?: string
@@ -80,7 +82,9 @@ export async function startFocusRelease(request: FocusCreateRequest): Promise<{ 
   }
 }
 
-export function createFocusPipeline(request: FocusCreateRequest): Promise<{ session_id: string; pipeline: FocusPipeline }> {
+// second_opinion_warning is 'same_model_as_chat' when the second opinion's
+// tier resolves to the chat's own provider and model.
+export function createFocusPipeline(request: FocusCreateRequest): Promise<{ session_id: string; pipeline: FocusPipeline; second_opinion_warning?: string }> {
   return requestJSON(base, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

@@ -372,3 +372,48 @@ func TestUnattendedFocusOptionsDefaultToManualForNativeTools(t *testing.T) {
 		t.Fatal("nil permissions must not gate")
 	}
 }
+
+// A second opinion review only reads and nobody waits on it: a call its mode
+// would ask about is refused at once — no ops approval, no notification —
+// on both the Claude Code prompt and the native gate.
+func TestUnattendedReadOnlySourceNeverQueues(t *testing.T) {
+	ctx := context.Background()
+	for _, mode := range []string{chatPermissionModePlan, chatPermissionModeManual} {
+		t.Run(mode, func(t *testing.T) {
+			f := newUnattendedFixture(t, mode)
+			opts := f.perms.focusOptions(f.session, f.dir, focusSecondOpinionSource)
+			d, err := opts.handler(ctx, llm.ClaudeCodePermissionRequest{ToolName: "Bash", Input: json.RawMessage(`{"command":"node test.js && git status --short"}`)})
+			if err != nil || d.Allow || d.Message != unattendedReadOnlyMessage {
+				t.Fatalf("claude code bash: %+v %v", d, err)
+			}
+			nd, err := opts.authorizer.Authorize(ctx, agentloop.ToolCallRequest{ToolName: "exec", ToolArgs: `{"command":"go test ./..."}`})
+			if err != nil || nd.Allow {
+				t.Fatalf("native exec: %+v %v", nd, err)
+			}
+			if rd, err := opts.authorizer.Authorize(ctx, agentloop.ToolCallRequest{ToolName: "read_file", ToolArgs: `{"path":"a"}`}); err != nil || !rd.Allow {
+				t.Fatalf("reads still run: %+v %v", rd, err)
+			}
+			if items, _ := f.ops.ListApprovals(); len(items) != 0 {
+				t.Fatalf("queued approvals: %+v", items)
+			}
+			f.mu.Lock()
+			events := len(f.events)
+			f.mu.Unlock()
+			if events != 0 {
+				t.Fatalf("notifications sent: %d", events)
+			}
+			if got := f.auditResults(t); len(got) != 2 || !strings.HasSuffix(got[1], ":refused_read_only") {
+				t.Fatalf("audit = %v", got)
+			}
+		})
+	}
+	// Other unattended sources still queue (the Q&A path included).
+	f := newUnattendedFixture(t, chatPermissionModePlan)
+	f.answerNext(t, false)
+	if d, err := f.perms.focusOptions(f.session, f.dir, focusQASource).handler(ctx, llm.ClaudeCodePermissionRequest{ToolName: "Bash", Input: json.RawMessage(`{"command":"ls"}`)}); err != nil || d.Message != chatPermissionDenyMessage {
+		t.Fatalf("q&a bash: %+v %v", d, err)
+	}
+	if items, _ := f.ops.ListApprovals(); len(items) != 1 {
+		t.Fatalf("q&a queued = %d", len(items))
+	}
+}

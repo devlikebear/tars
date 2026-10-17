@@ -16,6 +16,8 @@
 //     nobody is at them
 //   - finding_add.go the developer's own findings, joining a review or
 //     pr_review round
+//   - second_opinion.go the opt-in second opinion review: another tier's
+//     findings joining a review stage's first round
 //
 // Stage transitions are decided by facts (blocks, gate actions, and from P2
 // on verification exit codes) and never by asking the model whether a stage
@@ -265,6 +267,11 @@ type Pipeline struct {
 	// GoalMode is the pipeline's goal mode (goal.go): the server decides
 	// every gate itself and pushes the pipeline to its end.
 	GoalMode *GoalMode `json:"goal_mode,omitempty"`
+	// SecondOpinion opts the pipeline in to the second opinion review
+	// (second_opinion.go): another tier reviews the first round of each
+	// review-kind stage. Nil — every pipeline that did not ask for it —
+	// is off.
+	SecondOpinion *SecondOpinion `json:"second_opinion,omitempty"`
 }
 
 // KindRelease marks a release pipeline, which the release train never lists.
@@ -440,6 +447,11 @@ func (p Pipeline) clone() Pipeline {
 			g.EndedAt = &at
 		}
 		out.GoalMode = &g
+	}
+	if p.SecondOpinion != nil {
+		so := *p.SecondOpinion
+		so.Done = append([]StageID(nil), p.SecondOpinion.Done...)
+		out.SecondOpinion = &so
 	}
 	if p.QATurns != nil {
 		out.QATurns = make(map[string][]int, len(p.QATurns))

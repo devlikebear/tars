@@ -89,10 +89,12 @@ type BlockedFact struct {
 	Iteration int          `json:"iteration"`
 	Limit     int          `json:"limit"`
 	Failure   *FailureFact `json:"failure,omitempty"`
-	// Prompt and Verify are what an interruption cut off: the turn that was
-	// owed, or the verification that was running.
-	Prompt string `json:"prompt,omitempty"`
-	Verify bool   `json:"verify,omitempty"`
+	// Prompt, Verify and SecondOpinion are what an interruption cut off:
+	// the turn that was owed, the verification that was running, or the
+	// second opinion review the round waited for.
+	Prompt        string `json:"prompt,omitempty"`
+	Verify        bool   `json:"verify,omitempty"`
+	SecondOpinion bool   `json:"second_opinion,omitempty"`
 	// Error is why a server turn failed (BlockedTurnFailed).
 	Error string `json:"error,omitempty"`
 }
@@ -225,22 +227,24 @@ func (p *Pipeline) raiseBlocked(title string, fact BlockedFact, turn int, now ti
 	p.OpenGate = GateBlocked
 	p.AwaitingVerification = false
 	p.PendingTurn = ""
+	p.Review.SecondOpinionOwed = false
 	p.addCard(CardGate, turn, title, fact, now)
 }
 
 // Interrupt raises the blocked gate on a pipeline the server stopped
-// mid-step — verification awaited or a turn owed — so a restart never
-// resumes it silently (ADR §4: the developer decides). ok is false, and p
-// is returned unchanged, when nothing was cut off.
+// mid-step — verification awaited, a second opinion review owed or a turn
+// owed — so a restart never resumes it silently (ADR §4: the developer
+// decides). ok is false, and p is returned unchanged, when nothing was cut
+// off.
 func Interrupt(p Pipeline, now time.Time) (Pipeline, bool) {
-	if !p.Active() || p.OpenGate != GateNone || (!p.AwaitingVerification && p.PendingTurn == "") {
+	if !p.Active() || p.OpenGate != GateNone || (!p.AwaitingVerification && p.PendingTurn == "" && !p.Review.SecondOpinionOwed) {
 		return p, false
 	}
 	next := p.clone()
 	stage, _ := next.Stage(next.Current)
 	next.raiseBlocked(InterruptedTitle, BlockedFact{
 		Reason: BlockedInterrupted, Iteration: stage.Iteration, Limit: next.stageLimit(next.Current),
-		Prompt: p.PendingTurn, Verify: p.AwaitingVerification,
+		Prompt: p.PendingTurn, Verify: p.AwaitingVerification, SecondOpinion: p.Review.SecondOpinionOwed,
 	}, 0, now.UTC())
 	next.UpdatedAt = now.UTC()
 	return next, true
@@ -305,6 +309,11 @@ func applyBlockedGate(p *Pipeline, ev Event, decide func()) (Pipeline, Action, e
 	if resumable(fact.Reason) {
 		// Resume the step that was cut off, in the same round.
 		decide()
+		if ev.Action == GateRetry && fact.SecondOpinion {
+			// Read-only, so running it again is safe.
+			p.Review.SecondOpinionOwed = true
+			return *p, Action{Kind: ActionSecondOpinion}, nil
+		}
 		if ev.Action == GateRetry && fact.Verify {
 			p.AwaitingVerification = true
 			return *p, Action{Kind: ActionRunVerification}, nil

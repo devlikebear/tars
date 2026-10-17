@@ -58,6 +58,11 @@ type focusDriver struct {
 	activity *chatActivity
 	cancels  *chatCancelRegistry
 	qaTurn   focusQATurnRunner
+	// secondOpinionTurn runs a second opinion review turn
+	// (focus_second_opinion.go); secondOpinionTiers checks its tier against
+	// the configuration. Without both, pipelines cannot opt in.
+	secondOpinionTurn  focusSecondOpinionTurnRunner
+	secondOpinionTiers focusSecondOpinionTiers
 	// The PR stages (focus_pr_poll.go): the gh probe, how often it runs,
 	// how a finished pipeline's worktree ends, and where attention-worthy
 	// changes are announced.
@@ -250,6 +255,10 @@ func (d *focusDriver) bind(deps chatHandlerDeps) {
 		_, err := runServerChatTurnAs(ctx, deps, qaSessionID, question, consoleContext, chatTurnOrigin{unattended: focusQASource, readOnly: true})
 		return err
 	}
+	d.secondOpinionTurn = func(ctx context.Context, sessionID, prompt string) (string, error) {
+		resp, err := runServerChatTurnAs(ctx, deps, sessionID, prompt, "", chatTurnOrigin{unattended: focusSecondOpinionSource, readOnly: true})
+		return resp.Message.Content, err
+	}
 	d.verify = func(ctx context.Context, sessionID, command string) (focuspipeline.VerificationResult, error) {
 		results, _, err := runTaskVerificationCommands(ctx, deps.store, sessionID, "", []string{command}, focusVerifyTimeout, focusprobe.FailureExcerpt)
 		if err != nil || len(results) == 0 {
@@ -430,6 +439,17 @@ func (d *focusDriver) loop(run *focusRun, after <-chan struct{}) {
 			if next.Kind != focuspipeline.ActionNone {
 				run.pushFront(next)
 			}
+		case focuspipeline.ActionSecondOpinion:
+			next, claimed := d.runSecondOpinion(run, log)
+			if !claimed && busy < focusBusyRetries {
+				busy++
+				run.pushFront(act)
+				continue
+			}
+			busy = 0
+			if next.Kind != focuspipeline.ActionNone {
+				run.pushFront(next)
+			}
 		default:
 			log.Warn().Str("action", act.Kind).Msg("focus: unknown action")
 		}
@@ -437,8 +457,9 @@ func (d *focusDriver) loop(run *focusRun, after <-chan struct{}) {
 }
 
 // stepAllowed re-reads the pipeline before a step: only an active pipeline
-// with no gate open gets a turn or a verification, and verification only
-// while one is awaited — a stopped pipeline never gets a fix turn. Decision
+// with no gate open gets a turn or a verification, verification only while
+// one is awaited and a second opinion review only while one is owed — a
+// stopped pipeline never gets a fix turn. Decision
 // answers also go out while a gate that takes questions is open (#1079):
 // held there, they were never sent.
 func (d *focusDriver) stepAllowed(sessionID string, act focuspipeline.Action) bool {
@@ -452,7 +473,13 @@ func (d *focusDriver) stepAllowed(sessionID string, act focuspipeline.Action) bo
 	if !p.Active() || p.OpenGate != focuspipeline.GateNone {
 		return false
 	}
-	return act.Kind != focuspipeline.ActionRunVerification || p.AwaitingVerification
+	switch act.Kind {
+	case focuspipeline.ActionRunVerification:
+		return p.AwaitingVerification
+	case focuspipeline.ActionSecondOpinion:
+		return p.Review.SecondOpinionOwed
+	}
+	return true
 }
 
 // currentAnswers keeps the answers of act whose decision card is still in

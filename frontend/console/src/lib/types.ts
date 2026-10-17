@@ -2594,6 +2594,8 @@ export type FocusBlocked = {
   // that was running, and the error that ended a failed turn.
   prompt?: string
   verify?: boolean
+  // interrupted: the second opinion review the round waited for.
+  second_opinion?: boolean
   error?: string
 }
 // excerpt: the diff around file:line since the pipeline's base commit, set
@@ -2610,8 +2612,11 @@ export type FocusFinding = {
   key?: string
   url?: string
   trusted?: boolean
-  // 'developer' on a finding the developer added (POST …/findings).
+  // 'developer' on a finding the developer added (POST …/findings),
+  // 'second_opinion' on one the second opinion review reported.
   source?: string
+  // The other reviews that reported it too ('second_opinion').
+  confirmed_by?: string[]
 }
 
 // POST /v1/focus/pipelines/{id}/findings: the developer's own finding.
@@ -2629,7 +2634,11 @@ export type FocusFindingInput = {
 // (or, while none is open, the developer's findings waiting for the next),
 // whether a fix turn is owed, whether fixes landed this round, and the
 // round's verification failures.
-export type FocusReviewState = { triage?: string[]; fixing?: boolean; fixed?: boolean; failures?: number }
+// second_opinion_owed: the round waits for its second opinion review.
+export type FocusReviewState = { triage?: string[]; fixing?: boolean; fixed?: boolean; failures?: number; second_opinion_owed?: boolean }
+// The opt-in second opinion review: its tier, its hidden worker session, and
+// the review-kind stages whose first round already had one.
+export type FocusSecondOpinion = { tier: string; session_id?: string; done?: FocusStageId[] }
 export type FocusPRDraft = { title: string; body: string }
 
 // A change card's payload: one file of a turn's checkpoint diff. The console
@@ -2735,6 +2744,7 @@ export type FocusPipeline = {
   // True when the pipeline opted in to end-to-end goals (computer use).
   e2e_enabled?: boolean
   goal_mode?: FocusGoalMode
+  second_opinion?: FocusSecondOpinion
 }
 
 export type FocusListItem = {

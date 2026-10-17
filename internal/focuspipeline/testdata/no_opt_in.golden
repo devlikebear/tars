@@ -1,0 +1,2091 @@
+== new
+action: none ""
+pipeline:
+{
+  "version": 1,
+  "session_id": "s1",
+  "goal": "goal",
+  "stages": [
+    {
+      "id": "plan",
+      "status": "active",
+      "iteration": 1,
+      "instructions": "Do not edit files. Read the code you need, then propose a plan: small tasks in order, each with what \"done\" means; which stages apply (a small fix may skip review or pr_review); the verification commands that prove the work (shell commands, judged by their exit code — a check of the running app or its screens goes here too, as a script: a Playwright spec, or curl against the build); loop limits. The developer approves or edits the plan before any change is made. Match the verification to what the change can break: when it touches code other parts share (an app shell or layout, a component or style present on every screen, a shared helper), list the full suite the repository's CI runs on pull requests — its instructions usually name the preflight commands — not only the tests you edit."
+    },
+    {
+      "id": "build",
+      "status": "pending",
+      "iteration": 0
+    },
+    {
+      "id": "review",
+      "status": "pending",
+      "iteration": 0
+    },
+    {
+      "id": "pr",
+      "status": "pending",
+      "iteration": 0
+    },
+    {
+      "id": "pr_review",
+      "status": "pending",
+      "iteration": 0
+    },
+    {
+      "id": "merge",
+      "status": "pending",
+      "iteration": 0
+    }
+  ],
+  "current": "plan",
+  "cards": [],
+  "updated_at": "2026-10-01T08:00:00Z"
+}
+guidance:
+Focus mode — current stage: plan.
+Goal: goal
+Do not edit files. Read the code you need, then propose a plan: small tasks in order, each with what "done" means; which stages apply (a small fix may skip review or pr_review); the verification commands that prove the work (shell commands, judged by their exit code — a check of the running app or its screens goes here too, as a script: a Playwright spec, or curl against the build); loop limits. The developer approves or edits the plan before any change is made. Match the verification to what the change can break: when it touches code other parts share (an app shell or layout, a component or style present on every screen, a shared helper), list the full suite the repository's CI runs on pull requests — its instructions usually name the preflight commands — not only the tests you edit.
+Language: write your reply and every human-readable value in the blocks (goal, task titles and done criteria, summaries, decisions and their options, risks, finding titles and scenarios) in the language the developer writes in — the language of the Goal above and of their messages in this conversation, not the language of these instructions. Keep code, commands, file paths, identifiers and stage ids as they are, and write a pull request title and body in the language the repository's commits and pull requests use.
+
+End your reply with exactly one plan block in this format:
+<focus-plan>{"goal":"…","tasks":[{"title":"…","done":"…"}],"stages":["plan","build","review","pr","pr_review","merge"],"verify":["make test"],"limits":{"build":3,"review":2,"pr":3,"release":3}}</focus-plan>
+Put the block at the very end of your reply, outside any code fence, with valid JSON between the tags. If you include the block more than once, only the last one counts.
+
+== plan proposed
+action: none ""
+pipeline:
+{
+  "version": 1,
+  "session_id": "s1",
+  "goal": "goal",
+  "stages": [
+    {
+      "id": "plan",
+      "status": "active",
+      "iteration": 1,
+      "instructions": "Do not edit files. Read the code you need, then propose a plan: small tasks in order, each with what \"done\" means; which stages apply (a small fix may skip review or pr_review); the verification commands that prove the work (shell commands, judged by their exit code — a check of the running app or its screens goes here too, as a script: a Playwright spec, or curl against the build); loop limits. The developer approves or edits the plan before any change is made. Match the verification to what the change can break: when it touches code other parts share (an app shell or layout, a component or style present on every screen, a shared helper), list the full suite the repository's CI runs on pull requests — its instructions usually name the preflight commands — not only the tests you edit."
+    },
+    {
+      "id": "build",
+      "status": "pending",
+      "iteration": 0
+    },
+    {
+      "id": "review",
+      "status": "pending",
+      "iteration": 0
+    },
+    {
+      "id": "pr",
+      "status": "pending",
+      "iteration": 0
+    },
+    {
+      "id": "pr_review",
+      "status": "pending",
+      "iteration": 0
+    },
+    {
+      "id": "merge",
+      "status": "pending",
+      "iteration": 0
+    }
+  ],
+  "current": "plan",
+  "plan": {
+    "goal": "g",
+    "tasks": [
+      {
+        "title": "t1",
+        "done": "d1"
+      },
+      {
+        "title": "t2",
+        "done": "d2"
+      }
+    ],
+    "stages": [
+      "plan",
+      "build",
+      "review",
+      "pr"
+    ],
+    "verify": [
+      "make test"
+    ],
+    "limits": {
+      "build": 5
+    }
+  },
+  "open_gate": "plan",
+  "cards": [
+    {
+      "id": "c1",
+      "kind": "gate",
+      "stage": "plan",
+      "turn": 1,
+      "iteration": 1,
+      "title": "Approve plan",
+      "payload": {
+        "goal": "g",
+        "tasks": [
+          {
+            "title": "t1",
+            "done": "d1"
+          },
+          {
+            "title": "t2",
+            "done": "d2"
+          }
+        ],
+        "stages": [
+          "plan",
+          "build",
+          "review",
+          "pr"
+        ],
+        "verify": [
+          "make test"
+        ],
+        "limits": {
+          "build": 5
+        }
+      },
+      "state": "unseen",
+      "created_at": "2026-10-01T08:00:00Z"
+    }
+  ],
+  "updated_at": "2026-10-01T08:00:00Z"
+}
+guidance:
+Focus mode — current stage: plan.
+Goal: goal
+Do not edit files. Read the code you need, then propose a plan: small tasks in order, each with what "done" means; which stages apply (a small fix may skip review or pr_review); the verification commands that prove the work (shell commands, judged by their exit code — a check of the running app or its screens goes here too, as a script: a Playwright spec, or curl against the build); loop limits. The developer approves or edits the plan before any change is made. Match the verification to what the change can break: when it touches code other parts share (an app shell or layout, a component or style present on every screen, a shared helper), list the full suite the repository's CI runs on pull requests — its instructions usually name the preflight commands — not only the tests you edit.
+Language: write your reply and every human-readable value in the blocks (goal, task titles and done criteria, summaries, decisions and their options, risks, finding titles and scenarios) in the language the developer writes in — the language of the Goal above and of their messages in this conversation, not the language of these instructions. Keep code, commands, file paths, identifiers and stage ids as they are, and write a pull request title and body in the language the repository's commits and pull requests use.
+
+End your reply with exactly one plan block in this format:
+<focus-plan>{"goal":"…","tasks":[{"title":"…","done":"…"}],"stages":["plan","build","review","pr","pr_review","merge"],"verify":["make test"],"limits":{"build":3,"review":2,"pr":3,"release":3}}</focus-plan>
+Put the block at the very end of your reply, outside any code fence, with valid JSON between the tags. If you include the block more than once, only the last one counts.
+
+== plan approved
+action: send_turn "Plan approved. Start the build stage with task 1."
+pipeline:
+{
+  "version": 1,
+  "session_id": "s1",
+  "goal": "goal",
+  "stages": [
+    {
+      "id": "plan",
+      "status": "done",
+      "iteration": 1,
+      "instructions": "Do not edit files. Read the code you need, then propose a plan: small tasks in order, each with what \"done\" means; which stages apply (a small fix may skip review or pr_review); the verification commands that prove the work (shell commands, judged by their exit code — a check of the running app or its screens goes here too, as a script: a Playwright spec, or curl against the build); loop limits. The developer approves or edits the plan before any change is made. Match the verification to what the change can break: when it touches code other parts share (an app shell or layout, a component or style present on every screen, a shared helper), list the full suite the repository's CI runs on pull requests — its instructions usually name the preflight commands — not only the tests you edit."
+    },
+    {
+      "id": "build",
+      "status": "active",
+      "iteration": 1,
+      "limit": 5
+    },
+    {
+      "id": "review",
+      "status": "pending",
+      "iteration": 0
+    },
+    {
+      "id": "pr",
+      "status": "pending",
+      "iteration": 0
+    },
+    {
+      "id": "pr_review",
+      "status": "skipped",
+      "iteration": 0
+    },
+    {
+      "id": "merge",
+      "status": "skipped",
+      "iteration": 0
+    }
+  ],
+  "current": "build",
+  "plan": {
+    "goal": "g",
+    "tasks": [
+      {
+        "title": "t1",
+        "done": "d1"
+      },
+      {
+        "title": "t2",
+        "done": "d2"
+      }
+    ],
+    "stages": [
+      "plan",
+      "build",
+      "review",
+      "pr"
+    ],
+    "verify": [
+      "make test"
+    ],
+    "limits": {
+      "build": 5
+    }
+  },
+  "cards": [
+    {
+      "id": "c1",
+      "kind": "gate",
+      "stage": "plan",
+      "turn": 1,
+      "iteration": 1,
+      "title": "Approve plan",
+      "payload": {
+        "goal": "g",
+        "tasks": [
+          {
+            "title": "t1",
+            "done": "d1"
+          },
+          {
+            "title": "t2",
+            "done": "d2"
+          }
+        ],
+        "stages": [
+          "plan",
+          "build",
+          "review",
+          "pr"
+        ],
+        "verify": [
+          "make test"
+        ],
+        "limits": {
+          "build": 5
+        }
+      },
+      "state": "decided",
+      "decision": "approve",
+      "created_at": "2026-10-01T08:00:00Z"
+    }
+  ],
+  "pending_turn": "Plan approved. Start the build stage with task 1.",
+  "updated_at": "2026-10-01T08:00:00Z"
+}
+guidance:
+Focus mode — current stage: build (iteration 1 of 5).
+Goal: goal
+Implement the approved tasks in order, keeping changes focused. Run the verification commands yourself before you finish. If you need a decision from the developer, ask it as a decision in the report instead of guessing.
+Language: write your reply and every human-readable value in the blocks (goal, task titles and done criteria, summaries, decisions and their options, risks, finding titles and scenarios) in the language the developer writes in — the language of the Goal above and of their messages in this conversation, not the language of these instructions. Keep code, commands, file paths, identifiers and stage ids as they are, and write a pull request title and body in the language the repository's commits and pull requests use.
+
+Approved tasks and their done criteria:
+1. t1 — done when: d1
+2. t2 — done when: d2
+Verification commands:
+- make test
+
+The approved plan changes only when the developer asks for it in this conversation (a new goal, or a verification command to add, drop or reword): then call the focus_plan_edit tool if you have it, or else add this block before the others, with only the fields that change (a list replaces the whole list; [] clears it):
+<focus-plan-edit>{"goal":"…","verify":["…"]}</focus-plan-edit>
+Never edit the plan on your own to get past a failing check.
+
+End your reply with exactly one report block in this format (decisions and risks may be empty):
+<focus-report>{"summary":"…","tasks_done":false,"decisions":[{"id":"d1","question":"…","options":["…","…"]}],"risks":["…"]}</focus-report>
+Set "tasks_done" to true only when every approved task is complete. After your reply the server runs the verification commands: a failure starts the next turn with its output, and the build ends when tasks_done is true and every command passes.
+Put the block at the very end of your reply, outside any code fence, with valid JSON between the tags. If you include the block more than once, only the last one counts.
+
+== build reported
+action: run_verification ""
+pipeline:
+{
+  "version": 1,
+  "session_id": "s1",
+  "goal": "goal",
+  "stages": [
+    {
+      "id": "plan",
+      "status": "done",
+      "iteration": 1,
+      "instructions": "Do not edit files. Read the code you need, then propose a plan: small tasks in order, each with what \"done\" means; which stages apply (a small fix may skip review or pr_review); the verification commands that prove the work (shell commands, judged by their exit code — a check of the running app or its screens goes here too, as a script: a Playwright spec, or curl against the build); loop limits. The developer approves or edits the plan before any change is made. Match the verification to what the change can break: when it touches code other parts share (an app shell or layout, a component or style present on every screen, a shared helper), list the full suite the repository's CI runs on pull requests — its instructions usually name the preflight commands — not only the tests you edit."
+    },
+    {
+      "id": "build",
+      "status": "active",
+      "iteration": 1,
+      "limit": 5,
+      "turns": 1
+    },
+    {
+      "id": "review",
+      "status": "pending",
+      "iteration": 0
+    },
+    {
+      "id": "pr",
+      "status": "pending",
+      "iteration": 0
+    },
+    {
+      "id": "pr_review",
+      "status": "skipped",
+      "iteration": 0
+    },
+    {
+      "id": "merge",
+      "status": "skipped",
+      "iteration": 0
+    }
+  ],
+  "current": "build",
+  "plan": {
+    "goal": "g",
+    "tasks": [
+      {
+        "title": "t1",
+        "done": "d1"
+      },
+      {
+        "title": "t2",
+        "done": "d2"
+      }
+    ],
+    "stages": [
+      "plan",
+      "build",
+      "review",
+      "pr"
+    ],
+    "verify": [
+      "make test"
+    ],
+    "limits": {
+      "build": 5
+    }
+  },
+  "cards": [
+    {
+      "id": "c1",
+      "kind": "gate",
+      "stage": "plan",
+      "turn": 1,
+      "iteration": 1,
+      "title": "Approve plan",
+      "payload": {
+        "goal": "g",
+        "tasks": [
+          {
+            "title": "t1",
+            "done": "d1"
+          },
+          {
+            "title": "t2",
+            "done": "d2"
+          }
+        ],
+        "stages": [
+          "plan",
+          "build",
+          "review",
+          "pr"
+        ],
+        "verify": [
+          "make test"
+        ],
+        "limits": {
+          "build": 5
+        }
+      },
+      "state": "decided",
+      "decision": "approve",
+      "created_at": "2026-10-01T08:00:00Z"
+    },
+    {
+      "id": "c2",
+      "kind": "report",
+      "stage": "build",
+      "turn": 3,
+      "iteration": 1,
+      "title": "built",
+      "payload": {
+        "summary": "built",
+        "tasks_done": true
+      },
+      "state": "unseen",
+      "created_at": "2026-10-01T08:00:00Z"
+    }
+  ],
+  "tasks_done": true,
+  "awaiting_verification": true,
+  "updated_at": "2026-10-01T08:00:00Z",
+  "base_commit": "0123456789abcdef0123456789abcdef01234567"
+}
+guidance:
+Focus mode — current stage: build (iteration 1 of 5).
+Goal: goal
+Implement the approved tasks in order, keeping changes focused. Run the verification commands yourself before you finish. If you need a decision from the developer, ask it as a decision in the report instead of guessing.
+Language: write your reply and every human-readable value in the blocks (goal, task titles and done criteria, summaries, decisions and their options, risks, finding titles and scenarios) in the language the developer writes in — the language of the Goal above and of their messages in this conversation, not the language of these instructions. Keep code, commands, file paths, identifiers and stage ids as they are, and write a pull request title and body in the language the repository's commits and pull requests use.
+
+Approved tasks and their done criteria:
+1. t1 — done when: d1
+2. t2 — done when: d2
+Verification commands:
+- make test
+
+The approved plan changes only when the developer asks for it in this conversation (a new goal, or a verification command to add, drop or reword): then call the focus_plan_edit tool if you have it, or else add this block before the others, with only the fields that change (a list replaces the whole list; [] clears it):
+<focus-plan-edit>{"goal":"…","verify":["…"]}</focus-plan-edit>
+Never edit the plan on your own to get past a failing check.
+
+End your reply with exactly one report block in this format (decisions and risks may be empty):
+<focus-report>{"summary":"…","tasks_done":false,"decisions":[{"id":"d1","question":"…","options":["…","…"]}],"risks":["…"]}</focus-report>
+Set "tasks_done" to true only when every approved task is complete. After your reply the server runs the verification commands: a failure starts the next turn with its output, and the build ends when tasks_done is true and every command passes.
+Put the block at the very end of your reply, outside any code fence, with valid JSON between the tags. If you include the block more than once, only the last one counts.
+
+== build verified
+action: send_turn "Verification passed and every task is done. Start the review stage."
+pipeline:
+{
+  "version": 1,
+  "session_id": "s1",
+  "goal": "goal",
+  "stages": [
+    {
+      "id": "plan",
+      "status": "done",
+      "iteration": 1,
+      "instructions": "Do not edit files. Read the code you need, then propose a plan: small tasks in order, each with what \"done\" means; which stages apply (a small fix may skip review or pr_review); the verification commands that prove the work (shell commands, judged by their exit code — a check of the running app or its screens goes here too, as a script: a Playwright spec, or curl against the build); loop limits. The developer approves or edits the plan before any change is made. Match the verification to what the change can break: when it touches code other parts share (an app shell or layout, a component or style present on every screen, a shared helper), list the full suite the repository's CI runs on pull requests — its instructions usually name the preflight commands — not only the tests you edit."
+    },
+    {
+      "id": "build",
+      "status": "done",
+      "iteration": 1,
+      "limit": 5,
+      "turns": 1
+    },
+    {
+      "id": "review",
+      "status": "active",
+      "iteration": 1,
+      "limit": 2
+    },
+    {
+      "id": "pr",
+      "status": "pending",
+      "iteration": 0
+    },
+    {
+      "id": "pr_review",
+      "status": "skipped",
+      "iteration": 0
+    },
+    {
+      "id": "merge",
+      "status": "skipped",
+      "iteration": 0
+    }
+  ],
+  "current": "review",
+  "plan": {
+    "goal": "g",
+    "tasks": [
+      {
+        "title": "t1",
+        "done": "d1"
+      },
+      {
+        "title": "t2",
+        "done": "d2"
+      }
+    ],
+    "stages": [
+      "plan",
+      "build",
+      "review",
+      "pr"
+    ],
+    "verify": [
+      "make test"
+    ],
+    "limits": {
+      "build": 5
+    }
+  },
+  "cards": [
+    {
+      "id": "c1",
+      "kind": "gate",
+      "stage": "plan",
+      "turn": 1,
+      "iteration": 1,
+      "title": "Approve plan",
+      "payload": {
+        "goal": "g",
+        "tasks": [
+          {
+            "title": "t1",
+            "done": "d1"
+          },
+          {
+            "title": "t2",
+            "done": "d2"
+          }
+        ],
+        "stages": [
+          "plan",
+          "build",
+          "review",
+          "pr"
+        ],
+        "verify": [
+          "make test"
+        ],
+        "limits": {
+          "build": 5
+        }
+      },
+      "state": "decided",
+      "decision": "approve",
+      "created_at": "2026-10-01T08:00:00Z"
+    },
+    {
+      "id": "c2",
+      "kind": "report",
+      "stage": "build",
+      "turn": 3,
+      "iteration": 1,
+      "title": "built",
+      "payload": {
+        "summary": "built",
+        "tasks_done": true
+      },
+      "state": "unseen",
+      "created_at": "2026-10-01T08:00:00Z"
+    }
+  ],
+  "pending_turn": "Verification passed and every task is done. Start the review stage.",
+  "updated_at": "2026-10-01T08:00:00Z",
+  "base_commit": "0123456789abcdef0123456789abcdef01234567"
+}
+guidance:
+Focus mode — current stage: review (iteration 1 of 2).
+Goal: goal
+Review the diff since the stage started (`git diff 0123456789abcdef0123456789abcdef01234567...HEAD`, and `git diff 0123456789abcdef0123456789abcdef01234567` for changes not yet committed); do not edit files in this turn. Report every finding in the <focus-findings> block (an empty array when there are none). Each finding needs its file and line and a concrete failure scenario (inputs or state → wrong output or crash).
+Language: write your reply and every human-readable value in the blocks (goal, task titles and done criteria, summaries, decisions and their options, risks, finding titles and scenarios) in the language the developer writes in — the language of the Goal above and of their messages in this conversation, not the language of these instructions. Keep code, commands, file paths, identifiers and stage ids as they are, and write a pull request title and body in the language the repository's commits and pull requests use.
+
+Approved tasks and their done criteria:
+1. t1 — done when: d1
+2. t2 — done when: d2
+Verification commands:
+- make test
+
+The approved plan changes only when the developer asks for it in this conversation (a new goal, or a verification command to add, drop or reword): then call the focus_plan_edit tool if you have it, or else add this block before the others, with only the fields that change (a list replaces the whole list; [] clears it):
+<focus-plan-edit>{"goal":"…","verify":["…"]}</focus-plan-edit>
+Never edit the plan on your own to get past a failing check.
+
+End your reply with a findings block (an empty array when there are none) and a report block:
+<focus-findings>[{"id":"f1","severity":"high|medium|low","file":"…","line":42,"title":"…","scenario":"…"}]</focus-findings>
+<focus-report>{"summary":"…","decisions":[{"id":"d1","question":"…","options":["…","…"]}],"risks":["…"]}</focus-report>
+Put the block at the very end of your reply, outside any code fence, with valid JSON between the tags. If you include the block more than once, only the last one counts.
+
+== review findings
+action: none ""
+pipeline:
+{
+  "version": 1,
+  "session_id": "s1",
+  "goal": "goal",
+  "stages": [
+    {
+      "id": "plan",
+      "status": "done",
+      "iteration": 1,
+      "instructions": "Do not edit files. Read the code you need, then propose a plan: small tasks in order, each with what \"done\" means; which stages apply (a small fix may skip review or pr_review); the verification commands that prove the work (shell commands, judged by their exit code — a check of the running app or its screens goes here too, as a script: a Playwright spec, or curl against the build); loop limits. The developer approves or edits the plan before any change is made. Match the verification to what the change can break: when it touches code other parts share (an app shell or layout, a component or style present on every screen, a shared helper), list the full suite the repository's CI runs on pull requests — its instructions usually name the preflight commands — not only the tests you edit."
+    },
+    {
+      "id": "build",
+      "status": "done",
+      "iteration": 1,
+      "limit": 5,
+      "turns": 1
+    },
+    {
+      "id": "review",
+      "status": "active",
+      "iteration": 1,
+      "limit": 2
+    },
+    {
+      "id": "pr",
+      "status": "pending",
+      "iteration": 0
+    },
+    {
+      "id": "pr_review",
+      "status": "skipped",
+      "iteration": 0
+    },
+    {
+      "id": "merge",
+      "status": "skipped",
+      "iteration": 0
+    }
+  ],
+  "current": "review",
+  "plan": {
+    "goal": "g",
+    "tasks": [
+      {
+        "title": "t1",
+        "done": "d1"
+      },
+      {
+        "title": "t2",
+        "done": "d2"
+      }
+    ],
+    "stages": [
+      "plan",
+      "build",
+      "review",
+      "pr"
+    ],
+    "verify": [
+      "make test"
+    ],
+    "limits": {
+      "build": 5
+    }
+  },
+  "open_gate": "triage",
+  "cards": [
+    {
+      "id": "c1",
+      "kind": "gate",
+      "stage": "plan",
+      "turn": 1,
+      "iteration": 1,
+      "title": "Approve plan",
+      "payload": {
+        "goal": "g",
+        "tasks": [
+          {
+            "title": "t1",
+            "done": "d1"
+          },
+          {
+            "title": "t2",
+            "done": "d2"
+          }
+        ],
+        "stages": [
+          "plan",
+          "build",
+          "review",
+          "pr"
+        ],
+        "verify": [
+          "make test"
+        ],
+        "limits": {
+          "build": 5
+        }
+      },
+      "state": "decided",
+      "decision": "approve",
+      "created_at": "2026-10-01T08:00:00Z"
+    },
+    {
+      "id": "c2",
+      "kind": "report",
+      "stage": "build",
+      "turn": 3,
+      "iteration": 1,
+      "title": "built",
+      "payload": {
+        "summary": "built",
+        "tasks_done": true
+      },
+      "state": "unseen",
+      "created_at": "2026-10-01T08:00:00Z"
+    },
+    {
+      "id": "c3",
+      "kind": "report",
+      "stage": "review",
+      "turn": 7,
+      "iteration": 1,
+      "title": "reviewed",
+      "payload": {
+        "summary": "reviewed"
+      },
+      "state": "unseen",
+      "created_at": "2026-10-01T08:00:00Z"
+    },
+    {
+      "id": "c4",
+      "kind": "finding",
+      "stage": "review",
+      "turn": 7,
+      "iteration": 1,
+      "title": "nil deref",
+      "payload": {
+        "id": "f1",
+        "severity": "high",
+        "file": "a.go",
+        "line": 3,
+        "title": "nil deref",
+        "scenario": "nil input → panic"
+      },
+      "state": "unseen",
+      "created_at": "2026-10-01T08:00:00Z"
+    },
+    {
+      "id": "c5",
+      "kind": "finding",
+      "stage": "review",
+      "turn": 7,
+      "iteration": 1,
+      "title": "typo",
+      "payload": {
+        "id": "f2",
+        "severity": "low",
+        "file": "b.go",
+        "line": 9,
+        "title": "typo",
+        "scenario": "label reads wrong"
+      },
+      "state": "unseen",
+      "created_at": "2026-10-01T08:00:00Z"
+    }
+  ],
+  "updated_at": "2026-10-01T08:00:00Z",
+  "base_commit": "0123456789abcdef0123456789abcdef01234567",
+  "review": {
+    "triage": [
+      "c4",
+      "c5"
+    ]
+  }
+}
+guidance:
+Focus mode — current stage: review (iteration 1 of 2).
+Goal: goal
+Triage in progress: the developer is deciding the reported findings one at a time. Answer the developer's question only; do not edit files and do not report findings in this turn.
+Language: write your reply and every human-readable value in the blocks (goal, task titles and done criteria, summaries, decisions and their options, risks, finding titles and scenarios) in the language the developer writes in — the language of the Goal above and of their messages in this conversation, not the language of these instructions. Keep code, commands, file paths, identifiers and stage ids as they are, and write a pull request title and body in the language the repository's commits and pull requests use.
+
+Approved tasks and their done criteria:
+1. t1 — done when: d1
+2. t2 — done when: d2
+Verification commands:
+- make test
+
+The approved plan changes only when the developer asks for it in this conversation (a new goal, or a verification command to add, drop or reword): then call the focus_plan_edit tool if you have it, or else add this block before the others, with only the fields that change (a list replaces the whole list; [] clears it):
+<focus-plan-edit>{"goal":"…","verify":["…"]}</focus-plan-edit>
+Never edit the plan on your own to get past a failing check.
+
+== first decided
+action: none ""
+pipeline:
+{
+  "version": 1,
+  "session_id": "s1",
+  "goal": "goal",
+  "stages": [
+    {
+      "id": "plan",
+      "status": "done",
+      "iteration": 1,
+      "instructions": "Do not edit files. Read the code you need, then propose a plan: small tasks in order, each with what \"done\" means; which stages apply (a small fix may skip review or pr_review); the verification commands that prove the work (shell commands, judged by their exit code — a check of the running app or its screens goes here too, as a script: a Playwright spec, or curl against the build); loop limits. The developer approves or edits the plan before any change is made. Match the verification to what the change can break: when it touches code other parts share (an app shell or layout, a component or style present on every screen, a shared helper), list the full suite the repository's CI runs on pull requests — its instructions usually name the preflight commands — not only the tests you edit."
+    },
+    {
+      "id": "build",
+      "status": "done",
+      "iteration": 1,
+      "limit": 5,
+      "turns": 1
+    },
+    {
+      "id": "review",
+      "status": "active",
+      "iteration": 1,
+      "limit": 2
+    },
+    {
+      "id": "pr",
+      "status": "pending",
+      "iteration": 0
+    },
+    {
+      "id": "pr_review",
+      "status": "skipped",
+      "iteration": 0
+    },
+    {
+      "id": "merge",
+      "status": "skipped",
+      "iteration": 0
+    }
+  ],
+  "current": "review",
+  "plan": {
+    "goal": "g",
+    "tasks": [
+      {
+        "title": "t1",
+        "done": "d1"
+      },
+      {
+        "title": "t2",
+        "done": "d2"
+      }
+    ],
+    "stages": [
+      "plan",
+      "build",
+      "review",
+      "pr"
+    ],
+    "verify": [
+      "make test"
+    ],
+    "limits": {
+      "build": 5
+    }
+  },
+  "open_gate": "triage",
+  "cards": [
+    {
+      "id": "c1",
+      "kind": "gate",
+      "stage": "plan",
+      "turn": 1,
+      "iteration": 1,
+      "title": "Approve plan",
+      "payload": {
+        "goal": "g",
+        "tasks": [
+          {
+            "title": "t1",
+            "done": "d1"
+          },
+          {
+            "title": "t2",
+            "done": "d2"
+          }
+        ],
+        "stages": [
+          "plan",
+          "build",
+          "review",
+          "pr"
+        ],
+        "verify": [
+          "make test"
+        ],
+        "limits": {
+          "build": 5
+        }
+      },
+      "state": "decided",
+      "decision": "approve",
+      "created_at": "2026-10-01T08:00:00Z"
+    },
+    {
+      "id": "c2",
+      "kind": "report",
+      "stage": "build",
+      "turn": 3,
+      "iteration": 1,
+      "title": "built",
+      "payload": {
+        "summary": "built",
+        "tasks_done": true
+      },
+      "state": "unseen",
+      "created_at": "2026-10-01T08:00:00Z"
+    },
+    {
+      "id": "c3",
+      "kind": "report",
+      "stage": "review",
+      "turn": 7,
+      "iteration": 1,
+      "title": "reviewed",
+      "payload": {
+        "summary": "reviewed"
+      },
+      "state": "unseen",
+      "created_at": "2026-10-01T08:00:00Z"
+    },
+    {
+      "id": "c4",
+      "kind": "finding",
+      "stage": "review",
+      "turn": 7,
+      "iteration": 1,
+      "title": "nil deref",
+      "payload": {
+        "id": "f1",
+        "severity": "high",
+        "file": "a.go",
+        "line": 3,
+        "title": "nil deref",
+        "scenario": "nil input → panic"
+      },
+      "state": "decided",
+      "decision": "fix",
+      "created_at": "2026-10-01T08:00:00Z"
+    },
+    {
+      "id": "c5",
+      "kind": "finding",
+      "stage": "review",
+      "turn": 7,
+      "iteration": 1,
+      "title": "typo",
+      "payload": {
+        "id": "f2",
+        "severity": "low",
+        "file": "b.go",
+        "line": 9,
+        "title": "typo",
+        "scenario": "label reads wrong"
+      },
+      "state": "unseen",
+      "created_at": "2026-10-01T08:00:00Z"
+    }
+  ],
+  "updated_at": "2026-10-01T08:00:00Z",
+  "base_commit": "0123456789abcdef0123456789abcdef01234567",
+  "review": {
+    "triage": [
+      "c4",
+      "c5"
+    ]
+  }
+}
+guidance:
+Focus mode — current stage: review (iteration 1 of 2).
+Goal: goal
+Triage in progress: the developer is deciding the reported findings one at a time. Answer the developer's question only; do not edit files and do not report findings in this turn.
+Language: write your reply and every human-readable value in the blocks (goal, task titles and done criteria, summaries, decisions and their options, risks, finding titles and scenarios) in the language the developer writes in — the language of the Goal above and of their messages in this conversation, not the language of these instructions. Keep code, commands, file paths, identifiers and stage ids as they are, and write a pull request title and body in the language the repository's commits and pull requests use.
+
+Approved tasks and their done criteria:
+1. t1 — done when: d1
+2. t2 — done when: d2
+Verification commands:
+- make test
+
+The approved plan changes only when the developer asks for it in this conversation (a new goal, or a verification command to add, drop or reword): then call the focus_plan_edit tool if you have it, or else add this block before the others, with only the fields that change (a list replaces the whole list; [] clears it):
+<focus-plan-edit>{"goal":"…","verify":["…"]}</focus-plan-edit>
+Never edit the plan on your own to get past a failing check.
+
+== triage closed
+action: send_turn "Fix these findings:\n1. [high] a.go:3 — nil deref\n   Scenario: nil input → panic\n\nFix only these findings, run the verification commands yourself, and report."
+pipeline:
+{
+  "version": 1,
+  "session_id": "s1",
+  "goal": "goal",
+  "stages": [
+    {
+      "id": "plan",
+      "status": "done",
+      "iteration": 1,
+      "instructions": "Do not edit files. Read the code you need, then propose a plan: small tasks in order, each with what \"done\" means; which stages apply (a small fix may skip review or pr_review); the verification commands that prove the work (shell commands, judged by their exit code — a check of the running app or its screens goes here too, as a script: a Playwright spec, or curl against the build); loop limits. The developer approves or edits the plan before any change is made. Match the verification to what the change can break: when it touches code other parts share (an app shell or layout, a component or style present on every screen, a shared helper), list the full suite the repository's CI runs on pull requests — its instructions usually name the preflight commands — not only the tests you edit."
+    },
+    {
+      "id": "build",
+      "status": "done",
+      "iteration": 1,
+      "limit": 5,
+      "turns": 1
+    },
+    {
+      "id": "review",
+      "status": "active",
+      "iteration": 1,
+      "limit": 2
+    },
+    {
+      "id": "pr",
+      "status": "pending",
+      "iteration": 0
+    },
+    {
+      "id": "pr_review",
+      "status": "skipped",
+      "iteration": 0
+    },
+    {
+      "id": "merge",
+      "status": "skipped",
+      "iteration": 0
+    }
+  ],
+  "current": "review",
+  "plan": {
+    "goal": "g",
+    "tasks": [
+      {
+        "title": "t1",
+        "done": "d1"
+      },
+      {
+        "title": "t2",
+        "done": "d2"
+      }
+    ],
+    "stages": [
+      "plan",
+      "build",
+      "review",
+      "pr"
+    ],
+    "verify": [
+      "make test"
+    ],
+    "limits": {
+      "build": 5
+    }
+  },
+  "cards": [
+    {
+      "id": "c1",
+      "kind": "gate",
+      "stage": "plan",
+      "turn": 1,
+      "iteration": 1,
+      "title": "Approve plan",
+      "payload": {
+        "goal": "g",
+        "tasks": [
+          {
+            "title": "t1",
+            "done": "d1"
+          },
+          {
+            "title": "t2",
+            "done": "d2"
+          }
+        ],
+        "stages": [
+          "plan",
+          "build",
+          "review",
+          "pr"
+        ],
+        "verify": [
+          "make test"
+        ],
+        "limits": {
+          "build": 5
+        }
+      },
+      "state": "decided",
+      "decision": "approve",
+      "created_at": "2026-10-01T08:00:00Z"
+    },
+    {
+      "id": "c2",
+      "kind": "report",
+      "stage": "build",
+      "turn": 3,
+      "iteration": 1,
+      "title": "built",
+      "payload": {
+        "summary": "built",
+        "tasks_done": true
+      },
+      "state": "unseen",
+      "created_at": "2026-10-01T08:00:00Z"
+    },
+    {
+      "id": "c3",
+      "kind": "report",
+      "stage": "review",
+      "turn": 7,
+      "iteration": 1,
+      "title": "reviewed",
+      "payload": {
+        "summary": "reviewed"
+      },
+      "state": "unseen",
+      "created_at": "2026-10-01T08:00:00Z"
+    },
+    {
+      "id": "c4",
+      "kind": "finding",
+      "stage": "review",
+      "turn": 7,
+      "iteration": 1,
+      "title": "nil deref",
+      "payload": {
+        "id": "f1",
+        "severity": "high",
+        "file": "a.go",
+        "line": 3,
+        "title": "nil deref",
+        "scenario": "nil input → panic"
+      },
+      "state": "decided",
+      "decision": "fix",
+      "created_at": "2026-10-01T08:00:00Z"
+    },
+    {
+      "id": "c5",
+      "kind": "finding",
+      "stage": "review",
+      "turn": 7,
+      "iteration": 1,
+      "title": "typo",
+      "payload": {
+        "id": "f2",
+        "severity": "low",
+        "file": "b.go",
+        "line": 9,
+        "title": "typo",
+        "scenario": "label reads wrong"
+      },
+      "state": "decided",
+      "decision": "dismiss",
+      "created_at": "2026-10-01T08:00:00Z"
+    }
+  ],
+  "pending_turn": "Fix these findings:\n1. [high] a.go:3 — nil deref\n   Scenario: nil input → panic\n\nFix only these findings, run the verification commands yourself, and report.",
+  "updated_at": "2026-10-01T08:00:00Z",
+  "base_commit": "0123456789abcdef0123456789abcdef01234567",
+  "review": {
+    "fixing": true,
+    "dismissed": [
+      {
+        "file": "b.go",
+        "line": 9,
+        "title": "typo"
+      }
+    ]
+  }
+}
+guidance:
+Focus mode — current stage: review (iteration 1 of 2).
+Goal: goal
+Fix only the findings listed in this message (or the verification failure it quotes); do not change anything else. Run the verification commands yourself before you finish.
+Language: write your reply and every human-readable value in the blocks (goal, task titles and done criteria, summaries, decisions and their options, risks, finding titles and scenarios) in the language the developer writes in — the language of the Goal above and of their messages in this conversation, not the language of these instructions. Keep code, commands, file paths, identifiers and stage ids as they are, and write a pull request title and body in the language the repository's commits and pull requests use.
+
+Approved tasks and their done criteria:
+1. t1 — done when: d1
+2. t2 — done when: d2
+Verification commands:
+- make test
+
+The approved plan changes only when the developer asks for it in this conversation (a new goal, or a verification command to add, drop or reword): then call the focus_plan_edit tool if you have it, or else add this block before the others, with only the fields that change (a list replaces the whole list; [] clears it):
+<focus-plan-edit>{"goal":"…","verify":["…"]}</focus-plan-edit>
+Never edit the plan on your own to get past a failing check.
+
+End your reply with exactly one report block in this format (decisions and risks may be empty):
+<focus-report>{"summary":"…","decisions":[{"id":"d1","question":"…","options":["…","…"]}],"risks":["…"]}</focus-report>
+Put the block at the very end of your reply, outside any code fence, with valid JSON between the tags. If you include the block more than once, only the last one counts.
+
+== fix reported
+action: run_verification ""
+pipeline:
+{
+  "version": 1,
+  "session_id": "s1",
+  "goal": "goal",
+  "stages": [
+    {
+      "id": "plan",
+      "status": "done",
+      "iteration": 1,
+      "instructions": "Do not edit files. Read the code you need, then propose a plan: small tasks in order, each with what \"done\" means; which stages apply (a small fix may skip review or pr_review); the verification commands that prove the work (shell commands, judged by their exit code — a check of the running app or its screens goes here too, as a script: a Playwright spec, or curl against the build); loop limits. The developer approves or edits the plan before any change is made. Match the verification to what the change can break: when it touches code other parts share (an app shell or layout, a component or style present on every screen, a shared helper), list the full suite the repository's CI runs on pull requests — its instructions usually name the preflight commands — not only the tests you edit."
+    },
+    {
+      "id": "build",
+      "status": "done",
+      "iteration": 1,
+      "limit": 5,
+      "turns": 1
+    },
+    {
+      "id": "review",
+      "status": "active",
+      "iteration": 1,
+      "limit": 2
+    },
+    {
+      "id": "pr",
+      "status": "pending",
+      "iteration": 0
+    },
+    {
+      "id": "pr_review",
+      "status": "skipped",
+      "iteration": 0
+    },
+    {
+      "id": "merge",
+      "status": "skipped",
+      "iteration": 0
+    }
+  ],
+  "current": "review",
+  "plan": {
+    "goal": "g",
+    "tasks": [
+      {
+        "title": "t1",
+        "done": "d1"
+      },
+      {
+        "title": "t2",
+        "done": "d2"
+      }
+    ],
+    "stages": [
+      "plan",
+      "build",
+      "review",
+      "pr"
+    ],
+    "verify": [
+      "make test"
+    ],
+    "limits": {
+      "build": 5
+    }
+  },
+  "cards": [
+    {
+      "id": "c1",
+      "kind": "gate",
+      "stage": "plan",
+      "turn": 1,
+      "iteration": 1,
+      "title": "Approve plan",
+      "payload": {
+        "goal": "g",
+        "tasks": [
+          {
+            "title": "t1",
+            "done": "d1"
+          },
+          {
+            "title": "t2",
+            "done": "d2"
+          }
+        ],
+        "stages": [
+          "plan",
+          "build",
+          "review",
+          "pr"
+        ],
+        "verify": [
+          "make test"
+        ],
+        "limits": {
+          "build": 5
+        }
+      },
+      "state": "decided",
+      "decision": "approve",
+      "created_at": "2026-10-01T08:00:00Z"
+    },
+    {
+      "id": "c2",
+      "kind": "report",
+      "stage": "build",
+      "turn": 3,
+      "iteration": 1,
+      "title": "built",
+      "payload": {
+        "summary": "built",
+        "tasks_done": true
+      },
+      "state": "unseen",
+      "created_at": "2026-10-01T08:00:00Z"
+    },
+    {
+      "id": "c3",
+      "kind": "report",
+      "stage": "review",
+      "turn": 7,
+      "iteration": 1,
+      "title": "reviewed",
+      "payload": {
+        "summary": "reviewed"
+      },
+      "state": "unseen",
+      "created_at": "2026-10-01T08:00:00Z"
+    },
+    {
+      "id": "c4",
+      "kind": "finding",
+      "stage": "review",
+      "turn": 7,
+      "iteration": 1,
+      "title": "nil deref",
+      "payload": {
+        "id": "f1",
+        "severity": "high",
+        "file": "a.go",
+        "line": 3,
+        "title": "nil deref",
+        "scenario": "nil input → panic"
+      },
+      "state": "decided",
+      "decision": "fix",
+      "created_at": "2026-10-01T08:00:00Z"
+    },
+    {
+      "id": "c5",
+      "kind": "finding",
+      "stage": "review",
+      "turn": 7,
+      "iteration": 1,
+      "title": "typo",
+      "payload": {
+        "id": "f2",
+        "severity": "low",
+        "file": "b.go",
+        "line": 9,
+        "title": "typo",
+        "scenario": "label reads wrong"
+      },
+      "state": "decided",
+      "decision": "dismiss",
+      "created_at": "2026-10-01T08:00:00Z"
+    },
+    {
+      "id": "c6",
+      "kind": "report",
+      "stage": "review",
+      "turn": 3,
+      "iteration": 1,
+      "title": "fixed",
+      "payload": {
+        "summary": "fixed"
+      },
+      "state": "unseen",
+      "created_at": "2026-10-01T08:00:00Z"
+    }
+  ],
+  "awaiting_verification": true,
+  "updated_at": "2026-10-01T08:00:00Z",
+  "base_commit": "0123456789abcdef0123456789abcdef01234567",
+  "review": {
+    "fixed": true,
+    "dismissed": [
+      {
+        "file": "b.go",
+        "line": 9,
+        "title": "typo"
+      }
+    ]
+  }
+}
+guidance:
+Focus mode — current stage: review (iteration 1 of 2).
+Goal: goal
+Review the diff since the stage started (`git diff 0123456789abcdef0123456789abcdef01234567...HEAD`, and `git diff 0123456789abcdef0123456789abcdef01234567` for changes not yet committed); do not edit files in this turn. Report every finding in the <focus-findings> block (an empty array when there are none). Each finding needs its file and line and a concrete failure scenario (inputs or state → wrong output or crash).
+Already dismissed — do not re-report:
+- b.go:9 — typo
+Language: write your reply and every human-readable value in the blocks (goal, task titles and done criteria, summaries, decisions and their options, risks, finding titles and scenarios) in the language the developer writes in — the language of the Goal above and of their messages in this conversation, not the language of these instructions. Keep code, commands, file paths, identifiers and stage ids as they are, and write a pull request title and body in the language the repository's commits and pull requests use.
+
+Approved tasks and their done criteria:
+1. t1 — done when: d1
+2. t2 — done when: d2
+Verification commands:
+- make test
+
+The approved plan changes only when the developer asks for it in this conversation (a new goal, or a verification command to add, drop or reword): then call the focus_plan_edit tool if you have it, or else add this block before the others, with only the fields that change (a list replaces the whole list; [] clears it):
+<focus-plan-edit>{"goal":"…","verify":["…"]}</focus-plan-edit>
+Never edit the plan on your own to get past a failing check.
+
+End your reply with a findings block (an empty array when there are none) and a report block:
+<focus-findings>[{"id":"f1","severity":"high|medium|low","file":"…","line":42,"title":"…","scenario":"…"}]</focus-findings>
+<focus-report>{"summary":"…","decisions":[{"id":"d1","question":"…","options":["…","…"]}],"risks":["…"]}</focus-report>
+Put the block at the very end of your reply, outside any code fence, with valid JSON between the tags. If you include the block more than once, only the last one counts.
+
+== fix verified
+action: send_turn "Verification passed after the fixes. Review the changes again (round 2 of 2) and report findings."
+pipeline:
+{
+  "version": 1,
+  "session_id": "s1",
+  "goal": "goal",
+  "stages": [
+    {
+      "id": "plan",
+      "status": "done",
+      "iteration": 1,
+      "instructions": "Do not edit files. Read the code you need, then propose a plan: small tasks in order, each with what \"done\" means; which stages apply (a small fix may skip review or pr_review); the verification commands that prove the work (shell commands, judged by their exit code — a check of the running app or its screens goes here too, as a script: a Playwright spec, or curl against the build); loop limits. The developer approves or edits the plan before any change is made. Match the verification to what the change can break: when it touches code other parts share (an app shell or layout, a component or style present on every screen, a shared helper), list the full suite the repository's CI runs on pull requests — its instructions usually name the preflight commands — not only the tests you edit."
+    },
+    {
+      "id": "build",
+      "status": "done",
+      "iteration": 1,
+      "limit": 5,
+      "turns": 1
+    },
+    {
+      "id": "review",
+      "status": "active",
+      "iteration": 2,
+      "limit": 2
+    },
+    {
+      "id": "pr",
+      "status": "pending",
+      "iteration": 0
+    },
+    {
+      "id": "pr_review",
+      "status": "skipped",
+      "iteration": 0
+    },
+    {
+      "id": "merge",
+      "status": "skipped",
+      "iteration": 0
+    }
+  ],
+  "current": "review",
+  "plan": {
+    "goal": "g",
+    "tasks": [
+      {
+        "title": "t1",
+        "done": "d1"
+      },
+      {
+        "title": "t2",
+        "done": "d2"
+      }
+    ],
+    "stages": [
+      "plan",
+      "build",
+      "review",
+      "pr"
+    ],
+    "verify": [
+      "make test"
+    ],
+    "limits": {
+      "build": 5
+    }
+  },
+  "cards": [
+    {
+      "id": "c1",
+      "kind": "gate",
+      "stage": "plan",
+      "turn": 1,
+      "iteration": 1,
+      "title": "Approve plan",
+      "payload": {
+        "goal": "g",
+        "tasks": [
+          {
+            "title": "t1",
+            "done": "d1"
+          },
+          {
+            "title": "t2",
+            "done": "d2"
+          }
+        ],
+        "stages": [
+          "plan",
+          "build",
+          "review",
+          "pr"
+        ],
+        "verify": [
+          "make test"
+        ],
+        "limits": {
+          "build": 5
+        }
+      },
+      "state": "decided",
+      "decision": "approve",
+      "created_at": "2026-10-01T08:00:00Z"
+    },
+    {
+      "id": "c2",
+      "kind": "report",
+      "stage": "build",
+      "turn": 3,
+      "iteration": 1,
+      "title": "built",
+      "payload": {
+        "summary": "built",
+        "tasks_done": true
+      },
+      "state": "unseen",
+      "created_at": "2026-10-01T08:00:00Z"
+    },
+    {
+      "id": "c3",
+      "kind": "report",
+      "stage": "review",
+      "turn": 7,
+      "iteration": 1,
+      "title": "reviewed",
+      "payload": {
+        "summary": "reviewed"
+      },
+      "state": "unseen",
+      "created_at": "2026-10-01T08:00:00Z"
+    },
+    {
+      "id": "c4",
+      "kind": "finding",
+      "stage": "review",
+      "turn": 7,
+      "iteration": 1,
+      "title": "nil deref",
+      "payload": {
+        "id": "f1",
+        "severity": "high",
+        "file": "a.go",
+        "line": 3,
+        "title": "nil deref",
+        "scenario": "nil input → panic"
+      },
+      "state": "decided",
+      "decision": "fix",
+      "created_at": "2026-10-01T08:00:00Z"
+    },
+    {
+      "id": "c5",
+      "kind": "finding",
+      "stage": "review",
+      "turn": 7,
+      "iteration": 1,
+      "title": "typo",
+      "payload": {
+        "id": "f2",
+        "severity": "low",
+        "file": "b.go",
+        "line": 9,
+        "title": "typo",
+        "scenario": "label reads wrong"
+      },
+      "state": "decided",
+      "decision": "dismiss",
+      "created_at": "2026-10-01T08:00:00Z"
+    },
+    {
+      "id": "c6",
+      "kind": "report",
+      "stage": "review",
+      "turn": 3,
+      "iteration": 1,
+      "title": "fixed",
+      "payload": {
+        "summary": "fixed"
+      },
+      "state": "unseen",
+      "created_at": "2026-10-01T08:00:00Z"
+    }
+  ],
+  "pending_turn": "Verification passed after the fixes. Review the changes again (round 2 of 2) and report findings.",
+  "updated_at": "2026-10-01T08:00:00Z",
+  "base_commit": "0123456789abcdef0123456789abcdef01234567",
+  "review": {
+    "dismissed": [
+      {
+        "file": "b.go",
+        "line": 9,
+        "title": "typo"
+      }
+    ]
+  }
+}
+guidance:
+Focus mode — current stage: review (iteration 2 of 2).
+Goal: goal
+Review the diff since the stage started (`git diff 0123456789abcdef0123456789abcdef01234567...HEAD`, and `git diff 0123456789abcdef0123456789abcdef01234567` for changes not yet committed); do not edit files in this turn. Report every finding in the <focus-findings> block (an empty array when there are none). Each finding needs its file and line and a concrete failure scenario (inputs or state → wrong output or crash).
+Already dismissed — do not re-report:
+- b.go:9 — typo
+Language: write your reply and every human-readable value in the blocks (goal, task titles and done criteria, summaries, decisions and their options, risks, finding titles and scenarios) in the language the developer writes in — the language of the Goal above and of their messages in this conversation, not the language of these instructions. Keep code, commands, file paths, identifiers and stage ids as they are, and write a pull request title and body in the language the repository's commits and pull requests use.
+
+Approved tasks and their done criteria:
+1. t1 — done when: d1
+2. t2 — done when: d2
+Verification commands:
+- make test
+
+The approved plan changes only when the developer asks for it in this conversation (a new goal, or a verification command to add, drop or reword): then call the focus_plan_edit tool if you have it, or else add this block before the others, with only the fields that change (a list replaces the whole list; [] clears it):
+<focus-plan-edit>{"goal":"…","verify":["…"]}</focus-plan-edit>
+Never edit the plan on your own to get past a failing check.
+
+End your reply with a findings block (an empty array when there are none) and a report block:
+<focus-findings>[{"id":"f1","severity":"high|medium|low","file":"…","line":42,"title":"…","scenario":"…"}]</focus-findings>
+<focus-report>{"summary":"…","decisions":[{"id":"d1","question":"…","options":["…","…"]}],"risks":["…"]}</focus-report>
+Put the block at the very end of your reply, outside any code fence, with valid JSON between the tags. If you include the block more than once, only the last one counts.
+
+== second round clean
+action: run_verification ""
+pipeline:
+{
+  "version": 1,
+  "session_id": "s1",
+  "goal": "goal",
+  "stages": [
+    {
+      "id": "plan",
+      "status": "done",
+      "iteration": 1,
+      "instructions": "Do not edit files. Read the code you need, then propose a plan: small tasks in order, each with what \"done\" means; which stages apply (a small fix may skip review or pr_review); the verification commands that prove the work (shell commands, judged by their exit code — a check of the running app or its screens goes here too, as a script: a Playwright spec, or curl against the build); loop limits. The developer approves or edits the plan before any change is made. Match the verification to what the change can break: when it touches code other parts share (an app shell or layout, a component or style present on every screen, a shared helper), list the full suite the repository's CI runs on pull requests — its instructions usually name the preflight commands — not only the tests you edit."
+    },
+    {
+      "id": "build",
+      "status": "done",
+      "iteration": 1,
+      "limit": 5,
+      "turns": 1
+    },
+    {
+      "id": "review",
+      "status": "active",
+      "iteration": 2,
+      "limit": 2
+    },
+    {
+      "id": "pr",
+      "status": "pending",
+      "iteration": 0
+    },
+    {
+      "id": "pr_review",
+      "status": "skipped",
+      "iteration": 0
+    },
+    {
+      "id": "merge",
+      "status": "skipped",
+      "iteration": 0
+    }
+  ],
+  "current": "review",
+  "plan": {
+    "goal": "g",
+    "tasks": [
+      {
+        "title": "t1",
+        "done": "d1"
+      },
+      {
+        "title": "t2",
+        "done": "d2"
+      }
+    ],
+    "stages": [
+      "plan",
+      "build",
+      "review",
+      "pr"
+    ],
+    "verify": [
+      "make test"
+    ],
+    "limits": {
+      "build": 5
+    }
+  },
+  "cards": [
+    {
+      "id": "c1",
+      "kind": "gate",
+      "stage": "plan",
+      "turn": 1,
+      "iteration": 1,
+      "title": "Approve plan",
+      "payload": {
+        "goal": "g",
+        "tasks": [
+          {
+            "title": "t1",
+            "done": "d1"
+          },
+          {
+            "title": "t2",
+            "done": "d2"
+          }
+        ],
+        "stages": [
+          "plan",
+          "build",
+          "review",
+          "pr"
+        ],
+        "verify": [
+          "make test"
+        ],
+        "limits": {
+          "build": 5
+        }
+      },
+      "state": "decided",
+      "decision": "approve",
+      "created_at": "2026-10-01T08:00:00Z"
+    },
+    {
+      "id": "c2",
+      "kind": "report",
+      "stage": "build",
+      "turn": 3,
+      "iteration": 1,
+      "title": "built",
+      "payload": {
+        "summary": "built",
+        "tasks_done": true
+      },
+      "state": "unseen",
+      "created_at": "2026-10-01T08:00:00Z"
+    },
+    {
+      "id": "c3",
+      "kind": "report",
+      "stage": "review",
+      "turn": 7,
+      "iteration": 1,
+      "title": "reviewed",
+      "payload": {
+        "summary": "reviewed"
+      },
+      "state": "unseen",
+      "created_at": "2026-10-01T08:00:00Z"
+    },
+    {
+      "id": "c4",
+      "kind": "finding",
+      "stage": "review",
+      "turn": 7,
+      "iteration": 1,
+      "title": "nil deref",
+      "payload": {
+        "id": "f1",
+        "severity": "high",
+        "file": "a.go",
+        "line": 3,
+        "title": "nil deref",
+        "scenario": "nil input → panic"
+      },
+      "state": "decided",
+      "decision": "fix",
+      "created_at": "2026-10-01T08:00:00Z"
+    },
+    {
+      "id": "c5",
+      "kind": "finding",
+      "stage": "review",
+      "turn": 7,
+      "iteration": 1,
+      "title": "typo",
+      "payload": {
+        "id": "f2",
+        "severity": "low",
+        "file": "b.go",
+        "line": 9,
+        "title": "typo",
+        "scenario": "label reads wrong"
+      },
+      "state": "decided",
+      "decision": "dismiss",
+      "created_at": "2026-10-01T08:00:00Z"
+    },
+    {
+      "id": "c6",
+      "kind": "report",
+      "stage": "review",
+      "turn": 3,
+      "iteration": 1,
+      "title": "fixed",
+      "payload": {
+        "summary": "fixed"
+      },
+      "state": "unseen",
+      "created_at": "2026-10-01T08:00:00Z"
+    },
+    {
+      "id": "c7",
+      "kind": "report",
+      "stage": "review",
+      "turn": 7,
+      "iteration": 2,
+      "title": "reviewed",
+      "payload": {
+        "summary": "reviewed"
+      },
+      "state": "unseen",
+      "created_at": "2026-10-01T08:00:00Z"
+    }
+  ],
+  "awaiting_verification": true,
+  "updated_at": "2026-10-01T08:00:00Z",
+  "base_commit": "0123456789abcdef0123456789abcdef01234567",
+  "review": {
+    "dismissed": [
+      {
+        "file": "b.go",
+        "line": 9,
+        "title": "typo"
+      }
+    ]
+  }
+}
+guidance:
+Focus mode — current stage: review (iteration 2 of 2).
+Goal: goal
+Review the diff since the stage started (`git diff 0123456789abcdef0123456789abcdef01234567...HEAD`, and `git diff 0123456789abcdef0123456789abcdef01234567` for changes not yet committed); do not edit files in this turn. Report every finding in the <focus-findings> block (an empty array when there are none). Each finding needs its file and line and a concrete failure scenario (inputs or state → wrong output or crash).
+Already dismissed — do not re-report:
+- b.go:9 — typo
+Language: write your reply and every human-readable value in the blocks (goal, task titles and done criteria, summaries, decisions and their options, risks, finding titles and scenarios) in the language the developer writes in — the language of the Goal above and of their messages in this conversation, not the language of these instructions. Keep code, commands, file paths, identifiers and stage ids as they are, and write a pull request title and body in the language the repository's commits and pull requests use.
+
+Approved tasks and their done criteria:
+1. t1 — done when: d1
+2. t2 — done when: d2
+Verification commands:
+- make test
+
+The approved plan changes only when the developer asks for it in this conversation (a new goal, or a verification command to add, drop or reword): then call the focus_plan_edit tool if you have it, or else add this block before the others, with only the fields that change (a list replaces the whole list; [] clears it):
+<focus-plan-edit>{"goal":"…","verify":["…"]}</focus-plan-edit>
+Never edit the plan on your own to get past a failing check.
+
+End your reply with a findings block (an empty array when there are none) and a report block:
+<focus-findings>[{"id":"f1","severity":"high|medium|low","file":"…","line":42,"title":"…","scenario":"…"}]</focus-findings>
+<focus-report>{"summary":"…","decisions":[{"id":"d1","question":"…","options":["…","…"]}],"risks":["…"]}</focus-report>
+Put the block at the very end of your reply, outside any code fence, with valid JSON between the tags. If you include the block more than once, only the last one counts.
+
+== review done
+action: send_turn "Verification passed and no accepted finding is open. Start the pr stage."
+pipeline:
+{
+  "version": 1,
+  "session_id": "s1",
+  "goal": "goal",
+  "stages": [
+    {
+      "id": "plan",
+      "status": "done",
+      "iteration": 1,
+      "instructions": "Do not edit files. Read the code you need, then propose a plan: small tasks in order, each with what \"done\" means; which stages apply (a small fix may skip review or pr_review); the verification commands that prove the work (shell commands, judged by their exit code — a check of the running app or its screens goes here too, as a script: a Playwright spec, or curl against the build); loop limits. The developer approves or edits the plan before any change is made. Match the verification to what the change can break: when it touches code other parts share (an app shell or layout, a component or style present on every screen, a shared helper), list the full suite the repository's CI runs on pull requests — its instructions usually name the preflight commands — not only the tests you edit."
+    },
+    {
+      "id": "build",
+      "status": "done",
+      "iteration": 1,
+      "limit": 5,
+      "turns": 1
+    },
+    {
+      "id": "review",
+      "status": "done",
+      "iteration": 2,
+      "limit": 2
+    },
+    {
+      "id": "pr",
+      "status": "active",
+      "iteration": 1,
+      "limit": 3
+    },
+    {
+      "id": "pr_review",
+      "status": "skipped",
+      "iteration": 0
+    },
+    {
+      "id": "merge",
+      "status": "skipped",
+      "iteration": 0
+    }
+  ],
+  "current": "pr",
+  "plan": {
+    "goal": "g",
+    "tasks": [
+      {
+        "title": "t1",
+        "done": "d1"
+      },
+      {
+        "title": "t2",
+        "done": "d2"
+      }
+    ],
+    "stages": [
+      "plan",
+      "build",
+      "review",
+      "pr"
+    ],
+    "verify": [
+      "make test"
+    ],
+    "limits": {
+      "build": 5
+    }
+  },
+  "cards": [
+    {
+      "id": "c1",
+      "kind": "gate",
+      "stage": "plan",
+      "turn": 1,
+      "iteration": 1,
+      "title": "Approve plan",
+      "payload": {
+        "goal": "g",
+        "tasks": [
+          {
+            "title": "t1",
+            "done": "d1"
+          },
+          {
+            "title": "t2",
+            "done": "d2"
+          }
+        ],
+        "stages": [
+          "plan",
+          "build",
+          "review",
+          "pr"
+        ],
+        "verify": [
+          "make test"
+        ],
+        "limits": {
+          "build": 5
+        }
+      },
+      "state": "decided",
+      "decision": "approve",
+      "created_at": "2026-10-01T08:00:00Z"
+    },
+    {
+      "id": "c2",
+      "kind": "report",
+      "stage": "build",
+      "turn": 3,
+      "iteration": 1,
+      "title": "built",
+      "payload": {
+        "summary": "built",
+        "tasks_done": true
+      },
+      "state": "unseen",
+      "created_at": "2026-10-01T08:00:00Z"
+    },
+    {
+      "id": "c3",
+      "kind": "report",
+      "stage": "review",
+      "turn": 7,
+      "iteration": 1,
+      "title": "reviewed",
+      "payload": {
+        "summary": "reviewed"
+      },
+      "state": "unseen",
+      "created_at": "2026-10-01T08:00:00Z"
+    },
+    {
+      "id": "c4",
+      "kind": "finding",
+      "stage": "review",
+      "turn": 7,
+      "iteration": 1,
+      "title": "nil deref",
+      "payload": {
+        "id": "f1",
+        "severity": "high",
+        "file": "a.go",
+        "line": 3,
+        "title": "nil deref",
+        "scenario": "nil input → panic"
+      },
+      "state": "decided",
+      "decision": "fix",
+      "created_at": "2026-10-01T08:00:00Z"
+    },
+    {
+      "id": "c5",
+      "kind": "finding",
+      "stage": "review",
+      "turn": 7,
+      "iteration": 1,
+      "title": "typo",
+      "payload": {
+        "id": "f2",
+        "severity": "low",
+        "file": "b.go",
+        "line": 9,
+        "title": "typo",
+        "scenario": "label reads wrong"
+      },
+      "state": "decided",
+      "decision": "dismiss",
+      "created_at": "2026-10-01T08:00:00Z"
+    },
+    {
+      "id": "c6",
+      "kind": "report",
+      "stage": "review",
+      "turn": 3,
+      "iteration": 1,
+      "title": "fixed",
+      "payload": {
+        "summary": "fixed"
+      },
+      "state": "unseen",
+      "created_at": "2026-10-01T08:00:00Z"
+    },
+    {
+      "id": "c7",
+      "kind": "report",
+      "stage": "review",
+      "turn": 7,
+      "iteration": 2,
+      "title": "reviewed",
+      "payload": {
+        "summary": "reviewed"
+      },
+      "state": "unseen",
+      "created_at": "2026-10-01T08:00:00Z"
+    }
+  ],
+  "pending_turn": "Verification passed and no accepted finding is open. Start the pr stage.",
+  "updated_at": "2026-10-01T08:00:00Z",
+  "base_commit": "0123456789abcdef0123456789abcdef01234567"
+}
+guidance:
+Focus mode — current stage: pr (iteration 1 of 3).
+Goal: goal
+Draft the pull request title and body for the approved work. Do not open, push or merge anything until the developer approves the PR gate.
+Language: write your reply and every human-readable value in the blocks (goal, task titles and done criteria, summaries, decisions and their options, risks, finding titles and scenarios) in the language the developer writes in — the language of the Goal above and of their messages in this conversation, not the language of these instructions. Keep code, commands, file paths, identifiers and stage ids as they are, and write a pull request title and body in the language the repository's commits and pull requests use.
+
+Approved tasks and their done criteria:
+1. t1 — done when: d1
+2. t2 — done when: d2
+Verification commands:
+- make test
+
+The approved plan changes only when the developer asks for it in this conversation (a new goal, or a verification command to add, drop or reword): then call the focus_plan_edit tool if you have it, or else add this block before the others, with only the fields that change (a list replaces the whole list; [] clears it):
+<focus-plan-edit>{"goal":"…","verify":["…"]}</focus-plan-edit>
+Never edit the plan on your own to get past a failing check.
+
+End your reply with a PR draft block and a report block:
+<focus-pr>{"title":"…","body":"…"}</focus-pr>
+<focus-report>{"summary":"…","decisions":[{"id":"d1","question":"…","options":["…","…"]}],"risks":["…"]}</focus-report>
+Put the block at the very end of your reply, outside any code fence, with valid JSON between the tags. If you include the block more than once, only the last one counts.
+

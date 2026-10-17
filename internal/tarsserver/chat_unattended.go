@@ -34,6 +34,16 @@ const unattendedPollInterval = 2 * time.Second
 
 const unattendedPlanMessage = "Plan mode: nobody is watching this run to approve a plan. Give the plan as your answer instead of starting the work."
 
+// unattendedReadOnlySources are the unattended turns that only read and
+// that nobody waits on: a call their mode would ask about is refused at
+// once, never queued for review. The second opinion review runs under its
+// own time limit in a hidden session; a queued Bash call there only sent the
+// person a "needs input" warning and ran the review out of time.
+var unattendedReadOnlySources = map[string]bool{focusSecondOpinionSource: true}
+
+const unattendedReadOnlyMessage = "Read-only review: commands and edits are not run here, and nobody is there to approve them. " +
+	"Use the diff in the prompt and read the files you need, then report."
+
 type unattendedPermissions struct {
 	ops      *ops.Manager
 	sessions *session.Store
@@ -148,6 +158,10 @@ func (g *unattendedToolGate) Authorize(ctx context.Context, call agentloop.ToolC
 	if g.perms.alwaysAllows(g.run.cwd, name, call.ToolArgs) {
 		return agentloop.ToolDecision{Allow: true}, nil
 	}
+	if unattendedReadOnlySources[g.run.source] {
+		g.perms.record(g.run, call.ToolName, "", "refused_read_only")
+		return agentloop.ToolDecision{Message: unattendedReadOnlyMessage}, nil
+	}
 	allowed, message, err := g.perms.ask(ctx, g.run, call.ToolName, []byte(call.ToolArgs), "")
 	if err != nil {
 		return agentloop.ToolDecision{}, err
@@ -167,6 +181,10 @@ func (u *unattendedPermissions) claudeCodeHandler(run unattendedRun) llm.ClaudeC
 		if req.ToolName == chatExitPlanModeTool {
 			u.record(run, req.ToolName, "", "refused_plan_approval")
 			return llm.ClaudeCodePermissionDecision{Message: unattendedPlanMessage}, nil
+		}
+		if unattendedReadOnlySources[run.source] {
+			u.record(run, req.ToolName, "", "refused_read_only")
+			return llm.ClaudeCodePermissionDecision{Message: unattendedReadOnlyMessage}, nil
 		}
 		allowed, message, err := u.ask(ctx, run, req.ToolName, req.Input, req.DecisionReason)
 		if err != nil {
