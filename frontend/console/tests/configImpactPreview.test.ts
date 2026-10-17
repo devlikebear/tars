@@ -76,5 +76,5 @@ test('Settings diff panel renders impact preview metadata', () => {
   assert.match(typesSource, /impact\?: string\[\]/)
   assert.match(configSource, /buildConfigImpactPreview/)
   assert.match(pendingChangesSource, /diff-impact/)
-  assert.match(pendingChangesSource, /Impact/)
+  assert.match(pendingChangesSource, /\$t\.config\.diff\.impact/)
 })

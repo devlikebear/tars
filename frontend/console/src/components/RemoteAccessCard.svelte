@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte'
+  import { t } from '../i18n'
   import { APIRequestError, changeBrowserPassword, disableRemoteAccess, enableRemoteAccess, getRemoteAccessStatus } from '../lib/api'
   import type { RemoteAccessCheck, RemoteAccessResponse, RemoteAccessStatus } from '../lib/types'
 
@@ -32,6 +33,10 @@
   let needsAdminPassword = $derived(failedChecks.some((check) => check.key === 'admin_password_configured'))
   let needsUserPassword = $derived(failedChecks.some((check) => check.key === 'user_password_configured'))
 
+  function checkMessage(check: RemoteAccessCheck): string {
+    return $t.remoteAccess.checks[check.key] ?? check.message
+  }
+
   async function load() {
     loading = true
     error = ''
@@ -53,7 +58,7 @@
 
   function messageForError(err: unknown): string {
     if (err instanceof APIRequestError) return err.message
-    return err instanceof Error ? err.message : 'Remote access request failed.'
+    return err instanceof Error ? err.message : $t.remoteAccess.genericError
   }
 
   async function handleEnable() {
@@ -63,7 +68,7 @@
     try {
       const next = await enableRemoteAccess(httpsPort)
       applyData(next)
-      success = 'Remote access enabled.'
+      success = $t.remoteAccess.enabled
     } catch (err) {
       error = messageForError(err)
       if (err instanceof APIRequestError && Array.isArray(err.payload?.checks)) {
@@ -84,7 +89,7 @@
     try {
       const next = await disableRemoteAccess(httpsPort)
       applyData(next)
-      success = 'Remote access disabled.'
+      success = $t.remoteAccess.disabled
     } catch (err) {
       error = messageForError(err)
     } finally {
@@ -96,7 +101,7 @@
     const url = data?.url?.trim()
     if (!url || typeof navigator === 'undefined') return
     await navigator.clipboard?.writeText(url)
-    success = 'URL copied.'
+    success = $t.remoteAccess.urlCopied
   }
 
   async function savePassword(role: 'admin' | 'user') {
@@ -109,7 +114,7 @@
       await changeBrowserPassword(role, { new_password: password })
       if (role === 'admin') adminPassword = ''
       if (role === 'user') userPassword = ''
-      success = `${role} password saved.`
+      success = $t.remoteAccess.passwordSaved(role)
       await load()
     } catch (err) {
       error = messageForError(err)
@@ -121,67 +126,67 @@
   onMount(() => { void load() })
 </script>
 
-<section class="remote-card" class:compact aria-label="Remote access">
+<section class="remote-card" class:compact aria-label={$t.remoteAccess.ariaLabel}>
   <div class="remote-card-head">
     <div>
-      <span class="remote-kicker">Remote Access</span>
-      <h3>Tailscale Serve</h3>
+      <span class="remote-kicker">{$t.remoteAccess.kicker}</span>
+      <h3>{$t.remoteAccess.title}</h3>
     </div>
     <span class="remote-status" class:on={serving && ownedByTARS} class:warn={serving && !ownedByTARS}>
       {#if loading}
-        Checking
+        {$t.remoteAccess.status.checking}
       {:else if serving && ownedByTARS}
-        Serving
+        {$t.remoteAccess.status.serving}
       {:else if serving}
-        Port in use
+        {$t.remoteAccess.status.portInUse}
       {:else if installed && loggedIn}
-        Idle
+        {$t.remoteAccess.status.idle}
       {:else}
-        Not ready
+        {$t.remoteAccess.status.notReady}
       {/if}
     </span>
   </div>
 
   {#if loading}
-    <div class="remote-muted">Checking Tailscale status...</div>
+    <div class="remote-muted">{$t.remoteAccess.checkingTailscale}</div>
   {:else}
     <div class="remote-facts">
-      <span>Tailscale: {installed ? (loggedIn ? 'logged in' : 'logged out') : 'not installed'}</span>
-      {#if hostName}<span>Device: {hostName}</span>{/if}
-      {#if tailnetURL}<span>URL: {tailnetURL}</span>{/if}
-      {#if serving}<span>HTTPS: {servePort}</span>{/if}
+      <span>{installed ? (loggedIn ? $t.remoteAccess.tailscaleLoggedIn : $t.remoteAccess.tailscaleLoggedOut) : $t.remoteAccess.tailscaleNotInstalled}</span>
+      {#if hostName}<span>{$t.remoteAccess.device(hostName)}</span>{/if}
+      {#if tailnetURL}<span>{$t.remoteAccess.url(tailnetURL)}</span>{/if}
+      {#if serving}<span>{$t.remoteAccess.https(servePort)}</span>{/if}
     </div>
 
     {#if data?.url}
       <div class="remote-url-row">
         <code>{data.url}</code>
-        <button type="button" class="btn btn-ghost btn-sm" onclick={copyURL}>Copy</button>
+        <button type="button" class="btn btn-ghost btn-sm" onclick={copyURL}>{$t.remoteAccess.copy}</button>
       </div>
     {/if}
 
     <div class="remote-controls">
       <label>
-        <span>HTTPS port</span>
-        <input type="number" min="1" max="65535" bind:value={httpsPort} />
+        <span>{$t.remoteAccess.httpsPortLabel}</span>
+        <input class="config-control-input" type="number" min="1" max="65535" bind:value={httpsPort} />
       </label>
       {#if data?.desired_enabled}
         <button type="button" class="btn btn-ghost btn-sm" disabled={busy} onclick={handleDisable}>
-          {busy ? 'Working...' : 'Disable'}
+          {busy ? $t.remoteAccess.working : $t.remoteAccess.disable}
         </button>
       {:else}
         <button type="button" class="btn btn-primary btn-sm" disabled={busy} onclick={handleEnable}>
-          {busy ? 'Working...' : 'Enable'}
+          {busy ? $t.remoteAccess.working : $t.remoteAccess.enable}
         </button>
       {/if}
-      <button type="button" class="btn btn-ghost btn-sm" disabled={busy} onclick={load}>Refresh</button>
+      <button type="button" class="btn btn-ghost btn-sm" disabled={busy} onclick={load}>{$t.remoteAccess.refresh}</button>
     </div>
 
     {#if failedChecks.length > 0}
       <div class="remote-checks" role="status">
         {#each failedChecks as check}
           <div class="remote-check">
-            <strong>{check.key.replaceAll('_', ' ')}</strong>
-            <span>{check.message}</span>
+            <strong class="remote-check-code">{check.key.replaceAll('_', ' ')}</strong>
+            <span>{checkMessage(check)}</span>
           </div>
         {/each}
       </div>
@@ -191,16 +196,16 @@
       <div class="remote-passwords">
         {#if needsAdminPassword}
           <label>
-            <span>Admin password</span>
-            <input type="password" bind:value={adminPassword} autocomplete="new-password" />
-            <button type="button" class="btn btn-ghost btn-sm" disabled={busy || !adminPassword.trim()} onclick={() => savePassword('admin')}>Save</button>
+            <span>{$t.remoteAccess.adminPasswordLabel}</span>
+            <input class="config-control-input" type="password" bind:value={adminPassword} autocomplete="new-password" />
+            <button type="button" class="btn btn-ghost btn-sm" disabled={busy || !adminPassword.trim()} onclick={() => savePassword('admin')}>{$t.remoteAccess.save}</button>
           </label>
         {/if}
         {#if needsUserPassword}
           <label>
-            <span>User password</span>
-            <input type="password" bind:value={userPassword} autocomplete="new-password" />
-            <button type="button" class="btn btn-ghost btn-sm" disabled={busy || !userPassword.trim()} onclick={() => savePassword('user')}>Save</button>
+            <span>{$t.remoteAccess.userPasswordLabel}</span>
+            <input class="config-control-input" type="password" bind:value={userPassword} autocomplete="new-password" />
+            <button type="button" class="btn btn-ghost btn-sm" disabled={busy || !userPassword.trim()} onclick={() => savePassword('user')}>{$t.remoteAccess.save}</button>
           </label>
         {/if}
       </div>
@@ -314,14 +319,11 @@
     font-size: var(--text-sm);
   }
 
-  input {
+  /* .config-control-input (ConfigControl.svelte) gives the port/password
+     inputs here the same height, font and border as every other settings
+     control (#1242). */
+  .remote-controls .config-control-input {
     width: 92px;
-    height: 32px;
-    border-radius: var(--radius-md);
-    border: 1px solid var(--border-subtle);
-    background: var(--surface-inset);
-    color: var(--text-primary);
-    padding: 0 var(--space-2);
   }
 
   .remote-checks {
@@ -340,7 +342,7 @@
     align-items: center;
   }
 
-  .remote-passwords input {
+  .remote-passwords .config-control-input {
     width: 100%;
   }
 
@@ -387,7 +389,7 @@
       flex-direction: column;
     }
 
-    input {
+    .remote-controls .config-control-input {
       width: 100%;
     }
 

@@ -25,6 +25,8 @@ import { contextPanelsEn } from './sections/contextPanels.ts'
 import { tasksPanelEn } from './sections/tasksPanel.ts'
 import { agentRuntimeRunEn } from './sections/agentRuntimeRun.ts'
 import { companionEn } from './sections/companion.ts'
+import { configEn } from './sections/config.ts'
+import { remoteAccessEn } from './sections/remoteAccess.ts'
 
 export const en = {
   common: {
@@ -652,41 +654,6 @@ export const en = {
     kicker: 'Setup wizard',
     body: 'Re-run the wizard to quickly reconfigure the provider or tier bindings. Existing values are prefilled.',
     button: 'Re-run setup wizard →',
-  },
-  config: {
-    confirmRestart: 'Confirm restart',
-    reconnect: 'Reconnect',
-
-    searchSettings: 'Search settings',
-    sectionSettings: 'Section',
-    allSections: 'All sections',
-    savedPending: 'Saved; restart required to apply. Environment overrides take precedence.',
-    applied: 'Runtime matches effective configuration.',
-    saveApply: 'Save and apply',
-    reconnecting: 'Restart requested; checking reconnection and runtime settings…',
-    reconnectFailed: 'Could not confirm restart. Check the server, address and authentication; retry reconnecting or restart manually. Saved settings are retained.',
-    invalidValue: 'Invalid value',
-
-    pageTitle: 'Settings',
-    save: 'Save',
-    saving: 'Saving...',
-    discard: 'Discard',
-    changedSuffix: (count) => `${count} changed`,
-    viewChangesTooltip: 'View changes',
-    loading: 'Loading configuration...',
-    noConfigFile: 'No config file configured. Start TARS with --config <path> to manage settings.',
-    quickStartKicker: 'Essential setup',
-    quickStartTitle: 'Quick Start',
-    quickStartReady: (ready, total) => `${ready}/${total} ready`,
-    defaultPrefix: (value) => `Default ${value}`,
-    clickToToggle: 'Click to toggle',
-    clickToEdit: 'Click to edit',
-    on: 'ON',
-    off: 'OFF',
-    selectNone: '(none)',
-    workspaceResetSuccess: (removed) => `Workspace reset: ${removed} items removed. Restart TARS to reinitialize.`,
-    failedResetWorkspace: 'Failed to reset workspace',
-    editInWizard: 'Edit in wizard',
   },
   cron: {
     eyebrow: 'Operate',
@@ -1545,4 +1512,6 @@ export const en = {
   tasksPanel: tasksPanelEn,
   agentRuntimeRun: agentRuntimeRunEn,
   companion: companionEn,
+  config: configEn,
+  remoteAccess: remoteAccessEn,
 } satisfies Translations

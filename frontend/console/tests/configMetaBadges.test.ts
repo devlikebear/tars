@@ -2,13 +2,20 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
-import { buildConfigMetaBadges, formatRelativeConfigTime } from '../src/lib/configMetaBadges.ts'
+import { buildConfigMetaBadges } from '../src/lib/configMetaBadges.ts'
 import type { ConfigFieldMeta } from '../src/lib/types.ts'
 
-const configSource = readFileSync(new URL('../src/components/Config.svelte', import.meta.url), 'utf8')
-const typesSource = readFileSync(new URL('../src/lib/types.ts', import.meta.url), 'utf8')
+const configRowSource = readFileSync(new URL('../src/components/ConfigFieldRow.svelte', import.meta.url), 'utf8')
 
-test('config meta badges distinguish defaults, restart fields, and secrets', () => {
+const text = {
+  changed: 'Changed',
+  changedTitleDirty: 'Pending change differs from the default value.',
+  changedTitleSaved: 'Current value differs from the default value.',
+  secret: 'Secret',
+  secretTitle: 'Value is masked in the form view.',
+}
+
+test('config meta badges only call out changed and secret fields', () => {
   const field: ConfigFieldMeta = {
     key: 'pulse_interval',
     path: 'pulse.interval',
@@ -20,35 +27,37 @@ test('config meta badges distinguish defaults, restart fields, and secrets', () 
     requires_restart: true,
   }
 
-  const badges = buildConfigMetaBadges(field, '1m', false, '2026-05-01T00:00:00Z', new Date('2026-05-01T00:30:00Z'))
-  assert.deepEqual(badges.map((badge) => badge.label), ['default', 'requires restart'])
+  // Matches the default and isn't dirty: no badges at all.
+  assert.deepEqual(buildConfigMetaBadges(field, '1m', false, text), [])
 
-  const modified = buildConfigMetaBadges({ ...field, sensitive: true }, '30s', true, undefined)
-  assert.deepEqual(modified.map((badge) => badge.label), ['modified just now', 'requires restart', 'secret'])
+  // Saved value differs from default, but not pending: "changed" with the
+  // saved-state title.
+  const saved = buildConfigMetaBadges(field, '30s', false, text)
+  assert.deepEqual(saved.map((b) => b.label), ['Changed'])
+  assert.equal(saved[0].title, text.changedTitleSaved)
+
+  // Pending edit: "changed" with the dirty-state title, plus "secret" when
+  // the field is sensitive.
+  const dirty = buildConfigMetaBadges({ ...field, sensitive: true }, '45s', true, text)
+  assert.deepEqual(dirty.map((b) => b.label), ['Changed', 'Secret'])
+  assert.equal(dirty[0].title, text.changedTitleDirty)
 })
 
-test('config meta badges render live and relative modified labels', () => {
+test('secret-only fields still get a badge even when unchanged', () => {
   const field: ConfigFieldMeta = {
-    key: 'log_level',
-    path: 'log.level',
-    section: 'Runtime',
-    type: 'select',
-    label: 'Log Level',
-    description: 'Logging verbosity',
-    default_value: 'info',
-    requires_restart: false,
+    key: 'api_admin_token',
+    path: 'api.admin_token',
+    section: 'API',
+    type: 'string',
+    label: 'Admin Token',
+    description: 'Admin token',
+    sensitive: true,
   }
-
-  const badges = buildConfigMetaBadges(field, 'debug', false, '2026-05-01T00:00:00Z', new Date('2026-05-01T02:00:00Z'))
-  assert.deepEqual(badges.map((badge) => badge.label), ['modified 2h ago', 'live'])
-  assert.equal(formatRelativeConfigTime('2026-05-01T00:00:00Z', new Date('2026-05-01T00:00:20Z')), 'just now')
+  const badges = buildConfigMetaBadges(field, 'secret-value', false, text)
+  assert.deepEqual(badges.map((b) => b.label), ['Secret'])
 })
 
-test('Settings field rows render config meta badge metadata', () => {
-  assert.match(typesSource, /default_value\?: unknown/)
-  assert.match(typesSource, /requires_restart\?: boolean/)
-  assert.match(typesSource, /updated_at\?: string/)
-  assert.match(configSource, /buildConfigMetaBadges/)
-  assert.match(configSource, /field-meta-badges/)
-  assert.match(configSource, /badge-restart/)
+test('field rows render the simplified meta badges', () => {
+  assert.match(configRowSource, /buildConfigMetaBadges/)
+  assert.match(configRowSource, /badge-changed/)
 })

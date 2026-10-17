@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { t } from '../i18n'
+
   type ConfigDiffEntry = {
     key: string
     label: string
@@ -18,8 +20,8 @@
 
 <div class="diff-panel card">
   <div class="card-header">
-    <span class="card-title">Pending Changes</span>
-    <button class="btn btn-ghost btn-sm" onclick={onClose}>Close</button>
+    <span class="card-title">{$t.config.diff.title}</span>
+    <button class="btn btn-ghost btn-sm" onclick={onClose}>{$t.config.diff.close}</button>
   </div>
   <div class="diff-body">
     {#each entries as entry}
@@ -34,8 +36,8 @@
           <span class="diff-new">{entry.newVal}</span>
         </div>
         {#if entry.impact.length > 0}
-          <div class="diff-impact" aria-label={`${entry.label} Impact`}>
-            <span class="diff-impact-title">Impact</span>
+          <div class="diff-impact" aria-label={`${entry.label} ${$t.config.diff.impact}`}>
+            <span class="diff-impact-title">{$t.config.diff.impact}</span>
             <ul>
               {#each entry.impact as item}
                 <li>{item}</li>
@@ -66,7 +68,7 @@
 
   .diff-field { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
   .diff-label { font-family: var(--font-display); font-weight: 500; color: var(--text-primary); }
-  .diff-key { font-family: var(--font-mono); font-size: 10px; color: var(--text-ghost); }
+  .diff-key { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--text-ghost); }
 
   .diff-values { display: flex; align-items: center; gap: var(--space-2); flex-shrink: 0; font-family: var(--font-mono); }
   .diff-old { color: var(--red); text-decoration: line-through; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

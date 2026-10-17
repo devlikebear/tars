@@ -7,14 +7,29 @@ export type ConfigDisplaySummary = {
   raw: string
 }
 
-export function formatConfigDisplayValue(value: unknown): ConfigDisplaySummary {
+// `text` carries the current-language words for array/object summaries
+// (i18n/sections/config.ts `values`); defaults keep English for callers
+// (and existing tests) that pass none.
+export interface ConfigValueText {
+  items: (count: number) => string
+  keys: (count: number) => string
+  empty: string
+}
+
+const defaultValueText: ConfigValueText = {
+  items: (count) => `${count} ${count === 1 ? 'item' : 'items'}`,
+  keys: (count) => `${count} ${count === 1 ? 'key' : 'keys'}`,
+  empty: '-',
+}
+
+export function formatConfigDisplayValue(value: unknown, text: ConfigValueText = defaultValueText): ConfigDisplaySummary {
   if (value === undefined || value === null || value === '') {
-    return { kind: 'empty', text: '-', preview: [], raw: '-' }
+    return { kind: 'empty', text: text.empty, preview: [], raw: text.empty }
   }
   if (Array.isArray(value)) {
     return {
       kind: 'array',
-      text: `${value.length} ${value.length === 1 ? 'item' : 'items'}`,
+      text: text.items(value.length),
       preview: value.slice(0, 3).map((item) => previewValue(item)),
       raw: prettyConfigJSON(value),
     }
@@ -23,7 +38,7 @@ export function formatConfigDisplayValue(value: unknown): ConfigDisplaySummary {
     const keys = sortStrings(Object.keys(value as Record<string, unknown>))
     return {
       kind: 'object',
-      text: `${keys.length} ${keys.length === 1 ? 'key' : 'keys'}`,
+      text: text.keys(keys.length),
       preview: keys.slice(0, 4),
       raw: prettyConfigJSON(value),
     }
