@@ -88,7 +88,9 @@ const (
 	anthropicMaxCacheBreakpoints = 4
 	// anthropicMaxMessageCacheBreakpoints caps how many of the remaining
 	// slots this client spends on the message array. Two are enough for a
-	// rolling window: the newest completed turn plus one older fallback.
+	// rolling window: the newest point the next request will read from (an
+	// in-flight tool result, or the newest completed turn) plus one older
+	// fallback.
 	anthropicMaxMessageCacheBreakpoints = 2
 )
 
@@ -507,20 +509,29 @@ func toAnthropicSystemBlocks(systemMessages []string) []map[string]any {
 // message array so a growing conversation reuses its prefix instead of paying
 // full input rates every turn.
 //
-// Markers land only on completed turns: the newest sits on the last message of
-// the most recent completed turn — making everything before the incoming turn
-// one cacheable prefix — and the second sits on the turn before it. That
-// second marker is the fallback: it is the position the previous request
-// marked as its newest, so it is already warm, and it survives a change that
-// invalidates only the newer prefix.
+// When the request ends on a tool result — an agent loop sending back what its
+// tools returned — the newest marker goes on that result. The loop appends each
+// tool exchange to the same slice and re-sends it, so the next iteration reads
+// everything up to here from the cache and pays full rates only for the one
+// exchange it adds. Without this marker every iteration re-sent the whole turn
+// so far uncached: a turn of forty tool calls that each read a scene paid for
+// the first scene forty times, and the first turn of a conversation — with no
+// completed turn to mark — cached nothing past the tools and system prompt.
+// Each iteration's marker sits a few positions after the previous one, well
+// inside the provider's 20-block lookback.
 //
-// The trailing group of messages (the incoming user message plus any in-flight
-// tool exchanges) never gets one. Note this is a deliberately conservative
-// choice, not a free one: agent.Loop appends each tool exchange to the same
-// slice and re-sends it, so a marker on a completed in-flight tool_result
-// WOULD be read by the next loop iteration. Placing one there is the obvious
-// next step for cutting tool-loop cost; it is kept out of scope here so the
-// placement rule stays "completed turns only".
+// A tail that is a fresh user message gets no marker. One-shot callers (Ask, a
+// summariser) end on a prompt that is never sent again, and a marker there
+// would only buy a cache write at 1.25x that nothing reads back.
+//
+// The remaining slots go to completed turns: the newest on the last message of
+// the most recent completed turn — making everything before the incoming turn
+// one cacheable prefix — and, budget permitting, the turn before it. That
+// older marker is the fallback: it is the position the previous request
+// marked as its newest, so it is already warm, and it survives a change that
+// invalidates only the newer prefix. The completed-turn marker is also what
+// the next turn falls back on, since a caller that does not replay its tool
+// exchanges diverges from this request right after the incoming message.
 //
 // Budget comes from anthropicMessageCacheBudget, so a request that already
 // spends breakpoints on system blocks and tools simply places fewer here.
@@ -538,8 +549,11 @@ func applyAnthropicRollingCacheBreakpoints(wire []anthropicWireMessage, messages
 	if budget == 0 {
 		return
 	}
-	ends := anthropicCompletedTurnEndIndexes(messages)
 	placed := 0
+	if last := len(messages) - 1; messages[last].Role == "tool" && markAnthropicCacheBreakpoint(&wire[last]) {
+		placed++
+	}
+	ends := anthropicCompletedTurnEndIndexes(messages)
 	for i := len(ends) - 1; i >= 0 && placed < budget; i-- {
 		if markAnthropicCacheBreakpoint(&wire[ends[i]]) {
 			placed++
