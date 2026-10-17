@@ -142,7 +142,7 @@ func goalJudgeWindow(state chatRunState, lastResp llm.ChatResponse) []llm.ChatMe
 	for i := len(state.llmMessages) - 1; i >= 0; i-- {
 		m := state.llmMessages[i]
 		if strings.EqualFold(strings.TrimSpace(m.Role), "user") {
-			window = append(window, m)
+			window = append(window, withoutTurnContext(m))
 			break
 		}
 	}

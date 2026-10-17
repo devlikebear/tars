@@ -67,12 +67,12 @@ func createFallbackChatSession(store *session.Store) (string, error) {
 
 type preparedChatContext struct {
 	// SystemPrompt holds only the turn-stable region. Callers keep appending
-	// their own static sections to it and must emit SystemPromptTail last —
-	// see the ordering invariant on prompt.BuildResultFor.
+	// their own static sections to it — see the ordering invariant on
+	// prompt.BuildResultFor.
 	SystemPrompt string
 	// SystemPromptTail is the per-turn region (prior-context recall, current
-	// time). It closes the assembled system prompt so everything ahead of it
-	// stays a matchable provider cache prefix.
+	// time). buildLLMMessagesWithTail sends it on the user turn, after the
+	// history, so the system prompt and history stay a provider cache prefix.
 	SystemPromptTail           string
 	SystemPromptTokens         int
 	RelevantMemoryCount        int
@@ -80,23 +80,6 @@ type preparedChatContext struct {
 	RelevantMemorySection      string
 	RelevantMemoryItems        []prompt.RelevantMemoryItem
 	RelevantMemoryBudgetTokens int
-}
-
-func prepareChatContextWithExtensions(
-	workspaceDir string,
-	sessionID string,
-	userMessage string,
-	extSnapshot extensions.Snapshot,
-	invokedSkill *skill.Definition,
-	semanticCfg ...memory.SemanticConfig,
-) (systemPrompt string, err error) {
-	details, err := prepareChatContextDetailsWithExtensions(workspaceDir, sessionID, userMessage, extSnapshot, invokedSkill, semanticCfg...)
-	if err != nil {
-		return "", err
-	}
-	// Single-string callers (telegram, previews) get the dynamic tail folded
-	// back on at the end — same order the split assembler produces.
-	return details.SystemPrompt + details.SystemPromptTail, nil
 }
 
 func prepareChatContextDetailsWithExtensions(
@@ -259,22 +242,35 @@ func buildLLMMessagesWithBlocks(systemPrompt string, history []session.Message, 
 	return buildLLMMessagesWithTail(systemPrompt, "", history, userMessage, contentBlocks)
 }
 
-// buildLLMMessagesWithTail emits the turn-stable prompt and the per-turn tail
-// as two adjacent system messages. Providers concatenate system messages in
-// order, so the rendered prompt is unchanged — but keeping them separate lets
-// the Anthropic client put its cache_control breakpoint at the end of the
-// stable block instead of after the volatile one, where it could never hit.
-// An empty tail collapses back to a single system message.
+// buildLLMMessagesWithTail sends the per-turn tail (recall, clock) after the
+// user's own words in this request's user message, never as a system message.
+// Every client folds system messages ahead of the conversation (Anthropic's
+// system field, Gemini's systemInstruction, Codex instructions, the CLI
+// system prompt), so a tail there moved the prefix in front of the history
+// each turn and no provider cache ever reused a previous turn. The tail is
+// not saved in the transcript, so the next turn replays this user message
+// without it and everything up to the user's words stays a matching prefix.
 func buildLLMMessagesWithTail(systemPrompt, systemTail string, history []session.Message, userMessage string, contentBlocks []llm.ContentBlock) []llm.ChatMessage {
-	llmMessages := make([]llm.ChatMessage, 0, len(history)+3)
+	llmMessages := make([]llm.ChatMessage, 0, len(history)+2)
 	llmMessages = append(llmMessages, llm.ChatMessage{Role: "system", Content: systemPrompt})
-	if strings.TrimSpace(systemTail) != "" {
-		llmMessages = append(llmMessages, llm.ChatMessage{Role: "system", Content: systemTail})
-	}
 	llmMessages = append(llmMessages, buildLLMMessageHistory(history)...)
-	msg := llm.ChatMessage{Role: "user", Content: userMessage, ContentBlocks: contentBlocks}
-	llmMessages = append(llmMessages, msg)
+	content := userMessage
+	if tail := strings.TrimSpace(systemTail); tail != "" {
+		content += turnContextOpen + tail + "\n</turn-context>"
+	}
+	llmMessages = append(llmMessages, llm.ChatMessage{Role: "user", Content: content, ContentBlocks: contentBlocks})
 	return llmMessages
+}
+
+const turnContextOpen = "\n\n<turn-context>\n"
+
+// withoutTurnContext returns the user message as the user wrote it, for
+// reviewers that read the request back and have no use for recall or clock.
+func withoutTurnContext(msg llm.ChatMessage) llm.ChatMessage {
+	if i := strings.LastIndex(msg.Content, turnContextOpen); i >= 0 {
+		msg.Content = msg.Content[:i]
+	}
+	return msg
 }
 
 // systemPromptTokens estimates the whole system prompt, which the assembler

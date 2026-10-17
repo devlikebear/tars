@@ -250,3 +250,17 @@ func TestGoalJudgeWindowCarriesToolEvidence(t *testing.T) {
 		t.Fatalf("evidence is %d bytes (cap %d), valid utf8 %v", len(evidence), goal.MaxRecentMessageContentChars, utf8.ValidString(evidence))
 	}
 }
+
+func TestGoalJudgeWindowSeesOnlyTheUsersWords(t *testing.T) {
+	_, state, _, _, _ := newGoalHookFixture(t, `{"satisfied": true, "reason": "ok"}`)
+	state.llmMessages = buildLLMMessagesWithTail("sys", "## Current Time\n\nCurrent time: 2026-10-17T07:00:00Z", nil, "do it", nil)
+	reply := llm.ChatResponse{Message: llm.ChatMessage{Role: "assistant", Content: "done"}}
+
+	window := goalJudgeWindow(state, reply)
+	if window[0].Content != "do it" {
+		t.Fatalf("the judge should see the request without turn context, got %q", window[0].Content)
+	}
+	if got := criticReviewWindow(state, reply)[0].Content; got != "do it" {
+		t.Fatalf("the critic should see the request without turn context, got %q", got)
+	}
+}

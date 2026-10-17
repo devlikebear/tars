@@ -93,7 +93,9 @@ func Build(opts BuildOptions) string {
 // Static (in order): Response Formatting, Language, Planning, Long-running Commands,
 // workspace bootstrap sections, Working Directories.
 // Dynamic (BuildResult.DynamicTail, appended last): "## Prior Context"
-// recall, then "## Current Time".
+// recall, then "## Current Time". The chat handler sends the tail on the
+// user turn instead of the system prompt, so the history stays in the
+// cacheable prefix too.
 //
 // The identity line (\"You are TARS, a personal AI assistant.\") was
 // removed from the hardcoded header in ID-002(a). It now lives in the

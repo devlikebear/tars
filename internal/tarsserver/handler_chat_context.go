@@ -254,10 +254,9 @@ func buildSessionChatRunState(
 		systemPrompt += hint
 	}
 
-	// contextDetails.SystemPromptTail closes the assembled prompt: everything
-	// appended above (skills, override, style, goal, critic, mention hints) is
-	// stable for the session, so it belongs ahead of the per-turn recall and
-	// clock. See the ordering invariant on prompt.BuildResultFor.
+	// Everything appended above (skills, override, style, goal, critic,
+	// mention hints) goes in the system prompt. The per-turn recall and clock
+	// ride on the user turn, behind the history.
 	llmMessages := buildLLMMessagesWithTail(systemPrompt, contextDetails.SystemPromptTail, history, userMessage, contentBlocks)
 	// Drain any pending critic feedback queued by the async reviewer on a
 	// previous turn. Injected as a system-role message right before the

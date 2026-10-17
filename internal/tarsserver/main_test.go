@@ -1159,10 +1159,11 @@ func TestPrepareChatContextWithExtensions_InvokedSkillHint(t *testing.T) {
 		SkillPrompt: skill.FormatAvailableSkills([]skill.Definition{def}),
 	}
 
-	systemPrompt, err := prepareChatContextWithExtensions(root, "", "/deploy 지금 배포", snapshot, &def)
+	details, err := prepareChatContextDetailsWithExtensions(root, "", "/deploy 지금 배포", snapshot, &def)
 	if err != nil {
 		t.Fatalf("prepare chat context: %v", err)
 	}
+	systemPrompt := details.SystemPrompt
 	if !strings.Contains(systemPrompt, "<available_skills>") {
 		t.Fatalf("expected available skills block in prompt, got %q", systemPrompt)
 	}
@@ -1205,10 +1206,11 @@ func TestPrepareChatContextWithExtensions_PassesThroughAllSkillsWithoutProject(t
 		}),
 	}
 
-	systemPrompt, err := prepareChatContextWithExtensions(root, "sess-1", "/novelist start planning", snapshot, nil)
+	details, err := prepareChatContextDetailsWithExtensions(root, "sess-1", "/novelist start planning", snapshot, nil)
 	if err != nil {
 		t.Fatalf("prepare chat context: %v", err)
 	}
+	systemPrompt := details.SystemPrompt
 	// Without project filtering, all skills should pass through
 	if !strings.Contains(systemPrompt, "<name>novelist</name>") {
 		t.Fatalf("expected novelist skill in prompt, got %q", systemPrompt)
