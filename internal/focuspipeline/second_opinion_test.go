@@ -295,7 +295,7 @@ func TestSecondOpinionPrompt(t *testing.T) {
 	p, _ := reviewTurn(t, inReviewSO(t), twoFindings())
 	p.Review.Dismissed = []DismissedFinding{{File: "z.go", Line: 2, Title: "old"}}
 	got := SecondOpinionPrompt(p, "CHANGE-BODY\n")
-	for _, want := range []string{"second opinion", "Goal of the change: goal", "z.go:2 — old", "<focus-findings>[", "CHANGE-BODY"} {
+	for _, want := range []string{"second opinion", "do not run commands", "Goal of the change: goal", "z.go:2 — old", "<focus-findings>[", "CHANGE-BODY"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("prompt misses %q:\n%s", want, got)
 		}

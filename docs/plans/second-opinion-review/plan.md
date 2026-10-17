@@ -239,6 +239,7 @@ jq -r '.cards[]? | select(.kind=="finding") | (.payload | fromjson? // .) as $f 
 - **tier는 실행할 때도 다시 확인한다.** 생성 뒤 설정이 바뀌어 tier가 풀리지 않거나 antigravity-cli가 되면 `unavailable` notice로 끝난다. 생성 시 400 검증은 계획대로다(드라이버가 tier 확인기·러너를 갖지 못한 서버는 `second_opinion` 요청에 503).
 - **notice 카드의 제목과 한 줄은 콘솔이 현지화한다**(`secondOpinionNotice`). 렌더러는 그대로이고 제목·본문 문자열만 바꾼다. interrupted 게이트도 세컨드 오피니언일 때 따로 문구를 쓴다.
 - **세컨드 오피니언 카드의 `turn`은 0이다.** 메인 세션 transcript의 턴에서 온 카드가 아니다.
+- **물어야 할 도구 호출은 큐에 올리지 않고 거절한다(수동 확인에서 나온 결함).** 계획은 "plan 권한"만 말했다. 그런데 plan 모드의 claude-code-cli는 Bash 호출을 권한 질문으로 보내고, 무인 턴의 질문은 ops 승인 큐(`tool_permission`)로 가서 "Needs input" 경고를 보낸 채 답을 기다렸다. 아무도 답하지 않아 10분 상한에 걸려 리뷰 없이 `timeout`으로 끝났다(#1281 수동 확인, 목표 모드, light/haiku). 이제 `focus_second_opinion` 출처의 무인 턴은 물어야 할 호출을 즉시 거절하고("read-only review" 메시지) 모델은 읽기로 이어간다 — Claude Code 권한 질문과 네이티브 게이트 둘 다(`unattendedReadOnlySources`). 읽기 도구와 폴더의 always-allow 규칙은 그대로 통과한다. 프롬프트에도 "명령을 실행하지 말 것"을 넣었다. Q&A(`focus_qa`)는 같은 큐 경로를 타지만 바꾸지 않았다: 콘솔에서 방금 질문한 사람이 있어 승인할 수 있고, 10분 상한도 없다. 시간 상한에 걸린 실패는 로그에 상한(`limit`)을 원인으로 적고 provider 오류는 `provider_error`로 따로 남긴다(전에는 CLI의 "no output for 15m0s"만 보였다).
 - **골든 테스트는 새로 만들었다.** 저장소에 없었다. 기능보다 먼저 커밋(`30421b0c`)해서, 옵트인 없는 파이프라인의 JSON·가이던스가 그 시점과 같음을 보인다.
 
 ---

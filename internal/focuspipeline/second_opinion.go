@@ -226,7 +226,7 @@ func SecondOpinionPrompt(p Pipeline, change string) string {
 	var b strings.Builder
 	b.WriteString("You are giving a second opinion on a change: review it independently of any other review. " +
 		"Read the repository's files if you need more context, but do not edit, create or delete any file and " +
-		"do not run a command that changes anything.\n")
+		"do not run commands — not tests, not git: they are refused here, and the diff below is the change to review.\n")
 	if goal := strings.TrimSpace(p.Goal); goal != "" {
 		fmt.Fprintf(&b, "Goal of the change: %s\n", goal)
 	}

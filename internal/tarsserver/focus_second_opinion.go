@@ -218,10 +218,13 @@ func (d *focusDriver) secondOpinionResult(ctx context.Context, sessionID string,
 }
 
 func focusSecondOpinionFailure(ctx context.Context, err error, log zerolog.Logger) focuspipeline.SecondOpinionResult {
-	log.Info().Err(err).Msg("focus: second opinion turn ended without a review")
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		// The review's own limit cut the turn; the provider's error (a CLI's
+		// "no output" timeout, say) only says how the cut reached it.
+		log.Info().Dur("limit", focusSecondOpinionTimeout).Str("provider_error", err.Error()).Msg("focus: second opinion review hit its time limit")
 		return focuspipeline.SecondOpinionResult{Outcome: focuspipeline.SecondOpinionTimeout}
 	}
+	log.Info().Err(err).Msg("focus: second opinion turn ended without a review")
 	return focuspipeline.SecondOpinionResult{Outcome: focuspipeline.SecondOpinionError}
 }
 
