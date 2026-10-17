@@ -25,6 +25,13 @@ Last reviewed: 2026-10-10. Start an isolated instance with `make build` then `bi
 - Healthy result: triage progress counts the new card as decided (`1 / 3 decided`), its card carries the *added by you* badge, and the fix turn's prompt ("Fix these findings: …") lists it with `(added by the developer)`. Outside review/pr_review, behind a blocked gate or at the merge gate the input is hidden and the API answers 409 with the current pipeline; no title is 400.
 - Evidence: `go test ./internal/focuspipeline -run 'AddFinding|AddedFinding|DeveloperFindings' -v`, `go test ./internal/tarsserver -run TestFocusDeveloperFinding -v`; console: `cd frontend/console && npx playwright test e2e/focus.spec.ts -g "developer adds"`.
 
+### Second opinion review
+- Kind: API / console UI (opt-in per pipeline, off by default)
+- Reach: `POST /v1/focus/pipelines` with `second_opinion: {tier: "heavy"|"standard"|"light"}`; on the focus home's New task form, the **Second opinion review** checkbox and its tier select (`FocusNewTask.svelte`). Rules: `docs/decisions/focus-mode.md` §5.1.
+- Drive: map a tier to another provider or model than chat's, start a task with the box ticked on that tier, run it to its review stage. The progress line reads *Reviewing · second opinion review · <tier>* while the hidden worker session reviews the diff; then triage opens.
+- Healthy result: triage holds the stage's own findings plus the second opinion's new ones (*second opinion* badge); a finding both reported is one card with a *both reviews* badge. The fix prompt marks second-opinion findings `(second opinion: <tier>)`; the round after a fix gets none; `pipeline.json` has `second_opinion.done: ["review"]` and the worker session id, and the pipeline's own transcript has no second-opinion turn. A tier on antigravity-cli or unmapped is a 400 at create; one with chat's own model answers `second_opinion_warning`. A failed review leaves a *second opinion not received* notice and the round goes on. A pipeline without the option has no `second_opinion` in its file.
+- Evidence: `go test ./internal/focuspipeline -run 'SecondOpinion|NoOptInGolden' -v`, `go test ./internal/focusprobe -run ReviewDiff -v`, `go test ./internal/tarsserver -run 'SecondOpinion' -v`; console: `cd frontend/console && node --experimental-strip-types --test tests/focus.test.ts` and `npx playwright test e2e/focus.spec.ts -g "second opinion"` (mock LLM `[e2e:focus-second-opinion]`, `[e2e:focus-second-opinion-noblock]`).
+
 ## Computer use
 
 ### Desktop action tool

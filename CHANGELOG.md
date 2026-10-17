@@ -6,6 +6,10 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+### Added
+
+- **Focus mode can ask a second model to review the change before merge.** A task started with the new *Second opinion review* box (off by default; `second_opinion: {tier}` on `POST /v1/focus/pipelines`) has the first round of each review stage reviewed once more on the tier you pick — read-only, in a hidden worker session, from the diff the server reads, without seeing the first review's findings. Its findings join the same triage with a *second opinion* badge, and one both reviews reported becomes a single card marked *both reviews* (decided by file, title and line, not by asking a model). It never changes a stage transition or goal mode's policy: a failed review leaves a notice and the round goes on, and a restart mid-review raises the interrupted gate, whose retry runs it again. Creating refuses a tier that does not resolve or runs on antigravity-cli, and warns when the tier is chat's own model. ([#1281](https://github.com/devlikebear/tars/issues/1281))
+
 ## [0.63.0] - 2026-10-17
 
 ### Added

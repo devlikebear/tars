@@ -1,6 +1,6 @@
 # 세컨드 오피니언 리뷰 — 계획
 
-> 상태: 계획 확정, 미착수 (2026-10-17) · 기준 커밋: `9907a083` (main) · 예상 2~3일(1인), PR 1~2개
+> 상태: 구현 PR 리뷰 중 (2026-10-17, 브랜치 `feat/second-opinion-review`) · 기준 커밋: `9907a083` (main) · 계획과 달라진 점은 §9
 > 진행 관리: #1281 (체크리스트·PR·확인 결과·측정은 이슈에, 설계는 이 문서에. 구현 PR 본문에 `Closes #1281`)
 > 출처: 철회한 Focus × Crew의 Phase 3([`../focus-crew/phase-3-cross-review.md`](../focus-crew/phase-3-cross-review.md))를 크루 없이 줄인 것. 철회 이유는 [`../focus-crew/roadmap.md`](../focus-crew/roadmap.md)의 "철회 결정".
 > 결정 문서: `docs/decisions/focus-mode.md` (구현 PR에서 §5.1을 새로 쓴다)
@@ -225,6 +225,21 @@ jq -r '.cards[]? | select(.kind=="finding") | (.payload | fromjson? // .) as $f 
 
 - 첫 라운드만 돌리는 기본값으로 충분한지, 수정 뒤 라운드에도 돌릴지 — 6절 측정 뒤 정한다.
 - 콘솔의 기본 tier: "메인과 다른 첫 tier"가 맞는지, 아니면 매번 고르게 할지.
+
+## 9. 구현에서 계획과 달라진 점
+
+코드가 이긴다는 원칙대로, 구현하면서 바꾼 것과 그 이유다.
+
+- **`focusprobe.ReviewDiff` → `ReviewDiffOf(ctx, dir, base) (ReviewDiff, bool)`.** 문자열 대신 `{Base, Diff, Truncated, Stat, Untracked}`를 돌려주고, 프롬프트 모양(코드펜스·잘림 안내)은 서버(`focusSecondOpinionChange`)가 만든다. focusprobe는 git 사실만 읽는다는 규칙 그대로다. git 호출 하나당 20초 상한(`GitTimeout` 2초는 파일 하나짜리 probe용이라 전체 diff에는 짧다).
+- **`SecondOpinion` 타입은 `second_opinion.go`에 있다.** `Pipeline.SecondOpinion` 필드만 `model.go`에 있다. 프롬프트도 순수 함수 `focuspipeline.SecondOpinionPrompt`로 두었다(`stageInstruction`이 비공개라서).
+- **`POST /v1/chat/cancel`은 `SecondOpinionOwed`를 지우지 않는다(4.5와 다름).** 실행 중인 서브턴만 취소하고, 빚은 검증(`AwaitingVerification`)처럼 남긴다. 지우면 메인 리뷰 카드가 `Review.Triage`에 든 채 게이트도 빚도 없는 라운드가 되어 아무것도 다시 움직이지 않는다. 남겨 두면 재시작 때 interrupted 게이트가 열리고, 사람이 그 단계에서 턴을 보내도 리뷰 턴이면 다시 요청된다. 파이프라인 중지(`EventStop`)·게이트 stop·blocked stop은 계획대로 지운다.
+- **서브턴 단계는 파이프라인 세션을 claim한다.** 계획에 없던 결정이다. 검증 단계와 같이 해야 세션이 "실행 중"으로 보이고, 사람의 턴이 선점하고(드라이버 run 취소), `/v1/chat/cancel`이 찾을 수 있다. 4.2가 피한 것은 메인 채팅 턴의 claim 안에서 도는 것(선점이 없음)이고, 드라이버 run 안의 claim은 선점된다. 턴 자체는 worker 세션에서 돈다.
+- **진행 줄은 파이프라인 상태가 아니라 턴 피드로 그린다.** 서버가 `focus_progress` 이벤트(`phase: "second_opinion"`, `command: <tier>`)를 보내고 `progressLine`이 검증 단계와 같은 방식으로 읽는다. `progressLine`은 원래 피드만 보는 함수라 같은 길을 탔다.
+- **콘솔의 "같은 모델" 경고는 생성 전에 콘솔이 계산한다.** New task는 생성 응답을 받자마자 파이프라인 화면으로 넘어가서 응답의 `second_opinion_warning`을 보여 줄 자리가 없다. 그래서 tier 목록(`listAgentRuntimeSubagents`)의 provider·model을 `default_tier`와 비교해 고를 때 바로 보여 준다. 서버 경고는 그대로 응답에 있다(API 호출자용). 서버는 `chat_main` 역할 → `llm_default_tier` 순으로 비교하고 콘솔은 `default_tier`만 보므로, `chat_main`을 따로 매핑한 설정에서는 둘이 다를 수 있다.
+- **tier는 실행할 때도 다시 확인한다.** 생성 뒤 설정이 바뀌어 tier가 풀리지 않거나 antigravity-cli가 되면 `unavailable` notice로 끝난다. 생성 시 400 검증은 계획대로다(드라이버가 tier 확인기·러너를 갖지 못한 서버는 `second_opinion` 요청에 503).
+- **notice 카드의 제목과 한 줄은 콘솔이 현지화한다**(`secondOpinionNotice`). 렌더러는 그대로이고 제목·본문 문자열만 바꾼다. interrupted 게이트도 세컨드 오피니언일 때 따로 문구를 쓴다.
+- **세컨드 오피니언 카드의 `turn`은 0이다.** 메인 세션 transcript의 턴에서 온 카드가 아니다.
+- **골든 테스트는 새로 만들었다.** 저장소에 없었다. 기능보다 먼저 커밋(`30421b0c`)해서, 옵트인 없는 파이프라인의 JSON·가이던스가 그 시점과 같음을 보인다.
 
 ---
 
