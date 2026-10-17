@@ -216,3 +216,37 @@ func abs(n int) int {
 	}
 	return n
 }
+
+// SecondOpinionPrompt is the second opinion review's turn: the goal, the
+// stage's review instructions, the findings already dismissed, and change —
+// the diff the server read (focusprobe.ReviewDiffOf). It never says what the
+// stage's own review reported: the second review is independent.
+func SecondOpinionPrompt(p Pipeline, change string) string {
+	stage, _ := p.Stage(p.Current)
+	var b strings.Builder
+	b.WriteString("You are giving a second opinion on a change: review it independently of any other review. " +
+		"Read the repository's files if you need more context, but do not edit, create or delete any file and " +
+		"do not run a command that changes anything.\n")
+	if goal := strings.TrimSpace(p.Goal); goal != "" {
+		fmt.Fprintf(&b, "Goal of the change: %s\n", goal)
+	}
+	if stage.Instructions != "" {
+		// A template's review: its own instructions say what a finding is.
+		b.WriteString(stage.Instructions + "\n")
+		b.WriteString("Each finding needs its file and line; put what is wrong and why in \"scenario\".")
+	} else {
+		b.WriteString("Each finding needs its file and line and a concrete failure scenario (inputs or state → wrong output or crash).")
+	}
+	b.WriteString(dismissedList(p.Review.Dismissed))
+	b.WriteString("\n")
+	b.WriteString(languageGuidance)
+	b.WriteString("\n\nReply with exactly one findings block (an empty array when there are none):\n")
+	b.WriteString(findingsFormat + "\n" + blockTail + "\n\n")
+	b.WriteString(strings.TrimSpace(change))
+	return b.String()
+}
+
+// SecondOpinionReask asks again for the block a second opinion's reply
+// lacked.
+const SecondOpinionReask = "Your last reply did not end with a well-formed <focus-findings> block. " +
+	"Reply again with exactly one <focus-findings>…</focus-findings> block containing a valid JSON array (empty when there are no findings), and nothing else."

@@ -481,6 +481,7 @@ func buildAPIMux(
 	// registration): it never fails to construct, answering "unavailable"
 	// itself when no backend or driver is configured.
 	focusDriver.e2e = newFocusE2ERunner(newComputerUseEngine(cfg, deps.llmRouter, deps.usageTracker))
+	focusDriver.secondOpinionTiers = newFocusSecondOpinionTiers(cfg)
 	chatTooling.Focus = focusDriver
 	chatTooling.OverrideService = overrideService
 	checkpointStore := openCheckpointStore(cfg.WorkspaceDir, logger)

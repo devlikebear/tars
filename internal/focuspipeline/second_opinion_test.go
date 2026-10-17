@@ -290,3 +290,30 @@ func TestParseBlocksDropsConfirmedBy(t *testing.T) {
 		t.Fatalf("findings = %+v", b.Findings)
 	}
 }
+
+func TestSecondOpinionPrompt(t *testing.T) {
+	p, _ := reviewTurn(t, inReviewSO(t), twoFindings())
+	p.Review.Dismissed = []DismissedFinding{{File: "z.go", Line: 2, Title: "old"}}
+	got := SecondOpinionPrompt(p, "CHANGE-BODY\n")
+	for _, want := range []string{"second opinion", "Goal of the change: goal", "z.go:2 — old", "<focus-findings>[", "CHANGE-BODY"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("prompt misses %q:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "nil deref") || strings.Contains(got, "typo") {
+		t.Fatalf("the stage's own findings leaked into the prompt:\n%s", got)
+	}
+	p.Stages[stageIndex(p, StageReview)].Instructions = "Check the prose."
+	if got := SecondOpinionPrompt(p, ""); !strings.Contains(got, "Check the prose.\n") || strings.Contains(got, "failure scenario") {
+		t.Fatalf("template prompt:\n%s", got)
+	}
+}
+
+func stageIndex(p Pipeline, id StageID) int {
+	for i, s := range p.Stages {
+		if s.ID == id {
+			return i
+		}
+	}
+	return -1
+}

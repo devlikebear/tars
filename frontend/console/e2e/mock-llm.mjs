@@ -39,6 +39,12 @@
 // [e2e:focus-template-edit] answers POST /v1/focus/templates/draft (natural-
 // language template editing, focus_template_edit.go) — see
 // focusTemplateDraftReply below.
+// [e2e:focus-second-opinion] answers the second opinion review
+// (focus_second_opinion.go), which runs with no <focus-stage> but names the
+// goal: one finding the [e2e:focus-review] round already has (same file and
+// title) and one new one. [e2e:focus-second-opinion-noblock] answers it with
+// prose and no block, and the server's request for the block gets the echo,
+// so the review ends as "no block".
 
 import { createServer } from 'node:http'
 
@@ -115,6 +121,19 @@ function reviewReply(typed) {
   return `${summary}\n\n<focus-findings>${JSON.stringify(findings)}</focus-findings>\n<focus-report>${JSON.stringify({ summary, risks: [] })}</focus-report>`
 }
 const FOCUS_PR = '[e2e:focus-pr]'
+const FOCUS_SECOND_OPINION = '[e2e:focus-second-opinion]'
+const FOCUS_SECOND_OPINION_NOBLOCK = '[e2e:focus-second-opinion-noblock]'
+
+function secondOpinionReply(text) {
+  if (!text.includes('You are giving a second opinion on a change')) return null
+  if (text.includes(FOCUS_SECOND_OPINION_NOBLOCK)) return 'The change looks fine to me.'
+  if (!text.includes(FOCUS_SECOND_OPINION)) return null
+  const findings = [
+    { id: 's1', severity: 'high', file: 'base.txt', line: 2, title: 'greeting has no punctuation', scenario: 'greet() prints "hello" with no mark' },
+    { id: 's2', severity: 'medium', file: 'base.txt', line: 15, title: 'Farewell line is missing', scenario: 'the script ends → nothing says goodbye' },
+  ]
+  return `A second look.\n\n<focus-findings>${JSON.stringify(findings)}</focus-findings>`
+}
 // [e2e:focus-template] plays any template (focusTemplates.spec.ts): the plan
 // lists the stages the guidance's plan format names, and every later stage
 // is answered by the block its guidance asks for — a done report for a work
@@ -300,6 +319,8 @@ function replyFor(body) {
   const text = lastUserText(body.messages ?? []).trim()
   const templateDraft = focusTemplateDraftReply(text)
   if (templateDraft) return templateDraft
+  const secondOpinion = secondOpinionReply(text)
+  if (secondOpinion) return secondOpinion
   const focus = focusReply(text)
   if (focus) return focus
   // Review notes (#969) ride after the message; answer the first comment so
