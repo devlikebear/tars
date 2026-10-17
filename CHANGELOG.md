@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.63.0] - 2026-10-17
+
+### Added
+
+- **An open console tab now notices when the server starts serving a new console build and offers to reload.** `/v1/healthz`'s new `console_build` (the embedded `index.html`'s content hash, not the version — stable across two `main` builds only when the bundle itself hasn't changed) goes to every caller, unlike the loopback-only `version`. The server injects it into every served `index.html` as a meta tag so a tab learns its own value from the page it loaded; on the next SSE stream reconnect or the tab becoming visible again, a changed value shows a small, dismissible "TARS was updated — Reload" banner that never reloads on its own. Never shown under the Vite dev server. ([#1257](https://github.com/devlikebear/tars/issues/1257))
+
 ### Fixed
 
 - **Initiative in live mode could greet twice in one evening.** A greet only required a presence gap followed by a fresh arrival, so coming back to the desk more than once after being away — even for a few minutes — re-triggered "welcome back" every time, each one usually ignored. A greet now delivers at most once per local calendar day; a second same-day arrival falls through to whatever else the tick would otherwise decide (a check-in, a silent body expression, or nothing) instead of being replaced with a new "nothing happened" reason, and a greet that was never actually delivered (console unreachable, speak composer unavailable) does not count, so the next arrival still greets. Restores correctly after a restart; no new LLM calls. ([#1269](https://github.com/devlikebear/tars/issues/1269))
@@ -18,7 +24,6 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ### Added
 
-- **An open console tab now notices when the server starts serving a new console build and offers to reload.** `/v1/healthz`'s new `console_build` (the embedded `index.html`'s content hash, not the version — stable across two `main` builds only when the bundle itself hasn't changed) goes to every caller, unlike the loopback-only `version`. The server injects it into every served `index.html` as a meta tag so a tab learns its own value from the page it loaded; on the next SSE stream reconnect or the tab becoming visible again, a changed value shows a small, dismissible "TARS was updated — Reload" banner that never reloads on its own. Never shown under the Vite dev server. ([#1257](https://github.com/devlikebear/tars/issues/1257))
 - **`ClaudeCodeHarnessOptions.Restricted` passes Claude Code's `--restricted`.** It ignores the person's user, project and local settings files (their hooks and enabled plugins with them), drops the command-running built-ins and WebFetch unless `Tools` names them, and confines file tools to the working directories — while, unlike `SafeMode`, keeping the MCP servers given with `--mcp-config`. An embedding app that hands Claude Code its own tools over MCP (Linetta's built-in agent) can now switch the person's own setup off without losing those tools; `SafeMode` there leaves the model with no tools at all.
 
 ### Fixed
