@@ -4,6 +4,19 @@ package initiative
 // an explicit request for quiet and the hard limits (including typing or a
 // turn in flight) first, then arrival, then care, then a silent body
 // expression. It is pure so every rule is table-tested.
+//
+// GreetedToday (tars#1269) only narrows the arrival case's match condition
+// (g.JustArrived && !g.GreetedToday) rather than returning its own "none" —
+// a second arrival the same local day is not entitled to a fresh greet, but
+// it is still entitled to whatever else the rest of the switch would decide
+// (check_in for a strained or long-absent user, body_only for sitting idle
+// at the desk, or plain "busy"/"nothing"). Narrowing the case match instead
+// of adding an early "none(greeted_today)" return is what lets that
+// fallthrough happen for free: an unmatched case simply defers to the next
+// one, exactly as if JustArrived had been false, without duplicating the
+// rest of the switch. The fact that a greet was suppressed is still visible
+// — every Entry carries its own GoSignals (including GreetedToday) in
+// Signals, regardless of what Decide ultimately returned.
 func Decide(g GoSignals, t TextSignals) Decision {
 	switch {
 	case t.QuietRequested:
@@ -16,7 +29,7 @@ func Decide(g GoSignals, t TextSignals) Decision {
 		return none("cooldown")
 	case g.DailyCapReached:
 		return none("daily_cap")
-	case g.JustArrived:
+	case g.JustArrived && !g.GreetedToday:
 		if t.SpecialDay {
 			return speak(IntentGreet, "special_day")
 		}
@@ -63,6 +76,17 @@ func speak(intent Intent, reason string) Decision {
 // busy, a true quiet_requested still overrides the greet (Decide checks
 // quiet_requested first of all) — skipping the read because of Busy would
 // silently drop that override and greet through a requested quiet.
+//
+// GreetedToday (tars#1269) needs no special case here either: when it
+// blocks the arrival case and nothing else in the switch is true,
+// user_strained still cannot turn "none" into a check_in (CheckedInRecently
+// or Reachable already rule it out in that fixture) and special_day never
+// mattered once the arrival case is unmatched — so every combination keeps
+// returning the same Intent/Speak and the function naturally reports false.
+// When CheckedInRecently/Reachable do allow a strained check_in, the
+// function naturally reports true instead, exactly as it already does for
+// any other GoSignals combination where some text signal can change the
+// outcome.
 func textSignalsMatter(g GoSignals) bool {
 	base := Decide(g, TextSignals{})
 	for mask := 1; mask < 8; mask++ {

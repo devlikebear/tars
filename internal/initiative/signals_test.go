@@ -100,6 +100,34 @@ func TestDeriveGoSignals(t *testing.T) {
 	}
 }
 
+// TestDeriveGoSignalsGreetedToday exercises GoSignals.GreetedToday's
+// midnight boundary at the configured timezone (tars#1269): the signal is
+// true only while LastGreetAt falls on the same local calendar day as now,
+// in the location Config.Location names — not a fixed 24h window.
+func TestDeriveGoSignalsGreetedToday(t *testing.T) {
+	cfg := Config{Location: seoul}.WithDefaults()
+	tests := []struct {
+		name string
+		now  time.Time
+		last time.Time
+		want bool
+	}{
+		{"a greet earlier the same local day", at(14, 0), at(9, 0), true},
+		{"no greet recorded yet", at(14, 0), time.Time{}, false},
+		{"a greet one minute before local midnight, now one minute after", time.Date(2026, 9, 30, 0, 1, 0, 0, seoul), time.Date(2026, 9, 29, 23, 59, 0, 0, seoul), false},
+		{"a greet one second after local midnight, now the same day", time.Date(2026, 9, 30, 23, 59, 0, 0, seoul), time.Date(2026, 9, 30, 0, 0, 1, 0, seoul), true},
+		{"a greet a full day ago in wall-clock time but a different local day", time.Date(2026, 9, 30, 9, 0, 0, 0, seoul), time.Date(2026, 9, 29, 9, 0, 0, 0, seoul), false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			hist := History{LastGreetAt: tt.last}
+			if g := deriveGoSignals(cfg, Observation{Now: tt.now}, hist); g.GreetedToday != tt.want {
+				t.Fatalf("GreetedToday = %v, want %v (now=%s, last=%s)", g.GreetedToday, tt.want, tt.now, tt.last)
+			}
+		})
+	}
+}
+
 // steady returns user messages every step, ending at end and spanning span.
 func steady(end time.Time, span, step time.Duration) []UserMessage {
 	var out []UserMessage

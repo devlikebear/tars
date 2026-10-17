@@ -7,7 +7,12 @@ type History struct {
 	Today         int
 	LastSpokeAt   time.Time
 	LastCheckInAt time.Time
-	LastBodyAt    time.Time
+	// LastGreetAt is when a greet last counted as spoken (same spoken()
+	// rule as LastSpokeAt/LastCheckInAt — live mode only when actually
+	// delivered, shadow mode always) — the input to GoSignals.GreetedToday
+	// (tars#1269).
+	LastGreetAt time.Time
+	LastBodyAt  time.Time
 	// TextCallsToday and LastTextCallAt track the daily text-signal
 	// backend call cap (tars#1219), independent of Today (spoken
 	// initiatives).
@@ -62,6 +67,7 @@ func deriveGoSignals(cfg Config, obs Observation, hist History) GoSignals {
 	g.CheckedInRecently = !hist.LastCheckInAt.IsZero() && since(hist.LastCheckInAt) < checkInSpacing
 	g.BodyRecently = !hist.LastBodyAt.IsZero() && since(hist.LastBodyAt) < bodySpacing
 	g.StoppedToday = !hist.LastStoppedAt.IsZero() && sameLocalDay(hist.LastStoppedAt, now, cfg.Location)
+	g.GreetedToday = !hist.LastGreetAt.IsZero() && sameLocalDay(hist.LastGreetAt, now, cfg.Location)
 	return g
 }
 

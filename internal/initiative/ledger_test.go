@@ -67,8 +67,46 @@ func TestHistoryFromCountsTodaysSpeech(t *testing.T) {
 		{At: at(14, 40), Decision: Decision{Intent: IntentNone}},
 	}
 	h := historyFrom(entries, now, seoul)
-	if h.Today != 2 || !h.LastSpokeAt.Equal(at(11, 0)) || !h.LastCheckInAt.Equal(at(11, 0)) || !h.LastBodyAt.Equal(at(14, 35)) {
+	if h.Today != 2 || !h.LastSpokeAt.Equal(at(11, 0)) || !h.LastCheckInAt.Equal(at(11, 0)) || !h.LastBodyAt.Equal(at(14, 35)) || !h.LastGreetAt.Equal(at(9, 0)) {
 		t.Fatalf("history = %+v", h)
+	}
+}
+
+// TestHistoryFromGreetedToday checks History.LastGreetAt's own spoken()
+// rule (tars#1269): a live greet counts only when actually delivered, a
+// shadow greet always counts (mirrors LastSpokeAt/LastCheckInAt's existing
+// live/shadow split, and lets a greet left unreachable or skipped retry on
+// the next arrival instead of blocking the rest of the day).
+func TestHistoryFromGreetedToday(t *testing.T) {
+	now := at(15, 0)
+	tests := []struct {
+		name    string
+		entries []Entry
+		want    time.Time
+	}{
+		{"a delivered live greet counts",
+			[]Entry{{At: at(9, 0), Mode: ModeLive, Decision: Decision{Intent: IntentGreet, Speak: true}, Delivery: DeliveryDelivered}},
+			at(9, 0)},
+		{"an unreachable live greet does not count",
+			[]Entry{{At: at(9, 0), Mode: ModeLive, Decision: Decision{Intent: IntentGreet, Speak: true}, Delivery: DeliveryUnreachable}},
+			time.Time{}},
+		{"a skipped live greet does not count",
+			[]Entry{{At: at(9, 0), Mode: ModeLive, Decision: Decision{Intent: IntentGreet, Speak: true}, Delivery: DeliverySkipped, DeliveryReason: deliveryReasonBusy}},
+			time.Time{}},
+		{"a shadow greet always counts, even with no Delivery",
+			[]Entry{{At: at(9, 0), Mode: ModeShadow, Decision: Decision{Intent: IntentGreet, Speak: true}}},
+			at(9, 0)},
+		{"a non-greet speak does not set LastGreetAt",
+			[]Entry{{At: at(9, 0), Mode: ModeLive, Decision: Decision{Intent: IntentCheckIn, Speak: true}, Delivery: DeliveryDelivered}},
+			time.Time{}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h := historyFrom(tt.entries, now, seoul)
+			if !h.LastGreetAt.Equal(tt.want) {
+				t.Fatalf("LastGreetAt = %v, want %v", h.LastGreetAt, tt.want)
+			}
+		})
 	}
 }
 

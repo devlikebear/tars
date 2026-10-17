@@ -30,6 +30,21 @@ func TestDecide(t *testing.T) {
 		{"body expressions are spaced", GoSignals{IdleAtDesk: true, BodyAvailable: true, BodyRecently: true, Reachable: true}, TextSignals{}, IntentNone, "nothing"},
 		{"idle without a body does nothing", GoSignals{IdleAtDesk: true, Reachable: true}, TextSignals{}, IntentNone, "nothing"},
 		{"nothing to do", GoSignals{Reachable: true}, TextSignals{}, IntentNone, "nothing"},
+
+		// tars#1269: a greet already counted as spoken today narrows the
+		// arrival case's match condition only — it does not add a new
+		// "none" return of its own, so once the arrival case is unmatched,
+		// the rest of the switch decides exactly as if JustArrived had been
+		// false all along.
+		{"greeted today with nothing else pending does nothing", GoSignals{JustArrived: true, GreetedToday: true, Reachable: true}, TextSignals{}, IntentNone, "nothing"},
+		{"greeted today blocks a special day greet too", GoSignals{JustArrived: true, GreetedToday: true, Reachable: true}, TextSignals{SpecialDay: true}, IntentNone, "nothing"},
+		{"greeted today with typing falls through to busy", GoSignals{JustArrived: true, GreetedToday: true, Busy: true, Reachable: true}, TextSignals{}, IntentNone, "busy"},
+		{"greeted today still allows a strained check-in", GoSignals{JustArrived: true, GreetedToday: true, Reachable: true}, TextSignals{UserStrained: true}, IntentCheckIn, "strained"},
+		{"quiet request still wins when greeted today too", GoSignals{JustArrived: true, GreetedToday: true, Reachable: true}, TextSignals{QuietRequested: true}, IntentNone, "quiet_requested"},
+		{"greeted today does not block a long-session check-in", GoSignals{GreetedToday: true, LongSession: true, Reachable: true}, TextSignals{}, IntentCheckIn, "long_session"},
+		{"greeted today does not block a long-absence check-in", GoSignals{GreetedToday: true, LongAbsence: true, Reachable: true}, TextSignals{}, IntentCheckIn, "long_absence"},
+		{"greeted today does not block a body expression", GoSignals{GreetedToday: true, IdleAtDesk: true, BodyAvailable: true, Reachable: true}, TextSignals{}, IntentBodyOnly, "idle_at_desk"},
+		{"not greeted today still greets on arrival", GoSignals{JustArrived: true, GreetedToday: false, Reachable: true}, TextSignals{}, IntentGreet, "arrived"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -75,6 +90,17 @@ func TestTextSignalsMatter(t *testing.T) {
 		{"reachable idle depends on strain and quiet_requested", GoSignals{Reachable: true}, true},
 		{"idle at desk with a body depends on text", GoSignals{IdleAtDesk: true, BodyAvailable: true, Reachable: true}, true},
 		{"long absence depends on quiet_requested", GoSignals{LongAbsence: true, Reachable: true}, true},
+
+		// tars#1269: GreetedToday needs no special case in textSignalsMatter
+		// itself — when it blocks the arrival case and nothing else in the
+		// fixture is true, a strained check-in is already ruled out by
+		// CheckedInRecently, so every text combination still returns the
+		// same "none(nothing)" and the function reports false; when
+		// CheckedInRecently/Reachable do allow a strained check-in, the
+		// function reports true exactly as it already would without
+		// GreetedToday in the picture.
+		{"greeted today blocks arrival but nothing else can change the outcome", GoSignals{JustArrived: true, GreetedToday: true, Reachable: true, CheckedInRecently: true}, false},
+		{"greeted today blocks arrival but a strained check-in still depends on text", GoSignals{JustArrived: true, GreetedToday: true, Reachable: true}, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

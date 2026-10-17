@@ -86,6 +86,14 @@ type GoSignals struct {
 	// History.LastStoppedAt. True blocks every Speak decision for the
 	// rest of that day, the same hard-gate shape as QuietHours/CooldownActive.
 	StoppedToday bool `json:"stopped_today"`
+	// GreetedToday reports whether a greet already counted as spoken
+	// (History.LastGreetAt — live mode only when actually delivered,
+	// shadow mode per Entry.spoken()'s existing rule) earlier the same
+	// local day (tars#1269). Unlike the other hard gates above, this only
+	// disables the JustArrived arrival case in Decide — it does not block
+	// check_in or body_only, so a second arrival the same day still falls
+	// through to those.
+	GreetedToday bool `json:"greeted_today"`
 }
 
 type TextSignals struct {
