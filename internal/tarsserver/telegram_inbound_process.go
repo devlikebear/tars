@@ -71,11 +71,11 @@ func (h *telegramInboundHandler) processMessage(
 	}
 	resolvedSkill := resolveSkillSelection(text, h.tooling.Extensions, h.workspaceDir, sessionID)
 	invokedSkill := resolvedSkill.Definition
-	systemPrompt, err := prepareChatContextWithExtensions(h.workspaceDir, sessionID, text, extSnapshot, invokedSkill, h.tooling.MemorySemanticConfig)
+	details, err := prepareChatContextDetailsWithExtensions(h.workspaceDir, sessionID, text, extSnapshot, invokedSkill, h.tooling.MemorySemanticConfig)
 	if err != nil {
 		return "", sessionID, err
 	}
-	llmMessages := buildLLMMessages(systemPrompt, history, text)
+	llmMessages := buildLLMMessagesWithTail(details.SystemPrompt, details.SystemPromptTail, history, text, nil)
 	resolvedTools := resolveInjectedToolPolicy(registry, "user", h.tooling.ToolsAllowHighRiskUser)
 	injectedSchemas := resolvedTools.Schemas
 

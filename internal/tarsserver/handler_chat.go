@@ -67,12 +67,12 @@ func createFallbackChatSession(store *session.Store) (string, error) {
 
 type preparedChatContext struct {
 	// SystemPrompt holds only the turn-stable region. Callers keep appending
-	// their own static sections to it and must emit SystemPromptTail last —
-	// see the ordering invariant on prompt.BuildResultFor.
+	// their own static sections to it — see the ordering invariant on
+	// prompt.BuildResultFor.
 	SystemPrompt string
 	// SystemPromptTail is the per-turn region (prior-context recall, current
-	// time). It closes the assembled system prompt so everything ahead of it
-	// stays a matchable provider cache prefix.
+	// time). buildLLMMessagesWithTail sends it on the user turn, after the
+	// history, so the system prompt and history stay a provider cache prefix.
 	SystemPromptTail           string
 	SystemPromptTokens         int
 	RelevantMemoryCount        int
@@ -80,23 +80,6 @@ type preparedChatContext struct {
 	RelevantMemorySection      string
 	RelevantMemoryItems        []prompt.RelevantMemoryItem
 	RelevantMemoryBudgetTokens int
-}
-
-func prepareChatContextWithExtensions(
-	workspaceDir string,
-	sessionID string,
-	userMessage string,
-	extSnapshot extensions.Snapshot,
-	invokedSkill *skill.Definition,
-	semanticCfg ...memory.SemanticConfig,
-) (systemPrompt string, err error) {
-	details, err := prepareChatContextDetailsWithExtensions(workspaceDir, sessionID, userMessage, extSnapshot, invokedSkill, semanticCfg...)
-	if err != nil {
-		return "", err
-	}
-	// Single-string callers (telegram, previews) get the dynamic tail folded
-	// back on at the end — same order the split assembler produces.
-	return details.SystemPrompt + details.SystemPromptTail, nil
 }
 
 func prepareChatContextDetailsWithExtensions(
@@ -168,19 +151,13 @@ func buildContextFromResult(
 		systemPrompt += "- Skill body content is not preloaded in the prompt.\n"
 		systemPrompt += "- If you need a skill, call read_file with the listed skill path first.\n"
 	}
-	if invokedSkill != nil {
-		readPath := skillRuntimeReadPathForPrompt(workspaceDir, invokedSkill.RuntimePath)
-		systemPrompt += "\n## Invoked Skill\n"
-		systemPrompt += fmt.Sprintf(
-			"User invoked /%s.\nBefore responding, call read_file on path %q to load this skill.\n",
-			strings.TrimSpace(invokedSkill.Name),
-			readPath,
-		)
-	}
+	// Only the turns that invoke a skill carry this, so it rides on the user
+	// turn with the recall and clock rather than moving the system prompt.
+	tail := joinTurnContext(formatInvokedSkillPrompt(workspaceDir, invokedSkill), buildResult.DynamicTail)
 	return preparedChatContext{
 		SystemPrompt:               systemPrompt,
-		SystemPromptTail:           buildResult.DynamicTail,
-		SystemPromptTokens:         promptTokenEstimate(systemPrompt + buildResult.DynamicTail),
+		SystemPromptTail:           tail,
+		SystemPromptTokens:         promptTokenEstimate(systemPrompt + tail),
 		RelevantMemoryCount:        buildResult.RelevantMemoryCount,
 		RelevantMemoryTokens:       buildResult.RelevantTokens,
 		RelevantMemorySection:      buildResult.RelevantSection,
@@ -189,18 +166,38 @@ func buildContextFromResult(
 	}
 }
 
-func appendInvokedCommandPrompt(systemPrompt, workspaceDir string, command *skill.Definition) string {
-	if command == nil {
-		return systemPrompt
+func formatInvokedSkillPrompt(workspaceDir string, invokedSkill *skill.Definition) string {
+	if invokedSkill == nil {
+		return ""
 	}
-	readPath := skillRuntimeReadPathForPrompt(workspaceDir, command.RuntimePath)
-	systemPrompt += "\n## Invoked Command\n"
-	systemPrompt += fmt.Sprintf(
-		"User invoked /%s.\nBefore responding, call read_file on path %q to load this command.\nCommands are explicit-only and should not be used unless the user invokes them.\n",
-		strings.TrimSpace(command.Name),
-		readPath,
+	return fmt.Sprintf(
+		"## Invoked Skill\nUser invoked /%s.\nBefore responding, call read_file on path %q to load this skill.\n",
+		strings.TrimSpace(invokedSkill.Name),
+		skillRuntimeReadPathForPrompt(workspaceDir, invokedSkill.RuntimePath),
 	)
-	return systemPrompt
+}
+
+func formatInvokedCommandPrompt(workspaceDir string, command *skill.Definition) string {
+	if command == nil {
+		return ""
+	}
+	return fmt.Sprintf(
+		"## Invoked Command\nUser invoked /%s.\nBefore responding, call read_file on path %q to load this command.\nCommands are explicit-only and should not be used unless the user invokes them.\n",
+		strings.TrimSpace(command.Name),
+		skillRuntimeReadPathForPrompt(workspaceDir, command.RuntimePath),
+	)
+}
+
+// joinTurnContext joins the sections that belong to this turn only, skipping
+// empty ones. The result goes in the user turn's <turn-context> block.
+func joinTurnContext(sections ...string) string {
+	parts := make([]string, 0, len(sections))
+	for _, section := range sections {
+		if trimmed := strings.TrimSpace(section); trimmed != "" {
+			parts = append(parts, trimmed)
+		}
+	}
+	return strings.Join(parts, "\n\n")
 }
 
 func skillPromptForChatContext(workspaceDir string, extSnapshot extensions.Snapshot) string {
@@ -259,22 +256,35 @@ func buildLLMMessagesWithBlocks(systemPrompt string, history []session.Message, 
 	return buildLLMMessagesWithTail(systemPrompt, "", history, userMessage, contentBlocks)
 }
 
-// buildLLMMessagesWithTail emits the turn-stable prompt and the per-turn tail
-// as two adjacent system messages. Providers concatenate system messages in
-// order, so the rendered prompt is unchanged — but keeping them separate lets
-// the Anthropic client put its cache_control breakpoint at the end of the
-// stable block instead of after the volatile one, where it could never hit.
-// An empty tail collapses back to a single system message.
+// buildLLMMessagesWithTail sends the per-turn tail (recall, clock) after the
+// user's own words in this request's user message, never as a system message.
+// Every client folds system messages ahead of the conversation (Anthropic's
+// system field, Gemini's systemInstruction, Codex instructions, the CLI
+// system prompt), so a tail there moved the prefix in front of the history
+// each turn and no provider cache ever reused a previous turn. The tail is
+// not saved in the transcript, so the next turn replays this user message
+// without it and everything up to the user's words stays a matching prefix.
 func buildLLMMessagesWithTail(systemPrompt, systemTail string, history []session.Message, userMessage string, contentBlocks []llm.ContentBlock) []llm.ChatMessage {
-	llmMessages := make([]llm.ChatMessage, 0, len(history)+3)
+	llmMessages := make([]llm.ChatMessage, 0, len(history)+2)
 	llmMessages = append(llmMessages, llm.ChatMessage{Role: "system", Content: systemPrompt})
-	if strings.TrimSpace(systemTail) != "" {
-		llmMessages = append(llmMessages, llm.ChatMessage{Role: "system", Content: systemTail})
-	}
 	llmMessages = append(llmMessages, buildLLMMessageHistory(history)...)
-	msg := llm.ChatMessage{Role: "user", Content: userMessage, ContentBlocks: contentBlocks}
-	llmMessages = append(llmMessages, msg)
+	content := userMessage
+	if tail := strings.TrimSpace(systemTail); tail != "" {
+		content += turnContextOpen + tail + "\n</turn-context>"
+	}
+	llmMessages = append(llmMessages, llm.ChatMessage{Role: "user", Content: content, ContentBlocks: contentBlocks})
 	return llmMessages
+}
+
+const turnContextOpen = "\n\n<turn-context>\n"
+
+// withoutTurnContext returns the user message as the user wrote it, for
+// reviewers that read the request back and have no use for recall or clock.
+func withoutTurnContext(msg llm.ChatMessage) llm.ChatMessage {
+	if i := strings.LastIndex(msg.Content, turnContextOpen); i >= 0 {
+		msg.Content = msg.Content[:i]
+	}
+	return msg
 }
 
 // systemPromptTokens estimates the whole system prompt, which the assembler
@@ -288,28 +298,6 @@ func systemPromptTokens(msgs []llm.ChatMessage) int {
 		total += promptTokenEstimate(msg.Content)
 	}
 	return total
-}
-
-// insertSystemMessageBeforeUser inserts an extra system-role message
-// immediately before the final user message in msgs. If no user message is
-// found (defensive) the system message is appended to the end. The original
-// slice header is not mutated; a new slice is returned.
-func insertSystemMessageBeforeUser(msgs []llm.ChatMessage, content string) []llm.ChatMessage {
-	if strings.TrimSpace(content) == "" {
-		return msgs
-	}
-	insertAt := len(msgs)
-	for i := len(msgs) - 1; i >= 0; i-- {
-		if strings.EqualFold(strings.TrimSpace(msgs[i].Role), "user") {
-			insertAt = i
-			break
-		}
-	}
-	out := make([]llm.ChatMessage, 0, len(msgs)+1)
-	out = append(out, msgs[:insertAt]...)
-	out = append(out, llm.ChatMessage{Role: "system", Content: content})
-	out = append(out, msgs[insertAt:]...)
-	return out
 }
 
 // toSessionReasoningBlocks and toLLMReasoningBlocks convert between the

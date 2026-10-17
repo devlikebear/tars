@@ -366,15 +366,21 @@ func TestChatAPIInjectsSubagentMentionHints(t *testing.T) {
 	if len(client.seenMessages) == 0 || len(client.seenMessages[0]) == 0 {
 		t.Fatalf("expected LLM messages")
 	}
-	systemPrompt := client.seenMessages[0][0].Content
+	// The hint belongs to this message only, so it rides on the user turn
+	// rather than changing the system prompt.
+	turn := client.seenMessages[0]
+	if strings.Contains(turn[0].Content, "## Mentioned Subagents") {
+		t.Fatalf("mention hint must stay out of the system prompt: %q", turn[0].Content)
+	}
+	userTurn := turn[len(turn)-1].Content
 	for _, want := range []string{
 		"## Mentioned Subagents",
 		"researcher",
 		"Deep research subagent",
 		"subagents_run",
 	} {
-		if !strings.Contains(systemPrompt, want) {
-			t.Fatalf("expected system prompt to contain %q, got %q", want, systemPrompt)
+		if !strings.Contains(userTurn, want) {
+			t.Fatalf("expected the user turn to contain %q, got %q", want, userTurn)
 		}
 	}
 	responseBody := rec.Body.String()

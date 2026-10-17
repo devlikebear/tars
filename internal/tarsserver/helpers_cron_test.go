@@ -629,7 +629,7 @@ func TestCronPromptRunner_UsesBoundSessionContext(t *testing.T) {
 		t.Fatalf("expected session prompt override in system prompt, got %q", systemPrompt)
 	}
 	userMessage := client.seenMessages[0][len(client.seenMessages[0])-1].Content
-	if userMessage != "check the website" {
+	if !strings.HasPrefix(userMessage, "check the website") {
 		t.Fatalf("expected cron prompt as user message, got %q", userMessage)
 	}
 	if len(client.seenTools) != 1 || len(client.seenTools[0]) != 1 || client.seenTools[0][0] != "read_file" {

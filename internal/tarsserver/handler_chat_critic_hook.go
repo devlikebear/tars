@@ -13,7 +13,7 @@ import (
 	"github.com/devlikebear/tars/internal/session"
 )
 
-// criticInjectedMessagePrefix marks every system-role message produced by
+// criticInjectedMessagePrefix marks every critic message produced by
 // queued critic feedback so the console (and future memory hooks) can
 // recognize/suppress these turns.
 const criticInjectedMessagePrefix = "(critic feedback — incorporate before responding to the user)"
@@ -38,7 +38,7 @@ func formatSessionCriticPrompt(c *session.SessionCritic) string {
 	}
 	var b strings.Builder
 	b.WriteString("\n\n## Critic agent (active)\n")
-	b.WriteString("An independent critic reviewer evaluates every assistant turn in this session. Its feedback arrives asynchronously and is injected as a system message at the start of your next turn — read it carefully and revise your answer accordingly when present. Plan transitions (plan_propose / plan_complete) also trigger review with a dedicated prompt.\n")
+	b.WriteString("An independent critic reviewer evaluates every assistant turn in this session. Its feedback arrives asynchronously in the <turn-context> block of the next user message — read it carefully and revise your answer accordingly when present. Plan transitions (plan_propose / plan_complete) also trigger review with a dedicated prompt.\n")
 	fmt.Fprintf(&b, "- Maximum review rounds per plan transition: %d\n", c.EffectiveMaxIterations())
 	b.WriteString("- The reviewer cannot call tools; only you can.\n")
 	return b.String()
@@ -303,7 +303,7 @@ func criticReviewWindow(state chatRunState, lastResp llm.ChatResponse) []llm.Cha
 	for i := len(state.llmMessages) - 1; i >= 0; i-- {
 		m := state.llmMessages[i]
 		if strings.EqualFold(strings.TrimSpace(m.Role), "user") {
-			window = append(window, m)
+			window = append(window, withoutTurnContext(m))
 			break
 		}
 	}

@@ -197,7 +197,6 @@ func buildSessionChatRunState(
 		return chatRunState{}, err
 	}
 	systemPrompt := contextDetails.SystemPrompt
-	systemPrompt = appendInvokedCommandPrompt(systemPrompt, requestWorkspaceDir, resolvedCommand.Definition)
 	deps.logger.Debug().
 		Str("session_id", sessionID).
 		Int("history_messages", len(history)).
@@ -250,21 +249,12 @@ func buildSessionChatRunState(
 		sessionCritic = sess.Critic
 		systemPrompt += formatSessionCriticPrompt(sessionCritic)
 	}
-	if hint := formatChatSubagentMentionHint(subagentMentions); hint != "" {
-		systemPrompt += hint
-	}
-
-	// contextDetails.SystemPromptTail closes the assembled prompt: everything
-	// appended above (skills, override, style, goal, critic, mention hints) is
-	// stable for the session, so it belongs ahead of the per-turn recall and
-	// clock. See the ordering invariant on prompt.BuildResultFor.
-	llmMessages := buildLLMMessagesWithTail(systemPrompt, contextDetails.SystemPromptTail, history, userMessage, contentBlocks)
 	// Drain any pending critic feedback queued by the async reviewer on a
-	// previous turn. Injected as a system-role message right before the
-	// current user message so the LLM treats it as authoritative direction.
+	// previous turn into this turn's context.
+	criticFeedback := ""
 	if sessionCritic.IsEnabled() {
 		if pending, perr := reqStore.TakePendingCriticFeedback(sessionID); perr == nil && strings.TrimSpace(pending.Feedback) != "" {
-			llmMessages = insertSystemMessageBeforeUser(llmMessages, pending.Feedback)
+			criticFeedback = pending.Feedback
 			deps.logger.Debug().
 				Str("session_id", sessionID).
 				Str("critic_trigger", pending.Trigger).
@@ -274,6 +264,21 @@ func buildSessionChatRunState(
 			deps.logger.Debug().Err(perr).Str("session_id", sessionID).Msg("drain pending critic feedback failed")
 		}
 	}
+
+	// The system prompt holds only what stays the same from turn to turn of
+	// the session (skills, override, style, goal, critic), so every provider
+	// can reuse it and the history behind it as a cached prefix. What only
+	// this turn has — the invoked command, mentioned subagents, the goal's
+	// remaining budget, critic feedback, recall and clock — rides on the user
+	// turn, after the history, and is not saved in the transcript.
+	turnContext := joinTurnContext(
+		formatInvokedCommandPrompt(requestWorkspaceDir, resolvedCommand.Definition),
+		formatChatSubagentMentionHint(subagentMentions),
+		formatSessionGoalBudget(sessionGoal),
+		criticFeedback,
+		contextDetails.SystemPromptTail,
+	)
+	llmMessages := buildLLMMessagesWithTail(systemPrompt, turnContext, history, userMessage, contentBlocks)
 	resolvedTools := resolveInjectedToolPolicyFor(registry, authRole, deps.tooling.ToolsAllowHighRiskUser, deps.tooling.WorkScheduler != nil, sessionToolConfigs...)
 	injectedSchemas := resolvedTools.Schemas
 	deps.logger.Debug().
@@ -317,14 +322,11 @@ func buildSessionChatRunState(
 
 // formatSessionGoalPrompt produces the system-prompt section that surfaces
 // the active session goal to the LLM. Returns an empty string when goal is
-// nil so callers can use it unconditionally.
+// nil so callers can use it unconditionally. It holds nothing that changes
+// while the goal is active; the remaining budget is formatSessionGoalBudget.
 func formatSessionGoalPrompt(goal *session.SessionGoal) string {
 	if !goal.IsActive() {
 		return ""
-	}
-	budget := goal.MaxAutoContinues - goal.AutoContinueCount
-	if budget < 0 {
-		budget = 0
 	}
 	var b strings.Builder
 	b.WriteString("\n\n## Active Session Goal\n")
@@ -333,12 +335,18 @@ func formatSessionGoalPrompt(goal *session.SessionGoal) string {
 	b.WriteString("Once you are confident it is satisfied, say so plainly in your final reply — an independent judge will verify and clear the goal. ")
 	b.WriteString("If the goal is not yet satisfied, continue making concrete progress on the next step rather than asking for confirmation.\n")
 	b.WriteString("Setting this goal pre-approved your plans: when you draft a plan with the `tasks` tool, do not stop at plan_propose — approve it and start executing in the same turn.\n")
-	b.WriteString("Auto-continue budget remaining: ")
-	b.WriteString(strconv.Itoa(budget))
-	b.WriteString("/")
-	b.WriteString(strconv.Itoa(goal.MaxAutoContinues))
-	b.WriteString("\n")
 	return b.String()
+}
+
+// formatSessionGoalBudget reports the goal's remaining auto-continues. Every
+// auto-continue spends one, so it goes in the turn context, not the system
+// prompt.
+func formatSessionGoalBudget(goal *session.SessionGoal) string {
+	if !goal.IsActive() {
+		return ""
+	}
+	budget := max(goal.MaxAutoContinues-goal.AutoContinueCount, 0)
+	return "Active Session Goal — auto-continue budget remaining: " + strconv.Itoa(budget) + "/" + strconv.Itoa(goal.MaxAutoContinues)
 }
 
 func prepareChatRunState(r *http.Request, req chatRequestPayload, deps chatHandlerDeps, origin chatTurnOrigin) (chatRunState, int, string, error) {
