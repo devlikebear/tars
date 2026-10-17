@@ -1,5 +1,7 @@
 # Phase 4 — 주목할 것 · 시각화 · Monolith 테마 (D1 · D3 · D4 화면)
 
+> **철회됨 (2026-10-17).** 진행하지 않는다. 이유는 [roadmap.md](./roadmap.md)의 "철회 결정".
+
 > Roadmap: [roadmap.md](./roadmap.md) · 선행: Phase 2 (crew log), Phase 3 권장
 > 목표: 사용자는 **주목할 것만** 보고, 봇들의 협업은 다이어그램 애니메이션으로 "느낀다". Focus 화면 전체를 D안(B Monolith) 스타일로 바꾸되 **focus 라우트에만 스코프**한다.
 

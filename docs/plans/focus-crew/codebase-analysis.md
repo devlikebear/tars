@@ -1,5 +1,7 @@
 # Codebase Analysis — Focus × Crew
 
+> **Crew 계획은 철회됐다 (2026-10-17, [roadmap.md](./roadmap.md)).** 2절의 Focus 코드 지도는 기준 커밋 `ece82981` 시점의 참고 자료로만 남긴다.
+
 분석일: 2026-10-15 · 기준 커밋: `ece82981` (main) · Focus area: Focus mode 서버/콘솔, 워커 세션, LLM tier, 도구, 알림, 메모리
 
 > 이 문서는 `docs/plans/focus-crew/` 계획서들의 공통 참조 자료다. 각 phase 문서는 여기 적힌 파일·패턴을 전제로 쓰였다.

@@ -1,5 +1,7 @@
 # Phase 2 — Plan 허들과 Crew log (D3 핵심 · D6)
 
+> **철회됨 (2026-10-17).** 진행하지 않는다. 이유는 [roadmap.md](./roadmap.md)의 "철회 결정".
+
 > Roadmap: [roadmap.md](./roadmap.md) · 선행: Phase 1
 > 목표: Plan 단계의 첫 메인 턴 전에 봇들이 **조사 → 팩트체크 → 시안/추정** 라운드를 돌고, 결과 다이제스트가 plan 턴에 들어가 G1으로 이어진다. 모든 봇 메시지는 crew log에 남고 상세보기(스윔레인)에서 본다.
 
