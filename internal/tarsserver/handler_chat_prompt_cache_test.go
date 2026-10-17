@@ -109,22 +109,47 @@ func TestPrepareChatContext_SplitsStaticPromptFromDynamicTail(t *testing.T) {
 	}
 }
 
-func TestBuildLLMMessagesWithTail_EmitsTailAsTrailingSystemMessage(t *testing.T) {
+// Providers cache by prefix. Every client folds system messages ahead of the
+// conversation, so a per-turn tail sent as a system message moved the prefix
+// before the history and no turn ever reused the previous one. The next
+// turn's request must start with everything this turn sent, up to the user's
+// own words.
+func TestBuildLLMMessagesWithTail_NextTurnExtendsThisTurnsPrefix(t *testing.T) {
 	history := []session.Message{{Role: "user", Content: "earlier"}, {Role: "assistant", Content: "reply"}}
+	turn := buildLLMMessagesWithTail("stable", "## Current Time\n\nCurrent time: 2026-08-22T10:23:00Z", history, "now", nil)
 
-	msgs := buildLLMMessagesWithTail("stable", "## Current Time\n\nCurrent time: 2026-08-22T10:23:00Z", history, "now", nil)
+	nextHistory := append(append([]session.Message(nil), history...),
+		session.Message{Role: "user", Content: "now"},
+		session.Message{Role: "assistant", Content: "answer"},
+	)
+	next := buildLLMMessagesWithTail("stable", "## Current Time\n\nCurrent time: 2026-08-22T10:24:00Z", nextHistory, "later", nil)
 
-	if len(msgs) != 5 {
-		t.Fatalf("expected system+tail+2 history+user, got %d: %+v", len(msgs), msgs)
+	last := len(turn) - 1
+	for i := 0; i < last; i++ {
+		if turn[i].Role != next[i].Role || turn[i].Content != next[i].Content {
+			t.Fatalf("message %d moved between turns:\nthis=%+v\nnext=%+v", i, turn[i], next[i])
+		}
 	}
-	if msgs[0].Role != "system" || msgs[0].Content != "stable" {
-		t.Fatalf("expected the stable system message first, got %+v", msgs[0])
+	if next[last].Content != "now" || !strings.HasPrefix(turn[last].Content, "now") {
+		t.Fatalf("this turn's user message should open with the replayed text: this=%q next=%q", turn[last].Content, next[last].Content)
 	}
-	if msgs[1].Role != "system" || !strings.Contains(msgs[1].Content, "Current time:") {
-		t.Fatalf("expected the tail as the second system message, got %+v", msgs[1])
+	if !strings.Contains(turn[last].Content, "Current time: 2026-08-22T10:23:00Z") {
+		t.Fatalf("the per-turn context must still reach the model: %q", turn[last].Content)
 	}
-	if msgs[len(msgs)-1].Role != "user" || msgs[len(msgs)-1].Content != "now" {
-		t.Fatalf("expected the user message last, got %+v", msgs[len(msgs)-1])
+	for _, msg := range turn[1:] {
+		if msg.Role == "system" {
+			t.Fatalf("no system message may follow the stable prompt: %+v", turn)
+		}
+	}
+}
+
+func TestBuildLLMMessagesWithTail_KeepsAttachmentsOnTheUserTurn(t *testing.T) {
+	blocks := []llm.ContentBlock{{Type: "image", MediaType: "image/png", Data: "aGk="}}
+	msgs := buildLLMMessagesWithTail("stable", "Current time: x", nil, "look", blocks)
+
+	user := msgs[len(msgs)-1]
+	if user.Role != "user" || len(user.ContentBlocks) != 1 || !strings.HasPrefix(user.Content, "look") {
+		t.Fatalf("unexpected user turn: %+v", user)
 	}
 }
 
