@@ -14,6 +14,13 @@ const sourceFiles = [
   'src/components/Onboarding.svelte',
   'src/components/SessionConfigPanel.svelte',
   'src/components/Config.svelte',
+  'src/lib/configSections.ts',
+  'src/lib/configSearch.ts',
+  'src/lib/configI18n.ts',
+  'src/components/ConfigControl.svelte',
+  'src/components/ConfigFieldRow.svelte',
+  'src/components/ConfigSaveBar.svelte',
+  'src/components/ConfigTabs.svelte',
 ]
 
 test('string sort helpers provide explicit deterministic compare functions', () => {

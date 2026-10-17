@@ -211,3 +211,8 @@ test('the folder picker is Korean, errors included', async ({ page }) => {
   await expect(picker.getByRole('alert')).toHaveText('전체 경로나 ~로 시작하는 경로를 입력하세요')
   expect(found).toEqual([])
 })
+
+test('<html lang> follows the Korean locale from first paint (tars#1241)', async ({ page }) => {
+  await newSession(page)
+  await expect(page.locator('html')).toHaveAttribute('lang', 'ko')
+})

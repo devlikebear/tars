@@ -24,6 +24,8 @@ import type { ContextPanelsTranslations } from './sections/contextPanels.ts'
 import type { TasksPanelTranslations } from './sections/tasksPanel.ts'
 import type { AgentRuntimeRunTranslations } from './sections/agentRuntimeRun.ts'
 import type { CompanionTranslations } from './sections/companion.ts'
+import type { ConfigTranslations } from './sections/config.ts'
+import type { RemoteAccessTranslations } from './sections/remoteAccess.ts'
 
 // Big chat panels keep their strings in ./sections/<area>.ts. Each section's
 // English object is its type, so the Korean object must match it key for key.
@@ -638,40 +640,8 @@ export type Translations = {
     body: string
     button: string
   }
-  config: {
-    confirmRestart: string
-    reconnect: string
-    searchSettings: string
-    sectionSettings: string
-    allSections: string
-    savedPending: string
-    applied: string
-    saveApply: string
-    reconnecting: string
-    reconnectFailed: string
-    invalidValue: string
-
-    pageTitle: string
-    save: string
-    saving: string
-    discard: string
-    changedSuffix: (count: number) => string
-    viewChangesTooltip: string
-    loading: string
-    noConfigFile: string
-    quickStartKicker: string
-    quickStartTitle: string
-    quickStartReady: (ready: number, total: number) => string
-    defaultPrefix: (value: string) => string
-    clickToToggle: string
-    clickToEdit: string
-    on: string
-    off: string
-    selectNone: string
-    workspaceResetSuccess: (removed: number) => string
-    failedResetWorkspace: string
-    editInWizard: string
-  }
+  config: ConfigTranslations
+  remoteAccess: RemoteAccessTranslations
   cron: {
     eyebrow: string
     title: string

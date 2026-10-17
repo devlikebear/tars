@@ -143,13 +143,13 @@ func renderConfigFieldTierDoc() string {
 	b.WriteString("and the field it names is itself shown.\n")
 
 	for _, section := range sections {
-		fmt.Fprintf(&b, "\n## %s\n\n| YAML path | Tier | Shown when | Why |\n|---|---|---|---|\n", section)
+		fmt.Fprintf(&b, "\n## %s\n\n| Key | YAML path | Tier | Shown when | Why |\n|---|---|---|---|---|\n", section)
 		for _, field := range bySection[section] {
 			var conds []string
 			for _, c := range field.ShowWhen {
 				conds = append(conds, fmt.Sprintf("`%s` = %s", preferredYAMLPathForKey(c.Key), strings.Join(c.Values, " / ")))
 			}
-			fmt.Fprintf(&b, "| `%s` | %s | %s | %s |\n", field.Path, field.Tier, strings.Join(conds, " or "), configFieldTiers[field.Key].note)
+			fmt.Fprintf(&b, "| `%s` | `%s` | %s | %s | %s |\n", field.Key, field.Path, field.Tier, strings.Join(conds, " or "), configFieldTiers[field.Key].note)
 		}
 	}
 	return b.String()

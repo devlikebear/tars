@@ -19,6 +19,17 @@ function detectInitialLocale(): Locale {
 export const locale = writable<Locale>(detectInitialLocale())
 export const t = derived(locale, ($locale) => translations[$locale] ?? en)
 
+function syncDocumentLang(next: Locale) {
+  if (typeof document === 'undefined') return
+  document.documentElement.lang = next
+}
+
+// Keeps <html lang> in step with every locale change, including the
+// detected initial one — not just explicit setLocale() calls — so a
+// screen reader or browser spellchecker sees the console's real language
+// from first paint, not a stale "en" left over from #701 (tars#1241).
+locale.subscribe(syncDocumentLang)
+
 export function setLocale(next: Locale) {
   locale.set(next)
   if (typeof window === 'undefined') return

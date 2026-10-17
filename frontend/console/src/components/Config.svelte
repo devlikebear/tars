@@ -1,4 +1,9 @@
 <script lang="ts">
+  // Settings page (#1238/#1239/#1241/#1242): section tabs with a
+  // basic/advanced split per tab, a cross-tab search, and a sticky save bar
+  // replace the old single "Quick Start" grid of all 181 fields. See
+  // frontend/console/DESIGN.md's "Settings" section for the layout this
+  // implements.
   import { onMount } from 'svelte'
   import {
     getConfigSchema,
@@ -9,16 +14,27 @@
   } from '../lib/api'
   import { describeProviderProbe, type ProviderProbeRow } from '../lib/providerProbe'
   import { buildConfigImpactPreview } from '../lib/configImpact'
-  import { buildConfigMetaBadges } from '../lib/configMetaBadges'
-  import { buildQuickStartItems, quickStartProgress } from '../lib/quickStartFields'
+  import {
+    advancedFields,
+    basicFields,
+    defaultConfigTabId,
+    groupFieldsByTab,
+    isConfigTabId,
+    isFieldShown,
+  } from '../lib/configSections'
+  import type { ConfigTabId } from '../lib/configSections'
+  import { searchConfigFields, type ConfigQuickFilter } from '../lib/configSearch'
+  import { localizeConfigField } from '../lib/configI18n'
   import {
     configValuesEqual,
     formatConfigDisplayValue,
     stringifyConfigValue,
-    type ConfigDisplaySummary,
   } from '../lib/configStructured'
   import type { ConfigEnvOverride, ConfigFieldMeta, ConfigSchema } from '../lib/types'
   import ConfigPendingChanges from './ConfigPendingChanges.svelte'
+  import ConfigSaveBar from './ConfigSaveBar.svelte'
+  import ConfigTabs from './ConfigTabs.svelte'
+  import ConfigFieldRow from './ConfigFieldRow.svelte'
   import RemoteAccessCard from './RemoteAccessCard.svelte'
   import { t } from '../i18n'
 
@@ -33,8 +49,6 @@
   let values: Record<string, unknown> = $state({})
   let effectiveValues: Record<string, unknown> = $state({})
   let envOverrides: Record<string, ConfigEnvOverride> = $state({})
-  let search = $state('')
-  let section = $state('')
   let pendingKeys: string[] = $state([])
   let runtimeStartedAt = $state('')
   let processID = $state(0)
@@ -42,28 +56,229 @@
   let error = $state('')
   let success = $state('')
 
-  // -- Schema-based editing; Quick Start progress remains available. --
-  let editingKey: string | null = $state(null)
-  let editValue: string = $state('')
-  let editBool: boolean = $state(false)
-  let fieldSaving = $state(false)
   let dirtyFields: Record<string, unknown> = $state({})
+  let fieldSaving = $state(false)
   let llmTestBusy = $state(false)
-  // null until the first run; an empty list means the pool has no aliases.
   let llmTestRows: ProviderProbeRow[] | null = $state(null)
   let llmTestError = $state('')
+  let showDiff = $state(false)
 
   let hasDirtyFields = $derived(Object.keys(dirtyFields).length > 0)
-  let quickStartItems = $derived(schema.filter(f => (!section || f.section === section) && `${f.label} ${f.key} ${f.description}`.toLowerCase().includes(search.toLowerCase())).map(field => ({ field, key: field.key, title: field.label, description: field.description, value: getDisplayValue(field), dirty: isDirty(field.key), status: { kind: 'ready', label: field.section, message: field.path } })))
-  let quickStartStats = $derived(quickStartProgress(buildQuickStartItems(schema, values, dirtyFields)))
-  let showDiff = $state(false)
+  // Merges pending edits over saved values, so show_when and search both
+  // react immediately to an unsaved toggle.
+  let displayValues = $derived({ ...values, ...dirtyFields })
+
+  // -- Tabs --
+  function initialTab(): ConfigTabId {
+    if (typeof window === 'undefined') return defaultConfigTabId()
+    const match = window.location.pathname.match(/\/console\/config\/([a-zA-Z]+)/)
+    const candidate = match?.[1]
+    return isConfigTabId(candidate) ? candidate : defaultConfigTabId()
+  }
+  let activeTab: ConfigTabId = $state(initialTab())
+  let expandedAdvanced: Set<ConfigTabId> = $state(new Set())
+
+  function selectTab(id: ConfigTabId) {
+    activeTab = id
+    onNavigate?.(`/console/config/${id}`)
+  }
+
+  // RemoteAccessCard is the one editor for these two fields (shown on the
+  // Channels & Remote tab); keep them out of the generic field-row list and
+  // out of search results too, or a result would jump to a row that no
+  // longer renders and the generic row would race the card's own save.
+  const REMOTE_ACCESS_FIELD_KEYS = new Set(['remote_access_tailscale_serve_enabled', 'remote_access_tailscale_serve_https_port'])
+  function isGenericRow(field: ConfigFieldMeta): boolean {
+    return !REMOTE_ACCESS_FIELD_KEYS.has(field.key)
+  }
+
+  let tabFields = $derived(groupFieldsByTab(schema, displayValues))
+  let currentTabFields = $derived((tabFields.find((t2) => t2.id === activeTab)?.fields ?? []).filter(isGenericRow))
+  let currentBasic = $derived(basicFields(currentTabFields))
+  let currentAdvanced = $derived(advancedFields(currentTabFields))
+  let advancedOpen = $derived(expandedAdvanced.has(activeTab))
+
+  function toggleAdvanced() {
+    const next = new Set(expandedAdvanced)
+    if (next.has(activeTab)) next.delete(activeTab)
+    else next.add(activeTab)
+    expandedAdvanced = next
+  }
+
+  // -- Search --
+  let search = $state('')
+  let activeFilters: Set<ConfigQuickFilter> = $state(new Set())
+
+  function toggleFilter(filter: ConfigQuickFilter) {
+    const next = new Set(activeFilters)
+    if (next.has(filter)) next.delete(filter)
+    else next.add(filter)
+    activeFilters = next
+  }
+
+  // searchConfigFields only hides file/remove-tier fields on its own; a
+  // field still hidden by its own show_when (e.g. the Telegram session
+  // scope while the Telegram channel is off) has no row to jump to, so
+  // filter those out here before searching, same as isGenericRow above.
+  let searchableFields = $derived(schema.filter((f) => isFieldShown(f, displayValues, schema) && isGenericRow(f)))
+
+  let searchActive = $derived(search.trim().length > 0 || activeFilters.size > 0)
+  let searchResult = $derived(
+    searchActive
+      ? searchConfigFields({
+          fields: searchableFields,
+          query: search,
+          localize: (field) => localizeConfigField(field, $t.config),
+          values: displayValues,
+          dirtyFields,
+          envOverrides,
+          filters: [...activeFilters],
+        })
+      : null,
+  )
+
+  function clearSearch() {
+    search = ''
+    activeFilters = new Set()
+  }
+
+  function jumpToField(field: ConfigFieldMeta, tabId: ConfigTabId) {
+    clearSearch()
+    activeTab = tabId
+    // An advanced-tier field's row does not exist in the DOM at all while
+    // its tab's "Advanced (N)" section is collapsed (the default) — expand
+    // it first, or scrollIntoView has nothing to find.
+    if (field.tier === 'advanced' && !expandedAdvanced.has(tabId)) {
+      expandedAdvanced = new Set(expandedAdvanced).add(tabId)
+    }
+    onNavigate?.(`/console/config/${tabId}`)
+    setTimeout(() => {
+      const el = document.getElementById(`config-field-${field.key}`)
+      el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }, 0)
+  }
+
+  function handleSearchKeydown(e: KeyboardEvent) {
+    if (e.key === 'Escape') clearSearch()
+  }
+
+  function handleGlobalKeydown(e: KeyboardEvent) {
+    if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+      e.preventDefault()
+      if (hasDirtyFields && !fieldSaving) handleSaveFields()
+      return
+    }
+    if (e.key === '/' && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
+      e.preventDefault()
+      document.getElementById('config-search-input')?.focus()
+    }
+  }
+
+  // -- Loading / values --
+  async function load() {
+    loading = true
+    error = ''
+    try {
+      const schemaResp = await getConfigSchema()
+      applySchema(schemaResp)
+      dirtyFields = {}
+    } catch (e) {
+      error = e instanceof Error ? e.message : 'Failed to load config'
+    } finally {
+      loading = false
+    }
+  }
+
+  function applySchema(schemaResp: ConfigSchema) {
+    configPath = schemaResp.path
+    schemaUpdatedAt = schemaResp.updated_at || ''
+    schema = schemaResp.fields
+    values = schemaResp.values
+    effectiveValues = schemaResp.effective_values || {}
+    envOverrides = schemaResp.env_overrides || {}
+    pendingKeys = schemaResp.pending_restart_keys || []
+    runtimeStartedAt = schemaResp.runtime_started_at || ''
+    processID = schemaResp.process_id || 0
+  }
+
+  function getDisplayValue(field: ConfigFieldMeta): unknown {
+    return dirtyFields[field.key] !== undefined ? dirtyFields[field.key] : values[field.key]
+  }
+
+  function isDirty(key: string): boolean {
+    return dirtyFields[key] !== undefined
+  }
+
+  // llm_providers shows each provider's api_key already masked with `*`s
+  // (the server never sends a real secret back). Editing the JSON blob
+  // without touching that field must not round-trip the mask back as the
+  // new "secret" and overwrite the real key — strip any masked api_key
+  // before it reaches dirtyFields, same as the old per-field JSON editor.
+  function stripMaskedProviderKeys(field: ConfigFieldMeta, parsed: unknown): unknown {
+    if (field.key !== 'llm_providers' || !parsed || typeof parsed !== 'object') return parsed
+    for (const provider of Object.values(parsed as Record<string, Record<string, unknown>>)) {
+      if (typeof provider.api_key === 'string' && provider.api_key.includes('*')) delete provider.api_key
+    }
+    return parsed
+  }
+
+  function setFieldValue(field: ConfigFieldMeta, rawParsed: unknown) {
+    const parsed = stripMaskedProviderKeys(field, rawParsed)
+    const original = values[field.key]
+    if (configValuesEqual(parsed, original)) {
+      delete dirtyFields[field.key]
+    } else {
+      dirtyFields[field.key] = parsed
+    }
+    dirtyFields = { ...dirtyFields }
+  }
+
+  function revertField(field: ConfigFieldMeta) {
+    if (isDirty(field.key)) {
+      delete dirtyFields[field.key]
+      dirtyFields = { ...dirtyFields }
+      return
+    }
+    setFieldValue(field, field.default_value)
+  }
+
+  function envOverrideFor(field: ConfigFieldMeta): ConfigEnvOverride | null {
+    return envOverrides[field.key] || null
+  }
+
+  function effectiveValueFor(field: ConfigFieldMeta): unknown {
+    if (!Object.prototype.hasOwnProperty.call(effectiveValues, field.key)) return getDisplayValue(field)
+    return effectiveValues[field.key]
+  }
+
+  function effectiveValueSummary(field: ConfigFieldMeta): string {
+    const value = effectiveValueFor(field)
+    if (field.sensitive && typeof value === 'string' && value.length > 0) {
+      return value.includes('*') ? value : '********'
+    }
+    return stringifyConfigValue(value)
+  }
+
+  function searchHitValueText(field: ConfigFieldMeta): string {
+    const v = getDisplayValue(field)
+    if (field.sensitive && typeof v === 'string' && v.length > 0) {
+      return v.includes('*') ? v : '••••••••'
+    }
+    return formatConfigDisplayValue(v, $t.config.values).text
+  }
+
+  function envOverrideActiveSummary(field: ConfigFieldMeta): string | undefined {
+    const override = envOverrideFor(field)
+    if (!override) return undefined
+    return configValuesEqual(effectiveValueFor(field), getDisplayValue(field)) ? undefined : effectiveValueSummary(field)
+  }
 
   let diffEntries = $derived.by(() => {
     return Object.entries(dirtyFields).map(([key, newVal]) => {
       const field = schema.find((f) => f.key === key)
       return {
         key,
-        label: field?.label || key,
+        label: field ? localizeConfigField(field, $t.config).label : key,
         path: field?.path || key,
         oldVal: field?.sensitive || key === 'llm_providers' ? '••••' : stringifyConfigValue(values[key]),
         newVal: field?.sensitive || key === 'llm_providers' ? '••••' : stringifyConfigValue(newVal),
@@ -89,16 +304,11 @@
       success = $t.config.reconnecting
       let recovered = false
       for (let attempt = 0; attempt < 30; attempt++) {
-        await new Promise(resolve => setTimeout(resolve, 1000))
+        await new Promise((resolve) => setTimeout(resolve, 1000))
         try {
           const status = await getConfigSchema(AbortSignal.timeout(2000))
           if (status.runtime_started_at && status.runtime_started_at !== previousRuntime) {
-            runtimeStartedAt = status.runtime_started_at
-            processID = status.process_id || 0
-            pendingKeys = status.pending_restart_keys || []
-            values = status.values
-            effectiveValues = status.effective_values || {}
-            envOverrides = status.env_overrides || {}
+            applySchema(status)
             success = pendingKeys.length ? $t.config.savedPending : $t.config.applied
             recovered = true
             break
@@ -113,7 +323,7 @@
     }
   }
 
-  // -- Reset / Danger zone --
+  // -- Reset / danger zone --
   let resetWsBusy = $state(false)
   let resetWsConfirm = $state(false)
 
@@ -131,168 +341,6 @@
     } finally {
       resetWsBusy = false
     }
-  }
-
-  async function load() {
-    loading = true
-    error = ''
-    try {
-      const schemaResp = await getConfigSchema()
-      configPath = schemaResp.path
-      schemaUpdatedAt = schemaResp.updated_at || ''
-      schema = schemaResp.fields
-      values = schemaResp.values
-      effectiveValues = schemaResp.effective_values || {}
-      envOverrides = schemaResp.env_overrides || {}
-      pendingKeys = schemaResp.pending_restart_keys || []
-      runtimeStartedAt = schemaResp.runtime_started_at || ''
-      processID = schemaResp.process_id || 0
-      dirtyFields = {}
-    } catch (e) {
-      error = e instanceof Error ? e.message : 'Failed to load config'
-    } finally {
-      loading = false
-    }
-  }
-
-  function startEdit(field: ConfigFieldMeta) {
-    editingKey = field.key
-    const current = dirtyFields[field.key] !== undefined ? dirtyFields[field.key] : values[field.key]
-    if (field.type === 'bool') {
-      editBool = !!current
-    } else if (field.type === 'json') {
-      editValue = JSON.stringify(current ?? {}, null, 2)
-    } else if (field.type === 'string_list') {
-      if (Array.isArray(current)) {
-        editValue = current.map((item) => String(item)).join('\n')
-      } else {
-        editValue = current !== undefined && current !== null ? String(current) : ''
-      }
-    } else {
-      // Sensitive fields start empty so the masked value is not exposed
-      editValue = field.sensitive ? '' : (current !== undefined && current !== null ? String(current) : '')
-    }
-  }
-
-  function cancelEdit() {
-    editingKey = null
-    editValue = ''
-  }
-
-  function commitEdit(field: ConfigFieldMeta) {
-    if (editingKey === null) return // already committed (e.g. Enter then blur)
-    if (field.sensitive && editValue === '') { cancelEdit(); return }
-    let parsed: unknown
-    if (field.type === 'bool') {
-      parsed = editBool
-    } else if (field.type === 'json') {
-      try {
-        parsed = JSON.parse(editValue)
-        if (field.key === 'llm_providers' && parsed && typeof parsed === 'object') {
-          for (const provider of Object.values(parsed as Record<string, Record<string, unknown>>)) {
-            if (typeof provider.api_key === 'string' && provider.api_key.includes('*')) delete provider.api_key
-          }
-        }
-      } catch { error = $t.config.invalidValue; return }
-    } else if (field.type === 'string_list') {
-      parsed = editValue
-        .split(/\r?\n|,/)
-        .map((item) => item.trim())
-        .filter(Boolean)
-    } else if (field.type === 'int') {
-      parsed = editValue.trim() === '' ? 0 : Number(editValue)
-      if (!Number.isFinite(parsed) || (field.type === 'int' && !Number.isInteger(parsed))) { error = $t.config.invalidValue; return }
-    } else if (field.type === 'float') {
-      parsed = editValue.trim() === '' ? 0 : Number(editValue)
-      if (!Number.isFinite(parsed)) { error = $t.config.invalidValue; return }
-    } else {
-      parsed = editValue
-    }
-
-    // Check if changed from original
-    const original = values[field.key]
-    if (configValuesEqual(parsed, original)) {
-      delete dirtyFields[field.key]
-    } else {
-      dirtyFields[field.key] = parsed
-    }
-    dirtyFields = { ...dirtyFields }
-    editingKey = null
-    editValue = ''
-  }
-
-  function selectField(field: ConfigFieldMeta, value: string) {
-    const original = values[field.key]
-    if (configValuesEqual(value, original)) {
-      delete dirtyFields[field.key]
-    } else {
-      dirtyFields[field.key] = value
-    }
-    dirtyFields = { ...dirtyFields }
-  }
-
-  function toggleBool(field: ConfigFieldMeta) {
-    const current = dirtyFields[field.key] !== undefined ? dirtyFields[field.key] : values[field.key]
-    const newVal = !current
-    if (configValuesEqual(newVal, values[field.key])) {
-      delete dirtyFields[field.key]
-    } else {
-      dirtyFields[field.key] = newVal
-    }
-    dirtyFields = { ...dirtyFields }
-  }
-
-  function handleSelectChange(field: ConfigFieldMeta, event: Event) {
-    const target = event.currentTarget
-    if (!(target instanceof HTMLSelectElement)) return
-    selectField(field, target.value)
-  }
-
-  function getDisplayValue(field: ConfigFieldMeta): unknown {
-    return dirtyFields[field.key] !== undefined ? dirtyFields[field.key] : values[field.key]
-  }
-
-  function structuredSummary(field: ConfigFieldMeta): ConfigDisplaySummary {
-    return formatConfigDisplayValue(getDisplayValue(field))
-  }
-
-  function isDirty(key: string): boolean {
-    return dirtyFields[key] !== undefined
-  }
-
-  function defaultValueSummary(field: ConfigFieldMeta): string {
-    if (!Object.prototype.hasOwnProperty.call(field, 'default_value')) return ''
-    return stringifyConfigValue(field.default_value)
-  }
-
-  function envOverrideFor(field: ConfigFieldMeta): ConfigEnvOverride | null {
-    return envOverrides[field.key] || null
-  }
-
-  function effectiveValueFor(field: ConfigFieldMeta): unknown {
-    if (!Object.prototype.hasOwnProperty.call(effectiveValues, field.key)) return getDisplayValue(field)
-    return effectiveValues[field.key]
-  }
-
-  function effectiveValueSummary(field: ConfigFieldMeta): string {
-    const value = effectiveValueFor(field)
-    if (field.sensitive && typeof value === 'string' && value.length > 0) {
-      return value.includes('*') ? value : '********'
-    }
-    return stringifyConfigValue(value)
-  }
-
-  function envOverrideTitle(field: ConfigFieldMeta): string {
-    const override = envOverrideFor(field)
-    const active = effectiveValueSummary(field)
-    if (!override) return ''
-    return configValuesEqual(effectiveValueFor(field), getDisplayValue(field))
-      ? `${override.env_key} is set and controls the runtime value.`
-      : `${override.env_key} is set. Runtime value is ${active}; YAML/editor value is ${formatValue(field)}.`
-  }
-
-  function envOverrideDiffers(field: ConfigFieldMeta): boolean {
-    return !!envOverrideFor(field) && !configValuesEqual(effectiveValueFor(field), getDisplayValue(field))
   }
 
   // Tests every provider alias in the pool, the default tier's first. CLI
@@ -322,15 +370,8 @@
       await patchConfigValues(dirtyFields)
       success = $t.config.savedPending
       dirtyFields = {}
-      // Reload to get fresh values
       const schemaResp = await getConfigSchema()
-      schemaUpdatedAt = schemaResp.updated_at || ''
-      values = schemaResp.values
-      effectiveValues = schemaResp.effective_values || {}
-      envOverrides = schemaResp.env_overrides || {}
-      pendingKeys = schemaResp.pending_restart_keys || []
-      runtimeStartedAt = schemaResp.runtime_started_at || ''
-      processID = schemaResp.process_id || 0
+      applySchema(schemaResp)
       if (saveAndApply) restartConfirm = true
       saveAndApply = false
     } catch (e) {
@@ -342,61 +383,20 @@
 
   function handleDiscardFields() {
     dirtyFields = {}
-    cancelEdit()
     success = ''
     error = ''
-  }
-
-  function handleKeydown(e: KeyboardEvent) {
-    if ((e.metaKey || e.ctrlKey) && e.key === 's') {
-      e.preventDefault()
-      if (hasDirtyFields && !fieldSaving) handleSaveFields()
-    }
-  }
-
-  function handleFieldKeydown(e: KeyboardEvent, field: ConfigFieldMeta) {
-    const multiline = field.type === 'string_list' || field.type === 'json'
-    if (e.key === 'Enter' && (!multiline || e.metaKey || e.ctrlKey)) {
-      e.preventDefault()
-      commitEdit(field)
-    } else if (e.key === 'Escape') {
-      cancelEdit()
-    }
-  }
-
-  function formatValue(field: ConfigFieldMeta): string {
-    const v = getDisplayValue(field)
-    if (field.sensitive && typeof v === 'string' && v.length > 0) {
-      return v.includes('*') ? v : '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022'
-    }
-    const summary = formatConfigDisplayValue(v)
-    if (field.type === 'json' || summary.kind === 'array' || summary.kind === 'object') return summary.text
-    return summary.raw
-  }
-
-  function fieldPath(field: ConfigFieldMeta): string {
-    return field.path || field.key
   }
 
   onMount(() => { load() })
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="config-page" onkeydown={handleKeydown}>
+<div class="config-page" onkeydown={handleGlobalKeydown}>
   <div class="page-header">
     <div class="page-header-left">
       <h2 class="page-title">{$t.config.pageTitle}</h2>
       {#if configPath}
         <span class="config-path">{configPath}</span>
-      {/if}
-    </div>
-    <div class="page-header-right">
-      {#if hasDirtyFields}
-        <button class="badge badge-warning diff-badge" onclick={() => { showDiff = !showDiff }} title={$t.config.viewChangesTooltip}>{$t.config.changedSuffix(Object.keys(dirtyFields).length)}</button>
-        <button class="btn btn-ghost btn-sm" onclick={handleDiscardFields}>{$t.config.discard}</button>
-        <button class="btn btn-primary btn-sm" disabled={fieldSaving} onclick={() => { saveAndApply = false; handleSaveFields() }}>
-          {fieldSaving ? $t.config.saving : $t.config.save}
-        </button>
       {/if}
     </div>
   </div>
@@ -407,23 +407,11 @@
         <span class="wizard-entry-kicker">{$t.configWizardCard.kicker}</span>
         <p class="wizard-entry-text">{$t.configWizardCard.body}</p>
       </div>
-      <button
-        type="button"
-        class="btn btn-primary btn-sm"
-        onclick={() => onNavigate?.('/console/onboarding?reentry=1')}
-      >{$t.configWizardCard.button}</button>
+      <button type="button" class="btn btn-primary btn-sm" onclick={() => onNavigate?.('/console/onboarding?reentry=1')}>
+        {$t.configWizardCard.button}
+      </button>
     </div>
   {/if}
-
-  <div class="card">
-    <label>{$t.config.searchSettings}<input aria-label={$t.config.searchSettings} bind:value={search} /></label>
-    <label>{$t.config.sectionSettings}<select aria-label={$t.config.sectionSettings} bind:value={section}><option value="">{$t.config.allSections}</option>{#each [...new Set(schema.map(f => f.section))] as name}<option value={name}>{name}</option>{/each}</select></label>
-    <p>{pendingKeys.length ? $t.config.savedPending : $t.config.applied}</p>
-    {#if restartConfirm}<p role="alert">{$t.config.savedPending}</p><button class="btn btn-primary" disabled={restartBusy} onclick={handleRestart}>{$t.config.confirmRestart}</button><button class="btn btn-ghost" onclick={() => { restartConfirm = false }}>{$t.config.discard}</button>{/if}
-    <button class="btn btn-secondary" disabled={restartBusy} onclick={load}>{$t.config.reconnect}</button>
-    {#if hasDirtyFields}<button class="btn btn-primary" disabled={fieldSaving || restartBusy} onclick={() => { saveAndApply = true; handleSaveFields() }}>{$t.config.saveApply}</button>{/if}
-  </div>
-  <RemoteAccessCard />
 
   {#if loading}
     <div class="loading">{$t.config.loading}</div>
@@ -443,204 +431,202 @@
       <ConfigPendingChanges entries={diffEntries} onClose={() => { showDiff = false }} />
     {/if}
 
-    <div class="quick-start-panel">
-      <div class="quick-start-header">
-        <div>
-          <span class="quick-start-kicker">{$t.config.quickStartKicker}</span>
-          <h3>{$t.config.quickStartTitle}</h3>
-        </div>
-        <span class="quick-start-progress">{$t.config.quickStartReady(quickStartStats.ready, quickStartStats.total)}</span>
+    <div class="config-search-bar">
+      <div class="config-search-input-wrap">
+        <input
+          id="config-search-input"
+          class="config-search-input config-control-input"
+          type="search"
+          aria-label={$t.config.search.label}
+          placeholder={$t.config.search.placeholder}
+          bind:value={search}
+          onkeydown={handleSearchKeydown}
+        />
+        {#if search}
+          <button type="button" class="config-search-clear" onclick={clearSearch}>{$t.config.search.clear}</button>
+        {/if}
       </div>
-      <div class="quick-start-grid">
-        {#each quickStartItems as item}
-          {@const field = item.field}
-          {@const metaBadges = buildConfigMetaBadges(field, item.value, item.dirty, schemaUpdatedAt)}
-          {@const envOverride = envOverrideFor(field)}
-          <div class="quick-start-card" class:quick-attention={item.status.kind === 'attention'}>
-            <div class="quick-start-card-main">
-              <div class="quick-start-title-row">
-                <span class="quick-start-title">{item.title}</span>
-                <span class={`quick-status status-${item.status.kind}`} title={item.status.message}>{item.status.label}</span>
-              </div>
-              <p>{item.description}</p>
-              <span class="quick-status-message">{item.status.message}</span>
-              {#if defaultValueSummary(field)}
-                <span class="quick-default">{$t.config.defaultPrefix(defaultValueSummary(field))}</span>
-              {/if}
-              {#if metaBadges.length > 0}
-                <div class="field-meta-badges" aria-label={`${field.label} metadata`}>
-                  {#each metaBadges as badge}
-                    <span class={`field-meta-badge badge-${badge.tone}`} title={badge.title}>{badge.label}</span>
-                  {/each}
-                </div>
-              {/if}
-              {#if envOverride}
-                <div class="field-meta-badges" aria-label={`${field.label} environment override`}>
-                  <span class="field-meta-badge badge-env" title={envOverrideTitle(field)}>ENV {envOverride.env_key}</span>
-                  {#if envOverrideDiffers(field)}
-                    <span class="field-meta-badge badge-env-active" title={envOverrideTitle(field)}>Active: {effectiveValueSummary(field)}</span>
-                  {/if}
-                </div>
-              {/if}
+      <div class="config-search-filters" role="group" aria-label={$t.config.search.label}>
+        <button type="button" class="config-filter-chip" class:active={activeFilters.has('changedFromDefault')} onclick={() => toggleFilter('changedFromDefault')}>
+          {$t.config.search.filters.changedFromDefault}
+        </button>
+        <button type="button" class="config-filter-chip" class:active={activeFilters.has('envOverridden')} onclick={() => toggleFilter('envOverridden')}>
+          {$t.config.search.filters.envOverridden}
+        </button>
+        <button type="button" class="config-filter-chip" class:active={activeFilters.has('unsaved')} onclick={() => toggleFilter('unsaved')}>
+          {$t.config.search.filters.unsaved}
+        </button>
+      </div>
+    </div>
+
+    {#if searchActive && searchResult}
+      <div class="config-search-results">
+        <p class="config-search-count">{$t.config.search.resultsCount(searchResult.totalCount)}</p>
+        {#if searchResult.totalCount === 0}
+          <p class="config-empty-state">{$t.config.search.noResults}</p>
+        {:else}
+          {#each searchResult.groups as group}
+            <div class="config-search-group">
+              <h4 class="config-search-group-title">{group.sectionLabel} <span class="config-search-group-count">{group.hits.length}</span></h4>
+              {#each group.hits as hit}
+                <button type="button" class="config-search-hit" onclick={() => jumpToField(hit.field, hit.tabId)} title={$t.config.search.jumpTo}>
+                  <span class="config-search-hit-label">
+                    {#each hit.labelSegments as seg}{#if seg.matched}<mark>{seg.text}</mark>{:else}{seg.text}{/if}{/each}
+                  </span>
+                  <span class="config-search-hit-description">
+                    {#each hit.descriptionSegments as seg}{#if seg.matched}<mark>{seg.text}</mark>{:else}{seg.text}{/if}{/each}
+                  </span>
+                  <span class="config-search-hit-meta">
+                    <span class="config-search-hit-path">{hit.field.path}</span>
+                    <span class="config-search-hit-value">{searchHitValueText(hit.field)}</span>
+                  </span>
+                </button>
+              {/each}
             </div>
-            <div class="quick-start-control">
-              {#if field.type === 'bool'}
-                <button
-                  class="bool-toggle"
-                  class:bool-on={!!getDisplayValue(field)}
-                  class:dirty={isDirty(field.key)}
-                  onclick={() => toggleBool(field)}
-                  title={$t.config.clickToToggle}
-                >
-                  {getDisplayValue(field) ? $t.config.on : $t.config.off}
-                </button>
-              {:else if field.type === 'select' && field.options}
-                <select
-                  class="field-select"
-                  class:dirty={isDirty(field.key)}
-                  value={String(getDisplayValue(field) ?? '')}
-                  onchange={(e) => handleSelectChange(field, e)}
-                >
-                  {#each field.options as opt}
-                    <option value={opt}>{opt || $t.config.selectNone}</option>
-                  {/each}
-                </select>
-              {:else if editingKey === field.key}
-                <div class="field-edit">
-                  {#if field.type === 'string_list' || field.type === 'json'}
-                    <textarea
-                      class="field-textarea"
-                      bind:value={editValue}
-                      onkeydown={(e) => handleFieldKeydown(e, field)}
-                      onblur={() => commitEdit(field)}
-                    ></textarea>
-                  {:else}
-                    <input
-                      type={field.sensitive ? 'password' : (field.type === 'int' || field.type === 'float' ? 'number' : 'text')}
-                      step={field.type === 'float' ? '0.01' : undefined}
-                      class="field-input"
-                      bind:value={editValue}
-                      onkeydown={(e) => handleFieldKeydown(e, field)}
-                      onblur={() => commitEdit(field)}
-                    />
+          {/each}
+        {/if}
+      </div>
+    {:else}
+      <ConfigTabs active={activeTab} onSelect={selectTab} />
+
+      {#if activeTab === 'channelsRemote'}
+        <RemoteAccessCard />
+      {/if}
+
+      <div class="config-tab-body card">
+        {#if currentBasic.length === 0 && currentAdvanced.length === 0}
+          <p class="config-empty-state">{$t.config.emptyTab}</p>
+        {:else}
+          {#if currentBasic.length > 0}
+            <div class="config-field-list">
+              {#each currentBasic as field (field.key)}
+                {@const isLLMPool = field.key === 'llm_providers' || field.key === 'llm_tiers'}
+                <ConfigFieldRow
+                  {field}
+                  loc={localizeConfigField(field, $t.config)}
+                  value={getDisplayValue(field)}
+                  dirty={isDirty(field.key)}
+                  envOverride={envOverrideFor(field)}
+                  envOverrideActiveValue={envOverrideActiveSummary(field)}
+                  onChange={(v) => setFieldValue(field, v)}
+                  onRevert={() => revertField(field)}
+                />
+                {#if isLLMPool}
+                  <div class="config-llm-hint">
+                    <span>{$t.config.llmReadonlyHint}</span>
+                    <button type="button" class="btn btn-ghost btn-sm" onclick={() => onNavigate?.('/console/onboarding?reentry=1')}>{$t.config.editInWizard}</button>
+                    {#if field.key === 'llm_providers'}
+                      <button type="button" class="btn btn-ghost btn-sm" disabled={llmTestBusy} onclick={testLLMConnection}>
+                        {llmTestBusy ? $t.providerTest.testing : $t.providerTest.button}
+                      </button>
+                    {/if}
+                  </div>
+                  {#if field.key === 'llm_providers' && (llmTestRows !== null || llmTestError)}
+                    <div class="provider-test" role="status" aria-label={$t.providerTest.resultsLabel}>
+                      {#if llmTestError}
+                        <p class="provider-test-error">{llmTestError}</p>
+                      {:else if llmTestRows && llmTestRows.length === 0}
+                        <p class="provider-test-empty">{$t.providerTest.noProviders}</p>
+                      {:else if llmTestRows}
+                        <ul class="provider-test-list">
+                          {#each llmTestRows as row (row.alias)}
+                            <li class={`provider-test-row tone-${row.tone}`}>
+                              <div class="provider-test-head">
+                                <span class="provider-test-alias">{row.alias}</span>
+                                <span class="provider-test-kind">{row.kind}</span>
+                                {#if row.isDefault}
+                                  <span class="badge badge-default">{$t.providerTest.defaultBadge}</span>
+                                {/if}
+                                <span class={`badge badge-${row.tone} provider-test-status`}>{row.statusLabel}</span>
+                              </div>
+                              {#if row.summary}<p class="provider-test-summary">{row.summary}</p>{/if}
+                              {#if row.detail}<p class="provider-test-detail">{row.detail}</p>{/if}
+                            </li>
+                          {/each}
+                        </ul>
+                      {/if}
+                    </div>
                   {/if}
-                </div>
-              {:else if field.sensitive}
-                <button
-                  class="value-btn"
-                  class:dirty={isDirty(field.key)}
-                  onclick={() => startEdit(field)}
-                  title={$t.config.clickToEdit}
-                >
-                  <span class="value-text sensitive">{formatValue(field)}</span>
-                </button>
-              {:else if field.type === 'json'}
-                {@const summary = structuredSummary(field)}
-                <div class="structured-readonly">
-                  <span class="structured-main">{summary.text}</span>
-                  {#if summary.preview.length > 0}
-                    <span class="structured-preview">
-                      {#each summary.preview as preview}
-                        <span>{preview}</span>
-                      {/each}
-                    </span>
-                  {/if}
-                  <button class="btn btn-secondary btn-sm" onclick={() => startEdit(field)}>{$t.config.clickToEdit}</button>
-                </div>
-              {:else}
-                <button
-                  class="value-btn"
-                  class:dirty={isDirty(field.key)}
-                  onclick={() => startEdit(field)}
-                  title={$t.config.clickToEdit}
-                >
-                  <span class="value-text">{formatValue(field)}</span>
-                </button>
-              {/if}
-              {#if item.key === 'llm_providers'}
-                <button class="btn btn-ghost btn-sm" disabled={llmTestBusy} onclick={testLLMConnection}>
-                  {llmTestBusy ? $t.providerTest.testing : $t.providerTest.button}
-                </button>
-              {/if}
-            </div>
-            {#if item.key === 'llm_providers' && (llmTestRows !== null || llmTestError)}
-              <!-- Full card width under both columns, so long provider errors
-                   wrap here instead of squeezing the title column. -->
-              <div class="provider-test" role="status" aria-label={$t.providerTest.resultsLabel}>
-                {#if llmTestError}
-                  <p class="provider-test-error">{llmTestError}</p>
-                {:else if llmTestRows && llmTestRows.length === 0}
-                  <p class="provider-test-empty">{$t.providerTest.noProviders}</p>
-                {:else if llmTestRows}
-                  <ul class="provider-test-list">
-                    {#each llmTestRows as row (row.alias)}
-                      <li class={`provider-test-row tone-${row.tone}`}>
-                        <div class="provider-test-head">
-                          <span class="provider-test-alias">{row.alias}</span>
-                          <span class="provider-test-kind">{row.kind}</span>
-                          {#if row.isDefault}
-                            <span class="badge badge-default">{$t.providerTest.defaultBadge}</span>
-                          {/if}
-                          <span class={`badge badge-${row.tone} provider-test-status`}>{row.statusLabel}</span>
-                        </div>
-                        {#if row.summary}
-                          <p class="provider-test-summary">{row.summary}</p>
-                        {/if}
-                        {#if row.detail}
-                          <p class="provider-test-detail">{row.detail}</p>
-                        {/if}
-                      </li>
-                    {/each}
-                  </ul>
                 {/if}
+              {/each}
+            </div>
+          {/if}
+
+          {#if currentAdvanced.length > 0}
+            <button type="button" class="config-advanced-toggle" onclick={toggleAdvanced} aria-expanded={advancedOpen}>
+              {$t.config.advancedHeading(currentAdvanced.length)}
+            </button>
+            {#if advancedOpen}
+              <div class="config-field-list">
+                {#each currentAdvanced as field (field.key)}
+                  <ConfigFieldRow
+                    {field}
+                    loc={localizeConfigField(field, $t.config)}
+                    value={getDisplayValue(field)}
+                    dirty={isDirty(field.key)}
+                    envOverride={envOverrideFor(field)}
+                    envOverrideActiveValue={envOverrideActiveSummary(field)}
+                    onChange={(v) => setFieldValue(field, v)}
+                    onRevert={() => revertField(field)}
+                  />
+                {/each}
               </div>
             {/if}
-          </div>
-        {/each}
+          {/if}
+        {/if}
       </div>
-    </div>
 
-    <!-- Server Restart -->
-    <div class="restart-section card">
-      <div class="card-header">
-        <span class="card-title">Server</span>
-      </div>
-      <div class="danger-body">
-        <div class="danger-row">
-          <div class="danger-info">
-            <strong>Restart server</strong>
-            <span>Apply config changes by restarting the TARS process. Service mode uses launchctl, dev mode re-execs the process.</span>
+      {#if activeTab === 'advanced'}
+        <div class="restart-section card">
+          <div class="card-header">
+            <span class="card-title">{$t.config.restart.title}</span>
           </div>
-          <button
-            class="btn btn-primary btn-sm"
-            disabled={restartBusy}
-            onclick={handleRestart}
-          >{restartConfirm ? 'Click again to confirm' : restartBusy ? 'Restarting...' : 'Restart Server'}</button>
+          <div class="danger-body">
+            <div class="danger-row">
+              <div class="danger-info">
+                <strong>{$t.config.restart.label}</strong>
+                <span>{$t.config.restart.description}</span>
+              </div>
+              <button class="btn btn-primary btn-sm" disabled={restartBusy} onclick={handleRestart}>
+                {restartConfirm ? $t.config.restart.confirm : restartBusy ? $t.config.restart.restarting : $t.config.restart.label}
+              </button>
+            </div>
+          </div>
         </div>
-      </div>
-    </div>
 
-    <!-- Danger Zone -->
-    <div class="danger-zone card">
-      <div class="card-header">
-        <span class="card-title danger-title">Danger Zone</span>
-      </div>
-      <div class="danger-body">
-        <div class="danger-row">
-          <div class="danger-info">
-            <strong>Reset workspace</strong>
-            <span>Remove sessions, cron state, agent runtime data, logs, and memory. Config is preserved.</span>
+        <div class="danger-zone card">
+          <div class="card-header">
+            <span class="card-title danger-title">{$t.config.dangerZone.title}</span>
           </div>
-          <button
-            class="btn btn-danger btn-sm"
-            disabled={resetWsBusy}
-            onclick={handleResetWorkspace}
-          >{resetWsConfirm ? 'Click again to confirm' : resetWsBusy ? 'Resetting...' : 'Reset Workspace'}</button>
+          <div class="danger-body">
+            <div class="danger-row">
+              <div class="danger-info">
+                <strong>{$t.config.dangerZone.resetLabel}</strong>
+                <span>{$t.config.dangerZone.resetDescription}</span>
+              </div>
+              <button class="btn btn-danger btn-sm" disabled={resetWsBusy} onclick={handleResetWorkspace}>
+                {resetWsConfirm ? $t.config.dangerZone.confirm : resetWsBusy ? $t.config.dangerZone.resetting : $t.config.dangerZone.resetLabel}
+              </button>
+            </div>
+          </div>
         </div>
-      </div>
-    </div>
+      {/if}
+    {/if}
   {/if}
 </div>
+
+<ConfigSaveBar
+  changedCount={Object.keys(dirtyFields).length}
+  saving={fieldSaving}
+  restartConfirm={restartConfirm}
+  restartBusy={restartBusy}
+  onDiscard={handleDiscardFields}
+  onSave={() => { saveAndApply = false; handleSaveFields() }}
+  onSaveAndRestart={() => { saveAndApply = true; handleSaveFields() }}
+  onViewChanges={() => { showDiff = !showDiff }}
+  onConfirmRestart={handleRestart}
+  onCancelRestart={() => { restartConfirm = false }}
+/>
 
 <style>
   .config-page {
@@ -666,6 +652,27 @@
     flex-wrap: wrap;
   }
 
+  .page-header-left {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-3);
+    flex-wrap: wrap;
+  }
+
+  .page-title {
+    font-family: var(--font-display);
+    font-size: var(--text-xl);
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0;
+  }
+
+  .config-path {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    color: var(--text-ghost);
+  }
+
   .wizard-entry-card {
     display: flex;
     align-items: center;
@@ -683,497 +690,302 @@
     border: 1px solid var(--primary);
     color: var(--primary);
     border-radius: 999px;
-    font-size: 11px;
+    font-size: var(--text-xs);
     text-transform: uppercase;
     letter-spacing: 0.05em;
   }
   .wizard-entry-text {
     margin: var(--space-2) 0 0;
     color: var(--text-muted);
-    font-size: 13px;
+    font-size: var(--text-sm);
   }
 
-  .page-header-left {
+  .config-search-bar {
     display: flex;
-    align-items: baseline;
-    gap: var(--space-3);
-    flex-wrap: wrap;
+    flex-direction: column;
+    gap: var(--space-2);
   }
 
-  .page-header-right {
+  .config-search-input-wrap {
     display: flex;
     align-items: center;
     gap: var(--space-2);
   }
 
-  .page-title {
-    font-family: var(--font-display);
-    font-size: var(--text-xl);
-    font-weight: 600;
-    color: var(--text-primary);
-    margin: 0;
+  /* .config-control-input (app.css, #1242) gives the search box the same
+     control look as every field input; only the layout here is local. */
+  .config-search-input {
+    flex: 1;
+    height: 36px;
   }
 
-  .config-path {
-    font-family: var(--font-mono);
-    font-size: var(--text-xs);
-    color: var(--text-ghost);
-    background: var(--surface-elevated);
-    padding: 2px var(--space-2);
-    border-radius: var(--radius-sm);
-  }
-
-  .loading { color: var(--text-secondary); font-size: var(--text-sm); padding: var(--space-6); }
-
-  .empty-state { padding: var(--space-6); text-align: center; color: var(--text-secondary); font-size: var(--text-sm); }
-
-  .message { font-size: var(--text-sm); padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); }
-  .message-error { background: rgba(220, 60, 60, 0.15); color: var(--red); border: 1px solid rgba(220, 60, 60, 0.3); }
-  .message-success { background: rgba(60, 180, 100, 0.15); color: var(--green); border: 1px solid rgba(60, 180, 100, 0.3); }
-
-  /* ── Quick Start ─────────────────────────── */
-  .quick-start-panel {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-3);
-  }
-  .quick-start-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-3);
-    padding: var(--space-1) 0;
-  }
-  .quick-start-header h3 {
-    margin: 0;
-    color: var(--text-primary);
-    font-family: var(--font-display);
-    font-size: var(--text-lg);
-    font-weight: 600;
-  }
-  .quick-start-kicker {
-    display: block;
-    margin-bottom: 2px;
-    color: var(--text-ghost);
-    font-family: var(--font-display);
-    font-size: var(--text-xs);
-    font-weight: 600;
-  }
-  .quick-start-progress {
-    min-height: 24px;
-    border: 1px solid rgba(60, 180, 100, 0.28);
-    border-radius: var(--radius-sm);
-    padding: 3px var(--space-2);
-    color: var(--green);
-    background: rgba(60, 180, 100, 0.08);
-    font-family: var(--font-mono);
-    font-size: var(--text-xs);
-    white-space: nowrap;
-  }
-  .quick-start-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-    gap: var(--space-3);
-  }
-  /* Flex, not a two-column grid: the controls column wraps under the text
-     when the card is too narrow for both, so the title and description keep
-     a readable width instead of collapsing to a word per line. */
-  .quick-start-card {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-3);
-    align-items: flex-start;
-    align-content: flex-start;
-    min-height: 132px;
+  .config-search-clear {
+    background: none;
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-md);
-    padding: var(--space-3);
-    background: var(--surface-elevated);
+    padding: var(--space-1) var(--space-2);
+    color: var(--text-secondary);
+    font-size: var(--text-xs);
+    cursor: pointer;
   }
-  .quick-start-card.quick-attention {
-    border-color: rgba(var(--primary-rgb), 0.3);
-    background: rgba(var(--primary-rgb), 0.04);
-  }
-  .quick-start-card-main {
+
+  .config-search-filters {
     display: flex;
-    flex: 1 1 9rem;
-    min-width: min(9rem, 100%);
-    flex-direction: column;
-    gap: 5px;
-  }
-  .quick-start-title-row {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
     gap: var(--space-2);
+    flex-wrap: wrap;
   }
-  .quick-start-title {
-    color: var(--text-primary);
-    font-family: var(--font-display);
-    font-size: var(--text-sm);
-    font-weight: 600;
+
+  .config-filter-chip {
+    border: 1px solid var(--border-subtle);
+    border-radius: 999px;
+    background: var(--surface-inset);
+    color: var(--text-secondary);
+    font-size: var(--text-xs);
+    padding: 3px 10px;
+    cursor: pointer;
   }
-  .quick-start-card-main > p {
+
+  .config-filter-chip.active {
+    border-color: var(--primary);
+    color: var(--primary);
+    background: rgba(var(--primary-rgb), 0.1);
+  }
+
+  .config-search-results {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+
+  .config-search-count {
     margin: 0;
     color: var(--text-tertiary);
     font-size: var(--text-xs);
-    line-height: 1.45;
-  }
-  .quick-status,
-  .quick-default {
-    width: fit-content;
-    max-width: 100%;
-    min-height: 18px;
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-sm);
-    padding: 1px 6px;
-    font-family: var(--font-display);
-    font-size: 10px;
-    font-weight: 600;
-    line-height: 1.4;
-  }
-  .quick-status.status-ready {
-    border-color: rgba(60, 180, 100, 0.28);
-    color: var(--green);
-    background: rgba(60, 180, 100, 0.08);
-  }
-  .quick-status.status-attention {
-    border-color: rgba(var(--primary-rgb), 0.35);
-    color: var(--primary);
-    background: rgba(var(--primary-rgb), 0.08);
-  }
-  .quick-status.status-optional {
-    color: var(--text-ghost);
-    background: var(--surface-inset);
-  }
-  .quick-status-message {
-    color: var(--text-secondary);
-    font-size: var(--text-xs);
-    line-height: 1.4;
-  }
-  .quick-default {
-    color: var(--text-ghost);
-    background: var(--surface-inset);
-    font-family: var(--font-mono);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .quick-start-control {
-    display: flex;
-    flex: 0 1 auto;
-    align-items: flex-end;
-    flex-direction: column;
-    gap: var(--space-2);
-    min-width: 0;
-    max-width: min(320px, 100%);
-    margin-left: auto;
   }
 
-  /* ── Provider connection test ────────────── */
-  .provider-test {
-    flex: 1 1 100%;
-    min-width: 0;
-    border-top: 1px solid var(--border-subtle);
-    padding-top: var(--space-2);
-  }
-  .provider-test-list {
+  .config-search-group-title {
     display: flex;
-    flex-direction: column;
+    align-items: center;
     gap: var(--space-2);
-    margin: 0;
-    padding: 0;
-    list-style: none;
+    margin: 0 0 var(--space-1);
+    font-family: var(--font-display);
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
   }
-  .provider-test-row {
+
+  .config-search-group-count {
+    color: var(--text-tertiary);
+    font-size: var(--text-xs);
+  }
+
+  .config-search-hit {
     display: flex;
     flex-direction: column;
     gap: 2px;
-    min-width: 0;
-    border-left: 2px solid var(--border-default);
-    padding-left: var(--space-2);
+    width: 100%;
+    text-align: left;
+    background: var(--surface);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    margin-bottom: var(--space-1);
+    cursor: pointer;
+    padding: var(--space-2) var(--space-3);
   }
-  .provider-test-row.tone-success { border-left-color: var(--success); }
-  .provider-test-row.tone-info { border-left-color: var(--info); }
-  .provider-test-row.tone-warning { border-left-color: var(--warning); }
-  .provider-test-row.tone-error { border-left-color: var(--error); }
-  .provider-test-head {
+
+  .config-search-hit:hover {
+    border-color: var(--primary);
+  }
+
+  .config-search-hit-label {
+    font-family: var(--font-display);
+    font-size: var(--text-sm);
+    color: var(--text-primary);
+  }
+
+  .config-search-hit-description {
+    font-family: var(--font-body);
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
+  }
+
+  .config-search-hit-meta {
     display: flex;
-    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+  }
+
+  .config-search-hit-path {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    color: var(--text-ghost);
+    overflow-wrap: anywhere;
+  }
+
+  .config-search-hit-value {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    color: var(--text-tertiary);
+    flex-shrink: 0;
+  }
+
+  .config-search-hit mark {
+    background: rgba(var(--primary-rgb), 0.28);
+    color: var(--text-primary);
+    border-radius: 2px;
+  }
+
+  .config-empty-state {
+    color: var(--text-tertiary);
+    font-size: var(--text-sm);
+    padding: var(--space-4);
+    text-align: center;
+  }
+
+  .config-tab-body {
+    padding: 0;
+  }
+
+  .config-field-list {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .config-advanced-toggle {
+    width: 100%;
+    text-align: left;
+    background: var(--surface-inset);
+    border: none;
+    border-top: 1px solid var(--border-subtle);
+    padding: var(--space-2) var(--space-3);
+    color: var(--text-secondary);
+    font-family: var(--font-display);
+    font-size: var(--text-sm);
+    cursor: pointer;
+  }
+
+  .config-advanced-toggle:hover {
+    color: var(--primary);
+  }
+
+  .config-llm-hint {
+    display: flex;
     align-items: center;
     gap: var(--space-2);
-    min-width: 0;
-  }
-  .provider-test-alias {
-    color: var(--text-primary);
-    font-family: var(--font-mono);
-    font-size: var(--text-xs);
-    font-weight: 600;
-    overflow-wrap: anywhere;
-  }
-  .provider-test-kind {
+    padding: var(--space-2) var(--space-3);
     color: var(--text-tertiary);
-    font-family: var(--font-mono);
     font-size: var(--text-xs);
-  }
-  .provider-test-status { margin-left: auto; }
-  .provider-test-summary,
-  .provider-test-empty {
-    margin: 0;
-    color: var(--text-secondary);
-    font-size: var(--text-xs);
-    line-height: 1.45;
-    overflow-wrap: anywhere;
-  }
-  .provider-test-detail {
-    margin: 0;
-    color: var(--text-tertiary);
-    font-family: var(--font-mono);
-    font-size: 11px;
-    line-height: 1.45;
-    overflow-wrap: anywhere;
-    white-space: pre-wrap;
-  }
-  .provider-test-error {
-    margin: 0;
-    color: var(--error);
-    font-size: var(--text-xs);
-    overflow-wrap: anywhere;
+    border-bottom: 1px solid var(--border-subtle);
+    flex-wrap: wrap;
   }
 
-  /* ── Field metadata ──────────────────────── */
-  .field-meta-badges {
+  .provider-test {
+    padding: var(--space-3);
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .provider-test-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .provider-test-row {
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    padding: var(--space-2);
+  }
+
+  .provider-test-head {
     display: flex;
     align-items: center;
+    gap: var(--space-2);
     flex-wrap: wrap;
-    gap: 4px;
-    margin-top: 2px;
   }
-  .field-meta-badge {
-    min-height: 18px;
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-sm);
-    padding: 1px 6px;
-    font-family: var(--font-display);
-    font-size: 10px;
-    font-weight: 600;
-    line-height: 1.4;
+
+  .provider-test-alias {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    color: var(--text-primary);
+  }
+
+  .provider-test-kind {
+    font-size: var(--text-xs);
     color: var(--text-tertiary);
-    background: var(--surface-inset);
-    white-space: nowrap;
-  }
-  .field-meta-badge.badge-default {
-    color: var(--text-ghost);
-  }
-  .field-meta-badge.badge-modified {
-    border-color: rgba(var(--primary-rgb), 0.35);
-    color: var(--primary);
-    background: rgba(var(--primary-rgb), 0.08);
-  }
-  .field-meta-badge.badge-restart {
-    border-color: rgba(220, 60, 60, 0.28);
-    color: var(--red);
-    background: rgba(220, 60, 60, 0.08);
-  }
-  .field-meta-badge.badge-live {
-    border-color: rgba(60, 180, 100, 0.28);
-    color: var(--green);
-    background: rgba(60, 180, 100, 0.08);
-  }
-  .field-meta-badge.badge-secret {
-    border-color: rgba(120, 120, 160, 0.28);
-    color: var(--text-secondary);
-    background: rgba(120, 120, 160, 0.08);
-  }
-  .field-meta-badge.badge-env {
-    border-color: rgba(90, 135, 220, 0.34);
-    color: #8fb5ff;
-    background: rgba(90, 135, 220, 0.1);
-  }
-  .field-meta-badge.badge-env-active {
-    border-color: rgba(var(--primary-rgb), 0.42);
-    color: var(--primary);
-    background: rgba(var(--primary-rgb), 0.11);
   }
 
-  .value-text {
-    font-family: var(--font-mono);
+  .provider-test-summary,
+  .provider-test-detail,
+  .provider-test-error,
+  .provider-test-empty {
+    margin: var(--space-1) 0 0;
     font-size: var(--text-xs);
     color: var(--text-secondary);
-    word-break: break-all;
-  }
-  .value-text.sensitive { color: var(--text-ghost); letter-spacing: 0.5px; }
-
-  /* ── Value button (clickable to edit) ──── */
-  .value-btn {
-    background: none;
-    border: 1px solid transparent;
-    border-radius: var(--radius-sm);
-    padding: var(--space-1) var(--space-2);
-    cursor: pointer;
-    transition: all var(--duration-fast) var(--ease-out);
-    text-align: right;
-    max-width: 300px;
-  }
-  .value-btn:hover {
-    border-color: var(--border-default);
-    background: var(--surface-elevated);
-  }
-  .value-btn.dirty .value-text {
-    color: var(--primary);
-    font-weight: 500;
   }
 
-  .structured-readonly {
-    display: grid;
-    gap: var(--space-1);
-    justify-items: end;
-    max-width: 320px;
-    min-width: 0;
-    text-align: right;
-  }
-  .structured-main {
-    font-family: var(--font-mono);
-    font-size: var(--text-xs);
-    color: var(--text-primary);
-  }
-  .structured-preview {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: flex-end;
-    gap: 4px;
-    max-width: 100%;
-  }
-  .structured-preview span {
-    max-width: 88px;
-    min-height: 18px;
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-sm);
-    background: var(--surface-inset);
-    color: var(--text-tertiary);
-    padding: 1px 5px;
-    font-family: var(--font-mono);
-    font-size: 10px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-
-  .yaml-key-hint {
-    font-family: var(--font-mono);
-    font-size: 10px;
-    color: var(--text-ghost);
-  }
-
-  /* ── Bool toggle ─────────────────────────── */
-  .bool-toggle {
-    display: inline-block;
-    padding: 3px var(--space-2);
-    border-radius: var(--radius-sm);
-    border: 1px solid transparent;
-    font-family: var(--font-display);
-    font-size: var(--text-xs);
-    font-weight: 600;
-    letter-spacing: 0.04em;
-    cursor: pointer;
-    transition: all var(--duration-fast) var(--ease-out);
-    background: rgba(255, 255, 255, 0.04);
-    color: var(--text-ghost);
-  }
-  .bool-toggle.bool-on {
-    background: rgba(60, 180, 100, 0.15);
-    color: var(--green);
-  }
-  .bool-toggle:hover {
-    border-color: var(--border-default);
-    transform: scale(1.05);
-  }
-  .bool-toggle.dirty {
-    box-shadow: 0 0 0 1px var(--primary);
-  }
-
-  /* ── Field select ─────────────────────────── */
-  .field-select {
-    padding: 3px var(--space-2);
-    background: var(--surface-base);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-sm);
-    color: var(--text-secondary);
-    font-family: var(--font-mono);
-    font-size: var(--text-xs);
-    cursor: pointer;
-    min-width: 120px;
-    text-align: right;
-    appearance: none;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5' viewBox='0 0 8 5'%3E%3Cpath fill='%23888' d='M0 0l4 5 4-5z'/%3E%3C/svg%3E");
-    background-repeat: no-repeat;
-    background-position: right 8px center;
-    padding-right: var(--space-5);
-  }
-  .field-select:hover { border-color: var(--border-default); }
-  .field-select:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 2px rgba(var(--primary-rgb), 0.3); }
-  .field-select.dirty { border-color: var(--primary); color: var(--primary); font-weight: 500; }
-
-  /* ── Field input ─────────────────────────── */
-  .field-edit { display: flex; }
-  .field-input {
-    width: 200px;
-    padding: var(--space-1) var(--space-2);
-    background: var(--surface-base);
-    border: 1px solid var(--primary);
-    border-radius: var(--radius-sm);
-    color: var(--text-primary);
-    font-family: var(--font-mono);
-    font-size: var(--text-xs);
-    text-align: right;
-    outline: none;
-  }
-  .field-input:focus {
-    box-shadow: 0 0 0 2px rgba(var(--primary-rgb), 0.3);
-  }
-  .field-textarea {
-    width: min(420px, 42vw);
-    min-height: 120px;
-    padding: var(--space-2);
-    background: var(--surface-base);
-    border: 1px solid var(--primary);
-    border-radius: var(--radius-sm);
-    color: var(--text-primary);
-    font-family: var(--font-mono);
-    font-size: var(--text-xs);
-    line-height: 1.5;
-    resize: vertical;
-    outline: none;
-    white-space: pre;
-  }
-  .field-textarea:focus {
-    box-shadow: 0 0 0 2px rgba(var(--primary-rgb), 0.3);
-  }
-
-  /* ── Restart section ──────────────────────── */
-  .restart-section { margin-top: var(--space-4); }
-
-  /* ── Danger Zone ─────────────────────────── */
+  .restart-section,
   .danger-zone {
-    border-color: rgba(220, 60, 60, 0.3);
-    margin-top: var(--space-4);
+    padding: var(--space-4);
   }
-  .danger-title { color: var(--red); }
-  .danger-body { display: flex; flex-direction: column; }
+
+  .danger-title {
+    color: var(--error);
+  }
+
   .danger-row {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: var(--space-4);
-    padding: var(--space-4);
-    border-bottom: 1px solid var(--border-subtle);
+    flex-wrap: wrap;
   }
-  .danger-row:last-child { border-bottom: none; }
-  .danger-info { display: flex; flex-direction: column; gap: 2px; }
-  .danger-info strong { font-family: var(--font-display); font-size: var(--text-sm); font-weight: 500; color: var(--text-primary); }
-  .danger-info span { font-size: var(--text-xs); color: var(--text-tertiary); }
 
-  /* ── Diff panel ──────────────────────────── */
-  .diff-badge { cursor: pointer; }
+  .danger-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .danger-info span {
+    color: var(--text-secondary);
+    font-size: var(--text-xs);
+  }
+
+  .loading,
+  .empty-state {
+    padding: var(--space-5);
+    text-align: center;
+    color: var(--text-tertiary);
+  }
+
+  .message {
+    padding: var(--space-3);
+    border-radius: var(--radius-md);
+    font-size: var(--text-sm);
+  }
+
+  .message-error {
+    color: var(--error);
+    background: var(--error-muted);
+  }
+
+  .message-success {
+    color: var(--success);
+    background: var(--success-muted);
+  }
+
+  @media (max-width: 640px) {
+    .config-search-input-wrap {
+      flex-direction: column;
+      align-items: stretch;
+    }
+
+    .danger-row {
+      flex-direction: column;
+      align-items: stretch;
+    }
+  }
 </style>
