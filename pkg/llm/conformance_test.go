@@ -101,7 +101,7 @@ func conformanceProviders() []conformanceProvider {
 			chatPath:      ":generateContent",
 			okBody:        `{"candidates":[{"content":{"parts":[{"text":"ok"}]},"finishReason":"STOP"}]}`,
 			toolCallBody:  `{"candidates":[{"content":{"parts":[{"functionCall":{"name":"lookup","args":{"q":"x"}}}]},"finishReason":"STOP"}]}`,
-			usageBody:     `{"candidates":[{"content":{"parts":[{"text":"ok"}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":100,"candidatesTokenCount":20}}`,
+			usageBody:     `{"candidates":[{"content":{"parts":[{"text":"ok"}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":100,"cachedContentTokenCount":40,"candidatesTokenCount":15,"thoughtsTokenCount":5}}`,
 			baseURLSuffix: "/v1beta",
 			model:         "gemini-2.5-flash",
 		},

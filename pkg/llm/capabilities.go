@@ -136,11 +136,12 @@ var providerCapabilities = map[string]map[Capability]bool{
 		CapMultimodalInput:     true,
 	},
 	"gemini-native": {
-		CapToolCalling:       true,
-		CapStreaming:         true,
-		CapReasoningEffort:   true,
-		CapThinkingRoundTrip: true,
-		CapMultimodalInput:   true,
+		CapToolCalling:         true,
+		CapStreaming:           true,
+		CapReasoningEffort:     true,
+		CapThinkingRoundTrip:   true,
+		CapCacheUsageReporting: true,
+		CapMultimodalInput:     true,
 	},
 	"openai-codex": {
 		CapToolCalling:         true,

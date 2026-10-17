@@ -204,7 +204,7 @@ func (c *GeminiNativeClient) chatStreamingResponse(ctx context.Context, contents
 	var (
 		builder       strings.Builder
 		stopReasonRaw string
-		usage         Usage
+		usageMetadata geminiUsageMetadata
 		toolCalls     []ToolCall
 		seenServerIDs = map[string]struct{}{}
 	)
@@ -226,14 +226,7 @@ func (c *GeminiNativeClient) chatStreamingResponse(ctx context.Context, contents
 			logLLMStreamPayload("gemini-native", string(chunkJSON))
 		}
 
-		if chunk.UsageMetadata != nil {
-			if chunk.UsageMetadata.PromptTokenCount > 0 {
-				usage.InputTokens = int(chunk.UsageMetadata.PromptTokenCount)
-			}
-			if chunk.UsageMetadata.CandidatesTokenCount > 0 {
-				usage.OutputTokens = int(chunk.UsageMetadata.CandidatesTokenCount)
-			}
-		}
+		usageMetadata.merge(chunk.UsageMetadata)
 
 		if len(chunk.Candidates) == 0 {
 			continue
@@ -290,7 +283,7 @@ func (c *GeminiNativeClient) chatStreamingResponse(ctx context.Context, contents
 			Content:   builder.String(),
 			ToolCalls: toolCalls,
 		},
-		Usage:      usage,
+		Usage:      extractGeminiNativeUsage(&usageMetadata),
 		StopReason: stopReason,
 	}, nil
 }
@@ -347,10 +340,13 @@ func buildGeminiThinkingConfig(config ClientConfig, opts ChatOptions) *geminiThi
 		return nil
 	}
 
+	// The API rejects a request that sets both knobs. An explicit budget is
+	// the more specific instruction, and every thinking model still takes it.
 	tc := &geminiThinkingConfig{}
 	if budget > 0 {
 		value := int32(budget)
 		tc.ThinkingBudget = &value
+		return tc
 	}
 	switch effort {
 	case "minimal":
