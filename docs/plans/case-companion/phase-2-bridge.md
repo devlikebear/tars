@@ -56,7 +56,7 @@
 ### 콘솔
 
 - `src/lib/caseBridge.ts` (순수): `bridgeRequest(question, scope, route)`, `cardHref(card)`, `followUps(cards)` (카드 종류별 후속 질문 2~4개), `sourcesLine(sources)`
-- `src/components/CaseBridge.svelte` (E2): 오른쪽 슬라이드 패널 500px, 헤더(미어캣·당직 요약), "지금 보는 곳", 대화(질문/답/카드/본 곳), 칩, 범위 토글, 입력. 900px 이하 전체폭
+- `src/components/CaseBridge.svelte` (E2): 오른쪽 슬라이드 패널 500px, 헤더(CASE 봇·당직 요약), "지금 보는 곳", 대화(질문/답/카드/본 곳), 칩, 범위 토글, 입력. 900px 이하 전체폭
 - 단축키: ⌘J (`lib/keymap` 기존 등록 방식, `ShortcutHelp`에 추가). Focus 라우트 단축키와 충돌 없는지 `focusOwnsShortcut` 확인
 - `CompanionPet.svelte`: 말풍선의 질문 폼 → Bridge 열기 + 질문 전달. 기존 "Chat 화면에서는 스레드로 전달" 동작은 Bridge의 "이 대화로 보내기" 버튼으로 대체
 - `App.svelte`에 Bridge 마운트 (전역 → `make console-e2e` 전체)
