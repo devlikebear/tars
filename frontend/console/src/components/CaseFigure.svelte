@@ -7,30 +7,74 @@
   // draws that expression (e2e/companion-expressions.spec.ts relies on it).
   // CompanionPet.svelte owns the state, timers and listeners.
   import sheetUrl from '../assets/case/case-bot.webp'
-  import { caseFigureStyle } from '../lib/caseFigure'
+  import { caseFigureStyle, caseFrameFor } from '../lib/caseFigure'
   import { caseSprite } from '../lib/caseSprite.generated'
-  import type { CompanionAction, CompanionExpression, CompanionIdleKind } from '../lib/companion'
+  import type { CompanionAction, CompanionExpression, CompanionIdleKind, CompanionTalk } from '../lib/companion'
 
   interface Props {
     expression: CompanionExpression
     action?: CompanionAction | null
     idlePlay?: CompanionIdleKind | null
     gaze?: { x: number; y: number }
+    // CASE's own bubble answer streaming (lib/companion.ts companionTalk).
+    talk?: CompanionTalk | null
+    // Switched off by the user (companionSleepActive): the `off` pose, a
+    // dark screen, no LED.
+    asleep?: boolean
+    // A one-shot power-on: arriving, or waking from sleep. The component
+    // clears it on `companionBootFrame`'s animationend.
+    booting?: boolean
     onanimationend?: (event: AnimationEvent) => void
   }
 
-  let { expression, action = null, idlePlay = null, gaze = { x: 0, y: 0 }, onanimationend }: Props = $props()
+  let {
+    expression,
+    action = null,
+    idlePlay = null,
+    gaze = { x: 0, y: 0 },
+    talk = null,
+    asleep = false,
+    booting = false,
+    onanimationend,
+  }: Props = $props()
 
   const figureStyle = caseFigureStyle(sheetUrl, caseSprite)
+
+  // Pose cross-fade: the CSS switches the sprite frame instantly, and a
+  // second layer showing the frame from a moment ago fades out on top. It
+  // is removed on its own animationend; under reduced motion the CSS hides
+  // it outright.
+  let frame = $derived(caseFrameFor(expression, talk, asleep))
+  let prevFrame = $state<string | null>(null)
+  let fadeKey = $state(0)
+  let lastFrame: string | null = null
+  $effect(() => {
+    const current = frame
+    if (lastFrame !== null && lastFrame !== current) {
+      prevFrame = lastFrame
+      fadeKey += 1
+    }
+    lastFrame = current
+  })
+
+  function handleAnimationEnd(event: AnimationEvent) {
+    if (event.animationName === 'companionPoseFade') prevFrame = null
+    onanimationend?.(event)
+  }
 </script>
 
 <span
-  class={`companion-body expr-${expression}${action ? ` act-${action}` : ''}${idlePlay ? ` play-${idlePlay}` : ''}`}
+  class={`companion-body expr-${expression}${action ? ` act-${action}` : ''}${idlePlay ? ` play-${idlePlay}` : ''}${talk ? ` talk-${talk}` : ''}${asleep ? ' is-asleep' : ''}${booting ? ' is-booting' : ''}`}
   style={figureStyle}
   aria-hidden="true"
-  {onanimationend}
+  onanimationend={handleAnimationEnd}
 >
   <span class="companion-sprite"></span>
+  {#if prevFrame}
+    {#key fadeKey}
+      <span class="companion-sprite-prev" style={`background-position: var(--case-frame-${prevFrame}) 0`}></span>
+    {/key}
+  {/if}
   <span class="companion-screen">
     <span class="companion-brows">
       <span class="companion-brow companion-brow-left"></span>
@@ -41,6 +85,11 @@
       <span class="companion-eye companion-eye-right"></span>
     </span>
     <span class="companion-progress"></span>
+    <span class="companion-wave">
+      <span class="companion-wave-bar"></span>
+      <span class="companion-wave-bar"></span>
+      <span class="companion-wave-bar"></span>
+    </span>
   </span>
   <span class="companion-gem"></span>
   <span class="companion-zzz" aria-hidden="true">z</span>
@@ -59,6 +108,9 @@
     --case-gem-alert: #ff7a59;
     --case-gem-happy: #9bd77a;
     --case-gem-sleepy: #4a4842;
+    /* One easing for every face change: a little overshoot, so a shape
+       change reads as the robot reacting rather than a slide. */
+    --case-ease: cubic-bezier(0.34, 1.56, 0.64, 1);
     /* The pose frame and the LED position that goes with it. The
        `--case-*` values come from the inline style (lib/caseFigure.ts,
        generated from the sprite sheet); the expression rules below only
@@ -107,6 +159,16 @@
     background-position: var(--frame) 0;
   }
 
+  /* The frame from a moment ago, fading out over the new one (the
+     component adds it on a pose change and removes it on animationend). */
+  .companion-sprite-prev {
+    inset: 0;
+    background-image: var(--case-sheet);
+    background-repeat: no-repeat;
+    background-size: var(--case-sheet-width) 100%;
+    animation: companionPoseFade 0.18s ease-out forwards;
+  }
+
   /* The face lives on the sprite's screen. Everything inside is sized in
      percent of the screen, so it follows the sheet if it is regenerated. */
   .companion-screen {
@@ -114,6 +176,33 @@
     top: var(--case-screen-y);
     width: var(--case-screen-w);
     height: var(--case-screen-h);
+  }
+
+  /* Power effects drawn on the screen glass, invisible at rest: the scan
+     line that sweeps down when CASE boots (::before) and the line that
+     collapses to a dot when it is switched off (::after). */
+  .companion-screen::before,
+  .companion-screen::after {
+    content: '';
+    position: absolute;
+    left: 6%;
+    right: 6%;
+    height: 2px;
+    border-radius: 1px;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .companion-screen::before {
+    top: 0;
+    background: linear-gradient(90deg, transparent, var(--case-eye), transparent);
+    box-shadow: 0 0 4px var(--case-eye-glow);
+  }
+
+  .companion-screen::after {
+    top: calc(50% - 1px);
+    background: var(--case-eye);
+    box-shadow: 0 0 4px var(--case-eye-glow);
   }
 
   .companion-brows,
@@ -130,6 +219,7 @@
     /* Hidden by default: a brow only means something on alert/upset/wary
        below. Everywhere else it is a line above the eyes for no reason. */
     opacity: 0;
+    transition: top 0.18s var(--case-ease), left 0.18s var(--case-ease), opacity 0.18s ease-out, transform 0.18s var(--case-ease);
   }
 
   .companion-brow-left {
@@ -148,6 +238,8 @@
     background: var(--case-eye);
     box-shadow: 0 0 3px var(--case-eye-glow);
     animation: companionBlink 5.6s infinite;
+    /* An expression change morphs the eyes instead of snapping them. */
+    transition: top 0.18s var(--case-ease), left 0.18s var(--case-ease), width 0.18s var(--case-ease), height 0.18s var(--case-ease), border-radius 0.18s ease-out, opacity 0.18s ease-out;
   }
 
   .companion-eye-left {
@@ -181,6 +273,40 @@
     border-radius: 1px;
     background: linear-gradient(90deg, transparent 0 30%, var(--case-eye) 30% 60%, transparent 60%) 0 0 / 200% 100%;
     box-shadow: inset 0 0 0 1px rgba(62, 224, 127, 0.25);
+  }
+
+  /* Talking's sound wave (three bars under the eyes): hidden everywhere
+     else. */
+  .companion-body .companion-wave {
+    display: none;
+    left: 33%;
+    top: 68%;
+    width: 34%;
+    height: 22%;
+  }
+
+  .companion-wave-bar {
+    bottom: 0;
+    width: 22%;
+    height: 100%;
+    border-radius: 1px;
+    background: var(--case-eye);
+    transform-origin: 50% 100%;
+    animation: companionWaveBar 0.42s ease-in-out infinite alternate;
+  }
+
+  .companion-wave-bar:nth-child(1) {
+    left: 0;
+    animation-delay: -0.3s;
+  }
+
+  .companion-wave-bar:nth-child(2) {
+    left: 39%;
+  }
+
+  .companion-wave-bar:nth-child(3) {
+    left: 78%;
+    animation-delay: -0.15s;
   }
 
   /* The antenna LED: the one place a state colour rides (DESIGN.md). It
@@ -454,6 +580,111 @@
     animation: companionWink 0.5s ease-in-out;
   }
 
+  /* scan: the eyes sweep left and right and the LED blinks once — CASE
+     checking on things. */
+  .companion-body.expr-neutral.play-scan .companion-eye {
+    animation: companionScan 1.6s ease-in-out;
+  }
+
+  .companion-body.expr-neutral.play-scan .companion-gem {
+    animation: companionLedBlink 1.6s step-end;
+  }
+
+  /* Talking (lib/companion.ts companionTalk, F1): only ever alongside
+     `working`, which CASE's own streaming answer forces. Both states stand
+     up straight (base pose) and drop the progress line. Thinking glances
+     up and sways the eyes; speaking shows a sound wave under the eyes. */
+  .companion-body.expr-working.talk-thinking,
+  .companion-body.expr-working.talk-speaking {
+    --frame: var(--case-frame-base);
+    --led-x: var(--case-led-base-x);
+    --led-y: var(--case-led-base-y);
+    --led-r: var(--case-led-base-r);
+  }
+
+  .companion-body.expr-working.talk-thinking .companion-progress,
+  .companion-body.expr-working.talk-speaking .companion-progress {
+    display: none;
+  }
+
+  .expr-working.talk-thinking .companion-eye {
+    top: 16%;
+    width: 18%;
+    height: 32%;
+    border-radius: 30%;
+    animation: companionThink 1.6s ease-in-out infinite;
+  }
+
+  .expr-working.talk-thinking .companion-eye-left {
+    left: 30%;
+  }
+
+  .expr-working.talk-thinking .companion-eye-right {
+    left: 64%;
+  }
+
+  .expr-working.talk-speaking .companion-eye {
+    top: 18%;
+    width: 20%;
+    height: 38%;
+    border-radius: 30%;
+  }
+
+  .expr-working.talk-speaking .companion-eye-left {
+    left: 21%;
+  }
+
+  .expr-working.talk-speaking .companion-eye-right {
+    left: 59%;
+  }
+
+  .companion-body.expr-working.talk-speaking .companion-wave {
+    display: block;
+  }
+
+  /* Asleep (F2, switched off by the user): the `off` pose — antenna folded,
+     arms tucked — with a dark screen and an unlit LED, whatever the
+     expression underneath. Still, too: no lean or breathing. */
+  .companion-body.is-asleep {
+    --frame: var(--case-frame-off);
+    rotate: none;
+    animation: none;
+  }
+
+  .companion-body.is-asleep .companion-brows,
+  .companion-body.is-asleep .companion-eyes,
+  .companion-body.is-asleep .companion-progress,
+  .companion-body.is-asleep .companion-wave,
+  .companion-body.is-asleep .companion-gem,
+  .companion-body.is-asleep .companion-zzz {
+    visibility: hidden;
+  }
+
+  .companion-body.is-asleep .companion-screen::after {
+    animation: companionScreenOff 0.45s ease-in forwards;
+  }
+
+  /* Booting (arriving, or waking up): the `off` pose for a beat, then the
+     real pose; a scan line sweeps the screen and the face and LED come on
+     after it. greeting's wave waits for the boot to finish. */
+  .companion-body.is-booting .companion-sprite {
+    animation: companionBootFrame 0.7s step-end;
+  }
+
+  .companion-body.is-booting.act-wave .companion-sprite {
+    animation: companionBootFrame 0.7s step-end, companionActWave 0.9s step-end 0.7s 2;
+  }
+
+  .companion-body.is-booting .companion-eyes,
+  .companion-body.is-booting .companion-brows,
+  .companion-body.is-booting .companion-gem {
+    animation: companionBootOn 0.7s ease-out;
+  }
+
+  .companion-body.is-booting .companion-screen::before {
+    animation: companionScanline 0.7s linear;
+  }
+
   @keyframes companionBlink {
     0%, 44%, 50%, 100% { scale: 1 1; }
     47% { scale: 1 0.12; }
@@ -536,6 +767,58 @@
     50% { scale: 1 0.1; }
   }
 
+  @keyframes companionScan {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-2.5px); }
+    75% { transform: translateX(2.5px); }
+  }
+
+  @keyframes companionLedBlink {
+    0%, 45%, 55%, 100% { opacity: 1; }
+    50% { opacity: 0.2; }
+  }
+
+  @keyframes companionPoseFade {
+    from { opacity: 1; }
+    to { opacity: 0; }
+  }
+
+  /* Talking (F1). */
+  @keyframes companionThink {
+    0%, 100% { transform: translateX(-1px); }
+    50% { transform: translateX(1px); }
+  }
+
+  @keyframes companionWaveBar {
+    from { transform: scaleY(0.25); }
+    to { transform: scaleY(1); }
+  }
+
+  /* Sleep and boot (F2). */
+  @keyframes companionScreenOff {
+    0% { opacity: 1; transform: scale(1, 6); }
+    55% { opacity: 1; transform: scale(1, 1); }
+    85% { opacity: 1; transform: scale(0.06, 1); }
+    100% { opacity: 0; transform: scale(0.02, 1); }
+  }
+
+  @keyframes companionBootFrame {
+    0% { background-position: var(--case-frame-off) 0; }
+    40%, 100% { background-position: var(--frame) 0; }
+  }
+
+  @keyframes companionBootOn {
+    0%, 55% { opacity: 0; }
+    100% { opacity: 1; }
+  }
+
+  @keyframes companionScanline {
+    0%, 30% { opacity: 0; transform: translateY(0); }
+    35% { opacity: 1; }
+    85% { opacity: 1; transform: translateY(calc(var(--case-screen-h) - 2px)); }
+    100% { opacity: 0; transform: translateY(calc(var(--case-screen-h) - 2px)); }
+  }
+
   /* Reduced motion stops every animation here — every selector above with
      a repeating or one-shot animation gets its own `animation: none` entry
      here, named exactly (tests/companionPet.test.ts checks this
@@ -553,8 +836,31 @@
     .companion-body.act-wave .companion-sprite,
     .companion-body.expr-neutral.play-look .companion-eye,
     .companion-body.expr-neutral.play-yawn .companion-eye,
-    .companion-body.expr-neutral.play-wink .companion-eye-right {
+    .companion-body.expr-neutral.play-wink .companion-eye-right,
+    .companion-body.expr-neutral.play-scan .companion-eye,
+    .companion-body.expr-neutral.play-scan .companion-gem,
+    .companion-sprite-prev,
+    .companion-wave-bar,
+    .expr-working.talk-thinking .companion-eye,
+    .companion-body.is-asleep .companion-screen::after,
+    .companion-body.is-booting .companion-sprite,
+    .companion-body.is-booting.act-wave .companion-sprite,
+    .companion-body.is-booting .companion-eyes,
+    .companion-body.is-booting .companion-brows,
+    .companion-body.is-booting .companion-gem,
+    .companion-body.is-booting .companion-screen::before {
       animation: none;
+    }
+
+    /* The face changes shape at once instead of morphing. */
+    .companion-eye,
+    .companion-brow {
+      transition: none;
+    }
+
+    /* No cross-fade: the new pose shows at once. */
+    .companion-sprite-prev {
+      display: none;
     }
   }
 </style>

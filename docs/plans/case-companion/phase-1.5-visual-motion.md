@@ -133,18 +133,19 @@ scripts/case_sprites.py   원본 → 합성·정렬·축소·시트 합치기 �
 | 모션 | 언제 | 방식 | reduced-motion |
 |---|---|---|---|
 | 깜빡임 | neutral·working·wary | 화면 눈 `scale-y` 120ms | 정지, 뜬 눈 |
-| 대기 숨결 | 항상 | 몸 1px 위아래 + 화면 발광 미세 맥동 | 정지 |
+| 대기 숨결 | — | **하지 않음**: 이미 도는 떠오름(`companionFloat`, 7px)과 겹쳐 차이가 안 보였다 | — |
 | **표정 전환** | 표정이 바뀔 때 | 눈·눈썹 모양 180ms 트랜지션, 포즈는 스프라이트 교차 | 즉시 전환 |
 | bounce·shake·tilt | alert·upset·wary 진입 (기존) | 스프라이트 전체 `transform` | 정지 |
 | wave | greeting 진입 | `wave` 프레임 시퀀스 | 정지 프레임만 |
 | nod | happy 진입 (기존) | 몸 전체 짧은 숙임 `transform` | 정지 |
 | 시선 | 포인터 200px 안 (기존) | 화면 눈 연속 이동 | 꺼짐 |
-| 하품·윙크·**스캔** | idle play (스캔 신규: 눈이 좌우로 훑고 LED 한 번 깜빡, 백그라운드 턴·목표 모드가 돌 때 확률 상향) | 화면 얼굴 CSS | 꺼짐 |
+| 하품·윙크·**스캔** | idle play (스캔 신규: 눈이 좌우로 훑고 LED 한 번 깜빡). "백그라운드 턴이 돌 때 확률 상향"은 뺐다 — idle play는 대기·실행 줄이 하나도 없을 때만 돌므로 그 상황이 오지 않는다 | 화면 얼굴 CSS | 꺼짐 |
 | **부팅 등장 / 절전 퇴장** | `justArrived`의 greeting 앞 / 숨기기(F2) | 등장: `off` → `base`, 화면에 스캔라인이 한 번 지나가고 눈이 켜짐. 퇴장: 화면이 가운데 점으로 꺼지고(CRT off) `off` 자세 | 즉시 나타남·사라짐 |
 | 말하기 | CASE 답 스트리밍 중(F1) | 화면 하단 파형 막대 3개 | 정지, 막대 숨김 |
 
 - 모든 모션은 `.companion-figure` 안에서만, 버튼(히트 영역)은 고정 — #1191 규칙 그대로.
-- easing 토큰 하나로 통일(`--case-ease-spring`), DESIGN.md Motion 절에 기록.
+- easing 토큰 하나로 통일(`--case-ease`), DESIGN.md Motion 절에 기록.
+- **V2 구현 (2026-10-18)**: 위 표 중 숨결을 뺀 전부 + F1(말하기·생각 중) + F2(절전 2종, 새 알림·클릭·1시간 경과로 깨어나며 부팅). `off` 프레임 추가(시트 6프레임, 약 18KB). 포즈 교차 페이드는 CSS가 프레임을 고르고 `caseFrameFor`(CSS와 일치를 테스트)가 직전 프레임을 알려 주는 방식. e2e `companion-sleep.spec.ts`. F5(크기·동작 설정)는 이번 범위에서 빠졌다 — 필요하면 따로
 - 새 animation/transition 셀렉터는 reduced-motion 블록에 하나씩 나열.
 
 ## 7. 기능 추가

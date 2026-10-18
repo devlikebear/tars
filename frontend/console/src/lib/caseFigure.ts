@@ -16,6 +16,28 @@ export interface CaseSprite {
   readonly led: Readonly<Record<string, readonly number[]>>
 }
 
+/**
+ * The pose frame CaseFigure.svelte's CSS shows for this state. The CSS
+ * decides on its own (from classes, so a cloned `.companion-body` still
+ * draws right); this mirror only tells the component which frame was
+ * showing a moment ago, for the cross-fade between poses.
+ * tests/companionPet.test.ts checks that the two agree.
+ */
+export function caseFrameFor(expression: string, talk: string | null, asleep: boolean): string {
+  if (asleep) return 'off'
+  if (talk) return 'base'
+  switch (expression) {
+    case 'alert':
+      return 'alert'
+    case 'working':
+      return 'working'
+    case 'greeting':
+      return 'wave'
+    default:
+      return 'base'
+  }
+}
+
 /** The display size of the figure in CSS pixels (the cell is drawn at 2x). */
 export const CASE_FIGURE_SIZE = 64
 
