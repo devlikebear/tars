@@ -70,6 +70,8 @@ test('adding a provider and changing a tier model through the LLM table UI persi
     // same way.
     const actualKey = typeof newProvider.api_key === 'string' ? newProvider.api_key : ''
     const checksum = [...actualKey].reduce((sum, ch) => sum + ch.charCodeAt(0), 0)
+    // eslint-disable-next-line no-console -- temporary diagnostic (tars#1286 PR review), removed once the mismatch is understood
+    console.log('[diag] saved e2e-second api_key hex:', Buffer.from(actualKey, 'utf8').toString('hex'))
     expect(actualKey === 'e2e-second-fake-credential', `api_key length=${actualKey.length} charCodeSum=${checksum}`).toBe(true)
     // The pre-existing provider's real credential round-trips untouched —
     // there is no masking step to get wrong here (GET /schema already
