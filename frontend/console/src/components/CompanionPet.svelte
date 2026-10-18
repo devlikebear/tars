@@ -47,6 +47,7 @@
     type CompanionAskErrorKind,
   } from '../lib/companionAsk'
   import { companionAsk } from '../lib/stores/companionAsk'
+  import { caseBridge } from '../lib/stores/caseBridge'
   import { chatCommands } from '../lib/stores/chatCommandQueue.svelte'
   import { sessionActivity } from '../lib/stores/sessionActivity'
   import { locale as localeStore } from '../i18n'
@@ -584,6 +585,15 @@
     autoOpened = false
   }
 
+  // The bubble's link to CASE's Bridge: the bubble closes so the two never
+  // stack on the same corner.
+  function openBridge() {
+    open = false
+    autoOpened = false
+    sleepMenuOpen = false
+    caseBridge.show()
+  }
+
   function closeBubble() {
     open = false
     autoOpened = false
@@ -820,6 +830,9 @@
         />
         <button type="submit" disabled={!draft.trim() || companionAsk.busy} aria-label={$t.companion.sendAria}>{$t.companion.send}</button>
       </form>
+      <!-- The bubble's question goes to the main session (tars#1236); a
+           question about TARS as a whole goes to the Bridge instead. -->
+      <button type="button" class="companion-bridge-link" onclick={openBridge}>{$t.caseBridge.openFromBubble} →</button>
     </section>
   {/if}
 
@@ -1233,6 +1246,22 @@
   .companion-ask button:disabled {
     cursor: default;
     opacity: 0.5;
+  }
+
+  .companion-bridge-link {
+    margin-top: var(--space-2);
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--primary-text);
+    font: inherit;
+    font-size: 0.78rem;
+    cursor: pointer;
+  }
+
+  .companion-bridge-link:hover,
+  .companion-bridge-link:focus-visible {
+    text-decoration: underline;
   }
 
   @keyframes companionFloat {

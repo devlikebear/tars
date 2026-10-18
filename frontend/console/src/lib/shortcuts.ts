@@ -14,6 +14,7 @@ export type ShortcutAction =
   | 'toggle-terminal'
   | 'toggle-sidebar'
   | 'toggle-zen'
+  | 'case-bridge'
 
 export type ShortcutMatch = { action: ShortcutAction; index?: number }
 
@@ -45,6 +46,11 @@ const modBindings: { key: string; shift: boolean; action: ShortcutAction }[] = [
   { key: 'j', shift: false, action: 'toggle-terminal' },
   { key: 'b', shift: false, action: 'toggle-sidebar' },
   { key: '.', shift: false, action: 'toggle-zen' },
+  // CASE's Bridge, on every screen. Mod+J was the plan, but it is the
+  // terminal's; Mod+Shift+J opens the browser's console on Windows. On
+  // layouts where "/" needs Shift (German, Nordic), Shift comes along.
+  { key: '/', shift: false, action: 'case-bridge' },
+  { key: '/', shift: true, action: 'case-bridge' },
 ]
 
 function matchModBinding(key: string, shift: boolean): ShortcutMatch | null {
@@ -79,6 +85,7 @@ export const shortcutDocs: ShortcutDoc[] = [
   { action: 'toggle-terminal', keys: ['Mod', 'J'] },
   { action: 'toggle-sidebar', keys: ['Mod', 'B'] },
   { action: 'toggle-zen', keys: ['Mod', '.'] },
+  { action: 'case-bridge', keys: ['Mod', '/'] },
   { action: 'help', keys: ['?'] },
 ]
 

@@ -55,6 +55,7 @@ var AppPackages = []string{
 	"apihandlers",
 	"apptool",
 	"assistant",
+	"casebridge",
 	"checkpoint",
 	"consoleauth",
 	"critic",

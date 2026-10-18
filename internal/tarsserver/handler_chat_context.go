@@ -277,6 +277,9 @@ func buildSessionChatRunState(
 		formatSessionGoalBudget(sessionGoal),
 		criticFeedback,
 		contextDetails.SystemPromptTail,
+		// CASE's Bridge: the TARS snapshot its question is answered from,
+		// only on a turn of CASE's own session (case_bridge.go).
+		deps.tooling.Case.turnContext(sessionID),
 	)
 	llmMessages := buildLLMMessagesWithTail(systemPrompt, turnContext, history, userMessage, contentBlocks)
 	resolvedTools := resolveInjectedToolPolicyFor(registry, authRole, deps.tooling.ToolsAllowHighRiskUser, deps.tooling.WorkScheduler != nil, sessionToolConfigs...)

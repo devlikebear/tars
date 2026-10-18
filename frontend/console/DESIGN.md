@@ -575,6 +575,18 @@ Before sending (either path), the console checks `GET /v1/chat/activity` for the
 
 Removed: the old handoff (`navigateWithPrompt`'s `context` argument, `aiContext`, `initialContext` on `Chat.svelte`/`ChatPanel.svelte`, `pendingConsoleContext`, the "Companion context attached" chip) that opened a new session and copied the words into its composer. `navigateWithPrompt(prompt)` itself stays — `MemoryCenter.svelte`'s "Ask AI" still uses it, now prompt-only.
 
+### CASE's Bridge (case-companion phase 2)
+
+A panel for asking CASE about TARS as a whole (`CaseBridge.svelte`, `lib/stores/caseBridgeStore.svelte.ts`, decision record `docs/decisions/case-bridge.md`). Mod+/ toggles it on every screen; the palette and **Ask about TARS →** under the bubble's input open it too. It goes with CASE: when the companion is off (config, zen mode, setup, login) the panel and its shortcut are off.
+
+- **Place.** A panel on the right edge, 480px wide, `top/right/bottom: --space-4`, z-index 95 — above the page and CASE (90), below the palette and help. Full screen below 900px. Same surface recipe as CASE's bubble (signal-green border tint, elevated surface, the bubble's shadow). Opening the Bridge from the bubble closes the bubble so the two never stack in one corner. Escape closes the panel.
+- **Header.** CASE's own figure at 64px (`CaseFigure`) — neutral at rest, `working` with the thinking/speaking overlay while an answer streams — then "Bridge" and a one-line subtitle, and a close button.
+- **Context row.** "Looking at: <screen>" and a two-button scope toggle (All of TARS / This screen). "This screen" is enabled only where a chat or a focus pipeline is on screen; elsewhere a question is about all of TARS.
+- **Conversation.** This page's questions (muted, bold, small) and answers (body text, `pre-wrap`), plain text only — never HTML. While an answer streams, the `<case-cards>` block is never shown, not even half-typed (`caseBridgeVisibleText`). Before the first text, "Reading the status...". An error is one line in `--error`.
+- **Cards.** Up to four under an answer, each a full-width button: a mono severity label ("Needs you" in `--error` with an error-tinted border, or "Info"), the title, and a muted second line. Clicking goes to the card's screen and closes the panel. The server builds every link; the console never takes a URL from the model.
+- **Follow-up chips.** Up to three pill buttons under the conversation when nothing is streaming: one per kind of card the last answer pointed at, then "Is anything stuck?" and "What changed in the last hour?" (`caseBridgeFollowUps`). A chip sends its text as the next question.
+- **Input.** One line and an Ask button; disabled while an answer streams. The panel keeps the last 20 exchanges of this page; the first open on a page brings back the last answer the server holds.
+
 ### Actions (#1191)
 
 A one-shot animation plays exactly once when the expression *changes* into one of five, and does not replay while that expression holds (`companionActionFor(previousExpression, expression)` in `lib/companion.ts`, a pure table lookup; the component tracks `previousExpression` and clears the action on its own CSS `animationend`, matched by name so an unrelated animation bubbling up — blink, breathe — never clears it early):

@@ -67,10 +67,12 @@ type serveAPIRuntime struct {
 	remoteAccessRunner    remoteaccess.Runner
 	remoteAccessTargetURL string
 	focusDriver           *focusDriver
+	caseBridge            *caseBridge
 }
 
 type apiRouteHandlers struct {
 	pulse             http.Handler
+	caseBridge        http.Handler
 	initiative        http.Handler
 	consolePresence   http.Handler
 	reflection        http.Handler
@@ -483,6 +485,13 @@ func buildAPIMux(
 	focusDriver.e2e = newFocusE2ERunner(newComputerUseEngine(cfg, deps.llmRouter, deps.usageTracker))
 	focusDriver.secondOpinionTiers = newFocusSecondOpinionTiers(cfg)
 	chatTooling.Focus = focusDriver
+	// CASE's Bridge reads the stores below for each question; pulse's
+	// snapshot is added once its runtime exists, further down.
+	caseBridge := newCaseBridge(cfg.WorkspaceDir, caseBridgeSources{
+		cronJobs: cronStore.List,
+		usage:    caseBridgeUsage(deps.usageTracker),
+	}, logger)
+	chatTooling.Case = caseBridge
 	chatTooling.OverrideService = overrideService
 	checkpointStore := openCheckpointStore(cfg.WorkspaceDir, logger)
 	chatTooling.Checkpoints = checkpointStore
@@ -625,6 +634,9 @@ func buildAPIMux(
 		NotifyEmit:       dispatcher.Emit,
 		Logger:           logger,
 	})
+	if pulseSetup.Runtime != nil {
+		caseBridge.sources.pulse = pulseSetup.Runtime.Snapshot
+	}
 	chatHandler := newChatAPIHandlerWithRuntimeConfig(
 		cfg.WorkspaceDir,
 		sessionStore,
@@ -746,6 +758,7 @@ func buildAPIMux(
 	workLedgerHandler := newWorkLedgerAPIHandler(workLedger, logger, workScheduler)
 	registerAPIRoutes(mux, apiRouteHandlers{
 		pulse:             pulseSetup.Handler,
+		caseBridge:        newCaseBridgeHandler(caseBridge),
 		initiative:        initiativeSetup.Handler,
 		consolePresence:   newConsolePresenceAPIHandler(presenceStore, nowFn, logger),
 		reflection:        reflectionSetup.Handler,
@@ -831,6 +844,7 @@ func buildAPIMux(
 		remoteAccessRunner:      remoteaccess.ExecRunner{},
 		remoteAccessTargetURL:   remoteaccess.DefaultTargetURL,
 		focusDriver:             focusDriver,
+		caseBridge:              caseBridge,
 		sessionRetention:        retention,
 	}, nil
 }
@@ -863,6 +877,9 @@ func registerAPIRoutes(mux *http.ServeMux, handlers apiRouteHandlers) {
 	}
 	mux.Handle("/v1/pulse/", handlers.pulse)
 	mux.Handle("/v1/initiative/", handlers.initiative)
+	if handlers.caseBridge != nil {
+		mux.Handle("/v1/case/", handlers.caseBridge)
+	}
 	if handlers.consolePresence != nil {
 		mux.Handle("/v1/console/presence", handlers.consolePresence)
 	}
@@ -1225,6 +1242,7 @@ func shutdownRuntime(ctx context.Context, runtime *serveAPIRuntime) {
 	}
 	// Focus runs start turns; stop them before the things turns use.
 	runtime.focusDriver.Close(ctx)
+	runtime.caseBridge.Close()
 	if runtime.pulseRuntime != nil {
 		runtime.pulseRuntime.Stop()
 	}
