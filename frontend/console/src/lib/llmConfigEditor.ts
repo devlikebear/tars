@@ -1,0 +1,402 @@
+// Settings → LLM tab: row-based editing for llm_providers / llm_tiers /
+// llm_role_defaults, the three `type: "json"` config fields that otherwise
+// require hand-editing JSON in a textarea.
+//
+// These functions are pure: they convert the raw config values (as
+// returned by GET /v1/admin/config/schema) into editable row lists, and
+// convert edited rows back into the map shapes PATCH /v1/admin/config/values
+// expects. ConfigLLMEditor.svelte owns all DOM/state wiring; this module
+// owns the data shape and validation rules, so both are testable headless.
+//
+// Server-side constraints these functions mirror (do not drift from them
+// without updating internal/config too):
+//   - internal/config/patch_raw_providers.go's rawProviderObjects only
+//     accepts "kind", "auth_mode", "base_url", "api_key" per provider —
+//     no passthrough fields are possible for llm_providers.
+//   - internal/config/schema.go's GET /schema returns llm_providers with
+//     the real (unmasked) api_key — there is no "***" placeholder to
+//     detect, unlike the onboarding wizard's re-entry path. Submitting the
+//     literal value back on an untouched row is a no-op on disk.
+//   - pkg/llm/tier.go's AllTiers() fixes tier names to exactly heavy /
+//     standard / light — llm_tiers always has exactly these three rows,
+//     never a variable-length list.
+//   - internal/config/types.go's LLMTierBinding carries fields this editor
+//     does not expose (thinking_budget, service_tier, beta_features,
+//     context_window). The patch replaces each tier's object wholesale
+//     (onboarding.ts's buildConfigPayload comment documents the same
+//     constraint), so those fields are round-tripped through row.extra
+//     rather than dropped.
+//   - pkg/llm/role.go's AllRoles() is mirrored in llmKnownRoles below for
+//     the role select's suggestion list; llm_role_defaults's value is a
+//     free string key, so an unrecognized role here still gets a (soft)
+//     "unknown role" error locally while a role this list doesn't know yet
+//     is caught by the server's own validation rather than silently
+//     dropped.
+
+import { sortStrings } from './sort.js'
+import type { AuthMode } from './onboarding'
+
+// LLM provider kinds accepted by internal/config/patch_validation.go's
+// validateCandidate switch. Mirrors onboarding.ts's ProviderKind (kept as a
+// separate type here so this module has no import-time dependency on the
+// wizard beyond the AuthMode alias).
+export type LLMProviderKind =
+  | 'anthropic'
+  | 'openai'
+  | 'openai-codex'
+  | 'gemini'
+  | 'gemini-native'
+  | 'kimi'
+  | 'claude-code-cli'
+  | 'antigravity-cli'
+
+export const llmProviderKinds: LLMProviderKind[] = [
+  'anthropic',
+  'openai',
+  'openai-codex',
+  'gemini',
+  'gemini-native',
+  'kimi',
+  'claude-code-cli',
+  'antigravity-cli',
+]
+
+// Tier names are fixed by pkg/llm/tier.go's AllTiers() — llm_tiers is
+// always exactly these three entries, never a user-chosen list.
+export const llmTierNames = ['heavy', 'standard', 'light'] as const
+export type LLMTierName = (typeof llmTierNames)[number]
+
+// Mirrors pkg/llm/role.go's AllRoles() canonical order. Used to populate
+// the role select's suggestions and to flag an unrecognized role locally;
+// kept as a plain string list (not a union type) because the server is the
+// source of truth and a role added there before this list catches up must
+// still be enterable as free text.
+export const llmKnownRoles = [
+  'chat_main',
+  'context_compactor',
+  'memory_hook',
+  'reflection_memory',
+  'reflection_kb',
+  'pulse_decider',
+  'session_cleanup',
+  'agentruntime_default',
+  'agentruntime_planner',
+  'goal_judge',
+  'critic',
+  'computer_use',
+  'initiative',
+  'initiative_speak',
+]
+
+export type LLMProviderRow = {
+  id: string
+  alias: string
+  previousAlias: string
+  kind: LLMProviderKind | ''
+  auth_mode: AuthMode
+  api_key: string
+  // originalApiKey is the key this row loaded with (possibly empty — a
+  // cli/oauth provider commonly has none). buildLLMProvidersValue uses it
+  // to tell "never had a key" (omit api_key, matching the server's
+  // sparseProvidersMap shape so an untouched row's rebuilt value is
+  // identical to the one it loaded from, not just equivalent) apart from
+  // "had one, the user cleared it" (submit api_key: "" to actually clear
+  // it on disk, since omitting the field instead makes the server keep
+  // the old secret — internal/config/patch_raw_providers.go's
+  // mergeRawProviderEdit).
+  originalApiKey: string
+  base_url: string
+}
+
+export type LLMTierRow = {
+  name: LLMTierName
+  provider: string
+  model: string
+  reasoning_effort: string
+  max_tokens: string
+  // Fields this editor does not expose (thinking_budget, service_tier,
+  // beta_features, context_window, and anything future) — carried through
+  // untouched because the server replaces the tier object wholesale.
+  extra: Record<string, unknown>
+}
+
+export type LLMRoleRow = {
+  id: string
+  role: string
+  previousRole: string
+  tier: string
+}
+
+let rowIdCounter = 0
+function nextRowId(prefix: string): string {
+  rowIdCounter += 1
+  return `${prefix}-${rowIdCounter}`
+}
+
+// --- values -> rows -----------------------------------------------------
+
+export function llmProviderRowsFromValue(value: unknown): LLMProviderRow[] {
+  const providers = (value && typeof value === 'object' ? value : {}) as Record<string, unknown>
+  return sortStrings(Object.keys(providers)).map((alias) => providerRowFromEntry(alias, providers[alias]))
+}
+
+function providerRowFromEntry(alias: string, entryRaw: unknown): LLMProviderRow {
+  const entry = (entryRaw && typeof entryRaw === 'object' ? entryRaw : {}) as Record<string, unknown>
+  const apiKey = typeof entry.api_key === 'string' ? entry.api_key : ''
+  return {
+    id: nextRowId('provider'),
+    alias,
+    previousAlias: alias,
+    kind: (typeof entry.kind === 'string' ? entry.kind : '') as LLMProviderKind | '',
+    auth_mode: (typeof entry.auth_mode === 'string' && entry.auth_mode ? entry.auth_mode : 'api-key') as AuthMode,
+    api_key: apiKey,
+    originalApiKey: apiKey,
+    base_url: typeof entry.base_url === 'string' ? entry.base_url : '',
+  }
+}
+
+export function createLLMProviderRow(): LLMProviderRow {
+  return {
+    id: nextRowId('provider'),
+    alias: '',
+    previousAlias: '',
+    kind: '',
+    auth_mode: 'api-key',
+    api_key: '',
+    originalApiKey: '',
+    base_url: '',
+  }
+}
+
+// Always returns exactly heavy/standard/light, in that order, regardless
+// of what is present on disk — AllTiers() allows no other names.
+export function llmTierRowsFromValue(value: unknown): LLMTierRow[] {
+  const tiers = (value && typeof value === 'object' ? value : {}) as Record<string, unknown>
+  return llmTierNames.map((name) => tierRowFromEntry(name, tiers[name]))
+}
+
+function tierRowFromEntry(name: LLMTierName, entryRaw: unknown): LLMTierRow {
+  const entry = (entryRaw && typeof entryRaw === 'object' ? entryRaw : {}) as Record<string, unknown>
+  const extra: Record<string, unknown> = {}
+  for (const [key, val] of Object.entries(entry)) {
+    if (key === 'provider' || key === 'model' || key === 'reasoning_effort' || key === 'max_tokens') continue
+    extra[key] = val
+  }
+  const maxTokens = entry.max_tokens
+  return {
+    name,
+    provider: typeof entry.provider === 'string' ? entry.provider : '',
+    model: typeof entry.model === 'string' ? entry.model : '',
+    reasoning_effort: typeof entry.reasoning_effort === 'string' ? entry.reasoning_effort : '',
+    max_tokens:
+      typeof maxTokens === 'number' && maxTokens > 0
+        ? String(maxTokens)
+        : typeof maxTokens === 'string' && maxTokens.trim() !== ''
+          ? maxTokens.trim()
+          : '',
+    extra,
+  }
+}
+
+export function llmRoleRowsFromValue(value: unknown): LLMRoleRow[] {
+  const roles = (value && typeof value === 'object' ? value : {}) as Record<string, unknown>
+  return sortStrings(Object.keys(roles)).map((role) => ({
+    id: nextRowId('role'),
+    role,
+    previousRole: role,
+    tier: typeof roles[role] === 'string' ? (roles[role] as string) : '',
+  }))
+}
+
+export function createLLMRoleRow(): LLMRoleRow {
+  return { id: nextRowId('role'), role: '', previousRole: '', tier: '' }
+}
+
+// --- rows -> values + validation ----------------------------------------
+
+export type LLMBuildResult = { value: Record<string, unknown>; errors: string[] }
+
+const ALIAS_PATTERN = /^[a-z0-9][a-z0-9_-]*$/i
+
+export function buildLLMProvidersValue(rows: LLMProviderRow[]): LLMBuildResult {
+  const errors: string[] = []
+  const seen = new Set<string>()
+  const value: Record<string, unknown> = {}
+  rows.forEach((row, index) => {
+    const alias = row.alias.trim()
+    const label = alias || `#${index + 1}`
+    if (alias === '') {
+      errors.push(`Provider ${label}: alias is required.`)
+      return
+    }
+    if (!ALIAS_PATTERN.test(alias)) {
+      errors.push(`Provider "${alias}": alias must be alphanumeric (with optional - or _).`)
+      return
+    }
+    if (seen.has(alias)) {
+      errors.push(`Provider "${alias}": alias is used more than once.`)
+      return
+    }
+    seen.add(alias)
+    if (row.kind === '') {
+      errors.push(`Provider "${alias}": pick a provider kind.`)
+      return
+    }
+    if (!llmProviderKinds.includes(row.kind as LLMProviderKind)) {
+      errors.push(`Provider "${alias}": unknown provider kind "${row.kind}".`)
+      return
+    }
+    if (row.auth_mode === 'api-key' && row.api_key.trim() === '') {
+      errors.push(`Provider "${alias}": API key is required for api-key auth mode.`)
+      return
+    }
+    const entry: Record<string, unknown> = {
+      kind: row.kind,
+      auth_mode: row.auth_mode || 'api-key',
+    }
+    const apiKey = row.api_key.trim()
+    if (apiKey !== '') {
+      // Submitting the real (unmasked) value verbatim on an untouched row
+      // is a no-op — see the module header on why there is no
+      // masked-placeholder case to special-case here.
+      entry.api_key = apiKey
+    } else if (row.originalApiKey.trim() !== '') {
+      // Had a key, now blank: submit an explicit empty string so the
+      // server actually clears it (patch_raw_providers.go's
+      // mergeRawProviderEdit treats a *missing* api_key field as "keep the
+      // old secret", not "clear it" — omitting the key here would silently
+      // undo the clear).
+      entry.api_key = ''
+    }
+    // Never had a key (a fresh row, or an existing cli/oauth provider):
+    // omit the field entirely, matching internal/config/schema.go's
+    // sparseProvidersMap so an untouched row rebuilds byte-for-byte what
+    // it loaded from.
+    if (row.base_url.trim() !== '') entry.base_url = row.base_url.trim()
+    value[alias] = entry
+  })
+  return { value, errors }
+}
+
+export function buildLLMTiersValue(rows: LLMTierRow[], knownProviderAliases: ReadonlySet<string>): LLMBuildResult {
+  const errors: string[] = []
+  const value: Record<string, unknown> = {}
+  for (const row of rows) {
+    const provider = row.provider.trim()
+    const model = row.model.trim()
+    if (provider === '') {
+      errors.push(`${row.name}: provider is required.`)
+    } else if (!knownProviderAliases.has(provider)) {
+      errors.push(`${row.name}: provider "${provider}" is not one of the providers above.`)
+    }
+    if (model === '') {
+      errors.push(`${row.name}: model is required.`)
+    }
+    // reasoning_effort/max_tokens are always present (not deleted when
+    // blank/zero): internal/config's LLMTierBinding has no `omitempty` json
+    // tags, so GET /schema always returns every tier field, zero values
+    // included. Deleting these keys here instead of zeroing them would
+    // make an *untouched* row's rebuilt value structurally different from
+    // the one it loaded from (extra keys gained/lost), which would read as
+    // "changed" even though nothing was edited.
+    const entry: Record<string, unknown> = {
+      ...row.extra,
+      provider,
+      model,
+      reasoning_effort: row.reasoning_effort.trim(),
+    }
+    const maxTokensText = row.max_tokens.trim()
+    let maxTokens = 0
+    if (maxTokensText !== '') {
+      const n = Number(maxTokensText)
+      if (!Number.isFinite(n) || !Number.isInteger(n) || n <= 0) {
+        errors.push(`${row.name}: max tokens must be a positive integer.`)
+      } else {
+        maxTokens = n
+      }
+    }
+    entry.max_tokens = maxTokens
+    value[row.name] = entry
+  }
+  return { value, errors }
+}
+
+export function buildLLMRoleDefaultsValue(rows: LLMRoleRow[]): LLMBuildResult {
+  const errors: string[] = []
+  const seen = new Set<string>()
+  const value: Record<string, unknown> = {}
+  for (const row of rows) {
+    const role = row.role.trim().toLowerCase()
+    const tier = row.tier.trim().toLowerCase()
+    if (role === '') {
+      errors.push('Role default: role is required.')
+      continue
+    }
+    if (seen.has(role)) {
+      errors.push(`Role default "${role}": role is set more than once.`)
+      continue
+    }
+    seen.add(role)
+    if (!llmKnownRoles.includes(role)) {
+      errors.push(`Role default "${role}": unrecognized role.`)
+    }
+    if (tier === '') {
+      errors.push(`Role default "${role}": pick a tier.`)
+      continue
+    }
+    if (!llmTierNames.includes(tier as LLMTierName)) {
+      errors.push(`Role default "${role}": unknown tier "${tier}".`)
+      continue
+    }
+    value[role] = tier
+  }
+  return { value, errors }
+}
+
+// --- cross-field helpers -------------------------------------------------
+
+export type LLMEditorState = {
+  providers: LLMProviderRow[]
+  tiers: LLMTierRow[]
+  roles: LLMRoleRow[]
+}
+
+export function llmEditorStateFromValues(
+  providersValue: unknown,
+  tiersValue: unknown,
+  roleDefaultsValue: unknown,
+): LLMEditorState {
+  return {
+    providers: llmProviderRowsFromValue(providersValue),
+    tiers: llmTierRowsFromValue(tiersValue),
+    roles: llmRoleRowsFromValue(roleDefaultsValue),
+  }
+}
+
+export type LLMEditorBuildResult = {
+  providers: LLMBuildResult
+  tiers: LLMBuildResult
+  roles: LLMBuildResult
+}
+
+// buildLLMEditorValues runs all three builders together so the tier
+// builder can validate its provider references against the *edited*
+// provider alias set, not the one the page loaded with.
+export function buildLLMEditorValues(state: LLMEditorState): LLMEditorBuildResult {
+  const providers = buildLLMProvidersValue(state.providers)
+  const knownAliases = new Set(Object.keys(providers.value))
+  const tiers = buildLLMTiersValue(state.tiers, knownAliases)
+  const roles = buildLLMRoleDefaultsValue(state.roles)
+  return { providers, tiers, roles }
+}
+
+// renameLLMProviderAlias keeps tier rows referencing the renamed alias in
+// sync, mirroring onboarding.ts's propagateAliasToTiers. Returns a new
+// array; the caller is responsible for reassigning state (Svelte reactivity
+// requires a new reference).
+export function renameLLMProviderAlias(tierRows: LLMTierRow[], previousAlias: string, nextAlias: string): LLMTierRow[] {
+  const prev = previousAlias.trim()
+  const next = nextAlias.trim()
+  if (prev === '' || prev === next) return tierRows
+  return tierRows.map((row) => (row.provider.trim() === prev ? { ...row, provider: next } : row))
+}

@@ -15,6 +15,7 @@ export type ProviderKind =
   | 'gemini-native'
   | 'kimi'
   | 'claude-code-cli'
+  | 'antigravity-cli'
 
 export const providerKinds: ProviderKind[] = [
   'anthropic',
@@ -24,6 +25,7 @@ export const providerKinds: ProviderKind[] = [
   'gemini-native',
   'kimi',
   'claude-code-cli',
+  'antigravity-cli',
 ]
 
 export type AuthMode = 'api-key' | 'oauth' | 'cli'
@@ -364,6 +366,8 @@ export function defaultBaseURLForKind(kind: ProviderKind | ''): string {
       return 'https://chatgpt.com/backend-api'
     case 'claude-code-cli':
       return ''
+    case 'antigravity-cli':
+      return ''
     default:
       return ''
   }
@@ -384,6 +388,8 @@ export function availableAuthModesForKind(kind: ProviderKind | ''): AuthMode[] {
     case 'openai-codex':
       return ['oauth']
     case 'claude-code-cli':
+      return ['cli']
+    case 'antigravity-cli':
       return ['cli']
     case 'anthropic':
       return ['api-key', 'oauth']

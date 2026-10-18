@@ -35,6 +35,7 @@
   import ConfigSaveBar from './ConfigSaveBar.svelte'
   import ConfigTabs from './ConfigTabs.svelte'
   import ConfigFieldRow from './ConfigFieldRow.svelte'
+  import ConfigLLMEditor from './ConfigLLMEditor.svelte'
   import RemoteAccessCard from './RemoteAccessCard.svelte'
   import { t } from '../i18n'
 
@@ -88,8 +89,13 @@
   // out of search results too, or a result would jump to a row that no
   // longer renders and the generic row would race the card's own save.
   const REMOTE_ACCESS_FIELD_KEYS = new Set(['remote_access_tailscale_serve_enabled', 'remote_access_tailscale_serve_https_port'])
+  // ConfigLLMEditor (#1286) is the one editor for the LLM pool fields —
+  // same reasoning as RemoteAccessCard above. llm_role_defaults is
+  // 'advanced'-tier in the schema; pulling it out here means the LLM tab's
+  // "Advanced (N)" toggle never gets a row it would render empty.
+  const LLM_POOL_FIELD_KEYS = new Set(['llm_providers', 'llm_tiers', 'llm_role_defaults'])
   function isGenericRow(field: ConfigFieldMeta): boolean {
-    return !REMOTE_ACCESS_FIELD_KEYS.has(field.key)
+    return !REMOTE_ACCESS_FIELD_KEYS.has(field.key) && !LLM_POOL_FIELD_KEYS.has(field.key)
   }
 
   let tabFields = $derived(groupFieldsByTab(schema, displayValues))
@@ -97,6 +103,13 @@
   let currentBasic = $derived(basicFields(currentTabFields))
   let currentAdvanced = $derived(advancedFields(currentTabFields))
   let advancedOpen = $derived(expandedAdvanced.has(activeTab))
+
+  // ConfigLLMEditor needs the ConfigFieldMeta for each pool field to route
+  // its edits through the same setFieldValue/dirtyFields path as every
+  // other field (masked-key stripping, diff, save, revert).
+  let llmProvidersField = $derived(schema.find((f) => f.key === 'llm_providers'))
+  let llmTiersField = $derived(schema.find((f) => f.key === 'llm_tiers'))
+  let llmRoleDefaultsField = $derived(schema.find((f) => f.key === 'llm_role_defaults'))
 
   function toggleAdvanced() {
     const next = new Set(expandedAdvanced)
@@ -493,6 +506,51 @@
         <RemoteAccessCard />
       {/if}
 
+      {#if activeTab === 'llm' && llmProvidersField && llmTiersField && llmRoleDefaultsField}
+        <div class="config-llm-editor-card card">
+          <ConfigLLMEditor
+            providersValue={getDisplayValue(llmProvidersField)}
+            tiersValue={getDisplayValue(llmTiersField)}
+            roleDefaultsValue={getDisplayValue(llmRoleDefaultsField)}
+            onProvidersChange={(v) => setFieldValue(llmProvidersField, v)}
+            onTiersChange={(v) => setFieldValue(llmTiersField, v)}
+            onRoleDefaultsChange={(v) => setFieldValue(llmRoleDefaultsField, v)}
+            text={$t.config.llm}
+          />
+          <div class="config-llm-hint">
+            <button type="button" class="btn btn-ghost btn-sm" disabled={llmTestBusy} onclick={testLLMConnection}>
+              {llmTestBusy ? $t.providerTest.testing : $t.providerTest.button}
+            </button>
+          </div>
+          {#if llmTestRows !== null || llmTestError}
+            <div class="provider-test" role="status" aria-label={$t.providerTest.resultsLabel}>
+              {#if llmTestError}
+                <p class="provider-test-error">{llmTestError}</p>
+              {:else if llmTestRows && llmTestRows.length === 0}
+                <p class="provider-test-empty">{$t.providerTest.noProviders}</p>
+              {:else if llmTestRows}
+                <ul class="provider-test-list">
+                  {#each llmTestRows as row (row.alias)}
+                    <li class={`provider-test-row tone-${row.tone}`}>
+                      <div class="provider-test-head">
+                        <span class="provider-test-alias">{row.alias}</span>
+                        <span class="provider-test-kind">{row.kind}</span>
+                        {#if row.isDefault}
+                          <span class="badge badge-default">{$t.providerTest.defaultBadge}</span>
+                        {/if}
+                        <span class={`badge badge-${row.tone} provider-test-status`}>{row.statusLabel}</span>
+                      </div>
+                      {#if row.summary}<p class="provider-test-summary">{row.summary}</p>{/if}
+                      {#if row.detail}<p class="provider-test-detail">{row.detail}</p>{/if}
+                    </li>
+                  {/each}
+                </ul>
+              {/if}
+            </div>
+          {/if}
+        </div>
+      {/if}
+
       <div class="config-tab-body card">
         {#if currentBasic.length === 0 && currentAdvanced.length === 0}
           <p class="config-empty-state">{$t.config.emptyTab}</p>
@@ -500,7 +558,6 @@
           {#if currentBasic.length > 0}
             <div class="config-field-list">
               {#each currentBasic as field (field.key)}
-                {@const isLLMPool = field.key === 'llm_providers' || field.key === 'llm_tiers'}
                 <ConfigFieldRow
                   {field}
                   loc={localizeConfigField(field, $t.config)}
@@ -511,43 +568,6 @@
                   onChange={(v) => setFieldValue(field, v)}
                   onRevert={() => revertField(field)}
                 />
-                {#if isLLMPool}
-                  <div class="config-llm-hint">
-                    <span>{$t.config.llmReadonlyHint}</span>
-                    <button type="button" class="btn btn-ghost btn-sm" onclick={() => onNavigate?.('/console/onboarding?reentry=1')}>{$t.config.editInWizard}</button>
-                    {#if field.key === 'llm_providers'}
-                      <button type="button" class="btn btn-ghost btn-sm" disabled={llmTestBusy} onclick={testLLMConnection}>
-                        {llmTestBusy ? $t.providerTest.testing : $t.providerTest.button}
-                      </button>
-                    {/if}
-                  </div>
-                  {#if field.key === 'llm_providers' && (llmTestRows !== null || llmTestError)}
-                    <div class="provider-test" role="status" aria-label={$t.providerTest.resultsLabel}>
-                      {#if llmTestError}
-                        <p class="provider-test-error">{llmTestError}</p>
-                      {:else if llmTestRows && llmTestRows.length === 0}
-                        <p class="provider-test-empty">{$t.providerTest.noProviders}</p>
-                      {:else if llmTestRows}
-                        <ul class="provider-test-list">
-                          {#each llmTestRows as row (row.alias)}
-                            <li class={`provider-test-row tone-${row.tone}`}>
-                              <div class="provider-test-head">
-                                <span class="provider-test-alias">{row.alias}</span>
-                                <span class="provider-test-kind">{row.kind}</span>
-                                {#if row.isDefault}
-                                  <span class="badge badge-default">{$t.providerTest.defaultBadge}</span>
-                                {/if}
-                                <span class={`badge badge-${row.tone} provider-test-status`}>{row.statusLabel}</span>
-                              </div>
-                              {#if row.summary}<p class="provider-test-summary">{row.summary}</p>{/if}
-                              {#if row.detail}<p class="provider-test-detail">{row.detail}</p>{/if}
-                            </li>
-                          {/each}
-                        </ul>
-                      {/if}
-                    </div>
-                  {/if}
-                {/if}
               {/each}
             </div>
           {/if}
@@ -844,6 +864,13 @@
 
   .config-tab-body {
     padding: 0;
+  }
+
+  .config-llm-editor-card {
+    padding: var(--space-3);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
   }
 
   .config-field-list {

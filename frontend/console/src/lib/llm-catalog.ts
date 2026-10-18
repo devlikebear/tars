@@ -83,6 +83,9 @@ export const wellKnownModelsByKind: Record<ProviderKind, string[]> = {
     'opus',
     'haiku',
   ],
+  // antigravity-cli accepts whatever slug `agy models` lists for the
+  // signed-in account; there is no fixed catalog to seed here.
+  'antigravity-cli': [],
 }
 
 // popularModelsForKind returns the curated catalog entries for a
