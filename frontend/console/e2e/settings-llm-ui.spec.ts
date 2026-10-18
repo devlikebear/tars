@@ -29,12 +29,15 @@ test('adding a provider and changing a tier model through the LLM table UI persi
     await newProviderRow.getByLabel('Kind').selectOption('anthropic')
     const apiKeyInput = newProviderRow.getByLabel('API key')
     await apiKeyInput.fill('e2e-second-fake-credential')
-    // Diagnostic for a CI-only mismatch (tars#1286 PR review): confirms
-    // whether the DOM's own value is already wrong right after fill() —
-    // a real Chrome's password-manager autofill is a known source of
-    // exactly this kind of same-length, different-content surprise on a
-    // type="password" field — before blur()/save() have any chance to
-    // touch it, isolating browser-level interference from a submit bug.
+    // Regression guard (tars#1286 PR review): a real CI Chrome's "suggest a
+    // strong password" feature silently overwrote this field with its own
+    // generated value after blur() when the input carried
+    // autocomplete="new-password" — the DOM was still correct right here,
+    // right after fill(), which is what isolated the bug to the field's
+    // autocomplete value rather than to a submit-path logic error.
+    // ConfigLLMEditor.svelte now matches ConfigControl.svelte's existing
+    // autocomplete="off" convention for every other sensitive field on this
+    // page.
     const domValueChecksum = await apiKeyInput.evaluate((el: HTMLInputElement) =>
       [...el.value].reduce((sum, ch) => sum + ch.charCodeAt(0), 0),
     )

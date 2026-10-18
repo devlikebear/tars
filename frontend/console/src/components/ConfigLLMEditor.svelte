@@ -362,7 +362,7 @@
               <input
                 type="password"
                 class="config-control-input"
-                autocomplete="new-password"
+                autocomplete="off"
                 bind:value={row.api_key}
                 onblur={emitIfValid}
               />
