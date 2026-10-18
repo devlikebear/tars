@@ -1,5 +1,15 @@
 import { expect, test } from '@playwright/test'
 
+// Mirrors internal/apihandlers/config.go's maskString exactly: GET
+// /v1/admin/config/schema masks every non-empty llm_providers api_key
+// unconditionally, so this spec can only ever observe the masked shape —
+// never the real value it typed — through that endpoint.
+function maskedApiKey(real: string): string {
+  const trimmed = real.trim()
+  if (trimmed.length <= 8) return '*'.repeat(trimmed.length)
+  return trimmed.slice(0, 4) + '*'.repeat(trimmed.length - 8) + trimmed.slice(-4)
+}
+
 // ConfigLLMEditor (tars#1286): add a provider and change a tier's model
 // through the row-based table UI only — no JSON textarea involved — and
 // confirm the save path (PATCH /v1/admin/config/values, same as every other
@@ -29,20 +39,12 @@ test('adding a provider and changing a tier model through the LLM table UI persi
     await newProviderRow.getByLabel('Kind').selectOption('anthropic')
     const apiKeyInput = newProviderRow.getByLabel('API key')
     await apiKeyInput.fill('e2e-second-fake-credential')
-    // Regression guard (tars#1286 PR review): a real CI Chrome's "suggest a
-    // strong password" feature silently overwrote this field with its own
-    // generated value after blur() when the input carried
-    // autocomplete="new-password" — the DOM was still correct right here,
-    // right after fill(), which is what isolated the bug to the field's
-    // autocomplete value rather than to a submit-path logic error.
-    // ConfigLLMEditor.svelte now matches ConfigControl.svelte's existing
-    // autocomplete="off" convention for every other sensitive field on this
-    // page.
-    const domValueChecksum = await apiKeyInput.evaluate((el: HTMLInputElement) =>
-      [...el.value].reduce((sum, ch) => sum + ch.charCodeAt(0), 0),
-    )
-    const expectedChecksum = [...'e2e-second-fake-credential'].reduce((sum, ch) => sum + ch.charCodeAt(0), 0)
-    expect(domValueChecksum, `DOM input value checksum was ${domValueChecksum}, expected ${expectedChecksum}`).toBe(expectedChecksum)
+    // Regression guard (tars#1286 PR review): confirms the DOM's own value
+    // right after fill() before saving crosses the network at all — this is
+    // what isolated an earlier CI-only mismatch to the save round-trip (GET
+    // /schema masking the persisted key, not a lost/garbled keystroke).
+    const domValue = await apiKeyInput.inputValue()
+    expect(domValue).toBe('e2e-second-fake-credential')
     await apiKeyInput.blur()
 
     // No validation errors should remain under the Providers section once
@@ -60,23 +62,18 @@ test('adding a provider and changing a tier model through the LLM table UI persi
 
     const saved = await schema()
     const newProvider = saved.values.llm_providers['e2e-second']
-    expect(newProvider).toMatchObject({ kind: 'anthropic', auth_mode: 'api-key' })
-    // Checked as a boolean, not with the literal string in the matcher: a
-    // string typed into a type="password" field gets scrubbed to asterisks
-    // in Playwright's own diff output wherever it reappears later in the
-    // run, which otherwise hides whether this genuinely matches or not
-    // behind an unreadable "e2e-***...tial" vs "e2e-***...tial" diff. The
-    // diagnostic on failure stays numeric so it cannot be scrubbed the
-    // same way.
-    const actualKey = typeof newProvider.api_key === 'string' ? newProvider.api_key : ''
-    const checksum = [...actualKey].reduce((sum, ch) => sum + ch.charCodeAt(0), 0)
-    // eslint-disable-next-line no-console -- temporary diagnostic (tars#1286 PR review), removed once the mismatch is understood
-    console.log('[diag] saved e2e-second api_key hex:', Buffer.from(actualKey, 'utf8').toString('hex'))
-    expect(actualKey === 'e2e-second-fake-credential', `api_key length=${actualKey.length} charCodeSum=${checksum}`).toBe(true)
-    // The pre-existing provider's real credential round-trips untouched —
-    // there is no masking step to get wrong here (GET /schema already
-    // returns it unmasked), but a stray clear/overwrite on an unrelated
-    // row would still be a real regression.
+    // api_key comes back masked (maskedApiKey above) — GET /schema never
+    // returns a real secret, for a freshly-typed key same as an existing
+    // one (internal/apihandlers/config.go's maskSensitiveConfigValues).
+    expect(newProvider).toMatchObject({
+      kind: 'anthropic',
+      auth_mode: 'api-key',
+      api_key: maskedApiKey('e2e-second-fake-credential'),
+    })
+    // The pre-existing provider's real credential round-trips untouched: its
+    // masked form (deterministic for the same underlying secret) is
+    // unchanged, so a stray clear/overwrite on an unrelated row would still
+    // show up here.
     expect(saved.values.llm_providers.mock.api_key).toBe(originalProviders.mock.api_key)
     expect(saved.values.llm_tiers.light.model).toBe('e2e-model-light-v2')
     expect(saved.values.llm_tiers.light.provider).toBe('mock')

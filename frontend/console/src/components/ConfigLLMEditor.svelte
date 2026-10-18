@@ -18,6 +18,9 @@
   import { untrack } from 'svelte'
   import {
     buildLLMEditorValues,
+    buildLLMProvidersValue,
+    buildLLMRoleDefaultsValue,
+    buildLLMTiersValue,
     createLLMProviderRow,
     createLLMRoleRow,
     llmEditorStateFromValues,
@@ -49,6 +52,7 @@
     kindPlaceholder: string
     authModeLabel: string
     apiKeyLabel: string
+    apiKeyKeepHint: string
     baseUrlLabel: string
     noProviders: string
     tiersTitle: string
@@ -90,36 +94,50 @@
     untrack(() => llmEditorStateFromValues(providersValue, tiersValue, roleDefaultsValue)),
   )
 
-  // What we last emitted (or last adopted from an external prop) per
-  // section, so an echo of our own edit back through Config.svelte's
-  // dirtyFields -> displayValues round-trip does not re-trigger a resync,
-  // while an *external* change (Discard, a save-reload, the JSON fallback
-  // on a sibling field this module does not own) does. Same pattern as
-  // ConfigControl.svelte's syncedText/draft. Compared with configValuesEqual
-  // (key-order-insensitive), not JSON.stringify: the rebuilt value and the
-  // server's can list the same keys in a different order and still be the
-  // same value — a raw string compare would read that as "changed" on
-  // every keystroke in an unrelated field, via the shared `built` derived.
-  let lastProvidersValue: unknown = untrack(() => providersValue ?? {})
-  let lastTiersValue: unknown = untrack(() => tiersValue ?? {})
-  let lastRolesValue: unknown = untrack(() => roleDefaultsValue ?? {})
+  // Two different baselines per section, not one:
+  //   - lastSeenXProp: the exact prop value last observed, used only to
+  //     detect an *external* change (Discard, a save-reload, the JSON
+  //     fallback on a sibling field) that should resync rows from props.
+  //   - lastXValue: what emitIfValid last considered "the current truth"
+  //     for that section — the *rebuilt* shape (buildLLM*Value's output),
+  //     not the raw prop. Providers' rebuilt shape omits api_key for a row
+  //     with keepExistingApiKey still true (see lib/llmConfigEditor.ts), so
+  //     comparing a fresh rebuild against the raw prop (which still carries
+  //     a masked api_key key from GET /schema) would read as "changed" on
+  //     every keystroke in an unrelated field via the shared `built`
+  //     derived below — comparing against the rebuilt baseline instead
+  //     keeps an untouched section looking untouched.
+  // Both comparisons use configValuesEqual (key-order-insensitive), not
+  // JSON.stringify: the rebuilt value and the server's can list the same
+  // keys in a different order and still be the same value.
+  let lastSeenProvidersProp: unknown = untrack(() => providersValue ?? {})
+  let lastSeenTiersProp: unknown = untrack(() => tiersValue ?? {})
+  let lastSeenRolesProp: unknown = untrack(() => roleDefaultsValue ?? {})
+  let lastProvidersValue: unknown = untrack(() => buildLLMProvidersValue(llmState.providers).value)
+  let lastTiersValue: unknown = untrack(() =>
+    buildLLMTiersValue(llmState.tiers, new Set(llmState.providers.map((p) => p.alias.trim()))).value,
+  )
+  let lastRolesValue: unknown = untrack(() => buildLLMRoleDefaultsValue(llmState.roles).value)
 
   $effect(() => {
-    if (!configValuesEqual(providersValue ?? {}, lastProvidersValue)) {
+    if (!configValuesEqual(providersValue ?? {}, lastSeenProvidersProp)) {
+      lastSeenProvidersProp = providersValue ?? {}
       llmState.providers = llmProviderRowsFromValue(providersValue)
-      lastProvidersValue = providersValue ?? {}
+      lastProvidersValue = buildLLMProvidersValue(llmState.providers).value
     }
   })
   $effect(() => {
-    if (!configValuesEqual(tiersValue ?? {}, lastTiersValue)) {
+    if (!configValuesEqual(tiersValue ?? {}, lastSeenTiersProp)) {
+      lastSeenTiersProp = tiersValue ?? {}
       llmState.tiers = llmTierRowsFromValue(tiersValue)
-      lastTiersValue = tiersValue ?? {}
+      lastTiersValue = buildLLMTiersValue(llmState.tiers, new Set(llmState.providers.map((p) => p.alias.trim()))).value
     }
   })
   $effect(() => {
-    if (!configValuesEqual(roleDefaultsValue ?? {}, lastRolesValue)) {
+    if (!configValuesEqual(roleDefaultsValue ?? {}, lastSeenRolesProp)) {
+      lastSeenRolesProp = roleDefaultsValue ?? {}
       llmState.roles = llmRoleRowsFromValue(roleDefaultsValue)
-      lastRolesValue = roleDefaultsValue ?? {}
+      lastRolesValue = buildLLMRoleDefaultsValue(llmState.roles).value
     }
   })
 
@@ -133,18 +151,25 @@
     if (result.providers.errors.length === 0) {
       if (!configValuesEqual(result.providers.value, lastProvidersValue)) {
         lastProvidersValue = result.providers.value
+        // The parent's prop echoes this exact value back on its next
+        // render (Config.svelte's dirtyFields -> displayValues) — record
+        // it as already-seen so that echo does not itself look like an
+        // external change and trigger a resync.
+        lastSeenProvidersProp = result.providers.value
         onProvidersChange(result.providers.value)
       }
     }
     if (result.tiers.errors.length === 0) {
       if (!configValuesEqual(result.tiers.value, lastTiersValue)) {
         lastTiersValue = result.tiers.value
+        lastSeenTiersProp = result.tiers.value
         onTiersChange(result.tiers.value)
       }
     }
     if (result.roles.errors.length === 0) {
       if (!configValuesEqual(result.roles.value, lastRolesValue)) {
         lastRolesValue = result.roles.value
+        lastSeenRolesProp = result.roles.value
         onRoleDefaultsChange(result.roles.value)
       }
     }
@@ -197,6 +222,16 @@
   function handleAuthModeChange(row: LLMProviderRow, value: string) {
     row.auth_mode = value as AuthMode
     emitIfValid()
+  }
+
+  // Mirrors onboarding.ts's OnboardingProvider.svelte handleApiKeyInput: a
+  // loaded row's control shows a blank field over its masked value
+  // (keepExistingApiKey, see lib/llmConfigEditor.ts) rather than ever
+  // rendering or resubmitting the "****"-shaped text GET /schema returns.
+  // Typing anything commits to the new value from then on.
+  function handleApiKeyInput(row: LLMProviderRow, value: string) {
+    row.api_key = value
+    if (value.trim() !== '') row.keepExistingApiKey = false
   }
 
   // -- Tiers --------------------------------------------------------------
@@ -358,12 +393,14 @@
           </label>
           {#if row.auth_mode === 'api-key'}
             <label class="llm-field">
-              <span>{text.apiKeyLabel}</span>
+              <span>{text.apiKeyLabel}{#if row.keepExistingApiKey}&nbsp;<em>{text.apiKeyKeepHint}</em>{/if}</span>
               <input
                 type="password"
                 class="config-control-input"
                 autocomplete="off"
-                bind:value={row.api_key}
+                placeholder={row.keepExistingApiKey ? text.apiKeyKeepHint : ''}
+                value={row.keepExistingApiKey ? '' : row.api_key}
+                oninput={(e) => handleApiKeyInput(row, (e.currentTarget as HTMLInputElement).value)}
                 onblur={emitIfValid}
               />
             </label>

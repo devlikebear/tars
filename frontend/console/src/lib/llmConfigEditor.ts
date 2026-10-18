@@ -13,10 +13,15 @@
 //   - internal/config/patch_raw_providers.go's rawProviderObjects only
 //     accepts "kind", "auth_mode", "base_url", "api_key" per provider —
 //     no passthrough fields are possible for llm_providers.
-//   - internal/config/schema.go's GET /schema returns llm_providers with
-//     the real (unmasked) api_key — there is no "***" placeholder to
-//     detect, unlike the onboarding wizard's re-entry path. Submitting the
-//     literal value back on an untouched row is a no-op on disk.
+//   - internal/apihandlers/config.go's handleGetConfigSchema masks every
+//     non-empty llm_providers api_key unconditionally (maskSensitiveConfigValues
+//     -> maskString: first 4 chars + asterisks + last 4), the same as the
+//     onboarding wizard's re-entry path — GET /schema never returns a real
+//     secret back. A loaded row never shows or resubmits that masked text;
+//     it tracks keepExistingApiKey (mirrors onboarding.ts's field of the
+//     same name) and omits api_key from the built value while it is true,
+//     which internal/config/patch_raw_providers.go's mergeRawProviderEdit
+//     reads as "leave the on-disk secret alone".
 //   - pkg/llm/tier.go's AllTiers() fixes tier names to exactly heavy /
 //     standard / light — llm_tiers always has exactly these three rows,
 //     never a variable-length list.
@@ -95,16 +100,14 @@ export type LLMProviderRow = {
   kind: LLMProviderKind | ''
   auth_mode: AuthMode
   api_key: string
-  // originalApiKey is the key this row loaded with (possibly empty — a
-  // cli/oauth provider commonly has none). buildLLMProvidersValue uses it
-  // to tell "never had a key" (omit api_key, matching the server's
-  // sparseProvidersMap shape so an untouched row's rebuilt value is
-  // identical to the one it loaded from, not just equivalent) apart from
-  // "had one, the user cleared it" (submit api_key: "" to actually clear
-  // it on disk, since omitting the field instead makes the server keep
-  // the old secret — internal/config/patch_raw_providers.go's
-  // mergeRawProviderEdit).
-  originalApiKey: string
+  // keepExistingApiKey mirrors onboarding.ts's field of the same name: true
+  // when this row loaded with a non-empty (always masked, per the module
+  // header) api_key and the user has not typed a replacement. While true,
+  // buildLLMProvidersValue omits api_key from the built entry so the
+  // server's own "absent key = keep the old secret" rule applies — the
+  // masked text itself is never shown in the control or submitted anywhere.
+  // Typing any character flips this to false (ConfigLLMEditor.svelte).
+  keepExistingApiKey: boolean
   base_url: string
 }
 
@@ -150,7 +153,7 @@ function providerRowFromEntry(alias: string, entryRaw: unknown): LLMProviderRow 
     kind: (typeof entry.kind === 'string' ? entry.kind : '') as LLMProviderKind | '',
     auth_mode: (typeof entry.auth_mode === 'string' && entry.auth_mode ? entry.auth_mode : 'api-key') as AuthMode,
     api_key: apiKey,
-    originalApiKey: apiKey,
+    keepExistingApiKey: apiKey.trim() !== '',
     base_url: typeof entry.base_url === 'string' ? entry.base_url : '',
   }
 }
@@ -163,7 +166,7 @@ export function createLLMProviderRow(): LLMProviderRow {
     kind: '',
     auth_mode: 'api-key',
     api_key: '',
-    originalApiKey: '',
+    keepExistingApiKey: false,
     base_url: '',
   }
 }
@@ -246,7 +249,7 @@ export function buildLLMProvidersValue(rows: LLMProviderRow[]): LLMBuildResult {
       errors.push(`Provider "${alias}": unknown provider kind "${row.kind}".`)
       return
     }
-    if (row.auth_mode === 'api-key' && row.api_key.trim() === '') {
+    if (row.auth_mode === 'api-key' && !row.keepExistingApiKey && row.api_key.trim() === '') {
       errors.push(`Provider "${alias}": API key is required for api-key auth mode.`)
       return
     }
@@ -254,24 +257,19 @@ export function buildLLMProvidersValue(rows: LLMProviderRow[]): LLMBuildResult {
       kind: row.kind,
       auth_mode: row.auth_mode || 'api-key',
     }
-    const apiKey = row.api_key.trim()
-    if (apiKey !== '') {
-      // Submitting the real (unmasked) value verbatim on an untouched row
-      // is a no-op — see the module header on why there is no
-      // masked-placeholder case to special-case here.
-      entry.api_key = apiKey
-    } else if (row.originalApiKey.trim() !== '') {
-      // Had a key, now blank: submit an explicit empty string so the
-      // server actually clears it (patch_raw_providers.go's
-      // mergeRawProviderEdit treats a *missing* api_key field as "keep the
-      // old secret", not "clear it" — omitting the key here would silently
-      // undo the clear).
-      entry.api_key = ''
+    // keepExistingApiKey true means the row still shows the masked value's
+    // blank placeholder, untouched — omit api_key so
+    // internal/config/patch_raw_providers.go's mergeRawProviderEdit reads
+    // the missing field as "leave the on-disk secret alone" (see module
+    // header). A never-set key (a fresh row left on oauth/cli) is also
+    // omitted rather than sent as an explicit empty string — only a typed
+    // replacement is ever submitted, mirroring onboarding.ts's
+    // buildConfigPayload exactly. There is no UI path to explicitly clear
+    // an existing key to empty, the same limitation the onboarding wizard
+    // already has.
+    if (!row.keepExistingApiKey && row.api_key.trim() !== '') {
+      entry.api_key = row.api_key.trim()
     }
-    // Never had a key (a fresh row, or an existing cli/oauth provider):
-    // omit the field entirely, matching internal/config/schema.go's
-    // sparseProvidersMap so an untouched row rebuilds byte-for-byte what
-    // it loaded from.
     if (row.base_url.trim() !== '') entry.base_url = row.base_url.trim()
     value[alias] = entry
   })

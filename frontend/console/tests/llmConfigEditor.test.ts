@@ -134,36 +134,43 @@ test('buildLLMProvidersValue allows oauth/cli auth without an api_key, and omits
   assert.deepEqual(value.codex, { kind: 'openai-codex', auth_mode: 'oauth' })
 })
 
-test('buildLLMProvidersValue clears a previously-set api_key with an explicit empty string', () => {
-  const rows = llmProviderRowsFromValue({ p: { kind: 'openai', auth_mode: 'oauth', api_key: 'sk-old' } })
+test('buildLLMProvidersValue omits api_key for a loaded row left untouched, keepExistingApiKey and all', () => {
+  // GET /v1/admin/config/schema always masks a non-empty api_key
+  // (internal/apihandlers/config.go's maskSensitiveConfigValues) — a row
+  // loaded from it sets keepExistingApiKey true (never showing or
+  // resubmitting that masked text), and merely clearing row.api_key by
+  // hand (without the component's handleApiKeyInput also clearing the
+  // flag) does not change that: there is no way to explicitly clear an
+  // existing key through this API, the same limitation onboarding.ts's
+  // buildConfigPayload already has.
+  const rows = llmProviderRowsFromValue({ p: { kind: 'openai', auth_mode: 'oauth', api_key: 'sk-e****old' } })
+  assert.equal(rows[0].keepExistingApiKey, true)
   rows[0].api_key = ''
   const { value, errors } = buildLLMProvidersValue(rows)
   assert.deepEqual(errors, [])
-  // Present and empty, not omitted: internal/config/patch_raw_providers.go's
-  // mergeRawProviderEdit treats an *absent* api_key as "keep the old
-  // secret" — omitting it here would silently undo the clear.
-  assert.equal((value.p as Record<string, unknown>).api_key, '')
+  assert.deepEqual(value.p, { kind: 'openai', auth_mode: 'oauth' })
 })
 
-test('buildLLMProvidersValue submits the real api_key verbatim on an untouched row (no masking)', () => {
-  const rows = llmProviderRowsFromValue({
-    p: { kind: 'openai', auth_mode: 'api-key', api_key: 'sk-real-secret', base_url: 'https://api.openai.com/v1' },
-  })
+test('buildLLMProvidersValue submits a typed replacement once keepExistingApiKey is cleared', () => {
+  const rows = llmProviderRowsFromValue({ p: { kind: 'openai', auth_mode: 'api-key', api_key: 'sk-e****old' } })
+  rows[0].api_key = 'sk-new-real-secret'
+  rows[0].keepExistingApiKey = false // set by ConfigLLMEditor.svelte's handleApiKeyInput on any keystroke
   const { value, errors } = buildLLMProvidersValue(rows)
   assert.deepEqual(errors, [])
-  assert.equal((value.p as Record<string, unknown>).api_key, 'sk-real-secret')
+  assert.equal((value.p as Record<string, unknown>).api_key, 'sk-new-real-secret')
 })
 
-test('buildLLMProvidersValue rebuilds an untouched row to the exact shape it loaded from', () => {
-  // internal/config/schema.go's sparseProvidersMap only includes a field
-  // when it is non-empty — the rebuilt value for an unedited row must
-  // match that shape key-for-key, same reasoning as the tiers round-trip
-  // test below (tars#1286).
-  const original = { kind: 'openai', auth_mode: 'api-key', api_key: 'sk-real-secret', base_url: 'https://api.openai.com/v1' }
+test('buildLLMProvidersValue rebuilds an untouched row to the exact shape it loaded from, api_key omitted', () => {
+  // internal/config/schema.go's sparseProvidersMap only includes base_url
+  // when it is non-empty, matched here — but api_key is different: GET
+  // /schema always masks it (see the keepExistingApiKey test above), so
+  // the "exact shape it loaded from" for an untouched row never includes
+  // api_key at all, unlike every other field (tars#1286).
+  const original = { kind: 'openai', auth_mode: 'api-key', api_key: 'sk-e****old', base_url: 'https://api.openai.com/v1' }
   const rows = llmProviderRowsFromValue({ p: original })
   const { value, errors } = buildLLMProvidersValue(rows)
   assert.deepEqual(errors, [])
-  assert.deepEqual(value.p, original)
+  assert.deepEqual(value.p, { kind: 'openai', auth_mode: 'api-key', base_url: 'https://api.openai.com/v1' })
 })
 
 test('buildLLMProvidersValue omits base_url and a never-set api_key for a fresh cli-mode row', () => {
