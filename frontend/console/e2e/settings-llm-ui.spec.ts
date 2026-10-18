@@ -21,7 +21,7 @@ test('adding a provider and changing a tier model through the LLM table UI persi
   await newProviderRow.getByLabel('Alias').fill('e2e-second')
   await newProviderRow.getByLabel('Alias').blur()
   await newProviderRow.getByLabel('Kind').selectOption('anthropic')
-  await newProviderRow.getByLabel('API key').fill('sk-e2e-second-key')
+  await newProviderRow.getByLabel('API key').fill('e2e-second-fake-credential')
   await newProviderRow.getByLabel('API key').blur()
 
   // No validation errors should remain under the Providers section once the
@@ -40,7 +40,7 @@ test('adding a provider and changing a tier model through the LLM table UI persi
   expect(saved.values.llm_providers['e2e-second']).toMatchObject({
     kind: 'anthropic',
     auth_mode: 'api-key',
-    api_key: 'sk-e2e-second-key',
+    api_key: 'e2e-second-fake-credential',
   })
   // The pre-existing provider's real credential round-trips untouched —
   // there is no masking step to get wrong here (GET /schema already returns
