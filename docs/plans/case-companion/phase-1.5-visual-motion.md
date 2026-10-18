@@ -82,16 +82,16 @@
 
 `alert`와 `upset`은 LED 색이 같으므로 눈 크기·눈썹 방향·포즈 셋이 다르다 (DESIGN.md 규칙). 눈은 항상 시그널 그린 한 가지 — 상태에 따라 눈 색을 바꾸지 않는다(그러면 "색만 다른 표정"이 된다).
 
-## 4. 프레임 목록 (권장안 기준 약 10장)
+## 4. 프레임 목록 (V1에서 5장, V2에서 3장 추가)
 
 | 시트 | 프레임 | 용도 |
 |---|---|---|
-| `base` | 기본 서기 (화면 비움) | neutral·happy·wary 등 대부분 |
-| `pose` | 작업(팔 앞으로), 경계(안테나 뻗음·팔 벌림), 처짐(upset), 내려앉음(sleepy) × 1 | 표정별 포즈 |
-| `wave` | 한쪽 팔 들기 3컷 | greeting 동작 |
+| `base` | 기본 서기 (화면 비움) | neutral·happy·upset·wary·sleepy |
+| `alert`·`working` | 경계(안테나 뻗음·팔 벌림), 작업(팔 앞으로) × 1 | 표정별 포즈 (V1) |
+| `wave`·`wave2` | 한쪽 팔을 든 두 각도 | greeting 포즈와 wave 동작 — 두 프레임을 번갈아 (V1) |
 | `split` | 두 판이 살짝 벌어졌다 돌아오는 2컷 | 머지 축하(F3) |
 | `off` | 화면 꺼지고 몸을 낮춘 절전 자세 1컷 | 숨기기(F2)·부팅 등장 |
-| (CSS만) | — | 화면 얼굴 전부, bounce·shake·tilt, 호흡, 떠오름, 부팅 스캔라인, z |
+| (CSS만) | — | 화면 얼굴 전부, upset(얼굴만으로 구분)·sleepy(정적 `rotate` 기울기), bounce·nod·shake·tilt, 호흡, 떠오름, 부팅 스캔라인, z |
 
 얼굴도 래스터로 정하면 `face` 시트(8표정 + 깜빡임 3 + 시선 좌우 2 + 말하기 2 ≈ 15장)가 더해진다.
 
@@ -119,13 +119,14 @@ scripts/case_sprites.py   원본 → 합성·정렬·축소·시트 합치기 �
 
 ### V1 — 스프라이트 이식 (1~2일)
 
-- [ ] 나머지 프레임 생성(§4), `scripts/case_sprites.py`, `src/assets/case/` 시트 + manifest
-- [ ] `src/components/CaseFigure.svelte` 신설: 몸만 옮긴다. props `expression`, `action`, `idlePlay`, `gaze`, `talking`. 말풍선·질문·cue·타이머는 `CompanionPet.svelte`에 남는다
-- [ ] 레이어: 그림자 → 몸체 스프라이트(포즈 전환 시 2장 교차) → 화면 얼굴(CSS, manifest의 `screen`에 맞춤) → CSS LED → z → 배지. 표시 64×64, 버튼 74px·배치 무변경
-- [ ] 클래스 계약 유지: `.companion-body.expr-<name>`, `act-<action>`, `play-<kind>`, `.companion-gem`(이제 안테나 LED), `.companion-zzz`, 화면 얼굴의 `companion-eye-*`·`companion-brow-*`. 미어캣 파츠(귀·패치·코·앞발·노트북)는 사라진다
-- [ ] 테스트 교체: `<img|<svg` 금지 → "이미지는 `src/assets/case/`에서만, 외부 URL·SVG 몸체 금지", 에셋 총량 상한, manifest 프레임 이름 일치, `--case-gem-*`은 LED에만, 눈 색은 표정마다 같음
-- [ ] F6 스크린리더 상태 문장
-- [ ] `DESIGN.md` "CASE's expressions" 다시 쓰기(봇 부위·§3 표), `design/v2/README.md`
+- [x] 나머지 프레임 생성(§4: alert·working·wave2), `scripts/case_sprites.py`, `src/assets/case/case-bot.webp`(5프레임, 약 16KB) + `lib/caseSprite.generated.ts`
+- [x] `src/components/CaseFigure.svelte` 신설: 몸만 옮겼다. props `expression`, `action`, `idlePlay`, `gaze` (`talking`은 F1과 함께 V2). 말풍선·질문·cue·타이머는 `CompanionPet.svelte`에 남는다
+- [x] 레이어: 그림자 → 몸체 스프라이트 → 화면 얼굴(CSS, `screen`에 맞춤) → CSS LED → z → 배지. 표시 64×64, 버튼 74px·배치 무변경. 포즈 전환 교차 페이드는 V2 "표정 전환"으로 옮겼다
+- [x] 클래스 계약 유지: `.companion-body.expr-<name>`, `act-<action>`, `play-<kind>`, `.companion-gem`(이제 안테나 LED), `.companion-zzz`, 화면 얼굴의 `companion-eye-*`·`companion-brow-*`. 미어캣 파츠(귀·패치·코·앞발·노트북)는 사라진다
+- [x] 테스트 교체: `<img|<svg` 금지 → "이미지는 `src/assets/case/`에서만, 외부 URL·SVG 몸체 금지", 에셋 총량 상한, manifest 프레임 이름 일치, `--case-gem-*`은 LED에만, 눈 색은 표정마다 같음
+- [x] F6 스크린리더 상태 문장 (말풍선이 닫혀 있을 때 맨 위 대기 줄을 `aria-live=polite`로)
+- [x] `DESIGN.md` "CASE's expressions" 다시 쓰기(봇 부위·§3 표), `design/v2/README.md`
+- [x] V0 검수의 V1 수정 4가지: 눈썹 64px에서 최소 2px, working은 점 대신 흐르는 진행 줄, 셀을 꽉 채우는 크롭(높이의 94%), 후처리는 Python + Pillow
 
 ### V2 — 모션 (1~2일)
 
