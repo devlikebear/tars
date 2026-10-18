@@ -27,10 +27,14 @@ test('Mod+/ opens the Bridge, which answers from the status with checked cards',
   await input.fill('[e2e:bridge] is anything stuck?')
   await input.press('Enter')
 
-  await expect(panel(page).locator('.case-bridge-answer')).toHaveText('Status seen. Nothing is stuck.')
+  // The panel brings back the server's last answer when it opens, so
+  // only the newest exchange is this question's.
+  const latest = panel(page).locator('.case-bridge-entry').last()
+  await expect(latest.locator('.case-bridge-question')).toHaveText('[e2e:bridge] is anything stuck?')
+  await expect(latest.locator('.case-bridge-answer')).toHaveText('Status seen. Nothing is stuck.')
   // The card block never shows as text.
   await expect(panel(page)).not.toContainText('case-cards')
-  const cards = panel(page).locator('.case-bridge-card')
+  const cards = latest.locator('.case-bridge-card')
   await expect(cards).toHaveCount(1)
   await expect(cards.first()).toContainText('Spend today')
   await expect(panel(page)).not.toContainText('Invented')
@@ -42,7 +46,7 @@ test('Mod+/ opens the Bridge, which answers from the status with checked cards',
 
   // Opening again keeps this page's conversation; Escape closes.
   await page.keyboard.press('ControlOrMeta+/')
-  await expect(panel(page).locator('.case-bridge-question')).toHaveText('[e2e:bridge] is anything stuck?')
+  await expect(panel(page).locator('.case-bridge-question').last()).toHaveText('[e2e:bridge] is anything stuck?')
   await page.keyboard.press('Escape')
   await expect(panel(page)).toHaveCount(0)
 })

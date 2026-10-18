@@ -37,6 +37,9 @@ test('idle play fires while neutral and idle, without touching the expression, b
 
   // 180s is the longest possible idle delay; a couple of seconds of margin
   // covers the setInterval/setTimeout granularity.
+  // CASE mounts only once the console has read its config. A jump before
+  // that is lost: its idle time would start counting after the jump.
+  await expect(body).toBeVisible()
   await page.clock.fastForward('00:03:05')
   await expect(body).toHaveClass(/play-(look|yawn|wink|scan)/)
   // Decoration only: still neutral, still no badge, bubble still closed.
@@ -52,6 +55,7 @@ test('prefers-reduced-motion never starts the idle timer, even after the same ti
   await page.goto('/console')
   const body = page.locator('.companion-pet .companion-body')
 
+  await expect(body).toBeVisible()
   await page.clock.fastForward('00:03:05')
   // Give any (incorrectly still-running) CSS animation time to land too.
   await page.waitForTimeout(500)
@@ -67,6 +71,7 @@ test('a sleeping CASE wakes the instant the pointer moves, even without a click'
 
   // Five quiet minutes with nothing waiting — no click, no keystroke, just
   // the clock moving.
+  await expect(body).toBeVisible()
   await page.clock.fastForward('00:05:01')
   await expect(body).toHaveClass(/expr-sleepy/)
 
@@ -84,6 +89,7 @@ test('the same wake-on-move holds under prefers-reduced-motion — longQuiet/sle
   await page.goto('/console')
   const body = page.locator('.companion-pet .companion-body')
 
+  await expect(body).toBeVisible()
   await page.clock.fastForward('00:05:01')
   await expect(body).toHaveClass(/expr-sleepy/)
 
