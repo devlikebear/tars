@@ -1,5 +1,11 @@
 # Phase 2 — Bridge: 어디서나 묻기 (E2)
 
+> **구현 (2026-10-18)**: 아래 설계에서 세 군데를 바꿨다 — 결정 기록은 [`docs/decisions/case-bridge.md`](../../decisions/case-bridge.md).
+> 1. `tars_status` **도구 대신** 서버가 Go로 만든 상태 요약(`internal/casebridge`)을 CASE 세션의 턴에만 `<tars-status>` turn context로 붙인다. CLI provider(claude-code-cli·antigravity-cli)는 TARS 도구를 호출할 수 없고, 등록된 도구는 다른 세션의 프롬프트에도 실린다(CLAUDE.md의 확장 규칙).
+> 2. 단축키는 ⌘J가 아니라 **⌘/ (Ctrl+/)** — ⌘J는 터미널 토글, Ctrl+Shift+J는 Windows Chrome 개발자 도구다.
+> 3. 말풍선 질문(tars#1236)은 그대로 두고 말풍선에 Bridge 링크만 붙였다. 말풍선 질문을 Bridge로 옮기는 건 후속.
+> API는 `POST /v1/case/ask` → `GET /v1/case/answer`(카드는 서버가 같은 스냅숏으로 검증), 세션은 하루 하나(`_shared/case/bridge.json`).
+
 > Roadmap: [roadmap.md](./roadmap.md) · 선행: Phase 1
 > 목표: 어느 화면에서든 클릭 또는 ⌘J로 Bridge 패널을 열고 "지금 상황"을 묻는다. CASE는 **전용 읽기 전용 세션**에서 `tars_status` 도구로 TARS 전체를 읽고, 답과 함께 라이브 카드(바로 가기)와 "본 곳"을 보여 준다.
 

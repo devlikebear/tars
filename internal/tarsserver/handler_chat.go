@@ -1228,6 +1228,10 @@ type chatToolingOptions struct {
 	// actions (verification, the next turn). nil leaves pipelines waiting
 	// for the console.
 	Focus *focusDriver
+	// Case is CASE's Bridge (case-companion phase 2): its hidden session's
+	// turns get the TARS status as turn context. nil leaves every turn
+	// without it.
+	Case *caseBridge
 	// InitiativeSpeak is live mode's speak-and-deliver implementation
 	// (tars#1220); nil when live mode has no usable speak backend. Its
 	// claim field is late-bound right below, once cancelRegistry exists —
@@ -1341,6 +1345,7 @@ func newChatAPIHandlerWithRuntimeConfig(
 		permissions:    permissions,
 	}
 	tooling.Focus.bind(chatDeps)
+	tooling.Case.bind(chatDeps)
 	mux.HandleFunc("/v1/chat", func(w http.ResponseWriter, r *http.Request) {
 		handleChatRequest(w, r, chatDeps)
 	})

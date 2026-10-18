@@ -32,6 +32,15 @@ Last reviewed: 2026-10-10. Start an isolated instance with `make build` then `bi
 - Healthy result: triage holds the stage's own findings plus the second opinion's new ones (*second opinion* badge); a finding both reported is one card with a *both reviews* badge. The fix prompt marks second-opinion findings `(second opinion: <tier>)`; the round after a fix gets none; `pipeline.json` has `second_opinion.done: ["review"]` and the worker session id, and the pipeline's own transcript has no second-opinion turn. A tier on antigravity-cli or unmapped is a 400 at create; one with chat's own model answers `second_opinion_warning`. A failed review leaves a *second opinion not received* notice and the round goes on. A pipeline without the option has no `second_opinion` in its file.
 - Evidence: `go test ./internal/focuspipeline -run 'SecondOpinion|NoOptInGolden' -v`, `go test ./internal/focusprobe -run ReviewDiff -v`, `go test ./internal/tarsserver -run 'SecondOpinion' -v`; console: `cd frontend/console && node --experimental-strip-types --test tests/focus.test.ts` and `npx playwright test e2e/focus.spec.ts -g "second opinion"` (mock LLM `[e2e:focus-second-opinion]`, `[e2e:focus-second-opinion-noblock]`).
 
+## CASE
+
+### Bridge
+- Kind: console panel + API
+- Reach: Mod+/ (⌘/ or Ctrl+/) on any screen, the palette's "Ask CASE about TARS (Bridge)", or **Ask about TARS** in CASE's bubble options menu (⋯); `POST /v1/case/ask` then `GET /v1/case/answer` (user token). Rules: `docs/decisions/case-bridge.md`.
+- Drive: with a focus pipeline at a gate, a turn running in another session, or a failed cron job, open the Bridge and ask "is anything stuck?". Click a card.
+- Healthy result: the answer names what waits and why, in one or two sentences, with up to four cards; a card opens its screen (`/console/focus/<id>`, `/console/chat/<id>`, `/console/cron`, `/console/ops`, `/console/analytics`, `/console/pulse`) and closes the panel. The main session's transcript has no Bridge question; a hidden "CASE Bridge" worker session does (`/v1/admin/sessions?hidden=1`), one per day. A second question while one is answered is 409. Asking for a change ("cancel that cron") gets a pointer to the screen, never an action.
+- Evidence: `go test ./internal/casebridge -v`, `go test ./internal/tarsserver -run 'CaseBridge|LatestPulse|LastAssistantReply' -v`; console: `cd frontend/console && node --experimental-strip-types --test tests/caseBridge.test.ts` and `npx playwright test e2e/case-bridge.spec.ts` (mock LLM `[e2e:bridge]`).
+
 ## Computer use
 
 ### Desktop action tool
