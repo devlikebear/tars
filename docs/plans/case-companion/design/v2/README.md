@@ -69,6 +69,7 @@ V1에서 고칠 것:
 | `source/pose-alert-raw.png` | 경계: 안테나를 두 배로 뻗고 두 팔을 벌림 (`master-blank`의 `-i` 편집, `tools/run-v1-poses.sh`) |
 | `source/pose-working-raw.png` | 작업: 두 팔을 앞으로 모아 허리 높이에서 타이핑하듯 |
 | `source/pose-wave2-raw.png` | 손 흔들기 두 번째 각도 (`pose-wave-raw`보다 바깥으로 기울임) |
+| `source/pose-off-raw.png` | V2 절전: 안테나를 머리 위로 접고(LED 꺼짐) 팔을 몸에 붙임 (`tools/run-v2-off.sh`). 접힌 안테나는 LED 위치 검출을 속이므로 이 프레임은 LED를 기록하지 않는다(`case_sprites.py`의 `UNLIT`) |
 
 콘솔 시트는 저장소 루트의 `scripts/case_sprites.py`가 이 폴더의 `source/`에서 만든다 (`tools/process_master.py`의 후속, 같은 정렬·합성 방식). 결과: `frontend/console/src/assets/case/case-bot.webp`(5프레임 `base`·`alert`·`working`·`wave`·`wave2`, 약 16KB)와 `frontend/console/src/lib/caseSprite.generated.ts`.
 

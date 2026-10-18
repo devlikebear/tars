@@ -40,6 +40,14 @@ export const companionEn = {
       error: "CASE couldn't answer. Try again.",
     },
   },
+  // Switching CASE off for a while (case-companion phase 1.5, F2). A new
+  // approval wait or failure, or a click on CASE, switches it back on.
+  sleep: {
+    menuAria: 'CASE options',
+    hour: 'Sleep for an hour',
+    untilAlert: 'Sleep until something needs me',
+    asleepStatus: 'CASE is asleep. Click it to wake it.',
+  },
 }
 
 export type CompanionTranslations = typeof companionEn
@@ -72,5 +80,11 @@ export const companionKo: CompanionTranslations = {
       limit: '사용량 한도에 도달했어요. 잠시 후 다시 시도해줘.',
       error: 'CASE가 답하지 못했어요. 다시 시도해줘.',
     },
+  },
+  sleep: {
+    menuAria: 'CASE 메뉴',
+    hour: '1시간 절전',
+    untilAlert: '다음 알림까지 절전',
+    asleepStatus: 'CASE가 절전 중이에요. 누르면 깨어나요.',
   },
 }

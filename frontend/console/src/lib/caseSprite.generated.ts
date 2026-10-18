@@ -8,7 +8,8 @@ export const caseSprite = {
     "alert",
     "working",
     "wave",
-    "wave2"
+    "wave2",
+    "off"
   ],
   "screen": [
     44.16,

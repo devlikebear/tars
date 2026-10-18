@@ -165,7 +165,10 @@ test("CASE's actions, idle play and cursor gaze are visibly different frames, sa
       // size). Keep every class the live element already has and only
       // replace the `expr-`/`act-`/`play-` ones.
       function setStateClasses(clone: HTMLElement, parts: string[]) {
-        const kept = clone.className.split(/\s+/).filter((c) => c && !/^(expr|act|play)-/.test(c))
+        // The transient talk/boot/sleep classes go too: a clone taken while
+        // the live CASE is still booting would otherwise freeze mid-boot,
+        // with its face not yet on.
+        const kept = clone.className.split(/\s+/).filter((c) => c && !/^(expr|act|play|talk)-|^is-(booting|asleep)$/.test(c))
         clone.className = [...kept, ...parts].join(' ')
       }
 

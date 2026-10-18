@@ -464,16 +464,16 @@ export function companionActionFor(
 // --- Idle play (#1191): a short, decorative-only look/yawn/wink while
 // CASE is neutral, idle, and its bubble is closed. Never changes the
 // expression or the badge — it is cosmetic.
-export type CompanionIdleKind = 'look' | 'yawn' | 'wink'
+export type CompanionIdleKind = 'look' | 'yawn' | 'wink' | 'scan'
 
-const COMPANION_IDLE_KINDS: readonly CompanionIdleKind[] = ['look', 'yawn', 'wink']
+const COMPANION_IDLE_KINDS: readonly CompanionIdleKind[] = ['look', 'yawn', 'wink', 'scan']
 const COMPANION_IDLE_MIN_DELAY_MS = 60_000
 const COMPANION_IDLE_MAX_DELAY_MS = 180_000
 
 export type CompanionIdlePlay = { delayMs: number; kind: CompanionIdleKind }
 
 // companionNextIdle picks the next idle play's delay (60s–180s) and kind
-// (look/yawn/wink), both from an injected `random` (`() => number` in
+// (look/yawn/wink/scan), both from an injected `random` (`() => number` in
 // [0, 1), i.e. `Math.random` in the component, a fixed sequence in tests)
 // so the schedule is deterministic under test.
 export function companionNextIdle(random: () => number): CompanionIdlePlay {
@@ -487,6 +487,73 @@ export function companionNextIdle(random: () => number): CompanionIdlePlay {
 // say — neutral expression, no waiting/running lines, bubble closed.
 export function companionIdleEligible(expression: CompanionExpression, lineCount: number, bubbleOpen: boolean): boolean {
   return expression === 'neutral' && lineCount === 0 && !bubbleOpen
+}
+
+// --- Talking (case-companion phase 1.5, F1): while CASE's own bubble
+// question streams, its `working` face (companionAskExpressionOverride)
+// becomes "thinking" until the first text arrives, then "speaking". An
+// answer forwarded into the main session's own thread never fills
+// `answer` here, so in-thread counts as speaking from the start. Only on
+// `working`: a failure or approval wait that outranks the override keeps
+// its own face, with no overlay on top.
+export type CompanionTalk = 'thinking' | 'speaking'
+
+export function companionTalk(
+  expression: CompanionExpression,
+  asking: boolean,
+  answer: string,
+  inThread: boolean,
+): CompanionTalk | null {
+  if (!asking || expression !== 'working') return null
+  return inThread || answer.length > 0 ? 'speaking' : 'thinking'
+}
+
+// --- Sleep (case-companion phase 1.5, F2): the user can switch CASE off
+// for an hour or until the next alert. Per-viewer convenience, kept in
+// localStorage (COMPANION_SLEEP_STORAGE_KEY); a new approval wait or
+// failure always wakes it (companionShouldOpen in the component), and so
+// does clicking it.
+export type CompanionSleepMode = 'hour' | 'next-alert'
+export type CompanionSleep = { mode: CompanionSleepMode; until: number | null }
+
+export const COMPANION_SLEEP_STORAGE_KEY = 'tars.case.sleep'
+export const COMPANION_SLEEP_HOUR_MS = 60 * 60 * 1000
+
+export function companionSleepFor(mode: CompanionSleepMode, now: number): CompanionSleep {
+  return { mode, until: mode === 'hour' ? now + COMPANION_SLEEP_HOUR_MS : null }
+}
+
+// companionSleepActive: an hour's sleep ends by itself; "until the next
+// alert" only ends when something wakes it.
+export function companionSleepActive(sleep: CompanionSleep | null, now: number): boolean {
+  if (!sleep) return false
+  if (sleep.mode === 'hour') return sleep.until !== null && now < sleep.until
+  return true
+}
+
+// companionSleepFromStorage reads what companionSleepToStorage wrote, and
+// drops anything malformed or already over — storage is whatever another
+// build or the user left there.
+export function companionSleepFromStorage(raw: string | null, now: number): CompanionSleep | null {
+  if (!raw) return null
+  let value: unknown
+  try {
+    value = JSON.parse(raw)
+  } catch {
+    return null
+  }
+  if (!value || typeof value !== 'object') return null
+  const { mode, until } = value as { mode?: unknown; until?: unknown }
+  if (mode === 'next-alert') return { mode, until: null }
+  if (mode === 'hour' && typeof until === 'number' && Number.isFinite(until)) {
+    const sleep: CompanionSleep = { mode, until }
+    return companionSleepActive(sleep, now) ? sleep : null
+  }
+  return null
+}
+
+export function companionSleepToStorage(sleep: CompanionSleep | null): string | null {
+  return sleep ? JSON.stringify(sleep) : null
 }
 
 // --- Gaze (#1191): the eyes lean a few px toward a nearby pointer.

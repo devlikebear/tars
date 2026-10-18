@@ -502,7 +502,7 @@ Every part is always in the DOM. One class on `.companion-body`, `expr-<name>`, 
 
 Parts: the sprite (`.companion-sprite`), the screen (`.companion-screen` holding brows, eyes and working's progress line), the antenna LED (`.companion-gem`) and sleepy's `z`. CASE's colours are local custom properties on `.companion-body` (`--case-*`), never global tokens.
 
-Pose frames: `base` (most expressions), `alert` (antenna shoots up, arms swing out), `working` (arms forward), `wave`/`wave2` (greeting's raised arm). Every pose is an edit of the blank-screen master, and only its arm or antenna region is composited onto the master, so the body and screen are pixel-identical in every frame and a pose change does not shimmer.
+Pose frames: `base` (most expressions), `alert` (antenna shoots up, arms swing out), `working` (arms forward), `wave`/`wave2` (greeting's raised arm), `off` (antenna folded flat, arms tucked: asleep, and the first beat of booting). Every pose is an edit of the blank-screen master, and only its arm or antenna region is composited onto the master, so the body and screen are pixel-identical in every frame and a pose change does not shimmer.
 
 A state colour rides only on the antenna LED. The eyes are always the one signal green (`--case-eye`), so nothing on the face carries colour as its only difference: two expressions that differed only in LED colour would be one expression, not two. `tests/companionPet.test.ts` checks that no other selector uses a `--case-gem-*` colour and that no eye or brow rule sets another colour. Brows stay invisible unless they carry meaning (`alert`/`upset`/`wary`); elsewhere a brow line is just noise. Brows are at least 2px tall so they still read at 64px.
 
@@ -589,9 +589,23 @@ A one-shot animation plays exactly once when the expression *changes* into one o
 
 `working` and `sleepy` have no one-shot action; they are the two *continuous* states instead, repeating for as long as they hold: working's LED pulses and its progress line runs, sleepy's body breathes (a slow scale) alongside a drifting `z` (`.companion-zzz`, hidden everywhere else, CSS only).
 
+### Changing shape (case-companion phase 1.5)
+
+An expression change morphs the face instead of snapping it: the eyes and brows transition their position, size, corner radius, opacity and tilt over 180ms on one easing token, `--case-ease` (a small overshoot, so the change reads as the robot reacting). A pose change cross-fades: the CSS switches the sprite frame at once and a second layer, `.companion-sprite-prev`, showing the frame from a moment ago fades out on top over 180ms. `CaseFigure` adds that layer when `caseFrameFor(expression, talk, asleep)` (`lib/caseFigure.ts`, a mirror of the CSS's frame choice that `tests/companionPet.test.ts` checks against the stylesheet) changes, and drops it on its own `animationend`. Under reduced motion the transitions are off and the layer is not shown — the new shape and pose appear at once.
+
+### Talking (case-companion phase 1.5)
+
+While CASE's own bubble answer streams, its face is forced to `working` (above) and `companionTalk(expression, asking, answer, inThread)` (`lib/companion.ts`, pure) adds an overlay class: `talk-thinking` until the first text arrives, then `talk-speaking` (from the start when the answer goes into the main session's own thread, where the bubble never sees the text). It is an overlay, not a ninth expression: `companionExpression`'s table and the override's priority are unchanged, and a failure or approval wait that outranks the override shows its own face with no overlay. Both states stand up straight (`base` pose) and drop the progress line; thinking glances up and sways the eyes, speaking shows three sound-wave bars under the eyes (`.companion-wave`). The LED keeps working's amber pulse.
+
+### Sleep and boot (case-companion phase 1.5)
+
+The bubble header's options button (`.companion-menu-toggle`, "CASE options") opens two choices: sleep for an hour, or sleep until something needs CASE (`companionSleepFor`). The choice is a per-viewer convenience, kept in `localStorage` under `tars.case.sleep` (`companionSleepToStorage`/`companionSleepFromStorage`, every access in try/catch; a malformed or expired value reads as awake). Asleep (`.is-asleep`): the `off` pose, the face, LED and `z` hidden, no lean or breathing, and the screen's light collapses to a dot once (`.companion-screen::after`). No actions, idle play or gaze run, and a server line does not open the bubble. The badge stays. A screen reader hears "CASE is asleep" from the status line.
+
+It wakes when an hour's sleep runs out, when a new approval wait or failure arrives (the same edge that opens the bubble by itself, in both modes), or when the user clicks it (which also opens the bubble). Waking, and every arrival (opening the console, or a tab coming back after ten minutes), plays a one-shot boot (`.is-booting`): the `off` pose for a beat, a scan line sweeping down the screen, then the face and LED coming on; greeting's wave waits until the boot is done. The component clears the class on `companionBootFrame`'s `animationend`, and never sets it under reduced motion.
+
 ### Idle play (#1191)
 
-While CASE is `neutral`, nothing is waiting, and the bubble is closed (`companionIdleEligible`), it plays a short look-around, yawn, or wink every 60–180 seconds (`companionNextIdle(random)`, pure — the delay and the kind both come from an injected `() => number` so the schedule is deterministic under test; the component injects `Math.random`). Purely decorative: it never changes the expression or the badge. A real event can still move `expression` off neutral while a look/yawn/wink is mid-flight, and unlike the one-shot actions above, these animate the same eye shape an expr-* rule also sets (look moves the eyes, yawn squeezes them flat, wink closes one) — so staying alongside `expr-neutral` is enforced twice, not just intended: the CSS itself is scoped (`.companion-body.expr-neutral.play-look .companion-eye`, and so on), and the component clears `idlePlay` the instant `expression` leaves neutral rather than waiting for the animation's own end (which would not come anyway — losing `.expr-neutral` cancels it instead of finishing it).
+While CASE is `neutral`, nothing is waiting, and the bubble is closed (`companionIdleEligible`), it plays a short look-around, yawn, wink or scan (the eyes sweep left and right and the LED blinks once) every 60–180 seconds (`companionNextIdle(random)`, pure — the delay and the kind both come from an injected `() => number` so the schedule is deterministic under test; the component injects `Math.random`). Purely decorative: it never changes the expression or the badge. A real event can still move `expression` off neutral while a look/yawn/wink is mid-flight, and unlike the one-shot actions above, these animate the same eye shape an expr-* rule also sets (look and scan move the eyes, yawn squeezes them flat, wink closes one) — so staying alongside `expr-neutral` is enforced twice, not just intended: the CSS itself is scoped (`.companion-body.expr-neutral.play-look .companion-eye`, and so on), and the component clears `idlePlay` the instant `expression` leaves neutral rather than waiting for the animation's own end (which would not come anyway — losing `.expr-neutral` cancels it instead of finishing it).
 
 ### Cursor gaze (#1191)
 
@@ -605,7 +619,7 @@ When the pointer is within 200px of CASE's centre, the eyes lean up to 3px towar
 
 ### Hit area (#1191)
 
-`.companion-button` — the clickable element — has no animation or transform of its own and never changes size: the float, every action, idle play and the chip/breathing loops all live on `.companion-figure` inside it, which is `pointer-events: none`. A `z` or any other decoration is `pointer-events: none` too. This is the same hazard #1194 hit with the bubble covering a neighbouring button, applied to motion: nothing CASE does to itself may grow or move its own hit area over a screen element next to it.
+`.companion-button` — the clickable element — has no animation or transform of its own and never changes size: the float, every action, idle play, boot and the LED/breathing loops all live on `.companion-figure` inside it, which is `pointer-events: none`. A `z` or any other decoration is `pointer-events: none` too. This is the same hazard #1194 hit with the bubble covering a neighbouring button, applied to motion: nothing CASE does to itself may grow or move its own hit area over a screen element next to it.
 
 ## Components
 

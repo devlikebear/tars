@@ -19,10 +19,16 @@
     companionShouldOpen,
     companionShouldRecordInput,
     companionAskContext,
+    companionSleepActive,
+    companionSleepFor,
+    companionSleepFromStorage,
+    companionSleepToStorage,
     companionState,
+    companionTalk,
     companionTurnsJustFinished,
     companionWaitingKeys,
     COMPANION_CUE_NONE,
+    COMPANION_SLEEP_STORAGE_KEY,
     type CompanionAction,
     type CompanionCueState,
     type CompanionExpression,
@@ -30,6 +36,8 @@
     type CompanionIdleKind,
     type CompanionLine,
     type CompanionServerCue,
+    type CompanionSleep,
+    type CompanionSleepMode,
     type CompanionViewedSessionIds,
   } from '../lib/companion'
   import {
@@ -153,6 +161,59 @@
   // unless something more urgent is already showing (companionExpression
   // keeps that same priority for everything else).
   let expression = $derived(companionAskExpressionOverride(snapshot.lines, companionAsk.busy) ?? companionExpression(snapshot, cues))
+  // Thinking until the first text of CASE's own answer arrives, then
+  // speaking (F1) — an overlay on `working`, never its own expression.
+  let talk = $derived(companionTalk(expression, companionAsk.busy, companionAsk.answer, companionAsk.inThread))
+
+  // --- Sleep (F2): switched off by the user for an hour or until the next
+  // alert. Per-viewer, so localStorage — read through try/catch, since it
+  // can be blocked or throw, and CASE must still work without it.
+  let sleep = $state<CompanionSleep | null>(readStoredSleep())
+  let sleeping = $derived(companionSleepActive(sleep, now))
+  let sleepMenuOpen = $state(false)
+  // A one-shot power-on (arriving, or waking up); CaseFigure plays it and
+  // handleBodyAnimationEnd clears it.
+  let booting = $state(false)
+
+  function readStoredSleep(): CompanionSleep | null {
+    try {
+      return companionSleepFromStorage(window.localStorage.getItem(COMPANION_SLEEP_STORAGE_KEY), Date.now())
+    } catch {
+      return null
+    }
+  }
+
+  function storeSleep(next: CompanionSleep | null) {
+    sleep = next
+    try {
+      const raw = companionSleepToStorage(next)
+      if (raw) window.localStorage.setItem(COMPANION_SLEEP_STORAGE_KEY, raw)
+      else window.localStorage.removeItem(COMPANION_SLEEP_STORAGE_KEY)
+    } catch {
+      // Storage unavailable: the sleep still holds for this page.
+    }
+  }
+
+  function chooseSleep(mode: CompanionSleepMode) {
+    storeSleep(companionSleepFor(mode, Date.now()))
+    sleepMenuOpen = false
+    open = false
+    autoOpened = false
+    action = null
+    idlePlay = null
+    booting = false
+  }
+
+  function wake() {
+    if (!sleep) return
+    storeSleep(null)
+    if (!prefersReducedMotion && !document.hidden) booting = true
+  }
+
+  // An hour's sleep ends on its own (the cue timer keeps `now` moving).
+  $effect(() => {
+    if (sleep && !sleeping) wake()
+  })
   // The bubble's server line (#1192): only set while the cue is live and
   // the event actually carried a line (body_only cues are expression-only
   // and never show here).
@@ -199,6 +260,7 @@
     companionLookAround: 'look',
     companionYawn: 'yawn',
     companionWink: 'wink',
+    companionScan: 'scan',
   }
 
   // The bubble opens by itself only for a new approval wait or a new
@@ -208,6 +270,9 @@
   $effect(() => {
     const lines = snapshot.lines
     if (companionShouldOpen(primed, prevWaitingKeys, lines)) {
+      // A new approval wait or failure is exactly what sleep promised to
+      // wake up for, in both modes.
+      wake()
       open = true
       autoOpened = true
     }
@@ -273,7 +338,9 @@
       lastSeenServerCueAt = serverCueAt
       if (serverCue) {
         cueState = companionCueTick(cueState, Date.now(), { server: serverCue })
-        if (serverCue.line) {
+        // A sleeping CASE does not pop its bubble for the server's line —
+        // the user asked for quiet; the line is there when they wake it.
+        if (serverCue.line && !sleeping) {
           open = true
           autoOpened = true
         }
@@ -288,7 +355,7 @@
     const current = expression
     const next = companionActionFor(previousExpression, current)
     previousExpression = current
-    if (next && !prefersReducedMotion) action = next
+    if (next && !prefersReducedMotion && !sleeping) action = next
   })
 
   // Idle play is only ever started while `expression === 'neutral'`
@@ -335,7 +402,7 @@
     idleTimer = null
     idleFireAt = null
     const next = companionNextIdle(Math.random)
-    if (!prefersReducedMotion && companionIdleEligible(expression, snapshot.lines.length, open)) {
+    if (!prefersReducedMotion && !sleeping && companionIdleEligible(expression, snapshot.lines.length, open)) {
       idlePlay = next.kind
     }
     scheduleIdle(next.delayMs)
@@ -363,7 +430,7 @@
   function applyGaze() {
     rafHandle = null
     if (!pendingPointer || !figureEl) return
-    if (!companionGazeApplies(expression)) {
+    if (!companionGazeApplies(expression) || sleeping) {
       gazeOffset = { x: 0, y: 0 }
       return
     }
@@ -403,6 +470,7 @@
   }
 
   function handleBodyAnimationEnd(event: AnimationEvent) {
+    if (event.animationName === 'companionBootFrame') booting = false
     if (ACTION_ANIMATION_NAMES.has(event.animationName)) action = null
     const idleKind = IDLE_ANIMATION_NAMES[event.animationName]
     if (idleKind && idlePlay === idleKind) idlePlay = null
@@ -421,6 +489,8 @@
     now = Date.now()
     if (companionJustArrived(wasHiddenForMs)) {
       cueState = companionCueTick(cueState, now, { justArrived: true })
+      // Coming back after a while: CASE powers on before it waves.
+      if (!prefersReducedMotion && !sleeping) booting = true
     }
     startCueTimer()
     startDecorativeMotion()
@@ -481,6 +551,7 @@
 
     // Opening the console is itself an arrival.
     cueState = companionCueTick(cueState, Date.now(), { justArrived: true })
+    if (!prefersReducedMotion && !sleeping) booting = true
     startCueTimer()
     startDecorativeMotion()
 
@@ -500,7 +571,15 @@
   })
 
   function toggleOpen() {
+    // Clicking a sleeping CASE wakes it and opens the bubble at once.
+    if (sleeping) {
+      wake()
+      open = true
+      autoOpened = false
+      return
+    }
     open = !open
+    sleepMenuOpen = false
     // Whatever opened or closed it now was the user's own click.
     autoOpened = false
   }
@@ -508,6 +587,7 @@
   function closeBubble() {
     open = false
     autoOpened = false
+    sleepMenuOpen = false
     // The user closing the bubble dismisses a showing server line too
     // (#1192) — a no-op when the active cue is not 'server', so this never
     // cuts a warning/justFinished/justArrived cue short.
@@ -641,8 +721,21 @@
     <section class="companion-bubble" aria-live="polite">
       <div class="companion-bubble-header">
         <span class="companion-state">{$t.companion.header}</span>
+        <button
+          type="button"
+          class="companion-menu-toggle"
+          aria-label={$t.companion.sleep.menuAria}
+          aria-expanded={sleepMenuOpen}
+          onclick={() => (sleepMenuOpen = !sleepMenuOpen)}
+        >&middot;&middot;&middot;</button>
         <button type="button" class="companion-close" aria-label={$t.companion.closeAria} onclick={closeBubble}>&times;</button>
       </div>
+      {#if sleepMenuOpen}
+        <div class="companion-menu" role="menu" aria-label={$t.companion.sleep.menuAria}>
+          <button type="button" role="menuitem" class="companion-menu-item" onclick={() => chooseSleep('hour')}>{$t.companion.sleep.hour}</button>
+          <button type="button" role="menuitem" class="companion-menu-item" onclick={() => chooseSleep('next-alert')}>{$t.companion.sleep.untilAlert}</button>
+        </div>
+      {/if}
       {#if serverLine}
         <!-- The server-requested line (#1192): visually distinct from the
              "waiting on you" lines below — it is CASE saying something, not
@@ -738,7 +831,16 @@
   <button type="button" class="companion-button" aria-label={$t.companion.buttonAria} onclick={toggleOpen}>
     <span class="companion-figure" bind:this={figureEl}>
       <span class="companion-shadow"></span>
-      <CaseFigure {expression} {action} {idlePlay} gaze={gazeOffset} onanimationend={handleBodyAnimationEnd} />
+      <CaseFigure
+        {expression}
+        {action}
+        {idlePlay}
+        gaze={gazeOffset}
+        {talk}
+        asleep={sleeping}
+        {booting}
+        onanimationend={handleBodyAnimationEnd}
+      />
       {#if snapshot.badge > 0}
         <span class="companion-badge" aria-label={$t.companion.badgeAria(snapshot.badge)}>{snapshot.badge}</span>
       {/if}
@@ -748,7 +850,7 @@
        showing from here: the top waiting line, while the bubble (which has
        its own aria-live) is closed. Empty otherwise, so nothing is read
        twice. -->
-  <span class="companion-sr-status" aria-live="polite">{open ? '' : (displayLines[0]?.label ?? '')}</span>
+  <span class="companion-sr-status" aria-live="polite">{open ? '' : sleeping ? $t.companion.sleep.asleepStatus : (displayLines[0]?.label ?? '')}</span>
 </div>
 
 <style>
@@ -870,7 +972,8 @@
     text-transform: uppercase;
   }
 
-  .companion-close {
+  .companion-close,
+  .companion-menu-toggle {
     width: 24px;
     height: 24px;
     border: 1px solid var(--border-subtle);
@@ -878,6 +981,43 @@
     background: var(--surface-muted);
     color: var(--secondary-text);
     cursor: pointer;
+  }
+
+  /* The options button sits next to close, both at the header's right. */
+  .companion-menu-toggle {
+    margin-left: auto;
+    line-height: 1;
+  }
+
+  .companion-menu-toggle[aria-expanded='true'] {
+    border-color: rgba(var(--primary-rgb), 0.5);
+    color: var(--primary-text);
+  }
+
+  /* Sleep options (F2): a short list under the header, same weight as a
+     waiting line. */
+  .companion-menu {
+    display: grid;
+    gap: var(--space-1);
+    margin-bottom: var(--space-2);
+  }
+
+  .companion-menu-item {
+    width: 100%;
+    padding: var(--space-2);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    background: var(--surface-muted);
+    color: var(--text-primary);
+    font: inherit;
+    font-size: 0.82rem;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .companion-menu-item:hover,
+  .companion-menu-item:focus-visible {
+    border-color: rgba(var(--primary-rgb), 0.5);
   }
 
   .companion-empty {

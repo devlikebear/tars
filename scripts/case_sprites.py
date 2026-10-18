@@ -43,7 +43,11 @@ FRAMES = [
     ("working", "pose-working-raw.png", ["left", "right", "below"]),
     ("wave", "pose-wave-raw.png", ["left"]),
     ("wave2", "pose-wave2-raw.png", ["left"]),
+    ("off", "pose-off-raw.png", ["left", "right", "top"]),
 ]
+# Frames whose antenna LED is drawn unlit and never gets a CSS LED on top:
+# the folded antenna of `off` also defeats detect_led's "blob at the top".
+UNLIT = {"off"}
 
 
 def load(path):
@@ -212,6 +216,8 @@ def main():
     leds = {}
     for i, ((name, _, _), img) in enumerate(zip(FRAMES, frames)):
         sheet.paste(to_cell(img, box), (i * CELL, 0))
+        if name in UNLIT:
+            continue
         cx, cy, r = detect_led(img)
         x, y = pt(cx, cy)
         leds[name] = [x, y, round(r * s, 2)]
