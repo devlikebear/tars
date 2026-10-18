@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>CASE V0 review</title>
+<style>
+  :root {
+    /* screen rect and LED in 128px-cell coordinates, filled from manifest.json */
+    /*VARS*/
+    --green: #3ee07f;
+    --led-grey: #8a877d; --led-amber: #f2a93b; --led-orange: #ff7a59; --led-green: #9bd77a; --led-dark: #4a4842;
+  }
+  body { margin: 0; padding: 24px; background: #141414; color: #b9b6ad; font: 12px/1.4 ui-monospace, Menlo, monospace; }
+  h2 { font-size: 12px; font-weight: 600; color: #e9e6dd; margin: 24px 0 8px; }
+  .row { display: flex; gap: 20px; align-items: flex-end; flex-wrap: wrap; }
+  .tile { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .tile span { color: #8a877d; }
+
+  /* One CASE figure. --k is display size / 128. */
+  .case { --k: .5; position: relative; width: calc(128px * var(--k)); height: calc(128px * var(--k));
+          background: url(frames/base.png) 0 0 / 100% 100% no-repeat; }
+  .case.wave { background-image: url(frames/wave.png); }
+  .case.k1 { --k: 1; }
+  .screen { position: absolute;
+            left: calc(var(--sx) * var(--k) * 1px); top: calc(var(--sy) * var(--k) * 1px);
+            width: calc(var(--sw) * var(--k) * 1px); height: calc(var(--sh) * var(--k) * 1px); }
+  .eye { position: absolute; top: 50%; width: 20%; height: 42%; background: var(--green); border-radius: 30%;
+         box-shadow: 0 0 calc(4px * var(--k)) rgba(62,224,127,.7); transform: translate(-50%, -50%); }
+  .eye.l { left: 31%; } .eye.r { left: 69%; }
+  .brow { position: absolute; top: 14%; width: 22%; height: 7%; background: var(--green); border-radius: 2px; opacity: 0;
+          transform: translate(-50%, 0); }
+  .brow.l { left: 31%; } .brow.r { left: 69%; }
+  .dots { position: absolute; left: 50%; top: 74%; width: 34%; height: 8%; transform: translateX(-50%); opacity: 0;
+          background: radial-gradient(circle, var(--green) 45%, transparent 50%) 0 0 / 33.3% 100% repeat-x; }
+  .led { position: absolute; left: calc(var(--lx) * var(--k) * 1px); top: calc(var(--ly) * var(--k) * 1px);
+         width: calc(var(--lr) * 2.2 * var(--k) * 1px); height: calc(var(--lr) * 2.2 * var(--k) * 1px);
+         transform: translate(-50%, -50%); border-radius: 50%; background: var(--led-grey);
+         box-shadow: 0 0 calc(3px * var(--k)) currentColor; }
+  .zzz { position: absolute; right: 2%; top: 4%; font: 700 calc(16px * var(--k)) ui-monospace, monospace; color: #8a877d; opacity: 0; }
+
+  /* expressions: shape differences only on the screen, colour only on the LED */
+  .working .eye { height: 16%; top: 56%; border-radius: 40%; }
+  .working .dots { opacity: 1; }
+  .working .led { background: var(--led-amber); color: var(--led-amber); }
+
+  .alert .eye { width: 24%; height: 56%; }
+  .alert .brow { opacity: 1; top: 6%; }
+  .alert .brow.l { transform: translate(-50%, 0) rotate(-14deg); }
+  .alert .brow.r { transform: translate(-50%, 0) rotate(14deg); }
+  .alert .led { background: var(--led-orange); color: var(--led-orange); }
+
+  .happy .eye { background: none; box-shadow: none; height: 30%; top: 54%; border: calc(5px * var(--k)) solid var(--green);
+                border-bottom: 0; border-radius: 50% 50% 0 0 / 100% 100% 0 0; filter: drop-shadow(0 0 calc(3px * var(--k)) rgba(62,224,127,.7)); }
+  .happy .led { background: var(--led-green); color: var(--led-green); }
+
+  .upset .eye { width: 11%; height: 20%; top: 60%; border-radius: 50%; }
+  .upset .brow { opacity: 1; top: 26%; }
+  .upset .brow.l { transform: translate(-50%, 0) rotate(20deg); }
+  .upset .brow.r { transform: translate(-50%, 0) rotate(-20deg); }
+  .upset .led { background: var(--led-orange); color: var(--led-orange); }
+
+  .wary .eye { left: auto; }
+  .wary .eye.l { left: 39%; height: 14%; }
+  .wary .eye.r { left: 77%; }
+  .wary .brow { opacity: 1; }
+  .wary .brow.l { left: 39%; top: 30%; transform: translate(-50%, 0) rotate(8deg); }
+  .wary .brow.r { left: 77%; top: 8%; transform: translate(-50%, 0) rotate(-10deg); }
+  .wary .led { background: var(--led-amber); color: var(--led-amber); }
+
+  .sleepy .eye { height: 6%; top: 60%; opacity: .45; box-shadow: none; }
+  .sleepy .zzz { opacity: 1; }
+  .sleepy .led { background: var(--led-dark); color: var(--led-dark); box-shadow: none; }
+
+  .greeting .eye.l { background: none; box-shadow: none; height: 30%; top: 54%; border: calc(5px * var(--k)) solid var(--green);
+                     border-bottom: 0; border-radius: 50% 50% 0 0 / 100% 100% 0 0; }
+  .greeting .eye.r { width: 22%; height: 48%; }
+  .greeting .led { background: var(--led-green); color: var(--led-green); }
+
+  .neutral .led { color: var(--led-grey); }
+  .noled .led { visibility: hidden; }
+</style>
+</head>
+<body>
+<template id="fig">
+  <div class="case"><div class="screen"><i class="brow l"></i><i class="brow r"></i><i class="eye l"></i><i class="eye r"></i><i class="dots"></i></div><i class="led"></i><b class="zzz">z</b></div>
+</template>
+
+<h2>64px — actual console size</h2>
+<div class="row" id="r64"></div>
+<h2>64px — LED hidden (shape-only check)</h2>
+<div class="row" id="r64n"></div>
+<h2>128px — 2x</h2>
+<div class="row" id="r128"></div>
+<h2>Frames: base (blank screen) · wave (composited) — 128px</h2>
+<div class="row" id="frameRow"></div>
+
+<script>
+  const EXPR = ['neutral', 'working', 'alert', 'happy', 'upset', 'wary', 'sleepy', 'greeting']
+  const tpl = document.getElementById('fig')
+  function fig(expr, extra = []) {
+    const el = tpl.content.firstElementChild.cloneNode(true)
+    el.classList.add(expr, ...extra)
+    if (expr === 'greeting') el.classList.add('wave')
+    const t = document.createElement('div'); t.className = 'tile'
+    t.append(el); const s = document.createElement('span'); s.textContent = expr; t.append(s)
+    return t
+  }
+  for (const e of EXPR) {
+    r64.append(fig(e))
+    r64n.append(fig(e, ['noled']))
+    r128.append(fig(e, ['k1']))
+  }
+  for (const [name, cls] of [['base', []], ['wave', ['wave']]]) {
+    const t = document.createElement('div'); t.className = 'tile'
+    const el = document.createElement('div'); el.className = ['case', 'k1', ...cls].join(' ')
+    t.append(el); const s = document.createElement('span'); s.textContent = name; t.append(s)
+    frameRow.append(t)
+  }
+</script>
+</body>
+</html>

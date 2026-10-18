@@ -8,7 +8,7 @@
 | 계획 | 한 줄 요약 | 문서 | 상태 |
 |---|---|---|---|
 | **세컨드 오피니언 리뷰** | Focus review 단계에서 **다른 모델**이 같은 변경을 읽기 전용으로 한 번 더 리뷰하고, 그 지적이 기존 finding 카드로 들어간다. 파이프라인별 옵트인, 기본 꺼짐 | [`second-opinion-review/plan.md`](./second-opinion-review/plan.md) · 이슈 #1281 | 계획 확정, 미착수 |
-| **CASE Companion** | 이니셔티브 컴패니언 CASE를 "당직 미어캣"으로 리디자인하고, 어디서나 TARS 전체 상황을 묻는 Bridge와 돌아왔을 때 요약을 붙인다 | `docs/plans/case-companion/` (3 phase) | P1 머지(#1265), 수동 확인 대기 · P2·P3 미착수 |
+| **CASE Companion** | 이니셔티브 컴패니언 CASE를 동반 로봇으로 리디자인하고(2026-10-18 미어캣에서 변경), 어디서나 TARS 전체 상황을 묻는 Bridge와 돌아왔을 때 요약을 붙인다 | `docs/plans/case-companion/` (3 phase) | P1 머지(#1265), 수동 확인 대기 · P2·P3 미착수 |
 | ~~Focus × Crew~~ | 봇 크루(소환·채용·허들·상호검토·해산) | `docs/plans/focus-crew/` | **철회 (2026-10-17)** — 이유는 [`focus-crew/roadmap.md`](./focus-crew/roadmap.md)의 "철회 결정". 문서는 기록으로만 남는다 |
 
 공통 디자인 자산: `docs/plans/design-system/` (tokens.css, fonts.css, fonts/)
@@ -21,8 +21,8 @@
 - 단계 전이는 여전히 사실로만 결정한다. 세컨드 오피니언의 지적은 기존 finding 카드와 triage를 그대로 탄다. 목표 모드의 고정 정책(`NextGoalStep`)은 바꾸지 않는다.
 
 CASE:
-- CASE 캐릭터는 **A안 당직 미어캣**, 이름은 CASE 유지. 대상은 기존 `CompanionPet.svelte` + `internal/initiative`.
-- CASE 얼굴은 **CSS + span만** (`frontend/console/DESIGN.md` "CASE's expressions" 규칙 유지). 레퍼런스: `case-companion/design/html/case-face.html`.
+- CASE 캐릭터는 **동반 로봇**, 이름은 CASE 유지. 대상은 기존 `CompanionPet.svelte` + `internal/initiative`. (2026-10-18: 미어캣은 철회된 Crew 세계관용이라 폐기 — `case-companion/phase-1.5-visual-motion.md` §0)
+- CASE 얼굴은 Phase 1까지 **CSS + span**이었고, **2026-10-18부터 codex 래스터 스프라이트로 바꾼다** (Phase 1.5, `case-companion/phase-1.5-visual-motion.md`). 몸체는 래스터, 화면 속 얼굴과 움직임은 CSS(권장, V0에서 확정), 상태색은 CSS 안테나 LED에만.
 - CASE 질문은 Phase 2부터 main 세션이 아닌 **전용 읽기 전용 세션**으로 간다 (tars#1236 대체, ADR 작성).
 
 ## 3. 문서 지도
