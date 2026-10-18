@@ -469,3 +469,30 @@ export function providerRowsToDraftValue(rows: LLMProviderRow[]): Record<string,
   }
   return value
 }
+
+// roleRowsToDraftValue seeds the "Edit as JSON" textarea for role
+// defaults, the same lossless role providerRowsToDraftValue plays for
+// providers. buildLLMRoleDefaultsValue's `continue` on a blank or
+// duplicate role name is correct for the real patch, but it means that
+// function's .value cannot seed the draft: an in-progress new row (role
+// not typed yet, or still colliding with an existing one) would vanish
+// the moment the user switches to JSON, instead of staying visible and
+// editable there (tars#1286 review, finding f7).
+//
+// Matches buildLLMRoleDefaultsValue's own normalization (trim +
+// lowercase) and "first occurrence wins" duplicate rule for the key, so
+// a row that already validates round-trips to the exact key the real
+// build would use; the tier is carried through verbatim (not
+// normalized) so an in-progress/invalid tier value is still visible to
+// edit rather than silently blanked.
+export function roleRowsToDraftValue(rows: LLMRoleRow[]): Record<string, unknown> {
+  const value: Record<string, unknown> = {}
+  const seen = new Set<string>()
+  for (const row of rows) {
+    const key = row.role.trim().toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    value[key] = row.tier
+  }
+  return value
+}

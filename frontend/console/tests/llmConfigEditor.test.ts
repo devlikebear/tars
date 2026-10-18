@@ -16,6 +16,7 @@ import {
   llmTierRowsFromValue,
   providerRowsToDraftValue,
   renameLLMProviderAlias,
+  roleRowsToDraftValue,
 } from '../src/lib/llmConfigEditor.ts'
 
 test('llmProviderKinds includes antigravity-cli', () => {
@@ -337,6 +338,43 @@ test('buildLLMRoleDefaultsValue flags missing role/tier, duplicates, unrecognize
   assert.equal(value.chat_main, 'standard')
   assert.equal(value.made_up_role, 'light')
   assert.equal('critic' in value, false)
+})
+
+test('roleRowsToDraftValue keeps a row with a blank role name, unlike buildLLMRoleDefaultsValue', () => {
+  // The "Edit as JSON" textarea must seed from this, not from
+  // buildLLMRoleDefaultsValue's output: that `continue`s past (drops) a
+  // row with no role name typed yet, which is correct for the real patch
+  // but would make the in-progress row vanish the instant the user
+  // switches to JSON instead of staying visible and editable there
+  // (tars#1286 review, finding f7).
+  const rows = llmRoleRowsFromValue({ pulse_decider: 'light' })
+  const blank = createLLMRoleRow()
+  blank.tier = 'standard'
+  const draft = roleRowsToDraftValue([...rows, blank])
+  assert.deepEqual(draft, { pulse_decider: 'light', '': 'standard' })
+})
+
+test('roleRowsToDraftValue keeps the first (real) row when a later row duplicates its role name', () => {
+  // Mirrors providerRowsToDraftValue's "first occurrence wins" rule for
+  // duplicate aliases (finding f6) for the analogous role-name case: a
+  // second, still-incomplete row sharing an existing role's name must not
+  // silently overwrite that role's real tier in the JSON draft.
+  const real = llmRoleRowsFromValue({ chat_main: 'standard' })
+  const duplicate = createLLMRoleRow()
+  duplicate.role = 'chat_main'
+  duplicate.tier = 'light'
+  const draft = roleRowsToDraftValue([...real, duplicate])
+  assert.equal(draft.chat_main, 'standard')
+})
+
+test('roleRowsToDraftValue treats a differently-cased/whitespace-padded role as the same duplicate buildLLMRoleDefaultsValue would', () => {
+  const real = llmRoleRowsFromValue({ chat_main: 'standard' })
+  const duplicate = createLLMRoleRow()
+  duplicate.role = ' Chat_Main ' // trims+lowercases to the same role as the real row
+  duplicate.tier = 'light'
+  const draft = roleRowsToDraftValue([...real, duplicate])
+  assert.equal(Object.keys(draft).length, 1)
+  assert.equal(draft.chat_main, 'standard')
 })
 
 // --- cross-field builder ---------------------------------------------------

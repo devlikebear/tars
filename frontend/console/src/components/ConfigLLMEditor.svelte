@@ -32,6 +32,7 @@
     llmTierRowsFromValue,
     providerRowsToDraftValue,
     renameLLMProviderAlias,
+    roleRowsToDraftValue,
     type LLMEditorState,
     type LLMProviderKind,
     type LLMProviderRow,
@@ -384,7 +385,11 @@
     if (rolesJsonMode) {
       commitRolesJson()
     } else {
-      rolesDraft = JSON.stringify(built.roles.value, null, 2)
+      // roleRowsToDraftValue, not built.roles.value: the latter is the
+      // server-patch shape, which drops any row with a blank or duplicate
+      // role name — exactly the in-progress row this textarea must not
+      // lose (tars#1286 review, finding f7).
+      rolesDraft = JSON.stringify(roleRowsToDraftValue(llmState.roles), null, 2)
       rolesJsonError = ''
       rolesJsonMode = true
     }
