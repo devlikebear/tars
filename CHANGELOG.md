@@ -6,9 +6,15 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.64.0] - 2026-10-18
+
 ### Added
 
 - **Focus mode can ask a second model to review the change before merge.** A task started with the new *Second opinion review* box (off by default; `second_opinion: {tier}` on `POST /v1/focus/pipelines`) has the first round of each review stage reviewed once more on the tier you pick — read-only, in a hidden worker session, from the diff the server reads, without seeing the first review's findings. Its findings join the same triage with a *second opinion* badge, and one both reviews reported becomes a single card marked *both reviews* (decided by file, title and line, not by asking a model). It never changes a stage transition or goal mode's policy: a failed review leaves a notice and the round goes on, and a restart mid-review raises the interrupted gate, whose retry runs it again. Creating refuses a tier that does not resolve or runs on antigravity-cli, and warns when the tier is chat's own model. ([#1281](https://github.com/devlikebear/tars/issues/1281))
+
+### Changed
+
+- **The config screen is now organized into tabs with search and Korean translations.** `/console/config` no longer lays all 181 fields out on one "Quick Start" grid; fields are grouped into 8 tabs (General/LLM/Chat & Tools/Automation/Channels & Remote/Agents/Extensions/Advanced) with a Basic/Advanced split inside each, one row per field (label, description, path) with a single control, and a sticky save bar that appears only when something changed and shows the restart notice once. The open tab is reflected in the URL (`/console/config/<tab>`). A new search box matches across all categories by label, description, YAML path, key, category name or env var name, grouped by category with match counts and highlighting, with filters for changed-from-default, env-overridden and unsaved changes (`/` to focus, Esc to clear). 108 basic/advanced field labels and descriptions are translated into Korean, falling back to the server's English text when missing, and `<html lang>` follows the chosen language. Badges are down to two (changed/secret). Closes the settings epic #1243 and issues #1238, #1239, #1241, #1242. ([#1283](https://github.com/devlikebear/tars/pull/1283))
 
 ## [0.63.0] - 2026-10-17
 
