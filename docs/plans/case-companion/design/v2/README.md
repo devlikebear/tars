@@ -62,6 +62,22 @@ V1에서 고칠 것:
 3. 로봇이 64px 셀 높이의 약 75%만 쓴다. 셀을 꽉 채우도록 크롭 여백을 줄이면 화면이 조금 더 커진다.
 4. 후처리는 `sharp` 대신 **Python + Pillow를 `uv run --with pillow`로 일회성 실행**하는 쪽이 낫다 — 프론트엔드 의존성을 늘리지 않고, 이번 V0에서 그대로 동작했다.
 
+## V1 포즈와 콘솔 시트 (2026-10-18)
+
+| 파일 | 내용 |
+|---|---|
+| `source/pose-alert-raw.png` | 경계: 안테나를 두 배로 뻗고 두 팔을 벌림 (`master-blank`의 `-i` 편집, `tools/run-v1-poses.sh`) |
+| `source/pose-working-raw.png` | 작업: 두 팔을 앞으로 모아 허리 높이에서 타이핑하듯 |
+| `source/pose-wave2-raw.png` | 손 흔들기 두 번째 각도 (`pose-wave-raw`보다 바깥으로 기울임) |
+
+콘솔 시트는 저장소 루트의 `scripts/case_sprites.py`가 이 폴더의 `source/`에서 만든다 (`tools/process_master.py`의 후속, 같은 정렬·합성 방식). 결과: `frontend/console/src/assets/case/case-bot.webp`(5프레임 `base`·`alert`·`working`·`wave`·`wave2`, 약 16KB)와 `frontend/console/src/lib/caseSprite.generated.ts`.
+
+```bash
+uv run --no-project --with pillow --with numpy python -I scripts/case_sprites.py --preview <dir>
+```
+
+합성 영역은 화면 사각형 기준으로 몸체 바깥만 허용한다(팔=몸 양옆, 안테나=머리 위, 아래=하체). 처음에 화면 좌우 1/4까지 허용했더니 경계 포즈의 몸체 윤곽까지 넘어와 화면 테두리가 깨졌다.
+
 ## 다시 만드는 법
 
 ```bash
