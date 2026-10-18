@@ -12,48 +12,63 @@ test('adding a provider and changing a tier model through the LLM table UI persi
   const originalProviders = original.values.llm_providers
   const originalTiers = original.values.llm_tiers
 
-  await page.addInitScript(() => localStorage.setItem('tars_console_locale', 'en'))
-  await page.goto('/console/config/llm')
+  // try/finally, not a trailing statement: workers:1 means every spec in
+  // this file shares one server + config file, so a thrown assertion
+  // below must still restore the original providers/tiers before the
+  // file's other specs (and setup-discovery.spec.ts, which assumes
+  // "mock" is the pool's only, first provider) run against it.
+  try {
+    await page.addInitScript(() => localStorage.setItem('tars_console_locale', 'en'))
+    await page.goto('/console/config/llm')
 
-  // -- Add a provider row --
-  await page.getByRole('button', { name: 'Add provider', exact: true }).click()
-  const newProviderRow = page.locator('.llm-provider-row').last()
-  await newProviderRow.getByLabel('Alias').fill('e2e-second')
-  await newProviderRow.getByLabel('Alias').blur()
-  await newProviderRow.getByLabel('Kind').selectOption('anthropic')
-  await newProviderRow.getByLabel('API key').fill('e2e-second-fake-credential')
-  await newProviderRow.getByLabel('API key').blur()
+    // -- Add a provider row --
+    await page.getByRole('button', { name: 'Add provider', exact: true }).click()
+    const newProviderRow = page.locator('.llm-provider-row').last()
+    await newProviderRow.getByLabel('Alias').fill('e2e-second')
+    await newProviderRow.getByLabel('Alias').blur()
+    await newProviderRow.getByLabel('Kind').selectOption('anthropic')
+    await newProviderRow.getByLabel('API key').fill('e2e-second-fake-credential')
+    await newProviderRow.getByLabel('API key').blur()
 
-  // No validation errors should remain under the Providers section once the
-  // new row has an alias, a kind, and a key for its (default) api-key mode.
-  await expect(page.locator('#config-field-llm_providers')).not.toContainText('is required')
+    // No validation errors should remain under the Providers section once
+    // the new row has an alias, a kind, and a key for its (default)
+    // api-key mode.
+    await expect(page.locator('#config-field-llm_providers')).not.toContainText('is required')
 
-  // -- Change the "light" tier's model, leaving its provider alone --
-  const lightTierRow = page.locator('.llm-tier-row', { hasText: 'light' })
-  await lightTierRow.getByLabel('Model').fill('e2e-model-light-v2')
-  await lightTierRow.getByLabel('Model').blur()
+    // -- Change the "light" tier's model, leaving its provider alone --
+    const lightTierRow = page.locator('.llm-tier-row', { hasText: 'light' })
+    await lightTierRow.getByLabel('Model').fill('e2e-model-light-v2')
+    await lightTierRow.getByLabel('Model').blur()
 
-  await page.getByRole('button', { name: 'Save', exact: true }).click()
-  await expect(page.getByText('Saved; restart required to apply. Environment overrides take precedence.').first()).toBeVisible()
+    await page.getByRole('button', { name: 'Save', exact: true }).click()
+    await expect(page.getByText('Saved; restart required to apply. Environment overrides take precedence.').first()).toBeVisible()
 
-  const saved = await schema()
-  expect(saved.values.llm_providers['e2e-second']).toMatchObject({
-    kind: 'anthropic',
-    auth_mode: 'api-key',
-    api_key: 'e2e-second-fake-credential',
-  })
-  // The pre-existing provider's real credential round-trips untouched —
-  // there is no masking step to get wrong here (GET /schema already returns
-  // it unmasked), but a stray clear/overwrite on an unrelated row would
-  // still be a real regression.
-  expect(saved.values.llm_providers.mock.api_key).toBe(originalProviders.mock.api_key)
-  expect(saved.values.llm_tiers.light.model).toBe('e2e-model-light-v2')
-  expect(saved.values.llm_tiers.light.provider).toBe('mock')
-  // Untouched tiers are carried through unchanged, not dropped.
-  expect(saved.values.llm_tiers.heavy.model).toBe(originalTiers.heavy.model)
-  expect(saved.values.llm_tiers.standard.model).toBe(originalTiers.standard.model)
-
-  await request.patch('/v1/admin/config/values', { data: { updates: { llm_providers: originalProviders, llm_tiers: originalTiers } } })
+    const saved = await schema()
+    const newProvider = saved.values.llm_providers['e2e-second']
+    expect(newProvider).toMatchObject({ kind: 'anthropic', auth_mode: 'api-key' })
+    // Checked as a boolean, not with the literal string in the matcher: a
+    // string typed into a type="password" field gets scrubbed to asterisks
+    // in Playwright's own diff output wherever it reappears later in the
+    // run, which otherwise hides whether this genuinely matches or not
+    // behind an unreadable "e2e-***...tial" vs "e2e-***...tial" diff. The
+    // diagnostic on failure stays numeric so it cannot be scrubbed the
+    // same way.
+    const actualKey = typeof newProvider.api_key === 'string' ? newProvider.api_key : ''
+    const checksum = [...actualKey].reduce((sum, ch) => sum + ch.charCodeAt(0), 0)
+    expect(actualKey === 'e2e-second-fake-credential', `api_key length=${actualKey.length} charCodeSum=${checksum}`).toBe(true)
+    // The pre-existing provider's real credential round-trips untouched —
+    // there is no masking step to get wrong here (GET /schema already
+    // returns it unmasked), but a stray clear/overwrite on an unrelated
+    // row would still be a real regression.
+    expect(saved.values.llm_providers.mock.api_key).toBe(originalProviders.mock.api_key)
+    expect(saved.values.llm_tiers.light.model).toBe('e2e-model-light-v2')
+    expect(saved.values.llm_tiers.light.provider).toBe('mock')
+    // Untouched tiers are carried through unchanged, not dropped.
+    expect(saved.values.llm_tiers.heavy.model).toBe(originalTiers.heavy.model)
+    expect(saved.values.llm_tiers.standard.model).toBe(originalTiers.standard.model)
+  } finally {
+    await request.patch('/v1/admin/config/values', { data: { updates: { llm_providers: originalProviders, llm_tiers: originalTiers } } })
+  }
 })
 
 test('an incomplete provider row blocks save with an inline error, not a silent drop', async ({ page, request }) => {
