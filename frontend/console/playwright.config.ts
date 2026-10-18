@@ -89,6 +89,15 @@ export default defineConfig({
     // Specs assert on English UI strings.
     locale: 'en-US',
     viewport: { width: 1400, height: 900 },
+    launchOptions: {
+      // settings-llm-ui.spec.ts types into a type="password" field
+      // (ConfigLLMEditor's provider API key row) and reads back the exact
+      // value: Chrome's own password-generation heuristics can override an
+      // explicit autocomplete="off" and silently replace a filled password
+      // field's value after blur, which this suite has no interest in
+      // exercising on any spec.
+      args: ['--disable-features=PasswordGeneration,AutofillServerCommunication'],
+    },
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'], viewport: { width: 1400, height: 900 }, locale: 'en-US' } }],
   webServer: [
