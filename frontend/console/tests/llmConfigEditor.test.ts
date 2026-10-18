@@ -14,6 +14,7 @@ import {
   llmRoleRowsFromValue,
   llmTierNames,
   llmTierRowsFromValue,
+  providerRowsToDraftValue,
   renameLLMProviderAlias,
 } from '../src/lib/llmConfigEditor.ts'
 
@@ -45,12 +46,57 @@ test('llmProviderRowsFromValue tolerates missing/invalid input', () => {
   assert.equal(rows[0].auth_mode, 'api-key')
 })
 
+test('llmProviderRowsFromValue falls back to a valid auth_mode for the kind when it is missing', () => {
+  // A GET /schema response always has a correctly-defaulted auth_mode
+  // (internal/config's defaults_apply.go runs on every load), but a
+  // hand-edited "Edit as JSON" paste might omit it entirely for a
+  // cli-only kind — defaulting that to 'api-key' would show one thing in
+  // the Auth mode <select> (the kind's only option, 'cli') while the row's
+  // real state said another, and block Save with a confusing "API key is
+  // required" error (tars#1286 review).
+  const rows = llmProviderRowsFromValue({ cli1: { kind: 'claude-code-cli' } })
+  assert.equal(rows[0].auth_mode, 'cli')
+})
+
+test('llmProviderRowsFromValue falls back to a valid auth_mode when the loaded one does not fit the kind', () => {
+  const rows = llmProviderRowsFromValue({ cli1: { kind: 'antigravity-cli', auth_mode: 'api-key' } })
+  assert.equal(rows[0].auth_mode, 'cli')
+})
+
+test('llmProviderRowsFromValue keeps a loaded auth_mode that is valid for the kind', () => {
+  const rows = llmProviderRowsFromValue({ p: { kind: 'anthropic', auth_mode: 'oauth' } })
+  assert.equal(rows[0].auth_mode, 'oauth')
+})
+
 test('createLLMProviderRow starts blank with a stable id shape', () => {
   const row = createLLMProviderRow()
   assert.equal(row.alias, '')
   assert.equal(row.kind, '')
   assert.equal(row.auth_mode, 'api-key')
   assert.ok(row.id.startsWith('provider-'))
+})
+
+test('providerRowsToDraftValue keeps a masked api_key verbatim, unlike buildLLMProvidersValue', () => {
+  // The "Edit as JSON" textarea must seed from this, not from
+  // buildLLMProvidersValue's output: that omits api_key for a
+  // keepExistingApiKey row (correct for the real patch, since GET
+  // /schema always masks it — see lib/llmConfigEditor.ts's module header),
+  // but re-parsing a draft missing api_key would read every existing
+  // api-key provider as newly keyless, turning it into a hard "API key is
+  // required" error with no way back to "keep existing" (tars#1286
+  // review).
+  const rows = llmProviderRowsFromValue({ p: { kind: 'openai', auth_mode: 'api-key', api_key: 'sk-e****old' } })
+  const draft = providerRowsToDraftValue(rows)
+  assert.deepEqual(draft.p, { kind: 'openai', auth_mode: 'api-key', api_key: 'sk-e****old', base_url: '' })
+  // Re-parsing the draft must land back on keepExistingApiKey: true.
+  const reparsed = llmProviderRowsFromValue(draft)
+  assert.equal(reparsed[0].keepExistingApiKey, true)
+})
+
+test('providerRowsToDraftValue keeps a row with a validation error, unlike buildLLMProvidersValue', () => {
+  const blank = createLLMProviderRow()
+  const draft = providerRowsToDraftValue([blank])
+  assert.ok('' in draft, 'a row with no alias yet must still appear in the JSON draft')
 })
 
 test('llmTierRowsFromValue always returns exactly heavy/standard/light in order', () => {
@@ -143,12 +189,12 @@ test('buildLLMProvidersValue omits api_key for a loaded row left untouched, keep
   // flag) does not change that: there is no way to explicitly clear an
   // existing key through this API, the same limitation onboarding.ts's
   // buildConfigPayload already has.
-  const rows = llmProviderRowsFromValue({ p: { kind: 'openai', auth_mode: 'oauth', api_key: 'sk-e****old' } })
+  const rows = llmProviderRowsFromValue({ p: { kind: 'openai-codex', auth_mode: 'oauth', api_key: 'sk-e****old' } })
   assert.equal(rows[0].keepExistingApiKey, true)
   rows[0].api_key = ''
   const { value, errors } = buildLLMProvidersValue(rows)
   assert.deepEqual(errors, [])
-  assert.deepEqual(value.p, { kind: 'openai', auth_mode: 'oauth' })
+  assert.deepEqual(value.p, { kind: 'openai-codex', auth_mode: 'oauth' })
 })
 
 test('buildLLMProvidersValue submits a typed replacement once keepExistingApiKey is cleared', () => {
@@ -294,6 +340,47 @@ test('buildLLMEditorValues reports a tier pointing at a deleted provider', () =>
   state.providers = [] // user deleted the only provider row
   const result = buildLLMEditorValues(state)
   assert.ok(result.tiers.errors.some((e) => /not one of the providers/i.test(e)))
+})
+
+test('buildLLMEditorValues falls back to trustedProviderAliases when the edited providers currently have an error', () => {
+  // A rename only safely reaches the dropdown's own fresh alias set once
+  // providers itself is error-free — Config.svelte only emits a section
+  // once it validates, so while providers has *any* error (even one
+  // unrelated to the renamed row, like a second incomplete new row with
+  // no kind picked yet), llm_providers will not be part of this save and
+  // the alias that will actually exist on disk is whatever the caller's
+  // trusted baseline already says. Without this fallback, a tier renamed
+  // to an alias that only exists in the broken, unsaved edit would emit on
+  // its own and reach the server pointing at an alias that was never
+  // actually written (tars#1286 review, finding f5).
+  const state = llmEditorStateFromValues(
+    { old: { kind: 'openai', auth_mode: 'api-key', api_key: 'sk-x' } },
+    { heavy: { provider: 'old', model: 'm' }, standard: { provider: 'old', model: 'm' }, light: { provider: 'old', model: 'm' } },
+    {},
+  )
+  // Rename "old" -> "claude" and add an unrelated, still-incomplete row —
+  // the incomplete row alone is enough to make providers.errors non-empty.
+  state.providers[0].alias = 'claude'
+  state.tiers = renameLLMProviderAlias(state.tiers, 'old', 'claude')
+  state.providers.push(createLLMProviderRow())
+
+  const trustedAliases = new Set(['old']) // what is actually on disk right now
+  const result = buildLLMEditorValues(state, trustedAliases)
+  assert.ok(result.providers.errors.length > 0, 'the incomplete row must still produce a providers error')
+  assert.ok(
+    result.tiers.errors.some((e) => /heavy: provider "claude" is not one of the providers/i.test(e)),
+    'a tier renamed to an alias that only exists in the broken edit must still error',
+  )
+})
+
+test('buildLLMEditorValues without trustedProviderAliases reproduces the previous fresh-build-only behavior', () => {
+  // Every pre-existing call site (every other test in this file, and a
+  // first mount with no baseline yet) omits the second argument — this
+  // must keep behaving exactly as buildLLMEditorValues did before f5's
+  // fix, not silently start requiring a baseline.
+  const state = llmEditorStateFromValues({}, {}, {})
+  const result = buildLLMEditorValues(state)
+  assert.ok(result.tiers.errors.some((e) => /provider is required/i.test(e)))
 })
 
 test('renameLLMProviderAlias only rewrites tiers pointing at the previous alias, and is a no-op without a change', () => {

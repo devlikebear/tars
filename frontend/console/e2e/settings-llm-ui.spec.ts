@@ -105,3 +105,60 @@ test('an incomplete provider row blocks save with an inline error, not a silent 
   const unsaved = await schema()
   expect(unsaved.values.llm_providers).toEqual(originalProviders)
 })
+
+// tars#1286 PR review, finding f4: clicking "Edit as table" while the
+// textarea it is about to replace still has focus used to fire both the
+// textarea's own blur-commit and this button's click for the same click,
+// flipping back into JSON mode instead of switching out of it.
+test('"Edit as table" switches views on the first click, even with the JSON textarea focused', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('tars_console_locale', 'en'))
+  await page.goto('/console/config/llm')
+
+  const providersSection = page.locator('#config-field-llm_providers')
+  const toggleButton = providersSection.getByRole('button', { name: /^Edit as/ })
+  await toggleButton.click()
+  const textarea = providersSection.locator('textarea')
+  await expect(textarea).toBeVisible()
+  await textarea.click() // keep the textarea itself focused, as in the reported scenario
+
+  await toggleButton.click()
+  await expect(textarea).toHaveCount(0)
+  await expect(providersSection.getByRole('button', { name: 'Add provider', exact: true })).toBeVisible()
+})
+
+// tars#1286 PR review, finding f2: the page-level Discard button clears
+// dirtyFields, but llm_providers never reached dirtyFields for a row that
+// never became valid, so ConfigLLMEditor's own prop-change resync had
+// nothing to react to and the incomplete row survived Discard.
+test('page-level Discard clears an incomplete LLM provider row that never became dirty', async ({ page, request }) => {
+  const schema = () => request.get('/v1/admin/config/schema').then((r) => r.json())
+  const original = await schema()
+  const originalProviderCount = Object.keys(original.values.llm_providers).length
+  const originalDefaultTier = original.values.llm_default_tier
+  const nextDefaultTier = originalDefaultTier === 'light' ? 'standard' : 'light'
+
+  await page.addInitScript(() => localStorage.setItem('tars_console_locale', 'en'))
+  await page.goto('/console/config/llm')
+
+  await page.getByRole('button', { name: 'Add provider', exact: true }).click()
+  const newProviderRow = page.locator('.llm-provider-row').last()
+  await newProviderRow.getByLabel('Alias').fill('e2e-discard-leftover')
+  await newProviderRow.getByLabel('Alias').blur()
+  // Kind is left unset: this row never validates, so it never reaches
+  // Config.svelte's dirtyFields on its own.
+  await expect(page.locator('#config-field-llm_providers')).toContainText('pick a provider kind')
+
+  // Make an unrelated field on the same tab dirty, so the page-level save
+  // bar (and its Discard button) actually appears.
+  const defaultTierInput = page.locator('#config-field-llm_default_tier input')
+  await defaultTierInput.fill(nextDefaultTier)
+  await defaultTierInput.blur()
+  const discardButton = page.getByRole('button', { name: 'Discard', exact: true })
+  await expect(discardButton).toBeVisible()
+
+  await discardButton.click()
+
+  await expect(page.locator('.llm-provider-row')).toHaveCount(originalProviderCount)
+  await expect(page.getByText('e2e-discard-leftover')).toHaveCount(0)
+  await expect(defaultTierInput).toHaveValue(originalDefaultTier)
+})

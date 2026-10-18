@@ -30,6 +30,7 @@
     llmRoleRowsFromValue,
     llmTierNames,
     llmTierRowsFromValue,
+    providerRowsToDraftValue,
     renameLLMProviderAlias,
     type LLMEditorState,
     type LLMProviderKind,
@@ -86,9 +87,24 @@
     onTiersChange: (value: Record<string, unknown>) => void
     onRoleDefaultsChange: (value: Record<string, unknown>) => void
     text: ConfigLLMEditorText
+    // Bumped by Config.svelte's page-level Discard. A field this module
+    // never got to emit (e.g. an incomplete new provider row that never
+    // passed validation) leaves providersValue/tiersValue/roleDefaultsValue
+    // unchanged by Discard, so the usual "did the prop change" resync
+    // never fires — this token forces one regardless (tars#1286 review).
+    resetToken?: number
   }
 
-  let { providersValue, tiersValue, roleDefaultsValue, onProvidersChange, onTiersChange, onRoleDefaultsChange, text }: Props = $props()
+  let {
+    providersValue,
+    tiersValue,
+    roleDefaultsValue,
+    onProvidersChange,
+    onTiersChange,
+    onRoleDefaultsChange,
+    text,
+    resetToken = 0,
+  }: Props = $props()
 
   let llmState: LLMEditorState = $state(
     untrack(() => llmEditorStateFromValues(providersValue, tiersValue, roleDefaultsValue)),
@@ -118,6 +134,18 @@
     buildLLMTiersValue(llmState.tiers, new Set(llmState.providers.map((p) => p.alias.trim()))).value,
   )
   let lastRolesValue: unknown = untrack(() => buildLLMRoleDefaultsValue(llmState.roles).value)
+  let lastResetToken = untrack(() => resetToken)
+
+  // The alias set a tier can safely reference right now: lastProvidersValue
+  // is always the providers shape that is either already on disk or has
+  // already been successfully emitted — buildLLMEditorValues falls back to
+  // exactly this set when the live provider rows currently have an error
+  // (see its doc comment), so a tier referencing an alias that only exists
+  // in that broken, unsaved edit still reads as an error instead of
+  // emitting on its own (tars#1286 review).
+  function providersAliasSet(value: unknown): Set<string> {
+    return new Set(Object.keys((value && typeof value === 'object' ? value : {}) as Record<string, unknown>))
+  }
 
   $effect(() => {
     if (!configValuesEqual(providersValue ?? {}, lastSeenProvidersProp)) {
@@ -140,14 +168,33 @@
       lastRolesValue = buildLLMRoleDefaultsValue(llmState.roles).value
     }
   })
+  // Page-level Discard: force a resync from the current props even when
+  // none of them actually changed (an in-progress, never-emitted edit —
+  // e.g. a new provider row with no kind picked yet — leaves the props
+  // untouched, so the three effects above would otherwise have nothing to
+  // react to and the stale local row would survive Discard).
+  $effect(() => {
+    if (resetToken !== lastResetToken) {
+      lastResetToken = resetToken
+      llmState.providers = llmProviderRowsFromValue(providersValue)
+      llmState.tiers = llmTierRowsFromValue(tiersValue)
+      llmState.roles = llmRoleRowsFromValue(roleDefaultsValue)
+      lastSeenProvidersProp = providersValue ?? {}
+      lastSeenTiersProp = tiersValue ?? {}
+      lastSeenRolesProp = roleDefaultsValue ?? {}
+      lastProvidersValue = buildLLMProvidersValue(llmState.providers).value
+      lastTiersValue = buildLLMTiersValue(llmState.tiers, new Set(llmState.providers.map((p) => p.alias.trim()))).value
+      lastRolesValue = buildLLMRoleDefaultsValue(llmState.roles).value
+    }
+  })
 
-  let built = $derived(buildLLMEditorValues(llmState))
+  let built = $derived(buildLLMEditorValues(llmState, providersAliasSet(lastProvidersValue)))
 
   // Only a section with zero errors right now is pushed up — an in-progress
   // edit with a validation error stays local until it is fixed, matching
   // ConfigControl's "do not emit on invalid input" behavior.
   function emitIfValid() {
-    const result = buildLLMEditorValues(llmState)
+    const result = buildLLMEditorValues(llmState, providersAliasSet(lastProvidersValue))
     if (result.providers.errors.length === 0) {
       if (!configValuesEqual(result.providers.value, lastProvidersValue)) {
         lastProvidersValue = result.providers.value
@@ -267,10 +314,28 @@
   let providersDraft = $state('')
   let providersJsonError = $state('')
 
+  // Clicking this toggle while the textarea is focused used to fire both
+  // the textarea's onblur (commitProvidersJson, which flips
+  // providersJsonMode to false) and then this handler's own click (which
+  // read that already-flipped false and re-entered JSON mode) for the
+  // same click — the button never actually switched to table view
+  // (tars#1286 review). The button's onmousedown below prevents the
+  // browser's default focus change, so blur never fires for this specific
+  // click and this function is the only thing deciding the next mode: on
+  // the way out, it commits itself instead of trusting blur to have
+  // already done it.
   function toggleProvidersJson() {
-    if (!providersJsonMode) providersDraft = JSON.stringify(built.providers.value, null, 2)
-    providersJsonError = ''
-    providersJsonMode = !providersJsonMode
+    if (providersJsonMode) {
+      commitProvidersJson()
+    } else {
+      // providerRowsToDraftValue, not built.providers.value: the latter is
+      // the server-patch shape, which omits api_key for every row still on
+      // keepExistingApiKey and drops any row with a validation error —
+      // exactly what this textarea must not lose (tars#1286 review).
+      providersDraft = JSON.stringify(providerRowsToDraftValue(llmState.providers), null, 2)
+      providersJsonError = ''
+      providersJsonMode = true
+    }
   }
 
   function commitProvidersJson() {
@@ -290,9 +355,13 @@
   let tiersJsonError = $state('')
 
   function toggleTiersJson() {
-    if (!tiersJsonMode) tiersDraft = JSON.stringify(built.tiers.value, null, 2)
-    tiersJsonError = ''
-    tiersJsonMode = !tiersJsonMode
+    if (tiersJsonMode) {
+      commitTiersJson()
+    } else {
+      tiersDraft = JSON.stringify(built.tiers.value, null, 2)
+      tiersJsonError = ''
+      tiersJsonMode = true
+    }
   }
 
   function commitTiersJson() {
@@ -312,9 +381,13 @@
   let rolesJsonError = $state('')
 
   function toggleRolesJson() {
-    if (!rolesJsonMode) rolesDraft = JSON.stringify(built.roles.value, null, 2)
-    rolesJsonError = ''
-    rolesJsonMode = !rolesJsonMode
+    if (rolesJsonMode) {
+      commitRolesJson()
+    } else {
+      rolesDraft = JSON.stringify(built.roles.value, null, 2)
+      rolesJsonError = ''
+      rolesJsonMode = true
+    }
   }
 
   function commitRolesJson() {
@@ -337,7 +410,7 @@
         <h4>{text.providersTitle}</h4>
         <p>{text.providersHint}</p>
       </div>
-      <button type="button" class="btn btn-ghost btn-sm" onclick={toggleProvidersJson}>
+      <button type="button" class="btn btn-ghost btn-sm" onmousedown={(e) => e.preventDefault()} onclick={toggleProvidersJson}>
         {providersJsonMode ? text.editAsTable : text.editAsJson}
       </button>
     </div>
@@ -435,7 +508,7 @@
         <h4>{text.tiersTitle}</h4>
         <p>{text.tiersHint}</p>
       </div>
-      <button type="button" class="btn btn-ghost btn-sm" onclick={toggleTiersJson}>
+      <button type="button" class="btn btn-ghost btn-sm" onmousedown={(e) => e.preventDefault()} onclick={toggleTiersJson}>
         {tiersJsonMode ? text.editAsTable : text.editAsJson}
       </button>
     </div>
@@ -534,7 +607,7 @@
         <h4>{text.rolesTitle}</h4>
         <p>{text.rolesHint}</p>
       </div>
-      <button type="button" class="btn btn-ghost btn-sm" onclick={toggleRolesJson}>
+      <button type="button" class="btn btn-ghost btn-sm" onmousedown={(e) => e.preventDefault()} onclick={toggleRolesJson}>
         {rolesJsonMode ? text.editAsTable : text.editAsJson}
       </button>
     </div>

@@ -39,7 +39,7 @@
 //     dropped.
 
 import { sortStrings } from './sort.js'
-import type { AuthMode } from './onboarding'
+import { availableAuthModesForKind, suggestedAuthModeForKind, type AuthMode } from './onboarding.ts'
 
 // LLM provider kinds accepted by internal/config/patch_validation.go's
 // validateCandidate switch. Mirrors onboarding.ts's ProviderKind (kept as a
@@ -146,12 +146,25 @@ export function llmProviderRowsFromValue(value: unknown): LLMProviderRow[] {
 function providerRowFromEntry(alias: string, entryRaw: unknown): LLMProviderRow {
   const entry = (entryRaw && typeof entryRaw === 'object' ? entryRaw : {}) as Record<string, unknown>
   const apiKey = typeof entry.api_key === 'string' ? entry.api_key : ''
+  const kind = (typeof entry.kind === 'string' ? entry.kind : '') as LLMProviderKind | ''
+  // A raw auth_mode is only trusted when it is actually one of the modes
+  // this kind offers (availableAuthModesForKind) — a value loaded from a
+  // hand-edited "Edit as JSON" paste can carry a stale or missing
+  // auth_mode (e.g. omitted for a claude-code-cli/antigravity-cli entry),
+  // which would otherwise default to 'api-key' even though that kind only
+  // ever offers 'cli'. Falling back to suggestedAuthModeForKind keeps the
+  // row's value in sync with the Auth mode <select>'s own options, so the
+  // control never shows one mode while api-key validation checks another
+  // (tars#1286 review).
+  const rawAuthMode = typeof entry.auth_mode === 'string' ? entry.auth_mode.trim() : ''
+  const validAuthModes = availableAuthModesForKind(kind)
+  const authMode = (rawAuthMode && validAuthModes.includes(rawAuthMode as AuthMode) ? rawAuthMode : suggestedAuthModeForKind(kind)) as AuthMode
   return {
     id: nextRowId('provider'),
     alias,
     previousAlias: alias,
-    kind: (typeof entry.kind === 'string' ? entry.kind : '') as LLMProviderKind | '',
-    auth_mode: (typeof entry.auth_mode === 'string' && entry.auth_mode ? entry.auth_mode : 'api-key') as AuthMode,
+    kind,
+    auth_mode: authMode,
     api_key: apiKey,
     keepExistingApiKey: apiKey.trim() !== '',
     base_url: typeof entry.base_url === 'string' ? entry.base_url : '',
@@ -379,10 +392,28 @@ export type LLMEditorBuildResult = {
 
 // buildLLMEditorValues runs all three builders together so the tier
 // builder can validate its provider references against the *edited*
-// provider alias set, not the one the page loaded with.
-export function buildLLMEditorValues(state: LLMEditorState): LLMEditorBuildResult {
+// provider alias set, not the one the page loaded with — but only while
+// that edited set is itself free of errors. When providers currently has
+// an error (anywhere — not necessarily on the alias a tier points at),
+// llm_providers will not be part of this save (ConfigLLMEditor.svelte only
+// emits a section once it is error-free), so the providers map that
+// actually ends up on disk is whatever was last known good, not the
+// in-progress rows. trustedProviderAliases is that fallback set; a tier
+// referencing an alias that only exists in the broken, unsaved edit (e.g.
+// a rename typed moments before fixing an unrelated row) must still read
+// as an error, or the tier could emit on its own and reach the server
+// pointing at an alias that was never actually written (tars#1286 review).
+// Callers that have no such baseline (every existing test, and a
+// first-mount build) omit the argument, which reproduces the previous
+// always-use-the-fresh-build behavior exactly.
+export function buildLLMEditorValues(
+  state: LLMEditorState,
+  trustedProviderAliases?: ReadonlySet<string>,
+): LLMEditorBuildResult {
   const providers = buildLLMProvidersValue(state.providers)
-  const knownAliases = new Set(Object.keys(providers.value))
+  const knownAliases = providers.errors.length === 0
+    ? new Set(Object.keys(providers.value))
+    : (trustedProviderAliases ?? new Set(Object.keys(providers.value)))
   const tiers = buildLLMTiersValue(state.tiers, knownAliases)
   const roles = buildLLMRoleDefaultsValue(state.roles)
   return { providers, tiers, roles }
@@ -397,4 +428,31 @@ export function renameLLMProviderAlias(tierRows: LLMTierRow[], previousAlias: st
   const next = nextAlias.trim()
   if (prev === '' || prev === next) return tierRows
   return tierRows.map((row) => (row.provider.trim() === prev ? { ...row, provider: next } : row))
+}
+
+// providerRowsToDraftValue seeds the "Edit as JSON" textarea. Unlike
+// buildLLMProvidersValue it is lossless and never validates: it must not
+// omit api_key for a keepExistingApiKey row (that field still holds the
+// masked text the row loaded with — see the LLMProviderRow doc comment —
+// so including it verbatim round-trips back through
+// llmProviderRowsFromValue to the same keepExistingApiKey: true state;
+// omitting it, as buildLLMProvidersValue correctly does for the real
+// patch, would instead make every untouched row re-parse with an empty
+// api_key and keepExistingApiKey: false, turning every existing api-key
+// provider into one validation reports as missing its key, with no way
+// back to "keep existing" short of reloading the page). It also must not
+// drop a row with a validation error (an in-progress edit should still be
+// visible as JSON, not silently vanish when switching views) — tars#1286
+// review.
+export function providerRowsToDraftValue(rows: LLMProviderRow[]): Record<string, unknown> {
+  const value: Record<string, unknown> = {}
+  for (const row of rows) {
+    value[row.alias] = {
+      kind: row.kind,
+      auth_mode: row.auth_mode,
+      api_key: row.api_key,
+      base_url: row.base_url,
+    }
+  }
+  return value
 }

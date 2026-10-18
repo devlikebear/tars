@@ -58,6 +58,9 @@
   let success = $state('')
 
   let dirtyFields: Record<string, unknown> = $state({})
+  // Bumped on Discard so ConfigLLMEditor resyncs even when the LLM pool
+  // fields were never dirty to begin with (#1286 review).
+  let llmDiscardToken = $state(0)
   let fieldSaving = $state(false)
   let llmTestBusy = $state(false)
   let llmTestRows: ProviderProbeRow[] | null = $state(null)
@@ -396,6 +399,13 @@
 
   function handleDiscardFields() {
     dirtyFields = {}
+    // llm_providers/llm_tiers/llm_role_defaults may never have reached
+    // dirtyFields at all (ConfigLLMEditor only emits a section once it is
+    // error-free — an incomplete new provider row never does), so clearing
+    // dirtyFields alone leaves nothing for that component's own prop-change
+    // resync to react to. llmDiscardToken forces it to resync anyway (#1286
+    // review).
+    llmDiscardToken += 1
     success = ''
     error = ''
   }
@@ -516,6 +526,7 @@
             onTiersChange={(v) => setFieldValue(llmTiersField, v)}
             onRoleDefaultsChange={(v) => setFieldValue(llmRoleDefaultsField, v)}
             text={$t.config.llm}
+            resetToken={llmDiscardToken}
           />
           <div class="config-llm-hint">
             <button type="button" class="btn btn-ghost btn-sm" disabled={llmTestBusy} onclick={testLLMConnection}>
