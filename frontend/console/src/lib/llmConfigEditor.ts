@@ -444,9 +444,22 @@ export function renameLLMProviderAlias(tierRows: LLMTierRow[], previousAlias: st
 // drop a row with a validation error (an in-progress edit should still be
 // visible as JSON, not silently vanish when switching views) — tars#1286
 // review.
+//
+// Duplicate aliases still need the same "first occurrence wins" rule
+// buildLLMProvidersValue applies (trimmed, matching its own comparison):
+// without it, a later row sharing an existing, real provider's alias —
+// e.g. a fresh blank row the user has not finished filling in yet — would
+// silently overwrite that provider's real kind/auth_mode/api_key/base_url
+// in the draft with the later row's (often empty) values the moment the
+// object key collides, destroying data buildLLMProvidersValue itself
+// would have preserved (tars#1286 review, finding f6).
 export function providerRowsToDraftValue(rows: LLMProviderRow[]): Record<string, unknown> {
   const value: Record<string, unknown> = {}
+  const seen = new Set<string>()
   for (const row of rows) {
+    const key = row.alias.trim()
+    if (seen.has(key)) continue
+    seen.add(key)
     value[row.alias] = {
       kind: row.kind,
       auth_mode: row.auth_mode,

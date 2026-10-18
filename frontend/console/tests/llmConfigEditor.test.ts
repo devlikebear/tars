@@ -99,6 +99,33 @@ test('providerRowsToDraftValue keeps a row with a validation error, unlike build
   assert.ok('' in draft, 'a row with no alias yet must still appear in the JSON draft')
 })
 
+test('providerRowsToDraftValue keeps the first (real) row when a later row duplicates its alias', () => {
+  // A second, still-incomplete row sharing an existing provider's alias
+  // (e.g. a typo while adding a new one) must not silently overwrite that
+  // provider's real kind/auth_mode/api_key/base_url in the JSON draft —
+  // buildLLMProvidersValue itself already keeps the first occurrence and
+  // flags the second as a duplicate; this draft-only helper must match
+  // that rule instead of just assigning into the same object key in row
+  // order (tars#1286 review, finding f6).
+  const real = llmProviderRowsFromValue({
+    mock: { kind: 'openai', auth_mode: 'api-key', api_key: 'sk-e****mock', base_url: 'https://api.openai.com/v1' },
+  })
+  const duplicate = createLLMProviderRow()
+  duplicate.alias = 'mock'
+  const draft = providerRowsToDraftValue([...real, duplicate])
+  assert.deepEqual(draft.mock, { kind: 'openai', auth_mode: 'api-key', api_key: 'sk-e****mock', base_url: 'https://api.openai.com/v1' })
+})
+
+test('providerRowsToDraftValue treats a whitespace-padded alias as the same duplicate buildLLMProvidersValue would', () => {
+  const real = llmProviderRowsFromValue({ mock: { kind: 'openai', auth_mode: 'api-key', api_key: 'sk-e****mock' } })
+  const duplicate = createLLMProviderRow()
+  duplicate.alias = ' mock ' // trims to the same alias as the real row
+  duplicate.kind = 'anthropic'
+  const draft = providerRowsToDraftValue([...real, duplicate])
+  assert.equal(Object.keys(draft).length, 1)
+  assert.deepEqual(draft.mock, { kind: 'openai', auth_mode: 'api-key', api_key: 'sk-e****mock', base_url: '' })
+})
+
 test('llmTierRowsFromValue always returns exactly heavy/standard/light in order', () => {
   const rows = llmTierRowsFromValue({ standard: { provider: 'p', model: 'm' } })
   assert.deepEqual(rows.map((r) => r.name), [...llmTierNames])
