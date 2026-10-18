@@ -12,7 +12,7 @@
 import { expect, test } from '@playwright/test'
 
 const ACTIONS = ['bounce', 'nod', 'shake', 'tilt', 'wave'] as const
-const IDLE_KINDS = ['look', 'yawn', 'wink'] as const
+const IDLE_KINDS = ['look', 'yawn', 'wink', 'scan'] as const
 
 test('the hit area never moves or resizes while CASE floats (#1194 regression guard)', async ({ page }) => {
   await page.goto('/console')
@@ -38,7 +38,7 @@ test('idle play fires while neutral and idle, without touching the expression, b
   // 180s is the longest possible idle delay; a couple of seconds of margin
   // covers the setInterval/setTimeout granularity.
   await page.clock.fastForward('00:03:05')
-  await expect(body).toHaveClass(/play-(look|yawn|wink)/)
+  await expect(body).toHaveClass(/play-(look|yawn|wink|scan)/)
   // Decoration only: still neutral, still no badge, bubble still closed.
   await expect(body).toHaveClass(/expr-neutral/)
   await expect(page.locator('.companion-badge')).toHaveCount(0)
@@ -55,7 +55,7 @@ test('prefers-reduced-motion never starts the idle timer, even after the same ti
   await page.clock.fastForward('00:03:05')
   // Give any (incorrectly still-running) CSS animation time to land too.
   await page.waitForTimeout(500)
-  await expect(body).not.toHaveClass(/play-(look|yawn|wink)/)
+  await expect(body).not.toHaveClass(/play-(look|yawn|wink|scan)/)
   await expect(body).not.toHaveClass(/act-(bounce|nod|shake|tilt|wave)/)
   await context.close()
 })

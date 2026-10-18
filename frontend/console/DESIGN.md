@@ -577,7 +577,7 @@ Removed: the old handoff (`navigateWithPrompt`'s `context` argument, `aiContext`
 
 ### CASE's Bridge (case-companion phase 2)
 
-A panel for asking CASE about TARS as a whole (`CaseBridge.svelte`, `lib/stores/caseBridgeStore.svelte.ts`, decision record `docs/decisions/case-bridge.md`). Mod+/ toggles it on every screen; the palette and **Ask about TARS →** under the bubble's input open it too. It goes with CASE: when the companion is off (config, zen mode, setup, login) the panel and its shortcut are off.
+A panel for asking CASE about TARS as a whole (`CaseBridge.svelte`, `lib/stores/caseBridgeStore.svelte.ts`, decision record `docs/decisions/case-bridge.md`). Mod+/ toggles it on every screen; the palette and **Ask about TARS** in the bubble's options menu (⋯) open it too — a menu item, not a line under the input, so the bubble that opens by itself never grows over the needs-input bar's buttons. It goes with CASE: when the companion is off (config, zen mode, setup, login) the panel and its shortcut are off.
 
 - **Place.** A panel on the right edge, 480px wide, `top/right/bottom: --space-4`, z-index 95 — above the page and CASE (90), below the palette and help. Full screen below 900px. Same surface recipe as CASE's bubble (signal-green border tint, elevated surface, the bubble's shadow). Opening the Bridge from the bubble closes the bubble so the two never stack in one corner. Escape closes the panel.
 - **Header.** CASE's own figure at 64px (`CaseFigure`) — neutral at rest, `working` with the thinking/speaking overlay while an answer streams — then "Bridge" and a one-line subtitle, and a close button.

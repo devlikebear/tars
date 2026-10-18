@@ -50,7 +50,8 @@ test('Mod+/ opens the Bridge, which answers from the status with checked cards',
 test("CASE's bubble opens the Bridge, and the Bridge question never lands in the main session", async ({ page }) => {
   await page.goto('/console')
   await page.getByRole('button', { name: 'Talk to CASE' }).click()
-  await page.getByRole('button', { name: /Ask about TARS/ }).click()
+  await page.getByRole('button', { name: 'CASE options' }).click()
+  await page.getByRole('menuitem', { name: 'Ask about TARS' }).click()
   await expect(page.locator('.companion-bubble')).toHaveCount(0)
   await expect(panel(page)).toBeVisible()
 

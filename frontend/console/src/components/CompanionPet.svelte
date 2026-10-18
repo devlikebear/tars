@@ -742,6 +742,12 @@
       </div>
       {#if sleepMenuOpen}
         <div class="companion-menu" role="menu" aria-label={$t.companion.sleep.menuAria}>
+          <!-- The bubble's question goes to the main session (tars#1236); a
+               question about TARS as a whole goes to the Bridge. It lives in
+               this menu, not under the input: a line there made the bubble
+               that opens by itself tall enough to cover the needs-input
+               bar's buttons (#1194's hazard). -->
+          <button type="button" role="menuitem" class="companion-menu-item" onclick={openBridge}>{$t.caseBridge.openFromBubble}</button>
           <button type="button" role="menuitem" class="companion-menu-item" onclick={() => chooseSleep('hour')}>{$t.companion.sleep.hour}</button>
           <button type="button" role="menuitem" class="companion-menu-item" onclick={() => chooseSleep('next-alert')}>{$t.companion.sleep.untilAlert}</button>
         </div>
@@ -830,9 +836,6 @@
         />
         <button type="submit" disabled={!draft.trim() || companionAsk.busy} aria-label={$t.companion.sendAria}>{$t.companion.send}</button>
       </form>
-      <!-- The bubble's question goes to the main session (tars#1236); a
-           question about TARS as a whole goes to the Bridge instead. -->
-      <button type="button" class="companion-bridge-link" onclick={openBridge}>{$t.caseBridge.openFromBubble} →</button>
     </section>
   {/if}
 
@@ -1246,22 +1249,6 @@
   .companion-ask button:disabled {
     cursor: default;
     opacity: 0.5;
-  }
-
-  .companion-bridge-link {
-    margin-top: var(--space-2);
-    padding: 0;
-    border: 0;
-    background: transparent;
-    color: var(--primary-text);
-    font: inherit;
-    font-size: 0.78rem;
-    cursor: pointer;
-  }
-
-  .companion-bridge-link:hover,
-  .companion-bridge-link:focus-visible {
-    text-decoration: underline;
   }
 
   @keyframes companionFloat {

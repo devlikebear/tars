@@ -36,7 +36,7 @@ Last reviewed: 2026-10-10. Start an isolated instance with `make build` then `bi
 
 ### Bridge
 - Kind: console panel + API
-- Reach: Mod+/ (⌘/ or Ctrl+/) on any screen, the palette's "Ask CASE about TARS (Bridge)", or **Ask about TARS →** in CASE's bubble; `POST /v1/case/ask` then `GET /v1/case/answer` (user token). Rules: `docs/decisions/case-bridge.md`.
+- Reach: Mod+/ (⌘/ or Ctrl+/) on any screen, the palette's "Ask CASE about TARS (Bridge)", or **Ask about TARS** in CASE's bubble options menu (⋯); `POST /v1/case/ask` then `GET /v1/case/answer` (user token). Rules: `docs/decisions/case-bridge.md`.
 - Drive: with a focus pipeline at a gate, a turn running in another session, or a failed cron job, open the Bridge and ask "is anything stuck?". Click a card.
 - Healthy result: the answer names what waits and why, in one or two sentences, with up to four cards; a card opens its screen (`/console/focus/<id>`, `/console/chat/<id>`, `/console/cron`, `/console/ops`, `/console/analytics`, `/console/pulse`) and closes the panel. The main session's transcript has no Bridge question; a hidden "CASE Bridge" worker session does (`/v1/admin/sessions?hidden=1`), one per day. A second question while one is answered is 409. Asking for a change ("cancel that cron") gets a pointer to the screen, never an action.
 - Evidence: `go test ./internal/casebridge -v`, `go test ./internal/tarsserver -run 'CaseBridge|LatestPulse|LastAssistantReply' -v`; console: `cd frontend/console && node --experimental-strip-types --test tests/caseBridge.test.ts` and `npx playwright test e2e/case-bridge.spec.ts` (mock LLM `[e2e:bridge]`).
