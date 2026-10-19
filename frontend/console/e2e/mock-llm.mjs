@@ -309,6 +309,21 @@ function initiativeSpeakDecision(messages) {
   return INITIATIVE_SPEAK_TEXT
 }
 
+// CASE's Bridge (case-companion phase 2): a question carrying this marker
+// answers whether the server's <tars-status> turn context arrived, and ends
+// with a card block — one card the server must keep (usage) and one it must
+// drop (an id that is not in the snapshot).
+const BRIDGE = '[e2e:bridge]'
+function bridgeReply(messages, text) {
+  if (!text.includes(BRIDGE)) return null
+  const last = [...messages].reverse().find((m) => m?.role === 'user')
+  const raw = typeof last?.content === 'string' ? last.content : JSON.stringify(last?.content ?? '')
+  const status = /<tars-status>[\s\S]*TARS status at[\s\S]*<\/tars-status>/.test(raw) ? 'seen' : 'missing'
+  return `Status ${status}. Nothing is stuck.\n<case-cards>[` +
+    '{"kind":"usage","title":"Spend today","sub":"from the status","severity":"info"},' +
+    '{"kind":"focus","id":"made-up","title":"Invented","severity":"block"}]</case-cards>'
+}
+
 function replyFor(body) {
   const decision = computerUseDecision(body.messages ?? [])
   if (decision) return decision
@@ -317,6 +332,8 @@ function replyFor(body) {
   const speak = initiativeSpeakDecision(body.messages ?? [])
   if (speak) return speak
   const text = lastUserText(body.messages ?? []).trim()
+  const bridge = bridgeReply(body.messages ?? [], text)
+  if (bridge) return bridge
   const templateDraft = focusTemplateDraftReply(text)
   if (templateDraft) return templateDraft
   const secondOpinion = secondOpinionReply(text)

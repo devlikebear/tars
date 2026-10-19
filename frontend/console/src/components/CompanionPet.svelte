@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte'
+  import CaseFigure from './CaseFigure.svelte'
   import { t } from '../i18n'
   import {
     companionActionFor,
@@ -18,10 +19,16 @@
     companionShouldOpen,
     companionShouldRecordInput,
     companionAskContext,
+    companionSleepActive,
+    companionSleepFor,
+    companionSleepFromStorage,
+    companionSleepToStorage,
     companionState,
+    companionTalk,
     companionTurnsJustFinished,
     companionWaitingKeys,
     COMPANION_CUE_NONE,
+    COMPANION_SLEEP_STORAGE_KEY,
     type CompanionAction,
     type CompanionCueState,
     type CompanionExpression,
@@ -29,6 +36,8 @@
     type CompanionIdleKind,
     type CompanionLine,
     type CompanionServerCue,
+    type CompanionSleep,
+    type CompanionSleepMode,
     type CompanionViewedSessionIds,
   } from '../lib/companion'
   import {
@@ -38,6 +47,7 @@
     type CompanionAskErrorKind,
   } from '../lib/companionAsk'
   import { companionAsk } from '../lib/stores/companionAsk'
+  import { caseBridge } from '../lib/stores/caseBridge'
   import { chatCommands } from '../lib/stores/chatCommandQueue.svelte'
   import { sessionActivity } from '../lib/stores/sessionActivity'
   import { locale as localeStore } from '../i18n'
@@ -152,6 +162,59 @@
   // unless something more urgent is already showing (companionExpression
   // keeps that same priority for everything else).
   let expression = $derived(companionAskExpressionOverride(snapshot.lines, companionAsk.busy) ?? companionExpression(snapshot, cues))
+  // Thinking until the first text of CASE's own answer arrives, then
+  // speaking (F1) — an overlay on `working`, never its own expression.
+  let talk = $derived(companionTalk(expression, companionAsk.busy, companionAsk.answer, companionAsk.inThread))
+
+  // --- Sleep (F2): switched off by the user for an hour or until the next
+  // alert. Per-viewer, so localStorage — read through try/catch, since it
+  // can be blocked or throw, and CASE must still work without it.
+  let sleep = $state<CompanionSleep | null>(readStoredSleep())
+  let sleeping = $derived(companionSleepActive(sleep, now))
+  let sleepMenuOpen = $state(false)
+  // A one-shot power-on (arriving, or waking up); CaseFigure plays it and
+  // handleBodyAnimationEnd clears it.
+  let booting = $state(false)
+
+  function readStoredSleep(): CompanionSleep | null {
+    try {
+      return companionSleepFromStorage(window.localStorage.getItem(COMPANION_SLEEP_STORAGE_KEY), Date.now())
+    } catch {
+      return null
+    }
+  }
+
+  function storeSleep(next: CompanionSleep | null) {
+    sleep = next
+    try {
+      const raw = companionSleepToStorage(next)
+      if (raw) window.localStorage.setItem(COMPANION_SLEEP_STORAGE_KEY, raw)
+      else window.localStorage.removeItem(COMPANION_SLEEP_STORAGE_KEY)
+    } catch {
+      // Storage unavailable: the sleep still holds for this page.
+    }
+  }
+
+  function chooseSleep(mode: CompanionSleepMode) {
+    storeSleep(companionSleepFor(mode, Date.now()))
+    sleepMenuOpen = false
+    open = false
+    autoOpened = false
+    action = null
+    idlePlay = null
+    booting = false
+  }
+
+  function wake() {
+    if (!sleep) return
+    storeSleep(null)
+    if (!prefersReducedMotion && !document.hidden) booting = true
+  }
+
+  // An hour's sleep ends on its own (the cue timer keeps `now` moving).
+  $effect(() => {
+    if (sleep && !sleeping) wake()
+  })
   // The bubble's server line (#1192): only set while the cue is live and
   // the event actually carried a line (body_only cues are expression-only
   // and never show here).
@@ -192,12 +255,13 @@
     'companionActNod',
     'companionActShake',
     'companionActTilt',
-    'companionPawWave',
+    'companionActWave',
   ])
   const IDLE_ANIMATION_NAMES: Record<string, CompanionIdleKind> = {
     companionLookAround: 'look',
     companionYawn: 'yawn',
     companionWink: 'wink',
+    companionScan: 'scan',
   }
 
   // The bubble opens by itself only for a new approval wait or a new
@@ -207,6 +271,9 @@
   $effect(() => {
     const lines = snapshot.lines
     if (companionShouldOpen(primed, prevWaitingKeys, lines)) {
+      // A new approval wait or failure is exactly what sleep promised to
+      // wake up for, in both modes.
+      wake()
       open = true
       autoOpened = true
     }
@@ -272,7 +339,9 @@
       lastSeenServerCueAt = serverCueAt
       if (serverCue) {
         cueState = companionCueTick(cueState, Date.now(), { server: serverCue })
-        if (serverCue.line) {
+        // A sleeping CASE does not pop its bubble for the server's line —
+        // the user asked for quiet; the line is there when they wake it.
+        if (serverCue.line && !sleeping) {
           open = true
           autoOpened = true
         }
@@ -287,7 +356,7 @@
     const current = expression
     const next = companionActionFor(previousExpression, current)
     previousExpression = current
-    if (next && !prefersReducedMotion) action = next
+    if (next && !prefersReducedMotion && !sleeping) action = next
   })
 
   // Idle play is only ever started while `expression === 'neutral'`
@@ -295,7 +364,7 @@
   // `expression` off neutral while a look/yawn/wink is still mid-flight —
   // unlike the one-shot actions above (whose keyframes never touch a
   // property an expr-* rule also sets), look/yawn/wink animate the same
-  // eye/mouth width, height and border-radius an expression's own shape
+  // eye width, height and scale an expression's own shape
   // depends on, so a stale idlePlay must clear immediately here, not wait
   // for its own `animationend` — which will not come anyway, since the CSS
   // for these classes is itself scoped to `.expr-neutral` and losing that
@@ -334,7 +403,7 @@
     idleTimer = null
     idleFireAt = null
     const next = companionNextIdle(Math.random)
-    if (!prefersReducedMotion && companionIdleEligible(expression, snapshot.lines.length, open)) {
+    if (!prefersReducedMotion && !sleeping && companionIdleEligible(expression, snapshot.lines.length, open)) {
       idlePlay = next.kind
     }
     scheduleIdle(next.delayMs)
@@ -362,7 +431,7 @@
   function applyGaze() {
     rafHandle = null
     if (!pendingPointer || !figureEl) return
-    if (!companionGazeApplies(expression)) {
+    if (!companionGazeApplies(expression) || sleeping) {
       gazeOffset = { x: 0, y: 0 }
       return
     }
@@ -402,6 +471,7 @@
   }
 
   function handleBodyAnimationEnd(event: AnimationEvent) {
+    if (event.animationName === 'companionBootFrame') booting = false
     if (ACTION_ANIMATION_NAMES.has(event.animationName)) action = null
     const idleKind = IDLE_ANIMATION_NAMES[event.animationName]
     if (idleKind && idlePlay === idleKind) idlePlay = null
@@ -420,6 +490,8 @@
     now = Date.now()
     if (companionJustArrived(wasHiddenForMs)) {
       cueState = companionCueTick(cueState, now, { justArrived: true })
+      // Coming back after a while: CASE powers on before it waves.
+      if (!prefersReducedMotion && !sleeping) booting = true
     }
     startCueTimer()
     startDecorativeMotion()
@@ -480,6 +552,7 @@
 
     // Opening the console is itself an arrival.
     cueState = companionCueTick(cueState, Date.now(), { justArrived: true })
+    if (!prefersReducedMotion && !sleeping) booting = true
     startCueTimer()
     startDecorativeMotion()
 
@@ -499,14 +572,32 @@
   })
 
   function toggleOpen() {
+    // Clicking a sleeping CASE wakes it and opens the bubble at once.
+    if (sleeping) {
+      wake()
+      open = true
+      autoOpened = false
+      return
+    }
     open = !open
+    sleepMenuOpen = false
     // Whatever opened or closed it now was the user's own click.
     autoOpened = false
+  }
+
+  // The bubble's link to CASE's Bridge: the bubble closes so the two never
+  // stack on the same corner.
+  function openBridge() {
+    open = false
+    autoOpened = false
+    sleepMenuOpen = false
+    caseBridge.show()
   }
 
   function closeBubble() {
     open = false
     autoOpened = false
+    sleepMenuOpen = false
     // The user closing the bubble dismisses a showing server line too
     // (#1192) — a no-op when the active cue is not 'server', so this never
     // cuts a warning/justFinished/justArrived cue short.
@@ -640,8 +731,27 @@
     <section class="companion-bubble" aria-live="polite">
       <div class="companion-bubble-header">
         <span class="companion-state">{$t.companion.header}</span>
+        <button
+          type="button"
+          class="companion-menu-toggle"
+          aria-label={$t.companion.sleep.menuAria}
+          aria-expanded={sleepMenuOpen}
+          onclick={() => (sleepMenuOpen = !sleepMenuOpen)}
+        >&middot;&middot;&middot;</button>
         <button type="button" class="companion-close" aria-label={$t.companion.closeAria} onclick={closeBubble}>&times;</button>
       </div>
+      {#if sleepMenuOpen}
+        <div class="companion-menu" role="menu" aria-label={$t.companion.sleep.menuAria}>
+          <!-- The bubble's question goes to the main session (tars#1236); a
+               question about TARS as a whole goes to the Bridge. It lives in
+               this menu, not under the input: a line there made the bubble
+               that opens by itself tall enough to cover the needs-input
+               bar's buttons (#1194's hazard). -->
+          <button type="button" role="menuitem" class="companion-menu-item" onclick={openBridge}>{$t.caseBridge.openFromBubble}</button>
+          <button type="button" role="menuitem" class="companion-menu-item" onclick={() => chooseSleep('hour')}>{$t.companion.sleep.hour}</button>
+          <button type="button" role="menuitem" class="companion-menu-item" onclick={() => chooseSleep('next-alert')}>{$t.companion.sleep.untilAlert}</button>
+        </div>
+      {/if}
       {#if serverLine}
         <!-- The server-requested line (#1192): visually distinct from the
              "waiting on you" lines below — it is CASE saying something, not
@@ -737,39 +847,26 @@
   <button type="button" class="companion-button" aria-label={$t.companion.buttonAria} onclick={toggleOpen}>
     <span class="companion-figure" bind:this={figureEl}>
       <span class="companion-shadow"></span>
-      <span
-        class={`companion-body expr-${expression}${action ? ` act-${action}` : ''}${idlePlay ? ` play-${idlePlay}` : ''}`}
-        aria-hidden="true"
+      <CaseFigure
+        {expression}
+        {action}
+        {idlePlay}
+        gaze={gazeOffset}
+        {talk}
+        asleep={sleeping}
+        {booting}
         onanimationend={handleBodyAnimationEnd}
-      >
-        <span class="companion-ear companion-ear-left"></span>
-        <span class="companion-ear companion-ear-right"></span>
-        <span class="companion-torso"></span>
-        <span class="companion-laptop"></span>
-        <span class="companion-head">
-          <span class="companion-skull"></span>
-          <span class="companion-brows">
-            <span class="companion-brow companion-brow-left"></span>
-            <span class="companion-brow companion-brow-right"></span>
-          </span>
-          <span class="companion-patch companion-patch-left"></span>
-          <span class="companion-patch companion-patch-right"></span>
-          <span class="companion-eyes" style={`--eye-x: ${gazeOffset.x}px; --eye-y: ${gazeOffset.y}px;`}>
-            <span class="companion-eye companion-eye-left"></span>
-            <span class="companion-eye companion-eye-right"></span>
-          </span>
-          <span class="companion-nose"></span>
-          <span class="companion-mouth"></span>
-        </span>
-        <span class="companion-paw"></span>
-        <span class="companion-gem"></span>
-        <span class="companion-zzz" aria-hidden="true">z</span>
-      </span>
+      />
       {#if snapshot.badge > 0}
         <span class="companion-badge" aria-label={$t.companion.badgeAria(snapshot.badge)}>{snapshot.badge}</span>
       {/if}
     </span>
   </button>
+  <!-- CASE's face is aria-hidden, so a screen reader hears what it is
+       showing from here: the top waiting line, while the bubble (which has
+       its own aria-live) is closed. Empty otherwise, so nothing is read
+       twice. -->
+  <span class="companion-sr-status" aria-live="polite">{open ? '' : sleeping ? $t.companion.sleep.asleepStatus : (displayLines[0]?.label ?? '')}</span>
 </div>
 
 <style>
@@ -795,7 +892,7 @@
   }
 
   /* Everything that moves lives in .companion-figure below, not here: the
-     float, every one-shot action and idle play, and the chip/breathing
+     float, every one-shot action and idle play, and the LED/breathing
      loops. .companion-button keeps a fixed size and no animation or
      transform of its own, so it is always what actually receives clicks
      (#1194 was a bubble covering a neighbouring button; this is the same
@@ -831,471 +928,13 @@
     animation: companionFloat 4.8s var(--ease-out) infinite;
   }
 
-  /* CASE is an on-call meerkat (case-companion phase 1). The figure is
-     drawn on a 64×64 grid of plain spans — no image, SVG or font icon
-     (DESIGN.md "CASE's expressions"). The colours are local to this
-     component, never global tokens: nothing outside CASE uses them. */
-  .companion-body {
-    --case-head: #e3c48f;
-    --case-torso: #d9b97e;
-    --case-ear: #b8955e;
-    --case-patch: #6b5434;
-    --case-eye: #f5ebdd;
-    --case-nose: #2a1c14;
-    --case-laptop: #3a3a34;
-    --case-gem-neutral: #8a877d;
-    --case-gem-working: #f2a93b;
-    --case-gem-alert: #ff7a59;
-    --case-gem-happy: #9bd77a;
-    --case-gem-sleepy: #4a4842;
-    position: relative;
-    width: 64px;
-    height: 64px;
-    transform-origin: 50% 100%;
-  }
-
-  .companion-body span {
+  .companion-sr-status {
     position: absolute;
-    display: block;
-  }
-
-  .companion-ear {
-    top: 14.5px;
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    background: var(--case-ear);
-  }
-
-  .companion-ear-left {
-    left: 15.5px;
-  }
-
-  .companion-ear-right {
-    left: 41.5px;
-  }
-
-  .companion-torso {
-    left: 24px;
-    top: 43px;
-    width: 16px;
-    height: 17px;
-    border-radius: 5px 5px 2px 2px;
-    background: var(--case-torso);
-  }
-
-  /* working's laptop: hidden everywhere else. */
-  .companion-body .companion-laptop {
-    display: none;
-    left: 20px;
-    top: 46px;
-    width: 24px;
-    height: 9px;
-    border-radius: 1px;
-    background: var(--case-laptop);
-  }
-
-  .companion-laptop::after {
-    content: '';
-    position: absolute;
-    left: 2px;
-    top: 2px;
-    width: 20px;
-    height: 1.5px;
-    background: var(--case-gem-working);
-  }
-
-  .companion-head {
-    left: 20px;
-    top: 9px;
-    width: 24px;
-    height: 34px;
-    transform-origin: 50% 90%;
-  }
-
-  .companion-skull {
-    left: 0;
-    top: 0;
-    width: 24px;
-    height: 34px;
-    border-radius: 50% 50% 46% 46% / 40% 40% 60% 60%;
-    background: var(--case-head);
-  }
-
-  .companion-patch {
-    top: 11.5px;
-    width: 9px;
-    height: 11px;
-    border-radius: 50%;
-    background: var(--case-patch);
-  }
-
-  .companion-patch-left {
-    left: 2.5px;
-  }
-
-  .companion-patch-right {
-    left: 12.5px;
-  }
-
-  /* .companion-brows and .companion-eyes are full-head layers so the
-     brows/eyes inside them keep head coordinates; .companion-eyes also
-     carries the cursor-gaze custom properties. */
-  .companion-brows,
-  .companion-eyes {
-    left: 0;
-    top: 0;
-    width: 100%;
-    height: 100%;
-  }
-
-  .companion-brow {
-    top: 8px;
-    width: 8px;
-    height: 2px;
-    border-radius: 1px;
-    background: var(--case-patch);
-    /* Hidden by default: a brow only means something on alert/upset/wary
-       below. Everywhere else it is a faint line sitting above the eyes
-       for no reason, so it stays invisible instead of being noise. */
-    opacity: 0;
-  }
-
-  .companion-brow-left {
-    left: 2px;
-  }
-
-  .companion-brow-right {
-    left: 14px;
-  }
-
-  .companion-eye {
-    top: 15px;
-    width: 4px;
-    height: 4px;
-    border-radius: 50%;
-    background: var(--case-eye);
-    animation: companionBlink 5.6s infinite;
-  }
-
-  .companion-eye-left {
-    left: 5px;
-  }
-
-  .companion-eye-right {
-    left: 15px;
-  }
-
-  /* Cursor gaze (#1191): the pupils lean toward a nearby pointer.
-     `translate` is a separate property from `transform`, so it composes
-     with an expression's own `transform` (working's downward glance,
-     wary's side-eye) instead of replacing it, and the blink animates
-     `scale`, a third one. The component sets `--eye-x`/`--eye-y` on
-     .companion-eyes (lib/companion.ts `companionGazeOffset`, already
-     clamped to 3px); a pupil sits inside a 9px eye patch, so the lean is
-     scaled down to stay inside it. Scoped to the four expressions whose
-     eyes are pupil-shaped: this selector, not just the component's
-     `companionGazeApplies` check, is what keeps a stale offset off
-     happy/upset/sleepy/greeting's arc/small/closed eyes. */
-  .companion-body:not(.expr-happy):not(.expr-upset):not(.expr-sleepy):not(.expr-greeting) .companion-eye {
-    translate: calc(var(--eye-x, 0px) * 0.6) calc(var(--eye-y, 0px) * 0.6);
-  }
-
-  .companion-nose {
-    left: 10px;
-    top: 25px;
-    width: 0;
-    height: 0;
-    border-left: 2px solid transparent;
-    border-right: 2px solid transparent;
-    border-top: 2.5px solid var(--case-nose);
-  }
-
-  /* No mouth by default — only happy/greeting smile, upset frowns, and
-     the idle yawn opens one. */
-  .companion-body .companion-mouth {
-    display: none;
-    left: 9px;
-    top: 27.5px;
-    width: 6px;
-    height: 3px;
-    border-bottom: 1.5px solid var(--case-nose);
-    border-radius: 0 0 50% 50%;
-  }
-
-  /* greeting's raised front paw: hidden everywhere else. */
-  .companion-body .companion-paw {
-    display: none;
-    left: 38px;
-    top: 34px;
-    width: 4px;
-    height: 15px;
-    border-radius: 2px;
-    background: var(--case-torso);
-    transform: rotate(35deg);
-    transform-origin: 50% 100%;
-  }
-
-  /* The chest chip: the one place a state colour rides (DESIGN.md). */
-  .companion-gem {
-    left: 29px;
-    top: 50px;
-    width: 6px;
-    height: 4px;
-    border-radius: 1px;
-    background: var(--case-gem-neutral);
-  }
-
-  /* The sleepy 'z' — hidden everywhere else, shown only by .expr-sleepy
-     below. pointer-events: none like the rest of .companion-figure's
-     contents; it is decoration, never a hit target. */
-  .companion-body .companion-zzz {
-    display: none;
-    right: 9px;
-    top: 4px;
-    font-family: var(--font-mono);
-    font-size: 8px;
-    font-weight: 600;
-    line-height: 1;
-    color: var(--text-secondary);
-    pointer-events: none;
-  }
-
-  /* neutral (idle, the default): round pupils, no brows, no mouth, a
-     grey chip — the base shapes above as-is. */
-  .expr-neutral .companion-gem {
-    background: var(--case-gem-neutral);
-  }
-
-  /* working (a turn is running): the pupils drop to the laptop it now
-     holds, and the chip turns amber and pulses for as long as the turn
-     runs (#1191) — one of the two continuous states, as opposed to the
-     one-shot actions the other five play once on arrival. */
-  .expr-working .companion-eye {
-    width: 3.6px;
-    height: 3.6px;
-    transform: translate(-1px, 2px);
-  }
-
-  .expr-working .companion-laptop {
-    display: block;
-  }
-
-  .expr-working .companion-gem {
-    background: var(--case-gem-working);
-    animation: companionGemPulse 1.8s ease-in-out infinite;
-  }
-
-  /* alert (something is waiting on you): big eyes that stop blinking,
-     both brows lift, the ears prick up, an orange chip. */
-  .expr-alert .companion-eye {
-    width: 6px;
-    height: 6px;
-    transform: translate(-1px, -1.5px);
-    animation: none;
-  }
-
-  .expr-alert .companion-brow {
-    opacity: 1;
-  }
-
-  .expr-alert .companion-brow-left {
-    transform: translateY(-1.5px) rotate(-8deg);
-  }
-
-  .expr-alert .companion-brow-right {
-    transform: translateY(-1.5px) rotate(8deg);
-  }
-
-  .expr-alert .companion-ear {
-    transform: translateY(-2px);
-  }
-
-  .expr-alert .companion-gem {
-    background: var(--case-gem-alert);
-  }
-
-  /* happy (a turn just finished): ∩ arc eyes and a smile, a green chip. */
-  .expr-happy .companion-eye,
-  .expr-greeting .companion-eye-left {
-    width: 5px;
-    height: 3px;
-    background: transparent;
-    border-top: 2px solid var(--case-eye);
-    border-radius: 50% 50% 0 0;
-    transform: translate(-0.5px, 0.5px);
-    animation: none;
-  }
-
-  .expr-happy .companion-mouth,
-  .expr-greeting .companion-mouth {
-    display: block;
-  }
-
-  .expr-happy .companion-gem {
-    background: var(--case-gem-happy);
-  }
-
-  /* upset (a failure): small eyes, brows furrowed down toward the middle,
-     a frown — alert's chip colour, so it differs from alert in eye size,
-     brow direction and mouth at once (DESIGN.md). */
-  .expr-upset .companion-eye {
-    width: 3.4px;
-    height: 3.4px;
-    transform: translate(0.3px, 1px);
-    animation: none;
-  }
-
-  .expr-upset .companion-brow {
-    top: 9px;
-    opacity: 1;
-  }
-
-  .expr-upset .companion-brow-left {
-    transform: rotate(22deg);
-  }
-
-  .expr-upset .companion-brow-right {
-    transform: rotate(-22deg);
-  }
-
-  .expr-upset .companion-mouth {
-    display: block;
-    top: 29px;
-    border-bottom: 0;
-    border-top: 1.5px solid var(--case-nose);
-    border-radius: 50% 50% 0 0;
-  }
-
-  .expr-upset .companion-gem {
-    background: var(--case-gem-alert);
-  }
-
-  /* wary (a warning): squinted eyes glancing sideways, one brow raised
-     and one lowered — asymmetric on purpose, a symmetric change reads as
-     "surprised", not "suspicious". */
-  .expr-wary .companion-eye {
-    width: 4.4px;
-    height: 2.2px;
-    transform: translate(1.5px, 1px);
-    animation: none;
-  }
-
-  .expr-wary .companion-brow {
-    width: 9px;
-    opacity: 1;
-  }
-
-  .expr-wary .companion-brow-left {
-    transform: translateY(-1px) rotate(-14deg);
-  }
-
-  .expr-wary .companion-brow-right {
-    top: 10px;
-    transform: rotate(-6deg);
-  }
-
-  .expr-wary .companion-gem {
-    background: var(--case-gem-working);
-  }
-
-  /* sleepy (quiet for a while): eyes shut to a line, the head droops, a
-     dark chip. A slow breathing scale on the body and a drifting 'z'
-     (#1191) are the other continuous expression, alongside working's
-     chip pulse. */
-  .expr-sleepy .companion-eye {
-    width: 5px;
-    height: 1.5px;
-    border-radius: 1px;
-    transform: translate(-0.5px, 1.5px);
-    animation: none;
-  }
-
-  .expr-sleepy .companion-head {
-    transform: rotate(-5deg);
-  }
-
-  .expr-sleepy.companion-body {
-    animation: companionBreathe 3.6s ease-in-out infinite;
-  }
-
-  .expr-sleepy .companion-gem {
-    background: var(--case-gem-sleepy);
-  }
-
-  .expr-sleepy .companion-zzz {
-    display: block;
-    animation: companionZzzFloat 2.4s ease-in-out infinite;
-  }
-
-  /* greeting (returning, or saying hello): a wink (one arc eye, shared
-     with happy above, one wide-open eye), a smile, and a raised paw. */
-  .expr-greeting .companion-eye-right {
-    width: 4.4px;
-    height: 4.4px;
-    animation: none;
-  }
-
-  .expr-greeting .companion-paw {
-    display: block;
-  }
-
-  .expr-greeting .companion-gem {
-    background: var(--case-gem-happy);
-  }
-
-  .companion-body.act-bounce {
-    /* Actions (#1191): a one-shot class the component (lib/companion.ts
-       `companionActionFor`) adds exactly once per transition into its
-       expression, and clears on its own `animationend`. bounce, shake
-       and tilt move the whole meerkat; nod moves only the head and wave
-       only the raised paw — CASE's own gestures. */
-    animation: companionActBounce 0.5s var(--ease-out);
-  }
-
-  .companion-body.act-nod .companion-head {
-    animation: companionActNod 0.6s var(--ease-out);
-  }
-
-  .companion-body.act-shake {
-    animation: companionActShake 0.5s var(--ease-out);
-  }
-
-  .companion-body.act-tilt {
-    animation: companionActTilt 0.6s var(--ease-out);
-  }
-
-  .companion-body.act-wave .companion-paw {
-    animation: companionPawWave 0.6s var(--ease-out) 2;
-  }
-
-  .companion-body.expr-neutral.play-look .companion-eye {
-    /* Idle play (#1191): look/yawn/wink, a few seconds apart while CASE
-       is neutral and idle (lib/companion.ts `companionNextIdle`).
-       Decoration only — it never touches the expression or the badge.
-       The component only ever adds these classes alongside `expr-neutral`
-       (companionIdleEligible), but `idlePlay` is JS state that does not
-       clear itself the instant a real event moves `expression` on while
-       the idle animation is still running — requiring `.expr-neutral`
-       here too, not just on `idlePlay`, is what actually stops a stale
-       look/yawn/wink from fighting a real expression's own mouth/eye
-       shape for the rest of its ~0.5-1.4s. Same guarantee gaze gets from
-       its own `:not(.expr-*)` selector above. */
-    animation: companionLookAround 1.4s ease-in-out;
-  }
-
-  .companion-body.expr-neutral.play-yawn .companion-mouth {
-    display: block;
-    left: 10px;
-    top: 27px;
-    border: 0;
-    border-radius: 50%;
-    background: var(--case-nose);
-    animation: companionYawn 1.2s ease-in-out;
-  }
-
-  .companion-body.expr-neutral.play-wink .companion-eye-right {
-    animation: companionWink 0.5s ease-in-out;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
 
   .companion-shadow {
@@ -1349,7 +988,8 @@
     text-transform: uppercase;
   }
 
-  .companion-close {
+  .companion-close,
+  .companion-menu-toggle {
     width: 24px;
     height: 24px;
     border: 1px solid var(--border-subtle);
@@ -1357,6 +997,43 @@
     background: var(--surface-muted);
     color: var(--secondary-text);
     cursor: pointer;
+  }
+
+  /* The options button sits next to close, both at the header's right. */
+  .companion-menu-toggle {
+    margin-left: auto;
+    line-height: 1;
+  }
+
+  .companion-menu-toggle[aria-expanded='true'] {
+    border-color: rgba(var(--primary-rgb), 0.5);
+    color: var(--primary-text);
+  }
+
+  /* Sleep options (F2): a short list under the header, same weight as a
+     waiting line. */
+  .companion-menu {
+    display: grid;
+    gap: var(--space-1);
+    margin-bottom: var(--space-2);
+  }
+
+  .companion-menu-item {
+    width: 100%;
+    padding: var(--space-2);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    background: var(--surface-muted);
+    color: var(--text-primary);
+    font: inherit;
+    font-size: 0.82rem;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .companion-menu-item:hover,
+  .companion-menu-item:focus-visible {
+    border-color: rgba(var(--primary-rgb), 0.5);
   }
 
   .companion-empty {
@@ -1590,85 +1267,6 @@
     }
   }
 
-  @keyframes companionBlink {
-    0%, 44%, 50%, 100% { scale: 1 1; }
-    47% { scale: 1 0.12; }
-  }
-
-  /* working's continuous chip pulse. */
-  @keyframes companionGemPulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.45; }
-  }
-
-  /* sleepy's continuous breathing + drifting 'z'. */
-  @keyframes companionBreathe {
-    0%, 100% { transform: scale(1); }
-    50% { transform: scale(1.035); }
-  }
-
-  @keyframes companionZzzFloat {
-    0% { opacity: 0; transform: translateY(0); }
-    30% { opacity: 0.75; }
-    100% { opacity: 0; transform: translateY(-8px); }
-  }
-
-  /* One-shot actions (#1191), one per expression that has one: alert
-     bounces, happy nods, upset shakes, wary tilts, greeting waves its
-     paw. */
-  @keyframes companionActBounce {
-    0%, 100% { transform: translateY(0); }
-    30% { transform: translateY(-8px); }
-    55% { transform: translateY(0); }
-    75% { transform: translateY(-3px); }
-  }
-
-  @keyframes companionActNod {
-    0%, 100% { transform: rotate(0deg); }
-    35% { transform: rotate(8deg); }
-    70% { transform: rotate(-3deg); }
-  }
-
-  @keyframes companionActShake {
-    0%, 100% { transform: translateX(0); }
-    20% { transform: translateX(-4px); }
-    40% { transform: translateX(4px); }
-    60% { transform: translateX(-2px); }
-    80% { transform: translateX(2px); }
-  }
-
-  @keyframes companionActTilt {
-    0%, 100% { transform: rotate(0deg); }
-    40% { transform: rotate(-9deg); }
-    75% { transform: rotate(4deg); }
-  }
-
-  @keyframes companionPawWave {
-    0%, 100% { transform: rotate(35deg); }
-    25% { transform: rotate(10deg); }
-    50% { transform: rotate(40deg); }
-    75% { transform: rotate(10deg); }
-  }
-
-  /* Idle play (#1191): look/yawn/wink, each a few hundred ms to a second
-     and a half, purely decorative. */
-  @keyframes companionLookAround {
-    0%, 100% { transform: translateX(0); }
-    25% { transform: translateX(-1.5px); }
-    50% { transform: translateX(0); }
-    75% { transform: translateX(1.5px); }
-  }
-
-  @keyframes companionYawn {
-    0%, 100% { width: 3px; height: 1px; }
-    50% { width: 4px; height: 4px; }
-  }
-
-  @keyframes companionWink {
-    0%, 100% { scale: 1 1; }
-    50% { scale: 1 0.1; }
-  }
-
   @media (max-width: 700px) {
     .companion-pet {
       right: var(--space-3);
@@ -1687,19 +1285,7 @@
      this one-for-one). */
   @media (prefers-reduced-motion: reduce) {
     .companion-figure,
-    .companion-eye,
     .companion-bubble,
-    .expr-working .companion-gem,
-    .expr-sleepy.companion-body,
-    .expr-sleepy .companion-zzz,
-    .companion-body.act-bounce,
-    .companion-body.act-nod .companion-head,
-    .companion-body.act-shake,
-    .companion-body.act-tilt,
-    .companion-body.act-wave .companion-paw,
-    .companion-body.expr-neutral.play-look .companion-eye,
-    .companion-body.expr-neutral.play-yawn .companion-mouth,
-    .companion-body.expr-neutral.play-wink .companion-eye-right,
     .companion-qa-cursor {
       animation: none;
     }

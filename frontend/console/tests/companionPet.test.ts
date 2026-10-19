@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { readFileSync, statSync } from 'node:fs'
 
 import {
   COMPANION_EXPRESSIONS,
@@ -32,8 +32,14 @@ import {
   companionShouldAutoClose,
   companionShouldOpen,
   companionShouldRecordInput,
+  companionSleepActive,
+  companionSleepFor,
+  companionSleepFromStorage,
+  companionSleepToStorage,
   companionState,
+  companionTalk,
   companionTurnsJustFinished,
+  COMPANION_SLEEP_HOUR_MS,
   companionWaitingKeys,
   companionWarningFromEvent,
   pruneFailures,
@@ -45,10 +51,15 @@ import {
   type CompanionServerCue,
 } from '../src/lib/companion.ts'
 import { companionEn } from '../src/i18n/sections/companion.ts'
+import { caseFigureStyle, caseFrameFor } from '../src/lib/caseFigure.ts'
+import { caseSprite } from '../src/lib/caseSprite.generated.ts'
 import type { ActivityMap } from '../src/lib/sessionBoard.ts'
 
 const appSource = readFileSync(new URL('../src/App.svelte', import.meta.url), 'utf8')
 const componentSource = readFileSync(new URL('../src/components/CompanionPet.svelte', import.meta.url), 'utf8')
+// CASE's body (case-companion phase 1.5): the sprite, the screen face, the
+// LED and every expression/action/idle style. CompanionPet owns the state.
+const figureSource = readFileSync(new URL('../src/components/CaseFigure.svelte', import.meta.url), 'utf8')
 const helperSource = readFileSync(new URL('../src/lib/companion.ts', import.meta.url), 'utf8')
 
 const now = Date.parse('2026-05-19T00:00:00Z')
@@ -141,7 +152,7 @@ test('idle play never outlives a real expression change: cleared in JS, and its 
   // change that forgets the effect above) must still never apply a
   // look/yawn/wink animation on top of a real, non-neutral expression's
   // own eye/mouth shape.
-  const style = componentSource.slice(componentSource.indexOf('<style>'))
+  const style = figureSource.slice(figureSource.indexOf('<style>'))
   const rules = companionLeafRules(style)
   const playSelectors = rules
     .flatMap((rule) => rule.selectors)
@@ -192,7 +203,7 @@ test('companion pet is a floating console presence with a waiting-list bubble', 
   assert.match(componentSource, /bottom:\s*var\(--space-5\);/)
   assert.match(componentSource, /right:\s*var\(--space-5\);/)
   assert.match(componentSource, /pointer-events:\s*auto;/)
-  assert.match(componentSource, /@keyframes companionBlink/)
+  assert.match(figureSource, /@keyframes companionBlink/)
 })
 
 test('a failure line can be dismissed without navigating, and navigating away dismisses it too', () => {
@@ -398,46 +409,165 @@ test('COMPANION_EXPRESSIONS lists exactly the eight expressions once each', () =
 
 test('every expression has its own face shape rule in the component styles', () => {
   for (const expression of COMPANION_EXPRESSIONS) {
-    assert.match(componentSource, new RegExp(`\\.expr-${expression}\\b`), `no .expr-${expression} rule in CompanionPet.svelte`)
+    assert.match(figureSource, new RegExp(`\\.expr-${expression}\\b`), `no .expr-${expression} rule in CaseFigure.svelte`)
   }
 })
 
-test('CASE is a meerkat drawn from spans: every part is in the markup, and no antenna is left (case-companion phase 1)', () => {
-  const bodyMarkup = componentSource.slice(componentSource.indexOf('class={`companion-body'), componentSource.indexOf('{#if snapshot.badge > 0}'))
+test('CASE is a robot: a sprite body plus a CSS face on its screen, every part in the markup (case-companion phase 1.5)', () => {
+  const bodyMarkup = figureSource.slice(figureSource.indexOf('class={`companion-body'), figureSource.indexOf('<style>'))
   for (const part of [
-    'companion-ear-left',
-    'companion-ear-right',
-    'companion-torso',
-    'companion-laptop',
-    'companion-head',
-    'companion-skull',
+    'companion-sprite',
+    'companion-screen',
     'companion-brow-left',
     'companion-brow-right',
-    'companion-patch-left',
-    'companion-patch-right',
     'companion-eyes',
     'companion-eye-left',
     'companion-eye-right',
-    'companion-nose',
-    'companion-mouth',
-    'companion-paw',
+    'companion-progress',
     'companion-gem',
     'companion-zzz',
   ]) {
     assert.match(bodyMarkup, new RegExp(`class="[^"]*\\b${part}\\b`), `${part} is missing from .companion-body`)
   }
-  assert.doesNotMatch(bodyMarkup, /<img|<svg/)
-  assert.doesNotMatch(componentSource, /companion-antenna/)
+  // CompanionPet only mounts the figure; it draws none of it.
+  const figureMount = componentSource.slice(componentSource.indexOf('<CaseFigure'), componentSource.indexOf('/>', componentSource.indexOf('<CaseFigure')))
+  for (const prop of ['{expression}', '{action}', '{idlePlay}', 'gaze={gazeOffset}', '{talk}', 'asleep={sleeping}', '{booting}', 'onanimationend={handleBodyAnimationEnd}']) {
+    assert.ok(figureMount.includes(prop), `CaseFigure is mounted without ${prop}`)
+  }
+  assert.doesNotMatch(componentSource, /class="companion-eye/)
 })
 
-test('a state colour rides only on the chest chip (and working\'s laptop screen), never on the face', () => {
-  const style = componentSource.slice(componentSource.indexOf('<style>')).replace(/\/\*[\s\S]*?\*\//g, '')
+test('CASE\'s only image is the sprite sheet under src/assets/case/ — no <img>, inline SVG, external URL or data URI', () => {
+  for (const source of [figureSource, componentSource]) {
+    assert.doesNotMatch(source, /<img|<svg/)
+    assert.doesNotMatch(source, /url\(\s*['"]?(https?:|data:)/)
+  }
+  const imports = [...figureSource.matchAll(/import \w+ from '([^']+\.(?:webp|png|jpe?g|gif|svg|avif))'/g)].map((m) => m[1])
+  assert.deepEqual(imports, ['../assets/case/case-bot.webp'])
+})
+
+test('the sprite sheet stays small (150 KB budget)', () => {
+  const bytes = statSync(new URL('../src/assets/case/case-bot.webp', import.meta.url)).size
+  assert.ok(bytes > 0 && bytes <= 150 * 1024, `case-bot.webp is ${bytes} bytes`)
+})
+
+test('every pose frame the figure CSS names exists in the generated sprite layout', () => {
+  const frames = new Set([...figureSource.matchAll(/--case-frame-(\w+)\)/g)].map((m) => m[1]))
+  const leds = new Set([...figureSource.matchAll(/--case-led-(\w+)-[xyr]\)/g)].map((m) => m[1]))
+  assert.ok(frames.size > 0 && leds.size > 0, 'expected the CSS to name pose frames and LEDs')
+  for (const frame of frames) {
+    assert.ok((caseSprite.frames as readonly string[]).includes(frame), `the CSS names frame "${frame}" that the sheet does not have`)
+  }
+  for (const frame of leds) {
+    assert.ok(frame in caseSprite.led, `the CSS places the LED of frame "${frame}", which has no LED position`)
+  }
+})
+
+test('caseFrameFor mirrors the frame the figure CSS picks for each state', () => {
+  // The CSS: `.companion-body.expr-<name> { --frame: var(--case-frame-<f>) }`
+  // for the poses, base otherwise; talking stands at base; asleep is off.
+  const style = figureSource.slice(figureSource.indexOf('<style>')).replace(/\/\*[\s\S]*?\*\//g, '')
+  const cssFrame = new Map<string, string>()
+  for (const m of style.matchAll(/\.companion-body\.expr-(\w+)\s*\{[^}]*--frame:\s*var\(--case-frame-(\w+)\)/g)) cssFrame.set(m[1], m[2])
+  assert.ok(cssFrame.size >= 3, 'expected expression pose rules in the CSS')
+  for (const expression of COMPANION_EXPRESSIONS) {
+    assert.equal(caseFrameFor(expression, null, false), cssFrame.get(expression) ?? 'base', `expr-${expression}`)
+  }
+  assert.match(style, /\.companion-body\.expr-working\.talk-speaking\s*\{[^}]*--frame:\s*var\(--case-frame-base\)/)
+  assert.equal(caseFrameFor('working', 'speaking', false), 'base')
+  assert.equal(caseFrameFor('working', 'thinking', false), 'base')
+  assert.match(style, /\.companion-body\.is-asleep\s*\{[^}]*--frame:\s*var\(--case-frame-off\)/)
+  for (const expression of COMPANION_EXPRESSIONS) assert.equal(caseFrameFor(expression, null, true), 'off')
+})
+
+test('companionTalk: thinking until the answer\'s first text, then speaking; only over CASE\'s own working face', () => {
+  assert.equal(companionTalk('working', false, '', false), null)
+  assert.equal(companionTalk('working', true, '', false), 'thinking')
+  assert.equal(companionTalk('working', true, 'Hel', false), 'speaking')
+  // Answered in the main session's own thread: `answer` stays empty there.
+  assert.equal(companionTalk('working', true, '', true), 'speaking')
+  // A failure or approval wait outranks the ask override: no overlay.
+  assert.equal(companionTalk('alert', true, 'x', false), null)
+  assert.equal(companionTalk('upset', true, '', false), null)
+})
+
+test('sleep: an hour ends by itself, "until the next alert" does not, and storage is read defensively', () => {
+  const hour = companionSleepFor('hour', now)
+  assert.deepEqual(hour, { mode: 'hour', until: now + COMPANION_SLEEP_HOUR_MS })
+  assert.equal(companionSleepActive(hour, now + COMPANION_SLEEP_HOUR_MS - 1), true)
+  assert.equal(companionSleepActive(hour, now + COMPANION_SLEEP_HOUR_MS), false)
+  const untilAlert = companionSleepFor('next-alert', now)
+  assert.deepEqual(untilAlert, { mode: 'next-alert', until: null })
+  assert.equal(companionSleepActive(untilAlert, now + 7 * 24 * COMPANION_SLEEP_HOUR_MS), true)
+  assert.equal(companionSleepActive(null, now), false)
+
+  // Round trip.
+  assert.deepEqual(companionSleepFromStorage(companionSleepToStorage(hour), now), hour)
+  assert.deepEqual(companionSleepFromStorage(companionSleepToStorage(untilAlert), now), untilAlert)
+  assert.equal(companionSleepToStorage(null), null)
+  // Over, malformed, or someone else's value: no sleep.
+  assert.equal(companionSleepFromStorage(companionSleepToStorage(hour), now + COMPANION_SLEEP_HOUR_MS), null)
+  assert.equal(companionSleepFromStorage(null, now), null)
+  assert.equal(companionSleepFromStorage('not json', now), null)
+  assert.equal(companionSleepFromStorage('"hour"', now), null)
+  assert.equal(companionSleepFromStorage('{"mode":"hour"}', now), null)
+  assert.equal(companionSleepFromStorage('{"mode":"forever"}', now), null)
+})
+
+test('CASE wakes for a new alert, keeps quiet for a server line, and wakes on a click', () => {
+  // The auto-open effect wakes it before opening the bubble.
+  const openStart = componentSource.indexOf('if (companionShouldOpen(primed, prevWaitingKeys, lines)) {')
+  assert.ok(openStart > 0)
+  assert.match(componentSource.slice(openStart, openStart + 400), /wake\(\)/)
+  // A server line does not pop the bubble while asleep.
+  assert.match(componentSource, /if \(serverCue\.line && !sleeping\)/)
+  // Clicking a sleeping CASE wakes it.
+  const toggle = componentSource.slice(componentSource.indexOf('function toggleOpen()'), componentSource.indexOf('function closeBubble()'))
+  assert.match(toggle, /if \(sleeping\) \{\s*wake\(\)/)
+  // No actions, idle play or gaze while asleep.
+  assert.match(componentSource, /if \(next && !prefersReducedMotion && !sleeping\) action = next/)
+  assert.match(componentSource, /!prefersReducedMotion && !sleeping && companionIdleEligible/)
+  assert.match(componentSource, /!companionGazeApplies\(expression\) \|\| sleeping/)
+  // Storage is touched only inside try/catch.
+  for (const call of ['localStorage.getItem', 'localStorage.setItem', 'localStorage.removeItem']) {
+    const at = componentSource.indexOf(call)
+    assert.ok(at > 0, `${call} missing`)
+    const tryAt = componentSource.lastIndexOf('try {', at)
+    assert.ok(tryAt > 0 && at < componentSource.indexOf('} catch', tryAt), `${call} outside try`)
+  }
+})
+
+test('a state colour rides only on the antenna LED, never on the face', () => {
+  const style = figureSource.slice(figureSource.indexOf('<style>')).replace(/\/\*[\s\S]*?\*\//g, '')
   for (const rule of companionLeafRules(style)) {
     if (!/var\(--case-gem-/.test(rule.body)) continue
     for (const sel of rule.selectors) {
-      assert.match(sel, /\.companion-(gem|laptop)\b/, `${sel} carries a state colour outside the chest chip`)
+      assert.match(sel, /\.companion-gem\b/, `${sel} carries a state colour outside the antenna LED`)
     }
   }
+})
+
+test('the eyes and brows are one colour in every expression — they differ by shape only', () => {
+  const style = figureSource.slice(figureSource.indexOf('<style>')).replace(/\/\*[\s\S]*?\*\//g, '')
+  for (const rule of companionLeafRules(style)) {
+    if (!rule.selectors.some((sel) => /\.companion-(eye|brow)\b/.test(sel))) continue
+    for (const decl of companionDeclarations(rule.body)) {
+      if (!/^(background|background-color|border|border-color|border-top|color)$/.test(decl.prop)) continue
+      assert.match(decl.value, /^(var\(--case-eye\)|transparent|2\.5px solid var\(--case-eye\))$/, `${rule.selectors.join(', ')} sets ${decl.prop}: ${decl.value}`)
+    }
+  }
+})
+
+test('caseFigureStyle scales the sprite layout from cells to display pixels', () => {
+  const sprite = { cell: 128, frames: ['base', 'alert'], screen: [40, 20, 48, 36], led: { base: [64, 10, 3], alert: [64, 6, 3] } }
+  const style = caseFigureStyle('/x.webp', sprite, 64)
+  assert.match(style, /--case-sheet: url\("\/x\.webp"\)/)
+  assert.match(style, /--case-sheet-width: 128px/)
+  assert.match(style, /--case-frame-base: 0px/)
+  assert.match(style, /--case-frame-alert: -64px/)
+  assert.match(style, /--case-screen-x: 20px; --case-screen-y: 10px/)
+  assert.match(style, /--case-screen-w: 24px; --case-screen-h: 18px/)
+  assert.match(style, /--case-led-alert-x: 32px; --case-led-alert-y: 3px; --case-led-alert-r: 1.5px/)
 })
 
 test('companionFailedSessionIds collects session ids from recent failures only', () => {
@@ -752,12 +882,13 @@ test('companionActionFor plays once on a transition into an action expression, a
   assert.equal(companionActionFor('alert', 'neutral'), null)
 })
 
-test('companionNextIdle picks a 60–180s delay and a look/yawn/wink kind from an injected random source, deterministically', () => {
+test('companionNextIdle picks a 60–180s delay and a look/yawn/wink/scan kind from an injected random source, deterministically', () => {
   assert.deepEqual(companionNextIdle(() => 0), { delayMs: 60_000, kind: 'look' })
-  assert.deepEqual(companionNextIdle(() => 0.999), { delayMs: 179_880, kind: 'wink' })
+  assert.deepEqual(companionNextIdle(() => 0.999), { delayMs: 179_880, kind: 'scan' })
+  assert.equal(companionNextIdle(() => 0.3).kind, 'yawn')
   const mid = companionNextIdle(() => 0.5)
   assert.equal(mid.delayMs, 120_000)
-  assert.equal(mid.kind, 'yawn')
+  assert.equal(mid.kind, 'wink')
 })
 
 test('companionIdleEligible requires neutral, nothing waiting, and a closed bubble', () => {
@@ -991,8 +1122,10 @@ function companionSelectorsWhere(
   return set
 }
 
-test('companion honours prefers-reduced-motion for every animated or transitioning selector', () => {
-  const style = componentSource.slice(componentSource.indexOf('<style>'))
+for (const [name, source] of [['CompanionPet', componentSource], ['CaseFigure', figureSource]] as const) test(`${name} honours prefers-reduced-motion for every animated or transitioning selector`, () => {
+  // Comments go: one sitting just before a selector would otherwise read as
+  // part of that selector.
+  const style = source.slice(source.indexOf('<style>')).replace(/\/\*[\s\S]*?\*\//g, '')
   const reducedStart = style.indexOf('@media (prefers-reduced-motion: reduce)')
   assert.ok(reducedStart > 0, 'reduced-motion block is missing')
   const outsideRules = companionLeafRules(style.slice(0, reducedStart))

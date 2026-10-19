@@ -2,6 +2,8 @@
   import { onMount, onDestroy, untrack } from 'svelte'
   import Shell from './components/Shell.svelte'
   import CompanionPet from './components/CompanionPet.svelte'
+  import CaseBridge from './components/CaseBridge.svelte'
+  import { caseBridge } from './lib/stores/caseBridge'
   import Home from './components/Home.svelte'
   import SessionBoard from './components/SessionBoard.svelte'
   import Onboarding from './components/Onboarding.svelte'
@@ -399,6 +401,7 @@
       { id: 'action:toggle-sidebar', group: 'action', title: tr.palette.actions.toggleSidebar, shortcut: 'toggle-sidebar', run: () => openOnChat(() => chatDock.toggle('sessions')) },
       { id: 'action:toggle-terminal', group: 'action', title: tr.palette.actions.toggleTerminal, shortcut: 'toggle-terminal', run: () => requestChat({ kind: 'toggle-terminal' }) },
       { id: 'action:toggle-zen', group: 'action', title: tr.palette.actions.toggleZen, shortcut: 'toggle-zen', run: () => openOnChat(() => zenMode.toggle()) },
+      ...(showCompanion ? [{ id: 'action:case-bridge', group: 'action' as const, title: tr.palette.actions.caseBridge, shortcut: 'case-bridge' as const, run: () => caseBridge.show() }] : []),
       { id: 'action:shortcuts', group: 'action', title: tr.palette.actions.shortcuts, shortcut: 'help', run: () => overlays.openHelp() },
     ]
     // The terminal needs a tab to show, which the toggle action handles.
@@ -460,6 +463,10 @@
         return
       case 'toggle-zen':
         zenMode.toggle()
+        return
+      case 'case-bridge':
+        // CASE's Bridge goes with CASE: off when the companion is off.
+        if (showCompanion) caseBridge.toggle()
         return
     }
   }
@@ -740,6 +747,7 @@
         onNavigate={navigate}
         onDismissFailure={handleDismissCompanionFailure}
       />
+      <CaseBridge route={route} onNavigate={navigate} />
     {/if}
   </Shell>
   {#if paletteOpen}

@@ -24,6 +24,7 @@ import type { ContextPanelsTranslations } from './sections/contextPanels.ts'
 import type { TasksPanelTranslations } from './sections/tasksPanel.ts'
 import type { AgentRuntimeRunTranslations } from './sections/agentRuntimeRun.ts'
 import type { CompanionTranslations } from './sections/companion.ts'
+import type { CaseBridgeTranslations } from './sections/caseBridge.ts'
 import type { ConfigTranslations } from './sections/config.ts'
 import type { RemoteAccessTranslations } from './sections/remoteAccess.ts'
 
@@ -88,6 +89,7 @@ export type Translations = {
       toggleSidebar: string
       toggleTerminal: string
       toggleZen: string
+      caseBridge: string
       shortcuts: string
     }
     panel: (name: string) => string
@@ -98,7 +100,7 @@ export type Translations = {
     title: string
     close: string
     note: string
-    actions: Record<'palette' | 'help' | 'new-session' | 'switch-session' | 'toggle-terminal' | 'toggle-sidebar' | 'toggle-zen', string>
+    actions: Record<'palette' | 'help' | 'new-session' | 'switch-session' | 'toggle-terminal' | 'toggle-sidebar' | 'toggle-zen' | 'case-bridge', string>
   }
   statusBar: {
     label: string
@@ -1455,4 +1457,5 @@ export type Translations = {
   tasksPanel: TasksPanelTranslations
   agentRuntimeRun: AgentRuntimeRunTranslations
   companion: CompanionTranslations
+  caseBridge: CaseBridgeTranslations
 }

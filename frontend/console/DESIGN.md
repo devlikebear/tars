@@ -494,26 +494,33 @@ Motion is decoration, never the only signal. Every repeating or decorative anima
 
 ### CASE's expressions
 
-CASE is an on-call meerkat (case-companion phase 1): it stands watch, and its chest chip shows the state. It is CSS and markup only (`CompanionPet.svelte`): plain spans on a 64×64 grid, with no image, SVG, font icon or animation-library asset, ever. The design reference is `docs/plans/case-companion/design/html/case-face.html`. Every part is always in the DOM. One class on `.companion-body`, `expr-<name>`, changes their shape. That class comes from the pure function `companionExpression` in `lib/companion.ts`.
+CASE is a companion robot, TARS's counterpart (case-companion phase 1.5, which replaced the phase 1 meerkat): a small two-panel slab with a screen for a face and an antenna LED for its state. It is drawn in two layers (`CaseFigure.svelte`):
 
-Parts: ears (`.companion-ear-left/right`), torso, head (`.companion-head` holding skull, brows, eye patches, eyes, nose and mouth), working's laptop, greeting's raised paw, the chest chip (`.companion-gem`) and sleepy's `z`. The meerkat's colours are local custom properties on `.companion-body` (`--case-*`), never global tokens.
+- **Body**: one raster sprite sheet, `src/assets/case/case-bot.webp` — one row of 128px cells shown at 64×64. The frames were drawn with codex CLI image generation and built by `scripts/case_sprites.py`, which also writes `lib/caseSprite.generated.ts` (frame order, the screen rectangle, the LED per frame). `lib/caseFigure.ts` turns that layout into custom properties on `.companion-body`, so a regenerated sheet needs no hand-edited pixel values. This sheet is the only image CASE may use: no `<img>`, inline SVG, external URL, data URI, font icon, GIF/APNG/Lottie or JS frame loop (`tests/companionPet.test.ts` checks the source and a 150 KB budget). The sources, prompts and pipeline notes live in `docs/plans/case-companion/design/v2/`.
+- **Face and LED**: CSS spans on top of the sprite. The face sits inside the screen rectangle and is sized in percent of it; the LED (`.companion-gem`) sits over the sprite's own grey LED.
 
-A state colour rides only on the chest chip (and working's laptop screen line). Nothing on the face carries colour as its only difference: two expressions that differed only in chip colour would be one expression, not two. `tests/companionPet.test.ts` checks that no other selector uses a `--case-gem-*` colour. Brows stay invisible unless they carry meaning (`alert`/`upset`/`wary`). Elsewhere a faint brow line is just noise. The eye patches are always there, and the pupils inside them change shape.
+Every part is always in the DOM. One class on `.companion-body`, `expr-<name>`, picks both the face shape and the pose frame — CSS only, nothing from JS — so a clone with another `expr-*` class draws that expression (the e2e galleries rely on this). That class comes from the pure function `companionExpression` in `lib/companion.ts`. `CompanionPet.svelte` owns the state, timers and listeners and only mounts `CaseFigure`.
+
+Parts: the sprite (`.companion-sprite`), the screen (`.companion-screen` holding brows, eyes and working's progress line), the antenna LED (`.companion-gem`) and sleepy's `z`. CASE's colours are local custom properties on `.companion-body` (`--case-*`), never global tokens.
+
+Pose frames: `base` (most expressions), `alert` (antenna shoots up, arms swing out), `working` (arms forward), `wave`/`wave2` (greeting's raised arm), `off` (antenna folded flat, arms tucked: asleep, and the first beat of booting). Every pose is an edit of the blank-screen master, and only its arm or antenna region is composited onto the master, so the body and screen are pixel-identical in every frame and a pose change does not shimmer.
+
+A state colour rides only on the antenna LED. The eyes are always the one signal green (`--case-eye`), so nothing on the face carries colour as its only difference: two expressions that differed only in LED colour would be one expression, not two. `tests/companionPet.test.ts` checks that no other selector uses a `--case-gem-*` colour and that no eye or brow rule sets another colour. Brows stay invisible unless they carry meaning (`alert`/`upset`/`wary`); elsewhere a brow line is just noise. Brows are at least 2px tall so they still read at 64px.
 
 Eight expressions:
 
-| Expression | Eyes | Brows | Mouth · pose | Chip |
+| Expression | Eyes (on the screen) | Brows | Pose | LED |
 |---|---|---|---|---|
-| `neutral` | round pupils, blinking | hidden | none | grey |
-| `working` | small pupils glancing down | hidden | holds a laptop | amber, pulsing |
-| `alert` | big, stop blinking | both lift | ears prick up | orange |
-| `happy` | ∩ arcs | hidden | smile | green |
-| `upset` | small | both furrow down toward the middle | frown | orange |
-| `wary` | squint, glancing sideways | one raised, one lowered | none | amber |
-| `sleepy` | shut to a line | hidden | head droops, a `z` floats | dark grey |
-| `greeting` | a wink (one arc, one wide) | hidden | smile, raised paw | green |
+| `neutral` | rounded rectangles, blinking | hidden | base | grey |
+| `working` | narrowed, glancing down at a running progress line | hidden | arms forward | amber, pulsing |
+| `alert` | big, stop blinking | both lift | antenna up, arms out | orange |
+| `happy` | ∩ arcs | hidden | base | green |
+| `upset` | small dots | both furrow down toward the middle | base | orange |
+| `wary` | one squinted, both glancing sideways | one raised, one lowered | base | amber |
+| `sleepy` | shut to dim lines | hidden | leans (static `rotate`), a `z` floats | dark grey |
+| `greeting` | a wink (one arc, one wide) | hidden | one arm raised | green |
 
-Each expression differs from its nearest neighbour in at least two shapes, not just a small nudge. `alert` and `upset` share the chip colour, so they differ in eye size, brow direction and mouth all at once.
+Each expression differs from its nearest neighbour in at least two shapes, not just a small nudge. `alert` and `upset` share the LED colour, so they differ in eye size, brow direction and pose all at once.
 
 What picks the expression — `companionExpression(snapshot, cues?)`, pure, tested in `tests/companionPet.test.ts`:
 
@@ -523,7 +530,7 @@ What picks the expression — `companionExpression(snapshot, cues?)`, pure, test
 
 The six old moods (`idle`/`spark`/`focus`/`warn`/`error`/`success`) are gone; they mapped onto these eight one-to-one or were never produced (`spark`, `success`) and would otherwise be dead code sitting next to the real thing.
 
-`prefers-reduced-motion: reduce` stops the float and blink, same as any other decorative animation here — the expression itself is read from shape alone, not from the motion that goes with it.
+`prefers-reduced-motion: reduce` stops the float and blink, same as any other decorative animation here — the expression itself is read from shape alone, not from the motion that goes with it. Sleepy's lean is a static `rotate`, separate from its breathing `transform`, so it holds with motion off.
 
 ### Cues (#1191)
 
@@ -569,6 +576,18 @@ Before sending (either path), the console checks `GET /v1/chat/activity` for the
 
 Removed: the old handoff (`navigateWithPrompt`'s `context` argument, `aiContext`, `initialContext` on `Chat.svelte`/`ChatPanel.svelte`, `pendingConsoleContext`, the "Companion context attached" chip) that opened a new session and copied the words into its composer. `navigateWithPrompt(prompt)` itself stays — `MemoryCenter.svelte`'s "Ask AI" still uses it, now prompt-only.
 
+### CASE's Bridge (case-companion phase 2)
+
+A panel for asking CASE about TARS as a whole (`CaseBridge.svelte`, `lib/stores/caseBridgeStore.svelte.ts`, decision record `docs/decisions/case-bridge.md`). Mod+/ toggles it on every screen; the palette and **Ask about TARS** in the bubble's options menu (⋯) open it too — a menu item, not a line under the input, so the bubble that opens by itself never grows over the needs-input bar's buttons. It goes with CASE: when the companion is off (config, zen mode, setup, login) the panel and its shortcut are off.
+
+- **Place.** A panel on the right edge, 480px wide, `top/right/bottom: --space-4`, z-index 95 — above the page and CASE (90), below the palette and help. Full screen below 900px. Same surface recipe as CASE's bubble (signal-green border tint, elevated surface, the bubble's shadow). Opening the Bridge from the bubble closes the bubble so the two never stack in one corner. Escape closes the panel.
+- **Header.** CASE's own figure at 64px (`CaseFigure`) — neutral at rest, `working` with the thinking/speaking overlay while an answer streams — then "Bridge" and a one-line subtitle, and a close button.
+- **Context row.** "Looking at: <screen>" and a two-button scope toggle (All of TARS / This screen). "This screen" is enabled only where a chat or a focus pipeline is on screen; elsewhere a question is about all of TARS.
+- **Conversation.** This page's questions (muted, bold, small) and answers (body text, `pre-wrap`), plain text only — never HTML. While an answer streams, the `<case-cards>` block is never shown, not even half-typed (`caseBridgeVisibleText`). Before the first text, "Reading the status...". An error is one line in `--error`.
+- **Cards.** Up to four under an answer, each a full-width button: a mono severity label ("Needs you" in `--error` with an error-tinted border, or "Info"), the title, and a muted second line. Clicking goes to the card's screen and closes the panel. The server builds every link; the console never takes a URL from the model.
+- **Follow-up chips.** Up to three pill buttons under the conversation when nothing is streaming: one per kind of card the last answer pointed at, then "Is anything stuck?" and "What changed in the last hour?" (`caseBridgeFollowUps`). A chip sends its text as the next question.
+- **Input.** One line and an Ask button; disabled while an answer streams. The panel keeps the last 20 exchanges of this page; the first open on a page brings back the last answer the server holds.
+
 ### Actions (#1191)
 
 A one-shot animation plays exactly once when the expression *changes* into one of five, and does not replay while that expression holds (`companionActionFor(previousExpression, expression)` in `lib/companion.ts`, a pure table lookup; the component tracks `previousExpression` and clears the action on its own CSS `animationend`, matched by name so an unrelated animation bubbling up — blink, breathe — never clears it early):
@@ -576,20 +595,34 @@ A one-shot animation plays exactly once when the expression *changes* into one o
 | Expression | Action | Where it plays |
 |---|---|---|
 | `alert` | bounce | `.companion-body` |
-| `happy` | nod | `.companion-head` |
+| `happy` | nod | `.companion-body` (a short dip) |
 | `upset` | shake | `.companion-body` |
 | `wary` | tilt | `.companion-body` |
-| `greeting` | wave | `.companion-paw`, the raised front paw (CASE's own gesture, not the body nudging it) |
+| `greeting` | wave | `.companion-sprite`, flipping between the `wave` and `wave2` frames (`step-end`, so the arm jumps between two positions instead of the sheet sliding) |
 
-`working` and `sleepy` have no one-shot action; they are the two *continuous* states instead, repeating for as long as they hold: working's chest chip pulses, sleepy's body breathes (a slow scale) alongside a drifting `z` (`.companion-zzz`, hidden everywhere else, CSS only).
+`working` and `sleepy` have no one-shot action; they are the two *continuous* states instead, repeating for as long as they hold: working's LED pulses and its progress line runs, sleepy's body breathes (a slow scale) alongside a drifting `z` (`.companion-zzz`, hidden everywhere else, CSS only).
+
+### Changing shape (case-companion phase 1.5)
+
+An expression change morphs the face instead of snapping it: the eyes and brows transition their position, size, corner radius, opacity and tilt over 180ms on one easing token, `--case-ease` (a small overshoot, so the change reads as the robot reacting). A pose change cross-fades: the CSS switches the sprite frame at once and a second layer, `.companion-sprite-prev`, showing the frame from a moment ago fades out on top over 180ms. `CaseFigure` adds that layer when `caseFrameFor(expression, talk, asleep)` (`lib/caseFigure.ts`, a mirror of the CSS's frame choice that `tests/companionPet.test.ts` checks against the stylesheet) changes, and drops it on its own `animationend`. Under reduced motion the transitions are off and the layer is not shown — the new shape and pose appear at once.
+
+### Talking (case-companion phase 1.5)
+
+While CASE's own bubble answer streams, its face is forced to `working` (above) and `companionTalk(expression, asking, answer, inThread)` (`lib/companion.ts`, pure) adds an overlay class: `talk-thinking` until the first text arrives, then `talk-speaking` (from the start when the answer goes into the main session's own thread, where the bubble never sees the text). It is an overlay, not a ninth expression: `companionExpression`'s table and the override's priority are unchanged, and a failure or approval wait that outranks the override shows its own face with no overlay. Both states stand up straight (`base` pose) and drop the progress line; thinking glances up and sways the eyes, speaking shows three sound-wave bars under the eyes (`.companion-wave`). The LED keeps working's amber pulse.
+
+### Sleep and boot (case-companion phase 1.5)
+
+The bubble header's options button (`.companion-menu-toggle`, "CASE options") opens two choices: sleep for an hour, or sleep until something needs CASE (`companionSleepFor`). The choice is a per-viewer convenience, kept in `localStorage` under `tars.case.sleep` (`companionSleepToStorage`/`companionSleepFromStorage`, every access in try/catch; a malformed or expired value reads as awake). Asleep (`.is-asleep`): the `off` pose, the face, LED and `z` hidden, no lean or breathing, and the screen's light collapses to a dot once (`.companion-screen::after`). No actions, idle play or gaze run, and a server line does not open the bubble. The badge stays. A screen reader hears "CASE is asleep" from the status line.
+
+It wakes when an hour's sleep runs out, when a new approval wait or failure arrives (the same edge that opens the bubble by itself, in both modes), or when the user clicks it (which also opens the bubble). Waking, and every arrival (opening the console, or a tab coming back after ten minutes), plays a one-shot boot (`.is-booting`): the `off` pose for a beat, a scan line sweeping down the screen, then the face and LED coming on; greeting's wave waits until the boot is done. The component clears the class on `companionBootFrame`'s `animationend`, and never sets it under reduced motion.
 
 ### Idle play (#1191)
 
-While CASE is `neutral`, nothing is waiting, and the bubble is closed (`companionIdleEligible`), it plays a short look-around, yawn, or wink every 60–180 seconds (`companionNextIdle(random)`, pure — the delay and the kind both come from an injected `() => number` so the schedule is deterministic under test; the component injects `Math.random`). Purely decorative: it never changes the expression or the badge. A real event can still move `expression` off neutral while a look/yawn/wink is mid-flight, and unlike the one-shot actions above, these animate the same eye/mouth width, height and border-radius an expr-* rule also sets — so staying alongside `expr-neutral` is enforced twice, not just intended: the CSS itself is scoped (`.companion-body.expr-neutral.play-look .companion-eye`, and so on), and the component clears `idlePlay` the instant `expression` leaves neutral rather than waiting for the animation's own end (which would not come anyway — losing `.expr-neutral` cancels it instead of finishing it).
+While CASE is `neutral`, nothing is waiting, and the bubble is closed (`companionIdleEligible`), it plays a short look-around, yawn, wink or scan (the eyes sweep left and right and the LED blinks once) every 60–180 seconds (`companionNextIdle(random)`, pure — the delay and the kind both come from an injected `() => number` so the schedule is deterministic under test; the component injects `Math.random`). Purely decorative: it never changes the expression or the badge. A real event can still move `expression` off neutral while a look/yawn/wink is mid-flight, and unlike the one-shot actions above, these animate the same eye shape an expr-* rule also sets (look and scan move the eyes, yawn squeezes them flat, wink closes one) — so staying alongside `expr-neutral` is enforced twice, not just intended: the CSS itself is scoped (`.companion-body.expr-neutral.play-look .companion-eye`, and so on), and the component clears `idlePlay` the instant `expression` leaves neutral rather than waiting for the animation's own end (which would not come anyway — losing `.expr-neutral` cancels it instead of finishing it).
 
 ### Cursor gaze (#1191)
 
-When the pointer is within 200px of CASE's centre, the eyes lean up to 3px toward it, scaling linearly with distance and clamped at both ends (`companionGazeOffset`, pure geometry — no DOM). `CompanionPet.svelte` batches `pointermove` into one `requestAnimationFrame` via a `passive` listener and writes `--eye-x`/`--eye-y` custom properties on `.companion-eyes`; the eyes consume them with the separate `translate` property (not `transform`), so the lean composes with whatever an expression's own `transform` already does (working's downward glance, wary's side-eye) instead of replacing it; the blink animates `scale`, a third independent property. The pupils sit inside 9px eye patches, so the stylesheet scales the lean to 60% to keep them inside. Four expressions whose eyes are not pupil-shaped — `happy`, `upset`, `sleepy`, `greeting` (arcs, small dots, closed lines, a wink) — never get a lean; that is a CSS selector guarantee (`.companion-body:not(.expr-happy):not(.expr-upset):not(.expr-sleepy):not(.expr-greeting) .companion-eye`), not just the component's own `companionGazeApplies` check, so a stale offset can never leak onto one of those four.
+When the pointer is within 200px of CASE's centre, the eyes lean up to 3px toward it, scaling linearly with distance and clamped at both ends (`companionGazeOffset`, pure geometry — no DOM). `CompanionPet.svelte` batches `pointermove` into one `requestAnimationFrame` via a `passive` listener and writes `--eye-x`/`--eye-y` custom properties on `.companion-eyes`; the eyes consume them with the separate `translate` property (not `transform`), so the lean composes with whatever an expression's own `transform` already does (working's downward glance, wary's side-eye) instead of replacing it; the blink animates `scale`, a third independent property. The eyes sit on a screen about 23px wide, so the stylesheet scales the lean to 60% to keep them on it. Four expressions whose eyes are not open shapes — `happy`, `upset`, `sleepy`, `greeting` (arcs, small dots, closed lines, a wink) — never get a lean; that is a CSS selector guarantee (`.companion-body:not(.expr-happy):not(.expr-upset):not(.expr-sleepy):not(.expr-greeting) .companion-eye`), not just the component's own `companionGazeApplies` check, so a stale offset can never leak onto one of those four.
 
 ### Stop conditions (#1191)
 
@@ -599,7 +632,7 @@ When the pointer is within 200px of CASE's centre, the eyes lean up to 3px towar
 
 ### Hit area (#1191)
 
-`.companion-button` — the clickable element — has no animation or transform of its own and never changes size: the float, every action, idle play and the chip/breathing loops all live on `.companion-figure` inside it, which is `pointer-events: none`. A `z` or any other decoration is `pointer-events: none` too. This is the same hazard #1194 hit with the bubble covering a neighbouring button, applied to motion: nothing CASE does to itself may grow or move its own hit area over a screen element next to it.
+`.companion-button` — the clickable element — has no animation or transform of its own and never changes size: the float, every action, idle play, boot and the LED/breathing loops all live on `.companion-figure` inside it, which is `pointer-events: none`. A `z` or any other decoration is `pointer-events: none` too. This is the same hazard #1194 hit with the bubble covering a neighbouring button, applied to motion: nothing CASE does to itself may grow or move its own hit area over a screen element next to it.
 
 ## Components
 

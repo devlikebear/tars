@@ -25,6 +25,7 @@ import { contextPanelsEn } from './sections/contextPanels.ts'
 import { tasksPanelEn } from './sections/tasksPanel.ts'
 import { agentRuntimeRunEn } from './sections/agentRuntimeRun.ts'
 import { companionEn } from './sections/companion.ts'
+import { caseBridgeEn } from './sections/caseBridge.ts'
 import { configEn } from './sections/config.ts'
 import { remoteAccessEn } from './sections/remoteAccess.ts'
 
@@ -94,6 +95,7 @@ export const en = {
       toggleSidebar: 'Toggle session list',
       toggleTerminal: 'Toggle terminal',
       toggleZen: 'Toggle zen mode',
+      caseBridge: 'Ask CASE about TARS (Bridge)',
       shortcuts: 'Keyboard shortcuts',
     },
     panel: (name: string) => `Toggle ${name} panel`,
@@ -112,6 +114,7 @@ export const en = {
       'toggle-terminal': 'Toggle the terminal',
       'toggle-sidebar': 'Toggle the session list',
       'toggle-zen': 'Toggle zen mode',
+      'case-bridge': 'Ask CASE about TARS (Bridge)',
     },
   },
   statusBar: {
@@ -1512,6 +1515,7 @@ export const en = {
   tasksPanel: tasksPanelEn,
   agentRuntimeRun: agentRuntimeRunEn,
   companion: companionEn,
+  caseBridge: caseBridgeEn,
   config: configEn,
   remoteAccess: remoteAccessEn,
 } satisfies Translations

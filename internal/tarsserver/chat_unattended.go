@@ -38,11 +38,18 @@ const unattendedPlanMessage = "Plan mode: nobody is watching this run to approve
 // that nobody waits on: a call their mode would ask about is refused at
 // once, never queued for review. The second opinion review runs under its
 // own time limit in a hidden session; a queued Bash call there only sent the
-// person a "needs input" warning and ran the review out of time.
-var unattendedReadOnlySources = map[string]bool{focusSecondOpinionSource: true}
+// person a "needs input" warning and ran the review out of time. CASE's
+// Bridge answers from the status the server put in its turn, so it has
+// nothing to run either. Each source maps to the refusal its model reads.
+var unattendedReadOnlySources = map[string]string{
+	focusSecondOpinionSource: unattendedReadOnlyMessage,
+	caseBridgeSource:         caseBridgeReadOnlyMessage,
+}
 
 const unattendedReadOnlyMessage = "Read-only review: commands and edits are not run here, and nobody is there to approve them. " +
 	"Use the diff in the prompt and read the files you need, then report."
+
+const caseBridgeReadOnlyMessage = "CASE's Bridge is read-only: tools are not run here. Answer from the <tars-status> block in this turn."
 
 type unattendedPermissions struct {
 	ops      *ops.Manager
@@ -158,9 +165,9 @@ func (g *unattendedToolGate) Authorize(ctx context.Context, call agentloop.ToolC
 	if g.perms.alwaysAllows(g.run.cwd, name, call.ToolArgs) {
 		return agentloop.ToolDecision{Allow: true}, nil
 	}
-	if unattendedReadOnlySources[g.run.source] {
+	if message, ok := unattendedReadOnlySources[g.run.source]; ok {
 		g.perms.record(g.run, call.ToolName, "", "refused_read_only")
-		return agentloop.ToolDecision{Message: unattendedReadOnlyMessage}, nil
+		return agentloop.ToolDecision{Message: message}, nil
 	}
 	allowed, message, err := g.perms.ask(ctx, g.run, call.ToolName, []byte(call.ToolArgs), "")
 	if err != nil {
@@ -182,9 +189,9 @@ func (u *unattendedPermissions) claudeCodeHandler(run unattendedRun) llm.ClaudeC
 			u.record(run, req.ToolName, "", "refused_plan_approval")
 			return llm.ClaudeCodePermissionDecision{Message: unattendedPlanMessage}, nil
 		}
-		if unattendedReadOnlySources[run.source] {
+		if message, ok := unattendedReadOnlySources[run.source]; ok {
 			u.record(run, req.ToolName, "", "refused_read_only")
-			return llm.ClaudeCodePermissionDecision{Message: unattendedReadOnlyMessage}, nil
+			return llm.ClaudeCodePermissionDecision{Message: message}, nil
 		}
 		allowed, message, err := u.ask(ctx, run, req.ToolName, req.Input, req.DecisionReason)
 		if err != nil {

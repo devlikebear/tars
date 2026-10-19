@@ -121,10 +121,13 @@ func TestDurableSubagentsOrchestrateSupportsShortSynchronousWrapper(t *testing.T
 	ledger := openDurableToolLedger(t)
 	scheduler := startDurableToolScheduler(t, ledger, "ws-wrapper", runtime)
 	ctx := usage.WithCallMeta(serverauth.WithWorkspaceID(context.Background(), "ws-wrapper"), usage.CallMeta{SessionID: "session-wrapper"})
+	// The wait returns as soon as the work is done; the timeout only bounds
+	// a hang. 2s ran out on a slow Windows runner (the run took 8.7s) and
+	// returned the still-running work instead of failing for a real reason.
 	result, err := NewDurableSubagentsOrchestrateTool(runtime, scheduler).Execute(ctx, json.RawMessage(`{
 		"flow_id":"flow-wrapper",
 		"wait_for_completion":true,
-		"timeout_ms":2000,
+		"timeout_ms":30000,
 		"steps":[{"id":"one","mode":"sequential","tasks":[{"id":"task","prompt":"inspect"}]}]
 	}`))
 	if err != nil || result.IsError {

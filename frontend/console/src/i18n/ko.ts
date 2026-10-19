@@ -25,6 +25,7 @@ import { contextPanelsKo } from './sections/contextPanels.ts'
 import { tasksPanelKo } from './sections/tasksPanel.ts'
 import { agentRuntimeRunKo } from './sections/agentRuntimeRun.ts'
 import { companionKo } from './sections/companion.ts'
+import { caseBridgeKo } from './sections/caseBridge.ts'
 import { configKo } from './sections/config.ts'
 import { remoteAccessKo } from './sections/remoteAccess.ts'
 
@@ -94,6 +95,7 @@ export const ko = {
       toggleSidebar: '세션 목록 열기/닫기',
       toggleTerminal: '터미널 열기/닫기',
       toggleZen: '집중 모드 전환',
+      caseBridge: 'CASE에게 TARS 상황 묻기 (Bridge)',
       shortcuts: '단축키 보기',
     },
     panel: (name: string) => `${name} 패널 열기/닫기`,
@@ -112,6 +114,7 @@ export const ko = {
       'toggle-terminal': '터미널 열기/닫기',
       'toggle-sidebar': '세션 목록 열기/닫기',
       'toggle-zen': '집중 모드 전환',
+      'case-bridge': 'CASE에게 TARS 상황 묻기 (Bridge)',
     },
   },
   statusBar: {
@@ -1510,6 +1513,7 @@ export const ko = {
   tasksPanel: tasksPanelKo,
   agentRuntimeRun: agentRuntimeRunKo,
   companion: companionKo,
+  caseBridge: caseBridgeKo,
   config: configKo,
   remoteAccess: remoteAccessKo,
 } satisfies Translations

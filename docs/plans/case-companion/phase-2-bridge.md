@@ -1,5 +1,11 @@
 # Phase 2 — Bridge: 어디서나 묻기 (E2)
 
+> **구현 (2026-10-18)**: 아래 설계에서 세 군데를 바꿨다 — 결정 기록은 [`docs/decisions/case-bridge.md`](../../decisions/case-bridge.md).
+> 1. `tars_status` **도구 대신** 서버가 Go로 만든 상태 요약(`internal/casebridge`)을 CASE 세션의 턴에만 `<tars-status>` turn context로 붙인다. CLI provider(claude-code-cli·antigravity-cli)는 TARS 도구를 호출할 수 없고, 등록된 도구는 다른 세션의 프롬프트에도 실린다(CLAUDE.md의 확장 규칙).
+> 2. 단축키는 ⌘J가 아니라 **⌘/ (Ctrl+/)** — ⌘J는 터미널 토글, Ctrl+Shift+J는 Windows Chrome 개발자 도구다.
+> 3. 말풍선 질문(tars#1236)은 그대로 두고 말풍선에 Bridge 링크만 붙였다. 말풍선 질문을 Bridge로 옮기는 건 후속.
+> API는 `POST /v1/case/ask` → `GET /v1/case/answer`(카드는 서버가 같은 스냅숏으로 검증), 세션은 하루 하나(`_shared/case/bridge.json`).
+
 > Roadmap: [roadmap.md](./roadmap.md) · 선행: Phase 1
 > 목표: 어느 화면에서든 클릭 또는 ⌘J로 Bridge 패널을 열고 "지금 상황"을 묻는다. CASE는 **전용 읽기 전용 세션**에서 `tars_status` 도구로 TARS 전체를 읽고, 답과 함께 라이브 카드(바로 가기)와 "본 곳"을 보여 준다.
 
@@ -56,7 +62,7 @@
 ### 콘솔
 
 - `src/lib/caseBridge.ts` (순수): `bridgeRequest(question, scope, route)`, `cardHref(card)`, `followUps(cards)` (카드 종류별 후속 질문 2~4개), `sourcesLine(sources)`
-- `src/components/CaseBridge.svelte` (E2): 오른쪽 슬라이드 패널 500px, 헤더(미어캣·당직 요약), "지금 보는 곳", 대화(질문/답/카드/본 곳), 칩, 범위 토글, 입력. 900px 이하 전체폭
+- `src/components/CaseBridge.svelte` (E2): 오른쪽 슬라이드 패널 500px, 헤더(CASE 봇·당직 요약), "지금 보는 곳", 대화(질문/답/카드/본 곳), 칩, 범위 토글, 입력. 900px 이하 전체폭
 - 단축키: ⌘J (`lib/keymap` 기존 등록 방식, `ShortcutHelp`에 추가). Focus 라우트 단축키와 충돌 없는지 `focusOwnsShortcut` 확인
 - `CompanionPet.svelte`: 말풍선의 질문 폼 → Bridge 열기 + 질문 전달. 기존 "Chat 화면에서는 스레드로 전달" 동작은 Bridge의 "이 대화로 보내기" 버튼으로 대체
 - `App.svelte`에 Bridge 마운트 (전역 → `make console-e2e` 전체)
