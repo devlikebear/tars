@@ -13,10 +13,19 @@ test('snapshot metadata is non-empty so future PRs can grep for the date', () =>
   assert.ok(/\d{4}-\d{2}-\d{2}/.test(SNAPSHOT_DATE), 'SNAPSHOT_DATE should look like YYYY-MM-DD')
 })
 
-test('every provider kind has at least one well-known model', () => {
+test('every provider kind has at least one well-known model, except antigravity-cli by design', () => {
+  // docs/llm-providers.md: "TARS does not hard-code a default slug [for
+  // antigravity-cli] because the available set changes with the account
+  // and CLI release" — the wizard/settings model datalist degrades to no
+  // suggestions for this one kind rather than ship a slug that may not
+  // exist for the signed-in account.
   for (const kind of providerKinds) {
     const models = wellKnownModelsByKind[kind]
     assert.ok(Array.isArray(models), `kind ${kind} must have a catalog entry`)
+    if (kind === 'antigravity-cli') {
+      assert.deepEqual(models, [])
+      continue
+    }
     assert.ok(models.length >= 1, `kind ${kind} must have at least one model`)
   }
 })

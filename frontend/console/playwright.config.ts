@@ -89,6 +89,17 @@ export default defineConfig({
     // Specs assert on English UI strings.
     locale: 'en-US',
     viewport: { width: 1400, height: 900 },
+    launchOptions: {
+      // Precautionary: settings-llm-ui.spec.ts types into a type="password"
+      // field (ConfigLLMEditor's provider API key row). A deterministic
+      // CI-only value mismatch there (tars#1286 PR review) turned out to be
+      // GET /schema's own api_key masking, not this — but Chrome's
+      // password-generation heuristics silently overriding a filled
+      // password field's value is a real, separately-documented class of
+      // Playwright flakiness this suite has no interest in exercising on
+      // any spec, so the feature stays off regardless.
+      args: ['--disable-features=PasswordGeneration,AutofillServerCommunication'],
+    },
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'], viewport: { width: 1400, height: 900 }, locale: 'en-US' } }],
   webServer: [

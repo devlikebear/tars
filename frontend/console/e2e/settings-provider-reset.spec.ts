@@ -9,9 +9,13 @@ test('complete provider edit resets optional fields and applies only after confi
  // the mock endpoint used by other tests or contacting a real provider.
  await request.patch('/v1/admin/config/values', {data:{updates:{llm_providers:{...providers, resettest:{kind:'openai',auth_mode:'oauth',base_url:'https://old.invalid/v1',api_key:'isolated-secret'}}}}})
  await page.addInitScript(() => localStorage.setItem('tars_console_locale','en'))
- await page.goto('/console/config')
- await page.getByRole('searchbox',{name:'Search settings'}).fill('llm_providers')
- await page.locator('.config-search-hit', { hasText: 'Providers' }).click()
+ // ConfigLLMEditor (tars#1286) is the table UI for llm_providers now; its
+ // JSON fallback is what this test exercises — llm_providers is no longer
+ // reachable through cross-tab search (lib/configSections.ts's isGenericRow
+ // excludes the three LLM pool fields, same as RemoteAccessCard's pair), so
+ // go straight to the LLM tab via its URL.
+ await page.goto('/console/config/llm')
+ await page.getByRole('button', { name: 'Edit as JSON', exact: true }).first().click()
  const textarea = page.locator('#config-field-llm_providers textarea')
  await expect(textarea).toBeVisible()
  const current = await schema()
