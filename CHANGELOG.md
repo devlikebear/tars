@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.65.0] - 2026-10-19
+
+### Changed
+
+- **Settings → LLM no longer requires hand-editing raw JSON.** Providers, the three fixed tiers, and role defaults each get a row-based table — add/edit/delete a provider (alias, kind, auth mode, API key, base URL), a tier (provider, model, reasoning effort, max tokens), or a role default (role, tier) — with an "Edit as JSON" fallback still available per section for anything the table doesn't expose. Renaming a provider alias propagates to the tiers that reference it; removing a provider clears those tiers' reference instead of leaving it dangling. A loaded provider's API key shows blank with a "leave blank to keep the existing key" hint rather than ever displaying or resubmitting the server's masked value. `antigravity-cli` is now selectable as a provider kind in the console. ([#1285](https://github.com/devlikebear/tars/pull/1285))
+
 ## [0.64.0] - 2026-10-18
 
 ### Added
