@@ -78,6 +78,7 @@ Focus mode runs one task as a **template** — an ordered list of stages, each o
 
 - **Gates** (plan, PR draft, PR review, merge) wait for a developer decision unless the task is in **goal mode** — nobody at the gates, fixed policy (approve G1/G3/G4, fix everything but `low` findings, retry on a stuck gate), a push budget (default 20), and backoff on repeated turn failures.
 - An **approved plan can still be edited** — goal, `verify`, `e2e`, `e2e_setup`, `e2e_teardown` — without moving a stage, through `focus_plan_edit`, a `<focus-plan-edit>` block, or `POST /v1/focus/pipelines/{id}/plan`; every edit leaves a "plan edited" card.
+- A task can ask for a **second opinion review** (off by default; `second_opinion: {tier}` on `POST /v1/focus/pipelines`): the first round of each review stage is reviewed once more, read-only, on a tier you pick, without seeing the first review's findings. Its findings join the same triage with a *second opinion* badge, and it never changes a stage transition.
 - **End-to-end checks are plain-language goals** ("`@App do the thing`") run through the same engine as the `computer_use` chat tool, so `computer_use` only drives what's already on screen. A plan's `e2e_setup` shell commands build the working folder and bring that build to the screen before each check; `e2e_teardown` stops it afterward.
 - The console's Focus page (`/console/focus`) shows the stage stepper, a card deck (gate/report/decision/change cards) you can page through, and a graph view; `/console/focus/release` is the release train.
 
@@ -434,7 +435,7 @@ The console runs at `http://127.0.0.1:43180/console`. The sidebar groups pages u
 | System | Cron | `/console/cron` | Manage global scheduled jobs with delivery targets, pause/resume, run-now, delete, and run history |
 | System | Logs | `/console/logs` | Tail configured runtime logs with file, level, component, line-count, refresh, and auto-refresh controls |
 | System | Analytics | `/console/analytics` | Visualize usage totals, daily token bars, model cost rows, and tool or skill call counts |
-| System | Settings | `/console/config` | Quick Start onboarding gates, wizard reentry, credential entry, remote access, restart, and workspace reset |
+| System | Settings | `/console/config` | Settings in eight tabs (General, LLM, Chat & Tools, Automation, Channels & Remote, Agents, Extensions, Advanced) with search across all of them, table editors for LLM providers, tiers and role defaults, wizard reentry, credential entry, remote access, restart, and workspace reset |
 
 These routes stay reachable through ⌘K and in-context links (not listed in the sidebar):
 
@@ -518,7 +519,7 @@ cd frontend/console && npm run check && npm run test:ci
 
 | | OpenClaw | Hermes Agent | TARS |
 |---|---|---|---|
-| **Release used** | Stable `v2026.7.1` | Stable `v0.19.1` (`v2026.7.30`) | `v0.61.0` (latest tagged release) |
+| **Release used** | Stable `v2026.7.1` | Stable `v0.19.1` (`v2026.7.30`) | `v0.65.0` (latest tagged release) |
 | **Packaging** | TypeScript Gateway plus web/native apps and plugins | Python agent/gateway plus TUI, web, and desktop surfaces | Go single binary with embedded browser console and CLI |
 | **Delegation / harnesses** | Native subagents, Codex runtime, and ACP-backed external harness sessions | Isolated `delegate_task` children, live transcripts, MoA, and coding-runtime adapters | Native Agent Runtime plus an opt-in bounded Claude Code execution adapter, model tiers, tool policy, depth limits, and experimental consensus |
 | **Durable async work** | Background-task ledger plus SQLite-backed automations | Durable Kanban/goals, delegated-result recovery, and delivery-obligation ledger | SQLite Work Ledger plus a dependency scheduler with leases, retries, budgets, and operator escalation |
@@ -540,6 +541,6 @@ Verified on **2026-08-02** from official project documentation and release pages
 
 ## Status
 
-**Development resumed.** TARS is no longer archived and development has resumed. Latest tagged release is `v0.61.0`. TARS is pre-1.0; see the [stability policy](docs/public-agent-packages.md#stability-policy) for the public `pkg/` API guarantees.
+**Development resumed.** TARS is no longer archived and development has resumed. Latest tagged release is `v0.65.0`. TARS is pre-1.0; see the [stability policy](docs/public-agent-packages.md#stability-policy) for the public `pkg/` API guarantees.
 
 Module path: `github.com/devlikebear/tars`. MIT licensed. Contributions are welcome; see [Contributing](CONTRIBUTING.md).
