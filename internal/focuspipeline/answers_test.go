@@ -160,3 +160,29 @@ func TestQuestionGuidance(t *testing.T) {
 		})
 	}
 }
+
+// Decisions of one turn share the pipeline's turn count (Seq), whatever
+// transcript turn the server counted; cards from before Seq was recorded
+// still group by transcript turn.
+func TestSameTurnDecision(t *testing.T) {
+	asked := Card{Kind: CardDecision, Stage: StageBuild, Turn: 11, Seq: 4}
+	for name, tc := range map[string]struct {
+		c    Card
+		want bool
+	}{
+		"same seq":                    {Card{Kind: CardDecision, Stage: StageBuild, Turn: 11, Seq: 4}, true},
+		"same transcript turn, later": {Card{Kind: CardDecision, Stage: StageBuild, Turn: 11, Seq: 5}, false},
+		"other stage":                 {Card{Kind: CardDecision, Stage: StageReview, Turn: 11, Seq: 4}, false},
+		"not a decision":              {Card{Kind: CardReport, Stage: StageBuild, Turn: 11, Seq: 4}, false},
+		"legacy beside a new card":    {Card{Kind: CardDecision, Stage: StageBuild, Turn: 11}, false},
+	} {
+		if got := sameTurnDecision(tc.c, asked); got != tc.want {
+			t.Errorf("%s: got %v, want %v", name, got, tc.want)
+		}
+	}
+	legacy := Card{Kind: CardDecision, Stage: StageBuild, Turn: 3}
+	if !sameTurnDecision(Card{Kind: CardDecision, Stage: StageBuild, Turn: 3}, legacy) ||
+		sameTurnDecision(Card{Kind: CardDecision, Stage: StageBuild, Turn: 4}, legacy) {
+		t.Error("legacy cards must group by transcript turn")
+	}
+}

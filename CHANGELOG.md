@@ -6,6 +6,10 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+### Fixed
+
+- **Goal mode no longer loops on an agent that keeps asking questions.** Answering an agent's questions with "decide yourself" now draws on the push budget (once per answer turn), so an agent that asks again after every answer ends goal mode at the budget instead of running unbounded. The answers of one turn are grouped by the pipeline's own turn count, so an answer turn no longer re-sends every answer the stage ever got when the transcript turn count stays put. A build turn that only asks questions now counts toward the build turn cap, which blocks the stage. A turn refused by the model provider's usage limit (Claude Code's "You've hit your session limit", Codex's "usage limit") ends goal mode at once with the new `usage_limit` reason instead of retrying until the limit resets and spending the next allowance on the same loop.
+
 ## [0.65.0] - 2026-10-19
 
 ### Changed

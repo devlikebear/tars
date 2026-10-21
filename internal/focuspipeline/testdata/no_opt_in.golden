@@ -125,6 +125,7 @@ pipeline:
       "kind": "gate",
       "stage": "plan",
       "turn": 1,
+      "seq": 1,
       "iteration": 1,
       "title": "Approve plan",
       "payload": {
@@ -156,6 +157,7 @@ pipeline:
       "created_at": "2026-10-01T08:00:00Z"
     }
   ],
+  "turn_seq": 1,
   "updated_at": "2026-10-01T08:00:00Z"
 }
 guidance:
@@ -241,6 +243,7 @@ pipeline:
       "kind": "gate",
       "stage": "plan",
       "turn": 1,
+      "seq": 1,
       "iteration": 1,
       "title": "Approve plan",
       "payload": {
@@ -274,6 +277,7 @@ pipeline:
     }
   ],
   "pending_turn": "Plan approved. Start the build stage with task 1.",
+  "turn_seq": 1,
   "updated_at": "2026-10-01T08:00:00Z"
 }
 guidance:
@@ -371,6 +375,7 @@ pipeline:
       "kind": "gate",
       "stage": "plan",
       "turn": 1,
+      "seq": 1,
       "iteration": 1,
       "title": "Approve plan",
       "payload": {
@@ -407,6 +412,7 @@ pipeline:
       "kind": "report",
       "stage": "build",
       "turn": 3,
+      "seq": 2,
       "iteration": 1,
       "title": "built",
       "payload": {
@@ -419,6 +425,7 @@ pipeline:
   ],
   "tasks_done": true,
   "awaiting_verification": true,
+  "turn_seq": 2,
   "updated_at": "2026-10-01T08:00:00Z",
   "base_commit": "0123456789abcdef0123456789abcdef01234567"
 }
@@ -518,6 +525,7 @@ pipeline:
       "kind": "gate",
       "stage": "plan",
       "turn": 1,
+      "seq": 1,
       "iteration": 1,
       "title": "Approve plan",
       "payload": {
@@ -554,6 +562,7 @@ pipeline:
       "kind": "report",
       "stage": "build",
       "turn": 3,
+      "seq": 2,
       "iteration": 1,
       "title": "built",
       "payload": {
@@ -565,6 +574,7 @@ pipeline:
     }
   ],
   "pending_turn": "Verification passed and every task is done. Start the review stage.",
+  "turn_seq": 2,
   "updated_at": "2026-10-01T08:00:00Z",
   "base_commit": "0123456789abcdef0123456789abcdef01234567"
 }
@@ -665,6 +675,7 @@ pipeline:
       "kind": "gate",
       "stage": "plan",
       "turn": 1,
+      "seq": 1,
       "iteration": 1,
       "title": "Approve plan",
       "payload": {
@@ -701,6 +712,7 @@ pipeline:
       "kind": "report",
       "stage": "build",
       "turn": 3,
+      "seq": 2,
       "iteration": 1,
       "title": "built",
       "payload": {
@@ -715,6 +727,7 @@ pipeline:
       "kind": "report",
       "stage": "review",
       "turn": 7,
+      "seq": 3,
       "iteration": 1,
       "title": "reviewed",
       "payload": {
@@ -728,6 +741,7 @@ pipeline:
       "kind": "finding",
       "stage": "review",
       "turn": 7,
+      "seq": 3,
       "iteration": 1,
       "title": "nil deref",
       "payload": {
@@ -746,6 +760,7 @@ pipeline:
       "kind": "finding",
       "stage": "review",
       "turn": 7,
+      "seq": 3,
       "iteration": 1,
       "title": "typo",
       "payload": {
@@ -760,6 +775,7 @@ pipeline:
       "created_at": "2026-10-01T08:00:00Z"
     }
   ],
+  "turn_seq": 3,
   "updated_at": "2026-10-01T08:00:00Z",
   "base_commit": "0123456789abcdef0123456789abcdef01234567",
   "review": {
@@ -861,6 +877,7 @@ pipeline:
       "kind": "gate",
       "stage": "plan",
       "turn": 1,
+      "seq": 1,
       "iteration": 1,
       "title": "Approve plan",
       "payload": {
@@ -897,6 +914,7 @@ pipeline:
       "kind": "report",
       "stage": "build",
       "turn": 3,
+      "seq": 2,
       "iteration": 1,
       "title": "built",
       "payload": {
@@ -911,6 +929,7 @@ pipeline:
       "kind": "report",
       "stage": "review",
       "turn": 7,
+      "seq": 3,
       "iteration": 1,
       "title": "reviewed",
       "payload": {
@@ -924,6 +943,7 @@ pipeline:
       "kind": "finding",
       "stage": "review",
       "turn": 7,
+      "seq": 3,
       "iteration": 1,
       "title": "nil deref",
       "payload": {
@@ -943,6 +963,7 @@ pipeline:
       "kind": "finding",
       "stage": "review",
       "turn": 7,
+      "seq": 3,
       "iteration": 1,
       "title": "typo",
       "payload": {
@@ -957,6 +978,7 @@ pipeline:
       "created_at": "2026-10-01T08:00:00Z"
     }
   ],
+  "turn_seq": 3,
   "updated_at": "2026-10-01T08:00:00Z",
   "base_commit": "0123456789abcdef0123456789abcdef01234567",
   "review": {
@@ -1057,6 +1079,7 @@ pipeline:
       "kind": "gate",
       "stage": "plan",
       "turn": 1,
+      "seq": 1,
       "iteration": 1,
       "title": "Approve plan",
       "payload": {
@@ -1093,6 +1116,7 @@ pipeline:
       "kind": "report",
       "stage": "build",
       "turn": 3,
+      "seq": 2,
       "iteration": 1,
       "title": "built",
       "payload": {
@@ -1107,6 +1131,7 @@ pipeline:
       "kind": "report",
       "stage": "review",
       "turn": 7,
+      "seq": 3,
       "iteration": 1,
       "title": "reviewed",
       "payload": {
@@ -1120,6 +1145,7 @@ pipeline:
       "kind": "finding",
       "stage": "review",
       "turn": 7,
+      "seq": 3,
       "iteration": 1,
       "title": "nil deref",
       "payload": {
@@ -1139,6 +1165,7 @@ pipeline:
       "kind": "finding",
       "stage": "review",
       "turn": 7,
+      "seq": 3,
       "iteration": 1,
       "title": "typo",
       "payload": {
@@ -1155,6 +1182,7 @@ pipeline:
     }
   ],
   "pending_turn": "Fix these findings:\n1. [high] a.go:3 — nil deref\n   Scenario: nil input → panic\n\nFix only these findings, run the verification commands yourself, and report.",
+  "turn_seq": 3,
   "updated_at": "2026-10-01T08:00:00Z",
   "base_commit": "0123456789abcdef0123456789abcdef01234567",
   "review": {
@@ -1263,6 +1291,7 @@ pipeline:
       "kind": "gate",
       "stage": "plan",
       "turn": 1,
+      "seq": 1,
       "iteration": 1,
       "title": "Approve plan",
       "payload": {
@@ -1299,6 +1328,7 @@ pipeline:
       "kind": "report",
       "stage": "build",
       "turn": 3,
+      "seq": 2,
       "iteration": 1,
       "title": "built",
       "payload": {
@@ -1313,6 +1343,7 @@ pipeline:
       "kind": "report",
       "stage": "review",
       "turn": 7,
+      "seq": 3,
       "iteration": 1,
       "title": "reviewed",
       "payload": {
@@ -1326,6 +1357,7 @@ pipeline:
       "kind": "finding",
       "stage": "review",
       "turn": 7,
+      "seq": 3,
       "iteration": 1,
       "title": "nil deref",
       "payload": {
@@ -1345,6 +1377,7 @@ pipeline:
       "kind": "finding",
       "stage": "review",
       "turn": 7,
+      "seq": 3,
       "iteration": 1,
       "title": "typo",
       "payload": {
@@ -1364,6 +1397,7 @@ pipeline:
       "kind": "report",
       "stage": "review",
       "turn": 3,
+      "seq": 4,
       "iteration": 1,
       "title": "fixed",
       "payload": {
@@ -1374,6 +1408,7 @@ pipeline:
     }
   ],
   "awaiting_verification": true,
+  "turn_seq": 4,
   "updated_at": "2026-10-01T08:00:00Z",
   "base_commit": "0123456789abcdef0123456789abcdef01234567",
   "review": {
@@ -1485,6 +1520,7 @@ pipeline:
       "kind": "gate",
       "stage": "plan",
       "turn": 1,
+      "seq": 1,
       "iteration": 1,
       "title": "Approve plan",
       "payload": {
@@ -1521,6 +1557,7 @@ pipeline:
       "kind": "report",
       "stage": "build",
       "turn": 3,
+      "seq": 2,
       "iteration": 1,
       "title": "built",
       "payload": {
@@ -1535,6 +1572,7 @@ pipeline:
       "kind": "report",
       "stage": "review",
       "turn": 7,
+      "seq": 3,
       "iteration": 1,
       "title": "reviewed",
       "payload": {
@@ -1548,6 +1586,7 @@ pipeline:
       "kind": "finding",
       "stage": "review",
       "turn": 7,
+      "seq": 3,
       "iteration": 1,
       "title": "nil deref",
       "payload": {
@@ -1567,6 +1606,7 @@ pipeline:
       "kind": "finding",
       "stage": "review",
       "turn": 7,
+      "seq": 3,
       "iteration": 1,
       "title": "typo",
       "payload": {
@@ -1586,6 +1626,7 @@ pipeline:
       "kind": "report",
       "stage": "review",
       "turn": 3,
+      "seq": 4,
       "iteration": 1,
       "title": "fixed",
       "payload": {
@@ -1596,6 +1637,7 @@ pipeline:
     }
   ],
   "pending_turn": "Verification passed after the fixes. Review the changes again (round 2 of 2) and report findings.",
+  "turn_seq": 4,
   "updated_at": "2026-10-01T08:00:00Z",
   "base_commit": "0123456789abcdef0123456789abcdef01234567",
   "review": {
@@ -1706,6 +1748,7 @@ pipeline:
       "kind": "gate",
       "stage": "plan",
       "turn": 1,
+      "seq": 1,
       "iteration": 1,
       "title": "Approve plan",
       "payload": {
@@ -1742,6 +1785,7 @@ pipeline:
       "kind": "report",
       "stage": "build",
       "turn": 3,
+      "seq": 2,
       "iteration": 1,
       "title": "built",
       "payload": {
@@ -1756,6 +1800,7 @@ pipeline:
       "kind": "report",
       "stage": "review",
       "turn": 7,
+      "seq": 3,
       "iteration": 1,
       "title": "reviewed",
       "payload": {
@@ -1769,6 +1814,7 @@ pipeline:
       "kind": "finding",
       "stage": "review",
       "turn": 7,
+      "seq": 3,
       "iteration": 1,
       "title": "nil deref",
       "payload": {
@@ -1788,6 +1834,7 @@ pipeline:
       "kind": "finding",
       "stage": "review",
       "turn": 7,
+      "seq": 3,
       "iteration": 1,
       "title": "typo",
       "payload": {
@@ -1807,6 +1854,7 @@ pipeline:
       "kind": "report",
       "stage": "review",
       "turn": 3,
+      "seq": 4,
       "iteration": 1,
       "title": "fixed",
       "payload": {
@@ -1820,6 +1868,7 @@ pipeline:
       "kind": "report",
       "stage": "review",
       "turn": 7,
+      "seq": 5,
       "iteration": 2,
       "title": "reviewed",
       "payload": {
@@ -1830,6 +1879,7 @@ pipeline:
     }
   ],
   "awaiting_verification": true,
+  "turn_seq": 5,
   "updated_at": "2026-10-01T08:00:00Z",
   "base_commit": "0123456789abcdef0123456789abcdef01234567",
   "review": {
@@ -1941,6 +1991,7 @@ pipeline:
       "kind": "gate",
       "stage": "plan",
       "turn": 1,
+      "seq": 1,
       "iteration": 1,
       "title": "Approve plan",
       "payload": {
@@ -1977,6 +2028,7 @@ pipeline:
       "kind": "report",
       "stage": "build",
       "turn": 3,
+      "seq": 2,
       "iteration": 1,
       "title": "built",
       "payload": {
@@ -1991,6 +2043,7 @@ pipeline:
       "kind": "report",
       "stage": "review",
       "turn": 7,
+      "seq": 3,
       "iteration": 1,
       "title": "reviewed",
       "payload": {
@@ -2004,6 +2057,7 @@ pipeline:
       "kind": "finding",
       "stage": "review",
       "turn": 7,
+      "seq": 3,
       "iteration": 1,
       "title": "nil deref",
       "payload": {
@@ -2023,6 +2077,7 @@ pipeline:
       "kind": "finding",
       "stage": "review",
       "turn": 7,
+      "seq": 3,
       "iteration": 1,
       "title": "typo",
       "payload": {
@@ -2042,6 +2097,7 @@ pipeline:
       "kind": "report",
       "stage": "review",
       "turn": 3,
+      "seq": 4,
       "iteration": 1,
       "title": "fixed",
       "payload": {
@@ -2055,6 +2111,7 @@ pipeline:
       "kind": "report",
       "stage": "review",
       "turn": 7,
+      "seq": 5,
       "iteration": 2,
       "title": "reviewed",
       "payload": {
@@ -2065,6 +2122,7 @@ pipeline:
     }
   ],
   "pending_turn": "Verification passed and no accepted finding is open. Start the pr stage.",
+  "turn_seq": 5,
   "updated_at": "2026-10-01T08:00:00Z",
   "base_commit": "0123456789abcdef0123456789abcdef01234567"
 }

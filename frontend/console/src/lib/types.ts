@@ -2553,7 +2553,7 @@ export type FocusGoalMode = {
   decisions?: number
   started_at?: string
   ended_at?: string
-  end_reason?: 'finished' | 'stopped' | 'exhausted' | 'pr_closed' | 'e2e_failed' | 'cancelled' | 'disabled'
+  end_reason?: 'finished' | 'stopped' | 'exhausted' | 'pr_closed' | 'e2e_failed' | 'usage_limit' | 'cancelled' | 'disabled'
 }
 
 export type FocusPlan = {
