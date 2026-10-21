@@ -73,7 +73,7 @@ func SplitStaleAnswers(p Pipeline, answers []Answer) (fresh, stale []Answer) {
 func turnAnswers(p Pipeline, card Card) ([]Answer, bool) {
 	var answers []Answer
 	for _, c := range p.Cards {
-		if c.Kind != CardDecision || c.Stage != card.Stage || c.Turn != card.Turn {
+		if !sameTurnDecision(c, card) {
 			continue
 		}
 		if c.State != CardDecided {
@@ -82,4 +82,32 @@ func turnAnswers(p Pipeline, card Card) ([]Answer, bool) {
 		answers = append(answers, Answer{CardID: c.ID, Question: c.Title, Answer: c.Decision})
 	}
 	return answers, true
+}
+
+// openTurnDecisions counts the decision cards the turn of card asked that
+// are still open, card included.
+func openTurnDecisions(p Pipeline, card Card) int {
+	n := 0
+	for _, c := range p.Cards {
+		if sameTurnDecision(c, card) && c.State != CardDecided {
+			n++
+		}
+	}
+	return n
+}
+
+// sameTurnDecision reports whether c is a decision card asked by the same
+// turn as card. Cards carry the pipeline's own turn count (Seq); the
+// transcript turn is the key only between cards from before it was
+// recorded — a transcript that does not grow with the server's turns gave
+// every later turn the same number, and each answer turn re-sent every
+// answer ever given in the stage.
+func sameTurnDecision(c, card Card) bool {
+	if c.Kind != CardDecision || c.Stage != card.Stage {
+		return false
+	}
+	if c.Seq != 0 || card.Seq != 0 {
+		return c.Seq == card.Seq
+	}
+	return c.Turn == card.Turn
 }

@@ -400,3 +400,159 @@ func TestNextGoalStepPushesAStalledPipeline(t *testing.T) {
 		t.Fatal("GoalApplied touched a pipeline without goal mode")
 	}
 }
+
+// askingAgain is a report that asks the same two questions every turn.
+func askingAgain() *Report {
+	return &Report{Summary: "still asking", Decisions: []Decision{
+		{ID: "d1", Question: "Checkout or worktree?", Options: []string{"checkout", "worktree"}},
+		{ID: "d2", Question: "Run the Swift build?", Options: []string{"yes", "no"}},
+	}}
+}
+
+// An answer turn draws on the push budget once, however many questions
+// its turn asked, and a spent budget ends goal mode at the next question.
+func TestNextGoalStepChargesAnswerTurns(t *testing.T) {
+	p := goalBuilding(t, StagePlan, StageBuild)
+	p, _, _ = Apply(p, Event{Kind: EventTurnCompleted, Turn: 2, Blocks: Blocks{Report: askingAgain()}}, t0)
+
+	first := NextGoalStep(p, t0)
+	if first.Kind != GoalCard || first.Push {
+		t.Fatalf("first of two questions = %+v", first)
+	}
+	p, act, err := SetCardState(p, first.CardID, CardDecided, first.Decision, t0)
+	if err != nil || act.Kind != ActionNone {
+		t.Fatalf("first answer: %v %+v", err, act)
+	}
+	p = GoalApplied(p, first, t0)
+
+	last := NextGoalStep(p, t0)
+	if last.Kind != GoalCard || !last.Push || last.CardID == first.CardID {
+		t.Fatalf("last of two questions = %+v", last)
+	}
+	p, act, err = SetCardState(p, last.CardID, CardDecided, last.Decision, t0)
+	if err != nil || act.Kind != ActionSendTurn || len(act.Answers) != 2 {
+		t.Fatalf("last answer: %v %+v", err, act)
+	}
+	p = GoalApplied(p, last, t0)
+	if p.GoalMode.Pushes != 1 || p.GoalMode.Decisions != 2 {
+		t.Fatalf("goal after one answer turn = %+v", p.GoalMode)
+	}
+
+	p, _, _ = Apply(p, Event{Kind: EventTurnCompleted, Turn: 3, Blocks: Blocks{Report: askingAgain()}}, t0)
+	p.GoalMode.Pushes = p.GoalMode.MaxPushes
+	if step := NextGoalStep(p, t0); step.Kind != GoalEnd || step.Reason != GoalEndExhausted {
+		t.Fatalf("question with the budget spent = %+v", step)
+	}
+}
+
+// The loop of 2026-10-21: the agent asked the same questions after every
+// "decide yourself", and the transcript turn the server counted stayed the
+// same, so each answer turn re-sent every answer the stage ever got, and a
+// build turn that only asks never met the build turn cap. Goal mode now
+// stops within its budget, the cap blocks the stage on the way, and an
+// answer turn carries only the answers to the turn that asked.
+func TestGoalModeEndsAnAgentThatKeepsAsking(t *testing.T) {
+	p := goalBuilding(t, StagePlan, StageBuild)
+	const stuckTurn = 11
+	turns, blocks := 1, 0
+	p, _, _ = Apply(p, Event{Kind: EventTurnCompleted, Turn: stuckTurn, Blocks: Blocks{Report: askingAgain()}}, t0)
+	for p.GoalActive() && turns <= 10*DefaultGoalPushes {
+		step := NextGoalStep(p, t0)
+		var act Action
+		var err error
+		switch step.Kind {
+		case GoalEnd:
+			if step.Reason != GoalEndExhausted {
+				t.Fatalf("goal mode ended as %q", step.Reason)
+			}
+			p, _ = EndGoal(p, step.Reason, t0)
+			continue
+		case GoalCard:
+			p, act, err = SetCardState(p, step.CardID, CardDecided, step.Decision, t0)
+			if act.Kind == ActionSendTurn && strings.Count(act.Prompt, "Checkout or worktree?") != 1 {
+				t.Fatalf("answer turn %d re-sent old answers (%d):\n%s", turns, len(act.Answers), act.Prompt)
+			}
+		case GoalGate:
+			if step.Gate != GateBlocked || p.openBlockedFact().Reason != BlockedNoProgress {
+				t.Fatalf("turn %d: gate step = %+v", turns, step)
+			}
+			blocks++
+			p, act, err = Apply(p, Event{Kind: EventGate, Gate: step.Gate, Action: step.Action}, t0)
+		default:
+			t.Fatalf("turn %d: step = %+v", turns, step)
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		p = GoalApplied(p, step, t0)
+		if act.Kind == ActionSendTurn {
+			turns++
+			p, _, _ = Apply(p, Event{Kind: EventTurnCompleted, Turn: stuckTurn, Blocks: Blocks{Report: askingAgain()}}, t0)
+		}
+	}
+	if p.GoalActive() || turns > DefaultGoalPushes+1 || p.GoalMode.Pushes != DefaultGoalPushes {
+		t.Fatalf("goal mode ran %d turns (active=%v, goal=%+v)", turns, p.GoalActive(), p.GoalMode)
+	}
+	if blocks == 0 {
+		t.Fatal("the build turn cap never held a stage that only asks")
+	}
+}
+
+// A build turn that asks a question pauses for its answer, and counts
+// toward the build turn cap like any other: an agent that asks after every
+// answer blocks the stage once the cap is reached.
+func TestBuildTurnCapHoldsQuestionTurns(t *testing.T) {
+	p := building(t)
+	limit := buildTurnCap(p)
+	for n := 1; n <= limit; n++ {
+		var act Action
+		p, act, _ = Apply(p, Event{Kind: EventTurnCompleted, Turn: n + 1, Blocks: Blocks{Report: askingAgain()}}, t0)
+		if act.Kind != ActionNone {
+			t.Fatalf("turn %d: act = %+v", n, act)
+		}
+		if n < limit && p.OpenGate != GateNone {
+			t.Fatalf("turn %d of %d blocked: gate %q", n, limit, p.OpenGate)
+		}
+	}
+	if p.OpenGate != GateBlocked || p.openBlockedFact().Reason != BlockedNoProgress {
+		t.Fatalf("after %d question turns: gate %q fact %+v", limit, p.OpenGate, p.openBlockedFact())
+	}
+}
+
+func TestNextGoalStepEndsOnUsageLimit(t *testing.T) {
+	p := goalBuilding(t, StagePlan, StageBuild)
+	failed, ok := FailTurn(p, "claude-code-cli request: You've hit your session limit · resets 2:40pm (Asia/Seoul)", t0)
+	if !ok {
+		t.Fatal("no turn was owed")
+	}
+	// No backoff and no retry: the limit lifts in hours.
+	if step := NextGoalStep(failed, t0); step.Kind != GoalEnd || step.Reason != GoalEndUsageLimit {
+		t.Fatalf("step after a usage-limit failure = %+v", step)
+	}
+	ended, ok := EndGoal(failed, GoalEndUsageLimit, t0)
+	if !ok || ended.OpenGate != GateBlocked {
+		t.Fatalf("ended: ok=%v gate=%q", ok, ended.OpenGate)
+	}
+	if last := ended.Cards[len(ended.Cards)-1]; last.Kind != CardNotice || last.Title != NoticeGoalEnded {
+		t.Fatalf("no notice for the developer: %+v", last)
+	}
+}
+
+func TestUsageLimitError(t *testing.T) {
+	for text, want := range map[string]bool{
+		"claude-code-cli request: You've hit your session limit · resets 2:40pm (Asia/Seoul)": true,
+		"Claude AI usage limit reached|1760000000":                                            true,
+		"You've hit your usage limit. Upgrade or try again later.":                            true,
+		"You've reached your weekly limit":                                                    true,
+		"5-hour limit reached ∙ resets 3pm":                                                   true,
+		"usage limit exceeded (daily: 5.000000 >= 5.000000 USD)":                              true,
+		"provider timeout": false,
+		"429 Too Many Requests: rate limit, retry after 20s": false,
+		"context window exceeded":                            false,
+		"":                                                   false,
+	} {
+		if got := UsageLimitError(text); got != want {
+			t.Errorf("UsageLimitError(%q) = %v, want %v", text, got, want)
+		}
+	}
+}

@@ -20,10 +20,14 @@ import (
 //   - a question the agent asks is answered "decide yourself";
 //   - a blocked gate (loop limit, repeated failure, a failed or interrupted
 //     turn, a PR that did not appear) is retried, and a pipeline that sits
-//     idle with a turn owed or nothing owed at all is pushed with one.
+//     idle with a turn owed or nothing owed at all is pushed with one;
+//   - a turn that failed on the provider's usage limit ends goal mode: the
+//     limit lifts in hours, and every retry until then is refused.
 //
-// Retries and pushes draw on a budget (MaxPushes); when it is spent goal
-// mode ends where it stands and the gate waits for the developer. NextGoalStep
+// Retries, pushes and answer turns draw on a budget (MaxPushes): an agent
+// that asks again after every "decide yourself" is a loop like any other.
+// When it is spent goal mode ends where it stands and the gate waits for
+// the developer. NextGoalStep
 // is pure: the server applies the step it returns through the same paths
 // the console's buttons use.
 
@@ -48,8 +52,11 @@ const (
 	// code (the wrong window, something the accessibility tree cannot
 	// show), so the gate is left to the developer.
 	GoalEndE2EFailed = "e2e_failed"
-	GoalEndCancelled = "cancelled"
-	GoalEndDisabled  = "disabled"
+	// GoalEndUsageLimit: a turn failed on the provider's usage limit
+	// (UsageLimitError).
+	GoalEndUsageLimit = "usage_limit"
+	GoalEndCancelled  = "cancelled"
+	GoalEndDisabled   = "disabled"
 )
 
 // Push budget.
@@ -155,7 +162,7 @@ func EndGoal(p Pipeline, reason string, now time.Time) (Pipeline, bool) {
 	// restore before this).
 	next.GoalMode.PermissionSet, next.GoalMode.RestorePermission = false, ""
 	switch reason {
-	case GoalEndExhausted, GoalEndPRClosed, GoalEndE2EFailed, GoalEndCancelled:
+	case GoalEndExhausted, GoalEndPRClosed, GoalEndE2EFailed, GoalEndUsageLimit, GoalEndCancelled:
 		next.addCard(CardNotice, 0, NoticeGoalEnded, map[string]any{
 			"reason": reason, "pushes": next.GoalMode.Pushes, "max_pushes": next.GoalMode.MaxPushes,
 		}, at)
@@ -242,7 +249,12 @@ func NextGoalStep(p Pipeline, now time.Time) GoalStep {
 		}
 		switch {
 		case c.Kind == CardDecision:
-			return GoalStep{Kind: GoalCard, CardID: c.ID, Decision: GoalDecisionAnswer}
+			if spent {
+				return GoalStep{Kind: GoalEnd, Reason: GoalEndExhausted}
+			}
+			// The last open question of a turn sends the answer turn: that
+			// draws on the budget, once however many questions the turn asked.
+			return GoalStep{Kind: GoalCard, CardID: c.ID, Decision: GoalDecisionAnswer, Push: openTurnDecisions(p, c) == 1}
 		case c.Kind == CardFinding && c.Stage == StagePRReview && p.Current == StagePRReview && i >= p.PRFixCursor:
 			return GoalStep{Kind: GoalCard, CardID: c.ID, Decision: FindingFix}
 		}
@@ -278,6 +290,9 @@ func goalBlockedStep(p Pipeline, g GoalMode, spent bool, now time.Time) GoalStep
 	if fact.Failure != nil && fact.Failure.E2E {
 		return GoalStep{Kind: GoalEnd, Reason: GoalEndE2EFailed}
 	}
+	if fact.Reason == BlockedTurnFailed && UsageLimitError(fact.Error) {
+		return GoalStep{Kind: GoalEnd, Reason: GoalEndUsageLimit}
+	}
 	if spent {
 		return GoalStep{Kind: GoalEnd, Reason: GoalEndExhausted}
 	}
@@ -295,6 +310,32 @@ func goalBlockedStep(p Pipeline, g GoalMode, spent bool, now time.Time) GoalStep
 		}
 	}
 	return step
+}
+
+// usageLimitPhrases are how providers word a spent usage allowance, as
+// opposed to a short rate limit: Claude Code's "You've hit your session
+// limit · resets 2:40pm" and "Claude AI usage limit reached", Codex's
+// "You've hit your usage limit", and TARS's own "usage limit exceeded".
+var usageLimitPhrases = []string{
+	"session limit",
+	"usage limit",
+	"weekly limit",
+	"5-hour limit",
+	"hit your limit",
+}
+
+// UsageLimitError reports whether a failed turn's error says the
+// provider's usage allowance is spent. Retrying such a turn is refused
+// until the limit resets, hours later, and the retry that finally lands
+// spends the fresh allowance on the loop that spent the last one.
+func UsageLimitError(errText string) bool {
+	text := strings.ToLower(errText)
+	for _, phrase := range usageLimitPhrases {
+		if strings.Contains(text, phrase) {
+			return true
+		}
+	}
+	return false
 }
 
 // goalRetryDelay is the wait before retrying after failures consecutive

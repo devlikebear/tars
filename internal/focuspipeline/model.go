@@ -132,6 +132,11 @@ type Card struct {
 	// Turn is the transcript turn (1-based count of user messages) the card
 	// came from; 0 when it came from no turn.
 	Turn int `json:"turn"`
+	// Seq is the pipeline's own count of completed turns (Pipeline.TurnSeq)
+	// when the card was added: the decisions one turn asked share it. Turn
+	// cannot tell turns apart when the transcript does not grow with them
+	// (0 on cards from before it was recorded).
+	Seq int `json:"seq,omitempty"`
 	// Iteration is the stage's round the card came from (0 on cards from
 	// before it was recorded).
 	Iteration int             `json:"iteration,omitempty"`
@@ -210,6 +215,9 @@ type Pipeline struct {
 	// pipeline stops. A server restart that finds it set (or verification
 	// awaited) raises the interrupted gate instead of resuming silently.
 	PendingTurn string `json:"pending_turn,omitempty"`
+	// TurnSeq counts the turns completed while the pipeline was active,
+	// stamped on every card as Card.Seq.
+	TurnSeq int `json:"turn_seq,omitempty"`
 	// LastFailure is the build's latest verification failure, for repeat
 	// detection and the blocked gate's retry.
 	LastFailure *FailureFact `json:"last_failure,omitempty"`

@@ -159,8 +159,9 @@ func TestFocusGoalRetriesFailedTurnsAndAnswersQuestions(t *testing.T) {
 	if !focuspipeline.Finished(p) || p.GoalMode.EndReason != focuspipeline.GoalEndFinished {
 		t.Fatalf("finished=%v goal=%+v", focuspipeline.Finished(p), p.GoalMode)
 	}
-	// One push for the failed turn, one for the blocked build.
-	if p.GoalMode.Pushes != 2 {
+	// One push for the failed turn, one for the answer turn, one for the
+	// blocked build.
+	if p.GoalMode.Pushes != 3 {
 		t.Fatalf("pushes = %d (prompts %q)", p.GoalMode.Pushes, turns.seen())
 	}
 	joined := strings.Join(turns.seen(), "\n---\n")
@@ -196,6 +197,46 @@ func TestFocusGoalStopsWhenTheBudgetIsSpent(t *testing.T) {
 	}
 	if last := p.Cards[len(p.Cards)-1]; last.Title != focuspipeline.NoticeGoalEnded {
 		t.Fatalf("last card = %+v", last)
+	}
+	waitFor(t, "the announcement", func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(titles) > 0
+	})
+	mu.Lock()
+	defer mu.Unlock()
+	if len(titles) != 1 || titles[0] != "Goal mode stopped" {
+		t.Fatalf("notices = %v", titles)
+	}
+}
+
+// A turn refused by the provider's usage limit ends goal mode at once: no
+// backoff, no retry that would wait out the limit and spend the next one.
+func TestFocusGoalEndsOnTheUsageLimit(t *testing.T) {
+	d, turns, store, id := goalDriver(t, stageReply, &fakeVerifier{})
+	turns.fail = func(n int) error {
+		if n == 2 {
+			return errors.New("claude-code-cli request: You've hit your session limit · resets 2:40pm (Asia/Seoul)")
+		}
+		return nil
+	}
+	var mu sync.Mutex
+	var titles []string
+	d.notify = func(_ context.Context, e notificationEvent) {
+		mu.Lock()
+		titles = append(titles, e.Title)
+		mu.Unlock()
+	}
+	startGoal(t, d, store, id, 0)
+
+	waitFor(t, "goal mode to end", func() bool { return !pipelineOf(t, store, id).GoalActive() })
+	waitDriverIdle(t, d, id)
+	p := pipelineOf(t, store, id)
+	if p.GoalMode.EndReason != focuspipeline.GoalEndUsageLimit || p.GoalMode.Pushes != 0 || p.OpenGate != focuspipeline.GateBlocked {
+		t.Fatalf("goal=%+v gate=%q", p.GoalMode, p.OpenGate)
+	}
+	if n := len(turns.seen()); n != 2 {
+		t.Fatalf("turns sent = %d (%q)", n, turns.seen())
 	}
 	waitFor(t, "the announcement", func() bool {
 		mu.Lock()

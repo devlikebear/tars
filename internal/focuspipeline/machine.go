@@ -206,6 +206,7 @@ func applyTurn(p Pipeline, ev Event, now time.Time) (Pipeline, Action) {
 	if !p.Active() {
 		return p, noAction
 	}
+	p.TurnSeq++
 	// The developer's plan edit applies whatever the turn was (a question
 	// at a gate included): it changes no stage and asks for nothing.
 	if ev.Blocks.PlanEdit != nil {
@@ -259,6 +260,12 @@ func applyTurn(p Pipeline, ev Event, now time.Time) (Pipeline, Action) {
 	missing := missingRequiredBlock(p, b)
 	if kind == StageBuild && !missing {
 		act = buildTurnAction(&p, b)
+		if build, _ := p.Stage(p.Current); act.Kind == ActionNone && build.Turns >= buildTurnCap(p) {
+			// A turn that only asks questions never reaches verification,
+			// whose cap check would stop the loop: an agent that asks again
+			// after every answer is held by the same cap here.
+			p.block(BlockedNoProgress, nil, ev.Turn, now)
+		}
 	} else if kind == StageBuild {
 		buildTurnAction(&p, Blocks{})
 	} else if kind == StageReview && !missing {
@@ -585,6 +592,7 @@ func (p *Pipeline) addCard(kind string, turn int, title string, payload any, now
 		Kind:      kind,
 		Stage:     p.Current,
 		Turn:      turn,
+		Seq:       p.TurnSeq,
 		Iteration: stage.Iteration,
 		Title:     title,
 		Payload:   raw,

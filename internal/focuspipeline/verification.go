@@ -112,9 +112,10 @@ func (f FailureFact) key() string {
 	return strings.TrimSpace(f.Command) + "\x00" + excerpt
 }
 
-// buildTurnCap is how many build turns may pass verification without the
-// report claiming tasks_done before the loop blocks: two turns per task
-// plus the loop limit.
+// buildTurnCap is how many build turns may pass without the report claiming
+// tasks_done before the loop blocks — whether they passed verification,
+// missed their block or only asked questions: two turns per task plus the
+// loop limit.
 func buildTurnCap(p Pipeline) int {
 	tasks := max(1, len(p.stageTasks(p.Current)))
 	return 2*tasks + p.stageLimit(p.Current)
