@@ -80,7 +80,7 @@ func (d *setupDiscovery) discover(ctx context.Context) setupDiscoveryResponse {
 	go func() {
 		defer wg.Done()
 		probe := d.service.probeClaudeCodeCLI(ctx, providerProbeResult{Kind: llmdefaults.ProviderClaudeCodeCLI})
-		candidates[0] = setupCandidate{Kind: probe.Kind, Installed: probe.CLIPath != "", Ready: probe.Status == providerProbeOK, Problem: probe.Problem, CLIPath: probe.CLIPath, Version: probe.Version, Source: "cli", Models: []string{"opus", "sonnet", "haiku"}, Recommended: map[string]string{"heavy": "opus", "standard": "sonnet", "light": "haiku"}}
+		candidates[0] = setupCandidate{Kind: probe.Kind, Installed: probe.CLIPath != "", Ready: probe.Status == providerProbeOK, Problem: probe.Problem, CLIPath: probe.CLIPath, Version: probe.Version, Source: "catalog", Models: d.service.claudeCodeSetupModels(), Recommended: map[string]string{"heavy": "opus", "standard": "sonnet", "light": "haiku"}}
 	}()
 	go func() {
 		defer wg.Done()

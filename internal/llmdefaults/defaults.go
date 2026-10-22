@@ -244,3 +244,22 @@ func MaxOutputTokens(model string) int {
 	behavior, _ := ModelBehaviorFor(model)
 	return behavior.MaxOutputTokens
 }
+
+// ClaudeCodeCLIModels is the built-in model list offered for claude-code-cli
+// when nothing fresher is available. The aliases come first: the local CLI maps
+// them to its current model, so they never go stale. The full ids let a tier
+// pin an exact model (`claude --model claude-opus-5-5`). The CLI has no command
+// that lists models, so this list is the last fallback behind the live
+// Anthropic Models API and the CLI's own cache; update it here, in one place.
+var ClaudeCodeCLIModels = []string{
+	"opus",
+	"sonnet",
+	"haiku",
+	"claude-opus-5-5",
+	"claude-opus-5",
+	"claude-sonnet-5-5",
+	"claude-sonnet-5",
+	"claude-haiku-5-5",
+	"claude-fable-5-1",
+	"claude-fable-5",
+}

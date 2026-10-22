@@ -520,6 +520,7 @@
         <div class="config-llm-editor-card card">
           <ConfigLLMEditor
             providersValue={getDisplayValue(llmProvidersField)}
+            savedProvidersValue={values[llmProvidersField.key]}
             tiersValue={getDisplayValue(llmTiersField)}
             roleDefaultsValue={getDisplayValue(llmRoleDefaultsField)}
             onProvidersChange={(v) => setFieldValue(llmProvidersField, v)}

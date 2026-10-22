@@ -41,6 +41,7 @@
   } from '../lib/llmConfigEditor'
   import { availableAuthModesForKind, defaultBaseURLForKind, suggestedAuthModeForKind, type AuthMode } from '../lib/onboarding'
   import { popularModelsForKind } from '../lib/llm-catalog'
+  import { getProviderModels } from '../lib/api'
   import { configValuesEqual } from '../lib/configStructured'
 
   export interface ConfigLLMEditorText {
@@ -94,6 +95,10 @@
     // unchanged by Discard, so the usual "did the prop change" resync
     // never fires — this token forces one regardless (tars#1286 review).
     resetToken?: number
+    // The providers as last saved on the server (not the draft). Only these
+    // aliases can be asked about via GET /v1/models?provider_alias=, so the
+    // model suggestions never fire a request for an alias still being typed.
+    savedProvidersValue?: unknown
   }
 
   let {
@@ -105,6 +110,7 @@
     onRoleDefaultsChange,
     text,
     resetToken = 0,
+    savedProvidersValue = undefined,
   }: Props = $props()
 
   let llmState: LLMEditorState = $state(
@@ -283,6 +289,36 @@
   }
 
   // -- Tiers --------------------------------------------------------------
+
+  // claude-code-cli has no fixed catalog: the server assembles its model list
+  // (live Anthropic list, the CLI's own cache, built-in ids). Fetched once per
+  // *saved* claude-code-cli alias — a draft alias the server does not know yet
+  // would 400, and one request per typed character is wasteful. A failure
+  // leaves the static catalog in place and lets a later save-reload retry.
+  let serverModels = $state<Record<string, string[]>>({})
+  const requestedModelAliases = new Set<string>()
+  $effect(() => {
+    const saved = savedProvidersValue
+    if (!saved || typeof saved !== 'object') return
+    for (const [rawAlias, provider] of Object.entries(saved as Record<string, unknown>)) {
+      const alias = rawAlias.trim()
+      const kind = (provider as { kind?: unknown } | null)?.kind
+      if (kind !== 'claude-code-cli' || !alias || requestedModelAliases.has(alias)) continue
+      requestedModelAliases.add(alias)
+      getProviderModels(alias)
+        .then((info) => {
+          const models = Array.isArray(info?.models) ? info.models.filter((m) => typeof m === 'string' && m.trim() !== '') : []
+          if (models.length > 0) serverModels = { ...serverModels, [alias]: models }
+        })
+        .catch(() => {
+          requestedModelAliases.delete(alias)
+        })
+    }
+  })
+  function modelSuggestionsFor(row: LLMProviderRow): string[] {
+    const fetched = serverModels[row.alias.trim()] ?? []
+    return [...new Set([...popularModelsForKind(row.kind), ...fetched])]
+  }
 
   let providerAliasOptions = $derived(
     [...new Set(llmState.providers.map((p) => p.alias.trim()).filter(Boolean))],
@@ -529,7 +565,7 @@
     {:else}
       <datalist id="config-llm-model-suggestions">
         {#each llmState.providers as row}
-          {#each popularModelsForKind(row.kind) as model}
+          {#each modelSuggestionsFor(row) as model}
             <option value={model}></option>
           {/each}
         {/each}

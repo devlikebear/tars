@@ -19,6 +19,7 @@ export const setupDiscoveryEn = {
   modelCache: 'Using cached model recommendations; live lookup is unavailable.',
   modelFallback: 'Using the bundled fallback model; review it before saving.',
   applyModels: 'Fill empty model tiers',
+  modelCatalog: 'Aliases follow your installed CLI; full ids such as claude-opus-5-5 pin an exact model.',
   aliases: 'Claude aliases follow the models recommended by your installed CLI.',
 }
 export type SetupDiscoveryTranslations = typeof setupDiscoveryEn
@@ -43,5 +44,6 @@ export const setupDiscoveryKo: SetupDiscoveryTranslations = {
   modelCache: '실시간 조회가 안 되어 캐시된 모델 추천을 사용합니다.',
   modelFallback: '기본 모델을 사용합니다. 저장 전에 모델을 검토하세요.',
   applyModels: '빈 모델 tier 채우기',
+  modelCatalog: '별칭은 설치된 CLI를 따르고, claude-opus-5-5 같은 전체 ID는 정확한 모델을 고정합니다.',
   aliases: 'Claude 별칭은 설치된 CLI가 추천하는 모델을 따릅니다.',
 }
