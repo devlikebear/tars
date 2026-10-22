@@ -6,9 +6,11 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.66.0] - 2026-10-22
+
 ### Added
 
-- **claude-code-cli tiers can pin a full model id such as `claude-opus-5-5`, and the pickers list them.** The Claude Code CLI has no model-list command, so `/v1/models`, the setup wizard and Settings → LLM now assemble the list from the live Anthropic Models API (only when the provider pool has an `anthropic` entry with an `api_key`; the CLI's own login is never read), the model options the CLI cached in `~/.claude.json` (read-only, ids only), and a built-in catalog (`llmdefaults.ClaudeCodeCLIModels`), plus the models the tiers already use. The `opus`/`sonnet`/`haiku` aliases still lead the list and stay the recommended defaults.
+- **claude-code-cli tiers can pin a full model id such as `claude-opus-5-5`, and the pickers list them.** The Claude Code CLI has no model-list command, so `/v1/models`, the setup wizard and Settings → LLM now assemble the list from the live Anthropic Models API (only when the provider pool has an `anthropic` entry with an `api_key`; the CLI's own login is never read), the model options the CLI cached in `~/.claude.json` (read-only, ids only), and a built-in catalog (`llmdefaults.ClaudeCodeCLIModels`), plus the models the tiers already use. The `opus`/`sonnet`/`haiku` aliases still lead the list and stay the recommended defaults. ([#1298](https://github.com/devlikebear/tars/pull/1298))
 
 ### Fixed
 
