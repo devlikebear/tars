@@ -76,12 +76,20 @@ export const wellKnownModelsByKind: Record<ProviderKind, string[]> = {
     'moonshot-v1-128k',
   ],
   // claude-code-cli accepts short aliases that the local CLI maps to
-  // its current pinned defaults — the wizard never sends a pinned
-  // dated id here.
+  // its current model, and full ids (`--model claude-opus-5-5`) to pin
+  // one. The server assembles the live list (GET /v1/models); this is
+  // the offline seed and mirrors internal/llmdefaults ClaudeCodeCLIModels.
   'claude-code-cli': [
     'sonnet',
     'opus',
     'haiku',
+    'claude-opus-5-5',
+    'claude-opus-5',
+    'claude-sonnet-5-5',
+    'claude-sonnet-5',
+    'claude-haiku-5-5',
+    'claude-fable-5-1',
+    'claude-fable-5',
   ],
   // antigravity-cli accepts whatever slug `agy models` lists for the
   // signed-in account; there is no fixed catalog to seed here.

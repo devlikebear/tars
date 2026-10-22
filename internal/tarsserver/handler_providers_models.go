@@ -88,6 +88,9 @@ type providerModelsService struct {
 	findCLI func(kind string) (string, error)
 	// runCLI runs a provider CLI for the connection probe.
 	runCLI providerCLIRunner
+	// readCLIModelCache returns the model ids the Claude Code CLI cached in its
+	// own config; nil means the real file is read.
+	readCLIModelCache func() []string
 }
 
 func newProviderModelsService(cfg config.Config, cache *providerModelsCache, fetcher llm.ModelFetcher, nowFn func() time.Time) *providerModelsService {
@@ -184,6 +187,9 @@ func (s *providerModelsService) models(ctx context.Context, providerAlias string
 	provider := normalizeProviderValue(resolved.Kind)
 	if !s.supportsProvider(provider) {
 		return modelsAPIInfo{}, fmt.Errorf("unsupported llm provider: %s", provider)
+	}
+	if provider == llmdefaults.ProviderClaudeCodeCLI {
+		return s.claudeCodeCLIModels(ctx, resolved, provider)
 	}
 	if !providerSupportsLiveModels(provider) {
 		return s.cliModels(resolved, provider)
@@ -362,7 +368,7 @@ func (s *providerModelsService) supportsProvider(provider string) bool {
 
 func providerSupportsLiveModels(provider string) bool {
 	switch normalizeProviderValue(provider) {
-	case llmdefaults.ProviderClaudeCodeCLI, llmdefaults.ProviderAntigravityCLI:
+	case llmdefaults.ProviderAntigravityCLI:
 		return false
 	default:
 		return true

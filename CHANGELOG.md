@@ -6,6 +6,10 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+### Added
+
+- **claude-code-cli tiers can pin a full model id such as `claude-opus-5-5`, and the pickers list them.** The Claude Code CLI has no model-list command, so `/v1/models`, the setup wizard and Settings → LLM now assemble the list from the live Anthropic Models API (only when the provider pool has an `anthropic` entry with an `api_key`; the CLI's own login is never read), the model options the CLI cached in `~/.claude.json` (read-only, ids only), and a built-in catalog (`llmdefaults.ClaudeCodeCLIModels`), plus the models the tiers already use. The `opus`/`sonnet`/`haiku` aliases still lead the list and stay the recommended defaults.
+
 ### Fixed
 
 - **Goal mode no longer loops on an agent that keeps asking questions.** Answering an agent's questions with "decide yourself" now draws on the push budget (once per answer turn), so an agent that asks again after every answer ends goal mode at the budget instead of running unbounded. The answers of one turn are grouped by the pipeline's own turn count, so an answer turn no longer re-sends every answer the stage ever got when the transcript turn count stays put. A build turn that only asks questions now counts toward the build turn cap, which blocks the stage. A turn refused by the model provider's usage limit (Claude Code's "You've hit your session limit", Codex's "usage limit") ends goal mode at once with the new `usage_limit` reason instead of retrying until the limit resets and spending the next allowance on the same loop. ([#1297](https://github.com/devlikebear/tars/pull/1297))

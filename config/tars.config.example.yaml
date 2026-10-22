@@ -170,6 +170,11 @@ llm:
     # instead of light, so an unprompted word sounds like the same voice
     # chat already uses. List it only to override that fallback.
 
+  # claude-code-cli tiers take either an alias (opus, sonnet, haiku — the CLI
+  # maps it to its newest model) or a full id such as claude-opus-5-5 to pin
+  # one. The console lists known ids: the live Anthropic list when an
+  # `anthropic` provider with an api_key exists, the CLI's cached options, and
+  # a built-in catalog. The CLI's own login is never read for this.
   # Only relevant when a tier uses kind: claude-code-cli. Controls the value
   # passed to `claude -p --permission-mode`. Allowed values:
   #   auto              — Claude Code prompts interactively for risky tools (default)

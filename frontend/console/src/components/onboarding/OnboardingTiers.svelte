@@ -68,7 +68,7 @@
   <div class="onboarding-models-source">
     <div class="onboarding-models-source-text">
       {#if selectedCandidate}
-        {selectedCandidate.source === 'live' ? $t.setupDiscovery.modelLive : selectedCandidate.source === 'cache' ? $t.setupDiscovery.modelCache : selectedCandidate.source === 'cli' ? $t.setupDiscovery.aliases : $t.setupDiscovery.modelFallback}
+        {selectedCandidate.source === 'live' ? $t.setupDiscovery.modelLive : selectedCandidate.source === 'cache' ? $t.setupDiscovery.modelCache : selectedCandidate.source === 'cli' ? $t.setupDiscovery.aliases : selectedCandidate.source === 'catalog' ? $t.setupDiscovery.modelCatalog : $t.setupDiscovery.modelFallback}
       {:else if liveModels.length > 0}
         {$t.onboarding.step2.modelsSourceLive(liveModels.length)}
       {:else if modelSuggestions.length > 0}

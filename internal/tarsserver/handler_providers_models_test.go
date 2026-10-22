@@ -376,7 +376,7 @@ func TestModelsAPI_NoCachePermissionFail_(t *testing.T) {
 	}
 }
 
-func TestProvidersAPI_ClaudeCodeCLIListedWithoutLiveModels(t *testing.T) {
+func TestProvidersAPI_ClaudeCodeCLIListedWithLiveModels(t *testing.T) {
 	cfg := makePoolTestCfg("claude-code-cli", "sonnet", "cli", "")
 	cache, err := newProviderModelsCache(filepath.Join(t.TempDir(), "provider_models_cache.json"), providerModelsCacheTTL, time.Now)
 	if err != nil {
@@ -405,8 +405,8 @@ func TestProvidersAPI_ClaudeCodeCLIListedWithoutLiveModels(t *testing.T) {
 			continue
 		}
 		found = true
-		if item.SupportsLiveModels {
-			t.Fatalf("expected claude-code-cli live_models=false, got %+v", item)
+		if !item.SupportsLiveModels {
+			t.Fatalf("expected claude-code-cli live_models=true, got %+v", item)
 		}
 	}
 	if !found {
@@ -454,7 +454,7 @@ func TestProvidersAPI_KimiListedWithLiveModels(t *testing.T) {
 
 func TestModelsAPI_CLIProviderReportsInstalledCLIAndTierModels(t *testing.T) {
 	now := time.Date(2026, 3, 14, 12, 0, 0, 0, time.UTC)
-	for _, kind := range []string{"claude-code-cli", "antigravity-cli"} {
+	for _, kind := range []string{"antigravity-cli"} {
 		t.Run(kind, func(t *testing.T) {
 			cfg := makePoolTestCfg(kind, "sonnet", "cli", "")
 			cfg.LLMTiers["heavy"] = config.LLMTierBinding{Provider: "default", Model: "opus"}
