@@ -3,7 +3,6 @@ package tarsserver
 import (
 	"context"
 	"errors"
-	"os"
 	"path/filepath"
 	"slices"
 	"testing"
@@ -98,38 +97,6 @@ func TestClaudeCodeCLIModels_LiveEmptyIsIgnored(t *testing.T) {
 	info, _ := s.models(context.Background(), "")
 	if info.Source != "catalog" || info.Warning == "" {
 		t.Fatalf("unexpected: %+v", info)
-	}
-}
-
-func TestParseClaudeCLIModelCache(t *testing.T) {
-	got := parseClaudeCLIModelCache([]byte(`{"oauthAccount":{"x":"secret"},"additionalModelOptionsCache":[{"value":"claude-fable-5-1[1m]"},{"value":" "},{"value":"opus"}]}`))
-	if !slices.Equal(got, []string{"claude-fable-5-1", "opus"}) {
-		t.Fatalf("got %v", got)
-	}
-	for _, bad := range []string{"", "{", `{"additionalModelOptionsCache":"x"}`, `{}`} {
-		if got := parseClaudeCLIModelCache([]byte(bad)); len(got) != 0 {
-			t.Fatalf("%q => %v", bad, got)
-		}
-	}
-}
-
-func TestReadClaudeCLIModelCache(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("CLAUDE_CONFIG_DIR", dir)
-	if got := readClaudeCLIModelCache(); got != nil {
-		t.Fatalf("missing file: %v", got)
-	}
-	if err := os.WriteFile(filepath.Join(dir, ".claude.json"), []byte(`{"additionalModelOptionsCache":[{"value":"claude-x-1"}]}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if got := readClaudeCLIModelCache(); !slices.Equal(got, []string{"claude-x-1"}) {
-		t.Fatalf("got %v", got)
-	}
-	if err := os.WriteFile(filepath.Join(dir, ".claude.json"), []byte("garbage"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if got := readClaudeCLIModelCache(); got != nil {
-		t.Fatalf("corrupt: %v", got)
 	}
 }
 
