@@ -21,8 +21,8 @@ COVER_OUT_DIFF ?= coverage.diff.out
 COVER_MIN ?= 60
 DIFF_COVER_MIN ?= 80
 DIFF_HEAD ?=
-GOLANGCI_LINT_VERSION ?= v2.12.2
-# golangci-lint v2.12.2's bundled go/types reads the running Go toolchain's
+GOLANGCI_LINT_VERSION ?= v2.15.0
+# golangci-lint's bundled go/types reads the running Go toolchain's
 # standard library export data and rejects a newer format than it knows —
 # an installed Go ahead of go.mod's `go` directive (GOTOOLCHAIN=auto only
 # upgrades, never downgrades) fails with "export data version N is greater
