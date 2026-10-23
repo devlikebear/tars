@@ -316,11 +316,14 @@ pkg/llm func AllRoles
 pkg/llm func AllTiers
 pkg/llm func AttemptedTools
 pkg/llm func CapabilitiesFor
+pkg/llm func ClaudeCodeCLIModelCatalog
+pkg/llm func ClaudeModelIDs
 pkg/llm func DecisionOnlyChatOptions
 pkg/llm func DeclaredProviderKinds
 pkg/llm func DefaultClientConfig
 pkg/llm func FindAntigravityCLIPath
 pkg/llm func FindClaudeCodeCLIPath
+pkg/llm func MergeClaudeCodeCLIModels
 pkg/llm func NewAnthropicClient
 pkg/llm func NewAntigravityCLIClient
 pkg/llm func NewClaudeCodeCLIClient
@@ -337,6 +340,7 @@ pkg/llm func ParseRoleOrKeep
 pkg/llm func ParseTier
 pkg/llm func ParseTierOrKeep
 pkg/llm func PartialUsageFromError
+pkg/llm func ReadClaudeCodeCLIModelCache
 pkg/llm func RecommendTierForTask
 pkg/llm func SelectionMetadataFromContext
 pkg/llm func SupportsCapability

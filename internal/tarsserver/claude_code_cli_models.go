@@ -2,23 +2,15 @@ package tarsserver
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
-	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/devlikebear/tars/internal/config"
-	"github.com/devlikebear/tars/internal/llm"
 	"github.com/devlikebear/tars/internal/llmdefaults"
+	"github.com/devlikebear/tars/pkg/llm"
 )
-
-// maxCLIConfigBytes bounds how much of ~/.claude.json is read; the file only
-// grows with usage history, and the model cache sits in it as plain JSON.
-const maxCLIConfigBytes = 32 << 20
 
 // claudeCodeCLIModels answers /v1/models for claude-code-cli. The CLI has no
 // command that lists models, so the list is assembled from, in priority order:
@@ -28,7 +20,7 @@ const maxCLIConfigBytes = 32 << 20
 //     the CLI's own OAuth login is never read),
 //  2. the model options the CLI itself cached in ~/.claude.json
 //     (read-only, only the `value` strings),
-//  3. the built-in catalog in llmdefaults,
+//  3. the built-in catalog (llm.ClaudeCodeCLIModelCatalog),
 //
 // plus the models the tiers are bound to and the current one, so a pinned
 // model never disappears from the picker.
@@ -56,9 +48,9 @@ func (s *providerModelsService) claudeCodeCLIModels(ctx context.Context, resolve
 
 	reader := s.readCLIModelCache
 	if reader == nil {
-		reader = readClaudeCLIModelCache
+		reader = llm.ReadClaudeCodeCLIModelCache
 	}
-	info.Models = mergeClaudeCLIModels(live, reader(), llmdefaults.ClaudeCodeCLIModels,
+	info.Models = llm.MergeClaudeCodeCLIModels(live, reader(), llm.ClaudeCodeCLIModelCatalog(),
 		s.tierModelsForProviderAlias(resolved.ProviderAlias), []string{resolved.Model})
 	return info, nil
 }
@@ -69,9 +61,9 @@ func (s *providerModelsService) claudeCodeCLIModels(ctx context.Context, resolve
 func (s *providerModelsService) claudeCodeSetupModels() []string {
 	reader := s.readCLIModelCache
 	if reader == nil {
-		reader = readClaudeCLIModelCache
+		reader = llm.ReadClaudeCodeCLIModelCache
 	}
-	return mergeClaudeCLIModels(reader(), llmdefaults.ClaudeCodeCLIModels)
+	return llm.MergeClaudeCodeCLIModels(reader(), llm.ClaudeCodeCLIModelCatalog())
 }
 
 // anthropicPoolProvider returns the first (by alias) anthropic provider that
@@ -124,11 +116,7 @@ func (s *providerModelsService) liveClaudeModels(ctx context.Context, alias stri
 		}
 		return nil, "", "", warn
 	}
-	for _, m := range fetched {
-		if m = strings.TrimSpace(m); strings.HasPrefix(m, "claude-") {
-			models = append(models, m)
-		}
-	}
+	models = llm.ClaudeModelIDs(fetched)
 	if len(models) == 0 {
 		return nil, "", "", fmt.Sprintf("live model list from provider %q had no claude models", alias)
 	}
@@ -137,76 +125,4 @@ func (s *providerModelsService) liveClaudeModels(ctx context.Context, alias stri
 		return models, at, "", ""
 	}
 	return models, at, now.Add(s.cache.ttl).Format(time.RFC3339), ""
-}
-
-// readClaudeCLIModelCache reads the model ids the Claude Code CLI cached in its
-// own config file. Only `additionalModelOptionsCache[].value` is read, never
-// anything else in the file (it also holds OAuth account data). A missing,
-// oversized or malformed file yields nothing.
-func readClaudeCLIModelCache() []string {
-	dir := strings.TrimSpace(os.Getenv("CLAUDE_CONFIG_DIR"))
-	if dir == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return nil
-		}
-		dir = home
-	}
-	f, err := os.Open(filepath.Join(dir, ".claude.json"))
-	if err != nil {
-		return nil
-	}
-	defer func() { _ = f.Close() }()
-	data, err := io.ReadAll(io.LimitReader(f, maxCLIConfigBytes+1))
-	if err != nil || len(data) > maxCLIConfigBytes {
-		return nil
-	}
-	return parseClaudeCLIModelCache(data)
-}
-
-func parseClaudeCLIModelCache(data []byte) []string {
-	var doc struct {
-		Options []struct {
-			Value string `json:"value"`
-		} `json:"additionalModelOptionsCache"`
-	}
-	if json.Unmarshal(data, &doc) != nil {
-		return nil
-	}
-	var out []string
-	for _, o := range doc.Options {
-		v := strings.TrimSpace(o.Value)
-		// "claude-fable-5-1[1m]": the suffix selects a context window; the
-		// bare id is what the picker should hold.
-		if i := strings.Index(v, "["); i >= 0 {
-			v = strings.TrimSpace(v[:i])
-		}
-		if v != "" {
-			out = append(out, v)
-		}
-	}
-	return out
-}
-
-// mergeClaudeCLIModels joins the sources without duplicates. Aliases (no
-// "claude-" prefix) come first because the CLI maps them to its newest model,
-// then the rest in source order.
-func mergeClaudeCLIModels(sources ...[]string) []string {
-	seen := map[string]bool{}
-	var aliases, full []string
-	for _, src := range sources {
-		for _, m := range src {
-			m = strings.TrimSpace(m)
-			if m == "" || seen[m] {
-				continue
-			}
-			seen[m] = true
-			if strings.HasPrefix(m, "claude-") {
-				full = append(full, m)
-			} else {
-				aliases = append(aliases, m)
-			}
-		}
-	}
-	return append(aliases, full...)
 }
