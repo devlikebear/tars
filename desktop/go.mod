@@ -2,6 +2,8 @@ module github.com/devlikebear/tars/desktop
 
 go 1.25.6
 
+toolchain go1.27.3
+
 require (
 	github.com/tc-hib/winres v0.3.1
 	github.com/wailsapp/wails/v3 v3.0.0-beta.26

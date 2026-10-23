@@ -2,6 +2,8 @@ module github.com/devlikebear/tars
 
 go 1.25.6
 
+toolchain go1.27.3
+
 require (
 	github.com/creack/pty v1.1.24
 	github.com/fsnotify/fsnotify v1.8.0
