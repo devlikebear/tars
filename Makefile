@@ -31,7 +31,10 @@ GOLANGCI_LINT_VERSION ?= v2.12.2
 # CI's setup-go already installs via go-version-file), so lint-diff/lint
 # behave the same regardless of which Go is ambient on a given machine;
 # GOTOOLCHAIN=goX.Y.Z downloads that version on first use if missing.
-GOLANGCI_LINT ?= GOTOOLCHAIN=go$(shell $(GO) list -m -f '{{.GoVersion}}') $(GO) run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
+# A `toolchain` line wins over the `go` directive: golangci-lint targets the
+# toolchain version too, and refuses one newer than the Go it was built with.
+GOLANGCI_LINT_GO ?= $(or $(shell $(GO) mod edit -json | sed -n 's/^[[:space:]]*"Toolchain": "\(go[^"]*\)".*/\1/p'),go$(shell $(GO) list -m -f '{{.GoVersion}}'))
+GOLANGCI_LINT ?= GOTOOLCHAIN=$(GOLANGCI_LINT_GO) $(GO) run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
 TARS_CONFIG ?= ./workspace/config/tars.config.yaml
 ROOT_DIR := $(abspath .)
 TARS_BIN := $(abspath $(BIN_DIR)/tars$(GOEXE))
