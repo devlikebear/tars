@@ -2,7 +2,7 @@
 
 > 상태: 구현 PR 리뷰 중 (2026-10-17, 브랜치 `feat/second-opinion-review`) · 기준 커밋: `9907a083` (main) · 계획과 달라진 점은 §9
 > 진행 관리: #1281 (체크리스트·PR·확인 결과·측정은 이슈에, 설계는 이 문서에. 구현 PR 본문에 `Closes #1281`)
-> 출처: 철회한 Focus × Crew의 Phase 3([`../focus-crew/phase-3-cross-review.md`](../focus-crew/phase-3-cross-review.md))를 크루 없이 줄인 것. 철회 이유는 [`../focus-crew/roadmap.md`](../focus-crew/roadmap.md)의 "철회 결정".
+> 출처: 철회한 Focus × Crew의 Phase 3를 크루 없이 줄인 것.
 > 결정 문서: `docs/decisions/focus-mode.md` (구현 PR에서 §5.1을 새로 쓴다)
 
 ## 1. 왜

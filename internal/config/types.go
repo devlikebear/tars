@@ -76,8 +76,8 @@ type RemoteAccessConfig struct {
 }
 
 // LLMConfig holds the named provider pool + tier bindings that together
-// describe every LLM endpoint TARS will call. See
-// docs/plans/llm-provider-pool.md for the schema rationale.
+// describe every LLM endpoint TARS will call. See the llm section of
+// config/tars.config.example.yaml for the annotated schema.
 //
 // Legacy flat fields (LLMProvider, LLMAuthMode, ..., LLMTierHeavy/Standard/
 // Light) were removed in the cutover commit — user configs must migrate

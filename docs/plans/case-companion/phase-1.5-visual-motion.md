@@ -34,7 +34,7 @@
 
 ### 2.1 래스터 스프라이트 (2026-10-18 사용자 결정)
 
-바뀌는 규칙 — `DESIGN.md` "CASE's expressions", `HANDOFF.md` §2, `roadmap.md` 결정 1·3, `tests/companionPet.test.ts:429`(`<img|<svg` 금지 검사)를 함께 고친다:
+바뀌는 규칙 — `DESIGN.md` "CASE's expressions", `roadmap.md` 결정 1·3, `tests/companionPet.test.ts:429`(`<img|<svg` 금지 검사)를 함께 고친다:
 
 - 허용: `frontend/console/src/assets/case/`의 **스프라이트 시트**(WebP, 알파). §5의 파이프라인으로 만든 파일만. CSS `background-image` + `background-position`(`steps()`)으로 재생.
 - 계속 금지: 그 폴더 밖 이미지, 외부 URL, SVG 몸체, 폰트 아이콘, Lottie·GIF·APNG 같은 애니메이션 포맷/라이브러리, JS 프레임 루프.
