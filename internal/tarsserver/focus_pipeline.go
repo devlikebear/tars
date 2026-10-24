@@ -12,6 +12,7 @@ import (
 	"github.com/devlikebear/tars/internal/focuspipeline"
 	"github.com/devlikebear/tars/internal/serverauth"
 	"github.com/devlikebear/tars/internal/session"
+	"github.com/devlikebear/tars/internal/skillhub"
 	"github.com/rs/zerolog"
 )
 
@@ -31,7 +32,7 @@ import (
 //	POST /v1/focus/pipelines/{id}/qa              {card_id, question} → 202 {qa_session_id, turn} (focus_qa.go)
 //	POST /v1/focus/pipelines/{id}/goal            {enabled, max_pushes?} → {pipeline}; turning it on needs the admin token (focus_goal.go)
 //	POST /v1/focus/pipelines/{id}/plan            {goal?, verify?, e2e?, e2e_setup?, e2e_teardown?} → {pipeline, changed}; edits the approved plan, 409 before G1 or once finished (focus_plan_edit.go)
-//	GET  /v1/focus/templates                      → {templates, diagnostics}; POST /v1/focus/pipelines takes {template, goal_mode, goal_max_pushes, e2e, second_opinion?: {tier}} — second_opinion opts in to the second opinion review (heavy|standard|light; 400 when the tier cannot be used, 503 when the server cannot run it, second_opinion_warning "same_model_as_chat" in the 201) (focus_second_opinion.go)
+//	GET  /v1/focus/templates                      → {templates, diagnostics, hub: {id: version} of the TARS Hub ones, dir}; POST /v1/focus/pipelines takes {template, goal_mode, goal_max_pushes, e2e, second_opinion?: {tier}} — second_opinion opts in to the second opinion review (heavy|standard|light; 400 when the tier cannot be used, 503 when the server cannot run it, second_opinion_warning "same_model_as_chat" in the 201) (focus_second_opinion.go)
 //	POST /v1/focus/templates/draft                {request, base_id?, draft?} → AI-drafted save/delete (focus_template_edit.go); PUT/DELETE /v1/focus/templates/{id} actually save or remove
 //
 // Every chat turn of a session with a pipeline gets the stage's guidance
@@ -541,11 +542,35 @@ func focusTemplateDir(sessions *session.Store) string {
 // templates lists the templates a pipeline can start from: the built-in
 // ones, then the workspace's, with a diagnostic for each file not loaded.
 func (a *focusAPI) templates(w http.ResponseWriter, _ *http.Request) {
-	templates, diagnostics := focuspipeline.LoadTemplates(focusTemplateDir(a.sessions))
+	dir := focusTemplateDir(a.sessions)
+	templates, diagnostics := focuspipeline.LoadTemplates(dir)
 	if diagnostics == nil {
 		diagnostics = []focuspipeline.TemplateDiagnostic{}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"templates": templates, "diagnostics": diagnostics})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"templates":   templates,
+		"diagnostics": diagnostics,
+		"hub":         hubFocusTemplateVersions(dir),
+		"dir":         dir,
+	})
+}
+
+// hubFocusTemplateVersions maps the id of each template installed from the
+// TARS Hub to its version, so the focus templates page can mark it and
+// point updates at the hub. An unreadable hub DB just marks none.
+func hubFocusTemplateVersions(dir string) map[string]string {
+	out := map[string]string{}
+	if strings.TrimSpace(dir) == "" {
+		return out
+	}
+	rows, err := skillhub.NewInstaller(filepath.Dir(dir)).ListFocusTemplates()
+	if err != nil {
+		return out
+	}
+	for _, row := range rows {
+		out[row.Name] = row.Version
+	}
+	return out
 }
 
 type focusGoalRequest struct {
