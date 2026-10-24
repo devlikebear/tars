@@ -114,6 +114,9 @@ pkg/llm const CapSessionResume
 pkg/llm const CapStreaming
 pkg/llm const CapThinkingRoundTrip
 pkg/llm const CapToolCalling
+pkg/llm const ImageAspectLandscape
+pkg/llm const ImageAspectPortrait
+pkg/llm const ImageAspectSquare
 pkg/llm const ReasoningBlockRedacted
 pkg/llm const ReasoningBlockThinking
 pkg/llm const ResponseFormatJSONObject
@@ -232,6 +235,12 @@ pkg/llm field FakeClient.ChatCalls
 pkg/llm field FakeClient.ChatResponse
 pkg/llm field FakeClient.Label
 pkg/llm field FakeClient.LastChatOptions
+pkg/llm field ImageRequest.Aspect
+pkg/llm field ImageRequest.Prompt
+pkg/llm field ImageRequest.References
+pkg/llm field ImageResult.Data
+pkg/llm field ImageResult.MediaType
+pkg/llm field ImageResult.RevisedPrompt
 pkg/llm field PartialUsageError.ByModel
 pkg/llm field PartialUsageError.Err
 pkg/llm field PartialUsageError.Usage
@@ -365,9 +374,12 @@ pkg/llm method FakeClient.Ask
 pkg/llm method FakeClient.Chat
 pkg/llm method GeminiNativeClient.Ask
 pkg/llm method GeminiNativeClient.Chat
+pkg/llm method GeminiNativeClient.GenerateImage
+pkg/llm method ImageGenerator.GenerateImage
 pkg/llm method ModelFetcher.FetchModels
 pkg/llm method OpenAICodexClient.Ask
 pkg/llm method OpenAICodexClient.Chat
+pkg/llm method OpenAICodexClient.GenerateImage
 pkg/llm method OpenAICodexClient.LastCodexRateLimit
 pkg/llm method OpenAICodexClient.SetRateLimitObserver
 pkg/llm method OpenAICompatibleClient.Ask
@@ -408,6 +420,10 @@ pkg/llm type CodexRateLimitWindow
 pkg/llm type ContentBlock
 pkg/llm type FakeClient
 pkg/llm type GeminiNativeClient
+pkg/llm type ImageAspect
+pkg/llm type ImageGenerator
+pkg/llm type ImageRequest
+pkg/llm type ImageResult
 pkg/llm type ModelFetcher
 pkg/llm type OpenAICodexClient
 pkg/llm type OpenAICompatibleClient
@@ -433,6 +449,8 @@ pkg/llm type ToolFunctionSchema
 pkg/llm type ToolSchema
 pkg/llm type UpstreamSessionError
 pkg/llm type Usage
+pkg/llm var ErrImageBillingRequired
+pkg/llm var ErrImageRefused
 pkg/mcp const TransportSSE
 pkg/mcp const TransportStdio
 pkg/mcp const TransportStreamableHTTP
