@@ -39,8 +39,8 @@ var configInputFields = []configInputField{
 	withYAMLPath(intField("api_max_inflight_agent_runs", []string{"API_MAX_INFLIGHT_AGENT_RUNS", "TARS_API_MAX_INFLIGHT_AGENT_RUNS"}, func(cfg *Config) *int { return &cfg.APIMaxInflightAgentRuns }, parsePositiveInt), "api.max_inflight.agent_runs"),
 	withYAMLPath(boolField("remote_access_tailscale_serve_enabled", []string{"REMOTE_ACCESS_TAILSCALE_SERVE_ENABLED", "TARS_REMOTE_ACCESS_TAILSCALE_SERVE_ENABLED"}, func(cfg *Config) *bool { return &cfg.RemoteAccessTailscaleServeEnabled }), "remote_access.tailscale_serve.enabled"),
 	withYAMLPath(intField("remote_access_tailscale_serve_https_port", []string{"REMOTE_ACCESS_TAILSCALE_SERVE_HTTPS_PORT", "TARS_REMOTE_ACCESS_TAILSCALE_SERVE_HTTPS_PORT"}, func(cfg *Config) *int { return &cfg.RemoteAccessTailscaleServeHTTPSPort }, parsePositiveInt), "remote_access.tailscale_serve.https_port"),
-	// Named provider pool + tier bindings. See docs/plans/llm-provider-pool.md
-	// and internal/config/llm_resolve.go.
+	// Named provider pool + tier bindings. See the llm section of
+	// config/tars.config.example.yaml and internal/config/llm_resolve.go.
 	withYAMLPath(llmProvidersField("llm_providers", []string{"LLM_PROVIDERS_JSON", "TARS_LLM_PROVIDERS_JSON"}), "llm.providers"),
 	withYAMLPath(llmTiersField("llm_tiers", []string{"LLM_TIERS_JSON", "TARS_LLM_TIERS_JSON"}), "llm.tiers"),
 	withYAMLPath(stringField("llm_default_tier", []string{"LLM_DEFAULT_TIER", "TARS_LLM_DEFAULT_TIER"}, func(cfg *Config) *string { return &cfg.LLMDefaultTier }, lowerTrimmedString), "llm.default_tier"),

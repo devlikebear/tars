@@ -181,7 +181,7 @@ func checkDoctorLLMCredentials(report *doctorReport, cfg config.Config, configPa
 	resolved, err := config.ResolveAllLLMTiers(&cfg)
 	if err != nil {
 		report.add("fail", "llm credentials", fmt.Sprintf("resolve llm tiers: %v", err))
-		report.addHint("define llm_providers and llm_tiers in your config — see docs/plans/llm-provider-pool.md for the schema")
+		report.addHint("define llm_providers and llm_tiers in your config — see the llm section of config/tars.config.example.yaml for the schema")
 		return
 	}
 	if len(resolved) == 0 {

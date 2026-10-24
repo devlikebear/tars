@@ -332,6 +332,26 @@ func clearDoctorEnv(t *testing.T) {
 // checkDoctorLLMRuntime function directly across the branches the auth code
 // introduces. The skipped runtime case (no claude-code-cli provider in
 // config) is also covered to lock the early-return.
+func TestCheckDoctorLLMCredentials_UnresolvableTierPointsAtTheSchema(t *testing.T) {
+	cfg := config.Config{LLMConfig: config.LLMConfig{
+		LLMTiers: map[string]config.LLMTierBinding{"standard": {Provider: "missing", Model: "m"}},
+	}}
+	var report doctorReport
+	checkDoctorLLMCredentials(&report, cfg, "")
+
+	if len(report.checks) != 1 || report.checks[0].status != "fail" || !strings.Contains(report.checks[0].detail, "resolve llm tiers") {
+		t.Fatalf("checks = %+v, want one resolve failure", report.checks)
+	}
+	const schema = "config/tars.config.example.yaml"
+	if len(report.hints) != 1 || !strings.Contains(report.hints[0], schema) {
+		t.Fatalf("hints = %q, want one pointing at %s", report.hints, schema)
+	}
+	// The hint names a repository file; keep it from pointing at one that is gone.
+	if _, err := os.Stat(filepath.Join("..", "..", schema)); err != nil {
+		t.Fatalf("hinted schema file: %v", err)
+	}
+}
+
 func TestCheckDoctorLLMRuntime_ClaudeCodeCLI(t *testing.T) {
 	// 1) No claude-code-cli provider configured → check skipped entirely,
 	// report stays empty.
