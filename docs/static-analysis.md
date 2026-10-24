@@ -25,9 +25,12 @@ weekly scheduled scan. It analyzes:
 - GitHub Actions workflow definitions (`actions`)
 
 The workflow grants `security-events: write` so CodeQL can publish alerts to
-GitHub code scanning. It uses CodeQL's autobuild only for Go and `build-mode:
-none` for JavaScript/TypeScript and workflow analysis, keeping it separate from
-the existing test and coverage jobs.
+GitHub code scanning. Go is built manually (`go build ./...` of the root
+module) and JavaScript/TypeScript and workflow analysis use `build-mode: none`,
+keeping it separate from the existing test and coverage jobs. The desktop shell
+(`desktop/`, its own module) needs WebKitGTK headers from apt to build, so a
+separate, non-required `analyze-desktop` job analyzes it under the
+`/language:go-desktop` category.
 
 Run the local guard before changing the workflow:
 

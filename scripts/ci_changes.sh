@@ -27,10 +27,11 @@ is_doc() {
 }
 
 # The desktop jobs build desktop/ (its own Go module) through the Makefile and
-# the packaging script. This script and the workflow decide whether they run.
+# the packaging script, and codeql.yml builds it for its desktop analysis. This
+# script and those workflows decide whether they run.
 is_desktop() {
   case "$1" in
-    desktop/* | Makefile | scripts/desktop_package.sh | scripts/ci_changes.sh | .github/workflows/ci.yml) return 0 ;;
+    desktop/* | Makefile | scripts/desktop_package.sh | scripts/ci_changes.sh | .github/workflows/ci.yml | .github/workflows/codeql.yml) return 0 ;;
   esac
   return 1
 }

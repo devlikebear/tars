@@ -25,7 +25,7 @@ check 'desktop module' 'code=true desktop=true' $'desktop/internal/server/server
 check 'desktop readme' 'code=true desktop=true' $'desktop/README.md\n'
 check 'makefile' 'code=true desktop=true' $'Makefile\n'
 check 'ci workflow' 'code=true desktop=true' $'.github/workflows/ci.yml\n'
-check 'codeql workflow' 'code=true desktop=false' $'.github/workflows/codeql.yml\n'
+check 'codeql workflow' 'code=true desktop=true' $'.github/workflows/codeql.yml\n'
 check 'empty list runs everything' 'code=true desktop=true' ''
 
 if [ "$status" -ne 0 ]; then
