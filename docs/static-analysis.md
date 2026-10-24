@@ -112,8 +112,5 @@ suite again on every pull request and push. Codecov uploaded on `main` only
 and could not fail a build. Coverage is gated by `make test-cover-diff` and
 `make test-cover-check`, and security findings come from CodeQL.
 
-The two reviews under `docs/static-analysis/` are kept as a record of what the
-first SonarCloud baseline found.
-
 A check either blocks the merge or does not run. Do not add a reporting-only
 check back.
