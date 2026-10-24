@@ -28,6 +28,8 @@ type InstalledDB struct {
 	Skills  []InstalledSkill  `json:"skills"`
 	Plugins []InstalledPlugin `json:"plugins,omitempty"`
 	MCPs    []InstalledMCP    `json:"mcps,omitempty"`
+	// FocusTemplates are hub focus templates (focus_template.go).
+	FocusTemplates []InstalledFocusTemplate `json:"focus_templates,omitempty"`
 }
 
 // Installer handles installing and managing hub skills.
@@ -502,6 +504,11 @@ func (inst *Installer) loadDB() (*InstalledDB, error) {
 	for i := range db.MCPs {
 		if strings.TrimSpace(db.MCPs[i].Source) == "" {
 			db.MCPs[i].Source = DefaultSourceID
+		}
+	}
+	for i := range db.FocusTemplates {
+		if strings.TrimSpace(db.FocusTemplates[i].Source) == "" {
+			db.FocusTemplates[i].Source = DefaultSourceID
 		}
 	}
 	return &db, nil

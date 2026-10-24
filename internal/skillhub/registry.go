@@ -320,3 +320,57 @@ func matchesQuery(entry RegistryEntry, q string) bool {
 	}
 	return false
 }
+
+// SearchFocusTemplates returns focus template entries matching the query.
+func (r *Registry) SearchFocusTemplates(ctx context.Context, query string) ([]FocusTemplateEntry, error) {
+	index, err := r.FetchIndex(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if query == "" {
+		return index.FocusTemplates, nil
+	}
+	q := strings.ToLower(query)
+	var results []FocusTemplateEntry
+	for _, entry := range index.FocusTemplates {
+		if matchesFocusTemplateQuery(entry, q) {
+			results = append(results, entry)
+		}
+	}
+	return results, nil
+}
+
+// FindFocusTemplateByName returns the exact-match focus template entry.
+func (r *Registry) FindFocusTemplateByName(ctx context.Context, name string) (*FocusTemplateEntry, error) {
+	index, err := r.FetchIndex(ctx)
+	if err != nil {
+		return nil, err
+	}
+	key := strings.ToLower(strings.TrimSpace(name))
+	for _, entry := range index.FocusTemplates {
+		if strings.ToLower(entry.Name) == key {
+			return &entry, nil
+		}
+	}
+	return nil, fmt.Errorf("focus template %q not found in registry", name)
+}
+
+// FetchFocusTemplateFile downloads a file relative to the template's path.
+func (r *Registry) FetchFocusTemplateFile(ctx context.Context, entry *FocusTemplateEntry, relPath string) ([]byte, error) {
+	return r.fetchHubFile(ctx, entry.Path, relPath, "focus template file")
+}
+
+func matchesFocusTemplateQuery(entry FocusTemplateEntry, q string) bool {
+	if strings.Contains(strings.ToLower(entry.Name), q) {
+		return true
+	}
+	if strings.Contains(strings.ToLower(entry.Description), q) {
+		return true
+	}
+	for _, tag := range entry.Tags {
+		if strings.Contains(strings.ToLower(tag), q) {
+			return true
+		}
+	}
+	return false
+}

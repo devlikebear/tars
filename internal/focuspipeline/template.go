@@ -347,8 +347,22 @@ func readTemplateFile(path string) (Template, error) {
 	if err != nil {
 		return Template{}, err
 	}
+	base := filepath.Base(path)
+	return ParseTemplate(raw, filepath.Ext(path), strings.TrimSuffix(base, filepath.Ext(base)))
+}
+
+// ParseTemplate decodes the bytes of a user template file — JSON when ext
+// is ".json", YAML otherwise — then normalizes and validates it the way
+// LoadTemplates does. fallbackID is the id of a file that declares none.
+// The hub installer uses it to check a downloaded template before it is
+// written to the workspace.
+func ParseTemplate(raw []byte, ext, fallbackID string) (Template, error) {
+	if len(raw) > maxTemplateFileBytes {
+		return Template{}, fmt.Errorf("%w: file is larger than %d bytes", ErrInvalidTemplate, maxTemplateFileBytes)
+	}
 	var t Template
-	if strings.EqualFold(filepath.Ext(path), ".json") {
+	var err error
+	if strings.EqualFold(ext, ".json") {
 		err = json.Unmarshal(raw, &t)
 	} else {
 		err = yaml.Unmarshal(raw, &t)
@@ -358,8 +372,7 @@ func readTemplateFile(path string) (Template, error) {
 	}
 	t = normalizeTemplate(t)
 	if t.ID == "" {
-		base := filepath.Base(path)
-		t.ID = strings.TrimSuffix(base, filepath.Ext(base))
+		t.ID = strings.TrimSpace(fallbackID)
 	}
 	t.Builtin, t.Source = false, ""
 	if err := t.Validate(); err != nil {

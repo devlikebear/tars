@@ -76,6 +76,21 @@ func (inst *Installer) PlanPackInstall(ctx context.Context, name string) (PackIn
 		}
 		appendPackItem(&plan, seen, item)
 	}
+	for _, dep := range pack.FocusTemplates {
+		entry, err := inst.Registry.FindFocusTemplateByName(ctx, dep)
+		if err != nil {
+			return PackInstallPlan{}, fmt.Errorf("pack %q references focus template %q: %w", pack.Name, dep, err)
+		}
+		currentVersion, installed := installedFocusTemplateVersion(db, entry.Name)
+		item := PackInstallItem{
+			Type:        focusTemplatePackageType,
+			Name:        entry.Name,
+			Version:     entry.Version,
+			Description: entry.Description,
+			Action:      packInstallAction(currentVersion, installed, entry.Version),
+		}
+		appendPackItem(&plan, seen, item)
+	}
 	if len(plan.Items) == 0 {
 		return PackInstallPlan{}, fmt.Errorf("pack %q has no packages", pack.Name)
 	}
@@ -116,6 +131,8 @@ func (inst *Installer) installPackItem(ctx context.Context, item PackInstallItem
 		return inst.InstallPlugin(ctx, item.Name)
 	case "mcp":
 		return inst.InstallMCP(ctx, item.Name)
+	case focusTemplatePackageType:
+		return inst.InstallFocusTemplate(ctx, item.Name)
 	default:
 		return nil, fmt.Errorf("unknown pack item type %q", item.Type)
 	}
@@ -170,3 +187,12 @@ func installedMCPVersion(db *InstalledDB, name string) (string, bool) {
 	return "", false
 }
 
+func installedFocusTemplateVersion(db *InstalledDB, name string) (string, bool) {
+	key := strings.ToLower(strings.TrimSpace(name))
+	for _, item := range db.FocusTemplates {
+		if strings.ToLower(item.Name) == key {
+			return item.Version, true
+		}
+	}
+	return "", false
+}
