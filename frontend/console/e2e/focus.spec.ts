@@ -40,6 +40,7 @@ type Pipeline = {
   cards: { id: string; kind: string; state: string; decision?: string; payload?: unknown }[]
   review?: { triage?: string[] }
   e2e_enabled?: boolean
+  goal?: string
 }
 
 // The server sends a pipeline's turns after the goal. In a session that never
@@ -71,6 +72,34 @@ test('end-to-end goals are off unless the new task turns them on', async ({ page
   await page.getByTestId('focus-new-start').click()
   await expect(page).toHaveURL(/\/console\/focus\/[^/]+$/)
   expect((await pipelineOf(page, sessionId(page))).e2e_enabled).toBe(true)
+})
+
+test('the new task goal field takes multiple lines: Enter adds a line, ⌘/Ctrl+Enter starts', async ({ page }) => {
+  const repo = newRepo('tars-e2e-focus-multiline-')
+  await page.goto('/console/focus')
+  await page.getByTestId('focus-new-task-open').click()
+  await page.getByTestId('focus-new-folder').fill(repo)
+  await expect(page.getByTestId('focus-new-folder-status')).toHaveText('Git repository')
+  const goalField = page.getByTestId('focus-new-goal')
+  await goalField.fill(`${goal}\nsecond line`)
+
+  // Enter inserts a newline (the textarea's native behavior) instead of
+  // submitting the form.
+  await goalField.press('End')
+  await goalField.press('Enter')
+  await goalField.type('third line')
+  const multiline = `${goal}\nsecond line\nthird line`
+  await expect(goalField).toHaveValue(multiline)
+  await expect(page).toHaveURL(/\/console\/focus$/)
+
+  // Control+Enter starts the task (the handler also accepts Meta, for
+  // macOS's ⌘), carrying the full multi-line goal as the first turn.
+  const created = page.waitForRequest((req) => req.method() === 'POST' && new URL(req.url()).pathname === '/v1/focus/pipelines')
+  await goalField.press('Control+Enter')
+  const body = (await created).postDataJSON() as { goal: string }
+  expect(body.goal).toBe(multiline)
+  await expect(page).toHaveURL(/\/console\/focus\/[^/]+$/)
+  expect((await pipelineOf(page, sessionId(page))).goal).toBe(multiline)
 })
 
 test('a focus task: plan gate, approve, report and decision cards, decide, then Advanced shows the same session', async ({ page }) => {
