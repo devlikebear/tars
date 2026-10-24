@@ -115,3 +115,10 @@ func TestDisabledStoreSetDisabledKeepsConcurrentUpdates(t *testing.T) {
 		t.Fatalf("expected %d disabled skills, got %d: %+v", count, len(ds.Skills), ds.Skills)
 	}
 }
+
+func TestDisabledStoreSetDisabledRejectsUnknownKind(t *testing.T) {
+	store := newDisabledStore(t.TempDir())
+	if err := store.SetDisabled("widget", "x", true); err == nil {
+		t.Fatal("expected an unknown kind to be an error, not a silent no-op")
+	}
+}

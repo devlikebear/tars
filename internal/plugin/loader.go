@@ -52,6 +52,7 @@ func Load(opts LoadOptions) (Snapshot, error) {
 		return strings.ToLower(snapshot.Plugins[i].ID) < strings.ToLower(snapshot.Plugins[j].ID)
 	})
 	snapshot = filterUnavailablePlugins(snapshot, opts.Availability)
+	snapshot = filterDisabledPlugins(snapshot, opts.Disabled)
 
 	snapshot.SkillDirs = collectSkillDirs(snapshot.Plugins, &snapshot.Diagnostics)
 	snapshot.MCPServers = collectMCPServers(snapshot.Plugins)
@@ -230,6 +231,25 @@ func filterUnavailablePlugins(snapshot Snapshot, opts AvailabilityOptions) Snaps
 		})
 	}
 	snapshot.Plugins = available
+	return snapshot
+}
+
+func filterDisabledPlugins(snapshot Snapshot, disabled func(string) bool) Snapshot {
+	if disabled == nil || len(snapshot.Plugins) == 0 {
+		return snapshot
+	}
+	enabled := make([]Definition, 0, len(snapshot.Plugins))
+	for _, def := range snapshot.Plugins {
+		if !disabled(def.ID) {
+			enabled = append(enabled, def)
+			continue
+		}
+		snapshot.Diagnostics = append(snapshot.Diagnostics, Diagnostic{
+			Path:    def.RootDir,
+			Message: "disabled by user",
+		})
+	}
+	snapshot.Plugins = enabled
 	return snapshot
 }
 

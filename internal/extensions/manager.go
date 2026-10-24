@@ -199,13 +199,25 @@ func (m *Manager) reload(ctx context.Context, opts reloadOptions) error {
 		return err
 	}
 
-	plugins := plugin.Snapshot{}
+	// The user's disabled set is read first: a disabled plugin must not
+	// contribute skill dirs or MCP servers, and a disabled MCP server must
+	// never be started, so filtering the finished snapshot is too late.
+	var disabled DisabledSet
 	var err error
+	if err := runExtensionsStartupStep("extensions_disabled_load", func() error {
+		disabled, err = m.disabledStore.Load()
+		return err
+	}); err != nil {
+		return failReload(err)
+	}
+
+	plugins := plugin.Snapshot{}
 	if m.opts.PluginsEnabled {
 		if err := runExtensionsStartupStep("extensions_plugin_load", func() error {
 			plugins, err = plugin.Load(plugin.LoadOptions{
 				Sources:      toPluginSources(m.opts.PluginSources),
 				Availability: plugin.AvailabilityOptions{},
+				Disabled:     disabled.isPluginDisabled,
 			})
 			return err
 		}); err != nil {
@@ -275,6 +287,17 @@ func (m *Manager) reload(ctx context.Context, opts reloadOptions) error {
 	}); err != nil {
 		return failReload(err)
 	}
+	{
+		filtered := make([]config.MCPServer, 0, len(mcpServers))
+		for _, s := range mcpServers {
+			if disabled.isMCPDisabled(s.Name) {
+				mcpDiagnostics = append(mcpDiagnostics, "mcp server "+s.Name+": disabled by user")
+				continue
+			}
+			filtered = append(filtered, s)
+		}
+		mcpServers = filtered
+	}
 	mcpTools := make([]tool.Tool, 0)
 	mcpToolsPending := false
 	if m.opts.MCPRuntime != nil {
@@ -296,14 +319,7 @@ func (m *Manager) reload(ctx context.Context, opts reloadOptions) error {
 		}
 	}
 
-	// Filter out user-disabled extensions
-	var disabled DisabledSet
-	if err := runExtensionsStartupStep("extensions_disabled_load", func() error {
-		disabled, err = m.disabledStore.Load()
-		return err
-	}); err != nil {
-		return failReload(err)
-	}
+	// Plugins and MCP servers were filtered above, before anything ran.
 	{
 		filtered := make([]skill.Definition, 0, len(skills.Skills))
 		for _, s := range skills.Skills {
@@ -317,31 +333,6 @@ func (m *Manager) reload(ctx context.Context, opts reloadOptions) error {
 			filtered = append(filtered, s)
 		}
 		skills.Skills = filtered
-	}
-	{
-		filtered := make([]plugin.Definition, 0, len(plugins.Plugins))
-		for _, p := range plugins.Plugins {
-			if disabled.isPluginDisabled(p.ID) {
-				plugins.Diagnostics = append(plugins.Diagnostics, plugin.Diagnostic{
-					Path:    p.RootDir,
-					Message: "disabled by user",
-				})
-				continue
-			}
-			filtered = append(filtered, p)
-		}
-		plugins.Plugins = filtered
-	}
-	{
-		filtered := make([]config.MCPServer, 0, len(mcpServers))
-		for _, s := range mcpServers {
-			if disabled.isMCPDisabled(s.Name) {
-				mcpDiagnostics = append(mcpDiagnostics, "mcp server "+s.Name+": disabled by user")
-				continue
-			}
-			filtered = append(filtered, s)
-		}
-		mcpServers = filtered
 	}
 
 	diagnostics := make([]string, 0, len(skills.Diagnostics)+len(plugins.Diagnostics)+len(hubDiagnostics)+len(workspaceMCPDiagnostics)+len(mcpDiagnostics))
