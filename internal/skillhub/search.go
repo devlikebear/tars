@@ -21,17 +21,26 @@ type SkillSearchResult struct {
 // A source-level error is downgraded to a per-source skip so a transient
 // network failure on one hub does not blank the whole listing.
 func (inst *Installer) SearchAllSkills(ctx context.Context, query, fromID string) ([]SkillSearchResult, error) {
+	results, _, err := inst.SearchAllSkillsWithErrors(ctx, query, fromID)
+	return results, err
+}
+
+// SearchAllSkillsWithErrors is SearchAllSkills that also returns the error
+// of each source it skipped, by source ID, so the console can say which
+// hub could not be reached instead of showing a shorter list.
+func (inst *Installer) SearchAllSkillsWithErrors(ctx context.Context, query, fromID string) ([]SkillSearchResult, map[string]string, error) {
 	sources := inst.ensureSources()
+	failures := map[string]string{}
 	if id := strings.TrimSpace(fromID); id != "" {
 		src, ok := sources.Get(id)
 		if !ok {
-			return nil, fmt.Errorf("hub source %q is not registered (known: %s)", id, strings.Join(sources.IDs(), ", "))
+			return nil, nil, fmt.Errorf("hub source %q is not registered (known: %s)", id, strings.Join(sources.IDs(), ", "))
 		}
-		return collectFromSource(ctx, src, query), nil
+		return collectFromSource(ctx, src, query, failures), failures, nil
 	}
 	var out []SkillSearchResult
 	for _, src := range sources.List() {
-		out = append(out, collectFromSource(ctx, src, query)...)
+		out = append(out, collectFromSource(ctx, src, query, failures)...)
 	}
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].SourceID != out[j].SourceID {
@@ -39,12 +48,13 @@ func (inst *Installer) SearchAllSkills(ctx context.Context, query, fromID string
 		}
 		return strings.ToLower(out[i].Entry.Name) < strings.ToLower(out[j].Entry.Name)
 	})
-	return out, nil
+	return out, failures, nil
 }
 
-func collectFromSource(ctx context.Context, src HubSource, query string) []SkillSearchResult {
+func collectFromSource(ctx context.Context, src HubSource, query string, failures map[string]string) []SkillSearchResult {
 	entries, err := src.SearchSkills(ctx, query)
 	if err != nil {
+		failures[src.ID()] = err.Error()
 		return nil
 	}
 	out := make([]SkillSearchResult, 0, len(entries))

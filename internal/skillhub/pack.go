@@ -109,7 +109,9 @@ func (inst *Installer) InstallPack(ctx context.Context, name string) (*PackInsta
 func (inst *Installer) installPackItem(ctx context.Context, item PackInstallItem) (*InstallResult, error) {
 	switch item.Type {
 	case "skill":
-		return inst.Install(ctx, item.Name)
+		// A pack lists tars-hub packages; a bare name would also search
+		// the external hubs and fail as ambiguous on a shared name.
+		return inst.Install(ctx, DefaultSourceID+":"+item.Name)
 	case "plugin":
 		return inst.InstallPlugin(ctx, item.Name)
 	case "mcp":
@@ -167,3 +169,4 @@ func installedMCPVersion(db *InstalledDB, name string) (string, bool) {
 	}
 	return "", false
 }
+

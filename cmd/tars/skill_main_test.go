@@ -475,3 +475,49 @@ func TestPrintHelpers(t *testing.T) {
 		t.Errorf("helpers did not write expected text: %s", buf.String())
 	}
 }
+
+func TestSkillCobra_TarsHubInstallNeedsNoYesInNonInteractiveShell(t *testing.T) {
+	skillMD := []byte("---\nname: notes\ndescription: Notes\n---\n# Notes\n")
+	sum := sha256.Sum256(skillMD)
+	mux := http.NewServeMux()
+	mux.HandleFunc("/registry.json", func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(skillhub.RegistryIndex{Version: 3, Skills: []skillhub.RegistryEntry{{
+			Name: "notes", Version: "0.1.0", Path: "skills/notes",
+			Files: skillhub.RegistryFiles{{Path: "SKILL.md", SHA256: hex.EncodeToString(sum[:])}},
+		}}})
+	})
+	mux.HandleFunc("/skills/notes/SKILL.md", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write(skillMD) })
+	hub := httptest.NewServer(mux)
+	defer hub.Close()
+	apiURL, rawURL, cleanup := newMockOpenclawServers(t)
+	defer cleanup()
+	withOpenclaw := installerFactoryWithOpenclaw(apiURL, rawURL)
+	factory := func(workspaceDir string) *skillhub.Installer {
+		inst := withOpenclaw(workspaceDir)
+		inst.Registry.RegistryURL = hub.URL + "/registry.json"
+		inst.Registry.SkillBaseURL = hub.URL
+		return inst
+	}
+	workspace := t.TempDir()
+	run := func(args ...string) error {
+		var stdout, stderr bytes.Buffer
+		cmd := newSkillCommandWithFactory(&stdout, &stderr, factory)
+		cmd.SetOut(&stdout)
+		cmd.SetErr(&stderr)
+		cmd.SetArgs(append(args, "--workspace-dir", workspace))
+		return cmd.Execute()
+	}
+
+	// go test's stdin is not a terminal: a tars-hub install never prompts,
+	// so it must not be refused for lack of --yes.
+	if err := run("install", "notes"); err != nil {
+		t.Fatalf("tars-hub install without --yes: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(workspace, "skills", "notes", "SKILL.md")); err != nil {
+		t.Fatalf("skill not materialized: %v", err)
+	}
+	// An external hub still needs --yes when nobody can answer the prompt.
+	if err := run("install", "github", "--from", "openclaw"); err == nil || !strings.Contains(err.Error(), "non-interactive") {
+		t.Fatalf("expected the external install to be refused, got %v", err)
+	}
+}
