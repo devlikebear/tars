@@ -69,8 +69,15 @@ type geminiFuncCallingConfig struct {
 }
 
 type geminiGenConfig struct {
-	MaxOutputTokens int32                 `json:"maxOutputTokens,omitempty"`
-	ThinkingConfig  *geminiThinkingConfig `json:"thinkingConfig,omitempty"`
+	MaxOutputTokens    int32                 `json:"maxOutputTokens,omitempty"`
+	ThinkingConfig     *geminiThinkingConfig `json:"thinkingConfig,omitempty"`
+	ResponseModalities []string              `json:"responseModalities,omitempty"`
+	ImageConfig        *geminiImageConfig    `json:"imageConfig,omitempty"`
+}
+
+type geminiImageConfig struct {
+	AspectRatio string `json:"aspectRatio,omitempty"`
+	ImageSize   string `json:"imageSize,omitempty"`
 }
 
 type geminiThinkingConfig struct {

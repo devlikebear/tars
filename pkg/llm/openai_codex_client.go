@@ -183,6 +183,36 @@ func (c *OpenAICodexClient) chatWithCredential(
 	}
 	logLLMRequestPayload(openAICodexProviderLabel, rawBody)
 
+	resp, cred, refreshed, err := c.postResponses(ctx, cred, rawBody, allowRefreshRetry)
+	if err != nil {
+		return ChatResponse{}, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if err := checkHTTPStatus(resp, openAICodexProviderLabel); err != nil {
+		return ChatResponse{}, err
+	}
+
+	parsedResp, err := parseOpenAICodexSSE(resp.Body, opts, toolNameMap)
+	if err != nil {
+		if allowTransientRetry && isOpenAICodexRetryableStreamError(err) {
+			return c.chatWithCredential(ctx, cred, messages, opts, allowRefreshRetry && !refreshed, false)
+		}
+		return ChatResponse{}, err
+	}
+	return parsedResp, nil
+}
+
+// postResponses sends one streaming request body to /codex/responses. When
+// the backend answers 401/403 and an OAuth refresh token is at hand, it
+// refreshes the credential once and sends the body again; the returned
+// credential is the one the response was made with, and refreshed says
+// whether that happened. The caller closes the response body.
+func (c *OpenAICodexClient) postResponses(
+	ctx context.Context,
+	cred auth.CodexCredential,
+	rawBody []byte,
+	allowRefreshRetry bool,
+) (resp *http.Response, used auth.CodexCredential, refreshed bool, err error) {
 	req, err := http.NewRequestWithContext(
 		ctx,
 		http.MethodPost,
@@ -190,7 +220,7 @@ func (c *OpenAICodexClient) chatWithCredential(
 		bytes.NewReader(rawBody),
 	)
 	if err != nil {
-		return ChatResponse{}, newProviderError(openAICodexProviderLabel, "request", fmt.Errorf("create request: %w", err))
+		return nil, cred, false, newProviderError(openAICodexProviderLabel, "request", fmt.Errorf("create request: %w", err))
 	}
 	req.Header.Set("Authorization", "Bearer "+cred.AccessToken)
 	req.Header.Set("Content-Type", "application/json")
@@ -199,13 +229,11 @@ func (c *OpenAICodexClient) chatWithCredential(
 	if strings.TrimSpace(cred.AccountID) != "" {
 		req.Header.Set("chatgpt-account-id", strings.TrimSpace(cred.AccountID))
 	}
-	if streaming {
-		req.Header.Set("Accept", "text/event-stream")
-	}
+	req.Header.Set("Accept", "text/event-stream")
 
-	resp, err := doRawPreparedRequest(req, openAICodexProviderLabel, transportHTTPClient(c.httpClient, streaming))
+	resp, err = doRawPreparedRequest(req, openAICodexProviderLabel, transportHTTPClient(c.httpClient, true))
 	if err != nil {
-		return ChatResponse{}, err
+		return nil, cred, false, err
 	}
 	if snap := parseCodexRateLimitHeaders(resp.Header); snap != nil {
 		c.setLastRateLimit(snap)
@@ -215,31 +243,19 @@ func (c *OpenAICodexClient) chatWithCredential(
 		allowRefreshRetry &&
 		c.authMode == "oauth" &&
 		strings.TrimSpace(cred.RefreshToken) != "" {
-		resp.Body.Close()
-		refreshed, refreshErr := c.refreshCredential(ctx, cred)
+		_ = resp.Body.Close()
+		next, refreshErr := c.refreshCredential(ctx, cred)
 		if refreshErr != nil {
-			return ChatResponse{}, newProviderError(openAICodexProviderLabel, "auth", refreshErr)
+			return nil, cred, false, newProviderError(openAICodexProviderLabel, "auth", refreshErr)
 		}
-		if strings.TrimSpace(refreshed.AccountID) == "" {
-			refreshed.AccountID = auth.ParseCodexAccountIDFromJWT(refreshed.AccessToken)
+		if strings.TrimSpace(next.AccountID) == "" {
+			next.AccountID = auth.ParseCodexAccountIDFromJWT(next.AccessToken)
 		}
-		c.setOverrideCredential(refreshed)
-		return c.chatWithCredential(ctx, refreshed, messages, opts, false, allowTransientRetry)
+		c.setOverrideCredential(next)
+		resp, next, _, err = c.postResponses(ctx, next, rawBody, false)
+		return resp, next, true, err
 	}
-
-	defer resp.Body.Close()
-	if err := checkHTTPStatus(resp, openAICodexProviderLabel); err != nil {
-		return ChatResponse{}, err
-	}
-
-	parsedResp, err := parseOpenAICodexSSE(resp.Body, opts, toolNameMap)
-	if err != nil {
-		if allowTransientRetry && isOpenAICodexRetryableStreamError(err) {
-			return c.chatWithCredential(ctx, cred, messages, opts, allowRefreshRetry, false)
-		}
-		return ChatResponse{}, err
-	}
-	return parsedResp, nil
+	return resp, cred, false, nil
 }
 
 func isOpenAICodexRetryableStreamError(err error) bool {
