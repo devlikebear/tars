@@ -27,6 +27,7 @@ jobs:
       pull-requests: read
     outputs:
       code: ${{ steps.detect.outputs.code }}
+      desktop: ${{ steps.detect.outputs.desktop }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -55,8 +56,13 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # A manual build of the root module only. The autobuilder also built
+          # desktop/, whose webview needs GTK and WebKitGTK headers from apt;
+          # on slow mirror days that install alone ran past this job's 20
+          # minutes and blocked every pull request. desktop/ is analyzed by
+          # analyze-desktop below instead.
           - language: go
-            build-mode: autobuild
+            build-mode: manual
           - language: javascript-typescript
             build-mode: none
           - language: actions
@@ -67,11 +73,12 @@ jobs:
         if: env.ANALYZE == 'true'
         uses: actions/checkout@v6
 
-      # The Go autobuilder builds every module it finds, desktop/ included,
-      # and the desktop shell's webview needs these headers to compile.
-      - name: Install webview headers
+      - name: Set up Go
         if: env.ANALYZE == 'true' && matrix.language == 'go'
-        run: sudo apt-get update && sudo apt-get install -y libgtk-4-dev libwebkitgtk-6.0-dev
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
 
       - name: Initialize CodeQL
         if: env.ANALYZE == 'true'
@@ -80,12 +87,52 @@ jobs:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
 
-      - name: Autobuild
-        if: env.ANALYZE == 'true' && matrix.build-mode == 'autobuild'
-        uses: github/codeql-action/autobuild@v4
+      - name: Build
+        if: env.ANALYZE == 'true' && matrix.build-mode == 'manual'
+        run: go build ./...
 
       - name: Perform CodeQL Analysis
         if: env.ANALYZE == 'true'
         uses: github/codeql-action/analyze@v4
         with:
           category: "/language:${{ matrix.language }}"
+
+  # The desktop shell (desktop/, its own Go module) needs the webview headers
+  # to build, so it gets its own job: not a required check, run on pushes to
+  # main, the weekly scan, and pull requests that change what desktop/ is
+  # built from. A slow apt mirror then delays only this job, and its own
+  # timeout stops it from waiting forever.
+  analyze-desktop:
+    name: Analyze (go, desktop)
+    needs: changes
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.changes.outputs.desktop != 'false') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: desktop/go.mod
+          cache-dependency-path: desktop/go.sum
+
+      - name: Install webview headers
+        timeout-minutes: 30
+        run: sudo apt-get update && sudo apt-get install -y libgtk-4-dev libwebkitgtk-6.0-dev
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: go
+          build-mode: manual
+
+      - name: Build
+        working-directory: desktop
+        run: go build ./...
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: "/language:go-desktop"
