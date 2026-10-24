@@ -122,6 +122,15 @@
     addImages(files)
   }
 
+  // The goal field is a multi-line textarea, so plain Enter inserts a
+  // newline (its native behavior, not form submission). ⌘/Ctrl+Enter
+  // starts the task instead, same as the Start button.
+  function onGoalKeydown(e: KeyboardEvent) {
+    if (e.key !== 'Enter' || !(e.metaKey || e.ctrlKey)) return
+    e.preventDefault()
+    if (canStart) void start()
+  }
+
   let folder = $derived(check.state === 'ok' ? check.folder : null)
   // Every extra row with a non-empty path must resolve to 'ok' (an empty
   // row is just not sent, so it never blocks Start).
@@ -433,7 +442,7 @@
 
   <div class="field">
     <label class="label" for="focus-new-goal">{$t.focus.newTask.goal}</label>
-    <input id="focus-new-goal" type="text" bind:value={goal} onpaste={onGoalPaste} placeholder={$t.focus.newTask.goalPlaceholder} data-testid="focus-new-goal" />
+    <textarea id="focus-new-goal" rows="4" bind:value={goal} onpaste={onGoalPaste} onkeydown={onGoalKeydown} placeholder={$t.focus.newTask.goalPlaceholder} data-testid="focus-new-goal"></textarea>
     {#if images.length > 0}
       <div class="images" data-testid="focus-new-images">
         {#each images as file, i (imageKey(file))}
@@ -567,13 +576,20 @@
     min-width: 0;
   }
 
-  input[type='text'] {
+  input[type='text'],
+  textarea {
     padding: var(--space-2) var(--space-3);
     background: var(--surface-inset);
     border: 1px solid var(--border-default);
     border-radius: var(--radius-md);
     color: var(--text-primary);
     font-size: var(--text-base);
+  }
+
+  textarea {
+    font-family: inherit;
+    resize: vertical;
+    min-height: 4.5em;
   }
 
   .browse-backdrop {
@@ -601,6 +617,7 @@
   }
 
   input[type='text']:focus,
+  textarea:focus,
   select:focus {
     outline: none;
     border-color: var(--primary);
