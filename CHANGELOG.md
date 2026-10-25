@@ -6,10 +6,16 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.66.0] - 2026-10-25
+
 ### Added
 
 - **claude-code-cli tiers can pin a full model id such as `claude-opus-5-5`, and the pickers list them.** The Claude Code CLI has no model-list command, so `/v1/models`, the setup wizard and Settings → LLM now assemble the list from the live Anthropic Models API (only when the provider pool has an `anthropic` entry with an `api_key`; the CLI's own login is never read), the model options the CLI cached in `~/.claude.json` (read-only, ids only), and a built-in catalog (`llmdefaults.ClaudeCodeCLIModels`), plus the models the tiers already use. The `opus`/`sonnet`/`haiku` aliases still lead the list and stay the recommended defaults.
 - **`pkg/llm` exports the claude-code-cli model list pieces** so an app that drives the CLI through the library offers the same picker as the server: `ClaudeCodeCLIModelCatalog` (the built-in catalog, a copy), `ReadClaudeCodeCLIModelCache` (the ids the CLI cached in `~/.claude.json`, nothing else from that file), `ClaudeModelIDs` (the `claude-` ids of a live Anthropic Models API list) and `MergeClaudeCodeCLIModels` (aliases first, no duplicates). The server's `/v1/models` and setup wizard now use them.
+
+### Changed
+
+- **The new focus task form's goal field now takes multiple lines.** It is a `<textarea>` (4 rows) instead of a single-line text input: Enter inserts a newline instead of submitting, and ⌘/Ctrl+Enter starts the task (same as clicking Start). Pasting an image and the field's test id are unchanged; the guidance text no longer says "one line" and now mentions ⌘/Ctrl+Enter. The server already accepted multi-line goals as-is (trimmed, first line only for the auto title), so nothing changed there. ([#1305](https://github.com/devlikebear/tars/pull/1305))
 
 ### Fixed
 
