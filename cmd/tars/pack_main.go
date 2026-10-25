@@ -134,7 +134,7 @@ func printPackEntry(stdout io.Writer, entry skillhub.PackEntry) {
 		fmt.Fprintf(stdout, "Skills:      %s\n", strings.Join(entry.Skills, ", "))
 	}
 	if len(entry.FocusTemplates) > 0 {
-		fmt.Fprintf(stdout, "Templates:   %s\n", strings.Join(entry.FocusTemplates, ", "))
+		fprintf(stdout, "Templates:   %s\n", strings.Join(entry.FocusTemplates, ", "))
 	}
 }
 

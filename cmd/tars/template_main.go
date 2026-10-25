@@ -24,7 +24,7 @@ func newTemplateCommand(stdout, stderr io.Writer) *cobra.Command {
 				return fmt.Errorf("search failed: %w", err)
 			}
 			if len(results) == 0 {
-				fmt.Fprintln(stdout, "No focus templates found.")
+				fprintln(stdout, "No focus templates found.")
 				return nil
 			}
 			for _, entry := range results {
@@ -32,9 +32,9 @@ func newTemplateCommand(stdout, stderr io.Writer) *cobra.Command {
 				if len(entry.Tags) > 0 {
 					tags = " (" + strings.Join(entry.Tags, ", ") + ")"
 				}
-				fmt.Fprintf(stdout, "  %s@%s%s\n    %s\n", entry.Name, entry.Version, tags, entry.Description)
+				fprintf(stdout, "  %s@%s%s\n    %s\n", entry.Name, entry.Version, tags, entry.Description)
 			}
-			fmt.Fprintf(stdout, "\n%d focus template(s) found.\n", len(results))
+			fprintf(stdout, "\n%d focus template(s) found.\n", len(results))
 			return nil
 		},
 
@@ -43,7 +43,7 @@ func newTemplateCommand(stdout, stderr io.Writer) *cobra.Command {
 			if _, err := inst.InstallFocusTemplate(ctx, name); err != nil {
 				return fmt.Errorf("install focus template %q: %w", name, err)
 			}
-			fmt.Fprintf(stdout, "Installed focus template %q to %s/focus-templates\n", name, workspaceDir)
+			fprintf(stdout, "Installed focus template %q to %s/focus-templates\n", name, workspaceDir)
 			return nil
 		},
 
@@ -52,7 +52,7 @@ func newTemplateCommand(stdout, stderr io.Writer) *cobra.Command {
 			if err := inst.UninstallFocusTemplate(name); err != nil {
 				return fmt.Errorf("uninstall focus template %q: %w", name, err)
 			}
-			fmt.Fprintf(stdout, "Uninstalled focus template %q\n", name)
+			fprintf(stdout, "Uninstalled focus template %q\n", name)
 			return nil
 		},
 
@@ -63,13 +63,13 @@ func newTemplateCommand(stdout, stderr io.Writer) *cobra.Command {
 				return err
 			}
 			if len(rows) == 0 {
-				fmt.Fprintln(stdout, "No hub focus templates installed.")
+				fprintln(stdout, "No hub focus templates installed.")
 				return nil
 			}
 			for _, row := range rows {
-				fmt.Fprintf(stdout, "  %s@%s  (%s)  focus-templates/%s\n", row.Name, row.Version, row.Source, row.File)
+				fprintf(stdout, "  %s@%s  (%s)  focus-templates/%s\n", row.Name, row.Version, row.Source, row.File)
 			}
-			fmt.Fprintf(stdout, "\n%d focus template(s) installed.\n", len(rows))
+			fprintf(stdout, "\n%d focus template(s) installed.\n", len(rows))
 			return nil
 		},
 
@@ -89,15 +89,15 @@ func newTemplateCommand(stdout, stderr io.Writer) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(stdout, "Name:        %s\n", entry.Name)
-			fmt.Fprintf(stdout, "Version:     %s\n", entry.Version)
-			fmt.Fprintf(stdout, "Author:      %s\n", entry.Author)
-			fmt.Fprintf(stdout, "Description: %s\n", entry.Description)
+			fprintf(stdout, "Name:        %s\n", entry.Name)
+			fprintf(stdout, "Version:     %s\n", entry.Version)
+			fprintf(stdout, "Author:      %s\n", entry.Author)
+			fprintf(stdout, "Description: %s\n", entry.Description)
 			if len(entry.Tags) > 0 {
-				fmt.Fprintf(stdout, "Tags:        %s\n", strings.Join(entry.Tags, ", "))
+				fprintf(stdout, "Tags:        %s\n", strings.Join(entry.Tags, ", "))
 			}
 			if len(entry.Files) > 0 {
-				fmt.Fprintf(stdout, "Files:       %s\n", strings.Join(entry.Files.Paths(), ", "))
+				fprintf(stdout, "Files:       %s\n", strings.Join(entry.Files.Paths(), ", "))
 			}
 			return nil
 		},
