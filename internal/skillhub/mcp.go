@@ -203,6 +203,18 @@ func LoadInstalledMCPServers(workspaceDir string) ([]config.MCPServer, []string)
 	return servers, diagnostics
 }
 
+// WorkspaceMCPDir is where hub and hand-written MCP packages live.
+func WorkspaceMCPDir(workspaceDir string) string {
+	return filepath.Join(workspaceDir, hubMCPDir)
+}
+
+// InstalledDBPath is the installed DB (skillhub.json) of workspaceDir.
+// Which MCP directories are hub-managed is read from it, so a runtime that
+// watches WorkspaceMCPDir watches this file too.
+func InstalledDBPath(workspaceDir string) string {
+	return filepath.Join(workspaceDir, installedDBFile)
+}
+
 func LoadWorkspaceMCPServers(workspaceDir string) ([]config.MCPServer, []string) {
 	rootDir := filepath.Join(workspaceDir, hubMCPDir)
 	entries, err := os.ReadDir(rootDir)

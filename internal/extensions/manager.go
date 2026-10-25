@@ -49,8 +49,12 @@ type Options struct {
 	MCPRuntime             MPRuntime
 	WatchSkills            bool
 	WatchPlugins           bool
-	WatchDebounce          time.Duration
-	PluginConfig           map[string]map[string]any // per-plugin config keyed by plugin ID
+	// WatchMCPServers reloads when <workspace>/mcp-servers or the hub's
+	// installed DB changes, so `tars mcp install` into a running server is
+	// picked up without a manual reload.
+	WatchMCPServers bool
+	WatchDebounce   time.Duration
+	PluginConfig    map[string]map[string]any // per-plugin config keyed by plugin ID
 
 	// LifecycleToolResolver is consulted by plugin lifecycle hooks to
 	// look up the builtin tool to invoke. May be nil; nil disables
@@ -134,7 +138,7 @@ func (m *Manager) Start(ctx context.Context) error {
 	}
 
 	if err := runExtensionsStartupStep("extensions_watcher_setup", func() error {
-		if !m.opts.WatchSkills && !m.opts.WatchPlugins {
+		if !m.opts.WatchSkills && !m.opts.WatchPlugins && !m.opts.WatchMCPServers {
 			return nil
 		}
 		watcher, err := fsnotify.NewWatcher()
@@ -148,6 +152,10 @@ func (m *Manager) Start(ctx context.Context) error {
 				_ = watcher.Close()
 				return err
 			}
+		}
+		if err := m.watchMCPServers(watcher); err != nil {
+			_ = watcher.Close()
+			return err
 		}
 
 		watchCtx, cancel := context.WithCancel(ctx)
@@ -536,6 +544,9 @@ func (m *Manager) watchLoop(ctx context.Context, watcher *fsnotify.Watcher) {
 			if !ok {
 				return
 			}
+			if !m.watchEventRelevant(event.Name) {
+				continue
+			}
 			if event.Op&fsnotify.Create != 0 {
 				info, err := os.Stat(event.Name)
 				if err == nil && info.IsDir() {
@@ -573,6 +584,37 @@ func (m *Manager) watchDirs() []string {
 		}
 	}
 	return uniqueStrings(dirs)
+}
+
+// watchMCPServers adds the workspace MCP directory, created first so a
+// later first install lands in a watched directory, and the workspace root
+// itself (not recursively) for the installed DB: the installer writes the
+// DB after the package files, and only the DB says the new directory is a
+// hub package rather than a hand-written one.
+func (m *Manager) watchMCPServers(watcher *fsnotify.Watcher) error {
+	if !m.opts.WatchMCPServers {
+		return nil
+	}
+	dir := skillhub.WorkspaceMCPDir(m.opts.WorkspaceDir)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("create %s: %w", dir, err)
+	}
+	if err := addWatchRecursive(watcher, dir); err != nil {
+		return err
+	}
+	if err := watcher.Add(m.opts.WorkspaceDir); err != nil {
+		return fmt.Errorf("watch dir %q: %w", m.opts.WorkspaceDir, err)
+	}
+	return nil
+}
+
+// watchEventRelevant drops the workspace root's other files and folders
+// (sessions, logs, ...), which are watched only for the installed DB.
+func (m *Manager) watchEventRelevant(name string) bool {
+	if !m.opts.WatchMCPServers || filepath.Clean(filepath.Dir(name)) != filepath.Clean(m.opts.WorkspaceDir) {
+		return true
+	}
+	return filepath.Clean(name) == filepath.Clean(skillhub.InstalledDBPath(m.opts.WorkspaceDir))
 }
 
 func pluginIDs(defs []plugin.Definition) []string {
