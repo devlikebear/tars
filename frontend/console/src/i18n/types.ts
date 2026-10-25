@@ -1212,6 +1212,7 @@ export type Translations = {
     templatesTitle: string
     templatesDefinition: string
     noTemplates: string
+    noHubTemplates: string
     openTemplates: string
     packsTitle: string
     packsDefinition: string
@@ -1223,6 +1224,7 @@ export type Translations = {
     packCancel: string
     packInstalledSuccess: (name: string, installed: number, skipped: number) => string
     disabledNotLoaded: string
+    searchingOtherHubs: string
     sourceUnreachable: (source: string, error: string) => string
     typeLabels: { skill: string; plugin: string; mcp: string; focus_template: string; pack: string }
     install: string

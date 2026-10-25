@@ -83,8 +83,11 @@
   let hubSources: HubSource[] = $state([])
   let selectedHubSource: string = $state('') // empty = all sources
   let federatedSkills: { sourceID: string; entry: HubRegistryEntry }[] = $state([])
-  // Hubs the federated search could not reach, by source id.
+  // Hubs the federated search could not reach, by source id. The search
+  // walks every external hub and can take many seconds, so it loads on its
+  // own instead of holding back the rest of the Hub tab.
   let hubSourceErrors: Record<string, string> = $state({})
+  let federatedLoading = $state(false)
 
   // Pack install: the plan is shown for review before anything installs.
   let packPlan: HubPackPlan | null = $state(null)
@@ -328,17 +331,9 @@
         packs: raw.packs ?? [],
       }
       hubSources = sources
-      // Federated skill search across all registered sources. The hub
-      // tab renders this list (filtered by selectedHubSource) instead
-      // of registry.skills so external hubs show up next to tars-hub.
-      const { skills: results, sourceErrors } = await searchHubSkills({})
-      hubSourceErrors = sourceErrors
-      federatedSkills = results
-        .map((r) => ({
-          sourceID: (r.source_id || r.SourceID || '') as string,
-          entry: (r.entry || r.Entry) as HubRegistryEntry,
-        }))
-        .filter((r) => r.entry && r.sourceID)
+      // Until the federated search answers, list the tars-hub skills.
+      federatedSkills = registry.skills.map((entry) => ({ sourceID: 'tars-hub', entry }))
+      void loadFederatedSkills()
       // Track registry versions for update detection (tars-hub only).
       const regVers = new Map<string, string>()
       for (const e of registry.skills) regVers.set(pkgKey('skill', e.name), e.version || '')
@@ -350,6 +345,27 @@
       error = e instanceof Error ? e.message : $t.extensions.failedFetchRegistry
     } finally {
       hubLoading = false
+    }
+  }
+
+  // Federated skill search across all registered sources. The hub tab
+  // renders this list (filtered by selectedHubSource) instead of
+  // registry.skills so external hubs show up next to tars-hub.
+  async function loadFederatedSkills() {
+    federatedLoading = true
+    try {
+      const { skills: results, sourceErrors } = await searchHubSkills({})
+      hubSourceErrors = sourceErrors
+      federatedSkills = results
+        .map((r) => ({
+          sourceID: (r.source_id || r.SourceID || '') as string,
+          entry: (r.entry || r.Entry) as HubRegistryEntry,
+        }))
+        .filter((r) => r.entry && r.sourceID)
+    } catch (e) {
+      error = e instanceof Error ? e.message : $t.extensions.failedFetchRegistry
+    } finally {
+      federatedLoading = false
     }
   }
 
@@ -1043,6 +1059,9 @@
           </div>
           <span class="badge badge-default">{$t.extensions.available(filteredFederatedSkills().length)}</span>
         </div>
+        {#if federatedLoading}
+          <div class="ext-loading" data-testid="hub-federated-loading">{$t.extensions.searchingOtherHubs}</div>
+        {/if}
         {#each Object.entries(hubSourceErrors) as [sourceID, sourceError] (sourceID)}
           <div class="message message-error" data-testid="hub-source-error">{$t.extensions.sourceUnreachable(hubSourceLabel(sourceID), sourceError)}</div>
         {/each}
@@ -1147,7 +1166,7 @@
           <span class="badge badge-default">{$t.extensions.available(registry.focus_templates.length)}</span>
         </div>
         {#if registry.focus_templates.length === 0}
-          <div class="empty-state"><p>{$t.extensions.noTemplates}</p></div>
+          <div class="empty-state"><p>{$t.extensions.noHubTemplates}</p></div>
         {:else}
           <div class="ext-list">
             {#each registry.focus_templates as entry (entry.name)}
