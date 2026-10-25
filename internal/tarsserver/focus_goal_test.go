@@ -437,3 +437,28 @@ func TestFocusTemplatesAPI(t *testing.T) {
 		t.Fatalf("list = %+v", list)
 	}
 }
+
+func TestFocusTemplatesAPIMarksHubTemplates(t *testing.T) {
+	f := newWorktreeFixture(t)
+	h := newFocusPipelineHandler(f.store, f.c, nil, zerolog.Nop())
+	workspace := f.store.WorkspaceDir()
+	dir := filepath.Join(workspace, focuspipeline.TemplateDirName)
+	tmpl := focuspipeline.Template{ID: "hotfix", Name: "Hotfix", Stages: []focuspipeline.TemplateStage{{ID: "plan"}, {ID: "build"}}}
+	if _, err := focuspipeline.SaveTemplate(dir, "", tmpl); err != nil {
+		t.Fatal(err)
+	}
+	db := `{"skills":[],"focus_templates":[{"name":"hotfix","version":"0.2.0","source":"tars-hub","file":"hotfix.yaml"}]}`
+	if err := os.WriteFile(filepath.Join(workspace, "skillhub.json"), []byte(db), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var listed struct {
+		Hub map[string]string `json:"hub"`
+		Dir string            `json:"dir"`
+	}
+	rec := focusRequest(t, h, http.MethodGet, "/v1/focus/templates", "", false)
+	decodeInto(t, rec, &listed)
+	if listed.Hub["hotfix"] != "0.2.0" || listed.Dir != dir {
+		t.Fatalf("templates = %d %s", rec.Code, rec.Body.String())
+	}
+}

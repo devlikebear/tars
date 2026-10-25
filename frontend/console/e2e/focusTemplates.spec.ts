@@ -192,6 +192,27 @@ test('AI-assisted template editing: create, appear in the New task picker, edit,
   expect(listed.templates.map((t: { id: string }) => t.id)).not.toContain('lighthouse-story')
 })
 
+test('a user template offers share commands for the TARS Hub, and the hub is one click away', async ({ page }) => {
+  const template = { id: 'share-me', name: 'Share me', stages: [{ id: 'plan' }, { id: 'build' }] }
+  expect((await page.request.put('/v1/focus/templates/share-me', { data: { template } })).ok()).toBe(true)
+  try {
+    await page.goto('/console/focus/templates')
+    const row = page.locator('[data-testid="focus-templates-row"][data-template-id="share-me"]')
+    await row.getByTestId('focus-templates-share').click()
+    const panel = row.getByTestId('focus-templates-share-panel')
+    await expect(panel).toContainText('git clone https://github.com/devlikebear/tars-skills.git')
+    await expect(panel).toContainText('python3 scripts/registry.py add-focus-template')
+    await expect(panel).toContainText('share-me.yaml')
+    // Built-in templates are not shared from here.
+    await expect(page.locator('[data-testid="focus-templates-row"][data-template-id="dev"]').getByTestId('focus-templates-share')).toHaveCount(0)
+
+    await page.getByTestId('focus-templates-find-on-hub').click()
+    await expect(page).toHaveURL(/\/console\/extensions\?tab=hub$/)
+  } finally {
+    await page.request.delete('/v1/focus/templates/share-me')
+  }
+})
+
 test.describe('Korean', () => {
   test.use({ locale: 'ko-KR' })
 

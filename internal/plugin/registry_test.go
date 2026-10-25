@@ -210,3 +210,41 @@ func writeManifest(t *testing.T, path string, content string) {
 		t.Fatalf("write %s: %v", path, err)
 	}
 }
+
+func TestLoad_DropsDisabledPluginsBeforeCollectingTheirParts(t *testing.T) {
+	root := t.TempDir()
+	for _, id := range []string{"ops", "kept"} {
+		writeManifest(t, filepath.Join(root, id, "tars.plugin.json"), `{
+  "id":"`+id+`",
+  "skills":["skills"],
+  "mcp_servers":[{"name":"`+id+`-fs","command":"x"}]
+}`)
+		if err := os.MkdirAll(filepath.Join(root, id, "skills"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	snapshot, err := Load(LoadOptions{
+		Sources:  []SourceDir{{Source: SourceWorkspace, Dir: root}},
+		Disabled: func(id string) bool { return id == "ops" },
+	})
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if len(snapshot.Plugins) != 1 || snapshot.Plugins[0].ID != "kept" {
+		t.Fatalf("plugins = %+v", snapshot.Plugins)
+	}
+	if len(snapshot.MCPServers) != 1 || snapshot.MCPServers[0].Name != "kept-fs" {
+		t.Fatalf("mcp servers = %+v", snapshot.MCPServers)
+	}
+	if len(snapshot.SkillDirs) != 1 || !strings.Contains(snapshot.SkillDirs[0], "kept") {
+		t.Fatalf("skill dirs = %+v", snapshot.SkillDirs)
+	}
+	found := false
+	for _, d := range snapshot.Diagnostics {
+		found = found || d.Message == "disabled by user"
+	}
+	if !found {
+		t.Fatalf("expected a disabled-by-user diagnostic, got %+v", snapshot.Diagnostics)
+	}
+}

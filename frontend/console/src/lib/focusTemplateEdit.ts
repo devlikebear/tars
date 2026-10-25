@@ -67,3 +67,28 @@ export function focusTemplateDraftSummary(draft: FocusTemplateDraftResponse): st
   if (draft.action === 'delete') return `Delete the "${draft.original_id}" template.`
   return `Save the "${draft.template?.id ?? ''}" template.`
 }
+
+// The tars-skills repository focus templates are shared through, and the
+// script there that copies a template in and writes its registry entry.
+export const TARS_SKILLS_REPO = 'https://github.com/devlikebear/tars-skills.git'
+
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`
+}
+
+// focusTemplateShareCommands returns the terminal steps that publish a user
+// template to the TARS Hub as a pull request. dir is the server's
+// focus-templates folder (GET /v1/focus/templates) and source the file the
+// template was read from; a Windows path keeps its own separator.
+export function focusTemplateShareCommands(dir: string, item: Pick<FocusTemplate, 'id' | 'source'>): string {
+  const separator = dir.includes('\\') && !dir.includes('/') ? '\\' : '/'
+  const file = `${dir.replace(/[\\/]+$/, '')}${separator}${item.source || `${item.id}.yaml`}`
+  return [
+    `git clone ${TARS_SKILLS_REPO}`,
+    'cd tars-skills',
+    `git switch -c add-${item.id}-focus-template`,
+    `python3 scripts/registry.py add-focus-template ${shellQuote(file)}`,
+    `git add -A && git commit -m ${shellQuote(`Add ${item.id} focus template`)}`,
+    'gh pr create --fill',
+  ].join('\n')
+}

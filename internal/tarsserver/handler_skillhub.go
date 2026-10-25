@@ -127,7 +127,7 @@ func newSkillhubAPIHandler(
 		}
 		query := strings.TrimSpace(r.URL.Query().Get("q"))
 		source := strings.TrimSpace(r.URL.Query().Get("source"))
-		results, err := installer.SearchAllSkills(r.Context(), query, source)
+		results, sourceErrors, err := installer.SearchAllSkillsWithErrors(r.Context(), query, source)
 		if err != nil {
 			logger.Error().Err(err).Msg("federated skill search failed")
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
@@ -136,7 +136,9 @@ func newSkillhubAPIHandler(
 		if results == nil {
 			results = []skillhub.SkillSearchResult{}
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"skills": results})
+		// source_errors names each hub that could not be searched, so the
+		// console says so instead of showing a silently shorter list.
+		writeJSON(w, http.StatusOK, map[string]any{"skills": results, "source_errors": sourceErrors})
 	})
 
 	// GET /v1/hub/installed — list locally installed hub packages
@@ -145,12 +147,20 @@ func newSkillhubAPIHandler(
 			return
 		}
 		if installer == nil {
-			writeJSON(w, http.StatusOK, map[string]any{"skills": []any{}, "plugins": []any{}, "mcps": []any{}})
+			writeJSON(w, http.StatusOK, map[string]any{"skills": []any{}, "plugins": []any{}, "mcps": []any{}, "focus_templates": []any{}})
 			return
 		}
-		skills, _ := installer.List()
-		plugins, _ := installer.ListPlugins()
-		mcps, _ := installer.ListMCPs()
+		skills, skillErr := installer.List()
+		plugins, pluginErr := installer.ListPlugins()
+		mcps, mcpErr := installer.ListMCPs()
+		templates, templateErr := installer.ListFocusTemplates()
+		// A broken skillhub.json must not read as "nothing installed": the
+		// console would offer installs that then fail on the same file.
+		if err := errors.Join(skillErr, pluginErr, mcpErr, templateErr); err != nil {
+			logger.Error().Err(err).Msg("list installed hub packages failed")
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
 		if skills == nil {
 			skills = []skillhub.InstalledSkill{}
 		}
@@ -160,10 +170,14 @@ func newSkillhubAPIHandler(
 		if mcps == nil {
 			mcps = []skillhub.InstalledMCP{}
 		}
+		if templates == nil {
+			templates = []skillhub.InstalledFocusTemplate{}
+		}
 		writeJSON(w, http.StatusOK, map[string]any{
-			"skills":  skills,
-			"plugins": plugins,
-			"mcps":    mcps,
+			"skills":          skills,
+			"plugins":         plugins,
+			"mcps":            mcps,
+			"focus_templates": templates,
 		})
 	})
 
@@ -177,7 +191,7 @@ func newSkillhubAPIHandler(
 			return
 		}
 		var req struct {
-			Type   string `json:"type"` // "skill", "plugin", "mcp"
+			Type   string `json:"type"` // "skill", "plugin", "mcp", "focus_template", "pack"
 			Name   string `json:"name"`
 			Source string `json:"source,omitempty"` // optional "openclaw"/"hermes"/"anthropic"
 			Yes    bool   `json:"yes,omitempty"`    // auto-approve external-hub installs
@@ -189,6 +203,11 @@ func newSkillhubAPIHandler(
 		name := strings.TrimSpace(req.Name)
 		if name == "" {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name is required"})
+			return
+		}
+
+		if strings.TrimSpace(req.Type) == "pack" {
+			handlePackInstall(w, r, installer, extensions, logger, name, req.DryRun)
 			return
 		}
 
@@ -208,8 +227,10 @@ func newSkillhubAPIHandler(
 			installResult, installErr = installer.InstallPlugin(r.Context(), name)
 		case "mcp":
 			installResult, installErr = installer.InstallMCP(r.Context(), name)
+		case "focus_template":
+			installResult, installErr = installer.InstallFocusTemplate(r.Context(), name)
 		default:
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "type must be skill, plugin, or mcp"})
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "type must be skill, plugin, mcp, focus_template, or pack"})
 			return
 		}
 		if installErr != nil {
@@ -223,13 +244,18 @@ func newSkillhubAPIHandler(
 			return
 		}
 
-		// Auto-reload extensions after a real install (skip on dry-run).
-		if extensions != nil && !req.DryRun {
-			_ = extensions.Reload(r.Context())
+		// Auto-reload extensions after a real install (skip on dry-run; a
+		// focus template is read from disk by the focus pages, not loaded).
+		var reloadErr error
+		if !req.DryRun && req.Type != "focus_template" {
+			reloadErr = reloadHubExtensions(r, extensions, logger)
 		}
 
 		logger.Info().Str("type", req.Type).Str("name", name).Bool("dry_run", req.DryRun).Msg("hub install handled")
 		payload := map[string]any{"ok": "true", "type": req.Type, "name": name, "dry_run": req.DryRun}
+		if reloadErr != nil {
+			payload["reload_error"] = reloadErr.Error()
+		}
 		if installResult != nil {
 			payload["sandbox_report"] = installResult.Sandbox
 			if installResult.RequiresPlugin != "" {
@@ -272,8 +298,10 @@ func newSkillhubAPIHandler(
 			uninstallErr = installer.UninstallPlugin(name)
 		case "mcp":
 			uninstallErr = installer.UninstallMCP(name)
+		case "focus_template":
+			uninstallErr = installer.UninstallFocusTemplate(name)
 		default:
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "type must be skill, plugin, or mcp"})
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "type must be skill, plugin, mcp, or focus_template"})
 			return
 		}
 		if uninstallErr != nil {
@@ -282,12 +310,18 @@ func newSkillhubAPIHandler(
 			return
 		}
 
-		if extensions != nil {
-			_ = extensions.Reload(r.Context())
+		payload := map[string]string{"ok": "true", "type": req.Type, "name": name}
+		if req.Type != "focus_template" && extensions != nil {
+			// Forget the package's on/off state: a later reinstall must
+			// come back enabled, not silently off. SetDisabled reloads.
+			if err := extensions.SetDisabled(r.Context(), req.Type, name, false); err != nil {
+				logger.Warn().Err(err).Str("type", req.Type).Str("name", name).Msg("hub uninstall: reload failed")
+				payload["reload_error"] = err.Error()
+			}
 		}
 
 		logger.Info().Str("type", req.Type).Str("name", name).Msg("hub package uninstalled")
-		writeJSON(w, http.StatusOK, map[string]string{"ok": "true", "type": req.Type, "name": name})
+		writeJSON(w, http.StatusOK, payload)
 	})
 
 	// POST /v1/hub/update — update all installed packages to latest
@@ -299,25 +333,38 @@ func newSkillhubAPIHandler(
 			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "hub is not configured"})
 			return
 		}
-		updatedSkills, skillErr := installer.Update(r.Context())
-		updatedPlugins, pluginErr := installer.UpdatePlugins(r.Context())
-		updateErr := errors.Join(skillErr, pluginErr)
+		ctx := r.Context()
+		skills, skillErr := installer.Update(ctx)
+		plugins, pluginErr := installer.UpdatePlugins(ctx)
+		mcps, mcpErr := installer.UpdateMCPs(ctx)
+		templates, templateErr := installer.UpdateFocusTemplates(ctx)
+		updateErr := errors.Join(skillErr, pluginErr, mcpErr, templateErr)
 
-		if extensions != nil && (len(updatedSkills.Updated) > 0 || len(updatedPlugins.Updated) > 0) {
-			_ = extensions.Reload(r.Context())
+		var reloadErr error
+		if len(skills.Updated)+len(plugins.Updated)+len(mcps.Updated) > 0 {
+			reloadErr = reloadHubExtensions(r, extensions, logger)
 		}
 
-		logger.Info().Int("skills", len(updatedSkills.Updated)).Int("plugins", len(updatedPlugins.Updated)).Err(updateErr).Msg("hub packages updated")
-		status := http.StatusOK
-		if updateErr != nil {
-			status = http.StatusInternalServerError
-		}
-		writeJSON(w, status, map[string]any{
-			"updated_skills":       updatedSkills.Updated,
-			"updated_plugins":      updatedPlugins.Updated,
-			"skill_update_result":  hubUpdateResultPayload(updatedSkills),
-			"plugin_update_result": hubUpdateResultPayload(updatedPlugins),
-			"error":                errorString(updateErr),
+		logger.Info().
+			Int("skills", len(skills.Updated)).
+			Int("plugins", len(plugins.Updated)).
+			Int("mcps", len(mcps.Updated)).
+			Int("focus_templates", len(templates.Updated)).
+			Err(updateErr).Msg("hub packages updated")
+		// The update ran even when some packages failed, so the answer is
+		// 200 with the per-package results; "error" says what failed. A
+		// 500 made the console drop the lists of what did update.
+		writeJSON(w, http.StatusOK, map[string]any{
+			"updated_skills":               skills.Updated,
+			"updated_plugins":              plugins.Updated,
+			"updated_mcps":                 mcps.Updated,
+			"updated_focus_templates":      templates.Updated,
+			"skill_update_result":          hubUpdateResultPayload(skills),
+			"plugin_update_result":         hubUpdateResultPayload(plugins),
+			"mcp_update_result":            hubUpdateResultPayload(mcps),
+			"focus_template_update_result": hubUpdateResultPayload(templates),
+			"error":                        errorString(updateErr),
+			"reload_error":                 errorString(reloadErr),
 		})
 	})
 
@@ -354,4 +401,58 @@ func newSkillhubAPIHandler(
 	})
 
 	return mux
+}
+
+// reloadHubExtensions reloads the runtime after a hub change and returns
+// the reload error so the response can say the package is on disk but not
+// loaded, instead of answering ok regardless.
+func reloadHubExtensions(r *http.Request, extensions extensionsProvider, logger zerolog.Logger) error {
+	if extensions == nil {
+		return nil
+	}
+	if err := extensions.Reload(r.Context()); err != nil {
+		logger.Warn().Err(err).Msg("reload extensions after hub change failed")
+		return err
+	}
+	return nil
+}
+
+// handlePackInstall previews (dry_run) or installs a domain pack. The plan
+// is what the console shows before the user confirms.
+func handlePackInstall(w http.ResponseWriter, r *http.Request, installer *skillhub.Installer, extensions extensionsProvider, logger zerolog.Logger, name string, dryRun bool) {
+	if dryRun {
+		plan, err := installer.PlanPackInstall(r.Context(), name)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": "true", "type": "pack", "name": name, "dry_run": true, "plan": plan})
+		return
+	}
+	result, err := installer.InstallPack(r.Context(), name)
+	payload := map[string]any{"type": "pack", "name": name}
+	if result != nil {
+		payload["result"] = result
+	}
+	// Members installed before a failure are on disk either way.
+	var reloadErr error
+	if result != nil && len(result.Installed) > 0 {
+		reloadErr = reloadHubExtensions(r, extensions, logger)
+	}
+	if reloadErr != nil {
+		payload["reload_error"] = reloadErr.Error()
+	}
+	if err != nil {
+		logger.Error().Err(err).Str("pack", name).Msg("hub pack install failed")
+		payload["error"] = err.Error()
+		var sandboxErr *skillhub.SandboxError
+		if errors.As(err, &sandboxErr) {
+			payload["sandbox_report"] = sandboxErr.Report
+		}
+		writeJSON(w, http.StatusBadRequest, payload)
+		return
+	}
+	logger.Info().Str("pack", name).Int("installed", len(result.Installed)).Msg("hub pack installed")
+	payload["ok"] = "true"
+	writeJSON(w, http.StatusOK, payload)
 }

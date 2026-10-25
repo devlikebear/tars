@@ -8,7 +8,10 @@ type RegistryIndex struct {
 	Skills     []RegistryEntry `json:"skills"`
 	Plugins    []PluginEntry   `json:"plugins,omitempty"`
 	MCPServers []MCPEntry      `json:"mcp_servers,omitempty"`
-	Packs      []PackEntry     `json:"packs,omitempty"`
+	// FocusTemplates are shared focus pipeline templates. Older servers
+	// ignore the field, so adding it needs no registry version bump.
+	FocusTemplates []FocusTemplateEntry `json:"focus_templates,omitempty"`
+	Packs          []PackEntry          `json:"packs,omitempty"`
 }
 
 // RegistryFiles accepts both legacy path arrays and checksum-bearing file objects.
@@ -86,17 +89,32 @@ type MCPEntry struct {
 	Quality     *QualityMetadata `json:"quality,omitempty"`
 }
 
-// PackEntry describes a domain pack that installs multiple hub packages.
-type PackEntry struct {
+// FocusTemplateEntry describes a focus pipeline template in the registry.
+// Its files must include template.yaml, whose id is the entry name.
+type FocusTemplateEntry struct {
 	Name        string           `json:"name"`
 	Description string           `json:"description"`
 	Version     string           `json:"version"`
 	Author      string           `json:"author"`
-	Tags        []string         `json:"tags,omitempty"`
-	Skills      []string         `json:"skills,omitempty"`
-	Plugins     []string         `json:"plugins,omitempty"`
-	MCPServers  []string         `json:"mcp_servers,omitempty"`
+	Tags        []string         `json:"tags"`
+	Path        string           `json:"path"`
+	Files       RegistryFiles    `json:"files"`
 	Quality     *QualityMetadata `json:"quality,omitempty"`
+}
+
+// PackEntry describes a domain pack that installs multiple hub packages.
+type PackEntry struct {
+	Name        string   `json:"name"`
+	Description string   `json:"description"`
+	Version     string   `json:"version"`
+	Author      string   `json:"author"`
+	Tags        []string `json:"tags,omitempty"`
+	Skills      []string `json:"skills,omitempty"`
+	Plugins     []string `json:"plugins,omitempty"`
+	MCPServers  []string `json:"mcp_servers,omitempty"`
+	// FocusTemplates names focus_templates entries the pack installs.
+	FocusTemplates []string         `json:"focus_templates,omitempty"`
+	Quality        *QualityMetadata `json:"quality,omitempty"`
 }
 
 // QualityMetadata carries install-time trust signals published by the hub registry.
@@ -136,6 +154,18 @@ type InstalledMCP struct {
 	Source   string `json:"source"`
 	Dir      string `json:"dir"`
 	Manifest string `json:"manifest"`
+}
+
+// InstalledFocusTemplate tracks a focus template installed from the hub.
+// File is the template's file name under <workspace>/focus-templates and
+// SHA256 the checksum of what the installer wrote there, so an update can
+// tell a template the user has since edited and leave it alone.
+type InstalledFocusTemplate struct {
+	Name    string `json:"name"`
+	Version string `json:"version"`
+	Source  string `json:"source"`
+	File    string `json:"file"`
+	SHA256  string `json:"sha256"`
 }
 
 // reasonUpToDate is the UpdateDiagnostic.Reason for an entry skipped

@@ -4,6 +4,9 @@ import type {
   ExtensionRepairResponse,
   HubDryRunResult,
   HubInstallResponse,
+  HubPackPlan,
+  HubPackageType,
+  HubUpdateResponse,
   HubInstalled,
   HubRegistry,
   HubSkillSearchResult,
@@ -37,7 +40,7 @@ export async function getHubInstalled(): Promise<HubInstalled> {
 }
 
 export async function hubInstall(
-  type: string,
+  type: HubPackageType | 'pack',
   name: string,
   opts: { source?: string; yes?: boolean; dry_run?: boolean } = {},
 ): Promise<HubInstallResponse> {
@@ -59,17 +62,25 @@ export async function getHubSources(): Promise<HubSource[]> {
   return data.sources ?? []
 }
 
+// searchHubSkills returns the federated results and, by source id, the
+// error of each hub that could not be searched.
 export async function searchHubSkills(
   opts: { q?: string; source?: string } = {},
-): Promise<HubSkillSearchResult[]> {
+): Promise<{ skills: HubSkillSearchResult[]; sourceErrors: Record<string, string> }> {
   const params = new URLSearchParams()
   if (opts.q?.trim()) params.set('q', opts.q.trim())
   if (opts.source?.trim()) params.set('source', opts.source.trim())
   const qs = params.toString()
-  const data = await requestJSON<{ skills: HubSkillSearchResult[] }>(
+  const data = await requestJSON<{ skills: HubSkillSearchResult[]; source_errors?: Record<string, string> }>(
     `/v1/hub/skills${qs ? `?${qs}` : ''}`,
   )
-  return data.skills ?? []
+  return { skills: data.skills ?? [], sourceErrors: data.source_errors ?? {} }
+}
+
+export async function previewHubPack(name: string): Promise<HubPackPlan> {
+  const resp = await hubInstall('pack', name, { dry_run: true })
+  if (!resp.plan) throw new Error(`pack ${name}: no install plan`)
+  return resp.plan
 }
 
 export async function previewHubInstall(
@@ -80,7 +91,7 @@ export async function previewHubInstall(
   return resp.preview ?? null
 }
 
-export async function hubUninstall(type: string, name: string): Promise<void> {
+export async function hubUninstall(type: HubPackageType, name: string): Promise<void> {
   await requestJSON<{ ok: string }>('/v1/hub/uninstall', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -88,8 +99,8 @@ export async function hubUninstall(type: string, name: string): Promise<void> {
   })
 }
 
-export async function hubUpdate(): Promise<{ updated_skills: string[]; updated_plugins: string[] }> {
-  return requestJSON<{ updated_skills: string[]; updated_plugins: string[] }>('/v1/hub/update', { method: 'POST' })
+export async function hubUpdate(): Promise<HubUpdateResponse> {
+  return requestJSON<HubUpdateResponse>('/v1/hub/update', { method: 'POST' })
 }
 
 export async function listSkills(sessionId?: string): Promise<SkillDef[]> {

@@ -144,4 +144,8 @@ type AvailabilityOptions struct {
 type LoadOptions struct {
 	Sources      []SourceDir
 	Availability AvailabilityOptions
+	// Disabled reports the plugin ids the user turned off. They are
+	// dropped before their skill dirs and MCP servers are collected, so a
+	// disabled plugin contributes nothing to the runtime.
+	Disabled func(id string) bool
 }

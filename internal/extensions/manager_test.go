@@ -540,3 +540,51 @@ func writeFile(t *testing.T, path string, content string) {
 		t.Fatalf("write %s: %v", path, err)
 	}
 }
+
+func TestManagerReload_NeverStartsDisabledMCPServersOrPluginParts(t *testing.T) {
+	root := t.TempDir()
+	workspaceDir := filepath.Join(root, "workspace")
+	pluginDir := filepath.Join(root, "plugins", "ops")
+	writeFile(t, filepath.Join(pluginDir, "skills", "plugin-skill", "SKILL.md"), "# Plugin Skill\nFrom plugin")
+	writeFile(t, filepath.Join(pluginDir, "tars.plugin.json"), `{
+  "id":"ops",
+  "skills":["skills"],
+  "mcp_servers":[{"name":"plugin-fs","command":"npx"}]
+}`)
+	writeFile(t, filepath.Join(workspaceDir, disabledFileName), `{"plugins":["ops"],"mcp_servers":["Base-FS"]}`)
+
+	mcpRuntime := &stubMCPRuntime{}
+	manager, err := NewManager(Options{
+		WorkspaceDir:           workspaceDir,
+		SkillsEnabled:          true,
+		PluginsEnabled:         true,
+		PluginsAllowMCPServers: true,
+		PluginSources: []PluginSourceDir{
+			{Source: SourceWorkspace, Dir: filepath.Join(root, "plugins")},
+		},
+		MCPBaseServers: []config.MCPServer{
+			{Name: "base-fs", Command: "base-cmd"},
+			{Name: "kept", Command: "kept-cmd"},
+		},
+		MCPRuntime: mcpRuntime,
+	})
+	if err != nil {
+		t.Fatalf("new manager: %v", err)
+	}
+	if err := manager.Reload(context.Background()); err != nil {
+		t.Fatalf("reload manager: %v", err)
+	}
+
+	if len(mcpRuntime.lastServers) != 1 || mcpRuntime.lastServers[0].Name != "kept" {
+		t.Fatalf("runtime must only start enabled servers, got %+v", mcpRuntime.lastServers)
+	}
+	snapshot := manager.Snapshot()
+	if len(snapshot.Plugins) != 0 {
+		t.Fatalf("disabled plugin is still loaded: %+v", snapshot.Plugins)
+	}
+	for _, s := range snapshot.Skills {
+		if s.Name == "plugin-skill" {
+			t.Fatalf("disabled plugin's skill is still loaded: %+v", s)
+		}
+	}
+}

@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { diffFocusTemplateStages, focusTemplateDraftHasChanges, focusTemplateDraftSummary } from '../src/lib/focusTemplateEdit.ts'
+import { diffFocusTemplateStages, focusTemplateDraftHasChanges, focusTemplateDraftSummary, focusTemplateShareCommands } from '../src/lib/focusTemplateEdit.ts'
 import type { FocusTemplate, FocusTemplateDraftResponse } from '../src/lib/types.ts'
 
 function template(id: string, stages: FocusTemplate['stages'], extra: Partial<FocusTemplate> = {}): FocusTemplate {
@@ -64,4 +64,17 @@ test('focusTemplateDraftSummary: the model summary, else a fallback per action',
   assert.equal(focusTemplateDraftSummary({ action: 'save', template: template('blog', []), summary: 'Added an illustration stage.' }), 'Added an illustration stage.')
   assert.equal(focusTemplateDraftSummary({ action: 'save', template: template('blog', []) }), 'Save the "blog" template.')
   assert.equal(focusTemplateDraftSummary({ action: 'delete', original_id: 'blog' }), 'Delete the "blog" template.')
+})
+
+test('focusTemplateShareCommands: publishes the template file through the registry script', () => {
+  const commands = focusTemplateShareCommands('/home/me/.tars/workspace/focus-templates/', { id: 'hotfix', source: 'hotfix.yaml' })
+  assert.match(commands, /^git clone https:\/\/github\.com\/devlikebear\/tars-skills\.git$/m)
+  assert.match(commands, /^git switch -c add-hotfix-focus-template$/m)
+  assert.match(commands, /^python3 scripts\/registry\.py add-focus-template '\/home\/me\/\.tars\/workspace\/focus-templates\/hotfix\.yaml'$/m)
+  assert.match(commands, /^gh pr create --fill$/m)
+})
+
+test('focusTemplateShareCommands: quotes paths and keeps Windows separators', () => {
+  const commands = focusTemplateShareCommands("C:\\Users\\o'neil\\.tars\\workspace\\focus-templates", { id: 'notes' })
+  assert.match(commands, /add-focus-template 'C:\\Users\\o'\\''neil\\\.tars\\workspace\\focus-templates\\notes\.yaml'$/m)
 })

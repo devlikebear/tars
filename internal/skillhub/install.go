@@ -7,8 +7,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
+	"sync"
+
+	"github.com/devlikebear/tars/internal/atomicwrite"
 )
 
 const (
@@ -24,6 +28,8 @@ type InstalledDB struct {
 	Skills  []InstalledSkill  `json:"skills"`
 	Plugins []InstalledPlugin `json:"plugins,omitempty"`
 	MCPs    []InstalledMCP    `json:"mcps,omitempty"`
+	// FocusTemplates are hub focus templates (focus_template.go).
+	FocusTemplates []InstalledFocusTemplate `json:"focus_templates,omitempty"`
 }
 
 // Installer handles installing and managing hub skills.
@@ -34,6 +40,23 @@ type Installer struct {
 	// built-in tars-hub source is registered by NewInstaller; external
 	// hubs are added in later phases.
 	Sources *SourceRegistry
+
+	// dbMu serializes every read-modify-write of skillhub.json. The server
+	// shares one Installer across requests, and two console installs (or
+	// an install during an update) would otherwise drop each other's rows.
+	dbMu sync.Mutex
+}
+
+// packageNamePattern is what a hub package name must look like before it
+// is used as a directory or file name. External hubs take the name from
+// upstream frontmatter, so "../x" must never reach filepath.Join.
+var packageNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
+
+func validatePackageName(label, name string) error {
+	if !packageNamePattern.MatchString(name) || strings.Contains(name, "..") {
+		return fmt.Errorf("%s name %q is not a safe package name (letters, digits, '.', '_' or '-')", label, name)
+	}
+	return nil
 }
 
 // NewInstaller creates an installer for the given workspace. It registers
@@ -189,6 +212,9 @@ func (inst *Installer) installTarsHub(ctx context.Context, src HubSource, entry 
 // materializeSkill runs the install sandbox over files, writes them into
 // the skill directory, and records the skill in the installed DB.
 func (inst *Installer) materializeSkill(ctx context.Context, src HubSource, entry *RegistryEntry, files map[string][]byte) (*InstallResult, error) {
+	if err := validatePackageName("skill", entry.Name); err != nil {
+		return nil, err
+	}
 	sandboxReport, err := inst.runSkillInstallSandbox(ctx, entry, files)
 	if err != nil {
 		return nil, err
@@ -333,6 +359,8 @@ func findSkillInAnySource(ctx context.Context, sources *SourceRegistry, bareName
 
 // Uninstall removes an installed skill.
 func (inst *Installer) Uninstall(name string) error {
+	inst.dbMu.Lock()
+	defer inst.dbMu.Unlock()
 	db, err := inst.loadDB()
 	if err != nil {
 		return err
@@ -343,7 +371,12 @@ func (inst *Installer) Uninstall(name string) error {
 	for _, s := range db.Skills {
 		if strings.ToLower(s.Name) == key {
 			found = true
-			_ = os.RemoveAll(s.Dir)
+			// Keep the row when the files cannot be removed: a leftover
+			// MCP directory would otherwise load as an unmanaged
+			// workspace server and keep running.
+			if err := os.RemoveAll(s.Dir); err != nil {
+				return fmt.Errorf("remove %s: %w", s.Dir, err)
+			}
 			continue
 		}
 		remaining = append(remaining, s)
@@ -373,6 +406,8 @@ func (inst *Installer) List() ([]InstalledSkill, error) {
 // computed SKILL.md sha256 against the stored manifest sha256 to decide
 // whether anything changed.
 func (inst *Installer) Update(ctx context.Context) (UpdateResult, error) {
+	inst.dbMu.Lock()
+	defer inst.dbMu.Unlock()
 	db, err := inst.loadDB()
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -389,14 +424,14 @@ func (inst *Installer) Update(ctx context.Context) (UpdateResult, error) {
 			continue
 		}
 		if err := inst.reinstallSkill(ctx, src, entry, skill.Dir); err != nil {
-			updateErr := fmt.Errorf("update skill %q: %w", skill.Name, err)
+			// One broken package must not hold back the rest.
 			result.Failed = append(result.Failed, UpdateDiagnostic{Name: skill.Name, Err: err})
-			return result, errors.Join(updateErr, inst.saveUpdatedDB(db, result, "skills"))
+			continue
 		}
 		db.Skills[i].Version = entry.Version
 		result.Updated = append(result.Updated, skill.Name)
 	}
-	return result, inst.saveUpdatedDB(db, result, "skills")
+	return result, errors.Join(updateFailuresError("skills", result.Failed), inst.saveUpdatedDB(db, result, "skills"))
 }
 
 // resolveSkillUpdate finds the source and current registry entry for an
@@ -471,6 +506,11 @@ func (inst *Installer) loadDB() (*InstalledDB, error) {
 			db.MCPs[i].Source = DefaultSourceID
 		}
 	}
+	for i := range db.FocusTemplates {
+		if strings.TrimSpace(db.FocusTemplates[i].Source) == "" {
+			db.FocusTemplates[i].Source = DefaultSourceID
+		}
+	}
 	return &db, nil
 }
 
@@ -479,7 +519,7 @@ func (inst *Installer) saveDB(db *InstalledDB) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(inst.dbPath(), append(data, '\n'), 0o644)
+	return atomicwrite.Write(inst.dbPath(), append(data, '\n'))
 }
 
 func (inst *Installer) saveUpdatedDB(db *InstalledDB, result UpdateResult, resource string) error {
@@ -508,6 +548,8 @@ func updateFailuresError(resource string, failed []UpdateDiagnostic) error {
 }
 
 func (inst *Installer) addToDB(skill InstalledSkill) error {
+	inst.dbMu.Lock()
+	defer inst.dbMu.Unlock()
 	db, err := inst.loadDB()
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -533,6 +575,9 @@ func (inst *Installer) addToDB(skill InstalledSkill) error {
 func (inst *Installer) InstallPlugin(ctx context.Context, name string) (*InstallResult, error) {
 	entry, err := inst.Registry.FindPluginByName(ctx, name)
 	if err != nil {
+		return nil, err
+	}
+	if err := validatePackageName("plugin", entry.Name); err != nil {
 		return nil, err
 	}
 
@@ -562,6 +607,8 @@ func (inst *Installer) InstallPlugin(ctx context.Context, name string) (*Install
 
 // UninstallPlugin removes an installed plugin.
 func (inst *Installer) UninstallPlugin(name string) error {
+	inst.dbMu.Lock()
+	defer inst.dbMu.Unlock()
 	db, err := inst.loadDB()
 	if err != nil {
 		return err
@@ -572,7 +619,12 @@ func (inst *Installer) UninstallPlugin(name string) error {
 	for _, p := range db.Plugins {
 		if strings.ToLower(p.Name) == key {
 			found = true
-			_ = os.RemoveAll(p.Dir)
+			// Keep the row when the files cannot be removed: a leftover
+			// MCP directory would otherwise load as an unmanaged
+			// workspace server and keep running.
+			if err := os.RemoveAll(p.Dir); err != nil {
+				return fmt.Errorf("remove %s: %w", p.Dir, err)
+			}
 			continue
 		}
 		remaining = append(remaining, p)
@@ -598,6 +650,8 @@ func (inst *Installer) ListPlugins() ([]InstalledPlugin, error) {
 
 // UpdatePlugins re-installs all installed plugins with the latest version.
 func (inst *Installer) UpdatePlugins(ctx context.Context) (UpdateResult, error) {
+	inst.dbMu.Lock()
+	defer inst.dbMu.Unlock()
 	db, err := inst.loadDB()
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -616,26 +670,27 @@ func (inst *Installer) UpdatePlugins(ctx context.Context) (UpdateResult, error) 
 			result.Skipped = append(result.Skipped, UpdateDiagnostic{Name: plugin.Name, Reason: reasonUpToDate})
 			continue
 		}
-		files, err := inst.downloadPluginFiles(ctx, entry)
-		if err != nil {
-			updateErr := fmt.Errorf("update plugin %q: %w", plugin.Name, err)
+		if err := inst.reinstallPlugin(ctx, entry, plugin.Dir); err != nil {
 			result.Failed = append(result.Failed, UpdateDiagnostic{Name: plugin.Name, Err: err})
-			return result, errors.Join(updateErr, inst.saveUpdatedDB(db, result, "plugins"))
-		}
-		if _, err := inst.runPluginInstallSandbox(ctx, entry, files); err != nil {
-			updateErr := fmt.Errorf("update plugin %q: %w", plugin.Name, err)
-			result.Failed = append(result.Failed, UpdateDiagnostic{Name: plugin.Name, Err: err})
-			return result, errors.Join(updateErr, inst.saveUpdatedDB(db, result, "plugins"))
-		}
-		if err := materializePackageFiles(plugin.Dir, files); err != nil {
-			updateErr := fmt.Errorf("update plugin %q: %w", plugin.Name, err)
-			result.Failed = append(result.Failed, UpdateDiagnostic{Name: plugin.Name, Err: err})
-			return result, errors.Join(updateErr, inst.saveUpdatedDB(db, result, "plugins"))
+			continue
 		}
 		db.Plugins[i].Version = entry.Version
 		result.Updated = append(result.Updated, plugin.Name)
 	}
-	return result, inst.saveUpdatedDB(db, result, "plugins")
+	return result, errors.Join(updateFailuresError("plugins", result.Failed), inst.saveUpdatedDB(db, result, "plugins"))
+}
+
+// reinstallPlugin downloads the plugin again, runs the install sandbox, and
+// overwrites the files in dir.
+func (inst *Installer) reinstallPlugin(ctx context.Context, entry *PluginEntry, dir string) error {
+	files, err := inst.downloadPluginFiles(ctx, entry)
+	if err != nil {
+		return err
+	}
+	if _, err := inst.runPluginInstallSandbox(ctx, entry, files); err != nil {
+		return err
+	}
+	return materializePackageFiles(dir, files)
 }
 
 func (inst *Installer) pluginDir(name string) string {
@@ -666,6 +721,8 @@ func (inst *Installer) isPluginInstalled(name string) bool {
 }
 
 func (inst *Installer) addPluginToDB(plugin InstalledPlugin) error {
+	inst.dbMu.Lock()
+	defer inst.dbMu.Unlock()
 	db, err := inst.loadDB()
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -874,6 +931,8 @@ func (inst *Installer) InstallMCP(ctx context.Context, name string) (*InstallRes
 
 // UninstallMCP removes an installed MCP package.
 func (inst *Installer) UninstallMCP(name string) error {
+	inst.dbMu.Lock()
+	defer inst.dbMu.Unlock()
 	db, err := inst.loadDB()
 	if err != nil {
 		return err
@@ -884,7 +943,12 @@ func (inst *Installer) UninstallMCP(name string) error {
 	for _, mcp := range db.MCPs {
 		if strings.ToLower(mcp.Name) == key {
 			found = true
-			_ = os.RemoveAll(mcp.Dir)
+			// Keep the row when the files cannot be removed: a leftover
+			// MCP directory would otherwise load as an unmanaged
+			// workspace server and keep running.
+			if err := os.RemoveAll(mcp.Dir); err != nil {
+				return fmt.Errorf("remove %s: %w", mcp.Dir, err)
+			}
 			continue
 		}
 		remaining = append(remaining, mcp)
@@ -910,6 +974,8 @@ func (inst *Installer) ListMCPs() ([]InstalledMCP, error) {
 
 // UpdateMCPs re-installs all installed MCP packages with the latest version.
 func (inst *Installer) UpdateMCPs(ctx context.Context) (UpdateResult, error) {
+	inst.dbMu.Lock()
+	defer inst.dbMu.Unlock()
 	db, err := inst.loadDB()
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -940,6 +1006,9 @@ func (inst *Installer) UpdateMCPs(ctx context.Context) (UpdateResult, error) {
 }
 
 func (inst *Installer) installMCPEntry(ctx context.Context, entry *MCPEntry) (InstalledMCP, SandboxReport, error) {
+	if err := validatePackageName("mcp server", entry.Name); err != nil {
+		return InstalledMCP{}, SandboxReport{}, err
+	}
 	manifestPath := strings.TrimSpace(entry.Manifest)
 	if manifestPath == "" {
 		manifestPath = defaultMCPManifest
@@ -1003,6 +1072,8 @@ func (inst *Installer) downloadMCPFiles(ctx context.Context, entry *MCPEntry, ma
 }
 
 func (inst *Installer) addMCPToDB(mcp InstalledMCP) error {
+	inst.dbMu.Lock()
+	defer inst.dbMu.Unlock()
 	db, err := inst.loadDB()
 	if err != nil {
 		if os.IsNotExist(err) {

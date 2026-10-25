@@ -80,13 +80,14 @@ func newSkillCommandWithFactory(stdout, stderr io.Writer, factory skillInstaller
 				renderDryRunText(stdout, p, opts.DryRun)
 			}
 
-			// Non-TTY callers must use --yes or --dry-run; otherwise the
-			// prompt cannot complete and we'd hang or silently abort.
-			if !opts.DryRun && !opts.Yes && !stdinIsTerminal() {
-				return fmt.Errorf("non-interactive shell cannot confirm external-hub install of %q; re-run with --yes or --dry-run", name)
-			}
-
 			confirm := func(p *skillhub.DryRunResult) (bool, error) {
+				// Only external-hub installs reach the prompt; tars-hub
+				// installs never ask, so a script or agent can install
+				// them without --yes. A non-TTY caller must use --yes
+				// or --dry-run, or the prompt would hang.
+				if !stdinIsTerminal() {
+					return false, fmt.Errorf("non-interactive shell cannot confirm external-hub install of %q; re-run with --yes or --dry-run", name)
+				}
 				// Preview already rendered via OnPreview.
 				fprint(stdout, "\nProceed with install? [y/N] ")
 				reader := bufio.NewReader(os.Stdin)

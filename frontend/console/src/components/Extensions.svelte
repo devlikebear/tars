@@ -17,6 +17,7 @@
     listSkills,
     listMCPServers,
     previewHubInstall,
+    previewHubPack,
     reloadExtensions,
     searchHubSkills,
     getWorkspaceSkillContent,
@@ -32,6 +33,9 @@
     HubRegistry,
     HubRegistryEntry,
     HubInstalled,
+    HubPackageType,
+    HubPackEntry,
+    HubPackPlan,
     HubSource,
     SkillDef,
     MCPServerStatus,
@@ -44,7 +48,20 @@
   } from '../lib/types'
   import DryRunModal from './DryRunModal.svelte'
 
+  interface Props {
+    onNavigate?: (path: string) => void
+  }
+
+  let { onNavigate }: Props = $props()
+
   type Tab = 'hub' | 'installed'
+
+  // Hub package keys are case-insensitive, like the server's name matching:
+  // a skill whose frontmatter differs from its registry name in case must
+  // still find its Uninstall and Update buttons.
+  function pkgKey(type: string, name: string): string {
+    return type + ':' + name.toLowerCase()
+  }
 
   let tab: Tab = $state('installed')
   let loading = $state(true)
@@ -66,6 +83,15 @@
   let hubSources: HubSource[] = $state([])
   let selectedHubSource: string = $state('') // empty = all sources
   let federatedSkills: { sourceID: string; entry: HubRegistryEntry }[] = $state([])
+  // Hubs the federated search could not reach, by source id. The search
+  // walks every external hub and can take many seconds, so it loads on its
+  // own instead of holding back the rest of the Hub tab.
+  let hubSourceErrors: Record<string, string> = $state({})
+  let federatedLoading = $state(false)
+
+  // Pack install: the plan is shown for review before anything installs.
+  let packPlan: HubPackPlan | null = $state(null)
+  let packPlanLoading = $state('')
 
   // Dry-run modal state.
   let dryRunPreview: HubDryRunResult | null = $state(null)
@@ -75,7 +101,7 @@
   // Installed tab
   let skills: SkillDef[] = $state([])
   let mcpServers: MCPServerStatus[] = $state([])
-  let installed: HubInstalled = $state({ skills: [], plugins: [], mcps: [] })
+  let installed: HubInstalled = $state({ skills: [], plugins: [], mcps: [], focus_templates: [] })
   let disabledSkills: Set<string> = $state(new Set())
   let disabledMCPs: Set<string> = $state(new Set())
   let extensionHealth: ExtensionHealthResponse | null = $state(null)
@@ -98,14 +124,32 @@
   let registryVersions: Map<string, string> = $state(new Map())
 
   function hasUpdate(type: string, name: string): boolean {
-    const instVer = installedVersions.get(type + ':' + name)
-    const regVer = registryVersions.get(type + ':' + name)
+    const instVer = installedVersions.get(pkgKey(type, name))
+    const regVer = registryVersions.get(pkgKey(type, name))
     if (!instVer || !regVer) return false
     return instVer !== regVer
   }
 
   function registryVersion(type: string, name: string): string {
-    return registryVersions.get(type + ':' + name) || ''
+    return registryVersions.get(pkgKey(type, name)) || ''
+  }
+
+  function typeLabel(type: string): string {
+    const labels = $t.extensions.typeLabels as Record<string, string>
+    return labels[type] ?? type
+  }
+
+  // A disabled skill or MCP server is left out of the runtime lists, so it
+  // would vanish with its toggle; these rows keep it switchable back on.
+  let disabledOnlySkills = $derived(
+    [...disabledSkills].filter((name) => !skills.some((s) => s.name.toLowerCase() === name)).sort(),
+  )
+  let disabledOnlyMCPs = $derived(
+    [...disabledMCPs].filter((name) => !mcpServers.some((m) => m.name.toLowerCase() === name)).sort(),
+  )
+
+  function packSize(pack: HubPackEntry): number {
+    return (pack.skills?.length ?? 0) + (pack.plugins?.length ?? 0) + (pack.mcp_servers?.length ?? 0) + (pack.focus_templates?.length ?? 0)
   }
 
   function skillSlashLabel(skill: SkillDef): string {
@@ -241,24 +285,30 @@
       skills = s
       mcpServers = m
       installed = inst
+      inst.plugins ??= []
+      inst.focus_templates ??= []
       // Hub DB items (can be uninstalled via hub)
       const hubNames = new Set<string>()
-      for (const i of inst.skills) hubNames.add('skill:' + i.name)
-      for (const i of inst.mcps) hubNames.add('mcp:' + i.name)
+      for (const i of inst.skills) hubNames.add(pkgKey('skill', i.name))
+      for (const i of inst.plugins) hubNames.add(pkgKey('plugin', i.name))
+      for (const i of inst.mcps) hubNames.add(pkgKey('mcp', i.name))
+      for (const i of inst.focus_templates) hubNames.add(pkgKey('focus_template', i.name))
       hubInstalledNames = hubNames
 
       // All loaded names (hub + runtime) for "Installed" badge in Hub tab
       const names = new Set(hubNames)
-      for (const sk of s) names.add('skill:' + sk.name)
-      for (const mc of m) names.add('mcp:' + mc.name)
+      for (const sk of s) names.add(pkgKey('skill', sk.name))
+      for (const mc of m) names.add(pkgKey('mcp', mc.name))
       installedNames = names
       disabledSkills = new Set((dis.skills ?? []).map((n: string) => n.toLowerCase()))
       disabledMCPs = new Set((dis.mcp_servers ?? []).map((n: string) => n.toLowerCase()))
 
       // Track installed versions for update detection
       const versions = new Map<string, string>()
-      for (const i of inst.skills) versions.set('skill:' + i.name, i.version || '')
-      for (const i of inst.mcps) versions.set('mcp:' + i.name, i.version || '')
+      for (const i of inst.skills) versions.set(pkgKey('skill', i.name), i.version || '')
+      for (const i of inst.plugins) versions.set(pkgKey('plugin', i.name), i.version || '')
+      for (const i of inst.mcps) versions.set(pkgKey('mcp', i.name), i.version || '')
+      for (const i of inst.focus_templates) versions.set(pkgKey('focus_template', i.name), i.version || '')
       installedVersions = versions
     } catch (e) {
       error = e instanceof Error ? e.message : $t.extensions.failedLoadExtensions
@@ -275,29 +325,47 @@
       registry = {
         version: raw.version ?? 0,
         skills: raw.skills ?? [],
-        plugins: [],
+        plugins: raw.plugins ?? [],
         mcp_servers: raw.mcp_servers ?? [],
+        focus_templates: raw.focus_templates ?? [],
+        packs: raw.packs ?? [],
       }
       hubSources = sources
-      // Federated skill search across all registered sources. The hub
-      // tab renders this list (filtered by selectedHubSource) instead
-      // of registry.skills so external hubs show up next to tars-hub.
-      const results = await searchHubSkills({})
+      // Until the federated search answers, list the tars-hub skills.
+      federatedSkills = registry.skills.map((entry) => ({ sourceID: 'tars-hub', entry }))
+      void loadFederatedSkills()
+      // Track registry versions for update detection (tars-hub only).
+      const regVers = new Map<string, string>()
+      for (const e of registry.skills) regVers.set(pkgKey('skill', e.name), e.version || '')
+      for (const e of registry.plugins) regVers.set(pkgKey('plugin', e.name), e.version || '')
+      for (const e of registry.mcp_servers) regVers.set(pkgKey('mcp', e.name), e.version || '')
+      for (const e of registry.focus_templates) regVers.set(pkgKey('focus_template', e.name), e.version || '')
+      registryVersions = regVers
+    } catch (e) {
+      error = e instanceof Error ? e.message : $t.extensions.failedFetchRegistry
+    } finally {
+      hubLoading = false
+    }
+  }
+
+  // Federated skill search across all registered sources. The hub tab
+  // renders this list (filtered by selectedHubSource) instead of
+  // registry.skills so external hubs show up next to tars-hub.
+  async function loadFederatedSkills() {
+    federatedLoading = true
+    try {
+      const { skills: results, sourceErrors } = await searchHubSkills({})
+      hubSourceErrors = sourceErrors
       federatedSkills = results
         .map((r) => ({
           sourceID: (r.source_id || r.SourceID || '') as string,
           entry: (r.entry || r.Entry) as HubRegistryEntry,
         }))
         .filter((r) => r.entry && r.sourceID)
-      // Track registry versions for update detection (tars-hub only).
-      const regVers = new Map<string, string>()
-      for (const e of registry.skills) regVers.set('skill:' + e.name, e.version || '')
-      for (const e of registry.mcp_servers) regVers.set('mcp:' + e.name, e.version || '')
-      registryVersions = regVers
     } catch (e) {
       error = e instanceof Error ? e.message : $t.extensions.failedFetchRegistry
     } finally {
-      hubLoading = false
+      federatedLoading = false
     }
   }
 
@@ -343,30 +411,35 @@
   }
 
   function isInstalled(type: string, name: string): boolean {
-    return installedNames.has(type + ':' + name)
+    return installedNames.has(pkgKey(type, name))
   }
 
   function isHubInstalled(type: string, name: string): boolean {
-    return hubInstalledNames.has(type + ':' + name)
+    return hubInstalledNames.has(pkgKey(type, name))
   }
 
-  async function handleInstall(type: string, name: string, sourceID: string = '') {
+  async function handleInstall(type: HubPackageType, name: string, sourceID: string = '') {
     busyItem = type + ':' + name
     error = ''
     success = ''
     skillSandboxReport = null
     try {
       const opts: { source?: string; yes?: boolean } = {}
-      if (sourceID) {
+      if (sourceID && sourceID !== 'tars-hub') {
         opts.source = sourceID
         opts.yes = true // console-driven external installs are explicit
+      } else if (type === 'skill') {
+        // Without a source the server searches every hub, and a name an
+        // external hub also has fails as ambiguous.
+        opts.source = 'tars-hub'
       }
       const result = await hubInstall(type, name, opts)
       skillSandboxReport = result.sandbox_report ?? null
-      installedNames = new Set([...installedNames, type + ':' + name])
+      installedNames = new Set([...installedNames, pkgKey(type, name)])
       const sandboxText = result.sandbox_report ? $t.extensions.sandboxSuffix(sandboxSummary(result.sandbox_report)) : ''
       const pluginText = result.requires_plugin ? $t.extensions.requiresPluginSuffix(result.requires_plugin) : ''
-      success = $t.extensions.installSuccess(type, name, sandboxText, pluginText)
+      success = $t.extensions.installSuccess(typeLabel(type), name, sandboxText, pluginText)
+      if (result.reload_error) error = `${$t.extensions.reloadFailed}: ${result.reload_error}`
       await loadInstalled()
     } catch (e) {
       if (e instanceof APIRequestError && e.payload?.sandbox_report) {
@@ -378,16 +451,16 @@
     }
   }
 
-  async function handleUninstall(type: string, name: string) {
+  async function handleUninstall(type: HubPackageType, name: string) {
     busyItem = type + ':' + name
     error = ''
     success = ''
     try {
       await hubUninstall(type, name)
       const next = new Set(installedNames)
-      next.delete(type + ':' + name)
+      next.delete(pkgKey(type, name))
       installedNames = next
-      success = $t.extensions.uninstallSuccess(type, name)
+      success = $t.extensions.uninstallSuccess(typeLabel(type), name)
       await loadInstalled()
     } catch (e) {
       error = e instanceof Error ? e.message : $t.extensions.uninstallFailed
@@ -529,13 +602,48 @@
     success = ''
     try {
       const result = await hubUpdate()
-      const total = result.updated_skills?.length ?? 0
-      success = total > 0 ? $t.extensions.updatedTotal(total) : $t.extensions.everythingUpToDate
+      const kinds = [result.skill_update_result, result.plugin_update_result, result.mcp_update_result, result.focus_template_update_result]
+      const total = kinds.reduce((sum, kind) => sum + (kind?.updated?.length ?? 0), 0)
+      success = total > 0 ? $t.extensions.updatedTotal(total) : result.error ? '' : $t.extensions.everythingUpToDate
+      if (result.error) error = result.error
+      else if (result.reload_error) error = `${$t.extensions.reloadFailed}: ${result.reload_error}`
       await loadInstalled()
     } catch (e) {
       error = e instanceof Error ? e.message : $t.extensions.updateFailed
     } finally {
       updating = false
+    }
+  }
+
+  async function reviewPack(name: string) {
+    packPlanLoading = name
+    error = ''
+    success = ''
+    try {
+      packPlan = await previewHubPack(name)
+    } catch (e) {
+      error = e instanceof Error ? e.message : $t.extensions.installFailed
+    } finally {
+      packPlanLoading = ''
+    }
+  }
+
+  async function confirmPackInstall() {
+    if (!packPlan) return
+    const name = packPlan.pack.name
+    packPlan = null
+    busyItem = pkgKey('pack', name)
+    error = ''
+    success = ''
+    try {
+      const resp = await hubInstall('pack', name)
+      success = $t.extensions.packInstalledSuccess(name, resp.result?.installed?.length ?? 0, resp.result?.skipped?.length ?? 0)
+      if (resp.reload_error) error = `${$t.extensions.reloadFailed}: ${resp.reload_error}`
+    } catch (e) {
+      error = e instanceof Error ? e.message : $t.extensions.installFailed
+    } finally {
+      busyItem = ''
+      await loadInstalled()
     }
   }
 
@@ -545,6 +653,9 @@
   }
 
   onMount(() => {
+    // /console/extensions?tab=hub opens the hub (the focus templates page
+    // links here to find templates).
+    if (new URLSearchParams(window.location.search).get('tab') === 'hub') tab = 'hub'
     void loadInstalled()
     void loadHub() // fetch registry for version comparison
   })
@@ -566,6 +677,75 @@
       {/if}
     </div>
   {/if}
+{/snippet}
+
+{#snippet hubEntryRow(type: HubPackageType, entry: HubRegistryEntry)}
+  <div class="ext-item" data-testid="hub-entry" data-type={type} data-name={entry.name}>
+    <div class="ext-item-info">
+      <div class="ext-item-top">
+        <strong>{entry.name}</strong>
+        <span class="ext-version">{$t.extensions.versionPrefix(entry.version)}</span>
+        {#if entry.author}<span class="ext-meta-tag">{$t.extensions.byAuthor(entry.author)}</span>{/if}
+      </div>
+      <span class="ext-desc">{entry.description}</span>
+      {#if entry.tags?.length}
+        <div class="ext-tags">
+          {#each entry.tags as tag}<span class="ext-tag">{tag}</span>{/each}
+        </div>
+      {/if}
+      {@render renderQuality(entry)}
+    </div>
+    {#if hasUpdate(type, entry.name)}
+      <button class="btn btn-warning btn-sm" disabled={busyItem === type + ':' + entry.name} onclick={() => handleInstall(type, entry.name)}>
+        {busyItem === type + ':' + entry.name ? $t.extensions.updating : $t.extensions.update}
+      </button>
+    {:else if isInstalled(type, entry.name)}
+      <span class="badge badge-success">{$t.extensions.installed}</span>
+    {:else}
+      <button class="btn btn-primary btn-sm" disabled={busyItem === type + ':' + entry.name} onclick={() => handleInstall(type, entry.name)}>
+        {busyItem === type + ':' + entry.name ? $t.extensions.installing : $t.extensions.install}
+      </button>
+    {/if}
+  </div>
+{/snippet}
+
+{#snippet installedHubRow(type: HubPackageType, item: { name: string; version: string; source: string })}
+  <div class="ext-item" data-testid="installed-hub-item" data-type={type} data-name={item.name}>
+    <div class="ext-item-info">
+      <div class="ext-item-top">
+        <strong>{item.name}</strong>
+        <span class="ext-version">{$t.extensions.versionPrefix(item.version)}</span>
+      </div>
+      <div class="ext-meta"><span class="ext-meta-tag">{item.source}</span></div>
+    </div>
+    <div class="ext-item-actions">
+      {#if hasUpdate(type, item.name)}
+        <button class="btn btn-warning btn-sm" disabled={busyItem === type + ':' + item.name} onclick={() => handleInstall(type, item.name)} title={$t.extensions.updateTooltip(registryVersion(type, item.name))}>
+          {busyItem === type + ':' + item.name ? $t.extensions.updateBusy : $t.extensions.update}
+        </button>
+      {/if}
+      <button class="btn btn-danger btn-sm" disabled={busyItem === type + ':' + item.name} onclick={() => handleUninstall(type, item.name)}>
+        {busyItem === type + ':' + item.name ? $t.extensions.updateBusy : $t.extensions.uninstall}
+      </button>
+    </div>
+  </div>
+{/snippet}
+
+{#snippet disabledRow(kind: 'skill' | 'mcp', name: string)}
+  <div class="ext-item-wrapper" data-testid="disabled-extension" data-kind={kind} data-name={name}>
+    <div class="ext-item">
+      <div class="ext-item-info">
+        <strong>{name}</strong>
+        <div class="ext-meta"><span class="badge badge-default">{$t.extensions.disabledNotLoaded}</span></div>
+      </div>
+      <div class="ext-item-actions">
+        <button class="toggle-switch" disabled={togglingItem === kind + ':' + name} title={$t.extensions.enable} onclick={() => handleToggle(kind, name)}>{$t.extensions.off}</button>
+        {#if isHubInstalled(kind, name)}
+          <button class="btn btn-danger btn-sm" disabled={busyItem === kind + ':' + name} onclick={() => handleUninstall(kind, name)}>{busyItem === kind + ':' + name ? $t.extensions.updateBusy : $t.extensions.uninstall}</button>
+        {/if}
+      </div>
+    </div>
+  </div>
 {/snippet}
 
 <div class="ext-page">
@@ -651,7 +831,7 @@
           </div>
           <span class="badge badge-default">{skills.length}</span>
         </div>
-        {#if skills.length === 0}
+        {#if skills.length === 0 && disabledOnlySkills.length === 0}
           <div class="empty-state"><p>{$t.extensions.noSkills}</p></div>
         {:else}
           <div class="ext-list">
@@ -731,6 +911,9 @@
                 {/if}
               </div>
             {/each}
+            {#each disabledOnlySkills as name (name)}
+              {@render disabledRow('skill', name)}
+            {/each}
           </div>
         {/if}
       </section>
@@ -744,7 +927,7 @@
           </div>
           <span class="badge badge-default">{mcpServers.length}</span>
         </div>
-        {#if mcpServers.length === 0}
+        {#if mcpServers.length === 0 && disabledOnlyMCPs.length === 0}
           <div class="empty-state"><p>{$t.extensions.noMCP}</p></div>
         {:else}
           <div class="ext-list">
@@ -809,6 +992,52 @@
                 {/if}
               </div>
             {/each}
+            {#each disabledOnlyMCPs as name (name)}
+              {@render disabledRow('mcp', name)}
+            {/each}
+          </div>
+        {/if}
+      </section>
+
+      <!-- Hub plugins -->
+      <section class="card ext-section" data-testid="installed-plugins">
+        <div class="card-header">
+          <div class="section-heading">
+            <span class="card-title">{$t.extensions.pluginsTitle}</span>
+            <span class="section-definition">{$t.extensions.pluginsDefinition}</span>
+          </div>
+          <span class="badge badge-default">{installed.plugins.length}</span>
+        </div>
+        {#if installed.plugins.length === 0}
+          <div class="empty-state"><p>{$t.extensions.noPlugins}</p></div>
+        {:else}
+          <div class="ext-list">
+            {#each installed.plugins as item (item.name)}
+              {@render installedHubRow('plugin', item)}
+            {/each}
+          </div>
+        {/if}
+      </section>
+
+      <!-- Hub focus templates -->
+      <section class="card ext-section" data-testid="installed-focus-templates">
+        <div class="card-header">
+          <div class="section-heading">
+            <span class="card-title">{$t.extensions.templatesTitle}</span>
+            <span class="section-definition">{$t.extensions.templatesDefinition}</span>
+          </div>
+          {#if onNavigate}
+            <button class="btn btn-ghost btn-sm" onclick={() => onNavigate('/console/focus/templates')} data-testid="installed-open-templates">{$t.extensions.openTemplates}</button>
+          {/if}
+          <span class="badge badge-default">{installed.focus_templates.length}</span>
+        </div>
+        {#if installed.focus_templates.length === 0}
+          <div class="empty-state"><p>{$t.extensions.noTemplates}</p></div>
+        {:else}
+          <div class="ext-list">
+            {#each installed.focus_templates as item (item.name)}
+              {@render installedHubRow('focus_template', item)}
+            {/each}
           </div>
         {/if}
       </section>
@@ -830,6 +1059,12 @@
           </div>
           <span class="badge badge-default">{$t.extensions.available(filteredFederatedSkills().length)}</span>
         </div>
+        {#if federatedLoading}
+          <div class="ext-loading" data-testid="hub-federated-loading">{$t.extensions.searchingOtherHubs}</div>
+        {/if}
+        {#each Object.entries(hubSourceErrors) as [sourceID, sourceError] (sourceID)}
+          <div class="message message-error" data-testid="hub-source-error">{$t.extensions.sourceUnreachable(hubSourceLabel(sourceID), sourceError)}</div>
+        {/each}
         {#if hubSources.length > 1}
           <div class="ext-source-filter">
             <label class="ext-source-label" for="hub-source-select">{$t.extensions.hubSourceLabel}</label>
@@ -897,36 +1132,103 @@
           <span class="badge badge-default">{$t.extensions.available(registry.mcp_servers.length)}</span>
         </div>
         <div class="ext-list">
-          {#each registry.mcp_servers as entry}
-            <div class="ext-item">
-              <div class="ext-item-info">
-                <div class="ext-item-top">
-                  <strong>{entry.name}</strong>
-                  <span class="ext-version">{$t.extensions.versionPrefix(entry.version)}</span>
-                </div>
-                <span class="ext-desc">{entry.description}</span>
-                {#if entry.tags?.length}
-                  <div class="ext-tags">
-                    {#each entry.tags as tag}<span class="ext-tag">{tag}</span>{/each}
-                  </div>
-                {/if}
-                {@render renderQuality(entry)}
-              </div>
-              {#if hasUpdate('mcp', entry.name)}
-                <button class="btn btn-warning btn-sm" disabled={busyItem === 'mcp:' + entry.name} onclick={() => handleInstall('mcp', entry.name)}>
-                  {busyItem === 'mcp:' + entry.name ? $t.extensions.updating : $t.extensions.update}
-                </button>
-              {:else if isInstalled('mcp', entry.name)}
-                <span class="badge badge-success">{$t.extensions.installed}</span>
-              {:else}
-                <button class="btn btn-primary btn-sm" disabled={busyItem === 'mcp:' + entry.name} onclick={() => handleInstall('mcp', entry.name)}>
-                  {busyItem === 'mcp:' + entry.name ? $t.extensions.installing : $t.extensions.install}
-                </button>
-              {/if}
-            </div>
+          {#each registry.mcp_servers as entry (entry.name)}
+            {@render hubEntryRow('mcp', entry)}
           {/each}
         </div>
       </section>
+
+      <!-- Hub Plugins -->
+      {#if registry.plugins.length}
+        <section class="card ext-section" data-testid="hub-plugins">
+          <div class="card-header">
+            <div class="section-heading">
+              <span class="card-title">{$t.extensions.pluginsTitle}</span>
+              <span class="section-definition">{$t.extensions.pluginsDefinition}</span>
+            </div>
+            <span class="badge badge-default">{$t.extensions.available(registry.plugins.length)}</span>
+          </div>
+          <div class="ext-list">
+            {#each registry.plugins as entry (entry.name)}
+              {@render hubEntryRow('plugin', entry)}
+            {/each}
+          </div>
+        </section>
+      {/if}
+
+      <!-- Hub Focus Templates -->
+      <section class="card ext-section" data-testid="hub-focus-templates">
+        <div class="card-header">
+          <div class="section-heading">
+            <span class="card-title">{$t.extensions.templatesTitle}</span>
+            <span class="section-definition">{$t.extensions.templatesDefinition}</span>
+          </div>
+          <span class="badge badge-default">{$t.extensions.available(registry.focus_templates.length)}</span>
+        </div>
+        {#if registry.focus_templates.length === 0}
+          <div class="empty-state"><p>{$t.extensions.noHubTemplates}</p></div>
+        {:else}
+          <div class="ext-list">
+            {#each registry.focus_templates as entry (entry.name)}
+              {@render hubEntryRow('focus_template', entry)}
+            {/each}
+          </div>
+        {/if}
+      </section>
+
+      <!-- Hub Packs -->
+      {#if registry.packs.length}
+        <section class="card ext-section" data-testid="hub-packs">
+          <div class="card-header">
+            <div class="section-heading">
+              <span class="card-title">{$t.extensions.packsTitle}</span>
+              <span class="section-definition">{$t.extensions.packsDefinition}</span>
+            </div>
+            <span class="badge badge-default">{$t.extensions.available(registry.packs.length)}</span>
+          </div>
+          <div class="ext-list">
+            {#each registry.packs as pack (pack.name)}
+              <div class="ext-item-wrapper">
+                <div class="ext-item" data-testid="hub-pack" data-name={pack.name}>
+                  <div class="ext-item-info">
+                    <div class="ext-item-top">
+                      <strong>{pack.name}</strong>
+                      <span class="ext-version">{$t.extensions.versionPrefix(pack.version)}</span>
+                      <span class="ext-meta-tag">{$t.extensions.packContents(packSize(pack))}</span>
+                    </div>
+                    <span class="ext-desc">{pack.description}</span>
+                    {#if pack.tags?.length}
+                      <div class="ext-tags">{#each pack.tags as tag}<span class="ext-tag">{tag}</span>{/each}</div>
+                    {/if}
+                  </div>
+                  <button class="btn btn-ghost btn-sm" disabled={packPlanLoading === pack.name || busyItem === pkgKey('pack', pack.name)} onclick={() => reviewPack(pack.name)} data-testid="hub-pack-review">
+                    {busyItem === pkgKey('pack', pack.name) ? $t.extensions.installing : $t.extensions.packPreview}
+                  </button>
+                </div>
+                {#if packPlan?.pack.name === pack.name}
+                  <div class="ext-detail" data-testid="hub-pack-plan">
+                    <strong>{$t.extensions.packPlanTitle(pack.name)}</strong>
+                    <ul class="pack-plan">
+                      {#each packPlan.items as item (item.type + ':' + item.name)}
+                        <li>
+                          <span class={item.action === 'already_installed' ? 'badge badge-default' : item.action === 'update' ? 'badge badge-warning' : 'badge badge-success'}>{$t.extensions.packActions[item.action]}</span>
+                          <span>{typeLabel(item.type)}</span>
+                          <strong>{item.name}</strong>
+                          <span class="ext-version">{$t.extensions.versionPrefix(item.version)}</span>
+                        </li>
+                      {/each}
+                    </ul>
+                    <div class="pack-plan-actions">
+                      <button class="btn btn-ghost btn-sm" onclick={() => { packPlan = null }}>{$t.extensions.packCancel}</button>
+                      <button class="btn btn-primary btn-sm" onclick={confirmPackInstall} data-testid="hub-pack-install">{$t.extensions.packInstall}</button>
+                    </div>
+                  </div>
+                {/if}
+              </div>
+            {/each}
+          </div>
+        </section>
+      {/if}
     {/if}
   {/if}
 
@@ -942,6 +1244,28 @@
 </div>
 
 <style>
+  .pack-plan {
+    list-style: none;
+    margin: var(--space-2) 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+
+  .pack-plan li {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--text-sm);
+  }
+
+  .pack-plan-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--space-2);
+  }
+
   .ext-page {
     flex: 1;
     min-height: 0;

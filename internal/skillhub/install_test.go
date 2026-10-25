@@ -3,9 +3,12 @@ package skillhub
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -895,9 +898,7 @@ func TestUpdatePluginsRollsBackOnActivationFailure(t *testing.T) {
 }
 
 func TestUpdateReturnsFinalSaveDBError(t *testing.T) {
-	if os.Getuid() == 0 {
-		t.Skip("permission-based save failure is not reliable as root")
-	}
+	skipIfFolderPermissionsAreIgnored(t)
 	srv := newTestServer(t)
 	defer srv.Close()
 
@@ -918,11 +919,12 @@ func TestUpdateReturnsFinalSaveDBError(t *testing.T) {
 	if err := inst.saveDB(db); err != nil {
 		t.Fatalf("save downgraded db: %v", err)
 	}
-	dbPath := inst.dbPath()
-	if err := os.Chmod(dbPath, 0o400); err != nil {
-		t.Fatalf("chmod db: %v", err)
+	// skillhub.json is replaced atomically through a temp file beside it,
+	// so the save fails only when the workspace folder is read-only.
+	if err := os.Chmod(tmpDir, 0o500); err != nil {
+		t.Fatalf("chmod workspace: %v", err)
 	}
-	defer func() { _ = os.Chmod(dbPath, 0o600) }()
+	defer func() { _ = os.Chmod(tmpDir, 0o700) }()
 
 	updated, err := inst.Update(context.Background())
 	if err == nil {
@@ -934,9 +936,7 @@ func TestUpdateReturnsFinalSaveDBError(t *testing.T) {
 }
 
 func TestUpdatePluginsReturnsFinalSaveDBError(t *testing.T) {
-	if os.Getuid() == 0 {
-		t.Skip("permission-based save failure is not reliable as root")
-	}
+	skipIfFolderPermissionsAreIgnored(t)
 	srv := newTestServer(t)
 	defer srv.Close()
 
@@ -957,11 +957,12 @@ func TestUpdatePluginsReturnsFinalSaveDBError(t *testing.T) {
 	if err := inst.saveDB(db); err != nil {
 		t.Fatalf("save downgraded db: %v", err)
 	}
-	dbPath := inst.dbPath()
-	if err := os.Chmod(dbPath, 0o400); err != nil {
-		t.Fatalf("chmod db: %v", err)
+	// skillhub.json is replaced atomically through a temp file beside it,
+	// so the save fails only when the workspace folder is read-only.
+	if err := os.Chmod(tmpDir, 0o500); err != nil {
+		t.Fatalf("chmod workspace: %v", err)
 	}
-	defer func() { _ = os.Chmod(dbPath, 0o600) }()
+	defer func() { _ = os.Chmod(tmpDir, 0o700) }()
 
 	updated, err := inst.UpdatePlugins(context.Background())
 	if err == nil {
@@ -1293,9 +1294,7 @@ func TestUpdateMCPsReportsPerEntryFailures(t *testing.T) {
 }
 
 func TestUpdateMCPsReturnsFinalSaveDBError(t *testing.T) {
-	if os.Getuid() == 0 {
-		t.Skip("permission-based save failure is not reliable as root")
-	}
+	skipIfFolderPermissionsAreIgnored(t)
 	srv := newTestServer(t)
 	defer srv.Close()
 
@@ -1316,11 +1315,12 @@ func TestUpdateMCPsReturnsFinalSaveDBError(t *testing.T) {
 	if err := inst.saveDB(db); err != nil {
 		t.Fatalf("save downgraded db: %v", err)
 	}
-	dbPath := inst.dbPath()
-	if err := os.Chmod(dbPath, 0o400); err != nil {
-		t.Fatalf("chmod db: %v", err)
+	// skillhub.json is replaced atomically through a temp file beside it,
+	// so the save fails only when the workspace folder is read-only.
+	if err := os.Chmod(tmpDir, 0o500); err != nil {
+		t.Fatalf("chmod workspace: %v", err)
 	}
-	defer func() { _ = os.Chmod(dbPath, 0o600) }()
+	defer func() { _ = os.Chmod(tmpDir, 0o700) }()
 
 	updated, err := inst.UpdateMCPs(context.Background())
 	if err == nil {
@@ -1376,5 +1376,111 @@ func TestUpdateSkipsEntriesAlreadyAtLatestVersion(t *testing.T) {
 				t.Fatalf("expected %s skipped as %q, got %+v", tc.entry, reasonUpToDate, result.Skipped)
 			}
 		})
+	}
+}
+
+func TestInstallRejectsUnsafePackageNames(t *testing.T) {
+	skillMD := []byte("---\nname: ../escape\ndescription: x\n---\n# x\n")
+	index := RegistryIndex{
+		Version: 3,
+		Skills: []RegistryEntry{{
+			Name:    "../escape",
+			Version: "0.1.0",
+			Path:    "skills/escape",
+			Files:   RegistryFiles{{Path: "SKILL.md", SHA256: sha256Hex(skillMD)}},
+		}},
+	}
+	srv := newRegistryServer(t, index, map[string][]byte{"/skills/escape/SKILL.md": skillMD})
+	defer srv.Close()
+	root := t.TempDir()
+	workspace := filepath.Join(root, "workspace")
+	inst := &Installer{
+		WorkspaceDir: workspace,
+		Registry:     &Registry{RegistryURL: srv.URL + "/registry.json", SkillBaseURL: srv.URL, HTTPClient: srv.Client()},
+	}
+
+	_, err := inst.Install(context.Background(), "../escape")
+	if err == nil || !strings.Contains(err.Error(), "not a safe package name") {
+		t.Fatalf("expected an unsafe-name error, got %v", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(root, "escape")); !os.IsNotExist(statErr) {
+		t.Fatalf("install wrote outside the workspace: %v", statErr)
+	}
+}
+
+func TestUpdateContinuesPastAFailingSkill(t *testing.T) {
+	good := []byte("---\nname: good\ndescription: x\n---\n# good\n")
+	bad := []byte("---\nname: bad\ndescription: x\n---\n# bad\n")
+	entry := func(name string, content []byte, version string) RegistryEntry {
+		return RegistryEntry{
+			Name: name, Version: version, Path: "skills/" + name,
+			Files: RegistryFiles{{Path: "SKILL.md", SHA256: sha256Hex(content)}},
+		}
+	}
+	files := map[string][]byte{"/skills/good/SKILL.md": good, "/skills/bad/SKILL.md": bad}
+	srv := newRegistryServer(t, RegistryIndex{Version: 3, Skills: []RegistryEntry{entry("bad", bad, "0.1.0"), entry("good", good, "0.1.0")}}, files)
+	inst := &Installer{
+		WorkspaceDir: t.TempDir(),
+		Registry:     &Registry{RegistryURL: srv.URL + "/registry.json", SkillBaseURL: srv.URL, HTTPClient: srv.Client()},
+	}
+	for _, name := range []string{"bad", "good"} {
+		if _, err := inst.Install(context.Background(), name); err != nil {
+			t.Fatalf("Install %s: %v", name, err)
+		}
+	}
+	srv.Close()
+
+	// The next release of "bad" ships a checksum that does not match, so
+	// its update fails; "good" must still update.
+	next := RegistryIndex{Version: 3, Skills: []RegistryEntry{entry("bad", good, "0.2.0"), entry("good", good, "0.2.0")}}
+	srv = newRegistryServer(t, next, files)
+	defer srv.Close()
+	inst.Registry = &Registry{RegistryURL: srv.URL + "/registry.json", SkillBaseURL: srv.URL, HTTPClient: srv.Client()}
+
+	result, err := inst.Update(context.Background())
+	if err == nil {
+		t.Fatal("expected the failed update to be reported")
+	}
+	if len(result.Failed) != 1 || result.Failed[0].Name != "bad" {
+		t.Fatalf("expected bad to fail, got %+v", result)
+	}
+	if len(result.Updated) != 1 || result.Updated[0] != "good" {
+		t.Fatalf("expected good to update past the failure, got %+v", result)
+	}
+}
+
+func TestInstallerSerializesConcurrentDBWrites(t *testing.T) {
+	inst := &Installer{WorkspaceDir: t.TempDir()}
+	var wg sync.WaitGroup
+	for i := 0; i < 20; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			if err := inst.addMCPToDB(InstalledMCP{Name: fmt.Sprintf("mcp-%d", i)}); err != nil {
+				t.Errorf("addMCPToDB: %v", err)
+			}
+		}(i)
+	}
+	wg.Wait()
+	mcps, err := inst.ListMCPs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(mcps) != 20 {
+		t.Fatalf("expected 20 rows after concurrent installs, got %d", len(mcps))
+	}
+}
+
+// skipIfFolderPermissionsAreIgnored skips a test that makes skillhub.json
+// unsaveable by making the workspace folder read-only: skillhub.json is
+// replaced through a temp file beside it, and neither root nor Windows
+// (which ignores a folder's permission bits) is stopped from creating one.
+func skipIfFolderPermissionsAreIgnored(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows ignores folder permission bits, so a read-only workspace cannot make the save fail")
+	}
+	if os.Getuid() == 0 {
+		t.Skip("permission-based save failure is not reliable as root")
 	}
 }

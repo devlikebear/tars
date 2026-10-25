@@ -1217,6 +1217,37 @@ export type HubRegistry = {
   skills: HubRegistryEntry[]
   plugins: HubRegistryEntry[]
   mcp_servers: HubRegistryEntry[]
+  focus_templates: HubRegistryEntry[]
+  packs: HubPackEntry[]
+}
+
+export type HubPackEntry = {
+  name: string
+  description: string
+  version: string
+  author: string
+  tags?: string[]
+  skills?: string[]
+  plugins?: string[]
+  mcp_servers?: string[]
+  focus_templates?: string[]
+  quality?: HubQualityMetadata
+}
+
+// HubPackageType is the type POST /v1/hub/install and /v1/hub/uninstall take.
+export type HubPackageType = 'skill' | 'plugin' | 'mcp' | 'focus_template'
+
+export type HubPackPlanItem = {
+  type: HubPackageType
+  name: string
+  version: string
+  description?: string
+  action: 'install' | 'update' | 'already_installed'
+}
+
+export type HubPackPlan = {
+  pack: HubPackEntry
+  items: HubPackPlanItem[]
 }
 
 export type SkillSandboxCheck = {
@@ -1248,6 +1279,23 @@ export type HubInstallResponse = {
   requires_plugin?: string
   sandbox_report?: SkillSandboxReport
   preview?: HubDryRunResult
+  // A pack dry run's plan, and a pack install's result.
+  plan?: HubPackPlan
+  result?: { installed?: HubPackPlanItem[]; skipped?: HubPackPlanItem[]; sandbox_reports?: SkillSandboxReport[] }
+  // The package is on disk but the extensions reload after it failed.
+  reload_error?: string
+}
+
+export type HubUpdateDiagnostic = { name: string; reason?: string; error?: string }
+export type HubUpdateKindResult = { updated: string[] | null; skipped: HubUpdateDiagnostic[]; failed: HubUpdateDiagnostic[] }
+
+export type HubUpdateResponse = {
+  skill_update_result: HubUpdateKindResult
+  plugin_update_result: HubUpdateKindResult
+  mcp_update_result: HubUpdateKindResult
+  focus_template_update_result: HubUpdateKindResult
+  error?: string
+  reload_error?: string
 }
 
 export type HubSource = {
@@ -1300,14 +1348,17 @@ export type HubInstalledItem = {
   name: string
   version: string
   source: string
-  dir: string
+  dir?: string
   manifest?: string
+  // Focus templates: the file under focus-templates.
+  file?: string
 }
 
 export type HubInstalled = {
   skills: HubInstalledItem[]
   plugins: HubInstalledItem[]
   mcps: HubInstalledItem[]
+  focus_templates: HubInstalledItem[]
 }
 
 export type SkillDef = {
@@ -2517,7 +2568,14 @@ export type FocusTemplate = {
   builtin: boolean
   source?: string
 }
-export type FocusTemplateList = { templates: FocusTemplate[]; diagnostics: { source: string; error: string }[] }
+export type FocusTemplateList = {
+  templates: FocusTemplate[]
+  diagnostics: { source: string; error: string }[]
+  // hub maps the id of each template installed from the TARS Hub to its
+  // version; dir is the workspace focus-templates folder.
+  hub?: Record<string, string>
+  dir?: string
+}
 
 // AI-assisted template editing (natural language → draft → PUT/DELETE,
 // internal/tarsserver/focus_template_edit.go). The draft route never

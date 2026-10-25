@@ -2,6 +2,7 @@ package extensions
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -93,7 +94,7 @@ func (s *disabledStore) SetDisabled(kind, name string, disabled bool) error {
 	case "mcp":
 		list = &ds.MCPServers
 	default:
-		return nil
+		return fmt.Errorf("unknown extension kind %q (want skill, plugin or mcp)", kind)
 	}
 
 	if disabled {

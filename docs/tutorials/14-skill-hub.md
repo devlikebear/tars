@@ -204,12 +204,31 @@ MCP package는 `tars.mcp.json`을 포함한다.
   "server": {
     "name": "safe-time",
     "command": "node",
-    "args": ["${MCP_DIR}/server.js"]
+    "args": ["${MCP_DIR}/server.cjs"]
   }
 }
 ```
 
-설치 후 `${MCP_DIR}`은 실제 package directory로 확장된다. local stdio command는 여전히 `extensions.mcp.command_allowlist`를 통과해야 실행된다.
+설치 후 `${MCP_DIR}`은 실제 package directory로 확장된다. local stdio command는 여전히 `extensions.mcp.command_allowlist`를 통과해야 실행된다. 설치기는 `files`에 있는 파일만 내려받으므로, manifest가 실행하는 파일은 모두 `files`에 있어야 한다(tars-skills의 `scripts/registry.py check`가 확인한다).
+
+### 14-6. Focus template package
+
+registry의 `focus_templates`는 포커스 파이프라인 템플릿이다. 각 항목은 `template.yaml` 하나(sha256 검증)를 싣고, 항목 이름이 템플릿 id다. 템플릿은 텍스트뿐이라 명령을 실행하지 않으며, 설치 sandbox는 포커스 페이지 로더와 같은 규칙(`focuspipeline.ParseTemplate`)으로 파싱·검증하는 것이다. 통과하면 `focuspipeline.SaveTemplate`이 `<workspace>/focus-templates/<id>.yaml`에 쓴다.
+
+- 같은 id의 로컬 템플릿이 허브가 설치한 것이 아니면 덮어쓰지 않고 설치를 거부한다.
+- `skillhub.json`의 `focus_templates`에 쓴 파일의 sha256을 남긴다. 업데이트는 파일이 그 값과 다르면(사용자가 고침) 건너뛴다.
+- 포커스 페이지에서 지운 허브 템플릿은 목록에서 빠지고, `uninstall`로 행을 정리할 수 있다.
+- pack은 `focus_templates` 목록으로 템플릿도 설치한다.
+
+```bash
+tars template search [query]
+tars template install <name>
+tars template list
+tars template update
+tars template uninstall <name>
+```
+
+공유는 tars-skills PR이다: `python3 scripts/registry.py add-focus-template <file>`이 템플릿을 복사하고 체크섬과 함께 항목을 쓴다. 콘솔 포커스 템플릿 페이지의 **공유** 버튼이 이 명령을 보여 준다.
 
 ## 체크포인트
 
