@@ -59,3 +59,9 @@ test('Update all reports held packages instead of "everything is up to date"', (
   assert.match(extensionsSource, /const held = heldUpdates\(result\)/)
   assert.match(extensionsSource, /\$t\.extensions\.updateHeld\(held\.join/)
 })
+
+test('a hub-installed skill shows its hub and offers Uninstall, not workspace Edit/Delete', () => {
+  assert.match(extensionsSource, /\{#if s\.source === 'workspace' && !isHubInstalled\('skill', s\.name\)\}\s*<button[^\n]*handleEditSkill/)
+  assert.match(extensionsSource, /\{#if isHubInstalled\('skill', s\.name\)\}\s*<button[^\n]*handleUninstall\('skill', s\.name\)/)
+  assert.match(extensionsSource, /<span class="badge badge-default">\{skillSourceLabel\(s\)\}<\/span>/)
+})

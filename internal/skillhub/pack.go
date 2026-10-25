@@ -157,10 +157,12 @@ func packInstallAction(currentVersion string, ok bool, nextVersion string) strin
 	return packActionUpdate
 }
 
+// installedSkillVersion ignores a row whose files were deleted outside
+// the hub (see Installer.List), so a pack installs that skill again.
 func installedSkillVersion(db *InstalledDB, name string) (string, bool) {
 	key := strings.ToLower(strings.TrimSpace(name))
 	for _, item := range db.Skills {
-		if strings.ToLower(item.Name) == key {
+		if strings.ToLower(item.Name) == key && skillFilesPresent(item) {
 			return item.Version, true
 		}
 	}

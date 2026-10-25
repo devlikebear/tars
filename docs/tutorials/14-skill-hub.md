@@ -162,6 +162,8 @@ Skill이 `requires_plugin`을 선언했는데 workspace에 해당 plugin이 없�
 
 Update는 registry version과 installed version을 비교해 필요한 package만 다시 설치하고, skipped/failed diagnostic을 함께 반환한다.
 
+허브 스킬은 `workspace/skills/<name>`에 설치되므로 런타임에서는 workspace 스킬로 보인다. 설치기는 쓴 SKILL.md의 sha256을 `skillhub.json`의 `sha256`에 남기고, update는 지금 SKILL.md가 그 값과 다르면(사용자가 고쳤으면) `edited locally`로 건너뛴다 — focus 템플릿과 같은 규칙이다. 폴더가 허브 밖에서 지워진 스킬은 `skill files were removed`로 건너뛰고 설치 목록(`/v1/hub/installed`, `tars skill list`, pack 계획)에서 빠지므로 Hub 탭이 다시 설치를 제안한다. 콘솔은 허브 스킬에 workspace Edit/Delete 대신 허브 라벨과 Uninstall을 보인다.
+
 ### 14-4. CLI 서브커맨드
 
 ```

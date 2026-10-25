@@ -232,6 +232,7 @@ func (inst *Installer) materializeSkill(ctx context.Context, src HubSource, entr
 		Source:   src.ID(),
 		Dir:      skillDir,
 		Path:     entry.Path,
+		SHA256:   computeSHA256Hex(dl.files[skillManifest]),
 		Upstream: dl.upstream,
 	}); err != nil {
 		return nil, err
@@ -393,7 +394,9 @@ func (inst *Installer) Uninstall(name string) error {
 	return inst.saveDB(db)
 }
 
-// List returns all installed hub skills.
+// List returns the installed hub skills whose SKILL.md is still in the
+// workspace. A skill directory deleted outside the hub drops out here, so
+// the Hub tab offers to install it again instead of calling it installed.
 func (inst *Installer) List() ([]InstalledSkill, error) {
 	db, err := inst.loadDB()
 	if err != nil {
@@ -402,7 +405,18 @@ func (inst *Installer) List() ([]InstalledSkill, error) {
 		}
 		return nil, err
 	}
-	return db.Skills, nil
+	var out []InstalledSkill
+	for _, row := range db.Skills {
+		if skillFilesPresent(row) {
+			out = append(out, row)
+		}
+	}
+	return out, nil
+}
+
+func skillFilesPresent(row InstalledSkill) bool {
+	info, err := os.Stat(filepath.Join(row.Dir, skillManifest))
+	return err == nil && !info.IsDir()
 }
 
 // Update re-installs installed skills that have a newer version, routing
@@ -433,6 +447,10 @@ func (inst *Installer) Update(ctx context.Context) (UpdateResult, error) {
 			result.Skipped = append(result.Skipped, *skip)
 			continue
 		}
+		if reason := skillUpdateBlocker(skill); reason != "" {
+			result.Skipped = append(result.Skipped, UpdateDiagnostic{Name: skill.Name, Reason: reason})
+			continue
+		}
 		dl, err := inst.downloadSkillFilesFromSource(ctx, src, entry)
 		if err != nil {
 			// One broken package must not hold back the rest.
@@ -449,6 +467,7 @@ func (inst *Installer) Update(ctx context.Context) (UpdateResult, error) {
 		}
 		db.Skills[i].Version = entry.Version
 		db.Skills[i].Path = entry.Path
+		db.Skills[i].SHA256 = computeSHA256Hex(dl.files[skillManifest])
 		result.Updated = append(result.Updated, skill.Name)
 	}
 	return result, errors.Join(updateFailuresError("skills", result.Failed), inst.saveUpdatedDB(db, result, "skills"))
@@ -496,6 +515,23 @@ func findInstalledSkill(ctx context.Context, src HubSource, skill InstalledSkill
 		return nil, fmt.Errorf("%s now holds skill %q, not %q; uninstall and install again", skill.Path, entry.Name, skill.Name)
 	}
 	return entry, nil
+}
+
+// skillUpdateBlocker says why an installed skill must not be replaced by
+// an update, or "" when it may be. Rows written before the checksum was
+// recorded have no SHA256 and count as unedited.
+func skillUpdateBlocker(row InstalledSkill) string {
+	raw, err := os.ReadFile(filepath.Join(row.Dir, skillManifest))
+	if os.IsNotExist(err) {
+		return "skill files were removed; install it again to restore it"
+	}
+	if err != nil {
+		return "SKILL.md cannot be read: " + err.Error()
+	}
+	if row.SHA256 != "" && computeSHA256Hex(raw) != row.SHA256 {
+		return "edited locally; uninstall and install again to replace your changes"
+	}
+	return ""
 }
 
 // externalSkillChange reports how an external skill's freshly downloaded

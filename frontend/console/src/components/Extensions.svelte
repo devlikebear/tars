@@ -425,6 +425,15 @@
     return hubInstalledNames.has(pkgKey(type, name))
   }
 
+  // A hub skill lives in workspace/skills, so the runtime reports it as a
+  // workspace skill. It is shown with its hub instead and offers Uninstall,
+  // not Edit/Delete: deleting the folder left the hub's record behind, and
+  // an edit is what the next update would have to skip.
+  function skillSourceLabel(s: SkillDef): string {
+    const row = installed.skills.find((item) => item.name.toLowerCase() === s.name.toLowerCase())
+    return row ? hubSourceLabel(row.source || 'tars-hub') : s.source || ''
+  }
+
   async function handleInstall(type: HubPackageType, name: string, sourceID: string = '') {
     busyItem = type + ':' + name
     error = ''
@@ -854,7 +863,7 @@
                     </button>
                     <span class="ext-desc">{s.description || '\u2014'}</span>
                     <div class="ext-meta">
-                      {#if s.source}<span class="badge badge-default">{s.source}</span>{/if}
+                      {#if skillSourceLabel(s)}<span class="badge badge-default">{skillSourceLabel(s)}</span>{/if}
                       {#if s.user_invocable}<span class="badge badge-accent" title="User can invoke this skill from chat">{skillSlashLabel(s)}</span>{/if}
                       {#if healthItem('skill', s.name)}
                         <span class={healthBadgeClass(healthItem('skill', s.name))} title={healthItem('skill', s.name)?.summary || ''}>
@@ -878,7 +887,7 @@
                     {#if isHubInstalled('skill', s.name)}
                       <button class="btn btn-danger btn-sm" disabled={busyItem === 'skill:' + s.name} onclick={() => handleUninstall('skill', s.name)}>{busyItem === 'skill:' + s.name ? $t.extensions.updateBusy : $t.extensions.uninstall}</button>
                     {/if}
-                    {#if s.source === 'workspace'}
+                    {#if s.source === 'workspace' && !isHubInstalled('skill', s.name)}
                       <button class="btn btn-ghost btn-sm" onclick={() => handleEditSkill(s)}>{$t.extensions.editSkill}</button>
                       <button class="btn btn-danger btn-sm" disabled={deletingItem === s.name} onclick={() => handleDeleteSkill(s)}>{$t.extensions.deleteSkill}</button>
                     {/if}
