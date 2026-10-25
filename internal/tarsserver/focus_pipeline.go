@@ -136,7 +136,7 @@ func appendFocusGuidanceAt(message string, sessions *session.Store, sessionID, q
 	if questionGate != "" {
 		mark.Gate = questionGate
 	}
-	if p.Current == focuspipeline.StageReview && p.Review.Fixing && p.Review.FixingInstructed {
+	if p.CurrentKind() == focuspipeline.StageReview && p.Review.Fixing && p.Review.FixingInstructed {
 		// The turn about to run is a fix turn started by the developer's
 		// instruct note on the review blocked gate: read the working tree
 		// now, before it runs, so focusAfterTurn can prove by git state
@@ -144,6 +144,13 @@ func appendFocusGuidanceAt(message string, sessions *session.Store, sessionID, q
 		// two fix-turn origins (an accepted finding, a verification
 		// failure) are not read here — focuspipeline.reviewTurnAction
 		// only honors FixUnchanged for a FixingInstructed turn anyway.
+		// CurrentKind(), not Current: a review-kind stage can sit under a
+		// non-default id (the writing template's "revise", research's
+		// "check") and the pure state machine dispatches on kind too
+		// (verification.go's applyBlockedGate) — comparing the literal id
+		// here left those templates' review stages never captured, so
+		// fix #2 never engaged for them (tars dogfooding fix #2 review
+		// finding f1).
 		if dir, dirErr := sessions.GetCurrentDir(sessionID); dirErr == nil && strings.TrimSpace(dir) != "" {
 			if state, stateErr := focusprobe.WorkTreeState(context.Background(), dir); stateErr == nil {
 				mark.FixBeforeState = state

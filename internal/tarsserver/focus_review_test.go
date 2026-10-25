@@ -434,3 +434,61 @@ func TestFocusFixUnchangedFromRealGitState(t *testing.T) {
 		}
 	})
 }
+
+// TestFocusFixBeforeStateUsesStageKindNotID is tars dogfooding fix #2
+// review finding f1: FixBeforeState must be captured for a review-kind
+// stage under a non-default id — the writing template's "revise" stage,
+// the research template's "check" stage — not just the literal id
+// "review". The pure state machine already dispatches on kind
+// (verification.go's applyBlockedGate calling reviewRetry); the
+// production hook must match it.
+func TestFocusFixBeforeStateUsesStageKindNotID(t *testing.T) {
+	repo, base := focusReviewRepo(t)
+	store := session.NewStore(t.TempDir())
+	custom := focuspipeline.Template{ID: "custom", Name: "Custom", Stages: []focuspipeline.TemplateStage{
+		{ID: focuspipeline.StagePlan},
+		{ID: "draft", Kind: focuspipeline.StageBuild},
+		{ID: "revise", Kind: focuspipeline.StageReview},
+	}}
+	sess, err := store.Create("custom template")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetWorkDirs(sess.ID, []string{repo}, repo); err != nil {
+		t.Fatal(err)
+	}
+	p := focuspipeline.NewFromTemplate(sess.ID, "goal", custom, time.Now())
+	p.BaseCommit = base
+	for i := range p.Stages {
+		switch p.Stages[i].ID {
+		case "draft":
+			p.Stages[i].Status = focuspipeline.StatusDone
+		case "revise":
+			p.Stages[i].Status, p.Stages[i].Iteration, p.Stages[i].Limit = focuspipeline.StatusActive, 1, 2
+		}
+	}
+	p.Current = "revise"
+	p.OpenGate = focuspipeline.GateBlocked
+
+	p, _, err = focuspipeline.Apply(p, focuspipeline.Event{
+		Kind: focuspipeline.EventGate, Gate: focuspipeline.GateBlocked, Action: focuspipeline.GateInstruct,
+		Note: "double check only, report nothing if clean",
+	}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !p.Review.Fixing || !p.Review.FixingInstructed {
+		t.Fatalf("expected an instructed fix turn on the custom-id review stage: %+v", p.Review)
+	}
+	if err := focusStoreFor(store).Save(p); err != nil {
+		t.Fatal(err)
+	}
+
+	_, mark := appendFocusGuidanceAt("go", store, sess.ID, "", zerolog.Nop())
+	if mark == nil {
+		t.Fatal("no focus mark")
+	}
+	if mark.FixBeforeState == "" {
+		t.Fatalf("FixBeforeState not captured for a review-kind stage under a non-default id (%q): %+v", p.Current, mark)
+	}
+}
