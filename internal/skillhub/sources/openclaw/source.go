@@ -96,17 +96,62 @@ func (s *Source) SearchSkills(ctx context.Context, query string) ([]skillhub.Reg
 	return out, nil
 }
 
-// FindSkillByName fetches and parses just the SKILL.md for the named skill.
+// FindSkillByName returns the skill whose SKILL.md frontmatter name is
+// name. Search lists skills by that name, but a skill's directory may be
+// named differently, so the directory of the same name is only tried
+// first: when it is missing or holds another skill, every directory is
+// read until one matches.
 func (s *Source) FindSkillByName(ctx context.Context, name string) (*skillhub.RegistryEntry, error) {
 	trimmed := strings.TrimSpace(name)
 	if trimmed == "" {
 		return nil, fmt.Errorf("openclaw: skill name is empty")
 	}
-	entry, err := s.buildEntry(ctx, trimmed)
+	if !strings.ContainsAny(trimmed, `/\`) {
+		entry, err := s.buildEntry(ctx, trimmed)
+		if err == nil && strings.EqualFold(entry.Name, trimmed) {
+			return &entry, nil
+		}
+	}
+	dirs, err := s.listSkillDirs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, dir := range dirs {
+		if strings.EqualFold(dir, trimmed) {
+			continue // tried above
+		}
+		entry, err := s.buildEntry(ctx, dir)
+		if err == nil && strings.EqualFold(entry.Name, trimmed) {
+			return &entry, nil
+		}
+	}
+	return nil, fmt.Errorf("openclaw: skill %q not found", trimmed)
+}
+
+// FindSkillByPath returns the skill in the given repo directory (an
+// entry's Path, e.g. "skills/github"). The installer records the path so
+// an update reads the same directory without scanning for the name.
+func (s *Source) FindSkillByPath(ctx context.Context, skillPath string) (*skillhub.RegistryEntry, error) {
+	dir, ok := s.skillDirOf(skillPath)
+	if !ok {
+		return nil, fmt.Errorf("openclaw: %q is not a skill directory under %s/", skillPath, strings.Trim(s.SkillsDir, "/"))
+	}
+	entry, err := s.buildEntry(ctx, dir)
 	if err != nil {
 		return nil, err
 	}
 	return &entry, nil
+}
+
+// skillDirOf returns the directory name of skillPath when it is exactly
+// one level under SkillsDir.
+func (s *Source) skillDirOf(skillPath string) (string, bool) {
+	prefix := strings.Trim(s.SkillsDir, "/") + "/"
+	rest, ok := strings.CutPrefix(strings.Trim(strings.TrimSpace(skillPath), "/"), prefix)
+	if !ok || rest == "" || rest == "." || rest == ".." || strings.ContainsAny(rest, `/\`) {
+		return "", false
+	}
+	return rest, true
 }
 
 // FetchSkillContent downloads the raw SKILL.md bytes for an entry.
@@ -176,6 +221,7 @@ var (
 	_ skillhub.LicenseFetcher        = (*Source)(nil)
 	_ skillhub.CompanionFileLister   = (*Source)(nil)
 	_ skillhub.SkillContentConverter = (*Source)(nil)
+	_ skillhub.SkillPathFinder       = (*Source)(nil)
 )
 
 // --- internal helpers ---

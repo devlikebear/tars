@@ -228,6 +228,7 @@ func (inst *Installer) materializeSkill(ctx context.Context, src HubSource, entr
 		Version: entry.Version,
 		Source:  src.ID(),
 		Dir:     skillDir,
+		Path:    entry.Path,
 	}); err != nil {
 		return nil, err
 	}
@@ -449,7 +450,7 @@ func (inst *Installer) resolveSkillUpdate(ctx context.Context, sources *SourceRe
 			Reason: fmt.Sprintf("source %q is no longer registered", sourceID),
 		}
 	}
-	entry, err := src.FindSkillByName(ctx, skill.Name)
+	entry, err := findInstalledSkill(ctx, src, skill)
 	if err != nil {
 		return nil, nil, &UpdateDiagnostic{Name: skill.Name, Err: err}
 	}
@@ -457,6 +458,25 @@ func (inst *Installer) resolveSkillUpdate(ctx context.Context, sources *SourceRe
 		return nil, nil, &UpdateDiagnostic{Name: skill.Name, Reason: reasonUpToDate}
 	}
 	return src, entry, nil
+}
+
+// findInstalledSkill looks an installed skill up in its source: by the
+// recorded directory when the source supports it, else by name. A skill
+// whose directory now holds a skill of another name is an error, not an
+// update — it would install under the old name with another skill's body.
+func findInstalledSkill(ctx context.Context, src HubSource, skill InstalledSkill) (*RegistryEntry, error) {
+	finder, ok := src.(SkillPathFinder)
+	if !ok || strings.TrimSpace(skill.Path) == "" {
+		return src.FindSkillByName(ctx, skill.Name)
+	}
+	entry, err := finder.FindSkillByPath(ctx, skill.Path)
+	if err != nil {
+		return nil, err
+	}
+	if !strings.EqualFold(entry.Name, skill.Name) {
+		return nil, fmt.Errorf("%s now holds skill %q, not %q; uninstall and install again", skill.Path, entry.Name, skill.Name)
+	}
+	return entry, nil
 }
 
 // reinstallSkill downloads the skill again, runs the install sandbox, and
