@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -897,9 +898,7 @@ func TestUpdatePluginsRollsBackOnActivationFailure(t *testing.T) {
 }
 
 func TestUpdateReturnsFinalSaveDBError(t *testing.T) {
-	if os.Getuid() == 0 {
-		t.Skip("permission-based save failure is not reliable as root")
-	}
+	skipIfFolderPermissionsAreIgnored(t)
 	srv := newTestServer(t)
 	defer srv.Close()
 
@@ -937,9 +936,7 @@ func TestUpdateReturnsFinalSaveDBError(t *testing.T) {
 }
 
 func TestUpdatePluginsReturnsFinalSaveDBError(t *testing.T) {
-	if os.Getuid() == 0 {
-		t.Skip("permission-based save failure is not reliable as root")
-	}
+	skipIfFolderPermissionsAreIgnored(t)
 	srv := newTestServer(t)
 	defer srv.Close()
 
@@ -1297,9 +1294,7 @@ func TestUpdateMCPsReportsPerEntryFailures(t *testing.T) {
 }
 
 func TestUpdateMCPsReturnsFinalSaveDBError(t *testing.T) {
-	if os.Getuid() == 0 {
-		t.Skip("permission-based save failure is not reliable as root")
-	}
+	skipIfFolderPermissionsAreIgnored(t)
 	srv := newTestServer(t)
 	defer srv.Close()
 
@@ -1473,5 +1468,19 @@ func TestInstallerSerializesConcurrentDBWrites(t *testing.T) {
 	}
 	if len(mcps) != 20 {
 		t.Fatalf("expected 20 rows after concurrent installs, got %d", len(mcps))
+	}
+}
+
+// skipIfFolderPermissionsAreIgnored skips a test that makes skillhub.json
+// unsaveable by making the workspace folder read-only: skillhub.json is
+// replaced through a temp file beside it, and neither root nor Windows
+// (which ignores a folder's permission bits) is stopped from creating one.
+func skipIfFolderPermissionsAreIgnored(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows ignores folder permission bits, so a read-only workspace cannot make the save fail")
+	}
+	if os.Getuid() == 0 {
+		t.Skip("permission-based save failure is not reliable as root")
 	}
 }
