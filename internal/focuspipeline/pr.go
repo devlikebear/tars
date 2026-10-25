@@ -250,6 +250,69 @@ func WantsPRProbe(p Pipeline) bool {
 	return false
 }
 
+// NoticeEarlyPR is the title of the notice card left when a probe finds
+// this branch's PR already open during build or review (tars dogfooding
+// fix #3b): a plan or build task pushed and opened it itself, skipping the
+// pr stage's own draft gate (G3). It is advisory only — nothing is
+// recorded or blocked; the pr stage's own probe decides this PR from
+// scratch once the pipeline reaches it.
+const NoticeEarlyPR = "pull request opened before the PR gate"
+
+// WantsEarlyPRProbe reports whether the driver should run one PR probe
+// after this completed build/review turn (tars dogfooding fix #3b): only a
+// pipeline whose template has a pr stage at all can skip it early, and
+// only once the turn's owed write has actually run.
+func WantsEarlyPRProbe(p Pipeline) bool {
+	if !p.Active() || p.OpenGate != GateNone || p.PendingTurn != "" {
+		return false
+	}
+	switch p.CurrentKind() {
+	case StageBuild, StageReview:
+		return p.hasStageKind(StagePR)
+	default:
+		return false
+	}
+}
+
+// applyEarlyPRProbe handles a probe run during build or review: an open PR
+// of this checkout's branch gets one notice card per PR number, decoded
+// from every notice card regardless of which stage it was added in (the
+// same PR may be noticed again as the pipeline moves from build into
+// review, which this skips). Nothing else — no PRInfo, no stage or gate
+// change.
+func applyEarlyPRProbe(p Pipeline, probe PRProbe, now time.Time) (Pipeline, Action, error) {
+	if probe.Status != ProbeFound || probe.Number <= 0 || probe.State != PRStateOpen {
+		return p, noAction, nil
+	}
+	if probe.LocalBranch != "" && probe.HeadRef != probe.LocalBranch {
+		return p, noAction, nil
+	}
+	if p.hasEarlyPRNotice(probe.Number) {
+		return p, noAction, nil
+	}
+	next := p.clone()
+	next.addCard(CardNotice, 0, NoticeEarlyPR, map[string]any{"number": probe.Number, "url": probe.URL}, now)
+	next.UpdatedAt = now
+	return next, noAction, nil
+}
+
+// hasEarlyPRNotice reports whether number already has a NoticeEarlyPR
+// card, in any stage.
+func (p Pipeline) hasEarlyPRNotice(number int) bool {
+	for _, c := range p.Cards {
+		if c.Kind != CardNotice || c.Title != NoticeEarlyPR {
+			continue
+		}
+		var payload struct {
+			Number int `json:"number"`
+		}
+		if decodePayload(c.Payload, &payload) && payload.Number == number {
+			return true
+		}
+	}
+	return false
+}
+
 // openPRGate turns a pr-stage draft into the G3 gate.
 func (p *Pipeline) openPRGate(draft PRDraft, turn int, now time.Time) {
 	supersedeOpenGate(p)
@@ -315,6 +378,13 @@ func applyProbe(p Pipeline, ev Event, now time.Time) (Pipeline, Action, error) {
 		// Stale: a gate decides now, the pipeline ended, or a probe started
 		// before the owed turn and would judge facts it has not changed yet.
 		return p, noAction, nil
+	}
+	if kind := p.CurrentKind(); kind == StageBuild || kind == StageReview {
+		// A one-shot probe after a build/review turn (tars dogfooding fix
+		// #3b, WantsEarlyPRProbe/the driver's probeEarlyPR): notice only,
+		// never record or act — the pr stage's own probe decides this PR
+		// from scratch once the pipeline actually reaches it.
+		return applyEarlyPRProbe(p, probe, now)
 	}
 	next := p.clone()
 	act := noAction

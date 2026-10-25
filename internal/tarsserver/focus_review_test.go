@@ -245,3 +245,192 @@ func statuses(p focuspipeline.Pipeline) map[focuspipeline.StageID]focuspipeline.
 	}
 	return out
 }
+
+// focusReviewBlockedAtLimit puts the session's review stage into a real
+// limit-1 blocked gate (BlockedLimit) through the production hooks
+// (appendFocusGuidanceAt/focusAfterTurn), after a normal (non-instructed)
+// fix turn that actually edits repo's working tree: that turn's own
+// Fixed=true is unaffected by tars dogfooding fix #2, exactly as before.
+func focusReviewBlockedAtLimit(t *testing.T, repo, base string) (*session.Store, string) {
+	t.Helper()
+	store := session.NewStore(t.TempDir())
+	sess := reviewingFocusSession(t, store, repo, base)
+	if _, _, err := focusStoreFor(store).Update(sess.ID, func(p focuspipeline.Pipeline) (focuspipeline.Pipeline, error) {
+		for i := range p.Stages {
+			if p.Stages[i].ID == focuspipeline.StageReview {
+				p.Stages[i].Limit = 1
+			}
+		}
+		return p, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	reply := "found\n<focus-findings>[{\"id\":\"f1\",\"severity\":\"high\",\"file\":\"b.go\",\"line\":5,\"title\":\"renamed\",\"scenario\":\"x\"}]</focus-findings>"
+	mark := currentFocusMark(t, store, sess.ID)
+	transcript := store.TranscriptPath(sess.ID)
+	if err := session.AppendMessage(transcript, session.Message{Role: "assistant", Content: reply, Timestamp: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+	p, _, ok := focusAfterTurn(store, sess.ID, transcript, reply, mark, time.Now(), zerolog.Nop())
+	if !ok || p.OpenGate != focuspipeline.GateTriage {
+		t.Fatalf("triage not open: ok=%v %+v", ok, p)
+	}
+
+	p, _, err := focuspipeline.SetCardState(p, p.Review.Triage[0], focuspipeline.CardDecided, focuspipeline.DecisionFix, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := focusStoreFor(store).Save(p); err != nil {
+		t.Fatal(err)
+	}
+	if !p.Review.Fixing || p.Review.FixingInstructed {
+		t.Fatalf("expected a normal (non-instructed) fix turn: %+v", p.Review)
+	}
+
+	// The normal fix turn really edits the repo.
+	writeRepoFile(t, repo, "b.go", "fixed line 5\n")
+	gitRun(t, repo, "add", "-A")
+	gitRun(t, repo, "commit", "-qm", "normal fix")
+
+	mark = currentFocusMark(t, store, sess.ID)
+	if mark.FixBeforeState != "" {
+		t.Fatalf("a non-instructed fix turn must not get FixBeforeState: %+v", mark)
+	}
+	fixReply := focusReport("fixed it", false)
+	if err := session.AppendMessage(transcript, session.Message{Role: "assistant", Content: fixReply, Timestamp: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+	p, act, ok := focusAfterTurn(store, sess.ID, transcript, fixReply, mark, time.Now(), zerolog.Nop())
+	if !ok || act.Kind != focuspipeline.ActionRunVerification || !p.Review.Fixed {
+		t.Fatalf("normal fix turn should still set Fixed: ok=%v act=%+v review=%+v", ok, act, p.Review)
+	}
+
+	p, _, err = focuspipeline.Apply(p, focuspipeline.Event{
+		Kind: focuspipeline.EventVerification,
+		Verification: &focuspipeline.Verification{Passed: true, Results: []focuspipeline.VerificationResult{
+			{Command: "make test", Passed: true},
+		}},
+	}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := focusStoreFor(store).Save(p); err != nil {
+		t.Fatal(err)
+	}
+	if p.OpenGate != focuspipeline.GateBlocked {
+		t.Fatalf("expected the limit block (iteration 1 >= limit 1): %+v", p)
+	}
+	return store, sess.ID
+}
+
+// TestFocusFixUnchangedFromRealGitState is tars dogfooding fix #2, tested
+// through the real production hooks against a real temporary git
+// repository: an instruct turn at the review blocked gate that truly
+// changes nothing lets verification passing end the stage instead of
+// reopening the same limit block; one that does edit the repo keeps
+// counting as a fix, same as before.
+func TestFocusFixUnchangedFromRealGitState(t *testing.T) {
+	t.Run("an instruct turn that touches nothing ends the stage", func(t *testing.T) {
+		repo, base := focusReviewRepo(t)
+		store, sessID := focusReviewBlockedAtLimit(t, repo, base)
+
+		p, _, err := focuspipeline.Apply(pipelineOf(t, store, sessID), focuspipeline.Event{
+			Kind: focuspipeline.EventGate, Gate: focuspipeline.GateBlocked, Action: focuspipeline.GateInstruct,
+			Note: "double check only; report nothing if there is nothing left to fix",
+		}, time.Now())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := focusStoreFor(store).Save(p); err != nil {
+			t.Fatal(err)
+		}
+		if !p.Review.Fixing || !p.Review.FixingInstructed {
+			t.Fatalf("expected an instructed fix turn: %+v", p.Review)
+		}
+
+		// The real production hook (appendFocusGuidanceAt) reads the
+		// working tree now, before the turn runs.
+		message, mark := appendFocusGuidanceAt("go", store, sessID, "", zerolog.Nop())
+		if mark == nil || mark.FixBeforeState == "" {
+			t.Fatalf("no FixBeforeState captured for an instructed fix turn: %+v", mark)
+		}
+		transcript := store.TranscriptPath(sessID)
+		if err := session.AppendMessage(transcript, session.Message{Role: "user", Content: message, Timestamp: time.Now()}); err != nil {
+			t.Fatal(err)
+		}
+		// The agent's turn edits nothing in the repo.
+		reply := focusReport("nothing to fix", false)
+		if err := session.AppendMessage(transcript, session.Message{Role: "assistant", Content: reply, Timestamp: time.Now()}); err != nil {
+			t.Fatal(err)
+		}
+		p, act, ok := focusAfterTurn(store, sessID, transcript, reply, mark, time.Now(), zerolog.Nop())
+		if !ok || act.Kind != focuspipeline.ActionRunVerification || p.Review.Fixed {
+			t.Fatalf("after an unchanged instruct fix turn: ok=%v act=%+v review=%+v", ok, act, p.Review)
+		}
+		foundNotice := false
+		for _, c := range p.Cards {
+			if c.Title == focuspipeline.NoticeFixUnchanged {
+				foundNotice = true
+			}
+		}
+		if !foundNotice {
+			t.Fatalf("no 'fix turn changed nothing' notice card: %+v", p.Cards)
+		}
+
+		p, _, err = focuspipeline.Apply(p, focuspipeline.Event{
+			Kind: focuspipeline.EventVerification,
+			Verification: &focuspipeline.Verification{Passed: true, Results: []focuspipeline.VerificationResult{
+				{Command: "make test", Passed: true},
+			}},
+		}, time.Now())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if p.OpenGate == focuspipeline.GateBlocked {
+			t.Fatalf("verification passing should end the stage, not reblock: %+v", p)
+		}
+	})
+
+	t.Run("an instruct turn that edits the repo still counts as fixed", func(t *testing.T) {
+		repo, base := focusReviewRepo(t)
+		store, sessID := focusReviewBlockedAtLimit(t, repo, base)
+
+		p, _, err := focuspipeline.Apply(pipelineOf(t, store, sessID), focuspipeline.Event{
+			Kind: focuspipeline.EventGate, Gate: focuspipeline.GateBlocked, Action: focuspipeline.GateInstruct,
+			Note: "fix it properly this time",
+		}, time.Now())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := focusStoreFor(store).Save(p); err != nil {
+			t.Fatal(err)
+		}
+
+		message, mark := appendFocusGuidanceAt("go", store, sessID, "", zerolog.Nop())
+		if mark == nil || mark.FixBeforeState == "" {
+			t.Fatalf("no FixBeforeState captured: %+v", mark)
+		}
+		transcript := store.TranscriptPath(sessID)
+		if err := session.AppendMessage(transcript, session.Message{Role: "user", Content: message, Timestamp: time.Now()}); err != nil {
+			t.Fatal(err)
+		}
+		// This time the agent's turn really edits the repo.
+		writeRepoFile(t, repo, "b.go", "really fixed\n")
+		gitRun(t, repo, "add", "-A")
+		gitRun(t, repo, "commit", "-qm", "instructed fix")
+		reply := focusReport("fixed for real", false)
+		if err := session.AppendMessage(transcript, session.Message{Role: "assistant", Content: reply, Timestamp: time.Now()}); err != nil {
+			t.Fatal(err)
+		}
+		p, act, ok := focusAfterTurn(store, sessID, transcript, reply, mark, time.Now(), zerolog.Nop())
+		if !ok || act.Kind != focuspipeline.ActionRunVerification || !p.Review.Fixed {
+			t.Fatalf("after a changed instruct fix turn: ok=%v act=%+v review=%+v", ok, act, p.Review)
+		}
+		for _, c := range p.Cards {
+			if c.Title == focuspipeline.NoticeFixUnchanged {
+				t.Fatalf("no notice card expected when the repo actually changed: %+v", c)
+			}
+		}
+	})
+}

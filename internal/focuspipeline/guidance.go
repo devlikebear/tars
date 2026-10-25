@@ -89,6 +89,17 @@ var prWaitInstructions = map[string]string{
 	PRWaitMerge: "The developer approved the merge gate. Merge the pull request with `gh pr merge --squash` and report the result.",
 }
 
+// pushPRInWrongStageWarning tells the plan and build stages not to push or
+// open a pull request themselves: that is the pr stage's own write turn,
+// after the developer approves the PR draft gate (G3). A plan whose last
+// task pushed and ran `gh pr create` opened the PR before the pipeline
+// ever reached that gate (tars dogfooding fix #3) — the pr stage then
+// found the PR already open and had nothing left to draft or approve.
+// Shown only to a pipeline whose template has a pr stage at all; a
+// template without one (writing, research) never mentions pull requests.
+const pushPRInWrongStageWarning = " Push the branch and open the pull request only in the pr stage, after the developer " +
+	"approves the PR draft gate — never as a plan or build task; a task that does this skips the developer's PR review."
+
 func stageInstruction(p Pipeline) string {
 	if text, ok := prWaitInstructions[p.PRWait]; ok {
 		return text
@@ -100,6 +111,9 @@ func stageInstruction(p Pipeline) string {
 	}
 	if p.E2E && stage.KindOf() == StagePlan {
 		text += " " + e2ePlanInstructions
+	}
+	if (stage.KindOf() == StagePlan || stage.KindOf() == StageBuild) && p.hasStageKind(StagePR) {
+		text += pushPRInWrongStageWarning
 	}
 	return text
 }

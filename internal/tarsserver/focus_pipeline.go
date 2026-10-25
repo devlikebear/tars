@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/devlikebear/tars/internal/focuspipeline"
+	"github.com/devlikebear/tars/internal/focusprobe"
 	"github.com/devlikebear/tars/internal/serverauth"
 	"github.com/devlikebear/tars/internal/session"
 	"github.com/devlikebear/tars/internal/skillhub"
@@ -80,6 +81,13 @@ type focusTurnMark struct {
 	// Gate is the gate open when the guidance was built: a turn started at
 	// a question gate completes as a question even after the gate closes.
 	Gate string
+	// FixBeforeState is the session's working tree fingerprint
+	// (focusprobe.WorkTreeState) read right before a review stage's fix
+	// turn (tars dogfooding fix #2), "" otherwise (not a fix turn, or the
+	// read failed) — focusAfterTurn compares it to a second read to prove,
+	// from git state and never from the turn's own report, that a fix
+	// turn changed nothing.
+	FixBeforeState string
 }
 
 // errFocusStaleTurn aborts an update for a turn whose stage has moved on.
@@ -128,7 +136,45 @@ func appendFocusGuidanceAt(message string, sessions *session.Store, sessionID, q
 	if questionGate != "" {
 		mark.Gate = questionGate
 	}
+	if p.Current == focuspipeline.StageReview && p.Review.Fixing && p.Review.FixingInstructed {
+		// The turn about to run is a fix turn started by the developer's
+		// instruct note on the review blocked gate: read the working tree
+		// now, before it runs, so focusAfterTurn can prove by git state
+		// whether it changed anything (tars dogfooding fix #2). The other
+		// two fix-turn origins (an accepted finding, a verification
+		// failure) are not read here — focuspipeline.reviewTurnAction
+		// only honors FixUnchanged for a FixingInstructed turn anyway.
+		if dir, dirErr := sessions.GetCurrentDir(sessionID); dirErr == nil && strings.TrimSpace(dir) != "" {
+			if state, stateErr := focusprobe.WorkTreeState(context.Background(), dir); stateErr == nil {
+				mark.FixBeforeState = state
+			} else {
+				logger.Debug().Err(stateErr).Str("session_id", sessionID).Msg("focus: work tree state before fix turn failed")
+			}
+		}
+	}
 	return strings.TrimRight(message, "\n") + "\n\n" + focusStageOpen + "\n" + guidance + "\n" + focusStageClose, mark
+}
+
+// focusFixUnchanged reads the working tree again after a review stage's
+// fix turn and reports whether it matches mark.FixBeforeState — the
+// server's git-state proof (tars dogfooding fix #2), never the turn's own
+// report, that the turn changed nothing. false (unknown or not a tracked
+// fix turn) keeps today's behavior: the turn still counts as having fixed
+// something.
+func focusFixUnchanged(sessions *session.Store, sessionID string, mark *focusTurnMark, logger zerolog.Logger) bool {
+	if mark == nil || strings.TrimSpace(mark.FixBeforeState) == "" {
+		return false
+	}
+	dir, err := sessions.GetCurrentDir(sessionID)
+	if err != nil || strings.TrimSpace(dir) == "" {
+		return false
+	}
+	after, err := focusprobe.WorkTreeState(context.Background(), dir)
+	if err != nil {
+		logger.Debug().Err(err).Str("session_id", sessionID).Msg("focus: work tree state after fix turn failed")
+		return false
+	}
+	return after == mark.FixBeforeState
 }
 
 // focusAfterTurn feeds a completed turn's reply to the session's pipeline
@@ -143,6 +189,9 @@ func focusAfterTurn(sessions *session.Store, sessionID, transcriptPath, reply st
 	}
 	turn := countUserTurns(transcriptPath)
 	blocks := focusEnrichFindings(sessions, sessionID, focuspipeline.ParseBlocks(reply))
+	// Read outside the pipeline store's lock, like focusEnrichFindings:
+	// only when mark came from a fix turn (FixBeforeState set).
+	fixUnchanged := focusFixUnchanged(sessions, sessionID, mark, logger)
 	next := none
 	p, ok, err := store.Update(sessionID, func(p focuspipeline.Pipeline) (focuspipeline.Pipeline, error) {
 		if stage, _ := p.Stage(p.Current); stage.ID != mark.Stage || stage.Iteration != mark.Iteration {
@@ -153,6 +202,7 @@ func focusAfterTurn(sessions *session.Store, sessionID, transcriptPath, reply st
 			Turn:         turn,
 			Blocks:       blocks,
 			QuestionGate: mark.Gate,
+			FixUnchanged: fixUnchanged,
 		}, now)
 		next = act
 		return updated, err
@@ -426,12 +476,24 @@ func (a *focusAPI) create(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	sess, err := a.worktrees.createIn(r.Context(), newSessionRequest{Title: title, Cwd: req.Cwd, Isolate: req.Isolate, ExtraDirs: req.ExtraDirs})
+	sess, worktreeNoticeResult, err := a.worktrees.createIn(r.Context(), newSessionRequest{
+		Title: title, Cwd: req.Cwd, Isolate: req.Isolate, ExtraDirs: req.ExtraDirs,
+		// A feature pipeline's own worktree branches from the remote's
+		// default branch, not the checkout's HEAD (tars dogfooding fix
+		// #1): the checkout may sit on an unrelated feature branch with
+		// local commits the review diff and PR must never carry. A
+		// release pipeline keeps HEAD — it ships whatever the repository
+		// currently has, same as before.
+		isolateBaseRemoteDefault: kind != focuspipeline.KindRelease,
+	})
 	if err != nil {
 		writeJSON(w, folderErrorStatus(err), map[string]string{"error": err.Error()})
 		return
 	}
 	p := focuspipeline.NewFromTemplate(sess.ID, goal, tpl, a.now())
+	if worktreeNoticeResult != nil && worktreeNoticeResult.Base.Fallback != "" {
+		p = focuspipeline.SetWorktreeBase(p, worktreeNoticeResult.Base.Fallback, a.now())
+	}
 	p.E2E = req.E2E
 	p.SecondOpinion = secondOpinion
 	if req.GoalMode {
@@ -470,6 +532,9 @@ func (a *focusAPI) create(w http.ResponseWriter, r *http.Request) {
 	resp := map[string]any{"session_id": sess.ID, "pipeline": p, "started": req.Start}
 	if secondOpinionWarning != "" {
 		resp["second_opinion_warning"] = secondOpinionWarning
+	}
+	if worktreeNoticeResult != nil {
+		resp["worktree_base"] = worktreeNoticeResult.Base
 	}
 	writeJSON(w, http.StatusCreated, resp)
 }

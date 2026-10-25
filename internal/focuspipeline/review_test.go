@@ -267,6 +267,156 @@ func TestReviewLoop(t *testing.T) {
 	})
 }
 
+// TestReviewFixUnchanged is tars dogfooding fix #2: an instruct turn at the
+// review blocked gate that the server proves changed nothing (git state,
+// never the model's own report) must not reopen the same limit block —
+// verification passing ends the stage instead of starting another round.
+func TestReviewFixUnchanged(t *testing.T) {
+	t.Run("unchanged fix turn after instruct ends the stage, not another limit block", func(t *testing.T) {
+		p := inReview(t)
+		p.block(BlockedLimit, nil, 7, t0)
+		p, act, err := Apply(p, Event{Kind: EventGate, Gate: GateBlocked, Action: GateInstruct, Note: "double check only, report empty findings if there is nothing"}, t0)
+		if err != nil || !p.Review.Fixing {
+			t.Fatalf("instruct: %v %+v", err, p.Review)
+		}
+		_ = act
+
+		// The agent's turn edits nothing; the server's git-state check
+		// says so (FixUnchanged), not the turn's own report.
+		p, act, err = Apply(p, Event{
+			Kind: EventTurnCompleted, Turn: 8,
+			Blocks:       Blocks{Findings: []Finding{}, Report: &Report{Summary: "nothing to fix"}},
+			FixUnchanged: true,
+		}, t0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if act.Kind != ActionRunVerification || p.Review.Fixing {
+			t.Fatalf("after unchanged fix turn: act=%+v review=%+v", act, p.Review)
+		}
+		if p.Review.Fixed {
+			t.Fatalf("Fixed must not be set when the turn is proven to have changed nothing: %+v", p.Review)
+		}
+		last := p.Cards[len(p.Cards)-1]
+		if last.Title != NoticeFixUnchanged {
+			t.Fatalf("no 'fix turn changed nothing' notice card: %+v", last)
+		}
+
+		p, act = verify(p, t, passed())
+		if p.Current != StagePR || act.Kind != ActionSendTurn || !strings.Contains(act.Prompt, "Start the pr stage") || p.OpenGate == GateBlocked {
+			t.Fatalf("stage should end into pr, not reblock: current=%s gate=%q act=%+v", p.Current, p.OpenGate, act)
+		}
+	})
+
+	t.Run("a fix turn that did change something still counts as fixed (unaffected)", func(t *testing.T) {
+		p := inReview(t)
+		p.block(BlockedLimit, nil, 7, t0)
+		p, _, err := Apply(p, Event{Kind: EventGate, Gate: GateBlocked, Action: GateInstruct, Note: "fix it"}, t0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		p, act, err := Apply(p, Event{
+			Kind: EventTurnCompleted, Turn: 8,
+			Blocks:       Blocks{Findings: []Finding{}, Report: &Report{Summary: "fixed it"}},
+			FixUnchanged: false,
+		}, t0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if act.Kind != ActionRunVerification || !p.Review.Fixed {
+			t.Fatalf("a real change should still set Fixed: act=%+v review=%+v", act, p.Review)
+		}
+		p, act = verify(p, t, passed())
+		if act.Kind != ActionSendTurn || !strings.Contains(act.Prompt, "Review the changes again") {
+			t.Fatalf("a real fix should start a new review round: %+v", act)
+		}
+		if s := stageOf(p, StageReview); s.Iteration != 3 {
+			t.Fatalf("iteration should advance on a real fix: %+v", s)
+		}
+	})
+
+	t.Run("FixUnchanged's zero value matches today's behavior (starts a new round, no notice)", func(t *testing.T) {
+		p := inReview(t)
+		p.block(BlockedLimit, nil, 7, t0)
+		p, _, err := Apply(p, Event{Kind: EventGate, Gate: GateBlocked, Action: GateInstruct, Note: "double check only"}, t0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// FixUnchanged omitted (zero value): the pre-fix #2 behavior, Fixed
+		// is set regardless of what the turn actually changed — exactly
+		// the bug tars dogfooding fix #2 reported when the real check is
+		// never run (FixUnchanged always defaults false unless the server
+		// proved otherwise).
+		p, act, err := Apply(p, Event{
+			Kind: EventTurnCompleted, Turn: 8,
+			Blocks: Blocks{Findings: []Finding{}, Report: &Report{Summary: "nothing to fix"}},
+		}, t0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !p.Review.Fixed || act.Kind != ActionRunVerification {
+			t.Fatalf("zero-value FixUnchanged must keep the old behavior: act=%+v review=%+v", act, p.Review)
+		}
+		for _, c := range p.Cards {
+			if c.Title == NoticeFixUnchanged {
+				t.Fatalf("zero-value FixUnchanged must not add the notice card: %+v", c)
+			}
+		}
+		p, act = verify(p, t, passed())
+		if act.Kind != ActionSendTurn || !strings.Contains(act.Prompt, "Review the changes again") {
+			t.Fatalf("zero-value FixUnchanged must start a new round like before: %+v", act)
+		}
+	})
+
+	t.Run("a failed-verification fix turn is unaffected by FixUnchanged", func(t *testing.T) {
+		p, _ := reviewTurn(t, inReview(t), []Finding{})
+		p, act := verify(p, t, failed("make test", "FAIL x 0.12s"))
+		if !p.Review.Fixing || act.Kind != ActionSendTurn {
+			t.Fatalf("after failure: act=%+v review=%+v", act, p.Review)
+		}
+		// A real fix turn after a verification failure still sets Fixed:
+		// FixUnchanged only changes the outcome when it is true.
+		p, act, err := Apply(p, Event{
+			Kind: EventTurnCompleted, Turn: 8,
+			Blocks:       Blocks{Report: &Report{Summary: "fixed it"}},
+			FixUnchanged: false,
+		}, t0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if act.Kind != ActionRunVerification || !p.Review.Fixed {
+			t.Fatalf("verification-failure fix path regressed: act=%+v review=%+v", act, p.Review)
+		}
+	})
+
+	t.Run("FixUnchanged is ignored on a non-instructed fix turn even if a caller sets it", func(t *testing.T) {
+		// Defense in depth: an accepted-finding fix turn (closeTriage) is
+		// not FixingInstructed, so FixUnchanged=true must not change its
+		// outcome even if some caller passed it anyway.
+		p, _ := reviewTurn(t, inReview(t), twoFindings()[:1])
+		p, _ = decide(t, p, p.Review.Triage[0], DecisionFix)
+		if !p.Review.Fixing || p.Review.FixingInstructed {
+			t.Fatalf("accepted-finding fix turn should not be FixingInstructed: %+v", p.Review)
+		}
+		p, act, err := Apply(p, Event{
+			Kind: EventTurnCompleted, Turn: 8,
+			Blocks:       Blocks{Report: &Report{Summary: "fixed it"}},
+			FixUnchanged: true,
+		}, t0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if act.Kind != ActionRunVerification || !p.Review.Fixed {
+			t.Fatalf("FixUnchanged must have no effect on a non-instructed fix turn: act=%+v review=%+v", act, p.Review)
+		}
+		for _, c := range p.Cards {
+			if c.Title == NoticeFixUnchanged {
+				t.Fatalf("no notice card on a non-instructed fix turn: %+v", c)
+			}
+		}
+	})
+}
+
 func TestReviewVerificationFailure(t *testing.T) {
 	t.Run("failure card and a fix turn, then review again", func(t *testing.T) {
 		p, _ := reviewTurn(t, inReview(t), []Finding{})

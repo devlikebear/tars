@@ -164,6 +164,184 @@ func TestFocusCreateWithExtraDirs(t *testing.T) {
 	}
 }
 
+// focusRemoteFixture adds an "origin" remote with one commit to f.repo,
+// then moves the checkout to a feature branch with a local commit the
+// remote never saw, and has a second clone push one more commit to
+// origin/main that this checkout's local origin/main ref does not know
+// about yet. It returns that commit's sha: what a feature pipeline's
+// isolated worktree should branch from (tars dogfooding fix #1), not the
+// checkout's own feature-branch HEAD.
+func focusRemoteFixture(t *testing.T, f *worktreeFixture) (shippedCommit string) {
+	t.Helper()
+	upstream := filepath.Join(t.TempDir(), "upstream.git")
+	if err := os.MkdirAll(upstream, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	gitRun(t, upstream, "init", "-q", "--bare", "-b", "main")
+	gitRun(t, f.repo, "remote", "add", "origin", upstream)
+	gitRun(t, f.repo, "push", "-q", "origin", "main")
+
+	other := filepath.Join(t.TempDir(), "other")
+	gitRun(t, filepath.Dir(other), "clone", "-q", upstream, other)
+	if err := os.WriteFile(filepath.Join(other, "shipped.txt"), []byte("shipped on main\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitRun(t, other, "add", "-A")
+	gitRun(t, other, "commit", "-q", "-m", "shipped on main")
+	gitRun(t, other, "push", "-q", "origin", "main")
+	shipped := strings.TrimSpace(gitRun(t, other, "rev-parse", "HEAD"))
+
+	gitRun(t, f.repo, "checkout", "-q", "-b", "feature")
+	if err := os.WriteFile(filepath.Join(f.repo, "wip.txt"), []byte("work in progress\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitRun(t, f.repo, "add", "-A")
+	gitRun(t, f.repo, "commit", "-q", "-m", "local wip")
+	return shipped
+}
+
+// TestFocusCreateIsolatesFromRemoteDefaultBranch is tars dogfooding fix #1:
+// a feature pipeline's isolated worktree branches from the fetched
+// origin/main, not the checkout's own feature-branch HEAD with commits the
+// remote never saw.
+func TestFocusCreateIsolatesFromRemoteDefaultBranch(t *testing.T) {
+	f := newWorktreeFixture(t)
+	shipped := focusRemoteFixture(t, f)
+	h := newFocusPipelineHandler(f.store, f.c, nil, zerolog.Nop())
+
+	rec := focusRequest(t, h, http.MethodPost, "/v1/focus/pipelines", `{"goal":"g","cwd":`+jsonString(f.repo)+`,"isolate":true}`, true)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create: %d %s", rec.Code, rec.Body.String())
+	}
+	var out struct {
+		SessionID    string                 `json:"session_id"`
+		Pipeline     focuspipeline.Pipeline `json:"pipeline"`
+		WorktreeBase struct {
+			Ref      string `json:"ref"`
+			Commit   string `json:"commit"`
+			Fallback string `json:"fallback"`
+		} `json:"worktree_base"`
+	}
+	decodeInto(t, rec, &out)
+	if out.WorktreeBase.Ref != "origin/main" || out.WorktreeBase.Fallback != "" || out.WorktreeBase.Commit != shipped {
+		t.Fatalf("worktree_base = %+v, want origin/main at %s with no fallback", out.WorktreeBase, shipped)
+	}
+	sess, err := f.store.Get(out.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sess.Worktree == nil || sess.Worktree.BaseCommit != shipped {
+		t.Fatalf("session worktree base = %+v, want %s", sess.Worktree, shipped)
+	}
+	if _, err := os.Stat(filepath.Join(sess.Worktree.Path, "wip.txt")); !os.IsNotExist(err) {
+		t.Fatalf("worktree should not carry the checkout's own-branch commit (err=%v)", err)
+	}
+	for _, c := range out.Pipeline.Cards {
+		if c.Title == focuspipeline.NoticeWorktreeBaseFallback {
+			t.Fatalf("no fallback happened, should not have a notice card: %+v", c)
+		}
+	}
+}
+
+// TestFocusCreateIsolateRemoteDefaultFallsBackToHEAD proves an unreachable
+// origin falls back to HEAD (same as before this change) and leaves a
+// notice card, instead of failing the whole pipeline creation.
+func TestFocusCreateIsolateRemoteDefaultFallsBackToHEAD(t *testing.T) {
+	f := newWorktreeFixture(t)
+	head := strings.TrimSpace(gitRun(t, f.repo, "rev-parse", "HEAD"))
+	gitRun(t, f.repo, "remote", "add", "origin", filepath.Join(t.TempDir(), "does-not-exist"))
+	h := newFocusPipelineHandler(f.store, f.c, nil, zerolog.Nop())
+
+	rec := focusRequest(t, h, http.MethodPost, "/v1/focus/pipelines", `{"goal":"g","cwd":`+jsonString(f.repo)+`,"isolate":true}`, true)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create: %d %s", rec.Code, rec.Body.String())
+	}
+	var out struct {
+		SessionID    string                 `json:"session_id"`
+		Pipeline     focuspipeline.Pipeline `json:"pipeline"`
+		WorktreeBase struct {
+			Fallback string `json:"fallback"`
+			Commit   string `json:"commit"`
+		} `json:"worktree_base"`
+	}
+	decodeInto(t, rec, &out)
+	if out.WorktreeBase.Fallback == "" || out.WorktreeBase.Commit != head {
+		t.Fatalf("worktree_base = %+v, want a fallback reason and HEAD %s", out.WorktreeBase, head)
+	}
+	sess, err := f.store.Get(out.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sess.Worktree == nil || sess.Worktree.BaseCommit != head {
+		t.Fatalf("session worktree base = %+v, want HEAD %s", sess.Worktree, head)
+	}
+	found := false
+	for _, c := range out.Pipeline.Cards {
+		if c.Title == focuspipeline.NoticeWorktreeBaseFallback {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("no fallback notice card, cards = %+v", out.Pipeline.Cards)
+	}
+}
+
+// TestFocusCreateReleaseKindKeepsHEAD is the regression half of fix #1: a
+// release pipeline's isolation keeps branching from the checkout's HEAD,
+// exactly as before — it ships whatever the repository currently has, not
+// the remote's default branch.
+func TestFocusCreateReleaseKindKeepsHEAD(t *testing.T) {
+	f := newWorktreeFixture(t)
+	focusRemoteFixture(t, f) // an origin ahead of this checkout's knowledge
+	head := strings.TrimSpace(gitRun(t, f.repo, "rev-parse", "HEAD"))
+	h := newFocusPipelineHandler(f.store, f.c, nil, zerolog.Nop())
+
+	rec := focusRequest(t, h, http.MethodPost, "/v1/focus/pipelines",
+		`{"goal":"Release: ship it","cwd":`+jsonString(f.repo)+`,"isolate":true,"kind":"release"}`, true)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create: %d %s", rec.Code, rec.Body.String())
+	}
+	var out struct {
+		SessionID    string `json:"session_id"`
+		WorktreeBase struct {
+			Ref      string `json:"ref"`
+			Fallback string `json:"fallback"`
+			Commit   string `json:"commit"`
+		} `json:"worktree_base"`
+	}
+	decodeInto(t, rec, &out)
+	if out.WorktreeBase.Ref != "" || out.WorktreeBase.Fallback != "" || out.WorktreeBase.Commit != head {
+		t.Fatalf("worktree_base = %+v, want plain HEAD %s", out.WorktreeBase, head)
+	}
+	sess, err := f.store.Get(out.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sess.Worktree == nil || sess.Worktree.BaseCommit != head {
+		t.Fatalf("session worktree base = %+v, want HEAD %s", sess.Worktree, head)
+	}
+}
+
+// TestNewSessionInFolderIsolateKeepsHEAD is the regression half of fix #1
+// for a plain chat session: POST /v1/admin/sessions isolation never asks
+// for the remote's default branch, even when a feature pipeline would.
+func TestNewSessionInFolderIsolateKeepsHEAD(t *testing.T) {
+	f := newWorktreeFixture(t)
+	focusRemoteFixture(t, f)
+	head := strings.TrimSpace(gitRun(t, f.repo, "rev-parse", "HEAD"))
+	h := withSessionCreateIn(http.NotFoundHandler(), f.c)
+
+	rec := focusRequest(t, h, http.MethodPost, "/v1/admin/sessions", `{"cwd":`+jsonString(f.repo)+`,"isolate":true}`, true)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create: %d %s", rec.Code, rec.Body.String())
+	}
+	var sess session.Session
+	decodeInto(t, rec, &sess)
+	if sess.Worktree == nil || sess.Worktree.BaseCommit != head {
+		t.Fatalf("session worktree base = %+v, want HEAD %s", sess.Worktree, head)
+	}
+}
+
 func TestFocusListAndGet(t *testing.T) {
 	f := newWorktreeFixture(t)
 	h := newFocusPipelineHandler(f.store, f.c, nil, zerolog.Nop())

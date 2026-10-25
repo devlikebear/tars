@@ -196,6 +196,7 @@ export const focusEn = {
     retry: 'Try once more',
     instruct: 'Give an instruction',
     instructPlaceholder: 'What should the agent do differently?',
+    instructReviewHint: 'This note becomes a fix turn. If the agent changes nothing in the repository, the server treats the round as nothing fixed: once verification passes, the review stage ends instead of blocking again.',
     sendInstruct: 'Send instruction',
   },
   decision: {
@@ -619,6 +620,7 @@ export const focusKo: FocusTranslations = {
     retry: '한 번 더 시도',
     instruct: '지시하기',
     instructPlaceholder: '에이전트가 무엇을 다르게 해야 하나요?',
+    instructReviewHint: '이 지시는 수정 턴으로 처리됩니다. 에이전트가 저장소를 실제로 바꾸지 않으면 서버는 이번 라운드를 아무것도 고치지 않은 것으로 보고, 검증이 통과하는 즉시 다시 막히는 대신 리뷰 단계를 끝냅니다.',
     sendInstruct: '지시 보내기',
   },
   decision: {

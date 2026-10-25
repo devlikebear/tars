@@ -330,7 +330,7 @@ func TestApplyConflictKeepsTheWorktree(t *testing.T) {
 	ctx := context.Background()
 	f := newWorktreeFixture(t)
 	sess := f.session(t, "conflict")
-	if _, err := f.c.isolate(ctx, sess, "manual", ""); err != nil {
+	if _, err := f.c.isolate(ctx, sess, "manual", "", ""); err != nil {
 		t.Fatal(err)
 	}
 	got, _ := f.store.Get(sess.ID)
@@ -358,7 +358,7 @@ func TestRetireAndSweepKeepWorkOnBranches(t *testing.T) {
 	gone := f.session(t, "gone")
 	deleted := f.session(t, "deleted")
 	for _, s := range []session.Session{gone, deleted} {
-		if _, err := f.c.isolate(ctx, s, "manual", ""); err != nil {
+		if _, err := f.c.isolate(ctx, s, "manual", "", ""); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -487,7 +487,7 @@ func TestIsolateCopiesDependencyFolders(t *testing.T) {
 		}
 	}
 	sess := f.session(t, "deps")
-	notice, err := f.c.isolate(ctx, sess, "manual", "")
+	notice, err := f.c.isolate(ctx, sess, "manual", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -519,11 +519,11 @@ func TestIncludeWithoutOverrides(t *testing.T) {
 	}
 	f.c.audit = nil
 	f.c.record("s", "", "isolated", nil)
-	if _, err := f.c.isolate(context.Background(), session.Session{ID: "missing"}, "manual", ""); err == nil {
+	if _, err := f.c.isolate(context.Background(), session.Session{ID: "missing"}, "manual", "", ""); err == nil {
 		t.Fatal("isolate a missing session")
 	}
 	plain, _ := f.store.Create("plain")
-	if _, err := f.c.isolate(context.Background(), plain, "manual", ""); err == nil {
+	if _, err := f.c.isolate(context.Background(), plain, "manual", "", ""); err == nil {
 		t.Fatal("isolate without a folder")
 	}
 	if _, err := f.c.finish(context.Background(), "missing", "apply"); err == nil {

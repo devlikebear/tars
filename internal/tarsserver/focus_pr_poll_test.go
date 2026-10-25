@@ -632,3 +632,154 @@ func TestFocusG4ApproveOnAReplacedCardIsRefused(t *testing.T) {
 		t.Fatalf("gate %q wait %q turns %d", p.OpenGate, p.PRWait, turns.Load())
 	}
 }
+
+// TestProbeEarlyPR is tars dogfooding fix #3b: the driver probes once
+// after a build/review turn to notice a PR opened before the pipeline's
+// own pr stage, deduplicated by PR number, and never probes a plan-stage
+// turn or a template with no pr stage at all.
+func TestProbeEarlyPR(t *testing.T) {
+	newBuildDriver := func(t *testing.T) (*focusDriver, *session.Store, string, *fakeProber) {
+		t.Helper()
+		d, _, store, id := testFocusDriver(t, func(int, string) string { return focusReport("x", false) }, &fakeVerifier{result: passAll})
+		prober := &fakeProber{answer: always(foundPR(focuspipeline.PRStateOpen))}
+		d.probe = prober.probe
+		d.localBranch = func(context.Context, string) string { return "" }
+		if err := store.SetWorkDirs(id, []string{t.TempDir()}, ""); err != nil {
+			t.Fatal(err)
+		}
+		// buildingFocusSession leaves the build kickoff as PendingTurn (no
+		// turn has actually run yet); clear it to simulate the moment
+		// right after a build turn completed, which is when afterTurn
+		// calls probeEarlyPR for real.
+		if _, _, err := focusStoreFor(store).Update(id, func(p focuspipeline.Pipeline) (focuspipeline.Pipeline, error) {
+			p.PendingTurn = ""
+			return p, nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+		return d, store, id, prober
+	}
+
+	t.Run("build stage with a pr stage: probed once and noticed", func(t *testing.T) {
+		d, store, id, prober := newBuildDriver(t)
+		d.probeEarlyPR(id)
+		waitFor(t, "probe called", func() bool { return prober.count() >= 1 })
+		time.Sleep(20 * time.Millisecond)
+		if got := prober.count(); got != 1 {
+			t.Fatalf("probe called %d times, want 1", got)
+		}
+		p := pipelineOf(t, store, id)
+		found := false
+		for _, c := range p.Cards {
+			if c.Title == focuspipeline.NoticeEarlyPR {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("no early PR notice: %+v", p.Cards)
+		}
+		if p.PR != nil {
+			t.Fatalf("the early probe must not record the PR: %+v", p.PR)
+		}
+	})
+
+	t.Run("calling it again probes again but does not add a second notice", func(t *testing.T) {
+		d, store, id, prober := newBuildDriver(t)
+		d.probeEarlyPR(id)
+		waitFor(t, "first probe", func() bool { return prober.count() >= 1 })
+		d.probeEarlyPR(id)
+		waitFor(t, "second probe", func() bool { return prober.count() >= 2 })
+		p := pipelineOf(t, store, id)
+		n := 0
+		for _, c := range p.Cards {
+			if c.Title == focuspipeline.NoticeEarlyPR {
+				n++
+			}
+		}
+		if n != 1 {
+			t.Fatalf("notice count = %d, want 1", n)
+		}
+	})
+
+	t.Run("plan stage: never probed", func(t *testing.T) {
+		store := session.NewStore(t.TempDir())
+		sess := plannedFocusSession(t, store)
+		d := newFocusDriver(zerolog.Nop())
+		t.Cleanup(func() { d.Close(context.Background()) })
+		d.sessions = store
+		prober := &fakeProber{answer: always(foundPR(focuspipeline.PRStateOpen))}
+		d.probe = prober.probe
+		if err := store.SetWorkDirs(sess.ID, []string{t.TempDir()}, ""); err != nil {
+			t.Fatal(err)
+		}
+		d.probeEarlyPR(sess.ID)
+		time.Sleep(20 * time.Millisecond)
+		if got := prober.count(); got != 0 {
+			t.Fatalf("plan stage probed %d times, want 0", got)
+		}
+	})
+
+	t.Run("a template with no pr stage: never probed", func(t *testing.T) {
+		store := session.NewStore(t.TempDir())
+		sess, err := store.Create("no pr")
+		if err != nil {
+			t.Fatal(err)
+		}
+		noPR := focuspipeline.Template{ID: "x", Name: "x", Stages: []focuspipeline.TemplateStage{
+			{ID: focuspipeline.StagePlan}, {ID: "draft", Kind: focuspipeline.StageBuild},
+		}}
+		p := focuspipeline.NewFromTemplate(sess.ID, "goal", noPR, time.Now())
+		p.Current = "draft"
+		for i := range p.Stages {
+			if p.Stages[i].ID == "draft" {
+				p.Stages[i].Status = focuspipeline.StatusActive
+			}
+		}
+		if err := focusStoreFor(store).Save(p); err != nil {
+			t.Fatal(err)
+		}
+		d := newFocusDriver(zerolog.Nop())
+		t.Cleanup(func() { d.Close(context.Background()) })
+		d.sessions = store
+		prober := &fakeProber{answer: always(foundPR(focuspipeline.PRStateOpen))}
+		d.probe = prober.probe
+		if err := store.SetWorkDirs(sess.ID, []string{t.TempDir()}, ""); err != nil {
+			t.Fatal(err)
+		}
+		d.probeEarlyPR(sess.ID)
+		time.Sleep(20 * time.Millisecond)
+		if got := prober.count(); got != 0 {
+			t.Fatalf("no-pr-stage template probed %d times, want 0", got)
+		}
+	})
+}
+
+// TestProbeEarlyPRThroughARealBuildTurn drives one real build turn through
+// the driver end to end (not calling probeEarlyPR directly), proving
+// afterTurn's own wiring triggers it exactly once for that turn.
+func TestProbeEarlyPRThroughARealBuildTurn(t *testing.T) {
+	d, turns, store, id := testFocusDriver(t, func(int, string) string { return focusReport("built", false) }, &fakeVerifier{result: passAll})
+	prober := &fakeProber{answer: always(foundPR(focuspipeline.PRStateOpen))}
+	d.probe = prober.probe
+	d.localBranch = func(context.Context, string) string { return "" }
+	if err := store.SetWorkDirs(id, []string{t.TempDir()}, ""); err != nil {
+		t.Fatal(err)
+	}
+	// Hold the second turn so exactly one build turn completes.
+	turns.block = func(n int) bool { return n > 1 }
+
+	d.start(id, sendTurn("Plan approved. Start the build stage with task 1."), "")
+	waitFor(t, "probe called", func() bool { return prober.count() >= 1 })
+	time.Sleep(20 * time.Millisecond)
+	if got := prober.count(); got != 1 {
+		t.Fatalf("probe called %d times after one build turn, want 1", got)
+	}
+	waitFor(t, "early PR notice", func() bool {
+		for _, c := range pipelineOf(t, store, id).Cards {
+			if c.Title == focuspipeline.NoticeEarlyPR {
+				return true
+			}
+		}
+		return false
+	})
+}

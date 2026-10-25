@@ -272,7 +272,7 @@ func TestSessionFoldersRecentAndProbe(t *testing.T) {
 		t.Fatal(err)
 	}
 	iso := f.session(t, "isolated")
-	if _, err := f.c.isolate(t.Context(), iso, "manual", ""); err != nil {
+	if _, err := f.c.isolate(t.Context(), iso, "manual", "", ""); err != nil {
 		t.Fatal(err)
 	}
 	notes, _ := f.store.Create("notes")
