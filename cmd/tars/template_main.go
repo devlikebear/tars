@@ -11,6 +11,12 @@ import (
 )
 
 func newTemplateCommand(stdout, stderr io.Writer) *cobra.Command {
+	return newTemplateCommandWithFactory(stdout, stderr, skillhub.NewInstaller)
+}
+
+// newTemplateCommandWithFactory builds `tars template` on installers from
+// factory, so tests can point the registry at a local server.
+func newTemplateCommandWithFactory(stdout, stderr io.Writer, factory skillInstallerFactory) *cobra.Command {
 	cmd := newHubResourceCommand(hubResourceSpec{
 		Use:        "template",
 		Short:      "Manage focus templates from the TARS Hub",
@@ -18,8 +24,7 @@ func newTemplateCommand(stdout, stderr io.Writer) *cobra.Command {
 		PluralNoun: "focus templates",
 
 		Search: func(ctx context.Context, stdout io.Writer, query, _ string) error {
-			reg := skillhub.NewRegistry()
-			results, err := reg.SearchFocusTemplates(ctx, query)
+			results, err := factory("").Registry.SearchFocusTemplates(ctx, query)
 			if err != nil {
 				return fmt.Errorf("search failed: %w", err)
 			}
@@ -39,7 +44,7 @@ func newTemplateCommand(stdout, stderr io.Writer) *cobra.Command {
 		},
 
 		Install: func(ctx context.Context, stdout, _ io.Writer, workspaceDir, name string, _ HubInstallOptions) error {
-			inst := skillhub.NewInstaller(workspaceDir)
+			inst := factory(workspaceDir)
 			if _, err := inst.InstallFocusTemplate(ctx, name); err != nil {
 				return fmt.Errorf("install focus template %q: %w", name, err)
 			}
@@ -48,7 +53,7 @@ func newTemplateCommand(stdout, stderr io.Writer) *cobra.Command {
 		},
 
 		Uninstall: func(stdout, _ io.Writer, workspaceDir, name string) error {
-			inst := skillhub.NewInstaller(workspaceDir)
+			inst := factory(workspaceDir)
 			if err := inst.UninstallFocusTemplate(name); err != nil {
 				return fmt.Errorf("uninstall focus template %q: %w", name, err)
 			}
@@ -57,7 +62,7 @@ func newTemplateCommand(stdout, stderr io.Writer) *cobra.Command {
 		},
 
 		List: func(stdout io.Writer, workspaceDir string) error {
-			inst := skillhub.NewInstaller(workspaceDir)
+			inst := factory(workspaceDir)
 			rows, err := inst.ListFocusTemplates()
 			if err != nil {
 				return err
@@ -74,7 +79,7 @@ func newTemplateCommand(stdout, stderr io.Writer) *cobra.Command {
 		},
 
 		Update: func(ctx context.Context, stdout, _ io.Writer, workspaceDir string) error {
-			inst := skillhub.NewInstaller(workspaceDir)
+			inst := factory(workspaceDir)
 			result, err := inst.UpdateFocusTemplates(ctx)
 			if err != nil && hubUpdateResultEmpty(result) {
 				return err
@@ -84,8 +89,7 @@ func newTemplateCommand(stdout, stderr io.Writer) *cobra.Command {
 		},
 
 		Info: func(ctx context.Context, stdout io.Writer, name, _ string) error {
-			reg := skillhub.NewRegistry()
-			entry, err := reg.FindFocusTemplateByName(ctx, name)
+			entry, err := factory("").Registry.FindFocusTemplateByName(ctx, name)
 			if err != nil {
 				return err
 			}

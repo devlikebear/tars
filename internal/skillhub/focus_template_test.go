@@ -254,3 +254,34 @@ func TestInstallPackInstallsFocusTemplates(t *testing.T) {
 	}
 	loadedTemplate(t, workspace, "hotfix")
 }
+
+func TestRegistrySearchAndFindFocusTemplates(t *testing.T) {
+	hub := newFocusTemplateHub(t, hotfixTemplateYAML)
+	reg := hub.installer(t.TempDir()).Registry
+	ctx := context.Background()
+
+	all, err := reg.SearchFocusTemplates(ctx, "")
+	if err != nil || len(all) != 1 {
+		t.Fatalf("search all = %+v, %v", all, err)
+	}
+	for query, want := range map[string]int{"HOT": 1, "nothing": 0} {
+		got, err := reg.SearchFocusTemplates(ctx, query)
+		if err != nil || len(got) != want {
+			t.Fatalf("search %q = %+v, %v", query, got, err)
+		}
+	}
+	if _, err := reg.FindFocusTemplateByName(ctx, "missing"); err == nil {
+		t.Fatal("expected a missing template to be an error")
+	}
+	if !matchesFocusTemplateQuery(FocusTemplateEntry{Name: "x", Description: "Quick fixes"}, "quick") ||
+		!matchesFocusTemplateQuery(FocusTemplateEntry{Name: "x", Tags: []string{"Ops"}}, "ops") {
+		t.Fatal("description and tags must match")
+	}
+}
+
+func TestInstallFocusTemplateUnknownName(t *testing.T) {
+	hub := newFocusTemplateHub(t, hotfixTemplateYAML)
+	if _, err := hub.installer(t.TempDir()).InstallFocusTemplate(context.Background(), "nope"); err == nil {
+		t.Fatal("expected an unknown template to be an error")
+	}
+}

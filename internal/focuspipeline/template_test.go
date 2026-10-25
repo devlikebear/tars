@@ -635,3 +635,13 @@ func TestRemoveTemplateFilesRejectsAnUnsafeID(t *testing.T) {
 		t.Fatalf("an unrelated file was removed: %v", err)
 	}
 }
+
+func TestParseTemplateRejectsOversizedFile(t *testing.T) {
+	raw := []byte("name: Big\nstages:\n  - id: plan\n  - id: build\n" + strings.Repeat("#", maxTemplateFileBytes))
+	if _, err := ParseTemplate(raw, ".yaml", "big"); !errors.Is(err, ErrInvalidTemplate) {
+		t.Fatalf("expected an oversized template to be invalid, got %v", err)
+	}
+	if tmpl, err := ParseTemplate([]byte(`{"name":"J","stages":[{"id":"plan"},{"id":"build"}]}`), ".json", "j"); err != nil || tmpl.ID != "j" {
+		t.Fatalf("json template = %+v, %v", tmpl, err)
+	}
+}

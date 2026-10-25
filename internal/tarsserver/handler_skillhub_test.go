@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -193,4 +194,34 @@ func TestSkillhubAPI_UninstallClearsDisabledState(t *testing.T) {
 func strconvQuote(s string) string {
 	raw, _ := json.Marshal(s)
 	return string(raw)
+}
+
+// failingReloadExtensions fails every reload, so responses must say so.
+type failingReloadExtensions struct{ recordingExtensions }
+
+func (f *failingReloadExtensions) Reload(context.Context) error { return errors.New("reload broke") }
+
+func TestSkillhubAPI_ReportsFailuresInsteadOfOK(t *testing.T) {
+	inst := newHubTestInstaller(t)
+	handler := newSkillhubAPIHandler(inst, &failingReloadExtensions{}, zerolog.Nop())
+
+	for _, body := range []map[string]any{
+		{"type": "pack", "name": "missing", "dry_run": true},
+		{"type": "pack", "name": "missing"},
+		{"type": "focus_template", "name": "missing"},
+		{"type": "widget", "name": "x"},
+	} {
+		if code, payload := serveHub(t, handler, http.MethodPost, "/v1/hub/install", body); code != http.StatusBadRequest || payload["error"] == "" {
+			t.Fatalf("install %v = %d %v", body, code, payload)
+		}
+	}
+	if code, payload := serveHub(t, handler, http.MethodPost, "/v1/hub/uninstall", map[string]any{"type": "widget", "name": "x"}); code != http.StatusBadRequest {
+		t.Fatalf("uninstall of an unknown type = %d %v", code, payload)
+	}
+
+	// A pack whose members install still reports the failed reload.
+	code, payload := serveHub(t, handler, http.MethodPost, "/v1/hub/install", map[string]any{"type": "pack", "name": "fast"})
+	if code != http.StatusOK || payload["reload_error"] != "reload broke" {
+		t.Fatalf("pack install with a failing reload = %d %v", code, payload)
+	}
 }
