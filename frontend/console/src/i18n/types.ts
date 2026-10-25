@@ -1206,6 +1206,25 @@ export type Translations = {
     available: (n: number) => string
     noSkills: string
     noMCP: string
+    pluginsTitle: string
+    pluginsDefinition: string
+    noPlugins: string
+    templatesTitle: string
+    templatesDefinition: string
+    noTemplates: string
+    openTemplates: string
+    packsTitle: string
+    packsDefinition: string
+    packContents: (count: number) => string
+    packPreview: string
+    packPlanTitle: (name: string) => string
+    packActions: { install: string; update: string; already_installed: string }
+    packInstall: string
+    packCancel: string
+    packInstalledSuccess: (name: string, installed: number, skipped: number) => string
+    disabledNotLoaded: string
+    sourceUnreachable: (source: string, error: string) => string
+    typeLabels: { skill: string; plugin: string; mcp: string; focus_template: string; pack: string }
     install: string
     installing: string
     update: string

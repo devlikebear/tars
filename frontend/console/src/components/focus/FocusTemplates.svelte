@@ -8,7 +8,7 @@
   import { onMount } from 'svelte'
   import { t } from '../../i18n'
   import { deleteFocusTemplate, draftFocusTemplate, listFocusTemplates, saveFocusTemplate } from '../../lib/api'
-  import { diffFocusTemplateStages, focusTemplateDraftHasChanges, focusTemplateDraftSummary } from '../../lib/focusTemplateEdit'
+  import { diffFocusTemplateStages, focusTemplateDraftHasChanges, focusTemplateDraftSummary, focusTemplateShareCommands } from '../../lib/focusTemplateEdit'
   import { stageLabel, templateText } from '../../lib/focus'
   import type { FocusTemplate, FocusTemplateDraftResponse } from '../../lib/types'
 
@@ -19,6 +19,12 @@
   let { onNavigate }: Props = $props()
 
   let templates = $state<FocusTemplate[]>([])
+  // Templates installed from the TARS Hub (id → version), and the folder
+  // user templates live in, for the share commands.
+  let hubVersions = $state<Record<string, string>>({})
+  let templateDir = $state('')
+  let sharingId = $state('')
+  let shareCopied = $state(false)
   let diagnosticsCount = $state(0)
   let loaded = $state(false)
   let loadError = $state('')
@@ -62,6 +68,8 @@
     try {
       const listed = await listFocusTemplates()
       templates = listed.templates
+      hubVersions = listed.hub ?? {}
+      templateDir = listed.dir ?? ''
       diagnosticsCount = listed.diagnostics.length
       loadError = ''
     } catch (err) {
@@ -148,6 +156,20 @@
     draftError = ''
   }
 
+  function toggleShare(id: string) {
+    sharingId = sharingId === id ? '' : id
+    shareCopied = false
+  }
+
+  async function copyShareCommands(item: FocusTemplate) {
+    try {
+      await navigator.clipboard.writeText(focusTemplateShareCommands(templateDir, item))
+      shareCopied = true
+    } catch {
+      shareCopied = false
+    }
+  }
+
   async function deleteRow(item: FocusTemplate) {
     if (deleting) return
     deleting = true
@@ -173,6 +195,7 @@
     </div>
     <div class="header-actions">
       <button type="button" class="btn btn-ghost btn-sm" onclick={() => onNavigate('/console/focus')} data-testid="focus-templates-back">{$t.focus.templateEditor.back}</button>
+      <button type="button" class="btn btn-ghost btn-sm" onclick={() => onNavigate('/console/extensions?tab=hub')} data-testid="focus-templates-find-on-hub">{$t.focus.templateEditor.findOnHub}</button>
       {#if mode === 'closed'}
         <button type="button" class="btn btn-primary btn-sm" onclick={openCreate} data-testid="focus-templates-new">{$t.focus.templateEditor.newTemplate}</button>
       {/if}
@@ -267,6 +290,9 @@
         <div class="template-main">
           <span class="template-name" data-content>{templateName(item)}</span>
           <span class="badge badge-{item.builtin ? 'default' : 'accent'}">{item.builtin ? $t.focus.templateEditor.builtin : $t.focus.templateEditor.custom}</span>
+          {#if hubVersions[item.id]}
+            <span class="badge badge-success" title={$t.focus.templateEditor.hubEditHint} data-testid="focus-templates-hub-badge">{$t.focus.templateEditor.hub(hubVersions[item.id])}</span>
+          {/if}
         </div>
         {#if templateDescription(item)}<p class="template-description" data-content>{templateDescription(item)}</p>{/if}
         <p class="template-stages mono" data-content>{$t.focus.templateEditor.stages(templateStageSummary(item))}</p>
@@ -287,7 +313,23 @@
               {$t.focus.templateEditor.delete}
             </button>
           {/if}
+          {#if !item.builtin && !hubVersions[item.id] && templateDir}
+            <button type="button" class="btn btn-ghost btn-sm" onclick={() => toggleShare(item.id)} data-testid="focus-templates-share">{$t.focus.templateEditor.share}</button>
+          {/if}
         </div>
+        {#if sharingId === item.id}
+          <div class="share-panel" data-testid="focus-templates-share-panel">
+            <strong>{$t.focus.templateEditor.shareTitle(templateName(item))}</strong>
+            <p class="hint">{$t.focus.templateEditor.shareIntro}</p>
+            <pre class="mono" data-content>{focusTemplateShareCommands(templateDir, item)}</pre>
+            <div class="editor-actions">
+              <button type="button" class="btn btn-ghost btn-sm" onclick={() => toggleShare(item.id)}>{$t.focus.templateEditor.shareClose}</button>
+              <button type="button" class="btn btn-primary btn-sm" onclick={() => void copyShareCommands(item)} data-testid="focus-templates-share-copy">
+                {shareCopied ? $t.focus.templateEditor.shareCopied : $t.focus.templateEditor.shareCopy}
+              </button>
+            </div>
+          </div>
+        {/if}
       </li>
     {/each}
   </ul>
@@ -392,6 +434,27 @@
   .hint {
     font-size: var(--text-xs);
     color: var(--text-secondary);
+  }
+
+  .share-panel {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    margin-top: var(--space-2);
+    padding: var(--space-3);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+  }
+
+  .share-panel pre {
+    margin: 0;
+    padding: var(--space-2);
+    overflow-x: auto;
+    font-size: var(--text-xs);
+    background: var(--surface-inset);
+    border-radius: var(--radius-sm);
+    white-space: pre;
   }
 
   .templates-list {

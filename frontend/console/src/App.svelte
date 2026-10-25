@@ -719,7 +719,7 @@
         <div class="route-loading">Loading...</div>
       {:then module}
         {@const ExtensionsRoute = module.default}
-        <ExtensionsRoute />
+        <ExtensionsRoute onNavigate={navigate} />
       {:catch}
         <div class="route-error">Could not load console page.</div>
       {/await}
