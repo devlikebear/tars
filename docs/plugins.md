@@ -210,7 +210,7 @@ tars skill install --from anthropic skill-creator --dry-run --format json
 tars skill install --from anthropic docx --yes   # → blocked: proprietary
 ```
 
-Built-in support today: `tars-hub`, `openclaw` (steipete/openclaw), `hermes` (NousResearch/hermes-agent), `anthropic` (anthropics/skills). The console Extensions page exposes the same flow through a hub-source dropdown plus a dry-run modal showing the converted frontmatter, per-file sha256, adapter warnings, and the ATTRIBUTION notice before any file is written. Implementation lives under `internal/skillhub/sources/<id>/`; see `docs/tutorials/14-skill-hub.md` for the architecture.
+Built-in support today: `tars-hub`, `openclaw` (steipete/openclaw), `hermes` (NousResearch/hermes-agent), `anthropic` (anthropics/skills). The console Extensions page exposes the same flow through a hub-source dropdown plus a dry-run modal showing the converted frontmatter, per-file sha256, adapter warnings, and the ATTRIBUTION notice before any file is written. `tars skill update` never applies new upstream content of an external skill on its own: it compares the source's files with the checksum recorded at install and reports a changed skill for review through `tars skill install <source>:<name>`, which shows the same preview again. Implementation lives under `internal/skillhub/sources/<id>/`; see `docs/tutorials/14-skill-hub.md` for the architecture.
 
 ## Hub MCP Package Manifest
 

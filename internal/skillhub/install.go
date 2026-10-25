@@ -2,6 +2,8 @@ package skillhub
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -150,7 +152,7 @@ func (inst *Installer) InstallWithOptions(ctx context.Context, ref string, opts 
 		return inst.installTarsHub(ctx, src, entry)
 	}
 
-	preview, files, err := inst.buildPreviewFromSource(ctx, ref, src, entry)
+	preview, dl, err := inst.buildPreviewFromSource(ctx, ref, src, entry)
 	if err != nil {
 		return nil, err
 	}
@@ -170,7 +172,7 @@ func (inst *Installer) InstallWithOptions(ctx context.Context, ref string, opts 
 	// approved: upstream may have moved, and converters stamp the import
 	// time (imported_at, ATTRIBUTION.md) at second precision, so a
 	// confirmation that took longer than a second never matched.
-	result, err := inst.materializeSkill(ctx, src, entry, files)
+	result, err := inst.materializeSkill(ctx, src, entry, dl)
 	if err != nil {
 		return nil, err
 	}
@@ -202,33 +204,35 @@ func confirmExternalInstall(opts InstallOptions, preview *DryRunResult) error {
 // no preview, no confirm, materialize directly. Kept separate so the
 // external-hub path can stay focused.
 func (inst *Installer) installTarsHub(ctx context.Context, src HubSource, entry *RegistryEntry) (*InstallResult, error) {
-	files, _, err := inst.downloadSkillFilesFromSource(ctx, src, entry)
+	dl, err := inst.downloadSkillFilesFromSource(ctx, src, entry)
 	if err != nil {
 		return nil, err
 	}
-	return inst.materializeSkill(ctx, src, entry, files)
+	return inst.materializeSkill(ctx, src, entry, dl)
 }
 
-// materializeSkill runs the install sandbox over files, writes them into
-// the skill directory, and records the skill in the installed DB.
-func (inst *Installer) materializeSkill(ctx context.Context, src HubSource, entry *RegistryEntry, files map[string][]byte) (*InstallResult, error) {
+// materializeSkill runs the install sandbox over the downloaded files,
+// writes them into the skill directory, and records the skill in the
+// installed DB.
+func (inst *Installer) materializeSkill(ctx context.Context, src HubSource, entry *RegistryEntry, dl *skillDownload) (*InstallResult, error) {
 	if err := validatePackageName("skill", entry.Name); err != nil {
 		return nil, err
 	}
-	sandboxReport, err := inst.runSkillInstallSandbox(ctx, entry, files)
+	sandboxReport, err := inst.runSkillInstallSandbox(ctx, entry, dl.files)
 	if err != nil {
 		return nil, err
 	}
 	skillDir := inst.skillDir(entry.Name)
-	if err := materializePackageFiles(skillDir, files); err != nil {
+	if err := materializePackageFiles(skillDir, dl.files); err != nil {
 		return nil, err
 	}
 	if err := inst.addToDB(InstalledSkill{
-		Name:    entry.Name,
-		Version: entry.Version,
-		Source:  src.ID(),
-		Dir:     skillDir,
-		Path:    entry.Path,
+		Name:     entry.Name,
+		Version:  entry.Version,
+		Source:   src.ID(),
+		Dir:      skillDir,
+		Path:     entry.Path,
+		Upstream: dl.upstream,
 	}); err != nil {
 		return nil, err
 	}
@@ -401,11 +405,16 @@ func (inst *Installer) List() ([]InstalledSkill, error) {
 	return db.Skills, nil
 }
 
-// Update re-installs all installed skills with the latest version,
-// routing each row to its recorded HubSource. External hubs (where the
-// upstream `version` field is often a placeholder) compare the freshly
-// computed SKILL.md sha256 against the stored manifest sha256 to decide
-// whether anything changed.
+// Update re-installs installed skills that have a newer version, routing
+// each row to its recorded HubSource.
+//
+// External hubs publish no real versions, so their skills are downloaded
+// and the source's own files compared with the checksum recorded at
+// install (InstalledSkill.Upstream). A change is reported in Skipped, not
+// applied: installing an external skill needs the user to review the
+// converted files first (InstallOptions.Confirm), and an update has nobody
+// to ask, so new upstream content waits for that same review through
+// `tars skill install <source>:<name>`.
 func (inst *Installer) Update(ctx context.Context) (UpdateResult, error) {
 	inst.dbMu.Lock()
 	defer inst.dbMu.Unlock()
@@ -424,12 +433,22 @@ func (inst *Installer) Update(ctx context.Context) (UpdateResult, error) {
 			result.Skipped = append(result.Skipped, *skip)
 			continue
 		}
-		if err := inst.reinstallSkill(ctx, src, entry, skill.Dir); err != nil {
+		dl, err := inst.downloadSkillFilesFromSource(ctx, src, entry)
+		if err != nil {
 			// One broken package must not hold back the rest.
 			result.Failed = append(result.Failed, UpdateDiagnostic{Name: skill.Name, Err: err})
 			continue
 		}
+		if src.ID() != DefaultSourceID {
+			result.Skipped = append(result.Skipped, externalSkillChange(skill, src.ID(), dl.upstream))
+			continue
+		}
+		if err := inst.reinstallSkill(ctx, entry, skill.Dir, dl); err != nil {
+			result.Failed = append(result.Failed, UpdateDiagnostic{Name: skill.Name, Err: err})
+			continue
+		}
 		db.Skills[i].Version = entry.Version
+		db.Skills[i].Path = entry.Path
 		result.Updated = append(result.Updated, skill.Name)
 	}
 	return result, errors.Join(updateFailuresError("skills", result.Failed), inst.saveUpdatedDB(db, result, "skills"))
@@ -479,17 +498,27 @@ func findInstalledSkill(ctx context.Context, src HubSource, skill InstalledSkill
 	return entry, nil
 }
 
-// reinstallSkill downloads the skill again, runs the install sandbox, and
+// externalSkillChange reports how an external skill's freshly downloaded
+// files compare with the ones it was installed from (see Update).
+func externalSkillChange(row InstalledSkill, sourceID, upstream string) UpdateDiagnostic {
+	reinstall := fmt.Sprintf("tars skill install %s:%s", sourceID, row.Name)
+	switch row.Upstream {
+	case upstream:
+		return UpdateDiagnostic{Name: row.Name, Reason: reasonUpToDate}
+	case "":
+		return UpdateDiagnostic{Name: row.Name, Reason: "installed before upstream changes were tracked; review it with `" + reinstall + "` to track updates"}
+	default:
+		return UpdateDiagnostic{Name: row.Name, Reason: "upstream changed; review and apply it with `" + reinstall + "`"}
+	}
+}
+
+// reinstallSkill runs the install sandbox over a downloaded skill and
 // overwrites the files in dir.
-func (inst *Installer) reinstallSkill(ctx context.Context, src HubSource, entry *RegistryEntry, dir string) error {
-	files, _, err := inst.downloadSkillFilesFromSource(ctx, src, entry)
-	if err != nil {
+func (inst *Installer) reinstallSkill(ctx context.Context, entry *RegistryEntry, dir string, dl *skillDownload) error {
+	if _, err := inst.runSkillInstallSandbox(ctx, entry, dl.files); err != nil {
 		return err
 	}
-	if _, err := inst.runSkillInstallSandbox(ctx, entry, files); err != nil {
-		return err
-	}
-	return materializePackageFiles(dir, files)
+	return materializePackageFiles(dir, dl.files)
 }
 
 func (inst *Installer) skillDir(name string) string {
@@ -775,22 +804,37 @@ func (inst *Installer) downloadSkillFiles(ctx context.Context, entry *RegistryEn
 	})
 }
 
+// skillDownload is a downloaded skill, ready to materialize.
+type skillDownload struct {
+	// files maps relative paths to the bytes to write.
+	files map[string][]byte
+	// warnings are the adapter's notes from conversion (e.g. install
+	// blocks skipped).
+	warnings []string
+	// upstream is the checksum of an external source's own files —
+	// SKILL.md before conversion plus companions — and "" for tars-hub.
+	// Converters stamp the import time into SKILL.md and ATTRIBUTION.md,
+	// so the written files differ on every download and cannot tell
+	// whether upstream changed.
+	upstream string
+}
+
 // downloadSkillFilesFromSource routes skill download through the appropriate
 // HubSource. Built-in tars-hub keeps the existing manifest-with-sha256 path;
 // external hubs (CompanionFileLister implementers) discover files at fetch
 // time and optionally apply a content converter and an ATTRIBUTION.md.
-//
-// Returns the file map ready for materialize plus a list of human-readable
-// adapter warnings collected during conversion (e.g. install blocks skipped).
-func (inst *Installer) downloadSkillFilesFromSource(ctx context.Context, src HubSource, entry *RegistryEntry) (map[string][]byte, []string, error) {
+func (inst *Installer) downloadSkillFilesFromSource(ctx context.Context, src HubSource, entry *RegistryEntry) (*skillDownload, error) {
 	if src == nil {
-		return nil, nil, fmt.Errorf("downloadSkillFilesFromSource: source is nil")
+		return nil, fmt.Errorf("downloadSkillFilesFromSource: source is nil")
 	}
 	// tars-hub keeps the original path so existing manifests with sha256
 	// verification stay in effect.
 	if src.ID() == DefaultSourceID {
 		files, err := inst.downloadSkillFiles(ctx, entry)
-		return files, nil, err
+		if err != nil {
+			return nil, err
+		}
+		return &skillDownload{files: files}, nil
 	}
 	return inst.downloadExternalSkillFiles(ctx, src, entry)
 }
@@ -798,29 +842,41 @@ func (inst *Installer) downloadSkillFilesFromSource(ctx context.Context, src Hub
 // downloadExternalSkillFiles handles the "no pre-declared manifest" path:
 // fetch SKILL.md, optionally convert frontmatter, discover companion files,
 // fetch each, and emit ATTRIBUTION.md from the source's LicenseFetcher.
-func (inst *Installer) downloadExternalSkillFiles(ctx context.Context, src HubSource, entry *RegistryEntry) (map[string][]byte, []string, error) {
+func (inst *Installer) downloadExternalSkillFiles(ctx context.Context, src HubSource, entry *RegistryEntry) (*skillDownload, error) {
 	rawManifest, err := src.FetchSkillContent(ctx, entry)
 	if err != nil {
-		return nil, nil, fmt.Errorf("fetch %s SKILL.md for %q: %w", src.ID(), entry.Name, err)
+		return nil, fmt.Errorf("fetch %s SKILL.md for %q: %w", src.ID(), entry.Name, err)
 	}
 	manifest, warnings, err := convertExternalManifest(src, entry, rawManifest)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	files := make(map[string][]byte, 4)
+	files[skillManifest] = rawManifest
+	if err := fetchCompanionFiles(ctx, src, entry, files); err != nil {
+		return nil, err
+	}
+	upstream := filesDigest(files)
 	files[skillManifest] = manifest
 
-	if err := fetchCompanionFiles(ctx, src, entry, files); err != nil {
-		return nil, nil, err
-	}
 	attribution, err := buildExternalAttribution(ctx, src, entry)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	if attribution != nil {
 		files[AttributionFilename] = attribution
 	}
-	return files, warnings, nil
+	return &skillDownload{files: files, warnings: warnings, upstream: upstream}, nil
+}
+
+// filesDigest is a sha256 over every path and its bytes, in path order.
+func filesDigest(files map[string][]byte) string {
+	h := sha256.New()
+	for _, p := range sortedFilePaths(files) {
+		_, _ = fmt.Fprintf(h, "%s\x00%d\x00", p, len(files[p]))
+		_, _ = h.Write(files[p])
+	}
+	return hex.EncodeToString(h.Sum(nil))
 }
 
 // convertExternalManifest rewrites SKILL.md into TARS frontmatter when the

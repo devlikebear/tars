@@ -25,6 +25,7 @@
     deleteWorkspaceSkill,
   } from '../lib/api'
   import { renderMarkdown } from '../lib/markdown'
+  import { heldUpdates } from '../lib/hubUpdate'
   import SkillCreator from './SkillCreator.svelte'
   import MCPServerCreator from './MCPServerCreator.svelte'
   import { t } from '../i18n'
@@ -610,7 +611,9 @@
       const result = await hubUpdate()
       const kinds = [result.skill_update_result, result.plugin_update_result, result.mcp_update_result, result.focus_template_update_result]
       const total = kinds.reduce((sum, kind) => sum + (kind?.updated?.length ?? 0), 0)
-      success = total > 0 ? $t.extensions.updatedTotal(total) : result.error ? '' : $t.extensions.everythingUpToDate
+      const held = heldUpdates(result)
+      const summary = total > 0 ? $t.extensions.updatedTotal(total) : result.error || held.length > 0 ? '' : $t.extensions.everythingUpToDate
+      success = [summary, held.length > 0 ? $t.extensions.updateHeld(held.join('; ')) : ''].filter(Boolean).join('. ')
       if (result.error) error = result.error
       else if (result.reload_error) error = `${$t.extensions.reloadFailed}: ${result.reload_error}`
       await loadInstalled()

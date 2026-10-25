@@ -140,6 +140,9 @@ type InstalledSkill struct {
 	Source  string `json:"source"`
 	Dir     string `json:"dir"`
 	Path    string `json:"path,omitempty"`
+	// Upstream is the checksum of an external source's own files at
+	// install time; Update compares it to tell whether upstream changed.
+	Upstream string `json:"upstream_sha256,omitempty"`
 }
 
 // InstalledPlugin tracks a plugin that has been installed locally.

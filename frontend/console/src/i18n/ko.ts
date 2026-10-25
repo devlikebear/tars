@@ -1360,6 +1360,7 @@ export const ko = {
     mcpCreatedSuccess: (path) => `MCP 서버 초안을 ${path}에 저장했습니다`,
     updatedTotal: (n) => `${n}개 패키지 업데이트됨`,
     everythingUpToDate: '모두 최신 상태입니다',
+    updateHeld: (items) => `업데이트하지 않음: ${items}`,
     qualityScore: (score) => `품질 ${score}`,
     qualityLabels: {
       lastUpdated: '최종 업데이트',
