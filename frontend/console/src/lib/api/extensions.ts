@@ -142,8 +142,11 @@ export async function getSkillDetail(name: string): Promise<SkillDef & { content
   return requestJSON<SkillDef & { content?: string }>(`/v1/skills/${encodeURIComponent(name)}`)
 }
 
-export async function getHubSkillContent(name: string): Promise<{ name: string; version: string; content: string }> {
-  return requestJSON<{ name: string; version: string; content: string }>(`/v1/hub/skill-content?name=${encodeURIComponent(name)}`)
+// source is the HubSource the skill was listed under; without it the
+// server reads tars-hub, which has its own skills of the same names.
+export async function getHubSkillContent(name: string, source: string): Promise<{ name: string; version: string; content: string }> {
+  const query = new URLSearchParams({ name, source })
+  return requestJSON<{ name: string; version: string; content: string }>(`/v1/hub/skill-content?${query}`)
 }
 
 export async function reloadExtensions(): Promise<{ reloaded: boolean; skills: number; plugins: number; mcp_count: number }> {

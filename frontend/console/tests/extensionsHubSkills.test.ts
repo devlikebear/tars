@@ -1,0 +1,32 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+
+import { getHubSkillContent } from '../src/lib/api/extensions.ts'
+
+const extensionsSource = readFileSync(new URL('../src/components/Extensions.svelte', import.meta.url), 'utf8')
+
+test('getHubSkillContent asks the source the skill was listed under', async () => {
+  const urls: string[] = []
+  const realFetch = globalThis.fetch
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    urls.push(String(input))
+    return new Response(JSON.stringify({ name: 'gh review', version: '0.0.0', content: 'body' }), { status: 200 })
+  }) as typeof fetch
+  try {
+    await getHubSkillContent('gh review', 'openclaw')
+  } finally {
+    globalThis.fetch = realFetch
+  }
+  assert.equal(urls.length, 1)
+  const url = new URL(urls[0], 'http://console.test')
+  assert.equal(url.pathname, '/v1/hub/skill-content')
+  assert.equal(url.searchParams.get('name'), 'gh review')
+  assert.equal(url.searchParams.get('source'), 'openclaw')
+})
+
+test('the Hub tab opens a skill detail per source', () => {
+  assert.match(extensionsSource, /getHubSkillContent\(name, hubSource\)/)
+  assert.match(extensionsSource, /toggleDetail\('skill', entry\.name, 'hub', sid\)/)
+  assert.match(extensionsSource, /\{#if isDetailOpen\('skill', entry\.name, 'hub', sid\)\}/)
+})

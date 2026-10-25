@@ -247,8 +247,10 @@
   let detailLoading = $state(false)
   let detailMeta: Record<string, string> = $state({})
 
-  async function toggleDetail(kind: string, name: string, source: 'installed' | 'hub') {
-    const key = `${source}-${kind}:${name}`
+  // hubSource is the HubSource a hub skill is listed under: two hubs can
+  // list a skill of the same name, and each has its own SKILL.md.
+  async function toggleDetail(kind: string, name: string, source: 'installed' | 'hub', hubSource = 'tars-hub') {
+    const key = detailKeyOf(kind, name, source, hubSource)
     if (detailKey === key) { detailKey = null; return }
     detailKey = key
     detailContent = ''
@@ -263,7 +265,7 @@
           [$t.extensions.detailMetaInvocable]: detail.user_invocable ? $t.extensions.invocableYes(name) : $t.extensions.invocableNo,
         }
       } else if (kind === 'skill' && source === 'hub') {
-        const result = await getHubSkillContent(name)
+        const result = await getHubSkillContent(name, hubSource)
         detailContent = result.content || $t.extensions.detailNoContent
         detailMeta = { [$t.extensions.detailMetaVersion]: result.version }
       } else {
@@ -273,8 +275,12 @@
     finally { detailLoading = false }
   }
 
-  function isDetailOpen(kind: string, name: string, source: 'installed' | 'hub'): boolean {
-    return detailKey === `${source}-${kind}:${name}`
+  function detailKeyOf(kind: string, name: string, source: 'installed' | 'hub', hubSource: string): string {
+    return source === 'hub' ? `hub-${kind}:${hubSource}:${name}` : `${source}-${kind}:${name}`
+  }
+
+  function isDetailOpen(kind: string, name: string, source: 'installed' | 'hub', hubSource = 'tars-hub'): boolean {
+    return detailKey === detailKeyOf(kind, name, source, hubSource)
   }
 
   async function loadInstalled() {
@@ -1085,9 +1091,9 @@
               <div class="ext-item">
                 <div class="ext-item-info">
                   <div class="ext-item-top">
-                    <button class="ext-name-btn" onclick={() => toggleDetail('skill', entry.name, 'hub')}>
+                    <button class="ext-name-btn" onclick={() => toggleDetail('skill', entry.name, 'hub', sid)}>
                       <strong>{entry.name}</strong>
-                      <span class="detail-chevron" class:open={isDetailOpen('skill', entry.name, 'hub')}>{'\u25b8'}</span>
+                      <span class="detail-chevron" class:open={isDetailOpen('skill', entry.name, 'hub', sid)}>{'\u25b8'}</span>
                     </button>
                     <span class="ext-source-badge" class:ext-source-badge-external={isExternal}>{hubSourceLabel(sid)}</span>
                     <span class="ext-version">{$t.extensions.versionPrefix(entry.version)}</span>
@@ -1111,7 +1117,7 @@
                   </button>
                 {/if}
               </div>
-              {#if isDetailOpen('skill', entry.name, 'hub')}
+              {#if isDetailOpen('skill', entry.name, 'hub', sid)}
                 <div class="ext-detail">
                   {#if detailLoading}<div class="ext-detail-loading">{$t.extensions.detailLoading}</div>
                   {:else}<div class="ext-detail-content ext-md">{@html renderMarkdown(detailContent, $t.chatThread.markdown)}</div>{/if}
