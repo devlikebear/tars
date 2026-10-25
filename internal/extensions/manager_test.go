@@ -633,28 +633,18 @@ func TestManagerWatch_PicksUpNewMCPServer(t *testing.T) {
 		t.Fatalf("watcher never picked up %s; snapshot MCP servers = %+v", what, manager.Snapshot().MCPServers)
 	}
 
-	// A change to the installed DB alone reloads: the DB decides whether a
-	// directory is a hub package or a hand-written one. The write is
-	// repeated until a reload shows up because on Windows fsnotify arms a
-	// watch a moment after Add returns, and a change made in that gap is
-	// never reported; a server is installed long after start, so only this
-	// test can land in the gap.
-	before := manager.Snapshot().Version
-	deadline := time.Now().Add(5 * time.Second)
-	for manager.Snapshot().Version <= before {
-		if time.Now().After(deadline) {
-			t.Fatalf("watcher never picked up the skillhub.json write")
-		}
-		writeFile(t, filepath.Join(workspaceDir, "skillhub.json"), `{"skills": []}`)
-		time.Sleep(100 * time.Millisecond)
-	}
-
 	echoDir := filepath.Join(workspaceDir, "mcp-servers", "echo")
 	writeFile(t, filepath.Join(echoDir, "tars.mcp.json"), `{
   "schema_version": 1,
   "server": {"name": "echo", "command": "python3", "args": ["${MCP_DIR}/server.py"], "transport": "stdio"}
 }`)
 	waitFor("the new mcp-servers/echo", func() bool { return hasServer("echo") })
+
+	// A change to the installed DB alone reloads too: the DB decides
+	// whether a directory is a hub package or a hand-written one.
+	before := manager.Snapshot().Version
+	writeFile(t, filepath.Join(workspaceDir, "skillhub.json"), `{"skills": []}`)
+	waitFor("the skillhub.json write", func() bool { return manager.Snapshot().Version > before })
 }
 
 func TestManagerWatchEventRelevant(t *testing.T) {

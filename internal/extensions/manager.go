@@ -550,7 +550,11 @@ func (m *Manager) watchLoop(ctx context.Context, watcher *fsnotify.Watcher) {
 			if event.Op&fsnotify.Create != 0 {
 				info, err := os.Stat(event.Name)
 				if err == nil && info.IsDir() {
-					_ = addWatchRecursive(watcher, event.Name)
+					// Not inline: on Windows fsnotify serves Add on the I/O
+					// thread that delivers events, which blocks sending the
+					// next one while this loop waits in Add. A new folder
+					// then stopped every later reload.
+					go func(dir string) { _ = addWatchRecursive(watcher, dir) }(event.Name)
 				}
 			}
 			resetTimer()
