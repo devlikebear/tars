@@ -25,8 +25,11 @@ func buildExtensionsManager(cfg config.Config, runtime extensions.MPRuntime, plu
 		MCPRuntime:             runtime,
 		WatchSkills:            cfg.SkillsWatch,
 		WatchPlugins:           cfg.PluginsWatch,
-		WatchDebounce:          resolveExtensionsWatchDebounce(cfg),
-		PluginConfig:           pluginConfig,
+		// MCP packages have no watch setting of their own: they hot-reload
+		// whenever the user lets skills or plugins do so.
+		WatchMCPServers: cfg.SkillsWatch || cfg.PluginsWatch,
+		WatchDebounce:   resolveExtensionsWatchDebounce(cfg),
+		PluginConfig:    pluginConfig,
 	})
 	if err != nil {
 		return nil, err

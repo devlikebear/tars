@@ -48,6 +48,16 @@ type LicenseFetcher interface {
 	FetchLicense(ctx context.Context, entry *RegistryEntry) (body []byte, label string, err error)
 }
 
+// SkillPathFinder is implemented by hubs whose skill directory need not
+// match the skill's name. The installer records RegistryEntry.Path at
+// install time (InstalledSkill.Path) and looks the skill up there again on
+// update, instead of guessing the directory from the name.
+type SkillPathFinder interface {
+	// FindSkillByPath returns the entry for the skill in the given
+	// source-relative directory (a previous entry's Path).
+	FindSkillByPath(ctx context.Context, path string) (*RegistryEntry, error)
+}
+
 // CompanionFileLister is implemented by hubs whose registry entries do not
 // pre-declare every companion file. The adapter discovers them at install
 // time (directory listing) and returns relative paths the installer should

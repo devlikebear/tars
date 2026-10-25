@@ -588,3 +588,81 @@ func TestManagerReload_NeverStartsDisabledMCPServersOrPluginParts(t *testing.T) 
 		}
 	}
 }
+
+// A `tars mcp install` into a running server writes mcp-servers/<name> and
+// then skillhub.json; the watcher must pick both up, even when the
+// workspace had no mcp-servers folder when the server started.
+func TestManagerWatch_PicksUpNewMCPServer(t *testing.T) {
+	root := t.TempDir()
+	workspaceDir := filepath.Join(root, "workspace")
+	if err := os.MkdirAll(workspaceDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	manager, err := NewManager(Options{
+		WorkspaceDir:    workspaceDir,
+		WatchMCPServers: true,
+		WatchDebounce:   50 * time.Millisecond,
+	})
+	if err != nil {
+		t.Fatalf("new manager: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := manager.Start(ctx); err != nil {
+		t.Fatalf("start manager: %v", err)
+	}
+	defer manager.Close()
+
+	hasServer := func(name string) bool {
+		for _, s := range manager.Snapshot().MCPServers {
+			if s.Name == name {
+				return true
+			}
+		}
+		return false
+	}
+	waitFor := func(what string, ok func() bool) {
+		t.Helper()
+		deadline := time.Now().Add(3 * time.Second)
+		for time.Now().Before(deadline) {
+			if ok() {
+				return
+			}
+			time.Sleep(30 * time.Millisecond)
+		}
+		t.Fatalf("watcher never picked up %s; snapshot MCP servers = %+v", what, manager.Snapshot().MCPServers)
+	}
+
+	echoDir := filepath.Join(workspaceDir, "mcp-servers", "echo")
+	writeFile(t, filepath.Join(echoDir, "tars.mcp.json"), `{
+  "schema_version": 1,
+  "server": {"name": "echo", "command": "python3", "args": ["${MCP_DIR}/server.py"], "transport": "stdio"}
+}`)
+	waitFor("the new mcp-servers/echo", func() bool { return hasServer("echo") })
+
+	// A change to the installed DB alone reloads too: the DB decides
+	// whether a directory is a hub package or a hand-written one.
+	before := manager.Snapshot().Version
+	writeFile(t, filepath.Join(workspaceDir, "skillhub.json"), `{"skills": []}`)
+	waitFor("the skillhub.json write", func() bool { return manager.Snapshot().Version > before })
+}
+
+func TestManagerWatchEventRelevant(t *testing.T) {
+	workspaceDir := filepath.Join(t.TempDir(), "workspace")
+	m := &Manager{opts: Options{WorkspaceDir: workspaceDir, WatchMCPServers: true}}
+	for name, want := range map[string]bool{
+		filepath.Join(workspaceDir, "skillhub.json"):                        true,
+		filepath.Join(workspaceDir, "mcp-servers", "echo", "tars.mcp.json"): true,
+		filepath.Join(workspaceDir, "skills", "x", "SKILL.md"):              true,
+		filepath.Join(workspaceDir, "sessions.json"):                        false,
+		filepath.Join(workspaceDir, "sessions"):                             false,
+	} {
+		if got := m.watchEventRelevant(name); got != want {
+			t.Errorf("watchEventRelevant(%s) = %v, want %v", name, got, want)
+		}
+	}
+	m.opts.WatchMCPServers = false
+	if !m.watchEventRelevant(filepath.Join(workspaceDir, "sessions.json")) {
+		t.Error("without MCP watching every event is relevant")
+	}
+}

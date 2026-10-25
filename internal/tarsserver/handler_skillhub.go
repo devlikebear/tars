@@ -368,12 +368,14 @@ func newSkillhubAPIHandler(
 		})
 	})
 
-	// GET /v1/hub/skill-content?name=X — fetch SKILL.md content from registry
+	// GET /v1/hub/skill-content?name=X&source=Y — fetch SKILL.md content
+	// from the named HubSource (tars-hub when source is empty), so an
+	// external skill's detail is not the tars-hub skill of the same name.
 	mux.HandleFunc("/v1/hub/skill-content", func(w http.ResponseWriter, r *http.Request) {
 		if !requireMethod(w, r, http.MethodGet) {
 			return
 		}
-		if installer == nil {
+		if installer == nil || installer.Sources == nil {
 			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "hub is not configured"})
 			return
 		}
@@ -382,14 +384,23 @@ func newSkillhubAPIHandler(
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name is required"})
 			return
 		}
-		entry, err := installer.Registry.FindByName(r.Context(), name)
+		sourceID := strings.TrimSpace(r.URL.Query().Get("source"))
+		if sourceID == "" {
+			sourceID = skillhub.DefaultSourceID
+		}
+		src, ok := installer.Sources.Get(sourceID)
+		if !ok {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unknown hub source: " + sourceID})
+			return
+		}
+		entry, err := src.FindSkillByName(r.Context(), name)
 		if err != nil {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
 			return
 		}
-		content, err := installer.Registry.FetchSkillContent(r.Context(), entry)
+		content, err := src.FetchSkillContent(r.Context(), entry)
 		if err != nil {
-			logger.Error().Err(err).Str("name", name).Msg("fetch skill content failed")
+			logger.Error().Err(err).Str("name", name).Str("source", sourceID).Msg("fetch skill content failed")
 			writeJSON(w, http.StatusBadGateway, map[string]string{"error": "failed to fetch skill content"})
 			return
 		}

@@ -162,6 +162,8 @@ Skill이 `requires_plugin`을 선언했는데 workspace에 해당 plugin이 없�
 
 Update는 registry version과 installed version을 비교해 필요한 package만 다시 설치하고, skipped/failed diagnostic을 함께 반환한다.
 
+허브 스킬은 `workspace/skills/<name>`에 설치되므로 런타임에서는 workspace 스킬로 보인다. 설치기는 쓴 SKILL.md의 sha256을 `skillhub.json`의 `sha256`에 남기고, update는 지금 SKILL.md가 그 값과 다르면(사용자가 고쳤으면) `edited locally`로 건너뛴다 — focus 템플릿과 같은 규칙이다. 폴더가 허브 밖에서 지워진 스킬은 `skill files were removed`로 건너뛰고 설치 목록(`/v1/hub/installed`, `tars skill list`, pack 계획)에서 빠지므로 Hub 탭이 다시 설치를 제안한다. 콘솔은 허브 스킬에 workspace Edit/Delete 대신 허브 라벨과 Uninstall을 보인다.
+
 ### 14-4. CLI 서브커맨드
 
 ```
@@ -317,6 +319,16 @@ type CompanionFileLister interface {   // manifest 없는 hub의 file 자동 발
 4. `opts.DryRun=true` 또는 `opts.Confirm` 거부 → 머터리얼라이즈 skip
 5. 승인 시 sandbox → materialize → ATTRIBUTION.md → DB에 `source` 기록
 6. 사후 sha256 drift 감지 (preview와 다른 내용 → 거부)
+
+### Update 흐름 (외부 hub)
+
+외부 hub에는 실제 버전이 없다(`version`은 `0.0.0` 자리표시). 그래서 `tars skill update`는 외부 스킬을 다시 내려받아, 설치 때 기록한 **upstream 체크섬**(`skillhub.json`의 `upstream_sha256` — 변환 전 SKILL.md와 companion 파일의 sha256)과 비교한다. 변환된 SKILL.md와 ATTRIBUTION.md에는 가져온 시각이 찍혀 매번 달라지므로 비교에 쓰지 않는다.
+
+- 같으면 `up to date`로 건너뛴다.
+- 다르면 **적용하지 않고** skipped에 `upstream changed; review and apply it with tars skill install <source>:<name>`으로 보고한다. 처음 설치가 변환 결과를 사람이 보고 승인해야 했던 것처럼(dry-run preview + 확인), 새 upstream 내용도 같은 확인을 거쳐야 하는데 update에는 물어볼 사람이 없기 때문이다. 콘솔 Update all도 이 항목을 "업데이트하지 않음"으로 보여 준다.
+- 체크섬이 기록되기 전에 설치한 스킬은 다시 설치해 확인하라는 안내만 낸다.
+
+openclaw처럼 스킬 디렉터리 이름과 frontmatter `name`이 다를 수 있는 hub는 설치 때 디렉터리(`path`)를 함께 기록하고, update는 `SkillPathFinder.FindSkillByPath`로 그 디렉터리를 다시 읽는다.
 
 ### 라이선스 의무 자동화
 

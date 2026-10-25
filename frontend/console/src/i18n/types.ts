@@ -1304,6 +1304,7 @@ export type Translations = {
     mcpCreatedSuccess: (path: string) => string
     updatedTotal: (n: number) => string
     everythingUpToDate: string
+    updateHeld: (items: string) => string
     qualityScore: (score: number) => string
     qualityLabels: {
       lastUpdated: string

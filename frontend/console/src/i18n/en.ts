@@ -1362,6 +1362,7 @@ export const en = {
     mcpCreatedSuccess: (path) => `Saved MCP server draft to ${path}`,
     updatedTotal: (n) => `Updated ${n} packages`,
     everythingUpToDate: 'Everything is up to date',
+    updateHeld: (items) => `Not updated: ${items}`,
     qualityScore: (score) => `Quality ${score}`,
     qualityLabels: {
       lastUpdated: 'Last updated',

@@ -25,6 +25,7 @@
     deleteWorkspaceSkill,
   } from '../lib/api'
   import { renderMarkdown } from '../lib/markdown'
+  import { heldUpdates } from '../lib/hubUpdate'
   import SkillCreator from './SkillCreator.svelte'
   import MCPServerCreator from './MCPServerCreator.svelte'
   import { t } from '../i18n'
@@ -247,8 +248,10 @@
   let detailLoading = $state(false)
   let detailMeta: Record<string, string> = $state({})
 
-  async function toggleDetail(kind: string, name: string, source: 'installed' | 'hub') {
-    const key = `${source}-${kind}:${name}`
+  // hubSource is the HubSource a hub skill is listed under: two hubs can
+  // list a skill of the same name, and each has its own SKILL.md.
+  async function toggleDetail(kind: string, name: string, source: 'installed' | 'hub', hubSource = 'tars-hub') {
+    const key = detailKeyOf(kind, name, source, hubSource)
     if (detailKey === key) { detailKey = null; return }
     detailKey = key
     detailContent = ''
@@ -263,7 +266,7 @@
           [$t.extensions.detailMetaInvocable]: detail.user_invocable ? $t.extensions.invocableYes(name) : $t.extensions.invocableNo,
         }
       } else if (kind === 'skill' && source === 'hub') {
-        const result = await getHubSkillContent(name)
+        const result = await getHubSkillContent(name, hubSource)
         detailContent = result.content || $t.extensions.detailNoContent
         detailMeta = { [$t.extensions.detailMetaVersion]: result.version }
       } else {
@@ -273,8 +276,12 @@
     finally { detailLoading = false }
   }
 
-  function isDetailOpen(kind: string, name: string, source: 'installed' | 'hub'): boolean {
-    return detailKey === `${source}-${kind}:${name}`
+  function detailKeyOf(kind: string, name: string, source: 'installed' | 'hub', hubSource: string): string {
+    return source === 'hub' ? `hub-${kind}:${hubSource}:${name}` : `${source}-${kind}:${name}`
+  }
+
+  function isDetailOpen(kind: string, name: string, source: 'installed' | 'hub', hubSource = 'tars-hub'): boolean {
+    return detailKey === detailKeyOf(kind, name, source, hubSource)
   }
 
   async function loadInstalled() {
@@ -416,6 +423,15 @@
 
   function isHubInstalled(type: string, name: string): boolean {
     return hubInstalledNames.has(pkgKey(type, name))
+  }
+
+  // A hub skill lives in workspace/skills, so the runtime reports it as a
+  // workspace skill. It is shown with its hub instead and offers Uninstall,
+  // not Edit/Delete: deleting the folder left the hub's record behind, and
+  // an edit is what the next update would have to skip.
+  function skillSourceLabel(s: SkillDef): string {
+    const row = installed.skills.find((item) => item.name.toLowerCase() === s.name.toLowerCase())
+    return row ? hubSourceLabel(row.source || 'tars-hub') : s.source || ''
   }
 
   async function handleInstall(type: HubPackageType, name: string, sourceID: string = '') {
@@ -604,7 +620,9 @@
       const result = await hubUpdate()
       const kinds = [result.skill_update_result, result.plugin_update_result, result.mcp_update_result, result.focus_template_update_result]
       const total = kinds.reduce((sum, kind) => sum + (kind?.updated?.length ?? 0), 0)
-      success = total > 0 ? $t.extensions.updatedTotal(total) : result.error ? '' : $t.extensions.everythingUpToDate
+      const held = heldUpdates(result)
+      const summary = total > 0 ? $t.extensions.updatedTotal(total) : result.error || held.length > 0 ? '' : $t.extensions.everythingUpToDate
+      success = [summary, held.length > 0 ? $t.extensions.updateHeld(held.join('; ')) : ''].filter(Boolean).join('. ')
       if (result.error) error = result.error
       else if (result.reload_error) error = `${$t.extensions.reloadFailed}: ${result.reload_error}`
       await loadInstalled()
@@ -845,7 +863,7 @@
                     </button>
                     <span class="ext-desc">{s.description || '\u2014'}</span>
                     <div class="ext-meta">
-                      {#if s.source}<span class="badge badge-default">{s.source}</span>{/if}
+                      {#if skillSourceLabel(s)}<span class="badge badge-default">{skillSourceLabel(s)}</span>{/if}
                       {#if s.user_invocable}<span class="badge badge-accent" title="User can invoke this skill from chat">{skillSlashLabel(s)}</span>{/if}
                       {#if healthItem('skill', s.name)}
                         <span class={healthBadgeClass(healthItem('skill', s.name))} title={healthItem('skill', s.name)?.summary || ''}>
@@ -869,7 +887,7 @@
                     {#if isHubInstalled('skill', s.name)}
                       <button class="btn btn-danger btn-sm" disabled={busyItem === 'skill:' + s.name} onclick={() => handleUninstall('skill', s.name)}>{busyItem === 'skill:' + s.name ? $t.extensions.updateBusy : $t.extensions.uninstall}</button>
                     {/if}
-                    {#if s.source === 'workspace'}
+                    {#if s.source === 'workspace' && !isHubInstalled('skill', s.name)}
                       <button class="btn btn-ghost btn-sm" onclick={() => handleEditSkill(s)}>{$t.extensions.editSkill}</button>
                       <button class="btn btn-danger btn-sm" disabled={deletingItem === s.name} onclick={() => handleDeleteSkill(s)}>{$t.extensions.deleteSkill}</button>
                     {/if}
@@ -1085,9 +1103,9 @@
               <div class="ext-item">
                 <div class="ext-item-info">
                   <div class="ext-item-top">
-                    <button class="ext-name-btn" onclick={() => toggleDetail('skill', entry.name, 'hub')}>
+                    <button class="ext-name-btn" onclick={() => toggleDetail('skill', entry.name, 'hub', sid)}>
                       <strong>{entry.name}</strong>
-                      <span class="detail-chevron" class:open={isDetailOpen('skill', entry.name, 'hub')}>{'\u25b8'}</span>
+                      <span class="detail-chevron" class:open={isDetailOpen('skill', entry.name, 'hub', sid)}>{'\u25b8'}</span>
                     </button>
                     <span class="ext-source-badge" class:ext-source-badge-external={isExternal}>{hubSourceLabel(sid)}</span>
                     <span class="ext-version">{$t.extensions.versionPrefix(entry.version)}</span>
@@ -1111,7 +1129,7 @@
                   </button>
                 {/if}
               </div>
-              {#if isDetailOpen('skill', entry.name, 'hub')}
+              {#if isDetailOpen('skill', entry.name, 'hub', sid)}
                 <div class="ext-detail">
                   {#if detailLoading}<div class="ext-detail-loading">{$t.extensions.detailLoading}</div>
                   {:else}<div class="ext-detail-content ext-md">{@html renderMarkdown(detailContent, $t.chatThread.markdown)}</div>{/if}

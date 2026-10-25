@@ -131,12 +131,21 @@ type QualityMetadata struct {
 // InstalledSkill tracks a skill that has been installed locally. Source is
 // the HubSource ID the skill was fetched from (e.g. "tars-hub", "openclaw",
 // "hermes", "anthropic"). Legacy rows with an empty Source are migrated to
-// DefaultSourceID at load time.
+// DefaultSourceID at load time. Path is the skill's directory in the
+// source (RegistryEntry.Path), which updates use for sources that
+// implement SkillPathFinder.
 type InstalledSkill struct {
 	Name    string `json:"name"`
 	Version string `json:"version"`
 	Source  string `json:"source"`
 	Dir     string `json:"dir"`
+	Path    string `json:"path,omitempty"`
+	// SHA256 is the checksum of the SKILL.md the installer wrote, so an
+	// update can tell a skill the user has since edited and leave it alone.
+	SHA256 string `json:"sha256,omitempty"`
+	// Upstream is the checksum of an external source's own files at
+	// install time; Update compares it to tell whether upstream changed.
+	Upstream string `json:"upstream_sha256,omitempty"`
 }
 
 // InstalledPlugin tracks a plugin that has been installed locally.

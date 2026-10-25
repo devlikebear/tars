@@ -244,3 +244,46 @@ func TestHubSourceLabel(t *testing.T) {
 		}
 	}
 }
+
+// TestSkillhubSkillContent_RoutesBySource checks that the detail panel's
+// content comes from the source the skill was listed under: tars-hub and
+// the demo hub both have a skill "foo".
+func TestSkillhubSkillContent_RoutesBySource(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/registry.json", func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(skillhub.RegistryIndex{
+			Version: 3,
+			Skills:  []skillhub.RegistryEntry{{Name: "foo", Version: "1.2.0", Path: "skills/foo"}},
+		})
+	})
+	mux.HandleFunc("/skills/foo/SKILL.md", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("---\nname: foo\ndescription: tars-hub foo\n---\ntars-hub body"))
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	inst := skillhub.NewInstaller(t.TempDir())
+	inst.Registry.RegistryURL = srv.URL + "/registry.json"
+	inst.Registry.SkillBaseURL = srv.URL
+	inst.Registry.HTTPClient = srv.Client()
+	if err := inst.Sources.Register(hubStubSource{}); err != nil {
+		t.Fatalf("register stub: %v", err)
+	}
+	handler := newSkillhubAPIHandler(inst, nil, zerolog.Nop())
+
+	code, payload := serveHub(t, handler, http.MethodGet, "/v1/hub/skill-content?name=foo&source=demo", nil)
+	if code != http.StatusOK || !strings.Contains(payload["content"].(string), "raw") {
+		t.Fatalf("source=demo: %d %v, want the demo hub's SKILL.md", code, payload)
+	}
+	code, payload = serveHub(t, handler, http.MethodGet, "/v1/hub/skill-content?name=foo", nil)
+	if code != http.StatusOK || !strings.Contains(payload["content"].(string), "tars-hub body") || payload["version"] != "1.2.0" {
+		t.Fatalf("no source: %d %v, want the tars-hub SKILL.md", code, payload)
+	}
+	code, payload = serveHub(t, handler, http.MethodGet, "/v1/hub/skill-content?name=foo&source=nowhere", nil)
+	if code != http.StatusBadRequest {
+		t.Fatalf("unknown source: %d %v, want 400", code, payload)
+	}
+	code, payload = serveHub(t, handler, http.MethodGet, "/v1/hub/skill-content?name=bar&source=demo", nil)
+	if code != http.StatusNotFound {
+		t.Fatalf("missing skill: %d %v, want 404", code, payload)
+	}
+}
