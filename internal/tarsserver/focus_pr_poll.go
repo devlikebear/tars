@@ -86,6 +86,46 @@ func (d *focusDriver) watchPR(sessionID string) {
 	go d.pollPR(sessionID, poller)
 }
 
+// probeEarlyPR runs one PR probe in the background after a completed build
+// or review turn, in case a plan or build task pushed and opened the pull
+// request itself (tars dogfooding fix #3b): the continuous poller
+// (watchPR) only starts once the pipeline reaches the pr stage, so without
+// this an early PR would go unnoticed until then. It never blocks the
+// turn's own response, records nothing and changes no gate — only a
+// notice card, deduplicated by PR number
+// (focuspipeline.applyEarlyPRProbe/WantsEarlyPRProbe).
+func (d *focusDriver) probeEarlyPR(sessionID string) {
+	if d == nil || d.probe == nil || d.sessions == nil || strings.TrimSpace(sessionID) == "" {
+		return
+	}
+	p, ok, err := focusStoreFor(d.sessions).Get(sessionID)
+	if err != nil || !ok || !focuspipeline.WantsEarlyPRProbe(p) {
+		return
+	}
+	dir := d.sessionDir(sessionID)
+	if dir == "" {
+		return
+	}
+	d.mu.Lock()
+	if d.ctx.Err() != nil {
+		d.mu.Unlock()
+		return
+	}
+	d.wg.Add(1)
+	d.mu.Unlock()
+	go func() {
+		defer d.wg.Done()
+		probe := d.probe(d.ctx, dir, 0)
+		if probe.Status == focuspipeline.ProbeFound && d.localBranch != nil {
+			probe.LocalBranch = d.localBranch(d.ctx, dir)
+		}
+		if d.ctx.Err() != nil {
+			return
+		}
+		d.applyPRProbe(sessionID, probe, d.logger)
+	}()
+}
+
 // resumePRPolls starts the pollers of pipelines a restart left waiting on
 // PR facts. It returns how many it started.
 func (d *focusDriver) resumePRPolls() int {

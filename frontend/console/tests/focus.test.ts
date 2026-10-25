@@ -22,6 +22,7 @@ import {
   turnSlice,
   triageProgress,
   findingEntry,
+  stageKindOf,
   turnStage,
   defaultSecondOpinionTier,
   findingReviewBadges,
@@ -29,7 +30,7 @@ import {
   secondOpinionTierChoices,
 } from '../src/lib/focus.ts'
 import { userVisibleText } from '../src/lib/consoleContext.ts'
-import { focusKo } from '../src/i18n/sections/focus.ts'
+import { focusEn, focusKo } from '../src/i18n/sections/focus.ts'
 import type { ChatEvent, FocusCard, FocusPipeline, SessionMessage } from '../src/lib/types.ts'
 
 function card(id: string, kind: FocusCard['kind'], extra: Partial<FocusCard> = {}): FocusCard {
@@ -582,4 +583,23 @@ test('secondOpinionNotice: the review\'s notices in the console language', () =>
   assert.equal(secondOpinionNotice({ kind: 'notice', title: 'report format missing', payload: {} }), null)
   assert.equal(secondOpinionNotice({ kind: 'report', title: 'second opinion not received', payload: {} }), null)
   assert.match(secondOpinionNotice({ kind: 'notice', title: 'second opinion not received', payload: { reason: 'weird' } })?.body ?? '', /error/)
+})
+
+test('instructReviewHint: present in both locales, and only shown for a review-kind blocked gate', () => {
+  // The note the console sends on the blocked gate becomes a fix turn
+  // (tars dogfooding fix #2); FocusCard.svelte shows this hint only when
+  // the blocked stage's kind is review (`isReview`), which it derives
+  // from stageKindOf the same way the review-only wording elsewhere on
+  // the card does (blockedTitle, blockedReason.reviewLimit).
+  assert.ok(focusEn.gate.instructReviewHint.length > 0)
+  assert.ok(focusKo.gate.instructReviewHint.length > 0)
+  assert.notEqual(focusEn.gate.instructReviewHint, focusKo.gate.instructReviewHint)
+
+  const stages = [
+    { id: 'plan', kind: 'plan' as const },
+    { id: 'review', kind: 'review' as const },
+    { id: 'build', kind: 'build' as const },
+  ]
+  assert.equal(stageKindOf(stages, 'review'), 'review')
+  assert.notEqual(stageKindOf(stages, 'build'), 'review')
 })

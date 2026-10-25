@@ -38,6 +38,17 @@ type ReviewState struct {
 	// Fixing is set while the turn owed or running is a fix turn, which
 	// reports instead of reviewing.
 	Fixing bool `json:"fixing,omitempty"`
+	// FixingInstructed is set alongside Fixing only when the fix turn
+	// came from the developer's own instruct note on the review blocked
+	// gate (reviewRetry, tars dogfooding fix #2) — not from an accepted
+	// finding (closeTriage) or a verification failure
+	// (reviewVerificationFailed). It is the server's signal (focus_pipeline.go)
+	// that this particular fix turn's git state is worth checking: an
+	// instruct note like "just double check, report nothing if there is
+	// nothing to fix" legitimately produces a turn that changes nothing,
+	// which must not count as Fixed. The other two origins keep trusting
+	// the turn's own report, as before.
+	FixingInstructed bool `json:"fixing_instructed,omitempty"`
 	// Fixed is set once a fix turn reported this round: passing
 	// verification then starts a new review round instead of ending.
 	Fixed bool `json:"fixed,omitempty"`
@@ -94,15 +105,33 @@ func triageTurn(p Pipeline, now time.Time) (Pipeline, Action) {
 	return p, noAction
 }
 
+// NoticeFixUnchanged is the title of the card left when a review stage's
+// fix turn is proven (FixUnchanged) to have changed nothing: the stage
+// treats the round as if nothing had been fixed, instead of starting
+// another round that would only repeat the same iteration-limit block.
+const NoticeFixUnchanged = "fix turn changed nothing"
+
 // reviewTurnAction handles a completed review-stage turn that carried the
-// block it needed (missingRequiredBlock).
-func reviewTurnAction(p *Pipeline, b Blocks, turn int, now time.Time) Action {
+// block it needed (missingRequiredBlock). fixUnchanged is the server's
+// git-state fact for a fix turn (Event.FixUnchanged) — never the turn's
+// own report; it only has any effect on a FixingInstructed turn (an
+// instruct note at the review blocked gate), the one origin of a fix turn
+// whose own text can legitimately say "nothing to fix" (tars dogfooding
+// fix #2) — an accepted finding or a verification failure always keeps
+// trusting the turn's report, as before.
+func reviewTurnAction(p *Pipeline, b Blocks, turn int, now time.Time, fixUnchanged bool) Action {
 	if p.Review.Fixing {
 		if b.Report != nil && len(b.Report.Decisions) > 0 {
 			return noAction // a question pauses the loop; its answer is the next fix turn
 		}
+		instructed := p.Review.FixingInstructed
 		p.Review.Fixing = false
-		p.Review.Fixed = true
+		p.Review.FixingInstructed = false
+		if fixUnchanged && instructed {
+			p.addCard(CardNotice, turn, NoticeFixUnchanged, nil, now)
+		} else {
+			p.Review.Fixed = true
+		}
 		p.AwaitingVerification = true
 		return Action{Kind: ActionRunVerification}
 	}
@@ -283,6 +312,7 @@ func reviewRetry(p *Pipeline, action string) string {
 	p.Review = p.Review.nextRound()
 	if action == GateInstruct {
 		p.Review.Fixing = true
+		p.Review.FixingInstructed = true
 		return ""
 	}
 	s, _ := p.Stage(p.Current)

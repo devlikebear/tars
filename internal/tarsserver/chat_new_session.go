@@ -132,6 +132,13 @@ type newSessionRequest struct {
 	// ExtraDirs adds more folders the session can reach (registered work
 	// dirs) besides Cwd, which stays the only active/isolated one.
 	ExtraDirs []string `json:"extra_dirs,omitempty"`
+	// isolateBaseRemoteDefault asks Isolate to branch from the fetched
+	// origin remote's default branch instead of HEAD (#1 of the focus
+	// dogfooding fixes). Unexported: only a feature-kind focus pipeline's
+	// own call sets it (focus_pipeline.go); JSON requests (a plain chat
+	// session in a folder, or a release pipeline) can never set it and
+	// keep branching from HEAD.
+	isolateBaseRemoteDefault bool
 }
 
 // withSessionCreateIn handles POST /v1/admin/sessions when it names a folder
@@ -166,7 +173,7 @@ func withSessionCreateIn(next http.Handler, c *chatWorktrees) http.Handler {
 			writeJSON(w, http.StatusForbidden, map[string]string{"error": "starting a chat in a folder needs the admin token"})
 			return
 		}
-		sess, err := c.createIn(r.Context(), req)
+		sess, _, err := c.createIn(r.Context(), req)
 		if err != nil {
 			writeJSON(w, folderErrorStatus(err), map[string]string{"error": err.Error()})
 			return
@@ -176,24 +183,27 @@ func withSessionCreateIn(next http.Handler, c *chatWorktrees) http.Handler {
 }
 
 // createIn makes a session working in req.Cwd, reaching req.ExtraDirs too,
-// isolated (req.Cwd only) when asked, or nothing at all.
-func (c *chatWorktrees) createIn(ctx context.Context, req newSessionRequest) (session.Session, error) {
+// isolated (req.Cwd only) when asked, or nothing at all. The returned
+// notice is non-nil only when req.Isolate moved the new session into a
+// worktree; it reports what commit that worktree actually branched from
+// (req.isolateBaseRemoteDefault, or HEAD).
+func (c *chatWorktrees) createIn(ctx context.Context, req newSessionRequest) (session.Session, *worktreeNotice, error) {
 	if strings.TrimSpace(req.Cwd) == "" {
 		if len(req.ExtraDirs) > 0 {
-			return session.Session{}, errExtraDirNeedsCwd
+			return session.Session{}, nil, errExtraDirNeedsCwd
 		}
-		return session.Session{}, errIsolateNeedsFolder
+		return session.Session{}, nil, errIsolateNeedsFolder
 	}
 	folder, err := resolveChatFolder(ctx, req.Cwd)
 	if err != nil {
-		return session.Session{}, err
+		return session.Session{}, nil, err
 	}
 	if req.Isolate && folder.RepoRoot == "" {
-		return session.Session{}, errFolderNotRepository
+		return session.Session{}, nil, errFolderNotRepository
 	}
 	dirs, err := resolveSessionFolders(ctx, folder.Path, req.ExtraDirs)
 	if err != nil {
-		return session.Session{}, err
+		return session.Session{}, nil, err
 	}
 	title := strings.TrimSpace(req.Title)
 	if title == "" {
@@ -201,25 +211,32 @@ func (c *chatWorktrees) createIn(ctx context.Context, req newSessionRequest) (se
 	}
 	created, err := c.store.Create(title)
 	if err != nil {
-		return session.Session{}, err
+		return session.Session{}, nil, err
 	}
-	undo := func(cause error) (session.Session, error) {
+	undo := func(cause error) (session.Session, *worktreeNotice, error) {
 		_ = c.store.Delete(created.ID)
-		return session.Session{}, cause
+		return session.Session{}, nil, cause
 	}
 	if err := c.store.SetWorkDirs(created.ID, dirs, folder.Path); err != nil {
 		return undo(err)
 	}
+	var notice *worktreeNotice
 	if req.Isolate {
 		current, err := c.store.Get(created.ID)
 		if err != nil {
 			return undo(err)
 		}
-		if _, err := c.isolate(ctx, current, worktreeReasonNewChat, ""); err != nil {
+		base := ""
+		if req.isolateBaseRemoteDefault {
+			base = sessionworktree.BaseRemoteDefault
+		}
+		notice, err = c.isolate(ctx, current, worktreeReasonNewChat, "", base)
+		if err != nil {
 			return undo(err)
 		}
 	}
-	return c.store.Get(created.ID)
+	sess, err := c.store.Get(created.ID)
+	return sess, notice, err
 }
 
 // resolveSessionFolders checks primary and every extra dir with

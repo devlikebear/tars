@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+### Fixed
+
+- **A feature pipeline's isolated worktree branches from the remote's default branch, not the checkout's own HEAD.** `isolate: true` on a focus pipeline (kind `""`) now fetches `origin` and branches from its default branch (`origin/HEAD`'s target, else `origin/main`, else `origin/master`); a checkout sitting on an unrelated feature branch with local commits no longer carries them into the review diff or the PR. A missing/unreachable remote, or no default branch resolving, falls back to the checkout's HEAD as before; the create response's `worktree_base` always says which, and a notice card too when a *configured* remote could not be fetched or resolved (no remote at all is ordinary and stays silent). A release pipeline and a plain chat session's own isolation (the ⑂ chip, folder-based new chat) are unchanged.
+- **An instruct turn at the review blocked gate that changes nothing no longer reopens the same limit block.** The server now checks the session folder's git state (HEAD plus a working-tree fingerprint) before and after an instruct-driven fix turn; only a turn proven to have changed something counts as fixed. A turn that truly changed nothing (e.g. "double check only, report nothing if clean") leaves a "fix turn changed nothing" notice and lets a passing verification end the review stage, instead of consuming another round and reblocking on the same iteration limit. A fix turn from an accepted finding or a verification failure is unaffected — it still trusts its own report, as before. The console's instruct field on a review-stage blocked gate explains the new behavior.
+- **Pushing and opening the pull request outside the pr stage is now flagged.** Plan and build guidance (in any template with a pr stage) say push and `gh pr create` belong to the pr stage's own write turn, after the developer approves the PR draft gate — a plan whose last task did it itself used to open the PR before the pipeline ever reached that gate. The plan gate also warns (a dismissable notice card, never a block) when a task's title or done criteria reads like it pushes or opens the PR itself. As a safety net, one PR probe after each build/review turn notices (once per PR number) when this branch's PR is already open before the pipeline reached its own pr stage.
+
 ## [0.66.0] - 2026-10-25
 
 ### Added

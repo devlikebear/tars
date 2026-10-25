@@ -343,6 +343,7 @@ func (d *focusDriver) start(sessionID string, act focuspipeline.Action, role str
 // person's) starts or joins a run.
 func (d *focusDriver) afterTurn(ctx context.Context, sessionID string, act focuspipeline.Action, role string) {
 	d.watchPR(sessionID)
+	d.probeEarlyPR(sessionID)
 	if d == nil || act.Kind == focuspipeline.ActionNone {
 		return
 	}

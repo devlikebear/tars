@@ -213,6 +213,9 @@
         {/if}
         {#if gateOpen && openGate === 'blocked'}
           {#if asking}
+            {#if isReview}
+              <p class="muted" data-testid="focus-blocked-instruct-review-hint">{$t.focus.gate.instructReviewHint}</p>
+            {/if}
             <textarea rows="3" bind:value={note} placeholder={$t.focus.gate.instructPlaceholder} disabled={busy} data-testid="focus-blocked-note"></textarea>
             <div class="actions">
               <button type="button" class="btn btn-primary btn-sm" disabled={busy || !note.trim()} onclick={() => onGate('blocked', 'instruct', note.trim())} data-testid="focus-blocked-send">{$t.focus.gate.sendInstruct}</button>

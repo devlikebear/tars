@@ -1370,3 +1370,105 @@ func TestConflictUnderG4WithPRReviewSkippedReopensOnce(t *testing.T) {
 		t.Fatal("G4 reopened again on an unchanged conflict")
 	}
 }
+
+// --- Early PR probe (tars dogfooding fix #3b) ---
+
+func TestWantsEarlyPRProbe(t *testing.T) {
+	noPR := Template{ID: "x", Name: "x", Stages: []TemplateStage{{ID: StagePlan}, {ID: "draft", Kind: StageBuild}}}
+	noPRPipeline := NewFromTemplate("s1", "goal", noPR, t0)
+	noPRPipeline.Current = "draft"
+	noPRPipeline.Stages[1].Status = StatusActive
+
+	tests := []struct {
+		name string
+		p    func(t *testing.T) Pipeline
+		want bool
+	}{
+		{"build, has a pr stage", func(t *testing.T) Pipeline { return atStage(t, StageBuild) }, true},
+		{"review, has a pr stage", func(t *testing.T) Pipeline { return atStage(t, StageReview) }, true},
+		{"build, no pr stage at all", func(t *testing.T) Pipeline { return noPRPipeline }, false},
+		{"pr stage itself uses the continuous poller instead", func(t *testing.T) Pipeline { return atStage(t, StagePR) }, false},
+		{"merge stage", func(t *testing.T) Pipeline { return atStage(t, StageMerge) }, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := WantsEarlyPRProbe(tt.p(t)); got != tt.want {
+				t.Fatalf("WantsEarlyPRProbe = %v, want %v", got, tt.want)
+			}
+		})
+	}
+	// Owed or gated turns are not ready for a probe yet, same reasoning as
+	// WantsPRProbe.
+	owed := atStage(t, StageBuild)
+	owed.PendingTurn = "go"
+	if WantsEarlyPRProbe(owed) {
+		t.Fatal("a turn still owed should not want the early probe")
+	}
+}
+
+func TestApplyEarlyPRProbeNoticesOnceBuildOrReview(t *testing.T) {
+	p := atStage(t, StageBuild)
+	probe := probeFound()
+
+	p, act, err := Apply(p, Event{Kind: EventPRProbe, Probe: probe}, t0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if act.Kind != ActionNone || p.PR != nil || p.Current != StageBuild {
+		t.Fatalf("early probe must not record or act: act=%+v pr=%+v current=%s", act, p.PR, p.Current)
+	}
+	var notice *Card
+	for i := range p.Cards {
+		if p.Cards[i].Title == NoticeEarlyPR {
+			notice = &p.Cards[i]
+		}
+	}
+	if notice == nil {
+		t.Fatalf("no early PR notice: %+v", p.Cards)
+	}
+
+	// A second probe of the same number, even from a different stage
+	// (build moved into review), does not notice again.
+	p.Current = StageReview
+	before := len(p.Cards)
+	p, act, err = Apply(p, Event{Kind: EventPRProbe, Probe: probe}, t0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if act.Kind != ActionNone || len(p.Cards) != before {
+		t.Fatalf("a second probe of the same PR should not notice again: cards %d -> %d", before, len(p.Cards))
+	}
+}
+
+// TestApplyProbeOncePRStageReachedStillAccepts proves the pr stage's own
+// probe path is unaffected by the early-probe branch: finding the same PR
+// once the pipeline actually reaches the pr stage still records it and
+// moves to pr_review, exactly as before fix #3b.
+func TestApplyProbeOncePRStageReachedStillAccepts(t *testing.T) {
+	p, act := mustApply(t, opening(t), Event{Kind: EventPRProbe, Probe: probeFound()})
+	if p.Current != StagePRReview || p.PR == nil || p.PR.Number != 12 || act.Kind != ActionNone {
+		t.Fatalf("pr stage probe = current=%s pr=%+v act=%+v", p.Current, p.PR, act)
+	}
+}
+
+func TestApplyEarlyPRProbeIgnoresOtherBranchesAndClosedPRs(t *testing.T) {
+	otherBranch := probeFound()
+	otherBranch.HeadRef = "feature/elsewhere"
+	closed := probeFound()
+	closed.State = PRStateMerged
+	for _, probe := range []*PRProbe{otherBranch, closed} {
+		p := atStage(t, StageBuild)
+		p, act, err := Apply(p, Event{Kind: EventPRProbe, Probe: probe}, t0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if act.Kind != ActionNone {
+			t.Fatalf("act = %+v", act)
+		}
+		for _, c := range p.Cards {
+			if c.Title == NoticeEarlyPR {
+				t.Fatalf("unexpected early PR notice for %+v: %+v", probe, c)
+			}
+		}
+	}
+}

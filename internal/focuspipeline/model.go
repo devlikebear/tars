@@ -340,6 +340,20 @@ func (p Pipeline) workStages() int {
 	return n
 }
 
+// hasStageKind reports whether the pipeline's template includes a stage of
+// the given kind — e.g. whether a plan or build task should ever push or
+// open a pull request (guidance.go's pushPRInWrongStageWarning): a
+// template without a pr stage at all (writing, research) never mentions
+// one.
+func (p Pipeline) hasStageKind(kind StageID) bool {
+	for _, s := range p.Stages {
+		if s.KindOf() == kind {
+			return true
+		}
+	}
+	return false
+}
+
 // stageTasks are the plan's tasks of a work stage: those naming it, and,
 // for the pipeline's first build-kind stage, those naming none (a plan the
 // agent did not tag defaults to the first work stage, not every one of them).

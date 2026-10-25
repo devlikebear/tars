@@ -115,12 +115,47 @@ type CreateRequest struct {
 	// Reason records why the session was isolated: manual, lease or
 	// unattended.
 	Reason string
+	// Base selects what commit the worktree branches from. "" (the
+	// default) branches from the checkout's HEAD, as before. BaseRemoteDefault
+	// fetches the "origin" remote and branches from its default branch
+	// instead — falling back to HEAD (recorded in CreateResult.Base) when
+	// there is no "origin" remote, the fetch fails, or no default branch
+	// resolves. Only a feature-kind focus pipeline's isolation sets this;
+	// a plain chat session's isolation keeps branching from HEAD.
+	Base string
+}
+
+// BaseRemoteDefault is CreateRequest.Base's value for branching a worktree
+// from the fetched "origin" remote's default branch instead of HEAD.
+const BaseRemoteDefault = "remote-default"
+
+// BaseFallback reasons: CreateResult.Base.Fallback is one of these when
+// BaseRemoteDefault could not be resolved and Create fell back to HEAD.
+const (
+	BaseFallbackNoRemote        = "no_remote"
+	BaseFallbackFetchFailed     = "fetch_failed"
+	BaseFallbackNoDefaultBranch = "no_default_branch"
+)
+
+// BaseResult is what commit Create actually branched the worktree from.
+type BaseResult struct {
+	// Ref is the resolved ref ("origin/main") or "" when the worktree
+	// branched from HEAD (the request's default, or a fallback).
+	Ref string `json:"ref,omitempty"`
+	// Commit is the commit sha the worktree branched from (same as
+	// session.SessionWorktree.BaseCommit).
+	Commit string `json:"commit"`
+	// Fallback is "" when Base resolved as asked for, else one of the
+	// BaseFallback* reasons HEAD was used instead.
+	Fallback string `json:"fallback,omitempty"`
 }
 
 // CreateResult is the new worktree and what was copied into it.
 type CreateResult struct {
 	Worktree session.SessionWorktree
-	Copied   []string
+	// Base is what commit the worktree actually branched from.
+	Base   BaseResult
+	Copied []string
 	// Skipped lists include entries that were not copied, with why.
 	Skipped []string
 	// Pending lists include entries still being copied in the background;
@@ -147,11 +182,11 @@ func (m *Manager) Create(ctx context.Context, req CreateRequest) (CreateResult, 
 	if err != nil {
 		return CreateResult{}, err
 	}
-	base, err := git(ctx, repo, "rev-parse", "--verify", "HEAD^{commit}")
+	baseResult, err := resolveBase(ctx, repo, req.Base)
 	if err != nil {
-		return CreateResult{}, ErrNoCommits
+		return CreateResult{}, err
 	}
-	base = strings.TrimSpace(base)
+	base := baseResult.Commit
 	rel, err := filepath.Rel(repo, source)
 	// A folder named with ".." anywhere is refused too, so the worktree's
 	// working folder can never point outside the worktree.
@@ -186,7 +221,7 @@ func (m *Manager) Create(ctx context.Context, req CreateRequest) (CreateResult, 
 	if err := os.MkdirAll(wt.Dir, 0o755); err != nil {
 		return CreateResult{}, err
 	}
-	result := CreateResult{Worktree: wt}
+	result := CreateResult{Worktree: wt, Base: baseResult}
 	if err := m.writeRecord(sessionID, wt); err != nil {
 		_ = m.remove(ctx, wt, true)
 		return CreateResult{}, err
@@ -410,6 +445,75 @@ func commitIdentity(ctx context.Context, dir string) []string {
 		args = append(args, "-c", "user.email=tars@localhost")
 	}
 	return args
+}
+
+// remoteFetchTimeout bounds how long Create waits on "git fetch origin"
+// when resolving BaseRemoteDefault: long enough for a normal fetch, short
+// enough that an unreachable remote does not stall session creation.
+const remoteFetchTimeout = 20 * time.Second
+
+// resolveBase decides what commit Create branches the worktree from. base
+// is a CreateRequest.Base value: "" keeps the existing HEAD behavior;
+// BaseRemoteDefault tries the fetched origin remote's default branch and
+// falls back to HEAD, recording why.
+func resolveBase(ctx context.Context, repo, base string) (BaseResult, error) {
+	if base != BaseRemoteDefault {
+		head, err := headCommit(ctx, repo)
+		if err != nil {
+			return BaseResult{}, err
+		}
+		return BaseResult{Commit: head}, nil
+	}
+	ref, commit, fallback := resolveRemoteDefaultBase(ctx, repo)
+	if fallback == "" {
+		return BaseResult{Ref: ref, Commit: commit}, nil
+	}
+	head, err := headCommit(ctx, repo)
+	if err != nil {
+		return BaseResult{}, err
+	}
+	return BaseResult{Commit: head, Fallback: fallback}, nil
+}
+
+func headCommit(ctx context.Context, repo string) (string, error) {
+	out, err := git(ctx, repo, "rev-parse", "--verify", "HEAD^{commit}")
+	if err != nil {
+		return "", ErrNoCommits
+	}
+	return strings.TrimSpace(out), nil
+}
+
+// resolveRemoteDefaultBase fetches "origin" and resolves its default
+// branch: origin/HEAD's target, else origin/main, else origin/master. It
+// never fails outright — an unresolved base reports a fallback reason
+// instead, so the caller falls back to HEAD and can tell the developer why.
+func resolveRemoteDefaultBase(ctx context.Context, repo string) (ref, commit, fallback string) {
+	if _, err := git(ctx, repo, "remote", "get-url", "origin"); err != nil {
+		return "", "", BaseFallbackNoRemote
+	}
+	fetchCtx, cancel := context.WithTimeout(ctx, remoteFetchTimeout)
+	defer cancel()
+	if _, err := git(fetchCtx, repo, "fetch", "origin", "--prune", "--quiet"); err != nil {
+		return "", "", BaseFallbackFetchFailed
+	}
+	var candidates []string
+	if out, err := git(ctx, repo, "rev-parse", "--abbrev-ref", "origin/HEAD"); err == nil {
+		if name := strings.TrimSpace(out); name != "" {
+			candidates = append(candidates, name)
+		}
+	}
+	candidates = append(candidates, "origin/main", "origin/master")
+	seen := map[string]bool{}
+	for _, cand := range candidates {
+		if cand == "" || seen[cand] {
+			continue
+		}
+		seen[cand] = true
+		if out, err := git(ctx, repo, "rev-parse", "--verify", cand+"^{commit}"); err == nil {
+			return cand, strings.TrimSpace(out), ""
+		}
+	}
+	return "", "", BaseFallbackNoDefaultBranch
 }
 
 func freeBranch(ctx context.Context, repo, want string) (string, error) {

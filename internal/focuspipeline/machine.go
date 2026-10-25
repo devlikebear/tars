@@ -108,6 +108,18 @@ type Event struct {
 	// SecondOpinion is the second opinion review's result
 	// (EventSecondOpinion).
 	SecondOpinion *SecondOpinionResult
+	// FixUnchanged is EventTurnCompleted's server-checked fact (tars
+	// dogfooding fix #2, focusprobe.WorkTreeState compared before and
+	// after the turn) that a review stage's fix turn left the working
+	// tree exactly as it was: no commit, no edited or new file. It is
+	// never set from the turn's own report — the model's claim that it
+	// "found nothing to fix" is not trusted, only git state is. The zero
+	// value (false, including every event that is not a review stage's
+	// fix turn, and a check the server could not run) is today's
+	// behavior: the turn still counts as having fixed something, so
+	// verification passing starts a new review round (and the stage's
+	// iteration limit applies as before).
+	FixUnchanged bool
 }
 
 // Action is what the server should do next.
@@ -239,6 +251,11 @@ func applyTurn(p Pipeline, ev Event, now time.Time) (Pipeline, Action) {
 		p.Plan = &plan
 		p.addCard(CardGate, ev.Turn, "Approve plan", plan, now)
 		p.OpenGate = GatePlan
+		if p.hasStageKind(StagePR) {
+			if titles := tasksPushingOrOpeningPR(plan.Tasks); len(titles) > 0 {
+				p.addCard(CardNotice, ev.Turn, NoticePlanPushesOrOpensPR, map[string]any{"errors": titles}, now)
+			}
+		}
 	}
 	if b.Report != nil {
 		p.addCard(CardReport, ev.Turn, reportTitle(*b.Report), *b.Report, now)
@@ -269,7 +286,7 @@ func applyTurn(p Pipeline, ev Event, now time.Time) (Pipeline, Action) {
 	} else if kind == StageBuild {
 		buildTurnAction(&p, Blocks{})
 	} else if kind == StageReview && !missing {
-		act = reviewTurnAction(&p, b, ev.Turn, now)
+		act = reviewTurnAction(&p, b, ev.Turn, now, ev.FixUnchanged)
 	}
 	if missing {
 		p.addCard(CardNotice, ev.Turn, NoticeFormatMissing, map[string]any{"errors": nonNil(b.Errors)}, now)

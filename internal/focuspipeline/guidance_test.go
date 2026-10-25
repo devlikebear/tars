@@ -138,3 +138,40 @@ func TestGuidanceFollowsThePRWait(t *testing.T) {
 		})
 	}
 }
+
+// TestGuidanceWarnsAgainstPushAndPRInPlanAndBuild is tars dogfooding fix
+// #3: plan and build guidance tell the agent push and `gh pr create`
+// belong to the pr stage only, and a template with no pr stage at all
+// (writing, research) never mentions pull requests.
+func TestGuidanceWarnsAgainstPushAndPRInPlanAndBuild(t *testing.T) {
+	const warning = "Push the branch and open the pull request only in the pr stage"
+	if got := Guidance(atStage(t, StagePlan)); !strings.Contains(got, warning) {
+		t.Fatalf("plan guidance lacks the push/PR warning:\n%s", got)
+	}
+	if got := Guidance(atStage(t, StageBuild)); !strings.Contains(got, warning) {
+		t.Fatalf("build guidance lacks the push/PR warning:\n%s", got)
+	}
+	// Later stages' own instructions already say what to do with the PR;
+	// they do not repeat the plan/build warning.
+	for _, stage := range []StageID{StageReview, StagePR, StagePRReview, StageMerge} {
+		if got := Guidance(atStage(t, stage)); strings.Contains(got, "only in the pr stage") {
+			t.Errorf("%s guidance should not repeat the plan/build warning:\n%s", stage, got)
+		}
+	}
+
+	// A template with no pr stage at all never gets the warning (nor
+	// anything else about pushing or pull requests, beyond the language
+	// rule's fixed mention of writing a PR title and body, present in
+	// every stage's guidance regardless of template).
+	noPR := Template{ID: "x", Name: "x", Stages: []TemplateStage{{ID: StagePlan}, {ID: "draft", Kind: StageBuild}}}
+	p := NewFromTemplate("s1", "goal", noPR, t0)
+	if got := Guidance(p); strings.Contains(got, warning) || strings.Contains(got, "Push the branch") {
+		t.Fatalf("a pipeline with no pr stage should not get the push/PR warning (plan):\n%s", got)
+	}
+	p.Plan = testPlan()
+	p.Current = "draft"
+	p.Stages[1].Status, p.Stages[1].Iteration, p.Stages[1].Limit = StatusActive, 1, 5
+	if got := Guidance(p); strings.Contains(got, warning) || strings.Contains(got, "Push the branch") {
+		t.Fatalf("a pipeline with no pr stage should not get the push/PR warning (build):\n%s", got)
+	}
+}

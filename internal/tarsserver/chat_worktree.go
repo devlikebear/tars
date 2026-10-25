@@ -126,6 +126,9 @@ type worktreeNotice struct {
 	Copied []string
 	// Pending lists includes still being copied in the background.
 	Pending []string
+	// Base is what commit the worktree actually branched from (empty Ref
+	// and Fallback mean the ordinary HEAD branch-off).
+	Base sessionworktree.BaseResult
 }
 
 // beginTurn runs before a turn in sessionID. It takes the repository lease,
@@ -148,7 +151,7 @@ func (c *chatWorktrees) beginTurn(ctx context.Context, sessionID string, unatten
 	}
 	auto := sess.Isolation != session.IsolationOff
 	if unattended && auto {
-		notice, err := c.isolate(ctx, sess, "unattended", "")
+		notice, err := c.isolate(ctx, sess, "unattended", "", "")
 		if err == nil {
 			return notice, noop
 		}
@@ -161,15 +164,20 @@ func (c *chatWorktrees) beginTurn(ctx context.Context, sessionID string, unatten
 	if !auto {
 		return nil, noop
 	}
-	notice, err := c.isolate(ctx, sess, "lease", holder)
+	notice, err := c.isolate(ctx, sess, "lease", holder, "")
 	if err != nil {
 		return nil, noop
 	}
 	return notice, noop
 }
 
-// isolate moves sess into a new worktree of its current folder.
-func (c *chatWorktrees) isolate(ctx context.Context, sess session.Session, reason, holder string) (*worktreeNotice, error) {
+// isolate moves sess into a new worktree of its current folder. base is a
+// sessionworktree.CreateRequest.Base value: "" branches from HEAD as
+// always; sessionworktree.BaseRemoteDefault (used only by a feature-kind
+// focus pipeline's own isolation, #1 of the dogfooding fixes) branches from
+// the fetched origin remote's default branch instead, falling back to HEAD
+// when that cannot be resolved (reported in the returned notice's Base).
+func (c *chatWorktrees) isolate(ctx context.Context, sess session.Session, reason, holder, base string) (*worktreeNotice, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	current, err := c.store.Get(sess.ID)
@@ -188,6 +196,7 @@ func (c *chatWorktrees) isolate(ctx context.Context, sess session.Session, reaso
 		SourceDir: source,
 		Include:   c.include(current),
 		Reason:    reason,
+		Base:      base,
 	})
 	if err != nil {
 		return nil, err
@@ -210,8 +219,14 @@ func (c *chatWorktrees) isolate(ctx context.Context, sess session.Session, reaso
 	if len(created.Pending) > 0 {
 		details["pending"] = created.Pending
 	}
+	if created.Base.Ref != "" {
+		details["base_ref"] = created.Base.Ref
+	}
+	if created.Base.Fallback != "" {
+		details["base_fallback"] = created.Base.Fallback
+	}
 	c.record(current.ID, source, "isolated", details)
-	return &worktreeNotice{Worktree: created.Worktree, Holder: holder, Copied: created.Copied, Pending: created.Pending}, nil
+	return &worktreeNotice{Worktree: created.Worktree, Holder: holder, Copied: created.Copied, Pending: created.Pending, Base: created.Base}, nil
 }
 
 // watchIncludes records the includes that finish copying after the turn
@@ -423,7 +438,7 @@ func newSessionWorktreeHandler(c *chatWorktrees) http.Handler {
 			var result map[string]any
 			switch body.Action {
 			case "isolate":
-				notice, isoErr := c.isolate(r.Context(), sess, "manual", "")
+				notice, isoErr := c.isolate(r.Context(), sess, "manual", "", "")
 				err = isoErr
 				if notice != nil {
 					result = map[string]any{"branch": notice.Worktree.Branch, "copied": notice.Copied, "pending": notice.Pending}
