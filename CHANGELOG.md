@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.66.1] - 2026-10-26
+
+### Security
+
+- **Builds use Go 1.27.3.** `go.mod` pins `toolchain go1.27.3`, so local builds and CI pick up the October 2026 standard-library security fixes (crypto/tls, html/template, net/http, os, and crypto/x509 blocking eight compromised intermediate CA keys). The `go` directive is unchanged. ([#1300](https://github.com/devlikebear/tars/pull/1300))
+
 ### Fixed
 
 - **A feature pipeline's isolated worktree branches from the remote's default branch, not the checkout's own HEAD.** `isolate: true` on a focus pipeline (kind `""`) now fetches `origin` and branches from its default branch (`origin/HEAD`'s target, else `origin/main`, else `origin/master`); a checkout sitting on an unrelated feature branch with local commits no longer carries them into the review diff or the PR. A missing/unreachable remote, or no default branch resolving, falls back to the checkout's HEAD as before; the create response's `worktree_base` always says which, and a notice card too when a *configured* remote could not be fetched or resolved (no remote at all is ordinary and stays silent). A release pipeline and a plain chat session's own isolation (the ⑂ chip, folder-based new chat) are unchanged.
