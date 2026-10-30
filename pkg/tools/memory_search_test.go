@@ -326,3 +326,47 @@ func TestMemorySearchTool_NoTranscriptSourceMeansNoSessionSearch(t *testing.T) {
 		t.Fatalf("want the honest 'no memory sources found', got %s", result.Text())
 	}
 }
+
+func TestMemorySearchTool_HybridKeepsKeywordHitWhenSemanticFillsLimit(t *testing.T) {
+	root := t.TempDir()
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "MEMORY.md"), []byte("Deploy key rotation happens every Friday.\n"), 0o644); err != nil {
+		t.Fatalf("write MEMORY.md: %v", err)
+	}
+	semantic := memory.NewService(root, memory.ServiceOptions{
+		Config: memory.SemanticConfig{
+			Enabled:         true,
+			EmbedProvider:   "openai",
+			EmbedBaseURL:    "http://127.0.0.1:1/v1",
+			EmbedModel:      "local",
+			EmbedDimensions: 3,
+		},
+		Embedder: searchStubEmbedder{
+			vectors: map[string][]float64{
+				"RETRIEVAL_DOCUMENT|User likes hiking on weekends.":  {0.2, 0.9, 0.1},
+				"RETRIEVAL_DOCUMENT|User keeps a sourdough starter.": {0.1, 0.2, 0.9},
+				"RETRIEVAL_QUERY|deploy key rotation":                {0.5, 0.5, 0.5},
+			},
+		},
+	})
+	for i, summary := range []string{"User likes hiking on weekends.", "User keeps a sourdough starter."} {
+		if err := semantic.IndexExperience(context.Background(), memory.Experience{
+			Timestamp: time.Date(2026, 3, 20, 8, i, 0, 0, time.UTC),
+			Category:  "fact",
+			Summary:   summary,
+		}); err != nil {
+			t.Fatalf("index experience: %v", err)
+		}
+	}
+
+	tl := NewMemorySearchTool(root, memory.NewFileBackend(root, semantic))
+	result, err := tl.Execute(context.Background(), json.RawMessage(`{"query":"deploy key rotation","limit":2}`))
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if !strings.Contains(result.Text(), "Deploy key rotation happens every Friday") {
+		t.Fatalf("expected exact keyword hit to survive when semantic hits fill the limit, got %q", result.Text())
+	}
+}

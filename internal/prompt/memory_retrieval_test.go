@@ -256,3 +256,48 @@ func TestBuildResultFor_ExposesPriorContextPreviewItems(t *testing.T) {
 		}
 	}
 }
+
+func TestBuild_HybridKeepsKeywordHitsAlongsideSemanticHits(t *testing.T) {
+	root := t.TempDir()
+	if err := memory.EnsureWorkspace(root); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+	if err := memory.AppendDailyLog(root, time.Date(2026, 3, 6, 9, 0, 0, 0, time.UTC), "user ordered coffee beans from the roastery"); err != nil {
+		t.Fatalf("append daily log: %v", err)
+	}
+	semantic := memory.NewService(root, memory.ServiceOptions{
+		Config: memory.SemanticConfig{
+			Enabled:         true,
+			EmbedProvider:   "openai",
+			EmbedBaseURL:    "http://127.0.0.1:1/v1",
+			EmbedModel:      "local",
+			EmbedDimensions: 3,
+		},
+		Embedder: promptStubEmbedder{
+			vectors: map[string][]float64{
+				"RETRIEVAL_DOCUMENT|User prefers decaf espresso during late-night sessions.": {0.95, 0.05, 0.0},
+				"RETRIEVAL_QUERY|what coffee should I order without caffeine tonight?":       {0.94, 0.06, 0.0},
+			},
+		},
+	})
+	if err := semantic.IndexExperience(context.Background(), memory.Experience{
+		Timestamp: time.Date(2026, 3, 20, 8, 0, 0, 0, time.UTC),
+		Category:  "preference",
+		Summary:   "User prefers decaf espresso during late-night sessions.",
+	}); err != nil {
+		t.Fatalf("index experience: %v", err)
+	}
+
+	result := Build(BuildOptions{
+		WorkspaceDir:   root,
+		Query:          "what coffee should I order without caffeine tonight?",
+		MemorySearcher: semantic,
+	})
+
+	if !strings.Contains(result, "decaf espresso") {
+		t.Fatalf("expected semantic hit, got %q", result)
+	}
+	if !strings.Contains(result, "coffee beans") {
+		t.Fatalf("expected keyword daily-log hit to survive alongside semantic hits, got %q", result)
+	}
+}

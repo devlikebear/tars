@@ -12,6 +12,7 @@ import (
 	"unicode"
 
 	"github.com/devlikebear/tars/internal/memory"
+	pkgmemory "github.com/devlikebear/tars/pkg/memory"
 )
 
 const (
@@ -127,34 +128,21 @@ type memorySearchFile struct {
 }
 
 func runMemorySearch(ctx context.Context, workspaceDir, query string, limit int, includeMemory, includeDaily, includeSessions bool, backend memory.Backend, transcripts TranscriptSource) ([]memorySearchMatch, string) {
-	results := make([]memorySearchMatch, 0, limit)
 	terms := memorySearchTerms(query)
-	seen := map[string]struct{}{}
-	appendMatch := func(candidate memorySearchCandidate) bool {
-		match := candidate.Match
-		key := strings.ToLower(strings.TrimSpace(match.Source + "|" + match.Snippet))
-		if match.Line > 0 {
-			key = fmt.Sprintf("%s|%d", key, match.Line)
-		}
-		if key == "|" {
-			return false
-		}
-		if _, exists := seen[key]; exists {
-			return false
-		}
-		seen[key] = struct{}{}
-		results = append(results, match)
-		return len(results) >= limit
-	}
 
+	// Semantic hits and keyword hits are merged by rank, not concatenated:
+	// the semantic backend has no relevance floor and returns `limit` hits
+	// whenever its index is non-empty, so putting them first used to crowd
+	// out exact keyword matches entirely.
+	semantic := make([]memorySearchCandidate, 0, limit)
 	if backend != nil {
 		hits, err := backend.Search(ctx, memory.SearchRequest{
 			Query: query,
 			Limit: limit,
 		})
-		if err == nil && len(hits) > 0 {
+		if err == nil {
 			for _, hit := range hits {
-				if appendMatch(memorySearchCandidate{
+				semantic = append(semantic, memorySearchCandidate{
 					Match: memorySearchMatch{
 						Source:  hit.Source,
 						Date:    hit.Date.UTC().Format("2006-01-02"),
@@ -163,9 +151,7 @@ func runMemorySearch(ctx context.Context, workspaceDir, query string, limit int,
 					},
 					Score:     1000,
 					Timestamp: hit.Date.UTC(),
-				}) {
-					return results, ""
-				}
+				})
 			}
 		}
 	}
@@ -183,8 +169,8 @@ func runMemorySearch(ctx context.Context, workspaceDir, query string, limit int,
 		candidates = append(candidates, searchMemoryFiles(files, query, terms, limit)...)
 	}
 
-	if includeSessions && len(results) < limit {
-		sessionResults, hasSessions := searchSessionTranscripts(transcripts, query, terms, limit-len(results))
+	if includeSessions {
+		sessionResults, hasSessions := searchSessionTranscripts(transcripts, query, terms, limit)
 		hasSearchableSource = hasSearchableSource || hasSessions
 		candidates = append(candidates, sessionResults...)
 	}
@@ -198,19 +184,32 @@ func runMemorySearch(ctx context.Context, workspaceDir, query string, limit int,
 		}
 		return candidates[i].Score > candidates[j].Score
 	})
-	for _, candidate := range candidates {
-		if appendMatch(candidate) {
-			return results, ""
-		}
+
+	fused := pkgmemory.FuseRanked(memorySearchCandidateKey, limit, semantic, candidates)
+	results := make([]memorySearchMatch, 0, len(fused))
+	for _, candidate := range fused {
+		results = append(results, candidate.Match)
 	}
 
 	if len(results) == 0 {
-		if !hasSearchableSource {
+		if !hasSearchableSource && len(semantic) == 0 {
 			return nil, "no memory sources found"
 		}
 		return nil, "no matches found"
 	}
 	return results, ""
+}
+
+func memorySearchCandidateKey(candidate memorySearchCandidate) string {
+	match := candidate.Match
+	key := strings.ToLower(strings.TrimSpace(match.Source + "|" + match.Snippet))
+	if key == "|" {
+		return ""
+	}
+	if match.Line > 0 {
+		key = fmt.Sprintf("%s|%d", key, match.Line)
+	}
+	return key
 }
 
 // searchSessionTranscripts reads past conversations through the caller's
