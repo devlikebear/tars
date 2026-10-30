@@ -29,6 +29,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/devlikebear/tars/internal/config"
 )
 
 //go:embed assets/server.py assets/download.py
@@ -113,6 +115,54 @@ type Manager struct {
 // DirFor is the sidecar directory inside a workspace.
 func DirFor(workspaceDir string) string {
 	return filepath.Join(workspaceDir, "_shared", "local-embed")
+}
+
+// OptionsForConfig names the configured local model, or the local defaults
+// when another provider is configured, so the model can be installed before
+// it is enabled.
+func OptionsForConfig(cfg config.Config) Options {
+	opts := Options{
+		Dir:     DirFor(cfg.WorkspaceDir),
+		Model:   config.DefaultLocalEmbedModel,
+		BaseURL: config.DefaultLocalEmbedBaseURL,
+	}
+	if IsSelected(cfg) {
+		opts.Model, opts.BaseURL = cfg.MemoryEmbedModel, cfg.MemoryEmbedBaseURL
+	}
+	return opts
+}
+
+// IsSelected reports whether the config names the local provider, whether or
+// not semantic memory is on.
+func IsSelected(cfg config.Config) bool {
+	return strings.ToLower(strings.TrimSpace(cfg.MemoryEmbedProvider)) == "local"
+}
+
+// Enabled reports whether semantic memory runs on the local provider.
+func Enabled(cfg config.Config) bool {
+	return cfg.MemorySemanticEnabled && IsSelected(cfg)
+}
+
+// EnableUpdates are the config changes that turn the local provider on.
+// Another provider's endpoint, model and size would not fit the local model,
+// so they are reset to the local defaults.
+func EnableUpdates(cfg config.Config) map[string]any {
+	updates := map[string]any{
+		"memory_semantic_enabled": true,
+		"memory_embed_provider":   "local",
+	}
+	if !IsSelected(cfg) {
+		updates["memory_embed_base_url"] = ""
+		updates["memory_embed_model"] = ""
+		updates["memory_embed_dimensions"] = config.DefaultLocalEmbedDimensions
+	}
+	return updates
+}
+
+// DisableUpdates turn semantic memory off, keeping the provider so enabling
+// again is one step.
+func DisableUpdates() map[string]any {
+	return map[string]any{"memory_semantic_enabled": false}
 }
 
 // New validates opts and returns a Manager.
@@ -305,7 +355,20 @@ func (m *Manager) Install(ctx context.Context, out io.Writer) error {
 	if !m.modelInstalled() {
 		return fmt.Errorf("download finished but no weights were found in %s", m.modelDir())
 	}
+	m.removeIncompleteDownloads()
 	return nil
+}
+
+// removeIncompleteDownloads deletes what an interrupted download left behind.
+// A new attempt can start a fresh temporary file instead of resuming the old
+// one, which would otherwise keep its gigabytes for good.
+func (m *Manager) removeIncompleteDownloads() {
+	_ = filepath.WalkDir(m.hfHome(), func(path string, d os.DirEntry, err error) error {
+		if err == nil && !d.IsDir() && strings.HasSuffix(d.Name(), ".incomplete") {
+			_ = os.Remove(path)
+		}
+		return nil
+	})
 }
 
 func (m *Manager) writeAssets() error {

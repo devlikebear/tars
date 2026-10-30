@@ -553,6 +553,7 @@ pkg/memory field MemoryEntry.Tags
 pkg/memory field MemoryEntry.UpdatedAt
 pkg/memory field MemoryNote.Text
 pkg/memory field MemoryNote.Timestamp
+pkg/memory field ReindexResult.Embedded
 pkg/memory field SearchHit.Date
 pkg/memory field SearchHit.Entry
 pkg/memory field SearchHit.Score
@@ -616,6 +617,8 @@ pkg/memory method Service.IndexCompactionMemories
 pkg/memory method Service.IndexCompactionSummary
 pkg/memory method Service.IndexExperience
 pkg/memory method Service.LoadEntries
+pkg/memory method Service.Reindex
+pkg/memory method Service.ReindexPending
 pkg/memory method Service.Search
 pkg/memory type Backend
 pkg/memory type CompactionMemory
@@ -633,6 +636,7 @@ pkg/memory type MemoryCandidateReview
 pkg/memory type MemoryCandidateStatus
 pkg/memory type MemoryEntry
 pkg/memory type MemoryNote
+pkg/memory type ReindexResult
 pkg/memory type SearchHit
 pkg/memory type SearchOptions
 pkg/memory type SearchRequest

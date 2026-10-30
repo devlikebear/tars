@@ -11,6 +11,7 @@ import { sideSessionKo } from './sections/sideSession.ts'
 import { sessionWorktreeKo } from './sections/sessionWorktree.ts'
 import { newChatFolderKo } from './sections/newChatFolder.ts'
 import { providerTestKo } from './sections/providerTest.ts'
+import { localEmbedKo } from './sections/localEmbed.ts'
 import { focusKo } from './sections/focus.ts'
 import { chatApprovalKo } from './sections/chatApproval.ts'
 import { sessionBoardKo } from './sections/sessionBoard.ts'
@@ -1521,6 +1522,7 @@ export const ko = {
   newChatFolder: newChatFolderKo,
   setupDiscovery: setupDiscoveryKo,
   providerTest: providerTestKo,
+  localEmbed: localEmbedKo,
   focus: focusKo,
   chatApproval: chatApprovalKo,
   sessionBoard: sessionBoardKo,

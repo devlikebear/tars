@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -97,18 +98,7 @@ func newEmbedCommand(stdout io.Writer) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			updates := map[string]any{
-				"memory_semantic_enabled": true,
-				"memory_embed_provider":   "local",
-			}
-			// Another provider's endpoint, model and size would not fit the
-			// local model; clearing them lets the local defaults apply.
-			if memory.NormalizeEmbedProvider(cfg.MemoryEmbedProvider) != "local" {
-				updates["memory_embed_base_url"] = ""
-				updates["memory_embed_model"] = ""
-				updates["memory_embed_dimensions"] = config.DefaultLocalEmbedDimensions
-			}
-			if err := config.PatchYAML(configPath, updates); err != nil {
+			if err := config.PatchYAML(configPath, localembed.EnableUpdates(cfg)); err != nil {
 				return fmt.Errorf("update %s: %w", configPath, err)
 			}
 			fprintf(stdout, "Enabled local semantic memory in %s.\n", configPath)
@@ -116,6 +106,49 @@ func newEmbedCommand(stdout io.Writer) *cobra.Command {
 				fprintln(stdout, "The model is not installed yet: run `tars embed install`.")
 			}
 			fprintln(stdout, "Restart TARS to apply (`tars service stop && tars service start`, or restart `tars serve`).")
+			return nil
+		},
+	})
+
+	cmd.AddCommand(&cobra.Command{
+		Use:          "reindex",
+		Short:        "Embed memories the current model has no vectors for (after a model change, or ones saved while off)",
+		SilenceUsage: true,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			cfg, _, mgr, err := loadEmbedManager(opts)
+			if err != nil {
+				return err
+			}
+			if !localembed.Enabled(cfg) {
+				return errors.New("local semantic memory is off; run `tars embed enable` first")
+			}
+			ctx := cmd.Context()
+			// A running server's sidecar is adopted and left running.
+			wasRunning := mgr.Status(ctx).Running
+			if err := mgr.Start(ctx); err != nil {
+				return err
+			}
+			if !wasRunning {
+				defer mgr.Stop()
+			}
+			svc := memory.NewService(cfg.WorkspaceDir, memory.ServiceOptions{Config: memory.SemanticConfig{
+				Enabled:         true,
+				EmbedProvider:   cfg.MemoryEmbedProvider,
+				EmbedBaseURL:    cfg.MemoryEmbedBaseURL,
+				EmbedAPIKey:     cfg.MemoryEmbedAPIKey,
+				EmbedModel:      cfg.MemoryEmbedModel,
+				EmbedDimensions: cfg.MemoryEmbedDimensions,
+			}})
+			result, err := svc.Reindex(ctx, func(done, total int) {
+				fprintf(stdout, "\r%d/%d", done, total)
+			})
+			if result.Embedded > 0 {
+				fprintln(stdout)
+			}
+			if err != nil {
+				return fmt.Errorf("reindex stopped after %d entries (run it again to resume): %w", result.Embedded, err)
+			}
+			fprintf(stdout, "Reindexed %d memories.\n", result.Embedded)
 			return nil
 		},
 	})
@@ -129,7 +162,7 @@ func newEmbedCommand(stdout io.Writer) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := config.PatchYAML(configPath, map[string]any{"memory_semantic_enabled": false}); err != nil {
+			if err := config.PatchYAML(configPath, localembed.DisableUpdates()); err != nil {
 				return fmt.Errorf("update %s: %w", configPath, err)
 			}
 			mgr.Stop()
@@ -152,23 +185,11 @@ func loadEmbedManager(opts *embedOptions) (config.Config, string, *localembed.Ma
 	if err != nil {
 		return config.Config{}, "", nil, fmt.Errorf("load %s: %w", configPath, err)
 	}
-	model, baseURL := config.DefaultLocalEmbedModel, config.DefaultLocalEmbedBaseURL
-	if memory.NormalizeEmbedProvider(cfg.MemoryEmbedProvider) == "local" {
-		model, baseURL = cfg.MemoryEmbedModel, cfg.MemoryEmbedBaseURL
-	}
-	mgr, err := embedManagerFactory(localembed.Options{
-		Dir:     localembed.DirFor(cfg.WorkspaceDir),
-		Model:   model,
-		BaseURL: baseURL,
-	})
+	mgr, err := embedManagerFactory(localembed.OptionsForConfig(cfg))
 	if err != nil {
 		return config.Config{}, "", nil, err
 	}
 	return cfg, configPath, mgr, nil
-}
-
-func localEmbedEnabled(cfg config.Config) bool {
-	return cfg.MemorySemanticEnabled && memory.NormalizeEmbedProvider(cfg.MemoryEmbedProvider) == "local"
 }
 
 func printEmbedStatus(w io.Writer, cfg config.Config, st localembed.Status) {
@@ -178,7 +199,7 @@ func printEmbedStatus(w io.Writer, cfg config.Config, st localembed.Status) {
 		}
 		return "no"
 	}
-	fprintf(w, "enabled:   %s\n", yesNo(localEmbedEnabled(cfg)))
+	fprintf(w, "enabled:   %s\n", yesNo(localembed.Enabled(cfg)))
 	fprintf(w, "model:     %s\n", st.Model)
 	fprintf(w, "installed: %s", yesNo(st.ModelInstalled))
 	if st.ModelInstalled {

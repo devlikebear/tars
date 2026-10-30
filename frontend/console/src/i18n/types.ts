@@ -10,6 +10,7 @@ import type { SideSessionTranslations } from './sections/sideSession.ts'
 import type { SessionWorktreeTranslations } from './sections/sessionWorktree.ts'
 import type { NewChatFolderTranslations } from './sections/newChatFolder.ts'
 import type { ProviderTestTranslations } from './sections/providerTest.ts'
+import type { LocalEmbedTranslations } from './sections/localEmbed.ts'
 import type { FocusTranslations } from './sections/focus.ts'
 import type { ChatApprovalTranslations } from './sections/chatApproval.ts'
 import type { SessionBoardTranslations } from './sections/sessionBoard.ts'
@@ -1465,6 +1466,7 @@ export type Translations = {
   newChatFolder: NewChatFolderTranslations
   setupDiscovery: SetupDiscoveryTranslations
   providerTest: ProviderTestTranslations
+  localEmbed: LocalEmbedTranslations
   focus: FocusTranslations
   chatApproval: ChatApprovalTranslations
   sessionBoard: SessionBoardTranslations

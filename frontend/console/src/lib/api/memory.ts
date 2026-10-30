@@ -1,5 +1,7 @@
 import { requestJSON } from './client.ts'
 import type {
+  LocalEmbedAction,
+  LocalEmbedState,
   MemoryAsset,
   MemoryCandidateAction,
   MemoryCandidateListResponse,
@@ -93,4 +95,12 @@ export async function saveSyspromptFile(scope: 'workspace' | 'agent', path: stri
 
 export async function getSyspromptPreview(target: 'main_agent' | 'sub_agent' = 'main_agent'): Promise<SyspromptPreview> {
   return requestJSON<SyspromptPreview>(`/v1/admin/sysprompt/preview?target=${encodeURIComponent(target)}`)
+}
+
+export async function getLocalEmbed(signal?: AbortSignal): Promise<LocalEmbedState> {
+  return requestJSON<LocalEmbedState>('/v1/admin/local-embed', { signal })
+}
+
+export async function runLocalEmbedAction(action: LocalEmbedAction): Promise<LocalEmbedState> {
+  return requestJSON<LocalEmbedState>(`/v1/admin/local-embed/${action}`, { method: 'POST' })
 }

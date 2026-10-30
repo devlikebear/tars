@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte'
   import { locale, t } from '../i18n'
+  import LocalEmbedPanel from './LocalEmbedPanel.svelte'
   import {
     getMemoryFile,
     listMemoryInbox,
@@ -26,13 +27,14 @@
 
   interface Props {
     onAskAI?: (prompt: string) => void
+    authRole?: string
   }
 
-  let { onAskAI }: Props = $props()
+  let { onAskAI, authRole = '' }: Props = $props()
 
   const MEMORY_INTRO_STORAGE_KEY = 'tars.memory.intro.dismissed'
   type MemorySearchMode = 'tool' | 'prefetch'
-  type MemoryTab = 'inbox' | 'durable' | 'search'
+  type MemoryTab = 'inbox' | 'durable' | 'search' | 'localEmbed'
 
   let activeTab = $state<MemoryTab>('inbox')
   let error = $state('')
@@ -386,6 +388,9 @@
     <button class="tab-btn" class:active={activeTab === 'inbox'} type="button" onclick={() => { activeTab = 'inbox' }}>{$t.memory.tabs.inbox}</button>
     <button class="tab-btn" class:active={activeTab === 'durable'} type="button" onclick={() => { activeTab = 'durable' }}>{$t.memory.tabs.storedKnowledge}</button>
     <button class="tab-btn" class:active={activeTab === 'search'} type="button" onclick={() => { activeTab = 'search' }}>{$t.memory.tabs.trySearch}</button>
+    {#if authRole !== 'user'}
+      <button class="tab-btn" class:active={activeTab === 'localEmbed'} type="button" onclick={() => { activeTab = 'localEmbed' }}>{$t.localEmbed.tab}</button>
+    {/if}
   </div>
 
   {#if activeTab === 'inbox'}
@@ -462,6 +467,8 @@
         </div>
       {/if}
     </section>
+  {:else if activeTab === 'localEmbed'}
+    <LocalEmbedPanel />
   {:else if activeTab === 'durable'}
     <div class="memory-layout">
       <aside class="assets-panel card">
