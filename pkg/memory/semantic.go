@@ -29,10 +29,21 @@ var ErrSemanticUnavailable = errors.New("semantic memory is unavailable")
 
 type embedderFactory func(SemanticConfig, *http.Client) Embedder
 
-var embedderFactories = map[string]embedderFactory{
-	"gemini": func(cfg SemanticConfig, client *http.Client) Embedder {
-		return newGeminiEmbedder(cfg, client)
-	},
+type embedProvider struct {
+	newEmbedder embedderFactory
+	// requiresAPIKey is false for providers that may point at a local
+	// server with no credentials.
+	requiresAPIKey bool
+}
+
+var embedderFactories = map[string]embedProvider{
+	"gemini": {newEmbedder: newGeminiEmbedder, requiresAPIKey: true},
+	"openai": {newEmbedder: newOpenAIEmbedder},
+}
+
+func embedProviderRequiresAPIKey(provider string) bool {
+	p, ok := embedderFactories[NormalizeEmbedProvider(provider)]
+	return !ok || p.requiresAPIKey
 }
 
 type SemanticConfig struct {
@@ -60,7 +71,7 @@ func (cfg SemanticConfig) ready() bool {
 	return cfg.Enabled &&
 		cfg.EmbedProvider != "" &&
 		cfg.EmbedBaseURL != "" &&
-		cfg.EmbedAPIKey != "" &&
+		(cfg.EmbedAPIKey != "" || !embedProviderRequiresAPIKey(cfg.EmbedProvider)) &&
 		cfg.EmbedModel != "" &&
 		cfg.EmbedDimensions > 0
 }
@@ -101,7 +112,7 @@ func ValidateSemanticConfig(cfg SemanticConfig) error {
 	switch {
 	case cfg.EmbedBaseURL == "":
 		return fmt.Errorf("semantic memory enabled but memory_embed_base_url is empty")
-	case cfg.EmbedAPIKey == "":
+	case cfg.EmbedAPIKey == "" && embedProviderRequiresAPIKey(cfg.EmbedProvider):
 		return fmt.Errorf("semantic memory enabled but memory_embed_api_key is empty")
 	case cfg.EmbedModel == "":
 		return fmt.Errorf("semantic memory enabled but memory_embed_model is empty")
@@ -190,8 +201,8 @@ func NewService(root string, opts ServiceOptions) *Service {
 	}
 	embedder := opts.Embedder
 	if embedder == nil && cfg.ready() {
-		if factory, ok := embedderFactories[cfg.EmbedProvider]; ok {
-			embedder = factory(cfg, opts.HTTPClient)
+		if provider, ok := embedderFactories[cfg.EmbedProvider]; ok {
+			embedder = provider.newEmbedder(cfg, opts.HTTPClient)
 		}
 	}
 	return &Service{

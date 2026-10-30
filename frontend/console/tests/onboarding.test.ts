@@ -447,6 +447,12 @@ test('validateIntegrationsStep flags missing api_key when provider is set', () =
   assert.ok(errs.some((e) => /api key/i.test(e)), errs.join(' | '))
 })
 
+test('validateIntegrationsStep lets the openai provider run without an api_key', () => {
+  const form = emptyOnboardingForm()
+  form.integrations.memory_embed_provider = ' OpenAI '
+  assert.equal(validateIntegrationsStep(form).length, 0)
+})
+
 test('buildIntegrationsPayload omits empty fields and api_key when keep flag set', () => {
   const form = emptyOnboardingForm()
   form.integrations.memory_embed_provider = 'gemini'
