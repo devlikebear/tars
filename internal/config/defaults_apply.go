@@ -146,30 +146,60 @@ func normalizeLLMServiceTier(raw string) string {
 	}
 }
 
+// localEmbedProvider is the memory_embed_provider value for the embedding
+// sidecar TARS manages itself (internal/localembed).
+const localEmbedProvider = "local"
+
 func applyMemoryDefaults(cfg *Config, defaults Config) {
 	cfg.MemoryEmbedProvider = strings.TrimSpace(strings.ToLower(cfg.MemoryEmbedProvider))
 	if cfg.MemoryEmbedProvider == "" {
 		cfg.MemoryEmbedProvider = defaults.MemoryEmbedProvider
 	}
 	// The default endpoint and model belong to the default provider; another
-	// provider must not inherit Gemini's URL or model name.
+	// provider must not inherit Gemini's URL or model name. Load seeds the
+	// config with Default() before the file is merged, so a field the file
+	// leaves out arrives here holding Gemini's value: treat that value as
+	// unset. 768 is cleared for local only — it is not one of the default
+	// local model's sizes (1024/512/256/128), while it is a valid choice for
+	// an OpenAI model.
 	sameAsDefault := cfg.MemoryEmbedProvider == defaults.MemoryEmbedProvider
 	cfg.MemoryEmbedBaseURL = strings.TrimSpace(cfg.MemoryEmbedBaseURL)
+	cfg.MemoryEmbedModel = strings.TrimSpace(cfg.MemoryEmbedModel)
+	if !sameAsDefault {
+		if cfg.MemoryEmbedBaseURL == defaults.MemoryEmbedBaseURL {
+			cfg.MemoryEmbedBaseURL = ""
+		}
+		if cfg.MemoryEmbedModel == defaults.MemoryEmbedModel {
+			cfg.MemoryEmbedModel = ""
+		}
+		if cfg.MemoryEmbedProvider == localEmbedProvider && cfg.MemoryEmbedDimensions == defaults.MemoryEmbedDimensions {
+			cfg.MemoryEmbedDimensions = 0
+		}
+	}
 	if cfg.MemoryEmbedBaseURL == "" {
 		switch {
 		case sameAsDefault:
 			cfg.MemoryEmbedBaseURL = defaults.MemoryEmbedBaseURL
 		case cfg.MemoryEmbedProvider == llmdefaults.ProviderOpenAI:
 			cfg.MemoryEmbedBaseURL = llmdefaults.OpenAIBaseURL
+		case cfg.MemoryEmbedProvider == localEmbedProvider:
+			cfg.MemoryEmbedBaseURL = DefaultLocalEmbedBaseURL
 		}
 	}
 	cfg.MemoryEmbedAPIKey = strings.TrimSpace(cfg.MemoryEmbedAPIKey)
-	cfg.MemoryEmbedModel = strings.TrimSpace(cfg.MemoryEmbedModel)
-	if cfg.MemoryEmbedModel == "" && sameAsDefault {
-		cfg.MemoryEmbedModel = defaults.MemoryEmbedModel
+	if cfg.MemoryEmbedModel == "" {
+		switch {
+		case sameAsDefault:
+			cfg.MemoryEmbedModel = defaults.MemoryEmbedModel
+		case cfg.MemoryEmbedProvider == localEmbedProvider:
+			cfg.MemoryEmbedModel = DefaultLocalEmbedModel
+		}
 	}
 	if cfg.MemoryEmbedDimensions <= 0 {
 		cfg.MemoryEmbedDimensions = defaults.MemoryEmbedDimensions
+		if cfg.MemoryEmbedProvider == localEmbedProvider {
+			cfg.MemoryEmbedDimensions = DefaultLocalEmbedDimensions
+		}
 	}
 }
 

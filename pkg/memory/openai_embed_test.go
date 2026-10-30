@@ -175,3 +175,15 @@ func TestValidateSemanticConfig_GeminiStillRequiresAPIKey(t *testing.T) {
 		t.Fatalf("expected missing api key error, got %v", err)
 	}
 }
+
+func TestValidateSemanticConfig_LocalDoesNotRequireAPIKey(t *testing.T) {
+	if err := ValidateSemanticConfig(SemanticConfig{
+		Enabled:         true,
+		EmbedProvider:   "local",
+		EmbedBaseURL:    "http://127.0.0.1:43181/v1",
+		EmbedModel:      "kakaocorp/kanana-2-1.3b-embedding",
+		EmbedDimensions: 1024,
+	}); err != nil {
+		t.Fatalf("expected keyless local config to validate, got %v", err)
+	}
+}

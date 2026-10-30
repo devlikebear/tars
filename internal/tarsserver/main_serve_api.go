@@ -21,6 +21,7 @@ import (
 	"github.com/devlikebear/tars/internal/extensions"
 	"github.com/devlikebear/tars/internal/initiative"
 	"github.com/devlikebear/tars/internal/llm"
+	"github.com/devlikebear/tars/internal/localembed"
 	"github.com/devlikebear/tars/internal/mcp"
 	"github.com/devlikebear/tars/internal/notification"
 	"github.com/devlikebear/tars/internal/ops"
@@ -41,6 +42,9 @@ import (
 )
 
 type serveAPIRuntime struct {
+	// localEmbed is the embedding sidecar for memory_embed_provider: local;
+	// nil otherwise.
+	localEmbed              *localembed.Manager
 	cfg                     config.Config
 	configPath              string
 	mainSessionID           string
@@ -1053,6 +1057,7 @@ func startBackgrounds(ctx context.Context, runtime *serveAPIRuntime, logger zero
 
 	runtime.workLedgerMaintenance = startWorkLedgerMaintenance(ctx, runtime.workLedger, logger)
 	runtime.sessionRetentionWait = runtime.sessionRetention.start(ctx)
+	startLocalEmbed(ctx, runtime, logger)
 
 	if err := runBackgroundStartupStep(logger, "remote_access_reconcile", func() error {
 		reconcileRemoteAccessOnStart(ctx, runtime, logger)
@@ -1239,6 +1244,9 @@ func reconcileRemoteAccessOnStart(ctx context.Context, runtime *serveAPIRuntime,
 func shutdownRuntime(ctx context.Context, runtime *serveAPIRuntime) {
 	if runtime == nil {
 		return
+	}
+	if runtime.localEmbed != nil {
+		runtime.localEmbed.Stop()
 	}
 	// Focus runs start turns; stop them before the things turns use.
 	runtime.focusDriver.Close(ctx)

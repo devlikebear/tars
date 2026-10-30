@@ -26,7 +26,7 @@ func (s stubEmbedder) Embed(_ context.Context, req EmbedRequest) ([]float64, err
 
 func TestSupportedEmbedProviders(t *testing.T) {
 	got := SupportedEmbedProviders()
-	want := []string{"gemini", "openai"}
+	want := []string{"gemini", "local", "openai"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("expected supported providers %v, got %v", want, got)
 	}
@@ -44,7 +44,7 @@ func TestValidateSemanticConfigRejectsUnsupportedProvider(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected unsupported provider error")
 	}
-	if !strings.Contains(err.Error(), "supported providers: gemini, openai") {
+	if !strings.Contains(err.Error(), "supported providers: gemini, local, openai") {
 		t.Fatalf("expected supported provider guidance, got %v", err)
 	}
 }

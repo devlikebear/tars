@@ -39,6 +39,9 @@ type embedProvider struct {
 var embedderFactories = map[string]embedProvider{
 	"gemini": {newEmbedder: newGeminiEmbedder, requiresAPIKey: true},
 	"openai": {newEmbedder: newOpenAIEmbedder},
+	// local is the sidecar TARS runs itself (internal/localembed); it speaks
+	// the same OpenAI-compatible protocol on a loopback port.
+	"local": {newEmbedder: newOpenAIEmbedder},
 }
 
 func embedProviderRequiresAPIKey(provider string) bool {
