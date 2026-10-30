@@ -48,7 +48,7 @@ make console-e2e          # Playwright: rebuilt console + tars serve + mock LLM 
 | `initiative` | Speak-first loop (1-min, off by default, shadow only): Go signals + System One text signals → pure policy → ledger |
 | `ops` | System health, cleanup planning + approval workflow |
 | `llm` | Provider abstraction (anthropic/openai/openai-codex/gemini/gemini-native/claude-code-cli/antigravity-cli) + 3-tier Router |
-| `memory` | Semantic: Gemini embeddings, cosine similarity, JSONL entries |
+| `memory` | Semantic: Gemini or OpenAI-compatible (`openai`, key optional for local servers) embeddings, cosine similarity, JSONL entries |
 | `tool` | Core tool primitives: registry, policy, file ops, exec, web fetch/search, memory |
 | `apptool` | TARS app tools: agent runtime, sessions, subagents, cron, tasks, telegram, usage |
 | `serverauth` | Bearer token auth, SHA256, three tiers (legacy/user/admin), loopback bypass |

@@ -573,12 +573,15 @@ export function validateToolsStep(form: OnboardingFormState): string[] {
 
 // validateIntegrationsStep treats memory_embed as opt-in — only flag a
 // missing api_key when the user explicitly picked a provider, since an
-// empty provider means "use defaults / disable".
+// empty provider means "use defaults / disable". `openai` is exempt: it is
+// the OpenAI-compatible provider and often points at a keyless local server.
 export function validateIntegrationsStep(form: OnboardingFormState): string[] {
   const errs: string[] = []
   const i = form.integrations
+  const provider = i.memory_embed_provider.trim().toLowerCase()
   if (
-    i.memory_embed_provider.trim() !== '' &&
+    provider !== '' &&
+    provider !== 'openai' &&
     !i.keepMemoryEmbedKey &&
     i.memory_embed_api_key.trim() === ''
   ) {

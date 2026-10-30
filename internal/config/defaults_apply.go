@@ -151,13 +151,21 @@ func applyMemoryDefaults(cfg *Config, defaults Config) {
 	if cfg.MemoryEmbedProvider == "" {
 		cfg.MemoryEmbedProvider = defaults.MemoryEmbedProvider
 	}
+	// The default endpoint and model belong to the default provider; another
+	// provider must not inherit Gemini's URL or model name.
+	sameAsDefault := cfg.MemoryEmbedProvider == defaults.MemoryEmbedProvider
 	cfg.MemoryEmbedBaseURL = strings.TrimSpace(cfg.MemoryEmbedBaseURL)
 	if cfg.MemoryEmbedBaseURL == "" {
-		cfg.MemoryEmbedBaseURL = defaults.MemoryEmbedBaseURL
+		switch {
+		case sameAsDefault:
+			cfg.MemoryEmbedBaseURL = defaults.MemoryEmbedBaseURL
+		case cfg.MemoryEmbedProvider == llmdefaults.ProviderOpenAI:
+			cfg.MemoryEmbedBaseURL = llmdefaults.OpenAIBaseURL
+		}
 	}
 	cfg.MemoryEmbedAPIKey = strings.TrimSpace(cfg.MemoryEmbedAPIKey)
 	cfg.MemoryEmbedModel = strings.TrimSpace(cfg.MemoryEmbedModel)
-	if cfg.MemoryEmbedModel == "" {
+	if cfg.MemoryEmbedModel == "" && sameAsDefault {
 		cfg.MemoryEmbedModel = defaults.MemoryEmbedModel
 	}
 	if cfg.MemoryEmbedDimensions <= 0 {

@@ -280,10 +280,10 @@ func TestRootCommand_DoctorFailsWhenSemanticMemoryProviderIsUnsupported(t *testi
 	}
 	configText := strings.TrimSpace(string(data)) + "\n" + strings.Join([]string{
 		"memory_semantic_enabled: true",
-		"memory_embed_provider: openai",
-		"memory_embed_base_url: https://api.openai.com/v1",
+		"memory_embed_provider: cohere",
+		"memory_embed_base_url: https://api.cohere.com/v2",
 		"memory_embed_api_key: test-embed-key",
-		"memory_embed_model: text-embedding-3-small",
+		"memory_embed_model: embed-v4.0",
 		"memory_embed_dimensions: 1536",
 	}, "\n") + "\n"
 	if err := os.WriteFile(configPath, []byte(configText), 0o644); err != nil {
@@ -302,7 +302,7 @@ func TestRootCommand_DoctorFailsWhenSemanticMemoryProviderIsUnsupported(t *testi
 	if !strings.Contains(out, "[fail] semantic memory") {
 		t.Fatalf("expected semantic memory failure, got:\n%s", out)
 	}
-	if !strings.Contains(out, "supported providers: gemini") {
+	if !strings.Contains(out, "supported providers: gemini, openai") {
 		t.Fatalf("expected supported provider guidance, got:\n%s", out)
 	}
 }

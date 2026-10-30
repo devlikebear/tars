@@ -190,6 +190,18 @@ llm:
 memory:
   semantic:
     enabled: false
+  # provider: gemini (default) or openai. `openai` is any OpenAI-compatible
+  # POST {base_url}/embeddings server — OpenAI itself, or a local vLLM /
+  # Ollama / LM Studio server; its api_key is optional. Example, a local
+  # Korean model (kakaocorp/kanana-2-1.3b-embedding, Matryoshka dims
+  # 1280/1024/512/256/128):
+  #   provider: openai
+  #   base_url: http://127.0.0.1:8000/v1
+  #   model: kakaocorp/kanana-2-1.3b-embedding
+  #   dimensions: 1024
+  # A longer vector than `dimensions` is cut and re-normalized; task types
+  # and instruction prefixes are not sent. Changing model or dimensions
+  # leaves earlier entries out of search until they are embedded again.
   embed:
     provider: gemini
     base_url: https://generativelanguage.googleapis.com/v1beta
