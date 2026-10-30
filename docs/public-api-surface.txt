@@ -584,6 +584,7 @@ pkg/memory func AppendExperience
 pkg/memory func AppendInboxCandidateIfNew
 pkg/memory func AppendMemoryNote
 pkg/memory func EnsureWorkspace
+pkg/memory func FuseRanked
 pkg/memory func IsSupportedEmbedProvider
 pkg/memory func ListMemoryCandidates
 pkg/memory func ListMemoryNotesByPrefix

@@ -156,7 +156,7 @@ cmd/  →  app layer  →  core layer  →  pkg/
 - New skills/plugins belong in external [`devlikebear/tars-skills`](https://github.com/devlikebear/tars-skills), NOT this repo
 
 **Chat Memory:**
-- Cache-first (5min TTL) → semantic search; system prompt instructs LLM to call `memory_search`
+- Cache-first (5min TTL) → hybrid recall: semantic hits and keyword hits (MEMORY.md, daily logs, experiences, other sessions) merged by rank (`pkgmemory.FuseRanked`, reciprocal rank fusion) — never semantic alone, since the semantic searcher has no relevance floor and indexes only experiences and compaction summaries; system prompt instructs LLM to call `memory_search` (same fusion)
 - `memory_search` supports `include_sessions=true`; async prefetch after each response
 - Post-chat: daily log + explicit `remember …` hot path; experience derivation runs nightly
 

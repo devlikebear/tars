@@ -11,6 +11,7 @@ import (
 
 	"github.com/devlikebear/tars/internal/memory"
 	"github.com/devlikebear/tars/internal/session"
+	pkgmemory "github.com/devlikebear/tars/pkg/memory"
 )
 
 const (
@@ -114,18 +115,30 @@ func collectRelevantMemory(opts BuildOptions) []relevantMemoryMatch {
 // (score 1..99) for the preview UI. Below-threshold candidates are not used
 // in the live LLM prompt; they exist so users can see why their query did not
 // recall anything.
+//
+// With semantic memory on, the result is hybrid: semantic hits and the
+// above-threshold keyword hits are merged by rank (pkgmemory.FuseRanked).
+// The semantic searcher has no relevance floor — it returns its top entries
+// whatever their similarity — and only indexes experiences and compaction
+// summaries, so using it alone would drop exact keyword hits from MEMORY.md,
+// daily logs and other sessions.
 func collectRelevantMemoryWithSplit(opts BuildOptions) (above, below []relevantMemoryMatch) {
 	terms := normalizeRelevantTerms(opts.Query)
 	if len(terms) == 0 && !opts.ForceRelevantMemory {
 		return nil, nil
 	}
+	above, below = collectKeywordMatches(opts, terms)
 	if semantic := collectSemanticMatches(opts); len(semantic) > 0 {
-		// Semantic matches already pass thresholding inside the searcher;
-		// we surface them as-is and have no notion of "below threshold" for
-		// this path.
-		return semantic, nil
+		above = pkgmemory.FuseRanked(relevantMatchKey, defaultRelevantResultLimit, semantic, above)
 	}
+	return above, below
+}
 
+func relevantMatchKey(match relevantMemoryMatch) string {
+	return strings.ToLower(strings.TrimSpace(match.Snippet))
+}
+
+func collectKeywordMatches(opts BuildOptions, terms []string) (above, below []relevantMemoryMatch) {
 	matches := make([]relevantMemoryMatch, 0, 16)
 	matches = append(matches, collectExperienceMatches(opts, terms)...)
 	matches = append(matches, collectMemoryFileMatches(opts, terms)...)
@@ -149,7 +162,7 @@ func collectRelevantMemoryWithSplit(opts BuildOptions) (above, below []relevantM
 	above = make([]relevantMemoryMatch, 0, defaultRelevantResultLimit)
 	below = make([]relevantMemoryMatch, 0, defaultRelevantResultLimit)
 	for _, match := range matches {
-		key := strings.ToLower(strings.TrimSpace(match.Snippet))
+		key := relevantMatchKey(match)
 		if key == "" {
 			continue
 		}
