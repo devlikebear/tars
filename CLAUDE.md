@@ -48,7 +48,8 @@ make console-e2e          # Playwright: rebuilt console + tars serve + mock LLM 
 | `initiative` | Speak-first loop (1-min, off by default, shadow only): Go signals + System One text signals → pure policy → ledger |
 | `ops` | System health, cleanup planning + approval workflow |
 | `llm` | Provider abstraction (anthropic/openai/openai-codex/gemini/gemini-native/claude-code-cli/antigravity-cli) + 3-tier Router |
-| `memory` | Semantic: Gemini or OpenAI-compatible (`openai`, key optional for local servers) embeddings, cosine similarity, JSONL entries |
+| `memory` | Semantic: Gemini, OpenAI-compatible (`openai`, key optional for local servers) or `local` embeddings, cosine similarity, JSONL entries |
+| `localembed` | The `local` embedding sidecar (off by default): uv-built Python env + Hugging Face model (kanana-2 by default) under `<workspace>/_shared/local-embed` (own `HF_HOME`, never the global cache), served on a loopback port as OpenAI-compatible `/v1/embeddings`. `tars serve` starts it in the background when semantic memory uses `local` and stops it on shutdown; until it answers, recall is keyword-only. `tars embed install/enable/disable/remove/status`; `tars doctor` reports it. Requirements are pinned in `manager.go` |
 | `tool` | Core tool primitives: registry, policy, file ops, exec, web fetch/search, memory |
 | `apptool` | TARS app tools: agent runtime, sessions, subagents, cron, tasks, telegram, usage |
 | `serverauth` | Bearer token auth, SHA256, three tiers (legacy/user/admin), loopback bypass |

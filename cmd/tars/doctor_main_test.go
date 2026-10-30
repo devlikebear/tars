@@ -302,7 +302,7 @@ func TestRootCommand_DoctorFailsWhenSemanticMemoryProviderIsUnsupported(t *testi
 	if !strings.Contains(out, "[fail] semantic memory") {
 		t.Fatalf("expected semantic memory failure, got:\n%s", out)
 	}
-	if !strings.Contains(out, "supported providers: gemini, openai") {
+	if !strings.Contains(out, "supported providers: gemini, local, openai") {
 		t.Fatalf("expected supported provider guidance, got:\n%s", out)
 	}
 }

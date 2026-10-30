@@ -190,6 +190,12 @@ llm:
 memory:
   semantic:
     enabled: false
+  # provider: local — TARS installs and runs a local embedding model itself
+  # (default kakaocorp/kanana-2-1.3b-embedding, 1024 dims, a Korean-strong
+  # model; ~2.6 GB, needs `uv`). Off by default. Manage it with
+  #   tars embed install | enable | disable | remove [--all] | status
+  # base_url (loopback only), model and dimensions default for you.
+  #
   # provider: gemini (default) or openai. `openai` is any OpenAI-compatible
   # POST {base_url}/embeddings server — OpenAI itself, or a local vLLM /
   # Ollama / LM Studio server; its api_key is optional. Example, a local

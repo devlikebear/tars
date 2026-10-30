@@ -50,6 +50,13 @@ const (
 	defaultMemoryEmbedProvider                 = "gemini"
 	defaultMemoryEmbedModel                    = "gemini-embedding-2-preview"
 	defaultMemoryEmbedDimensions               = 768
+
+	// DefaultLocalEmbedBaseURL, DefaultLocalEmbedModel and
+	// defaultLocalEmbedDimensions apply when memory_embed_provider is
+	// "local": the embedding sidecar TARS installs and runs itself.
+	DefaultLocalEmbedBaseURL                   = "http://127.0.0.1:43181/v1"
+	DefaultLocalEmbedModel                     = "kakaocorp/kanana-2-1.3b-embedding"
+	DefaultLocalEmbedDimensions                = 1024
 	defaultUsageLimitDailyUSD                  = 10.0
 	defaultUsageLimitWeeklyUSD                 = 50.0
 	defaultUsageLimitMonthlyUSD                = 150.0

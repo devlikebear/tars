@@ -9,9 +9,11 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/devlikebear/tars/internal/config"
 	"github.com/devlikebear/tars/internal/llm"
+	"github.com/devlikebear/tars/internal/localembed"
 	"github.com/devlikebear/tars/internal/memory"
 	"github.com/spf13/cobra"
 )
@@ -345,7 +347,38 @@ func checkDoctorSemanticMemory(report *doctorReport, cfg config.Config, configPa
 		))
 		return
 	}
+	if memory.NormalizeEmbedProvider(semanticCfg.EmbedProvider) == "local" {
+		checkDoctorLocalEmbed(report, cfg)
+		return
+	}
 	report.add("ok", "semantic memory", fmt.Sprintf("provider=%s model=%s", semanticCfg.EmbedProvider, semanticCfg.EmbedModel))
+}
+
+// checkDoctorLocalEmbed reports the embedding sidecar TARS runs for
+// provider local: whether its model is installed and whether it answers.
+func checkDoctorLocalEmbed(report *doctorReport, cfg config.Config) {
+	mgr, err := embedManagerFactory(localembed.Options{
+		Dir:     localembed.DirFor(cfg.WorkspaceDir),
+		Model:   cfg.MemoryEmbedModel,
+		BaseURL: cfg.MemoryEmbedBaseURL,
+	})
+	if err != nil {
+		report.add("fail", "semantic memory", err.Error())
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	st := mgr.Status(ctx)
+	if !st.EnvReady || !st.ModelInstalled {
+		report.add("warn", "semantic memory", fmt.Sprintf("provider=local model=%s is not installed; recall uses keywords only", st.Model))
+		report.addHint("run `tars embed install` to download the local embedding model, or `tars embed disable`")
+		return
+	}
+	running := "not running (starts with `tars serve`)"
+	if st.Running {
+		running = "running"
+	}
+	report.add("ok", "semantic memory", fmt.Sprintf("provider=local model=%s installed (%s), %s", st.Model, humanBytes(st.ModelBytes), running))
 }
 
 func checkDoctorEmbodiment(report *doctorReport, cfg config.Config) {
