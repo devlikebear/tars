@@ -5,25 +5,16 @@ import (
 
 	"github.com/devlikebear/tars/internal/config"
 	"github.com/devlikebear/tars/internal/localembed"
-	"github.com/devlikebear/tars/internal/memory"
 	"github.com/rs/zerolog"
 )
-
-// localEmbedProvider is the memory_embed_provider value for the embedding
-// sidecar TARS runs itself.
-const localEmbedProvider = "local"
 
 // newLocalEmbedManager returns the sidecar manager when semantic memory is on
 // and uses provider local, and nil otherwise.
 func newLocalEmbedManager(cfg config.Config) (*localembed.Manager, error) {
-	if !cfg.MemorySemanticEnabled || memory.NormalizeEmbedProvider(cfg.MemoryEmbedProvider) != localEmbedProvider {
+	if !localembed.Enabled(cfg) {
 		return nil, nil
 	}
-	return localembed.New(localembed.Options{
-		Dir:     localembed.DirFor(cfg.WorkspaceDir),
-		Model:   cfg.MemoryEmbedModel,
-		BaseURL: cfg.MemoryEmbedBaseURL,
-	})
+	return localembed.New(localembed.OptionsForConfig(cfg))
 }
 
 // startLocalEmbed starts the sidecar in the background; loading the model

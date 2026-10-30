@@ -112,6 +112,7 @@ type apiRouteHandlers struct {
 	embodiment        http.Handler
 	events            http.Handler
 	config            http.Handler
+	localEmbed        http.Handler
 	skillhub          http.Handler
 	skillCreator      http.Handler
 	skillExtraction   http.Handler
@@ -800,6 +801,12 @@ func buildAPIMux(
 		embodiment:      embodimentHandler,
 		events:          eventsHandler,
 		config:          configHandler,
+		localEmbed: apihandlers.NewLocalEmbedHandler(apihandlers.LocalEmbedOptions{
+			ConfigPath: resolvedConfigPath,
+			Running:    cfg,
+			Semantic:   semanticMemoryConfigFromConfig(cfg),
+			Logger:     logger,
+		}),
 		skillhub:        skillhubHandler,
 		skillCreator:    skillCreatorHandler,
 		skillExtraction: skillExtractionHandler,
@@ -1017,6 +1024,8 @@ func registerAPIRoutes(mux *http.ServeMux, handlers apiRouteHandlers) {
 	mux.Handle("/v1/admin/config/schema", handlers.config)
 	mux.Handle("/v1/admin/reset/workspace", handlers.config)
 	mux.Handle("/v1/admin/restart", handlers.config)
+	mux.Handle("/v1/admin/local-embed", handlers.localEmbed)
+	mux.Handle("/v1/admin/local-embed/", handlers.localEmbed)
 	mux.Handle("/v1/hub/registry", handlers.skillhub)
 	mux.Handle("/v1/hub/sources", handlers.skillhub)
 	mux.Handle("/v1/hub/skills", handlers.skillhub)

@@ -125,6 +125,35 @@ func SearchExperiences(root string, opts SearchOptions) ([]Experience, error) {
 	return rows, nil
 }
 
+// readAllExperiences returns the whole log, unlike SearchExperiences and its
+// result cap.
+func readAllExperiences(root string) ([]Experience, error) {
+	file, err := os.Open(filepath.Join(root, "memory", "experiences.jsonl"))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("open experiences log: %w", err)
+	}
+	defer func() { _ = file.Close() }()
+	var rows []Experience
+	err = textutil.EachLine(file, func(raw []byte) error {
+		line := bytes.TrimSpace(raw)
+		if len(line) == 0 {
+			return nil
+		}
+		var item Experience
+		if json.Unmarshal(line, &item) == nil {
+			rows = append(rows, normalizeExperience(item))
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("scan experiences log: %w", err)
+	}
+	return rows, nil
+}
+
 func normalizeExperience(exp Experience) Experience {
 	exp.Timestamp = exp.Timestamp.UTC()
 	exp.Category = strings.TrimSpace(strings.ToLower(exp.Category))

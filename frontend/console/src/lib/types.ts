@@ -2856,3 +2856,30 @@ export type FocusActionResult = {
 // POST /v1/focus/pipelines/{id}/qa: the question runs as Q&A turn `turn`
 // of the hidden session.
 export type FocusQAResult = { qa_session_id: string; turn: number }
+
+export type LocalEmbedAction = 'install' | 'remove' | 'remove-all' | 'enable' | 'disable' | 'reindex' | 'cancel'
+
+export interface LocalEmbedState {
+  enabled: boolean
+  restart_required: boolean
+  reindex_pending: number
+  status: {
+    model: string
+    base_url: string
+    dir: string
+    uv_path?: string
+    env_ready: boolean
+    model_installed: boolean
+    model_bytes: number
+    running: boolean
+    running_model?: string
+  }
+  job?: {
+    action: string
+    running: boolean
+    error?: string
+    log?: string[]
+    done?: number
+    total?: number
+  }
+}

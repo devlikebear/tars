@@ -1,6 +1,7 @@
 package tarsserver
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -20,6 +21,9 @@ type chatMemoryHookInput struct {
 	AssistantMessage string
 	AssistantTime    time.Time
 	LLMClient        llm.Client
+	// Semantic indexes the "remember" hot path at once when semantic memory
+	// is on, so the next turn can recall it by meaning.
+	Semantic memory.SemanticConfig
 }
 
 // applyPostChatMemoryHooks runs the cheap, user-visible work that must
@@ -63,7 +67,7 @@ func applyPostChatMemoryHooks(input chatMemoryHookInput) error {
 			Importance:    8,
 			Auto:          true,
 		}
-		if err := appendRememberExperience(input.WorkspaceDir, exp); err != nil {
+		if err := appendRememberExperience(input.WorkspaceDir, exp, input.Semantic); err != nil {
 			return err
 		}
 	}
@@ -73,7 +77,7 @@ func applyPostChatMemoryHooks(input chatMemoryHookInput) error {
 // appendRememberExperience writes a "remember" hot-path experience,
 // skipping the write when an identical (category, summary) tuple is
 // already recorded. This is an intentionally small dedup check.
-func appendRememberExperience(workspaceDir string, exp memory.Experience) error {
+func appendRememberExperience(workspaceDir string, exp memory.Experience, semantic memory.SemanticConfig) error {
 	if strings.TrimSpace(exp.Summary) == "" {
 		return nil
 	}
@@ -90,7 +94,9 @@ func appendRememberExperience(workspaceDir string, exp memory.Experience) error 
 			}
 		}
 	}
-	return memory.AppendExperience(workspaceDir, exp)
+	// The backend embeds it too; a failed embedding is logged there and the
+	// experience stays saved for `tars embed reindex` to pick up.
+	return buildMemoryBackend(workspaceDir, semantic).AppendExperience(context.Background(), exp)
 }
 
 // shouldPromoteToMemory detects the explicit "remember …" hot path.

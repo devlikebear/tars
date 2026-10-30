@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/devlikebear/tars/internal/atomicwrite"
@@ -231,12 +232,16 @@ func (s *Service) IndexExperience(ctx context.Context, exp Experience) error {
 	if !s.Enabled() {
 		return nil
 	}
+	return s.upsertEmbeddedEntry(ctx, s.experienceEntry(exp), taskTypeRetrievalDoc)
+}
+
+func (s *Service) experienceEntry(exp Experience) MemoryEntry {
 	exp = normalizeExperience(exp)
 	now := exp.Timestamp
 	if now.IsZero() {
 		now = s.nowFn().UTC()
 	}
-	entry := MemoryEntry{
+	return MemoryEntry{
 		ID:          "experience:" + hashText(strings.Join([]string{exp.SourceSession, exp.Category, exp.Summary, now.Format(time.RFC3339Nano)}, "|")),
 		Kind:        "explicit_memory",
 		Scope:       deriveScope(exp.SourceSession),
@@ -251,7 +256,6 @@ func (s *Service) IndexExperience(ctx context.Context, exp Experience) error {
 		CreatedAt:   now.UTC(),
 		UpdatedAt:   now.UTC(),
 	}
-	return s.upsertEmbeddedEntry(ctx, entry, taskTypeRetrievalDoc)
 }
 
 func (s *Service) IndexCompactionSummary(ctx context.Context, sessionID, summary string, createdAt time.Time) error {
@@ -427,6 +431,11 @@ func (s *Service) upsertEmbeddedEntry(ctx context.Context, entry MemoryEntry, ta
 	entry.EmbeddingDimensions = s.config.EmbedDimensions
 	entry.Embedding = vector
 
+	// The server builds a Service per use, so the lock is per file, not per
+	// Service: this read-modify-write must not lose another writer's entry.
+	lock := entriesLock(s.entriesPath())
+	lock.Lock()
+	defer lock.Unlock()
 	entries, err := s.LoadEntries()
 	if err != nil {
 		return err
@@ -444,6 +453,93 @@ func (s *Service) upsertEmbeddedEntry(ctx context.Context, entry MemoryEntry, ta
 		entries = append(entries, entry)
 	}
 	return saveEntries(s.entriesPath(), entries)
+}
+
+var entriesLocks sync.Map
+
+func entriesLock(path string) *sync.Mutex {
+	lock, _ := entriesLocks.LoadOrStore(path, &sync.Mutex{})
+	return lock.(*sync.Mutex)
+}
+
+// ReindexResult is what a Reindex run embedded.
+type ReindexResult struct {
+	Embedded int `json:"embedded"`
+}
+
+// reindexPlan lists what the configured model has no vector for: entries
+// embedded by another model or size, and logged experiences never indexed
+// (a change of model, or semantic memory having been off when they were
+// written). Experiences match existing entries by ID or content.
+func (s *Service) reindexPlan() ([]MemoryEntry, error) {
+	entries, err := s.LoadEntries()
+	if err != nil {
+		return nil, err
+	}
+	experiences, err := readAllExperiences(s.root)
+	if err != nil {
+		return nil, err
+	}
+	known := make(map[string]struct{}, len(entries)*2)
+	todo := make([]MemoryEntry, 0)
+	for _, entry := range entries {
+		known[entry.ID] = struct{}{}
+		if entry.ContentHash != "" {
+			known[entry.ContentHash] = struct{}{}
+		}
+		if entry.EmbeddingModel != s.config.EmbedModel || entry.EmbeddingDimensions != s.config.EmbedDimensions || len(entry.Embedding) == 0 {
+			todo = append(todo, entry)
+		}
+	}
+	for _, exp := range experiences {
+		entry := s.experienceEntry(exp)
+		_, byID := known[entry.ID]
+		_, byHash := known[entry.ContentHash]
+		if byID || byHash {
+			continue
+		}
+		known[entry.ID] = struct{}{}
+		known[entry.ContentHash] = struct{}{}
+		todo = append(todo, entry)
+	}
+	return todo, nil
+}
+
+// ReindexPending counts what Reindex would embed; 0 when semantic memory is
+// off.
+func (s *Service) ReindexPending() (int, error) {
+	if !s.Enabled() {
+		return 0, nil
+	}
+	todo, err := s.reindexPlan()
+	return len(todo), err
+}
+
+// Reindex embeds everything reindexPlan lists, one entry at a time. It stops
+// at the first error (usually the embedding server being down) and keeps what
+// it finished, so running it again resumes. progress may be nil.
+func (s *Service) Reindex(ctx context.Context, progress func(done, total int)) (ReindexResult, error) {
+	if !s.Enabled() {
+		return ReindexResult{}, ErrSemanticUnavailable
+	}
+	todo, err := s.reindexPlan()
+	if err != nil {
+		return ReindexResult{}, err
+	}
+	result := ReindexResult{}
+	for _, entry := range todo {
+		if err := ctx.Err(); err != nil {
+			return result, err
+		}
+		if err := s.upsertEmbeddedEntry(ctx, entry, taskTypeRetrievalDoc); err != nil {
+			return result, err
+		}
+		result.Embedded++
+		if progress != nil {
+			progress(result.Embedded, len(todo))
+		}
+	}
+	return result, nil
 }
 
 func (s *Service) entriesPath() string {

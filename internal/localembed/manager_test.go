@@ -11,9 +11,12 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/devlikebear/tars/internal/config"
 )
 
 const testModel = "kakaocorp/kanana-2-1.3b-embedding"
@@ -172,6 +175,14 @@ func TestInstall_BuildsEnvWritesAssetsAndDownloads(t *testing.T) {
 		t.Fatalf("expected env marker and progress output, got %q", out.String())
 	}
 
+	leftover := filepath.Join(m.modelDir(), "blobs", "abc.incomplete")
+	if err := os.MkdirAll(filepath.Dir(leftover), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(leftover, []byte("partial"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
 	// A second install skips the environment and only re-runs the download.
 	calls = nil
 	if err := m.Install(context.Background(), nil); err != nil {
@@ -179,6 +190,9 @@ func TestInstall_BuildsEnvWritesAssetsAndDownloads(t *testing.T) {
 	}
 	if len(calls) != 1 || calls[0].name != m.pythonPath() {
 		t.Fatalf("expected only the download step, got %+v", calls)
+	}
+	if isFile(leftover) {
+		t.Fatal("expected the interrupted download's leftover removed")
 	}
 }
 
@@ -329,5 +343,66 @@ func TestDirForAndPythonPath(t *testing.T) {
 	}
 	if !strings.HasPrefix(m.pythonPath(), filepath.Join("d", "venv")) {
 		t.Fatalf("unexpected python path %q", m.pythonPath())
+	}
+}
+
+func TestConfigHelpers(t *testing.T) {
+	var cfg config.Config
+	cfg.WorkspaceDir = "ws"
+	cfg.MemoryEmbedProvider = "gemini"
+	cfg.MemoryEmbedModel = "gemini-embedding-2-preview"
+	cfg.MemorySemanticEnabled = true
+	opts := OptionsForConfig(cfg)
+	if opts.Model != config.DefaultLocalEmbedModel || opts.BaseURL != config.DefaultLocalEmbedBaseURL || opts.Dir != DirFor("ws") {
+		t.Fatalf("expected local defaults for another provider, got %+v", opts)
+	}
+	if Enabled(cfg) || IsSelected(cfg) {
+		t.Fatal("expected gemini not to count as local")
+	}
+	updates := EnableUpdates(cfg)
+	if updates["memory_embed_provider"] != "local" || updates["memory_embed_dimensions"] != config.DefaultLocalEmbedDimensions {
+		t.Fatalf("expected a full switch, got %v", updates)
+	}
+
+	cfg.MemoryEmbedProvider = " Local "
+	cfg.MemoryEmbedModel = "org/custom"
+	cfg.MemoryEmbedBaseURL = "http://127.0.0.1:9/v1"
+	if opts := OptionsForConfig(cfg); opts.Model != "org/custom" || opts.BaseURL != "http://127.0.0.1:9/v1" {
+		t.Fatalf("expected configured model, got %+v", opts)
+	}
+	if !Enabled(cfg) {
+		t.Fatal("expected local to be enabled")
+	}
+	if updates := EnableUpdates(cfg); len(updates) != 2 {
+		t.Fatalf("expected a chosen local model to be kept, got %v", updates)
+	}
+	if DisableUpdates()["memory_semantic_enabled"] != false {
+		t.Fatal("expected disable to turn semantic memory off")
+	}
+}
+
+func TestExecRunner_StreamsOutputAndReportsFailure(t *testing.T) {
+	t.Setenv("LOCALEMBED_HELPER", "crash")
+	var out strings.Builder
+	err := ExecRunner(context.Background(), os.Args[0], nil, []string{"X=1"}, &out)
+	if err == nil || !strings.Contains(out.String(), "boom") {
+		t.Fatalf("expected failure with output, got %v %q", err, out.String())
+	}
+}
+
+func TestFindUV_ConfiguredPath(t *testing.T) {
+	m := newTestManager(t, freeBaseURL(t), nil)
+	uv := filepath.Join(t.TempDir(), "uv")
+	if err := os.WriteFile(uv, nil, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	m.uvPath = uv
+	if m.FindUV() != uv {
+		t.Fatalf("expected configured uv, got %q", m.FindUV())
+	}
+	m.uvPath = ""
+	t.Setenv("PATH", filepath.Dir(uv))
+	if runtime.GOOS != "windows" && m.FindUV() != uv {
+		t.Fatalf("expected uv from PATH, got %q", m.FindUV())
 	}
 }

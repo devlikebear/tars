@@ -241,6 +241,7 @@ func persistChatResult(state chatRunState, userMessage string, chatResp llm.Chat
 		AssistantMessage: chatResp.Message.Content,
 		AssistantTime:    assistantMsg.Timestamp,
 		LLMClient:        state.llmClient,
+		Semantic:         state.memorySemantic,
 	}); err != nil {
 		logger.Error().Err(err).Str("session_id", state.sessionID).Msg("write chat memory failed")
 	}

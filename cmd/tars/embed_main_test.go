@@ -2,15 +2,21 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/devlikebear/tars/internal/config"
 	"github.com/devlikebear/tars/internal/localembed"
+	"github.com/devlikebear/tars/internal/memory"
 )
 
 func writeEmbedTestConfig(t *testing.T, body string) (string, string) {
@@ -188,7 +194,7 @@ func TestDoctorLocalEmbed_ReportsInstallState(t *testing.T) {
 		t.Fatalf("expected warn before install, got %+v", report)
 	}
 
-	mgr, err := embedManagerFactory(localembed.Options{Dir: localembed.DirFor(cfg.WorkspaceDir), Model: cfg.MemoryEmbedModel, BaseURL: cfg.MemoryEmbedBaseURL})
+	mgr, err := embedManagerFactory(localembed.OptionsForConfig(cfg))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -206,5 +212,52 @@ func TestDoctorLocalEmbed_ReportsInstallState(t *testing.T) {
 	checkDoctorSemanticMemory(&report, cfg, "config.yaml")
 	if report.lastStatusFor("semantic memory") != "fail" {
 		t.Fatalf("expected fail for non-loopback base_url, got %+v", report)
+	}
+}
+
+func TestEmbedCommand_ReindexRequiresEnabled(t *testing.T) {
+	fakeEmbedManagers(t)
+	path, _ := writeEmbedTestConfig(t, "")
+	if _, err := runEmbed(t, "reindex", "--config", path); err == nil || !strings.Contains(err.Error(), "tars embed enable") {
+		t.Fatalf("expected enable hint, got %v", err)
+	}
+	if _, err := runEmbed(t, "enable", "--config", path); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runEmbed(t, "reindex", "--config", path); !errors.Is(err, localembed.ErrNotInstalled) {
+		t.Fatalf("expected ErrNotInstalled, got %v", err)
+	}
+}
+
+func TestEmbedCommand_ReindexEmbedsLoggedExperiences(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/health" {
+			_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "model": config.DefaultLocalEmbedModel})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": []map[string]any{{"embedding": []float64{1, 0}}}})
+	}))
+	defer srv.Close()
+	path, workspace := writeEmbedTestConfig(t, strings.Join([]string{
+		"memory_semantic_enabled: true",
+		"memory_embed_provider: local",
+		"memory_embed_base_url: " + srv.URL + "/v1",
+		"memory_embed_dimensions: 2",
+		"",
+	}, "\n"))
+	if err := memory.EnsureWorkspace(workspace); err != nil {
+		t.Fatal(err)
+	}
+	if err := memory.AppendExperience(workspace, memory.Experience{Timestamp: time.Now(), Summary: "prefers tea"}); err != nil {
+		t.Fatal(err)
+	}
+	out, err := runEmbed(t, "reindex", "--config", path)
+	if err != nil || !strings.Contains(out, "Reindexed 1 memories.") {
+		t.Fatalf("reindex: %v\n%s", err, out)
+	}
+
+	srv.Close()
+	if _, err := runEmbed(t, "reindex", "--config", path); err == nil {
+		t.Fatal("expected an error once the sidecar is gone and nothing is installed")
 	}
 }

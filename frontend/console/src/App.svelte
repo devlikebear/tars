@@ -638,7 +638,7 @@
         <div class="route-loading">Loading...</div>
       {:then module}
         {@const MemoryRoute = module.default}
-        <MemoryRoute onAskAI={navigateWithPrompt} />
+        <MemoryRoute onAskAI={navigateWithPrompt} {authRole} />
       {:catch}
         <div class="route-error">Could not load console page.</div>
       {/await}

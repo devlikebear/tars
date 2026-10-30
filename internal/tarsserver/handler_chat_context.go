@@ -12,6 +12,7 @@ import (
 	"github.com/devlikebear/tars/internal/config"
 	"github.com/devlikebear/tars/internal/extensions"
 	"github.com/devlikebear/tars/internal/llm"
+	"github.com/devlikebear/tars/internal/memory"
 	"github.com/devlikebear/tars/internal/serverauth"
 	"github.com/devlikebear/tars/internal/session"
 	"github.com/devlikebear/tars/internal/skill"
@@ -24,6 +25,7 @@ type chatRunState struct {
 	// the goal judge.
 	turnToolCalls         *[]ToolCallRecord
 	requestWorkspaceDir   string
+	memorySemantic        memory.SemanticConfig
 	workspaceID           string
 	store                 *session.Store
 	sessionID             string
@@ -293,6 +295,7 @@ func buildSessionChatRunState(
 	return chatRunState{
 		cwd:                   policy.PrimaryDir,
 		requestWorkspaceDir:   requestWorkspaceDir,
+		memorySemantic:        deps.tooling.MemorySemanticConfig,
 		workspaceID:           workspaceID,
 		store:                 reqStore,
 		sessionID:             sessionID,

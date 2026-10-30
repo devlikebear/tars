@@ -11,6 +11,7 @@ import { sideSessionEn } from './sections/sideSession.ts'
 import { sessionWorktreeEn } from './sections/sessionWorktree.ts'
 import { newChatFolderEn } from './sections/newChatFolder.ts'
 import { providerTestEn } from './sections/providerTest.ts'
+import { localEmbedEn } from './sections/localEmbed.ts'
 import { focusEn } from './sections/focus.ts'
 import { chatApprovalEn } from './sections/chatApproval.ts'
 import { sessionBoardEn } from './sections/sessionBoard.ts'
@@ -1523,6 +1524,7 @@ export const en = {
   newChatFolder: newChatFolderEn,
   setupDiscovery: setupDiscoveryEn,
   providerTest: providerTestEn,
+  localEmbed: localEmbedEn,
   focus: focusEn,
   chatApproval: chatApprovalEn,
   sessionBoard: sessionBoardEn,

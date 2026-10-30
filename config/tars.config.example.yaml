@@ -193,7 +193,9 @@ memory:
   # provider: local — TARS installs and runs a local embedding model itself
   # (default kakaocorp/kanana-2-1.3b-embedding, 1024 dims, a Korean-strong
   # model; ~2.6 GB, needs `uv`). Off by default. Manage it with
-  #   tars embed install | enable | disable | remove [--all] | status
+  #   tars embed install | enable | disable | reindex | remove [--all] | status
+  # or from the console: Memory → Local embeddings. `reindex` embeds memories
+  # the current model has no vectors for.
   # base_url (loopback only), model and dimensions default for you.
   #
   # provider: gemini (default) or openai. `openai` is any OpenAI-compatible
@@ -207,7 +209,8 @@ memory:
   #   dimensions: 1024
   # A longer vector than `dimensions` is cut and re-normalized; task types
   # and instruction prefixes are not sent. Changing model or dimensions
-  # leaves earlier entries out of search until they are embedded again.
+  # leaves earlier entries out of semantic search until they are embedded
+  # again (`tars embed reindex`, local provider).
   embed:
     provider: gemini
     base_url: https://generativelanguage.googleapis.com/v1beta

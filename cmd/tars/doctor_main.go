@@ -357,11 +357,7 @@ func checkDoctorSemanticMemory(report *doctorReport, cfg config.Config, configPa
 // checkDoctorLocalEmbed reports the embedding sidecar TARS runs for
 // provider local: whether its model is installed and whether it answers.
 func checkDoctorLocalEmbed(report *doctorReport, cfg config.Config) {
-	mgr, err := embedManagerFactory(localembed.Options{
-		Dir:     localembed.DirFor(cfg.WorkspaceDir),
-		Model:   cfg.MemoryEmbedModel,
-		BaseURL: cfg.MemoryEmbedBaseURL,
-	})
+	mgr, err := embedManagerFactory(localembed.OptionsForConfig(cfg))
 	if err != nil {
 		report.add("fail", "semantic memory", err.Error())
 		return
