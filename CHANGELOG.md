@@ -6,6 +6,18 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+## [0.67.0] - 2026-10-31
+
+### Added
+
+- **Semantic memory can use any OpenAI-compatible embedding server.** `memory_embed_provider: openai` sends `POST {memory_embed_base_url}/embeddings`; the API key is optional, so a local server works without one. ([#1315](https://github.com/devlikebear/tars/pull/1315))
+- **A local embedding model that TARS installs and runs itself, off by default.** Selecting the `local` provider runs kanana-2 (or another Hugging Face model) in a private Python environment under `<workspace>/_shared/local-embed`, served on a loopback port. `tars serve` starts it in the background and stops it on shutdown; until it answers, recall stays keyword-only. `tars embed install|enable|disable|remove|status` manage it and `tars doctor` reports it. ([#1317](https://github.com/devlikebear/tars/pull/1317))
+- **Reindex memories, and manage the local model from the console.** `tars embed reindex` and the console's Memory → Local embeddings tab embed existing memories after a model change. The tab installs, re-downloads and removes the model, shows progress, cancels a run, and turns the feature on or off (admin only; on and off take effect after a restart, which is never automatic). ([#1318](https://github.com/devlikebear/tars/pull/1318))
+
+### Changed
+
+- **Memory recall merges semantic and keyword hits by rank.** Chat recall and `memory_search` combine both with reciprocal rank fusion, instead of a semantic result crowding out MEMORY.md, daily logs and other sources it does not index. ([#1316](https://github.com/devlikebear/tars/pull/1316))
+
 ## [0.66.1] - 2026-10-26
 
 ### Security
