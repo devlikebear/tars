@@ -20,6 +20,27 @@ func TestTaskPushesOrOpensPR(t *testing.T) {
 		{"normal plan task", PlanTask{Title: "Add the config field", Done: "field parses and round-trips"}, false},
 		{"describes the normal flow, names the pr stage", PlanTask{Title: "Note", Done: "push and open the PR in the pr stage"}, false},
 		{"describes the normal flow in Korean", PlanTask{Title: "메모", Done: "pr 단계에서 push하고 PR 생성"}, false},
+
+		{"reported task: push/PR 없음", PlanTask{Title: "diff 검토 후 fix: 접두사로 로컬 커밋 (push/PR 없음)", Done: "커밋이 남아 있다"}, false},
+		{"push하지 않음", PlanTask{Title: "로컬 커밋", Done: "push하지 않음"}, false},
+		{"push 없이", PlanTask{Title: "push 없이 로컬에서만 커밋", Done: "커밋 완료"}, false},
+		{"푸시하지 않는다", PlanTask{Title: "로컬 커밋", Done: "원격에 푸시하지 않는다"}, false},
+		{"push나 PR을 하지 않는다", PlanTask{Title: "로컬 커밋", Done: "이 작업은 push나 PR을 하지 않는다"}, false},
+		{"PR 생성하지 않음", PlanTask{Title: "로컬 커밋", Done: "PR 생성하지 않음"}, false},
+		{"no push", PlanTask{Title: "Commit locally (no push)", Done: "commit exists"}, false},
+		{"no push, no PR", PlanTask{Title: "Commit locally", Done: "no push, no PR"}, false},
+		{"do not push", PlanTask{Title: "Commit locally", Done: "Do not push the branch"}, false},
+		{"don't push", PlanTask{Title: "Commit locally", Done: "don't push"}, false},
+		{"without pushing", PlanTask{Title: "Commit without pushing", Done: "commit exists"}, false},
+		{"do not open a PR", PlanTask{Title: "Commit locally", Done: "do not open a PR"}, false},
+		{"do not open a pull request", PlanTask{Title: "Commit locally", Done: "do not open a pull request"}, false},
+		{"do not push or open a pull request", PlanTask{Title: "Commit locally", Done: "do not push or open a pull request"}, false},
+
+		{"pushes but declines only the PR", PlanTask{Title: "Push the branch, do not open a PR", Done: "branch is on origin"}, true},
+		{"korean pushes but declines only the PR", PlanTask{Title: "브랜치 push (PR 없음)", Done: "원격에 올라감"}, true},
+		{"opens the PR but declines a force push", PlanTask{Title: "gh pr create, no push --force", Done: "PR is open"}, true},
+		{"no-prefixed word does not hide a real push", PlanTask{Title: "Push the branch", Done: "no problems reported"}, true},
+		{"PR 없으면 is a condition, not a refusal", PlanTask{Title: "PR 없으면 push하고 PR 생성", Done: "PR이 열려 있다"}, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
