@@ -39,6 +39,52 @@ var pushOrPRPatterns = []string{
 // proposing to do it itself.
 var pushOrPRSafeMentions = []string{"pr stage", "pr 단계"}
 
+// pushOrPRDenials are phrases (already lowercase, "n't " already spelled
+// " not ") that say a task does not push or open the pull request. They are
+// cut from the text instead of exempting it like pushOrPRSafeMentions: a
+// task can decline one and still do the other ("push the branch, no PR").
+// Phrases covering both come first, or a shorter one would leave half
+// behind.
+var pushOrPRDenials = []string{
+	"not push or open",
+	"not push or create",
+	"without pushing or opening",
+	"without pushing or creating",
+	"push/pr 없음",
+	"push/pr 없이",
+	"push나 pr을 하지 않",
+	"푸시나 pr을 하지 않",
+
+	"no push",
+	"not push",
+	"never push",
+	"without push",
+	"not open pr",
+	"not create pr",
+	"not open a pull request",
+	"not open the pull request",
+	"not create a pull request",
+	"not create the pull request",
+	"push 없음",
+	"push 없이",
+	"push하지 않",
+	"push 하지 않",
+	"push는 하지 않",
+	"push 금지",
+	"푸시 없음",
+	"푸시 없이",
+	"푸시하지 않",
+	"푸시 하지 않",
+	"푸시는 하지 않",
+	"푸시 금지",
+	"pr 생성하지 않",
+	"pr 생성 하지 않",
+	"pr 생성은 하지 않",
+	"pr 생성 없이",
+	"pr 생성 금지",
+	"풀 리퀘스트 생성하지 않",
+}
+
 // taskPushesOrOpensPR reports whether t's title or done criteria describes
 // pushing the branch or creating/opening the pull request itself, rather
 // than leaving that to the pr stage.
@@ -48,6 +94,10 @@ func taskPushesOrOpensPR(t PlanTask) bool {
 		if strings.Contains(text, safe) {
 			return false
 		}
+	}
+	text = strings.ReplaceAll(text, "n't ", " not ")
+	for _, denial := range pushOrPRDenials {
+		text = strings.ReplaceAll(text, denial, "")
 	}
 	for _, pat := range pushOrPRPatterns {
 		if strings.Contains(text, pat) {
