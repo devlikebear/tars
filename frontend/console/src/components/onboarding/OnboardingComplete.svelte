@@ -96,7 +96,7 @@
         id: 'webSearch',
         label: $t.onboarding.complete.rows.webSearch,
         status: c.web_search_enabled
-          ? c.web_search_api_key_set ? 'ok' : 'missing'
+          ? c.web_search_api_key_set || form.tools.web_search_provider.trim().toLowerCase() === 'rustxng' ? 'ok' : 'missing'
           : visited('tools') ? 'skipped' : 'skipped',
         section: 'tools',
       },

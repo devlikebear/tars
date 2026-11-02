@@ -465,6 +465,10 @@ tools:
       api_key: ""
       model: sonar
       base_url: https://api.perplexity.ai/chat/completions
+    # provider: rustxng needs no API key, only a RustXNG server you run yourself.
+    # Queries go to the upstream engines that server is configured to use.
+    rustxng:
+      base_url: http://127.0.0.1:29483
   web_fetch:
     enabled: false
     allow_private_hosts: false

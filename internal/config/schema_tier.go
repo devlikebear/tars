@@ -55,6 +55,7 @@ var (
 	reflectionOn   = on("reflection_enabled")
 	webSearchOn    = on("tools_web_search_enabled")
 	perplexity     = is("tools_web_search_provider", "perplexity")
+	rustxng        = is("tools_web_search_provider", "rustxng")
 	webFetchOn     = on("tools_web_fetch_enabled")
 	computerUseOn  = on("tools_computer_use_enabled")
 	agentRuntimeOn = on("agentruntime_enabled")
@@ -172,6 +173,7 @@ var configFieldTiers = map[string]fieldTier{
 	"tools_web_search_perplexity_api_key":         basic(perplexity),
 	"tools_web_search_perplexity_model":           advanced(perplexity),
 	"tools_web_search_perplexity_base_url":        advanced(perplexity),
+	"tools_web_search_rustxng_base_url":           basic(rustxng),
 	"tools_web_search_cache_ttl_seconds":          fileOnly(noteTuning),
 	"tools_web_fetch_enabled":                     basic(),
 	"tools_web_fetch_allow_private_hosts":         advanced(webFetchOn),

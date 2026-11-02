@@ -34,6 +34,7 @@ type WebSearchOptions struct {
 	PerplexityAPIKey  string
 	PerplexityModel   string
 	PerplexityBaseURL string
+	RustXNGBaseURL    string
 	CacheTTL          time.Duration
 	HTTPClient        *http.Client
 }
@@ -74,6 +75,10 @@ func NewWebSearchToolWithOptions(opts WebSearchOptions) Tool {
 	perplexityModel := strings.TrimSpace(opts.PerplexityModel)
 	if perplexityModel == "" {
 		perplexityModel = "sonar"
+	}
+	rustxngBase := strings.TrimSpace(opts.RustXNGBaseURL)
+	if rustxngBase == "" {
+		rustxngBase = "http://127.0.0.1:29483"
 	}
 	cacheTTL := opts.CacheTTL
 	if cacheTTL < 0 {
@@ -190,15 +195,66 @@ func NewWebSearchToolWithOptions(opts WebSearchOptions) Tool {
 		return webSearchResponse{Provider: "perplexity", Query: query, Count: len(results), Results: results}, nil
 	}
 
+	// searchRustXNG asks a self-hosted RustXNG for snippets only: page text
+	// (include_raw_content) stays off, so results are as small as the other
+	// providers' and the server never fetches pages on a model's behalf.
+	searchRustXNG := func(ctx context.Context, query string, count int) (webSearchResponse, error) {
+		u, err := url.Parse(rustxngBase)
+		if err != nil {
+			return webSearchResponse{}, fmt.Errorf("invalid rustxng base url: %w", err)
+		}
+		u.Path = strings.TrimSuffix(strings.TrimRight(u.Path, "/"), "/search") + "/search"
+		q := u.Query()
+		q.Set("q", query)
+		q.Set("format", "json")
+		q.Set("max_results", fmt.Sprintf("%d", count))
+		u.RawQuery = q.Encode()
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+		if err != nil {
+			return webSearchResponse{}, err
+		}
+		req.Header.Set("Accept", "application/json")
+		resp, err := httpClient.Do(req)
+		if err != nil {
+			return webSearchResponse{}, err
+		}
+		defer func() { _ = resp.Body.Close() }()
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			return webSearchResponse{}, fmt.Errorf("rustxng status %d", resp.StatusCode)
+		}
+		var payload struct {
+			Results []struct {
+				Title   string `json:"title"`
+				URL     string `json:"url"`
+				Content string `json:"content"`
+			} `json:"results"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+			return webSearchResponse{}, fmt.Errorf("decode rustxng response failed: %w", err)
+		}
+		results := make([]webSearchResult, 0, len(payload.Results))
+		for _, item := range payload.Results {
+			if len(results) >= count {
+				break
+			}
+			results = append(results, webSearchResult{
+				Title:       strings.TrimSpace(item.Title),
+				URL:         strings.TrimSpace(item.URL),
+				Description: strings.TrimSpace(item.Content),
+			})
+		}
+		return webSearchResponse{Provider: "rustxng", Query: query, Count: len(results), Results: results}, nil
+	}
+
 	return Tool{
 		Name:        "web_search",
-		Description: "Search the web (provider: brave/perplexity) and return result snippets.",
+		Description: "Search the web (provider: brave/perplexity/rustxng) and return result snippets.",
 		Parameters: json.RawMessage(`{
   "type":"object",
   "properties":{
     "query":{"type":"string"},
     "count":{"type":"integer","minimum":1,"maximum":10,"default":5},
-    "provider":{"type":"string","enum":["brave","perplexity"]}
+    "provider":{"type":"string","enum":["brave","perplexity","rustxng"]}
   },
   "required":["query"],
   "additionalProperties":false
@@ -253,8 +309,10 @@ func NewWebSearchToolWithOptions(opts WebSearchOptions) Tool {
 				payload, err = searchBrave(ctx, query, count)
 			case "perplexity":
 				payload, err = searchPerplexity(ctx, query, count)
+			case "rustxng":
+				payload, err = searchRustXNG(ctx, query, count)
 			default:
-				err = fmt.Errorf("provider must be one of: brave|perplexity")
+				err = fmt.Errorf("provider must be one of: brave|perplexity|rustxng")
 			}
 			if err != nil {
 				return JSONTextResult(webSearchResponse{Provider: provider, Query: query, Message: err.Error()}, true), nil
