@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -269,7 +270,10 @@ func TestAgentDesktop_MissingBinaryIsUnavailable(t *testing.T) {
 }
 
 func TestFindAgentDesktopPath(t *testing.T) {
-	bin := filepath.Join(t.TempDir(), "agent-desktop")
+	if runtime.GOOS == "windows" {
+		t.Skip("the stand-in binary is a shell script, which LookPath does not treat as executable on Windows")
+	}
+	bin :=filepath.Join(t.TempDir(), "agent-desktop")
 	if err := os.WriteFile(bin, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
