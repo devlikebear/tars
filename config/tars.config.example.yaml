@@ -490,9 +490,11 @@ tools:
   computer_use:
     enabled: true               # false explicitly disables the tool
     backend: llm                # llm | jev
+    driver: cua-driver           # cua-driver | agent-desktop
     cua_driver_path: ""          # empty: CUA_DRIVER_PATH, then PATH
+    agent_desktop_path: ""       # empty: AGENT_DESKTOP_PATH, then PATH; prefer the native binary over the npm launcher
     max_steps: 25                # per call, hard cap 50
-    step_timeout_seconds: 15     # each cua-driver call
+    step_timeout_seconds: 15     # each driver call
     total_timeout_seconds: 300   # one computer_use call
     expose_values: true          # false: never send field contents (secure fields are never sent)
 

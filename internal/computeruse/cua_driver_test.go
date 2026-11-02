@@ -20,6 +20,31 @@ func errorsIs(err, target error) bool { return errors.Is(err, target) }
 // ("cua-driver list_windows timed out after 1s").
 const testDriverTimeout = 15 * time.Second
 
+func TestIsSecureField(t *testing.T) {
+	cases := []struct {
+		name string
+		m    map[string]any
+		role string
+		want bool
+	}{
+		{"explicit key", map[string]any{"secure": true}, "AXTextField", true},
+		{"secure role", nil, "AXSecureTextField", true},
+		{"secure subrole", map[string]any{"subrole": "AXSecureTextField"}, "AXTextField", true},
+		{"NSSecureTextField mask", map[string]any{"value": "\uf79a\uf79a"}, "AXTextField", true},
+		{"bullets", map[string]any{"value": "••••"}, "AXTextField", true},
+		{"empty password field", map[string]any{"label": "Password"}, "AXTextField", true},
+		{"korean label", map[string]any{"label": "비밀번호 확인"}, "AXTextField", true},
+		{"plain field", map[string]any{"label": "Name", "value": "ada"}, "AXTextField", false},
+		{"some bullets in text", map[string]any{"value": "a • b"}, "AXTextField", false},
+		{"button naming a password", map[string]any{"label": "Forgot password?"}, "AXButton", false},
+	}
+	for _, tc := range cases {
+		if got := isSecureField(tc.m, tc.role); got != tc.want {
+			t.Errorf("%s: got %v", tc.name, got)
+		}
+	}
+}
+
 func TestBuildCuaArgs(t *testing.T) {
 	args, err := buildCuaArgs("click", map[string]any{"pid": 7, "element_token": "s1:3"})
 	if err != nil {

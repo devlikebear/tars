@@ -149,10 +149,14 @@ func (e *Engine) Run(ctx context.Context, req Request) Result {
 	// has no omitempty and a caller decoding "trace": null has to special-case it.
 	empty := func() *run { return &run{started: e.now()} }
 	if e.driver == nil || e.backend == nil {
-		return e.finish(empty(), Result{Status: StatusUnavailable, Reason: "computer_use is not configured", Hint: "configure the LLM decision backend (or jev.base_url for backend: jev) and install cua-driver"})
+		return e.finish(empty(), Result{Status: StatusUnavailable, Reason: "computer_use is not configured", Hint: "configure the LLM decision backend (or jev.base_url for backend: jev) and install the selected driver"})
 	}
 	if err := e.driver.Ping(ctx); err != nil {
-		return e.finish(empty(), Result{Status: StatusUnavailable, Reason: err.Error(), Hint: "start the driver with `cua-driver serve` and grant Accessibility via `cua-driver permissions grant`"})
+		res := Result{Status: StatusUnavailable, Reason: err.Error(), Hint: "check that the selected driver is installed and has Accessibility permission"}
+		if h, ok := e.driver.(SetupHinter); ok {
+			res.Hint = h.SetupHint()
+		}
+		return e.finish(empty(), res)
 	}
 	maxSteps := req.MaxSteps
 	if maxSteps <= 0 {

@@ -11,8 +11,15 @@ import (
 	"github.com/devlikebear/tars/pkg/llm"
 )
 
+func newComputerUseDriver(cfg config.Config, stepTimeout time.Duration) computeruse.Driver {
+	if cfg.ToolsComputerUseDriver == computeruse.DriverAgentDesktop {
+		return computeruse.NewLazyAgentDesktopDriver(cfg.ToolsComputerUseAgentDesktopPath, stepTimeout)
+	}
+	return computeruse.NewLazyCuaDriver(cfg.ToolsComputerUseCuaDriverPath, stepTimeout)
+}
+
 // newComputerUseEngine builds the GUI loop behind the computer_use tool. It
-// never fails: a missing decision backend or cua-driver binary leaves the
+// never fails: a missing decision backend or driver binary leaves the
 // tool registered and answering "unavailable" with a hint, and the binary is
 // looked up per call so installing it needs no restart.
 func newComputerUseEngine(cfg config.Config, router llm.Router, tracker *usage.Tracker) *computeruse.Engine {
@@ -23,7 +30,7 @@ func newComputerUseEngine(cfg config.Config, router llm.Router, tracker *usage.T
 	engineCfg.TotalTimeout = time.Duration(cfg.ToolsComputerUseTotalTimeoutSeconds) * time.Second
 	engineCfg.ExposeValues = cfg.ToolsComputerUseExposeValues
 
-	driver := computeruse.NewLazyCuaDriver(cfg.ToolsComputerUseCuaDriverPath, stepTimeout)
+	driver := newComputerUseDriver(cfg, stepTimeout)
 	if cfg.ToolsComputerUseBackend == "" || cfg.ToolsComputerUseBackend == "llm" {
 		if router == nil {
 			return computeruse.NewEngineWithBackend(driver, nil, engineCfg)

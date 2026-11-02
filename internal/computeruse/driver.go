@@ -31,6 +31,11 @@ type Driver interface {
 	Scroll(ctx context.Context, w Window, direction string) (Effect, error) // "up"|"down"
 }
 
+// SetupHinter is implemented by a driver that can say how to fix a failed Ping.
+type SetupHinter interface {
+	SetupHint() string
+}
+
 // ErrDriverUnavailable reports that no driver backend is usable — the binary
 // is missing, the daemon is down, or permissions were refused.
 var ErrDriverUnavailable = errors.New("computeruse: driver unavailable")

@@ -4,7 +4,7 @@ package computeruse
 // snapshot the model reads.
 type Element struct {
 	Index    int    // 1-based, 스냅샷 내 순번. state에서 eN으로 표기
-	Token    string // cua-driver element_token
+	Token    string // 드라이버의 요소 토큰 (cua-driver element_token, agent-desktop ref)
 	Role     string // "AXButton" 등 원본 role 문자열
 	Label    string
 	Value    string
@@ -44,6 +44,9 @@ type Snapshot struct {
 	Texts         []string
 	TotalElements int
 	Degraded      string
+	// Partial marks a walk the driver cut short: what is listed is real, but
+	// more of the window may exist.
+	Partial bool
 }
 
 // SnapshotOpts narrows what the driver collects for a snapshot.

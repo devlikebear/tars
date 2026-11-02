@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"sync/atomic"
@@ -104,6 +105,11 @@ func NewLazyCuaDriver(configured string, timeout time.Duration) *CuaDriver {
 }
 
 var _ Driver = (*CuaDriver)(nil)
+
+// SetupHint is the guidance the engine shows when Ping fails.
+func (d *CuaDriver) SetupHint() string {
+	return "start the driver with `cua-driver serve` and grant Accessibility via `cua-driver permissions grant`"
+}
 
 func buildCuaArgs(tool string, args map[string]any) ([]string, error) {
 	if args == nil {
@@ -311,8 +317,7 @@ func parseWindowState(raw []byte) (Snapshot, error) {
 			continue
 		}
 		role := asString(m["role"])
-		secure, _ := m["secure"].(bool)
-		secure = secure || strings.Contains(strings.ToLower(role), "secure")
+		secure := isSecureField(m, role)
 		el := Element{
 			// Renumbered 1-based and sequential: the driver's own element_index
 			// is 0-based and skips non-actionable nodes.
@@ -362,6 +367,41 @@ func parseWindowState(raw []byte) (Snapshot, error) {
 		snap.TotalElements = len(snap.Elements)
 	}
 	return snap, nil
+}
+
+// secureMaskRe matches a value made only of mask characters: U+F79A is what an
+// NSSecureTextField returns, bullets are what other toolkits draw.
+var secureMaskRe = regexp.MustCompile("^[•●]+$")
+
+// secureLabelWords name a credential field in the languages labels are matched
+// in elsewhere (requiresConfirmation).
+var secureLabelWords = []string{"password", "passcode", "passphrase", "비밀번호", "암호"}
+
+// isSecureField decides whether an element is a secret. cua-driver 0.34 reports
+// an NSSecureTextField as a plain AXTextField with no secure key, so the role
+// alone misses it and typing would skip its confirmation. Its masked value
+// gives a filled field away; an empty one has only its label, and wrongly
+// flagging a field costs one confirmation.
+func isSecureField(m map[string]any, role string) bool {
+	if secure, _ := m["secure"].(bool); secure {
+		return true
+	}
+	if strings.Contains(strings.ToLower(role), "secure") || strings.Contains(strings.ToLower(asString(m["subrole"])), "secure") {
+		return true
+	}
+	if !isTextRole(role) {
+		return false
+	}
+	if secureMaskRe.MatchString(asString(m["value"])) {
+		return true
+	}
+	label := strings.ToLower(asString(m["label"]))
+	for _, word := range secureLabelWords {
+		if strings.Contains(label, word) {
+			return true
+		}
+	}
+	return false
 }
 
 // maxAdoptedLabelRunes bounds a borrowed label: a static text can hold a whole

@@ -28,6 +28,9 @@ func Load(path string) (Config, error) {
 	if cfg.ToolsComputerUseBackend != "llm" && cfg.ToolsComputerUseBackend != "jev" {
 		return Config{}, fmt.Errorf("tools.computer_use.backend must be llm or jev")
 	}
+	if cfg.ToolsComputerUseDriver != "cua-driver" && cfg.ToolsComputerUseDriver != "agent-desktop" {
+		return Config{}, fmt.Errorf("tools.computer_use.driver must be cua-driver or agent-desktop")
+	}
 	if cfg.Initiative.Backend != "llm" && cfg.Initiative.Backend != "jev" {
 		return Config{}, fmt.Errorf("initiative.backend must be llm or jev")
 	}
@@ -54,6 +57,9 @@ func LoadFile(path string) (Config, error) {
 	applyDefaults(&cfg)
 	if cfg.ToolsComputerUseBackend != "llm" && cfg.ToolsComputerUseBackend != "jev" {
 		return Config{}, fmt.Errorf("tools.computer_use.backend must be llm or jev")
+	}
+	if cfg.ToolsComputerUseDriver != "cua-driver" && cfg.ToolsComputerUseDriver != "agent-desktop" {
+		return Config{}, fmt.Errorf("tools.computer_use.driver must be cua-driver or agent-desktop")
 	}
 	if cfg.Initiative.Backend != "llm" && cfg.Initiative.Backend != "jev" {
 		return Config{}, fmt.Errorf("initiative.backend must be llm or jev")
