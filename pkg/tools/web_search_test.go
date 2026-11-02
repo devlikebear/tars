@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -39,6 +40,93 @@ func TestWebSearchTool_ParsesResults(t *testing.T) {
 	}
 	if !strings.Contains(res.Text(), "https://tars.dev") {
 		t.Fatalf("expected parsed url, got %s", res.Text())
+	}
+}
+
+func TestWebSearchTool_RustXNGProvider(t *testing.T) {
+	var gotPath string
+	var gotQuery url.Values
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotQuery = r.URL.Query()
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"query":"tokio","results":[
+			{"title":" Tokio ","url":"https://tokio.rs","content":" runtime ","engine":"wikipedia","score":1.5},
+			{"title":"Extra","url":"https://example.com/extra","content":"past the limit"}
+		]}`))
+	}))
+	defer ts.Close()
+
+	for _, base := range []string{ts.URL, ts.URL + "/", ts.URL + "/search"} {
+		t1 := NewWebSearchToolWithOptions(WebSearchOptions{Enabled: true, Provider: "rustxng", RustXNGBaseURL: base, HTTPClient: ts.Client()})
+		res, err := t1.Execute(context.Background(), json.RawMessage(`{"query":"tokio","count":1}`))
+		if err != nil {
+			t.Fatalf("web_search execute: %v", err)
+		}
+		if res.IsError {
+			t.Fatalf("expected success, got %s", res.Text())
+		}
+		if gotPath != "/search" {
+			t.Fatalf("base %q: expected /search, got %q", base, gotPath)
+		}
+		if gotQuery.Get("q") != "tokio" || gotQuery.Get("format") != "json" || gotQuery.Get("max_results") != "1" {
+			t.Fatalf("unexpected query: %v", gotQuery)
+		}
+		if gotQuery.Has("include_raw_content") {
+			t.Fatalf("page text must stay off: %v", gotQuery)
+		}
+		var payload webSearchResponse
+		if err := json.Unmarshal([]byte(res.Text()), &payload); err != nil {
+			t.Fatalf("decode result: %v", err)
+		}
+		want := webSearchResult{Title: "Tokio", URL: "https://tokio.rs", Description: "runtime"}
+		if payload.Provider != "rustxng" || len(payload.Results) != 1 || payload.Results[0] != want {
+			t.Fatalf("unexpected result: %+v", payload)
+		}
+	}
+}
+
+func TestWebSearchTool_RustXNGStatusError(t *testing.T) {
+	// A server with JSON output turned off answers 403, as SearXNG does.
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	defer ts.Close()
+
+	t1 := NewWebSearchToolWithOptions(WebSearchOptions{Enabled: true, Provider: "rustxng", RustXNGBaseURL: ts.URL, HTTPClient: ts.Client()})
+	res, err := t1.Execute(context.Background(), json.RawMessage(`{"query":"tokio"}`))
+	if err != nil {
+		t.Fatalf("web_search execute: %v", err)
+	}
+	if !res.IsError || !strings.Contains(res.Text(), "rustxng status 403") {
+		t.Fatalf("expected status error, got %s", res.Text())
+	}
+}
+
+func TestWebSearchTool_RustXNGInvalidJSON(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`<html>not json</html>`))
+	}))
+	defer ts.Close()
+
+	t1 := NewWebSearchToolWithOptions(WebSearchOptions{Enabled: true, Provider: "rustxng", RustXNGBaseURL: ts.URL, HTTPClient: ts.Client()})
+	res, err := t1.Execute(context.Background(), json.RawMessage(`{"query":"tokio"}`))
+	if err != nil {
+		t.Fatalf("web_search execute: %v", err)
+	}
+	if !res.IsError || !strings.Contains(res.Text(), "decode rustxng response failed") {
+		t.Fatalf("expected decode error, got %s", res.Text())
+	}
+}
+
+func TestWebSearchTool_RustXNGBadBaseURL(t *testing.T) {
+	t1 := NewWebSearchToolWithOptions(WebSearchOptions{Enabled: true, Provider: "rustxng", RustXNGBaseURL: "http://bad host"})
+	res, err := t1.Execute(context.Background(), json.RawMessage(`{"query":"tokio"}`))
+	if err != nil {
+		t.Fatalf("web_search execute: %v", err)
+	}
+	if !res.IsError || !strings.Contains(res.Text(), "invalid rustxng base url") {
+		t.Fatalf("expected base url error, got %s", res.Text())
 	}
 }
 

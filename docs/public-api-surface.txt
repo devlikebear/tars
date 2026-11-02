@@ -1635,6 +1635,7 @@ pkg/tools field WebSearchOptions.PerplexityAPIKey
 pkg/tools field WebSearchOptions.PerplexityBaseURL
 pkg/tools field WebSearchOptions.PerplexityModel
 pkg/tools field WebSearchOptions.Provider
+pkg/tools field WebSearchOptions.RustXNGBaseURL
 pkg/tools func AggregatorError
 pkg/tools func BindLineEmitter
 pkg/tools func CanonicalToolName

@@ -8,12 +8,12 @@ Where the console shows each field of `/console/config` (#1240). The schema
 
 | Tier | Meaning | Fields |
 |---|---|---|
-| basic | Most people touch it at least once; shown up front | 30 |
+| basic | Most people touch it at least once; shown up front | 31 |
 | advanced | Inside a collapsed Advanced group | 78 |
 | file | Not in the console; YAML and `config/tars.config.example.yaml` only | 66 |
 | remove | Nothing reads it or it was replaced; to be removed, hidden until then | 0 |
 
-Total: 174 fields in 19 sections.
+Total: 175 fields in 19 sections.
 
 `show_when` lists conditions on other fields; the field shows when any one holds
 and the field it names is itself shown.
@@ -145,6 +145,7 @@ and the field it names is itself shown.
 | `tools_web_search_perplexity_api_key` | `tools.web_search.perplexity.api_key` | basic | `tools.web_search.provider` = perplexity |  |
 | `tools_web_search_perplexity_model` | `tools.web_search.perplexity.model` | advanced | `tools.web_search.provider` = perplexity |  |
 | `tools_web_search_perplexity_base_url` | `tools.web_search.perplexity.base_url` | advanced | `tools.web_search.provider` = perplexity |  |
+| `tools_web_search_rustxng_base_url` | `tools.web_search.rustxng.base_url` | basic | `tools.web_search.provider` = rustxng |  |
 | `tools_web_search_cache_ttl_seconds` | `tools.web_search.cache_ttl_seconds` | file |  | internal tuning value |
 | `tools_exec_max_timeout_ms` | `tools.exec.max_timeout_ms` | advanced |  |  |
 | `tools_process_max_timeout_ms` | `tools.process.max_timeout_ms` | advanced |  |  |

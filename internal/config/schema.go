@@ -136,10 +136,11 @@ func Schema() []FieldMeta {
 		f("tools_default_set", "Tools", "string", "Default Tool Set", "Default tool policy/profile for chat sessions"),
 		f("tools_allow_high_risk_user", "Tools", "bool", "Allow High-Risk Tools", "Allow user-level access to high-risk tools"),
 		fs("tools_web_search_api_key", "Tools", "Search API Key", "API key for web search provider", true),
-		fsel("tools_web_search_provider", "Tools", "Search Provider", "Web search backend", []string{"brave", "perplexity"}),
+		fsel("tools_web_search_provider", "Tools", "Search Provider", "Web search backend", []string{"brave", "perplexity", "rustxng"}),
 		fs("tools_web_search_perplexity_api_key", "Tools", "Perplexity API Key", "API key when the web search provider is perplexity", true),
 		f("tools_web_search_perplexity_model", "Tools", "string", "Perplexity Model", "Model name used for Perplexity-backed search"),
 		f("tools_web_search_perplexity_base_url", "Tools", "string", "Perplexity Base URL", "Override URL for the Perplexity chat completions API"),
+		f("tools_web_search_rustxng_base_url", "Tools", "string", "RustXNG Base URL", "Address of a self-hosted RustXNG server"),
 		f("tools_web_search_cache_ttl_seconds", "Tools", "int", "Search Cache TTL", "Cache duration for search results in seconds"),
 		f("tools_exec_max_timeout_ms", "Tools", "int", "Exec Max Timeout (ms)", "Upper bound on per-call exec tool timeout (ms). Long-running commands like builds and CI waits use this cap."),
 		f("tools_process_max_timeout_ms", "Tools", "int", "Process Max Timeout (ms)", "Upper bound on per-call timeout for background commands (exec background:true) and the process tool's wait action."),
@@ -445,6 +446,8 @@ func extractValue(yamlKey string, cfg Config) any {
 		return cfg.ToolsWebSearchPerplexityModel
 	case "tools_web_search_perplexity_base_url":
 		return cfg.ToolsWebSearchPerplexityBaseURL
+	case "tools_web_search_rustxng_base_url":
+		return cfg.ToolsWebSearchRustXNGBaseURL
 	case "tools_web_search_cache_ttl_seconds":
 		return cfg.ToolsWebSearchCacheTTLSeconds
 	case "tools_exec_max_timeout_ms":

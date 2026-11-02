@@ -6,6 +6,10 @@ The format is based on Keep a Changelog and the project follows Semantic Version
 
 ## [Unreleased]
 
+### Added
+
+- **`web_search`: RustXNG provider** — set `tools.web_search.provider: rustxng` to search through a self-hosted [RustXNG](https://github.com/sahenjp/RustXNG) server (`tools.web_search.rustxng.base_url`, default `http://127.0.0.1:29483`). No API key. Snippets only — page text stays off. TARS does not install or start the server, and queries go to the upstream engines that server uses.
+
 ## [0.67.0] - 2026-10-31
 
 ### Added

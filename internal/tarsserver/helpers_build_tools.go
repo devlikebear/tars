@@ -85,6 +85,7 @@ func buildOptionalChatTools(cfg config.Config, agentRuntime *agentruntime.Runtim
 			PerplexityAPIKey:  cfg.ToolsWebSearchPerplexityAPIKey,
 			PerplexityModel:   cfg.ToolsWebSearchPerplexityModel,
 			PerplexityBaseURL: cfg.ToolsWebSearchPerplexityBaseURL,
+			RustXNGBaseURL:    cfg.ToolsWebSearchRustXNGBaseURL,
 			CacheTTL:          time.Duration(cfg.ToolsWebSearchCacheTTLSeconds) * time.Second,
 		}))
 	}
