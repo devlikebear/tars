@@ -152,8 +152,10 @@ func Schema() []FieldMeta {
 		f("tools_computer_use_backend", "Tools", "string", "Computer Use Backend", "Decision backend: llm (configured light tier by default) or jev (jev.base_url)"),
 		f("tools_computer_use_enabled", "Tools", "bool", "Computer Use", "Enable the computer_use tool: drives a desktop app through its accessibility tree. Screen text is sent to the configured LLM provider by default, or jev.base_url with backend: jev"),
 		f("tools_computer_use_cua_driver_path", "Tools", "string", "cua-driver Path", "Path to the cua-driver binary; empty uses CUA_DRIVER_PATH, then PATH"),
+		f("tools_computer_use_driver", "Tools", "string", "Computer Use Driver", "GUI automation binary: cua-driver (default) or agent-desktop"),
+		f("tools_computer_use_agent_desktop_path", "Tools", "string", "agent-desktop Path", "Path to the native agent-desktop binary; empty uses AGENT_DESKTOP_PATH, then PATH"),
 		f("tools_computer_use_max_steps", "Tools", "int", "Computer Use Max Steps", "Default step budget of one computer_use call (hard cap 50)"),
-		f("tools_computer_use_step_timeout_seconds", "Tools", "int", "Computer Use Step Timeout (sec)", "Timeout of each cua-driver call"),
+		f("tools_computer_use_step_timeout_seconds", "Tools", "int", "Computer Use Step Timeout (sec)", "Timeout of each driver call"),
 		f("tools_computer_use_total_timeout_seconds", "Tools", "int", "Computer Use Total Timeout (sec)", "Wall-clock budget of one computer_use call"),
 		f("tools_computer_use_expose_values", "Tools", "bool", "Computer Use Sends Values", "Send element values (field contents) with the screen text; secure fields are never sent"),
 
@@ -466,6 +468,10 @@ func extractValue(yamlKey string, cfg Config) any {
 		return cfg.ToolsComputerUseEnabled
 	case "tools_computer_use_cua_driver_path":
 		return cfg.ToolsComputerUseCuaDriverPath
+	case "tools_computer_use_driver":
+		return cfg.ToolsComputerUseDriver
+	case "tools_computer_use_agent_desktop_path":
+		return cfg.ToolsComputerUseAgentDesktopPath
 	case "tools_computer_use_max_steps":
 		return cfg.ToolsComputerUseMaxSteps
 	case "tools_computer_use_step_timeout_seconds":

@@ -18,6 +18,10 @@ const doctorCuaDriverTimeout = 5 * time.Second
 type doctorComputerUseProbe struct {
 	findDriver func(configured string) (string, error)
 	pingDriver func(ctx context.Context, path string) error
+	// findAgentDesktop and pingAgentDesktop are the same pair for
+	// tools.computer_use.driver: agent-desktop.
+	findAgentDesktop func(configured string) (string, error)
+	pingAgentDesktop func(ctx context.Context, path string) error
 }
 
 func defaultDoctorComputerUseProbe() doctorComputerUseProbe {
@@ -25,6 +29,10 @@ func defaultDoctorComputerUseProbe() doctorComputerUseProbe {
 		findDriver: computeruse.FindCuaDriverPath,
 		pingDriver: func(ctx context.Context, path string) error {
 			return computeruse.NewCuaDriver(path, doctorCuaDriverTimeout).Ping(ctx)
+		},
+		findAgentDesktop: computeruse.FindAgentDesktopPath,
+		pingAgentDesktop: func(ctx context.Context, path string) error {
+			return computeruse.NewAgentDesktopDriver(path, doctorCuaDriverTimeout).Ping(ctx)
 		},
 	}
 }
@@ -36,10 +44,48 @@ func defaultDoctorComputerUseProbe() doctorComputerUseProbe {
 var doctorComputerUseProbeFor = defaultDoctorComputerUseProbe
 
 // checkDoctorComputerUse reports whether the computer_use tool can run: the
-// cua-driver binary, its daemon, and the System One server that decides each
+// driver binary, its daemon, and the System One server that decides each
 // step — and whether that server is remote, since it receives screen text.
 func checkDoctorComputerUse(report *doctorReport, cfg config.Config) {
 	checkDoctorComputerUseWith(report, cfg, doctorComputerUseProbeFor())
+}
+
+// checkDoctorDriver reports the selected driver and returns its name and path,
+// with healthy false when a warning was added.
+func checkDoctorDriver(report *doctorReport, cfg config.Config, probe doctorComputerUseProbe) (label, path string, healthy bool) {
+	const name = "computer_use"
+	if cfg.ToolsComputerUseDriver == computeruse.DriverAgentDesktop {
+		label = computeruse.DriverAgentDesktop
+		path, err := probe.findAgentDesktop(cfg.ToolsComputerUseAgentDesktopPath)
+		if err != nil {
+			report.add("warn", name, "agent-desktop binary not found")
+			report.addHint("install agent-desktop (https://github.com/vercel-labs/agent-desktop) or set tools.computer_use.agent_desktop_path / AGENT_DESKTOP_PATH")
+			return label, "", false
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), doctorCuaDriverTimeout)
+		defer cancel()
+		if err := probe.pingAgentDesktop(ctx, path); err != nil {
+			report.add("warn", name, fmt.Sprintf("agent-desktop at %s is not usable: %v", path, err))
+			report.addHint("grant Accessibility to the app that runs tars (the terminal, or the service binary under launchd)")
+			return label, path, false
+		}
+		return label, path, true
+	}
+	label = computeruse.DriverCua
+	path, err := probe.findDriver(cfg.ToolsComputerUseCuaDriverPath)
+	if err != nil {
+		report.add("warn", name, "cua-driver binary not found")
+		report.addHint("install cua-driver (https://github.com/trycua/cua) or set tools.computer_use.cua_driver_path / CUA_DRIVER_PATH")
+		return label, "", false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), doctorCuaDriverTimeout)
+	defer cancel()
+	if err := probe.pingDriver(ctx, path); err != nil {
+		report.add("warn", name, fmt.Sprintf("cua-driver at %s is not answering: %v", path, err))
+		report.addHint("start the daemon with `cua-driver serve` and grant Accessibility with `cua-driver permissions grant`")
+		return label, path, false
+	}
+	return label, path, true
 }
 
 func checkDoctorComputerUseWith(report *doctorReport, cfg config.Config, probe doctorComputerUseProbe) {
@@ -48,22 +94,7 @@ func checkDoctorComputerUseWith(report *doctorReport, cfg config.Config, probe d
 		report.add("ok", name, "disabled")
 		return
 	}
-	healthy := true
-	path, err := probe.findDriver(cfg.ToolsComputerUseCuaDriverPath)
-	if err != nil {
-		healthy = false
-		report.add("warn", name, "cua-driver binary not found")
-		report.addHint("install cua-driver (https://github.com/trycua/cua) or set tools.computer_use.cua_driver_path / CUA_DRIVER_PATH")
-	} else {
-		ctx, cancel := context.WithTimeout(context.Background(), doctorCuaDriverTimeout)
-		pingErr := probe.pingDriver(ctx, path)
-		cancel()
-		if pingErr != nil {
-			healthy = false
-			report.add("warn", name, fmt.Sprintf("cua-driver at %s is not answering: %v", path, pingErr))
-			report.addHint("start the daemon with `cua-driver serve` and grant Accessibility with `cua-driver permissions grant`")
-		}
-	}
+	label, path, healthy := checkDoctorDriver(report, cfg, probe)
 
 	if cfg.ToolsComputerUseBackend == "" || cfg.ToolsComputerUseBackend == "llm" {
 		tier := cfg.LLMRoleDefaults["computer_use"]
@@ -80,7 +111,7 @@ func checkDoctorComputerUseWith(report *doctorReport, cfg config.Config, probe d
 			return
 		}
 		if healthy {
-			report.add("ok", name, fmt.Sprintf("cua-driver %s, LLM %s/%s (%s tier): screen text is sent to the configured provider; usage follows its billing or subscription limits", path, resolved.Kind, resolved.Model, tier))
+			report.add("ok", name, fmt.Sprintf("%s %s, LLM %s/%s (%s tier): screen text is sent to the configured provider; usage follows its billing or subscription limits", label, path, resolved.Kind, resolved.Model, tier))
 		}
 		return
 	}
@@ -110,5 +141,5 @@ func checkDoctorComputerUseWith(report *doctorReport, cfg config.Config, probe d
 	if client.IsLoopback() {
 		where = "loopback: screen text stays on this machine"
 	}
-	report.add("ok", name, fmt.Sprintf("cua-driver %s, System One %s", path, where))
+	report.add("ok", name, fmt.Sprintf("%s %s, System One %s", label, path, where))
 }

@@ -262,11 +262,15 @@ type ToolConfig struct {
 	// ToolsComputerUse* configure the computer_use chat tool (#973): a GUI
 	// loop over a window's accessibility tree, decided by the configured LLM
 	// role (default: light) or optional Jev and driven through cua-driver.
-	ToolsComputerUseEnabled             bool
-	ToolsComputerUseBackend             string
-	computerUseEnabledSet               bool
-	computerUseExposeValuesSet          bool
-	ToolsComputerUseCuaDriverPath       string
+	ToolsComputerUseEnabled       bool
+	ToolsComputerUseBackend       string
+	computerUseEnabledSet         bool
+	computerUseExposeValuesSet    bool
+	ToolsComputerUseCuaDriverPath string
+	// ToolsComputerUseDriver selects the GUI automation binary: cua-driver
+	// (default) or agent-desktop.
+	ToolsComputerUseDriver              string
+	ToolsComputerUseAgentDesktopPath    string
 	ToolsComputerUseMaxSteps            int
 	ToolsComputerUseStepTimeoutSeconds  int
 	ToolsComputerUseTotalTimeoutSeconds int

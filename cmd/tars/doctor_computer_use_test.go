@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/devlikebear/tars/internal/computeruse"
 	"github.com/devlikebear/tars/internal/config"
 )
 
@@ -35,13 +36,13 @@ func TestCheckDoctorComputerUse(t *testing.T) {
 		wantStatus []string
 		wantDetail []string
 	}{
-		{"disabled", config.Config{}, doctorComputerUseProbe{missing, down}, []string{"ok"}, []string{"disabled"}},
-		{"ready", enabled(srv.URL), doctorComputerUseProbe{found, up}, []string{"ok"}, []string{"loopback"}},
-		{"no binary", enabled(srv.URL), doctorComputerUseProbe{missing, up}, []string{"warn"}, []string{"binary not found"}},
-		{"daemon down", enabled(srv.URL), doctorComputerUseProbe{found, down}, []string{"warn"}, []string{"not answering"}},
-		{"no system one", enabled(""), doctorComputerUseProbe{found, up}, []string{"warn"}, []string{"jev.base_url"}},
-		{"nothing works", enabled(""), doctorComputerUseProbe{missing, up}, []string{"warn", "warn"}, []string{"binary not found", "jev.base_url"}},
-		{"system one down", enabled("http://127.0.0.1:1"), doctorComputerUseProbe{found, up}, []string{"warn"}, []string{"unreachable"}},
+		{"disabled", config.Config{}, doctorComputerUseProbe{findDriver: missing, pingDriver: down}, []string{"ok"}, []string{"disabled"}},
+		{"ready", enabled(srv.URL), doctorComputerUseProbe{findDriver: found, pingDriver: up}, []string{"ok"}, []string{"loopback"}},
+		{"no binary", enabled(srv.URL), doctorComputerUseProbe{findDriver: missing, pingDriver: up}, []string{"warn"}, []string{"binary not found"}},
+		{"daemon down", enabled(srv.URL), doctorComputerUseProbe{findDriver: found, pingDriver: down}, []string{"warn"}, []string{"not answering"}},
+		{"no system one", enabled(""), doctorComputerUseProbe{findDriver: found, pingDriver: up}, []string{"warn"}, []string{"jev.base_url"}},
+		{"nothing works", enabled(""), doctorComputerUseProbe{findDriver: missing, pingDriver: up}, []string{"warn", "warn"}, []string{"binary not found", "jev.base_url"}},
+		{"system one down", enabled("http://127.0.0.1:1"), doctorComputerUseProbe{findDriver: found, pingDriver: up}, []string{"warn"}, []string{"unreachable"}},
 	}
 	for _, tc := range cases {
 		var report doctorReport
@@ -54,6 +55,43 @@ func TestCheckDoctorComputerUse(t *testing.T) {
 			if c.name != "computer_use" || c.status != tc.wantStatus[i] || !strings.Contains(c.detail, tc.wantDetail[i]) {
 				t.Errorf("%s: check %d = %+v, want %s containing %q", tc.name, i, c, tc.wantStatus[i], tc.wantDetail[i])
 			}
+		}
+	}
+}
+
+func TestCheckDoctorComputerUse_AgentDesktop(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"answers":{"ok":{"value":true}}}`))
+	}))
+	defer srv.Close()
+	found := func(string) (string, error) { return "/opt/agent-desktop", nil }
+	missing := func(string) (string, error) { return "", computeruse.ErrDriverUnavailable }
+	up := func(context.Context, string) error { return nil }
+	down := func(context.Context, string) error { return errors.New("not granted") }
+	cuaMustNotRun := func(string) (string, error) {
+		t.Error("cua-driver probed although agent-desktop is selected")
+		return "", computeruse.ErrDriverUnavailable
+	}
+	cfg := config.Config{
+		ToolConfig: config.ToolConfig{ToolsComputerUseEnabled: true, ToolsComputerUseBackend: "jev", ToolsComputerUseDriver: "agent-desktop"},
+		Jev:        config.JevConfig{BaseURL: srv.URL},
+	}
+	cases := []struct {
+		name   string
+		find   func(string) (string, error)
+		ping   func(context.Context, string) error
+		status string
+		detail string
+	}{
+		{"ready", found, up, "ok", "agent-desktop /opt/agent-desktop"},
+		{"no binary", missing, up, "warn", "agent-desktop binary not found"},
+		{"no permission", found, down, "warn", "not usable"},
+	}
+	for _, tc := range cases {
+		var report doctorReport
+		checkDoctorComputerUseWith(&report, cfg, doctorComputerUseProbe{findDriver: cuaMustNotRun, findAgentDesktop: tc.find, pingAgentDesktop: tc.ping})
+		if len(report.checks) != 1 || report.checks[0].status != tc.status || !strings.Contains(report.checks[0].detail, tc.detail) {
+			t.Errorf("%s: checks = %+v", tc.name, report.checks)
 		}
 	}
 }

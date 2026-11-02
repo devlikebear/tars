@@ -282,6 +282,12 @@ var configFieldImpactHints = map[string][]string{
 	"tools_computer_use_cua_driver_path": {
 		"Changing the cua-driver path changes which local binary receives GUI automation commands.",
 	},
+	"tools_computer_use_driver": {
+		"Changing the computer use driver changes which local binary receives GUI automation commands and which app needs Accessibility permission.",
+	},
+	"tools_computer_use_agent_desktop_path": {
+		"Changing the agent-desktop path changes which local binary receives GUI automation commands.",
+	},
 	"tools_computer_use_expose_values": {
 		"Sending element values exposes text field contents to the System One server.",
 	},

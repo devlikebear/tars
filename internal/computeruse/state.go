@@ -118,6 +118,9 @@ func RenderState(req Request, snap Snapshot, trace []TraceStep, opts RenderOptio
 	if hidden := total - len(shown); hidden > 0 {
 		fmt.Fprintf(&b, "(…%d more elements not shown; choose look to see them)\n", hidden)
 	}
+	if snap.Partial {
+		b.WriteString("(the window was only partly read; more elements may exist)\n")
+	}
 	// Read-only text is content like a field's value is, so the same switch
 	// that withholds values withholds it.
 	if opts.ExposeValues && len(snap.Texts) > 0 {

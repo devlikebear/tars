@@ -67,6 +67,12 @@ func hermeticDoctorComputerUseProbe() doctorComputerUseProbe {
 		pingDriver: func(context.Context, string) error {
 			return fmt.Errorf("%w: hermeticDoctorComputerUseProbe.pingDriver must never be called in cmd/tars tests", computeruse.ErrDriverUnavailable)
 		},
+		findAgentDesktop: func(string) (string, error) {
+			return "", fmt.Errorf("%w: agent-desktop exec is disabled in cmd/tars tests (see TestMain)", computeruse.ErrDriverUnavailable)
+		},
+		pingAgentDesktop: func(context.Context, string) error {
+			return fmt.Errorf("%w: hermeticDoctorComputerUseProbe.pingAgentDesktop must never be called in cmd/tars tests", computeruse.ErrDriverUnavailable)
+		},
 	}
 }
 

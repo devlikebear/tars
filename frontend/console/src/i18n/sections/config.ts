@@ -291,6 +291,8 @@ const fieldsKo: Record<string, ConfigFieldOverride> = {
     description: '데스크톱 앱을 접근성 트리로 조작하는 computer_use 도구를 사용합니다. 화면 텍스트는 기본적으로 설정된 LLM 프로바이더로 보내지며, backend: jev이면 jev.base_url로 보냅니다',
   },
   tools_computer_use_cua_driver_path: { label: 'cua-driver 경로', description: '비우면 CUA_DRIVER_PATH, 그다음 PATH를 씁니다' },
+  tools_computer_use_driver: { label: 'computer_use 드라이버', description: 'GUI 자동화 바이너리: cua-driver(기본) 또는 agent-desktop' },
+  tools_computer_use_agent_desktop_path: { label: 'agent-desktop 경로', description: '네이티브 agent-desktop 바이너리 경로. 비우면 AGENT_DESKTOP_PATH, 그다음 PATH를 씁니다' },
   tools_computer_use_max_steps: { label: 'computer_use 최대 단계', description: 'computer_use 호출 1회의 기본 단계 예산(상한 50)' },
   tools_computer_use_total_timeout_seconds: { label: 'computer_use 전체 타임아웃(초)', description: 'computer_use 호출 1회의 총 시간 예산' },
   tools_computer_use_expose_values: { label: 'computer_use 값 전송', description: '화면 텍스트와 함께 요소 값(입력 내용)을 보냅니다. 보안 필드는 절대 보내지 않습니다' },

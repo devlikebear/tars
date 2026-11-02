@@ -188,6 +188,8 @@ var configFieldTiers = map[string]fieldTier{
 	"tools_computer_use_enabled":                  basic(),
 	"tools_computer_use_backend":                  advanced(computerUseOn),
 	"tools_computer_use_cua_driver_path":          advanced(computerUseOn),
+	"tools_computer_use_driver":                   advanced(computerUseOn),
+	"tools_computer_use_agent_desktop_path":       advanced(computerUseOn),
 	"tools_computer_use_max_steps":                advanced(computerUseOn),
 	"tools_computer_use_total_timeout_seconds":    advanced(computerUseOn),
 	"tools_computer_use_expose_values":            advanced(computerUseOn),

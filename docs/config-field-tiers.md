@@ -9,11 +9,11 @@ Where the console shows each field of `/console/config` (#1240). The schema
 | Tier | Meaning | Fields |
 |---|---|---|
 | basic | Most people touch it at least once; shown up front | 31 |
-| advanced | Inside a collapsed Advanced group | 78 |
+| advanced | Inside a collapsed Advanced group | 80 |
 | file | Not in the console; YAML and `config/tars.config.example.yaml` only | 66 |
 | remove | Nothing reads it or it was replaced; to be removed, hidden until then | 0 |
 
-Total: 175 fields in 19 sections.
+Total: 177 fields in 19 sections.
 
 `show_when` lists conditions on other fields; the field shows when any one holds
 and the field it names is itself shown.
@@ -157,6 +157,8 @@ and the field it names is itself shown.
 | `tools_computer_use_backend` | `tools.computer_use.backend` | advanced | `tools.computer_use.enabled` = true |  |
 | `tools_computer_use_enabled` | `tools.computer_use.enabled` | basic |  |  |
 | `tools_computer_use_cua_driver_path` | `tools.computer_use.cua_driver_path` | advanced | `tools.computer_use.enabled` = true |  |
+| `tools_computer_use_driver` | `tools.computer_use.driver` | advanced | `tools.computer_use.enabled` = true |  |
+| `tools_computer_use_agent_desktop_path` | `tools.computer_use.agent_desktop_path` | advanced | `tools.computer_use.enabled` = true |  |
 | `tools_computer_use_max_steps` | `tools.computer_use.max_steps` | advanced | `tools.computer_use.enabled` = true |  |
 | `tools_computer_use_step_timeout_seconds` | `tools.computer_use.step_timeout_seconds` | file |  | internal tuning value |
 | `tools_computer_use_total_timeout_seconds` | `tools.computer_use.total_timeout_seconds` | advanced | `tools.computer_use.enabled` = true |  |

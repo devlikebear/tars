@@ -189,6 +189,7 @@ func defaultConfigValues() Config {
 			ToolsExecMaxTimeoutMS:               defaultExecMaxTimeoutMS,
 			ToolsComputerUseEnabled:             true,
 			ToolsComputerUseBackend:             "llm",
+			ToolsComputerUseDriver:              "cua-driver",
 			ToolsComputerUseMaxSteps:            25,
 			ToolsComputerUseStepTimeoutSeconds:  15,
 			ToolsComputerUseTotalTimeoutSeconds: 300,

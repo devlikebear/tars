@@ -2,6 +2,7 @@ package computeruse
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -215,6 +216,39 @@ func TestRun_TypingIntoSecureFieldNeedsConfirmation(t *testing.T) {
 	}
 	if res2 := e.Resume(context.Background(), "cu_test", true); res2.Status != StatusDone || d.actions[0] != "type:t1=hunter2" {
 		t.Fatalf("resume must type: res2=%+v actions=%v", res2, d.actions)
+	}
+}
+
+// A driver's parsed output, not a hand-set Secure flag, has to reach the gate.
+func TestRun_SecureFieldsFromRealPayloadsPause(t *testing.T) {
+	const mask = ""
+	cua := func(t *testing.T, element string) Snapshot {
+		t.Helper()
+		s, err := parseWindowState([]byte(`{"elements":[` + element + `]}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return s
+	}
+	ad, _, _, err := parseADSnapshot(json.RawMessage(`{"complete":true,"tree":{"role":"window","children":[
+		{"available_actions":["Click","SetValue"],"name":"Secret","ref_id":"@s:e1","role":"textfield","states":["secure"]}]}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cases := map[string]Snapshot{
+		"cua-driver masked value": cua(t, `{"element_index":0,"element_token":"t1","role":"AXTextField","label":"Secret","value":"`+mask+`","enabled":true}`),
+		"cua-driver empty field":  cua(t, `{"element_index":0,"element_token":"t1","role":"AXTextField","label":"Password","enabled":true}`),
+		"agent-desktop":           ad,
+	}
+	for name, s := range cases {
+		t.Run(name, func(t *testing.T) {
+			d := &FakeDriver{snaps: []Snapshot{s}}
+			a := &FakeAsker{answers: []map[string]jev.Answer{withInput(decide("type", "e1", 0.95, 0.05, 0), "pw")}}
+			res := newTestEngine(d, a).Run(context.Background(), Request{Goal: "log in", Inputs: map[string]string{"pw": "hunter2"}})
+			if res.Status != StatusNeedsConfirmation || len(d.actions) != 0 {
+				t.Fatalf("res=%+v actions=%v", res, d.actions)
+			}
+		})
 	}
 }
 

@@ -45,6 +45,26 @@ func TestComputerUseRejectsUnknownBackend(t *testing.T) {
 	}
 }
 
+func TestComputerUseDriverDefaultsAndValidation(t *testing.T) {
+	cfg, err := Load("")
+	if err != nil || cfg.ToolsComputerUseDriver != "cua-driver" {
+		t.Fatalf("default: %q %v", cfg.ToolsComputerUseDriver, err)
+	}
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	body := "tools:\n  computer_use:\n    driver: agent-desktop\n    agent_desktop_path: /opt/agent-desktop\n"
+	if err := os.WriteFile(path, []byte(body), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err = Load(path)
+	if err != nil || cfg.ToolsComputerUseDriver != "agent-desktop" || cfg.ToolsComputerUseAgentDesktopPath != "/opt/agent-desktop" {
+		t.Fatalf("yaml: %q %q %v", cfg.ToolsComputerUseDriver, cfg.ToolsComputerUseAgentDesktopPath, err)
+	}
+	t.Setenv("TARS_TOOLS_COMPUTER_USE_DRIVER", "typo")
+	if _, err := Load(""); err == nil {
+		t.Fatal("unknown driver must be rejected")
+	}
+}
+
 func TestComputerUseWithholdsValuesWhenExplicitlyDisabled(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	if err := os.WriteFile(path, []byte("tools:\n  computer_use:\n    expose_values: false\n"), 0600); err != nil {
