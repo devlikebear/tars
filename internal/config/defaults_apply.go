@@ -245,6 +245,9 @@ func applyToolDefaults(cfg *Config, defaults Config) {
 	if cfg.ToolsWebSearchPerplexityBaseURL == "" {
 		cfg.ToolsWebSearchPerplexityBaseURL = defaults.ToolsWebSearchPerplexityBaseURL
 	}
+	if cfg.ToolsWebSearchRustXNGBaseURL == "" {
+		cfg.ToolsWebSearchRustXNGBaseURL = defaults.ToolsWebSearchRustXNGBaseURL
+	}
 	if cfg.ToolsWebSearchCacheTTLSeconds <= 0 {
 		cfg.ToolsWebSearchCacheTTLSeconds = defaults.ToolsWebSearchCacheTTLSeconds
 	}

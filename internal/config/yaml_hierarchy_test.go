@@ -88,6 +88,8 @@ tools:
       api_key: pplx-key
       model: sonar-pro
       base_url: https://perplexity.example
+    rustxng:
+      base_url: http://127.0.0.1:8888
   web_fetch:
     enabled: true
     allow_private_hosts: true
@@ -213,6 +215,9 @@ agentruntime:
 	}
 	if cfg.ReflectionSleepWindow != "02:00-05:00" || cfg.ReflectionTimezone != "Asia/Seoul" {
 		t.Fatalf("reflection fields not parsed: window=%q timezone=%q", cfg.ReflectionSleepWindow, cfg.ReflectionTimezone)
+	}
+	if cfg.ToolsWebSearchRustXNGBaseURL != "http://127.0.0.1:8888" {
+		t.Fatalf("rustxng base url not parsed: %q", cfg.ToolsWebSearchRustXNGBaseURL)
 	}
 	if !cfg.ToolsWebSearchEnabled || cfg.ToolsWebSearchProvider != "perplexity" || cfg.ToolsWebSearchPerplexityAPIKey != "pplx-key" {
 		t.Fatalf("tool hierarchy not parsed: enabled=%t provider=%q pplx=%q", cfg.ToolsWebSearchEnabled, cfg.ToolsWebSearchProvider, cfg.ToolsWebSearchPerplexityAPIKey)

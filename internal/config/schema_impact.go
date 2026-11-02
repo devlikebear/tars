@@ -252,6 +252,9 @@ var configFieldImpactHints = map[string][]string{
 	"tools_web_search_perplexity_base_url": {
 		"Changing Perplexity base URL affects where search requests are sent.",
 	},
+	"tools_web_search_rustxng_base_url": {
+		"Changing RustXNG base URL affects which server receives search queries.",
+	},
 	"tools_web_search_cache_ttl_seconds": {
 		"Changing cache TTL affects search freshness and repeated request volume.",
 	},

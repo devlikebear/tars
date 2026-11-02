@@ -77,6 +77,8 @@ func inferPreferredYAMLPathForKey(key string) string {
 		return "compaction." + strings.TrimPrefix(key, "compaction_")
 	case strings.HasPrefix(key, "tools_web_search_perplexity_"):
 		return "tools.web_search.perplexity." + strings.TrimPrefix(key, "tools_web_search_perplexity_")
+	case strings.HasPrefix(key, "tools_web_search_rustxng_"):
+		return "tools.web_search.rustxng." + strings.TrimPrefix(key, "tools_web_search_rustxng_")
 	case strings.HasPrefix(key, "tools_web_search_"):
 		return "tools.web_search." + strings.TrimPrefix(key, "tools_web_search_")
 	case strings.HasPrefix(key, "tools_web_fetch_"):
