@@ -100,7 +100,9 @@ func shouldRunAt(job Job, now time.Time) bool {
 	if job.LastRunAt != nil {
 		base = job.LastRunAt.UTC()
 	}
-	next := sched.Next(base)
+	// robfig/cron reads the expression in base's location (a CRON_TZ= prefix
+	// overrides it), so base must be in the job's zone, not UTC.
+	next := sched.Next(base.In(job.location()))
 	return !next.After(now)
 }
 
@@ -128,4 +130,24 @@ func parseEveryDuration(schedule string) (time.Duration, bool) {
 	default:
 		return 0, false
 	}
+}
+
+// LocalTimezone is the Job.Timezone value for the server's local time zone,
+// resolved at each tick (the same "Local" convention as pulse and reflection).
+const LocalTimezone = "Local"
+
+// location is the zone the job's cron expression is evaluated in.
+func (j Job) location() *time.Location {
+	tz := strings.TrimSpace(j.Timezone)
+	switch tz {
+	case "":
+		return time.UTC
+	case LocalTimezone:
+		return time.Local
+	}
+	loc, err := time.LoadLocation(tz)
+	if err != nil {
+		return time.Local
+	}
+	return loc
 }

@@ -59,10 +59,7 @@ func ParseNaturalSchedule(natural string, timezone string, now time.Time) (strin
 	if strings.HasPrefix(strings.ToLower(input), "at:") || strings.HasPrefix(strings.ToLower(input), "every:") {
 		return NormalizeExpression(input)
 	}
-	loc, err := time.LoadLocation(strings.TrimSpace(timezone))
-	if err != nil {
-		loc = time.FixedZone("UTC+9", 9*3600)
-	}
+	loc, explicitZone := resolveLocation(timezone)
 	if strings.Contains(input, "매주") {
 		match := weeklyPattern.FindStringSubmatch(input)
 		if len(match) == 4 {
@@ -71,7 +68,13 @@ func ParseNaturalSchedule(natural string, timezone string, now time.Time) (strin
 			if hourErr != nil {
 				return "", hourErr
 			}
-			return fmt.Sprintf("0 %d * * %d", hour, dow), nil
+			expr := fmt.Sprintf("0 %d * * %d", hour, dow)
+			if explicitZone {
+				// The hour belongs to this zone, not to whichever zone later
+				// evaluates the expression.
+				expr = "CRON_TZ=" + loc.String() + " " + expr
+			}
+			return expr, nil
 		}
 	}
 	if strings.Contains(input, "내일") {
@@ -129,6 +132,22 @@ func ParseNaturalSchedule(natural string, timezone string, now time.Time) (strin
 		}
 	}
 	return "", fmt.Errorf("could not parse natural schedule; use at:<rfc3339> or every:<duration> (e.g. at:2026-03-01T09:35:00Z, every:10m)")
+}
+
+// resolveLocation maps a timezone argument to the zone natural schedules are
+// read in. Empty, "Local" and unknown names mean the server's local zone
+// (explicit=false); only a loadable IANA name is explicit. time.LoadLocation
+// alone is not enough: it turns "" into UTC.
+func resolveLocation(timezone string) (loc *time.Location, explicit bool) {
+	tz := strings.TrimSpace(timezone)
+	if tz == "" || tz == "Local" {
+		return time.Local, false
+	}
+	loaded, err := time.LoadLocation(tz)
+	if err != nil {
+		return time.Local, false
+	}
+	return loaded, true
 }
 
 func invalidScheduleError(raw string) error {
