@@ -42,7 +42,7 @@ make console-e2e          # Playwright: rebuilt console + tars serve + mock LLM 
 |---------|---------|
 | `agentruntime` | Agent execution: state machine, max 4 subagents, `workspace/_shared/agentruntime/` |
 | `session` | File-based chat in `workspace/sessions/`. Kinds: `main` (visible), `worker` (hidden) |
-| `cron` | Tick-based scheduler (30s). `@at` one-time + cron exprs. History capped 50/job |
+| `cron` | Tick-based scheduler (30s). `@at` one-time + cron exprs. Cron exprs are read in the job's `timezone` (new jobs `Local`; empty = jobs saved before #1311, kept on UTC until their schedule is edited; a `CRON_TZ=` prefix wins). History capped 50/job |
 | `pulse` | Watchdog (1-min): cron failures, stuck runs, disk, telegram, reflection → Go rules (`DecideByRules`); an unchanged set of signals is acted on once, not every tick |
 | `reflection` | Nightly (02:00-05:00): experience extraction + empty session cleanup |
 | `initiative` | Speak-first loop (1-min, off by default, shadow only): Go signals + System One text signals → pure policy → ledger |

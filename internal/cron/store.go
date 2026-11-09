@@ -19,10 +19,14 @@ import (
 const defaultRunHistoryLimit = 200
 
 type Job struct {
-	ID                  string          `json:"id"`
-	Name                string          `json:"name"`
-	Prompt              string          `json:"prompt"`
-	Schedule            string          `json:"schedule"`
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Prompt   string `json:"prompt"`
+	Schedule string `json:"schedule"`
+	// Timezone is the zone a cron expression's hours are read in: an IANA
+	// name or LocalTimezone. Empty means UTC — jobs saved before this field
+	// existed ran that way and keep doing so until their schedule is edited.
+	Timezone            string          `json:"timezone,omitempty"`
 	Enabled             bool            `json:"enabled"`
 	SessionID           string          `json:"session_id,omitempty"`
 	SessionTarget       string          `json:"session_target,omitempty"`
@@ -187,6 +191,7 @@ func (s *Store) CreateWithOptions(input CreateInput) (Job, error) {
 		Name:           name,
 		Prompt:         prompt,
 		Schedule:       schedule,
+		Timezone:       LocalTimezone,
 		Enabled:        enabled,
 		SessionID:      sessionID,
 		SessionTarget:  sessionTarget,
@@ -270,6 +275,9 @@ func applyUpdateInput(job *Job, input UpdateInput) error {
 			return err
 		}
 		job.Schedule = schedule
+		if strings.TrimSpace(job.Timezone) == "" {
+			job.Timezone = LocalTimezone
+		}
 	}
 	if input.Enabled != nil {
 		job.Enabled = *input.Enabled
