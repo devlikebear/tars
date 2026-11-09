@@ -352,7 +352,7 @@ func runChatTurn(w http.ResponseWriter, r *http.Request, req chatRequestPayload,
 		deps.tooling.PlanClarifyMode,
 	)
 
-	if p, act, ok := focusAfterTurn(state.store, state.sessionID, state.transcriptPath, chatResp.Message.Content, state.focusMark, time.Now(), deps.logger); ok {
+	if p, act, ok := focusAfterTurn(state.store, state.sessionID, state.transcriptPath, chatResp.Message.Content, state.focusMark, time.Now(), deps.tooling.Focus.auditFunc(), deps.logger); ok {
 		stream.pipeline(p, focusNextPrompt(act))
 		deps.tooling.Focus.afterTurn(r.Context(), state.sessionID, act, serverauth.RoleFromRequest(r))
 	}

@@ -130,3 +130,91 @@ func TestGuidanceCoversPlanEditAndEndToEndSetup(t *testing.T) {
 		t.Fatalf("plan guidance:\n%s", plan)
 	}
 }
+
+func TestGoalModeLockedFields(t *testing.T) {
+	off := inReview(t)
+	on := StartGoal(off, 0, t0)
+	goal := "a narrower goal"
+	cases := []struct {
+		name string
+		edit PlanEdit
+		want string
+	}{
+		{"goal only", PlanEdit{Goal: &goal}, ""},
+		{"verify restated, cleaned", PlanEdit{Goal: &goal, Verify: strs(" make test ", "")}, ""},
+		{"verify replaced", PlanEdit{Verify: strs("true")}, "verify"},
+		{"verify reordered", PlanEdit{Verify: strs("make test", "make lint")}, "verify"},
+		{"verify cleared", PlanEdit{Verify: strs()}, "verify"},
+		{"e2e dropped", PlanEdit{E2E: strs()}, "e2e"},
+		{"setup added", PlanEdit{E2ESetup: strs("make build")}, "e2e_setup"},
+		{"teardown added", PlanEdit{E2ETeardown: strs("pkill app")}, "e2e_teardown"},
+		{"all at once", PlanEdit{Verify: strs("true"), E2E: strs(), E2ESetup: strs("x"), E2ETeardown: strs("y")}, "verify,e2e,e2e_setup,e2e_teardown"},
+	}
+	for _, c := range cases {
+		if got := GoalModeLockedFields(off, c.edit); got != nil {
+			t.Fatalf("%s: goal mode off locks %v", c.name, got)
+		}
+		if got := strings.Join(GoalModeLockedFields(on, c.edit), ","); got != c.want {
+			t.Fatalf("%s: locked = %q, want %q", c.name, got, c.want)
+		}
+		_, _, err := EditPlanByAgent(on, c.edit, t0)
+		if refused := errors.Is(err, ErrGoalModeChecks); refused != (c.want != "") {
+			t.Fatalf("%s: err = %v", c.name, err)
+		}
+		if c.want != "" && !strings.HasSuffix(err.Error(), "(asked to change "+strings.ReplaceAll(c.want, ",", ", ")+")") {
+			t.Fatalf("%s: the refusal does not name %q: %v", c.name, c.want, err)
+		}
+	}
+	ended, _ := EndGoal(on, "done", t0)
+	if got := GoalModeLockedFields(ended, PlanEdit{Verify: strs("true")}); got != nil {
+		t.Fatalf("ended goal mode still locks %v", got)
+	}
+	// The developer's EditPlan is never locked.
+	if got, changed, err := EditPlan(on, PlanEdit{Verify: strs("true")}, t0); err != nil || !changed || got.Plan.Verify[0] != "true" {
+		t.Fatalf("developer edit in goal mode: changed = %v err = %v", changed, err)
+	}
+}
+
+func TestPlanEditBlockRefusedInGoalMode(t *testing.T) {
+	p := StartGoal(inReview(t), 0, t0)
+	blocks := ParseBlocks(`<focus-plan-edit>{"goal":"new goal","verify":["true"]}</focus-plan-edit>` + "\n" +
+		`<focus-findings>[]</focus-findings>` + "\n" + `<focus-report>{"summary":"s"}</focus-report>`)
+	got, act, err := Apply(p, Event{Kind: EventTurnCompleted, Turn: 7, Blocks: blocks}, t0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The whole edit is refused, its goal too; the turn still counts.
+	if got.Goal != p.Goal || strings.Join(got.Plan.Verify, ",") != "make test" || act.Kind != ActionRunVerification {
+		t.Fatalf("goal = %q verify = %q act = %+v", got.Goal, got.Plan.Verify, act)
+	}
+	refused := false
+	for _, c := range got.Cards {
+		if c.Title == NoticePlanEdited {
+			t.Fatal("a refused edit left a plan edited card")
+		}
+		refused = refused || (c.Title == NoticeFormatMissing && strings.Contains(string(c.Payload), "goal mode"))
+	}
+	if !refused {
+		t.Fatalf("no notice for the refused edit: %+v", got.Cards)
+	}
+}
+
+func TestPlanEditGuidanceInGoalMode(t *testing.T) {
+	p := inReview(t)
+	off := p.planEditGuidance()
+	on := StartGoal(p, 0, t0).planEditGuidance()
+	if strings.Contains(off, "Goal mode") || !strings.Contains(off, `"verify"`) {
+		t.Fatalf("guidance without goal mode changed:\n%s", off)
+	}
+	if !strings.Contains(on, "cannot be changed") || strings.Contains(on, `"verify"`) || strings.Contains(on, `"e2e"`) ||
+		!strings.Contains(on, "end-to-end goals") || !strings.Contains(on, `{"goal":"…"}`) {
+		t.Fatalf("goal mode guidance:\n%s", on)
+	}
+	p.E2E = false
+	if g := StartGoal(p, 0, t0).planEditGuidance(); strings.Contains(g, "end-to-end") {
+		t.Fatalf("goal mode guidance names end-to-end goals the pipeline does not have:\n%s", g)
+	}
+	if !strings.Contains(Guidance(StartGoal(inReview(t), 0, t0)), "cannot be changed in this run") {
+		t.Fatal("the turn guidance must carry the goal mode wording")
+	}
+}

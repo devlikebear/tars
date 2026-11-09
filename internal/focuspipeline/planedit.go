@@ -26,6 +26,12 @@ const NoticePlanEdited = "plan edited"
 // yet (the plan stage edits it at G1) or that already ran to its end.
 var ErrNoApprovedPlan = errors.New("no approved plan to edit")
 
+// ErrGoalModeChecks is an edit the agent made in goal mode that would
+// change the plan's checks. In goal mode no one is at the gates and the
+// checks' exit codes are what lets review pass, so the agent must not be
+// able to rewrite them (#1290). The developer still can, from the console.
+var ErrGoalModeChecks = errors.New("goal mode is on: the plan's checks (verify, e2e, e2e_setup, e2e_teardown) are fixed; fix the code, not the plan")
+
 // PlanEdit is the fields of an approved plan to replace. A nil field stays
 // as it is; an empty list clears that list.
 type PlanEdit struct {
@@ -39,6 +45,44 @@ type PlanEdit struct {
 // Empty reports whether the edit names no field.
 func (e PlanEdit) Empty() bool {
 	return e.Goal == nil && e.Verify == nil && e.E2E == nil && e.E2ESetup == nil && e.E2ETeardown == nil
+}
+
+// GoalModeLockedFields names the checks an edit from the agent (the
+// focus_plan_edit tool or a <focus-plan-edit> block) would change while
+// the pipeline is in goal mode, in plan order; nil when the edit may go
+// ahead. A list given exactly as it is changes nothing and is not named,
+// so an edit that restates the checks next to a new goal still passes.
+// The goal's wording is not locked: no transition reads it.
+func GoalModeLockedFields(p Pipeline, edit PlanEdit) []string {
+	if !p.GoalActive() || p.Plan == nil {
+		return nil
+	}
+	var locked []string
+	for _, l := range []struct {
+		name string
+		edit *[]string
+		list []string
+	}{
+		{"verify", edit.Verify, p.Plan.Verify},
+		{"e2e", edit.E2E, p.Plan.E2E},
+		{"e2e_setup", edit.E2ESetup, p.Plan.E2ESetup},
+		{"e2e_teardown", edit.E2ETeardown, p.Plan.E2ETeardown},
+	} {
+		if l.edit != nil && !slices.Equal(l.list, cleanStrings(*l.edit)) {
+			locked = append(locked, l.name)
+		}
+	}
+	return locked
+}
+
+// EditPlanByAgent is EditPlan for an edit the agent made: in goal mode an
+// edit that would change a check is refused with ErrGoalModeChecks and
+// changes nothing.
+func EditPlanByAgent(p Pipeline, edit PlanEdit, now time.Time) (Pipeline, bool, error) {
+	if locked := GoalModeLockedFields(p, edit); len(locked) > 0 {
+		return p, false, fmt.Errorf("%w (asked to change %s)", ErrGoalModeChecks, strings.Join(locked, ", "))
+	}
+	return EditPlan(p, edit, now)
 }
 
 // EditPlan applies edit to the pipeline's approved plan and leaves a notice
@@ -127,8 +171,22 @@ func listChanges(name string, before, after []string) []string {
 }
 
 // planEditGuidance tells a turn after G1 how the approved plan changes.
-// The end-to-end fields are named only to a pipeline that has them.
+// The end-to-end fields are named only to a pipeline that has them. In goal
+// mode the checks are locked (GoalModeLockedFields), so the guidance offers
+// only the goal and says the checks are fixed rather than invite an edit
+// the server refuses.
 func (p Pipeline) planEditGuidance() string {
+	if p.GoalActive() {
+		checks := "verification commands"
+		if p.E2E {
+			checks = "verification commands and end-to-end goals"
+		}
+		return "Goal mode is on: the plan's " + checks + " cannot be changed in this run, and an edit to them is refused. " +
+			"Only the goal's wording changes, and only when the developer asks for it in this conversation: then call the focus_plan_edit tool if you have it, " +
+			"or else add this block before the others:\n" +
+			`<focus-plan-edit>{"goal":"…"}</focus-plan-edit>` + "\n" +
+			"A failing check is fixed in the code, never by editing the plan."
+	}
 	what, fields := "a verification command", ""
 	if p.E2E {
 		what, fields = "a verification command or end-to-end goal", `,"e2e":["…"],"e2e_setup":["…"],"e2e_teardown":["…"]`

@@ -38,7 +38,7 @@ func qaFixture(t *testing.T) (http.Handler, *focusDriver, *session.Store, sessio
 	transcript := store.TranscriptPath(sess.ID)
 	_ = session.AppendMessage(transcript, session.Message{Role: "user", Content: "plan it", Timestamp: time.Now()})
 	_ = session.AppendMessage(transcript, session.Message{Role: "assistant", Content: focusPlanReply, Timestamp: time.Now()})
-	if _, _, ok := focusAfterTurn(store, sess.ID, transcript, focusPlanReply, currentFocusMark(t, store, sess.ID), time.Now(), zerolog.Nop()); !ok {
+	if _, _, ok := focusAfterTurn(store, sess.ID, transcript, focusPlanReply, currentFocusMark(t, store, sess.ID), time.Now(), nil, zerolog.Nop()); !ok {
 		t.Fatal("no pipeline")
 	}
 	cwd := realTempDir(t)

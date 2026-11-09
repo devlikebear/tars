@@ -95,7 +95,7 @@ func (f *fakeFocusTurns) run(ctx context.Context, sessionID, prompt string) erro
 	if err := session.AppendMessage(transcript, session.Message{Role: "assistant", Content: reply, Timestamp: time.Now()}); err != nil {
 		return err
 	}
-	if _, act, ok := focusAfterTurn(f.store, sessionID, transcript, reply, mark, time.Now(), zerolog.Nop()); ok {
+	if _, act, ok := focusAfterTurn(f.store, sessionID, transcript, reply, mark, time.Now(), nil, zerolog.Nop()); ok {
 		f.driver.afterTurn(ctx, sessionID, act, "")
 	}
 	return nil

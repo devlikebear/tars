@@ -60,7 +60,7 @@ func focusSession(t *testing.T, store *session.Store, goal string) session.Sessi
 func plannedFocusSession(t *testing.T, store *session.Store) session.Session {
 	t.Helper()
 	sess := focusSession(t, store, "goal")
-	if _, _, ok := focusAfterTurn(store, sess.ID, store.TranscriptPath(sess.ID), focusPlanReply, currentFocusMark(t, store, sess.ID), time.Now(), zerolog.Nop()); !ok {
+	if _, _, ok := focusAfterTurn(store, sess.ID, store.TranscriptPath(sess.ID), focusPlanReply, currentFocusMark(t, store, sess.ID), time.Now(), nil, zerolog.Nop()); !ok {
 		t.Fatal("focusAfterTurn found no pipeline")
 	}
 	return sess
@@ -466,7 +466,7 @@ func TestFocusCards(t *testing.T) {
 	h := newFocusPipelineHandler(f.store, f.c, nil, zerolog.Nop())
 	sess := focusSession(t, f.store, "g")
 	reply := focusPlanReply + "\n<focus-report>{\"summary\":\"s\",\"decisions\":[{\"id\":\"d1\",\"question\":\"Which store?\",\"options\":[\"file\",\"sqlite\"]}]}</focus-report>"
-	p, _, ok := focusAfterTurn(f.store, sess.ID, f.store.TranscriptPath(sess.ID), reply, currentFocusMark(t, f.store, sess.ID), time.Now(), zerolog.Nop())
+	p, _, ok := focusAfterTurn(f.store, sess.ID, f.store.TranscriptPath(sess.ID), reply, currentFocusMark(t, f.store, sess.ID), time.Now(), nil, zerolog.Nop())
 	if !ok || len(p.Cards) != 3 {
 		t.Fatalf("cards = %+v", p.Cards)
 	}
@@ -837,7 +837,7 @@ func TestFocusAfterTurnIgnoresStaleStage(t *testing.T) {
 		t.Fatal(err)
 	}
 	before, _, _ := fs.Get(sess.ID)
-	if _, next, ok := focusAfterTurn(store, sess.ID, store.TranscriptPath(sess.ID), "no block here", mark, time.Now(), zerolog.Nop()); ok || next.Kind != focuspipeline.ActionNone {
+	if _, next, ok := focusAfterTurn(store, sess.ID, store.TranscriptPath(sess.ID), "no block here", mark, time.Now(), nil, zerolog.Nop()); ok || next.Kind != focuspipeline.ActionNone {
 		t.Fatalf("stale turn applied: ok=%v next=%q", ok, next)
 	}
 	after, _, _ := fs.Get(sess.ID)
@@ -857,17 +857,17 @@ func TestFocusAfterTurnIgnoresStaleStage(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, ok := focusAfterTurn(store, sess.ID, store.TranscriptPath(sess.ID), "x", mark, time.Now(), zerolog.Nop()); ok {
+	if _, _, ok := focusAfterTurn(store, sess.ID, store.TranscriptPath(sess.ID), "x", mark, time.Now(), nil, zerolog.Nop()); ok {
 		t.Fatal("turn from an earlier iteration applied")
 	}
 
 	// A turn without a mark (no guidance was injected) never applies.
-	if _, _, ok := focusAfterTurn(store, sess.ID, store.TranscriptPath(sess.ID), "x", nil, time.Now(), zerolog.Nop()); ok {
+	if _, _, ok := focusAfterTurn(store, sess.ID, store.TranscriptPath(sess.ID), "x", nil, time.Now(), nil, zerolog.Nop()); ok {
 		t.Fatal("unmarked turn applied")
 	}
 
 	// The current mark still works.
-	if _, next, ok := focusAfterTurn(store, sess.ID, store.TranscriptPath(sess.ID), "x", currentFocusMark(t, store, sess.ID), time.Now(), zerolog.Nop()); !ok || next.Kind == focuspipeline.ActionNone {
+	if _, next, ok := focusAfterTurn(store, sess.ID, store.TranscriptPath(sess.ID), "x", currentFocusMark(t, store, sess.ID), time.Now(), nil, zerolog.Nop()); !ok || next.Kind == focuspipeline.ActionNone {
 		t.Fatalf("current turn: ok=%v next=%q", ok, next)
 	}
 }

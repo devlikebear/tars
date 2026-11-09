@@ -241,7 +241,7 @@ func TestFocusQuestionTurnOutlivesItsGate(t *testing.T) {
 	if approved.PendingTurn == "" {
 		t.Fatal("approving G3 owes the open turn")
 	}
-	p, act, ok := focusAfterTurn(store, id, store.TranscriptPath(id), "Because it says what changed.", mark, time.Now(), zerolog.Nop())
+	p, act, ok := focusAfterTurn(store, id, store.TranscriptPath(id), "Because it says what changed.", mark, time.Now(), nil, zerolog.Nop())
 	if !ok || act.Kind != focuspipeline.ActionNone || p.PendingTurn != approved.PendingTurn || len(p.Cards) != len(approved.Cards) {
 		t.Fatalf("ok %v act %+v pending %q cards %d→%d", ok, act, p.PendingTurn, len(approved.Cards), len(p.Cards))
 	}

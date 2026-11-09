@@ -220,9 +220,10 @@ func applyTurn(p Pipeline, ev Event, now time.Time) (Pipeline, Action) {
 	}
 	p.TurnSeq++
 	// The developer's plan edit applies whatever the turn was (a question
-	// at a gate included): it changes no stage and asks for nothing.
+	// at a gate included): it changes no stage and asks for nothing. The
+	// block is the agent's own output, so goal mode locks its checks.
 	if ev.Blocks.PlanEdit != nil {
-		if edited, _, err := EditPlan(p, *ev.Blocks.PlanEdit, now); err == nil {
+		if edited, _, err := EditPlanByAgent(p, *ev.Blocks.PlanEdit, now); err == nil {
 			p = edited
 		} else {
 			p.addCard(CardNotice, ev.Turn, NoticeFormatMissing, map[string]any{"errors": []string{TagPlanEdit + ": " + err.Error()}}, now)
