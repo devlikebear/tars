@@ -163,6 +163,9 @@ llm:
     agentruntime_default: standard
     agentruntime_planner: heavy
     critic: standard
+    # focus_harness (tars#1291) drafts harness lessons from a merged focus
+    # pipeline that opted in; heavy when unmapped.
+    focus_harness: heavy
     # initiative (the text-signal backend, tars#1219) defaults to light
     # like the roles above when unmapped. initiative_speak (live mode's
     # speak composer, tars#1220) is the one role that does NOT: left

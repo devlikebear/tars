@@ -423,6 +423,11 @@ func applyLLMPoolDefaults(cfg *Config) {
 			cfg.LLMRoleDefaults[role] = "light"
 		}
 	}
+	// A focus pipeline's harness lessons (tars#1291) outlive it: heavy
+	// unless the config says otherwise.
+	if cfg.LLMRoleDefaults["focus_harness"] == "" {
+		cfg.LLMRoleDefaults["focus_harness"] = "heavy"
+	}
 }
 
 // normalizeLLMRoleDefaults lowercases + trims both keys and values and

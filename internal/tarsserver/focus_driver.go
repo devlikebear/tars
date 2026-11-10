@@ -63,6 +63,13 @@ type focusDriver struct {
 	// the configuration. Without both, pipelines cannot opt in.
 	secondOpinionTurn  focusSecondOpinionTurnRunner
 	secondOpinionTiers focusSecondOpinionTiers
+	// harnessLLM asks the focus_harness role for harness lessons, harnessCost
+	// reads a session's recorded cost, and openPipeline opens the proposal
+	// pipeline through the create path (focus_harness.go). Without the
+	// first and the last, pipelines cannot opt in.
+	harnessLLM   focusHarnessLLM
+	harnessCost  func(sessionID string) float64
+	openPipeline func(ctx context.Context, req focusCreateRequest) (string, error)
 	// The PR stages (focus_pr_poll.go): the gh probe, how often it runs,
 	// how a finished pipeline's worktree ends, and where attention-worthy
 	// changes are announced.
@@ -89,7 +96,9 @@ type focusDriver struct {
 	// (focus_goal.go); goalWatching says their watcher runs.
 	goals        map[string]bool
 	goalWatching bool
-	wg           sync.WaitGroup
+	// harnessBusy holds the sessions whose harness proposal runs now.
+	harnessBusy map[string]bool
+	wg          sync.WaitGroup
 }
 
 // focusTurnRunner runs one turn on a session (runServerChatTurn in the
@@ -276,6 +285,9 @@ func (d *focusDriver) bind(deps chatHandlerDeps) {
 	}
 	if n := d.resumeGoals(); n > 0 {
 		d.logger.Info().Int("count", n).Msg("focus: resumed pipelines in goal mode")
+	}
+	if n := d.resumeHarness(); n > 0 {
+		d.logger.Info().Int("count", n).Msg("focus: resumed harness proposals")
 	}
 }
 

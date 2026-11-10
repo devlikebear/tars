@@ -91,6 +91,7 @@ export const llmKnownRoles = [
   'computer_use',
   'initiative',
   'initiative_speak',
+  'focus_harness',
 ]
 
 export type LLMProviderRow = {
