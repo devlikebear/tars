@@ -109,6 +109,10 @@ func NewProcessManager() *ProcessManager {
 }
 
 func (m *ProcessManager) Start(ctx context.Context, workspaceDir, commandLine string, timeoutMS int) (ProcessSnapshot, error) {
+	return m.start(ctx, workspaceDir, commandLine, timeoutMS, nil)
+}
+
+func (m *ProcessManager) start(ctx context.Context, workspaceDir, commandLine string, timeoutMS int, sandbox *shellSandbox) (ProcessSnapshot, error) {
 	if m == nil {
 		return ProcessSnapshot{}, fmt.Errorf("process manager is not configured")
 	}
@@ -120,7 +124,7 @@ func (m *ProcessManager) Start(ctx context.Context, workspaceDir, commandLine st
 		timeoutMS = defaultProcessMaxTimeoutMS
 	}
 	runCtx, cancel := context.WithTimeout(ctx, time.Duration(timeoutMS)*time.Millisecond)
-	cmd, err := newShellCommand(runCtx, workspaceDir, commandLine)
+	cmd, err := newShellCommand(runCtx, workspaceDir, commandLine, sandbox)
 	if err != nil {
 		cancel()
 		return ProcessSnapshot{}, err

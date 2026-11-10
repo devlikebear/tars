@@ -35,6 +35,7 @@ var CorePackages = []string{
 	"atomicwrite",
 	"auth",
 	"config",
+	"execsandbox",
 	"exepath",
 	"git",
 	"llm",

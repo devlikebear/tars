@@ -18,7 +18,7 @@
     FocusPRDraft,
     FocusReport,
   } from '../../lib/types'
-  import { excerptLines, findingReviewBadges, reportCardText, secondOpinionNotice, stageKindOf, stageLabel } from '../../lib/focus'
+  import { excerptLines, findingReviewBadges, harnessNotice, reportCardText, secondOpinionNotice, stageKindOf, stageLabel } from '../../lib/focus'
   import { mergeSummary, prDraftOf } from '../../lib/focusPR'
   import FocusChangeCard from './FocusChangeCard.svelte'
   import FocusMergeSummary from './FocusMergeSummary.svelte'
@@ -55,6 +55,8 @@
   // A plain report's heading and body, split so the summary never shows twice (#1109).
   // The second opinion review's notices, in the console's language.
   let soNotice = $derived(secondOpinionNotice(card, $t.focus.notice))
+  // A harness proposal's notices (tars#1291), titled the same way.
+  let hNotice = $derived(harnessNotice(card, $t.focus.notice))
   let reportText = $derived(
     card.kind === 'report' && !isDraft(card.payload)
       ? reportCardText(card.title, (card.payload as FocusReport | undefined)?.summary)
@@ -75,7 +77,9 @@
             ? (reportText.heading ?? $t.focus.report.label)
             : soNotice
               ? soNotice.title
-              : card.title,
+              : hNotice
+                ? hNotice.title
+                : card.title,
   )
   // The heading's hover text: the whole summary when the heading is the label.
   let hoverTitle = $derived(reportText && reportText.heading === null ? reportText.body : title)
@@ -342,6 +346,10 @@
     {:else if card.kind === 'notice'}
       {@const errors = errorsOf(card.payload)}
       {#if soNotice}<p class="prose" data-testid="focus-second-opinion-notice">{soNotice.body}</p>{/if}
+      {#if hNotice}
+        <p class="prose" data-testid="focus-harness-notice">{hNotice.body}</p>
+        {#if hNotice.sessionId}<a class="btn btn-ghost btn-sm" href={`/console/focus/${encodeURIComponent(hNotice.sessionId)}`} data-testid="focus-harness-open">{$t.focus.notice.harnessOpen}</a>{/if}
+      {/if}
       {#if errors.length}
         <h4 class="label">{$t.focus.notice.errors}</h4>
         <ul class="risks">

@@ -128,6 +128,7 @@ pkg/llm const RoleChatMain
 pkg/llm const RoleComputerUse
 pkg/llm const RoleContextCompactor
 pkg/llm const RoleCritic
+pkg/llm const RoleFocusHarness
 pkg/llm const RoleGoalJudge
 pkg/llm const RoleInitiative
 pkg/llm const RoleInitiativeSpeak
@@ -1571,8 +1572,13 @@ pkg/tools field BlockedToolError.Source
 pkg/tools field BlockedToolError.Tool
 pkg/tools field ContentBlock.Text
 pkg/tools field ContentBlock.Type
+pkg/tools field ExecSandbox.DenyReadPaths
+pkg/tools field ExecSandbox.Network
+pkg/tools field ExecSandbox.ReadOnlyPaths
+pkg/tools field ExecSandbox.WritablePaths
 pkg/tools field ExecToolOptions.MaxBackgroundTimeoutMS
 pkg/tools field ExecToolOptions.MaxTimeoutMS
+pkg/tools field ExecToolOptions.Sandbox
 pkg/tools field FileChange.Additions
 pkg/tools field FileChange.Binary
 pkg/tools field FileChange.Deletions
@@ -1721,6 +1727,7 @@ pkg/tools method TranscriptSource.ListTranscripts
 pkg/tools method TranscriptSource.ReadTranscript
 pkg/tools type BlockedToolError
 pkg/tools type ContentBlock
+pkg/tools type ExecSandbox
 pkg/tools type ExecToolOptions
 pkg/tools type FileChange
 pkg/tools type FileChangeHunk

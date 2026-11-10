@@ -64,6 +64,8 @@ export type FocusCreateRequest = {
   e2e?: boolean
   // Opt in to the second opinion review on a pinnable tier; off when absent.
   second_opinion?: { tier: string }
+  // Opt in to a harness proposal once the pipeline finishes merged; off when absent.
+  harness_proposal?: boolean
   // A release's list and the cut-off it started from (the group's since).
   release_items?: string[]
   release_since?: string

@@ -298,6 +298,7 @@ func (d *focusDriver) pipelineFinished(sessionID string, prev, next focuspipelin
 	if d == nil || d.sessions == nil || focuspipeline.Finished(prev) || !focuspipeline.Finished(next) {
 		return
 	}
+	d.harnessAfterFinish(sessionID, next)
 	if next.Plan == nil || !slices.Contains(next.Plan.Stages, focuspipeline.StageMerge) {
 		return
 	}

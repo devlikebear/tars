@@ -2804,7 +2804,14 @@ export type FocusPipeline = {
   e2e_enabled?: boolean
   goal_mode?: FocusGoalMode
   second_opinion?: FocusSecondOpinion
+  // The harness proposal (tars#1291): the opt-in and how it ended, and on a
+  // pipeline that is itself a proposal, where it came from.
+  harness?: FocusHarnessOptIn
+  harness_from?: { session_id: string; repo: string }
 }
+
+// outcome: proposed | no_evidence | no_edits | failed | unavailable; absent until it ran.
+export type FocusHarnessOptIn = { repo: string; outcome?: string; proposal?: string; at?: string }
 
 export type FocusListItem = {
   session_id: string

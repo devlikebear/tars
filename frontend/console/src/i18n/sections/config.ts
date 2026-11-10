@@ -276,6 +276,14 @@ const fieldsKo: Record<string, ConfigFieldOverride> = {
     label: 'exec 최대 타임아웃(ms)',
     description: 'exec 도구 호출 1회의 타임아웃 상한(ms). 빌드·CI 대기 같은 장시간 명령이 이 한도를 씁니다',
   },
+  tools_exec_sandbox_enabled: {
+    label: 'exec 샌드박스',
+    description: 'exec 도구의 명령을 OS 샌드박스(macOS는 Seatbelt, 리눅스는 bubblewrap) 안에서 실행합니다. 세션 폴더·임시 폴더·git 폴더·빌드 캐시에만 쓸 수 있고 인증 정보 폴더는 읽을 수 없습니다. 샌드박스가 없는 환경에서는 명령을 실행하지 않고 거부합니다',
+  },
+  tools_exec_sandbox_network: { label: 'exec 샌드박스 네트워크', description: '샌드박스 안의 명령이 네트워크를 쓰도록 허용합니다. 끄면 localhost 말고는 막힙니다' },
+  tools_exec_sandbox_writable_paths_json: { label: 'exec 샌드박스 추가 쓰기 경로', description: '샌드박스 안의 명령이 더 쓸 수 있는 경로(~/는 홈 폴더)' },
+  tools_exec_sandbox_read_only_paths_json: { label: 'exec 샌드박스 읽기 전용 경로', description: '쓰기 가능한 폴더 안에 있어도 쓸 수 없게 둘 경로' },
+  tools_exec_sandbox_deny_read_paths_json: { label: 'exec 샌드박스 차단 경로', description: '기본 인증 정보 폴더에 더해 읽지도 쓰지도 못하게 할 경로' },
   tools_process_max_timeout_ms: {
     label: '백그라운드 프로세스 최대 타임아웃(ms)',
     description: '백그라운드 명령(exec의 background:true 옵션)과 process 도구 wait 동작 1회의 타임아웃 상한',

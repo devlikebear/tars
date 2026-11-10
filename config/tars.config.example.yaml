@@ -163,6 +163,9 @@ llm:
     agentruntime_default: standard
     agentruntime_planner: heavy
     critic: standard
+    # focus_harness (tars#1291) drafts harness lessons from a merged focus
+    # pipeline that opted in; heavy when unmapped.
+    focus_harness: heavy
     # initiative (the text-signal backend, tars#1219) defaults to light
     # like the roles above when unmapped. initiative_speak (live mode's
     # speak composer, tars#1220) is the one role that does NOT: left
@@ -474,6 +477,22 @@ tools:
     # are clamped. Raise this for builds, installs, and CI waits; lower
     # it to tighten the maximum wall time a single shell command can run.
     max_timeout_ms: 300000
+    # Run exec commands inside an OS sandbox: Seatbelt (sandbox-exec) on
+    # macOS, bubblewrap (bwrap) on Linux. Off by default. A sandboxed command
+    # may write only to the session folders, temp dirs, the git common dir of
+    # its repository (a worktree commits there; hooks and config stay
+    # read-only), and the Go and npm caches. .tars, .claude and .mcp.json in
+    # the session folders stay read-only. ~/.ssh, ~/.aws, ~/.gnupg, ~/.kube,
+    # ~/.docker, ~/.config/gh, ~/.netrc, ~/.git-credentials, the ssh agent and
+    # (macOS) the keychain are unreachable, as is the TARS config file.
+    # Fails closed: on Windows, or without sandbox-exec/bwrap, exec commands
+    # are refused instead of running unsandboxed. `tars doctor` reports it.
+    sandbox:
+      enabled: false
+      network: false          # false: only localhost is reachable
+      writable_paths: []      # extra writable paths, e.g. [~/.cache/pip]
+      read_only_paths: []     # stay unwritable even inside a writable path
+      deny_read_paths: []     # extra paths that can be neither read nor written
   process:
     # Upper bound on background commands (exec with background:true) and
     # on the per-call timeout the process tool's `wait` action will honor.

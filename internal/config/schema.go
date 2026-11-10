@@ -143,6 +143,11 @@ func Schema() []FieldMeta {
 		f("tools_web_search_rustxng_base_url", "Tools", "string", "RustXNG Base URL", "Address of a self-hosted RustXNG server"),
 		f("tools_web_search_cache_ttl_seconds", "Tools", "int", "Search Cache TTL", "Cache duration for search results in seconds"),
 		f("tools_exec_max_timeout_ms", "Tools", "int", "Exec Max Timeout (ms)", "Upper bound on per-call exec tool timeout (ms). Long-running commands like builds and CI waits use this cap."),
+		f("tools_exec_sandbox_enabled", "Tools", "bool", "Exec Sandbox", "Run exec tool commands inside an OS sandbox (Seatbelt on macOS, bubblewrap on Linux): writes only to the session folders, temp dirs, git dirs and build caches; credential folders unreadable. When the host has no sandbox, commands are refused, not run unsandboxed"),
+		f("tools_exec_sandbox_network", "Tools", "bool", "Exec Sandbox Network", "Allow sandboxed exec commands to use the network. Off blocks everything but localhost"),
+		f("tools_exec_sandbox_writable_paths_json", "Tools", "string_list", "Exec Sandbox Writable Paths", "Extra paths sandboxed exec commands may write (~/ is the home dir)"),
+		f("tools_exec_sandbox_read_only_paths_json", "Tools", "string_list", "Exec Sandbox Read-only Paths", "Paths that stay unwritable even inside a writable folder"),
+		f("tools_exec_sandbox_deny_read_paths_json", "Tools", "string_list", "Exec Sandbox Hidden Paths", "Extra paths sandboxed exec commands can neither read nor write, on top of the default credential folders"),
 		f("tools_process_max_timeout_ms", "Tools", "int", "Process Max Timeout (ms)", "Upper bound on per-call timeout for background commands (exec background:true) and the process tool's wait action."),
 		f("tools_web_fetch_allow_private_hosts", "Tools", "bool", "Allow Private Hosts", "Allow fetching from private/internal hosts"),
 		f("tools_web_fetch_private_host_allowlist_json", "Tools", "string_list", "Private Host Allowlist", "Explicit private hosts allowed for web fetch requests"),
@@ -456,6 +461,16 @@ func extractValue(yamlKey string, cfg Config) any {
 		return cfg.ToolsWebSearchCacheTTLSeconds
 	case "tools_exec_max_timeout_ms":
 		return cfg.ToolsExecMaxTimeoutMS
+	case "tools_exec_sandbox_enabled":
+		return cfg.ToolsExecSandboxEnabled
+	case "tools_exec_sandbox_network":
+		return cfg.ToolsExecSandboxNetwork
+	case "tools_exec_sandbox_writable_paths_json":
+		return cfg.ToolsExecSandboxWritablePaths
+	case "tools_exec_sandbox_read_only_paths_json":
+		return cfg.ToolsExecSandboxReadOnlyPaths
+	case "tools_exec_sandbox_deny_read_paths_json":
+		return cfg.ToolsExecSandboxDenyReadPaths
 	case "tools_process_max_timeout_ms":
 		return cfg.ToolsProcessMaxTimeoutMS
 	case "tools_web_fetch_private_host_allowlist_json":

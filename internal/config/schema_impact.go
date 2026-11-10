@@ -261,6 +261,15 @@ var configFieldImpactHints = map[string][]string{
 	"tools_exec_max_timeout_ms": {
 		"Raising the cap lets long-running commands (builds, CI waits, installs) complete without being killed; lowering it tightens the upper bound on shell hangs.",
 	},
+	"tools_exec_sandbox_enabled": {
+		"Enabling the sandbox confines exec commands to the session folders and blocks credential folders; on a host without sandbox-exec or bwrap every exec command is refused.",
+	},
+	"tools_exec_sandbox_network": {
+		"Allowing network lets sandboxed exec commands download dependencies and reach remote hosts.",
+	},
+	"tools_exec_sandbox_writable_paths_json": {
+		"Each writable path widens what a sandboxed exec command can change.",
+	},
 	"tools_process_max_timeout_ms": {
 		"Raising this lets background commands (exec background:true) and the process wait action survive longer-running watchers (CI, deployments). Lowering it bounds runaway background processes.",
 	},

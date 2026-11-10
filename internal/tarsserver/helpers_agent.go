@@ -53,6 +53,9 @@ type baseToolRegistryOptions struct {
 	// ExecMaxBackgroundTimeoutMS caps background (process-managed)
 	// commands. 0 → tool package default (30 min).
 	ExecMaxBackgroundTimeoutMS int
+	// ExecSandbox runs exec commands inside an OS sandbox; nil runs them
+	// unrestricted (execSandboxFromConfig).
+	ExecSandbox *tool.ExecSandbox
 }
 
 func newBaseToolRegistry(workspaceDir string) *tool.Registry {
@@ -113,6 +116,7 @@ func newBaseToolRegistryWithOptions(
 	execOpts := tool.ExecToolOptions{
 		MaxTimeoutMS:           opts.ExecMaxTimeoutMS,
 		MaxBackgroundTimeoutMS: opts.ExecMaxBackgroundTimeoutMS,
+		Sandbox:                opts.ExecSandbox,
 	}
 	if processManager != nil {
 		registry.Register(tool.NewProcessTool(processManager))
@@ -259,7 +263,7 @@ func newAgentPromptRunnerWithToolsAndMemory(
 		if appendBlock := agentruntime.SystemPromptAppendFromContext(ctx); appendBlock != "" {
 			systemPrompt += "\n" + appendBlock + "\n"
 		}
-		baseRegistry := newBaseToolRegistryWithProcessAndUsage(targetWorkspaceDir, tool.SingleDirPolicy(targetWorkspaceDir), nil, tracker, semanticCfg)
+		baseRegistry := newBaseToolRegistryWithOptions(targetWorkspaceDir, tool.SingleDirPolicy(targetWorkspaceDir), nil, tracker, baseToolRegistryOptions{ExecSandbox: execSandboxFromConfig(cfg)}, semanticCfg)
 		for _, extra := range extraTools {
 			if strings.TrimSpace(extra.Name) == "" {
 				continue

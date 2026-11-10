@@ -82,6 +82,12 @@ const (
 	// initiative.daily_speak_calls (default 12/day), so the heavier tier's
 	// cost stays negligible.
 	RoleInitiativeSpeak Role = "initiative_speak"
+
+	// RoleFocusHarness draws harness lessons from a merged focus pipeline's
+	// recorded facts (tars#1291): one decision-only JSON call per opted-in
+	// pipeline, proposing edits to the repository's skills, scripts and
+	// agent guides. Heavy by default — the lessons outlive the pipeline.
+	RoleFocusHarness Role = "focus_harness"
 )
 
 // AllRoles returns the exhaustive list of roles in canonical order.
@@ -102,6 +108,7 @@ func AllRoles() []Role {
 		RoleComputerUse,
 		RoleInitiative,
 		RoleInitiativeSpeak,
+		RoleFocusHarness,
 	}
 }
 
