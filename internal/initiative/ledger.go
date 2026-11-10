@@ -189,6 +189,9 @@ func historyFrom(entries []Entry, now time.Time, loc *time.Location) History {
 			if e.Intent == IntentGreet && e.At.After(h.LastGreetAt) {
 				h.LastGreetAt = e.At
 			}
+			if e.Intent == IntentConfirmMemory && e.At.After(h.LastMemoryAskAt) {
+				h.LastMemoryAskAt = e.At
+			}
 		}
 		if e.Intent == IntentBodyOnly && e.At.After(h.LastBodyAt) {
 			h.LastBodyAt = e.At

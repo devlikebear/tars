@@ -9,6 +9,16 @@ export const chatThreadEn = {
   // own (tars#1220's live mode: a delivered greet/check_in), so the user
   // can tell it from a reply to something they said.
   spokeFirst: 'TARS spoke first',
+  // The buttons under a confirm_memory question (ChatMemoryQuestion,
+  // tars#1001): TARS asked whether to keep something reflection noticed.
+  memoryQuestion: {
+    remember: 'Remember',
+    dontRemember: "Don't remember",
+    saved: 'Saved to memory',
+    skipped: "Won't remember this",
+    handled: 'Already handled on the Memory screen',
+    failed: "Couldn't reach memory — try again",
+  },
   // The streaming status has its own EN/KR toggle, so ChatPanel reads steps,
   // phases, compacted, and forking from chatThreadEn or chatThreadKo by the
   // toggle, not from $t. progressAria follows the console locale.
@@ -179,6 +189,14 @@ export const chatThreadKo: ChatThreadTranslations = {
     ariaLabel: '채팅',
   },
   spokeFirst: 'TARS가 먼저 말함',
+  memoryQuestion: {
+    remember: '기억하기',
+    dontRemember: '기억하지 않기',
+    saved: '기억에 저장했어요',
+    skipped: '기억하지 않기로 했어요',
+    handled: '기억 화면에서 이미 처리했어요',
+    failed: '기억에 닿지 못했어요. 다시 시도해 주세요',
+  },
   streaming: {
     progressAria: '진행 단계',
     steps: {

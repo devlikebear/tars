@@ -33,8 +33,11 @@ const companionEventCategory = "companion"
 // "greeting" face; check_in reads as a caring check-in, the same face an
 // idle body_only expression already uses (runtime.go's idleEmotion).
 func initiativeSpeakExpression(intent initiative.Intent) string {
-	if intent == initiative.IntentGreet {
+	switch intent {
+	case initiative.IntentGreet:
 		return "greeting"
+	case initiative.IntentRemind:
+		return "alert"
 	}
 	return "happy"
 }
@@ -137,6 +140,10 @@ type initiativeSpeaker struct {
 	// composed message there, tagged the same way as the main session's
 	// copy, so the model answering that reply knows what it said.
 	telegramReplySession func() (string, error)
+
+	// reminders is the initiative.remind queue (tars#1001): a delivered
+	// remind speak removes its reminder there. nil when remind is off.
+	reminders *initiativeReminderQueue
 }
 
 var _ initiative.Speaker = (*initiativeSpeaker)(nil)
@@ -168,40 +175,38 @@ func (s *initiativeSpeaker) Speak(ctx context.Context, req initiative.SpeakReque
 		return initiative.SpeakOutcome{Reason: "read_error"}, err
 	}
 
-	text, err := s.composer.Compose(ctx, initiative.ComposeInput{
-		Intent:     req.Intent,
-		Now:        req.Now,
-		Location:   s.location,
-		Identity:   s.readIdentity(),
-		SendsText:  req.SendsText,
-		Profile:    req.Profile,
-		RecentUser: req.RecentUser,
-	})
+	text, composed, err := s.words(ctx, req)
 	if err != nil {
+		if !composed {
+			return initiative.SpeakOutcome{Reason: "speak_unavailable"}, nil
+		}
 		return initiative.SpeakOutcome{Composed: true, Reason: composeFailureReason(err)}, err
 	}
 
 	_, release, ok := s.claim(s.mainSessionID)
 	if !ok {
-		return initiative.SpeakOutcome{Composed: true, Superseded: true, Reason: "busy"}, nil
+		return initiative.SpeakOutcome{Composed: composed, Superseded: true, Reason: "busy"}, nil
 	}
 	defer release()
 
 	after, err := session.ReadMessages(path)
 	if err != nil {
 		s.logger.Warn().Err(err).Str("session_id", s.mainSessionID).Msg("initiative: read transcript after speak compose failed")
-		return initiative.SpeakOutcome{Composed: true, Reason: "write_error"}, err
+		return initiative.SpeakOutcome{Composed: composed, Reason: "write_error"}, err
 	}
 	if len(after) > len(before) {
 		// The user (or something else) already wrote to the main session
 		// while Compose was in flight — never append a stale greeting
 		// behind their own, already-sent message.
-		return initiative.SpeakOutcome{Composed: true, Superseded: true, Reason: "user_spoke"}, nil
+		return initiative.SpeakOutcome{Composed: composed, Superseded: true, Reason: "user_spoke"}, nil
 	}
 
 	if err := s.writeMessage(s.mainSessionID, req, text); err != nil {
 		s.logger.Warn().Err(err).Str("session_id", s.mainSessionID).Msg("initiative: write speak message failed")
-		return initiative.SpeakOutcome{Composed: true, Reason: "write_error"}, err
+		return initiative.SpeakOutcome{Composed: composed, Reason: "write_error"}, err
+	}
+	if req.Intent == initiative.IntentRemind && req.Subject != nil && s.reminders != nil {
+		s.reminders.Done(req.Subject.ID)
 	}
 
 	// The main session's write has succeeded — this attempt is delivered
@@ -215,7 +220,45 @@ func (s *initiativeSpeaker) Speak(ctx context.Context, req initiative.SpeakReque
 	}
 
 	s.sendCompanionEvent(ctx, req.Intent, text)
-	return initiative.SpeakOutcome{Composed: true, Delivered: true}, nil
+	return initiative.SpeakOutcome{Composed: composed, Delivered: true}, nil
+}
+
+// errSpeakUnavailable means no words could be produced without a composer.
+var errSpeakUnavailable = errors.New("initiative: no speech composer")
+
+// words produces what to say and reports whether the composer was called.
+// A remind or confirm_memory speak whose subject may not go to the speak
+// model (SendsText false) uses initiative.FixedSpeech and never calls it
+// (tars#1001) — the subject still reaches the user, just in a fixed frame.
+// So does one with no composer configured at all, which is why a speaker
+// exists for remind/confirm_memory even without a speak backend; greet and
+// check_in then report speak_unavailable as before.
+func (s *initiativeSpeaker) words(ctx context.Context, req initiative.SpeakRequest) (string, bool, error) {
+	subject := ""
+	if req.Subject != nil {
+		subject = req.Subject.Text
+	}
+	hasComposer := s.composer != nil && s.composer.Client != nil
+	if req.Subject != nil && (!req.SendsText || !hasComposer) {
+		if text := initiative.FixedSpeech(req.Intent, subject); text != "" {
+			return text, false, nil
+		}
+		return "", false, errSpeakUnavailable
+	}
+	if !hasComposer {
+		return "", false, errSpeakUnavailable
+	}
+	text, err := s.composer.Compose(ctx, initiative.ComposeInput{
+		Intent:     req.Intent,
+		Now:        req.Now,
+		Location:   s.location,
+		Identity:   s.readIdentity(),
+		SendsText:  req.SendsText,
+		Profile:    req.Profile,
+		RecentUser: req.RecentUser,
+		Subject:    subject,
+	})
+	return text, true, err
 }
 
 // NotifyBodyOnly implements initiative.Speaker.
@@ -270,6 +313,7 @@ func (s *initiativeSpeaker) writeMessage(sessionID string, req initiative.SpeakR
 		Initiative: &session.MessageInitiative{
 			Intent:  string(req.Intent),
 			EntryID: req.EntryID,
+			Ref:     initiativeMessageRef(req),
 		},
 	}
 	path := s.store.TranscriptPath(sessionID)
@@ -280,6 +324,16 @@ func (s *initiativeSpeaker) writeMessage(sessionID string, req initiative.SpeakR
 		s.logger.Warn().Err(err).Str("session_id", sessionID).Msg("initiative: touch session after speak failed")
 	}
 	return nil
+}
+
+// initiativeMessageRef is the Ref a speak's message carries: the memory
+// candidate a confirm_memory question asks about, so the console's answer
+// buttons can name it. Nothing for other intents.
+func initiativeMessageRef(req initiative.SpeakRequest) string {
+	if req.Intent == initiative.IntentConfirmMemory && req.Subject != nil {
+		return req.Subject.ID
+	}
+	return ""
 }
 
 // writeTelegramReplySessionCopy also writes the composed message into the

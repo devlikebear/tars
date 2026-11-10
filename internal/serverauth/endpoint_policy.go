@@ -80,6 +80,7 @@ var defaultEndpointPolicyRules = []EndpointPolicyRule{
 	userRule(nil, "/v1/memory/prefetch", "memory prefetch"),
 	userRule(nil, "/v1/memory/inbox", "memory inbox"),
 	userRule(nil, "/v1/memory/inbox/review", "memory inbox review"),
+	userRule([]string{http.MethodGet, http.MethodPost}, "/v1/initiative/memory/answer", "initiative confirm_memory answer"),
 	userRule(nil, "/v1/workspace/sysprompt/files", "workspace sysprompt files"),
 	userRule(nil, "/v1/workspace/sysprompt/file", "workspace sysprompt file"),
 	userRule([]string{http.MethodGet}, "/v1/admin/sysprompt/preview", "sysprompt read-only preview"),

@@ -107,6 +107,11 @@ type SpeakRequest struct {
 	// (tars#1221 P2c). The runtime decides this before calling Speak —
 	// Speak itself only acts on it, never re-decides.
 	Channel string
+	// Subject is what a remind or confirm_memory speak is about
+	// (tars#1001), nil for greet/check_in. Its text goes into the compose
+	// prompt only when SendsText; otherwise the speaker writes FixedSpeech
+	// without calling the composer at all.
+	Subject *Subject
 }
 
 // SpeakOutcome is what Speak managed to do.

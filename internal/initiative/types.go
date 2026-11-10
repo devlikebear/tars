@@ -12,7 +12,32 @@ const (
 	IntentGreet    Intent = "greet"
 	IntentCheckIn  Intent = "check_in"
 	IntentBodyOnly Intent = "body_only"
+	// IntentRemind delivers a cron reminder the user scheduled
+	// (initiative.remind, tars#1001) through the speak path instead of the
+	// cron system note.
+	IntentRemind Intent = "remind"
+	// IntentConfirmMemory asks whether to keep one pending reflection
+	// inbox candidate (initiative.confirm_memory, tars#1001).
+	IntentConfirmMemory Intent = "confirm_memory"
 )
+
+// tracksReplies reports whether a delivered speak of this intent opens a
+// reply-tracking window (tars#1221). A reminder is something the user asked
+// for; not answering it says nothing about whether TARS should speak less,
+// so it never feeds the ignored streak or the cooldown multiplier.
+func tracksReplies(intent Intent) bool { return intent != IntentRemind }
+
+// Subject is what a remind or confirm_memory speak is about: an id the
+// server resolves (a queued reminder, a memory inbox candidate) and the
+// text to say. The ledger never records either field (tars#1003) — only
+// whether one existed, as a Go signal.
+type Subject struct {
+	ID   string
+	Text string
+	// At is when the subject became due (a reminder's fire time); zero for
+	// a memory candidate.
+	At time.Time
+}
 
 type UserMessage struct {
 	At   time.Time
@@ -66,6 +91,14 @@ type Observation struct {
 	TelegramReady bool
 	BodyAvailable bool
 	Profile       string
+	// Reminder is the oldest queued cron reminder that is due now
+	// (initiative.remind, tars#1001), nil when none. The adapter hands a
+	// reminder back to cron's own delivery once it has waited too long
+	// (ReminderGrace), so one here is always still deliverable.
+	Reminder *Subject
+	// MemoryCandidate is the pending reflection inbox candidate to ask
+	// about (initiative.confirm_memory, tars#1001), nil when none.
+	MemoryCandidate *Subject
 }
 
 type GoSignals struct {
@@ -94,6 +127,16 @@ type GoSignals struct {
 	// check_in or body_only, so a second arrival the same day still falls
 	// through to those.
 	GreetedToday bool `json:"greeted_today"`
+	// ReminderDue reports a queued cron reminder is due (tars#1001). Only
+	// ever true with initiative.remind on.
+	ReminderDue bool `json:"reminder_due,omitempty"`
+	// MemoryPending reports a pending reflection inbox candidate to ask
+	// about (tars#1001). Only ever true with initiative.confirm_memory on.
+	MemoryPending bool `json:"memory_pending,omitempty"`
+	// MemoryAskedToday reports a confirm_memory speak already counted as
+	// spoken earlier the same local day (History.LastMemoryAskAt, the same
+	// spoken() rule as GreetedToday): at most one question a day.
+	MemoryAskedToday bool `json:"memory_asked_today,omitempty"`
 }
 
 type TextSignals struct {

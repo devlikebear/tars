@@ -263,6 +263,8 @@ var configFieldTiers = map[string]fieldTier{
 	"initiative_daily_text_calls":          advanced(initiativeOn),
 	"initiative_daily_speak_calls":         advanced(initiativeLive),
 	"initiative_telegram":                  advanced(initiativeLive),
+	"initiative_remind":                    advanced(initiativeLive),
+	"initiative_confirm_memory":            advanced(initiativeOn),
 	"initiative_tick":                      fileOnly(noteTuning),
 	"initiative_reply_window":              fileOnly(noteTuning),
 	"initiative_body_provider":             fileOnly("needs the dormant embodiment subsystem"),

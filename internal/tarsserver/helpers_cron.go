@@ -31,6 +31,21 @@ type cronRunTelemetry struct {
 
 type cronExternalReminderSender func(ctx context.Context, job cron.Job, reminderText string) error
 
+// cronReminderHandoff is one fired reminder offered to another delivery
+// path (initiative.remind, tars#1001) in place of cron's own session note
+// and external send.
+type cronReminderHandoff struct {
+	Job             cron.Job  `json:"job"`
+	TargetSessionID string    `json:"target_session_id,omitempty"`
+	ExplicitTarget  bool      `json:"explicit_target,omitempty"`
+	Text            string    `json:"text"`
+	At              time.Time `json:"at"`
+}
+
+// cronReminderRouter takes a fired reminder and reports whether it will
+// deliver it. false leaves cron's own delivery exactly as before.
+type cronReminderRouter func(ctx context.Context, h cronReminderHandoff) bool
+
 func newCronJobRunnerWithNotify(
 	workspaceDir string,
 	store *session.Store,
@@ -42,6 +57,38 @@ func newCronJobRunnerWithNotify(
 	resolveDefaultTelegramChatID func(ctx context.Context) (string, error),
 	sendExternalReminder cronExternalReminderSender,
 ) func(ctx context.Context, job cron.Job) (string, error) {
+	return newCronJobRunner(workspaceDir, store, runPrompt, logger, emit, mainSessionID, artifactHistoryLimit, resolveDefaultTelegramChatID, sendExternalReminder, nil, false)
+}
+
+// newCronJobRunner is newCronJobRunnerWithNotify plus the initiative.remind
+// queue (tars#1001). The queue's fallback is bound here to cron's own
+// session note and external send, so a reminder initiative could not say in
+// time (or one left from a run where remind was on) still goes out the old
+// way. With remindActive, a fired reminder cron would deliver to the main
+// session goes to the queue instead (the daily log entry is still written
+// per the job's delivery mode).
+func newCronJobRunner(
+	workspaceDir string,
+	store *session.Store,
+	runPrompt agentRuntimePromptRunner,
+	logger zerolog.Logger,
+	emit func(ctx context.Context, evt notificationEvent),
+	mainSessionID string,
+	artifactHistoryLimit int,
+	resolveDefaultTelegramChatID func(ctx context.Context) (string, error),
+	sendExternalReminder cronExternalReminderSender,
+	reminders *initiativeReminderQueue,
+	remindActive bool,
+) func(ctx context.Context, job cron.Job) (string, error) {
+	var routeReminder cronReminderRouter
+	if reminders != nil {
+		reminders.bindFallback(func(ctx context.Context, h cronReminderHandoff) error {
+			return deliverCronSessionAndReminder(ctx, store, h.Job, h.TargetSessionID, h.ExplicitTarget, h.Text, time.Now().UTC(), logger, sendExternalReminder)
+		})
+		if remindActive {
+			routeReminder = initiativeRemindRouter(reminders, mainSessionID)
+		}
+	}
 	if runPrompt == nil {
 		return nil
 	}
@@ -60,7 +107,18 @@ func newCronJobRunnerWithNotify(
 		telemetry := prepared.telemetry
 		if reminderText := cronReminderMessage(job); reminderText != "" {
 			artifactNow := time.Now().UTC()
-			if err := deliverCronResult(ctx, prepared.workspaceDir, prepared.targetStore, job, prepared.targetSessionID, prepared.explicitTarget, reminderText, artifactNow, logger, sendExternalReminder); err != nil {
+			deliver := func() error {
+				return deliverCronResult(ctx, prepared.workspaceDir, prepared.targetStore, job, prepared.targetSessionID, prepared.explicitTarget, reminderText, artifactNow, logger, sendExternalReminder)
+			}
+			if routeReminder != nil && routeReminder(ctx, cronReminderHandoff{
+				Job: job, TargetSessionID: prepared.targetSessionID, ExplicitTarget: prepared.explicitTarget,
+				Text: reminderText, At: artifactNow,
+			}) {
+				deliver = func() error {
+					return deliverCronDailyLog(prepared.workspaceDir, job, reminderText, artifactNow)
+				}
+			}
+			if err := deliver(); err != nil {
 				emitCronRunFailure(ctx, emit, prepared.workspaceDir, job, reminderText, artifactNow, telemetry, artifactHistoryLimit, prepared.targetSessionID, "Cron delivery failed", err)
 				return "", err
 			}
@@ -499,8 +557,17 @@ func deliverCronResult(
 	logger zerolog.Logger,
 	sendExternalReminder cronExternalReminderSender,
 ) error {
+	if err := deliverCronDailyLog(workspaceDir, job, response, now); err != nil {
+		return err
+	}
+	return deliverCronSessionAndReminder(ctx, store, job, targetSessionID, explicitTarget, response, now, logger, sendExternalReminder)
+}
+
+// deliverCronDailyLog writes the daily log half of a cron delivery, when
+// the job's delivery mode includes it.
+func deliverCronDailyLog(workspaceDir string, job cron.Job, response string, now time.Time) error {
 	mode := effectiveCronDeliveryMode(job.DeliveryMode, job.SessionTarget, job.SessionID)
-	if mode == "none" {
+	if mode != "daily_log" && mode != "both" {
 		return nil
 	}
 	entry := fmt.Sprintf(
@@ -510,14 +577,29 @@ func deliverCronResult(
 		strings.TrimSpace(job.Schedule),
 		trimForMemory(response, 280),
 	)
-	writeDaily := mode == "daily_log" || mode == "both"
-	writeSession := mode == "session" || mode == "both"
-	if writeDaily {
-		if err := memory.AppendDailyLog(workspaceDir, now, entry); err != nil {
-			return err
-		}
+	return memory.AppendDailyLog(workspaceDir, now, entry)
+}
+
+// deliverCronSessionAndReminder writes the session half of a cron delivery
+// (when the delivery mode includes it) and sends a reminder externally.
+// It is also how a reminder handed to initiative (tars#1001) falls back to
+// cron's own delivery when initiative could not say it in time.
+func deliverCronSessionAndReminder(
+	ctx context.Context,
+	store *session.Store,
+	job cron.Job,
+	targetSessionID string,
+	explicitTarget bool,
+	response string,
+	now time.Time,
+	logger zerolog.Logger,
+	sendExternalReminder cronExternalReminderSender,
+) error {
+	mode := effectiveCronDeliveryMode(job.DeliveryMode, job.SessionTarget, job.SessionID)
+	if mode == "none" {
+		return nil
 	}
-	if writeSession {
+	if mode == "session" || mode == "both" {
 		if targetSessionID == "" {
 			if explicitTarget {
 				return fmt.Errorf("cron delivery session target is not available")

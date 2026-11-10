@@ -407,6 +407,30 @@ initiative:
   # that session when it is the one paired to the default chat that
   # received the speak; a different paired chat's reply is not tracked.
   telegram: false
+  # Opt-in (tars#1001), live mode only: say cron reminders the initiative
+  # way — a natural assistant message in the main session plus CASE's
+  # bubble on the console, or Telegram when the opt-in above is on and the
+  # console is not there — instead of cron's own [REMINDER] note. Only
+  # reminders cron would deliver to the main session move (not one bound to
+  # another session, not delivery_mode: none). A reminder is something you
+  # asked for, so quiet hours, cooldown, daily_cap, a quiet request and a
+  # "stopped" day do not hold it back; only typing or a turn in flight
+  # defers it a tick. The reminder text goes to the speak model only under
+  # the same-provider rule above; otherwise the message is the reminder in a
+  # fixed frame with no LLM call. One initiative cannot deliver within 10
+  # minutes (nobody reachable, a failed compose) is handed back to cron's
+  # own delivery, so it is late by at most that and never lost. Queued
+  # reminders live in workspace/_shared/initiative/reminders.json.
+  remind: false
+  # Opt-in (tars#1001): once a day, when you sit idle at the console, ask
+  # "should I remember this?" about the newest pending preference candidate
+  # that nightly reflection put in memory/inbox.jsonl. You answer with the
+  # buttons under the message (approve saves it to memory, the other
+  # rejects it), the same review the Memory screen does — the answer is
+  # never read from your words by a model. Asked after every quiet rule,
+  # arrival greet and check-in. The candidate text goes to the speak model
+  # only under the same-provider rule above.
+  confirm_memory: false
   # Embodiment provider name (see embodiment.providers) for idle expressions.
   body_provider: ""
   # jev-only: probability needed for each text signal (measured on

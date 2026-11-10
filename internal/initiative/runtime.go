@@ -122,6 +122,35 @@ type Snapshot struct {
 	// of today. Always present (zero-valued when reply tracking has
 	// nothing yet, or in shadow mode, which never records outcomes).
 	Outcomes OutcomeSummary `json:"outcomes"`
+	// Remind and ConfirmMemory report the two tars#1001 options: whether
+	// each is on, whether the last tick saw something to say, and how many
+	// such speaks counted as spoken today. No reminder text, candidate
+	// summary or id (tars#1003).
+	Remind        SubjectIntentStatus `json:"remind"`
+	ConfirmMemory SubjectIntentStatus `json:"confirm_memory"`
+}
+
+// SubjectIntentStatus is the status line for one subject-carrying intent
+// (remind, confirm_memory).
+type SubjectIntentStatus struct {
+	Enabled bool `json:"enabled"`
+	// Pending is the most recent tick's Go signal: a reminder due
+	// (ReminderDue) or a candidate waiting (MemoryPending).
+	Pending     bool `json:"pending"`
+	SpokenToday int  `json:"spoken_today"`
+}
+
+// CountSpokenToday counts entries of intent that counted as spoken
+// (Entry.spoken()) on now's local day. Shared by Snapshot (its recent
+// window) and `tars doctor` (a ledger read).
+func CountSpokenToday(entries []Entry, intent Intent, now time.Time, loc *time.Location) int {
+	n := 0
+	for _, e := range entries {
+		if e.Intent == intent && e.spoken() && sameLocalDay(e.At, now, loc) {
+			n++
+		}
+	}
+	return n
 }
 
 // Runtime evaluates one tick at a time. In shadow mode it records what it
@@ -444,12 +473,17 @@ func (r *Runtime) deliverLocked(ctx context.Context, entry *Entry, obs Observati
 		entry.DeliveryReason = deliveryReasonSpeakUnavailable
 		return
 	}
-	if r.hist.SpeakFailCount > 0 && entry.At.Before(r.hist.LastSpeakCallAt.Add(backoffDuration(r.hist.SpeakFailCount))) {
+	subject := speakSubject(entry.Intent, obs)
+	// A subject that may not go to the speak model is written in fixed
+	// words with no compose call (tars#1001), so the compose backoff and
+	// daily compose cap do not hold it back.
+	composes := subject == nil || r.deps.SpeakSendsText
+	if composes && r.hist.SpeakFailCount > 0 && entry.At.Before(r.hist.LastSpeakCallAt.Add(backoffDuration(r.hist.SpeakFailCount))) {
 		entry.Delivery = DeliverySkipped
 		entry.DeliveryReason = deliveryReasonBackoff
 		return
 	}
-	if r.hist.SpeakCallsToday >= r.cfg.DailySpeakCalls {
+	if composes && r.hist.SpeakCallsToday >= r.cfg.DailySpeakCalls {
 		entry.Delivery = DeliverySkipped
 		entry.DeliveryReason = deliveryReasonDailySpeakCap
 		return
@@ -462,6 +496,7 @@ func (r *Runtime) deliverLocked(ctx context.Context, entry *Entry, obs Observati
 		RecentUser: obs.RecentUser,
 		Profile:    obs.Profile,
 		Channel:    channel,
+		Subject:    subject,
 	}
 	outcome, err := r.deps.Speaker.Speak(ctx, req)
 	entry.Composed = outcome.Composed
@@ -500,6 +535,48 @@ func (r *Runtime) deliverLocked(ctx context.Context, entry *Entry, obs Observati
 	if err != nil {
 		r.noteErrorLocked(err.Error())
 	}
+}
+
+// speakSubject picks what a remind or confirm_memory speak is about from
+// the same observation Decide just read. Decide only returns those intents
+// when the matching subject is present, and a confirm_memory tick is always
+// one at the console (IdleAtDesk), so it is never sent over Telegram, which
+// has no way to answer it.
+func speakSubject(intent Intent, obs Observation) *Subject {
+	switch intent {
+	case IntentRemind:
+		return obs.Reminder
+	case IntentConfirmMemory:
+		return obs.MemoryCandidate
+	}
+	return nil
+}
+
+// RecordAnswer resolves a delivered speak's reply window as replied right
+// away, for an answer that is not a main-session message — the console's
+// remember / don't-remember buttons on a confirm_memory question
+// (tars#1001). It reports whether entryID was still pending; an entry that
+// already resolved (a typed reply, or the window elapsed) is left as is.
+func (r *Runtime) RecordAnswer(entryID string) bool {
+	if r == nil || entryID == "" {
+		return false
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.loadHistoryLocked(r.deps.Now())
+	for i, p := range r.hist.PendingReplies {
+		if p.EntryID != entryID {
+			continue
+		}
+		r.hist.PendingReplies = append(r.hist.PendingReplies[:i:i], r.hist.PendingReplies[i+1:]...)
+		now := r.deps.Now()
+		r.applyOutcomeLocked(Entry{
+			ID: nextEntryID(now), At: now, Mode: r.cfg.Mode,
+			Kind: entryKindOutcome, Ref: entryID, Outcome: OutcomeReplied,
+		})
+		return true
+	}
+	return false
 }
 
 // notifyBodyOnly sends the companion-event half of a body_only tick
@@ -542,6 +619,9 @@ func (r *Runtime) applyLocked(e Entry) {
 		if e.Intent == IntentGreet {
 			r.hist.LastGreetAt = e.At
 		}
+		if e.Intent == IntentConfirmMemory {
+			r.hist.LastMemoryAskAt = e.At
+		}
 	}
 	if e.Intent == IntentBodyOnly {
 		// A failed attempt is spaced like a delivered one, so an offline
@@ -577,7 +657,7 @@ func (r *Runtime) applyLocked(e Entry) {
 			// backend that is composing successfully every time.
 		}
 	}
-	if e.Delivery == DeliveryDelivered {
+	if e.Delivery == DeliveryDelivered && tracksReplies(e.Intent) {
 		// Starts this delivered speak's reply-tracking window (tars#1221):
 		// resolveRepliesLocked (earlier this same tick, before this entry
 		// existed) never sees it; the earliest it can resolve is next
@@ -593,8 +673,11 @@ func (r *Runtime) applyLocked(e Entry) {
 	// forever for a console that stays disconnected, since live mode does
 	// not advance cooldown/daily-cap pacing for a non-delivered Speak the
 	// way shadow's unconditional "Intent != none" used to.
+	// A delivered speak is always written too: two reminders in a row
+	// (tars#1001) share reason and delivery, may need no compose call, and
+	// are not held apart by the cooldown — historyFrom must still see both.
 	changed := e.Reason != r.lastReason || e.Delivery != r.lastDelivery || e.DeliveryReason != r.lastDeliveryReason
-	if changed || e.Called || e.Composed {
+	if changed || e.Called || e.Composed || e.Delivery == DeliveryDelivered {
 		if err := r.deps.Ledger.Append(e); err != nil {
 			r.deps.Logger.Warn().Err(err).Msg("initiative: ledger append failed")
 		}
@@ -717,7 +800,8 @@ func (r *Runtime) Snapshot() Snapshot {
 	speakBackend := r.deps.SpeakBackend
 	speakBackend.CallsToday = r.speakCallsToday
 	speakBackend.DailyCallCap = r.cfg.DailySpeakCalls
-	outcomes := SummarizeOutcomes(r.recent, r.deps.Now(), r.cfg.Location, r.cfg.Cooldown, r.consecutiveIgnored, r.lastStoppedAt)
+	now := r.deps.Now()
+	outcomes := SummarizeOutcomes(r.recent, now, r.cfg.Location, r.cfg.Cooldown, r.consecutiveIgnored, r.lastStoppedAt)
 	return Snapshot{
 		Enabled:      r.cfg.Enabled,
 		Mode:         r.cfg.Mode,
@@ -728,5 +812,15 @@ func (r *Runtime) Snapshot() Snapshot {
 		LastError:    r.lastError,
 		Recent:       append([]Entry{}, r.recent...),
 		Outcomes:     outcomes,
+		Remind: SubjectIntentStatus{
+			Enabled:     r.cfg.Remind,
+			Pending:     r.lastEntry.Signals.ReminderDue,
+			SpokenToday: CountSpokenToday(r.recent, IntentRemind, now, r.cfg.Location),
+		},
+		ConfirmMemory: SubjectIntentStatus{
+			Enabled:     r.cfg.ConfirmMemory,
+			Pending:     r.lastEntry.Signals.MemoryPending,
+			SpokenToday: CountSpokenToday(r.recent, IntentConfirmMemory, now, r.cfg.Location),
+		},
 	}
 }

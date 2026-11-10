@@ -438,7 +438,17 @@ type InitiativeConfig struct {
 	// this is never turned on silently. Off (the default), delivery
 	// behaves exactly as before Telegram existed as a channel — console
 	// or nothing.
-	Telegram                bool
+	Telegram bool
+	// Remind routes cron reminders through initiative's speak path in live
+	// mode (tars#1001): a natural assistant message on the console, or the
+	// opt-in Telegram channel, instead of cron's [REMINDER] note. A reminder
+	// initiative cannot deliver within 10 minutes falls back to cron's own
+	// delivery. Default false.
+	Remind bool
+	// ConfirmMemory lets initiative ask "should I remember this?" about one
+	// pending reflection inbox candidate a day, answered with buttons in the
+	// console (tars#1001). Default false.
+	ConfirmMemory           bool
 	QuietRequestedThreshold float64
 	UserStrainedThreshold   float64
 	SpecialDayThreshold     float64
