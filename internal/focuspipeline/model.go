@@ -21,6 +21,9 @@
 //   - harness.go, harness_lesson.go, harness_library.go the opt-in harness
 //     proposal: a merged pipeline's facts, the lessons a model draws from
 //     them, and the repository's library of lessons proposed and adopted
+//   - promotion.go, promotion_ledger.go, promotion_check.go the opt-in
+//     verify promotion: recurrence keys, the repository's recurrence
+//     ledger, and the checks a model proposes for recurring defects
 //
 // Stage transitions are decided by facts (blocks, gate actions, and from P2
 // on verification exit codes) and never by asking the model whether a stage

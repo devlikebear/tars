@@ -29,6 +29,7 @@ import {
   secondOpinionNotice,
   secondOpinionTierChoices,
   harnessNotice,
+  promotionNotice,
 } from '../src/lib/focus.ts'
 import { userVisibleText } from '../src/lib/consoleContext.ts'
 import { focusEn, focusKo } from '../src/i18n/sections/focus.ts'
@@ -584,6 +585,23 @@ test('secondOpinionNotice: the review\'s notices in the console language', () =>
   assert.equal(secondOpinionNotice({ kind: 'notice', title: 'report format missing', payload: {} }), null)
   assert.equal(secondOpinionNotice({ kind: 'report', title: 'second opinion not received', payload: {} }), null)
   assert.match(secondOpinionNotice({ kind: 'notice', title: 'second opinion not received', payload: { reason: 'weird' } })?.body ?? '', /error/)
+})
+
+test('promotionNotice: a verify promotion\'s notices in the console language', () => {
+  const proposed = { kind: 'notice' as const, title: 'verify promotion proposed', payload: { outcome: 'proposed', session_id: 's3', checks: 2 } }
+  const got = promotionNotice(proposed)
+  assert.equal(got?.title, 'Verify checks proposed')
+  assert.equal(got?.sessionId, 's3')
+  assert.match(got?.body ?? '', /adds 2 checks for them to \.tars\/verify\.json/)
+  assert.match(promotionNotice({ ...proposed, payload: { checks: 1 } })?.body ?? '', /adds 1 check for it/)
+  assert.equal(promotionNotice({ ...proposed, payload: {} })?.sessionId, undefined)
+  assert.equal(promotionNotice(proposed, focusKo.notice)?.title, 'verify 검사 제안됨')
+  const skipped = { kind: 'notice' as const, title: 'verify promotion not proposed', payload: { outcome: 'no_checks' } }
+  assert.match(promotionNotice(skipped)?.body ?? '', /failed before the fix and passed after it/)
+  assert.match(promotionNotice({ ...skipped, payload: { outcome: 'odd' } })?.body ?? '', /could not finish/)
+  assert.match(promotionNotice({ ...skipped, payload: {} })?.body ?? '', /could not finish/)
+  assert.equal(promotionNotice({ kind: 'report', title: 'verify promotion proposed', payload: {} }), null)
+  assert.equal(promotionNotice({ kind: 'notice', title: 'harness improvement proposed', payload: {} }), null)
 })
 
 test('harnessNotice: a harness proposal\'s notices in the console language', () => {

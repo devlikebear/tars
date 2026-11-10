@@ -2807,7 +2807,14 @@ export type FocusPipeline = {
   // pipeline that is itself a proposal, where it came from.
   harness?: FocusHarnessOptIn
   harness_from?: { session_id: string; repo: string }
+  // Verify promotion (tars#1292): the opt-in and how it ended.
+  verify_promotion?: FocusPromotionOptIn
+  // The repository's default verify (.tars/verify.json), carried into every plan.
+  repo_verify?: string[]
 }
+
+// outcome: proposed | no_candidates | no_checks | failed | unavailable; absent until it ran.
+export type FocusPromotionOptIn = { repo: string; outcome?: string; proposal?: string; at?: string }
 
 // outcome: proposed | no_evidence | no_edits | failed | unavailable; absent until it ran.
 export type FocusHarnessOptIn = { repo: string; outcome?: string; proposal?: string; at?: string }
