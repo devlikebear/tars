@@ -118,7 +118,7 @@ func TestFocusReviewFindingsCarryExcerpts(t *testing.T) {
 	store := session.NewStore(t.TempDir())
 	sess := reviewingFocusSession(t, store, repo, base)
 	reply := "found one\n<focus-findings>[{\"id\":\"f1\",\"severity\":\"high\",\"file\":\"b.go\",\"line\":5,\"title\":\"renamed\",\"scenario\":\"x\"}]</focus-findings>"
-	p, act, ok := focusAfterTurn(store, sess.ID, store.TranscriptPath(sess.ID), reply, currentFocusMark(t, store, sess.ID), time.Now(), zerolog.Nop())
+	p, act, ok := focusAfterTurn(store, sess.ID, store.TranscriptPath(sess.ID), reply, currentFocusMark(t, store, sess.ID), time.Now(), nil, zerolog.Nop())
 	if !ok || act.Kind != focuspipeline.ActionNone || p.OpenGate != focuspipeline.GateTriage {
 		t.Fatalf("ok = %v act = %+v gate = %q", ok, act, p.OpenGate)
 	}
@@ -272,7 +272,7 @@ func focusReviewBlockedAtLimit(t *testing.T, repo, base string) (*session.Store,
 	if err := session.AppendMessage(transcript, session.Message{Role: "assistant", Content: reply, Timestamp: time.Now()}); err != nil {
 		t.Fatal(err)
 	}
-	p, _, ok := focusAfterTurn(store, sess.ID, transcript, reply, mark, time.Now(), zerolog.Nop())
+	p, _, ok := focusAfterTurn(store, sess.ID, transcript, reply, mark, time.Now(), nil, zerolog.Nop())
 	if !ok || p.OpenGate != focuspipeline.GateTriage {
 		t.Fatalf("triage not open: ok=%v %+v", ok, p)
 	}
@@ -301,7 +301,7 @@ func focusReviewBlockedAtLimit(t *testing.T, repo, base string) (*session.Store,
 	if err := session.AppendMessage(transcript, session.Message{Role: "assistant", Content: fixReply, Timestamp: time.Now()}); err != nil {
 		t.Fatal(err)
 	}
-	p, act, ok := focusAfterTurn(store, sess.ID, transcript, fixReply, mark, time.Now(), zerolog.Nop())
+	p, act, ok := focusAfterTurn(store, sess.ID, transcript, fixReply, mark, time.Now(), nil, zerolog.Nop())
 	if !ok || act.Kind != focuspipeline.ActionRunVerification || !p.Review.Fixed {
 		t.Fatalf("normal fix turn should still set Fixed: ok=%v act=%+v review=%+v", ok, act, p.Review)
 	}
@@ -364,7 +364,7 @@ func TestFocusFixUnchangedFromRealGitState(t *testing.T) {
 		if err := session.AppendMessage(transcript, session.Message{Role: "assistant", Content: reply, Timestamp: time.Now()}); err != nil {
 			t.Fatal(err)
 		}
-		p, act, ok := focusAfterTurn(store, sessID, transcript, reply, mark, time.Now(), zerolog.Nop())
+		p, act, ok := focusAfterTurn(store, sessID, transcript, reply, mark, time.Now(), nil, zerolog.Nop())
 		if !ok || act.Kind != focuspipeline.ActionRunVerification || p.Review.Fixed {
 			t.Fatalf("after an unchanged instruct fix turn: ok=%v act=%+v review=%+v", ok, act, p.Review)
 		}
@@ -423,7 +423,7 @@ func TestFocusFixUnchangedFromRealGitState(t *testing.T) {
 		if err := session.AppendMessage(transcript, session.Message{Role: "assistant", Content: reply, Timestamp: time.Now()}); err != nil {
 			t.Fatal(err)
 		}
-		p, act, ok := focusAfterTurn(store, sessID, transcript, reply, mark, time.Now(), zerolog.Nop())
+		p, act, ok := focusAfterTurn(store, sessID, transcript, reply, mark, time.Now(), nil, zerolog.Nop())
 		if !ok || act.Kind != focuspipeline.ActionRunVerification || !p.Review.Fixed {
 			t.Fatalf("after a changed instruct fix turn: ok=%v act=%+v review=%+v", ok, act, p.Review)
 		}

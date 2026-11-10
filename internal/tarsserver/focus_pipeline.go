@@ -11,6 +11,7 @@ import (
 
 	"github.com/devlikebear/tars/internal/focuspipeline"
 	"github.com/devlikebear/tars/internal/focusprobe"
+	"github.com/devlikebear/tars/internal/ops"
 	"github.com/devlikebear/tars/internal/serverauth"
 	"github.com/devlikebear/tars/internal/session"
 	"github.com/devlikebear/tars/internal/skillhub"
@@ -187,8 +188,9 @@ func focusFixUnchanged(sessions *session.Store, sessionID string, mark *focusTur
 // focusAfterTurn feeds a completed turn's reply to the session's pipeline
 // and returns the action the pipeline asks for next. ok is false when the
 // turn carried no mark, the pipeline has moved past the marked stage, or
-// there is no pipeline (or it could not be updated).
-func focusAfterTurn(sessions *session.Store, sessionID, transcriptPath, reply string, mark *focusTurnMark, now time.Time, logger zerolog.Logger) (focuspipeline.Pipeline, focuspipeline.Action, bool) {
+// there is no pipeline (or it could not be updated). audit records a
+// <focus-plan-edit> block that goal mode refused (nil records none).
+func focusAfterTurn(sessions *session.Store, sessionID, transcriptPath, reply string, mark *focusTurnMark, now time.Time, audit func(ops.AutomationAuditEntry), logger zerolog.Logger) (focuspipeline.Pipeline, focuspipeline.Action, bool) {
 	none := focuspipeline.Action{Kind: focuspipeline.ActionNone}
 	store := focusStoreFor(sessions)
 	if store == nil || mark == nil {
@@ -200,9 +202,15 @@ func focusAfterTurn(sessions *session.Store, sessionID, transcriptPath, reply st
 	// only when mark came from a fix turn (FixBeforeState set).
 	fixUnchanged := focusFixUnchanged(sessions, sessionID, mark, logger)
 	next := none
+	var locked []string
 	p, ok, err := store.Update(sessionID, func(p focuspipeline.Pipeline) (focuspipeline.Pipeline, error) {
 		if stage, _ := p.Stage(p.Current); stage.ID != mark.Stage || stage.Iteration != mark.Iteration {
 			return p, errFocusStaleTurn
+		}
+		// The machine refuses the block itself (EditPlanByAgent, a notice
+		// card); this only learns that it will, for the audit.
+		if blocks.PlanEdit != nil && p.Active() {
+			locked = focuspipeline.GoalModeLockedFields(p, *blocks.PlanEdit)
 		}
 		updated, act, err := focuspipeline.Apply(p, focuspipeline.Event{
 			Kind:         focuspipeline.EventTurnCompleted,
@@ -222,7 +230,10 @@ func focusAfterTurn(sessions *session.Store, sessionID, transcriptPath, reply st
 		logger.Warn().Err(err).Str("session_id", sessionID).Msg("focus: update pipeline after turn failed")
 		return focuspipeline.Pipeline{}, none, false
 	}
-	if ok && blocks.PlanEdit != nil {
+	switch {
+	case ok && len(locked) > 0:
+		focusAuditGoalModeRejection(audit, "focus_turn", sessionID, locked)
+	case ok && blocks.PlanEdit != nil:
 		// Outside the pipeline store's lock, like focusWritePlanTasks.
 		focusPlanEdited(sessions, p, "focus_turn", nil, logger)
 	}

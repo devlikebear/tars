@@ -38,7 +38,7 @@ func TestFocusPlanEditIsAuditedAndRefusesBadInput(t *testing.T) {
 	if focusPlanEditable(nil, sess.ID) || (*focusDriver)(nil).auditFunc() != nil {
 		t.Fatal("no store, no driver: nothing to edit or audit")
 	}
-	if _, _, err := focusEditPlan(nil, sess.ID, focuspipeline.PlanEdit{}, "test", time.Now(), nil, zerolog.Nop()); err == nil {
+	if _, _, err := focusEditPlan(nil, sess.ID, focuspipeline.PlanEdit{}, "test", false, time.Now(), nil, zerolog.Nop()); err == nil {
 		t.Fatal("an edit without a store must fail")
 	}
 }
@@ -51,7 +51,7 @@ func TestFocusPlanEditBlockInAReplyUpdatesTheContract(t *testing.T) {
 	}
 	reply := "dropped the live check as asked\n" +
 		`<focus-plan-edit>{"e2e":[],"goal":"   "}</focus-plan-edit>` + "\n" + focusNoFindings
-	p, act, ok := focusAfterTurn(store, sess.ID, store.TranscriptPath(sess.ID), reply, currentFocusMark(t, store, sess.ID), time.Now(), zerolog.Nop())
+	p, act, ok := focusAfterTurn(store, sess.ID, store.TranscriptPath(sess.ID), reply, currentFocusMark(t, store, sess.ID), time.Now(), nil, zerolog.Nop())
 	if !ok || act.Kind != focuspipeline.ActionRunVerification {
 		t.Fatalf("ok = %v act = %+v", ok, act)
 	}
@@ -75,7 +75,7 @@ func TestFocusPlanEditBlockInAReplyUpdatesTheContract(t *testing.T) {
 		t.Fatal(err)
 	}
 	reply = "dropped\n" + `<focus-plan-edit>{"e2e":[]}</focus-plan-edit>` + "\n" + focusNoFindings
-	p, _, ok = focusAfterTurn(store, sess.ID, store.TranscriptPath(sess.ID), reply, currentFocusMark(t, store, sess.ID), time.Now(), zerolog.Nop())
+	p, _, ok = focusAfterTurn(store, sess.ID, store.TranscriptPath(sess.ID), reply, currentFocusMark(t, store, sess.ID), time.Now(), nil, zerolog.Nop())
 	if !ok || len(p.Plan.E2E) != 0 {
 		t.Fatalf("ok = %v plan = %+v", ok, p.Plan)
 	}

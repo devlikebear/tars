@@ -23,20 +23,40 @@ import (
 //
 // An edit changes no stage and starts no turn; the next verification reads
 // the edited lists. It leaves a notice card and an automation audit entry.
+//
+// The tool and the block are the agent's edits: in goal mode they may not
+// change the plan's checks (focuspipeline.EditPlanByAgent, #1290). Such an
+// edit is refused and audited as rejected_goal_mode. The endpoint is the
+// developer's and is not locked.
+
+// focusPlanEditResultGoalMode is the automation audit result of an agent's
+// edit refused because goal mode locks the checks.
+const focusPlanEditResultGoalMode = "rejected_goal_mode"
 
 // focusEditPlan applies edit to the session's approved plan and brings the
-// session's task contract in line. actor names who asked, for the audit.
-func focusEditPlan(sessions *session.Store, sessionID string, edit focuspipeline.PlanEdit, actor string, now time.Time, audit func(ops.AutomationAuditEntry), logger zerolog.Logger) (focuspipeline.Pipeline, bool, error) {
+// session's task contract in line. actor names who asked, for the audit;
+// byAgent says the edit came from the agent (the focus_plan_edit tool), so
+// goal mode's lock on the checks applies.
+func focusEditPlan(sessions *session.Store, sessionID string, edit focuspipeline.PlanEdit, actor string, byAgent bool, now time.Time, audit func(ops.AutomationAuditEntry), logger zerolog.Logger) (focuspipeline.Pipeline, bool, error) {
 	store := focusStoreFor(sessions)
 	if store == nil {
 		return focuspipeline.Pipeline{}, false, focuspipeline.ErrNoApprovedPlan
 	}
 	changed := false
+	var locked []string
 	p, ok, err := store.Update(sessionID, func(p focuspipeline.Pipeline) (focuspipeline.Pipeline, error) {
-		next, did, err := focuspipeline.EditPlan(p, edit, now)
+		editPlan := focuspipeline.EditPlan
+		if byAgent {
+			editPlan = focuspipeline.EditPlanByAgent
+			locked = focuspipeline.GoalModeLockedFields(p, edit)
+		}
+		next, did, err := editPlan(p, edit, now)
 		changed = did
 		return next, err
 	})
+	if errors.Is(err, focuspipeline.ErrGoalModeChecks) {
+		focusAuditGoalModeRejection(audit, actor, sessionID, locked)
+	}
 	if err != nil {
 		return p, false, err
 	}
@@ -77,6 +97,18 @@ func focusPlanEdited(sessions *session.Store, p focuspipeline.Pipeline, actor st
 	audit(ops.AutomationAuditEntry{Actor: actor, Action: "focus_plan_edit", SessionID: p.SessionID, Result: "edited", Details: details})
 }
 
+// focusAuditGoalModeRejection records an agent's plan edit that goal mode
+// refused: which checks it asked to change, not the commands themselves.
+func focusAuditGoalModeRejection(audit func(ops.AutomationAuditEntry), actor, sessionID string, fields []string) {
+	if audit == nil {
+		return
+	}
+	audit(ops.AutomationAuditEntry{
+		Actor: actor, Action: "focus_plan_edit", SessionID: sessionID,
+		Result: focusPlanEditResultGoalMode, Details: map[string]any{"fields": fields},
+	})
+}
+
 // planEdit is POST /v1/focus/pipelines/{id}/plan.
 func (a *focusAPI) planEdit(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
@@ -91,7 +123,7 @@ func (a *focusAPI) planEdit(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name at least one of goal, verify, e2e, e2e_setup, e2e_teardown"})
 		return
 	}
-	p, changed, err := focusEditPlan(a.sessions, id, edit, "console", a.now(), a.driver.auditFunc(), a.logger)
+	p, changed, err := focusEditPlan(a.sessions, id, edit, "console", false, a.now(), a.driver.auditFunc(), a.logger)
 	switch {
 	case errors.Is(err, focuspipeline.ErrNoApprovedPlan):
 		writeJSON(w, http.StatusConflict, map[string]any{"error": err.Error(), "pipeline": p})
@@ -127,7 +159,7 @@ func focusPlanEditable(sessions *session.Store, sessionID string) bool {
 // newFocusPlanEditor is the focus_plan_edit tool's way into focusEditPlan.
 func newFocusPlanEditor(sessions *session.Store, sessionID string, driver *focusDriver, logger zerolog.Logger) apptool.FocusPlanEditor {
 	return func(_ context.Context, edit focuspipeline.PlanEdit) (focuspipeline.Plan, []string, error) {
-		p, changed, err := focusEditPlan(sessions, sessionID, edit, "focus_plan_edit", time.Now(), driver.auditFunc(), logger)
+		p, changed, err := focusEditPlan(sessions, sessionID, edit, "focus_plan_edit", true, time.Now(), driver.auditFunc(), logger)
 		if err != nil || p.Plan == nil {
 			return focuspipeline.Plan{}, nil, err
 		}
