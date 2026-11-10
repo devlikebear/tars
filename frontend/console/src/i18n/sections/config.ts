@@ -360,6 +360,14 @@ const fieldsKo: Record<string, ConfigFieldOverride> = {
     label: '기억 확인',
     description: '하루 한 번, reflection이 찾은 대기 중인 기억 후보를 저장할지 묻습니다. 콘솔의 버튼으로 답합니다',
   },
+  initiative_share_result: {
+    label: '백그라운드 결과 알림',
+    description: 'live 모드에서 아무도 기다리지 않은 agent 실행이나 세션 메모를 남기지 않은 cron 작업이 끝나거나 실패하면 메인 세션에 자연스러운 메시지로 알립니다. 알림과 pulse는 그대로입니다',
+  },
+  initiative_follow_up: {
+    label: '이어가기 제안',
+    description: '그날 처음 콘솔에 왔을 때, 전날까지 멈춘 세션 goal이나 focus 파이프라인이 있으면 인사 대신 이어서 할지 제안합니다',
+  },
   jev_base_url: { label: 'jev 서버 주소', description: '사용자 원문은 루프백 호스트일 때만 보내는 /v1/systemone 서버의 기본 주소입니다' },
   jev_api_key: { label: 'jev용 API 키', description: '호스팅된 jev 서버에 쓰는 베어러 토큰' },
   jev_model: { label: 'jev 모델', description: '요청마다 함께 보낼 모델 이름' },

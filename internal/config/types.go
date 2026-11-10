@@ -456,7 +456,19 @@ type InitiativeConfig struct {
 	// ConfirmMemory lets initiative ask "should I remember this?" about one
 	// pending reflection inbox candidate a day, answered with buttons in the
 	// console (tars#1001). Default false.
-	ConfirmMemory           bool
+	ConfirmMemory bool
+	// ShareResult reports, in live mode, background results that left no
+	// conversational trace — an agent run nobody waited for, a cron job
+	// with no session note, a cron failure — as a natural assistant
+	// message (tars#1002). An agent run's main-session [RUN SUMMARY] note
+	// is replaced by the report and written back if it is not said within
+	// two hours. Default false.
+	ShareResult bool
+	// FollowUp suggests picking up work left unfinished on an earlier day
+	// (an active session goal, an unfinished focus pipeline or its pull
+	// request) at the first console arrival of the day, in place of that
+	// day's greet (tars#1002). Default false.
+	FollowUp                bool
 	QuietRequestedThreshold float64
 	UserStrainedThreshold   float64
 	SpecialDayThreshold     float64

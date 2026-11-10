@@ -35,6 +35,25 @@ const (
 // most this much and never lost (tars#1001).
 const ReminderGrace = 10 * time.Minute
 
+// ResultGrace is how long a queued background result may wait for the
+// speak path before the server gives it back (tars#1002): an agent run's
+// [RUN SUMMARY] note is written where it would have gone, a result with no
+// note of its own is dropped (the notification history still has it). A
+// result is not time-critical like a reminder, so this covers a cooldown
+// and a short absence, not a night away.
+const ResultGrace = 2 * time.Hour
+
+// FollowUpLookback is how far back before today an unfinished goal or
+// pipeline still counts as "left yesterday" for follow_up (tars#1002): long
+// enough to span a weekend, short enough that week-old work is not raised
+// every morning.
+const FollowUpLookback = 72 * time.Hour
+
+// ArrivalFreshness is how long after a console arrival the arrival still
+// counts (GoSignals.JustArrived) — exported so an adapter can skip work
+// only an arrival tick reads (follow_up's lookup).
+const ArrivalFreshness = arrivalFreshness
+
 // Thresholds turn System One probabilities into signals. Defaults come from
 // the Kev-0.8B measurements in tars#998.
 type Thresholds struct {
@@ -76,6 +95,14 @@ type Config struct {
 	// ConfirmMemory lets TARS ask whether to keep a pending reflection
 	// inbox candidate (tars#1001). Off by default.
 	ConfirmMemory bool
+	// ShareResult reports background results that left no conversational
+	// trace (tars#1002). Off by default; live mode only, since the server
+	// queues results only while it can deliver them.
+	ShareResult bool
+	// FollowUp suggests picking up work left unfinished on an earlier day
+	// at the first arrival of the day, in place of that greet (tars#1002).
+	// Off by default.
+	FollowUp bool
 }
 
 // WithDefaults fills zero values. Mode defaults to shadow when unset, but an

@@ -51,7 +51,7 @@ func checkDoctorInitiative(report *doctorReport, cfg config.Config) {
 // from the ledger. Never a reminder's text, a candidate's summary or an id.
 func checkDoctorInitiativeSubjects(report *doctorReport, cfg config.Config, mode string, now time.Time) {
 	c := cfg.Initiative
-	if !c.Remind && !c.ConfirmMemory {
+	if !c.Remind && !c.ConfirmMemory && !c.ShareResult && !c.FollowUp {
 		return
 	}
 	loc := time.Local
@@ -73,6 +73,7 @@ func checkDoctorInitiativeSubjects(report *doctorReport, cfg config.Config, mode
 		report.add("ok", "initiative remind", fmt.Sprintf("on: %d said today, %d queued",
 			initiative.CountSpokenToday(entries, initiative.IntentRemind, now, loc), doctorQueuedReminders(filepath.Join(shared, "reminders.json"))))
 	}
+	checkDoctorInitiativeCoworker(report, c, mode, entries, filepath.Join(shared, "results.json"), now, loc)
 	if !c.ConfirmMemory {
 		return
 	}
@@ -90,8 +91,28 @@ func checkDoctorInitiativeSubjects(report *doctorReport, cfg config.Config, mode
 		pending, initiative.CountSpokenToday(entries, initiative.IntentConfirmMemory, now, loc)))
 }
 
-// doctorQueuedReminders counts reminders waiting in the initiative.remind
-// queue file (reading only its length, never the reminder text).
+// checkDoctorInitiativeCoworker reports the two tars#1002 options, one line
+// each when on: how many reports or follow-ups were said today, and for
+// share_result how many results wait in the queue. Never a result's text, a
+// goal, a title or an id.
+func checkDoctorInitiativeCoworker(report *doctorReport, c config.InitiativeConfig, mode string, entries []initiative.Entry, resultsPath string, now time.Time, loc *time.Location) {
+	switch {
+	case !c.ShareResult:
+	case mode != initiative.ModeLive:
+		report.add("ok", "initiative share_result", "on, but mode is shadow: results keep their notes and notifications")
+	default:
+		report.add("ok", "initiative share_result", fmt.Sprintf("on: %d reported today, %d queued",
+			initiative.CountSpokenToday(entries, initiative.IntentShareResult, now, loc), doctorQueuedReminders(resultsPath)))
+	}
+	if c.FollowUp {
+		report.add("ok", "initiative follow_up", fmt.Sprintf("on: suggested today: %d",
+			initiative.CountSpokenToday(entries, initiative.IntentFollowUp, now, loc)))
+	}
+}
+
+// doctorQueuedReminders counts entries waiting in an initiative queue file
+// — reminders.json or results.json (reading only its length, never the
+// text).
 func doctorQueuedReminders(path string) int {
 	raw, err := os.ReadFile(path)
 	if err != nil {

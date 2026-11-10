@@ -128,6 +128,12 @@ type Snapshot struct {
 	// summary or id (tars#1003).
 	Remind        SubjectIntentStatus `json:"remind"`
 	ConfirmMemory SubjectIntentStatus `json:"confirm_memory"`
+	// ShareResult and FollowUp report the two tars#1002 options the same
+	// way: on or off, whether the last tick saw a queued result or
+	// unfinished work, and how many were said today. No result text, goal,
+	// title or id.
+	ShareResult SubjectIntentStatus `json:"share_result"`
+	FollowUp    SubjectIntentStatus `json:"follow_up"`
 }
 
 // SubjectIntentStatus is the status line for one subject-carrying intent
@@ -537,7 +543,8 @@ func (r *Runtime) deliverLocked(ctx context.Context, entry *Entry, obs Observati
 	}
 }
 
-// speakSubject picks what a remind or confirm_memory speak is about from
+// speakSubject picks what a remind, confirm_memory, share_result or
+// follow_up speak is about from
 // the same observation Decide just read. Decide only returns those intents
 // when the matching subject is present, and a confirm_memory tick is always
 // one at the console (IdleAtDesk), so it is never sent over Telegram, which
@@ -548,6 +555,10 @@ func speakSubject(intent Intent, obs Observation) *Subject {
 		return obs.Reminder
 	case IntentConfirmMemory:
 		return obs.MemoryCandidate
+	case IntentShareResult:
+		return obs.Result
+	case IntentFollowUp:
+		return obs.FollowUp
 	}
 	return nil
 }
@@ -616,7 +627,9 @@ func (r *Runtime) applyLocked(e Entry) {
 		if e.Intent == IntentCheckIn {
 			r.hist.LastCheckInAt = e.At
 		}
-		if e.Intent == IntentGreet {
+		if e.Intent == IntentGreet || e.Intent == IntentFollowUp {
+			// follow_up is the day's arrival utterance (tars#1002): it
+			// uses up the once-a-day greet (#1269) the same way.
 			r.hist.LastGreetAt = e.At
 		}
 		if e.Intent == IntentConfirmMemory {
@@ -821,6 +834,16 @@ func (r *Runtime) Snapshot() Snapshot {
 			Enabled:     r.cfg.ConfirmMemory,
 			Pending:     r.lastEntry.Signals.MemoryPending,
 			SpokenToday: CountSpokenToday(r.recent, IntentConfirmMemory, now, r.cfg.Location),
+		},
+		ShareResult: SubjectIntentStatus{
+			Enabled:     r.cfg.ShareResult,
+			Pending:     r.lastEntry.Signals.ResultReady,
+			SpokenToday: CountSpokenToday(r.recent, IntentShareResult, now, r.cfg.Location),
+		},
+		FollowUp: SubjectIntentStatus{
+			Enabled:     r.cfg.FollowUp,
+			Pending:     r.lastEntry.Signals.FollowUpPending,
+			SpokenToday: CountSpokenToday(r.recent, IntentFollowUp, now, r.cfg.Location),
 		},
 	}
 }

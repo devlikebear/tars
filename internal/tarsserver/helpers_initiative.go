@@ -69,6 +69,12 @@ type sessionObserverDeps struct {
 	// MemoryCandidates lists the reflection inbox's pending candidates
 	// (initiative.confirm_memory, tars#1001); the observer picks one.
 	MemoryCandidates func() ([]memory.MemoryCandidate, error)
+	// Result returns the queued background results the next share_result
+	// report covers (tars#1002), giving back expired ones on the way.
+	Result func(ctx context.Context, now time.Time) *initiative.Subject
+	// FollowUp lists work left unfinished on an earlier day (tars#1002).
+	// Read only around a console arrival, the one tick Decide uses it.
+	FollowUp func(now time.Time) *initiative.Subject
 }
 
 // sessionInitiativeObserver builds an initiative.Observation from every
@@ -132,6 +138,12 @@ func (o *sessionInitiativeObserver) Observe(ctx context.Context, now time.Time) 
 		if candidates, err := o.deps.MemoryCandidates(); err == nil {
 			obs.MemoryCandidate = memoryConfirmSubject(candidates)
 		}
+	}
+	if o.deps.Result != nil {
+		obs.Result = o.deps.Result(ctx, now)
+	}
+	if o.deps.FollowUp != nil && !obs.ConsoleArrivedAt.IsZero() && now.Sub(obs.ConsoleArrivedAt) <= initiative.ArrivalFreshness {
+		obs.FollowUp = o.deps.FollowUp(now)
 	}
 	if o.deps.Store != nil {
 		if err := o.readSessions(now, &obs); err != nil {
@@ -378,6 +390,10 @@ type initiativeSetupInputs struct {
 	// Reminders is the initiative.remind queue (tars#1001). Used only when
 	// initiative is live with remind on; the caller binds its cron fallback.
 	Reminders *initiativeReminderQueue
+	// Results is the initiative.share_result queue (tars#1002). Used only
+	// when initiative is live with share_result on; the caller routes
+	// agent runs and cron results into it.
+	Results *initiativeResultQueue
 	// MemoryBackend is what an approved confirm_memory answer is saved
 	// through — the same backend the Memory screen's review uses.
 	MemoryBackend memory.Backend
@@ -398,6 +414,9 @@ type initiativeSetup struct {
 	// RemindActive reports that cron reminders should go to Reminders
 	// (initiative enabled, live, remind on — tars#1001).
 	RemindActive bool
+	// ShareResultActive reports that finished background results should go
+	// to Results (initiative enabled, live, share_result on — tars#1002).
+	ShareResultActive bool
 }
 
 // buildInitiativeRuntime wires the initiative loop (tars#997). When it is
@@ -424,6 +443,7 @@ func buildInitiativeRuntime(in initiativeSetupInputs) initiativeSetup {
 	}
 	live := strings.EqualFold(strings.TrimSpace(c.Mode), initiative.ModeLive)
 	remindActive := c.Remind && live && in.Reminders != nil
+	shareResultActive := c.ShareResult && live && in.Results != nil
 	cfg := initiative.Config{
 		Enabled:         true,
 		Mode:            c.Mode,
@@ -441,6 +461,10 @@ func buildInitiativeRuntime(in initiativeSetupInputs) initiativeSetup {
 		// cron keeps delivering its own reminders there.
 		Remind:        c.Remind && live,
 		ConfirmMemory: c.ConfirmMemory,
+		// share_result, like remind, only queues results while live mode
+		// can deliver them.
+		ShareResult: shareResultActive,
+		FollowUp:    c.FollowUp,
 		Thresholds: initiative.Thresholds{
 			QuietRequested: c.QuietRequestedThreshold,
 			UserStrained:   c.UserStrainedThreshold,
@@ -470,9 +494,10 @@ func buildInitiativeRuntime(in initiativeSetupInputs) initiativeSetup {
 	speakPlan, speakClient, speakModel := resolveInitiativeSpeakBackend(in.Config, in.Router)
 	deps.SpeakSendsText = speakPlan.SendsText
 	deps.SpeakBackend = initiativeBackendInfoFromPlan(speakPlan)
-	// remind and confirm_memory can speak without a composer (fixed
-	// wording, initiative.FixedSpeech), so they get a speaker either way.
-	if speakClient != nil || (live && (c.Remind || c.ConfirmMemory)) {
+	// remind, confirm_memory, share_result and follow_up can speak without
+	// a composer (fixed wording, initiative.FixedSpeech), so they get a
+	// speaker either way.
+	if speakClient != nil || (live && (c.Remind || c.ConfirmMemory || c.ShareResult || c.FollowUp)) {
 		var composer *initiative.SpeechComposer
 		if speakClient != nil {
 			composer = &initiative.SpeechComposer{Client: speakClient, Model: speakModel}
@@ -495,6 +520,9 @@ func buildInitiativeRuntime(in initiativeSetupInputs) initiativeSetup {
 		}
 		if remindActive {
 			speaker.reminders = in.Reminders
+		}
+		if shareResultActive {
+			speaker.results = in.Results
 		}
 		deps.Speaker = speaker
 	}
@@ -547,14 +575,21 @@ func buildInitiativeRuntime(in initiativeSetupInputs) initiativeSetup {
 			return memory.ListMemoryCandidates(workspaceDir, memory.MemoryCandidateListOptions{Status: memory.MemoryCandidateStatusPending})
 		}
 	}
+	if shareResultActive {
+		observerDeps.Result = in.Results.Pending
+	}
+	if c.FollowUp {
+		observerDeps.FollowUp = initiativeFollowUpSource(in.SessionStore, loc)
+	}
 	deps.Observer = newSessionInitiativeObserver(observerDeps)
 
 	runtime := initiative.NewRuntime(cfg, deps)
 	return initiativeSetup{
-		Runtime:      runtime,
-		Handler:      newInitiativeAPIHandlerWithMemory(runtime, in.Presence, in.Now, answerDeps),
-		Speaker:      speaker,
-		RemindActive: remindActive,
+		Runtime:           runtime,
+		Handler:           newInitiativeAPIHandlerWithMemory(runtime, in.Presence, in.Now, answerDeps),
+		Speaker:           speaker,
+		RemindActive:      remindActive,
+		ShareResultActive: shareResultActive,
 	}
 }
 

@@ -41,3 +41,14 @@
 {"name":"memory is asked once a day, then the body expression returns","signals":{"memory_pending":true,"memory_asked_today":true,"idle_at_desk":true,"body_available":true,"reachable":true},"want":{"intent":"body_only","speak":false,"reason":"idle_at_desk"}}
 {"name":"a quiet request holds back a memory question","signals":{"memory_pending":true,"idle_at_desk":true,"reachable":true},"text":{"quiet_requested":true},"want":{"intent":"none","speak":false,"reason":"quiet_requested"}}
 {"name":"a strained user gets a check-in before a memory question","signals":{"memory_pending":true,"idle_at_desk":true,"reachable":true},"text":{"user_strained":true},"want":{"intent":"check_in","speak":true,"reason":"strained"}}
+{"name":"first arrival with unfinished work suggests a follow-up instead of a greet","signals":{"just_arrived":true,"reachable":true,"follow_up_pending":true},"want":{"intent":"follow_up","speak":true,"reason":"unfinished_work"}}
+{"name":"a follow-up beats a special-day greet","signals":{"just_arrived":true,"reachable":true,"follow_up_pending":true},"text":{"special_day":true},"want":{"intent":"follow_up","speak":true,"reason":"unfinished_work"}}
+{"name":"a quiet request holds back a follow-up","signals":{"just_arrived":true,"reachable":true,"follow_up_pending":true},"text":{"quiet_requested":true},"want":{"intent":"none","speak":false,"reason":"quiet_requested"}}
+{"name":"no follow-up on a later arrival the same day","signals":{"just_arrived":true,"greeted_today":true,"reachable":true,"follow_up_pending":true},"want":{"intent":"none","speak":false,"reason":"nothing"}}
+{"name":"cooldown holds back a follow-up","signals":{"just_arrived":true,"reachable":true,"follow_up_pending":true,"cooldown_active":true},"want":{"intent":"none","speak":false,"reason":"cooldown"}}
+{"name":"a queued background result is reported","signals":{"result_ready":true,"reachable":true},"want":{"intent":"share_result","speak":true,"reason":"result_ready"}}
+{"name":"a result report waits while the user types","signals":{"result_ready":true,"busy":true,"reachable":true},"want":{"intent":"none","speak":false,"reason":"busy"}}
+{"name":"a result report needs someone reachable","signals":{"result_ready":true},"want":{"intent":"none","speak":false,"reason":"nothing"}}
+{"name":"a result report comes before a strained check-in","signals":{"result_ready":true,"reachable":true},"text":{"user_strained":true},"want":{"intent":"share_result","speak":true,"reason":"result_ready"}}
+{"name":"the arrival greet comes before a result report","signals":{"just_arrived":true,"result_ready":true,"reachable":true},"want":{"intent":"greet","speak":true,"reason":"arrived"}}
+{"name":"quiet hours hold back a result report","signals":{"result_ready":true,"reachable":true,"quiet_hours":true},"want":{"intent":"none","speak":false,"reason":"quiet_hours"}}

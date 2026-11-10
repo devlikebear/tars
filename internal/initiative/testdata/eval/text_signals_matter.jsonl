@@ -14,3 +14,6 @@
 {"name":"a due reminder fixes the outcome, no read","signals":{"reminder_due":true,"reachable":true,"idle_at_desk":true},"want":false}
 {"name":"a reminder held by typing reads as if none were due","signals":{"reminder_due":true,"busy":true,"just_arrived":true,"reachable":true},"want":true}
 {"name":"a memory question reads text first: quiet can still hold it back","signals":{"memory_pending":true,"idle_at_desk":true,"reachable":true},"want":true}
+{"name":"a follow-up arrival reads text first: quiet can still hold it back","signals":{"just_arrived":true,"reachable":true,"follow_up_pending":true},"want":true}
+{"name":"a result report reads text first: quiet can still hold it back","signals":{"result_ready":true,"reachable":true},"want":true}
+{"name":"a result held by typing reads as if none were queued","signals":{"result_ready":true,"busy":true,"reachable":true},"want":false}

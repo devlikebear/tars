@@ -62,6 +62,8 @@ var speechIntentGuidance = map[Intent]string{
 	IntentGreet:         "This is a greeting: the user just arrived after being away for a while (or it is a special day). Welcome them back briefly and warmly. Do not ask what they want yet.",
 	IntentRemind:        "This is a reminder the user asked you to give them at this time. Tell them what the subject says, naturally and briefly; keep every concrete detail (names, times, numbers) exactly as given. Do not add advice.",
 	IntentConfirmMemory: "This is a question: reflection noticed something about the user and you want to ask whether to keep it in memory. Restate the subject in a few words and ask, in one line, whether you should remember it. The user answers with buttons under your message, so do not explain how to answer.",
+	IntentShareResult:   "This is a report: work that ran in the background (an agent run or a scheduled job) finished or failed while the user was not watching it. The subject has one line per result. Say briefly what finished and how it went, keeping names and failure reasons exactly as given; for a failure, offer to look into it. Do not add details the subject does not give.",
+	IntentFollowUp:      "This is a greeting on the user's first arrival today, with a suggestion: some work was left unfinished on an earlier day, listed in the subject. Welcome them back in a few words, name the unfinished work briefly, and ask whether to pick it up. Do not list more than the subject gives.",
 	IntentCheckIn:       "This is a check-in: the user has been in a long session, been away a long time, or seemed strained, and has not been checked on recently. Ask, briefly and gently, how they are doing or whether they need anything — do not assume what is wrong.",
 }
 
@@ -140,9 +142,9 @@ func buildSpeechMessages(in ComposeInput) []llm.ChatMessage {
 	}
 }
 
-// FixedSpeech is the words for a remind or confirm_memory speak when its
-// subject may not go to the speak model (SendsText false, tars#1001): the
-// subject itself in a fixed frame, no LLM call. Korean when the subject is
+// FixedSpeech is the words for a remind, confirm_memory, share_result or
+// follow_up speak when its subject may not go to the speak model (SendsText
+// false, tars#1001/#1002): the subject itself in a fixed frame, no LLM call. Korean when the subject is
 // written in Hangul, English otherwise. Empty for any other intent or an
 // empty subject — greet/check_in always compose.
 func FixedSpeech(intent Intent, subject string) string {
@@ -162,6 +164,16 @@ func FixedSpeech(intent Intent, subject string) string {
 			return "이걸 기억해 둘까요? " + subject
 		}
 		return "Should I remember this? " + subject
+	case IntentShareResult:
+		if korean {
+			return "백그라운드 작업 결과를 알려 드려요.\n" + subject
+		}
+		return "Background work finished.\n" + subject
+	case IntentFollowUp:
+		if korean {
+			return "다시 오셨네요. 전에 멈춘 작업이 있어요.\n" + subject + "\n이어서 할까요?"
+		}
+		return "Welcome back. Some work was left unfinished.\n" + subject + "\nWant to pick it up?"
 	}
 	return ""
 }

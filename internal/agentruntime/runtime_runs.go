@@ -62,12 +62,30 @@ func (r *Runtime) Wait(ctx context.Context, runID string) (Run, error) {
 	if !ok {
 		return Run{}, fmt.Errorf("run not found: %s", strings.TrimSpace(runID))
 	}
+	r.mu.Lock()
+	state.waiters++
+	r.mu.Unlock()
 	select {
 	case <-ctx.Done():
+		r.mu.Lock()
+		state.waiters--
+		r.mu.Unlock()
 		return Run{}, ctx.Err()
 	case <-state.done:
 		return r.GetOrZero(runID), nil
 	}
+}
+
+// SetResultRouter installs (or, with nil, removes) the router a finished
+// run's report goes through (tars#1002). Set it before runs start; it is
+// read under the runtime mutex at each run's finalization.
+func (r *Runtime) SetResultRouter(router ResultRouter) {
+	if r == nil {
+		return
+	}
+	r.mu.Lock()
+	r.resultRouter = router
+	r.mu.Unlock()
 }
 
 func (r *Runtime) GetOrZero(runID string) Run {
