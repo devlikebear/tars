@@ -503,6 +503,7 @@ func buildAPIMux(
 	chatTooling.OverrideService = overrideService
 	checkpointStore := openCheckpointStore(cfg.WorkspaceDir, logger)
 	chatTooling.Checkpoints = checkpointStore
+	focusDriver.promotion = newFocusPromotion(checkpointStore, logger)
 	// The session store has one delete hook: everything kept beside a
 	// session goes with it through this chain.
 	attachSessionDeleteHooks(sessionStore,

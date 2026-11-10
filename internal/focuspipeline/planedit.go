@@ -68,7 +68,14 @@ func GoalModeLockedFields(p Pipeline, edit PlanEdit) []string {
 		{"e2e_setup", edit.E2ESetup, p.Plan.E2ESetup},
 		{"e2e_teardown", edit.E2ETeardown, p.Plan.E2ETeardown},
 	} {
-		if l.edit != nil && !slices.Equal(l.list, cleanStrings(*l.edit)) {
+		if l.edit == nil {
+			continue
+		}
+		after := cleanStrings(*l.edit)
+		if l.name == "verify" {
+			after = MergeRepoVerify(after, p.RepoVerify)
+		}
+		if !slices.Equal(l.list, after) {
 			locked = append(locked, l.name)
 		}
 	}
@@ -121,6 +128,11 @@ func EditPlan(p Pipeline, edit PlanEdit, now time.Time) (next Pipeline, changed 
 			continue
 		}
 		after := cleanStrings(*l.edit)
+		if l.name == "verify" {
+			// The repository's default verify stays: an edit adds to it,
+			// never removes from it.
+			after = MergeRepoVerify(after, next.RepoVerify)
+		}
 		if slices.Equal(*l.list, after) {
 			continue
 		}

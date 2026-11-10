@@ -34,6 +34,7 @@ import (
 //	POST /v1/focus/pipelines/{id}/qa              {card_id, question} → 202 {qa_session_id, turn} (focus_qa.go)
 //	POST /v1/focus/pipelines/{id}/goal            {enabled, max_pushes?} → {pipeline}; turning it on needs the admin token (focus_goal.go)
 //	POST /v1/focus/pipelines/{id}/plan            {goal?, verify?, e2e?, e2e_setup?, e2e_teardown?} → {pipeline, changed}; edits the approved plan, 409 before G1 or once finished (focus_plan_edit.go)
+//	POST /v1/focus/pipelines also takes verify_promotion: true — once the pipeline finishes merged, record its fixed findings in the repository's recurrence ledger and propose checks for those that keep coming back as a new pipeline (400 outside a git repository or for a release, 503 without the focus_harness role, checkpoints or the OS sandbox) (focus_promotion.go)
 //	POST /v1/focus/pipelines also takes harness_proposal: true — once the pipeline finishes merged, propose harness changes from its facts as a new pipeline (400 outside a git repository or for a release, 503 when the server cannot run it) (focus_harness.go)
 //	GET  /v1/focus/templates                      → {templates, diagnostics, hub: {id: version} of the TARS Hub ones, dir}; POST /v1/focus/pipelines takes {template, goal_mode, goal_max_pushes, e2e, second_opinion?: {tier}} — second_opinion opts in to the second opinion review (heavy|standard|light; 400 when the tier cannot be used, 503 when the server cannot run it, second_opinion_warning "same_model_as_chat" in the 201) (focus_second_opinion.go)
 //	POST /v1/focus/templates/draft                {request, base_id?, draft?} → AI-drafted save/delete (focus_template_edit.go); PUT/DELETE /v1/focus/templates/{id} actually save or remove
@@ -435,6 +436,9 @@ type focusCreateRequest struct {
 	// HarnessProposal opts the pipeline in to a harness proposal once it
 	// finishes merged (focus_harness.go). Off unless asked for.
 	HarnessProposal bool `json:"harness_proposal,omitempty"`
+	// VerifyPromotion opts the pipeline in to verify promotion once it
+	// finishes merged (focus_promotion.go). Off unless asked for.
+	VerifyPromotion bool `json:"verify_promotion,omitempty"`
 	// harnessFrom marks a pipeline the server opens as a harness proposal;
 	// never read from a request.
 	harnessFrom *focuspipeline.HarnessSource
@@ -493,6 +497,10 @@ func (a *focusAPI) open(ctx context.Context, req focusCreateRequest, role string
 	if err != nil {
 		return status, map[string]any{"error": err.Error()}
 	}
+	promotion, status, err := a.driver.checkPromotion(ctx, req, kind)
+	if err != nil {
+		return status, map[string]any{"error": err.Error()}
+	}
 	title := strings.TrimSpace(req.Title)
 	if title == "" {
 		title = focusTitleFromGoal(goal)
@@ -530,6 +538,10 @@ func (a *focusAPI) open(ctx context.Context, req focusCreateRequest, role string
 	p.E2E = req.E2E
 	p.SecondOpinion = secondOpinion
 	p.Harness, p.HarnessFrom = harness, req.harnessFrom
+	p.Promotion = promotion
+	// The repository's default verify list, from the folder the pipeline
+	// works in (its worktree when isolated): every plan carries it.
+	p.RepoVerify = focusprobe.ReadRepoVerify(ctx, sess.CurrentDir)
 	if req.GoalMode {
 		p = focuspipeline.StartGoal(p, req.GoalMaxPushes, a.now())
 	}

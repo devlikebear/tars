@@ -98,7 +98,10 @@ type focusDriver struct {
 	goalWatching bool
 	// harnessBusy holds the sessions whose harness proposal runs now.
 	harnessBusy map[string]bool
-	wg          sync.WaitGroup
+	// promotion runs verify promotions (focus_promotion.go); nil when
+	// this host cannot (no checkpoints or no OS sandbox).
+	promotion *focusPromotion
+	wg        sync.WaitGroup
 }
 
 // focusTurnRunner runs one turn on a session (runServerChatTurn in the
@@ -288,6 +291,9 @@ func (d *focusDriver) bind(deps chatHandlerDeps) {
 	}
 	if n := d.resumeHarness(); n > 0 {
 		d.logger.Info().Int("count", n).Msg("focus: resumed harness proposals")
+	}
+	if n := d.resumePromotions(); n > 0 {
+		d.logger.Info().Int("count", n).Msg("focus: resumed verify promotions")
 	}
 }
 

@@ -495,12 +495,13 @@ func (p Pipeline) approvedPrompt(gate string, next StageID) string {
 
 // fitPlan fits a parsed plan to the pipeline's template: its stages are the
 // pipeline's own, in pipeline order, plan always among them (none listed
-// means every stage), and a task names a work stage of the pipeline or
-// none.
+// means every stage), a task names a work stage of the pipeline or none,
+// and its verify carries the repository's default verify (RepoVerify).
 func (p Pipeline) fitPlan(plan Plan) Plan {
 	if !p.E2E {
 		plan.E2E, plan.E2ESetup, plan.E2ETeardown = nil, nil, nil
 	}
+	plan.Verify = MergeRepoVerify(plan.Verify, p.RepoVerify)
 	want := map[StageID]bool{StagePlan: true}
 	for _, id := range plan.Stages {
 		want[StageID(strings.TrimSpace(string(id)))] = true

@@ -289,6 +289,18 @@ type Pipeline struct {
 	// harness proposal.
 	Harness     *HarnessOptIn  `json:"harness,omitempty"`
 	HarnessFrom *HarnessSource `json:"harness_from,omitempty"`
+	// Promotion opts the pipeline in to verify promotion once it finishes
+	// with its work merged (promotion.go): its fixed findings join the
+	// repository's recurrence ledger, and a finding that keeps coming back
+	// is proposed as a check. Nil — every pipeline that did not ask for
+	// it — is off.
+	Promotion *PromotionOptIn `json:"verify_promotion,omitempty"`
+	// RepoVerify is the repository's default verify list (.tars/verify.json
+	// of the session's folder, read when the pipeline was created): every
+	// plan's verify carries these commands, and no edit removes them
+	// (MergeRepoVerify). Empty — a repository without the file — changes
+	// nothing.
+	RepoVerify []string `json:"repo_verify,omitempty"`
 }
 
 // KindRelease marks a release pipeline, which the release train never lists.
@@ -496,6 +508,17 @@ func (p Pipeline) clone() Pipeline {
 		from := *p.HarnessFrom
 		from.Lessons = append([]string(nil), p.HarnessFrom.Lessons...)
 		out.HarnessFrom = &from
+	}
+	if p.Promotion != nil {
+		pr := *p.Promotion
+		if pr.At != nil {
+			at := *pr.At
+			pr.At = &at
+		}
+		out.Promotion = &pr
+	}
+	if p.RepoVerify != nil {
+		out.RepoVerify = append([]string(nil), p.RepoVerify...)
 	}
 	if p.QATurns != nil {
 		out.QATurns = make(map[string][]int, len(p.QATurns))
