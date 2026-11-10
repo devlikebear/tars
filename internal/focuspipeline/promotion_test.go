@@ -153,7 +153,7 @@ func TestRecurrenceLedgerKeepsAndReplaces(t *testing.T) {
 
 func TestHarnessLibraryRecurrenceAndChecks(t *testing.T) {
 	shared := t.TempDir()
-	lib, err := OpenHarnessLibrary(shared, "/repo/x")
+	lib, err := OpenHarnessLibrary(shared, filepath.Join(t.TempDir(), "x"))
 	if err != nil {
 		t.Fatal(err)
 	}
