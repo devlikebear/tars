@@ -289,6 +289,14 @@ type ToolConfig struct {
 	// foreground cap so watchers like `gh pr checks --watch` can run for
 	// tens of minutes. 0 falls back to defaults.go.
 	ToolsProcessMaxTimeoutMS int
+	// ToolsExecSandbox* run the native exec tool's commands inside an OS
+	// sandbox (#1310): Seatbelt on macOS, bubblewrap on Linux. Off by
+	// default; when on and the host has no sandbox, commands are refused.
+	ToolsExecSandboxEnabled       bool
+	ToolsExecSandboxNetwork       bool
+	ToolsExecSandboxWritablePaths []string
+	ToolsExecSandboxReadOnlyPaths []string
+	ToolsExecSandboxDenyReadPaths []string
 }
 
 type AgentRuntimeConfig struct {

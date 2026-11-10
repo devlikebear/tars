@@ -32,6 +32,7 @@ func buildChatToolRegistry(
 		baseToolRegistryOptions{
 			ExecMaxTimeoutMS:           deps.tooling.ExecMaxTimeoutMS,
 			ExecMaxBackgroundTimeoutMS: deps.tooling.ExecMaxBackgroundTimeoutMS,
+			ExecSandbox:                deps.tooling.ExecSandbox,
 		},
 		deps.tooling.MemorySemanticConfig,
 	)

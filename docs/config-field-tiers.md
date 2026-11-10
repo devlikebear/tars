@@ -9,11 +9,11 @@ Where the console shows each field of `/console/config` (#1240). The schema
 | Tier | Meaning | Fields |
 |---|---|---|
 | basic | Most people touch it at least once; shown up front | 31 |
-| advanced | Inside a collapsed Advanced group | 80 |
+| advanced | Inside a collapsed Advanced group | 85 |
 | file | Not in the console; YAML and `config/tars.config.example.yaml` only | 66 |
 | remove | Nothing reads it or it was replaced; to be removed, hidden until then | 0 |
 
-Total: 177 fields in 19 sections.
+Total: 182 fields in 19 sections.
 
 `show_when` lists conditions on other fields; the field shows when any one holds
 and the field it names is itself shown.
@@ -148,6 +148,11 @@ and the field it names is itself shown.
 | `tools_web_search_rustxng_base_url` | `tools.web_search.rustxng.base_url` | basic | `tools.web_search.provider` = rustxng |  |
 | `tools_web_search_cache_ttl_seconds` | `tools.web_search.cache_ttl_seconds` | file |  | internal tuning value |
 | `tools_exec_max_timeout_ms` | `tools.exec.max_timeout_ms` | advanced |  |  |
+| `tools_exec_sandbox_enabled` | `tools.exec.sandbox.enabled` | advanced |  |  |
+| `tools_exec_sandbox_network` | `tools.exec.sandbox.network` | advanced | `tools.exec.sandbox.enabled` = true |  |
+| `tools_exec_sandbox_writable_paths_json` | `tools.exec.sandbox.writable_paths` | advanced | `tools.exec.sandbox.enabled` = true |  |
+| `tools_exec_sandbox_read_only_paths_json` | `tools.exec.sandbox.read_only_paths` | advanced | `tools.exec.sandbox.enabled` = true |  |
+| `tools_exec_sandbox_deny_read_paths_json` | `tools.exec.sandbox.deny_read_paths` | advanced | `tools.exec.sandbox.enabled` = true |  |
 | `tools_process_max_timeout_ms` | `tools.process.max_timeout_ms` | advanced |  |  |
 | `tools_web_fetch_allow_private_hosts` | `tools.web_fetch.allow_private_hosts` | advanced | `tools.web_fetch.enabled` = true |  |
 | `tools_web_fetch_private_host_allowlist_json` | `tools.web_fetch.private_host_allowlist` | advanced | `tools.web_fetch.enabled` = true |  |

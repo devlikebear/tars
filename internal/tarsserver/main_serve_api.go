@@ -464,6 +464,7 @@ func buildAPIMux(
 	chatTooling.Unattended = unattended
 	chatTooling.ExecMaxTimeoutMS = cfg.ToolsExecMaxTimeoutMS
 	chatTooling.ExecMaxBackgroundTimeoutMS = cfg.ToolsProcessMaxTimeoutMS
+	chatTooling.ExecSandbox = execSandboxFromConfig(cfg)
 	chatTooling.ClaudeCodeCLIPermissionMode = strings.TrimSpace(cfg.ClaudeCodeCLIPermissionMode)
 	chatTooling.WorkScheduler = workScheduler
 	chatTooling.WorkLedger = workLedger

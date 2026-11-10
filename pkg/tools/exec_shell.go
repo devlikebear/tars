@@ -61,7 +61,10 @@ func literalShellWord(w *syntax.Word) (string, bool) {
 	return b.String(), true
 }
 
-func newShellCommand(ctx context.Context, dir, command string) (*exec.Cmd, error) {
+// newShellCommand builds the command that runs a validated command line in
+// dir. A non-nil sandbox wraps it in the OS sandbox and fails, without
+// running anything, when the host has none.
+func newShellCommand(ctx context.Context, dir, command string, sandbox *shellSandbox) (*exec.Cmd, error) {
 	if err := validateShellCommand(command); err != nil {
 		return nil, err
 	}
@@ -69,7 +72,14 @@ func newShellCommand(ctx context.Context, dir, command string) (*exec.Cmd, error
 	if err != nil {
 		return nil, err
 	}
-	cmd := exec.CommandContext(ctx, shell, "-c", command)
+	name, args := shell, []string{"-c", command}
+	if sandbox != nil {
+		name, args, err = sandbox.wrap(dir, append([]string{shell}, args...))
+		if err != nil {
+			return nil, err
+		}
+	}
+	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Dir = dir
 	configureExecShellProcess(cmd)
 	return cmd, nil

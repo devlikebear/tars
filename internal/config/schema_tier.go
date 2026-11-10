@@ -58,6 +58,7 @@ var (
 	rustxng        = is("tools_web_search_provider", "rustxng")
 	webFetchOn     = on("tools_web_fetch_enabled")
 	computerUseOn  = on("tools_computer_use_enabled")
+	execSandboxOn  = on("tools_exec_sandbox_enabled")
 	agentRuntimeOn = on("agentruntime_enabled")
 	consensusOn    = on("agentruntime_consensus_enabled")
 	schedulerOn    = on("work_scheduler_enabled")
@@ -182,6 +183,11 @@ var configFieldTiers = map[string]fieldTier{
 	"tools_allow_high_risk_user":                  advanced(),
 	"tools_exec_max_timeout_ms":                   advanced(),
 	"tools_process_max_timeout_ms":                advanced(),
+	"tools_exec_sandbox_enabled":                  advanced(),
+	"tools_exec_sandbox_network":                  advanced(execSandboxOn),
+	"tools_exec_sandbox_writable_paths_json":      advanced(execSandboxOn),
+	"tools_exec_sandbox_read_only_paths_json":     advanced(execSandboxOn),
+	"tools_exec_sandbox_deny_read_paths_json":     advanced(execSandboxOn),
 	"tools_apply_patch_enabled":                   advanced(),
 	"tools_message_enabled":                       advanced(),
 	"tools_agentruntime_enabled":                  advanced(),
