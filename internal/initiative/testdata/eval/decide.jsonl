@@ -1,0 +1,36 @@
+{"name":"quiet requested beats everything, even a fresh arrival","signals":{"just_arrived":true,"reachable":true},"text":{"quiet_requested":true},"want":{"intent":"none","speak":false,"reason":"quiet_requested"}}
+{"name":"quiet requested beats a long session check-in","signals":{"long_session":true,"reachable":true},"text":{"quiet_requested":true,"user_strained":true},"want":{"intent":"none","speak":false,"reason":"quiet_requested"}}
+{"name":"stopped today blocks an arrival greet","signals":{"stopped_today":true,"just_arrived":true,"reachable":true},"want":{"intent":"none","speak":false,"reason":"stopped_today"}}
+{"name":"stopped today blocks a strained check-in","signals":{"stopped_today":true,"reachable":true},"text":{"user_strained":true},"want":{"intent":"none","speak":false,"reason":"stopped_today"}}
+{"name":"quiet hours block an arrival greet","signals":{"quiet_hours":true,"just_arrived":true,"reachable":true},"want":{"intent":"none","speak":false,"reason":"quiet_hours"}}
+{"name":"quiet hours block a special day greet","signals":{"quiet_hours":true,"just_arrived":true,"reachable":true},"text":{"special_day":true},"want":{"intent":"none","speak":false,"reason":"quiet_hours"}}
+{"name":"cooldown blocks a long session check-in","signals":{"cooldown_active":true,"long_session":true,"reachable":true},"want":{"intent":"none","speak":false,"reason":"cooldown"}}
+{"name":"cooldown blocks an arrival greet","signals":{"cooldown_active":true,"just_arrived":true,"reachable":true},"want":{"intent":"none","speak":false,"reason":"cooldown"}}
+{"name":"daily cap blocks a long absence check-in","signals":{"daily_cap_reached":true,"long_absence":true,"reachable":true},"want":{"intent":"none","speak":false,"reason":"daily_cap"}}
+{"name":"daily cap blocks the silent body expression too","signals":{"daily_cap_reached":true,"idle_at_desk":true,"body_available":true},"want":{"intent":"none","speak":false,"reason":"daily_cap"}}
+{"name":"arrival greets","signals":{"just_arrived":true,"reachable":true},"want":{"intent":"greet","speak":true,"reason":"arrived"}}
+{"name":"arrival on a special day greets for the day","signals":{"just_arrived":true,"reachable":true},"text":{"special_day":true},"want":{"intent":"greet","speak":true,"reason":"special_day"}}
+{"name":"arrival greets even while typing","signals":{"just_arrived":true,"busy":true,"reachable":true},"want":{"intent":"greet","speak":true,"reason":"arrived"}}
+{"name":"arrival greets ahead of a strained check-in","signals":{"just_arrived":true,"reachable":true},"text":{"user_strained":true},"want":{"intent":"greet","speak":true,"reason":"arrived"}}
+{"name":"second arrival the same day does not greet again","signals":{"just_arrived":true,"greeted_today":true,"reachable":true},"want":{"intent":"none","speak":false,"reason":"nothing"}}
+{"name":"second arrival on a special day does not greet again","signals":{"just_arrived":true,"greeted_today":true,"reachable":true},"text":{"special_day":true},"want":{"intent":"none","speak":false,"reason":"nothing"}}
+{"name":"second arrival while typing falls through to busy","signals":{"just_arrived":true,"greeted_today":true,"busy":true,"reachable":true},"want":{"intent":"none","speak":false,"reason":"busy"}}
+{"name":"second arrival after a long absence still checks in","signals":{"just_arrived":true,"greeted_today":true,"long_absence":true,"reachable":true},"want":{"intent":"check_in","speak":true,"reason":"long_absence"}}
+{"name":"second arrival of a strained user still checks in","signals":{"just_arrived":true,"greeted_today":true,"reachable":true},"text":{"user_strained":true},"want":{"intent":"check_in","speak":true,"reason":"strained"}}
+{"name":"second arrival sitting idle still gets the body expression","signals":{"just_arrived":true,"greeted_today":true,"idle_at_desk":true,"body_available":true,"reachable":true},"want":{"intent":"body_only","speak":false,"reason":"idle_at_desk"}}
+{"name":"typing blocks a long session check-in","signals":{"busy":true,"long_session":true,"reachable":true},"want":{"intent":"none","speak":false,"reason":"busy"}}
+{"name":"typing blocks a strained check-in","signals":{"busy":true,"reachable":true},"text":{"user_strained":true},"want":{"intent":"none","speak":false,"reason":"busy"}}
+{"name":"long session checks in","signals":{"long_session":true,"reachable":true},"want":{"intent":"check_in","speak":true,"reason":"long_session"}}
+{"name":"long session checks in without a reachability check (the user is at the keyboard)","signals":{"long_session":true},"want":{"intent":"check_in","speak":true,"reason":"long_session"}}
+{"name":"long session already checked in recently stays quiet","signals":{"long_session":true,"checked_in_recently":true,"reachable":true},"want":{"intent":"none","speak":false,"reason":"nothing"}}
+{"name":"strained user checks in","signals":{"reachable":true},"text":{"user_strained":true},"want":{"intent":"check_in","speak":true,"reason":"strained"}}
+{"name":"strained user already checked in recently stays quiet","signals":{"checked_in_recently":true,"reachable":true},"text":{"user_strained":true},"want":{"intent":"none","speak":false,"reason":"nothing"}}
+{"name":"strained user who cannot be reached stays quiet","signals":{},"text":{"user_strained":true},"want":{"intent":"none","speak":false,"reason":"nothing"}}
+{"name":"long absence checks in","signals":{"long_absence":true,"reachable":true},"want":{"intent":"check_in","speak":true,"reason":"long_absence"}}
+{"name":"long absence with no way to reach the user","signals":{"long_absence":true},"want":{"intent":"none","speak":false,"reason":"unreachable"}}
+{"name":"long absence ignores the recent check-in spacing","signals":{"long_absence":true,"checked_in_recently":true,"reachable":true},"want":{"intent":"check_in","speak":true,"reason":"long_absence"}}
+{"name":"idle at the desk shows the body expression","signals":{"idle_at_desk":true,"body_available":true,"reachable":true},"want":{"intent":"body_only","speak":false,"reason":"idle_at_desk"}}
+{"name":"idle at the desk with no body provider does nothing","signals":{"idle_at_desk":true,"reachable":true},"want":{"intent":"none","speak":false,"reason":"nothing"}}
+{"name":"idle at the desk right after a body expression does nothing","signals":{"idle_at_desk":true,"body_available":true,"body_recently":true,"reachable":true},"want":{"intent":"none","speak":false,"reason":"nothing"}}
+{"name":"special day alone, not arriving, does nothing","signals":{"reachable":true},"text":{"special_day":true},"want":{"intent":"none","speak":false,"reason":"nothing"}}
+{"name":"nothing at all","signals":{},"want":{"intent":"none","speak":false,"reason":"nothing"}}

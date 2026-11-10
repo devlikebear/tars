@@ -41,6 +41,15 @@ Last reviewed: 2026-10-10. Start an isolated instance with `make build` then `bi
 - Healthy result: the answer names what waits and why, in one or two sentences, with up to four cards; a card opens its screen (`/console/focus/<id>`, `/console/chat/<id>`, `/console/cron`, `/console/ops`, `/console/analytics`, `/console/pulse`) and closes the panel. The main session's transcript has no Bridge question; a hidden "CASE Bridge" worker session does (`/v1/admin/sessions?hidden=1`), one per day. A second question while one is answered is 409. Asking for a change ("cancel that cron") gets a pointer to the screen, never an action.
 - Evidence: `go test ./internal/casebridge -v`, `go test ./internal/tarsserver -run 'CaseBridge|LatestPulse|LastAssistantReply' -v`; console: `cd frontend/console && node --experimental-strip-types --test tests/caseBridge.test.ts` and `npx playwright test e2e/case-bridge.spec.ts` (mock LLM `[e2e:bridge]`).
 
+## Initiative
+
+### Offline tuning tools
+- Kind: CLI
+- Reach: `tars initiative export|scenarios|calibrate|adapt` (`--config`, or `--ledger <path>` without one). Guide: `docs/initiative-tuning.md`.
+- Drive: with a workspace whose initiative ledger has some ticks, run `tars initiative export --out initiative.jsonl`, set one record's `label.speak` to `false`, then `tars initiative scenarios --in initiative.jsonl`; `tars initiative adapt` on a live-mode ledger with replies.
+- Healthy result: the export has one line per tick with the reply outcome joined and `null` label slots, and no `error`/`body` text; `scenarios` prints a `decide.jsonl`-shaped line per correction and names the ones the current policy fails; `adapt` prints a verdict and the daily_cap/cooldown it would set; `calibrate` reports per-question AUC and a candidate only with enough labeled jev readings. None of them writes the config.
+- Evidence: `go test ./internal/initiative -run 'TestEval|Dataset|Scenarios|Calibrat|Pacing' -v`, `go test ./cmd/tars -run TestInitiative -v`.
+
 ## Computer use
 
 ### Desktop action tool
