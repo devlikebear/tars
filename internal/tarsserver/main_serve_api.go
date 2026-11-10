@@ -490,6 +490,8 @@ func buildAPIMux(
 	// itself when no backend or driver is configured.
 	focusDriver.e2e = newFocusE2ERunner(newComputerUseEngine(cfg, deps.llmRouter, deps.usageTracker))
 	focusDriver.secondOpinionTiers = newFocusSecondOpinionTiers(cfg)
+	focusDriver.tierKind = newFocusTierKind(cfg)
+	focusDriver.execCosts = focusExecCosts(deps.usageTracker)
 	focusDriver.harnessLLM = newFocusHarnessLLM(deps.llmRouter)
 	focusDriver.harnessCost = focusHarnessCost(deps.usageTracker)
 	chatTooling.Focus = focusDriver
@@ -915,6 +917,7 @@ func registerAPIRoutes(mux *http.ServeMux, handlers apiRouteHandlers) {
 		mux.Handle("/v1/focus/pipelines", handlers.focus)
 		mux.Handle("/v1/focus/pipelines/", handlers.focus)
 		mux.Handle("/v1/focus/templates", handlers.focus)
+		mux.Handle("/v1/focus/exec-report", handlers.focus)
 	}
 	if handlers.focusTemplateEdit != nil {
 		mux.Handle("/v1/focus/templates/", handlers.focusTemplateEdit)

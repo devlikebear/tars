@@ -29,6 +29,9 @@ import {
   secondOpinionNotice,
   secondOpinionTierChoices,
   harnessNotice,
+  defaultExecTier,
+  execTierChoices,
+  execTierNotice,
 } from '../src/lib/focus.ts'
 import { userVisibleText } from '../src/lib/consoleContext.ts'
 import { focusEn, focusKo } from '../src/i18n/sections/focus.ts'
@@ -621,4 +624,42 @@ test('instructReviewHint: present in both locales, and only shown for a review-k
   ]
   assert.equal(stageKindOf(stages, 'review'), 'review')
   assert.notEqual(stageKindOf(stages, 'build'), 'review')
+})
+
+test('execTierChoices: resolvable tiers, a provider-kind switch that a resumed CLI session refuses marked', () => {
+  const choices = execTierChoices([
+    { name: 'heavy', provider_alias: 'cc', model: 'opus', kind: 'claude-code-cli' },
+    { name: 'standard', provider_alias: 'anth', model: 'sonnet', kind: 'anthropic' },
+    { name: 'light', provider_alias: 'cc', model: 'haiku', kind: 'claude-code-cli' },
+    { name: 'custom', provider_alias: 'oai', model: 'gpt', kind: 'openai' },
+  ], 'heavy')
+  assert.deepEqual(choices, [
+    { name: 'heavy', provider: 'cc', model: 'opus', resumeRisk: false },
+    { name: 'standard', provider: 'anth', model: 'sonnet', resumeRisk: true },
+    { name: 'light', provider: 'cc', model: 'haiku', resumeRisk: false },
+  ])
+  assert.equal(defaultExecTier(choices), 'light')
+  const native = execTierChoices([
+    { name: 'heavy', provider_alias: 'anth', model: 'opus', kind: 'anthropic' },
+    { name: 'standard', provider_alias: 'oai', model: 'gpt', kind: 'openai' },
+    { name: 'light', error: 'unknown provider' },
+  ], 'heavy')
+  assert.deepEqual(native.map((c) => [c.name, c.resumeRisk]), [['heavy', false], ['standard', false]])
+  assert.equal(defaultExecTier(native), 'standard')
+  assert.equal(defaultExecTier([{ name: 'heavy', provider: 'p', model: 'm', resumeRisk: true }]), 'heavy')
+  assert.equal(defaultExecTier([]), '')
+  // An unknown chat default marks nothing.
+  assert.equal(execTierChoices([{ name: 'light', kind: 'claude-code-cli' }], 'nope')[0]?.resumeRisk, false)
+})
+
+test('execTierNotice: the execution tier fallback in the console language', () => {
+  const resume = { kind: 'notice' as const, title: 'execution tier not used', payload: { reason: 'resume_provider', tier: 'light', session_provider: 'claude-code-cli', exec_provider: 'anthropic' } }
+  assert.equal(execTierNotice(resume)?.title, 'Execution tier not used')
+  assert.match(execTierNotice(resume)?.body ?? '', /claude-code-cli.*light runs anthropic/)
+  assert.equal(execTierNotice(resume, focusKo.notice)?.title, '실행 tier를 쓰지 않음')
+  const unresolved = { kind: 'notice' as const, title: 'execution tier not used', payload: { reason: 'unresolved', tier: 'light' } }
+  assert.match(execTierNotice(unresolved)?.body ?? '', /light no longer resolves/)
+  assert.match(execTierNotice({ kind: 'notice', title: 'execution tier not used', payload: null })?.body ?? '', /the execution tier runs another/)
+  assert.equal(execTierNotice({ kind: 'notice', title: 'report format missing', payload: {} }), null)
+  assert.equal(execTierNotice({ kind: 'report', title: 'execution tier not used', payload: {} }), null)
 })

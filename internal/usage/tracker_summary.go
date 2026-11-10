@@ -223,3 +223,41 @@ func entryBelongsToRun(entryRunID, runID string) bool {
 	entryRunID = strings.TrimSpace(entryRunID)
 	return entryRunID == runID || strings.HasPrefix(entryRunID, runID+":")
 }
+
+// SessionCost is one session's recorded cost, and the calls no price was
+// known for (missing from CostUSD, not zero).
+type SessionCost struct {
+	CostUSD       float64
+	UnpricedCalls int
+}
+
+// SessionCostsSince sums the recorded cost of each session in starts from
+// its own start time to now; a session with no calls is absent. The focus
+// execution tier report (#1293) reads every pipeline's cost this way, in
+// one pass over the usage files from the earliest start.
+func (t *Tracker) SessionCostsSince(starts map[string]time.Time) map[string]SessionCost {
+	out := map[string]SessionCost{}
+	if t == nil || len(starts) == 0 {
+		return out
+	}
+	var earliest time.Time
+	for _, s := range starts {
+		if earliest.IsZero() || s.Before(earliest) {
+			earliest = s
+		}
+	}
+	for _, entry := range t.readEntriesInRange(earliest.UTC(), t.nowFn().UTC()) {
+		id := strings.TrimSpace(entry.SessionID)
+		start, ok := starts[id]
+		if !ok || entry.Timestamp.Before(start) {
+			continue
+		}
+		c := out[id]
+		c.CostUSD += entry.EstimatedCostUSD
+		if entryUnpriced(entry) {
+			c.UnpricedCalls++
+		}
+		out[id] = c
+	}
+	return out
+}
