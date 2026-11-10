@@ -41,4 +41,7 @@ export type ChatMessage = {
   // turn (tars#1220's live mode). Only the "spoke first" badge reads it —
   // everything else treats the message like any other assistant reply.
   spokeFirst?: boolean
+  // Set on a confirm_memory question (tars#1001): the initiative ledger
+  // entry the console's remember / don't-remember buttons answer.
+  memoryQuestionEntryId?: string
 }

@@ -16,6 +16,7 @@ import (
 	"github.com/devlikebear/tars/internal/embodiment"
 	"github.com/devlikebear/tars/internal/initiative"
 	"github.com/devlikebear/tars/internal/jev"
+	"github.com/devlikebear/tars/internal/memory"
 	"github.com/devlikebear/tars/internal/session"
 	"github.com/devlikebear/tars/pkg/llm"
 	"github.com/rs/zerolog"
@@ -62,6 +63,12 @@ type sessionObserverDeps struct {
 	// default chat resolves.
 	TelegramReplySession func() string
 	BodyAvailable        func() bool
+	// Reminder returns the oldest due reminder in the initiative.remind
+	// queue (tars#1001), handing overdue ones back to cron on the way.
+	Reminder func(ctx context.Context, now time.Time) *initiative.Subject
+	// MemoryCandidates lists the reflection inbox's pending candidates
+	// (initiative.confirm_memory, tars#1001); the observer picks one.
+	MemoryCandidates func() ([]memory.MemoryCandidate, error)
 }
 
 // sessionInitiativeObserver builds an initiative.Observation from every
@@ -75,11 +82,28 @@ type sessionInitiativeObserver struct {
 	profile     fileCache[string]
 }
 
+// memoryConfirmSubject picks the pending reflection candidate a
+// confirm_memory question asks about (tars#1001): the newest pending
+// "preference" candidate — the one category reflection derives, and the
+// one closest to what the user said lately. candidates come newest first
+// (memory.ListMemoryCandidates). nil when there is none.
+func memoryConfirmSubject(candidates []memory.MemoryCandidate) *initiative.Subject {
+	for _, c := range candidates {
+		if c.Status != memory.MemoryCandidateStatusPending || !strings.EqualFold(strings.TrimSpace(c.Category), "preference") {
+			continue
+		}
+		if summary := strings.TrimSpace(c.Summary); summary != "" && strings.TrimSpace(c.ID) != "" {
+			return &initiative.Subject{ID: c.ID, Text: summary}
+		}
+	}
+	return nil
+}
+
 func newSessionInitiativeObserver(deps sessionObserverDeps) *sessionInitiativeObserver {
 	return &sessionInitiativeObserver{deps: deps, transcripts: map[string]*fileCache[sessionActivitySnapshot]{}}
 }
 
-func (o *sessionInitiativeObserver) Observe(_ context.Context, now time.Time) (initiative.Observation, error) {
+func (o *sessionInitiativeObserver) Observe(ctx context.Context, now time.Time) (initiative.Observation, error) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	obs := initiative.Observation{Now: now}
@@ -99,6 +123,15 @@ func (o *sessionInitiativeObserver) Observe(_ context.Context, now time.Time) (i
 	}
 	if o.deps.BodyAvailable != nil {
 		obs.BodyAvailable = o.deps.BodyAvailable()
+	}
+	if o.deps.Reminder != nil {
+		obs.Reminder = o.deps.Reminder(ctx, now)
+	}
+	if o.deps.MemoryCandidates != nil {
+		// A broken inbox only means nothing to ask this tick.
+		if candidates, err := o.deps.MemoryCandidates(); err == nil {
+			obs.MemoryCandidate = memoryConfirmSubject(candidates)
+		}
 	}
 	if o.deps.Store != nil {
 		if err := o.readSessions(now, &obs); err != nil {
@@ -342,8 +375,14 @@ type initiativeSetupInputs struct {
 	// cancel registry (claim) is bound later, once the chat handler
 	// exists — see initiativeSetup.Speaker.
 	Notify func(context.Context, notificationEvent)
-	Logger zerolog.Logger
-	Now    func() time.Time
+	// Reminders is the initiative.remind queue (tars#1001). Used only when
+	// initiative is live with remind on; the caller binds its cron fallback.
+	Reminders *initiativeReminderQueue
+	// MemoryBackend is what an approved confirm_memory answer is saved
+	// through — the same backend the Memory screen's review uses.
+	MemoryBackend memory.Backend
+	Logger        zerolog.Logger
+	Now           func() time.Time
 }
 
 type initiativeSetup struct {
@@ -356,6 +395,9 @@ type initiativeSetup struct {
 	// late-binding chatWorktrees.running already uses, since that registry
 	// does not exist yet when buildInitiativeRuntime runs).
 	Speaker *initiativeSpeaker
+	// RemindActive reports that cron reminders should go to Reminders
+	// (initiative enabled, live, remind on — tars#1001).
+	RemindActive bool
 }
 
 // buildInitiativeRuntime wires the initiative loop (tars#997). When it is
@@ -365,8 +407,11 @@ type initiativeSetup struct {
 // role resolves to the same provider pool alias chat uses (tars#1219).
 func buildInitiativeRuntime(in initiativeSetupInputs) initiativeSetup {
 	c := in.Config.Initiative
+	// The confirm_memory answer route stays mounted when initiative is off,
+	// so a question asked before it was turned off can still be answered.
+	answerDeps := initiativeMemoryAnswerDeps{WorkspaceDir: in.WorkspaceDir, Store: in.SessionStore, MainSessionID: strings.TrimSpace(in.MainSessionID), Backend: in.MemoryBackend}
 	if !c.Enabled {
-		return initiativeSetup{Handler: newInitiativeAPIHandler(nil, in.Presence, in.Now)}
+		return initiativeSetup{Handler: newInitiativeAPIHandlerWithMemory(nil, in.Presence, in.Now, answerDeps)}
 	}
 	logger := in.Logger.With().Str("component", "initiative").Logger()
 	loc := time.Local
@@ -377,6 +422,8 @@ func buildInitiativeRuntime(in initiativeSetupInputs) initiativeSetup {
 			logger.Warn().Str("timezone", tz).Msg("initiative: unknown timezone, using server local")
 		}
 	}
+	live := strings.EqualFold(strings.TrimSpace(c.Mode), initiative.ModeLive)
+	remindActive := c.Remind && live && in.Reminders != nil
 	cfg := initiative.Config{
 		Enabled:         true,
 		Mode:            c.Mode,
@@ -390,6 +437,10 @@ func buildInitiativeRuntime(in initiativeSetupInputs) initiativeSetup {
 		DailySpeakCalls: c.DailySpeakCalls,
 		ReplyWindow:     parsePulseDuration(c.ReplyWindow, 30*time.Minute),
 		Telegram:        c.Telegram,
+		// remind only ever applies in live mode: shadow says nothing, so
+		// cron keeps delivering its own reminders there.
+		Remind:        c.Remind && live,
+		ConfirmMemory: c.ConfirmMemory,
 		Thresholds: initiative.Thresholds{
 			QuietRequested: c.QuietRequestedThreshold,
 			UserStrained:   c.UserStrainedThreshold,
@@ -419,12 +470,18 @@ func buildInitiativeRuntime(in initiativeSetupInputs) initiativeSetup {
 	speakPlan, speakClient, speakModel := resolveInitiativeSpeakBackend(in.Config, in.Router)
 	deps.SpeakSendsText = speakPlan.SendsText
 	deps.SpeakBackend = initiativeBackendInfoFromPlan(speakPlan)
-	if speakClient != nil {
+	// remind and confirm_memory can speak without a composer (fixed
+	// wording, initiative.FixedSpeech), so they get a speaker either way.
+	if speakClient != nil || (live && (c.Remind || c.ConfirmMemory)) {
+		var composer *initiative.SpeechComposer
+		if speakClient != nil {
+			composer = &initiative.SpeechComposer{Client: speakClient, Model: speakModel}
+		}
 		speaker = &initiativeSpeaker{
 			workspaceDir:         in.WorkspaceDir,
 			mainSessionID:        strings.TrimSpace(in.MainSessionID),
 			store:                in.SessionStore,
-			composer:             &initiative.SpeechComposer{Client: speakClient, Model: speakModel},
+			composer:             composer,
 			sendsText:            speakPlan.SendsText,
 			location:             loc,
 			notify:               in.Notify,
@@ -435,6 +492,9 @@ func buildInitiativeRuntime(in initiativeSetupInputs) initiativeSetup {
 		if in.TelegramPairings != nil {
 			pairings := in.TelegramPairings
 			speaker.telegramDefaultChatID = pairings.resolveDefaultChatID
+		}
+		if remindActive {
+			speaker.reminders = in.Reminders
 		}
 		deps.Speaker = speaker
 	}
@@ -478,10 +538,24 @@ func buildInitiativeRuntime(in initiativeSetupInputs) initiativeSetup {
 		deps.Body = embodimentBodyActor{subsystem: body}
 		observerDeps.BodyAvailable = func() bool { return body.Status().Enabled && body.KnownProvider(provider) }
 	}
+	if remindActive {
+		observerDeps.Reminder = in.Reminders.Due
+	}
+	if c.ConfirmMemory && strings.TrimSpace(in.WorkspaceDir) != "" {
+		workspaceDir := in.WorkspaceDir
+		observerDeps.MemoryCandidates = func() ([]memory.MemoryCandidate, error) {
+			return memory.ListMemoryCandidates(workspaceDir, memory.MemoryCandidateListOptions{Status: memory.MemoryCandidateStatusPending})
+		}
+	}
 	deps.Observer = newSessionInitiativeObserver(observerDeps)
 
 	runtime := initiative.NewRuntime(cfg, deps)
-	return initiativeSetup{Runtime: runtime, Handler: newInitiativeAPIHandler(runtime, in.Presence, in.Now), Speaker: speaker}
+	return initiativeSetup{
+		Runtime:      runtime,
+		Handler:      newInitiativeAPIHandlerWithMemory(runtime, in.Presence, in.Now, answerDeps),
+		Speaker:      speaker,
+		RemindActive: remindActive,
+	}
 }
 
 func hostOf(raw string) string {

@@ -725,6 +725,7 @@ pkg/session field Message.ToolIsError
 pkg/session field Message.ToolName
 pkg/session field MessageInitiative.EntryID
 pkg/session field MessageInitiative.Intent
+pkg/session field MessageInitiative.Ref
 pkg/session field PendingCriticFeedback.Feedback
 pkg/session field PendingCriticFeedback.QueuedAt
 pkg/session field PendingCriticFeedback.Round

@@ -12,6 +12,7 @@ import (
 	"github.com/devlikebear/tars/internal/config"
 	"github.com/devlikebear/tars/internal/initiative"
 	"github.com/devlikebear/tars/internal/jev"
+	"github.com/devlikebear/tars/internal/memory"
 	"github.com/devlikebear/tars/pkg/llm"
 )
 
@@ -41,6 +42,66 @@ func checkDoctorInitiative(report *doctorReport, cfg config.Config) {
 	if mode == initiative.ModeLive {
 		checkDoctorInitiativeSpeak(report, cfg)
 	}
+	checkDoctorInitiativeSubjects(report, cfg, mode, time.Now())
+}
+
+// checkDoctorInitiativeSubjects reports the two tars#1001 options, one line
+// each when turned on (off is the default and says nothing): the counts
+// behind them — queued reminders, pending candidates, today's spoken count
+// from the ledger. Never a reminder's text, a candidate's summary or an id.
+func checkDoctorInitiativeSubjects(report *doctorReport, cfg config.Config, mode string, now time.Time) {
+	c := cfg.Initiative
+	if !c.Remind && !c.ConfirmMemory {
+		return
+	}
+	loc := time.Local
+	if tz := strings.TrimSpace(c.Timezone); tz != "" {
+		if l, err := time.LoadLocation(tz); err == nil {
+			loc = l
+		}
+	}
+	var entries []initiative.Entry
+	shared := filepath.Join(cfg.WorkspaceDir, "_shared", "initiative")
+	if strings.TrimSpace(cfg.WorkspaceDir) != "" {
+		entries, _ = initiative.OpenLedger(filepath.Join(shared, "ledger.jsonl"), 0).Recent(500)
+	}
+	switch {
+	case !c.Remind:
+	case mode != initiative.ModeLive:
+		report.add("ok", "initiative remind", "on, but mode is shadow: cron delivers reminders")
+	default:
+		report.add("ok", "initiative remind", fmt.Sprintf("on: %d said today, %d queued",
+			initiative.CountSpokenToday(entries, initiative.IntentRemind, now, loc), doctorQueuedReminders(filepath.Join(shared, "reminders.json"))))
+	}
+	if !c.ConfirmMemory {
+		return
+	}
+	pending := 0
+	if strings.TrimSpace(cfg.WorkspaceDir) != "" {
+		if candidates, err := memory.ListMemoryCandidates(cfg.WorkspaceDir, memory.MemoryCandidateListOptions{Status: memory.MemoryCandidateStatusPending}); err == nil {
+			for _, cand := range candidates {
+				if strings.EqualFold(strings.TrimSpace(cand.Category), "preference") {
+					pending++
+				}
+			}
+		}
+	}
+	report.add("ok", "initiative confirm_memory", fmt.Sprintf("on: %d pending preference candidates, asked today: %d",
+		pending, initiative.CountSpokenToday(entries, initiative.IntentConfirmMemory, now, loc)))
+}
+
+// doctorQueuedReminders counts reminders waiting in the initiative.remind
+// queue file (reading only its length, never the reminder text).
+func doctorQueuedReminders(path string) int {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return 0
+	}
+	var entries []json.RawMessage
+	if json.Unmarshal(raw, &entries) != nil {
+		return 0
+	}
+	return len(entries)
 }
 
 // checkDoctorInitiativePresence reports the console presence signal's last

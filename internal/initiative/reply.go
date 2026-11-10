@@ -178,7 +178,7 @@ func ReplyState(entries []Entry) (consecutiveIgnored int, lastStoppedAt time.Tim
 			if e.Outcome == OutcomeStopped && e.At.After(lastStoppedAt) {
 				lastStoppedAt = e.At
 			}
-		case e.Delivery == DeliveryDelivered:
+		case e.Delivery == DeliveryDelivered && tracksReplies(e.Intent):
 			open[e.ID] = PendingReply{EntryID: e.ID, At: e.At}
 			order = append(order, e.ID)
 		}

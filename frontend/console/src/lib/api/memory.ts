@@ -49,6 +49,22 @@ export async function reviewMemoryCandidate(
   })
 }
 
+// The answer to a confirm_memory question (tars#1001): the candidate's inbox
+// status, or "missing" once it is gone from the inbox.
+export type InitiativeMemoryAnswer = { entry_id: string; status: MemoryCandidateStatus | 'missing' }
+
+export async function getInitiativeMemoryAnswer(entryId: string): Promise<InitiativeMemoryAnswer> {
+  return requestJSON<InitiativeMemoryAnswer>(`/v1/initiative/memory/answer?entry_id=${encodeURIComponent(entryId)}`)
+}
+
+export async function answerInitiativeMemory(entryId: string, action: 'approve' | 'reject'): Promise<InitiativeMemoryAnswer> {
+  return requestJSON<InitiativeMemoryAnswer>('/v1/initiative/memory/answer', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ entry_id: entryId, action }),
+  })
+}
+
 export async function runMemorySearch(payload: {
   query: string
   limit?: number

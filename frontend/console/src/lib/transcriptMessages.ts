@@ -37,6 +37,9 @@ export function transcriptChatMessages(history: SessionMessage[]): ChatMessage[]
       role: msg.role as ChatMessage['role'],
       text: msg.content,
       ...(msg.initiative ? { spokeFirst: true } : {}),
+      ...(msg.initiative?.intent === 'confirm_memory' && msg.initiative.entry_id && msg.initiative.ref
+        ? { memoryQuestionEntryId: msg.initiative.entry_id }
+        : {}),
     })
   }
   return out

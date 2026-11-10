@@ -17,8 +17,25 @@ package initiative
 // rest of the switch. The fact that a greet was suppressed is still visible
 // — every Entry carries its own GoSignals (including GreetedToday) in
 // Signals, regardless of what Decide ultimately returned.
+//
+// remind (tars#1001) is the first case: a reminder is the user's own
+// request with a time attached, so none of the rules that hold back
+// unrequested speech — a quiet request, a stop, quiet hours, cooldown, the
+// daily cap — apply to it. Only typing or a turn in flight (Busy) defers it
+// a tick, and then the switch reads exactly as if no reminder were due. It
+// depends on Go signals alone, so for every tick it matches, all text
+// signal combinations return the same decision (textSignalsMatter stays
+// false and no text call is made for a reminder).
+//
+// confirm_memory (tars#1001) is unrequested, so it sits after every hard
+// gate, arrival, Busy and every care case, and only takes the moment
+// body_only would otherwise use (sitting idle at the console), at most once
+// a day. Every text-dependent case comes before it, so it never changes
+// what a text signal could do on any tick where it does not match.
 func Decide(g GoSignals, t TextSignals) Decision {
 	switch {
+	case g.ReminderDue && !g.Busy:
+		return speak(IntentRemind, "reminder_due")
 	case t.QuietRequested:
 		return none("quiet_requested")
 	case g.StoppedToday:
@@ -45,6 +62,8 @@ func Decide(g GoSignals, t TextSignals) Decision {
 			return none("unreachable")
 		}
 		return speak(IntentCheckIn, "long_absence")
+	case g.MemoryPending && !g.MemoryAskedToday && g.IdleAtDesk:
+		return speak(IntentConfirmMemory, "memory_pending")
 	case g.IdleAtDesk && g.BodyAvailable && !g.BodyRecently:
 		return Decision{Intent: IntentBodyOnly, Reason: "idle_at_desk"}
 	default:
@@ -87,6 +106,14 @@ func speak(intent Intent, reason string) Decision {
 // function naturally reports true instead, exactly as it already does for
 // any other GoSignals combination where some text signal can change the
 // outcome.
+//
+// The two tars#1001 cases keep this reasoning intact. remind is first and
+// reads only Go signals, so a tick it matches returns remind for all eight
+// combinations (false: no read). confirm_memory is placed after every case a
+// text signal can reach; a tick it matches is one where quiet_requested
+// would still turn it into none and user_strained into a check_in, so the
+// function reports true and the read happens before TARS asks — the same
+// way a body_only tick is read today.
 func textSignalsMatter(g GoSignals) bool {
 	base := Decide(g, TextSignals{})
 	for mask := 1; mask < 8; mask++ {

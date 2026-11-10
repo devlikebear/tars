@@ -236,6 +236,8 @@ func Schema() []FieldMeta {
 		f("initiative_daily_speak_calls", "Initiative", "int", "Daily Speak Calls", "Maximum live-mode speak-composer LLM calls per local day"),
 		f("initiative_reply_window", "Initiative", "string", "Reply Window", "How long after a delivered speak a reply still counts (e.g. 30m)"),
 		f("initiative_telegram", "Initiative", "bool", "Deliver Over Telegram", "When the console is not connected, deliver a live-mode speak to Telegram's default paired chat instead — a real message goes to the user's phone"),
+		f("initiative_remind", "Initiative", "bool", "Deliver Reminders", "Live mode: say cron reminders as a natural message instead of cron's [REMINDER] note; cron delivers any it cannot say within 10 minutes"),
+		f("initiative_confirm_memory", "Initiative", "bool", "Ask About Memory", "Ask once a day whether to remember a pending reflection candidate, answered with buttons in the console"),
 		f("initiative_threshold_quiet_requested", "Initiative", "float", "Quiet Requested Threshold", "System One probability that counts as a quiet request"),
 		f("initiative_threshold_user_strained", "Initiative", "float", "User Strained Threshold", "System One probability that counts as strain"),
 		f("initiative_threshold_special_day", "Initiative", "float", "Special Day Threshold", "System One probability that counts as a special day"),
@@ -627,6 +629,10 @@ func extractValue(yamlKey string, cfg Config) any {
 		return cfg.Initiative.ReplyWindow
 	case "initiative_telegram":
 		return cfg.Initiative.Telegram
+	case "initiative_remind":
+		return cfg.Initiative.Remind
+	case "initiative_confirm_memory":
+		return cfg.Initiative.ConfirmMemory
 	case "initiative_threshold_quiet_requested":
 		return cfg.Initiative.QuietRequestedThreshold
 	case "initiative_threshold_user_strained":
