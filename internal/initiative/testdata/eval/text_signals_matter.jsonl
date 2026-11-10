@@ -1,0 +1,16 @@
+{"name":"quiet hours fix the outcome, no read","signals":{"quiet_hours":true,"just_arrived":true,"reachable":true},"want":false}
+{"name":"cooldown fixes the outcome, no read","signals":{"cooldown_active":true,"reachable":true},"want":false}
+{"name":"daily cap fixes the outcome, no read","signals":{"daily_cap_reached":true,"reachable":true},"want":false}
+{"name":"stopped today fixes the outcome, no read","signals":{"stopped_today":true,"just_arrived":true,"reachable":true},"want":false}
+{"name":"typing fixes the outcome, no read","signals":{"busy":true,"reachable":true},"want":false}
+{"name":"arrival while typing still reads: quiet_requested can cancel the greet","signals":{"just_arrived":true,"busy":true,"reachable":true},"want":true}
+{"name":"arrival reads: quiet_requested or special_day can change it","signals":{"just_arrived":true,"reachable":true},"want":true}
+{"name":"reachable idle tick reads: user_strained can turn it into a check-in","signals":{"reachable":true},"want":true}
+{"name":"unreachable tick with nothing going on does not read","signals":{},"want":false}
+{"name":"checked in recently and nothing else does not read","signals":{"checked_in_recently":true,"reachable":true},"want":false}
+{"name":"long session reads: quiet_requested can cancel the check-in","signals":{"long_session":true,"reachable":true},"want":true}
+{"name":"greeted today, checked in recently: nothing a text signal can change","signals":{"just_arrived":true,"greeted_today":true,"checked_in_recently":true,"reachable":true},"want":false}
+{"name":"greeted today but reachable: user_strained can still check in","signals":{"just_arrived":true,"greeted_today":true,"reachable":true},"want":true}
+{"name":"a due reminder fixes the outcome, no read","signals":{"reminder_due":true,"reachable":true,"idle_at_desk":true},"want":false}
+{"name":"a reminder held by typing reads as if none were due","signals":{"reminder_due":true,"busy":true,"just_arrived":true,"reachable":true},"want":true}
+{"name":"a memory question reads text first: quiet can still hold it back","signals":{"memory_pending":true,"idle_at_desk":true,"reachable":true},"want":true}
