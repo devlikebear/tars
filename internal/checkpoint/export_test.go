@@ -1,13 +1,13 @@
 package checkpoint
 
 import (
-	"archive/tar"
-	"bytes"
 	"context"
+	"encoding/hex"
 	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -61,66 +61,121 @@ func TestExportTurn(t *testing.T) {
 	}
 }
 
-func tarOf(t *testing.T, entries ...tar.Header) []byte {
+// hostileCommit writes a commit into the shadow of e whose tree holds a
+// single entry named name (a tree holding file x), as no git client would
+// create but a damaged or tampered shadow could hold, and records it as
+// turn "hostile" of session s1.
+func hostileCommit(t *testing.T, s *Store, e Entry, name string) {
 	t.Helper()
-	var buf bytes.Buffer
-	w := tar.NewWriter(&buf)
-	for _, h := range entries {
-		h := h
-		body := []byte("x")
-		if h.Typeflag == tar.TypeReg {
-			h.Size = int64(len(body))
-		}
-		if err := w.WriteHeader(&h); err != nil {
-			t.Fatal(err)
-		}
-		if h.Typeflag == tar.TypeReg {
-			if _, err := w.Write(body); err != nil {
-				t.Fatal(err)
-			}
-		}
-	}
-	if err := w.Close(); err != nil {
-		t.Fatal(err)
-	}
-	return buf.Bytes()
-}
-
-func TestExtractTarStaysInside(t *testing.T) {
-	for _, name := range []string{"../escape", "/abs"} {
-		dest := t.TempDir()
-		err := extractTar(bytes.NewReader(tarOf(t, tar.Header{Name: name, Typeflag: tar.TypeReg, Mode: 0o644})), dest)
-		if !errors.Is(err, ErrInvalid) {
-			t.Errorf("%s: %v", name, err)
-		}
-	}
-	if runtime.GOOS == "windows" {
-		t.Skip("symbolic links need privileges on Windows")
-	}
-	dest := t.TempDir()
-	err := extractTar(bytes.NewReader(tarOf(t,
-		tar.Header{Name: "pax_global_header", Typeflag: tar.TypeXGlobalHeader},
-		tar.Header{Name: "dir/", Typeflag: tar.TypeDir, Mode: 0o755},
-		tar.Header{Name: "dir/run.sh", Typeflag: tar.TypeReg, Mode: 0o755},
-		tar.Header{Name: "in", Typeflag: tar.TypeSymlink, Linkname: "dir/run.sh"},
-		tar.Header{Name: "out", Typeflag: tar.TypeSymlink, Linkname: "../../etc/passwd"},
-		tar.Header{Name: "abs", Typeflag: tar.TypeSymlink, Linkname: "/etc/passwd"},
-	)), dest)
+	sh, err := s.openShadow(e.Shadow)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info, err := os.Stat(filepath.Join(dest, "dir/run.sh")); err != nil || info.Mode().Perm()&0o100 == 0 {
-		t.Fatalf("executable lost: %v %v", info, err)
+	ctx := context.Background()
+	run := func(stdin []byte, args ...string) string {
+		call := sh.objectCall(args...)
+		call.stdin = stdin
+		out, _, err := s.git.run(ctx, call)
+		if err != nil {
+			t.Fatalf("git %v: %v", args, err)
+		}
+		return strings.TrimSpace(string(out))
 	}
-	if link, err := os.Readlink(filepath.Join(dest, "in")); err != nil || link != "dir/run.sh" {
-		t.Fatalf("inside link: %q %v", link, err)
+	rawOID := func(hexID string) []byte {
+		b, err := hex.DecodeString(hexID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return b
 	}
-	for _, name := range []string{"out", "abs", "pax_global_header"} {
-		if _, err := os.Lstat(filepath.Join(dest, name)); !os.IsNotExist(err) {
-			t.Errorf("%s was written", name)
+	blob := run([]byte("outside\n"), "hash-object", "-w", "--stdin")
+	inner := run(append([]byte("100644 x\x00"), rawOID(blob)...), "hash-object", "-t", "tree", "-w", "--literally", "--stdin")
+	outer := run(append([]byte("40000 "+name+"\x00"), rawOID(inner)...), "hash-object", "-t", "tree", "-w", "--literally", "--stdin")
+	commit := run(nil, "commit-tree", outer, "-m", "hostile")
+	idx, err := s.readIndex("s1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	idx.Turns = append(idx.Turns, Entry{TurnID: "hostile", Root: e.Root, Shadow: e.Shadow, Start: commit, End: commit})
+	if err := s.writeIndex(idx); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A snapshot whose tree climbs out of the folder (an entry named "..") or
+// into a .git is refused by git itself, and nothing is written outside.
+func TestExportTurnRefusesEscapingEntries(t *testing.T) {
+	for _, name := range []string{"..", ".git"} {
+		t.Run(name, func(t *testing.T) {
+			s := newTestStore(t, Options{})
+			repo := initUserRepo(t)
+			writeFile(t, repo, "a.txt", "a\n")
+			entry := runTurn(t, s, "s1", "t1", repo, func() { writeFile(t, repo, "a.txt", "b\n") })
+			hostileCommit(t, s, entry, name)
+			parent := t.TempDir()
+			dest := filepath.Join(parent, "tree")
+			if err := os.Mkdir(dest, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := s.ExportTurn(context.Background(), "s1", "hostile", SideStart, dest); err == nil {
+				t.Fatal("a tree entry escaping the folder was exported")
+			}
+			if _, err := os.Stat(filepath.Join(parent, "x")); !os.IsNotExist(err) {
+				t.Fatalf("written outside: %v", err)
+			}
+			if _, err := os.Stat(filepath.Join(dest, ".git", "x")); !os.IsNotExist(err) {
+				t.Fatalf("written into .git: %v", err)
+			}
+		})
+	}
+}
+
+// Symbolic links recorded in a snapshot come back only when they stay
+// inside the folder.
+func TestExportTurnDropsEscapingLinks(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symbolic links need privileges on Windows")
+	}
+	s := newTestStore(t, Options{})
+	repo := initUserRepo(t)
+	writeFile(t, repo, "dir/run.sh", "echo\n")
+	entry := runTurn(t, s, "s1", "t1", repo, func() {
+		for link, target := range map[string]string{
+			"in": "dir/run.sh", "dir/up": "../dir/run.sh", "out": "../../etc/passwd", "abs": "/etc/passwd", "dir/far": "../../x",
+		} {
+			if err := os.Symlink(target, filepath.Join(repo, filepath.FromSlash(link))); err != nil {
+				t.Fatal(err)
+			}
+		}
+	})
+	dest := t.TempDir()
+	if err := s.ExportTurn(context.Background(), "s1", entry.TurnID, SideEnd, dest); err != nil {
+		t.Fatal(err)
+	}
+	for _, kept := range []string{"in", "dir/up"} {
+		if _, err := os.Readlink(filepath.Join(dest, filepath.FromSlash(kept))); err != nil {
+			t.Errorf("inside link %s: %v", kept, err)
 		}
 	}
-	if err := extractTar(bytes.NewReader([]byte("not a tar archive at all, padded to look like one")), t.TempDir()); err == nil {
-		t.Fatal("a broken archive is an error")
+	for _, gone := range []string{"out", "abs", "dir/far"} {
+		if _, err := os.Lstat(filepath.Join(dest, filepath.FromSlash(gone))); !os.IsNotExist(err) {
+			t.Errorf("escaping link %s was kept", gone)
+		}
+	}
+}
+
+func TestLinkStaysInside(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "root")
+	link := filepath.Join(root, "a", "l")
+	for target, want := range map[string]bool{
+		"b": true, "../b": true, "..": true, "../..": false, "../../x": false, "": false,
+		string(filepath.Separator) + "etc": false,
+	} {
+		if got := linkStaysInside(root, link, target); got != want {
+			t.Errorf("%q: %v, want %v", target, got, want)
+		}
+	}
+	if err := pruneEscapingLinks(filepath.Join(root, "missing")); err == nil {
+		t.Fatal("a missing folder is an error")
 	}
 }

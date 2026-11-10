@@ -37,6 +37,9 @@ type gitCall struct {
 	// patternPaths drops GIT_LITERAL_PATHSPECS for commands that reject it.
 	// check-ignore does; it reads its arguments as paths anyway.
 	patternPaths bool
+	// indexFile points git at an index of its own (GIT_INDEX_FILE), so a
+	// command that needs an index never touches the shadow's.
+	indexFile string
 }
 
 // gitError keeps the exit code and git's own message.
@@ -89,6 +92,9 @@ func gitEnv(c gitCall) []string {
 		env = append(env, "GIT_DIR="+c.gitDir)
 		if c.workTree != "" {
 			env = append(env, "GIT_WORK_TREE="+c.workTree)
+		}
+		if c.indexFile != "" {
+			env = append(env, "GIT_INDEX_FILE="+c.indexFile)
 		}
 	}
 	return env
