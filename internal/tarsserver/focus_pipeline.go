@@ -34,6 +34,7 @@ import (
 //	POST /v1/focus/pipelines/{id}/qa              {card_id, question} → 202 {qa_session_id, turn} (focus_qa.go)
 //	POST /v1/focus/pipelines/{id}/goal            {enabled, max_pushes?} → {pipeline}; turning it on needs the admin token (focus_goal.go)
 //	POST /v1/focus/pipelines/{id}/plan            {goal?, verify?, e2e?, e2e_setup?, e2e_teardown?} → {pipeline, changed}; edits the approved plan, 409 before G1 or once finished (focus_plan_edit.go)
+//	POST /v1/focus/pipelines also takes harness_proposal: true — once the pipeline finishes merged, propose harness changes from its facts as a new pipeline (400 outside a git repository or for a release, 503 when the server cannot run it) (focus_harness.go)
 //	GET  /v1/focus/templates                      → {templates, diagnostics, hub: {id: version} of the TARS Hub ones, dir}; POST /v1/focus/pipelines takes {template, goal_mode, goal_max_pushes, e2e, second_opinion?: {tier}} — second_opinion opts in to the second opinion review (heavy|standard|light; 400 when the tier cannot be used, 503 when the server cannot run it, second_opinion_warning "same_model_as_chat" in the 201) (focus_second_opinion.go)
 //	POST /v1/focus/templates/draft                {request, base_id?, draft?} → AI-drafted save/delete (focus_template_edit.go); PUT/DELETE /v1/focus/templates/{id} actually save or remove
 //
@@ -375,6 +376,11 @@ type focusAPI struct {
 
 func newFocusPipelineHandler(sessions *session.Store, worktrees *chatWorktrees, driver *focusDriver, logger zerolog.Logger) http.Handler {
 	api := &focusAPI{sessions: sessions, worktrees: worktrees, driver: driver, logger: logger, now: time.Now}
+	if driver != nil {
+		// A harness proposal opens its pipeline through this API's create
+		// path (focus_harness.go).
+		driver.openPipeline = focusOpenPipeline(api)
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /v1/focus/pipelines", api.list)
 	mux.HandleFunc("POST /v1/focus/pipelines", api.create)
@@ -426,6 +432,12 @@ type focusCreateRequest struct {
 	// SecondOpinion opts the pipeline in to the second opinion review
 	// (focus_second_opinion.go): {tier: heavy|standard|light}. Absent is off.
 	SecondOpinion *focusSecondOpinionRequest `json:"second_opinion,omitempty"`
+	// HarnessProposal opts the pipeline in to a harness proposal once it
+	// finishes merged (focus_harness.go). Off unless asked for.
+	HarnessProposal bool `json:"harness_proposal,omitempty"`
+	// harnessFrom marks a pipeline the server opens as a harness proposal;
+	// never read from a request.
+	harnessFrom *focuspipeline.HarnessSource
 	// ReleaseItems and ReleaseSince (kind release only) are the release
 	// train's list and cut-off the release ships.
 	ReleaseItems []string   `json:"release_items,omitempty"`
@@ -443,37 +455,43 @@ func (a *focusAPI) create(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "starting a focus task in a folder needs the admin token"})
 		return
 	}
+	status, resp := a.open(r.Context(), req, serverauth.RoleFromRequest(r))
+	writeJSON(w, status, resp)
+}
+
+// open creates the session and its pipeline for an admin's create request,
+// or for the server itself (a harness proposal, focus_harness.go), and
+// returns the response's status and body. role is who the first turn runs
+// as when req.Start asks the server to send it.
+func (a *focusAPI) open(ctx context.Context, req focusCreateRequest, role string) (int, map[string]any) {
 	goal := strings.TrimSpace(req.Goal)
 	if goal == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "goal is required"})
-		return
+		return http.StatusBadRequest, map[string]any{"error": "goal is required"}
 	}
 	kind := strings.TrimSpace(req.Kind)
 	if kind != "" && kind != focuspipeline.KindRelease {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unknown pipeline kind"})
-		return
+		return http.StatusBadRequest, map[string]any{"error": "unknown pipeline kind"}
 	}
 	if a.worktrees == nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "sessions in folders are unavailable"})
-		return
+		return http.StatusServiceUnavailable, map[string]any{"error": "sessions in folders are unavailable"}
 	}
 	if req.Start && !a.driver.canRunTurns() {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "the server cannot start the first turn"})
-		return
+		return http.StatusServiceUnavailable, map[string]any{"error": "the server cannot start the first turn"}
 	}
 	tpl, ok := focuspipeline.FindTemplate(focusTemplateDir(a.sessions), req.Template)
 	if !ok {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unknown focus template"})
-		return
+		return http.StatusBadRequest, map[string]any{"error": "unknown focus template"}
 	}
 	if kind == focuspipeline.KindRelease && tpl.ID != focuspipeline.DevTemplateID {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "a release runs the development template"})
-		return
+		return http.StatusBadRequest, map[string]any{"error": "a release runs the development template"}
 	}
 	secondOpinion, secondOpinionWarning, status, err := a.driver.checkSecondOpinion(req.SecondOpinion)
 	if err != nil {
-		writeJSON(w, status, map[string]string{"error": err.Error()})
-		return
+		return status, map[string]any{"error": err.Error()}
+	}
+	harness, status, err := a.driver.checkHarness(ctx, req, kind)
+	if err != nil {
+		return status, map[string]any{"error": err.Error()}
 	}
 	title := strings.TrimSpace(req.Title)
 	if title == "" {
@@ -484,17 +502,15 @@ func (a *focusAPI) create(w http.ResponseWriter, r *http.Request) {
 		// (another tab, a double click) opens the running one instead.
 		releaseCreateMu.Lock()
 		defer releaseCreateMu.Unlock()
-		active, err := activeReleaseIn(r.Context(), a.sessions, a.repoRoot(), expandCwdHome(strings.TrimSpace(req.Cwd)))
+		active, err := activeReleaseIn(ctx, a.sessions, a.repoRoot(), expandCwdHome(strings.TrimSpace(req.Cwd)))
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
-			return
+			return http.StatusInternalServerError, map[string]any{"error": err.Error()}
 		}
 		if active != "" {
-			writeJSON(w, http.StatusConflict, map[string]string{"error": "a release is already running for this repository", "session_id": active})
-			return
+			return http.StatusConflict, map[string]any{"error": "a release is already running for this repository", "session_id": active}
 		}
 	}
-	sess, worktreeNoticeResult, err := a.worktrees.createIn(r.Context(), newSessionRequest{
+	sess, worktreeNoticeResult, err := a.worktrees.createIn(ctx, newSessionRequest{
 		Title: title, Cwd: req.Cwd, Isolate: req.Isolate, ExtraDirs: req.ExtraDirs,
 		// A feature pipeline's own worktree branches from the remote's
 		// default branch, not the checkout's HEAD (tars dogfooding fix
@@ -505,8 +521,7 @@ func (a *focusAPI) create(w http.ResponseWriter, r *http.Request) {
 		isolateBaseRemoteDefault: kind != focuspipeline.KindRelease,
 	})
 	if err != nil {
-		writeJSON(w, folderErrorStatus(err), map[string]string{"error": err.Error()})
-		return
+		return folderErrorStatus(err), map[string]any{"error": err.Error()}
 	}
 	p := focuspipeline.NewFromTemplate(sess.ID, goal, tpl, a.now())
 	if worktreeNoticeResult != nil && worktreeNoticeResult.Base.Fallback != "" {
@@ -514,6 +529,7 @@ func (a *focusAPI) create(w http.ResponseWriter, r *http.Request) {
 	}
 	p.E2E = req.E2E
 	p.SecondOpinion = secondOpinion
+	p.Harness, p.HarnessFrom = harness, req.harnessFrom
 	if req.GoalMode {
 		p = focuspipeline.StartGoal(p, req.GoalMaxPushes, a.now())
 	}
@@ -536,14 +552,13 @@ func (a *focusAPI) create(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := a.store().Save(p); err != nil {
 		// Never leave a focus session without its pipeline.
-		a.worktrees.retire(context.WithoutCancel(r.Context()), sess)
+		a.worktrees.retire(context.WithoutCancel(ctx), sess)
 		_ = a.sessions.Delete(sess.ID)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "save pipeline failed"})
-		return
+		return http.StatusInternalServerError, map[string]any{"error": "save pipeline failed"}
 	}
 	// Before the goal watcher looks: it must find the run, not a turn owed
 	// with nothing running.
-	a.driver.start(sess.ID, first, serverauth.RoleFromRequest(r))
+	a.driver.start(sess.ID, first, role)
 	if req.GoalMode {
 		p = a.driver.goalStarted(sess.ID, p)
 	}
@@ -554,7 +569,7 @@ func (a *focusAPI) create(w http.ResponseWriter, r *http.Request) {
 	if worktreeNoticeResult != nil {
 		resp["worktree_base"] = worktreeNoticeResult.Base
 	}
-	writeJSON(w, http.StatusCreated, resp)
+	return http.StatusCreated, resp
 }
 
 func focusTitleFromGoal(goal string) string {

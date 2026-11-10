@@ -18,6 +18,9 @@
 //     pr_review round
 //   - second_opinion.go the opt-in second opinion review: another tier's
 //     findings joining a review stage's first round
+//   - harness.go, harness_lesson.go, harness_library.go the opt-in harness
+//     proposal: a merged pipeline's facts, the lessons a model draws from
+//     them, and the repository's library of lessons proposed and adopted
 //
 // Stage transitions are decided by facts (blocks, gate actions, and from P2
 // on verification exit codes) and never by asking the model whether a stage
@@ -280,6 +283,12 @@ type Pipeline struct {
 	// review-kind stage. Nil — every pipeline that did not ask for it —
 	// is off.
 	SecondOpinion *SecondOpinion `json:"second_opinion,omitempty"`
+	// Harness opts the pipeline in to a harness proposal once it finishes
+	// with its work merged (harness.go). Nil — every pipeline that did not
+	// ask for it — is off. HarnessFrom marks a pipeline that is itself a
+	// harness proposal.
+	Harness     *HarnessOptIn  `json:"harness,omitempty"`
+	HarnessFrom *HarnessSource `json:"harness_from,omitempty"`
 }
 
 // KindRelease marks a release pipeline, which the release train never lists.
@@ -474,6 +483,19 @@ func (p Pipeline) clone() Pipeline {
 		so := *p.SecondOpinion
 		so.Done = append([]StageID(nil), p.SecondOpinion.Done...)
 		out.SecondOpinion = &so
+	}
+	if p.Harness != nil {
+		h := *p.Harness
+		if h.At != nil {
+			at := *h.At
+			h.At = &at
+		}
+		out.Harness = &h
+	}
+	if p.HarnessFrom != nil {
+		from := *p.HarnessFrom
+		from.Lessons = append([]string(nil), p.HarnessFrom.Lessons...)
+		out.HarnessFrom = &from
 	}
 	if p.QATurns != nil {
 		out.QATurns = make(map[string][]int, len(p.QATurns))

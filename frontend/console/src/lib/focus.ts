@@ -754,6 +754,24 @@ export function findingReviewBadges(f: FocusFinding | null | undefined): { secon
   }
 }
 
+// The notices a harness proposal leaves on the pipeline it came from
+// (focuspipeline's NoticeHarnessProposed / NoticeHarnessSkipped), localized:
+// the card's title, its one line, and the proposal pipeline's session when
+// one was opened; null for any other card.
+export function harnessNotice(card: Pick<FocusCard, 'kind' | 'title' | 'payload'>, text: FocusTranslations['notice'] = focusEn.notice): { title: string; body: string; sessionId?: string } | null {
+  if (card.kind !== 'notice') return null
+  const p = (card.payload ?? {}) as { lessons?: unknown; session_id?: unknown; outcome?: unknown; reason?: unknown }
+  if (card.title === 'harness improvement proposed') {
+    const sessionId = typeof p.session_id === 'string' && p.session_id !== '' ? p.session_id : undefined
+    return { title: text.harnessProposed, body: text.harnessProposedBody(typeof p.lessons === 'number' ? p.lessons : 0), sessionId }
+  }
+  if (card.title === 'harness improvement not proposed') {
+    const outcome = typeof p.outcome === 'string' ? p.outcome : 'failed'
+    return { title: text.harnessSkipped, body: text.harnessSkippedReason[outcome] ?? text.harnessSkippedReason.failed }
+  }
+  return null
+}
+
 // The notices the second opinion review leaves (focuspipeline's
 // NoticeSecondOpinionFailed / NoticeSecondOpinionCapped), localized: the
 // card's title and its one line, or null for any other card.

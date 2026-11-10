@@ -43,6 +43,7 @@
   let e2e = $state(false)
   // The second opinion review is opt-in per task, on a tier picked here.
   let secondOpinion = $state(false)
+  let harnessProposal = $state(false)
   let secondOpinionTier = $state('')
   let secondOpinionChoices = $state<SecondOpinionTierChoice[]>([])
   let secondOpinionLoaded = $state(false)
@@ -357,6 +358,7 @@
         ...(goalMode ? { goal_mode: true } : {}),
         ...(e2e ? { e2e: true } : {}),
         ...(secondOpinion && secondOpinionChoice ? { second_opinion: { tier: secondOpinionChoice.name } } : {}),
+        ...(harnessProposal ? { harness_proposal: true } : {}),
       })
       if (attachments) stashKickoffAttachments(created.session_id, attachments)
       onCreated(created.session_id)
@@ -514,6 +516,14 @@
         <p class="status error" data-testid="focus-new-second-opinion-none">{$t.focus.newTask.secondOpinionNoTiers}</p>
       {/if}
     {/if}
+  </div>
+
+  <div class="field">
+    <label class="check">
+      <input type="checkbox" bind:checked={harnessProposal} data-testid="focus-new-harness" />
+      {$t.focus.newTask.harnessProposal}
+    </label>
+    {#if harnessProposal}<p class="status" data-testid="focus-new-harness-hint">{$t.focus.newTask.harnessProposalHint}</p>{/if}
   </div>
 
   {#if error}<p class="status error">{error}</p>{/if}

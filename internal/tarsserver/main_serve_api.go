@@ -489,6 +489,8 @@ func buildAPIMux(
 	// itself when no backend or driver is configured.
 	focusDriver.e2e = newFocusE2ERunner(newComputerUseEngine(cfg, deps.llmRouter, deps.usageTracker))
 	focusDriver.secondOpinionTiers = newFocusSecondOpinionTiers(cfg)
+	focusDriver.harnessLLM = newFocusHarnessLLM(deps.llmRouter)
+	focusDriver.harnessCost = focusHarnessCost(deps.usageTracker)
 	chatTooling.Focus = focusDriver
 	// CASE's Bridge reads the stores below for each question; pulse's
 	// snapshot is added once its runtime exists, further down.
